@@ -29,7 +29,7 @@ for (const [width, height] of [[1440, 960], [390, 844]]) {
             },
             readProgressBoard: async () => ({ snapshot: { board_id: 'demo-0', version: 1,
               snapshot_json: { title: 'Demo delivery', tasks: { build: { title: 'Demo task', status: 'running' } } } }, questions: [] }),
-          }, setInterval: () => 0 });
+          }, setInterval: () => 0, setTimeout: () => 0, clearTimeout: () => {} });
         await window.directoryTestBoard.refresh();
       }, boards);
       await page.waitForFunction(() => document.querySelectorAll('#board-directory a').length === 166);

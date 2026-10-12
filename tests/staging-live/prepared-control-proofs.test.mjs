@@ -87,11 +87,16 @@ test('production record preparation admits the reviewed app handler into the scr
   assert.deepEqual(prepared.browser_control_proof_preparation.release, {
     source_commit: release.source_commit, carr_source_commit: release.carr_source_commit,
   });
-  for (const kind of ['missing', 'wrong-app-source', 'wrong-carr-source', 'changed-live-identity']) await t.test(kind, async () => {
+  for (const kind of ['missing', 'wrong-app-source', 'wrong-carr-source', 'changed-live-identity', 'missing-observation', 'undeclared-request']) await t.test(kind, async () => {
     const plan = structuredClone(prepared);
     if (kind === 'missing') plan.browser_control_proofs = [];
     if (kind === 'wrong-app-source') for (const proof of plan.browser_control_proofs) proof.release.source_commit = 'b'.repeat(40);
     if (kind === 'wrong-carr-source') for (const proof of plan.browser_control_proofs) proof.release.carr_source_commit = 'b'.repeat(40);
+    if (kind === 'missing-observation') for (const proof of plan.browser_control_proofs) delete proof.observations;
+    if (kind === 'undeclared-request') for (const proof of plan.browser_control_proofs) {
+      proof.effects = [];
+      proof.observations = [{ request: { path: '/mcp', method: 'POST', operation: 'morning-brief' } }];
+    }
     await writeFile(path, JSON.stringify(plan), { mode: 0o600 });
     const denied = { safe: 0, unsupported: 0 };
     const guard = stagingFixtureWriteGuard({ output, release, run });

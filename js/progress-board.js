@@ -1,6 +1,7 @@
 import { boardIdFromPath, boardPageUrl } from './progress-board-route.js';
 import { governanceTasks, withGovernance } from "./control-room-workspace-model.js";
 import { createLiveClient } from "./live-client.js";
+import { mountVisibilityPoll } from "./visibility-poll.mjs";
 import { mountSystemWorkBoard } from "./system-work-board.js";
 import { uuidv4 } from "./uuid.js";
 import { workDetailUrl } from "./progress-work-model.js";
@@ -42,6 +43,7 @@ export function mountBoard(deps = {}) {
   byId("board-activity").href = workDetailUrl({ board: boardId || SYSTEM_BOARD_ID });
   byId("board-parent-name").textContent = boardId === SYSTEM_BOARD_ID ? "System board" : "Project board";
   const timers = [];
+  let poller = null;
   let governanceRead = null;
   let governanceState = "pending";
   const completedNodes = new Map();
@@ -1004,7 +1006,8 @@ export function mountBoard(deps = {}) {
     if (boardId === SYSTEM_BOARD_ID && typeof client.unfinishedWork === "function" && byId("system-work-panel"))
       systemWork = mountSystemWorkBoard({ client, openTask:deps.openTask, onAccessDenied: cause => readFailure(cause, "board"), onPipeline: pipeline => { censusPipeline = pipeline; renderStages(currentView); } });
     refresh().catch(() => setError("Progress temporarily unavailable."));
-    timers.push(schedule(() => refresh().catch(() => setError("Progress temporarily unavailable.")), REFRESH_MS));
+    poller = mountVisibilityPoll({ document: doc, window: win, setTimeout: setTimer, clearTimeout: clearTimer, intervalMs: REFRESH_MS,
+      poll: () => refresh().catch(() => setError("Progress temporarily unavailable.")) });
     timers.push(schedule(tick, TICK_MS));
   }
 
@@ -1026,7 +1029,7 @@ export function mountBoard(deps = {}) {
       status.textContent = governanceState === "read" ? "" : `Approvals unavailable${governanceRead ? " · last-known cards" : ""}`;
       renderStages(currentView);
     },
-    dispose() { timers.forEach(id=>win.clearInterval(id)); clearTimer(ageTimer); doc.removeEventListener("visibilitychange",refreshAges); },
+    dispose() { poller?.dispose(); timers.forEach(id=>win.clearInterval(id)); clearTimer(ageTimer); doc.removeEventListener("visibilitychange",refreshAges); },
     get view() { return currentView; }, get liveExpanded() { return liveExpanded; } };
 }
 

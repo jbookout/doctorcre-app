@@ -623,15 +623,17 @@ test('older task passports survive the current global wire window',async t=>{
   assert.deepEqual(errors,[]);
 });
 
-test('wire and queue polling switch between visible and hidden cadence',async t=>{
+test('wire and queue polling stop while hidden and read at once on return',async t=>{
   const {page,state}=await open(t);await page.waitForSelector('.passport-card');
-  await page.evaluate(()=>{Object.defineProperty(document,'hidden',{configurable:true,value:true});document.dispatchEvent(new Event('visibilitychange'));});
-  const hidden={queue:state.queueReads,wire:state.turnReads};await page.clock.runFor(6000);
+  const show=visible=>page.evaluate(visible=>{for(const [key,value] of [['hidden',!visible],['visibilityState',visible?'visible':'hidden']])Object.defineProperty(document,key,{configurable:true,value});document.dispatchEvent(new Event('visibilitychange'));},visible);
+  await show(false);
+  const hidden={queue:state.queueReads,wire:state.turnReads};await page.clock.runFor(31000);await page.waitForTimeout(100);
   assert.equal(state.queueReads,hidden.queue);assert.equal(state.turnReads,hidden.wire);
-  await page.clock.runFor(25000);await page.waitForFunction(()=>document.querySelector('#queueSync').textContent.startsWith('Synced'));
+  await show(true);
   await assertEventually(()=>state.queueReads>hidden.queue && state.turnReads>hidden.wire);
-  await page.evaluate(()=>{Object.defineProperty(document,'hidden',{configurable:true,value:false});document.dispatchEvent(new Event('visibilitychange'));});
-  const visible=state.queueReads;await page.clock.runFor(5100);await assertEventually(()=>state.queueReads>visible);
+  await page.waitForFunction(()=>document.querySelector('#queueSync').textContent.startsWith('Synced'));
+  const visible={queue:state.queueReads,wire:state.turnReads};await page.clock.runFor(5100);
+  await assertEventually(()=>state.queueReads>visible.queue && state.turnReads>visible.wire);
 });
 
 test('malformed and conflicting Passport updates stay withheld in task detail',async t=>{

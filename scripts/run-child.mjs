@@ -1,6 +1,10 @@
 import { spawn } from 'node:child_process';
 
+// full-main's deadline allows its leader this long to close browsers before
+// escalating to the group; a forwarded signal must not cut that window short.
+export const GRACEFUL_SHUTDOWN_MS=15_000;
 const FORCE_KILL_GRACE_MS=1000;
+const FORWARDED_SIGNAL_GRACE_MS=GRACEFUL_SHUTDOWN_MS-FORCE_KILL_GRACE_MS;
 
 export function runChild(command,args,options={}) {
   return new Promise((resolve,reject)=>{
@@ -18,7 +22,7 @@ export function runChild(command,args,options={}) {
     const forward=signal=>{
       forwardedSignal??=signal;
       try{child.kill(signal);}catch{}
-      armForceKill(FORCE_KILL_GRACE_MS);
+      armForceKill(FORWARDED_SIGNAL_GRACE_MS);
     };
     const onSigint=()=>forward('SIGINT');
     const onSigterm=()=>forward('SIGTERM');
