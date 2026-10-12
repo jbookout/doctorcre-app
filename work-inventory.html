@@ -62,7 +62,7 @@
         <input id="statusFilter" type="text" inputmode="search" autocomplete="off" placeholder="superseded, dormant, queued…">
         <p class="field-hint" id="statusHint">Empty means every status.</p>
       </div>
-      <p class="small" id="requestPath">Request: /api/v1/work-inventory</p>
+      <details><summary class="btn">Details</summary><p class="small" id="requestPath">Request: /api/v1/work-inventory</p></details>
     </section>
 
     <section class="card glass" aria-labelledby="coverageTitle">
@@ -134,10 +134,11 @@
 
   <dialog id="evidenceDialog" class="dialog" aria-labelledby="evidenceTitle">
     <article>
-      <header><div><p class="eyebrow">Delivery evidence</p><h2 id="evidenceTitle">Record</h2></div><button class="btn icon-btn" type="button" id="evidenceClose" aria-label="Close">×</button></header>
+      <header><div><p class="eyebrow" id="evidenceEyebrow">Details</p><h2 id="evidenceTitle">Record</h2></div><button class="btn icon-btn" type="button" id="evidenceClose" aria-label="Close">×</button></header>
       <div class="dialog-body">
         <dl class="detail-rows" id="evidenceRows"></dl>
-        <p class="small"></p>
+        <div class="row-wrap" id="evidenceActions"></div>
+        <button class="btn" type="button" id="evidenceRetry" hidden>Retry</button>
       </div>
     </article>
   </dialog>
@@ -177,7 +178,7 @@
     </form>
   </dialog>
 
-  <div id="receiptDock" class="receipt-dock" role="group" aria-label="Command feedback"></div>
+  <div class="shell"><p class="small" id="commandStatus" role="status" aria-live="polite"></p><details><summary class="btn">Command details</summary><div id="receiptDock" class="receipt-dock" role="group" aria-label="Command feedback"></div></details></div>
   <footer class="shell"><p class="small">DoctorCRE · Complete Work Inventory · Coverage travels with every count.</p></footer>
   <script type="module" src="/js/work-inventory.js"></script>
 </body>
