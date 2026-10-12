@@ -1,0 +1,123 @@
+{
+  "schema": "doctorcre-performance-budget.v1",
+  "baseline": {
+    "measuredAt": "2026-10-12T12:00:48.153Z",
+    "sourceCommit": "7adf76628b5bb5d83c4e8a796cb8f23648b8d677",
+    "buildDigest": "39d1bda78e4970ded9eaf5aa0b7915bab4d7f7688c16a18bd4d091bcdc0f199d",
+    "browserVersion": "153.0.8010.12",
+    "nodeVersion": "v22.23.2",
+    "platform": "linux"
+  },
+  "profile": {
+    "viewport": {
+      "width": 390,
+      "height": 844
+    },
+    "deviceScaleFactor": 1,
+    "cpuSlowdown": 4,
+    "latencyMs": 150,
+    "downloadBytesPerSecond": 200000,
+    "uploadBytesPerSecond": 93750,
+    "samples": 3,
+    "aggregation": "median",
+    "interaction": "pointerdown timestamp to verified state plus two animation frames"
+  },
+  "headroom": {
+    "lcpMs": "max(50% of baseline, 750ms)",
+    "interactionMs": "max(100% of baseline, 150ms)",
+    "jsBytes": "10%",
+    "note": "Lab regression guard, not field Core Web Vitals. Timing budgets retain current slow screens; no performance fix is claimed."
+  },
+  "screens": {
+    "home": {
+      "lcpMs": {
+        "baseline": 928,
+        "limit": 1678
+      },
+      "jsBytes": {
+        "baseline": 644667,
+        "limit": 709134
+      },
+      "interactionMs": {
+        "baseline": 113,
+        "limit": 263
+      }
+    },
+    "deals": {
+      "lcpMs": {
+        "baseline": 1564,
+        "limit": 2346
+      },
+      "jsBytes": {
+        "baseline": 776804,
+        "limit": 854485
+      },
+      "interactionMs": {
+        "baseline": 201,
+        "limit": 402
+      }
+    },
+    "vendors": {
+      "lcpMs": {
+        "baseline": 1032,
+        "limit": 1782
+      },
+      "jsBytes": {
+        "baseline": 704591,
+        "limit": 775051
+      },
+      "interactionMs": {
+        "baseline": 292,
+        "limit": 584
+      }
+    },
+    "tours": {
+      "lcpMs": {
+        "baseline": 1036,
+        "limit": 1786
+      },
+      "jsBytes": {
+        "baseline": 588963,
+        "limit": 647860
+      },
+      "interactionMs": {
+        "baseline": 75,
+        "limit": 225
+      }
+    },
+    "relationships": {
+      "lcpMs": {
+        "baseline": 4096,
+        "limit": 6144
+      },
+      "jsBytes": {
+        "baseline": 619064,
+        "limit": 680971
+      },
+      "interactionMs": {
+        "baseline": 117,
+        "limit": 267
+      }
+    },
+    "invoices": {
+      "lcpMs": {
+        "baseline": 5452,
+        "limit": 8178
+      },
+      "jsBytes": {
+        "baseline": 575159,
+        "limit": 632675
+      },
+      "interactionMs": {
+        "baseline": 80,
+        "limit": 230
+      }
+    }
+  },
+  "bundle": {
+    "jsBytes": {
+      "baseline": 4623471,
+      "limit": 5085819
+    }
+  }
+}
