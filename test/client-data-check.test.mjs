@@ -6,6 +6,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync, execFileSync } from 'node:child_process';
 import { normalizeTokens, scanText, validateCorpus, changedFiles } from '../scripts/privacy/client-data-check.mjs';
+import tar from 'tar-stream';
+import { gzipSync, zipSync } from 'fflate';
 
 const salt = '1234567890abcdef1234567890abcdef';
 const digest = (text) => createHash('sha256').update(`${salt}\0${normalizeTokens(text).join('')}`).digest('hex');
@@ -28,6 +30,48 @@ function cliFixture(t, files, input = corpus, options = {}) {
     encoding: 'utf8', env: { ...process.env, HOME: root, DOCTORCRE_PRIVACY_CORPUS_JSON: '', DOCTORCRE_PRIVACY_CORPUS_FILE: '', ...options.env },
   });
 }
+
+async function evidenceArchive(files) {
+  const pack = tar.pack();
+  for (const [name, bytes] of Object.entries(files)) pack.entry({ name }, bytes);
+  pack.finalize();
+  const chunks = [];
+  for await (const chunk of pack) chunks.push(chunk);
+  return Buffer.from(gzipSync(Buffer.concat(chunks)));
+}
+
+test('CLI scans compressed verification evidence and nested trace text', async t => {
+  const png = readFileSync(new URL('../public-shell/icons/dealroom-192.png', import.meta.url));
+  const safe = await evidenceArchive({ 'evidence/screen.png': png,
+    'evidence/result.json': '{"status":"passed"}',
+    'evidence/trace.zip': Buffer.from(zipSync({ 'trace.trace': Buffer.from('synthetic trace') })) });
+  assert.equal(cliFixture(t, { 'proof.tar.gz': safe }).status, 0);
+  const leak = await evidenceArchive({ 'evidence/trace.zip': Buffer.from(zipSync({
+    'trace.trace': Buffer.from('clean\nPlanted Fictional Dental'),
+  })) });
+  const result = cliFixture(t, { 'proof.tar.gz': leak });
+  assert.equal(result.status, 1);
+  assert.equal(result.stdout, 'proof.tar.gz!evidence/trace.zip!trace.trace:2\n');
+  assert.equal(result.stderr, '');
+});
+
+test('CLI redacts identifying archive member paths', async t => {
+  const archive = await evidenceArchive({ 'Planted/Fictional/Dental.txt': 'clean' });
+  const result = cliFixture(t, { 'proof.tar.gz': archive });
+  assert.equal(result.status, 1);
+  assert.match(result.stdout, /^\[redacted-path:\d+\]:1\n$/);
+  assert.doesNotMatch(result.stdout + result.stderr, /Planted|Fictional|Dental/);
+});
+
+test('CLI rejects unsupported and malformed content inside archives', async t => {
+  for (const bytes of [Buffer.from('clean\0'), Buffer.from([0xff]),
+    Buffer.from(JSON.stringify(corpus))]) {
+    const archive = await evidenceArchive({ 'evidence/input.txt': bytes });
+    assert.equal(cliFixture(t, { 'proof.tar.gz': archive }).status, 2);
+  }
+  for (const path of ['proof.tar.gz', 'trace.zip'])
+    assert.equal(cliFixture(t, { [path]: Buffer.from('invalid archive') }).status, 2);
+});
 
 test('public artifacts contain no private lookup corpus', () => {
   const path = new URL('../scripts/privacy/private-name-hashes.json', import.meta.url);
