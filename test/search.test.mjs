@@ -14,17 +14,17 @@ import { createFixtureClient } from "../js/fixture-client.js";
 import { PREFERENCES_KEY } from "../js/shell.js";
 import {
   AUTHORIZATION_SENTENCE, NOT_SEARCHED_SENTENCE, SAVED_VIEWS_KEY, SAVED_VIEW_SENTENCE,
-  SCOPE_CHIP_SENTENCE, SEARCH_STATE_COPY, SEARCH_STATES, acceptsSearchResponse, applyScope,
+  SCOPE_CHIP_SENTENCE, SEARCH_STATE_COPY, SEARCH_STATES, applyScope,
   buildFindAndCatchUpArguments, buildFindArguments, classifySearchFailure, deepLinkFor,
   groupSearchResults, parseSearchAddress, readSavedViews, refusalDetail, renameView,
   retiredSummary, saveView, scopeChips, searchAddress, searchPhase, truncationNotes,
-  validSearchPayload, visibleCount, writeSavedViews,
+  validSearchPayload, visibleCount, writeSavedViews, toggleSearchScope, SEARCH_GROUP_IDS,
 } from "../js/search-model.js";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const read = (file) => readFile(`${ROOT}${file}`, "utf8");
 
-const html = await read("business-workspace.html");
+const html = await read("search.html");
 const pageJs = await read("js/search.js");
 const modelJs = await read("js/search-model.js");
 const css = await read("css/business-workspace.css");
@@ -176,32 +176,6 @@ test("B05-5 saving, renaming and resetting a view never touches the workspace pr
 
 /* ------------------------------------------------------------------------ B05-6 */
 
-test("B05-6 two overlapping reads resolved out of order render the second query's payload", async () => {
-  const client = await fixture();
-  const state = { sequence: 0, payload: null, query: null };
-  const start = (query) => ({ query, token: ++state.sequence, answer: client.find(buildFindArguments(query)) });
-
-  const first = start("Pensacola");
-  const second = start("Demo Pensacola Legacy Practices");
-  // Resolved in the WRONG order on purpose: the newer answer lands first.
-  const secondPayload = await second.answer;
-  if (acceptsSearchResponse(state.sequence, second.token)) { state.payload = secondPayload; state.query = second.query; }
-  const firstPayload = await first.answer;
-  if (acceptsSearchResponse(state.sequence, first.token)) { state.payload = firstPayload; state.query = first.query; }
-
-  assert.equal(state.query, "Demo Pensacola Legacy Practices", "the older answer was dropped");
-  assert.deepEqual(state.payload, secondPayload, "the second query's payload stands");
-  assert.notDeepEqual(firstPayload, secondPayload, "the two reads really do differ, so the assertion means something");
-  assert.equal(acceptsSearchResponse(2, 1), false);
-  assert.equal(acceptsSearchResponse(2, 2), true);
-
-  // The stale state renders NOTHING: it is asserted, not narrated.
-  const readBody = pageJs.slice(pageJs.indexOf("async function read("), pageJs.indexOf("function pushAddress("));
-  for (const fragment of readBody.split("await ").slice(1)) {
-    assert.match(fragment, /acceptsSearchResponse\(view\.sequence, sequence\)/, "every await is followed by the sequence guard");
-  }
-});
-
 /* ------------------------------------------------------------------------ B05-7 */
 
 test("B05-7 the page never re-ranks: no sort, no reverse, and the producer's order survives grouping", async () => {
@@ -270,23 +244,21 @@ test("B05-9 all nine states carry their own rendered text and are reachable thro
   assert.equal(searchPhase({ status: "ready", payload: emptyPayload, catchUp: await client.findAndCatchUp({ query: "Pensacola" }), submitted: true }), "disambiguation");
   // A stale answer is never a state the reader is shown: it renders nothing and
   // the current query's result stands.
-  assert.equal(acceptsSearchResponse(4, 3), false);
   // no-match and unavailable are mutually exclusive by construction.
   assert.notEqual(searchPhase({ status: "unavailable", payload: null, submitted: true }), "no_match");
 });
 
 /* ----------------------------------------------------------------------- B05-10 */
 
-test("B05-10 a needs_disambiguation answer renders the count, the candidates and the producer's hint, and opens none of them", async () => {
+test("B05-10 disambiguation renders the producer's count and candidates with guidance the UI can fulfill", async () => {
   const client = await fixture();
   const answer = await client.findAndCatchUp({ query: "Pensacola" });
   assert.equal(answer.state, "needs_disambiguation");
   assert.equal(answer.candidate_count, answer.candidates.length + (answer.candidates_truncated ? answer.candidate_count - answer.candidates.length : 0));
   assert.ok(answer.candidates.length > 1);
   assert.equal(answer.hint, "Choose one exact target and call catch-me-up; this verb never guesses.");
-  // The hint is printed verbatim — it is not rewritten anywhere in this app.
-  assert.doesNotMatch(pageJs, /never guesses/, "the hint is the producer's sentence, not the page's");
-  assert.match(pageJs, /escapeHtml\(payload\.hint\)/, "the page prints the hint it was given");
+  assert.doesNotMatch(pageJs, /escapeHtml\(payload\.hint\)/, "raw verb instructions are not human UI guidance");
+  assert.match(pageJs, /Choose a matching result below and select Open where available/);
   const disambiguationBody = pageJs.slice(pageJs.indexOf("function renderDisambiguation()"), pageJs.indexOf("function renderRetired()"));
   assert.doesNotMatch(disambiguationBody, /location\.|href=|client\./, "the page opens no candidate on its own");
   assert.match(disambiguationBody, /escapeHtml\(String\(payload\.candidate_count\)\)/, "the producer's own count is what is shown");
@@ -383,8 +355,8 @@ test("B05-13 the fixture derives candidates the way findCatchUpCandidates does: 
 test("B05-14 the interface contract still pins both verbs alphabetically and no route moves", () => {
   assert.equal(routes.version, "1.20.0", "no new route: the Search tab lives on /business");
   assert.equal(routes.routes["/search"], "search.html");
-  assert.equal(contract.version, "1.43.0", "the current contract retains Search operations");
-  assert.equal(contract.producer.source_commit, "2f531c295f37757899ca432dfb04a9b95e8d5184", "the producer pin includes the Codex checkpoint read");
+  assert.equal(contract.version, "1.45.0", "the current contract retains Search operations");
+  assert.equal(contract.producer.source_commit, "e2e484b1933bfd63c10cc9a1b3350132948f6f74", "the producer pin includes the Codex checkpoint read");
   for (const verb of ["find", "find-and-catch-up"]) assert.ok(contract.mcp_operations.includes(verb), `${verb} is pinned`);
   assert.deepEqual(contract.mcp_operations, [...contract.mcp_operations].toSorted(), "mcp_operations stays sorted");
   const at = contract.mcp_operations.indexOf("find");
@@ -429,4 +401,17 @@ test("B05-synthetic-fixture the validator accepts synthetic find payloads, nulls
   assert.equal(deepLinkFor({ kind: "vendor", name: "A B", merged: false }), "/vendors?q=A%20B");
   assert.equal(deepLinkFor({ kind: "lead", name: "A B", merged: false }), null, "no page reads a lead by address");
   assert.equal(deepLinkFor({ kind: "client", name: "A B", merged: true }), null, "a retired alias opens nothing");
+});
+
+
+test('QA-007 every scope can be disabled, persisted, and enabled independently', () => {
+  let kinds = [];
+  for (const id of SEARCH_GROUP_IDS) kinds = toggleSearchScope(kinds, id);
+  assert.deepEqual(kinds, ['none']);
+  const address = searchAddress({query:'Demo', kinds});
+  assert.deepEqual([...parseSearchAddress(address.split('?')[1]).kinds], ['none']);
+  assert.equal(applyScope(groupSearchResults(syntheticCapture.captures[0].payload), kinds).length, 0);
+  assert.deepEqual([...saveView([], {name:'No scopes', query:'Demo', kinds})[0].kinds], ['none']);
+  assert.deepEqual(toggleSearchScope(kinds, 'leads'), ['leads']);
+  assert.equal(searchAddress({query:'', kinds:[]}), '/search');
 });

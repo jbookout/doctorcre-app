@@ -146,9 +146,13 @@ export function closeArgs(loop, { resolution = "done", outcome = "" } = {}) {
   return { ...writeBase(loop), outcome: text, resolution };
 }
 
-/** A due date is the dated marker plus the day; the calendar supplies the day. */
+/** A day sets the dated marker; clearing it removes only the dated marker. */
 export function dueDateArgs(loop, isoDate) {
   const day = String(isoDate || "");
+  // update-loop clears due_on when the marker is no longer dated. Omit the
+  // date: its contract accepts a calendar day, never an empty date string.
+  // Preserve a flag or decision that the fresh read found in the meantime.
+  if (!day) return { ...writeBase(loop), marker: loop.marker === "dated" ? "none" : (loop.marker || "none") };
   if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) throw new TypeError("a due date is a calendar day the picker produced");
   return { ...writeBase(loop), marker: "dated", due_on: day };
 }
@@ -352,20 +356,6 @@ export function draftIdentityPlan(previousActor, nextActor) {
   if (!nextActor) return "refuse";
   if (!previousActor) return "first";
   return previousActor === nextActor ? "reuse" : "replace";
-}
-
-// Identity verification is a new read epoch. Any board request from an older
-// epoch must lose, even if it finishes after verification fails.
-export function invalidateTaskRead(view, status, message = null) {
-  view.sequence += 1;
-  view.status = status;
-  view.rows = [];
-  view.message = message;
-  return view.sequence;
-}
-
-export function isCurrentTaskRead(view, sequence) {
-  return sequence === view.sequence;
 }
 
 export function shouldFocusTaskRetry(concealedDialog, status) {

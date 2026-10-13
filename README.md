@@ -10,9 +10,11 @@ tests; it cannot become production state.
 
 The product remains a no-framework static application. Its small edge Worker
 serves the immutable static build and forwards only reviewed authenticated CARR
-routes through a private Cloudflare service binding.
+routes through a private Cloudflare service binding. Browser and edge failures
+are scrubbed, deduplicated and rate-limited in the app before they reach CARR's
+runtime-error ingress (`contracts/runtime-errors.v1.json`, `CARR_ERRORS`).
 
-Local development and the e2e runner require Node.js 22.12.0 or newer.
+Local development and the e2e runner require Node.js 22.22.3 or newer on Node 22, or 24.8.0 or newer.
 
 ```bash
 npm ci
@@ -50,10 +52,85 @@ npx e2e run tests/journeys   # deterministic, no model; the CI e2e job runs this
 npx e2e run tests/agent      # agent.act/agent.assert variants, local only
 ```
 
-The agent suite uses Joe's ChatGPT subscription, never an API key. Sign in once
-per machine with `npx e2e login openai` (add `--device` to use a code instead of
-a browser); `E2E_AGENT_MODEL` overrides the model id, and `npx e2e models openai`
-lists the ids the login serves. CI configures no model and never runs it.
+The staging control sweep publishes a durable frontier after each measured
+control and again after discovering its children. `npm run
+e2e:staging:sweep:resume` keeps measured rows immutable, validates saved opener
+actions against those rows, and replays their opening paths on fresh normal
+staging sessions before testing only the remaining controls. Replaying an opener
+restores UI state; staging mutations persist. A pending post-click discovery is
+replayed before continuing, so a crash cannot silently omit its children.
+Known remaining controls and opener depth are checkpointed; newly discovered
+states can increase the remaining count. DOM identities are hashed before
+publication so URL and credential redaction cannot change their bindings. Resume
+matches that complete state digest and uses the unique live control for its
+selector and option value; scrubbed metadata is never an action argument.
+Existing unsullied legacy identity bindings retain their exact keys and measured
+rows. A legacy identity already changed by redaction is refused rather than
+reconstructed. Source pair changes and changed opener
+identities fail rather than pretending to continue.
+
+An incomplete legacy checkpoint without a frontier requires a conservative
+screen retry from root. Its measured rows and findings remain in attempt history;
+uncheckpointed traces and screenshots require separate review and do not count
+as completed control results. Preserve and hash those artifacts before replacing
+a legacy process. Neither sweep version exports in-memory results on SIGTERM.
+Transient session transport and HTTP 429/502/503/504 failures receive at most
+three requests; authentication refusals and release identity failures do not.
+Provider error payloads and credentials are never forwarded to report errors.
+
+The staging control sweep uses a separate Playwright Test configuration.
+Playwright Test owns browser and context lifecycle, the four target projects,
+native retries and deadlines, and list and JSON reports. Native traces and
+screenshots are disabled; DoctorCRE captures and scrubs its own evidence.
+A storageState setup project authenticates once before the ordered targets run. DoctorCRE keeps the exhaustive control frontier, source
+binding, fixture receipts, resume checkpoint, and exact evidence policy.
+
+```bash
+npm run e2e:staging:sweep
+npm run e2e:staging:sweep:resume
+```
+
+The sweep, resume and explore npm entrypoints run `npm run build` first. This
+regenerates `contracts/app-routes.v1.json` and the static artifact manifest used
+by the browser read guard, including after a fresh `npm ci`. A missing or
+malformed static inventory stops before fixture setup; it cannot grant reads.
+
+`E2E_RUN_LIMITS` replaces the whole limit policy: when set, it must be a JSON
+object naming every key in `RUN_LIMITS` (`scripts/e2e-staging/run-limits.mjs`),
+each at or below its default. Start from the defaults and lower what you need:
+
+```bash
+E2E_RUN_LIMITS="$(node --input-type=module -e "import { RUN_LIMITS } from './scripts/e2e-staging/run-limits.mjs'; console.log(JSON.stringify({ ...RUN_LIMITS, httpRequests: 120, modelCalls: 0 }))")" npm run e2e:staging:sweep
+```
+
+Leaving `E2E_RUN_LIMITS` unset keeps every default. An empty or partial object
+is refused with the missing keys named, so an omitted limit never silently keeps
+its default. Unknown keys (also named), malformed JSON, non-integer values and
+any increase are refused before launching a worker. Only `modelCalls`
+and `retries` accept zero; a zero model budget refuses the first model call.
+The supervisor and workers share the validated limits in the durable ledger.
+
+Each supervisor invocation admits at most 20,000 HTTP requests, including
+assets, with two requests in flight. A burst larger than the 32-request queue,
+such as one page loading its assets, waits for a queue slot; only a queue that
+stays full for the per-request timeout stops the run. Explicit resume opens a fresh bounded
+invocation after prior process cleanup, retaining the run identity, checkpoint,
+write receipts, artifact ceiling, and prior invocation counters. HTTP and model
+budgets and the deadline renew; worker ledger reopens within that invocation do
+not renew them. If a control frontier reaches the HTTP ceiling, use the resume
+command to continue from its checkpoint. Unsettled writes still require receipt
+reconciliation before replay. `run.log` retains output channel and byte counts
+only; provider failures expose fixed error codes.
+
+The local agent suite routes model work through a named CARR Model Room desk.
+`CARR_MODEL_ROOM_DISPATCH` must name the absolute sanctioned dispatcher path;
+`E2E_MODEL_ROOM_DESK` selects the registered desk and defaults to
+`doctorcre-e2e`. The desk owns model selection and authentication. Exploration
+runs split unfinished goals into 50-goal batches. Each goal keeps the 40-step
+limit with 81 planned model calls per goal and 4,050 calls per full batch,
+below the 5,000-call hard ceiling. The runner prints every batch and the finite total
+before starting, checkpoints each finished goal, and resumes with the next
+unfinished goal. CI configures no model and never runs the agent suite.
 
 `npm run release:prepare` runs checks, tests, build and source-bound artifact
 verification with a credential-free child environment. Run it before either
@@ -91,3 +168,31 @@ fixture adapters satisfy the same `DealRoomClient` interface in `js/client.js`.
 
 The repository is publicly visible. No open-source license has been selected;
 public visibility alone does not grant reuse rights.
+
+Every PR runs `npm run performance:check` after the build in the required CI
+`test` job. It measures Home, Local Deals, Vendors, Tours, Relationships, and
+Invoices from `dist/site`, with synthetic records and cold Chromium contexts:
+390×844 mobile viewport, 4× CPU slowdown, 150 ms latency, 1.6 Mbps download.
+Three runs produce median LCP and scripted interaction latency; screen JS is
+the largest unique script-byte total loaded through that interaction. Total
+shipped JS includes every `.js`/`.mjs` in the static artifact; gzip is reported
+as the sum of per-file compressed sizes.
+
+`contracts/performance-budget.v1.json` records the measured baseline, source
+commit, build digest, and headroom. A breach fails with screen, metric, before,
+after, and budget. PR authors reduce the failing metric and rerun the check;
+budget increases require visible review in the budget diff. To re-measure the
+baseline, save a hosted `test` job log (it holds one `performance-report <base64url>` line) and run
+`node scripts/performance-budget.mjs --rebaseline contracts/performance-budget.v1.json <file>`;
+it applies the one headroom rule, which a test holds every committed limit to. This is a lab
+regression guard: interaction latency runs from the browser pointer timestamp
+to the verified UI change plus two animation frames, and is not field INP.
+The baseline preserves existing slow screens; it does not certify speed.
+
+CI keeps JSON, the table, and Playwright traces for seven days. The trusted
+`Performance report comment` workflow updates one marked PR comment, including
+bundle size, only while its head commit still matches. It reads artifact data
+and runs code from `main`; fork code receives no comment-writing token. The
+comment workflow becomes active after this workflow is present on `main`.
+Measurement references: [Playwright tracing](https://playwright.dev/docs/api/class-tracing)
+and [LCP timing](https://web.dev/articles/lcp).

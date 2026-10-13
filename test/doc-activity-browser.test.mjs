@@ -43,6 +43,8 @@ async function open(t,{width=1440,reducedMotion='no-preference',undoFailure=fals
         result={actor:'joe',deals:[]};
       }else if(params.name==='today-triage'){
         result={items:[]};
+      }else if(params.name==='list-feature-switches'){
+        result={ok:true,schema:'feature-switches.v1',switches:[]};
       }else if(params.name==='list-doc-suggestions'){
         result={ok:true,suggestions:[]};
       }else if(params.name==='morning-brief'){
@@ -77,8 +79,17 @@ test('PR123 R1: Activity models the daily morning brief and rejects unknown oper
   await page.locator('#docMorningBrief[open]').waitFor();
   await page.locator('#morningClose').click();
   await page.clock.setSystemTime(new Date('2026-10-02T15:00:00Z'));
+  // A day without input is idle: coming back online reads nothing until the
+  // person returns, and that first input reads the new day's brief.
+  const briefReads = calls.filter(call => call.name === 'morning-brief').length;
   await page.evaluate(() => dispatchEvent(new Event('online')));
+  await page.waitForTimeout(200);
+  assert.equal(calls.filter(call => call.name === 'morning-brief').length, briefReads);
+  assert.equal(await page.locator('#docMorningBrief').evaluate(dialog => dialog.open), false);
+  assert.equal((await preference()).day, '2026-10-01');
+  await page.mouse.move(10, 10); await page.mouse.move(20, 20);
   await page.locator('#docMorningBrief[open]').waitFor();
+  assert.ok(calls.filter(call => call.name === 'morning-brief').length > briefReads);
   assert.equal((await preference()).day, '2026-10-02');
   assert.deepEqual(errors, []);
   const status = await page.evaluate(async () => (await fetch('/mcp', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'unknown-operation', arguments: {} } }) })).status);

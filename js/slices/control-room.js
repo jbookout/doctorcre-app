@@ -6,6 +6,13 @@ export default {
     "test/control-room-workspace-browser.test.mjs",
     "test/job-detail-regressions.test.mjs",
     "control-room.html",
+    "observatory.html",
+    "js/observatory.js",
+    "js/observatory-model.js",
+    "css/observatory.css",
+    "test/observatory-model.test.mjs",
+    "test/observatory-browser.test.mjs",
+    "test/observatory-review.test.mjs",
     "automations.html",
     "js/automations-list.js",
     "js/job-detail.js",
@@ -31,8 +38,9 @@ export default {
       "label": "Control Room",
       "href": "/control-room",
       "order": 5
-    }
+    },
+    { "label": "Observatory", "href": "/control-room/observatory", "group": "Operations", "order": 17 }
   ],
-  "activeRoutes": {"/control-room/progress":"/control-room", "/control-room/automations":"/control-room"},
+  "activeRoutes": {"/control-room/progress":"/control-room", "/control-room/automations":"/control-room", "/control-room/observatory":"/control-room"},
   "sections": []
 };

@@ -1,9 +1,12 @@
 import { readWithDeadline } from './auto-refresh.mjs';
 import { contextualSuggestions } from './doc-context-model.js';
+import { featureSwitchRefusal } from './feature-switches.js';
 
 // This slice records a discussion decision. It never interprets a suggestion
 // as an executable command, sends correspondence, or claims task completion.
-export function createDocApproval({ client, context, evaluatedPages, uuid }) {
+// `available` is the page's current switch reading; the send rechecks it after
+// the fresh read, since the switch may have turned off while that read ran.
+export function createDocApproval({ client, context, evaluatedPages, uuid, available }) {
   const intents = new Map();
   let busy = false;
   const eligible = (row, snapshot, payload) => contextualSuggestions(snapshot, { ...payload, suggestions:[row] }, { evaluatedPages }).length === 1;
@@ -25,6 +28,7 @@ export function createDocApproval({ client, context, evaluatedPages, uuid }) {
         const fresh = latest?.suggestions?.find(item => item.id === row.id && item.version === row.version);
         if (current.epoch !== shown.epoch || JSON.stringify(current.selected) !== JSON.stringify(shown.selected)
           || !fresh || !eligible(fresh, current, latest) || ['polished_text','original_text','uncertainty','material_facts'].some(key => JSON.stringify(fresh[key]) !== JSON.stringify(row[key]))) return { state: 'changed' };
+        if (!available()) { intents.delete(signature); return { state: 'disabled' }; }
         // The only write is a human decision on the immutable suggestion version.
         writing = true;
         const result = await readWithDeadline(() => client.decideDocSuggestion({ suggestion_id: row.id, base_version: row.version,
@@ -37,6 +41,7 @@ export function createDocApproval({ client, context, evaluatedPages, uuid }) {
         if (!writing) { intents.delete(signature); return { state:'unavailable' }; }
         // A refusal is a decided outcome: the live client carries its code on payload.error.
         if (error.payload?.error === 'version_conflict') { intents.delete(signature); return { state: 'changed' }; }
+        if (featureSwitchRefusal(error)) { intents.delete(signature); return { state: 'disabled' }; }
         intent.state = 'unknown'; return { state: 'unknown' };
       } finally { busy = false; }
     },

@@ -1,4 +1,5 @@
 import { setDocFilters } from './doc-context.js';
+import { createCurrentRead } from "./current-read.mjs";
 import { mountAutoRefresh, updatedLabel } from "./auto-refresh.mjs";
 // V5-UX-B05 — Authorized global search: DOM wiring only.
 //
@@ -17,10 +18,10 @@ import { mountAutoRefresh, updatedLabel } from "./auto-refresh.mjs";
 //      re-renders without a read of its own.
 import {
   AUTHORIZATION_SENTENCE, EXPOSURE_STATEMENT, FIND_CATCH_UP_LIMIT_DEFAULT, NOT_SEARCHED_SENTENCE,
-  SAVED_VIEW_SENTENCE, SCOPE_CHIP_SENTENCE, SEARCH_STATE_COPY, acceptsSearchResponse, applyScope,
+  SAVED_VIEW_SENTENCE, SCOPE_CHIP_SENTENCE, SEARCH_STATE_COPY, applyScope,
   buildFindAndCatchUpArguments, buildFindArguments, classifySearchFailure, groupSearchResults,
   parseSearchAddress, queryIsSendable, readSavedViews, refusalDetail, renameView, retiredSummary,
-  saveView, scopeChips, searchAddress, searchPhase, truncationNotes, validCatchUpPayload,
+  saveView, scopeChips, toggleSearchScope, searchAddress, searchPhase, truncationNotes, validCatchUpPayload,
   validSearchPayload, visibleCount, writeSavedViews,
 } from "./search-model.js";
 
@@ -34,12 +35,13 @@ const escapeHtml = (value) => String(value ?? "").replace(/[&<>"']/g, (char) => 
 /** One place holds what the Search tab believes; nothing else keeps a copy. */
 const view = {
   status: "idle", query: "", kinds: [], payload: null, catchUp: null,
-  refusal: null, submitted: false, sequence: 0, views: [],
+  refusal: null, submitted: false, views: [],
 };
 
 let client = null;
 let storage = null;
 let idleTimer = null;
+const searchReads = createCurrentRead();
 
 /* -------------------------------------------------------------------- painting */
 
@@ -79,8 +81,10 @@ function rowHtml(row) {
 function renderChips(groups) {
   const bar = $("searchChips");
   if (!bar) return;
+  const focusKey = bar.contains(document.activeElement) ? document.activeElement.dataset.chip : null;
   const chips = scopeChips(groups, view.kinds);
   bar.innerHTML = chips.map((chip) => `<button class="chip" type="button" data-chip="${escapeHtml(chip.id)}" aria-pressed="${chip.selected}">${escapeHtml(chip.label)} · ${escapeHtml(String(chip.count))}</button>`).join("");
+  if (focusKey) [...bar.querySelectorAll("[data-chip]")].find(node => node.dataset.chip === focusKey)?.focus();
 }
 
 function renderSavedViews() {
@@ -113,8 +117,7 @@ function renderDisambiguation() {
   block.innerHTML = [
     `<h3>${escapeHtml(SEARCH_STATE_COPY.disambiguation.title)}</h3>`,
     `<p class="small">${escapeHtml(String(payload.candidate_count))} candidates found.</p>`,
-    // The producer's hint, verbatim. This page opens none of them on its own.
-    `<p class="small">${escapeHtml(payload.hint)}</p>`,
+    '<p class="small">Choose a matching result below and select Open where available. Candidates include all scopes and are not filtered by the scope buttons.</p>',
     `<ul class="work-list">${payload.candidates.map((row) => `<li class="work-item"><div><h3>${escapeHtml(row.name)}</h3><div class="work-meta"><span>${escapeHtml(row.kind)}</span></div></div></li>`).join("")}</ul>`,
   ].join("");
 }
@@ -176,7 +179,7 @@ function render() {
 
   const total = $("searchCount");
   // The only total this page prints is the sum of the rows it is showing.
-  if (total) total.textContent = view.payload ? `${visibleCount(shown)} shown` : "";
+  if (total) total.textContent = view.payload ? `${visibleCount(shown)} grouped results in scope` : "";
 
   renderChips(groups);
   renderSavedViews();
@@ -189,15 +192,13 @@ function render() {
 
 /* --------------------------------------------------------------------- reading */
 
-/**
- * One read of `find` and one of `find-and-catch-up`, both carrying the same
- * sequence token. A late answer is dropped without touching `view`, so the
- * current query's result stands.
- */
-async function read({ push = true } = {}) {
-  const sequence = ++view.sequence;
-  setDocFilters({query:view.query,kinds:view.kinds});
-  if (!queryIsSendable(view.query)) {
+// One lifetime covers the result and its optional catch-up context.
+async function read({ push = true, signal } = {}) {
+  const query = view.query;
+  setDocFilters({query, kinds:view.kinds});
+  if (!queryIsSendable(query)) {
+    searchReads.invalidate();
+    if (push) pushAddress();
     view.status = "idle"; view.payload = null; view.catchUp = null; view.refusal = null; view.submitted = false;
     render();
     return;
@@ -206,39 +207,27 @@ async function read({ push = true } = {}) {
   view.submitted = true;
   render();
   if (push) pushAddress();
-  let payload = null;
-  let catchUp = null;
-  try {
-    payload = await client.find(buildFindArguments(view.query));
-  } catch (error) {
-    if (!acceptsSearchResponse(view.sequence, sequence)) return;
-    view.status = classifySearchFailure(error);
-    view.refusal = refusalDetail(error);
-    view.payload = null;
-    view.catchUp = null;
-    render();
-    return;
-  }
-  if (!acceptsSearchResponse(view.sequence, sequence)) return;
-  if (!validSearchPayload(payload)) {
-    view.status = "unknown"; view.payload = null; view.catchUp = null; view.refusal = null;
-    render();
-    return;
-  }
-  try {
-    const answer = await client.findAndCatchUp(buildFindAndCatchUpArguments(view.query, FIND_CATCH_UP_LIMIT_DEFAULT));
-    catchUp = validCatchUpPayload(answer) ? answer : null;
-  } catch {
-    // The catch-up leg is context. Its failure never turns a good `find` answer
-    // into an outage, and it never invents a candidate list.
-    catchUp = null;
-  }
-  if (!acceptsSearchResponse(view.sequence, sequence)) return;
-  view.status = "ready";
-  view.payload = payload;
-  view.catchUp = catchUp;
-  view.refusal = null;
-  render();
+  return searchReads.run(async ({ signal, read: step }) => {
+    const payload = await step(client.find(buildFindArguments(query), { signal }));
+    if (!validSearchPayload(payload)) return { status: "unknown", payload: null, catchUp: null };
+    let catchUp = null;
+    try {
+      const answer = await step(client.findAndCatchUp(buildFindAndCatchUpArguments(query, FIND_CATCH_UP_LIMIT_DEFAULT), { signal }));
+      catchUp = validCatchUpPayload(answer) ? answer : null;
+    } catch {
+      // Context failure never turns a good find answer into an outage.
+    }
+    return { status: "ready", payload, catchUp };
+  }, {
+    signal,
+    success(result) { Object.assign(view, result, { refusal: null }); render(); },
+    failure(error) {
+      view.status = classifySearchFailure(error);
+      view.refusal = refusalDetail(error);
+      view.payload = null; view.catchUp = null;
+      render();
+    },
+  });
 }
 
 /* ------------------------------------------------------------------ the address */
@@ -276,11 +265,10 @@ function wire() {
     read({ push: true });
   });
 
-  // Typing does not read on every keystroke: one idle re-read, carrying the
-  // sequence token like every other read.
+  // Typing invalidates the current answer immediately, then reads once idle.
   $("searchQuery")?.addEventListener("input", () => {
     view.query = $("searchQuery")?.value ?? "";
-    view.sequence += 1;
+    searchReads.invalidate();
     if (idleTimer) clearTimeout(idleTimer);
     idleTimer = setTimeout(() => read({ push: false }), IDLE_REREAD_MS);
   });
@@ -291,7 +279,7 @@ function wire() {
     const id = chip.dataset.chip;
     // A chip hides rows from the answer already in hand. Nothing is re-read and
     // the outgoing argument object is untouched.
-    view.kinds = view.kinds.includes(id) ? view.kinds.filter((entry) => entry !== id) : [...view.kinds, id];
+    view.kinds = toggleSearchScope(view.kinds, id);
     replaceAddress();
     render();
   });
@@ -353,7 +341,7 @@ export function mountSearch({ client: searchClient, storage: storageImpl } = {})
   }
   wire();
   const address = restoreFromAddress({ reread: true });
-  mountAutoRefresh({ document, window: globalThis.window, refresh: () => view.query ? read({ push: false }) : undefined });
+  mountAutoRefresh({ document, window: globalThis.window, refresh: ({ signal }) => view.query ? read({ push: false, signal }) : undefined });
   return { view, address };
 }
 

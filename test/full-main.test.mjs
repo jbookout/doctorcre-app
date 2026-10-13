@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
 import { setTimeout as delay } from 'node:timers/promises';
-import { continuityCases } from '../scripts/browser-proof-contract.mjs';
+import { continuityCases, requiredTargets } from '../scripts/browser-proof-contract.mjs';
 
 const runner = await import('../scripts/full-main.mjs').catch(() => null);
 async function fixture(t, body) {
@@ -66,17 +66,45 @@ test('ignored runtime imports and changed tracked screenshot inputs cannot borro
   await writeFile(baseline,'changed input');
   assert.equal((await runner.runFullMain({root:other.root,suite:'app',timeoutMs:5000})).reason,'source_changed');
 });
-test('deadline terminates a SIGTERM-resistant descendant before returning', async t => {
+test('deadline lets the leader finish browser cleanup without killing its process group', async t => {
+  const {root,git}=await fixture(t,clean);
+  const browserLikeChild=`require('fs').writeFileSync('.e2e/logs/browser-child.log',String(process.pid)); process.on('SIGTERM',()=>{}); setTimeout(()=>{require('fs').writeFileSync('.e2e/logs/browser-closed.log','closed');process.exit(0);},4000);`;
+  await writeFile(join(root,'scripts/parent.cjs'),`require('fs').mkdirSync('.e2e/logs',{recursive:true}); const child=require('child_process').spawn(process.execPath,['-e',${JSON.stringify(browserLikeChild)}],{stdio:'ignore'}); process.on('SIGTERM',()=>child.once('exit',()=>process.exit(0))); setInterval(()=>{},100);`);
+  commit(git);
+  const started=Date.now();
+  const result=await runner.executeFullMainCommand({command:[process.execPath,'scripts/parent.cjs'],root,timeoutMs:1000});
+  const marker=await readFile(join(root,'.e2e/logs/browser-closed.log'),'utf8').catch(()=>null);
+  assert.equal(result.timedOut,true);
+  assert.equal(marker,'closed','leader-only SIGTERM must leave its child alive long enough to close');
+  assert.ok(Date.now()-started<15000,'graceful cleanup must not wait for group escalation');
+});
+test('deadline through a runChild leader keeps the graceful cleanup window', async t => {
+  const {root,git}=await fixture(t,clean);
+  const runChildUrl=new URL('../scripts/run-child.mjs',import.meta.url).href;
+  await writeFile(join(root,'scripts/child.cjs'),`const fs=require('fs'); fs.mkdirSync('.e2e/logs',{recursive:true}); process.on('SIGTERM',()=>setTimeout(()=>{fs.writeFileSync('.e2e/logs/cleanup.log','closed');process.exit(0);},3000)); setInterval(()=>{},100);`);
+  await writeFile(join(root,'scripts/leader.mjs'),`import {runChild} from ${JSON.stringify(runChildUrl)}; try {await runChild(process.execPath,['scripts/child.cjs'],{stdio:'ignore',timeout:480000});} catch {}`);
+  commit(git);
+  const started=Date.now();
+  // The deadline leaves a loaded runner time to start both processes and arm their handlers.
+  const result=await runner.executeFullMainCommand({command:[process.execPath,'scripts/leader.mjs'],root,timeoutMs:4000});
+  assert.equal(result.timedOut,true);
+  assert.equal(await readFile(join(root,'.e2e/logs/cleanup.log'),'utf8').catch(()=>null),'closed','a forwarded SIGTERM must not SIGKILL the child inside the graceful window');
+  assert.ok(Date.now()-started<15000,'graceful cleanup must not wait for group escalation');
+});
+test('npm-to-node deadline forwards shutdown then reaps a SIGTERM-resistant descendant', async t => {
   const {root,git}=await fixture(t,clean);
   const descendant=`require('fs').writeFileSync('.e2e/logs/descendant.log',String(process.pid)); process.on('SIGTERM',()=>{}); setInterval(()=>{},100);`;
-  await writeFile(join(root,'scripts/parent.cjs'),`require('fs').mkdirSync('.e2e/logs',{recursive:true}); require('child_process').spawn(process.execPath,['-e',${JSON.stringify(descendant)}],{stdio:'ignore'}); setInterval(()=>{},100);`);
-  await writeFile(join(root,'package.json'),JSON.stringify({scripts:{test:'node scripts/parent.cjs'}})); commit(git);
+  await writeFile(join(root,'scripts/parent.cjs'),`const fs=require('fs'); fs.mkdirSync('.e2e/logs',{recursive:true}); require('child_process').spawn(process.execPath,['-e',${JSON.stringify(descendant)}],{stdio:'ignore'}); process.on('SIGTERM',()=>fs.writeFileSync('.e2e/logs/parent-sigterm.log','received')); setInterval(()=>{},100);`);
+  await writeFile(join(root,'package.json'),JSON.stringify({scripts:{test:'node scripts/parent.cjs'}}));
+  commit(git);
   let pid;
   t.after(()=>{if(pid) try {process.kill(pid,'SIGKILL');} catch {}});
-  // The deadline includes npm startup and both Node processes installing handlers.
-  const receipt=await runner.runFullMain({root,suite:'app',timeoutMs:5000});
+  const started=Date.now();
+  const receipt=await runner.runFullMain({root,suite:'app',timeoutMs:1000});
   pid=Number(await readFile(join(root,'.e2e/logs/descendant.log'),'utf8'));
   assert.equal(receipt.reason,'deadline');
+  assert.equal(await readFile(join(root,'.e2e/logs/parent-sigterm.log'),'utf8'),'received');
+  assert.ok(Date.now()-started>=15000,'group escalation must follow the graceful shutdown window');
   // Allow the OS to reap an orphan after the group has been killed.
   await delay(100);
   assert.throws(()=>process.kill(pid,0),{code:'ESRCH'});
@@ -147,7 +175,7 @@ async function browserFixture(t, change = () => {}) {
     workflowRunId:process.env.GITHUB_RUN_ID||'local',attempt:Number(process.env.GITHUB_RUN_ATTEMPT||1)};
   const proof = {
     native:{run:{id:'synthetic-native-run',vcs:{commit:'SOURCE',dirty:false},status:'passed',exitCode:0,
-      results:entries.map(({file,title})=>({file,testId:`${file}::${encodeURIComponent(title)}`,selected:true,status:'passed',attempts:[{}]}))}},
+      results:requiredTargets.flatMap(targetId=>entries.map(({file,title})=>({file,targetId,testId:`${file}::${encodeURIComponent(title)}`,selected:true,status:'passed',attempts:[{}]})))}},
     coverage:{binding:{...binding},
       rows:[...entries.map(({title})=>title),...continuityCases.map(({id})=>id)].map(id=>({id,status:'passed',attempts:1})),
       qualification:{broken:'failed',repaired:'passed'}},
@@ -169,13 +197,15 @@ async function browserFixture(t, change = () => {}) {
     test('synthetic continuity',()=>{});
     process.on('beforeExit',()=>console.log('# Candidate browser proof written to .e2e/proof/packet.json'));`;
   await writeFile(join(f.root,'scripts/browser-product-proof.mjs'),script);
+  await writeFile(join(f.root,'scripts/run-child.mjs'),'// synthetic signal-forwarding dependency');
   commit(f.git);
   return f;
 }
 test('browser fixtures honor hosted invocation bindings on reruns',()=>{
   const env={...process.env,GITHUB_RUN_ID:'37381471882',GITHUB_RUN_ATTEMPT:'2'};
   delete env.NODE_TEST_CONTEXT;
-  const result=spawnSync(process.execPath,['--test','--test-reporter=tap','--test-name-pattern=e2e acknowledgement|e2e does not reuse',fileURLToPath(import.meta.url)],{
+  const reporters=/(?:^|\s|["'])--test-reporter=tap(?:\s|["']|$)/.test((env.NODE_OPTIONS||'').replaceAll('_','-'))?[]:['--test-reporter=tap'];
+  const result=spawnSync(process.execPath,['--test',...reporters,'--test-name-pattern=e2e acknowledgement|e2e does not reuse',fileURLToPath(import.meta.url)],{
     env,
     encoding:'utf8',timeout:30000,
   });
@@ -208,4 +238,13 @@ test('e2e does not reuse a prior packet after an empty rerun',async t=>{
   assert.equal((await runner.runFullMain({root,suite:'app-e2e',timeoutMs:5000})).status,'passed');
   await writeFile(join(root,'scripts/browser-product-proof.mjs'),''); commit(git);
   assert.equal((await runner.runFullMain({root,suite:'app-e2e',timeoutMs:5000})).status,'unknown');
+});
+test('e2e source binding includes the signal-forwarding helper',async t=>{
+  const {root,git}=await browserFixture(t);
+  const before=await runner.runFullMain({root,suite:'app-e2e',timeoutMs:5000});
+  await writeFile(join(root,'scripts/run-child.mjs'),'// changed signal-forwarding dependency');
+  commit(git);
+  const after=await runner.runFullMain({root,suite:'app-e2e',timeoutMs:5000});
+  assert.equal(after.status,'passed');
+  assert.notEqual(after.inventoryDigest,before.inventoryDigest);
 });

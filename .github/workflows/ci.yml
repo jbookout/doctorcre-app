@@ -22,7 +22,7 @@ jobs:
   test:
     if: ${{ github.event_name != 'pull_request' || github.event.action != 'closed' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     defaults:
       run:
         working-directory: doctorcre-app
@@ -34,7 +34,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
-          node-version: 22
+          node-version: 22.23.2
           cache: npm
           cache-dependency-path: doctorcre-app/package-lock.json
       - run: npm ci
@@ -78,4 +78,19 @@ jobs:
           name: full-main-app-receipt
           path: doctorcre-app/.e2e/full-main-app/receipt.json
           if-no-files-found: error
+          retention-days: 7
+      # Lives inside the existing required test context; no ruleset change needed.
+      - run: npm run performance:check
+        if: github.event_name == 'pull_request'
+        env:
+          PERFORMANCE_PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+      - if: ${{ !cancelled() && github.event_name == 'pull_request' }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: performance-${{ github.sha }}-${{ github.run_attempt }}
+          path: |
+            doctorcre-app/test-artifacts/performance/report.json
+            doctorcre-app/test-artifacts/performance/summary.md
+            doctorcre-app/test-artifacts/performance/*.zip
+          if-no-files-found: warn
           retention-days: 7

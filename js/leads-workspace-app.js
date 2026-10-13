@@ -14,7 +14,7 @@ const options = (rows, selected, all) => `<option value="">${all}</option>${rows
 
 export function mountLeadsWorkspace(doc = document, client = createLeadBoardClient(), { mapFactory = mountTerritoryMap } = {}) {
   const $ = id => doc.getElementById(id), win = doc.defaultView || globalThis.window;
-  const state = { board: null, actor: null, epoch: 0, detailEpoch: 0, reviewEpoch: 0, filters: { search: "", owner: "", stage: "", market: "" },
+  const state = { board: null, readFailed: false, actor: null, epoch: 0, detailEpoch: 0, reviewEpoch: 0, filters: { search: "", owner: "", stage: "", market: "" },
     detail: null, detailId: null, resumeReview: null, commandFeedback: null, connectionFeedback: null, proposal: null, reviewTarget: null, pending: null, writing: false, identityReady: false, trigger: null, drag: null, map: null };
   const leadById = id => state.board?.leads.find(lead => lead.id === id && eligibleLead(lead));
   const reviewComplete = (lead, target, undoEventId) => (undoEventId ? lead.stage : normalizedStage(lead)) === target;
@@ -60,7 +60,7 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
     if (state.board) publishDocRead("getWorkspace", { ...state.board, leads: shown });
     const active = visibleLeads(leads);
     $("leadCount").textContent = `${active.length}`;
-    $("filterSummary").textContent = `${shown.length} leads`;
+    $("filterSummary").textContent = `${shown.length} ${shown.length === 1 ? "lead" : "leads"}`;
     $("stageFilter").innerHTML = options(FILTER_STAGES, state.filters.stage, "All stages");
     $("ownerFilter").innerHTML = options(owners.map(k => [k, k.charAt(0).toUpperCase() + k.slice(1)]), state.filters.owner, "All owners");
     const groups = marketCounts(leads, state.filters);
@@ -78,7 +78,10 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
         return `<section class="stage-column" data-stage="${key}" aria-label="${text}"><h2 class="stage-head">${text}<span>${rows.length}</span></h2><div class="lead-stack">${rows.map(card).join("") || '<p class="stage-empty">—</p>'}</div></section>`;
       }).join("")}</div>`;
     }
-    $("boardUpdated").textContent = updatedLabel(state.board?.generated_at);
+    // The time states the snapshot on screen, as Deals does: a failed refresh
+    // that keeps the board keeps its time beside the reconnecting line, and
+    // only a failed read with nothing to show is "Unavailable".
+    $("boardUpdated").textContent = state.board ? updatedLabel(state.board.generated_at) : state.readFailed ? "Unavailable" : "Updating…";
     $("boardUpdated").dateTime = state.board?.generated_at || "";
     $("searchUpdated").textContent = `New-lead search ${state.board?.last_search_at ? stamp(state.board.last_search_at) : "—"}`;
     if (focused?.container) restoreFocus(focused);
@@ -88,6 +91,7 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
     const command = state.pending ? 'Confirmation pending <button id="checkPending">Check outcome</button>' : esc(state.commandFeedback);
     box.hidden = !state.pending && !state.commandFeedback && !state.connectionFeedback;
     box.innerHTML = [command, esc(state.connectionFeedback)].filter(Boolean).join(" · ");
+    if (!state.actor && state.connectionFeedback === "Sign-in required") box.insertAdjacentHTML("beforeend", ` · <a href="/auth/login?return_to=${encodeURIComponent(win.location.pathname + win.location.search)}">Sign in</a>`);
     $("checkPending")?.addEventListener("click", executePending);
     if (state.pending && $("stageDialog").open) {
       $("saveStage").textContent = "Check outcome"; $("saveStage").disabled = state.writing;
@@ -112,6 +116,8 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
     paintCommandFeedback();
     return true;
   }
+  // Resolves false when the read failed for a reason other than sign-in, so
+  // background refresh retries soon; a superseded read resolves undefined.
   async function refresh() {
     const epoch = ++state.epoch;
     state.identityReady = false;
@@ -127,7 +133,7 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
       if (epoch !== state.epoch) return;
       validateLeadWorkspace(next);
       state.connectionFeedback = null;
-      state.board = next; render();
+      state.readFailed = false; state.board = next; render();
       if (state.pending) {
         const current = next.leads.find(l => l.id === state.pending.lead.id);
         const move = current?.last_stage_move;
@@ -153,8 +159,10 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
         else if (next.leads.some(lead => lead.id === state.detailId)) { state.detail = null; $("leadDetail").close(); }
         else { state.detail = null; ++state.detailEpoch; $("detailTitle").textContent = "Lead unavailable"; $("detailBody").innerHTML = '<p class="empty">Unavailable</p>'; }
       }
+      return true;
     } catch (error) {
       if (epoch !== state.epoch) return;
+      state.readFailed = true;
       if (authorizationFailure(error)) return;
       // A refused verification/read cannot leave the previous private snapshot visible.
       if (!state.identityReady) state.board = null;
@@ -164,6 +172,7 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
       render();
       state.connectionFeedback = state.actor ? "Connection interrupted · reconnecting…" : "Sign-in required";
       paintCommandFeedback();
+      return false;
     } finally { if (epoch === state.epoch) $("leadBoard").setAttribute("aria-busy", "false"); }
   }
   function paintDetail(detail) {
@@ -381,10 +390,10 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
     for (const id of ["detailTitle", "detailBody", "stageTitle", "stageContext", "stageQuestions", "stageError", "moveAnnouncement"]) $(id).replaceChildren();
     render();
   }
-  const auto = mountAutoRefresh({ document: doc, window: win, refresh: () => refresh(), onResume: suspendPrivateView, shouldRefresh: () => !state.writing && !touch && !state.drag });
+  const auto = mountAutoRefresh({ document: doc, window: win, refresh: async () => { if (await refresh() === false) throw new Error("Lead board read failed"); }, onResume: suspendPrivateView, shouldRefresh: () => !state.writing && !touch && !state.drag });
   const resume = () => { if (doc.visibilityState === "hidden") { stopTouch(); state.identityReady = false; ++state.epoch; ++state.detailEpoch; ++state.reviewEpoch; } };
   doc.addEventListener("visibilitychange", resume);
-  refresh();
+  auto.refresh();
   return { state, refresh, openReview, readDetail, dispose() { stopTouch(); ++state.epoch; ++state.detailEpoch; ++state.reviewEpoch; auto.dispose(); state.map?.dispose(); doc.removeEventListener("visibilitychange", resume); } };
 }
 if (typeof document !== "undefined" && document.getElementById("hotLeads")) mountLeadsWorkspace();

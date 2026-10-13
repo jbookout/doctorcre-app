@@ -1,5 +1,6 @@
 import { hasArtifactPage } from "./artifact-pages-fixture.mjs";
 import test from "node:test";
+import { JSDOM } from "jsdom";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
@@ -294,13 +295,17 @@ test("the Work Inventory page is a first-class, honest, listed surface", async (
   assert.match(js, /updatedLabel\(payload\.source\.observed_at\)/, "the census displays its update timestamp");
   assert.match(js, /Partly available/);
 
-  // The fixture server really serves the census, with all six kinds and a second page.
+  // Both local servers share the same synthetic census implementation.
   assert.match(serveScript, /\/api\/v1\/work-inventory/);
-  assert.match(serveScript, /Demo /);
-  for (const kind of WORK_INVENTORY_KINDS) assert.ok(serveScript.includes(kind), `the fixture must exercise ${kind}`);
-  for (const status of ["superseded", "dormant"]) assert.ok(serveScript.includes(status), `the fixture must exercise ${status}`);
-  assert.match(serveScript, /"unavailable"/, "the fixture must exercise an unavailable leg");
-  assert.match(serveScript, /next_cursor/);
+  assert.match(serveScript, /import.*censusResponse.*work-inventory-fixture/);
+  const {censusResponse} = await import('../scripts/work-inventory-fixture.mjs');
+  const first=censusResponse(new URL('http://fixture.local/api/v1/work-inventory'));
+  const second=censusResponse(new URL(`http://fixture.local/api/v1/work-inventory?cursor=${first.next_cursor}`));
+  assert.deepEqual(first.kinds,WORK_INVENTORY_KINDS);
+  assert.ok([...first.items,...second.items].every(item=>item.title.startsWith('Demo ')));
+  for (const status of ['superseded','dormant']) assert.ok(first.items.some(item=>item.status===status));
+  assert.ok(first.coverage.some(leg=>leg.state==='unavailable'));
+  assert.ok(first.next_cursor); assert.equal(second.next_cursor,null);
 });
 
 test("an item's open link must stay on this app, including the backslash form browsers read as another host", () => {
@@ -310,4 +315,246 @@ test("an item's open link must stay on this app, including the backslash form br
   for (const open of ["/system-work.html", "/incidents?ref=INC-1", null]) {
     assert.equal(validWorkInventoryPayload(census({ items: [censusItem({ open })] })), true, String(open));
   }
+});
+
+const kinds = ['work_request', 'portfolio_node', 'loop', 'work_shape', 'slice_plan', 'governance_item'];
+const ref = 'WR-000904';
+const relatedRef = 'PF-DEMO-D';
+const item = (overrides = {}) => ({ kind: 'work_request', id: ref, version: '37',
+  title: 'Demo captured request', status: 'captured', source_ref: 'ops.work_request',
+  updated_at: '2026-09-01T18:05:00Z', related: [{ kind: 'portfolio_node', id: relatedRef }],
+  unlinked: false, open: '/system-work.html', ...overrides });
+const batchDCensus = {
+  viewer: 'joe', tenant: 'carr-internal', kinds, statuses: null, limit: 100, next_cursor: null,
+  items: [item(), item({ kind: 'loop', id: '573', title: null, status: 'needs_joe',
+    source_ref: 'public.loop_item', related: [], unlinked: true, open: null })],
+  coverage: kinds.map(kind => ({ kind, source_ref: kind, state: 'complete',
+    count_returned: ['work_request', 'loop'].includes(kind) ? 1 : 0,
+    count_total: ['work_request', 'loop'].includes(kind) ? 1 : 0,
+    reason: null, excluded_other_tenant: 0, page_capped: false })),
+  census_complete: true,
+  source: { source: 'work_inventory_census', source_ref: 'synthetic-census',
+    observed_at: '2026-09-01T18:05:00Z', valid_until: '2026-09-01T18:06:00Z',
+    freshness: 'fresh', correlation_id: 'batch-d-test', safe_explanation: 'Synthetic census.' },
+};
+
+async function until(condition, message) {
+  for (let attempt = 0; attempt < 100; attempt++) {
+    if (condition()) return;
+    await new Promise(resolve => setTimeout(resolve, 5));
+  }
+  assert.fail(message);
+}
+
+// Read screen copy, including hover/accessibility labels, without counting
+// diagnostics in closed Details disclosures or closed dialogs as visible.
+function screenCopy(document) {
+  return [...document.querySelectorAll('body *')].filter(element =>
+    !element.closest('[hidden], dialog:not([open]), details:not([open])') &&
+    !['SCRIPT', 'STYLE'].includes(element.tagName)).flatMap(element => [
+    ...[...element.childNodes].filter(node => node.nodeType === 3).map(node => node.textContent),
+    element.getAttribute('title') || '', element.getAttribute('aria-label') || '',
+  ]).join(' ');
+}
+
+test('V1 batch D All Work controls and broker copy', async t => {
+  const dom = new JSDOM(await readFile(new URL('../work-inventory.html', import.meta.url), 'utf8'),
+    { url: 'https://app.doctorcre.com/all-work' });
+  const { window } = dom;
+  const { document } = window;
+  window.HTMLDialogElement.prototype.showModal = function () { this.open = true; };
+  window.HTMLDialogElement.prototype.close = function () { this.open = false; };
+  let mode = 'ok';
+  let cardReads = 0;
+  let releaseHeldCard;
+  let releaseEvidence;
+  let declineMode = 'ok';
+  const calls = [];
+  const fetch = async (path, options = {}) => {
+    if (path.startsWith('/api/v1/work-inventory')) return Response.json(batchDCensus);
+    assert.equal(path, '/mcp', 'all reads stay on the existing app transport');
+    const rpc = JSON.parse(options.body);
+    const { name, arguments: args } = rpc.params;
+    calls.push({ name, args });
+    let payload;
+    if (name === 'notification-feed') payload = { ok: true, items: [], unread_count: 0 };
+    else if (name === 'work-request-card') {
+      cardReads++;
+      assert.deepEqual(args, { work_request: ref });
+      const version = mode === 'hold' ? 1 : 37;
+      if (mode === 'hold') await new Promise(resolve => { releaseHeldCard = resolve; });
+      if (mode === 'error') throw new TypeError('Synthetic read unavailable');
+      payload = mode === 'malformed' ? { ok: true } : { ok: true,
+        human_ref: mode === 'wrong-record' ? 'WR-000999' : ref,
+        title: 'Demo captured request', state: 'captured', version,
+        request: { description: 'Demo record detail returned by the existing card read.' } };
+    } else if (name === 'engineering-passport') {
+      await new Promise(resolve => { releaseEvidence = resolve; });
+      throw new TypeError('Synthetic passport unavailable');
+    } else if (name === 'decline-work-request') {
+      if (declineMode === 'lost') throw new TypeError('Synthetic response lost');
+      assert.equal(args.human_ref, ref);
+      assert.equal(args.base_version, 37);
+      assert.equal(args.exit_reason, 'Demo duplicate capture');
+      payload = { ok: true, human_ref: ref, state: 'declined', version: 38 };
+    } else assert.fail(`Unexpected operation: ${name}`);
+    return Response.json({ jsonrpc: '2.0', id: rpc.id,
+      result: { content: [{ type: 'text', text: JSON.stringify(payload) }] } });
+  };
+  const globals = { window, document, location: window.location, localStorage: window.localStorage,
+    navigator: window.navigator, HTMLElement: window.HTMLElement, fetch };
+  const prior = new Map(Object.keys(globals).map(key => [key, Object.getOwnPropertyDescriptor(globalThis, key)]));
+  t.after(() => {
+    window.close();
+    for (const [key, descriptor] of prior) {
+      if (descriptor) Object.defineProperty(globalThis, key, descriptor);
+      else delete globalThis[key];
+    }
+  });
+  for (const [key, value] of Object.entries(globals))
+    Object.defineProperty(globalThis, key, { configurable: true, writable: true, value });
+  await import('../js/work-inventory.js');
+  await until(() => document.querySelector('[data-open-card]'), 'census must paint');
+  const detailsButton = () => document.querySelector('#dispositionRows [data-open-card]');
+
+  await t.test('17: normal copy uses names and readable labels; diagnostics stay in Details', () => {
+    const copy = screenCopy(document);
+    for (const diagnostic of [ref, relatedRef, '573', 'version', '/api/v1/', 'needs_joe', 'work_request', 'portfolio_node'])
+      assert.ok(!copy.includes(diagnostic), `normal copy must not expose ${diagnostic}`);
+    assert.match(copy, /Demo captured request/);
+    assert.match(copy, /Captured/);
+    assert.match(copy, /Needs Joe/);
+    assert.match(copy, /Untitled/);
+    assert.match(copy, /Available/);
+    assert.match(copy, /\d+:\d{2}\s*(?:AM|PM)/);
+    assert.equal(cardReads, 0, 'details remain lazy');
+    const request = document.querySelector('#requestPath');
+    assert.equal(request.closest('details')?.open, false);
+    request.closest('details').open = true;
+    assert.match(screenCopy(document), /\/api\/v1\/work-inventory/);
+    request.closest('details').open = false;
+  });
+
+  await t.test('07: Open details opens a named popup with record detail and available actions', async () => {
+    const before = cardReads;
+    detailsButton().click();
+    await until(() => document.querySelector('#evidenceDialog')?.open, 'Open details must open a popup');
+    await until(() => document.querySelector('#evidenceDialog [data-action="decline"]'), 'details must offer supported actions');
+    assert.equal(cardReads, before + 1);
+    assert.equal(document.querySelector('#evidenceTitle').textContent, 'Demo captured request');
+    const content = document.querySelector('#evidenceRows').textContent;
+    for (const diagnostic of [ref, relatedRef, '37', 'captured']) assert.ok(content.includes(diagnostic));
+    assert.match(content, /Demo record detail returned by the existing card read/);
+    document.querySelector('#evidenceDialog [data-action="decline"]').click();
+    assert.equal(document.querySelector('#evidenceDialog').open, false, 'action closes Details before opening the form');
+    assert.equal(document.querySelector('#dispositionDialog').open, true);
+    document.querySelector('#dispositionCancel').click();
+    assert.ok(detailsButton(), 'Details remains available after a card is cached');
+  });
+
+  await t.test('failed or mismatched card reads clear cached actions and expose a working retry', async () => {
+    for (const failure of ['error', 'malformed', 'wrong-record']) {
+      mode = failure;
+      assert.ok(detailsButton(), 'Open details remains available');
+      detailsButton().click();
+      await until(() => document.querySelector('#evidenceDialog')?.open &&
+        /Details unavailable/.test(document.querySelector('#evidenceRows').textContent), `${failure} must paint unavailable`);
+      assert.equal(document.querySelector('#evidenceDialog [data-action]'), null);
+      assert.equal(document.querySelector('#dispositionRows [data-action]'), null);
+      const retry = document.querySelector('#evidenceRetry');
+      assert.equal(retry.hidden, false);
+      const before = cardReads;
+      mode = 'ok';
+      retry.click();
+      await until(() => document.querySelector('#evidenceDialog [data-action="decline"]'), 'retry must load details');
+      assert.equal(cardReads, before + 1);
+      document.querySelector('#evidenceClose').click();
+    }
+  });
+
+  await t.test('closing and reopening Details ignores a late response from the previous read', async () => {
+    mode = 'hold';
+    assert.ok(detailsButton(), 'Open details remains available');
+    detailsButton().click();
+    await until(() => releaseHeldCard, 'first read must be held');
+    document.querySelector('#evidenceClose').click();
+    assert.equal(document.querySelector('#evidenceDialog').open, false);
+    mode = 'ok';
+    detailsButton().click();
+    await until(() => document.querySelector('#evidenceDialog [data-action="decline"]'), 'new read must populate Details');
+    releaseHeldCard();
+    await new Promise(resolve => setTimeout(resolve, 20));
+    assert.equal(document.querySelector('#evidenceDialog').open, true);
+    assert.match(document.querySelector('#evidenceRows').textContent, /37/);
+    document.querySelector('#evidenceClose').click();
+    const filter = document.querySelector('#statusFilter');
+    filter.value = 'needs joe';
+    filter.dispatchEvent(new window.Event('input', { bubbles: true }));
+    assert.match(document.querySelector('#kindGroups').textContent, /Untitled/);
+    assert.doesNotMatch(document.querySelector('#kindGroups').textContent, /Demo captured request/);
+    filter.value = '';
+    filter.dispatchEvent(new window.Event('input', { bubbles: true }));
+  });
+
+  await t.test('17: records without a card operation still open census Details without inventing a read', async () => {
+    document.querySelector('#evidenceClose').click();
+    const before = cardReads;
+    const button = document.querySelector('#kindGroups [data-details-kind="loop"]');
+    assert.ok(button, 'every census record has Details');
+    button.click();
+    assert.equal(document.querySelector('#evidenceDialog').open, true);
+    assert.match(document.querySelector('#evidenceTitle').textContent, /Untitled/);
+    assert.match(document.querySelector('#evidenceRows').textContent, /573/);
+    assert.match(document.querySelector('#evidenceRows').textContent, /needs_joe/);
+    assert.equal(cardReads, before);
+    const contract = JSON.parse(await readFile(new URL('../contracts/carr-interface.v1.json', import.meta.url), 'utf8'));
+    assert.ok(calls.every(call => contract.mcp_operations.includes(call.name)));
+    assert.ok(calls.every(call => ['notification-feed', 'work-request-card'].includes(call.name)));
+  });
+
+  await t.test('a late evidence read never replaces another record\'s Details', async () => {
+    document.querySelector('#evidenceClose').click();
+    document.querySelector('[data-evidence]').click();
+    await until(() => releaseEvidence, 'evidence read must be held');
+    document.querySelector('#kindGroups [data-details-kind="loop"]').click();
+    assert.match(document.querySelector('#evidenceTitle').textContent, /Untitled/);
+    releaseEvidence();
+    await new Promise(resolve => setTimeout(resolve, 20));
+    assert.equal(document.querySelector('#evidenceDialog').open, true);
+    assert.match(document.querySelector('#evidenceTitle').textContent, /Untitled/);
+    assert.equal(document.querySelector('#evidenceEyebrow').textContent, 'Details');
+    assert.match(document.querySelector('#evidenceRows').textContent, /573/);
+    document.querySelector('#evidenceClose').click();
+  });
+
+  await t.test('17: command feedback keeps operation and safety identifiers in Command details', async () => {
+    document.querySelector('#evidenceClose').click();
+    assert.ok(detailsButton(), 'Open details remains available');
+    detailsButton().click();
+    await until(() => document.querySelector('#evidenceDialog [data-action="decline"]'), 'Details must offer decline');
+    document.querySelector('#evidenceDialog [data-action="decline"]').click();
+    document.querySelector('#dispositionReason').value = 'Demo duplicate capture';
+    document.querySelector('#dispositionForm').requestSubmit();
+    await until(() => document.querySelector('#receiptDock [data-state="confirmed"]') &&
+      !document.querySelector('#dispositionDialog').open, 'supported write must be confirmed');
+    const copy = screenCopy(document);
+    assert.doesNotMatch(copy, /WR-000904|decline:WR|safety key|operation decline|[a-f0-9]{8}-[a-f0-9-]{27,}/);
+    assert.match(document.querySelector('#commandStatus').textContent, /Demo captured request.*Changes saved/);
+    assert.equal(document.querySelector('#receiptDock').closest('details')?.open, false);
+    assert.equal(calls.filter(call => call.name === 'decline-work-request').length, 1);
+  });
+
+  await t.test('a lost command response is announced as uncertain, never as unsaved', async () => {
+    declineMode = 'lost';
+    assert.ok(detailsButton(), 'Open details remains available');
+    detailsButton().click();
+    await until(() => document.querySelector('#evidenceDialog [data-action="decline"]'), 'Details must offer decline');
+    document.querySelector('#evidenceDialog [data-action="decline"]').click();
+    document.querySelector('#dispositionReason').value = 'Demo duplicate capture';
+    document.querySelector('#dispositionForm').requestSubmit();
+    await until(() => /Outcome unavailable/.test(document.querySelector('#commandStatus').textContent), 'lost response must stay unknown');
+    const announced = document.querySelector('#inventoryLive').textContent;
+    assert.match(announced, /Outcome unavailable/);
+    assert.doesNotMatch(announced, /not saved/);
+  });
 });

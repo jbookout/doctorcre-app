@@ -338,6 +338,7 @@ export function classifyReadFailure(error) {
  * a refusal reads as "nothing was said" when the truth is "we were not told".
  */
 export function conversationState(read = {}, route = { state: "ok" }) {
+  if (route?.state === "missing") return { state: "idle", sentence: "Select a conversation to read its messages." };
   if (route?.state === "malformed") return { state: "malformed", sentence: CONVERSATION_STATES.malformed };
   if (read.state === "refused") return { state: "refused", sentence: CONVERSATION_STATES.refused };
   if (read.state === "not_found") return { state: "not_found", sentence: CONVERSATION_STATES.not_found };

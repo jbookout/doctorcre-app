@@ -204,6 +204,7 @@
   gap: 12px;
 }
 .relationship-card {
+  color: #e7f0fc;
   width: 100%;
   text-align: left;
   display: grid;
@@ -386,7 +387,7 @@
   stroke-width: 4px;
   stroke-linejoin: round;
 }
-@media (max-width: 760px) {
+@media(max-width:760px),(hover:none) and (pointer:coarse) and (max-width:1023px){
   .relationship-page {
     padding: 12px;
   }

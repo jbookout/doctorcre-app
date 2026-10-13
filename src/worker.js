@@ -1,6 +1,10 @@
 import carrContract from "../contracts/carr-interface.v1.json" with { type: "json" };
 import routeContract from "../contracts/app-routes.v1.json" with { type: "json" };
+import e2eStagingContract from "../contracts/e2e-staging.v1.json" with { type: "json" };
 import { BOARD_ROUTE, boardIdFromPath, legacyBoardDestination } from '../js/progress-board-route.js';
+import { readStagingAuthContract } from '../scripts/e2e-staging/auth-contract.mjs';
+import runtimeErrors from '../contracts/runtime-errors.v1.json' with { type: 'json' };
+import { EDGE_LIMIT, REPORT_BYTES, createErrorGate, scrubError } from '../js/error-tracking.js';
 
 const APP_ROUTES = new Map(Object.entries(routeContract.routes));
 const REDIRECTS = new Map(Object.entries(routeContract.redirects || {}));
@@ -13,6 +17,8 @@ const STATIC_EXACT = new Map([
   ["/favicon.ico", "/public-shell/icons/dealroom.svg"],
 ]);
 const STATIC_PREFIXES = ["/css/", "/data/", "/js/", "/public-shell/", "/tours/"];
+const STAGING_REPORT_ASSETS = new Set(['/share.css', '/share.js', '/share-bootstrap.js',
+  ...['maplibre-gl.mjs', 'maplibre-gl-shared.mjs', 'maplibre-gl-worker.mjs', 'maplibre-gl.css'].map(file => `/vendor/maplibre-gl-6.4.1/${file}`)]);
 // V5-UX-C15: the one page route served AHEAD of the CARR gate. Every other app
 // page is gated, so a CARR outage takes the Control Room with it and the gated
 // page cannot be its own fallback (CR-AC-26). This page reads nothing from CARR
@@ -100,10 +106,15 @@ async function assetResponse(request, env, path) {
   return secure(new Response(response.body, { status: response.status, statusText: response.statusText, headers }), path);
 }
 
+// CARR records its own 5xx; the edge captures only failures it produced.
+const CARR_RESPONSES = new WeakSet();
+
 async function carrResponse(request, env, documentRequest = false) {
   if (!env?.CARR?.fetch) return unavailable(documentRequest);
   try {
-    return await env.CARR.fetch(new Request(request, { redirect: "manual" }));
+    const response = await env.CARR.fetch(new Request(request, { redirect: "manual" }));
+    CARR_RESPONSES.add(response);
+    return response;
   } catch {
     return unavailable(documentRequest);
   }
@@ -133,13 +144,25 @@ function release(env) {
   });
 }
 
-export async function handleDoctorcreRequest(request, env) {
+async function handleRequest(request, env, e2eExchangePath, stagingOrigin) {
   const url = new URL(request.url);
   const pathname = url.pathname;
+  const staging = env?.APP_ENV === 'staging' && url.origin === stagingOrigin;
+  if (pathname === e2eExchangePath && !staging) return json({ error: 'not_found' }, 404);
+  if (pathname === e2eExchangePath) return carrResponse(request, env);
   const boardDestination = legacyBoardDestination(url);
   if (boardDestination) return request.method === 'GET' || request.method === 'HEAD'
     ? Response.redirect(boardDestination, 308) : json({ error: 'method_not_allowed' }, 405);
   if (pathname === "/app-release") return request.method === "GET" ? release(env) : json({ error: "method_not_allowed" }, 405);
+  if (pathname === '/share' && staging) {
+    if (!['GET', 'HEAD'].includes(request.method)) return json({ error: 'method_not_allowed' }, 405);
+    const gateUrl = new URL(url); gateUrl.pathname = '/control-room'; gateUrl.search = '';
+    const gate = await carrResponse(new Request(gateUrl, request), env, true);
+    if (gate.status !== 200) return restoreOriginalReturnTo(gate, request);
+    return copySessionCookies(gate, await assetResponse(request, env, '/reports/share.html'));
+  }
+  if (staging && STAGING_REPORT_ASSETS.has(pathname)) return assetResponse(request, env, `/reports${pathname}`);
+  if (staging && pathname.startsWith('/api/share/')) return carrResponse(request, env);
   if (pathname === "/share") return Response.redirect(`https://reports.doctorcre.com/share${url.search}`, 302);
   if (REDIRECTS.has(pathname)) {
     if (request.method !== "GET" && request.method !== "HEAD") return json({ error: "method_not_allowed" }, 405);
@@ -179,5 +202,77 @@ export async function handleDoctorcreRequest(request, env) {
   }
   return json({ error: "not_found" }, 404);
 }
+
+async function reportBody(request) {
+  const reader = request.body?.getReader();
+  if (!reader) return null;
+  const chunks = [];
+  let size = 0;
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    size += value.byteLength;
+    if (size > REPORT_BYTES) { await reader.cancel(); return undefined; }
+    chunks.push(value);
+  }
+  const bytes = new Uint8Array(size);
+  let offset = 0;
+  for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength; }
+  try {
+    const input = JSON.parse(new TextDecoder().decode(bytes));
+    return input && typeof input === 'object' && !Array.isArray(input) ? input : null;
+  } catch { return null; }
+}
+
+// Browser reports are re-scrubbed and gated here, so neither an untrusted
+// payload nor a repeating error reaches CARR's store on every event.
+async function browserReport(request, env, gate) {
+  if (request.headers.get('origin') !== new URL(request.url).origin) return json({ error: 'forbidden' }, 403);
+  if (!request.headers.get('content-type')?.startsWith('application/json')) return json({ error: 'json_required' }, 415);
+  const input = await reportBody(request).catch(() => null);
+  if (input === undefined) return json({ error: 'report_too_large' }, 413);
+  if (!input) return json({ error: 'invalid_report' }, 400);
+  // Only the edge observes HTTP 5xx; a browser cannot report one.
+  const evidence = scrubError({ ...input, type: input.type === 'HTTP5xx' ? null : input.type });
+  if (!gate(evidence)) return json({ ok: true, deduplicated: true }, 202);
+  const headers = new Headers(request.headers);
+  headers.delete('content-length');
+  return carrResponse(new Request(request.url, { method: 'POST', headers, body: JSON.stringify(evidence) }), env);
+}
+
+function captureEdgeFailure(request, env, gate, response, failure) {
+  if (response.status < 500 || CARR_RESPONSES.has(response) || !env?.CARR_ERRORS?.capture) return;
+  let evidence;
+  try {
+    const error = failure?.error;
+    evidence = scrubError({ type: failure ? error?.name : 'HTTP5xx', message: error?.message, stack: error?.stack,
+      route: new URL(request.url).pathname, release_sha: env.GIT_SHA });
+  } catch { evidence = scrubError({ route: new URL(request.url).pathname, release_sha: env.GIT_SHA }); }
+  if (!gate(evidence)) return;
+  // Delivery failure leaves only scrubbed evidence in Worker logs and never
+  // changes the primary response.
+  return Promise.resolve().then(() => env.CARR_ERRORS.capture(evidence))
+    .catch(() => console.error(JSON.stringify({ event: 'runtime_error_capture_failed', ...evidence })));
+}
+
+// Separate gates: a flood of browser reports never silences the edge's own capture.
+export function createDoctorcreRequestHandler(contract = e2eStagingContract, gates = {
+  browser: createErrorGate({ limit: EDGE_LIMIT }), edge: createErrorGate({ limit: EDGE_LIMIT }) }) {
+  const e2eExchangePath = readStagingAuthContract(contract).exchange.path;
+  const stagingOrigin = new URL(contract.origin).origin;
+  return async (request, env, ctx) => {
+    if (request.method === 'POST' && new URL(request.url).pathname === runtimeErrors.browser_endpoint)
+      return browserReport(request, env, gates.browser);
+    let response, failure = null;
+    try { response = await handleRequest(request, env, e2eExchangePath, stagingOrigin); }
+    catch (error) { failure = { error }; response = json({ error: 'internal_error' }, 500); }
+    const pending = captureEdgeFailure(request, env, gates.edge, response, failure);
+    if (pending && ctx?.waitUntil) ctx.waitUntil(pending);
+    else if (pending) await pending;
+    return response;
+  };
+}
+
+export const handleDoctorcreRequest = createDoctorcreRequestHandler();
 
 export default { fetch: handleDoctorcreRequest };
