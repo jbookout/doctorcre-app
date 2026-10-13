@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { chmod, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -11,6 +11,7 @@ import { context, policy, expression } from "./workflow-policy.mjs";
 const ci = await readFile(new URL("../.github/workflows/ci.yml", import.meta.url), "utf8");
 const release = await readFile(new URL("../.github/workflows/release.yml", import.meta.url), "utf8");
 const e2e = await readFile(new URL("../.github/workflows/e2e.yml", import.meta.url), "utf8");
+const stagingLive = await readFile(new URL("../.github/workflows/staging-live.yml", import.meta.url), "utf8");
 const harnessSource = await readFile(new URL("./browser-harness.mjs", import.meta.url), "utf8");
 const nodeEngines = [...harnessSource.matchAll(/export const (\w+) = browserEngine\(/g)].map(match => match[1]).sort();
 const root = fileURLToPath(new URL("../", import.meta.url));
@@ -322,7 +323,7 @@ test("release build is read-only and publisher receives only this run's digest-b
 });
 
 test("every external action is immutable, and checkout never persists credentials", async () => {
-  for (const file of ["ci.yml", "e2e.yml", "release.yml"]) {
+  for (const file of ["ci.yml", "e2e.yml", "release.yml", "staging-live.yml"]) {
     const workflow = await readFile(new URL(`../.github/workflows/${file}`, import.meta.url), "utf8");
     for (const ref of workflow.matchAll(/uses: ([^\s#]+)/g)) assert.match(ref[1], /^[\w-]+\/[\w-]+@[a-f0-9]{40}$/);
     for (const step of workflow.split(/^      - /m).slice(1).filter(s => s.includes("actions/checkout@"))) assert.match(step, /persist-credentials: false/);
@@ -373,13 +374,35 @@ test('publisher handoff rejects tampering, missing digests, fork identity and sy
 
 test('action pins agree with authenticated canonical release evidence',async()=>{
   const pins=JSON.parse(await readFile(new URL('../.github/action-pins.json',import.meta.url)));
-  const check=(action,sha)=>{
-    const pin=pins.actions[action];
-    assert.equal(pin.sha,sha); assert.equal(pin.canonical_tag_sha,sha);
-    assert.equal(pin.release_url,`https://github.com/${action}/releases/tag/${pin.tag}`);
-    assert.match(pin.metadata_blob,/^[a-f0-9]{40}$/); assert.equal(pin.runtime,'node20');
+  const runtimes={
+    'actions/checkout':'node24',
+    'actions/setup-node':'node24',
+    'actions/upload-artifact':'node24',
+    'actions/download-artifact':'node24',
+    'actions/setup-python':'node20',
   };
-  for(const workflow of [ci,e2e,release]) for(const match of workflow.matchAll(/uses: ([\w-]+\/[\w-]+)@([a-f0-9]{40})/g)) check(match[1],match[2]);
+  const check=(action,sha,pin=pins.actions[action])=>{
+    assert.ok(Object.hasOwn(runtimes,action),`unverified action: ${action}`);
+    assert.equal(pin.sha,sha); assert.equal(pin.canonical_tag_sha,sha);
+    assert.match(pin.tag,/^v\d+\.\d+\.\d+$/);
+    assert.equal(pin.release_url,`https://github.com/${action}/releases/tag/${pin.tag}`);
+    assert.equal(pin.tag_url,`https://api.github.com/repos/${action}/git/refs/tags/${pin.tag}`);
+    assert.match(pin.metadata_blob,/^[a-f0-9]{40}$/); assert.equal(pin.runtime,runtimes[action]);
+  };
+  // Every workflow, so a newly added one cannot keep an unverified or stale pin.
+  const workflows=new URL('../.github/workflows/',import.meta.url);
+  for(const file of await readdir(workflows)) {
+    const workflow=await readFile(new URL(file,workflows),'utf8');
+    for(const match of workflow.matchAll(/uses: ([\w-]+\/[\w-]+)@([a-f0-9]{40})/g)) check(match[1],match[2]);
+  }
+  for(const [action,pin] of Object.entries(pins.actions)) {
+    check(action,pin.sha);
+    for(const bad of [{runtime:pin.runtime==='node24'?'node20':'node24'},
+      {canonical_tag_sha:'f'.repeat(40)},{release_url:'https://example.invalid/release'},
+      {tag_url:'https://example.invalid/tag'},{metadata_blob:'invalid'}]) {
+      assert.throws(()=>check(action,pin.sha,{...pin,...bad}),assert.AssertionError);
+    }
+  }
   assert.throws(()=>check('actions/checkout','f'.repeat(40)),/strictly equal/);
 });
 for (const [name, workflow] of [["CI", ci], ["e2e", e2e]]) {

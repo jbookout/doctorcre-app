@@ -27,12 +27,12 @@ jobs:
       run:
         working-directory: doctorcre-app
     steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           path: doctorcre-app
           ref: ${{ github.sha }}
           persist-credentials: false
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22.23.2
           cache: npm
@@ -44,7 +44,7 @@ jobs:
         name: Read the CARR runtime revision from the consumer contract
         run: >-
           node -e 'const fs = require("node:fs"); const { producer } = JSON.parse(fs.readFileSync("contracts/carr-interface.v1.json", "utf8")); if (producer.repository !== "jbookout/carr-system" || !/^[0-9a-f]{40}$/.test(producer.source_commit)) throw new Error("Invalid CARR runtime pin"); fs.appendFileSync(process.env.GITHUB_OUTPUT, "commit=" + producer.source_commit + "\n");'
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: jbookout/carr-system
           ref: ${{ steps.producer.outputs.commit }}
@@ -72,7 +72,7 @@ jobs:
       - run: npm run build
       - run: npm run artifact:verify
       - if: ${{ always() && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') }}
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           include-hidden-files: true
           name: full-main-app-receipt
@@ -85,7 +85,7 @@ jobs:
         env:
           PERFORMANCE_PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
       - if: ${{ !cancelled() && github.event_name == 'pull_request' }}
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: performance-${{ github.sha }}-${{ github.run_attempt }}
           path: |
