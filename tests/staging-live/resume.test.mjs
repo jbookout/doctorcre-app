@@ -96,18 +96,18 @@ test('invocations publish disjoint control evidence while native Playwright owns
   await writeFile(old, 'Original synthetic PNG');
   const first = run().evidencePaths(output, privateRoot, 'OBSERVED');
   const second = run().evidencePaths(output, privateRoot, 'OBSERVED');
-  assert.notEqual(first.png, second.png);
+  assert.notEqual(first.file, second.file);
   assert.equal(first.trace, undefined);
   assert.equal(second.trace, undefined);
-  assert.notEqual(first.publishedPNG, second.publishedPNG);
+  assert.notEqual(first.publishedFile, second.publishedFile);
   for (const [index, paths] of [first, second].entries()) {
     await mkdir(paths.privateDir, { recursive: true }); await mkdir(paths.publicDir, { recursive: true });
-    await writeFile(paths.png, `Private synthetic PNG ${index}`);
-    await writeFile(paths.publishedPNG, `Scrubbed synthetic PNG ${index}`);
+    await writeFile(paths.file, `Private synthetic PNG ${index}`);
+    await writeFile(paths.publishedFile, `Scrubbed synthetic PNG ${index}`);
   }
   assert.equal(await readFile(old, 'utf8'), 'Original synthetic PNG');
-  assert.equal(await readFile(first.publishedPNG, 'utf8'), 'Scrubbed synthetic PNG 0');
-  assert.equal(await readFile(second.publishedPNG, 'utf8'), 'Scrubbed synthetic PNG 1');
+  assert.equal(await readFile(first.publishedFile, 'utf8'), 'Scrubbed synthetic PNG 0');
+  assert.equal(await readFile(second.publishedFile, 'utf8'), 'Scrubbed synthetic PNG 1');
 });
 
 test('exploration report input carries immutable resume history and the full denominator', async t => {

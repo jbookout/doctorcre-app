@@ -220,7 +220,7 @@ test('owner pending discovery resumes the immutable measured prefix with a new e
   const resumed = makeRun({ release, ...run.snapshot() });
   const originalNamespace = run.evidencePaths('/synthetic/output', '/synthetic/private', 'OBSERVED');
   const resumedNamespace = resumed.evidencePaths('/synthetic/output', '/synthetic/private', 'OBSERVED');
-  assert.notEqual(originalNamespace.png, resumedNamespace.png);
+  assert.notEqual(originalNamespace.file, resumedNamespace.file);
   await sweepOwnerStates({ run: resumed, targets, routedScreens: routes, freshPageFor: factory, evidence, persist: async () => {}, sweep: fastSweep });
   const current = resumed.snapshot().stateObligations.find(entry => entry.key === saved.key);
   assert.equal(current.status, 'passed');

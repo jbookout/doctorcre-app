@@ -4,6 +4,7 @@ import { randomUUID } from 'node:crypto';
 import { newDeadControls, sweepFindings } from './report.mjs';
 import { canContinueTraversal, validateTraversal } from './traversal.mjs';
 import { createStateLedger } from './state-ledger.mjs';
+import { evidenceCapture } from './evidence.mjs';
 import { hasFailure, validSkip, normalizeSkip } from './result-status.mjs';
 import contract from '../../contracts/e2e-staging.v1.json' with { type: 'json' };
 
@@ -111,9 +112,9 @@ export function createSweepRun({ targets, routedScreens, prior }) {
     },
     evidencePaths(output, privateRoot, status) {
       requireCheckpoint(statuses.has(status));
-      const filename = `${String(++number).padStart(5, '0')}-${status}`;
+      const filename = `${String(++number).padStart(5, '0')}-${status}`, capture = evidenceCapture(status);
       const privateDir = join(privateRoot, attemptID, filename), publicDir = join(output, 'evidence', 'sweep', attemptID);
-      return { privateDir, publicDir, png: join(privateDir, `${filename}.png`), publishedPNG: join(publicDir, `${filename}.png`) };
+      return { privateDir, publicDir, capture, file: join(privateDir, `${filename}.${capture.extension}`), publishedFile: join(publicDir, `${filename}.${capture.extension}`) };
     },
   };
 }

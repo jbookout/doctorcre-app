@@ -1,6 +1,6 @@
 import { currentRun } from './run-limits.mjs';
 import { mkdir, writeFile, readFile, mkdtemp, open, rename, rm } from 'node:fs/promises';
-import { join, resolve, relative, isAbsolute } from 'node:path';
+import { basename, join, resolve, relative, isAbsolute } from 'node:path';
 import { scrubEvidence } from './evidence.mjs';
 
 async function readJSON(path) {
@@ -66,7 +66,9 @@ export function sweepFindings(screens) {
 
 export async function writeReport(output, { screens = [], history = [], explorations, release, findings, setup, expectedScreens, expectedExplorations, stateObligations, expectedStates, publishFile = rename, run = currentRun(output) }) {
   run?.check();
-  const write = (path, data) => run ? run.writeFile(path, data, writeFile) : writeFile(path, data);
+  // Each checkpoint is staged and then renamed over the retained file, so only its growth is new artifact bytes.
+  // JSON is written compact because the scrubber republishes it compact; pretty staging would read as growth on every rewrite.
+  const write = (path, data) => run ? run.writeFile(path, data, writeFile, { replaces: join(output, basename(path)) }) : writeFile(path, data);
   const previous = await retainedReport(output, release);
   explorations = mergeRows(previous.explorations, explorations ?? [], row => JSON.stringify([row.target, row.screen, row.agent]));
   findings = mergeRows(previous.findings, findings ?? [], row => row.id);
@@ -95,10 +97,10 @@ export async function writeReport(output, { screens = [], history = [], explorat
           ...(resolved ? { resolved: true } : {}),
         })));
     const all = [...history.flatMap(entry => entry.findings), ...sweepFindings(screens), ...sweepFindings(owned), ...calendarFindings, ...findings];
-    await write(join(stage, 'findings.json'), JSON.stringify(all, null, 2) + '\n');
-    await write(join(stage, 'explorations.json'), JSON.stringify(explorations, null, 2) + '\n');
+    await write(join(stage, 'findings.json'), JSON.stringify(all) + '\n');
+    await write(join(stage, 'explorations.json'), JSON.stringify(explorations) + '\n');
     const controls = screens.flatMap(screen => screen.controls);
-    await write(join(stage, 'controls.json'), JSON.stringify({ release, screens, history, explorations, findings, setup, expectedScreens, expectedExplorations, stateObligations, expectedStates }, null, 2) + '\n');
+    await write(join(stage, 'controls.json'), JSON.stringify({ release, screens, history, explorations, findings, setup, expectedScreens, expectedExplorations, stateObligations, expectedStates }) + '\n');
     const rows = screens.map(screen => `| ${screen.target} | ${screen.name} (${screen.path}) | ${screen.reached ? 'reached' : 'FAILED'} | ${screen.controls.filter(c => ['OBSERVED','DEAD'].includes(c.status)).length} | ${screen.controls.filter(c => c.status === 'DEAD').length} | ${screen.controls.filter(c => c.status === 'DISABLED').length} | ${screen.controls.filter(c => ['ERROR','UNREACHABLE'].includes(c.status)).length} | ${screen.controls.filter(c => c.status === 'SKIPPED').length} | ${screen.failure ? `${screen.failure.phase}: ${screen.failure.code}` : screen.in_progress ? 'In progress; incomplete' : ''} |`);
     const skipped = controls.filter(c => c.status === 'SKIPPED');
     const stateSkips = stateObligations.filter(entry => entry.result?.status === 'SKIPPED');

@@ -1,12 +1,12 @@
 import { requireSupervisedRun, RunLimitError } from './run-limits.mjs';
-import { mkdir, readFile, writeFile, cp } from 'node:fs/promises';
+import { readFile, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { assertStagingContextCoverage, admitStagingControl } from './engine.mjs';
 import { targets, screens } from './screens.mjs';
 import { sweepScreen, SweepFailure, ControlSkip } from './controls.mjs';
 import { writeReport } from './report.mjs';
-import { scrubEvidence } from './evidence.mjs';
+import { publishScreenshot } from './evidence.mjs';
 export { scrubEvidence } from './evidence.mjs';
 import { assertStagingBrowserInventory, prepareStagingRecords, stagingFixtureWriteGuard } from './records.mjs';
 import { sweepOwnerStates } from './owner-states.mjs';
@@ -59,17 +59,8 @@ export async function sweep({ resume = false, targetName, freshPage, session, re
     freshPage({ target, screen, release, fixtureGuard, path: request.path || spec?.url || screen.path, spec });
   const evidence = async (page, row) => {
     await assertSweepFixtureScope(page);
-    const paths = run.evidencePaths(output, privateEvidence, row.status === 'passed' ? 'OBSERVED' : row.status === 'failed' ? 'ERROR' : row.status);
-    await mkdir(paths.privateDir, { recursive: true, mode: 0o700 });
-    budget.check();
-    const image = await page.screenshot({ fullPage: true });
-    await budget.writeFile(paths.png, image, writeFile);
-    budget.checkArtifacts();
-    scrubEvidence(paths.privateDir);
-    await mkdir(paths.publicDir, { recursive: true, mode: 0o700 });
-    await budget.copyArtifacts(paths.privateDir, paths.publicDir, (source, target) => cp(source, target, { recursive: true }));
-    budget.checkArtifacts();
-    return paths.publishedPNG;
+    const status = row.status === 'passed' ? 'OBSERVED' : row.status === 'failed' ? 'ERROR' : row.status;
+    return publishScreenshot({ page, budget, paths: run.evidencePaths(output, privateEvidence, status) });
   };
   for (const { target, screen } of run.pending.filter(entry => entry.target.name === targetName)) {
     budget.check();
