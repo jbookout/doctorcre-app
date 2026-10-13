@@ -21,6 +21,15 @@
       "tag_url": "https://api.github.com/repos/actions/setup-node/git/refs/tags/v4.4.0",
       "metadata_blob": "ef58e69919a94e6a823d333159fad95e2720c896"
     },
+    "actions/setup-python": {
+      "sha": "a26af69be951a213d495a4c3e4e4022e16d87065",
+      "tag": "v5.6.0",
+      "release_url": "https://github.com/actions/setup-python/releases/tag/v5.6.0",
+      "runtime": "node20",
+      "canonical_tag_sha": "a26af69be951a213d495a4c3e4e4022e16d87065",
+      "tag_url": "https://api.github.com/repos/actions/setup-python/git/refs/tags/v5.6.0",
+      "metadata_blob": "efa8de904209196588db1453bdb44079b3c393d7"
+    },
     "actions/upload-artifact": {
       "sha": "ea165f8d65b6e75b540449e92b4886f43607fa02",
       "tag": "v4.6.2",

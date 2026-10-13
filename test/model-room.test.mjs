@@ -736,7 +736,7 @@ test("C13c-09 the answer write is pinned and implemented in both clients", async
 
 // MUTATION: remove read-room-queue from contracts/carr-interface.v1.json.
 test("C13-04 the contract pins the merged producer, its two dispatch writes, and V5-UX-C13b's composer write", () => {
-  assert.equal(contract.version, "1.43.0", "the current contract retains the Model Room operation");
+  assert.equal(contract.version, "1.45.0", "the current contract retains the Model Room operation");
   assert.deepEqual(contract.mcp_operations, [...contract.mcp_operations].toSorted(), "mcp_operations stays sorted");
   for (const verb of ["read-room", "read-room-queue", "read-session-identity", "read-dispatch-history"]) {
     assert.ok(contract.mcp_operations.includes(verb), `${verb} is not pinned`);
@@ -753,7 +753,7 @@ test("C13-04 the contract pins the merged producer, its two dispatch writes, and
   // add-room-turn handler derives origin_channel/origin_actor server-side).
   assert.ok(contract.mcp_operations.includes("add-room-turn"), "add-room-turn is not pinned");
   const queue = contract.mcp_operations.indexOf("read-room-queue");
-  assert.equal(contract.mcp_operations[queue - 1], "read-room");
+  assert.equal(contract.mcp_operations[queue - 1], "read-room-latest");
   assert.equal(contract.mcp_operations[queue + 1], "read-session-identity");
   // V5-UX-C13c: answer-work-request-for-joe (carr PR #1190) is the answer
   // form's one write, pinned the same way add-room-turn was — an app-side
@@ -764,7 +764,7 @@ test("C13-04 the contract pins the merged producer, its two dispatch writes, and
   assert.ok(contract.mcp_operations.indexOf("add-room-turn") < answerAt);
   assert.equal(contract.mcp_operations[answerAt + 1], "append-tour-selection-cart-version");
   assert.ok(contract.mcp_operations.indexOf("capture-queue") > answerAt);
-  assert.equal(contract.producer.source_commit, "2f531c295f37757899ca432dfb04a9b95e8d5184");
+  assert.equal(contract.producer.source_commit, "e2e484b1933bfd63c10cc9a1b3350132948f6f74");
   // The on-demand Jev Deal Room read adds one HTTP surface. Keep the complete
   // set pinned here. It is a static pin, not a diff against
   // origin/main: once this branch IS origin/main a diff against it passes for
@@ -776,6 +776,8 @@ test("C13-04 the contract pins the merged producer, its two dispatch writes, and
     "/api/v1/work-inventory", "/api/v1/jev-deal-reading", "/api/room/*", "/api/system-work/*", "/api/share/*",
     "/api/share/feedback", "/api/share/shortlist", "/api/share/comment",
     "/api/tours/properties/search", "/api/tours/selection-cart", "/api/tours/feedback", "/api/tours/property-evidence/v1", "/api/tours/*",
+    // Browser runtime errors, pinned to their own producer revision (runtime_errors).
+    "/api/v1/runtime-errors",
   ], "http_surfaces includes the versioned Tour search and cart routes");
 });
 

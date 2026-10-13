@@ -19,7 +19,7 @@ async function open(t, width) {
     const request = route.request(), url = new URL(request.url()); calls.push({ path: url.pathname, method: request.method(), body: request.postData() });
     if (url.origin !== "http://localhost") return route.abort();
     if(url.pathname === "/mcp") {
-      const {name}=request.postDataJSON().params; assert.ok(["list-doc-suggestions","morning-brief"].includes(name));
+      const {name}=request.postDataJSON().params; assert.ok(["list-feature-switches","list-doc-suggestions","morning-brief"].includes(name));
       return route.fulfill({json:{result:{content:[{type:"text",text:JSON.stringify({ok:true,suggestions:[]})}]}}});
     }
     if (url.pathname.startsWith("/api/")) {
@@ -110,4 +110,18 @@ test("W6 polling recovers from outage without retry controls and refreshes open 
   await page.keyboard.press("Escape");
   assert.equal(await page.locator("#upcoming-tours .tour-button").first().evaluate(el => document.activeElement === el), true);
   await page.locator("#tour-filter").fill("Tour 10"); assert.equal(await page.locator("#history-tours button").count(), 1); assert.equal(await page.locator("#upcoming-tours button").count(), 0);
+});
+
+
+for (const status of [401,403]) test(`PR182 Tours ${status} settles freshness at boot and retry`, async t => {
+  const { page, errors } = await open(t,1440);
+  await page.route('**/api/**', route => route.fulfill({status,json:{}}));
+  await page.reload();
+  await page.getByText('Sign in to continue.',{exact:true}).first().waitFor();
+  assert.equal(await page.locator('#planner-updated').textContent(), 'Unavailable');
+  await page.locator('#planner-refresh').click();
+  await page.getByText('Sign in to continue.',{exact:true}).first().waitFor();
+  assert.equal(await page.locator('#planner-updated').textContent(), 'Unavailable');
+  assert.equal(await page.locator('.freshness').evaluate(n=>n.classList.contains('current')), false);
+  assert.deepEqual(errors,[]);
 });

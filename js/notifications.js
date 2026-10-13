@@ -34,13 +34,12 @@ import { resolveDealroomBoot } from "./boot-mode.js";
 import { mountNotificationBadge, mountPrefs } from "./shell.js";
 import { formatClock } from "./visual-system.js";
 import {
-  ACKNOWLEDGE_SCOPE, EXPOSURE_STATEMENT, PREFERENCE_OPERATION_KEY, QUIET_HOURS_EFFECT,
-  QUIET_HOURS_SCOPE, QUIET_SUPPRESSED_MARK,
+  PREFERENCE_OPERATION_KEY, QUIET_SUPPRESSED_MARK,
   acknowledgeArgs, acknowledgeOperationKey, activityRows, classifyPreferenceFailure,
   classifyPreferenceReadFailure, classifyReadFailure, feedState, notificationCards,
   preferenceOriginSentence, preferenceState, preferenceSummary, preferenceView,
   quietNowBanner, setPreferenceArgs, unreadLine, versionConflictLine,
-  preferenceSaveView,
+  preferenceSaveView, preferenceTimeLabel,
 } from "./notifications-model.js";
 import { uuidv4 } from "./uuid.js";
 
@@ -63,6 +62,7 @@ const view = {
 
 let client = null;
 let commandState = {};
+let preferenceAnchorRevealed = false;
 let dock = { record: () => {}, mount: () => {}, render: () => {} };
 /** What each open operation would send again: the dock's buttons need it. */
 const operations = new Map();
@@ -83,14 +83,22 @@ const asOf = (read) => (read?.state === "read" && formatClock(read.observed_at)
 
 /* -------------------------------------------------------------------- painting */
 
+function recordDetailsHtml(details, path = null) {
+  const rows = [["Actor", details.actor], ["Record type", details.subjectType], ["Reference", details.subjectRef], ["Action", details.verb], ["Route", path]]
+    .filter(([, value]) => value);
+  if (!rows.length) return "";
+  return `<details class="record-details"><summary>Details</summary><dl>${rows.map(([label, value]) =>
+    `<dt>${label}</dt><dd class="mono">${escapeHtml(value)}</dd>`).join("")}</dl></details>`;
+}
+
 function cardHtml(card) {
   const delivery = card.delivery
     .map((row) => `<li data-channel="${escapeHtml(row.channel)}" data-delivery="${escapeHtml(row.state)}">${escapeHtml(row.phrase)}</li>`)
     .join("");
   const link = card.link.path
     ? (card.link.href
-      ? `<p class="note-link" data-link="routed"><a href="${escapeHtml(card.link.href)}">${escapeHtml(card.link.path)}</a></p>`
-      : `<p class="note-link" data-link="unrouted"><span class="mono">${escapeHtml(card.link.path)}</span> — ${escapeHtml(card.link.sentence)}</p>`)
+      ? `<p class="note-link" data-link="routed"><a href="${escapeHtml(card.link.href)}" target="_blank" rel="noopener">${escapeHtml(card.link.label)}</a></p>`
+      : `<p class="note-link" data-link="unrouted">${escapeHtml(card.link.sentence)}</p>`)
     : "";
   const quiet = card.quietSuppressed
     ? `<p class="quiet-mark" data-quiet="suppressed">${escapeHtml(QUIET_SUPPRESSED_MARK)}</p>`
@@ -109,6 +117,7 @@ function cardHtml(card) {
       <ul class="note-delivery">${delivery}</ul>
       ${quiet}
       ${link}
+      ${recordDetailsHtml(card.details, card.link.path)}
       ${act}
     </div>
   </li>`;
@@ -155,8 +164,13 @@ function renderPreference() {
   const model = state.state === "ready" ? preferenceView(read.payload) : null;
   $("prefOrigin").textContent = preferenceOriginSentence(model);
   $("prefSummary").textContent = preferenceSummary(model);
+  $("prefVersion").textContent = model ? `Version ${model.version}` : "";
   const form = $("prefForm");
   form.hidden = !model;
+  if (model && !preferenceAnchorRevealed && globalThis.location?.hash === "#prefForm") {
+    preferenceAnchorRevealed = true;
+    requestAnimationFrame(() => form.scrollIntoView({ block: "start", behavior: "instant" }));
+  }
   form.setAttribute("data-disabled", String(saving));
   for (const id of ["deviceOptIn", "quietStart", "quietEnd", "quietTimezone", "prefSave", "prefClear"]) {
     const field = $(id);
@@ -164,8 +178,8 @@ function renderPreference() {
   }
   if (!model || dirty) return;
   $("deviceOptIn").checked = model.deviceOptIn;
-  $("quietStart").value = model.start || "";
-  $("quietEnd").value = model.end || "";
+  $("quietStart").value = preferenceTimeLabel(model.start);
+  $("quietEnd").value = preferenceTimeLabel(model.end);
   $("quietTimezone").value = model.timezone;
 }
 
@@ -177,7 +191,8 @@ function renderActivity() {
   $("activityState").hidden = Boolean(payload);
   $("activityList").innerHTML = rows.map((row) => `<li class="work-item" data-priority="ordinary">
     <div><h3>${escapeHtml(row.actor)} · ${escapeHtml(row.verb)}</h3>
-    <div class="work-meta"><span>${escapeHtml(row.subject)} · ${escapeHtml(row.clock)}</span></div></div>
+    <div class="work-meta"><span>${escapeHtml(row.subject)} · ${escapeHtml(row.clock)}</span></div>
+    ${recordDetailsHtml(row.details)}</div>
     <div class="stack-end"></div>
   </li>`).join("") || (payload
     ? `<li class="work-item" data-priority="ordinary"><div><h3>No recent activity</h3><div class="work-meta"><span></span></div></div><div class="stack-end"></div></li>`
@@ -309,7 +324,7 @@ function acknowledge(id) {
     return;
   }
   const operationKey = acknowledgeOperationKey(built.args.notification_id);
-  const summary = `Acknowledge notification ${built.args.notification_id}`;
+  const summary = "Acknowledge notification";
   dock.record(operationKey, { summary, status: "sending", undo: false });
   dispatch(operationKey, built.args, summary);
 }
@@ -336,7 +351,7 @@ async function savePreference(form) {
   renderPreference();
   const summary = form.clear_quiet_hours === true
     ? "Clear quiet hours"
-    : `Save notification preferences (version ${built.args.base_version})`;
+    : "Save notification preferences";
   dock.record(PREFERENCE_OPERATION_KEY, { summary, status: "sending", undo: false });
   const result = await performCommand({
     operationKey: PREFERENCE_OPERATION_KEY,
@@ -446,12 +461,7 @@ async function boot() {
   mountPrefs();
 
   mountDock();
-  $("quietHoursEffect").textContent = QUIET_HOURS_EFFECT;
-  $("quietHoursScope").textContent = QUIET_HOURS_SCOPE;
-  $("exposureStatement").textContent = EXPOSURE_STATEMENT;
   mountTimezoneNames();
-  const footnote = $("vocabularyLine");
-  if (footnote) footnote.textContent = `${footnote.textContent} ${ACKNOWLEDGE_SCOPE}`;
   const location = globalThis.location || { hostname: "", search: "" };
   const params = new URLSearchParams(location.search || "");
   view.after = params.get("after") || null;

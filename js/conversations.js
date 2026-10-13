@@ -1,3 +1,4 @@
+import { mountFeatureGate, FEATURE_DISABLED, SUGGESTION_ACTIONS_OFF } from './feature-switches.js';
 import { selectDocRecord } from './doc-context.js';
 import { mountAutoRefresh, readWithDeadline, updatedLabel } from "./auto-refresh.mjs";
 // V5-UX-B07 — the Doc conversations page: DOM wiring only.
@@ -84,6 +85,12 @@ const view = {
 };
 
 let client = null;
+let suggestionActionsEnabled = false;
+let suggestionGate = null;
+// Every suggestion send — first click, dock retry and dock reconcile — passes
+// through dispatch under one of these keys, so this is the one UI gate.
+const suggestionOperation = operationKey => operationKey.startsWith("doc-suggestion:");
+const sendAllowed = operationKey => suggestionActionsEnabled || !suggestionOperation(operationKey);
 // A cancelled traversal must settle even if its adapter ignores abort. Live
 // reads also forward the signal to the transport, outside the verb arguments.
 const readClient = (method, args, signal) => signal
@@ -189,6 +196,7 @@ function renderAccess() {
     : "");
   $("shareControls").innerHTML = shareCandidates(payload, PARTNER_SLUGS).map((row) => `<button class="btn share-toggle" type="button" data-share="${escapeHtml(row.slug)}" aria-pressed="${row.granted}">${row.granted ? "Shared with" : "Not shared with"} ${escapeHtml(row.slug)}</button>`).join("");
   const header = identityHeader(payload);
+  for (const id of ["renameInput", "renameSave", "pinToggle", "archiveToggle"]) $(id).disabled = !header;
   $("pinToggle").setAttribute("aria-pressed", header ? String(header.pinned) : "false");
   $("pinToggle").textContent = header?.pinned ? "Unpin this conversation" : "Pin this conversation";
   $("archiveToggle").setAttribute("aria-pressed", header ? String(header.archived) : "false");
@@ -404,19 +412,19 @@ function renderSuggestions() {
         <details class="suggestion-original"><summary>Original and contributions</summary>
           <p>${escapeHtml(card.original)}</p><ul>${card.contributions.map(item => `<li>${escapeHtml(item.original)} <span>— ${escapeHtml(item.contributor)}, ${escapeHtml(formatClock(item.at) || "time unavailable")}</span></li>`).join("")}</ul>
         </details>
-        <div class="suggestion-decisions" role="group" aria-label="Decide this suggestion">
+        <div ${suggestionActionsEnabled ? "" : "hidden"} class="suggestion-decisions" role="group" aria-label="Decide this suggestion">
           <button class="btn btn-primary" type="button" data-choice="act">Act</button>
           <button class="btn" type="button" data-choice="discuss">Discuss</button>
           <button class="btn" type="button" data-choice="snooze">Snooze</button>
           <button class="btn btn-quiet" type="button" data-choice="dismiss">Dismiss</button>
         </div>
-        <div class="suggestion-fields">
+        <div ${suggestionActionsEnabled ? "" : "hidden"} class="suggestion-fields">
           <label>Work number for Act <input type="text" data-work-number="${escapeHtml(card.id)}" value="${escapeHtml(workNumber)}" placeholder="Number from Choose work"></label>
           <a href="/doc-chats/work" target="_blank" rel="noopener">Choose work</a>
           <label>Snooze until <input type="date" data-snooze-date="${escapeHtml(card.id)}" value="${escapeHtml(state.snoozeDates.get(card.id) ?? defaultSnooze)}"></label>
         </div>
         ${conflictHtml}
-        <div class="field suggestion-correction"><label for="correction-${escapeHtml(card.id)}">Correct this suggestion</label>
+        <div ${suggestionActionsEnabled ? "" : "hidden"} class="field suggestion-correction"><label for="correction-${escapeHtml(card.id)}">Correct this suggestion</label>
           <textarea id="correction-${escapeHtml(card.id)}" data-correction="${escapeHtml(card.id)}" rows="3" placeholder="Type the narrow correction…">${escapeHtml(draft)}</textarea>
           <button class="btn btn-secondary" type="button" data-propose="${escapeHtml(card.id)}">Propose correction</button>
         </div>
@@ -626,6 +634,12 @@ function open(id) {
 /* --------------------------------------------------------------------- writing */
 
 async function dispatch(operationKey, args, summary, send) {
+  // A switched-off send is held, not dropped: the retained request, its key and
+  // its dock entry stay as they are, ready for when the switch returns.
+  if (!sendAllowed(operationKey)) {
+    announce(SUGGESTION_ACTIONS_OFF);
+    return { status: "disabled" };
+  }
   const result = await performCommand({
     operationKey,
     args,
@@ -640,6 +654,7 @@ async function dispatch(operationKey, args, summary, send) {
     retry: result.retry, undo: false, request: result.request,
   });
   if (result.message) announce(result.message);
+  if (result.code === FEATURE_DISABLED) suggestionGate?.refused();
   // Only the record layer knows what the store now holds, so a settled write
   // re-reads it rather than painting the answer this page hoped for.
   //
@@ -728,7 +743,6 @@ async function decideSuggestion(id, choice, card) {
     view.suggestions.workNumbers.delete(id);
     view.suggestions.snoozeDates.delete(id);
   }
-  if (choice === "discuss" && outcome.status === "ok") $("docFab")?.click();
 }
 
 async function proposeSuggestionCorrection(id) {
@@ -779,6 +793,7 @@ function mountDock() {
       if (entry?.args) dispatch(operationKey, entry.args, entry.summary, entry.send);
     },
     onUndo: null,
+    actionable: sendAllowed,
   });
   dock.mount();
 }
@@ -903,6 +918,14 @@ async function boot() {
   client = boot_.mode === "live"
     ? createLiveClient()
     : await createFixtureClient({ ...boot_.options, ...(outage ? { outage } : {}) });
+  suggestionGate = mountFeatureGate({ document, window: globalThis.window, name: "doc-suggestion-actions",
+    read: signal => client.listFeatureSwitches({ signal }),
+    onChange: enabled => {
+      suggestionActionsEnabled = enabled;
+      for (const node of document.querySelectorAll(".suggestion-decisions,.suggestion-fields,.suggestion-correction")) node.hidden = !enabled;
+      dock?.render();
+    },
+  });
   mountNotificationBadge(client);
   await load();
   mountAutoRefresh({ document, window: globalThis.window, shouldRefresh: () => !suggestionEditorActive(), refresh: ({ signal }) => load({ background: true, signal }) });

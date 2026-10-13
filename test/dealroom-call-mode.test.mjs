@@ -77,8 +77,8 @@ class StubElement {
   closest(selector) { return this.matches(selector) ? this : null; }
 }
 
-class StubDocument {
-  constructor(nodes) { this.nodes = nodes; }
+class StubDocument extends EventTarget {
+  constructor(nodes) { super(); this.nodes = nodes; this.visibilityState = "visible"; this.defaultView = new EventTarget(); }
   querySelector(selector) { return this.nodes.find((node) => node.matches(selector)) || null; }
   getElementById(id) { return this.querySelector(`#${id}`); }
 }
@@ -152,12 +152,56 @@ function harness({ agenda = [], state = { state: "idle" }, statuses = [], contex
     ...(withAgenda ? { startAgenda: async () => { calls.startAgenda += 1; } } : {}),
     setInterval: (fn, ms) => { timers.push({ fn, ms }); return timers.length; },
     clearInterval: (handle) => { if (timers[handle - 1]) timers[handle - 1].cleared = true; },
+    setTimeout: (fn, ms) => { timers.push({ fn, ms }); return timers.length; },
+    clearTimeout: (handle) => { if (timers[handle - 1]) timers[handle - 1].cleared = true; },
     now: () => Date.parse("2026-09-23T15:01:05Z"),
   });
+  // These baseline recorder/review tests run against a reachable companion.
+  // Unknown, failed and pending eligibility are exercised in app-honest-controls.
+  controller.state.eligibility = 'available';
   return { doc, controller, requests, timers, calls, client, postCallClient };
 }
 
 const agendaOf = (count) => Array.from({ length: count }, (_, i) => ({ id: `00000000-0000-4000-8000-${String(i).padStart(12, "0")}`, name: `Deal ${i}` }));
+
+test('opening an active weekly call restores its session and publishes exact agenda context', async () => {
+  const h = harness({ agenda: agendaOf(2), state: {
+    state: 'recording', mode: 'weekly_deal_call', session: 'synthetic-active-call', started_at: '2026-09-23T15:00:00Z',
+  } });
+  try {
+    await h.controller.open();
+    assert.equal(h.controller.state.postCall.session, 'synthetic-active-call');
+    assert.equal(h.calls.publishCallContext.length, 1);
+    assert.equal(h.calls.publishCallContext[0].session, 'synthetic-active-call');
+    assert.equal(h.calls.publishCallContext[0].deals.length, 2);
+    assert.equal(h.doc.getElementById('callModeStop').hidden, false);
+    assert.deepEqual(h.calls.toasts, []);
+  } finally { h.controller.dispose(); }
+});
+
+test('opening a completed weekly call restores status and displays the review panel', async () => {
+  const h = harness({ state: { state: 'ready_to_extract', mode: 'weekly_deal_call', session: 'synthetic-completed-call' },
+    statuses: [{ status: { state: 'ready_review' }, report: { report: { summary: 'Synthetic call summary' } } }],
+  });
+  try {
+    await h.controller.open();
+    assert.deepEqual(h.calls.getStatus, ['synthetic-completed-call']);
+    assert.equal(h.doc.getElementById('postCallPanel').hidden, false);
+    assert.match(h.doc.getElementById('postCallReport').innerHTML, /Synthetic call summary/);
+    assert.equal(h.calls.publishCallContext.length, 0);
+    assert.deepEqual(h.calls.toasts, []);
+  } finally { h.controller.dispose(); }
+});
+
+test('refresh without a supplied snapshot reads and recovers the companion session', async () => {
+  const h = harness({ state: { state: 'ready_to_extract', mode: 'weekly_deal_call', session: 'synthetic-refresh-call' } });
+  try {
+    await h.controller.refresh();
+    assert.equal(h.requests.length, 1);
+    assert.deepEqual(h.calls.getStatus, ['synthetic-refresh-call']);
+    assert.deepEqual(h.calls.toasts, []);
+  } finally { h.controller.dispose(); }
+});
 
 // ---------------------------------------------- 1. nothing before a click
 
@@ -245,7 +289,50 @@ test("Stop sends one stop and starts following the weekly review", async () => {
   await controller.start("weekly_deal_call");
   await controller.stop();
   assert.equal(requests.filter((r) => r.url.endsWith("/api/stop")).length, 1);
+  // The next read is armed once the first post-call read settles.
+  await new Promise((resolve) => setImmediate(resolve));
   assert.ok(timers.some((t) => t.ms === 1600 && !t.cleared), "the review is followed after Stop");
+});
+
+test("an active call keeps following its report while the tab is hidden, and stops when it settles", async () => {
+  const { controller, doc, timers, calls } = harness({ agenda: agendaOf(1) });
+  doc.getElementById("callModeConsent").checked = true;
+  await controller.start("weekly_deal_call");
+  await controller.stop();
+  await new Promise((resolve) => setImmediate(resolve));
+  doc.visibilityState = "hidden";
+  doc.dispatchEvent(new Event("visibilitychange"));
+  const live = () => timers.filter((t) => t.ms === 1600 && !t.cleared);
+  assert.equal(live().length, 1, "hiding the tab does not stop the post-call poll");
+  const before = calls.getStatus.length;
+  live()[0].fired = true; live()[0].cleared = true;
+  timers.filter((t) => t.fired)[0].fn();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(calls.getStatus.length, before + 1, "the hidden tick still reads the report");
+  assert.equal(live().length, 1, "and re-arms exactly one timer");
+  controller.stopPolling();
+  assert.equal(live().length, 0, "once the call's report is done, nothing polls");
+});
+
+test("Close Call Mode only closes the dialog, as on main; the follow-through stops with stopPolling and never reads after", async () => {
+  const { controller, doc, timers, calls } = harness({ agenda: agendaOf(1) });
+  doc.getElementById("callModeConsent").checked = true;
+  await controller.start("weekly_deal_call");
+  await controller.stop();
+  await new Promise((resolve) => setImmediate(resolve));
+  const dialog = doc.getElementById("callModeDialog"); dialog.open = true;
+  const live = () => timers.filter((t) => t.ms === 1600 && !t.cleared);
+  assert.equal(await controller.handleClick(doc.getElementById("callModeClose")), true);
+  assert.equal(dialog.open, false, "the declared observation: the dialog closes");
+  assert.equal(live().length, 1, "closing leaves the post-call follow-through running, exactly as main's setInterval did");
+  const armed = timers.filter((t) => t.ms === 1600);
+  controller.stopPolling();
+  assert.equal(live().length, 0, "stopping the follow-through clears its timer");
+  const before = calls.getStatus.length;
+  armed.forEach((t) => t.fn());
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(calls.getStatus.length, before, "a stale tick after stop reads nothing");
+  assert.equal(live().length, 0, "and arms nothing");
 });
 
 // ----------------------------------------------- 3. approval, item by item
@@ -423,7 +510,7 @@ test("the context index is shaped to the companion's exact contract and never in
 
 test("the shipped Deal Room carries Call Mode: button, consent, both call kinds, Stop and the review panel", async () => {
   const html = await file("index.html");
-  assert.match(await file("js/app-shell.js"), /id="callModeButton"[^>]*aria-label="Call mode"[^>]*aria-haspopup="dialog"/);
+  assert.match((await import("../js/navigation.js")).appShellMarkup("/"), /id="callModeButton"[^>]*aria-label="Call mode"[^>]*aria-haspopup="dialog"[^>]*hidden/);
   assert.match(html, /<dialog id="callModeDialog"[^>]*aria-labelledby="callModeTitle"/);
   assert.match(html, /<input type="checkbox" id="callModeConsent">/, "consent is an unticked checkbox");
   assert.match(html, /I have told everyone on this call that it will be recorded\./);

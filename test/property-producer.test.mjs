@@ -8,7 +8,7 @@ import { handleDoctorcreRequest } from "../src/worker.js";
 import { validSystemWork, groupSystemWork, recentLive } from "../js/system-work-board-model.js";
 
 const contract = JSON.parse(await readFile(new URL("../contracts/carr-interface.v1.json", import.meta.url), "utf8"));
-const pinnedProducer = "2f531c295f37757899ca432dfb04a9b95e8d5184";
+const pinnedProducer = "e2e484b1933bfd63c10cc9a1b3350132948f6f74";
 
 const producerModules = new Map();
 async function producerModuleUrl(path) {
@@ -226,4 +226,74 @@ test("the advertised runtime producer accepts the inherited Live Library system=
   assert.equal(consumed.system, "true");
   assert.equal(consumed.live_library, "true");
   assert.deepEqual(await response.json(), inventory, "the admitted query must return the inherited inventory to the app");
+});
+
+// The switch read and both write gates must exist at the advertised runtime,
+// not only at the feature's provenance revision.
+test("the advertised runtime producer serves the feature-switch read and gates both suggestion writes", {
+  skip: !process.env.CARR_PRODUCER_CHECKOUT && "Set CARR_PRODUCER_CHECKOUT to verify runtime feature switches",
+}, async () => {
+  const seam = contract.mcp_read_contracts["list-feature-switches"];
+  assert.equal(seam.producer.source_commit, contract.producer.source_commit, "the read's provenance is the advertised runtime");
+  const registry = execFileSync("git", ["-C", process.env.CARR_PRODUCER_CHECKOUT,
+    "show", `${contract.producer.source_commit}:${seam.producer.module.replace(/feature-switches\.js$/, "tools.js")}`], { encoding: "utf8" });
+  assert.ok(/registerTools\(featureSwitchTools\(/.test(registry), "the runtime must register the feature-switch tools");
+  assert.ok(/if \(FEATURE_VERBS\[name\]\) await requireFeature\(client, actor, FEATURE_VERBS\[name\]\);/.test(registry),
+    "the runtime must check the switch on every gated verb before its handler");
+
+  const { featureSwitchTools, FEATURE_VERBS, requireFeature } = await import(await producerModuleUrl(seam.producer.module));
+  const { featureEnabled, featureSwitchRefusal } = await import("../js/feature-switches.js");
+  const gate = seam.first_consumer;
+  for (const verb of gate.worker_gated_verbs) {
+    assert.equal(FEATURE_VERBS[verb], gate.name, `${verb} must be gated by ${gate.name}`);
+    assert.ok(contract.mcp_operations.includes(verb));
+  }
+
+  const tool = featureSwitchTools({ withEnvelope() { assert.fail("reads must not write"); },
+    writeEvent() { assert.fail("reads must not audit"); }, executeRegisteredTool() { assert.fail("reads must not delegate"); } })["list-feature-switches"];
+  assert.notEqual(tool.write, true);
+  assert.deepEqual(tool.inputSchema, seam.inputSchema);
+  const row = enabled => ({ id: "10000000-0000-4000-8000-000000000001", name: gate.name, description: "Synthetic switch",
+    default_enabled: gate.seed_default, enabled, audience: "team", owner: "joe", created_at: "2026-10-01T12:00:00Z",
+    expected_removal_on: "2026-12-31", retired_at: null, version: 2, retirement_loop_id: null });
+  const reader = enabled => ({ async query(sql) {
+    assert.match(sql.trim(), /^select /, "the read must only read");
+    return { rows: sql.includes("from feature_switch") ? [row(enabled)] : [] };
+  } });
+  const actor = { id: "synthetic-actor", slug: "joe", human: true };
+  for (const enabled of [true, false]) {
+    const read = await tool.handler(reader(enabled), actor, {});
+    for (const key of seam.response.required_keys) assert.ok(key in read, `response key ${key}`);
+    assert.equal(read.schema, seam.response.schema);
+    for (const key of seam.response.switch_keys) assert.ok(key in read.switches[0], `switch key ${key}`);
+    assert.equal(featureEnabled(read, gate.name), enabled, "the app consumes CARR's own evaluation");
+    const refusal = await requireFeature(reader(enabled), actor, gate.name).then(() => null, error => error);
+    assert.equal(refusal === null, enabled);
+    if (!enabled) assert.equal(featureSwitchRefusal(refusal), true, "the app recognises the runtime's refusal as a settled non-write");
+  }
+});
+
+test("runtime error capture is pinned to its own exact producer revision", async () => {
+  const runtimeErrors = JSON.parse(await readFile(new URL(`../${contract.runtime_errors.contract}`, import.meta.url), "utf8"));
+  assert.deepEqual(contract.runtime_errors.producer, { repository: "jbookout/carr-system", source_commit: "a3a6913f7af0d721ab538090b1347976befcf421" });
+  assert.ok(contract.http_surfaces.includes(runtimeErrors.browser_endpoint));
+});
+
+test("runtime error wire contract and scrub rules match the exact pinned producer", {
+  skip: !process.env.CARR_PRODUCER_CHECKOUT && "Set CARR_PRODUCER_CHECKOUT to verify runtime error ingress",
+}, async () => {
+  const pin = contract.runtime_errors.producer.source_commit;
+  const show = path => execFileSync("git", ["-C", process.env.CARR_PRODUCER_CHECKOUT, "show", `${pin}:${path}`], { encoding: "utf8" });
+  const producerContract = JSON.parse(show("mcp-server/src/runtime-errors.v1.json"));
+  assert.deepEqual(JSON.parse(await readFile(new URL(`../${contract.runtime_errors.contract}`, import.meta.url), "utf8")), producerContract);
+  const source = show("mcp-server/src/runtime-errors.js").replace("import contract from './runtime-errors.v1.json' with { type: 'json' };",
+    `const contract = ${JSON.stringify(producerContract)};`);
+  const producer = await import(`data:text/javascript;base64,${Buffer.from(source).toString("base64")}`);
+  const { scrubError } = await import("../js/error-tracking.js");
+  for (const input of [
+    { type: "TypeError", message: "Cannot read properties of Alice", stack: "TypeError: Alice\n at f (https://app/js/a.js?email=a@example.test:12:3)", route: "/clients/Alice?x=1", release_sha: "a".repeat(40) },
+    { type: "HTTP5xx", message: "Alice", route: "/deals/1/leads", release_sha: "nope" },
+    { type: "Alice", message: "aliceRecord is not defined", stack: "f@https://app/js/a.js:1:2", route: "no-slash" },
+    {},
+  ]) assert.deepEqual(scrubError(input), producer.scrubError(input));
 });

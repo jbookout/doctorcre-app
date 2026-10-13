@@ -56,6 +56,7 @@ import {
 import { localDeals, needsAttention, urgencyOrder, concise, automaticMove, OWNER_FILTERS, PHASE_TRIGGERS } from './local-deals-model.js';
 import { DATE_KINDS, renderPhaseTimeline, renderCriticalDates, renderDealTimeline, updateCountdowns } from './deal-timeline.js';
 import { uuidv4 } from './uuid.js';
+import { mountVisibilityPoll } from './visibility-poll.mjs';
 
 const POLL_MS = 1400;
 /** The ceiling on how long this board goes without ASKING again. Not a freshness claim. */
@@ -136,7 +137,7 @@ function cardHtml(deal) {
   const pending = pendingCommand(state.fieldWrites, cellKey(deal.id, 'phase'));
   return `<article class="kanban-card" data-id="${esc(deal.id)}" data-attention="${attention}" data-phase="${esc(deal.phase)}" draggable="true" tabindex="0"${pending ? ' data-pending="true"' : ''}${state.lifted === deal.id ? ' data-lifted="true"' : ''} aria-label="${esc(deal.name)}, ${esc(columnLabel(deal.phase))}">
     <h4><button class="card-open" type="button" data-open="${esc(deal.id)}">${esc(deal.name)}</button></h4>
-    <div class="work-meta"><span class="owner">${esc(actorName(deal.owner))}</span>${attention ? '<span class="attention-dot" aria-label="Needs attention"></span>' : ''}</div>
+    <div class="work-meta"><span class="owner">${esc(actorName(deal.owner))}</span>${attention ? '<span class="attention-dot" role="img" aria-label="Needs attention"></span>' : ''}</div>
     <p class="next-line">${esc(concise(deal.next_step) || 'Next step pending')}</p>
     ${autoHtml(deal)}
   </article>`;
@@ -152,8 +153,11 @@ function parkedHtml(deal) {
 
 function renderBoard() {
   const board = $('kanban');
-  // Fresh snapshots still enter state; dragend paints them without detaching the drag origin.
-  if (!board || board.querySelector('[data-dragging="true"]')) return;
+  // Fresh snapshots still enter state; dragend or the press's release paints
+  // them, so a refresh never detaches a card under a press or drag.
+  if (!board) return;
+  if (board.dataset.pressed === 'true' || board.querySelector('[data-dragging="true"]')) { state.paintDeferred = true; return; }
+  state.paintDeferred = false;
   const rows = localDeals([...state.deals.values()], state.personalScope ? state.selfActor : state.filter)
     .filter(d => state.scopeFilter !== 'flagged' || d.attention === true);
   setDocFilters({ owner: state.personalScope ? state.selfActor : state.filter, filter: state.scopeFilter });
@@ -211,7 +215,7 @@ function renderStatus(status) {
   if (asOf) {
     asOf.textContent = status.last_read_at
       ? `Updated ${new Date(status.last_read_at).toLocaleTimeString([], {hour:'numeric',minute:'2-digit',hour12:true})}`
-      : 'Updating…';
+      : [SYNC_STATES.STARTING, SYNC_STATES.SYNCING].includes(status.state) ? 'Updating…' : 'Unavailable';
   }
 }
 
@@ -630,7 +634,12 @@ function closeCompletion({ cancelled }) {
   state.target = null;
   renderBoard();
   if (cancelled && intent) announce(`Move cancelled. ${intent.name} stays in ${intent.from_label}.`);
-  if (intent) document.querySelector(`.kanban-card[data-id="${CSS.escape(intent.deal)}"]`)?.focus();
+  if (intent) {
+    const returnTo = state.panelDeal === intent.deal && $('recordPanel')?.open
+      ? $('detailPhase') : document.querySelector(`.kanban-card[data-id="${CSS.escape(intent.deal)}"]`);
+    if (returnTo?.id === 'detailPhase') returnTo.value = columnByValue(state.deals.get(intent.deal)?.phase)?.slug || '';
+    returnTo?.focus({ preventScroll: true });
+  }
 }
 
 function showConflict(conflict) {
@@ -851,12 +860,10 @@ async function refreshPanel() {
           const focusIdentity = focused?.dataset.detailFocus;
           const wasOpen = current.open;
           const dateOpens = new Set([...current.querySelectorAll('[data-date-id] details[open]')].map(n => n.closest('[data-date-id]').dataset.dateId));
-          const chartScroll = current.querySelector('.timeline-viewport')?.scrollLeft;
           const oldScroll = current.scrollLeft;
           current.replaceWith(fresh);
           fresh.scrollLeft = oldScroll;
           if (wasOpen) fresh.open = true;
-          if (chartScroll !== undefined) fresh.querySelector('.timeline-viewport').scrollLeft = chartScroll;
           fresh.querySelectorAll('[data-date-id]').forEach(n => { if (dateOpens.has(n.dataset.dateId)) n.querySelector('details').open = true; });
           fresh.querySelectorAll('.deal-note').forEach(n => { if (expanded.has(n.dataset.id)) n.querySelector('details').open = true; });
           if (focusIdentity) [...fresh.querySelectorAll('[data-detail-focus]')].find(n => n.dataset.detailFocus === focusIdentity)?.focus({preventScroll:true});
@@ -891,11 +898,6 @@ function updateDetailTimestamp() {
   const time = $('detailUpdated');
   if (time) { time.dateTime = at; time.textContent = new Date(at).toLocaleTimeString([], {hour:'numeric',minute:'2-digit',hour12:true}); }
 }
-function centerCurrentPhase() {
-  const rail = $('panelBody').querySelector('.phase-scroll');
-  const phase = rail?.querySelector('[aria-current="step"]');
-  if (phase) rail.scrollLeft = phase.offsetLeft - rail.offsetLeft - (rail.clientWidth-phase.clientWidth)/2;
-}
 function paintPanel(detail) {
   $('panelTitle').textContent = detail.deal.name;
   $('panelBody').innerHTML = detailHtml(detail);
@@ -903,7 +905,6 @@ function paintPanel(detail) {
   disposeEvidence = mountEvidence($('panelEvidence'), {client:state.client,detail});
   syncNextForm(detail.deal);
   updateDetailTimestamp();
-  centerCurrentPhase();
 }
 async function openPanel(dealId, trigger) {
   selectDocRecord('deal', dealId);
@@ -1011,6 +1012,20 @@ function wireBoard() {
     if (card && card.dataset.dragging !== 'true') openPanel(card.dataset.id, card);
   });
 
+  // A press may become a tap or a drag; either would be lost if a refresh
+  // replaced its card before it completed.
+  board.addEventListener('pointerdown', (event) => {
+    if (event.target.closest('.kanban-card')) board.dataset.pressed = 'true';
+  });
+  const release = () => {
+    if (board.dataset.pressed !== 'true') return;
+    delete board.dataset.pressed;
+    // After the press's own click has been dispatched.
+    if (state.paintDeferred) setTimeout(renderBoard);
+  };
+  addEventListener('pointerup', release, true);
+  addEventListener('pointercancel', release, true);
+
   board.addEventListener('dragstart', (event) => {
     const card = event.target.closest('.kanban-card');
     if (!card) return;
@@ -1100,6 +1115,9 @@ function wire() {
     const chip = event.target.closest('button[data-filter]');
     if (!chip) return;
     state.personalScope = false; state.filter = chip.dataset.filter;
+    const url = new URL(location.href);
+    if (state.filter === 'all') url.searchParams.delete('owner'); else url.searchParams.set('owner',state.filter);
+    history.replaceState({},'',url);
     renderChips();
     renderBoard();
     say(`Showing ${state.filter === 'all' ? 'all owners' : actorName(state.filter)} on the board.`);
@@ -1185,6 +1203,7 @@ function wire() {
       return;
     }
     closeCompletion({ cancelled: false });
+    if (state.panelDeal === intent.deal) await refreshPanel();
   });
 
   $('conflictCancel')?.addEventListener('click', () => $('conflictDialog')?.close());
@@ -1244,8 +1263,9 @@ function wire() {
       $('timelineRange').focus({preventScroll:true});
     }
     if (e.target.id === 'detailPhase') {
-      const intent = moveIntent(state.deals.get(id), e.target.value);
-      if (intent) { const result = await sendPhaseWrite(id,intent.value); if(result.status === 'ok' && !result.superseded) { confirmLocalWrite(id,{phase:result.request?.value ?? intent.value}); await refreshPanel(); } else if(result.conflict) showConflict(result.conflict); else showToast(fieldWriteMessage(result,'Phase') || 'Change not confirmed'); renderPendingWrites(); }
+      const destination = e.target.value;
+      e.target.value = columnByValue(state.deals.get(id)?.phase)?.slug || '';
+      beginMove(id, destination);
     }
     if (e.target.id === 'detailOwner') { const value = e.target.value || null; const result = await sendFieldWrite(id,'owner',value); if(result.status === 'ok' && !result.superseded) confirmLocalWrite(id,{owner:result.request.value}); else if(result.conflict) showConflict(result.conflict); else showToast(fieldWriteMessage(result,'Owner') || 'Change not confirmed'); renderPendingWrites(); }
   });
@@ -1310,10 +1330,10 @@ async function boot() {
   $('boardView').setAttribute('aria-pressed',String(state.view === 'board'));
   $('listView').setAttribute('aria-pressed',String(state.view === 'list'));
   await loadBoard();
-  setInterval(() => { refreshPanel(); }, BOARD_REFRESH_MS);
+  mountVisibilityPoll({ intervalMs: BOARD_REFRESH_MS, poll: () => { refreshPanel(); } });
   setInterval(() => updateCountdowns($('panelBody')),1000);
-  setInterval(() => { pollOnce().catch(() => { /* the badge already says the feed failed */ }); }, POLL_MS);
-  setInterval(() => state.boardSync.requestRefresh('periodic'), BOARD_REFRESH_MS);
+  mountVisibilityPoll({ intervalMs: POLL_MS, poll: () => { pollOnce().catch(() => { /* the badge already says the feed failed */ }); } });
+  mountVisibilityPoll({ intervalMs: BOARD_REFRESH_MS, poll: () => { state.boardSync.requestRefresh('periodic'); } });
   // Home record links address a deal directly, including records outside the
   // current board scope. The existing detail read enforces identity and shows
   // failures; its outcome must not hold up board/feed polling.

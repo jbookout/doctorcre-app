@@ -1,5 +1,5 @@
 import { GENERATED_PATHS, prepareSlices, sliceNames, sliceOutputs } from "./slices.mjs";
-import { NAVIGATION_GROUPS } from "../js/slice-registration.js";
+import { build } from "esbuild";
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { lstat, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
@@ -10,6 +10,7 @@ const ROOT_DIRECTORIES = ["css", "data", "js", "public-shell", "reports", "tours
 const CONTRACT_INPUTS = {
   carr_interface: "contracts/carr-interface.v1.json",
   route_contract: "contracts/app-routes.v1.json",
+  runtime_errors: 'contracts/runtime-errors.v1.json',
 };
 const SHA = /^[0-9a-f]{64}$/;
 
@@ -108,26 +109,64 @@ async function inputPaths(root, sliceRegistration) {
   return [...new Set(paths)].sort();
 }
 
+const ERROR_CONTRACT_IMPORT = "import contract from '../contracts/runtime-errors.v1.json' with { type: 'json' };";
+const ERROR_BOOTSTRAP = '<script type="module" src="/js/error-tracking-entry.js"></script>';
+
+// Every signed-in application page loads the error bootstrap as its first
+// module, and the shipped bootstrap carries the release SHA and the pinned wire
+// contract inline. Token-authenticated public reports stay outside this ingress.
+async function trackErrors(path, content, readSource, commit) {
+  const replaceOnce = (pattern, replacement) => {
+    const source = content.toString("utf8");
+    if (typeof pattern === "string" ? !source.includes(pattern) : !pattern.test(source)) throw new Error(`error tracking cannot be installed in ${path}`);
+    return Buffer.from(source.replace(pattern, replacement));
+  };
+  if (path === "js/error-tracking.js") {
+    const contract = JSON.parse((await readSource(CONTRACT_INPUTS.runtime_errors)).toString("utf8"));
+    return replaceOnce(ERROR_CONTRACT_IMPORT, () => `const contract = ${JSON.stringify(contract)};`);
+  }
+  if (path === "js/error-tracking-entry.js") return replaceOnce("'__DOCTORCRE_RELEASE_SHA__'", () => `'${commit}'`);
+  if (path.endsWith(".html") && !path.startsWith("reports/")) {
+    // Before any other script: after <head>, or where the parser opens an implied head.
+    const source = content.toString("utf8");
+    const anchor = /<head(\s[^>]*)?>/i.exec(source) || /^(\uFEFF?\s*<!doctype[^>]*>)?/i.exec(source);
+    const at = anchor.index + anchor[0].length;
+    return Buffer.from(source.slice(0, at) + ERROR_BOOTSTRAP + source.slice(at));
+  }
+  return content;
+}
+
 async function assembleArtifact(commit, paths, readSource, sliceRegistration) {
   if (!/^[0-9a-f]{40}$/.test(commit)) throw new Error("source commit must be a full Git SHA");
   const payload = [];
   const files = new Map();
   for (const path of paths) {
-    let content = await readSource(path);
+    let content = await trackErrors(path, await readSource(path), readSource, commit);
     if (path === "reports/share.js") {
-      const source = (await readSource("js/app-shell.js")).toString("utf8");
-      // Token-authenticated public reports carry navigation back to the app.
-      // Partner controls live on the signed-in app, not the report hostname.
-      const shell = source.slice(source.indexOf("// One navigation"), source.indexOf("export function partnerIdentity"))
-        .replace('const registration = registerSlices(slices);\nexport const navigationItems = registration.navigationItems;\nconst sectionForRoute = registration.sectionForRoute;',
-          `const NAVIGATION_GROUPS = ${JSON.stringify(NAVIGATION_GROUPS)};\nexport const navigationItems = Object.freeze(${JSON.stringify(sliceRegistration.navigationItems)});\nconst sectionForRoute = ${JSON.stringify(sliceRegistration.sectionForRoute)};`)
-        .replace("  else mountAccount(root, host, pathname);", "")
-        .replace('  if (!base && pathname !== "/share") mountAppLayout(root, host, pathname, slices);\n  else root.body.classList.add("report-shell");', '  root.body.classList.add("report-shell");') + '\nif (typeof document !== "undefined") mountAppShell();\n';
-      const exports = [...shell.matchAll(/^export (?:const|function) (\w+)/gm)].map((match) => match[1]);
-      if (exports.join(",") !== "navigationItems,activeDestination,appOriginForReport,appShellMarkup,mountAppShell" || /^import /m.test(shell)) {
-        throw new Error("report shell bundle needs an explicit export update");
-      }
-      content = Buffer.from(`${shell.replace(/^export (?=(?:const|function) )/gm, "")}\n${content.toString("utf8")}`);
+      // Compile the report's explicit module graph from the same admitted bytes
+      // used by assembly and committed-source verification, never the live disk.
+      const result = await build({
+        entryPoints: [path], bundle: true, write: false, format: "iife",
+        platform: "browser", target: "es2022", legalComments: "none",
+        plugins: [{ name: "artifact-source", setup(builder) {
+          builder.onResolve({ filter: /.*/ }, (args) => {
+            // The report adapter already serves lazy map assets at /vendor/.
+            if (args.kind === "dynamic-import" && args.path.startsWith("/vendor/") && paths.includes(`reports${args.path}`)) {
+              return { path: args.path, external: true };
+            }
+            const resolved = args.kind === "entry-point" ? posix.normalize(args.path)
+              : posix.normalize(posix.join(posix.dirname(args.importer), args.path));
+            if ((args.kind !== "entry-point" && !args.path.startsWith(".")) || !paths.includes(resolved)) {
+              throw new Error(`report import is not an admitted artifact input: ${args.path}`);
+            }
+            return { path: resolved, namespace: "artifact-source" };
+          });
+          builder.onLoad({ filter: /.*/, namespace: "artifact-source" }, async (args) => ({
+            contents: (await readSource(args.path)).toString("utf8"), loader: "js",
+          }));
+        } }],
+      });
+      content = Buffer.from(result.outputFiles[0].contents);
     }
     if (path === "reports/share.css") {
       const shell = await readSource("css/app-shell.css");
@@ -205,7 +244,7 @@ export function verifyArtifact(archive, expectedSha256 = null) {
   return { archiveSha256, manifest, fileCount: manifest.files.length };
 }
 
-async function verifyCommittedSource(root, archive, result) {
+export async function verifyCommittedSource(root, archive, result = verifyArtifact(archive)) {
   const commit = sourceCommit(root);
   if (result.manifest.source_commit !== commit) throw new Error("artifact source commit mismatch");
   const names = await sliceNames(root);

@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
-import { context, policy } from "./workflow-policy.mjs";
+import { context, policy, expression } from "./workflow-policy.mjs";
 
 const ci = await readFile(new URL("../.github/workflows/ci.yml", import.meta.url), "utf8");
 const release = await readFile(new URL("../.github/workflows/release.yml", import.meta.url), "utf8");
@@ -51,9 +51,7 @@ function commands(workflow, event, action = "opened") {
     if (!run) return [];
     const condition = step.match(/^\s*if: (.+)$/m)?.[1];
     if (condition) {
-      const match = condition.match(/^github\.event_name == '(pull_request|push)'$/);
-      assert.ok(match, `unhandled workflow condition: ${condition}`);
-      if (match[1] !== event) return [];
+      if (!expression(condition, context(event, action))) return [];
     }
     if (run === ">-") return [step.match(/^        run: >-\n((?:          .+\n?)+)/m)[1].trim().replace(/\n\s*/g, " ")];
     if (run === "|") return [step.match(/^        run: \|\n((?:          .+\n?)+)/m)[1].replace(/^          /gm, "")];
@@ -175,7 +173,8 @@ function requireSuite(workflow, suite) {
 
 test("installed engines match the actual Node and e2e selections and lockfile pin", async () => {
   const config = await readFile(new URL("../e2e.config.ts", import.meta.url), "utf8");
-  const journeyEngines = [...new Set([...config.matchAll(/browser: ['"](\w+)['"]/g)].map(match => match[1]))].sort();
+  const adapter = await readFile(new URL("../tests/journeys/phone-engine.mjs", import.meta.url), "utf8");
+  const journeyEngines = [...new Set([...(config + adapter).matchAll(/browser: ['"](\w+)['"]/g)].map(match => match[1]))].sort();
   assert.ok(nodeEngines.length && journeyEngines.length, "engine selections must be readable");
   for (const [workflow, engines] of [[ci, nodeEngines], [release, nodeEngines], [e2e, journeyEngines]]) {
     assert.deepEqual(installedEngines(workflow), engines);
@@ -216,17 +215,35 @@ test("every selected Node engine launches with the installed pinned Playwright",
 
 test("the job budget covers the observed full suite plus setup and artifact verification", () => {
   // PR 128 run 37174053422 passed its tests in 543.6 s, but the ten-minute
-  // job deadline cancelled it before build/verify. Leave room for both those
-  // steps and runner variation while keeping a finite bound on hung jobs.
-  const suiteMs = 543_606;
+  // job deadline cancelled it before build/verify. By 2026-10-12 hosted PR
+  // suites took up to 736 s (run 38240720800), and CI also runs the ~118 s
+  // mobile performance stage (run 37382765030). Leave room for both and
+  // runner variation while keeping a finite bound on hung jobs.
+  const suiteMs = 736_000;
   const setupMs = 120_000;
   const artifactMs = 60_000;
-  const requiredMs = (setupMs + suiteMs + artifactMs) * 1.25;
-  for (const [name, workflow] of [["CI", ci], ["release", release]]) {
+  const performanceMs = 120_000;
+  for (const [name, workflow, extraMs] of [["CI", ci, performanceMs], ["release", release, 0]]) {
+    const requiredMs = (setupMs + suiteMs + artifactMs + extraMs) * 1.25;
     const minutes = Number(workflow.match(/^    timeout-minutes: (\d+)$/m)?.[1]);
     assert.ok(Number.isFinite(minutes) && minutes > 0, `${name} needs a finite deadline`);
     assert.ok(minutes * 60_000 >= requiredMs, `${name}: the full check sequence must fit with 25% runner headroom`);
   }
+});
+
+test("the e2e journeys budget covers the observed slow-runner sequence", () => {
+  // The staging selftest grew from 113 s (a8ede61) to 342-385 s (#200, #205).
+  // Slow runners then spent 512 s before the regressions step (run 38199979738,
+  // 070e001) and were cancelled at ten minutes ~104 s into a regression suite
+  // that passes in 70 s on fast runners. No step hung: each step's wall time
+  // matches its reporter's own duration.
+  const beforeRegressionsMs = 512_000;
+  const regressionsMs = 104_000;
+  const uploadMs = 6_000;
+  const requiredMs = (beforeRegressionsMs + regressionsMs + uploadMs) * 1.25;
+  const minutes = Number(e2e.match(/^    timeout-minutes: (\d+)$/m)?.[1]);
+  assert.ok(Number.isFinite(minutes) && minutes > 0, "e2e needs a finite deadline");
+  assert.ok(minutes * 60_000 >= requiredMs, "e2e: the journeys sequence must fit with 25% runner headroom");
 });
 
 test("description check runs for PRs and stays out of main pushes", () => {

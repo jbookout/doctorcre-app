@@ -206,7 +206,7 @@ function renderVersion() {
   const line = $("atlasVersionLine");
   if (!line) return;
   const payload = view.payload;
-  if (!payload) { line.innerHTML = `<span class="small">Updating…</span>`; return; }
+  if (!payload) { line.innerHTML = `<span class="small">${view.status === "loading" || view.status === "idle" ? "Updating…" : "Unavailable"}</span>`; return; }
   line.innerHTML = `<span class="as-of">${escapeHtml(updatedLabel(payload.observed_at))}</span>`;
 }
 

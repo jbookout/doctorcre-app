@@ -25,7 +25,7 @@ export const DEFAULT_SORT = "name";
 export const SORT_LABEL = { name: "Alphabetical", recent: "Recently updated", vertical: "Vertical", deal_type: "Deal type", last_deal_desc: "Last deal · most recent", last_deal_asc: "Last deal · least recent", territory: "Territory" };
 export const PIPELINE_FILTERS = ["any", "active", "other", "unknown"];
 export const PIPELINE_LABEL = {
-  any: "Any status",
+  any: "Any pipeline",
   active: "In the active pipeline",
   other: "Not in the active pipeline",
   unknown: "Pipeline not set",

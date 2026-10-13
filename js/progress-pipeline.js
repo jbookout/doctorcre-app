@@ -83,12 +83,12 @@ export function mountProgressPipeline({ flow, taskCount, focusFallback, onTask }
     flow.replaceChildren();
     const total = view.stages.reduce((sum, stage) => sum + stage.tasks.length, 0);
     taskCount.textContent = `${total} TASK${total === 1 ? "" : "S"}`;
-    const width = phone ? 360 : 1200;
+    const width = phone ? 360 : Math.max(1200, view.stages.length * 199 + 8);
     const maxTasks = Math.max(1, ...view.stages.map(stage => stage.tasks.length));
     const height = phone ? view.stages.reduce((sum, stage) => sum + Math.max(106, 69 + stage.tasks.length * 115) + 21, 0) - 21
       : Math.max(270, 93 + maxTasks * 115);
     flow.setAttribute("viewBox", `0 0 ${width} ${height}`);
-    flow.setAttribute("aria-label", `${total} tasks positioned across Queued, Building, Review, CI, Merged, and Live`);
+    flow.setAttribute("aria-label", `${total} tasks positioned across ${view.stages.map(stage => stage.label).join(", ")}`);
     let offset = 0;
     view.stages.forEach((stage, index) => {
       const x = phone ? 8 : 8 + index * 199;
@@ -97,15 +97,15 @@ export function mountProgressPipeline({ flow, taskCount, focusFallback, onTask }
       const wellHeight = phone ? Math.max(106, 69 + stage.tasks.length * 115) : height - 16;
       const group = svg("g", "flow-stage", { "data-stage": stage.id, color: stage.color });
       group.append(svg("rect", "stage-well", { x, y, width: wellWidth, height: wellHeight, rx: 15 }));
-      group.append(svg("text", "stage-index", { x: x + 15, y: y + 27 }, String(index + 1).padStart(2, "0")));
-      group.append(svg("text", "stage-label", { x: x + 47, y: y + 28 }, stage.label));
+      if (stage.sequence !== false) group.append(svg("text", "stage-index", { x: x + 15, y: y + 27 }, String(index + 1).padStart(2, "0")));
+      group.append(svg("text", "stage-label", { x: x + (stage.sequence === false ? 15 : 47), y: y + 28 }, stage.label));
       group.append(svg("text", "stage-count", { x: x + wellWidth - 14, y: y + 27, "text-anchor": "end" },
         String(stage.tasks.length).padStart(2, "0")));
       if (!stage.tasks.length) group.append(svg("text", "flow-empty", { x: x + 15, y: y + 79 }, "No tasks"));
       stage.tasks.forEach((task, taskIndex) => group.append(taskNode(task, stage, x + 9,
         y + 44 + taskIndex * 115, wellWidth - 18, 106, phone)));
       flow.append(group);
-      if (index < view.stages.length - 1) {
+      if (index < view.stages.length - 1 && stage.sequence !== false && view.stages[index + 1].sequence !== false) {
         const d = phone ? `M 180 ${y + wellHeight + 2} V ${y + wellHeight + 19}`
           : `M ${x + wellWidth + 2} 47 H ${x + 197}`;
         flow.append(svg("path", "pipeline-connector", { d, "aria-hidden": "true" }));

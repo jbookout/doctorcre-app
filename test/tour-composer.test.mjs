@@ -12,7 +12,8 @@ const html = await readFile(new URL("../tours/route-editor.html", import.meta.ur
 const format = (await readFile(new URL("../tours/tour-format.js", import.meta.url), "utf8")).replace(/^export /gm, "");
 const panel = (await readFile(new URL("../tours/property-panel.js", import.meta.url), "utf8")).replace(/^import [^\n]*\n/gm, "").replace(/^export /gm, "");
 const app = (await readFile(new URL("../tours/app.js", import.meta.url), "utf8")).replace(/^import [^\n]*\n/gm, "");
-const script = `${autoRefreshScript}\n${mapScript}\n${format}\nconst mountPropertyPanel = (() => { ${panel}\nreturn mountPropertyPanel; })();\n${app}`;
+const tourScript = `${mapScript}\n${format}\nconst mountPropertyPanel = (() => { ${panel}\nreturn mountPropertyPanel; })();\n${app}`;
+const script = `${autoRefreshScript}\n${tourScript}`;
 const uuid = () => webcrypto.randomUUID();
 const propA = "44444444-4444-4444-8444-444444444444", propB = "55555555-5555-4555-8555-555555555555";
 const properties = [propA, propB].map((property_id, i) => ({ property_id, name: `Synthetic site ${i + 1}`, address: `${100 + i} Example Way`, county: "Escambia", state: "FL" }));
@@ -573,9 +574,12 @@ test("phone and iPad composers fit the viewport and reduced motion leaves every 
     const css = await readFile(new URL("../tours/app.css", import.meta.url), "utf8");
     const evidenceCss = await readFile(new URL("../tours/property-panel.css", import.meta.url), "utf8");
     const shellCss = await readFile(new URL("../css/app-shell.css", import.meta.url), "utf8");
-    const { slices } = await import('../js/slices.generated.js');
-    const registrationScript = (await readFile(new URL('../js/slice-registration.js', import.meta.url), 'utf8')).replace(/^export /gm, '');
-    const shellScript = (await readFile(new URL("../js/app-shell.js", import.meta.url), "utf8")).replace(/^export /gm, "").replace(/^import [^\n]*\n/gm, "");
+    const { build } = await import('esbuild');
+    const { outputFiles } = await build({
+      stdin: { contents: 'import { mountNavigation } from "./js/navigation.js"; mountNavigation(document, "/tours");', resolveDir: new URL('../', import.meta.url).pathname },
+      bundle: true, write: false, format: 'iife', platform: 'browser', target: 'es2022',
+    });
+    const shellScript = outputFiles[0].text;
     const pageHtml = html.replace(/<script\b[^>]*>[\s\S]*?<\/script>/g, "").replace(/<link\b[^>]*>/g, "").replace("</head>", `<style>${css}\n${evidenceCss}\n${shellCss}</style></head>`);
     await page.route("https://tour.test/**", async route => {
       const request = route.request(), url = new URL(request.url());
@@ -584,7 +588,7 @@ test("phone and iPad composers fit the viewport and reduced motion leaves every 
       const response = await store.fetch(url.pathname + url.search, { headers: request.headers(), body: request.postData() || undefined });
       await route.fulfill({ status: response.status, contentType: "application/json", body: JSON.stringify(await response.json()) });
     });
-    await page.goto("https://tour.test/tours"); await page.addScriptTag({ content: `const mountAppLayout = () => {}; const mountPrefs = () => {}; const resolveDealroomBoot = () => ({ mode: "fixture" }); ${autoRefreshScript}\nconst slices = ${JSON.stringify(slices)};\n${registrationScript}\n${shellScript}` }); await page.addScriptTag({ content: script });
+    await page.goto("https://tour.test/tours"); await page.addScriptTag({ content: shellScript }); await page.addScriptTag({ content: script });
     // Exercise the preserved catalog/cart component independently of its retired UI.
     await page.evaluate(() => { document.querySelector(".discovery").hidden = false; });
     await page.locator("#create-tour-panel summary").click();
