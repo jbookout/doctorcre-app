@@ -193,6 +193,27 @@ test('vendor recipe rejects wrong displayed membership and ownership after filte
   }
 });
 
+test('home recipe rejects the other partner\'s flags when Just Me shows the same count', { timeout: 180_000 }, async t => {
+  const run = join(await mkdtemp(join(tmpdir(), 'doctorcre-verify-home-owner-')), 'run');
+  t.after(() => call(run, 'cleanup'));
+  passed(await call(run, 'launch'));
+  // Serve Home with the owner comparison inverted: Just Me then shows Dell's
+  // two flagged deals (d04, d05) instead of Joe's (d01, d23).
+  const entry = "const { page, origin, action, capture, check, entry } = h;";
+  const helper = await faultHelper(source => source.replace(entry, `${entry}
+    await page.route('**/js/home-dashboard-model.js', async route => {
+      const response = await route.fetch();
+      const body = (await response.text()).replace('deal.owner === board.actor', 'deal.owner !== board.actor');
+      await route.fulfill({ response, body });
+    });`));
+  const result = await callWith(helper, run, 'drive', 'home');
+  assert.notEqual(result.code, 0, 'an equal-count wrong-owner flag list cannot pass');
+  const record = await verdict(run, 'home');
+  assert.ok(record.assertions.some(row => !row.passed && /Just Me flag membership/.test(row.label)));
+  passed(await call(run, 'cleanup'));
+  passed(await call(run, 'evidence'));
+});
+
 test('verification CLI owns independent instances and retains checked proof after cleanup', { timeout: 180_000 }, async t => {
   const first = join(await mkdtemp(join(tmpdir(), 'doctorcre-verify-first-')), 'run');
   const second = join(await mkdtemp(join(tmpdir(), 'doctorcre-verify-second-')), 'run');

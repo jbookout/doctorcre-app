@@ -30,7 +30,7 @@ A directory tile opens a dedicated board tab with published tasks and no directo
     "progress-legacy"
   ],
   "userRoute": [
-    "Tile. Open `/control-room/progress`, choose `[data-board-id=\"carr-v5\"]`, and observe the newly opened tab.",
+    "Tile. Open `/control-room/progress`, expand Published boards (`#directory-title`), choose `[data-board-id=\"carr-v5\"]`, and observe the newly opened tab.",
     "Board. The tab reaches `/control-room/progress/board/carr-v5`, displays the published task in `#board-stages`, and hides `.directory-panel`.",
     "Legacy. Open `/control-room/progress?board=carr-v5`; the same dedicated board page opens."
   ],
@@ -52,7 +52,7 @@ A directory tile opens a dedicated board tab with published tasks and no directo
 ## How to get to it (user POV)
 
 - Open `/control-room/progress` as a bookmark.
-- Choose a board tile in the directory.
+- Expand Published boards and choose a board tile.
 - Open the legacy `/control-room/progress?board=carr-v5` bookmark.
 
 ## Driving it with verify-doctorcre

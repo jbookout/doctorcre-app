@@ -1,6 +1,6 @@
 # Home attention
 
-Just Me shows two flags; Team View shows four; the attention link opens Demo Dental North's record.
+Just Me shows Joe's two flags (d01, d23); Team View shows all four (d01, d04, d05, d23); the attention link opens Demo Dental North's record.
 
 ```json
 {
@@ -29,10 +29,10 @@ Just Me shows two flags; Team View shows four; the attention link opens Demo Den
     "home-deal"
   ],
   "userRoute": [
-    "Scope. Choose `Just Me`, then `Team View`; the synthetic flag list changes from two to four deals.",
+    "Scope. Choose `Just Me`, then `Team View`; the synthetic flag list changes from Joe's d01 and d23 to all four deals.",
     "Open. Choose the first flag for `Demo Dental North`; `/deals?deal=d01` opens its full record with `#panelTitle` and `#detailNextForm`."
   ],
-  "observableEndState": "Just Me shows two flags; Team View shows four; the attention link opens Demo Dental North's record.",
+  "observableEndState": "Just Me shows Joe's two flags (d01, d23); Team View shows all four (d01, d04, d05, d23); the attention link opens Demo Dental North's record.",
   "storedValues": [],
   "gotchas": [
     "The counts belong to the bundled synthetic fixture, not the live book.",
@@ -61,7 +61,7 @@ Preconditions:
 Run `.cursor/skills/verify-doctorcre/verify-doctorcre.mjs drive home --run "$VERIFY_RUN"`.
 It performs these user actions with Playwright and records each result:
 
-- **Scope.** Choose `Just Me`, then `Team View`; the synthetic flag list changes from two to four deals.
+- **Scope.** Choose `Just Me`, then `Team View`; the synthetic flag list changes from Joe's d01 and d23 to all four deals.
 - **Open.** Choose the first flag for `Demo Dental North`; `/deals?deal=d01` opens its full record with `#panelTitle` and `#detailNextForm`.
 - **Proof.** Run `.cursor/skills/verify-doctorcre/verify-doctorcre.mjs evidence --run "$VERIFY_RUN"`; screenshots, ARIA snapshots, action/result records, and a trace identify this feature and its exercised entry points.
 

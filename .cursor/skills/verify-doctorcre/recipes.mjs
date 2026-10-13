@@ -70,14 +70,18 @@ export const recipes = {
     await enter(h, '/', 'Home', '#dealFlags .home-flag');
     await page.locator('#dealFlags .home-flag').first().waitFor();
     await capture('before');
-    const teamCount = await page.locator('#dealFlags .home-flag').count();
-    await check('Synthetic Team View has four flags', async () => assert.equal(teamCount, 4));
+    // Compare exact deal membership: both partners own two flagged seed deals,
+    // so counts alone cannot tell Joe's flags from Dell's.
+    const flagIds = () => page.locator('#dealFlags .home-flag').evaluateAll(nodes => nodes.map(node => node.dataset.homeKey).sort());
+    const teamIds = ['deal:d01', 'deal:d04', 'deal:d05', 'deal:d23'], joeIds = ['deal:d01', 'deal:d23'];
+    const teamFlags = await flagIds();
+    await check('Synthetic Team View flag membership is d01, d04, d05 and d23', async () => assert.deepEqual(teamFlags, teamIds));
     await action('Choose Just Me', () => page.getByRole('button', { name: 'Just Me', exact: true }).click());
-    await check('Just Me scopes deal attention to two flags', async () => assert.equal(await page.locator('#dealFlags .home-flag').count(), 2));
+    await check("Just Me flag membership is Joe's d01 and d23", async () => assert.deepEqual(await flagIds(), joeIds));
     await capture('action');
     await action('Choose Team View', () => page.getByRole('button', { name: 'Team View', exact: true }).click());
-    await check('Team View restores all four deal flags', async () => {
-      assert.equal(await page.locator('#dealFlags .home-flag').count(), 4);
+    await check('Team View restores all four flag members', async () => {
+      assert.deepEqual(await flagIds(), teamIds);
       assert.equal(await page.getByRole('button', { name: 'Team View', exact: true }).getAttribute('aria-pressed'), 'true');
     });
     const link = page.locator('#dealFlags .home-flag').first(), href = await link.getAttribute('href');
@@ -220,6 +224,8 @@ export const recipes = {
   },
   'progress-navigation': async ({ page, context, origin, action, capture, check, entry }) => {
     await action('Open Progress directory', () => page.goto(origin + '/control-room/progress', { waitUntil: 'domcontentloaded' }));
+    // The directory is a collapsed "Published boards" disclosure; open it as a person would.
+    await action('Open Published boards', () => page.locator('#directory-title').click());
     const link = page.locator('[data-board-id="carr-v5"]'); await link.waitFor();
     entry('bookmark', '/control-room/progress');
     await capture('before');
