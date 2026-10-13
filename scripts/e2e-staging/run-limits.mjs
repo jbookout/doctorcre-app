@@ -26,7 +26,11 @@ export const RUN_LIMITS = Object.freeze({
   stopGraceMs: 1_000,
   dispatcherGraceMs: 250,
   monitorIntervalMs: 100,
-  artifactBytes: 64 * 1024 * 1024,
+  // Whole-run (all resumed invocations) evidence ceiling. Measured on the fixture
+  // app: the 5,140 path/viewport control candidates of a full sweep cost about
+  // 207 MB as passing viewport JPEGs; the rest covers reports and full-page
+  // failure PNGs (about 0.6 MB each).
+  artifactBytes: 256 * 1024 * 1024,
   dispatcherOutputBytes: 2_000_000,
   modelCalls: 5_000,
   explorationSteps: 40,
@@ -255,7 +259,24 @@ export function openRun(output, { limits = RUN_LIMITS, runId = process.env.E2E_R
       await withAccountedArtifactWrite(() => copier(source, target));
       run.checkArtifacts();
     },
-    async writeFile(path, data, writer) { check(); const name = relative(root, resolve(path)); if (name.startsWith('..') || isAbsolute(name)) throw new RunLimitError('artifact-path-refused'); run.reserveBytes(Buffer.byteLength(data)); await artifactWrites.run(true, () => writer(path, data)); run.checkArtifacts(); },
+    // `replaces` names the retained file this write will be published over (a
+    // staged checkpoint rewrite). Its bytes were charged when it was written, so
+    // only growth is charged again; the live directory check still bounds the
+    // transient old-plus-staged copy.
+    async writeFile(path, data, writer, { replaces } = {}) {
+      check();
+      const within = target => { const name = relative(root, resolve(target)); if (name.startsWith('..') || isAbsolute(name)) throw new RunLimitError('artifact-path-refused'); };
+      within(path);
+      let retained = 0;
+      if (replaces !== undefined) {
+        within(replaces);
+        try { retained = artifactCopyBytes(replaces); }
+        catch (error) { if (error.code !== 'ENOENT') throw error; }
+      }
+      run.reserveBytes(Math.max(0, Buffer.byteLength(data) - retained));
+      await artifactWrites.run(true, () => writer(path, data));
+      run.checkArtifacts();
+    },
     dispose() { clearTimeout(timer); events?.off('SIGINT', interrupt); events?.off('SIGTERM', interrupt); cleanups.clear(); },
   };
   return Object.freeze(run);

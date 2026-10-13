@@ -127,8 +127,10 @@ test('production record preparation admits the reviewed app handler into the scr
     const home = checkpoint.screens.find(row => row.target === 'staging-live' && row.path === '/');
     const observed = home.controls.find(row => row.selector === '#morningClose');
     assert.equal(observed.status, 'OBSERVED');
-    assert.ok(observed.evidence_path.endsWith('.png'));
+    assert.ok(observed.evidence_path.endsWith('.jpg'));
     assert.ok((await readFile(observed.evidence_path)).length > 0);
+    const dead = home.controls.find(row => row.status === 'DEAD');
+    assert.ok(dead.evidence_path.endsWith('.png'), 'a failed control keeps its full-page PNG');
     assert.equal(home.controls.find(row => row.selector === '#unsupported').status, 'SKIPPED');
     assert.deepEqual(counts, { safe: 1, unsupported: 0 });
     console.log(JSON.stringify({ entrypoint: 'sweep', counters: counts, evidence: observed.evidence_path }));
