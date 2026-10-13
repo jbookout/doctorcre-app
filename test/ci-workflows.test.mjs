@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { chmod, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -379,6 +379,7 @@ test('action pins agree with authenticated canonical release evidence',async()=>
     'actions/setup-node':'node24',
     'actions/upload-artifact':'node24',
     'actions/download-artifact':'node24',
+    'actions/setup-python':'node20',
   };
   const check=(action,sha,pin=pins.actions[action])=>{
     assert.ok(Object.hasOwn(runtimes,action),`unverified action: ${action}`);
@@ -388,7 +389,12 @@ test('action pins agree with authenticated canonical release evidence',async()=>
     assert.equal(pin.tag_url,`https://api.github.com/repos/${action}/git/refs/tags/${pin.tag}`);
     assert.match(pin.metadata_blob,/^[a-f0-9]{40}$/); assert.equal(pin.runtime,runtimes[action]);
   };
-  for(const workflow of [ci,e2e,release,stagingLive]) for(const match of workflow.matchAll(/uses: ([\w-]+\/[\w-]+)@([a-f0-9]{40})/g)) check(match[1],match[2]);
+  // Every workflow, so a newly added one cannot keep an unverified or stale pin.
+  const workflows=new URL('../.github/workflows/',import.meta.url);
+  for(const file of await readdir(workflows)) {
+    const workflow=await readFile(new URL(file,workflows),'utf8');
+    for(const match of workflow.matchAll(/uses: ([\w-]+\/[\w-]+)@([a-f0-9]{40})/g)) check(match[1],match[2]);
+  }
   for(const [action,pin] of Object.entries(pins.actions)) {
     check(action,pin.sha);
     for(const bad of [{runtime:pin.runtime==='node24'?'node20':'node24'},
