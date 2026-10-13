@@ -15,6 +15,7 @@ test-artifacts/
 /contracts/app-routes.v1.json
 /js/slices.generated.js
 /tours/day-shell.generated.js
+/js/ui.generated.js
 /out/
 /_to_delete/
 # Ad-hoc screen captures; the journeys write their evidence under /.e2e/.
