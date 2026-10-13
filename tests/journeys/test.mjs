@@ -9,5 +9,6 @@ export function productTest() {
     if (process.env.BROWSER_PROOF_BINDING)
       await assertServedBuild(app.baseUrl, JSON.parse(process.env.BROWSER_PROOF_BINDING));
   });
+  test.afterEach(async ({ quality }) => { await quality.finish(); });
   return test;
 }

@@ -22,7 +22,7 @@ body .shell,body .workspace-shell,body .system-shell{max-width:none;width:100%;b
 [data-color-assist="on"] [data-state="attention"],[data-color-assist="on"] [data-priority="attention"]{border-style:dashed!important}[data-color-assist="on"] [data-state="urgent"],[data-color-assist="on"] [data-priority="urgent"]{border-style:double!important;border-width:3px!important}
 @media(prefers-reduced-motion:reduce){.app-shell-control,.app-shell-avatar{transition:none}.app-shell-control:hover,.app-shell-avatar:hover,.app-shell-navigation a:hover{transform:none}}
 
-.as-of::after,.observed::after,.source:not(:empty)::after,.event-source:not(:empty)::after{content:" ↻";font-size:14px;opacity:.7}.as-of,.observed,.source,.event-source{font-size:11px;opacity:.75}
+.as-of::after,.observed::after,.source:not(:empty)::after,.event-source:not(:empty)::after{content:" ↻";font-size:14px;opacity:.7}.as-of,.observed,.source,.event-source{font-size:11px;opacity:1}
 .app-shell-control,.app-shell-avatar{width:44px;height:44px}
 
 :root[data-theme="light"] body{background:#e8eef5;color:#172d44}:root[data-theme="light"] .glass{background:rgba(242,247,252,.88);color:#172d44}:root[data-theme="light"] .glass h1,:root[data-theme="light"] .glass h2,:root[data-theme="light"] .glass h3{color:#172d44}
@@ -58,8 +58,8 @@ html{scroll-padding-bottom:150px}body.has-app-layout{padding:0 0 var(--layout-bo
 .has-app-layout .stage-columns{display:grid;grid-auto-flow:row;grid-template-columns:repeat(auto-fit,minmax(min(100%,180px),1fr));grid-auto-columns:auto;overflow:visible}.has-app-layout .kanban{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,180px),1fr));overflow:visible;min-width:0}.has-app-layout .kanban-column,.has-app-layout .stage-column{min-width:0;width:auto}.has-app-layout .pipeline-svg{min-width:0;width:100%}.has-app-layout .pipeline-track{overflow:visible}.has-app-layout .pipeline-layout{display:block}.has-app-layout .pipeline h1{font-size:25px}.has-app-layout .lead-card{transition:transform .14s,box-shadow .14s}.has-app-layout .lead-card:hover{transform:translateY(-2px);box-shadow:0 12px 25px #0005}.has-app-layout dialog{max-width:none;width:min(1100px,calc(100vw - 32px));box-sizing:border-box}.has-app-layout #recordPanel{position:fixed;inset:50% auto auto 50%;transform:translate(-50%,-50%);width:min(1100px,calc(100vw - 32px));max-height:85dvh;z-index:1300;overflow:auto;background:#081726f5;box-shadow:0 0 0 100vmax #02070cbf,0 30px 90px #0009}.has-app-layout #panelBody{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:24px}.has-app-layout #panelEvidence{grid-column:1/-1}.has-app-layout #appTodayMoves .receipt-list{padding:0;list-style:none}.has-app-layout #appTodayMoves .receipt{min-width:0}.has-app-layout #appTodayMoves .receipt-line{display:flex;flex-wrap:wrap}.has-app-layout #appTodayMoves .receipt-deal{font-size:12px}
 .has-app-layout .room-header{position:static}.has-app-layout .room-stage,.has-app-layout .room-main{min-width:0;max-width:100%}.has-app-layout .system-work-topbar{position:static}.has-app-layout .workspace-directory .module-card p{display:none}.has-app-layout .scope-switch small,.has-app-layout .scope-note,.has-app-layout .pipeline-copy{display:none}.has-app-layout .sticky-table-header{display:none}
 @keyframes app-layout-breathe{50%{box-shadow:0 0 16px #68d7b255}}
-@media(max-width:1100px) and (min-width:761px){.app-layout{--layout-left:210px;--layout-right:220px}.app-layout-main{padding:16px}.app-layout-tabbar{padding:0 12px;gap:6px}}
-@media(max-width:760px){:root{--layout-rail:0px;--layout-bottom:180px}body.has-app-layout{padding:0 0 var(--layout-bottom)!important}.app-layout{display:block;min-height:calc(100dvh - var(--layout-bottom))}.app-layout-center{width:100%}.app-layout-main{padding:14px 14px 100px}.app-layout-tabbar{min-height:60px;padding:0 10px;gap:6px}.app-layout-tabs{gap:4px}.app-layout-tabs a,.app-layout-tabs button,.app-layout-tabs .deal-page-view-current{padding:6px 10px;font-size:12px}
+@media(max-width:1100px) and (min-width:761px) and (not ((hover:none) and (pointer:coarse) and (max-width:1023px))){.app-layout{--layout-left:210px;--layout-right:220px}.app-layout-main{padding:16px}.app-layout-tabbar{padding:0 12px;gap:6px}}
+@media(max-width:760px),(hover:none) and (pointer:coarse) and (max-width:1023px){:root{--layout-rail:0px;--layout-bottom:180px}body.has-app-layout{padding:0 0 var(--layout-bottom)!important}.app-layout{display:block;min-height:calc(100dvh - var(--layout-bottom))}.app-layout-center{width:100%}.app-layout-main{padding:14px 14px 100px}.app-layout-tabbar{min-height:60px;padding:8px 10px;gap:6px}.app-layout-tabs{gap:4px;overflow:visible;flex-wrap:wrap}.app-layout-tabs a,.app-layout-tabs button,.app-layout-tabs .deal-page-view-current{padding:6px 10px;font-size:12px}
 #appShell{inset:auto 0 0;width:100%;height:100px}.app-shell-header{display:grid;grid-template-columns:1fr auto;grid-template-rows:48px 44px;gap:0!important;padding:4px 6px!important;border:0;border-top:1px solid var(--layout-line);height:100px}.app-shell-brand{display:none}.app-shell-menu{grid-column:1/-1;grid-row:1;flex:none!important}.app-shell-navigation{flex-direction:row;justify-content:space-around;gap:0}.app-shell-navigation>a,.app-shell-more-toggle{width:44px;height:44px;min-height:44px;font-size:25px;padding:4px!important}.app-shell-controls{flex-direction:row;grid-column:2;grid-row:2;gap:6px!important}.app-shell-search{grid-column:1;grid-row:2}.app-shell-more-list{left:8px!important;top:auto!important;bottom:108px;width:calc(100vw - 16px);max-height:calc(100dvh - 125px);grid-template-columns:repeat(2,minmax(0,1fr))!important}.app-shell-account-menu{left:8px!important;bottom:108px;width:calc(100vw - 16px)!important;max-width:none}.app-shell-navigation>a[aria-current=page]{box-shadow:inset 0 -2px #f69136}
 .app-layout-status{bottom:100px;height:calc(var(--layout-bottom) - 100px);padding:4px 14px;gap:4px 12px;align-content:center;z-index:1090}.app-shell-doc,.doc-fab{right:16px!important;bottom:calc(var(--layout-bottom) + 16px)!important}.doc-chat{bottom:calc(var(--layout-bottom) + 76px)!important}.app-layout-sidebar,.app-layout-today{position:fixed;top:0;bottom:var(--layout-bottom);height:auto;width:min(330px,calc(100vw - 28px));z-index:1150;visibility:hidden;pointer-events:none;transition:transform .2s ease;background:#0b1b2bf7;box-shadow:0 20px 70px #0008}.app-layout-sidebar{left:0;transform:translateX(-105%)}.app-layout-today{right:0;transform:translateX(105%)}.app-layout[data-drawer=sidebar] .app-layout-sidebar,.app-layout[data-drawer=today] .app-layout-today{visibility:visible;pointer-events:auto;transform:translateX(0)}.app-layout-scrim:not([hidden]){display:block;position:fixed;inset:0 0 var(--layout-bottom);z-index:1140;border:0;background:#0009;backdrop-filter:blur(3px)}.has-app-layout .stage-columns{display:grid;grid-template-columns:1fr}.has-app-layout .stage-column{display:block}.has-app-layout #panelBody{grid-template-columns:1fr}.has-app-layout .claim-heading{flex-wrap:wrap}.has-app-layout .pipeline{display:block}.has-app-layout .pipeline-svg{min-height:86px}.has-app-layout .claim-section{padding:14px}.app-layout-sidebar-head{min-height:60px}
 }
@@ -68,7 +68,7 @@ html{scroll-padding-bottom:150px}body.has-app-layout{padding:0 0 var(--layout-bo
 body.report-shell{padding-left:72px;padding-bottom:34px}.app-layout-today .receipts{padding:0;margin:0;border:0;background:transparent}.app-layout-today .receipts-live:empty{display:none}
 .entry-original{white-space:pre-wrap}.has-app-layout dialog summary{cursor:pointer;color:#ffb16f;min-height:44px;display:flex;align-items:center}
 .has-app-layout .planner-grid{grid-template-columns:repeat(2,minmax(0,1fr));padding:0;width:100%}.has-app-layout .territory-card{grid-column:1/-1}.has-app-layout main.layout{display:block}.app-layout-sidebar .library-scroll{max-height:250px}.app-layout-sidebar .library-filter input{width:100%}
-@media(max-width:760px){body.report-shell{padding-left:0;padding-bottom:100px}.lead-detail-grid,.has-app-layout .planner-grid{grid-template-columns:1fr}}
+@media(max-width:760px),(hover:none) and (pointer:coarse) and (max-width:1023px){body.report-shell{padding-left:0;padding-bottom:100px}.lead-detail-grid,.has-app-layout .planner-grid{grid-template-columns:1fr}}
 :root[data-theme="light"] body.has-app-layout{background:#e8eef5;color:#172d44}
 .has-app-layout .card-move,.has-app-layout .lead-move{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}.has-app-layout .card-move:focus,.has-app-layout .lead-move:focus-within{position:static;width:auto;height:auto;overflow:visible;clip-path:none}.app-layout-tabs [aria-current=page]{scroll-margin-inline:12px}
 
@@ -86,7 +86,7 @@ body.report-shell{padding-left:72px;padding-bottom:34px}.app-layout-today .recei
 #appStatusSlot footer{margin:0;padding:0;border:0;font-size:11px}
 #appStatusSlot .home-updated{width:auto;justify-content:flex-start}
 #appStatusSlot button{min-width:28px;min-height:28px}
-@media(max-width:760px){
+@media(max-width:760px),(hover:none) and (pointer:coarse) and (max-width:1023px){
   #appStatusSlot{gap:6px;font-size:10px}
   #appStatusSlot>[data-layout-slot="status"]{gap:4px 6px}
 }
@@ -95,7 +95,7 @@ body.report-shell{padding-left:72px;padding-bottom:34px}.app-layout-today .recei
 .slice-controls-status button:hover,.slice-controls-status button:focus-visible{color:var(--orange,#f28a39);outline:2px solid currentColor;outline-offset:2px}
 
 /* One scrolling rail owns navigation and controls at short viewport heights. */
-@media(min-width:761px){
+@media(min-width:761px) and (not ((hover:none) and (pointer:coarse) and (max-width:1023px))){
   .app-shell-header{overflow-y:auto;overflow-x:hidden;scrollbar-width:thin}
   .app-shell-brand,.app-shell-navigation>a,.app-shell-more-toggle,.app-shell-search{flex-shrink:0}
   .app-shell-menu{flex:1 0 auto!important;min-height:auto}
@@ -119,4 +119,15 @@ body.has-app-layout:has(#callModeAvailability:not([hidden])){--layout-bottom:108
 #callModeAvailability{flex:1;min-width:0}
 .app-shell-call-availability #callModeRetry{flex:none;min-width:44px;min-height:44px;height:auto;padding:8px 12px;border:1px solid #45617d;border-radius:10px;background:#07101d;color:#b9c7d9;font-size:11px}
 #callModeRetry[hidden]{display:none}
-@media(max-width:760px){body.has-app-layout:has(#callModeAvailability:not([hidden])){--layout-bottom:224px}}
+@media(max-width:760px),(hover:none) and (pointer:coarse) and (max-width:1023px){body.has-app-layout:has(#callModeAvailability:not([hidden])){--layout-bottom:224px}}
+
+@media(max-width:760px),(hover:none) and (pointer:coarse) and (max-width:1023px){
+  .has-app-layout :is(button,a,input,select,textarea,summary,[role="button"]){min-width:44px;min-height:44px;box-sizing:border-box;touch-action:manipulation}
+  .app-layout-status button,#appStatusSlot button{min-width:44px;min-height:44px;height:44px}
+  .app-shell-account-menu a{min-height:44px;box-sizing:border-box}
+  .app-layout-tabs>[data-layout-slot=tabs]{flex-wrap:wrap;min-width:0}
+  .has-app-layout .card-open{min-height:44px}
+  .has-app-layout .skip:focus,.has-app-layout .invoice-skip:focus{min-height:44px;display:flex;align-items:center}
+  /* A scripted scroll lands at once; animated, the page moves under the next tap. */
+  :root{scroll-behavior:auto}
+}

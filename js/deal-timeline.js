@@ -80,7 +80,7 @@ export function dealTimeline(detail, now = Date.now()) {
 }
 
 export function renderPhaseTimeline(detail) {
-  return `<div class="phase-scroll"><ol class="phase-rail" data-detail-read="phase" aria-label="Deal phases">${dealTimeline(detail).phases.map(p => `<li${p.current ? ' aria-current="step"' : ''}><span>${esc(p.label)}</span><time datetime="${esc(p.day || '')}">${esc(dateCaption(p.day))}</time></li>`).join('')}</ol></div>`;
+  return `<ol class="phase-rail" data-detail-read="phase" aria-label="Deal phases">${dealTimeline(detail).phases.map(p => `<li${p.current ? ' aria-current="step"' : ''}><span>${esc(p.label)}</span><time datetime="${esc(p.day || '')}">${esc(dateCaption(p.day))}</time></li>`).join('')}</ol>`;
 }
 export function renderCriticalDates(detail, now = Date.now()) {
   const view = dealTimeline(detail,now);
@@ -97,20 +97,26 @@ export function renderDealTimeline(detail, now = Date.now(), full = false) {
   const shown = all.filter(e => full || Date.parse(e.day) >= start && Date.parse(e.day) <= end);
   const min = full ? Math.min(start,...all.map(e => Date.parse(e.day))) : start;
   const max = full ? Math.max(end,...all.map(e => Date.parse(e.day))) : end;
-  const x = day => 40 + (Date.parse(day)-min)/(max-min)*920;
+  // Positions are percentages of the chart's width and text keeps its CSS
+  // size, so labels stay readable however narrow the chart is drawn.
+  const x = day => 4 + (Date.parse(day)-min)/(max-min)*92;
   const ticks = Array.from({length:5},(_,i) => new Date(min+(max-min)*i/4).toISOString().slice(0,10));
   const days = [...new Set(shown.map(e => e.day))].sort();
-  const clusters = [];
-  for (const day of days) {
+  // Markers are 24px wide. Days closer than that merge into one counted
+  // marker; the chart shows the grouping made for its rendered width.
+  const clustered = gap => days.reduce((clusters, day) => {
     const last = clusters.at(-1);
-    if (last && x(day)-x(last[0]) < 28) last.push(day); else clusters.push([day]);
-  }
-  const chart = `<div class="timeline-viewport"><svg class="timeline-chart" viewBox="0 0 1000 180" role="img" aria-label="Calendar timeline from ${esc(dateCaption(ticks[0]))} to ${esc(dateCaption(ticks.at(-1)))}"><line class="timeline-baseline" x1="40" x2="960" y1="58" y2="58"/><line class="timeline-baseline" x1="40" x2="960" y1="98" y2="98"/>${ticks.map(day => `<line class="timeline-grid" x1="${x(day)}" x2="${x(day)}" y1="35" y2="124"/><text x="${x(day)}" y="164" text-anchor="middle">${esc(dateCaption(day))}</text>`).join('')}<text x="40" y="46">Dates</text><text x="40" y="88">Activity</text><line class="timeline-today" x1="${x(view.today)}" x2="${x(view.today)}" y1="30" y2="138"/><text class="timeline-today-label" x="${x(view.today)}" y="20" text-anchor="middle">Today</text>${clusters.map(cluster => {
+    if (last && x(day)-x(last[0]) < gap) last.push(day); else clusters.push([day]);
+    return clusters;
+  }, []);
+  const markers = cluster => {
     const items = shown.filter(e => cluster.includes(e.day));
     const dates = items.filter(e => e.type === 'date').length, activity = items.length-dates;
     const cx = x(cluster[0]);
-    return `<g><title>${esc(cluster.map(dateCaption).join(', '))}</title>${dates ? `<path class="timeline-point" d="M${cx} 48 l10 10 l-10 10 l-10 -10z"/><text class="timeline-count" x="${cx}" y="62" text-anchor="middle">${dates}</text>`:''}${activity ? `<circle class="timeline-point" cx="${cx}" cy="98" r="11"/><text class="timeline-count" x="${cx}" y="102" text-anchor="middle">${activity}</text>`:''}</g>`;
-  }).join('')}</svg></div>`;
+    return `<g><title>${esc(cluster.map(dateCaption).join(', '))}</title>${dates ? `<svg x="${cx}%" y="48" overflow="visible"><path class="timeline-point" d="M0 0l10 10l-10 10l-10-10z"/></svg><text class="timeline-count" x="${cx}%" y="62" text-anchor="middle">${dates}</text>`:''}${activity ? `<circle class="timeline-point" cx="${cx}%" cy="98" r="11"/><text class="timeline-count" x="${cx}%" y="102" text-anchor="middle">${activity}</text>`:''}</g>`;
+  };
+  const anchor = ['start','middle','middle','middle','end'];
+  const chart = `<svg class="timeline-chart" height="180" role="img" aria-label="Calendar timeline from ${esc(dateCaption(ticks[0]))} to ${esc(dateCaption(ticks.at(-1)))}"><line class="timeline-baseline" x1="4%" x2="96%" y1="58" y2="58"/><line class="timeline-baseline" x1="4%" x2="96%" y1="98" y2="98"/>${ticks.map((day,i) => `<line class="timeline-grid" x1="${x(day)}%" x2="${x(day)}%" y1="35" y2="124"/><text${i % 4 ? ' class="timeline-tick-inner"' : ''} x="${x(day)}%" y="164" text-anchor="${anchor[i]}">${esc(dateCaption(day))}</text>`).join('')}<text x="4%" y="46">Dates</text><text x="4%" y="88">Activity</text><line class="timeline-today" x1="${x(view.today)}%" x2="${x(view.today)}%" y1="30" y2="138"/><text class="timeline-today-label" x="${x(view.today)}%" y="20" text-anchor="${x(view.today) < 10 ? 'start' : x(view.today) > 90 ? 'end' : 'middle'}">Today</text><g class="timeline-marks-wide">${clustered(3).map(markers).join('')}</g><g class="timeline-marks-narrow">${clustered(11).map(markers).join('')}</g></svg>`;
   const card = e => `<article class="deal-note timeline-entry" data-id="${esc(e.id)}" data-kind="${esc(e.type)}" data-detail-focus="entry:${esc(e.id)}" tabindex="0"><div class="timeline-entry-top"><b>${esc(e.type.replace(/[_-]+/g,' '))}</b>${e.day ? `<time datetime="${esc(e.day)}">${esc(dateCaption(e.day))}</time>` : '<span>Undated</span>'}</div><p>${esc(e.summary)}</p>${e.actor ? `<span class="timeline-actor">${esc(ACTOR_LABEL[e.actor] || e.actor)}</span>` : ''}<details><summary data-detail-focus="entry-original:${esc(e.id)}">Details</summary><p class="note-original">${esc(e.original || 'Original unavailable')}</p></details></article>`;
   return `<section class="deal-timeline" data-detail-read="timeline" aria-label="Deal timeline"><div class="timeline-heading"><h3>Timeline</h3><label><span class="sr-only">Timeline range</span><select id="timelineRange"><option value="recent"${!full ? ' selected':''}>Recent &amp; upcoming</option><option value="full"${full ? ' selected':''}>Full timeline</option></select></label></div>${chart}<div class="timeline-date-links">${days.map(day => `<button type="button" data-timeline-day="${esc(day)}" data-detail-focus="day:${esc(day)}">${esc(dateCaption(day))}</button>`).join('')}</div><div class="timeline-entries">${view.entries.filter(e => !e.day || full || Date.parse(e.day)>=start && Date.parse(e.day)<=end).map(card).join('') || '<p>No entries</p>'}</div></section>`;
 }

@@ -1,9 +1,9 @@
 .deal-freshness { display:flex; justify-content:flex-end; align-items:center; gap:6px; color:var(--quiet); font-size:11px; }
 .deal-freshness button { border:0; background:transparent; }
 .deal-detail #detailReadStatus:empty { display:none; }
-.phase-scroll { overflow-x:auto; margin:8px 0 24px; padding-bottom:8px; }
-.phase-rail { display:flex; flex-wrap:nowrap; list-style:none; padding:0; gap:0; margin:0; min-width:840px; }
-.phase-rail li { flex:1; border-top:2px solid var(--line); padding:12px 8px 0; position:relative; font-size:12px; }
+/* Phases wrap onto further rows instead of scrolling, at every width. */
+.phase-rail { display:grid; grid-template-columns:repeat(auto-fit,minmax(112px,1fr)); gap:16px 0; list-style:none; padding:0 0 8px; margin:8px 0 24px; }
+.phase-rail li { border-top:2px solid var(--line); padding:12px 8px 0; position:relative; font-size:12px; }
 .phase-rail li::before { content:''; width:8px; height:8px; border-radius:50%; background:#293b52; position:absolute; top:-5px; left:8px; }
 .phase-rail li[aria-current] { border-color:var(--orange); color:var(--orange-text); }
 .phase-rail li[aria-current]::before { background:var(--orange); box-shadow:0 0 18px #e4813670; }
@@ -25,16 +25,18 @@
 .critical-date p { font-size:12px; }
 .add-date { cursor:pointer; border-style:dashed; background:var(--ground-0); }
 .add-date strong { font-family:inherit; font-size:14px; color:var(--orange-text); margin-top:8px; }
-.deal-timeline { border:1px solid var(--line); border-radius:14px; background:linear-gradient(120deg,var(--ground-1),var(--ground-0)); color:var(--text); padding:20px; margin-bottom:28px; min-width:0; }
+.deal-timeline { container-type:inline-size; border:1px solid var(--line); border-radius:14px; background:linear-gradient(120deg,var(--ground-1),var(--ground-0)); color:var(--text); padding:20px; margin-bottom:28px; min-width:0; }
 .timeline-heading { display:flex; justify-content:space-between; align-items:center; gap:12px; }
 .timeline-heading h3 { margin:0; font-family:'Barlow Condensed',sans-serif; font-size:28px; }
 .timeline-heading select { max-width:100%; }
-.timeline-viewport { overflow-x:auto; }
-.timeline-chart { width:100%; display:block; overflow:visible; margin:16px 0; }
+.timeline-chart { width:100%; height:180px; display:block; overflow:visible; margin:16px 0; }
 .timeline-chart text { fill:var(--quiet); font-family:'DM Sans',sans-serif; font-size:12px; }
 .timeline-baseline { stroke:#4f6481; stroke-width:2; }
 .timeline-grid { stroke:#20334b; stroke-dasharray:3 4; }
 .timeline-point { fill:var(--orange); stroke:#0c1522; stroke-width:3; }
+/* 3% keeps 24px markers apart on charts of 800px and wider; 11% down to 218px. */
+.timeline-marks-narrow { display:none; }
+@container (max-width:880px) { .timeline-marks-wide { display:none; } .timeline-marks-narrow { display:inline; } }
 .timeline-today { stroke:var(--orange); stroke-dasharray:4 4; }
 .timeline-chart .timeline-count { fill:#07111f; font-size:11px; font-weight:700; }
 .timeline-chart .timeline-today-label { fill:var(--orange-text); }
@@ -50,11 +52,13 @@
 .deal-detail .full-record { margin-top:0; }
 #dealDateDialog input { width:100%; min-width:0; color:var(--text); background:var(--ground-0); padding:12px; border:1px solid var(--line); border-radius:8px; }
 @keyframes deadline-glow { 50% { border-color:#b7693c; } }
-@media(max-width:760px) { .timeline-entries { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+@media(max-width:760px),(hover:none) and (pointer:coarse) and (max-width:1023px){
+  .timeline-entries { grid-template-columns:repeat(2,minmax(0,1fr)); }
+}
 @media(max-width:500px) {
   .deal-timeline { padding:12px; }
   .timeline-heading { align-items:flex-start; flex-direction:column; }
-  .timeline-chart { min-width:580px; }
+  .timeline-tick-inner { display:none; }
   .timeline-entries { grid-template-columns:1fr; }
   .critical-dates { grid-template-columns:repeat(2,minmax(0,1fr)); }
   .critical-date { padding:12px; }

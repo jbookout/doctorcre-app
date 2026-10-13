@@ -16,6 +16,7 @@ export default {
     "test/task-dialog-refresh.test.mjs",
     "test/task-draft-identity.test.mjs",
     "test/task-read-epoch.test.mjs",
+    "test/task-page-fixture.mjs",
     "test/task-records.test.mjs",
     "test/tasks-phone-layout.test.mjs",
     "test/tasks-resume.test.mjs"

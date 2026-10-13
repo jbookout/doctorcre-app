@@ -4,9 +4,11 @@ import {readFile,mkdir} from 'node:fs/promises';
 import { chromium, waitForAsync } from './browser-harness.mjs';
 import {dealHref} from '../js/home-dashboard-model.js';
 const root=new URL('../',import.meta.url);
-async function open(t,{width=1440,link=false,reducedMotion='no-preference',fixtureDelayMs=0}={}) {
+// A touch tablet: the iPad Mini portrait profile.
+const ipad={viewport:{width:768,height:1024},deviceScaleFactor:2,isMobile:true,hasTouch:true};
+async function open(t,{width=1440,device,link=false,reducedMotion='no-preference',fixtureDelayMs=0}={}) {
  const browser=await chromium.launch();t.after(()=>browser.close());
- const page=await browser.newPage({viewport:{width,height:960},reducedMotion});
+ const page=await browser.newPage({...(device?ipad:{viewport:{width,height:960}}),reducedMotion});
  const errors=[];page.on('pageerror',e=>errors.push(e.message));
  await page.clock.install({time:new Date('2026-10-04T17:00:00Z')});
  await page.route('**/*',async route=>{
@@ -50,6 +52,37 @@ test('timeline fixture waits for delayed client initialization before instrument
  assert.equal(await page.locator('#timelineRange').isVisible(),true);
  assert.deepEqual(errors,[]);
 });
+// Measures what a reader sees: each chart label's rendered size, overlap and
+// containment, and whether the timeline needs horizontal scrolling.
+for (const view of [{width:320},{width:390},{device:'iPad'},{width:1440}])
+ test(`W9 timeline chart and phases stay readable without scrolling at ${view.device||view.width+'px'}`,async t=>{
+  const {page,errors}=await open(t,view);
+  for (const range of ['full','recent']) {
+   await page.locator('#timelineRange').selectOption(range);
+   const layout=await page.locator('.deal-timeline').evaluate(section=>{
+    const svg=section.querySelector('.timeline-chart'),box=svg.getBoundingClientRect(),scale=svg.getScreenCTM().a;
+    const labels=[...svg.querySelectorAll('text')].filter(text=>text.getClientRects().length).map(text=>({text:text.textContent,size:parseFloat(getComputedStyle(text).fontSize)*scale,rect:text.getBoundingClientRect()}));
+    const ticks=labels.filter(label=>label.rect.top>box.top+150);
+    return {
+     smallest:Math.min(...labels.map(label=>label.size)),
+     outside:labels.filter(({rect})=>rect.left<box.left-1||rect.right>box.right+1).map(label=>label.text),
+     overlaps:ticks.slice(1).filter((label,i)=>label.rect.left<ticks[i].rect.right).map(label=>label.text),
+     markers:[...svg.querySelectorAll('.timeline-point')].map(node=>node.getBoundingClientRect()).filter(rect=>rect.width),
+     scrolls:[section,section.closest('#recordPanel'),section.closest('#panelBody')?.querySelector('.phase-rail')].filter(Boolean).filter(node=>node.scrollWidth>node.clientWidth+1).map(node=>node.className||node.id),
+     phaseTabStops:[...(section.closest('#panelBody')?.querySelectorAll('.phase-rail, .phase-rail *')||[])].filter(node=>node.tabIndex>=0).length,
+    };
+   });
+   assert.ok(layout.smallest>=11,`${range}: smallest chart label renders at ${layout.smallest}px`);
+   assert.deepEqual(layout.outside,[],`${range}: labels stay inside the chart`);
+   assert.deepEqual(layout.overlaps,[],`${range}: date ticks do not overlap`);
+   assert.deepEqual(layout.scrolls,[],`${range}: nothing scrolls sideways`);
+   const crowded=layout.markers.flatMap((a,i)=>layout.markers.slice(i+1).filter(b=>Math.abs(a.top-b.top)<1&&a.left<b.right&&b.left<a.right).map(b=>[Math.round(a.left),Math.round(b.left)]));
+   assert.deepEqual(crowded,[],`${range}: date and activity markers do not overlap`);
+   assert.equal(layout.phaseTabStops,0,`${range}: the phase rail adds no empty tab stop`);
+  }
+  assert.deepEqual(errors,[]);
+ });
+
 test('W9 horizontal phase dates, countdowns, dated originals, wide layout and phone renders',async t=>{
  await mkdir(new URL('out/test-artifacts/w9/',root),{recursive:true});
  for(const width of [1440,390,320])await t.test(String(width),async t=>{

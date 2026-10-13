@@ -26,6 +26,7 @@
 //     close value. So this tab charts the open board only, says so, and draws
 //     no forecast at all rather than a fabricated one.
 import { COLUMNS, columnByValue } from "./pipeline-model.js";
+import { ACTOR_LABEL } from "./client.js";
 
 /* --------------------------------------------------------- the frozen sentences */
 
@@ -296,6 +297,19 @@ export function selectionLabel(group, pick) {
   return `${dimension.label}: ${String(pick)}`;
 }
 
+/**
+ * Where a slice's Deals link goes, and what it says. Deals is the LOCAL board
+ * and can filter by owner only, so an owner slice for a partner it knows is
+ * carried; every other slice (and national-account rows, which Deals never
+ * shows) opens the whole local board and the label says so.
+ */
+export function dealsDestination(group, pick) {
+  if (group === "owner" && Object.hasOwn(ACTOR_LABEL, pick)) {
+    return Object.freeze({ href: `/deals?view=board&owner=${encodeURIComponent(pick)}`, label: `Open ${ACTOR_LABEL[pick]}'s local deals` });
+  }
+  return Object.freeze({ href: "/deals?view=board", label: "Open all local deals" });
+}
+
 /* -------------------------------------------------------------- the address */
 
 /**
@@ -337,7 +351,7 @@ export const CHARTS_STATE_COPY = Object.freeze({
   no_match: Object.freeze({ title: "No matches", copy: "", retry: false }),
   unreadable: Object.freeze({ title: "Charts temporarily unavailable", copy: "", retry: false }),
   refused: Object.freeze({ title: "Sign-in required", copy: "", retry: false }),
-  unavailable: Object.freeze({ title: "Charts temporarily unavailable", copy: "", retry: false }),
+  unavailable: Object.freeze({ title: "Charts temporarily unavailable", copy: "", retry: true }),
   stale: Object.freeze({ title: "Updating…", copy: "", retry: false }),
 });
 
@@ -375,15 +389,6 @@ export function chartsPhase({ status, payload, group = null, pick = null }) {
   if (selectionLabel(group, pick) && filterDeals(payload.deals, group, pick).length === 0) return "no_match";
   if (payload.accounts.length === 0) return "partial";
   return "ready";
-}
-
-/**
- * The sequence guard. A response paints only when no newer read has been
- * started since it left; an older answer that overtakes a newer one renders
- * NOTHING rather than replacing what is on screen.
- */
-export function acceptsBoardResponse(current, token) {
-  return Number(current) === Number(token);
 }
 
 /* ------------------------------------------------------------ the device fact */

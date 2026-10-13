@@ -36,12 +36,12 @@
 #docApprovalStatus { min-height:20px; color:#ffb185; font-size:13px; }
 @keyframes doc-breathe { 50% { box-shadow:0 0 24px #f2692450,inset 0 0 16px #87b9ff70; } }
 @keyframes doc-arrive { from { opacity:0; transform:translateY(10px) scale(.99); } }
-@media(max-width:760px) { .doc-presence { right:14px; } .doc-detail { box-sizing:border-box; padding:18px; width:calc(100vw - 20px); max-height:calc(100dvh - 24px); } .doc-detail-grid { grid-template-columns:minmax(0,1fr); gap:12px; } .doc-detail dl { grid-template-columns:minmax(0,1fr); } .doc-suggestion-strip { flex-wrap:wrap; } }
+@media(max-width:760px),(hover:none) and (pointer:coarse) and (max-width:1023px){ .doc-presence { right:14px; } .doc-detail { box-sizing:border-box; padding:18px; width:calc(100vw - 20px); max-height:calc(100dvh - 24px); } .doc-detail-grid { grid-template-columns:minmax(0,1fr); gap:12px; } .doc-detail dl { grid-template-columns:minmax(0,1fr); } .doc-suggestion-strip { flex-wrap:wrap; } }
 @media(prefers-reduced-motion:reduce) { .doc-orb,.doc-detail[open] { animation:none; } .doc-presence button,.doc-detail button,.doc-action,.doc-activity { transition:none; } .doc-presence button:hover,.doc-detail button:hover,.doc-action:hover,.doc-activity:hover { transform:none; } }
 :root[data-motion="reduced"] :is(.doc-orb,.doc-detail[open]) { animation:none; }
 :root[data-motion="reduced"] :is(.doc-presence button,.doc-detail button,.doc-action,.doc-activity) { transition:none; }
 :root[data-motion="reduced"] :is(.doc-presence button:hover,.doc-detail button:hover,.doc-action:hover,.doc-activity:hover) { transform:none; }
-@media(max-width:760px) { .doc-detail-grid>section:last-child { order:-1; } }
+@media(max-width:760px),(hover:none) and (pointer:coarse) and (max-width:1023px){ .doc-detail-grid>section:last-child { order:-1; } }
 
 
 .doc-detail { box-sizing:border-box; overflow:auto; backdrop-filter:blur(22px); }
@@ -73,3 +73,5 @@
 
 /* Popup controls keep their own row and stay reachable while the record scrolls. */
 :is(dialog[open],aside#recordPanel:not([hidden])) > .doc-presence { position:sticky; top:0; right:auto; bottom:auto; display:flex; align-items:center; gap:8px; margin:0 0 12px; }
+
+@media(max-width:760px),(hover:none) and (pointer:coarse) and (max-width:1023px){.has-app-layout .app-layout-sidebar,.has-app-layout .app-layout-today{padding-bottom:100px}}

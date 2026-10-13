@@ -1695,6 +1695,9 @@ export async function createFixtureClient(opts = {}) {
     // statuses or inbox, so it never answers those rows, and no test may treat
     // it as evidence of what production returns. Dates are minted against the
     // current clock, since a frozen "today" would make every run look overdue.
+    async listFeatureSwitches() {
+      return {ok:true,schema:'feature-switches.v1',switches:[{name:'doc-suggestion-actions',available:true}]};
+    },
     async morningBrief() {
       const own = row => !row.owner || row.owner === selfActor;
       const section = items => ({ state: items.length ? 'ready' : 'empty', items });
@@ -1821,6 +1824,8 @@ export async function createFixtureClient(opts = {}) {
           throw error;
         }
         for (const field of allowed) if (fields[field] !== undefined) found[field] = fields[field];
+        // Like update-loop, leaving the dated marker clears the saved day.
+        if (found.marker !== 'dated') found.due_on = null;
         if (fields.blocker !== undefined) {
           found.blocker_class = fields.blocker;
           found.blocker_detail = fields.blocker_detail ?? found.blocker_detail;

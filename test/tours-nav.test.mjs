@@ -5,7 +5,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { appShellMarkup } from "../js/app-shell.js";
+import { appShellMarkup } from "../js/navigation.js";
 
 const html = readFileSync(fileURLToPath(new URL("../tours/index.html", import.meta.url)), "utf8");
 const css = readFileSync(fileURLToPath(new URL("../tours/app.css", import.meta.url)), "utf8");

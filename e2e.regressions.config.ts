@@ -1,14 +1,15 @@
 import type { E2EConfig } from 'e2e';
 import { web } from '@e2e-dev/web';
-import { chatgpt } from 'e2e/oauth/chatgpt';
+import { modelRoomExplorationModel } from './scripts/e2e-staging/model-room.mjs';
+import { modelCallsAllowed, RUN_LIMITS } from './scripts/e2e-staging/run-limits.mjs';
 
 process.env.E2E_TELEMETRY_DISABLED = '1';
 process.env.DO_NOT_TRACK = '1';
 
 export default {
   tests: ['tests/regressions/**/*.e2e.ts'],
-  workers: 1,
-  retries: 0,
+  workers: RUN_LIMITS.workers,
+  retries: RUN_LIMITS.retries,
   assertionTimeout: 5_000,
   trace: 'on',
   video: 'on',
@@ -21,5 +22,5 @@ export default {
       command: { executable: 'node', args: ['scripts/qa-fixture-server.mjs'], env: { PORT: '{port}' }, log: '.e2e/logs/regression-fixtures.log' },
     },
   }],
-  ...(process.env.CI ? {} : { agents: { default: { model: chatgpt('gpt-6.1-sol'), providerOptions: { openai: { reasoningEffort: 'high' } }, context: 'Synthetic local DoctorCRE fixtures only. Never start a login or navigate to production.' } } }),
+  ...(process.env.CI || !modelCallsAllowed() ? {} : { agents: { default: { model: modelRoomExplorationModel, context: 'Synthetic local DoctorCRE fixtures only. Never start a login or navigate to production.' } } }),
 } satisfies E2EConfig;

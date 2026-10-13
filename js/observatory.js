@@ -1,7 +1,8 @@
 import { groupConversations, labelFor, modelFor, summarizeNow } from './observatory-model.js';
+import { mountVisibilityPoll } from './visibility-poll.mjs';
 
 const $ = (id) => document.getElementById(id);
-const state = { activity: [], conversation: [], before: null, more: false, selected: new URLSearchParams(location.search).get('thread'), loading: false, searched: false };
+const state = { activity: [], conversation: [], before: null, more: false, selected: new URLSearchParams(location.search).get('thread'), loading: false, searched: false, unavailable: false };
 const DEEP_LINK_PAGE_LIMIT = 5;
 const seen = (rows) => new Map(rows.map((row) => [String(row.msg_id || row.seq), row]));
 const merge = (oldRows, incoming) => [...seen([...oldRows, ...incoming]).values()].sort((a, b) => Number(a.seq) - Number(b.seq));
@@ -22,6 +23,33 @@ const node = (tag, className, content) => {
 };
 const clear = (target) => { target.replaceChildren(); return target; };
 const summary = (value, fallback) => String(value || fallback).trim().slice(0, 150);
+
+function updateHistoryCursor(page) {
+  const cursor = String(page.before_seq ?? '');
+  state.before = /^[1-9]\d*$/.test(cursor) ? cursor : null;
+  state.more = Boolean(state.before && page.more && page.turns?.length);
+}
+
+const canLoadOlder = () => Boolean(state.more && state.before);
+function renderPagination() {
+  $('loadOlder').hidden = !canLoadOlder();
+  $('loadOlder').disabled = state.loading || !canLoadOlder();
+}
+
+function renderUnavailable() {
+  for (const id of ['liveOrb', 'presenceDot']) $(id).dataset.state = 'urgent';
+  $('presenceText').textContent = 'Room unavailable';
+  $('freshness').textContent = 'Room read unavailable';
+  $('runningFreshness').textContent = 'Unavailable';
+  $('archiveCount').textContent = 'Unavailable';
+  for (const id of ['figCycle', 'figBridge', 'figDesks', 'runningCount', 'attentionCount', 'finishedCount',
+    'flowRunning', 'flowAttention', 'flowFinished']) $(id).textContent = '—';
+  for (const id of ['runningSummary', 'attentionSummary', 'finishedSummary']) $(id).textContent = 'Unavailable';
+  for (const id of ['nowDialogue', 'runningList', 'attentionList', 'finishedList', 'currentThread', 'archiveList']) {
+    clear($(id)).append(node('p', 'empty', 'Unavailable. Retry the room read.'));
+  }
+  $('refreshButton').textContent = 'Retry';
+}
 
 async function readLatest(mode = 'all', before = null) {
   const params = new URLSearchParams({ mode, limit: '200' });
@@ -91,7 +119,7 @@ function renderArchive(threads, selected) {
     link.append(node('span', 'archive-date', `${formatTime(thread.firstAt)} – ${formatTime(thread.lastAt)}`));
     host.append(link);
   }
-  $('loadOlder').hidden = !state.more;
+  renderPagination();
 }
 
 function renderNow() {
@@ -150,6 +178,8 @@ function renderNow() {
 }
 
 function render() {
+  if (state.unavailable) return renderUnavailable();
+  $('refreshButton').textContent = 'Refresh';
   renderNow();
   const threads = groupConversations(state.conversation);
   const selected = state.selected ? threads.find((thread) => thread.key === state.selected) : threads[0];
@@ -164,52 +194,52 @@ function toast(text) {
 }
 
 async function loadOlder() {
-  if (!state.more || state.loading || !state.before) return;
+  if (!canLoadOlder() || state.loading) return;
   state.loading = true;
-  $('loadOlder').disabled = true;
+  renderPagination();
   try {
     const page = await readLatest('conversation', state.before);
     state.conversation = merge(state.conversation, page.turns || []);
-    state.before = page.before_seq;
-    state.more = Boolean(page.more && page.turns?.length);
+    updateHistoryCursor(page);
     render();
-  } catch (error) { toast(error.message); }
-  finally { state.loading = false; $('loadOlder').disabled = false; }
+  } catch (error) {
+    if (error.message !== 'sign_in_required') toast('Older threads unavailable. Try loading older threads again.');
+  }
+  finally { state.loading = false; renderPagination(); }
 }
 
 async function refresh() {
   if (state.loading) return;
   state.loading = true;
   $('refreshButton').disabled = true;
-  $('loadOlder').disabled = true;
+  renderPagination();
   try {
     const [activity, conversation] = await Promise.all([readLatest('all'), readLatest('conversation')]);
     state.activity = merge(state.activity, activity.turns || []).slice(-600);
     state.conversation = merge(state.conversation, conversation.turns || []);
-    if (state.before === null) { state.before = conversation.before_seq; state.more = Boolean(conversation.more); }
+    if (state.before === null) updateHistoryCursor(conversation);
     if (state.selected && !state.searched) {
       let pages = 0;
       while (state.more && state.before && pages < DEEP_LINK_PAGE_LIMIT
         && !groupConversations(state.conversation).some(thread => thread.key === state.selected)) {
         const page = await readLatest('conversation', state.before);
         state.conversation = merge(state.conversation, page.turns || []);
-        state.before = page.before_seq;
-        state.more = Boolean(page.more && page.turns?.length);
+        updateHistoryCursor(page);
         pages++;
       }
       state.searched = true;
     }
+    state.unavailable = false;
     render();
   } catch (error) {
     if (error.message !== 'sign_in_required') {
-      $('liveOrb').dataset.state = 'urgent';
-      $('freshness').textContent = `Room read unavailable · ${error.message}`;
-      toast(error.message);
+      state.unavailable = true;
+      render();
     }
   } finally {
     state.loading = false;
     $('refreshButton').disabled = false;
-    $('loadOlder').disabled = false;
+    renderPagination();
   }
 }
 
@@ -220,4 +250,4 @@ document.querySelectorAll('[data-focus]').forEach((item) => item.addEventListene
 $('refreshButton').addEventListener('click', refresh);
 $('loadOlder').addEventListener('click', loadOlder);
 refresh();
-setInterval(() => { if (!document.hidden) refresh(); }, 10_000);
+mountVisibilityPoll({ poll: refresh, intervalMs: 10_000 });

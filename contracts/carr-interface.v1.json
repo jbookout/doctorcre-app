@@ -1,9 +1,9 @@
 {
   "schema": "doctorcre-carr-interface.v1",
-  "version": "1.44.0",
+  "version": "1.45.0",
   "producer": {
     "repository": "jbookout/carr-system",
-    "source_commit": "b8e044ace2ef2270ab75d63a628448e04e392e81"
+    "source_commit": "e2e484b1933bfd63c10cc9a1b3350132948f6f74"
   },
   "consumer": "jbookout/doctorcre-app",
   "transport": {
@@ -21,6 +21,7 @@
     "add-deal-note",
     "add-industry-event",
     "add-loop",
+    "add-party",
     "add-room-turn",
     "advance-workflow-cutover-stage",
     "answer-board-question",
@@ -57,19 +58,23 @@
     "link-lead-client",
     "list-doc-conversations",
     "list-doc-suggestions",
+    "list-feature-switches",
     "list-industry-events",
     "list-my-codex-sessions",
     "list-progress-boards",
     "loop-board",
     "loop-headers",
     "morning-brief",
+    "new-client",
     "new-deal",
+    "new-lead",
     "notification-feed",
     "patch-deal-field",
     "presence-lease",
     "propose-doc-correction",
     "read-assurance-health",
     "read-correspondence-thread",
+    "read-deal-reconciliation",
     "read-dispatch-history",
     "read-doc-activity",
     "read-doc-conversation",
@@ -132,7 +137,8 @@
     "/api/tours/selection-cart",
     "/api/tours/feedback",
     "/api/tours/property-evidence/v1",
-    "/api/tours/*"
+    "/api/tours/*",
+    "/api/v1/runtime-errors"
   ],
   "invariants": [
     "The browser never receives database credentials.",
@@ -515,6 +521,71 @@
         "rent_start",
         "option_window"
       ]
+    },
+    "list-feature-switches": {
+      "version": "1.0.0",
+      "write": false,
+      "producer": {
+        "repository": "jbookout/carr-system",
+        "source_commit": "e2e484b1933bfd63c10cc9a1b3350132948f6f74",
+        "module": "mcp-server/src/feature-switches.js"
+      },
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9-]{0,62}$"
+          }
+        }
+      },
+      "response": {
+        "schema": "feature-switches.v1",
+        "required_keys": [
+          "ok",
+          "schema",
+          "switches",
+          "history"
+        ],
+        "switch_keys": [
+          "id",
+          "name",
+          "description",
+          "default_enabled",
+          "enabled",
+          "audience",
+          "owner",
+          "created_at",
+          "expected_removal_on",
+          "retired_at",
+          "version",
+          "available"
+        ],
+        "history_keys": [
+          "actor",
+          "recorded_at",
+          "before",
+          "after",
+          "verb"
+        ]
+      },
+      "availability": "CARR evaluates the authenticated actor; the app consumes available === true and never evaluates audiences.",
+      "refresh": {
+        "poll_ms": 30000,
+        "deadline_ms": 10000,
+        "on_failure": "hidden",
+        "on_resume": "hidden until fresh read"
+      },
+      "first_consumer": {
+        "name": "doc-suggestion-actions",
+        "slice": "V5-UX-B08",
+        "worker_gated_verbs": [
+          "decide-doc-suggestion",
+          "propose-doc-correction"
+        ],
+        "seed_default": false
+      }
     }
   },
   "vendor_directory": {
@@ -638,5 +709,13 @@
     ],
     "overnight_read": "GET /pipeline/changes; initial base64url JSON keyset cursor {recorded_at: ISO cutoff, id: zero UUID}; subsequent opaque cursors are server-issued; only brief-authorized deal IDs render",
     "content_storage": "memory only"
+  },
+  "runtime_errors": {
+    "contract": "contracts/runtime-errors.v1.json",
+    "edge_binding": "CARR_ERRORS",
+    "producer": {
+      "repository": "jbookout/carr-system",
+      "source_commit": "a3a6913f7af0d721ab538090b1347976befcf421"
+    }
   }
 }

@@ -85,7 +85,7 @@ for(const method of ['readDocConversation','listDocConversations','listDocSugges
  await rejected;
 });
 test('every data surface mounts background refresh or the existing board coordinator', async () => {
-  for (const name of ['workspace-command-center','workspace-business','leads-workspace-app','calendar','ideas','control-room','atlas','notifications','incidents','conversations','task-records','work-inventory','system-work-app','model-room','sessions','business-workspace','charts','search','status']) {
+  for (const name of ['workspace-command-center','workspace-business','leads-workspace-app','calendar','ideas','control-room','atlas','notifications','incidents','conversations','task-records','work-inventory','system-work-app','model-room','sessions','charts','search','status']) {
     assert.match(await readFile(new URL(`../js/${name}.js`, import.meta.url), 'utf8'), /mountAutoRefresh\(/, name);
   }
   assert.match(await readFile(new URL('../tours/app.js', import.meta.url), 'utf8'), /mountAutoRefresh\(/);
@@ -106,4 +106,22 @@ test('a failed read retries on a short backoff and a good read restores the poll
   const handle = mountAutoRefresh({ document, window, timeoutMs: 5, refresh: () => { reads++; if (fail-- > 0) throw Error('synthetic outage'); } });
   for (let i = 0; i < 4; i++) { job(); await settle(); }
   assert.equal(reads, 4); assert.deepEqual(delays, [30_000, 1_000, 2_000, 4_000, 30_000]); handle.dispose();
+});
+test('a read replaced on resume is neither a success nor a failure for the retry backoff', async () => {
+  const document = new EventTarget(); document.visibilityState = 'visible';
+  const window = new EventTarget(); const delays = []; let job = null;
+  window.setTimeout = (fn, ms) => { if (ms === 5_000) return 0; delays.push(ms); job = fn; return delays.length; }; window.clearTimeout = () => {};
+  let reads = 0;
+  const handle = mountAutoRefresh({ document, window, timeoutMs: 5_000, onResume: () => {}, refresh: () => {
+    reads++;
+    if (reads === 1) return new Promise(() => {}); // ignores abort
+    throw Error('synthetic outage');
+  } });
+  job(); await settle();
+  document.visibilityState = 'hidden'; document.dispatchEvent(new Event('visibilitychange'));
+  document.visibilityState = 'visible'; document.dispatchEvent(new Event('visibilitychange'));
+  await settle(); await settle();
+  // The replaced read re-arms the plain interval; only the queued read's real
+  // failure counts, so the retry is the first backoff step, not the second.
+  assert.equal(reads, 2); assert.deepEqual(delays, [30_000, 30_000, 1_000]); handle.dispose();
 });

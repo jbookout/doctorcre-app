@@ -1,4 +1,4 @@
-import { readFile } from 'node:fs/promises';
+import { readFile, rm, mkdir } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 
 // Product coverage is owned by the manifest; every consumer derives its file
@@ -8,6 +8,10 @@ export const journeyFiles = [...new Set(requiredNativeEntries.map(row => row.fil
 export const continuityCases = [320, 390, 844].flatMap(width =>
   ['reduce', 'no-preference'].map(motion => ({ width, motion, id: `continuity-${width}-${motion}` })));
 
+// The acceptance targets are independent of the runner's target selection, so
+// deleting a device profile from the config cannot shrink the proof.
+export const requiredTargets = ['chromium', 'iphone', 'small-android', 'phone-390', 'ipad'];
+
 export function validateNativeCompletion(native, sourceCommit, entries = requiredNativeEntries) {
   const run = native?.run;
   if (run?.vcs?.commit !== sourceCommit || run.vcs.dirty !== false || run.exitCode !== 0 || run.status !== 'passed' || !run.id)
@@ -15,10 +19,10 @@ export function validateNativeCompletion(native, sourceCommit, entries = require
   const selected = run.results.filter(row => row.selected);
   if (!selected.length || selected.some(row => row.status !== 'passed' || row.attempts?.length !== 1))
     throw Error('native results incomplete');
-  for (const {file, title} of entries) {
+  for (const target of requiredTargets) for (const {file, title} of entries) {
     const id = `${file}::${encodeURIComponent(title)}`;
-    if (selected.filter(row => row.testId === id && row.file === file).length !== 1)
-      throw Error(`required native entry point incomplete: ${id}`);
+    if (selected.filter(row => row.testId === id && row.file === file && row.targetId === target).length !== 1)
+      throw Error(`required native entry point incomplete: ${target}/${id}`);
   }
   return selected.length;
 }
@@ -55,4 +59,12 @@ export async function assertServedBuild(origin, expected) {
   const manifestDigest = createHash('sha256').update(bytes).digest('hex');
   if (manifestDigest !== expected.manifestDigest) throw Error('served build manifest digest mismatch');
   return { sourceCommit: manifest.source_commit, manifestDigest };
+}
+
+// Each run replaces its own output in place; nothing from an earlier run is kept.
+export async function replaceOutputDirs(...dirs) {
+  for (const dir of dirs) {
+    await rm(dir, { recursive: true, force: true });
+    await mkdir(dir, { recursive: true });
+  }
 }
