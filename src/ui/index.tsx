@@ -6,7 +6,6 @@ import { NodeHost } from "./node-host";
 // it before returning. The returned root's unmount() restores the page.
 export function hostNode(node: Element): Root {
   const container = node.ownerDocument.createElement("div");
-  container.className = "node-host-root";
   node.before(container);
   const root = createRoot(container);
   flushSync(() => root.render(<NodeHost node={node} />));

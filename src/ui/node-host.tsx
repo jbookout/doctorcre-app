@@ -14,5 +14,5 @@ export function NodeHost({ node }: { node: Element }) {
     host.append(node);
     return () => home.replaceWith(node);
   }, [node]);
-  return <div ref={container} className="node-host" data-node-host="" />;
+  return <div ref={container} data-node-host="" />;
 }
