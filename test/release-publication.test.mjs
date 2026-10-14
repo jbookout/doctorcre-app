@@ -30,6 +30,9 @@ function fixture(t, { installation = 'locked', browser = false } = {}) {
     mkdirSync(dirname(join(root, 'node_modules', name)), { recursive: true });
     symlinkSync(join(ROOT, 'node_modules', name), join(root, 'node_modules', name), 'dir');
   }
+  const bin = join(root, 'node_modules/.bin');
+  mkdirSync(bin, { recursive: true });
+  symlinkSync('../typescript/bin/tsc', join(bin, 'tsc'));
   git(['add', ...paths.filter(path => existsSync(join(root, path))), 'package.json']);
   git(['-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', 'commit', '-qm', 'Synthetic release source']);
   const commit = git(['rev-parse', 'HEAD']);
@@ -49,7 +52,7 @@ if (args.includes('upload')) console.log('Worker Version ID: ${versionId}');
     const provider = join(root, 'node_modules/wrangler'); mkdirSync(join(provider, 'bin'), { recursive: true });
     writeFileSync(join(provider, 'package.json'), JSON.stringify({ name: 'wrangler', version: installation === 'mismatch' ? '0.0.0' : pkg.devDependencies.wrangler, bin: { wrangler: './bin/wrangler.js' } }));
     writeFileSync(join(provider, 'bin/wrangler.js'), entry);
-    mkdirSync(join(root, 'node_modules/.bin'));
+    mkdirSync(join(root, 'node_modules/.bin'), { recursive: true });
     symlinkSync('../wrangler/bin/wrangler.js', join(root, 'node_modules/.bin/wrangler'));
     chmodSync(join(provider, 'bin/wrangler.js'), 0o755);
     if (installation === 'symlink') {
