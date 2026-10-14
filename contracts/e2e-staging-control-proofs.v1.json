@@ -77,7 +77,7 @@
     "js/workspace-command-center-model.js": "3a2f1115bd4c6cf2f2355af580a3afd266fcea4758f661e9bd00f3d2715ce72f",
     "tours/planner-client.js": "5fe29bff81d1fff4eae86a49c1535425502a861a80df55d3162de6af04446cdc"
   },
-  "carr_source_commit": "c06bdf2788fb69daefb59364ea4fd798fa94f9a4",
+  "carr_source_commit": "5ddaa8f39507de3f3343c5cc5177d3d07168e9eb",
   "controls": [
     {"identity":"control-state.v1:45f819b94841c619ddcfdea51b640a528863cb9b5b40a94fedcc6c8367ebba86","effects":[],"review":{"policy":"dismiss-morning-brief.v1","path":"/","dialog_title":"Morning brief","source":"js/morning-brief.js","handler":"close; stop speech, close dialog and restore focus; no network or business mutation","family":"close-morning-brief"},"observations":[{"selector":"#docMorningBrief","attribute":"open","transitions":[{"from":"","to":null}]}]},
     {"identity":"control-state.v1:0851e9501d84220104783a27beb76e47c9718ddf1f8056aec8af2c9263083228","effects":[],"review":{"policy":"dismiss-morning-brief.v1","path":"/","dialog_title":"Morning brief · Joe","source":"js/morning-brief.js","handler":"close; stop speech, close dialog and restore focus; no network or business mutation","family":"close-morning-brief"},"observations":[{"selector":"#docMorningBrief","attribute":"open","transitions":[{"from":"","to":null}]}]},
