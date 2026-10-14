@@ -110,7 +110,7 @@ export function openRun(output, { limits = RUN_LIMITS, runId = process.env.E2E_R
       try { state = JSON.parse(readFileSync(path, 'utf8')); }
       catch (error) { if (error.code !== 'ENOENT') throw new RunLimitError('run-ledger-unreadable'); missing = true; }
       if (missing) { const startedAt = now(); state = { schema: 'doctorcre-run-budget.v1', id: runId || randomUUID(), startedAt, deadline: startedAt + limits.runTimeoutMs,
-        limits, httpRequests: 0, modelCalls: 0, artifactBytes: 0, activeHttp: {}, queuedHttp: {}, processGroups: {}, stopReason: null }; }
+        limits, httpRequests: 0, modelCalls: 0, globalHttpRequests: 0, globalModelCalls: 0, artifactBytes: 0, activeHttp: {}, queuedHttp: {}, processGroups: {}, stopReason: null }; }
       if (!state || typeof state !== 'object' || Array.isArray(state) || state.schema !== 'doctorcre-run-budget.v1' || runId && state.id !== runId ||
           (!(initializing && newInvocation) && JSON.stringify(state.limits) !== JSON.stringify(limits)) ||
           !validRunLimits(state.limits) ||
@@ -120,8 +120,21 @@ export function openRun(output, { limits = RUN_LIMITS, runId = process.env.E2E_R
           (state.stopReason !== null && typeof state.stopReason !== 'string') ||
           !state.queuedHttp || typeof state.queuedHttp !== 'object' || Array.isArray(state.queuedHttp) ||
           ['httpRequests', 'modelCalls', 'artifactBytes'].some(key => !Number.isSafeInteger(state[key]) || state[key] < 0) ||
+          ['globalHttpRequests', 'globalModelCalls'].some(key => state[key] !== undefined && (!Number.isSafeInteger(state[key]) || state[key] < 0)) ||
           (!state.processGroups || typeof state.processGroups !== 'object' || Array.isArray(state.processGroups)) ||
           !state.activeHttp || typeof state.activeHttp !== 'object' || Array.isArray(state.activeHttp))
+        throw new RunLimitError('run-ledger-invalid');
+      // Older ledgers kept each invocation's local counters in history. Fold
+      // that history into monotonic whole-run totals exactly once on upgrade.
+      state.globalHttpRequests ??= (state.invocations || []).reduce((total, row) => total + (Number.isSafeInteger(row?.httpRequests) ? row.httpRequests : 0), state.httpRequests);
+      state.globalModelCalls ??= (state.invocations || []).reduce((total, row) => total + (Number.isSafeInteger(row?.modelCalls) ? row.modelCalls : 0), state.modelCalls);
+      const archived = (key) => (state.invocations || []).reduce((total, row) => {
+        if (!Number.isSafeInteger(row?.[key]) || row[key] < 0) throw new RunLimitError('run-ledger-invalid');
+        return total + row[key];
+      }, 0);
+      if (![state.globalHttpRequests, state.globalModelCalls].every(Number.isSafeInteger) ||
+          state.globalHttpRequests !== archived('httpRequests') + state.httpRequests ||
+          state.globalModelCalls !== archived('modelCalls') + state.modelCalls)
         throw new RunLimitError('run-ledger-invalid');
       const value = change(state, missing);
       const temporary = path + '.' + process.pid + '.tmp';
@@ -134,10 +147,11 @@ export function openRun(output, { limits = RUN_LIMITS, runId = process.env.E2E_R
     if (newInvocation && !missing) {
       if ([state.activeHttp, state.queuedHttp, state.processGroups].some(rows => Object.keys(rows).length))
         throw new RunLimitError('prior-invocation-unsettled');
+      if (now() >= state.deadline) throw new RunLimitError('whole-run-deadline');
+      if (limits.runTimeoutMs !== state.limits.runTimeoutMs) throw new RunLimitError('run-deadline-policy-changed');
       state.invocations ||= [];
       state.invocations.push({ startedAt: state.startedAt, deadline: state.deadline, httpRequests: state.httpRequests,
         modelCalls: state.modelCalls, stopReason: state.stopReason, limits: state.limits });
-      state.startedAt = now(); state.deadline = state.startedAt + limits.runTimeoutMs;
       state.httpRequests = 0; state.modelCalls = 0; state.stopReason = null; state.limits = limits;
     }
     return structuredClone(state);
@@ -165,8 +179,11 @@ export function openRun(output, { limits = RUN_LIMITS, runId = process.env.E2E_R
       if (state.stopReason || now() >= state.deadline) { state.stopReason ||= 'whole-run-deadline'; return false; }
       if (key === 'artifactBytes') state.artifactBytes = Math.max(state.artifactBytes, directoryBytes(root));
       const maximum = key === 'artifactBytes' ? limits.artifactBytes - Math.min(limits.artifactMetadataBytes, Math.floor(limits.artifactBytes / 8)) : limits[key];
-      if (state[key] + amount > maximum) { state.stopReason = reason; return false; }
-      state[key] += amount; return true;
+      const used = key === 'modelCalls' ? state.globalModelCalls : state[key];
+      if (used + amount > maximum) { state.stopReason = reason; return false; }
+      state[key] += amount;
+      if (key === 'modelCalls') state.globalModelCalls += amount;
+      return true;
     });
     if (!accepted) { const stopped = update(state => state.stopReason); stop(stopped); throw new RunLimitError(stopped); }
   };
@@ -231,8 +248,8 @@ export function openRun(output, { limits = RUN_LIMITS, runId = process.env.E2E_R
           const admission = update(state => {
             if (state.stopReason || now() >= state.deadline) return state.stopReason ||= 'whole-run-deadline';
             if (Object.keys(state.activeHttp).length >= limits.httpConcurrency) return false;
-            if (state.httpRequests >= limits.httpRequests) return state.stopReason = 'http-request-limit';
-            state.httpRequests++; state.activeHttp[token] = process.pid; delete state.queuedHttp[token]; return true;
+            if (state.globalHttpRequests >= limits.httpRequests) return state.stopReason = 'http-request-limit';
+            state.httpRequests++; state.globalHttpRequests++; state.activeHttp[token] = process.pid; delete state.queuedHttp[token]; return true;
           });
           if (admission === true) break;
           if (admission) { stop(admission); throw new RunLimitError(admission); }

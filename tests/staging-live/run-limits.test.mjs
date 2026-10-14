@@ -145,6 +145,26 @@ test('the persisted deadline cannot reset on reopen and refuses every reservatio
   assert.equal(run.snapshot().artifactBytes, 0);
 });
 
+test('new invocations preserve the whole-run deadline and cannot resume after it expires', async t => {
+  let now = 1_000;
+  const { root, limits, run } = await fixture(t, { runTimeoutMs: 500 }, { now: () => now });
+  assert.equal(run.snapshot().startedAt, 1_000);
+  assert.equal(run.deadline, 1_500);
+  run.dispose();
+
+  now = 1_600;
+  let requests = 0;
+  assert.throws(() => {
+    const resumed = openRun(root, { limits, runId: run.id, events: null, now: () => now, newInvocation: true });
+    return resumed.http(() => { requests++; });
+  }, code('whole-run-deadline'));
+  assert.equal(requests, 0);
+  const state = JSON.parse(await readFile(join(root, 'run-budget.json'), 'utf8'));
+  assert.equal(state.startedAt, 1_000);
+  assert.equal(state.deadline, 1_500);
+  assert.equal(state.invocations, undefined);
+});
+
 test('artifact reservations retain their count and fail before a write exceeding the quota', async t => {
   const { root, limits, run } = await fixture(t, { artifactBytes: 8_192 });
   const expected = directoryBytes(root) + 3_000;
@@ -279,4 +299,48 @@ test('zero model calls prevents the first reservation and survives reopen and re
   t.after(() => resumed.dispose());
   assert.throws(() => resumed.reserveModel(), code('model-call-limit'));
   assert.equal(resumed.snapshot().modelCalls, 0);
+});
+
+test('global request and model ceilings survive supervisor invocation renewal', async t => {
+  const { root, run } = await fixture(t, { httpRequests: 3, modelCalls: 2 });
+  await run.http(() => true);
+  run.reserveModel();
+  run.stop('worker-exit');
+  const next = openRun(root, { limits: run.limits, runId: run.id, events: null, newInvocation: true });
+  t.after(() => next.dispose());
+  assert.equal(next.snapshot().httpRequests, 0);
+  assert.equal(next.snapshot().modelCalls, 0);
+  assert.equal(next.snapshot().globalHttpRequests, 1);
+  assert.equal(next.snapshot().globalModelCalls, 1);
+  await next.http(() => true);
+  next.reserveModel();
+  assert.throws(() => next.reserveModel(), code('model-call-limit'));
+  // Clear only the sticky stop from the model ceiling to exercise request exhaustion independently.
+  const resumed = openRun(root, { limits: run.limits, runId: run.id, events: null, newInvocation: true });
+  t.after(() => resumed.dispose());
+  await resumed.http(() => true);
+  await assert.rejects(resumed.http(() => true), code('http-request-limit'));
+  assert.equal(resumed.snapshot().globalHttpRequests, 3);
+  assert.equal(resumed.snapshot().globalModelCalls, 2);
+});
+
+test('legacy invocation history migrates into global totals and corrupted totals fail closed', async t => {
+  const { root, run } = await fixture(t, { httpRequests: 4, modelCalls: 3 });
+  await run.http(() => true);
+  run.reserveModel();
+  run.dispose();
+  const path = join(root, 'run-budget.json');
+  const legacy = JSON.parse(await readFile(path, 'utf8'));
+  delete legacy.globalHttpRequests;
+  delete legacy.globalModelCalls;
+  await writeFile(path, JSON.stringify(legacy));
+  const resumed = openRun(root, { limits: run.limits, runId: run.id, events: null, newInvocation: true });
+  t.after(() => resumed.dispose());
+  assert.equal(resumed.snapshot().globalHttpRequests, 1);
+  assert.equal(resumed.snapshot().globalModelCalls, 1);
+  resumed.dispose();
+  const corrupt = JSON.parse(await readFile(path, 'utf8'));
+  corrupt.globalHttpRequests = 0;
+  await writeFile(path, JSON.stringify(corrupt));
+  assert.throws(() => openRun(root, { limits: run.limits, runId: run.id, events: null }), code('run-ledger-invalid'));
 });
