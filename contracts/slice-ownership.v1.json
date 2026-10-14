@@ -13,6 +13,8 @@
     "css/system.css",
     "css/workspace.css",
     "js/app-layout.js",
+    "src/ui/index.tsx",
+    "test/ui-host.test.mjs",
     "js/touch-layout.js",
     "js/app-shell.js",
     "js/assurance-health-model.js",

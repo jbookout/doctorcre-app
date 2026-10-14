@@ -82,7 +82,7 @@ assert.equal(routes.routes["/calendar"], "calendar.html", "the Calendar route mu
 assert.equal(routes.routes["/ideas-events"], "ideas.html", "Ideas and Events must stay in the route contract");
 for (const verb of ["deal-room-board", "get-deal-room", "find-and-catch-up"]) assert.ok(contract.mcp_operations.includes(verb), `the B04 surfaces need ${verb} pinned`);
 
-const textExtensions = new Set([".js", ".mjs", ".json", ".html", ".css", ".md", ".yml", ".yaml"]);
+const textExtensions = new Set([".js", ".mjs", ".ts", ".tsx", ".json", ".html", ".css", ".md", ".yml", ".yaml"]);
 const forbidden = [
   [/BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY/, "private key"],
   [/postgres(?:ql)?:\/\//i, "database connection string"],

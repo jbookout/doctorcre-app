@@ -8,8 +8,9 @@ import { createAppLayout } from '../js/app-layout.js';
 import ownership from '../contracts/slice-ownership.v1.json' with { type: 'json' };
 import { registerSlices, NAVIGATION_GROUPS, createSliceSection } from '../js/slice-registration.js';
 import { offlineTourShell } from './offline-tour-shell.mjs';
+import { UI_ENTRY, UI_OUTPUT, uiBundle } from './ui-bundle.mjs';
 
-export const GENERATED_PATHS = ['contracts/app-routes.v1.json', 'js/slices.generated.js', 'tours/day-shell.generated.js'];
+export const GENERATED_PATHS = ['contracts/app-routes.v1.json', 'js/slices.generated.js', 'tours/day-shell.generated.js', UI_OUTPUT];
 const safePath = path => typeof path === 'string' && path.length > 0 && !path.startsWith('/') && !path.split('/').includes('..') && posix.normalize(path) === path;
 const pathname = path => typeof path === 'string' && /^\/(?!\/)[^?#]*$/.test(path);
 
@@ -122,6 +123,8 @@ export async function sliceOutputs(names, readSource) {
     const shell = await offlineTourShell(path => outputs.has(path) ? outputs.get(path) : readSource(path));
     outputs.set('tours/day-shell.generated.js', Buffer.from(`self.TOUR_DAY_SHELL = ${JSON.stringify(shell)};\n`));
   }
+  // A source admitted as the shared React island entry is compiled with the rest.
+  if (shared.includes(UI_ENTRY)) outputs.set(UI_OUTPUT, await uiBundle(readSource));
   return { ...result, shared, outputs };
 }
 

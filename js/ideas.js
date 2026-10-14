@@ -562,6 +562,8 @@ function wire() {
 }
 
 async function boot() {
+  // Read before remember() rewrites the address to the page's own state.
+  const reactHost = new URLSearchParams(globalThis.location?.search || "").get("ui") === "react";
   mountPrefs();
 
   wire();
@@ -571,6 +573,9 @@ async function boot() {
   remember();
   render();
   const resolved = resolveDealroomBoot(globalThis.location || { hostname: "", search: "" });
+  // Workspace slice S1: ?ui=react hosts the Ideas panel in a React island.
+  // Only a fixture boot honours it, so a reviewed deployment never loads React.
+  if (resolved.mode === "fixture" && reactHost) import("./ui.generated.js").then(({ hostNode }) => hostNode($("ideasPanel")));
   client = resolved.mode === "live" ? createLiveClient({docContext:false}) : await createFixtureClient({...resolved.options,docContext:false});
   mountNotificationBadge(client);
   mountAutoRefresh({ document, window: globalThis.window, refresh: async () => { await load(); await loadEvents(); } });

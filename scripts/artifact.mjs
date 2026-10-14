@@ -1,4 +1,5 @@
 import { GENERATED_PATHS, prepareSlices, sliceNames, sliceOutputs } from "./slices.mjs";
+import { UI_SOURCE } from "./ui-bundle.mjs";
 import { build } from "esbuild";
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
@@ -251,10 +252,11 @@ export async function verifyCommittedSource(root, archive, result = verifyArtifa
   const onDiskRegistration = await sliceOutputs(names, path => readFile(join(root, path)));
   const paths = await inputPaths(root, onDiskRegistration);
   const contractPaths = Object.values(CONTRACT_INPUTS);
-  const slicePaths = ['contracts/routes.v1.json', 'contracts/slice-ownership.v1.json', ...names.map(name => `contracts/routes/${name}.json`)];
+  // Generated outputs are rebuilt below from these committed inputs.
+  const slicePaths = ['contracts/routes.v1.json', 'contracts/slice-ownership.v1.json', ...names.map(name => `contracts/routes/${name}.json`), ...await walk(root, UI_SOURCE)];
   const sourcePaths = [...new Set([...paths, ...contractPaths, ...slicePaths])].filter(path => !GENERATED_PATHS.includes(path)).sort();
   const committedPaths = execFileSync("git", ["ls-tree", "-r", "--name-only", "-z", commit, "--",
-    ...ROOT_FILES, ...ROOT_DIRECTORIES, ...contractPaths, ...slicePaths, ...paths], { cwd: root, encoding: "utf8" }).split("\0").filter(path => path && !GENERATED_PATHS.includes(path)).sort();
+    ...ROOT_FILES, ...ROOT_DIRECTORIES, UI_SOURCE, ...contractPaths, ...slicePaths, ...paths], { cwd: root, encoding: "utf8" }).split("\0").filter(path => path && !GENERATED_PATHS.includes(path)).sort();
   if (JSON.stringify(sourcePaths) !== JSON.stringify(committedPaths)) throw new Error("artifact source input set mismatch");
 
   // Compare the bytes themselves, not Git's working-tree status/cache. A forged
