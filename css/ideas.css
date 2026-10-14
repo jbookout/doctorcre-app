@@ -32,7 +32,6 @@
 .idea-meta .cal-pulse[data-pulse="calm"] { background: var(--cyan); animation: breathe var(--motion-calm) ease-in-out infinite; }
 .idea-meta .cal-pulse[data-pulse="still"] { background: transparent; border: 1.5px solid var(--quiet); }
 
-/* The detail popup's rows and body. */
 .idea-rows { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); gap: 8px 14px; margin: 0 0 14px; }
 .idea-rows dt { color: var(--quiet); font-size: 10px; font-weight: 800; letter-spacing: 0.12em; text-transform: uppercase; }
 .idea-rows dd { margin: 0; font-size: 13px; overflow-wrap: anywhere; }
@@ -87,7 +86,6 @@
   .event-actions .btn { flex: 1; }
 }
 
-/* --------------------------------------------------------- reduced motion */
 @media (prefers-reduced-motion: reduce) {
   .idea-tile:hover, .idea-tile:active { transform: none; }
   .event-card:hover, .event-card:active { transform: none; }
