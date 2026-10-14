@@ -1,6 +1,5 @@
 import { constants } from 'node:fs';
 import { lstat, mkdir, mkdtemp, open, readFile, readdir, realpath, rename, rm, writeFile } from 'node:fs/promises';
-import { spawnSync } from 'node:child_process';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -12,15 +11,13 @@ const EXCLUDED_FILES = new Set([
   '.run-owner', 'run.log', 'run-budget.json', 'sweep-verdict.json',
   'staging-records-plan.json', 'staging-records.json',
 ]);
-const STRING_FIELDS = new Set([
-  'key', 'target', 'path', 'name', 'surface', 'selector', 'role', 'reason',
-  'status', 'phase', 'code', 'id', 'severity', 'kind', 'title', 'expected',
-  'actual', 'suspected_area', 'owner', 'agent', 'source_commit',
-  'carr_source_commit', 'service', 'environment', 'attempt_id',
-]);
 const STATUSES = new Set(['OBSERVED', 'DISABLED', 'DEAD', 'ERROR', 'UNREACHABLE', 'SKIPPED']);
+const STATE_STATUSES = new Set(['pending', 'passed', 'failed']);
+const RESULT_STATUSES = new Set([...STATUSES, 'pending', 'passed', 'failed']);
+const EXPLORATION_STATUSES = new Set(['completed', 'finished', 'complete', 'time', 'stuck', 'aborted', 'step-limit', 'ERROR']);
+const FINDING_SEVERITIES = new Set(['blocker', 'major', 'minor', 'polish']);
+const FINDING_KINDS = new Set(['bug', 'ux']);
 const MAX_REPORT_BYTES = 32 * 1024 * 1024;
-const SCRUBBER = fileURLToPath(new URL('./scrub-evidence.py', import.meta.url));
 
 const fail = message => { throw new Error(`Evidence package refused: ${message}`); };
 const isWithin = (parent, child) => {
@@ -28,29 +25,9 @@ const isWithin = (parent, child) => {
   return rel === '' || (rel !== '..' && !rel.startsWith(`..${sep}`) && !isAbsolute(rel));
 };
 
-function cleanText(value) {
-  return value
-    .replace(/\b(Bearer|Basic)\s+[A-Za-z0-9._~+/=-]+/gi, '$1 [redacted]')
-    .replace(/([?&#](?:access_token|refresh_token|token|share_token|session|cookie|authorization|csrf_token|csrfToken)=)[^&#\s"'<>]*/gi, '$1[redacted]')
-    .replace(/((?:__Host-[A-Za-z0-9_-]+|(?:session|sid|csrf|token)[A-Za-z0-9_-]*)=)[A-Za-z0-9._~+/=-]{8,}/gi, '$1[redacted]')
-    .replace(/\b[A-Za-z0-9_-]{32,}\b/g, '[redacted]');
-}
-
-function string(value) {
-  if (value === undefined || value === null) return undefined;
-  if (typeof value !== 'string') fail('a report field had the wrong type');
-  return cleanText(value);
-}
-
-function strings(value) {
-  if (value === undefined || value === null) return undefined;
-  if (!Array.isArray(value) || value.some(item => typeof item !== 'string')) fail('a report list had the wrong type');
-  return value.map(cleanText);
-}
-
 function number(value) {
   if (value === undefined || value === null) return undefined;
-  if (!Number.isSafeInteger(value) || value < 0) fail('a report count had the wrong type');
+  if (!Number.isSafeInteger(value) || value < 0 || value > 1_000_000) fail('a report count was outside its safe range');
   return value;
 }
 
@@ -60,44 +37,84 @@ function bool(value) {
   return value;
 }
 
-function pick(source, keys) {
-  const result = {};
-  for (const key of keys) {
-    const value = source?.[key];
-    if (value === undefined || value === null) continue;
-    if (STRING_FIELDS.has(key)) result[key] = string(value);
-    else if (key === 'signals' || key === 'openers') result[key] = strings(value);
-    else if (key === 'steps') result[key] = Array.isArray(value) ? strings(value) : number(value);
-    else if (['expectedScreens', 'expectedExplorations', 'expectedStates', 'retained_controls', 'handler_executions', 'known_remaining', 'max_opener_depth'].includes(key)) result[key] = number(value);
-    else if (['reached', 'exhausted', 'in_progress', 'resolved', 'press_attempted', 'pending_discovery'].includes(key)) result[key] = bool(value);
+function countStatuses(rows, allowed, label) {
+  const counts = Object.fromEntries([...allowed].map(status => [status, 0]));
+  for (const row of rows) {
+    if (!row || typeof row !== 'object' || Array.isArray(row) || !allowed.has(row.status)) fail(`a ${label} status was malformed`);
+    counts[row.status]++;
   }
-  return result;
+  return counts;
 }
 
-function controlReceipt(row) {
-  if (!row || typeof row !== 'object' || Array.isArray(row) || !STATUSES.has(row.status)) fail('a control receipt was malformed');
-  const result = pick(row, ['key', 'target', 'path', 'selector', 'role', 'name', 'status', 'reason', 'signals', 'openers']);
-  if (row.execution !== undefined) {
-    const execution = row.execution;
-    if (!execution || typeof execution !== 'object' || typeof execution.press_attempted !== 'boolean' || !Number.isSafeInteger(execution.handler_executions) || execution.handler_executions < 0) fail('a control execution receipt was malformed');
-    result.execution = { press_attempted: execution.press_attempted, handler_executions: execution.handler_executions };
-  }
-  return result;
-}
-
-function screenReceipt(screen) {
+function screenReceipt(screen, index) {
   if (!screen || typeof screen !== 'object' || Array.isArray(screen) || !Array.isArray(screen.controls)) fail('a screen receipt was malformed');
-  const result = pick(screen, ['target', 'path', 'name', 'surface', 'reached', 'exhausted', 'in_progress', 'attempt_id']);
-  result.controls = screen.controls.map(controlReceipt);
-  if (screen.failure !== undefined && screen.failure !== null) {
-    if (typeof screen.failure !== 'object' || Array.isArray(screen.failure)) fail('a screen failure receipt was malformed');
-    result.failure = pick(screen.failure, ['phase', 'code', 'retained_controls']);
+  const statusCounts = countStatuses(screen.controls, STATUSES, 'control');
+  let pressAttempts = 0, handlerExecutions = 0;
+  for (const control of screen.controls) {
+    if (control.execution === undefined) continue;
+    const execution = control.execution;
+    if (!execution || typeof execution !== 'object' || typeof execution.press_attempted !== 'boolean' || !Number.isSafeInteger(execution.handler_executions) || execution.handler_executions < 0) fail('a control execution receipt was malformed');
+    pressAttempts += Number(execution.press_attempted);
+    handlerExecutions += execution.handler_executions;
   }
+  const result = {
+    ordinal: index + 1,
+    reached: bool(screen.reached) ?? false,
+    inProgress: bool(screen.in_progress) ?? false,
+    controlCount: screen.controls.length,
+    statusCounts,
+    pressAttempts,
+    handlerExecutions,
+  };
   if (screen.traversal !== undefined && screen.traversal !== null) {
     if (typeof screen.traversal !== 'object' || Array.isArray(screen.traversal)) fail('a traversal receipt was malformed');
-    result.traversal = pick(screen.traversal, ['known_remaining', 'max_opener_depth', 'pending_discovery']);
+    result.traversal = {
+      knownRemaining: number(screen.traversal.known_remaining) ?? 0,
+      maxOpenerDepth: number(screen.traversal.max_opener_depth) ?? 0,
+      pendingDiscovery: bool(screen.traversal.pending_discovery) ?? false,
+    };
   }
   return result;
+}
+
+function stateSummary(rows) {
+  if (!Array.isArray(rows)) fail('state obligations were malformed');
+  const statusCounts = countStatuses(rows, STATE_STATUSES, 'state obligation');
+  const resultStatusCounts = Object.fromEntries([...RESULT_STATUSES].map(status => [status, 0]));
+  let sourceCount = 0;
+  for (const row of rows) {
+    if (!Array.isArray(row.sources)) fail('a state obligation source list was malformed');
+    sourceCount += row.sources.length;
+    if (row.result?.status !== undefined) {
+      if (!RESULT_STATUSES.has(row.result.status)) fail('a state result status was malformed');
+      resultStatusCounts[row.result.status]++;
+    }
+  }
+  return { count: rows.length, statusCounts, resultStatusCounts, sourceCount };
+}
+
+function findingsSummary(rows) {
+  if (!Array.isArray(rows)) fail('findings report was malformed');
+  const severityCounts = Object.fromEntries([...FINDING_SEVERITIES].map(value => [value, 0]));
+  const kindCounts = Object.fromEntries([...FINDING_KINDS].map(value => [value, 0]));
+  for (const row of rows) {
+    if (!row || typeof row !== 'object' || Array.isArray(row) || !FINDING_SEVERITIES.has(row.severity) || !FINDING_KINDS.has(row.kind)) fail('a finding classification was malformed');
+    severityCounts[row.severity]++;
+    kindCounts[row.kind]++;
+  }
+  return { count: rows.length, severityCounts, kindCounts };
+}
+
+function explorationsSummary(rows) {
+  if (!Array.isArray(rows)) fail('explorations report was malformed');
+  const statusCounts = Object.fromEntries([...EXPLORATION_STATUSES].map(value => [value, 0]));
+  let steps = 0;
+  for (const row of rows) {
+    if (!row || typeof row !== 'object' || Array.isArray(row) || !EXPLORATION_STATUSES.has(row.status)) fail('an exploration status was malformed');
+    statusCounts[row.status]++;
+    steps += number(row.steps) ?? 0;
+  }
+  return { attempted: rows.length, steps, statusCounts };
 }
 
 function controlsReceipt(value) {
@@ -107,7 +124,7 @@ function controlsReceipt(value) {
   if (!release || release.service !== 'doctorcre-app' || release.environment !== 'staging' ||
       !/^[a-f0-9]{40}$/i.test(release.source_commit || '') || !/^[a-f0-9]{40}$/i.test(release.carr_source_commit || '')) fail('controls report source binding was invalid');
   return {
-    schema: 'doctorcre-staging-evidence-controls.v1',
+    schema: 'doctorcre-staging-evidence-controls.v2',
     release: {
       service: 'doctorcre-app', environment: 'staging',
       source_commit: release.source_commit.toLowerCase(), carr_source_commit: release.carr_source_commit.toLowerCase(),
@@ -116,30 +133,8 @@ function controlsReceipt(value) {
     expectedExplorations: number(value.expectedExplorations),
     expectedStates: number(value.expectedStates),
     screens: value.screens.map(screenReceipt),
-    stateObligations: (value.stateObligations ?? []).map(stateReceipt),
+    stateObligations: stateSummary(value.stateObligations ?? []),
   };
-}
-
-function findingReceipt(row) {
-  if (!row || typeof row !== 'object' || Array.isArray(row)) fail('a finding receipt was malformed');
-  return pick(row, ['id', 'surface', 'screen', 'severity', 'kind', 'title', 'steps', 'expected', 'actual', 'suspected_area', 'resolved']);
-}
-
-function explorationReceipt(row) {
-  if (!row || typeof row !== 'object' || Array.isArray(row)) fail('an exploration receipt was malformed');
-  return pick(row, ['target', 'screen', 'agent', 'steps', 'status']);
-}
-
-function stateReceipt(row) {
-  if (!row || typeof row !== 'object' || Array.isArray(row) || !row.spec || typeof row.spec !== 'object' || !Array.isArray(row.sources)) fail('a state obligation receipt was malformed');
-  const result = pick(row, ['target', 'status']);
-  result.spec = pick(row.spec, ['id', 'owner', 'kind']);
-  result.sourceCount = row.sources.length;
-  if (row.result !== undefined && row.result !== null) {
-    if (typeof row.result !== 'object' || Array.isArray(row.result)) fail('a state result receipt was malformed');
-    result.resultStatus = string(row.result.status);
-  }
-  return result;
 }
 
 async function safeDirectory(path, label) {
@@ -182,35 +177,22 @@ async function classifySource(root) {
   for (const name of INPUT_FILES) if (!seen.has(name)) fail(`required report ${name} was missing`);
 }
 
-function scrubPackage(path) {
-  const result = spawnSync('python3', [SCRUBBER, path], {
-    encoding: 'utf8', timeout: 60_000, maxBuffer: 1024 * 1024,
-    env: { ...process.env, PYTHONDONTWRITEBYTECODE: '1' },
-  });
-  if (result.error || result.status !== 0) fail('the existing scrubber could not sanitize the typed package');
-}
-
-function summarize(controls) {
+function summarize(controls, findings, explorations) {
   const statuses = Object.fromEntries([...STATUSES].map(status => [status, 0]));
+  for (const screen of controls.screens) for (const [status, count] of Object.entries(screen.statusCounts)) statuses[status] += count;
+  const stateStatuses = controls.stateObligations.statusCounts;
   const lines = ['# Sanitized staging sweep coverage', '',
     `Source: ${controls.release.source_commit}; CARR source: ${controls.release.carr_source_commit}.`, '',
-    `Screens reached: ${controls.screens.filter(screen => screen.reached).length}/${controls.expectedScreens ?? controls.screens.length}.`];
-  const rows = [];
-  for (const screen of controls.screens) {
-    for (const control of screen.controls) statuses[control.status]++;
-    const local = Object.fromEntries([...STATUSES].map(status => [status, screen.controls.filter(control => control.status === status).length]));
-    rows.push(`| ${screen.target ?? ''} | ${screen.name ?? ''} (${screen.path ?? ''}) | ${screen.reached ? 'reached' : 'not reached'} | ${screen.controls.length} | ${local.OBSERVED} | ${local.DEAD} | ${local.ERROR + local.UNREACHABLE} | ${local.SKIPPED} |`);
-  }
-  const stateCounts = controls.stateObligations.reduce((counts, row) => {
-    counts[row.status] = (counts[row.status] || 0) + 1;
-    return counts;
-  }, {});
-  lines.push(`Controls: ${Object.values(statuses).reduce((a, b) => a + b, 0)}; OBSERVED ${statuses.OBSERVED}; DEAD ${statuses.DEAD}; DISABLED ${statuses.DISABLED}; ERROR/UNREACHABLE ${statuses.ERROR + statuses.UNREACHABLE}; SKIPPED ${statuses.SKIPPED}.`,
-    `State obligations: ${controls.stateObligations.length}/${controls.expectedStates ?? controls.stateObligations.length}; ${Object.entries(stateCounts).map(([status, count]) => `${status} ${count}`).join('; ') || 'none'}.`, '',
-    '| Target | Screen | Reachability | Enumerated | OBSERVED | DEAD | Errors | SKIPPED |', '|---|---|---|---:|---:|---:|---:|---:|', ...rows, '',
+    `Screens reached: ${controls.screens.filter(screen => screen.reached).length}/${controls.expectedScreens ?? controls.screens.length}.`,
+    `Controls enumerated: ${controls.screens.reduce((sum, screen) => sum + screen.controlCount, 0)}; OBSERVED ${statuses.OBSERVED}; DEAD ${statuses.DEAD}; DISABLED ${statuses.DISABLED}; ERROR/UNREACHABLE ${statuses.ERROR + statuses.UNREACHABLE}; SKIPPED ${statuses.SKIPPED}.`,
+    `State obligations: ${controls.stateObligations.count}/${controls.expectedStates ?? controls.stateObligations.count}; passed ${stateStatuses.passed}; failed ${stateStatuses.failed}; pending ${stateStatuses.pending}; source references ${controls.stateObligations.sourceCount}.`, ''];
+  lines.push('| Screen ordinal | Reachability | Enumerated | OBSERVED | DEAD | Disabled | Errors | Skipped |', '|---:|---|---:|---:|---:|---:|---:|---:|');
+  for (const screen of controls.screens) lines.push(`| ${screen.ordinal} | ${screen.reached ? 'reached' : 'not reached'} | ${screen.controlCount} | ${screen.statusCounts.OBSERVED} | ${screen.statusCounts.DEAD} | ${screen.statusCounts.DISABLED} | ${screen.statusCounts.ERROR + screen.statusCounts.UNREACHABLE} | ${screen.statusCounts.SKIPPED} |`);
+  lines.push('', `Explorations attempted: ${explorations.attempted}/${controls.expectedExplorations ?? explorations.attempted}; steps ${explorations.steps}.`,
+    `Findings: ${findings.count}; blocker ${findings.severityCounts.blocker}; major ${findings.severityCounts.major}; minor ${findings.severityCounts.minor}; polish ${findings.severityCounts.polish}.`, '',
     'OBSERVED records signals; it does not establish that the control action was correct.',
-    'This package contains typed text receipts only. Browser storage, screenshots, traces, Playwright results, logs, and staging record plans are excluded.');
-  return cleanText(lines.join('\n') + '\n');
+    'This package contains aggregate typed receipts only. Free text, record identifiers, browser storage, screenshots, traces, Playwright results, logs, and staging record plans are excluded.');
+  return lines.join('\n') + '\n';
 }
 
 export async function packageEvidence({ sourceDir = process.env.E2E_V2_OUTPUT, outputDir = process.env.E2E_EVIDENCE_PACKAGE } = {}) {
@@ -230,21 +212,19 @@ export async function packageEvidence({ sourceDir = process.env.E2E_V2_OUTPUT, o
   const raw = {};
   for (const name of REPORTS) raw[name] = JSON.parse((await readRegular(source, name)).toString('utf8'));
   const controls = controlsReceipt(raw['controls.json']);
-  if (!Array.isArray(raw['findings.json']) || !Array.isArray(raw['explorations.json'])) fail('findings or explorations report was malformed');
-  const findings = raw['findings.json'].map(findingReceipt);
-  const explorations = raw['explorations.json'].map(explorationReceipt);
+  const findings = findingsSummary(raw['findings.json']);
+  const explorations = explorationsSummary(raw['explorations.json']);
   const staged = await mkdtemp(join(parentReal, '.doctorcre-evidence-package-'));
   try {
     await writeFile(join(staged, 'controls.json'), JSON.stringify(controls, null, 2) + '\n', { mode: 0o600, flag: 'wx' });
-    await writeFile(join(staged, 'findings.json'), JSON.stringify({ schema: 'doctorcre-staging-evidence-findings.v1', findings }, null, 2) + '\n', { mode: 0o600, flag: 'wx' });
-    await writeFile(join(staged, 'explorations.json'), JSON.stringify({ schema: 'doctorcre-staging-evidence-explorations.v1', explorations }, null, 2) + '\n', { mode: 0o600, flag: 'wx' });
-    await writeFile(join(staged, 'coverage.md'), summarize(controls), { mode: 0o600, flag: 'wx' });
+    await writeFile(join(staged, 'findings.json'), JSON.stringify({ schema: 'doctorcre-staging-evidence-findings.v2', ...findings }, null, 2) + '\n', { mode: 0o600, flag: 'wx' });
+    await writeFile(join(staged, 'explorations.json'), JSON.stringify({ schema: 'doctorcre-staging-evidence-explorations.v2', ...explorations }, null, 2) + '\n', { mode: 0o600, flag: 'wx' });
+    await writeFile(join(staged, 'coverage.md'), summarize(controls, findings, explorations), { mode: 0o600, flag: 'wx' });
     await writeFile(join(staged, 'evidence-package.json'), JSON.stringify({
-      schema: 'doctorcre-evidence-package.v1',
+      schema: 'doctorcre-evidence-package.v2',
       files: REPORTS.concat('coverage.md'),
       excludes: ['private browser storage', 'screenshots and video', 'Playwright reports and traces', 'logs and diagnostics', 'staging record plans and receipts'],
     }, null, 2) + '\n', { mode: 0o600, flag: 'wx' });
-    scrubPackage(staged);
     const packageEntries = await readdir(staged);
     if (packageEntries.length !== PACKAGE_FILES.length || packageEntries.some(name => !PACKAGE_FILES.includes(name))) fail('the staged package contained an unclassified entry');
     for (const name of PACKAGE_FILES) {

@@ -6,14 +6,26 @@ import test from 'node:test';
 import { packageEvidence } from '../../scripts/e2e-staging/package-evidence.mjs';
 
 const canaries = [
+  'Client Jane Doe 1842',
+  'jane.doe+privacy@example.invalid',
+  'client-4821',
   'synthetic-session-canary-7a4d9f2c8b6e1a3d5f0c9b7e2a4d6f8c',
   'synthetic-bearer-canary-4f7b1d9a6c3e8f2b5a0d7c1e9f4b6a3d',
   'synthetic-cookie-canary-8c2f5a1d7e4b9c6f3a0d8e2b5c7f1a4d',
 ];
 const release = { service: 'doctorcre-app', environment: 'staging', source_commit: 'a'.repeat(40), carr_source_commit: 'b'.repeat(40) };
 
+function poisonFreeText(value, key = '') {
+  if (Array.isArray(value)) return value.map(item => poisonFreeText(item));
+  if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value).map(([name, item]) => [name, poisonFreeText(item, name)]));
+  if (typeof value !== 'string') return value;
+  if (key === 'status' || key === 'severity' || key === 'service' || key === 'environment' || key.endsWith('_commit')) return value;
+  if (key === 'kind' && ['bug', 'ux'].includes(value)) return value;
+  return `${value} ${canaries.join(' | ')}`;
+}
+
 function reports() {
-  return {
+  return poisonFreeText({
     'controls.json': {
       release, expectedScreens: 1, expectedExplorations: 1, expectedStates: 1,
       stateObligations: [{ target: 'staging-live', spec: { id: 'calendar-read', owner: '/calendar', kind: 'calendar-read' }, status: 'passed', sources: [{ key: 'control-1' }], result: { status: 'passed', auth: canaries[2] } }],
@@ -24,7 +36,7 @@ function reports() {
     },
     'findings.json': [{ id: 'synthetic-finding-1', surface: 'app', screen: 'Home', severity: 'minor', kind: 'bug', title: 'Synthetic safe finding', steps: ['Press the button'], expected: 'A response appears', actual: `No response; ${canaries[0]}`, evidence_path: 'evidence/finding.png', headers: canaries[1] }],
     'explorations.json': [{ target: 'staging-live', screen: 'Home', path: '/', agent: 'synthetic', steps: 3, status: 'complete', evidence: 'evidence/raw-trace.zip', storageState: canaries[2] }],
-  };
+  });
 }
 
 async function fixture(t) {
@@ -49,21 +61,30 @@ test('packages useful typed reports while synthetic auth canaries and private ou
   await packageEvidence({ sourceDir, outputDir });
   const names = (await readdir(outputDir)).sort();
   assert.deepEqual(names, ['controls.json', 'coverage.md', 'evidence-package.json', 'explorations.json', 'findings.json']);
-  const content = (await Promise.all(names.map(name => readFile(join(outputDir, name), 'utf8')))).join('\n');
-  for (const canary of canaries) assert.ok(!content.includes(canary), `package contained ${canary}`);
+  const packageFiles = await Promise.all(names.map(name => readFile(join(outputDir, name))));
+  for (const canary of canaries) {
+    const bytes = Buffer.from(canary);
+    assert.ok(packageFiles.every(file => file.indexOf(bytes) === -1), `package bytes contained ${canary}`);
+  }
   const controls = JSON.parse(await readFile(join(outputDir, 'controls.json'), 'utf8'));
-  assert.equal(controls.schema, 'doctorcre-staging-evidence-controls.v1');
-  assert.equal(controls.screens[0].controls[0].status, 'OBSERVED');
-  assert.equal(controls.screens[0].controls[0].name, 'Safe synthetic control');
-  assert.equal('auth' in controls.screens[0].controls[0], false);
-  assert.equal('evidence_path' in controls.screens[0].controls[0], false);
+  assert.equal(controls.schema, 'doctorcre-staging-evidence-controls.v2');
+  assert.equal(controls.release.source_commit, 'a'.repeat(40));
+  assert.equal(controls.release.carr_source_commit, 'b'.repeat(40));
+  assert.equal(controls.screens[0].controlCount, 1);
+  assert.equal(controls.screens[0].statusCounts.OBSERVED, 1);
+  assert.equal('controls' in controls.screens[0], false);
   const findings = JSON.parse(await readFile(join(outputDir, 'findings.json'), 'utf8'));
-  assert.equal(findings.findings[0].title, 'Synthetic safe finding');
+  assert.equal(findings.count, 1);
+  assert.equal(findings.severityCounts.minor, 1);
+  const explorations = JSON.parse(await readFile(join(outputDir, 'explorations.json'), 'utf8'));
+  assert.equal(explorations.attempted, 1);
+  assert.equal(explorations.statusCounts.complete, 1);
   const coverage = await readFile(join(outputDir, 'coverage.md'), 'utf8');
   assert.match(coverage, /Screens reached: 1\/1/);
   assert.match(coverage, /OBSERVED 1/);
   assert.match(coverage, /does not establish that the control action was correct/);
   assert.match(coverage, /State obligations: 1\/1; passed 1/);
+  assert.match(coverage, /Explorations attempted: 1\/1/);
   assert.match(coverage, /screenshots, traces/);
 });
 
