@@ -11,6 +11,7 @@ import appRoutes from '../../contracts/app-routes.v1.json' with { type: 'json' }
 import { eligibleLead } from '../../js/leads-model.js';
 import { COLUMNS } from '../../js/pipeline-model.js';
 import { prepareBrowserControlProofs, validControlProof } from './control-proofs.mjs';
+import businessJourneys from '../../contracts/e2e-staging-business-journeys.v1.json' with { type: 'json' };
 
 const FIXTURE = { id: 'fc08d2f4-a951-5679-9f34-40d0f4278842', name: 'Synthetic Staging Fixture' };
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -393,6 +394,23 @@ function completeOperationReceipt(name, args, recordIDs, receipt, attemptedAt, p
 const textWithin = (value, limit) => typeof value === 'string' && value.trim().length > 0 && value.length <= limit;
 const stagingPhaseSlugs = new Set(COLUMNS.map(column => column.slug));
 const fixtureWritesNeedingReadback = new Set(['patch-deal-field', 'revert-deal-field', 'add-critical-date']);
+function journeyObservation(row) {
+  const effect = row.response?.binding?.effect;
+  if (!effect) return null;
+  if (row.operation === 'patch-deal-field') return { phase: effect.new_value, event_id: effect.event_id };
+  if (row.operation === 'revert-deal-field')
+    return { phase: effect.new_value, reverted_event_id: effect.reverted_event_id, badge: 'Undone' };
+  if (row.operation === 'add-critical-date')
+    return { critical_date_id: effect.critical_date_id, due_on: effect.due_on, source: effect.source };
+  return null;
+}
+function observedJourneyUI(row) {
+  const ui = row.journey?.ui;
+  return row.journey?.state === 'observed' && ui?.schema === 'staging-business-journey-ui.v1' &&
+    ui.observation_sha256 === digest(journeyObservation(row)) &&
+    Number.isFinite(Date.parse(ui.observed_at)) && Date.parse(ui.observed_at) >= Date.parse(row.journey.admitted_at) &&
+    Date.parse(ui.observed_at) <= Date.now() + 5000;
+}
 function isCalendarDate(value) {
   if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value) || Number(value.slice(0, 4)) < 1) return false;
   const date = new Date(`${value}T00:00:00.000Z`);
@@ -436,7 +454,7 @@ function verifiedReadback(row, detail, plan) {
 function requirePlanCoverage(plan, scope) {
   if (!plan || plan.schema !== 'doctorcre-staging-records-plan.v1' || plan.origin !== STAGING_ORIGIN ||
       plan.state !== 'complete' || plan.inflight) policyFailure('fixture-provenance-missing');
-  const attempts = scope ? (plan.browser_write_attempts ?? []).filter(row => scope.fingerprints.has(row.fingerprint)) : plan.browser_write_attempts ?? [];
+  const attempts = scope ? (plan.browser_write_attempts ?? []).filter(row => scope.fingerprints.has(row.fingerprint) || row.journey) : plan.browser_write_attempts ?? [];
   const refusals = scope ? scope.refusals : plan.browser_write_refusals ?? [];
   if (!Array.isArray(attempts) || !Array.isArray(refusals) || refusals.length ||
       attempts.some(row => {
@@ -445,7 +463,7 @@ function requirePlanCoverage(plan, scope) {
         const bound = completeOperationReceipt(row.operation, row.arguments, row.record_ids, row.response.receipt, row.attempted_at, plan);
         const needsReadback = fixtureWritesNeedingReadback.has(row.operation);
         return !bound || !row.response.binding || digest(bound) !== digest(row.response.binding) ||
-          needsReadback && !validIndependentReadback(row);
+          needsReadback && !validIndependentReadback(row) || row.journey && !observedJourneyUI(row);
       })) policyFailure('write-coverage-incomplete');
 }
 
@@ -634,7 +652,87 @@ export function stagingFixtureWriteGuard({ output, release, run = process.env.E2
         handle: (request, forward) => guard.handle(request, forward, scope),
         assertCoverage: options => guard.assertCoverage(options, scope),
         admitControl: control => guard.admitControl(control, scope),
+        admitBusinessJourneyStep: step => guard.admitBusinessJourneyStep(step),
       };
+    },
+    async admitBusinessJourneyStep(spec) {
+      requireSupervisedRun(output, run);
+      run.check();
+      if (!spec || Object.keys(spec).some(key => !['phase', 'journey', 'step', 'deal', 'release', 'observation'].includes(key)) ||
+          !['admit', 'status', 'observe'].includes(spec.phase) ||
+          businessJourneys.schema !== 'doctorcre-e2e-staging-business-journeys.v1' ||
+          businessJourneys.full_v1_qualification !== false ||
+          businessJourneys.producer.source_commit !== contract.producer.source_commit)
+        policyFailure('journey-scope-unproved');
+      const journey = businessJourneys.journeys.find(journey => journey.id === spec.journey);
+      const definition = journey?.steps.find(step => step.id === spec.step);
+      if (!definition) policyFailure('journey-scope-unproved');
+      for (const [path, hash] of Object.entries(businessJourneys.sources)) {
+        const bytes = await readFile(new URL('../../' + path, import.meta.url));
+        if (createHash('sha256').update(bytes).digest('hex') !== hash) policyFailure('journey-source-changed');
+      }
+      return locked(async () => {
+        const plan = await currentPlan();
+        if (spec.release?.source_commit !== plan.release.source_commit ||
+            spec.release?.carr_source_commit !== plan.release.carr_source_commit)
+          policyFailure('journey-source-pair-changed');
+        if (!owned(plan, 'deal', spec.deal)) policyFailure('record-outside-fixtures');
+        const attempts = plan.browser_write_attempts || [];
+        const previous = attempts.find(row => row.journey?.id === spec.journey && row.journey?.step === definition.predecessor);
+        let template;
+        if (definition.operation === 'patch-deal-field')
+          template = { deal: spec.deal, field: 'phase', value: definition.value, base_event_id: null };
+        if (definition.operation === 'revert-deal-field') {
+          if (!observedJourneyUI(previous || {}) || !validIndependentReadback(previous) ||
+              previous.response?.binding?.effect?.old_value !== journey.steps.find(step => step.id === definition.predecessor)?.initial_phase)
+            policyFailure('journey-predecessor-unproved');
+          template = { event_id: previous.response.binding.effect.event_id };
+        }
+        if (definition.operation === 'add-critical-date')
+          template = { deal: spec.deal, kind: definition.kind, due_on: definition.due_on,
+            source: definition.source_prefix + plan.run };
+        if (!template) policyFailure('journey-scope-unproved');
+        const matches = attempts.filter(row => row.journey?.id === spec.journey && row.journey?.step === spec.step);
+        if (matches.length > 1) policyFailure('journey-step-requires-reconciliation');
+        let row = matches[0];
+        if (row && (row.journey.schema !== 'staging-business-journey-step.v1' ||
+            row.journey.contract_sha256 !== digest(businessJourneys) || row.journey.fixture_run !== plan.run ||
+            digest(row.journey.release) !== digest(plan.release) || digest(row.argument_template) !== digest(template) ||
+            row.operation !== definition.operation || row.record_ids?.length !== 1 || row.record_ids[0] !== spec.deal))
+          policyFailure('journey-binding-changed');
+        if (spec.phase === 'status') {
+          if (!row) policyFailure('journey-intent-missing');
+          return structuredClone(row);
+        }
+        if (spec.phase === 'admit') {
+          if (row) {
+            if (!observedJourneyUI(row)) policyFailure('journey-step-requires-reconciliation');
+            requirePlanCoverage(plan);
+            return structuredClone(row);
+          }
+          requirePlanCoverage(plan);
+          const { ids, fingerprint } = proveOperation(plan, definition.operation, { ...template, idempotency_key: randomUUID() });
+          row = { schema: 'staging-fixture-browser-intent.v1', fingerprint, operation: definition.operation,
+            record_ids: [...ids], argument_template: template, arguments: structuredClone(template), state: 'admitted',
+            dispatched_outcome: 'not dispatched', journey: { schema: 'staging-business-journey-step.v1',
+              id: spec.journey, step: spec.step, fixture_run: plan.run, contract_sha256: digest(businessJourneys),
+              release: structuredClone(plan.release), admitted_at: new Date().toISOString(), state: 'admitted' } };
+          plan.browser_write_attempts ||= [];
+          plan.browser_write_attempts.push(row);
+          await persist(planPath, plan);
+          return structuredClone(row);
+        }
+        if (!row || row.journey.state !== 'admitted') policyFailure('journey-observation-unproved');
+        const effect = row.response?.binding?.effect;
+        if (!effect || definition.operation === 'patch-deal-field' && effect.old_value !== definition.initial_phase ||
+            digest(spec.observation) !== digest(journeyObservation(row))) policyFailure('journey-observation-unproved');
+        row.journey.state = 'observed';
+        row.journey.ui = { schema: 'staging-business-journey-ui.v1', observation_sha256: digest(spec.observation),
+          observed_at: new Date().toISOString() };
+        requirePlanCoverage(plan);
+        await persist(planPath, plan);
+        return structuredClone(row);
+      });
     },
     async admitControl(control, scope) {
       await guard.assertCoverage({}, scope);
@@ -782,12 +880,28 @@ export function stagingFixtureWriteGuard({ output, release, run = process.env.E2
           policyFailure('operation-shape-unproved');
         token = await locked(async () => {
           const plan = await currentPlan();
-          const { ids, fingerprint } = proveOperation(plan, name, args);
+          const admitted = (plan.browser_write_attempts || []).filter(row => row.state === 'admitted' && row.journey);
+          const intent = admitted.length === 1 ? admitted[0] : null;
+          if ((plan.browser_write_attempts || []).some(row => row.journey) && !intent)
+            policyFailure('journey-intent-missing');
+          const actualTemplate = { ...args };
+          delete actualTemplate.idempotency_key;
+          if (admitted.length && (!intent || intent.operation !== name ||
+              digest(actualTemplate) !== digest(intent.argument_template))) policyFailure('journey-request-unproved');
+          if (intent && (intent.journey.schema !== 'staging-business-journey-step.v1' || intent.journey.state !== 'admitted' ||
+              intent.journey.fixture_run !== plan.run ||
+              digest(intent.journey.release) !== digest(plan.release) ||
+              intent.journey.contract_sha256 !== digest(businessJourneys))) policyFailure('journey-binding-changed');
+          const { ids, fingerprint } = proveOperation(intent ? { ...plan,
+            browser_write_attempts: plan.browser_write_attempts.filter(row => row !== intent) } : plan, name, args);
           plan.browser_write_attempts ||= [];
-          const intent = { schema: 'staging-fixture-browser-intent.v1', fingerprint,
+          const dispatchedIntent = { schema: 'staging-fixture-browser-intent.v1', fingerprint,
             operation: name, record_ids: [...ids], arguments: structuredClone(args),
             state: 'inflight', dispatched_outcome: 'unknown', attempted_at: new Date().toISOString() };
-          plan.browser_write_attempts.push(intent);
+          if (intent) {
+            if (intent.fingerprint !== fingerprint) policyFailure('journey-binding-changed');
+            Object.assign(intent, dispatchedIntent);
+          } else plan.browser_write_attempts.push(dispatchedIntent);
           scope?.fingerprints.add(fingerprint);
           await persist(planPath, plan); // MUST succeed before forward().
           return { run: plan.run, fingerprint };

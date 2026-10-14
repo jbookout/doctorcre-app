@@ -1,0 +1,90 @@
+{
+  "schema": "doctorcre-e2e-staging-business-journeys.v1",
+  "version": "1.0.0",
+  "requirements": {
+    "section_id": "a984038c-7923-4518-b89c-8814b37f8f8a",
+    "version": 1,
+    "criteria": [
+      "UX03",
+      "UX04",
+      "UX05",
+      "UX16",
+      "UX20",
+      "UX24"
+    ]
+  },
+  "app_source_baseline": "12181a8136e6e6030d5e8ed9dbeed6518ee258a4",
+  "producer": {
+    "repository": "jbookout/carr-system",
+    "source_commit": "5ddaa8f39507de3f3343c5cc5177d3d07168e9eb"
+  },
+  "sources": {
+    "pipeline.html": "1a9366eb7fd7ae8a4fb8a68410b2481d09e5988ed38514d3e26c6f8d8623ece7",
+    "js/pipeline.js": "8541dc7f3b5096778c2c7cd6549304a17c02c1ef7bd6d86c6bd063b525a81314",
+    "js/live-client.js": "54fb088f0eb21c6a1d3acdf16352ac01d291ee0d74f2ff54be2754823817ab03",
+    "js/boot-mode.js": "b3d0c88444f259d2a2c917d5ec38c8198b5c1be82db25238df3aacff34877ac2",
+    "js/pipeline-model.js": "2ac0c5d1a43b1d18157403899245290b5898d4db87774b053ed908cf7fe114e7",
+    "js/field-write-reconciliation.mjs": "1a172e6daa608cb63cd8d5c7b5f87c7041c0b29174c0f75fd4e1d6c9bf08736d",
+    "js/change-receipts.mjs": "7189cf11edfd46d4a3126d6859beca88216e1e5cb9a962ed70492f5de47baa18",
+    "js/deal-timeline.js": "cd4d5d093e0adc936af8e6082e7fc642f5f39ae53de7163ffd57abe31f037886",
+    "js/mcp-requests.mjs": "54b4a9459d21ae5c28815bbf14037aaf1a6b3706e658b9d4f532183316458ee8",
+    "js/app-layout.js": "6ee5a58a8e8c7f4054e0f815ff5aeea8bd519762a281c438f07845bde09c812c",
+    "css/app-shell.css": "dd83d6039c82a5c65507d4a685eee2a8fd2e928197b4da177e3c1bf3f2f367ce"
+  },
+  "full_v1_qualification": false,
+  "unqualified_journeys": [
+    "W6",
+    "W15",
+    "Outlook draft",
+    "Call Mode"
+  ],
+  "fixture": "private-plan-owned active synthetic deal",
+  "readback": {
+    "operation": "get-deal-room",
+    "receipt": "staging-fixture-business-readback.v1"
+  },
+  "journeys": [
+    {
+      "id": "W4",
+      "steps": [
+        {
+          "id": "move",
+          "operation": "patch-deal-field",
+          "prepare_selector": "#detailPhase",
+          "selector": "#completionConfirm",
+          "initial_phase": "pending",
+          "value": "research"
+        },
+        {
+          "id": "undo",
+          "operation": "revert-deal-field",
+          "selector": "button[data-undo]",
+          "predecessor": "move"
+        }
+      ]
+    },
+    {
+      "id": "W9",
+      "steps": [
+        {
+          "id": "date",
+          "operation": "add-critical-date",
+          "prepare_selector": "[data-add-date=\"rent_start\"]",
+          "selector": "#dealDateForm button[type=\"submit\"]",
+          "date_selector": "#dealDateForm [name=\"date\"]",
+          "source_selector": "#dealDateForm [name=\"evidence\"]",
+          "kind": "rent_start",
+          "due_on": "2031-12-01",
+          "source_prefix": "Synthetic staging W9 fixture "
+        }
+      ]
+    }
+  ],
+  "read_controls": [
+    "#panelClose",
+    "#appTodayToggle",
+    "[data-refresh-detail]",
+    ".kanban-card[data-id=\"<owned-deal>\"]",
+    "[data-date-id=\"<receipt-date>\"] summary"
+  ]
+}
