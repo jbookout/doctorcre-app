@@ -31,8 +31,8 @@ export async function persistSweepReport(output, run, setup, { publishFile } = {
   await writeReport(output, { ...run.snapshot(), release: setup.release, setup, findings: setup.findings, publishFile });
 }
 
-async function persistCompletion(output, budget, verdict, release, fixtureWriteScopeComplete, setup) {
-  const completion = completionContract({ verdict, release, fixtureWriteScopeComplete, setup });
+async function persistCompletion(output, budget, verdict, release, fixtureWriteScopeComplete, setup, targets, routedScreens) {
+  const completion = completionContract({ verdict, release, fixtureWriteScopeComplete, setup, targets, routedScreens });
   const data = JSON.stringify({ ...verdict, fixtureWriteScopeComplete, completion,
     measuredAt: new Date().toISOString(), release }, null, 2) + '\n';
   await budget.writeFile(join(output, 'sweep-verdict.json'), data, writeFile);
@@ -100,13 +100,13 @@ export async function sweep({ resume = false, targetName, freshPage, session, re
     let fixtureWriteScopeComplete = true;
     try { await fixtureGuard.assertCoverage(); }
     catch { fixtureWriteScopeComplete = false; }
-    const completion = await persistCompletion(output, budget, completionVerdict(), release, fixtureWriteScopeComplete, setup);
+    const completion = await persistCompletion(output, budget, completionVerdict(), release, fixtureWriteScopeComplete, setup, targets, routedScreens);
     return assertSweepJobOutcome(completion);
   }
   const verdict = completionVerdict();
   let fixtureWriteScopeComplete = true;
   try { await fixtureGuard.assertCoverage(); }
   catch { fixtureWriteScopeComplete = false; verdict.completed = false; }
-  const completion = await persistCompletion(output, budget, verdict, release, fixtureWriteScopeComplete, setup);
+  const completion = await persistCompletion(output, budget, verdict, release, fixtureWriteScopeComplete, setup, targets, routedScreens);
   return assertSweepJobOutcome(completion);
 }

@@ -103,13 +103,18 @@ function fixturePrerequisiteSummary(setup, release) {
 // prepared fixture prerequisites. No business-journey proof catalog exists in
 // this source contract, so full V1 acceptance remains PARTIAL until one is
 // supplied by an authorized source owner.
-export function completionContract({ verdict, release, fixtureWriteScopeComplete, setup }) {
+export function completionContract({ verdict, release, fixtureWriteScopeComplete, setup, targets, routedScreens }) {
+  const plannedExplorations = Array.isArray(targets) && Array.isArray(routedScreens)
+    ? targets.flatMap(target => routedScreens.filter(screen => screen.surface === target.surface)
+      .flatMap(() => target.name.endsWith('phone') ? ['phone-reviewer'] : ['bug-hunter', 'first-time-ux'])).length
+    : 0;
   if (!verdict || typeof verdict !== 'object' || !Array.isArray(verdict.pendingScreens) ||
       !Array.isArray(verdict.failedScreens) || !Array.isArray(verdict.failedStateObligations) ||
       !Array.isArray(verdict.pendingStateObligations) || !Array.isArray(verdict.newDeadControls) ||
       !Array.isArray(verdict.pendingExplorations) || !Array.isArray(verdict.failedExplorations) ||
-      !Array.isArray(verdict.skippedExplorations) || !Number.isSafeInteger(verdict.expectedExplorations) ||
-      verdict.expectedExplorations < 1 || !Number.isSafeInteger(verdict.completedExplorations) ||
+      !Array.isArray(verdict.skippedExplorations) || plannedExplorations < 1 ||
+      !Number.isSafeInteger(verdict.expectedExplorations) ||
+      !Number.isSafeInteger(verdict.completedExplorations) ||
       verdict.completedExplorations < 0 || verdict.completedExplorations > verdict.expectedExplorations ||
       typeof verdict.explorationsSourceBound !== 'boolean' ||
       !Number.isSafeInteger(verdict.skippedControls) || verdict.skippedControls < 0 ||
@@ -133,7 +138,7 @@ export function completionContract({ verdict, release, fixtureWriteScopeComplete
   } else if (!verdict.completed || verdict.pendingScreens.length || verdict.pendingStateObligations.length ||
       verdict.skippedControls || verdict.skippedStateObligations || verdict.pendingExplorations.length ||
       verdict.skippedExplorations.length || verdict.completedExplorations !== verdict.expectedExplorations ||
-      verdict.expectedExplorations !== 90 || !verdict.explorationsSourceBound || !fixtures.complete) {
+      verdict.expectedExplorations !== plannedExplorations || !verdict.explorationsSourceBound || !fixtures.complete) {
     status = COMPLETION_STATUS.PARTIAL;
     reason = 'source-bound-work-or-fixture-prerequisite-remains';
   } else {
@@ -150,7 +155,7 @@ export function completionContract({ verdict, release, fixtureWriteScopeComplete
     accepted: status === COMPLETION_STATUS.ACCEPTED_SWEEP,
     acceptedV1: false,
     resumable: status === COMPLETION_STATUS.PARTIAL,
-    expectedExplorations: verdict.expectedExplorations,
+    expectedExplorations: plannedExplorations,
     completedExplorations: verdict.completedExplorations,
     pendingExplorations: verdict.pendingExplorations,
     failedExplorations: verdict.failedExplorations,

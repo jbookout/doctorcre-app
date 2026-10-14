@@ -1,12 +1,17 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { completionContract, explorationCoverage } from '../../scripts/e2e-staging/completion-contract.mjs';
+import { screens as canonicalScreens, targets as canonicalTargets } from '../../scripts/e2e-staging/screens.mjs';
+import { createSweepRun } from '../../scripts/e2e-staging/resume.mjs';
+import { createExplorationSchedule } from '../../scripts/e2e-staging/explore.mjs';
 import contract from '../../contracts/e2e-staging.v1.json' with { type: 'json' };
 
 const release = { service: 'doctorcre-app', environment: 'staging', source_commit: 'a'.repeat(40), carr_source_commit: contract.producer.source_commit };
-const targets = [{ name: 'desktop', surface: 'app' }, { name: 'phone', surface: 'app' }];
-const routedScreens = Array.from({ length: 30 }, (_, index) => ({ name: `Workspace ${index}`, path: `/workspace${index}`, surface: 'app' }));
-const goalRows = () => targets.flatMap(target => routedScreens.flatMap(screen =>
+const targets = canonicalTargets;
+const routedScreens = await canonicalScreens();
+const plannedExplorationCount = targets.flatMap(target => routedScreens.filter(screen => screen.surface === target.surface)
+  .map(() => target.name.endsWith('phone') ? 1 : 2)).reduce((sum, count) => sum + count, 0);
+const goalRows = () => targets.flatMap(target => routedScreens.filter(screen => screen.surface === target.surface).flatMap(screen =>
   (target.name.endsWith('phone') ? ['phone-reviewer'] : ['bug-hunter', 'first-time-ux']).map(agent => ({
     target: target.name, screen: screen.name, path: screen.path, agent, status: 'finished', steps: 8,
     evidence: `/staging/output/evidence/explore/${target.name}-${screen.path.replaceAll('/', '_')}-${agent}`,
@@ -21,7 +26,7 @@ const setup = () => ({
 const verdict = overrides => ({
   failed: false, completed: true, pendingScreens: [], failedScreens: [], failedStateObligations: [],
   pendingStateObligations: [], newDeadControls: [], skippedControls: 0, skippedStateObligations: 0,
-  expectedExplorations: 90, completedExplorations: 90, pendingExplorations: [], failedExplorations: [],
+  expectedExplorations: plannedExplorationCount, completedExplorations: plannedExplorationCount, pendingExplorations: [], failedExplorations: [],
   skippedExplorations: [], explorationsSourceBound: true,
   ...overrides,
 });
@@ -29,41 +34,50 @@ const classify = (value = {}, options = {}) => completionContract({
   verdict: verdict(value), release: options.release || release,
   fixtureWriteScopeComplete: options.fixtureWriteScopeComplete ?? true,
   setup: Object.hasOwn(options, 'setup') ? options.setup : setup(),
+  targets, routedScreens,
 });
 
-test('all 90 source-bound explorations and fixture prerequisites are required for bounded sweep acceptance', () => {
+test('canonical scheduler plan requires all source-bound explorations and fixture prerequisites for bounded sweep acceptance', () => {
+  assert.equal(routedScreens.length, 31);
+  assert.equal(plannedExplorationCount, 93);
+  assert.equal(createExplorationSchedule({ targets, routedScreens }).planned.length, 93);
+  const run = createSweepRun({ targets, routedScreens });
+  assert.equal(run.snapshot().expectedScreens, 62);
+  assert.equal(run.snapshot().expectedStates, 62);
+  assert.equal(run.snapshot().expectedExplorations, 93);
   assert.equal(classify().status, 'ACCEPTED_SWEEP');
   assert.equal(classify().v1Status, 'PARTIAL', 'no journey proof catalog is asserted by this bounded sweep');
   assert.equal(classify().acceptedV1, false);
   assert.equal(classify().jobStatus, 'SWEEP_ACCEPTED');
 });
 
-test('complete screens and states with missing exploration goals remain partial', () => {
-  const result = classify({ expectedExplorations: 90, completedExplorations: 89,
-    pendingExplorations: [{ target: 'phone', screen: 'Workspace 29', path: '/workspace29', agent: 'phone-reviewer', status: 'MISSING' }] });
+test('complete screens and states with one missing actual scheduler goal remain partial', () => {
+  const missingGoal = goalRows().at(-1);
+  const result = classify({ expectedExplorations: 93, completedExplorations: 92,
+    pendingExplorations: [{ ...missingGoal, status: 'MISSING' }] });
   assert.equal(result.status, 'PARTIAL');
   assert.equal(result.jobStatus, 'CONTINUE');
   assert.equal(result.acceptedV1, false);
   assert.equal(result.pendingExplorations.length, 1);
   assert.equal(classify({ completedExplorations: 89 }).status, 'PARTIAL', 'an inconsistent count cannot omit pending goals');
-  assert.equal(classify({ expectedExplorations: 89, completedExplorations: 89 }).status, 'PARTIAL', 'a reduced denominator cannot lower the 90-goal contract');
+  assert.equal(classify({ expectedExplorations: 90, completedExplorations: 90 }).status, 'PARTIAL', 'a reduced denominator cannot lower the canonical 93-goal plan');
 });
 
 test('scheduler-derived exploration coverage requires every planned target, path, agent, status, steps and evidence', () => {
   const rows = goalRows();
-  assert.equal(rows.length, 90);
+  assert.equal(rows.length, 93);
   const complete = explorationCoverage({ targets, routedScreens, explorations: rows,
     explorationRelease: release, release });
-  assert.equal(complete.completedExplorations, 90);
+  assert.equal(complete.completedExplorations, 93);
   assert.equal(complete.pendingExplorations.length, 0);
   rows.pop();
   const missing = explorationCoverage({ targets, routedScreens, explorations: rows,
     explorationRelease: release, release });
-  assert.equal(missing.completedExplorations, 89);
+  assert.equal(missing.completedExplorations, 92);
   assert.equal(missing.pendingExplorations.length, 1);
   rows.push({ ...goalRows().at(-1), status: 'finished', steps: 0 });
   assert.equal(explorationCoverage({ targets, routedScreens, explorations: rows,
-    explorationRelease: release, release }).completedExplorations, 89);
+    explorationRelease: release, release }).completedExplorations, 92);
 });
 
 test('needs_restore, closed deal and ineligible lead prevent acceptance despite setup complete', () => {

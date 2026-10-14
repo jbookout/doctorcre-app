@@ -9,6 +9,7 @@ import { stagingAuth } from './auth-contract.mjs';
 import contract from '../../contracts/e2e-staging.v1.json' with { type: 'json' };
 import appRoutes from '../../contracts/app-routes.v1.json' with { type: 'json' };
 import { eligibleLead } from '../../js/leads-model.js';
+import { COLUMNS } from '../../js/pipeline-model.js';
 import { prepareBrowserControlProofs, validControlProof } from './control-proofs.mjs';
 
 const FIXTURE = { id: 'fc08d2f4-a951-5679-9f34-40d0f4278842', name: 'Synthetic Staging Fixture' };
@@ -315,6 +316,12 @@ const fixtureWrites = {
     keys: ['lead', 'base_version', 'expected_actor', 'fields', 'stage_review', 'idempotency_key'], values: ['fields'] },
   'link-lead-client': { record: 'lead', field: 'lead',
     keys: ['lead', 'base_version', 'expected_actor', 'client_id', 'confirmed', 'idempotency_key'], values: ['client_id'] },
+  'patch-deal-field': { record: 'deal', field: 'deal',
+    keys: ['deal', 'field', 'value', 'base_event_id', 'change_reason', 'human_quote', 'idempotency_key'], values: ['field', 'value'] },
+  'revert-deal-field': { record: 'deal', field: 'deal',
+    keys: ['event_id', 'idempotency_key'], values: ['event_id'] },
+  'add-critical-date': { record: 'deal', field: 'deal',
+    keys: ['deal', 'kind', 'due_on', 'source', 'note', 'idempotency_key'], values: ['kind', 'due_on', 'source', 'note'] },
 };
 const stable = value => Array.isArray(value) ? value.map(stable)
   : value && typeof value === 'object' ? Object.fromEntries(Object.keys(value).sort().map(key => [key, stable(value[key])])) : value;
@@ -324,7 +331,7 @@ const policyFailure = code => { throw Object.assign(new Error('Staging fixture w
 // Match the pinned producer's actual response shapes. A transport success is
 // not a receipt. update-lead returns only updated column names: it cannot bind
 // the target/value and therefore remains unresolved until separate reconciliation.
-function completeOperationReceipt(name, args, recordIDs, receipt, attemptedAt) {
+function completeOperationReceipt(name, args, recordIDs, receipt, attemptedAt, plan) {
   if (!receipt || typeof receipt !== 'object' || Array.isArray(receipt) || receipt.ok !== true || receipt.error)
     return null;
   const primary = recordIDs[0];
@@ -349,7 +356,81 @@ function completeOperationReceipt(name, args, recordIDs, receipt, attemptedAt) {
   if (name === 'link-lead-client' && keys(['lead_id', 'client_id']) &&
       receipt.lead_id === primary && receipt.client_id === args.client_id && recordIDs.includes(receipt.client_id))
     effect = { client_id: receipt.client_id };
+  if (name === 'patch-deal-field' && keys(['deal_id', 'field', 'old_value', 'new_value', 'event_id', 'event_recorded_at']) &&
+      receipt.deal_id === primary && receipt.field === 'phase' && args.field === 'phase' &&
+      stagingPhaseSlugs.has(receipt.old_value) && stagingPhaseSlugs.has(receipt.new_value) &&
+      receipt.new_value === args.value && isUUID(receipt.event_id || '') &&
+      timestamp(receipt.event_recorded_at))
+    effect = { field: 'phase', old_value: receipt.old_value, new_value: receipt.new_value,
+      event_id: receipt.event_id, event_recorded_at: receipt.event_recorded_at };
+  if (name === 'revert-deal-field' && keys(['deal_id', 'field', 'reverted_event_id', 'old_value', 'new_value', 'event_id', 'event_recorded_at']) &&
+      receipt.deal_id === primary && receipt.field === 'phase' && receipt.reverted_event_id === args.event_id &&
+      stagingPhaseSlugs.has(receipt.old_value) && stagingPhaseSlugs.has(receipt.new_value) &&
+      isUUID(receipt.event_id || '') && receipt.event_id !== receipt.reverted_event_id &&
+      timestamp(receipt.event_recorded_at)) {
+    const prior = plan?.browser_write_attempts?.find(row => row.operation === 'patch-deal-field' &&
+      row.state === 'acknowledged' && row.record_ids?.includes(primary) &&
+      row.response?.receipt?.event_id === args.event_id);
+    const priorBinding = prior && completeOperationReceipt('patch-deal-field', prior.arguments, prior.record_ids,
+      prior.response?.receipt, prior.attempted_at);
+    if (prior && priorBinding && prior.response?.binding && digest(priorBinding) === digest(prior.response.binding) &&
+        priorBinding.effect.new_value === receipt.old_value && priorBinding.effect.old_value === receipt.new_value)
+      effect = { field: 'phase', reverted_event_id: receipt.reverted_event_id,
+        prior_old_value: priorBinding.effect.old_value,
+        old_value: receipt.old_value, new_value: receipt.new_value,
+        event_id: receipt.event_id, event_recorded_at: receipt.event_recorded_at };
+  }
+  if (name === 'add-critical-date' && keys(['critical_date_id']) &&
+      isUUID(receipt.critical_date_id || '') && receipt.critical_date_id !== primary &&
+      args.kind === 'rent_start' && typeof args.due_on === 'string' &&
+      isCalendarDate(args.due_on) && textWithin(args.source, 4000) &&
+      (args.note === undefined || textWithin(args.note, 4000)))
+    effect = { critical_date_id: receipt.critical_date_id, kind: args.kind,
+      due_on: args.due_on, source: args.source, note: args.note ?? null };
   return effect ? { operation: name, record_ids: recordIDs, arguments_sha256: digest(args), effect } : null;
+}
+
+const textWithin = (value, limit) => typeof value === 'string' && value.trim().length > 0 && value.length <= limit;
+const stagingPhaseSlugs = new Set(COLUMNS.map(column => column.slug));
+const fixtureWritesNeedingReadback = new Set(['patch-deal-field', 'revert-deal-field', 'add-critical-date']);
+function isCalendarDate(value) {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value) || Number(value.slice(0, 4)) < 1) return false;
+  const date = new Date(`${value}T00:00:00.000Z`);
+  return Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === value;
+}
+
+function hasPhaseEvent(detail, eventId, oldValue, newValue, verb) {
+  return Array.isArray(detail?.events) && detail.events.some(event => event?.id === eventId &&
+    event.subject_id === detail.deal_id && event.subject_type === 'deal' && event.field === 'phase' &&
+    event.verb === verb && event.old_value?.phase === oldValue && event.new_value?.phase === newValue);
+}
+
+function verifiedReadback(row, detail, plan) {
+  const binding = row.response?.binding;
+  const effect = binding?.effect;
+  if (binding?.operation === 'patch-deal-field') {
+    const eventProved = hasPhaseEvent(detail, effect.event_id, effect.old_value, effect.new_value, 'patch-deal-field');
+    if (detail?.deal_id !== row.record_ids[0] || !eventProved) return false;
+    if (detail.phase === effect.new_value) return true;
+    const undo = plan.browser_write_attempts?.find(attempt => attempt.operation === 'revert-deal-field' &&
+      attempt.state === 'acknowledged' && attempt.arguments?.event_id === effect.event_id);
+    const undoEffect = undo?.response?.binding?.effect;
+    return Boolean(undoEffect && detail.phase === undoEffect.new_value &&
+      undoEffect.reverted_event_id === effect.event_id &&
+      hasPhaseEvent(detail, undoEffect.event_id, undoEffect.old_value, undoEffect.new_value, 'revert-deal-field'));
+  }
+  if (binding?.operation === 'revert-deal-field')
+    return detail?.deal_id === row.record_ids[0] && detail.phase === effect.new_value &&
+      hasPhaseEvent(detail, effect.event_id, effect.old_value, effect.new_value, 'revert-deal-field') &&
+      Array.isArray(detail.events) && detail.events.some(event => event?.id === effect.reverted_event_id &&
+        event.subject_id === detail.deal_id && event.field === 'phase' && event.verb === 'patch-deal-field' &&
+        event.old_value?.phase === effect.prior_old_value && event.new_value?.phase === effect.old_value);
+  if (binding?.operation === 'add-critical-date')
+    return detail?.deal_id === row.record_ids[0] && Array.isArray(detail.critical_dates) &&
+      detail.critical_dates.some(date => date?.id === effect.critical_date_id && date.deal_id === detail.deal_id &&
+        date.kind === effect.kind && date.due_on === effect.due_on && date.source === effect.source &&
+        date.note === effect.note);
+  return true;
 }
 
 function requirePlanCoverage(plan, scope) {
@@ -361,9 +442,19 @@ function requirePlanCoverage(plan, scope) {
       attempts.some(row => {
         if (row.state !== 'acknowledged' || row.response?.acknowledged !== true ||
             !Array.isArray(row.record_ids) || !row.record_ids.length || !row.record_ids.every(isUUID)) return true;
-        const bound = completeOperationReceipt(row.operation, row.arguments, row.record_ids, row.response.receipt, row.attempted_at);
-        return !bound || !row.response.binding || digest(bound) !== digest(row.response.binding);
+        const bound = completeOperationReceipt(row.operation, row.arguments, row.record_ids, row.response.receipt, row.attempted_at, plan);
+        const needsReadback = fixtureWritesNeedingReadback.has(row.operation);
+        return !bound || !row.response.binding || digest(bound) !== digest(row.response.binding) ||
+          needsReadback && !validIndependentReadback(row);
       })) policyFailure('write-coverage-incomplete');
+}
+
+function validIndependentReadback(row) {
+  return row.independent_readback?.schema === 'staging-fixture-business-readback.v1' &&
+    row.independent_readback.operation === 'get-deal-room' &&
+    row.independent_readback.record_id === row.record_ids?.[0] &&
+    row.independent_readback.matched === true && /^[a-f0-9]{64}$/.test(row.independent_readback.response_sha256 || '') &&
+    typeof row.independent_readback.observed_at === 'string' && Number.isFinite(Date.parse(row.independent_readback.observed_at));
 }
 
 // One test-harness seam, using the existing private setup/receipt store.
@@ -426,8 +517,40 @@ export function stagingFixtureWriteGuard({ output, release, run = process.env.E2
           review.human_quote !== undefined && !text(review.human_quote))
         policyFailure('operation-shape-unproved');
     }
-    const id = owned(plan, spec.record, args[spec.field]) ||
-      spec.record === 'deal' && owned(plan, 'invoice', args[spec.field]);
+    const attempts = plan.browser_write_attempts || [];
+    if (name === 'patch-deal-field') {
+      const phases = new Set(COLUMNS.map(column => column.slug));
+      const knownPhaseEvent = args.base_event_id === null || attempts.some(row =>
+        ['patch-deal-field', 'revert-deal-field'].includes(row.operation) && row.state === 'acknowledged' &&
+        row.record_ids?.includes(args.deal) && row.response?.receipt?.event_id === args.base_event_id);
+      if (args.field !== 'phase' || !phases.has(args.value) || ['pending', 'closed'].includes(args.value) ||
+          !Object.hasOwn(args, 'base_event_id') || !knownPhaseEvent ||
+          args.change_reason !== undefined && !text(args.change_reason) ||
+          args.human_quote !== undefined && !text(args.human_quote) ||
+          attempts.some(row => row.operation === name && row.record_ids?.includes(args.deal)))
+        policyFailure('operation-shape-unproved');
+    }
+    let priorPhasePatch = null;
+    if (name === 'revert-deal-field') {
+      const prior = attempts.find(row => row.operation === 'patch-deal-field' && row.state === 'acknowledged' &&
+        row.response?.receipt?.event_id === args.event_id);
+      const priorBinding = prior && completeOperationReceipt('patch-deal-field', prior.arguments,
+        prior.record_ids, prior.response?.receipt, prior.attempted_at, plan);
+      if (!priorBinding || !prior.response?.binding || digest(priorBinding) !== digest(prior.response.binding) ||
+          attempts.some(row => row.operation === name && row.arguments?.event_id === args.event_id))
+        policyFailure('operation-shape-unproved');
+      priorPhasePatch = prior;
+    }
+    if (name === 'add-critical-date' && (args.kind !== 'rent_start' || !isCalendarDate(args.due_on) ||
+        !text(args.source) || args.note !== undefined && !text(args.note) ||
+        attempts.some(row => row.operation === name && row.record_ids?.includes(args.deal))))
+      policyFailure('operation-shape-unproved');
+    const id = ['patch-deal-field', 'add-critical-date'].includes(name)
+      ? owned(plan, 'deal', args.deal)
+      : name === 'revert-deal-field' && priorPhasePatch
+        ? owned(plan, 'deal', priorPhasePatch.arguments?.deal)
+        : owned(plan, spec.record, args[spec.field]) ||
+          spec.record === 'deal' && owned(plan, 'invoice', args[spec.field]);
     if (!id) policyFailure('record-outside-fixtures');
     const ids = new Set([id]);
     if (name === 'link-lead-client') {
@@ -437,22 +560,57 @@ export function stagingFixtureWriteGuard({ output, release, run = process.env.E2
     }
     // No nested additional record references may ride through review
     // metadata. Text values are ordinary content, not inferred identity.
+    const referenceArguments = { ...args };
+    if (name === 'patch-deal-field') delete referenceArguments.base_event_id;
+    if (name === 'revert-deal-field') delete referenceArguments.event_id;
     const referencesOwned = value => Object.entries(value || {}).every(([key, val]) =>
       val && typeof val === 'object' ? referencesOwned(val) :
         key === 'id' || key.endsWith('_id') ? ids.has(val) : true);
-    if (!referencesOwned(args)) policyFailure('reference-outside-fixtures');
+    if (!referencesOwned(referenceArguments)) policyFailure('reference-outside-fixtures');
     const fingerprintValues = Object.fromEntries(spec.values.map(key => [key,
       ['add-deal-note', 'set-next-step'].includes(name) && key === 'text' && typeof args[key] === 'string'
         ? args[key].trim() : args[key] ?? null]));
     const fingerprint = digest([name, id, fingerprintValues]);
-    const attempts = plan.browser_write_attempts || [];
     if (Object.values(plan.keys || {}).includes(args.idempotency_key) ||
         attempts.some(row => row.fingerprint === fingerprint || row.arguments?.idempotency_key === args.idempotency_key))
       policyFailure('duplicate-attempt-requires-reconciliation');
     if (attempts.some(row => ['inflight', 'unresolved'].includes(row.state) &&
         row.record_ids.some(record => ids.has(record))))
       policyFailure('ambiguous-record-requires-reconciliation');
+    const pendingReadback = attempts.find(row => row.state === 'acknowledged' && row.record_ids?.some(record => ids.has(record)) &&
+      fixtureWritesNeedingReadback.has(row.operation) && !validIndependentReadback(row));
+    const pairedUndo = name === 'revert-deal-field' && pendingReadback?.operation === 'patch-deal-field' &&
+      pendingReadback.response?.receipt?.event_id === args.event_id;
+    if (pendingReadback && !pairedUndo) policyFailure('ambiguous-record-requires-reconciliation');
     return { ids, fingerprint };
+  };
+  const reconcileDealRoomRead = async (response, requestedDeal, requestId) => {
+    if (typeof requestedDeal !== 'string' || !isUUID(requestedDeal) || !planPath) return;
+    let rpc, detail;
+    try {
+      rpc = await response.json();
+      detail = JSON.parse(rpc?.result?.content?.[0]?.text || 'null');
+    } catch { return; }
+    if (response.status() !== 200 || rpc?.jsonrpc !== '2.0' || rpc.id !== requestId || rpc.error || rpc.result?.isError ||
+        !Array.isArray(rpc.result?.content) || rpc.result.content.length !== 1 ||
+        rpc.result.content[0]?.type !== 'text' || detail?.deal_id !== requestedDeal) return;
+    const responseHash = digest(rpc);
+    await locked(async () => {
+      const plan = await currentPlan();
+      let changed = false;
+      for (const row of plan.browser_write_attempts || []) {
+        if (row.state !== 'acknowledged' || !row.record_ids?.includes(requestedDeal) ||
+            !['patch-deal-field', 'revert-deal-field', 'add-critical-date'].includes(row.operation) ||
+            validIndependentReadback(row) || !verifiedReadback(row, detail, plan)) continue;
+        row.independent_readback = {
+          schema: 'staging-fixture-business-readback.v1', operation: 'get-deal-room',
+          record_id: requestedDeal, response_sha256: responseHash, matched: true,
+          observed_at: new Date().toISOString(),
+        };
+        changed = true;
+      }
+      if (changed) await persist(planPath, plan);
+    });
   };
   const retainRefusal = async (gap, scope) => {
     refusals.push(gap);
@@ -615,7 +773,11 @@ export function stagingFixtureWriteGuard({ output, release, run = process.env.E2
         name = body.params?.name;
         const args = body.params?.arguments;
         if (!args || typeof args !== 'object' || Array.isArray(args)) policyFailure('operation-shape-unproved');
-        if (browserReads.has(name)) return await forwardRead();
+        if (browserReads.has(name)) {
+          const response = await forwardRead();
+          if (name === 'get-deal-room') await reconcileDealRoomRead(response, args.deal, body.id);
+          return response;
+        }
         if (!(typeof body.id === 'string' && body.id || Number.isSafeInteger(body.id)))
           policyFailure('operation-shape-unproved');
         token = await locked(async () => {
@@ -645,7 +807,7 @@ export function stagingFixtureWriteGuard({ output, release, run = process.env.E2
           const bound = response.status() === 200 && rpc?.jsonrpc === '2.0' && rpc.id === body.id &&
             !rpc.error && !rpc.result?.isError && Array.isArray(rpc.result?.content) && rpc.result.content.length === 1 &&
             rpc.result.content[0].type === 'text'
-            ? completeOperationReceipt(name, intent.arguments, intent.record_ids, receipt, intent.attempted_at) : null;
+            ? completeOperationReceipt(name, intent.arguments, intent.record_ids, receipt, intent.attempted_at, plan) : null;
           const acknowledged = Boolean(bound) && !flight.timedOut;
           intent.state = acknowledged ? 'acknowledged' : 'unresolved';
           intent.dispatched_outcome = acknowledged ? 'complete operation receipt retained; effect not independently verified' : 'unknown';
