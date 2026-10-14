@@ -18,13 +18,11 @@
  * home and it is the shared system.
  */
 
-/* ------------------------------------------------------ page furniture */
 .hero { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 14px; }
 .hero-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .row-wrap { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .field-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin-top: 12px; }
 
-/* ------------------------------------------------------ board and panel */
 /* The phase grid uses the page width; record details open in a modal. */
 .pipeline-layout { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 14px; align-items: start; margin-top: 12px; }
 .pipeline-layout .side-panel:not([hidden]) { display: grid; }
@@ -42,17 +40,14 @@
    what they intend to do. */
 .presence-chip { margin: 0; color: var(--cyan-text); font-size: 10px; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; }
 
-/* ------------------------------------------------------ unconfirmed writes */
 /* A write that was never answered belongs to the page, not to a column: it stays
    above the board until the person settles it, whatever the filter is showing. */
 .pending-bar { display: grid; gap: 8px; margin: 12px 0; padding: 12px; border: 1px dashed color-mix(in srgb, var(--amber) 60%, transparent); border-radius: var(--radius); background: color-mix(in srgb, var(--amber) 8%, transparent); font-size: 12px; }
 .pending-bar span { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 
-/* ------------------------------------------------------ dialog additions */
 .check-option { display: flex; gap: 8px; align-items: center; min-height: var(--touch); font-size: 12px; }
 .field-hint.error { color: var(--red-text); font-size: 12px; font-weight: 700; }
 
-/* ------------------------------------------------------ Recent changes in Today */
 .receipt-list { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
 
 @media (max-width: 1100px) {
