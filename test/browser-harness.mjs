@@ -11,7 +11,7 @@
 //    BROWSER_ROUTE_JITTER_MS=<ms> answers each routed request up to <ms> late,
 //    so a CI-starved runner can be reproduced locally.
 import { after } from 'node:test';
-import { spawn } from 'node:child_process';
+import { startFixtureServer } from '../scripts/fixture-server.mjs';
 import { setTimeout as delay } from 'node:timers/promises';
 import { chromium as playwrightChromium, webkit as playwrightWebkit } from 'playwright';
 
@@ -78,16 +78,9 @@ function browserEngine(engine) {
 export const chromium = browserEngine(playwrightChromium);
 export const webkit = browserEngine(playwrightWebkit);
 
-// Starts scripts/serve.mjs on a port the OS picks. A port drawn at random from
-// a fixed range can be taken by a parallel run or an ephemeral connection.
 export async function fixtureServer({ root } = {}) {
-  const server = spawn(process.execPath, ['scripts/serve.mjs'], { cwd: new URL('..', import.meta.url), env: { ...process.env, PORT: '0', ...(root ? { DOCTORCRE_FIXTURE_ROOT: root } : {}) }, stdio: ['ignore', 'pipe', 'pipe'] });
-  const origin = await new Promise((resolve, reject) => {
-    server.stdout.once('data', data => resolve(String(data).match(/http:\/\/[\d.]+:\d+/)[0]));
-    server.once('error', reject);
-    server.once('exit', code => reject(new Error(`fixture server exited ${code}`)));
-  });
-  return { origin, close: () => server.kill() };
+  const server = await startFixtureServer({ env: root ? { DOCTORCRE_FIXTURE_ROOT: root } : {} });
+  return { origin: server.url, close: server.stop };
 }
 
 // page.waitForFunction treats a returned promise as truthy, so an async
