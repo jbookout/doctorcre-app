@@ -5,7 +5,6 @@ export const COMPLETION_STATUS = Object.freeze({
   NEEDS_RECONCILIATION: 'NEEDS_RECONCILIATION',
   FAILED: 'FAILED',
   ACCEPTED_SWEEP: 'ACCEPTED_SWEEP',
-  ACCEPTED_V1: 'ACCEPTED_V1',
 });
 
 const sourceBound = release => release?.service === 'doctorcre-app' &&
@@ -163,6 +162,6 @@ export function completionContract({ verdict, release, fixtureWriteScopeComplete
 }
 
 export function assertSweepJobOutcome(completion) {
-  if (['ACCEPTED_SWEEP', 'ACCEPTED_V1', 'PARTIAL'].includes(completion?.status)) return completion;
+  if (['ACCEPTED_SWEEP', 'PARTIAL'].includes(completion?.status)) return completion;
   throw new Error(`Staging sweep ${completion?.status || 'INVALID'}; see sweep-verdict.json and coverage.md.`);
 }

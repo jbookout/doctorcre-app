@@ -16,3 +16,7 @@ test('unreconciled writes and measured failures stop the job', () => {
     assert.throws(() => assertSweepJobOutcome({ status }), new RegExp(status));
   }
 });
+
+test('full V1 acceptance is refused without a business journey proof contract', () => {
+  assert.throws(() => assertSweepJobOutcome({ status: 'ACCEPTED_V1' }), /ACCEPTED_V1/);
+});
