@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import { EventEmitter } from 'node:events';
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, writeFile, mkdir, open, rename, readdir, symlink, link, chmod } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
@@ -227,6 +228,8 @@ test('unreadable and structurally invalid ledgers fail with named errors', async
   const path = join(root, 'run-budget.json');
   const original = await readFile(path, 'utf8');
   await writeFile(path, '{truncated');
+  assert.throws(() => run.snapshot(), code('run-ledger-unreadable'));
+  assert.throws(() => run.check(), code('run-ledger-unreadable'));
   assert.throws(() => openRun(root, { limits, runId: run.id, events: null }), code('run-ledger-unreadable'));
   for (const falsey of [null, false, 0]) {
     await writeFile(path, JSON.stringify(falsey));
@@ -234,6 +237,8 @@ test('unreadable and structurally invalid ledgers fail with named errors', async
   }
   for (const corrupt of [{ schema: 'unknown' }, { modelCalls: -1 }, { activeHttp: [] }, { queuedHttp: null }, { processGroups: null }, { processGroups: [] }, { stopReason: 3 }, { deadline: 0 }, { id: 'wrong-run' }]) {
     await writeFile(path, JSON.stringify({ ...JSON.parse(original), ...corrupt }));
+    assert.throws(() => run.snapshot(), code('run-ledger-invalid'));
+    assert.throws(() => run.check(), code('run-ledger-invalid'));
     assert.throws(() => openRun(root, { limits, runId: run.id, events: null }), code('run-ledger-invalid'));
   }
   await writeFile(path, original);
@@ -279,4 +284,91 @@ test('zero model calls prevents the first reservation and survives reopen and re
   t.after(() => resumed.dispose());
   assert.throws(() => resumed.reserveModel(), code('model-call-limit'));
   assert.equal(resumed.snapshot().modelCalls, 0);
+});
+
+
+test('atomic observations leave a live mutation lock and ledger untouched', async t => {
+  const { root, run } = await fixture(t, { stopGraceMs: 20 });
+  const path = join(root, 'run-budget.json'), lock = join(root, '.run-budget.lock');
+  const original = await readFile(path, 'utf8');
+  await mkdir(lock, { mode: 0o700 });
+  const marker = JSON.stringify({ schema: 'doctorcre-run-lock.v1', runId: run.id, invocation: '11111111-1111-4111-8111-111111111111', pid: process.pid });
+  await writeFile(join(lock, 'owner.json'), marker, { mode: 0o600 });
+  assert.equal(run.snapshot().id, run.id);
+  run.check(); run.checkArtifacts();
+  assert.throws(() => run.reserveModel(), code('run-ledger-busy'));
+  assert.equal(await readFile(path, 'utf8'), original);
+  assert.equal(await readFile(join(lock, 'owner.json'), 'utf8'), marker);
+});
+
+for (const refusal of ['live writer', 'unknown invocation', 'wrong run', 'incomplete ownership', 'replaced lease', 'missing metadata', 'malformed metadata', 'symlink marker', 'linked marker', 'public marker', 'symlink lock']) {
+  test(`orphan lock recovery refuses ${refusal}`, async t => {
+    const { root, limits, run } = await fixture(t, { stopGraceMs: 20 });
+    const leasePath = join(root, '.run-owner'), lock = join(root, '.run-budget.lock');
+    const lease = await open(leasePath, 'wx', 0o600);
+    await lease.writeFile(String(process.pid));
+    t.after(() => lease.close());
+    const ownerId = '11111111-1111-4111-8111-111111111111';
+    const supervisor = openRun(root, { limits, runId: run.id, events: null, ownerId,
+      retirement: { lease: lease.fd, isRetired: () => refusal !== 'incomplete ownership' } });
+    t.after(() => supervisor.dispose());
+    const release = supervisor.reserveProcessGroup();
+    const before = await readFile(join(root, 'run-budget.json'), 'utf8');
+    const dead = spawnSync(process.execPath, ['-e', ''], { timeout: 1_000 });
+    assert.equal(dead.status, 0);
+    assert.throws(() => process.kill(dead.pid, 0), { code: 'ESRCH' });
+    await mkdir(lock, { mode: 0o700 });
+    const marker = refusal === 'malformed metadata' ? '{broken' : JSON.stringify({
+      schema: 'doctorcre-run-lock.v1', runId: refusal === 'wrong run' ? 'another-run' : run.id,
+      invocation: refusal === 'unknown invocation' ? 'another-invocation' : ownerId,
+      pid: refusal === 'live writer' ? process.pid : dead.pid,
+    });
+    if (refusal !== 'missing metadata') await writeFile(join(lock, 'owner.json'), marker, { mode: 0o600 });
+    if (refusal === 'replaced lease') {
+      await rename(leasePath, leasePath + '.retired');
+      await writeFile(leasePath, String(process.pid));
+    }
+    if (refusal === 'symlink marker') {
+      await rename(join(lock, 'owner.json'), join(root, 'other-marker'));
+      await symlink(join(root, 'other-marker'), join(lock, 'owner.json'));
+    }
+    if (refusal === 'linked marker') await link(join(lock, 'owner.json'), join(root, 'other-marker'));
+    if (refusal === 'public marker') await chmod(join(lock, 'owner.json'), 0o644);
+    if (refusal === 'symlink lock') {
+      await rename(lock, lock + '.other');
+      await symlink(lock + '.other', lock);
+    }
+    assert.throws(() => supervisor.releaseInvocationResources(), code(
+      ['incomplete ownership', 'replaced lease'].includes(refusal) ? 'process-cleanup-unverified' : 'run-ledger-busy'));
+    assert.equal(await readFile(join(root, 'run-budget.json'), 'utf8'), before);
+    if (refusal !== 'missing metadata') assert.equal(await readFile(join(lock, 'owner.json'), 'utf8'), marker);
+    else assert.deepEqual(await readdir(lock), []);
+    await rm(lock, { recursive: true });
+    release();
+  });
+}
+
+
+test('owned abandoned writer lock recovers only after physical retirement under the original lease', async t => {
+  const { root, limits, run } = await fixture(t, { stopGraceMs: 20 });
+  const lease = await open(join(root, '.run-owner'), 'wx', 0o600);
+  await lease.writeFile(String(process.pid));
+  t.after(() => lease.close());
+  const ownerId = '11111111-1111-4111-8111-111111111111';
+  const supervisor = openRun(root, { limits, runId: run.id, events: null, ownerId,
+    retirement: { lease: lease.fd, isRetired: () => true } });
+  t.after(() => supervisor.dispose());
+  supervisor.reserveProcessGroup();
+  const dead = spawnSync(process.execPath, ['-e', ''], { timeout: 1_000 });
+  assert.equal(dead.status, 0);
+  assert.throws(() => process.kill(dead.pid, 0), { code: 'ESRCH' });
+  const lock = join(root, '.run-budget.lock');
+  await mkdir(lock, { mode: 0o700 });
+  await writeFile(join(lock, 'owner.json'), JSON.stringify({ schema: 'doctorcre-run-lock.v1',
+    runId: run.id, invocation: ownerId, pid: dead.pid }), { mode: 0o600 });
+  supervisor.releaseInvocationResources();
+  supervisor.stop('stop-signal');
+  assert.equal(supervisor.snapshot().stopReason, 'stop-signal');
+  assert.deepEqual(supervisor.snapshot().processGroups, {});
+  await assert.rejects(readdir(lock), { code: 'ENOENT' });
 });

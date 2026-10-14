@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { openSync, closeSync, writeSync, readSync, fstatSync, unlinkSync, mkdirSync } from 'node:fs';
 import { join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { openRun, RUN_LIMITS, RunLimitError, runLimitsFromEnvironment } from './run-limits.mjs';
+import { openRun, RUN_LIMITS, RunLimitError, runLimitsFromEnvironment, directoryBytes } from './run-limits.mjs';
 import { targetExists as probe, signalTarget } from './process-liveness.mjs';
 
 const project = fileURLToPath(new URL('../../', import.meta.url));
@@ -89,6 +89,7 @@ export async function supervise({ command, args = [], output, environment = proc
   mkdirSync(root, { recursive: true, mode: 0o700 });
   let run;
   const leasePath = join(root, '.run-owner');
+  const ownerId = randomUUID();
   const registry = join(root, 'owned-process-groups-' + randomUUID() + '.jsonl');
   const groups = new Map();
   let lease, log, child, monitor, deadline, hardTimer, killDeadline, cleanupPromise, resolveExit, rejectStopped;
@@ -100,6 +101,12 @@ export async function supervise({ command, args = [], output, environment = proc
   // A stop can arrive during synchronous setup, before the race below attaches.
   void stopped.catch(() => {});
 
+  const checkRun = () => {
+    const state = run.snapshot();
+    const code = state.stopReason || (Date.now() >= state.deadline ? 'whole-run-deadline' : null) ||
+      (directoryBytes(root) > limits.artifactBytes ? 'artifact-byte-limit' : null);
+    if (code) throw new RunLimitError(code);
+  };
   const retire = pid => {
     if (!ownedAlive(pid)) groups.delete(pid);
   };
@@ -189,6 +196,7 @@ export async function supervise({ command, args = [], output, environment = proc
       }
       if (journalTail || ownershipUnverified) throw new RunLimitError('process-cleanup-unverified');
       run.releaseInvocationResources();
+      if (reason) run.stop(reason);
     })();
     return cleanupPromise;
   };
@@ -196,25 +204,25 @@ export async function supervise({ command, args = [], output, environment = proc
     if (reason) return;
     reason = code;
     hardTimer = setTimeout(hardKill, limits.stopGraceMs);
-    try { run.stop(code); } catch (error) { reason = error.code || 'run-stop-record-failed'; }
     void cleanup().then(() => rejectStopped(new RunLimitError(reason)), rejectStopped);
   };
   const interrupt = () => stop('stop-signal');
   try {
     lease = openSync(leasePath, 'wx', 0o600);
     writeSync(lease, String(process.pid));
-    run = openRun(output, { limits, runId: environment.E2E_RUN_ID, events: null, newInvocation: true });
+    run = openRun(output, { limits, runId: environment.E2E_RUN_ID, events: null, newInvocation: true, ownerId,
+      retirement: { lease, isRetired: () => closed && !groups.size && !journalTail && !ownershipUnverified } });
     log = openSync(join(run.root, 'run.log'), 'a', 0o600);
     events.on('SIGINT', interrupt); events.on('SIGTERM', interrupt);
     deadline = setTimeout(() => stop('whole-run-deadline'), Math.max(1, run.deadline - Date.now()));
-    run.checkArtifacts();
+    checkRun();
     try {
       if (!processBirths([process.pid], limits.dispatcherGraceMs).has(process.pid)) throw new Error('Missing supervisor identity');
     } catch { throw new RunLimitError('process-inspection-unavailable'); }
     child = spawn(command, args, {
       cwd: project, detached: true,
       env: { ...environment, E2E_RUN_ID: run.id, E2E_RUN_LIMITS: JSON.stringify(limits), E2E_V2_OUTPUT: run.root,
-        E2E_TARGET: 'staging-live', E2E_RUN_SUPERVISED: '1', E2E_PROCESS_REGISTRY: registry,
+        E2E_RUN_OWNER: ownerId, E2E_TARGET: 'staging-live', E2E_RUN_SUPERVISED: '1', E2E_PROCESS_REGISTRY: registry,
         NODE_OPTIONS: `${environment.NODE_OPTIONS || ''} --import=${fileURLToPath(new URL('./preload.mjs', import.meta.url))}`.trim() },
       stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
     });
@@ -246,7 +254,7 @@ export async function supervise({ command, args = [], output, environment = proc
     };
     child.stdout.on('data', record('stdout')); child.stderr.on('data', record('stderr'));
     monitor = setInterval(() => {
-      try { refreshGroups(); run.checkArtifacts(); }
+      try { refreshGroups(); checkRun(); }
       catch (error) { stop(error.code || 'run-monitor-failed'); }
     }, limits.monitorIntervalMs);
     await Promise.race([exited, stopped]);
@@ -259,7 +267,7 @@ export async function supervise({ command, args = [], output, environment = proc
       const detail = workerDiagnostics.size ? [...workerDiagnostics].join('; ') : undefined;
       throw new RunLimitError('worker-exit-' + workerCode, detail);
     }
-    run.checkArtifacts();
+    checkRun();
     return run.snapshot();
   } finally {
     clearInterval(monitor); clearTimeout(deadline);
