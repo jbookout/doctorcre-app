@@ -1,25 +1,3 @@
-/* V5-UX-B12a notifications page — page layer over css/system.css.
- *
- * The shared sheet is contract-bound, so nothing here invents a colour or a
- * type scale; the dark cinematic register comes from its tokens alone. This
- * page adds only what the shared sheet leaves to a page:
- *
- *  1. The one-column card list, authored at 360px and widened. The severity
- *     chip and the clock share one row ABOVE the reason, so the reason — the
- *     sentence a person actually reads — never starts halfway down a card.
- *  2. The 44px floor on every control this page adds, including the
- *     full-width acknowledge button, and wrapping so a long subject reference
- *     reads without a horizontal scrollbar at any width.
- *  3. The visible separation of the accountable-activity panel. An event is
- *     not a notification, and a stream drawn like a feed would merge the two;
- *     that panel is dashed, quieter, and sits UNDER the feed on a phone.
- *  4. The quiet-hours panel, which now carries a REAL form (V5-UX-B12,
- *     WR-000116): a switch, two clock fields, a timezone field and two
- *     actions. Every control clears the 44px floor, the grid is one column at
- *     360px and only widens when there is room, and the quiet-now banner and
- *     the per-row quiet marker use the shared amber token rather than a new
- *     colour — a suppressed row is MARKED, never hidden.
- */
 
 .topbar { flex-wrap: wrap; }
 .global-controls { flex-wrap: wrap; justify-content: flex-end; }
@@ -36,7 +14,6 @@
 .chip { min-height: var(--touch); overflow-wrap: anywhere; }
 .btn { min-height: var(--touch); }
 
-/* One column, always. A notification is a sentence, not a table row. */
 #feedList { grid-template-columns: minmax(0, 1fr); }
 #feedList .work-item { grid-template-columns: minmax(0, 1fr); }
 .note-top { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
@@ -58,8 +35,6 @@
 [data-section="activity"] { border-style: dashed; }
 [data-section="activity"] .work-item { color: var(--quiet); }
 
-/* The quiet-now banner and the per-row marker share one amber, from the shared
- * sheet's token. They are a state, not an error: nothing failed. */
 .quiet-banner { margin: 0; padding: 10px 12px; border: 1px solid var(--amber); border-radius: 12px;
   background: color-mix(in srgb, var(--amber) 12%, transparent); color: var(--amber-text);
   font-size: 12px; line-height: 1.45; }
@@ -67,8 +42,6 @@
   border: 1px solid var(--amber); border-radius: 999px; background: color-mix(in srgb, var(--amber) 10%, transparent);
   color: var(--amber-text); font-size: 11px; font-weight: 600; overflow-wrap: anywhere; }
 
-/* The preference form. One column at 360px; the grid only widens where there
- * is room for two clock fields to sit side by side without either shrinking. */
 .pref-form { display: grid; gap: 12px; margin-top: 12px; scroll-margin-top: 80px; }
 .pref-grid { display: grid; gap: 12px; grid-template-columns: minmax(0, 1fr); }
 .pref-form .field { display: grid; gap: 6px; min-width: 0; }
@@ -98,9 +71,6 @@
   .note-top { flex-direction: column; align-items: flex-start; }
 }
 
-/* Details and contextual help: collapsed by default, a 44px summary that
- * brightens on hover and focus, and contents that ease in when opened. With
- * motion reduced (system.css, either preference) the contents simply appear. */
 .record-details, .context-help { margin-top: 8px; color: var(--quiet); font-size: 12px; }
 .record-details summary, .context-help summary { min-height: var(--touch); display: list-item; align-content: center; cursor: pointer; border-radius: 8px; transition: color .2s ease; }
 .record-details summary:hover, .context-help summary:hover, .record-details summary:focus-visible, .context-help summary:focus-visible { color: var(--text); }
