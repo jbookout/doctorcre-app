@@ -289,7 +289,20 @@ test('served signed-in app W4/W9 uses the real UI, canonical fixture guard and d
       }
       return actual;
     };
-    return { page, guard, scoped, detail, invoice, invoiceDeal, awaitingInvoice, awaitingDeal: awaitingInvoice.deal_id,
+    const confirmDetailMove = async () => {
+      await guard.admitBusinessJourneyStep({ phase: 'admit', journey: 'W4', step: 'move', deal, release });
+      const completed = page.waitForEvent(lose === 'patch-deal-field' ? 'requestfailed' : 'response', {
+        predicate: event => {
+          const request = typeof event.request === 'function' ? event.request() : event;
+          return new URL(request.url()).pathname === '/mcp' && request.method() === 'POST' &&
+            request.postDataJSON()?.params?.name === 'patch-deal-field';
+        },
+      });
+      await page.locator('#detailPhase').selectOption('research');
+      await page.locator('#completionConfirm').click();
+      await completed;
+    };
+    return { page, guard, scoped, confirmDetailMove, detail, invoice, invoiceDeal, awaitingInvoice, awaitingDeal: awaitingInvoice.deal_id,
       proof, proofPath, writes, leases, reads, boardReads, changeEvents, denied, errors, admittedBeforeUI, readOnlyUI };
   }
 
@@ -410,7 +423,8 @@ test('served signed-in app W4/W9 uses the real UI, canonical fixture guard and d
   await t.test('interrupted dispatch is durable and rerun sends no second mutation', async () => {
     const f = await fixture({ lose: 'patch-deal-field' });
     try {
-      await assert.rejects(runBusinessJourneys({ page: f.page, fixtureGuard: f.guard, release, deal, run, journeys: ['W4'] }),
+      await f.confirmDetailMove();
+      await assert.rejects(f.guard.assertCoverage(),
         error => error.code === 'write-coverage-incomplete');
       assert.equal(f.writes.length, 1);
       const plan = JSON.parse(await readFile(planPath, 'utf8'));
@@ -428,13 +442,27 @@ test('served signed-in app W4/W9 uses the real UI, canonical fixture guard and d
   await t.test('wrong undo event cannot cross the admitted event binding', async () => {
     const f = await fixture();
     try {
-      const admit = f.guard.admitBusinessJourneyStep.bind(f.guard);
-      f.guard.admitBusinessJourneyStep = spec => {
-        if (spec.step === 'undo' && spec.phase === 'admit') throw new Error('Synthetic pause before undo');
-        return admit(spec);
-      };
-      await assert.rejects(runBusinessJourneys({ page: f.page, fixtureGuard: f.guard, release, deal, run, journeys: ['W4'] }), /Synthetic pause/);
-      const intent = await admit({ phase: 'admit', journey: 'W4', step: 'undo', deal, release });
+      await f.confirmDetailMove();
+      const readback = f.page.waitForResponse(response => {
+        const request = response.request();
+        return new URL(request.url()).pathname === '/mcp' && request.method() === 'POST' &&
+          request.postDataJSON()?.params?.name === 'get-deal-room';
+      });
+      await f.page.locator('[data-refresh-detail]').click();
+      await readback;
+      await f.page.waitForFunction(() => document.querySelector('#detailPhase')?.value === 'research');
+      const spec = { journey: 'W4', step: 'move', deal, release };
+      const moved = await f.guard.admitBusinessJourneyStep({ ...spec, phase: 'status' });
+      assert.equal(moved.state, 'acknowledged');
+      assert.equal(moved.independent_readback.matched, true);
+      const phase = await f.page.locator('#detailPhase').inputValue();
+      await f.page.locator('#panelClose').click();
+      if (!await f.page.locator('#appToday').isVisible()) await f.page.locator('#appTodayToggle').click();
+      const undo = f.page.locator(`button[data-undo="${moved.response.binding.effect.event_id}"]`);
+      await undo.waitFor({ state: 'visible' });
+      await f.guard.admitBusinessJourneyStep({ ...spec, phase: 'observe',
+        observation: { phase, event_id: await undo.getAttribute('data-undo') } });
+      const intent = await f.guard.admitBusinessJourneyStep({ phase: 'admit', journey: 'W4', step: 'undo', deal, release });
       assert.equal(intent.state, 'admitted');
       await f.page.evaluate(async args => {
         try { await fetch('/mcp', { method: 'POST', headers: { 'content-type': 'application/json' },
@@ -715,7 +743,8 @@ test('served signed-in app W4/W9 uses the real UI, canonical fixture guard and d
       } else assert.match(failure.message,/coverage|reconciliation/);
       assert.equal(f.writes.length,1,failure.message);assert.equal(f.invoice.status,'received');
       const restarted=stagingFixtureWriteGuard({output,release,run,invoiceFixtureTarget:invoiceTarget});
-      await assert.rejects(runBusinessJourneys({page:f.page,fixtureGuard:restarted,release,deal:f.invoiceDeal,run,journeys:['W15']}),/coverage|reconciliation/);
+      await assert.rejects(runBusinessJourneys({page:f.page,fixtureGuard:restarted,release,deal:f.invoiceDeal,run,journeys:['W15']}),
+        {code:'business-journey-readback-incomplete'});
       assert.equal(f.writes.length,1);await assert.rejects(assertStagingWriteCoverage(output),/coverage/);
     }finally{await f.page.context().close();}
   });
