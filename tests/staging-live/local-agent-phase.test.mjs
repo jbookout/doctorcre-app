@@ -20,7 +20,9 @@ const fixtureRun = '33333333-3333-4333-8333-333333333333';
 const source = '4444444444444444444444444444444444444444';
 const reason = 'Fictional staging agent advanced an invented deal for W4 badge and Undo verification.';
 const pair = { source_commit: source, carr_source_commit: contract.producer.source_commit };
-const release = { service: 'doctorcre-app', environment: 'staging', ...pair };
+// Staging CARR runs a main commit newer than the contract floor.
+const liveCarr = 'c'.repeat(40);
+const release = { service: 'doctorcre-app', environment: 'staging', ...pair, carr_release_commit: liveCarr };
 const syntheticSecurityIssue = (meta, uid) => meta.isFile && (meta.mode & 0o777) === 0o600 && meta.uid === uid
   ? null : 'unsafe';
 const syntheticCredentialSelector = (environment, tokenFile) => ({
@@ -107,7 +109,7 @@ async function harness(t) {
     throw Error('unexpected fake verb');
   };
   const releaseFetch = async url => ({ status: 200, url, json: async () => url.endsWith('/app-release')
-    ? release : { env: { value: 'staging' }, git_sha: { value: contract.producer.source_commit } } });
+    ? release : { env: { value: 'staging' }, git_sha: { value: liveCarr } } });
   return { run, rpc, releaseFetch, calls, root };
 }
 
@@ -235,6 +237,7 @@ test('wrong source or fixture receipt refuses before any network or journal', as
   const h = await harness(t);
   for (const [p, r] of [
     [plan(), { ...release, carr_source_commit: '0'.repeat(40) }],
+    [plan(), { ...release, carr_release_commit: undefined }],
     [{ ...plan(), origin: 'https://wrong.invalid' }, release],
     [{ ...plan(), receipts: { deal: { deal_id: event } } }, release],
     [{ ...plan(), records: { ...plan().records, deal: { id: deal, name: 'Other record' } } }, release],
@@ -323,7 +326,9 @@ test('redirect and wrong live source refuse before an intent or write', async t 
     async url => ({ status: 302, url, json: async () => release }),
     async url => ({ status: 200, url, json: async () => url.endsWith('/app-release')
       ? { ...release, source_commit: '0'.repeat(40) } :
-        { env: { value: 'staging' }, git_sha: { value: contract.producer.source_commit } } }),
+        { env: { value: 'staging' }, git_sha: { value: liveCarr } } }),
+    async url => ({ status: 200, url, json: async () => url.endsWith('/app-release')
+      ? release : { env: { value: 'staging' }, git_sha: { value: contract.producer.source_commit } } }),
   ]) await assert.rejects(produceLocalAgentPhase({ plan: plan(), release, run: h.run,
     rpc: h.rpc, releaseFetch }), { code: 'agent-live-source-refused' });
   assert.equal(h.calls.length, 0);

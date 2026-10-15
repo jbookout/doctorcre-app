@@ -31,7 +31,7 @@ const SAFE_CAUSES = [
   [/^Staging continuation stopped: (canary-shell-(?:navigation-missing|document-status|url-invalid|script-failed|main-count)|staging-fixture-(?:candidate-refused|rpc-unresolved|stage-prerequisite|taxonomy-prerequisite|category-prerequisite)); no full V1 acceptance is established\.$/, null],
   [/^Staging run stopped: (run-directory-required|invalid-run-limits|run-ledger-invalid|run-ledger-unreadable|process-inspection-unavailable|process-ownership-invalid|process-cleanup-unverified|artifact-path-refused|artifact-symlink-refused|artifact-size-unavailable|http-request-limit|http-timeout|whole-run-deadline)\b/, null],
 ];
-const SAFE_SESSION_FAILURE = /^Error: staging session preflight failed: ((?:context-failed|app-release-failed|app-release-invalid|app-release-http-(?:400|401|403|404|429|500|502|503|504)|carr-release-failed|carr-release-http-(?:400|401|403|404|429|500|502|503|504)|carr-source-pair-refused|secret-failed|session-exchange-failed|session-exchange-refused-(?:400|401|403|404|429|500|502|503|504)|session-confirm-failed|session-confirm-http-(?:400|401|403|404|429|500|502|503|504)|dedicated-principal-refused|cookie-failed|secure-cookie-refused|context-dispose-failed))$/;
+const SAFE_SESSION_FAILURE = /^Error: staging session preflight failed: ((?:context-failed|app-release-failed|app-release-invalid|app-release-http-(?:400|401|403|404|429|500|502|503|504)|carr-release-failed|carr-release-http-(?:400|401|403|404|429|500|502|503|504)|secret-failed|session-exchange-failed|session-exchange-refused-(?:400|401|403|404|429|500|502|503|504)|session-confirm-failed|session-confirm-http-(?:400|401|403|404|429|500|502|503|504)|dedicated-principal-refused|cookie-failed|secure-cookie-refused|context-dispose-failed))$|^Error: staging session preflight failed: (carr-env-mismatch|carr-commit-malformed|carr-commit-not-on-main|carr-commit-older-than-floor|carr-ancestry-unverifiable) \(carr env=([a-z0-9_-]{1,32}); git_sha=([0-9a-f]{40}|malformed)\)$/;
 const SAFE_LOCATION_PATH = /^(?:scripts\/e2e-staging\/[A-Za-z0-9._/-]+|playwright\.staging\.config\.mjs|tests\/staging-live\/playwright\/[A-Za-z0-9._/-]+)$/;
 
 function safeLocation(line) {
@@ -64,9 +64,10 @@ export function createWorkerDiagnosticReader(onDiagnostic) {
         const sessionFailure = SAFE_SESSION_FAILURE.exec(line);
         const cause = SAFE_CAUSES.find(([pattern]) => pattern.test(line));
         if (sessionFailure || cause) {
-          const code = sessionFailure?.[1] || cause?.[1] ||
+          const code = sessionFailure?.[1] || sessionFailure?.[2] || cause?.[1] ||
             line.match(/^Staging (?:run|continuation) (?:stopped|refused): ([a-z0-9-]+)/)?.[1];
           if (code) { onDiagnostic(`cause=${code}`); count++; }
+          if (sessionFailure?.[2]) { onDiagnostic(`carr-env=${sessionFailure[3]}`); onDiagnostic(`carr-git-sha=${sessionFailure[4]}`); count += 2; }
           pendingCause = true;
           continue;
         }

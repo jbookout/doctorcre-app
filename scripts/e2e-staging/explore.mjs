@@ -125,7 +125,8 @@ async function exploreWithRun(run) {
     const { agent } = planned;
     setup = await prepareStagingRecords(output, { run, signal: run.signal });
     const current = setup.release;
-    if (current.source_commit !== release.source_commit || current.carr_source_commit !== release.carr_source_commit) throw new Error('Staging source changed during workspace exploration');
+    if (current.source_commit !== release.source_commit || current.carr_source_commit !== release.carr_source_commit ||
+        current.carr_release_commit !== release.carr_release_commit) throw new Error('Staging source changed during workspace exploration');
     const runId = `${String(planned.sequence).padStart(3, '0')}-${target.name}-${agent}-${attemptID}`;
     const local = join(output, 'private', 'explore', runId);
     const destination = join(output, 'evidence', 'explore', runId);

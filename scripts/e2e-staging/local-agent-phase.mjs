@@ -182,6 +182,7 @@ export async function produceLocalAgentPhase({ plan, release, run, carrCheckout,
   const pair = { source_commit: release?.source_commit, carr_source_commit: release?.carr_source_commit };
   required(release?.service === 'doctorcre-app' && release?.environment === 'staging' &&
     SHA.test(pair.source_commit || '') && pair.carr_source_commit === contract.producer.source_commit &&
+    SHA.test(release.carr_release_commit || '') &&
     plan?.schema === 'doctorcre-staging-records-plan.v1' && plan.state === 'complete' && !plan.inflight &&
     plan.origin === contract.origin && samePair(plan.release, pair) && UUID.test(plan.run || '') &&
     UUID.test(plan.records?.deal?.id || '') && plan.receipts?.deal?.deal_id === plan.records.deal.id &&
@@ -212,7 +213,7 @@ export async function produceLocalAgentPhase({ plan, release, run, carrCheckout,
       const actual = await response.json();
       required(kind === 'app' ? actual.service === 'doctorcre-app' &&
         actual.environment === 'staging' && actual.source_commit === pair.source_commit :
-        actual.env?.value === 'staging' && actual.git_sha?.value === pair.carr_source_commit,
+        actual.env?.value === 'staging' && actual.git_sha?.value === release.carr_release_commit,
       'agent-live-source-refused');
     }
   };
