@@ -32,20 +32,66 @@
     "css/app-shell.css": "dd83d6039c82a5c65507d4a685eee2a8fd2e928197b4da177e3c1bf3f2f367ce"
   },
   "full_v1_qualification": false,
+  "error_codes": [
+    "business-journey-receipt-missing",
+    "business-journey-selector-unavailable",
+    "business-journey-readback-incomplete",
+    "business-journey-settlement-unverified"
+  ],
   "unqualified_journeys": [
+    "W4 Doc-generated automatic phase move (no source-bound automatic event fixture)",
     "W6",
     "W15",
     "Outlook draft",
     "Call Mode"
+  ],
+  "source_bound_fixture_requests": [
+    {
+      "id": "W4_doc_automatic_move",
+      "plan_binding": "A separate plan-owned active synthetic deal and a real Doc-origin phase event receipt, bound to the exact source pair and event id; the existing manual move receipt cannot serve as this event.",
+      "normal_reads": "deal-room-board must return that owned deal with phase_change.automatic=true, event_id, prior_phase, evidence_date, reason and current phase; get-deal-room must return the same deal_id and matching event id, actor, field, old_value and new_value.",
+      "guard_scope": "Admit revert-deal-field only for Joe's authenticated actor, that exact owned deal and Doc event id after independent readback; preserve CARR authorization and require a fresh get-deal-room read and UI undo observation."
+    },
+    {
+      "id": "W15_awaiting_invoice",
+      "plan_binding": "A separate plan-owned synthetic closed deal with no commission receipt and an installer proof tied to the existing private target and source pair.",
+      "normal_reads": "read-invoice-tracker must return the owned deal as an awaiting row with commission_id=null and key awaiting:<deal_id> after normal projection.",
+      "ui_proof": "Open that exact awaiting row and verify Awaiting invoice status with the payment control hidden; perform no payment write."
+    }
+  ],
+  "guard_interface_requests": [
+    {
+      "id": "W4_drag_presence_lease",
+      "source": "js/pipeline.js dragstart calls presence-lease for the dragged deal's phase on both the canceled and retried drags.",
+      "admission": "While the plan-owned W4 move intent is admitted, allow at most two distinct presence-lease keys for that exact owned deal and field=phase, tied to the authenticated actor and source pair; retain the business intent unchanged.",
+      "coverage": "Record and settle each exact courtesy request and its canonical response without treating it as a phase mutation; refuse any other deal, field, key reuse, extra request or unknown outcome."
+    }
   ],
   "fixture": "private-plan-owned active synthetic deal",
   "readback": {
     "operation": "get-deal-room",
     "receipt": "staging-fixture-business-readback.v1"
   },
+  "companion_invoice_ui_qualification": {
+    "W15": {
+      "checks": [
+        "unpaid, paid, age, and reset filters",
+        "normal tracker reads determine complete mine and team overdue Home sets before and after the exact receipt",
+        "exact Paid status with the payment form hidden",
+        "invoice timeline receipt date"
+      ],
+      "partial": [
+        "awaiting-invoice payment-control restriction; requires source_bound_fixture_requests.W15_awaiting_invoice"
+      ]
+    }
+  },
   "journeys": [
     {
       "id": "W4",
+      "ui_qualification": {
+        "checks": ["eight phase columns", "drag to a different phase", "cancel then retry move confirmation", "normal board read confirms destination and undo source", "recorded phase date", "full timeline range"],
+        "partial": ["Doc-generated automatic phase move; requires a source-bound automatic event fixture"]
+      },
       "steps": [
         {
           "id": "move",
@@ -65,6 +111,9 @@
     },
     {
       "id": "W9",
+      "ui_qualification": {
+        "checks": ["cancel then retry date dialog", "normal receipt and independent readback", "recorded evidence", "countdown visible", "add-date control disappears"]
+      },
       "steps": [
         {
           "id": "date",
