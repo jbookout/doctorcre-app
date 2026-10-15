@@ -35,7 +35,7 @@ fixture. Reviewed DoctorCRE production hosts boot the live adapter.
 | `work-inventory.html` | V5-UX-C10 Complete Work Inventory at `/work-inventory`: every work record from all six canonical CARR sources, in every status, with each source's coverage stated |
 | `js/work-inventory-model.js` | Pure census rules: exact-key validation, grouping, coverage summary, query building, page merge |
 | `js/work-inventory.js` | Work Inventory DOM wiring over `GET /api/v1/work-inventory` |
-| `tasks.html` | V5-UX-B02 Tasks at `/tasks`: the shared record of open task and team loops, with Quick add capture, handover, due dates and completion |
+| `/tasks` and `/tasks.html` | Legacy routes that redirect to Home at `/`, served by `workspace.html`. Declared in `contracts/routes/home.json` |
 | `js/task-records-model.js` | Pure task rules: board-row validation, owner scoping, handover/close/due argument sets, the Quick add plan and the operation keys |
 | `js/task-records.js` | Tasks DOM wiring over the loop verbs, through the shared command kernel and dock |
 | `pipeline.html` | V5-UX-B03 Deals at `/pipeline`: the eight-phase Kanban, moved by drag or keyboard, with the completion dialog, the crossed-edits chooser and the record panel |
@@ -108,8 +108,13 @@ palette, same light theme. What changed is how information is arranged.
   on a missing keyboard move path.
 | `test/` | Product, interface, accessibility, and concurrency tests |
 
-The application deliberately has no build step and no package dependencies.
-That remains the default until a product requirement justifies more machinery.
+`npm run build` produces the deterministic `dist/doctorcre-app.tar`, its
+manifest and SHA-256 sidecar, and the static deployment directory `dist/site`.
+Consumers pin the source commit and archive digest. The build uses the package
+dependencies declared in `package.json`, including esbuild and React. Strict
+TypeScript sources under `src/ui/` compile into the shared React island module
+`js/ui.generated.js`. The rest of the application retains its static HTML and
+JavaScript modules.
 
 ## Boundary invariants
 
