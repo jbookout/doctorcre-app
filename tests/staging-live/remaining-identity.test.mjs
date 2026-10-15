@@ -23,8 +23,10 @@ test('fixed party setup refuses a different selected client or vendor role befor
         const response = await get(path, options);
         if (!path.includes('/relationships?')) return response;
         const value = await response.json();
-        if (variant === 'client') value.nodes[0].record_id = '99999999-0000-4000-8000-000000000001';
-        else value.nodes[0].kind = 'vendor';
+        if (variant === 'client') {
+          value.nodes[0].record_id = '99999999-0000-4000-8000-000000000001';
+          value.edges.find(edge => edge.kind === 'client_deal').from = 'party:99999999-0000-4000-8000-000000000002';
+        } else value.nodes[0].kind = 'vendor';
         return reply(value);
       };
       return api;
@@ -165,6 +167,22 @@ test('relationship installer refuses the reviewer minimal proof even with a vali
   assert.equal(after.relationship_fixture, undefined);
   assert.equal(after.fixture_proofs?.relationship, undefined);
   assert.deepEqual(fixture.fake.calls.filter(call => call.path === '/mcp').map(call => call.options.data.params.name), ['get-deal-room']);
+});
+
+test('relationship installer verifies a reused party projection through the recorded client and deal lineage', async t => {
+  const fixture = await relationshipSetup(t, 'projected-client');
+  const otherClient = '99999999-0000-4000-8000-000000000001';
+  fixture.proof.projection.response.nodes[0].record_id = otherClient;
+  fixture.proof.projection.response_sha256 = hash(fixture.proof.projection.response);
+  fixture.fresh.nodes[0].record_id = otherClient;
+  await fixture.persist(fixture.proof);
+  await fixture.prepare();
+  const after = JSON.parse(await readFile(join(fixture.output, 'staging-records-plan.json'), 'utf8'));
+  assert.equal(after.fixture_proofs.relationship.state, 'verified');
+  assert.equal(after.party_reuse.client_id, fixture.plan.records.client.id);
+  assert.equal(after.relationship_fixture.client_id, fixture.plan.records.client.id);
+  assert.ok(fixture.fake.calls.some(call => call.path === `/api/v1/business/clients/${fixture.plan.records.client.id}`));
+  assert.equal(fixture.fake.calls.some(call => call.path === `/api/v1/business/clients/${otherClient}`), false);
 });
 
 test('relationship installer binds complete mutation evidence to trusted target and fresh readback on every reuse', async t => {

@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { runInNewContext } from 'node:vm';
 import { installStagingGuard } from '../../scripts/e2e-staging/engine.mjs';
 import { openRun, RUN_LIMITS } from '../../scripts/e2e-staging/run-limits.mjs';
-import { runReadonlyJourneys } from '../../scripts/e2e-staging/readonly-journeys.mjs';
+import { assertRelationshipFixture, runReadonlyJourneys } from '../../scripts/e2e-staging/readonly-journeys.mjs';
 import { qualifyV1Journeys } from '../../scripts/e2e-staging/v1-qualification.mjs';
 import contract from '../../contracts/e2e-staging-readonly-journeys.v1.json' with { type: 'json' };
 
@@ -54,7 +54,7 @@ function configure(t) {
 
 async function harness(t, { attention = true, identity = true, detail = true, relationship = {}, appRelease = appIdentity,
   readinessDelayMs = 0, freshness = true, teamOnlyFlag = true, boardActor = 'joe', dealOwner = 'joe', boardName = dealName,
-  homeRedirectTo = null, reuseRead = {}, wrongTeamMember = false, wrongResetMember = false,
+  homeRedirectTo = null, reuseRead = {}, projectedClientId = clientId, wrongTeamMember = false, wrongResetMember = false,
   extraJoeFlag = false, wrongViewerMember = false } = {}) {
   configure(t);
   const root = await mkdtemp(join(tmpdir(), 'readonly-journeys-'));
@@ -66,14 +66,14 @@ async function harness(t, { attention = true, identity = true, detail = true, re
   const ready = { avatar: readinessDelayMs === 0, home: readinessDelayMs === 0, relationship: readinessDelayMs === 0,
     connection: readinessDelayMs === 0 };
   let homeScope = 'team', teamReset = false, referralsTab = false, territoryValue = '', dialogTitle = '', evidenceOpen = false, dialogOpen = false;
-  const reads = [], relationshipMethods = [], navigations = [];
+  const reads = [], clientReads = [], relationshipMethods = [], navigations = [];
   const context = { route: async () => {}, addInitScript: async () => {} };
   await installStagingGuard(context, { forContext: () => ({ handle: async () => {}, assertCoverage: async () => { coverageChecks++; } }) });
   let currentURL = 'https://doctorcre-app-staging.joe-bookout-carr-us.workers.dev/';
   const network = {
     schema: 'carr-relationship-network.v1', observed_at: new Date().toISOString(), valid_until: new Date(Date.now() + 60_000).toISOString(),
     nodes: [
-      { id: `party:${partyId}`, record_id: clientId, kind: 'client', name: partyName, territory: 'SYNTHETIC_NORTH', verticals: [], summary: 'SYNTHETIC_PRIVATE_SUMMARY' },
+      { id: `party:${partyId}`, record_id: projectedClientId, kind: 'client', name: partyName, territory: 'SYNTHETIC_NORTH', verticals: [], summary: 'SYNTHETIC_PRIVATE_SUMMARY' },
       { id: `deal:${dealId}`, record_id: dealId, kind: 'deal', name: dealName, territory: 'SYNTHETIC_NORTH', verticals: [] },
       { id: `party:${unrelatedId}`, record_id: unrelatedId, kind: 'vendor', name: 'SYNTHETIC_PRIVATE_OTHER_NAME', territory: 'SYNTHETIC_SOUTH', verticals: [] },
       { id: `party:${referredPartyId}`, record_id: referredClientId, kind: 'client', name: 'SYNTHETIC_PRIVATE_REFERRED_CLIENT', territory: 'SYNTHETIC_NORTH', verticals: [] },
@@ -173,9 +173,12 @@ async function harness(t, { attention = true, identity = true, detail = true, re
         if (url === '/app-release') return { ok: true, json: async () => ({ ...appRelease }) };
         if (url === '/auth/session') return { ok: identity, json: async () => ({ actor: { slug: 'joe' }, e2e_principal: 'e2e-joe' }) };
         if (url === '/api/system-work/session') return { ok: identity, json: async () => ({ actor: { slug: 'joe' } }) };
-        if (url === `/api/v1/business/clients/${clientId}`) return { ok: true, json: async () => ({ record: {
-          id: reuseRead.clientId ?? clientId, ref: reuseRead.clientRef ?? 'C-42', name: reuseRead.clientName ?? partyName,
-        } }) };
+        if (url === `/api/v1/business/clients/${clientId}`) {
+          clientReads.push(clientId);
+          return { ok: true, json: async () => ({ record: {
+            id: reuseRead.clientId ?? clientId, ref: reuseRead.clientRef ?? 'C-42', name: reuseRead.clientName ?? partyName,
+          } }) };
+        }
         if (url === contract.journeys.W14.snapshot_path) {
           relationshipMethods.push(options.method || 'GET');
           return { ok: true, json: async () => network };
@@ -250,7 +253,7 @@ async function harness(t, { attention = true, identity = true, detail = true, re
       throw new Error('Synthetic DOM readiness timeout');
     },
   };
-  return { page, run, reads, relationshipMethods, navigations, firstReadinessWait,
+  return { page, run, reads, clientReads, relationshipMethods, navigations, firstReadinessWait, network,
     checks: () => ({ coverageChecks, clicks, reloads, evaluations, readinessWaits }) };
 }
 
@@ -408,6 +411,19 @@ test('verified fixed-fixture party reuse qualifies only with fresh normal W2/W14
     assert.equal(JSON.stringify(result).includes(privateValue), false);
 });
 
+test('reused party projection may name another client while journeys read the selected client directly', async t => {
+  const h = await harness(t, { projectedClientId: unrelatedId });
+  const plan = reusedPartyPlan();
+  const result = await runReadonlyJourneys({ page: h.page, release, plan, run: h.run });
+  assert.equal(result.journeys.find(row => row.journey === 'W2').state, 'qualified-slice');
+  assert.equal(result.journeys.find(row => row.journey === 'W14').state, 'qualified-slice');
+  assert.deepEqual(h.clientReads, [plan.records.client.id]);
+  assert.equal(assertRelationshipFixture(h.network, plan).client_id, plan.records.client.id);
+  assert.throws(() => assertRelationshipFixture(h.network, fixturePlan()), {
+    code: 'staging-fixture-relationship-prerequisite', reason: 'selected-client-identity-unproved',
+  });
+});
+
 test('legacy empty reuse receipt is accepted only when the live client/deal association verifies', async t => {
   const h = await harness(t);
   const plan = reusedPartyPlan();
@@ -473,7 +489,7 @@ test('party reuse refuses changed or stale fresh association before W2 board and
     { relationship: { edges: [{ id: `client-deal:${dealId}`, from: `party:${unrelatedId}`,
       to: `deal:${dealId}`, kind: 'client_deal', via: null }] } },
   ]) {
-    const h = await harness(t, options);
+    const h = await harness(t, { projectedClientId: unrelatedId, ...options });
     const plan = reusedPartyPlan();
     plan.party_reuse.observed_at = new Date(Date.now() - 3_600_000).toISOString();
     plan.party_reuse.network_observed_at = new Date(Date.now() - 3_599_000).toISOString();
@@ -485,6 +501,12 @@ test('party reuse refuses changed or stale fresh association before W2 board and
     assert.equal(result.full_v1_qualified, false);
     assert.equal(result.actions.some(row => row.id === 'W2' || row.id === 'W14'), false);
   }
+});
+
+test('newly created party still refuses a different projected client', async t => {
+  const h = await harness(t, { projectedClientId: unrelatedId });
+  const result = await runReadonlyJourneys({ page: h.page, release, plan: fixturePlan(), run: h.run });
+  assert.equal(result.journeys.find(row => row.journey === 'W14').reason, 'owned-relationship-nodes-unavailable');
 });
 
 test('W14 missing plan-owned evidence or referral metrics remains pending after checked snapshot', async t => {
