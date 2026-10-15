@@ -44,6 +44,8 @@ async function privateFolder(path) {
     const stat = await dir.stat();
     required(stat.isDirectory() && stat.nlink >= 1 && (stat.mode & 0o777) === 0o700 &&
       await realpath(folder) === resolve(folder), 'journal-directory-unsafe');
+    const parent = await open(dirname(folder), constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW);
+    try { await parent.sync(); } finally { await parent.close(); }
     return dir;
   } catch (error) { await dir.close(); throw error; }
 }

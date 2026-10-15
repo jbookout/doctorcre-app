@@ -2,6 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
+import fs from 'node:fs/promises';
+import { syncBuiltinESMExports } from 'node:module';
 import { mkdtemp, mkdir, readFile, stat, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -126,6 +128,26 @@ test('local credential file refuses FIFO, nonregular and oversized inputs before
   await writeFile(regular, 'CARR_MCP_LOCAL_TOKEN=synthetic\n', { mode: 0o600 });
   assert.equal(await readLocalAgentTokenFile(regular, syntheticSecurityIssue),
     'CARR_MCP_LOCAL_TOKEN=synthetic\n');
+});
+
+test('failed parent directory durability stops before any agent network', async t => {
+  const h = await harness(t);
+  const original = fs.open;
+  fs.open = async (path, ...args) => {
+    const file = await original(path, ...args);
+    if (path !== h.root) return file;
+    return new Proxy(file, { get(target, key) {
+      if (key === 'sync') return async () => { throw new Error('synthetic parent sync failure'); };
+      const value = Reflect.get(target, key);
+      return typeof value === 'function' ? value.bind(target) : value;
+    } });
+  };
+  syncBuiltinESMExports();
+  try {
+    await assert.rejects(produceLocalAgentPhase({ plan: plan(), release, run: h.run,
+      rpc: h.rpc, releaseFetch: h.releaseFetch }), /synthetic parent sync failure/);
+    assert.equal(h.calls.length, 0);
+  } finally { fs.open = original; syncBuiltinESMExports(); }
 });
 
 test('tampered FIFO private journal refuses before agent network', async t => {

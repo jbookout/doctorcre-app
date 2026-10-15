@@ -879,7 +879,7 @@ test('local automatic producer receives a fresh private plan only after manual W
   assert.deepEqual(result.actions, []);
 });
 
-test('local automatic handoff leaves absent and uncertain paths pending without repeating a write', async t => {
+test('local automatic handoff leaves absent paths pending and stops uncertain journals before authentication', async t => {
   const f = await businessFixture(t);
   const absentResult = await runBusinessPhase({ binding, run: f.run }, f.supplied);
   assert.equal(absentResult.automaticPhase.state, 'PENDING_LOCAL_AGENT_SEAM');
@@ -902,8 +902,15 @@ test('local automatic handoff leaves absent and uncertain paths pending without 
   assert.equal(produces, 1); assert.equal(observes, 0);
   await mkdir(join(f.run.root, 'private'), { mode: 0o700 });
   await writeFile(join(f.run.root, 'private', 'w4-local-agent-phase.json'), '{}', { mode: 0o600 });
-  const resumed = await runBusinessPhase({ binding, run: f.run }, supplied);
-  assert.equal(resumed.automaticPhase.state, 'PENDING_RECONCILIATION');
+  const retained = JSON.parse(await readFile(join(f.run.root, 'staging-records-plan.json'), 'utf8'));
+  retained.origin = contract.origin;
+  await writeFile(join(f.run.root, 'staging-records-plan.json'), JSON.stringify(retained), { mode: 0o600 });
+  const { assertStagingWriteCoverage } = await import('../../scripts/e2e-staging/records.mjs');
+  f.events.length = 0;
+  await assert.rejects(runBusinessPhase({ binding, run: f.run },
+    { ...supplied, coverage: assertStagingWriteCoverage }),
+  { code: 'automatic-event-reconciliation-required' });
+  assert.equal(f.events.includes('authenticate'), false);
   assert.equal(produces, 1); assert.equal(observes, 0);
 });
 
