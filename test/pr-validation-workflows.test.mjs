@@ -38,7 +38,7 @@ for (const file of files) {
     assert.equal(runs.filter(r => r.runnable.length).length, 3, "supersession saves tail work, not started suites");
   });
   test(`${file}: metadata edits and close do not supersede the source verdict; reopen recovers`, () => {
-    for (const action of ["closed", "edited"]) {
+    for (const action of ["closed"]) {
       const runs = replay(source, [context("pull_request", "opened", 9, 1), context("pull_request", action, 9, 2)]);
       assert.deepEqual(runs.map(run => run.status), ["success"]);
       assert.equal(policy(source, context("pull_request", action)).triggers, false);
@@ -71,3 +71,15 @@ for (const file of files) {
     assert.equal(replay(source, events)[0].status, "success", "a close event must not erase completed green evidence");
   });
 }
+
+test('CI metadata checks preserve the source run and its required check identity', () => {
+  const source = read('ci.yml');
+  const sourceRun = policy(source, context());
+  const edit = policy(source, context('pull_request', 'edited'));
+  assert.equal(edit.triggers, true);
+  assert.deepEqual(edit.runnable, ['test']);
+  assert.equal(edit.cancel, false);
+  assert.notEqual(edit.group, sourceRun.group, 'edits cannot replace pending source validation');
+  const runs = replay(source, [context('pull_request', 'opened'), context('pull_request', 'edited', 9, 2)]);
+  assert.deepEqual(runs.map(run => run.status), ['success', 'success']);
+});

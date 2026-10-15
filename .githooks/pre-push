@@ -3,6 +3,10 @@ import { spawn, execFileSync } from 'node:child_process';
 import { readFile, readdir } from 'node:fs/promises';
 import { dirname, resolve, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { isBuiltin } from 'node:module';
+import { init, parse } from 'es-module-lexer';
+
+await init;
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const git = (...args) => execFileSync('git', args, { cwd: root, encoding: 'utf8', timeout: 10_000 }).trim();
@@ -15,13 +19,20 @@ delete environment.NODE_TEST_CONTEXT;
 async function browserFree(path, seen = new Set()) {
   if (seen.has(path)) return true;
   seen.add(path);
-  const source = await readFile(resolve(root, path), 'utf8');
-  // Workflow launches are excluded below; full-main and hook tests use synthetic subprocesses.
-  if (['test/ci-workflows.test.mjs', 'test/full-main.test.mjs'].includes(path)) return true;
-  if (/browser|chromium|webkit|playwright|puppeteer|\be2e\b|\.launch\s*\(/i.test(source)) return false;
-  for (const match of source.matchAll(/(?:from\s*|import\s*\()(['"])(\.[^'"]+)\1/g)) {
-    const dependency = relative(root, resolve(dirname(resolve(root, path)), match[2]));
-    if (/\.m?js$/.test(dependency) && !await browserFree(dependency, seen)) return false;
+  let source, imports;
+  try {
+    source = await readFile(resolve(root, path), 'utf8');
+    [imports] = parse(source);
+  } catch { return false; }
+  if (/browser|chromium|webkit|playwright|puppeteer|\be2e\b|\.launch\s*\(|\brequire\s*\(/i.test(source)) return false;
+  for (const { n: specifier, d: dynamic } of imports) {
+    if (dynamic === -2) continue; // import.meta has no dependency.
+    if (specifier === undefined) return false;
+    if (isBuiltin(specifier)) continue;
+    if (!specifier.startsWith('./') && !specifier.startsWith('../')) return false;
+    const dependency = relative(root, resolve(dirname(resolve(root, path)), specifier));
+    if (dependency.startsWith('../') || !/\.m?js$/.test(dependency)) return false;
+    if (!await browserFree(dependency, seen)) return false;
   }
   return true;
 }
@@ -51,11 +62,6 @@ const testArgs = paths => ['--test', '--test-concurrency=2',
 async function main() {
   if (process.argv[2] === '--test') {
     const all = (await readdir(resolve(root, 'test'))).filter(name => name.endsWith('.test.mjs')).map(name => `test/${name}`).sort();
-    if (process.argv.length === 3) {
-      // Hosted/full-main npm test remains the entire suite, without a local deadline.
-      const child = spawn(process.execPath, ['--test', '--test-concurrency=2', ...all], { cwd: root, stdio: 'inherit', env: environment });
-      return await new Promise(done => { child.on('error', () => done(1)); child.on('close', code => done(code ?? 1)); });
-    }
     if (process.argv[3] !== '--fast' || process.argv.length !== 4) throw Error('invalid test invocation');
     return run(process.execPath, testArgs(await fastTests(all)));
   }
@@ -80,7 +86,7 @@ async function main() {
   if (/(?:^|\s|["'])--test[-_](?:name[-_]pattern|skip[-_]pattern|only|shard|rerun[-_]failures)(?:=|\s|["']|$)/.test(environment.NODE_OPTIONS || '')) throw Error('filtered Node test selection cannot validate a push');
   const touched = [...changes].filter(path => /^test\/[a-z0-9_-]+\.test\.mjs$/i.test(path));
   const tests = await fastTests(touched);
-  status = tests.length ? await run(process.execPath, testArgs(tests)) : await run('npm', ['test', '--', '--fast']);
+  status = tests.length ? await run(process.execPath, testArgs(tests)) : await run(process.execPath, [fileURLToPath(import.meta.url), '--test', '--fast']);
   return status;
 }
 main().then(code => { process.exitCode = code; }).catch(error => { console.error(`pre-push: ${error.message}`); process.exitCode = 1; });
