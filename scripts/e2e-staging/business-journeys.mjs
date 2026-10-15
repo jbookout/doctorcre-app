@@ -6,6 +6,7 @@ import { STAGING_ORIGIN } from './session.mjs';
 import { stagingAuth } from './auth-contract.mjs';
 import { COLUMNS } from '../../js/pipeline-model.js';
 import { projectInvoices } from '../../js/invoice-tracker-model.js';
+import { observedV1Action } from './v1-qualification.mjs';
 
 const journeyError = code => Object.assign(new Error(code), { code });
 const clickSelector = async (page, selector, timeout) => {
@@ -15,6 +16,16 @@ const clickSelector = async (page, selector, timeout) => {
 const fillSelector = async (page, selector, value, timeout) => {
   try { return await page.locator(selector).fill(value, { timeout }); }
   catch { throw journeyError('business-journey-selector-unavailable'); }
+};
+const provedAction = ({ id, caseId, name, release, run, row, ui, readback }) => {
+  if (row?.journey?.state !== 'observed' || !row.journey.ui?.observation_sha256 ||
+      row.independent_readback?.matched !== true || !row.independent_readback.response_sha256)
+    throw journeyError('business-journey-readback-incomplete');
+  return observedV1Action({ id, case: caseId, action: name,
+    sourcePair: { source_commit: release.source_commit, carr_source_commit: release.carr_source_commit },
+    runId: run.snapshot().id, fixtureRun: row.journey.fixture_run,
+    ui: { ...ui, guarded_observation: row.journey.ui.observation_sha256 },
+    readback: { ...readback, guarded_response: row.independent_readback.response_sha256 } });
 };
 
 export async function runBusinessJourneys({ page, fixtureGuard, release, deal, run,
@@ -46,7 +57,20 @@ export async function runBusinessJourneys({ page, fixtureGuard, release, deal, r
     actor: identity.session.actor.slug });
   const click = selector => clickSelector(page, selector, timeout);
   const fill = (selector, value) => fillSelector(page, selector, value, timeout);
-  const complete = [], steps = [];
+  const complete = [], steps = [], actions = [];
+  const readDeal = async () => {
+    const state = await page.evaluate(async dealId => {
+      const { createLiveClient } = await import('/js/live-client.js');
+      const room = await createLiveClient().getDeal(dealId);
+      return { id: room.deal?.id, phase: room.deal?.phase,
+        events: room.history?.map(event => ({ id: event.id, recorded_at: event.recorded_at })),
+        dates: room.critical_dates?.map(date => ({ id: date.id, kind: date.kind,
+          due_on: date.due_on, source: date.source })) };
+    }, deal);
+    if (state?.id !== deal || !Array.isArray(state.events) || !Array.isArray(state.dates))
+      throw journeyError('business-journey-readback-incomplete');
+    return state;
+  };
   for (const id of journeys) {
     for (const definition of businessJourneys.journeys.find(journey => journey.id === id).steps) {
       run.check();
@@ -75,6 +99,7 @@ export async function runBusinessJourneys({ page, fixtureGuard, release, deal, r
         return waitForReceipt(true);
       };
       let observation;
+      const actionProofs = [];
       if (definition.operation === 'patch-deal-field') {
         const initial = await page.locator(definition.prepare_selector).inputValue();
         if (initial !== definition.initial_phase)
@@ -87,6 +112,8 @@ export async function runBusinessJourneys({ page, fixtureGuard, release, deal, r
         const card = page.locator(`.kanban-card[data-id="${deal}"]`);
         if (!initialColumn || !target || await card.getAttribute('data-phase') !== initialColumn.value)
           throw new Error('Business journey drag source or target refused; reconciliation required');
+        const initialReadback = await readDeal();
+        if (initialReadback.phase !== initialColumn.value) throw journeyError('business-journey-readback-incomplete');
         if (new URL(page.url()).searchParams.get('deal') === deal) await click('#panelClose');
         const presenceSpec = { journey: id, step: definition.id, deal, field: 'phase', release };
         const drop = async () => {
@@ -108,6 +135,10 @@ export async function runBusinessJourneys({ page, fixtureGuard, release, deal, r
         const cancelled = await fixtureGuard.admitBusinessJourneyStep({ ...spec, phase: 'status' });
         if (cancelled.state !== 'admitted' || cancelled.dispatched_outcome !== 'not dispatched')
           throw new Error('Business journey cancelled move dispatched unexpectedly; reconciliation required');
+        const cancelReadback = await readDeal();
+        if (cancelReadback.phase !== initialColumn.value ||
+            JSON.stringify(cancelReadback.events) !== JSON.stringify(initialReadback.events))
+          throw journeyError('business-journey-readback-incomplete');
         await drop();
         await click(definition.selector);
         const receipt = await waitForReceipt();
@@ -118,6 +149,15 @@ export async function runBusinessJourneys({ page, fixtureGuard, release, deal, r
         const movedColumn = page.locator(`.kanban-column[data-column="${target.slug}"]`);
         if (await movedColumn.locator(`.kanban-card[data-id="${deal}"]`).count() !== 1)
           throw new Error('Business journey destination column refused; reconciliation required');
+        const boardReadback = await page.evaluate(async () => {
+          const { createLiveClient } = await import('/js/live-client.js');
+          const board = await createLiveClient().getBoard();
+          return { actor: board.actor, deals: board.deals.map(item => ({ id: item.id, phase: item.phase })) };
+        });
+        if (boardReadback.actor !== identity.session.actor.slug ||
+            boardReadback.deals.filter(item => item.id === deal).length !== 1 ||
+            boardReadback.deals.find(item => item.id === deal).phase !== target.value)
+          throw journeyError('business-journey-readback-incomplete');
         await click(`.kanban-card[data-id="${deal}"]`);
         await page.locator('#detailPhase').waitFor({ state: 'visible', timeout });
         await refresh();
@@ -128,6 +168,11 @@ export async function runBusinessJourneys({ page, fixtureGuard, release, deal, r
         const phaseRail = page.locator('.phase-rail li[aria-current="step"] time');
         if (!phaseDay || await phaseRail.getAttribute('datetime') !== phaseDay)
           throw new Error('Business journey recorded phase date refused; reconciliation required');
+        const moveReadback = await readDeal();
+        if (moveReadback.phase !== target.value ||
+            !moveReadback.events.some(event => event.id === receipt.response.binding.effect.event_id &&
+              event.recorded_at === receipt.response.binding.effect.event_recorded_at))
+          throw journeyError('business-journey-readback-incomplete');
         const timelineRange = page.locator('#timelineRange');
         await timelineRange.selectOption('full', { timeout });
         const phaseTimeline = page.locator('.deal-timeline');
@@ -140,6 +185,18 @@ export async function runBusinessJourneys({ page, fixtureGuard, release, deal, r
         const undo = page.locator(`button[data-undo="${event}"]`);
         await undo.waitFor({ state: 'visible', timeout });
         observation = { phase, event_id: await undo.getAttribute('data-undo') };
+        actionProofs.push(
+          { id: 'W4', caseId: 'local-deals', name: 'eight-columns',
+            ui: { columns, owned_card: deal }, readback: boardReadback },
+          { id: 'W4', caseId: 'local-deals', name: 'drag-cancel',
+            ui: { dialog_hidden: true, phase: initial, no_dispatch: true }, readback: cancelReadback },
+          { id: 'W4', caseId: 'local-deals', name: 'drag-confirm',
+            ui: { destination: target.slug, phase, event_id: observation.event_id }, readback: boardReadback },
+          { id: 'W4', caseId: 'local-deals', name: 'independent-phase-readback',
+            ui: observation, readback: moveReadback },
+          { id: 'W9', caseId: 'deal-timeline', name: 'recorded-phase-date',
+            ui: { phase, day: phaseDay }, readback: { event_id: observation.event_id,
+              recorded_at: receipt.response.binding.effect.event_recorded_at, ...moveReadback } });
       } else if (definition.operation === 'revert-deal-field') {
         const event = admitted.argument_template.event_id;
         await click(`button[data-undo="${event}"]`);
@@ -164,6 +221,9 @@ export async function runBusinessJourneys({ page, fixtureGuard, release, deal, r
         const cancelled = await fixtureGuard.admitBusinessJourneyStep({ ...spec, phase: 'status' });
         if (cancelled.state !== 'admitted' || cancelled.dispatched_outcome !== 'not dispatched')
           throw new Error('Business journey cancelled date dispatched unexpectedly; reconciliation required');
+        const cancelReadback = await readDeal();
+        if (cancelReadback.dates.some(date => date.kind === definition.kind))
+          throw journeyError('business-journey-readback-incomplete');
         await click(definition.prepare_selector);
         await fill(definition.date_selector, admitted.argument_template.due_on);
         await fill(definition.source_selector, admitted.argument_template.source);
@@ -179,15 +239,33 @@ export async function runBusinessJourneys({ page, fixtureGuard, release, deal, r
         const countdown = card.locator('[data-countdown]');
         await countdown.waitFor({ state: 'visible', timeout });
         const countdownText = (await countdown.textContent())?.trim();
+        const expectedCountdown = await page.evaluate(async due_on => {
+          const { countdown } = await import('/js/deal-timeline.js');
+          return countdown({ day: due_on, deadline: false }).text;
+        }, receipt.response.binding.effect.due_on);
         if (await countdown.getAttribute('data-countdown') !== receipt.response.binding.effect.due_on ||
-            !countdownText || countdownText === '—')
+            !countdownText || countdownText === '—' || countdownText !== expectedCountdown)
           throw new Error('Business journey date countdown refused; reconciliation required');
         await click(`[data-date-id="${dateId}"] summary`);
         await card.locator('.note-original').waitFor({ state: 'visible', timeout });
         observation = { critical_date_id: await card.getAttribute('data-date-id'),
           due_on: await card.locator('time').getAttribute('datetime'), source: await card.locator('.note-original').textContent() };
+        const dateReadback = await readDeal();
+        if (dateReadback.dates.filter(date => date.id === dateId && date.kind === definition.kind &&
+            date.due_on === observation.due_on && date.source === admitted.argument_template.source).length !== 1)
+          throw journeyError('business-journey-readback-incomplete');
+        actionProofs.push(
+          { id: 'W9', caseId: 'deal-timeline', name: 'date-dialog-cancel',
+            ui: { dialog_hidden: true, no_dispatch: true }, readback: cancelReadback },
+          { id: 'W9', caseId: 'deal-timeline', name: 'contract-date-write',
+            ui: observation, readback: dateReadback },
+          { id: 'W9', caseId: 'deal-timeline', name: 'countdown',
+            ui: { due_on: observation.due_on, text: countdownText }, readback: dateReadback },
+          { id: 'W9', caseId: 'deal-timeline', name: 'date-control-removed',
+            ui: { kind: definition.kind, control_count: 0 }, readback: dateReadback });
       } else throw new Error('Business journey operation refused');
       const observed = await fixtureGuard.admitBusinessJourneyStep({ ...spec, phase: 'observe', observation });
+      for (const proof of actionProofs) actions.push(provedAction({ ...proof, release, run, row: observed }));
       steps.push({ journey: id, step: definition.id, state: observed.journey.state,
         ui_sha256: observed.journey.ui.observation_sha256,
         readback_sha256: observed.independent_readback.response_sha256 });
@@ -195,7 +273,7 @@ export async function runBusinessJourneys({ page, fixtureGuard, release, deal, r
     complete.push(id);
   }
   await fixtureGuard.assertCoverage();
-  return { schema: 'staging-business-journey-result.v1', completed: complete, steps,
+  return { schema: 'staging-business-journey-result.v1', completed: complete, steps, actions,
     release: { source_commit: release.source_commit, carr_source_commit: release.carr_source_commit },
     full_v1_qualified: false, unqualified_journeys: [...businessJourneys.unqualified_journeys] };
 }
@@ -204,6 +282,7 @@ async function runInvoiceJourney({ page, fixtureGuard, release, deal, run, invoi
   const click = selector => clickSelector(page, selector, timeout);
   const fill = (selector, value) => fillSelector(page, selector, value, timeout);
   const spec = { journey: 'W15', step: 'paid', deal, release };
+  const actions = [];
   const invoke = (phase, values = {}) => fixtureGuard.admitBusinessJourneyStep({ ...spec, phase, ...values });
   const binding = invoiceProofPath ? await invoke('import-fixture', { proofPath: invoiceProofPath }) : await invoke('fixture-status');
   const id = binding.proof.fixture.commission_id;
@@ -278,7 +357,8 @@ async function runInvoiceJourney({ page, fixtureGuard, release, deal, run, invoi
   if (prior?.journey.state === 'observed') {
     await invoke('admit');
     await fixtureGuard.assertCoverage();
-    return { schema: 'staging-business-journey-result.v1', completed: ['W15'], steps: [{ journey: 'W15', step: 'paid', state: 'previously-observed' }],
+    return { schema: 'staging-business-journey-result.v1', completed: ['W15'], actions,
+      steps: [{ journey: 'W15', step: 'paid', state: 'previously-observed' }],
       release: { source_commit: release.source_commit, carr_source_commit: release.carr_source_commit }, full_v1_qualified: false };
   }
   await page.goto(STAGING_ORIGIN + '/invoices', { timeout });
@@ -318,6 +398,8 @@ async function runInvoiceJourney({ page, fixtureGuard, release, deal, run, invoi
       !beforeHomeSets.team.some(row => row.key === id && row.overdue))
     throw journeyError('business-journey-readback-incomplete');
   const flag = page.locator(`[data-home-key="invoice:${id}"]`);
+  await click('[data-scope="team"]');
+  await requireHomeScope('team', beforeHomeSets);
   for (const scope of ['mine', 'team']) {
     await click(`[data-scope="${scope}"]`);
     if (await page.locator(`[data-scope="${scope}"]`).getAttribute('aria-pressed') !== 'true')
@@ -328,6 +410,10 @@ async function runInvoiceJourney({ page, fixtureGuard, release, deal, run, invoi
   const before = { commission_id: (await flag.getAttribute('data-home-key')).slice('invoice:'.length), home_attention_present: await flag.isVisible() };
   await click(`[data-home-key="invoice:${id}"]`);
   await page.locator('#invoiceDetail').waitFor({ state: 'visible', timeout });
+  const unpaidStatus = await page.locator('.invoice-status-value').textContent();
+  if (unpaidStatus !== (beforeRow.overdue ? 'Overdue' : 'Unpaid') ||
+      await page.locator('#invoicePayment').evaluate(node => node.hidden))
+    throw new Error('Invoice unpaid detail refused; reconciliation required');
   const fresh = await invoke('fixture-status');
   const max = await page.locator('#invoicePaidDate').getAttribute('max');
   const received = [max, fresh.before_tracker_readback?.row?.as_of].sort()[0];
@@ -376,8 +462,33 @@ async function runInvoiceJourney({ page, fixtureGuard, release, deal, run, invoi
   const observation = { commission_id: id, received_on: day, status, payment_form_hidden: paymentHidden,
     home_attention_removed: await page.locator(`[data-home-key="invoice:${id}"]`).count() === 0 };
   row = await invoke('observe', { observation });
+  if (!observation.home_attention_removed) throw journeyError('business-journey-readback-incomplete');
+  const action = (caseId, name, ui, readback) => provedAction({ id: 'W15', caseId, name,
+    release, run, row, ui, readback });
+  const beforeKeys = scope => expectedKeys(beforeHomeSets[scope].filter(item => item.overdue));
+  const afterKeys = scope => expectedKeys(paidHomeSets[scope].filter(item => item.overdue));
+  actions.push(
+    action('invoice-tracker', 'age-filter', { invoice: id, bucket: ageBucket, filtered: true },
+      { invoice: beforeRow, team_keys: expectedKeys(beforeSets.team) }),
+    action('invoice-tracker', 'age-reset', { all_ages_pressed: true, filters_cleared: true },
+      { team_keys: expectedKeys(beforeSets.team) }),
+    action('invoice-tracker', 'unpaid-detail', { invoice: id, status: unpaidStatus, payment_form_visible: true },
+      { invoice: beforeRow, fixture_readback: fresh.before_tracker_readback }),
+    action('invoice-tracker', 'payment-write', { invoice: id, day, paid_status: status },
+      { receipt: row.response.receipt, independent: row.independent_readback }),
+    action('invoice-tracker', 'paid-readback', { invoice: id, status, paymentHidden },
+      { paid: paidSets.team.find(item => item.key === id), independent: row.independent_readback }),
+    action('home-invoices', 'team-scope', { scope: 'team', exact_set: true },
+      { before: beforeKeys('team'), after: afterKeys('team') }),
+    action('home-invoices', 'viewer-scope', { scope: 'mine', exact_set: true },
+      { before: beforeKeys('mine'), after: afterKeys('mine') }),
+    action('home-invoices', 'scope-reset', { from: 'mine', to: 'team', exact_set: true },
+      { before: beforeKeys('team'), after: afterKeys('team') }),
+    action('home-invoices', 'payment-removal', { invoice: id, absent: observation.home_attention_removed },
+      { before: beforeHomeSets.team.find(item => item.key === id),
+        after: paidHomeSets.team.find(item => item.key === id), independent: row.independent_readback }));
   await fixtureGuard.assertCoverage();
-  return { schema: 'staging-business-journey-result.v1', completed: ['W15'],
+  return { schema: 'staging-business-journey-result.v1', completed: ['W15'], actions,
     steps: [{ journey: 'W15', step: 'paid', state: row.journey.state, ui_sha256: row.journey.ui.observation_sha256,
       readback_sha256: row.independent_readback.response_sha256 }],
     release: { source_commit: release.source_commit, carr_source_commit: release.carr_source_commit }, full_v1_qualified: false };

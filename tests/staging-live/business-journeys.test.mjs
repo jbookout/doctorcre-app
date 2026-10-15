@@ -7,6 +7,7 @@ import { join } from 'node:path';
 import { chromium, fixtureServer } from '../../test/browser-harness.mjs';
 import { prepareStagingRecords, stagingFixtureWriteGuard, assertStagingWriteCoverage } from '../../scripts/e2e-staging/records.mjs';
 import { runBusinessJourneys } from '../../scripts/e2e-staging/business-journeys.mjs';
+import { qualifyV1Journeys } from '../../scripts/e2e-staging/v1-qualification.mjs';
 import { openRun } from '../../scripts/e2e-staging/run-limits.mjs';
 import { STAGING_ORIGIN } from '../../scripts/e2e-staging/session.mjs';
 import staging from '../../contracts/e2e-staging.v1.json' with { type: 'json' };
@@ -193,6 +194,18 @@ test('served signed-in app W4/W9 uses the real UI, canonical fixture guard and d
       const result = await runBusinessJourneys({ page: f.page, fixtureGuard: f.guard, release, deal, run });
       assert.deepEqual(result.completed, ['W4', 'W9']);
       assert.equal(result.full_v1_qualified, false);
+      assert.deepEqual(result.actions.map(row => [row.id, row.case, row.action]), [
+        ['W4','local-deals','eight-columns'], ['W4','local-deals','drag-cancel'],
+        ['W4','local-deals','drag-confirm'], ['W4','local-deals','independent-phase-readback'],
+        ['W9','deal-timeline','recorded-phase-date'], ['W9','deal-timeline','date-dialog-cancel'],
+        ['W9','deal-timeline','contract-date-write'], ['W9','deal-timeline','countdown'],
+        ['W9','deal-timeline','date-control-removed']]);
+      const qualified = qualifyV1Journeys({ sourcePair: release, runId: run.snapshot().id,
+        fixtureRun: baseline.run, observations: result.actions });
+      assert.equal(qualified.observed_actions, 9);
+      assert.deepEqual(qualified.invalid, []);
+      assert.ok(qualified.pending.some(row => row.id === 'W4' && row.action === 'automatic-move'));
+      assert.ok(qualified.pending.some(row => row.id === 'W4' && row.action === 'automatic-undo'));
       assert.deepEqual(f.writes.map(row => row.name), ['patch-deal-field', 'revert-deal-field', 'add-critical-date']);
       assert.equal(f.leases.length, 2, 'cancel and retry each request one scoped drag presence lease');
       assert.ok(f.leases.every(lease => lease.deal === deal && lease.field === 'phase'));
@@ -271,6 +284,8 @@ test('served signed-in app W4/W9 uses the real UI, canonical fixture guard and d
     try {
       const result = await runBusinessJourneys({ page: f.page, fixtureGuard: f.guard, release, deal, run, journeys: ['W9'] });
       assert.deepEqual(result.completed, ['W9']);
+      assert.deepEqual(result.actions.map(row => row.action),
+        ['date-dialog-cancel','contract-date-write','countdown','date-control-removed']);
       assert.deepEqual(f.writes.map(row => row.name), ['add-critical-date']);
       assert.equal(f.detail.critical_dates.length, 1);
       const plan = JSON.parse(await readFile(planPath, 'utf8'));
@@ -404,6 +419,17 @@ test('served signed-in app W4/W9 uses the real UI, canonical fixture guard and d
       await f.page.goto(STAGING_ORIGIN+'/');
       const result=await runBusinessJourneys({page:f.page,fixtureGuard:f.guard,release,deal:f.invoiceDeal,run,journeys:['W15'],invoiceProofPath:f.proofPath});
       assert.deepEqual(result.completed,['W15']); assert.equal(result.full_v1_qualified,false);
+      assert.deepEqual(result.actions.map(row => [row.case,row.action]), [
+        ['invoice-tracker','age-filter'], ['invoice-tracker','age-reset'],
+        ['invoice-tracker','unpaid-detail'], ['invoice-tracker','payment-write'],
+        ['invoice-tracker','paid-readback'], ['home-invoices','team-scope'],
+        ['home-invoices','viewer-scope'], ['home-invoices','scope-reset'],
+        ['home-invoices','payment-removal']]);
+      const qualified = qualifyV1Journeys({ sourcePair: release, runId: run.snapshot().id,
+        fixtureRun: baseline.run, observations: result.actions });
+      assert.equal(qualified.observed_actions,9);
+      assert.deepEqual(qualified.invalid,[]);
+      assert.ok(qualified.pending.some(row => row.id === 'W15' && row.action === 'awaiting-payment-hidden'));
       assert.deepEqual(f.writes.map(row=>row.name),['record-commission-receipt']);
       assert.deepEqual(f.admittedBeforeUI,['record-commission-receipt']);
       const plan=JSON.parse(await readFile(planPath,'utf8'));
