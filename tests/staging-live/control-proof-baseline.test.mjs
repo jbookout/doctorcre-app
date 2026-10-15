@@ -42,7 +42,6 @@ test('every review citation names the line that defines its control', () => {
   assert.equal(cite(`${file}:9999`).length, 1, 'a line past the end of the file is refused');
 });
 
-// A commit equal to HEAD except for one file, written to the object store only.
 async function commitWith(t, path, text) {
   const dir = await mkdtemp(join(tmpdir(), 'control-proof-index-'));
   t.after(() => rm(dir, { recursive: true, force: true }));

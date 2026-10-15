@@ -27,8 +27,6 @@ export function createOpenLinkGuard() {
     allows(id) { return !retired.has(id); },
     retire(id, link) {
       if (id) retired.add(id);
-      // Remove both the navigation target and the control. Cached view data
-      // cannot put it back while this id remains retired.
       link?.removeAttribute('href');
       link?.remove();
     },

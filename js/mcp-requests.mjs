@@ -1,7 +1,5 @@
 import { readWithDeadline } from './current-read.mjs';
 
-// Transport facts only. Success and authoritative business refusal belong to
-// the domain client, which knows the command and its versioned contract.
 export function createMcpRequests({ fetchImpl = globalThis.fetch, headers = {}, typedContent = true, clock = globalThis } = {}) {
   let id = 0;
   return async (name, args = {}, { signal, timeoutMs } = {}) => {
@@ -22,9 +20,9 @@ export function createMcpRequests({ fetchImpl = globalThis.fetch, headers = {}, 
         try {
           if (response.text) {
             body = await response.text();
-            try { payload = JSON.parse(body); } catch { /* diagnostic text */ }
+            try { payload = JSON.parse(body); } catch {  }
           } else payload = await response.json();
-        } catch { /* a diagnostic cannot confirm the request */ }
+        } catch {  }
         return { kind: 'unconfirmed', reason: 'http', status, body: body.slice(0, 500), payload };
       }
       let envelope;

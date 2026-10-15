@@ -41,7 +41,6 @@ export function morningBriefView(payload, { now = new Date(), since, events = []
   const unique = due.filter(row => { if (seen.has(row.key)) return false; seen.add(row.key); return true; });
   const first = unique[0] || null;
   const receipts = caughtUp ? events.map(event => normalizeChangeEvent(event, { dealName:id => deals.get(id)?.name })).filter(row => row && Date.parse(row.recorded_at) >= Date.parse(since) && Date.parse(row.recorded_at) <= now.valueOf()).sort(compareReceipts) : [];
-  // Only user-facing fields, with wording from the existing receipt vocabulary.
   const change = receipts.find(row => ['phase','next_step','next_date','note','attention','operating_state'].includes(row.field) && `deal:${row.deal_id}` !== first?.key);
   const overnight = change ? { key:`deal:${change.deal_id}`, kind:'deal', id:change.deal_id, title:change.deal_name, summary:change.kind === 'note' ? 'New note' : `${change.action}${change.after ? `: ${change.after}` : ''}`, due:null } : null;
   const remaining = unique.find(row => row.key !== first?.key && row.key !== overnight?.key) || null;

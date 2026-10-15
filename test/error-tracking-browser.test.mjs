@@ -8,8 +8,6 @@ import { chromium, settles } from './browser-harness.mjs';
 import { buildArtifact } from '../scripts/artifact.mjs';
 import { createDoctorcreRequestHandler } from '../src/worker.js';
 
-// The application module throws while it is first evaluated, so the report can
-// only exist if the built bootstrap installed its listeners before app code ran.
 const APP_MODULE = `
 window.onerror = () => { window.appOnError = (window.appOnError || 0) + 1; };
 window.onunhandledrejection = () => { window.appOnRejection = (window.appOnRejection || 0) + 1; };

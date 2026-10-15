@@ -7,8 +7,6 @@ import { join } from 'node:path';
 import { journeyEngine } from '../tests/journeys/phone-engine.mjs';
 import { journeyProfiles } from '../tests/journeys/phone-profiles.mjs';
 
-// Drives each engine through the SPI calls the runner makes, against a
-// synthetic page, so a phone tap is held to the desktop adapter's semantics.
 const page = `<!doctype html><meta name="viewport" content="width=device-width">
 <main><button hidden>Continue</button><button id="shown">Continue</button>
 <input id="amount" aria-label="Amount" value="42">
@@ -50,7 +48,6 @@ async function drive(profileName, run) {
 const text = value => ({ kind: 'string', value, exact: true });
 const query = (kind, value, extra = {}) => ({ kind: 'query', query: { kind, value: text(value), ...extra } });
 const touchProfiles = journeyProfiles.filter(profile => profile.name !== 'chromium').map(profile => profile.name);
-// Desktop click and phone touch must agree on what each reference names.
 const expected = (name, ids) => ids.flatMap(id => name === 'chromium' ? [`click:${id}`] : [`touchstart:${id}`, `click:${id}`]).join(' ');
 
 for (const name of ['chromium', ...touchProfiles]) {

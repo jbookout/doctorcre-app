@@ -11,7 +11,6 @@ test('blocking 10: real phone touch drag scrolls to an offscreen stage and opens
  const initial=await page.evaluate(()=>scrollY);const box=await handle.boundingBox();const cdp=await page.context().newCDPSession(page);
  const touch=(type,x,y)=>cdp.send('Input.dispatchTouchEvent',{type,touchPoints:type==='touchEnd'||type==='touchCancel'?[]:[{x,y,radiusX:3,radiusY:3,id:1}]});
  await touch('touchStart',box.x+box.width/2,box.y+box.height/2);await touch('touchMove',195,945);
- // Drive animation frames explicitly: CPU contention must not change the gesture's elapsed time.
  await page.clock.runFor(500);assert.ok(await page.evaluate(start=>scrollY>start+150,initial),'edge drag scrolls after 500ms of animation frames');
  const target=page.locator('[data-stage="qualified"] .stage-head');
  const destinationVisible=()=>page.evaluate(()=>{const r=document.querySelector('[data-stage="qualified"] .stage-head').getBoundingClientRect();const top=document.querySelector('.app-layout-tabbar').getBoundingClientRect().bottom;const bottom=document.querySelector('.app-layout-status').getBoundingClientRect().top;return r.top>top&&r.bottom<bottom});

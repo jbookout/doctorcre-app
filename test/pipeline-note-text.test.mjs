@@ -1,6 +1,3 @@
-// QA batch 2 — a Legal-stage Kanban card printed a Python dict such as
-// {'text': 'Send the redlines', 'at': '...'} as its next step. Note values are
-// normalized to their sentence before any card or panel paints them.
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";

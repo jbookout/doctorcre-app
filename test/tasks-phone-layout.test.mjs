@@ -1,6 +1,3 @@
-// QA batch 2 — on a phone, Quick add filled the first screen of Tasks. Open
-// work now comes first at phone width and Quick add is a compact, collapsible
-// panel that starts collapsed there.
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
@@ -27,7 +24,6 @@ test("the open-work and Quick add sections carry hooks for phone ordering", () =
 test("at phone width open work is placed before Quick add, and Quick add is compact", () => {
   const phone = css.match(/@media \(max-width: 640px\) \{[\s\S]*?\n\}/g)?.join("\n") || "";
   assert.match(phone, /#main\s*\{[^}]*display:\s*flex[^}]*flex-direction:\s*column/);
-  // The page title keeps order 0, so it stays first; the list then Quick add.
   assert.match(phone, /\.tasks-open\s*\{[^}]*order:\s*1\b/);
   assert.match(phone, /\.tasks-quick-add\s*\{[^}]*order:\s*2\b[^}]*padding/);
 });
