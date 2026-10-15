@@ -52,7 +52,7 @@ test('every exported staging-context entry point refuses missing opt-in, includi
   };
   const network = {
     session: ['createStagingRequestContext', 'stagingRelease', 'stagingSession', 'writeStagingStorageState'],
-    records: ['prepareStagingRecords', 'stagingFixtureWriteGuard'],
+    records: ['prepareStagingRecords', 'readStagingManualW4Fixture', 'stagingFixtureWriteGuard'],
   };
   for (const [name, module] of Object.entries({ session, records })) {
     assert.deepEqual(Object.keys(module).filter(key => typeof module[key] === 'function').sort(), [...local[name], ...network[name]].sort());
@@ -67,6 +67,7 @@ test('every exported staging-context entry point refuses missing opt-in, includi
     stagingSession: () => session.stagingSession(session.STAGING_ORIGIN, { requestContext: api, exchange: false, run }),
     writeStagingStorageState: () => session.writeStagingStorageState(api, join(root, 'private/state.json'), run),
     prepareStagingRecords: () => records.prepareStagingRecords(root, { run, session: effect, requestFactory: effect }),
+    readStagingManualW4Fixture: () => records.readStagingManualW4Fixture(root, {}, run),
     stagingFixtureWriteGuard: () => records.stagingFixtureWriteGuard({ run }).handle({ url: () => session.STAGING_ORIGIN + '/app-release', method: () => 'GET' }, effect),
   };
   assert.deepEqual(Object.keys(entry).sort(), Object.values(network).flat().sort());

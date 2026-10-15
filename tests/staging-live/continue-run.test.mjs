@@ -872,7 +872,7 @@ test('local automatic producer receives a fresh private plan only after manual W
       return { state: 'GENERIC_AUTOMATIC_UNDO_OBSERVED', doc_authorship_qualified: false,
         full_v1_qualified: false };
     } };
-  const result = await runBusinessPhase({ binding, run: f.run }, supplied);
+  const result = await runBusinessPhase({ binding, run: f.run, environment: {} }, supplied);
   assert.equal(result.automaticPhase.state, 'GENERIC_AUTOMATIC_UNDO_OBSERVED');
   assert.equal(produces, 1); assert.equal(observes, 1);
   assert.equal(result.full_v1_qualified, false);
@@ -881,7 +881,7 @@ test('local automatic producer receives a fresh private plan only after manual W
 
 test('local automatic handoff leaves absent paths pending and stops uncertain journals before authentication', async t => {
   const f = await businessFixture(t);
-  const absentResult = await runBusinessPhase({ binding, run: f.run }, f.supplied);
+  const absentResult = await runBusinessPhase({ binding, run: f.run, environment: {} }, f.supplied);
   assert.equal(absentResult.automaticPhase.state, 'PENDING_LOCAL_AGENT_SEAM');
   f.supplied.journeys = async options => {
     f.events.push('business');
@@ -897,7 +897,7 @@ test('local automatic handoff leaves absent paths pending and stops uncertain jo
   const supplied = { ...f.supplied, localAgentCarrCheckout: '/synthetic/immutable-5dda',
     localAgentProducer: async () => { produces++; return { state: 'PENDING_RECONCILIATION' }; },
     automaticPhaseJourney: async () => { observes++; } };
-  const pending = await runBusinessPhase({ binding, run: f.run }, supplied);
+  const pending = await runBusinessPhase({ binding, run: f.run, environment: {} }, supplied);
   assert.equal(pending.automaticPhase.state, 'PENDING_RECONCILIATION');
   assert.equal(produces, 1); assert.equal(observes, 0);
   await mkdir(join(f.run.root, 'private'), { mode: 0o700 });
@@ -907,7 +907,7 @@ test('local automatic handoff leaves absent paths pending and stops uncertain jo
   await writeFile(join(f.run.root, 'staging-records-plan.json'), JSON.stringify(retained), { mode: 0o600 });
   const { assertStagingWriteCoverage } = await import('../../scripts/e2e-staging/records.mjs');
   f.events.length = 0;
-  await assert.rejects(runBusinessPhase({ binding, run: f.run },
+  await assert.rejects(runBusinessPhase({ binding, run: f.run, environment: {} },
     { ...supplied, coverage: assertStagingWriteCoverage }),
   { code: 'automatic-event-reconciliation-required' });
   assert.equal(f.events.includes('authenticate'), false);
@@ -917,10 +917,20 @@ test('local automatic handoff leaves absent paths pending and stops uncertain jo
 test('local automatic handoff refuses unobserved manual predecessor before producer invocation', async t => {
   const f = await businessFixture(t);
   let produces = 0;
-  await assert.rejects(runBusinessPhase({ binding, run: f.run }, { ...f.supplied,
+  await assert.rejects(runBusinessPhase({ binding, run: f.run, environment: {} }, { ...f.supplied,
     localAgentCarrCheckout: '/synthetic/immutable-5dda',
     localAgentProducer: async () => { produces++; } }),
   { code: 'automatic-manual-predecessor-unproved' });
+  assert.equal(produces, 0);
+});
+
+test('hosted business caller cannot invoke the local automatic producer', async t => {
+  const f = await businessFixture(t);
+  let produces = 0;
+  const result = await runBusinessPhase({ binding, run: f.run, environment: { GITHUB_ACTIONS: 'true' } },
+    { ...f.supplied, localAgentCarrCheckout: '/synthetic/immutable-5dda',
+      localAgentProducer: async () => { produces++; } });
+  assert.equal(result.automaticPhase.state, 'PENDING_LOCAL_AGENT_SEAM');
   assert.equal(produces, 0);
 });
 
