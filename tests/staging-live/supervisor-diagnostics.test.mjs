@@ -114,11 +114,23 @@ test('worker diagnostics include only a code this harness attached', () => {
     'Staging worker failure name=Error code=journal-directory-unsafe frame=none');
   own.code = 'secretvalue123';
   assert.equal(formatWorkerFailureDiagnostic(own, projectRoot),
-    'Staging worker failure name=Error code=none frame=none');
+    'Staging worker failure name=Error code=journal-directory-unsafe frame=none');
   class SecretTokenabc123 extends Error {}
   assert.equal(formatWorkerFailureDiagnostic(new SecretTokenabc123('x'), projectRoot),
     'Staging worker failure name=Error code=none frame=none');
   assert.equal(parseWorkerFailureDiagnostic('Staging worker failure name=SecretTokenabc123 code=none frame=none'), null);
+  const trap = new Proxy({}, { get(_target, key) {
+    return typeof key === 'symbol' || key === 'code' ? 'secretvalue123' : undefined;
+  } });
+  assert.equal(formatWorkerFailureDiagnostic(trap, projectRoot),
+    'Staging worker failure name=Error code=none frame=none');
+  const forged = { stack: `Error: x\n    at request (file://${projectRoot}scripts/e2e-staging/secretvalue123.mjs:43:7)` };
+  assert.equal(formatWorkerFailureDiagnostic(forged, projectRoot),
+    'Staging worker failure name=Object code=none frame=none');
+  assert.equal(parseWorkerFailureDiagnostic(
+    'Staging worker failure name=Error code=none frame=scripts/e2e-staging/secretvalue123.mjs:43'), null);
+  assert.ok(parseWorkerFailureDiagnostic(
+    'Staging worker failure name=Error code=none frame=scripts/e2e-staging/session.mjs:43'));
   const inherited = Object.assign(Object.create({ code: 'hidden-secret' }), { stack: 'Error: private' });
   assert.equal(formatWorkerFailureDiagnostic(inherited, projectRoot),
     'Staging worker failure name=Object code=none frame=none');
