@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { constants } from 'node:fs';
-import { lstat, open, readdir } from 'node:fs/promises';
-import { isAbsolute, join, relative, resolve, sep } from 'node:path';
+import { lstat, open, readdir, realpath } from 'node:fs/promises';
+import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { RUN_LIMITS } from './run-limits.mjs';
 
 const schema = 'doctorcre-staging-retained-evidence.v1';
@@ -9,10 +9,58 @@ const extensions = /\.(?:json|md|txt|png|jpe?g|webp)$/i;
 const privateNames = /(?:auth|session|cookie|token|secret|storage|trace|transcript)/i;
 const hash = bytes => createHash('sha256').update(bytes).digest('hex');
 const fail = () => { throw new Error('Retained staging evidence invalid'); };
+const rowDigest = value => hash(Buffer.from(JSON.stringify(value)));
+export function protectedRows(controls) {
+  return {
+    explorations: (controls.explorations || []).filter(row => ['completed', 'finished'].includes(row.status))
+      .map(row => [JSON.stringify([row.target, row.path, row.agent]), rowDigest(row)]),
+    screens: (controls.screens || []).filter(row => row.reached === true && row.in_progress !== true &&
+      !row.failure && Array.isArray(row.controls) && row.controls.length > 0 &&
+      row.controls.every(control => typeof control.evidence_path === 'string' && control.evidence_path))
+      .map(row => [JSON.stringify([row.target, row.path]), rowDigest(row)]),
+    states: (controls.stateObligations || []).filter(row => row.status === 'passed')
+      .map(row => [row.key, rowDigest(row)]),
+  };
+}
+function retainedRowsIntact(manifest, controls) {
+  const now = protectedRows(controls);
+  if (!manifest.protected_rows || Object.keys(manifest.protected_rows).sort().join() !== 'explorations,screens,states') return false;
+  return Object.entries(manifest.protected_rows || {}).every(([kind, rows]) =>
+    Array.isArray(rows) && Array.isArray(now[kind]) && rows.every(([key, digest]) =>
+      now[kind].some(([currentKey, currentDigest]) => key === currentKey && digest === currentDigest)));
+}
 const within = (root, path) => {
   const part = relative(root, path);
   return part && part !== '..' && !part.startsWith(`..${sep}`) && !isAbsolute(part);
 };
+
+async function canonicalRoot(root) {
+  const info = await lstat(root).catch(fail);
+  if (!info.isDirectory() || info.isSymbolicLink() || await realpath(root).catch(fail) !== root ||
+      typeof process.getuid === 'function' && info.uid !== process.getuid()) fail();
+}
+
+async function evidencePath(root, path) {
+  const base = join(root, 'evidence');
+  if (path !== base && !within(base, path)) fail();
+  let current = root;
+  const parts = relative(root, path).split(sep);
+  for (const [index, part] of parts.entries()) {
+    current = join(current, part);
+    const info = await lstat(current).catch(fail);
+    if (info.isSymbolicLink() || typeof process.getuid === 'function' && info.uid !== process.getuid() ||
+        index < parts.length - 1 && !info.isDirectory() ||
+        index === parts.length - 1 && !info.isDirectory() && !info.isFile()) fail();
+  }
+}
+
+export async function assertRetainedEvidenceParent(root, path) {
+  root = resolve(root);
+  path = resolve(path);
+  if (!within(join(root, 'evidence'), path)) fail();
+  await canonicalRoot(root);
+  await evidencePath(root, dirname(path));
+}
 
 function evidenceReferences(root, controls) {
   const refs = new Set();
@@ -42,6 +90,7 @@ async function regularBytes(path) {
 }
 
 async function filePaths(root, path) {
+  await evidencePath(root, path);
   const info = await lstat(path).catch(fail);
   if (info.isSymbolicLink() || typeof process.getuid === 'function' && info.uid !== process.getuid()) fail();
   if (info.isFile()) return [path];
@@ -58,6 +107,7 @@ async function filePaths(root, path) {
 
 export async function snapshotRetainedEvidence(root, controls, sourcePair, runId) {
   root = resolve(root);
+  await canonicalRoot(root);
   const refs = evidenceReferences(root, controls);
   const paths = new Set();
   for (const ref of refs) for (const path of await filePaths(root, join(root, ref))) paths.add(path);
@@ -75,6 +125,7 @@ export async function snapshotRetainedEvidence(root, controls, sourcePair, runId
       !Object.hasOwn(files, relative(root, resolve(row.evidence || '')).split(sep).join('/') + '/report.json')) fail();
   return { schema, source_pair: sourcePair, source_root: root, run_id: runId,
     checkpoint_sha256: hash(Buffer.from(JSON.stringify(controls))),
+    protected_rows: protectedRows(controls),
     references: refs.map(ref => ref.split(sep).join('/')), files };
 }
 
@@ -82,6 +133,7 @@ export function retainedEvidenceFiles(manifest, controls, sourcePair, runId) {
   if (manifest?.schema !== schema || !manifest.source_root || !isAbsolute(manifest.source_root) ||
       manifest.run_id !== runId ||
       manifest.checkpoint_sha256 !== hash(Buffer.from(JSON.stringify(controls))) ||
+      JSON.stringify(manifest.protected_rows) !== JSON.stringify(protectedRows(controls)) ||
       JSON.stringify(manifest.source_pair) !== JSON.stringify(sourcePair) ||
       !Array.isArray(manifest.references) || !manifest.files || typeof manifest.files !== 'object' ||
       JSON.stringify(evidenceReferences(manifest.source_root, controls).map(ref => ref.split(sep).join('/'))) !==
@@ -134,41 +186,47 @@ export async function assessCurrentEvidence(root, controls, runId) {
   } catch { return Object.freeze({ schema, verified: false }); }
 }
 
-export async function verifyRetainedEvidence(root, controls) {
+export async function verifyRetainedEvidence(root, controls, { allowExtension = false } = {}) {
   try {
     root = resolve(root);
+    await canonicalRoot(root);
+    await evidencePath(root, join(root, 'evidence'));
     const manifest = JSON.parse(await regularBytes(join(root, 'evidence', 'manifest.json')));
     const budget = JSON.parse(await regularBytes(join(root, 'run-budget.json')));
     if (manifest.schema !== schema || !manifest.source_pair ||
         manifest.source_root !== root || manifest.run_id !== budget.id ||
-        manifest.checkpoint_sha256 !== hash(Buffer.from(JSON.stringify(controls))) ||
+        (allowExtension ? !retainedRowsIntact(manifest, controls)
+          : manifest.checkpoint_sha256 !== hash(Buffer.from(JSON.stringify(controls)))) ||
         manifest.source_pair.source_commit !== controls.release?.source_commit ||
         manifest.source_pair.carr_source_commit !== controls.release?.carr_source_commit ||
         !Array.isArray(manifest.references) || !manifest.files || typeof manifest.files !== 'object') fail();
     const refs = evidenceReferences(root, controls).map(ref => ref.split(sep).join('/'));
-    if (JSON.stringify(refs) !== JSON.stringify(manifest.references)) fail();
+    if (allowExtension ? !manifest.references.every(ref => refs.includes(ref)) :
+        JSON.stringify(refs) !== JSON.stringify(manifest.references)) fail();
     const observed = new Set();
-    for (const ref of refs) for (const path of await filePaths(root, join(root, ref)))
+    for (const ref of manifest.references) for (const path of await filePaths(root, join(root, ref)))
       observed.add(relative(root, path).split(sep).join('/'));
-    if (JSON.stringify([...observed].sort()) !== JSON.stringify(Object.keys(manifest.files).sort())) fail();
+    if (allowExtension ? !Object.keys(manifest.files).every(name => observed.has(name)) :
+        JSON.stringify([...observed].sort()) !== JSON.stringify(Object.keys(manifest.files).sort())) fail();
     let total = 0;
     for (const [name, meta] of Object.entries(manifest.files)) {
       const path = resolve(root, name);
       if (!within(join(root, 'evidence'), path) || name === 'evidence/manifest.json' || !extensions.test(name) ||
           privateNames.test(name) ||
           !meta || !Number.isSafeInteger(meta.size) || !/^[a-f0-9]{64}$/.test(meta.sha256 || '')) fail();
+      await evidencePath(root, path);
       const bytes = await regularBytes(path);
       total += bytes.length;
       if (bytes.length !== meta.size || hash(bytes) !== meta.sha256 || total > RUN_LIMITS.artifactBytes) fail();
     }
-    for (const ref of refs) {
+    for (const ref of manifest.references) {
       const path = resolve(root, ref), info = await lstat(path);
       if (info.isDirectory()) {
         if (!Object.hasOwn(manifest.files, ref + '/report.json') && ref.startsWith('evidence/explore/')) fail();
         if (![...Object.keys(manifest.files)].some(name => name.startsWith(ref + '/'))) fail();
       } else if (!Object.hasOwn(manifest.files, ref)) fail();
     }
-    for (const row of controls.explorations || []) if (['completed', 'finished'].includes(row.status) &&
+    for (const row of controls.explorations || []) if (!allowExtension && ['completed', 'finished'].includes(row.status) &&
         !Object.hasOwn(manifest.files, relative(root, resolve(row.evidence || '')).split(sep).join('/') + '/report.json')) fail();
     return Object.freeze({ schema, verified: refs.length > 0, source_pair: manifest.source_pair, run_id: manifest.run_id,
       referencedFiles: Object.keys(manifest.files).length });

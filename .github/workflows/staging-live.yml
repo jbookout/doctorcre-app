@@ -1,5 +1,10 @@
 name: bounded staging V1 continuation
 
+# Four serial encrypted payload slots, each at most 256 MiB and retained one
+# day (at most 4 x 256 MiB of payload). The 256 MiB run ledger is logical
+# retained/new content; authenticated transfer never refunds prior charges.
+# Caller tests measure the separate 3-slot transient disk and 6-slot RSS caps.
+
 on:
   workflow_dispatch:
     inputs:
@@ -110,6 +115,7 @@ jobs:
       generation: ${{ steps.run.outputs.generation }}
       predecessor: ${{ steps.run.outputs.predecessor }}
       plan_hash: ${{ steps.run.outputs.plan_hash }}
+      size: ${{ steps.run.outputs.size }}
       job_status: ${{ steps.run.outputs.job_status }}
       accepted_v1: ${{ steps.run.outputs.accepted_v1 }}
       proof_status: ${{ steps.run.outputs.proof_status }}
@@ -204,6 +210,7 @@ jobs:
       generation: ${{ steps.run.outputs.generation }}
       predecessor: ${{ steps.run.outputs.predecessor }}
       plan_hash: ${{ steps.run.outputs.plan_hash }}
+      size: ${{ steps.run.outputs.size }}
       job_status: ${{ steps.run.outputs.job_status }}
       accepted_v1: ${{ steps.run.outputs.accepted_v1 }}
       proof_status: ${{ steps.run.outputs.proof_status }}
@@ -218,6 +225,7 @@ jobs:
       E2E_PREVIOUS_GENERATION: ${{ needs.part_1.outputs.generation }}
       E2E_PREVIOUS_PREDECESSOR: ${{ needs.part_1.outputs.predecessor }}
       E2E_PREVIOUS_PLAN_HASH: ${{ needs.part_1.outputs.plan_hash }}
+      E2E_PREVIOUS_SIZE: ${{ needs.part_1.outputs.size }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -303,6 +311,7 @@ jobs:
       generation: ${{ steps.run.outputs.generation }}
       predecessor: ${{ steps.run.outputs.predecessor }}
       plan_hash: ${{ steps.run.outputs.plan_hash }}
+      size: ${{ steps.run.outputs.size }}
       job_status: ${{ steps.run.outputs.job_status }}
       accepted_v1: ${{ steps.run.outputs.accepted_v1 }}
       proof_status: ${{ steps.run.outputs.proof_status }}
@@ -317,6 +326,7 @@ jobs:
       E2E_PREVIOUS_GENERATION: ${{ needs.part_2.outputs.generation }}
       E2E_PREVIOUS_PREDECESSOR: ${{ needs.part_2.outputs.predecessor }}
       E2E_PREVIOUS_PLAN_HASH: ${{ needs.part_2.outputs.plan_hash }}
+      E2E_PREVIOUS_SIZE: ${{ needs.part_2.outputs.size }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -402,6 +412,7 @@ jobs:
       generation: ${{ steps.run.outputs.generation }}
       predecessor: ${{ steps.run.outputs.predecessor }}
       plan_hash: ${{ steps.run.outputs.plan_hash }}
+      size: ${{ steps.run.outputs.size }}
       job_status: ${{ steps.run.outputs.job_status }}
       accepted_v1: ${{ steps.run.outputs.accepted_v1 }}
       proof_status: ${{ steps.run.outputs.proof_status }}
@@ -416,6 +427,7 @@ jobs:
       E2E_PREVIOUS_GENERATION: ${{ needs.part_3.outputs.generation }}
       E2E_PREVIOUS_PREDECESSOR: ${{ needs.part_3.outputs.predecessor }}
       E2E_PREVIOUS_PLAN_HASH: ${{ needs.part_3.outputs.plan_hash }}
+      E2E_PREVIOUS_SIZE: ${{ needs.part_3.outputs.size }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

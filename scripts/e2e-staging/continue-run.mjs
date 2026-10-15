@@ -1,6 +1,6 @@
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { constants } from 'node:fs';
-import { appendFile, lstat, mkdir, open, readFile, realpath, rename, unlink, writeFile } from 'node:fs/promises';
+import { appendFile, lstat, mkdir, open, readFile, realpath, rename, rm, unlink, writeFile } from 'node:fs/promises';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execFile } from 'node:child_process';
@@ -36,11 +36,110 @@ export function invocationBoundary({ now = Date.now(), deadline, sliceMs }) {
 }
 
 export function assertTrustedArtifact(offered, expected) {
-  if (!expected || !/^[1-9][0-9]*$/.test(expected.artifactId || '') || !sha256(expected.digest) ||
+  if (!expected || !/^[1-9][0-9]*$/.test(expected.artifactId || '') || !sha256(expected.digest) || !sha256(expected.planHash) ||
       !Number.isSafeInteger(expected.generation) || expected.generation < 1 ||
+      !Number.isSafeInteger(expected.size) || expected.size < 1 || expected.size > 256 * 1024 * 1024 ||
       !(expected.predecessor === null || sha256(expected.predecessor)) ||
-      ['artifactId', 'digest', 'generation', 'predecessor'].some(key => offered?.[key] !== expected[key]))
+      ['artifactId', 'digest', 'generation', 'predecessor', 'planHash', 'size'].some(key => offered?.[key] !== expected[key]))
     refusal('artifact-chain-mismatch');
+}
+
+export function assertAdoptionReceipt(adoption, expected, { runId, sourcePair, contractHash, priorArtifactBytes }) {
+  // Caller binding only. The envelope module alone mints and consumes the
+  // private one-use capability; a structurally similar object earns no credit.
+  if (!adoption || adoption.schema !== 'doctorcre-staging-continuation-adoption.v1' ||
+      adoption.artifactId !== expected?.artifactId || adoption.sha256 !== expected.digest ||
+      adoption.envelopeBytes !== expected.size || adoption.chargedBytes !== expected.size ||
+      adoption.generation !== expected.generation || adoption.contractHash !== contractHash ||
+      adoption.runId !== runId || adoption.planHash !== expected.planHash ||
+      adoption.sourcePair?.source_commit !== sourcePair.source_commit ||
+      adoption.sourcePair?.carr_source_commit !== sourcePair.carr_source_commit ||
+      adoption.priorLedgerArtifactBytes !== priorArtifactBytes ||
+      adoption.inputConsumed !== true) refusal('artifact-adoption-invalid');
+}
+
+async function claimPredecessor(parent, { runId, sourcePair, expected }) {
+  // A local invocation parent is the durable one-writer scope. The hosted
+  // workflow additionally pins attempt one and the unique artifact ID in its
+  // serial needs graph. Retain this claim even when restore fails, so a copied
+  // ciphertext cannot start another worker without manual reconciliation.
+  await privateParent(parent);
+  const key = hash(Buffer.from(JSON.stringify([runId, sourcePair, expected.generation,
+    expected.digest])));
+  const path = join(parent, `.continuation-consumed-${key}`);
+  let handle;
+  try { handle = await open(path, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o600); }
+  catch (error) { if (error?.code === 'EEXIST') refusal('artifact-replay-refused'); throw error; }
+  try { await handle.sync(); } finally { await handle.close(); }
+  const directory = await open(parent, constants.O_RDONLY);
+  try { await directory.sync(); } finally { await directory.close(); }
+}
+
+export function assertReadonlyResult(result, release, plan) {
+  const journeys = result?.journeys;
+  if (result?.schema !== 'staging-readonly-journey-result.v1' || result.full_v1_qualified !== false ||
+      result.provenance?.source_commit !== release.source_commit ||
+      result.provenance?.carr_source_commit !== release.carr_source_commit ||
+      result.provenance?.run !== plan.run || !Array.isArray(journeys) || journeys.length !== 4 ||
+      journeys.some((row, index) => row?.journey !== ['W1', 'W2', 'W5', 'W14'][index] ||
+        !['pending', 'qualified-slice'].includes(row.state)) ||
+      journeys[2].state !== 'pending' ||
+      result.counts?.carr_record_mutations !== 0)
+    refusal('readonly-result-unqualified');
+}
+
+export function assertJourneyQualification(value, binding, runId) {
+  const keys = value && typeof value === 'object' && !Array.isArray(value) ? Object.keys(value).sort().join() : '';
+  const readonly = value?.readonly;
+  if (keys !== 'business,full_v1_qualified,observed_at,readonly,run_id,schema,source_pair,tour_readonly_observed' ||
+      value.schema !== 'doctorcre-staging-journey-observations.v1' || value.full_v1_qualified !== false ||
+      value.run_id !== runId || value.source_pair?.source_commit !== binding.app ||
+      value.source_pair?.carr_source_commit !== binding.carr ||
+      Object.keys(value.source_pair || {}).sort().join() !== 'carr_source_commit,source_commit' ||
+      typeof value.observed_at !== 'string' || !/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z$/.test(value.observed_at) ||
+      !Number.isFinite(Date.parse(value.observed_at)) || typeof value.tour_readonly_observed !== 'boolean' ||
+      Object.keys(value.business || {}).sort().join() !== 'W15,W4,W9,observed_steps' ||
+      !['W4', 'W9', 'W15'].every(key => typeof value.business[key] === 'boolean') ||
+      !Number.isSafeInteger(value.business.observed_steps) || value.business.observed_steps < 0 ||
+      Object.keys(readonly || {}).sort().join() !== 'W1,W14,W2,W5' ||
+      !['W1', 'W2', 'W5', 'W14'].every(key => ['pending', 'qualified-slice'].includes(readonly[key])) ||
+      readonly.W5 !== 'pending') refusal('journey-observations-invalid');
+  return value;
+}
+
+export async function retainJourneyQualification({ run, binding, release, result }) {
+  const path = join(run.root, 'staging-records-plan.json');
+  const plan = JSON.parse(await privateBytes(path));
+  if (plan.schema !== 'doctorcre-staging-records-plan.v1' || plan.state !== 'complete' || plan.inflight ||
+      plan.release?.source_commit !== binding.app || plan.release?.carr_source_commit !== binding.carr ||
+      result?.full_v1_qualified !== false || result.tour?.full_v1_qualified !== false ||
+      !Array.isArray(result.completed) || !Array.isArray(result.steps))
+    refusal('journey-observations-invalid');
+  assertReadonlyResult(result.readonly, release, plan);
+  const observed = {
+    schema: 'doctorcre-staging-journey-observations.v1',
+    source_pair: { source_commit: binding.app, carr_source_commit: binding.carr },
+    run_id: run.snapshot().id, observed_at: new Date().toISOString(),
+    business: { W4: result.completed.includes('W4'), W9: result.completed.includes('W9'),
+      W15: result.completed.includes('W15'),
+      observed_steps: result.steps.filter(row => row?.state === 'observed').length },
+    tour_readonly_observed: Boolean(result.tour?.ui?.sha256 && result.tour?.backend_readback?.sha256),
+    readonly: Object.fromEntries(result.readonly.journeys.map(row => [row.journey, row.state])),
+    full_v1_qualified: false,
+  };
+  assertJourneyQualification(observed, binding, run.snapshot().id);
+  const data = JSON.stringify({ ...plan, journey_qualification: observed }) + '\n';
+  await run.writeFile(path, data, async (destination, bytes) => {
+    const stage = `${destination}.${randomUUID()}.tmp`;
+    try {
+      const file = await open(stage, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o600);
+      try { await file.writeFile(bytes); await file.sync(); } finally { await file.close(); }
+      await rename(stage, destination);
+      const directory = await open(dirname(destination), constants.O_RDONLY);
+      try { await directory.sync(); } finally { await directory.close(); }
+    } finally { await rm(stage, { force: true }); }
+  }, { replaces: path });
+  return observed;
 }
 
 export function canaryRequestAllowed(method, value) {
@@ -558,7 +657,7 @@ export async function boundedInvocation(options, dependencies = {}) {
   });
   const leasePath = join(dirname(envelopePath), '.continuation-writer');
   const lease = await open(leasePath, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o600);
-  let budget;
+  let budget, adoption;
   try {
     const sourcePair = { source_commit: binding.app, carr_source_commit: binding.carr };
     const contractHash = hash(await readFile(new URL('../../contracts/e2e-staging.v1.json', import.meta.url)));
@@ -566,11 +665,16 @@ export async function boundedInvocation(options, dependencies = {}) {
       if (!expected || expected.generation !== slot - 1 || !sha256(expected.planHash) ||
           (slot === 2 ? expected.predecessor !== null : !sha256(expected.predecessor))) refusal('artifact-chain-mismatch');
       assertTrustedArtifact(incoming, expected);
+      if ((await lstat(incoming.path)).size !== expected.size) refusal('artifact-chain-mismatch');
+      await claimPredecessor(dirname(output), { runId, sourcePair, expected });
       const restored = await restoreContinuation({ envelopePath: incoming.path, destination: output, secret,
+        adoptIncoming: { artifactId: expected.artifactId, digest: expected.digest, bytes: expected.size },
         expected: { sha256: expected.digest, generation: expected.generation,
           predecessor: expected.predecessor === null ? null : { generation: expected.generation - 1, sha256: expected.predecessor },
           runId, sourcePair, contractHash, planHash: expected.planHash } });
+      dependencies.onRestore?.(restored);
       if (restored.generation !== slot - 1) refusal('artifact-chain-mismatch');
+      adoption = restored.adoption;
       const checkpoint = JSON.parse(await privateBytes(join(output, 'controls.json')));
       const verify = dependencies.verifyRetainedEvidence || (await import('./evidence-manifest.mjs')).verifyRetainedEvidence;
       assertRestoredEvidence(checkpoint, await verify(output, checkpoint), runId);
@@ -585,7 +689,14 @@ export async function boundedInvocation(options, dependencies = {}) {
     assertBudget(budget.snapshot(), { ...budgetBinding, now: now() });
     if (budget.snapshot().stopReason !== null) refusal('prior-worker-failed');
     if (incoming) {
-      budget.reserveBytes((await lstat(incoming.path)).size);
+      // The envelope has authenticated and consumed this exact predecessor.
+      // Its logical bytes remain in the monotone restored ledger. New content
+      // is charged by the work ledger, and each new envelope's framing by seal.
+      assertAdoptionReceipt(adoption, expected, { runId, sourcePair, contractHash,
+        priorArtifactBytes: budget.snapshot().artifactBytes });
+      const retainedPlan = JSON.parse(await privateBytes(join(output, 'staging-records-plan.json')));
+      if (retainedPlan.journey_qualification)
+        assertJourneyQualification(retainedPlan.journey_qualification, binding, runId);
       await coverage(output);
     }
     const environment = { ...options.environment, ...runtime, E2E_RUN_ID: runId, E2E_ALLOW_MODEL_CALLS: runId,
@@ -659,7 +770,9 @@ export async function boundedInvocation(options, dependencies = {}) {
     await checkout(binding.checkout);
     assertBudget(budget.snapshot(), { ...budgetBinding, now: now() });
     const predecessor = expected ? { generation: expected.generation, sha256: expected.digest } : null;
-    const sealed = await sealContinuation({ output, envelopePath, secret, sourcePair, runId, generation: slot, predecessor, run: budget });
+    const sealed = await sealContinuation({ output, envelopePath, secret, sourcePair, runId,
+      generation: slot, predecessor, adoption, run: budget });
+    dependencies.onSeal?.(sealed);
     // Seal may await disk publication across a clock/source change. Retain any
     // resulting private envelope, but never return a usable success receipt.
     assertBudget(budget.snapshot(), { ...budgetBinding, now: now() });
@@ -667,6 +780,7 @@ export async function boundedInvocation(options, dependencies = {}) {
     await qualify();
     assertBudget(budget.snapshot(), { ...budgetBinding, now: now() });
     return { digest: sealed.sha256, generation: String(slot), predecessor: predecessor?.sha256 || '', plan_hash: sealed.planHash,
+      size: String((await lstat(sealed.path)).size),
       job_status: paused ? 'PAUSED_LOCAL_INVOICE_FIXTURE' : current.phase === 'complete'
         ? tourStatus === 'READ_ONLY_QUALIFIED' ? 'SWEEP_ACCEPTED' : 'PARTIAL' : 'CONTINUE',
       accepted_v1: 'false', tour_status: tourStatus,
@@ -774,9 +888,25 @@ export async function runBusinessPhase({ binding, run, environment = process.env
     const tour = await runTourPhase({ binding, run, plan: JSON.parse(await privateBytes(join(run.root, 'staging-records-plan.json'))),
       fixtureGuard, release, factory, target, environment }, supplied);
     await coverage(run.root);
-    return { schema: 'staging-business-journey-result.v1', release: result.release, tour,
+    // The readonly slices use the same guarded fresh-page factory. Their
+    // pending statuses remain separate from the qualified write journeys.
+    const readonlyPage = await factory.freshPage({ target, screen: home, release, fixtureGuard, path: '/' });
+    const readonlyJourneys = supplied.readonlyJourneys || (await import('./readonly-journeys.mjs')).runReadonlyJourneys;
+    const readonlyPlan = JSON.parse(await privateBytes(join(run.root, 'staging-records-plan.json')));
+    if (readonlyPlan.schema !== 'doctorcre-staging-records-plan.v1' || readonlyPlan.state !== 'complete' ||
+        readonlyPlan.inflight || readonlyPlan.run !== plan.run ||
+        readonlyPlan.release?.source_commit !== binding.app || readonlyPlan.release?.carr_source_commit !== binding.carr ||
+        readonlyPlan.records?.deal?.id !== deal)
+      refusal('business-fixture-requires-reconciliation');
+    const readonly = await readonlyJourneys({ page: readonlyPage, release, plan: readonlyPlan, run });
+    await fixtureGuard.assertCoverage();
+    await coverage(run.root);
+    assertReadonlyResult(readonly, release, readonlyPlan);
+    const measured = { schema: 'staging-business-journey-result.v1', release: result.release, tour, readonly,
       completed: [...result.completed, ...invoice.completed], steps: [...result.steps, ...invoice.steps],
       full_v1_qualified: false, unqualified_journeys: businessContract.unqualified_journeys };
+    await retainJourneyQualification({ run, binding, release, result: measured });
+    return measured;
   } finally {
     try { await factory.dispose(); }
     finally { removeStop(); await browser.close(); }
@@ -834,7 +964,7 @@ async function prepareDirectories(environment) {
 function expectedArtifact(environment) {
   const expected = { artifactId: environment.E2E_PREVIOUS_ARTIFACT_ID, digest: environment.E2E_PREVIOUS_DIGEST,
     generation: Number(environment.E2E_PREVIOUS_GENERATION), predecessor: environment.E2E_PREVIOUS_PREDECESSOR || null,
-    planHash: environment.E2E_PREVIOUS_PLAN_HASH };
+    planHash: environment.E2E_PREVIOUS_PLAN_HASH, size: Number(environment.E2E_PREVIOUS_SIZE) };
   assertTrustedArtifact(expected, expected);
   if (!sha256(expected.planHash)) refusal('artifact-chain-mismatch');
   return expected;
@@ -848,8 +978,37 @@ export function assertGitHubArtifact(metadata, { id, runId, checkout, generation
     refusal('artifact-identity-mismatch');
 }
 
+export function assertSingleGitHubArtifact(list, id, name) {
+  if (!list || !Number.isSafeInteger(list.total_count) || list.total_count < 1 || list.total_count > 100 ||
+      !Array.isArray(list.artifacts) || list.artifacts.length !== list.total_count ||
+      list.artifacts.filter(row => row?.name === name).length !== 1 ||
+      String(list.artifacts.find(row => row?.name === name)?.id) !== id)
+    refusal('artifact-identity-mismatch');
+}
+
+export function assertFirstWorkflowAttempt(environment) {
+  if (environment.GITHUB_RUN_ATTEMPT !== '1') refusal('workflow-replay-refused');
+}
+
+export async function digestDownloadedContinuation(path, expectedSize) {
+  const handle = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
+  try {
+    const stat = await handle.stat();
+    if (!stat.isFile() || stat.nlink !== 1 || stat.size !== expectedSize ||
+        typeof process.getuid === 'function' && stat.uid !== process.getuid()) refusal('artifact-content-refused');
+    // The download action can create an owned 0644 file under a 0700 restore
+    // directory. Seal that inode before the private reader reopens it.
+    await handle.chmod(0o600);
+    await handle.sync();
+    return hash(await handle.readFile());
+  } finally { await handle.close(); }
+}
+
 async function verifyGitHubArtifact(environment) {
-  if (environment.GITHUB_REPOSITORY !== 'jbookout/doctorcre-app' || !environment.GH_TOKEN) refusal('artifact-identity-mismatch');
+  assertFirstWorkflowAttempt(environment);
+  if (environment.GITHUB_REPOSITORY !== 'jbookout/doctorcre-app' || !environment.GH_TOKEN ||
+      !/^[1-9][0-9]*$/.test(environment.GITHUB_RUN_ID || ''))
+    refusal('artifact-identity-mismatch');
   const expected = expectedArtifact(environment), binding = bindings(environment);
   if (expected.generation !== Number(environment.E2E_SLOT) - 1) refusal('artifact-chain-mismatch');
   const response = await fetch(`https://api.github.com/repos/jbookout/doctorcre-app/actions/artifacts/${expected.artifactId}`,
@@ -859,6 +1018,12 @@ async function verifyGitHubArtifact(environment) {
   const metadata = await response.json();
   assertGitHubArtifact(metadata, { id: expected.artifactId, runId: environment.GITHUB_RUN_ID,
     checkout: binding.checkout, generation: expected.generation });
+  const artifactName = `staging-continuation-${environment.GITHUB_RUN_ID}-${expected.generation}`;
+  const listing = await fetch(`https://api.github.com/repos/jbookout/doctorcre-app/actions/runs/${environment.GITHUB_RUN_ID}/artifacts?per_page=100`,
+    { headers: { authorization: `Bearer ${environment.GH_TOKEN}`, accept: 'application/vnd.github+json',
+      'x-github-api-version': '2022-11-28' }, redirect: 'error', signal: AbortSignal.timeout(30_000) });
+  if (!listing.ok) refusal('artifact-identity-unavailable');
+  assertSingleGitHubArtifact(await listing.json(), expected.artifactId, artifactName);
   await writeFile(join(directories(environment).parent, 'artifact-download-binding.json'),
     JSON.stringify({ artifactId: String(metadata.id), checkout: binding.checkout, workflowRunId: environment.GITHUB_RUN_ID }),
     { mode: 0o600, flag: 'wx' });
@@ -868,7 +1033,7 @@ async function verifyGitHubArtifact(environment) {
 async function invocationJob(environment) {
   const binding = bindings(environment);
   await assertCheckout(binding.checkout);
-  if (environment.GITHUB_RUN_ATTEMPT !== '1') refusal('workflow-replay-refused');
+  assertFirstWorkflowAttempt(environment);
   const paths = directories(environment), slot = Number(environment.E2E_SLOT);
   let expected, incoming;
   if (slot > 1) {
@@ -879,15 +1044,9 @@ async function invocationJob(environment) {
     const { readdir } = await import('node:fs/promises');
     if (JSON.stringify((await readdir(paths.incoming)).sort()) !== JSON.stringify(['continuation.enc'])) refusal('artifact-content-refused');
     const path = join(paths.incoming, 'continuation.enc');
-    const handle = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW);
-    let digest;
-    try {
-      const stat = await handle.stat();
-      if (!stat.isFile() || stat.nlink !== 1 || stat.size > 256 * 1024 * 1024) refusal('artifact-content-refused');
-      digest = hash(await handle.readFile());
-    } finally { await handle.close(); }
+    const digest = await digestDownloadedContinuation(path, expected.size);
     incoming = { artifactId: downloaded.artifactId, digest, generation: expected.generation,
-      predecessor: expected.predecessor, path };
+      predecessor: expected.predecessor, planHash: expected.planHash, size: expected.size, path };
   }
   const { readSessionSecret } = await import('./session.mjs');
   return boundedInvocation({ binding, slot, runId: environment.E2E_RUN_ID,
@@ -980,6 +1139,8 @@ async function main(environment = process.env, command = process.argv[2]) {
     const options = JSON.parse(bytes);
     const keys = ['binding', 'slot', 'runId', 'startedAt', 'deadline', 'output', 'envelopePath', 'publicDir', 'incoming', 'expected'];
     if (Object.keys(options).sort().join() !== keys.sort().join()) refusal('local-invocation-unproved');
+    if (!isAbsolute(options.output || '') || dirname(resolve(options.output)) !== dirname(path))
+      refusal('local-invocation-unproved');
     await assertCheckout(options.binding?.checkout);
     const { readSessionSecret } = await import('./session.mjs');
     const result = await boundedInvocation({ ...options, environment,
@@ -1005,8 +1166,9 @@ async function main(environment = process.env, command = process.argv[2]) {
   if (command === 'plan') {
     bindings(environment);
     await assertCheckout(environment.GITHUB_SHA);
-    if (!['canary', 'full'].includes(environment.E2E_MODE) || environment.E2E_MODE === 'full' && environment.GITHUB_RUN_ATTEMPT !== '1')
+    if (!['canary', 'full'].includes(environment.E2E_MODE))
       refusal('workflow-replay-refused');
+    if (environment.E2E_MODE === 'full') assertFirstWorkflowAttempt(environment);
     const startedAt = Date.now();
     const deadline = invocationBoundary({ now: startedAt, deadline: startedAt + 20 * 60 * 60 * 1000,
       sliceMs: 20 * 60 * 60 * 1000 });
@@ -1021,7 +1183,7 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
       const command = process.argv[2];
       if (['invocation', 'canary'].includes(command)) await publicationBoundary({ ...process.env,
         E2E_PUBLICATION_DIGEST: values.digest });
-      const allowed = new Set(['started_at', 'deadline', 'digest', 'generation', 'predecessor', 'plan_hash', 'job_status', 'proof_status', 'tour_status', 'accepted_v1']);
+      const allowed = new Set(['started_at', 'deadline', 'digest', 'generation', 'predecessor', 'plan_hash', 'size', 'job_status', 'proof_status', 'tour_status', 'accepted_v1']);
       const lines = [];
       for (const [key, value] of Object.entries(values)) {
         if (!allowed.has(key) || typeof value !== 'string' || !/^[A-Za-z0-9_-]*$/.test(value) || value.length > 128)

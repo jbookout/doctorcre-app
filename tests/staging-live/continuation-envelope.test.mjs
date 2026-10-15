@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict';
-import { createHash } from 'node:crypto';
-import { chmod, link, mkdir, mkdtemp, readFile, readdir, rm, rmdir, stat, symlink, writeFile } from 'node:fs/promises';
+import { createHash, randomBytes } from 'node:crypto';
+import { chmod, copyFile, link, mkdir, mkdtemp, readFile, readdir, rm, rmdir, stat, symlink, truncate, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
 import contract from '../../contracts/e2e-staging.v1.json' with { type: 'json' };
-import { RUN_LIMITS, openRun } from '../../scripts/e2e-staging/run-limits.mjs';
+import { RUN_LIMITS, directoryBytes, openRun } from '../../scripts/e2e-staging/run-limits.mjs';
 import { restoreContinuation, sealContinuation } from '../../scripts/e2e-staging/continuation-envelope.mjs';
 import { assessCurrentEvidence, verifyRetainedEvidence } from '../../scripts/e2e-staging/evidence-manifest.mjs';
 import { retainedExplorationSchedule } from '../../scripts/e2e-staging/explore.mjs';
@@ -16,12 +16,12 @@ const privateCanary = 'SYNTHETIC_PRIVATE_CONTROL_CANARY_84d177';
 const sha256 = value => createHash('sha256').update(value).digest('hex');
 const id = n => `60000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 
-async function fixture(t) {
+async function fixture(t, limits = RUN_LIMITS) {
   const root = await mkdtemp(join(tmpdir(), 'doctorcre-continuation-'));
   const restored = join(root, 'restored');
   t.after(() => rm(root, { recursive: true, force: true }));
   const output = join(root, 'source');
-  const run = openRun(output, { runId: 'synthetic-continuation-run', events: null });
+  const run = openRun(output, { runId: 'synthetic-continuation-run', events: null, limits });
   t.after(() => run.dispose());
   const plan = { schema: 'doctorcre-staging-records-plan.v1', origin: contract.origin, state: 'complete', run: id(1),
     release: sourcePair, keys: {}, names: {}, records: {}, receipts: {}, current_step: 'complete', observed_at: '2026-10-14T00:00:00.000Z' };
@@ -85,6 +85,10 @@ test('seal, remove and restore retains measured evidence bytes and refuses missi
   await assert.rejects(seal(f), /Retained staging evidence invalid/);
   await writeFile(path, '{"schema":"synthetic-measured-report"}', { mode: 0o600 });
   assert.equal((await assessCurrentEvidence(f.output, checkpoint, f.run.id)).verified, true);
+  const currentSchedule = await retainedExplorationSchedule({ output: f.output, checkpoint,
+    targets: [{ name: 'staging-live', surface: 'app' }],
+    routedScreens: [{ name: 'Home', path: '/', surface: 'app' }] });
+  assert.equal(currentSchedule.completed.length, 1, 'current unsealed evidence credits the completed goal');
   const alias = join(f.output, 'evidence', 'explore', 'synthetic-goal', 'alias.json');
   await link(path, alias);
   await assert.rejects(seal(f), /Retained staging evidence invalid/);
@@ -115,6 +119,238 @@ test('seal, remove and restore retains measured evidence bytes and refuses missi
   assert.equal((await verifyRetainedEvidence(f.restored, changed)).verified, false);
 });
 
+test('attestation refuses an evidence path crossing a symlinked parent into private output', async t => {
+  const f = await fixture(t);
+  const privateDir = join(f.output, 'private');
+  const evidenceDir = join(f.output, 'evidence');
+  await mkdir(privateDir, { mode: 0o700 });
+  await mkdir(evidenceDir, { mode: 0o700 });
+  await writeFile(join(privateDir, 'proof.json'), '{"synthetic_private_canary":true}', { mode: 0o600 });
+  await symlink(privateDir, join(evidenceDir, 'bridge'));
+  const checkpoint = JSON.parse(await readFile(join(f.output, 'controls.json'), 'utf8'));
+  checkpoint.screens = [{ target: 'staging-live', path: '/', reached: true,
+    controls: [{ evidence_path: join(evidenceDir, 'bridge', 'proof.json') }] }];
+  await writeFile(join(f.output, 'controls.json'), JSON.stringify(checkpoint));
+  assert.equal((await assessCurrentEvidence(f.output, checkpoint, f.run.id)).verified, false);
+  const rootAlias = join(f.root, 'source-alias');
+  await symlink(f.output, rootAlias);
+  assert.equal((await assessCurrentEvidence(rootAlias, checkpoint, f.run.id)).verified, false);
+  await assert.rejects(seal(f), /Retained staging evidence invalid/);
+  await rm(join(evidenceDir, 'bridge'));
+  await symlink(join(privateDir, 'proof.json'), join(evidenceDir, 'proof.json'));
+  checkpoint.screens[0].controls[0].evidence_path = join(evidenceDir, 'proof.json');
+  assert.equal((await assessCurrentEvidence(f.output, checkpoint, f.run.id)).verified, false);
+  checkpoint.screens[0].controls[0].evidence_path = join(privateDir, 'proof.json');
+  assert.equal((await assessCurrentEvidence(f.output, checkpoint, f.run.id)).verified, false);
+});
+
+test('new measured goal after restore extends trusted schedule without replaying old goals', async t => {
+  const f = await fixture(t);
+  const one = join(f.output, 'evidence', 'explore', 'one');
+  await mkdir(one, { recursive: true, mode: 0o700 });
+  await writeFile(join(one, 'report.json'), '{}', { mode: 0o600 });
+  const checkpoint = JSON.parse(await readFile(join(f.output, 'controls.json'), 'utf8'));
+  checkpoint.explorations = [{ target: 'staging-live', screen: 'Home', path: '/', agent: 'bug-hunter',
+    steps: 1, status: 'finished', evidence: one }];
+  await writeFile(join(f.output, 'controls.json'), JSON.stringify(checkpoint));
+  const sealed = await seal(f);
+  await restoreContinuation({ envelopePath: sealed.path, destination: f.restored, secret,
+    expected: { ...sealed, sourcePair, runId: f.run.id, predecessor: null } });
+  const next = JSON.parse(await readFile(join(f.restored, 'controls.json'), 'utf8'));
+  const two = join(f.restored, 'evidence', 'explore', 'two');
+  await mkdir(two, { recursive: true, mode: 0o700 });
+  await writeFile(join(two, 'report.json'), '{}', { mode: 0o600 });
+  next.explorations.push({ target: 'staging-live', screen: 'Home', path: '/', agent: 'first-time-ux',
+    steps: 1, status: 'finished', evidence: two });
+  await writeFile(join(f.restored, 'controls.json'), JSON.stringify(next));
+  const schedule = await retainedExplorationSchedule({ output: f.restored, checkpoint: next,
+    targets: [{ name: 'staging-live', surface: 'app' }],
+    routedScreens: [{ name: 'Home', path: '/', surface: 'app' }] });
+  assert.equal(schedule.completed.length, 2);
+  assert.equal(schedule.pending.length, 0);
+  await writeFile(join(f.restored, 'evidence', 'explore', 'one', 'report.json'), '{"tampered":true}');
+  assert.equal((await retainedExplorationSchedule({ output: f.restored, checkpoint: next,
+    targets: [{ name: 'staging-live', surface: 'app' }],
+    routedScreens: [{ name: 'Home', path: '/', surface: 'app' }] })).completed.length, 0);
+});
+
+test('incompressible retained evidence transfers within the cumulative byte cap', async t => {
+  const limits = { ...RUN_LIMITS, artifactBytes: 80 * 1024 };
+  const f = await fixture(t, limits);
+  const evidence = join(f.output, 'evidence', 'screens');
+  await mkdir(evidence, { recursive: true, mode: 0o700 });
+  const bytes = randomBytes(32 * 1024);
+  await writeFile(join(evidence, 'frame.jpg'), bytes, { mode: 0o600 });
+  const checkpoint = JSON.parse(await readFile(join(f.output, 'controls.json'), 'utf8'));
+  checkpoint.screens = [{ target: 'staging-live', path: '/', reached: true,
+    controls: [{ evidence_path: join(evidence, 'frame.jpg') }] }];
+  await writeFile(join(f.output, 'controls.json'), JSON.stringify(checkpoint));
+  const sealed = await seal(f);
+  assert.ok((await stat(sealed.path)).size < 48 * 1024);
+  assert.ok(directoryBytes(f.output) + (await stat(sealed.path)).size <= limits.artifactBytes);
+  assert.ok(f.run.snapshot().artifactBytes <= limits.artifactBytes);
+  await restoreContinuation({ envelopePath: sealed.path, destination: f.restored, secret,
+    expected: { ...sealed, sourcePair, runId: f.run.id, predecessor: null } });
+  assert.deepEqual(await readFile(join(f.restored, 'evidence', 'screens', 'frame.jpg')), bytes);
+});
+
+test('an interrupted custody transfer recovers measured originals before resealing', async t => {
+  const f = await fixture(t);
+  const folder = join(f.output, 'evidence', 'screens');
+  await mkdir(folder, { recursive: true, mode: 0o700 });
+  const picture = join(folder, 'frame-a.jpg'), second = join(folder, 'frame-b.jpg'), bytes = randomBytes(4096);
+  await writeFile(picture, bytes, { mode: 0o600 });
+  await writeFile(second, bytes, { mode: 0o600 });
+  const checkpoint = JSON.parse(await readFile(join(f.output, 'controls.json'), 'utf8'));
+  checkpoint.screens = [{ target: 'staging-live', path: '/', reached: true,
+    controls: [{ evidence_path: folder }] }];
+  await writeFile(join(f.output, 'controls.json'), JSON.stringify(checkpoint));
+  const original = await seal(f);
+  const staged = join(f.root, `.continuation-${f.run.id}-1.tmp`);
+  await copyFile(original.path, staged);
+  const archive = await readFile(staged);
+  await truncate(staged, 16 + archive.readUInt32BE(12) + bytes.length + 28);
+  await rm(original.path);
+  await writeFile(second, bytes, { mode: 0o600 });
+  await assert.rejects(readFile(picture), { code: 'ENOENT' });
+  const privateDir = join(f.output, 'private');
+  await mkdir(privateDir, { mode: 0o700 });
+  await rm(folder, { recursive: true });
+  await symlink(privateDir, folder);
+  await assert.rejects(seal(f), /Retained staging evidence invalid/);
+  assert.deepEqual(await readdir(privateDir), []);
+  await rm(folder);
+  await mkdir(folder, { mode: 0o700 });
+  await writeFile(second, bytes, { mode: 0o600 });
+  const recovered = await seal(f);
+  assert.equal(recovered.sha256.length, 64);
+  await restoreContinuation({ envelopePath: recovered.path, destination: f.restored, secret,
+    expected: { ...recovered, sourcePair, runId: f.run.id, predecessor: null } });
+  assert.deepEqual(await readFile(join(f.restored, 'evidence', 'screens', 'frame-a.jpg')), bytes);
+  assert.deepEqual(await readFile(join(f.restored, 'evidence', 'screens', 'frame-b.jpg')), bytes);
+});
+
+test('four synthetic slots adopt exact prior ciphertext once and charge newly measured evidence', async t => {
+  const limits = { ...RUN_LIMITS, artifactBytes: 80 * 1024 };
+  const f = await fixture(t, limits);
+  const folder = join(f.output, 'evidence', 'screens');
+  await mkdir(folder, { recursive: true, mode: 0o700 });
+  await writeFile(join(folder, 'frame.jpg'), randomBytes(32 * 1024), { mode: 0o600 });
+  const checkpoint = JSON.parse(await readFile(join(f.output, 'controls.json'), 'utf8'));
+  checkpoint.screens = [{ target: 'staging-live', path: '/', reached: true,
+    controls: [{ evidence_path: join(folder, 'frame.jpg') }] }];
+  await writeFile(join(f.output, 'controls.json'), JSON.stringify(checkpoint));
+  let sealed = await seal(f), priorCharge = f.run.snapshot().artifactBytes;
+  for (let slot = 2; slot <= 4; slot++) {
+    const output = join(f.root, `slot-${slot}`);
+    const receipt = await restoreContinuation({ envelopePath: sealed.path, destination: output, secret,
+      expected: sealed, adoptIncoming: { artifactId: String(slot - 1), digest: sealed.sha256,
+        bytes: (await stat(sealed.path)).size } });
+    assert.equal(receipt.adoption.inputConsumed, true);
+    await assert.rejects(readFile(sealed.path), { code: 'ENOENT' });
+    const run = openRun(output, { runId: f.run.id, events: null, limits, newInvocation: true });
+    t.after(() => run.dispose());
+    assert.equal(run.snapshot().artifactBytes, priorCharge);
+    const newEvidence = join(output, 'evidence', 'screens', `new-${slot}.jpg`);
+    await run.writeFile(newEvidence, Buffer.from([slot]), (path, data) => writeFile(path, data, { mode: 0o600 }));
+    const current = JSON.parse(await readFile(join(output, 'controls.json'), 'utf8'));
+    current.screens[0].controls.push({ evidence_path: newEvidence });
+    const controlsPath = join(output, 'controls.json');
+    await run.writeFile(controlsPath, JSON.stringify(current), (path, data) => writeFile(path, data, { mode: 0o600 }),
+      { replaces: controlsPath });
+    const destination = join(f.root, `sealed-${slot}.carr`);
+    const next = await sealContinuation({ output, envelopePath: destination, secret, sourcePair,
+      runId: f.run.id, generation: slot, predecessor: { generation: slot - 1, sha256: sealed.sha256 },
+      run, adoption: receipt.adoption });
+    assert.ok(next.accounting.changedEvidenceBytes >= 1);
+    assert.ok(run.snapshot().artifactBytes > priorCharge);
+    assert.ok(run.snapshot().artifactBytes - priorCharge < (await stat(next.path)).size / 2);
+    assert.ok(run.snapshot().artifactBytes <= limits.artifactBytes);
+    await assert.rejects(sealContinuation({ output, envelopePath: join(f.root, `replay-${slot}.carr`), secret,
+      sourcePair, runId: f.run.id, generation: slot, predecessor: { generation: slot - 1, sha256: sealed.sha256 },
+      run, adoption: receipt.adoption }), { code: 'continuation-adoption-replayed' });
+    sealed = next;
+    priorCharge = run.snapshot().artifactBytes;
+    if (slot === 4) {
+      const ceiling = limits.artifactBytes - Math.min(limits.artifactMetadataBytes, Math.floor(limits.artifactBytes / 8));
+      assert.throws(() => run.reserveBytes(ceiling - priorCharge + 1), { code: 'artifact-byte-limit' });
+    }
+  }
+});
+
+test('foreign, forked and replayed adoption cannot claim predecessor ciphertext', async t => {
+  const f = await fixture(t);
+  const sealed = await seal(f);
+  const incomingBytes = (await stat(sealed.path)).size;
+  assert.equal(sealed.chargedBytes, incomingBytes);
+  await assert.rejects(restoreContinuation({ envelopePath: sealed.path, destination: f.restored, secret,
+    expected: sealed, adoptIncoming: { artifactId: '1', digest: 'f'.repeat(64), bytes: incomingBytes } }),
+  { code: 'continuation-adoption-binding-mismatch' });
+  assert.equal((await stat(sealed.path)).size, incomingBytes);
+  const receipt = await restoreContinuation({ envelopePath: sealed.path, destination: f.restored, secret,
+    expected: sealed, adoptIncoming: { artifactId: '1', digest: sealed.sha256, bytes: incomingBytes } });
+  const run = openRun(f.restored, { runId: f.run.id, events: null, newInvocation: true });
+  t.after(() => run.dispose());
+  const call = (adoption, predecessor = { generation: 1, sha256: sealed.sha256 }) =>
+    sealContinuation({ output: f.restored, envelopePath: join(f.root, 'successor.carr'), secret,
+      sourcePair, runId: f.run.id, generation: 2, predecessor, run, adoption });
+  await assert.rejects(call({ ...receipt.adoption }), { code: 'continuation-adoption-replayed' });
+  await assert.rejects(call(receipt.adoption, { generation: 1, sha256: 'f'.repeat(64) }),
+    { code: 'continuation-adoption-binding-mismatch' });
+  const next = await call(receipt.adoption);
+  assert.equal(next.generation, 2);
+  await assert.rejects(call(receipt.adoption), { code: 'continuation-adoption-replayed' });
+  assert.equal((await stat(next.path)).size, next.envelopeBytes);
+});
+
+test('undercharged successor fails closed and retains exact prior ciphertext in custody', async t => {
+  const f = await fixture(t);
+  const sealed = await seal(f);
+  const raw = await readFile(sealed.path);
+  const receipt = await restoreContinuation({ envelopePath: sealed.path, destination: f.restored, secret,
+    expected: sealed, adoptIncoming: { artifactId: '7', digest: sealed.sha256, bytes: raw.length } });
+  const run = openRun(f.restored, { runId: f.run.id, events: null, newInvocation: true });
+  t.after(() => run.dispose());
+  const undercharged = { ...run, snapshot: () => ({ ...run.snapshot(), artifactBytes: 0 }) };
+  await assert.rejects(sealContinuation({ output: f.restored, envelopePath: join(f.root, 'undercharged.carr'), secret,
+    sourcePair, runId: f.run.id, generation: 2, predecessor: { generation: 1, sha256: sealed.sha256 },
+    run: undercharged, adoption: receipt.adoption }), { code: 'continuation-budget-invalid' });
+  const custody = (await readdir(f.root)).filter(name => name.startsWith('.adopted-'));
+  assert.equal(custody.length, 1);
+  assert.deepEqual(await readFile(join(f.root, custody[0])), raw);
+  await assert.rejects(sealContinuation({ output: f.restored, envelopePath: join(f.root, 'retry.carr'), secret,
+    sourcePair, runId: f.run.id, generation: 2, predecessor: { generation: 1, sha256: sealed.sha256 },
+    run, adoption: receipt.adoption }), { code: 'continuation-adoption-replayed' });
+});
+
+test('5,140 incompressible image-sized artifacts fit the configured 256 MiB cap',
+  { skip: process.env.E2E_FULL_CORPUS_TEST !== '1', timeout: 180_000 }, async t => {
+    const f = await fixture(t);
+    const folder = join(f.output, 'evidence', 'screens');
+    await mkdir(folder, { recursive: true, mode: 0o700 });
+    for (let index = 0; index < 5140; index++)
+      await writeFile(join(folder, `${String(index).padStart(5, '0')}.jpg`), randomBytes(40 * 1024), { mode: 0o600 });
+    const checkpoint = JSON.parse(await readFile(join(f.output, 'controls.json'), 'utf8'));
+    checkpoint.screens = [{ target: 'staging-live', path: '/', reached: true,
+      controls: [{ evidence_path: folder }] }];
+    await writeFile(join(f.output, 'controls.json'), JSON.stringify(checkpoint));
+    const sealed = await seal(f);
+    const envelopeBytes = (await stat(sealed.path)).size;
+    const remainingBytes = directoryBytes(f.output), chargedBytes = f.run.snapshot().artifactBytes;
+    console.log(JSON.stringify({ corpusBytes: 5140 * 40 * 1024, envelopeBytes, remainingBytes, chargedBytes,
+      sealPeakLocalBytes: sealed.accounting.peakLocalBytes, sealPeakMemoryBytes: sealed.accounting.peakMemoryBytes }));
+    assert.ok(envelopeBytes <= RUN_LIMITS.artifactBytes);
+    assert.ok(remainingBytes + envelopeBytes <= RUN_LIMITS.artifactBytes);
+    assert.ok(chargedBytes <= RUN_LIMITS.artifactBytes);
+    const restored = await restoreContinuation({ envelopePath: sealed.path, destination: f.restored, secret,
+      expected: { ...sealed, sourcePair, runId: f.run.id, predecessor: null } });
+    assert.ok(restored.peakLocalBytes <= 3 * RUN_LIMITS.artifactBytes);
+    assert.ok(restored.peakMemoryBytes <= 6 * RUN_LIMITS.artifactBytes);
+    console.log(JSON.stringify({ restorePeakLocalBytes: restored.peakLocalBytes,
+      restorePeakMemoryBytes: restored.peakMemoryBytes }));
+    assert.equal((await readdir(join(f.restored, 'evidence', 'screens'))).length, 5140);
+  });
+
 test('restore fsyncs and publishes private regular files, refuses existing targets and serializes competing publishers', async t => {
   const f = await fixture(t), sealed = await seal(f);
   const expected = { ...sealed, sourcePair, runId: f.run.id, predecessor: null };
@@ -142,9 +378,11 @@ test('wrong key and ciphertext tampering fail closed without a partial restore',
   await assert.rejects(restoreContinuation({ envelopePath: sealed.path, destination: f.restored, secret: 'wrong synthetic key', expected }), { code: 'continuation-auth-failed' });
   await assert.rejects(readFile(join(f.restored, 'controls.json')), { code: 'ENOENT' });
   const corrupted = join(f.root, 'corrupt.carr');
-  const envelope = JSON.parse(await readFile(sealed.path, 'utf8'));
-  envelope.ciphertext = (envelope.ciphertext[0] === 'A' ? 'B' : 'A') + envelope.ciphertext.slice(1);
-  const data = Buffer.from(JSON.stringify(envelope));
+  const data = Buffer.from(await readFile(sealed.path));
+  const headerLength = data.readUInt32BE(12);
+  const header = JSON.parse(data.subarray(16, 16 + headerLength).toString('utf8'));
+  header.ciphertext = (header.ciphertext[0] === 'A' ? 'B' : 'A') + header.ciphertext.slice(1);
+  Buffer.from(JSON.stringify(header)).copy(data, 16);
   await writeFile(corrupted, data);
   await assert.rejects(restoreContinuation({ envelopePath: corrupted, destination: f.restored, secret, expected: { ...expected, sha256: sha256(data) } }), { code: 'continuation-auth-failed' });
   await assert.rejects(readFile(join(f.restored, 'controls.json')), { code: 'ENOENT' });

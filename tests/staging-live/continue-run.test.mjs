@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
-import { createHash } from 'node:crypto';
+import { copyFile, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
+import { createHash, randomBytes } from 'node:crypto';
 import fsPromises from 'node:fs/promises';
 import { syncBuiltinESMExports } from 'node:module';
 import { execFile, spawnSync } from 'node:child_process';
@@ -11,7 +11,9 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { canary, canaryRequestAllowed, canaryLimits, canaryFailure, qualifiedModelRoom, assertQualifiedDesk, assertBudget, assertGitHubArtifact,
   assertSeparated, boundedInvocation, runBusinessPhase, assertCheckout, verifyFrozenSource, publicationBoundary,
-  assertSourcePair, invocationBoundary, assertTrustedArtifact, assertRestoredEvidence } from '../../scripts/e2e-staging/continue-run.mjs';
+  assertSourcePair, invocationBoundary, assertTrustedArtifact, assertFirstWorkflowAttempt, digestDownloadedContinuation,
+  assertAdoptionReceipt, assertReadonlyResult, assertJourneyQualification, retainJourneyQualification,
+  assertRestoredEvidence } from '../../scripts/e2e-staging/continue-run.mjs';
 import { RUN_LIMITS, openRun } from '../../scripts/e2e-staging/run-limits.mjs';
 import contract from '../../contracts/e2e-staging.v1.json' with { type: 'json' };
 
@@ -62,12 +64,60 @@ test('invocation boundary never extends immutable deadline or absolute cutoff', 
 });
 
 test('artifact identity and chain expectations come from trusted predecessor outputs, never offered metadata', () => {
-  const expected = { artifactId: '123', digest, generation: 1, predecessor: null };
+  const expected = { artifactId: '123', digest, generation: 1, predecessor: null, planHash: 'e'.repeat(64), size: 4096 };
   assert.doesNotThrow(() => assertTrustedArtifact({ ...expected }, expected));
-  for (const delta of [{ artifactId: '124' }, { digest: 'c'.repeat(64) }, { generation: 0 }, { predecessor: digest }])
+  for (const delta of [{ artifactId: '124' }, { digest: 'c'.repeat(64) }, { generation: 0 },
+    { predecessor: digest }, { planHash: 'c'.repeat(64) }, { size: 4097 }])
     assert.throws(() => assertTrustedArtifact({ ...expected, ...delta }, expected));
-  for (const delta of [{ artifactId: '' }, { digest: '' }, { generation: '1' }])
+  for (const delta of [{ artifactId: '' }, { digest: '' }, { generation: '1' }, { size: 0 }])
     assert.throws(() => assertTrustedArtifact(expected, { ...expected, ...delta }));
+});
+
+test('a rerun attempt or a second same-slot artifact cannot supply a continuation predecessor', async () => {
+  assert.doesNotThrow(() => assertFirstWorkflowAttempt({ GITHUB_RUN_ATTEMPT: '1' }));
+  for (const attempt of ['2', '', undefined])
+    assert.throws(() => assertFirstWorkflowAttempt({ GITHUB_RUN_ATTEMPT: attempt }), { code: 'workflow-replay-refused' });
+  const { assertSingleGitHubArtifact } = await import('../../scripts/e2e-staging/continue-run.mjs');
+  const item = { id: 123, name: 'staging-continuation-789-1' };
+  assert.doesNotThrow(() => assertSingleGitHubArtifact({ total_count: 1, artifacts: [item] }, '123', item.name));
+  assert.doesNotThrow(() => assertSingleGitHubArtifact({ total_count: 2,
+    artifacts: [item, { id: 987, name: 'staging-public-evidence-789-1' }] }, '123', item.name));
+  for (const list of [{ total_count: 2, artifacts: [item, { ...item, id: 124 }] },
+    { total_count: 1, artifacts: [{ ...item, id: 124 }] }, { total_count: 0, artifacts: [] },
+    { total_count: 101, artifacts: [item] }])
+    assert.throws(() => assertSingleGitHubArtifact(list, '123', item.name), { code: 'artifact-identity-mismatch' });
+});
+
+test('an owned GitHub download is tightened to private mode before restore and wrong-size or multiply linked input is refused', async t => {
+  const root = await mkdtemp(join(tmpdir(), 'doctorcre-download-admission-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const path = join(root, 'continuation.enc'), bytes = Buffer.from('synthetic-encrypted-continuation');
+  await writeFile(path, bytes, { mode: 0o644 });
+  assert.equal(await digestDownloadedContinuation(path, bytes.length), createHash('sha256').update(bytes).digest('hex'));
+  assert.equal((await fsPromises.stat(path)).mode & 0o777, 0o600);
+  await assert.rejects(digestDownloadedContinuation(path, bytes.length + 1), { code: 'artifact-content-refused' });
+  const alias = join(root, 'alias.enc');
+  await fsPromises.link(path, alias);
+  await assert.rejects(digestDownloadedContinuation(path, bytes.length), { code: 'artifact-content-refused' });
+});
+
+test('logical predecessor credit requires an exact consumed authenticated transfer receipt', () => {
+  const expected = { artifactId: '123', digest, size: 4096, generation: 1, planHash: 'c'.repeat(64) };
+  const context = { runId: 'synthetic_' + sha,
+    sourcePair: { source_commit: sha, carr_source_commit: binding.carr },
+    contractHash: 'e'.repeat(64), priorArtifactBytes: 6000 };
+  const receipt = { schema: 'doctorcre-staging-continuation-adoption.v1', artifactId: '123', sha256: digest,
+    envelopeBytes: 4096, chargedBytes: 4096, generation: 1, runId: context.runId,
+    sourcePair: context.sourcePair, contractHash: context.contractHash,
+    planHash: expected.planHash, priorLedgerArtifactBytes: 6000,
+    inputConsumed: true };
+  assert.doesNotThrow(() => assertAdoptionReceipt(receipt, expected, context));
+  for (const change of [{ artifactId: '124' }, { sha256: 'd'.repeat(64) }, { envelopeBytes: 4095 },
+    { chargedBytes: 4095 }, { generation: 2 }, { runId: 'foreign-run' },
+    { planHash: 'd'.repeat(64) }, { contractHash: 'd'.repeat(64) },
+    { sourcePair: { ...context.sourcePair, source_commit: 'd'.repeat(40) } },
+    { priorLedgerArtifactBytes: 5999 }, { inputConsumed: false }])
+    assert.throws(() => assertAdoptionReceipt({ ...receipt, ...change }, expected, context), { code: 'artifact-adoption-invalid' });
 });
 
 test('unqualified Model Room is refused before invoking a dispatcher or using a staging session', async t => {
@@ -369,6 +419,8 @@ test('workflow checks fresh boundaries around every upload and requires predeces
     assert.equal(section.match(/continue-run\.mjs publication-boundary/g)?.length, 3);
     assert.ok(section.indexOf('publication-boundary') < section.indexOf('- id: encrypted'));
     assert.ok(section.lastIndexOf('publication-boundary') > section.lastIndexOf('retention-days: 14'));
+    assert.match(section, /- id: encrypted[\s\S]*?retention-days: 1/,
+      'each private continuation slot expires after one day');
     if (n > 1) assert.ok(section.includes(`needs.part_${n - 1}.result == 'success'`));
   }
 });
@@ -386,7 +438,9 @@ test('synthetic interrupted/restored chain retains global counters and deadline,
   const encrypted = await readFile(f.base.envelopePath);
   assert.equal(encrypted.includes(Buffer.from(privateMarker)), false);
   assert.equal(encrypted.includes(Buffer.from('controls.json')), false);
-  const expected = { artifactId: '123', digest: first.digest, generation: 1, predecessor: null, planHash: first.plan_hash };
+  const expected = { artifactId: '123', digest: first.digest, generation: 1, predecessor: null, planHash: first.plan_hash, size: Number(first.size) };
+  const copiedInput = join(f.root, 'copied-predecessor.enc');
+  await copyFile(f.base.envelopePath, copiedInput);
   const secondOptions = { ...f.base, slot: 2, output: join(f.root, 'progress-two'), publicDir: join(f.root, 'public-two'),
     envelopePath: join(f.root, 'two.enc'), expected, incoming: { ...expected, path: f.base.envelopePath } };
   const second = await boundedInvocation(secondOptions, f.dependencies);
@@ -394,12 +448,18 @@ test('synthetic interrupted/restored chain retains global counters and deadline,
   assert.equal(secondBudget.globalHttpRequests, 2);
   assert.equal(secondBudget.globalModelCalls, 2);
   assert.equal(secondBudget.deadline, firstBudget.deadline);
-  assert.ok(secondBudget.artifactBytes > firstBudget.artifactBytes + encrypted.length);
+  assert.ok(secondBudget.artifactBytes >= firstBudget.artifactBytes,
+    'authenticated predecessor content keeps its monotone logical charge without charging the transferred copy again');
   assert.equal(second.predecessor, first.digest);
   assert.equal(second.generation, '2');
   assert.equal(second.accepted_v1, 'false');
   assert.equal(f.calls(), 2);
   assert.equal(f.verificationCalls(), 1);
+  await assert.rejects(boundedInvocation({ ...secondOptions,
+    output: join(f.root, 'copied-progress'), publicDir: join(f.root, 'copied-public'),
+    envelopePath: join(f.root, 'copied-successor.enc'), incoming: { ...expected, path: copiedInput } },
+  f.dependencies), { code: 'artifact-replay-refused' });
+  assert.equal(f.calls(), 2, 'same authenticated predecessor cannot start a second local worker from a copied input');
   assert.deepEqual((await readdir(secondOptions.publicDir)).sort(), ['controls.json', 'coverage.md', 'evidence-package.json', 'explorations.json', 'findings.json']);
   for (const name of await readdir(secondOptions.publicDir)) {
     const text = await readFile(join(secondOptions.publicDir, name), 'utf8');
@@ -407,10 +467,218 @@ test('synthetic interrupted/restored chain retains global counters and deadline,
   }
 });
 
+test('worker journey observations survive the fixed three-file private seal and restore without entering public evidence', async t => {
+  const f = await continuationFixture(t), observed = [];
+  const work = async ({ output, limits }) => {
+    const run = openRun(output, { limits, runId: f.base.runId, events: null, newInvocation: true });
+    try {
+      await run.http(() => true); run.reserveModel();
+      const plan = { schema: 'doctorcre-staging-records-plan.v1', origin: contract.origin, state: 'complete',
+        run: '60000000-0000-4000-8000-000000000003', release: { source_commit: binding.app, carr_source_commit: binding.carr },
+        records: {}, receipts: {} };
+      const controls = { release, screens: [], history: [], explorations: [], findings: [], stateObligations: [],
+        expectedScreens: 62, expectedStates: 62, expectedExplorations: 93 };
+      const setup = { schema: 'doctorcre-staging-records.v1', origin: contract.origin,
+        release: plan.release, complete: true, records: {}, eligibleLead: null, findings: [], needs_restore: [] };
+      for (const [name, value] of [['controls.json', controls], ['staging-records.json', setup], ['staging-records-plan.json', plan]])
+        await run.writeFile(join(output, name), JSON.stringify(value),
+          (path, bytes) => writeFile(path, bytes, { mode: 0o600 }));
+      const readonly = { schema: 'staging-readonly-journey-result.v1', full_v1_qualified: false,
+        provenance: { source_commit: binding.app, carr_source_commit: binding.carr, run: plan.run },
+        counts: { carr_record_mutations: 0 },
+        journeys: ['W1', 'W2', 'W5', 'W14'].map(journey => ({ journey, state: 'pending' })) };
+      observed.push(await retainJourneyQualification({ run, binding, release,
+        result: { completed: ['W4', 'W9', 'W15'], steps: [], tour: { full_v1_qualified: false },
+          readonly, full_v1_qualified: false } }));
+      run.stop('stop-signal');
+    } finally { run.dispose(); }
+    return { boundary: true };
+  };
+  const result = await boundedInvocation(f.base, { ...f.dependencies, work });
+  const restored = join(f.root, 'restored-journey');
+  const { restoreContinuation } = await import('../../scripts/e2e-staging/continuation-envelope.mjs');
+  await restoreContinuation({ envelopePath: f.base.envelopePath, destination: restored, secret: f.base.secret,
+    expected: { sha256: result.digest, generation: 1, predecessor: null, runId: f.base.runId,
+      sourcePair: { source_commit: binding.app, carr_source_commit: binding.carr },
+      contractHash: createHash('sha256').update(await readFile(new URL('../../contracts/e2e-staging.v1.json', import.meta.url))).digest('hex'),
+      planHash: result.plan_hash } });
+  const retained = JSON.parse(await readFile(join(restored, 'staging-records-plan.json'), 'utf8')).journey_qualification;
+  assert.deepEqual(retained, observed[0]);
+  assert.doesNotThrow(() => assertJourneyQualification(retained, binding, f.base.runId));
+  assert.equal(retained.full_v1_qualified, false);
+  for (const name of await readdir(f.base.publicDir))
+    assert.equal((await readFile(join(f.base.publicDir, name), 'utf8')).includes('journey_qualification'), false);
+  assert.equal((await readFile(f.base.envelopePath)).includes(Buffer.from('journey_qualification')), false);
+});
+
+test('four serial caller slots adopt only authenticated consumed predecessors without resetting the logical budget', async t => {
+  const f = await continuationFixture(t);
+  let previous, predecessorPath, priorBudget;
+  for (let slot = 1; slot <= 4; slot++) {
+    const options = { ...f.base, slot, output: join(f.root, `progress-${slot}`),
+      publicDir: join(f.root, `public-${slot}`), envelopePath: join(f.root, `${slot}.enc`) };
+    if (previous) {
+      const expected = { artifactId: String(122 + slot), digest: previous.digest,
+        size: Number(previous.size), generation: slot - 1,
+        predecessor: previous.predecessor || null, planHash: previous.plan_hash };
+      options.expected = expected;
+      options.incoming = { ...expected, path: predecessorPath };
+    }
+    const result = await boundedInvocation(options, f.dependencies);
+    const state = JSON.parse(await readFile(join(options.output, 'run-budget.json'), 'utf8'));
+    assert.equal(result.generation, String(slot));
+    assert.equal(result.accepted_v1, 'false');
+    assert.ok(Number(result.size) > 0 && Number(result.size) <= RUN_LIMITS.artifactBytes);
+    assert.equal(state.globalHttpRequests, slot);
+    assert.equal(state.globalModelCalls, slot);
+    assert.ok(state.artifactBytes <= RUN_LIMITS.artifactBytes);
+    if (priorBudget) {
+      assert.ok(state.artifactBytes >= priorBudget.artifactBytes);
+      await assert.rejects(readFile(predecessorPath), { code: 'ENOENT' }, 'authenticated input is consumed once');
+      if (slot === 2) {
+        await assert.rejects(boundedInvocation({ ...options,
+          output: join(f.root, 'replay-progress'), publicDir: join(f.root, 'replay-public'),
+          envelopePath: join(f.root, 'replay.enc') }, f.dependencies));
+        assert.equal(f.calls(), 2, 'consumed input cannot fork a second worker');
+      }
+    }
+    previous = result; predecessorPath = options.envelopePath; priorBudget = state;
+  }
+  assert.equal(f.calls(), 4);
+  assert.equal(f.verificationCalls(), 3);
+});
+
+test('private parent durably refuses a copied predecessor after one failed restore attempt', async t => {
+  const f = await continuationFixture(t);
+  const first = await boundedInvocation(f.base, f.dependencies);
+  const expected = { artifactId: '123', digest: first.digest, size: Number(first.size),
+    generation: 1, predecessor: null, planHash: first.plan_hash };
+  const copy = join(f.root, 'copied-input.enc');
+  await copyFile(f.base.envelopePath, copy);
+  const second = { ...f.base, slot: 2, output: join(f.root, 'first-restore'),
+    publicDir: join(f.root, 'first-public'), envelopePath: join(f.root, 'first-successor.enc'),
+    expected, incoming: { ...expected, path: copy } };
+  await assert.rejects(boundedInvocation({ ...second, secret: 'invalid synthetic envelope key that is long enough' },
+    f.dependencies), { code: 'continuation-auth-failed' });
+  const claims = (await readdir(f.root)).filter(name => name.startsWith('.continuation-consumed-'));
+  assert.equal(claims.length, 1, 'the one-use claim survives the failed restore in the trusted parent');
+  assert.equal((await fsPromises.stat(join(f.root, claims[0]))).mode & 0o777, 0o600);
+  await assert.rejects(boundedInvocation({ ...second, output: join(f.root, 'second-restore'),
+    publicDir: join(f.root, 'second-public'), envelopePath: join(f.root, 'second-successor.enc') },
+  f.dependencies), { code: 'artifact-replay-refused' });
+  const foreignId = { ...expected, artifactId: '124' };
+  await assert.rejects(boundedInvocation({ ...second, output: join(f.root, 'third-restore'),
+    publicDir: join(f.root, 'third-public'), envelopePath: join(f.root, 'third-successor.enc'),
+    expected: foreignId, incoming: { ...foreignId, path: copy } },
+  f.dependencies), { code: 'artifact-replay-refused' });
+  assert.equal(f.calls(), 1, 'neither restore attempt starts a second worker');
+});
+
+test('four serial caller slots carry 5,140 incompressible retained files inside logical and physical caps',
+  { timeout: 600_000 }, async t => {
+    const f = await continuationFixture(t), sourcePair = { source_commit: binding.app, carr_source_commit: binding.carr };
+    const fileCount = 5140, filesPerSlot = fileCount / 4, fileBytes = 40_960, retainedBytes = fileCount * fileBytes;
+    const report = Buffer.from('{"schema":"synthetic-retained-report"}');
+    let previous, predecessorPath, priorBudget, totalHostedBytes = 0, calls = 0;
+    const dependencies = { ...f.dependencies,
+      verifyRetainedEvidence: async (output, checkpoint) =>
+        (await import('../../scripts/e2e-staging/evidence-manifest.mjs')).verifyRetainedEvidence(output, checkpoint),
+      work: async ({ output, limits }) => {
+        calls++;
+        const run = openRun(output, { limits, runId: f.base.runId, events: null, newInvocation: true });
+        try {
+          await run.http(() => true); run.reserveModel();
+          const evidence = join(output, 'evidence', 'explore', 'synthetic-goal');
+          if (calls === 1) {
+            await mkdir(evidence, { recursive: true, mode: 0o700 });
+            await run.writeFile(join(evidence, 'report.json'), report,
+              (path, bytes) => writeFile(path, bytes, { mode: 0o600 }));
+            const controls = { release, screens: [], history: [], findings: [], stateObligations: [],
+              expectedScreens: 62, expectedStates: 62, expectedExplorations: 93,
+              explorations: [{ target: 'staging-live', screen: 'Home', path: '/', agent: 'bug-hunter',
+                steps: 1, status: 'finished', evidence }] };
+            const setup = { schema: 'doctorcre-staging-records.v1', origin: contract.origin, release,
+              complete: true, records: {}, eligibleLead: null, findings: [], needs_restore: [] };
+            const plan = { schema: 'doctorcre-staging-records-plan.v1', origin: contract.origin, state: 'complete',
+              run: '60000000-0000-4000-8000-000000000001', release: sourcePair, records: {}, receipts: {} };
+            for (const [name, value] of [['controls.json', controls], ['staging-records.json', setup], ['staging-records-plan.json', plan]])
+              await run.writeFile(join(output, name), JSON.stringify(value),
+                (path, bytes) => writeFile(path, bytes, { mode: 0o600 }));
+          }
+          // Each bounded job creates one quarter of the measured corpus. The
+          // work ledger pays for the new full bytes before their first write;
+          // the transfer must credit that reservation exactly once at seal.
+          run.reserveBytes(filesPerSlot * fileBytes);
+          const start = (calls - 1) * filesPerSlot;
+          for (let index = start; index < start + filesPerSlot; index++) {
+            const path = join(evidence, `observation-${index}.png`);
+            await writeFile(path, randomBytes(fileBytes), { mode: 0o600 });
+          }
+          run.stop('stop-signal');
+        } finally { run.dispose(); }
+        return { boundary: true };
+      } };
+    for (let slot = 1; slot <= 4; slot++) {
+      let preSealBytes, sealedAccounting, restorePeak;
+      const options = { ...f.base, slot, output: join(f.root, `large-progress-${slot}`),
+        publicDir: join(f.root, `large-public-${slot}`), envelopePath: join(f.root, `large-${slot}.enc`) };
+      if (previous) {
+        const expected = { artifactId: String(200 + slot), digest: previous.digest, size: Number(previous.size),
+          generation: slot - 1, predecessor: previous.predecessor || null, planHash: previous.plan_hash };
+        options.expected = expected; options.incoming = { ...expected, path: predecessorPath };
+      }
+      const result = await boundedInvocation(options, { ...dependencies,
+        onSeal: sealed => { sealedAccounting = sealed.accounting; },
+        onRestore: restored => { restorePeak = restored; },
+        checkout: async () => {
+          if (preSealBytes === undefined)
+            preSealBytes = JSON.parse(await readFile(join(options.output, 'run-budget.json'), 'utf8')).artifactBytes;
+        } });
+      const budget = JSON.parse(await readFile(join(options.output, 'run-budget.json'), 'utf8'));
+      const size = Number(result.size);
+      assert.ok(size >= slot * filesPerSlot * fileBytes + report.length && size <= RUN_LIMITS.artifactBytes,
+        'each growing real encrypted file is bounded');
+      totalHostedBytes += size;
+      assert.ok(budget.artifactBytes >= slot * filesPerSlot * fileBytes + report.length && budget.artifactBytes <= RUN_LIMITS.artifactBytes);
+      assert.equal(budget.artifactBytes - preSealBytes, size - slot * filesPerSlot * fileBytes - report.length,
+        'new content was already charged by work; seal charges this generation full authenticated framing exactly once');
+      assert.equal(sealedAccounting?.schema, 'doctorcre-staging-logical-evidence-budget.v1');
+      assert.equal(sealedAccounting.framingBytes, size - slot * filesPerSlot * fileBytes - report.length);
+      assert.ok(sealedAccounting.peakLocalBytes <= 3 * RUN_LIMITS.artifactBytes);
+      assert.ok(sealedAccounting.peakMemoryBytes <= 6 * RUN_LIMITS.artifactBytes);
+      if (slot > 1) {
+        assert.ok(restorePeak.peakLocalBytes <= 3 * RUN_LIMITS.artifactBytes);
+        assert.ok(restorePeak.peakMemoryBytes <= 6 * RUN_LIMITS.artifactBytes);
+      }
+      assert.ok(!priorBudget || budget.artifactBytes >= priorBudget.artifactBytes);
+      assert.equal(budget.globalHttpRequests, slot); assert.equal(budget.globalModelCalls, slot);
+      assert.ok((await import('../../scripts/e2e-staging/run-limits.mjs')).directoryBytes(f.root) <= 3 * RUN_LIMITS.artifactBytes,
+        'this invocation has at most input, restored progress and output encrypted slots on disk');
+      if (slot === 4) {
+        const run = openRun(options.output, { limits: budget.limits, runId: f.base.runId, events: null });
+        try {
+          const ceiling = RUN_LIMITS.artifactBytes - Math.min(RUN_LIMITS.artifactMetadataBytes,
+            Math.floor(RUN_LIMITS.artifactBytes / 8));
+          assert.throws(() => run.reserveBytes(ceiling - budget.artifactBytes + 1),
+            { code: 'artifact-byte-limit' }, 'one byte beyond the remaining global logical allocation refuses');
+        } finally { run.dispose(); }
+      }
+      await rm(options.output, { recursive: true });
+      await rm(options.publicDir, { recursive: true });
+      priorBudget = budget; previous = result; predecessorPath = options.envelopePath;
+    }
+    assert.equal(calls, 4);
+    assert.ok(priorBudget.artifactBytes >= retainedBytes);
+    assert.ok(totalHostedBytes <= 4 * RUN_LIMITS.artifactBytes);
+    assert.ok(process.resourceUsage().maxRSS * 1024 <= 6 * RUN_LIMITS.artifactBytes,
+      'measured coordinator peak RSS remains within the explicit transient cap');
+  });
+
 test('wrong id, digest, generation, predecessor, plan or source never reaches a restored worker', async t => {
   const f = await continuationFixture(t), first = await boundedInvocation(f.base, f.dependencies);
-  const expected = { artifactId: '123', digest: first.digest, generation: 1, predecessor: null, planHash: first.plan_hash };
-  for (const delta of [{ artifactId: '124' }, { digest: 'd'.repeat(64) }, { generation: 2 }, { predecessor: 'd'.repeat(64) }])
+  const expected = { artifactId: '123', digest: first.digest, generation: 1, predecessor: null, planHash: first.plan_hash, size: Number(first.size) };
+  for (const delta of [{ artifactId: '124' }, { digest: 'd'.repeat(64) }, { generation: 2 },
+    { predecessor: 'd'.repeat(64) }, { size: expected.size + 1 }])
     await assert.rejects(boundedInvocation({ ...f.base, slot: 2, output: join(f.root, 'rejected'), publicDir: join(f.root, 'rejected-public'),
       envelopePath: join(f.root, 'rejected.enc'), expected, incoming: { ...expected, ...delta, path: f.base.envelopePath } }, f.dependencies),
     { code: 'artifact-chain-mismatch' });
@@ -472,11 +740,14 @@ async function businessFixture(t) {
   const root = await mkdtemp(join(tmpdir(), 'doctorcre-business-caller-'));
   t.after(() => rm(root, { recursive: true, force: true }));
   const deal = '60000000-0000-4000-8000-000000000001', events = [];
-  const plan = { state: 'complete', run: '60000000-0000-4000-8000-000000000003', release,
+  const plan = { schema: 'doctorcre-staging-records-plan.v1', state: 'complete',
+    run: '60000000-0000-4000-8000-000000000003', release,
     records: { deal: { id: deal }, invoice: { deal_id: '60000000-0000-4000-8000-000000000002' } } };
   await writeFile(join(root, 'staging-records-plan.json'), JSON.stringify(plan), { mode: 0o600 });
   const run = { root, signal: new AbortController().signal, limits: RUN_LIMITS,
-    snapshot: () => ({ id: 'synthetic_' + sha }), check() {}, onStop: () => () => {}, http: async operation => { events.push('http'); return operation(); } };
+    snapshot: () => ({ id: 'synthetic_' + sha }), check() {}, onStop: () => () => {},
+    writeFile: async (path, bytes, writer) => writer(path, bytes),
+    http: async operation => { events.push('http'); return operation(); } };
   const state = { cookies: [{ name: 'synthetic-session', value: privateMarker }] };
   let guarded = false, routeHandler;
   let currentURL;
@@ -519,6 +790,16 @@ async function businessFixture(t) {
       events.push('business');
       return { completed: options.journeys, steps: [], full_v1_qualified: false, unqualified_journeys: ['W6'] };
     },
+    readonlyJourneys: async options => {
+      assert.equal(options.page, page); assert.equal(options.page.url(), contract.origin + '/');
+      assert.equal(options.release, release); assert.equal(options.run, run);
+      assert.equal(options.plan.records.deal.id, deal);
+      events.push('readonly');
+      return { schema: 'staging-readonly-journey-result.v1', full_v1_qualified: false,
+        provenance: { source_commit: release.source_commit, carr_source_commit: release.carr_source_commit, run: plan.run },
+        counts: { carr_record_mutations: 0 },
+        journeys: ['W1', 'W2', 'W5', 'W14'].map(journey => ({ journey, state: 'pending', reason: 'synthetic-unproved' })) };
+    },
   };
   return { run, supplied, events, plan, fixtureGuard };
 }
@@ -527,10 +808,67 @@ test('business caller reuses the real private fixture plan, fresh session and ex
   const f = await businessFixture(t);
   const result = await runBusinessPhase({ binding, run: f.run }, f.supplied);
   assert.equal(result.full_v1_qualified, false);
+  const retained = JSON.parse(await readFile(join(f.run.root, 'staging-records-plan.json'), 'utf8')).journey_qualification;
+  assert.doesNotThrow(() => assertJourneyQualification(retained, binding, f.run.snapshot().id));
+  assert.deepEqual(retained.readonly, { W1: 'pending', W2: 'pending', W5: 'pending', W14: 'pending' });
+  assert.deepEqual(retained.business, { W4: true, W9: true, W15: true, observed_steps: 0 });
+  assert.equal(retained.full_v1_qualified, false);
+  assert.equal(JSON.stringify(retained).includes(f.plan.records.deal.id), false);
+  assert.equal(JSON.stringify(retained).includes(privateMarker), false);
   assert.deepEqual(f.events, ['canonical-coverage', 'prepare', 'authenticate', 'canonical-coverage',
     'install-guard', 'navigate', 'http', 'business', 'guard-coverage', 'canonical-coverage',
     'install-guard', 'navigate', 'http', 'business', 'guard-coverage', 'canonical-coverage',
-    'guard-coverage', 'canonical-coverage', 'context-close', 'context-close', 'guard-coverage', 'browser-close']);
+    'guard-coverage', 'canonical-coverage', 'install-guard', 'navigate', 'http', 'readonly',
+    'guard-coverage', 'canonical-coverage', 'context-close', 'context-close', 'context-close',
+    'guard-coverage', 'browser-close']);
+  assert.equal(result.readonly.journeys[0].state, 'pending');
+});
+
+test('readonly W1/W2/W5/W14 caller uses a fresh guarded Home page and cannot qualify full V1', async t => {
+  const f = await businessFixture(t);
+  await assert.rejects(runBusinessPhase({ binding, run: f.run }, { ...f.supplied,
+    readonlyJourneys: async options => {
+      assert.equal(options.page.url(), contract.origin + '/');
+      assert.equal(options.release, release); assert.equal(options.run, f.run);
+      assert.equal(options.plan.records.deal.id, f.plan.records.deal.id);
+      return { schema: 'staging-readonly-journey-result.v1', full_v1_qualified: true, journeys: [] };
+    } }), { code: 'readonly-result-unqualified' });
+  assert.equal(f.events.filter(event => event === 'install-guard').length, 3);
+  assert.equal(f.events.filter(event => event === 'context-close').length, 3);
+  assert.equal(f.events.at(-1), 'browser-close');
+});
+
+test('readonly caller rejects foreign provenance, missing slices, mutation claims and fabricated full qualification', () => {
+  const plan = { run: '33333333-3333-4333-8333-333333333333' };
+  const value = { schema: 'staging-readonly-journey-result.v1', full_v1_qualified: false,
+    provenance: { source_commit: release.source_commit, carr_source_commit: release.carr_source_commit, run: plan.run },
+    counts: { carr_record_mutations: 0 },
+    journeys: ['W1', 'W2', 'W5', 'W14'].map(journey => ({ journey, state: 'pending', reason: 'synthetic-unproved' })) };
+  assert.doesNotThrow(() => assertReadonlyResult(value, release, plan));
+  assert.doesNotThrow(() => assertReadonlyResult({ ...value, journeys: value.journeys.map(row => row.journey === 'W14'
+    ? { ...row, state: 'qualified-slice', reason: 'owned-relationship-edge-observed' } : row) }, release, plan));
+  for (const changed of [{ provenance: { ...value.provenance, source_commit: 'b'.repeat(40) } },
+    { journeys: value.journeys.slice(0, 3) }, { journeys: value.journeys.map(row => row.journey === 'W5'
+      ? { ...row, state: 'qualified-slice' } : row) }, { counts: { carr_record_mutations: 1 } },
+    { full_v1_qualified: true }])
+    assert.throws(() => assertReadonlyResult({ ...value, ...changed }, release, plan),
+      { code: 'readonly-result-unqualified' });
+});
+
+test('retained journey observations accept only closed source-bound statuses', () => {
+  const value = { schema: 'doctorcre-staging-journey-observations.v1',
+    source_pair: { source_commit: binding.app, carr_source_commit: binding.carr },
+    run_id: 'synthetic_' + sha, observed_at: '2026-10-15T05:00:00.000Z',
+    business: { W4: true, W9: true, W15: false, observed_steps: 3 },
+    tour_readonly_observed: false,
+    readonly: { W1: 'qualified-slice', W2: 'pending', W5: 'pending', W14: 'qualified-slice' },
+    full_v1_qualified: false };
+  assert.doesNotThrow(() => assertJourneyQualification(value, binding, value.run_id));
+  for (const changed of [{ run_id: 'other-run' }, { source_pair: { ...value.source_pair, source_commit: 'b'.repeat(40) } },
+    { readonly: { ...value.readonly, W5: 'qualified-slice' } }, { full_v1_qualified: true },
+    { private_record_id: '60000000-0000-4000-8000-000000000001' }])
+    assert.throws(() => assertJourneyQualification({ ...value, ...changed }, binding, value.run_id),
+      { code: 'journey-observations-invalid' });
 });
 
 test('unsettled writes, source changes and deal restore limitations refuse business execution before browser creation', async t => {
@@ -597,7 +935,7 @@ test('each restored invocation revalidates business observations through the run
   const dependencies = { ...f.dependencies, progress: async () => ({ phase: 'complete', completion: { status: 'ACCEPTED_SWEEP' } }),
     work: async options => { phases.push(options.phase); return f.dependencies.work(options); } };
   const first = await boundedInvocation(f.base, dependencies);
-  const expected = { artifactId: '123', digest: first.digest, generation: 1, predecessor: null, planHash: first.plan_hash };
+  const expected = { artifactId: '123', digest: first.digest, generation: 1, predecessor: null, planHash: first.plan_hash, size: Number(first.size) };
   const second = await boundedInvocation({ ...f.base, slot: 2, output: join(f.root, 'restored-business'),
     publicDir: join(f.root, 'restored-business-public'), envelopePath: join(f.root, 'restored-business.enc'),
     expected, incoming: { ...expected, path: f.base.envelopePath } }, dependencies);
@@ -712,7 +1050,7 @@ test('local invoice pause restores the same budget/deadline and revalidates busi
     work: async options => { phases.push(options.phase); return f.dependencies.work(options); } });
   assert.equal(first.job_status, 'PAUSED_LOCAL_INVOICE_FIXTURE');
   const previous = JSON.parse(await readFile(join(f.base.output, 'run-budget.json'), 'utf8'));
-  const expected = { artifactId: '123', digest: first.digest, generation: 1, predecessor: null, planHash: first.plan_hash };
+  const expected = { artifactId: '123', digest: first.digest, generation: 1, predecessor: null, planHash: first.plan_hash, size: Number(first.size) };
   const next = { ...f.base, slot: 2, output: join(f.root, 'restored'), publicDir: join(f.root, 'public-two'),
     envelopePath: join(f.root, 'two.enc'), expected, incoming: { ...expected, path: f.base.envelopePath } };
   const resumed = await boundedInvocation(next, { ...f.dependencies,
