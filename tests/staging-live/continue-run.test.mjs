@@ -104,14 +104,16 @@ test('source pair rejects old app, production, changed backend and unbound check
   assert.throws(() => assertSourcePair(release, { ...binding, checkout: 'main' }));
 });
 
-test('invocation boundary never extends immutable deadline or absolute cutoff', () => {
-  const now = Date.parse('2026-10-14T22:00:00Z');
+test('invocation boundary honors a fresh bounded window after the former cutoff and never extends its deadline', () => {
+  const now = Date.parse('2026-10-15T12:00:01Z');
   assert.equal(invocationBoundary({ now, deadline: now + 1000, sliceMs: 5000 }), now + 1000);
   assert.equal(invocationBoundary({ now, deadline: now + 5000, sliceMs: 1000 }), now + 1000);
-  const cutoff = Date.parse('2026-10-15T12:00:00Z');
-  assert.equal(invocationBoundary({ now: cutoff - 1000, deadline: cutoff + 5000, sliceMs: 5000 }), cutoff);
+  const runDeadline = now + RUN_LIMITS.runTimeoutMs;
+  assert.equal(invocationBoundary({ now, deadline: runDeadline, sliceMs: RUN_LIMITS.runTimeoutMs }), runDeadline);
+  assert.throws(() => invocationBoundary({ now: runDeadline, deadline: runDeadline, sliceMs: 1 }), { code: 'deadline-exhausted' });
+  assert.throws(() => invocationBoundary({ now, deadline: Date.parse('2026-10-15T12:00:00Z'), sliceMs: 1 }),
+    { code: 'deadline-exhausted' }, 'an existing run past its recorded deadline is never extended');
   for (const deadline of [now, now - 1, NaN]) assert.throws(() => invocationBoundary({ now, deadline, sliceMs: 1000 }));
-  assert.throws(() => invocationBoundary({ now: cutoff, deadline: cutoff + 1000, sliceMs: 1000 }));
 });
 
 test('artifact identity and chain expectations come from trusted predecessor outputs, never offered metadata', () => {
@@ -218,6 +220,11 @@ test('an offered runtime for an old checkout or source pair is refused before op
       expectedDigest: createHash('sha256').update(bytes).digest('hex'), binding, now }),
     { code: 'model-room-runtime-unqualified' });
   }
+  const oversizedWindow = JSON.stringify({ ...base, expiresAt: now + RUN_LIMITS.runTimeoutMs + 1 });
+  await writeFile(path, oversizedWindow, { mode: 0o600 });
+  await assert.rejects(qualifiedModelRoom({ descriptorPath: path,
+    expectedDigest: createHash('sha256').update(oversizedWindow).digest('hex'), binding, now }),
+  { code: 'model-room-runtime-unqualified' });
 });
 
 test('the real CLI reports a closed qualification failure without printing even synthetic credential material', async () => {
@@ -315,7 +322,7 @@ const privateMarker = 'SYNTHETIC_PRIVATE_CONTINUATION_MARKER_3c702';
 async function continuationFixture(t, { interrupt = true, checkout = sha } = {}) {
   const root = await mkdtemp(join(tmpdir(), 'doctorcre-workflow-chain-'));
   t.after(() => rm(root, { recursive: true, force: true }));
-  const startedAt = Date.now(), deadline = Math.min(startedAt + 60 * 60 * 1000, Date.parse('2026-10-15T12:00:00Z'));
+  const startedAt = Date.now(), deadline = startedAt + 60 * 60 * 1000;
   const sourcePair = { source_commit: binding.app, carr_source_commit: binding.carr };
   const runId = 'synthetic_' + checkout;
   const plan = { schema: 'doctorcre-staging-records-plan.v1', origin: contract.origin, state: 'complete',
@@ -346,25 +353,23 @@ async function continuationFixture(t, { interrupt = true, checkout = sha } = {})
   return { root, base, dependencies, calls: () => workerCalls, verificationCalls: () => verificationCalls };
 }
 
-test('cutoff crossed at the actual envelope link refuses success and retains the private envelope for reconciliation', async t => {
-  for (const kind of ['absolute-cutoff', 'canonical-run-deadline']) {
-    const f = await continuationFixture(t);
-    const deadline = kind === 'absolute-cutoff' ? Date.parse('2026-10-15T12:00:00Z') : Date.now() + 30_000;
-    let clock = deadline - 10_000, linked = false;
-    t.mock.method(Date, 'now', () => clock);
-    f.base.startedAt = clock - 1000; f.base.deadline = deadline;
-    const original = fsPromises.link;
-    fsPromises.link = async (from, to) => {
-      if (to === f.base.envelopePath) { clock = deadline + 1; linked = true; }
-      return original(from, to);
-    };
-    syncBuiltinESMExports();
-    try {
-      await assert.rejects(boundedInvocation(f.base, f.dependencies), { code: 'deadline-exhausted' });
-      assert.equal(linked, true);
-      assert.ok((await readFile(f.base.envelopePath)).length > 0);
-    } finally { fsPromises.link = original; syncBuiltinESMExports(); t.mock.restoreAll(); }
-  }
+test('run deadline crossed at the actual envelope link refuses success and retains the private envelope for reconciliation', async t => {
+  const f = await continuationFixture(t);
+  const deadline = Date.now() + 30_000;
+  let clock = deadline - 10_000, linked = false;
+  t.mock.method(Date, 'now', () => clock);
+  f.base.startedAt = clock - 1000; f.base.deadline = deadline;
+  const original = fsPromises.link;
+  fsPromises.link = async (from, to) => {
+    if (to === f.base.envelopePath) { clock = deadline + 1; linked = true; }
+    return original(from, to);
+  };
+  syncBuiltinESMExports();
+  try {
+    await assert.rejects(boundedInvocation(f.base, f.dependencies), { code: 'deadline-exhausted' });
+    assert.equal(linked, true);
+    assert.ok((await readFile(f.base.envelopePath)).length > 0);
+  } finally { fsPromises.link = original; syncBuiltinESMExports(); t.mock.restoreAll(); }
 });
 
 test('tracked synthetic source changed after real Git qualification prevents settlement and sealing', async t => {

@@ -9,7 +9,6 @@ import { promisify } from 'node:util';
 import contract from '../../contracts/e2e-staging.v1.json' with { type: 'json' };
 import { qualifyV1Journeys } from './v1-qualification.mjs';
 
-export const ABSOLUTE_CUTOFF = Date.parse('2026-10-15T12:00:00Z');
 const canaryPhases = new Set(['session', 'browser-launch', 'context', 'guard', 'navigation', 'asset-settlement', 'shell', 'source-readback']);
 const project = fileURLToPath(new URL('../../', import.meta.url));
 const sha40 = value => typeof value === 'string' && /^[a-f0-9]{40}$/.test(value);
@@ -77,8 +76,8 @@ export function assertSourcePair(release, binding) {
 
 export function invocationBoundary({ now = Date.now(), deadline, sliceMs }) {
   if (![now, deadline, sliceMs].every(Number.isSafeInteger) || sliceMs < 1 ||
-      now >= deadline || now >= ABSOLUTE_CUTOFF) refusal('deadline-exhausted');
-  return Math.min(deadline, now + sliceMs, ABSOLUTE_CUTOFF);
+      now >= deadline) refusal('deadline-exhausted');
+  return Math.min(deadline, now + sliceMs);
 }
 
 export function assertTrustedArtifact(offered, expected) {
@@ -274,6 +273,7 @@ export function assertQualifiedDesk(entry, descriptor, receipt) {
 
 export async function qualifiedModelRoom({ descriptorPath, expectedDigest, binding, now = Date.now() }) {
   if (!descriptorPath || !isAbsolute(descriptorPath) || !sha256(expectedDigest)) refusal('model-room-runtime-unqualified');
+  const { RUN_LIMITS } = await import('./run-limits.mjs');
   const { MODEL_ROOM_DISPATCH_CONTRACT: pinned } = await import('./model-room.mjs');
   const bytes = await privateBytes(descriptorPath, 32 * 1024);
   if (hash(bytes) !== expectedDigest) refusal('model-room-runtime-unqualified');
@@ -289,7 +289,8 @@ export async function qualifiedModelRoom({ descriptorPath, expectedDigest, bindi
       !isAbsolute(descriptor.repositoryPath || '') || !isAbsolute(descriptor.qualificationReceiptPath || '') ||
       !sha256(descriptor.registrySha256) || !sha256(descriptor.qualificationReceiptSha256) ||
       !Number.isSafeInteger(descriptor.qualifiedAt) || !Number.isSafeInteger(descriptor.expiresAt) ||
-      descriptor.qualifiedAt > now || descriptor.expiresAt <= now || descriptor.expiresAt > ABSOLUTE_CUTOFF ||
+      descriptor.qualifiedAt > now || descriptor.expiresAt <= now ||
+      descriptor.expiresAt - descriptor.qualifiedAt > RUN_LIMITS.runTimeoutMs ||
       !/^[a-z0-9][a-z0-9-]{1,40}$/.test(descriptor.desk || '') ||
       typeof descriptor.model !== 'string' || !descriptor.model || descriptor.completion !== 'synchronous')
     refusal('model-room-runtime-unqualified');
@@ -410,8 +411,8 @@ async function canaryJob(environment) {
   const { supervise } = await import('./supervise.mjs');
   const binding = bindings(environment);
   await assertCheckout(binding.checkout);
-  const duration = invocationBoundary({ deadline: ABSOLUTE_CUTOFF, sliceMs: 120_000 }) - Date.now();
-  if (duration < 1) refusal('deadline-exhausted');
+  const startedAt = Date.now(), deadline = startedAt + 120_000;
+  const duration = invocationBoundary({ now: startedAt, deadline, sliceMs: 120_000 }) - startedAt;
   const limits = await canaryLimits(duration);
   const output = resolve(environment.E2E_V2_OUTPUT);
   let state;
@@ -424,7 +425,7 @@ async function canaryJob(environment) {
     const diagnostic = canaryFailure(marker, error?.code, error?.message);
     refusal(`canary-${diagnostic.phase}-${diagnostic.stopReason}`);
   }
-  invocationBoundary({ deadline: ABSOLUTE_CUTOFF, sliceMs: 1 });
+  invocationBoundary({ deadline: state.deadline, sliceMs: 1 });
   const receipt = JSON.parse(await readFile(join(output, 'private', 'startup-canary.json'), 'utf8'));
   assertSourcePair({ service: 'doctorcre-app', environment: 'staging', source_commit: receipt.app,
     carr_source_commit: receipt.carr }, binding);
@@ -769,7 +770,7 @@ export async function boundedInvocation(options, dependencies = {}) {
   if (!Number.isSafeInteger(slot) || slot < 1 || slot > 4 || typeof secret !== 'string' || Buffer.byteLength(secret) < 32 ||
       typeof runId !== 'string' || !/^[a-zA-Z0-9_-]{8,80}$/.test(runId) || !runId.endsWith('_' + binding.checkout) ||
       !Number.isSafeInteger(startedAt) || !Number.isSafeInteger(deadline) || startedAt > now() ||
-      deadline <= startedAt || deadline - startedAt > RUN_LIMITS.runTimeoutMs || deadline > ABSOLUTE_CUTOFF)
+      deadline <= startedAt || deadline - startedAt > RUN_LIMITS.runTimeoutMs)
     refusal('invocation-binding-invalid');
   const limits = { ...RUN_LIMITS, runTimeoutMs: deadline - startedAt, batchGoals: 1 };
   // Stop before the existing per-test ceiling; a test timeout is a failure,
@@ -1416,9 +1417,10 @@ async function main(environment = process.env, command = process.argv[2]) {
     if (!['canary', 'full'].includes(environment.E2E_MODE))
       refusal('workflow-replay-refused');
     if (environment.E2E_MODE === 'full') assertFirstWorkflowAttempt(environment);
+    const { RUN_LIMITS } = await import('./run-limits.mjs');
     const startedAt = Date.now();
-    const deadline = invocationBoundary({ now: startedAt, deadline: startedAt + 20 * 60 * 60 * 1000,
-      sliceMs: 20 * 60 * 60 * 1000 });
+    const deadline = invocationBoundary({ now: startedAt, deadline: startedAt + RUN_LIMITS.runTimeoutMs,
+      sliceMs: RUN_LIMITS.runTimeoutMs });
     return { started_at: String(startedAt), deadline: String(deadline) };
   }
   refusal('unknown-command');
