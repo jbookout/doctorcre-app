@@ -99,8 +99,9 @@ function relationshipProof(plan) {
     { id: `evidence:${plan.records.party.id}:${id('destination_deal')}:referred`, kind: 'referred', from: nodes[0].id, to: nodes[4].id, via: null, detail: note('referral_association') },
     { id: `evidence:${plan.records.vendor_party.id}:${plan.records.deal.id}:referred`, kind: 'referred', from: nodes[2].id, to: nodes[1].id, via: null, detail: note('vendor_association') },
   ];
-  const response = { schema: 'carr-relationship-network.v1', observed_at: new Date(Date.now()-1000).toISOString(),
-    valid_until: new Date(Date.now()+59000).toISOString(), nodes, edges,
+  const observed = Date.now();
+  const response = { schema: 'carr-relationship-network.v1', observed_at: new Date(observed).toISOString(),
+    valid_until: new Date(observed+60000).toISOString(), nodes, edges,
     referrals: [nodes[0], nodes[2]].map(node => ({ node_id: node.id, deals: 1, won: 0, lost: 0, win_rate: null })), suggestions: [] };
   const tables = { destination_party: 'party', destination_client: 'client', destination_deal: 'deal', fixed_party: 'party',
     owned_vendor: 'vendor', referral_association: 'party_association', vendor_association: 'party_association',
@@ -170,6 +171,7 @@ test('relationship installer refuses the reviewer minimal proof even with a vali
 });
 
 test('relationship installer verifies a reused party projection through the recorded client and deal lineage', async t => {
+  t.mock.timers.enable({ apis: ['Date'], now: new Date('2026-10-15T12:00:00Z') });
   const fixture = await relationshipSetup(t, 'projected-client');
   const otherClient = '99999999-0000-4000-8000-000000000001';
   fixture.proof.projection.response.nodes[0].record_id = otherClient;
