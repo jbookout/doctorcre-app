@@ -49,7 +49,7 @@ async function readPrivateJSON(path) {
 
 export async function prepareStagingRecords(output, {
   origin = STAGING_ORIGIN, session = stagingSession, reuseOnly = false,
-  vendorFixture = false, tourDraftFixture = false, requestFactory, run, signal,
+  vendorFixture = false, tourDraftFixture = false, awaitingInvoiceFixture = false, requestFactory, run, signal,
 } = {}) {
   signal?.throwIfAborted();
   origin = assertStagingURL(origin);
@@ -59,6 +59,14 @@ export async function prepareStagingRecords(output, {
   const planPath = join(output, 'staging-records-plan.json');
   const existing = await readPrivateJSON(planPath);
   if (existing && (existing.state !== 'complete' || existing.inflight)) throw new Error('Staging records partial plan requires reconciliation; no record write was retried');
+  if (reuseOnly && awaitingInvoiceFixture && existing) {
+    const awaitingReceipts = ['awaiting_invoice_deal', 'awaiting_invoice_lead', 'awaiting_invoice_close'];
+    const received = awaitingReceipts.filter(step => existing.receipts?.[step]);
+    if ((existing.records?.awaiting_invoice && received.length !== awaitingReceipts.length) ||
+        (!existing.records?.awaiting_invoice && received.length)) {
+      throw new Error('Staging awaiting-invoice fixture partial plan requires reconciliation; no record write was retried');
+    }
+  }
   if (reuseOnly && (!existing || existing.schema !== 'doctorcre-staging-records-plan.v1' || existing.origin !== STAGING_ORIGIN ||
       !/^[0-9a-f]{40}$/.test(existing.release?.source_commit || '') || existing.release?.carr_source_commit !== contract.producer.source_commit ||
       ['party', 'client', 'deal', 'lead_party', 'lead', 'conversation', 'tour'].some(name => !isUUID(existing.records?.[name]?.id || '')) || !isUUID(existing.records?.invoice?.deal_id || ''))) {
@@ -78,8 +86,8 @@ export async function prepareStagingRecords(output, {
   const label = `Synthetic staging QA ${fixtureRun}`;
   const plan = existing || {
     schema: 'doctorcre-staging-records-plan.v1', origin, release: source, state: 'pending', run: fixtureRun,
-    keys: Object.fromEntries(['party', 'client', 'deal', 'deal_lead', 'invoice_deal', 'invoice_lead', 'close_invoice', 'lead_party', 'lead', 'conversation', 'tour', 'tour_draft_party', 'tour_draft_client'].map(name => [name, randomUUID()])),
-    names: { deal: `${label} active deal`, invoice: `${label} closed deal`, lead: `QA Lead ${fixtureRun}`, conversation: `${label} private conversation`, tour: `${label} draft tour` },
+    keys: Object.fromEntries(['party', 'client', 'deal', 'deal_lead', 'invoice_deal', 'invoice_lead', 'close_invoice', 'lead_party', 'lead', 'conversation', 'tour', 'tour_draft_party', 'tour_draft_client', 'awaiting_invoice_deal', 'awaiting_invoice_lead', 'awaiting_invoice_close'].map(name => [name, randomUUID()])),
+    names: { deal: `${label} active deal`, invoice: `${label} closed deal`, awaiting_invoice: `${fixtureRun} Synthetic W15 awaiting invoice`, lead: `QA Lead ${fixtureRun}`, conversation: `${label} private conversation`, tour: `${label} draft tour` },
     records: {}, receipts: {}, current_step: 'authentication', observed_at: new Date().toISOString(),
   };
   const controlProofs = await prepareBrowserControlProofs(source, { signal });
@@ -151,8 +159,20 @@ export async function prepareStagingRecords(output, {
         throw Object.assign(new Error('Staging fixture producer acknowledgment refused'),
           { code: 'staging-fixture-candidate-refused' });
       }
-      plan.receipts[step] = Object.fromEntries(['party_id', 'client_id', 'deal_id', 'lead_id', 'conversation_id', 'vendor_id', 'activity_id']
-        .filter(field => isUUID(result[field] || '')).map(field => [field, result[field]]));
+      if (step.startsWith('awaiting_invoice_')) {
+        // Keep the producer's full response as the immutable fixture receipt.
+        // The request intent is already on disk, and retries are refused while
+        // any part of this sequence is incomplete.
+        plan.receipts[step] = structuredClone(result);
+        if (step === 'awaiting_invoice_deal') {
+          requireValue(result.ok === true && isUUID(result.deal_id || '') &&
+            result.name === plan.names.awaiting_invoice && result.client_ref === plan.records.client.ref);
+          plan.records.awaiting_invoice = { deal_id: recordId(result.deal_id), name: result.name };
+        }
+      } else {
+        plan.receipts[step] = Object.fromEntries(['party_id', 'client_id', 'deal_id', 'lead_id', 'conversation_id', 'vendor_id', 'activity_id']
+          .filter(field => isUUID(result[field] || '')).map(field => [field, result[field]]));
+      }
       plan.inflight = null;
       await persist(planPath, plan);
       return result;
@@ -289,6 +309,57 @@ export async function prepareStagingRecords(output, {
           name: plan.names.tour_draft_client, party_id: plan.records.tour_draft_party.id });
       }
     }
+    if (awaitingInvoiceFixture) {
+      const receiptSteps = ['awaiting_invoice_deal', 'awaiting_invoice_lead', 'awaiting_invoice_close'];
+      const present = receiptSteps.filter(step => plan.receipts[step]);
+      const record = plan.records.awaiting_invoice;
+      if ((record && present.length !== receiptSteps.length) || (!record && present.length))
+        throw new Error('Staging awaiting-invoice fixture partial; reconciliation required');
+      if (!record) {
+        for (const step of receiptSteps) plan.keys[step] ||= randomUUID();
+        plan.names.awaiting_invoice ||= `${plan.run} Synthetic W15 awaiting invoice`;
+        await persist(planPath, plan);
+        const created = await write('awaiting_invoice_deal', 'new-deal', {
+          client: plan.records.client.ref, name: plan.names.awaiting_invoice, deal_type: 'startup',
+          phase: 'pending', lane: 'territory', reason: 'Explicitly fictional W15 awaiting-invoice staging QA fixture only',
+        });
+        const dealId = plan.records.awaiting_invoice?.deal_id;
+        requireValue(created.ok === true && dealId === created.deal_id &&
+          plan.receipts.awaiting_invoice_deal?.deal_id === dealId);
+        const beforeLead = await rpc('get-deal-room', { deal: dealId });
+        requireValue(beforeLead.deal_id === dealId && beforeLead.name === plan.names.awaiting_invoice &&
+          beforeLead.client_ref === plan.records.client.ref && beforeLead.phase === 'pending' &&
+          Number.isInteger(beforeLead.base_version));
+        const lead = await write('awaiting_invoice_lead', 'set-lead', {
+          deal: dealId, new_lead: 'joe', base_version: beforeLead.base_version,
+        });
+        requireValue(lead.ok === true && lead.new_lead === 'joe' &&
+          plan.receipts.awaiting_invoice_lead?.new_lead === 'joe');
+        const board = await rpc('deal-room-board', { workspace: 'all' });
+        const boardDeal = board.deals?.find(row => row.id === dealId);
+        requireValue(board.schema_version === 'local-deals-board.v1' && boardDeal?.name === plan.names.awaiting_invoice &&
+          boardDeal.phase === 'pending' && boardDeal.owner === 'joe');
+        const baseEventId = boardDeal.field_base?.phase?.id ?? null;
+        const closed = await write('awaiting_invoice_close', 'patch-deal-field', {
+          deal: dealId, field: 'phase', value: 'closed', base_event_id: baseEventId,
+          change_reason: 'Explicitly fictional W15 awaiting-invoice staging QA fixture only',
+        });
+        requireValue(closed.ok === true && closed.deal_id === dealId && closed.field === 'phase' &&
+          plan.receipts.awaiting_invoice_close?.deal_id === dealId &&
+          plan.receipts.awaiting_invoice_close?.field === 'phase' &&
+          isUUID(plan.receipts.awaiting_invoice_close?.event_id || ''));
+      } else {
+        requireValue(record.name === plan.names.awaiting_invoice &&
+          plan.receipts.awaiting_invoice_deal.deal_id === record.deal_id &&
+          plan.receipts.awaiting_invoice_deal.name === record.name &&
+          plan.receipts.awaiting_invoice_deal.client_ref === plan.records.client.ref &&
+          plan.receipts.awaiting_invoice_lead.ok === true && plan.receipts.awaiting_invoice_lead.new_lead === 'joe' &&
+          plan.receipts.awaiting_invoice_close.ok === true &&
+          plan.receipts.awaiting_invoice_close.deal_id === record.deal_id &&
+          plan.receipts.awaiting_invoice_close.field === 'phase' &&
+          isUUID(plan.receipts.awaiting_invoice_close.event_id || ''));
+      }
+    }
     plan.current_step = 'readback';
     await persist(planPath, plan);
     const boundedText = value => typeof value === 'string' && value.length > 0 && value.length <= 500;
@@ -350,6 +421,15 @@ export async function prepareStagingRecords(output, {
     requireValue(Array.isArray(tracker.entries));
     const invoiceVisible = tracker.entries.some(row => row.deal_id === plan.records.invoice.deal_id);
     requireValue(existing || (invoiceRead.phase === 'closed' && invoiceVisible));
+    if (awaitingInvoiceFixture) {
+      const awaiting = plan.records.awaiting_invoice;
+      const exact = tracker.entries.find(row => row.deal_id === awaiting.deal_id);
+      const readback = await rpc('read-deal-reconciliation', { deal: awaiting.deal_id });
+      requireValue(validInvoiceTracker(tracker) && exact?.name === awaiting.name && exact.phase === 'closed' &&
+        exact.owner === 'joe' && exact.invoiced_on === null && exact.commission_id === null &&
+        exact.status === null && readback.id === awaiting.deal_id && readback.name === awaiting.name &&
+        readback.phase === 'closed' && readback.invoiced_on === null && readback.lane === 'territory');
+    }
     const leadRead = await rpc('lead-board', { workspace: 'leads', lead_id: plan.records.lead.id });
     requireValue(leadRead.detail?.id === plan.records.lead.id && leadRead.detail.party_id === plan.records.lead_party.id);
     const leadEligible = eligibleLead(leadRead.detail);

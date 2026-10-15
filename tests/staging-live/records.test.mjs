@@ -141,6 +141,100 @@ test('W6 draft fixture adds a separately keyed Pensacola client and independentl
   } finally { await rm(output, { recursive: true, force: true }); }
 });
 
+test('W15 controlled awaiting-invoice deal uses normal deal verbs and exact tracker/readback proof', async () => {
+  const output = await mkdtemp(join(tmpdir(), 'staging-w15-awaiting-invoice-'));
+  try {
+    const fake = fakeAPI(output);
+    const base = await prepareStagingRecords(output, fake);
+    fake.calls.length = 0;
+    const extended = await prepareStagingRecords(output, { ...fake, reuseOnly: true, vendorFixture: true,
+      tourDraftFixture: true, awaitingInvoiceFixture: true });
+    const plan = JSON.parse(await readFile(join(output, 'staging-records-plan.json'), 'utf8'));
+    const deal = plan.records.awaiting_invoice;
+    assert.deepEqual(Object.keys(deal).sort(), ['deal_id', 'name']);
+    assert.ok(deal.name.startsWith(plan.run));
+    assert.notEqual(deal.deal_id, plan.records.invoice.deal_id);
+    assert.equal(plan.records.client.id, base.records.client.id);
+    assert.equal(plan.records.invoice.deal_id, base.records.invoice.deal_id);
+    const writes = fake.calls.filter(call => call.path === '/mcp' &&
+      ['new-deal', 'set-lead', 'patch-deal-field'].includes(call.options.data.params.name) &&
+      ['awaiting_invoice_deal', 'awaiting_invoice_lead', 'awaiting_invoice_close']
+        .some(step => call.options.data.params.arguments.idempotency_key === plan.keys[step]));
+    assert.deepEqual(writes.map(call => call.options.data.params.name), ['new-deal', 'set-lead', 'patch-deal-field']);
+    const [create, lead, close] = writes.map(call => call.options.data.params.arguments);
+    assert.equal(create.client, plan.records.client.ref); assert.equal(create.phase, 'pending');
+    assert.equal(create.idempotency_key, plan.keys.awaiting_invoice_deal);
+    assert.equal(lead.deal, deal.deal_id); assert.equal(lead.new_lead, 'joe');
+    assert.equal(lead.idempotency_key, plan.keys.awaiting_invoice_lead);
+    assert.equal(close.deal, deal.deal_id); assert.equal(close.field, 'phase');
+    assert.equal(close.value, 'closed'); assert.equal(close.idempotency_key, plan.keys.awaiting_invoice_close);
+    assert.equal(Object.hasOwn(close, 'force_new'), false);
+    assert.deepEqual(plan.receipts.awaiting_invoice_deal, { ok: true, deal_id: deal.deal_id,
+      name: deal.name, client_ref: plan.records.client.ref });
+    assert.deepEqual(plan.receipts.awaiting_invoice_lead, { ok: true, new_lead: 'joe' });
+    assert.equal(plan.receipts.awaiting_invoice_close.ok, true);
+    assert.equal(plan.receipts.awaiting_invoice_close.deal_id, deal.deal_id);
+    assert.equal(plan.receipts.awaiting_invoice_close.field, 'phase');
+    assert.match(plan.receipts.awaiting_invoice_close.event_id, /^[0-9a-f-]{36}$/i);
+    assert.ok(fake.calls.some(call => call.path === '/mcp' && call.options.data.params.name === 'read-invoice-tracker'));
+    assert.ok(fake.calls.some(call => call.path === '/mcp' && call.options.data.params.name === 'read-deal-reconciliation' &&
+      call.options.data.params.arguments.deal === deal.deal_id));
+    assert.ok(!fake.calls.some(call => call.path === '/mcp' && call.options.data.params.name === 'record-commission-receipt'));
+    assert.ok(extended.records.awaiting_invoice);
+    const receipts = structuredClone(plan.receipts);
+    fake.calls.length = 0;
+    await prepareStagingRecords(output, { ...fake, reuseOnly: true, awaitingInvoiceFixture: true });
+    assert.deepEqual(JSON.parse(await readFile(join(output, 'staging-records-plan.json'), 'utf8')).receipts, receipts);
+    assert.equal(fake.calls.filter(call => call.path === '/mcp' &&
+      ['new-deal', 'set-lead', 'patch-deal-field'].includes(call.options.data.params.name)).length, 0);
+  } finally { await rm(output, { recursive: true, force: true }); }
+});
+
+test('W15 awaiting-invoice receipt, partial plan, and tracker mismatches refuse without replay', async t => {
+  for (const kind of ['wrong-receipt', 'partial-receipts', 'missing-row', 'commission-row']) await t.test(kind, async () => {
+    const output = await mkdtemp(join(tmpdir(), 'staging-w15-awaiting-refusal-'));
+    try {
+      const fake = fakeAPI(output, {
+        awaitingInvoiceReceipt: kind === 'wrong-receipt' ? 'wrong-name' : undefined,
+        awaitingInvoiceTracker: kind === 'missing-row' ? 'missing' : kind === 'commission-row' ? 'invoiced' : undefined,
+      });
+      await prepareStagingRecords(output, fake);
+      if (kind === 'wrong-receipt') {
+        await assert.rejects(prepareStagingRecords(output, { ...fake, reuseOnly: true, awaitingInvoiceFixture: true }),
+          /stopped at awaiting_invoice_deal/);
+        const plan = JSON.parse(await readFile(join(output, 'staging-records-plan.json'), 'utf8'));
+        assert.equal(plan.records.awaiting_invoice, undefined);
+        assert.equal(plan.inflight.name, 'new-deal');
+        const attempted = fake.calls.filter(call => call.path === '/mcp' && call.options.data.params.name === 'new-deal').length;
+        await assert.rejects(prepareStagingRecords(output, { session: () => assert.fail('must not replay uncertain create') }),
+          /partial plan requires reconciliation/);
+        assert.equal(fake.calls.filter(call => call.path === '/mcp' && call.options.data.params.name === 'new-deal').length, attempted);
+      } else {
+        if (kind === 'partial-receipts') {
+          const path = join(output, 'staging-records-plan.json');
+          await prepareStagingRecords(output, { ...fake, reuseOnly: true, awaitingInvoiceFixture: true });
+          const plan = JSON.parse(await readFile(path, 'utf8'));
+          delete plan.receipts.awaiting_invoice_lead;
+          await writeFile(path, JSON.stringify(plan), { mode: 0o600 });
+          fake.calls.length = 0;
+          await assert.rejects(prepareStagingRecords(output, { ...fake, reuseOnly: true, awaitingInvoiceFixture: true,
+            session: () => assert.fail('partial fixture must be refused before authentication') }),
+          /awaiting-invoice fixture partial plan requires reconciliation/);
+          assert.equal(fake.calls.length, 0);
+        } else {
+          await assert.rejects(prepareStagingRecords(output, { ...fake, reuseOnly: true, awaitingInvoiceFixture: true }),
+            /stopped at readback/);
+          const plan = JSON.parse(await readFile(join(output, 'staging-records-plan.json'), 'utf8'));
+          assert.deepEqual(fake.calls.filter(call => call.path === '/mcp' &&
+            ['awaiting_invoice_deal', 'awaiting_invoice_lead', 'awaiting_invoice_close']
+              .some(step => call.options.data.params.arguments.idempotency_key === plan.keys[step]))
+            .map(call => call.options.data.params.name), ['new-deal', 'set-lead', 'patch-deal-field']);
+        }
+      }
+    } finally { await rm(output, { recursive: true, force: true }); }
+  });
+});
+
 test('run-owned synthetic party names are distinct before first dispatch and retain normal dedup', async () => {
   const output = await mkdtemp(join(tmpdir(), 'staging-party-identity-'));
   try {

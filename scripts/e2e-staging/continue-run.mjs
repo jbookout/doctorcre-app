@@ -867,7 +867,8 @@ export async function runBusinessPhase({ binding, run, environment = process.env
     runId: run.snapshot ? run.snapshot().id : undefined, environment });
   if (admission.status !== 'READY') refusal('invoice-local-prerequisite-required');
   let state;
-  const setup = await prepare(run.root, { reuseOnly: true, vendorFixture: true, tourDraftFixture: true, run, signal: run.signal,
+  const setup = await prepare(run.root, { reuseOnly: true, vendorFixture: true, tourDraftFixture: true,
+    awaitingInvoiceFixture: true, run, signal: run.signal,
     session: async (origin, options) => {
       const authenticated = await authenticate(origin, options);
       assertSourcePair(authenticated.release, binding);
