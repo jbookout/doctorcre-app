@@ -86,10 +86,25 @@ function mountAccount(root, host, pathname) {
     if (!session?.csrf_token) { panel.querySelector("#accountStatus").textContent = "Sign-in unavailable"; return; }
     event.target.disabled = true;
     try {
-      const response = await fetch("/auth/signout", { method: "POST", credentials: "same-origin", headers: { "x-carr-csrf": session.csrf_token } });
-      if (!response.ok) throw new Error();
+      // The auth service responds with a redirect to /. Fetch must not follow
+      // that redirect into a fresh login flow before we check revocation.
+      const response = await fetch("/auth/signout", { method: "POST", credentials: "same-origin",
+        redirect: "manual", headers: { "x-carr-csrf": session.csrf_token } });
+      if (response.type !== "opaqueredirect") throw new Error();
+      const after = await fetch("/auth/session", { credentials: "same-origin", cache: "no-store",
+        redirect: "manual", headers: { accept: "application/json" } });
+      if (after.status !== 401) throw new Error();
       offlineTourSession(globalThis.window).revoke();
-      globalThis.location.assign("/auth/login");
+      session = null;
+      const view = root.createElement("main");
+      view.className = "app-shell-signed-out";
+      const title = root.createElement("h1");
+      title.textContent = "Signed out";
+      const link = root.createElement("a");
+      link.href = "/auth/login";
+      link.textContent = "Sign in again";
+      view.append(title, link);
+      root.body.replaceChildren(view);
     } catch { panel.querySelector("#accountStatus").textContent = "Sign-out unavailable"; event.target.disabled = false; }
   };
   if (!root.getElementById("callModeDialog")) {

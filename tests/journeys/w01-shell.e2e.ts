@@ -23,13 +23,17 @@ test('W1 shell shows freshness and keeps its controls across a reload', async ({
 // Local live mode reads the cookie session; this one is synthetic.
 test('W1 a live session signs in as its partner and signs out with its token', async ({ app, browser, screen, quality }) => {
   const signOuts: string[] = [];
+  let signedOut = false;
   await browser.route('**/api/system-work/session', route =>
-    route.fulfill({ json: { actor: { slug: 'dell' }, csrf_token: 'synthetic-e2e-token' } }));
+    route.fulfill({ status: signedOut ? 401 : 200,
+      json: signedOut ? {} : { actor: { slug: 'dell' }, csrf_token: 'synthetic-e2e-token' } }));
+  await browser.route('**/auth/session', route => route.fulfill({ status: signedOut ? 401 : 200,
+    json: signedOut ? {} : { actor: { slug: 'dell' } } }));
   await browser.route('**/auth/signout', route => {
     signOuts.push(route.request.headers['x-carr-csrf'] ?? '');
-    return route.fulfill({ status: 204 });
+    signedOut = true;
+    return route.fulfill({ status: 302, headers: { location: '/' } });
   });
-  await browser.route('**/auth/login', route => route.fulfill({ headers: { 'content-type': 'text/html' }, body: '<h1>Signed out</h1>' }));
   await app.open('/?mode=live');
 
   await expect(browser.locator('#selfAvatar')).toHaveText('D');
@@ -38,7 +42,8 @@ test('W1 a live session signs in as its partner and signs out with its token', a
   await expect(browser.locator('#accountMenu')).toBeVisible();
   await quality.check('shell-account');
   await screen.getByText('Sign out', { exact: true }).tap();
-  await browser.waitForURL(/\/auth\/login$/);
   await expect(screen.getByRole('heading', 'Signed out')).toBeVisible();
+  await expect(screen.getByRole('link', 'Sign in again')).toHaveAttribute('href', '/auth/login');
+  await expect(browser.locator('#selfAvatar')).toHaveCount(0);
   expect(signOuts).toEqual(['synthetic-e2e-token']);
 });

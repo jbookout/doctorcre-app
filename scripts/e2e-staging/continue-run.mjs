@@ -7,6 +7,7 @@ import { execFile } from 'node:child_process';
 import { spawn } from 'node:child_process';
 import { promisify } from 'node:util';
 import contract from '../../contracts/e2e-staging.v1.json' with { type: 'json' };
+import { qualifyV1Journeys } from './v1-qualification.mjs';
 
 export const ABSOLUTE_CUTOFF = Date.parse('2026-10-15T12:00:00Z');
 const canaryPhases = new Set(['session', 'browser-launch', 'context', 'guard', 'navigation', 'asset-settlement', 'shell', 'source-readback']);
@@ -16,6 +17,16 @@ const sha256 = value => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value
 const hash = bytes => createHash('sha256').update(bytes).digest('hex');
 const stable = value => Array.isArray(value) ? value.map(stable) : value && typeof value === 'object'
   ? Object.fromEntries(Object.keys(value).sort().map(key => [key, stable(value[key])])) : value;
+const journeyActionIdentity = row => JSON.stringify([row?.id, row?.case, row?.action]);
+const durableW15Actions = new Set([
+  'invoice-tracker:age-filter', 'invoice-tracker:age-reset', 'invoice-tracker:unpaid-detail',
+  'invoice-tracker:payment-write', 'invoice-tracker:paid-readback',
+  'home-invoices:team-scope', 'home-invoices:viewer-scope', 'home-invoices:scope-reset',
+  'home-invoices:payment-removal',
+]);
+const durableBusinessAction = row => row?.id === 'W4' && row.case === 'local-deals' ||
+  row?.id === 'W9' && row.case === 'deal-timeline' ||
+  row?.id === 'W15' && durableW15Actions.has(`${row.case}:${row.action}`);
 const execute = promisify(execFile);
 const ownFailures = new WeakSet();
 const businessFailureCodes = new Set(['business-journey-receipt-missing', 'business-journey-selector-unavailable',
@@ -106,8 +117,10 @@ export function assertReadonlyResult(result, release, plan) {
 
 export function assertJourneyQualification(value, binding, runId) {
   const keys = value && typeof value === 'object' && !Array.isArray(value) ? Object.keys(value).sort().join() : '';
+  const legacy = keys === 'business,full_v1_qualified,observed_at,readonly,run_id,schema,source_pair,tour_readonly_observed';
+  const current = keys === 'business,companions,fixture_run,full_v1_qualified,observations,observed_at,readonly,run_id,schema,source_pair,tour_readonly_observed';
   const readonly = value?.readonly;
-  if (keys !== 'business,full_v1_qualified,observed_at,readonly,run_id,schema,source_pair,tour_readonly_observed' ||
+  if ((!legacy && !current) ||
       value.schema !== 'doctorcre-staging-journey-observations.v1' || value.full_v1_qualified !== false ||
       value.run_id !== runId || value.source_pair?.source_commit !== binding.app ||
       value.source_pair?.carr_source_commit !== binding.carr ||
@@ -120,6 +133,20 @@ export function assertJourneyQualification(value, binding, runId) {
       Object.keys(readonly || {}).sort().join() !== 'W1,W14,W2,W5' ||
       !['W1', 'W2', 'W5', 'W14'].every(key => ['pending', 'qualified-slice'].includes(readonly[key])) ||
       readonly.W5 !== 'pending') refusal('journey-observations-invalid');
+  if (current) {
+    const observations = value.observations, companions = value.companions;
+    if (!Array.isArray(observations) || observations.length > 64 || !Array.isArray(companions) || companions.length > 2)
+      refusal('journey-observations-invalid');
+    let assessed;
+    try {
+      assessed = qualifyV1Journeys({ sourcePair: value.source_pair, runId, fixtureRun: value.fixture_run,
+        observations, companion: companions, writeCoverage: false,
+        retainedEvidenceVerified: false, sweepAccepted: false });
+    } catch { refusal('journey-observations-invalid'); }
+    if (assessed.invalid.length || companions.some(row => assessed.companion_pending.includes(row?.id)) ||
+        new Set(companions.map(row => row.id)).size !== companions.length)
+      refusal('journey-observations-invalid');
+  }
   return value;
 }
 
@@ -132,6 +159,26 @@ export async function retainJourneyQualification({ run, binding, release, result
       !Array.isArray(result.completed) || !Array.isArray(result.steps))
     refusal('journey-observations-invalid');
   assertReadonlyResult(result.readonly, release, plan);
+  let priorObservations = [];
+  if (plan.journey_qualification) {
+    const prior = assertJourneyQualification(plan.journey_qualification, binding, run.snapshot().id);
+    if (Object.hasOwn(prior, 'observations') && prior.fixture_run !== plan.run)
+      refusal('journey-observations-invalid');
+    priorObservations = (prior.observations || []).filter(row => durableBusinessAction(row) &&
+      result.completed.includes(row.id) && result.steps.some(step => step?.journey === row.id &&
+        ['observed', 'previously-observed'].includes(step.state)));
+  }
+  const observations = new Map();
+  for (const row of priorObservations) observations.set(journeyActionIdentity(row), row);
+  const currentIdentities = new Set();
+  for (const row of result.actions || []) {
+    const identity = journeyActionIdentity(row), existing = observations.get(identity);
+    if (currentIdentities.has(identity) || durableBusinessAction(row) && existing &&
+        JSON.stringify(stable(existing)) !== JSON.stringify(stable(row)))
+      refusal('journey-observations-invalid');
+    currentIdentities.add(identity);
+    observations.set(identity, row);
+  }
   const observed = {
     schema: 'doctorcre-staging-journey-observations.v1',
     source_pair: { source_commit: binding.app, carr_source_commit: binding.carr },
@@ -141,6 +188,8 @@ export async function retainJourneyQualification({ run, binding, release, result
       observed_steps: result.steps.filter(row => row?.state === 'observed').length },
     tour_readonly_observed: Boolean(result.tour?.ui?.sha256 && result.tour?.backend_readback?.sha256),
     readonly: Object.fromEntries(result.readonly.journeys.map(row => [row.journey, row.state])),
+    fixture_run: plan.run,
+    observations: [...observations.values()], companions: result.companions || [],
     full_v1_qualified: false,
   };
   assertJourneyQualification(observed, binding, run.snapshot().id);
@@ -180,21 +229,17 @@ async function privateBytes(path, maximum = 16 * 1024 * 1024) {
 // expected digest is supplied by the workflow/host, never by the offered file.
 // Presence of a dispatcher or an authentication variable is not qualification.
 export function assertQualifiedDesk(entry, descriptor, receipt) {
-  if (!entry || entry.kind !== descriptor.kind || entry.kind === 'claude-session' ||
+  if (!entry || entry.kind !== 'codex-live' || descriptor.kind !== 'codex-live' ||
+      entry.network_access !== true || receipt.kind !== 'codex-live' || receipt.model !== descriptor.model ||
       !isAbsolute(descriptor.cwd || '') || entry.cwd !== descriptor.cwd ||
       !['minimal', 'low', 'medium', 'high', 'xhigh', 'max'].includes(descriptor.effort) ||
       entry.effort !== descriptor.effort || receipt.effort !== descriptor.effort)
     refusal('model-room-desk-unqualified');
-  if (['codex-session', 'codex-live'].includes(entry.kind)) {
-    // Codex registries retain a family, not the catalog-resolved executor.
-    // The independently qualified receipt binds that resolved model as well.
-    if (!['sol', 'luna'].includes(descriptor.family) || entry.family !== descriptor.family ||
-        receipt.family !== descriptor.family ||
-        !new RegExp(`^gpt-[0-9]+(?:\\.[0-9]+)*-${descriptor.family}$`).test(descriptor.model))
-      refusal('model-room-desk-unqualified');
-  } else if (entry.model !== descriptor.model || descriptor.family !== undefined || receipt.family !== undefined) {
+  // The registry pins the Codex family. The qualification receipt pins its resolved model.
+  if (!['sol', 'luna'].includes(descriptor.family) || entry.family !== descriptor.family ||
+      receipt.family !== descriptor.family ||
+      !new RegExp(`^gpt-[0-9]+(?:\\.[0-9]+)*-${descriptor.family}$`).test(descriptor.model))
     refusal('model-room-desk-unqualified');
-  }
 }
 
 export async function qualifiedModelRoom({ descriptorPath, expectedDigest, binding, now = Date.now() }) {
@@ -497,9 +542,24 @@ async function progress(output, binding, runId) {
   let setup;
   try { setup = JSON.parse(await readFile(join(output, 'staging-records.json'), 'utf8')); }
   catch (error) { if (error.code !== 'ENOENT') throw error; }
+  let journeyEvidence, fixtureWriteScopeComplete = false;
+  try {
+    const plan = JSON.parse(await privateBytes(join(output, 'staging-records-plan.json')));
+    if (plan.journey_qualification) {
+      assertJourneyQualification(plan.journey_qualification, binding, runId);
+      if (Object.hasOwn(plan.journey_qualification, 'fixture_run') &&
+          plan.journey_qualification.fixture_run !== plan.run) refusal('journey-observations-invalid');
+      journeyEvidence = plan.journey_qualification;
+    }
+    const { assertStagingWriteCoverage } = await import('./records.mjs');
+    await assertStagingWriteCoverage(output);
+    fixtureWriteScopeComplete = true;
+  } catch (error) {
+    if (error.code !== 'ENOENT' && error.fixturePolicy !== true) throw error;
+  }
   const retainedEvidence = await assessCurrentEvidence(output, checkpoint, runId);
-  const completion = completionContract({ verdict, release: checkpoint.release, fixtureWriteScopeComplete: true,
-    setup, targets, routedScreens, retainedEvidence, runId });
+  const completion = completionContract({ verdict, release: checkpoint.release, fixtureWriteScopeComplete,
+    setup, targets, routedScreens, retainedEvidence, journeyEvidence, runId });
   if (['FAILED', 'NEEDS_RECONCILIATION'].includes(completion.status)) refusal('measured-failure');
   return { phase: completion.status === 'ACCEPTED_SWEEP' ? 'complete' : 'sweep', verdict, completion };
 }
@@ -799,12 +859,15 @@ export async function boundedInvocation(options, dependencies = {}) {
     await checkout(binding.checkout);
     await qualify();
     assertBudget(budget.snapshot(), { ...budgetBinding, now: now() });
+    const acceptedV1 = current.phase === 'complete' && businessValidated &&
+      tourStatus === 'READ_ONLY_QUALIFIED' && current.completion?.acceptedV1 === true;
     return { digest: sealed.sha256, generation: String(slot), predecessor: predecessor?.sha256 || '', plan_hash: sealed.planHash,
       size: String((await lstat(sealed.path)).size),
-      job_status: paused ? 'PAUSED_LOCAL_INVOICE_FIXTURE' : current.phase === 'complete'
+      job_status: paused ? 'PAUSED_LOCAL_INVOICE_FIXTURE' : acceptedV1 ? 'V1_ACCEPTED' : current.phase === 'complete'
         ? tourStatus === 'READ_ONLY_QUALIFIED' ? 'SWEEP_ACCEPTED' : 'PARTIAL' : 'CONTINUE',
-      accepted_v1: 'false', tour_status: tourStatus,
-      proof_status: paused || tourStatus !== 'READ_ONLY_QUALIFIED' ? 'PARTIAL' : current.completion?.status || 'PARTIAL' };
+      accepted_v1: String(acceptedV1), tour_status: tourStatus,
+      proof_status: acceptedV1 ? 'ACCEPTED_V1' : paused || tourStatus !== 'READ_ONLY_QUALIFIED'
+        ? 'PARTIAL' : current.completion?.status || 'PARTIAL' };
   } finally {
     budget?.dispose();
     await lease.close();
@@ -830,7 +893,8 @@ export async function runBusinessPhase({ binding, run, environment = process.env
     runId: run.snapshot ? run.snapshot().id : undefined, environment });
   if (admission.status !== 'READY') refusal('invoice-local-prerequisite-required');
   let state;
-  const setup = await prepare(run.root, { reuseOnly: true, run, signal: run.signal,
+  const setup = await prepare(run.root, { reuseOnly: true, vendorFixture: true, tourDraftFixture: true,
+    awaitingInvoiceFixture: true, run, signal: run.signal,
     session: async (origin, options) => {
       const authenticated = await authenticate(origin, options);
       assertSourcePair(authenticated.release, binding);
@@ -840,12 +904,24 @@ export async function runBusinessPhase({ binding, run, environment = process.env
   assertSourcePair(setup.release, binding);
   const plan = JSON.parse(await privateBytes(join(run.root, 'staging-records-plan.json')));
   const deal = plan.records?.deal?.id, invoiceDeal = plan.records?.invoice?.deal_id;
+  const awaiting = plan.records?.awaiting_invoice;
+  const awaitingReceipts = [plan.receipts?.awaiting_invoice_deal, plan.receipts?.awaiting_invoice_lead,
+    plan.receipts?.awaiting_invoice_close];
   if (!state || setup.complete !== true || !Array.isArray(setup.needs_restore) ||
       !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(deal || '') ||
       !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(invoiceDeal || '') ||
       invoiceDeal === deal || setup.records?.invoice?.deal_id !== invoiceDeal ||
       setup.records?.deal?.id !== deal || plan.state !== 'complete' || plan.inflight ||
       plan.release?.source_commit !== binding.app || plan.release?.carr_source_commit !== binding.carr)
+    refusal('business-fixture-requires-reconciliation');
+  if (!uuid(awaiting?.deal_id) || typeof awaiting.name !== 'string' || !awaiting.name ||
+      awaiting.deal_id === deal || awaiting.deal_id === invoiceDeal ||
+      !['awaiting_invoice_deal', 'awaiting_invoice_lead', 'awaiting_invoice_close'].every(key => uuid(plan.keys?.[key])) ||
+      awaitingReceipts[0]?.ok !== true || awaitingReceipts[0]?.deal_id !== awaiting.deal_id ||
+      awaitingReceipts[0]?.name !== awaiting.name || awaitingReceipts[0]?.client_ref !== plan.records?.client?.ref ||
+      awaitingReceipts[1]?.ok !== true || awaitingReceipts[1]?.new_lead !== 'joe' ||
+      awaitingReceipts[2]?.ok !== true || awaitingReceipts[2]?.deal_id !== awaiting.deal_id ||
+      awaitingReceipts[2]?.field !== 'phase' || !uuid(awaitingReceipts[2]?.event_id))
     refusal('business-fixture-requires-reconciliation');
   await coverage(run.root);
   const release = setup.release;
@@ -896,11 +972,51 @@ export async function runBusinessPhase({ binding, run, environment = process.env
     await fixtureGuard.assertCoverage();
     await coverage(run.root);
     if (result?.full_v1_qualified !== false) refusal('business-result-unqualified');
+    let automaticPhase = { state: 'PENDING_LOCAL_AGENT_SEAM', doc_authorship_qualified: false,
+      full_v1_qualified: false };
+    const localAgentCarrCheckout = supplied.localAgentCarrCheckout ?? environment.E2E_LOCAL_AGENT_CARR_CHECKOUT;
+    if (localAgentCarrCheckout && environment.GITHUB_ACTIONS !== 'true' && !environment.GITHUB_OUTPUT) {
+      if (!result.completed?.includes('W4') || !result.completed?.includes('W9') ||
+          !result.steps?.some(row => row.journey === 'W4' && row.step === 'move' &&
+            ['observed', 'previously-observed'].includes(row.state)) ||
+          !result.steps?.some(row => row.journey === 'W4' && row.step === 'undo' &&
+            ['observed', 'previously-observed'].includes(row.state)) ||
+          !result.steps?.some(row => row.journey === 'W9' &&
+            ['observed', 'previously-observed'].includes(row.state)))
+        refusal('automatic-manual-predecessor-unproved');
+      // A journal is a one-use intent, including when its network outcome is
+      // unknown. Never invoke the producer again with a different key.
+      const journalPath = join(run.root, 'private', 'w4-local-agent-phase.json');
+      if (await absent(journalPath)) {
+        const freshPlan = JSON.parse(await privateBytes(join(run.root, 'staging-records-plan.json')));
+        if (freshPlan.state !== 'complete' || freshPlan.inflight || freshPlan.run !== plan.run ||
+            freshPlan.release?.source_commit !== binding.app ||
+            freshPlan.release?.carr_source_commit !== binding.carr ||
+            freshPlan.records?.deal?.id !== deal)
+          refusal('business-fixture-requires-reconciliation');
+        const producer = supplied.localAgentProducer ||
+          (await import('./local-agent-phase.mjs')).produceLocalAgentPhase;
+        const produced = await producer({ plan: freshPlan, release, run, carrCheckout: localAgentCarrCheckout });
+        if (produced?.state === 'AUTOMATIC_SEAM_READY' && produced.doc_authorship_qualified === false &&
+            produced.full_v1_qualified === false) {
+          const freshPage = await factory.freshPage({ target, screen, release, fixtureGuard,
+            path: `/deals?deal=${encodeURIComponent(deal)}` });
+          const observer = supplied.automaticPhaseJourney ||
+            (await import('./business-journeys.mjs')).runAutomaticPhaseUndo;
+          automaticPhase = await observer({ page: freshPage, fixtureGuard, release, deal, run });
+        } else automaticPhase = { state: 'PENDING_RECONCILIATION', doc_authorship_qualified: false,
+          full_v1_qualified: false };
+      } else automaticPhase = { state: 'PENDING_RECONCILIATION', doc_authorship_qualified: false,
+        full_v1_qualified: false };
+      await fixtureGuard.assertCoverage();
+      await coverage(run.root);
+    }
     // A distinct guarded context starts W15 at Home. The canonical runner
     // revalidates retained observations and quarantines paid fixtures; it alone
     // admits durable intent and independent normal tracker readback.
     const invoicePage = await factory.freshPage({ target, screen: home, release, fixtureGuard, path: '/' });
-    const invoice = await journeys({ page: invoicePage, fixtureGuard, release, deal: invoiceDeal, run, journeys: ['W15'] });
+    const invoice = await journeys({ page: invoicePage, fixtureGuard, release, deal: invoiceDeal,
+      awaitingInvoicePlan: plan, run, journeys: ['W15'] });
     await fixtureGuard.assertCoverage();
     await coverage(run.root);
     if (invoice?.full_v1_qualified !== false) refusal('business-result-unqualified');
@@ -922,7 +1038,40 @@ export async function runBusinessPhase({ binding, run, environment = process.env
     await fixtureGuard.assertCoverage();
     await coverage(run.root);
     assertReadonlyResult(readonly, release, readonlyPlan);
+    let vendor = null, tourDraft = null;
+    if (readonlyPlan.records?.vendor?.id) {
+      const vendors = (await screens()).find(row => row.path === '/vendors' && row.surface === 'app');
+      if (!vendors) refusal('business-fixture-route-missing');
+      const vendorPage = await factory.freshPage({ target, screen: vendors, release, fixtureGuard, path: '/vendors' });
+      vendor = await (supplied.vendorJourney || (await import('./vendor-journey.mjs')).runVendorJourney)({
+        page: vendorPage, plan: readonlyPlan, release, run });
+      await fixtureGuard.assertCoverage();
+      await coverage(run.root);
+    }
+    if (tour?.ui?.sha256 && tour?.backend_readback?.sha256) {
+      const admission = await (supplied.tourPrerequisite || tourPrerequisite)({ output: run.root, binding,
+        runId: run.snapshot().id, environment });
+      if (admission.status !== 'READY' || !admission.fixtureBinding) refusal('tour-admission-unproved');
+      const tours = (await screens()).find(row => row.path === '/tours' && row.surface === 'app');
+      if (!tours) refusal('business-fixture-route-missing');
+      const tourPage = await factory.freshPage({ target, screen: tours, release, fixtureGuard, path: '/tours' });
+      try {
+        tourDraft = await (supplied.tourDraftJourney || (await import('./tour-draft-journey.mjs')).runTourDraftJourney)({
+          page: tourPage, plan: readonlyPlan, sourcePair: { app: binding.app, carr: binding.carr },
+          fixtureBinding: admission.fixtureBinding, run });
+      } catch (error) {
+        if (error.code !== 'tour-draft-client-area-unavailable') throw error;
+        tourDraft = { status: 'UNQUALIFIED_CLIENT_AREA_UNAVAILABLE', actions: [] };
+      }
+      await fixtureGuard.assertCoverage();
+      await coverage(run.root);
+    }
+    const actionSources = [result, automaticPhase, invoice, readonly, vendor, tourDraft].filter(Boolean);
+    if (actionSources.some(row => row.actions !== undefined && !Array.isArray(row.actions)))
+      refusal('journey-observations-invalid');
     const measured = { schema: 'staging-business-journey-result.v1', release: result.release, tour, readonly,
+      automaticPhase,
+      vendor, tourDraft, actions: actionSources.flatMap(row => row.actions || []), companions: [],
       completed: [...result.completed, ...invoice.completed], steps: [...result.steps, ...invoice.steps],
       full_v1_qualified: false, unqualified_journeys: businessContract.unqualified_journeys };
     await retainJourneyQualification({ run, binding, release, result: measured });

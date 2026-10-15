@@ -41,7 +41,9 @@ export function automaticMove(deal) {
   const date = String(event.evidence_date).slice(0,10).split('-');
   if (date.length !== 3 || !Number.isFinite(Date.parse(event.evidence_date))) return null;
   const reason = concise(event.reason || 'phase changed', 50);
-  const prefix = /invoice/i.test(reason) && (event.phase === 'closed' || deal.phase === 'Closed') ? 'Closed by Doc' : 'Moved by Doc';
+  // The board projection does not bind automatic=true to a Doc actor.
+  const prefix = /invoice/i.test(reason) && (event.phase === 'closed' || deal.phase === 'Closed')
+    ? 'Closed automatically' : 'Moved automatically';
   return { eventId: event.event_id, text: `${prefix}: ${reason} ${Number(date[1])}/${Number(date[2])}` };
 }
 export function noteEntries(detail) {

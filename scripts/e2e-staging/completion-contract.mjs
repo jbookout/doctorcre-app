@@ -1,4 +1,5 @@
 import contract from '../../contracts/e2e-staging.v1.json' with { type: 'json' };
+import { qualifyV1Journeys } from './v1-qualification.mjs';
 
 export const COMPLETION_STATUS = Object.freeze({
   PARTIAL: 'PARTIAL',
@@ -104,7 +105,7 @@ function fixturePrerequisiteSummary(setup, release) {
 // this source contract, so full V1 acceptance remains PARTIAL until one is
 // supplied by an authorized source owner.
 export function completionContract({ verdict, release, fixtureWriteScopeComplete, setup, targets, routedScreens,
-  retainedEvidence, businessProof, runId }) {
+  retainedEvidence, businessProof, journeyEvidence, runId }) {
   const plannedExplorations = Array.isArray(targets) && Array.isArray(routedScreens)
     ? targets.flatMap(target => routedScreens.filter(screen => screen.surface === target.surface)
       .flatMap(() => target.name.endsWith('phone') ? ['phone-reviewer'] : ['bug-hunter', 'first-time-ux'])).length
@@ -136,6 +137,29 @@ export function completionContract({ verdict, release, fixtureWriteScopeComplete
     businessProof.release?.carr_source_commit === release?.carr_source_commit &&
     Array.isArray(businessProof.completed) && Array.isArray(businessProof.unqualified_journeys) &&
     businessProof.full_v1_qualified === false;
+  let journeyQualification = null;
+  if (journeyEvidence?.schema === 'doctorcre-staging-journey-observations.v1' &&
+      journeyEvidence.source_pair?.source_commit === release?.source_commit &&
+      journeyEvidence.source_pair?.carr_source_commit === release?.carr_source_commit &&
+      journeyEvidence.run_id === runId && Array.isArray(journeyEvidence.observations) &&
+      Array.isArray(journeyEvidence.companions)) {
+    try {
+      journeyQualification = qualifyV1Journeys({
+        sourcePair: journeyEvidence.source_pair, runId, fixtureRun: journeyEvidence.fixture_run,
+        observations: journeyEvidence.observations, companion: journeyEvidence.companions,
+        writeCoverage: fixtureWriteScopeComplete, retainedEvidenceVerified: evidenceVerified,
+        sweepAccepted: verdict.completed && verdict.pendingScreens.length === 0 &&
+          verdict.failedScreens.length === 0 && verdict.pendingStateObligations.length === 0 &&
+          verdict.failedStateObligations.length === 0 && verdict.newDeadControls.length === 0 &&
+          verdict.skippedControls === 0 && verdict.skippedStateObligations === 0 &&
+          verdict.pendingExplorations.length === 0 && verdict.failedExplorations.length === 0 &&
+          verdict.skippedExplorations.length === 0 &&
+          verdict.completedExplorations === verdict.expectedExplorations &&
+          verdict.expectedExplorations === plannedExplorations && verdict.explorationsSourceBound &&
+          fixtures.complete,
+      });
+    } catch { journeyQualification = null; }
+  }
   let status, reason;
   if (!sourceBound(release) || fixtures.missing.includes('fixture-source-pair')) {
     status = COMPLETION_STATUS.FAILED;
@@ -157,14 +181,17 @@ export function completionContract({ verdict, release, fixtureWriteScopeComplete
     reason = 'bounded-sweep-complete; business-journey-proof-contract-unavailable';
   }
 
+  const acceptedV1 = status === COMPLETION_STATUS.ACCEPTED_SWEEP &&
+    journeyQualification?.full_v1_qualified === true;
+  if (acceptedV1) reason = 'source-bound-v1-journeys-and-sweep-complete';
   return Object.freeze({
     schema: 'doctorcre-staging-completion.v2',
     status,
-    proofStatus: status,
-    v1Status: status === COMPLETION_STATUS.ACCEPTED_SWEEP ? 'PARTIAL' : status,
-    jobStatus: status === COMPLETION_STATUS.ACCEPTED_SWEEP ? 'SWEEP_ACCEPTED' : status === COMPLETION_STATUS.PARTIAL ? 'CONTINUE' : 'BLOCKED',
+    proofStatus: acceptedV1 ? 'ACCEPTED_V1' : status,
+    v1Status: acceptedV1 ? 'ACCEPTED_V1' : status === COMPLETION_STATUS.ACCEPTED_SWEEP ? 'PARTIAL' : status,
+    jobStatus: acceptedV1 ? 'V1_ACCEPTED' : status === COMPLETION_STATUS.ACCEPTED_SWEEP ? 'SWEEP_ACCEPTED' : status === COMPLETION_STATUS.PARTIAL ? 'CONTINUE' : 'BLOCKED',
     accepted: status === COMPLETION_STATUS.ACCEPTED_SWEEP,
-    acceptedV1: false,
+    acceptedV1,
     resumable: status === COMPLETION_STATUS.PARTIAL,
     expectedExplorations: plannedExplorations,
     completedExplorations: verdict.completedExplorations,
@@ -175,6 +202,10 @@ export function completionContract({ verdict, release, fixtureWriteScopeComplete
     missingFixturePrerequisites: fixtures.missing,
     retainedEvidenceVerified: evidenceVerified,
     businessProofSourceBound: businessSourceBound,
+    journeyActionsSourceBound: journeyQualification !== null,
+    pendingJourneyActions: journeyQualification?.pending || [],
+    invalidJourneyActions: journeyQualification?.invalid || [],
+    pendingCompanions: journeyQualification?.companion_pending || [],
     unqualifiedJourneys: businessSourceBound ? [...businessProof.unqualified_journeys] : [],
     reason,
   });

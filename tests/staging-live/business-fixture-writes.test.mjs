@@ -52,6 +52,91 @@ function dealReadback(dealId, phase, events, criticalDates = []) {
   return envelope({ deal_id: dealId, phase, events, critical_dates: criticalDates });
 }
 
+test('two exact W4 drag presence leases settle with producer receipts and a third refuses', async t => {
+  const f = await fixture(t), deal = f.setup.records.deal.id;
+  await f.guard.admitBusinessJourneyStep({ phase: 'admit', journey: 'W4', step: 'move', deal, release });
+  let dispatched = 0;
+  for (const index of [0, 1]) {
+    const spec = { journey: 'W4', step: 'move', deal, field: 'phase', release };
+    const admitted = await f.guard.admitBusinessJourneyPresence({ ...spec, phase: 'admit' });
+    assert.match(admitted.admission_id, /^[0-9a-f-]{36}$/);
+    const args = { deal, field: 'phase', idempotency_key: key(70 + index) };
+    await f.guard.handle(request('presence-lease', args), async () => {
+      dispatched++;
+      return envelope({ ok: true, deal_id: deal, field: 'phase',
+        expires_at: new Date(Date.now() + 3000).toISOString() });
+    });
+    const settled = await f.guard.admitBusinessJourneyPresence({ ...spec, phase: 'settle',
+      admission_id: admitted.admission_id });
+    assert.equal(settled.state, 'settled');
+  }
+  assert.equal(dispatched, 2);
+  assert.deepEqual((await f.read()).browser_presence_leases.map(row => row.state), ['settled', 'settled']);
+  await assert.rejects(f.guard.admitBusinessJourneyPresence({ phase: 'admit', journey: 'W4',
+    step: 'move', deal, field: 'phase', release }), /presence|journey/);
+});
+
+test('W4 presence refuses foreign record, wrong field, missing move, and false producer receipt before dispatch', async t => {
+  for (const variant of ['missing-move', 'foreign-record', 'wrong-field', 'wrong-receipt']) {
+    const f = await fixture(t), deal = f.setup.records.deal.id, foreign = key(99);
+    if (variant !== 'missing-move') await f.guard.admitBusinessJourneyStep({
+      phase: 'admit', journey: 'W4', step: 'move', deal, release });
+    const spec = { phase: 'admit', journey: 'W4', step: 'move', deal: variant === 'foreign-record' ? foreign : deal,
+      field: variant === 'wrong-field' ? 'owner' : 'phase', release };
+    if (variant !== 'wrong-receipt') {
+      await assert.rejects(f.guard.admitBusinessJourneyPresence(spec), /presence|journey|fixture/);
+      assert.equal((await f.read()).browser_presence_leases?.length || 0, 0);
+      continue;
+    }
+    const admitted = await f.guard.admitBusinessJourneyPresence(spec);
+    let dispatched = 0;
+    await assert.rejects(f.guard.handle(request('presence-lease', { deal, field: 'phase',
+      idempotency_key: key(75) }), async () => {
+      dispatched++;
+      return envelope({ ok: true, deal_id: foreign, field: 'phase',
+        expires_at: new Date(Date.now() + 3000).toISOString() });
+    }), /unresolved/);
+    assert.equal(dispatched, 1);
+    assert.equal((await f.read()).browser_presence_leases[0].state, 'unresolved');
+    await assert.rejects(f.guard.admitBusinessJourneyPresence({ ...spec, phase: 'settle',
+      admission_id: admitted.admission_id }), /presence|journey/);
+  }
+});
+
+test('W4 presence rejects request substitution and idempotency replay before dispatch', async t => {
+  const f = await fixture(t), deal = f.setup.records.deal.id, foreign = key(99);
+  await f.guard.admitBusinessJourneyStep({ phase: 'admit', journey: 'W4', step: 'move', deal, release });
+  const spec = { journey: 'W4', step: 'move', deal, field: 'phase', release };
+  const first = await f.guard.admitBusinessJourneyPresence({ ...spec, phase: 'admit' });
+  let dispatched = 0;
+  for (const args of [
+    { deal: foreign, field: 'phase', idempotency_key: key(80) },
+    { deal, field: 'owner', idempotency_key: key(80) },
+    { deal, field: 'phase', idempotency_key: key(80), extra: true },
+  ]) {
+    await assert.rejects(f.guard.handle(request('presence-lease', args), async () => {
+      dispatched++;
+      return envelope({ ok: true, deal_id: deal, field: 'phase',
+        expires_at: new Date(Date.now() + 3000).toISOString() });
+    }), /presence-journey-request-unproved/);
+  }
+  assert.equal(dispatched, 0);
+  const accepted = { deal, field: 'phase', idempotency_key: key(80) };
+  await f.guard.handle(request('presence-lease', accepted), async () => {
+    dispatched++;
+    return envelope({ ok: true, deal_id: deal, field: 'phase',
+      expires_at: new Date(Date.now() + 3000).toISOString() });
+  });
+  await f.guard.admitBusinessJourneyPresence({ ...spec, phase: 'settle', admission_id: first.admission_id });
+  await f.guard.admitBusinessJourneyPresence({ ...spec, phase: 'admit' });
+  await assert.rejects(f.guard.handle(request('presence-lease', accepted), async () => {
+    dispatched++;
+    return envelope({ ok: true, deal_id: deal, field: 'phase',
+      expires_at: new Date(Date.now() + 3000).toISOString() });
+  }), /presence-journey-request-unproved/);
+  assert.equal(dispatched, 1);
+});
+
 test('phase change and undo require pinned producer receipts plus independent final deal-room state', async t => {
   const f = await fixture(t), dealId = f.setup.records.deal.id, patch = phasePatch(f);
   let dispatches = 0;

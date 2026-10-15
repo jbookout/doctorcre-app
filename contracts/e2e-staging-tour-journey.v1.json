@@ -94,7 +94,7 @@
       "no external, map, telephone, or geo navigation link"
     ],
     "interaction_boundary": "Click only the existing Tour library button. Do not follow Edit itinerary or any route editor, acceptance, map, or navigation control.",
-    "network_boundary": "This qualifier performs GET reads only and refuses if a non-GET browser request occurs during its interaction."
+    "network_boundary": "This qualifier performs GET reads and tolerates only exact named App shell read-only MCP calls during its interaction; every other non-GET browser request refuses."
   },
   "fixture_binding": {
     "schema": "doctorcre-staging-tour-fixture-binding.v1",

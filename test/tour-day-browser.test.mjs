@@ -12,7 +12,8 @@ async function open(t, { width = 390, reducedMotion = "reduce", denied = false, 
   let actor = "joe", refuse = false;
   const server = createServer(async (request, response) => {
     const url = new URL(request.url, "http://localhost"); requests.push({ path: url.pathname, method: request.method });
-    if (url.pathname === "/auth/signout") { refuse = true; response.end('{}'); return; }
+    if (url.pathname === "/auth/signout") { refuse = true; response.writeHead(302, { location: '/' }); response.end(); return; }
+    if (url.pathname === "/auth/session") { response.setHeader('content-type', 'application/json'); response.writeHead(refuse ? 401 : 200); response.end('{}'); return; }
     if (url.pathname === "/auth/login") { response.end('<title>Synthetic login</title>'); return; }
     if (url.pathname.startsWith("/api/")) {
       response.setHeader("content-type", "application/json");
@@ -165,7 +166,7 @@ test('R2: shared shell sign-out revokes the offline account binding', async t =>
   await page.evaluate(async () => { await navigator.serviceWorker.register('/tours/day-sw.js', { scope: '/tours/' }); await navigator.serviceWorker.ready; });
   await page.waitForFunction(() => navigator.serviceWorker.controller);
   await page.locator('#selfAvatar').click(); await page.locator('#accountSignOut').click();
-  await page.waitForURL('**/auth/login');
+  await page.getByRole('heading', { name: 'Signed out' }).waitFor();
   await context.setOffline(true); await page.goto(`${origin}/tours/day.html?tour=${tourId}`);
   await page.waitForFunction(() => document.querySelector('#day-status')?.textContent === 'Tour unavailable');
   assert.equal(await page.locator('.note-card').count(), 0); assert.equal(await page.locator('.day-stop').count(), 0); assert.equal(await page.locator('#day-record').isDisabled(), true);

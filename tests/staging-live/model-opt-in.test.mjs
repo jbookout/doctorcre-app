@@ -12,8 +12,10 @@ import { RUN_LIMITS, openRun } from '../../scripts/e2e-staging/run-limits.mjs';
 const runId = 'synthetic-opt-in-run';
 const environment = { E2E_RUN_ID: runId, E2E_ALLOW_MODEL_CALLS: runId };
 const options = { prompt: [{ role: 'user', content: [{ type: 'text', text: 'synthetic' }] }] };
-const completed = request => ({ msg_id: 'synthetic', desk: request.desk, task: request.task, kind: 'synthetic',
-  dispatched_at: '2026-10-08T12:00:00Z', status: 'completed', result: JSON.stringify({ content: [{ type: 'text', text: '{}' }] }) });
+const completed = request => ({ msg_id: 'synthetic', desk: request.desk, task: request.task, kind: 'codex-live',
+  dispatched_at: '2026-10-08T12:00:00Z', family: 'luna', model: 'gpt-6-luna', effort: 'medium',
+  thread_id: 'synthetic-thread', resumed: false, ephemeral_thread: true, thread_resumable: false,
+  status: 'completed', result: JSON.stringify({ content: [{ type: 'text', text: '{}' }] }) });
 
 async function temporaryRun(t, limits = RUN_LIMITS) {
   const root = await mkdtemp(join(tmpdir(), 'doctorcre-model-opt-in-'));

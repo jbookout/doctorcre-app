@@ -22,9 +22,8 @@ jobs:
   journeys:
     if: ${{ github.event_name != 'pull_request' || github.event.action != 'closed' }}
     runs-on: ubuntu-latest
-    # The staging selftest takes ~7 min and the five-target journey proof ~5 min
-    # on top; #216 sized 15 minutes for the selftest and regressions alone.
-    timeout-minutes: 20
+    # The latest complete journey job took 19m37s before the expanded V1 proofs.
+    timeout-minutes: 30
     env:
       E2E_TELEMETRY_DISABLED: "1"
     steps:

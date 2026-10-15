@@ -12,19 +12,20 @@ export const EXPLORATION_MODEL_CALL_POLICY = Object.freeze({
   get hardGlobalCeiling() { return effectiveRunLimits().modelCalls; },
 });
 export const MODEL_ROOM_DISPATCH_CONTRACT = Object.freeze({
-  revision: 'carr-model-room-dispatch@5ddaa8f39507de3f3343c5cc5177d3d07168e9eb',
+  revision: 'carr-model-room-dispatch@87f50e48c325c217fdff9d32742a7b9fa8ada77d',
   repository: 'jbookout/carr-system',
   relativePath: 'tools/room-bridge/dispatch.py',
-  sha256: '25b51af5a270d22711e6d22feba40680472f57c2874a7fd6736c19ca5851c182',
+  sha256: '85b5b5518edf301ab16e2485a71c1e034758e14c3667ee65bc10358579a04538',
   argv: Object.freeze(['send', '{desk}', '-', '--fresh']),
   family: 'luna',
   model: 'gpt-6-luna',
   effort: 'medium',
 });
 const dispatcherEnvelopeKeys = new Set([
-  // The completed ABI plus the only three fields current Codex failure rows add.
+  // Current Codex success fields plus fields carried by failure rows.
   'msg_id', 'desk', 'kind', 'task', 'dispatched_at', 'family', 'model', 'effort',
   'thread_id', 'resumed', 'status', 'result', 'detail', 'retry_after', 'termination_confirmed',
+  'ephemeral_thread', 'thread_resumable',
 ]);
 
 export function createExplorationCallPlan(goalCount) {
@@ -94,7 +95,7 @@ function requireDispatcherEnvelope(row, expected) {
   const unknown = Object.keys(row).filter(key => !dispatcherEnvelopeKeys.has(key));
   const currentSuccessKeys = [
     'msg_id', 'desk', 'kind', 'task', 'dispatched_at', 'family', 'model', 'effort',
-    'thread_id', 'resumed', 'status', 'result',
+    'thread_id', 'resumed', 'ephemeral_thread', 'thread_resumable', 'status', 'result',
   ];
   const optionalTypes = [
     ['family', value => typeof value === 'string' && value.length > 0],
@@ -102,6 +103,8 @@ function requireDispatcherEnvelope(row, expected) {
     ['effort', value => typeof value === 'string' && value.length > 0],
     ['thread_id', value => typeof value === 'string'],
     ['resumed', value => typeof value === 'boolean'],
+    ['ephemeral_thread', value => typeof value === 'boolean'],
+    ['thread_resumable', value => typeof value === 'boolean'],
     ['result', value => typeof value === 'string'],
     ['detail', value => typeof value === 'string'],
     ['retry_after', value => value === null || typeof value === 'string'],
@@ -109,6 +112,7 @@ function requireDispatcherEnvelope(row, expected) {
   ];
   const modelIdentity = ['family', 'model', 'effort'];
   const hasModelIdentity = modelIdentity.some(key => key in row);
+  const hasEphemeralThreadStatus = 'ephemeral_thread' in row || 'thread_resumable' in row;
   const valid = unknown.length === 0
     && typeof row.msg_id === 'string'
     && row.desk === expected.desk
@@ -117,10 +121,13 @@ function requireDispatcherEnvelope(row, expected) {
     && typeof row.dispatched_at === 'string'
     && typeof row.status === 'string'
     && (row.status !== 'completed' || typeof row.result === 'string')
-    && (expected.contract !== MODEL_ROOM_DISPATCH_CONTRACT || row.status !== 'completed'
-      || currentSuccessKeys.every(key => key in row))
+    && (row.status !== 'completed' || (currentSuccessKeys.every(key => key in row)
+      && row.kind === 'codex-live' && row.resumed === false
+      && row.ephemeral_thread === true && row.thread_resumable === false
+      && typeof row.thread_id === 'string' && row.thread_id.length > 0))
     && (!hasModelIdentity || modelIdentity.every(key => key in row))
-    && (expected.contract !== MODEL_ROOM_DISPATCH_CONTRACT || modelIdentity.every(key => key in row))
+    && (!hasEphemeralThreadStatus || (row.kind === 'codex-live' && row.resumed === false
+      && row.ephemeral_thread === true && row.thread_resumable === false))
     && (!('family' in row) || row.family === MODEL_ROOM_DISPATCH_CONTRACT.family)
     && (!('model' in row) || row.model === MODEL_ROOM_DISPATCH_CONTRACT.model)
     && (!('effort' in row) || row.effort === MODEL_ROOM_DISPATCH_CONTRACT.effort)
@@ -364,11 +371,7 @@ export function createModelRoomModel({
         const row = await dispatch({ desk, task: prepared.task, fresh: true, signal, run: active, environment });
         active.check();
         signal.throwIfAborted();
-        return parseDeskResult(row, {
-          desk,
-          task: prepared.task,
-          contract: dispatch === dispatchThroughModelRoom ? MODEL_ROOM_DISPATCH_CONTRACT : null,
-        });
+        return parseDeskResult(row, { desk, task: prepared.task });
       } finally { await prepared.cleanup(); }
     },
     async doStream() { throw new Error('DoctorCRE E2E Model Room adapter does not stream'); },

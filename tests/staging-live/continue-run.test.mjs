@@ -132,14 +132,15 @@ test('unqualified Model Room is refused before invoking a dispatcher or using a 
     { code: 'model-room-runtime-unqualified' });
 });
 
-test('qualified Codex desks bind registry family and effort to the measured resolved model, not a nonexistent registry model', () => {
-  const entry = { kind: 'codex-session', family: 'luna', effort: 'medium', cwd: '/synthetic/private-app' };
+test('qualified live Codex desk binds network access, cwd and resolved model to a fresh read-only runtime', () => {
+  const entry = { kind: 'codex-live', network_access: true, family: 'luna', effort: 'medium', cwd: '/synthetic/private-app' };
   const descriptor = { ...entry, model: 'gpt-6-luna' };
-  const receipt = { family: 'luna', effort: 'medium' };
+  const receipt = { kind: 'codex-live', model: 'gpt-6-luna', family: 'luna', effort: 'medium' };
   assert.doesNotThrow(() => assertQualifiedDesk(entry, descriptor, receipt));
-  for (const delta of [{ family: 'sol' }, { effort: 'high' }, { cwd: '/other-source' }, { kind: 'claude-session' }])
+  for (const delta of [{ family: 'sol' }, { effort: 'high' }, { cwd: '/other-source' },
+    { kind: 'codex-session' }, { network_access: undefined }, { network_access: false }, { network_access: 'true' }])
     assert.throws(() => assertQualifiedDesk({ ...entry, ...delta }, descriptor, receipt), { code: 'model-room-desk-unqualified' });
-  for (const delta of [{ family: 'sol' }, { effort: undefined }])
+  for (const delta of [{ kind: 'codex-session' }, { model: 'gpt-6-sol' }, { family: 'sol' }, { effort: undefined }])
     assert.throws(() => assertQualifiedDesk(entry, descriptor, { ...receipt, ...delta }), { code: 'model-room-desk-unqualified' });
   assert.throws(() => assertQualifiedDesk(entry, { ...descriptor, model: 'gpt-6-sol' }, receipt),
     { code: 'model-room-desk-unqualified' });
@@ -743,9 +744,18 @@ async function businessFixture(t) {
   const root = await mkdtemp(join(tmpdir(), 'doctorcre-business-caller-'));
   t.after(() => rm(root, { recursive: true, force: true }));
   const deal = '60000000-0000-4000-8000-000000000001', events = [];
+  const awaitingDeal = '60000000-0000-4000-8000-000000000006';
   const plan = { schema: 'doctorcre-staging-records-plan.v1', state: 'complete',
     run: '60000000-0000-4000-8000-000000000003', release,
-    records: { deal: { id: deal }, invoice: { deal_id: '60000000-0000-4000-8000-000000000002' } } };
+    keys: { awaiting_invoice_deal: '60000000-0000-4000-8000-000000000007',
+      awaiting_invoice_lead: '60000000-0000-4000-8000-000000000008',
+      awaiting_invoice_close: '60000000-0000-4000-8000-000000000009' },
+    names: { awaiting_invoice: 'Synthetic awaiting fixture' },
+    records: { deal: { id: deal }, invoice: { deal_id: '60000000-0000-4000-8000-000000000002' },
+      client: { ref: 'synthetic-client-ref' }, awaiting_invoice: { deal_id: awaitingDeal, name: 'Synthetic awaiting fixture' } },
+    receipts: { awaiting_invoice_deal: { ok: true, deal_id: awaitingDeal, name: 'Synthetic awaiting fixture', client_ref: 'synthetic-client-ref' },
+      awaiting_invoice_lead: { ok: true, new_lead: 'joe' },
+      awaiting_invoice_close: { ok: true, deal_id: awaitingDeal, field: 'phase', event_id: '60000000-0000-4000-8000-000000000010' } } };
   await writeFile(join(root, 'staging-records-plan.json'), JSON.stringify(plan), { mode: 0o600 });
   const run = { root, signal: new AbortController().signal, limits: RUN_LIMITS,
     snapshot: () => ({ id: 'synthetic_' + sha }), check() {}, onStop: () => () => {},
@@ -757,7 +767,8 @@ async function businessFixture(t) {
   const page = { url: () => currentURL,
     goto: async url => {
       assert.equal(guarded, true);
-      assert.ok([`${contract.origin}/deals?deal=${deal}`, contract.origin + '/', contract.origin + '/tours'].includes(url));
+      assert.ok([`${contract.origin}/deals?deal=${deal}`, contract.origin + '/', contract.origin + '/tours',
+        contract.origin + '/vendors'].includes(url));
       currentURL = url;
       events.push('navigate');
       await routeHandler({ request: () => ({ method: () => 'GET', url: () => url }),
@@ -790,6 +801,7 @@ async function businessFixture(t) {
       assert.equal(options.page, page); assert.equal(options.fixtureGuard, fixtureGuard);
       assert.equal(options.release, release);
       assert.equal(options.deal, options.journeys[0] === 'W15' ? plan.records.invoice.deal_id : deal); assert.equal(options.run, run);
+      if (options.journeys[0] === 'W15') assert.deepEqual(options.awaitingInvoicePlan, plan);
       events.push('business');
       return { completed: options.journeys, steps: [], full_v1_qualified: false, unqualified_journeys: ['W6'] };
     },
@@ -825,6 +837,225 @@ test('business caller reuses the real private fixture plan, fresh session and ex
     'guard-coverage', 'canonical-coverage', 'context-close', 'context-close', 'context-close',
     'guard-coverage', 'browser-close']);
   assert.equal(result.readonly.journeys[0].state, 'pending');
+});
+
+test('local automatic producer receives a fresh private plan only after manual W4/W9 and a guarded fresh page', async t => {
+  const f = await businessFixture(t);
+  f.supplied.journeys = async options => {
+    f.events.push('business');
+    const result = { completed: options.journeys, steps: [], full_v1_qualified: false,
+      unqualified_journeys: ['W6'] };
+    if (options.journeys[0] === 'W4') {
+      f.plan.manual_observed = true;
+      await writeFile(join(f.run.root, 'staging-records-plan.json'), JSON.stringify(f.plan), { mode: 0o600 });
+      result.steps = [{ journey: 'W4', step: 'move', state: 'observed' },
+        { journey: 'W4', step: 'undo', state: 'observed' },
+        { journey: 'W9', step: 'date', state: 'observed' }];
+    }
+    return result;
+  };
+  let produces = 0, observes = 0;
+  const supplied = { ...f.supplied, localAgentCarrCheckout: '/synthetic/immutable-5dda',
+    localAgentProducer: async ({ plan, release: actual, run, carrCheckout }) => {
+      produces++;
+      assert.equal(plan.manual_observed, true);
+      assert.equal(actual, release); assert.equal(run, f.run);
+      assert.equal(carrCheckout, '/synthetic/immutable-5dda');
+      assert.equal(f.events.filter(row => row === 'business').length, 1);
+      return { state: 'AUTOMATIC_SEAM_READY', doc_authorship_qualified: false, full_v1_qualified: false };
+    },
+    automaticPhaseJourney: async ({ page, fixtureGuard, deal, run }) => {
+      observes++;
+      assert.equal(page.url(), contract.origin + '/deals?deal=' + f.plan.records.deal.id);
+      assert.equal(fixtureGuard, f.fixtureGuard); assert.equal(deal, f.plan.records.deal.id);
+      assert.equal(run, f.run);
+      return { state: 'GENERIC_AUTOMATIC_UNDO_OBSERVED', doc_authorship_qualified: false,
+        full_v1_qualified: false };
+    } };
+  const result = await runBusinessPhase({ binding, run: f.run, environment: {} }, supplied);
+  assert.equal(result.automaticPhase.state, 'GENERIC_AUTOMATIC_UNDO_OBSERVED');
+  assert.equal(produces, 1); assert.equal(observes, 1);
+  assert.equal(result.full_v1_qualified, false);
+  assert.deepEqual(result.actions, []);
+});
+
+test('local automatic handoff leaves absent paths pending and stops uncertain journals before authentication', async t => {
+  const f = await businessFixture(t);
+  const absentResult = await runBusinessPhase({ binding, run: f.run, environment: {} }, f.supplied);
+  assert.equal(absentResult.automaticPhase.state, 'PENDING_LOCAL_AGENT_SEAM');
+  f.supplied.journeys = async options => {
+    f.events.push('business');
+    const result = { completed: options.journeys, steps: [], full_v1_qualified: false,
+      unqualified_journeys: ['W6'] };
+    if (options.journeys[0] === 'W4') result.steps = [
+      { journey: 'W4', step: 'move', state: 'previously-observed' },
+      { journey: 'W4', step: 'undo', state: 'previously-observed' },
+      { journey: 'W9', step: 'date', state: 'previously-observed' }];
+    return result;
+  };
+  let produces = 0, observes = 0;
+  const supplied = { ...f.supplied, localAgentCarrCheckout: '/synthetic/immutable-5dda',
+    localAgentProducer: async () => { produces++; return { state: 'PENDING_RECONCILIATION' }; },
+    automaticPhaseJourney: async () => { observes++; } };
+  const pending = await runBusinessPhase({ binding, run: f.run, environment: {} }, supplied);
+  assert.equal(pending.automaticPhase.state, 'PENDING_RECONCILIATION');
+  assert.equal(produces, 1); assert.equal(observes, 0);
+  await mkdir(join(f.run.root, 'private'), { mode: 0o700 });
+  await writeFile(join(f.run.root, 'private', 'w4-local-agent-phase.json'), '{}', { mode: 0o600 });
+  const retained = JSON.parse(await readFile(join(f.run.root, 'staging-records-plan.json'), 'utf8'));
+  retained.origin = contract.origin;
+  await writeFile(join(f.run.root, 'staging-records-plan.json'), JSON.stringify(retained), { mode: 0o600 });
+  const { assertStagingWriteCoverage } = await import('../../scripts/e2e-staging/records.mjs');
+  f.events.length = 0;
+  await assert.rejects(runBusinessPhase({ binding, run: f.run, environment: {} },
+    { ...supplied, coverage: assertStagingWriteCoverage }),
+  { code: 'automatic-event-reconciliation-required' });
+  assert.equal(f.events.includes('authenticate'), false);
+  assert.equal(produces, 1); assert.equal(observes, 0);
+});
+
+test('local automatic handoff refuses unobserved manual predecessor before producer invocation', async t => {
+  const f = await businessFixture(t);
+  let produces = 0;
+  await assert.rejects(runBusinessPhase({ binding, run: f.run, environment: {} }, { ...f.supplied,
+    localAgentCarrCheckout: '/synthetic/immutable-5dda',
+    localAgentProducer: async () => { produces++; } }),
+  { code: 'automatic-manual-predecessor-unproved' });
+  assert.equal(produces, 0);
+});
+
+test('hosted business caller cannot invoke the local automatic producer', async t => {
+  const f = await businessFixture(t);
+  let produces = 0;
+  const result = await runBusinessPhase({ binding, run: f.run, environment: { GITHUB_ACTIONS: 'true' } },
+    { ...f.supplied, localAgentCarrCheckout: '/synthetic/immutable-5dda',
+      localAgentProducer: async () => { produces++; } });
+  assert.equal(result.automaticPhase.state, 'PENDING_LOCAL_AGENT_SEAM');
+  assert.equal(produces, 0);
+});
+
+test('business caller retains only source-bound vendor and Tour draft action rows from guarded pages', async t => {
+  const f = await businessFixture(t);
+  f.plan.records.vendor = { id: '60000000-0000-4000-8000-000000000004' };
+  f.plan.records.tour = { id: '60000000-0000-4000-8000-000000000005' };
+  await writeFile(join(f.run.root, 'staging-records-plan.json'), JSON.stringify(f.plan), { mode: 0o600 });
+  const { observedV1Action } = await import('../../scripts/e2e-staging/v1-qualification.mjs');
+  const action = (id, caseId, name) => observedV1Action({ id, case: caseId, action: name,
+    sourcePair: { source_commit: binding.app, carr_source_commit: binding.carr },
+    runId: f.run.snapshot().id, fixtureRun: f.plan.run, ui: { observed: name }, readback: { owned: true } });
+  const result = await runBusinessPhase({ binding, run: f.run }, { ...f.supplied,
+    tourPrerequisite: async () => ({ status: 'READY', fixtureBinding: { synthetic: true } }),
+    qualifyTour: async () => ({ full_v1_qualified: false,
+      ui: { sha256: 'a'.repeat(64) }, backend_readback: { sha256: 'b'.repeat(64) } }),
+    vendorJourney: async ({ page, plan }) => {
+      assert.equal(new URL(page.url()).pathname, '/vendors');
+      assert.equal(plan.records.vendor.id, f.plan.records.vendor.id);
+      return { actions: [action('W5', 'vendors', 'owned-vendor')] };
+    },
+    tourDraftJourney: async ({ page, plan, fixtureBinding }) => {
+      assert.equal(new URL(page.url()).pathname, '/tours');
+      assert.equal(plan.records.tour.id, f.plan.records.tour.id);
+      assert.deepEqual(fixtureBinding, { synthetic: true });
+      return { actions: [action('W6', 'tours-drafts', 'draft-reload')] };
+    },
+  });
+  assert.deepEqual(result.actions.map(row => [row.id, row.action]),
+    [['W5', 'owned-vendor'], ['W6', 'draft-reload']]);
+  const retained = JSON.parse(await readFile(join(f.run.root, 'staging-records-plan.json'), 'utf8')).journey_qualification;
+  assert.deepEqual(retained.observations, result.actions);
+  assert.equal(retained.full_v1_qualified, false);
+});
+
+test('business qualification retains the exact validated W4/W9/W15 action evidence when a resume reports already-observed steps', async t => {
+  const f = await businessFixture(t);
+  const { V1_REQUIRED_ACTIONS, observedV1Action } = await import('../../scripts/e2e-staging/v1-qualification.mjs');
+  const businessActions = V1_REQUIRED_ACTIONS.filter(row => ['W4', 'W9'].includes(row.id)).slice(0, 9);
+  const paidInvoiceActions = V1_REQUIRED_ACTIONS.filter(row => row.id === 'W15' && row.action !== 'awaiting-payment-hidden');
+  const selected = [...businessActions, ...paidInvoiceActions];
+  assert.equal(selected.length, 18);
+  assert.equal(paidInvoiceActions.length, 9);
+  let invocation = 0;
+  const journeys = async options => {
+    const actions = invocation === 0 ? selected.filter(row => row.id === options.journeys[0] ||
+      options.journeys[0] === 'W4' && row.id === 'W9').map(row => observedV1Action({ ...row,
+        sourcePair: { source_commit: binding.app, carr_source_commit: binding.carr }, runId: f.run.snapshot().id,
+        fixtureRun: f.plan.run, ui: { first: row.action }, readback: { owned: true } })) : [];
+    if (options.journeys[0] === 'W15') invocation++;
+    return { completed: options.journeys,
+      steps: options.journeys.map(journey => ({ journey, step: 'synthetic-write',
+        state: invocation === 0 ? 'observed' : 'previously-observed' })),
+      actions, full_v1_qualified: false, unqualified_journeys: ['W6'] };
+  };
+  const firstResult = await runBusinessPhase({ binding, run: f.run }, { ...f.supplied, journeys });
+  const first = JSON.parse(await readFile(join(f.run.root, 'staging-records-plan.json'), 'utf8')).journey_qualification;
+  assert.equal(first.observations.length, 18);
+  await assert.rejects(retainJourneyQualification({ run: f.run, binding, release,
+    result: { ...firstResult, actions: [{ ...first.observations[0], ui_sha256: 'f'.repeat(64) }] } }),
+  { code: 'journey-observations-invalid' });
+  await runBusinessPhase({ binding, run: f.run }, { ...f.supplied, journeys });
+  const resumed = JSON.parse(await readFile(join(f.run.root, 'staging-records-plan.json'), 'utf8')).journey_qualification;
+  assert.deepEqual(resumed.observations, first.observations);
+  assert.equal(resumed.observations.length, 18);
+});
+
+test('resume replaces fresh readonly/vendor/Tour evidence and drops it when current journeys have no proof', async t => {
+  const f = await businessFixture(t), { V1_REQUIRED_ACTIONS, observedV1Action } =
+    await import('../../scripts/e2e-staging/v1-qualification.mjs');
+  const action = (id, caseId, name, ui) => observedV1Action({ id, case: caseId, action: name,
+    sourcePair: { source_commit: binding.app, carr_source_commit: binding.carr }, runId: f.run.snapshot().id,
+    fixtureRun: f.plan.run, ui, readback: { owned: true } });
+  const readonly = { schema: 'staging-readonly-journey-result.v1', full_v1_qualified: false,
+    provenance: { source_commit: binding.app, carr_source_commit: binding.carr, run: f.plan.run },
+    counts: { carr_record_mutations: 0 },
+    journeys: ['W1', 'W2', 'W5', 'W14'].map(journey => ({ journey, state: 'pending', reason: 'fresh synthetic readback' })) };
+  const result = row => ({ completed: ['W4', 'W9', 'W15'], steps: ['W4', 'W9', 'W15'].map(journey =>
+    ({ journey, step: 'paid-or-observed', state: 'previously-observed' })), readonly, tour: { full_v1_qualified: false },
+  actions: Array.isArray(row) ? row : row ? [row] : [], companions: [], full_v1_qualified: false });
+  const dynamicRows = [
+    V1_REQUIRED_ACTIONS.find(row => row.id === 'W14' && row.action === 'referrals'),
+    V1_REQUIRED_ACTIONS.find(row => row.id === 'W5' && row.action === 'owned-vendor'),
+    V1_REQUIRED_ACTIONS.find(row => row.id === 'W6' && row.action === 'draft-reload'),
+  ];
+  const proofs = stamp => dynamicRows.map(row => action(row.id, row.case, row.action,
+    { observation: row.id === 'W14' ? stamp : `${row.id}-${stamp}` }));
+  const previous = proofs('old-readback');
+  await retainJourneyQualification({ run: f.run, binding, release, result: result(previous[0]) });
+  // Seed W5/W6 alongside the W14 row so the next invocation must replace all
+  // three categories from fresh browser evidence rather than carry stale hashes.
+  await retainJourneyQualification({ run: f.run, binding, release, result: result([...previous]) });
+  const refreshed = proofs('fresh-readback');
+  await retainJourneyQualification({ run: f.run, binding, release, result: result(refreshed) });
+  let retained = JSON.parse(await readFile(join(f.run.root, 'staging-records-plan.json'), 'utf8')).journey_qualification;
+  assert.deepEqual(retained.observations, refreshed);
+  await retainJourneyQualification({ run: f.run, binding, release, result: result(null) });
+  retained = JSON.parse(await readFile(join(f.run.root, 'staging-records-plan.json'), 'utf8')).journey_qualification;
+  assert.deepEqual(retained.observations, []);
+});
+
+test('resume excludes awaiting-invoice read-only proof from prior carry and accepts only its fresh observation', async t => {
+  const f = await businessFixture(t), { V1_REQUIRED_ACTIONS, observedV1Action } =
+    await import('../../scripts/e2e-staging/v1-qualification.mjs');
+  const requirement = V1_REQUIRED_ACTIONS.find(row => row.id === 'W15' && row.action === 'awaiting-payment-hidden');
+  assert.ok(requirement, 'the current W15 contract includes the separately observed awaiting-invoice row');
+  const action = stamp => observedV1Action({ ...requirement,
+    sourcePair: { source_commit: binding.app, carr_source_commit: binding.carr }, runId: f.run.snapshot().id,
+    fixtureRun: f.plan.run, ui: { stamp }, readback: { awaiting: true } });
+  const readonly = { schema: 'staging-readonly-journey-result.v1', full_v1_qualified: false,
+    provenance: { source_commit: binding.app, carr_source_commit: binding.carr, run: f.plan.run },
+    counts: { carr_record_mutations: 0 },
+    journeys: ['W1', 'W2', 'W5', 'W14'].map(journey => ({ journey, state: 'pending', reason: 'fresh synthetic readback' })) };
+  const result = row => ({ completed: ['W4', 'W9', 'W15'], steps: ['W4', 'W9', 'W15'].map(journey =>
+    ({ journey, step: 'paid-or-observed', state: 'previously-observed' })), readonly, tour: { full_v1_qualified: false },
+  actions: row ? [row] : [], companions: [], full_v1_qualified: false });
+  const previous = action('old-proof');
+  await retainJourneyQualification({ run: f.run, binding, release, result: result(previous) });
+  const fresh = action('fresh-proof');
+  await retainJourneyQualification({ run: f.run, binding, release, result: result(fresh) });
+  let retained = JSON.parse(await readFile(join(f.run.root, 'staging-records-plan.json'), 'utf8')).journey_qualification;
+  assert.deepEqual(retained.observations, [fresh]);
+  await retainJourneyQualification({ run: f.run, binding, release, result: result(null) });
+  retained = JSON.parse(await readFile(join(f.run.root, 'staging-records-plan.json'), 'utf8')).journey_qualification;
+  assert.deepEqual(retained.observations, []);
 });
 
 test('readonly W1/W2/W5/W14 caller uses a fresh guarded Home page and cannot qualify full V1', async t => {
@@ -872,6 +1103,31 @@ test('retained journey observations accept only closed source-bound statuses', (
     { private_record_id: '60000000-0000-4000-8000-000000000001' }])
     assert.throws(() => assertJourneyQualification({ ...value, ...changed }, binding, value.run_id),
       { code: 'journey-observations-invalid' });
+});
+
+test('retained V1 action rows bind the exact fixture and reject foreign or duplicate observations', async () => {
+  const { V1_QUALIFICATION_SHA256 } = await import('../../scripts/e2e-staging/v1-qualification.mjs');
+  const fixtureRun = '33333333-3333-4333-8333-333333333333';
+  const action = { id: 'W6', case: 'tours-drafts', action: 'draft-reload', state: 'observed',
+    source_pair: { source_commit: binding.app, carr_source_commit: binding.carr },
+    run_id: 'synthetic-run', fixture_run: fixtureRun, actor: 'joe',
+    contract_sha256: V1_QUALIFICATION_SHA256,
+    ui_sha256: 'a'.repeat(64), readback_sha256: 'b'.repeat(64) };
+  const value = { schema: 'doctorcre-staging-journey-observations.v1',
+    source_pair: action.source_pair, run_id: action.run_id, fixture_run: fixtureRun,
+    observed_at: '2026-10-15T05:00:00.000Z',
+    business: { W4: false, W9: false, W15: false, observed_steps: 0 },
+    tour_readonly_observed: false,
+    readonly: { W1: 'pending', W2: 'pending', W5: 'pending', W14: 'pending' },
+    observations: [action], companions: [], full_v1_qualified: false };
+  assert.doesNotThrow(() => assertJourneyQualification(value, binding, action.run_id));
+  for (const changed of [
+    { observations: [action, action] },
+    { observations: [{ ...action, fixture_run: '44444444-4444-4444-8444-444444444444' }] },
+    { observations: [{ ...action, source_pair: { ...action.source_pair, source_commit: 'b'.repeat(40) } }] },
+    { companions: [{ id: 'Call Mode', enabled: false, state: 'disabled-observed' }] },
+  ]) assert.throws(() => assertJourneyQualification({ ...value, ...changed }, binding, action.run_id),
+    { code: 'journey-observations-invalid' });
 });
 
 test('unsettled writes, source changes and deal restore limitations refuse business execution before browser creation', async t => {

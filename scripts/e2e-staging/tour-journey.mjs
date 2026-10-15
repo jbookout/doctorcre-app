@@ -13,6 +13,16 @@ const canonical = value => Array.isArray(value) ? value.map(canonical) : isObjec
   ? Object.fromEntries(Object.keys(value).sort().map(key => [key, canonical(value[key])])) : value;
 const same = (left, right) => JSON.stringify(canonical(left)) === JSON.stringify(canonical(right));
 const exactKeys = (value, keys) => isObject(value) && same(Object.keys(value).sort(), [...keys].sort());
+const shellReads = new Set(['notification-feed', 'deal-room-board', 'today-triage', 'list-feature-switches',
+  'list-doc-suggestions', 'morning-brief', 'find-and-catch-up', 'correspondence-readiness']);
+function harmlessShellRead(request) {
+  try {
+    const url = new URL(request.url());
+    const rpc = request.postDataJSON();
+    return request.method() === 'POST' && url.origin === STAGING_ORIGIN && url.pathname === '/mcp' &&
+      rpc?.method === 'tools/call' && shellReads.has(rpc.params?.name);
+  } catch { return false; }
+}
 
 function validateBinding({ plan, sourcePair, fixtureBinding }) {
   if (!isObject(plan) || plan.schema !== 'doctorcre-staging-records-plan.v1' || plan.origin !== STAGING_ORIGIN ||
@@ -123,7 +133,7 @@ export async function qualifyTourJourney({ page, plan, sourcePair, fixtureBindin
   const beforeEvidence = validateDetail(before, { plan, fixtureBinding, actorSlug });
 
   const requests = [];
-  const onRequest = request => { if (request.method() !== 'GET') requests.push(request.method()); };
+  const onRequest = request => { if (request.method() !== 'GET' && !harmlessShellRead(request)) requests.push(request.method()); };
   page.on('request', onRequest);
   let ui;
   try {
@@ -133,6 +143,7 @@ export async function qualifyTourJourney({ page, plan, sourcePair, fixtureBindin
     if (await button.count() !== 1) fail();
     await button.click({ timeout });
     await page.locator('#tour-dialog').waitFor({ state: 'visible', timeout });
+    await page.locator('#detail-content .detail-summary .pill:first-child').waitFor({ state: 'visible', timeout });
     const title = (await page.locator('#detail-title').textContent())?.trim();
     const pills = (await page.locator('#detail-content .detail-summary .pill').allTextContents()).map(value => value.trim());
     const shownStops = await page.locator('#detail-content ol.detail-stops > li').count();

@@ -2,7 +2,7 @@
   "schema": "doctorcre-staging-control-proofs.v1",
   "reviewed_sources": {
     "js/app-layout.js": "6ee5a58a8e8c7f4054e0f815ff5aeea8bd519762a281c438f07845bde09c812c",
-    "js/app-shell.js": "13a3f1db1ace6dae375a6ccf20c1f070849af2db357337e019860caacb9cc01d",
+    "js/app-shell.js": "a8dc94baafdaec85028b76b354cdd1a29687bc85ca9eef28c4aa1c1bc659f1e7",
     "js/assurance-health-model.js": "a15771f7a4404f0be03e11676417c27820fb102027909ba6380663659c11f31c",
     "js/auto-refresh.mjs": "81ba101e8543e788193e905de1a2201edd1df4480d177221e4b48c402ec4aa98",
     "js/boot-mode.js": "b3d0c88444f259d2a2c917d5ec38c8198b5c1be82db25238df3aacff34877ac2",

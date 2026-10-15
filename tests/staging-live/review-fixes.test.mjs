@@ -108,7 +108,7 @@ test('Model Room model uses a named desk and enforces one aggregate call ceiling
     return {
       msg_id: '40000000-0000-4000-8000-000000000001',
       desk: request.desk,
-      kind: 'codex-session',
+      kind: 'codex-live',
       task: request.task,
       dispatched_at: '2026-10-08T12:00:00+00:00',
       family: 'luna',
@@ -116,6 +116,8 @@ test('Model Room model uses a named desk and enforces one aggregate call ceiling
       effort: 'medium',
       thread_id: 'synthetic-thread',
       resumed: false,
+      ephemeral_thread: true,
+      thread_resumable: false,
       status: 'completed',
       result: JSON.stringify({ content: [{ type: 'text', text: '{}' }] }),
     };
@@ -145,10 +147,10 @@ test('Model Room model uses a named desk and enforces one aggregate call ceiling
   assert.match(formatExplorationCallPlan(plan), /81 planned calls per goal × 50 goals = 4050; finite run cap 4050; hard global ceiling 5000/);
   assert.deepEqual(EXPLORATION_MODEL_CALL_POLICY, { perGoal: 40, hardGlobalCeiling: 5_000 });
   assert.deepEqual(MODEL_ROOM_DISPATCH_CONTRACT, {
-    revision: 'carr-model-room-dispatch@5ddaa8f39507de3f3343c5cc5177d3d07168e9eb',
+    revision: 'carr-model-room-dispatch@87f50e48c325c217fdff9d32742a7b9fa8ada77d',
     repository: 'jbookout/carr-system',
     relativePath: 'tools/room-bridge/dispatch.py',
-    sha256: '25b51af5a270d22711e6d22feba40680472f57c2874a7fd6736c19ca5851c182',
+    sha256: '85b5b5518edf301ab16e2485a71c1e034758e14c3667ee65bc10358579a04538',
     argv: ['send', '{desk}', '-', '--fresh'],
     family: 'luna',
     model: 'gpt-6-luna',
@@ -179,6 +181,46 @@ test('Model Room model uses a named desk and enforces one aggregate call ceiling
     dispatch: async request => ({ ...await dispatch(request), resumed: 'not-a-boolean' }),
   });
   await assert.rejects(() => changedEnvelope.doGenerate(options), /unknown Model Room dispatcher envelope/);
+  const validEphemeralDispatch = createModelRoomModel({
+    ...authorization, desk: 'doctorcre-e2e', budget: createModelCallBudget(1), dispatch,
+  });
+  assert.deepEqual((await validEphemeralDispatch.doGenerate(options)).content,
+    [{ type: 'text', text: '{}' }]);
+  for (const changes of [
+    { kind: 'codex-session', resumed: false, ephemeral_thread: true, thread_resumable: false },
+    { kind: 'codex-live', resumed: true, ephemeral_thread: true, thread_resumable: false },
+    { kind: 'codex-live', resumed: false, ephemeral_thread: false, thread_resumable: false },
+    { kind: 'codex-live', resumed: false, ephemeral_thread: true, thread_resumable: true },
+    { kind: 'codex-live', resumed: false, ephemeral_thread: 'true', thread_resumable: false },
+    { thread_id: '' },
+  ]) {
+    const malformedEphemeralDispatch = createModelRoomModel({
+      ...authorization,
+      desk: 'doctorcre-e2e',
+      budget: createModelCallBudget(1),
+      dispatch: async request => ({ ...await dispatch(request), ...changes }),
+    });
+    await assert.rejects(() => malformedEphemeralDispatch.doGenerate(options), /unknown Model Room dispatcher envelope/);
+  }
+  const missingResumabilityFlag = createModelRoomModel({
+    ...authorization, desk: 'doctorcre-e2e', budget: createModelCallBudget(1),
+    dispatch: async request => {
+      const row = await dispatch(request);
+      delete row.thread_resumable;
+      return row;
+    },
+  });
+  await assert.rejects(() => missingResumabilityFlag.doGenerate(options), /unknown Model Room dispatcher envelope/);
+  const missingEphemeralFlags = createModelRoomModel({
+    ...authorization, desk: 'doctorcre-e2e', budget: createModelCallBudget(1),
+    dispatch: async request => {
+      const row = await dispatch(request);
+      delete row.ephemeral_thread;
+      delete row.thread_resumable;
+      return row;
+    },
+  });
+  await assert.rejects(() => missingEphemeralFlags.doGenerate(options), /unknown Model Room dispatcher envelope/);
   for (const changes of [
     { desk: 'wrong-desk' },
     { task: 'wrong task' },
