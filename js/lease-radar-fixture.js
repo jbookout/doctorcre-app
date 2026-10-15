@@ -1,5 +1,4 @@
 import { addMonths, radarToday } from './lease-radar-model.js';
-// Synthetic, relative to the viewing day so the demonstration never ages out.
 export function leaseRadarFixture(today = radarToday()) {
   const row = (i, months, overrides = {}) => ({id:`demo-lease-${i}`,client_id:`demo-client-${i}`,deal_id:null,
     client_name:`Demo Practice ${i}`,client_status:i % 2 ? 'past_client':'active_deal',client_status_label:i % 2 ? 'Past client':'Active deal',
