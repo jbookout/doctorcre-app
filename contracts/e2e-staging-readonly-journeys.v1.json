@@ -31,7 +31,7 @@
       "auth_lifecycle": {
         "required": ["isolated-e2e-session-exchange", "new-cookie-and-csrf-differ-from-parent", "dedicated-signed-in-ui", "real-session-csrf-signout", "old-session-rejected", "parent-session-remains-valid", "signed-out-ui"],
         "guard_requirement": "stagingSession uses its mode-600 private secret through the supervised API context. A distinct browser context accepts only exact staging auth and static reads plus one CSRF-bound signout for its own cookie; every forwarded request uses the supervised HTTP budget. Never sign out the caller's shared session.",
-        "current_source_limit": "The pinned CARR signout responds with a redirect to / and /auth/login starts OAuth. The app shell's fetch-based signout needs a real visible signed-out state before W1 can qualify. A redirect attempt alone is not signed-out UI evidence."
+        "qualification_limit": "The pinned CARR signout responds with a redirect to / and /auth/login starts OAuth. W1 requires a visible app-owned signed-out view after session rejection and independent old-cookie rejection. A redirect attempt alone is not signed-out UI evidence."
       },
       "normal_page_read_set": {
         "sources": ["js/app-shell.js:readIdentity", "js/app-layout.js:refresh"],
@@ -41,7 +41,7 @@
     },
     "W2": {
       "scope": "Home Team View and Just Me scope switching, reset, and exact active plan-owned flagged deal detail",
-      "route": "/workspace",
+      "route": "/",
       "scope_selector": "#scopeSwitch button[data-scope]",
       "flags_selector": "#dealFlags .home-flag",
       "flag_key_prefix": "deal:",

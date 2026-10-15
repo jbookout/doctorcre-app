@@ -25,7 +25,8 @@ const response = (status, value) => ({ status: () => status, ok: () => status >=
 
 async function harness(t, { sameCookie = false, sameCsrf = false, sourceMismatch = false, freshSourceMismatch = false,
   csrfHeader = childCsrf, cookieHeader = childCookie, signoutOrigin = STAGING_ORIGIN, signoutRedirect = `${STAGING_ORIGIN}/`,
-  signedOutUi = true, parentBefore = true, parentAfter = true, oldAccepted = false } = {}) {
+  signedOutUi = true, hiddenView = false, hiddenHeading = false, hiddenLink = false, privateViewRemains = false,
+  parentBefore = true, parentAfter = true, oldAccepted = false } = {}) {
   const prior = { E2E_TARGET: process.env.E2E_TARGET, E2E_RUN_SUPERVISED: process.env.E2E_RUN_SUPERVISED };
   process.env.E2E_TARGET = 'staging-live'; process.env.E2E_RUN_SUPERVISED = '1';
   const root = await mkdtemp(join(tmpdir(), 'session-journey-'));
@@ -47,7 +48,22 @@ async function harness(t, { sameCookie = false, sameCsrf = false, sourceMismatch
       return {
         url: () => pageUrl,
         goto: async () => response(200, null),
-        waitForFunction: async () => { if (!signedOutUi) throw new Error('Synthetic signed-out UI absent'); },
+        waitForFunction: async (predicate, origin) => {
+          const saved = { document: globalThis.document, location: globalThis.location };
+          const visible = hidden => ({ getClientRects: () => hidden ? [] : [{}], checkVisibility: () => !hidden });
+          const heading = { ...visible(hiddenHeading), textContent: 'Signed out' };
+          const link = { ...visible(hiddenLink), getAttribute: key => key === 'href' ? '/auth/login' : null };
+          const view = { ...visible(hiddenView), querySelector: selector => selector === 'h1' ? heading : selector === 'a' ? link : null };
+          globalThis.location = { origin: STAGING_ORIGIN, pathname: '/' };
+          globalThis.document = { body: { children: privateViewRemains ? [view, {}] : [view], firstElementChild: view },
+            querySelector: selector => selector === 'main.app-shell-signed-out' && signedOutUi ? view
+              : selector === '#selfAvatar, #accountMenu, #appShell, #viewerWorkspace' && privateViewRemains ? {} : null };
+          try { if (!predicate(origin)) throw new Error('Synthetic signed-out UI absent'); }
+          finally {
+            if (saved.document === undefined) delete globalThis.document; else globalThis.document = saved.document;
+            if (saved.location === undefined) delete globalThis.location; else globalThis.location = saved.location;
+          }
+        },
         locator(selector) {
           return {
             waitFor: async () => {},
@@ -148,8 +164,9 @@ test('wrong CSRF, cross-origin signout and unexpected redirect cannot qualify', 
   }
 });
 
-test('API revocation without signed-out UI, surviving old cookie, or lost parent stays pending', async t => {
-  for (const options of [{ signedOutUi: false }, { oldAccepted: true }, { parentAfter: false }]) {
+test('API revocation without visible signed-out UI and cleared private view, old rejection, or parent survival stays pending', async t => {
+  for (const options of [{ signedOutUi: false }, { hiddenView: true }, { hiddenHeading: true }, { hiddenLink: true },
+    { privateViewRemains: true }, { oldAccepted: true }, { parentAfter: false }]) {
     const h = await harness(t, options);
     const result = await qualify(h);
     assert.equal(result.state, 'pending');

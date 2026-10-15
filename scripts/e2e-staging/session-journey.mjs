@@ -190,10 +190,18 @@ export async function qualifySessionJourney({ parentPage, release, run, browser 
     // the browser's cookie. /auth/login remains the real OAuth entry link.
     let signedOutUi = false;
     try {
-      await page.waitForFunction(origin => location.origin === origin && location.pathname === '/' &&
-        document.querySelector('main.app-shell-signed-out > h1')?.textContent?.trim() === 'Signed out' &&
-        document.querySelector('main.app-shell-signed-out > a')?.getAttribute('href') === '/auth/login' &&
-        !document.querySelector('#selfAvatar'), STAGING_ORIGIN,
+      await page.waitForFunction(origin => {
+        const view = document.querySelector('main.app-shell-signed-out');
+        const heading = view?.querySelector('h1');
+        const login = view?.querySelector('a');
+        const visible = element => Boolean(element?.getClientRects().length &&
+          element.checkVisibility({ visibilityProperty: true, opacityProperty: true }));
+        return location.origin === origin && location.pathname === '/' &&
+          document.body.children.length === 1 && document.body.firstElementChild === view &&
+          visible(view) && visible(heading) && visible(login) &&
+          heading.textContent.trim() === 'Signed out' && login.getAttribute('href') === '/auth/login' &&
+          !document.querySelector('#selfAvatar, #accountMenu, #appShell, #viewerWorkspace');
+      }, STAGING_ORIGIN,
       { polling: 'raf', timeout: Math.min(2_000, timeout(run)) });
       signedOutUi = true;
     } catch { run.check(); }

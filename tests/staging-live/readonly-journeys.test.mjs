@@ -34,7 +34,8 @@ function configure(t) {
 }
 
 async function harness(t, { attention = true, identity = true, detail = true, relationship = {}, appRelease = appIdentity,
-  readinessDelayMs = 0, freshness = true, teamOnlyFlag = true, boardActor = 'joe', dealOwner = 'joe', boardName = dealName } = {}) {
+  readinessDelayMs = 0, freshness = true, teamOnlyFlag = true, boardActor = 'joe', dealOwner = 'joe', boardName = dealName,
+  homeRedirectTo = null } = {}) {
   configure(t);
   const root = await mkdtemp(join(tmpdir(), 'readonly-journeys-'));
   const run = openRun(root, { runId: 'synthetic-readonly-journeys', events: null, limits: { ...RUN_LIMITS, httpRequests: 100 } });
@@ -45,7 +46,7 @@ async function harness(t, { attention = true, identity = true, detail = true, re
   const ready = { avatar: readinessDelayMs === 0, home: readinessDelayMs === 0, relationship: readinessDelayMs === 0,
     connection: readinessDelayMs === 0 };
   let homeScope = 'team', referralsTab = false, territoryValue = '', dialogTitle = '', evidenceOpen = false, dialogOpen = false;
-  const reads = [], relationshipMethods = [];
+  const reads = [], relationshipMethods = [], navigations = [];
   const context = { route: async () => {}, addInitScript: async () => {} };
   await installStagingGuard(context, { forContext: () => ({ handle: async () => {}, assertCoverage: async () => { coverageChecks++; } }) });
   let currentURL = 'https://doctorcre-app-staging.joe-bookout-carr-us.workers.dev/';
@@ -184,8 +185,12 @@ async function harness(t, { attention = true, identity = true, detail = true, re
       selectOption: async value => { territoryValue = value; },
     }),
     goto: async url => {
-      currentURL = url; referralsTab = false; territoryValue = '';
-      if (url.endsWith(contract.journeys.W2.route)) { homeScope = 'team'; ready.home = readinessDelayMs === 0; }
+      navigations.push(new URL(url).pathname);
+      // The actual app redirects the legacy /workspace path to canonical /.
+      currentURL = new URL(url).pathname === '/workspace' ? new URL('/', url).href
+        : new URL(url).pathname === '/' && homeRedirectTo ? new URL(homeRedirectTo, url).href : url;
+      referralsTab = false; territoryValue = '';
+      if (new URL(currentURL).pathname === '/') { homeScope = 'team'; ready.home = readinessDelayMs === 0; }
       if (url.endsWith(contract.journeys.W14.route)) { ready.relationship = readinessDelayMs === 0; ready.connection = readinessDelayMs === 0; }
     },
     reload: async () => { reloads++; },
@@ -213,7 +218,7 @@ async function harness(t, { attention = true, identity = true, detail = true, re
       throw new Error('Synthetic DOM readiness timeout');
     },
   };
-  return { page, run, reads, relationshipMethods, firstReadinessWait,
+  return { page, run, reads, relationshipMethods, navigations, firstReadinessWait,
     checks: () => ({ coverageChecks, clicks, reloads, evaluations, readinessWaits }) };
 }
 
@@ -233,7 +238,19 @@ test('synthetic W1/W2/W14 behaviors use exact plan bindings; only complete slice
   assert.equal(h.checks().coverageChecks, 2);
   assert.equal(h.checks().reloads, 1);
   assert.deepEqual(h.reads, ['deal-room-board', 'get-deal-room']);
+  assert.equal(contract.journeys.W2.route, '/');
+  assert.equal(h.navigations.includes('/workspace'), false, 'legacy redirect is not a Home proof');
+  assert.equal(h.navigations.includes('/'), true, 'Home proof opens its canonical route');
   assert.deepEqual(h.relationshipMethods, ['GET']);
+});
+
+test('W2 refuses a redirected URL even if a mock still renders Home controls', async t => {
+  const h = await harness(t, { homeRedirectTo: '/workspace' });
+  const result = await runReadonlyJourneys({ page: h.page, release, plan: fixturePlan(), run: h.run });
+  assert.equal(result.journeys.find(row => row.journey === 'W2').state, 'pending');
+  assert.equal(h.navigations.includes('/'), true);
+  assert.equal(h.reads.includes('get-deal-room'), false);
+  assert.equal(result.full_v1_qualified, false);
 });
 
 test('W2 stays pending without a distinct Team-only flagged row or the exact plan-owned deal', async t => {
