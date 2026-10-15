@@ -12,19 +12,29 @@ const contract = JSON.parse(await readFile(new URL('contracts/app-routes.v1.json
 const primary = navigationItems.filter(item => !item.group).map(item => item.label);
 const secondary = navigationItems.filter(item => item.group).map(item => item.label);
 
-async function open(t, { width = 1440, actor = 'joe', live = false, minimal = false, simulatedClock = false, reducedMotion = 'no-preference' } = {}) {
+async function open(t, { width = 1440, actor = 'joe', live = false, minimal = false, simulatedClock = false,
+  reducedMotion = 'no-preference', signoutMode = 'success' } = {}) {
   const browser = await chromium.launch(); t.after(() => browser.close());
   const page = await browser.newPage({ viewport: { width, height: 960 }, reducedMotion });
   if (simulatedClock) await page.clock.install({ time: new Date('2026-10-01T15:00:00Z') });
   const fixture = await createFixtureClient({ selfActor: actor, seedUrl: `data:application/json;base64,${Buffer.from(await readFile(new URL('data/board-seed.json', root))).toString('base64')}` });
-  const errors = [], calls = []; page.on('pageerror', error => errors.push(error.message));
+  const errors = [], calls = []; let signedOut = false;
+  page.on('pageerror', error => errors.push(error.message));
   await page.route('**/*', async route => {
     const request = route.request(), url = new URL(request.url()); calls.push({ url: url.pathname, method: request.method(), verb: request.postDataJSON?.()?.params?.name });
     if (url.origin === 'http://127.0.0.1:4682') return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ state: 'idle' }) });
     if (url.origin !== 'http://localhost') return route.abort();
-    if (url.pathname === '/api/system-work/session') return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ actor: { slug: actor }, csrf_token: 'synthetic-test-token' }) });
-    if (url.pathname === '/auth/signout') return route.fulfill({ status: 204 });
-    if (url.pathname === '/auth/login') return route.fulfill({ contentType: 'text/html', body: '<h1>Signed out</h1>' });
+    if (url.pathname === '/api/system-work/session') return route.fulfill({ status: signedOut ? 401 : 200,
+      contentType: 'application/json', body: JSON.stringify(signedOut ? {} : { actor: { slug: actor }, csrf_token: 'synthetic-test-token' }) });
+    if (url.pathname === '/auth/session') return route.fulfill({ status: signedOut ? 401 : 200,
+      contentType: 'application/json', body: JSON.stringify(signedOut ? {} : { actor: { slug: actor } }) });
+    if (url.pathname === '/auth/signout') {
+      if (request.method() !== 'POST' || request.headers()['x-carr-csrf'] !== 'synthetic-test-token' || signoutMode === 'refused')
+        return route.fulfill({ status: 403 });
+      signedOut = signoutMode === 'success';
+      return route.fulfill({ status: 302, headers: { location: '/' } });
+    }
+    if (url.pathname === '/auth/login') return route.fulfill({ status: 302, headers: { location: '/' } });
     if (url.pathname === '/api/v1/atlas-graph') { const answer = atlasFixtureResponse(url,'GET'); return route.fulfill({ status: answer.status, contentType: 'application/json', body: JSON.stringify(answer.body) }); }
     if (url.pathname === '/api/v1/command-center') return route.fulfill({ contentType: 'application/json', body: JSON.stringify(await fixture.commandCenter()) });
     if (url.pathname.startsWith('/api/') || ['/mcp', '/app-release'].includes(url.pathname)) return route.fulfill({ contentType: 'application/json', body: '{}' });
@@ -53,8 +63,25 @@ for (const actor of ['joe','dell']) test(`signed-in ${actor} gets workspace, acc
   assert.ok((await page.locator('.app-shell-profile').boundingBox()).width > 900);
   await page.getByLabel('Close profile').click(); await page.locator('#selfAvatar').click(); await page.keyboard.press('Escape'); assert.equal(await page.locator('#accountMenu').isVisible(), false);
   assert.equal(calls.some(call => call.method === 'POST' && !['deal-room-board','morning-brief','today-triage','list-feature-switches','list-doc-suggestions'].includes(call.verb)), false, 'opening controls has no write effect');
-  await page.locator('#selfAvatar').click(); await page.getByText('Sign out', {exact:true}).click(); await page.waitForURL('**/auth/login');
+  await page.locator('#selfAvatar').click(); await page.getByText('Sign out', {exact:true}).click();
+  await page.getByRole('heading', { name: 'Signed out' }).waitFor();
+  assert.equal(new URL(page.url()).pathname, '/');
+  assert.equal(await page.getByRole('link', { name: 'Sign in again' }).getAttribute('href'), '/auth/login');
+  assert.equal(await page.locator('#viewerWorkspace, #selfAvatar').count(), 0);
+  assert.equal(calls.filter(call => call.url === '/auth/session').length, 1);
   assert.equal(calls.filter(call => call.url === '/auth/signout' && call.method === 'POST' && !['deal-room-board','morning-brief','today-triage','list-feature-switches','list-doc-suggestions'].includes(call.verb)).length, 1); assert.deepEqual(errors, []);
+});
+
+for (const signoutMode of ['refused', 'still-authenticated']) test(`sign-out ${signoutMode} never claims a signed-out view`, async t => {
+  const { page, calls, errors } = await open(t, { live: true, minimal: true, signoutMode });
+  await page.locator('#selfAvatar').click();
+  await page.getByText('Sign out', { exact: true }).click();
+  await page.getByText('Sign-out unavailable', { exact: true }).waitFor();
+  assert.equal(await page.getByRole('heading', { name: 'Signed out' }).count(), 0);
+  assert.equal(await page.locator('#selfAvatar').count(), 1);
+  assert.equal(await page.locator('#accountSignOut').isEnabled(), true);
+  assert.equal(calls.filter(call => call.url === '/auth/session').length, signoutMode === 'refused' ? 0 : 1);
+  assert.deepEqual(errors, []);
 });
 
 test('desktop and phone navigation, account and Call mode work with reduced motion', async t => {

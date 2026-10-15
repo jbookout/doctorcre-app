@@ -186,12 +186,14 @@ export async function qualifySessionJourney({ parentPage, release, run, browser 
     const parentRetained = matchesSource(after?.release, release) && after.actor === contract.session.actor_slug &&
       after.principal === contract.session.e2e_principal && after.systemActor === contract.session.actor_slug &&
       after.csrfDigest === parent.csrfDigest;
-    // /auth/login is an OAuth redirect. A same-origin signed-out page does not
-    // exist in the pinned app/backend; a redirect attempt is not UI proof.
+    // The app displays the signed-out view only after /auth/session rejects
+    // the browser's cookie. /auth/login remains the real OAuth entry link.
     let signedOutUi = false;
     try {
-      await page.waitForFunction(origin => location.origin === origin && location.pathname === '/auth/login' &&
-        document.querySelector('h1')?.textContent?.trim() === 'Signed out', STAGING_ORIGIN,
+      await page.waitForFunction(origin => location.origin === origin && location.pathname === '/' &&
+        document.querySelector('main.app-shell-signed-out > h1')?.textContent?.trim() === 'Signed out' &&
+        document.querySelector('main.app-shell-signed-out > a')?.getAttribute('href') === '/auth/login' &&
+        !document.querySelector('#selfAvatar'), STAGING_ORIGIN,
       { polling: 'raf', timeout: Math.min(2_000, timeout(run)) });
       signedOutUi = true;
     } catch { run.check(); }

@@ -60,7 +60,7 @@ async function harness(t, { sameCookie = false, sameCsrf = false, sourceMismatch
                 allHeaders: async () => headers, postData: () => null };
               await browserRoute({ request: () => request,
                 fetch: async () => { calls.forwarded++; return { ...response(302, null), headers: () => ({ location: signoutRedirect }) }; },
-                fulfill: async () => { calls.signout++; if (signedOutUi) pageUrl = `${STAGING_ORIGIN}/auth/login`; },
+                fulfill: async () => { calls.signout++; },
                 abort: async () => { calls.aborted++; } });
             },
             textContent: async () => signedOutUi ? 'Signed out' : 'Sign-out unavailable',
