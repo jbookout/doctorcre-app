@@ -18,9 +18,9 @@ function controls(t, target, supervised) {
     if (value === undefined) delete process.env[key]; else process.env[key] = value;
   }
 }
-async function budget(t) {
+async function budget(t, httpRequests = 3) {
   const root = await mkdtemp(join(tmpdir(), 'staging-context-admission-'));
-  const run = openRun(root, { runId: 'synthetic-context-admission', events: null, limits: { ...RUN_LIMITS, httpRequests: 3 } });
+  const run = openRun(root, { runId: 'synthetic-context-admission', events: null, limits: { ...RUN_LIMITS, httpRequests } });
   t.after(async () => { run.dispose(); await rm(root, { recursive: true, force: true }); });
   return { root, run };
 }
@@ -106,20 +106,23 @@ test('release preflight preserves the named request limit and never retries past
   assert.equal(run.snapshot().stopReason, 'http-request-limit');
 });
 
-test('a stale CARR release is refused before session exchange or cookie effects', async t => {
+test('a CARR branch deploy is refused before session exchange or cookie effects', async t => {
   controls(t, 'staging-live', '1');
-  const { run } = await budget(t);
+  const { run } = await budget(t, 4);
   const calls = [];
   let exchanges = 0, cookieReads = 0;
-  const staleCarrCommit = 'c06bdf2788fb69daefb59364ea4fd798fa94f9a4';
+  const branchCarrCommit = 'c06bdf2788fb69daefb59364ea4fd798fa94f9a4';
+  const compare = (base, head) => `https://api.github.com/repos/jbookout/carr-system/compare/${base}...${head}?per_page=1`;
   const api = {
     async get(path) {
       calls.push(path);
       const body = path === '/app-release'
         ? { service: 'doctorcre-app', environment: 'staging', source_commit: 'a'.repeat(40) }
         : path === contract.carr_origin + '/release'
-          ? { env: { value: 'staging' }, git_sha: { value: staleCarrCommit } }
-          : assert.fail('Unexpected GET ' + path);
+          ? { env: { value: 'staging' }, git_sha: { value: branchCarrCommit } }
+          : path === compare(branchCarrCommit, 'main') ? { status: 'diverged' }
+            : path === compare(contract.producer.source_commit, branchCarrCommit) ? { status: 'ahead' }
+              : assert.fail('Unexpected GET ' + path);
       return { status: () => 200, ok: () => true, json: async () => body };
     },
     async fetch() { exchanges++; return { status: () => 200, ok: () => true }; },
@@ -128,12 +131,13 @@ test('a stale CARR release is refused before session exchange or cookie effects'
   };
   await assert.rejects(
     session.stagingSession(session.STAGING_ORIGIN, { requestContext: api, run }),
-    error => error instanceof session.SessionPreflightFailure && error.code === 'carr-source-pair-refused',
+    error => error instanceof session.SessionPreflightFailure && error.code === 'carr-commit-not-on-main',
   );
-  assert.deepEqual(calls, ['/app-release', contract.carr_origin + '/release']);
+  assert.deepEqual(calls, ['/app-release', contract.carr_origin + '/release',
+    compare(branchCarrCommit, 'main'), compare(contract.producer.source_commit, branchCarrCommit)]);
   assert.equal(exchanges, 0);
   assert.equal(cookieReads, 0);
-  assert.equal(run.snapshot().httpRequests, 2);
+  assert.equal(run.snapshot().httpRequests, 4);
 });
 
 test('a supervised default session uses the shared factory and counts each request exactly once', async t => {
@@ -167,6 +171,7 @@ test('a supervised default session uses the shared factory and counts each reque
   finally { request.newContext = original; }
   assert.equal(result.state, state);
   assert.equal(result.release.carr_source_commit, contract.producer.source_commit);
+  assert.equal(result.release.carr_release_commit, contract.producer.source_commit);
   assert.deepEqual(calls, ['/app-release', contract.carr_origin + '/release', contract.session.path]);
   assert.equal(run.snapshot().httpRequests, 3);
   assert.equal(creations, 1);
