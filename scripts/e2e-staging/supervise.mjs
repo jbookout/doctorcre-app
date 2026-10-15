@@ -5,6 +5,7 @@ import { join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { openRun, RUN_LIMITS, RunLimitError, runLimitsFromEnvironment, directoryBytes } from './run-limits.mjs';
 import { targetExists as probe, signalTarget } from './process-liveness.mjs';
+import { parseWorkerFailureDiagnostic } from './worker-diagnostics.mjs';
 
 const project = fileURLToPath(new URL('../../', import.meta.url));
 const pause = milliseconds => new Promise(resolvePause => setTimeout(resolvePause, milliseconds));
@@ -50,6 +51,11 @@ export function createWorkerDiagnosticReader(onDiagnostic) {
       if (character === '\n') {
         const line = tail.replace(/\r$/, '');
         tail = ''; discardingLongLine = false;
+        const workerFailure = parseWorkerFailureDiagnostic(line);
+        if (workerFailure) {
+          onDiagnostic(workerFailure); count++; pendingCause = false;
+          continue;
+        }
         const cleanupFailure = /^Staging cleanup stopped: (write-coverage-incomplete|presence-settlement-timeout|cleanup-failed)\.$/.exec(line);
         if (cleanupFailure) {
           onDiagnostic(`cleanup=${cleanupFailure[1]}`); count++; pendingCause = false;

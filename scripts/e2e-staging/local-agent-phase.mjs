@@ -6,11 +6,12 @@ import { constants } from 'node:fs';
 import { mkdir, open, realpath } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { requireSupervisedRun } from './run-limits.mjs';
 import contract from '../../contracts/e2e-staging.v1.json' with { type: 'json' };
+import { formatWorkerFailureDiagnostic } from './worker-diagnostics.mjs';
 
 const exec = promisify(execFile);
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -117,6 +118,33 @@ export async function readLocalAgentTokenFile(path, securityIssue) {
   finally { await file.close(); }
 }
 
+function stagingTokenFromFile(raw) {
+  const rows = String(raw || '').split(/\r?\n/).map(line => line.trim())
+    .filter(line => line.startsWith('CARR_STAGING_LOCAL='));
+  if (rows.length !== 1) return '';
+  return rows[0].slice('CARR_STAGING_LOCAL='.length).trim().replace(/^['"]|['"]$/g, '');
+}
+
+export async function resolveStagingLocalAgentCredential({ environment = process.env,
+  homeDirectory = homedir(), tokenFileSecurityIssue, selectLocalClientCredential } = {}) {
+  required(environment && typeof environment === 'object' &&
+    typeof selectLocalClientCredential === 'function', 'local-agent-staging-credential-unavailable');
+  const hasOverride = Object.hasOwn(environment, 'CARR_MCP_LOCAL_TOKEN');
+  required(hasOverride || typeof tokenFileSecurityIssue === 'function',
+    'local-agent-staging-credential-unavailable');
+  const override = hasOverride ? environment.CARR_MCP_LOCAL_TOKEN : undefined;
+  const tokenFile = hasOverride ? '' : await readLocalAgentTokenFile(
+    join(homeDirectory, '.config', 'carr', 'staging-tokens.env'), tokenFileSecurityIssue);
+  const stagingToken = stagingTokenFromFile(tokenFile);
+  required(hasOverride ? typeof override === 'string' && override.length > 0 : stagingToken,
+    'local-agent-staging-credential-unavailable');
+  const credential = selectLocalClientCredential({ CARR_MCP_CLIENT_PROFILE: 'local',
+    CARR_MCP_LOCAL_TOKEN: hasOverride ? override : stagingToken }, '');
+  required(credential?.profile === 'local' && credential.token,
+    'local-agent-staging-credential-unavailable');
+  return credential;
+}
+
 // Runs the exact checked-out CARR credential selector locally. No token enters
 // argv, a global environment setting, an artifact, or this module's result.
 // The token is used only in a manual-redirect HTTPS request to staging CARR.
@@ -131,12 +159,8 @@ export async function createLocalAgentRpc({ carrCheckout, fetcher = fetch, envir
   const modulePath = join(checkout, 'mcp-server', 'local-client-auth.mjs');
   required(await realpath(modulePath) === modulePath, 'carr-credential-resolver-unsafe');
   const { selectLocalClientCredential, tokenFileSecurityIssue } = await import(pathToFileURL(modulePath));
-  const filePath = join(homedir(), '.config', 'carr', 'mcp-tokens.env');
-  const tokenFile = await readLocalAgentTokenFile(filePath, tokenFileSecurityIssue);
-  const credential = selectLocalClientCredential({
-    CARR_MCP_CLIENT_PROFILE: 'local', CARR_MCP_LOCAL_TOKEN: environment.CARR_MCP_LOCAL_TOKEN,
-  }, tokenFile);
-  required(credential.profile === 'local' && credential.token, 'local-agent-credential-unavailable');
+  const credential = await resolveStagingLocalAgentCredential({ environment,
+    tokenFileSecurityIssue, selectLocalClientCredential });
   const endpoint = contract.carr_origin + '/mcp';
   return async (name, args, { signal, timeout }) => {
     required(['deal-room-board', 'get-deal-room', 'patch-deal-field', 'read-doc-activity'].includes(name),
@@ -262,10 +286,12 @@ export async function produceLocalAgentPhase({ plan, release, run, carrCheckout,
       detail_sha256: journal.detail_sha256, cause_sha256: journal.cause_sha256,
       doc_authorship_qualified: false,
       full_v1_qualified: false, journal_path: journalPath };
-  } catch {
+  } catch (error) {
     // A timeout or rejected receipt may follow an accepted server write. Keep
     // its exact private intent, quarantine it, and never issue this key again.
     journal.state = 'quarantined'; journal.quarantined_at = new Date().toISOString();
+    journal.quarantine_cause = formatWorkerFailureDiagnostic(error,
+      fileURLToPath(new URL('../../', import.meta.url)));
     await secureJournal(journalPath, journal, run);
     return { schema: journal.schema, state: 'PENDING_RECONCILIATION',
       doc_authorship_qualified: false, full_v1_qualified: false, journal_path: journalPath };

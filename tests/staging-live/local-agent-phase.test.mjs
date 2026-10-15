@@ -151,6 +151,10 @@ test('staging local credential selects only the protected staging key, honors ov
     environment: { CARR_MCP_LOCAL_TOKEN: 'explicit-override-canary' },
     tokenFileSecurityIssue: syntheticSecurityIssue, selectLocalClientCredential: syntheticCredentialSelector });
   assert.deepEqual(overridden, { profile: 'local', token: 'explicit-override-canary' });
+  await assert.rejects(resolveStagingLocalAgentCredential({ homeDirectory: root,
+    environment: { CARR_MCP_LOCAL_TOKEN: '' }, tokenFileSecurityIssue: syntheticSecurityIssue,
+    selectLocalClientCredential: syntheticCredentialSelector }),
+  { code: 'local-agent-staging-credential-unavailable' });
   await chmod(join(config, 'staging-tokens.env'), 0o644);
   await assert.rejects(resolveStagingLocalAgentCredential({ homeDirectory: root, environment: {},
     tokenFileSecurityIssue: syntheticSecurityIssue, selectLocalClientCredential: syntheticCredentialSelector }),

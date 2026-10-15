@@ -97,6 +97,17 @@ test('unclassified TypeError retains one bounded secret-free frame diagnostic', 
   assert.doesNotMatch(log, /private message|SYNTHETIC_UNCLASSIFIED_SECRET_a821/);
 });
 
+test('worker diagnostics include only a matching own error code', () => {
+  const projectRoot = fileURLToPath(new URL('../../', import.meta.url));
+  const invalid = new Error('private message');
+  invalid.code = 'Private-Provider-Code';
+  assert.equal(formatWorkerFailureDiagnostic(invalid, projectRoot),
+    'Staging worker failure name=Error code=none frame=none');
+  const inherited = Object.assign(Object.create({ code: 'hidden-secret' }), { stack: 'Error: private' });
+  assert.equal(formatWorkerFailureDiagnostic(inherited, projectRoot),
+    'Staging worker failure name=Object code=none frame=none');
+});
+
 test('business readback failure crosses worker diagnostic seam only as a closed code', () => {
   assert.equal(businessWorkerFailureCode({ code: 'write-coverage-incomplete' }), 'business-journey-readback-incomplete');
   assert.equal(businessWorkerFailureCode({ message: 'Business journey coverage incomplete; reconciliation required' }),
