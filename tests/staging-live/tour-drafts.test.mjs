@@ -49,7 +49,7 @@ test('served W6 client draft, undo, search save and reload bind the plan-owned T
     vertical: 'Medical office', notes: 'Synthetic QA client only' };
   const server = await fixtureServer({ root: new URL('../../dist/site', import.meta.url).pathname });
   t.after(() => server.close());
-  const browser = await chromium.launch({ executablePath: '/usr/bin/chromium' });
+  const browser = await chromium.launch();
   t.after(() => browser.close());
   const page = await browser.newPage({ viewport: { width: 1440, height: 960 } });
   t.after(() => page.context().close());
@@ -63,7 +63,8 @@ test('served W6 client draft, undo, search save and reload bind the plan-owned T
       request.method() === 'POST' && url.pathname === '/mcp' ? request.postDataJSON()?.params?.name : null]);
     try {
       const response = await scoped.handle(request, async () => {
-      if (url.pathname === '/app-release') return reply(release);
+      if (url.pathname === '/app-release') return reply({ service: release.service,
+        environment: release.environment, source_commit: release.source_commit });
       if (url.pathname === '/auth/session') return reply({ actor: { slug: 'joe' }, e2e_principal: 'e2e-joe' });
       if (url.pathname === '/api/system-work/session') return reply({ actor: { slug: 'joe' }, csrf_token: 'synthetic-only' });
       if (url.pathname === '/api/v1/business/clients') return reply({ data: { rows: [client], page: 1, page_count: 1 }, csrf_token: 'synthetic-only' });

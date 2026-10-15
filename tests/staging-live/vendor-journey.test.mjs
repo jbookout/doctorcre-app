@@ -34,7 +34,7 @@ test('served W5 app reads only an owned vendor, filters by owner and opens origi
   const vendor = plan.records.vendor, entry = plan.records.vendor_entry;
   const server = await fixtureServer({ root: new URL('../../dist/site', import.meta.url).pathname });
   t.after(() => server.close());
-  const browser = await chromium.launch({ executablePath: '/usr/bin/chromium' });
+  const browser = await chromium.launch();
   t.after(() => browser.close());
 
   const listRow = () => ({ ...directoryFixture(`${STAGING_ORIGIN}/api/v1/business/vendors`).rows[0],
@@ -77,7 +77,8 @@ test('served W5 app reads only an owned vendor, filters by owner and opens origi
       request.method() === 'POST' && url.pathname === '/mcp' ? request.postDataJSON()?.params?.name : null]);
     try {
       const covered = await scoped.handle(request, async () => {
-        if (url.pathname === '/app-release') return response(release);
+        if (url.pathname === '/app-release') return response({ service: release.service,
+          environment: release.environment, source_commit: release.source_commit });
         if (url.pathname === '/auth/session') return response({ actor: { slug: 'joe' }, e2e_principal: 'e2e-joe' });
         if (url.pathname === '/api/system-work/session') return response({ actor: { slug: 'joe' }, csrf_token: 'synthetic-only' });
         if (url.pathname.startsWith('/api/v1/business/vendors')) return response(fixtureData(url.href));

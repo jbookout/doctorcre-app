@@ -48,7 +48,7 @@ export async function runTourDraftJourney({ page, plan, sourcePair, fixtureBindi
     return { app, session };
   }, timeout);
   if (identity.app?.service !== 'doctorcre-app' || identity.app.environment !== 'staging' ||
-      identity.app.source_commit !== sourcePair.app || identity.app.carr_source_commit !== sourcePair.carr ||
+      identity.app.source_commit !== sourcePair.app ||
       !stagingAuth.session.matches(identity.session)) fail();
   const client = await page.evaluate(readOwnClient, { clientId: plan.records.client.id, timeout });
   const area = [client?.city, client?.state].filter(Boolean).join(', ');

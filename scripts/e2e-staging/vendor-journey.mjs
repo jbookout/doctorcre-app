@@ -4,6 +4,7 @@ import { requireSupervisedRun } from './run-limits.mjs';
 import { STAGING_ORIGIN } from './session.mjs';
 import { stagingAuth } from './auth-contract.mjs';
 import { observedV1Action } from './v1-qualification.mjs';
+import staging from '../../contracts/e2e-staging.v1.json' with { type: 'json' };
 
 const uuid = value => typeof value === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 const digest = value => createHash('sha256').update(JSON.stringify(value)).digest('hex');
@@ -44,6 +45,7 @@ export async function runVendorJourney({ page, plan, release, run } = {}) {
   const url = new URL(page?.url?.() || 'about:blank');
   if (url.origin !== STAGING_ORIGIN || url.pathname !== '/vendors' || url.search ||
       release?.service !== 'doctorcre-app' || release.environment !== 'staging' ||
+      release.carr_source_commit !== staging.producer.source_commit ||
       !/^[0-9a-f]{40}$/.test(release.source_commit || ''))
     throw new Error('W5 guarded vendor route and source refused');
   await assertStagingContextCoverage(page.context());
@@ -54,8 +56,8 @@ export async function runVendorJourney({ page, plan, release, run } = {}) {
   const read = async path => { run.check(); return page.evaluate(normalRead, { path, timeout }); };
   const [app, session] = await Promise.all([read('/app-release'), read('/auth/session')]);
   const identity = { app, session };
-  if (identity?.app?.source_commit !== release.source_commit ||
-      identity.app.carr_source_commit !== release.carr_source_commit ||
+  if (identity?.app?.service !== 'doctorcre-app' || identity.app.environment !== 'staging' ||
+      identity.app.source_commit !== release.source_commit ||
       !stagingAuth.session.matches(identity.session)) throw new Error('W5 signed-in source pair refused');
   const detailPath = `/api/v1/business/vendors/${vendor.id}?contract=vendor-directory.v1`;
   const before = await read(detailPath);
@@ -115,6 +117,8 @@ export async function runVendorJourney({ page, plan, release, run } = {}) {
   const introSelector = `#recordBody details[data-details-key="intro-${entry.link_id}"]`;
   const entryDetails = page.locator(`#recordBody details[data-details-key="entry-${entry.id}"]`);
   const introDetails = page.locator(introSelector);
+  await entryDetails.waitFor({ state: 'visible', timeout });
+  await introDetails.waitFor({ state: 'visible', timeout });
   if (await entryDetails.count() !== 1 || await introDetails.count() !== 1)
     throw new Error('W5 original activity or introduction not shown in vendor detail');
   await entryDetails.locator('summary').click({ timeout });
