@@ -181,7 +181,8 @@ function relationshipProjection(network, plan, rows) {
   });
   const north = rows.fixed_party.city, south = rows.owned_vendor.territory;
   const expectedNodes = [
-    { id: nodeIds[0], kind: 'client', record_id: client.id, name: party.name, territory: north },
+    { id: nodeIds[0], kind: 'client', record_id: plan.party_reuse?.state === 'verified' ? nodes[0].record_id : client.id,
+      name: party.name, territory: north },
     { id: nodeIds[1], kind: 'deal', record_id: deal.id, name: deal.name, territory: nodes[1].territory },
     { id: nodeIds[2], kind: 'vendor', record_id: vendor.id, name: vendor.name, territory: south },
     { id: nodeIds[3], kind: 'client', record_id: referred.client_id,
@@ -691,6 +692,10 @@ export async function prepareStagingRecords(output, {
           (existing || node.name === plan.records.deal.name)) &&
         network.edges.some(edge => edge.id === `client-deal:${plan.records.deal.id}` &&
           edge.kind === 'client_deal' && edge.from === partyNode && edge.to === dealNode));
+      if (plan.party_reuse) plan.party_reuse = { ...plan.party_reuse, state: 'verified', client_id: plan.records.client.id,
+        deal_id: plan.records.deal.id, network_observed_at: network.observed_at,
+        network_response_sha256: digest(network), client_response_sha256: digest(clientRead),
+        deal_response_sha256: digest(dealRead) };
       if (relationshipFixture) {
         readbackCheck = 'relationship-fixture';
         const retained = plan.fixture_proofs?.relationship;
@@ -725,10 +730,6 @@ export async function prepareStagingRecords(output, {
             client_response_sha256: digest(referredClient), deal_response_sha256: digest(referredDeal) } };
       }
       readbackCheck = 'relationship-persistence';
-      if (plan.party_reuse) plan.party_reuse = { ...plan.party_reuse, state: 'verified', client_id: plan.records.client.id,
-        deal_id: plan.records.deal.id, network_observed_at: network.observed_at,
-        network_response_sha256: digest(network), client_response_sha256: digest(clientRead),
-        deal_response_sha256: digest(dealRead) };
       await persist(planPath, plan);
     }
     readbackCheck = 'invoice';

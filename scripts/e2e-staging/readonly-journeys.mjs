@@ -14,7 +14,7 @@ const pending = (journey, reason) => ({ journey, state: 'pending', reason });
 
 // This function is serialized into the guarded page. Its only network path is
 // same-origin fetch, so installStagingGuard remains the sole HTTP policy/meter.
-async function browserRead({ task, dealId, partyId, clientId, clientRef, partyNameDigest, dealNameDigest, dealNameDigestExpected,
+async function browserRead({ task, dealId, partyId, clientId, clientRef, partyReused = false, partyNameDigest, dealNameDigest, dealNameDigestExpected,
   referredDealId, referredDealNameDigest, referredPartyId, referredClientId,
   evidenceEdgeId, evidenceDetailDigest, referralMetrics, territory, contract: spec }) {
   const textDigest = async value => {
@@ -69,7 +69,7 @@ async function browserRead({ task, dealId, partyId, clientId, clientRef, partyNa
       network?.schema === 'carr-relationship-network.v1' && Number.isFinite(observed) && Number.isFinite(valid) &&
       observed <= now && now - observed <= spec.party_reuse.fresh_network_max_age_ms &&
       valid > now && valid > observed && valid - observed <= 61_000 &&
-      partyNodes.length === 1 && partyNodes[0].record_id === clientId && partyNodes[0].kind === 'client' &&
+      partyNodes.length === 1 && partyNodes[0].kind === 'client' &&
       await textDigest(partyNodes[0].name) === partyNameDigest &&
       dealNodes.length === 1 && dealNodes[0].record_id === dealId && dealNodes[0].kind === 'deal' &&
       await textDigest(dealNodes[0].name) === dealNameDigestExpected &&
@@ -127,7 +127,7 @@ async function browserRead({ task, dealId, partyId, clientId, clientRef, partyNa
     const clients = network.nodes.filter(node => node?.id === clientNodeId);
     const deals = network.nodes.filter(node => node?.id === dealNodeId);
     const edges = network.edges.filter(edge => edge?.id === `client-deal:${dealId}`);
-    if (clients.length !== 1 || deals.length !== 1 || clients[0]?.record_id !== clientId || clients[0]?.kind !== 'client'
+    if (clients.length !== 1 || deals.length !== 1 || (!partyReused && clients[0]?.record_id !== clientId) || clients[0]?.kind !== 'client'
       || deals[0]?.record_id !== dealId || deals[0]?.kind !== 'deal')
       return { snapshot: true, nodes: false, edge: false, evidence: false, referrals: false, territory: false,
         validUntil: network.valid_until, client_ui: false, deal_ui: false };
@@ -348,7 +348,7 @@ export function assertRelationshipFixture(network, plan) {
   const partyNodeId = `party:${party.id}`, dealNodeId = `deal:${deal.id}`;
   const node = network.nodes.find(row => row.id === partyNodeId);
   const dealNode = network.nodes.find(row => row.id === dealNodeId);
-  if (node?.kind !== 'client' || node.record_id !== client.id || node.name !== party.name
+  if (node?.kind !== 'client' || (!verifiedPartyReuse(plan, party.id, client.id, deal.id) && node.record_id !== client.id) || node.name !== party.name
     || dealNode?.kind !== 'deal' || dealNode.record_id !== deal.id || dealNode.name !== deal.name)
     refuse('selected-client-identity-unproved');
   const edge = network.edges.find(row => row.id === `client-deal:${deal.id}`);
@@ -627,7 +627,7 @@ export async function runReadonlyJourneys({ page, release, plan, run } = {}) {
       await page.goto(`${STAGING_ORIGIN}${contract.journeys.W14.route}`, { waitUntil: 'domcontentloaded', timeout: runTimeoutMs(run) });
       await page.waitForURL(url => url.origin === STAGING_ORIGIN && url.pathname === contract.journeys.W14.route, { timeout: runTimeoutMs(run) });
       await waitForPageState(page, ownedRelationshipPageReady, { nodeId: `party:${relationshipPlan.partyId}` }, run);
-      relationship = await evaluate('relationship', { ...relationshipPlan, partyNameDigest,
+      relationship = await evaluate('relationship', { ...relationshipPlan, partyReused, partyNameDigest,
         dealNameDigestExpected: expectedDealNameDigest });
       if (relationship?.snapshot === true && relationship?.nodes === true && relationship?.edge === true
         && relationship?.clientNodeNameMatches === true && relationship?.dealNameMatches === true) {
