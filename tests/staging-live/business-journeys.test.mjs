@@ -378,8 +378,13 @@ test('served signed-in app W4/W9 uses the real UI, canonical fixture guard and d
   await t.test('W9 date cancel and retry leave one observed date with independent readback', async () => {
     const f = await fixture();
     try {
-      const result = await runBusinessJourneys({ page: f.page, fixtureGuard: f.guard, release, deal, run, journeys: ['W9'] });
+      const retained = [];
+      const result = await runBusinessJourneys({ page: f.page, fixtureGuard: f.guard, release, deal, run, journeys: ['W9'],
+        onJourneyComplete: row => retained.push(row) });
       assert.deepEqual(result.completed, ['W9']);
+      assert.equal(retained.length, 1);
+      assert.deepEqual(retained[0].completed, ['W9']);
+      assert.equal(retained[0].actions.length, 4);
       assert.deepEqual(result.actions.map(row => row.action),
         ['date-dialog-cancel','contract-date-write','countdown','date-control-removed']);
       assert.deepEqual(f.writes.map(row => row.name), ['add-critical-date']);

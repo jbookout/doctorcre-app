@@ -126,7 +126,8 @@ export async function runAutomaticPhaseUndo({ page, fixtureGuard, release, deal,
 }
 
 export async function runBusinessJourneys({ page, fixtureGuard, release, deal, run,
-  journeys = businessJourneys.journeys.map(journey => journey.id), invoiceProofPath, awaitingInvoicePlan } = {}) {
+  journeys = businessJourneys.journeys.map(journey => journey.id), invoiceProofPath, awaitingInvoicePlan,
+  onJourneyStart, onJourneyComplete } = {}) {
   run = requireSupervisedRun(undefined, run);
   run.check();
   const url = new URL(page.url());
@@ -169,6 +170,7 @@ export async function runBusinessJourneys({ page, fixtureGuard, release, deal, r
     return state;
   };
   for (const id of journeys) {
+    if (onJourneyStart) await onJourneyStart(id);
     for (const definition of businessJourneys.journeys.find(journey => journey.id === id).steps) {
       run.check();
       const spec = { journey: id, step: definition.id, deal, release };
@@ -368,6 +370,8 @@ export async function runBusinessJourneys({ page, fixtureGuard, release, deal, r
         readback_sha256: observed.independent_readback.response_sha256 });
     }
     complete.push(id);
+    if (onJourneyComplete) await onJourneyComplete({ journey: id, completed: [...complete],
+      steps: structuredClone(steps), actions: structuredClone(actions) });
   }
   await fixtureGuard.assertCoverage();
   return { schema: 'staging-business-journey-result.v1', completed: complete, steps, actions,

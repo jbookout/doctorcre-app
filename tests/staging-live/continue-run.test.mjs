@@ -1040,6 +1040,26 @@ test('business qualification retains the exact validated W4/W9/W15 action eviden
   assert.equal(resumed.observations.length, 18);
 });
 
+test('selected-run retention preserves prior validated Tour and readonly observations', async t => {
+  const f = await businessFixture(t);
+  const readonly = { schema: 'staging-readonly-journey-result.v1', full_v1_qualified: false,
+    provenance: { source_commit: binding.app, carr_source_commit: binding.carr, run: f.plan.run },
+    counts: { carr_record_mutations: 0 },
+    journeys: ['W1', 'W2', 'W5', 'W14'].map(journey => ({ journey,
+      state: journey === 'W1' ? 'qualified-slice' : 'pending' })) };
+  const base = { completed: [], steps: [], actions: [], companions: [], full_v1_qualified: false, readonly };
+  await retainJourneyQualification({ run: f.run, binding, release,
+    result: { ...base, tour: { full_v1_qualified: false, ui: { sha256: 'a'.repeat(64) },
+      backend_readback: { sha256: 'b'.repeat(64) } } } });
+  await retainJourneyQualification({ run: f.run, binding, release,
+    result: { ...base, tour: { full_v1_qualified: false } } });
+  const retained = JSON.parse(await readFile(join(f.run.root, 'staging-records-plan.json'), 'utf8')).journey_qualification;
+  assert.equal(retained.tour_readonly_observed, true);
+  assert.equal(retained.readonly.W1, 'qualified-slice');
+  assert.equal(retained.readonly.W5, 'pending');
+  assert.equal(retained.full_v1_qualified, false);
+});
+
 test('resume replaces fresh readonly/vendor/Tour evidence and drops it when current journeys have no proof', async t => {
   const f = await businessFixture(t), { V1_REQUIRED_ACTIONS, observedV1Action } =
     await import('../../scripts/e2e-staging/v1-qualification.mjs');

@@ -31,6 +31,9 @@ const execute = promisify(execFile);
 const ownFailures = new WeakSet();
 const businessFailureCodes = new Set(['business-journey-receipt-missing', 'business-journey-selector-unavailable',
   'business-journey-readback-incomplete', 'business-journey-settlement-unverified',
+  'selected-journey-selection-invalid', 'selected-journey-plan-required', 'selected-journey-plan-invalid',
+  'selected-journey-route-unavailable', 'selected-journey-setup-failed', 'selected-journey-w4-failed', 'selected-journey-w9-failed',
+  'selected-journey-action-proof-incomplete', 'selected-journey-proof-conflict',
   'staging-fixture-rpc-unresolved', 'staging-fixture-stage-prerequisite',
   'staging-fixture-taxonomy-prerequisite', 'staging-fixture-category-prerequisite']);
 export function businessWorkerFailureCode(error) {
@@ -161,7 +164,7 @@ export async function retainJourneyQualification({ run, binding, release, result
       !Array.isArray(result.completed) || !Array.isArray(result.steps))
     refusal('journey-observations-invalid');
   assertReadonlyResult(result.readonly, release, plan);
-  let priorObservations = [];
+  let priorObservations = [], priorTourReadonlyObserved = false;
   if (plan.journey_qualification) {
     const prior = assertJourneyQualification(plan.journey_qualification, binding, run.snapshot().id);
     if (Object.hasOwn(prior, 'observations') && prior.fixture_run !== plan.run)
@@ -169,6 +172,7 @@ export async function retainJourneyQualification({ run, binding, release, result
     priorObservations = (prior.observations || []).filter(row => durableBusinessAction(row) &&
       result.completed.includes(row.id) && result.steps.some(step => step?.journey === row.id &&
         ['observed', 'previously-observed'].includes(step.state)));
+    priorTourReadonlyObserved = prior.tour_readonly_observed === true;
   }
   const observations = new Map();
   for (const row of priorObservations) observations.set(journeyActionIdentity(row), row);
@@ -188,7 +192,8 @@ export async function retainJourneyQualification({ run, binding, release, result
     business: { W4: result.completed.includes('W4'), W9: result.completed.includes('W9'),
       W15: result.completed.includes('W15'),
       observed_steps: result.steps.filter(row => row?.state === 'observed').length },
-    tour_readonly_observed: Boolean(result.tour?.ui?.sha256 && result.tour?.backend_readback?.sha256),
+    tour_readonly_observed: Boolean(priorTourReadonlyObserved ||
+      result.tour?.ui?.sha256 && result.tour?.backend_readback?.sha256),
     readonly: Object.fromEntries(result.readonly.journeys.map(row => [row.journey, row.state])),
     fixture_run: plan.run,
     observations: [...observations.values()], companions: result.companions || [],
@@ -1115,11 +1120,22 @@ export async function runBusinessPhase({ binding, run, environment = process.env
 
 async function phaseWorker(environment, phase) {
   const { currentRun } = await import('./run-limits.mjs');
+  const binding = bindings(environment), run = currentRun();
+  if (phase === 'journeys') {
+    let result;
+    try { result = await (await import('./selected-journeys.mjs')).runSelectedJourneys({ binding, run, environment }); }
+    catch (error) {
+      const code = businessWorkerFailureCode(error) || (error?.code && businessFailureCodes.has(error.code)
+        ? error.code : error?.constructor?.name === 'RunLimitError' ? error.code : 'selected-journey-setup-failed');
+      throw Object.assign(new Error(`Staging continuation refused: ${code}`), { code });
+    }
+    console.log(`Selected staging journeys completed: ${result.completed.join(', ')}; action proofs=${result.action_proofs}; full V1 qualification=false`);
+    return result;
+  }
   const { stagingSession } = await import('./session.mjs');
   const { writeReport } = await import('./report.mjs');
   const { createSweepRun } = await import('./resume.mjs');
   const { targets, screens } = await import('./screens.mjs');
-  const binding = bindings(environment), run = currentRun();
   const { release } = await stagingSession(contract.origin, { run });
   assertSourcePair(release, binding);
   if (await absent(join(run.root, 'controls.json'))) {
@@ -1410,6 +1426,7 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
       'canary-shell-script-failed', 'canary-shell-main-count', 'staging-fixture-candidate-refused',
       'staging-fixture-rpc-unresolved', 'staging-fixture-stage-prerequisite',
       'staging-fixture-taxonomy-prerequisite', 'staging-fixture-category-prerequisite',
+      'selected-journey-setup-failed', 'selected-journey-w4-failed', 'selected-journey-w9-failed',
       ...businessFailureCodes]);
     const code = ownFailures.has(error) || closed.has(error?.code) ? error.code : 'source-check-failed';
     console.error(`Staging continuation stopped: ${code}; no full V1 acceptance is established.`);

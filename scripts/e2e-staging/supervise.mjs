@@ -26,6 +26,7 @@ const SAFE_CAUSES = [
   [/^Error: No tests found\b/, 'playwright-no-tests-discovered'],
   [/^SyntaxError:/, 'javascript-syntax-error'],
   [/^Staging continuation stopped: (business-journey-(?:receipt-missing|selector-unavailable|readback-incomplete|settlement-unverified)); no full V1 acceptance is established\.$/, null],
+  [/^Staging continuation stopped: (selected-journey-(?:selection-invalid|plan-required|plan-invalid|route-unavailable|setup-failed|w4-failed|w9-failed|action-proof-incomplete|proof-conflict)); no full V1 acceptance is established\.$/, null],
   [/^Staging continuation stopped: (canary-shell-(?:navigation-missing|document-status|url-invalid|script-failed|main-count)|staging-fixture-(?:candidate-refused|rpc-unresolved|stage-prerequisite|taxonomy-prerequisite|category-prerequisite)); no full V1 acceptance is established\.$/, null],
   [/^Staging run stopped: (run-directory-required|invalid-run-limits|run-ledger-invalid|run-ledger-unreadable|process-inspection-unavailable|process-ownership-invalid|process-cleanup-unverified|artifact-path-refused|artifact-symlink-refused|artifact-size-unavailable|http-request-limit|http-timeout|whole-run-deadline)\b/, null],
 ];
@@ -53,7 +54,7 @@ export function createWorkerDiagnosticReader(onDiagnostic) {
         const cause = SAFE_CAUSES.find(([pattern]) => pattern.test(line));
         if (sessionFailure || cause) {
           const code = sessionFailure?.[1] || cause?.[1] ||
-            line.match(/^Staging (?:run|continuation) stopped: ([a-z0-9-]+)/)?.[1];
+            line.match(/^Staging (?:run|continuation) (?:stopped|refused): ([a-z0-9-]+)/)?.[1];
           if (code) { onDiagnostic(`cause=${code}`); count++; }
           pendingCause = true;
           continue;
