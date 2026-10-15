@@ -345,7 +345,23 @@ export async function assertSeparated({ output, publicDir, envelopePath }) {
   if (!await absent(envelopePath) || !await absent(publicDir)) refusal('continuation-destination-exists');
 }
 
-async function progress(output, binding) {
+export function assertRestoredEvidence(checkpoint, retained, runId) {
+  const hasReference = value => {
+    if (!value || typeof value !== 'object') return false;
+    if (Array.isArray(value)) return value.some(hasReference);
+    return Object.entries(value).some(([key, child]) =>
+      ((key === 'evidence' || key === 'evidence_path') && typeof child === 'string' && child.length > 0) || hasReference(child));
+  };
+  if (retained?.verified === true) {
+    if (retained.schema !== 'doctorcre-staging-retained-evidence.v1' ||
+        retained.source_pair?.source_commit !== checkpoint?.release?.source_commit ||
+        retained.source_pair?.carr_source_commit !== checkpoint?.release?.carr_source_commit ||
+        retained.run_id !== runId || !Number.isSafeInteger(retained.referencedFiles) || retained.referencedFiles < 1)
+      refusal('retained-evidence-unverified');
+  } else if (hasReference(checkpoint)) refusal('retained-evidence-unverified');
+}
+
+async function progress(output, binding, runId) {
   let checkpoint;
   try { checkpoint = JSON.parse(await readFile(join(output, 'controls.json'), 'utf8')); }
   catch (error) { if (error.code === 'ENOENT') return { phase: 'explore' }; throw error; }
@@ -353,6 +369,7 @@ async function progress(output, binding) {
   const { screens, targets } = await import('./screens.mjs');
   const { createSweepRun } = await import('./resume.mjs');
   const { completionContract } = await import('./completion-contract.mjs');
+  const { assessCurrentEvidence } = await import('./evidence-manifest.mjs');
   const routedScreens = await screens(), run = createSweepRun({ targets, routedScreens, prior: checkpoint });
   run.assertRelease(checkpoint.release);
   const allowlist = JSON.parse(await readFile(new URL('./dead-allowlist.json', import.meta.url), 'utf8'));
@@ -365,7 +382,9 @@ async function progress(output, binding) {
   let setup;
   try { setup = JSON.parse(await readFile(join(output, 'staging-records.json'), 'utf8')); }
   catch (error) { if (error.code !== 'ENOENT') throw error; }
-  const completion = completionContract({ verdict, release: checkpoint.release, fixtureWriteScopeComplete: true, setup, targets, routedScreens });
+  const retainedEvidence = await assessCurrentEvidence(output, checkpoint, runId);
+  const completion = completionContract({ verdict, release: checkpoint.release, fixtureWriteScopeComplete: true,
+    setup, targets, routedScreens, retainedEvidence, runId });
   if (['FAILED', 'NEEDS_RECONCILIATION'].includes(completion.status)) refusal('measured-failure');
   return { phase: completion.status === 'ACCEPTED_SWEEP' ? 'complete' : 'sweep', verdict, completion };
 }
@@ -420,8 +439,8 @@ export async function invoicePrerequisite({ output, binding, runId, environment 
 // Tour and invoice installers have separate immutable source pins. This is
 // an adapter for raw private readback, never an MCP receipt or write authority.
 export const TOUR_FIXTURE_INSTALLER = Object.freeze({
-  sourceCommit: '52281593fe05148269145b70c166b6e30b4c2e4c',
-  sha256: '1ae51c9e6842c69ef0035889546c823092655a7c80eaf67ebe2c676f5330feb0',
+  sourceCommit: '64564fd3cb0b37b825f6cae3525a699665c66bad',
+  sha256: 'c843e55af5a4fa745a2ea593073ff4f89cd0f5ddeb6a9478d66c9f0ac61d097d',
 });
 const uuid = value => typeof value === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 const same = (a, b) => JSON.stringify(stable(a)) === JSON.stringify(stable(b));
@@ -552,6 +571,9 @@ export async function boundedInvocation(options, dependencies = {}) {
           predecessor: expected.predecessor === null ? null : { generation: expected.generation - 1, sha256: expected.predecessor },
           runId, sourcePair, contractHash, planHash: expected.planHash } });
       if (restored.generation !== slot - 1) refusal('artifact-chain-mismatch');
+      const checkpoint = JSON.parse(await privateBytes(join(output, 'controls.json')));
+      const verify = dependencies.verifyRetainedEvidence || (await import('./evidence-manifest.mjs')).verifyRetainedEvidence;
+      assertRestoredEvidence(checkpoint, await verify(output, checkpoint), runId);
     } else {
       if (expected || incoming || !await absent(output)) refusal('genesis-replay-refused');
       // Initialize once from trusted workflow start/deadline, then immediately
@@ -576,7 +598,7 @@ export async function boundedInvocation(options, dependencies = {}) {
     // no new checkpoint file or inferred completion bit is introduced.
     let businessValidated = false, paused = false, tourStatus = 'UNQUALIFIED_NOT_RUN';
     const inspectCurrent = async () => {
-      const state = await inspect(output, binding);
+      const state = await inspect(output, binding, budget.id);
       return !businessValidated && ['sweep', 'complete'].includes(state.phase)
         ? { ...state, phase: 'business' } : state;
     };

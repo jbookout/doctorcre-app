@@ -11,7 +11,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { canary, canaryRequestAllowed, canaryLimits, canaryFailure, qualifiedModelRoom, assertQualifiedDesk, assertBudget, assertGitHubArtifact,
   assertSeparated, boundedInvocation, runBusinessPhase, assertCheckout, verifyFrozenSource, publicationBoundary,
-  assertSourcePair, invocationBoundary, assertTrustedArtifact } from '../../scripts/e2e-staging/continue-run.mjs';
+  assertSourcePair, invocationBoundary, assertTrustedArtifact, assertRestoredEvidence } from '../../scripts/e2e-staging/continue-run.mjs';
 import { RUN_LIMITS, openRun } from '../../scripts/e2e-staging/run-limits.mjs';
 import contract from '../../contracts/e2e-staging.v1.json' with { type: 'json' };
 
@@ -195,6 +195,19 @@ test('global budget admission rejects exhausted counters, unfinished resources a
     assert.throws(() => assertBudget({ ...state, ...delta }, expected));
 });
 
+test('restored evidence refuses missing or mismatched proof while zero-evidence progress remains resumable', () => {
+  const checkpoint = { release, explorations: [] }, runId = 'synthetic_' + sha;
+  assert.doesNotThrow(() => assertRestoredEvidence(checkpoint, { verified: false }, runId));
+  const retained = { schema: 'doctorcre-staging-retained-evidence.v1', verified: true,
+    source_pair: { source_commit: sha, carr_source_commit: binding.carr }, run_id: runId, referencedFiles: 1 };
+  const observed = { ...checkpoint, explorations: [{ status: 'finished', evidence: '/synthetic/evidence/explore/goal' }] };
+  assert.doesNotThrow(() => assertRestoredEvidence(observed, retained, runId));
+  for (const proof of [{ verified: false }, { ...retained, run_id: 'other' },
+    { ...retained, source_pair: { ...retained.source_pair, source_commit: 'f'.repeat(40) } },
+    { ...retained, referencedFiles: 0 }])
+    assert.throws(() => assertRestoredEvidence(observed, proof, runId), { code: 'retained-evidence-unverified' });
+});
+
 const privateMarker = 'SYNTHETIC_PRIVATE_CONTINUATION_MARKER_3c702';
 async function continuationFixture(t, { interrupt = true, checkout = sha } = {}) {
   const root = await mkdtemp(join(tmpdir(), 'doctorcre-workflow-chain-'));
@@ -208,9 +221,12 @@ async function continuationFixture(t, { interrupt = true, checkout = sha } = {})
     complete: true, records: {}, eligibleLead: null, findings: [], needs_restore: [] };
   const controls = { release, screens: [], history: [], explorations: [], findings: [], stateObligations: [],
     expectedScreens: 62, expectedStates: 62, expectedExplorations: 93, setup: { private_marker: privateMarker } };
-  let workerCalls = 0;
+  let workerCalls = 0, verificationCalls = 0;
   const dependencies = { tourPrerequisite: async () => ({ status: 'READY' }), invoicePrerequisite: async () => ({ status: 'READY' }), qualify: async () => ({}), checkout: async () => {}, freeze: async () => {},
-    progress: async () => ({ phase: 'explore' }),
+    verifyRetainedEvidence: async () => { verificationCalls++; return { verified: false }; },
+    progress: async (_output, _binding, observedRunId) => {
+      assert.equal(observedRunId, runId); return { phase: 'explore' };
+    },
     work: async ({ output, limits }) => {
       workerCalls++;
       const run = openRun(output, { limits, runId, events: null, newInvocation: true });
@@ -224,7 +240,7 @@ async function continuationFixture(t, { interrupt = true, checkout = sha } = {})
     } };
   const base = { binding: { ...binding, checkout }, slot: 1, runId, startedAt, deadline, secret: 'synthetic-encryption-secret-at-least-32-characters',
     output: join(root, 'progress-one'), publicDir: join(root, 'public-one'), envelopePath: join(root, 'one.enc'), environment: {} };
-  return { root, base, dependencies, calls: () => workerCalls };
+  return { root, base, dependencies, calls: () => workerCalls, verificationCalls: () => verificationCalls };
 }
 
 test('cutoff crossed at the actual envelope link refuses success and retains the private envelope for reconciliation', async t => {
@@ -346,6 +362,8 @@ test('fresh publication gates reject late clocks, dirty source and substituted c
 test('workflow checks fresh boundaries around every upload and requires predecessor job success', async () => {
   const workflow = await readFile(new URL('../../.github/workflows/staging-live.yml', import.meta.url), 'utf8');
   assert.doesNotMatch(workflow, /^\s+schedule:/m);
+  const plan = workflow.split('\n  plan:')[1].split('\n  canary:')[0];
+  assert.match(plan, /actions\/setup-node@820762786026740c76f36085b0efc47a31fe5020[\s\S]*?node-version: 22\.23\.2[\s\S]*?- id: plan/);
   for (let n = 1; n <= 4; n++) {
     const section = workflow.split(`\n  part_${n}:`)[1].split(/\n  (?:part_\d|full_v1_proof):/)[0];
     assert.equal(section.match(/continue-run\.mjs publication-boundary/g)?.length, 3);
@@ -381,6 +399,7 @@ test('synthetic interrupted/restored chain retains global counters and deadline,
   assert.equal(second.generation, '2');
   assert.equal(second.accepted_v1, 'false');
   assert.equal(f.calls(), 2);
+  assert.equal(f.verificationCalls(), 1);
   assert.deepEqual((await readdir(secondOptions.publicDir)).sort(), ['controls.json', 'coverage.md', 'evidence-package.json', 'explorations.json', 'findings.json']);
   for (const name of await readdir(secondOptions.publicDir)) {
     const text = await readFile(join(secondOptions.publicDir, name), 'utf8');
@@ -841,12 +860,12 @@ async function tourProofFixture(t) {
   const proof = { schema: 'doctorcre-staging-fixture-proof.v1',
     provenance: { kind: 'raw-sql-fixture', readback: 'separate-committed-readonly-connection' }, fixture_run: fixtureRun,
     source_pair: plan.release, recorded_plan_observed_at: plan.observed_at, verified_target: target,
-    tool_source_sha256: '1ae51c9e6842c69ef0035889546c823092655a7c80eaf67ebe2c676f5330feb0',
+    tool_source_sha256: 'c843e55af5a4fa745a2ea593073ff4f89cd0f5ddeb6a9478d66c9f0ac61d097d',
     fixture: { mode: 'excluded-tour-stop', tour_readback: row } };
   const runId = 'synthetic_' + sha, proofPath = join(root, 'tour-proof.json');
   const descriptor = { schema: 'doctorcre-local-tour-admission.v1', checkout: sha,
     sourcePair: plan.release, runId, fixtureRun, proofPath, proofSha256: '', verifiedTarget: target,
-    toolSourceCommit: '52281593fe05148269145b70c166b6e30b4c2e4c' };
+    toolSourceCommit: '64564fd3cb0b37b825f6cae3525a699665c66bad' };
   const descriptorPath = join(root, 'tour-admission.json');
   const persist = async () => {
     const bytes = JSON.stringify(proof);
