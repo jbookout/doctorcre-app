@@ -209,7 +209,7 @@ async function continuationFixture(t, { interrupt = true, checkout = sha } = {})
   const controls = { release, screens: [], history: [], explorations: [], findings: [], stateObligations: [],
     expectedScreens: 62, expectedStates: 62, expectedExplorations: 93, setup: { private_marker: privateMarker } };
   let workerCalls = 0;
-  const dependencies = { qualify: async () => ({}), checkout: async () => {}, freeze: async () => {},
+  const dependencies = { invoicePrerequisite: async () => ({ status: 'READY' }), qualify: async () => ({}), checkout: async () => {}, freeze: async () => {},
     progress: async () => ({ phase: 'explore' }),
     work: async ({ output, limits }) => {
       workerCalls++;
@@ -449,16 +449,19 @@ async function businessFixture(t) {
   const root = await mkdtemp(join(tmpdir(), 'doctorcre-business-caller-'));
   t.after(() => rm(root, { recursive: true, force: true }));
   const deal = '60000000-0000-4000-8000-000000000001', events = [];
-  const plan = { state: 'complete', release, records: { deal: { id: deal } } };
+  const plan = { state: 'complete', run: '60000000-0000-4000-8000-000000000003', release,
+    records: { deal: { id: deal }, invoice: { deal_id: '60000000-0000-4000-8000-000000000002' } } };
   await writeFile(join(root, 'staging-records-plan.json'), JSON.stringify(plan), { mode: 0o600 });
   const run = { root, signal: new AbortController().signal, limits: RUN_LIMITS,
     check() {}, onStop: () => () => {}, http: async operation => { events.push('http'); return operation(); } };
   const state = { cookies: [{ name: 'synthetic-session', value: privateMarker }] };
   let guarded = false, routeHandler;
-  const page = { url: () => `${contract.origin}/deals?deal=${deal}`,
+  let currentURL;
+  const page = { url: () => currentURL,
     goto: async url => {
       assert.equal(guarded, true);
-      assert.equal(url, page.url());
+      assert.ok([`${contract.origin}/deals?deal=${deal}`, contract.origin + '/'].includes(url));
+      currentURL = url;
       events.push('navigate');
       await routeHandler({ request: () => ({ method: () => 'GET', url: () => url }),
         fetch: async () => ({ status: () => 200 }), fulfill: async () => {}, abort: async () => assert.fail('guarded read refused') });
@@ -467,6 +470,7 @@ async function businessFixture(t) {
   const fixtureGuard = { assertCoverage: async () => { events.push('guard-coverage'); },
     forContext: () => ({ assertCoverage: async () => {}, handle: async (_request, forward) => run.http(forward) }) };
   const supplied = {
+    invoicePrerequisite: async () => ({ status: 'READY', verifiedTarget: {}, proofSha256: digest }),
     coverage: async () => { events.push('canonical-coverage'); },
     session: async () => { events.push('authenticate'); return { state, release }; },
     prepare: async (output, options) => {
@@ -487,9 +491,10 @@ async function businessFixture(t) {
     }, close: async () => { events.push('browser-close'); } }),
     journeys: async options => {
       assert.equal(options.page, page); assert.equal(options.fixtureGuard, fixtureGuard);
-      assert.equal(options.release, release); assert.equal(options.deal, deal); assert.equal(options.run, run);
+      assert.equal(options.release, release);
+      assert.equal(options.deal, options.journeys[0] === 'W15' ? plan.records.invoice.deal_id : deal); assert.equal(options.run, run);
       events.push('business');
-      return { completed: ['W4', 'W9'], steps: [], full_v1_qualified: false, unqualified_journeys: ['W6'] };
+      return { completed: options.journeys, steps: [], full_v1_qualified: false, unqualified_journeys: ['W6'] };
     },
   };
   return { run, supplied, events, plan, fixtureGuard };
@@ -500,7 +505,9 @@ test('business caller reuses the real private fixture plan, fresh session and ex
   const result = await runBusinessPhase({ binding, run: f.run }, f.supplied);
   assert.equal(result.full_v1_qualified, false);
   assert.deepEqual(f.events, ['canonical-coverage', 'prepare', 'authenticate', 'canonical-coverage',
-    'install-guard', 'navigate', 'http', 'business', 'guard-coverage', 'canonical-coverage', 'context-close', 'guard-coverage', 'browser-close']);
+    'install-guard', 'navigate', 'http', 'business', 'guard-coverage', 'canonical-coverage',
+    'install-guard', 'navigate', 'http', 'business', 'guard-coverage', 'canonical-coverage',
+    'context-close', 'context-close', 'guard-coverage', 'browser-close']);
 });
 
 test('unsettled writes, source changes and deal restore limitations refuse business execution before browser creation', async t => {
@@ -608,4 +615,155 @@ test('two controllers cannot write or seal the same invocation concurrently', as
   finally { resume(); }
   await first;
   assert.equal(f.calls(), 1);
+});
+
+
+test('W15 prerequisites pause without proof, refuse hosted proof admission, and bind local proof to trusted bytes and run', async t => {
+  const module = await import('../../scripts/e2e-staging/continue-run.mjs');
+  assert.equal(typeof module.invoicePrerequisite, 'function');
+  const f = await businessFixture(t);
+  const runId = 'synthetic_' + sha;
+  const admit = environment => module.invoicePrerequisite({ output: f.run.root, binding, runId, environment });
+  assert.equal((await admit({})).status, 'PAUSED_LOCAL_INVOICE_FIXTURE');
+  const proofPath = join(f.run.root, 'proof.json');
+  await writeFile(proofPath, '{}', { mode: 0o600 });
+  const descriptorPath = join(f.run.root, 'admission.json');
+  const descriptor = { schema: 'doctorcre-local-invoice-admission.v1', checkout: sha,
+    sourcePair: { source_commit: sha, carr_source_commit: binding.carr }, runId,
+    fixtureRun: f.plan.run, proofPath, proofSha256: createHash('sha256').update('{}').digest('hex'),
+    verifiedTarget: { project: { id: 'synthetic-project', name: 'carr-staging-replacement-test' },
+      branch: { id: 'synthetic-branch', name: 'main' }, endpoint: { id: 'ep-synthetic', host: 'ep-synthetic.neon.tech' }, database: 'neondb' } };
+  const bytes = JSON.stringify(descriptor);
+  await writeFile(descriptorPath, bytes, { mode: 0o600 });
+  const environment = { E2E_INVOICE_ADMISSION: descriptorPath,
+    E2E_INVOICE_ADMISSION_SHA256: createHash('sha256').update(bytes).digest('hex') };
+  assert.equal((await admit(environment)).status, 'READY');
+  await assert.rejects(admit({ ...environment, GITHUB_ACTIONS: 'true' }), { code: 'invoice-proof-local-only' });
+  await assert.rejects(admit({ ...environment, E2E_INVOICE_ADMISSION_SHA256: 'f'.repeat(64) }), { code: 'invoice-admission-unproved' });
+  await writeFile(proofPath, '{"changed":true}', { mode: 0o600 });
+  await assert.rejects(admit(environment), { code: 'invoice-admission-unproved' });
+  await writeFile(proofPath, '{}', { mode: 0o600 });
+  f.plan.run = 'different-fixture-run';
+  await writeFile(join(f.run.root, 'staging-records-plan.json'), JSON.stringify(f.plan), { mode: 0o600 });
+  await assert.rejects(admit(environment), { code: 'invoice-admission-unproved' });
+});
+
+test('business caller invokes W15 separately on Home with invoice-deal and canonical proof import before navigation', async t => {
+  const f = await businessFixture(t), calls = [];
+  const supplied = { ...f.supplied,
+    invoicePrerequisite: async () => ({ status: 'READY', verifiedTarget: {}, proofPath: '/synthetic/private/proof.json', proofSha256: digest }),
+    journeys: async options => { calls.push(options); return { completed: options.journeys, steps: [], full_v1_qualified: false }; } };
+  f.fixtureGuard.admitBusinessJourneyStep = async spec => {
+    assert.equal(spec.journey, 'W15'); assert.equal(spec.deal, f.plan.records.invoice.deal_id);
+    assert.equal(spec.phase, 'import-fixture'); assert.equal(spec.proofPath, '/synthetic/private/proof.json');
+    f.events.push('import-invoice-proof'); return { proof_sha256: digest };
+  };
+  const result = await runBusinessPhase({ binding, run: f.run }, supplied);
+  assert.deepEqual(calls.map(row => row.journeys), [['W4', 'W9'], ['W15']]);
+  assert.equal(calls[1].deal, f.plan.records.invoice.deal_id);
+  assert.equal(calls[1].page.url(), contract.origin + '/');
+  assert.equal(calls[1].invoiceProofPath, undefined, 'runner uses canonically imported proof; no second file read');
+  assert.equal(result.full_v1_qualified, false);
+});
+
+test('missing local invoice prerequisite seals partial progress but never dispatches business or automatic continuation', async t => {
+  const f = await continuationFixture(t, { interrupt: false }), phases = [];
+  const result = await boundedInvocation(f.base, { ...f.dependencies,
+    invoicePrerequisite: async () => ({ status: 'PAUSED_LOCAL_INVOICE_FIXTURE' }),
+    progress: async () => ({ phase: phases.includes('sweep') ? 'complete' : phases.length ? 'sweep' : 'explore' }),
+    work: async options => { phases.push(options.phase); return f.dependencies.work(options); } });
+  assert.deepEqual(phases, ['explore']);
+  assert.equal(result.job_status, 'PAUSED_LOCAL_INVOICE_FIXTURE');
+  assert.equal(result.proof_status, 'PARTIAL'); assert.equal(result.accepted_v1, 'false');
+  assert.ok((await readFile(f.base.envelopePath)).length > 0);
+  const ledger = JSON.parse(await readFile(join(f.base.output, 'run-budget.json'), 'utf8'));
+  assert.equal(ledger.startedAt, f.base.startedAt); assert.equal(ledger.deadline, f.base.deadline);
+});
+
+
+test('local invoice pause restores the same budget/deadline and revalidates business through canonical runner', async t => {
+  const f = await continuationFixture(t, { interrupt: false }), phases = [];
+  const first = await boundedInvocation(f.base, { ...f.dependencies,
+    invoicePrerequisite: async () => ({ status: 'PAUSED_LOCAL_INVOICE_FIXTURE' }),
+    progress: async () => ({ phase: phases.length ? 'complete' : 'explore' }),
+    work: async options => { phases.push(options.phase); return f.dependencies.work(options); } });
+  assert.equal(first.job_status, 'PAUSED_LOCAL_INVOICE_FIXTURE');
+  const previous = JSON.parse(await readFile(join(f.base.output, 'run-budget.json'), 'utf8'));
+  const expected = { artifactId: '123', digest: first.digest, generation: 1, predecessor: null, planHash: first.plan_hash };
+  const next = { ...f.base, slot: 2, output: join(f.root, 'restored'), publicDir: join(f.root, 'public-two'),
+    envelopePath: join(f.root, 'two.enc'), expected, incoming: { ...expected, path: f.base.envelopePath } };
+  const resumed = await boundedInvocation(next, { ...f.dependencies,
+    progress: async () => ({ phase: 'complete' }),
+    work: async options => { phases.push(options.phase); return f.dependencies.work(options); } });
+  assert.deepEqual(phases, ['explore', 'business']); assert.equal(resumed.accepted_v1, 'false');
+  const after = JSON.parse(await readFile(join(next.output, 'run-budget.json'), 'utf8'));
+  assert.equal(after.startedAt, previous.startedAt); assert.equal(after.deadline, previous.deadline);
+  assert.equal(after.globalModelCalls, previous.globalModelCalls + 1);
+  assert.equal(after.globalHttpRequests, previous.globalHttpRequests + 1);
+  assert.ok(after.artifactBytes > previous.artifactBytes);
+  for (const name of await readdir(next.publicDir))
+    assert.doesNotMatch(await readFile(join(next.publicDir, name), 'utf8'), new RegExp(privateMarker));
+});
+
+test('invoice/client restore limitations and invoice alias of active deal refuse before any browser or journey', async t => {
+  for (const kind of ['invoice', 'client', 'same-deal']) {
+    const f = await businessFixture(t);
+    if (kind === 'same-deal') {
+      f.plan.records.invoice.deal_id = f.plan.records.deal.id;
+      await writeFile(join(f.run.root, 'staging-records-plan.json'), JSON.stringify(f.plan), { mode: 0o600 });
+    }
+    await assert.rejects(runBusinessPhase({ binding, run: f.run }, { ...f.supplied,
+      prepare: async (...args) => ({ ...await f.supplied.prepare(...args),
+        needs_restore: kind === 'same-deal' ? [] : [{ record: kind, reason: 'changed' }] }),
+      browserFactory: async () => assert.fail('unproved fixture must not launch browser') }),
+    { code: 'business-fixture-requires-reconciliation' });
+  }
+});
+
+test('retained quarantined invoice binds the same trusted target/proof without requiring or replaying the installer file', async t => {
+  const { invoicePrerequisite } = await import('../../scripts/e2e-staging/continue-run.mjs');
+  const f = await businessFixture(t), runId = 'synthetic_' + sha;
+  const target = { project: { name: 'carr-staging-replacement-test', id: 'synthetic' }, database: 'neondb' };
+  const sorted = value => value && typeof value === 'object'
+    ? Object.fromEntries(Object.keys(value).sort().map(key => [key, sorted(value[key])])) : value;
+  f.plan.fixture_proofs = { invoice: { state: 'quarantined', proof_sha256: digest,
+    verified_target_sha256: createHash('sha256').update(JSON.stringify(sorted(target))).digest('hex') } };
+  await writeFile(join(f.run.root, 'staging-records-plan.json'), JSON.stringify(f.plan), { mode: 0o600 });
+  const descriptor = { schema: 'doctorcre-local-invoice-admission.v1', checkout: sha,
+    sourcePair: { source_commit: sha, carr_source_commit: binding.carr }, runId, fixtureRun: f.plan.run,
+    proofPath: join(f.run.root, 'removed-original-installer-proof.json'), proofSha256: digest, verifiedTarget: target };
+  const path = join(f.run.root, 'trusted.json'), bytes = JSON.stringify(descriptor);
+  await writeFile(path, bytes, { mode: 0o600 });
+  const environment = { E2E_INVOICE_ADMISSION: path, E2E_INVOICE_ADMISSION_SHA256: createHash('sha256').update(bytes).digest('hex') };
+  const result = await invoicePrerequisite({ output: f.run.root, binding, runId, environment });
+  assert.equal(result.status, 'READY'); assert.equal(result.proofPath, undefined);
+  descriptor.proofSha256 = 'f'.repeat(64);
+  const changed = JSON.stringify(descriptor); await writeFile(path, changed, { mode: 0o600 });
+  await assert.rejects(invoicePrerequisite({ output: f.run.root, binding, runId,
+    environment: { ...environment, E2E_INVOICE_ADMISSION_SHA256: createHash('sha256').update(changed).digest('hex') } }),
+  { code: 'invoice-admission-unproved' });
+});
+
+test('hosted CLI cannot use local invoice admission or local continuation options', async () => {
+  const result = await promisify(execFile)(process.execPath,
+    [fileURLToPath(new URL('../../scripts/e2e-staging/continue-run.mjs', import.meta.url)), 'local-invocation'],
+    { env: { ...process.env, GITHUB_ACTIONS: 'true', E2E_SESSION_SECRET: privateMarker } }).catch(error => error);
+  assert.equal(result.code, 1); assert.match(result.stderr, /invoice-proof-local-only/);
+  assert.doesNotMatch(result.stdout + result.stderr, new RegExp(privateMarker));
+});
+
+
+test('worker prerequisite refusal precedes session/browser and changed canonical imported proof cannot dispatch', async t => {
+  const f = await businessFixture(t);
+  await assert.rejects(runBusinessPhase({ binding, run: f.run }, { ...f.supplied,
+    invoicePrerequisite: async () => ({ status: 'PAUSED_LOCAL_INVOICE_FIXTURE' }),
+    prepare: async () => assert.fail('paused worker must not authenticate or read fixtures') }),
+  { code: 'invoice-local-prerequisite-required' });
+  assert.deepEqual(f.events, ['canonical-coverage']);
+  f.fixtureGuard.admitBusinessJourneyStep = async () => ({ proof_sha256: 'f'.repeat(64) });
+  await assert.rejects(runBusinessPhase({ binding, run: f.run }, { ...f.supplied,
+    invoicePrerequisite: async () => ({ status: 'READY', verifiedTarget: {},
+      proofPath: '/synthetic/private/proof.json', proofSha256: digest }),
+    browserFactory: async () => assert.fail('proof substitution must not launch browser') }),
+  { code: 'invoice-admission-unproved' });
 });

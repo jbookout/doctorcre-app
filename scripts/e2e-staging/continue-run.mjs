@@ -14,6 +14,8 @@ const project = fileURLToPath(new URL('../../', import.meta.url));
 const sha40 = value => typeof value === 'string' && /^[a-f0-9]{40}$/.test(value);
 const sha256 = value => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value);
 const hash = bytes => createHash('sha256').update(bytes).digest('hex');
+const stable = value => Array.isArray(value) ? value.map(stable) : value && typeof value === 'object'
+  ? Object.fromEntries(Object.keys(value).sort().map(key => [key, stable(value[key])])) : value;
 const execute = promisify(execFile);
 const ownFailures = new WeakSet();
 const refusal = code => {
@@ -54,7 +56,7 @@ async function privateBytes(path, maximum = 16 * 1024 * 1024) {
   const handle = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW);
   try {
     const stat = await handle.stat();
-    if (!stat.isFile() || stat.nlink !== 1 || (stat.mode & 0o777) !== 0o600 || stat.size > maximum) refusal('private-file-invalid');
+    if (!stat.isFile() || stat.uid !== process.getuid() || stat.nlink !== 1 || (stat.mode & 0o777) !== 0o600 || stat.size > maximum) refusal('private-file-invalid');
     return await handle.readFile();
   } finally { await handle.close(); }
 }
@@ -366,6 +368,40 @@ async function supervisePhase({ phase, output, environment, limits, boundary }) 
   } finally { clearTimeout(timer); }
 }
 
+// Local operator configuration is a separate trusted input, never inferred
+// from installer output. No database connection or installer runs here.
+export async function invoicePrerequisite({ output, binding, runId, environment = process.env }) {
+  if (!environment.E2E_INVOICE_ADMISSION && !environment.E2E_INVOICE_ADMISSION_SHA256)
+    return { status: 'PAUSED_LOCAL_INVOICE_FIXTURE' };
+  if (environment.GITHUB_ACTIONS === 'true') refusal('invoice-proof-local-only');
+  const path = environment.E2E_INVOICE_ADMISSION;
+  if (!isAbsolute(path || '') || !sha256(environment.E2E_INVOICE_ADMISSION_SHA256)) refusal('invoice-admission-unproved');
+  await privateParent(dirname(path));
+  const bytes = await privateBytes(path, 16 * 1024);
+  if (hash(bytes) !== environment.E2E_INVOICE_ADMISSION_SHA256) refusal('invoice-admission-unproved');
+  const descriptor = JSON.parse(bytes);
+  const plan = JSON.parse(await privateBytes(join(output, 'staging-records-plan.json')));
+  const keys = ['schema', 'checkout', 'sourcePair', 'runId', 'fixtureRun', 'proofPath', 'proofSha256', 'verifiedTarget'];
+  if (Object.keys(descriptor).sort().join() !== keys.sort().join() ||
+      descriptor.schema !== 'doctorcre-local-invoice-admission.v1' || descriptor.checkout !== binding.checkout ||
+      descriptor.runId !== runId || !descriptor.fixtureRun || descriptor.fixtureRun !== plan.run ||
+      descriptor.sourcePair?.source_commit !== binding.app || descriptor.sourcePair?.carr_source_commit !== binding.carr ||
+      plan.release?.source_commit !== binding.app || plan.release?.carr_source_commit !== binding.carr ||
+      !sha256(descriptor.proofSha256) || !descriptor.verifiedTarget || !isAbsolute(descriptor.proofPath || ''))
+    refusal('invoice-admission-unproved');
+  const retained = plan.fixture_proofs?.invoice;
+  if (retained) {
+    if (retained.proof_sha256 !== descriptor.proofSha256 ||
+        hash(JSON.stringify(stable(descriptor.verifiedTarget))) !== retained.verified_target_sha256)
+      refusal('invoice-admission-unproved');
+  } else {
+    await privateParent(dirname(descriptor.proofPath));
+    if (hash(await privateBytes(descriptor.proofPath, 65536)) !== descriptor.proofSha256) refusal('invoice-admission-unproved');
+  }
+  return { status: 'READY', verifiedTarget: descriptor.verifiedTarget,
+    proofPath: retained ? undefined : descriptor.proofPath, proofSha256: descriptor.proofSha256 };
+}
+
 export async function boundedInvocation(options, dependencies = {}) {
   const { RUN_LIMITS, openRun, directoryBytes } = await import('./run-limits.mjs');
   const { sealContinuation, restoreContinuation } = await import('./continuation-envelope.mjs');
@@ -436,7 +472,7 @@ export async function boundedInvocation(options, dependencies = {}) {
     // Revalidate retained journey observations through the real runner once per
     // invocation. Its canonical journal skips only observed, source-bound steps;
     // no new checkpoint file or inferred completion bit is introduced.
-    let businessValidated = false;
+    let businessValidated = false, paused = false;
     const inspectCurrent = async () => {
       const state = await inspect(output, binding);
       return !businessValidated && ['sweep', 'complete'].includes(state.phase)
@@ -446,6 +482,11 @@ export async function boundedInvocation(options, dependencies = {}) {
     while (current.phase !== 'complete' && now() < boundary) {
       assertBudget(budget.snapshot(), { ...budgetBinding, now: now() });
       if (slot > 1 || await absent(join(output, 'staging-records-plan.json')) === false) await coverage(output);
+      if (current.phase === 'business') {
+        const admission = await (dependencies.invoicePrerequisite || invoicePrerequisite)({
+          output, binding, runId, environment: options.environment || {} });
+        if (admission.status !== 'READY') { paused = true; break; }
+      }
       const outcome = await work({ phase: current.phase, output, environment, limits, boundary });
       if (!await absent(join(output, '.run-owner'))) refusal('source-worker-not-quiescent');
       assertBudget(budget.snapshot(), { ...budgetBinding, now: now() });
@@ -496,8 +537,8 @@ export async function boundedInvocation(options, dependencies = {}) {
     await qualify();
     assertBudget(budget.snapshot(), { ...budgetBinding, now: now() });
     return { digest: sealed.sha256, generation: String(slot), predecessor: predecessor?.sha256 || '', plan_hash: sealed.planHash,
-      job_status: current.phase === 'complete' ? 'SWEEP_ACCEPTED' : 'CONTINUE',
-      accepted_v1: 'false', proof_status: current.completion?.status || 'PARTIAL' };
+      job_status: paused ? 'PAUSED_LOCAL_INVOICE_FIXTURE' : current.phase === 'complete' ? 'SWEEP_ACCEPTED' : 'CONTINUE',
+      accepted_v1: 'false', proof_status: paused ? 'PARTIAL' : current.completion?.status || 'PARTIAL' };
   } finally {
     budget?.dispose();
     await lease.close();
@@ -505,7 +546,7 @@ export async function boundedInvocation(options, dependencies = {}) {
   }
 }
 
-export async function runBusinessPhase({ binding, run }, supplied = {}) {
+export async function runBusinessPhase({ binding, run, environment = process.env }, supplied = {}) {
   const records = await import('./records.mjs');
   const session = await import('./session.mjs');
   const prepare = supplied.prepare || records.prepareStagingRecords;
@@ -519,6 +560,9 @@ export async function runBusinessPhase({ binding, run }, supplied = {}) {
   run.check();
   // Refuse an uncertain prior effect before any fresh authentication/readback.
   await coverage(run.root);
+  const admission = await (supplied.invoicePrerequisite || invoicePrerequisite)({ output: run.root, binding,
+    runId: run.snapshot ? run.snapshot().id : undefined, environment });
+  if (admission.status !== 'READY') refusal('invoice-local-prerequisite-required');
   let state;
   const setup = await prepare(run.root, { reuseOnly: true, run, signal: run.signal,
     session: async (origin, options) => {
@@ -529,15 +573,17 @@ export async function runBusinessPhase({ binding, run }, supplied = {}) {
     } });
   assertSourcePair(setup.release, binding);
   const plan = JSON.parse(await privateBytes(join(run.root, 'staging-records-plan.json')));
-  const deal = plan.records?.deal?.id;
+  const deal = plan.records?.deal?.id, invoiceDeal = plan.records?.invoice?.deal_id;
   if (!state || setup.complete !== true || !Array.isArray(setup.needs_restore) ||
       !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(deal || '') ||
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(invoiceDeal || '') ||
+      invoiceDeal === deal || setup.records?.invoice?.deal_id !== invoiceDeal ||
       setup.records?.deal?.id !== deal || plan.state !== 'complete' || plan.inflight ||
       plan.release?.source_commit !== binding.app || plan.release?.carr_source_commit !== binding.carr)
     refusal('business-fixture-requires-reconciliation');
   await coverage(run.root);
   const release = setup.release;
-  const fixtureGuard = guardFactory({ output: run.root, release, run });
+  const fixtureGuard = guardFactory({ output: run.root, release, run, invoiceFixtureTarget: admission.verifiedTarget });
   const businessContract = (await import('../../contracts/e2e-staging-business-journeys.v1.json', { with: { type: 'json' } })).default;
   for (const limitation of setup.needs_restore.filter(row => row.record === 'deal')) {
     // A fully observed move awaiting its canonical undo is resumable progress,
@@ -553,9 +599,19 @@ export async function runBusinessPhase({ binding, run }, supplied = {}) {
     await fixtureGuard.admitBusinessJourneyStep({ phase: 'admit', journey: definition.id,
       step: retained.journey.step, deal, release });
   }
+  if (setup.needs_restore.some(row => ['client', 'invoice'].includes(row.record)))
+    refusal('business-fixture-requires-reconciliation');
+  // Canonical import validates installer/source/target/creation receipts and
+  // durably binds exact bytes before any Home read or possible browser write.
+  if (admission.proofPath) {
+    const imported = await fixtureGuard.admitBusinessJourneyStep({ phase: 'import-fixture',
+      journey: 'W15', step: 'paid', deal: invoiceDeal, release, proofPath: admission.proofPath });
+    if (imported?.proof_sha256 !== admission.proofSha256) refusal('invoice-admission-unproved');
+  }
   const target = targets.find(row => row.name === 'staging-live');
   const screen = (await screens()).find(row => row.path === '/deals' && row.surface === 'app');
-  if (!target || !screen) refusal('business-fixture-route-missing');
+  const home = (await screens()).find(row => row.path === '/' && row.surface === 'app');
+  if (!target || !screen || !home) refusal('business-fixture-route-missing');
   const browser = await (supplied.browserFactory || (async () => (await import('playwright')).chromium.launch()))();
   const removeStop = run.onStop(() => browser.close());
   const factory = createFreshPageFactory({ run,
@@ -570,11 +626,21 @@ export async function runBusinessPhase({ binding, run }, supplied = {}) {
   try {
     const page = await factory.freshPage({ target, screen, release, fixtureGuard,
       path: `/deals?deal=${encodeURIComponent(deal)}` });
-    const result = await journeys({ page, fixtureGuard, release, deal, run });
+    const result = await journeys({ page, fixtureGuard, release, deal, run, journeys: ['W4', 'W9'] });
     await fixtureGuard.assertCoverage();
     await coverage(run.root);
     if (result?.full_v1_qualified !== false) refusal('business-result-unqualified');
-    return result;
+    // A distinct guarded context starts W15 at Home. The canonical runner
+    // revalidates retained observations and quarantines paid fixtures; it alone
+    // admits durable intent and independent normal tracker readback.
+    const invoicePage = await factory.freshPage({ target, screen: home, release, fixtureGuard, path: '/' });
+    const invoice = await journeys({ page: invoicePage, fixtureGuard, release, deal: invoiceDeal, run, journeys: ['W15'] });
+    await fixtureGuard.assertCoverage();
+    await coverage(run.root);
+    if (invoice?.full_v1_qualified !== false) refusal('business-result-unqualified');
+    return { schema: 'staging-business-journey-result.v1', release: result.release,
+      completed: [...result.completed, ...invoice.completed], steps: [...result.steps, ...invoice.steps],
+      full_v1_qualified: false, unqualified_journeys: businessContract.unqualified_journeys };
   } finally {
     try { await factory.dispose(); }
     finally { removeStop(); await browser.close(); }
@@ -597,7 +663,7 @@ async function phaseWorker(environment, phase) {
   }
   if (phase === 'explore') return (await import('./explore.mjs')).exploreAll();
   if (phase === 'business') {
-    await runBusinessPhase({ binding, run });
+    await runBusinessPhase({ binding, run, environment });
     return;
   }
   if (phase !== 'sweep') refusal('unknown-phase');
@@ -768,6 +834,37 @@ async function main(environment = process.env, command = process.argv[2]) {
   if (command === 'verify-artifact') return verifyGitHubArtifact(environment);
   if (command === 'canary') return canaryJob(environment);
   if (command === 'invocation') return invocationJob(environment);
+  if (command === 'local-invocation') {
+    if (environment.GITHUB_ACTIONS === 'true' || environment.GITHUB_OUTPUT) refusal('invoice-proof-local-only');
+    const path = environment.E2E_LOCAL_INVOCATION;
+    if (!isAbsolute(path || '') || !sha256(environment.E2E_LOCAL_INVOCATION_SHA256)) refusal('local-invocation-unproved');
+    await privateParent(dirname(path));
+    const bytes = await privateBytes(path, 32 * 1024);
+    if (hash(bytes) !== environment.E2E_LOCAL_INVOCATION_SHA256) refusal('local-invocation-unproved');
+    const options = JSON.parse(bytes);
+    const keys = ['binding', 'slot', 'runId', 'startedAt', 'deadline', 'output', 'envelopePath', 'publicDir', 'incoming', 'expected'];
+    if (Object.keys(options).sort().join() !== keys.sort().join()) refusal('local-invocation-unproved');
+    await assertCheckout(options.binding?.checkout);
+    const { readSessionSecret } = await import('./session.mjs');
+    const result = await boundedInvocation({ ...options, environment,
+      secret: await readSessionSecret(environment.E2E_SESSION_SECRET_FILE) });
+    const localBoundary = async () => {
+      await assertCheckout(options.binding.checkout);
+      const { RUN_LIMITS } = await import('./run-limits.mjs');
+      assertBudget(JSON.parse(await privateBytes(join(options.output, 'run-budget.json'))), {
+        runId: options.runId, startedAt: options.startedAt, deadline: options.deadline,
+        limits: { ...RUN_LIMITS, runTimeoutMs: options.deadline - options.startedAt, batchGoals: 1 } });
+      if (!await absent(join(options.output, '.run-owner')) ||
+          hash(await privateBytes(options.envelopePath, RUN_LIMITS.artifactBytes)) !== result.digest)
+        refusal('publication-binding-invalid');
+      invocationBoundary({ deadline: options.deadline, sliceMs: 1 });
+    };
+    // Closed receipt only; consumers must require exit zero as on GitHub.
+    await localBoundary();
+    console.log(JSON.stringify(result));
+    await localBoundary();
+    return;
+  }
   if (command === 'publication-boundary') return publicationBoundary(environment);
   if (command === 'plan') {
     bindings(environment);

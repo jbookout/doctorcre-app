@@ -109,6 +109,7 @@ jobs:
       plan_hash: ${{ steps.run.outputs.plan_hash }}
       job_status: ${{ steps.run.outputs.job_status }}
       accepted_v1: ${{ steps.run.outputs.accepted_v1 }}
+      proof_status: ${{ steps.run.outputs.proof_status }}
     env:
       E2E_RUN_ID: gh_${{ github.run_id }}_${{ github.sha }}
       E2E_SLOT: '1'
@@ -151,7 +152,10 @@ jobs:
           E2E_SESSION_SECRET: ${{ secrets.E2E_SESSION_SECRET }}
         run: node scripts/e2e-staging/continue-run.mjs session-secret
       - id: run
-        name: Restore, explore, run business journeys, sweep, reconcile, and seal
+        # W15 installer/proof admission is LOCAL ONLY. A missing prerequisite
+        # seals PAUSED_LOCAL_INVOICE_FIXTURE, not CONTINUE; downstream jobs
+        # remain stopped. No DB/deploy credentials or raw proof are supplied.
+        name: Restore, explore, pause for local prerequisites or run guarded journeys, and seal
         run: node scripts/e2e-staging/continue-run.mjs invocation
       - name: Recheck the frozen publication boundary
         env:
@@ -198,6 +202,7 @@ jobs:
       plan_hash: ${{ steps.run.outputs.plan_hash }}
       job_status: ${{ steps.run.outputs.job_status }}
       accepted_v1: ${{ steps.run.outputs.accepted_v1 }}
+      proof_status: ${{ steps.run.outputs.proof_status }}
     env:
       E2E_RUN_ID: gh_${{ github.run_id }}_${{ github.sha }}
       E2E_SLOT: '2'
@@ -245,7 +250,10 @@ jobs:
           E2E_SESSION_SECRET: ${{ secrets.E2E_SESSION_SECRET }}
         run: node scripts/e2e-staging/continue-run.mjs session-secret
       - id: run
-        name: Restore, explore, run business journeys, sweep, reconcile, and seal
+        # W15 installer/proof admission is LOCAL ONLY. A missing prerequisite
+        # seals PAUSED_LOCAL_INVOICE_FIXTURE, not CONTINUE; downstream jobs
+        # remain stopped. No DB/deploy credentials or raw proof are supplied.
+        name: Restore, explore, pause for local prerequisites or run guarded journeys, and seal
         run: node scripts/e2e-staging/continue-run.mjs invocation
       - name: Recheck the frozen publication boundary
         env:
@@ -292,6 +300,7 @@ jobs:
       plan_hash: ${{ steps.run.outputs.plan_hash }}
       job_status: ${{ steps.run.outputs.job_status }}
       accepted_v1: ${{ steps.run.outputs.accepted_v1 }}
+      proof_status: ${{ steps.run.outputs.proof_status }}
     env:
       E2E_RUN_ID: gh_${{ github.run_id }}_${{ github.sha }}
       E2E_SLOT: '3'
@@ -339,7 +348,10 @@ jobs:
           E2E_SESSION_SECRET: ${{ secrets.E2E_SESSION_SECRET }}
         run: node scripts/e2e-staging/continue-run.mjs session-secret
       - id: run
-        name: Restore, explore, run business journeys, sweep, reconcile, and seal
+        # W15 installer/proof admission is LOCAL ONLY. A missing prerequisite
+        # seals PAUSED_LOCAL_INVOICE_FIXTURE, not CONTINUE; downstream jobs
+        # remain stopped. No DB/deploy credentials or raw proof are supplied.
+        name: Restore, explore, pause for local prerequisites or run guarded journeys, and seal
         run: node scripts/e2e-staging/continue-run.mjs invocation
       - name: Recheck the frozen publication boundary
         env:
@@ -386,6 +398,7 @@ jobs:
       plan_hash: ${{ steps.run.outputs.plan_hash }}
       job_status: ${{ steps.run.outputs.job_status }}
       accepted_v1: ${{ steps.run.outputs.accepted_v1 }}
+      proof_status: ${{ steps.run.outputs.proof_status }}
     env:
       E2E_RUN_ID: gh_${{ github.run_id }}_${{ github.sha }}
       E2E_SLOT: '4'
@@ -433,7 +446,10 @@ jobs:
           E2E_SESSION_SECRET: ${{ secrets.E2E_SESSION_SECRET }}
         run: node scripts/e2e-staging/continue-run.mjs session-secret
       - id: run
-        name: Restore, explore, run business journeys, sweep, reconcile, and seal
+        # W15 installer/proof admission is LOCAL ONLY. A missing prerequisite
+        # seals PAUSED_LOCAL_INVOICE_FIXTURE, not CONTINUE; downstream jobs
+        # remain stopped. No DB/deploy credentials or raw proof are supplied.
+        name: Restore, explore, pause for local prerequisites or run guarded journeys, and seal
         run: node scripts/e2e-staging/continue-run.mjs invocation
       - name: Recheck the frozen publication boundary
         env:
