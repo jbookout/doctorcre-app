@@ -69,6 +69,39 @@ test('full planned union is required even when every measured pair is complete',
   assert.equal(state.verdict([]).completed, false);
 });
 
+test('retained exploration evidence is bound to all 90 planned target, screen and agent goals', () => {
+  const routes = Array.from({ length: 30 }, (_, index) => ({ name: `Workspace ${index}`, path: `/workspace${index}`, surface: 'app' }));
+  const state = createSweepRun({ targets, routedScreens: routes });
+  state.assertRelease(release);
+  const explorations = targets.flatMap(target => routes.flatMap(screen =>
+    (target.name.endsWith('phone') ? ['phone-reviewer'] : ['bug-hunter', 'first-time-ux']).map(agent => ({
+      target: target.name, screen: screen.name, path: screen.path, agent, status: 'finished', steps: 8,
+      evidence: `/synthetic/evidence/explore/${target.name}-${screen.name}-${agent}`,
+    }))));
+  assert.equal(explorations.length, 90);
+  const complete = state.verdict([], { explorations, explorationSource: release });
+  assert.equal(complete.expectedExplorations, 90);
+  assert.equal(complete.completedExplorations, 90);
+  assert.deepEqual(complete.pendingExplorations, []);
+  const missing = state.verdict([], { explorations: explorations.slice(0, -1), explorationSource: release });
+  assert.equal(missing.completedExplorations, 89);
+  assert.equal(missing.pendingExplorations.length, 1);
+  const unbound = state.verdict([], { explorations, explorationSource: { ...release, source_commit: 'b'.repeat(40) } });
+  assert.equal(unbound.explorationsSourceBound, false);
+  assert.equal(unbound.completedExplorations, 0);
+  assert.equal(unbound.pendingExplorations.length, 90);
+});
+
+test('checkpoint snapshot retains the source-bound exploration rows used by later sweep partitions', () => {
+  const rows = [{ target: 'desktop', screen: 'Home', path: '/', agent: 'bug-hunter', status: 'finished', steps: 4, evidence: '/synthetic/evidence/explore/home' }];
+  const state = run({ release, screens: [], explorations: rows });
+  assert.deepEqual(state.snapshot().explorations, rows);
+  const verdict = state.verdict([], { explorationSource: release });
+  assert.equal(verdict.completedExplorations, 1);
+  assert.equal(verdict.expectedExplorations, 6);
+  assert.equal(verdict.pendingExplorations.length, 5);
+});
+
 test('historical DEAD keeps its stable allowlist key after a later successful retry', () => {
   const partial = screen();
   partial.controls[0].status = 'DEAD';
@@ -218,11 +251,17 @@ test('proof skips finish every target without claiming complete coverage; real f
   assert.match(report, /Skips leave coverage incomplete/);
   assert.match(report, /handler executions: 0/);
   assert.equal(state.snapshot().screens.length, 4);
-  assert.equal(state.verdict([]).skippedControls, 4);
-  assert.equal(state.verdict([]).completed, false);
-  assert.equal(state.verdict([]).failed, false, 'skips alone do not stop serial targets');
+  const partialVerdict = state.verdict([]);
+  assert.equal(partialVerdict.skippedControls, 4);
+  assert.equal(partialVerdict.completed, false);
+  assert.equal(partialVerdict.failed, false, 'skips alone do not stop serial targets');
+  assert.equal(partialVerdict.pendingScreens.length, 4);
+  assert.deepEqual(partialVerdict.failedScreens, []);
+  assert.deepEqual(partialVerdict.failedStateObligations, []);
   const resumed = run({ ...state.snapshot(), release });
-  assert.equal(resumed.verdict([]).skippedControls, 4, 'skip evidence survives resume');
+  const resumedVerdict = resumed.verdict([]);
+  assert.equal(resumedVerdict.skippedControls, 4, 'skip evidence survives resume');
+  assert.deepEqual(resumedVerdict.pendingScreens, partialVerdict.pendingScreens);
   const failed = run();
   for (const target of targets) for (const route of routedScreens) {
     const row = screen(target.name, route.path);
@@ -230,6 +269,7 @@ test('proof skips finish every target without claiming complete coverage; real f
     failed.record(row);
   }
   assert.equal(failed.verdict([]).failed, true);
+  assert.deepEqual(failed.verdict([]).failedScreens, ['desktop|/']);
 });
 
 

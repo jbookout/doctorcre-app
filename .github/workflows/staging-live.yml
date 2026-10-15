@@ -46,10 +46,16 @@ jobs:
           await writeFile(join(directory, 'e2e-session-secret'), secret, { mode: 0o600 });
           JS
       - run: npm run e2e:staging:sweep
+      - name: Build sanitized evidence package
+        if: always()
+        env:
+          E2E_V2_OUTPUT: ${{ github.workspace }}/out/orch/e2e-v2
+          E2E_EVIDENCE_PACKAGE: ${{ github.workspace }}/out/orch/e2e-v2-upload
+        run: node scripts/e2e-staging/package-evidence.mjs
       - if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: staging-live-control-evidence
-          path: out/orch/e2e-v2
+          path: out/orch/e2e-v2-upload
           if-no-files-found: error
           retention-days: 14

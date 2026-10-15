@@ -12,6 +12,7 @@ import { assertStagingBrowserInventory, prepareStagingRecords, stagingFixtureWri
 import { sweepOwnerStates } from './owner-states.mjs';
 import { createRecordedActionContinuation } from './recorded-action-reconciliation.mjs';
 import { createSweepRun, readSweepCheckpoint } from './resume.mjs';
+import { assertSweepJobOutcome, completionContract } from './completion-contract.mjs';
 
 export async function assertSweepFixtureScope(page, control, scope) {
   try {
@@ -28,6 +29,15 @@ export async function assertSweepFixtureScope(page, control, scope) {
 export const outputPath = () => resolve(process.env.E2E_V2_OUTPUT || '/Users/booko/carr-system/out/orch/e2e-v2');
 export async function persistSweepReport(output, run, setup, { publishFile } = {}) {
   await writeReport(output, { ...run.snapshot(), release: setup.release, setup, findings: setup.findings, publishFile });
+}
+
+async function persistCompletion(output, budget, verdict, release, fixtureWriteScopeComplete, setup, targets, routedScreens) {
+  const completion = completionContract({ verdict, release, fixtureWriteScopeComplete, setup, targets, routedScreens });
+  const data = JSON.stringify({ ...verdict, fixtureWriteScopeComplete, completion,
+    measuredAt: new Date().toISOString(), release }, null, 2) + '\n';
+  await budget.writeFile(join(output, 'sweep-verdict.json'), data, writeFile);
+  budget.checkArtifacts();
+  return completion;
 }
 
 export async function sweep({ resume = false, targetName, freshPage, session, requestFactory, recordedActionProof } = {}) {
@@ -82,17 +92,21 @@ export async function sweep({ resume = false, targetName, freshPage, session, re
   await sweepOwnerStates({ run, targets, routedScreens, freshPageFor, evidence, admit: assertSweepFixtureScope,
     persist: () => persistSweepReport(output, run, setup) });
   await persistSweepReport(output, run, setup);
-  if (targetIndex !== targets.length - 1) {
-    await fixtureGuard.assertCoverage();
-    return;
-  }
   const allowlist = JSON.parse(await readFile(new URL('./dead-allowlist.json', import.meta.url), 'utf8'));
-  const verdict = run.verdict(allowlist);
-  try { await fixtureGuard.assertCoverage(); verdict.fixtureWriteScopeComplete = true; }
-  catch { verdict.fixtureWriteScopeComplete = false; verdict.completed = false; verdict.failed = true; }
-  const verdictData = JSON.stringify({ ...verdict, measuredAt: new Date().toISOString(), release }, null, 2) + '\n';
-  const verdictPath = join(output, 'sweep-verdict.json');
-  await budget.writeFile(verdictPath, verdictData, writeFile);
-  budget.checkArtifacts();
-  if (verdict.newDeadControls.length || verdict.failed) throw new Error(`Staging sweep failed: ${verdict.newDeadControls.length} new DEAD controls; completeness ${verdict.completed ? 'passed' : 'FAILED'}. See coverage.md.`);
+  const completionVerdict = () => run.verdict(allowlist, {
+    explorations: checkpoint?.explorations || [], explorationSource: checkpoint?.release,
+  });
+  if (targetIndex !== targets.length - 1) {
+    let fixtureWriteScopeComplete = true;
+    try { await fixtureGuard.assertCoverage(); }
+    catch { fixtureWriteScopeComplete = false; }
+    const completion = await persistCompletion(output, budget, completionVerdict(), release, fixtureWriteScopeComplete, setup, targets, routedScreens);
+    return assertSweepJobOutcome(completion);
+  }
+  const verdict = completionVerdict();
+  let fixtureWriteScopeComplete = true;
+  try { await fixtureGuard.assertCoverage(); }
+  catch { fixtureWriteScopeComplete = false; verdict.completed = false; }
+  const completion = await persistCompletion(output, budget, verdict, release, fixtureWriteScopeComplete, setup, targets, routedScreens);
+  return assertSweepJobOutcome(completion);
 }

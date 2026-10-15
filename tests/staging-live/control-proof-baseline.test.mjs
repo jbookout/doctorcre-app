@@ -9,9 +9,14 @@ import { fileURLToPath } from 'node:url';
 import { citationMismatches, families } from './catalog-families.mjs';
 import { prepareBrowserControlProofs, reviewedSourceDigests, unreviewedSources } from '../../scripts/e2e-staging/control-proofs.mjs';
 import catalog from '../../contracts/e2e-staging-control-proofs.v1.json' with { type: 'json' };
+import contract from '../../contracts/e2e-staging.v1.json' with { type: 'json' };
 
 const checkout = fileURLToPath(new URL('../../', import.meta.url));
 const git = (args, options = {}) => execFileSync('git', args, { cwd: checkout, encoding: 'utf8', timeout: 30_000, ...options }).trim();
+
+test('the session and control-proof contracts pin the same CARR producer', () => {
+  assert.equal(catalog.carr_source_commit, contract.producer.source_commit);
+});
 
 // The catalog check: every file a proof reviewed, and nothing else, still has
 // the reviewed bytes in this checkout. It needs no history and no commit pin.

@@ -105,6 +105,36 @@ test('release preflight preserves the named request limit and never retries past
   assert.equal(run.snapshot().stopReason, 'http-request-limit');
 });
 
+test('a stale CARR release is refused before session exchange or cookie effects', async t => {
+  controls(t, 'staging-live', '1');
+  const { run } = await budget(t);
+  const calls = [];
+  let exchanges = 0, cookieReads = 0;
+  const staleCarrCommit = 'c06bdf2788fb69daefb59364ea4fd798fa94f9a4';
+  const api = {
+    async get(path) {
+      calls.push(path);
+      const body = path === '/app-release'
+        ? { service: 'doctorcre-app', environment: 'staging', source_commit: 'a'.repeat(40) }
+        : path === contract.carr_origin + '/release'
+          ? { env: { value: 'staging' }, git_sha: { value: staleCarrCommit } }
+          : assert.fail('Unexpected GET ' + path);
+      return { status: () => 200, ok: () => true, json: async () => body };
+    },
+    async fetch() { exchanges++; return { status: () => 200, ok: () => true }; },
+    async storageState() { cookieReads++; return { cookies: [] }; },
+    async dispose() {},
+  };
+  await assert.rejects(
+    session.stagingSession(session.STAGING_ORIGIN, { requestContext: api, run }),
+    error => error instanceof session.SessionPreflightFailure && error.code === 'carr-source-pair-refused',
+  );
+  assert.deepEqual(calls, ['/app-release', contract.carr_origin + '/release']);
+  assert.equal(exchanges, 0);
+  assert.equal(cookieReads, 0);
+  assert.equal(run.snapshot().httpRequests, 2);
+});
+
 test('a supervised default session uses the shared factory and counts each request exactly once', async t => {
   controls(t, 'staging-live', '1');
   const { run } = await budget(t);
