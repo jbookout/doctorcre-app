@@ -221,7 +221,21 @@ export async function runBusinessJourneys({ page, fixtureGuard, release, deal, r
         const drop = async () => {
           const admission = await fixtureGuard.admitBusinessJourneyPresence({ ...presenceSpec, phase: 'admit' });
           try {
-            await card.dragTo(page.locator(`.kanban-column[data-column="${target.slug}"]`), { timeout });
+            // Raw mouse steps, not dragTo: a board repaint can swap the card for an identical one before
+            // dragTo presses it, and dragTo's hit-target check then swallows the press while the browser
+            // still starts a drag that is never dropped. The board defers repaints once pressed, so only
+            // the card under the pointer at the press needs proving.
+            await card.scrollIntoViewIfNeeded({ timeout });
+            const from = await card.boundingBox();
+            const to = await page.locator(`.kanban-column[data-column="${target.slug}"]`).boundingBox();
+            if (!from || !to) throw new Error('drag geometry unavailable');
+            const start = { x: from.x + from.width / 2, y: from.y + from.height / 2 };
+            await page.mouse.move(start.x, start.y);
+            if (await page.evaluate(({ x, y }) => document.elementFromPoint(x, y)?.closest('.kanban-card')?.dataset.id,
+              start) !== deal) throw new Error('drag source moved');
+            await page.mouse.down();
+            await page.mouse.move(to.x + to.width / 2, to.y + to.height / 2, { steps: 5 });
+            await page.mouse.up();
             await page.locator('#completionDialog').waitFor({ state: 'visible', timeout });
           } catch { throw journeyError('business-journey-selector-unavailable'); }
           const settled = await fixtureGuard.admitBusinessJourneyPresence({ ...presenceSpec, phase: 'settle',
