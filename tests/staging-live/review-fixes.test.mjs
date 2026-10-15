@@ -179,6 +179,31 @@ test('Model Room model uses a named desk and enforces one aggregate call ceiling
     dispatch: async request => ({ ...await dispatch(request), resumed: 'not-a-boolean' }),
   });
   await assert.rejects(() => changedEnvelope.doGenerate(options), /unknown Model Room dispatcher envelope/);
+  const ephemeralNetworkDispatch = createModelRoomModel({
+    ...authorization,
+    desk: 'doctorcre-e2e',
+    budget: createModelCallBudget(1),
+    dispatch: async request => ({ ...await dispatch(request), kind: 'codex-live', resumed: false,
+      ephemeral_thread: true, thread_resumable: false }),
+  });
+  assert.deepEqual((await ephemeralNetworkDispatch.doGenerate(options)).content,
+    [{ type: 'text', text: '{}' }]);
+  for (const changes of [
+    { kind: 'codex-session', resumed: false, ephemeral_thread: true, thread_resumable: false },
+    { kind: 'codex-live', resumed: true, ephemeral_thread: true, thread_resumable: false },
+    { kind: 'codex-live', resumed: false, ephemeral_thread: false, thread_resumable: false },
+    { kind: 'codex-live', resumed: false, ephemeral_thread: true, thread_resumable: true },
+    { kind: 'codex-live', resumed: false, ephemeral_thread: true },
+    { kind: 'codex-live', resumed: false, ephemeral_thread: 'true', thread_resumable: false },
+  ]) {
+    const malformedEphemeralDispatch = createModelRoomModel({
+      ...authorization,
+      desk: 'doctorcre-e2e',
+      budget: createModelCallBudget(1),
+      dispatch: async request => ({ ...await dispatch(request), ...changes }),
+    });
+    await assert.rejects(() => malformedEphemeralDispatch.doGenerate(options), /unknown Model Room dispatcher envelope/);
+  }
   for (const changes of [
     { desk: 'wrong-desk' },
     { task: 'wrong task' },

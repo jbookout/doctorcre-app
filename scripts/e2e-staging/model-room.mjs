@@ -25,6 +25,7 @@ const dispatcherEnvelopeKeys = new Set([
   // The completed ABI plus the only three fields current Codex failure rows add.
   'msg_id', 'desk', 'kind', 'task', 'dispatched_at', 'family', 'model', 'effort',
   'thread_id', 'resumed', 'status', 'result', 'detail', 'retry_after', 'termination_confirmed',
+  'ephemeral_thread', 'thread_resumable',
 ]);
 
 export function createExplorationCallPlan(goalCount) {
@@ -102,6 +103,8 @@ function requireDispatcherEnvelope(row, expected) {
     ['effort', value => typeof value === 'string' && value.length > 0],
     ['thread_id', value => typeof value === 'string'],
     ['resumed', value => typeof value === 'boolean'],
+    ['ephemeral_thread', value => typeof value === 'boolean'],
+    ['thread_resumable', value => typeof value === 'boolean'],
     ['result', value => typeof value === 'string'],
     ['detail', value => typeof value === 'string'],
     ['retry_after', value => value === null || typeof value === 'string'],
@@ -109,6 +112,7 @@ function requireDispatcherEnvelope(row, expected) {
   ];
   const modelIdentity = ['family', 'model', 'effort'];
   const hasModelIdentity = modelIdentity.some(key => key in row);
+  const hasEphemeralThreadStatus = 'ephemeral_thread' in row || 'thread_resumable' in row;
   const valid = unknown.length === 0
     && typeof row.msg_id === 'string'
     && row.desk === expected.desk
@@ -120,6 +124,8 @@ function requireDispatcherEnvelope(row, expected) {
     && (expected.contract !== MODEL_ROOM_DISPATCH_CONTRACT || row.status !== 'completed'
       || currentSuccessKeys.every(key => key in row))
     && (!hasModelIdentity || modelIdentity.every(key => key in row))
+    && (!hasEphemeralThreadStatus || (row.kind === 'codex-live' && row.resumed === false
+      && row.ephemeral_thread === true && row.thread_resumable === false))
     && (expected.contract !== MODEL_ROOM_DISPATCH_CONTRACT || modelIdentity.every(key => key in row))
     && (!('family' in row) || row.family === MODEL_ROOM_DISPATCH_CONTRACT.family)
     && (!('model' in row) || row.model === MODEL_ROOM_DISPATCH_CONTRACT.model)

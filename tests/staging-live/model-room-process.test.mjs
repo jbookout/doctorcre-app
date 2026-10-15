@@ -127,6 +127,15 @@ test('a shape-compatible but unpinned dispatcher is refused before execution', a
   }), /does not match the pinned Model Room dispatcher/);
 });
 
+test('network-capable Model Room dispatch requires a fresh thread', async () => {
+  const { dispatchThroughModelRoom } = await import('../../scripts/e2e-staging/model-room.mjs');
+  await assert.rejects(dispatchThroughModelRoom({
+    ...syntheticAuthorization(),
+    desk: 'doctorcre-e2e', task: 'synthetic task', fresh: false,
+    dispatcherPath: '/synthetic/dispatcher.py',
+  }), /must use a fresh desk turn/);
+});
+
 for (const outcome of ['completed', 'completed-inherited-stdio', 'epipe', 'output-limit']) {
   test(outcome + ' cleans every dispatcher descendant before returning', async t => {
     const root = await mkdtemp(join(tmpdir(), 'doctorcre-dispatcher-cleanup-'));
