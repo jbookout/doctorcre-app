@@ -9,7 +9,8 @@ import { prepareCalendarRecord } from './calendar-coverage.mjs';
 import { targets } from './screens.mjs';
 import { stagingRelease, stagingSession, SessionPreflightFailure, STAGING_ORIGIN } from './session.mjs';
 
-const sameRelease = (left, right) => left?.source_commit === right?.source_commit && left?.carr_source_commit === right?.carr_source_commit;
+const sameRelease = (left, right) => left?.source_commit === right?.source_commit && left?.carr_source_commit === right?.carr_source_commit &&
+  left?.carr_release_commit === right?.carr_release_commit;
 
 export function createFreshPageFactory({ browser, origin = STAGING_ORIGIN, installGuard = installStagingGuard, releaseProbe, run = currentRun() }) {
   const contexts = new Set();

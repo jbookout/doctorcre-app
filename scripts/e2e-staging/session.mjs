@@ -58,7 +58,51 @@ export async function readSessionSecret(path = process.env.E2E_SESSION_SECRET_FI
 }
 
 export class SessionPreflightFailure extends Error {
-  constructor(code) { super('staging session preflight failed: ' + code); this.code = code; }
+  constructor(code, carr) {
+    super('staging session preflight failed: ' + code + (carr ? ` (carr env=${carr.env}; git_sha=${carr.git_sha})` : ''));
+    this.code = code;
+    if (carr) this.carr = carr;
+  }
+}
+
+const CARR_FLOOR = contract.producer.source_commit;
+const CARR_COMPARE = 'https://api.github.com/repos/jbookout/carr-system/compare/';
+// GitHub's verdict on a pushed commit does not change, so each process asks once per commit.
+const admittedCarrCommits = new Set([CARR_FLOOR]);
+
+const presentedCarr = carr => ({
+  env: /^[a-z0-9_-]{1,32}$/.test(carr?.env?.value ?? '') ? carr.env.value : 'unrecognized',
+  git_sha: /^[0-9a-f]{40}$/.test(carr?.git_sha?.value ?? '') ? carr.git_sha.value : 'malformed',
+});
+
+async function containedBy(api, base, head) {
+  const token = process.env.GITHUB_TOKEN || process.env.GH_TOKEN;
+  const response = await api.get(CARR_COMPARE + base + '...' + head + '?per_page=1', { headers: {
+    accept: 'application/vnd.github+json', 'x-github-api-version': '2022-11-28',
+    ...(token ? { authorization: 'Bearer ' + token } : {}) } });
+  const status = response.status() === 200 ? (await response.json())?.status : undefined;
+  if (!['ahead', 'identical', 'behind', 'diverged'].includes(status)) throw new Error('compare-unavailable');
+  return status === 'ahead' || status === 'identical';
+}
+
+// The contract pin is a floor: staging may run it or any later carr-system main commit.
+async function admitCarrRelease(api, carr) {
+  const presented = presentedCarr(carr);
+  if (carr?.env?.value !== 'staging') throw new SessionPreflightFailure('carr-env-mismatch', presented);
+  if (presented.git_sha === 'malformed') throw new SessionPreflightFailure('carr-commit-malformed', presented);
+  if (admittedCarrCommits.has(presented.git_sha)) return presented.git_sha;
+  let onMain, descendsFromFloor;
+  try {
+    onMain = await containedBy(api, presented.git_sha, 'main');
+    descendsFromFloor = await containedBy(api, CARR_FLOOR, presented.git_sha);
+  } catch (error) {
+    if (error instanceof RunLimitError) throw error;
+    throw new SessionPreflightFailure('carr-ancestry-unverifiable', presented);
+  }
+  if (!onMain) throw new SessionPreflightFailure('carr-commit-not-on-main', presented);
+  if (!descendsFromFloor) throw new SessionPreflightFailure('carr-commit-older-than-floor', presented);
+  admittedCarrCommits.add(presented.git_sha);
+  return presented.git_sha;
 }
 
 export async function preflightRequest(phase, operation, { pause = delay, signal, run } = {}) {
@@ -94,9 +138,8 @@ export async function stagingRelease(api, baseURL = STAGING_ORIGIN, { run, signa
     phase = 'carr-release';
     const carrRelease = await preflightRequest(phase, () => api.get(contract.carr_origin + '/release', { maxRedirects: 0 }), { signal, run });
     const carr = carrRelease.ok() ? await carrRelease.json() : {};
-    if (carr.env?.value !== 'staging' || carr.git_sha?.value !== contract.producer.source_commit)
-      throw new SessionPreflightFailure('carr-source-pair-refused');
-    return { ...identity, carr_source_commit: contract.producer.source_commit };
+    const carrCommit = await admitCarrRelease(api, carr);
+    return { ...identity, carr_source_commit: CARR_FLOOR, carr_release_commit: carrCommit };
   } catch (error) {
     signal?.throwIfAborted();
     if (error instanceof SessionPreflightFailure || error instanceof RunLimitError) throw error;

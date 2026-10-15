@@ -6,6 +6,7 @@ import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { supervise, createWorkerDiagnosticReader } from '../../scripts/e2e-staging/supervise.mjs';
 import { businessWorkerFailureCode, retainedBusinessWorkerCause } from '../../scripts/e2e-staging/continue-run.mjs';
+import { formatWorkerFailureDiagnostic, markOwnFailureCode, parseWorkerFailureDiagnostic } from '../../scripts/e2e-staging/worker-diagnostics.mjs';
 
 const safeSource = fileURLToPath(new URL('../../scripts/e2e-staging/session.mjs', import.meta.url));
 
@@ -71,6 +72,73 @@ test('unknown worker exceptions remain unreported and raw streams are not packag
   assert.equal(failure.message, 'Staging run stopped: worker-exit-1');
   assert.doesNotMatch(log, /worker-diagnostic/);
   assert.doesNotMatch(log, new RegExp(secretCanary));
+});
+
+test('unclassified TypeError retains one bounded secret-free frame diagnostic', async t => {
+  const projectRoot = fileURLToPath(new URL('../../', import.meta.url));
+  const secretCanary = 'SYNTHETIC_UNCLASSIFIED_SECRET_a821';
+  const failure = new TypeError(`private message ${secretCanary}`);
+  failure.code = 'unexpected-worker-failure';
+  markOwnFailureCode(failure, failure.code);
+  failure.stack = `TypeError: ${failure.message}\n    at run (file://${safeSource}:91:4)`;
+  const diagnostic = formatWorkerFailureDiagnostic(failure, projectRoot);
+  assert.match(diagnostic,
+    /^Staging worker failure name=TypeError code=unexpected-worker-failure frame=scripts\/e2e-staging\/session\.mjs$/);
+  assert.ok(Buffer.byteLength(diagnostic) <= 320);
+  assert.doesNotMatch(diagnostic, /private message|SYNTHETIC_UNCLASSIFIED_SECRET_a821/);
+
+  const worker = [
+    `process.stderr.write(${JSON.stringify(`${diagnostic}\n`)});`,
+    'process.exitCode = 1;',
+  ].join('\n');
+  const { failure: stopped, log } = await runFailingWorker(t, worker);
+  assert.equal(stopped.code, 'worker-exit-1');
+  assert.ok(log.includes(`worker-diagnostic ${diagnostic}`));
+  assert.doesNotMatch(stopped.message, /private message|SYNTHETIC_UNCLASSIFIED_SECRET_a821/);
+  assert.doesNotMatch(log, /private message|SYNTHETIC_UNCLASSIFIED_SECRET_a821/);
+});
+
+test('worker diagnostics include only a code this harness attached', () => {
+  const projectRoot = fileURLToPath(new URL('../../', import.meta.url));
+  const invalid = new Error('private message');
+  invalid.code = 'Private-Provider-Code';
+  assert.equal(formatWorkerFailureDiagnostic(invalid, projectRoot),
+    'Staging worker failure name=Error code=none frame=none');
+  const lexicalSecret = new Error('private message');
+  lexicalSecret.code = 'secretvalue123';
+  assert.equal(formatWorkerFailureDiagnostic(lexicalSecret, projectRoot),
+    'Staging worker failure name=Error code=none frame=none');
+  const own = markOwnFailureCode(new Error('private message'), 'journal-directory-unsafe');
+  own.code = 'journal-directory-unsafe';
+  assert.equal(formatWorkerFailureDiagnostic(own, projectRoot),
+    'Staging worker failure name=Error code=journal-directory-unsafe frame=none');
+  own.code = 'secretvalue123';
+  assert.equal(formatWorkerFailureDiagnostic(own, projectRoot),
+    'Staging worker failure name=Error code=journal-directory-unsafe frame=none');
+  class SecretTokenabc123 extends Error {}
+  assert.equal(formatWorkerFailureDiagnostic(new SecretTokenabc123('x'), projectRoot),
+    'Staging worker failure name=Error code=none frame=none');
+  assert.equal(parseWorkerFailureDiagnostic('Staging worker failure name=SecretTokenabc123 code=none frame=none'), null);
+  const trap = new Proxy({}, { get(_target, key) {
+    return typeof key === 'symbol' || key === 'code' ? 'secretvalue123' : undefined;
+  } });
+  assert.equal(formatWorkerFailureDiagnostic(trap, projectRoot),
+    'Staging worker failure name=Error code=none frame=none');
+  const forged = { stack: `Error: x\n    at request (file://${projectRoot}scripts/e2e-staging/secretvalue123.mjs:43:7)` };
+  assert.equal(formatWorkerFailureDiagnostic(forged, projectRoot),
+    'Staging worker failure name=Object code=none frame=none');
+  assert.equal(parseWorkerFailureDiagnostic(
+    'Staging worker failure name=Error code=none frame=scripts/e2e-staging/secretvalue123.mjs:43'), null);
+  assert.ok(parseWorkerFailureDiagnostic(
+    'Staging worker failure name=Error code=none frame=scripts/e2e-staging/session.mjs'));
+  assert.equal(parseWorkerFailureDiagnostic(
+    'Staging worker failure name=Error code=none frame=scripts/e2e-staging/session.mjs:123456789'), null);
+  const forgedLine = { stack: `Error: x\n    at run (file://${projectRoot}scripts/e2e-staging/session.mjs:123456789:7)` };
+  assert.equal(formatWorkerFailureDiagnostic(forgedLine, projectRoot),
+    'Staging worker failure name=Object code=none frame=scripts/e2e-staging/session.mjs');
+  const inherited = Object.assign(Object.create({ code: 'hidden-secret' }), { stack: 'Error: private' });
+  assert.equal(formatWorkerFailureDiagnostic(inherited, projectRoot),
+    'Staging worker failure name=Object code=none frame=none');
 });
 
 test('business readback failure crosses worker diagnostic seam only as a closed code', () => {
