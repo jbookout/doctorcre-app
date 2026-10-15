@@ -325,7 +325,7 @@ export async function prepareStagingRecords(output, {
   plan.browser_control_proofs = controlProofs.proofs;
   plan.browser_control_proof_preparation = controlProofs.preparation;
   plan.current_step = 'authentication';
-  let api, removeAbort = () => {};
+  let api, readbackCheck, removeAbort = () => {};
   const headers = { origin: STAGING_ORIGIN, 'sec-fetch-site': 'same-origin', 'content-type': 'application/json' };
   try {
     api = await createStagingRequestContext({ baseURL: origin, storageState: state, requestFactory, run });
@@ -631,12 +631,15 @@ export async function prepareStagingRecords(output, {
       }
     }
     plan.current_step = 'readback';
+    readbackCheck = 'persistence';
     await persist(planPath, plan);
+    readbackCheck = 'client';
     const boundedText = value => typeof value === 'string' && value.length > 0 && value.length <= 500;
     const clientRead = await json(`/api/v1/business/clients/${plan.records.client.id}`);
     requireValue(clientRead.record?.id === plan.records.client.id && boundedText(clientRead.record.name));
     requireValue(existing || clientRead.record.name === plan.records.client.name);
     if (tourDraftFixture) {
+      readbackCheck = 'tour-draft-client';
       requireValue(plan.records.tour_draft_party && plan.records.tour_draft_client &&
         plan.receipts.tour_draft_party?.party_id === plan.records.tour_draft_party.id &&
         plan.receipts.tour_draft_client?.client_id === plan.records.tour_draft_client.id);
@@ -647,6 +650,7 @@ export async function prepareStagingRecords(output, {
         record.ref === plan.records.tour_draft_client.ref);
     }
     if (vendorFixture) {
+      readbackCheck = 'vendor';
       const vendorRead = await json(`/api/v1/business/vendors/${plan.records.vendor.id}?contract=vendor-directory.v1`);
       requireValue(vendorRead.viewer === 'joe' && vendorRead.record?.id === plan.records.vendor.id &&
         vendorRead.record.name === plan.records.vendor.name &&
@@ -655,6 +659,7 @@ export async function prepareStagingRecords(output, {
         vendorRead.record.relationship?.recent_entries?.some(row => row.id === plan.records.vendor_entry.id && row.kind === 'note') &&
         vendorRead.record.relationship?.introductions?.some(row => row.id === plan.records.vendor_entry.link_id));
     }
+    readbackCheck = 'deal';
     const dealView = await rpc('get-deal-room', { deal: plan.records.deal.id }, existing ? plan.records.deal.id : undefined);
     const closedDeal = dealView.error === 'not_found';
     const dealRead = closedDeal ? await rpc('read-deal-reconciliation', { deal: plan.records.deal.id }) : dealView;
@@ -665,12 +670,14 @@ export async function prepareStagingRecords(output, {
       requireValue(existing || (dealRead.name === plan.records.deal.name && dealRead.owner === 'joe' && dealRead.phase === 'pending'));
     }
     {
+      readbackCheck = 'party-reuse';
       if (plan.party_reuse) requireValue(plan.party_reuse.schema === 'staging-fixture-party-reuse.v1' &&
         plan.party_reuse.party_id === FIXTURE.id && /^[a-f0-9]{64}$/.test(plan.party_reuse.candidate_response_sha256) &&
         clientRead.record.ref === plan.records.client.ref &&
         (existing || clientRead.record.name === FIXTURE.name) &&
         (closedDeal || dealRead.client_ref === plan.records.client.ref &&
           (existing || dealRead.client_name === FIXTURE.name)));
+      readbackCheck = 'relationship-network';
       const network = await json('/api/v1/business/relationships?contract=relationship-network.v1');
       const partyNode = `party:${FIXTURE.id}`, dealNode = `deal:${plan.records.deal.id}`;
       requireValue(network.schema === 'carr-relationship-network.v1' &&
@@ -678,12 +685,14 @@ export async function prepareStagingRecords(output, {
         Array.isArray(network.nodes) && Array.isArray(network.edges) &&
         network.nodes.filter(node => node.id === partyNode).length === 1 &&
         network.nodes.some(node => node.id === partyNode && node.kind === 'client' &&
-          node.record_id === plan.records.client.id && node.name === plan.records.client.name) &&
+          (plan.party_reuse ? (existing || node.name === FIXTURE.name) :
+            node.record_id === plan.records.client.id && node.name === plan.records.client.name)) &&
         network.nodes.some(node => node.id === dealNode && node.record_id === plan.records.deal.id &&
           (existing || node.name === plan.records.deal.name)) &&
         network.edges.some(edge => edge.id === `client-deal:${plan.records.deal.id}` &&
           edge.kind === 'client_deal' && edge.from === partyNode && edge.to === dealNode));
       if (relationshipFixture) {
+        readbackCheck = 'relationship-fixture';
         const retained = plan.fixture_proofs?.relationship;
         const proof = retained?.proof || await readPrivateJSON(relationshipFixtureProofPath);
         if (retained && (retained.schema !== 'staging-relationship-fixture-binding.v1' || !['pending-readback', 'verified'].includes(retained.state) ||
@@ -715,19 +724,23 @@ export async function prepareStagingRecords(output, {
           current_readback: { observed_at: new Date().toISOString(), network_response_sha256: digest(freshNetwork),
             client_response_sha256: digest(referredClient), deal_response_sha256: digest(referredDeal) } };
       }
+      readbackCheck = 'relationship-persistence';
       if (plan.party_reuse) plan.party_reuse = { ...plan.party_reuse, state: 'verified', client_id: plan.records.client.id,
         deal_id: plan.records.deal.id, network_observed_at: network.observed_at,
         network_response_sha256: digest(network), client_response_sha256: digest(clientRead),
         deal_response_sha256: digest(dealRead) };
       await persist(planPath, plan);
     }
+    readbackCheck = 'invoice';
     const invoiceRead = await rpc('read-deal-reconciliation', { deal: plan.records.invoice.deal_id });
     requireValue(invoiceRead.id === plan.records.invoice.deal_id && boundedText(invoiceRead.phase));
+    readbackCheck = 'invoice-tracker';
     const tracker = await rpc('read-invoice-tracker');
     requireValue(Array.isArray(tracker.entries));
     const invoiceVisible = tracker.entries.some(row => row.deal_id === plan.records.invoice.deal_id);
     requireValue(existing || (invoiceRead.phase === 'closed' && invoiceVisible));
     if (awaitingInvoiceFixture) {
+      readbackCheck = 'awaiting-invoice';
       const awaiting = plan.records.awaiting_invoice;
       const exact = tracker.entries.find(row => row.deal_id === awaiting.deal_id);
       const readback = await rpc('read-deal-reconciliation', { deal: awaiting.deal_id });
@@ -736,16 +749,20 @@ export async function prepareStagingRecords(output, {
         exact.status === null && readback.id === awaiting.deal_id && readback.name === awaiting.name &&
         readback.phase === 'closed' && readback.invoiced_on === null && readback.lane === 'territory');
     }
+    readbackCheck = 'lead';
     const leadRead = await rpc('lead-board', { workspace: 'leads', lead_id: plan.records.lead.id });
     requireValue(leadRead.detail?.id === plan.records.lead.id && leadRead.detail.party_id === plan.records.lead_party.id);
     const leadEligible = eligibleLead(leadRead.detail);
     requireValue(existing || leadEligible);
+    readbackCheck = 'conversation';
     const conversationRead = await rpc('read-doc-conversation', { conversation_id: plan.records.conversation.id, limit: 1 });
     requireValue(conversationRead.identity?.id === plan.records.conversation.id && boundedText(conversationRead.identity.visibility));
     requireValue(existing || conversationRead.identity.visibility === 'private');
+    readbackCheck = 'tour';
     const tourRead = (await json(`/api/tours/detail?tour_id=${plan.records.tour.id}`)).data;
     requireValue(tourRead?.id === plan.records.tour.id && isUUID(tourRead.subject_id || '') && boundedText(tourRead.subject_type));
     requireValue(existing || (tourRead.subject_id === plan.records.client.id && tourRead.subject_type === 'client'));
+    readbackCheck = 'completion';
     const limited = (record, reason, guidance, current = {}) => ({
       record, id: plan.records[record].id || plan.records[record].deal_id, name: plan.records[record].name,
       reason, coverage_limited: true, guidance, ...current,
@@ -784,7 +801,8 @@ export async function prepareStagingRecords(output, {
     if (SAFE_RECORD_SETUP_CODES.has(error?.code))
       throw Object.assign(new Error('Staging vendor taxonomy prerequisite unavailable; no fixture mutation was attempted'),
         { code: error.code });
-    throw new Error(`Staging records setup stopped at ${plan.current_step}; partial plan requires reconciliation; no request or provider payload was logged`);
+    const step = plan.current_step === 'readback' ? `readback:${readbackCheck}` : plan.current_step;
+    throw new Error(`Staging records setup stopped at ${step}; partial plan requires reconciliation; no request or provider payload was logged`);
   } finally { removeAbort(); if (api) await api.dispose().catch(() => {}); }
 }
 
