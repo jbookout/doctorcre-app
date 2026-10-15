@@ -743,9 +743,18 @@ async function businessFixture(t) {
   const root = await mkdtemp(join(tmpdir(), 'doctorcre-business-caller-'));
   t.after(() => rm(root, { recursive: true, force: true }));
   const deal = '60000000-0000-4000-8000-000000000001', events = [];
+  const awaitingDeal = '60000000-0000-4000-8000-000000000006';
   const plan = { schema: 'doctorcre-staging-records-plan.v1', state: 'complete',
     run: '60000000-0000-4000-8000-000000000003', release,
-    records: { deal: { id: deal }, invoice: { deal_id: '60000000-0000-4000-8000-000000000002' } } };
+    keys: { awaiting_invoice_deal: '60000000-0000-4000-8000-000000000007',
+      awaiting_invoice_lead: '60000000-0000-4000-8000-000000000008',
+      awaiting_invoice_close: '60000000-0000-4000-8000-000000000009' },
+    names: { awaiting_invoice: 'Synthetic awaiting fixture' },
+    records: { deal: { id: deal }, invoice: { deal_id: '60000000-0000-4000-8000-000000000002' },
+      client: { ref: 'synthetic-client-ref' }, awaiting_invoice: { deal_id: awaitingDeal, name: 'Synthetic awaiting fixture' } },
+    receipts: { awaiting_invoice_deal: { ok: true, deal_id: awaitingDeal, name: 'Synthetic awaiting fixture', client_ref: 'synthetic-client-ref' },
+      awaiting_invoice_lead: { ok: true, new_lead: 'joe' },
+      awaiting_invoice_close: { ok: true, deal_id: awaitingDeal, field: 'phase', event_id: '60000000-0000-4000-8000-000000000010' } } };
   await writeFile(join(root, 'staging-records-plan.json'), JSON.stringify(plan), { mode: 0o600 });
   const run = { root, signal: new AbortController().signal, limits: RUN_LIMITS,
     snapshot: () => ({ id: 'synthetic_' + sha }), check() {}, onStop: () => () => {},
@@ -791,6 +800,7 @@ async function businessFixture(t) {
       assert.equal(options.page, page); assert.equal(options.fixtureGuard, fixtureGuard);
       assert.equal(options.release, release);
       assert.equal(options.deal, options.journeys[0] === 'W15' ? plan.records.invoice.deal_id : deal); assert.equal(options.run, run);
+      if (options.journeys[0] === 'W15') assert.deepEqual(options.awaitingInvoicePlan, plan);
       events.push('business');
       return { completed: options.journeys, steps: [], full_v1_qualified: false, unqualified_journeys: ['W6'] };
     },
@@ -858,6 +868,32 @@ test('business caller retains only source-bound vendor and Tour draft action row
   const retained = JSON.parse(await readFile(join(f.run.root, 'staging-records-plan.json'), 'utf8')).journey_qualification;
   assert.deepEqual(retained.observations, result.actions);
   assert.equal(retained.full_v1_qualified, false);
+});
+
+test('business qualification retains the exact validated W4/W9/W15 action evidence when a resume reports already-observed steps', async t => {
+  const f = await businessFixture(t);
+  const { V1_REQUIRED_ACTIONS, observedV1Action } = await import('../../scripts/e2e-staging/v1-qualification.mjs');
+  const selected = V1_REQUIRED_ACTIONS.filter(row => ['W4', 'W9', 'W15'].includes(row.id)).slice(0, 18);
+  assert.equal(selected.length, 18);
+  let invocation = 0;
+  const journeys = async options => {
+    const actions = invocation === 0 ? selected.filter(row => row.id === options.journeys[0] ||
+      options.journeys[0] === 'W4' && row.id === 'W9').map(row => observedV1Action({ ...row,
+        sourcePair: { source_commit: binding.app, carr_source_commit: binding.carr }, runId: f.run.snapshot().id,
+        fixtureRun: f.plan.run, ui: { first: row.action }, readback: { owned: true } })) : [];
+    if (options.journeys[0] === 'W15') invocation++;
+    return { completed: options.journeys, steps: [], actions, full_v1_qualified: false, unqualified_journeys: ['W6'] };
+  };
+  const firstResult = await runBusinessPhase({ binding, run: f.run }, { ...f.supplied, journeys });
+  const first = JSON.parse(await readFile(join(f.run.root, 'staging-records-plan.json'), 'utf8')).journey_qualification;
+  assert.equal(first.observations.length, 18);
+  await assert.rejects(retainJourneyQualification({ run: f.run, binding, release,
+    result: { ...firstResult, actions: [{ ...first.observations[0], ui_sha256: 'f'.repeat(64) }] } }),
+  { code: 'journey-observations-invalid' });
+  await runBusinessPhase({ binding, run: f.run }, { ...f.supplied, journeys });
+  const resumed = JSON.parse(await readFile(join(f.run.root, 'staging-records-plan.json'), 'utf8')).journey_qualification;
+  assert.deepEqual(resumed.observations, first.observations);
+  assert.equal(resumed.observations.length, 18);
 });
 
 test('readonly W1/W2/W5/W14 caller uses a fresh guarded Home page and cannot qualify full V1', async t => {

@@ -17,6 +17,7 @@ const sha256 = value => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value
 const hash = bytes => createHash('sha256').update(bytes).digest('hex');
 const stable = value => Array.isArray(value) ? value.map(stable) : value && typeof value === 'object'
   ? Object.fromEntries(Object.keys(value).sort().map(key => [key, stable(value[key])])) : value;
+const journeyActionIdentity = row => JSON.stringify([row?.id, row?.case, row?.action]);
 const execute = promisify(execFile);
 const ownFailures = new WeakSet();
 const businessFailureCodes = new Set(['business-journey-receipt-missing', 'business-journey-selector-unavailable',
@@ -149,6 +150,20 @@ export async function retainJourneyQualification({ run, binding, release, result
       !Array.isArray(result.completed) || !Array.isArray(result.steps))
     refusal('journey-observations-invalid');
   assertReadonlyResult(result.readonly, release, plan);
+  let priorObservations = [];
+  if (plan.journey_qualification) {
+    const prior = assertJourneyQualification(plan.journey_qualification, binding, run.snapshot().id);
+    if (Object.hasOwn(prior, 'observations') && prior.fixture_run !== plan.run)
+      refusal('journey-observations-invalid');
+    priorObservations = prior.observations || [];
+  }
+  const observations = new Map();
+  for (const row of [...priorObservations, ...(result.actions || [])]) {
+    const identity = journeyActionIdentity(row), existing = observations.get(identity);
+    if (existing && JSON.stringify(stable(existing)) !== JSON.stringify(stable(row)))
+      refusal('journey-observations-invalid');
+    if (!existing) observations.set(identity, row);
+  }
   const observed = {
     schema: 'doctorcre-staging-journey-observations.v1',
     source_pair: { source_commit: binding.app, carr_source_commit: binding.carr },
@@ -159,7 +174,7 @@ export async function retainJourneyQualification({ run, binding, release, result
     tour_readonly_observed: Boolean(result.tour?.ui?.sha256 && result.tour?.backend_readback?.sha256),
     readonly: Object.fromEntries(result.readonly.journeys.map(row => [row.journey, row.state])),
     fixture_run: plan.run,
-    observations: result.actions || [], companions: result.companions || [],
+    observations: [...observations.values()], companions: result.companions || [],
     full_v1_qualified: false,
   };
   assertJourneyQualification(observed, binding, run.snapshot().id);
@@ -878,12 +893,24 @@ export async function runBusinessPhase({ binding, run, environment = process.env
   assertSourcePair(setup.release, binding);
   const plan = JSON.parse(await privateBytes(join(run.root, 'staging-records-plan.json')));
   const deal = plan.records?.deal?.id, invoiceDeal = plan.records?.invoice?.deal_id;
+  const awaiting = plan.records?.awaiting_invoice;
+  const awaitingReceipts = [plan.receipts?.awaiting_invoice_deal, plan.receipts?.awaiting_invoice_lead,
+    plan.receipts?.awaiting_invoice_close];
   if (!state || setup.complete !== true || !Array.isArray(setup.needs_restore) ||
       !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(deal || '') ||
       !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(invoiceDeal || '') ||
       invoiceDeal === deal || setup.records?.invoice?.deal_id !== invoiceDeal ||
       setup.records?.deal?.id !== deal || plan.state !== 'complete' || plan.inflight ||
       plan.release?.source_commit !== binding.app || plan.release?.carr_source_commit !== binding.carr)
+    refusal('business-fixture-requires-reconciliation');
+  if (!uuid(awaiting?.deal_id) || typeof awaiting.name !== 'string' || !awaiting.name ||
+      awaiting.deal_id === deal || awaiting.deal_id === invoiceDeal ||
+      !['awaiting_invoice_deal', 'awaiting_invoice_lead', 'awaiting_invoice_close'].every(key => uuid(plan.keys?.[key])) ||
+      awaitingReceipts[0]?.ok !== true || awaitingReceipts[0]?.deal_id !== awaiting.deal_id ||
+      awaitingReceipts[0]?.name !== awaiting.name || awaitingReceipts[0]?.client_ref !== plan.records?.client?.ref ||
+      awaitingReceipts[1]?.ok !== true || awaitingReceipts[1]?.new_lead !== 'joe' ||
+      awaitingReceipts[2]?.ok !== true || awaitingReceipts[2]?.deal_id !== awaiting.deal_id ||
+      awaitingReceipts[2]?.field !== 'phase' || !uuid(awaitingReceipts[2]?.event_id))
     refusal('business-fixture-requires-reconciliation');
   await coverage(run.root);
   const release = setup.release;
@@ -938,7 +965,8 @@ export async function runBusinessPhase({ binding, run, environment = process.env
     // revalidates retained observations and quarantines paid fixtures; it alone
     // admits durable intent and independent normal tracker readback.
     const invoicePage = await factory.freshPage({ target, screen: home, release, fixtureGuard, path: '/' });
-    const invoice = await journeys({ page: invoicePage, fixtureGuard, release, deal: invoiceDeal, run, journeys: ['W15'] });
+    const invoice = await journeys({ page: invoicePage, fixtureGuard, release, deal: invoiceDeal,
+      awaitingInvoicePlan: plan, run, journeys: ['W15'] });
     await fixtureGuard.assertCoverage();
     await coverage(run.root);
     if (invoice?.full_v1_qualified !== false) refusal('business-result-unqualified');
