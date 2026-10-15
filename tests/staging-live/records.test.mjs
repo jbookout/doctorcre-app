@@ -77,6 +77,100 @@ test('resume reuse reads existing synthetic records without repeating mutations'
   } finally { await rm(output, { recursive: true, force: true }); }
 });
 
+test('W5 fixture extension records one owned vendor and original synthetic entry before normal readback', async () => {
+  const output = await mkdtemp(join(tmpdir(), 'staging-vendor-fixture-'));
+  try {
+    const fake = fakeAPI(output);
+    await prepareStagingRecords(output, fake);
+    fake.calls.length = 0;
+    const extended = await prepareStagingRecords(output, { ...fake, reuseOnly: true, vendorFixture: true });
+    assert.equal(extended.records.vendor.id, fake.rows.vendor.id);
+    assert.equal(extended.records.vendor_entry.id, fake.rows.vendorEntry.id);
+    const writes = fake.calls.filter(call => call.path === '/mcp' &&
+      ['add-party', 'new-vendor', 'log-activity'].includes(call.options.data.params.name));
+    assert.deepEqual(writes.map(call => call.options.data.params.name), ['add-party', 'new-vendor', 'log-activity']);
+    const plan = JSON.parse(await readFile(join(output, 'staging-records-plan.json'), 'utf8'));
+    assert.equal(plan.receipts.vendor.vendor_id, extended.records.vendor.id);
+    assert.equal(plan.receipts.vendor_entry.activity_id, extended.records.vendor_entry.id);
+    assert.equal(writes[2].options.data.params.arguments.kind, 'note');
+    assert.equal(writes[2].options.data.params.arguments.links[0].from_ref, extended.records.vendor.ref);
+    assert.equal(writes[2].options.data.params.arguments.links[0].to_ref, extended.records.client.ref);
+    fake.calls.length = 0;
+    await prepareStagingRecords(output, { ...fake, reuseOnly: true, vendorFixture: true });
+    assert.equal(fake.calls.filter(call => call.path === '/mcp' &&
+      ['add-party', 'new-vendor', 'log-activity'].includes(call.options.data.params.name)).length, 0);
+  } finally { await rm(output, { recursive: true, force: true }); }
+});
+
+test('run-owned synthetic party names are distinct before first dispatch and retain normal dedup', async () => {
+  const output = await mkdtemp(join(tmpdir(), 'staging-party-identity-'));
+  try {
+    const fake = fakeAPI(output);
+    await prepareStagingRecords(output, fake);
+    await prepareStagingRecords(output, { ...fake, reuseOnly: true, vendorFixture: true });
+    const plan = JSON.parse(await readFile(join(output, 'staging-records-plan.json'), 'utf8'));
+    const writes = fake.calls.filter(call => call.path === '/mcp' && call.options.data.params.name === 'add-party')
+      .map(call => call.options.data.params.arguments);
+    assert.equal(writes.length, 3);
+    assert.equal(Object.hasOwn(writes[0], 'force_new'), false);
+    for (const row of writes.slice(1)) {
+      assert.equal(Object.hasOwn(row, 'force_new'), false);
+      assert.ok(row.name.includes(plan.run));
+      assert.equal(row.kind, 'org');
+    }
+    assert.equal(plan.names.lead, `QA Lead ${plan.run}`);
+    assert.equal(plan.names.vendor, `QA Vendor ${plan.run}`);
+  } finally { await rm(output, { recursive: true, force: true }); }
+});
+
+test('synthetic party candidate refusal retains bounded private evidence and cannot replay', async () => {
+  for (const step of ['lead_party', 'vendor_party']) {
+    const output = await mkdtemp(join(tmpdir(), 'staging-party-candidate-'));
+    try {
+      const initial = fakeAPI(output);
+      if (step === 'vendor_party') await prepareStagingRecords(output, initial);
+      const fake = fakeAPI(output, { candidateAt: step });
+      const options = step === 'vendor_party' ? { reuseOnly: true, vendorFixture: true } : {};
+      await assert.rejects(prepareStagingRecords(output, { ...fake, ...options }), /partial plan requires reconciliation/);
+      const plan = JSON.parse(await readFile(join(output, 'staging-records-plan.json'), 'utf8'));
+      assert.equal(plan.state, 'blocked');
+      assert.equal(plan.inflight, null);
+      assert.equal(Object.hasOwn(plan.receipts, step), false);
+      assert.equal(plan.records[step], undefined);
+      assert.equal(plan.refusals.length, 1);
+      assert.equal(plan.refusals[0].step, step);
+      assert.equal(plan.refusals[0].code, 'candidate-confirmation-required');
+      assert.equal(plan.refusals[0].candidate_count, 1);
+      assert.equal(plan.refusals[0].candidates[0].id, '40000000-0000-4000-8000-000000000099');
+      assert.match(plan.refusals[0].response_sha256, /^[a-f0-9]{64}$/);
+      assert.equal(fake.calls.filter(call => call.path === '/mcp' &&
+        ['new-lead', 'new-vendor', 'log-activity'].includes(call.options.data.params.name)).length, 0);
+      const count = fake.calls.length;
+      await assert.rejects(prepareStagingRecords(output, { ...fake, ...options,
+        session: () => assert.fail('blocked plan must refuse before auth') }), /partial plan requires reconciliation/);
+      assert.equal(fake.calls.length, count);
+    } finally { await rm(output, { recursive: true, force: true }); }
+  }
+});
+
+test('W5 uncertain vendor producer leaves durable intent and refuses replay', async () => {
+  const output = await mkdtemp(join(tmpdir(), 'staging-vendor-uncertain-'));
+  try {
+    const fake = fakeAPI(output);
+    await prepareStagingRecords(output, fake);
+    const uncertain = fakeAPI(output, { unknown: 'new-vendor' });
+    uncertain.rows.client = fake.rows.client;
+    await assert.rejects(prepareStagingRecords(output, { ...uncertain, reuseOnly: true, vendorFixture: true }),
+      /requires reconciliation/);
+    const plan = JSON.parse(await readFile(join(output, 'staging-records-plan.json'), 'utf8'));
+    assert.equal(plan.inflight.name, 'new-vendor');
+    assert.equal(plan.inflight.arguments.idempotency_key, plan.keys.vendor);
+    assert.equal(plan.records.vendor, undefined);
+    await assert.rejects(prepareStagingRecords(output, { ...uncertain, reuseOnly: true, vendorFixture: true,
+      session: () => assert.fail('uncertain effect must refuse before authentication') }), /requires reconciliation/);
+  } finally { await rm(output, { recursive: true, force: true }); }
+});
+
 test('normal staging APIs create representative records with private durable keys and receipts', async () => {
   const output = await mkdtemp(join(tmpdir(), 'staging-records-'));
   try {

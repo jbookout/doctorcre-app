@@ -49,7 +49,7 @@ async function readPrivateJSON(path) {
 
 export async function prepareStagingRecords(output, {
   origin = STAGING_ORIGIN, session = stagingSession, reuseOnly = false,
-  requestFactory, run, signal,
+  vendorFixture = false, requestFactory, run, signal,
 } = {}) {
   signal?.throwIfAborted();
   origin = assertStagingURL(origin);
@@ -79,7 +79,7 @@ export async function prepareStagingRecords(output, {
   const plan = existing || {
     schema: 'doctorcre-staging-records-plan.v1', origin, release: source, state: 'pending', run: fixtureRun,
     keys: Object.fromEntries(['party', 'client', 'deal', 'deal_lead', 'invoice_deal', 'invoice_lead', 'close_invoice', 'lead_party', 'lead', 'conversation', 'tour'].map(name => [name, randomUUID()])),
-    names: { deal: `${label} active deal`, invoice: `${label} closed deal`, lead: `QA Unlinked Prospect ${fixtureRun}`, conversation: `${label} private conversation`, tour: `${label} draft tour` },
+    names: { deal: `${label} active deal`, invoice: `${label} closed deal`, lead: `QA Lead ${fixtureRun}`, conversation: `${label} private conversation`, tour: `${label} draft tour` },
     records: {}, receipts: {}, current_step: 'authentication', observed_at: new Date().toISOString(),
   };
   const controlProofs = await prepareBrowserControlProofs(source, { signal });
@@ -121,12 +121,38 @@ export async function prepareStagingRecords(output, {
     }
     async function write(step, name, args) {
       signal?.throwIfAborted();
+      requireValue(!Object.hasOwn(args, 'force_new'));
       plan.current_step = step;
       plan.inflight = { name, arguments: { ...args, idempotency_key: plan.keys[step] } };
       await persist(planPath, plan);
       signal?.throwIfAborted();
       const result = await rpc(name, plan.inflight.arguments);
-      plan.receipts[step] = Object.fromEntries(['party_id', 'client_id', 'deal_id', 'lead_id', 'conversation_id'].filter(field => isUUID(result[field] || '')).map(field => [field, result[field]]));
+      if (step === 'party' && result.needs_confirm === true &&
+          result.candidates?.filter(row => row.id === FIXTURE.id && row.name === FIXTURE.name).length === 1) {
+        plan.inflight = null;
+        await persist(planPath, plan);
+        return result;
+      }
+      if (result.needs_confirm === true || result.ok !== true) {
+        const candidates = Array.isArray(result.candidates) ? result.candidates : [];
+        plan.refusals ||= [];
+        plan.refusals.push({ schema: 'doctorcre-staging-fixture-refusal.v1', step, operation: name,
+          code: result.needs_confirm === true ? 'candidate-confirmation-required' : 'producer-nonacknowledgment',
+          observed_at: new Date().toISOString(),
+          request_sha256: createHash('sha256').update(JSON.stringify(plan.inflight.arguments)).digest('hex'),
+          response_sha256: createHash('sha256').update(JSON.stringify(result)).digest('hex'),
+          candidate_count: candidates.length,
+          candidates: candidates.slice(0, 5).filter(row => isUUID(row?.id)).map(row => ({
+            id: row.id, name_sha256: createHash('sha256').update(String(row.name || '')).digest('hex'),
+            exact_email_match: row.exact_email_match === true })) });
+        plan.state = 'blocked';
+        plan.inflight = null;
+        await persist(planPath, plan);
+        throw Object.assign(new Error('Staging fixture producer acknowledgment refused'),
+          { code: 'staging-fixture-candidate-refused' });
+      }
+      plan.receipts[step] = Object.fromEntries(['party_id', 'client_id', 'deal_id', 'lead_id', 'conversation_id', 'vendor_id', 'activity_id']
+        .filter(field => isUUID(result[field] || '')).map(field => [field, result[field]]));
       plan.inflight = null;
       await persist(planPath, plan);
       return result;
@@ -193,12 +219,50 @@ export async function prepareStagingRecords(output, {
       await remember('tour', { id: recordId((await tour.json()).data?.tour_id), name: plan.names.tour });
       plan.inflight = null;
     }
+    if (vendorFixture) {
+      const vendorParts = ['vendor_party', 'vendor', 'vendor_entry'];
+      const present = vendorParts.filter(name => plan.records[name]);
+      if (present.length && present.length !== vendorParts.length) throw new Error('Staging vendor fixture partial; reconciliation required');
+      if (!present.length) {
+        for (const name of vendorParts) plan.keys[name] ||= randomUUID();
+        plan.names.vendor ||= `QA Vendor ${plan.run}`;
+        await persist(planPath, plan);
+        const party = await write('vendor_party', 'add-party', { name: plan.names.vendor, kind: 'org' });
+        requireValue(party.ok === true && !party.auto_resolved && !party.needs_confirm);
+        await remember('vendor_party', { id: recordId(party.party_id), name: plan.names.vendor });
+        const vendor = await write('vendor', 'new-vendor', { party_id: plan.records.vendor_party.id,
+          category: 'Accountant', ref_code: 'CPA', stage: 'prospect_uncontacted',
+          research_evidence: {
+            sources: [{ url: 'https://practice.example/vendor?fixture=synthetic-staging-qa-v1', observed_at: plan.observed_at }],
+            field_evidence: Object.fromEntries(['company', 'title', 'category', 'market', 'phone', 'website', 'deal_side']
+              .map(field => [field, [0]])), discrepancies: [],
+          } });
+        requireValue(vendor.ok === true && /^V-CPA-\d+$/.test(vendor.ref || ''));
+        await remember('vendor', { id: recordId(vendor.vendor_id), ref: vendor.ref, name: plan.names.vendor });
+        const entry = await write('vendor_entry', 'log-activity', { ref: vendor.ref, kind: 'note',
+          summary: 'Synthetic staging QA introduction entry',
+          detail: 'Fictional QA evidence only; no contact, referral, or send occurred.',
+          links: [{ from_ref: vendor.ref, to_ref: plan.records.client.ref, kind: 'can_introduce',
+            note: 'Synthetic staging QA suggested introduction only; no real-world introduction occurred.' }] });
+        requireValue(entry.ok === true && entry.links?.length === 1 && entry.links[0].existing === false &&
+          entry.links[0].from_ref === vendor.ref && entry.links[0].to_ref === plan.records.client.ref &&
+          entry.links[0].kind === 'can_introduce');
+        await remember('vendor_entry', { id: recordId(entry.activity_id), link_id: recordId(entry.links[0].link_id) });
+      }
+    }
     plan.current_step = 'readback';
     await persist(planPath, plan);
     const boundedText = value => typeof value === 'string' && value.length > 0 && value.length <= 500;
     const clientRead = await json(`/api/v1/business/clients/${plan.records.client.id}`);
     requireValue(clientRead.record?.id === plan.records.client.id && boundedText(clientRead.record.name));
     requireValue(existing || clientRead.record.name === plan.records.client.name);
+    if (vendorFixture) {
+      const vendorRead = await json(`/api/v1/business/vendors/${plan.records.vendor.id}?contract=vendor-directory.v1`);
+      requireValue(vendorRead.viewer === 'joe' && vendorRead.record?.id === plan.records.vendor.id &&
+        vendorRead.record.name === plan.records.vendor.name &&
+        vendorRead.record.relationship?.recent_entries?.some(row => row.id === plan.records.vendor_entry.id && row.kind === 'note') &&
+        vendorRead.record.relationship?.introductions?.some(row => row.id === plan.records.vendor_entry.link_id));
+    }
     const dealView = await rpc('get-deal-room', { deal: plan.records.deal.id }, existing ? plan.records.deal.id : undefined);
     const closedDeal = dealView.error === 'not_found';
     const dealRead = closedDeal ? await rpc('read-deal-reconciliation', { deal: plan.records.deal.id }) : dealView;
@@ -564,6 +628,21 @@ function requirePlanCoverage(plan, scope) {
              row.journey?.fixture_proof_sha256 !== plan.fixture_proofs.invoice.proof_sha256 ||
              plan.fixture_proofs.invoice.proof_content_sha256 !== digest(plan.fixture_proofs.invoice.proof));
       })) policyFailure('write-coverage-incomplete');
+  const presence = plan.browser_presence_leases || [];
+  if (!Array.isArray(presence) || presence.length > 2 ||
+      new Set(presence.map(row => row.idempotency_key)).size !== presence.length ||
+      presence.some(row => {
+        const parent = plan.browser_write_attempts?.find(attempt => attempt.fingerprint === row.parent_fingerprint);
+        const receipt = row.response?.receipt;
+        return row.schema !== 'staging-fixture-presence-lease.v1' || row.state !== 'settled' ||
+          !isUUID(row.admission_id) || !isUUID(row.idempotency_key) || row.fixture_run !== plan.run ||
+          digest(row.release) !== digest(plan.release) || row.deal !== plan.records.deal?.id || row.field !== 'phase' ||
+          parent?.journey?.id !== 'W4' || parent.journey.step !== 'move' ||
+          parent.operation !== 'patch-deal-field' || parent.record_ids?.[0] !== row.deal ||
+          row.response?.acknowledged !== true || row.response.sha256 !== digest(receipt) ||
+          receipt?.ok !== true || receipt.deal_id !== row.deal || receipt.field !== 'phase' ||
+          !Number.isFinite(Date.parse(receipt.expires_at));
+      })) policyFailure('write-coverage-incomplete');
 }
 
 function validIndependentReadback(row) {
@@ -808,7 +887,58 @@ export function stagingFixtureWriteGuard({ output, release, invoiceFixtureTarget
         assertCoverage: options => guard.assertCoverage(options, scope),
         admitControl: control => guard.admitControl(control, scope),
         admitBusinessJourneyStep: step => guard.admitBusinessJourneyStep(step),
+        admitBusinessJourneyPresence: step => guard.admitBusinessJourneyPresence(step),
       };
+    },
+    async admitBusinessJourneyPresence(spec) {
+      requireSupervisedRun(output, run);
+      run.check();
+      const keys = Object.keys(spec || {}).sort().join();
+      if (spec?.journey !== 'W4' || spec.step !== 'move' || spec.field !== 'phase' ||
+          !['admit', 'settle'].includes(spec.phase) ||
+          keys !== (spec.phase === 'admit' ? 'deal,field,journey,phase,release,step'
+            : 'admission_id,deal,field,journey,phase,release,step'))
+        policyFailure('presence-journey-scope-unproved');
+      const deadline = Date.now() + effectiveRunLimits(run).settlementMs;
+      while (true) {
+        const result = await locked(async () => {
+          const plan = await currentPlan(), rows = plan.browser_presence_leases || [];
+          const parent = (plan.browser_write_attempts || []).filter(row => row.journey?.id === 'W4' &&
+            row.journey.step === 'move' && row.journey.state === 'admitted' && row.state === 'admitted' &&
+            row.operation === 'patch-deal-field' && row.record_ids?.[0] === spec.deal &&
+            row.journey.fixture_run === plan.run && row.journey.contract_sha256 === digest(journeyContract('W4')));
+          if (!owned(plan, 'deal', spec.deal) ||
+              spec.release?.source_commit !== plan.release.source_commit ||
+              spec.release?.carr_source_commit !== plan.release.carr_source_commit ||
+              parent.length !== 1 || !Array.isArray(rows) || rows.length > 2)
+            policyFailure('presence-journey-scope-unproved');
+          if (spec.phase === 'admit') {
+            if (rows.length >= 2 || rows.some(row => row.state !== 'settled'))
+              policyFailure('presence-journey-scope-unproved');
+            const row = { schema: 'staging-fixture-presence-lease.v1', admission_id: randomUUID(),
+              fixture_run: plan.run, release: structuredClone(plan.release), parent_fingerprint: parent[0].fingerprint,
+              deal: spec.deal, field: 'phase', state: 'admitted', admitted_at: new Date().toISOString() };
+            plan.browser_presence_leases = [...rows, row];
+            await persist(planPath, plan);
+            return { admission_id: row.admission_id, state: row.state };
+          }
+          const row = rows.find(row => row.admission_id === spec.admission_id);
+          if (!row || row.parent_fingerprint !== parent[0].fingerprint || row.deal !== spec.deal ||
+              row.field !== 'phase' || row.fixture_run !== plan.run || digest(row.release) !== digest(plan.release) ||
+              row.state === 'unresolved' || row.state === 'settled')
+            policyFailure('presence-journey-scope-unproved');
+          if (row.state !== 'acknowledged') return null;
+          row.state = 'settled';
+          row.settled_at = new Date().toISOString();
+          await persist(planPath, plan);
+          return { admission_id: row.admission_id, state: row.state,
+            receipt_sha256: row.response.sha256 };
+        });
+        if (result) return result;
+        if (Date.now() >= deadline) policyFailure('presence-settlement-timeout');
+        run.check();
+        await new Promise(resolve => setTimeout(resolve, 25));
+      }
     },
     async admitBusinessJourneyStep(spec) {
       requireSupervisedRun(output, run);
@@ -1075,6 +1205,54 @@ export function stagingFixtureWriteGuard({ output, release, invoiceFixtureTarget
         }
         if (!(typeof body.id === 'string' && body.id || Number.isSafeInteger(body.id)))
           policyFailure('operation-shape-unproved');
+        if (name === 'presence-lease') {
+          token = await locked(async () => {
+            const plan = await currentPlan();
+            const rows = plan.browser_presence_leases || [];
+            const row = rows.find(item => item.state === 'admitted');
+            const parent = plan.browser_write_attempts?.find(item => item.fingerprint === row?.parent_fingerprint);
+            if (!row || rows.filter(item => item.state === 'admitted').length !== 1 ||
+                !parent || parent.state !== 'admitted' || parent.journey?.id !== 'W4' ||
+                parent.journey.step !== 'move' || parent.journey.state !== 'admitted' ||
+                !owned(plan, 'deal', row.deal) ||
+                Object.keys(args).sort().join() !== 'deal,field,idempotency_key' ||
+                args.deal !== row.deal || args.field !== 'phase' || !isUUID(args.idempotency_key) ||
+                rows.some(item => item.idempotency_key === args.idempotency_key))
+              policyFailure('presence-journey-request-unproved');
+            row.state = 'inflight';
+            row.idempotency_key = args.idempotency_key;
+            row.attempted_at = new Date().toISOString();
+            await persist(planPath, plan);
+            return { run: plan.run, admission_id: row.admission_id };
+          });
+          if (flight.timedOut) policyFailure('dispatch-settlement-timeout');
+          dispatched = true;
+          const response = await dispatch();
+          await locked(async () => {
+            const plan = await currentPlan();
+            const row = plan.browser_presence_leases?.find(item => item.admission_id === token.admission_id);
+            if (plan.run !== token.run || row?.state !== 'inflight') policyFailure('intent-binding-changed');
+            let rpc, receipt;
+            try { rpc = await response.json(); } catch {}
+            try { receipt = JSON.parse(rpc.result.content[0].text); } catch {}
+            const acknowledged = !flight.timedOut && response.status() === 200 &&
+              rpc?.jsonrpc === '2.0' && rpc.id === body.id && !rpc.error && !rpc.result?.isError &&
+              Array.isArray(rpc.result?.content) && rpc.result.content.length === 1 &&
+              rpc.result.content[0].type === 'text' && receipt &&
+              Object.keys(receipt).sort().join() === 'deal_id,expires_at,field,ok' &&
+              receipt.ok === true && receipt.deal_id === row.deal && receipt.field === 'phase' &&
+              typeof receipt.expires_at === 'string' &&
+              Number.isFinite(Date.parse(receipt.expires_at)) &&
+              Date.parse(receipt.expires_at) >= Date.parse(row.attempted_at) &&
+              Date.parse(receipt.expires_at) <= Date.parse(row.attempted_at) + 60_000;
+            row.state = acknowledged ? 'acknowledged' : 'unresolved';
+            row.response = { acknowledged: Boolean(acknowledged), sha256: digest(receipt ?? null) };
+            if (acknowledged) row.response.receipt = structuredClone(receipt);
+            await persist(planPath, plan);
+            if (!acknowledged) policyFailure('dispatch-outcome-unresolved');
+          });
+          return response;
+        }
         token = await locked(async () => {
           const plan = await currentPlan();
           const admitted = (plan.browser_write_attempts || []).filter(row => row.state === 'admitted' && row.journey);
@@ -1136,7 +1314,7 @@ export function stagingFixtureWriteGuard({ output, release, invoiceFixtureTarget
       } catch (error) {
         if (localCompanionRead) throw error;
         if (admittedRead && !error.fixturePolicy) throw error;
-        const gap = { operation: typeof name === 'string' && (browserReads.has(name) || Object.hasOwn(fixtureWrites, name)) ? name : 'unknown-operation',
+        const gap = { operation: typeof name === 'string' && (browserReads.has(name) || Object.hasOwn(fixtureWrites, name) || name === 'presence-lease') ? name : 'unknown-operation',
           reason: error.fixturePolicy ? error.code : (token ? 'dispatch-outcome-unresolved' : 'intent-or-provenance-unavailable'),
           forwarded: dispatched || admittedRead, at: new Date().toISOString() };
         // Failure to retain a refusal never permits dispatch or clears an intent.

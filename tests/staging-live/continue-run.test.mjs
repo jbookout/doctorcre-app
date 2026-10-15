@@ -757,7 +757,8 @@ async function businessFixture(t) {
   const page = { url: () => currentURL,
     goto: async url => {
       assert.equal(guarded, true);
-      assert.ok([`${contract.origin}/deals?deal=${deal}`, contract.origin + '/', contract.origin + '/tours'].includes(url));
+      assert.ok([`${contract.origin}/deals?deal=${deal}`, contract.origin + '/', contract.origin + '/tours',
+        contract.origin + '/vendors'].includes(url));
       currentURL = url;
       events.push('navigate');
       await routeHandler({ request: () => ({ method: () => 'GET', url: () => url }),
@@ -827,6 +828,38 @@ test('business caller reuses the real private fixture plan, fresh session and ex
   assert.equal(result.readonly.journeys[0].state, 'pending');
 });
 
+test('business caller retains only source-bound vendor and Tour draft action rows from guarded pages', async t => {
+  const f = await businessFixture(t);
+  f.plan.records.vendor = { id: '60000000-0000-4000-8000-000000000004' };
+  f.plan.records.tour = { id: '60000000-0000-4000-8000-000000000005' };
+  await writeFile(join(f.run.root, 'staging-records-plan.json'), JSON.stringify(f.plan), { mode: 0o600 });
+  const { observedV1Action } = await import('../../scripts/e2e-staging/v1-qualification.mjs');
+  const action = (id, caseId, name) => observedV1Action({ id, case: caseId, action: name,
+    sourcePair: { source_commit: binding.app, carr_source_commit: binding.carr },
+    runId: f.run.snapshot().id, fixtureRun: f.plan.run, ui: { observed: name }, readback: { owned: true } });
+  const result = await runBusinessPhase({ binding, run: f.run }, { ...f.supplied,
+    tourPrerequisite: async () => ({ status: 'READY', fixtureBinding: { synthetic: true } }),
+    qualifyTour: async () => ({ full_v1_qualified: false,
+      ui: { sha256: 'a'.repeat(64) }, backend_readback: { sha256: 'b'.repeat(64) } }),
+    vendorJourney: async ({ page, plan }) => {
+      assert.equal(new URL(page.url()).pathname, '/vendors');
+      assert.equal(plan.records.vendor.id, f.plan.records.vendor.id);
+      return { actions: [action('W5', 'vendors', 'owned-vendor')] };
+    },
+    tourDraftJourney: async ({ page, plan, fixtureBinding }) => {
+      assert.equal(new URL(page.url()).pathname, '/tours');
+      assert.equal(plan.records.tour.id, f.plan.records.tour.id);
+      assert.deepEqual(fixtureBinding, { synthetic: true });
+      return { actions: [action('W6', 'tours-drafts', 'draft-reload')] };
+    },
+  });
+  assert.deepEqual(result.actions.map(row => [row.id, row.action]),
+    [['W5', 'owned-vendor'], ['W6', 'draft-reload']]);
+  const retained = JSON.parse(await readFile(join(f.run.root, 'staging-records-plan.json'), 'utf8')).journey_qualification;
+  assert.deepEqual(retained.observations, result.actions);
+  assert.equal(retained.full_v1_qualified, false);
+});
+
 test('readonly W1/W2/W5/W14 caller uses a fresh guarded Home page and cannot qualify full V1', async t => {
   const f = await businessFixture(t);
   await assert.rejects(runBusinessPhase({ binding, run: f.run }, { ...f.supplied,
@@ -872,6 +905,31 @@ test('retained journey observations accept only closed source-bound statuses', (
     { private_record_id: '60000000-0000-4000-8000-000000000001' }])
     assert.throws(() => assertJourneyQualification({ ...value, ...changed }, binding, value.run_id),
       { code: 'journey-observations-invalid' });
+});
+
+test('retained V1 action rows bind the exact fixture and reject foreign or duplicate observations', async () => {
+  const { V1_QUALIFICATION_SHA256 } = await import('../../scripts/e2e-staging/v1-qualification.mjs');
+  const fixtureRun = '33333333-3333-4333-8333-333333333333';
+  const action = { id: 'W6', case: 'tours-drafts', action: 'draft-reload', state: 'observed',
+    source_pair: { source_commit: binding.app, carr_source_commit: binding.carr },
+    run_id: 'synthetic-run', fixture_run: fixtureRun, actor: 'joe',
+    contract_sha256: V1_QUALIFICATION_SHA256,
+    ui_sha256: 'a'.repeat(64), readback_sha256: 'b'.repeat(64) };
+  const value = { schema: 'doctorcre-staging-journey-observations.v1',
+    source_pair: action.source_pair, run_id: action.run_id, fixture_run: fixtureRun,
+    observed_at: '2026-10-15T05:00:00.000Z',
+    business: { W4: false, W9: false, W15: false, observed_steps: 0 },
+    tour_readonly_observed: false,
+    readonly: { W1: 'pending', W2: 'pending', W5: 'pending', W14: 'pending' },
+    observations: [action], companions: [], full_v1_qualified: false };
+  assert.doesNotThrow(() => assertJourneyQualification(value, binding, action.run_id));
+  for (const changed of [
+    { observations: [action, action] },
+    { observations: [{ ...action, fixture_run: '44444444-4444-4444-8444-444444444444' }] },
+    { observations: [{ ...action, source_pair: { ...action.source_pair, source_commit: 'b'.repeat(40) } }] },
+    { companions: [{ id: 'Call Mode', enabled: false, state: 'disabled-observed' }] },
+  ]) assert.throws(() => assertJourneyQualification({ ...value, ...changed }, binding, action.run_id),
+    { code: 'journey-observations-invalid' });
 });
 
 test('unsettled writes, source changes and deal restore limitations refuse business execution before browser creation', async t => {

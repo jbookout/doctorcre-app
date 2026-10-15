@@ -5,6 +5,8 @@ import { screens as canonicalScreens, targets as canonicalTargets } from '../../
 import { createSweepRun } from '../../scripts/e2e-staging/resume.mjs';
 import { createExplorationSchedule } from '../../scripts/e2e-staging/explore.mjs';
 import contract from '../../contracts/e2e-staging.v1.json' with { type: 'json' };
+import qualification from '../../contracts/e2e-staging-v1-qualification.v1.json' with { type: 'json' };
+import { V1_QUALIFICATION_SHA256 } from '../../scripts/e2e-staging/v1-qualification.mjs';
 
 const release = { service: 'doctorcre-app', environment: 'staging', source_commit: 'a'.repeat(40), carr_source_commit: contract.producer.source_commit };
 const targets = canonicalTargets;
@@ -42,6 +44,44 @@ const classify = (value = {}, options = {}) => completionContract({
     run_id: 'synthetic-run', referencedFiles: 93,
   },
   businessProof: options.businessProof,
+  journeyEvidence: options.journeyEvidence,
+});
+
+const journeyEvidence = () => ({
+  schema: 'doctorcre-staging-journey-observations.v1',
+  source_pair: { source_commit: release.source_commit, carr_source_commit: release.carr_source_commit },
+  run_id: 'synthetic-run', fixture_run: '11111111-1111-4111-8111-111111111111',
+  observations: qualification.requirements.flatMap(row => row.actions.map(action => ({
+    id: row.id, case: row.case, action, state: 'observed',
+    source_pair: { source_commit: release.source_commit, carr_source_commit: release.carr_source_commit },
+    run_id: 'synthetic-run', fixture_run: '11111111-1111-4111-8111-111111111111',
+    actor: 'joe', contract_sha256: V1_QUALIFICATION_SHA256,
+    ui_sha256: 'a'.repeat(64), readback_sha256: 'b'.repeat(64),
+  }))),
+  companions: qualification.companion_ids.map(id => ({ id, enabled: false, state: 'disabled-observed',
+    source_pair: { source_commit: release.source_commit, carr_source_commit: release.carr_source_commit },
+    run_id: 'synthetic-run', fixture_run: '11111111-1111-4111-8111-111111111111',
+    actor: 'joe', contract_sha256: V1_QUALIFICATION_SHA256,
+    ui_sha256: 'c'.repeat(64), readback_sha256: 'd'.repeat(64) })),
+});
+
+test('synthetic full action matrix qualifies only with retained sweep, fixture and source bindings', () => {
+  const evidence = journeyEvidence();
+  const accepted = classify({}, { journeyEvidence: evidence });
+  assert.equal(accepted.status, 'ACCEPTED_SWEEP');
+  assert.equal(accepted.v1Status, 'ACCEPTED_V1');
+  assert.equal(accepted.acceptedV1, true);
+  assert.equal(accepted.jobStatus, 'V1_ACCEPTED');
+  for (const changed of [
+    { observations: evidence.observations.slice(1) },
+    { observations: [...evidence.observations, evidence.observations[0]] },
+    { companions: evidence.companions.slice(1) },
+    { source_pair: { ...evidence.source_pair, source_commit: 'b'.repeat(40) } },
+    { run_id: 'foreign-run' },
+  ]) assert.equal(classify({}, { journeyEvidence: { ...evidence, ...changed } }).acceptedV1, false);
+  assert.equal(classify({}, { journeyEvidence: evidence, fixtureWriteScopeComplete: false }).acceptedV1, false);
+  assert.equal(classify({ skippedControls: 1 }, { journeyEvidence: evidence }).acceptedV1, false);
+  assert.equal(classify({}, { journeyEvidence: evidence, retainedEvidence: { verified: false } }).acceptedV1, false);
 });
 
 test('completed counts without source-bound retained evidence stay partial and never credit V1', () => {

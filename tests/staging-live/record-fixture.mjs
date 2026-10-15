@@ -10,7 +10,7 @@ export const release = { service: 'doctorcre-app', environment: 'staging', sourc
 export const reply = body => ({ ok: () => true, status: () => 200, json: async () => body });
 export const envelope = body => reply({ jsonrpc: '2.0', id: 1, result: { content: [{ type: 'text', text: JSON.stringify(body) }] } });
 
-export function fakeAPI(output, { refuse, unknown, wrongParty = false, linkedLead = false, beforeReadback, sourceRelease = release } = {}) {
+export function fakeAPI(output, { refuse, unknown, candidateAt, wrongParty = false, linkedLead = false, beforeReadback, sourceRelease = release } = {}) {
   const calls = [], rows = { deals: new Map() };
   let disposed = 0;
   const id = number => `40000000-0000-4000-8000-${String(number).padStart(12, '0')}`;
@@ -19,6 +19,9 @@ export function fakeAPI(output, { refuse, unknown, wrongParty = false, linkedLea
       calls.push({ path, options });
       if (path === stagingAuth.session.path) return reply({ actor: { slug: contract.session.actor_slug }, e2e_principal: contract.session.e2e_principal, csrf_token: 'private-csrf-canary' });
       if (path.startsWith('/api/v1/business/clients/')) { beforeReadback?.(rows); return reply({ record: { id: rows.client, name: rows.clientName ?? 'Synthetic Staging Fixture' } }); }
+      if (path.startsWith('/api/v1/business/vendors/')) return reply({ viewer: 'joe', record: { id: rows.vendor?.id,
+        name: rows.vendor?.name, owner: 'joe', relationship: { recent_entries: rows.vendorEntry ? [rows.vendorEntry] : [],
+          introductions: rows.vendorLink ? [rows.vendorLink] : [] } } });
       if (path.startsWith('/api/tours/detail?')) return reply({ data: rows.tour });
       assert.fail(`Unexpected read ${path}`);
     },
@@ -35,10 +38,21 @@ export function fakeAPI(output, { refuse, unknown, wrongParty = false, linkedLea
       if (name === refuse) return reply({ result: { isError: true, content: [{ type: 'text', text: '{"error":"database_refused_the_statement","fault":"private-provider-canary"}' }] } });
       if (name === 'add-party') {
         if (args.name === 'Synthetic Staging Fixture') return envelope({ needs_confirm: true, candidates: [{ id: wrongParty ? id(99) : fixture, name: 'Synthetic Staging Fixture' }] });
+        if (candidateAt === (args.name.startsWith('QA Vendor ') ? 'vendor_party' : 'lead_party'))
+          return envelope({ needs_confirm: true, candidates: [{ id: id(99), name: 'Synthetic Staging QA candidate' }] });
+        if (args.name.startsWith('QA Vendor ')) { rows.vendorParty = { id: id(7), name: args.name }; return envelope({ ok: true, party_id: rows.vendorParty.id }); }
         rows.leadParty = { id: id(6), name: args.name };
         return envelope({ ok: true, party_id: rows.leadParty.id });
       }
       if (name === 'new-client') { rows.client = id(1); return envelope({ ok: true, client_id: rows.client, ref: 'C-001' }); }
+      if (name === 'new-vendor') { rows.vendor = { id: id(8), name: rows.vendorParty.name, ref: 'V-CPA-001' }; return envelope({ ok: true, vendor_id: rows.vendor.id, ref: rows.vendor.ref }); }
+      if (name === 'log-activity') {
+        rows.vendorEntry = { id: id(9), kind: 'note', summary: args.summary, detail: args.detail };
+        rows.vendorLink = { id: id(10), from_name: rows.vendor.name, to_name: 'Synthetic Staging Fixture', note: args.links[0].note };
+        return envelope({ ok: true, activity_id: rows.vendorEntry.id,
+          links: [{ from_ref: args.links[0].from_ref, to_ref: args.links[0].to_ref,
+            kind: 'can_introduce', link_id: rows.vendorLink.id, existing: false }] });
+      }
       if (name === 'new-deal') { const deal_id = id(rows.deals.size + 2); rows.deals.set(deal_id, { deal_id, id: deal_id, name: args.name, phase: 'pending', owner: null, lane: 'territory', base_version: 1, operating_state: 'active' }); return envelope({ ok: true, deal_id }); }
       if (name === 'get-deal-room') {
         const row = rows.deals.get(args.deal);

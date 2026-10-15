@@ -1,0 +1,27 @@
+{
+  "schema": "doctorcre-staging-v1-qualification.v1",
+  "version": "1.0.0",
+  "requirements_source": {
+    "path": "tests/journeys/required-coverage.json",
+    "sha256": "2c237a6bac3049f164007b65593101d0efca1a8278fbc655a3680be0cfec62d9",
+    "kind": "synthetic-behavior-specification-not-live-proof"
+  },
+  "producer": {
+    "repository": "jbookout/carr-system",
+    "source_commit": "5ddaa8f39507de3f3343c5cc5177d3d07168e9eb"
+  },
+  "requirements": [
+    { "id": "W1", "case": "shell", "actions": ["identity", "freshness", "theme-reload"] },
+    { "id": "W1", "case": "session", "actions": ["signed-in-session", "signout-token", "old-session-rejected"] },
+    { "id": "W2", "case": "home-attention", "actions": ["team-scope", "viewer-scope", "scope-reset", "exact-deal-open"] },
+    { "id": "W4", "case": "local-deals", "actions": ["eight-columns", "automatic-move", "automatic-undo", "drag-cancel", "drag-confirm", "independent-phase-readback"] },
+    { "id": "W5", "case": "vendors", "actions": ["owned-vendor", "owner-filter", "owner-reset", "original-entry", "vendor-readback"] },
+    { "id": "W6", "case": "tours-drafts", "actions": ["client-prefill", "edit-undo", "draft-save", "draft-reload", "upcoming-detail"] },
+    { "id": "W9", "case": "deal-timeline", "actions": ["recorded-phase-date", "date-dialog-cancel", "contract-date-write", "countdown", "date-control-removed"] },
+    { "id": "W14", "case": "relationships", "actions": ["owned-party-evidence", "referrals", "territory-filter", "territory-reset"] },
+    { "id": "W15", "case": "invoice-tracker", "actions": ["age-filter", "age-reset", "awaiting-payment-hidden", "unpaid-detail", "payment-write", "paid-readback"] },
+    { "id": "W15", "case": "home-invoices", "actions": ["team-scope", "viewer-scope", "scope-reset", "payment-removal"] }
+  ],
+  "separate_future_obligation": "tour-route-acceptance-requires-approved-coordinates-provider-rights-and-human-review",
+  "companion_ids": ["Outlook draft", "Call Mode"]
+}
