@@ -1,5 +1,5 @@
-// QA batch 1 — Conversations order, Search phone order, Home always returns to /,
-// and Deal Room phone scroll regions.
+
+
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
