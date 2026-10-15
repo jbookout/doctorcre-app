@@ -397,3 +397,36 @@ for (const [name, workflow] of [["CI", ci]]) {
     }
   });
 }
+for (const [name, workflow] of [["CI", ci]]) {
+  test(`${name}: close runs zero shell commands; invalid source-event body still blocks`, async t => {
+    const closed = await replay(t, workflow, "pull_request", "", { action: "closed" });
+    assert.deepEqual(closed.trace, []);
+    for (const action of ["ready_for_review", "synchronize", "reopened"]) {
+      const bad = await replay(t, workflow, "pull_request", "", { action, body: "<!-- no description -->" });
+      assert.equal(bad.failed, true);
+      assert.ok(bad.trace.includes("node scripts/check-pr-description.mjs"));
+      assert.equal(bad.trace.includes("npm test"), false);
+      const good = await replay(t, workflow, "pull_request", "", { action });
+      assert.equal(good.failed, false);
+    }
+  });
+}
+
+
+test('clearing a description after green tests fails the required test job without heavy work', async t => {
+  const green = await replay(t, ci, 'pull_request');
+  assert.equal(green.failed, false);
+  assert.ok(green.trace.includes('npm test'));
+  const edited = policy(ci, context('pull_request', 'edited'));
+  assert.deepEqual(edited.runnable, ['test'], 'body validation must report under the enforced check name');
+  for (const body of ['', '<!-- empty -->', '## What changed']) {
+    const result = await replay(t, ci, 'pull_request', '', { action: 'edited', body });
+    assert.equal(result.failed, true);
+    assert.deepEqual(result.trace, ['node scripts/check-pr-description.mjs']);
+  }
+  const restored = await replay(t, ci, 'pull_request', '', { action: 'edited', body: 'Description restored.' });
+  assert.equal(restored.failed, false);
+  assert.deepEqual(restored.trace, ['node scripts/check-pr-description.mjs']);
+  const withoutEdits = ci.replace('reopened, edited,', 'reopened,');
+  assert.deepEqual(policy(withoutEdits, context('pull_request', 'edited')).runnable, [], 'control reproduces the unenforced edit');
+});

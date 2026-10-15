@@ -37,16 +37,16 @@ for (const file of files) {
     assert.equal(uncancelled.reduce((sum, r) => sum + r.seconds, 0), 15);
     assert.equal(runs.filter(r => r.runnable.length).length, 3, "supersession saves tail work, not started suites");
   });
-  test(`${file}: closed event cancels prior work with zero runnable jobs; reopen recovers`, () => {
-    for (const action of ["opened", "synchronize", "edited", "ready_for_review"]) {
-      const runs = replay(source, [context("pull_request", action, 9, 1), context("pull_request", "closed", 9, 2)]);
-      assert.deepEqual(runs.map(run => run.status), ["superseded", "skipped"]);
-      assert.deepEqual(runs[1].runnable, [], "closed must not checkout/install/test/aggregate");
+  test(`${file}: metadata edits and close do not supersede the source verdict; reopen recovers`, () => {
+    for (const action of ["closed", "edited"]) {
+      const runs = replay(source, [context("pull_request", "opened", 9, 1), context("pull_request", action, 9, 2)]);
+      assert.deepEqual(runs.map(run => run.status), ["success"]);
+      assert.equal(policy(source, context("pull_request", action)).triggers, false);
+      const redundant = source.replace("types: [opened,", `types: [${action}, opened,`);
+      assert.equal(policy(redundant, context("pull_request", action)).triggers, true, "control detects restored metadata trigger");
     }
     const reopened = policy(source, context("pull_request", "reopened"));
     assert.deepEqual(reopened.runnable, reopened.jobs);
-    const removedGuards = source.replace(/^    if:.*\n/gm, "");
-    assert.notDeepEqual(policy(removedGuards, context("pull_request", "closed")).runnable, [], "control removing only the close guard is rejected");
   });
   test(`${file}: workflow/PR identity is stable on close and isolated from other PR/main/manual`, () => {
     const current = policy(source, context());
@@ -62,8 +62,8 @@ for (const file of files) {
       assert.deepEqual(one.runnable, one.jobs);
     }
   });
-  test(`${file}: edits and draft-to-ready retain full validation; completed verdict survives close`, () => {
-    for (const action of ["opened", "synchronize", "reopened", "edited", "ready_for_review"]) {
+  test(`${file}: source events and draft-to-ready retain full validation; completed verdict survives close`, () => {
+    for (const action of ["opened", "synchronize", "reopened", "ready_for_review"]) {
       assert.deepEqual(policy(source, context("pull_request", action)).runnable, policy(source, context()).jobs);
     }
     assert.doesNotMatch(source, /github\.event\.pull_request\.draft|continue-on-error:/);
