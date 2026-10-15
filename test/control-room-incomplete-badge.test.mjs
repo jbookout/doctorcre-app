@@ -3,13 +3,8 @@
 // now reflects any read that answered incompletely.
 import test from "node:test";
 import assert from "node:assert/strict";
-import {readFile} from "node:fs/promises";
-
 
 import {KNOWN_GAPS, atlasIncompleteSources} from "../js/atlas-model.js";
-
-const pageJs = await readFile(new URL("../js/control-room.js", import.meta.url), "utf8");
-const atlasJs = await readFile(new URL("../js/atlas.js", import.meta.url), "utf8");
 
 const gapRows = KNOWN_GAPS.map((gap) => ({ ...gap, node_count: 0, edge_count: 0, complete: false }));
 const row = (source_ref, complete, missing_reason = null) => ({ source_ref, evidence_class: "observed", node_count: 0, edge_count: 0, complete, missing_reason });

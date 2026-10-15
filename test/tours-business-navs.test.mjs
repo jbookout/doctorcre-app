@@ -35,5 +35,4 @@ test("Home removes the repeated Tours action tile; shared navigation still offer
   const html = readFileSync(new URL("../workspace.html", import.meta.url), "utf8");
   const card = /<a class="module-card[^"]*" href="\/tours">[\s\S]*?<\/a>/.exec(html)?.[0] || "";
   assert.equal(card, "", "Home has no repeated Tours module card");
-  assert.doesNotMatch(card, /<p>/);
 });
