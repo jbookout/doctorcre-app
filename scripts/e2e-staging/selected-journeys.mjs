@@ -135,7 +135,8 @@ export async function runSelectedJourneys({ binding, run = currentRun(), environ
           ...[...new Set(preservedIds)].map(journey => ({ journey, step: 'retained-action-proof', state: 'previously-observed' })),
           ...progress.steps);
         actions.splice(0, actions.length, ...mergeSelectedActionProofs(prior?.observations, progress.actions, journeys));
-        await retainJourneyQualification({ run, binding, release, result: { completed, steps, actions,
+        await retainJourneyQualification({ run, binding, release, preservePriorTourReadonly: true,
+          result: { completed, steps, actions,
           full_v1_qualified: false, tour: { full_v1_qualified: false },
           companions: prior?.companions || [], readonly: prior
             ? { ...readonlyPending(release, plan), journeys: readonlyPending(release, plan).journeys.map(row =>

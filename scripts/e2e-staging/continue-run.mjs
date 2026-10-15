@@ -155,7 +155,7 @@ export function assertJourneyQualification(value, binding, runId) {
   return value;
 }
 
-export async function retainJourneyQualification({ run, binding, release, result }) {
+export async function retainJourneyQualification({ run, binding, release, result, preservePriorTourReadonly = false }) {
   const path = join(run.root, 'staging-records-plan.json');
   const plan = JSON.parse(await privateBytes(path));
   if (plan.schema !== 'doctorcre-staging-records-plan.v1' || plan.state !== 'complete' || plan.inflight ||
@@ -172,7 +172,7 @@ export async function retainJourneyQualification({ run, binding, release, result
     priorObservations = (prior.observations || []).filter(row => durableBusinessAction(row) &&
       result.completed.includes(row.id) && result.steps.some(step => step?.journey === row.id &&
         ['observed', 'previously-observed'].includes(step.state)));
-    priorTourReadonlyObserved = prior.tour_readonly_observed === true;
+    priorTourReadonlyObserved = preservePriorTourReadonly && prior.tour_readonly_observed === true;
   }
   const observations = new Map();
   for (const row of priorObservations) observations.set(journeyActionIdentity(row), row);

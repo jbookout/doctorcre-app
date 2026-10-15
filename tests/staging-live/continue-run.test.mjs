@@ -1051,7 +1051,7 @@ test('selected-run retention preserves prior validated Tour and readonly observa
   await retainJourneyQualification({ run: f.run, binding, release,
     result: { ...base, tour: { full_v1_qualified: false, ui: { sha256: 'a'.repeat(64) },
       backend_readback: { sha256: 'b'.repeat(64) } } } });
-  await retainJourneyQualification({ run: f.run, binding, release,
+  await retainJourneyQualification({ run: f.run, binding, release, preservePriorTourReadonly: true,
     result: { ...base, tour: { full_v1_qualified: false } } });
   const retained = JSON.parse(await readFile(join(f.run.root, 'staging-records-plan.json'), 'utf8')).journey_qualification;
   assert.equal(retained.tour_readonly_observed, true);
