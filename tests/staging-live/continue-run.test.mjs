@@ -873,8 +873,11 @@ test('business caller retains only source-bound vendor and Tour draft action row
 test('business qualification retains the exact validated W4/W9/W15 action evidence when a resume reports already-observed steps', async t => {
   const f = await businessFixture(t);
   const { V1_REQUIRED_ACTIONS, observedV1Action } = await import('../../scripts/e2e-staging/v1-qualification.mjs');
-  const selected = V1_REQUIRED_ACTIONS.filter(row => ['W4', 'W9', 'W15'].includes(row.id)).slice(0, 18);
+  const businessActions = V1_REQUIRED_ACTIONS.filter(row => ['W4', 'W9'].includes(row.id)).slice(0, 9);
+  const paidInvoiceActions = V1_REQUIRED_ACTIONS.filter(row => row.id === 'W15' && row.action !== 'awaiting-payment-hidden');
+  const selected = [...businessActions, ...paidInvoiceActions];
   assert.equal(selected.length, 18);
+  assert.equal(paidInvoiceActions.length, 9);
   let invocation = 0;
   const journeys = async options => {
     const actions = invocation === 0 ? selected.filter(row => row.id === options.journeys[0] ||
@@ -882,7 +885,10 @@ test('business qualification retains the exact validated W4/W9/W15 action eviden
         sourcePair: { source_commit: binding.app, carr_source_commit: binding.carr }, runId: f.run.snapshot().id,
         fixtureRun: f.plan.run, ui: { first: row.action }, readback: { owned: true } })) : [];
     if (options.journeys[0] === 'W15') invocation++;
-    return { completed: options.journeys, steps: [], actions, full_v1_qualified: false, unqualified_journeys: ['W6'] };
+    return { completed: options.journeys,
+      steps: options.journeys.map(journey => ({ journey, step: 'synthetic-write',
+        state: invocation === 0 ? 'observed' : 'previously-observed' })),
+      actions, full_v1_qualified: false, unqualified_journeys: ['W6'] };
   };
   const firstResult = await runBusinessPhase({ binding, run: f.run }, { ...f.supplied, journeys });
   const first = JSON.parse(await readFile(join(f.run.root, 'staging-records-plan.json'), 'utf8')).journey_qualification;
@@ -894,6 +900,66 @@ test('business qualification retains the exact validated W4/W9/W15 action eviden
   const resumed = JSON.parse(await readFile(join(f.run.root, 'staging-records-plan.json'), 'utf8')).journey_qualification;
   assert.deepEqual(resumed.observations, first.observations);
   assert.equal(resumed.observations.length, 18);
+});
+
+test('resume replaces fresh readonly/vendor/Tour evidence and drops it when current journeys have no proof', async t => {
+  const f = await businessFixture(t), { V1_REQUIRED_ACTIONS, observedV1Action } =
+    await import('../../scripts/e2e-staging/v1-qualification.mjs');
+  const action = (id, caseId, name, ui) => observedV1Action({ id, case: caseId, action: name,
+    sourcePair: { source_commit: binding.app, carr_source_commit: binding.carr }, runId: f.run.snapshot().id,
+    fixtureRun: f.plan.run, ui, readback: { owned: true } });
+  const readonly = { schema: 'staging-readonly-journey-result.v1', full_v1_qualified: false,
+    provenance: { source_commit: binding.app, carr_source_commit: binding.carr, run: f.plan.run },
+    counts: { carr_record_mutations: 0 },
+    journeys: ['W1', 'W2', 'W5', 'W14'].map(journey => ({ journey, state: 'pending', reason: 'fresh synthetic readback' })) };
+  const result = row => ({ completed: ['W4', 'W9', 'W15'], steps: ['W4', 'W9', 'W15'].map(journey =>
+    ({ journey, step: 'paid-or-observed', state: 'previously-observed' })), readonly, tour: { full_v1_qualified: false },
+  actions: Array.isArray(row) ? row : row ? [row] : [], companions: [], full_v1_qualified: false });
+  const dynamicRows = [
+    V1_REQUIRED_ACTIONS.find(row => row.id === 'W14' && row.action === 'referrals'),
+    V1_REQUIRED_ACTIONS.find(row => row.id === 'W5' && row.action === 'owned-vendor'),
+    V1_REQUIRED_ACTIONS.find(row => row.id === 'W6' && row.action === 'draft-reload'),
+  ];
+  const proofs = stamp => dynamicRows.map(row => action(row.id, row.case, row.action,
+    { observation: row.id === 'W14' ? stamp : `${row.id}-${stamp}` }));
+  const previous = proofs('old-readback');
+  await retainJourneyQualification({ run: f.run, binding, release, result: result(previous[0]) });
+  // Seed W5/W6 alongside the W14 row so the next invocation must replace all
+  // three categories from fresh browser evidence rather than carry stale hashes.
+  await retainJourneyQualification({ run: f.run, binding, release, result: result([...previous]) });
+  const refreshed = proofs('fresh-readback');
+  await retainJourneyQualification({ run: f.run, binding, release, result: result(refreshed) });
+  let retained = JSON.parse(await readFile(join(f.run.root, 'staging-records-plan.json'), 'utf8')).journey_qualification;
+  assert.deepEqual(retained.observations, refreshed);
+  await retainJourneyQualification({ run: f.run, binding, release, result: result(null) });
+  retained = JSON.parse(await readFile(join(f.run.root, 'staging-records-plan.json'), 'utf8')).journey_qualification;
+  assert.deepEqual(retained.observations, []);
+});
+
+test('resume excludes awaiting-invoice read-only proof from prior carry and accepts only its fresh observation', async t => {
+  const f = await businessFixture(t), { V1_REQUIRED_ACTIONS, observedV1Action } =
+    await import('../../scripts/e2e-staging/v1-qualification.mjs');
+  const requirement = V1_REQUIRED_ACTIONS.find(row => row.id === 'W15' && row.action === 'awaiting-payment-hidden');
+  assert.ok(requirement, 'the current W15 contract includes the separately observed awaiting-invoice row');
+  const action = stamp => observedV1Action({ ...requirement,
+    sourcePair: { source_commit: binding.app, carr_source_commit: binding.carr }, runId: f.run.snapshot().id,
+    fixtureRun: f.plan.run, ui: { stamp }, readback: { awaiting: true } });
+  const readonly = { schema: 'staging-readonly-journey-result.v1', full_v1_qualified: false,
+    provenance: { source_commit: binding.app, carr_source_commit: binding.carr, run: f.plan.run },
+    counts: { carr_record_mutations: 0 },
+    journeys: ['W1', 'W2', 'W5', 'W14'].map(journey => ({ journey, state: 'pending', reason: 'fresh synthetic readback' })) };
+  const result = row => ({ completed: ['W4', 'W9', 'W15'], steps: ['W4', 'W9', 'W15'].map(journey =>
+    ({ journey, step: 'paid-or-observed', state: 'previously-observed' })), readonly, tour: { full_v1_qualified: false },
+  actions: row ? [row] : [], companions: [], full_v1_qualified: false });
+  const previous = action('old-proof');
+  await retainJourneyQualification({ run: f.run, binding, release, result: result(previous) });
+  const fresh = action('fresh-proof');
+  await retainJourneyQualification({ run: f.run, binding, release, result: result(fresh) });
+  let retained = JSON.parse(await readFile(join(f.run.root, 'staging-records-plan.json'), 'utf8')).journey_qualification;
+  assert.deepEqual(retained.observations, [fresh]);
+  await retainJourneyQualification({ run: f.run, binding, release, result: result(null) });
+  retained = JSON.parse(await readFile(join(f.run.root, 'staging-records-plan.json'), 'utf8')).journey_qualification;
+  assert.deepEqual(retained.observations, []);
 });
 
 test('readonly W1/W2/W5/W14 caller uses a fresh guarded Home page and cannot qualify full V1', async t => {

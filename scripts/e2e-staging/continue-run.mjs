@@ -18,6 +18,15 @@ const hash = bytes => createHash('sha256').update(bytes).digest('hex');
 const stable = value => Array.isArray(value) ? value.map(stable) : value && typeof value === 'object'
   ? Object.fromEntries(Object.keys(value).sort().map(key => [key, stable(value[key])])) : value;
 const journeyActionIdentity = row => JSON.stringify([row?.id, row?.case, row?.action]);
+const durableW15Actions = new Set([
+  'invoice-tracker:age-filter', 'invoice-tracker:age-reset', 'invoice-tracker:unpaid-detail',
+  'invoice-tracker:payment-write', 'invoice-tracker:paid-readback',
+  'home-invoices:team-scope', 'home-invoices:viewer-scope', 'home-invoices:scope-reset',
+  'home-invoices:payment-removal',
+]);
+const durableBusinessAction = row => row?.id === 'W4' && row.case === 'local-deals' ||
+  row?.id === 'W9' && row.case === 'deal-timeline' ||
+  row?.id === 'W15' && durableW15Actions.has(`${row.case}:${row.action}`);
 const execute = promisify(execFile);
 const ownFailures = new WeakSet();
 const businessFailureCodes = new Set(['business-journey-receipt-missing', 'business-journey-selector-unavailable',
@@ -155,14 +164,20 @@ export async function retainJourneyQualification({ run, binding, release, result
     const prior = assertJourneyQualification(plan.journey_qualification, binding, run.snapshot().id);
     if (Object.hasOwn(prior, 'observations') && prior.fixture_run !== plan.run)
       refusal('journey-observations-invalid');
-    priorObservations = prior.observations || [];
+    priorObservations = (prior.observations || []).filter(row => durableBusinessAction(row) &&
+      result.completed.includes(row.id) && result.steps.some(step => step?.journey === row.id &&
+        ['observed', 'previously-observed'].includes(step.state)));
   }
   const observations = new Map();
-  for (const row of [...priorObservations, ...(result.actions || [])]) {
+  for (const row of priorObservations) observations.set(journeyActionIdentity(row), row);
+  const currentIdentities = new Set();
+  for (const row of result.actions || []) {
     const identity = journeyActionIdentity(row), existing = observations.get(identity);
-    if (existing && JSON.stringify(stable(existing)) !== JSON.stringify(stable(row)))
+    if (currentIdentities.has(identity) || durableBusinessAction(row) && existing &&
+        JSON.stringify(stable(existing)) !== JSON.stringify(stable(row)))
       refusal('journey-observations-invalid');
-    if (!existing) observations.set(identity, row);
+    currentIdentities.add(identity);
+    observations.set(identity, row);
   }
   const observed = {
     schema: 'doctorcre-staging-journey-observations.v1',
