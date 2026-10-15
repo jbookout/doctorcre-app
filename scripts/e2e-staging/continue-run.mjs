@@ -41,15 +41,9 @@ const businessFailureCodes = new Set(['business-journey-receipt-missing', 'busin
   'invoice-close-step-unproved', 'invoice-close-source-unproved', 'invoice-close-readback-unproved',
   'invoice-close-never-replay', 'invoice-close-before-unproved', 'invoice-close-request-unproved',
   'invoice-close-read-unproved', 'invoice-close-outcome-unresolved', 'invoice-close-coverage-incomplete',
-  'companion-source-binding-unproved', 'companion-eligibility-unproved', 'companion-fixture-provenance-unproved',
-  'companion-report-ui-unproved', 'companion-draft-control-unproved', 'companion-reconciliation-required',
-  'companion-settlement-unverified', 'companion-report-scope-unproved', 'companion-report-provenance-unproved',
-  'companion-candidate-readback-unproved', 'companion-draft-readback-unproved', 'companion-enabled-state-unproved',
-  'companion-fixture-binding-changed', 'companion-phase-unproved', 'companion-disabled-ui-unproved',
-  'companion-enabled-readback-unproved', 'companion-route-unproved', 'companion-admission-required',
-  'companion-candidate-scope-unproved', 'companion-order-unproved',
-  'companion-report-budget-exceeded', 'companion-dispatch-outcome-unresolved', 'companion-response-unproved',
-  'companion-state-unproved', 'companion-candidate-receipt-unproved', 'companion-draft-receipt-unproved',
+  'companion-source-binding-unproved', 'companion-isolated-mailbox-required', 'companion-reconciliation-required',
+  'companion-phase-unproved', 'companion-disabled-ui-unproved', 'companion-enabled-readback-unproved',
+  'companion-route-unproved', 'companion-dispatch-outcome-unresolved', 'companion-response-unproved', 'companion-state-unproved',
   'presence-settlement-timeout',
   'selected-journey-selection-invalid', 'selected-journey-plan-required', 'selected-journey-plan-invalid',
   'selected-journey-route-unavailable', 'selected-journey-setup-failed', 'selected-journey-w4-failed', 'selected-journey-w9-failed',
@@ -966,7 +960,8 @@ export async function runBusinessPhase({ binding, run, environment = process.env
   if (admission.status !== 'READY') refusal('invoice-local-prerequisite-required');
   let state;
   const setup = await prepare(run.root, { reuseOnly: true, vendorFixture: true, tourDraftFixture: true,
-    awaitingInvoiceFixture: true, relationshipFixture: true, run, signal: run.signal,
+    awaitingInvoiceFixture: true, relationshipFixture: true, relationshipFixtureTarget: admission.verifiedTarget,
+    run, signal: run.signal,
     session: async (origin, options) => {
       const authenticated = await authenticate(origin, options);
       assertSourcePair(authenticated.release, binding);

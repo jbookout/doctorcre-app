@@ -59,6 +59,18 @@ function receiptMatches(step, receipt, plan) {
     receipt.invoiced_on === journal.before.invoiced_on && uuid(receipt.undone_by);
 }
 
+function captureReadbackMatches(invoice, plan) {
+  const f = fixture(plan), captured = plan.invoice_close_journey?.steps?.capture?.receipt?.invoice_id;
+  return uuid(captured) && invoice?.invoice_id === captured && invoice.status === 'proposed' &&
+    invoice.deal_id === f.deal && invoice.deal_name === f.name && invoice.evidence_ref === f.evidence &&
+    invoice.invoiced_on === f.occurred_at.slice(0, 10);
+}
+
+function captureObserved(row, plan) {
+  return row?.state === 'observed' && captureReadbackMatches(row.observation, plan) &&
+    row.readback_sha256 === hash(row.observation);
+}
+
 export function createInvoiceCloseGuard({ currentPlan, persistPlan, locked, run }) {
   return {
     async admitInvoiceClose({ phase, step, release, observation }) {
@@ -70,6 +82,20 @@ export function createInvoiceCloseGuard({ currentPlan, persistPlan, locked, run 
         if (phase === 'observe') {
           const row = journal?.steps?.[step], latest = journal?.latest_deal, queue = journal?.latest_queue;
           const invoice = journal?.steps?.capture?.receipt?.invoice_id;
+          if (step === 'capture') {
+            const matches = Array.isArray(queue?.proposals) && Array.isArray(queue?.moves) &&
+              !queue.moves.some(item => item?.invoice_id === invoice)
+              ? queue.proposals.filter(item => item?.invoice_id === invoice) : null;
+            if (row?.state !== 'acknowledged' || matches?.length !== 1 || !captureReadbackMatches(matches[0], plan) ||
+                ![journal.queue_read_at, row.completed_at].every(Number.isFinite) ||
+                journal.queue_read_at < row.completed_at || !row.response_sha256 ||
+                journal.queue_capture_response_sha256 !== row.response_sha256 || observation?.invoice_id !== invoice ||
+                observation?.state !== 'captured') fail('invoice-close-readback-unproved');
+            row.state = 'observed'; row.observation = structuredClone(matches[0]);
+            row.readback_sha256 = hash(row.observation);
+            await persistPlan(plan);
+            return structuredClone(row);
+          }
           const move = queue?.moves?.filter(item => item.invoice_id === invoice);
           const target = step === 'close' ? 'applied' : 'undone';
           if (!['close', 'undo'].includes(step) || row?.state !== 'acknowledged' ||
@@ -91,7 +117,7 @@ export function createInvoiceCloseGuard({ currentPlan, persistPlan, locked, run 
         if (step === 'capture' && (!journal?.latest_deal || journal.latest_deal.id !== f.deal ||
             journal.latest_deal.phase !== 'pending' || journal.latest_deal.invoiced_on !== null))
           fail('invoice-close-before-unproved');
-        if (step === 'close' && journal?.steps?.capture?.state !== 'acknowledged') fail('invoice-close-capture-unproved');
+        if (step === 'close' && !captureObserved(journal?.steps?.capture, plan)) fail('invoice-close-capture-unproved');
         const args = template(plan, step);
         if (step === 'capture') journal.before = structuredClone(journal.latest_deal);
         const row = { step, operation: operations[['capture', 'close', 'undo'].indexOf(step)],
@@ -120,6 +146,10 @@ export function createInvoiceCloseGuard({ currentPlan, persistPlan, locked, run 
       if (!operations.includes(name) && !dealRead && !queueRead && !previewRead) return { handled: false };
       if (!Number.isSafeInteger(body.id) && !(typeof body.id === 'string' && body.id)) fail('invoice-close-request-unproved');
       if (dealRead || queueRead || previewRead) {
+        const captureResponseAtRead = queueRead ? await locked(async () => {
+          const capture = (await currentPlan()).invoice_close_journey?.steps?.capture;
+          return ['acknowledged', 'observed'].includes(capture?.state) ? capture.response_sha256 : null;
+        }) : null;
         const response = await run.http(forward);
         let rpc, result;
         try { rpc = await response.json(); result = JSON.parse(rpc.result.content[0].text); } catch { fail('invoice-close-read-unproved'); }
@@ -137,10 +167,13 @@ export function createInvoiceCloseGuard({ currentPlan, persistPlan, locked, run 
                 result.invoice_closes[0].deal_id !== f.deal || result.invoice_closes[0].invoice_id !== expected.invoice_id ||
                 result.invoice_closes[0].evidence_ref !== f.evidence || result.invoice_closes[0].status !== 'applied')
               fail('invoice-close-scope-unproved');
-            journal.bounded_preview = result;
+            journal.bounded_preview = structuredClone(result);
           }
-          else if (dealRead) { journal.latest_deal = result; journal.deal_read_at = Date.now(); }
-          else { journal.latest_queue = result; journal.queue_read_at = Date.now(); }
+          else if (dealRead) { journal.latest_deal = structuredClone(result); journal.deal_read_at = Date.now(); }
+          else {
+            journal.latest_queue = structuredClone(result); journal.queue_read_at = Date.now();
+            journal.queue_capture_response_sha256 = captureResponseAtRead;
+          }
           await persistPlan(current);
         });
         return { handled: true, response };
@@ -164,7 +197,14 @@ export function createInvoiceCloseGuard({ currentPlan, persistPlan, locked, run 
             receiptMatches(step, receipt, current);
           row.state = acknowledged ? 'acknowledged' : 'unresolved'; row.completed_at = Date.now();
           row.response_sha256 = hash(rpc ?? null);
-          if (acknowledged) row.receipt = receipt;
+          if (acknowledged) {
+            row.receipt = receipt;
+            if (step === 'capture') {
+              delete current.invoice_close_journey.latest_queue;
+              delete current.invoice_close_journey.queue_read_at;
+              delete current.invoice_close_journey.queue_capture_response_sha256;
+            }
+          }
           await persistPlan(current);
           if (!acknowledged) fail('invoice-close-outcome-unresolved');
         });
@@ -180,9 +220,10 @@ export function createInvoiceCloseGuard({ currentPlan, persistPlan, locked, run 
     async assertCoverage() {
       const plan = await currentPlan(), steps = plan.invoice_close_journey?.steps ?? {};
       for (const [step, row] of Object.entries(steps)) {
-        if (row.state !== (step === 'capture' ? 'acknowledged' : 'observed') ||
+        if (row.state !== 'observed' ||
             !receiptMatches(step, row.receipt, plan) || !row.response_sha256 ||
-            step !== 'capture' && !row.readback_sha256) fail('invoice-close-coverage-incomplete');
+            !row.readback_sha256 || step === 'capture' && !captureObserved(row, plan))
+          fail('invoice-close-coverage-incomplete');
       }
     },
   };
@@ -203,7 +244,7 @@ export async function runInvoiceCloseJourney({ page, fixtureGuard, release, plan
   if (priorCapture) {
     const closed = await fixtureGuard.admitInvoiceClose({ phase: 'status', step: 'close', release: binding });
     const undone = await fixtureGuard.admitInvoiceClose({ phase: 'status', step: 'undo', release: binding });
-    if (priorCapture.state !== 'acknowledged' || closed?.state !== 'observed' || undone?.state !== 'observed')
+    if (priorCapture.state !== 'observed' || closed?.state !== 'observed' || undone?.state !== 'observed')
       fail('invoice-close-never-replay');
     await fixtureGuard.assertCoverage();
     return { state: 'INVOICE_CLOSE_UNDO_OBSERVED', actions: [
@@ -223,8 +264,11 @@ export async function runInvoiceCloseJourney({ page, fixtureGuard, release, plan
   const captured = await call('capture', 'record-deal-invoice');
   const invoice = captured?.receipt?.invoice_id;
   if (!uuid(invoice)) fail('invoice-close-capture-unproved');
+  await rpc('invoice-close-queue', {});
+  const captureReadback = await fixtureGuard.admitInvoiceClose({ phase: 'observe', step: 'capture', release: binding,
+    observation: { invoice_id: invoice, state: 'captured' } });
   const actions = [];
-  actions.push(proof('capture-evidence', { invoice_id: invoice, evidence_ref: f.evidence }, captured));
+  actions.push(proof('capture-evidence', { invoice_id: invoice, evidence_ref: f.evidence }, captureReadback));
   for (const [step, operation, state] of [['close', 'advance-leads', 'applied'], ['undo', 'undo-invoice-close', 'undone']]) {
     await rpc('read-deal-reconciliation', { deal: f.deal });
     if (step === 'close') await rpc('lead-stage-preview', { staging_fixture: {

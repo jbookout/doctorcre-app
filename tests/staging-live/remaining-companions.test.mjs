@@ -54,30 +54,10 @@ function harness({ enabled = true } = {}) {
       staging_fixture: Object.fromEntries(['fixture_run', 'source_pair', 'session', 'capture_session_id', 'bridge_origin', 'report_sha256']
         .map(key => [key, seeded.receipt[key]])) });
   });
-  const read = () => guard.handle(request(`/api/post-call?session=${seeded.receipt.session}`,
-    { headers: { 'x-carr-call-mode': 'deal-room-v1' } }), async () => response(envelope()));
   const confirmation = { jsonrpc: '2.0', id: 'synthetic-confirm', method: 'tools/call',
     params: { name: 'resolve-post-call-candidate', arguments: { candidate_id: ids.candidate, accept: true,
       idempotency_key: '66666666-6666-4666-8666-666666666666' } } };
-  const confirm = (payload = { jsonrpc: '2.0', id: 'synthetic-confirm', result: { content: [{ type: 'text',
-    text: JSON.stringify({ ok: true, candidate_id: ids.candidate, status: 'confirmed', ref: null, local_only: true, send: false }) }] } }) =>
-    guard.handle(request(staging.origin + '/mcp', { method: 'POST', body: confirmation }), async () => {
-      assert.equal(plan.companion_attempts.at(-1).state, 'inflight');
-      report.draft_proposals[0].candidate_status = 'confirmed';
-      return response(payload);
-    });
-  const sync = () => guard.handle(request('/api/post-call/sync', { method: 'POST',
-    headers: { 'x-carr-call-mode': 'deal-room-v1' }, body: { session: seeded.receipt.session } }),
-  async () => response(envelope()));
-  const draft = () => guard.handle(request(`/api/post-call/drafts/${seeded.receipt.draft_id}/create`, { method: 'POST',
-    headers: { 'x-carr-call-mode': 'deal-room-v1' }, body: { session: seeded.receipt.session,
-      approved_content_hash: seeded.receipt.content_hash } }), async () => {
-    assert.equal(plan.companion_attempts.at(-1).state, 'inflight');
-    report.draft_proposals[0].status = 'created';
-    report.draft_proposals[0].created_at = '2026-10-15T12:00:00Z';
-    return response({ draft_id: seeded.receipt.draft_id, content_hash: seeded.receipt.content_hash, idempotent: false });
-  });
-  let dialogOpen = false;
+  const dialogOpen = false;
   const ui = () => enabled ? { button_hidden: false, retry_visible: false,
     availability: 'Checking Quill on this device…', dialog_open: dialogOpen, report_visible: dialogOpen,
     draft_count: dialogOpen ? 1 : 0, draft_id: seeded.receipt.draft_id, candidate_id: ids.candidate,
@@ -93,15 +73,9 @@ function harness({ enabled = true } = {}) {
         session: { actor: { slug: 'joe' }, e2e_principal: 'e2e-joe' } };
     },
     waitForFunction: async () => {},
-    locator: selector => ({ waitFor: async () => {}, async click() {
-      if (selector === '#callModeButton') { dialogOpen = true; await state(); await read(); }
-      else if (selector === '#callModeClose') dialogOpen = false;
-      else if (selector === `[data-create-outlook-draft="${seeded.receipt.draft_id}"]`) {
-        await confirm(); await sync(); await draft(); await read();
-      } else throw new Error('unexpected synthetic selector');
-    } }),
+    locator: () => { throw new Error('measured-unavailable companion must never open controls'); },
   };
-  return { guard, invoke, run, page, state, read, confirm, sync, draft, ui, confirmation,
+  return { guard, invoke, run, page, state, ui, confirmation,
     get plan() { return structuredClone(plan); }, get report() { return report; },
     alter: operation => { operation(plan); }, seed: seeded.receipt };
 }

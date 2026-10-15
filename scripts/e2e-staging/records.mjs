@@ -19,6 +19,7 @@ import { LOCAL_AGENT_PHASE_REASON } from './local-agent-phase.mjs';
 import { createInvoiceCloseGuard } from './invoice-close-journey.mjs';
 import { createCompanionGuard } from './companion-guard.mjs';
 import { assertRelationshipFixture } from './readonly-journeys.mjs';
+import { validNetwork, filterNetwork } from '../../js/relationship-network-model.js';
 
 const FIXTURE = { id: 'fc08d2f4-a951-5679-9f34-40d0f4278842', name: 'Synthetic Staging Fixture' };
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -135,19 +136,149 @@ async function readPrivateJSON(path) {
   finally { await handle.close(); }
 }
 
+const relationshipFailure = () => {
+  throw Object.assign(new Error('Staging relationship fixture proof prerequisite unavailable'),
+    { code: 'staging-fixture-relationship-prerequisite' });
+};
+function relationshipFixtureId(run, role) {
+  const bytes = createHash('sha1').update(Buffer.from('439206abd73a5c1b8a20531e536e5804', 'hex'))
+    .update(`relationship:${role}:${run}`).digest().subarray(0, 16);
+  bytes[6] = bytes[6] & 15 | 80; bytes[8] = bytes[8] & 63 | 128;
+  const id = bytes.toString('hex');
+  return `${id.slice(0,8)}-${id.slice(8,12)}-${id.slice(12,16)}-${id.slice(16,20)}-${id.slice(20)}`;
+}
+function verifiedFixtureTarget(target) {
+  const keys = (value, expected) => value && typeof value === 'object' && !Array.isArray(value) &&
+    digest(Object.keys(value).sort()) === digest([...expected].sort());
+  const text = (value, max) => typeof value === 'string' && value.trim().length > 0 && value.length <= max;
+  return keys(target, ['project', 'branch', 'endpoint', 'database']) &&
+    keys(target.project, ['id', 'name']) && keys(target.branch, ['id', 'name']) && keys(target.endpoint, ['id', 'host']) &&
+    text(target.project.id, 128) && target.project.id !== 'steep-field-48688294' &&
+    text(target.project.name, 256) && target.project.name.startsWith('carr-staging-replacement-') &&
+    text(target.branch.id, 128) && target.branch.name === 'main' && text(target.endpoint.id, 128) &&
+    target.endpoint.id.startsWith('ep-') && text(target.endpoint.host, 253) && /^[a-z0-9.-]+$/.test(target.endpoint.host) &&
+    target.endpoint.host.startsWith(target.endpoint.id + '.') && target.endpoint.host.endsWith('.neon.tech') &&
+    target.database === 'neondb';
+}
+function relationshipProjection(network, plan, rows) {
+  if (!validNetwork(network)) relationshipFailure();
+  const { party, client, deal, vendor, vendor_party: vendorParty, relationship_referral_deal: referred } = plan.records;
+  const nodeIds = [`party:${party.id}`, `deal:${deal.id}`, `party:${vendorParty.id}`,
+    `party:${referred.party_id}`, `deal:${referred.id}`];
+  const edgeIds = [`client-deal:${deal.id}`, `client-deal:${referred.id}`,
+    `evidence:${party.id}:${referred.id}:referred`, `evidence:${vendorParty.id}:${deal.id}:referred`];
+  const nodes = nodeIds.map(id => {
+    const rows = network.nodes.filter(row => row.id === id);
+    if (rows.length !== 1) relationshipFailure();
+    const row = rows[0];
+    return { id, kind: row.kind, record_id: row.record_id, name: row.name, territory: row.territory ?? null };
+  });
+  const edges = edgeIds.map(id => {
+    const rows = network.edges.filter(row => row.id === id);
+    if (rows.length !== 1) relationshipFailure();
+    const row = rows[0];
+    return { id, from: row.from, to: row.to, kind: row.kind, via: row.via, detail: row.detail ?? null };
+  });
+  const north = rows.fixed_party.city, south = rows.owned_vendor.territory;
+  const expectedNodes = [
+    { id: nodeIds[0], kind: 'client', record_id: client.id, name: party.name, territory: north },
+    { id: nodeIds[1], kind: 'deal', record_id: deal.id, name: deal.name, territory: nodes[1].territory },
+    { id: nodeIds[2], kind: 'vendor', record_id: vendor.id, name: vendor.name, territory: south },
+    { id: nodeIds[3], kind: 'client', record_id: referred.client_id,
+      name: rows.destination_party.name, territory: north },
+    { id: nodeIds[4], kind: 'deal', record_id: referred.id, name: referred.name, territory: nodes[4].territory },
+  ];
+  const expectedEdges = [
+    { id: edgeIds[0], from: nodeIds[0], to: nodeIds[1], kind: 'client_deal', via: null, detail: null },
+    { id: edgeIds[1], from: nodeIds[3], to: nodeIds[4], kind: 'client_deal', via: null, detail: null },
+    { id: edgeIds[2], from: nodeIds[0], to: nodeIds[4], kind: 'referred', via: null, detail: rows.referral_association.note },
+    { id: edgeIds[3], from: nodeIds[2], to: nodeIds[1], kind: 'referred', via: null, detail: rows.vendor_association.note },
+  ];
+  const metrics = [nodeIds[0], nodeIds[2]].map(id => network.referrals.filter(row => row.node_id === id));
+  if (digest(nodes) !== digest(expectedNodes) || digest(edges) !== digest(expectedEdges) || metrics.some(rows =>
+      rows.length !== 1 || rows[0].deals < 1)) relationshipFailure();
+  return { nodes, edges, metrics: metrics.map(rows => rows[0]), total_referrals: network.referrals.length,
+    same_territory_referrals: filterNetwork(network, { territory: north }).referrals.length,
+    other_territory_referrals: network.referrals.filter(row => {
+      const node = network.nodes.find(node => node.id === row.node_id);
+      return typeof node?.territory === 'string' && node.territory.trim() && node.territory !== north;
+    }).length };
+}
+function validateRelationshipProof(proof, plan, target) {
+  if (!verifiedFixtureTarget(target) || digest(proof?.verified_target || null) !== digest(target) ||
+      proof?.schema !== 'doctorcre-staging-relationship-fixture.v1' || proof.fixture_run !== plan.run ||
+      digest(proof.source_pair || null) !== digest(plan.release) || proof.recorded_plan_observed_at !== plan.observed_at ||
+      digest(proof.provenance || null) !== digest({ kind: 'raw-sql-fixture', readback: 'separate-committed-readonly-connection' }) ||
+      proof.party_id !== plan.records.party.id || proof.client_id !== plan.records.client.id || proof.deal_id !== plan.records.deal.id ||
+      !isUUID(plan.records.vendor?.id) || !isUUID(plan.records.vendor_party?.id) ||
+      plan.receipts.vendor?.vendor_id !== plan.records.vendor.id || plan.receipts.vendor_party?.party_id !== plan.records.vendor_party.id)
+    relationshipFailure();
+  const label = `Synthetic staging QA ${plan.run}`, north = 'Synthetic Staging QA North', south = 'Synthetic Staging QA South';
+  const id = role => relationshipFixtureId(plan.run, role);
+  const note = role => `Fictional staging QA ${role} referral for fixture ${plan.run}.`;
+  const association = (role, from, to) => ({ id: id(role), from_party_id: from, to_party_id: to,
+    kind: 'referred', via_party_id: null, occurred_on: plan.observed_at.slice(0,10), note: note(role), attribution: 'system' });
+  const attribution = (role, party, deal, noteRole) => ({ id: id(role), party_id: party, deal_id: deal,
+    kind: 'referred', via_party_id: null, occurred_on: plan.observed_at.slice(0,10), note: note(noteRole), attribution: 'system' });
+  const rows = {
+    destination_party: { id: id('destination_party'), name: `${label} referred client`, kind: 'org', city: north },
+    destination_client: { id: id('destination_client'), party_id: id('destination_party'), status: 'engaged' },
+    destination_deal: { id: id('destination_deal'), name: `${label} referred deal`, client_id: id('destination_client'),
+      owner: 'joe', phase: 'pending', lane: 'territory', deal_type: 'startup' },
+    fixed_party: { id: plan.records.party.id, city: north },
+    owned_vendor: { id: plan.records.vendor.id, party_id: plan.records.vendor_party.id, territory: south },
+    referral_association: association('referral_association', plan.records.party.id, id('destination_party')),
+    vendor_association: association('vendor_association', plan.records.vendor_party.id, plan.records.party.id),
+    referral_attribution: attribution('referral_attribution', plan.records.party.id, id('destination_deal'), 'referral_association'),
+    vendor_attribution: attribution('vendor_attribution', plan.records.vendor_party.id, plan.records.deal.id, 'vendor_association'),
+  };
+  const referred = { id: rows.destination_deal.id, name: rows.destination_deal.name,
+    client_id: rows.destination_client.id, party_id: rows.destination_party.id };
+  const tables = { destination_party: 'party', destination_client: 'client', destination_deal: 'deal', fixed_party: 'party',
+    owned_vendor: 'vendor', referral_association: 'party_association', vendor_association: 'party_association',
+    referral_attribution: 'deal_attribution', vendor_attribution: 'deal_attribution' };
+  const rowHashes = Object.fromEntries(Object.entries(rows).map(([role, row]) => [role, digest(row)]));
+  const receipts = Object.fromEntries(Object.entries(rows).map(([role, row]) => {
+    const field = role === 'fixed_party' ? 'city' : role === 'owned_vendor' ? 'territory' : null;
+    const before = proof.receipts?.[role]?.before_sha256;
+    if (field && before !== digest({ ...row, [field]: null }) && before !== digest(row)) relationshipFailure();
+    return [role, { operation: field ? 'update' : 'insert', table: tables[role], row_id: row.id,
+      before_sha256: field ? before : null, after_sha256: rowHashes[role] }];
+  }));
+  if (digest(proof.rows || null) !== digest(rows) || digest(proof.row_sha256 || null) !== digest(rowHashes) ||
+      digest(proof.receipts || null) !== digest(receipts) || digest(proof.relationship_referral_deal || null) !== digest(referred) ||
+      digest(proof.original_note_sha256 || null) !== digest({ referral: sha256(note('referral_association')), vendor: sha256(note('vendor_association')) }) ||
+      !proof.projection?.response || proof.projection.response_sha256 !== digest(proof.projection.response)) relationshipFailure();
+  const candidate = { ...plan, records: { ...plan.records, relationship_referral_deal: referred } };
+  const installedAt = Date.parse(proof.projection.response.observed_at);
+  if (!Number.isFinite(installedAt) || installedAt < Date.parse(plan.observed_at) - 5000 || installedAt > Date.now() + 5000)
+    relationshipFailure();
+  return { referred, rows, candidate, installedAt, projection: relationshipProjection(proof.projection.response, candidate, rows) };
+}
+
 export async function prepareStagingRecords(output, {
   origin = STAGING_ORIGIN, session = stagingSession, reuseOnly = false,
   vendorFixture = false, tourDraftFixture = false, awaitingInvoiceFixture = false, relationshipFixture = false,
-  relationshipFixtureProofPath = join(output, 'private', 'relationship-fixture-proof.json'), requestFactory, run, signal,
+  relationshipFixtureProofPath = join(output, 'private', 'relationship-fixture-proof.json'), relationshipFixtureTarget, requestFactory, run, signal,
 } = {}) {
   signal?.throwIfAborted();
   origin = assertStagingURL(origin);
+  relationshipFixtureTarget = relationshipFixtureTarget && structuredClone(relationshipFixtureTarget);
   run = requireSupervisedRun(output, run);
   signal ??= run.signal;
   const persist = (path, value, exclusive) => privateJSON(path, value, exclusive, run);
   const planPath = join(output, 'staging-records-plan.json');
   const existing = await readPrivateJSON(planPath);
   if (existing && (existing.state !== 'complete' || existing.inflight)) throw new Error('Staging records partial plan requires reconciliation; no record write was retried');
+  if (relationshipFixture && existing && (existing.fixture_proofs?.relationship || existing.relationship_fixture)) {
+    const retained = existing.fixture_proofs?.relationship;
+    if (retained && typeof retained === 'object' && !Array.isArray(retained)) {
+      if (retained.state === 'verified') retained.state = 'pending-readback';
+      delete retained.current_readback;
+    }
+    delete existing.relationship_fixture;
+    await persist(planPath, existing);
+  }
   if (reuseOnly && tourDraftFixture && existing) {
     const parts = [
       [existing.records?.tour_draft_party, existing.receipts?.tour_draft_party],
@@ -555,19 +686,34 @@ export async function prepareStagingRecords(output, {
       if (relationshipFixture) {
         const retained = plan.fixture_proofs?.relationship;
         const proof = retained?.proof || await readPrivateJSON(relationshipFixtureProofPath);
-        const referred = proof?.relationship_referral_deal;
-        if (retained && retained.proof_content_sha256 !== digest(proof) ||
-            proof?.schema !== 'doctorcre-staging-relationship-fixture.v1' || proof.fixture_run !== plan.run ||
-            digest(proof.source_pair) !== digest(plan.release) || proof.provenance?.kind !== 'raw-sql-fixture' ||
-            proof.party_id !== plan.records.party.id || proof.client_id !== plan.records.client.id ||
-            proof.deal_id !== plan.records.deal.id || !isUUID(referred?.id) || !isUUID(referred?.client_id) ||
-            !isUUID(referred?.party_id) || referred.name !== `Synthetic staging QA ${plan.run} referred deal`)
-          throw Object.assign(new Error('Staging relationship fixture proof prerequisite unavailable'),
-            { code: 'staging-fixture-relationship-prerequisite' });
-        plan.records.relationship_referral_deal = structuredClone(referred);
-        plan.relationship_fixture = assertRelationshipFixture(network, plan);
+        if (retained && (retained.schema !== 'staging-relationship-fixture-binding.v1' || !['pending-readback', 'verified'].includes(retained.state) ||
+            retained.proof_content_sha256 !== digest(proof) || retained.verified_target_sha256 !== digest(relationshipFixtureTarget || null)))
+          relationshipFailure();
+        const fixture = validateRelationshipProof(proof, plan, relationshipFixtureTarget);
         plan.fixture_proofs ||= {};
-        plan.fixture_proofs.relationship = { proof: structuredClone(proof), proof_content_sha256: digest(proof) };
+        plan.fixture_proofs.relationship = { schema: 'staging-relationship-fixture-binding.v1', state: 'pending-readback',
+          proof: structuredClone(proof), proof_content_sha256: digest(proof), verified_target_sha256: digest(relationshipFixtureTarget) };
+        delete plan.relationship_fixture;
+        await persist(planPath, plan);
+        const freshNetwork = await json('/api/v1/business/relationships?contract=relationship-network.v1');
+        const relationshipEvidence = assertRelationshipFixture(freshNetwork, fixture.candidate);
+        if (fixture.installedAt > Date.parse(freshNetwork.observed_at) + 5000 ||
+            digest(fixture.projection) !== digest(relationshipProjection(freshNetwork, fixture.candidate, fixture.rows))) relationshipFailure();
+        const referredClient = await json(`/api/v1/business/clients/${fixture.referred.client_id}`);
+        const referredDeal = await rpc('get-deal-room', { deal: fixture.referred.id });
+        const clientRow = fixture.rows.destination_client, partyRow = fixture.rows.destination_party, dealRow = fixture.rows.destination_deal;
+        if (referredClient.record?.id !== clientRow.id || referredClient.record.party_id !== partyRow.id ||
+            referredClient.record.name !== partyRow.name || referredClient.record.status !== clientRow.status ||
+            referredClient.record.city !== partyRow.city || referredDeal.deal_id !== dealRow.id ||
+            ['name', 'client_id', 'owner', 'phase', 'lane', 'deal_type'].some(field => referredDeal[field] !== dealRow[field]))
+          relationshipFailure();
+        plan.records.relationship_referral_deal = structuredClone(fixture.referred);
+        plan.relationship_fixture = relationshipEvidence;
+        plan.fixture_proofs ||= {};
+        plan.fixture_proofs.relationship = { schema: 'staging-relationship-fixture-binding.v1', state: 'verified',
+          proof: structuredClone(proof), proof_content_sha256: digest(proof), verified_target_sha256: digest(relationshipFixtureTarget),
+          current_readback: { observed_at: new Date().toISOString(), network_response_sha256: digest(freshNetwork),
+            client_response_sha256: digest(referredClient), deal_response_sha256: digest(referredDeal) } };
       }
       if (plan.party_reuse) plan.party_reuse = { ...plan.party_reuse, state: 'verified', client_id: plan.records.client.id,
         deal_id: plan.records.deal.id, network_observed_at: network.observed_at,
@@ -727,18 +873,7 @@ function invoiceCommissionId(run) {
   return `${value.slice(0,8)}-${value.slice(8,12)}-${value.slice(12,16)}-${value.slice(16,20)}-${value.slice(20)}`;
 }
 function validateInvoiceProof(proof, plan, target) {
-  const exactKeys = (value, keys) => value && typeof value === 'object' && !Array.isArray(value) &&
-    digest(Object.keys(value).sort()) === digest([...keys].sort());
-  if (!exactKeys(target, ['project','branch','endpoint','database']) ||
-      !exactKeys(target.project, ['id','name']) || !exactKeys(target.branch, ['id','name']) ||
-      !exactKeys(target.endpoint, ['id','host']) || target.database !== 'neondb' ||
-      !textWithin(target.project.id, 128) || target.project.id === 'steep-field-48688294' ||
-      !textWithin(target.project.name, 256) || !target.project.name.startsWith('carr-staging-replacement-') ||
-      !textWithin(target.branch.id, 128) || target.branch.name !== 'main' ||
-      !textWithin(target.endpoint.id, 128) || !target.endpoint.id.startsWith('ep-') ||
-      !textWithin(target.endpoint.host, 253) || !/^[a-z0-9.-]+$/.test(target.endpoint.host) ||
-      !target.endpoint.host.startsWith(target.endpoint.id + '.') || !target.endpoint.host.endsWith('.neon.tech'))
-    policyFailure('invoice-fixture-target-unverified');
+  if (!verifiedFixtureTarget(target)) policyFailure('invoice-fixture-target-unverified');
   const deal = plan.records.invoice?.deal_id, client = plan.records.client?.id;
   if (!isUUID(deal) || !isUUID(client) || plan.receipts.invoice_deal?.deal_id !== deal ||
       plan.receipts.client?.client_id !== client || plan.records.party?.id !== FIXTURE.id ||

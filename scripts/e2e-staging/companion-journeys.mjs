@@ -1,4 +1,3 @@
-import { setTimeout as pause } from 'node:timers/promises';
 import staging from '../../contracts/e2e-staging.v1.json' with { type: 'json' };
 import { requireSupervisedRun } from './run-limits.mjs';
 import { stagingAuth } from './auth-contract.mjs';
@@ -61,43 +60,7 @@ export async function runCompanionJourneys({ page, fixtureGuard, release, plan, 
       document.querySelector('#callModeRetry')?.hidden === false &&
       document.querySelector('#callModeRetry')?.disabled === false, undefined, { timeout });
     measured = await invoke('observe', { ui: await page.evaluate(measuredCompanionUI) });
-  } else {
-    if (probe.available !== true || status.eligibility?.enabled !== true) fail('companion-eligibility-unproved');
-    const admitted = await invoke('admit');
-    const fixture = admitted.fixture;
-    if (!fixture) fail('companion-fixture-provenance-unproved');
-    const open = page.locator('#callModeButton');
-    await open.waitFor({ state: 'visible', timeout });
-    await open.click({ timeout });
-    const selector = `[data-create-outlook-draft="${fixture.draft_id}"]`;
-    const draft = page.locator(selector);
-    await draft.waitFor({ state: 'visible', timeout });
-    const before = await page.evaluate(measuredCompanionUI);
-    if (!before.dialog_open || !before.report_visible || before.draft_count !== 1 ||
-        before.draft_id !== fixture.draft_id || before.candidate_id !== fixture.candidate_id ||
-        before.content_hash !== fixture.content_hash || !before.start_controls_hidden)
-      fail('companion-report-ui-unproved');
-    if (admitted.state !== 'observed') {
-      if (before.draft_disabled || before.draft_label !== 'Approve and create Outlook draft')
-        fail('companion-draft-control-unproved');
-      await draft.click({ timeout });
-      const deadline = Date.now() + run.limits.settlementMs;
-      for (;;) {
-        run.check();
-        const current = await invoke('status');
-        if (current.attempts.some(row => row.state === 'unresolved')) fail('companion-reconciliation-required');
-        if (current.attempts.findLast(row => row.operation === 'report')?.observation?.created) break;
-        if (Date.now() >= deadline) fail('companion-settlement-unverified');
-        await pause(25, undefined, { signal: run.signal });
-      }
-    }
-    await page.waitForFunction(id => {
-      const button = document.querySelector(`[data-create-outlook-draft="${id}"]`);
-      return button?.disabled === true && button.textContent.trim() === 'Created in Outlook';
-    }, fixture.draft_id, { timeout });
-    measured = await invoke('observe', { ui: await page.evaluate(measuredCompanionUI) });
-    await page.locator('#callModeClose').click({ timeout });
-  }
+  } else fail('companion-isolated-mailbox-required');
   return ['Outlook draft', 'Call Mode'].map(id => Object.freeze({ id, ...measured,
     source_pair: { source_commit: release.source_commit, carr_source_commit: release.carr_source_commit },
     run_id: run.snapshot().id, fixture_run: plan.run, actor: 'joe', contract_sha256: V1_QUALIFICATION_SHA256 }));
