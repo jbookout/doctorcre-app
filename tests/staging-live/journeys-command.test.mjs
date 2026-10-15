@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mergeSelectedActionProofs, missingSelectedActionProofs, parseJourneySelection } from '../../scripts/e2e-staging/selected-journeys.mjs';
+import { mergeSelectedActionProofs, missingSelectedActionProofs, parseJourneySelection, selectedJourneyDiagnostic } from '../../scripts/e2e-staging/selected-journeys.mjs';
 import { parseJourneyArgs } from '../../scripts/e2e-staging/journeys.mjs';
 
 test('selected staging entrypoint defaults to W4/W9 and accepts explicit supported subset', () => {
@@ -37,4 +37,26 @@ test('selected staging entrypoint refuses unknown, duplicate, empty, and malform
     assert.throws(() => parseJourneySelection(value), /selected-journey-selection-invalid/);
   for (const args of [['--journeys'], ['W4'], ['--journeys', 'W4', '--journeys', 'W9']])
     assert.throws(() => parseJourneyArgs(args), /Usage:/);
+});
+
+test('readback diagnostic is closed, source/run-bound, and rejects raw or unknown fields', () => {
+  const diagnostic = selectedJourneyDiagnostic('w4-cancel-history', {
+    runId: '12345678-1234-4234-8234-123456789abc',
+    sourcePair: { source_commit: 'a'.repeat(40), carr_source_commit: 'b'.repeat(40) },
+    facts: { history_matches: false },
+  });
+  assert.deepEqual(diagnostic, {
+    schema: 'doctorcre-selected-journey-readback-diagnostic.v1',
+    run_id: '12345678-1234-4234-8234-123456789abc',
+    source_pair: { source_commit: 'a'.repeat(40), carr_source_commit: 'b'.repeat(40) },
+    checkpoint: 'w4-cancel-history', checks: { history_matches: false },
+  });
+  assert.throws(() => selectedJourneyDiagnostic('provider-error', {
+    runId: '12345678-1234-4234-8234-123456789abc', sourcePair: { source_commit: 'a'.repeat(40), carr_source_commit: 'b'.repeat(40) },
+    facts: { message: 'secret' },
+  }), /selected-journey-diagnostic-invalid/);
+  assert.throws(() => selectedJourneyDiagnostic('w4-cancel-history', {
+    runId: '12345678-1234-4234-8234-123456789abc', sourcePair: { source_commit: 'a'.repeat(40), carr_source_commit: 'b'.repeat(40) },
+    facts: { history_matches: false, payload: 'record' },
+  }), /selected-journey-diagnostic-invalid/);
 });

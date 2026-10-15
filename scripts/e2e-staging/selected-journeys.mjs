@@ -1,5 +1,5 @@
 import { constants } from 'node:fs';
-import { open } from 'node:fs/promises';
+import { mkdir, open, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import contract from '../../contracts/e2e-staging.v1.json' with { type: 'json' };
 import { assertCheckout, assertSourcePair, businessWorkerFailureCode, retainJourneyQualification } from './continue-run.mjs';
@@ -14,6 +14,35 @@ const selectedActionRequirements = Object.freeze({
   W9: ['date-dialog-cancel', 'contract-date-write', 'countdown', 'date-control-removed']
     .map(action => ['W9', 'deal-timeline', action]),
 });
+const readbackCheckpoints = Object.freeze({
+  'deal-readback-shape': ['id_matches', 'events_array', 'dates_array'],
+  'w4-initial-phase': ['phase_matches'],
+  'w4-cancel-phase': ['phase_matches'],
+  'w4-cancel-history': ['history_matches'],
+});
+
+export function selectedJourneyDiagnostic(checkpoint, { runId, sourcePair, facts } = {}) {
+  const allowed = readbackCheckpoints[checkpoint];
+  if (!allowed || !uuid(runId) || !/^[0-9a-f]{40}$/.test(sourcePair?.source_commit || '') ||
+      !/^[0-9a-f]{40}$/.test(sourcePair?.carr_source_commit || '') || !facts ||
+      Object.keys(facts).length !== allowed.length || allowed.some(key => typeof facts[key] !== 'boolean'))
+    throw new Error('selected-journey-diagnostic-invalid');
+  return { schema: 'doctorcre-selected-journey-readback-diagnostic.v1', run_id: runId,
+    source_pair: { source_commit: sourcePair.source_commit, carr_source_commit: sourcePair.carr_source_commit },
+    checkpoint, checks: Object.fromEntries(allowed.map(key => [key, facts[key]])) };
+}
+
+async function retainReadbackDiagnostic(run, binding, checkpoint, facts) {
+  if (!readbackCheckpoints[checkpoint]) return;
+  try {
+    const diagnostic = selectedJourneyDiagnostic(checkpoint, { runId: run.snapshot().id,
+      sourcePair: { source_commit: binding.app, carr_source_commit: binding.carr }, facts });
+    const path = join(run.root, 'private', 'selected-journey-readback.json');
+    await mkdir(join(run.root, 'private'), { recursive: true, mode: 0o700 });
+    await run.writeFile(path, JSON.stringify(diagnostic) + '\n',
+      (destination, bytes) => writeFile(destination, bytes, { mode: 0o600, flag: 'wx' }));
+  } catch { /* Failure diagnostics are best effort and never replace the original refusal. */ }
+}
 
 export function missingSelectedActionProofs(journeys, rows, { sourcePair, runId, fixtureRun } = {}) {
   const observed = new Set((rows || []).filter(row => row?.state === 'observed' &&
@@ -144,6 +173,7 @@ export async function runSelectedJourneys({ binding, run = currentRun(), environ
             : readonlyPending(release, plan) } });
       } }); }
     catch (error) {
+      await retainReadbackDiagnostic(run, binding, error?.checkpoint, error?.checkpoint_facts);
       if (error?.code && ['business-journey-receipt-missing', 'business-journey-selector-unavailable',
           'business-journey-readback-incomplete', 'business-journey-settlement-unverified',
           'selected-journey-proof-conflict'].includes(error.code) ||
