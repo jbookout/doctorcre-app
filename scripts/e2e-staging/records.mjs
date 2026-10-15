@@ -512,17 +512,18 @@ function isCalendarDate(value) {
   return Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === value;
 }
 
-function hasPhaseEvent(detail, eventId, oldValue, newValue, verb) {
-  return Array.isArray(detail?.events) && detail.events.some(event => event?.id === eventId &&
-    event.subject_id === detail.deal_id && event.subject_type === 'deal' && event.field === 'phase' &&
-    event.verb === verb && event.old_value?.phase === oldValue && event.new_value?.phase === newValue);
+function hasPhaseEvent(detail, dealId, eventId, oldValue, newValue, verb) {
+  if (detail?.deal_id !== dealId || !Array.isArray(detail.events)) return false;
+  const matches = detail.events.filter(event => event?.id === eventId);
+  return matches.length === 1 && matches[0].field === 'phase' && matches[0].verb === verb &&
+    matches[0].old_value?.phase === oldValue && matches[0].new_value?.phase === newValue;
 }
 
 function verifiedReadback(row, detail, plan) {
   const binding = row.response?.binding;
   const effect = binding?.effect;
   if (binding?.operation === 'patch-deal-field') {
-    const eventProved = hasPhaseEvent(detail, effect.event_id, effect.old_value, effect.new_value, 'patch-deal-field');
+    const eventProved = hasPhaseEvent(detail, row.record_ids[0], effect.event_id, effect.old_value, effect.new_value, 'patch-deal-field');
     if (detail?.deal_id !== row.record_ids[0] || !eventProved) return false;
     if (detail.phase === effect.new_value) return true;
     const undo = plan.browser_write_attempts?.find(attempt => attempt.operation === 'revert-deal-field' &&
@@ -530,19 +531,18 @@ function verifiedReadback(row, detail, plan) {
     const undoEffect = undo?.response?.binding?.effect;
     return Boolean(undoEffect && detail.phase === undoEffect.new_value &&
       undoEffect.reverted_event_id === effect.event_id &&
-      hasPhaseEvent(detail, undoEffect.event_id, undoEffect.old_value, undoEffect.new_value, 'revert-deal-field'));
+      hasPhaseEvent(detail, row.record_ids[0], undoEffect.event_id, undoEffect.old_value, undoEffect.new_value, 'revert-deal-field'));
   }
   if (binding?.operation === 'revert-deal-field')
     return detail?.deal_id === row.record_ids[0] && detail.phase === effect.new_value &&
-      hasPhaseEvent(detail, effect.event_id, effect.old_value, effect.new_value, 'revert-deal-field') &&
-      Array.isArray(detail.events) && detail.events.some(event => event?.id === effect.reverted_event_id &&
-        event.subject_id === detail.deal_id && event.field === 'phase' && event.verb === 'patch-deal-field' &&
-        event.old_value?.phase === effect.prior_old_value && event.new_value?.phase === effect.old_value);
-  if (binding?.operation === 'add-critical-date')
-    return detail?.deal_id === row.record_ids[0] && Array.isArray(detail.critical_dates) &&
-      detail.critical_dates.some(date => date?.id === effect.critical_date_id && date.deal_id === detail.deal_id &&
-        date.kind === effect.kind && date.due_on === effect.due_on && date.source === effect.source &&
-        date.note === effect.note);
+      hasPhaseEvent(detail, row.record_ids[0], effect.event_id, effect.old_value, effect.new_value, 'revert-deal-field') &&
+      hasPhaseEvent(detail, row.record_ids[0], effect.reverted_event_id, effect.prior_old_value, effect.old_value, 'patch-deal-field');
+  if (binding?.operation === 'add-critical-date') {
+    if (detail?.deal_id !== row.record_ids[0] || !Array.isArray(detail.critical_dates)) return false;
+    const matches = detail.critical_dates.filter(date => date?.id === effect.critical_date_id);
+    return matches.length === 1 && matches[0].kind === effect.kind && matches[0].due_on === effect.due_on &&
+      matches[0].source === effect.source && matches[0].note === effect.note;
+  }
   return true;
 }
 

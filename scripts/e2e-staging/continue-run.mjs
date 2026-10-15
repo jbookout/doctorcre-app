@@ -18,6 +18,22 @@ const stable = value => Array.isArray(value) ? value.map(stable) : value && type
   ? Object.fromEntries(Object.keys(value).sort().map(key => [key, stable(value[key])])) : value;
 const execute = promisify(execFile);
 const ownFailures = new WeakSet();
+const businessFailureCodes = new Set(['business-journey-receipt-missing', 'business-journey-selector-unavailable',
+  'business-journey-readback-incomplete', 'business-journey-settlement-unverified']);
+export function businessWorkerFailureCode(error) {
+  if (businessFailureCodes.has(error?.code)) return error.code;
+  if (error?.code === 'write-coverage-incomplete' ||
+      error?.message === 'Business journey coverage incomplete; reconciliation required')
+    return 'business-journey-readback-incomplete';
+  if (error?.message === 'Business journey dispatch unresolved; reconciliation required')
+    return 'business-journey-receipt-missing';
+  return null;
+}
+export function retainedBusinessWorkerCause(error) {
+  if (error?.code !== 'worker-exit-1') return null;
+  const match = /^Staging run stopped: worker-exit-1 \(cause=([a-z-]+)(?:; location=[^)]*)?\)$/.exec(error.message);
+  return match && businessFailureCodes.has(match[1]) ? match[1] : null;
+}
 const refusal = code => {
   const error = new Error('Staging continuation refused: ' + code);
   error.code = code; ownFailures.add(error); throw error;
@@ -496,6 +512,10 @@ async function supervisePhase({ phase, output, environment, limits, boundary }) 
     await supervise({ command: process.execPath, args: [fileURLToPath(import.meta.url), 'phase-worker', phase], output, environment, limits });
     return { boundary: false };
   } catch (error) {
+    if (phase === 'business') {
+      const cause = retainedBusinessWorkerCause(error);
+      if (cause) refusal(cause);
+    }
     if (!interrupted || error.code !== 'stop-signal') throw error;
     return { boundary: true };
   } finally { clearTimeout(timer); }
@@ -929,7 +949,12 @@ async function phaseWorker(environment, phase) {
   }
   if (phase === 'explore') return (await import('./explore.mjs')).exploreAll();
   if (phase === 'business') {
-    await runBusinessPhase({ binding, run, environment });
+    try { await runBusinessPhase({ binding, run, environment }); }
+    catch (error) {
+      const cause = businessWorkerFailureCode(error);
+      if (cause) refusal(cause);
+      throw error;
+    }
     return;
   }
   if (phase !== 'sweep') refusal('unknown-phase');
@@ -1200,7 +1225,8 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
     const closed = new Set(['whole-run-deadline', 'http-request-limit', 'model-call-limit', 'artifact-byte-limit',
       'process-cleanup-unverified', 'process-inspection-unavailable', 'run-ledger-invalid', 'run-ledger-busy',
       'worker-exit-1', 'continuation-binding-mismatch', 'continuation-auth-failed', 'continuation-write-coverage-incomplete',
-      'continuation-budget-unsettled', 'continuation-size-limit', 'continuation-path-refused', 'write-coverage-incomplete']);
+      'continuation-budget-unsettled', 'continuation-size-limit', 'continuation-path-refused', 'write-coverage-incomplete',
+      ...businessFailureCodes]);
     const code = ownFailures.has(error) || closed.has(error?.code) ? error.code : 'source-check-failed';
     console.error(`Staging continuation stopped: ${code}; no full V1 acceptance is established.`);
     process.exitCode = 1;

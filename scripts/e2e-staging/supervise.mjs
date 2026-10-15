@@ -25,6 +25,7 @@ const SAFE_CAUSES = [
   [/^Error in (?:Playwright )?config(?:uration)?\b/i, 'playwright-config-load-failed'],
   [/^Error: No tests found\b/, 'playwright-no-tests-discovered'],
   [/^SyntaxError:/, 'javascript-syntax-error'],
+  [/^Staging continuation stopped: (business-journey-(?:receipt-missing|selector-unavailable|readback-incomplete|settlement-unverified)); no full V1 acceptance is established\.$/, null],
   [/^Staging run stopped: (run-directory-required|invalid-run-limits|run-ledger-invalid|run-ledger-unreadable|process-inspection-unavailable|process-ownership-invalid|process-cleanup-unverified|artifact-path-refused|artifact-symlink-refused|artifact-size-unavailable|http-request-limit|http-timeout|whole-run-deadline)\b/, null],
 ];
 const SAFE_SESSION_FAILURE = /^Error: staging session preflight failed: ((?:context-failed|app-release-failed|app-release-invalid|app-release-http-(?:400|401|403|404|429|500|502|503|504)|carr-release-failed|carr-release-http-(?:400|401|403|404|429|500|502|503|504)|carr-source-pair-refused|secret-failed|session-exchange-failed|session-exchange-refused-(?:400|401|403|404|429|500|502|503|504)|session-confirm-failed|session-confirm-http-(?:400|401|403|404|429|500|502|503|504)|dedicated-principal-refused|cookie-failed|secure-cookie-refused|context-dispose-failed))$/;
@@ -39,7 +40,7 @@ function safeLocation(line) {
   return `${relativePath}:${match[2]}:${match[3]}`;
 }
 
-function createWorkerDiagnosticReader(onDiagnostic) {
+export function createWorkerDiagnosticReader(onDiagnostic) {
   let tail = '', pendingCause = false, count = 0, discardingLongLine = false;
   return chunk => {
     if (count >= MAX_WORKER_DIAGNOSTICS) return;
@@ -50,7 +51,8 @@ function createWorkerDiagnosticReader(onDiagnostic) {
         const sessionFailure = SAFE_SESSION_FAILURE.exec(line);
         const cause = SAFE_CAUSES.find(([pattern]) => pattern.test(line));
         if (sessionFailure || cause) {
-          const code = sessionFailure?.[1] || cause?.[1] || line.match(/^Staging run stopped: ([a-z0-9-]+)/)?.[1];
+          const code = sessionFailure?.[1] || cause?.[1] ||
+            line.match(/^Staging (?:run|continuation) stopped: ([a-z0-9-]+)/)?.[1];
           if (code) { onDiagnostic(`cause=${code}`); count++; }
           pendingCause = true;
           continue;
