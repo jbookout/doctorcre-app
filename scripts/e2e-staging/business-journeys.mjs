@@ -28,6 +28,103 @@ const provedAction = ({ id, caseId, name, release, run, row, ui, readback }) => 
     readback: { ...readback, guarded_response: row.independent_readback.response_sha256 } });
 };
 
+// The agent event is a generic automatic change. This observation does not
+// establish Doc authorship or an LOI producer.
+export async function runAutomaticPhaseUndo({ page, fixtureGuard, release, deal, run } = {}) {
+  run = requireSupervisedRun(undefined, run);
+  run.check();
+  const url = new URL(page.url());
+  if (url.origin !== STAGING_ORIGIN || url.pathname !== '/deals' ||
+      url.searchParams.get('deal') !== deal || [...url.searchParams.keys()].join() !== 'deal')
+    throw journeyError('business-journey-selector-unavailable');
+  const identity = await page.evaluate(async () => {
+    const [response, session] = await Promise.all([
+      fetch('/app-release', { credentials: 'same-origin', cache: 'no-store' }),
+      fetch('/auth/session', { credentials: 'same-origin', cache: 'no-store' })]);
+    return response.ok && session.ok ? { app: await response.json(), actor: await session.json() } : null;
+  });
+  if (identity?.app?.service !== 'doctorcre-app' || identity.app.environment !== 'staging' ||
+      identity.app.source_commit !== release?.source_commit ||
+      release?.carr_source_commit !== businessJourneys.producer.source_commit ||
+      !stagingAuth.session.matches({ actor: { slug: identity.actor?.actor?.slug },
+        e2e_principal: identity.actor?.e2e_principal }))
+    throw journeyError('business-journey-readback-incomplete');
+  const timeout = Math.min(run.limits.httpTimeoutMs, run.limits.settlementMs);
+  const admitted = await fixtureGuard.admitAutomaticPhaseUndo({ phase: 'admit', deal, release });
+  const event = admitted?.automatic_phase?.event_id;
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(event || ''))
+    throw journeyError('business-journey-receipt-missing');
+  const card = page.locator(`.kanban-card[data-id="${deal}"]`);
+  const badge = page.locator('[data-detail-read="automatic"] .auto-move');
+  const undo = badge.locator(`button[data-undo="${event}"]`);
+  await card.waitFor({ state: 'visible', timeout });
+  await badge.waitFor({ state: 'visible', timeout });
+  await undo.waitFor({ state: 'visible', timeout });
+  const badgeText = (await badge.textContent())?.trim();
+  if (await card.getAttribute('data-phase') !== 'Research' ||
+      await undo.getAttribute('aria-label') !==
+        `Undo phase change on ${(await card.locator('.card-open').textContent())?.trim()}` ||
+      !badgeText?.startsWith('Moved automatically:'))
+    throw journeyError('business-journey-selector-unavailable');
+  const before = await page.evaluate(async dealId => {
+    const { createLiveClient } = await import('/js/live-client.js');
+    const room = await createLiveClient().getDeal(dealId);
+    return { id: room.deal?.id, phase: room.deal?.phase,
+      automatic: room.deal?.phase_change?.automatic, event_id: room.deal?.phase_change?.event_id };
+  }, deal);
+  if (before.id !== deal || before.phase !== 'Research' || before.automatic !== true || before.event_id !== event)
+    throw journeyError('business-journey-readback-incomplete');
+  await clickSelector(page, `[data-detail-read="automatic"] .auto-move button[data-undo="${event}"]`, timeout);
+  const deadline = Date.now() + run.limits.settlementMs;
+  let status;
+  for (;;) {
+    run.check();
+    status = await fixtureGuard.admitAutomaticPhaseUndo({ phase: 'status', deal, release });
+    if (status.state === 'acknowledged' && status.independent_readback?.matched === true) break;
+    if (status.state === 'unresolved' || Date.now() >= deadline)
+      throw journeyError('business-journey-settlement-unverified');
+    await pause(25, undefined, { signal: run.signal });
+  }
+  await page.waitForFunction(id => {
+    const card = document.querySelector(`.kanban-card[data-id="${id}"]`);
+    return card?.dataset.phase === 'On Deck' && !card.querySelector('.auto-move');
+  }, deal, { timeout });
+  await badge.waitFor({ state: 'hidden', timeout });
+  const after = await page.evaluate(async dealId => {
+    const { createLiveClient } = await import('/js/live-client.js');
+    const room = await createLiveClient().getDeal(dealId);
+    return { id: room.deal?.id, phase: room.deal?.phase,
+      events: room.history?.map(row => ({ id: row.id, verb: row.verb })) };
+  }, deal);
+  const undoEvent = status.response?.binding?.effect?.event_id;
+  if (after.id !== deal || after.phase !== 'On Deck' || !Array.isArray(after.events) ||
+      !after.events.some(row => row.id === undoEvent && row.verb === 'revert-deal-field') ||
+      await badge.count() !== 0)
+    throw journeyError('business-journey-readback-incomplete');
+  const observed = await fixtureGuard.admitAutomaticPhaseUndo({ phase: 'observe', deal, release,
+    observation: { event_id: event, before_badge_visible: true, exact_undo_clicked: true,
+      after_badge_absent: true, restored_phase: 'pending', undo_event_id: undoEvent } });
+  await fixtureGuard.assertCoverage();
+  if (observed.automatic_phase?.state !== 'observed' ||
+      !observed.automatic_phase.ui?.observation_sha256 ||
+      observed.independent_readback?.matched !== true ||
+      !observed.independent_readback.response_sha256 ||
+      observed.automatic_phase.fixture_run !== admitted.automatic_phase.fixture_run)
+    throw journeyError('business-journey-readback-incomplete');
+  const action = (name, ui, readback) => observedV1Action({ id: 'W4', case: 'local-deals', action: name,
+    sourcePair: { source_commit: release.source_commit, carr_source_commit: release.carr_source_commit },
+    runId: run.snapshot().id, fixtureRun: observed.automatic_phase.fixture_run,
+    ui: { ...ui, guarded_observation: observed.automatic_phase.ui.observation_sha256 },
+    readback: { ...readback, guarded_response: observed.independent_readback.response_sha256 } });
+  return { state: 'GENERIC_AUTOMATIC_UNDO_OBSERVED', event_id: event,
+    undo_event_id: undoEvent, doc_authorship_qualified: false, full_v1_qualified: false,
+    actions: [
+      action('automatic-move', { event_id: event, badge: badgeText, phase: 'Research' }, before),
+      action('automatic-undo', { event_id: event, undo_event_id: undoEvent,
+        before_badge_visible: true, exact_undo_clicked: true, after_badge_absent: true }, after),
+    ] };
+}
+
 export async function runBusinessJourneys({ page, fixtureGuard, release, deal, run,
   journeys = businessJourneys.journeys.map(journey => journey.id), invoiceProofPath, awaitingInvoicePlan } = {}) {
   run = requireSupervisedRun(undefined, run);

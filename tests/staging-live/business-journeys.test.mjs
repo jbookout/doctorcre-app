@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { chromium, fixtureServer } from '../../test/browser-harness.mjs';
 import { prepareStagingRecords, stagingFixtureWriteGuard, assertStagingWriteCoverage } from '../../scripts/e2e-staging/records.mjs';
-import { runBusinessJourneys } from '../../scripts/e2e-staging/business-journeys.mjs';
+import { runBusinessJourneys, runAutomaticPhaseUndo } from '../../scripts/e2e-staging/business-journeys.mjs';
 import { qualifyV1Journeys } from '../../scripts/e2e-staging/v1-qualification.mjs';
 import { openRun } from '../../scripts/e2e-staging/run-limits.mjs';
 import { STAGING_ORIGIN } from '../../scripts/e2e-staging/session.mjs';
@@ -48,6 +48,85 @@ test('W15 awaiting contract binds normal deal receipts and fresh tracker and rec
   assert.match(fixture.normal_reads, /before and after the UI observation/);
   assert.match(fixture.ui_proof, /perform no payment write for that row/);
   assert.ok(businessJourneys.unqualified_journeys.includes('W15'));
+});
+
+test('served board uses the admitted automatic event Undo once and observes the normal deal readback', { timeout: 90_000 }, async t => {
+  admitFixtureRun(t);
+  const output = await mkdtemp(join(tmpdir(), 'business-automatic-ui-'));
+  const run = openRun(output, { runId: 'synthetic-automatic-ui', events: null });
+  t.after(async () => { run.dispose(); await rm(output, { recursive: true, force: true }); });
+  const api = fakeAPI(output, { sourceRelease: release });
+  const setup = await prepareStagingRecords(output, { ...api, run });
+  const fixtureRun = JSON.parse(await readFile(join(output, 'staging-records-plan.json'), 'utf8')).run;
+  const deal = setup.records.deal.id, event = randomUUID(), undoEvent = randomUUID();
+  const detail = { ...structuredClone(api.rows.deals.get(deal)), phase: 'research',
+    phase_change: { automatic: true, event_id: event, phase: 'research', prior_phase: 'pending',
+      reason: 'Fictional staging agent advanced an invented deal.', evidence_date: new Date().toISOString() },
+    events: [{ id: event, verb: 'patch-deal-field', actor: 'joe-local', field: 'phase',
+      old_value: { phase: 'pending' }, new_value: { phase: 'research' }, recorded_at: new Date().toISOString() }],
+    critical_dates: [], thread: [], next_actions: [], activities: [], participants: [], premises: [],
+    negotiation_rounds: [], documents: [] };
+  const calls = [], server = await fixtureServer({ root: new URL('../../dist/site', import.meta.url).pathname });
+  t.after(() => server.close());
+  const browser = await chromium.launch(process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH
+    ? { executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH } : {});
+  t.after(() => browser.close());
+  const page = await browser.newPage({ viewport: { width: 1440, height: 960 } });
+  await page.route('**/*', async route => {
+    const request = route.request(), url = new URL(request.url());
+    let response;
+    if (url.pathname === '/mcp') {
+      const rpc = request.postDataJSON(), { name, arguments: args } = rpc.params;
+      calls.push(name);
+      let value;
+      if (name === 'deal-room-board') value = { actor: 'joe', deals: [detail], unplaced_count: 0 };
+      else if (name === 'get-deal-room') value = structuredClone(detail);
+      else if (name === 'revert-deal-field') {
+        assert.equal(args.event_id, event);
+        detail.phase = 'pending'; detail.phase_change = { automatic: false, event_id: undoEvent };
+        detail.events.push({ id: undoEvent, verb: 'revert-deal-field', actor: 'joe', field: 'phase',
+          old_value: { phase: 'research' }, new_value: { phase: 'pending' }, recorded_at: new Date().toISOString() });
+        value = { ok: true, deal_id: deal, field: 'phase', old_value: 'research', new_value: 'pending',
+          reverted_event_id: event, event_id: undoEvent, event_recorded_at: new Date().toISOString() };
+      } else value = { ok: true, items: [], notifications: [] };
+      response = bodyResponse({ jsonrpc: '2.0', id: rpc.id,
+        result: { content: [{ type: 'text', text: JSON.stringify(value) }] } });
+    } else if (url.pathname === '/app-release') response = bodyResponse(release);
+    else if (url.pathname === '/auth/session') response = bodyResponse({ actor: { slug: staging.session.actor_slug },
+      e2e_principal: staging.session.e2e_principal });
+    else if (url.pathname === '/pipeline/changes') response = bodyResponse({ events: [], presence: [], cursor: null, caught_up: true });
+    else if (url.pathname.startsWith('/api/')) response = bodyResponse({ actor: { slug: 'joe' }, items: [], csrf_token: 'synthetic-only' });
+    else {
+      const served = await fetch(server.origin + url.pathname + url.search);
+      const bytes = Buffer.from(await served.arrayBuffer());
+      response = { status: () => served.status, headers: () => Object.fromEntries(served.headers),
+        body: async () => bytes };
+    }
+    await route.fulfill({ status: response.status(), headers: response.headers(), body: await response.body() });
+  });
+  await page.goto(STAGING_ORIGIN + '/deals?deal=' + deal);
+  const guardCalls = [], guard = { refusals: [], assertCoverage: async () => {},
+    admitAutomaticPhaseUndo: async spec => {
+      guardCalls.push(spec.phase);
+      assert.equal(spec.deal, deal);
+      if (spec.phase === 'admit') return { automatic_phase: { event_id: event, fixture_run: fixtureRun } };
+      if (spec.phase === 'status') return { state: calls.includes('revert-deal-field') ? 'acknowledged' : 'admitted',
+        independent_readback: { matched: true }, response: { binding: { effect: { event_id: undoEvent } } } };
+      assert.deepEqual(spec.observation, { event_id: event, before_badge_visible: true,
+        exact_undo_clicked: true, after_badge_absent: true, restored_phase: 'pending', undo_event_id: undoEvent });
+      return { automatic_phase: { state: 'observed', fixture_run: fixtureRun,
+        ui: { observation_sha256: 'a'.repeat(64) } },
+        independent_readback: { matched: true, response_sha256: 'b'.repeat(64) } };
+    } };
+  const result = await runAutomaticPhaseUndo({ page, fixtureGuard: guard, release, deal, run });
+  assert.equal(result.state, 'GENERIC_AUTOMATIC_UNDO_OBSERVED');
+  assert.equal(result.doc_authorship_qualified, false);
+  assert.deepEqual(result.actions.map(row => row.action), ['automatic-move', 'automatic-undo']);
+  const qualified = qualifyV1Journeys({ sourcePair: release, runId: run.snapshot().id,
+    fixtureRun, observations: result.actions });
+  assert.equal(qualified.observed_actions, 2);
+  assert.equal(calls.filter(name => name === 'revert-deal-field').length, 1);
+  assert.deepEqual(guardCalls.filter(phase => phase !== 'status'), ['admit', 'observe']);
 });
 
 test('served signed-in app W4/W9 uses the real UI, canonical fixture guard and durable receipts', { timeout: 180_000 }, async t => {

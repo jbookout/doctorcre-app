@@ -21,6 +21,7 @@
   "sources": {
     "pipeline.html": "1a9366eb7fd7ae8a4fb8a68410b2481d09e5988ed38514d3e26c6f8d8623ece7",
     "js/pipeline.js": "8541dc7f3b5096778c2c7cd6549304a17c02c1ef7bd6d86c6bd063b525a81314",
+    "js/local-deals-model.js": "cb3d3e851978db493b5c361d3052e41a00008daf14602f4afcdc4dbbe2376b10",
     "js/live-client.js": "54fb088f0eb21c6a1d3acdf16352ac01d291ee0d74f2ff54be2754823817ab03",
     "js/boot-mode.js": "b3d0c88444f259d2a2c917d5ec38c8198b5c1be82db25238df3aacff34877ac2",
     "js/pipeline-model.js": "2ac0c5d1a43b1d18157403899245290b5898d4db87774b053ed908cf7fe114e7",
@@ -39,7 +40,7 @@
     "business-journey-settlement-unverified"
   ],
   "unqualified_journeys": [
-    "W4 Doc-generated automatic phase move (no source-bound automatic event fixture)",
+    "W4 Doc-authored phase inference remains unproved; generic automatic move and Undo require separate live qualification",
     "W6",
     "W15",
     "Outlook draft",
@@ -90,7 +91,7 @@
       "id": "W4",
       "ui_qualification": {
         "checks": ["eight phase columns", "drag to a different phase", "cancel then retry move confirmation", "normal board read confirms destination and undo source", "recorded phase date", "full timeline range"],
-        "partial": ["Doc-generated automatic phase move; requires a source-bound automatic event fixture"]
+        "partial": ["Doc-authored phase inference remains unproved by the generic automatic event fixture"]
       },
       "steps": [
         {

@@ -972,6 +972,45 @@ export async function runBusinessPhase({ binding, run, environment = process.env
     await fixtureGuard.assertCoverage();
     await coverage(run.root);
     if (result?.full_v1_qualified !== false) refusal('business-result-unqualified');
+    let automaticPhase = { state: 'PENDING_LOCAL_AGENT_SEAM', doc_authorship_qualified: false,
+      full_v1_qualified: false };
+    const localAgentCarrCheckout = supplied.localAgentCarrCheckout ?? environment.E2E_LOCAL_AGENT_CARR_CHECKOUT;
+    if (localAgentCarrCheckout && environment.GITHUB_ACTIONS !== 'true' && !environment.GITHUB_OUTPUT) {
+      if (!result.completed?.includes('W4') || !result.completed?.includes('W9') ||
+          !result.steps?.some(row => row.journey === 'W4' && row.step === 'move' &&
+            ['observed', 'previously-observed'].includes(row.state)) ||
+          !result.steps?.some(row => row.journey === 'W4' && row.step === 'undo' &&
+            ['observed', 'previously-observed'].includes(row.state)) ||
+          !result.steps?.some(row => row.journey === 'W9' &&
+            ['observed', 'previously-observed'].includes(row.state)))
+        refusal('automatic-manual-predecessor-unproved');
+      // A journal is a one-use intent, including when its network outcome is
+      // unknown. Never invoke the producer again with a different key.
+      const journalPath = join(run.root, 'private', 'w4-local-agent-phase.json');
+      if (await absent(journalPath)) {
+        const freshPlan = JSON.parse(await privateBytes(join(run.root, 'staging-records-plan.json')));
+        if (freshPlan.state !== 'complete' || freshPlan.inflight || freshPlan.run !== plan.run ||
+            freshPlan.release?.source_commit !== binding.app ||
+            freshPlan.release?.carr_source_commit !== binding.carr ||
+            freshPlan.records?.deal?.id !== deal)
+          refusal('business-fixture-requires-reconciliation');
+        const producer = supplied.localAgentProducer ||
+          (await import('./local-agent-phase.mjs')).produceLocalAgentPhase;
+        const produced = await producer({ plan: freshPlan, release, run, carrCheckout: localAgentCarrCheckout });
+        if (produced?.state === 'AUTOMATIC_SEAM_READY' && produced.doc_authorship_qualified === false &&
+            produced.full_v1_qualified === false) {
+          const freshPage = await factory.freshPage({ target, screen, release, fixtureGuard,
+            path: `/deals?deal=${encodeURIComponent(deal)}` });
+          const observer = supplied.automaticPhaseJourney ||
+            (await import('./business-journeys.mjs')).runAutomaticPhaseUndo;
+          automaticPhase = await observer({ page: freshPage, fixtureGuard, release, deal, run });
+        } else automaticPhase = { state: 'PENDING_RECONCILIATION', doc_authorship_qualified: false,
+          full_v1_qualified: false };
+      } else automaticPhase = { state: 'PENDING_RECONCILIATION', doc_authorship_qualified: false,
+        full_v1_qualified: false };
+      await fixtureGuard.assertCoverage();
+      await coverage(run.root);
+    }
     // A distinct guarded context starts W15 at Home. The canonical runner
     // revalidates retained observations and quarantines paid fixtures; it alone
     // admits durable intent and independent normal tracker readback.
@@ -1027,10 +1066,11 @@ export async function runBusinessPhase({ binding, run, environment = process.env
       await fixtureGuard.assertCoverage();
       await coverage(run.root);
     }
-    const actionSources = [result, invoice, readonly, vendor, tourDraft].filter(Boolean);
+    const actionSources = [result, automaticPhase, invoice, readonly, vendor, tourDraft].filter(Boolean);
     if (actionSources.some(row => row.actions !== undefined && !Array.isArray(row.actions)))
       refusal('journey-observations-invalid');
     const measured = { schema: 'staging-business-journey-result.v1', release: result.release, tour, readonly,
+      automaticPhase,
       vendor, tourDraft, actions: actionSources.flatMap(row => row.actions || []), companions: [],
       completed: [...result.completed, ...invoice.completed], steps: [...result.steps, ...invoice.steps],
       full_v1_qualified: false, unqualified_journeys: businessContract.unqualified_journeys };

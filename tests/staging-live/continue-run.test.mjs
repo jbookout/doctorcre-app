@@ -839,6 +839,84 @@ test('business caller reuses the real private fixture plan, fresh session and ex
   assert.equal(result.readonly.journeys[0].state, 'pending');
 });
 
+test('local automatic producer receives a fresh private plan only after manual W4/W9 and a guarded fresh page', async t => {
+  const f = await businessFixture(t);
+  f.supplied.journeys = async options => {
+    f.events.push('business');
+    const result = { completed: options.journeys, steps: [], full_v1_qualified: false,
+      unqualified_journeys: ['W6'] };
+    if (options.journeys[0] === 'W4') {
+      f.plan.manual_observed = true;
+      await writeFile(join(f.run.root, 'staging-records-plan.json'), JSON.stringify(f.plan), { mode: 0o600 });
+      result.steps = [{ journey: 'W4', step: 'move', state: 'observed' },
+        { journey: 'W4', step: 'undo', state: 'observed' },
+        { journey: 'W9', step: 'date', state: 'observed' }];
+    }
+    return result;
+  };
+  let produces = 0, observes = 0;
+  const supplied = { ...f.supplied, localAgentCarrCheckout: '/synthetic/immutable-5dda',
+    localAgentProducer: async ({ plan, release: actual, run, carrCheckout }) => {
+      produces++;
+      assert.equal(plan.manual_observed, true);
+      assert.equal(actual, release); assert.equal(run, f.run);
+      assert.equal(carrCheckout, '/synthetic/immutable-5dda');
+      assert.equal(f.events.filter(row => row === 'business').length, 1);
+      return { state: 'AUTOMATIC_SEAM_READY', doc_authorship_qualified: false, full_v1_qualified: false };
+    },
+    automaticPhaseJourney: async ({ page, fixtureGuard, deal, run }) => {
+      observes++;
+      assert.equal(page.url(), contract.origin + '/deals?deal=' + f.plan.records.deal.id);
+      assert.equal(fixtureGuard, f.fixtureGuard); assert.equal(deal, f.plan.records.deal.id);
+      assert.equal(run, f.run);
+      return { state: 'GENERIC_AUTOMATIC_UNDO_OBSERVED', doc_authorship_qualified: false,
+        full_v1_qualified: false };
+    } };
+  const result = await runBusinessPhase({ binding, run: f.run }, supplied);
+  assert.equal(result.automaticPhase.state, 'GENERIC_AUTOMATIC_UNDO_OBSERVED');
+  assert.equal(produces, 1); assert.equal(observes, 1);
+  assert.equal(result.full_v1_qualified, false);
+  assert.deepEqual(result.actions, []);
+});
+
+test('local automatic handoff leaves absent and uncertain paths pending without repeating a write', async t => {
+  const f = await businessFixture(t);
+  const absentResult = await runBusinessPhase({ binding, run: f.run }, f.supplied);
+  assert.equal(absentResult.automaticPhase.state, 'PENDING_LOCAL_AGENT_SEAM');
+  f.supplied.journeys = async options => {
+    f.events.push('business');
+    const result = { completed: options.journeys, steps: [], full_v1_qualified: false,
+      unqualified_journeys: ['W6'] };
+    if (options.journeys[0] === 'W4') result.steps = [
+      { journey: 'W4', step: 'move', state: 'previously-observed' },
+      { journey: 'W4', step: 'undo', state: 'previously-observed' },
+      { journey: 'W9', step: 'date', state: 'previously-observed' }];
+    return result;
+  };
+  let produces = 0, observes = 0;
+  const supplied = { ...f.supplied, localAgentCarrCheckout: '/synthetic/immutable-5dda',
+    localAgentProducer: async () => { produces++; return { state: 'PENDING_RECONCILIATION' }; },
+    automaticPhaseJourney: async () => { observes++; } };
+  const pending = await runBusinessPhase({ binding, run: f.run }, supplied);
+  assert.equal(pending.automaticPhase.state, 'PENDING_RECONCILIATION');
+  assert.equal(produces, 1); assert.equal(observes, 0);
+  await mkdir(join(f.run.root, 'private'), { mode: 0o700 });
+  await writeFile(join(f.run.root, 'private', 'w4-local-agent-phase.json'), '{}', { mode: 0o600 });
+  const resumed = await runBusinessPhase({ binding, run: f.run }, supplied);
+  assert.equal(resumed.automaticPhase.state, 'PENDING_RECONCILIATION');
+  assert.equal(produces, 1); assert.equal(observes, 0);
+});
+
+test('local automatic handoff refuses unobserved manual predecessor before producer invocation', async t => {
+  const f = await businessFixture(t);
+  let produces = 0;
+  await assert.rejects(runBusinessPhase({ binding, run: f.run }, { ...f.supplied,
+    localAgentCarrCheckout: '/synthetic/immutable-5dda',
+    localAgentProducer: async () => { produces++; } }),
+  { code: 'automatic-manual-predecessor-unproved' });
+  assert.equal(produces, 0);
+});
+
 test('business caller retains only source-bound vendor and Tour draft action rows from guarded pages', async t => {
   const f = await businessFixture(t);
   f.plan.records.vendor = { id: '60000000-0000-4000-8000-000000000004' };

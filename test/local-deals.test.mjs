@@ -15,11 +15,11 @@ test('every requested attention condition ranks before the rest; parked never re
 });
 test('automatic move and invoice close name only dated evidence with an exact undo target',() => {
  const change={event_id:'event-1',prior_phase:'research',phase:'negotiation',automatic:true,reason:'LOI sent',evidence_date:'2026-10-03'};
- assert.deepEqual(automaticMove({...base,phase_change:change}),{eventId:'event-1',text:'Moved by Doc: LOI sent 10/3'});
- assert.equal(automaticMove({...base,phase:'Closed',phase_change:{...change,phase:'closed',reason:'invoice'}}).text,'Closed by Doc: invoice 10/3');
+ assert.deepEqual(automaticMove({...base,phase_change:change}),{eventId:'event-1',text:'Moved automatically: LOI sent 10/3'});
+ assert.equal(automaticMove({...base,phase:'Closed',phase_change:{...change,phase:'closed',reason:'invoice'}}).text,'Closed automatically: invoice 10/3');
  for(const field of ['event_id','prior_phase','evidence_date']) assert.equal(automaticMove({...base,phase_change:{...change,[field]:null}}),null);
  assert.equal(automaticMove({...base,phase_change:{...change,automatic:false}}),null);
- assert.equal(automaticMove({...base,phase_change:{...change,reason:null}}).text,'Moved by Doc: phase changed 10/3');
+ assert.equal(automaticMove({...base,phase_change:{...change,reason:null}}).text,'Moved automatically: phase changed 10/3');
 });
 test('notes summarize but retain original entry, including hostile text as data',() => {
  const original='Demo email <script>never execute</script> '+ 'Detailed clause. '.repeat(40);
