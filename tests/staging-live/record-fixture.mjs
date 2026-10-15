@@ -18,7 +18,12 @@ export function fakeAPI(output, { refuse, unknown, candidateAt, wrongParty = fal
     async get(path, options) {
       calls.push({ path, options });
       if (path === stagingAuth.session.path) return reply({ actor: { slug: contract.session.actor_slug }, e2e_principal: contract.session.e2e_principal, csrf_token: 'private-csrf-canary' });
-      if (path.startsWith('/api/v1/business/clients/')) { beforeReadback?.(rows); return reply({ record: { id: rows.client, ref: 'C-001', name: rows.clientName ?? 'Synthetic Staging Fixture' } }); }
+      if (path.startsWith('/api/v1/business/clients/')) {
+        beforeReadback?.(rows);
+        const id = path.split('/').at(-1);
+        const draft = id === rows.tourDraftClient?.id ? rows.tourDraftClient : null;
+        return reply({ record: draft || { id: rows.client, ref: 'C-001', name: rows.clientName ?? 'Synthetic Staging Fixture' } });
+      }
       if (path === '/api/v1/business/relationships?contract=relationship-network.v1') {
         const plan = JSON.parse(await readFile(join(output, 'staging-records-plan.json'), 'utf8'));
         const dealId = plan.records.deal.id;
@@ -47,13 +52,25 @@ export function fakeAPI(output, { refuse, unknown, candidateAt, wrongParty = fal
       if (name === refuse) return reply({ result: { isError: true, content: [{ type: 'text', text: '{"error":"database_refused_the_statement","fault":"private-provider-canary"}' }] } });
       if (name === 'add-party') {
         if (args.name === 'Synthetic Staging Fixture') return envelope({ needs_confirm: true, candidates: [{ id: wrongParty ? id(99) : fixture, name: 'Synthetic Staging Fixture' }] });
-        if (candidateAt === (args.name.startsWith('QA Vendor ') ? 'vendor_party' : 'lead_party'))
+        const step = args.name.startsWith('QA Vendor ') ? 'vendor_party' : args.name.includes('Synthetic W6 Tour Draft') ? 'tour_draft_party' : 'lead_party';
+        if (candidateAt === step)
           return envelope({ needs_confirm: true, candidates: [{ id: id(99), name: 'Synthetic Staging QA candidate' }] });
         if (args.name.startsWith('QA Vendor ')) { rows.vendorParty = { id: id(7), name: args.name }; return envelope({ ok: true, party_id: rows.vendorParty.id }); }
+        if (step === 'tour_draft_party') {
+          rows.tourDraftParty = { id: id(11), name: args.name, city: args.city, state: args.state };
+          return envelope({ ok: true, party_id: rows.tourDraftParty.id });
+        }
         rows.leadParty = { id: id(6), name: args.name };
         return envelope({ ok: true, party_id: rows.leadParty.id });
       }
-      if (name === 'new-client') { rows.client = id(1); return envelope({ ok: true, client_id: rows.client, ref: 'C-001' }); }
+      if (name === 'new-client') {
+        if (args.party_id === rows.tourDraftParty?.id) {
+          rows.tourDraftClient = { id: id(12), ref: 'C-002', name: rows.tourDraftParty.name,
+            city: rows.tourDraftParty.city, state: rows.tourDraftParty.state };
+          return envelope({ ok: true, client_id: rows.tourDraftClient.id, ref: rows.tourDraftClient.ref });
+        }
+        rows.client = id(1); return envelope({ ok: true, client_id: rows.client, ref: 'C-001' });
+      }
       if (name === 'new-vendor') { rows.vendor = { id: id(8), name: rows.vendorParty.name, ref: 'V-CPA-001' }; return envelope({ ok: true, vendor_id: rows.vendor.id, ref: rows.vendor.ref }); }
       if (name === 'log-activity') {
         rows.vendorEntry = { id: id(9), kind: 'note', summary: args.summary, detail: args.detail };

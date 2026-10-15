@@ -49,7 +49,7 @@ async function readPrivateJSON(path) {
 
 export async function prepareStagingRecords(output, {
   origin = STAGING_ORIGIN, session = stagingSession, reuseOnly = false,
-  vendorFixture = false, requestFactory, run, signal,
+  vendorFixture = false, tourDraftFixture = false, requestFactory, run, signal,
 } = {}) {
   signal?.throwIfAborted();
   origin = assertStagingURL(origin);
@@ -78,7 +78,7 @@ export async function prepareStagingRecords(output, {
   const label = `Synthetic staging QA ${fixtureRun}`;
   const plan = existing || {
     schema: 'doctorcre-staging-records-plan.v1', origin, release: source, state: 'pending', run: fixtureRun,
-    keys: Object.fromEntries(['party', 'client', 'deal', 'deal_lead', 'invoice_deal', 'invoice_lead', 'close_invoice', 'lead_party', 'lead', 'conversation', 'tour'].map(name => [name, randomUUID()])),
+    keys: Object.fromEntries(['party', 'client', 'deal', 'deal_lead', 'invoice_deal', 'invoice_lead', 'close_invoice', 'lead_party', 'lead', 'conversation', 'tour', 'tour_draft_party', 'tour_draft_client'].map(name => [name, randomUUID()])),
     names: { deal: `${label} active deal`, invoice: `${label} closed deal`, lead: `QA Lead ${fixtureRun}`, conversation: `${label} private conversation`, tour: `${label} draft tour` },
     records: {}, receipts: {}, current_step: 'authentication', observed_at: new Date().toISOString(),
   };
@@ -254,12 +254,57 @@ export async function prepareStagingRecords(output, {
         await remember('vendor_entry', { id: recordId(entry.activity_id), link_id: recordId(entry.links[0].link_id) });
       }
     }
+    if (tourDraftFixture) {
+      const fixtureParts = ['tour_draft_party', 'tour_draft_client'];
+      const present = fixtureParts.filter(name => plan.records[name]);
+      if (present.length && present.length !== fixtureParts.length)
+        throw new Error('Staging Tour draft client fixture partial; reconciliation required');
+      if (!present.length) {
+        // Persist unique names and both write keys before the first normal CARR
+        // mutation. The fixed base fixture remains untouched.
+        for (const name of fixtureParts) plan.keys[name] ||= randomUUID();
+        plan.names.tour_draft_party ||= `${plan.run} Synthetic W6 Tour Draft Party`;
+        // CARR derives the client display name from its canonical party.
+        plan.names.tour_draft_client ||= plan.names.tour_draft_party;
+        await persist(planPath, plan);
+        const party = await write('tour_draft_party', 'add-party', {
+          name: plan.names.tour_draft_party, kind: 'org', city: 'Pensacola', state: 'FL',
+        });
+        requireValue(party.ok === true && !party.auto_resolved && !party.needs_confirm &&
+          isUUID(party.party_id || '') && plan.receipts.tour_draft_party?.party_id === party.party_id);
+        await remember('tour_draft_party', { id: recordId(party.party_id), name: plan.names.tour_draft_party,
+          city: 'Pensacola', state: 'FL' });
+        const client = await write('tour_draft_client', 'new-client', {
+          party_id: plan.records.tour_draft_party.id, status: 'engaged', acquisition_source: 'referral',
+          acquisition_detail: 'Explicitly fictional W6 staging QA fixture only',
+          research_evidence: {
+            sources: [{ url: 'https://practice.example/w6-tour-draft?fixture=synthetic-staging-qa-v1', observed_at: plan.observed_at }],
+            field_evidence: Object.fromEntries(['practice_name', 'address', 'city', 'state', 'phone', 'specialty', 'practitioners', 'hours'].map(field => [field, [0]])),
+            discrepancies: [],
+          },
+        });
+        requireValue(client.ok === true && /^C-\d+$/.test(client.ref || '') && isUUID(client.client_id || '') &&
+          plan.receipts.tour_draft_client?.client_id === client.client_id);
+        await remember('tour_draft_client', { id: recordId(client.client_id), ref: client.ref,
+          name: plan.names.tour_draft_client, party_id: plan.records.tour_draft_party.id });
+      }
+    }
     plan.current_step = 'readback';
     await persist(planPath, plan);
     const boundedText = value => typeof value === 'string' && value.length > 0 && value.length <= 500;
     const clientRead = await json(`/api/v1/business/clients/${plan.records.client.id}`);
     requireValue(clientRead.record?.id === plan.records.client.id && boundedText(clientRead.record.name));
     requireValue(existing || clientRead.record.name === plan.records.client.name);
+    if (tourDraftFixture) {
+      requireValue(plan.records.tour_draft_party && plan.records.tour_draft_client &&
+        plan.receipts.tour_draft_party?.party_id === plan.records.tour_draft_party.id &&
+        plan.receipts.tour_draft_client?.client_id === plan.records.tour_draft_client.id);
+      const draftClientRead = await json(`/api/v1/business/clients/${plan.records.tour_draft_client.id}`);
+      const record = draftClientRead.record;
+      requireValue(record?.id === plan.records.tour_draft_client.id &&
+        record.name === plan.records.tour_draft_client.name && record.city === 'Pensacola' && record.state === 'FL' &&
+        record.ref === plan.records.tour_draft_client.ref);
+    }
     if (vendorFixture) {
       const vendorRead = await json(`/api/v1/business/vendors/${plan.records.vendor.id}?contract=vendor-directory.v1`);
       requireValue(vendorRead.viewer === 'joe' && vendorRead.record?.id === plan.records.vendor.id &&

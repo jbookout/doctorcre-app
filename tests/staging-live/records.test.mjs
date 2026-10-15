@@ -102,6 +102,45 @@ test('W5 fixture extension records one owned vendor and original synthetic entry
   } finally { await rm(output, { recursive: true, force: true }); }
 });
 
+test('W6 draft fixture adds a separately keyed Pensacola client and independently reads its actual receipt', async () => {
+  const output = await mkdtemp(join(tmpdir(), 'staging-w6-tour-client-'));
+  try {
+    const fake = fakeAPI(output);
+    const base = await prepareStagingRecords(output, fake);
+    const extended = await prepareStagingRecords(output, { ...fake, reuseOnly: true, tourDraftFixture: true });
+    const plan = JSON.parse(await readFile(join(output, 'staging-records-plan.json'), 'utf8'));
+    const writes = fake.calls.filter(call => call.path === '/mcp' &&
+      ['add-party', 'new-client'].includes(call.options.data.params.name));
+    const ownedWrites = writes.filter(call => call.options.data.params.arguments.name?.includes('Synthetic W6 Tour Draft') ||
+      call.options.data.params.arguments.party_id === plan.records.tour_draft_party.id);
+    assert.deepEqual(ownedWrites.map(call => call.options.data.params.name), ['add-party', 'new-client']);
+    const [partyWrite, clientWrite] = ownedWrites.map(call => call.options.data.params.arguments);
+    assert.equal(partyWrite.idempotency_key, plan.keys.tour_draft_party);
+    assert.equal(clientWrite.idempotency_key, plan.keys.tour_draft_client);
+    assert.equal(partyWrite.city, 'Pensacola'); assert.equal(partyWrite.state, 'FL');
+    for (const args of [partyWrite, clientWrite]) assert.equal(Object.hasOwn(args, 'force_new'), false);
+    assert.equal(clientWrite.party_id, plan.records.tour_draft_party.id);
+    assert.deepEqual(clientWrite.research_evidence.field_evidence.city, [0]);
+    assert.deepEqual(clientWrite.research_evidence.field_evidence.state, [0]);
+    assert.notEqual(plan.records.tour_draft_party.id, base.records.party.id);
+    assert.notEqual(plan.records.tour_draft_client.id, base.records.client.id);
+    assert.equal(plan.receipts.tour_draft_party.party_id, plan.records.tour_draft_party.id);
+    assert.equal(plan.receipts.tour_draft_client.client_id, plan.records.tour_draft_client.id);
+    assert.equal(plan.records.tour_draft_party.city, 'Pensacola');
+    assert.equal(plan.records.tour_draft_party.state, 'FL');
+    assert.equal(extended.records.client.id, base.records.client.id);
+    assert.equal(extended.records.party.id, base.records.party.id);
+    assert.ok(plan.names.tour_draft_party.startsWith(plan.run));
+    assert.equal(plan.names.tour_draft_client, plan.names.tour_draft_party);
+    const independentRead = fake.calls.find(call => call.path === `/api/v1/business/clients/${plan.records.tour_draft_client.id}`);
+    assert.ok(independentRead, 'dedicated client received a normal authenticated readback');
+    fake.calls.length = 0;
+    await prepareStagingRecords(output, { ...fake, reuseOnly: true, tourDraftFixture: true });
+    assert.equal(fake.calls.filter(call => call.path === '/mcp' &&
+      ['add-party', 'new-client'].includes(call.options.data.params.name)).length, 0);
+  } finally { await rm(output, { recursive: true, force: true }); }
+});
+
 test('run-owned synthetic party names are distinct before first dispatch and retain normal dedup', async () => {
   const output = await mkdtemp(join(tmpdir(), 'staging-party-identity-'));
   try {

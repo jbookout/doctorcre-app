@@ -32,7 +32,12 @@ export async function runTourDraftJourney({ page, plan, sourcePair, fixtureBindi
       sourcePair?.carr !== contract.producer.carr_source_commit ||
       plan?.schema !== 'doctorcre-staging-records-plan.v1' || plan.state !== 'complete' || plan.inflight ||
       plan.release?.source_commit !== sourcePair.app || plan.release?.carr_source_commit !== sourcePair.carr ||
-      !plan.records?.client?.id || !plan.records?.tour?.id || !plan.observed_at) fail();
+      !plan.records?.tour_draft_party?.id || !plan.records?.tour_draft_client?.id ||
+      !plan.records?.tour?.id || !plan.observed_at ||
+      plan.receipts?.tour_draft_party?.party_id !== plan.records.tour_draft_party.id ||
+      plan.receipts?.tour_draft_client?.client_id !== plan.records.tour_draft_client.id ||
+      plan.records.tour_draft_party.city !== 'Pensacola' || plan.records.tour_draft_party.state !== 'FL' ||
+      plan.records.tour_draft_client.party_id !== plan.records.tour_draft_party.id) fail();
   for (const [path, expected] of Object.entries(contract.sources)) {
     if (createHash('sha256').update(await readFile(new URL('../../' + path, import.meta.url))).digest('hex') !== expected) fail();
   }
@@ -50,9 +55,10 @@ export async function runTourDraftJourney({ page, plan, sourcePair, fixtureBindi
   if (identity.app?.service !== 'doctorcre-app' || identity.app.environment !== 'staging' ||
       identity.app.source_commit !== sourcePair.app ||
       !stagingAuth.session.matches(identity.session)) fail();
-  const client = await page.evaluate(readOwnClient, { clientId: plan.records.client.id, timeout });
+  const client = await page.evaluate(readOwnClient, { clientId: plan.records.tour_draft_client.id, timeout });
   const area = [client?.city, client?.state].filter(Boolean).join(', ');
-  if (client?.id !== plan.records.client.id || client.name !== plan.records.client.name || area.length > 200)
+  if (client?.id !== plan.records.tour_draft_client.id || client.name !== plan.records.tour_draft_client.name ||
+      area !== 'Pensacola, FL' || area.length > 200)
     fail();
   if (!area) absentArea();
   const action = (name, ui, readback) => observedV1Action({ id: 'W6', case: 'tours-drafts', action: name,
@@ -65,11 +71,13 @@ export async function runTourDraftJourney({ page, plan, sourcePair, fixtureBindi
   const name = await page.locator('#plan-name').inputValue();
   if (!name.startsWith(client.name) || !name.endsWith(' · Tour')) fail();
   actions.push(action('client-prefill', { name: digest(name), area: digest(area), selected: true },
-    { client_id: client.id, client_name: digest(client.name), source_pair: sourcePair }));
+    { client_id: client.id, client_name: digest(client.name), party_id: plan.records.tour_draft_party.id,
+      source_pair: sourcePair }));
   await page.locator('#plan-area').fill('Typed synthetic QA area', { timeout });
   await page.locator('#plan-undo').click({ timeout });
   if (await page.locator('#plan-area').inputValue() !== area) fail();
-  actions.push(action('edit-undo', { restored_area: digest(area) }, { client_id: client.id, area: digest(area) }));
+  actions.push(action('edit-undo', { restored_area: digest(area) }, { client_id: client.id,
+    party_id: plan.records.tour_draft_party.id, area: digest(area) }));
   const day = new Date(Date.parse(plan.observed_at.slice(0, 10) + 'T00:00:00Z') + 86_400_000).toISOString().slice(0, 10);
   await page.locator('#plan-date').fill(day, { timeout });
   const market = page.locator('[data-market]').first();
@@ -84,7 +92,7 @@ export async function runTourDraftJourney({ page, plan, sourcePair, fixtureBindi
   await page.locator('#save-search').click({ timeout });
   await page.waitForFunction(() => document.querySelector('#space-message')?.textContent?.includes('saved'), undefined, { timeout });
   actions.push(action('draft-save', { market: digest(marketArea), size: '1800', requirements: digest(requirements) },
-    { client_id: client.id, storage: 'authenticated-tab-draft' }));
+    { client_id: client.id, party_id: plan.records.tour_draft_party.id, storage: 'authenticated-tab-draft' }));
   await page.reload({ waitUntil: 'domcontentloaded', timeout });
   await page.waitForFunction(expected => document.querySelector('#space-requirements')?.value === expected,
     requirements, { timeout });
@@ -96,7 +104,8 @@ export async function runTourDraftJourney({ page, plan, sourcePair, fixtureBindi
   };
   if (restored.client !== client.id || restored.name !== name || restored.area !== area || restored.date !== day ||
       restored.market !== marketArea || restored.size !== '1800' || restored.requirements !== requirements) fail();
-  actions.push(action('draft-reload', { values: digest(restored) }, { client_id: client.id, source_pair: sourcePair }));
+  actions.push(action('draft-reload', { values: digest(restored), party_id: plan.records.tour_draft_party.id },
+    { client_id: client.id, source_pair: sourcePair }));
   const tour = await qualifyTourJourney({ page, plan, sourcePair, fixtureBinding, run });
   actions.push(action('upcoming-detail', { ui: tour.ui.sha256 }, { detail: tour.backend_readback.sha256,
     tour_id: plan.records.tour.id }));

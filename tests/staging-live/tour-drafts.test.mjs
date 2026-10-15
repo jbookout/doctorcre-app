@@ -31,6 +31,7 @@ test('served W6 client draft, undo, search save and reload bind the plan-owned T
   t.after(async () => { run.dispose(); await rm(output, { recursive: true, force: true }); });
   const api = fakeAPI(output, { sourceRelease: release });
   await prepareStagingRecords(output, { ...api, run });
+  await prepareStagingRecords(output, { ...api, run, reuseOnly: true, tourDraftFixture: true });
   const plan = JSON.parse(await readFile(join(output, 'staging-records-plan.json'), 'utf8'));
   const sourcePair = { app: release.source_commit, carr: release.carr_source_commit };
   const binding = { schema: 'doctorcre-staging-tour-fixture-binding.v1', provenance: 'private_installer_raw_readback',
@@ -45,7 +46,7 @@ test('served W6 client draft, undo, search save and reload bind the plan-owned T
       id: binding.route_version_id, route_version: 1, accepted: false, routing_source: 'manual',
       routing_provider: null, routing_rights_receipt_id: null, created_by: 'joe', stops: [stop],
     }] };
-  const client = { id: plan.records.client.id, name: plan.records.client.name, city: 'Pensacola', state: 'FL',
+  const client = { id: plan.records.tour_draft_client.id, name: plan.records.tour_draft_client.name, city: 'Pensacola', state: 'FL',
     vertical: 'Medical office', notes: 'Synthetic QA client only' };
   const server = await fixtureServer({ root: new URL('../../dist/site', import.meta.url).pathname });
   t.after(() => server.close());
