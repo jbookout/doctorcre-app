@@ -14,6 +14,7 @@ import staging from '../../contracts/e2e-staging.v1.json' with { type: 'json' };
 import businessJourneys from '../../contracts/e2e-staging-business-journeys.v1.json' with { type: 'json' };
 import { fakeAPI } from './record-fixture.mjs';
 import { admitFixtureRun } from './fixture-admission.mjs';
+import { refuseFixtureCompanionConnection, assertCompanionUnavailable } from './companion-fixture.mjs';
 import { COLUMNS } from '../../js/pipeline-model.js';
 
 const release = { service: 'doctorcre-app', environment: 'staging', source_commit: '12181a8136e6e6030d5e8ed9dbeed6518ee258a4', carr_source_commit: staging.producer.source_commit };
@@ -180,6 +181,7 @@ test('served signed-in app W4/W9 uses the real UI, canonical fixture guard and d
       const request = route.request(), url = new URL(request.url());
       try {
         const response = await scoped.handle(request, async () => {
+          refuseFixtureCompanionConnection(request);
           if (url.pathname === '/mcp') {
             const rpc = request.postDataJSON(), { name, arguments: args } = rpc.params;
             const rpcReply = value => bodyResponse({ jsonrpc: '2.0', id: rpc.id, result: { content: [{ type: 'text', text: JSON.stringify(value) }] } });
@@ -242,10 +244,17 @@ test('served signed-in app W4/W9 uses the real UI, canonical fixture guard and d
           return { status: () => response.status, headers: () => Object.fromEntries(response.headers), body: async () => bytes, json: async () => JSON.parse(bytes) };
         });
         await route.fulfill({ status: response.status(), headers: response.headers(), body: await response.body() });
-      } catch (error) { denied.push(error.code || error.message); await route.abort(); }
+      } catch (error) {
+        if (!error.companionRead) denied.push(error.code || error.message);
+        await route.abort();
+      }
     });
     await page.goto(STAGING_ORIGIN + '/deals?deal=' + deal);
     await page.locator('#detailPhase').waitFor();
+    await page.waitForFunction(() => document.querySelector('#callModeAvailability')?.textContent ===
+      'Call recording runs on the Mac with Quill');
+    await guard.assertCoverage();
+    assertCompanionUnavailable(JSON.parse(await readFile(planPath, 'utf8')));
     const locator = page.locator.bind(page);
     page.locator = selector => {
       const actual = locator(selector);
