@@ -185,6 +185,33 @@ test('capture readback requires a fresh unique invoice with the fixture identity
   await assert.rejects(f.guard.assertCoverage(), /coverage-incomplete/);
 });
 
+test('queue read begun before capture completion cannot become capture readback by finishing later', async t => {
+  t.mock.method(Date, 'now', () => 1781100000000);
+  const f = adapter();
+  await f.send('read-deal-reconciliation', { deal: id(2) });
+  const capture = await f.guard.admitInvoiceClose({ phase: 'admit', step: 'capture', release: binding });
+  let queueStarted, finishQueue;
+  const started = new Promise(resolve => { queueStarted = resolve; });
+  const response = new Promise(resolve => { finishQueue = resolve; });
+  const request = { method: () => 'POST', url: () => `${STAGING_ORIGIN}/mcp`, postDataJSON: () => ({
+    jsonrpc: '2.0', id: 99, method: 'tools/call', params: { name: 'invoice-close-queue', arguments: {} } }) };
+  const pending = f.guard.handle(request, async () => { queueStarted(); return response; });
+  await started;
+  await f.send('record-deal-invoice', capture.arguments);
+  finishQueue(envelope(99, { proposals: [{ invoice_id: id(4), deal_id: id(2),
+    deal_name: f.plan.records.deal.name, status: 'proposed',
+    evidence_ref: `local-mail:staging-invoice:${id(1)}:${id(2)}`, invoiced_on: '2026-10-10' }], moves: [] }));
+  await pending;
+  const observe = () => f.guard.admitInvoiceClose({ phase: 'observe', step: 'capture', release: binding,
+    observation: { invoice_id: id(4), state: 'captured' } });
+  await assert.rejects(observe(), /readback-unproved/);
+  await assert.rejects(f.guard.assertCoverage(), /coverage-incomplete/);
+  await f.send('invoice-close-queue');
+  const observed = await observe();
+  assert.equal(observed.state, 'observed');
+  await f.guard.assertCoverage();
+});
+
 test('malformed typed content never becomes an invoice receipt', async () => {
   const f = adapter();
   await f.send('read-deal-reconciliation', { deal: id(2) });
