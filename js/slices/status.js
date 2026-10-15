@@ -5,7 +5,8 @@ export default {
     "js/status.js",
     "status.html",
     "test/status-assurance-browser.test.mjs",
-    "test/status.test.mjs"
+    "test/status.test.mjs",
+    "test/status-snapshot.test.mjs"
   ],
   "navigation": [
     {
