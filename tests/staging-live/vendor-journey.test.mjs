@@ -13,6 +13,7 @@ import { STAGING_ORIGIN } from '../../scripts/e2e-staging/session.mjs';
 import staging from '../../contracts/e2e-staging.v1.json' with { type: 'json' };
 import { fakeAPI } from './record-fixture.mjs';
 import { admitFixtureRun } from './fixture-admission.mjs';
+import { refuseFixtureCompanionConnection, assertCompanionUnavailable } from './companion-fixture.mjs';
 
 const release = { service: 'doctorcre-app', environment: 'staging', source_commit: 'a'.repeat(40),
   carr_source_commit: staging.producer.source_commit };
@@ -77,6 +78,7 @@ test('served W5 app reads only an owned vendor, filters by owner and opens origi
       request.method() === 'POST' && url.pathname === '/mcp' ? request.postDataJSON()?.params?.name : null]);
     try {
       const covered = await scoped.handle(request, async () => {
+        refuseFixtureCompanionConnection(request);
         if (url.pathname === '/app-release') return response({ service: release.service,
           environment: release.environment, source_commit: release.source_commit });
         if (url.pathname === '/auth/session') return response({ actor: { slug: 'joe' }, e2e_principal: 'e2e-joe' });
@@ -93,7 +95,10 @@ test('served W5 app reads only an owned vendor, filters by owner and opens origi
           body: async () => bytes };
       });
       await route.fulfill({ status: covered.status(), headers: covered.headers(), body: await covered.body() });
-    } catch (error) { refusals.push(error.code || error.message); await route.abort(); }
+    } catch (error) {
+      if (!error.companionRead) refusals.push(error.code || error.message);
+      await route.abort();
+    }
   });
   await page.goto(`${STAGING_ORIGIN}/vendors`, { waitUntil: 'domcontentloaded' });
   const result = await runVendorJourney({ page, plan, release, run });
@@ -107,6 +112,7 @@ test('served W5 app reads only an owned vendor, filters by owner and opens origi
   assert.deepEqual(refusals.filter(value => value !== 'local-companion-read-blocked'), []);
   assert.deepEqual(errors, []);
   await guard.assertCoverage();
+  assertCompanionUnavailable(JSON.parse(await readFile(join(output, 'staging-records-plan.json'), 'utf8')));
 
   const foreign = { ...plan, records: { ...plan.records, vendor: { ...vendor, id: '99999999-9999-4999-8999-999999999999' } } };
   await page.goto(`${STAGING_ORIGIN}/vendors`, { waitUntil: 'domcontentloaded' });

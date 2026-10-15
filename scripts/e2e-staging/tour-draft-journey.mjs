@@ -24,6 +24,12 @@ async function readOwnClient({ clientId, timeout }) {
   return (payload?.data || payload)?.record;
 }
 
+export function restoredTourDraftReady({ clientId, requirements }) {
+  const picker = document.querySelector('#plan-client');
+  return document.querySelector('#space-requirements')?.value === requirements &&
+    picker?.value === clientId && [...picker.options].some(option => option.value === clientId && option.selected);
+}
+
 export async function runTourDraftJourney({ page, plan, sourcePair, fixtureBinding, run } = {}) {
   run = requireSupervisedRun(undefined, run);
   run.check();
@@ -94,8 +100,7 @@ export async function runTourDraftJourney({ page, plan, sourcePair, fixtureBindi
   actions.push(action('draft-save', { market: digest(marketArea), size: '1800', requirements: digest(requirements) },
     { client_id: client.id, party_id: plan.records.tour_draft_party.id, storage: 'authenticated-tab-draft' }));
   await page.reload({ waitUntil: 'domcontentloaded', timeout });
-  await page.waitForFunction(expected => document.querySelector('#space-requirements')?.value === expected,
-    requirements, { timeout });
+  await page.waitForFunction(restoredTourDraftReady, { clientId: client.id, requirements }, { timeout });
   const restored = {
     client: await page.locator('#plan-client').inputValue(), name: await page.locator('#plan-name').inputValue(),
     area: await page.locator('#plan-area').inputValue(), date: await page.locator('#plan-date').inputValue(),

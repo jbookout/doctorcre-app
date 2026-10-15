@@ -16,6 +16,10 @@ import businessJourneys from '../../contracts/e2e-staging-business-journeys.v1.j
 import invoiceJourney from '../../contracts/e2e-staging-invoice-journey.v1.json' with { type: 'json' };
 import { validInvoiceTracker } from '../../js/invoice-tracker-model.js';
 import { LOCAL_AGENT_PHASE_REASON } from './local-agent-phase.mjs';
+import { createInvoiceCloseGuard } from './invoice-close-journey.mjs';
+import { createCompanionGuard } from './companion-guard.mjs';
+import { assertRelationshipFixture } from './readonly-journeys.mjs';
+import { validNetwork, filterNetwork } from '../../js/relationship-network-model.js';
 
 const FIXTURE = { id: 'fc08d2f4-a951-5679-9f34-40d0f4278842', name: 'Synthetic Staging Fixture' };
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -25,13 +29,13 @@ const requireValue = condition => { if (!condition) fail(); };
 const recordId = value => { requireValue(isUUID(value || '')); return value; };
 const vendorTaxonomyFailure = code => Object.assign(new Error('Staging vendor taxonomy prerequisite unavailable'), { code });
 const SAFE_RECORD_SETUP_CODES = new Set(['staging-fixture-rpc-unresolved', 'staging-fixture-stage-prerequisite',
-  'staging-fixture-taxonomy-prerequisite', 'staging-fixture-category-prerequisite']);
+  'staging-fixture-taxonomy-prerequisite', 'staging-fixture-category-prerequisite', 'staging-fixture-relationship-prerequisite']);
 
 const TOOL_ERROR_CODES = new Set([
   'database_refused_the_statement', 'invalid_arguments', 'not_found', 'not_in_profile',
   'research_evidence_incomplete', 'research_evidence_required', 'research_source_invalid',
   'stale_version', 'unknown_vendor_stage', 'unhandled_verb_failure', 'unauthorized',
-  'version_conflict',
+  'version_conflict', 'invalid_received_on', 'invoice_not_found', 'invoice_not_unpaid', 'payment_date_out_of_range',
 ]);
 const JSON_RPC_ERROR_CODES = new Map([
   [-32700, 'json-rpc-parse-error'], [-32600, 'json-rpc-invalid-request'],
@@ -39,6 +43,29 @@ const JSON_RPC_ERROR_CODES = new Map([
   [-32603, 'json-rpc-internal-error'],
 ]);
 const RAW_RESPONSE_SHA256 = Symbol('raw-response-sha256');
+const paymentRefusalCodes = new Set(['invalid_received_on', 'invoice_not_found', 'version_conflict',
+  'invoice_not_unpaid', 'payment_date_out_of_range']);
+
+export function verifiedPreEffectRefusal(operation, args, rpc, requestId, httpStatus) {
+  if (operation !== 'record-commission-receipt' || httpStatus !== 200 || rpc?.jsonrpc !== '2.0' ||
+      rpc.id !== requestId || rpc.error || rpc.result?.isError !== true ||
+      rpc.result.content?.length !== 1 || rpc.result.content[0]?.type !== 'text') return null;
+  let value;
+  try { value = JSON.parse(rpc.result.content[0].text); } catch { return null; }
+  if (!paymentRefusalCodes.has(value?.error) || Object.keys(value).some(key =>
+      !['error', 'current_version'].includes(key)) || value.error === 'version_conflict' &&
+      (!Number.isSafeInteger(value.current_version) || value.current_version < 1) ||
+      value.error !== 'version_conflict' && Object.hasOwn(value, 'current_version')) return null;
+  return { code: value.error, operation, arguments_sha256: digest(args), response_sha256: digest(rpc) };
+}
+
+function validPreEffectRefusal(row) {
+  const response = row.response;
+  const refusal = verifiedPreEffectRefusal(row.operation, row.arguments, response?.envelope,
+    response?.request_id, response?.http_status);
+  return row.state === 'refused' && row.dispatched_outcome === 'verified pre-effect refusal' &&
+    response?.acknowledged === false && refusal && digest(refusal) === digest(response.refusal);
+}
 const sha256 = value => createHash('sha256').update(value).digest('hex');
 const digestJSON = value => {
   let serialized;
@@ -109,18 +136,149 @@ async function readPrivateJSON(path) {
   finally { await handle.close(); }
 }
 
+const relationshipFailure = () => {
+  throw Object.assign(new Error('Staging relationship fixture proof prerequisite unavailable'),
+    { code: 'staging-fixture-relationship-prerequisite' });
+};
+function relationshipFixtureId(run, role) {
+  const bytes = createHash('sha1').update(Buffer.from('439206abd73a5c1b8a20531e536e5804', 'hex'))
+    .update(`relationship:${role}:${run}`).digest().subarray(0, 16);
+  bytes[6] = bytes[6] & 15 | 80; bytes[8] = bytes[8] & 63 | 128;
+  const id = bytes.toString('hex');
+  return `${id.slice(0,8)}-${id.slice(8,12)}-${id.slice(12,16)}-${id.slice(16,20)}-${id.slice(20)}`;
+}
+function verifiedFixtureTarget(target) {
+  const keys = (value, expected) => value && typeof value === 'object' && !Array.isArray(value) &&
+    digest(Object.keys(value).sort()) === digest([...expected].sort());
+  const text = (value, max) => typeof value === 'string' && value.trim().length > 0 && value.length <= max;
+  return keys(target, ['project', 'branch', 'endpoint', 'database']) &&
+    keys(target.project, ['id', 'name']) && keys(target.branch, ['id', 'name']) && keys(target.endpoint, ['id', 'host']) &&
+    text(target.project.id, 128) && target.project.id !== 'steep-field-48688294' &&
+    text(target.project.name, 256) && target.project.name.startsWith('carr-staging-replacement-') &&
+    text(target.branch.id, 128) && target.branch.name === 'main' && text(target.endpoint.id, 128) &&
+    target.endpoint.id.startsWith('ep-') && text(target.endpoint.host, 253) && /^[a-z0-9.-]+$/.test(target.endpoint.host) &&
+    target.endpoint.host.startsWith(target.endpoint.id + '.') && target.endpoint.host.endsWith('.neon.tech') &&
+    target.database === 'neondb';
+}
+function relationshipProjection(network, plan, rows) {
+  if (!validNetwork(network)) relationshipFailure();
+  const { party, client, deal, vendor, vendor_party: vendorParty, relationship_referral_deal: referred } = plan.records;
+  const nodeIds = [`party:${party.id}`, `deal:${deal.id}`, `party:${vendorParty.id}`,
+    `party:${referred.party_id}`, `deal:${referred.id}`];
+  const edgeIds = [`client-deal:${deal.id}`, `client-deal:${referred.id}`,
+    `evidence:${party.id}:${referred.id}:referred`, `evidence:${vendorParty.id}:${deal.id}:referred`];
+  const nodes = nodeIds.map(id => {
+    const rows = network.nodes.filter(row => row.id === id);
+    if (rows.length !== 1) relationshipFailure();
+    const row = rows[0];
+    return { id, kind: row.kind, record_id: row.record_id, name: row.name, territory: row.territory ?? null };
+  });
+  const edges = edgeIds.map(id => {
+    const rows = network.edges.filter(row => row.id === id);
+    if (rows.length !== 1) relationshipFailure();
+    const row = rows[0];
+    return { id, from: row.from, to: row.to, kind: row.kind, via: row.via, detail: row.detail ?? null };
+  });
+  const north = rows.fixed_party.city, south = rows.owned_vendor.territory;
+  const expectedNodes = [
+    { id: nodeIds[0], kind: 'client', record_id: client.id, name: party.name, territory: north },
+    { id: nodeIds[1], kind: 'deal', record_id: deal.id, name: deal.name, territory: nodes[1].territory },
+    { id: nodeIds[2], kind: 'vendor', record_id: vendor.id, name: vendor.name, territory: south },
+    { id: nodeIds[3], kind: 'client', record_id: referred.client_id,
+      name: rows.destination_party.name, territory: north },
+    { id: nodeIds[4], kind: 'deal', record_id: referred.id, name: referred.name, territory: nodes[4].territory },
+  ];
+  const expectedEdges = [
+    { id: edgeIds[0], from: nodeIds[0], to: nodeIds[1], kind: 'client_deal', via: null, detail: null },
+    { id: edgeIds[1], from: nodeIds[3], to: nodeIds[4], kind: 'client_deal', via: null, detail: null },
+    { id: edgeIds[2], from: nodeIds[0], to: nodeIds[4], kind: 'referred', via: null, detail: rows.referral_association.note },
+    { id: edgeIds[3], from: nodeIds[2], to: nodeIds[1], kind: 'referred', via: null, detail: rows.vendor_association.note },
+  ];
+  const metrics = [nodeIds[0], nodeIds[2]].map(id => network.referrals.filter(row => row.node_id === id));
+  if (digest(nodes) !== digest(expectedNodes) || digest(edges) !== digest(expectedEdges) || metrics.some(rows =>
+      rows.length !== 1 || rows[0].deals < 1)) relationshipFailure();
+  return { nodes, edges, metrics: metrics.map(rows => rows[0]), total_referrals: network.referrals.length,
+    same_territory_referrals: filterNetwork(network, { territory: north }).referrals.length,
+    other_territory_referrals: network.referrals.filter(row => {
+      const node = network.nodes.find(node => node.id === row.node_id);
+      return typeof node?.territory === 'string' && node.territory.trim() && node.territory !== north;
+    }).length };
+}
+function validateRelationshipProof(proof, plan, target) {
+  if (!verifiedFixtureTarget(target) || digest(proof?.verified_target || null) !== digest(target) ||
+      proof?.schema !== 'doctorcre-staging-relationship-fixture.v1' || proof.fixture_run !== plan.run ||
+      digest(proof.source_pair || null) !== digest(plan.release) || proof.recorded_plan_observed_at !== plan.observed_at ||
+      digest(proof.provenance || null) !== digest({ kind: 'raw-sql-fixture', readback: 'separate-committed-readonly-connection' }) ||
+      proof.party_id !== plan.records.party.id || proof.client_id !== plan.records.client.id || proof.deal_id !== plan.records.deal.id ||
+      !isUUID(plan.records.vendor?.id) || !isUUID(plan.records.vendor_party?.id) ||
+      plan.receipts.vendor?.vendor_id !== plan.records.vendor.id || plan.receipts.vendor_party?.party_id !== plan.records.vendor_party.id)
+    relationshipFailure();
+  const label = `Synthetic staging QA ${plan.run}`, north = 'Synthetic Staging QA North', south = 'Synthetic Staging QA South';
+  const id = role => relationshipFixtureId(plan.run, role);
+  const note = role => `Fictional staging QA ${role} referral for fixture ${plan.run}.`;
+  const association = (role, from, to) => ({ id: id(role), from_party_id: from, to_party_id: to,
+    kind: 'referred', via_party_id: null, occurred_on: plan.observed_at.slice(0,10), note: note(role), attribution: 'system' });
+  const attribution = (role, party, deal, noteRole) => ({ id: id(role), party_id: party, deal_id: deal,
+    kind: 'referred', via_party_id: null, occurred_on: plan.observed_at.slice(0,10), note: note(noteRole), attribution: 'system' });
+  const rows = {
+    destination_party: { id: id('destination_party'), name: `${label} referred client`, kind: 'org', city: north },
+    destination_client: { id: id('destination_client'), party_id: id('destination_party'), status: 'engaged' },
+    destination_deal: { id: id('destination_deal'), name: `${label} referred deal`, client_id: id('destination_client'),
+      owner: 'joe', phase: 'pending', lane: 'territory', deal_type: 'startup' },
+    fixed_party: { id: plan.records.party.id, city: north },
+    owned_vendor: { id: plan.records.vendor.id, party_id: plan.records.vendor_party.id, territory: south },
+    referral_association: association('referral_association', plan.records.party.id, id('destination_party')),
+    vendor_association: association('vendor_association', plan.records.vendor_party.id, plan.records.party.id),
+    referral_attribution: attribution('referral_attribution', plan.records.party.id, id('destination_deal'), 'referral_association'),
+    vendor_attribution: attribution('vendor_attribution', plan.records.vendor_party.id, plan.records.deal.id, 'vendor_association'),
+  };
+  const referred = { id: rows.destination_deal.id, name: rows.destination_deal.name,
+    client_id: rows.destination_client.id, party_id: rows.destination_party.id };
+  const tables = { destination_party: 'party', destination_client: 'client', destination_deal: 'deal', fixed_party: 'party',
+    owned_vendor: 'vendor', referral_association: 'party_association', vendor_association: 'party_association',
+    referral_attribution: 'deal_attribution', vendor_attribution: 'deal_attribution' };
+  const rowHashes = Object.fromEntries(Object.entries(rows).map(([role, row]) => [role, digest(row)]));
+  const receipts = Object.fromEntries(Object.entries(rows).map(([role, row]) => {
+    const field = role === 'fixed_party' ? 'city' : role === 'owned_vendor' ? 'territory' : null;
+    const before = proof.receipts?.[role]?.before_sha256;
+    if (field && before !== digest({ ...row, [field]: null }) && before !== digest(row)) relationshipFailure();
+    return [role, { operation: field ? 'update' : 'insert', table: tables[role], row_id: row.id,
+      before_sha256: field ? before : null, after_sha256: rowHashes[role] }];
+  }));
+  if (digest(proof.rows || null) !== digest(rows) || digest(proof.row_sha256 || null) !== digest(rowHashes) ||
+      digest(proof.receipts || null) !== digest(receipts) || digest(proof.relationship_referral_deal || null) !== digest(referred) ||
+      digest(proof.original_note_sha256 || null) !== digest({ referral: sha256(note('referral_association')), vendor: sha256(note('vendor_association')) }) ||
+      !proof.projection?.response || proof.projection.response_sha256 !== digest(proof.projection.response)) relationshipFailure();
+  const candidate = { ...plan, records: { ...plan.records, relationship_referral_deal: referred } };
+  const installedAt = Date.parse(proof.projection.response.observed_at);
+  if (!Number.isFinite(installedAt) || installedAt < Date.parse(plan.observed_at) - 5000 || installedAt > Date.now() + 5000)
+    relationshipFailure();
+  return { referred, rows, candidate, installedAt, projection: relationshipProjection(proof.projection.response, candidate, rows) };
+}
+
 export async function prepareStagingRecords(output, {
   origin = STAGING_ORIGIN, session = stagingSession, reuseOnly = false,
-  vendorFixture = false, tourDraftFixture = false, awaitingInvoiceFixture = false, requestFactory, run, signal,
+  vendorFixture = false, tourDraftFixture = false, awaitingInvoiceFixture = false, relationshipFixture = false,
+  relationshipFixtureProofPath = join(output, 'private', 'relationship-fixture-proof.json'), relationshipFixtureTarget, requestFactory, run, signal,
 } = {}) {
   signal?.throwIfAborted();
   origin = assertStagingURL(origin);
+  relationshipFixtureTarget = relationshipFixtureTarget && structuredClone(relationshipFixtureTarget);
   run = requireSupervisedRun(output, run);
   signal ??= run.signal;
   const persist = (path, value, exclusive) => privateJSON(path, value, exclusive, run);
   const planPath = join(output, 'staging-records-plan.json');
   const existing = await readPrivateJSON(planPath);
   if (existing && (existing.state !== 'complete' || existing.inflight)) throw new Error('Staging records partial plan requires reconciliation; no record write was retried');
+  if (relationshipFixture && existing && (existing.fixture_proofs?.relationship || existing.relationship_fixture)) {
+    const retained = existing.fixture_proofs?.relationship;
+    if (retained && typeof retained === 'object' && !Array.isArray(retained)) {
+      if (retained.state === 'verified') retained.state = 'pending-readback';
+      delete retained.current_readback;
+    }
+    delete existing.relationship_fixture;
+    await persist(planPath, existing);
+  }
   if (reuseOnly && tourDraftFixture && existing) {
     const parts = [
       [existing.records?.tour_draft_party, existing.receipts?.tour_draft_party],
@@ -506,8 +664,8 @@ export async function prepareStagingRecords(output, {
         (dealRead.owner === null || boundedText(dealRead.owner)) && boundedText(dealRead.phase));
       requireValue(existing || (dealRead.name === plan.records.deal.name && dealRead.owner === 'joe' && dealRead.phase === 'pending'));
     }
-    if (plan.party_reuse) {
-      requireValue(plan.party_reuse.schema === 'staging-fixture-party-reuse.v1' &&
+    {
+      if (plan.party_reuse) requireValue(plan.party_reuse.schema === 'staging-fixture-party-reuse.v1' &&
         plan.party_reuse.party_id === FIXTURE.id && /^[a-f0-9]{64}$/.test(plan.party_reuse.candidate_response_sha256) &&
         clientRead.record.ref === plan.records.client.ref &&
         (existing || clientRead.record.name === FIXTURE.name) &&
@@ -518,12 +676,46 @@ export async function prepareStagingRecords(output, {
       requireValue(network.schema === 'carr-relationship-network.v1' &&
         Number.isFinite(Date.parse(network.observed_at)) && Date.parse(network.valid_until) > Date.now() &&
         Array.isArray(network.nodes) && Array.isArray(network.edges) &&
-        network.nodes.some(node => node.id === partyNode && (existing || node.name === FIXTURE.name)) &&
+        network.nodes.filter(node => node.id === partyNode).length === 1 &&
+        network.nodes.some(node => node.id === partyNode && node.kind === 'client' &&
+          node.record_id === plan.records.client.id && node.name === plan.records.client.name) &&
         network.nodes.some(node => node.id === dealNode && node.record_id === plan.records.deal.id &&
           (existing || node.name === plan.records.deal.name)) &&
         network.edges.some(edge => edge.id === `client-deal:${plan.records.deal.id}` &&
           edge.kind === 'client_deal' && edge.from === partyNode && edge.to === dealNode));
-      plan.party_reuse = { ...plan.party_reuse, state: 'verified', client_id: plan.records.client.id,
+      if (relationshipFixture) {
+        const retained = plan.fixture_proofs?.relationship;
+        const proof = retained?.proof || await readPrivateJSON(relationshipFixtureProofPath);
+        if (retained && (retained.schema !== 'staging-relationship-fixture-binding.v1' || !['pending-readback', 'verified'].includes(retained.state) ||
+            retained.proof_content_sha256 !== digest(proof) || retained.verified_target_sha256 !== digest(relationshipFixtureTarget || null)))
+          relationshipFailure();
+        const fixture = validateRelationshipProof(proof, plan, relationshipFixtureTarget);
+        plan.fixture_proofs ||= {};
+        plan.fixture_proofs.relationship = { schema: 'staging-relationship-fixture-binding.v1', state: 'pending-readback',
+          proof: structuredClone(proof), proof_content_sha256: digest(proof), verified_target_sha256: digest(relationshipFixtureTarget) };
+        delete plan.relationship_fixture;
+        await persist(planPath, plan);
+        const freshNetwork = await json('/api/v1/business/relationships?contract=relationship-network.v1');
+        const relationshipEvidence = assertRelationshipFixture(freshNetwork, fixture.candidate);
+        if (fixture.installedAt > Date.parse(freshNetwork.observed_at) + 5000 ||
+            digest(fixture.projection) !== digest(relationshipProjection(freshNetwork, fixture.candidate, fixture.rows))) relationshipFailure();
+        const referredClient = await json(`/api/v1/business/clients/${fixture.referred.client_id}`);
+        const referredDeal = await rpc('get-deal-room', { deal: fixture.referred.id });
+        const clientRow = fixture.rows.destination_client, partyRow = fixture.rows.destination_party, dealRow = fixture.rows.destination_deal;
+        if (referredClient.record?.id !== clientRow.id || referredClient.record.party_id !== partyRow.id ||
+            referredClient.record.name !== partyRow.name || referredClient.record.status !== clientRow.status ||
+            referredClient.record.city !== partyRow.city || referredDeal.deal_id !== dealRow.id ||
+            ['name', 'client_id', 'owner', 'phase', 'lane', 'deal_type'].some(field => referredDeal[field] !== dealRow[field]))
+          relationshipFailure();
+        plan.records.relationship_referral_deal = structuredClone(fixture.referred);
+        plan.relationship_fixture = relationshipEvidence;
+        plan.fixture_proofs ||= {};
+        plan.fixture_proofs.relationship = { schema: 'staging-relationship-fixture-binding.v1', state: 'verified',
+          proof: structuredClone(proof), proof_content_sha256: digest(proof), verified_target_sha256: digest(relationshipFixtureTarget),
+          current_readback: { observed_at: new Date().toISOString(), network_response_sha256: digest(freshNetwork),
+            client_response_sha256: digest(referredClient), deal_response_sha256: digest(referredDeal) } };
+      }
+      if (plan.party_reuse) plan.party_reuse = { ...plan.party_reuse, state: 'verified', client_id: plan.records.client.id,
         deal_id: plan.records.deal.id, network_observed_at: network.observed_at,
         network_response_sha256: digest(network), client_response_sha256: digest(clientRead),
         deal_response_sha256: digest(dealRead) };
@@ -585,6 +777,9 @@ export async function prepareStagingRecords(output, {
     run?.check();
     if (error?.code === 'staging-fixture-rpc-unresolved')
       throw Object.assign(new Error('Staging records setup stopped; partial plan requires reconciliation; no provider payload was logged'),
+        { code: error.code });
+    if (error?.code === 'staging-fixture-relationship-prerequisite')
+      throw Object.assign(new Error('Staging relationship fixture prerequisite unavailable; no relationship seed was attempted'),
         { code: error.code });
     if (SAFE_RECORD_SETUP_CODES.has(error?.code))
       throw Object.assign(new Error('Staging vendor taxonomy prerequisite unavailable; no fixture mutation was attempted'),
@@ -678,18 +873,7 @@ function invoiceCommissionId(run) {
   return `${value.slice(0,8)}-${value.slice(8,12)}-${value.slice(12,16)}-${value.slice(16,20)}-${value.slice(20)}`;
 }
 function validateInvoiceProof(proof, plan, target) {
-  const exactKeys = (value, keys) => value && typeof value === 'object' && !Array.isArray(value) &&
-    digest(Object.keys(value).sort()) === digest([...keys].sort());
-  if (!exactKeys(target, ['project','branch','endpoint','database']) ||
-      !exactKeys(target.project, ['id','name']) || !exactKeys(target.branch, ['id','name']) ||
-      !exactKeys(target.endpoint, ['id','host']) || target.database !== 'neondb' ||
-      !textWithin(target.project.id, 128) || target.project.id === 'steep-field-48688294' ||
-      !textWithin(target.project.name, 256) || !target.project.name.startsWith('carr-staging-replacement-') ||
-      !textWithin(target.branch.id, 128) || target.branch.name !== 'main' ||
-      !textWithin(target.endpoint.id, 128) || !target.endpoint.id.startsWith('ep-') ||
-      !textWithin(target.endpoint.host, 253) || !/^[a-z0-9.-]+$/.test(target.endpoint.host) ||
-      !target.endpoint.host.startsWith(target.endpoint.id + '.') || !target.endpoint.host.endsWith('.neon.tech'))
-    policyFailure('invoice-fixture-target-unverified');
+  if (!verifiedFixtureTarget(target)) policyFailure('invoice-fixture-target-unverified');
   const deal = plan.records.invoice?.deal_id, client = plan.records.client?.id;
   if (!isUUID(deal) || !isUUID(client) || plan.receipts.invoice_deal?.deal_id !== deal ||
       plan.receipts.client?.client_id !== client || plan.records.party?.id !== FIXTURE.id ||
@@ -918,6 +1102,7 @@ function requirePlanCoverage(plan, scope) {
     policyFailure('write-coverage-incomplete');
   if (!Array.isArray(attempts) || !Array.isArray(refusals) || refusals.length ||
       attempts.some(row => {
+        if (validPreEffectRefusal(row)) return false;
         if (row.state !== 'acknowledged' || row.response?.acknowledged !== true ||
             !Array.isArray(row.record_ids) || !row.record_ids.length || !row.record_ids.every(isUUID)) return true;
         const bound = completeOperationReceipt(row.operation, row.arguments, row.record_ids, row.response.receipt, row.attempted_at, plan);
@@ -1326,8 +1511,13 @@ export function stagingFixtureWriteGuard({ output, release, invoiceFixtureTarget
       });
     } catch {}
   };
+  const scopedOptions = { currentPlan, persistPlan: plan => persist(planPath, plan), locked, run };
+  const invoiceClose = createInvoiceCloseGuard(scopedOptions);
+  const companions = createCompanionGuard(scopedOptions);
   const guard = {
     refusals,
+    admitInvoiceClose: spec => invoiceClose.admitInvoiceClose(spec),
+    companionJourney: spec => companions.companionJourney(spec),
     forContext() {
       const scope = { refusals: [], pending: new Set(), fingerprints: new Set() };
       return {
@@ -1338,6 +1528,8 @@ export function stagingFixtureWriteGuard({ output, release, invoiceFixtureTarget
         admitBusinessJourneyStep: step => guard.admitBusinessJourneyStep(step),
         admitBusinessJourneyPresence: step => guard.admitBusinessJourneyPresence(step),
         admitAutomaticPhaseUndo: step => guard.admitAutomaticPhaseUndo(step),
+        admitInvoiceClose: step => guard.admitInvoiceClose(step),
+        companionJourney: step => guard.companionJourney(step),
       };
     },
     async admitBusinessJourneyPresence(spec) {
@@ -1661,6 +1853,7 @@ export function stagingFixtureWriteGuard({ output, release, invoiceFixtureTarget
       }
       if (gaps.length) policyFailure('write-coverage-incomplete');
       if (planPath) requirePlanCoverage(await currentPlan(), scope);
+      if (planPath) { await invoiceClose.assertCoverage(); await companions.assertCoverage(); }
       if (outstanding.size) policyFailure('dispatch-settlement-pending');
     },
     async handle(request, forward, scope) {
@@ -1674,7 +1867,7 @@ export function stagingFixtureWriteGuard({ output, release, invoiceFixtureTarget
         requireSupervisedRun(output, run);
         return run.http(forward);
       };
-      let name = 'unknown-operation', token, dispatched = false, admittedRead = false, localCompanionRead = false;
+      let name = 'unknown-operation', token, dispatched = false, admittedRead = false;
       const forwardRead = async (staticURL) => {
         admittedRead = true;
         const asset = staticURL && request.method() === 'GET' && !staticURL.search && !staticURL.hash
@@ -1711,16 +1904,14 @@ export function stagingFixtureWriteGuard({ output, release, invoiceFixtureTarget
         return response;
       };
       try {
+        const companion = await companions.handle(request, forward);
+        if (companion.handled) return companion.response;
+        const invoice = await invoiceClose.handle(request, forward);
+        if (invoice.handled) return invoice.response;
         const url = new URL(request.url());
         if (url.username || url.password) policyFailure('origin-unproved');
         const read = ['GET', 'HEAD'].includes(request.method());
         if (url.origin !== STAGING_ORIGIN) {
-          // The app probes its optional local companion on every boot. Refuse
-          // this exact read without treating companion absence as a staging write.
-          if (request.method() === 'GET' && url.href === 'http://127.0.0.1:4682/api/state') {
-            localCompanionRead = true;
-            throw Object.assign(new Error('Local companion read blocked'), { code: 'local-companion-read-blocked' });
-          }
           const font = read && (url.origin === 'https://fonts.googleapis.com' && ['/css', '/css2'].includes(url.pathname) ||
             url.origin === 'https://fonts.gstatic.com' && /^\/s\/[a-zA-Z0-9/_-]+\.(woff2?|ttf)$/.test(url.pathname));
           if (font) return await forwardRead();
@@ -1854,20 +2045,23 @@ export function stagingFixtureWriteGuard({ output, release, invoiceFixtureTarget
             rpc.result.content[0].type === 'text'
             ? completeOperationReceipt(name, intent.arguments, intent.record_ids, receipt, intent.attempted_at, plan) : null;
           const acknowledged = Boolean(bound) && !flight.timedOut;
-          intent.state = acknowledged ? 'acknowledged' : 'unresolved';
-          intent.dispatched_outcome = acknowledged ? 'complete operation receipt retained; effect not independently verified' : 'unknown';
+          const refusal = !flight.timedOut && verifiedPreEffectRefusal(name, intent.arguments, rpc, body.id, response.status());
+          intent.state = acknowledged ? 'acknowledged' : refusal ? 'refused' : 'unresolved';
+          intent.dispatched_outcome = acknowledged ? 'complete operation receipt retained; effect not independently verified'
+            : refusal ? 'verified pre-effect refusal' : 'unknown';
           intent.response = { http_status: response.status(), sha256: digest(rpc ?? null), acknowledged };
+          if (refusal) Object.assign(intent.response, { refusal, envelope: structuredClone(rpc), request_id: body.id });
           if (bound) {
             intent.response.binding = bound;
             intent.response.receipt = structuredClone(receipt);
           }
           if (flight.timedOut) intent.coverage_timeout = true;
           await persist(planPath, plan);
-          if (!acknowledged) policyFailure('dispatch-outcome-unresolved');
+          if (!acknowledged && !refusal) policyFailure('dispatch-outcome-unresolved');
         });
         return response;
       } catch (error) {
-        if (localCompanionRead) throw error;
+        if (error.companionRead) throw error;
         if (admittedRead && !error.fixturePolicy) throw error;
         const gap = { operation: typeof name === 'string' && (browserReads.has(name) || Object.hasOwn(fixtureWrites, name) || name === 'presence-lease') ? name : 'unknown-operation',
           reason: error.fixturePolicy ? error.code : (token ? 'dispatch-outcome-unresolved' : 'intent-or-provenance-unavailable'),
@@ -1884,6 +2078,8 @@ export function stagingFixtureWriteGuard({ output, release, invoiceFixtureTarget
 export async function assertStagingWriteCoverage(output) {
   const plan = await readPrivateJSON(join(output, 'staging-records-plan.json'));
   requirePlanCoverage(plan);
+  await createInvoiceCloseGuard({ currentPlan: async () => plan }).assertCoverage();
+  await createCompanionGuard({ currentPlan: async () => plan }).assertCoverage();
   let journalPresent = false;
   try { await lstat(join(output, 'private', automaticJournalName)); journalPresent = true; }
   catch (error) { if (error.code !== 'ENOENT') policyFailure('automatic-event-journal-unsafe'); }

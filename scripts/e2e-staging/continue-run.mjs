@@ -23,6 +23,8 @@ const durableW15Actions = new Set([
   'invoice-tracker:payment-write', 'invoice-tracker:paid-readback',
   'home-invoices:team-scope', 'home-invoices:viewer-scope', 'home-invoices:scope-reset',
   'home-invoices:payment-removal',
+  'invoice-close:capture-evidence', 'invoice-close:automatic-close', 'invoice-close:close-readback',
+  'invoice-close:undo-close', 'invoice-close:undo-readback',
 ]);
 const durableBusinessAction = row => row?.id === 'W4' && row.case === 'local-deals' ||
   row?.id === 'W9' && row.case === 'deal-timeline' ||
@@ -31,6 +33,17 @@ const execute = promisify(execFile);
 const ownFailures = new WeakSet();
 const businessFailureCodes = new Set(['business-journey-receipt-missing', 'business-journey-selector-unavailable',
   'business-journey-readback-incomplete', 'business-journey-settlement-unverified',
+  'business-journey-refused-invalid-received-on', 'business-journey-refused-invoice-not-found',
+  'business-journey-refused-version-conflict', 'business-journey-refused-invoice-not-unpaid',
+  'business-journey-refused-payment-date-out-of-range',
+  'staging-fixture-relationship-prerequisite',
+  'invoice-close-fixture-unproved', 'invoice-close-capture-unproved', 'invoice-close-fresh-version-unproved', 'invoice-close-scope-unproved',
+  'invoice-close-step-unproved', 'invoice-close-source-unproved', 'invoice-close-readback-unproved',
+  'invoice-close-never-replay', 'invoice-close-before-unproved', 'invoice-close-request-unproved',
+  'invoice-close-read-unproved', 'invoice-close-outcome-unresolved', 'invoice-close-coverage-incomplete',
+  'companion-source-binding-unproved', 'companion-isolated-mailbox-required', 'companion-reconciliation-required',
+  'companion-phase-unproved', 'companion-disabled-ui-unproved', 'companion-enabled-readback-unproved',
+  'companion-route-unproved', 'companion-dispatch-outcome-unresolved', 'companion-response-unproved', 'companion-state-unproved',
   'presence-settlement-timeout',
   'selected-journey-selection-invalid', 'selected-journey-plan-required', 'selected-journey-plan-invalid',
   'selected-journey-route-unavailable', 'selected-journey-setup-failed', 'selected-journey-w4-failed', 'selected-journey-w9-failed',
@@ -174,10 +187,10 @@ export async function retainJourneyQualification({ run, binding, release, result
   const plan = JSON.parse(await privateBytes(path));
   if (plan.schema !== 'doctorcre-staging-records-plan.v1' || plan.state !== 'complete' || plan.inflight ||
       plan.release?.source_commit !== binding.app || plan.release?.carr_source_commit !== binding.carr ||
-      result?.full_v1_qualified !== false || result.tour?.full_v1_qualified !== false ||
+      result?.full_v1_qualified !== false || result.tour !== undefined && result.tour?.full_v1_qualified !== false ||
       !Array.isArray(result.completed) || !Array.isArray(result.steps))
     refusal('journey-observations-invalid');
-  assertReadonlyResult(result.readonly, release, plan);
+  if (result.readonly !== undefined) assertReadonlyResult(result.readonly, release, plan);
   let priorObservations = [], priorTourReadonlyObserved = false;
   if (plan.journey_qualification) {
     const prior = assertJourneyQualification(plan.journey_qualification, binding, run.snapshot().id);
@@ -208,7 +221,8 @@ export async function retainJourneyQualification({ run, binding, release, result
       observed_steps: result.steps.filter(row => row?.state === 'observed').length },
     tour_readonly_observed: Boolean(priorTourReadonlyObserved ||
       result.tour?.ui?.sha256 && result.tour?.backend_readback?.sha256),
-    readonly: Object.fromEntries(result.readonly.journeys.map(row => [row.journey, row.state])),
+    readonly: result.readonly === undefined ? { W1: 'pending', W2: 'pending', W5: 'pending', W14: 'pending' }
+      : Object.fromEntries(result.readonly.journeys.map(row => [row.journey, row.state])),
     fixture_run: plan.run,
     observations: [...observations.values()], companions: result.companions || [],
     full_v1_qualified: false,
@@ -946,7 +960,8 @@ export async function runBusinessPhase({ binding, run, environment = process.env
   if (admission.status !== 'READY') refusal('invoice-local-prerequisite-required');
   let state;
   const setup = await prepare(run.root, { reuseOnly: true, vendorFixture: true, tourDraftFixture: true,
-    awaitingInvoiceFixture: true, run, signal: run.signal,
+    awaitingInvoiceFixture: true, relationshipFixture: true, relationshipFixtureTarget: admission.verifiedTarget,
+    run, signal: run.signal,
     session: async (origin, options) => {
       const authenticated = await authenticate(origin, options);
       assertSourcePair(authenticated.release, binding);
@@ -1070,9 +1085,22 @@ export async function runBusinessPhase({ binding, run, environment = process.env
     const invoicePage = await factory.freshPage({ target, screen: home, release, fixtureGuard, path: '/' });
     const invoice = await journeys({ page: invoicePage, fixtureGuard, release, deal: invoiceDeal,
       awaitingInvoicePlan: plan, run, journeys: ['W15'] });
+    if (invoice?.full_v1_qualified !== false) refusal('business-result-unqualified');
+    await retainJourneyQualification({ run, binding, release, result: {
+      completed: [...result.completed, ...invoice.completed], steps: [...result.steps, ...invoice.steps],
+      actions: [result, automaticPhase, invoice].flatMap(row => row.actions || []), full_v1_qualified: false,
+    } });
+    const invoiceClosePage = await factory.freshPage({ target, screen, release, fixtureGuard,
+      path: `/deals?deal=${encodeURIComponent(deal)}` });
+    const invoiceClose = await (supplied.invoiceCloseJourney ||
+      (await import('./invoice-close-journey.mjs')).runInvoiceCloseJourney)({
+      page: invoiceClosePage, fixtureGuard, release, plan, run });
+    await retainJourneyQualification({ run, binding, release, result: {
+      completed: [...result.completed, ...invoice.completed], steps: [...result.steps, ...invoice.steps],
+      actions: [result, automaticPhase, invoice, invoiceClose].flatMap(row => row.actions || []), full_v1_qualified: false,
+    } });
     await fixtureGuard.assertCoverage();
     await coverage(run.root);
-    if (invoice?.full_v1_qualified !== false) refusal('business-result-unqualified');
     if (setup.needs_restore.some(row => row.record === 'tour')) refusal('business-fixture-requires-reconciliation');
     const tour = await runTourPhase({ binding, run, plan: JSON.parse(await privateBytes(join(run.root, 'staging-records-plan.json'))),
       fixtureGuard, release, factory, target, environment }, supplied);
@@ -1119,12 +1147,18 @@ export async function runBusinessPhase({ binding, run, environment = process.env
       await fixtureGuard.assertCoverage();
       await coverage(run.root);
     }
-    const actionSources = [result, automaticPhase, invoice, readonly, vendor, tourDraft].filter(Boolean);
+    const companionPage = await factory.freshPage({ target, screen, release, fixtureGuard,
+      path: `/deals?deal=${encodeURIComponent(deal)}` });
+    const companionPlan = JSON.parse(await privateBytes(join(run.root, 'staging-records-plan.json')));
+    const companions = await (supplied.companionJourneys ||
+      (await import('./companion-journeys.mjs')).runCompanionJourneys)({
+      page: companionPage, fixtureGuard, release, plan: companionPlan, run });
+    const actionSources = [result, automaticPhase, invoice, invoiceClose, readonly, vendor, tourDraft].filter(Boolean);
     if (actionSources.some(row => row.actions !== undefined && !Array.isArray(row.actions)))
       refusal('journey-observations-invalid');
     const measured = { schema: 'staging-business-journey-result.v1', release: result.release, tour, readonly,
       automaticPhase,
-      vendor, tourDraft, actions: actionSources.flatMap(row => row.actions || []), companions: [],
+      vendor, tourDraft, invoiceClose, actions: actionSources.flatMap(row => row.actions || []), companions,
       completed: [...result.completed, ...invoice.completed], steps: [...result.steps, ...invoice.steps],
       full_v1_qualified: false, unqualified_journeys: businessContract.unqualified_journeys };
     await retainJourneyQualification({ run, binding, release, result: measured });

@@ -140,6 +140,7 @@ export async function qualifyTourJourney({ page, plan, sourcePair, fixtureBindin
     run.check();
     const libraryButton = `#upcoming-tours [data-tour-id="${plan.records.tour.id}"], #history-tours [data-tour-id="${plan.records.tour.id}"]`;
     const button = page.locator(libraryButton);
+    await button.waitFor({ state: 'visible', timeout });
     if (await button.count() !== 1) fail();
     await button.click({ timeout });
     await page.locator('#tour-dialog').waitFor({ state: 'visible', timeout });

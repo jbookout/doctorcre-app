@@ -14,6 +14,7 @@ import staging from '../../contracts/e2e-staging.v1.json' with { type: 'json' };
 import businessJourneys from '../../contracts/e2e-staging-business-journeys.v1.json' with { type: 'json' };
 import { fakeAPI } from './record-fixture.mjs';
 import { admitFixtureRun } from './fixture-admission.mjs';
+import { refuseFixtureCompanionConnection, assertCompanionUnavailable } from './companion-fixture.mjs';
 import { COLUMNS } from '../../js/pipeline-model.js';
 
 const release = { service: 'doctorcre-app', environment: 'staging', source_commit: '12181a8136e6e6030d5e8ed9dbeed6518ee258a4', carr_source_commit: staging.producer.source_commit };
@@ -180,6 +181,7 @@ test('served signed-in app W4/W9 uses the real UI, canonical fixture guard and d
       const request = route.request(), url = new URL(request.url());
       try {
         const response = await scoped.handle(request, async () => {
+          refuseFixtureCompanionConnection(request);
           if (url.pathname === '/mcp') {
             const rpc = request.postDataJSON(), { name, arguments: args } = rpc.params;
             const rpcReply = value => bodyResponse({ jsonrpc: '2.0', id: rpc.id, result: { content: [{ type: 'text', text: JSON.stringify(value) }] } });
@@ -242,10 +244,17 @@ test('served signed-in app W4/W9 uses the real UI, canonical fixture guard and d
           return { status: () => response.status, headers: () => Object.fromEntries(response.headers), body: async () => bytes, json: async () => JSON.parse(bytes) };
         });
         await route.fulfill({ status: response.status(), headers: response.headers(), body: await response.body() });
-      } catch (error) { denied.push(error.code || error.message); await route.abort(); }
+      } catch (error) {
+        if (!error.companionRead) denied.push(error.code || error.message);
+        await route.abort();
+      }
     });
     await page.goto(STAGING_ORIGIN + '/deals?deal=' + deal);
     await page.locator('#detailPhase').waitFor();
+    await page.waitForFunction(() => document.querySelector('#callModeAvailability')?.textContent ===
+      'Call recording runs on the Mac with Quill');
+    await guard.assertCoverage();
+    assertCompanionUnavailable(JSON.parse(await readFile(planPath, 'utf8')));
     const locator = page.locator.bind(page);
     page.locator = selector => {
       const actual = locator(selector);
@@ -280,7 +289,20 @@ test('served signed-in app W4/W9 uses the real UI, canonical fixture guard and d
       }
       return actual;
     };
-    return { page, guard, scoped, detail, invoice, invoiceDeal, awaitingInvoice, awaitingDeal: awaitingInvoice.deal_id,
+    const confirmDetailMove = async () => {
+      await guard.admitBusinessJourneyStep({ phase: 'admit', journey: 'W4', step: 'move', deal, release });
+      const completed = page.waitForEvent(lose === 'patch-deal-field' ? 'requestfailed' : 'response', {
+        predicate: event => {
+          const request = typeof event.request === 'function' ? event.request() : event;
+          return new URL(request.url()).pathname === '/mcp' && request.method() === 'POST' &&
+            request.postDataJSON()?.params?.name === 'patch-deal-field';
+        },
+      });
+      await page.locator('#detailPhase').selectOption('research');
+      await page.locator('#completionConfirm').click();
+      await completed;
+    };
+    return { page, guard, scoped, confirmDetailMove, detail, invoice, invoiceDeal, awaitingInvoice, awaitingDeal: awaitingInvoice.deal_id,
       proof, proofPath, writes, leases, reads, boardReads, changeEvents, denied, errors, admittedBeforeUI, readOnlyUI };
   }
 
@@ -401,7 +423,8 @@ test('served signed-in app W4/W9 uses the real UI, canonical fixture guard and d
   await t.test('interrupted dispatch is durable and rerun sends no second mutation', async () => {
     const f = await fixture({ lose: 'patch-deal-field' });
     try {
-      await assert.rejects(runBusinessJourneys({ page: f.page, fixtureGuard: f.guard, release, deal, run, journeys: ['W4'] }),
+      await f.confirmDetailMove();
+      await assert.rejects(f.guard.assertCoverage(),
         error => error.code === 'write-coverage-incomplete');
       assert.equal(f.writes.length, 1);
       const plan = JSON.parse(await readFile(planPath, 'utf8'));
@@ -419,13 +442,27 @@ test('served signed-in app W4/W9 uses the real UI, canonical fixture guard and d
   await t.test('wrong undo event cannot cross the admitted event binding', async () => {
     const f = await fixture();
     try {
-      const admit = f.guard.admitBusinessJourneyStep.bind(f.guard);
-      f.guard.admitBusinessJourneyStep = spec => {
-        if (spec.step === 'undo' && spec.phase === 'admit') throw new Error('Synthetic pause before undo');
-        return admit(spec);
-      };
-      await assert.rejects(runBusinessJourneys({ page: f.page, fixtureGuard: f.guard, release, deal, run, journeys: ['W4'] }), /Synthetic pause/);
-      const intent = await admit({ phase: 'admit', journey: 'W4', step: 'undo', deal, release });
+      await f.confirmDetailMove();
+      const readback = f.page.waitForResponse(response => {
+        const request = response.request();
+        return new URL(request.url()).pathname === '/mcp' && request.method() === 'POST' &&
+          request.postDataJSON()?.params?.name === 'get-deal-room';
+      });
+      await f.page.locator('[data-refresh-detail]').click();
+      await readback;
+      await f.page.waitForFunction(() => document.querySelector('#detailPhase')?.value === 'research');
+      const spec = { journey: 'W4', step: 'move', deal, release };
+      const moved = await f.guard.admitBusinessJourneyStep({ ...spec, phase: 'status' });
+      assert.equal(moved.state, 'acknowledged');
+      assert.equal(moved.independent_readback.matched, true);
+      const phase = await f.page.locator('#detailPhase').inputValue();
+      await f.page.locator('#panelClose').click();
+      if (!await f.page.locator('#appToday').isVisible()) await f.page.locator('#appTodayToggle').click();
+      const undo = f.page.locator(`button[data-undo="${moved.response.binding.effect.event_id}"]`);
+      await undo.waitFor({ state: 'visible' });
+      await f.guard.admitBusinessJourneyStep({ ...spec, phase: 'observe',
+        observation: { phase, event_id: await undo.getAttribute('data-undo') } });
+      const intent = await f.guard.admitBusinessJourneyStep({ phase: 'admit', journey: 'W4', step: 'undo', deal, release });
       assert.equal(intent.state, 'admitted');
       await f.page.evaluate(async args => {
         try { await fetch('/mcp', { method: 'POST', headers: { 'content-type': 'application/json' },
@@ -706,7 +743,8 @@ test('served signed-in app W4/W9 uses the real UI, canonical fixture guard and d
       } else assert.match(failure.message,/coverage|reconciliation/);
       assert.equal(f.writes.length,1,failure.message);assert.equal(f.invoice.status,'received');
       const restarted=stagingFixtureWriteGuard({output,release,run,invoiceFixtureTarget:invoiceTarget});
-      await assert.rejects(runBusinessJourneys({page:f.page,fixtureGuard:restarted,release,deal:f.invoiceDeal,run,journeys:['W15']}),/coverage|reconciliation/);
+      await assert.rejects(runBusinessJourneys({page:f.page,fixtureGuard:restarted,release,deal:f.invoiceDeal,run,journeys:['W15']}),
+        {code:'business-journey-readback-incomplete'});
       assert.equal(f.writes.length,1);await assert.rejects(assertStagingWriteCoverage(output),/coverage/);
     }finally{await f.page.context().close();}
   });

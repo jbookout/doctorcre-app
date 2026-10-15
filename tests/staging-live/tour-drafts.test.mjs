@@ -12,6 +12,7 @@ import { STAGING_ORIGIN } from '../../scripts/e2e-staging/session.mjs';
 import staging from '../../contracts/e2e-staging.v1.json' with { type: 'json' };
 import { fakeAPI } from './record-fixture.mjs';
 import { admitFixtureRun } from './fixture-admission.mjs';
+import { refuseFixtureCompanionConnection, assertCompanionUnavailable } from './companion-fixture.mjs';
 
 const release = { service: 'doctorcre-app', environment: 'staging', source_commit: 'a'.repeat(40),
   carr_source_commit: staging.producer.source_commit };
@@ -64,6 +65,7 @@ test('served W6 client draft, undo, search save and reload bind the plan-owned T
       request.method() === 'POST' && url.pathname === '/mcp' ? request.postDataJSON()?.params?.name : null]);
     try {
       const response = await scoped.handle(request, async () => {
+      refuseFixtureCompanionConnection(request);
       if (url.pathname === '/app-release') return reply({ service: release.service,
         environment: release.environment, source_commit: release.source_commit });
       if (url.pathname === '/auth/session') return reply({ actor: { slug: 'joe' }, e2e_principal: 'e2e-joe' });
@@ -83,7 +85,7 @@ test('served W6 client draft, undo, search save and reload bind the plan-owned T
       });
       await route.fulfill({ status: response.status(), headers: response.headers(), body: await response.body() });
     } catch (error) {
-      if (error.code !== 'local-companion-read-blocked') throw error;
+      if (!error.companionRead && error.code !== 'local-companion-read-blocked') throw error;
       await route.abort();
     }
   });
@@ -95,6 +97,7 @@ test('served W6 client draft, undo, search save and reload bind the plan-owned T
   assert.ok(requests.filter(([method]) => method !== 'GET').every(([method, path, , name]) =>
     method === 'POST' && path === '/mcp' && shellReads.has(name)));
   await guard.assertCoverage();
+  assertCompanionUnavailable(JSON.parse(await readFile(join(output, 'staging-records-plan.json'), 'utf8')));
   const beforeForeign = requests.length;
   await assert.rejects(runTourDraftJourney({ page, plan, sourcePair: { ...sourcePair, app: 'b'.repeat(40) },
     fixtureBinding: binding, run }), /refused/);
