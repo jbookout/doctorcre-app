@@ -491,6 +491,53 @@ test('normal staging APIs create representative records with private durable key
   } finally { await rm(output, { recursive: true, force: true }); }
 });
 
+test('staging readback checks reused fixture parties by deal lineage and keeps new-party identity strict', async t => {
+  for (const scenario of [
+    { name: 'reused party may project another client record', reuseParty: true, succeeds: true },
+    { name: 'reused party still requires the client-deal edge', reuseParty: true, missingEdge: true },
+    { name: 'new party still requires the exact client record', reuseParty: false },
+  ]) await t.test(scenario.name, async () => {
+    const output = await mkdtemp(join(tmpdir(), 'staging-party-network-readback-'));
+    try {
+      const fake = fakeAPI(output);
+      const requestFactory = async options => {
+        const api = await fake.requestFactory(options);
+        return { ...api, get: async (path, request) => {
+          const response = await api.get(path, request);
+          if (path !== '/api/v1/business/relationships?contract=relationship-network.v1') return response;
+          const network = await response.json();
+          network.nodes.find(node => node.id === `party:${fixture}`).record_id = '40000000-0000-4000-8000-000000000099';
+          if (scenario.missingEdge) network.edges = [];
+          return reply(network);
+        }, post: async (path, request) => {
+          const response = await api.post(path, request);
+          if (!scenario.reuseParty && path === '/mcp' && request.data.params.name === 'add-party' &&
+              request.data.params.arguments.name === 'Synthetic Staging Fixture')
+            return reply({ jsonrpc: '2.0', id: request.data.id,
+              result: { content: [{ type: 'text', text: JSON.stringify({ ok: true, party_id: fixture }) }] } });
+          return response;
+        } };
+      };
+      if (scenario.succeeds) {
+        const result = await prepareStagingRecords(output, { ...fake, requestFactory });
+        assert.equal(result.complete, true);
+        const plan = JSON.parse(await readFile(join(output, 'staging-records-plan.json'), 'utf8'));
+        assert.equal(plan.party_reuse.state, 'verified');
+        assert.equal(plan.party_reuse.client_id, result.records.client.id);
+      } else {
+        await assert.rejects(prepareStagingRecords(output, { ...fake, requestFactory }), error => {
+          assert.match(error.message, /stopped at readback/);
+          assert.equal(error.message, 'Staging records setup stopped at readback:relationship-network; partial plan requires reconciliation; no request or provider payload was logged');
+          return true;
+        });
+        const plan = JSON.parse(await readFile(join(output, 'staging-records-plan.json'), 'utf8'));
+        assert.equal(Boolean(plan.party_reuse), scenario.reuseParty);
+        assert.equal(plan.state, 'pending');
+      }
+    } finally { await rm(output, { recursive: true, force: true }); }
+  });
+});
+
 test('fixed-party reuse refuses a deal edge to a different party without replaying writes', async () => {
   const output = await mkdtemp(join(tmpdir(), 'staging-party-lineage-'));
   try {
