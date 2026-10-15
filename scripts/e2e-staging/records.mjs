@@ -1,6 +1,6 @@
 import { requireSupervisedRun, effectiveRunLimits, RunLimitError } from './run-limits.mjs';
 import { constants } from 'node:fs';
-import { mkdir, open, rename, readFile, lstat } from 'node:fs/promises';
+import { mkdir, open, rename, readFile, lstat, realpath } from 'node:fs/promises';
 import { join, resolve, dirname, parse } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { randomUUID, createHash } from 'node:crypto';
@@ -14,6 +14,7 @@ import { prepareBrowserControlProofs, validControlProof } from './control-proofs
 import businessJourneys from '../../contracts/e2e-staging-business-journeys.v1.json' with { type: 'json' };
 import invoiceJourney from '../../contracts/e2e-staging-invoice-journey.v1.json' with { type: 'json' };
 import { validInvoiceTracker } from '../../js/invoice-tracker-model.js';
+import { LOCAL_AGENT_PHASE_REASON } from './local-agent-phase.mjs';
 
 const FIXTURE = { id: 'fc08d2f4-a951-5679-9f34-40d0f4278842', name: 'Synthetic Staging Fixture' };
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -690,7 +691,16 @@ function completeOperationReceipt(name, args, recordIDs, receipt, attemptedAt, p
       row.response?.receipt?.event_id === args.event_id);
     const priorBinding = prior && completeOperationReceipt('patch-deal-field', prior.arguments, prior.record_ids,
       prior.response?.receipt, prior.attempted_at);
-    if (prior && priorBinding && prior.response?.binding && digest(priorBinding) === digest(prior.response.binding) &&
+    const automatic = plan?.automatic_phase_fixture;
+    const automaticBound = ['admitted', 'observed'].includes(automatic?.state) && automatic.deal_id === primary &&
+      automatic.event_id === args.event_id && automatic.old_value === 'pending' &&
+      automatic.new_value === 'research';
+    if (automaticBound && receipt.old_value === automatic.new_value &&
+        receipt.new_value === automatic.old_value)
+      effect = { field: 'phase', reverted_event_id: receipt.reverted_event_id,
+        prior_old_value: automatic.old_value, old_value: receipt.old_value, new_value: receipt.new_value,
+        event_id: receipt.event_id, event_recorded_at: receipt.event_recorded_at };
+    else if (prior && priorBinding && prior.response?.binding && digest(priorBinding) === digest(prior.response.binding) &&
         priorBinding.effect.new_value === receipt.old_value && priorBinding.effect.old_value === receipt.new_value)
       effect = { field: 'phase', reverted_event_id: receipt.reverted_event_id,
         prior_old_value: priorBinding.effect.old_value,
@@ -732,6 +742,21 @@ function observedJourneyUI(row) {
     Number.isFinite(Date.parse(ui.observed_at)) && Date.parse(ui.observed_at) >= Date.parse(row.journey.admitted_at) &&
     Date.parse(ui.observed_at) <= Date.now() + 5000;
 }
+function observedAutomaticUI(row, plan) {
+  const observed = row.automatic_phase;
+  const effect = row.response?.binding?.effect;
+  return observed?.schema === 'staging-w4-automatic-undo.v1' && observed.state === 'observed' &&
+    observed.fixture_run === plan.run && digest(observed.release) === digest(plan.release) &&
+    observed.event_id === plan.automatic_phase_fixture?.event_id &&
+    plan.automatic_phase_fixture?.state === 'observed' &&
+    observed.ui?.schema === 'staging-w4-automatic-undo-ui.v1' &&
+    observed.ui.observation_sha256 === digest({ event_id: observed.event_id,
+      before_badge_visible: true, exact_undo_clicked: true, after_badge_absent: true,
+      restored_phase: 'pending', undo_event_id: effect?.event_id }) &&
+    Number.isFinite(Date.parse(observed.ui.observed_at)) &&
+    Date.parse(observed.ui.observed_at) >= Date.parse(observed.admitted_at) &&
+    Date.parse(observed.ui.observed_at) <= Date.now() + 5000;
+}
 function isCalendarDate(value) {
   if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value) || Number(value.slice(0, 4)) < 1) return false;
   const date = new Date(`${value}T00:00:00.000Z`);
@@ -762,7 +787,9 @@ function verifiedReadback(row, detail, plan) {
   if (binding?.operation === 'revert-deal-field')
     return detail?.deal_id === row.record_ids[0] && detail.phase === effect.new_value &&
       hasPhaseEvent(detail, row.record_ids[0], effect.event_id, effect.old_value, effect.new_value, 'revert-deal-field') &&
-      hasPhaseEvent(detail, row.record_ids[0], effect.reverted_event_id, effect.prior_old_value, effect.old_value, 'patch-deal-field');
+      hasPhaseEvent(detail, row.record_ids[0], effect.reverted_event_id, effect.prior_old_value, effect.old_value, 'patch-deal-field') &&
+      (!row.automatic_phase || detail.events.some(event => event.id === effect.reverted_event_id &&
+        event.actor === 'joe-local'));
   if (binding?.operation === 'add-critical-date') {
     if (detail?.deal_id !== row.record_ids[0] || !Array.isArray(detail.critical_dates)) return false;
     const matches = detail.critical_dates.filter(date => date?.id === effect.critical_date_id);
@@ -785,6 +812,7 @@ function requirePlanCoverage(plan, scope) {
         const needsReadback = fixtureWritesNeedingReadback.has(row.operation);
         return !bound || !row.response.binding || digest(bound) !== digest(row.response.binding) ||
           needsReadback && !validIndependentReadback(row) || row.journey && !observedJourneyUI(row) ||
+          row.automatic_phase && !observedAutomaticUI(row, plan) ||
           row.operation === 'record-commission-receipt' &&
             (plan.fixture_proofs?.invoice?.state !== 'quarantined' ||
              row.journey?.fixture_proof_sha256 !== plan.fixture_proofs.invoice.proof_sha256 ||
@@ -815,9 +843,113 @@ function validIndependentReadback(row) {
     typeof row.independent_readback.observed_at === 'string' && Number.isFinite(Date.parse(row.independent_readback.observed_at));
 }
 
+const automaticJournalName = 'w4-local-agent-phase.json';
+async function readAutomaticJournal(output) {
+  const path = join(output, 'private', automaticJournalName);
+  let directory, file;
+  try { directory = await lstat(dirname(path)); file = await lstat(path); }
+  catch { policyFailure('automatic-event-journal-missing'); }
+  if (!directory.isDirectory() || (directory.mode & 0o777) !== 0o700 ||
+      await realpath(dirname(path)) !== resolve(dirname(path)))
+    policyFailure('automatic-event-journal-unsafe');
+  if (!file.isFile() || file.nlink !== 1 || (file.mode & 0o777) !== 0o600)
+    policyFailure('automatic-event-journal-unsafe');
+  const journal = await readPrivateJSON(path);
+  if (!journal) policyFailure('automatic-event-journal-missing');
+  return journal;
+}
+
+function validAutomaticJournal(journal, plan, runId) {
+  const request = journal?.request, receipt = journal?.receipt;
+  return journal?.schema === 'staging-w4-local-agent-phase.v1' && journal.state === 'observed' &&
+    journal.doc_authorship_qualified === false && journal.run_id === runId &&
+    journal.fixture_run === plan.run && digest(journal.source_pair) === digest(plan.release) &&
+    journal.deal_id === plan.records.deal?.id && plan.receipts.deal?.deal_id === journal.deal_id &&
+    request && Object.keys(request).sort().join() === 'base_event_id,change_reason,deal,field,idempotency_key,value' &&
+    isUUID(request.idempotency_key || '') && request.deal === journal.deal_id &&
+    request.field === 'phase' && request.value === 'research' &&
+    (request.base_event_id === null || isUUID(request.base_event_id || '')) &&
+    request.change_reason === LOCAL_AGENT_PHASE_REASON &&
+    receipt?.ok === true && receipt.replayed !== true && receipt.deal_id === journal.deal_id &&
+    receipt.field === 'phase' && receipt.old_value === 'pending' && receipt.new_value === 'research' &&
+    isUUID(receipt.event_id || '') && Number.isFinite(Date.parse(receipt.event_recorded_at)) &&
+    Number.isFinite(Date.parse(journal.started_at)) &&
+    ['before_sha256','board_sha256','detail_sha256','cause_sha256'].every(key => /^[a-f0-9]{64}$/.test(journal[key] || '')) &&
+    Number.isFinite(Date.parse(journal.observed_at));
+}
+
+function validAutomaticBinding(binding, journal, plan) {
+  return binding?.schema === 'staging-w4-agent-event-binding.v1' &&
+    ['admitted', 'observed'].includes(binding.state) &&
+    binding.run_id === journal.run_id &&
+    binding.fixture_run === plan.run && digest(binding.source_pair) === digest(plan.release) &&
+    binding.deal_id === journal.deal_id && binding.event_id === journal.receipt.event_id &&
+    binding.old_value === 'pending' && binding.new_value === 'research' &&
+    binding.journal_sha256 === digest(journal) &&
+    ['board_sha256','detail_sha256','activity_sha256'].every(key =>
+      /^[a-f0-9]{64}$/.test(binding[key] || '')) &&
+    Number.isFinite(Date.parse(binding.admitted_at)) &&
+    (binding.state !== 'observed' ||
+      ['undo_board_sha256','undo_detail_sha256'].every(key => /^[a-f0-9]{64}$/.test(binding[key] || '')));
+}
+
+function automaticBeforeReads({ board, detail, activity }, fixture, plan) {
+  const deal = plan.records.deal.id, event = fixture.event_id;
+  const rows = board?.schema_version === 'local-deals-board.v1' && Array.isArray(board.deals)
+    ? board.deals.filter(row => row.id === deal) : [];
+  const change = rows[0]?.phase_change;
+  const history = Array.isArray(detail?.events) ? detail.events.filter(row => row.id === event) : [];
+  const entries = activity?.schema_version === 'doc-activity.v1' && Array.isArray(activity.entries)
+    ? activity.entries.filter(row => row.id === event) : [];
+  return board?.actor === 'joe' && rows.length === 1 && rows[0].name === plan.records.deal.name &&
+    rows[0].owner === 'joe' && rows[0].client_ref === plan.records.client?.ref &&
+    rows[0].phase === 'research' && change?.automatic === true && change.event_id === event &&
+    change.prior_phase === 'pending' && change.phase === 'research' &&
+    change.reason === LOCAL_AGENT_PHASE_REASON && Number.isFinite(Date.parse(change.evidence_date)) &&
+    detail?.deal_id === deal && detail.phase === 'research' && detail.phase_change?.event_id === event &&
+    detail.phase_change.automatic === true &&
+    history.length === 1 && history[0].actor === 'joe-local' && history[0].verb === 'patch-deal-field' &&
+    history[0].recorded_at === fixture.event_recorded_at &&
+    history[0].field === 'phase' && history[0].old_value?.phase === 'pending' &&
+    history[0].new_value?.phase === 'research' && entries.length === 1 &&
+    entries[0].actor === 'Joe (local)' && entries[0].partner === 'joe' &&
+    entries[0].record?.id === deal && entries[0].why === LOCAL_AGENT_PHASE_REASON &&
+    entries[0].before === 'pending' && entries[0].after === 'research' &&
+    entries[0].undo?.state === 'available' &&
+    entries[0].undo?.event_id === event;
+}
+
+async function normalAutomaticReads(run, release, deal, since, includeCause) {
+  const fresh = await stagingSession(STAGING_ORIGIN, { run });
+  if (fresh.release?.source_commit !== release.source_commit ||
+      fresh.release?.carr_source_commit !== release.carr_source_commit)
+    policyFailure('automatic-event-source-changed');
+  const api = await createStagingRequestContext({ baseURL: STAGING_ORIGIN, storageState: fresh.state, run });
+  let sequence = 0;
+  const headers = { origin: STAGING_ORIGIN, 'sec-fetch-site': 'same-origin', 'content-type': 'application/json' };
+  const rpc = async (name, args) => {
+    const response = await api.post('/mcp', { headers, maxRedirects: 0, data: {
+      jsonrpc: '2.0', id: ++sequence, method: 'tools/call', params: { name, arguments: args } } });
+    if (!response.ok()) policyFailure('automatic-event-normal-read-refused');
+    const envelope = await response.json();
+    if (envelope?.jsonrpc !== '2.0' || envelope.id !== sequence || envelope.error ||
+        envelope.result?.isError || envelope.result?.content?.length !== 1 ||
+        envelope.result.content[0].type !== 'text') policyFailure('automatic-event-normal-read-refused');
+    return JSON.parse(envelope.result.content[0].text);
+  };
+  try { return { board: await rpc('deal-room-board', { workspace: 'all' }),
+    detail: await rpc('get-deal-room', { deal }),
+    activity: includeCause ? await rpc('read-doc-activity',
+      { partner: 'joe', record_type: 'deal', since, limit: 100 }) : null }; }
+  finally { await api.dispose(); }
+}
+
 // One test-harness seam, using the existing private setup/receipt store.
 // Unsupported global/account/runtime operations remain explicit coverage gaps.
-export function stagingFixtureWriteGuard({ output, release, invoiceFixtureTarget, run = process.env.E2E_RUN_SUPERVISED === '1' ? requireSupervisedRun(output) : undefined, persist = (path, value) => privateJSON(path, value, false, run) } = {}) {
+export function stagingFixtureWriteGuard({ output, release, invoiceFixtureTarget,
+  run = process.env.E2E_RUN_SUPERVISED === '1' ? requireSupervisedRun(output) : undefined,
+  persist = (path, value) => privateJSON(path, value, false, run),
+  normalReads = normalAutomaticReads } = {}) {
   invoiceFixtureTarget = invoiceFixtureTarget && structuredClone(invoiceFixtureTarget);
   const planPath = typeof output === 'string' ? join(output, 'staging-records-plan.json') : null;
   const refusals = [], pending = new Set();
@@ -841,6 +973,12 @@ export function stagingFixtureWriteGuard({ output, release, invoiceFixtureTarget
         release?.carr_source_commit !== contract.producer.source_commit ||
         !/^[0-9a-f]{40}$/.test(release?.source_commit || '') || !plan.records || !plan.receipts)
       policyFailure('fixture-provenance-missing');
+    if (plan.automatic_phase_fixture) {
+      const journal = await readAutomaticJournal(output);
+      if (!validAutomaticJournal(journal, plan, run.snapshot().id) ||
+          !validAutomaticBinding(plan.automatic_phase_fixture, journal, plan))
+        policyFailure('automatic-event-journal-changed');
+    }
     return plan;
   };
   const owned = (plan, record, reference) => {
@@ -899,13 +1037,17 @@ export function stagingFixtureWriteGuard({ output, release, invoiceFixtureTarget
           attempts.some(row => row.operation === name && row.record_ids?.includes(args.deal)))
         policyFailure('operation-shape-unproved');
     }
-    let priorPhasePatch = null;
+    let priorPhasePatch = null, automaticPhase = null;
     if (name === 'revert-deal-field') {
       const prior = attempts.find(row => row.operation === 'patch-deal-field' && row.state === 'acknowledged' &&
         row.response?.receipt?.event_id === args.event_id);
       const priorBinding = prior && completeOperationReceipt('patch-deal-field', prior.arguments,
         prior.record_ids, prior.response?.receipt, prior.attempted_at, plan);
-      if (!priorBinding || !prior.response?.binding || digest(priorBinding) !== digest(prior.response.binding) ||
+      const automatic = plan.automatic_phase_fixture;
+      automaticPhase = automatic?.state === 'admitted' && automatic.event_id === args.event_id &&
+        automatic.deal_id === plan.records.deal?.id && !prior ? automatic : null;
+      if ((!automaticPhase && (!priorBinding || !prior.response?.binding ||
+          digest(priorBinding) !== digest(prior.response.binding))) ||
           attempts.some(row => row.operation === name && row.arguments?.event_id === args.event_id))
         policyFailure('operation-shape-unproved');
       priorPhasePatch = prior;
@@ -916,6 +1058,8 @@ export function stagingFixtureWriteGuard({ output, release, invoiceFixtureTarget
       policyFailure('operation-shape-unproved');
     const id = name === 'record-commission-receipt' ? plan.fixture_proofs.invoice.proof.fixture.commission_id : ['patch-deal-field', 'add-critical-date'].includes(name)
       ? owned(plan, 'deal', args.deal)
+      : name === 'revert-deal-field' && automaticPhase
+        ? owned(plan, 'deal', automaticPhase.deal_id)
       : name === 'revert-deal-field' && priorPhasePatch
         ? owned(plan, 'deal', priorPhasePatch.arguments?.deal)
         : owned(plan, spec.record, args[spec.field]) ||
@@ -1050,6 +1194,7 @@ export function stagingFixtureWriteGuard({ output, release, invoiceFixtureTarget
         admitControl: control => guard.admitControl(control, scope),
         admitBusinessJourneyStep: step => guard.admitBusinessJourneyStep(step),
         admitBusinessJourneyPresence: step => guard.admitBusinessJourneyPresence(step),
+        admitAutomaticPhaseUndo: step => guard.admitAutomaticPhaseUndo(step),
       };
     },
     async admitBusinessJourneyPresence(spec) {
@@ -1101,6 +1246,104 @@ export function stagingFixtureWriteGuard({ output, release, invoiceFixtureTarget
         run.check();
         await new Promise(resolve => setTimeout(resolve, 25));
       }
+    },
+    async admitAutomaticPhaseUndo(spec) {
+      requireSupervisedRun(output, run);
+      run.check();
+      const keys = Object.keys(spec || {}).sort().join();
+      if (!['admit','status','observe'].includes(spec?.phase) ||
+          keys !== (spec.phase === 'observe' ? 'deal,observation,phase,release' : 'deal,phase,release') ||
+          spec.release?.source_commit !== release?.source_commit ||
+          spec.release?.carr_source_commit !== release?.carr_source_commit ||
+          !isUUID(spec.deal || '')) policyFailure('automatic-undo-scope-unproved');
+      if (spec.phase === 'status') return locked(async () => {
+        const plan = await currentPlan();
+        if (plan.records.deal?.id !== spec.deal) policyFailure('record-outside-fixtures');
+        const rows = (plan.browser_write_attempts || []).filter(row => row.automatic_phase);
+        if (rows.length !== 1) policyFailure('automatic-undo-intent-missing');
+        return structuredClone(rows[0]);
+      });
+      await locked(async () => {
+        const plan = await currentPlan();
+        if (!owned(plan, 'deal', spec.deal)) policyFailure('record-outside-fixtures');
+      });
+      const journal = await readAutomaticJournal(output);
+      if (journal.state !== 'observed' || !Number.isFinite(Date.parse(journal.receipt?.event_recorded_at)))
+        policyFailure('automatic-event-journal-unsettled');
+      const reads = await normalReads(run, release, spec.deal, journal.receipt.event_recorded_at,
+        spec.phase === 'admit');
+      return locked(async () => {
+        const plan = await currentPlan();
+        if (!owned(plan, 'deal', spec.deal)) policyFailure('record-outside-fixtures');
+        const attempts = plan.browser_write_attempts || [];
+        const rows = attempts.filter(row => row.automatic_phase);
+        if (rows.length > 1) policyFailure('automatic-undo-intent-ambiguous');
+        if (spec.phase === 'admit') {
+          if (rows.length) policyFailure('automatic-undo-intent-already-exists');
+          requirePlanCoverage(plan);
+          if (!validAutomaticJournal(journal, plan, run.snapshot().id) ||
+              journal.deal_id !== spec.deal ||
+              attempts.some(row => row.response?.receipt?.event_id === journal.receipt.event_id ||
+                row.arguments?.event_id === journal.receipt.event_id) ||
+              !automaticBeforeReads(reads, journal.receipt, plan))
+            policyFailure('automatic-event-provenance-unproved');
+          const manual = attempts.filter(row => row.journey?.id === 'W4');
+          if (manual.length !== 2 || new Set(manual.map(row => row.journey.step)).size !== 2 ||
+              !['move', 'undo'].every(step => manual.some(row => row.journey.step === step)) ||
+              !manual.every(row => observedJourneyUI(row) && validIndependentReadback(row)) ||
+              manual.some(row => row.response?.binding?.effect?.event_id === journal.receipt.event_id))
+            policyFailure('automatic-event-manual-predecessor-unproved');
+          plan.automatic_phase_fixture = { schema: 'staging-w4-agent-event-binding.v1',
+            state: 'admitted', deal_id: spec.deal, event_id: journal.receipt.event_id,
+            old_value: 'pending', new_value: 'research', journal_sha256: digest(journal),
+            source_pair: structuredClone(plan.release), fixture_run: plan.run, run_id: run.snapshot().id,
+            board_sha256: digest(reads.board), detail_sha256: digest(reads.detail),
+            activity_sha256: digest(reads.activity), admitted_at: new Date().toISOString() };
+          const template = { event_id: journal.receipt.event_id };
+          const { ids, fingerprint } = proveOperation(plan, 'revert-deal-field',
+            { ...template, idempotency_key: randomUUID() });
+          const row = { schema: 'staging-fixture-browser-intent.v1', fingerprint,
+            operation: 'revert-deal-field', record_ids: [...ids], argument_template: template,
+            arguments: structuredClone(template), state: 'admitted', dispatched_outcome: 'not dispatched',
+            automatic_phase: { schema: 'staging-w4-automatic-undo.v1', state: 'admitted',
+              event_id: template.event_id, fixture_run: plan.run, release: structuredClone(plan.release),
+              admitted_at: new Date().toISOString() } };
+          plan.browser_write_attempts ||= [];
+          plan.browser_write_attempts.push(row);
+          await persist(planPath, plan);
+          return structuredClone(row);
+        }
+        const row = rows[0], event = plan.automatic_phase_fixture?.event_id;
+        if (!row || row.state !== 'acknowledged' || row.automatic_phase.state !== 'admitted' ||
+            row.arguments?.event_id !== event || !validIndependentReadback(row) ||
+            !row.response?.binding?.effect ||
+            digest(spec.observation) !== digest({ event_id: event, before_badge_visible: true,
+              exact_undo_clicked: true, after_badge_absent: true, restored_phase: 'pending',
+              undo_event_id: row.response.binding.effect.event_id }))
+          policyFailure('automatic-undo-observation-unproved');
+        const boardRows = reads.board?.schema_version === 'local-deals-board.v1' &&
+          Array.isArray(reads.board.deals) ? reads.board.deals.filter(item => item.id === spec.deal) : [];
+        const change = boardRows[0]?.phase_change, detail = reads.detail;
+        const effect = row.response.binding.effect;
+        if (reads.board?.actor !== 'joe' || boardRows.length !== 1 ||
+            boardRows[0].name !== plan.records.deal.name || boardRows[0].owner !== 'joe' ||
+            boardRows[0].client_ref !== plan.records.client?.ref || boardRows[0].phase !== 'pending' ||
+            change?.event_id !== effect.event_id || change.automatic !== false ||
+            detail?.deal_id !== spec.deal || detail.phase !== 'pending' ||
+            detail.phase_change?.event_id !== effect.event_id ||
+            !verifiedReadback(row, detail, plan) ||
+            detail.events.filter(item => item.id === effect.event_id && item.actor === 'joe').length !== 1)
+          policyFailure('automatic-undo-readback-unproved');
+        row.automatic_phase.state = 'observed';
+        row.automatic_phase.ui = { schema: 'staging-w4-automatic-undo-ui.v1',
+          observation_sha256: digest(spec.observation), observed_at: new Date().toISOString() };
+        plan.automatic_phase_fixture.state = 'observed';
+        plan.automatic_phase_fixture.undo_board_sha256 = digest(reads.board);
+        plan.automatic_phase_fixture.undo_detail_sha256 = digest(detail);
+        requirePlanCoverage(plan);
+        await persist(planPath, plan);
+        return structuredClone(row);
+      });
     },
     async admitBusinessJourneyStep(spec) {
       requireSupervisedRun(output, run);
@@ -1417,19 +1660,29 @@ export function stagingFixtureWriteGuard({ output, release, invoiceFixtureTarget
         }
         token = await locked(async () => {
           const plan = await currentPlan();
-          const admitted = (plan.browser_write_attempts || []).filter(row => row.state === 'admitted' && row.journey);
+          const admitted = (plan.browser_write_attempts || []).filter(row => row.state === 'admitted' &&
+            (row.journey || row.automatic_phase));
           const intent = admitted.length === 1 ? admitted[0] : null;
           if (name === 'record-commission-receipt' && !intent) policyFailure('journey-intent-missing');
-          if ((plan.browser_write_attempts || []).some(row => row.journey) && !intent)
+          if ((plan.browser_write_attempts || []).some(row => row.journey || row.automatic_phase) && !intent)
             policyFailure('journey-intent-missing');
           const actualTemplate = { ...args };
           delete actualTemplate.idempotency_key;
           if (admitted.length && (!intent || intent.operation !== name ||
               digest(actualTemplate) !== digest(intent.argument_template))) policyFailure('journey-request-unproved');
-          if (intent && (intent.journey.schema !== 'staging-business-journey-step.v1' || intent.journey.state !== 'admitted' ||
-              intent.journey.fixture_run !== plan.run ||
+          if (intent?.journey && (intent.journey.schema !== 'staging-business-journey-step.v1' ||
+              intent.journey.state !== 'admitted' || intent.journey.fixture_run !== plan.run ||
               digest(intent.journey.release) !== digest(plan.release) ||
-              intent.journey.contract_sha256 !== digest(journeyContract(intent.journey.id)))) policyFailure('journey-binding-changed');
+              intent.journey.contract_sha256 !== digest(journeyContract(intent.journey.id))))
+            policyFailure('journey-binding-changed');
+          if (intent?.automatic_phase && (name !== 'revert-deal-field' ||
+              intent.automatic_phase.state !== 'admitted' ||
+              intent.automatic_phase.schema !== 'staging-w4-automatic-undo.v1' ||
+              intent.automatic_phase.fixture_run !== plan.run ||
+              digest(intent.automatic_phase.release) !== digest(plan.release) ||
+              intent.automatic_phase.event_id !== plan.automatic_phase_fixture?.event_id ||
+              args.event_id !== intent.automatic_phase.event_id))
+            policyFailure('automatic-undo-binding-changed');
           const { ids, fingerprint } = proveOperation(intent ? { ...plan,
             browser_write_attempts: plan.browser_write_attempts.filter(row => row !== intent) } : plan, name, args);
           plan.browser_write_attempts ||= [];
@@ -1489,7 +1742,14 @@ export function stagingFixtureWriteGuard({ output, release, invoiceFixtureTarget
 }
 
 export async function assertStagingWriteCoverage(output) {
-  requirePlanCoverage(await readPrivateJSON(join(output, 'staging-records-plan.json')));
+  const plan = await readPrivateJSON(join(output, 'staging-records-plan.json'));
+  requirePlanCoverage(plan);
+  if (plan?.automatic_phase_fixture) {
+    const journal = await readAutomaticJournal(output);
+    if (!validAutomaticJournal(journal, plan, plan.automatic_phase_fixture.run_id) ||
+        !validAutomaticBinding(plan.automatic_phase_fixture, journal, plan))
+      policyFailure('automatic-event-journal-changed');
+  }
 }
 
 export async function readStagingFixtureRelease(output) {
