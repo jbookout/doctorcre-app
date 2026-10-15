@@ -152,6 +152,8 @@ test('scope failure cannot leave acknowledgement-only invoice capture covered', 
 test('capture readback requires a fresh unique invoice with the fixture identity and content', async () => {
   for (const captureMutation of [
     queue => { queue.proposals = []; },
+    queue => { queue.moves = queue.proposals; queue.proposals = []; },
+    queue => { queue.moves = structuredClone(queue.proposals); },
     queue => { queue.proposals.push(structuredClone(queue.proposals[0])); },
     queue => { queue.proposals[0].invoice_id = id(99); },
     queue => { queue.proposals[0].deal_id = id(99); },
