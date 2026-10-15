@@ -30,7 +30,9 @@ const durableBusinessAction = row => row?.id === 'W4' && row.case === 'local-dea
 const execute = promisify(execFile);
 const ownFailures = new WeakSet();
 const businessFailureCodes = new Set(['business-journey-receipt-missing', 'business-journey-selector-unavailable',
-  'business-journey-readback-incomplete', 'business-journey-settlement-unverified']);
+  'business-journey-readback-incomplete', 'business-journey-settlement-unverified',
+  'staging-fixture-rpc-unresolved', 'staging-fixture-stage-prerequisite',
+  'staging-fixture-taxonomy-prerequisite', 'staging-fixture-category-prerequisite']);
 export function businessWorkerFailureCode(error) {
   if (businessFailureCodes.has(error?.code)) return error.code;
   if (error?.code === 'write-coverage-incomplete' ||
@@ -440,15 +442,19 @@ export async function canaryLimits(duration) {
 export function canaryFailure(marker, reason, detail = '') {
   const safeWorkerCauses = new Set(['canary-shell-navigation-missing', 'canary-shell-document-status',
     'canary-shell-url-invalid', 'canary-shell-script-failed', 'canary-shell-main-count',
-    'staging-fixture-candidate-refused']);
-  const match = reason === 'worker-exit-1' && /^Staging run stopped: worker-exit-1 \(cause=(canary-shell-(?:navigation-missing|document-status|url-invalid|script-failed|main-count)|staging-fixture-candidate-refused)(?:; location=[A-Za-z0-9._/-]+:\d+:\d+)?\)$/.exec(detail);
+    'staging-fixture-candidate-refused', 'staging-fixture-rpc-unresolved',
+    'staging-fixture-stage-prerequisite', 'staging-fixture-taxonomy-prerequisite',
+    'staging-fixture-category-prerequisite']);
+  const match = reason === 'worker-exit-1' && /^Staging run stopped: worker-exit-1 \(cause=(canary-shell-(?:navigation-missing|document-status|url-invalid|script-failed|main-count)|staging-fixture-(?:candidate-refused|rpc-unresolved|stage-prerequisite|taxonomy-prerequisite|category-prerequisite))(?:; location=[A-Za-z0-9._/-]+:\d+:\d+)?\)$/.exec(detail);
   const diagnostic = match && safeWorkerCauses.has(match[1]) ? match[1] : reason;
   const closed = new Set(['worker-exit-1', 'stop-signal', 'whole-run-deadline', 'http-request-limit',
     'http-admission-timeout', 'http-timeout', 'artifact-byte-limit', 'process-cleanup-unverified',
     'process-inspection-unavailable', 'run-ledger-invalid', 'run-ledger-busy', 'source-pair-mismatch',
     'source-pair-readback-refused', 'checkout-mismatch', 'checkout-source-changed',
     'canary-shell-navigation-missing', 'canary-shell-document-status', 'canary-shell-url-invalid',
-    'canary-shell-script-failed', 'canary-shell-main-count', 'staging-fixture-candidate-refused']);
+    'canary-shell-script-failed', 'canary-shell-main-count', 'staging-fixture-candidate-refused',
+    'staging-fixture-rpc-unresolved', 'staging-fixture-stage-prerequisite',
+    'staging-fixture-taxonomy-prerequisite', 'staging-fixture-category-prerequisite']);
   const phase = marker?.schema === 'doctorcre-staging-canary-phase.v1' && canaryPhases.has(marker.phase)
     ? marker.phase : marker?.schema === 'doctorcre-staging-startup-canary.v1' &&
       marker.status === 'AUTHENTICATED_READ_ONLY_CANARY' && marker.acceptedV1 === false ? 'cleanup' : 'startup';
@@ -1402,6 +1408,8 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
       'continuation-budget-unsettled', 'continuation-size-limit', 'continuation-path-refused', 'write-coverage-incomplete',
       'canary-shell-navigation-missing', 'canary-shell-document-status', 'canary-shell-url-invalid',
       'canary-shell-script-failed', 'canary-shell-main-count', 'staging-fixture-candidate-refused',
+      'staging-fixture-rpc-unresolved', 'staging-fixture-stage-prerequisite',
+      'staging-fixture-taxonomy-prerequisite', 'staging-fixture-category-prerequisite',
       ...businessFailureCodes]);
     const code = ownFailures.has(error) || closed.has(error?.code) ? error.code : 'source-check-failed';
     console.error(`Staging continuation stopped: ${code}; no full V1 acceptance is established.`);

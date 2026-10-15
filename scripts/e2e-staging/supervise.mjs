@@ -26,7 +26,7 @@ const SAFE_CAUSES = [
   [/^Error: No tests found\b/, 'playwright-no-tests-discovered'],
   [/^SyntaxError:/, 'javascript-syntax-error'],
   [/^Staging continuation stopped: (business-journey-(?:receipt-missing|selector-unavailable|readback-incomplete|settlement-unverified)); no full V1 acceptance is established\.$/, null],
-  [/^Staging continuation stopped: (canary-shell-(?:navigation-missing|document-status|url-invalid|script-failed|main-count)|staging-fixture-candidate-refused); no full V1 acceptance is established\.$/, null],
+  [/^Staging continuation stopped: (canary-shell-(?:navigation-missing|document-status|url-invalid|script-failed|main-count)|staging-fixture-(?:candidate-refused|rpc-unresolved|stage-prerequisite|taxonomy-prerequisite|category-prerequisite)); no full V1 acceptance is established\.$/, null],
   [/^Staging run stopped: (run-directory-required|invalid-run-limits|run-ledger-invalid|run-ledger-unreadable|process-inspection-unavailable|process-ownership-invalid|process-cleanup-unverified|artifact-path-refused|artifact-symlink-refused|artifact-size-unavailable|http-request-limit|http-timeout|whole-run-deadline)\b/, null],
 ];
 const SAFE_SESSION_FAILURE = /^Error: staging session preflight failed: ((?:context-failed|app-release-failed|app-release-invalid|app-release-http-(?:400|401|403|404|429|500|502|503|504)|carr-release-failed|carr-release-http-(?:400|401|403|404|429|500|502|503|504)|carr-source-pair-refused|secret-failed|session-exchange-failed|session-exchange-refused-(?:400|401|403|404|429|500|502|503|504)|session-confirm-failed|session-confirm-http-(?:400|401|403|404|429|500|502|503|504)|dedicated-principal-refused|cookie-failed|secure-cookie-refused|context-dispose-failed))$/;

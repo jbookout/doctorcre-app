@@ -10,6 +10,7 @@ import contract from '../../contracts/e2e-staging.v1.json' with { type: 'json' }
 import appRoutes from '../../contracts/app-routes.v1.json' with { type: 'json' };
 import { eligibleLead } from '../../js/leads-model.js';
 import { COLUMNS } from '../../js/pipeline-model.js';
+import { sourceIsFresh } from '../../js/workspace-business-model.js';
 import { prepareBrowserControlProofs, validControlProof } from './control-proofs.mjs';
 import businessJourneys from '../../contracts/e2e-staging-business-journeys.v1.json' with { type: 'json' };
 import invoiceJourney from '../../contracts/e2e-staging-invoice-journey.v1.json' with { type: 'json' };
@@ -22,6 +23,66 @@ const isUUID = value => typeof value === 'string' && UUID.test(value);
 const fail = () => { throw new Error('Staging record contract refused'); };
 const requireValue = condition => { if (!condition) fail(); };
 const recordId = value => { requireValue(isUUID(value || '')); return value; };
+const vendorTaxonomyFailure = code => Object.assign(new Error('Staging vendor taxonomy prerequisite unavailable'), { code });
+const SAFE_RECORD_SETUP_CODES = new Set(['staging-fixture-rpc-unresolved', 'staging-fixture-stage-prerequisite',
+  'staging-fixture-taxonomy-prerequisite', 'staging-fixture-category-prerequisite']);
+
+const TOOL_ERROR_CODES = new Set([
+  'database_refused_the_statement', 'invalid_arguments', 'not_found', 'not_in_profile',
+  'research_evidence_incomplete', 'research_evidence_required', 'research_source_invalid',
+  'stale_version', 'unknown_vendor_stage', 'unhandled_verb_failure', 'unauthorized',
+  'version_conflict',
+]);
+const JSON_RPC_ERROR_CODES = new Map([
+  [-32700, 'json-rpc-parse-error'], [-32600, 'json-rpc-invalid-request'],
+  [-32601, 'json-rpc-method-not-found'], [-32602, 'json-rpc-invalid-params'],
+  [-32603, 'json-rpc-internal-error'],
+]);
+const RAW_RESPONSE_SHA256 = Symbol('raw-response-sha256');
+const sha256 = value => createHash('sha256').update(value).digest('hex');
+const digestJSON = value => {
+  let serialized;
+  try { serialized = JSON.stringify(value); } catch { serialized = undefined; }
+  return sha256(serialized === undefined ? 'unserializable-json-rpc-reply' : serialized);
+};
+
+/** Parse the staging MCP envelope without retaining or exposing provider text. */
+export function parseStagingRPCReply(answer, expectedId) {
+  const response_sha256 = answer?.[RAW_RESPONSE_SHA256] || digestJSON(answer);
+  const malformed = () => ({ value: null, failure: { code: 'malformed-rpc-reply', response_sha256 } });
+  if (!answer || typeof answer !== 'object' || Array.isArray(answer) || answer.jsonrpc !== '2.0' ||
+      answer.id !== expectedId || (Object.hasOwn(answer, 'error') && Object.hasOwn(answer, 'result'))) return malformed();
+
+  if (Object.hasOwn(answer, 'error')) {
+    const error = answer.error;
+    if (!error || typeof error !== 'object' || Array.isArray(error) || !Number.isInteger(error.code) ||
+        typeof error.message !== 'string') return malformed();
+    return { value: null, failure: { code: JSON_RPC_ERROR_CODES.get(error.code) || 'json-rpc-error', response_sha256 } };
+  }
+
+  const result = answer.result;
+  if (!result || typeof result !== 'object' || Array.isArray(result) ||
+      (Object.hasOwn(result, 'isError') && typeof result.isError !== 'boolean') || !Array.isArray(result.content)) return malformed();
+  const texts = result.content.filter(item => item?.type === 'text' && typeof item.text === 'string');
+  if (!texts.length) return malformed();
+  let value;
+  try { value = JSON.parse(texts[0].text); } catch { return malformed(); }
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return malformed();
+  if (result.isError === true || Object.hasOwn(value, 'error')) {
+    const code = typeof value.error === 'string' && TOOL_ERROR_CODES.has(value.error) ? value.error : 'tool-error';
+    return { value, failure: { code, response_sha256 } };
+  }
+  return { value, failure: null };
+}
+
+class StagingRPCFailure extends Error {
+  constructor(failure) {
+    super('Staging RPC reply unresolved');
+    this.name = 'StagingRPCFailure';
+    this.code = failure.code;
+    this.response_sha256 = failure.response_sha256;
+  }
+}
 
 async function privateJSON(path, value, exclusive = false, run) {
   run = requireSupervisedRun(undefined, run);
@@ -120,21 +181,45 @@ export async function prepareStagingRecords(output, {
       const options = { headers, maxRedirects: 0, ...(data === undefined ? {} : { data }) };
       const response = data === undefined ? await api.get(path, options) : await api.post(path, options);
       requireValue(response.ok());
+      if (path === '/mcp') {
+        const raw = await response.text();
+        try {
+          const parsed = JSON.parse(raw);
+          if (parsed && typeof parsed === 'object') Object.defineProperty(parsed, RAW_RESPONSE_SHA256, { value: sha256(raw) });
+          return parsed;
+        }
+        catch { throw new StagingRPCFailure({ code: 'malformed-rpc-reply', response_sha256: sha256(raw) }); }
+      }
       return response.json();
     }
     let sequence = 0;
     async function rpc(name, args = {}, notFoundDealID) {
-      const answer = await json('/mcp', { jsonrpc: '2.0', id: ++sequence, method: 'tools/call', params: { name, arguments: args } });
-      requireValue(!answer.error);
-      const text = answer.result?.content?.find(item => item.type === 'text')?.text;
-      const value = JSON.parse(text);
-      requireValue(value && typeof value === 'object' && !Array.isArray(value));
-      if (existing && name === 'get-deal-room' && notFoundDealID && answer.result?.isError === true && value.error === 'not_found' && value.table === 'deal' && value.id === notFoundDealID) return value;
-      requireValue(!answer.result?.isError && !value.error && value.ok !== false);
-      return value;
+      const id = ++sequence;
+      const answer = await json('/mcp', { jsonrpc: '2.0', id, method: 'tools/call', params: { name, arguments: args } });
+      const parsed = parseStagingRPCReply(answer, id);
+      if (parsed.failure) {
+        if (existing && name === 'get-deal-room' && notFoundDealID && parsed.failure.code === 'not_found' &&
+            parsed.value?.table === 'deal' && parsed.value?.id === notFoundDealID) return parsed.value;
+        throw new StagingRPCFailure(parsed.failure);
+      }
+      return parsed.value;
     }
     const actor = await json(stagingAuth.session.path);
     requireValue(stagingAuth.session.matches(actor) && typeof actor.csrf_token === 'string' && actor.csrf_token);
+    if (vendorFixture && !plan.records.vendor) {
+      const taxonomy = await json('/api/v1/business/vendors?contract=vendor-directory.v1');
+      const facets = taxonomy?.facets;
+      const facetList = value => Array.isArray(value) && value.every(row => row &&
+        typeof row.slug === 'string' && row.slug.length > 0 && typeof row.label === 'string' && row.label.length > 0);
+      const observedAt = Date.parse(taxonomy?.source?.observed_at);
+      if (taxonomy?.viewer !== 'joe' || taxonomy.dataset !== 'vendors' || !sourceIsFresh(taxonomy.source, 'vendors') ||
+          !Number.isFinite(observedAt) || observedAt > Date.now() + 5000 || !facetList(facets?.categories) ||
+          !facetList(facets?.stages)) throw vendorTaxonomyFailure('staging-fixture-taxonomy-prerequisite');
+      if (!facets.stages.some(row => row.slug === 'prospect_uncontacted'))
+        throw vendorTaxonomyFailure('staging-fixture-stage-prerequisite');
+      if (!facets.categories.some(row => row.slug === 'cpa' && row.label === 'CPA / Financial'))
+        throw vendorTaxonomyFailure('staging-fixture-category-prerequisite');
+    }
     if (!existing) {
       await mkdir(output, { recursive: true, mode: 0o700 });
       await persist(planPath, plan, true);
@@ -146,7 +231,22 @@ export async function prepareStagingRecords(output, {
       plan.inflight = { name, arguments: { ...args, idempotency_key: plan.keys[step] } };
       await persist(planPath, plan);
       signal?.throwIfAborted();
-      const result = await rpc(name, plan.inflight.arguments);
+      let result;
+      try { result = await rpc(name, plan.inflight.arguments); }
+      catch (error) {
+        if (!(error instanceof StagingRPCFailure)) throw error;
+        plan.rpc_failures ||= [];
+        plan.rpc_failures.push({ schema: 'doctorcre-staging-rpc-failure.v1', step, operation: name,
+          code: error.code, observed_at: new Date().toISOString(),
+          request_sha256: sha256(JSON.stringify(plan.inflight.arguments)),
+          response_sha256: error.response_sha256 });
+        // The write may have committed before this response arrived. Keep its exact
+        // durable intent and quarantine the plan; never represent this as no effect.
+        plan.state = 'blocked';
+        await persist(planPath, plan);
+        throw Object.assign(new Error('Staging RPC reply unresolved; reconciliation required'),
+          { code: 'staging-fixture-rpc-unresolved' });
+      }
       if (step === 'party' && result.needs_confirm === true &&
           result.candidates?.filter(row => row.id === FIXTURE.id && row.name === FIXTURE.name).length === 1) {
         plan.inflight = null;
@@ -267,7 +367,7 @@ export async function prepareStagingRecords(output, {
         requireValue(party.ok === true && !party.auto_resolved && !party.needs_confirm);
         await remember('vendor_party', { id: recordId(party.party_id), name: plan.names.vendor });
         const vendor = await write('vendor', 'new-vendor', { party_id: plan.records.vendor_party.id,
-          category: 'Accountant', ref_code: 'CPA', stage: 'prospect_uncontacted',
+          category: 'cpa', ref_code: 'CPA', stage: 'prospect_uncontacted',
           research_evidence: {
             sources: [{ url: 'https://practice.example/vendor?fixture=synthetic-staging-qa-v1', observed_at: plan.observed_at }],
             field_evidence: Object.fromEntries(['company', 'title', 'category', 'market', 'phone', 'website', 'deal_side']
@@ -392,6 +492,8 @@ export async function prepareStagingRecords(output, {
       const vendorRead = await json(`/api/v1/business/vendors/${plan.records.vendor.id}?contract=vendor-directory.v1`);
       requireValue(vendorRead.viewer === 'joe' && vendorRead.record?.id === plan.records.vendor.id &&
         vendorRead.record.name === plan.records.vendor.name &&
+        vendorRead.record.recorded_category === 'cpa' && vendorRead.record.recorded_category_label === 'CPA / Financial' &&
+        vendorRead.record.recorded_stage === 'prospect_uncontacted' &&
         vendorRead.record.relationship?.recent_entries?.some(row => row.id === plan.records.vendor_entry.id && row.kind === 'note') &&
         vendorRead.record.relationship?.introductions?.some(row => row.id === plan.records.vendor_entry.link_id));
     }
@@ -481,6 +583,12 @@ export async function prepareStagingRecords(output, {
     if (error instanceof RunLimitError) throw error;
     signal?.throwIfAborted();
     run?.check();
+    if (error?.code === 'staging-fixture-rpc-unresolved')
+      throw Object.assign(new Error('Staging records setup stopped; partial plan requires reconciliation; no provider payload was logged'),
+        { code: error.code });
+    if (SAFE_RECORD_SETUP_CODES.has(error?.code))
+      throw Object.assign(new Error('Staging vendor taxonomy prerequisite unavailable; no fixture mutation was attempted'),
+        { code: error.code });
     throw new Error(`Staging records setup stopped at ${plan.current_step}; partial plan requires reconciliation; no request or provider payload was logged`);
   } finally { removeAbort(); if (api) await api.dispose().catch(() => {}); }
 }

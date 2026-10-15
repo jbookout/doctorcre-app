@@ -13,13 +13,25 @@ import { canary, canaryRequestAllowed, canaryLimits, canaryFailure, qualifiedMod
   assertSeparated, boundedInvocation, runBusinessPhase, assertCheckout, verifyFrozenSource, publicationBoundary,
   assertSourcePair, invocationBoundary, assertTrustedArtifact, assertFirstWorkflowAttempt, digestDownloadedContinuation,
   assertAdoptionReceipt, assertReadonlyResult, assertJourneyQualification, retainJourneyQualification,
-  assertRestoredEvidence } from '../../scripts/e2e-staging/continue-run.mjs';
+  assertRestoredEvidence, businessWorkerFailureCode, retainedBusinessWorkerCause } from '../../scripts/e2e-staging/continue-run.mjs';
 import { RUN_LIMITS, openRun } from '../../scripts/e2e-staging/run-limits.mjs';
 import contract from '../../contracts/e2e-staging.v1.json' with { type: 'json' };
 
 const sha = 'a'.repeat(40), digest = 'b'.repeat(64);
 const binding = { checkout: sha, app: sha, carr: contract.producer.source_commit };
 const release = { service: 'doctorcre-app', environment: 'staging', source_commit: sha, carr_source_commit: binding.carr };
+
+test('RPC and vendor taxonomy refusals cross the worker boundary as fixed codes only', () => {
+  for (const code of ['staging-fixture-rpc-unresolved', 'staging-fixture-stage-prerequisite',
+    'staging-fixture-taxonomy-prerequisite', 'staging-fixture-category-prerequisite']) {
+    assert.equal(businessWorkerFailureCode({ code, message: 'private-provider-canary' }), code);
+    assert.equal(retainedBusinessWorkerCause({ code: 'worker-exit-1',
+      message: `Staging run stopped: worker-exit-1 (cause=${code})` }), code);
+  }
+  assert.equal(businessWorkerFailureCode({ code: 'provider-error', message: 'private-provider-canary' }), null);
+  assert.equal(retainedBusinessWorkerCause({ code: 'worker-exit-1',
+    message: 'Staging run stopped: worker-exit-1 (cause=staging-fixture-rpc-unresolved; provider=private)' }), null);
+});
 
 test('canary admits the staging shell, static modules and dedicated identity read; RPC and writes never enter browser canary traffic', () => {
   for (const path of ['/', '/js/app.js', '/js/auto-refresh.mjs', '/css/app.css', '/assets/logo.svg',
