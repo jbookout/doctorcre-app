@@ -1,6 +1,3 @@
-// Tours page primary navigation: tours/index.html must carry the same app-wide
-// primary nav as its sibling pages (queue.html, system-work.html, workspace.html),
-// with Tours marked as the current page.
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -23,9 +20,6 @@ test("the primary nav marks Tours as the active/current page", () => {
 });
 
 test("tours/index.html does not link the workspace app's global stylesheet", () => {
-  // css/workspace.css carries global rules (dark body background, etc.) that
-  // are not scoped to .primary-nav and break the tours page's own layout.
-  // The dark register must be styled entirely within tours/app.css instead.
   assert.doesNotMatch(html, /href="\/css\/workspace\.css"/);
 });
 

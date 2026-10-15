@@ -24,7 +24,7 @@ export function modelFor(turn) {
   try {
     const parsed = JSON.parse(turn.body);
     if (typeof parsed?.model === "string" && parsed.model.trim()) return parsed.model.trim();
-  } catch { /* plain dialogue */ }
+  } catch {  }
   return "Model unrecorded";
 }
 
@@ -38,7 +38,7 @@ function explicitThreadKey(turn) {
     for (const record of [value?.queue_completion, value?.queue_event, value?.assignment]) {
       if (typeof record?.task_id === "string") return `task_id:${record.task_id.toLowerCase()}`;
     }
-  } catch { /* plain dialogue */ }
+  } catch {  }
   const work = body.match(/\bWR[- ]?0*(\d{1,6})\b/i);
   if (work) return `wr-${work[1].padStart(6, "0")}`;
   const task = body.match(/\btask[_ -]?id[=: ]+(t_[a-z0-9]+)\b/i);

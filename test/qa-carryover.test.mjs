@@ -1,5 +1,3 @@
-// V1 QA carry-over from PR 180: QA-002, QA-005, QA-009, QA-016.
-// QA-011 (multiple-match guidance) is already covered by search.test.mjs B05-10.
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
@@ -16,12 +14,10 @@ test("QA-002 light Home overrides only the light text tokens, leaving the dark r
   assert.ok(rule, "light-theme rule for .home-shell exists");
   for (const token of ["--text", "--muted", "--quiet"]) assert.match(rule[1], new RegExp(`${token}:\\s*#[0-9a-f]{6}`, "i"), `${token} is set for light`);
   assert.doesNotMatch(rule[1], /background|--orange|--ground/, "light rule adjusts text tokens only");
-  // Dark default is untouched: no unscoped token override on .home-shell.
   assert.doesNotMatch(css.replace(/:root\[data-theme="light"\][^{]*\{[^}]*\}/g, ""), /\.home-shell\s*\{[^}]*--(text|muted|quiet):/);
 });
 
 test("QA-002 light Home calendar tiles keep weekday and date text at 4.5:1", async () => {
-  // Render the Home page's own stylesheets, in page order, around the calendar markup.
   const sheets = [...(await read("workspace.html")).matchAll(/<link rel="stylesheet" href="\/(css\/[^"]+)">/g)].map((match) => match[1]);
   const css = (await Promise.all(sheets.map(read))).join("\n");
   const browser = await chromium.launch();
@@ -42,7 +38,6 @@ test("QA-002 light Home calendar tiles keep weekday and date text at 4.5:1", asy
 
 test("QA-005 phone drawers leave room under the floating Doc control", async () => {
   const css = await read("css/doc-presence.css");
-  // Drawers open on phones and touch tablets, so the room follows the shared touch query.
   const start = css.lastIndexOf(`@media${TOUCH_LAYOUT}{`);
   assert.ok(start >= 0, "doc-presence.css has a touch-layout block");
   const touch = css.slice(start);

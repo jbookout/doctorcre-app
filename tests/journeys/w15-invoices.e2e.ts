@@ -2,11 +2,8 @@ import { productTest } from './test.mjs';
 const test = productTest();
 import { expect } from 'e2e';
 
-// The fixture ages invoices from today, so a payment date must be today too.
 const today = new Date().toLocaleDateString('en-CA');
 
-// W15: the invoice tracker filters by age and status and records a payment;
-// Home surfaces the overdue invoices for the chosen scope.
 test('W15 invoice tracker filters by age and status and records a payment', async ({ app, browser, quality }) => {
   await app.open('/invoices');
   const rows = browser.locator('[data-invoice]');

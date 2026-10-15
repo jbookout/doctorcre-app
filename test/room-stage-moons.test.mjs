@@ -1,13 +1,3 @@
-// The moon orbit's geometry, proved against the numbers actually in progress-wire.js.
-//
-// WHY A TEST AND NOT A LOOK. The stage is drawn by browser-only code inside
-// boot(), and this repo's unattended guard refuses a local fixture server, so
-// "open it and see" is not available to a session running on its own. What can
-// be checked without a browser is the thing that would actually go wrong:
-// seven moons packed around one node either collide with each other, swallow
-// the node they orbit, or fall off the viewBox. The constants are READ OUT OF
-// THE SOURCE rather than restated here, so a later tweak to a radius is caught
-// by this suite instead of silently breaking the composition.
 
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -30,7 +20,7 @@ function field(name, key) {
 
 const CENTER = { x: 600, y: 122 };
 const LEAD_PULSE = 22;
-const MOON_COUNT = 7;   // builder, reviewer, designer, deal steward, intake clerk, marketing ops, system watch
+const MOON_COUNT = 7;
 
 const GEOMETRY = [
   { name: "wide", rings: pair("RINGS_WIDE\\s*=\\s*\\{\\s*inner:", "RINGS_WIDE.inner"), moons: pair("MOONS_WIDE\\s*="),
@@ -53,7 +43,6 @@ const moonPoint = (anchor, moons, index, total) => {
 for (const g of GEOMETRY) {
   test(`on the ${g.name} stage, Doc's moons clear each other, clear Doc, and stay on the canvas`, () => {
     const [vx, vy, vw, vh] = g.view;
-    // Doc can sit in any slot of an inner ring holding three to six lead desks.
     for (let leads = 3; leads <= 6; leads += 1) {
       for (let slot = 0; slot < leads; slot += 1) {
         const doc = ringPoint(g.rings, slot, leads);
