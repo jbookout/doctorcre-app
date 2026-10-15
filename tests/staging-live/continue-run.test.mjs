@@ -1,14 +1,17 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
+import fsPromises from 'node:fs/promises';
+import { syncBuiltinESMExports } from 'node:module';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { canary, canaryRequestAllowed, canaryLimits, canaryFailure, qualifiedModelRoom, assertQualifiedDesk, assertBudget, assertGitHubArtifact,
-  assertSeparated, boundedInvocation, runBusinessPhase, assertSourcePair, invocationBoundary, assertTrustedArtifact } from '../../scripts/e2e-staging/continue-run.mjs';
+  assertSeparated, boundedInvocation, runBusinessPhase, assertCheckout, verifyFrozenSource, publicationBoundary,
+  assertSourcePair, invocationBoundary, assertTrustedArtifact } from '../../scripts/e2e-staging/continue-run.mjs';
 import { RUN_LIMITS, openRun } from '../../scripts/e2e-staging/run-limits.mjs';
 import contract from '../../contracts/e2e-staging.v1.json' with { type: 'json' };
 
@@ -33,6 +36,8 @@ test('canary preserves canonical HTTP timeout, two-way concurrency and queue adm
   assert.equal(limits.httpTimeoutMs, 30_000);
   assert.deepEqual(canaryFailure({ schema: 'doctorcre-staging-canary-phase.v1', phase: 'asset-settlement' }, 'http-admission-timeout'),
     { phase: 'asset-settlement', stopReason: 'http-admission-timeout' });
+  assert.deepEqual(canaryFailure({ schema: 'doctorcre-staging-canary-phase.v1', phase: 'source-readback' }, 'source-pair-mismatch'),
+    { phase: 'source-readback', stopReason: 'source-pair-mismatch' });
   assert.deepEqual(canaryFailure({ schema: 'doctorcre-staging-startup-canary.v1', status: 'AUTHENTICATED_READ_ONLY_CANARY', acceptedV1: false }, 'process-cleanup-unverified'),
     { phase: 'cleanup', stopReason: 'process-cleanup-unverified' });
   const safe = canaryFailure({ schema: 'doctorcre-staging-canary-phase.v1', phase: 'private-cookie-marker' }, 'raw-provider-private-message');
@@ -191,12 +196,12 @@ test('global budget admission rejects exhausted counters, unfinished resources a
 });
 
 const privateMarker = 'SYNTHETIC_PRIVATE_CONTINUATION_MARKER_3c702';
-async function continuationFixture(t, { interrupt = true } = {}) {
+async function continuationFixture(t, { interrupt = true, checkout = sha } = {}) {
   const root = await mkdtemp(join(tmpdir(), 'doctorcre-workflow-chain-'));
   t.after(() => rm(root, { recursive: true, force: true }));
   const startedAt = Date.now(), deadline = Math.min(startedAt + 60 * 60 * 1000, Date.parse('2026-10-15T12:00:00Z'));
   const sourcePair = { source_commit: binding.app, carr_source_commit: binding.carr };
-  const runId = 'synthetic_' + sha;
+  const runId = 'synthetic_' + checkout;
   const plan = { schema: 'doctorcre-staging-records-plan.v1', origin: contract.origin, state: 'complete',
     run: '60000000-0000-4000-8000-000000000001', release: sourcePair, records: {}, receipts: {} };
   const setup = { schema: 'doctorcre-staging-records.v1', origin: contract.origin, release: sourcePair,
@@ -204,7 +209,8 @@ async function continuationFixture(t, { interrupt = true } = {}) {
   const controls = { release, screens: [], history: [], explorations: [], findings: [], stateObligations: [],
     expectedScreens: 62, expectedStates: 62, expectedExplorations: 93, setup: { private_marker: privateMarker } };
   let workerCalls = 0;
-  const dependencies = { qualify: async () => ({}), progress: async () => ({ phase: 'explore' }),
+  const dependencies = { qualify: async () => ({}), checkout: async () => {}, freeze: async () => {},
+    progress: async () => ({ phase: 'explore' }),
     work: async ({ output, limits }) => {
       workerCalls++;
       const run = openRun(output, { limits, runId, events: null, newInvocation: true });
@@ -216,10 +222,134 @@ async function continuationFixture(t, { interrupt = true } = {}) {
       } finally { run.dispose(); }
       return { boundary: interrupt };
     } };
-  const base = { binding, slot: 1, runId, startedAt, deadline, secret: 'synthetic-encryption-secret-at-least-32-characters',
+  const base = { binding: { ...binding, checkout }, slot: 1, runId, startedAt, deadline, secret: 'synthetic-encryption-secret-at-least-32-characters',
     output: join(root, 'progress-one'), publicDir: join(root, 'public-one'), envelopePath: join(root, 'one.enc'), environment: {} };
   return { root, base, dependencies, calls: () => workerCalls };
 }
+
+test('cutoff crossed at the actual envelope link refuses success and retains the private envelope for reconciliation', async t => {
+  for (const kind of ['absolute-cutoff', 'canonical-run-deadline']) {
+    const f = await continuationFixture(t);
+    const deadline = kind === 'absolute-cutoff' ? Date.parse('2026-10-15T12:00:00Z') : Date.now() + 30_000;
+    let clock = deadline - 10_000, linked = false;
+    t.mock.method(Date, 'now', () => clock);
+    f.base.startedAt = clock - 1000; f.base.deadline = deadline;
+    const original = fsPromises.link;
+    fsPromises.link = async (from, to) => {
+      if (to === f.base.envelopePath) { clock = deadline + 1; linked = true; }
+      return original(from, to);
+    };
+    syncBuiltinESMExports();
+    try {
+      await assert.rejects(boundedInvocation(f.base, f.dependencies), { code: 'deadline-exhausted' });
+      assert.equal(linked, true);
+      assert.ok((await readFile(f.base.envelopePath)).length > 0);
+    } finally { fsPromises.link = original; syncBuiltinESMExports(); t.mock.restoreAll(); }
+  }
+});
+
+test('tracked synthetic source changed after real Git qualification prevents settlement and sealing', async t => {
+  const repo = await mkdtemp(join(tmpdir(), 'doctorcre-frozen-source-'));
+  t.after(() => rm(repo, { recursive: true, force: true }));
+  const execute = promisify(execFile), git = (...args) => execute('git', args, { cwd: repo });
+  await git('init', '-q'); await writeFile(join(repo, 'owned.txt'), 'synthetic frozen source\n');
+  await git('add', 'owned.txt');
+  await git('-c', 'user.name=Synthetic Fixture', '-c', 'user.email=fixture@example.invalid', 'commit', '-qm', 'synthetic source');
+  const checkout = (await git('rev-parse', 'HEAD')).stdout.trim();
+  const frozen = () => assertCheckout(checkout, repo);
+  for (const stage of ['settlement', 'actual-envelope-link']) {
+    await writeFile(join(repo, 'owned.txt'), 'synthetic frozen source\n');
+    const f = await continuationFixture(t, { checkout });
+    let qualified = false;
+    const original = fsPromises.link;
+    if (stage === 'actual-envelope-link') {
+      fsPromises.link = async (from, to) => {
+        if (to === f.base.envelopePath) await writeFile(join(repo, 'owned.txt'), 'synthetic changed source\n');
+        return original(from, to);
+      };
+      syncBuiltinESMExports();
+    }
+    try {
+      await assert.rejects(boundedInvocation(f.base, { ...f.dependencies,
+        qualify: async () => { await frozen(); qualified = true; return {}; }, freeze: frozen, checkout: frozen,
+        work: async options => {
+          assert.equal(qualified, true);
+          const outcome = await f.dependencies.work(options);
+          if (stage === 'settlement') await writeFile(join(repo, 'owned.txt'), 'synthetic changed source\n');
+          return outcome;
+        } }), { code: 'checkout-source-changed' });
+      if (stage === 'settlement') await assert.rejects(readFile(f.base.envelopePath), { code: 'ENOENT' });
+      else assert.ok((await readFile(f.base.envelopePath)).length > 0);
+      assert.ok((await readFile(join(f.base.output, 'controls.json'))).length > 0);
+    } finally { fsPromises.link = original; syncBuiltinESMExports(); }
+  }
+});
+
+test('actual frozen-source checks count both public release reads and reject deployed drift at settlement or immediately before sealing', async t => {
+  const repo = await mkdtemp(join(tmpdir(), 'doctorcre-release-freeze-'));
+  t.after(() => rm(repo, { recursive: true, force: true }));
+  const execute = promisify(execFile), git = (...args) => execute('git', args, { cwd: repo });
+  await git('init', '-q'); await writeFile(join(repo, 'owned.txt'), 'synthetic source\n'); await git('add', 'owned.txt');
+  await git('-c', 'user.name=Synthetic Fixture', '-c', 'user.email=fixture@example.invalid', 'commit', '-qm', 'synthetic source');
+  const checkout = (await git('rev-parse', 'HEAD')).stdout.trim();
+  for (const stage of ['settlement-app', 'pre-seal-app', 'pre-seal-carr']) {
+    const f = await continuationFixture(t, { checkout });
+    let changed = false, inspections = 0, requests = 0;
+    const freeze = run => verifyFrozenSource({ binding: f.base.binding, run, repository: repo,
+      fetcher: async (url, options) => {
+        requests++; assert.equal(options.credentials, 'omit'); assert.equal(options.redirect, 'error');
+        assert.equal('headers' in options, false);
+        const value = url === contract.origin + '/app-release'
+          ? { ...release, source_commit: changed && stage.endsWith('-app') ? 'c'.repeat(40) : sha }
+          : { env: { value: 'staging' }, git_sha: { value: changed && stage.endsWith('-carr') ? 'c'.repeat(40) : binding.carr } };
+        return { ok: true, json: async () => value };
+      } });
+    await assert.rejects(boundedInvocation(f.base, { ...f.dependencies, freeze,
+      checkout: expected => assertCheckout(expected, repo),
+      qualify: async () => { await assertCheckout(checkout, repo); return {}; },
+      progress: async () => { inspections++; if (stage.startsWith('pre-seal') && inspections === 2) changed = true; return { phase: 'explore' }; },
+      work: async options => { const outcome = await f.dependencies.work(options); if (stage.startsWith('settlement')) changed = true; return outcome; },
+    }), { code: 'source-pair-mismatch' });
+    const ledger = JSON.parse(await readFile(join(f.base.output, 'run-budget.json'), 'utf8'));
+    assert.equal(ledger.globalHttpRequests, 1 + requests);
+    assert.equal(requests, stage.startsWith('settlement') ? 2 : 4);
+    await assert.rejects(readFile(f.base.envelopePath), { code: 'ENOENT' });
+  }
+});
+
+test('fresh publication gates reject late clocks, dirty source and substituted ciphertext without deleting evidence', async t => {
+  const f = await continuationFixture(t);
+  const encrypted = join(f.root, 'encrypted'), incoming = join(f.root, 'incoming');
+  await mkdir(encrypted, { mode: 0o700 }); await mkdir(incoming, { mode: 0o700 });
+  f.base.envelopePath = join(encrypted, 'continuation.enc');
+  const first = await boundedInvocation(f.base, f.dependencies);
+  const env = { GITHUB_SHA: sha, E2E_EXPECTED_APP_SHA: sha, E2E_RUN_ID: f.base.runId,
+    E2E_SLOT: '1', E2E_STARTED_AT: String(f.base.startedAt), E2E_DEADLINE: String(f.base.deadline),
+    E2E_V2_OUTPUT: f.base.output, E2E_EVIDENCE_PACKAGE: f.base.publicDir,
+    E2E_CONTINUATION_DIRECTORY: encrypted, E2E_RESTORE_DIRECTORY: incoming, E2E_PUBLICATION_DIGEST: first.digest };
+  const supplied = { checkout: async () => {}, qualify: async () => ({}) };
+  await publicationBoundary(env, supplied);
+  await assert.rejects(publicationBoundary(env, { ...supplied, now: () => f.base.deadline + 1 }), { code: 'deadline-exhausted' });
+  let checks = 0;
+  await assert.rejects(publicationBoundary(env, { ...supplied, checkout: async () => {
+    if (++checks === 2) throw Object.assign(new Error('synthetic source changed during export check'), { code: 'checkout-source-changed' });
+  } }), { code: 'checkout-source-changed' });
+  await assert.rejects(publicationBoundary({ ...env, E2E_PUBLICATION_DIGEST: 'f'.repeat(64) }, supplied), { code: 'publication-binding-invalid' });
+  assert.equal(createHash('sha256').update(await readFile(f.base.envelopePath)).digest('hex'), first.digest);
+  assert.ok((await readdir(f.base.publicDir)).length > 0);
+});
+
+test('workflow checks fresh boundaries around every upload and requires predecessor job success', async () => {
+  const workflow = await readFile(new URL('../../.github/workflows/staging-live.yml', import.meta.url), 'utf8');
+  assert.doesNotMatch(workflow, /^\s+schedule:/m);
+  for (let n = 1; n <= 4; n++) {
+    const section = workflow.split(`\n  part_${n}:`)[1].split(/\n  (?:part_\d|full_v1_proof):/)[0];
+    assert.equal(section.match(/continue-run\.mjs publication-boundary/g)?.length, 3);
+    assert.ok(section.indexOf('publication-boundary') < section.indexOf('- id: encrypted'));
+    assert.ok(section.lastIndexOf('publication-boundary') > section.lastIndexOf('retention-days: 14'));
+    if (n > 1) assert.ok(section.includes(`needs.part_${n - 1}.result == 'success'`));
+  }
+});
 
 test('synthetic interrupted/restored chain retains global counters and deadline, with only encrypted progress beside sanitized public receipts', async t => {
   const f = await continuationFixture(t);

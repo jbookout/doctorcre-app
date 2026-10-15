@@ -171,10 +171,29 @@ export async function canary({ binding, run }, supplied = {}) {
   }
 }
 
-async function assertCheckout(expected) {
-  const actual = (await execute('git', ['rev-parse', 'HEAD'], { cwd: project })).stdout.trim();
+export async function assertCheckout(expected, repository = project) {
+  const actual = (await execute('git', ['rev-parse', 'HEAD'], { cwd: repository })).stdout.trim();
   if (!sha40(expected) || actual !== expected) refusal('checkout-mismatch');
-  await execute('git', ['diff', '--quiet', 'HEAD'], { cwd: project });
+  try { await execute('git', ['diff', '--quiet', 'HEAD'], { cwd: repository }); }
+  catch { refusal('checkout-source-changed'); }
+}
+
+// Public release reads only: no session, browser context or credentials. Keep
+// the full response read inside the canonical HTTP admission and timeout.
+export async function verifyFrozenSource({ binding, run, repository = project, fetcher = fetch }) {
+  await assertCheckout(binding.checkout, repository);
+  const read = url => run.http(async () => {
+    const response = await fetcher(url, { redirect: 'error', credentials: 'omit',
+      signal: AbortSignal.any([run.signal, AbortSignal.timeout(run.limits.httpTimeoutMs)]) });
+    if (!response.ok) refusal('source-pair-readback-refused');
+    return response.json();
+  });
+  const app = await read(contract.origin + '/app-release');
+  const carr = await read(contract.carr_origin + '/release');
+  if (carr.env?.value !== 'staging') refusal('source-pair-mismatch');
+  assertSourcePair({ ...app, carr_source_commit: carr.git_sha?.value }, binding);
+  await assertCheckout(binding.checkout, repository);
+  run.check();
 }
 
 function bindings(environment) {
@@ -214,13 +233,21 @@ async function canaryJob(environment) {
   if (publicDir === output || publicDir.startsWith(output + '/')) refusal('public-private-overlap');
   const budget = openRun(output, { limits: state.limits, runId: state.id, events: null });
   try {
+    try { await verifyFrozenSource({ binding, run: budget }); }
+    catch (error) {
+      const diagnostic = canaryFailure({ schema: 'doctorcre-staging-canary-phase.v1', phase: 'source-readback' }, error?.code);
+      refusal(`canary-${diagnostic.phase}-${diagnostic.stopReason}`);
+    }
+    const settled = budget.snapshot();
     const safe = JSON.stringify({ schema: 'doctorcre-staging-startup-canary.v1', status: receipt.status,
       acceptedV1: false, checkout: binding.checkout, app: binding.app, carr: binding.carr,
-      httpRequests: state.httpRequests, modelCalls: 0 }, null, 2) + '\n';
+      httpRequests: settled.globalHttpRequests, modelCalls: 0 }, null, 2) + '\n';
     budget.reserveBytes(Buffer.byteLength(safe));
     await mkdir(publicDir, { mode: 0o700 });
     await writeFile(join(publicDir, 'startup-canary.json'), safe, { mode: 0o600, flag: 'wx' });
   } finally { budget.dispose(); }
+  await assertCheckout(binding.checkout);
+  invocationBoundary({ deadline: state.deadline, sliceMs: 1 });
   return { job_status: 'CANARY_PASSED', proof_status: 'STARTUP_ONLY', accepted_v1: 'false' };
 }
 
@@ -233,7 +260,8 @@ export async function canaryLimits(duration) {
 export function canaryFailure(marker, reason) {
   const closed = new Set(['worker-exit-1', 'stop-signal', 'whole-run-deadline', 'http-request-limit',
     'http-admission-timeout', 'http-timeout', 'artifact-byte-limit', 'process-cleanup-unverified',
-    'process-inspection-unavailable', 'run-ledger-invalid', 'run-ledger-busy']);
+    'process-inspection-unavailable', 'run-ledger-invalid', 'run-ledger-busy', 'source-pair-mismatch',
+    'source-pair-readback-refused', 'checkout-mismatch', 'checkout-source-changed']);
   const phase = marker?.schema === 'doctorcre-staging-canary-phase.v1' && canaryPhases.has(marker.phase)
     ? marker.phase : marker?.schema === 'doctorcre-staging-startup-canary.v1' &&
       marker.status === 'AUTHENTICATED_READ_ONLY_CANARY' && marker.acceptedV1 === false ? 'cleanup' : 'startup';
@@ -272,7 +300,8 @@ export function assertBudget(state, { runId, startedAt, deadline, limits, now = 
   if (state.id !== runId || state.startedAt !== startedAt || state.deadline !== deadline ||
       JSON.stringify(state.limits) !== JSON.stringify(limits) ||
       ['globalHttpRequests', 'globalModelCalls', 'artifactBytes'].some(key => !Number.isSafeInteger(state[key]) || state[key] < 0) ||
-      state.globalHttpRequests >= limits.httpRequests || state.globalModelCalls >= limits.modelCalls ||
+      state.globalHttpRequests >= limits.httpRequests ||
+      (limits.modelCalls === 0 ? state.globalModelCalls !== 0 : state.globalModelCalls >= limits.modelCalls) ||
       state.artifactBytes >= limits.artifactBytes ||
       ['activeHttp', 'queuedHttp', 'processGroups'].some(key => !state[key] || Object.keys(state[key]).length))
     refusal('global-budget-unsettled-or-exhausted');
@@ -347,6 +376,7 @@ export async function boundedInvocation(options, dependencies = {}) {
   const coverage = dependencies.coverage || assertStagingWriteCoverage;
   const inspect = dependencies.progress || progress;
   const work = dependencies.work || supervisePhase;
+  const checkout = dependencies.checkout || assertCheckout;
   await assertSeparated({ output, publicDir, envelopePath });
   assertSourcePair({ service: 'doctorcre-app', environment: 'staging', source_commit: binding?.app,
     carr_source_commit: binding?.carr }, binding);
@@ -360,9 +390,15 @@ export async function boundedInvocation(options, dependencies = {}) {
   // not a continuation boundary. Use the existing goal window as headroom.
   const boundary = invocationBoundary({ now: now(), deadline, sliceMs: limits.testTimeoutMs - limits.goalTimeoutMs });
   const budgetBinding = { runId, startedAt, deadline, limits };
-  const runtime = await (dependencies.qualify || qualifiedModelRoom)({
+  const qualification = {
     descriptorPath: options.environment?.E2E_MODEL_ROOM_DESCRIPTOR,
-    expectedDigest: options.environment?.E2E_MODEL_ROOM_DESCRIPTOR_SHA256, binding, now: now() });
+    expectedDigest: options.environment?.E2E_MODEL_ROOM_DESCRIPTOR_SHA256, binding };
+  const qualify = () => (dependencies.qualify || qualifiedModelRoom)({ ...qualification, now: now() });
+  const runtime = await qualify();
+  const freeze = dependencies.freeze || (async run => {
+    await verifyFrozenSource({ binding, run });
+    await qualify();
+  });
   const leasePath = join(dirname(envelopePath), '.continuation-writer');
   const lease = await open(leasePath, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o600);
   let budget;
@@ -420,9 +456,11 @@ export async function boundedInvocation(options, dependencies = {}) {
         // It remains in invocation history; resource and global counters remain.
         budget.dispose();
         budget = openRun(output, { limits, runId, events: null, newInvocation: true });
+        await freeze(budget);
         break;
       }
       if (budget.snapshot().stopReason !== null) refusal('prior-worker-failed');
+      await freeze(budget);
       if (current.phase === 'business') businessValidated = true;
       current = await inspectCurrent();
     }
@@ -446,8 +484,17 @@ export async function boundedInvocation(options, dependencies = {}) {
     // Reserve the bounded output receipt before sealing so its bytes are part
     // of the authenticated cumulative budget restored by the next job.
     budget.reserveBytes(1024);
+    await freeze(budget);
+    await checkout(binding.checkout);
+    assertBudget(budget.snapshot(), { ...budgetBinding, now: now() });
     const predecessor = expected ? { generation: expected.generation, sha256: expected.digest } : null;
     const sealed = await sealContinuation({ output, envelopePath, secret, sourcePair, runId, generation: slot, predecessor, run: budget });
+    // Seal may await disk publication across a clock/source change. Retain any
+    // resulting private envelope, but never return a usable success receipt.
+    assertBudget(budget.snapshot(), { ...budgetBinding, now: now() });
+    await checkout(binding.checkout);
+    await qualify();
+    assertBudget(budget.snapshot(), { ...budgetBinding, now: now() });
     return { digest: sealed.sha256, generation: String(slot), predecessor: predecessor?.sha256 || '', plan_hash: sealed.planHash,
       job_status: current.phase === 'complete' ? 'SWEEP_ACCEPTED' : 'CONTINUE',
       accepted_v1: 'false', proof_status: current.completion?.status || 'PARTIAL' };
@@ -647,6 +694,51 @@ async function invocationJob(environment) {
     publicDir: paths.publicDir, incoming, expected, environment });
 }
 
+// A fresh check at each workflow export edge. It makes no post-seal HTTP
+// reservation: the live release pair was checked under the sealed budget.
+export async function publicationBoundary(environment, supplied = {}) {
+  const binding = bindings(environment), checkout = supplied.checkout || assertCheckout;
+  const now = supplied.now || Date.now;
+  await checkout(binding.checkout);
+  const output = resolve(environment.E2E_V2_OUTPUT || '');
+  if (!await absent(join(output, '.run-owner'))) refusal('source-worker-not-quiescent');
+  const { RUN_LIMITS } = await import('./run-limits.mjs');
+  const state = JSON.parse(await privateBytes(join(output, 'run-budget.json')));
+  const full = environment.E2E_SLOT !== undefined;
+  if (full && !/^[1-4]$/.test(environment.E2E_SLOT)) refusal('publication-binding-invalid');
+  const startedAt = full ? Number(environment.E2E_STARTED_AT) : state.startedAt;
+  const deadline = full ? Number(environment.E2E_DEADLINE) : state.deadline;
+  if (!Number.isSafeInteger(startedAt) || !Number.isSafeInteger(deadline) ||
+      deadline <= startedAt || deadline - startedAt > (full ? RUN_LIMITS.runTimeoutMs : 120_000))
+    refusal('publication-binding-invalid');
+  const limits = full ? { ...RUN_LIMITS, runTimeoutMs: deadline - startedAt, batchGoals: 1 }
+    : await canaryLimits(deadline - startedAt);
+  const expected = { runId: environment.E2E_RUN_ID, startedAt, deadline, limits, now: now() };
+  assertBudget(state, expected);
+  if (state.stopReason !== null) refusal('prior-worker-failed');
+  if (full) {
+    const paths = directories(environment);
+    if (!sha256(environment.E2E_PUBLICATION_DIGEST) ||
+        hash(await privateBytes(join(paths.encrypted, 'continuation.enc'), limits.artifactBytes)) !== environment.E2E_PUBLICATION_DIGEST)
+      refusal('publication-binding-invalid');
+    const checkpoint = JSON.parse(await privateBytes(join(output, 'controls.json')));
+    assertSourcePair(checkpoint.release, binding);
+    await (supplied.qualify || qualifiedModelRoom)({ descriptorPath: environment.E2E_MODEL_ROOM_DESCRIPTOR,
+      expectedDigest: environment.E2E_MODEL_ROOM_DESCRIPTOR_SHA256, binding, now: now() });
+  } else {
+    const receipt = JSON.parse(await privateBytes(join(output, 'private', 'startup-canary.json'), 4096));
+    if (receipt.status !== 'AUTHENTICATED_READ_ONLY_CANARY' || receipt.acceptedV1 !== false || receipt.checkout !== binding.checkout)
+      refusal('canary-receipt-invalid');
+    assertSourcePair({ service: 'doctorcre-app', environment: 'staging', source_commit: receipt.app,
+      carr_source_commit: receipt.carr }, binding);
+  }
+  await checkout(binding.checkout);
+  const finalState = JSON.parse(await privateBytes(join(output, 'run-budget.json')));
+  assertBudget(finalState, { ...expected, now: now() });
+  if (finalState.stopReason !== null || !await absent(join(output, '.run-owner'))) refusal('source-worker-not-quiescent');
+  invocationBoundary({ now: now(), deadline, sliceMs: 1 });
+}
+
 async function main(environment = process.env, command = process.argv[2]) {
   if (command === 'canary-worker') {
     const { currentRun } = await import('./run-limits.mjs');
@@ -676,6 +768,7 @@ async function main(environment = process.env, command = process.argv[2]) {
   if (command === 'verify-artifact') return verifyGitHubArtifact(environment);
   if (command === 'canary') return canaryJob(environment);
   if (command === 'invocation') return invocationJob(environment);
+  if (command === 'publication-boundary') return publicationBoundary(environment);
   if (command === 'plan') {
     bindings(environment);
     await assertCheckout(environment.GITHUB_SHA);
@@ -692,12 +785,21 @@ async function main(environment = process.env, command = process.argv[2]) {
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   main().then(async values => {
     if (process.env.GITHUB_OUTPUT && values) {
+      const command = process.argv[2];
+      if (['invocation', 'canary'].includes(command)) await publicationBoundary({ ...process.env,
+        E2E_PUBLICATION_DIGEST: values.digest });
       const allowed = new Set(['started_at', 'deadline', 'digest', 'generation', 'predecessor', 'plan_hash', 'job_status', 'proof_status', 'accepted_v1']);
+      const lines = [];
       for (const [key, value] of Object.entries(values)) {
         if (!allowed.has(key) || typeof value !== 'string' || !/^[A-Za-z0-9_-]*$/.test(value) || value.length > 128)
           refusal('output-receipt-invalid');
-        await appendFile(process.env.GITHUB_OUTPUT, `${key}=${value}\n`);
+        lines.push(`${key}=${value}\n`);
       }
+      if (lines.length) await appendFile(process.env.GITHUB_OUTPUT, lines.join(''));
+      // A late append is not a successful step; its dependent upload gates and
+      // jobs remain blocked. Keep existing artifacts for explicit reconciliation.
+      if (['invocation', 'canary'].includes(command)) await publicationBoundary({ ...process.env,
+        E2E_PUBLICATION_DIGEST: values.digest });
     }
   }).catch(error => {
     const closed = new Set(['whole-run-deadline', 'http-request-limit', 'model-call-limit', 'artifact-byte-limit',
