@@ -28,6 +28,11 @@ test('search typing never writes; typed result opens detail in same wide Doc dia
 test('late query answer cannot replace a later result',async t=>{
  let release;const {bar,win,input}=setup(t,{client:{find:()=>new Promise(r=>release=r)}});bar.open();input.value='old';input.dispatchEvent(new win.Event('input'));const pending=bar.refresh();await settle();input.value='Clients';input.dispatchEvent(new win.Event('input'));release(empty());await pending;assert.match(win.document.querySelector('#docCommandResults').textContent,/Clients/);
 });
+test('disposing Doc command search fences a late query completion',async t=>{
+ let release;const {bar,win,input}=setup(t,{client:{find:()=>new Promise(r=>release=r)}});bar.open();input.value='Demo';input.dispatchEvent(new win.Event('input'));const pending=bar.refresh();await settle();
+ bar.dispose();win.document.body.replaceChildren(win.document.createElement('main'));release({...empty(),parties:[party('C-DEMO')]});await pending;
+ assert.equal(win.document.body.querySelector('main')?.textContent,'');win.close();
+});
 test('plain language page opening is immediate; unknown requests cannot invent an action',async t=>{
  const paths=[];const {bar,win,input}=setup(t,{navigate:p=>paths.push(p)});bar.open();input.value='open clients';input.dispatchEvent(new win.Event('input'));win.document.querySelector('#docCommandForm').dispatchEvent(new win.Event('submit',{cancelable:true}));assert.deepEqual(paths,['/clients']);
  input.value='send the invoice';input.dispatchEvent(new win.Event('input'));await bar.refresh();win.document.querySelector('#docCommandForm').dispatchEvent(new win.Event('submit',{cancelable:true}));await settle();assert.match(win.document.querySelector('#docCommandStatus').textContent,/unavailable/i);assert.deepEqual(paths,['/clients']);

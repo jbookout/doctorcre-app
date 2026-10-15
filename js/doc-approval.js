@@ -8,13 +8,13 @@ import { featureSwitchRefusal } from './feature-switches.js';
 // the fresh read, since the switch may have turned off while that read ran.
 export function createDocApproval({ client, context, evaluatedPages, uuid, available }) {
   const intents = new Map();
-  let busy = false;
+  let busy = false, disposed = false;
   const eligible = (row, snapshot, payload) => contextualSuggestions(snapshot, { ...payload, suggestions:[row] }, { evaluatedPages }).length === 1;
   return {
     get busy() { return busy; },
     async approve(row, shownPayload) {
       const shown = context.snapshot();
-      if (busy || !eligible(row, shown, shownPayload)) return { state: 'changed' };
+      if (disposed || busy || !eligible(row, shown, shownPayload)) return { state: 'changed' };
       const signature = `${row.id}:${row.version}`;
       const pending = intents.get(signature);
       if (pending?.state === 'approved') return { state:'approved', receipt:pending.receipt };
@@ -24,6 +24,7 @@ export function createDocApproval({ client, context, evaluatedPages, uuid, avail
       try {
         const args = shown.page === 'chats' && shown.selected ? { conversation_id: shown.selected.id } : {};
         const latest = await readWithDeadline(() => client.listDocSuggestions(args));
+        if (disposed) return { state: 'changed' };
         const current = context.snapshot();
         const fresh = latest?.suggestions?.find(item => item.id === row.id && item.version === row.version);
         if (current.epoch !== shown.epoch || JSON.stringify(current.selected) !== JSON.stringify(shown.selected)
@@ -53,5 +54,6 @@ export function createDocApproval({ client, context, evaluatedPages, uuid, avail
         if (row?.disposition === 'discuss' && row.version > Number(version)) intent.state = 'approved';
       }
     },
+    dispose() { disposed = true; },
   };
 }

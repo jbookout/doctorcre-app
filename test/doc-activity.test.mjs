@@ -61,6 +61,25 @@ test('Doc detail exposes one activity destination when mounted repeatedly', t =>
   assert.equal(links.length, 1); assert.equal(links[0].getAttribute('href'), '/doc-activity');
 });
 
+test('disposing Doc cancels a pending refresh before its owner replaces the body', async t => {
+  const dom = new JSDOM('<!doctype html><html><head></head><body><main id="appMainSlot"></main></body></html>');
+  let release, startedResolve, unsubscribed = false;
+  const started = new Promise(resolve => { startedResolve = resolve; });
+  const answer = new Promise(resolve => { release = resolve; });
+  const snapshot = { state:'updating', ready:false, page:'home', epoch:0, label:'Home', records:[], observedAt:null };
+  const context = { snapshot:() => snapshot, subscribe:() => () => { unsubscribed = true; }, tick() {}, clear() {} };
+  const client = { listDocSuggestions:() => { startedResolve(); return answer; }, listFeatureSwitches:async() => ({}) };
+  const presence = mountDocPresence({ document:dom.window.document, window:dom.window, context, client });
+  t.after(() => { presence.dispose(); dom.window.close(); });
+  await started;
+  presence.dispose();
+  dom.window.document.body.replaceChildren(dom.window.document.createElement('main'));
+  release({ ok:true, suggestions:[] });
+  await presence.refresh();
+  assert.equal(unsubscribed, true);
+  assert.equal(dom.window.document.body.querySelector('main')?.id, '');
+});
+
 test('malformed or partial feed rows are unavailable rather than verified empty; incompatible inverses cannot execute',async()=>{
   const answer=await createDocActivityFixture().read(),row=answer.entries[0];
   for(const broken of [{...row,id:null},{...row,record:{...row.record,name:null}},{...row,what:null},{...row,before:{}},{...row,undo:null},{...row,evidence:{kind:'entry',summary:[]}}]){
