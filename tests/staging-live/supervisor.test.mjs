@@ -226,7 +226,7 @@ test('whole-run deadline reaps a resistant worker and detached child', processTe
 });
 
 test('aggregate log quota stops and reaps every owned group', processTests, async t => {
-  const run = await fixture(t, { behavior: 'log-quota', limits: { artifactBytes: 48 * 1024 } });
+  const run = await fixture(t, { behavior: 'log-quota', limits: { artifactBytes: 48 * 1024, stopGraceMs: RUN_LIMITS.stopGraceMs } });
   const result = await within(run.ended);
   assert.equal(result.code, 1, result.stderr);
   assert.equal(JSON.parse(result.stdout.trim()).reason, 'artifact-byte-limit');
