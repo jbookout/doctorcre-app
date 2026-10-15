@@ -110,6 +110,7 @@ jobs:
       job_status: ${{ steps.run.outputs.job_status }}
       accepted_v1: ${{ steps.run.outputs.accepted_v1 }}
       proof_status: ${{ steps.run.outputs.proof_status }}
+      tour_status: ${{ steps.run.outputs.tour_status }}
     env:
       E2E_RUN_ID: gh_${{ github.run_id }}_${{ github.sha }}
       E2E_SLOT: '1'
@@ -203,6 +204,7 @@ jobs:
       job_status: ${{ steps.run.outputs.job_status }}
       accepted_v1: ${{ steps.run.outputs.accepted_v1 }}
       proof_status: ${{ steps.run.outputs.proof_status }}
+      tour_status: ${{ steps.run.outputs.tour_status }}
     env:
       E2E_RUN_ID: gh_${{ github.run_id }}_${{ github.sha }}
       E2E_SLOT: '2'
@@ -301,6 +303,7 @@ jobs:
       job_status: ${{ steps.run.outputs.job_status }}
       accepted_v1: ${{ steps.run.outputs.accepted_v1 }}
       proof_status: ${{ steps.run.outputs.proof_status }}
+      tour_status: ${{ steps.run.outputs.tour_status }}
     env:
       E2E_RUN_ID: gh_${{ github.run_id }}_${{ github.sha }}
       E2E_SLOT: '3'
@@ -399,6 +402,7 @@ jobs:
       job_status: ${{ steps.run.outputs.job_status }}
       accepted_v1: ${{ steps.run.outputs.accepted_v1 }}
       proof_status: ${{ steps.run.outputs.proof_status }}
+      tour_status: ${{ steps.run.outputs.tour_status }}
     env:
       E2E_RUN_ID: gh_${{ github.run_id }}_${{ github.sha }}
       E2E_SLOT: '4'

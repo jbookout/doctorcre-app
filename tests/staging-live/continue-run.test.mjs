@@ -209,7 +209,7 @@ async function continuationFixture(t, { interrupt = true, checkout = sha } = {})
   const controls = { release, screens: [], history: [], explorations: [], findings: [], stateObligations: [],
     expectedScreens: 62, expectedStates: 62, expectedExplorations: 93, setup: { private_marker: privateMarker } };
   let workerCalls = 0;
-  const dependencies = { invoicePrerequisite: async () => ({ status: 'READY' }), qualify: async () => ({}), checkout: async () => {}, freeze: async () => {},
+  const dependencies = { tourPrerequisite: async () => ({ status: 'READY' }), invoicePrerequisite: async () => ({ status: 'READY' }), qualify: async () => ({}), checkout: async () => {}, freeze: async () => {},
     progress: async () => ({ phase: 'explore' }),
     work: async ({ output, limits }) => {
       workerCalls++;
@@ -318,11 +318,15 @@ test('actual frozen-source checks count both public release reads and reject dep
 });
 
 test('fresh publication gates reject late clocks, dirty source and substituted ciphertext without deleting evidence', async t => {
+  const previousMask = process.umask(0o022);
+  t.after(() => process.umask(previousMask));
   const f = await continuationFixture(t);
   const encrypted = join(f.root, 'encrypted'), incoming = join(f.root, 'incoming');
   await mkdir(encrypted, { mode: 0o700 }); await mkdir(incoming, { mode: 0o700 });
   f.base.envelopePath = join(encrypted, 'continuation.enc');
   const first = await boundedInvocation(f.base, f.dependencies);
+  for (const file of ['controls.json', 'findings.json', 'explorations.json', 'coverage.md'])
+    assert.equal((await fsPromises.stat(join(f.base.output, file))).mode & 0o777, 0o600, file);
   const env = { GITHUB_SHA: sha, E2E_EXPECTED_APP_SHA: sha, E2E_RUN_ID: f.base.runId,
     E2E_SLOT: '1', E2E_STARTED_AT: String(f.base.startedAt), E2E_DEADLINE: String(f.base.deadline),
     E2E_V2_OUTPUT: f.base.output, E2E_EVIDENCE_PACKAGE: f.base.publicDir,
@@ -453,14 +457,14 @@ async function businessFixture(t) {
     records: { deal: { id: deal }, invoice: { deal_id: '60000000-0000-4000-8000-000000000002' } } };
   await writeFile(join(root, 'staging-records-plan.json'), JSON.stringify(plan), { mode: 0o600 });
   const run = { root, signal: new AbortController().signal, limits: RUN_LIMITS,
-    check() {}, onStop: () => () => {}, http: async operation => { events.push('http'); return operation(); } };
+    snapshot: () => ({ id: 'synthetic_' + sha }), check() {}, onStop: () => () => {}, http: async operation => { events.push('http'); return operation(); } };
   const state = { cookies: [{ name: 'synthetic-session', value: privateMarker }] };
   let guarded = false, routeHandler;
   let currentURL;
   const page = { url: () => currentURL,
     goto: async url => {
       assert.equal(guarded, true);
-      assert.ok([`${contract.origin}/deals?deal=${deal}`, contract.origin + '/'].includes(url));
+      assert.ok([`${contract.origin}/deals?deal=${deal}`, contract.origin + '/', contract.origin + '/tours'].includes(url));
       currentURL = url;
       events.push('navigate');
       await routeHandler({ request: () => ({ method: () => 'GET', url: () => url }),
@@ -507,7 +511,7 @@ test('business caller reuses the real private fixture plan, fresh session and ex
   assert.deepEqual(f.events, ['canonical-coverage', 'prepare', 'authenticate', 'canonical-coverage',
     'install-guard', 'navigate', 'http', 'business', 'guard-coverage', 'canonical-coverage',
     'install-guard', 'navigate', 'http', 'business', 'guard-coverage', 'canonical-coverage',
-    'context-close', 'context-close', 'guard-coverage', 'browser-close']);
+    'guard-coverage', 'canonical-coverage', 'context-close', 'context-close', 'guard-coverage', 'browser-close']);
 });
 
 test('unsettled writes, source changes and deal restore limitations refuse business execution before browser creation', async t => {
@@ -812,5 +816,178 @@ test('private admission, installer proof and local options reject owned FIFOs pr
     const after = await (await import('node:fs/promises')).lstat(item.path);
     assert.deepEqual([after.dev, after.ino, after.mode, after.nlink], [before.dev, before.ino, before.mode, before.nlink]);
     assert.deepEqual(await readFile(planPath), originalPlan);
+  }
+});
+
+async function tourProofFixture(t) {
+  const root = await mkdtemp(join(tmpdir(), 'doctorcre-tour-admission-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const fixtureRun = '66666666-6666-4666-8666-666666666666';
+  const plan = { schema: 'doctorcre-staging-records-plan.v1', origin: contract.origin,
+    state: 'complete', inflight: null, run: fixtureRun,
+    observed_at: '2026-10-14T22:00:00.000Z', release: { source_commit: sha, carr_source_commit: binding.carr },
+    names: { tour: `Synthetic staging QA ${fixtureRun} draft tour` },
+    keys: { tour: '77777777-7777-4777-8777-777777777777' }, receipts: {},
+    records: { client: { id: '11111111-1111-4111-8111-111111111111' },
+      tour: { id: '22222222-2222-4222-8222-222222222222', name: `Synthetic staging QA ${fixtureRun} draft tour` } } };
+  const target = { project: { id: 'synthetic-staging', name: 'carr-staging-replacement-test' },
+    branch: { id: 'synthetic-main', name: 'main' }, endpoint: { id: 'ep-synthetic', host: 'ep-synthetic.neon.tech' }, database: 'neondb' };
+  const row = { tour_id: plan.records.tour.id, tour_name: plan.names.tour, client_id: plan.records.client.id,
+    route_version_id: '33333333-3333-4333-8333-333333333333', route_version: 1,
+    route_accepted: false, active_stop_count: 0, excluded_stop_count: 1,
+    property_id: '047d2970-7c7b-56d5-bc87-84faa7a55775', property_status: 'unknown',
+    stop_id: '92ddebd5-b044-58e0-ac00-ab85fdbb9bba', stop_state: 'excluded', route_sequence: null,
+    route_label: null, access_coordinate_status: 'unknown' };
+  const proof = { schema: 'doctorcre-staging-fixture-proof.v1',
+    provenance: { kind: 'raw-sql-fixture', readback: 'separate-committed-readonly-connection' }, fixture_run: fixtureRun,
+    source_pair: plan.release, recorded_plan_observed_at: plan.observed_at, verified_target: target,
+    tool_source_sha256: '1ae51c9e6842c69ef0035889546c823092655a7c80eaf67ebe2c676f5330feb0',
+    fixture: { mode: 'excluded-tour-stop', tour_readback: row } };
+  const runId = 'synthetic_' + sha, proofPath = join(root, 'tour-proof.json');
+  const descriptor = { schema: 'doctorcre-local-tour-admission.v1', checkout: sha,
+    sourcePair: plan.release, runId, fixtureRun, proofPath, proofSha256: '', verifiedTarget: target,
+    toolSourceCommit: '52281593fe05148269145b70c166b6e30b4c2e4c' };
+  const descriptorPath = join(root, 'tour-admission.json');
+  const persist = async () => {
+    const bytes = JSON.stringify(proof);
+    await writeFile(proofPath, bytes, { mode: 0o600 });
+    descriptor.proofSha256 = createHash('sha256').update(bytes).digest('hex');
+    const config = JSON.stringify(descriptor);
+    await writeFile(descriptorPath, config, { mode: 0o600 });
+    return { E2E_TOUR_ADMISSION: descriptorPath, E2E_TOUR_ADMISSION_SHA256: createHash('sha256').update(config).digest('hex') };
+  };
+  await writeFile(join(root, 'staging-records-plan.json'), JSON.stringify(plan), { mode: 0o600 });
+  return { root, plan, proof, row, descriptor, persist, runId };
+}
+
+test('Tour proof adapter uses exact raw installer shape and trusted target/source/run/tool bindings without authority claims', async t => {
+  const { tourPrerequisite } = await import('../../scripts/e2e-staging/continue-run.mjs');
+  assert.equal(typeof tourPrerequisite, 'function');
+  const f = await tourProofFixture(t);
+  const admit = environment => tourPrerequisite({ output: f.root, binding, runId: f.runId, environment });
+  assert.equal((await admit({})).status, 'UNQUALIFIED_MISSING_TOUR_PROOF');
+  const result = await admit(await f.persist());
+  assert.equal(result.status, 'READY');
+  assert.deepEqual(result.fixtureBinding, { schema: 'doctorcre-staging-tour-fixture-binding.v1',
+    provenance: 'private_installer_raw_readback', run: f.plan.run, source_pair: { app: sha, carr: binding.carr },
+    tour_id: f.row.tour_id, route_version_id: f.row.route_version_id,
+    excluded_stop_id: f.row.stop_id, synthetic_property_id: f.row.property_id });
+  const original = structuredClone(f.proof);
+  for (const mutate of [p => { p.tool_source_sha256 = 'f'.repeat(64); },
+    p => { p.tool_source_sha256 = 'db7e20687718b5defcf6d0014789def63121ef441ab78af5282b198d47c297a4'; },
+    p => { p.fixture_run = 'other'; }, p => { p.source_pair.source_commit = 'f'.repeat(40); },
+    p => { p.verified_target.endpoint.host = 'ep-other.neon.tech'; },
+    p => { p.fixture.tour_readback.stop_id = '44444444-4444-4444-8444-444444444444'; },
+    p => { p.fixture.tour_readback.route_accepted = true; }, p => { p.receipt = 'fabricated'; }]) {
+    Object.keys(f.proof).forEach(key => delete f.proof[key]); Object.assign(f.proof, structuredClone(original));
+    mutate(f.proof);
+    await assert.rejects(admit(await f.persist()), { code: 'tour-admission-unproved' });
+  }
+});
+
+test('completed controls with missing Tour proof stay partial and do not invent W6 qualification', async t => {
+  const f = await continuationFixture(t, { interrupt: false });
+  const result = await boundedInvocation(f.base, { ...f.dependencies,
+    tourPrerequisite: async () => ({ status: 'UNQUALIFIED_MISSING_TOUR_PROOF' }),
+    progress: async () => ({ phase: 'complete', completion: { status: 'ACCEPTED_SWEEP' } }) });
+  assert.equal(result.job_status, 'PARTIAL'); assert.equal(result.proof_status, 'PARTIAL');
+  assert.equal(result.tour_status, 'UNQUALIFIED_MISSING_TOUR_PROOF'); assert.equal(result.accepted_v1, 'false');
+});
+
+test('readonly Tour caller uses the existing guarded factory, private binding and fresh normal detail under real HTTP caps 5/4', async t => {
+  const { runTourPhase } = await import('../../scripts/e2e-staging/continue-run.mjs');
+  assert.equal(typeof runTourPhase, 'function');
+  const { stagingFixtureWriteGuard } = await import('../../scripts/e2e-staging/records.mjs');
+  const { admitFixtureRun } = await import('./fixture-admission.mjs');
+  admitFixtureRun(t);
+  for (const cap of [5, 4, 10]) {
+    const f = await tourProofFixture(t), environment = await f.persist();
+    const run = openRun(f.root, { runId: f.runId, events: null, limits: { ...RUN_LIMITS, httpRequests: cap } });
+    t.after(() => run.dispose());
+    const journal = await readFile(join(f.root, 'staging-records-plan.json'));
+    const guard = stagingFixtureWriteGuard({ output: f.root, release, run });
+    const stop = { id: f.row.stop_id, property_id: f.row.property_id, stop_state: 'excluded', route_sequence: null,
+      route_label: null, access_coordinate_status: 'unknown' };
+    const detail = { id: f.row.tour_id, name: f.plan.names.tour, status: 'draft', subject_type: 'client',
+      subject_id: f.plan.records.client.id, route_version_state: 'draft', accepted_route_version: 0,
+      route_version_id: f.row.route_version_id, routes: [{ id: f.row.route_version_id, route_version: 1,
+        accepted: false, routing_source: 'manual', stops: [stop] }], stops: [stop] };
+    const reads = [], body = value => ({ status: () => 200, json: async () => value });
+    const read = async (path, value) => {
+      const response = await guard.handle({ method: () => 'GET', url: () => contract.origin + path }, async () => {
+        reads.push(path); return body(value);
+      });
+      return response.json();
+    };
+    const selectors = [];
+    const page = { url: () => contract.origin + '/tours', on() {}, off() {},
+      evaluate: async fn => {
+        if (String(fn).includes('__tourJourneyIdentity__')) return { release: await read('/app-release', release),
+          session: await read('/auth/session', { actor: { slug: 'joe' }, e2e_principal: 'e2e-joe' }) };
+        return read('/api/tours/detail?tour_id=' + f.row.tour_id, detail);
+      },
+      locator: selector => {
+        selectors.push(selector);
+        return { count: async () => selector.startsWith('#upcoming-tours') ? 1 : 0,
+          click: async () => { await read('/api/tours/detail?tour_id=' + f.row.tour_id, detail); },
+          waitFor: async () => {}, textContent: async () => f.plan.names.tour,
+          allTextContents: async () => ['draft', '0 stops'] };
+      } };
+    const factory = { freshPage: async options => {
+      assert.equal(options.fixtureGuard, guard); assert.equal(options.path, '/tours'); return page;
+    } };
+    const invoke = () => runTourPhase({ binding, run, plan: f.plan, fixtureGuard: guard,
+      release, factory, target: { name: 'staging-live' }, environment });
+    if (cap >= 5) {
+      const result = await invoke(); assert.equal(result.full_v1_qualified, false);
+      assert.deepEqual(result.unqualified_write_journeys, ['create-tour', 'edit-tour', 'accept-route']);
+      await guard.assertCoverage();
+      if (cap === 10) {
+        const repeated = await invoke();
+        assert.equal(repeated.full_v1_qualified, false);
+        assert.equal(repeated.backend_readback.excluded_stop_id, result.backend_readback.excluded_stop_id);
+        await guard.assertCoverage();
+      }
+    } else await assert.rejects(invoke(), { code: 'http-request-limit' });
+    assert.equal(run.snapshot().globalHttpRequests, cap);
+    assert.equal(reads.length, cap); assert.equal(run.snapshot().globalModelCalls, 0);
+    assert.ok(selectors.some(selector => selector.startsWith('#upcoming-tours')));
+    assert.equal(f.plan.receipts.tour, undefined);
+    const after = JSON.parse(await readFile(join(f.root, 'staging-records-plan.json'), 'utf8'));
+    assert.equal(after.receipts.tour, undefined); assert.equal(after.browser_write_attempts, undefined);
+    assert.deepEqual(await readFile(join(f.root, 'staging-records-plan.json')), journal, 'read-only reruns never create a receipt or replay business writes');
+  }
+});
+
+
+test('combined caller installs the existing guard before Tour navigation and disposes all contexts after a qualification refusal', async t => {
+  const f = await businessFixture(t), calls = [];
+  await assert.rejects(runBusinessPhase({ binding, run: f.run }, { ...f.supplied,
+    tourPrerequisite: async () => ({ status: 'READY', fixtureBinding: { synthetic: true } }),
+    qualifyTour: async options => {
+      assert.equal(options.page.url(), contract.origin + '/tours');
+      assert.equal(options.run, f.run); assert.deepEqual(options.sourcePair, { app: sha, carr: binding.carr });
+      assert.equal(f.events.filter(event => event === 'install-guard').length, 3);
+      calls.push('readonly-tour'); throw Object.assign(new Error('synthetic changed detail'), { code: 'tour-detail-unproved' });
+    } }), { code: 'tour-detail-unproved' });
+  assert.deepEqual(calls, ['readonly-tour']);
+  assert.equal(f.events.filter(event => event === 'business').length, 2, 'W4/W9 and W15 remain separate canonical calls');
+  assert.equal(f.events.filter(event => event === 'context-close').length, 3);
+  assert.equal(f.events.at(-1), 'browser-close');
+});
+
+
+test('Tour admission rejects an untrusted descriptor digest, old checkout, wrong run, production target and wrong controller source before browser creation', async t => {
+  const { tourPrerequisite } = await import('../../scripts/e2e-staging/continue-run.mjs');
+  for (const kind of ['digest', 'checkout', 'run', 'production', 'controller', 'old-controller']) {
+    const f = await tourProofFixture(t);
+    if (kind === 'checkout') f.descriptor.checkout = 'f'.repeat(40);
+    if (kind === 'run') f.descriptor.runId = 'other';
+    if (kind === 'production') f.descriptor.verifiedTarget.project.id = 'steep-field-48688294';
+    if (kind === 'controller') f.descriptor.toolSourceCommit = '2c58a001ee44fa1bf204d65684f3cf3bec52e4c4';
+    if (kind === 'old-controller') f.descriptor.toolSourceCommit = '4c1e52086b2c299b9cc4dd79fdc14047fa9fd1f2';
+    const environment = await f.persist();
+    if (kind === 'digest') environment.E2E_TOUR_ADMISSION_SHA256 = 'f'.repeat(64);
+    await assert.rejects(tourPrerequisite({ output: f.root, binding, runId: f.runId, environment }), { code: 'tour-admission-unproved' });
   }
 });

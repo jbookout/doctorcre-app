@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { constants } from 'node:fs';
-import { appendFile, lstat, mkdir, open, readFile, realpath, unlink, writeFile } from 'node:fs/promises';
+import { appendFile, lstat, mkdir, open, readFile, realpath, rename, unlink, writeFile } from 'node:fs/promises';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execFile } from 'node:child_process';
@@ -309,6 +309,21 @@ export function assertBudget(state, { runId, startedAt, deadline, limits, now = 
     refusal('global-budget-unsettled-or-exhausted');
 }
 
+// writeReport stages replacements with the host's default file mode. Tighten
+// our newly generated private reports before atomically publishing them; input
+// readers continue to reject existing files with broader permissions.
+async function publishPrivateReport(from, to) {
+  await privateParent(dirname(from));
+  const handle = await open(from, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
+  try {
+    const info = await handle.stat();
+    if (!info.isFile() || info.uid !== process.getuid() || info.nlink !== 1) refusal('private-file-invalid');
+    await handle.chmod(0o600);
+    await handle.sync();
+  } finally { await handle.close(); }
+  await rename(from, to);
+}
+
 async function absent(path) {
   try { await lstat(path); return false; }
   catch (error) { if (error.code === 'ENOENT') return true; throw error; }
@@ -402,6 +417,93 @@ export async function invoicePrerequisite({ output, binding, runId, environment 
     proofPath: retained ? undefined : descriptor.proofPath, proofSha256: descriptor.proofSha256 };
 }
 
+// Tour and invoice installers have separate immutable source pins. This is
+// an adapter for raw private readback, never an MCP receipt or write authority.
+export const TOUR_FIXTURE_INSTALLER = Object.freeze({
+  sourceCommit: '52281593fe05148269145b70c166b6e30b4c2e4c',
+  sha256: '1ae51c9e6842c69ef0035889546c823092655a7c80eaf67ebe2c676f5330feb0',
+});
+const uuid = value => typeof value === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+const same = (a, b) => JSON.stringify(stable(a)) === JSON.stringify(stable(b));
+const exactKeys = (value, keys) => value && typeof value === 'object' && !Array.isArray(value) && same(Object.keys(value).sort(), [...keys].sort());
+function tourFixtureID(kind, plan) {
+  const bytes = createHash('sha1').update(Buffer.from('61c09cb019e3411c98d8ea2c962eb3a1', 'hex'))
+    .update(`${kind}:${plan.run}:${plan.records.tour.id}`).digest().subarray(0, 16);
+  bytes[6] = bytes[6] & 15 | 80; bytes[8] = bytes[8] & 63 | 128;
+  const hex = bytes.toString('hex');
+  return `${hex.slice(0,8)}-${hex.slice(8,12)}-${hex.slice(12,16)}-${hex.slice(16,20)}-${hex.slice(20)}`;
+}
+export async function tourPrerequisite({ output, binding, runId, environment = process.env }) {
+  if (!environment.E2E_TOUR_ADMISSION && !environment.E2E_TOUR_ADMISSION_SHA256)
+    return { status: 'UNQUALIFIED_MISSING_TOUR_PROOF' };
+  if (environment.GITHUB_ACTIONS === 'true') refusal('tour-proof-local-only');
+  const path = environment.E2E_TOUR_ADMISSION;
+  if (!isAbsolute(path || '') || !sha256(environment.E2E_TOUR_ADMISSION_SHA256)) refusal('tour-admission-unproved');
+  await privateParent(dirname(path));
+  const bytes = await privateBytes(path, 16 * 1024);
+  if (hash(bytes) !== environment.E2E_TOUR_ADMISSION_SHA256) refusal('tour-admission-unproved');
+  const config = JSON.parse(bytes);
+  const plan = JSON.parse(await privateBytes(join(output, 'staging-records-plan.json')));
+  const pair = { source_commit: binding.app, carr_source_commit: binding.carr };
+  if (!exactKeys(config, ['schema', 'checkout', 'sourcePair', 'runId', 'fixtureRun', 'proofPath', 'proofSha256', 'verifiedTarget', 'toolSourceCommit']) ||
+      config.schema !== 'doctorcre-local-tour-admission.v1' || config.checkout !== binding.checkout || config.runId !== runId ||
+      config.fixtureRun !== plan.run || !same(config.sourcePair, pair) || !same(plan.release, pair) ||
+      plan.schema !== 'doctorcre-staging-records-plan.v1' || plan.origin !== contract.origin ||
+      plan.state !== 'complete' || plan.inflight !== null || !uuid(plan.keys?.tour) ||
+      !plan.receipts || Object.hasOwn(plan.receipts, 'tour') ||
+      config.toolSourceCommit !== TOUR_FIXTURE_INSTALLER.sourceCommit || !sha256(config.proofSha256) ||
+      !isAbsolute(config.proofPath || '') || !uuid(plan.run) || !uuid(plan.records?.tour?.id) || !uuid(plan.records?.client?.id) ||
+      plan.names?.tour !== `Synthetic staging QA ${plan.run} draft tour` || plan.records.tour.name !== plan.names.tour ||
+      !Number.isFinite(Date.parse(plan.observed_at)) || new Date(plan.observed_at).toISOString() !== plan.observed_at)
+    refusal('tour-admission-unproved');
+  const target = config.verifiedTarget, text = (value, max) => typeof value === 'string' && value.trim().length > 0 && value.length <= max;
+  if (!exactKeys(target, ['project', 'branch', 'endpoint', 'database']) ||
+      !exactKeys(target.project, ['id', 'name']) || !exactKeys(target.branch, ['id', 'name']) || !exactKeys(target.endpoint, ['id', 'host']) ||
+      !text(target.project.id, 128) || target.project.id === 'steep-field-48688294' || !text(target.project.name, 256) ||
+      !target.project.name.startsWith('carr-staging-replacement-') || !text(target.branch.id, 128) || target.branch.name !== 'main' ||
+      !text(target.endpoint.id, 128) || !target.endpoint.id.startsWith('ep-') || !text(target.endpoint.host, 253) ||
+      !/^[a-z0-9.-]+$/.test(target.endpoint.host) || !target.endpoint.host.startsWith(target.endpoint.id + '.') ||
+      !target.endpoint.host.endsWith('.neon.tech') || target.database !== 'neondb') refusal('tour-admission-unproved');
+  await privateParent(dirname(config.proofPath));
+  const raw = await privateBytes(config.proofPath, 65536);
+  if (hash(raw) !== config.proofSha256) refusal('tour-admission-unproved');
+  const proof = JSON.parse(raw), route = proof.fixture?.tour_readback?.route_version_id;
+  const expected = { schema: 'doctorcre-staging-fixture-proof.v1',
+    provenance: { kind: 'raw-sql-fixture', readback: 'separate-committed-readonly-connection' },
+    fixture_run: plan.run, source_pair: pair, recorded_plan_observed_at: plan.observed_at,
+    verified_target: target, tool_source_sha256: TOUR_FIXTURE_INSTALLER.sha256,
+    fixture: { mode: 'excluded-tour-stop', tour_readback: {
+      tour_id: plan.records.tour.id, tour_name: plan.names.tour, client_id: plan.records.client.id,
+      route_version_id: route, route_version: 1, route_accepted: false, active_stop_count: 0, excluded_stop_count: 1,
+      property_id: tourFixtureID('property', plan), property_status: 'unknown', stop_id: tourFixtureID('excluded-stop', plan),
+      stop_state: 'excluded', route_sequence: null, route_label: null, access_coordinate_status: 'unknown' } } };
+  if (!uuid(route) || !same(proof, expected)) refusal('tour-admission-unproved');
+  return { status: 'READY', fixtureBinding: { schema: 'doctorcre-staging-tour-fixture-binding.v1',
+    provenance: 'private_installer_raw_readback', run: plan.run, source_pair: { app: binding.app, carr: binding.carr },
+    tour_id: plan.records.tour.id, route_version_id: route, excluded_stop_id: expected.fixture.tour_readback.stop_id,
+    synthetic_property_id: expected.fixture.tour_readback.property_id } };
+}
+
+export async function runTourPhase({ binding, run, plan, fixtureGuard, release, factory, target, environment = process.env }, supplied = {}) {
+  run.check();
+  await fixtureGuard.assertCoverage();
+  assertSourcePair(release, binding);
+  const admission = await (supplied.tourPrerequisite || tourPrerequisite)({ output: run.root, binding,
+    runId: run.snapshot().id, environment });
+  if (admission.status !== 'READY') return { status: admission.status, full_v1_qualified: false,
+    unqualified_write_journeys: ['create-tour', 'edit-tour', 'accept-route'] };
+  const { screens } = await import('./screens.mjs');
+  const screen = (await screens()).find(row => row.path === '/tours' && row.surface === 'app');
+  if (!screen) refusal('business-fixture-route-missing');
+  const page = await factory.freshPage({ target, screen, release, fixtureGuard, path: '/tours' });
+  const qualify = supplied.qualifyTour || (await import('./tour-journey.mjs')).qualifyTourJourney;
+  const result = await qualify({ page, plan, sourcePair: { app: binding.app, carr: binding.carr },
+    fixtureBinding: admission.fixtureBinding, run });
+  await fixtureGuard.assertCoverage();
+  if (result?.full_v1_qualified !== false) refusal('business-result-unqualified');
+  return result;
+}
+
 export async function boundedInvocation(options, dependencies = {}) {
   const { RUN_LIMITS, openRun, directoryBytes } = await import('./run-limits.mjs');
   const { sealContinuation, restoreContinuation } = await import('./continuation-envelope.mjs');
@@ -472,7 +574,7 @@ export async function boundedInvocation(options, dependencies = {}) {
     // Revalidate retained journey observations through the real runner once per
     // invocation. Its canonical journal skips only observed, source-bound steps;
     // no new checkpoint file or inferred completion bit is introduced.
-    let businessValidated = false, paused = false;
+    let businessValidated = false, paused = false, tourStatus = 'UNQUALIFIED_NOT_RUN';
     const inspectCurrent = async () => {
       const state = await inspect(output, binding);
       return !businessValidated && ['sweep', 'complete'].includes(state.phase)
@@ -486,6 +588,9 @@ export async function boundedInvocation(options, dependencies = {}) {
         const admission = await (dependencies.invoicePrerequisite || invoicePrerequisite)({
           output, binding, runId, environment: options.environment || {} });
         if (admission.status !== 'READY') { paused = true; break; }
+        const tour = await (dependencies.tourPrerequisite || tourPrerequisite)({
+          output, binding, runId, environment: options.environment || {} });
+        tourStatus = tour.status === 'READY' ? 'READ_ONLY_PENDING' : tour.status;
       }
       const outcome = await work({ phase: current.phase, output, environment, limits, boundary });
       if (!await absent(join(output, '.run-owner'))) refusal('source-worker-not-quiescent');
@@ -502,7 +607,10 @@ export async function boundedInvocation(options, dependencies = {}) {
       }
       if (budget.snapshot().stopReason !== null) refusal('prior-worker-failed');
       await freeze(budget);
-      if (current.phase === 'business') businessValidated = true;
+      if (current.phase === 'business') {
+        businessValidated = true;
+        if (tourStatus === 'READ_ONLY_PENDING') tourStatus = 'READ_ONLY_QUALIFIED';
+      }
       current = await inspectCurrent();
     }
     assertBudget(budget.snapshot(), { ...budgetBinding, now: now() });
@@ -511,7 +619,7 @@ export async function boundedInvocation(options, dependencies = {}) {
     current = await inspectCurrent();
     const { writeReport } = await import('./report.mjs');
     const checkpoint = JSON.parse(await readFile(join(output, 'controls.json'), 'utf8'));
-    await writeReport(output, { ...checkpoint, run: budget });
+    await writeReport(output, { ...checkpoint, run: budget, publishFile: publishPrivateReport });
     const { screens, targets } = await import('./screens.mjs');
     const routes = await screens();
     const pairs = targets.reduce((count, target) => count + routes.filter(screen => screen.surface === target.surface).length, 0);
@@ -537,8 +645,10 @@ export async function boundedInvocation(options, dependencies = {}) {
     await qualify();
     assertBudget(budget.snapshot(), { ...budgetBinding, now: now() });
     return { digest: sealed.sha256, generation: String(slot), predecessor: predecessor?.sha256 || '', plan_hash: sealed.planHash,
-      job_status: paused ? 'PAUSED_LOCAL_INVOICE_FIXTURE' : current.phase === 'complete' ? 'SWEEP_ACCEPTED' : 'CONTINUE',
-      accepted_v1: 'false', proof_status: paused ? 'PARTIAL' : current.completion?.status || 'PARTIAL' };
+      job_status: paused ? 'PAUSED_LOCAL_INVOICE_FIXTURE' : current.phase === 'complete'
+        ? tourStatus === 'READ_ONLY_QUALIFIED' ? 'SWEEP_ACCEPTED' : 'PARTIAL' : 'CONTINUE',
+      accepted_v1: 'false', tour_status: tourStatus,
+      proof_status: paused || tourStatus !== 'READ_ONLY_QUALIFIED' ? 'PARTIAL' : current.completion?.status || 'PARTIAL' };
   } finally {
     budget?.dispose();
     await lease.close();
@@ -638,7 +748,11 @@ export async function runBusinessPhase({ binding, run, environment = process.env
     await fixtureGuard.assertCoverage();
     await coverage(run.root);
     if (invoice?.full_v1_qualified !== false) refusal('business-result-unqualified');
-    return { schema: 'staging-business-journey-result.v1', release: result.release,
+    if (setup.needs_restore.some(row => row.record === 'tour')) refusal('business-fixture-requires-reconciliation');
+    const tour = await runTourPhase({ binding, run, plan: JSON.parse(await privateBytes(join(run.root, 'staging-records-plan.json'))),
+      fixtureGuard, release, factory, target, environment }, supplied);
+    await coverage(run.root);
+    return { schema: 'staging-business-journey-result.v1', release: result.release, tour,
       completed: [...result.completed, ...invoice.completed], steps: [...result.steps, ...invoice.steps],
       full_v1_qualified: false, unqualified_journeys: businessContract.unqualified_journeys };
   } finally {
@@ -659,7 +773,7 @@ async function phaseWorker(environment, phase) {
   if (await absent(join(run.root, 'controls.json'))) {
     const initial = createSweepRun({ targets, routedScreens: await screens() });
     initial.assertRelease(release);
-    await writeReport(run.root, { ...initial.snapshot(), release, run });
+    await writeReport(run.root, { ...initial.snapshot(), release, run, publishFile: publishPrivateReport });
   }
   if (phase === 'explore') return (await import('./explore.mjs')).exploreAll();
   if (phase === 'business') {
@@ -885,7 +999,7 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
       const command = process.argv[2];
       if (['invocation', 'canary'].includes(command)) await publicationBoundary({ ...process.env,
         E2E_PUBLICATION_DIGEST: values.digest });
-      const allowed = new Set(['started_at', 'deadline', 'digest', 'generation', 'predecessor', 'plan_hash', 'job_status', 'proof_status', 'accepted_v1']);
+      const allowed = new Set(['started_at', 'deadline', 'digest', 'generation', 'predecessor', 'plan_hash', 'job_status', 'proof_status', 'tour_status', 'accepted_v1']);
       const lines = [];
       for (const [key, value] of Object.entries(values)) {
         if (!allowed.has(key) || typeof value !== 'string' || !/^[A-Za-z0-9_-]*$/.test(value) || value.length > 128)
