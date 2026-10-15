@@ -27,12 +27,16 @@ function configure(t) {
   });
 }
 
-async function harness(t, { attention = true, identity = true, detail = true, relationship = {}, appRelease = release } = {}) {
+async function harness(t, { attention = true, identity = true, detail = true, relationship = {}, appRelease = release, readinessDelayMs = 0 } = {}) {
   configure(t);
   const root = await mkdtemp(join(tmpdir(), 'readonly-journeys-'));
   const run = openRun(root, { runId: 'synthetic-readonly-journeys', events: null, limits: { ...RUN_LIMITS, httpRequests: 100 } });
   t.after(async () => { run.dispose(); await rm(root, { recursive: true, force: true }); });
-  let coverageChecks = 0, theme = 'dark', clicks = 0, reloads = 0, evaluations = 0;
+  let coverageChecks = 0, theme = 'dark', clicks = 0, reloads = 0, evaluations = 0, readinessWaits = 0;
+  let markWaitEntered;
+  const firstReadinessWait = new Promise(resolve => { markWaitEntered = resolve; });
+  const ready = { avatar: readinessDelayMs === 0, working: readinessDelayMs === 0, today: readinessDelayMs === 0,
+    relationship: readinessDelayMs === 0, connection: readinessDelayMs === 0 };
   const reads = [], relationshipMethods = [];
   const context = { route: async () => {}, addInitScript: async () => {} };
   await installStagingGuard(context, { forContext: () => ({ handle: async () => {}, assertCoverage: async () => { coverageChecks++; } }) });
@@ -47,6 +51,37 @@ async function harness(t, { attention = true, identity = true, detail = true, re
     referrals: [], suggestions: [],
   };
   Object.assign(network, relationship);
+  const documentForHarness = () => ({
+    documentElement: { getAttribute: key => key === 'data-theme' ? theme : null },
+    querySelector: selector => {
+      if (selector === '.relationship-dialog') return {
+        querySelector: inner => inner === '#relationshipTitle' ? { textContent: relationshipTitle } : null,
+        querySelectorAll: inner => inner === '[data-open-node]' && relationshipTitle === 'PRIVATE_CLIENT_NAME_CANARY' && ready.connection
+          ? [{ getAttribute: key => key === 'data-open-node' ? `deal:${dealId}` : null,
+            click: () => { relationshipTitle = 'PRIVATE_DEAL_NAME_CANARY'; },
+            getClientRects: () => [{ width: 10, height: 10 }], checkVisibility: () => true }] : [],
+      };
+      if (selector === `.relationship-node[data-node="party:${partyId}"]` || selector === `[data-node="party:${partyId}"]`)
+        return ready.relationship ? { click: () => { relationshipTitle = 'PRIVATE_CLIENT_NAME_CANARY'; },
+          getClientRects: () => [{ width: 10, height: 10 }], checkVisibility: () => true } : null;
+      if (selector === '#selfAvatar') return { getAttribute: () => 'Joe: account and settings', textContent: ready.avatar ? 'J' : '…',
+        getClientRects: () => ready.avatar ? [{ width: 10, height: 10 }] : [], checkVisibility: () => ready.avatar };
+      if (selector === '#appWorkingList' || selector === '#appTodayNeeds') return {
+        querySelectorAll: () => attention && (selector === '#appWorkingList' ? ready.working : ready.today)
+          ? [{ getAttribute: () => dealId, getClientRects: () => [{ width: 10, height: 10 }], checkVisibility: () => true }] : [],
+      };
+      return null;
+    },
+    querySelectorAll: selector => {
+      if (selector === 'button[data-pref="theme"]') return [{ disabled: false, getClientRects: () => [{ width: 10, height: 10 }], checkVisibility: () => true }];
+      if (selector === '[data-node]' || selector === `[data-node="party:${partyId}"]`) return ready.relationship ? [{
+        getAttribute: () => `party:${partyId}`, matches: () => true,
+        click: () => { relationshipTitle = 'PRIVATE_CLIENT_NAME_CANARY'; },
+        getClientRects: () => [{ width: 10, height: 10 }], checkVisibility: () => true,
+      }] : [];
+      return [];
+    },
+  });
   const page = {
     url: () => currentURL,
     context: () => context,
@@ -72,23 +107,7 @@ async function harness(t, { attention = true, identity = true, detail = true, re
         }
         throw new Error('Synthetic fetch target refused');
       };
-      globalThis.document = {
-        documentElement: { getAttribute: key => key === 'data-theme' ? theme : null },
-        querySelector: selector => {
-          if (selector === '.relationship-dialog') return {
-            querySelector: inner => inner === '#relationshipTitle' ? { textContent: relationshipTitle } : null,
-            querySelectorAll: inner => inner === '[data-open-node]' && relationshipTitle === 'PRIVATE_CLIENT_NAME_CANARY'
-              ? [{ getAttribute: key => key === 'data-open-node' ? `deal:${dealId}` : null, click: () => { relationshipTitle = 'PRIVATE_DEAL_NAME_CANARY'; } }] : [],
-          };
-          if (selector === `.relationship-node[data-node="party:${partyId}"]` || selector === `[data-node="party:${partyId}"]`)
-            return { click: () => { relationshipTitle = 'PRIVATE_CLIENT_NAME_CANARY'; } };
-          if (selector === '#selfAvatar') return { getAttribute: () => 'Joe: account and settings', textContent: 'J' };
-          if (selector === '#appWorkingList' || selector === '#appTodayNeeds') return {
-            querySelectorAll: () => attention ? [{ getAttribute: () => dealId }] : [],
-          };
-          return null;
-        },
-      };
+      globalThis.document = documentForHarness();
       try { return await fn(args); }
       finally {
         globalThis.fetch = savedFetch;
@@ -108,9 +127,31 @@ async function harness(t, { attention = true, identity = true, detail = true, re
     goto: async url => { currentURL = url; },
     reload: async () => { reloads++; },
     waitForURL: async predicate => { assert.equal(predicate(new URL(currentURL)), true); },
-    waitForFunction: async () => {},
+    waitForFunction: async (predicate, arg, { timeout = 1000 } = {}) => {
+      readinessWaits++;
+      markWaitEntered?.(); markWaitEntered = null;
+      const readyKey = arg?.avatarSelector ? 'avatar' : arg?.workingSelector ? 'working'
+        : arg?.nodeId ? 'relationship' : arg?.dealId ? 'connection' : null;
+      if (readinessDelayMs > 0 && readyKey) setTimeout(() => {
+        if (readyKey === 'working') { ready.working = true; ready.today = true; }
+        else ready[readyKey] = true;
+      }, readinessDelayMs);
+      const expires = Date.now() + timeout;
+      while (Date.now() < expires) {
+        const savedDocument = globalThis.document;
+        globalThis.document = documentForHarness();
+        let matched;
+        try { matched = predicate(arg); } finally {
+          if (savedDocument === undefined) delete globalThis.document; else globalThis.document = savedDocument;
+        }
+        if (matched) return;
+        await new Promise(resolve => setTimeout(resolve, 1));
+      }
+      throw new Error('Synthetic DOM readiness timeout');
+    },
   };
-  return { page, run, reads, relationshipMethods, checks: () => ({ coverageChecks, clicks, reloads, evaluations }) };
+  return { page, run, reads, relationshipMethods, firstReadinessWait,
+    checks: () => ({ coverageChecks, clicks, reloads, evaluations, readinessWaits }) };
 }
 
 test('synthetic harness exercises only the scoped W1 and W2 logic and emits no record identifiers or names', async t => {
@@ -148,6 +189,28 @@ test('W2 requires current panels and independent exact-deal detail readback', as
   assert.equal(result.counts.module_api_reads, 8);
   assert.equal(result.counts.module_api_reads <= contract.limits.module_api_reads_max, true);
   assert.equal(result.counts.carr_record_mutations, 0);
+});
+
+test('W1, W2, and W14 wait for delayed owned UI renders before qualifying', async t => {
+  const h = await harness(t, { readinessDelayMs: 15 });
+  const result = await runReadonlyJourneys({ page: h.page, release, plan: fixturePlan(), run: h.run });
+  assert.deepEqual(['W1', 'W2', 'W14'].map(id => result.journeys.find(row => row.journey === id).state),
+    ['qualified-slice', 'qualified-slice', 'qualified-slice']);
+  assert.equal(h.checks().readinessWaits >= 5, true, 'each asynchronous UI surface and the owned connection must pass readiness waits');
+  assert.equal(JSON.stringify(result).includes('PRIVATE_CLIENT_NAME_CANARY'), false);
+  assert.equal(JSON.stringify(result).includes('PRIVATE_DEAL_NAME_CANARY'), false);
+  assert.equal(result.full_v1_qualified, false);
+});
+
+test('global stop interrupts a pending readiness wait before W2 or W14 reads', async t => {
+  const h = await harness(t, { readinessDelayMs: 50 });
+  const running = runReadonlyJourneys({ page: h.page, release, plan: fixturePlan(), run: h.run });
+  await h.firstReadinessWait;
+  h.run.stop('synthetic-stop');
+  await assert.rejects(running, /synthetic-stop/);
+  assert.deepEqual(h.reads, []);
+  assert.deepEqual(h.relationshipMethods, []);
+  assert.equal(h.checks().clicks, 0);
 });
 
 test('missing owned plan deal produces pending W2 without broad attention or detail reads', async t => {

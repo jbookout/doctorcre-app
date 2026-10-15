@@ -10,7 +10,12 @@ const pending = (journey, reason) => ({ journey, state: 'pending', reason });
 
 // This function is serialized into the guarded page. Its only network path is
 // same-origin fetch, so installStagingGuard remains the sole HTTP policy/meter.
-async function browserRead({ task, dealId, partyId, clientId, contract: spec }) {
+async function browserRead({ task, dealId, partyId, clientId, clientNameDigest, dealNameDigest, contract: spec }) {
+  const textDigest = async value => {
+    const bytes = new TextEncoder().encode(value || '');
+    const digest = await crypto.subtle.digest('SHA-256', bytes);
+    return [...new Uint8Array(digest)].map(byte => byte.toString(16).padStart(2, '0')).join('');
+  };
   const json = async (path) => {
     const response = await fetch(path, { credentials: 'same-origin', cache: 'no-store', headers: { accept: 'application/json' } });
     if (!response.ok) return null;
@@ -81,18 +86,27 @@ async function browserRead({ task, dealId, partyId, clientId, contract: spec }) 
     if (edges.length !== 1 || edges[0]?.from !== clientNodeId || edges[0]?.to !== dealNodeId
       || edges[0]?.kind !== 'client_deal' || edges[0]?.via !== null)
       return { snapshot: true, nodes: true, edge: false, client_ui: false, deal_ui: false };
-    const dialog = document.querySelector('.relationship-dialog');
-    const clientCard = document.querySelector(`.relationship-node[data-node="${clientNodeId}"]`)
-      || document.querySelector(`[data-node="${clientNodeId}"]`);
-    if (!clientCard || typeof clientCard.click !== 'function') return { snapshot: true, nodes: true, edge: true, client_ui: false, deal_ui: false };
+    return { snapshot: true, nodes: true, edge: true, clientNameDigest: await textDigest(clients[0].name),
+      dealNameDigest: await textDigest(deals[0].name), validUntil: network.valid_until };
+  }
+  if (task === 'relationship-open-client') {
+    const clientNodeId = `party:${partyId}`;
+    const visible = node => node.getClientRects().length > 0 && node.checkVisibility();
+    const targets = [...document.querySelectorAll(`[data-node="${clientNodeId}"]`)].filter(visible);
+    const clientCard = targets.find(node => node.matches('.relationship-node')) || targets[0];
+    if (!clientCard || typeof clientCard.click !== 'function') return { client_ui: false, deal_ui: false };
     clientCard.click();
-    const clientTitleMatches = dialog?.querySelector('#relationshipTitle')?.textContent === clients[0].name;
+    return { client_ui: await textDigest(document.querySelector('.relationship-dialog')?.querySelector('#relationshipTitle')?.textContent) === clientNameDigest };
+  }
+  if (task === 'relationship-open-deal') {
+    const dealNodeId = `deal:${dealId}`;
+    const dialog = document.querySelector('.relationship-dialog');
     const connection = [...(dialog?.querySelectorAll('[data-open-node]') || [])]
-      .filter(button => button.getAttribute('data-open-node') === dealNodeId);
-    if (!clientTitleMatches || connection.length !== 1) return { snapshot: true, nodes: true, edge: true, client_ui: false, deal_ui: false };
+      .filter(button => button.getAttribute('data-open-node') === dealNodeId
+        && button.getClientRects().length > 0 && button.checkVisibility());
+    if (connection.length !== 1) return { deal_ui: false };
     connection[0].click();
-    return { snapshot: true, nodes: true, edge: true, client_ui: true,
-      deal_ui: dialog?.querySelector('#relationshipTitle')?.textContent === deals[0].name };
+    return { deal_ui: await textDigest(dialog?.querySelector('#relationshipTitle')?.textContent) === dealNameDigest };
   }
   if (task === 'theme') {
     return {
@@ -103,6 +117,61 @@ async function browserRead({ task, dealId, partyId, clientId, contract: spec }) 
   }
   return null;
 }
+
+function runTimeoutMs(run) {
+  run.check();
+  return Math.max(1, Math.min(run.limits.httpTimeoutMs, run.deadline - Date.now()));
+}
+
+async function waitForPageState(page, predicate, arg, run) {
+  run.check();
+  const timeout = runTimeoutMs(run);
+  let removeAbort = () => {};
+  try {
+    const waiting = page.waitForFunction(predicate, arg, { timeout, polling: 'raf' });
+    const stopped = new Promise((_, reject) => {
+      const signal = run.signal;
+      if (!signal) return;
+      const abort = () => reject(new Error('Read-only journey stopped'));
+      signal.addEventListener('abort', abort, { once: true });
+      removeAbort = () => signal.removeEventListener('abort', abort);
+    });
+    await Promise.race([waiting, stopped]);
+  } catch (error) {
+    run.check();
+    throw error;
+  } finally {
+    removeAbort();
+  }
+  run.check();
+}
+
+const accountAndThemeReady = ({ avatarSelector, themeSelector }) => {
+  const avatar = document.querySelector(avatarSelector);
+  const themes = [...document.querySelectorAll(themeSelector)];
+  const visible = element => element && element.getClientRects().length > 0 && element.checkVisibility() && !element.disabled;
+  return avatar?.getAttribute('aria-label') === 'Joe: account and settings' && avatar.textContent?.trim() === 'J'
+    && visible(avatar) && themes.length === 1 && visible(themes[0]);
+};
+
+const ownedAttentionRowsReady = ({ dealId, workingSelector, todaySelector }) => {
+  const visibleOwnedRow = selector => {
+    const panel = document.querySelector(selector);
+    return [...(panel?.querySelectorAll('[data-layout-deal]') || [])]
+      .some(row => row.getAttribute('data-layout-deal') === dealId && row.getClientRects().length > 0 && row.checkVisibility());
+  };
+  return visibleOwnedRow(workingSelector) && visibleOwnedRow(todaySelector);
+};
+
+const ownedRelationshipNodeReady = ({ nodeId }) => [...document.querySelectorAll('[data-node]')]
+  .some(node => node.getAttribute('data-node') === nodeId && node.getClientRects().length > 0 && node.checkVisibility());
+
+const ownedRelationshipConnectionReady = ({ dealId }) => {
+  const dialog = document.querySelector('.relationship-dialog');
+  return [...(dialog?.querySelectorAll('[data-open-node]') || [])]
+    .some(button => button.getAttribute('data-open-node') === `deal:${dealId}`
+      && button.getClientRects().length > 0 && button.checkVisibility());
+};
 
 function safePlan(plan, release) {
   const partyId = plan?.records?.party?.id, clientId = plan?.records?.client?.id;
@@ -154,18 +223,22 @@ export async function runReadonlyJourneys({ page, release, plan, run } = {}) {
   if (!identityQualified) {
     results.push(pending('W1', 'authenticated-source-pair-unavailable'));
   } else {
-    const before = await evaluate('theme');
     let themePersisted = false;
     try {
+      await waitForPageState(page, accountAndThemeReady, {
+        avatarSelector: contract.journeys.W1.avatar_selector, themeSelector: contract.journeys.W1.theme_selector,
+      }, run);
+      const before = await evaluate('theme');
       const themeControl = page.locator(contract.journeys.W1.theme_selector);
       if (before?.actor_avatar && ['dark', 'light'].includes(before.theme) && await themeControl.count() === 1) {
-        await themeControl.click({ timeout: run.limits.httpTimeoutMs });
+        await themeControl.click({ timeout: runTimeoutMs(run) });
         const changed = await evaluate('theme');
         if (changed?.theme !== before.theme && ['dark', 'light'].includes(changed?.theme)) {
           run.check();
-          await page.reload({ waitUntil: 'domcontentloaded', timeout: run.limits.httpTimeoutMs });
-          await page.waitForFunction(() => document.querySelector('#selfAvatar')?.getAttribute('aria-label') === "Joe: account and settings",
-            undefined, { timeout: run.limits.httpTimeoutMs });
+          await page.reload({ waitUntil: 'domcontentloaded', timeout: runTimeoutMs(run) });
+          await waitForPageState(page, accountAndThemeReady, {
+            avatarSelector: contract.journeys.W1.avatar_selector, themeSelector: contract.journeys.W1.theme_selector,
+          }, run);
           const after = await evaluate('theme');
           themePersisted = after?.actor_avatar === true && after.theme === changed.theme;
         }
@@ -191,7 +264,14 @@ export async function runReadonlyJourneys({ page, release, plan, run } = {}) {
     } else if (attention?.triage_shape_valid !== true) {
       results.push(pending('W2', 'fresh-today-triage-unavailable'));
     } else {
-      const ui = await evaluate('attention-ui', { dealId: ownedDeal });
+      let ui = null;
+      try {
+        await waitForPageState(page, ownedAttentionRowsReady, {
+          dealId: ownedDeal, workingSelector: contract.journeys.W2.working_selector,
+          todaySelector: contract.journeys.W2.today_selector,
+        }, run);
+        ui = await evaluate('attention-ui', { dealId: ownedDeal });
+      } catch { run.check(); }
       if (ui?.working !== true || ui?.today !== true) {
         results.push(pending('W2', 'current-attention-panels-do-not-show-owned-deal'));
       } else {
@@ -201,11 +281,11 @@ export async function runReadonlyJourneys({ page, release, plan, run } = {}) {
           if (await row.count() !== 1) {
             results.push(pending('W2', 'owned-deal-attention-row-not-unique'));
           } else {
-            await row.click({ timeout: run.limits.httpTimeoutMs });
+            await row.click({ timeout: runTimeoutMs(run) });
             await page.waitForURL(url => url.origin === STAGING_ORIGIN && ['/', '/deals'].includes(url.pathname) && url.searchParams.get('deal') === ownedDeal,
-              { timeout: run.limits.httpTimeoutMs });
-            await page.locator('#recordPanel').waitFor({ state: 'visible', timeout: run.limits.httpTimeoutMs });
-            await page.locator('#detailPhase').waitFor({ state: 'visible', timeout: run.limits.httpTimeoutMs });
+              { timeout: runTimeoutMs(run) });
+            await page.locator('#recordPanel').waitFor({ state: 'visible', timeout: runTimeoutMs(run) });
+            await page.locator('#detailPhase').waitFor({ state: 'visible', timeout: runTimeoutMs(run) });
             const detail = await evaluate('detail', { dealId: ownedDeal });
             results.push(detail?.matches === true
               ? { journey: 'W2', state: 'qualified-slice', reason: 'owned-attention-row-opened-and-detail-readback-matched',
@@ -227,9 +307,25 @@ export async function runReadonlyJourneys({ page, release, plan, run } = {}) {
     let relationship = null;
     try {
       run.check();
-      await page.goto(`${STAGING_ORIGIN}${contract.journeys.W14.route}`, { waitUntil: 'domcontentloaded', timeout: run.limits.httpTimeoutMs });
-      await page.waitForURL(url => url.origin === STAGING_ORIGIN && url.pathname === contract.journeys.W14.route, { timeout: run.limits.httpTimeoutMs });
+      await page.goto(`${STAGING_ORIGIN}${contract.journeys.W14.route}`, { waitUntil: 'domcontentloaded', timeout: runTimeoutMs(run) });
+      await page.waitForURL(url => url.origin === STAGING_ORIGIN && url.pathname === contract.journeys.W14.route, { timeout: runTimeoutMs(run) });
       relationship = await evaluate('relationship', relationshipPlan);
+      if (relationship?.snapshot === true && relationship?.nodes === true && relationship?.edge === true) {
+        await waitForPageState(page, ownedRelationshipNodeReady, { nodeId: `party:${relationshipPlan.partyId}` }, run);
+        if (Date.parse(relationship.validUntil) <= Date.now()) {
+          relationship = { snapshot: false };
+        } else {
+          const clientUi = await evaluate('relationship-open-client', { ...relationshipPlan,
+            clientNameDigest: relationship.clientNameDigest });
+          relationship = { ...relationship, ...clientUi };
+          if (clientUi?.client_ui === true) {
+            await waitForPageState(page, ownedRelationshipConnectionReady, { dealId: relationshipPlan.dealId }, run);
+            const dealUi = await evaluate('relationship-open-deal', { dealId: relationshipPlan.dealId,
+              dealNameDigest: relationship.dealNameDigest });
+            relationship = { ...relationship, ...dealUi };
+          }
+        }
+      }
     } catch { run.check(); }
     results.push(relationship?.snapshot !== true
       ? pending('W14', 'fresh-relationship-snapshot-unavailable')
