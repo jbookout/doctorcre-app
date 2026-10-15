@@ -6,6 +6,7 @@ import { canContinueTraversal, validateTraversal } from './traversal.mjs';
 import { createStateLedger } from './state-ledger.mjs';
 import { evidenceCapture } from './evidence.mjs';
 import { hasFailure, validSkip, normalizeSkip } from './result-status.mjs';
+import { explorationCoverage } from './completion-contract.mjs';
 import contract from '../../contracts/e2e-staging.v1.json' with { type: 'json' };
 
 const statuses = new Set(['OBSERVED', 'DEAD', 'DISABLED', 'ERROR', 'UNREACHABLE', 'SKIPPED']);
@@ -76,6 +77,9 @@ export function createSweepRun({ targets, routedScreens, prior }) {
   const pending = planned.filter(({ target, screen }) => !complete(measured.get(pair(target.name, screen.path))));
   const continuationIDs = new Map([...measured].filter(([, screen]) => canContinueTraversal(screen)).map(([key, screen]) => [key, screen.attempt_id]));
   const attemptID = randomUUID();
+  let verifiedRelease = prior?.release;
+  const retainedExplorations = prior?.explorations || [];
+  const explorationRelease = prior?.release;
   let number = 0;
   const states = createStateLedger({ targets, routedScreens, prior: prior?.stateObligations || [], validateScreen, complete, finished, attemptID });
   states.validateSources([...measured.values(), ...history.map(entry => entry.screen)]);
@@ -87,6 +91,7 @@ export function createSweepRun({ targets, routedScreens, prior }) {
     priorScreen(target, path) { return structuredClone(measured.get(pair(target, path))); },
     assertRelease(release) {
       if (!sourceRelease(release) || prior && (prior.release.source_commit !== release.source_commit || prior.release.carr_source_commit !== release.carr_source_commit)) throw new Error('Staging sweep requires the same pinned source pair; no screen was retried');
+      verifiedRelease = release;
     },
     record(screen) {
       screen = normalizeSkip(screen, 'ERROR', measured.get(pair(screen?.target, screen?.path)));
@@ -99,16 +104,29 @@ export function createSweepRun({ targets, routedScreens, prior }) {
       measured.set(key, { ...structuredClone(screen), attempt_id: currentAttempt });
       states.collect(screen);
     },
-    snapshot() { return structuredClone({ stateObligations: states.snapshot(), expectedStates: states.snapshot().length, screens: planned.map(({ target, screen }) => measured.get(pair(target.name, screen.path))).filter(Boolean), history, expectedScreens: planned.length, expectedExplorations: planned.reduce((count, { target }) => count + (target.name.endsWith('phone') ? 1 : 2), 0) }); },
-    verdict(allowlist) {
+    snapshot() { return structuredClone({ stateObligations: states.snapshot(), expectedStates: states.snapshot().length, screens: planned.map(({ target, screen }) => measured.get(pair(target.name, screen.path))).filter(Boolean), history, explorations: retainedExplorations, expectedScreens: planned.length, expectedExplorations: planned.reduce((count, { target }) => count + (target.name.endsWith('phone') ? 1 : 2), 0) }); },
+    verdict(allowlist, { explorations = retainedExplorations, explorationSource = explorationRelease } = {}) {
       const owned = states.snapshot().filter(entry => entry.spec.kind !== 'calendar-operation').flatMap(entry => [entry.result, ...(entry.history || []).map(old => old.result)]).filter(Boolean);
       const controls = [...measured.values(), ...history.map(entry => entry.screen), ...owned].flatMap(screen => screen.controls);
       const dead = newDeadControls(controls, allowlist);
       const current = [...measured.values(), ...states.snapshot().filter(entry => entry.spec.kind !== 'calendar-operation').map(entry => entry.result).filter(Boolean)];
+      const pendingScreens = planned.filter(({ target, screen }) => !complete(measured.get(pair(target.name, screen.path))))
+        .map(({ target, screen }) => `${target.name}|${screen.path}`);
+      const failedScreens = planned.filter(({ target, screen }) => {
+        const row = measured.get(pair(target.name, screen.path));
+        return row && (row.status === 'ERROR' || Boolean(row.failure) || row.controls.some(control => ['ERROR', 'UNREACHABLE'].includes(control.status)));
+      }).map(({ target, screen }) => `${target.name}|${screen.path}`);
+      const failedStateObligations = states.snapshot().filter(entry => entry.status === 'failed')
+        .map(entry => entry.key);
+      const exploration = explorationCoverage({ targets, routedScreens, explorations,
+        explorationRelease: explorationSource, release: verifiedRelease });
       return { skippedControls: current.flatMap(screen => screen.controls).filter(row => row.status === 'SKIPPED').length,
         skippedStateObligations: states.snapshot().filter(entry => entry.result?.status === 'SKIPPED').length,
         failed: measured.size !== planned.length || !planned.every(({ target, screen }) => finished(measured.get(pair(target.name, screen.path)))) || !states.finished() || dead.length > 0,
-        completed: measured.size === planned.length && planned.every(({ target, screen }) => complete(measured.get(pair(target.name, screen.path)))) && states.completed(), pendingStateObligations: states.pending().map(entry => entry.key), newDeadControls: [...new Set(dead.map(row => row.key))] };
+        completed: measured.size === planned.length && planned.every(({ target, screen }) => complete(measured.get(pair(target.name, screen.path)))) && states.completed(),
+        pendingScreens, failedScreens, failedStateObligations,
+        pendingStateObligations: states.pending().map(entry => entry.key), newDeadControls: [...new Set(dead.map(row => row.key))],
+        ...exploration };
     },
     evidencePaths(output, privateRoot, status) {
       requireCheckpoint(statuses.has(status));

@@ -1,9 +1,9 @@
 import { spawn, spawnSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { openSync, closeSync, writeSync, readSync, fstatSync, unlinkSync, mkdirSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { openRun, RUN_LIMITS, RunLimitError, runLimitsFromEnvironment } from './run-limits.mjs';
+import { openRun, RUN_LIMITS, RunLimitError, runLimitsFromEnvironment, directoryBytes } from './run-limits.mjs';
 import { targetExists as probe, signalTarget } from './process-liveness.mjs';
 
 const project = fileURLToPath(new URL('../../', import.meta.url));
@@ -13,6 +13,61 @@ const groupAlive = pid => probe(-pid);
 const pidAlive = pid => probe(pid);
 
 const ownedAlive = pid => pidAlive(pid) || groupAlive(pid);
+
+// Worker output may contain session data, page content, or provider errors.
+// Only a closed set of startup signatures and source locations can cross the
+// supervisor seam; raw output remains byte-accounted and otherwise discarded.
+const DIAGNOSTIC_LINE_BYTES = 1024;
+const MAX_WORKER_DIAGNOSTICS = 8;
+const SAFE_CAUSES = [
+  [/^Error \[ERR_MODULE_NOT_FOUND\]:/, 'node-module-resolution-failed'],
+  [/^Error: Cannot find (?:module|package)\b/, 'node-module-resolution-failed'],
+  [/^Error in (?:Playwright )?config(?:uration)?\b/i, 'playwright-config-load-failed'],
+  [/^Error: No tests found\b/, 'playwright-no-tests-discovered'],
+  [/^SyntaxError:/, 'javascript-syntax-error'],
+  [/^Staging run stopped: (run-directory-required|invalid-run-limits|run-ledger-invalid|run-ledger-unreadable|process-inspection-unavailable|process-ownership-invalid|process-cleanup-unverified|artifact-path-refused|artifact-symlink-refused|artifact-size-unavailable|http-request-limit|http-timeout|whole-run-deadline)\b/, null],
+];
+const SAFE_SESSION_FAILURE = /^Error: staging session preflight failed: ((?:context-failed|app-release-failed|app-release-invalid|app-release-http-(?:400|401|403|404|429|500|502|503|504)|carr-release-failed|carr-release-http-(?:400|401|403|404|429|500|502|503|504)|carr-source-pair-refused|secret-failed|session-exchange-failed|session-exchange-refused-(?:400|401|403|404|429|500|502|503|504)|session-confirm-failed|session-confirm-http-(?:400|401|403|404|429|500|502|503|504)|dedicated-principal-refused|cookie-failed|secure-cookie-refused|context-dispose-failed))$/;
+const SAFE_LOCATION_PATH = /^(?:scripts\/e2e-staging\/[A-Za-z0-9._/-]+|playwright\.staging\.config\.mjs|tests\/staging-live\/playwright\/[A-Za-z0-9._/-]+)$/;
+
+function safeLocation(line) {
+  const match = /^\s+at (?:[^()]* \()?((?:file:\/\/)?\/[^\s()]+):(\d+):(\d+)\)?$/.exec(line);
+  if (!match) return null;
+  const absolute = match[1].replace(/^file:\/\//, '');
+  const relativePath = relative(project, absolute).split('\\').join('/');
+  if (relativePath.startsWith('../') || relativePath === '..' || !SAFE_LOCATION_PATH.test(relativePath)) return null;
+  return `${relativePath}:${match[2]}:${match[3]}`;
+}
+
+function createWorkerDiagnosticReader(onDiagnostic) {
+  let tail = '', pendingCause = false, count = 0, discardingLongLine = false;
+  return chunk => {
+    if (count >= MAX_WORKER_DIAGNOSTICS) return;
+    for (const character of chunk.toString('utf8')) {
+      if (character === '\n') {
+        const line = tail.replace(/\r$/, '');
+        tail = ''; discardingLongLine = false;
+        const sessionFailure = SAFE_SESSION_FAILURE.exec(line);
+        const cause = SAFE_CAUSES.find(([pattern]) => pattern.test(line));
+        if (sessionFailure || cause) {
+          const code = sessionFailure?.[1] || cause?.[1] || line.match(/^Staging run stopped: ([a-z0-9-]+)/)?.[1];
+          if (code) { onDiagnostic(`cause=${code}`); count++; }
+          pendingCause = true;
+          continue;
+        }
+        if (pendingCause) {
+          const location = safeLocation(line);
+          if (location) { onDiagnostic(`location=${location}`); count++; }
+        }
+        pendingCause = false;
+        continue;
+      }
+      if (discardingLongLine) continue;
+      if (Buffer.byteLength(tail) >= DIAGNOSTIC_LINE_BYTES) { tail = ''; discardingLongLine = true; pendingCause = false; continue; }
+      tail += character;
+    }
+  };
+}
 
 function processBirths(pids, timeout) {
   if (!pids.length) return new Map();
@@ -34,16 +89,24 @@ export async function supervise({ command, args = [], output, environment = proc
   mkdirSync(root, { recursive: true, mode: 0o700 });
   let run;
   const leasePath = join(root, '.run-owner');
+  const ownerId = randomUUID();
   const registry = join(root, 'owned-process-groups-' + randomUUID() + '.jsonl');
   const groups = new Map();
   let lease, log, child, monitor, deadline, hardTimer, killDeadline, cleanupPromise, resolveExit, rejectStopped;
   let journalOffset = 0, journalTail = '', closed = false, workerCode, workerError;
+  const workerDiagnostics = new Set();
   let reason = null, ownershipUnverified = false;
   const exited = new Promise(resolve => { resolveExit = resolve; });
   const stopped = new Promise((_, reject) => { rejectStopped = reject; });
   // A stop can arrive during synchronous setup, before the race below attaches.
   void stopped.catch(() => {});
 
+  const checkRun = () => {
+    const state = run.snapshot();
+    const code = state.stopReason || (Date.now() >= state.deadline ? 'whole-run-deadline' : null) ||
+      (directoryBytes(root) > limits.artifactBytes ? 'artifact-byte-limit' : null);
+    if (code) throw new RunLimitError(code);
+  };
   const retire = pid => {
     if (!ownedAlive(pid)) groups.delete(pid);
   };
@@ -133,6 +196,7 @@ export async function supervise({ command, args = [], output, environment = proc
       }
       if (journalTail || ownershipUnverified) throw new RunLimitError('process-cleanup-unverified');
       run.releaseInvocationResources();
+      if (reason) run.stop(reason);
     })();
     return cleanupPromise;
   };
@@ -140,25 +204,25 @@ export async function supervise({ command, args = [], output, environment = proc
     if (reason) return;
     reason = code;
     hardTimer = setTimeout(hardKill, limits.stopGraceMs);
-    try { run.stop(code); } catch (error) { reason = error.code || 'run-stop-record-failed'; }
     void cleanup().then(() => rejectStopped(new RunLimitError(reason)), rejectStopped);
   };
   const interrupt = () => stop('stop-signal');
   try {
     lease = openSync(leasePath, 'wx', 0o600);
     writeSync(lease, String(process.pid));
-    run = openRun(output, { limits, runId: environment.E2E_RUN_ID, events: null, newInvocation: true });
+    run = openRun(output, { limits, runId: environment.E2E_RUN_ID, events: null, newInvocation: true, ownerId,
+      retirement: { lease, isRetired: () => closed && !groups.size && !journalTail && !ownershipUnverified } });
     log = openSync(join(run.root, 'run.log'), 'a', 0o600);
     events.on('SIGINT', interrupt); events.on('SIGTERM', interrupt);
     deadline = setTimeout(() => stop('whole-run-deadline'), Math.max(1, run.deadline - Date.now()));
-    run.checkArtifacts();
+    checkRun();
     try {
       if (!processBirths([process.pid], limits.dispatcherGraceMs).has(process.pid)) throw new Error('Missing supervisor identity');
     } catch { throw new RunLimitError('process-inspection-unavailable'); }
     child = spawn(command, args, {
       cwd: project, detached: true,
       env: { ...environment, E2E_RUN_ID: run.id, E2E_RUN_LIMITS: JSON.stringify(limits), E2E_V2_OUTPUT: run.root,
-        E2E_TARGET: 'staging-live', E2E_RUN_SUPERVISED: '1', E2E_PROCESS_REGISTRY: registry,
+        E2E_RUN_OWNER: ownerId, E2E_TARGET: 'staging-live', E2E_RUN_SUPERVISED: '1', E2E_PROCESS_REGISTRY: registry,
         NODE_OPTIONS: `${environment.NODE_OPTIONS || ''} --import=${fileURLToPath(new URL('./preload.mjs', import.meta.url))}`.trim() },
       stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
     });
@@ -177,14 +241,20 @@ export async function supervise({ command, args = [], output, environment = proc
         if (row?.type === 'staging-dispatcher-exit' && Number.isSafeInteger(row.pid) && row.pid > 1) retire(row.pid);
       } catch { stop('process-cleanup-unverified'); }
     });
+    const readDiagnostic = createWorkerDiagnosticReader(diagnostic => workerDiagnostics.add(diagnostic));
     const record = channel => chunk => {
       if (reason) return;
-      try { run.reserveBytes(chunk.length); writeSync(log, `worker-output ${channel} bytes=${chunk.length}\n`); }
+      try {
+        run.reserveBytes(chunk.length);
+        writeSync(log, `worker-output ${channel} bytes=${chunk.length}\n`);
+        try { readDiagnostic(chunk); }
+        catch { workerDiagnostics.add('cause=safe-diagnostic-parser-failed'); }
+      }
       catch (error) { stop(error.code || 'log-write-failed'); }
     };
     child.stdout.on('data', record('stdout')); child.stderr.on('data', record('stderr'));
     monitor = setInterval(() => {
-      try { refreshGroups(); run.checkArtifacts(); }
+      try { refreshGroups(); checkRun(); }
       catch (error) { stop(error.code || 'run-monitor-failed'); }
     }, limits.monitorIntervalMs);
     await Promise.race([exited, stopped]);
@@ -192,8 +262,12 @@ export async function supervise({ command, args = [], output, environment = proc
     await cleanup();
     if (reason) throw new RunLimitError(reason);
     if (workerError) throw new RunLimitError('worker-spawn-failed');
-    if (workerCode !== 0) throw new RunLimitError('worker-exit-' + workerCode);
-    run.checkArtifacts();
+    if (workerCode !== 0) {
+      for (const diagnostic of workerDiagnostics) writeSync(log, `worker-diagnostic ${diagnostic}\n`);
+      const detail = workerDiagnostics.size ? [...workerDiagnostics].join('; ') : undefined;
+      throw new RunLimitError('worker-exit-' + workerCode, detail);
+    }
+    checkRun();
     return run.snapshot();
   } finally {
     clearInterval(monitor); clearTimeout(deadline);

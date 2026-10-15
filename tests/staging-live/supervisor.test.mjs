@@ -58,7 +58,7 @@ async function fixture(t, { phase = 'setup', behavior = 'wait', limits = {} } = 
       };
       syncBuiltinESMExports();
     }
-    writeFileSync(${JSON.stringify(pidsPath)}, JSON.stringify({ worker: process.pid, child: child.pid, phase: ${JSON.stringify(phase)} }));
+    if (!['live-ledger-write', 'live-ledger-exit', 'unverified-ledger-write'].includes(behavior)) writeFileSync(${JSON.stringify(pidsPath)}, JSON.stringify({ worker: process.pid, child: child.pid, phase: ${JSON.stringify(phase)} }));
     if (behavior === 'corrupt-registry') appendFileSync(process.env.E2E_PROCESS_REGISTRY, ${JSON.stringify('{broken}' + String.fromCharCode(10))});
     if (behavior === 'locked-ledger') {
       // The supervisor holds this same lock for its own ledger writes; wait for a free moment to take it.
@@ -67,7 +67,24 @@ async function fixture(t, { phase = 'setup', behavior = 'wait', limits = {} } = 
         catch (error) { if (error.code !== 'EEXIST') throw error; }
       }
     }
-    if (behavior === 'normal-exit') process.exit(0);
+    if (['live-ledger-write', 'live-ledger-exit', 'unverified-ledger-write'].includes(behavior)) {
+      const { currentRun } = await import(${JSON.stringify(new URL('../../scripts/e2e-staging/run-limits.mjs', import.meta.url).href)});
+      const rename = fs.renameSync;
+      fs.renameSync = (...args) => {
+        writeFileSync(${JSON.stringify(pidsPath)}, JSON.stringify({ worker: process.pid, child: child.pid, phase: ${JSON.stringify(phase)}, ledgerHeld: true }));
+        if (behavior === 'unverified-ledger-write') {
+          const handle = fs.openSync(process.env.E2E_PROCESS_REGISTRY, 'a');
+          fs.writeSync(handle, '{broken}' + String.fromCharCode(10));
+          fs.closeSync(handle);
+          process.kill(process.pid, 'SIGSTOP');
+        }
+        Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 300);
+        return rename(...args);
+      };
+      syncBuiltinESMExports();
+      currentRun().reserveBytes(1);
+    }
+    if (['normal-exit', 'live-ledger-exit'].includes(behavior)) process.exit(0);
     if (behavior === 'log-quota') setInterval(() => process.stdout.write('x'.repeat(16384)), 5);
     setInterval(()=>{},1000);
   `;
@@ -154,6 +171,33 @@ test('SIGTERM cannot strand a worker signal receipt in the ledger lock', process
   assert.equal(state.stopReason, 'stop-signal');
 });
 
+test('a signal during an ordinary live worker ledger write preserves the stop receipt', processTests, async t => {
+  const run = await fixture(t, { behavior: 'live-ledger-write' });
+  assert.equal(run.pids.ledgerHeld, true);
+  assert.equal(alive(run.pids.worker), true);
+  const started = Date.now();
+  run.supervisor.kill('SIGINT');
+  const result = await within(run.ended);
+  assert.equal(result.code, 1, result.stderr);
+  assert.equal(JSON.parse(result.stdout.trim()).reason, 'stop-signal');
+  await run.assertReaped();
+  assert.ok(Date.now() - started <= 4_000);
+  const state = JSON.parse(await readFile(join(run.output, 'run-budget.json'), 'utf8'));
+  assert.equal(state.stopReason, 'stop-signal');
+});
+
+test('normal exit after an ordinary live ledger write completes without a monitor stop', processTests, async t => {
+  const run = await fixture(t, { behavior: 'live-ledger-exit' });
+  assert.equal(run.pids.ledgerHeld, true);
+  assert.equal(alive(run.pids.worker), true);
+  const started = Date.now();
+  const result = await within(run.ended);
+  assert.equal(result.code, 0, result.stdout + result.stderr);
+  assert.deepEqual(JSON.parse(result.stdout.trim()), { status: 'complete' });
+  await run.assertReaped();
+  assert.ok(Date.now() - started <= 4_000);
+});
+
 for (const phase of ['setup', 'exploration', 'sweep', 'report']) {
   for (const signal of ['SIGINT', 'SIGTERM']) {
     test(`${signal} reaps the ${phase} worker and resistant detached child within four seconds`, processTests, async t => {
@@ -205,12 +249,30 @@ test('a corrupt registry never prevents known groups from being reaped', process
   await run.assertReaped();
 });
 
-test('a failed stop receipt never prevents physical termination', processTests, async t => {
+test('unverified process ownership prevents reclaiming even an invocation-bound dead writer lock', processTests, async t => {
+  const run = await fixture(t, { behavior: 'unverified-ledger-write' });
+  const result = await within(run.ended);
+  assert.equal(result.code, 1, result.stderr);
+  assert.equal(JSON.parse(result.stdout.trim()).reason, 'process-cleanup-unverified');
+  await run.assertReaped();
+  const marker = JSON.parse(await readFile(join(run.output, '.run-budget.lock', 'owner.json'), 'utf8'));
+  assert.equal(marker.pid, run.pids.worker);
+  const state = JSON.parse(await readFile(join(run.output, 'run-budget.json'), 'utf8'));
+  assert.equal(marker.runId, state.id);
+  assert.notDeepEqual(state.processGroups, {}, 'unverified cleanup retains resource evidence');
+});
+
+test('an unknown ledger lock refuses reclamation without preventing physical termination', processTests, async t => {
   const run = await fixture(t, { behavior: 'locked-ledger' });
+  run.supervisor.kill('SIGTERM');
   const result = await within(run.ended);
   assert.equal(result.code, 1, result.stderr);
   assert.equal(JSON.parse(result.stdout.trim()).reason, 'run-ledger-busy');
   await run.assertReaped();
+  await assert.rejects(readFile(join(run.output, '.run-budget.lock', 'owner.json')), { code: 'ENOENT' });
+  const { stat } = await import('node:fs/promises');
+  assert.equal((await stat(join(run.output, '.run-budget.lock'))).isDirectory(), true);
+  assert.equal(JSON.parse(await readFile(join(run.output, 'run-budget.json'), 'utf8')).stopReason, null);
 });
 
 test('unavailable process inspection refuses before launching a worker', async t => {
