@@ -1,5 +1,8 @@
 import assert from 'node:assert/strict';
 import { createHash, randomBytes } from 'node:crypto';
+import { spawnSync } from 'node:child_process';
+import fsPromises from 'node:fs/promises';
+import { syncBuiltinESMExports } from 'node:module';
 import { chmod, copyFile, link, mkdir, mkdtemp, readFile, readdir, rm, rmdir, stat, symlink, truncate, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -40,6 +43,72 @@ async function seal(f) {
   return sealContinuation({ output: f.output, envelopePath: join(f.root, 'resume.carr'), secret,
     sourcePair, runId: f.run.id, generation: 1, predecessor: null, run: f.run });
 }
+
+test('FIFO incoming and a retained-file FIFO substitution refuse within a bounded child', async t => {
+  for (const kind of ['incoming', 'retained']) {
+    const f = await fixture(t);
+    const path = kind === 'incoming' ? join(f.root, 'incoming.carr') : join(f.output, 'evidence', 'screens', 'frame.jpg');
+    if (kind === 'incoming') assert.equal(spawnSync('mkfifo', [path]).status, 0);
+    else {
+      await mkdir(join(f.output, 'evidence', 'screens'), { recursive: true, mode: 0o700 });
+      await writeFile(path, 'synthetic', { mode: 0o600 });
+      const controls = JSON.parse(await readFile(join(f.output, 'controls.json'), 'utf8'));
+      controls.screens = [{ reached: true, controls: [{ evidence_path: path }] }];
+      await writeFile(join(f.output, 'controls.json'), JSON.stringify(controls));
+    }
+    const script = `
+      import promises from 'node:fs/promises';
+      import { unlinkSync, writeFileSync } from 'node:fs';
+      import { spawnSync } from 'node:child_process';
+      import { syncBuiltinESMExports } from 'node:module';
+      const file = ${JSON.stringify(path)};
+      if (${JSON.stringify(kind)} === 'retained') {
+        const original = promises.open; let reads = 0;
+        promises.open = async (path, ...args) => {
+          if (path === file && ++reads === 2) { unlinkSync(file); spawnSync('mkfifo', [file], { stdio: 'ignore' }); }
+          return original(path, ...args);
+        };
+        syncBuiltinESMExports();
+      }
+      const { sealContinuation, restoreContinuation } = await import(${JSON.stringify(new URL('../../scripts/e2e-staging/continuation-envelope.mjs', import.meta.url).href)});
+      const { openRun } = await import(${JSON.stringify(new URL('../../scripts/e2e-staging/run-limits.mjs', import.meta.url).href)});
+      const run = openRun(${JSON.stringify(f.output)}, { runId: ${JSON.stringify(f.run.id)}, events: null });
+      try {
+        if (${JSON.stringify(kind)} === 'incoming') await restoreContinuation({ envelopePath: file, destination: ${JSON.stringify(f.restored)}, secret: ${JSON.stringify(secret)}, expected: {} });
+        else await sealContinuation({ output: ${JSON.stringify(f.output)}, envelopePath: ${JSON.stringify(join(f.root, 'fifo.carr'))}, secret: ${JSON.stringify(secret)}, sourcePair: ${JSON.stringify(sourcePair)}, runId: run.id, generation: 1, predecessor: null, run });
+        process.exitCode = 2;
+      } catch (error) { writeFileSync(${JSON.stringify(join(f.root, 'fifo-result.json'))}, JSON.stringify({ code: error.code })); }
+      finally { run.dispose(); }
+    `;
+    const child = spawnSync(process.execPath, ['--input-type=module', '-e', script], { stdio: 'ignore', timeout: 3000 });
+    assert.equal(child.error?.code, undefined, kind);
+    assert.equal(child.status, 0);
+    assert.match(JSON.parse(await readFile(join(f.root, 'fifo-result.json'), 'utf8')).code,
+      /continuation-(?:envelope-invalid|write-failed)/);
+  }
+});
+
+test('a refusal after destination rename rolls back publication and preserves incoming ciphertext', async t => {
+  const f = await fixture(t), sealed = await seal(f), raw = await readFile(sealed.path);
+  const original = fsPromises.rename;
+  let injected = false;
+  fsPromises.rename = async (from, to) => {
+    if (to === f.restored) {
+      injected = true;
+      const filler = join(f.root, 'synthetic-capacity');
+      await writeFile(filler, '', { mode: 0o600 });
+      await truncate(filler, 3 * RUN_LIMITS.artifactBytes);
+    }
+    return original(from, to);
+  };
+  syncBuiltinESMExports();
+  try {
+    await assert.rejects(restoreContinuation({ envelopePath: sealed.path, destination: f.restored, secret, expected: sealed }),
+      { code: 'continuation-physical-limit' });
+  } finally { fsPromises.rename = original; syncBuiltinESMExports(); assert.equal(injected, true); }
+  await assert.rejects(stat(f.restored), { code: 'ENOENT' });
+  assert.deepEqual(await readFile(sealed.path), raw);
+});
 
 test('seals only the three progress files and cumulative budget; restore validates then atomically publishes private files', async t => {
   const f = await fixture(t);
@@ -230,6 +299,35 @@ test('an interrupted custody transfer recovers measured originals before reseali
   assert.deepEqual(await readFile(join(f.restored, 'evidence', 'screens', 'frame-b.jpg')), bytes);
 });
 
+test('recovery retains its encrypted record until the restored name has a durable parent', async t => {
+  const f = await fixture(t);
+  const folder = join(f.output, 'evidence', 'screens'), path = join(folder, 'frame.jpg');
+  await mkdir(folder, { recursive: true, mode: 0o700 });
+  const bytes = randomBytes(4096);
+  await writeFile(path, bytes, { mode: 0o600 });
+  const controls = JSON.parse(await readFile(join(f.output, 'controls.json'), 'utf8'));
+  controls.screens = [{ reached: true, controls: [{ evidence_path: path }] }];
+  await writeFile(join(f.output, 'controls.json'), JSON.stringify(controls));
+  const sealed = await seal(f), staged = join(f.root, `.continuation-${f.run.id}-1.tmp`);
+  await copyFile(sealed.path, staged);
+  const archived = await readFile(staged);
+  await rm(sealed.path);
+  const original = fsPromises.open;
+  fsPromises.open = async (target, ...args) => {
+    const handle = await original(target, ...args);
+    if (target === folder) handle.sync = async () => { throw Object.assign(new Error('synthetic parent fsync interruption'), { code: 'EIO' }); };
+    return handle;
+  };
+  syncBuiltinESMExports();
+  try { await assert.rejects(seal(f), { code: 'EIO' }); }
+  finally { fsPromises.open = original; syncBuiltinESMExports(); }
+  assert.deepEqual(await readFile(staged), archived, 'encrypted record remains until its new name is durable');
+  await rm(path, { force: true });
+  const resealed = await seal(f);
+  await restoreContinuation({ envelopePath: resealed.path, destination: f.restored, secret, expected: resealed });
+  assert.deepEqual(await readFile(join(f.restored, 'evidence', 'screens', 'frame.jpg')), bytes);
+});
+
 test('four synthetic slots adopt exact prior ciphertext once and charge newly measured evidence', async t => {
   const limits = { ...RUN_LIMITS, artifactBytes: 80 * 1024 };
   const f = await fixture(t, limits);
@@ -259,10 +357,14 @@ test('four synthetic slots adopt exact prior ciphertext once and charge newly me
     await run.writeFile(controlsPath, JSON.stringify(current), (path, data) => writeFile(path, data, { mode: 0o600 }),
       { replaces: controlsPath });
     const destination = join(f.root, `sealed-${slot}.carr`);
+    const beforeSeal = run.snapshot().artifactBytes;
     const next = await sealContinuation({ output, envelopePath: destination, secret, sourcePair,
       runId: f.run.id, generation: slot, predecessor: { generation: slot - 1, sha256: sealed.sha256 },
       run, adoption: receipt.adoption });
     assert.ok(next.accounting.changedEvidenceBytes >= 1);
+    assert.equal(run.snapshot().artifactBytes - beforeSeal, next.accounting.framingBytes,
+      'already metered evidence is not charged again and every generation pays its full framing');
+    assert.equal(next.accounting.framingBytes, next.envelopeBytes - (32 * 1024 + slot - 1));
     assert.ok(run.snapshot().artifactBytes > priorCharge);
     assert.ok(run.snapshot().artifactBytes - priorCharge < (await stat(next.path)).size / 2);
     assert.ok(run.snapshot().artifactBytes <= limits.artifactBytes);
@@ -303,6 +405,59 @@ test('foreign, forked and replayed adoption cannot claim predecessor ciphertext'
   assert.equal((await stat(next.path)).size, next.envelopeBytes);
 });
 
+test('unchanged carried payload pays the complete new framing without another content charge', async t => {
+  const f = await fixture(t), path = join(f.output, 'evidence', 'frame.jpg');
+  await mkdir(join(f.output, 'evidence'), { mode: 0o700 });
+  await f.run.writeFile(path, Buffer.alloc(1024, 7), writeFile);
+  const controls = JSON.parse(await readFile(join(f.output, 'controls.json'), 'utf8'));
+  controls.screens = [{ reached: true, controls: [{ evidence_path: path }] }];
+  await writeFile(join(f.output, 'controls.json'), JSON.stringify(controls));
+  const first = await seal(f);
+  const restored = await restoreContinuation({ envelopePath: first.path, destination: f.restored, secret, expected: first,
+    adoptIncoming: { artifactId: '1', digest: first.sha256, bytes: first.envelopeBytes } });
+  const run = openRun(f.restored, { runId: f.run.id, events: null });
+  t.after(() => run.dispose());
+  const before = run.snapshot().artifactBytes;
+  const next = await sealContinuation({ output: f.restored, envelopePath: join(f.root, 'next.carr'), secret,
+    run, runId: run.id, sourcePair, generation: 2, predecessor: { generation: 1, sha256: first.sha256 }, adoption: restored.adoption });
+  assert.equal(next.accounting.unmeteredEvidenceBytes, 0);
+  assert.equal(next.accounting.framingBytes, next.envelopeBytes - 1024);
+  assert.equal(run.snapshot().artifactBytes - before, next.accounting.framingBytes);
+});
+
+test('seal admits the exact logical ceiling and refuses one byte beyond it before transferring evidence', async t => {
+  const limits = { ...RUN_LIMITS, artifactBytes: 80 * 1024 };
+  const prepare = async () => {
+    const f = await fixture(t, limits), path = join(f.output, 'evidence', 'frame.jpg');
+    await mkdir(join(f.output, 'evidence'), { mode: 0o700 });
+    const bytes = Buffer.alloc(1024, 9);
+    await writeFile(path, bytes, { mode: 0o600 });
+    const controls = JSON.parse(await readFile(join(f.output, 'controls.json'), 'utf8'));
+    controls.screens = [{ reached: true, controls: [{ evidence_path: path }] }];
+    await writeFile(join(f.output, 'controls.json'), JSON.stringify(controls));
+    return { ...f, path, bytes };
+  };
+  const reference = await prepare();
+  reference.run.reserveBytes(40000 - directoryBytes(reference.output, { excludeEvidence: true }));
+  const framing = (await seal(reference)).accounting.framingBytes;
+  const ceiling = limits.artifactBytes - Math.min(limits.artifactMetadataBytes, Math.floor(limits.artifactBytes / 8));
+  for (const extra of [0, 1]) {
+    const f = await prepare(), target = ceiling - framing - f.bytes.length + extra;
+    f.run.reserveBytes(target - directoryBytes(f.output, { excludeEvidence: true }));
+    assert.equal(f.run.snapshot().artifactBytes, target);
+    if (extra) {
+      await assert.rejects(seal(f), { code: 'artifact-byte-limit' });
+      assert.deepEqual(await readFile(f.path), f.bytes);
+      await assert.rejects(stat(join(f.root, 'resume.carr')), { code: 'ENOENT' });
+      assert.equal((await readdir(f.root)).some(name => name.endsWith('.tmp')), false);
+    } else {
+      const sealed = await seal(f);
+      assert.equal(sealed.accounting.unmeteredEvidenceBytes, f.bytes.length);
+      assert.equal(f.run.snapshot().artifactBytes, ceiling);
+    }
+  }
+});
+
 test('undercharged successor fails closed and retains exact prior ciphertext in custody', async t => {
   const f = await fixture(t);
   const sealed = await seal(f);
@@ -317,14 +472,43 @@ test('undercharged successor fails closed and retains exact prior ciphertext in 
     run: undercharged, adoption: receipt.adoption }), { code: 'continuation-budget-invalid' });
   const custody = (await readdir(f.root)).filter(name => name.startsWith('.adopted-'));
   assert.equal(custody.length, 1);
-  assert.deepEqual(await readFile(join(f.root, custody[0])), raw);
+  const held = await readFile(join(f.root, custody[0]));
+  assert.equal(held.subarray(0, 12).toString(), 'CARR-HOLD-2\0');
+  assert.deepEqual(held.subarray(12), raw.subarray(12));
+  for (const path of [join(f.root, custody[0]), join(f.root, 'copied-custody.carr')]) {
+    if (path.endsWith('copied-custody.carr')) await copyFile(join(f.root, custody[0]), path);
+    await assert.rejects(restoreContinuation({ envelopePath: path, destination: join(f.root, 'replayed-restore'), secret,
+      expected: sealed, adoptIncoming: { artifactId: '8', digest: sealed.sha256, bytes: raw.length } }),
+    { code: 'continuation-envelope-invalid' });
+  }
   await assert.rejects(sealContinuation({ output: f.restored, envelopePath: join(f.root, 'retry.carr'), secret,
     sourcePair, runId: f.run.id, generation: 2, predecessor: { generation: 1, sha256: sealed.sha256 },
     run, adoption: receipt.adoption }), { code: 'continuation-adoption-replayed' });
 });
 
-test('5,140 incompressible image-sized artifacts fit the configured 256 MiB cap',
-  { skip: process.env.E2E_FULL_CORPUS_TEST !== '1', timeout: 180_000 }, async t => {
+test('failed incoming consumption returns no receipt and rolls back the published destination', async t => {
+  const f = await fixture(t), sealed = await seal(f), raw = await readFile(sealed.path);
+  const original = fsPromises.rename;
+  fsPromises.rename = async (from, to) => {
+    if (to.includes('/.adopted-')) throw Object.assign(new Error('synthetic consumption interruption'), { code: 'EIO' });
+    return original(from, to);
+  };
+  syncBuiltinESMExports();
+  try {
+    await assert.rejects(restoreContinuation({ envelopePath: sealed.path, destination: f.restored, secret,
+      expected: sealed, adoptIncoming: { artifactId: '7', digest: sealed.sha256, bytes: raw.length } }),
+    { code: 'continuation-restore-failed' });
+  } finally { fsPromises.rename = original; syncBuiltinESMExports(); }
+  await assert.rejects(stat(f.restored), { code: 'ENOENT' });
+  const held = await readFile(sealed.path);
+  assert.equal(held.subarray(0, 12).toString(), 'CARR-HOLD-2\0');
+  assert.deepEqual(held.subarray(12), raw.subarray(12));
+  await assert.rejects(restoreContinuation({ envelopePath: sealed.path, destination: f.restored, secret, expected: sealed }),
+    { code: 'continuation-envelope-invalid' });
+});
+
+test('5,140 incompressible image-sized artifacts and new content fit four complete format slots',
+  { skip: process.env.E2E_FULL_CORPUS_TEST !== '1', timeout: 300_000 }, async t => {
     const f = await fixture(t);
     const folder = join(f.output, 'evidence', 'screens');
     await mkdir(folder, { recursive: true, mode: 0o700 });
@@ -334,7 +518,7 @@ test('5,140 incompressible image-sized artifacts fit the configured 256 MiB cap'
     checkpoint.screens = [{ target: 'staging-live', path: '/', reached: true,
       controls: [{ evidence_path: folder }] }];
     await writeFile(join(f.output, 'controls.json'), JSON.stringify(checkpoint));
-    const sealed = await seal(f);
+    let sealed = await seal(f);
     const envelopeBytes = (await stat(sealed.path)).size;
     const remainingBytes = directoryBytes(f.output), chargedBytes = f.run.snapshot().artifactBytes;
     console.log(JSON.stringify({ corpusBytes: 5140 * 40 * 1024, envelopeBytes, remainingBytes, chargedBytes,
@@ -342,13 +526,30 @@ test('5,140 incompressible image-sized artifacts fit the configured 256 MiB cap'
     assert.ok(envelopeBytes <= RUN_LIMITS.artifactBytes);
     assert.ok(remainingBytes + envelopeBytes <= RUN_LIMITS.artifactBytes);
     assert.ok(chargedBytes <= RUN_LIMITS.artifactBytes);
-    const restored = await restoreContinuation({ envelopePath: sealed.path, destination: f.restored, secret,
-      expected: { ...sealed, sourcePair, runId: f.run.id, predecessor: null } });
-    assert.ok(restored.peakLocalBytes <= 3 * RUN_LIMITS.artifactBytes);
-    assert.ok(restored.peakMemoryBytes <= 6 * RUN_LIMITS.artifactBytes);
-    console.log(JSON.stringify({ restorePeakLocalBytes: restored.peakLocalBytes,
-      restorePeakMemoryBytes: restored.peakMemoryBytes }));
-    assert.equal((await readdir(join(f.restored, 'evidence', 'screens'))).length, 5140);
+    for (let slot = 2; slot <= 4; slot++) {
+      const output = join(f.root, `slot-${slot}`);
+      const restored = await restoreContinuation({ envelopePath: sealed.path, destination: output, secret,
+        expected: sealed, adoptIncoming: { artifactId: String(slot - 1), digest: sealed.sha256, bytes: sealed.envelopeBytes } });
+      assert.ok(restored.peakLocalBytes <= 3 * RUN_LIMITS.artifactBytes);
+      assert.ok(restored.peakMemoryBytes <= 6 * RUN_LIMITS.artifactBytes);
+      assert.equal((await readdir(join(output, 'evidence', 'screens'))).length, 5140 + slot - 2);
+      const run = openRun(output, { runId: f.run.id, events: null, newInvocation: true });
+      t.after(() => run.dispose());
+      const before = run.snapshot().artifactBytes;
+      await run.writeFile(join(output, 'evidence', 'screens', `new-${slot}.jpg`), randomBytes(1024), writeFile);
+      assert.equal(run.snapshot().artifactBytes - before, 1024);
+      const next = await sealContinuation({ output, envelopePath: join(f.root, `sealed-${slot}.carr`), secret,
+        sourcePair, runId: run.id, generation: slot, predecessor: { generation: slot - 1, sha256: sealed.sha256 },
+        run, adoption: restored.adoption });
+      assert.equal(next.accounting.unmeteredEvidenceBytes, 0);
+      assert.equal(run.snapshot().artifactBytes - before, 1024 + next.accounting.framingBytes);
+      assert.ok(next.envelopeBytes <= RUN_LIMITS.artifactBytes);
+      assert.ok(run.snapshot().artifactBytes <= RUN_LIMITS.artifactBytes);
+      console.log(JSON.stringify({ slot, envelopeBytes: next.envelopeBytes, logicalBytes: run.snapshot().artifactBytes,
+        framingBytes: next.accounting.framingBytes, peakLocalBytes: Math.max(restored.peakLocalBytes, next.accounting.peakLocalBytes),
+        peakMemoryBytes: Math.max(restored.peakMemoryBytes, next.accounting.peakMemoryBytes) }));
+      sealed = next;
+    }
   });
 
 test('restore fsyncs and publishes private regular files, refuses existing targets and serializes competing publishers', async t => {
@@ -438,6 +639,7 @@ test('symlink ancestors, hardlinked private sources and permissive private direc
   await symlink(target, linked);
   await assert.rejects(sealContinuation({ output: f.output, envelopePath: join(linked, 'resume.carr'), secret,
     sourcePair, runId: f.run.id, generation: 1, predecessor: null, run: f.run }), { code: 'continuation-path-refused' });
+  await rm(linked);
 
   const hardlink = join(f.root, 'controls-hardlink.json');
   await link(join(f.output, 'controls.json'), hardlink);

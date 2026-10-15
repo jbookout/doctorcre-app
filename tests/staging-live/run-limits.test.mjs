@@ -1,11 +1,12 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { EventEmitter } from 'node:events';
-import { mkdtemp, readFile, rm, writeFile, mkdir, open, rename, readdir, symlink, link, chmod } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, writeFile, mkdir, open, rename, readdir, symlink, link, chmod, cp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
 import { RUN_LIMITS, RunLimitError, directoryBytes, openRun } from '../../scripts/e2e-staging/run-limits.mjs';
+import { createHash } from 'node:crypto';
 
 const code = expected => error => error instanceof RunLimitError && error.code === expected;
 const deferred = () => {
@@ -29,6 +30,61 @@ async function fixture(t, overrides = {}, options = {}) {
   t.after(() => run.dispose());
   return { root, limits, run };
 }
+
+test('evidence digest receipts charge exact changed bytes once across writers and reopening', async t => {
+  const { root, limits, run } = await fixture(t);
+  await mkdir(join(root, 'evidence'), { mode: 0o700 });
+  const path = join(root, 'evidence', 'frame.jpg');
+  const bytes = Buffer.from('abc');
+  const manifest = value => ({ 'evidence/frame.jpg': { size: value.length,
+    sha256: createHash('sha256').update(value).digest('hex') } });
+  const before = run.snapshot().artifactBytes;
+  await run.writeFile(path, bytes, writeFile);
+  assert.equal(run.snapshot().artifactBytes - before, bytes.length);
+  await run.writeFile(path, bytes, writeFile);
+  assert.equal(run.snapshot().artifactBytes - before, bytes.length);
+  assert.equal(run.accountEvidence(manifest(bytes)).chargedBytes, 0);
+  const reopened = openRun(root, { limits, runId: run.id, events: null });
+  t.after(() => reopened.dispose());
+  assert.equal(reopened.accountEvidence(manifest(bytes)).chargedBytes, 0);
+  const changed = Buffer.from('xyz'), previous = run.snapshot().artifactBytes;
+  await run.writeFile(path, changed, writeFile, { replaces: path });
+  assert.equal(run.snapshot().artifactBytes - previous, changed.length);
+  assert.equal(run.accountEvidence(manifest(changed)).chargedBytes, 0);
+  const external = Buffer.from('uvw'), priorExternal = run.snapshot().artifactBytes;
+  await writeFile(path, external);
+  assert.equal(run.accountEvidence(manifest(external)).chargedBytes, external.length);
+  assert.equal(run.snapshot().artifactBytes - priorExternal, external.length);
+  assert.equal(run.accountEvidence(manifest(external)).chargedBytes, 0);
+  assert.throws(() => run.accountEvidence(manifest(bytes)), code('artifact-evidence-mismatch'));
+  assert.throws(() => run.accountEvidence({ 'controls.json': manifest(bytes)['evidence/frame.jpg'] }), code('artifact-path-refused'));
+  await rm(path);
+  assert.equal(run.snapshot().artifactBytes, priorExternal + external.length);
+});
+
+test('unknown evidence is charged once without a resident-floor credit and copied evidence keeps its path receipt', async t => {
+  const { root, run } = await fixture(t);
+  const evidence = join(root, 'evidence');
+  await mkdir(evidence, { mode: 0o700 });
+  const bytes = Buffer.alloc(32 * 1024, 3), digest = createHash('sha256').update(bytes).digest('hex');
+  await writeFile(join(evidence, 'external.jpg'), bytes);
+  run.reserveBytes(1);
+  assert.ok(run.snapshot().artifactBytes < bytes.length, 'untyped resident accounting excludes evidence content');
+  const before = run.snapshot().artifactBytes;
+  const files = { 'evidence/external.jpg': { size: bytes.length, sha256: digest } };
+  assert.equal(run.accountEvidence(files).chargedBytes, bytes.length);
+  assert.equal(run.snapshot().artifactBytes, before + bytes.length);
+  const source = await mkdtemp(join(tmpdir(), 'doctorcre-evidence-copy-'));
+  t.after(() => rm(source, { recursive: true, force: true }));
+  await writeFile(join(source, 'copied.jpg'), bytes);
+  const priorCopy = run.snapshot().artifactBytes;
+  await run.copyArtifacts(source, join(evidence, 'copied'), (from, to) => cp(from, to, { recursive: true }));
+  assert.equal(run.snapshot().artifactBytes - priorCopy, bytes.length, 'the same digest at a new path is new content');
+  assert.equal(run.accountEvidence({ 'evidence/copied/copied.jpg': { size: bytes.length, sha256: digest } }).chargedBytes, 0);
+  const beforeMissing = run.snapshot().artifactBytes;
+  assert.throws(() => run.accountEvidence({ 'evidence/missing.jpg': { size: bytes.length, sha256: digest } }));
+  assert.equal(run.snapshot().artifactBytes, beforeMissing);
+});
 
 test('HTTP total stops before a third operation and survives reopening the ledger', async t => {
   const { root, limits, run } = await fixture(t, { httpRequests: 2 });

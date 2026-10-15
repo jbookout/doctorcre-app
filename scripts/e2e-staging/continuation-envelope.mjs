@@ -4,15 +4,17 @@ import { link, lstat, mkdir, open, readFile, rename, rm, unlink } from 'node:fs/
 import { dirname, isAbsolute, join, parse, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import contract from '../../contracts/e2e-staging.v1.json' with { type: 'json' };
-import { RUN_LIMITS, RunLimitError, directoryBytes } from './run-limits.mjs';
+import { RUN_LIMITS, RunLimitError, directoryBytes, validEvidenceCharges } from './run-limits.mjs';
 import { assertStagingWriteCoverage } from './records.mjs';
 import { assertRetainedEvidenceParent, protectedRows, rebaseEvidenceReferences, retainedEvidenceFiles, snapshotRetainedEvidence } from './evidence-manifest.mjs';
 
 const SCHEMA = 'doctorcre-staging-continuation.v1';
 const MAGIC = Buffer.from('CARR-CONT-2\0');
+const CUSTODY_MAGIC = Buffer.from('CARR-HOLD-2\0');
 const ADOPTION_SCHEMA = 'doctorcre-staging-continuation-adoption.v1';
 const MAX_LOCAL_BYTES = 3 * RUN_LIMITS.artifactBytes;
 const MAX_RSS_BYTES = 6 * RUN_LIMITS.artifactBytes;
+// This is a local seal capability. The caller owns durable artifact-chain exclusion.
 const adoptionTickets = new WeakMap();
 const FILES = Object.freeze(['controls.json', 'staging-records.json', 'staging-records-plan.json']);
 const HASH = /^[0-9a-f]{64}$/;
@@ -27,7 +29,7 @@ const json = value => JSON.stringify(value);
 const fail = code => { throw new RunLimitError(code); };
 let observedPeakRss = 0;
 const checkedMemory = () => {
-  const bytes = process.memoryUsage().rss;
+  const bytes = Math.max(process.memoryUsage().rss, process.resourceUsage().maxRSS * 1024);
   observedPeakRss = Math.max(observedPeakRss, bytes);
   if (bytes > MAX_RSS_BYTES) fail('continuation-memory-limit');
   return observedPeakRss;
@@ -37,6 +39,31 @@ const syncDirectory = async path => {
   try { await handle.sync(); } finally { await handle.close(); }
 };
 const envelopeFraming = (size, records) => size - records.reduce((sum, [, meta]) => sum + meta.size, 0);
+const withinDirectory = (directory, path) => {
+  const part = relative(directory, path);
+  return part !== '..' && !part.startsWith(`..${sep}`) && !isAbsolute(part);
+};
+
+async function custodyFile(path, { digest, bytes, consume = false }) {
+  const handle = await open(path, (consume ? constants.O_RDWR : constants.O_RDONLY) | constants.O_NOFOLLOW | constants.O_NONBLOCK);
+  try {
+    const info = await handle.stat();
+    if (!info.isFile() || info.nlink !== 1 || info.size !== bytes || (info.mode & 0o777) !== 0o600 ||
+        typeof process.getuid === 'function' && info.uid !== process.getuid()) fail('continuation-custody-invalid');
+    const prefix = Buffer.alloc(MAGIC.length);
+    await handle.read(prefix, 0, prefix.length, 0);
+    if (!prefix.equals(consume ? MAGIC : CUSTODY_MAGIC)) fail('continuation-custody-invalid');
+    const hash = createHash('sha256').update(MAGIC), buffer = Buffer.alloc(64 * 1024);
+    let position = MAGIC.length;
+    while (position < bytes) {
+      const read = await handle.read(buffer, 0, Math.min(buffer.length, bytes - position), position);
+      if (!read.bytesRead) fail('continuation-custody-invalid');
+      hash.update(buffer.subarray(0, read.bytesRead)); position += read.bytesRead;
+    }
+    if (hash.digest('hex') !== digest) fail('continuation-custody-invalid');
+    if (consume) { await handle.write(CUSTODY_MAGIC, 0, CUSTODY_MAGIC.length, 0); await handle.sync(); }
+  } finally { await handle.close(); }
+}
 
 function adoptionForSeal(adoption, { runId, sourcePair, generation, predecessor, planHash }) {
   if (adoption === undefined) {
@@ -120,13 +147,14 @@ function validLimits(value) {
 
 function validateBudget(value, runId) {
   const keys = ['schema', 'id', 'startedAt', 'deadline', 'limits', 'httpRequests', 'modelCalls',
-    'globalHttpRequests', 'globalModelCalls', 'artifactBytes', 'activeHttp', 'queuedHttp', 'processGroups', 'stopReason', 'invocations'];
+    'globalHttpRequests', 'globalModelCalls', 'artifactBytes', 'evidenceCharges', 'activeHttp', 'queuedHttp', 'processGroups', 'stopReason', 'invocations'];
   if (!exactKeys(value, keys) || value.schema !== 'doctorcre-run-budget.v1' || value.id !== runId || !RUN_ID.test(value.id) ||
       !Number.isSafeInteger(value.startedAt) || !Number.isSafeInteger(value.deadline) || !validLimits(value.limits) ||
       value.deadline !== value.startedAt + value.limits.runTimeoutMs ||
       !['httpRequests', 'modelCalls', 'globalHttpRequests', 'globalModelCalls', 'artifactBytes'].every(key => Number.isSafeInteger(value[key]) && value[key] >= 0) ||
       value.globalHttpRequests > value.limits.httpRequests || value.globalModelCalls > value.limits.modelCalls ||
-      value.artifactBytes > value.limits.artifactBytes || value.stopReason !== null ||
+      value.artifactBytes > value.limits.artifactBytes || !validEvidenceCharges(value.evidenceCharges) ||
+      Object.values(value.evidenceCharges).reduce((sum, meta) => sum + meta.size, 0) > value.artifactBytes || value.stopReason !== null ||
       !exactKeys(value.activeHttp, []) || !exactKeys(value.queuedHttp, []) || !exactKeys(value.processGroups, []) || !Array.isArray(value.invocations))
     fail('continuation-budget-unsettled');
   let http = value.httpRequests, models = value.modelCalls;
@@ -173,7 +201,7 @@ function validateFiles(files, sourcePair, planHash) {
 
 function validateBinding({ runId, sourcePair, generation, predecessor, expectedContractHash = contractHash, planHash }) {
   if (!RUN_ID.test(runId || '') || !validSourcePair(sourcePair) || expectedContractHash !== contractHash || !HASH.test(planHash || '') ||
-      !Number.isSafeInteger(generation) || generation < 1 ||
+      !Number.isSafeInteger(generation) || generation < 1 || generation > 4 ||
       (generation === 1 ? predecessor !== null : !exactKeys(predecessor, ['generation', 'sha256']) ||
         predecessor.generation !== generation - 1 || !HASH.test(predecessor.sha256 || '')))
     fail('continuation-invalid-binding');
@@ -187,7 +215,7 @@ function deriveKey(secret, runId) {
 
 async function readPrivateSource(path) {
   let handle;
-  try { handle = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW); }
+  try { handle = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK); }
   catch { fail('continuation-payload-invalid'); }
   try {
     const info = await handle.stat();
@@ -197,7 +225,7 @@ async function readPrivateSource(path) {
 }
 
 async function readRetainedSource(path, meta) {
-  const handle = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW).catch(() => fail('continuation-payload-invalid'));
+  const handle = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK).catch(() => fail('continuation-payload-invalid'));
   try {
     const info = await handle.stat();
     if (!info.isFile() || info.nlink !== 1 || info.size !== meta.size ||
@@ -210,13 +238,13 @@ async function readRetainedSource(path, meta) {
   } finally { await handle.close(); }
 }
 
-function budgetForEnvelope(snapshot, runId) {
+function budgetForEnvelope(snapshot, runId, evidenceCharges = snapshot.evidenceCharges) {
   if (!snapshot || typeof snapshot !== 'object') fail('continuation-budget-invalid');
   const budget = {
     schema: snapshot.schema, id: snapshot.id, startedAt: snapshot.startedAt, deadline: snapshot.deadline, limits: snapshot.limits,
     httpRequests: snapshot.httpRequests, modelCalls: snapshot.modelCalls,
     globalHttpRequests: snapshot.globalHttpRequests, globalModelCalls: snapshot.globalModelCalls,
-    artifactBytes: snapshot.artifactBytes, activeHttp: snapshot.activeHttp, queuedHttp: snapshot.queuedHttp,
+    artifactBytes: snapshot.artifactBytes, evidenceCharges, activeHttp: snapshot.activeHttp, queuedHttp: snapshot.queuedHttp,
     processGroups: snapshot.processGroups, stopReason: snapshot.stopReason, invocations: snapshot.invocations || [],
   };
   validateBudget(budget, runId);
@@ -277,7 +305,7 @@ function decryptPayload(envelope, secret) {
 
 async function recoverStagedEvidence(temp, root, header, secret) {
   if (await pathAbsent(temp)) return;
-  const handle = await open(temp, constants.O_RDWR | constants.O_NOFOLLOW);
+  const handle = await open(temp, constants.O_RDWR | constants.O_NOFOLLOW | constants.O_NONBLOCK);
   try {
     const info = await handle.stat();
     if (!info.isFile() || info.nlink !== 1 || (info.mode & 0o777) !== 0o600 || info.size > RUN_LIMITS.artifactBytes)
@@ -285,7 +313,7 @@ async function recoverStagedEvidence(temp, root, header, secret) {
     const raw = await handle.readFile();
     const { envelope, offset } = envelopeParts(raw);
     if (!Number.isSafeInteger(envelope.header?.chargedBytes) || envelope.header.chargedBytes < raw.length ||
-        json({ ...envelope.header, chargedBytes: 0 }) !== json(header)) fail('continuation-recovery-refused');
+        json({ ...envelope.header, chargedBytes: 0 }) !== json({ ...header, chargedBytes: 0 })) fail('continuation-recovery-refused');
     const payload = decryptPayload(envelope, secret);
     const records = [];
     let cursor = offset;
@@ -310,10 +338,12 @@ async function recoverStagedEvidence(temp, root, header, secret) {
       } else {
         await readRetainedSource(path, record.meta);
       }
+      await syncDirectory(dirname(path));
       await handle.truncate(record.start); await handle.sync();
     }
   } finally { await handle.close(); }
   await unlink(temp);
+  await syncDirectory(dirname(temp));
 }
 
 export async function sealContinuation({ output, envelopePath, secret = process.env.E2E_SESSION_SECRET,
@@ -329,9 +359,14 @@ export async function sealContinuation({ output, envelopePath, secret = process.
   validateBinding({ runId, sourcePair, generation, predecessor, planHash });
   const ticket = adoptionForSeal(adoption, { runId, sourcePair, generation, predecessor, planHash });
   if (ticket) ticket.used = true;
+  if (ticket) await privateDirectory(dirname(ticket.custody));
+  if (ticket) await custodyFile(ticket.custody, { digest: adoption.sha256, bytes: ticket.envelopeBytes });
   const header = { schema: SCHEMA, runId, sourcePair, contractHash, planHash, generation, predecessor,
     chargedBytes: 0 };
   const parent = dirname(destination), temp = join(parent, `.continuation-${runId}-${generation}.tmp`);
+  const physicalRoot = dirname(root);
+  if (!withinDirectory(physicalRoot, destination) || ticket && !withinDirectory(physicalRoot, ticket.custody))
+    fail('continuation-path-refused');
   await privateDirectory(parent);
   if (!(await pathAbsent(destination))) fail('continuation-destination-exists');
   await recoverStagedEvidence(temp, root, header, secret);
@@ -340,7 +375,8 @@ export async function sealContinuation({ output, envelopePath, secret = process.
   await requireWriteCoverage(root);
   const evidence = await snapshotRetainedEvidence(root, JSON.parse(files['controls.json']), sourcePair, runId);
   retainedEvidenceFiles(evidence, JSON.parse(files['controls.json']), sourcePair, runId);
-  if (!run || typeof run.reserveBytes !== 'function' || typeof run.snapshot !== 'function' || run.id !== runId || resolve(run.root || '') !== root)
+  if (!run || typeof run.accountEvidence !== 'function' || typeof run.reserveContinuationFraming !== 'function' ||
+      typeof run.snapshot !== 'function' || run.id !== runId || resolve(run.root || '') !== root)
     fail('continuation-budget-invalid');
   const records = Object.entries(evidence.files);
   const metadata = { ...evidence, files: Object.fromEntries(records.map(([name, { size, sha256: digest }]) =>
@@ -348,52 +384,59 @@ export async function sealContinuation({ output, envelopePath, secret = process.
   const contentBytes = records.reduce((sum, [, meta]) => sum + meta.size, 0);
   const changedEvidenceBytes = ticket ? records.reduce((sum, [name, meta]) =>
     sum + (ticket.files[name]?.sha256 === meta.sha256 && ticket.files[name]?.size === meta.size ? 0 : meta.size), 0) : contentBytes;
-  const oldFraming = ticket ? ticket.envelopeBytes - Object.values(ticket.files).reduce((sum, meta) => sum + meta.size, 0) : 0;
-  let reserved = 0, encoded, framing, envelopeBytes;
+  const unmeteredEvidenceBytes = run.accountEvidence(metadata.files).chargedBytes;
+  const beforeFraming = budgetForEnvelope(run.snapshot(), runId, metadata.files);
+  let encoded, framing = 0, envelopeBytes;
   for (let attempt = 0; attempt < 8; attempt++) {
-    const payload = { files, budget: budgetForEnvelope(run.snapshot(), runId), evidence: metadata,
+    header.chargedBytes = contentBytes + framing;
+    const payload = { files, budget: { ...beforeFraming, artifactBytes: beforeFraming.artifactBytes + framing }, evidence: metadata,
       transfer: adoption || null };
-    for (let fixed = 0; fixed < 4; fixed++) {
-      encoded = encryptPayload(payload, header, secret);
-      envelopeBytes = MAGIC.length + 4 + encoded.length + contentBytes + records.length * 28;
-      if (header.chargedBytes === envelopeBytes) break;
-      header.chargedBytes = envelopeBytes;
-    }
-    framing = envelopeFraming(envelopeBytes, records);
-    const required = ticket ? changedEvidenceBytes + Math.max(0, framing - oldFraming) : framing;
-    if (envelopeBytes > run.limits.artifactBytes || required > run.limits.artifactBytes)
+    encoded = encryptPayload(payload, header, secret);
+    envelopeBytes = MAGIC.length + 4 + encoded.length + contentBytes + records.length * 28;
+    const measuredFraming = envelopeFraming(envelopeBytes, records);
+    if (envelopeBytes > run.limits.artifactBytes)
       fail('continuation-size-limit');
-    if (required <= reserved) break;
-    run.reserveBytes(required - reserved);
-    reserved = required;
+    if (measuredFraming === framing) break;
+    framing = measuredFraming;
     if (attempt === 7) fail('continuation-size-limit');
   }
   if (header.chargedBytes !== envelopeBytes ||
-      run.snapshot().artifactBytes < (ticket ? ticket.priorLedgerArtifactBytes : 0))
+      beforeFraming.artifactBytes < (ticket ? ticket.priorLedgerArtifactBytes : 0))
     fail('continuation-budget-invalid');
-  let handle, transferred = false, peakLocalBytes = directoryBytes(root) + (ticket?.envelopeBytes || 0);
+  run.reserveContinuationFraming(framing, beforeFraming.artifactBytes);
+  let handle, transferred = false, peakLocalBytes = directoryBytes(physicalRoot);
+  if (peakLocalBytes + envelopeBytes > MAX_LOCAL_BYTES) fail('continuation-physical-limit');
+  const artifactHash = createHash('sha256');
+  let digest, peakMemoryBytes;
   try {
     handle = await open(temp, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o600);
-    await handle.writeFile(binaryEnvelope(encoded)); await handle.sync();
+    const prefix = binaryEnvelope(encoded);
+    artifactHash.update(prefix);
+    await handle.writeFile(prefix); await handle.sync();
     const parentHandle = await open(parent, constants.O_RDONLY);
     try { await parentHandle.sync(); } finally { await parentHandle.close(); }
     for (const [name, meta] of records) {
       const source = join(root, name);
       await assertRetainedEvidenceParent(root, source);
       const bytes = await readRetainedSource(source, meta);
-      await handle.writeFile(encryptedRecord(bytes, header, name, metadata.files[name], secret));
+      const encrypted = encryptedRecord(bytes, header, name, metadata.files[name], secret);
+      artifactHash.update(encrypted);
+      await handle.writeFile(encrypted);
       await handle.sync();
-      peakLocalBytes = Math.max(peakLocalBytes, directoryBytes(root) + (await handle.stat()).size + (ticket?.envelopeBytes || 0));
+      peakLocalBytes = Math.max(peakLocalBytes, directoryBytes(physicalRoot));
       if (peakLocalBytes > MAX_LOCAL_BYTES)
         fail('continuation-size-limit');
       await unlink(source);
+      await syncDirectory(dirname(source));
       transferred = true;
     }
     await handle.close(); handle = null;
     const encodedSize = (await lstat(temp)).size;
-    peakLocalBytes = Math.max(peakLocalBytes, directoryBytes(root) + encodedSize + (ticket?.envelopeBytes || 0));
+    peakLocalBytes = Math.max(peakLocalBytes, directoryBytes(physicalRoot));
     if (encodedSize !== envelopeBytes || encodedSize > run.limits.artifactBytes || peakLocalBytes > MAX_LOCAL_BYTES)
       fail('continuation-size-limit');
+    digest = artifactHash.digest('hex');
+    peakMemoryBytes = checkedMemory();
     await link(temp, destination);
     await unlink(temp);
     const dir = await open(parent, constants.O_RDONLY); try { await dir.sync(); } finally { await dir.close(); }
@@ -408,12 +451,10 @@ export async function sealContinuation({ output, envelopePath, secret = process.
     await unlink(ticket.custody);
     await syncDirectory(dirname(ticket.custody));
   }
-  const finalBytes = await readFile(destination);
-  const peakMemoryBytes = checkedMemory();
-  return Object.freeze({ path: destination, sha256: sha256(finalBytes), generation, predecessor, runId, sourcePair,
+  return Object.freeze({ path: destination, sha256: digest, generation, predecessor, runId, sourcePair,
     contractHash, planHash, envelopeBytes, chargedBytes: envelopeBytes,
     accounting: Object.freeze({ schema: 'doctorcre-staging-logical-evidence-budget.v1',
-      changedEvidenceBytes, framingBytes: ticket ? Math.max(0, framing - oldFraming) : framing,
+      changedEvidenceBytes, unmeteredEvidenceBytes, framingBytes: framing,
       chargedBytes: run.snapshot().artifactBytes, peakMemoryBytes, peakLocalBytes }) });
 }
 
@@ -432,7 +473,7 @@ export async function restoreContinuation({ envelopePath, destination, secret = 
   if (adoptIncoming) await privateDirectory(dirname(incoming));
   let raw;
   try {
-    const handle = await open(incoming, constants.O_RDONLY | constants.O_NOFOLLOW);
+    const handle = await open(incoming, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
     try {
       const info = await handle.stat();
       if (!info.isFile() || info.nlink !== 1 || (info.mode & 0o777) !== 0o600 ||
@@ -441,6 +482,7 @@ export async function restoreContinuation({ envelopePath, destination, secret = 
       raw = await handle.readFile();
     } finally { await handle.close(); }
   } catch { fail('continuation-envelope-invalid'); }
+  const envelopeBytes = raw.length;
   const { envelope, offset } = envelopeParts(raw);
   if (!exactKeys(envelope, ['header', 'nonce', 'tag', 'ciphertext']) || !exactKeys(envelope.header,
       ['schema', 'runId', 'sourcePair', 'contractHash', 'planHash', 'generation', 'predecessor', 'chargedBytes']) ||
@@ -467,6 +509,7 @@ export async function restoreContinuation({ envelopePath, destination, secret = 
   if (!exactKeys(payload, ['files', 'budget', 'evidence', 'transfer'])) fail('continuation-payload-invalid');
   validateFiles(payload.files, header.sourcePair, header.planHash);
   validateBudget(payload.budget, header.runId);
+  if (json(payload.budget.evidenceCharges) !== json(payload.evidence?.files)) fail('continuation-budget-invalid');
   validateTransfer(payload.transfer, header);
   if (payload.transfer && payload.budget.artifactBytes < payload.transfer.priorLedgerArtifactBytes)
     fail('continuation-budget-invalid');
@@ -483,27 +526,37 @@ export async function restoreContinuation({ envelopePath, destination, secret = 
   let retained;
   try { retained = retainedEvidenceFiles(payload.evidence, JSON.parse(payload.files['controls.json']), header.sourcePair, header.runId); }
   catch { fail('continuation-payload-invalid'); }
+  for (const meta of Object.values(payload.evidence.files)) delete meta.bytes;
+  raw = null;
   checkedMemory();
   const root = resolve(destination || '');
   if (!isAbsolute(destination || '') || !destination) fail('continuation-path-refused');
   const parent = dirname(root), lockPath = `${root}.restore.lock`;
   await privateDirectory(parent);
-  let peakLocalBytes = directoryBytes(parent) + raw.length;
-  if (peakLocalBytes > MAX_LOCAL_BYTES || checkedMemory() > MAX_RSS_BYTES)
+  const physicalBytes = () => directoryBytes(parent) + (withinDirectory(parent, incoming) ? 0 : envelopeBytes);
+  const restoredControls = rebaseEvidenceReferences(JSON.parse(payload.files['controls.json']), payload.evidence.source_root, root);
+  const restoredFiles = Object.fromEntries([...FILES, 'run-budget.json'].map(name => [name,
+    name === 'run-budget.json' ? json(payload.budget) + '\n' : name === 'controls.json'
+      ? json(restoredControls) + '\n' : payload.files[name]]));
+  const manifest = retained.size ? { ...payload.evidence, source_root: root,
+    checkpoint_sha256: sha256(json(restoredControls)), protected_rows: protectedRows(restoredControls),
+    files: payload.budget.evidenceCharges } : null;
+  const manifestText = manifest ? json(manifest) + '\n' : '';
+  const plannedBytes = Object.values(restoredFiles).reduce((sum, value) => sum + Buffer.byteLength(value), 0) +
+    [...retained.values()].reduce((sum, value) => sum + value.length, 0) + Buffer.byteLength(manifestText);
+  let peakLocalBytes = physicalBytes();
+  if (peakLocalBytes + plannedBytes > MAX_LOCAL_BYTES || checkedMemory() > MAX_RSS_BYTES)
     fail('continuation-physical-limit');
   let lock;
   try { lock = await open(lockPath, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o600); }
   catch { fail('continuation-destination-busy'); }
   const temporary = join(parent, `.restore-${randomBytes(12).toString('hex')}.tmp`);
   const custody = adoptIncoming ? join(dirname(incoming), `.adopted-${header.runId}-${header.generation}-${randomBytes(12).toString('hex')}.carr`) : null;
+  let published = false, peakMemoryBytes;
   try {
     if (!(await pathAbsent(root))) fail('continuation-destination-exists');
     await mkdir(temporary, { mode: 0o700 });
-    const restoredControls = rebaseEvidenceReferences(JSON.parse(payload.files['controls.json']),
-      payload.evidence.source_root, root);
-    for (const name of [...FILES, 'run-budget.json']) {
-      const content = name === 'run-budget.json' ? json(payload.budget) + '\n' : name === 'controls.json'
-        ? json(restoredControls) + '\n' : payload.files[name];
+    for (const [name, content] of Object.entries(restoredFiles)) {
       const handle = await open(join(temporary, name), constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o600);
       try { await handle.writeFile(content); await handle.sync(); } finally { await handle.close(); }
     }
@@ -516,14 +569,9 @@ export async function restoreContinuation({ envelopePath, destination, secret = 
         const handle = await open(path, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o600);
         try { await handle.writeFile(content); await handle.sync(); } finally { await handle.close(); }
       }
-      const manifest = { ...payload.evidence, source_root: root,
-        checkpoint_sha256: sha256(json(restoredControls)),
-        protected_rows: protectedRows(restoredControls),
-        files: Object.fromEntries(Object.entries(payload.evidence.files).map(([name, meta]) => [name,
-          { size: meta.size, sha256: meta.sha256 }])) };
       const handle = await open(join(temporary, 'evidence', 'manifest.json'),
         constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o600);
-      try { await handle.writeFile(json(manifest) + '\n'); await handle.sync(); } finally { await handle.close(); }
+      try { await handle.writeFile(manifestText); await handle.sync(); } finally { await handle.close(); }
       for (const path of [...evidenceDirectories].sort((a, b) => b.length - a.length)) {
         const handle = await open(path, constants.O_RDONLY);
         try { await handle.sync(); } finally { await handle.close(); }
@@ -531,19 +579,29 @@ export async function restoreContinuation({ envelopePath, destination, secret = 
     }
     await requireWriteCoverage(temporary);
     const dir = await open(temporary, constants.O_RDONLY); try { await dir.sync(); } finally { await dir.close(); }
+    peakLocalBytes = Math.max(peakLocalBytes, physicalBytes());
+    if (peakLocalBytes > MAX_LOCAL_BYTES) fail('continuation-physical-limit');
+    peakMemoryBytes = checkedMemory();
     if (!(await pathAbsent(root))) fail('continuation-destination-exists');
     await rename(temporary, root);
+    published = true;
     const parentHandle = await open(parent, constants.O_RDONLY); try { await parentHandle.sync(); } finally { await parentHandle.close(); }
-    peakLocalBytes = Math.max(peakLocalBytes, directoryBytes(parent) + (dirname(incoming) === parent ? 0 : raw.length));
+    peakLocalBytes = Math.max(peakLocalBytes, physicalBytes());
     if (peakLocalBytes > MAX_LOCAL_BYTES ||
         checkedMemory() > MAX_RSS_BYTES) fail('continuation-physical-limit');
     if (custody) {
       if (!(await pathAbsent(custody))) fail('continuation-adoption-binding-mismatch');
+      await custodyFile(incoming, { digest, bytes: envelopeBytes, consume: true });
       await rename(incoming, custody);
       await syncDirectory(dirname(incoming));
     }
   } catch (error) {
+    if (published) {
+      await rename(root, temporary);
+      await syncDirectory(parent);
+    }
     await rm(temporary, { recursive: true, force: true }).catch(() => {});
+    await syncDirectory(parent);
     if (error instanceof RunLimitError) throw error;
     fail('continuation-restore-failed');
   } finally {
@@ -552,15 +610,15 @@ export async function restoreContinuation({ envelopePath, destination, secret = 
   }
   const adoption = custody ? Object.freeze({ schema: ADOPTION_SCHEMA, artifactId: adoptIncoming.artifactId,
     generation: header.generation, sha256: digest, runId: header.runId, sourcePair: header.sourcePair,
-    contractHash: header.contractHash, planHash: header.planHash, envelopeBytes: raw.length,
+    contractHash: header.contractHash, planHash: header.planHash, envelopeBytes,
     chargedBytes: header.chargedBytes, priorLedgerArtifactBytes: payload.budget.artifactBytes,
     inputConsumed: true }) : undefined;
-  if (adoption) adoptionTickets.set(adoption, { custody, envelopeBytes: raw.length, chargedBytes: header.chargedBytes,
+  if (adoption) adoptionTickets.set(adoption, { custody, envelopeBytes, chargedBytes: header.chargedBytes,
     priorLedgerArtifactBytes: payload.budget.artifactBytes, files: Object.fromEntries(Object.entries(payload.evidence.files)
       .map(([name, meta]) => [name, { size: meta.size, sha256: meta.sha256 }])), used: false });
   return Object.freeze({ destination: root, sha256: digest, generation: header.generation, predecessor: header.predecessor,
     runId: header.runId, sourcePair: header.sourcePair, contractHash: header.contractHash, planHash: header.planHash,
-    envelopeBytes: raw.length, chargedBytes: header.chargedBytes,
+    envelopeBytes, chargedBytes: header.chargedBytes,
     priorLedgerArtifactBytes: payload.budget.artifactBytes, adoption,
-    peakMemoryBytes: checkedMemory(), peakLocalBytes });
+    peakMemoryBytes, peakLocalBytes });
 }

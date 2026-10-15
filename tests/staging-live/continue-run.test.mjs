@@ -605,14 +605,13 @@ test('four serial caller slots carry 5,140 incompressible retained files inside 
               await run.writeFile(join(output, name), JSON.stringify(value),
                 (path, bytes) => writeFile(path, bytes, { mode: 0o600 }));
           }
-          // Each bounded job creates one quarter of the measured corpus. The
-          // work ledger pays for the new full bytes before their first write;
-          // the transfer must credit that reservation exactly once at seal.
-          run.reserveBytes(filesPerSlot * fileBytes);
+          // Each bounded job creates one quarter of the measured corpus through
+          // the same accounted write path used by production evidence.
           const start = (calls - 1) * filesPerSlot;
           for (let index = start; index < start + filesPerSlot; index++) {
             const path = join(evidence, `observation-${index}.png`);
-            await writeFile(path, randomBytes(fileBytes), { mode: 0o600 });
+            await run.writeFile(path, randomBytes(fileBytes),
+              (destination, bytes) => writeFile(destination, bytes, { mode: 0o600 }));
           }
           run.stop('stop-signal');
         } finally { run.dispose(); }
