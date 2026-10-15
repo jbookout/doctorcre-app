@@ -157,7 +157,7 @@ test('verified pre-effect payment refusals retain their closed worker diagnostic
 
 test('fixture and companion refusal diagnostics remain a finite known set', () => {
   for (const code of ['staging-fixture-relationship-prerequisite', 'invoice-close-never-replay',
-    'invoice-close-outcome-unresolved', 'companion-reconciliation-required', 'companion-source-binding-unproved'])
+    'invoice-close-outcome-unresolved', 'companion-reconciliation-required', 'companion-source-binding-unproved', 'companion-isolated-mailbox-required'])
     assert.equal(businessWorkerFailureCode({ code }), code);
   assert.equal(businessWorkerFailureCode({ code: 'companion-private-provider-message' }), null);
 });
