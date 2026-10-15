@@ -1,8 +1,6 @@
 import carrContract from "../contracts/carr-interface.v1.json" with { type: "json" };
 import routeContract from "../contracts/app-routes.v1.json" with { type: "json" };
-import e2eStagingContract from "../contracts/e2e-staging.v1.json" with { type: "json" };
 import { BOARD_ROUTE, boardIdFromPath, legacyBoardDestination } from '../js/progress-board-route.js';
-import { readStagingAuthContract } from '../scripts/e2e-staging/auth-contract.mjs';
 import runtimeErrors from '../contracts/runtime-errors.v1.json' with { type: 'json' };
 import { EDGE_LIMIT, REPORT_BYTES, createErrorGate, scrubError } from '../js/error-tracking.js';
 
@@ -17,6 +15,7 @@ const STATIC_EXACT = new Map([
   ["/favicon.ico", "/public-shell/icons/dealroom.svg"],
 ]);
 const STATIC_PREFIXES = ["/css/", "/data/", "/js/", "/public-shell/", "/tours/"];
+const STAGING_ORIGIN = 'https://doctorcre-app-staging.joe-bookout-carr-us.workers.dev';
 const STAGING_REPORT_ASSETS = new Set(['/share.css', '/share.js', '/share-bootstrap.js',
   ...['maplibre-gl.mjs', 'maplibre-gl-shared.mjs', 'maplibre-gl-worker.mjs', 'maplibre-gl.css'].map(file => `/vendor/maplibre-gl-6.4.1/${file}`)]);
 // V5-UX-C15: the one page route served AHEAD of the CARR gate. Every other app
@@ -144,12 +143,10 @@ function release(env) {
   });
 }
 
-async function handleRequest(request, env, e2eExchangePath, stagingOrigin) {
+async function handleRequest(request, env) {
   const url = new URL(request.url);
   const pathname = url.pathname;
-  const staging = env?.APP_ENV === 'staging' && url.origin === stagingOrigin;
-  if (pathname === e2eExchangePath && !staging) return json({ error: 'not_found' }, 404);
-  if (pathname === e2eExchangePath) return carrResponse(request, env);
+  const staging = env?.APP_ENV === 'staging' && url.origin === STAGING_ORIGIN;
   const boardDestination = legacyBoardDestination(url);
   if (boardDestination) return request.method === 'GET' || request.method === 'HEAD'
     ? Response.redirect(boardDestination, 308) : json({ error: 'method_not_allowed' }, 405);
@@ -256,15 +253,13 @@ function captureEdgeFailure(request, env, gate, response, failure) {
 }
 
 // Separate gates: a flood of browser reports never silences the edge's own capture.
-export function createDoctorcreRequestHandler(contract = e2eStagingContract, gates = {
+export function createDoctorcreRequestHandler(gates = {
   browser: createErrorGate({ limit: EDGE_LIMIT }), edge: createErrorGate({ limit: EDGE_LIMIT }) }) {
-  const e2eExchangePath = readStagingAuthContract(contract).exchange.path;
-  const stagingOrigin = new URL(contract.origin).origin;
   return async (request, env, ctx) => {
     if (request.method === 'POST' && new URL(request.url).pathname === runtimeErrors.browser_endpoint)
       return browserReport(request, env, gates.browser);
     let response, failure = null;
-    try { response = await handleRequest(request, env, e2eExchangePath, stagingOrigin); }
+    try { response = await handleRequest(request, env); }
     catch (error) { failure = { error }; response = json({ error: 'internal_error' }, 500); }
     const pending = captureEdgeFailure(request, env, gates.edge, response, failure);
     if (pending && ctx?.waitUntil) ctx.waitUntil(pending);
