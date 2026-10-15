@@ -471,6 +471,15 @@ test('served signed-in app W4/W9 uses the real UI, canonical fixture guard and d
       await assertStagingWriteCoverage(output);
       await rm(f.proofPath);
       await f.page.goto(STAGING_ORIGIN+'/');
+      const copied = structuredClone(baseline);
+      copied.run = randomUUID();
+      copied.names.awaiting_invoice = `${copied.run} Synthetic W15 awaiting invoice`;
+      copied.records.awaiting_invoice.name = copied.names.awaiting_invoice;
+      copied.receipts.awaiting_invoice_deal.name = copied.names.awaiting_invoice;
+      await assert.rejects(runBusinessJourneys({page:f.page,fixtureGuard:f.guard,release,deal:f.invoiceDeal,run,
+        journeys:['W15'],awaitingInvoicePlan:copied}), error => error.code === 'business-journey-receipt-missing');
+      assert.equal(new URL(f.page.url()).pathname,'/','foreign-run plan cannot reach the awaiting UI on resumed payment');
+      assert.equal(f.writes.length,1,'foreign-run plan cannot repay a quarantined invoice');
       const resumed=await runBusinessJourneys({page:f.page,fixtureGuard:f.guard,release,deal:f.invoiceDeal,run,
         journeys:['W15'],awaitingInvoicePlan:baseline});
       assert.deepEqual(resumed.actions.map(row=>row.action),['awaiting-payment-hidden']);
@@ -494,11 +503,18 @@ test('served signed-in app W4/W9 uses the real UI, canonical fixture guard and d
     const f = await fixture();
     try {
       await f.page.goto(STAGING_ORIGIN+'/');
+      const copied = structuredClone(baseline);
+      copied.run = randomUUID();
+      copied.names.awaiting_invoice = `${copied.run} Synthetic W15 awaiting invoice`;
+      copied.records.awaiting_invoice.name = copied.names.awaiting_invoice;
+      copied.receipts.awaiting_invoice_deal.name = copied.names.awaiting_invoice;
       for (const changed of [
         { records: { ...baseline.records, awaiting_invoice: { ...baseline.records.awaiting_invoice, deal_id: randomUUID() } } },
         { release: { ...baseline.release, source_commit: 'b'.repeat(40) } },
         { receipts: { ...baseline.receipts, awaiting_invoice_close: { ...baseline.receipts.awaiting_invoice_close, event_id: randomUUID(), field: 'owner' } } },
         { receipts: { ...baseline.receipts, awaiting_invoice_lead: undefined } },
+        { run: copied.run, names: copied.names, records: copied.records, receipts: copied.receipts },
+        { observed_at: new Date(Date.parse(baseline.observed_at) + 1000).toISOString() },
       ]) {
         const plan = { ...baseline, ...changed };
         await assert.rejects(runBusinessJourneys({ page: f.page, fixtureGuard: f.guard, release,
@@ -506,6 +522,7 @@ test('served signed-in app W4/W9 uses the real UI, canonical fixture guard and d
           awaitingInvoicePlan: plan }), error => error.code === 'business-journey-receipt-missing');
       }
       assert.equal(f.writes.length, 0);
+      assert.equal(new URL(f.page.url()).pathname, '/', 'foreign-run and timestamp drift refuse before awaiting UI');
     } finally { await f.page.context().close(); }
   });
 

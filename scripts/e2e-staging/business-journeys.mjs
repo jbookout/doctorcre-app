@@ -305,6 +305,11 @@ async function runInvoiceJourney({ page, fixtureGuard, release, deal, run, invoi
     throw journeyError('business-journey-receipt-missing');
   const invoke = (phase, values = {}) => fixtureGuard.admitBusinessJourneyStep({ ...spec, phase, ...values });
   const binding = invoiceProofPath ? await invoke('import-fixture', { proofPath: invoiceProofPath }) : await invoke('fixture-status');
+  if (awaitingInvoicePlan && (binding?.proof?.fixture_run !== awaitingInvoicePlan.run ||
+      binding.proof.recorded_plan_observed_at !== awaitingInvoicePlan.observed_at ||
+      binding.proof.source_pair?.source_commit !== awaitingInvoicePlan.release.source_commit ||
+      binding.proof.source_pair?.carr_source_commit !== awaitingInvoicePlan.release.carr_source_commit))
+    throw journeyError('business-journey-receipt-missing');
   const id = binding.proof.fixture.commission_id;
   const invoiceSets = async () => {
     run.check();
