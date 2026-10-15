@@ -17,6 +17,7 @@ const MAX_RSS_BYTES = 6 * RUN_LIMITS.artifactBytes;
 // This is a local seal capability. The caller owns durable artifact-chain exclusion.
 const adoptionTickets = new WeakMap();
 const FILES = Object.freeze(['controls.json', 'staging-records.json', 'staging-records-plan.json']);
+const AGENT_JOURNAL = 'private/w4-local-agent-phase.json';
 const HASH = /^[0-9a-f]{64}$/;
 const COMMIT = /^[0-9a-f]{40}$/;
 const RUN_ID = /^[a-zA-Z0-9_-]{8,80}$/;
@@ -171,9 +172,9 @@ function validateBudget(value, runId) {
 }
 
 function validateFiles(files, sourcePair, planHash) {
-  if (!exactKeys(files, FILES)) fail('continuation-path-refused');
+  if (!exactKeys(files, FILES) && !exactKeys(files, [...FILES, AGENT_JOURNAL])) fail('continuation-path-refused');
   const parsed = {};
-  for (const name of FILES) {
+  for (const name of Object.keys(files)) {
     if (typeof files[name] !== 'string' || Buffer.byteLength(files[name]) > RUN_LIMITS.artifactBytes) fail('continuation-payload-invalid');
     try { parsed[name] = JSON.parse(files[name]); } catch { fail('continuation-payload-invalid'); }
     if (!safeObject(parsed[name])) fail('continuation-sensitive-field-refused');
@@ -196,6 +197,9 @@ function validateFiles(files, sourcePair, planHash) {
       !plan.records || typeof plan.records !== 'object' || !plan.receipts || typeof plan.receipts !== 'object' ||
       plan.state === 'inflight' || plan.inflight) fail('continuation-payload-invalid');
   if (sha256(files['staging-records-plan.json']) !== planHash) fail('continuation-plan-mismatch');
+  if (Object.hasOwn(files, AGENT_JOURNAL) !== Boolean(plan.automatic_phase_fixture) ||
+      Object.hasOwn(files, AGENT_JOURNAL) && parsed[AGENT_JOURNAL]?.schema !== 'staging-w4-local-agent-phase.v1')
+    fail('continuation-agent-journal-mismatch');
   return parsed;
 }
 
@@ -371,6 +375,11 @@ export async function sealContinuation({ output, envelopePath, secret = process.
   if (!(await pathAbsent(destination))) fail('continuation-destination-exists');
   await recoverStagedEvidence(temp, root, header, secret);
   const files = Object.fromEntries(await Promise.all(FILES.map(async name => [name, await readPrivateSource(join(root, name))])));
+  const journalPath = join(root, AGENT_JOURNAL);
+  if (!(await pathAbsent(journalPath))) {
+    await privateDirectory(dirname(journalPath));
+    files[AGENT_JOURNAL] = await readPrivateSource(journalPath);
+  }
   validateFiles(files, sourcePair, planHash);
   await requireWriteCoverage(root);
   const evidence = await snapshotRetainedEvidence(root, JSON.parse(files['controls.json']), sourcePair, runId);
@@ -535,7 +544,7 @@ export async function restoreContinuation({ envelopePath, destination, secret = 
   await privateDirectory(parent);
   const physicalBytes = () => directoryBytes(parent) + (withinDirectory(parent, incoming) ? 0 : envelopeBytes);
   const restoredControls = rebaseEvidenceReferences(JSON.parse(payload.files['controls.json']), payload.evidence.source_root, root);
-  const restoredFiles = Object.fromEntries([...FILES, 'run-budget.json'].map(name => [name,
+  const restoredFiles = Object.fromEntries([...Object.keys(payload.files), 'run-budget.json'].map(name => [name,
     name === 'run-budget.json' ? json(payload.budget) + '\n' : name === 'controls.json'
       ? json(restoredControls) + '\n' : payload.files[name]]));
   const manifest = retained.size ? { ...payload.evidence, source_root: root,
@@ -557,9 +566,11 @@ export async function restoreContinuation({ envelopePath, destination, secret = 
     if (!(await pathAbsent(root))) fail('continuation-destination-exists');
     await mkdir(temporary, { mode: 0o700 });
     for (const [name, content] of Object.entries(restoredFiles)) {
+      if (name === AGENT_JOURNAL) await mkdir(join(temporary, 'private'), { mode: 0o700 });
       const handle = await open(join(temporary, name), constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o600);
       try { await handle.writeFile(content); await handle.sync(); } finally { await handle.close(); }
     }
+    if (Object.hasOwn(restoredFiles, AGENT_JOURNAL)) await syncDirectory(join(temporary, 'private'));
     if (retained.size) {
       const evidenceDirectories = new Set();
       for (const [name, content] of retained) {

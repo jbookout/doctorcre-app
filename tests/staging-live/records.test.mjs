@@ -111,7 +111,7 @@ test('W6 draft fixture adds a separately keyed Pensacola client and independentl
     const plan = JSON.parse(await readFile(join(output, 'staging-records-plan.json'), 'utf8'));
     const writes = fake.calls.filter(call => call.path === '/mcp' &&
       ['add-party', 'new-client'].includes(call.options.data.params.name));
-    const ownedWrites = writes.filter(call => call.options.data.params.arguments.name?.includes('Synthetic W6 Tour Draft') ||
+    const ownedWrites = writes.filter(call => call.options.data.params.arguments.name?.startsWith('QA Tour ') ||
       call.options.data.params.arguments.party_id === plan.records.tour_draft_party.id);
     assert.deepEqual(ownedWrites.map(call => call.options.data.params.name), ['add-party', 'new-client']);
     const [partyWrite, clientWrite] = ownedWrites.map(call => call.options.data.params.arguments);
@@ -130,7 +130,7 @@ test('W6 draft fixture adds a separately keyed Pensacola client and independentl
     assert.equal(plan.records.tour_draft_party.state, 'FL');
     assert.equal(extended.records.client.id, base.records.client.id);
     assert.equal(extended.records.party.id, base.records.party.id);
-    assert.ok(plan.names.tour_draft_party.startsWith(plan.run));
+    assert.equal(plan.names.tour_draft_party, `QA Tour ${plan.run}`);
     assert.equal(plan.names.tour_draft_client, plan.names.tour_draft_party);
     const independentRead = fake.calls.find(call => call.path === `/api/v1/business/clients/${plan.records.tour_draft_client.id}`);
     assert.ok(independentRead, 'dedicated client received a normal authenticated readback');

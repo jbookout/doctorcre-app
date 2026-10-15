@@ -22,6 +22,19 @@ const refuse = code => { throw Object.assign(new Error('W4 local agent fixture r
 const required = (condition, code) => { if (!condition) refuse(code); };
 const samePair = (a, b) => a?.source_commit === b?.source_commit && a?.carr_source_commit === b?.carr_source_commit;
 const validDate = value => typeof value === 'string' && Number.isFinite(Date.parse(value));
+const MAX_LOCAL_CREDENTIAL_BYTES = 64 * 1024;
+const MAX_LOCAL_JOURNAL_BYTES = 64 * 1024;
+
+export function parseLocalAgentRpc(envelope, id) {
+  required(envelope?.jsonrpc === '2.0' && envelope.id === id && !envelope.error &&
+    envelope.result?.isError !== true && envelope.result?.content?.length === 1 &&
+    envelope.result.content[0].type === 'text', 'agent-rpc-refused');
+  let value;
+  try { value = JSON.parse(envelope.result.content[0].text); } catch { refuse('agent-rpc-refused'); }
+  required(value && typeof value === 'object' && !Array.isArray(value) && !value.error &&
+    value.ok !== false, 'agent-rpc-refused');
+  return value;
+}
 
 async function privateFolder(path) {
   const folder = dirname(path);
@@ -37,6 +50,7 @@ async function privateFolder(path) {
 
 async function secureJournal(path, value, run, exclusive = false) {
   const data = JSON.stringify(value) + '\n';
+  required(Buffer.byteLength(data) <= MAX_LOCAL_JOURNAL_BYTES, 'journal-file-unsafe');
   run.reserveBytes(Buffer.byteLength(data));
   const dir = await privateFolder(path);
   try {
@@ -45,10 +59,11 @@ async function secureJournal(path, value, run, exclusive = false) {
     try { await file.writeFile(data); await file.sync(); } finally { await file.close(); }
     if (!exclusive) {
       // The only allowed replacement is our own private regular journal.
-      const previous = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW);
+      const previous = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
       try {
         const prior = await previous.stat();
-        required(prior.isFile() && (prior.mode & 0o777) === 0o600, 'journal-file-unsafe');
+        required(prior.isFile() && prior.nlink === 1 && prior.uid === process.getuid?.() &&
+          (prior.mode & 0o777) === 0o600, 'journal-file-unsafe');
       } finally { await previous.close(); }
       const { rename } = await import('node:fs/promises');
       await rename(target, path);
@@ -59,14 +74,44 @@ async function secureJournal(path, value, run, exclusive = false) {
 
 async function existingJournal(path) {
   let file;
-  try { file = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW); }
+  try { file = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK); }
   catch (error) { if (error.code === 'ENOENT') return null; refuse('journal-file-unsafe'); }
   try {
     const stat = await file.stat();
-    required(stat.isFile() && (stat.mode & 0o777) === 0o600 && stat.nlink === 1,
+    required(stat.isFile() && stat.uid === process.getuid?.() &&
+      (stat.mode & 0o777) === 0o600 && stat.nlink === 1 && stat.size <= MAX_LOCAL_JOURNAL_BYTES,
       'journal-file-unsafe');
-    return JSON.parse(await file.readFile('utf8'));
+    const buffer = Buffer.alloc(MAX_LOCAL_JOURNAL_BYTES + 1);
+    let total = 0;
+    while (total <= MAX_LOCAL_JOURNAL_BYTES) {
+      const { bytesRead } = await file.read(buffer, total, buffer.length - total, null);
+      if (!bytesRead) return JSON.parse(buffer.toString('utf8', 0, total));
+      total += bytesRead;
+    }
+    refuse('journal-file-unsafe');
   } catch { refuse('journal-file-unsafe'); }
+  finally { await file.close(); }
+}
+
+export async function readLocalAgentTokenFile(path, securityIssue) {
+  let file;
+  try { file = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK); }
+  catch (error) { if (error.code === 'ENOENT') return ''; refuse('local-credential-file-unsafe'); }
+  try {
+    const stat = await file.stat();
+    required(stat.isFile() && stat.nlink === 1 && stat.size <= MAX_LOCAL_CREDENTIAL_BYTES &&
+      !securityIssue({ mode: stat.mode, uid: stat.uid,
+        isFile: stat.isFile(), isSymbolicLink: stat.isSymbolicLink() }, process.getuid?.()),
+    'local-credential-file-unsafe');
+    const buffer = Buffer.alloc(MAX_LOCAL_CREDENTIAL_BYTES + 1);
+    let total = 0;
+    while (total <= MAX_LOCAL_CREDENTIAL_BYTES) {
+      const { bytesRead } = await file.read(buffer, total, buffer.length - total, null);
+      if (!bytesRead) return buffer.toString('utf8', 0, total);
+      total += bytesRead;
+    }
+    refuse('local-credential-file-unsafe');
+  } catch { refuse('local-credential-file-unsafe'); }
   finally { await file.close(); }
 }
 
@@ -85,17 +130,7 @@ export async function createLocalAgentRpc({ carrCheckout, fetcher = fetch, envir
   required(await realpath(modulePath) === modulePath, 'carr-credential-resolver-unsafe');
   const { selectLocalClientCredential, tokenFileSecurityIssue } = await import(pathToFileURL(modulePath));
   const filePath = join(homedir(), '.config', 'carr', 'mcp-tokens.env');
-  let tokenFile = '';
-  try {
-    const file = await open(filePath, constants.O_RDONLY | constants.O_NOFOLLOW);
-    try {
-      const stat = await file.stat();
-      required(!tokenFileSecurityIssue({ mode: stat.mode, uid: stat.uid,
-        isFile: stat.isFile(), isSymbolicLink: stat.isSymbolicLink() }, process.getuid?.()),
-      'local-credential-file-unsafe');
-      tokenFile = await file.readFile('utf8');
-    } finally { await file.close(); }
-  } catch (error) { if (error.code !== 'ENOENT') refuse('local-credential-file-unsafe'); }
+  const tokenFile = await readLocalAgentTokenFile(filePath, tokenFileSecurityIssue);
   const credential = selectLocalClientCredential({
     CARR_MCP_CLIENT_PROFILE: 'local', CARR_MCP_LOCAL_TOKEN: environment.CARR_MCP_LOCAL_TOKEN,
   }, tokenFile);
@@ -104,19 +139,14 @@ export async function createLocalAgentRpc({ carrCheckout, fetcher = fetch, envir
   return async (name, args, { signal, timeout }) => {
     required(['deal-room-board', 'get-deal-room', 'patch-deal-field', 'read-doc-activity'].includes(name),
       'agent-operation-refused');
+    const id = randomUUID();
     const response = await fetcher(endpoint, { method: 'POST', redirect: 'manual', signal: AbortSignal.any([
       signal, AbortSignal.timeout(timeout)]), headers: {
       'content-type': 'application/json', authorization: `Bearer ${credential.token}`,
-    }, body: JSON.stringify({ jsonrpc: '2.0', id: randomUUID(), method: 'tools/call',
+    }, body: JSON.stringify({ jsonrpc: '2.0', id, method: 'tools/call',
       params: { name, arguments: args } }) });
     required(response.status === 200 && new URL(response.url).href === endpoint, 'agent-transport-refused');
-    const envelope = await response.json();
-    required(envelope?.jsonrpc === '2.0' && !envelope.error && envelope.result?.isError !== true &&
-      envelope.result?.content?.length === 1 && envelope.result.content[0].type === 'text', 'agent-rpc-refused');
-    const value = JSON.parse(envelope.result.content[0].text);
-    required(value && typeof value === 'object' && !Array.isArray(value) && !value.error &&
-      value.ok !== false, 'agent-rpc-refused');
-    return value;
+    return parseLocalAgentRpc(await response.json(), id);
   };
 }
 
@@ -133,6 +163,14 @@ export async function produceLocalAgentPhase({ plan, release, run, carrCheckout,
   required(typeof run.root === 'string' && typeof run.snapshot === 'function' &&
     typeof run.http === 'function' && typeof run.reserveBytes === 'function' &&
     typeof run.snapshot().id === 'string', 'agent-run-binding-refused');
+  const { readStagingManualW4Fixture } = await import('./records.mjs');
+  const persisted = await readStagingManualW4Fixture(run.root, release, run);
+  required(persisted.run === plan.run && samePair(persisted.release, plan.release) &&
+    persisted.records.deal.id === plan.records.deal.id &&
+    persisted.records.deal.name === plan.records.deal.name &&
+    persisted.receipts.deal.deal_id === plan.receipts.deal.deal_id,
+  'agent-fixture-binding-refused');
+  plan = persisted;
   const journalPath = join(run.root, 'private', 'w4-local-agent-phase.json');
   const folder = await privateFolder(journalPath);
   await folder.close();

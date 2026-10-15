@@ -53,7 +53,7 @@ export function fakeAPI(output, { refuse, unknown, candidateAt, wrongParty = fal
       if (name === refuse) return reply({ result: { isError: true, content: [{ type: 'text', text: '{"error":"database_refused_the_statement","fault":"private-provider-canary"}' }] } });
       if (name === 'add-party') {
         if (args.name === 'Synthetic Staging Fixture') return envelope({ needs_confirm: true, candidates: [{ id: wrongParty ? id(99) : fixture, name: 'Synthetic Staging Fixture' }] });
-        const step = args.name.startsWith('QA Vendor ') ? 'vendor_party' : args.name.includes('Synthetic W6 Tour Draft') ? 'tour_draft_party' : 'lead_party';
+        const step = args.name.startsWith('QA Vendor ') ? 'vendor_party' : args.name.startsWith('QA Tour ') ? 'tour_draft_party' : 'lead_party';
         if (candidateAt === step)
           return envelope({ needs_confirm: true, candidates: [{ id: id(99), name: 'Synthetic Staging QA candidate' }] });
         if (args.name.startsWith('QA Vendor ')) { rows.vendorParty = { id: id(7), name: args.name }; return envelope({ ok: true, party_id: rows.vendorParty.id }); }

@@ -294,7 +294,7 @@ export async function prepareStagingRecords(output, {
         // Persist unique names and both write keys before the first normal CARR
         // mutation. The fixed base fixture remains untouched.
         for (const name of fixtureParts) plan.keys[name] ||= randomUUID();
-        plan.names.tour_draft_party ||= `${plan.run} Synthetic W6 Tour Draft Party`;
+        plan.names.tour_draft_party ||= `QA Tour ${plan.run}`;
         // CARR derives the client display name from its canonical party.
         plan.names.tour_draft_client ||= plan.names.tour_draft_party;
         await persist(planPath, plan);
@@ -804,6 +804,9 @@ function requirePlanCoverage(plan, scope) {
       plan.state !== 'complete' || plan.inflight) policyFailure('fixture-provenance-missing');
   const attempts = scope ? (plan.browser_write_attempts ?? []).filter(row => scope.fingerprints.has(row.fingerprint) || row.journey) : plan.browser_write_attempts ?? [];
   const refusals = scope ? scope.refusals : plan.browser_write_refusals ?? [];
+  if (plan.automatic_phase_fixture && (plan.automatic_phase_fixture.state !== 'observed' ||
+      (plan.browser_write_attempts || []).filter(row => row.automatic_phase).length !== 1))
+    policyFailure('write-coverage-incomplete');
   if (!Array.isArray(attempts) || !Array.isArray(refusals) || refusals.length ||
       attempts.some(row => {
         if (row.state !== 'acknowledged' || row.response?.acknowledged !== true ||
@@ -841,6 +844,37 @@ function validIndependentReadback(row) {
     row.independent_readback.record_id === row.record_ids?.[0] &&
     row.independent_readback.matched === true && /^[a-f0-9]{64}$/.test(row.independent_readback.response_sha256 || '') &&
     typeof row.independent_readback.observed_at === 'string' && Number.isFinite(Date.parse(row.independent_readback.observed_at));
+}
+
+function manualW4Complete(plan) {
+  const rows = (plan.browser_write_attempts || []).filter(row => row.journey?.id === 'W4');
+  if (rows.length !== 2 || !['move', 'undo'].every(step => rows.filter(row => row.journey.step === step).length === 1) ||
+      rows.some(row => row.journey.schema !== 'staging-business-journey-step.v1' ||
+        row.journey.contract_sha256 !== digest(businessJourneys) ||
+        row.journey.fixture_run !== plan.run || digest(row.journey.release) !== digest(plan.release) ||
+        row.record_ids?.length !== 1 || row.record_ids[0] !== plan.records.deal?.id ||
+        !observedJourneyUI(row) || !validIndependentReadback(row))) return false;
+  const move = rows.find(row => row.journey.step === 'move');
+  const undo = rows.find(row => row.journey.step === 'undo');
+  return move.operation === 'patch-deal-field' && undo.operation === 'revert-deal-field' &&
+    move.response?.binding?.effect?.old_value === 'pending' &&
+    move.response.binding.effect.new_value === 'research' &&
+    undo.arguments?.event_id === move.response.binding.effect.event_id &&
+    undo.response?.binding?.effect?.new_value === 'pending';
+}
+
+export async function readStagingManualW4Fixture(output, release, run) {
+  requireSupervisedRun(output, run);
+  const plan = await readPrivateJSON(join(output, 'staging-records-plan.json'));
+  if (!plan || plan.release?.source_commit !== release?.source_commit ||
+      plan.release?.carr_source_commit !== release?.carr_source_commit ||
+      release?.carr_source_commit !== contract.producer.source_commit ||
+      !isUUID(plan.records?.deal?.id || '') ||
+      plan.receipts?.deal?.deal_id !== plan.records.deal.id)
+    policyFailure('automatic-event-manual-predecessor-unproved');
+  requirePlanCoverage(plan);
+  if (!manualW4Complete(plan)) policyFailure('automatic-event-manual-predecessor-unproved');
+  return plan;
 }
 
 const automaticJournalName = 'w4-local-agent-phase.json';
@@ -1287,11 +1321,8 @@ export function stagingFixtureWriteGuard({ output, release, invoiceFixtureTarget
                 row.arguments?.event_id === journal.receipt.event_id) ||
               !automaticBeforeReads(reads, journal.receipt, plan))
             policyFailure('automatic-event-provenance-unproved');
-          const manual = attempts.filter(row => row.journey?.id === 'W4');
-          if (manual.length !== 2 || new Set(manual.map(row => row.journey.step)).size !== 2 ||
-              !['move', 'undo'].every(step => manual.some(row => row.journey.step === step)) ||
-              !manual.every(row => observedJourneyUI(row) && validIndependentReadback(row)) ||
-              manual.some(row => row.response?.binding?.effect?.event_id === journal.receipt.event_id))
+          if (!manualW4Complete(plan) || attempts.some(row => row.journey?.id === 'W4' &&
+              row.response?.binding?.effect?.event_id === journal.receipt.event_id))
             policyFailure('automatic-event-manual-predecessor-unproved');
           plan.automatic_phase_fixture = { schema: 'staging-w4-agent-event-binding.v1',
             state: 'admitted', deal_id: spec.deal, event_id: journal.receipt.event_id,
@@ -1744,6 +1775,11 @@ export function stagingFixtureWriteGuard({ output, release, invoiceFixtureTarget
 export async function assertStagingWriteCoverage(output) {
   const plan = await readPrivateJSON(join(output, 'staging-records-plan.json'));
   requirePlanCoverage(plan);
+  let journalPresent = false;
+  try { await lstat(join(output, 'private', automaticJournalName)); journalPresent = true; }
+  catch (error) { if (error.code !== 'ENOENT') policyFailure('automatic-event-journal-unsafe'); }
+  if (journalPresent !== Boolean(plan.automatic_phase_fixture))
+    policyFailure('automatic-event-reconciliation-required');
   if (plan?.automatic_phase_fixture) {
     const journal = await readAutomaticJournal(output);
     if (!validAutomaticJournal(journal, plan, plan.automatic_phase_fixture.run_id) ||

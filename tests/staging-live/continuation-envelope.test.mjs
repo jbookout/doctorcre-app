@@ -708,3 +708,90 @@ test('fixed run-limit defaults remain the 20,000 request, 5,000 model, and 256 M
   assert.equal(RUN_LIMITS.modelCalls, 5_000);
   assert.equal(RUN_LIMITS.artifactBytes, 256 * 1024 * 1024);
 });
+
+// Synthetic event and receipt shapes exercise the encrypted custody path;
+// these values are not live CARR receipts or browser observations.
+const stableAgent = value => Array.isArray(value) ? value.map(stableAgent) : value && typeof value === 'object'
+  ? Object.fromEntries(Object.keys(value).sort().map(key => [key, stableAgent(value[key])])) : value;
+const agentHash = value => sha256(JSON.stringify(stableAgent(value)));
+async function observedAgentJournal(f) {
+  const planPath = join(f.output, 'staging-records-plan.json');
+  const plan = JSON.parse(await readFile(planPath, 'utf8'));
+  const deal = id(2), original = id(3), undo = id(4), now = new Date().toISOString();
+  const reason = 'Fictional staging agent advanced an invented deal for W4 badge and Undo verification.';
+  const journal = { schema: 'staging-w4-local-agent-phase.v1', state: 'observed',
+    source_pair: sourcePair, run_id: f.run.id, fixture_run: plan.run, deal_id: deal,
+    request: { base_event_id: null, change_reason: reason, deal, field: 'phase',
+      idempotency_key: id(5), value: 'research' },
+    receipt: { ok: true, deal_id: deal, field: 'phase', old_value: 'pending',
+      new_value: 'research', event_id: original, event_recorded_at: now },
+    before_sha256: 'a'.repeat(64), board_sha256: 'b'.repeat(64),
+    detail_sha256: 'c'.repeat(64), cause_sha256: 'd'.repeat(64),
+    started_at: now, observed_at: now, doc_authorship_qualified: false };
+  const args = { event_id: original, idempotency_key: id(6) };
+  const receipt = { ok: true, deal_id: deal, field: 'phase', reverted_event_id: original,
+    old_value: 'research', new_value: 'pending', event_id: undo, event_recorded_at: now };
+  const effect = { field: 'phase', reverted_event_id: original, prior_old_value: 'pending',
+    old_value: 'research', new_value: 'pending', event_id: undo, event_recorded_at: now };
+  const observation = { event_id: original, before_badge_visible: true, exact_undo_clicked: true,
+    after_badge_absent: true, restored_phase: 'pending', undo_event_id: undo };
+  plan.records = { deal: { id: deal, name: 'Synthetic staging QA owned deal' }, client: { ref: 'C-123' } };
+  plan.receipts = { deal: { deal_id: deal } };
+  plan.automatic_phase_fixture = { schema: 'staging-w4-agent-event-binding.v1', state: 'observed',
+    run_id: f.run.id, fixture_run: plan.run, source_pair: sourcePair, deal_id: deal,
+    event_id: original, old_value: 'pending', new_value: 'research',
+    journal_sha256: agentHash(journal), board_sha256: 'b'.repeat(64),
+    detail_sha256: 'c'.repeat(64), activity_sha256: 'd'.repeat(64),
+    admitted_at: now, undo_board_sha256: 'e'.repeat(64), undo_detail_sha256: 'f'.repeat(64) };
+  plan.browser_write_attempts = [{ schema: 'staging-fixture-browser-intent.v1',
+    operation: 'revert-deal-field', record_ids: [deal], arguments: args, attempted_at: now,
+    state: 'acknowledged', response: { acknowledged: true, receipt,
+      binding: { operation: 'revert-deal-field', record_ids: [deal], arguments_sha256: agentHash(args), effect } },
+    independent_readback: { schema: 'staging-fixture-business-readback.v1', operation: 'get-deal-room',
+      record_id: deal, matched: true, response_sha256: 'a'.repeat(64), observed_at: now },
+    automatic_phase: { schema: 'staging-w4-automatic-undo.v1', state: 'observed',
+      fixture_run: plan.run, release: sourcePair, event_id: original, admitted_at: now,
+      ui: { schema: 'staging-w4-automatic-undo-ui.v1', observation_sha256: agentHash(observation), observed_at: now } } }];
+  await writeFile(planPath, JSON.stringify(plan), { mode: 0o600 });
+  await mkdir(join(f.output, 'private'), { mode: 0o700 });
+  const journalPath = join(f.output, 'private', 'w4-local-agent-phase.json');
+  await writeFile(journalPath, JSON.stringify(journal), { mode: 0o600 });
+  return { plan, journal, journalPath };
+}
+
+test('observed agent journal remains encrypted and private across continuation restore', async t => {
+  const f = await fixture(t);
+  const { journal, journalPath } = await observedAgentJournal(f);
+  const { assertStagingWriteCoverage } = await import('../../scripts/e2e-staging/records.mjs');
+  await assertStagingWriteCoverage(f.output);
+  const sealed = await seal(f);
+  const ciphertext = await readFile(sealed.path);
+  assert.equal(ciphertext.includes(Buffer.from(journal.request.change_reason)), false);
+  assert.equal(ciphertext.includes(Buffer.from(journal.receipt.event_id)), false);
+  assert.equal(ciphertext.includes(Buffer.from('private/w4-local-agent-phase.json')), false);
+  await restoreContinuation({ envelopePath: sealed.path, destination: f.restored, secret, expected: sealed });
+  const restoredPath = join(f.restored, 'private', 'w4-local-agent-phase.json');
+  assert.deepEqual(JSON.parse(await readFile(restoredPath, 'utf8')), journal);
+  assert.equal((await stat(restoredPath)).mode & 0o777, 0o600);
+  assert.equal((await stat(join(f.restored, 'private'))).mode & 0o777, 0o700);
+  await assertStagingWriteCoverage(f.restored);
+  assert.equal((await stat(journalPath)).mode & 0o777, 0o600);
+});
+
+test('agent journal crash before import cannot seal an apparently complete plan', async t => {
+  const f = await fixture(t);
+  const { plan } = await observedAgentJournal(f);
+  delete plan.automatic_phase_fixture;
+  delete plan.browser_write_attempts;
+  await writeFile(join(f.output, 'staging-records-plan.json'), JSON.stringify(plan), { mode: 0o600 });
+  const { assertStagingWriteCoverage } = await import('../../scripts/e2e-staging/records.mjs');
+  await assert.rejects(assertStagingWriteCoverage(f.output), /automatic-event-reconciliation-required/);
+  await assert.rejects(seal(f), { code: 'continuation-agent-journal-mismatch' });
+});
+
+test('missing or unsafe bound agent journal refuses continuation before encryption', async t => {
+  const f = await fixture(t);
+  const { journalPath } = await observedAgentJournal(f);
+  await rm(journalPath);
+  await assert.rejects(seal(f), { code: 'continuation-agent-journal-mismatch' });
+});
