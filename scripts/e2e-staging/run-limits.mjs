@@ -2,6 +2,7 @@ import { AsyncLocalStorage } from 'node:async_hooks';
 import { createHash, randomUUID } from 'node:crypto';
 import { mkdirSync, readFileSync, writeFileSync, renameSync, rmSync, readdirSync, lstatSync, fstatSync, openSync, closeSync, fsyncSync, realpathSync, constants } from 'node:fs';
 import { join, resolve, relative, isAbsolute, sep } from 'node:path';
+import { markOwnFailureCode } from './worker-diagnostics.mjs';
 
 const artifactWrites = new AsyncLocalStorage();
 export const artifactWriteIsAccounted = () => artifactWrites.getStore() === true;
@@ -40,7 +41,10 @@ export const RUN_LIMITS = Object.freeze({
 });
 
 export class RunLimitError extends Error {
-  constructor(reason, detail) { super(`Staging run stopped: ${reason}${detail ? ` (${detail})` : ''}`); this.code = reason; }
+  constructor(reason, detail) {
+    super(`Staging run stopped: ${reason}${detail ? ` (${detail})` : ''}`);
+    this.code = reason; markOwnFailureCode(this, reason);
+  }
 }
 
 const validRunLimits = limits => limits && typeof limits === 'object' && !Array.isArray(limits) &&

@@ -11,7 +11,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { requireSupervisedRun } from './run-limits.mjs';
 import contract from '../../contracts/e2e-staging.v1.json' with { type: 'json' };
-import { formatWorkerFailureDiagnostic } from './worker-diagnostics.mjs';
+import { formatWorkerFailureDiagnostic, markOwnFailureCode } from './worker-diagnostics.mjs';
 
 const exec = promisify(execFile);
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -19,7 +19,9 @@ const SHA = /^[0-9a-f]{40}$/;
 export const LOCAL_AGENT_PHASE_REASON = 'Fictional staging agent advanced an invented deal for W4 badge and Undo verification.';
 const REASON = LOCAL_AGENT_PHASE_REASON;
 const digest = value => createHash('sha256').update(JSON.stringify(value)).digest('hex');
-const refuse = code => { throw Object.assign(new Error('W4 local agent fixture refused'), { code }); };
+const refuse = code => {
+  throw markOwnFailureCode(Object.assign(new Error('W4 local agent fixture refused'), { code }), code);
+};
 const required = (condition, code) => { if (!condition) refuse(code); };
 const samePair = (a, b) => a?.source_commit === b?.source_commit && a?.carr_source_commit === b?.carr_source_commit;
 const validDate = value => typeof value === 'string' && Number.isFinite(Date.parse(value));

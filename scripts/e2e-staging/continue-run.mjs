@@ -8,7 +8,7 @@ import { spawn } from 'node:child_process';
 import { promisify } from 'node:util';
 import contract from '../../contracts/e2e-staging.v1.json' with { type: 'json' };
 import { qualifyV1Journeys } from './v1-qualification.mjs';
-import { formatWorkerFailureDiagnostic } from './worker-diagnostics.mjs';
+import { formatWorkerFailureDiagnostic, markOwnFailureCode } from './worker-diagnostics.mjs';
 
 const canaryPhases = new Set(['session', 'browser-launch', 'context', 'guard', 'navigation', 'asset-settlement', 'shell', 'source-readback']);
 const project = fileURLToPath(new URL('../../', import.meta.url));
@@ -66,7 +66,7 @@ export function retainedBusinessWorkerCause(error) {
 }
 const refusal = code => {
   const error = new Error('Staging continuation refused: ' + code);
-  error.code = code; ownFailures.add(error); throw error;
+  error.code = code; markOwnFailureCode(error, code); ownFailures.add(error); throw error;
 };
 
 export function assertSourcePair(release, binding) {
