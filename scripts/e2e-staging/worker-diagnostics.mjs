@@ -3,9 +3,10 @@ import { relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 // Names are a closed set of built-in error types, a code is emitted only when one
-// of this harness's own refusal helpers registered it, and a frame must name a
-// source file that ships in scripts/e2e-staging; nothing a library, provider or
-// thrown value controls reaches the diagnostic.
+// of this harness's own refusal helpers registered it, and a frame is only the
+// name of a source file that ships in scripts/e2e-staging, without a line number
+// a forged stack could fill; nothing a library, provider or thrown value
+// controls reaches the diagnostic.
 const SAFE_NAMES = new Set(['Error', 'TypeError', 'RangeError', 'SyntaxError', 'ReferenceError', 'URIError',
   'EvalError', 'AggregateError', 'DOMException', 'RunLimitError', 'Object']);
 const SAFE_CODE = /^[a-z0-9-]{1,64}$/;
@@ -14,9 +15,8 @@ const STAGING_SOURCES = new Set(readdirSync(new URL('./', import.meta.url), { re
   .map(path => String(path).split('\\').join('/'))
   .filter(path => path.endsWith('.mjs'))
   .map(path => `scripts/e2e-staging/${path}`));
-const SAFE_FRAME = /^scripts\/e2e-staging\/[A-Za-z0-9._/-]{1,180}\.mjs:[1-9][0-9]{0,8}$/;
 const MAX_LINE_BYTES = 320;
-const DIAGNOSTIC_LINE = /^Staging worker failure name=([A-Za-z][A-Za-z0-9]{0,63}) code=(none|[a-z0-9-]{1,64}) frame=(none|scripts\/e2e-staging\/[A-Za-z0-9._/-]{1,180}\.mjs:[1-9][0-9]{0,8})$/;
+const DIAGNOSTIC_LINE = /^Staging worker failure name=([A-Za-z][A-Za-z0-9]{0,63}) code=(none|[a-z0-9-]{1,64}) frame=(none|scripts\/e2e-staging\/[A-Za-z0-9._/-]{1,180}\.mjs)$/;
 
 function firstStagingFrame(stack, projectRoot) {
   if (typeof stack !== 'string') return 'none';
@@ -28,8 +28,7 @@ function firstStagingFrame(stack, projectRoot) {
     catch { continue; }
     const path = relative(projectRoot, absolute).split('\\').join('/');
     if (path === '..' || path.startsWith('../')) continue;
-    const frame = `${path}:${match[2]}`;
-    if (SAFE_FRAME.test(frame) && STAGING_SOURCES.has(path)) return frame;
+    if (STAGING_SOURCES.has(path)) return path;
   }
   return 'none';
 }
@@ -59,6 +58,6 @@ export function parseWorkerFailureDiagnostic(line) {
   if (typeof line !== 'string' || Buffer.byteLength(line) > MAX_LINE_BYTES) return null;
   const match = DIAGNOSTIC_LINE.exec(line);
   if (!match || !SAFE_NAMES.has(match[1])) return null;
-  if (match[3] !== 'none' && !STAGING_SOURCES.has(match[3].slice(0, match[3].lastIndexOf(':')))) return null;
+  if (match[3] !== 'none' && !STAGING_SOURCES.has(match[3])) return null;
   return line;
 }

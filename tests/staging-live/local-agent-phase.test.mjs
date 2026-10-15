@@ -277,7 +277,7 @@ test('quarantine journal retains bounded error class, own code, and safe staging
   const journal = JSON.parse(await readFile(result.journal_path, 'utf8'));
   assert.equal(journal.state, 'quarantined');
   assert.match(journal.quarantine_cause,
-    /^Staging worker failure name=TypeError code=none frame=scripts\/e2e-staging\/local-agent-phase\.mjs:43$/);
+    /^Staging worker failure name=TypeError code=none frame=scripts\/e2e-staging\/local-agent-phase\.mjs$/);
   assert.doesNotMatch(journal.quarantine_cause, /private provider message|SYNTHETIC_SECRET_72a1/);
   assert.doesNotMatch(JSON.stringify(journal), /private provider message|SYNTHETIC_SECRET_72a1/);
 });

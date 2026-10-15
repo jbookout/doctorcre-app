@@ -83,7 +83,7 @@ test('unclassified TypeError retains one bounded secret-free frame diagnostic', 
   failure.stack = `TypeError: ${failure.message}\n    at run (file://${safeSource}:91:4)`;
   const diagnostic = formatWorkerFailureDiagnostic(failure, projectRoot);
   assert.match(diagnostic,
-    /^Staging worker failure name=TypeError code=unexpected-worker-failure frame=scripts\/e2e-staging\/session\.mjs:91$/);
+    /^Staging worker failure name=TypeError code=unexpected-worker-failure frame=scripts\/e2e-staging\/session\.mjs$/);
   assert.ok(Buffer.byteLength(diagnostic) <= 320);
   assert.doesNotMatch(diagnostic, /private message|SYNTHETIC_UNCLASSIFIED_SECRET_a821/);
 
@@ -130,7 +130,12 @@ test('worker diagnostics include only a code this harness attached', () => {
   assert.equal(parseWorkerFailureDiagnostic(
     'Staging worker failure name=Error code=none frame=scripts/e2e-staging/secretvalue123.mjs:43'), null);
   assert.ok(parseWorkerFailureDiagnostic(
-    'Staging worker failure name=Error code=none frame=scripts/e2e-staging/session.mjs:43'));
+    'Staging worker failure name=Error code=none frame=scripts/e2e-staging/session.mjs'));
+  assert.equal(parseWorkerFailureDiagnostic(
+    'Staging worker failure name=Error code=none frame=scripts/e2e-staging/session.mjs:123456789'), null);
+  const forgedLine = { stack: `Error: x\n    at run (file://${projectRoot}scripts/e2e-staging/session.mjs:123456789:7)` };
+  assert.equal(formatWorkerFailureDiagnostic(forgedLine, projectRoot),
+    'Staging worker failure name=Object code=none frame=scripts/e2e-staging/session.mjs');
   const inherited = Object.assign(Object.create({ code: 'hidden-secret' }), { stack: 'Error: private' });
   assert.equal(formatWorkerFailureDiagnostic(inherited, projectRoot),
     'Staging worker failure name=Object code=none frame=none');
