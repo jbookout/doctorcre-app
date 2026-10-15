@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import coverage from '../../contracts/e2e-staging-v1-qualification.v1.json' with { type: 'json' };
-import { qualifyV1Journeys, V1_QUALIFICATION_SHA256 } from '../../scripts/e2e-staging/v1-qualification.mjs';
+import { qualifyV1Journeys, V1_QUALIFICATION_SHA256, V1_REQUIRED_ACTIONS } from '../../scripts/e2e-staging/v1-qualification.mjs';
 
 const sourcePair = { source_commit: 'a'.repeat(40), carr_source_commit: coverage.producer.source_commit };
 const runId = 'synthetic-v1-qualification';
@@ -10,7 +10,7 @@ const digest = 'b'.repeat(64);
 const proof = (id, caseId, action) => ({ id, case: caseId, action, state: 'observed', source_pair: sourcePair,
   run_id: runId, fixture_run: fixtureRun, actor: 'joe', contract_sha256: V1_QUALIFICATION_SHA256,
   ui_sha256: digest, readback_sha256: digest });
-const complete = () => coverage.requirements.flatMap(row => row.actions.map(action => proof(row.id, row.case, action)));
+const complete = () => V1_REQUIRED_ACTIONS.map(row => proof(row.id, row.case, row.action));
 const companions = () => coverage.companion_ids.map(id => ({ id, enabled: false, state: 'disabled-observed',
   source_pair: sourcePair, run_id: runId, fixture_run: fixtureRun, actor: 'joe',
   contract_sha256: V1_QUALIFICATION_SHA256, ui_sha256: digest, readback_sha256: digest }));

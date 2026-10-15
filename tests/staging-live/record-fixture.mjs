@@ -39,7 +39,7 @@ export function fakeAPI(output, { refuse, unknown, candidateAt, wrongParty = fal
         const dealId = plan.records.deal.id;
         return reply({ schema: 'carr-relationship-network.v1', observed_at: new Date().toISOString(),
           valid_until: new Date(Date.now() + 60000).toISOString(),
-          nodes: [{ id: `party:${fixture}`, name: 'Synthetic Staging Fixture', kind: 'client' },
+          nodes: [{ id: `party:${fixture}`, record_id: plan.records.client.id, name: 'Synthetic Staging Fixture', kind: 'client' },
             { id: `deal:${dealId}`, record_id: dealId, name: plan.records.deal.name }],
           edges: [{ id: `client-deal:${dealId}`, from: `party:${wrongRelationship ? id(99) : fixture}`, to: `deal:${dealId}`, kind: 'client_deal' }] });
       }

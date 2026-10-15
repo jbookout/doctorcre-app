@@ -1,6 +1,10 @@
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
-import catalog from '../../contracts/e2e-staging-v1-qualification.v1.json' with { type: 'json' };
+import baseCatalog from '../../contracts/e2e-staging-v1-qualification.v1.json' with { type: 'json' };
+
+export const INVOICE_CLOSE_REQUIREMENT = Object.freeze({ id: 'W15', case: 'invoice-close',
+  actions: ['capture-evidence', 'automatic-close', 'close-readback', 'undo-close', 'undo-readback'] });
+const catalog = { ...baseCatalog, requirements: [...baseCatalog.requirements, INVOICE_CLOSE_REQUIREMENT] };
 
 const sha256 = value => typeof value === 'string' && /^[0-9a-f]{64}$/.test(value);
 const sha40 = value => typeof value === 'string' && /^[0-9a-f]{40}$/.test(value);

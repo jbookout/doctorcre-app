@@ -805,19 +805,21 @@ const nextStep = (f, key = 1, text = 'Fictional next step') => ({
   deal: f.setup.records.deal.id, text, next_date: null, idempotency_key: browserKey(key),
 });
 
-test('the boot-time local companion GET is blocked without poisoning staging write coverage', async t => {
+test('the boot-time local companion GET measures genuine absence without poisoning staging write coverage', async t => {
   const f = await browserFixtures(t);
   const request = { url: () => 'http://127.0.0.1:4682/api/state', method: () => 'GET' };
-  await assert.rejects(f.guard.handle(request, () => assert.fail('local companion must never be contacted')),
-    error => error.code === 'local-companion-read-blocked' && !error.fixturePolicy);
+  await assert.rejects(f.guard.handle(request, async () => { throw new Error('connect ECONNREFUSED 127.0.0.1:4682'); }),
+    error => error.companionRead === true && error.message.includes('ECONNREFUSED') && !error.fixturePolicy);
   assert.deepEqual(f.guard.refusals, []);
   await f.guard.assertCoverage();
   assert.equal((await f.read()).browser_write_refusals, undefined);
+  assert.deepEqual((await f.read()).companion_attempts.map(row => [row.operation, row.state, row.observation.outcome]),
+    [['state', 'unavailable', 'connection-refused']]);
   for (const change of [
     { method: () => 'POST' }, { url: () => 'http://127.0.0.1:4682/api/state?token=private-canary' },
     { url: () => 'http://127.0.0.1:4682/api/start' }, { url: () => 'http://localhost:4682/api/state' },
   ]) await assert.rejects(f.guard.handle({ ...request, ...change }, () => assert.fail('unproved request must stay blocked')),
-    error => error.code === 'origin-unproved' && error.fixturePolicy);
+    error => ['origin-unproved', 'companion-route-unproved'].includes(error.code) && error.fixturePolicy);
   assert.equal(f.guard.refusals.length, 4);
   await assert.rejects(f.guard.assertCoverage(), /write-coverage-incomplete/);
 });

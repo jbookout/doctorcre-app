@@ -65,7 +65,7 @@ function makePage({ apiDetail = detail, afterDetail = apiDetail, title = plan.na
       selectors.push(selector);
       return {
         async waitFor({ state } = {}) {
-          if (selector.includes('[data-tour-id=')) assert.equal(state, 'visible');
+          if (selector.includes('[data-tour-id=')) { assert.equal(state, 'visible'); return; }
           if (selector === '#tour-dialog' && dialog) return;
           if (selector === '#detail-content .detail-summary .pill:first-child') return;
           if (selector === '#detail-title') return;

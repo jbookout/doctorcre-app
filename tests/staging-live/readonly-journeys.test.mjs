@@ -3,6 +3,7 @@ import test from 'node:test';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
+import { runInNewContext } from 'node:vm';
 import { installStagingGuard } from '../../scripts/e2e-staging/engine.mjs';
 import { openRun, RUN_LIMITS } from '../../scripts/e2e-staging/run-limits.mjs';
 import { runReadonlyJourneys } from '../../scripts/e2e-staging/readonly-journeys.mjs';
@@ -15,7 +16,11 @@ const dealId = '22222222-2222-4222-8222-222222222222';
 const partyId = contract.party_reuse.fixture_party_id;
 const clientId = '99999999-9999-4999-8999-999999999999';
 const unrelatedId = '77777777-7777-4777-8777-777777777777';
-const evidenceId = `evidence:${partyId}:${dealId}:referred`;
+const referredDealId = '66666666-6666-4666-8666-666666666666';
+const referredClientId = '55555555-5555-4555-8555-555555555555';
+const referredPartyId = '44444444-4444-4444-8444-444444444444';
+const referredDealName = 'SYNTHETIC_PRIVATE_REFERRED_DEAL';
+const evidenceId = `evidence:${partyId}:${referredDealId}:referred`;
 const dealName = 'SYNTHETIC_PRIVATE_DEAL_NAME';
 const partyName = contract.party_reuse.fixture_party_name;
 const originalEntry = 'SYNTHETIC_PRIVATE_ORIGINAL_ENTRY';
@@ -24,7 +29,8 @@ const fixturePlan = () => ({ schema: 'doctorcre-staging-records-plan.v1', state:
   release: { source_commit: release.source_commit, carr_source_commit: release.carr_source_commit },
   keys: { deal: '44444444-4444-4444-8444-444444444444' },
   receipts: { party: { party_id: partyId }, client: { client_id: clientId }, deal: { deal_id: dealId } },
-  records: { party: { id: partyId, name: partyName }, client: { id: clientId, name: partyName }, deal: { id: dealId, name: dealName } } });
+  records: { party: { id: partyId, name: partyName }, client: { id: clientId, name: partyName }, deal: { id: dealId, name: dealName },
+    relationship_referral_deal: { id: referredDealId, name: referredDealName, client_id: referredClientId, party_id: referredPartyId } } });
 
 function reusedPartyPlan() {
   const plan = fixturePlan();
@@ -48,7 +54,8 @@ function configure(t) {
 
 async function harness(t, { attention = true, identity = true, detail = true, relationship = {}, appRelease = appIdentity,
   readinessDelayMs = 0, freshness = true, teamOnlyFlag = true, boardActor = 'joe', dealOwner = 'joe', boardName = dealName,
-  homeRedirectTo = null, reuseRead = {} } = {}) {
+  homeRedirectTo = null, reuseRead = {}, wrongTeamMember = false, wrongResetMember = false,
+  extraJoeFlag = false, wrongViewerMember = false } = {}) {
   configure(t);
   const root = await mkdtemp(join(tmpdir(), 'readonly-journeys-'));
   const run = openRun(root, { runId: 'synthetic-readonly-journeys', events: null, limits: { ...RUN_LIMITS, httpRequests: 100 } });
@@ -58,7 +65,7 @@ async function harness(t, { attention = true, identity = true, detail = true, re
   const firstReadinessWait = new Promise(resolve => { markWaitEntered = resolve; });
   const ready = { avatar: readinessDelayMs === 0, home: readinessDelayMs === 0, relationship: readinessDelayMs === 0,
     connection: readinessDelayMs === 0 };
-  let homeScope = 'team', referralsTab = false, territoryValue = '', dialogTitle = '', evidenceOpen = false, dialogOpen = false;
+  let homeScope = 'team', teamReset = false, referralsTab = false, territoryValue = '', dialogTitle = '', evidenceOpen = false, dialogOpen = false;
   const reads = [], relationshipMethods = [], navigations = [];
   const context = { route: async () => {}, addInitScript: async () => {} };
   await installStagingGuard(context, { forContext: () => ({ handle: async () => {}, assertCoverage: async () => { coverageChecks++; } }) });
@@ -69,10 +76,13 @@ async function harness(t, { attention = true, identity = true, detail = true, re
       { id: `party:${partyId}`, record_id: clientId, kind: 'client', name: partyName, territory: 'SYNTHETIC_NORTH', verticals: [], summary: 'SYNTHETIC_PRIVATE_SUMMARY' },
       { id: `deal:${dealId}`, record_id: dealId, kind: 'deal', name: dealName, territory: 'SYNTHETIC_NORTH', verticals: [] },
       { id: `party:${unrelatedId}`, record_id: unrelatedId, kind: 'vendor', name: 'SYNTHETIC_PRIVATE_OTHER_NAME', territory: 'SYNTHETIC_SOUTH', verticals: [] },
+      { id: `party:${referredPartyId}`, record_id: referredClientId, kind: 'client', name: 'SYNTHETIC_PRIVATE_REFERRED_CLIENT', territory: 'SYNTHETIC_NORTH', verticals: [] },
+      { id: `deal:${referredDealId}`, record_id: referredDealId, kind: 'deal', name: referredDealName, territory: 'SYNTHETIC_NORTH', verticals: [] },
     ],
     edges: [
       { id: `client-deal:${dealId}`, from: `party:${partyId}`, to: `deal:${dealId}`, kind: 'client_deal', via: null, detail: null },
-      { id: evidenceId, from: `party:${partyId}`, to: `deal:${dealId}`, kind: 'referred', via: null, detail: originalEntry, summary: 'referred' },
+      { id: `client-deal:${referredDealId}`, from: `party:${referredPartyId}`, to: `deal:${referredDealId}`, kind: 'client_deal', via: null, detail: null },
+      { id: evidenceId, from: `party:${partyId}`, to: `deal:${referredDealId}`, kind: 'referred', via: null, detail: originalEntry, summary: 'referred' },
     ],
     referrals: [
       { node_id: `party:${partyId}`, deals: 1, won: 1, lost: 0, win_rate: 1 },
@@ -88,7 +98,12 @@ async function harness(t, { attention = true, identity = true, detail = true, re
   }));
   const homeFlags = () => {
     const rows = [{ id: dealId, name: dealName }];
-    if (homeScope === 'team' && teamOnlyFlag) rows.push({ id: unrelatedId, name: 'SYNTHETIC_PRIVATE_TEAM_ONLY_NAME' });
+    if (homeScope === 'team' && teamOnlyFlag) rows.push({
+      id: wrongTeamMember || teamReset && wrongResetMember ? clientId : unrelatedId,
+      name: 'SYNTHETIC_PRIVATE_TEAM_ONLY_NAME',
+    });
+    if (extraJoeFlag) rows.push({ id: homeScope === 'mine' && wrongViewerMember ? unrelatedId : referredPartyId,
+      name: 'SYNTHETIC_PRIVATE_JOE_OTHER_FLAG' });
     return rows.map(row => ({ ...visible('home'), getAttribute: key => key === 'data-home-key' ? `deal:${row.id}` : null,
       querySelector: selector => selector === 'strong' ? { textContent: row.name } : null }));
   };
@@ -168,7 +183,11 @@ async function harness(t, { attention = true, identity = true, detail = true, re
         if (url === '/mcp') {
           const request = JSON.parse(options.body), name = request.params.name;
           reads.push(name);
-          const value = name === 'deal-room-board' ? { actor: boardActor, deals: [{ id: dealId, name: boardName, owner: dealOwner, attention }] }
+          const value = name === 'deal-room-board' ? { actor: boardActor, deals: [
+            { id: dealId, name: boardName, owner: dealOwner, attention },
+            ...(teamOnlyFlag ? [{ id: unrelatedId, name: 'SYNTHETIC_PRIVATE_TEAM_ONLY_NAME', owner: 'dell', attention: true }] : []),
+            ...(extraJoeFlag ? [{ id: referredPartyId, name: 'SYNTHETIC_PRIVATE_JOE_OTHER_FLAG', owner: 'joe', attention: true }] : []),
+          ] }
             : name === 'get-deal-room' ? (detail ? { deal_id: reuseRead.dealId ?? dealId,
               client_ref: reuseRead.dealClientRef ?? 'C-42', client_name: reuseRead.dealClientName ?? partyName,
               name: reuseRead.dealName ?? dealName } : { deal_id: unrelatedId }) : null;
@@ -192,7 +211,7 @@ async function harness(t, { attention = true, identity = true, detail = true, re
         clicks++;
         if (selector.includes('data-pref')) theme = theme === 'dark' ? 'light' : 'dark';
         else if (selector.includes('[data-scope="mine"]')) homeScope = 'mine';
-        else if (selector.includes('[data-scope="team"]')) homeScope = 'team';
+        else if (selector.includes('[data-scope="team"]')) { homeScope = 'team'; teamReset = true; }
         else if (selector.includes('data-home-key="deal:')) currentURL = `https://doctorcre-app-staging.joe-bookout-carr-us.workers.dev/deals?deal=${dealId}`;
         else if (selector.includes('details[data-entry=')) evidenceOpen = true;
         else if (selector.includes('[data-close-card]')) { dialogOpen = false; dialogTitle = ''; }
@@ -224,12 +243,7 @@ async function harness(t, { attention = true, identity = true, detail = true, re
       }, readinessDelayMs);
       const expires = Date.now() + Math.min(timeout, 50);
       while (Date.now() < expires) {
-        const savedDocument = globalThis.document;
-        globalThis.document = documentForHarness();
-        let matched;
-        try { matched = predicate(arg); } finally {
-          if (savedDocument === undefined) delete globalThis.document; else globalThis.document = savedDocument;
-        }
+        const matched = runInNewContext(`(${predicate.toString()})(arg)`, { document: documentForHarness(), arg });
         if (matched) return;
         await new Promise(resolve => setTimeout(resolve, 1));
       }
@@ -285,12 +299,21 @@ test('W2 refuses a redirected URL even if a mock still renders Home controls', a
   assert.equal(result.full_v1_qualified, false);
 });
 
-test('W2 stays pending without a distinct Team-only flagged row or the exact plan-owned deal', async t => {
+test('W2 qualifies equal exact Team and Joe memberships without a contrasting fixture', async t => {
   const h = await harness(t, { teamOnlyFlag: false });
   const result = await runReadonlyJourneys({ page: h.page, release, plan: fixturePlan(), run: h.run });
-  assert.equal(result.journeys.find(row => row.journey === 'W2').state, 'pending');
-  assert.equal(h.reads.includes('get-deal-room'), false, 'detail read follows only a complete scope reset and exact UI open');
+  assert.equal(result.journeys.find(row => row.journey === 'W2').state, 'qualified-slice');
+  assert.equal(h.reads.includes('get-deal-room'), true, 'exact equal memberships allow the owned detail proof');
   assert.equal(result.full_v1_qualified, false);
+});
+
+test('W2 rejects wrong Team, Joe and reset memberships even when all counts match', async t => {
+  for (const options of [{ wrongTeamMember: true }, { extraJoeFlag: true, wrongViewerMember: true }, { wrongResetMember: true }]) {
+    const h = await harness(t, options);
+    const result = await runReadonlyJourneys({ page: h.page, release, plan: fixturePlan(), run: h.run });
+    assert.equal(result.journeys.find(row => row.journey === 'W2').state, 'pending');
+    assert.equal(result.actions.some(row => row.id === 'W2'), false);
+  }
 });
 
 test('W2 requires a fresh owned attention observation, exact current name, and independent detail readback', async t => {

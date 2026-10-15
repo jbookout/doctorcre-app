@@ -6,6 +6,7 @@ import { stagingAuth } from './auth-contract.mjs';
 import { assertStagingContextCoverage } from './engine.mjs';
 import { qualifySessionJourney } from './session-journey.mjs';
 import { observedV1Action } from './v1-qualification.mjs';
+import { validNetwork, filterNetwork } from '../../js/relationship-network-model.js';
 
 const commit = value => typeof value === 'string' && /^[0-9a-f]{40}$/.test(value);
 const uuid = value => typeof value === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
@@ -13,7 +14,9 @@ const pending = (journey, reason) => ({ journey, state: 'pending', reason });
 
 // This function is serialized into the guarded page. Its only network path is
 // same-origin fetch, so installStagingGuard remains the sole HTTP policy/meter.
-async function browserRead({ task, dealId, partyId, clientId, clientRef, partyNameDigest, dealNameDigest, dealNameDigestExpected, evidenceEdgeId, evidenceDetailDigest, referralMetrics, territory, contract: spec }) {
+async function browserRead({ task, dealId, partyId, clientId, clientRef, partyNameDigest, dealNameDigest, dealNameDigestExpected,
+  referredDealId, referredDealNameDigest, referredPartyId, referredClientId,
+  evidenceEdgeId, evidenceDetailDigest, referralMetrics, territory, contract: spec }) {
   const textDigest = async value => {
     const bytes = new TextEncoder().encode(value || '');
     const digest = await crypto.subtle.digest('SHA-256', bytes);
@@ -76,10 +79,19 @@ async function browserRead({ task, dealId, partyId, clientId, clientRef, partyNa
   if (task === 'attention') {
     const board = await rpc(spec.journeys.W2.board_tool, { workspace: 'all' });
     const deal = Array.isArray(board?.deals) ? board.deals.find(row => row?.id === dealId) : null;
+    const complete = Array.isArray(board?.deals) && board.deals.every(row => row && typeof row.id === 'string' && row.id.length > 0
+      && ['owner', 'phase', 'operating_state'].every(key => row[key] == null || typeof row[key] === 'string')
+      && (row.attention == null || typeof row.attention === 'boolean'))
+      && new Set(board.deals.map(row => row.id)).size === board.deals.length;
+    const flagged = complete ? board.deals.filter(row => !['closed', 'Closed'].includes(row.phase)
+      && (row.operating_state || 'active') === 'active' && row.attention === true) : [];
+    const keys = rows => rows.map(row => `${spec.journeys.W2.flag_key_prefix}${row.id}`).sort();
     return {
-      board_actor_matches: board?.actor === spec.authentication.actor_slug,
+      board_actor_matches: complete && board?.actor === spec.authentication.actor_slug,
       owned_attention: Boolean(deal && deal.owner === spec.authentication.actor_slug && deal.attention === true),
       plan_name_matches: Boolean(deal && await textDigest(deal.name) === dealNameDigestExpected),
+      team_flag_keys: complete ? keys(flagged) : null,
+      viewer_flag_keys: complete ? keys(flagged.filter(row => row.owner === board.actor)) : null,
     };
   }
   if (task === 'home-scope') {
@@ -89,7 +101,7 @@ async function browserRead({ task, dealId, partyId, clientId, clientRef, partyNa
     const owned = flags.filter(flag => flag.getAttribute('data-home-key') === `${spec.journeys.W2.flag_key_prefix}${dealId}`);
     return {
       scope: selected.length === 1 ? selected[0].getAttribute('data-scope') : null,
-      flag_count: flags.length,
+      flag_keys: flags.map(flag => flag.getAttribute('data-home-key')).sort(),
       owned_flag: owned.length === 1 && owned[0].getClientRects().length > 0 && owned[0].checkVisibility(),
       owned_name_matches: owned.length === 1 && await textDigest(owned[0].querySelector('strong')?.textContent) === dealNameDigestExpected,
     };
@@ -123,8 +135,18 @@ async function browserRead({ task, dealId, partyId, clientId, clientRef, partyNa
       || edges[0]?.kind !== 'client_deal' || edges[0]?.via !== null)
       return { snapshot: true, nodes: true, edge: false, evidence: false, referrals: false, territory: false,
         validUntil: network.valid_until, client_ui: false, deal_ui: false };
-    const evidence = network.edges.filter(edge => edge?.id === `evidence:${partyId}:${dealId}:referred`
-      && edge.from === clientNodeId && edge.to === dealNodeId && edge.via === null
+    const referredDeals = network.nodes.filter(node => node?.id === `deal:${referredDealId}`);
+    const referredClients = network.nodes.filter(node => node?.id === `party:${referredPartyId}`);
+    const referredClientEdges = network.edges.filter(edge => edge?.id === `client-deal:${referredDealId}`);
+    const referredIdentity = referredPartyId !== partyId && referredDealId !== dealId
+      && referredDeals.length === 1 && referredDeals[0].kind === 'deal' && referredDeals[0].record_id === referredDealId
+      && await textDigest(referredDeals[0].name) === referredDealNameDigest
+      && referredClients.length === 1 && referredClients[0].kind === 'client' && referredClients[0].record_id === referredClientId
+      && referredClientEdges.length === 1 && referredClientEdges[0].kind === 'client_deal'
+      && referredClientEdges[0].from === `party:${referredPartyId}` && referredClientEdges[0].to === `deal:${referredDealId}`
+      && referredClientEdges[0].via === null;
+    const evidence = network.edges.filter(edge => edge?.id === `evidence:${partyId}:${referredDealId}:referred`
+      && edge.from === clientNodeId && edge.to === `deal:${referredDealId}` && edge.via === null
       && edge.kind === 'referred' && typeof edge.detail === 'string' && edge.detail.trim().length > 0);
     const referralRows = network.referrals.filter(row => row?.node_id === clientNodeId);
     const referral = referralRows.length === 1 ? referralRows[0] : null;
@@ -147,9 +169,9 @@ async function browserRead({ task, dealId, partyId, clientId, clientRef, partyNa
       clientNodeNameMatches: await textDigest(clients[0].name) === partyNameDigest,
       dealNameDigest: await textDigest(deals[0].name), dealNameMatches: await textDigest(deals[0].name) === dealNameDigestExpected,
       clientDealEdgeId: edges[0].id,
-      evidence: evidence.length === 1,
-      evidenceEdgeId: evidence.length === 1 ? evidence[0].id : null,
-      evidenceDetailDigest: evidence.length === 1 ? await textDigest(evidence[0].detail) : null,
+      evidence: referredIdentity && evidence.length === 1,
+      evidenceEdgeId: referredIdentity && evidence.length === 1 ? evidence[0].id : null,
+      evidenceDetailDigest: referredIdentity && evidence.length === 1 ? await textDigest(evidence[0].detail) : null,
       referrals: referralValid,
       referralMetrics: referralValid ? { deals: referral.deals, won: referral.won, lost: referral.lost, win_rate: referral.win_rate } : null,
       territory: typeof partyNode.territory === 'string' ? partyNode.territory : null,
@@ -298,14 +320,71 @@ const ownedReferralCardReady = ({ partyId }) => [...document.querySelectorAll('#
     && card.getClientRects().length > 0 && card.checkVisibility());
 
 const ownedTerritoryViewReady = ({ partyId, territory }) => document.querySelector('#networkTerritory')?.value === territory
-  && ownedReferralCardReady({ partyId });
+  && [...document.querySelectorAll('#networkReferrals .relationship-referral')]
+    .some(card => card.getAttribute('data-node') === `party:${partyId}`
+      && card.getClientRects().length > 0 && card.checkVisibility());
 
 const ownedTerritoryResetReady = ({ partyId }) => document.querySelector('#networkTerritory')?.value === ''
   && document.querySelector('#networkSearch')?.value === '' && document.querySelector('#networkVertical')?.value === ''
-  && ownedReferralCardReady({ partyId });
+  && [...document.querySelectorAll('#networkReferrals .relationship-referral')]
+    .some(card => card.getAttribute('data-node') === `party:${partyId}`
+      && card.getClientRects().length > 0 && card.checkVisibility());
 
 const sha256 = value => createHash('sha256').update(String(value ?? ''), 'utf8').digest('hex');
 const responseHash = value => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value);
+
+export function assertRelationshipFixture(network, plan) {
+  const refuse = reason => { throw Object.assign(new Error('Staging relationship fixture prerequisite unavailable'),
+    { code: 'staging-fixture-relationship-prerequisite', reason }); };
+  const party = plan?.records?.party, client = plan?.records?.client, deal = plan?.records?.deal;
+  if (!uuid(party?.id) || !uuid(client?.id) || !uuid(deal?.id)) refuse('plan-identity-unproved');
+  const referred = plan.records.relationship_referral_deal;
+  if (!uuid(referred?.id) || !uuid(referred?.client_id) || !uuid(referred?.party_id)
+    || referred.id === deal.id || referred.party_id === party.id || referred.client_id === client.id
+    || typeof referred.name !== 'string' || !referred.name.trim()) refuse('referral-fixture-identity-unproved');
+  const observed = Date.parse(network?.observed_at), valid = Date.parse(network?.valid_until), now = Date.now();
+  if (!validNetwork(network) || observed > now || now - observed > 60_000 || valid <= now || valid - observed > 61_000)
+    refuse('fresh-network-unproved');
+  const partyNodeId = `party:${party.id}`, dealNodeId = `deal:${deal.id}`;
+  const node = network.nodes.find(row => row.id === partyNodeId);
+  const dealNode = network.nodes.find(row => row.id === dealNodeId);
+  if (node?.kind !== 'client' || node.record_id !== client.id || node.name !== party.name
+    || dealNode?.kind !== 'deal' || dealNode.record_id !== deal.id || dealNode.name !== deal.name)
+    refuse('selected-client-identity-unproved');
+  const edge = network.edges.find(row => row.id === `client-deal:${deal.id}`);
+  if (edge?.from !== partyNodeId || edge.to !== dealNodeId || edge.kind !== 'client_deal' || edge.via !== null)
+    refuse('client-deal-association-unproved');
+  const referredDeal = network.nodes.find(row => row.id === `deal:${referred.id}`);
+  const referredClient = network.nodes.find(row => row.id === `party:${referred.party_id}`);
+  const referredClientEdge = network.edges.find(row => row.id === `client-deal:${referred.id}`);
+  if (referredDeal?.kind !== 'deal' || referredDeal.record_id !== referred.id || referredDeal.name !== referred.name
+    || referredClient?.kind !== 'client' || referredClient.record_id !== referred.client_id
+    || referredClientEdge?.kind !== 'client_deal' || referredClientEdge.from !== referredClient.id
+    || referredClientEdge.to !== referredDeal.id || referredClientEdge.via !== null)
+    refuse('referral-fixture-identity-unproved');
+  const evidence = network.edges.find(row => row.id === `evidence:${party.id}:${referred.id}:referred`);
+  if (evidence?.from !== partyNodeId || evidence.to !== referredDeal.id || evidence.kind !== 'referred' || evidence.via !== null
+    || typeof evidence.detail !== 'string' || !evidence.detail.trim()) refuse('referral-evidence-unproved');
+  const referral = network.referrals.find(row => row.node_id === partyNodeId);
+  if (!referral || !['deals', 'won', 'lost'].every(key => Number.isSafeInteger(referral[key])) || referral.deals < 1)
+    refuse('owned-referral-metrics-unproved');
+  if (typeof node.territory !== 'string' || !node.territory.trim()) refuse('owned-territory-unproved');
+  const same = filterNetwork(network, { territory: node.territory }).referrals.length;
+  const other = network.referrals.filter(row => {
+    const referrer = network.nodes.find(value => value.id === row.node_id);
+    return typeof referrer?.territory === 'string' && referrer.territory.trim() && referrer.territory !== node.territory;
+  }).length;
+  if (same < 1 || other < 1) refuse('contrasting-territory-referrals-unproved');
+  return { schema: 'staging-relationship-fixture-proof.v1', state: 'verified',
+    party_id: party.id, client_id: client.id, deal_id: deal.id,
+    referral_deal_id: referred.id, referral_client_id: referred.client_id, referral_party_id: referred.party_id,
+    observed_at: network.observed_at, valid_until: network.valid_until,
+    network_response_sha256: sha256(JSON.stringify(network)),
+    client_deal_edge_id: edge.id, evidence_edge_id: evidence.id, evidence_detail_sha256: sha256(evidence.detail),
+    referral_metrics: { deals: referral.deals, won: referral.won, lost: referral.lost, win_rate: referral.win_rate },
+    territory_sha256: sha256(node.territory), total_referrals: network.referrals.length,
+    same_territory_referrals: same, other_territory_referrals: other };
+}
 
 function verifiedPartyReuse(plan, partyId, clientId, dealId) {
   const reuse = plan.party_reuse, spec = contract.party_reuse;
@@ -346,8 +425,13 @@ function planOwnershipGap(plan, release) {
 }
 
 function safeRelationshipPlan(plan, release) {
-  return !planOwnershipGap(plan, release)
-    ? { partyId: plan.records.party.id, clientId: plan.records.client.id, dealId: plan.records.deal.id } : null;
+  const referred = plan?.records?.relationship_referral_deal;
+  return !planOwnershipGap(plan, release) && uuid(referred?.id) && uuid(referred?.client_id) && uuid(referred?.party_id)
+    && referred.id !== plan.records.deal.id && referred.party_id !== plan.records.party.id
+    && referred.client_id !== plan.records.client.id && typeof referred.name === 'string' && referred.name.trim()
+    ? { partyId: plan.records.party.id, clientId: plan.records.client.id, dealId: plan.records.deal.id,
+      referredDealId: referred.id, referredClientId: referred.client_id, referredPartyId: referred.party_id,
+      referredDealNameDigest: sha256(referred.name) } : null;
 }
 
 export async function runReadonlyJourneys({ page, release, plan, run } = {}) {
@@ -488,20 +572,24 @@ export async function runReadonlyJourneys({ page, release, plan, run } = {}) {
         await page.locator(`${contract.journeys.W2.scope_selector}[data-scope="team"]`).click({ timeout: runTimeoutMs(run) });
         await homeReady('team');
         teamAfter = await evaluate('home-scope', { dealId: ownedDeal, dealNameDigestExpected: expectedDealNameDigest });
+        const sameKeys = (actual, expected) => Array.isArray(actual) && Array.isArray(expected)
+          && actual.length === expected.length && actual.every((key, index) => key === expected[index]);
         const scopeWorked = teamBefore?.scope === 'team' && mine?.scope === 'mine' && teamAfter?.scope === 'team'
           && teamBefore?.owned_flag === true && mine?.owned_flag === true && teamAfter?.owned_flag === true
           && [teamBefore, mine, teamAfter].every(value => value?.owned_name_matches === true)
-          && teamBefore?.flag_count > mine?.flag_count && teamAfter?.flag_count === teamBefore?.flag_count;
+          && sameKeys(teamBefore.flag_keys, attention.team_flag_keys)
+          && sameKeys(mine.flag_keys, attention.viewer_flag_keys)
+          && sameKeys(teamAfter.flag_keys, teamBefore.flag_keys);
         if (!scopeWorked) throw new Error('Home scope result set or reset was not independently observed');
         observe('W2', 'home-attention', 'team-scope',
-          { route: '/', scope: teamBefore.scope, flag_count: teamBefore.flag_count, owned_flag: teamBefore.owned_flag },
-          { owned_deal_name_digest: expectedDealNameDigest, attention });
+          { route: '/', scope: teamBefore.scope, flag_keys: teamBefore.flag_keys, owned_flag: teamBefore.owned_flag },
+          { owned_deal_name_digest: expectedDealNameDigest, expected_flag_keys: attention.team_flag_keys, attention });
         observe('W2', 'home-attention', 'viewer-scope',
-          { route: '/', scope: mine.scope, flag_count: mine.flag_count, owned_flag: mine.owned_flag },
-          { owned_deal_name_digest: expectedDealNameDigest, attention });
+          { route: '/', scope: mine.scope, flag_keys: mine.flag_keys, owned_flag: mine.owned_flag },
+          { owned_deal_name_digest: expectedDealNameDigest, expected_flag_keys: attention.viewer_flag_keys, attention });
         observe('W2', 'home-attention', 'scope-reset',
-          { route: '/', scope: teamAfter.scope, flag_count: teamAfter.flag_count, owned_flag: teamAfter.owned_flag },
-          { team_before_count: teamBefore.flag_count, owned_deal_name_digest: expectedDealNameDigest });
+          { route: '/', scope: teamAfter.scope, flag_keys: teamAfter.flag_keys, owned_flag: teamAfter.owned_flag },
+          { team_before_keys: teamBefore.flag_keys, owned_deal_name_digest: expectedDealNameDigest });
         const flagSelector = `${contract.journeys.W2.flags_selector}[data-home-key="${contract.journeys.W2.flag_key_prefix}${ownedDeal}"]`;
         const row = page.locator(flagSelector);
         if (await row.count() !== 1) throw new Error('Owned Home flag was not unique');
@@ -528,7 +616,7 @@ export async function runReadonlyJourneys({ page, release, plan, run } = {}) {
   if (!identityQualified) {
     results.push(pending('W14', 'authenticated-source-pair-unavailable'));
   } else if (!relationshipPlan) {
-    results.push(pending('W14', currentOwnershipGap));
+    results.push(pending('W14', currentOwnershipGap || 'owned-referral-fixture-unavailable'));
   } else {
     const partyNameDigest = sha256(plan.records.party.name);
     const expectedDealNameDigest = sha256(plan.records.deal.name);

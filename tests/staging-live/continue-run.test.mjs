@@ -862,6 +862,16 @@ async function businessFixture(t) {
       events.push('business');
       return { completed: options.journeys, steps: [], full_v1_qualified: false, unqualified_journeys: ['W6'] };
     },
+    invoiceCloseJourney: async options => {
+      assert.equal(options.page.url(), `${contract.origin}/deals?deal=${deal}`);
+      events.push('invoice-close');
+      return { actions: [], full_v1_qualified: false };
+    },
+    companionJourneys: async options => {
+      assert.equal(options.plan.run, plan.run);
+      events.push('companions');
+      return [];
+    },
     readonlyJourneys: async options => {
       assert.equal(options.page, page); assert.equal(options.page.url(), contract.origin + '/');
       assert.equal(options.release, release); assert.equal(options.run, run);
@@ -889,9 +899,11 @@ test('business caller reuses the real private fixture plan, fresh session and ex
   assert.equal(JSON.stringify(retained).includes(privateMarker), false);
   assert.deepEqual(f.events, ['canonical-coverage', 'prepare', 'authenticate', 'canonical-coverage',
     'install-guard', 'navigate', 'http', 'business', 'guard-coverage', 'canonical-coverage',
-    'install-guard', 'navigate', 'http', 'business', 'guard-coverage', 'canonical-coverage',
-    'guard-coverage', 'canonical-coverage', 'install-guard', 'navigate', 'http', 'readonly',
-    'guard-coverage', 'canonical-coverage', 'context-close', 'context-close', 'context-close',
+    'install-guard', 'navigate', 'http', 'business', 'install-guard', 'navigate', 'http', 'invoice-close',
+    'guard-coverage', 'canonical-coverage', 'guard-coverage', 'canonical-coverage',
+    'install-guard', 'navigate', 'http', 'readonly', 'guard-coverage', 'canonical-coverage',
+    'install-guard', 'navigate', 'http', 'companions',
+    'context-close', 'context-close', 'context-close', 'context-close', 'context-close',
     'guard-coverage', 'browser-close']);
   assert.equal(result.readonly.journeys[0].state, 'pending');
 });
@@ -1027,7 +1039,8 @@ test('business qualification retains the exact validated W4/W9/W15 action eviden
   const f = await businessFixture(t);
   const { V1_REQUIRED_ACTIONS, observedV1Action } = await import('../../scripts/e2e-staging/v1-qualification.mjs');
   const businessActions = V1_REQUIRED_ACTIONS.filter(row => ['W4', 'W9'].includes(row.id)).slice(0, 9);
-  const paidInvoiceActions = V1_REQUIRED_ACTIONS.filter(row => row.id === 'W15' && row.action !== 'awaiting-payment-hidden');
+  const paidInvoiceActions = V1_REQUIRED_ACTIONS.filter(row => row.id === 'W15' &&
+    ['invoice-tracker', 'home-invoices'].includes(row.case) && row.action !== 'awaiting-payment-hidden');
   const selected = [...businessActions, ...paidInvoiceActions];
   assert.equal(selected.length, 18);
   assert.equal(paidInvoiceActions.length, 9);
@@ -1144,8 +1157,8 @@ test('readonly W1/W2/W5/W14 caller uses a fresh guarded Home page and cannot qua
       assert.equal(options.plan.records.deal.id, f.plan.records.deal.id);
       return { schema: 'staging-readonly-journey-result.v1', full_v1_qualified: true, journeys: [] };
     } }), { code: 'readonly-result-unqualified' });
-  assert.equal(f.events.filter(event => event === 'install-guard').length, 3);
-  assert.equal(f.events.filter(event => event === 'context-close').length, 3);
+  assert.equal(f.events.filter(event => event === 'install-guard').length, 4);
+  assert.equal(f.events.filter(event => event === 'context-close').length, 4);
   assert.equal(f.events.at(-1), 'browser-close');
 });
 
@@ -1349,7 +1362,8 @@ test('business caller invokes W15 separately on Home with invoice-deal and canon
   const f = await businessFixture(t), calls = [];
   const supplied = { ...f.supplied,
     invoicePrerequisite: async () => ({ status: 'READY', verifiedTarget: {}, proofPath: '/synthetic/private/proof.json', proofSha256: digest }),
-    journeys: async options => { calls.push(options); return { completed: options.journeys, steps: [], full_v1_qualified: false }; } };
+    journeys: async options => { calls.push({ ...options, url: options.page.url() });
+      return { completed: options.journeys, steps: [], full_v1_qualified: false }; } };
   f.fixtureGuard.admitBusinessJourneyStep = async spec => {
     assert.equal(spec.journey, 'W15'); assert.equal(spec.deal, f.plan.records.invoice.deal_id);
     assert.equal(spec.phase, 'import-fixture'); assert.equal(spec.proofPath, '/synthetic/private/proof.json');
@@ -1358,7 +1372,7 @@ test('business caller invokes W15 separately on Home with invoice-deal and canon
   const result = await runBusinessPhase({ binding, run: f.run }, supplied);
   assert.deepEqual(calls.map(row => row.journeys), [['W4', 'W9'], ['W15']]);
   assert.equal(calls[1].deal, f.plan.records.invoice.deal_id);
-  assert.equal(calls[1].page.url(), contract.origin + '/');
+  assert.equal(calls[1].url, contract.origin + '/');
   assert.equal(calls[1].invoiceProofPath, undefined, 'runner uses canonically imported proof; no second file read');
   assert.equal(result.full_v1_qualified, false);
 });
@@ -1660,12 +1674,12 @@ test('combined caller installs the existing guard before Tour navigation and dis
     qualifyTour: async options => {
       assert.equal(options.page.url(), contract.origin + '/tours');
       assert.equal(options.run, f.run); assert.deepEqual(options.sourcePair, { app: sha, carr: binding.carr });
-      assert.equal(f.events.filter(event => event === 'install-guard').length, 3);
+      assert.equal(f.events.filter(event => event === 'install-guard').length, 4);
       calls.push('readonly-tour'); throw Object.assign(new Error('synthetic changed detail'), { code: 'tour-detail-unproved' });
     } }), { code: 'tour-detail-unproved' });
   assert.deepEqual(calls, ['readonly-tour']);
   assert.equal(f.events.filter(event => event === 'business').length, 2, 'W4/W9 and W15 remain separate canonical calls');
-  assert.equal(f.events.filter(event => event === 'context-close').length, 3);
+  assert.equal(f.events.filter(event => event === 'context-close').length, 4);
   assert.equal(f.events.at(-1), 'browser-close');
 });
 

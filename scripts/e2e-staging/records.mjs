@@ -16,6 +16,9 @@ import businessJourneys from '../../contracts/e2e-staging-business-journeys.v1.j
 import invoiceJourney from '../../contracts/e2e-staging-invoice-journey.v1.json' with { type: 'json' };
 import { validInvoiceTracker } from '../../js/invoice-tracker-model.js';
 import { LOCAL_AGENT_PHASE_REASON } from './local-agent-phase.mjs';
+import { createInvoiceCloseGuard } from './invoice-close-journey.mjs';
+import { createCompanionGuard } from './companion-guard.mjs';
+import { assertRelationshipFixture } from './readonly-journeys.mjs';
 
 const FIXTURE = { id: 'fc08d2f4-a951-5679-9f34-40d0f4278842', name: 'Synthetic Staging Fixture' };
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -25,13 +28,13 @@ const requireValue = condition => { if (!condition) fail(); };
 const recordId = value => { requireValue(isUUID(value || '')); return value; };
 const vendorTaxonomyFailure = code => Object.assign(new Error('Staging vendor taxonomy prerequisite unavailable'), { code });
 const SAFE_RECORD_SETUP_CODES = new Set(['staging-fixture-rpc-unresolved', 'staging-fixture-stage-prerequisite',
-  'staging-fixture-taxonomy-prerequisite', 'staging-fixture-category-prerequisite']);
+  'staging-fixture-taxonomy-prerequisite', 'staging-fixture-category-prerequisite', 'staging-fixture-relationship-prerequisite']);
 
 const TOOL_ERROR_CODES = new Set([
   'database_refused_the_statement', 'invalid_arguments', 'not_found', 'not_in_profile',
   'research_evidence_incomplete', 'research_evidence_required', 'research_source_invalid',
   'stale_version', 'unknown_vendor_stage', 'unhandled_verb_failure', 'unauthorized',
-  'version_conflict',
+  'version_conflict', 'invalid_received_on', 'invoice_not_found', 'invoice_not_unpaid', 'payment_date_out_of_range',
 ]);
 const JSON_RPC_ERROR_CODES = new Map([
   [-32700, 'json-rpc-parse-error'], [-32600, 'json-rpc-invalid-request'],
@@ -39,6 +42,29 @@ const JSON_RPC_ERROR_CODES = new Map([
   [-32603, 'json-rpc-internal-error'],
 ]);
 const RAW_RESPONSE_SHA256 = Symbol('raw-response-sha256');
+const paymentRefusalCodes = new Set(['invalid_received_on', 'invoice_not_found', 'version_conflict',
+  'invoice_not_unpaid', 'payment_date_out_of_range']);
+
+export function verifiedPreEffectRefusal(operation, args, rpc, requestId, httpStatus) {
+  if (operation !== 'record-commission-receipt' || httpStatus !== 200 || rpc?.jsonrpc !== '2.0' ||
+      rpc.id !== requestId || rpc.error || rpc.result?.isError !== true ||
+      rpc.result.content?.length !== 1 || rpc.result.content[0]?.type !== 'text') return null;
+  let value;
+  try { value = JSON.parse(rpc.result.content[0].text); } catch { return null; }
+  if (!paymentRefusalCodes.has(value?.error) || Object.keys(value).some(key =>
+      !['error', 'current_version'].includes(key)) || value.error === 'version_conflict' &&
+      (!Number.isSafeInteger(value.current_version) || value.current_version < 1) ||
+      value.error !== 'version_conflict' && Object.hasOwn(value, 'current_version')) return null;
+  return { code: value.error, operation, arguments_sha256: digest(args), response_sha256: digest(rpc) };
+}
+
+function validPreEffectRefusal(row) {
+  const response = row.response;
+  const refusal = verifiedPreEffectRefusal(row.operation, row.arguments, response?.envelope,
+    response?.request_id, response?.http_status);
+  return row.state === 'refused' && row.dispatched_outcome === 'verified pre-effect refusal' &&
+    response?.acknowledged === false && refusal && digest(refusal) === digest(response.refusal);
+}
 const sha256 = value => createHash('sha256').update(value).digest('hex');
 const digestJSON = value => {
   let serialized;
@@ -111,7 +137,8 @@ async function readPrivateJSON(path) {
 
 export async function prepareStagingRecords(output, {
   origin = STAGING_ORIGIN, session = stagingSession, reuseOnly = false,
-  vendorFixture = false, tourDraftFixture = false, awaitingInvoiceFixture = false, requestFactory, run, signal,
+  vendorFixture = false, tourDraftFixture = false, awaitingInvoiceFixture = false, relationshipFixture = false,
+  relationshipFixtureProofPath = join(output, 'private', 'relationship-fixture-proof.json'), requestFactory, run, signal,
 } = {}) {
   signal?.throwIfAborted();
   origin = assertStagingURL(origin);
@@ -506,8 +533,8 @@ export async function prepareStagingRecords(output, {
         (dealRead.owner === null || boundedText(dealRead.owner)) && boundedText(dealRead.phase));
       requireValue(existing || (dealRead.name === plan.records.deal.name && dealRead.owner === 'joe' && dealRead.phase === 'pending'));
     }
-    if (plan.party_reuse) {
-      requireValue(plan.party_reuse.schema === 'staging-fixture-party-reuse.v1' &&
+    {
+      if (plan.party_reuse) requireValue(plan.party_reuse.schema === 'staging-fixture-party-reuse.v1' &&
         plan.party_reuse.party_id === FIXTURE.id && /^[a-f0-9]{64}$/.test(plan.party_reuse.candidate_response_sha256) &&
         clientRead.record.ref === plan.records.client.ref &&
         (existing || clientRead.record.name === FIXTURE.name) &&
@@ -518,12 +545,31 @@ export async function prepareStagingRecords(output, {
       requireValue(network.schema === 'carr-relationship-network.v1' &&
         Number.isFinite(Date.parse(network.observed_at)) && Date.parse(network.valid_until) > Date.now() &&
         Array.isArray(network.nodes) && Array.isArray(network.edges) &&
-        network.nodes.some(node => node.id === partyNode && (existing || node.name === FIXTURE.name)) &&
+        network.nodes.filter(node => node.id === partyNode).length === 1 &&
+        network.nodes.some(node => node.id === partyNode && node.kind === 'client' &&
+          node.record_id === plan.records.client.id && node.name === plan.records.client.name) &&
         network.nodes.some(node => node.id === dealNode && node.record_id === plan.records.deal.id &&
           (existing || node.name === plan.records.deal.name)) &&
         network.edges.some(edge => edge.id === `client-deal:${plan.records.deal.id}` &&
           edge.kind === 'client_deal' && edge.from === partyNode && edge.to === dealNode));
-      plan.party_reuse = { ...plan.party_reuse, state: 'verified', client_id: plan.records.client.id,
+      if (relationshipFixture) {
+        const retained = plan.fixture_proofs?.relationship;
+        const proof = retained?.proof || await readPrivateJSON(relationshipFixtureProofPath);
+        const referred = proof?.relationship_referral_deal;
+        if (retained && retained.proof_content_sha256 !== digest(proof) ||
+            proof?.schema !== 'doctorcre-staging-relationship-fixture.v1' || proof.fixture_run !== plan.run ||
+            digest(proof.source_pair) !== digest(plan.release) || proof.provenance?.kind !== 'raw-sql-fixture' ||
+            proof.party_id !== plan.records.party.id || proof.client_id !== plan.records.client.id ||
+            proof.deal_id !== plan.records.deal.id || !isUUID(referred?.id) || !isUUID(referred?.client_id) ||
+            !isUUID(referred?.party_id) || referred.name !== `Synthetic staging QA ${plan.run} referred deal`)
+          throw Object.assign(new Error('Staging relationship fixture proof prerequisite unavailable'),
+            { code: 'staging-fixture-relationship-prerequisite' });
+        plan.records.relationship_referral_deal = structuredClone(referred);
+        plan.relationship_fixture = assertRelationshipFixture(network, plan);
+        plan.fixture_proofs ||= {};
+        plan.fixture_proofs.relationship = { proof: structuredClone(proof), proof_content_sha256: digest(proof) };
+      }
+      if (plan.party_reuse) plan.party_reuse = { ...plan.party_reuse, state: 'verified', client_id: plan.records.client.id,
         deal_id: plan.records.deal.id, network_observed_at: network.observed_at,
         network_response_sha256: digest(network), client_response_sha256: digest(clientRead),
         deal_response_sha256: digest(dealRead) };
@@ -585,6 +631,9 @@ export async function prepareStagingRecords(output, {
     run?.check();
     if (error?.code === 'staging-fixture-rpc-unresolved')
       throw Object.assign(new Error('Staging records setup stopped; partial plan requires reconciliation; no provider payload was logged'),
+        { code: error.code });
+    if (error?.code === 'staging-fixture-relationship-prerequisite')
+      throw Object.assign(new Error('Staging relationship fixture prerequisite unavailable; no relationship seed was attempted'),
         { code: error.code });
     if (SAFE_RECORD_SETUP_CODES.has(error?.code))
       throw Object.assign(new Error('Staging vendor taxonomy prerequisite unavailable; no fixture mutation was attempted'),
@@ -918,6 +967,7 @@ function requirePlanCoverage(plan, scope) {
     policyFailure('write-coverage-incomplete');
   if (!Array.isArray(attempts) || !Array.isArray(refusals) || refusals.length ||
       attempts.some(row => {
+        if (validPreEffectRefusal(row)) return false;
         if (row.state !== 'acknowledged' || row.response?.acknowledged !== true ||
             !Array.isArray(row.record_ids) || !row.record_ids.length || !row.record_ids.every(isUUID)) return true;
         const bound = completeOperationReceipt(row.operation, row.arguments, row.record_ids, row.response.receipt, row.attempted_at, plan);
@@ -1326,8 +1376,13 @@ export function stagingFixtureWriteGuard({ output, release, invoiceFixtureTarget
       });
     } catch {}
   };
+  const scopedOptions = { currentPlan, persistPlan: plan => persist(planPath, plan), locked, run };
+  const invoiceClose = createInvoiceCloseGuard(scopedOptions);
+  const companions = createCompanionGuard(scopedOptions);
   const guard = {
     refusals,
+    admitInvoiceClose: spec => invoiceClose.admitInvoiceClose(spec),
+    companionJourney: spec => companions.companionJourney(spec),
     forContext() {
       const scope = { refusals: [], pending: new Set(), fingerprints: new Set() };
       return {
@@ -1338,6 +1393,8 @@ export function stagingFixtureWriteGuard({ output, release, invoiceFixtureTarget
         admitBusinessJourneyStep: step => guard.admitBusinessJourneyStep(step),
         admitBusinessJourneyPresence: step => guard.admitBusinessJourneyPresence(step),
         admitAutomaticPhaseUndo: step => guard.admitAutomaticPhaseUndo(step),
+        admitInvoiceClose: step => guard.admitInvoiceClose(step),
+        companionJourney: step => guard.companionJourney(step),
       };
     },
     async admitBusinessJourneyPresence(spec) {
@@ -1661,6 +1718,7 @@ export function stagingFixtureWriteGuard({ output, release, invoiceFixtureTarget
       }
       if (gaps.length) policyFailure('write-coverage-incomplete');
       if (planPath) requirePlanCoverage(await currentPlan(), scope);
+      if (planPath) { await invoiceClose.assertCoverage(); await companions.assertCoverage(); }
       if (outstanding.size) policyFailure('dispatch-settlement-pending');
     },
     async handle(request, forward, scope) {
@@ -1674,7 +1732,7 @@ export function stagingFixtureWriteGuard({ output, release, invoiceFixtureTarget
         requireSupervisedRun(output, run);
         return run.http(forward);
       };
-      let name = 'unknown-operation', token, dispatched = false, admittedRead = false, localCompanionRead = false;
+      let name = 'unknown-operation', token, dispatched = false, admittedRead = false;
       const forwardRead = async (staticURL) => {
         admittedRead = true;
         const asset = staticURL && request.method() === 'GET' && !staticURL.search && !staticURL.hash
@@ -1711,16 +1769,14 @@ export function stagingFixtureWriteGuard({ output, release, invoiceFixtureTarget
         return response;
       };
       try {
+        const companion = await companions.handle(request, forward);
+        if (companion.handled) return companion.response;
+        const invoice = await invoiceClose.handle(request, forward);
+        if (invoice.handled) return invoice.response;
         const url = new URL(request.url());
         if (url.username || url.password) policyFailure('origin-unproved');
         const read = ['GET', 'HEAD'].includes(request.method());
         if (url.origin !== STAGING_ORIGIN) {
-          // The app probes its optional local companion on every boot. Refuse
-          // this exact read without treating companion absence as a staging write.
-          if (request.method() === 'GET' && url.href === 'http://127.0.0.1:4682/api/state') {
-            localCompanionRead = true;
-            throw Object.assign(new Error('Local companion read blocked'), { code: 'local-companion-read-blocked' });
-          }
           const font = read && (url.origin === 'https://fonts.googleapis.com' && ['/css', '/css2'].includes(url.pathname) ||
             url.origin === 'https://fonts.gstatic.com' && /^\/s\/[a-zA-Z0-9/_-]+\.(woff2?|ttf)$/.test(url.pathname));
           if (font) return await forwardRead();
@@ -1854,20 +1910,23 @@ export function stagingFixtureWriteGuard({ output, release, invoiceFixtureTarget
             rpc.result.content[0].type === 'text'
             ? completeOperationReceipt(name, intent.arguments, intent.record_ids, receipt, intent.attempted_at, plan) : null;
           const acknowledged = Boolean(bound) && !flight.timedOut;
-          intent.state = acknowledged ? 'acknowledged' : 'unresolved';
-          intent.dispatched_outcome = acknowledged ? 'complete operation receipt retained; effect not independently verified' : 'unknown';
+          const refusal = !flight.timedOut && verifiedPreEffectRefusal(name, intent.arguments, rpc, body.id, response.status());
+          intent.state = acknowledged ? 'acknowledged' : refusal ? 'refused' : 'unresolved';
+          intent.dispatched_outcome = acknowledged ? 'complete operation receipt retained; effect not independently verified'
+            : refusal ? 'verified pre-effect refusal' : 'unknown';
           intent.response = { http_status: response.status(), sha256: digest(rpc ?? null), acknowledged };
+          if (refusal) Object.assign(intent.response, { refusal, envelope: structuredClone(rpc), request_id: body.id });
           if (bound) {
             intent.response.binding = bound;
             intent.response.receipt = structuredClone(receipt);
           }
           if (flight.timedOut) intent.coverage_timeout = true;
           await persist(planPath, plan);
-          if (!acknowledged) policyFailure('dispatch-outcome-unresolved');
+          if (!acknowledged && !refusal) policyFailure('dispatch-outcome-unresolved');
         });
         return response;
       } catch (error) {
-        if (localCompanionRead) throw error;
+        if (error.companionRead) throw error;
         if (admittedRead && !error.fixturePolicy) throw error;
         const gap = { operation: typeof name === 'string' && (browserReads.has(name) || Object.hasOwn(fixtureWrites, name) || name === 'presence-lease') ? name : 'unknown-operation',
           reason: error.fixturePolicy ? error.code : (token ? 'dispatch-outcome-unresolved' : 'intent-or-provenance-unavailable'),
@@ -1884,6 +1943,8 @@ export function stagingFixtureWriteGuard({ output, release, invoiceFixtureTarget
 export async function assertStagingWriteCoverage(output) {
   const plan = await readPrivateJSON(join(output, 'staging-records-plan.json'));
   requirePlanCoverage(plan);
+  await createInvoiceCloseGuard({ currentPlan: async () => plan }).assertCoverage();
+  await createCompanionGuard({ currentPlan: async () => plan }).assertCoverage();
   let journalPresent = false;
   try { await lstat(join(output, 'private', automaticJournalName)); journalPresent = true; }
   catch (error) { if (error.code !== 'ENOENT') policyFailure('automatic-event-journal-unsafe'); }
