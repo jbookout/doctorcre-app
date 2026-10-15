@@ -19,7 +19,7 @@ export const families = [
   { id: 'open-profile', source: 'js/navigation.js:56', candidate: '#accountProfile', name: 'Profile', selector: '#accountProfile',
     setup: f => f.window.document.querySelector('#selfAvatar').click(),
     observations: () => [dom('.app-shell-profile[open]', '$presence', false, true)] },
-  { id: 'close-profile', source: 'js/app-shell.js:45', candidate: 'body:nth-of-type(1) > button:nth-of-type(1)', name: 'Close profile', selector: '.app-shell-profile [aria-label="Close profile"]',
+  { id: 'close-profile', source: 'js/app-shell.js:47', candidate: 'body:nth-of-type(1) > button:nth-of-type(1)', name: 'Close profile', selector: '.app-shell-profile [aria-label="Close profile"]',
     setup: f => { f.window.document.querySelector('#selfAvatar').click(); f.window.document.querySelector('#accountProfile').click(); },
     observations: () => [dom('.app-shell-profile', '$presence', true, false)] },
   { id: 'open-doc', source: 'js/doc-presence.js:25', candidate: '#docOpen', name: 'Open Doc', selector: '#docOpen',

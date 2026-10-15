@@ -378,8 +378,13 @@ test('served signed-in app W4/W9 uses the real UI, canonical fixture guard and d
   await t.test('W9 date cancel and retry leave one observed date with independent readback', async () => {
     const f = await fixture();
     try {
-      const result = await runBusinessJourneys({ page: f.page, fixtureGuard: f.guard, release, deal, run, journeys: ['W9'] });
+      const retained = [];
+      const result = await runBusinessJourneys({ page: f.page, fixtureGuard: f.guard, release, deal, run, journeys: ['W9'],
+        onJourneyComplete: row => retained.push(row) });
       assert.deepEqual(result.completed, ['W9']);
+      assert.equal(retained.length, 1);
+      assert.deepEqual(retained[0].completed, ['W9']);
+      assert.equal(retained[0].actions.length, 4);
       assert.deepEqual(result.actions.map(row => row.action),
         ['date-dialog-cancel','contract-date-write','countdown','date-control-removed']);
       assert.deepEqual(f.writes.map(row => row.name), ['add-critical-date']);
@@ -669,10 +674,14 @@ test('served signed-in app W4/W9 uses the real UI, canonical fixture guard and d
     const f=await fixture({lose:interruption==='lost-response'?'record-commission-receipt':null});
     try {
       await f.page.goto(STAGING_ORIGIN+'/');
+      let missingUIIntercepted = false;
+      const phaseTrace = [];
       if(interruption==='missing-ui'){
         const admit=f.guard.admitBusinessJourneyStep.bind(f.guard);
         f.guard.admitBusinessJourneyStep=async spec=>{
+          phaseTrace.push(`${spec.journey}:${spec.step}:${spec.phase}`);
           if(spec.journey==='W15'&&spec.phase==='observe'){
+            missingUIIntercepted = true;
             const plan=JSON.parse(await readFile(planPath,'utf8')),row=plan.browser_write_attempts[0];
             assert.equal(row.state,'acknowledged');assert.equal(row.independent_readback.matched,true);
             assert.equal(plan.fixture_proofs.invoice.state,'quarantined');
@@ -683,8 +692,19 @@ test('served signed-in app W4/W9 uses the real UI, canonical fixture guard and d
           return admit(spec);
         };
       }
-      await assert.rejects(runBusinessJourneys({page:f.page,fixtureGuard:f.guard,release,deal:f.invoiceDeal,run,journeys:['W15'],invoiceProofPath:f.proofPath}),/coverage|reconciliation|Synthetic missing/);
-      assert.equal(f.writes.length,1);assert.equal(f.invoice.status,'received');
+      let failure;
+      try { await runBusinessJourneys({page:f.page,fixtureGuard:f.guard,release,deal:f.invoiceDeal,run,journeys:['W15'],invoiceProofPath:f.proofPath}); }
+      catch (error) { failure = error; }
+      assert.ok(failure, 'the retained quarantine must refuse completion');
+      if(interruption==='missing-ui') {
+        const safeTrace=JSON.stringify({error:failure.message,phases:phaseTrace,
+          uiActions:f.readOnlyUI,admittedOperations:f.admittedBeforeUI,writeCount:f.writes.length});
+        assert.equal(missingUIIntercepted,true,`missing-UI injection was not reached: ${safeTrace}`);
+        assert.equal(failure.message,'Synthetic missing paid/Home UI witness',
+          `missing-UI scenario did not fail at its injected checkpoint: ${safeTrace}`);
+        assert.ok(phaseTrace.includes('W15:paid:observe'));
+      } else assert.match(failure.message,/coverage|reconciliation/);
+      assert.equal(f.writes.length,1,failure.message);assert.equal(f.invoice.status,'received');
       const restarted=stagingFixtureWriteGuard({output,release,run,invoiceFixtureTarget:invoiceTarget});
       await assert.rejects(runBusinessJourneys({page:f.page,fixtureGuard:restarted,release,deal:f.invoiceDeal,run,journeys:['W15']}),/coverage|reconciliation/);
       assert.equal(f.writes.length,1);await assert.rejects(assertStagingWriteCoverage(output),/coverage/);

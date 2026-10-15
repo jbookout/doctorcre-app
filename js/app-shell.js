@@ -12,11 +12,13 @@ export function mountAppShell(root = document, pathname = globalThis.location?.p
   const host = mountNavigation(root, pathname, { location });
   if (!host) return;
   const base = appOriginForReport(location?.origin || "");
-  if (!base) mountAccount(root, host, pathname);
+  let disposeDocPresence = () => {};
+  if (!base) mountAccount(root, host, pathname, () => disposeDocPresence());
   if (!base && pathname !== "/share") {
     mountAppLayout(root, host, pathname, slices);
     root.querySelector(".app-layout-status").append(host.querySelector(".app-shell-call-availability"));
-    mountDocPresence({ document:root, window:root.defaultView });
+    const docPresence = mountDocPresence({ document:root, window:root.defaultView });
+    disposeDocPresence = () => docPresence?.dispose();
   }
 }
 
@@ -25,7 +27,7 @@ export function partnerIdentity(session) {
   return slug === "joe" || slug === "dell" ? { slug, name: slug === "joe" ? "Joe" : "Dell", initial: slug === "joe" ? "J" : "D" } : null;
 }
 
-function mountAccount(root, host, pathname) {
+function mountAccount(root, host, pathname, beforeSignOutReplace = () => {}) {
   mountPrefs();
   const avatar = host.querySelector("#selfAvatar");
   const panel = host.querySelector("#accountMenu");
@@ -104,6 +106,7 @@ function mountAccount(root, host, pathname) {
       link.href = "/auth/login";
       link.textContent = "Sign in again";
       view.append(title, link);
+      beforeSignOutReplace();
       root.body.replaceChildren(view);
     } catch { panel.querySelector("#accountStatus").textContent = "Sign-out unavailable"; event.target.disabled = false; }
   };

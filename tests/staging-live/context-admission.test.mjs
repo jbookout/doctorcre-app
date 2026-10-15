@@ -48,7 +48,7 @@ test('every exported staging-context entry point refuses missing opt-in, includi
   // are classified explicitly, so a new export cannot silently escape this audit.
   const local = {
     session: ['SessionPreflightFailure', 'assertStagingURL', 'preflightRequest', 'readSessionSecret'],
-    records: ['assertStagingBrowserInventory', 'assertStagingWriteCoverage', 'readStagingFixtureRelease'],
+    records: ['assertStagingBrowserInventory', 'assertStagingWriteCoverage', 'parseStagingRPCReply', 'readStagingFixtureRelease'],
   };
   const network = {
     session: ['createStagingRequestContext', 'stagingRelease', 'stagingSession', 'writeStagingStorageState'],

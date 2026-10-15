@@ -1,9 +1,10 @@
 import assert from 'node:assert/strict';
 import test, { afterEach, beforeEach } from 'node:test';
 import { mkdtemp, readFile, writeFile, stat, rm, chmod } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { prepareStagingRecords as createStagingRecords, stagingFixtureWriteGuard as createFixtureWriteGuard, assertStagingWriteCoverage } from '../../scripts/e2e-staging/records.mjs';
+import { prepareStagingRecords as createStagingRecords, stagingFixtureWriteGuard as createFixtureWriteGuard, assertStagingWriteCoverage, parseStagingRPCReply } from '../../scripts/e2e-staging/records.mjs';
 import { STAGING_ORIGIN } from '../../scripts/e2e-staging/session.mjs';
 import contract from '../../contracts/e2e-staging.v1.json' with { type: 'json' };
 import { eligibleLead } from '../../js/leads-model.js';
@@ -32,6 +33,96 @@ function stagingFixtureWriteGuard(options = {}) {
 }
 
 import { fixture, release, fakeAPI, reply, envelope } from './record-fixture.mjs';
+
+test('staging RPC parser returns only fixed failure codes and response digests', () => {
+  const errorEnvelopes = [
+    [{ jsonrpc: '2.0', id: 7, error: { code: -32603, message: 'private-provider-canary' } }, 'json-rpc-internal-error'],
+    [{ jsonrpc: '2.0', id: 7, result: { isError: true, content: [{ type: 'text',
+      text: JSON.stringify({ error: 'research_evidence_incomplete', detail: 'private-provider-canary' }) }] } }, 'research_evidence_incomplete'],
+    [{ jsonrpc: '2.0', id: 7, result: { content: [{ type: 'text',
+      text: JSON.stringify({ error: 'private-provider-canary', detail: 'private-provider-canary' }) }] } }, 'tool-error'],
+  ];
+  for (const [answer, code] of errorEnvelopes) {
+    const parsed = parseStagingRPCReply(answer, 7);
+    assert.equal(parsed.failure.code, code);
+    assert.match(parsed.failure.response_sha256, /^[a-f0-9]{64}$/);
+    assert.doesNotMatch(JSON.stringify(parsed.failure), /private-provider-canary|detail/);
+  }
+  const malformed = [
+    null,
+    { jsonrpc: '2.0', id: 8, result: { content: [{ type: 'text', text: '{"ok":true}' }] } },
+    { jsonrpc: '2.0', id: 7, result: { content: [{ type: 'text', text: 'private-provider-canary' }] } },
+    { jsonrpc: '2.0', id: 7, result: { content: [] } },
+  ];
+  for (const answer of malformed) {
+    const parsed = parseStagingRPCReply(answer, 7);
+    assert.equal(parsed.failure.code, 'malformed-rpc-reply');
+    assert.match(parsed.failure.response_sha256, /^[a-f0-9]{64}$/);
+  }
+  const success = { jsonrpc: '2.0', id: 7, result: { content: [{ type: 'text', text: '{"ok":true}' }] } };
+  assert.deepEqual(parseStagingRPCReply(success, 7), { value: { ok: true }, failure: null });
+});
+
+function interceptMCPReply(fake, output, operation, makeReply) {
+  const requestFactory = async options => {
+    const api = await fake.requestFactory(options);
+    return { ...api, post: async (path, request) => {
+      if (path !== '/mcp' || request.data?.params?.name !== operation) return api.post(path, request);
+      const plan = JSON.parse(await readFile(join(output, 'staging-records-plan.json'), 'utf8'));
+      assert.equal(plan.inflight.name, operation);
+      assert.deepEqual(plan.inflight.arguments, request.data.params.arguments);
+      fake.calls.push({ path, options: request });
+      return reply(makeReply(request.data));
+    } };
+  };
+  return { ...fake, requestFactory };
+}
+
+test('RPC error envelopes persist only closed codes and digests while retaining uncertain write intent', async t => {
+  const cases = [
+    ['json-rpc', request => ({ jsonrpc: '2.0', id: request.id,
+      error: { code: -32603, message: 'private-provider-canary' } }), 'json-rpc-internal-error'],
+    ['isError', request => ({ jsonrpc: '2.0', id: request.id, result: { isError: true, content: [{ type: 'text',
+      text: JSON.stringify({ error: 'research_evidence_incomplete', detail: 'private-provider-canary' }) }] } }), 'research_evidence_incomplete'],
+    ['value-error', request => ({ jsonrpc: '2.0', id: request.id, result: { content: [{ type: 'text',
+      text: JSON.stringify({ error: 'private-provider-canary', detail: 'private-provider-canary' }) }] } }), 'tool-error'],
+    ['malformed', request => ({ jsonrpc: '2.0', id: request.id + 1, result: { content: [{ type: 'text', text: '{"ok":true}' }] } }), 'malformed-rpc-reply'],
+  ];
+  for (const [kind, makeReply, code] of cases) await t.test(kind, async () => {
+    const output = await mkdtemp(join(tmpdir(), 'staging-rpc-failure-'));
+    try {
+      const base = fakeAPI(output);
+      await prepareStagingRecords(output, base);
+      const failing = interceptMCPReply(fakeAPI(output), output, 'new-vendor', makeReply);
+      await assert.rejects(prepareStagingRecords(output, { ...failing, reuseOnly: true, vendorFixture: true }), error => {
+        assert.equal(error.code, 'staging-fixture-rpc-unresolved');
+        assert.equal(error.message, 'Staging records setup stopped; partial plan requires reconciliation; no provider payload was logged');
+        assert.doesNotMatch(error.message, /private-provider-canary/);
+        return true;
+      });
+      const path = join(output, 'staging-records-plan.json');
+      const plan = JSON.parse(await readFile(path, 'utf8'));
+      const attempted = failing.calls.find(call => call.path === '/mcp' && call.options.data.params.name === 'new-vendor');
+      const failure = plan.rpc_failures?.at(-1);
+      assert.equal(plan.state, 'blocked');
+      assert.equal(plan.inflight.name, 'new-vendor');
+      assert.deepEqual(plan.inflight.arguments, attempted.options.data.params.arguments);
+      assert.equal(plan.records.vendor, undefined);
+      assert.equal(plan.receipts.vendor, undefined);
+      assert.equal(failure.schema, 'doctorcre-staging-rpc-failure.v1');
+      assert.equal(failure.step, 'vendor');
+      assert.equal(failure.operation, 'new-vendor');
+      assert.equal(failure.code, code);
+      assert.equal(failure.request_sha256, createHash('sha256').update(JSON.stringify(plan.inflight.arguments)).digest('hex'));
+      assert.equal(failure.response_sha256, createHash('sha256').update(JSON.stringify(makeReply(attempted.options.data))).digest('hex'));
+      assert.doesNotMatch(JSON.stringify(plan), /private-provider-canary|detail/);
+      const calls = failing.calls.length;
+      await assert.rejects(prepareStagingRecords(output, { ...failing, reuseOnly: true, vendorFixture: true,
+        session: () => assert.fail('uncertain RPC result must refuse before authentication') }), /partial plan requires reconciliation/);
+      assert.equal(failing.calls.length, calls, 'quarantined plan issues no retry');
+    } finally { await rm(output, { recursive: true, force: true }); }
+  });
+});
 
 test('record setup rejects production origins before authentication, files or requests', async () => {
   for (const origin of ['https://app.doctorcre.com', 'https://doctorcre-app-staging.joe-bookout-carr-us.workers.dev.evil.test', 'http://doctorcre-app-staging.joe-bookout-carr-us.workers.dev', 'https://user:canary@doctorcre-app-staging.joe-bookout-carr-us.workers.dev']) {
@@ -89,6 +180,7 @@ test('W5 fixture extension records one owned vendor and original synthetic entry
     const writes = fake.calls.filter(call => call.path === '/mcp' &&
       ['add-party', 'new-vendor', 'log-activity'].includes(call.options.data.params.name));
     assert.deepEqual(writes.map(call => call.options.data.params.name), ['add-party', 'new-vendor', 'log-activity']);
+    assert.equal(writes[1].options.data.params.arguments.category, 'cpa');
     const plan = JSON.parse(await readFile(join(output, 'staging-records-plan.json'), 'utf8'));
     assert.equal(plan.receipts.vendor.vendor_id, extended.records.vendor.id);
     assert.equal(plan.receipts.vendor_entry.activity_id, extended.records.vendor_entry.id);
@@ -100,6 +192,27 @@ test('W5 fixture extension records one owned vendor and original synthetic entry
     assert.equal(fake.calls.filter(call => call.path === '/mcp' &&
       ['add-party', 'new-vendor', 'log-activity'].includes(call.options.data.params.name)).length, 0);
   } finally { await rm(output, { recursive: true, force: true }); }
+});
+
+test('W5 vendor taxonomy preflight refuses missing stage or category before any fixture mutation', async t => {
+  for (const scenario of [
+    { name: 'missing stage', options: { vendorStages: [] }, code: 'staging-fixture-stage-prerequisite' },
+    { name: 'missing canonical category', options: { vendorCategories: [] }, code: 'staging-fixture-category-prerequisite' },
+    { name: 'stale taxonomy', options: { vendorStages: [{ slug: 'prospect_uncontacted', label: 'Prospect' }], staleVendorTaxonomy: true }, code: 'staging-fixture-taxonomy-prerequisite' },
+  ]) await t.test(scenario.name, async () => {
+    const output = await mkdtemp(join(tmpdir(), 'staging-vendor-taxonomy-prerequisite-'));
+    try {
+      const fake = fakeAPI(output, scenario.options);
+      await assert.rejects(prepareStagingRecords(output, { ...fake, vendorFixture: true }), error => {
+        assert.equal(error.code, scenario.code);
+        assert.equal(error.message, 'Staging vendor taxonomy prerequisite unavailable; no fixture mutation was attempted');
+        return true;
+      });
+      assert.deepEqual(fake.calls.filter(call => call.path === '/mcp'), []);
+      assert.ok(fake.calls.some(call => call.path === '/api/v1/business/vendors?contract=vendor-directory.v1'));
+      await assert.rejects(readFile(join(output, 'staging-records-plan.json')));
+    } finally { await rm(output, { recursive: true, force: true }); }
+  });
 });
 
 test('W6 draft fixture adds a separately keyed Pensacola client and independently reads its actual receipt', async () => {
@@ -130,7 +243,7 @@ test('W6 draft fixture adds a separately keyed Pensacola client and independentl
     assert.equal(plan.records.tour_draft_party.state, 'FL');
     assert.equal(extended.records.client.id, base.records.client.id);
     assert.equal(extended.records.party.id, base.records.party.id);
-    assert.equal(plan.names.tour_draft_party, `QA Tour ${plan.run}`);
+    assert.equal(plan.names.tour_draft_party, `QA Tour ${plan.keys.tour_draft_party}`);
     assert.equal(plan.names.tour_draft_client, plan.names.tour_draft_party);
     const independentRead = fake.calls.find(call => call.path === `/api/v1/business/clients/${plan.records.tour_draft_client.id}`);
     assert.ok(independentRead, 'dedicated client received a normal authenticated readback');
@@ -256,24 +369,38 @@ test('W15 awaiting-invoice receipt, partial plan, and tracker mismatches refuse 
   });
 });
 
-test('run-owned synthetic party names are distinct before first dispatch and retain normal dedup', async () => {
+test('run-owned synthetic party names use distinct durable role keys before dispatch and retain normal dedup', async () => {
   const output = await mkdtemp(join(tmpdir(), 'staging-party-identity-'));
   try {
     const fake = fakeAPI(output);
     await prepareStagingRecords(output, fake);
     await prepareStagingRecords(output, { ...fake, reuseOnly: true, vendorFixture: true });
+    await prepareStagingRecords(output, { ...fake, reuseOnly: true, tourDraftFixture: true });
     const plan = JSON.parse(await readFile(join(output, 'staging-records-plan.json'), 'utf8'));
     const writes = fake.calls.filter(call => call.path === '/mcp' && call.options.data.params.name === 'add-party')
       .map(call => call.options.data.params.arguments);
-    assert.equal(writes.length, 3);
+    assert.equal(writes.length, 4);
     assert.equal(Object.hasOwn(writes[0], 'force_new'), false);
     for (const row of writes.slice(1)) {
       assert.equal(Object.hasOwn(row, 'force_new'), false);
-      assert.ok(row.name.includes(plan.run));
       assert.equal(row.kind, 'org');
     }
-    assert.equal(plan.names.lead, `QA Lead ${plan.run}`);
-    assert.equal(plan.names.vendor, `QA Vendor ${plan.run}`);
+    assert.equal(plan.names.lead, `QA Lead ${plan.keys.lead_party}`);
+    assert.equal(plan.names.vendor, `QA Vendor ${plan.keys.vendor_party}`);
+    assert.equal(plan.names.tour_draft_party, `QA Tour ${plan.keys.tour_draft_party}`);
+    assert.deepEqual(writes.map(row => row.name), ['Synthetic Staging Fixture', plan.names.lead,
+      plan.names.vendor, plan.names.tour_draft_party]);
+    assert.equal(new Set(writes.map(row => row.name)).size, 4);
+    assert.notEqual(plan.keys.lead_party, plan.keys.vendor_party);
+    assert.notEqual(plan.keys.lead_party, plan.keys.tour_draft_party);
+    assert.notEqual(plan.keys.vendor_party, plan.keys.tour_draft_party);
+    const namesAndKeys = { names: plan.names, keys: plan.keys };
+    fake.calls.length = 0;
+    await prepareStagingRecords(output, { ...fake, reuseOnly: true, vendorFixture: true });
+    await prepareStagingRecords(output, { ...fake, reuseOnly: true, tourDraftFixture: true });
+    const resumed = JSON.parse(await readFile(join(output, 'staging-records-plan.json'), 'utf8'));
+    assert.deepEqual({ names: resumed.names, keys: resumed.keys }, namesAndKeys);
+    assert.equal(fake.calls.filter(call => call.path === '/mcp' && call.options.data.params.name === 'add-party').length, 0);
   } finally { await rm(output, { recursive: true, force: true }); }
 });
 
@@ -390,7 +517,13 @@ test('uncertain or refused writes preserve the partial plan and cannot be blindl
         return true;
       });
       const plan = JSON.parse(await readFile(join(output, 'staging-records-plan.json'), 'utf8'));
-      assert.equal(plan.state, 'pending');
+      assert.equal(plan.state, failure.refuse ? 'blocked' : 'pending');
+      if (failure.refuse) {
+        assert.equal(plan.rpc_failures.at(-1).code, 'database_refused_the_statement');
+        assert.match(plan.rpc_failures.at(-1).request_sha256, /^[a-f0-9]{64}$/);
+        assert.match(plan.rpc_failures.at(-1).response_sha256, /^[a-f0-9]{64}$/);
+        assert.doesNotMatch(JSON.stringify(plan.rpc_failures), /private-provider-canary|fault|secret/);
+      }
       if (failure.unknown) assert.equal(plan.records.deal.id, [...fake.rows.deals.keys()][0], 'creation receipt survives a subsequent unknown handoff');
       assert.equal(plan.inflight.arguments.idempotency_key, plan.keys[plan.current_step]);
       const count = fake.calls.length;

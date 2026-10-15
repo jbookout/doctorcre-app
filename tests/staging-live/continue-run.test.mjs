@@ -13,7 +13,8 @@ import { canary, canaryRequestAllowed, canaryLimits, canaryFailure, qualifiedMod
   assertSeparated, boundedInvocation, runBusinessPhase, assertCheckout, verifyFrozenSource, publicationBoundary,
   assertSourcePair, invocationBoundary, assertTrustedArtifact, assertFirstWorkflowAttempt, digestDownloadedContinuation,
   assertAdoptionReceipt, assertReadonlyResult, assertJourneyQualification, retainJourneyQualification,
-  assertRestoredEvidence } from '../../scripts/e2e-staging/continue-run.mjs';
+  assertRestoredEvidence, businessWorkerFailureCode, retainedBusinessWorkerCause,
+  cleanupFailureCode, cleanupPreservingPrimary } from '../../scripts/e2e-staging/continue-run.mjs';
 import { RUN_LIMITS, openRun } from '../../scripts/e2e-staging/run-limits.mjs';
 import contract from '../../contracts/e2e-staging.v1.json' with { type: 'json' };
 
@@ -21,14 +22,56 @@ const sha = 'a'.repeat(40), digest = 'b'.repeat(64);
 const binding = { checkout: sha, app: sha, carr: contract.producer.source_commit };
 const release = { service: 'doctorcre-app', environment: 'staging', source_commit: sha, carr_source_commit: binding.carr };
 
+test('RPC and vendor taxonomy refusals cross the worker boundary as fixed codes only', () => {
+  for (const code of ['staging-fixture-rpc-unresolved', 'staging-fixture-stage-prerequisite',
+    'staging-fixture-taxonomy-prerequisite', 'staging-fixture-category-prerequisite']) {
+    assert.equal(businessWorkerFailureCode({ code, message: 'private-provider-canary' }), code);
+    assert.equal(retainedBusinessWorkerCause({ code: 'worker-exit-1',
+      message: `Staging run stopped: worker-exit-1 (cause=${code})` }), code);
+  }
+  assert.equal(businessWorkerFailureCode({ code: 'provider-error', message: 'private-provider-canary' }), null);
+  assert.equal(retainedBusinessWorkerCause({ code: 'worker-exit-1',
+    message: 'Staging run stopped: worker-exit-1 (cause=staging-fixture-rpc-unresolved; provider=private)' }), null);
+});
+
+test('cleanup failure remains separately classified without replacing a primary journey failure', async () => {
+  const primary = Object.assign(new Error('primary'), { code: 'presence-settlement-timeout' });
+  await cleanupPreservingPrimary(primary, async () => { throw Object.assign(new Error('private'), { code: 'write-coverage-incomplete' }); });
+  assert.equal(primary.code, 'presence-settlement-timeout');
+  assert.equal(cleanupFailureCode(primary), 'write-coverage-incomplete');
+  const cleanup = Object.assign(new Error('cleanup'), { code: 'private-provider-error' });
+  await assert.rejects(cleanupPreservingPrimary(null, async () => { throw cleanup; }), error => error === cleanup);
+});
+
 test('canary admits the staging shell, static modules and dedicated identity read; RPC and writes never enter browser canary traffic', () => {
-  for (const path of ['/', '/js/app.js', '/js/auto-refresh.mjs', '/css/app.css', '/assets/logo.svg', '/api/system-work/session'])
+  for (const path of ['/', '/js/app.js', '/js/auto-refresh.mjs', '/css/app.css', '/assets/logo.svg',
+    '/tours/planner-client.js', '/manifest.webmanifest', '/api/system-work/session'])
     assert.equal(canaryRequestAllowed('GET', contract.origin + path), true);
   for (const [method, url] of [['POST', contract.origin + '/mcp'], ['POST', contract.origin + '/auth/e2e-session'],
     ['GET', contract.origin + '/auth/session'], ['GET', contract.origin + '/mcp'],
     ['GET', contract.origin + '/api/records'], ['GET', contract.carr_origin + '/release'],
     ['GET', 'https://app.doctorcre.com/'], ['GET', contract.origin + '/js/a.js?token=private']])
     assert.equal(canaryRequestAllowed(method, url), false);
+  for (const [method, url] of [['POST', contract.origin + '/tours/planner-client.js'],
+    ['GET', contract.origin + '/tours/planner-client.js?private=1'],
+    ['GET', contract.origin + '/api/planner-client.js'], ['GET', 'https://other.test/tours/planner-client.js']])
+    assert.equal(canaryRequestAllowed(method, url), false);
+});
+
+test('startup first-party import graph module is admitted at its exact static path', async () => {
+  const source = await readFile(new URL('../../js/doc-presence.js', import.meta.url), 'utf8');
+  assert.match(source, /from ['"]\.\.\/tours\/planner-client\.js['"]/);
+  assert.equal(canaryRequestAllowed('GET', new URL('../tours/planner-client.js', contract.origin + '/js/doc-presence.js').href), true);
+});
+
+test('startup canary diagnostics identify closed shell predicates without exposing page data', async () => {
+  const { startupShellFailure } = await import('../../scripts/e2e-staging/continue-run.mjs');
+  assert.equal(startupShellFailure({ navigationVisible: false, documentOk: true, urlMatches: true, scriptFailed: false, mainCount: 1 }), 'canary-shell-navigation-missing');
+  assert.equal(startupShellFailure({ navigationVisible: true, documentOk: false, urlMatches: true, scriptFailed: false, mainCount: 1 }), 'canary-shell-document-status');
+  assert.equal(startupShellFailure({ navigationVisible: true, documentOk: true, urlMatches: false, scriptFailed: false, mainCount: 1 }), 'canary-shell-url-invalid');
+  assert.equal(startupShellFailure({ navigationVisible: true, documentOk: true, urlMatches: true, scriptFailed: true, mainCount: 1 }), 'canary-shell-script-failed');
+  assert.equal(startupShellFailure({ navigationVisible: true, documentOk: true, urlMatches: true, scriptFailed: false, mainCount: 0 }), 'canary-shell-main-count');
+  assert.equal(startupShellFailure({ navigationVisible: true, documentOk: true, urlMatches: true, scriptFailed: false, mainCount: 1 }), null);
 });
 
 test('canary preserves canonical HTTP timeout, two-way concurrency and queue admission while reporting only closed diagnostics', async () => {
@@ -38,6 +81,14 @@ test('canary preserves canonical HTTP timeout, two-way concurrency and queue adm
   assert.equal(limits.httpTimeoutMs, 30_000);
   assert.deepEqual(canaryFailure({ schema: 'doctorcre-staging-canary-phase.v1', phase: 'asset-settlement' }, 'http-admission-timeout'),
     { phase: 'asset-settlement', stopReason: 'http-admission-timeout' });
+  assert.deepEqual(canaryFailure({ schema: 'doctorcre-staging-canary-phase.v1', phase: 'shell' }, 'canary-shell-script-failed'),
+    { phase: 'shell', stopReason: 'canary-shell-script-failed' });
+  assert.deepEqual(canaryFailure({ schema: 'doctorcre-staging-canary-phase.v1', phase: 'shell' }, 'worker-exit-1',
+    'Staging run stopped: worker-exit-1 (cause=canary-shell-script-failed)'),
+  { phase: 'shell', stopReason: 'canary-shell-script-failed' });
+  assert.deepEqual(canaryFailure({ schema: 'doctorcre-staging-canary-phase.v1', phase: 'shell' }, 'worker-exit-1',
+    'Staging run stopped: worker-exit-1 (cause=canary-shell-script-failed; candidate=private)'),
+  { phase: 'shell', stopReason: 'worker-exit-1' });
   assert.deepEqual(canaryFailure({ schema: 'doctorcre-staging-canary-phase.v1', phase: 'source-readback' }, 'source-pair-mismatch'),
     { phase: 'source-readback', stopReason: 'source-pair-mismatch' });
   assert.deepEqual(canaryFailure({ schema: 'doctorcre-staging-startup-canary.v1', status: 'AUTHENTICATED_READ_ONLY_CANARY', acceptedV1: false }, 'process-cleanup-unverified'),
@@ -53,14 +104,16 @@ test('source pair rejects old app, production, changed backend and unbound check
   assert.throws(() => assertSourcePair(release, { ...binding, checkout: 'main' }));
 });
 
-test('invocation boundary never extends immutable deadline or absolute cutoff', () => {
-  const now = Date.parse('2026-10-14T22:00:00Z');
+test('invocation boundary honors a fresh bounded window after the former cutoff and never extends its deadline', () => {
+  const now = Date.parse('2026-10-15T12:00:01Z');
   assert.equal(invocationBoundary({ now, deadline: now + 1000, sliceMs: 5000 }), now + 1000);
   assert.equal(invocationBoundary({ now, deadline: now + 5000, sliceMs: 1000 }), now + 1000);
-  const cutoff = Date.parse('2026-10-15T12:00:00Z');
-  assert.equal(invocationBoundary({ now: cutoff - 1000, deadline: cutoff + 5000, sliceMs: 5000 }), cutoff);
+  const runDeadline = now + RUN_LIMITS.runTimeoutMs;
+  assert.equal(invocationBoundary({ now, deadline: runDeadline, sliceMs: RUN_LIMITS.runTimeoutMs }), runDeadline);
+  assert.throws(() => invocationBoundary({ now: runDeadline, deadline: runDeadline, sliceMs: 1 }), { code: 'deadline-exhausted' });
+  assert.throws(() => invocationBoundary({ now, deadline: Date.parse('2026-10-15T12:00:00Z'), sliceMs: 1 }),
+    { code: 'deadline-exhausted' }, 'an existing run past its recorded deadline is never extended');
   for (const deadline of [now, now - 1, NaN]) assert.throws(() => invocationBoundary({ now, deadline, sliceMs: 1000 }));
-  assert.throws(() => invocationBoundary({ now: cutoff, deadline: cutoff + 1000, sliceMs: 1000 }));
 });
 
 test('artifact identity and chain expectations come from trusted predecessor outputs, never offered metadata', () => {
@@ -167,6 +220,11 @@ test('an offered runtime for an old checkout or source pair is refused before op
       expectedDigest: createHash('sha256').update(bytes).digest('hex'), binding, now }),
     { code: 'model-room-runtime-unqualified' });
   }
+  const oversizedWindow = JSON.stringify({ ...base, expiresAt: now + RUN_LIMITS.runTimeoutMs + 1 });
+  await writeFile(path, oversizedWindow, { mode: 0o600 });
+  await assert.rejects(qualifiedModelRoom({ descriptorPath: path,
+    expectedDigest: createHash('sha256').update(oversizedWindow).digest('hex'), binding, now }),
+  { code: 'model-room-runtime-unqualified' });
 });
 
 test('the real CLI reports a closed qualification failure without printing even synthetic credential material', async () => {
@@ -198,7 +256,8 @@ test('canary authenticates in memory, restricts browser traffic, rechecks source
   const phases = [];
   const state = { cookies: [{ name: 'private-cookie', value: 'do-not-publish' }] };
   const page = { goto: async url => { assert.equal(url, contract.origin + '/'); return { ok: () => true }; }, on() {},
-    waitForLoadState: async () => {}, url: () => contract.origin + '/', locator: () => ({ count: async () => 1, waitFor: async () => {} }) };
+    waitForLoadState: async () => {}, url: () => contract.origin + '/', locator: () => ({ count: async () => 1,
+      isVisible: async () => true, waitFor: async () => {} }) };
   const run = { http: async operation => operation(), check() {}, limits: { httpTimeoutMs: 1000 } };
   const deps = { onPhase: async phase => phases.push(phase), session: async () => ({ state, release }), releaseProbe: async () => { probes++; return release; },
     browserFactory: async () => ({ newContext: async options => {
@@ -263,7 +322,7 @@ const privateMarker = 'SYNTHETIC_PRIVATE_CONTINUATION_MARKER_3c702';
 async function continuationFixture(t, { interrupt = true, checkout = sha } = {}) {
   const root = await mkdtemp(join(tmpdir(), 'doctorcre-workflow-chain-'));
   t.after(() => rm(root, { recursive: true, force: true }));
-  const startedAt = Date.now(), deadline = Math.min(startedAt + 60 * 60 * 1000, Date.parse('2026-10-15T12:00:00Z'));
+  const startedAt = Date.now(), deadline = startedAt + 60 * 60 * 1000;
   const sourcePair = { source_commit: binding.app, carr_source_commit: binding.carr };
   const runId = 'synthetic_' + checkout;
   const plan = { schema: 'doctorcre-staging-records-plan.v1', origin: contract.origin, state: 'complete',
@@ -294,25 +353,23 @@ async function continuationFixture(t, { interrupt = true, checkout = sha } = {})
   return { root, base, dependencies, calls: () => workerCalls, verificationCalls: () => verificationCalls };
 }
 
-test('cutoff crossed at the actual envelope link refuses success and retains the private envelope for reconciliation', async t => {
-  for (const kind of ['absolute-cutoff', 'canonical-run-deadline']) {
-    const f = await continuationFixture(t);
-    const deadline = kind === 'absolute-cutoff' ? Date.parse('2026-10-15T12:00:00Z') : Date.now() + 30_000;
-    let clock = deadline - 10_000, linked = false;
-    t.mock.method(Date, 'now', () => clock);
-    f.base.startedAt = clock - 1000; f.base.deadline = deadline;
-    const original = fsPromises.link;
-    fsPromises.link = async (from, to) => {
-      if (to === f.base.envelopePath) { clock = deadline + 1; linked = true; }
-      return original(from, to);
-    };
-    syncBuiltinESMExports();
-    try {
-      await assert.rejects(boundedInvocation(f.base, f.dependencies), { code: 'deadline-exhausted' });
-      assert.equal(linked, true);
-      assert.ok((await readFile(f.base.envelopePath)).length > 0);
-    } finally { fsPromises.link = original; syncBuiltinESMExports(); t.mock.restoreAll(); }
-  }
+test('run deadline crossed at the actual envelope link refuses success and retains the private envelope for reconciliation', async t => {
+  const f = await continuationFixture(t);
+  const deadline = Date.now() + 30_000;
+  let clock = deadline - 10_000, linked = false;
+  t.mock.method(Date, 'now', () => clock);
+  f.base.startedAt = clock - 1000; f.base.deadline = deadline;
+  const original = fsPromises.link;
+  fsPromises.link = async (from, to) => {
+    if (to === f.base.envelopePath) { clock = deadline + 1; linked = true; }
+    return original(from, to);
+  };
+  syncBuiltinESMExports();
+  try {
+    await assert.rejects(boundedInvocation(f.base, f.dependencies), { code: 'deadline-exhausted' });
+    assert.equal(linked, true);
+    assert.ok((await readFile(f.base.envelopePath)).length > 0);
+  } finally { fsPromises.link = original; syncBuiltinESMExports(); t.mock.restoreAll(); }
 });
 
 test('tracked synthetic source changed after real Git qualification prevents settlement and sealing', async t => {
@@ -996,6 +1053,26 @@ test('business qualification retains the exact validated W4/W9/W15 action eviden
   const resumed = JSON.parse(await readFile(join(f.run.root, 'staging-records-plan.json'), 'utf8')).journey_qualification;
   assert.deepEqual(resumed.observations, first.observations);
   assert.equal(resumed.observations.length, 18);
+});
+
+test('selected-run retention preserves prior validated Tour and readonly observations', async t => {
+  const f = await businessFixture(t);
+  const readonly = { schema: 'staging-readonly-journey-result.v1', full_v1_qualified: false,
+    provenance: { source_commit: binding.app, carr_source_commit: binding.carr, run: f.plan.run },
+    counts: { carr_record_mutations: 0 },
+    journeys: ['W1', 'W2', 'W5', 'W14'].map(journey => ({ journey,
+      state: journey === 'W1' ? 'qualified-slice' : 'pending' })) };
+  const base = { completed: [], steps: [], actions: [], companions: [], full_v1_qualified: false, readonly };
+  await retainJourneyQualification({ run: f.run, binding, release,
+    result: { ...base, tour: { full_v1_qualified: false, ui: { sha256: 'a'.repeat(64) },
+      backend_readback: { sha256: 'b'.repeat(64) } } } });
+  await retainJourneyQualification({ run: f.run, binding, release, preservePriorTourReadonly: true,
+    result: { ...base, tour: { full_v1_qualified: false } } });
+  const retained = JSON.parse(await readFile(join(f.run.root, 'staging-records-plan.json'), 'utf8')).journey_qualification;
+  assert.equal(retained.tour_readonly_observed, true);
+  assert.equal(retained.readonly.W1, 'qualified-slice');
+  assert.equal(retained.readonly.W5, 'pending');
+  assert.equal(retained.full_v1_qualified, false);
 });
 
 test('resume replaces fresh readonly/vendor/Tour evidence and drops it when current journeys have no proof', async t => {

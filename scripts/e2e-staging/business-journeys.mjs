@@ -8,7 +8,8 @@ import { COLUMNS } from '../../js/pipeline-model.js';
 import { projectInvoices } from '../../js/invoice-tracker-model.js';
 import { observedV1Action } from './v1-qualification.mjs';
 
-const journeyError = code => Object.assign(new Error(code), { code });
+const journeyError = (code, checkpoint, facts) => Object.assign(new Error(code), { code,
+  ...(checkpoint ? { checkpoint, checkpoint_facts: facts } : {}) });
 const clickSelector = async (page, selector, timeout) => {
   try { return await page.locator(selector).click({ timeout }); }
   catch { throw journeyError('business-journey-selector-unavailable'); }
@@ -126,7 +127,8 @@ export async function runAutomaticPhaseUndo({ page, fixtureGuard, release, deal,
 }
 
 export async function runBusinessJourneys({ page, fixtureGuard, release, deal, run,
-  journeys = businessJourneys.journeys.map(journey => journey.id), invoiceProofPath, awaitingInvoicePlan } = {}) {
+  journeys = businessJourneys.journeys.map(journey => journey.id), invoiceProofPath, awaitingInvoicePlan,
+  onJourneyStart, onJourneyComplete } = {}) {
   run = requireSupervisedRun(undefined, run);
   run.check();
   const url = new URL(page.url());
@@ -165,10 +167,12 @@ export async function runBusinessJourneys({ page, fixtureGuard, release, deal, r
           due_on: date.due_on, source: date.source })) };
     }, deal);
     if (state?.id !== deal || !Array.isArray(state.events) || !Array.isArray(state.dates))
-      throw journeyError('business-journey-readback-incomplete');
+      throw journeyError('business-journey-readback-incomplete', 'deal-readback-shape', {
+        id_matches: state?.id === deal, events_array: Array.isArray(state?.events), dates_array: Array.isArray(state?.dates) });
     return state;
   };
   for (const id of journeys) {
+    if (onJourneyStart) await onJourneyStart(id);
     for (const definition of businessJourneys.journeys.find(journey => journey.id === id).steps) {
       run.check();
       const spec = { journey: id, step: definition.id, deal, release };
@@ -210,7 +214,8 @@ export async function runBusinessJourneys({ page, fixtureGuard, release, deal, r
         if (!initialColumn || !target || await card.getAttribute('data-phase') !== initialColumn.value)
           throw new Error('Business journey drag source or target refused; reconciliation required');
         const initialReadback = await readDeal();
-        if (initialReadback.phase !== initialColumn.value) throw journeyError('business-journey-readback-incomplete');
+        if (initialReadback.phase !== initialColumn.value) throw journeyError('business-journey-readback-incomplete',
+          'w4-initial-phase', { phase_matches: false });
         if (new URL(page.url()).searchParams.get('deal') === deal) await click('#panelClose');
         const presenceSpec = { journey: id, step: definition.id, deal, field: 'phase', release };
         const drop = async () => {
@@ -233,9 +238,10 @@ export async function runBusinessJourneys({ page, fixtureGuard, release, deal, r
         if (cancelled.state !== 'admitted' || cancelled.dispatched_outcome !== 'not dispatched')
           throw new Error('Business journey cancelled move dispatched unexpectedly; reconciliation required');
         const cancelReadback = await readDeal();
-        if (cancelReadback.phase !== initialColumn.value ||
-            JSON.stringify(cancelReadback.events) !== JSON.stringify(initialReadback.events))
-          throw journeyError('business-journey-readback-incomplete');
+        if (cancelReadback.phase !== initialColumn.value)
+          throw journeyError('business-journey-readback-incomplete', 'w4-cancel-phase', { phase_matches: false });
+        if (JSON.stringify(cancelReadback.events) !== JSON.stringify(initialReadback.events))
+          throw journeyError('business-journey-readback-incomplete', 'w4-cancel-history', { history_matches: false });
         await drop();
         await click(definition.selector);
         const receipt = await waitForReceipt();
@@ -368,6 +374,8 @@ export async function runBusinessJourneys({ page, fixtureGuard, release, deal, r
         readback_sha256: observed.independent_readback.response_sha256 });
     }
     complete.push(id);
+    if (onJourneyComplete) await onJourneyComplete({ journey: id, completed: [...complete],
+      steps: structuredClone(steps), actions: structuredClone(actions) });
   }
   await fixtureGuard.assertCoverage();
   return { schema: 'staging-business-journey-result.v1', completed: complete, steps, actions,

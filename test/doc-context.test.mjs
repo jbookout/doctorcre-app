@@ -84,6 +84,16 @@ test('one tap verifies suggestion/version/context, records discussion only, and 
  assert.deepEqual(calls,[{suggestion_id:'demo-suggestion-a',base_version:2,choice:'discuss',idempotency_key:'demo-key'}]);
 });
 
+test('disposing Doc during approval preflight prevents a later discussion write',async()=>{
+ const c=context();let release,startedResolve,writes=0;const started=new Promise(resolve=>startedResolve=resolve);const held=new Promise(resolve=>release=resolve);
+ const a=createDocApproval({context:c,evaluatedPages:['deals'],uuid:()=> 'demo-key',available:()=>true,client:{
+  listDocSuggestions:async()=>{startedResolve();await held;return{ok:true,suggestions:[row()]};},
+  decideDocSuggestion:async()=>{writes++;return{ok:true,suggestion_id:'demo-suggestion-a',choice:'discuss',version:3};},
+ }});
+ const pending=a.approve(row(),{ok:true,suggestions:[row()]});await started;a.dispose();release();
+ assert.equal((await pending).state,'changed');assert.equal(writes,0);
+});
+
 test('approval never writes after revision/selection/filter race or changed suggestion text',async()=>{
  for(const mutate of [c=>c.filter({owner:'demo-other'}),c=>c.select('deal','other'),c=>c.finish(c.begin('getBoard'),{deals:[deal('demo-a',2)]})]){
   const c=context();let writes=0;const client={listDocSuggestions:async()=>{mutate(c);return{ok:true,suggestions:[row()]};},decideDocSuggestion:async()=>writes++};

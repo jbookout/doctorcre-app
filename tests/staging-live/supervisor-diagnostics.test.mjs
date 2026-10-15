@@ -92,3 +92,30 @@ test('business readback failure crosses worker diagnostic seam only as a closed 
   assert.doesNotMatch(failure.message, new RegExp(secretCanary));
   assert.doesNotMatch(diagnostics.join('; '), new RegExp(secretCanary));
 });
+
+test('presence settlement and cleanup failures survive as separate fixed diagnostics', () => {
+  assert.equal(businessWorkerFailureCode({ code: 'presence-settlement-timeout', message: 'provider detail' }),
+    'presence-settlement-timeout');
+  const diagnostics = [];
+  const read = createWorkerDiagnosticReader(value => diagnostics.push(value));
+  read(Buffer.from('Staging continuation stopped: presence-settlement-timeout; no full V1 acceptance is established.\n'));
+  read(Buffer.from('Staging cleanup stopped: write-coverage-incomplete.\n'));
+  read(Buffer.from('Staging cleanup stopped: provider-secret.\n'));
+  assert.deepEqual(diagnostics, ['cause=presence-settlement-timeout', 'cleanup=write-coverage-incomplete']);
+});
+
+test('startup and fixture refusal diagnostics expose only exact closed codes', () => {
+  const diagnostics = [];
+  const read = createWorkerDiagnosticReader(value => diagnostics.push(value));
+  read(Buffer.from('Staging continuation stopped: canary-shell-script-failed; no full V1 acceptance is established.\n'));
+  read(Buffer.from('Staging continuation stopped: staging-fixture-candidate-refused; no full V1 acceptance is established.\n'));
+  read(Buffer.from('Staging continuation stopped: staging-fixture-rpc-unresolved; no full V1 acceptance is established.\n'));
+  read(Buffer.from('Staging continuation stopped: staging-fixture-stage-prerequisite; no full V1 acceptance is established.\n'));
+  read(Buffer.from('Staging continuation stopped: staging-fixture-taxonomy-prerequisite; no full V1 acceptance is established.\n'));
+  read(Buffer.from('Staging continuation stopped: staging-fixture-category-prerequisite; no full V1 acceptance is established.\n'));
+  read(Buffer.from('Staging continuation stopped: staging-fixture-rpc-unresolved; provider=private-canary; no full V1 acceptance is established.\n'));
+  read(Buffer.from('Staging continuation stopped: staging-fixture-candidate-refused; candidate=private name; no full V1 acceptance is established.\n'));
+  assert.deepEqual(diagnostics, ['cause=canary-shell-script-failed', 'cause=staging-fixture-candidate-refused',
+    'cause=staging-fixture-rpc-unresolved', 'cause=staging-fixture-stage-prerequisite',
+    'cause=staging-fixture-taxonomy-prerequisite', 'cause=staging-fixture-category-prerequisite']);
+});

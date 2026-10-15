@@ -9,7 +9,6 @@ import { promisify } from 'node:util';
 import contract from '../../contracts/e2e-staging.v1.json' with { type: 'json' };
 import { qualifyV1Journeys } from './v1-qualification.mjs';
 
-export const ABSOLUTE_CUTOFF = Date.parse('2026-10-15T12:00:00Z');
 const canaryPhases = new Set(['session', 'browser-launch', 'context', 'guard', 'navigation', 'asset-settlement', 'shell', 'source-readback']);
 const project = fileURLToPath(new URL('../../', import.meta.url));
 const sha40 = value => typeof value === 'string' && /^[a-f0-9]{40}$/.test(value);
@@ -30,7 +29,13 @@ const durableBusinessAction = row => row?.id === 'W4' && row.case === 'local-dea
 const execute = promisify(execFile);
 const ownFailures = new WeakSet();
 const businessFailureCodes = new Set(['business-journey-receipt-missing', 'business-journey-selector-unavailable',
-  'business-journey-readback-incomplete', 'business-journey-settlement-unverified']);
+  'business-journey-readback-incomplete', 'business-journey-settlement-unverified',
+  'presence-settlement-timeout',
+  'selected-journey-selection-invalid', 'selected-journey-plan-required', 'selected-journey-plan-invalid',
+  'selected-journey-route-unavailable', 'selected-journey-setup-failed', 'selected-journey-w4-failed', 'selected-journey-w9-failed',
+  'selected-journey-action-proof-incomplete', 'selected-journey-proof-conflict',
+  'staging-fixture-rpc-unresolved', 'staging-fixture-stage-prerequisite',
+  'staging-fixture-taxonomy-prerequisite', 'staging-fixture-category-prerequisite']);
 export function businessWorkerFailureCode(error) {
   if (businessFailureCodes.has(error?.code)) return error.code;
   if (error?.code === 'write-coverage-incomplete' ||
@@ -39,6 +44,19 @@ export function businessWorkerFailureCode(error) {
   if (error?.message === 'Business journey dispatch unresolved; reconciliation required')
     return 'business-journey-receipt-missing';
   return null;
+}
+export function cleanupFailureCode(error) {
+  return error?.cleanup_failure_code === 'write-coverage-incomplete' ||
+    error?.cleanup_failure_code === 'presence-settlement-timeout'
+    ? error.cleanup_failure_code : error?.cleanup_failure_code === 'cleanup-failed' ? 'cleanup-failed' : null;
+}
+export async function cleanupPreservingPrimary(primary, cleanup) {
+  try { await cleanup(); }
+  catch (error) {
+    if (!primary) throw error;
+    primary.cleanup_failure_code = ['write-coverage-incomplete', 'presence-settlement-timeout'].includes(error?.code)
+      ? error.code : 'cleanup-failed';
+  }
 }
 export function retainedBusinessWorkerCause(error) {
   if (error?.code !== 'worker-exit-1') return null;
@@ -58,8 +76,8 @@ export function assertSourcePair(release, binding) {
 
 export function invocationBoundary({ now = Date.now(), deadline, sliceMs }) {
   if (![now, deadline, sliceMs].every(Number.isSafeInteger) || sliceMs < 1 ||
-      now >= deadline || now >= ABSOLUTE_CUTOFF) refusal('deadline-exhausted');
-  return Math.min(deadline, now + sliceMs, ABSOLUTE_CUTOFF);
+      now >= deadline) refusal('deadline-exhausted');
+  return Math.min(deadline, now + sliceMs);
 }
 
 export function assertTrustedArtifact(offered, expected) {
@@ -150,7 +168,7 @@ export function assertJourneyQualification(value, binding, runId) {
   return value;
 }
 
-export async function retainJourneyQualification({ run, binding, release, result }) {
+export async function retainJourneyQualification({ run, binding, release, result, preservePriorTourReadonly = false }) {
   const path = join(run.root, 'staging-records-plan.json');
   const plan = JSON.parse(await privateBytes(path));
   if (plan.schema !== 'doctorcre-staging-records-plan.v1' || plan.state !== 'complete' || plan.inflight ||
@@ -159,7 +177,7 @@ export async function retainJourneyQualification({ run, binding, release, result
       !Array.isArray(result.completed) || !Array.isArray(result.steps))
     refusal('journey-observations-invalid');
   assertReadonlyResult(result.readonly, release, plan);
-  let priorObservations = [];
+  let priorObservations = [], priorTourReadonlyObserved = false;
   if (plan.journey_qualification) {
     const prior = assertJourneyQualification(plan.journey_qualification, binding, run.snapshot().id);
     if (Object.hasOwn(prior, 'observations') && prior.fixture_run !== plan.run)
@@ -167,6 +185,7 @@ export async function retainJourneyQualification({ run, binding, release, result
     priorObservations = (prior.observations || []).filter(row => durableBusinessAction(row) &&
       result.completed.includes(row.id) && result.steps.some(step => step?.journey === row.id &&
         ['observed', 'previously-observed'].includes(step.state)));
+    priorTourReadonlyObserved = preservePriorTourReadonly && prior.tour_readonly_observed === true;
   }
   const observations = new Map();
   for (const row of priorObservations) observations.set(journeyActionIdentity(row), row);
@@ -186,7 +205,8 @@ export async function retainJourneyQualification({ run, binding, release, result
     business: { W4: result.completed.includes('W4'), W9: result.completed.includes('W9'),
       W15: result.completed.includes('W15'),
       observed_steps: result.steps.filter(row => row?.state === 'observed').length },
-    tour_readonly_observed: Boolean(result.tour?.ui?.sha256 && result.tour?.backend_readback?.sha256),
+    tour_readonly_observed: Boolean(priorTourReadonlyObserved ||
+      result.tour?.ui?.sha256 && result.tour?.backend_readback?.sha256),
     readonly: Object.fromEntries(result.readonly.journeys.map(row => [row.journey, row.state])),
     fixture_run: plan.run,
     observations: [...observations.values()], companions: result.companions || [],
@@ -211,9 +231,18 @@ export function canaryRequestAllowed(method, value) {
   try {
     const url = new URL(value);
     return ['GET', 'HEAD'].includes(method) && url.origin === contract.origin && !url.username && !url.password &&
-      !url.search && (['/', '/app-release', '/api/system-work/session'].includes(url.pathname) ||
-        /^\/(?:js|css|assets|icons|public-shell|islands)\/[a-zA-Z0-9_./-]+\.(?:m?js|css|woff2?|png|jpe?g|svg|ico)$/.test(url.pathname));
+      !url.search && (['/', '/app-release', '/api/system-work/session', '/manifest.webmanifest'].includes(url.pathname) ||
+        /^\/(?:js|css|assets|icons|public-shell|islands|tours)\/[a-zA-Z0-9_./-]+\.(?:m?js|css|woff2?|png|jpe?g|svg|ico|webmanifest)$/.test(url.pathname));
   } catch { return false; }
+}
+
+export function startupShellFailure({ navigationVisible, documentOk, urlMatches, scriptFailed, mainCount }) {
+  if (documentOk !== true) return 'canary-shell-document-status';
+  if (urlMatches !== true) return 'canary-shell-url-invalid';
+  if (scriptFailed === true) return 'canary-shell-script-failed';
+  if (navigationVisible !== true) return 'canary-shell-navigation-missing';
+  if (mainCount !== 1) return 'canary-shell-main-count';
+  return null;
 }
 
 async function privateBytes(path, maximum = 16 * 1024 * 1024) {
@@ -244,6 +273,7 @@ export function assertQualifiedDesk(entry, descriptor, receipt) {
 
 export async function qualifiedModelRoom({ descriptorPath, expectedDigest, binding, now = Date.now() }) {
   if (!descriptorPath || !isAbsolute(descriptorPath) || !sha256(expectedDigest)) refusal('model-room-runtime-unqualified');
+  const { RUN_LIMITS } = await import('./run-limits.mjs');
   const { MODEL_ROOM_DISPATCH_CONTRACT: pinned } = await import('./model-room.mjs');
   const bytes = await privateBytes(descriptorPath, 32 * 1024);
   if (hash(bytes) !== expectedDigest) refusal('model-room-runtime-unqualified');
@@ -259,7 +289,8 @@ export async function qualifiedModelRoom({ descriptorPath, expectedDigest, bindi
       !isAbsolute(descriptor.repositoryPath || '') || !isAbsolute(descriptor.qualificationReceiptPath || '') ||
       !sha256(descriptor.registrySha256) || !sha256(descriptor.qualificationReceiptSha256) ||
       !Number.isSafeInteger(descriptor.qualifiedAt) || !Number.isSafeInteger(descriptor.expiresAt) ||
-      descriptor.qualifiedAt > now || descriptor.expiresAt <= now || descriptor.expiresAt > ABSOLUTE_CUTOFF ||
+      descriptor.qualifiedAt > now || descriptor.expiresAt <= now ||
+      descriptor.expiresAt - descriptor.qualifiedAt > RUN_LIMITS.runTimeoutMs ||
       !/^[a-z0-9][a-z0-9-]{1,40}$/.test(descriptor.desk || '') ||
       typeof descriptor.model !== 'string' || !descriptor.model || descriptor.completion !== 'synchronous')
     refusal('model-room-runtime-unqualified');
@@ -314,14 +345,23 @@ export async function canary({ binding, run }, supplied = {}) {
     const page = await context.newPage();
     let scriptFailed = false;
     page.on('pageerror', () => { scriptFailed = true; });
+    page.on('requestfailed', request => {
+      if (request.resourceType() === 'script' && canaryRequestAllowed(request.method(), request.url())) scriptFailed = true;
+    });
+    page.on('response', response => {
+      if (response.request().resourceType() === 'script' && !response.ok()) scriptFailed = true;
+    });
     await phase('navigation');
     const response = await page.goto(contract.origin + '/', { waitUntil: 'domcontentloaded', timeout: run.limits.httpTimeoutMs });
     await phase('asset-settlement');
     await page.waitForLoadState('networkidle', { timeout: run.limits.httpTimeoutMs });
     await phase('shell');
-    await page.locator('#appShell .app-shell-navigation').waitFor({ state: 'visible', timeout: run.limits.httpTimeoutMs });
-    if (!response?.ok() || scriptFailed || page.url() !== contract.origin + '/' || await page.locator('main').count() !== 1)
-      refusal('canary-shell-refused');
+    const navigation = page.locator('#appShell .app-shell-navigation');
+    try { await navigation.waitFor({ state: 'visible', timeout: run.limits.httpTimeoutMs }); } catch {}
+    const navigationVisible = await navigation.isVisible().catch(() => false);
+    const reason = startupShellFailure({ navigationVisible, documentOk: response?.ok() === true,
+      urlMatches: page.url() === contract.origin + '/', scriptFailed, mainCount: await page.locator('main').count() });
+    if (reason) refusal(reason);
     await phase('source-readback');
     assertSourcePair(await releaseProbe(undefined, contract.origin, { run }), binding);
     run.check();
@@ -371,8 +411,8 @@ async function canaryJob(environment) {
   const { supervise } = await import('./supervise.mjs');
   const binding = bindings(environment);
   await assertCheckout(binding.checkout);
-  const duration = invocationBoundary({ deadline: ABSOLUTE_CUTOFF, sliceMs: 120_000 }) - Date.now();
-  if (duration < 1) refusal('deadline-exhausted');
+  const startedAt = Date.now(), deadline = startedAt + 120_000;
+  const duration = invocationBoundary({ now: startedAt, deadline, sliceMs: 120_000 }) - startedAt;
   const limits = await canaryLimits(duration);
   const output = resolve(environment.E2E_V2_OUTPUT);
   let state;
@@ -382,10 +422,10 @@ async function canaryJob(environment) {
   } catch (error) {
     let marker;
     try { marker = JSON.parse(await privateBytes(join(output, 'private', 'startup-canary.json'), 4096)); } catch {}
-    const diagnostic = canaryFailure(marker, error?.code);
+    const diagnostic = canaryFailure(marker, error?.code, error?.message);
     refusal(`canary-${diagnostic.phase}-${diagnostic.stopReason}`);
   }
-  invocationBoundary({ deadline: ABSOLUTE_CUTOFF, sliceMs: 1 });
+  invocationBoundary({ deadline: state.deadline, sliceMs: 1 });
   const receipt = JSON.parse(await readFile(join(output, 'private', 'startup-canary.json'), 'utf8'));
   assertSourcePair({ service: 'doctorcre-app', environment: 'staging', source_commit: receipt.app,
     carr_source_commit: receipt.carr }, binding);
@@ -419,15 +459,26 @@ export async function canaryLimits(duration) {
     runTimeoutMs: duration, testTimeoutMs: duration };
 }
 
-export function canaryFailure(marker, reason) {
+export function canaryFailure(marker, reason, detail = '') {
+  const safeWorkerCauses = new Set(['canary-shell-navigation-missing', 'canary-shell-document-status',
+    'canary-shell-url-invalid', 'canary-shell-script-failed', 'canary-shell-main-count',
+    'staging-fixture-candidate-refused', 'staging-fixture-rpc-unresolved',
+    'staging-fixture-stage-prerequisite', 'staging-fixture-taxonomy-prerequisite',
+    'staging-fixture-category-prerequisite']);
+  const match = reason === 'worker-exit-1' && /^Staging run stopped: worker-exit-1 \(cause=(canary-shell-(?:navigation-missing|document-status|url-invalid|script-failed|main-count)|staging-fixture-(?:candidate-refused|rpc-unresolved|stage-prerequisite|taxonomy-prerequisite|category-prerequisite))(?:; location=[A-Za-z0-9._/-]+:\d+:\d+)?\)$/.exec(detail);
+  const diagnostic = match && safeWorkerCauses.has(match[1]) ? match[1] : reason;
   const closed = new Set(['worker-exit-1', 'stop-signal', 'whole-run-deadline', 'http-request-limit',
     'http-admission-timeout', 'http-timeout', 'artifact-byte-limit', 'process-cleanup-unverified',
     'process-inspection-unavailable', 'run-ledger-invalid', 'run-ledger-busy', 'source-pair-mismatch',
-    'source-pair-readback-refused', 'checkout-mismatch', 'checkout-source-changed']);
+    'source-pair-readback-refused', 'checkout-mismatch', 'checkout-source-changed',
+    'canary-shell-navigation-missing', 'canary-shell-document-status', 'canary-shell-url-invalid',
+    'canary-shell-script-failed', 'canary-shell-main-count', 'staging-fixture-candidate-refused',
+    'staging-fixture-rpc-unresolved', 'staging-fixture-stage-prerequisite',
+    'staging-fixture-taxonomy-prerequisite', 'staging-fixture-category-prerequisite']);
   const phase = marker?.schema === 'doctorcre-staging-canary-phase.v1' && canaryPhases.has(marker.phase)
     ? marker.phase : marker?.schema === 'doctorcre-staging-startup-canary.v1' &&
       marker.status === 'AUTHENTICATED_READ_ONLY_CANARY' && marker.acceptedV1 === false ? 'cleanup' : 'startup';
-  return { phase, stopReason: closed.has(reason) ? reason : 'worker-failed' };
+  return { phase, stopReason: closed.has(diagnostic) ? diagnostic : 'worker-failed' };
 }
 
 function sessionSecretPath(environment) {
@@ -719,7 +770,7 @@ export async function boundedInvocation(options, dependencies = {}) {
   if (!Number.isSafeInteger(slot) || slot < 1 || slot > 4 || typeof secret !== 'string' || Buffer.byteLength(secret) < 32 ||
       typeof runId !== 'string' || !/^[a-zA-Z0-9_-]{8,80}$/.test(runId) || !runId.endsWith('_' + binding.checkout) ||
       !Number.isSafeInteger(startedAt) || !Number.isSafeInteger(deadline) || startedAt > now() ||
-      deadline <= startedAt || deadline - startedAt > RUN_LIMITS.runTimeoutMs || deadline > ABSOLUTE_CUTOFF)
+      deadline <= startedAt || deadline - startedAt > RUN_LIMITS.runTimeoutMs)
     refusal('invocation-binding-invalid');
   const limits = { ...RUN_LIMITS, runTimeoutMs: deadline - startedAt, batchGoals: 1 };
   // Stop before the existing per-test ceiling; a test timeout is a failure,
@@ -965,6 +1016,7 @@ export async function runBusinessPhase({ binding, run, environment = process.env
       assertSourcePair(actual, binding);
       return actual;
     } });
+  let primaryError;
   try {
     const page = await factory.freshPage({ target, screen, release, fixtureGuard,
       path: `/deals?deal=${encodeURIComponent(deal)}` });
@@ -1076,19 +1128,39 @@ export async function runBusinessPhase({ binding, run, environment = process.env
       full_v1_qualified: false, unqualified_journeys: businessContract.unqualified_journeys };
     await retainJourneyQualification({ run, binding, release, result: measured });
     return measured;
+  } catch (error) {
+    primaryError = error;
+    throw error;
   } finally {
-    try { await factory.dispose(); }
-    finally { removeStop(); await browser.close(); }
+    await cleanupPreservingPrimary(primaryError, async () => {
+      let cleanupError;
+      try { await factory.dispose(); } catch (error) { cleanupError = error; }
+      try { removeStop(); await browser.close(); } catch (error) { cleanupError ||= error; }
+      if (cleanupError) throw cleanupError;
+    });
   }
 }
 
 async function phaseWorker(environment, phase) {
   const { currentRun } = await import('./run-limits.mjs');
+  const binding = bindings(environment), run = currentRun();
+  if (phase === 'journeys') {
+    let result;
+    try { result = await (await import('./selected-journeys.mjs')).runSelectedJourneys({ binding, run, environment }); }
+    catch (error) {
+      const cleanup = cleanupFailureCode(error);
+      if (cleanup) console.error(`Staging cleanup stopped: ${cleanup}.`);
+      const code = businessWorkerFailureCode(error) || (error?.code && businessFailureCodes.has(error.code)
+        ? error.code : error?.constructor?.name === 'RunLimitError' ? error.code : 'selected-journey-setup-failed');
+      throw Object.assign(new Error(`Staging continuation refused: ${code}`), { code });
+    }
+    console.log(`Selected staging journeys completed: ${result.completed.join(', ')}; action proofs=${result.action_proofs}; full V1 qualification=false`);
+    return result;
+  }
   const { stagingSession } = await import('./session.mjs');
   const { writeReport } = await import('./report.mjs');
   const { createSweepRun } = await import('./resume.mjs');
   const { targets, screens } = await import('./screens.mjs');
-  const binding = bindings(environment), run = currentRun();
   const { release } = await stagingSession(contract.origin, { run });
   assertSourcePair(release, binding);
   if (await absent(join(run.root, 'controls.json'))) {
@@ -1100,6 +1172,8 @@ async function phaseWorker(environment, phase) {
   if (phase === 'business') {
     try { await runBusinessPhase({ binding, run, environment }); }
     catch (error) {
+      const cleanup = cleanupFailureCode(error);
+      if (cleanup) console.error(`Staging cleanup stopped: ${cleanup}.`);
       const cause = businessWorkerFailureCode(error);
       if (cause) refusal(cause);
       throw error;
@@ -1343,9 +1417,10 @@ async function main(environment = process.env, command = process.argv[2]) {
     if (!['canary', 'full'].includes(environment.E2E_MODE))
       refusal('workflow-replay-refused');
     if (environment.E2E_MODE === 'full') assertFirstWorkflowAttempt(environment);
+    const { RUN_LIMITS } = await import('./run-limits.mjs');
     const startedAt = Date.now();
-    const deadline = invocationBoundary({ now: startedAt, deadline: startedAt + 20 * 60 * 60 * 1000,
-      sliceMs: 20 * 60 * 60 * 1000 });
+    const deadline = invocationBoundary({ now: startedAt, deadline: startedAt + RUN_LIMITS.runTimeoutMs,
+      sliceMs: RUN_LIMITS.runTimeoutMs });
     return { started_at: String(startedAt), deadline: String(deadline) };
   }
   refusal('unknown-command');
@@ -1375,6 +1450,11 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
       'process-cleanup-unverified', 'process-inspection-unavailable', 'run-ledger-invalid', 'run-ledger-busy',
       'worker-exit-1', 'continuation-binding-mismatch', 'continuation-auth-failed', 'continuation-write-coverage-incomplete',
       'continuation-budget-unsettled', 'continuation-size-limit', 'continuation-path-refused', 'write-coverage-incomplete',
+      'canary-shell-navigation-missing', 'canary-shell-document-status', 'canary-shell-url-invalid',
+      'canary-shell-script-failed', 'canary-shell-main-count', 'staging-fixture-candidate-refused',
+      'staging-fixture-rpc-unresolved', 'staging-fixture-stage-prerequisite',
+      'staging-fixture-taxonomy-prerequisite', 'staging-fixture-category-prerequisite',
+      'selected-journey-setup-failed', 'selected-journey-w4-failed', 'selected-journey-w9-failed',
       ...businessFailureCodes]);
     const code = ownFailures.has(error) || closed.has(error?.code) ? error.code : 'source-check-failed';
     console.error(`Staging continuation stopped: ${code}; no full V1 acceptance is established.`);
