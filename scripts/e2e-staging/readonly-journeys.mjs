@@ -1,8 +1,10 @@
 import contract from '../../contracts/e2e-staging-readonly-journeys.v1.json' with { type: 'json' };
+import { createHash } from 'node:crypto';
 import { requireSupervisedRun } from './run-limits.mjs';
 import { STAGING_ORIGIN } from './session.mjs';
 import { stagingAuth } from './auth-contract.mjs';
 import { assertStagingContextCoverage } from './engine.mjs';
+import { qualifySessionJourney } from './session-journey.mjs';
 
 const commit = value => typeof value === 'string' && /^[0-9a-f]{40}$/.test(value);
 const uuid = value => typeof value === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
@@ -10,7 +12,7 @@ const pending = (journey, reason) => ({ journey, state: 'pending', reason });
 
 // This function is serialized into the guarded page. Its only network path is
 // same-origin fetch, so installStagingGuard remains the sole HTTP policy/meter.
-async function browserRead({ task, dealId, partyId, clientId, clientNameDigest, dealNameDigest, contract: spec }) {
+async function browserRead({ task, dealId, partyId, clientId, partyNameDigest, dealNameDigest, dealNameDigestExpected, evidenceEdgeId, evidenceDetailDigest, referralMetrics, territory, contract: spec }) {
   const textDigest = async value => {
     const bytes = new TextEncoder().encode(value || '');
     const digest = await crypto.subtle.digest('SHA-256', bytes);
@@ -45,21 +47,25 @@ async function browserRead({ task, dealId, partyId, clientId, clientNameDigest, 
     };
   }
   if (task === 'attention') {
-    const [board, triage] = await Promise.all([
-      rpc(spec.journeys.W2.board_tool, { workspace: 'all' }),
-      rpc('today-triage'),
-    ]);
+    const board = await rpc(spec.journeys.W2.board_tool, { workspace: 'all' });
     const deal = Array.isArray(board?.deals) ? board.deals.find(row => row?.id === dealId) : null;
     return {
       board_actor_matches: board?.actor === spec.authentication.actor_slug,
       owned_attention: Boolean(deal && deal.owner === spec.authentication.actor_slug && deal.attention === true),
-      triage_shape_valid: Array.isArray(triage?.items),
+      plan_name_matches: Boolean(deal && await textDigest(deal.name) === dealNameDigestExpected),
     };
   }
-  if (task === 'attention-ui') {
-    const hasDeal = selector => [...(document.querySelector(selector)?.querySelectorAll('[data-layout-deal]') || [])]
-      .some(row => row.getAttribute('data-layout-deal') === dealId);
-    return { working: hasDeal(spec.journeys.W2.working_selector), today: hasDeal(spec.journeys.W2.today_selector) };
+  if (task === 'home-scope') {
+    const buttons = [...document.querySelectorAll(spec.journeys.W2.scope_selector)];
+    const selected = buttons.filter(button => button.getAttribute('aria-pressed') === 'true');
+    const flags = [...document.querySelectorAll(spec.journeys.W2.flags_selector)];
+    const owned = flags.filter(flag => flag.getAttribute('data-home-key') === `${spec.journeys.W2.flag_key_prefix}${dealId}`);
+    return {
+      scope: selected.length === 1 ? selected[0].getAttribute('data-scope') : null,
+      flag_count: flags.length,
+      owned_flag: owned.length === 1 && owned[0].getClientRects().length > 0 && owned[0].checkVisibility(),
+      owned_name_matches: owned.length === 1 && await textDigest(owned[0].querySelector('strong')?.textContent) === dealNameDigestExpected,
+    };
   }
   if (task === 'detail') {
     const value = await rpc(spec.journeys.W2.detail_tool, { deal: dealId });
@@ -74,20 +80,53 @@ async function browserRead({ task, dealId, partyId, clientId, clientNameDigest, 
     const now = Date.now(), observed = Date.parse(network?.observed_at), valid = Date.parse(network?.valid_until);
     const snapshot = network?.schema === 'carr-relationship-network.v1' && Number.isFinite(observed) && Number.isFinite(valid)
       && observed <= now && valid > now && valid > observed && now - observed <= 60_000 && valid - observed <= 61_000
-      && Array.isArray(network.nodes) && Array.isArray(network.edges);
-    if (!snapshot) return { snapshot: false, nodes: false, edge: false, client_ui: false, deal_ui: false };
+      && Array.isArray(network.nodes) && Array.isArray(network.edges)
+      && Array.isArray(network.referrals) && Array.isArray(network.suggestions);
+    if (!snapshot) return { snapshot: false, nodes: false, edge: false, evidence: false, referrals: false, territory: false,
+      client_ui: false, deal_ui: false };
     const clientNodeId = `party:${partyId}`, dealNodeId = `deal:${dealId}`;
     const clients = network.nodes.filter(node => node?.id === clientNodeId);
     const deals = network.nodes.filter(node => node?.id === dealNodeId);
     const edges = network.edges.filter(edge => edge?.id === `client-deal:${dealId}`);
     if (clients.length !== 1 || deals.length !== 1 || clients[0]?.record_id !== clientId || clients[0]?.kind !== 'client'
       || deals[0]?.record_id !== dealId || deals[0]?.kind !== 'deal')
-      return { snapshot: true, nodes: false, edge: false, client_ui: false, deal_ui: false };
+      return { snapshot: true, nodes: false, edge: false, evidence: false, referrals: false, territory: false,
+        validUntil: network.valid_until, client_ui: false, deal_ui: false };
     if (edges.length !== 1 || edges[0]?.from !== clientNodeId || edges[0]?.to !== dealNodeId
       || edges[0]?.kind !== 'client_deal' || edges[0]?.via !== null)
-      return { snapshot: true, nodes: true, edge: false, client_ui: false, deal_ui: false };
-    return { snapshot: true, nodes: true, edge: true, clientNameDigest: await textDigest(clients[0].name),
-      dealNameDigest: await textDigest(deals[0].name), validUntil: network.valid_until };
+      return { snapshot: true, nodes: true, edge: false, evidence: false, referrals: false, territory: false,
+        validUntil: network.valid_until, client_ui: false, deal_ui: false };
+    const evidence = network.edges.filter(edge => edge?.id === `evidence:${partyId}:${dealId}:referred`
+      && edge.from === clientNodeId && edge.to === dealNodeId && edge.via === null
+      && edge.kind === 'referred' && typeof edge.detail === 'string' && edge.detail.trim().length > 0);
+    const referralRows = network.referrals.filter(row => row?.node_id === clientNodeId);
+    const referral = referralRows.length === 1 ? referralRows[0] : null;
+    const partyNode = clients[0];
+    const otherTerritoryReferrals = network.referrals.filter(row => {
+      const node = network.nodes.find(value => value?.id === row?.node_id);
+      return node && typeof partyNode.territory === 'string' && partyNode.territory.length > 0
+        && node.territory !== partyNode.territory;
+    }).length;
+    const sameTerritoryReferrals = network.referrals.filter(row => {
+      const node = network.nodes.find(value => value?.id === row?.node_id);
+      return node && typeof partyNode.territory === 'string' && partyNode.territory.length > 0
+        && node.territory === partyNode.territory;
+    }).length;
+    const referralValid = Boolean(referral && Number.isSafeInteger(referral.deals) && referral.deals > 0
+      && Number.isSafeInteger(referral.won) && Number.isSafeInteger(referral.lost)
+      && referral.won + referral.lost <= referral.deals
+      && referral.win_rate === (referral.won + referral.lost ? referral.won / (referral.won + referral.lost) : null));
+    return { snapshot: true, nodes: true, edge: true,
+      clientNodeNameMatches: await textDigest(clients[0].name) === partyNameDigest,
+      dealNameDigest: await textDigest(deals[0].name), dealNameMatches: await textDigest(deals[0].name) === dealNameDigestExpected,
+      clientDealEdgeId: edges[0].id,
+      evidence: evidence.length === 1,
+      evidenceEdgeId: evidence.length === 1 ? evidence[0].id : null,
+      evidenceDetailDigest: evidence.length === 1 ? await textDigest(evidence[0].detail) : null,
+      referrals: referralValid,
+      referralMetrics: referralValid ? { deals: referral.deals, won: referral.won, lost: referral.lost, win_rate: referral.win_rate } : null,
+      territory: typeof partyNode.territory === 'string' ? partyNode.territory : null,
+      totalReferralCount: network.referrals.length, sameTerritoryReferrals, otherTerritoryReferrals, validUntil: network.valid_until };
   }
   if (task === 'relationship-open-client') {
     const clientNodeId = `party:${partyId}`;
@@ -96,23 +135,66 @@ async function browserRead({ task, dealId, partyId, clientId, clientNameDigest, 
     const clientCard = targets.find(node => node.matches('.relationship-node')) || targets[0];
     if (!clientCard || typeof clientCard.click !== 'function') return { client_ui: false, deal_ui: false };
     clientCard.click();
-    return { client_ui: await textDigest(document.querySelector('.relationship-dialog')?.querySelector('#relationshipTitle')?.textContent) === clientNameDigest };
+    return { client_ui: await textDigest(document.querySelector('.relationship-dialog')?.querySelector('#relationshipTitle')?.textContent) === partyNameDigest };
   }
   if (task === 'relationship-open-deal') {
     const dealNodeId = `deal:${dealId}`;
     const dialog = document.querySelector('.relationship-dialog');
     const connection = [...(dialog?.querySelectorAll('[data-open-node]') || [])]
-      .filter(button => button.getAttribute('data-open-node') === dealNodeId
+      .filter(button => button.getAttribute('data-card-key') === `client-deal:${dealId}`
+        && button.getAttribute('data-open-node') === dealNodeId
         && button.getClientRects().length > 0 && button.checkVisibility());
     if (connection.length !== 1) return { deal_ui: false };
     connection[0].click();
     return { deal_ui: await textDigest(dialog?.querySelector('#relationshipTitle')?.textContent) === dealNameDigest };
   }
   if (task === 'theme') {
+    const freshness = document.querySelector(spec.journeys.W1.freshness_selector);
+    const syncAt = Date.parse(freshness?.dateTime || freshness?.getAttribute('datetime') || '');
+    const freshnessCurrent = /^\d{1,2}:\d{2} (AM|PM)$/.test(freshness?.textContent?.trim() || '')
+      && Number.isFinite(syncAt) && syncAt <= Date.now() + 5_000
+      && Date.now() - syncAt <= spec.journeys.W1.freshness_max_age_ms;
     return {
       actor_avatar: document.querySelector(spec.journeys.W1.avatar_selector)?.getAttribute('aria-label') === "Joe: account and settings"
         && document.querySelector(spec.journeys.W1.avatar_selector)?.textContent?.trim() === 'J',
       theme: document.documentElement.getAttribute('data-theme'),
+      freshness: freshnessCurrent,
+    };
+  }
+  if (task === 'relationship-ui') {
+    const clientNodeId = `party:${partyId}`;
+    const dealNodeId = `deal:${dealId}`;
+    const dialog = document.querySelector('.relationship-dialog');
+    const selectedClient = dialog?.querySelector('#relationshipTitle');
+    const evidenceEntry = evidenceEdgeId && dialog?.querySelector(`details[data-entry="${evidenceEdgeId}"]`);
+    const evidenceText = evidenceEntry?.querySelector('p')?.textContent;
+    const metrics = dialog?.querySelector('.relationship-metrics');
+    const metricBoxes = [...(metrics?.querySelectorAll('div') || [])];
+    const metricMatches = metricBoxes.length === 2 &&
+      metricBoxes[0].querySelector('strong')?.textContent === String(referralMetrics?.deals) &&
+      metricBoxes[0].querySelector('span')?.textContent === 'Deals sent' &&
+      metricBoxes[1].querySelector('strong')?.textContent === (referralMetrics?.win_rate === null ? '—' : `${Math.round(referralMetrics?.win_rate * 100)}%`) &&
+      metricBoxes[1].querySelector('span')?.textContent === `Win rate · ${referralMetrics?.won} won / ${referralMetrics?.won + referralMetrics?.lost} resolved`;
+    const referralCards = [...document.querySelectorAll('#networkReferrals .relationship-referral')];
+    const targetCards = referralCards.filter(card => card.getAttribute('data-node') === clientNodeId);
+    const targetCard = targetCards.length === 1 ? targetCards[0] : null;
+    const cardWinRate = targetCard?.querySelector('.referral-rate')?.textContent;
+    const cardDetails = targetCard?.querySelector('small')?.textContent?.replace(/\s+/g, ' ').trim();
+    const territoryFilter = document.querySelector(spec.journeys.W14.territory_selector);
+    return {
+      client_title: Boolean(selectedClient && await textDigest(selectedClient.textContent) === partyNameDigest),
+      evidence_entry: Boolean(evidenceEntry?.open && await textDigest(evidenceText) === evidenceDetailDigest),
+      dialog_metrics: metricMatches,
+      referral_tab_selected: document.querySelector(spec.journeys.W14.referrals_tab_selector)?.getAttribute('aria-selected') === 'true',
+      referral_card: Boolean(targetCard && await textDigest(targetCard.querySelector('strong')?.textContent) === partyNameDigest
+        && targetCard.querySelector('b')?.textContent === String(referralMetrics?.deals)
+        && cardWinRate === (referralMetrics?.win_rate === null ? '—' : `${Math.round(referralMetrics?.win_rate * 100)}% win rate`)
+        && cardDetails === `${referralMetrics?.won} won · ${referralMetrics?.lost} lost · ${referralMetrics?.deals - referralMetrics?.won - referralMetrics?.lost} open`),
+      referral_count: referralCards.length,
+      territory_value: territoryFilter?.value || '',
+      party_node_visible: [...document.querySelectorAll(`[data-node="${clientNodeId}"]`)]
+        .some(node => node.getClientRects().length > 0 && node.checkVisibility()),
+      deal_node_id_matches: dealNodeId === `deal:${dealId}`,
     };
   }
   return null;
@@ -146,47 +228,78 @@ async function waitForPageState(page, predicate, arg, run) {
   run.check();
 }
 
-const accountAndThemeReady = ({ avatarSelector, themeSelector }) => {
+const accountAndThemeReady = ({ avatarSelector, themeSelector, freshnessMaxAgeMs }) => {
   const avatar = document.querySelector(avatarSelector);
   const themes = [...document.querySelectorAll(themeSelector)];
+  const freshness = document.querySelector('#appSyncTime');
+  const syncedAt = Date.parse(freshness?.dateTime || freshness?.getAttribute('datetime') || '');
   const visible = element => element && element.getClientRects().length > 0 && element.checkVisibility() && !element.disabled;
   return avatar?.getAttribute('aria-label') === 'Joe: account and settings' && avatar.textContent?.trim() === 'J'
-    && visible(avatar) && themes.length === 1 && visible(themes[0]);
+    && visible(avatar) && themes.length === 1 && visible(themes[0]) && visible(freshness)
+    && /^\d{1,2}:\d{2} (AM|PM)$/.test(freshness?.textContent?.trim() || '')
+    && Number.isFinite(syncedAt) && syncedAt <= Date.now() + 5_000
+    && Date.now() - syncedAt <= freshnessMaxAgeMs;
 };
 
-const ownedAttentionRowsReady = ({ dealId, workingSelector, todaySelector }) => {
-  const visibleOwnedRow = selector => {
-    const panel = document.querySelector(selector);
-    return [...(panel?.querySelectorAll('[data-layout-deal]') || [])]
-      .some(row => row.getAttribute('data-layout-deal') === dealId && row.getClientRects().length > 0 && row.checkVisibility());
-  };
-  return visibleOwnedRow(workingSelector) && visibleOwnedRow(todaySelector);
+const ownedHomeScopeReady = ({ dealId, scopeSelector, flagsSelector, scope }) => {
+  const panel = document.querySelector('#dealAttention');
+  const buttons = [...document.querySelectorAll(scopeSelector)];
+  const selected = buttons.filter(button => button.getAttribute('aria-pressed') === 'true');
+  const flags = [...document.querySelectorAll(flagsSelector)];
+  return panel?.getAttribute('aria-busy') === 'false' && buttons.length === 2 && selected.length === 1
+    && selected[0].getAttribute('data-scope') === scope
+    && flags.some(flag => flag.getAttribute('data-home-key') === `deal:${dealId}`
+      && flag.getClientRects().length > 0 && flag.checkVisibility());
 };
 
-const ownedRelationshipNodeReady = ({ nodeId }) => [...document.querySelectorAll('[data-node]')]
-  .some(node => node.getAttribute('data-node') === nodeId && node.getClientRects().length > 0 && node.checkVisibility());
+const ownedRelationshipPageReady = ({ nodeId }) => {
+  const updated = document.querySelector('#networkUpdated')?.textContent?.trim();
+  return Boolean(updated && updated !== 'Updating…' && [...document.querySelectorAll('[data-node]')]
+    .some(node => node.getAttribute('data-node') === nodeId && node.getClientRects().length > 0 && node.checkVisibility()));
+};
 
 const ownedRelationshipConnectionReady = ({ dealId }) => {
   const dialog = document.querySelector('.relationship-dialog');
   return [...(dialog?.querySelectorAll('[data-open-node]') || [])]
-    .some(button => button.getAttribute('data-open-node') === `deal:${dealId}`
+    .some(button => button.getAttribute('data-card-key') === `client-deal:${dealId}`
+      && button.getAttribute('data-open-node') === `deal:${dealId}`
       && button.getClientRects().length > 0 && button.checkVisibility());
 };
 
-function safePlan(plan, release) {
+const ownedReferralCardReady = ({ partyId }) => [...document.querySelectorAll('#networkReferrals .relationship-referral')]
+  .some(card => card.getAttribute('data-node') === `party:${partyId}`
+    && card.getClientRects().length > 0 && card.checkVisibility());
+
+const ownedTerritoryViewReady = ({ partyId, territory }) => document.querySelector('#networkTerritory')?.value === territory
+  && ownedReferralCardReady({ partyId });
+
+const ownedTerritoryResetReady = ({ partyId }) => document.querySelector('#networkTerritory')?.value === ''
+  && document.querySelector('#networkSearch')?.value === '' && document.querySelector('#networkVertical')?.value === ''
+  && ownedReferralCardReady({ partyId });
+
+const sha256 = value => createHash('sha256').update(String(value ?? ''), 'utf8').digest('hex');
+
+function planOwnershipGap(plan, release) {
   const partyId = plan?.records?.party?.id, clientId = plan?.records?.client?.id;
   const dealId = plan?.records?.deal?.id;
-  return plan?.schema === 'doctorcre-staging-records-plan.v1' && plan.origin === STAGING_ORIGIN
-    && plan.state === 'complete' && plan.inflight === null && uuid(plan.run)
-    && uuid(partyId) && uuid(clientId)
-    && plan.receipts?.party?.party_id === partyId && plan.receipts?.client?.client_id === clientId
-    && uuid(dealId) && plan.receipts?.deal?.deal_id === dealId
-    && plan.release?.source_commit === release.source_commit
-    && plan.release?.carr_source_commit === release.carr_source_commit;
+  if (plan?.schema !== 'doctorcre-staging-records-plan.v1' || plan.origin !== STAGING_ORIGIN ||
+      plan.state !== 'complete' || plan.inflight !== null || !uuid(plan.run) ||
+      plan.release?.source_commit !== release.source_commit ||
+      plan.release?.carr_source_commit !== release.carr_source_commit)
+    return 'fixture-provenance-unavailable';
+  if (!uuid(partyId) || typeof plan.records.party.name !== 'string' || !plan.records.party.name)
+    return 'owned-plan-party-unavailable';
+  if (plan.receipts?.party?.party_id !== partyId) return 'owned-plan-party-receipt-unavailable';
+  if (!uuid(clientId) || plan.receipts?.client?.client_id !== clientId)
+    return 'owned-plan-client-receipt-unavailable';
+  if (!uuid(dealId) || typeof plan.records.deal.name !== 'string' || !plan.records.deal.name ||
+      plan.receipts?.deal?.deal_id !== dealId)
+    return 'owned-plan-deal-receipt-unavailable';
+  return null;
 }
 
 function safeRelationshipPlan(plan, release) {
-  return safePlan(plan, release)
+  return !planOwnershipGap(plan, release)
     ? { partyId: plan.records.party.id, clientId: plan.records.client.id, dealId: plan.records.deal.id } : null;
 }
 
@@ -206,7 +319,7 @@ export async function runReadonlyJourneys({ page, release, plan, run } = {}) {
   let moduleReads = 0, httpGets = 0, mcpReads = 0;
   const evaluate = async (task, args = {}) => {
     run.check();
-    const cost = task === 'identity' ? [3, 0] : task === 'relationship' ? [2, 0] : task === 'attention' ? [0, 2] : task === 'detail' ? [0, 1] : [0, 0];
+    const cost = task === 'identity' ? [3, 0] : task === 'relationship' ? [1, 0] : task === 'attention' ? [0, 1] : task === 'detail' ? [0, 1] : [0, 0];
     if (moduleReads + cost[0] + cost[1] > contract.limits.module_api_reads_max ||
         httpGets + cost[0] > contract.limits.http_gets_max || mcpReads + cost[1] > contract.limits.mcp_reads_max)
       throw new Error('Read-only journey read cap refused');
@@ -218,7 +331,8 @@ export async function runReadonlyJourneys({ page, release, plan, run } = {}) {
   const identity = await evaluate('identity');
   const sessionMatches = stagingAuth.session.matches({ actor: { slug: identity?.session?.actor_slug }, e2e_principal: identity?.session?.e2e_principal });
   const sourceMatches = identity?.release?.service === contract.app.service && identity.release.environment === contract.app.environment
-    && identity.release.source_commit === release.source_commit && identity.release.carr_source_commit === contract.producer.source_commit;
+    && identity.release.source_commit === release.source_commit &&
+    (identity.release.carr_source_commit === undefined || identity.release.carr_source_commit === contract.producer.source_commit);
   const identityQualified = sourceMatches && sessionMatches && identity?.actor_slug === contract.authentication.actor_slug;
   if (!identityQualified) {
     results.push(pending('W1', 'authenticated-source-pair-unavailable'));
@@ -227,73 +341,92 @@ export async function runReadonlyJourneys({ page, release, plan, run } = {}) {
     try {
       await waitForPageState(page, accountAndThemeReady, {
         avatarSelector: contract.journeys.W1.avatar_selector, themeSelector: contract.journeys.W1.theme_selector,
+        freshnessMaxAgeMs: contract.journeys.W1.freshness_max_age_ms,
       }, run);
       const before = await evaluate('theme');
       const themeControl = page.locator(contract.journeys.W1.theme_selector);
-      if (before?.actor_avatar && ['dark', 'light'].includes(before.theme) && await themeControl.count() === 1) {
+      if (before?.actor_avatar && before?.freshness === true && ['dark', 'light'].includes(before.theme) && await themeControl.count() === 1) {
         await themeControl.click({ timeout: runTimeoutMs(run) });
         const changed = await evaluate('theme');
-        if (changed?.theme !== before.theme && ['dark', 'light'].includes(changed?.theme)) {
+        if (changed?.theme !== before.theme && changed?.freshness === true && ['dark', 'light'].includes(changed?.theme)) {
           run.check();
           await page.reload({ waitUntil: 'domcontentloaded', timeout: runTimeoutMs(run) });
           await waitForPageState(page, accountAndThemeReady, {
             avatarSelector: contract.journeys.W1.avatar_selector, themeSelector: contract.journeys.W1.theme_selector,
+            freshnessMaxAgeMs: contract.journeys.W1.freshness_max_age_ms,
           }, run);
           const after = await evaluate('theme');
-          themePersisted = after?.actor_avatar === true && after.theme === changed.theme;
+          themePersisted = after?.actor_avatar === true && after.freshness === true && after.theme === changed.theme;
         }
       }
     } catch { run.check(); }
-    results.push(themePersisted
-      ? { journey: 'W1', state: 'qualified-slice', reason: 'authenticated-avatar-and-theme-persisted', avatar: true, theme_persisted: true,
-        pending: ['signout-post'] }
-      : pending('W1', 'avatar-or-theme-persistence-unproved'));
+    const lifecycle = themePersisted && page.context().browser?.()?.newContext
+      ? await qualifySessionJourney({ parentPage: page, release, run }) : null;
+    const lifecycleQualified = themePersisted && lifecycle?.state === 'qualified';
+    results.push(lifecycleQualified
+      ? { journey: 'W1', state: 'qualified-slice', reason: 'fresh-shell-and-isolated-session-lifecycle-proved' }
+      : pending('W1', !themePersisted ? 'avatar-freshness-or-theme-persistence-unproved'
+        : lifecycle?.reason || contract.journeys.W1.pending_reason));
+    Object.assign(results.at(-1), { avatar: identity?.actor_slug === contract.authentication.actor_slug,
+      freshness_theme_controls_after_reload: themePersisted, isolated_sign_in_sign_out: lifecycleQualified,
+      old_session_rejected: lifecycle?.old_session_rejected === true,
+      parent_session_retained: lifecycle?.parent_session_retained === true,
+      signed_out_ui: lifecycle?.signed_out_ui === true });
   }
 
-  const ownedDeal = safePlan(plan, release) && uuid(plan.records?.deal?.id) ? plan.records.deal.id : null;
+  const ownershipGap = planOwnershipGap(plan, release);
+  const ownedDeal = !ownershipGap ? plan.records.deal.id : null;
   if (!identityQualified) {
     results.push(pending('W2', 'authenticated-source-pair-unavailable'));
   } else if (!ownedDeal) {
-    results.push(pending('W2', 'owned-plan-deal-unavailable'));
+    results.push(pending('W2', ownershipGap));
   } else {
-    const attention = await evaluate('attention', { dealId: ownedDeal });
+    const expectedDealNameDigest = sha256(plan.records.deal.name);
+    const attention = await evaluate('attention', { dealId: ownedDeal, dealNameDigestExpected: expectedDealNameDigest });
     if (attention?.board_actor_matches !== true) {
       results.push(pending('W2', 'fresh-board-actor-mismatch'));
     } else if (attention?.owned_attention !== true) {
       results.push(pending('W2', contract.journeys.W2.pending_reason));
-    } else if (attention?.triage_shape_valid !== true) {
-      results.push(pending('W2', 'fresh-today-triage-unavailable'));
+    } else if (attention?.plan_name_matches !== true) {
+      results.push(pending('W2', 'owned-plan-deal-name-readback-unproved'));
     } else {
-      let ui = null;
+      let home = null, teamBefore = null, mine = null, teamAfter = null;
       try {
-        await waitForPageState(page, ownedAttentionRowsReady, {
-          dealId: ownedDeal, workingSelector: contract.journeys.W2.working_selector,
-          todaySelector: contract.journeys.W2.today_selector,
+        await page.goto(`${STAGING_ORIGIN}${contract.journeys.W2.route}`, { waitUntil: 'domcontentloaded', timeout: runTimeoutMs(run) });
+        await page.waitForURL(url => url.origin === STAGING_ORIGIN && url.pathname === contract.journeys.W2.route,
+          { timeout: runTimeoutMs(run) });
+        const homeReady = scope => waitForPageState(page, ownedHomeScopeReady, {
+          dealId: ownedDeal, scopeSelector: contract.journeys.W2.scope_selector,
+          flagsSelector: contract.journeys.W2.flags_selector, scope,
         }, run);
-        ui = await evaluate('attention-ui', { dealId: ownedDeal });
+        await homeReady('team');
+        teamBefore = await evaluate('home-scope', { dealId: ownedDeal, dealNameDigestExpected: expectedDealNameDigest });
+        await page.locator(`${contract.journeys.W2.scope_selector}[data-scope="mine"]`).click({ timeout: runTimeoutMs(run) });
+        await homeReady('mine');
+        mine = await evaluate('home-scope', { dealId: ownedDeal, dealNameDigestExpected: expectedDealNameDigest });
+        await page.locator(`${contract.journeys.W2.scope_selector}[data-scope="team"]`).click({ timeout: runTimeoutMs(run) });
+        await homeReady('team');
+        teamAfter = await evaluate('home-scope', { dealId: ownedDeal, dealNameDigestExpected: expectedDealNameDigest });
+        const scopeWorked = teamBefore?.scope === 'team' && mine?.scope === 'mine' && teamAfter?.scope === 'team'
+          && teamBefore?.owned_flag === true && mine?.owned_flag === true && teamAfter?.owned_flag === true
+          && [teamBefore, mine, teamAfter].every(value => value?.owned_name_matches === true)
+          && teamBefore?.flag_count > mine?.flag_count && teamAfter?.flag_count === teamBefore?.flag_count;
+        if (!scopeWorked) throw new Error('Home scope result set or reset was not independently observed');
+        const flagSelector = `${contract.journeys.W2.flags_selector}[data-home-key="${contract.journeys.W2.flag_key_prefix}${ownedDeal}"]`;
+        const row = page.locator(flagSelector);
+        if (await row.count() !== 1) throw new Error('Owned Home flag was not unique');
+        await row.click({ timeout: runTimeoutMs(run) });
+        await page.waitForURL(url => url.origin === STAGING_ORIGIN && url.pathname === '/deals' && url.searchParams.get('deal') === ownedDeal,
+          { timeout: runTimeoutMs(run) });
+        await page.locator('#recordPanel').waitFor({ state: 'visible', timeout: runTimeoutMs(run) });
+        await page.locator('#detailPhase').waitFor({ state: 'visible', timeout: runTimeoutMs(run) });
+        const detail = await evaluate('detail', { dealId: ownedDeal });
+        home = detail?.matches === true;
       } catch { run.check(); }
-      if (ui?.working !== true || ui?.today !== true) {
-        results.push(pending('W2', 'current-attention-panels-do-not-show-owned-deal'));
-      } else {
-        const rowSelector = `${contract.journeys.W2.working_selector} ${contract.journeys.W2.deal_selector}[data-layout-deal="${ownedDeal}"]`;
-        try {
-          const row = page.locator(rowSelector);
-          if (await row.count() !== 1) {
-            results.push(pending('W2', 'owned-deal-attention-row-not-unique'));
-          } else {
-            await row.click({ timeout: runTimeoutMs(run) });
-            await page.waitForURL(url => url.origin === STAGING_ORIGIN && ['/', '/deals'].includes(url.pathname) && url.searchParams.get('deal') === ownedDeal,
-              { timeout: runTimeoutMs(run) });
-            await page.locator('#recordPanel').waitFor({ state: 'visible', timeout: runTimeoutMs(run) });
-            await page.locator('#detailPhase').waitFor({ state: 'visible', timeout: runTimeoutMs(run) });
-            const detail = await evaluate('detail', { dealId: ownedDeal });
-            results.push(detail?.matches === true
-              ? { journey: 'W2', state: 'qualified-slice', reason: 'owned-attention-row-opened-and-detail-readback-matched',
-                working_list: true, today_needs: true, independent_detail_readback: true }
-              : pending('W2', 'independent-deal-detail-readback-unproved'));
-          }
-        } catch { run.check(); results.push(pending('W2', 'owned-attention-detail-interaction-unproved')); }
-      }
+      results.push(home === true
+        ? { journey: 'W2', state: 'qualified-slice', reason: 'owned-home-scope-switch-reset-and-deal-detail-matched',
+          team_scope: true, viewer_scope: true, scope_reset: true, owned_flag: true, independent_detail_readback: true }
+        : pending('W2', 'owned-home-scope-or-deal-detail-interaction-unproved'));
     }
   }
 
@@ -302,41 +435,100 @@ export async function runReadonlyJourneys({ page, release, plan, run } = {}) {
   if (!identityQualified) {
     results.push(pending('W14', 'authenticated-source-pair-unavailable'));
   } else if (!relationshipPlan) {
-    results.push(pending('W14', 'owned-party-client-deal-receipts-unavailable'));
+    results.push(pending('W14', ownershipGap));
   } else {
-    let relationship = null;
+    const partyNameDigest = sha256(plan.records.party.name);
+    const expectedDealNameDigest = sha256(plan.records.deal.name);
+    let relationship = null, originalEntry = false, dialogMetrics = false, referralCard = false;
+    let territoryFiltered = false, territoryReset = false, clientOpened = false, dealOpened = false;
     try {
       run.check();
       await page.goto(`${STAGING_ORIGIN}${contract.journeys.W14.route}`, { waitUntil: 'domcontentloaded', timeout: runTimeoutMs(run) });
       await page.waitForURL(url => url.origin === STAGING_ORIGIN && url.pathname === contract.journeys.W14.route, { timeout: runTimeoutMs(run) });
-      relationship = await evaluate('relationship', relationshipPlan);
-      if (relationship?.snapshot === true && relationship?.nodes === true && relationship?.edge === true) {
-        await waitForPageState(page, ownedRelationshipNodeReady, { nodeId: `party:${relationshipPlan.partyId}` }, run);
+      await waitForPageState(page, ownedRelationshipPageReady, { nodeId: `party:${relationshipPlan.partyId}` }, run);
+      relationship = await evaluate('relationship', { ...relationshipPlan, partyNameDigest,
+        dealNameDigestExpected: expectedDealNameDigest });
+      if (relationship?.snapshot === true && relationship?.nodes === true && relationship?.edge === true
+        && relationship?.clientNodeNameMatches === true && relationship?.dealNameMatches === true) {
         if (Date.parse(relationship.validUntil) <= Date.now()) {
           relationship = { snapshot: false };
         } else {
-          const clientUi = await evaluate('relationship-open-client', { ...relationshipPlan,
-            clientNameDigest: relationship.clientNameDigest });
-          relationship = { ...relationship, ...clientUi };
-          if (clientUi?.client_ui === true) {
+          const openParty = await evaluate('relationship-open-client', { ...relationshipPlan, partyNameDigest });
+          clientOpened = openParty?.client_ui === true;
+          if (clientOpened) {
+            await page.locator('.relationship-dialog').waitFor({ state: 'visible', timeout: runTimeoutMs(run) });
+            const evidenceRow = relationship.evidenceEdgeId
+              ? page.locator(`.relationship-dialog details[data-entry="${relationship.evidenceEdgeId}"] summary`) : null;
+            if (relationship.evidence === true && evidenceRow && await evidenceRow.count() === 1) {
+              await evidenceRow.click({ timeout: runTimeoutMs(run) });
+              const ui = await evaluate('relationship-ui', { ...relationshipPlan, partyNameDigest,
+                evidenceEdgeId: relationship.evidenceEdgeId, evidenceDetailDigest: relationship.evidenceDetailDigest,
+                referralMetrics: relationship.referralMetrics });
+              originalEntry = ui?.client_title === true && ui?.evidence_entry === true;
+              dialogMetrics = ui?.dialog_metrics === true;
+            }
+            await page.locator('.relationship-dialog [data-close-card]').click({ timeout: runTimeoutMs(run) });
+            await page.locator('.relationship-dialog').waitFor({ state: 'hidden', timeout: runTimeoutMs(run) });
+          }
+          await page.locator(contract.journeys.W14.referrals_tab_selector).click({ timeout: runTimeoutMs(run) });
+          await waitForPageState(page, ownedReferralCardReady, { partyId: relationshipPlan.partyId }, run);
+          const referralsUi = await evaluate('relationship-ui', { ...relationshipPlan, partyNameDigest,
+            evidenceEdgeId: relationship.evidenceEdgeId, evidenceDetailDigest: relationship.evidenceDetailDigest,
+            referralMetrics: relationship.referralMetrics });
+          referralCard = relationship.referrals === true && referralsUi?.referral_tab_selected === true
+            && referralsUi?.referral_card === true;
+          const territory = relationship.territory;
+          if (relationship.referrals === true && typeof territory === 'string' && territory.length > 0
+            && relationship.otherTerritoryReferrals > 0 && relationship.sameTerritoryReferrals > 0) {
+            const before = referralsUi?.referral_count;
+            await page.locator(contract.journeys.W14.territory_selector).selectOption(territory, { timeout: runTimeoutMs(run) });
+            await waitForPageState(page, ownedTerritoryViewReady, { partyId: relationshipPlan.partyId, territory }, run);
+            const filtered = await evaluate('relationship-ui', { ...relationshipPlan, partyNameDigest,
+              evidenceEdgeId: relationship.evidenceEdgeId, evidenceDetailDigest: relationship.evidenceDetailDigest,
+              referralMetrics: relationship.referralMetrics });
+            territoryFiltered = filtered?.territory_value === territory
+              && filtered?.referral_card === true
+              && filtered?.referral_count === relationship.sameTerritoryReferrals
+              && filtered.referral_count < before;
+            await page.locator(contract.journeys.W14.reset_selector).click({ timeout: runTimeoutMs(run) });
+            await waitForPageState(page, ownedTerritoryResetReady, { partyId: relationshipPlan.partyId }, run);
+            const reset = await evaluate('relationship-ui', { ...relationshipPlan, partyNameDigest,
+              evidenceEdgeId: relationship.evidenceEdgeId, evidenceDetailDigest: relationship.evidenceDetailDigest,
+              referralMetrics: relationship.referralMetrics });
+            territoryReset = reset?.territory_value === '' && reset?.referral_count === relationship.totalReferralCount
+              && reset?.referral_card === true;
+          }
+          await page.locator('#graphTab').click({ timeout: runTimeoutMs(run) });
+          await waitForPageState(page, ownedRelationshipPageReady, { nodeId: `party:${relationshipPlan.partyId}` }, run);
+          const reopened = await evaluate('relationship-open-client', { ...relationshipPlan, partyNameDigest });
+          clientOpened = clientOpened && reopened?.client_ui === true;
+          if (clientOpened) {
             await waitForPageState(page, ownedRelationshipConnectionReady, { dealId: relationshipPlan.dealId }, run);
-            const dealUi = await evaluate('relationship-open-deal', { dealId: relationshipPlan.dealId,
+            const dealUi = await evaluate('relationship-open-deal', { ...relationshipPlan,
               dealNameDigest: relationship.dealNameDigest });
-            relationship = { ...relationship, ...dealUi };
+            dealOpened = dealUi?.deal_ui === true;
           }
         }
       }
     } catch { run.check(); }
-    results.push(relationship?.snapshot !== true
-      ? pending('W14', 'fresh-relationship-snapshot-unavailable')
-      : relationship?.nodes !== true
-        ? pending('W14', 'owned-relationship-nodes-unavailable')
-        : relationship?.edge !== true
-          ? pending('W14', 'owned-client-deal-edge-unavailable')
-          : relationship?.client_ui !== true || relationship?.deal_ui !== true
-            ? pending('W14', 'owned-relationship-detail-interaction-unproved')
-            : { journey: 'W14', state: 'qualified-slice', reason: 'owned-client-deal-association-and-detail-readback-matched',
-              client_node: true, deal_node: true, association_edge: true, relationship_detail: true });
+    let relationshipReason = relationship?.snapshot !== true || !Number.isFinite(Date.parse(relationship?.validUntil))
+      || Date.parse(relationship.validUntil) <= Date.now() ? 'fresh-relationship-snapshot-unavailable'
+      : relationship?.nodes !== true || relationship?.clientNodeNameMatches === false || relationship?.dealNameMatches === false
+        ? 'owned-relationship-nodes-unavailable'
+        : relationship?.edge !== true ? 'owned-client-deal-edge-unavailable'
+          : relationship?.evidence !== true || originalEntry !== true ? 'owned-party-evidence-entry-unavailable'
+            : relationship?.referrals !== true || referralCard !== true || dialogMetrics !== true
+              ? 'owned-party-referral-metrics-unavailable'
+              : territoryFiltered !== true || territoryReset !== true ? 'territory-filter-effect-unavailable'
+                : clientOpened !== true || dealOpened !== true ? 'owned-relationship-detail-interaction-unproved' : null;
+    results.push(relationshipReason
+      ? { ...pending('W14', relationshipReason), party_node: relationship?.nodes === true,
+        client_deal_edge: relationship?.edge === true, original_entry: originalEntry,
+        referral_metrics: dialogMetrics && referralCard, territory_filter_reset: territoryFiltered && territoryReset,
+        client_navigation: clientOpened, deal_navigation: dealOpened }
+      : { journey: 'W14', state: 'qualified-slice', reason: 'owned-party-evidence-referral-territory-and-navigation-matched',
+        party_node: true, client_deal_edge: true, original_entry: true, referral_metrics: true,
+        territory_filter_reset: true, client_navigation: true, deal_navigation: true });
   }
   run.check();
   await assertStagingContextCoverage(page.context());
