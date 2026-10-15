@@ -119,7 +119,7 @@ test('a shape-compatible but unpinned dispatcher is refused before execution', a
   const root = await mkdtemp(join(tmpdir(), 'doctorcre-model-room-unpinned-'));
   t.after(() => rm(root, { recursive: true, force: true }));
   const dispatcher = join(root, 'compatible.py');
-  await writeFile(dispatcher, `import json,sys\ntask=sys.stdin.read()\nprint(json.dumps({"msg_id":"synthetic","desk":"doctorcre-e2e","kind":"codex-session","task":task,"dispatched_at":"2026-10-08T12:00:00Z","status":"completed","result":"{\\"content\\":[{\\"type\\":\\"text\\",\\"text\\":\\"{}\\"}]}"}))\n`);
+  await writeFile(dispatcher, `import json,sys\ntask=sys.stdin.read()\nprint(json.dumps({"msg_id":"synthetic","desk":"doctorcre-e2e","kind":"codex-live","task":task,"dispatched_at":"2026-10-08T12:00:00Z","family":"luna","model":"gpt-6-luna","effort":"medium","thread_id":"synthetic-thread","resumed":false,"ephemeral_thread":true,"thread_resumable":false,"status":"completed","result":"{\\"content\\":[{\\"type\\":\\"text\\",\\"text\\":\\"{}\\"}]}"}))\n`);
   const { dispatchThroughModelRoom } = await import('../../scripts/e2e-staging/model-room.mjs');
   await assert.rejects(dispatchThroughModelRoom({
     ...syntheticAuthorization(),

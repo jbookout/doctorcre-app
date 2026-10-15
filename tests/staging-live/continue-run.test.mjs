@@ -132,14 +132,15 @@ test('unqualified Model Room is refused before invoking a dispatcher or using a 
     { code: 'model-room-runtime-unqualified' });
 });
 
-test('qualified Codex desks bind registry family and effort to the measured resolved model, not a nonexistent registry model', () => {
-  const entry = { kind: 'codex-session', family: 'luna', effort: 'medium', cwd: '/synthetic/private-app' };
+test('qualified live Codex desk binds network access, cwd and resolved model to a fresh read-only runtime', () => {
+  const entry = { kind: 'codex-live', network_access: true, family: 'luna', effort: 'medium', cwd: '/synthetic/private-app' };
   const descriptor = { ...entry, model: 'gpt-6-luna' };
-  const receipt = { family: 'luna', effort: 'medium' };
+  const receipt = { kind: 'codex-live', model: 'gpt-6-luna', family: 'luna', effort: 'medium' };
   assert.doesNotThrow(() => assertQualifiedDesk(entry, descriptor, receipt));
-  for (const delta of [{ family: 'sol' }, { effort: 'high' }, { cwd: '/other-source' }, { kind: 'claude-session' }])
+  for (const delta of [{ family: 'sol' }, { effort: 'high' }, { cwd: '/other-source' },
+    { kind: 'codex-session' }, { network_access: undefined }, { network_access: false }, { network_access: 'true' }])
     assert.throws(() => assertQualifiedDesk({ ...entry, ...delta }, descriptor, receipt), { code: 'model-room-desk-unqualified' });
-  for (const delta of [{ family: 'sol' }, { effort: undefined }])
+  for (const delta of [{ kind: 'codex-session' }, { model: 'gpt-6-sol' }, { family: 'sol' }, { effort: undefined }])
     assert.throws(() => assertQualifiedDesk(entry, descriptor, { ...receipt, ...delta }), { code: 'model-room-desk-unqualified' });
   assert.throws(() => assertQualifiedDesk(entry, { ...descriptor, model: 'gpt-6-sol' }, receipt),
     { code: 'model-room-desk-unqualified' });

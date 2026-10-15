@@ -229,21 +229,17 @@ async function privateBytes(path, maximum = 16 * 1024 * 1024) {
 // expected digest is supplied by the workflow/host, never by the offered file.
 // Presence of a dispatcher or an authentication variable is not qualification.
 export function assertQualifiedDesk(entry, descriptor, receipt) {
-  if (!entry || entry.kind !== descriptor.kind || entry.kind === 'claude-session' ||
+  if (!entry || entry.kind !== 'codex-live' || descriptor.kind !== 'codex-live' ||
+      entry.network_access !== true || receipt.kind !== 'codex-live' || receipt.model !== descriptor.model ||
       !isAbsolute(descriptor.cwd || '') || entry.cwd !== descriptor.cwd ||
       !['minimal', 'low', 'medium', 'high', 'xhigh', 'max'].includes(descriptor.effort) ||
       entry.effort !== descriptor.effort || receipt.effort !== descriptor.effort)
     refusal('model-room-desk-unqualified');
-  if (['codex-session', 'codex-live'].includes(entry.kind)) {
-    // Codex registries retain a family, not the catalog-resolved executor.
-    // The independently qualified receipt binds that resolved model as well.
-    if (!['sol', 'luna'].includes(descriptor.family) || entry.family !== descriptor.family ||
-        receipt.family !== descriptor.family ||
-        !new RegExp(`^gpt-[0-9]+(?:\\.[0-9]+)*-${descriptor.family}$`).test(descriptor.model))
-      refusal('model-room-desk-unqualified');
-  } else if (entry.model !== descriptor.model || descriptor.family !== undefined || receipt.family !== undefined) {
+  // The registry pins the Codex family. The qualification receipt pins its resolved model.
+  if (!['sol', 'luna'].includes(descriptor.family) || entry.family !== descriptor.family ||
+      receipt.family !== descriptor.family ||
+      !new RegExp(`^gpt-[0-9]+(?:\\.[0-9]+)*-${descriptor.family}$`).test(descriptor.model))
     refusal('model-room-desk-unqualified');
-  }
 }
 
 export async function qualifiedModelRoom({ descriptorPath, expectedDigest, binding, now = Date.now() }) {

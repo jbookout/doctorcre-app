@@ -22,7 +22,7 @@ export const MODEL_ROOM_DISPATCH_CONTRACT = Object.freeze({
   effort: 'medium',
 });
 const dispatcherEnvelopeKeys = new Set([
-  // The completed ABI plus the only three fields current Codex failure rows add.
+  // Current Codex success fields plus fields carried by failure rows.
   'msg_id', 'desk', 'kind', 'task', 'dispatched_at', 'family', 'model', 'effort',
   'thread_id', 'resumed', 'status', 'result', 'detail', 'retry_after', 'termination_confirmed',
   'ephemeral_thread', 'thread_resumable',
@@ -95,7 +95,7 @@ function requireDispatcherEnvelope(row, expected) {
   const unknown = Object.keys(row).filter(key => !dispatcherEnvelopeKeys.has(key));
   const currentSuccessKeys = [
     'msg_id', 'desk', 'kind', 'task', 'dispatched_at', 'family', 'model', 'effort',
-    'thread_id', 'resumed', 'status', 'result',
+    'thread_id', 'resumed', 'ephemeral_thread', 'thread_resumable', 'status', 'result',
   ];
   const optionalTypes = [
     ['family', value => typeof value === 'string' && value.length > 0],
@@ -121,12 +121,13 @@ function requireDispatcherEnvelope(row, expected) {
     && typeof row.dispatched_at === 'string'
     && typeof row.status === 'string'
     && (row.status !== 'completed' || typeof row.result === 'string')
-    && (expected.contract !== MODEL_ROOM_DISPATCH_CONTRACT || row.status !== 'completed'
-      || currentSuccessKeys.every(key => key in row))
+    && (row.status !== 'completed' || (currentSuccessKeys.every(key => key in row)
+      && row.kind === 'codex-live' && row.resumed === false
+      && row.ephemeral_thread === true && row.thread_resumable === false
+      && typeof row.thread_id === 'string' && row.thread_id.length > 0))
     && (!hasModelIdentity || modelIdentity.every(key => key in row))
     && (!hasEphemeralThreadStatus || (row.kind === 'codex-live' && row.resumed === false
       && row.ephemeral_thread === true && row.thread_resumable === false))
-    && (expected.contract !== MODEL_ROOM_DISPATCH_CONTRACT || modelIdentity.every(key => key in row))
     && (!('family' in row) || row.family === MODEL_ROOM_DISPATCH_CONTRACT.family)
     && (!('model' in row) || row.model === MODEL_ROOM_DISPATCH_CONTRACT.model)
     && (!('effort' in row) || row.effort === MODEL_ROOM_DISPATCH_CONTRACT.effort)
@@ -370,11 +371,7 @@ export function createModelRoomModel({
         const row = await dispatch({ desk, task: prepared.task, fresh: true, signal, run: active, environment });
         active.check();
         signal.throwIfAborted();
-        return parseDeskResult(row, {
-          desk,
-          task: prepared.task,
-          contract: dispatch === dispatchThroughModelRoom ? MODEL_ROOM_DISPATCH_CONTRACT : null,
-        });
+        return parseDeskResult(row, { desk, task: prepared.task });
       } finally { await prepared.cleanup(); }
     },
     async doStream() { throw new Error('DoctorCRE E2E Model Room adapter does not stream'); },
