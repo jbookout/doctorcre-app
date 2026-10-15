@@ -40,15 +40,31 @@ test('business journey exposes only the closed kebab-case failure code set', () 
   assert.ok(businessJourneys.error_codes.every(code => /^[a-z][a-z0-9-]*$/.test(code)));
 });
 
+test('W15 awaiting contract binds normal deal receipts and fresh tracker and reconciliation reads', () => {
+  const fixture = businessJourneys.source_bound_fixture_requests.find(row => row.id === 'W15_awaiting_invoice');
+  assert.match(fixture.plan_binding, /normal new-deal, set-lead and patch-deal-field APIs/);
+  assert.match(fixture.plan_binding, /No SQL installer or commission receipt is used for the awaiting deal/);
+  assert.match(fixture.normal_reads, /read-invoice-tracker and read-deal-reconciliation/);
+  assert.match(fixture.normal_reads, /before and after the UI observation/);
+  assert.match(fixture.ui_proof, /perform no payment write for that row/);
+  assert.ok(businessJourneys.unqualified_journeys.includes('W15'));
+});
+
 test('served signed-in app W4/W9 uses the real UI, canonical fixture guard and durable receipts', { timeout: 180_000 }, async t => {
   admitFixtureRun(t);
   const output = await mkdtemp(join(tmpdir(), 'business-journeys-'));
   const run = openRun(output, { runId: 'synthetic-business-journeys', events: null });
   t.after(async () => { run.dispose(); await rm(output, { recursive: true, force: true }); });
   const api = fakeAPI(output, { sourceRelease: release });
-  const setup = await prepareStagingRecords(output, { ...api, run });
+  const setup = await prepareStagingRecords(output, { ...api, run, awaitingInvoiceFixture: true });
   const planPath = join(output, 'staging-records-plan.json');
   const baseline = JSON.parse(await readFile(planPath, 'utf8'));
+  assert.equal(baseline.receipts.awaiting_invoice_deal.deal_id, baseline.records.awaiting_invoice.deal_id);
+  assert.equal(baseline.receipts.awaiting_invoice_lead.new_lead, 'joe');
+  assert.equal(baseline.receipts.awaiting_invoice_close.deal_id, baseline.records.awaiting_invoice.deal_id);
+  assert.ok(api.calls.some(call => call.path === '/mcp' && call.options.data.params.name === 'read-deal-reconciliation' &&
+    call.options.data.params.arguments.deal === baseline.records.awaiting_invoice.deal_id));
+  assert.ok(api.calls.some(call => call.path === '/mcp' && call.options.data.params.name === 'read-invoice-tracker'));
   const server = await fixtureServer({ root: new URL('../../dist/site', import.meta.url).pathname });
   t.after(() => server.close());
   const browser = await chromium.launch(process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH
@@ -65,7 +81,8 @@ test('served signed-in app W4/W9 uses the real UI, canonical fixture guard and d
     const invoice = { ...structuredClone(api.rows.deals.get(invoiceDeal)), commission_id: commissionID(baseline.run), gross_amount: '1.00', status: 'invoiced', base_version: 1,
       closed_on: null, invoiced_on: null, commission_invoiced_on: offsetDay(baseline.observed_at,45), due_on: offsetDay(baseline.observed_at,15), received_on: null, as_of: new Date().toISOString().slice(0,10), outcome: null };
     const otherInvoice = { ...invoice, deal_id: randomUUID(), commission_id: randomUUID(), owner: 'dell', name: 'Synthetic other owner invoice' };
-    const awaitingInvoice = { ...invoice, deal_id: randomUUID(), commission_id: null, status: 'expected', owner: 'joe', name: 'Synthetic awaiting invoice',
+    const awaitingInvoice = { ...invoice, deal_id: baseline.records.awaiting_invoice.deal_id, commission_id: null, status: null, owner: 'joe',
+      name: baseline.records.awaiting_invoice.name, invoiced_on: null,
       gross_amount: null, commission_invoiced_on: null, due_on: null };
     const proof = { schema: 'doctorcre-staging-fixture-proof.v1', provenance: { kind: 'raw-sql-fixture' }, fixture_run: baseline.run, source_pair: baseline.release,
         recorded_plan_observed_at: baseline.observed_at, verified_target: invoiceTarget, tool_source_sha256: 'bc0d92b8c34e45f164514d7326ee0e1df7ce1eb936230c6eb89ffb4b69d52fdb',
@@ -184,7 +201,7 @@ test('served signed-in app W4/W9 uses the real UI, canonical fixture guard and d
       }
       return actual;
     };
-    return { page, guard, scoped, detail, invoice, invoiceDeal, awaitingDeal: awaitingInvoice.deal_id,
+    return { page, guard, scoped, detail, invoice, invoiceDeal, awaitingInvoice, awaitingDeal: awaitingInvoice.deal_id,
       proof, proofPath, writes, leases, reads, boardReads, changeEvents, denied, errors, admittedBeforeUI, readOnlyUI };
   }
 
@@ -417,19 +434,20 @@ test('served signed-in app W4/W9 uses the real UI, canonical fixture guard and d
     const f=await fixture();
     try {
       await f.page.goto(STAGING_ORIGIN+'/');
-      const result=await runBusinessJourneys({page:f.page,fixtureGuard:f.guard,release,deal:f.invoiceDeal,run,journeys:['W15'],invoiceProofPath:f.proofPath});
+      const result=await runBusinessJourneys({page:f.page,fixtureGuard:f.guard,release,deal:f.invoiceDeal,run,
+        journeys:['W15'],invoiceProofPath:f.proofPath,awaitingInvoicePlan:baseline});
       assert.deepEqual(result.completed,['W15']); assert.equal(result.full_v1_qualified,false);
       assert.deepEqual(result.actions.map(row => [row.case,row.action]), [
         ['invoice-tracker','age-filter'], ['invoice-tracker','age-reset'],
         ['invoice-tracker','unpaid-detail'], ['invoice-tracker','payment-write'],
         ['invoice-tracker','paid-readback'], ['home-invoices','team-scope'],
         ['home-invoices','viewer-scope'], ['home-invoices','scope-reset'],
-        ['home-invoices','payment-removal']]);
+        ['home-invoices','payment-removal'], ['invoice-tracker','awaiting-payment-hidden']]);
       const qualified = qualifyV1Journeys({ sourcePair: release, runId: run.snapshot().id,
         fixtureRun: baseline.run, observations: result.actions });
-      assert.equal(qualified.observed_actions,9);
+      assert.equal(qualified.observed_actions,10);
       assert.deepEqual(qualified.invalid,[]);
-      assert.ok(qualified.pending.some(row => row.id === 'W15' && row.action === 'awaiting-payment-hidden'));
+      assert.ok(!qualified.pending.some(row => row.id === 'W15' && row.action === 'awaiting-payment-hidden'));
       assert.deepEqual(f.writes.map(row=>row.name),['record-commission-receipt']);
       assert.deepEqual(f.admittedBeforeUI,['record-commission-receipt']);
       const plan=JSON.parse(await readFile(planPath,'utf8'));
@@ -445,8 +463,7 @@ test('served signed-in app W4/W9 uses the real UI, canonical fixture guard and d
       assert.ok(f.readOnlyUI.includes('#allAges') && f.readOnlyUI.includes('#clearInvoiceFilters'));
       assert.ok(f.readOnlyUI.filter(selector => selector === '[data-scope="mine"]').length >= 2);
       assert.ok(f.readOnlyUI.filter(selector => selector === '[data-scope="team"]').length >= 2);
-      // This synthetic model check does not qualify a live awaiting fixture.
-      await f.page.goto(STAGING_ORIGIN+'/invoices?invoice='+encodeURIComponent('awaiting:'+f.awaitingDeal));
+      assert.equal(new URL(f.page.url()).searchParams.get('invoice'),'awaiting:'+f.awaitingDeal);
       await f.page.locator('#invoiceDetail').waitFor({state:'visible'});
       assert.equal(await f.page.locator('.invoice-status-value').textContent(),'Awaiting invoice');
       assert.equal(await f.page.locator('#invoicePayment').evaluate(node=>node.hidden),true);
@@ -454,12 +471,15 @@ test('served signed-in app W4/W9 uses the real UI, canonical fixture guard and d
       await assertStagingWriteCoverage(output);
       await rm(f.proofPath);
       await f.page.goto(STAGING_ORIGIN+'/');
-      await runBusinessJourneys({page:f.page,fixtureGuard:f.guard,release,deal:f.invoiceDeal,run,journeys:['W15']});
+      const resumed=await runBusinessJourneys({page:f.page,fixtureGuard:f.guard,release,deal:f.invoiceDeal,run,
+        journeys:['W15'],awaitingInvoicePlan:baseline});
+      assert.deepEqual(resumed.actions.map(row=>row.action),['awaiting-payment-hidden']);
       assert.equal(f.writes.length,1,'retained proof and paid quarantine never reseed or repay');
       f.invoice.due_on='2001-01-01';
       const spec={journey:'W15',step:'paid',deal:f.invoiceDeal,release};
       await f.guard.admitBusinessJourneyStep({...spec,phase:'fixture-refresh'});
       const reads=f.reads.length;
+      await f.page.goto(STAGING_ORIGIN+'/');
       await f.page.locator('#refreshHome').click();
       await f.page.waitForFunction(()=>document.querySelector('#refreshHome')?.getAttribute('aria-busy')==='false');
       assert.ok(f.reads.length>reads,'the normal Home refresh actually requested independent tracker state');
@@ -468,6 +488,38 @@ test('served signed-in app W4/W9 uses the real UI, canonical fixture guard and d
       assert.equal(changed.current_tracker_readback,undefined,'quarantine cannot turn a mismatched tracker row into fresh proof');
       assert.equal(f.writes.length,1);
     } finally {await f.page.context().close();}
+  });
+
+  await t.test('W15 awaiting action refuses missing, foreign and incomplete plan receipts before payment', async () => {
+    const f = await fixture();
+    try {
+      await f.page.goto(STAGING_ORIGIN+'/');
+      for (const changed of [
+        { records: { ...baseline.records, awaiting_invoice: { ...baseline.records.awaiting_invoice, deal_id: randomUUID() } } },
+        { release: { ...baseline.release, source_commit: 'b'.repeat(40) } },
+        { receipts: { ...baseline.receipts, awaiting_invoice_close: { ...baseline.receipts.awaiting_invoice_close, event_id: randomUUID(), field: 'owner' } } },
+        { receipts: { ...baseline.receipts, awaiting_invoice_lead: undefined } },
+      ]) {
+        const plan = { ...baseline, ...changed };
+        await assert.rejects(runBusinessJourneys({ page: f.page, fixtureGuard: f.guard, release,
+          deal: f.invoiceDeal, run, journeys: ['W15'], invoiceProofPath: f.proofPath,
+          awaitingInvoicePlan: plan }), error => error.code === 'business-journey-receipt-missing');
+      }
+      assert.equal(f.writes.length, 0);
+    } finally { await f.page.context().close(); }
+  });
+
+  await t.test('W15 awaiting action requires the exact normal tracker row after the paid receipt', async () => {
+    const f = await fixture();
+    try {
+      f.awaitingInvoice.name = 'Wrong synthetic invoice';
+      await f.page.goto(STAGING_ORIGIN+'/');
+      await assert.rejects(runBusinessJourneys({ page: f.page, fixtureGuard: f.guard, release,
+        deal: f.invoiceDeal, run, journeys: ['W15'], invoiceProofPath: f.proofPath,
+        awaitingInvoicePlan: baseline }), error => error.code === 'business-journey-readback-incomplete' ||
+          error.code === 'business-journey-selector-unavailable');
+      assert.deepEqual(f.writes.map(row => row.name), ['record-commission-receipt']);
+    } finally { await f.page.context().close(); }
   });
 
   await t.test('W15 invalid or untrusted installer proof and copied proof without CARR row cannot admit a write', async () => {

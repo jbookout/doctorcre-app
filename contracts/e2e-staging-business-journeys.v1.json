@@ -54,9 +54,9 @@
     },
     {
       "id": "W15_awaiting_invoice",
-      "plan_binding": "A separate plan-owned synthetic closed deal with no commission receipt and an installer proof tied to the existing private target and source pair.",
-      "normal_reads": "read-invoice-tracker must return the owned deal as an awaiting row with commission_id=null and key awaiting:<deal_id> after normal projection.",
-      "ui_proof": "Open that exact awaiting row and verify Awaiting invoice status with the payment control hidden; perform no payment write."
+      "plan_binding": "A separate plan-owned synthetic closed deal created through normal new-deal, set-lead and patch-deal-field APIs, with exact creation, lead-Joe and phase-close receipts bound to the private plan and source pair. No SQL installer or commission receipt is used for the awaiting deal; the paid invoice SQL fixture is separate.",
+      "normal_reads": "Fixture preparation requires fresh read-invoice-tracker and read-deal-reconciliation for the exact owned closed deal, with owner Joe, no invoiced_on, commission_id or status. The W15 runner requires fresh normal tracker reads before and after the UI observation, projecting exactly one awaiting:<deal_id> row for that deal.",
+      "ui_proof": "Open the exact plan-owned awaiting row and verify its name, Awaiting invoice status and hidden payment control; perform no payment write for that row."
     }
   ],
   "guard_interface_requests": [
@@ -81,7 +81,7 @@
         "invoice timeline receipt date"
       ],
       "partial": [
-        "awaiting-invoice payment-control restriction; requires source_bound_fixture_requests.W15_awaiting_invoice"
+        "awaiting-invoice payment-control restriction has a source-bound normal API fixture and runner proof; live observation still requires exact private plan handoff and served UI plus fresh normal tracker readback"
       ]
     }
   },

@@ -29,7 +29,7 @@ const provedAction = ({ id, caseId, name, release, run, row, ui, readback }) => 
 };
 
 export async function runBusinessJourneys({ page, fixtureGuard, release, deal, run,
-  journeys = businessJourneys.journeys.map(journey => journey.id), invoiceProofPath } = {}) {
+  journeys = businessJourneys.journeys.map(journey => journey.id), invoiceProofPath, awaitingInvoicePlan } = {}) {
   run = requireSupervisedRun(undefined, run);
   run.check();
   const url = new URL(page.url());
@@ -53,7 +53,7 @@ export async function runBusinessJourneys({ page, fixtureGuard, release, deal, r
     throw new Error('Business journey source pair refused');
   if (!stagingAuth.session.matches(identity.session)) throw new Error('Business journey signed-in session refused');
   const timeout = Math.min(run.limits.httpTimeoutMs, run.limits.settlementMs);
-  if (invoiceOnly) return runInvoiceJourney({ page, fixtureGuard, release, deal, run, invoiceProofPath, timeout,
+  if (invoiceOnly) return runInvoiceJourney({ page, fixtureGuard, release, deal, run, invoiceProofPath, awaitingInvoicePlan, timeout,
     actor: identity.session.actor.slug });
   const click = selector => clickSelector(page, selector, timeout);
   const fill = (selector, value) => fillSelector(page, selector, value, timeout);
@@ -278,11 +278,31 @@ export async function runBusinessJourneys({ page, fixtureGuard, release, deal, r
     full_v1_qualified: false, unqualified_journeys: [...businessJourneys.unqualified_journeys] };
 }
 
-async function runInvoiceJourney({ page, fixtureGuard, release, deal, run, invoiceProofPath, timeout, actor }) {
+async function runInvoiceJourney({ page, fixtureGuard, release, deal, run, invoiceProofPath, awaitingInvoicePlan, timeout, actor }) {
   const click = selector => clickSelector(page, selector, timeout);
   const fill = (selector, value) => fillSelector(page, selector, value, timeout);
   const spec = { journey: 'W15', step: 'paid', deal, release };
   const actions = [];
+  const awaiting = awaitingInvoicePlan?.records?.awaiting_invoice;
+  if (awaitingInvoicePlan && (awaitingInvoicePlan.schema !== 'doctorcre-staging-records-plan.v1' ||
+      awaitingInvoicePlan.state !== 'complete' || awaitingInvoicePlan.inflight ||
+      awaitingInvoicePlan.release?.source_commit !== release.source_commit ||
+      awaitingInvoicePlan.release?.carr_source_commit !== release.carr_source_commit ||
+      awaitingInvoicePlan.records?.invoice?.deal_id !== deal ||
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(awaiting?.deal_id || '') ||
+      awaiting.deal_id === deal || awaiting.name !== awaitingInvoicePlan.names?.awaiting_invoice ||
+      !awaiting.name?.startsWith(awaitingInvoicePlan.run + ' ') ||
+      awaitingInvoicePlan.receipts?.awaiting_invoice_deal?.ok !== true ||
+      awaitingInvoicePlan.receipts.awaiting_invoice_deal.deal_id !== awaiting.deal_id ||
+      awaitingInvoicePlan.receipts.awaiting_invoice_deal.name !== awaiting.name ||
+      awaitingInvoicePlan.receipts.awaiting_invoice_deal.client_ref !== awaitingInvoicePlan.records?.client?.ref ||
+      awaitingInvoicePlan.receipts?.awaiting_invoice_lead?.ok !== true ||
+      awaitingInvoicePlan.receipts.awaiting_invoice_lead.new_lead !== actor || actor !== 'joe' ||
+      awaitingInvoicePlan.receipts?.awaiting_invoice_close?.ok !== true ||
+      awaitingInvoicePlan.receipts.awaiting_invoice_close.deal_id !== awaiting.deal_id ||
+      awaitingInvoicePlan.receipts.awaiting_invoice_close.field !== 'phase' ||
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(awaitingInvoicePlan.receipts.awaiting_invoice_close.event_id || '')))
+    throw journeyError('business-journey-receipt-missing');
   const invoke = (phase, values = {}) => fixtureGuard.admitBusinessJourneyStep({ ...spec, phase, ...values });
   const binding = invoiceProofPath ? await invoke('import-fixture', { proofPath: invoiceProofPath }) : await invoke('fixture-status');
   const id = binding.proof.fixture.commission_id;
@@ -303,6 +323,41 @@ async function runInvoiceJourney({ page, fixtureGuard, release, deal, run, invoi
     return { team, mine };
   };
   const expectedKeys = rows => rows.map(row => row.key).sort();
+  const observeAwaiting = async () => {
+    if (!awaiting) return null;
+    const key = `awaiting:${awaiting.deal_id}`;
+    await page.goto(STAGING_ORIGIN + '/invoices?invoice=' + encodeURIComponent(key), { timeout });
+    await page.locator('#invoiceDetail').waitFor({ state: 'visible', timeout });
+    const before = await invoiceSets();
+    const exact = before.team.filter(item => item.key === key);
+    if (exact.length !== 1 || !before.mine.some(item => item.key === key) ||
+        exact[0].deal_id !== awaiting.deal_id || exact[0].name !== awaiting.name ||
+        exact[0].phase !== 'closed' || exact[0].owner !== actor ||
+        exact[0].status !== 'awaiting' || exact[0].commission_id !== null ||
+        exact[0].invoiced_on !== null || exact[0].canMarkPaid !== false)
+      throw journeyError('business-journey-readback-incomplete');
+    const title = await page.locator('#invoiceDetailTitle').textContent();
+    const status = await page.locator('.invoice-status-value').textContent();
+    const paymentHidden = await page.locator('#invoicePayment').evaluate(node => node.hidden);
+    if (title !== awaiting.name || status !== 'Awaiting invoice' || !paymentHidden)
+      throw journeyError('business-journey-readback-incomplete');
+    const after = await invoiceSets();
+    const reread = after.team.filter(item => item.key === key);
+    if (reread.length !== 1 || !after.mine.some(item => item.key === key) ||
+        reread[0].deal_id !== awaiting.deal_id || reread[0].name !== awaiting.name ||
+        reread[0].phase !== 'closed' || reread[0].owner !== actor ||
+        reread[0].status !== 'awaiting' || reread[0].commission_id !== null ||
+        reread[0].invoiced_on !== null || reread[0].canMarkPaid !== false)
+      throw journeyError('business-journey-readback-incomplete');
+    return observedV1Action({ id: 'W15', case: 'invoice-tracker', action: 'awaiting-payment-hidden',
+      sourcePair: { source_commit: release.source_commit, carr_source_commit: release.carr_source_commit },
+      runId: run.snapshot().id, fixtureRun: awaitingInvoicePlan.run,
+      ui: { key, title, status, payment_form_hidden: paymentHidden },
+      readback: { before: exact[0], after: reread[0],
+        creation_receipt: awaitingInvoicePlan.receipts.awaiting_invoice_deal,
+        lead_receipt: awaitingInvoicePlan.receipts.awaiting_invoice_lead,
+        close_receipt: awaitingInvoicePlan.receipts.awaiting_invoice_close } });
+  };
   const requireInvoiceRows = async rows => {
     try {
       await page.waitForFunction(expected => {
@@ -357,6 +412,8 @@ async function runInvoiceJourney({ page, fixtureGuard, release, deal, run, invoi
   if (prior?.journey.state === 'observed') {
     await invoke('admit');
     await fixtureGuard.assertCoverage();
+    const awaitingAction = await observeAwaiting();
+    if (awaitingAction) actions.push(awaitingAction);
     return { schema: 'staging-business-journey-result.v1', completed: ['W15'], actions,
       steps: [{ journey: 'W15', step: 'paid', state: 'previously-observed' }],
       release: { source_commit: release.source_commit, carr_source_commit: release.carr_source_commit }, full_v1_qualified: false };
@@ -488,6 +545,8 @@ async function runInvoiceJourney({ page, fixtureGuard, release, deal, run, invoi
       { before: beforeHomeSets.team.find(item => item.key === id),
         after: paidHomeSets.team.find(item => item.key === id), independent: row.independent_readback }));
   await fixtureGuard.assertCoverage();
+  const awaitingAction = await observeAwaiting();
+  if (awaitingAction) actions.push(awaitingAction);
   return { schema: 'staging-business-journey-result.v1', completed: ['W15'], actions,
     steps: [{ journey: 'W15', step: 'paid', state: row.journey.state, ui_sha256: row.journey.ui.observation_sha256,
       readback_sha256: row.independent_readback.response_sha256 }],
