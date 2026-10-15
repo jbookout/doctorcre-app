@@ -110,7 +110,7 @@ function relationshipProof(plan) {
   }));
   return { schema: 'doctorcre-staging-relationship-fixture.v1', fixture_run: plan.run, source_pair: plan.release,
     provenance: { kind: 'raw-sql-fixture', readback: 'separate-committed-readonly-connection' },
-    recorded_plan_observed_at: plan.observed_at, verified_target: relationshipTarget,
+    recorded_plan_observed_at: plan.observed_at, verified_target: structuredClone(relationshipTarget),
     party_id: plan.records.party.id, client_id: plan.records.client.id, deal_id: plan.records.deal.id,
     relationship_referral_deal: { id: rows.destination_deal.id, name: rows.destination_deal.name,
       client_id: rows.destination_client.id, party_id: rows.destination_party.id },
@@ -126,21 +126,22 @@ async function relationshipSetup(t, suffix) {
   await prepareStagingRecords(output, { ...fake, run, vendorFixture: true });
   const plan = JSON.parse(await readFile(join(output, 'staging-records-plan.json'), 'utf8'));
   const proof = relationshipProof(plan), fresh = structuredClone(proof.projection.response);
+  const clientReadback = { record: { id: proof.rows.destination_client.id, name: proof.rows.destination_party.name,
+    party_id: proof.rows.destination_party.id, status: 'engaged', city: proof.rows.destination_party.city } };
+  const dealReadback = { deal_id: proof.rows.destination_deal.id, name: proof.rows.destination_deal.name,
+    client_id: proof.rows.destination_client.id, owner: 'joe', phase: 'pending', lane: 'territory', deal_type: 'startup' };
   const factory = fake.requestFactory;
   fake.requestFactory = async options => {
     const api = await factory(options), get = api.get.bind(api), post = api.post.bind(api);
     api.get = async (path, options) => {
       if (path.includes('/relationships?')) return reply(fresh);
       if (path === `/api/v1/business/clients/${proof.relationship_referral_deal.client_id}`)
-        return reply({ record: { id: proof.rows.destination_client.id, name: proof.rows.destination_party.name,
-          party_id: proof.rows.destination_party.id, status: 'engaged', city: proof.rows.destination_party.city } });
+        return reply(clientReadback);
       return get(path, options);
     };
     api.post = async (path, options) => {
       if (path === '/mcp' && options.data.params.name === 'get-deal-room' && options.data.params.arguments.deal === proof.rows.destination_deal.id)
-        return reply({ jsonrpc: '2.0', id: options.data.id, result: { content: [{ type: 'text', text: JSON.stringify({
-          deal_id: proof.rows.destination_deal.id, name: proof.rows.destination_deal.name, client_id: proof.rows.destination_client.id,
-          owner: 'joe', phase: 'pending', lane: 'territory', deal_type: 'startup' }) }] } });
+        return reply({ jsonrpc: '2.0', id: options.data.id, result: { content: [{ type: 'text', text: JSON.stringify(dealReadback) }] } });
       return post(path, options);
     };
     return api;
@@ -150,7 +151,7 @@ async function relationshipSetup(t, suffix) {
   const prepare = options => prepareStagingRecords(output, { ...fake, run, reuseOnly: true, relationshipFixture: true,
     relationshipFixtureTarget: relationshipTarget, ...options });
   fake.calls.length = 0;
-  return { output, fake, plan, proof, fresh, persist, prepare };
+  return { output, fake, plan, proof, fresh, clientReadback, dealReadback, persist, prepare };
 }
 
 test('relationship installer refuses the reviewer minimal proof even with a valid fresh projection', async t => {
@@ -177,12 +178,21 @@ test('relationship installer binds complete mutation evidence to trusted target 
   assert.equal(binding.verified_target_sha256, hash(relationshipTarget));
   assert.equal(binding.proof_content_sha256, hash(fixture.proof));
   assert.equal(binding.current_readback.network_response_sha256, hash(fixture.fresh));
-  assert.match(binding.current_readback.client_response_sha256, /^[a-f0-9]{64}$/);
-  assert.match(binding.current_readback.deal_response_sha256, /^[a-f0-9]{64}$/);
+  assert.equal(binding.current_readback.client_response_sha256, hash(fixture.clientReadback));
+  assert.equal(binding.current_readback.deal_response_sha256, hash(fixture.dealReadback));
   assert.equal(after.relationship_fixture.state, 'verified');
   await fixture.prepare();
-  fixture.fresh.edges.find(edge => edge.kind === 'referred').detail = 'Different fictional note';
+  const edge = fixture.fresh.edges.find(edge => edge.kind === 'referred'), original = edge.detail;
+  edge.detail = 'Different fictional note';
   await assert.rejects(fixture.prepare(), { code: 'staging-fixture-relationship-prerequisite' });
+  after = JSON.parse(await readFile(join(fixture.output, 'staging-records-plan.json'), 'utf8'));
+  assert.equal(after.fixture_proofs.relationship.state, 'pending-readback');
+  assert.equal(after.fixture_proofs.relationship.current_readback, undefined);
+  assert.equal(after.relationship_fixture, undefined);
+  edge.detail = original;
+  await fixture.prepare();
+  after = JSON.parse(await readFile(join(fixture.output, 'staging-records-plan.json'), 'utf8'));
+  assert.equal(after.fixture_proofs.relationship.state, 'verified');
 });
 
 test('relationship installer rejects incomplete or mismatched target, mutation and original projection evidence', async t => {
@@ -191,6 +201,8 @@ test('relationship installer rejects incomplete or mismatched target, mutation a
     ['production-target', (proof, options) => { options.relationshipFixtureTarget = { ...relationshipTarget, project: { id: 'steep-field-48688294', name: 'carr-staging-replacement-synthetic' } }; proof.verified_target = options.relationshipFixtureTarget; }],
     ['different-target', proof => { proof.verified_target.endpoint.id = 'ep-other'; }],
     ['readback-provenance', proof => { delete proof.provenance.readback; }],
+    ['missing-source', proof => { delete proof.source_pair; }],
+    ['missing-receipts', proof => { delete proof.receipts; }],
     ['observation-binding', proof => { proof.recorded_plan_observed_at = new Date(0).toISOString(); }],
     ['missing-row', proof => { delete proof.rows.vendor_attribution; }],
     ['creation-receipt', proof => { delete proof.receipts.destination_client; }],
@@ -204,15 +216,52 @@ test('relationship installer rejects incomplete or mismatched target, mutation a
     ['projection-edge', proof => { proof.projection.response.edges[2].via = proof.projection.response.nodes[2].id; proof.projection.response_sha256 = hash(proof.projection.response); }],
     ['projection-metrics', proof => { proof.projection.response.referrals[0].deals = 2; proof.projection.response_sha256 = hash(proof.projection.response); }],
     ['fresh-note', (proof, options, fresh) => { fresh.edges[2].detail = 'Different fictional note'; }],
+    ['fresh-client', (proof, options, fresh, fixture) => { fixture.clientReadback.record.party_id = fixture.plan.records.party.id; }],
+    ['fresh-deal', (proof, options, fresh, fixture) => { fixture.dealReadback.client_id = fixture.plan.records.client.id; }],
     ['fresh-territory', (proof, options, fresh) => { fresh.nodes[2].territory = 'Different South'; }],
   ];
   for (const [name, alter] of variants) await t.test(name, async t => {
     const fixture = await relationshipSetup(t, name), options = {};
-    alter(fixture.proof, options, fixture.fresh);
+    alter(fixture.proof, options, fixture.fresh, fixture);
     await fixture.persist(fixture.proof);
     await assert.rejects(fixture.prepare(options), { code: 'staging-fixture-relationship-prerequisite' });
     const after = JSON.parse(await readFile(join(fixture.output, 'staging-records-plan.json'), 'utf8'));
     assert.equal(after.relationship_fixture, undefined);
-    assert.equal(after.fixture_proofs?.relationship, undefined);
+    assert.equal(after.fixture_proofs?.relationship?.state, name.startsWith('fresh-') || name === 'projection-metrics' ? 'pending-readback' : undefined);
+    assert.equal(after.fixture_proofs?.relationship?.current_readback, undefined);
+  });
+});
+
+test('relationship refresh revokes prior verification before early readback failures and permits read-only recovery', async t => {
+  for (const stage of ['network', 'client', 'deal']) await t.test(stage, async t => {
+    const fixture = await relationshipSetup(t, `early-${stage}`);
+    await fixture.persist(fixture.proof);
+    await fixture.prepare();
+    let restore;
+    if (stage === 'network') {
+      const node = fixture.fresh.nodes[0];
+      node.kind = 'vendor';
+      restore = () => { node.kind = 'client'; };
+    } else if (stage === 'client') {
+      const original = fixture.fake.rows.client;
+      fixture.fake.rows.client = fixture.proof.relationship_referral_deal.client_id;
+      restore = () => { fixture.fake.rows.client = original; };
+    } else {
+      const row = fixture.fake.rows.deals.get(fixture.plan.records.deal.id), original = row.deal_id;
+      row.deal_id = fixture.proof.relationship_referral_deal.id;
+      restore = () => { row.deal_id = original; };
+    }
+    await assert.rejects(fixture.prepare(), /stopped at readback/);
+    let after = JSON.parse(await readFile(join(fixture.output, 'staging-records-plan.json'), 'utf8'));
+    assert.equal(after.fixture_proofs.relationship.state, 'pending-readback');
+    assert.equal(after.fixture_proofs.relationship.current_readback, undefined);
+    assert.equal(after.relationship_fixture, undefined);
+    restore();
+    fixture.fake.calls.length = 0;
+    await fixture.prepare();
+    after = JSON.parse(await readFile(join(fixture.output, 'staging-records-plan.json'), 'utf8'));
+    assert.equal(after.fixture_proofs.relationship.state, 'verified');
+    assert.ok(fixture.fake.calls.filter(row => row.path === '/mcp').every(row =>
+      ['get-deal-room', 'read-deal-reconciliation', 'read-invoice-tracker', 'lead-board', 'read-doc-conversation'].includes(row.options.data.params.name)));
   });
 });
