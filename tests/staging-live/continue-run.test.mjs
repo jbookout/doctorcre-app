@@ -22,13 +22,34 @@ const binding = { checkout: sha, app: sha, carr: contract.producer.source_commit
 const release = { service: 'doctorcre-app', environment: 'staging', source_commit: sha, carr_source_commit: binding.carr };
 
 test('canary admits the staging shell, static modules and dedicated identity read; RPC and writes never enter browser canary traffic', () => {
-  for (const path of ['/', '/js/app.js', '/js/auto-refresh.mjs', '/css/app.css', '/assets/logo.svg', '/api/system-work/session'])
+  for (const path of ['/', '/js/app.js', '/js/auto-refresh.mjs', '/css/app.css', '/assets/logo.svg',
+    '/tours/planner-client.js', '/manifest.webmanifest', '/api/system-work/session'])
     assert.equal(canaryRequestAllowed('GET', contract.origin + path), true);
   for (const [method, url] of [['POST', contract.origin + '/mcp'], ['POST', contract.origin + '/auth/e2e-session'],
     ['GET', contract.origin + '/auth/session'], ['GET', contract.origin + '/mcp'],
     ['GET', contract.origin + '/api/records'], ['GET', contract.carr_origin + '/release'],
     ['GET', 'https://app.doctorcre.com/'], ['GET', contract.origin + '/js/a.js?token=private']])
     assert.equal(canaryRequestAllowed(method, url), false);
+  for (const [method, url] of [['POST', contract.origin + '/tours/planner-client.js'],
+    ['GET', contract.origin + '/tours/planner-client.js?private=1'],
+    ['GET', contract.origin + '/api/planner-client.js'], ['GET', 'https://other.test/tours/planner-client.js']])
+    assert.equal(canaryRequestAllowed(method, url), false);
+});
+
+test('startup first-party import graph module is admitted at its exact static path', async () => {
+  const source = await readFile(new URL('../../js/doc-presence.js', import.meta.url), 'utf8');
+  assert.match(source, /from ['"]\.\.\/tours\/planner-client\.js['"]/);
+  assert.equal(canaryRequestAllowed('GET', new URL('../tours/planner-client.js', contract.origin + '/js/doc-presence.js').href), true);
+});
+
+test('startup canary diagnostics identify closed shell predicates without exposing page data', async () => {
+  const { startupShellFailure } = await import('../../scripts/e2e-staging/continue-run.mjs');
+  assert.equal(startupShellFailure({ navigationVisible: false, documentOk: true, urlMatches: true, scriptFailed: false, mainCount: 1 }), 'canary-shell-navigation-missing');
+  assert.equal(startupShellFailure({ navigationVisible: true, documentOk: false, urlMatches: true, scriptFailed: false, mainCount: 1 }), 'canary-shell-document-status');
+  assert.equal(startupShellFailure({ navigationVisible: true, documentOk: true, urlMatches: false, scriptFailed: false, mainCount: 1 }), 'canary-shell-url-invalid');
+  assert.equal(startupShellFailure({ navigationVisible: true, documentOk: true, urlMatches: true, scriptFailed: true, mainCount: 1 }), 'canary-shell-script-failed');
+  assert.equal(startupShellFailure({ navigationVisible: true, documentOk: true, urlMatches: true, scriptFailed: false, mainCount: 0 }), 'canary-shell-main-count');
+  assert.equal(startupShellFailure({ navigationVisible: true, documentOk: true, urlMatches: true, scriptFailed: false, mainCount: 1 }), null);
 });
 
 test('canary preserves canonical HTTP timeout, two-way concurrency and queue admission while reporting only closed diagnostics', async () => {
@@ -38,6 +59,14 @@ test('canary preserves canonical HTTP timeout, two-way concurrency and queue adm
   assert.equal(limits.httpTimeoutMs, 30_000);
   assert.deepEqual(canaryFailure({ schema: 'doctorcre-staging-canary-phase.v1', phase: 'asset-settlement' }, 'http-admission-timeout'),
     { phase: 'asset-settlement', stopReason: 'http-admission-timeout' });
+  assert.deepEqual(canaryFailure({ schema: 'doctorcre-staging-canary-phase.v1', phase: 'shell' }, 'canary-shell-script-failed'),
+    { phase: 'shell', stopReason: 'canary-shell-script-failed' });
+  assert.deepEqual(canaryFailure({ schema: 'doctorcre-staging-canary-phase.v1', phase: 'shell' }, 'worker-exit-1',
+    'Staging run stopped: worker-exit-1 (cause=canary-shell-script-failed)'),
+  { phase: 'shell', stopReason: 'canary-shell-script-failed' });
+  assert.deepEqual(canaryFailure({ schema: 'doctorcre-staging-canary-phase.v1', phase: 'shell' }, 'worker-exit-1',
+    'Staging run stopped: worker-exit-1 (cause=canary-shell-script-failed; candidate=private)'),
+  { phase: 'shell', stopReason: 'worker-exit-1' });
   assert.deepEqual(canaryFailure({ schema: 'doctorcre-staging-canary-phase.v1', phase: 'source-readback' }, 'source-pair-mismatch'),
     { phase: 'source-readback', stopReason: 'source-pair-mismatch' });
   assert.deepEqual(canaryFailure({ schema: 'doctorcre-staging-startup-canary.v1', status: 'AUTHENTICATED_READ_ONLY_CANARY', acceptedV1: false }, 'process-cleanup-unverified'),
@@ -198,7 +227,8 @@ test('canary authenticates in memory, restricts browser traffic, rechecks source
   const phases = [];
   const state = { cookies: [{ name: 'private-cookie', value: 'do-not-publish' }] };
   const page = { goto: async url => { assert.equal(url, contract.origin + '/'); return { ok: () => true }; }, on() {},
-    waitForLoadState: async () => {}, url: () => contract.origin + '/', locator: () => ({ count: async () => 1, waitFor: async () => {} }) };
+    waitForLoadState: async () => {}, url: () => contract.origin + '/', locator: () => ({ count: async () => 1,
+      isVisible: async () => true, waitFor: async () => {} }) };
   const run = { http: async operation => operation(), check() {}, limits: { httpTimeoutMs: 1000 } };
   const deps = { onPhase: async phase => phases.push(phase), session: async () => ({ state, release }), releaseProbe: async () => { probes++; return release; },
     browserFactory: async () => ({ newContext: async options => {

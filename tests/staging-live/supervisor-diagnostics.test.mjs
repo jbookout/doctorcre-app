@@ -92,3 +92,12 @@ test('business readback failure crosses worker diagnostic seam only as a closed 
   assert.doesNotMatch(failure.message, new RegExp(secretCanary));
   assert.doesNotMatch(diagnostics.join('; '), new RegExp(secretCanary));
 });
+
+test('startup and fixture refusal diagnostics expose only exact closed codes', () => {
+  const diagnostics = [];
+  const read = createWorkerDiagnosticReader(value => diagnostics.push(value));
+  read(Buffer.from('Staging continuation stopped: canary-shell-script-failed; no full V1 acceptance is established.\n'));
+  read(Buffer.from('Staging continuation stopped: staging-fixture-candidate-refused; no full V1 acceptance is established.\n'));
+  read(Buffer.from('Staging continuation stopped: staging-fixture-candidate-refused; candidate=private name; no full V1 acceptance is established.\n'));
+  assert.deepEqual(diagnostics, ['cause=canary-shell-script-failed', 'cause=staging-fixture-candidate-refused']);
+});

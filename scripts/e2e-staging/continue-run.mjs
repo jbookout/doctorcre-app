@@ -211,9 +211,18 @@ export function canaryRequestAllowed(method, value) {
   try {
     const url = new URL(value);
     return ['GET', 'HEAD'].includes(method) && url.origin === contract.origin && !url.username && !url.password &&
-      !url.search && (['/', '/app-release', '/api/system-work/session'].includes(url.pathname) ||
-        /^\/(?:js|css|assets|icons|public-shell|islands)\/[a-zA-Z0-9_./-]+\.(?:m?js|css|woff2?|png|jpe?g|svg|ico)$/.test(url.pathname));
+      !url.search && (['/', '/app-release', '/api/system-work/session', '/manifest.webmanifest'].includes(url.pathname) ||
+        /^\/(?:js|css|assets|icons|public-shell|islands|tours)\/[a-zA-Z0-9_./-]+\.(?:m?js|css|woff2?|png|jpe?g|svg|ico|webmanifest)$/.test(url.pathname));
   } catch { return false; }
+}
+
+export function startupShellFailure({ navigationVisible, documentOk, urlMatches, scriptFailed, mainCount }) {
+  if (documentOk !== true) return 'canary-shell-document-status';
+  if (urlMatches !== true) return 'canary-shell-url-invalid';
+  if (scriptFailed === true) return 'canary-shell-script-failed';
+  if (navigationVisible !== true) return 'canary-shell-navigation-missing';
+  if (mainCount !== 1) return 'canary-shell-main-count';
+  return null;
 }
 
 async function privateBytes(path, maximum = 16 * 1024 * 1024) {
@@ -314,14 +323,23 @@ export async function canary({ binding, run }, supplied = {}) {
     const page = await context.newPage();
     let scriptFailed = false;
     page.on('pageerror', () => { scriptFailed = true; });
+    page.on('requestfailed', request => {
+      if (request.resourceType() === 'script' && canaryRequestAllowed(request.method(), request.url())) scriptFailed = true;
+    });
+    page.on('response', response => {
+      if (response.request().resourceType() === 'script' && !response.ok()) scriptFailed = true;
+    });
     await phase('navigation');
     const response = await page.goto(contract.origin + '/', { waitUntil: 'domcontentloaded', timeout: run.limits.httpTimeoutMs });
     await phase('asset-settlement');
     await page.waitForLoadState('networkidle', { timeout: run.limits.httpTimeoutMs });
     await phase('shell');
-    await page.locator('#appShell .app-shell-navigation').waitFor({ state: 'visible', timeout: run.limits.httpTimeoutMs });
-    if (!response?.ok() || scriptFailed || page.url() !== contract.origin + '/' || await page.locator('main').count() !== 1)
-      refusal('canary-shell-refused');
+    const navigation = page.locator('#appShell .app-shell-navigation');
+    try { await navigation.waitFor({ state: 'visible', timeout: run.limits.httpTimeoutMs }); } catch {}
+    const navigationVisible = await navigation.isVisible().catch(() => false);
+    const reason = startupShellFailure({ navigationVisible, documentOk: response?.ok() === true,
+      urlMatches: page.url() === contract.origin + '/', scriptFailed, mainCount: await page.locator('main').count() });
+    if (reason) refusal(reason);
     await phase('source-readback');
     assertSourcePair(await releaseProbe(undefined, contract.origin, { run }), binding);
     run.check();
@@ -382,7 +400,7 @@ async function canaryJob(environment) {
   } catch (error) {
     let marker;
     try { marker = JSON.parse(await privateBytes(join(output, 'private', 'startup-canary.json'), 4096)); } catch {}
-    const diagnostic = canaryFailure(marker, error?.code);
+    const diagnostic = canaryFailure(marker, error?.code, error?.message);
     refusal(`canary-${diagnostic.phase}-${diagnostic.stopReason}`);
   }
   invocationBoundary({ deadline: ABSOLUTE_CUTOFF, sliceMs: 1 });
@@ -419,15 +437,22 @@ export async function canaryLimits(duration) {
     runTimeoutMs: duration, testTimeoutMs: duration };
 }
 
-export function canaryFailure(marker, reason) {
+export function canaryFailure(marker, reason, detail = '') {
+  const safeWorkerCauses = new Set(['canary-shell-navigation-missing', 'canary-shell-document-status',
+    'canary-shell-url-invalid', 'canary-shell-script-failed', 'canary-shell-main-count',
+    'staging-fixture-candidate-refused']);
+  const match = reason === 'worker-exit-1' && /^Staging run stopped: worker-exit-1 \(cause=(canary-shell-(?:navigation-missing|document-status|url-invalid|script-failed|main-count)|staging-fixture-candidate-refused)(?:; location=[A-Za-z0-9._/-]+:\d+:\d+)?\)$/.exec(detail);
+  const diagnostic = match && safeWorkerCauses.has(match[1]) ? match[1] : reason;
   const closed = new Set(['worker-exit-1', 'stop-signal', 'whole-run-deadline', 'http-request-limit',
     'http-admission-timeout', 'http-timeout', 'artifact-byte-limit', 'process-cleanup-unverified',
     'process-inspection-unavailable', 'run-ledger-invalid', 'run-ledger-busy', 'source-pair-mismatch',
-    'source-pair-readback-refused', 'checkout-mismatch', 'checkout-source-changed']);
+    'source-pair-readback-refused', 'checkout-mismatch', 'checkout-source-changed',
+    'canary-shell-navigation-missing', 'canary-shell-document-status', 'canary-shell-url-invalid',
+    'canary-shell-script-failed', 'canary-shell-main-count', 'staging-fixture-candidate-refused']);
   const phase = marker?.schema === 'doctorcre-staging-canary-phase.v1' && canaryPhases.has(marker.phase)
     ? marker.phase : marker?.schema === 'doctorcre-staging-startup-canary.v1' &&
       marker.status === 'AUTHENTICATED_READ_ONLY_CANARY' && marker.acceptedV1 === false ? 'cleanup' : 'startup';
-  return { phase, stopReason: closed.has(reason) ? reason : 'worker-failed' };
+  return { phase, stopReason: closed.has(diagnostic) ? diagnostic : 'worker-failed' };
 }
 
 function sessionSecretPath(environment) {
@@ -1375,6 +1400,8 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
       'process-cleanup-unverified', 'process-inspection-unavailable', 'run-ledger-invalid', 'run-ledger-busy',
       'worker-exit-1', 'continuation-binding-mismatch', 'continuation-auth-failed', 'continuation-write-coverage-incomplete',
       'continuation-budget-unsettled', 'continuation-size-limit', 'continuation-path-refused', 'write-coverage-incomplete',
+      'canary-shell-navigation-missing', 'canary-shell-document-status', 'canary-shell-url-invalid',
+      'canary-shell-script-failed', 'canary-shell-main-count', 'staging-fixture-candidate-refused',
       ...businessFailureCodes]);
     const code = ownFailures.has(error) || closed.has(error?.code) ? error.code : 'source-check-failed';
     console.error(`Staging continuation stopped: ${code}; no full V1 acceptance is established.`);

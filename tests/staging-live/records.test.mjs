@@ -130,7 +130,7 @@ test('W6 draft fixture adds a separately keyed Pensacola client and independentl
     assert.equal(plan.records.tour_draft_party.state, 'FL');
     assert.equal(extended.records.client.id, base.records.client.id);
     assert.equal(extended.records.party.id, base.records.party.id);
-    assert.equal(plan.names.tour_draft_party, `QA Tour ${plan.run}`);
+    assert.equal(plan.names.tour_draft_party, `QA Tour ${plan.keys.tour_draft_party}`);
     assert.equal(plan.names.tour_draft_client, plan.names.tour_draft_party);
     const independentRead = fake.calls.find(call => call.path === `/api/v1/business/clients/${plan.records.tour_draft_client.id}`);
     assert.ok(independentRead, 'dedicated client received a normal authenticated readback');
@@ -256,24 +256,38 @@ test('W15 awaiting-invoice receipt, partial plan, and tracker mismatches refuse 
   });
 });
 
-test('run-owned synthetic party names are distinct before first dispatch and retain normal dedup', async () => {
+test('run-owned synthetic party names use distinct durable role keys before dispatch and retain normal dedup', async () => {
   const output = await mkdtemp(join(tmpdir(), 'staging-party-identity-'));
   try {
     const fake = fakeAPI(output);
     await prepareStagingRecords(output, fake);
     await prepareStagingRecords(output, { ...fake, reuseOnly: true, vendorFixture: true });
+    await prepareStagingRecords(output, { ...fake, reuseOnly: true, tourDraftFixture: true });
     const plan = JSON.parse(await readFile(join(output, 'staging-records-plan.json'), 'utf8'));
     const writes = fake.calls.filter(call => call.path === '/mcp' && call.options.data.params.name === 'add-party')
       .map(call => call.options.data.params.arguments);
-    assert.equal(writes.length, 3);
+    assert.equal(writes.length, 4);
     assert.equal(Object.hasOwn(writes[0], 'force_new'), false);
     for (const row of writes.slice(1)) {
       assert.equal(Object.hasOwn(row, 'force_new'), false);
-      assert.ok(row.name.includes(plan.run));
       assert.equal(row.kind, 'org');
     }
-    assert.equal(plan.names.lead, `QA Lead ${plan.run}`);
-    assert.equal(plan.names.vendor, `QA Vendor ${plan.run}`);
+    assert.equal(plan.names.lead, `QA Lead ${plan.keys.lead_party}`);
+    assert.equal(plan.names.vendor, `QA Vendor ${plan.keys.vendor_party}`);
+    assert.equal(plan.names.tour_draft_party, `QA Tour ${plan.keys.tour_draft_party}`);
+    assert.deepEqual(writes.map(row => row.name), ['Synthetic Staging Fixture', plan.names.lead,
+      plan.names.vendor, plan.names.tour_draft_party]);
+    assert.equal(new Set(writes.map(row => row.name)).size, 4);
+    assert.notEqual(plan.keys.lead_party, plan.keys.vendor_party);
+    assert.notEqual(plan.keys.lead_party, plan.keys.tour_draft_party);
+    assert.notEqual(plan.keys.vendor_party, plan.keys.tour_draft_party);
+    const namesAndKeys = { names: plan.names, keys: plan.keys };
+    fake.calls.length = 0;
+    await prepareStagingRecords(output, { ...fake, reuseOnly: true, vendorFixture: true });
+    await prepareStagingRecords(output, { ...fake, reuseOnly: true, tourDraftFixture: true });
+    const resumed = JSON.parse(await readFile(join(output, 'staging-records-plan.json'), 'utf8'));
+    assert.deepEqual({ names: resumed.names, keys: resumed.keys }, namesAndKeys);
+    assert.equal(fake.calls.filter(call => call.path === '/mcp' && call.options.data.params.name === 'add-party').length, 0);
   } finally { await rm(output, { recursive: true, force: true }); }
 });
 

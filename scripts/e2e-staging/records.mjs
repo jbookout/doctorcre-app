@@ -97,10 +97,11 @@ export async function prepareStagingRecords(output, {
   const label = `Synthetic staging QA ${fixtureRun}`;
   const plan = existing || {
     schema: 'doctorcre-staging-records-plan.v1', origin, release: source, state: 'pending', run: fixtureRun,
-    keys: Object.fromEntries(['party', 'client', 'deal', 'deal_lead', 'invoice_deal', 'invoice_lead', 'close_invoice', 'lead_party', 'lead', 'conversation', 'tour', 'tour_draft_party', 'tour_draft_client', 'awaiting_invoice_deal', 'awaiting_invoice_lead', 'awaiting_invoice_close'].map(name => [name, randomUUID()])),
-    names: { deal: `${label} active deal`, invoice: `${label} closed deal`, awaiting_invoice: `${fixtureRun} Synthetic W15 awaiting invoice`, lead: `QA Lead ${fixtureRun}`, conversation: `${label} private conversation`, tour: `${label} draft tour` },
+    keys: Object.fromEntries(['party', 'client', 'deal', 'deal_lead', 'invoice_deal', 'invoice_lead', 'close_invoice', 'lead_party', 'vendor_party', 'lead', 'conversation', 'tour', 'tour_draft_party', 'tour_draft_client', 'awaiting_invoice_deal', 'awaiting_invoice_lead', 'awaiting_invoice_close'].map(name => [name, randomUUID()])),
+    names: { deal: `${label} active deal`, invoice: `${label} closed deal`, awaiting_invoice: `${fixtureRun} Synthetic W15 awaiting invoice`, conversation: `${label} private conversation`, tour: `${label} draft tour` },
     records: {}, receipts: {}, current_step: 'authentication', observed_at: new Date().toISOString(),
   };
+  if (!existing) plan.names.lead = `QA Lead ${plan.keys.lead_party}`;
   const controlProofs = await prepareBrowserControlProofs(source, { signal });
   plan.browser_control_proofs = controlProofs.proofs;
   plan.browser_control_proof_preparation = controlProofs.preparation;
@@ -260,7 +261,7 @@ export async function prepareStagingRecords(output, {
       if (present.length && present.length !== vendorParts.length) throw new Error('Staging vendor fixture partial; reconciliation required');
       if (!present.length) {
         for (const name of vendorParts) plan.keys[name] ||= randomUUID();
-        plan.names.vendor ||= `QA Vendor ${plan.run}`;
+        plan.names.vendor ||= `QA Vendor ${plan.keys.vendor_party}`;
         await persist(planPath, plan);
         const party = await write('vendor_party', 'add-party', { name: plan.names.vendor, kind: 'org' });
         requireValue(party.ok === true && !party.auto_resolved && !party.needs_confirm);
@@ -294,7 +295,7 @@ export async function prepareStagingRecords(output, {
         // Persist unique names and both write keys before the first normal CARR
         // mutation. The fixed base fixture remains untouched.
         for (const name of fixtureParts) plan.keys[name] ||= randomUUID();
-        plan.names.tour_draft_party ||= `QA Tour ${plan.run}`;
+        plan.names.tour_draft_party ||= `QA Tour ${plan.keys.tour_draft_party}`;
         // CARR derives the client display name from its canonical party.
         plan.names.tour_draft_client ||= plan.names.tour_draft_party;
         await persist(planPath, plan);
