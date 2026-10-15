@@ -6,6 +6,7 @@ import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { supervise, createWorkerDiagnosticReader } from '../../scripts/e2e-staging/supervise.mjs';
 import { businessWorkerFailureCode, retainedBusinessWorkerCause } from '../../scripts/e2e-staging/continue-run.mjs';
+import { formatWorkerFailureDiagnostic } from '../../scripts/e2e-staging/worker-diagnostics.mjs';
 
 const safeSource = fileURLToPath(new URL('../../scripts/e2e-staging/session.mjs', import.meta.url));
 
@@ -71,6 +72,29 @@ test('unknown worker exceptions remain unreported and raw streams are not packag
   assert.equal(failure.message, 'Staging run stopped: worker-exit-1');
   assert.doesNotMatch(log, /worker-diagnostic/);
   assert.doesNotMatch(log, new RegExp(secretCanary));
+});
+
+test('unclassified TypeError retains one bounded secret-free frame diagnostic', async t => {
+  const projectRoot = fileURLToPath(new URL('../../', import.meta.url));
+  const secretCanary = 'SYNTHETIC_UNCLASSIFIED_SECRET_a821';
+  const failure = new TypeError(`private message ${secretCanary}`);
+  failure.code = 'unexpected-worker-failure';
+  failure.stack = `TypeError: ${failure.message}\n    at run (file://${safeSource}:91:4)`;
+  const diagnostic = formatWorkerFailureDiagnostic(failure, projectRoot);
+  assert.match(diagnostic,
+    /^Staging worker failure name=TypeError code=unexpected-worker-failure frame=scripts\/e2e-staging\/session\.mjs:91$/);
+  assert.ok(Buffer.byteLength(diagnostic) <= 320);
+  assert.doesNotMatch(diagnostic, /private message|SYNTHETIC_UNCLASSIFIED_SECRET_a821/);
+
+  const worker = [
+    `process.stderr.write(${JSON.stringify(`${diagnostic}\n`)});`,
+    'process.exitCode = 1;',
+  ].join('\n');
+  const { failure: stopped, log } = await runFailingWorker(t, worker);
+  assert.equal(stopped.code, 'worker-exit-1');
+  assert.ok(log.includes(`worker-diagnostic ${diagnostic}`));
+  assert.doesNotMatch(stopped.message, /private message|SYNTHETIC_UNCLASSIFIED_SECRET_a821/);
+  assert.doesNotMatch(log, /private message|SYNTHETIC_UNCLASSIFIED_SECRET_a821/);
 });
 
 test('business readback failure crosses worker diagnostic seam only as a closed code', () => {

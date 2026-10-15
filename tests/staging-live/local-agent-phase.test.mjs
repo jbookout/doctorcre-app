@@ -4,12 +4,13 @@ import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import fs from 'node:fs/promises';
 import { syncBuiltinESMExports } from 'node:module';
-import { mkdtemp, mkdir, readFile, stat, rm, writeFile } from 'node:fs/promises';
+import { chmod, mkdtemp, mkdir, readFile, stat, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import contract from '../../contracts/e2e-staging.v1.json' with { type: 'json' };
 import journeys from '../../contracts/e2e-staging-business-journeys.v1.json' with { type: 'json' };
-import { produceLocalAgentPhase, parseLocalAgentRpc, readLocalAgentTokenFile } from '../../scripts/e2e-staging/local-agent-phase.mjs';
+import { produceLocalAgentPhase, parseLocalAgentRpc, readLocalAgentTokenFile,
+  resolveStagingLocalAgentCredential } from '../../scripts/e2e-staging/local-agent-phase.mjs';
 
 const deal = '11111111-1111-4111-8111-111111111111';
 const event = '22222222-2222-4222-8222-222222222222';
@@ -22,6 +23,10 @@ const pair = { source_commit: source, carr_source_commit: contract.producer.sour
 const release = { service: 'doctorcre-app', environment: 'staging', ...pair };
 const syntheticSecurityIssue = (meta, uid) => meta.isFile && (meta.mode & 0o777) === 0o600 && meta.uid === uid
   ? null : 'unsafe';
+const syntheticCredentialSelector = (environment, tokenFile) => ({
+  profile: environment.CARR_MCP_CLIENT_PROFILE,
+  token: environment.CARR_MCP_LOCAL_TOKEN || tokenFile.match(/^CARR_STAGING_LOCAL=(.+)$/m)?.[1] || '',
+});
 const stable = value => Array.isArray(value) ? value.map(stable) : value && typeof value === 'object'
   ? Object.fromEntries(Object.keys(value).sort().map(key => [key, stable(value[key])])) : value;
 const digest = value => createHash('sha256').update(JSON.stringify(stable(value))).digest('hex');
@@ -130,6 +135,37 @@ test('local credential file refuses FIFO, nonregular and oversized inputs before
     'CARR_MCP_LOCAL_TOKEN=synthetic\n');
 });
 
+test('staging local credential selects only the protected staging key, honors override, and refuses unsafe file', async t => {
+  const root = await mkdtemp(join(tmpdir(), 'w4-agent-staging-credential-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const config = join(root, '.config', 'carr');
+  await mkdir(config, { recursive: true, mode: 0o700 });
+  await writeFile(join(config, 'staging-tokens.env'), 'CARR_STAGING_LOCAL=stage-secret-canary\n', { mode: 0o600 });
+  await writeFile(join(config, 'mcp-tokens.env'), 'CARR_MCP_LOCAL_TOKEN=production-secret-canary\n', { mode: 0o600 });
+  const credential = await resolveStagingLocalAgentCredential({ homeDirectory: root,
+    environment: {}, tokenFileSecurityIssue: syntheticSecurityIssue,
+    selectLocalClientCredential: syntheticCredentialSelector });
+  assert.deepEqual(credential, { profile: 'local', token: 'stage-secret-canary' });
+  assert.notEqual(credential.token, 'production-secret-canary');
+  const overridden = await resolveStagingLocalAgentCredential({ homeDirectory: root,
+    environment: { CARR_MCP_LOCAL_TOKEN: 'explicit-override-canary' },
+    tokenFileSecurityIssue: syntheticSecurityIssue, selectLocalClientCredential: syntheticCredentialSelector });
+  assert.deepEqual(overridden, { profile: 'local', token: 'explicit-override-canary' });
+  await chmod(join(config, 'staging-tokens.env'), 0o644);
+  await assert.rejects(resolveStagingLocalAgentCredential({ homeDirectory: root, environment: {},
+    tokenFileSecurityIssue: syntheticSecurityIssue, selectLocalClientCredential: syntheticCredentialSelector }),
+  { code: 'local-credential-file-unsafe' });
+});
+
+test('missing staging local credential has a closed staging-specific refusal', async t => {
+  const root = await mkdtemp(join(tmpdir(), 'w4-agent-staging-missing-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await mkdir(join(root, '.config', 'carr'), { recursive: true, mode: 0o700 });
+  await assert.rejects(resolveStagingLocalAgentCredential({ homeDirectory: root, environment: {},
+    tokenFileSecurityIssue: syntheticSecurityIssue, selectLocalClientCredential: syntheticCredentialSelector }),
+  { code: 'local-agent-staging-credential-unavailable' });
+});
+
 test('failed parent directory durability stops before any agent network', async t => {
   const h = await harness(t);
   const original = fs.open;
@@ -217,6 +253,26 @@ test('manual W4 must already have both observed receipts and independent reads b
       rpc: h.rpc, releaseFetch: h.releaseFetch }), /write-coverage|manual-predecessor/);
     assert.equal(h.calls.length, 0, kind);
   });
+});
+
+test('quarantine journal retains bounded error class, own code, and safe staging frame only', async t => {
+  const h = await harness(t);
+  const failure = new TypeError('private provider message SYNTHETIC_SECRET_72a1');
+  failure.code = 'local-agent-rpc-refused';
+  failure.stack = `TypeError: ${failure.message}\n    at request (file://${new URL('../../scripts/e2e-staging/local-agent-phase.mjs', import.meta.url).pathname}:43:7)`;
+  const rpc = async (name, args) => {
+    if (name === 'patch-deal-field') throw failure;
+    return h.rpc(name, args);
+  };
+  const result = await produceLocalAgentPhase({ plan: plan(), release, run: h.run, rpc,
+    releaseFetch: h.releaseFetch });
+  assert.equal(result.state, 'PENDING_RECONCILIATION');
+  const journal = JSON.parse(await readFile(result.journal_path, 'utf8'));
+  assert.equal(journal.state, 'quarantined');
+  assert.match(journal.quarantine_cause,
+    /^Staging worker failure name=TypeError code=local-agent-rpc-refused frame=scripts\/e2e-staging\/local-agent-phase\.mjs:43$/);
+  assert.doesNotMatch(journal.quarantine_cause, /private provider message|SYNTHETIC_SECRET_72a1/);
+  assert.doesNotMatch(JSON.stringify(journal), /private provider message|SYNTHETIC_SECRET_72a1/);
 });
 
 test('RPC response ID mismatch is refused and a wrong-ID write stays quarantined', async t => {
