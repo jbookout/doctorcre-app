@@ -408,7 +408,7 @@ test('foreign, forked and replayed adoption cannot claim predecessor ciphertext'
 test('unchanged carried payload pays the complete new framing without another content charge', async t => {
   const f = await fixture(t), path = join(f.output, 'evidence', 'frame.jpg');
   await mkdir(join(f.output, 'evidence'), { mode: 0o700 });
-  await f.run.writeFile(path, Buffer.alloc(1024, 7), writeFile);
+  await f.run.writeFile(path, Buffer.alloc(1024, 7), (destination, bytes) => writeFile(destination, bytes, { mode: 0o600 }));
   const controls = JSON.parse(await readFile(join(f.output, 'controls.json'), 'utf8'));
   controls.screens = [{ reached: true, controls: [{ evidence_path: path }] }];
   await writeFile(join(f.output, 'controls.json'), JSON.stringify(controls));
@@ -536,7 +536,8 @@ test('5,140 incompressible image-sized artifacts and new content fit four comple
       const run = openRun(output, { runId: f.run.id, events: null, newInvocation: true });
       t.after(() => run.dispose());
       const before = run.snapshot().artifactBytes;
-      await run.writeFile(join(output, 'evidence', 'screens', `new-${slot}.jpg`), randomBytes(1024), writeFile);
+      await run.writeFile(join(output, 'evidence', 'screens', `new-${slot}.jpg`), randomBytes(1024),
+        (path, bytes) => writeFile(path, bytes, { mode: 0o600 }));
       assert.equal(run.snapshot().artifactBytes - before, 1024);
       const next = await sealContinuation({ output, envelopePath: join(f.root, `sealed-${slot}.carr`), secret,
         sourcePair, runId: run.id, generation: slot, predecessor: { generation: slot - 1, sha256: sealed.sha256 },
@@ -584,7 +585,7 @@ test('wrong key and ciphertext tampering fail closed without a partial restore',
   const header = JSON.parse(data.subarray(16, 16 + headerLength).toString('utf8'));
   header.ciphertext = (header.ciphertext[0] === 'A' ? 'B' : 'A') + header.ciphertext.slice(1);
   Buffer.from(JSON.stringify(header)).copy(data, 16);
-  await writeFile(corrupted, data);
+  await writeFile(corrupted, data, { mode: 0o600 });
   await assert.rejects(restoreContinuation({ envelopePath: corrupted, destination: f.restored, secret, expected: { ...expected, sha256: sha256(data) } }), { code: 'continuation-auth-failed' });
   await assert.rejects(readFile(join(f.restored, 'controls.json')), { code: 'ENOENT' });
 });

@@ -685,9 +685,13 @@ test('wrong id, digest, generation, predecessor, plan or source never reaches a 
     publicDir: join(f.root, 'wrong-source-public'), envelopePath: join(f.root, 'wrong-source.enc'),
     binding: { ...binding, app: 'c'.repeat(40) }, expected, incoming: { ...expected, path: f.base.envelopePath } }, f.dependencies),
   { code: 'continuation-binding-mismatch' });
-  await assert.rejects(boundedInvocation({ ...f.base, slot: 2, output: join(f.root, 'wrong-plan'), expected: { ...expected, planHash: 'e'.repeat(64) },
+  const wrongPlanOutput = join(f.root, 'wrong-plan');
+  await assert.rejects(boundedInvocation({ ...f.base, slot: 2, output: wrongPlanOutput,
+    expected: { ...expected, planHash: 'e'.repeat(64) },
     publicDir: join(f.root, 'wrong-plan-public'), envelopePath: join(f.root, 'wrong-plan.enc'),
-    incoming: { ...expected, path: f.base.envelopePath } }, f.dependencies), { code: 'continuation-binding-mismatch' });
+    incoming: { ...expected, planHash: 'e'.repeat(64), path: f.base.envelopePath } }, f.dependencies),
+  { code: 'continuation-binding-mismatch' });
+  await assert.rejects(readFile(join(wrongPlanOutput, 'controls.json')), { code: 'ENOENT' });
   assert.equal(f.calls(), 1);
 });
 
