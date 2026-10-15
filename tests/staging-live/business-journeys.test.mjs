@@ -25,6 +25,7 @@ const bodyResponse = (value, status = 200) => {
   const body = Buffer.from(typeof value === 'string' ? value : JSON.stringify(value));
   return { status: () => status, headers: () => ({ 'content-type': 'application/json' }), body: async () => body, json: async () => JSON.parse(body) };
 };
+const controlIdentityProbe = 'control-state.v1:' + '0'.repeat(64);
 
 test('served signed-in app W4/W9 uses the real UI, canonical fixture guard and durable receipts', { timeout: 180_000 }, async t => {
   admitFixtureRun(t);
@@ -269,7 +270,7 @@ test('served signed-in app W4/W9 uses the real UI, canonical fixture guard and d
         await assert.rejects(f.scoped.assertCoverage(), /write-coverage-incomplete/);
         const continuation = f.guard.forContext();
         await assert.rejects(continuation.assertCoverage(), /write-coverage-incomplete/);
-        await assert.rejects(continuation.admitControl({ identity: baseline.browser_control_proofs[0].identity }), /write-coverage-incomplete/);
+        await assert.rejects(continuation.admitControl({ identity: controlIdentityProbe }), /write-coverage-incomplete/);
         throw new Error('Synthetic interruption after real UI readback before witness');
       };
       await assert.rejects(runBusinessJourneys({ page: f.page, fixtureGuard: f.guard, release, deal, run }), /Synthetic interruption after real UI readback/);
@@ -395,7 +396,7 @@ test('served signed-in app W4/W9 uses the real UI, canonical fixture guard and d
             assert.equal(row.state,'acknowledged');assert.equal(row.independent_readback.matched,true);
             assert.equal(plan.fixture_proofs.invoice.state,'quarantined');
             await assert.rejects(assertStagingWriteCoverage(output),/coverage/);
-            await assert.rejects(f.guard.forContext().admitControl({identity:baseline.browser_control_proofs[0].identity}),/coverage/);
+            await assert.rejects(f.guard.forContext().admitControl({identity:controlIdentityProbe}),/coverage/);
             throw new Error('Synthetic missing paid/Home UI witness');
           }
           return admit(spec);
