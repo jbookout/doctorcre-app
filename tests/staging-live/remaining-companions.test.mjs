@@ -129,69 +129,74 @@ test('a fabricated disabled observation and a timeout cannot qualify optional fe
   await assert.rejects(timed.guard.assertCoverage(), /companion-reconciliation-required/);
 });
 
-test('enabled companions qualify exact synthetic report review and draft approval with independent readback', async () => {
+test('enabled companion execution fails closed before opening any draft control', async () => {
   const h = harness();
-  const rows = await runCompanionJourneys({ page: h.page, fixtureGuard: h.guard, release, plan: h.plan, run: h.run });
-  assert.deepEqual(rows.map(row => [row.id, row.enabled, row.state]),
-    [['Outlook draft', true, 'qualified'], ['Call Mode', true, 'qualified']]);
-  assert.deepEqual(h.plan.companion_attempts.map(row => [row.operation, row.state]),
-    ['state', 'state', 'report', 'confirm', 'sync', 'draft', 'report'].map(operation => [operation, 'acknowledged']));
-  assert.equal(h.plan.companion_journey.state, 'observed');
-  assert.deepEqual(h.plan.companion_attempts.findLast(row => row.operation === 'report').observation,
-    { session: h.seed.session, draft_id: '0123456789abcdef', candidate_id: ids.candidate,
-      candidate_status: 'confirmed', created: true,
-      sha256: companionDigest({ status: { state: 'ready_review', session: h.seed.session }, report: h.report }) });
-  await h.guard.assertCoverage();
-  const resumed = await runCompanionJourneys({ page: h.page, fixtureGuard: h.guard, release, plan: h.plan, run: h.run });
-  assert.equal(resumed[0].state, 'qualified');
-  assert.equal(h.plan.companion_attempts.filter(row => row.operation === 'draft').length, 1);
-});
-
-test('enabled admission rejects missing bridge attestation, another source, and unowned fixture identity', async () => {
-  const absent = harness();
-  await absent.guard.handle(request('/api/state'), async () => response({ state: 'filed', session: absent.seed.session }));
-  await assert.rejects(absent.invoke('admit'), /companion-enabled-state-unproved/);
-  const source = harness(); await source.state();
-  await assert.rejects(source.guard.companionJourney({ phase: 'admit', fixture_run: fixtureRun,
-    release: { ...release, source_commit: 'f'.repeat(40) } }), /companion-source-binding-unproved/);
-  for (const change of [f => { f.deal_id = ids.party; }, f => { f.bridge_origin = 'https://api.doctorcre.com'; },
-    f => { f.session = 'real-current-recording'; }, f => { f.synthetic = false; }]) {
-    const h = harness(); await h.state(); h.alter(plan => change(plan.companion_fixture));
-    await assert.rejects(h.invoke('admit'), /companion-fixture-provenance-unproved/);
-  }
-});
-
-test('recorder controls, extra operations, changed content and unapproved draft ordering stay refused', async () => {
-  const h = harness(); await h.state(); await h.invoke('admit');
-  let forwarded = 0;
-  for (const req of [request('/api/start', { method: 'POST', body: { mode: 'weekly_deal_call', consent_confirmed: true } }),
-    request('/api/stop', { method: 'POST', body: {} }), request('/api/post-call?session=other-session'),
-    request(`/api/post-call/drafts/${h.seed.draft_id}/create`, { method: 'POST',
-      headers: { 'x-carr-call-mode': 'deal-room-v1' }, body: { session: h.seed.session, approved_content_hash: 'e'.repeat(64) } })])
-    await assert.rejects(h.guard.handle(req, async () => { forwarded++; return response({}); }), /companion-route-unproved/);
-  await assert.rejects(h.draft(), /companion-order-unproved/);
-  assert.equal(forwarded, 0);
-  assert.deepEqual(h.plan.companion_attempts.map(row => row.operation), ['state']);
-});
-
-test('unknown confirmation outcomes retain their intent and never replay', async () => {
-  const h = harness(); await h.state(); await h.invoke('admit'); await h.read();
-  await assert.rejects(h.confirm({ jsonrpc: '2.0', id: 'synthetic-confirm', result: { content: [] } }),
-    /companion-dispatch-outcome-unresolved/);
-  assert.deepEqual(h.plan.companion_attempts.map(row => [row.operation, row.state]),
-    [['state', 'acknowledged'], ['report', 'acknowledged'], ['confirm', 'unresolved']]);
-  await assert.rejects(h.confirm(), /companion-reconciliation-required/);
+  let clicks = 0;
+  h.page.locator = () => ({ waitFor: async () => {}, click: async () => { clicks++; } });
+  await assert.rejects(runCompanionJourneys({ page: h.page, fixtureGuard: h.guard,
+    release, plan: h.plan, run: h.run }), { code: 'companion-isolated-mailbox-required' });
+  assert.equal(clicks, 0);
+  assert.equal(h.plan.companion_journey, undefined);
   await assert.rejects(h.guard.assertCoverage(), /companion-reconciliation-required/);
 });
 
-test('a report must bind the exact seed hash and contain only the owned synthetic candidate', async () => {
-  for (const mutate of [r => { r.draft_proposals[0].candidate_id = ids.capture; },
-    r => { r.draft_proposals[0].body = 'Changed content'; }, r => { r.joe_tasks.push({ candidate_id: ids.capture }); },
-    r => { r.unbound = 'Changed report hash'; }]) {
-    const h = harness(); await h.state(); await h.invoke('admit'); mutate(h.report);
-    await assert.rejects(h.read(), /companion-dispatch-outcome-unresolved/);
-    assert.equal(h.plan.companion_attempts.at(-1).state, 'unresolved');
-  }
+test('fixture and bridge assertions cannot enable a mailbox without independent isolation and readback', async () => {
+  const h = harness();
+  await h.state().catch(() => {});
+  h.alter(plan => {
+    plan.companion_fixture.mailbox = { isolated: true, environment: 'staging', address: 'qa@example.invalid' };
+    plan.companion_fixture.mailbox_readback = { draft_id: h.seed.draft_id, content_hash: h.seed.content_hash };
+  });
+  await assert.rejects(h.invoke('admit'), { code: 'companion-isolated-mailbox-required' });
+  assert.equal(h.plan.companion_journey, undefined);
+});
+
+test('a created report and creator receipts never qualify a legacy enabled journey', async () => {
+  const h = harness();
+  h.alter(plan => {
+    plan.companion_journey = { state: 'observed', fixture: plan.companion_fixture };
+    plan.companion_attempts = ['state', 'confirm', 'sync', 'draft', 'report'].map(operation => ({
+      operation, state: 'acknowledged', observation: { enabled: true, created: true,
+        candidate_status: 'confirmed', created_at: '2026-10-15T12:00:00Z' },
+    }));
+  });
+  await assert.rejects(h.invoke('observe', { ui: { ...h.ui(), dialog_open: true, report_visible: true,
+    draft_count: 1, draft_disabled: true, draft_label: 'Created in Outlook' } }),
+  { code: 'companion-isolated-mailbox-required' });
+  await assert.rejects(h.guard.assertCoverage(), /companion-reconciliation-required/);
+});
+
+test('sync is refused before capture-bridge poll can file or consume the capture', async () => {
+  const h = harness();
+  h.alter(plan => {
+    plan.companion_journey = { state: 'admitted', fixture: plan.companion_fixture };
+    plan.companion_attempts = ['state', 'report', 'confirm'].map(operation => ({ operation, state: 'acknowledged' }));
+  });
+  let forwarded = 0;
+  await assert.rejects(h.guard.handle(request('/api/post-call/sync', { method: 'POST',
+    headers: { 'x-carr-call-mode': 'deal-room-v1' }, body: { session: h.seed.session } }),
+  async () => { forwarded++; return response({ status: { state: 'ready_review', session: h.seed.session },
+    report: { ...h.report, draft_proposals: h.report.draft_proposals.map(row => ({ ...row, candidate_status: 'confirmed' })) } }); }),
+  { code: 'companion-route-unproved' });
+  assert.equal(forwarded, 0);
+  assert.deepEqual(h.plan.companion_attempts.map(row => row.operation), ['state', 'report', 'confirm']);
+});
+
+test('only exact status GET can reach the companion, even with a retained admitted fixture', async () => {
+  const h = harness();
+  h.alter(plan => { plan.companion_journey = { state: 'admitted', fixture: plan.companion_fixture }; });
+  let forwarded = 0;
+  for (const req of [request('/api/start', { method: 'POST', body: {} }),
+    request('/api/stop', { method: 'POST', body: {} }), request('/api/state?session=other'),
+    request(`/api/post-call?session=${h.seed.session}`, { headers: { 'x-carr-call-mode': 'deal-room-v1' } }),
+    request(`/api/post-call/drafts/${h.seed.draft_id}/create`, { method: 'POST',
+      headers: { 'x-carr-call-mode': 'deal-room-v1' }, body: { session: h.seed.session, approved_content_hash: h.seed.content_hash } }),
+    request(staging.origin + '/mcp', { method: 'POST', body: h.confirmation })])
+    await assert.rejects(h.guard.handle(req, async () => { forwarded++; return response({}); }),
+      { code: 'companion-route-unproved' });
+  assert.equal(forwarded, 0);
+  assert.equal(h.plan.companion_attempts, undefined);
+  assert.deepEqual(await h.guard.handle(request(staging.origin + '/app-release'), async () => {}), { handled: false });
 });
 
 test('same-origin page and authenticated exact source are required before probing', async () => {
