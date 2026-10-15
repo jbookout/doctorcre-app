@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { randomUUID, createHash } from 'node:crypto';
-import { mkdtemp, readFile, writeFile, rm, mkdir, chmod } from 'node:fs/promises';
+import { mkdtemp, readFile, writeFile, rm, mkdir, chmod, link, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { chromium, fixtureServer } from '../../test/browser-harness.mjs';
@@ -285,6 +285,23 @@ test('served signed-in app W4/W9 uses the real UI, canonical fixture guard and d
       await assert.rejects(assertStagingWriteCoverage(output), /write-coverage-incomplete/);
       assert.equal(f.writes.length, count, 'an acknowledged effect with a missing UI witness is never replayed');
     } finally { await f.page.context().close(); }
+  });
+
+  await t.test('W15 hard-linked installer proof refuses before import and preserves journal and both names', async () => {
+    const f=await fixture();
+    try {
+      const alias=f.proofPath+'.alias';
+      const proofBytes=await readFile(f.proofPath), journalBytes=await readFile(planPath);
+      await link(f.proofPath,alias);
+      assert.equal((await stat(f.proofPath)).nlink,2,'the proof and alias are links to the same inode');
+      await assert.rejects(f.guard.admitBusinessJourneyStep({phase:'import-fixture',journey:'W15',step:'paid',
+        deal:f.invoiceDeal,release,proofPath:f.proofPath}),/proof|fixture/);
+      assert.deepEqual(await readFile(planPath),journalBytes,'a rejected proof leaves the private journal byte-for-byte unchanged');
+      assert.deepEqual(await readFile(f.proofPath),proofBytes,'the original name is unchanged');
+      assert.deepEqual(await readFile(alias),proofBytes,'the hard-link alias is unchanged');
+      assert.equal((await stat(f.proofPath)).nlink,2);
+      assert.equal(f.writes.length,0);
+    } finally {await f.page.context().close(); await rm(f.proofPath+'.alias',{force:true});}
   });
 
   await t.test('W15 real Home invoice link, marker receipt, independent tracker and fresh Home removal', async () => {

@@ -393,7 +393,7 @@ async function readInvoiceProof(path) {
     if (parent.uid !== process.getuid() || (parent.mode & 0o777) !== 0o700) policyFailure('invoice-fixture-proof-path-unproved');
     handle = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
     const info = await handle.stat();
-    if (!info.isFile() || info.uid !== process.getuid() || (info.mode & 0o777) !== 0o600 || info.size > 65536)
+    if (!info.isFile() || info.uid !== process.getuid() || (info.mode & 0o777) !== 0o600 || info.nlink !== 1 || info.size > 65536)
       policyFailure('invoice-fixture-proof-file-unproved');
     const bytes = Buffer.alloc(65537);
     const { bytesRead } = await handle.read(bytes, 0, bytes.length, 0);
