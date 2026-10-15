@@ -12,8 +12,9 @@ it does not certify live CARR service behavior.
 ## Launch
 
 From the repository root, install dependencies once with `npm ci` and install
-Chromium with `npx playwright install chromium`. Use Node 22.12 or newer and
-the local POSIX `ps` and `lsof` commands (available on macOS and hosted Ubuntu CI).
+Chromium with `npx playwright install chromium`. Use a Node.js version that
+satisfies `engines.node` in [package.json](../../../package.json), and the local
+POSIX `ps` and `lsof` commands (available on macOS and hosted Ubuntu CI).
 Generate the repository's slice-owned routes with `npm run slices:check`.
 
 Choose a fresh run directory. The executable CLI starts the repository's
