@@ -10,7 +10,7 @@ export const release = { service: 'doctorcre-app', environment: 'staging', sourc
 export const reply = body => ({ ok: () => true, status: () => 200, json: async () => body });
 export const envelope = body => reply({ jsonrpc: '2.0', id: 1, result: { content: [{ type: 'text', text: JSON.stringify(body) }] } });
 
-export function fakeAPI(output, { refuse, unknown, candidateAt, wrongParty = false, linkedLead = false, beforeReadback, sourceRelease = release } = {}) {
+export function fakeAPI(output, { refuse, unknown, candidateAt, wrongParty = false, wrongRelationship = false, linkedLead = false, beforeReadback, sourceRelease = release } = {}) {
   const calls = [], rows = { deals: new Map() };
   let disposed = 0;
   const id = number => `40000000-0000-4000-8000-${String(number).padStart(12, '0')}`;
@@ -18,7 +18,16 @@ export function fakeAPI(output, { refuse, unknown, candidateAt, wrongParty = fal
     async get(path, options) {
       calls.push({ path, options });
       if (path === stagingAuth.session.path) return reply({ actor: { slug: contract.session.actor_slug }, e2e_principal: contract.session.e2e_principal, csrf_token: 'private-csrf-canary' });
-      if (path.startsWith('/api/v1/business/clients/')) { beforeReadback?.(rows); return reply({ record: { id: rows.client, name: rows.clientName ?? 'Synthetic Staging Fixture' } }); }
+      if (path.startsWith('/api/v1/business/clients/')) { beforeReadback?.(rows); return reply({ record: { id: rows.client, ref: 'C-001', name: rows.clientName ?? 'Synthetic Staging Fixture' } }); }
+      if (path === '/api/v1/business/relationships?contract=relationship-network.v1') {
+        const plan = JSON.parse(await readFile(join(output, 'staging-records-plan.json'), 'utf8'));
+        const dealId = plan.records.deal.id;
+        return reply({ schema: 'carr-relationship-network.v1', observed_at: new Date().toISOString(),
+          valid_until: new Date(Date.now() + 60000).toISOString(),
+          nodes: [{ id: `party:${fixture}`, name: 'Synthetic Staging Fixture', kind: 'client' },
+            { id: `deal:${dealId}`, record_id: dealId, name: plan.records.deal.name }],
+          edges: [{ id: `client-deal:${dealId}`, from: `party:${wrongRelationship ? id(99) : fixture}`, to: `deal:${dealId}`, kind: 'client_deal' }] });
+      }
       if (path.startsWith('/api/v1/business/vendors/')) return reply({ viewer: 'joe', record: { id: rows.vendor?.id,
         name: rows.vendor?.name, owner: 'joe', relationship: { recent_entries: rows.vendorEntry ? [rows.vendorEntry] : [],
           introductions: rows.vendorLink ? [rows.vendorLink] : [] } } });
@@ -53,7 +62,7 @@ export function fakeAPI(output, { refuse, unknown, candidateAt, wrongParty = fal
           links: [{ from_ref: args.links[0].from_ref, to_ref: args.links[0].to_ref,
             kind: 'can_introduce', link_id: rows.vendorLink.id, existing: false }] });
       }
-      if (name === 'new-deal') { const deal_id = id(rows.deals.size + 2); rows.deals.set(deal_id, { deal_id, id: deal_id, name: args.name, phase: 'pending', owner: null, lane: 'territory', base_version: 1, operating_state: 'active' }); return envelope({ ok: true, deal_id }); }
+      if (name === 'new-deal') { const deal_id = id(rows.deals.size + 2); rows.deals.set(deal_id, { deal_id, id: deal_id, name: args.name, client_ref: 'C-001', client_name: 'Synthetic Staging Fixture', phase: 'pending', owner: null, lane: 'territory', base_version: 1, operating_state: 'active' }); return envelope({ ok: true, deal_id }); }
       if (name === 'get-deal-room') {
         const row = rows.deals.get(args.deal);
         const error = rows.roomError || (row?.phase === 'closed' ? { error: 'not_found', table: 'deal', id: args.deal } : null);

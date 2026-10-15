@@ -163,6 +163,10 @@ export async function prepareStagingRecords(output, {
       if (party.needs_confirm) {
         const exact = party.candidates?.filter(candidate => candidate.id === FIXTURE.id && candidate.name === FIXTURE.name);
         requireValue(exact?.length === 1);
+        plan.party_reuse = { schema: 'staging-fixture-party-reuse.v1', state: 'pending-readback',
+          party_id: FIXTURE.id, candidate_response_sha256: digest(party),
+          observed_at: new Date().toISOString() };
+        await persist(planPath, plan);
         await remember('party', FIXTURE);
       } else {
         requireValue(party.ok === true && !party.auto_resolved);
@@ -271,6 +275,29 @@ export async function prepareStagingRecords(output, {
       requireValue(dealRead.deal_id === plan.records.deal.id && boundedText(dealRead.name) &&
         (dealRead.owner === null || boundedText(dealRead.owner)) && boundedText(dealRead.phase));
       requireValue(existing || (dealRead.name === plan.records.deal.name && dealRead.owner === 'joe' && dealRead.phase === 'pending'));
+    }
+    if (plan.party_reuse) {
+      requireValue(plan.party_reuse.schema === 'staging-fixture-party-reuse.v1' &&
+        plan.party_reuse.party_id === FIXTURE.id && /^[a-f0-9]{64}$/.test(plan.party_reuse.candidate_response_sha256) &&
+        clientRead.record.ref === plan.records.client.ref &&
+        (existing || clientRead.record.name === FIXTURE.name) &&
+        (closedDeal || dealRead.client_ref === plan.records.client.ref &&
+          (existing || dealRead.client_name === FIXTURE.name)));
+      const network = await json('/api/v1/business/relationships?contract=relationship-network.v1');
+      const partyNode = `party:${FIXTURE.id}`, dealNode = `deal:${plan.records.deal.id}`;
+      requireValue(network.schema === 'carr-relationship-network.v1' &&
+        Number.isFinite(Date.parse(network.observed_at)) && Date.parse(network.valid_until) > Date.now() &&
+        Array.isArray(network.nodes) && Array.isArray(network.edges) &&
+        network.nodes.some(node => node.id === partyNode && (existing || node.name === FIXTURE.name)) &&
+        network.nodes.some(node => node.id === dealNode && node.record_id === plan.records.deal.id &&
+          (existing || node.name === plan.records.deal.name)) &&
+        network.edges.some(edge => edge.id === `client-deal:${plan.records.deal.id}` &&
+          edge.kind === 'client_deal' && edge.from === partyNode && edge.to === dealNode));
+      plan.party_reuse = { ...plan.party_reuse, state: 'verified', client_id: plan.records.client.id,
+        deal_id: plan.records.deal.id, network_observed_at: network.observed_at,
+        network_response_sha256: digest(network), client_response_sha256: digest(clientRead),
+        deal_response_sha256: digest(dealRead) };
+      await persist(planPath, plan);
     }
     const invoiceRead = await rpc('read-deal-reconciliation', { deal: plan.records.invoice.deal_id });
     requireValue(invoiceRead.id === plan.records.invoice.deal_id && boundedText(invoiceRead.phase));

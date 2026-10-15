@@ -179,6 +179,13 @@ test('normal staging APIs create representative records with private durable key
     assert.equal(result.complete, true);
     assert.deepEqual(result.release, release);
     assert.equal(result.records.party.id, fixture);
+    const plan = JSON.parse(await readFile(join(output, 'staging-records-plan.json'), 'utf8'));
+    assert.equal(plan.receipts.party, undefined, 'reuse must not fabricate an add-party creation receipt');
+    assert.equal(plan.party_reuse.state, 'verified');
+    assert.equal(plan.party_reuse.party_id, fixture);
+    assert.equal(plan.party_reuse.client_id, result.records.client.id);
+    assert.equal(plan.party_reuse.deal_id, result.records.deal.id);
+    assert.match(plan.party_reuse.network_response_sha256, /^[a-f0-9]{64}$/);
     assert.equal(result.records.client.id, fake.rows.client);
     assert.equal(result.records.deal.id, [...fake.rows.deals.keys()][0]);
     assert.equal(result.records.invoice.deal_id, [...fake.rows.deals.keys()][1]);
@@ -200,6 +207,21 @@ test('normal staging APIs create representative records with private durable key
       assert.doesNotMatch(await readFile(join(output, file), 'utf8'), /private-(cookie|csrf)-canary/);
     }
     assert.equal(fake.disposed(), 1);
+  } finally { await rm(output, { recursive: true, force: true }); }
+});
+
+test('fixed-party reuse refuses a deal edge to a different party without replaying writes', async () => {
+  const output = await mkdtemp(join(tmpdir(), 'staging-party-lineage-'));
+  try {
+    const fake = fakeAPI(output, { wrongRelationship: true });
+    await assert.rejects(prepareStagingRecords(output, fake), /stopped at readback/);
+    const plan = JSON.parse(await readFile(join(output, 'staging-records-plan.json'), 'utf8'));
+    assert.equal(plan.party_reuse.state, 'pending-readback');
+    assert.equal(plan.receipts.party, undefined);
+    const calls = fake.calls.length;
+    await assert.rejects(prepareStagingRecords(output, { ...fake,
+      session: () => assert.fail('unverified lineage must refuse before authentication') }), /partial plan requires reconciliation/);
+    assert.equal(fake.calls.length, calls);
   } finally { await rm(output, { recursive: true, force: true }); }
 });
 
