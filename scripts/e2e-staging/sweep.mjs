@@ -13,6 +13,7 @@ import { sweepOwnerStates } from './owner-states.mjs';
 import { createRecordedActionContinuation } from './recorded-action-reconciliation.mjs';
 import { createSweepRun, readSweepCheckpoint } from './resume.mjs';
 import { assertSweepJobOutcome, completionContract } from './completion-contract.mjs';
+import { assessCurrentEvidence } from './evidence-manifest.mjs';
 
 export async function assertSweepFixtureScope(page, control, scope) {
   try {
@@ -32,7 +33,10 @@ export async function persistSweepReport(output, run, setup, { publishFile } = {
 }
 
 async function persistCompletion(output, budget, verdict, release, fixtureWriteScopeComplete, setup, targets, routedScreens) {
-  const completion = completionContract({ verdict, release, fixtureWriteScopeComplete, setup, targets, routedScreens });
+  const checkpoint = JSON.parse(await readFile(join(output, 'controls.json'), 'utf8'));
+  const retainedEvidence = await assessCurrentEvidence(output, checkpoint, budget.id);
+  const completion = completionContract({ verdict, release, fixtureWriteScopeComplete, setup, targets, routedScreens,
+    retainedEvidence, runId: budget.id });
   const data = JSON.stringify({ ...verdict, fixtureWriteScopeComplete, completion,
     measuredAt: new Date().toISOString(), release }, null, 2) + '\n';
   await budget.writeFile(join(output, 'sweep-verdict.json'), data, writeFile);

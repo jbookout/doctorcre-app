@@ -10,6 +10,7 @@ import { outputPath, scrubEvidence } from './sweep.mjs';
 import { assertStagingBrowserInventory, prepareStagingRecords, assertStagingWriteCoverage } from './records.mjs';
 import { createSweepRun, readSweepCheckpoint } from './resume.mjs';
 import { configureExplorationModelCallBudget, createExplorationBatchPlan, formatExplorationBatchPlan, formatExplorationCallPlan } from './model-room.mjs';
+import { verifyRetainedEvidence } from './evidence-manifest.mjs';
 
 const project = fileURLToPath(new URL('../../', import.meta.url));
 
@@ -74,6 +75,12 @@ export function createExplorationSchedule({ targets: targetSet, routedScreens, p
   return Object.freeze({ planned, completed, pending: planned.filter(row => !completeKeys.has(explorationKey(row))) });
 }
 
+export async function retainedExplorationSchedule({ output, checkpoint, targets, routedScreens }) {
+  const proof = checkpoint ? await verifyRetainedEvidence(output, checkpoint) : { verified: false };
+  return createExplorationSchedule({ targets, routedScreens,
+    prior: proof.verified ? checkpoint.explorations : [] });
+}
+
 async function exploreWithRun(run) {
   run.check();
   process.env.E2E_TARGET = 'staging-live';
@@ -83,7 +90,7 @@ async function exploreWithRun(run) {
   await assertStagingBrowserInventory();
   const routedScreens = await screens();
   const checkpoint = await readSweepCheckpoint(output);
-  const schedule = createExplorationSchedule({ targets, routedScreens, prior: checkpoint?.explorations });
+  const schedule = await retainedExplorationSchedule({ output, checkpoint, targets, routedScreens });
   const batchPlan = createExplorationBatchPlan(schedule.pending.length);
   console.log(formatExplorationBatchPlan(batchPlan));
   const pending = schedule.pending.slice(0, batchPlan.batches[0]?.goalCount || 0);

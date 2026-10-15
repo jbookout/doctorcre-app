@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import contract from '../../contracts/e2e-staging.v1.json' with { type: 'json' };
 import { RUN_LIMITS, RunLimitError } from './run-limits.mjs';
 import { assertStagingWriteCoverage } from './records.mjs';
+import { rebaseEvidenceReferences, retainedEvidenceFiles, snapshotRetainedEvidence } from './evidence-manifest.mjs';
 
 const SCHEMA = 'doctorcre-staging-continuation.v1';
 const FILES = Object.freeze(['controls.json', 'staging-records.json', 'staging-records-plan.json']);
@@ -177,21 +178,23 @@ export async function sealContinuation({ output, envelopePath, secret = process.
   const files = Object.fromEntries(await Promise.all(FILES.map(async name => [name, await readPrivateSource(join(root, name))])));
   validateFiles(files, sourcePair, planHash);
   await requireWriteCoverage(root);
+  const evidence = await snapshotRetainedEvidence(root, JSON.parse(files['controls.json']), sourcePair, runId);
+  retainedEvidenceFiles(evidence, JSON.parse(files['controls.json']), sourcePair, runId);
   if (!run || typeof run.reserveBytes !== 'function' || typeof run.snapshot !== 'function' || run.id !== runId || resolve(run.root || '') !== root)
     fail('continuation-budget-invalid');
   const header = { schema: SCHEMA, runId, sourcePair, contractHash, planHash, generation, predecessor };
   let safeBudget = budgetForEnvelope(run.snapshot(), runId);
-  const plaintextBytes = Buffer.byteLength(json({ files, budget: safeBudget }));
+  const plaintextBytes = Buffer.byteLength(json({ files, budget: safeBudget, evidence }));
   if (Math.ceil(plaintextBytes / 3) * 4 + 4096 > Math.min(RUN_LIMITS.artifactBytes, run.limits.artifactBytes))
     fail('continuation-size-limit');
-  let encoded = encryptPayload({ files, budget: safeBudget }, header, secret);
+  let encoded = encryptPayload({ files, budget: safeBudget, evidence }, header, secret);
   let charged = 0;
   for (let attempt = 0; attempt < 4; attempt++) {
     if (encoded.length > RUN_LIMITS.artifactBytes) fail('continuation-size-limit');
     const additional = encoded.length + 128 - charged;
     if (additional > 0) { run.reserveBytes(additional); charged += additional; }
     safeBudget = budgetForEnvelope(run.snapshot(), runId);
-    encoded = encryptPayload({ files, budget: safeBudget }, header, secret);
+    encoded = encryptPayload({ files, budget: safeBudget, evidence }, header, secret);
     if (encoded.length <= charged) break;
   }
   if (encoded.length > charged) fail('continuation-size-limit');
@@ -246,9 +249,12 @@ export async function restoreContinuation({ envelopePath, destination, secret = 
   } catch { fail('continuation-auth-failed'); }
   let payload;
   try { payload = JSON.parse(plaintext.toString('utf8')); } catch { fail('continuation-payload-invalid'); }
-  if (!exactKeys(payload, ['files', 'budget'])) fail('continuation-payload-invalid');
+  if (!exactKeys(payload, ['files', 'budget', 'evidence'])) fail('continuation-payload-invalid');
   validateFiles(payload.files, header.sourcePair, header.planHash);
   validateBudget(payload.budget, header.runId);
+  let retained;
+  try { retained = retainedEvidenceFiles(payload.evidence, JSON.parse(payload.files['controls.json']), header.sourcePair, header.runId); }
+  catch { fail('continuation-payload-invalid'); }
   const root = resolve(destination || '');
   if (!isAbsolute(destination || '') || !destination) fail('continuation-path-refused');
   const parent = dirname(root), lockPath = `${root}.restore.lock`;
@@ -260,10 +266,34 @@ export async function restoreContinuation({ envelopePath, destination, secret = 
   try {
     if (!(await pathAbsent(root))) fail('continuation-destination-exists');
     await mkdir(temporary, { mode: 0o700 });
+    const restoredControls = rebaseEvidenceReferences(JSON.parse(payload.files['controls.json']),
+      payload.evidence.source_root, root);
     for (const name of [...FILES, 'run-budget.json']) {
-      const content = name === 'run-budget.json' ? json(payload.budget) + '\n' : payload.files[name];
+      const content = name === 'run-budget.json' ? json(payload.budget) + '\n' : name === 'controls.json'
+        ? json(restoredControls) + '\n' : payload.files[name];
       const handle = await open(join(temporary, name), constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o600);
       try { await handle.writeFile(content); await handle.sync(); } finally { await handle.close(); }
+    }
+    if (retained.size) {
+      const evidenceDirectories = new Set();
+      for (const [name, content] of retained) {
+        const path = join(temporary, name);
+        await mkdir(dirname(path), { recursive: true, mode: 0o700 });
+        for (let parent = dirname(path); parent !== temporary; parent = dirname(parent)) evidenceDirectories.add(parent);
+        const handle = await open(path, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o600);
+        try { await handle.writeFile(content); await handle.sync(); } finally { await handle.close(); }
+      }
+      const manifest = { ...payload.evidence, source_root: root,
+        checkpoint_sha256: sha256(json(restoredControls)),
+        files: Object.fromEntries(Object.entries(payload.evidence.files).map(([name, meta]) => [name,
+          { size: meta.size, sha256: meta.sha256 }])) };
+      const handle = await open(join(temporary, 'evidence', 'manifest.json'),
+        constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o600);
+      try { await handle.writeFile(json(manifest) + '\n'); await handle.sync(); } finally { await handle.close(); }
+      for (const path of [...evidenceDirectories].sort((a, b) => b.length - a.length)) {
+        const handle = await open(path, constants.O_RDONLY);
+        try { await handle.sync(); } finally { await handle.close(); }
+      }
     }
     await requireWriteCoverage(temporary);
     const dir = await open(temporary, constants.O_RDONLY); try { await dir.sync(); } finally { await dir.close(); }

@@ -7,6 +7,8 @@ import test from 'node:test';
 import contract from '../../contracts/e2e-staging.v1.json' with { type: 'json' };
 import { RUN_LIMITS, openRun } from '../../scripts/e2e-staging/run-limits.mjs';
 import { restoreContinuation, sealContinuation } from '../../scripts/e2e-staging/continuation-envelope.mjs';
+import { assessCurrentEvidence, verifyRetainedEvidence } from '../../scripts/e2e-staging/evidence-manifest.mjs';
+import { retainedExplorationSchedule } from '../../scripts/e2e-staging/explore.mjs';
 
 const sourcePair = { source_commit: 'a'.repeat(40), carr_source_commit: contract.producer.source_commit };
 const secret = 'synthetic-continuation-secret-value-that-is-not-real';
@@ -67,6 +69,50 @@ test('seals only the three progress files and cumulative budget; restore validat
   assert.equal(next.snapshot().globalModelCalls, 1);
   assert.equal(next.snapshot().httpRequests, 0);
   assert.equal(next.snapshot().modelCalls, 0);
+});
+
+test('seal, remove and restore retains measured evidence bytes and refuses missing or changed proof', async t => {
+  const f = await fixture(t);
+  const path = join(f.output, 'evidence', 'explore', 'synthetic-goal', 'report.json');
+  await mkdir(join(f.output, 'evidence', 'explore', 'synthetic-goal'), { recursive: true, mode: 0o700 });
+  await writeFile(path, '{"schema":"synthetic-measured-report"}', { mode: 0o600 });
+  const checkpoint = JSON.parse(await readFile(join(f.output, 'controls.json'), 'utf8'));
+  checkpoint.explorations = [{ target: 'staging-live', screen: 'Home', path: '/', agent: 'bug-hunter',
+    steps: 1, status: 'finished', evidence: join(f.output, 'evidence', 'explore', 'synthetic-goal') }];
+  await writeFile(join(f.output, 'controls.json'), JSON.stringify(checkpoint));
+  await rm(path);
+  assert.equal((await assessCurrentEvidence(f.output, checkpoint, f.run.id)).verified, false);
+  await assert.rejects(seal(f), /Retained staging evidence invalid/);
+  await writeFile(path, '{"schema":"synthetic-measured-report"}', { mode: 0o600 });
+  assert.equal((await assessCurrentEvidence(f.output, checkpoint, f.run.id)).verified, true);
+  const alias = join(f.output, 'evidence', 'explore', 'synthetic-goal', 'alias.json');
+  await link(path, alias);
+  await assert.rejects(seal(f), /Retained staging evidence invalid/);
+  await rm(alias);
+  const sessionFile = join(f.output, 'evidence', 'explore', 'synthetic-goal', 'session.json');
+  await writeFile(sessionFile, '{}', { mode: 0o600 });
+  await assert.rejects(seal(f), /Retained staging evidence invalid/);
+  await rm(sessionFile);
+  const sealed = await seal(f);
+  await rm(join(f.output, 'evidence'), { recursive: true });
+  await restoreContinuation({ envelopePath: sealed.path, destination: f.restored, secret,
+    expected: { ...sealed, sourcePair, runId: f.run.id, predecessor: null } });
+  const restored = JSON.parse(await readFile(join(f.restored, 'controls.json'), 'utf8'));
+  assert.equal((await verifyRetainedEvidence(f.restored, restored)).verified, true);
+  const schedule = () => retainedExplorationSchedule({ output: f.restored, checkpoint: restored,
+    targets: [{ name: 'staging-live', surface: 'app' }],
+    routedScreens: [{ name: 'Home', path: '/', surface: 'app' }] });
+  assert.equal((await schedule()).completed.length, 1);
+  const restoredPath = join(f.restored, 'evidence', 'explore', 'synthetic-goal', 'report.json');
+  await writeFile(restoredPath, '{"schema":"tampered"}');
+  assert.equal((await verifyRetainedEvidence(f.restored, restored)).verified, false);
+  assert.equal((await schedule()).pending.length, 2);
+  await rm(restoredPath);
+  assert.equal((await verifyRetainedEvidence(f.restored, restored)).verified, false);
+  assert.equal((await schedule()).completed.length, 0);
+  await writeFile(restoredPath, '{"schema":"synthetic-measured-report"}');
+  const changed = { ...restored, expectedExplorations: 1 };
+  assert.equal((await verifyRetainedEvidence(f.restored, changed)).verified, false);
 });
 
 test('restore fsyncs and publishes private regular files, refuses existing targets and serializes competing publishers', async t => {

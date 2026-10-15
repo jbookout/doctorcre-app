@@ -35,6 +35,29 @@ const classify = (value = {}, options = {}) => completionContract({
   fixtureWriteScopeComplete: options.fixtureWriteScopeComplete ?? true,
   setup: Object.hasOwn(options, 'setup') ? options.setup : setup(),
   targets, routedScreens,
+  runId: 'synthetic-run',
+  retainedEvidence: Object.hasOwn(options, 'retainedEvidence') ? options.retainedEvidence : {
+    schema: 'doctorcre-staging-retained-evidence.v1', verified: true,
+    source_pair: { source_commit: release.source_commit, carr_source_commit: release.carr_source_commit },
+    run_id: 'synthetic-run', referencedFiles: 93,
+  },
+  businessProof: options.businessProof,
+});
+
+test('completed counts without source-bound retained evidence stay partial and never credit V1', () => {
+  for (const retainedEvidence of [undefined, { verified: false },
+    { schema: 'doctorcre-staging-retained-evidence.v1', verified: true,
+      source_pair: { source_commit: 'b'.repeat(40), carr_source_commit: release.carr_source_commit }, referencedFiles: 93 }]) {
+    const result = classify({}, { retainedEvidence });
+    assert.equal(result.status, 'PARTIAL');
+    assert.equal(result.retainedEvidenceVerified, false);
+    assert.equal(result.acceptedV1, false);
+  }
+  const bounded = classify({}, { businessProof: { schema: 'staging-business-journey-result.v1',
+    release: { source_commit: release.source_commit, carr_source_commit: release.carr_source_commit },
+    completed: ['W4', 'W9', 'W15'], unqualified_journeys: ['W6', 'Outlook draft', 'Call Mode'], full_v1_qualified: false } });
+  assert.equal(bounded.businessProofSourceBound, true);
+  assert.equal(bounded.acceptedV1, false);
 });
 
 test('canonical scheduler plan requires all source-bound explorations and fixture prerequisites for bounded sweep acceptance', () => {
