@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import test from 'node:test';
 import { createInvoiceCloseGuard, runInvoiceCloseJourney } from '../../scripts/e2e-staging/invoice-close-journey.mjs';
 import { qualifyV1Journeys, V1_REQUIRED_ACTIONS, observedV1Action } from '../../scripts/e2e-staging/v1-qualification.mjs';
@@ -9,7 +10,7 @@ const id = n => `90000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const binding = { source_commit: release.source_commit, carr_source_commit: release.carr_source_commit };
 const envelope = (id, data) => ({ status: () => 200, json: async () => ({ jsonrpc: '2.0', id,
   result: { content: [{ type: 'text', text: JSON.stringify(data) }] } }) });
-function adapter({ unknown = false, foreign = false, unscoped = false, capability = true, throwAt } = {}) {
+function adapter({ unknown = false, foreign = false, unscoped = false, capability = true, captureMutation, throwAt } = {}) {
   const plan = { run: id(1), observed_at: '2026-10-10T12:00:00.000Z', release: binding,
     records: { deal: { id: id(2), name: `Synthetic staging QA ${id(1)} open deal` },
       client: { id: id(3), name: 'Synthetic Staging Fixture' } },
@@ -28,9 +29,14 @@ function adapter({ unknown = false, foreign = false, unscoped = false, capabilit
       if (throwAt === name) throw new Error('network disconnected');
       if (name === 'read-deal-reconciliation') return envelope(requestId, { id: id(2), phase,
         invoiced_on: invoiced, base_version: version });
-      if (name === 'invoice-close-queue') return envelope(requestId, { proposals: [], moves: [{
-        invoice_id: id(4), deal_id: id(2), status, evidence_ref: `local-mail:staging-invoice:${id(1)}:${id(2)}`,
-        base_version: version, invoiced_on: '2026-10-10' }] });
+      if (name === 'invoice-close-queue') {
+        const invoice = { invoice_id: id(4), deal_id: id(2), deal_name: plan.records.deal.name,
+          status: status || 'proposed', evidence_ref: `local-mail:staging-invoice:${id(1)}:${id(2)}`,
+          base_version: version, invoiced_on: '2026-10-10' };
+        const queue = status ? { proposals: [], moves: [invoice] } : { proposals: [invoice], moves: [] };
+        if (!status) captureMutation?.(queue);
+        return envelope(requestId, queue);
+      }
       if (name === 'lead-stage-preview') return envelope(requestId, { scope_enforced: capability,
         staging_scope: { contract: 'staging-invoice-close.v1', ...args.staging_fixture }, moves: [],
         drafts_prepared: 0, sent: false, invoice_closes: [{ invoice_id: id(4), deal_id: id(2), status: 'applied',
@@ -98,6 +104,9 @@ test('invoice readback must be independently observed after close and bind the s
   await f.send('read-deal-reconciliation', { deal: id(2) });
   const capture = await f.guard.admitInvoiceClose({ phase: 'admit', step: 'capture', release: binding });
   await f.send('record-deal-invoice', capture.arguments);
+  await f.send('invoice-close-queue');
+  await f.guard.admitInvoiceClose({ phase: 'observe', step: 'capture', release: binding,
+    observation: { invoice_id: id(4), state: 'captured' } });
   await f.send('lead-stage-preview', { staging_fixture: { fixture_run: id(1), invoice_id: id(4), deal_id: id(2) } });
   const close = await f.guard.admitInvoiceClose({ phase: 'admit', step: 'close', release: binding });
   await f.send('advance-leads', close.arguments);
@@ -119,7 +128,61 @@ test('missing producer scope capability refuses automation before any advance-le
   const f = adapter({ capability: false });
   await assert.rejects(runInvoiceCloseJourney({ ...f, release, fixtureGuard: f.guard }), /scope-unproved/);
   assert.deepEqual(f.requests.map(row => row.name), ['read-deal-reconciliation', 'record-deal-invoice',
-    'read-deal-reconciliation', 'lead-stage-preview']);
+    'invoice-close-queue', 'read-deal-reconciliation', 'lead-stage-preview']);
+  const capture = f.plan.invoice_close_journey.steps.capture;
+  assert.equal(capture.state, 'observed');
+  assert.equal(capture.readback_sha256, createHash('sha256').update(JSON.stringify(capture.observation)).digest('hex'));
+  await f.guard.assertCoverage();
+  capture.readback_sha256 = null;
+  await assert.rejects(f.guard.assertCoverage(), /coverage-incomplete/);
+});
+
+test('scope failure cannot leave acknowledgement-only invoice capture covered', async () => {
+  const f = adapter({ capability: false });
+  await f.send('read-deal-reconciliation', { deal: id(2) });
+  const capture = await f.guard.admitInvoiceClose({ phase: 'admit', step: 'capture', release: binding });
+  await f.send('record-deal-invoice', capture.arguments);
+  await assert.rejects(f.send('lead-stage-preview', { staging_fixture: {
+    fixture_run: id(1), invoice_id: id(4), deal_id: id(2) } }), /scope-unproved/);
+  assert.equal(f.plan.invoice_close_journey.steps.capture.state, 'acknowledged');
+  assert.equal(f.plan.invoice_close_journey.steps.capture.readback_sha256 ?? null, null);
+  await assert.rejects(f.guard.assertCoverage(), /coverage-incomplete/);
+});
+
+test('capture readback requires a fresh unique invoice with the fixture identity and content', async () => {
+  for (const captureMutation of [
+    queue => { queue.proposals = []; },
+    queue => { queue.proposals.push(structuredClone(queue.proposals[0])); },
+    queue => { queue.proposals[0].invoice_id = id(99); },
+    queue => { queue.proposals[0].deal_id = id(99); },
+    queue => { queue.proposals[0].deal_name = 'Other synthetic deal'; },
+    queue => { queue.proposals[0].evidence_ref += ':changed'; },
+    queue => { queue.proposals[0].invoiced_on = '2026-10-11'; },
+  ]) {
+    const f = adapter({ captureMutation });
+    await assert.rejects(runInvoiceCloseJourney({ ...f, release, fixtureGuard: f.guard }), /readback-unproved/);
+    await assert.rejects(f.guard.assertCoverage(), /coverage-incomplete/);
+    assert.deepEqual(f.requests.map(row => row.name),
+      ['read-deal-reconciliation', 'record-deal-invoice', 'invoice-close-queue']);
+  }
+  const f = adapter();
+  await f.send('read-deal-reconciliation', { deal: id(2) });
+  await f.send('invoice-close-queue');
+  const capture = await f.guard.admitInvoiceClose({ phase: 'admit', step: 'capture', release: binding });
+  await f.send('record-deal-invoice', capture.arguments);
+  const observe = () => f.guard.admitInvoiceClose({ phase: 'observe', step: 'capture', release: binding,
+    observation: { invoice_id: id(4), state: 'captured' } });
+  await assert.rejects(observe(), /readback-unproved/);
+  await f.send('invoice-close-queue');
+  f.plan.invoice_close_journey.queue_read_at = f.plan.invoice_close_journey.steps.capture.completed_at - 1;
+  await assert.rejects(observe(), /readback-unproved/);
+  await f.send('invoice-close-queue');
+  const observed = await observe();
+  assert.equal(observed.state, 'observed');
+  assert.equal(observed.observation.invoice_id, id(4));
+  observed.observation.evidence_ref += ':changed';
+  f.plan.invoice_close_journey.steps.capture.observation = observed.observation;
+  await assert.rejects(f.guard.assertCoverage(), /coverage-incomplete/);
 });
 
 test('malformed typed content never becomes an invoice receipt', async () => {
