@@ -28,7 +28,7 @@ const fixturePlan = () => ({ schema: 'doctorcre-staging-records-plan.v1', state:
 
 function reusedPartyPlan() {
   const plan = fixturePlan();
-  plan.receipts.party = {};
+  delete plan.receipts.party;
   plan.records.client.ref = 'C-42';
   const now = new Date();
   plan.party_reuse = { schema: contract.party_reuse.schema, state: 'verified', party_id: partyId,
@@ -383,6 +383,17 @@ test('verified fixed-fixture party reuse qualifies only with fresh normal W2/W14
   assert.equal(result.full_v1_qualified, false);
   for (const privateValue of [partyId, clientId, dealId, partyName])
     assert.equal(JSON.stringify(result).includes(privateValue), false);
+});
+
+test('legacy empty reuse receipt is accepted only when the live client/deal association verifies', async t => {
+  const h = await harness(t);
+  const plan = reusedPartyPlan();
+  plan.receipts.party = {};
+  const result = await runReadonlyJourneys({ page: h.page, release, plan, run: h.run });
+  assert.equal(result.journeys.find(row => row.journey === 'W2').state, 'qualified-slice');
+  assert.equal(result.journeys.find(row => row.journey === 'W14').state, 'qualified-slice');
+  assert.deepEqual(h.relationshipMethods, ['GET', 'GET']);
+  assert.deepEqual(h.reads, ['get-deal-room', 'deal-room-board', 'get-deal-room']);
 });
 
 test('party reuse refuses missing, stale, foreign, mismatched and malformed evidence before reads', async t => {

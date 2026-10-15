@@ -141,6 +141,27 @@ test('W6 draft fixture adds a separately keyed Pensacola client and independentl
   } finally { await rm(output, { recursive: true, force: true }); }
 });
 
+test('W6 fixture receipts without their durable record copies refuse before authentication or requests', async t => {
+  for (const missing of ['tour_draft_party', 'tour_draft_client']) await t.test(missing, async () => {
+    const output = await mkdtemp(join(tmpdir(), 'staging-w6-receipt-without-record-'));
+    try {
+      const fake = fakeAPI(output);
+      await prepareStagingRecords(output, fake);
+      await prepareStagingRecords(output, { ...fake, reuseOnly: true, tourDraftFixture: true });
+      const path = join(output, 'staging-records-plan.json');
+      const plan = JSON.parse(await readFile(path, 'utf8'));
+      assert.ok(plan.receipts[missing]);
+      delete plan.records[missing];
+      await writeFile(path, JSON.stringify(plan), { mode: 0o600 });
+      fake.calls.length = 0;
+      await assert.rejects(prepareStagingRecords(output, { ...fake, reuseOnly: true, tourDraftFixture: true,
+        session: () => assert.fail('interrupted fixture must refuse before authentication') }),
+      /Tour draft client fixture partial plan requires reconciliation/);
+      assert.equal(fake.calls.length, 0);
+    } finally { await rm(output, { recursive: true, force: true }); }
+  });
+});
+
 test('W15 controlled awaiting-invoice deal uses normal deal verbs and exact tracker/readback proof', async () => {
   const output = await mkdtemp(join(tmpdir(), 'staging-w15-awaiting-invoice-'));
   try {

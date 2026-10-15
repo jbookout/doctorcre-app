@@ -59,6 +59,16 @@ export async function prepareStagingRecords(output, {
   const planPath = join(output, 'staging-records-plan.json');
   const existing = await readPrivateJSON(planPath);
   if (existing && (existing.state !== 'complete' || existing.inflight)) throw new Error('Staging records partial plan requires reconciliation; no record write was retried');
+  if (reuseOnly && tourDraftFixture && existing) {
+    const parts = [
+      [existing.records?.tour_draft_party, existing.receipts?.tour_draft_party],
+      [existing.records?.tour_draft_client, existing.receipts?.tour_draft_client],
+    ];
+    const present = parts.flat().filter(Boolean).length;
+    if (present !== 0 && present !== parts.length * 2) {
+      throw new Error('Staging Tour draft client fixture partial plan requires reconciliation; no record write was retried');
+    }
+  }
   if (reuseOnly && awaitingInvoiceFixture && existing) {
     const awaitingReceipts = ['awaiting_invoice_deal', 'awaiting_invoice_lead', 'awaiting_invoice_close'];
     const received = awaitingReceipts.filter(step => existing.receipts?.[step]);

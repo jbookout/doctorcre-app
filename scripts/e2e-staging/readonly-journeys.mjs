@@ -309,11 +309,13 @@ const responseHash = value => typeof value === 'string' && /^[a-f0-9]{64}$/.test
 
 function verifiedPartyReuse(plan, partyId, clientId, dealId) {
   const reuse = plan.party_reuse, spec = contract.party_reuse;
+  const receipt = plan.receipts?.party;
+  const noCreationReceipt = receipt === undefined || (receipt && typeof receipt === 'object' &&
+    !Array.isArray(receipt) && Object.keys(receipt).length === 0);
   const observed = Date.parse(reuse?.observed_at || '');
   const networkObserved = Date.parse(reuse?.network_observed_at || '');
   const now = Date.now();
-  return plan.receipts?.party && typeof plan.receipts.party === 'object' &&
-    !Array.isArray(plan.receipts.party) && Object.keys(plan.receipts.party).length === 0 &&
+  return noCreationReceipt &&
     reuse?.schema === spec.schema && reuse.state === 'verified' &&
     partyId === spec.fixture_party_id && plan.records.party.name === spec.fixture_party_name &&
     reuse.party_id === partyId && reuse.client_id === clientId && reuse.deal_id === dealId &&
@@ -446,7 +448,7 @@ export async function runReadonlyJourneys({ page, release, plan, run } = {}) {
   }
 
   const ownershipGap = planOwnershipGap(plan, release);
-  const partyReused = !ownershipGap && plan.receipts.party.party_id !== plan.records.party.id;
+  const partyReused = !ownershipGap && plan.receipts?.party?.party_id !== plan.records.party.id;
   const freshReuse = partyReused && identityQualified ? await evaluate('party-reuse-live', {
     partyId: plan.records.party.id, clientId: plan.records.client.id, dealId: plan.records.deal.id,
     clientRef: plan.records.client.ref, partyNameDigest: sha256(plan.records.party.name),
