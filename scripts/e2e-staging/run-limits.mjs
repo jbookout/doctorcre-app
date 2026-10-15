@@ -1,6 +1,6 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { randomUUID } from 'node:crypto';
-import { mkdirSync, readFileSync, writeFileSync, renameSync, rmSync, readdirSync, lstatSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync, renameSync, rmSync, readdirSync, lstatSync, fstatSync, openSync, closeSync, constants } from 'node:fs';
 import { join, resolve, relative, isAbsolute } from 'node:path';
 
 const artifactWrites = new AsyncLocalStorage();
@@ -90,11 +90,38 @@ export function artifactCopyBytes(source) {
   return stat.isDirectory() ? directoryBytes(source) : stat.size;
 }
 
-export function openRun(output, { limits = RUN_LIMITS, runId = process.env.E2E_RUN_ID, events = process, now = Date.now, newInvocation = false } = {}) {
+export function openRun(output, { limits = RUN_LIMITS, runId = process.env.E2E_RUN_ID, events = process, now = Date.now, newInvocation = false,
+  ownerId = process.env.E2E_RUN_OWNER, retirement } = {}) {
   if (!validRunLimits(limits)) throw new RunLimitError('invalid-run-limits');
+  if (ownerId !== undefined && (typeof ownerId !== 'string' || !/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/.test(ownerId)))
+    throw new RunLimitError('process-ownership-invalid');
   const root = resolve(output), path = join(root, 'run-budget.json'), lock = join(root, '.run-budget.lock');
   mkdirSync(root, { recursive: true, mode: 0o700 });
   let initializing = true;
+  // Writers publish by atomic rename. Observers decode the last complete ledger
+  // without taking the mutation lock or publishing an unchanged copy.
+  const readLedger = () => {
+    let state, missing = false;
+    try { state = JSON.parse(readFileSync(path, 'utf8')); }
+    catch (error) { if (error.code !== 'ENOENT') throw new RunLimitError('run-ledger-unreadable'); missing = true; }
+    if (missing && !initializing) throw new RunLimitError('run-ledger-unreadable');
+    if (missing) { const startedAt = now(); state = { schema: 'doctorcre-run-budget.v1', id: runId || randomUUID(), startedAt, deadline: startedAt + limits.runTimeoutMs,
+      limits, httpRequests: 0, modelCalls: 0, artifactBytes: 0, activeHttp: {}, queuedHttp: {}, processGroups: {}, stopReason: null }; }
+    if (!state || typeof state !== 'object' || Array.isArray(state) || state.schema !== 'doctorcre-run-budget.v1' || runId && state.id !== runId ||
+        (!initializing && state.id !== initial.id) ||
+        (!(initializing && newInvocation) && JSON.stringify(state.limits) !== JSON.stringify(limits)) ||
+        !validRunLimits(state.limits) ||
+        (state.invocations !== undefined && !Array.isArray(state.invocations)) ||
+        !Number.isSafeInteger(state.deadline) || !Number.isSafeInteger(state.startedAt) || state.deadline !== state.startedAt + state.limits.runTimeoutMs ||
+        typeof state.id !== 'string' || !/^[a-zA-Z0-9_-]{8,80}$/.test(state.id) ||
+        (state.stopReason !== null && typeof state.stopReason !== 'string') ||
+        !state.queuedHttp || typeof state.queuedHttp !== 'object' || Array.isArray(state.queuedHttp) ||
+        ['httpRequests', 'modelCalls', 'artifactBytes'].some(key => !Number.isSafeInteger(state[key]) || state[key] < 0) ||
+        (!state.processGroups || typeof state.processGroups !== 'object' || Array.isArray(state.processGroups)) ||
+        !state.activeHttp || typeof state.activeHttp !== 'object' || Array.isArray(state.activeHttp))
+      throw new RunLimitError('run-ledger-invalid');
+    return { state, missing };
+  };
   const update = change => {
     const lockDeadline = Date.now() + limits.stopGraceMs;
     for (;;) {
@@ -106,24 +133,13 @@ export function openRun(output, { limits = RUN_LIMITS, runId = process.env.E2E_R
       }
     }
     try {
-      let state, missing = false;
-      try { state = JSON.parse(readFileSync(path, 'utf8')); }
-      catch (error) { if (error.code !== 'ENOENT') throw new RunLimitError('run-ledger-unreadable'); missing = true; }
-      if (missing) { const startedAt = now(); state = { schema: 'doctorcre-run-budget.v1', id: runId || randomUUID(), startedAt, deadline: startedAt + limits.runTimeoutMs,
-        limits, httpRequests: 0, modelCalls: 0, artifactBytes: 0, activeHttp: {}, queuedHttp: {}, processGroups: {}, stopReason: null }; }
-      if (!state || typeof state !== 'object' || Array.isArray(state) || state.schema !== 'doctorcre-run-budget.v1' || runId && state.id !== runId ||
-          (!(initializing && newInvocation) && JSON.stringify(state.limits) !== JSON.stringify(limits)) ||
-          !validRunLimits(state.limits) ||
-          (state.invocations !== undefined && !Array.isArray(state.invocations)) ||
-          !Number.isSafeInteger(state.deadline) || !Number.isSafeInteger(state.startedAt) || state.deadline !== state.startedAt + state.limits.runTimeoutMs ||
-          typeof state.id !== 'string' || !/^[a-zA-Z0-9_-]{8,80}$/.test(state.id) ||
-          (state.stopReason !== null && typeof state.stopReason !== 'string') ||
-          !state.queuedHttp || typeof state.queuedHttp !== 'object' || Array.isArray(state.queuedHttp) ||
-          ['httpRequests', 'modelCalls', 'artifactBytes'].some(key => !Number.isSafeInteger(state[key]) || state[key] < 0) ||
-          (!state.processGroups || typeof state.processGroups !== 'object' || Array.isArray(state.processGroups)) ||
-          !state.activeHttp || typeof state.activeHttp !== 'object' || Array.isArray(state.activeHttp))
-        throw new RunLimitError('run-ledger-invalid');
+      const { state, missing } = readLedger();
       const value = change(state, missing);
+      // Publish ownership before the ledger rename. An interrupted marker write
+      // is unknown ownership and must never be reclaimed.
+      if (ownerId) withAccountedArtifactWrite(() => writeFileSync(join(lock, 'owner.json'), JSON.stringify({
+        schema: 'doctorcre-run-lock.v1', runId: state.id, invocation: ownerId, pid: process.pid,
+      }), { mode: 0o600, flag: 'wx' }));
       const temporary = path + '.' + process.pid + '.tmp';
       writeFileSync(temporary, JSON.stringify(state) + '\n', { mode: 0o600, flag: 'w' });
       renameSync(temporary, path);
@@ -155,7 +171,7 @@ export function openRun(output, { limits = RUN_LIMITS, runId = process.env.E2E_R
   };
   const check = () => {
     controller.signal.throwIfAborted();
-    const state = update(row => structuredClone(row));
+    const { state } = readLedger();
     const reason = state.stopReason || (now() >= state.deadline ? 'whole-run-deadline' : null);
     if (reason) { stop(reason); controller.signal.throwIfAborted(); }
   };
@@ -170,14 +186,14 @@ export function openRun(output, { limits = RUN_LIMITS, runId = process.env.E2E_R
     });
     if (!accepted) { const stopped = update(state => state.stopReason); stop(stopped); throw new RunLimitError(stopped); }
   };
-  const timer = setTimeout(() => { try { stop('whole-run-deadline'); } catch {} }, Math.max(1, initial.deadline - now()));
-  timer.unref();
+  const timer = retirement ? undefined : setTimeout(() => { try { stop('whole-run-deadline'); } catch {} }, Math.max(1, initial.deadline - now()));
+  timer?.unref();
   const interrupt = () => { try { stop('stop-signal'); } catch {} };
   events?.on('SIGINT', interrupt); events?.on('SIGTERM', interrupt);
   const run = {
     root, id: initial.id, limits, signal: controller.signal, deadline: initial.deadline,
     check, stop,
-    snapshot: () => update(state => structuredClone(state)),
+    snapshot: () => readLedger().state,
     onStop(cleanup) { cleanups.add(cleanup); if (controller.signal.aborted) Promise.resolve().then(cleanup).catch(() => {}); return () => cleanups.delete(cleanup); },
     reserveProcessGroup() {
       check();
@@ -192,7 +208,45 @@ export function openRun(output, { limits = RUN_LIMITS, runId = process.env.E2E_R
       return () => update(state => { delete state.processGroups[token]; });
     },
     // Only the supervisor calls this after verifying every owned process disappeared.
-    releaseInvocationResources() { update(state => { state.processGroups = {}; state.activeHttp = {}; state.queuedHttp = {}; }); },
+    releaseInvocationResources() {
+      // This capability stays in the supervisor. Every owned group must already
+      // be physically gone, with complete ownership evidence and the lease held.
+      if (retirement) {
+        readLedger();
+        if (!retirement.isRetired()) throw new RunLimitError('process-cleanup-unverified');
+        const held = fstatSync(retirement.lease), current = lstatSync(join(root, '.run-owner'));
+        if (!held.isFile() || !current.isFile() || held.nlink !== 1 || (held.mode & 0o077) || current.isSymbolicLink() || held.dev !== current.dev || held.ino !== current.ino ||
+            readFileSync(join(root, '.run-owner'), 'utf8') !== String(process.pid))
+          throw new RunLimitError('process-cleanup-unverified');
+        let marker, directory, markerFile;
+        try {
+          directory = openSync(lock, constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW);
+          const directoryStat = fstatSync(directory);
+          markerFile = openSync(join(lock, 'owner.json'), constants.O_RDONLY | constants.O_NOFOLLOW);
+          const markerStat = fstatSync(markerFile);
+          if (directoryStat.isDirectory() && !(directoryStat.mode & 0o077) &&
+              markerStat.isFile() && markerStat.nlink === 1 && !(markerStat.mode & 0o077) && markerStat.size <= 1024) {
+            marker = JSON.parse(readFileSync(markerFile, 'utf8'));
+            const currentDirectory = lstatSync(lock);
+            if (!currentDirectory.isDirectory() || currentDirectory.dev !== directoryStat.dev || currentDirectory.ino !== directoryStat.ino)
+              marker = undefined;
+          }
+          if (marker?.schema === 'doctorcre-run-lock.v1' && ownerId && marker.invocation === ownerId &&
+              marker.runId === initial.id && Number.isSafeInteger(marker.pid) && marker.pid > 1) {
+            let dead = false;
+            try { process.kill(marker.pid, 0); }
+            catch (error) { if (error.code !== 'ESRCH') throw error; dead = true; }
+            if (dead) rmSync(lock, { recursive: true });
+          }
+        } catch (error) {
+          if (!['ENOENT', 'ENOTDIR', 'ELOOP'].includes(error.code) && !(error instanceof SyntaxError)) throw error;
+        } finally {
+          if (markerFile !== undefined) closeSync(markerFile);
+          if (directory !== undefined) closeSync(directory);
+        }
+      }
+      update(state => { state.processGroups = {}; state.activeHttp = {}; state.queuedHttp = {}; });
+    },
     reserveModel() { reserve('modelCalls', 1, 'model-call-limit'); },
     reserveBytes(bytes) {
       if (!Number.isSafeInteger(bytes) || bytes < 0) throw new RunLimitError('invalid-artifact-size');
