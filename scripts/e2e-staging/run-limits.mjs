@@ -1,7 +1,7 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
-import { randomUUID } from 'node:crypto';
-import { mkdirSync, readFileSync, writeFileSync, renameSync, rmSync, readdirSync, lstatSync, fstatSync, openSync, closeSync, constants } from 'node:fs';
-import { join, resolve, relative, isAbsolute } from 'node:path';
+import { createHash, randomUUID } from 'node:crypto';
+import { mkdirSync, readFileSync, writeFileSync, renameSync, rmSync, readdirSync, lstatSync, fstatSync, openSync, closeSync, fsyncSync, realpathSync, constants } from 'node:fs';
+import { join, resolve, relative, isAbsolute, sep } from 'node:path';
 
 const artifactWrites = new AsyncLocalStorage();
 export const artifactWriteIsAccounted = () => artifactWrites.getStore() === true;
@@ -72,10 +72,11 @@ export function modelCallsAllowed(environment = process.env) {
     environment.E2E_ALLOW_MODEL_CALLS === environment.E2E_RUN_ID;
 }
 
-export function directoryBytes(root) {
+export function directoryBytes(root, { excludeEvidence = false } = {}) {
   let total = 0;
   try {
     for (const name of readdirSync(root)) {
+      if (excludeEvidence && name === 'evidence') continue;
       const path = join(root, name), stat = lstatSync(path);
       if (stat.isSymbolicLink()) throw new RunLimitError('artifact-symlink-refused');
       total += stat.isDirectory() ? directoryBytes(path) : stat.size;
@@ -88,6 +89,28 @@ export function artifactCopyBytes(source) {
   const stat = lstatSync(source);
   if (stat.isSymbolicLink()) throw new RunLimitError('artifact-symlink-refused');
   return stat.isDirectory() ? directoryBytes(source) : stat.size;
+}
+
+const evidenceName = name => typeof name === 'string' && name.startsWith('evidence/') &&
+  name !== 'evidence/manifest.json' && name.split('/').every(part => /^[A-Za-z0-9_.-]+$/.test(part) && !['.', '..'].includes(part));
+const evidenceDigest = bytes => ({ size: Buffer.byteLength(bytes), sha256: createHash('sha256').update(bytes).digest('hex') });
+export const validEvidenceCharges = rows => rows && typeof rows === 'object' && !Array.isArray(rows) &&
+  Object.keys(rows).length <= 10000 && Object.entries(rows).every(([name, value]) => evidenceName(name) &&
+    value && Object.keys(value).sort().join() === 'sha256,size' && Number.isSafeInteger(value.size) &&
+    value.size >= 0 && /^[a-f0-9]{64}$/.test(value.sha256));
+const sameEvidence = (a, b) => a?.size === b.size && a?.sha256 === b.sha256;
+
+function measuredFile(path) {
+  const info = lstatSync(path);
+  if (!info.isFile() || info.nlink !== 1 || realpathSync(path) !== resolve(path) ||
+      typeof process.getuid === 'function' && info.uid !== process.getuid()) throw new RunLimitError('artifact-evidence-mismatch');
+  const fd = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
+  try {
+    const held = fstatSync(fd);
+    if (!held.isFile() || held.ino !== info.ino || held.dev !== info.dev || held.nlink !== 1 || held.size > RUN_LIMITS.artifactBytes)
+      throw new RunLimitError('artifact-evidence-mismatch');
+    return evidenceDigest(readFileSync(fd));
+  } finally { closeSync(fd); }
 }
 
 export function openRun(output, { limits = RUN_LIMITS, runId = process.env.E2E_RUN_ID, events = process, now = Date.now, newInvocation = false,
@@ -106,7 +129,7 @@ export function openRun(output, { limits = RUN_LIMITS, runId = process.env.E2E_R
     catch (error) { if (error.code !== 'ENOENT') throw new RunLimitError('run-ledger-unreadable'); missing = true; }
     if (missing && !initializing) throw new RunLimitError('run-ledger-unreadable');
     if (missing) { const startedAt = now(); state = { schema: 'doctorcre-run-budget.v1', id: runId || randomUUID(), startedAt, deadline: startedAt + limits.runTimeoutMs,
-      limits, httpRequests: 0, modelCalls: 0, artifactBytes: 0, activeHttp: {}, queuedHttp: {}, processGroups: {}, stopReason: null }; }
+      limits, httpRequests: 0, modelCalls: 0, globalHttpRequests: 0, globalModelCalls: 0, artifactBytes: 0, evidenceCharges: {}, activeHttp: {}, queuedHttp: {}, processGroups: {}, stopReason: null }; }
     if (!state || typeof state !== 'object' || Array.isArray(state) || state.schema !== 'doctorcre-run-budget.v1' || runId && state.id !== runId ||
         (!initializing && state.id !== initial.id) ||
         (!(initializing && newInvocation) && JSON.stringify(state.limits) !== JSON.stringify(limits)) ||
@@ -117,12 +140,29 @@ export function openRun(output, { limits = RUN_LIMITS, runId = process.env.E2E_R
         (state.stopReason !== null && typeof state.stopReason !== 'string') ||
         !state.queuedHttp || typeof state.queuedHttp !== 'object' || Array.isArray(state.queuedHttp) ||
         ['httpRequests', 'modelCalls', 'artifactBytes'].some(key => !Number.isSafeInteger(state[key]) || state[key] < 0) ||
+        ['globalHttpRequests', 'globalModelCalls'].some(key => state[key] !== undefined && (!Number.isSafeInteger(state[key]) || state[key] < 0)) ||
         (!state.processGroups || typeof state.processGroups !== 'object' || Array.isArray(state.processGroups)) ||
         !state.activeHttp || typeof state.activeHttp !== 'object' || Array.isArray(state.activeHttp))
       throw new RunLimitError('run-ledger-invalid');
+    state.evidenceCharges ??= {};
+    if (!validEvidenceCharges(state.evidenceCharges) ||
+        Object.values(state.evidenceCharges).reduce((sum, row) => sum + row.size, 0) > state.artifactBytes)
+      throw new RunLimitError('run-ledger-invalid');
+    // Legacy ledgers derive whole-run totals from invocation history until
+    // the next mutation commits those totals.
+    state.globalHttpRequests ??= (state.invocations || []).reduce((total, row) => total + (Number.isSafeInteger(row?.httpRequests) ? row.httpRequests : 0), state.httpRequests);
+    state.globalModelCalls ??= (state.invocations || []).reduce((total, row) => total + (Number.isSafeInteger(row?.modelCalls) ? row.modelCalls : 0), state.modelCalls);
+    const archived = (key) => (state.invocations || []).reduce((total, row) => {
+      if (!Number.isSafeInteger(row?.[key]) || row[key] < 0) throw new RunLimitError('run-ledger-invalid');
+      return total + row[key];
+    }, 0);
+    if (![state.globalHttpRequests, state.globalModelCalls].every(Number.isSafeInteger) ||
+        state.globalHttpRequests !== archived('httpRequests') + state.httpRequests ||
+        state.globalModelCalls !== archived('modelCalls') + state.modelCalls)
+      throw new RunLimitError('run-ledger-invalid');
     return { state, missing };
   };
-  const update = change => {
+  const update = (change, durable = false) => {
     const lockDeadline = Date.now() + limits.stopGraceMs;
     for (;;) {
       try { mkdirSync(lock, { mode: 0o700 }); break; }
@@ -142,7 +182,15 @@ export function openRun(output, { limits = RUN_LIMITS, runId = process.env.E2E_R
       }), { mode: 0o600, flag: 'wx' }));
       const temporary = path + '.' + process.pid + '.tmp';
       writeFileSync(temporary, JSON.stringify(state) + '\n', { mode: 0o600, flag: 'w' });
+      if (durable) {
+        const file = openSync(temporary, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
+        try { fsyncSync(file); } finally { closeSync(file); }
+      }
       renameSync(temporary, path);
+      if (durable) {
+        const directory = openSync(root, constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW);
+        try { fsyncSync(directory); } finally { closeSync(directory); }
+      }
       return value;
     } finally { rmSync(lock, { recursive: true }); }
   };
@@ -150,10 +198,11 @@ export function openRun(output, { limits = RUN_LIMITS, runId = process.env.E2E_R
     if (newInvocation && !missing) {
       if ([state.activeHttp, state.queuedHttp, state.processGroups].some(rows => Object.keys(rows).length))
         throw new RunLimitError('prior-invocation-unsettled');
+      if (now() >= state.deadline) throw new RunLimitError('whole-run-deadline');
+      if (limits.runTimeoutMs !== state.limits.runTimeoutMs) throw new RunLimitError('run-deadline-policy-changed');
       state.invocations ||= [];
       state.invocations.push({ startedAt: state.startedAt, deadline: state.deadline, httpRequests: state.httpRequests,
         modelCalls: state.modelCalls, stopReason: state.stopReason, limits: state.limits });
-      state.startedAt = now(); state.deadline = state.startedAt + limits.runTimeoutMs;
       state.httpRequests = 0; state.modelCalls = 0; state.stopReason = null; state.limits = limits;
     }
     return structuredClone(state);
@@ -175,16 +224,28 @@ export function openRun(output, { limits = RUN_LIMITS, runId = process.env.E2E_R
     const reason = state.stopReason || (now() >= state.deadline ? 'whole-run-deadline' : null);
     if (reason) { stop(reason); controller.signal.throwIfAborted(); }
   };
-  const reserve = (key, amount, reason) => {
+  const reserve = (key, amount, reason, { evidence, residentFloor = true, expected } = {}) => {
     check();
     const accepted = update(state => {
       if (state.stopReason || now() >= state.deadline) { state.stopReason ||= 'whole-run-deadline'; return false; }
-      if (key === 'artifactBytes') state.artifactBytes = Math.max(state.artifactBytes, directoryBytes(root));
+      if (expected !== undefined && state.artifactBytes !== expected) throw new RunLimitError('artifact-accounting-changed');
+      if (evidence && new Set([...Object.keys(state.evidenceCharges), ...Object.keys(evidence)]).size > 10000) {
+        state.stopReason = reason; return false;
+      }
+      if (evidence) amount = Object.entries(evidence).reduce((sum, [name, meta]) =>
+        sum + (sameEvidence(state.evidenceCharges[name], meta) ? 0 : meta.size), 0);
+      if (key === 'artifactBytes' && residentFloor)
+        state.artifactBytes = Math.max(state.artifactBytes, directoryBytes(root, { excludeEvidence: true }));
       const maximum = key === 'artifactBytes' ? limits.artifactBytes - Math.min(limits.artifactMetadataBytes, Math.floor(limits.artifactBytes / 8)) : limits[key];
-      if (state[key] + amount > maximum) { state.stopReason = reason; return false; }
-      state[key] += amount; return true;
-    });
+      const used = key === 'modelCalls' ? state.globalModelCalls : state[key];
+      if (used + amount > maximum) { state.stopReason = reason; return false; }
+      state[key] += amount;
+      if (evidence) Object.assign(state.evidenceCharges, evidence);
+      if (key === 'modelCalls') state.globalModelCalls += amount;
+      return true;
+    }, key === 'artifactBytes');
     if (!accepted) { const stopped = update(state => state.stopReason); stop(stopped); throw new RunLimitError(stopped); }
+    return { chargedBytes: amount };
   };
   const timer = retirement ? undefined : setTimeout(() => { try { stop('whole-run-deadline'); } catch {} }, Math.max(1, initial.deadline - now()));
   timer?.unref();
@@ -252,6 +313,18 @@ export function openRun(output, { limits = RUN_LIMITS, runId = process.env.E2E_R
       if (!Number.isSafeInteger(bytes) || bytes < 0) throw new RunLimitError('invalid-artifact-size');
       reserve('artifactBytes', bytes, 'artifact-byte-limit');
     },
+    accountEvidence(files) {
+      if (!validEvidenceCharges(files)) throw new RunLimitError('artifact-path-refused');
+      for (const [name, meta] of Object.entries(files)) {
+        if (!sameEvidence(measuredFile(join(root, name)), meta)) throw new RunLimitError('artifact-evidence-mismatch');
+      }
+      return reserve('artifactBytes', 0, 'artifact-byte-limit', { evidence: files, residentFloor: false });
+    },
+    reserveContinuationFraming(bytes, expectedArtifactBytes) {
+      if (!Number.isSafeInteger(bytes) || bytes < 0 || !Number.isSafeInteger(expectedArtifactBytes) || expectedArtifactBytes < 0)
+        throw new RunLimitError('invalid-artifact-size');
+      return reserve('artifactBytes', bytes, 'artifact-byte-limit', { residentFloor: false, expected: expectedArtifactBytes });
+    },
     checkArtifacts() {
       check();
       if (directoryBytes(root) > limits.artifactBytes) { stop('artifact-byte-limit'); throw new RunLimitError('artifact-byte-limit'); }
@@ -285,8 +358,8 @@ export function openRun(output, { limits = RUN_LIMITS, runId = process.env.E2E_R
           const admission = update(state => {
             if (state.stopReason || now() >= state.deadline) return state.stopReason ||= 'whole-run-deadline';
             if (Object.keys(state.activeHttp).length >= limits.httpConcurrency) return false;
-            if (state.httpRequests >= limits.httpRequests) return state.stopReason = 'http-request-limit';
-            state.httpRequests++; state.activeHttp[token] = process.pid; delete state.queuedHttp[token]; return true;
+            if (state.globalHttpRequests >= limits.httpRequests) return state.stopReason = 'http-request-limit';
+            state.httpRequests++; state.globalHttpRequests++; state.activeHttp[token] = process.pid; delete state.queuedHttp[token]; return true;
           });
           if (admission === true) break;
           if (admission) { stop(admission); throw new RunLimitError(admission); }
@@ -309,18 +382,45 @@ export function openRun(output, { limits = RUN_LIMITS, runId = process.env.E2E_R
       check();
       const name = relative(root, resolve(target));
       if (name.startsWith('..') || isAbsolute(name)) throw new RunLimitError('artifact-path-refused');
-      run.reserveBytes(artifactCopyBytes(source));
+      let evidence;
+      if (name === 'evidence' || name.startsWith('evidence' + sep)) {
+        evidence = {};
+        let evidenceFiles = 0;
+        const collect = (from, to) => {
+          const info = lstatSync(from);
+          if (info.isSymbolicLink()) throw new RunLimitError('artifact-symlink-refused');
+          if (info.isDirectory()) for (const child of readdirSync(from)) collect(join(from, child), join(to, child));
+          else {
+            evidence[relative(root, to).split(sep).join('/')] = measuredFile(from);
+            if (++evidenceFiles > 10000) throw new RunLimitError('artifact-byte-limit');
+          }
+        };
+        collect(resolve(source), resolve(target));
+        if (!validEvidenceCharges(evidence)) throw new RunLimitError('artifact-path-refused');
+        reserve('artifactBytes', 0, 'artifact-byte-limit', { evidence, residentFloor: false });
+      } else run.reserveBytes(artifactCopyBytes(source));
       await withAccountedArtifactWrite(() => copier(source, target));
+      if (evidence) run.accountEvidence(evidence);
       run.checkArtifacts();
     },
-    // `replaces` names the retained file this write will be published over (a
-    // staged checkpoint rewrite). Its bytes were charged when it was written, so
-    // only growth is charged again; the live directory check still bounds the
-    // transient old-plus-staged copy.
+    // Mutable checkpoint replacements retain resident-byte credit. Evidence
+    // gets credit only for a reserved path and digest; changes pay their full size.
     async writeFile(path, data, writer, { replaces } = {}) {
       check();
       const within = target => { const name = relative(root, resolve(target)); if (name.startsWith('..') || isAbsolute(name)) throw new RunLimitError('artifact-path-refused'); };
       within(path);
+      const receiptPath = relative(root, resolve(replaces || path)).split(sep).join('/');
+      if (receiptPath.startsWith('evidence/') || relative(root, resolve(path)).startsWith('evidence' + sep)) {
+        if (!evidenceName(receiptPath)) throw new RunLimitError('artifact-path-refused');
+        const meta = evidenceDigest(data);
+        reserve('artifactBytes', 0, 'artifact-byte-limit', {
+          evidence: { [receiptPath]: meta }, residentFloor: false,
+        });
+        await artifactWrites.run(true, () => writer(path, data));
+        if (!sameEvidence(measuredFile(resolve(path)), meta)) throw new RunLimitError('artifact-evidence-mismatch');
+        run.checkArtifacts();
+        return;
+      }
       let retained = 0;
       if (replaces !== undefined) {
         within(replaces);

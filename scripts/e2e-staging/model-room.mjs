@@ -12,15 +12,19 @@ export const EXPLORATION_MODEL_CALL_POLICY = Object.freeze({
   get hardGlobalCeiling() { return effectiveRunLimits().modelCalls; },
 });
 export const MODEL_ROOM_DISPATCH_CONTRACT = Object.freeze({
-  revision: 'carr-model-room-dispatch@0b2c8ec8be07df142519e6638da9ec3329edcef2',
+  revision: 'carr-model-room-dispatch@5ddaa8f39507de3f3343c5cc5177d3d07168e9eb',
   repository: 'jbookout/carr-system',
   relativePath: 'tools/room-bridge/dispatch.py',
-  sha256: '64e801f718242cf4bbd9a056a3b11e9d4faeea907c74ca0e18ca438fb2b2c61c',
+  sha256: '25b51af5a270d22711e6d22feba40680472f57c2874a7fd6736c19ca5851c182',
   argv: Object.freeze(['send', '{desk}', '-', '--fresh']),
+  family: 'luna',
+  model: 'gpt-6-luna',
+  effort: 'medium',
 });
 const dispatcherEnvelopeKeys = new Set([
-  'msg_id', 'desk', 'kind', 'task', 'dispatched_at', 'status', 'result', 'thread_id', 'resumed',
-  'actual_model', 'finish', 'provider', 'retrieval', 'code', 'detail', 'error', 'retry_after',
+  // The completed ABI plus the only three fields current Codex failure rows add.
+  'msg_id', 'desk', 'kind', 'task', 'dispatched_at', 'family', 'model', 'effort',
+  'thread_id', 'resumed', 'status', 'result', 'detail', 'retry_after', 'termination_confirmed',
 ]);
 
 export function createExplorationCallPlan(goalCount) {
@@ -88,18 +92,23 @@ export function createModelCallBudget(limit = EXPLORATION_MODEL_CALL_POLICY.hard
 function requireDispatcherEnvelope(row, expected) {
   if (!row || typeof row !== 'object' || Array.isArray(row)) throw new Error(`unknown Model Room dispatcher envelope for ${MODEL_ROOM_DISPATCH_CONTRACT.revision}`);
   const unknown = Object.keys(row).filter(key => !dispatcherEnvelopeKeys.has(key));
+  const currentSuccessKeys = [
+    'msg_id', 'desk', 'kind', 'task', 'dispatched_at', 'family', 'model', 'effort',
+    'thread_id', 'resumed', 'status', 'result',
+  ];
   const optionalTypes = [
+    ['family', value => typeof value === 'string' && value.length > 0],
+    ['model', value => typeof value === 'string' && value.length > 0],
+    ['effort', value => typeof value === 'string' && value.length > 0],
     ['thread_id', value => typeof value === 'string'],
     ['resumed', value => typeof value === 'boolean'],
-    ['actual_model', value => typeof value === 'string'],
-    ['finish', value => typeof value === 'string'],
-    ['provider', value => typeof value === 'string'],
-    ['retrieval', value => value && typeof value === 'object' && !Array.isArray(value)],
-    ['code', value => Number.isSafeInteger(value)],
+    ['result', value => typeof value === 'string'],
     ['detail', value => typeof value === 'string'],
-    ['error', value => typeof value === 'string'],
     ['retry_after', value => value === null || typeof value === 'string'],
+    ['termination_confirmed', value => typeof value === 'boolean'],
   ];
+  const modelIdentity = ['family', 'model', 'effort'];
+  const hasModelIdentity = modelIdentity.some(key => key in row);
   const valid = unknown.length === 0
     && typeof row.msg_id === 'string'
     && row.desk === expected.desk
@@ -107,6 +116,14 @@ function requireDispatcherEnvelope(row, expected) {
     && row.task === expected.task
     && typeof row.dispatched_at === 'string'
     && typeof row.status === 'string'
+    && (row.status !== 'completed' || typeof row.result === 'string')
+    && (expected.contract !== MODEL_ROOM_DISPATCH_CONTRACT || row.status !== 'completed'
+      || currentSuccessKeys.every(key => key in row))
+    && (!hasModelIdentity || modelIdentity.every(key => key in row))
+    && (expected.contract !== MODEL_ROOM_DISPATCH_CONTRACT || modelIdentity.every(key => key in row))
+    && (!('family' in row) || row.family === MODEL_ROOM_DISPATCH_CONTRACT.family)
+    && (!('model' in row) || row.model === MODEL_ROOM_DISPATCH_CONTRACT.model)
+    && (!('effort' in row) || row.effort === MODEL_ROOM_DISPATCH_CONTRACT.effort)
     && optionalTypes.every(([key, accepts]) => !(key in row) || accepts(row[key]));
   if (!valid) throw new Error(`unknown Model Room dispatcher envelope for ${MODEL_ROOM_DISPATCH_CONTRACT.revision}`);
   return row;
@@ -347,7 +364,11 @@ export function createModelRoomModel({
         const row = await dispatch({ desk, task: prepared.task, fresh: true, signal, run: active, environment });
         active.check();
         signal.throwIfAborted();
-        return parseDeskResult(row, { desk, task: prepared.task });
+        return parseDeskResult(row, {
+          desk,
+          task: prepared.task,
+          contract: dispatch === dispatchThroughModelRoom ? MODEL_ROOM_DISPATCH_CONTRACT : null,
+        });
       } finally { await prepared.cleanup(); }
     },
     async doStream() { throw new Error('DoctorCRE E2E Model Room adapter does not stream'); },

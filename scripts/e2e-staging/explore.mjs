@@ -1,5 +1,5 @@
 import { currentRun, effectiveRunLimits, RunLimitError, modelCallsAllowed } from './run-limits.mjs';
-import { readFile, mkdir, cp } from 'node:fs/promises';
+import { readFile, mkdir, cp, lstat } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import { join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -10,6 +10,7 @@ import { outputPath, scrubEvidence } from './sweep.mjs';
 import { assertStagingBrowserInventory, prepareStagingRecords, assertStagingWriteCoverage } from './records.mjs';
 import { createSweepRun, readSweepCheckpoint } from './resume.mjs';
 import { configureExplorationModelCallBudget, createExplorationBatchPlan, formatExplorationBatchPlan, formatExplorationCallPlan } from './model-room.mjs';
+import { assessCurrentEvidence, verifyRetainedEvidence } from './evidence-manifest.mjs';
 
 const project = fileURLToPath(new URL('../../', import.meta.url));
 
@@ -74,6 +75,23 @@ export function createExplorationSchedule({ targets: targetSet, routedScreens, p
   return Object.freeze({ planned, completed, pending: planned.filter(row => !completeKeys.has(explorationKey(row))) });
 }
 
+export async function retainedExplorationSchedule({ output, checkpoint, targets, routedScreens }) {
+  let proof = { verified: false };
+  if (checkpoint) {
+    const manifest = await lstat(join(output, 'evidence', 'manifest.json')).catch(error => {
+      if (error.code === 'ENOENT') return null;
+      throw error;
+    });
+    const budget = JSON.parse(await readFile(join(output, 'run-budget.json'), 'utf8'));
+    proof = manifest ? await verifyRetainedEvidence(output, checkpoint) :
+      await assessCurrentEvidence(output, checkpoint, budget.id);
+    if (manifest && !proof.verified && (await verifyRetainedEvidence(output, checkpoint, { allowExtension: true })).verified)
+      proof = await assessCurrentEvidence(output, checkpoint, budget.id);
+  }
+  return createExplorationSchedule({ targets, routedScreens,
+    prior: proof.verified ? checkpoint.explorations : [] });
+}
+
 async function exploreWithRun(run) {
   run.check();
   process.env.E2E_TARGET = 'staging-live';
@@ -83,7 +101,7 @@ async function exploreWithRun(run) {
   await assertStagingBrowserInventory();
   const routedScreens = await screens();
   const checkpoint = await readSweepCheckpoint(output);
-  const schedule = createExplorationSchedule({ targets, routedScreens, prior: checkpoint?.explorations });
+  const schedule = await retainedExplorationSchedule({ output, checkpoint, targets, routedScreens });
   const batchPlan = createExplorationBatchPlan(schedule.pending.length);
   console.log(formatExplorationBatchPlan(batchPlan));
   const pending = schedule.pending.slice(0, batchPlan.batches[0]?.goalCount || 0);

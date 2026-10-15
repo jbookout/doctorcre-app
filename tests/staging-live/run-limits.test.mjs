@@ -1,11 +1,12 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { EventEmitter } from 'node:events';
-import { mkdtemp, readFile, rm, writeFile, mkdir, open, rename, readdir, symlink, link, chmod } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, writeFile, mkdir, open, rename, readdir, symlink, link, chmod, cp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
 import { RUN_LIMITS, RunLimitError, directoryBytes, openRun } from '../../scripts/e2e-staging/run-limits.mjs';
+import { createHash } from 'node:crypto';
 
 const code = expected => error => error instanceof RunLimitError && error.code === expected;
 const deferred = () => {
@@ -29,6 +30,61 @@ async function fixture(t, overrides = {}, options = {}) {
   t.after(() => run.dispose());
   return { root, limits, run };
 }
+
+test('evidence digest receipts charge exact changed bytes once across writers and reopening', async t => {
+  const { root, limits, run } = await fixture(t);
+  await mkdir(join(root, 'evidence'), { mode: 0o700 });
+  const path = join(root, 'evidence', 'frame.jpg');
+  const bytes = Buffer.from('abc');
+  const manifest = value => ({ 'evidence/frame.jpg': { size: value.length,
+    sha256: createHash('sha256').update(value).digest('hex') } });
+  const before = run.snapshot().artifactBytes;
+  await run.writeFile(path, bytes, writeFile);
+  assert.equal(run.snapshot().artifactBytes - before, bytes.length);
+  await run.writeFile(path, bytes, writeFile);
+  assert.equal(run.snapshot().artifactBytes - before, bytes.length);
+  assert.equal(run.accountEvidence(manifest(bytes)).chargedBytes, 0);
+  const reopened = openRun(root, { limits, runId: run.id, events: null });
+  t.after(() => reopened.dispose());
+  assert.equal(reopened.accountEvidence(manifest(bytes)).chargedBytes, 0);
+  const changed = Buffer.from('xyz'), previous = run.snapshot().artifactBytes;
+  await run.writeFile(path, changed, writeFile, { replaces: path });
+  assert.equal(run.snapshot().artifactBytes - previous, changed.length);
+  assert.equal(run.accountEvidence(manifest(changed)).chargedBytes, 0);
+  const external = Buffer.from('uvw'), priorExternal = run.snapshot().artifactBytes;
+  await writeFile(path, external);
+  assert.equal(run.accountEvidence(manifest(external)).chargedBytes, external.length);
+  assert.equal(run.snapshot().artifactBytes - priorExternal, external.length);
+  assert.equal(run.accountEvidence(manifest(external)).chargedBytes, 0);
+  assert.throws(() => run.accountEvidence(manifest(bytes)), code('artifact-evidence-mismatch'));
+  assert.throws(() => run.accountEvidence({ 'controls.json': manifest(bytes)['evidence/frame.jpg'] }), code('artifact-path-refused'));
+  await rm(path);
+  assert.equal(run.snapshot().artifactBytes, priorExternal + external.length);
+});
+
+test('unknown evidence is charged once without a resident-floor credit and copied evidence keeps its path receipt', async t => {
+  const { root, run } = await fixture(t);
+  const evidence = join(root, 'evidence');
+  await mkdir(evidence, { mode: 0o700 });
+  const bytes = Buffer.alloc(32 * 1024, 3), digest = createHash('sha256').update(bytes).digest('hex');
+  await writeFile(join(evidence, 'external.jpg'), bytes);
+  run.reserveBytes(1);
+  assert.ok(run.snapshot().artifactBytes < bytes.length, 'untyped resident accounting excludes evidence content');
+  const before = run.snapshot().artifactBytes;
+  const files = { 'evidence/external.jpg': { size: bytes.length, sha256: digest } };
+  assert.equal(run.accountEvidence(files).chargedBytes, bytes.length);
+  assert.equal(run.snapshot().artifactBytes, before + bytes.length);
+  const source = await mkdtemp(join(tmpdir(), 'doctorcre-evidence-copy-'));
+  t.after(() => rm(source, { recursive: true, force: true }));
+  await writeFile(join(source, 'copied.jpg'), bytes);
+  const priorCopy = run.snapshot().artifactBytes;
+  await run.copyArtifacts(source, join(evidence, 'copied'), (from, to) => cp(from, to, { recursive: true }));
+  assert.equal(run.snapshot().artifactBytes - priorCopy, bytes.length, 'the same digest at a new path is new content');
+  assert.equal(run.accountEvidence({ 'evidence/copied/copied.jpg': { size: bytes.length, sha256: digest } }).chargedBytes, 0);
+  const beforeMissing = run.snapshot().artifactBytes;
+  assert.throws(() => run.accountEvidence({ 'evidence/missing.jpg': { size: bytes.length, sha256: digest } }));
+  assert.equal(run.snapshot().artifactBytes, beforeMissing);
+});
 
 test('HTTP total stops before a third operation and survives reopening the ledger', async t => {
   const { root, limits, run } = await fixture(t, { httpRequests: 2 });
@@ -144,6 +200,26 @@ test('the persisted deadline cannot reset on reopen and refuses every reservatio
   assert.throws(() => run.reserveBytes(1), code('whole-run-deadline'));
   assert.equal(run.snapshot().modelCalls, 0);
   assert.equal(run.snapshot().artifactBytes, 0);
+});
+
+test('new invocations preserve the whole-run deadline and cannot resume after it expires', async t => {
+  let now = 1_000;
+  const { root, limits, run } = await fixture(t, { runTimeoutMs: 500 }, { now: () => now });
+  assert.equal(run.snapshot().startedAt, 1_000);
+  assert.equal(run.deadline, 1_500);
+  run.dispose();
+
+  now = 1_600;
+  let requests = 0;
+  assert.throws(() => {
+    const resumed = openRun(root, { limits, runId: run.id, events: null, now: () => now, newInvocation: true });
+    return resumed.http(() => { requests++; });
+  }, code('whole-run-deadline'));
+  assert.equal(requests, 0);
+  const state = JSON.parse(await readFile(join(root, 'run-budget.json'), 'utf8'));
+  assert.equal(state.startedAt, 1_000);
+  assert.equal(state.deadline, 1_500);
+  assert.equal(state.invocations, undefined);
 });
 
 test('artifact reservations retain their count and fail before a write exceeding the quota', async t => {
@@ -286,6 +362,49 @@ test('zero model calls prevents the first reservation and survives reopen and re
   assert.equal(resumed.snapshot().modelCalls, 0);
 });
 
+test('global request and model ceilings survive supervisor invocation renewal', async t => {
+  const { root, run } = await fixture(t, { httpRequests: 3, modelCalls: 2 });
+  await run.http(() => true);
+  run.reserveModel();
+  run.stop('worker-exit');
+  const next = openRun(root, { limits: run.limits, runId: run.id, events: null, newInvocation: true });
+  t.after(() => next.dispose());
+  assert.equal(next.snapshot().httpRequests, 0);
+  assert.equal(next.snapshot().modelCalls, 0);
+  assert.equal(next.snapshot().globalHttpRequests, 1);
+  assert.equal(next.snapshot().globalModelCalls, 1);
+  await next.http(() => true);
+  next.reserveModel();
+  assert.throws(() => next.reserveModel(), code('model-call-limit'));
+  // Clear only the sticky stop from the model ceiling to exercise request exhaustion independently.
+  const resumed = openRun(root, { limits: run.limits, runId: run.id, events: null, newInvocation: true });
+  t.after(() => resumed.dispose());
+  await resumed.http(() => true);
+  await assert.rejects(resumed.http(() => true), code('http-request-limit'));
+  assert.equal(resumed.snapshot().globalHttpRequests, 3);
+  assert.equal(resumed.snapshot().globalModelCalls, 2);
+});
+
+test('legacy invocation history migrates into global totals and corrupted totals fail closed', async t => {
+  const { root, run } = await fixture(t, { httpRequests: 4, modelCalls: 3 });
+  await run.http(() => true);
+  run.reserveModel();
+  run.dispose();
+  const path = join(root, 'run-budget.json');
+  const legacy = JSON.parse(await readFile(path, 'utf8'));
+  delete legacy.globalHttpRequests;
+  delete legacy.globalModelCalls;
+  await writeFile(path, JSON.stringify(legacy));
+  const resumed = openRun(root, { limits: run.limits, runId: run.id, events: null, newInvocation: true });
+  t.after(() => resumed.dispose());
+  assert.equal(resumed.snapshot().globalHttpRequests, 1);
+  assert.equal(resumed.snapshot().globalModelCalls, 1);
+  resumed.dispose();
+  const corrupt = JSON.parse(await readFile(path, 'utf8'));
+  corrupt.globalHttpRequests = 0;
+  await writeFile(path, JSON.stringify(corrupt));
+  assert.throws(() => openRun(root, { limits: run.limits, runId: run.id, events: null }), code('run-ledger-invalid'));
+});
 
 test('atomic observations leave a live mutation lock and ledger untouched', async t => {
   const { root, run } = await fixture(t, { stopGraceMs: 20 });
@@ -358,6 +477,9 @@ test('owned abandoned writer lock recovers only after physical retirement under 
   const supervisor = openRun(root, { limits, runId: run.id, events: null, ownerId,
     retirement: { lease: lease.fd, isRetired: () => true } });
   t.after(() => supervisor.dispose());
+  supervisor.reserveModel();
+  await supervisor.http(() => true);
+  const deadline = supervisor.deadline;
   supervisor.reserveProcessGroup();
   const dead = spawnSync(process.execPath, ['-e', ''], { timeout: 1_000 });
   assert.equal(dead.status, 0);
@@ -369,6 +491,36 @@ test('owned abandoned writer lock recovers only after physical retirement under 
   supervisor.releaseInvocationResources();
   supervisor.stop('stop-signal');
   assert.equal(supervisor.snapshot().stopReason, 'stop-signal');
+  assert.equal(supervisor.snapshot().globalHttpRequests, 1);
+  assert.equal(supervisor.snapshot().globalModelCalls, 1);
+  assert.equal(supervisor.snapshot().deadline, deadline);
   assert.deepEqual(supervisor.snapshot().processGroups, {});
   await assert.rejects(readdir(lock), { code: 'ENOENT' });
+});
+
+
+test('global counter decoding stays observational under a lock and validates legacy totals', async t => {
+  const { root, run } = await fixture(t, { httpRequests: 3, modelCalls: 3, stopGraceMs: 20 });
+  await run.http(() => true);
+  run.reserveModel();
+  const path = join(root, 'run-budget.json'), lock = join(root, '.run-budget.lock');
+  const legacy = run.snapshot();
+  delete legacy.globalHttpRequests;
+  delete legacy.globalModelCalls;
+  const encoded = JSON.stringify(legacy);
+  await writeFile(path, encoded);
+  await mkdir(lock, { mode: 0o700 });
+  assert.equal(run.snapshot().globalHttpRequests, 1);
+  assert.equal(run.snapshot().globalModelCalls, 1);
+  run.check();
+  assert.equal(await readFile(path, 'utf8'), encoded);
+  await writeFile(path, JSON.stringify({ ...legacy, globalHttpRequests: 0, globalModelCalls: 1 }));
+  assert.throws(() => run.snapshot(), code('run-ledger-invalid'));
+  assert.throws(() => run.check(), code('run-ledger-invalid'));
+  await writeFile(path, encoded);
+  await rm(lock, { recursive: true });
+  run.reserveModel();
+  const committed = JSON.parse(await readFile(path, 'utf8'));
+  assert.equal(committed.globalHttpRequests, 1);
+  assert.equal(committed.globalModelCalls, 2);
 });

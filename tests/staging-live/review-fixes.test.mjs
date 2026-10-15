@@ -111,6 +111,9 @@ test('Model Room model uses a named desk and enforces one aggregate call ceiling
       kind: 'codex-session',
       task: request.task,
       dispatched_at: '2026-10-08T12:00:00+00:00',
+      family: 'luna',
+      model: 'gpt-6-luna',
+      effort: 'medium',
       thread_id: 'synthetic-thread',
       resumed: false,
       status: 'completed',
@@ -142,11 +145,14 @@ test('Model Room model uses a named desk and enforces one aggregate call ceiling
   assert.match(formatExplorationCallPlan(plan), /81 planned calls per goal × 50 goals = 4050; finite run cap 4050; hard global ceiling 5000/);
   assert.deepEqual(EXPLORATION_MODEL_CALL_POLICY, { perGoal: 40, hardGlobalCeiling: 5_000 });
   assert.deepEqual(MODEL_ROOM_DISPATCH_CONTRACT, {
-    revision: 'carr-model-room-dispatch@0b2c8ec8be07df142519e6638da9ec3329edcef2',
+    revision: 'carr-model-room-dispatch@5ddaa8f39507de3f3343c5cc5177d3d07168e9eb',
     repository: 'jbookout/carr-system',
     relativePath: 'tools/room-bridge/dispatch.py',
-    sha256: '64e801f718242cf4bbd9a056a3b11e9d4faeea907c74ca0e18ca438fb2b2c61c',
+    sha256: '25b51af5a270d22711e6d22feba40680472f57c2874a7fd6736c19ca5851c182',
     argv: ['send', '{desk}', '-', '--fresh'],
+    family: 'luna',
+    model: 'gpt-6-luna',
+    effort: 'medium',
   });
   assert.throws(() => createExplorationCallPlan(62), /5022 model calls.*hard global ceiling/);
   assert.deepEqual(createExplorationBatchPlan(90), {
@@ -173,6 +179,40 @@ test('Model Room model uses a named desk and enforces one aggregate call ceiling
     dispatch: async request => ({ ...await dispatch(request), resumed: 'not-a-boolean' }),
   });
   await assert.rejects(() => changedEnvelope.doGenerate(options), /unknown Model Room dispatcher envelope/);
+  for (const changes of [
+    { desk: 'wrong-desk' },
+    { task: 'wrong task' },
+    { model: 'gpt-6-sol' },
+    { model: { name: 'gpt-6-luna' } },
+    { family: 'sol' },
+    { family: 6 },
+    { effort: 'high' },
+    { effort: false },
+  ]) {
+    const changedIdentity = createModelRoomModel({
+      ...authorization,
+      desk: 'doctorcre-e2e',
+      budget: createModelCallBudget(1),
+      dispatch: async request => ({ ...await dispatch(request), ...changes }),
+    });
+    await assert.rejects(() => changedIdentity.doGenerate(options), /unknown Model Room dispatcher envelope/);
+  }
+  const failedDispatch = createModelRoomModel({
+    ...authorization,
+    desk: 'doctorcre-e2e',
+    budget: createModelCallBudget(1),
+    dispatch: async request => ({
+      ...await dispatch(request),
+      status: 'quota_exhausted',
+      detail: 'synthetic quota result',
+      retry_after: null,
+      termination_confirmed: true,
+    }),
+  });
+  await assert.rejects(
+    () => failedDispatch.doGenerate(options),
+    error => error.code === 'model-room-desk-incomplete',
+  );
 });
 
 test('exploration schedule resumes after the finite cap without replaying completed goals', async () => {

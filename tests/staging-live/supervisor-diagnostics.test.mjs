@@ -4,7 +4,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
-import { supervise } from '../../scripts/e2e-staging/supervise.mjs';
+import { supervise, createWorkerDiagnosticReader } from '../../scripts/e2e-staging/supervise.mjs';
+import { businessWorkerFailureCode, retainedBusinessWorkerCause } from '../../scripts/e2e-staging/continue-run.mjs';
 
 const safeSource = fileURLToPath(new URL('../../scripts/e2e-staging/session.mjs', import.meta.url));
 
@@ -70,4 +71,24 @@ test('unknown worker exceptions remain unreported and raw streams are not packag
   assert.equal(failure.message, 'Staging run stopped: worker-exit-1');
   assert.doesNotMatch(log, /worker-diagnostic/);
   assert.doesNotMatch(log, new RegExp(secretCanary));
+});
+
+test('business readback failure crosses worker diagnostic seam only as a closed code', () => {
+  assert.equal(businessWorkerFailureCode({ code: 'write-coverage-incomplete' }), 'business-journey-readback-incomplete');
+  assert.equal(businessWorkerFailureCode({ message: 'Business journey coverage incomplete; reconciliation required' }),
+    'business-journey-readback-incomplete');
+  assert.equal(businessWorkerFailureCode({ code: 'secret-value', message: 'private row' }), null);
+  const secretCanary = 'SYNTHETIC_BUSINESS_CANARY_83d47e';
+  const diagnostics = [];
+  const read = createWorkerDiagnosticReader(value => diagnostics.push(value));
+  read(Buffer.from('Staging continuation stopped: business-journey-readback-incomplete; no full V1 acceptance is established.\n'));
+  read(Buffer.from(`${secretCanary}\n`));
+  assert.deepEqual(diagnostics, ['cause=business-journey-readback-incomplete']);
+  const failure = { code: 'worker-exit-1',
+    message: `Staging run stopped: worker-exit-1 (${diagnostics.join('; ')})` };
+  assert.equal(retainedBusinessWorkerCause(failure), 'business-journey-readback-incomplete');
+  assert.equal(retainedBusinessWorkerCause({ code: 'worker-exit-1',
+    message: 'Staging run stopped: worker-exit-1 (cause=unknown)' }), null);
+  assert.doesNotMatch(failure.message, new RegExp(secretCanary));
+  assert.doesNotMatch(diagnostics.join('; '), new RegExp(secretCanary));
 });

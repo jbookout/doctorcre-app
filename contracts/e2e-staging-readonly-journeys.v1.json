@@ -1,0 +1,58 @@
+{
+  "schema": "doctorcre-e2e-staging-readonly-journeys.v1",
+  "version": "1.0.0",
+  "producer": {
+    "repository": "jbookout/carr-system",
+    "source_commit": "5ddaa8f39507de3f3343c5cc5177d3d07168e9eb"
+  },
+  "app": {
+    "service": "doctorcre-app",
+    "environment": "staging"
+  },
+  "caller_requirements": [
+    "Pass the page returned by createFreshPageFactory.freshPage after navigation to the staging home route.",
+    "The page context must have installStagingGuard installed; all page fetches remain same-origin and use that guard.",
+    "Pass only the completed current-source staging-records-plan; never substitute an arbitrary live record."
+  ],
+  "authentication": {
+    "actor_slug": "joe",
+    "e2e_principal": "e2e-joe",
+    "session_path": "/auth/session",
+    "actor_path": "/api/system-work/session"
+  },
+  "journeys": {
+    "W1": {
+      "scope": "authenticated actor avatar and theme persistence",
+      "avatar_selector": "#selfAvatar",
+      "theme_selector": "button[data-pref=\"theme\"]",
+      "pending": ["signout-post"]
+    },
+    "W2": {
+      "scope": "current app layout attention panels for an owned active plan deal",
+      "board_tool": "deal-room-board",
+      "detail_tool": "get-deal-room",
+      "working_selector": "#appWorkingList",
+      "today_selector": "#appTodayNeeds",
+      "deal_selector": "[data-layout-deal]",
+      "pending_reason": "owned-plan-deal-not-freshly-observed-in-attention"
+    },
+    "W5": {
+      "scope": "vendor directory and detail",
+      "pending_reason": "owned-vendor-fixture-unavailable"
+    },
+    "W14": {
+      "scope": "read-only plan-owned client-to-deal relationship association and detail",
+      "snapshot_path": "/api/v1/business/relationships?contract=relationship-network.v1",
+      "route": "/relationships",
+      "pending_reasons": ["owned-party-client-deal-receipts-unavailable", "fresh-relationship-snapshot-unavailable",
+        "owned-relationship-nodes-unavailable", "owned-client-deal-edge-unavailable", "owned-relationship-detail-interaction-unproved"]
+    }
+  },
+  "limits": {
+    "module_api_reads_max": 8,
+    "http_gets_max": 5,
+    "mcp_reads_max": 4,
+    "carr_record_mutations": 0
+  },
+  "full_v1_qualification": false
+}

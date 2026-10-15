@@ -103,7 +103,8 @@ function fixturePrerequisiteSummary(setup, release) {
 // prepared fixture prerequisites. No business-journey proof catalog exists in
 // this source contract, so full V1 acceptance remains PARTIAL until one is
 // supplied by an authorized source owner.
-export function completionContract({ verdict, release, fixtureWriteScopeComplete, setup, targets, routedScreens }) {
+export function completionContract({ verdict, release, fixtureWriteScopeComplete, setup, targets, routedScreens,
+  retainedEvidence, businessProof, runId }) {
   const plannedExplorations = Array.isArray(targets) && Array.isArray(routedScreens)
     ? targets.flatMap(target => routedScreens.filter(screen => screen.surface === target.surface)
       .flatMap(() => target.name.endsWith('phone') ? ['phone-reviewer'] : ['bug-hunter', 'first-time-ux'])).length
@@ -125,6 +126,16 @@ export function completionContract({ verdict, release, fixtureWriteScopeComplete
   }
 
   const fixtures = fixturePrerequisiteSummary(setup, release);
+  const evidenceVerified = retainedEvidence?.schema === 'doctorcre-staging-retained-evidence.v1' &&
+    retainedEvidence.verified === true && retainedEvidence.source_pair?.source_commit === release?.source_commit &&
+    retainedEvidence.source_pair?.carr_source_commit === release?.carr_source_commit &&
+    typeof runId === 'string' && runId.length > 0 && retainedEvidence.run_id === runId &&
+    Number.isSafeInteger(retainedEvidence.referencedFiles) && retainedEvidence.referencedFiles > 0;
+  const businessSourceBound = businessProof?.schema === 'staging-business-journey-result.v1' &&
+    businessProof.release?.source_commit === release?.source_commit &&
+    businessProof.release?.carr_source_commit === release?.carr_source_commit &&
+    Array.isArray(businessProof.completed) && Array.isArray(businessProof.unqualified_journeys) &&
+    businessProof.full_v1_qualified === false;
   let status, reason;
   if (!sourceBound(release) || fixtures.missing.includes('fixture-source-pair')) {
     status = COMPLETION_STATUS.FAILED;
@@ -138,7 +149,7 @@ export function completionContract({ verdict, release, fixtureWriteScopeComplete
   } else if (!verdict.completed || verdict.pendingScreens.length || verdict.pendingStateObligations.length ||
       verdict.skippedControls || verdict.skippedStateObligations || verdict.pendingExplorations.length ||
       verdict.skippedExplorations.length || verdict.completedExplorations !== verdict.expectedExplorations ||
-      verdict.expectedExplorations !== plannedExplorations || !verdict.explorationsSourceBound || !fixtures.complete) {
+      verdict.expectedExplorations !== plannedExplorations || !verdict.explorationsSourceBound || !fixtures.complete || !evidenceVerified) {
     status = COMPLETION_STATUS.PARTIAL;
     reason = 'source-bound-work-or-fixture-prerequisite-remains';
   } else {
@@ -162,6 +173,9 @@ export function completionContract({ verdict, release, fixtureWriteScopeComplete
     skippedExplorations: verdict.skippedExplorations,
     fixturePrerequisitesComplete: fixtures.complete,
     missingFixturePrerequisites: fixtures.missing,
+    retainedEvidenceVerified: evidenceVerified,
+    businessProofSourceBound: businessSourceBound,
+    unqualifiedJourneys: businessSourceBound ? [...businessProof.unqualified_journeys] : [],
     reason,
   });
 }

@@ -44,10 +44,11 @@ test('finite HTTP budget admits all Calendar contexts and the routed base screen
   assert.ok(Number.isSafeInteger(run.limits.httpRequests));
 });
 
-test('explicit supervisor invocation renews stopped budgets and preserves checkpoint evidence', async t => {
+test('explicit supervisor invocation preserves the original deadline and whole-run counters', async t => {
   const output = await rootFor(t);
   const events = new EventEmitter();
   const first = openRun(output, { runId: 'synthetic-resume-budget', events, limits: policy });
+  await first.http(async () => true);
   first.reserveModel();
   const deadline = first.deadline;
   first.reserveBytes(100);
@@ -61,22 +62,45 @@ test('explicit supervisor invocation renews stopped budgets and preserves checkp
   assert.equal(state.id, first.id);
   assert.equal(state.stopReason, null);
   assert.equal(state.modelCalls, 0);
+  assert.equal(state.globalModelCalls, 1);
+  assert.equal(state.globalHttpRequests, 1);
   assert.ok(state.artifactBytes >= retainedBytes);
-  assert.ok(state.deadline > deadline);
+  assert.equal(state.deadline, deadline);
   assert.equal(await readFile(join(output, 'checkpoint.json'), 'utf8'), evidence);
   assert.equal(state.invocations.at(-1).stopReason, 'stop-signal');
   assert.equal(state.invocations.at(-1).modelCalls, 1);
+  assert.equal(state.invocations.at(-1).deadline, deadline);
 });
 
-test('two authorized exploration batches receive separate bounded model budgets', async t => {
+test('resumed exploration uses only the remaining whole-run model budget', async t => {
   const output = await rootFor(t);
-  const worker = count => `import { currentRun } from ${JSON.stringify(runLimitsURL)}; const run = currentRun(); for(let i=0;i<${count};i++){run.reserveModel(); if(i%10===0)await new Promise(resolve=>setTimeout(resolve,1));}`;
+  const workerPidPath = join(output, 'worker.pid');
+  const worker = count => `import { writeFile } from 'node:fs/promises'; import { currentRun } from ${JSON.stringify(runLimitsURL)}; await writeFile(${JSON.stringify(workerPidPath)}, String(process.pid)); const run = currentRun(); for(let i=0;i<${count};i++){run.reserveModel(); if(i%10===0)await new Promise(resolve=>setTimeout(resolve,1));}`;
   const environment = { ...process.env, E2E_RUN_ID: 'synthetic-batch-budget', E2E_ALLOW_MODEL_CALLS: 'synthetic-batch-budget' };
   const first = await supervise({ command: process.execPath, args: ['--input-type=module', '-e', worker(4050)], output, environment, limits: policy });
   assert.equal(first.modelCalls, 4050);
-  const second = await supervise({ command: process.execPath, args: ['--input-type=module', '-e', worker(3240)], output, environment, limits: policy });
-  assert.equal(second.modelCalls, 3240);
-  assert.equal(second.invocations.at(-1).modelCalls, 4050);
+  assert.equal(first.globalModelCalls, 4050);
+  const originalDeadline = first.deadline;
+  await assert.rejects(
+    supervise({ command: process.execPath, args: ['--input-type=module', '-e', worker(951)], output, environment, limits: policy }),
+    error => error.code === 'model-call-limit',
+  );
+  const workerPid = Number(await readFile(workerPidPath, 'utf8'));
+  assert.ok(Number.isSafeInteger(workerPid) && workerPid > 1);
+  assert.throws(() => process.kill(workerPid, 0), error => error.code === 'ESRCH');
+  const state = JSON.parse(await readFile(join(output, 'run-budget.json'), 'utf8'));
+  assert.equal(state.deadline, originalDeadline);
+  assert.equal(state.stopReason, 'model-call-limit');
+  assert.equal(state.modelCalls, 950);
+  assert.equal(state.globalModelCalls, 5000);
+  assert.equal(state.invocations.at(-1).modelCalls, 4050);
+  assert.equal(state.invocations.at(-1).stopReason, null);
+  assert.equal(state.invocations.at(-1).deadline, originalDeadline);
+  assert.deepEqual(state.processGroups, {});
+  assert.deepEqual(state.activeHttp, {});
+  assert.deepEqual(state.queuedHttp, {});
+  await assert.rejects(readFile(join(output, '.run-owner')),
+    error => error.code === 'ENOENT');
 });
 
 test('ordered board projects drain late Calendar query owners on their app viewports', async () => {

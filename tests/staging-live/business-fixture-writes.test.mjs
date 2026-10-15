@@ -44,8 +44,8 @@ function patchReceipt(args, eventId = key(31)) {
   return { ok: true, deal_id: args.deal, field: 'phase', old_value: 'pending', new_value: args.value,
     event_id: eventId, event_recorded_at: timestamp() };
 }
-function phaseEvent(id, verb, oldValue, newValue, dealId) {
-  return { id, subject_id: dealId, subject_type: 'deal', field: 'phase', verb,
+function phaseEvent(id, verb, oldValue, newValue) {
+  return { id, recorded_at: timestamp(), actor: 'fixture', field: 'phase', verb,
     old_value: { phase: oldValue }, new_value: { phase: newValue } };
 }
 function dealReadback(dealId, phase, events, criticalDates = []) {
@@ -77,6 +77,28 @@ test('phase change and undo require pinned producer receipts plus independent fi
   assert.ok(plan.browser_write_attempts.every(row => row.independent_readback?.matched === true));
 });
 
+test('real projected event needs the exact parent deal and immutable phase effect', async t => {
+  const f = await fixture(t), dealId = f.setup.records.deal.id, patch = phasePatch(f);
+  await f.guard.handle(request('patch-deal-field', patch), async () => envelope(patchReceipt(patch)));
+  const read = request('get-deal-room', { deal: dealId });
+  const event = phaseEvent(key(31), 'patch-deal-field', 'pending', 'research');
+  const invalid = [
+    { deal_id: key(90), phase: 'research', events: [event] },
+    { deal_id: dealId, phase: 'research', events: [{ ...event, id: key(90) }] },
+    { deal_id: dealId, phase: 'research', events: [{ ...event, verb: 'revert-deal-field' }] },
+    { deal_id: dealId, phase: 'research', events: [{ ...event, old_value: { phase: 'research' } }] },
+    { deal_id: dealId, phase: 'research', events: [event, event] },
+  ];
+  for (const detail of invalid) {
+    await f.guard.handle(read, async () => envelope(detail));
+    await assert.rejects(f.guard.assertCoverage(), /write-coverage-incomplete/);
+    assert.equal((await f.read()).browser_write_attempts[0].independent_readback, undefined);
+  }
+  await f.guard.handle(read, async () => dealReadback(dealId, 'research', [event]));
+  await f.guard.assertCoverage();
+  assert.equal((await f.read()).browser_write_attempts[0].independent_readback?.matched, true);
+});
+
 test('contract-date write is scoped to the synthetic rent-start row and needs independent deal-room readback', async t => {
   const f = await fixture(t), dealId = f.setup.records.deal.id;
   const args = { deal: dealId, kind: 'rent_start', due_on: '2031-12-01', source: 'Synthetic fixture evidence',
@@ -88,9 +110,20 @@ test('contract-date write is scoped to the synthetic rent-start row and needs in
   const read = request('get-deal-room', { deal: dealId });
   await f.guard.handle(read, async () => dealReadback(dealId, 'pending', []));
   await assert.rejects(f.guard.assertCoverage(), /write-coverage-incomplete/);
-  await f.guard.handle(read, async () => dealReadback(dealId, 'pending', [], [
-    { id: key(33), deal_id: dealId, kind: 'rent_start', due_on: '2031-12-01', source: args.source, note: null, status: 'open' },
-  ]));
+  const date = { id: key(33), kind: 'rent_start', due_on: '2031-12-01', source: args.source, note: null, status: 'open' };
+  for (const detail of [
+    { deal_id: key(90), critical_dates: [date] },
+    { deal_id: dealId, critical_dates: [{ ...date, id: key(90) }] },
+    { deal_id: dealId, critical_dates: [{ ...date, kind: 'contract' }] },
+    { deal_id: dealId, critical_dates: [{ ...date, due_on: '2031-12-02' }] },
+    { deal_id: dealId, critical_dates: [{ ...date, source: 'unrelated' }] },
+    { deal_id: dealId, critical_dates: [date, date] },
+  ]) {
+    await f.guard.handle(read, async () => envelope({ phase: 'pending', events: [], ...detail }));
+    await assert.rejects(f.guard.assertCoverage(), /write-coverage-incomplete/);
+    assert.equal((await f.read()).browser_write_attempts[0].independent_readback, undefined);
+  }
+  await f.guard.handle(read, async () => dealReadback(dealId, 'pending', [], [date]));
   await f.guard.assertCoverage();
   assert.equal((await f.read()).browser_write_attempts[0].independent_readback.operation, 'get-deal-room');
 });
