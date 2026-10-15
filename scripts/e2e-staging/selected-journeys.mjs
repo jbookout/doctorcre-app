@@ -2,7 +2,7 @@ import { constants } from 'node:fs';
 import { mkdir, open, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import contract from '../../contracts/e2e-staging.v1.json' with { type: 'json' };
-import { assertCheckout, assertSourcePair, businessWorkerFailureCode, retainJourneyQualification } from './continue-run.mjs';
+import { assertCheckout, assertSourcePair, businessWorkerFailureCode, cleanupPreservingPrimary, retainJourneyQualification } from './continue-run.mjs';
 import { currentRun } from './run-limits.mjs';
 import { stagingSession, STAGING_ORIGIN } from './session.mjs';
 
@@ -149,6 +149,7 @@ export async function runSelectedJourneys({ binding, run = currentRun(), environ
       return actual;
     } });
   const completed = [], steps = [], actions = [];
+  let primaryError;
   try {
     const page = await factory.freshPage({ target, screen, release, fixtureGuard, path: `/deals?deal=${encodeURIComponent(deal)}` });
     const { runBusinessJourneys } = await import('./business-journeys.mjs');
@@ -176,7 +177,7 @@ export async function runSelectedJourneys({ binding, run = currentRun(), environ
       await retainReadbackDiagnostic(run, binding, error?.checkpoint, error?.checkpoint_facts);
       if (error?.code && ['business-journey-receipt-missing', 'business-journey-selector-unavailable',
           'business-journey-readback-incomplete', 'business-journey-settlement-unverified',
-          'selected-journey-proof-conflict'].includes(error.code) ||
+          'presence-settlement-timeout', 'selected-journey-proof-conflict'].includes(error.code) ||
           error?.constructor?.name === 'RunLimitError') throw error;
       refusal(`selected-journey-${activeJourney.toLowerCase()}-failed`);
     }
@@ -193,9 +194,14 @@ export async function runSelectedJourneys({ binding, run = currentRun(), environ
       action_proofs: journeys.reduce((total, id) => total + selectedActionRequirements[id].length, 0), full_v1_qualified: false };
   } catch (error) {
     const code = businessWorkerFailureCode(error);
-    if (code) throw refusal(code);
-    throw error;
+    primaryError = code ? Object.assign(new Error(`Staging continuation refused: ${code}`), { code }) : error;
+    throw primaryError;
   } finally {
-    try { await factory.dispose(); } finally { removeStop(); await browser.close(); }
+    await cleanupPreservingPrimary(primaryError, async () => {
+      let cleanupError;
+      try { await factory.dispose(); } catch (error) { cleanupError = error; }
+      try { removeStop(); await browser.close(); } catch (error) { cleanupError ||= error; }
+      if (cleanupError) throw cleanupError;
+    });
   }
 }

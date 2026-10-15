@@ -25,7 +25,7 @@ const SAFE_CAUSES = [
   [/^Error in (?:Playwright )?config(?:uration)?\b/i, 'playwright-config-load-failed'],
   [/^Error: No tests found\b/, 'playwright-no-tests-discovered'],
   [/^SyntaxError:/, 'javascript-syntax-error'],
-  [/^Staging continuation stopped: (business-journey-(?:receipt-missing|selector-unavailable|readback-incomplete|settlement-unverified)); no full V1 acceptance is established\.$/, null],
+  [/^Staging continuation stopped: (business-journey-(?:receipt-missing|selector-unavailable|readback-incomplete|settlement-unverified)|presence-settlement-timeout); no full V1 acceptance is established\.$/, null],
   [/^Staging continuation stopped: (selected-journey-(?:selection-invalid|plan-required|plan-invalid|route-unavailable|setup-failed|w4-failed|w9-failed|action-proof-incomplete|proof-conflict)); no full V1 acceptance is established\.$/, null],
   [/^Staging continuation stopped: (canary-shell-(?:navigation-missing|document-status|url-invalid|script-failed|main-count)|staging-fixture-(?:candidate-refused|rpc-unresolved|stage-prerequisite|taxonomy-prerequisite|category-prerequisite)); no full V1 acceptance is established\.$/, null],
   [/^Staging run stopped: (run-directory-required|invalid-run-limits|run-ledger-invalid|run-ledger-unreadable|process-inspection-unavailable|process-ownership-invalid|process-cleanup-unverified|artifact-path-refused|artifact-symlink-refused|artifact-size-unavailable|http-request-limit|http-timeout|whole-run-deadline)\b/, null],
@@ -50,6 +50,11 @@ export function createWorkerDiagnosticReader(onDiagnostic) {
       if (character === '\n') {
         const line = tail.replace(/\r$/, '');
         tail = ''; discardingLongLine = false;
+        const cleanupFailure = /^Staging cleanup stopped: (write-coverage-incomplete|presence-settlement-timeout|cleanup-failed)\.$/.exec(line);
+        if (cleanupFailure) {
+          onDiagnostic(`cleanup=${cleanupFailure[1]}`); count++; pendingCause = false;
+          continue;
+        }
         const sessionFailure = SAFE_SESSION_FAILURE.exec(line);
         const cause = SAFE_CAUSES.find(([pattern]) => pattern.test(line));
         if (sessionFailure || cause) {

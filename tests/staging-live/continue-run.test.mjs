@@ -13,7 +13,8 @@ import { canary, canaryRequestAllowed, canaryLimits, canaryFailure, qualifiedMod
   assertSeparated, boundedInvocation, runBusinessPhase, assertCheckout, verifyFrozenSource, publicationBoundary,
   assertSourcePair, invocationBoundary, assertTrustedArtifact, assertFirstWorkflowAttempt, digestDownloadedContinuation,
   assertAdoptionReceipt, assertReadonlyResult, assertJourneyQualification, retainJourneyQualification,
-  assertRestoredEvidence, businessWorkerFailureCode, retainedBusinessWorkerCause } from '../../scripts/e2e-staging/continue-run.mjs';
+  assertRestoredEvidence, businessWorkerFailureCode, retainedBusinessWorkerCause,
+  cleanupFailureCode, cleanupPreservingPrimary } from '../../scripts/e2e-staging/continue-run.mjs';
 import { RUN_LIMITS, openRun } from '../../scripts/e2e-staging/run-limits.mjs';
 import contract from '../../contracts/e2e-staging.v1.json' with { type: 'json' };
 
@@ -31,6 +32,15 @@ test('RPC and vendor taxonomy refusals cross the worker boundary as fixed codes 
   assert.equal(businessWorkerFailureCode({ code: 'provider-error', message: 'private-provider-canary' }), null);
   assert.equal(retainedBusinessWorkerCause({ code: 'worker-exit-1',
     message: 'Staging run stopped: worker-exit-1 (cause=staging-fixture-rpc-unresolved; provider=private)' }), null);
+});
+
+test('cleanup failure remains separately classified without replacing a primary journey failure', async () => {
+  const primary = Object.assign(new Error('primary'), { code: 'presence-settlement-timeout' });
+  await cleanupPreservingPrimary(primary, async () => { throw Object.assign(new Error('private'), { code: 'write-coverage-incomplete' }); });
+  assert.equal(primary.code, 'presence-settlement-timeout');
+  assert.equal(cleanupFailureCode(primary), 'write-coverage-incomplete');
+  const cleanup = Object.assign(new Error('cleanup'), { code: 'private-provider-error' });
+  await assert.rejects(cleanupPreservingPrimary(null, async () => { throw cleanup; }), error => error === cleanup);
 });
 
 test('canary admits the staging shell, static modules and dedicated identity read; RPC and writes never enter browser canary traffic', () => {

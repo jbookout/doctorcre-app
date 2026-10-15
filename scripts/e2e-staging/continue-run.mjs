@@ -31,6 +31,7 @@ const execute = promisify(execFile);
 const ownFailures = new WeakSet();
 const businessFailureCodes = new Set(['business-journey-receipt-missing', 'business-journey-selector-unavailable',
   'business-journey-readback-incomplete', 'business-journey-settlement-unverified',
+  'presence-settlement-timeout',
   'selected-journey-selection-invalid', 'selected-journey-plan-required', 'selected-journey-plan-invalid',
   'selected-journey-route-unavailable', 'selected-journey-setup-failed', 'selected-journey-w4-failed', 'selected-journey-w9-failed',
   'selected-journey-action-proof-incomplete', 'selected-journey-proof-conflict',
@@ -44,6 +45,19 @@ export function businessWorkerFailureCode(error) {
   if (error?.message === 'Business journey dispatch unresolved; reconciliation required')
     return 'business-journey-receipt-missing';
   return null;
+}
+export function cleanupFailureCode(error) {
+  return error?.cleanup_failure_code === 'write-coverage-incomplete' ||
+    error?.cleanup_failure_code === 'presence-settlement-timeout'
+    ? error.cleanup_failure_code : error?.cleanup_failure_code === 'cleanup-failed' ? 'cleanup-failed' : null;
+}
+export async function cleanupPreservingPrimary(primary, cleanup) {
+  try { await cleanup(); }
+  catch (error) {
+    if (!primary) throw error;
+    primary.cleanup_failure_code = ['write-coverage-incomplete', 'presence-settlement-timeout'].includes(error?.code)
+      ? error.code : 'cleanup-failed';
+  }
 }
 export function retainedBusinessWorkerCause(error) {
   if (error?.code !== 'worker-exit-1') return null;
@@ -1001,6 +1015,7 @@ export async function runBusinessPhase({ binding, run, environment = process.env
       assertSourcePair(actual, binding);
       return actual;
     } });
+  let primaryError;
   try {
     const page = await factory.freshPage({ target, screen, release, fixtureGuard,
       path: `/deals?deal=${encodeURIComponent(deal)}` });
@@ -1112,9 +1127,16 @@ export async function runBusinessPhase({ binding, run, environment = process.env
       full_v1_qualified: false, unqualified_journeys: businessContract.unqualified_journeys };
     await retainJourneyQualification({ run, binding, release, result: measured });
     return measured;
+  } catch (error) {
+    primaryError = error;
+    throw error;
   } finally {
-    try { await factory.dispose(); }
-    finally { removeStop(); await browser.close(); }
+    await cleanupPreservingPrimary(primaryError, async () => {
+      let cleanupError;
+      try { await factory.dispose(); } catch (error) { cleanupError = error; }
+      try { removeStop(); await browser.close(); } catch (error) { cleanupError ||= error; }
+      if (cleanupError) throw cleanupError;
+    });
   }
 }
 
@@ -1125,6 +1147,8 @@ async function phaseWorker(environment, phase) {
     let result;
     try { result = await (await import('./selected-journeys.mjs')).runSelectedJourneys({ binding, run, environment }); }
     catch (error) {
+      const cleanup = cleanupFailureCode(error);
+      if (cleanup) console.error(`Staging cleanup stopped: ${cleanup}.`);
       const code = businessWorkerFailureCode(error) || (error?.code && businessFailureCodes.has(error.code)
         ? error.code : error?.constructor?.name === 'RunLimitError' ? error.code : 'selected-journey-setup-failed');
       throw Object.assign(new Error(`Staging continuation refused: ${code}`), { code });
@@ -1147,6 +1171,8 @@ async function phaseWorker(environment, phase) {
   if (phase === 'business') {
     try { await runBusinessPhase({ binding, run, environment }); }
     catch (error) {
+      const cleanup = cleanupFailureCode(error);
+      if (cleanup) console.error(`Staging cleanup stopped: ${cleanup}.`);
       const cause = businessWorkerFailureCode(error);
       if (cause) refusal(cause);
       throw error;
