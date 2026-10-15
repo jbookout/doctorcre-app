@@ -53,7 +53,7 @@ export function canaryRequestAllowed(method, value) {
 }
 
 async function privateBytes(path, maximum = 16 * 1024 * 1024) {
-  const handle = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW);
+  const handle = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
   try {
     const stat = await handle.stat();
     if (!stat.isFile() || stat.uid !== process.getuid() || stat.nlink !== 1 || (stat.mode & 0o777) !== 0o600 || stat.size > maximum) refusal('private-file-invalid');

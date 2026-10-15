@@ -4,7 +4,7 @@ import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promis
 import { createHash } from 'node:crypto';
 import fsPromises from 'node:fs/promises';
 import { syncBuiltinESMExports } from 'node:module';
-import { execFile } from 'node:child_process';
+import { execFile, spawnSync } from 'node:child_process';
 import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
 import { tmpdir } from 'node:os';
@@ -766,4 +766,51 @@ test('worker prerequisite refusal precedes session/browser and changed canonical
       proofPath: '/synthetic/private/proof.json', proofSha256: digest }),
     browserFactory: async () => assert.fail('proof substitution must not launch browser') }),
   { code: 'invoice-admission-unproved' });
+});
+
+test('private admission, installer proof and local options reject owned FIFOs promptly without changing state', async t => {
+  const root = await mkdtemp(join(tmpdir(), 'doctorcre-private-fifo-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const mkfifo = promisify(execFile);
+  const plan = { run: '60000000-0000-4000-8000-000000000003', release: {
+    source_commit: binding.app, carr_source_commit: binding.carr } };
+  const planPath = join(root, 'staging-records-plan.json');
+  await writeFile(planPath, JSON.stringify(plan), { mode: 0o600 });
+  const originalPlan = await readFile(planPath);
+  const runId = 'synthetic_' + sha, cli = fileURLToPath(new URL('../../scripts/e2e-staging/continue-run.mjs', import.meta.url));
+  const invokeAdmission = (path, hashValue = digest) => spawnSync(process.execPath, ['--input-type=module', '-e',
+    `import { invoicePrerequisite } from ${JSON.stringify(new URL('../../scripts/e2e-staging/continue-run.mjs', import.meta.url).href)};\n` +
+    `await invoicePrerequisite({ output: ${JSON.stringify(root)}, binding: ${JSON.stringify(binding)}, runId: ${JSON.stringify(runId)}, environment: { E2E_INVOICE_ADMISSION: ${JSON.stringify(path)}, E2E_INVOICE_ADMISSION_SHA256: ${JSON.stringify(hashValue)} } });`],
+    { cwd: fileURLToPath(new URL('../..', import.meta.url)), encoding: 'utf8', timeout: 1500 });
+  const cases = [];
+  const admissionFifo = join(root, 'admission.json');
+  await mkfifo('mkfifo', [admissionFifo]);
+  cases.push({ path: admissionFifo, run: () => invokeAdmission(admissionFifo) });
+  const proofFifo = join(root, 'proof.json');
+  await mkfifo('mkfifo', [proofFifo]);
+  const descriptor = { schema: 'doctorcre-local-invoice-admission.v1', checkout: binding.checkout,
+    sourcePair: { source_commit: binding.app, carr_source_commit: binding.carr }, runId,
+    fixtureRun: plan.run, proofPath: proofFifo, proofSha256: digest,
+    verifiedTarget: { project: { id: 'synthetic', name: 'carr-staging-replacement-test' },
+      branch: { id: 'synthetic', name: 'main' }, endpoint: { id: 'ep-synthetic', host: 'ep-synthetic.neon.tech' }, database: 'neondb' } };
+  const descriptorPath = join(root, 'admission-regular.json'), descriptorBytes = JSON.stringify(descriptor);
+  await writeFile(descriptorPath, descriptorBytes, { mode: 0o600 });
+  cases.push({ path: proofFifo, run: () => invokeAdmission(descriptorPath,
+    createHash('sha256').update(descriptorBytes).digest('hex')) });
+  const optionsFifo = join(root, 'local-options.json');
+  await mkfifo('mkfifo', [optionsFifo]);
+  cases.push({ path: optionsFifo, run: () => spawnSync(process.execPath, [cli, 'local-invocation'], {
+    cwd: fileURLToPath(new URL('../..', import.meta.url)), encoding: 'utf8', timeout: 1500,
+    env: { ...process.env, GITHUB_ACTIONS: '', GITHUB_OUTPUT: '', E2E_LOCAL_INVOCATION: optionsFifo,
+      E2E_LOCAL_INVOCATION_SHA256: digest } }) });
+  for (const item of cases) {
+    const before = await (await import('node:fs/promises')).lstat(item.path);
+    const result = item.run();
+    assert.equal(result.error?.code, undefined, `FIFO reader hung: ${item.path}`);
+    assert.equal(result.status, 1, result.stderr);
+    assert.match(result.stderr, /private-file-invalid/);
+    const after = await (await import('node:fs/promises')).lstat(item.path);
+    assert.deepEqual([after.dev, after.ino, after.mode, after.nlink], [before.dev, before.ino, before.mode, before.nlink]);
+    assert.deepEqual(await readFile(planPath), originalPlan);
+  }
 });
