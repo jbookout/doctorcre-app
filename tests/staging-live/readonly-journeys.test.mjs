@@ -6,17 +6,18 @@ import { tmpdir } from 'node:os';
 import { installStagingGuard } from '../../scripts/e2e-staging/engine.mjs';
 import { openRun, RUN_LIMITS } from '../../scripts/e2e-staging/run-limits.mjs';
 import { runReadonlyJourneys } from '../../scripts/e2e-staging/readonly-journeys.mjs';
+import { qualifyV1Journeys } from '../../scripts/e2e-staging/v1-qualification.mjs';
 import contract from '../../contracts/e2e-staging-readonly-journeys.v1.json' with { type: 'json' };
 
 const release = Object.freeze({ service: 'doctorcre-app', environment: 'staging', source_commit: 'a'.repeat(40), carr_source_commit: contract.producer.source_commit });
 const appIdentity = { service: release.service, environment: release.environment, source_commit: release.source_commit };
 const dealId = '22222222-2222-4222-8222-222222222222';
-const partyId = '88888888-8888-4888-8888-888888888888';
+const partyId = contract.party_reuse.fixture_party_id;
 const clientId = '99999999-9999-4999-8999-999999999999';
 const unrelatedId = '77777777-7777-4777-8777-777777777777';
 const evidenceId = `evidence:${partyId}:${dealId}:referred`;
 const dealName = 'SYNTHETIC_PRIVATE_DEAL_NAME';
-const partyName = 'SYNTHETIC_PRIVATE_PARTY_NAME';
+const partyName = contract.party_reuse.fixture_party_name;
 const originalEntry = 'SYNTHETIC_PRIVATE_ORIGINAL_ENTRY';
 const fixturePlan = () => ({ schema: 'doctorcre-staging-records-plan.v1', state: 'complete', run: '33333333-3333-4333-8333-333333333333',
   origin: 'https://doctorcre-app-staging.joe-bookout-carr-us.workers.dev', inflight: null,
@@ -24,6 +25,18 @@ const fixturePlan = () => ({ schema: 'doctorcre-staging-records-plan.v1', state:
   keys: { deal: '44444444-4444-4444-8444-444444444444' },
   receipts: { party: { party_id: partyId }, client: { client_id: clientId }, deal: { deal_id: dealId } },
   records: { party: { id: partyId, name: partyName }, client: { id: clientId, name: partyName }, deal: { id: dealId, name: dealName } } });
+
+function reusedPartyPlan() {
+  const plan = fixturePlan();
+  plan.receipts.party = {};
+  plan.records.client.ref = 'C-42';
+  const now = new Date();
+  plan.party_reuse = { schema: contract.party_reuse.schema, state: 'verified', party_id: partyId,
+    client_id: clientId, deal_id: dealId, observed_at: new Date(now.getTime() - 5_000).toISOString(),
+    network_observed_at: now.toISOString(),
+    ...Object.fromEntries(contract.party_reuse.required_response_hashes.map((field, index) => [field, String(index + 1).repeat(64)])) };
+  return plan;
+}
 
 function configure(t) {
   const prior = { E2E_TARGET: process.env.E2E_TARGET, E2E_RUN_SUPERVISED: process.env.E2E_RUN_SUPERVISED };
@@ -35,7 +48,7 @@ function configure(t) {
 
 async function harness(t, { attention = true, identity = true, detail = true, relationship = {}, appRelease = appIdentity,
   readinessDelayMs = 0, freshness = true, teamOnlyFlag = true, boardActor = 'joe', dealOwner = 'joe', boardName = dealName,
-  homeRedirectTo = null } = {}) {
+  homeRedirectTo = null, reuseRead = {} } = {}) {
   configure(t);
   const root = await mkdtemp(join(tmpdir(), 'readonly-journeys-'));
   const run = openRun(root, { runId: 'synthetic-readonly-journeys', events: null, limits: { ...RUN_LIMITS, httpRequests: 100 } });
@@ -145,6 +158,9 @@ async function harness(t, { attention = true, identity = true, detail = true, re
         if (url === '/app-release') return { ok: true, json: async () => ({ ...appRelease }) };
         if (url === '/auth/session') return { ok: identity, json: async () => ({ actor: { slug: 'joe' }, e2e_principal: 'e2e-joe' }) };
         if (url === '/api/system-work/session') return { ok: identity, json: async () => ({ actor: { slug: 'joe' } }) };
+        if (url === `/api/v1/business/clients/${clientId}`) return { ok: true, json: async () => ({ record: {
+          id: reuseRead.clientId ?? clientId, ref: reuseRead.clientRef ?? 'C-42', name: reuseRead.clientName ?? partyName,
+        } }) };
         if (url === contract.journeys.W14.snapshot_path) {
           relationshipMethods.push(options.method || 'GET');
           return { ok: true, json: async () => network };
@@ -153,7 +169,9 @@ async function harness(t, { attention = true, identity = true, detail = true, re
           const request = JSON.parse(options.body), name = request.params.name;
           reads.push(name);
           const value = name === 'deal-room-board' ? { actor: boardActor, deals: [{ id: dealId, name: boardName, owner: dealOwner, attention }] }
-            : name === 'get-deal-room' ? (detail ? { deal_id: dealId } : { deal_id: unrelatedId }) : null;
+            : name === 'get-deal-room' ? (detail ? { deal_id: reuseRead.dealId ?? dealId,
+              client_ref: reuseRead.dealClientRef ?? 'C-42', client_name: reuseRead.dealClientName ?? partyName,
+              name: reuseRead.dealName ?? dealName } : { deal_id: unrelatedId }) : null;
           return { ok: value !== null, json: async () => ({ result: { content: [{ type: 'text', text: JSON.stringify(value) }] } }) };
         }
         throw new Error('Synthetic fetch target refused');
@@ -233,6 +251,20 @@ test('synthetic W1/W2/W14 behaviors use exact plan bindings; only complete slice
   assert.equal(result.journeys[0].freshness_theme_controls_after_reload, true);
   assert.equal(result.journeys[0].isolated_sign_in_sign_out, false);
   assert.deepEqual(result.counts, { qualified_slices: 2, pending_slices: 2, module_api_reads: 6, http_gets: 4, mcp_reads: 2, carr_record_mutations: 0 });
+  assert.deepEqual(result.actions.map(row => `${row.id}/${row.case}/${row.action}`), [
+    'W1/shell/identity', 'W1/shell/freshness', 'W1/shell/theme-reload',
+    'W2/home-attention/team-scope', 'W2/home-attention/viewer-scope',
+    'W2/home-attention/scope-reset', 'W2/home-attention/exact-deal-open',
+    'W14/relationships/owned-party-evidence', 'W14/relationships/referrals',
+    'W14/relationships/territory-filter', 'W14/relationships/territory-reset',
+  ]);
+  const assessed = qualifyV1Journeys({ sourcePair: { source_commit: release.source_commit,
+    carr_source_commit: release.carr_source_commit }, runId: h.run.snapshot().id, fixtureRun: fixturePlan().run,
+    observations: result.actions, writeCoverage: false, retainedEvidenceVerified: false, sweepAccepted: false });
+  assert.equal(assessed.observed_actions, 11);
+  assert.deepEqual(assessed.invalid, []);
+  assert.equal(assessed.full_v1_qualified, false);
+  assert.equal(assessed.pending.some(row => row.id === 'W1' && row.case === 'session'), true);
   for (const privateValue of [dealId, partyId, clientId, unrelatedId, dealName, partyName, originalEntry, 'SYNTHETIC_PRIVATE_OTHER_NAME'])
     assert.equal(JSON.stringify(result).includes(privateValue), false, `result omitted ${privateValue}`);
   assert.equal(h.checks().coverageChecks, 2);
@@ -334,6 +366,91 @@ test('an empty party creation receipt gives W2 and W14 a precise pending prerequ
   }
   assert.deepEqual(h.reads, []);
   assert.deepEqual(h.relationshipMethods, []);
+});
+
+test('verified fixed-fixture party reuse qualifies only with fresh normal W2/W14 reads', async t => {
+  const h = await harness(t);
+  const plan = reusedPartyPlan();
+  plan.party_reuse.observed_at = new Date(Date.now() - 3_600_000).toISOString();
+  plan.party_reuse.network_observed_at = new Date(Date.now() - 3_599_000).toISOString();
+  const result = await runReadonlyJourneys({ page: h.page, release, plan, run: h.run });
+  assert.equal(result.journeys.find(row => row.journey === 'W2').state, 'qualified-slice');
+  assert.equal(result.journeys.find(row => row.journey === 'W14').state, 'qualified-slice');
+  assert.deepEqual(h.reads, ['get-deal-room', 'deal-room-board', 'get-deal-room']);
+  assert.deepEqual(h.relationshipMethods, ['GET', 'GET']);
+  assert.deepEqual(result.counts, { qualified_slices: 2, pending_slices: 2, module_api_reads: 9,
+    http_gets: 6, mcp_reads: 3, carr_record_mutations: 0 });
+  assert.equal(result.full_v1_qualified, false);
+  for (const privateValue of [partyId, clientId, dealId, partyName])
+    assert.equal(JSON.stringify(result).includes(privateValue), false);
+});
+
+test('party reuse refuses missing, stale, foreign, mismatched and malformed evidence before reads', async t => {
+  for (const alter of [
+    plan => { delete plan.party_reuse; },
+    plan => { plan.party_reuse.state = 'pending-readback'; },
+    plan => { plan.party_reuse.schema = 'other'; },
+    plan => { plan.party_reuse.party_id = unrelatedId; },
+    plan => { plan.records.party.id = unrelatedId; },
+    plan => { plan.records.party.name = 'Other synthetic party'; },
+    plan => { plan.party_reuse.client_id = unrelatedId; },
+    plan => { plan.party_reuse.deal_id = unrelatedId; },
+    plan => { plan.records.client.ref = 'foreign-client'; },
+    plan => { plan.party_reuse.candidate_response_sha256 = ''; },
+    plan => { plan.party_reuse.network_response_sha256 = 'z'.repeat(64); },
+    plan => { plan.party_reuse.client_response_sha256 = null; },
+    plan => { delete plan.party_reuse.deal_response_sha256; },
+    plan => { plan.party_reuse.network_observed_at = new Date(Date.now() + 60_000).toISOString(); },
+    plan => { plan.party_reuse.observed_at = new Date(Date.now() + 60_000).toISOString(); },
+    plan => { plan.party_reuse.observed_at = new Date(Date.now() + 1_000).toISOString(); },
+    plan => { plan.receipts.party = { party_id: unrelatedId }; },
+    plan => { plan.receipts.party = { unverified: true }; },
+    plan => { plan.receipts.client.client_id = unrelatedId; },
+    plan => { plan.receipts.deal.deal_id = unrelatedId; },
+    plan => { plan.records.client.id = unrelatedId; },
+    plan => { plan.records.deal.id = unrelatedId; },
+    plan => { plan.release.source_commit = 'b'.repeat(40); },
+    plan => { plan.origin = 'https://example.invalid'; },
+  ]) {
+    const h = await harness(t);
+    const plan = reusedPartyPlan(); alter(plan);
+    const result = await runReadonlyJourneys({ page: h.page, release, plan, run: h.run });
+    assert.equal(result.journeys.find(row => row.journey === 'W2').state, 'pending');
+    assert.equal(result.journeys.find(row => row.journey === 'W14').state, 'pending');
+    assert.deepEqual(h.reads, []);
+    assert.deepEqual(h.relationshipMethods, []);
+    assert.equal(result.full_v1_qualified, false);
+    assert.equal(result.actions.some(row => row.id === 'W2' || row.id === 'W14'), false);
+  }
+});
+
+test('party reuse refuses changed or stale fresh association before W2 board and W14 journey reads', async t => {
+  for (const options of [
+    { reuseRead: { clientId: unrelatedId } }, { reuseRead: { clientRef: 'C-99' } },
+    { reuseRead: { clientName: 'Other synthetic party' } },
+    { reuseRead: { dealId: unrelatedId } }, { reuseRead: { dealClientRef: 'C-99' } },
+    { reuseRead: { dealClientName: 'Other synthetic party' } },
+    { reuseRead: { dealName: 'Other synthetic deal' } },
+    { relationship: { observed_at: new Date(Date.now() - 61_000).toISOString() } },
+    { relationship: { nodes: [{ id: `party:${partyId}`, record_id: unrelatedId, kind: 'client', name: partyName }] } },
+    { relationship: { nodes: [{ id: `party:${partyId}`, record_id: clientId, kind: 'client', name: partyName },
+      { id: `deal:${dealId}`, record_id: unrelatedId, kind: 'deal', name: dealName }] } },
+    { relationship: { edges: [] } },
+    { relationship: { edges: [{ id: `client-deal:${dealId}`, from: `party:${unrelatedId}`,
+      to: `deal:${dealId}`, kind: 'client_deal', via: null }] } },
+  ]) {
+    const h = await harness(t, options);
+    const plan = reusedPartyPlan();
+    plan.party_reuse.observed_at = new Date(Date.now() - 3_600_000).toISOString();
+    plan.party_reuse.network_observed_at = new Date(Date.now() - 3_599_000).toISOString();
+    const result = await runReadonlyJourneys({ page: h.page, release, plan, run: h.run });
+    assert.equal(result.journeys.find(row => row.journey === 'W2').state, 'pending');
+    assert.equal(result.journeys.find(row => row.journey === 'W14').state, 'pending');
+    assert.deepEqual(h.reads, ['get-deal-room']);
+    assert.deepEqual(h.relationshipMethods, ['GET']);
+    assert.equal(result.full_v1_qualified, false);
+    assert.equal(result.actions.some(row => row.id === 'W2' || row.id === 'W14'), false);
+  }
 });
 
 test('W14 missing plan-owned evidence or referral metrics remains pending after checked snapshot', async t => {
