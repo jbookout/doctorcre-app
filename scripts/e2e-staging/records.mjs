@@ -1,7 +1,7 @@
 import { requireSupervisedRun, effectiveRunLimits, RunLimitError } from './run-limits.mjs';
 import { constants } from 'node:fs';
-import { mkdir, open, rename, readFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { mkdir, open, rename, readFile, lstat } from 'node:fs/promises';
+import { join, resolve, dirname, parse } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { randomUUID, createHash } from 'node:crypto';
 import { assertStagingURL, createStagingRequestContext, stagingSession, STAGING_ORIGIN } from './session.mjs';
@@ -12,6 +12,8 @@ import { eligibleLead } from '../../js/leads-model.js';
 import { COLUMNS } from '../../js/pipeline-model.js';
 import { prepareBrowserControlProofs, validControlProof } from './control-proofs.mjs';
 import businessJourneys from '../../contracts/e2e-staging-business-journeys.v1.json' with { type: 'json' };
+import invoiceJourney from '../../contracts/e2e-staging-invoice-journey.v1.json' with { type: 'json' };
+import { validInvoiceTracker } from '../../js/invoice-tracker-model.js';
 
 const FIXTURE = { id: 'fc08d2f4-a951-5679-9f34-40d0f4278842', name: 'Synthetic Staging Fixture' };
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -323,11 +325,95 @@ const fixtureWrites = {
     keys: ['event_id', 'idempotency_key'], values: ['event_id'] },
   'add-critical-date': { record: 'deal', field: 'deal',
     keys: ['deal', 'kind', 'due_on', 'source', 'note', 'idempotency_key'], values: ['kind', 'due_on', 'source', 'note'] },
+  'record-commission-receipt': { record: 'commission', field: 'commission_id',
+    keys: ['commission_id', 'base_version', 'received_on', 'idempotency_key'], values: ['base_version', 'received_on'] },
 };
 const stable = value => Array.isArray(value) ? value.map(stable)
   : value && typeof value === 'object' ? Object.fromEntries(Object.keys(value).sort().map(key => [key, stable(value[key])])) : value;
 const digest = value => createHash('sha256').update(JSON.stringify(stable(value))).digest('hex');
 const policyFailure = code => { throw Object.assign(new Error('Staging fixture write refused: ' + code), { code, fixturePolicy: true }); };
+const journeyContract = id => id === 'W15' ? invoiceJourney : businessJourneys;
+const invoiceDay = (observed, offset) => new Date(Date.parse(observed.slice(0, 10)) - offset * 86_400_000).toISOString().slice(0, 10);
+function invoiceCommissionId(run) {
+  const bytes = createHash('sha1').update(Buffer.from(invoiceJourney.installer.commission_namespace.replaceAll('-', ''), 'hex'))
+    .update(invoiceJourney.installer.commission_name_prefix + run).digest().subarray(0, 16);
+  bytes[6] = bytes[6] & 15 | 80; bytes[8] = bytes[8] & 63 | 128;
+  const value = bytes.toString('hex');
+  return `${value.slice(0,8)}-${value.slice(8,12)}-${value.slice(12,16)}-${value.slice(16,20)}-${value.slice(20)}`;
+}
+function validateInvoiceProof(proof, plan, target) {
+  const exactKeys = (value, keys) => value && typeof value === 'object' && !Array.isArray(value) &&
+    digest(Object.keys(value).sort()) === digest([...keys].sort());
+  if (!exactKeys(target, ['project','branch','endpoint','database']) ||
+      !exactKeys(target.project, ['id','name']) || !exactKeys(target.branch, ['id','name']) ||
+      !exactKeys(target.endpoint, ['id','host']) || target.database !== 'neondb' ||
+      !textWithin(target.project.id, 128) || target.project.id === 'steep-field-48688294' ||
+      !textWithin(target.project.name, 256) || !target.project.name.startsWith('carr-staging-replacement-') ||
+      !textWithin(target.branch.id, 128) || target.branch.name !== 'main' ||
+      !textWithin(target.endpoint.id, 128) || !target.endpoint.id.startsWith('ep-') ||
+      !textWithin(target.endpoint.host, 253) || !/^[a-z0-9.-]+$/.test(target.endpoint.host) ||
+      !target.endpoint.host.startsWith(target.endpoint.id + '.') || !target.endpoint.host.endsWith('.neon.tech'))
+    policyFailure('invoice-fixture-target-unverified');
+  const deal = plan.records.invoice?.deal_id, client = plan.records.client?.id;
+  if (!isUUID(deal) || !isUUID(client) || plan.receipts.invoice_deal?.deal_id !== deal ||
+      plan.receipts.client?.client_id !== client || plan.records.party?.id !== FIXTURE.id ||
+      plan.records.party?.name !== FIXTURE.name || plan.records.client?.name !== FIXTURE.name ||
+      plan.records.invoice?.name !== `Synthetic staging QA ${plan.run} closed deal` ||
+      plan.names?.invoice !== plan.records.invoice.name || new Date(plan.observed_at).toISOString() !== plan.observed_at)
+    policyFailure('invoice-fixture-creation-receipts-unproved');
+  const id = invoiceCommissionId(plan.run), invoiced = invoiceDay(plan.observed_at, 45), due = invoiceDay(plan.observed_at, 15);
+  const expected = { schema: invoiceJourney.installer.proof_schema, provenance: { kind: 'raw-sql-fixture' },
+    fixture_run: plan.run, source_pair: plan.release, recorded_plan_observed_at: plan.observed_at,
+    verified_target: target, tool_source_sha256: invoiceJourney.installer.sha256,
+    fixture: { mode: 'aged-invoice', date_offsets_days: { invoiced_on_before_observation: 45, due_on_before_observation: 15 },
+      observation_date: plan.observed_at.slice(0,10), party: { id: FIXTURE.id, name: FIXTURE.name },
+      deal: { id: deal, name: plan.names.invoice, phase: 'closed', outcome: proof?.fixture?.deal?.outcome,
+        owner: contract.session.actor_slug, client_id: client }, commission_id: id, base_version: 1,
+      commission_readback: { id, deal_id: deal, gross_amount: '1.00', status: 'invoiced', invoiced_on: invoiced,
+        received_on: null, base_version: 1, due_on: due },
+      tracker_readback: { deal_id: deal, commission_id: id, gross_amount: '1.00', status: 'invoiced',
+        invoiced_on: invoiced, received_on: null, due_on: due } } };
+  if (![null, 'won'].includes(expected.fixture.deal.outcome) || digest(proof) !== digest(expected))
+    policyFailure('invoice-fixture-proof-unproved');
+  return proof.fixture;
+}
+async function readInvoiceProof(path) {
+  let handle;
+  try {
+    if (typeof path !== 'string' || path.split('/').includes('..')) policyFailure('invoice-fixture-proof-path-unproved');
+    path = resolve(path);
+    let cursor = parse(path).root;
+    for (const part of dirname(path).slice(cursor.length).split('/').filter(Boolean)) {
+      cursor = join(cursor, part);
+      const info = await lstat(cursor);
+      if (!info.isDirectory() || info.isSymbolicLink() || (info.mode & 0o022) && !(info.mode & 0o1000))
+        policyFailure('invoice-fixture-proof-path-unproved');
+    }
+    const parent = await lstat(dirname(path));
+    if (parent.uid !== process.getuid() || (parent.mode & 0o777) !== 0o700) policyFailure('invoice-fixture-proof-path-unproved');
+    handle = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
+    const info = await handle.stat();
+    if (!info.isFile() || info.uid !== process.getuid() || (info.mode & 0o777) !== 0o600 || info.size > 65536)
+      policyFailure('invoice-fixture-proof-file-unproved');
+    const bytes = Buffer.alloc(65537);
+    const { bytesRead } = await handle.read(bytes, 0, bytes.length, 0);
+    if (bytesRead !== info.size || bytesRead > 65536) policyFailure('invoice-fixture-proof-file-unproved');
+    const raw = bytes.subarray(0, bytesRead);
+    return { proof: JSON.parse(raw.toString('utf8')), sha256: createHash('sha256').update(raw).digest('hex') };
+  } catch { policyFailure('invoice-fixture-proof-unavailable'); }
+  finally { await handle?.close(); }
+}
+function invoiceTrackerRow(payload, fixture, effect) {
+  if (!validInvoiceTracker(payload) || payload.actor !== contract.session.actor_slug) return null;
+  const rows = payload.entries.filter(row => row.commission_id === fixture.commission_id || row.deal_id === fixture.deal.id);
+  const row = rows.length === 1 ? rows[0] : null, initial = fixture.commission_readback;
+  return row && row.commission_id === fixture.commission_id && row.deal_id === fixture.deal.id &&
+    row.name === fixture.deal.name && row.owner === fixture.deal.owner && row.phase === 'closed' &&
+    Number(row.gross_amount) === 1 && row.commission_invoiced_on === initial.invoiced_on &&
+    row.due_on === initial.due_on && row.as_of >= fixture.observation_date &&
+    row.status === (effect ? 'received' : 'invoiced') && row.base_version === (effect?.base_version ?? 1) &&
+    row.received_on === (effect?.received_on ?? null) && (!effect || effect.received_on <= row.as_of) ? row : null;
+}
 
 // Match the pinned producer's actual response shapes. A transport success is
 // not a receipt. update-lead returns only updated column names: it cannot bind
@@ -340,6 +426,10 @@ function completeOperationReceipt(name, args, recordIDs, receipt, attemptedAt, p
   const keys = allowed => Object.keys(receipt).every(key => ['ok', 'replayed', ...allowed].includes(key)) &&
     (receipt.replayed === undefined || receipt.replayed === false);
   let effect;
+  if (name === 'record-commission-receipt' && keys(['id','base_version','received_on']) &&
+      receipt.id === primary && args.commission_id === primary && receipt.base_version === args.base_version + 1 &&
+      receipt.received_on === args.received_on && isCalendarDate(receipt.received_on))
+    effect = { commission_id: receipt.id, base_version: receipt.base_version, received_on: receipt.received_on };
   if (name === 'set-next-step' && keys(['deal_id', 'next_step_id', 'next_action_id', 'supersedes', 'created_at']) &&
       receipt.deal_id === primary && isUUID(receipt.next_step_id || '') && isUUID(receipt.next_action_id || '') &&
       new Set([primary, receipt.next_step_id, receipt.next_action_id]).size === 3 && (receipt.supersedes === null || isUUID(receipt.supersedes || '')) &&
@@ -393,10 +483,12 @@ function completeOperationReceipt(name, args, recordIDs, receipt, attemptedAt, p
 
 const textWithin = (value, limit) => typeof value === 'string' && value.trim().length > 0 && value.length <= limit;
 const stagingPhaseSlugs = new Set(COLUMNS.map(column => column.slug));
-const fixtureWritesNeedingReadback = new Set(['patch-deal-field', 'revert-deal-field', 'add-critical-date']);
+const fixtureWritesNeedingReadback = new Set(['patch-deal-field', 'revert-deal-field', 'add-critical-date', 'record-commission-receipt']);
 function journeyObservation(row) {
   const effect = row.response?.binding?.effect;
   if (!effect) return null;
+  if (row.operation === 'record-commission-receipt') return { commission_id: effect.commission_id,
+    received_on: effect.received_on, status: 'Paid', payment_form_hidden: true, home_attention_removed: true };
   if (row.operation === 'patch-deal-field') return { phase: effect.new_value, event_id: effect.event_id };
   if (row.operation === 'revert-deal-field')
     return { phase: effect.new_value, reverted_event_id: effect.reverted_event_id, badge: 'Undone' };
@@ -406,6 +498,9 @@ function journeyObservation(row) {
 }
 function observedJourneyUI(row) {
   const ui = row.journey?.ui;
+  if (row.operation === 'record-commission-receipt' &&
+      (row.journey?.before_ui?.schema !== 'staging-business-journey-ui.v1' ||
+       row.journey.before_ui.observation_sha256 !== digest({ commission_id: row.record_ids?.[0], home_attention_present: true }))) return false;
   return row.journey?.state === 'observed' && ui?.schema === 'staging-business-journey-ui.v1' &&
     ui.observation_sha256 === digest(journeyObservation(row)) &&
     Number.isFinite(Date.parse(ui.observed_at)) && Date.parse(ui.observed_at) >= Date.parse(row.journey.admitted_at) &&
@@ -463,13 +558,17 @@ function requirePlanCoverage(plan, scope) {
         const bound = completeOperationReceipt(row.operation, row.arguments, row.record_ids, row.response.receipt, row.attempted_at, plan);
         const needsReadback = fixtureWritesNeedingReadback.has(row.operation);
         return !bound || !row.response.binding || digest(bound) !== digest(row.response.binding) ||
-          needsReadback && !validIndependentReadback(row) || row.journey && !observedJourneyUI(row);
+          needsReadback && !validIndependentReadback(row) || row.journey && !observedJourneyUI(row) ||
+          row.operation === 'record-commission-receipt' &&
+            (plan.fixture_proofs?.invoice?.state !== 'quarantined' ||
+             row.journey?.fixture_proof_sha256 !== plan.fixture_proofs.invoice.proof_sha256 ||
+             plan.fixture_proofs.invoice.proof_content_sha256 !== digest(plan.fixture_proofs.invoice.proof));
       })) policyFailure('write-coverage-incomplete');
 }
 
 function validIndependentReadback(row) {
   return row.independent_readback?.schema === 'staging-fixture-business-readback.v1' &&
-    row.independent_readback.operation === 'get-deal-room' &&
+    row.independent_readback.operation === (row.operation === 'record-commission-receipt' ? 'read-invoice-tracker' : 'get-deal-room') &&
     row.independent_readback.record_id === row.record_ids?.[0] &&
     row.independent_readback.matched === true && /^[a-f0-9]{64}$/.test(row.independent_readback.response_sha256 || '') &&
     typeof row.independent_readback.observed_at === 'string' && Number.isFinite(Date.parse(row.independent_readback.observed_at));
@@ -477,7 +576,8 @@ function validIndependentReadback(row) {
 
 // One test-harness seam, using the existing private setup/receipt store.
 // Unsupported global/account/runtime operations remain explicit coverage gaps.
-export function stagingFixtureWriteGuard({ output, release, run = process.env.E2E_RUN_SUPERVISED === '1' ? requireSupervisedRun(output) : undefined, persist = (path, value) => privateJSON(path, value, false, run) } = {}) {
+export function stagingFixtureWriteGuard({ output, release, invoiceFixtureTarget, run = process.env.E2E_RUN_SUPERVISED === '1' ? requireSupervisedRun(output) : undefined, persist = (path, value) => privateJSON(path, value, false, run) } = {}) {
+  invoiceFixtureTarget = invoiceFixtureTarget && structuredClone(invoiceFixtureTarget);
   const planPath = typeof output === 'string' ? join(output, 'staging-records-plan.json') : null;
   const refusals = [], pending = new Set();
   const staticCache = new Map();
@@ -536,6 +636,16 @@ export function stagingFixtureWriteGuard({ output, release, run = process.env.E2
         policyFailure('operation-shape-unproved');
     }
     const attempts = plan.browser_write_attempts || [];
+    if (name === 'record-commission-receipt') {
+      const binding = plan.fixture_proofs?.invoice;
+      const fixture = validateInvoiceProof(binding?.proof, plan, invoiceFixtureTarget);
+      const before = binding?.before_tracker_readback?.row;
+      if (binding.state !== 'ready' || !before || binding.proof_content_sha256 !== digest(binding.proof) ||
+          args.commission_id !== fixture.commission_id || args.base_version !== before.base_version ||
+          !isCalendarDate(args.received_on) || args.received_on < before.commission_invoiced_on || args.received_on > before.as_of ||
+          attempts.some(row => row.operation === name && row.record_ids?.includes(args.commission_id)))
+        policyFailure('invoice-fixture-readback-or-payment-unproved');
+    }
     if (name === 'patch-deal-field') {
       const phases = new Set(COLUMNS.map(column => column.slug));
       const knownPhaseEvent = args.base_event_id === null || attempts.some(row =>
@@ -563,7 +673,7 @@ export function stagingFixtureWriteGuard({ output, release, run = process.env.E2
         !text(args.source) || args.note !== undefined && !text(args.note) ||
         attempts.some(row => row.operation === name && row.record_ids?.includes(args.deal))))
       policyFailure('operation-shape-unproved');
-    const id = ['patch-deal-field', 'add-critical-date'].includes(name)
+    const id = name === 'record-commission-receipt' ? plan.fixture_proofs.invoice.proof.fixture.commission_id : ['patch-deal-field', 'add-critical-date'].includes(name)
       ? owned(plan, 'deal', args.deal)
       : name === 'revert-deal-field' && priorPhasePatch
         ? owned(plan, 'deal', priorPhasePatch.arguments?.deal)
@@ -571,6 +681,7 @@ export function stagingFixtureWriteGuard({ output, release, run = process.env.E2
           spec.record === 'deal' && owned(plan, 'invoice', args[spec.field]);
     if (!id) policyFailure('record-outside-fixtures');
     const ids = new Set([id]);
+    if (name === 'record-commission-receipt') ids.add(plan.records.invoice.deal_id);
     if (name === 'link-lead-client') {
       const client = owned(plan, 'client', args.client_id);
       if (!client) policyFailure('reference-outside-fixtures');
@@ -630,6 +741,50 @@ export function stagingFixtureWriteGuard({ output, release, run = process.env.E2
       if (changed) await persist(planPath, plan);
     });
   };
+  const reconcileInvoiceRead = async (response, requestId) => {
+    let rpc, payload;
+    try { rpc = await response.json(); payload = JSON.parse(rpc.result.content[0].text); } catch { return; }
+    if (response.status() !== 200 || rpc.jsonrpc !== '2.0' || rpc.id !== requestId || rpc.error || rpc.result?.isError ||
+        rpc.result?.content?.length !== 1 || rpc.result.content[0].type !== 'text') return;
+    await locked(async () => {
+      const stored = planPath ? await readPrivateJSON(planPath) : null;
+      if (!stored?.fixture_proofs?.invoice) return;
+      const plan = await currentPlan(), binding = plan.fixture_proofs.invoice;
+      if (!binding) return;
+      const fixture = validateInvoiceProof(binding.proof, plan, invoiceFixtureTarget);
+      if (binding.proof_content_sha256 !== digest(binding.proof) || !validInvoiceTracker(payload) ||
+          Date.parse(payload.observed_at) < Date.parse(binding.imported_at) - 5000 ||
+          Date.parse(payload.observed_at) > Date.now() + 5000) return;
+      const before = invoiceTrackerRow(payload, fixture);
+      let measured = null;
+      delete binding.current_tracker_readback;
+      if (before && binding.state !== 'quarantined') {
+        measured = before;
+        binding.state = 'ready';
+        binding.before_tracker_readback = { operation: 'read-invoice-tracker', response_sha256: digest(rpc),
+          observed_at: payload.observed_at, row: structuredClone(before) };
+      } else {
+        const candidates = payload.entries.filter(row => row.commission_id === fixture.commission_id);
+        const current = candidates.length === 1 ? candidates[0] : null;
+        const effect = current && { base_version: current.base_version, received_on: current.received_on };
+        if (current?.status === 'received' && current.base_version === 2 && isCalendarDate(current.received_on) &&
+            current.received_on >= fixture.commission_readback.invoiced_on && invoiceTrackerRow(payload, fixture, effect)) {
+          binding.state = 'quarantined';
+          measured = current;
+        }
+        else if (binding.state !== 'quarantined') binding.state = 'unavailable';
+      }
+      if (measured) binding.current_tracker_readback = { operation: 'read-invoice-tracker', response_sha256: digest(rpc),
+        observed_at: payload.observed_at, row: structuredClone(measured) };
+      for (const row of plan.browser_write_attempts || []) {
+        if (row.operation !== 'record-commission-receipt' || row.state !== 'acknowledged' ||
+            row.record_ids?.[0] !== fixture.commission_id || !invoiceTrackerRow(payload, fixture, row.response?.binding?.effect)) continue;
+        row.independent_readback = { schema: 'staging-fixture-business-readback.v1', operation: 'read-invoice-tracker',
+          record_id: fixture.commission_id, response_sha256: digest(rpc), matched: true, observed_at: new Date().toISOString() };
+      }
+      await persist(planPath, plan);
+    });
+  };
   const retainRefusal = async (gap, scope) => {
     refusals.push(gap);
     scope?.refusals.push(gap);
@@ -658,16 +813,17 @@ export function stagingFixtureWriteGuard({ output, release, run = process.env.E2
     async admitBusinessJourneyStep(spec) {
       requireSupervisedRun(output, run);
       run.check();
-      if (!spec || Object.keys(spec).some(key => !['phase', 'journey', 'step', 'deal', 'release', 'observation'].includes(key)) ||
-          !['admit', 'status', 'observe'].includes(spec.phase) ||
-          businessJourneys.schema !== 'doctorcre-e2e-staging-business-journeys.v1' ||
-          businessJourneys.full_v1_qualification !== false ||
-          businessJourneys.producer.source_commit !== contract.producer.source_commit)
+      const selectedContract = journeyContract(spec?.journey);
+      const invoice = spec?.journey === 'W15';
+      if (!spec || Object.keys(spec).some(key => !['phase', 'journey', 'step', 'deal', 'release', 'observation',
+          ...(invoice ? ['proofPath','received_on','before_observation'] : [])].includes(key)) ||
+          !['admit', 'status', 'observe', ...(invoice ? ['import-fixture','fixture-status','fixture-refresh'] : [])].includes(spec.phase) ||
+          selectedContract.full_v1_qualification !== false || selectedContract.producer.source_commit !== contract.producer.source_commit)
         policyFailure('journey-scope-unproved');
-      const journey = businessJourneys.journeys.find(journey => journey.id === spec.journey);
+      const journey = selectedContract.journeys.find(journey => journey.id === spec.journey);
       const definition = journey?.steps.find(step => step.id === spec.step);
       if (!definition) policyFailure('journey-scope-unproved');
-      for (const [path, hash] of Object.entries(businessJourneys.sources)) {
+      for (const [path, hash] of Object.entries(selectedContract.sources)) {
         const bytes = await readFile(new URL('../../' + path, import.meta.url));
         if (createHash('sha256').update(bytes).digest('hex') !== hash) policyFailure('journey-source-changed');
       }
@@ -676,8 +832,37 @@ export function stagingFixtureWriteGuard({ output, release, run = process.env.E2
         if (spec.release?.source_commit !== plan.release.source_commit ||
             spec.release?.carr_source_commit !== plan.release.carr_source_commit)
           policyFailure('journey-source-pair-changed');
-        if (!owned(plan, 'deal', spec.deal)) policyFailure('record-outside-fixtures');
+        if (!owned(plan, invoice ? 'invoice' : 'deal', spec.deal)) policyFailure('record-outside-fixtures');
         const attempts = plan.browser_write_attempts || [];
+        if (invoice && spec.phase === 'import-fixture') {
+          requirePlanCoverage(plan);
+          const imported = await readInvoiceProof(spec.proofPath);
+          validateInvoiceProof(imported.proof, plan, invoiceFixtureTarget);
+          const existing = plan.fixture_proofs?.invoice;
+          if (existing) {
+            if (existing.proof_sha256 !== imported.sha256 || existing.proof_content_sha256 !== digest(imported.proof))
+              policyFailure('invoice-fixture-proof-binding-changed');
+            return structuredClone(existing);
+          }
+          plan.fixture_proofs ||= {};
+          plan.fixture_proofs.invoice = { schema: 'staging-invoice-fixture-binding.v1', state: 'pending-readback',
+            proof: imported.proof, proof_sha256: imported.sha256, proof_content_sha256: digest(imported.proof),
+            verified_target_sha256: digest(invoiceFixtureTarget), imported_at: new Date().toISOString() };
+          await persist(planPath, plan);
+          return structuredClone(plan.fixture_proofs.invoice);
+        }
+        const fixture = invoice ? validateInvoiceProof(plan.fixture_proofs?.invoice?.proof, plan, invoiceFixtureTarget) : null;
+        if (invoice && (plan.fixture_proofs.invoice.proof_content_sha256 !== digest(plan.fixture_proofs.invoice.proof) ||
+            plan.fixture_proofs.invoice.verified_target_sha256 !== digest(invoiceFixtureTarget)))
+          policyFailure('invoice-fixture-proof-binding-changed');
+        if (invoice && spec.phase === 'fixture-status') return structuredClone(plan.fixture_proofs.invoice);
+        if (invoice && spec.phase === 'fixture-refresh') {
+          const binding = plan.fixture_proofs.invoice;
+          delete binding.current_tracker_readback;
+          if (binding.state !== 'quarantined') binding.state = 'pending-readback';
+          await persist(planPath, plan);
+          return structuredClone(binding);
+        }
         const previous = attempts.find(row => row.journey?.id === spec.journey && row.journey?.step === definition.predecessor);
         let template;
         if (definition.operation === 'patch-deal-field')
@@ -691,14 +876,21 @@ export function stagingFixtureWriteGuard({ output, release, run = process.env.E2
         if (definition.operation === 'add-critical-date')
           template = { deal: spec.deal, kind: definition.kind, due_on: definition.due_on,
             source: definition.source_prefix + plan.run };
+        if (invoice) template = { commission_id: fixture.commission_id,
+          base_version: plan.fixture_proofs.invoice.before_tracker_readback?.row?.base_version, received_on: spec.received_on };
         if (!template) policyFailure('journey-scope-unproved');
         const matches = attempts.filter(row => row.journey?.id === spec.journey && row.journey?.step === spec.step);
         if (matches.length > 1) policyFailure('journey-step-requires-reconciliation');
         let row = matches[0];
+        if (invoice) template = row?.argument_template || { commission_id: fixture.commission_id,
+          base_version: plan.fixture_proofs.invoice.before_tracker_readback?.row?.base_version, received_on: spec.received_on };
+        if (invoice && spec.phase === 'status' && !row) return null;
         if (row && (row.journey.schema !== 'staging-business-journey-step.v1' ||
-            row.journey.contract_sha256 !== digest(businessJourneys) || row.journey.fixture_run !== plan.run ||
+            row.journey.contract_sha256 !== digest(selectedContract) || row.journey.fixture_run !== plan.run ||
             digest(row.journey.release) !== digest(plan.release) || digest(row.argument_template) !== digest(template) ||
-            row.operation !== definition.operation || row.record_ids?.length !== 1 || row.record_ids[0] !== spec.deal))
+            row.operation !== definition.operation || row.record_ids?.length !== (invoice ? 2 : 1) ||
+            (invoice ? row.record_ids[0] !== fixture.commission_id || row.record_ids[1] !== spec.deal ||
+              row.journey.fixture_proof_sha256 !== plan.fixture_proofs.invoice.proof_sha256 : row.record_ids[0] !== spec.deal)))
           policyFailure('journey-binding-changed');
         if (spec.phase === 'status') {
           if (!row) policyFailure('journey-intent-missing');
@@ -711,12 +903,16 @@ export function stagingFixtureWriteGuard({ output, release, run = process.env.E2
             return structuredClone(row);
           }
           requirePlanCoverage(plan);
+          if (invoice && digest(spec.before_observation) !== digest({ commission_id: fixture.commission_id, home_attention_present: true }))
+            policyFailure('invoice-fixture-home-observation-unproved');
           const { ids, fingerprint } = proveOperation(plan, definition.operation, { ...template, idempotency_key: randomUUID() });
           row = { schema: 'staging-fixture-browser-intent.v1', fingerprint, operation: definition.operation,
             record_ids: [...ids], argument_template: template, arguments: structuredClone(template), state: 'admitted',
             dispatched_outcome: 'not dispatched', journey: { schema: 'staging-business-journey-step.v1',
-              id: spec.journey, step: spec.step, fixture_run: plan.run, contract_sha256: digest(businessJourneys),
+              id: spec.journey, step: spec.step, fixture_run: plan.run, contract_sha256: digest(selectedContract),
               release: structuredClone(plan.release), admitted_at: new Date().toISOString(), state: 'admitted' } };
+          if (invoice) Object.assign(row.journey, { fixture_proof_sha256: plan.fixture_proofs.invoice.proof_sha256,
+            before_ui: { schema: 'staging-business-journey-ui.v1', observation_sha256: digest(spec.before_observation), observed_at: new Date().toISOString() } });
           plan.browser_write_attempts ||= [];
           plan.browser_write_attempts.push(row);
           await persist(planPath, plan);
@@ -874,6 +1070,7 @@ export function stagingFixtureWriteGuard({ output, release, run = process.env.E2
         if (browserReads.has(name)) {
           const response = await forwardRead();
           if (name === 'get-deal-room') await reconcileDealRoomRead(response, args.deal, body.id);
+          if (name === 'read-invoice-tracker') await reconcileInvoiceRead(response, body.id);
           return response;
         }
         if (!(typeof body.id === 'string' && body.id || Number.isSafeInteger(body.id)))
@@ -882,6 +1079,7 @@ export function stagingFixtureWriteGuard({ output, release, run = process.env.E2
           const plan = await currentPlan();
           const admitted = (plan.browser_write_attempts || []).filter(row => row.state === 'admitted' && row.journey);
           const intent = admitted.length === 1 ? admitted[0] : null;
+          if (name === 'record-commission-receipt' && !intent) policyFailure('journey-intent-missing');
           if ((plan.browser_write_attempts || []).some(row => row.journey) && !intent)
             policyFailure('journey-intent-missing');
           const actualTemplate = { ...args };
@@ -891,7 +1089,7 @@ export function stagingFixtureWriteGuard({ output, release, run = process.env.E2
           if (intent && (intent.journey.schema !== 'staging-business-journey-step.v1' || intent.journey.state !== 'admitted' ||
               intent.journey.fixture_run !== plan.run ||
               digest(intent.journey.release) !== digest(plan.release) ||
-              intent.journey.contract_sha256 !== digest(businessJourneys))) policyFailure('journey-binding-changed');
+              intent.journey.contract_sha256 !== digest(journeyContract(intent.journey.id)))) policyFailure('journey-binding-changed');
           const { ids, fingerprint } = proveOperation(intent ? { ...plan,
             browser_write_attempts: plan.browser_write_attempts.filter(row => row !== intent) } : plan, name, args);
           plan.browser_write_attempts ||= [];

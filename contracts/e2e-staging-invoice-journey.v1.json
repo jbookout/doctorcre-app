@@ -1,0 +1,56 @@
+{
+  "schema": "doctorcre-e2e-staging-invoice-journey.v1",
+  "version": "1.0.0",
+  "requirements": {
+    "section_id": "a984038c-7923-4518-b89c-8814b37f8f8a",
+    "version": 1
+  },
+  "producer": {
+    "source_commit": "5ddaa8f39507de3f3343c5cc5177d3d07168e9eb"
+  },
+  "installer": {
+    "source_commit": "2c58a001ee44fa1bf204d65684f3cf3bec52e4c4",
+    "path": "tools/staging-fixtures.py",
+    "sha256": "bc0d92b8c34e45f164514d7326ee0e1df7ce1eb936230c6eb89ffb4b69d52fdb",
+    "proof_schema": "doctorcre-staging-fixture-proof.v1",
+    "provenance_kind": "raw-sql-fixture",
+    "max_proof_bytes": 65536,
+    "commission_namespace": "4acbfa5b-1f38-47af-aac0-1c4688cfc479",
+    "commission_name_prefix": "staging-invoice-commission:"
+  },
+  "fixture": {
+    "mode": "aged-invoice",
+    "invoiced_on_before_observation": 45,
+    "due_on_before_observation": 15,
+    "gross_amount": "1.00",
+    "initial_base_version": 1
+  },
+  "sources": {
+    "invoices.html": "93d73d29d2979cfa48eb33f50c25c057d6b33cc9ce521635fa2c6392af1d3a06",
+    "workspace.html": "9ca5005affdab6838fb89bae3b01a5e8cac60d298c31a47891510d86d7914fc9",
+    "js/invoice-tracker.js": "2557e84d2ed5250056998f7860acb019063ce36afe7afb47757f24f7e78b2fc9",
+    "js/invoice-tracker-model.js": "c9b0ebcc5143d621f27fd1ad6008940d9f870825ea52df6b1b1f6108fdc8cf6c",
+    "js/workspace-command-center.js": "326859db4a24875509e126740bd209b4f0136bdb741f00d013147537c8cb5744",
+    "js/home-dashboard-model.js": "d99f87d134cd39111d8166fd1f5919c6083b874df36ebe3ca79d95fa1135133a",
+    "js/live-client.js": "54fb088f0eb21c6a1d3acdf16352ac01d291ee0d74f2ff54be2754823817ab03",
+    "js/boot-mode.js": "b3d0c88444f259d2a2c917d5ec38c8198b5c1be82db25238df3aacff34877ac2",
+    "js/app-layout.js": "6ee5a58a8e8c7f4054e0f815ff5aeea8bd519762a281c438f07845bde09c812c",
+    "css/invoice-tracker.css": "31e78ab60d1feb865a8e642a0a39e166d60fc9f9b11aa07ea8bca7ee264d1be7",
+    "css/app-shell.css": "dd83d6039c82a5c65507d4a685eee2a8fd2e928197b4da177e3c1bf3f2f367ce"
+  },
+  "journeys": [
+    {
+      "id": "W15",
+      "steps": [
+        {
+          "id": "paid",
+          "operation": "record-commission-receipt",
+          "selector": "#markInvoicePaid",
+          "date_selector": "#invoicePaidDate"
+        }
+      ]
+    }
+  ],
+  "full_v1_qualification": false,
+  "paid_fixture": "quarantined; no reset, undo, deletion or external money movement"
+}
