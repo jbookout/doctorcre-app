@@ -14,6 +14,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
+import { build } from "esbuild";
+import { JSDOM } from "jsdom";
 
 import {
   COMPOSER_ABSENT, CONVERSATION_ID, CONVERSATION_STATES, DOC_REPLY_PENDING, EXPOSURE_STATEMENT,
@@ -552,6 +554,41 @@ test("the page is the shared shell, carries no composer in the transcript, and h
 });
 
 /* ------------------------------------------------------------------- escaping */
+
+const turnRenderer = await build({
+  stdin: {
+    contents: (await read("js/conversations.js")).replace("\nboot();", "\nexport { renderTurns };"),
+    resolveDir: new URL("../js/", import.meta.url).pathname,
+  },
+  bundle: true, write: false, format: "iife", globalName: "conversationPage",
+  define: { "import.meta.url": JSON.stringify(new URL("../js/conversations.js", import.meta.url).href) },
+});
+
+for (const [name, body] of [
+  ["script markup", "<script>alert(1)</script>"],
+  ["an image with an error handler", '\"><img src=x onerror="alert(1)">'],
+  ["HTML-looking text", '<strong title="Tom & Jerry">A & B</strong>'],
+]) {
+  test(`conversation bodies render ${name} as inert text`, async (t) => {
+    const dom = new JSDOM(await read("conversations.html"), { runScripts: "outside-only" });
+    t.after(() => dom.window.close());
+    dom.window.eval(turnRenderer.outputFiles[0].text);
+    const { view, renderTurns } = dom.window.conversationPage;
+    const joe = await fixture();
+    const payload = await joe.readDocConversation({ conversation_id: PRIVATE });
+    payload.turns = [{ ...payload.turns[0], body }];
+    view.route = { state: "ok", id: PRIVATE };
+    view.conversation = { state: "read", payload };
+
+    renderTurns();
+
+    const rendered = dom.window.document.querySelector("#turnList .turn-body");
+    assert.ok(rendered, "the conversation body was not rendered");
+    assert.equal(rendered.textContent, body);
+    assert.equal(rendered.childElementCount, 0, "the body created HTML elements");
+    assert.equal(dom.window.document.querySelector("#turnList script, #turnList img, #turnList [onerror]"), null);
+  });
+}
 
 test("a hostile turn body renders as text, and create refuses what the verb refuses", async () => {
   const joe = await fixture();
