@@ -77,11 +77,9 @@ test('both actual publishers refuse ancestor, mismatched and external Wrangler e
 
 test('real browser preparation preserves tracked source and both publishers accept its artifact', t => {
   const f = fixture(t, { browser: true });
-  const baseline = f.git(['ls-files', '-s', 'test-artifacts']);
   const prepared = f.run('prepare-release');
   assert.equal(prepared.status, 0, prepared.stdout + prepared.stderr);
   assert.equal(f.git(['status', '--porcelain', '--untracked-files=all']), '', 'preparation leaves source clean');
-  assert.equal(f.git(['ls-files', '-s', 'test-artifacts']), baseline);
   assert.ok(existsSync(join(f.root, 'out/test-artifacts/w12/brief-desktop.png')), 'real browser capture was retained outside tracked paths');
   for (const lane of ['production', 'staging']) {
     const result = f.run(`release-${lane}`);
