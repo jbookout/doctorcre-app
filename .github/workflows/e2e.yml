@@ -3,6 +3,13 @@ name: e2e
 on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
+    paths:
+      - '**'
+      - '!**/*.md'
+      - '!docs/**'
+      - '!_to_delete/**'
+      - '!.github/**'
+      - '.github/workflows/e2e.yml'
   push:
     branches: [main]
 
