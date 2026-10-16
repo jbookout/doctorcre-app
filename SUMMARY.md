@@ -68,6 +68,7 @@ fixture. Reviewed DoctorCRE production hosts boot the live adapter.
 | `js/shell.js` | The shell every surface shares: the three presentation icons (one storage key, legacy key migrated), the tab strip, and the floating Doc |
 | `css/` | Product presentation and responsive behavior; `css/system.css` defines the shared visual system |
 | `js/doc-presence.js` and `js/doc-command-bar.js` | The persistent Doc and its command bar, shared by every surface |
+| `src/ui/` | Strict TypeScript React islands (decision d23358f1, V2-WORKSPACE). `scripts/ui-bundle.mjs` compiles them into `js/ui.generated.js`, shipped in the artifact and imported only behind a flag: `/ideas-events?ui=react` hosts the Ideas panel in a React node host on a fixture boot. The rest of the app stays static HTML and JavaScript modules |
 | `js/client.js` | Small client interface selected by the app |
 | `js/live-client.js` | Authenticated same-origin CARR adapter |
 | `js/fixture-client.js` | In-memory synthetic adapter |
