@@ -177,7 +177,7 @@ test("a version conflict names the server fields that changed before a draft can
 /* ------------------------------------------------------------------ the page */
 
 test("the Ideas page is routed and uses the pinned idea and event verbs", async () => {
-  const routes = JSON.parse(await read("contracts/app-routes.v1.json"));
+  const routes = (await import("../js/routes.js")).routeContract;
   const carr = JSON.parse(await read("contracts/carr-interface.v1.json"));
   assert.equal(routes.routes["/ideas-events"], "ideas.html");
   assert.equal(carr.version, "1.45.0");

@@ -8,7 +8,7 @@ import { createFixtureClient } from '../js/fixture-client.js';
 import axe from 'axe-core';
 
 const NOW = new Date('2026-10-01T15:00:00Z');
-const { routes } = JSON.parse(await readFile(new URL('../contracts/app-routes.v1.json', import.meta.url), 'utf8'));
+const { routes } = (await import("../js/routes.js")).routeContract;
 const leadRows = [96, 88, 71, 23].map((score, i) => ({ id: `demo-lead-${i}`, name: `Demo New Practice ${i + 1}`, specialty: 'Demo specialty', city: 'Demo City', score,
   owner: i === 0 ? 'dell' : 'joe', owner_label: 'Demo partner', stage: 'new', stage_label: 'New', created_at: NOW.toISOString() }));
 const screenshot = async (page, name) => {
@@ -161,7 +161,6 @@ test('PR123 finding 8: malformed and mixed live reads settle unavailable and rec
   });
   assert.deepEqual(state.errors, []);
 });
-
 
 test('PR124 R1 generated Home flag and task links open the requested record through the deployed route', async t => {
   const { page, errors } = await open(t, { origin: 'https://app.doctorcre.com' });

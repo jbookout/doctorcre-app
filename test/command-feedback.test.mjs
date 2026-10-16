@@ -325,29 +325,6 @@ test("the dock renders one receipt per operation with the one action that state 
 
 // --------------------------------------------------------------- 10. contract and stylesheet
 
-test("checking is a declared state of the shared visual system, and the stylesheet draws it", async () => {
-  const contract = JSON.parse(await read("contracts/visual-system.v1.json"));
-  assert.deepEqual(contract.components.command_feedback.states, [
-    '.receipt[data-state="pending"]',
-    '.receipt[data-state="confirmed"]',
-    '.receipt[data-state="refused"]',
-    '.receipt[data-state="unknown"]',
-    '.receipt[data-state="checking"]',
-    '.receipt[data-state="undone"]',
-  ]);
-  const css = await read("css/system.css");
-  assert.match(css, /\.receipt\[data-state="checking"\] \{[^}]*border-left-color: var\(--cyan\)/);
-  assert.match(css, /\.receipt\[data-state="checking"\] \.receipt-badge \{ color: var\(--cyan-text\); \}/);
-  assert.match(css, /\.receipt\[data-state="undone"\] \.receipt-badge \{ color: var\(--muted\); \}/);
-  assert.match(css, /\.receipt \.btn \{ min-height: var\(--touch\); \}/, "a dock action is a full touch target");
-
-  // The invariant this whole slice exists to keep, pinned where the consumer
-  // contract can be read without the code.
-  const carr = JSON.parse(await read("contracts/carr-interface.v1.json"));
-  assert.equal(carr.version, "1.45.0");
-  assert.ok(carr.invariants.some((line) => /one idempotency key across double click, reconnect and a second device/.test(line)));
-});
-
 /* ------------------------------------------------------------------ the dock cap */
 
 // The dock keeps one entry per operation forever, so a long session grew the

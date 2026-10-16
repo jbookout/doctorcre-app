@@ -6,8 +6,6 @@
  * the same grammar for Dell. Tokens are named by ROLE, never by value, so a
  * theme swaps values and no component changes.
  *
- * The contract that binds this file is contracts/visual-system.v1.json; the
- * test in test/visual-system.test.mjs refuses a token or state named there
  * that this file does not define, in either theme.
  *
  * Three user preferences travel as attributes on <html>:

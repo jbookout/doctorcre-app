@@ -5,9 +5,9 @@ import { fileURLToPath } from "node:url";
 import { JSDOM } from "jsdom";
 
 import {
-  NO_PORTFOLIO_REASON, STAGES, STALE_REASON, availableActions, deliveryStages, dispositionArgs,
+  STAGES, STALE_REASON, availableActions, deliveryStages, dispositionArgs,
   dispositionEffect, dispositionOptions, operationKeys, refusalMessage, renderCount, stageDenominator,
-  validPassportPayload, validPortfolioPayload, validWorkRequestCard,
+  validPassportPayload, validWorkRequestCard,
 } from "../js/delivery-evidence-model.js";
 import { dispositionState } from "../js/work-inventory-model.js";
 import { createFixtureClient } from "../js/fixture-client.js";
@@ -131,7 +131,7 @@ test("an unfinished slice is not reached, and no passport is unknown everywhere"
   const none = deliveryStages(null);
   assert.equal(none.length, STAGES.length);
   assert.ok(none.every((cell) => cell.state === "unknown"));
-  assert.equal(stageOf(none, "approved").reason, "no passport has been read for this record");
+  assert.equal(stageOf(none, "source_verified").reason, "no passport has been read for this record");
 });
 
 test("a stale plan renders every stage unknown and no percentage is offered", () => {
@@ -146,19 +146,6 @@ test("a stale plan renders every stage unknown and no percentage is offered", ()
   // Nothing complete means nothing to count, and the count says so in words.
   const proven = stale.filter((cell) => cell.state === "complete").length;
   assert.equal(renderCount(proven, { known: false, total: null, reason: STALE_REASON }), "unknown");
-});
-
-test("approval is read only from a portfolio that was actually read", () => {
-  assert.equal(stageOf(deliveryStages(passport()), "approved").reason, NO_PORTFOLIO_REASON);
-  const accepted = { ok: true, portfolio_ref: "PF-DEMO-1", exists: true, accepted: true, accepted_revision_id: "PF-DEMO-1-R2", reviews: [] };
-  assert.equal(validPortfolioPayload(accepted), true);
-  assert.equal(stageOf(deliveryStages(passport(), accepted), "approved").state, "complete");
-  assert.equal(stageOf(deliveryStages(passport(), accepted), "approved").evidence_ref, "PF-DEMO-1-R2");
-  // exists:false inside an ok answer is UNKNOWN, not absent and not refused.
-  const missing = { ...accepted, exists: false, accepted: false, accepted_revision_id: null };
-  assert.equal(stageOf(deliveryStages(passport(), missing), "approved").state, "unknown");
-  // A positive "nobody accepted it" is the only not-reached this cell has.
-  assert.equal(stageOf(deliveryStages(passport(), { ...accepted, accepted: false }), "approved").state, "not reached");
 });
 
 test("dispositionOptions marks the four verb-less C27 items unavailable", () => {
@@ -338,20 +325,17 @@ test("a refused disposition preserves the typed dialog draft through re-read", a
 
 test("the fixture carries the three delivery examples plus a stale plan, and refuses a miss", async () => {
   const fixture = await createFixtureClient({ seedUrl: await seedUrl() });
-  const stages = async (ref, portfolioRef = null) => {
+  const stages = async (ref) => {
     const held = await fixture.engineeringPassport({ work_request: ref });
     assert.equal(validPassportPayload(held), true, `${ref} passport shape`);
-    const portfolio = portfolioRef ? await fixture.readPortfolio({ portfolio_ref: portfolioRef }) : null;
-    return deliveryStages(held, portfolio);
+    return deliveryStages(held);
   };
   assert.equal(stageOf(await stages("WR-000901"), "merged").state, "unknown");
   assert.equal(stageOf(await stages("WR-000902"), "merged").state, "unknown");
   assert.equal(stageOf(await stages("WR-000902"), "activated").state, "unknown");
   assert.equal(stageOf(await stages("WR-000903"), "activated").state, "unknown");
   assert.equal(stageOf(await stages("WR-000903"), "consumer_proven").state, "unknown");
-  assert.ok((await stages("WR-000905", "PF-DEMO-1")).every((cell) => cell.state === "unknown"), "a stale plan proves nothing");
-  assert.equal(stageOf(await stages("WR-000901", "PF-DEMO-1"), "approved").state, "complete");
-  assert.equal(stageOf(await stages("WR-000902", "PF-DEMO-2"), "approved").state, "not reached");
+  assert.ok((await stages("WR-000905")).every((cell) => cell.state === "unknown"), "a stale plan proves nothing");
 
   // A captured record has no passport, and the read REFUSES rather than
   // answering an empty one: an empty answer would paint as "no evidence".
@@ -368,7 +352,7 @@ test("the page offers no command it cannot send, and stays inside the accessibil
   const css = await readFile(`${ROOT}/css/work-inventory.css`, "utf8");
   const js = await readFile(`${ROOT}/js/work-inventory.js`, "utf8");
   const carr = JSON.parse(await readFile(`${ROOT}/contracts/carr-interface.v1.json`, "utf8"));
-  const routes = JSON.parse(await readFile(`${ROOT}/contracts/app-routes.v1.json`, "utf8"));
+  const routes = (await import("../js/routes.js")).routeContract;
 
   // NO new page and NO new route: this slice lives on the surface that already
   // reads the census, at the route the census already owns.

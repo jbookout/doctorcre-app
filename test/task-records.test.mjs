@@ -296,7 +296,7 @@ test("the Tasks page is a listed surface that captures, hands over and closes th
   const js = withoutComments(await readFile(`${ROOT}/js/task-records.js`, "utf8"));
   const model = withoutComments(await readFile(`${ROOT}/js/task-records-model.js`, "utf8"));
   const css = await readFile(`${ROOT}/css/tasks.css`, "utf8");
-  const routes = JSON.parse(await readFile(`${ROOT}/contracts/app-routes.v1.json`, "utf8"));
+  const routes = (await import("../js/routes.js")).routeContract;
   const carr = JSON.parse(await readFile(`${ROOT}/contracts/carr-interface.v1.json`, "utf8"));
   const checkScript = await readFile(`${ROOT}/scripts/check-repository.mjs`, "utf8");
   const summary = await readFile(`${ROOT}/SUMMARY.md`, "utf8");

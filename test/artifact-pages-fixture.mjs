@@ -10,7 +10,7 @@ export async function hasArtifactPage(page) {
     const outDir = await mkdtemp(join(tmpdir(), 'doctorcre-page-fixture-'));
     try {
       const built = await buildArtifact({ root: fileURLToPath(new URL('../', import.meta.url)), outDir, commit: '1'.repeat(40) });
-      return new Set(verifyArtifact(built.archive, built.archiveSha256).manifest.files.map(file => file.path));
+      return new Set((await verifyArtifact(built.archive, built.archiveSha256)).manifest.files.map(file => file.path));
     } finally { await rm(outDir, { recursive: true, force: true }); }
   })();
   return (await pages).has(page);

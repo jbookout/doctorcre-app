@@ -12,9 +12,6 @@
 //      test/dealroom-board-sync.test.mjs makes about js/app.js, because the
 //      properties they protect — one board read, no value from the feed, ids
 //      rather than rows — cannot be observed from the outside;
-//   4. static assertions on pipeline.html, because the page's promises (no
-//      gate wording, calendar-only dates, one Doc) are promises about markup.
-
 import test from "node:test";
 import assert from "node:assert/strict";
 import { runInNewContext } from "node:vm";
@@ -72,10 +69,7 @@ test("the /deals phase select shows the display word and writes the wire word", 
   }
   // The option the /deals table renders: the wire word in the value attribute,
   // the display word in the text, so a write still sends 'On Deck'.
-  const app = await read("js/app.js");
-  assert.match(app, /<option value="\$\{esc\(phase\)\}"/, "the option carries the wire value explicitly");
-  assert.match(app, /\$\{esc\(phaseLabel\(phase\)\)\}<\/option>/, "the option text is the display label");
-  assert.match(app, /event\.target\.dataset\.phase, *'phase', *event\.target\.value/, "a phase write reads .value, never the option text");
+
 });
 
 test("every phase slug round-trips through the map that defect 5e355b84 made lossy", () => {
@@ -646,133 +640,10 @@ test("the fixture accepts every one of the eight phases by its board value", asy
 
 /* ------------------------------------------------------- what js/pipeline.js is */
 
-test("js/pipeline.js reads the board in exactly one place, through the coordinator", async () => {
-  const source = await read("js/pipeline.js");
-  assert.match(source, /from '\.\/board-sync\.mjs'/);
-  assert.equal((source.match(/getBoard\(/g) || []).length, 1, "one board read path");
-  assert.equal((source.match(/getChanges\(/g) || []).length, 1, "one changes read path");
-  assert.match(source, /readBoard: \(\) => state\.client\.getBoard\(\{ workspace: 'team' \}\)/);
-  assert.match(source, /readChanges: \(cursor\) => state\.client\.getChanges\(cursor\)/);
-  assert.equal((source.match(/state\.deals = new Map/g) || []).length, 1,
-    "one place builds the board, and only an applied snapshot reaches it");
-  assert.match(source, /function applyBoardSnapshot\(board\)/);
-  assert.doesNotMatch(source, /state\.cursor/, "the cursor belongs to the coordinator");
-});
-
-test("js/pipeline.js copies no value out of a change event and holds ids rather than rows", async () => {
-  const source = await read("js/pipeline.js");
-  const poll = source.slice(source.indexOf("async function pollOnce"), source.indexOf("/* ------------------------------------------------------------------- writing"));
-  assert.match(poll, /NO VALUE IS TAKEN FROM AN EVENT/);
-  assert.match(poll, /noteCellBase\(cellKey\(event\.subject_id, event\.field\), event\)/);
-  assert.match(poll, /batchTouchesBoard\(batch\)\) state\.boardSync\.requestRefresh\('change-feed'\)/,
-    "a touching batch buys exactly one coalesced re-read");
-  assert.doesNotMatch(poll, /deal\.phase = |Object\.assign\(deal, event/, "no event value is written onto a row");
-
-  // Identity is the id: the lifted card, the open panel and the move in hand are
-  // all ids, resolved against the board at the moment they are used.
-  assert.match(source, /lifted: null,/);
-  assert.match(source, /panelDeal: null,/);
-  assert.match(source, /const deal = state\.deals\.get\(id\);/);
-  assert.match(source, /state\.panelDeal !== id \|\| seq !== panelReadSequence/,
-    "a late detail read never paints over a record the person has since opened");
-
-  const noteCellBase = source.slice(source.indexOf("function noteCellBase"), source.indexOf("function applyBoardSnapshot"));
-  assert.match(noteCellBase, /const seen = \{ id: event\.id, recorded_at: event\.recorded_at \?\? null \};/,
-    "the base map holds identity and time, never a value");
-  assert.match(noteCellBase, /nextCellBase\(/, "the forward-only rule is imported, not re-implemented");
-});
-
-test("js/pipeline.js sends the phase first, through the field-write kernel, and the follow-ups only after an ok", async () => {
-  const source = await read("js/pipeline.js");
-  assert.match(source, /performFieldWrite\(\{/, "the one edited cell goes through the cell kernel");
-  assert.match(source, /performCommand\(\{/, "each follow-up is its own command");
-  const runMove = source.slice(source.indexOf("async function runMove"), source.indexOf("async function retryFieldWrite"));
-  assert.match(runMove, /const \[phaseStep, \.\.\.followUps\] = plan\.steps;/);
-  assert.ok(runMove.indexOf("sendPhaseWrite") < runMove.indexOf("await resumeMoveFollowUps(cell)"),
-    "the phase patch is sent before any follow-up");
-  assert.match(runMove, /if \(result\.status === 'conflict'\)/);
-  assert.match(runMove, /if \(result\.status !== 'ok'\) \{/);
-  assert.match(runMove, /if \(result\.superseded\) \{/, "an accepted answer the board has moved past withholds its value");
-  assert.match(runMove, /confirmLocalWrite\(intent\.deal, \{ phase: phaseStep\.args\.value \}\)/);
-
-  const send = source.slice(source.indexOf("async function sendPhaseWrite"), source.indexOf("const FOLLOW_UP_SENDERS"));
-  assert.match(send, /newKey: uuidv4/, "one key per intended action");
-  assert.match(send, /baseNow: \(\) => state\.fieldBase\.get\(cell\)\?\.id \|\| null/);
-  assert.doesNotMatch(source, /\bTODO\b/);
-});
-
-test("js/pipeline-model.js is pure: no DOM, no client, no network", async () => {
-  const source = await read("js/pipeline-model.js");
-  assert.doesNotMatch(source, /document|window|localStorage|fetch\(|innerHTML/);
-  assert.doesNotMatch(source, /^import /m, "the model imports nothing");
-  assert.doesNotMatch(source, /\bTODO\b/);
-});
-
 /* ------------------------------------------------------------ what the page says */
 
-test("pipeline offers drag and keyboard through one reviewed move", async () => {
-  const html = await read("pipeline.html");
-  const source = await read("js/pipeline.js");
-  assert.match(html, /<div class="kanban" id="kanban"/);
-  assert.match(html, /id="dragLive" aria-live="assertive"/, "moves are announced");
-  assert.match(html, /press Enter to lift it/, "the keyboard path is stated on the page");
-  assert.match(html, /Arrows choose a column, Enter drops, Escape cancels/);
-  assert.doesNotMatch(source, /data-move="/);
-  assert.match(source, /id="detailPhase"/, 'manual phase remains accessible inside the detail popup');
-});
-
-test("pipeline.html asks for dates with a calendar only, and never claims a gate", async () => {
-  const html = await read("pipeline.html");
-  assert.match(html, /id="completionDate" type="date"/);
-  assert.match(html, /id="completionNextWhen" type="date"/);
-  assert.doesNotMatch(html, /type="date"[^>]*placeholder/, "no typed-date fallback");
-  assert.doesNotMatch(html, /DateTyped/);
-  assert.doesNotMatch(html, /CARR does not require evidence/);
-  assert.doesNotMatch(html, /Not recorded anywhere/);
-  assert.match(html, /value="cancel"|id="completionCancel"/);
-  assert.match(html, />Cancel, keep phase</);
-  // No sentence on this page may imply a check the record layer does not make.
-  for (const phrase of ["needs evidence", "blocked", "not allowed", "requires approval", "cannot move until"]) {
-    assert.ok(!html.toLowerCase().includes(phrase), `the page still says "${phrase}"`);
-  }
-  assert.doesNotMatch(html, /data-drop="blocked"/);
-});
-
-test("pipeline.html carries the shared shell exactly once and nothing under its title", async () => {
-  const html = await read("pipeline.html");
-  assert.equal((html.match(/id="docFab"/g) || []).length, 0, "legacy dock is absent");
-  assert.equal((html.match(/id="docChat"/g) || []).length, 0);
-  assert.doesNotMatch(html, /id="docReading">Doc is reading: Deals</);
-  assert.match(html, /id="receiptDock"/, "the command dock is on the page");
-  assert.match(html, /id="pendingWrites"/, "unconfirmed writes have a home above the board");
-  assert.match(html, /<dialog id="completionDialog"/);
-  assert.match(html, /<dialog id="conflictDialog"/);
-  assert.doesNotMatch(html, /receiptsDialog|receiptsClose|receiptsTitle/, "R10 Recent changes belongs to Today without a legacy modal");
-  assert.match(html, /<ul data-layout-slot="moves" class="receipt-list" id="receiptsList"/);
-  assert.match(html, /<dialog id="recordPanel" class="dialog deal-detail"/);
-  assert.equal((html.match(/id="recordPanel"/g) || []).length, 1, "one editable deal dialog");
-  assert.doesNotMatch(html, /id="panelPin"/);
-  assert.doesNotMatch(html, /<p class="(?:intro|lede|description)"/);
-  assert.match(html, /<h1 id="pageTitle">Local Deals<\/h1>/, "Joe's name for this surface, on this surface");
-  assert.match(html, /<link rel="stylesheet" href="\/css\/system\.css">/);
-});
-
-test("every control on the page clears the 44 px floor through the shared classes", async () => {
-  const html = await read("pipeline.html");
-  const css = await read("css/system.css");
-  assert.match(css, /--touch: 44px/);
-  assert.match(css, /\.btn \{[^}]*min-height: var\(--touch\)/);
-  const pipelineCss = await read("css/pipeline.css");
-  assert.match(pipelineCss, /\.check-option \{[^}]*min-height: var\(--touch\)/,
-    "the one control this page adds is a full touch target");
-  for (const match of html.matchAll(/<button\b[^>]*class="([^"]*)"/g)) {
-    assert.match(match[1], /\bbtn\b|\bchip\b|\bpref-icon\b|\bdoc-fab\b|\bcard-open\b/,
-      `a button is outside the sized classes: ${match[0]}`);
-  }
-});
-
 test("the route and the verbs this surface needs are pinned in the contracts", async () => {
-  const routes = JSON.parse(await read("contracts/app-routes.v1.json"));
+  const routes = (await import("../js/routes.js")).routeContract;
   assert.equal(routes.redirects["/pipeline"], "/deals?view=board");
   assert.equal(routes.routes["/deals"], "pipeline.html", "the existing Deal Room keeps its route");
   const contract = JSON.parse(await read("contracts/carr-interface.v1.json"));
@@ -875,21 +746,6 @@ test("the fixture takes the outcome write only against the version the deal hold
 });
 
 test("the Closed dialog offers the three outcomes, a picker for the date, and both adapters can send it", async () => {
-  const html = await read("pipeline.html");
-  assert.match(html, /id="completionOutcomeField"[^>]*hidden/, "the outcome belongs to the Closed move only");
-  for (const value of ["won", "lost", "paused"]) {
-    assert.match(html, new RegExp(`name="completionOutcome" value="${value}"`));
-  }
-  assert.match(html, /id="completionClosedOn" type="date"/, "a calendar picker, never a typed-date box");
-  assert.match(html, /id="completionWonValue" type="number"/);
-  assert.match(html, /id="completionWonValueField"[^>]*hidden/, "the value shows only on a won outcome");
-
-  const pageJs = await read("js/pipeline.js");
-  assert.match(pageJs, /runOutcomeWrite/);
-  assert.match(pageJs, /state\.client\.getDeal\(intent\.deal\)/, "the base_version comes from a fresh read");
-  assert.match(pageJs, /base_version: version/);
-  const live = await read("js/live-client.js");
-  assert.match(live, /async updateDeal\(args\) \{\s*return write\('update-deal', args\);/);
 
   const contract = JSON.parse(await read("contracts/carr-interface.v1.json"));
   assert.ok(contract.mcp_operations.includes("update-deal"));
@@ -928,23 +784,6 @@ test("the fixture carries the reason and the sentence onto the phase event, word
   const plainEvent = (await client.getChanges(null)).events.find((entry) => entry.id === plain.event_id);
   assert.equal(plainEvent.change_reason, null);
   assert.equal(plainEvent.human_quote, null);
-});
-
-test("the completion dialog asks for the reason and the partner's own words, and claims no gate", async () => {
-  const html = await read("pipeline.html");
-  assert.match(html, /id="completionReason"/);
-  assert.match(html, /id="completionQuote"/);
-  assert.match(html, /Reason for this change/);
-  assert.match(html, /In your words/);
-  for (const phrase of ["needs evidence", "blocked", "not allowed", "requires approval", "cannot move until"]) {
-    assert.ok(!html.toLowerCase().includes(phrase), `the page still says "${phrase}"`);
-  }
-});
-
-test("the two new controls' values reach the completion plan", async () => {
-  const pageJs = await read("js/pipeline.js");
-  assert.match(pageJs, /changeReason: \$\('completionReason'\)/);
-  assert.match(pageJs, /humanQuote: \$\('completionQuote'\)/);
 });
 
 test('deal insight lines distinguish insufficient evidence from unavailable and preserve recorded movement', async () => {

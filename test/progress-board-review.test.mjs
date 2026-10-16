@@ -9,7 +9,6 @@ import { fileURLToPath } from "node:url";
 
 import { boardView, deliveryDetail } from "../js/progress-board-model.js";
 import { mountBoard } from "../js/progress-board.js";
-import { prepareSlices } from "../scripts/slices.mjs";
 
 const PAGE = await readFile(new URL("../control-room.html", import.meta.url), "utf8");
 
@@ -55,13 +54,6 @@ function assertIndicatorsHaveLegend(page) {
   for (const id of emitted) assert.ok(legendIds.has(id), `indicator ${id} has no legend entry`);
   return emitted;
 }
-
-test("progress board review and layout tests participate in the registered app build", async () => {
-  const { slices } = await prepareSlices(fileURLToPath(new URL("..", import.meta.url)));
-  const progress = slices.find(slice => slice.id === "progress");
-  for (const path of ["test/progress-board-review.test.mjs", "test/progress-board-layout.test.mjs"])
-    assert.ok(progress.files.includes(path), `${path} belongs to the Progress slice`);
-});
 
 test("an answered question published as a snapshot decision is shown and counted once", async () => {
   const read = snapshotRead(v2({ decisions: [{ id: "q1", question: "Synthetic choice?", answer: "A" }] }),

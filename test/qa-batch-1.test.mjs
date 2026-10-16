@@ -48,7 +48,7 @@ test("no page or script points Home or sign-in at /business", async () => {
 
 test("every Home page control resolves to a real route, never /business", async () => {
   const html = await read("workspace.html");
-  const routes = JSON.parse(await read("contracts/app-routes.v1.json"));
+  const routes = (await import("../js/routes.js")).routeContract;
   const targets = [...html.matchAll(/<a [^>]*href="(\/[^"?#]*)/g)].map((m) => m[1]);
   for (const target of targets) assert.ok(target === "/" || routes.routes[target] || routes.redirects[target] || target.startsWith("/auth/"), `${target} is a routed path`);
   assert.equal(routes.redirects["/business"], "/");

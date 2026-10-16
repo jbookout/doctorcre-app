@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { chromium, settles, animationsSettled } from './browser-harness.mjs';
-import routes from '../contracts/app-routes.v1.json' with {type:'json'};
+import { routeContract as routes } from "../js/routes.js";
 import fixture from './fixtures/progress-work.synthetic.json' with {type:'json'};
 import { canonicalFixture, multiEnvelopeCanonicalFixture, equalReviewCanonicalFixture } from './fixtures/progress-work.synthetic.mjs';
 import { scopedTurn, scopedQueueCard, executionTurn, passportAttempts, canonicalPassport, workScope, workDetailUrl } from '../js/progress-work-model.js';
@@ -713,7 +713,6 @@ test('confirmed authentication loss clears protected queue and work evidence',as
 for(const [old,view] of [['/room.html','wire'],['/queue.html','tasks'],['/control-room/agents/queue','tasks'],['/agent-room','wire']])test(`legacy deep link ${old} opens matching Progress view`,async t=>{
   const {page}=await open(t,{path:`${old}?board=demo-project&task=${taskId}#jobPassport`});const url=new URL(page.url());assert.equal(url.pathname,'/control-room/progress/work');assert.equal(url.searchParams.get('view'),view);assert.equal(url.searchParams.get('task'),taskId);assert.equal(url.hash,'#jobPassport');
 });
-
 
 test('published task detail retains summary, model, safe PR links and related answers', async t => {
   const {page,errors} = await open(t,{rpcReply:(rpc,payload)=>{

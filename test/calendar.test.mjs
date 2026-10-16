@@ -317,7 +317,7 @@ test("the calendar reads through the fixture adapter's real getBoard/getDeal sha
 /* ----------------------------------------------------------------- the page */
 
 test("the Calendar is a routed, shipped surface that reads only pinned verbs", async () => {
-  const routes = JSON.parse(await read("contracts/app-routes.v1.json"));
+  const routes = (await import("../js/routes.js")).routeContract;
   const carr = JSON.parse(await read("contracts/carr-interface.v1.json"));
   const check = await read("scripts/check-repository.mjs");
   const summary = await read("SUMMARY.md");

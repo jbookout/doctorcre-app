@@ -233,7 +233,7 @@ test("the Work Inventory page is a first-class, honest, listed surface", async (
   const html = await readFile(`${ROOT}/work-inventory.html`, "utf8");
   const js = withoutComments(await readFile(`${ROOT}/js/work-inventory.js`, "utf8"));
   const model = withoutComments(await readFile(`${ROOT}/js/work-inventory-model.js`, "utf8"));
-  const routes = JSON.parse(await readFile(`${ROOT}/contracts/app-routes.v1.json`, "utf8"));
+  const routes = (await import("../js/routes.js")).routeContract;
   const carr = JSON.parse(await readFile(`${ROOT}/contracts/carr-interface.v1.json`, "utf8"));
   const checkScript = await readFile(`${ROOT}/scripts/check-repository.mjs`, "utf8");
   const serveScript = await readFile(`${ROOT}/scripts/serve.mjs`, "utf8");

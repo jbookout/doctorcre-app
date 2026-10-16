@@ -1,5 +1,4 @@
 import { mountDocPresence } from "./doc-presence.js";
-import { slices } from "./slices.generated.js";
 import { mountAppLayout } from "./app-layout.js";
 import { mountPrefs } from "./shell.js";
 import { resolveDealroomBoot } from "./boot-mode.js";
@@ -15,7 +14,7 @@ export function mountAppShell(root = document, pathname = globalThis.location?.p
   let disposeDocPresence = () => {};
   if (!base) mountAccount(root, host, pathname, () => disposeDocPresence());
   if (!base && pathname !== "/share") {
-    mountAppLayout(root, host, pathname, slices);
+    mountAppLayout(root, host, pathname);
     root.querySelector(".app-layout-status").append(host.querySelector(".app-shell-call-availability"));
     const docPresence = mountDocPresence({ document:root, window:root.defaultView });
     disposeDocPresence = () => docPresence?.dispose();

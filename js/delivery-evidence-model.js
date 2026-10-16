@@ -11,14 +11,13 @@
 // the literal word `unknown`. Joe has mistaken prepared-to-ship for delivered;
 // nothing in here is allowed to help him do it again.
 
-/** The seven delivery dimensions, in the order a delivery actually travels. */
+/** The delivery dimensions, in the order a delivery actually travels. */
 export const STAGES = Object.freeze([
-  "planned", "approved", "source_verified", "merged", "released", "activated", "consumer_proven",
+  "planned", "source_verified", "merged", "released", "activated", "consumer_proven",
 ]);
 
 export const STAGE_LABEL = Object.freeze({
   planned: "Planned",
-  approved: "Approved",
   source_verified: "Source verified",
   merged: "Merged",
   released: "Released",
@@ -31,7 +30,6 @@ export const STAGE_TOKENS = Object.freeze(["complete", "not reached", "unknown"]
 
 export const STALE_REASON = "plan is stale against the accepted source";
 export const NO_PASSPORT_REASON = "no passport has been read for this record";
-export const NO_PORTFOLIO_REASON = "no portfolio named";
 
 /** The work-request states the record layer admits on a card. */
 export const CARD_STATES = Object.freeze(["captured", "triaged", "ready", "declined", "superseded"]);
@@ -53,7 +51,6 @@ const PASSPORT_KEYS = [
 ];
 const CLOSURE_FACETS = ["work", "proof", "explanation", "release", "learning"];
 const CARD_REQUIRED_KEYS = ["ok", "human_ref", "state", "version"];
-const PORTFOLIO_REQUIRED_KEYS = ["ok", "portfolio_ref", "exists", "accepted"];
 
 const isObject = (value) => Boolean(value) && typeof value === "object" && !Array.isArray(value);
 const nonEmptyString = (value) => typeof value === "string" && value.length > 0;
@@ -98,21 +95,6 @@ export function validPassportPayload(payload) {
   return true;
 }
 
-/**
- * The portfolio read is NOT exact-key checked, and that is deliberate: the verb
- * spreads a database readback whose full key set belongs to the producer, so an
- * exact list here would refuse every real answer the first time a column was
- * added. What is checked is what this page reads, and `accepted` is only ever
- * believed as the literal boolean true.
- */
-export function validPortfolioPayload(payload) {
-  if (!hasKeys(payload, PORTFOLIO_REQUIRED_KEYS)) return false;
-  if (payload.ok !== true || !nonEmptyString(payload.portfolio_ref)) return false;
-  if (typeof payload.exists !== "boolean" || typeof payload.accepted !== "boolean") return false;
-  if ("reviews" in payload && !Array.isArray(payload.reviews)) return false;
-  return true;
-}
-
 /** The fresh read every write is built from. `version` is the base_version. */
 export function validWorkRequestCard(payload) {
   if (!hasKeys(payload, CARD_REQUIRED_KEYS)) return false;
@@ -126,14 +108,13 @@ const cell = (stage, state, evidence_ref, reason) => ({ stage, state, evidence_r
 const unknownRow = (reason) => STAGES.map((stage) => cell(stage, "unknown", null, reason));
 
 /**
- * The seven cells for one record.
+ * The delivery cells for one record.
  *
- * `passport` is the engineering-passport answer or null; `portfolio` is the
- * read-portfolio answer or null. A stale plan collapses every cell to unknown,
+ * `passport` is the engineering-passport answer or null. A stale plan collapses every cell to unknown,
  * because a passport derived from a plan that no longer matches the accepted
  * source is not evidence about today's record.
  */
-export function deliveryStages(passport, portfolio = null) {
+export function deliveryStages(passport) {
   if (!validPassportPayload(passport)) return unknownRow(NO_PASSPORT_REASON);
   if (passport.stale_conflict.state === "stale") return unknownRow(STALE_REASON);
 
@@ -141,16 +122,6 @@ export function deliveryStages(passport, portfolio = null) {
   const planned = isObject(revision) && nonEmptyString(revision.id)
     ? cell("planned", "complete", revision.id, null)
     : cell("planned", "unknown", null, "the passport names no accepted plan revision");
-
-  const approved = portfolio === null
-    ? cell("approved", "unknown", null, NO_PORTFOLIO_REASON)
-    : !validPortfolioPayload(portfolio)
-      ? cell("approved", "unknown", null, "the portfolio read did not answer in a shape this page reads")
-      : portfolio.exists === false
-        ? cell("approved", "unknown", null, "the portfolio read answered that it holds no such record, which is unknown rather than refused")
-        : portfolio.accepted === true
-          ? cell("approved", "complete", portfolio.accepted_revision_id || portfolio.portfolio_ref, null)
-          : cell("approved", "not reached", null, "the portfolio read answered that no partner has accepted it");
 
   const slices = passport.slices;
   const unfinished = slices.find((slice) => UNFINISHED_SLICE_STATES.includes(slice.state));
@@ -170,7 +141,7 @@ export function deliveryStages(passport, portfolio = null) {
   const activated = downstream("activated");
   const consumerProven = downstream("consumer_proven");
 
-  return [planned, approved, sourceVerified, merged, released, activated, consumerProven];
+  return [planned, sourceVerified, merged, released, activated, consumerProven];
 }
 
 /**
@@ -301,8 +272,6 @@ export function refusalMessage(code, { ref = "" } = {}) {
       return `the shape disposition on ${name} is frozen: it is past the pre-build states.`;
     case "heavy_build_shape_required":
       return `${name} classifies as heavy build, so not required was refused; it needs a work shape.`;
-    case "portfolio_readback_unavailable":
-      return "the portfolio could not be read, so approval stays unknown.";
     case "unreadable":
       return "Temporarily unavailable";
     default:

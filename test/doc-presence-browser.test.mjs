@@ -6,7 +6,7 @@ import { directoryFixture } from './fixtures/vendor-directory.synthetic.mjs';
 import { workspace, detail } from './leads-workspace-fixture.mjs';
 import { createFixtureClient } from '../js/fixture-client.js';
 const root=new URL('../',import.meta.url);
-const contract=JSON.parse(await readFile(new URL('contracts/app-routes.v1.json',root)));
+const contract=(await import("../js/routes.js")).routeContract;
 async function setup(t,{width=1440,motion='no-preference',onRoute,engine=chromium}={}) {
  const browser=await engine.launch();t.after(()=>browser.close());
  const page=await browser.newPage({viewport:{width,height:960},reducedMotion:motion});
