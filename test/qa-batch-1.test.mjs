@@ -1,8 +1,9 @@
-// QA batch 1 — Conversations order, Search phone order, Home always returns to /,
-// and Deal Room phone scroll regions.
+
+
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
+import { JSDOM } from "jsdom";
 
 const read = (path) => readFile(new URL(`../${path}`, import.meta.url), "utf8");
 const at = (html, needle) => { const i = html.indexOf(needle); assert.ok(i >= 0, `missing ${needle}`); return i; };
@@ -68,7 +69,24 @@ test("Deal Room phone strips scroll in their own regions with dark scrollbars", 
 
 test("Search on a phone caps the candidate list inside its own scroll region", async () => {
   const css = await read("css/business-workspace.css");
-  const phone = css.slice(css.lastIndexOf("QA batch 1"));
-  assert.match(phone, /#searchCandidates > \.work-list \{[^}]*max-height:[^}]*overflow-y: auto[^}]*scrollbar-color: var\(--line-strong\) transparent/);
-  assert.match(phone, /#searchState\[data-state\^="disamb"\] \{ display: none; \}/);
+  const dom = new JSDOM("<!doctype html><style></style>");
+  try {
+    const { document } = dom.window;
+    document.querySelector("style").textContent = css;
+    const phoneRules = [...document.styleSheets[0].cssRules]
+      .filter((rule) => rule.media?.mediaText === "(max-width: 640px)")
+      .flatMap((rule) => [...rule.cssRules]);
+    const list = phoneRules.find((rule) => rule.selectorText === "#searchCandidates > .work-list");
+    assert.ok(list, "candidate scroll rule exists inside the phone media query");
+    assert.equal(list.style.getPropertyValue("max-height"), "min(30vh, 220px)");
+    assert.equal(list.style.getPropertyValue("overflow-y"), "auto");
+    assert.equal(list.style.getPropertyValue("overscroll-behavior"), "contain");
+    assert.equal(list.style.getPropertyValue("scrollbar-width"), "thin");
+    assert.equal(list.style.getPropertyValue("scrollbar-color"), "var(--line-strong) transparent");
+    const state = phoneRules.find((rule) => rule.selectorText === '#searchState[data-state^="disamb"]');
+    assert.ok(state, "disambiguation notice rule exists inside the phone media query");
+    assert.equal(state.style.getPropertyValue("display"), "none");
+  } finally {
+    dom.window.close();
+  }
 });
