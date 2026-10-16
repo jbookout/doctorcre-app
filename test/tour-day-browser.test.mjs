@@ -229,8 +229,8 @@ test("static offline shell reload resumes tour and audio in the same tab, then r
     if (names.length !== 1) throw new Error('Expected one current tour shell cache');
     return (await (await caches.open(names[0])).keys()).map(r => new URL(r.url).pathname);
   });
-  assert.ok(cached.includes('/js/slices.generated.js'));
-  assert.ok(cached.includes('/js/slices/tours.js'));
+  assert.ok(cached.includes('/js/routes.js'));
+  assert.ok(cached.includes('/js/navigation.js'));
   assert.equal(cached.some(path => path.startsWith("/api/")), false);
   await context.setOffline(true); await page.reload();
   await page.waitForFunction(() => document.querySelector("#day-status")?.textContent.includes("Offline"));

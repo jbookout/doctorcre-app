@@ -20,7 +20,7 @@ import {
 import {
   NO_PASSPORT_REASON, STAGE_LABEL, availableActions, deliveryStages, dispositionArgs,
   dispositionEffect, dispositionOptions, operationKeys, refusalMessage, renderCount, stageDenominator,
-  validPassportPayload, validPortfolioPayload, validWorkRequestCard,
+  validPassportPayload, validWorkRequestCard,
 } from "./delivery-evidence-model.js";
 import { createCommandDock } from "./command-dock.js";
 import { performCommand } from "./command-feedback.mjs";
@@ -287,18 +287,6 @@ const decision = { ref: null, choice: null, refusal: null };
 
 const workRequestRows = (visible) => visible.filter((item) => item.kind === "work_request");
 
-/**
- * The portfolio this record names, or null. The passport does not carry one and
- * neither does the card, so the only honest source is what the census itself
- * linked: a related portfolio node. No portfolio named means the Approved cell
- * stays unknown — it is never inferred from a plan or a title.
- */
-function portfolioRefFor(item, card) {
-  if (card && typeof card.plan?.portfolio_ref === "string" && card.plan.portfolio_ref !== "") return card.plan.portfolio_ref;
-  const link = (item.related || []).find((entry) => entry.kind === "portfolio_node");
-  return link ? link.id : null;
-}
-
 function stagesFor(ref) {
   const read = evidence.get(ref);
   if (!read) return deliveryStages(null);
@@ -433,7 +421,6 @@ async function readEvidence(ref) {
   // Opening or closing another popup while this read waits supersedes it.
   const sequence = ++details.sequence;
   let passport = null;
-  let portfolio = null;
   let refusal = null;
   try {
     const answer = await client.engineeringPassport({ work_request: ref });
@@ -442,16 +429,7 @@ async function readEvidence(ref) {
   } catch (error) {
     refusal = refusalMessage(error?.payload?.error || "unreadable", { ref });
   }
-  const portfolioRef = portfolioRefFor(item, cards.get(ref) || null);
-  if (passport && portfolioRef) {
-    try {
-      const answer = await client.readPortfolio({ portfolio_ref: portfolioRef });
-      if (validPortfolioPayload(answer)) portfolio = answer;
-    } catch {
-      portfolio = null;
-    }
-  }
-  evidence.set(ref, { passport, portfolio, refusal, stages: passport ? deliveryStages(passport, portfolio) : deliveryStages(null) });
+  evidence.set(ref, { passport, refusal, stages: deliveryStages(passport) });
   render();
   if (sequence === details.sequence) openEvidence(ref);
 }

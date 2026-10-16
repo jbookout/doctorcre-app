@@ -8,7 +8,7 @@ import { chromium, settles, waitForAsync } from './browser-harness.mjs';
 import { createFixtureClient } from '../js/fixture-client.js';
 import { atlasFixtureResponse } from '../scripts/atlas-fixture.mjs';
 const root = new URL('../', import.meta.url);
-const contract = JSON.parse(await readFile(new URL('contracts/app-routes.v1.json', root)));
+const contract = (await import("../js/routes.js")).routeContract;
 const primary = navigationItems.filter(item => !item.group).map(item => item.label);
 const secondary = navigationItems.filter(item => item.group).map(item => item.label);
 
@@ -157,7 +157,6 @@ test('all authenticated pages have global controls and fit desktop and phone', a
   assert.deepEqual(errors, []);
 });
 
-
 test('an open Deal detail updates automatically without closing its popup', async t => {
   const { page, errors } = await open(t, { simulatedClock: true });
   await page.goto('http://localhost/deals');
@@ -175,7 +174,6 @@ test('an open Deal detail updates automatically without closing its popup', asyn
   assert.deepEqual(errors, []);
 });
 
-
 test('automatic Atlas refresh preserves the selected component', async t => {
   const { page, errors, calls } = await open(t, { simulatedClock: true });
   await page.goto('http://localhost/control-room?tab=system-map');
@@ -188,7 +186,6 @@ test('automatic Atlas refresh preserves the selected component', async t => {
   assert.equal(await page.evaluate(async () => (await import('/js/atlas.js')).view.selected), selected);
   assert.deepEqual(errors, []);
 });
-
 
 test('PR182 account portal preserves immediate forward and return keyboard paths', async t => {
   const { page } = await open(t);
@@ -211,7 +208,6 @@ test('PR182 account portal preserves immediate forward and return keyboard paths
   assert.equal(await page.locator('#accountMenu').isVisible(), false);
   assert.equal(await page.locator('#selfAvatar').evaluate(n => document.activeElement === n), true);
 });
-
 
 for (const { name, path, updated, retry, error } of [
   { name:'Leads', path:'/leads?mode=live', updated:'#boardUpdated', retry:'#refreshBoard', error:'#leadBoardError' },

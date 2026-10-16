@@ -1,5 +1,5 @@
 import carrContract from "../contracts/carr-interface.v1.json" with { type: "json" };
-import routeContract from "../contracts/app-routes.v1.json" with { type: "json" };
+import { routeContract } from "../js/routes.js";
 import { BOARD_ROUTE, boardIdFromPath, legacyBoardDestination } from '../js/progress-board-route.js';
 import runtimeErrors from '../contracts/runtime-errors.v1.json' with { type: 'json' };
 import { EDGE_LIMIT, REPORT_BYTES, createErrorGate, scrubError } from '../js/error-tracking.js';

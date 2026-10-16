@@ -6,7 +6,7 @@ import { createFixtureClient } from '../js/fixture-client.js';
 import { workspace, detail, id } from './leads-workspace-fixture.mjs';
 import { atlasFixtureResponse } from '../scripts/atlas-fixture.mjs';
 const root = new URL('../', import.meta.url);
-const contract = JSON.parse(await readFile(new URL('contracts/app-routes.v1.json',root)));
+const contract = (await import("../js/routes.js")).routeContract;
 async function open(t,{width=1440,height=960,hasTouch=false,motion='no-preference',clock=false,deniedStorage=false,events=[],timezoneId='America/Chicago',now='2026-10-01T15:00:00Z'}={}) {
   const browser=await chromium.launch(); t.after(()=>browser.close());
   const page=await browser.newPage({viewport:{width,height},hasTouch,timezoneId,reducedMotion:clock?'reduce':motion});

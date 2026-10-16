@@ -33,14 +33,6 @@ npm run dev:staging
 `DOCTORCRE_PRIVACY_CORPUS_JSON` Actions secret. Keep this record-derived lookup
 material outside the public repository. Missing or malformed input fails the check.
 
-### Agent verification
-
-[verify-doctorcre](.cursor/skills/verify-doctorcre/SKILL.md) launches an isolated
-local fixture server and drives the app with Playwright. Its
-[feature map](.cursor/skills/verify-doctorcre/features/README.md) defines the
-covered user paths; screenshots, ARIA snapshots, traces, and byte manifests
-survive cleanup.
-
 ### End-to-end journeys
 
 The [e2e](https://www.npmjs.com/package/e2e) runner starts the fixture server
@@ -110,10 +102,7 @@ regression guard: interaction latency runs from the browser pointer timestamp
 to the verified UI change plus two animation frames, and is not field INP.
 The baseline preserves existing slow screens; it does not certify speed.
 
-CI keeps JSON, the table, and Playwright traces for seven days. The trusted
-`Performance report comment` workflow updates one marked PR comment, including
-bundle size, only while its head commit still matches. It reads artifact data
-and runs code from `main`; fork code receives no comment-writing token. The
-comment workflow becomes active after this workflow is present on `main`.
-Measurement references: [Playwright tracing](https://playwright.dev/docs/api/class-tracing)
-and [LCP timing](https://web.dev/articles/lcp).
+CI keeps JSON, the performance summary, and Playwright failure traces as artifacts.
+The CI job publishes the performance summary in its job summary.
+
+`npm run docs:check` warns about broken local Markdown links and unknown documented npm commands.

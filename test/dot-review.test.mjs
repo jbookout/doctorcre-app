@@ -424,12 +424,12 @@ test("Dot 29: Quick Add completion preserves a newer task draft and date", async
   assert.equal($("quickAddInput").value,"Second task");assert.equal($("quickAddDate").value,"2026-10-01");
 });
 
-test("Dot 30: source review closure does not prove merge release activation or consumer delivery", async () => {
+test("Dot 30: source review closure does not prove CI merge or live delivery", async () => {
   const {deliveryStages}=await import("../js/delivery-evidence-model.js");
   const fixture=handlers("test/delivery-evidence.test.mjs","const evidenceRef", "const card",{},["passport","facet"]);
   const passport=fixture.passport({closure_state:"complete",closure:{work:fixture.facet("complete"),proof:fixture.facet("complete"),release:fixture.facet("complete")}});
   const stages=deliveryStages(passport);assert.equal(stages.find(s=>s.stage==="source_verified").state,"complete");
-  for(const stage of ["merged","released","activated","consumer_proven"])assert.equal(stages.find(s=>s.stage===stage).state,"unknown",stage);
+  for(const stage of ["ci","merged","consumer_proven"])assert.equal(stages.find(s=>s.stage===stage).state,"unknown",stage);
 });
 
 test("Dot 9: phase reconciliation resumes the originally requested follow-up writes", async () => {

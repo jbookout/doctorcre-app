@@ -17,7 +17,7 @@ const root = new URL("..", import.meta.url);
 const read = (file) => readFile(new URL(file, root), "utf8");
 const html = await read("status.html");
 const pageJs = await read("js/status.js");
-const routes = JSON.parse(await read("contracts/app-routes.v1.json"));
+const routes = (await import("../js/routes.js")).routeContract;
 
 const LEAKY = "database probe failed: connection refused. Runbook: DNA/runbooks/database-down.md";
 const CLOCK = "2026-09-17T15:04:00.000Z";

@@ -1,9 +1,5 @@
-import { slices } from "./slices.generated.js";
-import { registerSlices, NAVIGATION_GROUPS } from "./slice-registration.js";
-// Shared navigation rendering and interaction; page mounting stays with each caller.
-const registration = registerSlices(slices);
-export const navigationItems = registration.navigationItems;
-const sectionForRoute = registration.sectionForRoute;
+import { NAVIGATION_GROUPS, navigationItems, sectionForRoute } from "./routes.js";
+export { navigationItems };
 
 export function activeDestination(pathname) {
   if (pathname.startsWith('/control-room/progress/board/')) return '/control-room/progress';

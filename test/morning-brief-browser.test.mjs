@@ -4,7 +4,7 @@ import { readFile, mkdir } from 'node:fs/promises';
 import { chromium } from './browser-harness.mjs';
 import { createFixtureClient } from '../js/fixture-client.js';
 const root=new URL('../',import.meta.url);
-const routes=JSON.parse(await readFile(new URL('contracts/app-routes.v1.json',root)));
+const routes=(await import("../js/routes.js")).routeContract;
 async function setup(t,{width=1440,motion='no-preference',brief=true}={}) {
  const browser=await chromium.launch();t.after(()=>browser.close());const page=await browser.newPage({viewport:{width,height:960},reducedMotion:motion});const context=page.context();
  const fixture=await createFixtureClient({seedUrl:`data:application/json;base64,${(await readFile(new URL('data/board-seed.json',root))).toString('base64')}`});

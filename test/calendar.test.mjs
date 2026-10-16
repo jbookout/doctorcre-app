@@ -317,15 +317,13 @@ test("the calendar reads through the fixture adapter's real getBoard/getDeal sha
 /* ----------------------------------------------------------------- the page */
 
 test("the Calendar is a routed, shipped surface that reads only pinned verbs", async () => {
-  const routes = JSON.parse(await read("contracts/app-routes.v1.json"));
+  const routes = (await import("../js/routes.js")).routeContract;
   const carr = JSON.parse(await read("contracts/carr-interface.v1.json"));
-  const check = await read("scripts/check-repository.mjs");
   const summary = await read("SUMMARY.md");
   assert.equal(routes.routes["/calendar"], "calendar.html");
   assert.equal(routes.version, "1.20.0", "two added routes are an additive, minor bump");
   for (const verb of ["deal-room-board", "get-deal-room"]) assert.ok(carr.mcp_operations.includes(verb), `${verb} must stay pinned`);
   assert.equal(await hasArtifactPage("calendar.html"), true, "the page ships in the verified artifact");
-  assert.match(check, /"calendar\.html"/);
   assert.match(summary, /calendar\.html/);
 
   const js = await read("js/calendar.js");

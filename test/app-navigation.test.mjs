@@ -8,7 +8,7 @@ import assert from "node:assert/strict";
 import { Script } from "node:vm";
 
 const root = new URL("../", import.meta.url);
-const routes = JSON.parse(readFileSync(new URL("contracts/app-routes.v1.json", root), "utf8")).routes;
+const routes = (await import("../js/routes.js")).routeContract.routes;
 const pages = [...new Set(Object.values(routes))];
 const expected = navigationItems.map(item => item.label);
 
