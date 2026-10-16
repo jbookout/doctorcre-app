@@ -4,7 +4,6 @@ import { readFile } from 'node:fs/promises';
 import { IDLE_CUTOFF_MS, mountLocalClock, mountVisibilityPoll } from '../js/visibility-poll.mjs';
 import { mountAutoRefresh } from '../js/auto-refresh.mjs';
 
-// A page with a hand-cranked clock: tick() fires every pending timer once.
 function page() {
   const document = new EventTarget(); document.visibilityState = 'visible';
   const window = new EventTarget(); const pending = new Map(); let next = 0, time = 0;
