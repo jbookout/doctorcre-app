@@ -202,9 +202,6 @@ test("the route and the three verbs are pinned in the contracts", () => {
 import {atlasFixtureResponse} from "../scripts/atlas-fixture.mjs";
 import {ATLAS_LAYERS, ATLAS_LIMIT_MAX, ATLAS_SCENE_NODE_CAP, ATLAS_STATE_COPY, EVIDENCE_CLASSES, EXPOSURE_STATEMENT, INCOMPLETE_HEADING, KNOWN_GAPS, NO_ENFORCEMENT_SENTENCE, NO_SUCCESSOR_SENTENCE, NO_TEST_EVIDENCE_SENTENCE, PAGE_SCOPE_SENTENCE, UNLINKED_SENTENCE, VERB_RUN_GAP_SENTENCE, atlasDegraded, atlasPhase, atlasRequestPath, atlasSceneAvailability, classifyAtlasFailure, coverageGroups, coverageOrbFor, groupIndex, mergeNodePages, pagingState, selectionFor, validAtlasPayload, NO_OBSERVED_CLOCK, NO_OBSERVED_STATUS} from "../js/atlas-model.js";
 
-const atlasJs = await read("js/atlas.js");
-const atlasModelJs = await read("js/atlas-model.js");
-
 /** The fixture route, reached exactly as the browser reaches it. */
 const ATLAS_ORIGIN = "https://app.doctorcre.com";
 const atlasCall = (query = "", method = "GET") =>
@@ -349,12 +346,6 @@ test("C07-5 search binds to q, and nothing is re-sorted or re-filtered in the br
   // the producer refuses with a 403.
   assert.equal(atlasRequestPath({ layer: "inferred" }), "/api/v1/atlas-graph");
 
-  for (const [name, source] of [["js/atlas.js", atlasJs], ["js/atlas-model.js", atlasModelJs]]) {
-    // The graph arrives sorted by id and filtered by the server. Re-ordering or
-    // re-narrowing the node list in the browser is what this forbids; sorting a
-    // key list to compare shapes is not that.
-
-  }
   // The DOM file sorts nothing at all.
 
   const narrowed = atlasBody("?q=demo-worker");

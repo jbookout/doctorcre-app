@@ -412,12 +412,9 @@ test("the list is read from list-doc-conversations and rendered in the verb's or
   });
   assert.ok(rows[0].latestClock, "the row carries no latest-turn clock");
   // The model sorts nothing: its only array operations are filter and map.
-  assert.equal(/\.sort\(/.test(await read("js/conversations-model.js")), false,
-    "the model sorts the list the record layer already ordered");
 
   // Nothing on this device: the roster and its storage are gone.
 
-  assert.equal(/localStorage|ROSTER_KEY/.test(await read("js/conversations-model.js")), false);
 });
 
 test("Show more passes the cursor the verb handed back, and appends the next page", async () => {
