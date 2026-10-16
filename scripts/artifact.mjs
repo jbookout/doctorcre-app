@@ -64,7 +64,7 @@ async function parseTar(archive) {
 
 async function inputPaths(root) {
   const pages = (await readdir(root)).filter(path => path.endsWith(".html"));
-  const paths = [...ROOT_FILES, ...pages, "contracts/lease-radar.v1.json"];
+  const paths = [...ROOT_FILES, ...pages, "contracts/lease-radar.v1.json", GENERATED_PATH];
   for (const directory of ROOT_DIRECTORIES) {
     if (!(await lstat(join(root, directory))).isDirectory()) throw new Error(`artifact input must be a directory: ${directory}`);
     paths.push(...await walk(root, directory));
@@ -171,9 +171,10 @@ async function assembleArtifact(commit, paths, readSource) {
 }
 
 export async function buildArtifact({ root, outDir, commit = sourceCommit(root) }) {
-  await writeFile(join(root, GENERATED_PATH), await generatedShell(path => readFile(join(root, path))));
+  const shell = await generatedShell(path => readFile(join(root, path)));
   const paths = await inputPaths(root);
   const readSource = async (path) => {
+    if (path === GENERATED_PATH) return shell;
     const sourcePath = join(root, path);
     if (!(await lstat(sourcePath)).isFile()) throw new Error(`artifact input is not a file: ${path}`);
     return readFile(sourcePath);
@@ -237,7 +238,6 @@ export async function verifyCommittedSource(root, archive, result = null) {
     source.set(path, committed);
   }
   const shell = await generatedShell(async path => source.get(path));
-  if (!(await readFile(join(root, GENERATED_PATH))).equals(shell)) throw new Error(`artifact source input mismatch: ${GENERATED_PATH}`);
   source.set(GENERATED_PATH, shell);
   const expected = await assembleArtifact(commit, paths, async (path) => source.get(path));
   if (!archive.equals(expected.archive)) throw new Error("artifact does not match committed source");
