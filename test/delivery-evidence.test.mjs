@@ -93,6 +93,7 @@ test("a null count_total renders unknown, never 0 and never a percentage", () =>
 
 test("source closure examples cannot prove downstream delivery", () => {
   // built-unmerged: every slice verified, closure still unresolved.
+  assert.deepEqual(STAGES, ["source_verified", "ci", "merged", "consumer_proven"]);
   const built = deliveryStages(passport());
   assert.equal(stageOf(built, "source_verified").state, "complete");
   assert.equal(stageOf(built, "merged").state, "unknown");
@@ -102,15 +103,15 @@ test("source closure examples cannot prove downstream delivery", () => {
   const merged = deliveryStages(passport({ closure: { work: facet("complete", "demo-merge") } }));
   assert.equal(stageOf(merged, "merged").state, "unknown");
   assert.equal(stageOf(merged, "merged").evidence_ref, null);
-  assert.equal(stageOf(merged, "activated").state, "unknown");
-  assert.notEqual(stageOf(merged, "activated").state, "complete");
+  assert.equal(stageOf(merged, "ci").state, "unknown");
+  assert.notEqual(stageOf(merged, "ci").state, "complete");
 
-  // Source closure release also cannot prove product activation.
+  // Source closure release cannot prove CI or live delivery.
   const active = deliveryStages(passport({
     closure_state: "complete",
     closure: { work: facet("complete", "demo-merge"), release: facet("complete", "demo-release") },
   }));
-  assert.equal(stageOf(active, "activated").state, "unknown");
+  assert.equal(stageOf(active, "ci").state, "unknown");
   assert.equal(stageOf(active, "consumer_proven").state, "unknown");
   assert.notEqual(stageOf(active, "consumer_proven").state, "complete");
 
@@ -332,8 +333,8 @@ test("the fixture carries the three delivery examples plus a stale plan, and ref
   };
   assert.equal(stageOf(await stages("WR-000901"), "merged").state, "unknown");
   assert.equal(stageOf(await stages("WR-000902"), "merged").state, "unknown");
-  assert.equal(stageOf(await stages("WR-000902"), "activated").state, "unknown");
-  assert.equal(stageOf(await stages("WR-000903"), "activated").state, "unknown");
+  assert.equal(stageOf(await stages("WR-000902"), "ci").state, "unknown");
+  assert.equal(stageOf(await stages("WR-000903"), "ci").state, "unknown");
   assert.equal(stageOf(await stages("WR-000903"), "consumer_proven").state, "unknown");
   assert.ok((await stages("WR-000905")).every((cell) => cell.state === "unknown"), "a stale plan proves nothing");
 

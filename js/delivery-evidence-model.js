@@ -13,16 +13,14 @@
 
 /** The delivery dimensions, in the order a delivery actually travels. */
 export const STAGES = Object.freeze([
-  "planned", "source_verified", "merged", "released", "activated", "consumer_proven",
+  "source_verified", "ci", "merged", "consumer_proven",
 ]);
 
 export const STAGE_LABEL = Object.freeze({
-  planned: "Planned",
   source_verified: "Source verified",
+  ci: "CI",
   merged: "Merged",
-  released: "Released",
-  activated: "Activated",
-  consumer_proven: "Consumer proven",
+  consumer_proven: "Live delivery",
 });
 
 /** The three tokens a cell may carry. `complete` is the only operational one. */
@@ -118,11 +116,6 @@ export function deliveryStages(passport) {
   if (!validPassportPayload(passport)) return unknownRow(NO_PASSPORT_REASON);
   if (passport.stale_conflict.state === "stale") return unknownRow(STALE_REASON);
 
-  const revision = passport.accepted_plan_revision;
-  const planned = isObject(revision) && nonEmptyString(revision.id)
-    ? cell("planned", "complete", revision.id, null)
-    : cell("planned", "unknown", null, "the passport names no accepted plan revision");
-
   const slices = passport.slices;
   const unfinished = slices.find((slice) => UNFINISHED_SLICE_STATES.includes(slice.state));
   const sourceVerified = slices.length > 0 && slices.every((slice) => slice.state === "verified_complete")
@@ -132,16 +125,15 @@ export function deliveryStages(passport) {
       : cell("source_verified", "unknown", null, "the passport carries no slice this page can read");
 
   // This passport's closure facets establish source assurance only. The
-  // pinned contract carries no typed merge, release, activation or consumer
-  // delivery facts, so those stages cannot be inferred from review completion.
+  // pinned contract carries no typed CI, merge or live delivery facts, so
+  // those stages cannot be inferred from review completion.
   const downstream = (stage) => cell(stage, "unknown", null,
     "the passport carries source assurance, without a delivery fact for this stage");
+  const ci = downstream("ci");
   const merged = downstream("merged");
-  const released = downstream("released");
-  const activated = downstream("activated");
   const consumerProven = downstream("consumer_proven");
 
-  return [planned, sourceVerified, merged, released, activated, consumerProven];
+  return [sourceVerified, ci, merged, consumerProven];
 }
 
 /**
