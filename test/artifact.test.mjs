@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { copyFile, mkdtemp, readFile, rename, rm, writeFile, symlink } from "node:fs/promises";
+import { copyFile, mkdir, mkdtemp, readFile, rename, rm, writeFile, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 import { chromium } from './browser-harness.mjs';
@@ -101,8 +101,8 @@ async function committedFixture(t) {
   git(["clone", "--quiet", "--shared", "--no-hardlinks", ROOT, "."]);
   await symlink(join(ROOT, 'node_modules'), join(root, 'node_modules'), 'dir');
   // Exercise the code under test, including edits not yet committed by the maker.
-  for (const path of ["scripts/artifact.mjs", "scripts/build-artifact.mjs", "js/navigation.js", "js/app-shell.js", "reports/share.js", "js/routes.js", "package.json", "package-lock.json"]) await copyFile(join(ROOT, path), join(root, path));
-  git(["add", "scripts/artifact.mjs", "scripts/build-artifact.mjs", "js/navigation.js", "js/app-shell.js", "reports/share.js", "js/routes.js", "package.json", "package-lock.json"]);
+  for (const path of ["scripts/artifact.mjs", "scripts/build-artifact.mjs", "scripts/ui-bundle.mjs", "src/ui/index.tsx", "src/ui/node-host.tsx", "js/navigation.js", "js/app-shell.js", "reports/share.js", "js/routes.js", "package.json", "package-lock.json"]) { await mkdir(dirname(join(root, path)), { recursive: true }); await copyFile(join(ROOT, path), join(root, path)); }
+  git(["add", "scripts/artifact.mjs", "scripts/build-artifact.mjs", "scripts/ui-bundle.mjs", "src/ui/index.tsx", "src/ui/node-host.tsx", "js/navigation.js", "js/app-shell.js", "reports/share.js", "js/routes.js", "package.json", "package-lock.json"]);
   git(["-c", "user.name=Test", "-c", "user.email=test@example.invalid", "commit", "--quiet", "--allow-empty", "-m", "Synthetic verifier fixture"]);
   const commit = git(["rev-parse", "HEAD"]);
   const outDir = join(root, "dist");
@@ -121,7 +121,7 @@ test("one contract path declaration drives both assembly and committed-source ve
   const git = (args) => execFileSync("git", args, { cwd: root, encoding: "utf8", stdio: "pipe" }).trim();
   git(["clone", "--quiet", "--shared", "--no-hardlinks", ROOT, "."]);
   await symlink(join(ROOT, 'node_modules'), join(root, 'node_modules'), 'dir');
-  for (const path of ["scripts/artifact.mjs", "scripts/build-artifact.mjs", "js/navigation.js", "js/app-shell.js", "reports/share.js", "js/routes.js", "package.json", "package-lock.json"]) await copyFile(join(ROOT, path), join(root, path));
+  for (const path of ["scripts/artifact.mjs", "scripts/build-artifact.mjs", "scripts/ui-bundle.mjs", "src/ui/index.tsx", "src/ui/node-host.tsx", "js/navigation.js", "js/app-shell.js", "reports/share.js", "js/routes.js", "package.json", "package-lock.json"]) { await mkdir(dirname(join(root, path)), { recursive: true }); await copyFile(join(ROOT, path), join(root, path)); }
   const contracts = [
     ["carr_interface", "contracts/carr-interface.v1.json", "contracts/synthetic-interface.v1.json"],
   ];
@@ -132,7 +132,7 @@ test("one contract path declaration drives both assembly and committed-source ve
     source = source.replace(oldPath, newPath);
   }
   await writeFile(join(root, "scripts/artifact.mjs"), source);
-  git(["add", "scripts/artifact.mjs", "scripts/build-artifact.mjs", "js/navigation.js", "js/app-shell.js", "reports/share.js", "js/routes.js", "package.json", "package-lock.json", ...contracts.flatMap(([, oldPath, newPath]) => [oldPath, newPath])]);
+  git(["add", "scripts/artifact.mjs", "scripts/build-artifact.mjs", "scripts/ui-bundle.mjs", "src/ui/index.tsx", "src/ui/node-host.tsx", "js/navigation.js", "js/app-shell.js", "reports/share.js", "js/routes.js", "package.json", "package-lock.json", ...contracts.flatMap(([, oldPath, newPath]) => [oldPath, newPath])]);
   git(["-c", "user.name=Test", "-c", "user.email=test@example.invalid", "commit", "--quiet", "-m", "Synthetic relocated contracts"]);
   for (const command of ["build", "verify"]) {
     execFileSync(process.execPath, ["scripts/build-artifact.mjs", command], {

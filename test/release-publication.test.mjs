@@ -25,10 +25,13 @@ function fixture(t, { installation = 'locked', browser = false } = {}) {
   writeFileSync(join(root, 'package.json'), JSON.stringify(pkg));
   mkdirSync(join(root, 'node_modules'), { recursive: true });
   // Reuse installed build and browser dependencies in the temporary clone.
-  for (const name of ['esbuild', 'playwright', 'jsdom', 'tar-stream']) {
+  for (const name of ['esbuild', 'playwright', 'jsdom', 'tar-stream', 'typescript', 'react', 'react-dom', '@types/react', '@types/react-dom']) {
     mkdirSync(dirname(join(root, 'node_modules', name)), { recursive: true });
     symlinkSync(join(ROOT, 'node_modules', name), join(root, 'node_modules', name), 'dir');
   }
+  const bin = join(root, 'node_modules/.bin');
+  mkdirSync(bin, { recursive: true });
+  symlinkSync('../typescript/bin/tsc', join(bin, 'tsc'));
   git(['add', ...paths.filter(path => existsSync(join(root, path))), 'package.json']);
   git(['-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', 'commit', '-qm', 'Synthetic release source']);
   const commit = git(['rev-parse', 'HEAD']);
