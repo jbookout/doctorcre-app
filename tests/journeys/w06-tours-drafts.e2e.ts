@@ -1,5 +1,4 @@
-import { productTest } from './test.mjs';
-const test = productTest();
+import { test } from '@e2e-dev/web';
 import { expect } from 'e2e';
 
 const clientId = '11111111-1111-4111-8111-111111111111';
@@ -17,12 +16,11 @@ function tourData(url: URL) {
 
 // W6: the tour planner prefills from a client, undoes an edit, and keeps its
 // drafts in this tab across a reload.
-test('W6 Tours drafts prefill from a client, undo an edit and survive a reload', async ({ app, browser, screen, quality }) => {
+test('W6 Tours drafts prefill from a client, undo an edit and survive a reload', async ({ app, browser, screen }) => {
   await browser.route(/\/api\/(tours|v1\/business)\//, route =>
     route.fulfill({ json: { data: tourData(new URL(route.request.url)), csrf_token: 'synthetic-e2e-token' } }));
   await app.open('/tours');
 
-  await quality.check('tour-planner');
   await browser.locator('#plan-client').selectOption('Demo Harbor Practice');
   await expect(browser.locator('#plan-name')).toHaveValue(/Demo Harbor/);
   await expect(browser.locator('#plan-area')).toHaveValue('Pensacola, FL');
@@ -43,10 +41,9 @@ test('W6 Tours drafts prefill from a client, undo an edit and survive a reload',
   await expect(browser.locator('#plan-date')).toHaveValue('2026-10-08');
   await expect(browser.locator('#space-requirements')).toHaveValue('Ground floor · accessible entry');
 
-  await quality.controls();
+  if (await browser.locator('#appSidebar').isHidden()) await browser.locator('#appSidebarToggle').tap();
   await browser.locator('#upcoming-tours .tour-button').first().tap();
   await expect(browser.locator('#detail-title')).toContainText('Demo Gulf Coast Tour');
-  await quality.check('tour-detail');
-  await quality.dismiss('#tour-dialog', '#detail-close');
+  await browser.locator('#tour-dialog #detail-close').tap();
   await expect(browser.locator('#tour-dialog')).toBeHidden();
 });

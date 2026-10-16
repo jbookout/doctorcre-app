@@ -1,36 +1,20 @@
 import type { E2EConfig } from 'e2e';
-import { journeyEngine } from './tests/journeys/phone-engine.mjs';
-import { journeyProfiles } from './tests/journeys/phone-profiles.mjs';
-import { stagingTargets } from './scripts/e2e-staging/screens.mjs';
-import { EXPLORATION_MODEL_CALL_POLICY, modelRoomExplorationModel } from './scripts/e2e-staging/model-room.mjs';
-import { modelCallsAllowed, RUN_LIMITS } from './scripts/e2e-staging/run-limits.mjs';
+import { web } from '@e2e-dev/web';
 
-// No usage telemetry from any run, local or CI. The CLI reads this when it
-// flushes, after the config has loaded.
 process.env.E2E_TELEMETRY_DISABLED = '1';
 
-const staging = process.env.E2E_TARGET === 'staging-live';
-const ci = !['', '0', 'false'].includes(process.env.CI ?? '');
+const app = {
+  url: 'http://127.0.0.1:0',
+  command: { executable: 'npm', args: ['run', 'serve'], env: { PORT: '{port}' }, log: '.e2e/logs/app.log' },
+};
 
 export default {
-  workers: RUN_LIMITS.workers,
-  retries: RUN_LIMITS.retries,
-  trace: staging ? 'off' : 'retain-on-failure',
-  video: staging ? 'off' : 'retain-on-failure',
-  ...(staging && process.env.E2E_V2_OUTPUT ? { output: process.env.E2E_V2_OUTPUT + '/sdk' } : {}),
-  ...(staging ? { tests: ['tests/staging-live/**/*.e2e.ts'], cache: 'off' as const } : {}),
-  targets: staging ? stagingTargets() : journeyProfiles.map(profile => ({
-    name: profile.name,
-    engine: journeyEngine(profile),
-    app: {
-      url: 'http://127.0.0.1:0',
-      // The synthetic fixture server; on localhost the app boots fixture mode.
-      command: { executable: 'npm', args: ['run', 'serve'], env: { PORT: '{port}', DOCTORCRE_FIXTURE_ROOT: process.env.BROWSER_PROOF_ROOT ?? '' }, log: '.e2e/logs/app.log' },
-    },
-  })),
-  ...(!modelCallsAllowed() || ci && !staging ? {} : { agents: { default: { model: modelRoomExplorationModel },
-    'bug-hunter': { model: modelRoomExplorationModel, maxSteps: EXPLORATION_MODEL_CALL_POLICY.perGoal, system: 'Inspect the entire assigned staging workspace. Exercise forms, menus, drawers, tabs, recovery and destructive controls. Report only observed defects with reproduction steps.' },
-    'first-time-ux': { model: modelRoomExplorationModel, maxSteps: EXPLORATION_MODEL_CALL_POLICY.perGoal, system: 'Explore the assigned staging workspace as a first-time partner. Check discovery, copy, keyboard navigation and recovery. Record evidence for every finding.' },
-    'phone-reviewer': { model: modelRoomExplorationModel, maxSteps: EXPLORATION_MODEL_CALL_POLICY.perGoal, system: 'Inspect the complete assigned workspace at phone width. Open collapsed drawers and menus. Check tap targets, clipping, scrolling, forms and every tab.' },
-  } }),
+  tests: ['tests/journeys/*.e2e.ts'],
+  retries: 1,
+  trace: 'retain-on-failure',
+  video: 'retain-on-failure',
+  targets: [
+    { name: 'desktop', engine: web({ viewport: { width: 1440, height: 960 } }), app },
+    { name: 'phone', engine: web({ viewport: { width: 390, height: 844 } }), app },
+  ],
 } satisfies E2EConfig;

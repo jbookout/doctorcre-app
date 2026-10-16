@@ -10,8 +10,6 @@ import { context, policy, expression } from "./workflow-policy.mjs";
 
 const ci = await readFile(new URL("../.github/workflows/ci.yml", import.meta.url), "utf8");
 const release = await readFile(new URL("../.github/workflows/release.yml", import.meta.url), "utf8");
-const e2e = await readFile(new URL("../.github/workflows/e2e.yml", import.meta.url), "utf8");
-const stagingLive = await readFile(new URL("../.github/workflows/staging-live.yml", import.meta.url), "utf8");
 const harnessSource = await readFile(new URL("./browser-harness.mjs", import.meta.url), "utf8");
 const nodeEngines = [...harnessSource.matchAll(/export const (\w+) = browserEngine\(/g)].map(match => match[1]).sort();
 const root = fileURLToPath(new URL("../", import.meta.url));
@@ -116,7 +114,7 @@ test("Open PRs retain the required test job and full suite", async (t) => {
   assert.equal(result.trace.includes("npm run build"), false, "failed tests cannot yield a green job");
 });
 
-for (const [name, workflow, suite] of [["CI", ci, "npm test"], ["e2e", e2e, "node scripts/browser-product-proof.mjs"]]) {
+for (const [name, workflow, suite] of [["CI", ci, "npm test"]]) {
   test(`${name}: invalid privacy/body/repository input starts zero browser downloads`, async (t) => {
     for (const input of [{ privacyText: "Synthetic privacy canary" }, { body: "## What changed\n<!-- empty -->" },
       { event: "{" }, { event: "{}" }]) {
@@ -134,8 +132,8 @@ for (const [name, workflow, suite] of [["CI", ci, "npm test"], ["e2e", e2e, "nod
       assert.ok(healthy.trace.indexOf(check) >= 0 && healthy.trace.indexOf(check) < healthy.trace.findIndex(command => command.startsWith("npx playwright install")));
     }
     assert.equal(healthy.trace.filter(command => command === suite).length, 1);
-    const testCommands = name === "CI" ? ["node --test test/property-producer.test.mjs", "npm test"] : ["node --test test/e2e-suite.test.mjs", suite];
-    assert.deepEqual(healthy.trace.filter(command => command === suite || command === "npm test" || command.startsWith("node --test ") || command.startsWith("npx e2e run ")), testCommands,
+    const testCommands = ["node --test test/property-producer.test.mjs", "npm test"];
+    assert.deepEqual(healthy.trace.filter(command => command === suite || command === "npm test" || command.startsWith("node --test ")), testCommands,
       "healthy heads retain the complete test command inventory");
     const push = await replay(t, workflow, "push", "npm run privacy:check");
     assert.equal(push.failed, true);
@@ -144,7 +142,7 @@ for (const [name, workflow, suite] of [["CI", ci, "npm test"], ["e2e", e2e, "nod
   });
 
   test(`${name}: missing or cancelled required tests cannot pass`, async (t) => {
-    assert.match(workflow, new RegExp(`^  ${name === "CI" ? "test" : "journeys"}:\\n(?:    if:.*\\n)?    runs-on:`, "m"));
+    assert.match(workflow, new RegExp(`^  test:\\n(?:    if:.*\\n)?    runs-on:`, "m"));
     requireSuite(workflow, suite);
     for (const failCode of [1, 130]) {
       assert.equal((await replay(t, workflow, "pull_request", suite, { failCode })).failed, true);
@@ -172,24 +170,19 @@ function requireSuite(workflow, suite) {
   assert.equal(commands(workflow, "pull_request").filter(command => command === suite).length, 1);
 }
 
-test("installed engines match the actual Node and e2e selections and lockfile pin", async () => {
-  const config = await readFile(new URL("../e2e.config.ts", import.meta.url), "utf8");
-  const adapter = await readFile(new URL("../tests/journeys/phone-engine.mjs", import.meta.url), "utf8");
-  const journeyEngines = [...new Set([...(config + adapter).matchAll(/browser: ['"](\w+)['"]/g)].map(match => match[1]))].sort();
-  assert.ok(nodeEngines.length && journeyEngines.length, "engine selections must be readable");
-  for (const [workflow, engines] of [[ci, nodeEngines], [release, nodeEngines], [e2e, journeyEngines]]) {
+test("installed engines match the actual Node selections and lockfile pin", async () => {
+  assert.ok(nodeEngines.length, "engine selections must be readable");
+  for (const [workflow, engines] of [[ci, nodeEngines], [release, nodeEngines]]) {
     assert.deepEqual(installedEngines(workflow), engines);
   }
   assert.throws(() => assert.deepEqual(installedEngines(ci.replace("chromium webkit", "chromium")), nodeEngines),
     /deep-equal/, "missing-WebKit replay must fail the same parity oracle");
-  assert.throws(() => assert.deepEqual(installedEngines(e2e), [...journeyEngines, "webkit"].sort()),
-    /deep-equal/, "a newly selected e2e engine needs installation too");
   const pkg = JSON.parse(await readFile(new URL("../package.json", import.meta.url)));
   const lock = JSON.parse(await readFile(new URL("../package-lock.json", import.meta.url)));
   assert.match(pkg.devDependencies.playwright, /^\d+\.\d+\.\d+$/);
   assert.equal(lock.packages["node_modules/playwright"].version, pkg.devDependencies.playwright);
   assert.equal(lock.packages["node_modules/playwright-core"].version, pkg.devDependencies.playwright);
-  for (const workflow of [ci, release, e2e]) {
+  for (const workflow of [ci, release]) {
     const steps = commands(workflow, "pull_request");
     assert.ok(steps.indexOf("npm ci") >= 0 && steps.indexOf("npm ci") < steps.findIndex(command => command.startsWith("npx playwright install")));
   }
@@ -230,21 +223,6 @@ test("the job budget covers the observed full suite plus setup and artifact veri
     assert.ok(Number.isFinite(minutes) && minutes > 0, `${name} needs a finite deadline`);
     assert.ok(minutes * 60_000 >= requiredMs, `${name}: the full check sequence must fit with 25% runner headroom`);
   }
-});
-
-test("the e2e journeys budget covers the observed slow-runner sequence", () => {
-  // The staging selftest grew from 113 s (a8ede61) to 342-385 s (#200, #205).
-  // Slow runners then spent 512 s before the regressions step (run 38199979738,
-  // 070e001) and were cancelled at ten minutes ~104 s into a regression suite
-  // that passes in 70 s on fast runners. No step hung: each step's wall time
-  // matches its reporter's own duration.
-  const beforeRegressionsMs = 512_000;
-  const regressionsMs = 104_000;
-  const uploadMs = 6_000;
-  const requiredMs = (beforeRegressionsMs + regressionsMs + uploadMs) * 1.25;
-  const minutes = Number(e2e.match(/^    timeout-minutes: (\d+)$/m)?.[1]);
-  assert.ok(Number.isFinite(minutes) && minutes > 0, "e2e needs a finite deadline");
-  assert.ok(minutes * 60_000 >= requiredMs, "e2e: the journeys sequence must fit with 25% runner headroom");
 });
 
 test("description check runs for PRs and stays out of main pushes", () => {
@@ -323,7 +301,7 @@ test("release build is read-only and publisher receives only this run's digest-b
 });
 
 test("every external action is immutable, and checkout never persists credentials", async () => {
-  for (const file of ["ci.yml", "e2e.yml", "release.yml", "staging-live.yml"]) {
+  for (const file of ["ci.yml", "e2e.yml", "release.yml"]) {
     const workflow = await readFile(new URL(`../.github/workflows/${file}`, import.meta.url), "utf8");
     for (const ref of workflow.matchAll(/uses: ([^\s#]+)/g)) assert.match(ref[1], /^[\w-]+\/[\w-]+@[a-f0-9]{40}$/);
     for (const step of workflow.split(/^      - /m).slice(1).filter(s => s.includes("actions/checkout@"))) assert.match(step, /persist-credentials: false/);
@@ -405,7 +383,7 @@ test('action pins agree with authenticated canonical release evidence',async()=>
   }
   assert.throws(()=>check('actions/checkout','f'.repeat(40)),/strictly equal/);
 });
-for (const [name, workflow] of [["CI", ci], ["e2e", e2e]]) {
+for (const [name, workflow] of [["CI", ci]]) {
   test(`${name}: close runs zero shell commands; invalid edited body still blocks`, async t => {
     const closed = await replay(t, workflow, "pull_request", "", { action: "closed" });
     assert.deepEqual(closed.trace, []);

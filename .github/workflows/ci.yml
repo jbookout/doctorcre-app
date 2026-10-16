@@ -67,18 +67,8 @@ jobs:
         if: github.event_name == 'pull_request'
       - run: node --test test/artifact.test.mjs test/ci-workflows.test.mjs
         if: github.event_name == 'push'
-      - if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
-        run: node scripts/full-main.mjs app
       - run: npm run build
       - run: npm run artifact:verify
-      - if: ${{ always() && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          include-hidden-files: true
-          name: full-main-app-receipt
-          path: doctorcre-app/.e2e/full-main-app/receipt.json
-          if-no-files-found: error
-          retention-days: 7
       # Lives inside the existing required test context; no ruleset change needed.
       - run: npm run performance:check
         if: github.event_name == 'pull_request'

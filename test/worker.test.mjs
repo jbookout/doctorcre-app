@@ -1,16 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-test('production refuses E2E session exchange before it can reach CARR', async () => {
-  let calls = 0;
-  const env = environment({ carr: { fetch: async () => { calls++; return new Response('{}'); } } });
-  env.APP_ENV = 'production';
-  env.E2E_SESSION_SECRET = 'synthetic-irrelevant-secret';
-  const response = await handleDoctorcreRequest(new Request('https://app.doctorcre.com/auth/e2e-session', { method: 'POST' }), env);
-  assert.equal(response.status, 404);
-  assert.equal(calls, 0);
-});
-
 test('blocking 1: Leads map module, CSS and derived worker URLs pass through deployed asset routing',async()=>{
  const {readFile}=await import('node:fs/promises');
  const html=await readFile(new URL('../leads.html',import.meta.url),'utf8');

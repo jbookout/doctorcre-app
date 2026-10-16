@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { context, policy } from "./workflow-policy.mjs";
 import test from "node:test";
 
-const files = ["ci.yml", "e2e.yml"];
+const files = ["ci.yml"];
 const read = name => readFileSync(new URL("../.github/workflows/" + name, import.meta.url), "utf8");
 function replay(source, events) {
   const runs = [];
@@ -26,7 +26,7 @@ function replay(source, events) {
 for (const file of files) {
   const source = read(file);
   test(`${file}: required context identity is retained`, () => {
-    assert.deepEqual(policy(source, context()).jobs, [file === "ci.yml" ? "test" : "journeys"]);
+    assert.deepEqual(policy(source, context()).jobs, ["test"]);
   });
   test(`${file}: rapid A/B/C supersedes A/B and C runs every job`, () => {
     const runs = replay(source, [context("pull_request", "opened", 9, 1), context("pull_request", "synchronize", 9, 2), context("pull_request", "synchronize", 9, 3)]);
