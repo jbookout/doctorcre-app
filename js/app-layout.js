@@ -9,7 +9,6 @@ import { scopedDeals } from './home-dashboard-model.js';
 import { localToday, toDay } from './calendar-model.js';
 const time = value => { const date = new Date(value || ''); return Number.isFinite(date.valueOf()) ? date.toLocaleTimeString([], { hour:'numeric', minute:'2-digit', hour12:true }) : '—'; };
 
-// Build validation and runtime use the same layout targets.
 export function createAppLayout(root, title = '') {
   const layout = root.createElement('div');
   layout.id = 'appLayout';
