@@ -7,7 +7,7 @@ import { execFileSync } from "node:child_process";
 import { lstat, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { dirname, join, posix } from "node:path";
 
-const ROOT_FILES = ["manifest.webmanifest"];
+const ROOT_FILES = ["manifest.webmanifest", "contracts/lease-radar.v1.json"];
 const GENERATED_PATH = "tours/day-shell.generated.js";
 const ROOT_DIRECTORIES = ["css", "data", "js", "public-shell", "reports", "tours"];
 const CONTRACT_INPUTS = {
@@ -64,7 +64,7 @@ async function parseTar(archive) {
 
 async function inputPaths(root) {
   const pages = (await readdir(root)).filter(path => path.endsWith(".html"));
-  const paths = [...ROOT_FILES, ...pages, "contracts/lease-radar.v1.json", GENERATED_PATH];
+  const paths = [...ROOT_FILES, ...pages, GENERATED_PATH];
   for (const directory of ROOT_DIRECTORIES) {
     if (!(await lstat(join(root, directory))).isDirectory()) throw new Error(`artifact input must be a directory: ${directory}`);
     paths.push(...await walk(root, directory));

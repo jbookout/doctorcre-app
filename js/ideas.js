@@ -572,8 +572,6 @@ async function boot() {
   remember();
   render();
   const resolved = resolveDealroomBoot(globalThis.location || { hostname: "", search: "" });
-  // Workspace slice S1: ?ui=react hosts the Ideas panel in a React island.
-  // Only a fixture boot honours it, so a reviewed deployment never loads React.
   client = resolved.mode === "live" ? createLiveClient({docContext:false}) : await createFixtureClient({...resolved.options,docContext:false});
   mountNotificationBadge(client);
   mountAutoRefresh({ document, window: globalThis.window, refresh: async () => { await load(); await loadEvents(); } });

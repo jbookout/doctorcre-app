@@ -13,7 +13,6 @@ __pycache__/
 test-artifacts/
 /tours/day-shell.generated.js
 /out/
-/_to_delete/
 # Ad-hoc screen captures; the journeys write their evidence under /.e2e/.
 mobile-a11y-evidence/
 
