@@ -222,8 +222,11 @@ export async function verifyCommittedSource(root, archive, result = null) {
   const paths = await inputPaths(root);
   const contractPaths = Object.values(CONTRACT_INPUTS);
   const sourcePaths = [...new Set([...paths, ...contractPaths])].filter(path => path !== GENERATED_PATH).sort();
-  const committedPaths = execFileSync("git", ["ls-tree", "-r", "--name-only", "-z", commit, "--",
-    ...ROOT_FILES, ...ROOT_DIRECTORIES, ...contractPaths, ...paths], { cwd: root, encoding: "utf8" }).split("\0").filter(path => path && path !== GENERATED_PATH).sort();
+  const committedPaths = execFileSync("git", ["ls-tree", "-r", "--name-only", "-z", commit],
+    { cwd: root, encoding: "utf8" }).split("\0").filter(path => path && path !== GENERATED_PATH && (
+      ROOT_FILES.includes(path) || contractPaths.includes(path) || ROOT_DIRECTORIES.some(directory => path.startsWith(directory + "/"))
+      || (!path.includes("/") && path.endsWith(".html"))
+    )).sort();
   if (JSON.stringify(sourcePaths) !== JSON.stringify(committedPaths)) throw new Error("artifact source input set mismatch");
 
   // Compare the bytes themselves, not Git's working-tree status/cache. A forged

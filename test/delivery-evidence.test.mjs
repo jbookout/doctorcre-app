@@ -93,8 +93,8 @@ test("a null count_total renders unknown, never 0 and never a percentage", () =>
 
 test("source closure examples cannot prove downstream delivery", () => {
   // built-unmerged: every slice verified, closure still unresolved.
-  assert.deepEqual(STAGES, ["source_verified", "ci", "merged", "consumer_proven"]);
   const built = deliveryStages(passport());
+  assert.deepEqual(built.map(cell => cell.stage), ["source_verified", "ci", "merged", "consumer_proven"]);
   assert.equal(stageOf(built, "source_verified").state, "complete");
   assert.equal(stageOf(built, "merged").state, "unknown");
   assert.notEqual(stageOf(built, "merged").state, "complete");

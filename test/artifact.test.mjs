@@ -162,6 +162,10 @@ test("a coherently rehashed artifact still must match committed source bytes", a
   assert.equal((await verifyArtifact(forged.archive, forged.archiveSha256)).manifest.source_commit, commit);
   await writeFile(path, original);
   await assert.rejects(runCli(root, ["verify"]), /artifact does not match committed source/);
+  await rm(path);
+  await buildArtifact({ root, outDir, commit });
+  await assert.rejects(runCli(root, ["verify"]), /source input set mismatch/);
+
 });
 
 test("a valid-looking source SHA cannot substitute for HEAD", async (t) => {
