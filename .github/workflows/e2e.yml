@@ -19,6 +19,7 @@ jobs:
     timeout-minutes: 30
     env:
       E2E_TELEMETRY_DISABLED: "1"
+      TYPESAFE_API_KEY: ${{ secrets.TYPESAFE_API_KEY }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
