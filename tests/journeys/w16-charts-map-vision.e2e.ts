@@ -21,6 +21,8 @@ test('W16 the By phase chart draws its bars in proportion to the board', async (
   await serveFixtures(browser);
   await app.open('/?view=charts&mode=live');
   await expect(browser.locator('#chartPhase tbody tr').first()).toBeVisible();
+  // Below 480px the stylesheet hides the bars and the table alone carries the counts.
+  test.skip(await browser.evaluate(() => innerWidth < 480), 'the phone view draws no bars');
   await browser.evaluate(() => document.querySelector('#chartPhase')?.scrollIntoView({ block: 'center' }));
   await agent.assert(
     'In the By phase chart, the Prospective Client bar is the longest and the Research bar is about half as long. The Site Selection and Closing bars are the shortest, each only a small dot.',
