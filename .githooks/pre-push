@@ -57,7 +57,7 @@ function run(command, args, timeout = budget - (Date.now() - started)) {
   });
 }
 const testArgs = paths => ['--test', '--test-concurrency=2',
-  '--test-skip-pattern=^every selected Node engine launches with the installed pinned Playwright$', ...paths];
+  ...paths];
 
 async function main() {
   if (process.argv[2] === '--test') {

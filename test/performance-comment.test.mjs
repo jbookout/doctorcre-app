@@ -5,6 +5,7 @@ import { chmodSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { delimiter, join } from 'node:path';
 import { upsertComment } from '../scripts/performance-comment.mjs';
+import { context, expression, policy } from './workflow-policy.mjs';
 
 test('a repeated report updates the one marked comment', async () => {
   const calls = [];
@@ -28,7 +29,20 @@ test('a foreign marker does not prevent creating the first trusted report', asyn
 test('the required test context measures every PR and the writer runs trusted main', () => {
   const ci = readFileSync(new URL('../.github/workflows/ci.yml', import.meta.url), 'utf8');
   const publisher = readFileSync(new URL('../.github/workflows/performance-report.yml', import.meta.url), 'utf8');
-  assert.match(ci, /- run: npm run performance:check\n        if: github.event_name == 'pull_request'/);
+  const testJob = ci.match(/^  test:\n([\s\S]*?)(?=^  [\w-]+:|$(?![\s\S]))/m)?.[1];
+  assert.ok(testJob, 'performance must remain in the required test context');
+  const performanceSteps = testJob.split(/^      - /m).slice(1)
+    .filter(step => /^run: npm run performance:check$/m.test(step));
+  assert.equal(performanceSteps.length, 1);
+  const condition = performanceSteps[0].match(/^        if: (.+)$/m)?.[1];
+  for (const action of ['opened', 'synchronize', 'reopened', 'ready_for_review']) {
+    const event = context('pull_request', action);
+    assert.ok(policy(ci, event).runnable.includes('test'), `${action} must run the required test job`);
+    assert.equal(expression(condition, event), true, `${action} must measure performance on every PR`);
+  }
+  assert.equal(expression(condition, context('pull_request', 'edited')), false,
+    'description-only edits reuse the source measurement');
+  assert.equal(expression(condition, context('push')), false);
   assert.doesNotMatch(ci, /pull-requests: write|continue-on-error:/);
   assert.match(publisher, /workflow_run:/);
   assert.match(publisher, /ref: main/);
