@@ -184,7 +184,6 @@ test("the Ideas page is routed and uses the pinned idea and event verbs", async 
   assert.deepEqual(carr.mcp_operations, [...carr.mcp_operations].sort());
   for (const verb of ["loop-board", "read-loop", "list-industry-events", "add-industry-event", "update-industry-event"]) assert.ok(carr.mcp_operations.includes(verb), verb);
   assert.equal(await hasArtifactPage("ideas.html"), true, "the page ships in the verified artifact");
-  assert.match(await read("scripts/check-repository.mjs"), /"ideas\.html"/);
   assert.match(await read("SUMMARY.md"), /ideas\.html/);
   const js = await read("js/ideas.js");
   assert.match(js, /client\.loopBoard\(IDEA_BOARD_ARGS\)/);

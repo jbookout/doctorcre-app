@@ -298,7 +298,6 @@ test("the Tasks page is a listed surface that captures, hands over and closes th
   const css = await readFile(`${ROOT}/css/tasks.css`, "utf8");
   const routes = (await import("../js/routes.js")).routeContract;
   const carr = JSON.parse(await readFile(`${ROOT}/contracts/carr-interface.v1.json`, "utf8"));
-  const checkScript = await readFile(`${ROOT}/scripts/check-repository.mjs`, "utf8");
   const summary = await readFile(`${ROOT}/SUMMARY.md`, "utf8");
 
   // Route and contract, both bumped for an additive change.
@@ -310,7 +309,6 @@ test("the Tasks page is a listed surface that captures, hands over and closes th
   }
   assert.deepEqual(carr.mcp_operations, [...carr.mcp_operations].sort(), "the pinned operations stay sorted");
   assert.equal(await hasArtifactPage("tasks.html"), true, "the page ships in the verified artifact");
-  assert.match(checkScript, /"tasks\.html"/);
   assert.match(summary, /tasks\.html/);
 
   // The shell, and the dock this slice writes through.

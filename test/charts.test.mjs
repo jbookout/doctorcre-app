@@ -32,7 +32,6 @@ const read = (file) => readFile(`${ROOT}${file}`, "utf8");
 const pageJs = await read("js/charts.js");
 const modelJs = await read("js/charts-model.js");
 const css = await read("css/business-workspace.css");
-const checkScript = await read("scripts/check-repository.mjs");
 const contract = JSON.parse(await read("contracts/carr-interface.v1.json"));
 const routes = (await import("../js/routes.js")).routeContract;
 

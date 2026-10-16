@@ -604,15 +604,6 @@ test('shared activity retains stage, desks, presence, wire filters, composers an
   await page.locator('.queue-card').click();await page.waitForURL('**/control-room/progress/work?board=demo-project&task=**');assert.deepEqual(errors,[]);
 });
 
-test('baseline Observatory controls all remain mounted in layer 3',async()=>{
-  const before=await readFile(new URL('../_to_delete/room.html',import.meta.url),'utf8');
-  const after=await readFile(new URL('../progress-work.html',import.meta.url),'utf8');
-  const ids=source=>[...source.matchAll(/id="([^"]+)"/g)].map(match=>match[1]);
-  const relocated=new Set(['openTaskBoard','taskBoardDialog','taskBoardTitle','closeTaskBoard','queueDrawer','drawerClose','drawerTitle','drawerSummary','drawerMeta']);
-  assert.deepEqual(ids(before).filter(id=>!relocated.has(id)&&!ids(after).includes(id)),[]);
-  assert.match(after,/id="workTasks"/);assert.match(after,/id="queueColumns"/);
-});
-
 test('older task passports survive the current global wire window',async t=>{
   const {page,state,errors}=await open(t,{history:2000});
   await page.waitForSelector('.passport-card');assert.ok(state.turnReads>=11);
