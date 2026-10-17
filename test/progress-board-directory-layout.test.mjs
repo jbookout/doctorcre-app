@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { chromium } from './browser-harness.mjs';
+import { chromium } from 'playwright';
 
 const boards = Array.from({ length: 166 }, (_, i) => ({ board_id: `demo-${i}`, title: `Demo repository ${i}` }));
 for (const [width, height] of [[1440, 960], [390, 844]]) {
