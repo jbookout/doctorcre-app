@@ -22,8 +22,15 @@ test('signed-in partner visits the main screens and retains the session after re
   for (const screen of screens) {
     await test.step(screen.name, async () => {
       const navigation = page.getByRole('navigation', { name: 'Primary navigation' });
-      if (screen.more) await navigation.getByRole('button', { name: 'More', exact: true }).click();
-      await navigation.getByRole('link', { name: screen.name, exact: true }).click();
+      if (screen.more) {
+        await expect(async () => {
+          const more = navigation.getByRole('button', { name: 'More', exact: true });
+          if (await more.getAttribute('aria-expanded') !== 'true') await more.click();
+          await navigation.getByRole('link', { name: screen.name, exact: true }).click({ timeout: 2_000 });
+        }).toPass({ timeout: 10_000 });
+      } else {
+        await navigation.getByRole('link', { name: screen.name, exact: true }).click();
+      }
       await expect(page).toHaveURL(screen.path);
       await expect(page).toHaveTitle(screen.title);
       await expect(page.getByRole('main')).toBeVisible();

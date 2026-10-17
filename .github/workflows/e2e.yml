@@ -38,6 +38,7 @@ jobs:
       - run: npm ci
       - run: npx playwright install --with-deps chromium
       - run: npm run build
+      - run: npx playwright test --project=fixtures
       - run: npx e2e run
       - run: npm run test:regressions
       - if: failure()
