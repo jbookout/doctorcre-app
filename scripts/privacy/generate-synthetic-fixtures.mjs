@@ -33,7 +33,9 @@ const organization = (i, refs) => ({ name: `Example Organization ${i}`, live_row
 const searchPayload = (i) => ({
   parties: [{ ref: `C-${980 + i}`, name: `Example Person ${i}`, kind: 'client', city: null,
     specialty: null, org_name: null, merged: false }],
-  deals: [{ name: `Example Search Deal ${i}`, phase: 'pending', owner: null, client_ref: `C-${980 + i}` }],
+  deals: [{ name: `Example Search Deal ${i}`, phase: 'pending', owner: null, client_ref: `C-${980 + i}`,
+    invoiced_on: i === 1 ? null : '2026-10-17', closed_on: i === 1 ? null : '2026-10-16',
+    lane: i === 1 ? null : 'national', outcome: i === 1 ? null : 'won' }],
   connections: [], organizations: [organization(i, [null]), organization(i + 2, [`C-${980 + i}`])],
   lead_client_links: [], deals_via_link: [],
   note: 'No retired aliases among these matches — every ref listed is live.',
