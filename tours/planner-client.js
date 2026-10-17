@@ -49,7 +49,11 @@ export function createPlannerClient({ fetchImpl = globalThis.fetch, timeoutMs = 
         if (revision !== scopeRevision && nextScope !== scope) throw new Error("Session superseded");
         setScope(nextScope);
       }
-      if (signal.aborted || (revision !== scopeRevision && !payload.csrf_token)) throw new Error("Session superseded");
+      if (signal.aborted) throw new Error("Session superseded");
+      if (revision !== scopeRevision && !payload.csrf_token) {
+        if (revision === 0 && scopeRevision === 1 && scope !== null) return read(path, { signal });
+        throw new Error("Session superseded");
+      }
       return payload.data || payload;
     }, { timeoutMs, signal: parentSignal });
   };
