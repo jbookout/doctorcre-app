@@ -1220,12 +1220,15 @@ export async function createFixtureClient(opts = {}) {
   ];
 
   const searchDeals = [
-    { name: 'Demo Pensacola distribution warehouse', phase: 'pending', owner: null, client_ref: 'C-900' },
+    { name: 'Demo Pensacola distribution warehouse', phase: 'pending', owner: null, client_ref: 'C-900',
+      invoiced_on: null, closed_on: null, lane: 'local', outcome: null },
     // TWO deals sharing a name. The producer does NOT deduplicate deals when it
     // derives candidates, and a fixture that did would certify a client that
     // silently drops one of them.
-    { name: 'Demo Pensacola medical office building', phase: 'research', owner: 'joe', client_ref: null },
-    { name: 'Demo Pensacola medical office building', phase: 'legal', owner: 'dell', client_ref: 'C-900' },
+    { name: 'Demo Pensacola medical office building', phase: 'research', owner: 'joe', client_ref: null,
+      invoiced_on: null, closed_on: null, lane: null, outcome: null },
+    { name: 'Demo Pensacola medical office building', phase: 'legal', owner: 'dell', client_ref: 'C-900',
+      invoiced_on: '2026-10-17', closed_on: '2026-10-16', lane: 'national', outcome: 'won' },
   ];
 
   const searchConnections = [
@@ -1240,7 +1243,8 @@ export async function createFixtureClient(opts = {}) {
     { lead_ref: 'L-904', lead_name: 'Demo Pensacola Smiles (retired alias)', client_ref: 'C-900', client_name: 'Demo Pensacola Orthopedic Partners', link_basis: 'same_org' },
   ];
   const searchDealsViaLink = [
-    { name: 'Demo Pensacola distribution warehouse', phase: 'pending', client_ref: 'C-900', link_basis: 'conversion' },
+    { name: 'Demo Pensacola distribution warehouse', phase: 'pending', owner: null, client_ref: 'C-900',
+      invoiced_on: null, closed_on: null, lane: 'local', outcome: null },
   ];
 
   /**
