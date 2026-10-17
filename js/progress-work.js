@@ -277,7 +277,11 @@ async function refresh() {
     const currentBinding = () => authCurrent(epoch) && binding === bindingGeneration && workRequest === scope.workRequest;
     const title = task?.title || card?.title || (scope.task ? 'Task work' : 'Project activity');
     $('workTitle').textContent = title; document.title = `${title} · Progress`; breadcrumbs(view.title, title);
-    const age = boardFreshness(view.updated_at); $('workReadState').textContent = `${age.label}${age.state === 'stale' ? ' · Stale publication' : ''}`; $('workReadState').dataset.state = age.state;
+    const age = read.ok === true && read.snapshot === null
+      ? { state: 'unpublished', label: 'No published snapshot' }
+      : boardFreshness(view.updated_at);
+    $('workReadState').textContent = `${age.label}${age.state === 'stale' ? ' · Stale publication' : ''}`;
+    $('workReadState').dataset.state = age.state;
     renderMetadata(task, view.questions);
     if (workRequest) await Promise.allSettled([
       client.workRequestCard({work_request:workRequest}).then(value => { if (!currentBinding()) return; if (value.human_ref !== workRequest) throw new Error('work binding'); card = value; $('workTitle').textContent = task?.title || card.title || title; renderMetadata(task, view.questions); }).catch(error=>currentBinding() && fail(error,$('workMetadata'),'Work request')),
