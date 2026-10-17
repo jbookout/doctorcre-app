@@ -190,7 +190,7 @@ export function mountPlanner({ document, window, api = createPlannerClient() }) 
       const remove = element("button", "×"); remove.type = "button"; remove.setAttribute("aria-label", `Remove ${file.name}`);
       remove.addEventListener("click", () => { files.splice(index, 1); renderFiles(); }); row.append(label, remove); list.append(row);
     });
-    message("#file-count", `${files.length} files`);
+    message("#file-count", `${files.length} ${files.length === 1 ? "file" : "files"}`);
   }
   function acceptFiles(incoming) {
     restoreOrClear();
