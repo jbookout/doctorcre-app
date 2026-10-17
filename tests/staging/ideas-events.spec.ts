@@ -42,7 +42,7 @@ test('Events tab opens and cancels a draft without saving', async ({ page }) => 
   await expect(page.locator('#eventList')).not.toContainText('V2 discarded draft');
 });
 
-test.fixme('V2-B01: Events are unavailable, blocking event inspection and edit/restore', { tag: '@fixme' }, async ({ page }) => {
+test('V2-B01: Events load and a synthetic event edit is saved and restored', async ({ page }) => {
   await page.goto('/ideas-events?tab=events');
   await expect(page.locator('#eventState')).not.toHaveAttribute('data-state', 'loading', { timeout: 27000 });
   await expect(page.locator('#eventState')).not.toHaveAttribute('data-state', 'unavailable');
