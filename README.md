@@ -45,6 +45,22 @@ npx e2e run
 npm run test:regressions
 ```
 
+The signed-in staging smoke uses [Playwright Test](https://playwright.dev/docs/intro)
+and its [authentication setup project](https://playwright.dev/docs/auth).
+Provide `E2E_SESSION_SECRET` through the environment, then run:
+
+```bash
+npx playwright test --project=chromium
+```
+
+The setup exchanges that secret at staging's `/auth/e2e-session` for the
+synthetic `e2e-joe` account and saves `storageState` under ignored
+`playwright/.auth/`. The Chromium journey visits Home, Leads, Tours, Local Deals,
+Vendors, Control Room, Relationships and Invoices, then reloads Home and checks
+the account menu. It uses the fixed staging origin in `playwright.config.ts`.
+Keep the secret and saved browser state out of logs and commits. The existing
+fixture suites continue to run separately.
+
 `npm run release:prepare` runs checks, tests, build and source-bound artifact
 verification with a credential-free child environment. Run it before either
 publication command. The CARR pipeline invokes this entrypoint separately from
