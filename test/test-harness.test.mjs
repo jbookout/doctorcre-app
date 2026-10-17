@@ -2,7 +2,18 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { chromium } from './browser-harness.mjs';
+import { chromium, webkitSkipReason } from './browser-harness.mjs';
+
+test('WebKit skips macOS 27 and newer without disabling Linux CI or older Macs', () => {
+  for (const version of ['27.0.1', '28.0']) {
+    assert.match(webkitSkipReason('darwin', version), /Playwright 1\.63\.0.*webkit-2359.*_WKBrowserContext/);
+    assert.match(webkitSkipReason('darwin', version), /Do not.*install.*webkit/);
+  }
+  assert.equal(webkitSkipReason('darwin', '26.5.1'), false);
+  assert.equal(webkitSkipReason('darwin', '15.7'), false);
+  assert.equal(webkitSkipReason('linux', '27.0'), false);
+  assert.equal(webkitSkipReason('win32', '27.0'), false);
+});
 
 test('launches share one Chromium while each test keeps its own storage', async () => {
   const [a, b] = await Promise.all([chromium.launch(), chromium.launch()]);
