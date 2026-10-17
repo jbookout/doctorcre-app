@@ -1,4 +1,5 @@
 /* The shared sheet owns colour and type. Accountable activity stays separate from notifications; WR-000116 quiet rows remain marked, never hidden. */
+
 .topbar { flex-wrap: wrap; }
 .global-controls { flex-wrap: wrap; justify-content: flex-end; }
 

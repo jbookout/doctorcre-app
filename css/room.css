@@ -1,5 +1,6 @@
 /* Ruling 0892c539 puts this in Control Room. Rule 67580c28 owns the dark tokens; no light theme. Local dark ground differs from app.css's paper-derived night palette. */
 /* Motion follows 9293d609/eeb3d106: colour, shape and rate encode state; reduced motion disables motion while preserving colour and shape cues. */
+
 :root {
   --ground: #07090C;
   --ground-2: #0B0F16;

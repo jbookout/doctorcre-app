@@ -1,4 +1,5 @@
 /* The shared sheet owns colour and type; last-known status must not look live, and uncovered health must not look like zero or outage. */
+
 .topbar { flex-wrap: wrap; }
 .global-controls { flex-wrap: wrap; justify-content: flex-end; }
 
