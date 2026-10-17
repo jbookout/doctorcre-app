@@ -29,7 +29,7 @@ test('Account opens Profile and returns focus; presentation toggles restore thei
   await expect(account).toHaveAttribute('aria-expanded', 'false');
 });
 
-test.fixme('V2-D01: Shell intermittently keeps Connection available after an offline refresh', { tag: '@fixme' }, async ({ page, context }) => {
+test('V2-D01: Shell clears connection health offline and restores it after reconnecting', async ({ page, context }) => {
   await page.goto('/');
   await expect(page.locator('#appConnection')).toHaveAttribute('aria-label', 'Connection available', { timeout: 27000 });
   try {

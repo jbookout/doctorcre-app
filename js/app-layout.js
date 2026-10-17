@@ -154,17 +154,24 @@ export function mountAppLayout(root, host, pathname) {
     && text(i.subject_type) && text(i.subject_id) && text(i.subject_name)
     && optionalText(i.what) && optionalText(i.due_on) && (!i.due_on || toDay(i.due_on)));
   const connection = connected => {
+    connected = connected && win.navigator.onLine !== false;
     const dot = status.querySelector('#appConnection'); dot.dataset.state = connected ? 'healthy' : 'unknown';
     dot.setAttribute('aria-label', connected ? 'Connection available' : 'Connection unavailable'); dot.title = dot.getAttribute('aria-label');
   };
+  const unavailableRead = () => {
+    resetFeed(); connection(false);
+    render('#appTodayNeeds', unavailable); render('#appTodayNext', unavailable); render('#appWorkingList', unavailable);
+    if (!pageOwnsMoves) render('#appTodayMoves', unavailable);
+  };
   const refresh = async ({ signal } = {}) => {
+    if (win.navigator.onLine === false) { unavailableRead(); return; }
     try { client ||= await createClient(boot.mode, { ...boot.options, docContext:false }); }
-    catch { resetFeed(); connection(false); render('#appTodayNeeds', unavailable); render('#appTodayNext', unavailable); render('#appWorkingList', unavailable); if (!pageOwnsMoves) render('#appTodayMoves', unavailable); return; }
+    catch { unavailableRead(); return; }
     const [board, triage] = await Promise.allSettled([
       readWithDeadline(() => client.getBoard({ workspace:'all' }), { signal }),
       readWithDeadline(() => client.todayTriage(), { signal }),
     ]);
-    if (signal?.aborted) return;
+    if (signal?.aborted || win.navigator.onLine === false) return;
     const connected = board.status === 'fulfilled' && validBoard(board.value);
     const triageValid = triage.status === 'fulfilled' && validTriage(triage.value);
     connection(connected && triageValid);
@@ -194,7 +201,7 @@ export function mountAppLayout(root, host, pathname) {
           // page as recent; advance bounded pages until it reaches the present.
           for (let page = 0; page < 4; page++) {
             const changes = await readWithDeadline(() => client.getChanges(cursor), { signal });
-            if (signal?.aborted) return;
+            if (signal?.aborted || win.navigator.onLine === false) return;
             if (!Array.isArray(changes?.events)) throw new Error('Invalid change response');
             const batch = changes.events;
             feed = observeChangeBatch(feed, batch);
@@ -214,8 +221,11 @@ export function mountAppLayout(root, host, pathname) {
     if (existing) { closeDrawer(); existing.click(); }
     else globalThis.location.assign(`/deals?deal=${encodeURIComponent(id)}`);
   });
-  const auto = mountAutoRefresh({ document:root, window:win, refresh, intervalMs:30_000 });
+  win.addEventListener('offline', unavailableRead);
+  const auto = mountAutoRefresh({ document:root, window:win, refresh, onResume:unavailableRead, intervalMs:30_000 });
   status.querySelector('#appSyncRefresh').onclick = () => { auto.refresh(); root.querySelectorAll('[data-layout-refresh]').forEach(button => button.click()); };
   auto.refresh();
-  win.addEventListener('pagehide', event => { if (!event.persisted) auto.dispose(); });
+  win.addEventListener('pagehide', event => {
+    if (!event.persisted) { auto.dispose(); win.removeEventListener('offline', unavailableRead); }
+  });
 }
