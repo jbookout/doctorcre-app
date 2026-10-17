@@ -11,12 +11,19 @@ const run = (command, args, { capture = false } = {}) => execFileSync(command, a
   env: credentialFreeEnv(),
 });
 
+const args = process.argv.slice(2);
+if (args.length && (args.length !== 2 || args[0] !== '--source-sha' || !/^[0-9a-f]{40}$/.test(args[1]))) {
+  throw new Error('usage: release:staging [--source-sha <exact-HEAD-SHA>]');
+}
+const candidateCommit = args[1];
 const sourceCommit = run("git", ["rev-parse", "HEAD"], { capture: true }).trim();
 const mainCommit = run("git", ["rev-parse", "origin/main"], { capture: true }).trim();
 const status = run("git", ["status", "--porcelain", "--untracked-files=all"], { capture: true }).trim();
 
 if (!/^[0-9a-f]{40}$/.test(sourceCommit)) throw new Error("HEAD is not a full Git commit");
-if (sourceCommit !== mainCommit) throw new Error("staging releases must use the exact origin/main commit");
+if (candidateCommit) {
+  if (sourceCommit !== candidateCommit) throw new Error('staging candidate differs from the exact source SHA');
+} else if (sourceCommit !== mainCommit) throw new Error("staging releases must use the exact origin/main commit");
 if (status) throw new Error("staging releases require a clean checkout");
 
 // Verification also replaces dist/site from the verified archive, so restored
