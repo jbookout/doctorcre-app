@@ -11,7 +11,7 @@
 //    BROWSER_ROUTE_JITTER_MS=<ms> answers each routed request up to <ms> late,
 //    so a CI-starved runner can be reproduced locally.
 import { after } from 'node:test';
-import { spawn } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
 import { setTimeout as delay } from 'node:timers/promises';
 import { chromium as playwrightChromium, webkit as playwrightWebkit } from 'playwright';
 
@@ -20,6 +20,13 @@ const throttle = Number(process.env.BROWSER_CPU_THROTTLE || 1);
 const jitter = Number(process.env.BROWSER_ROUTE_JITTER_MS || 0);
 const LOOPBACK = new Set(['localhost', '127.0.0.1', '[::1]']);
 const pools = [];
+
+export function webkitSkipReason(platform = process.platform, macOSVersion = platform === 'darwin'
+  ? execFileSync('/usr/bin/sw_vers', ['-productVersion'], { encoding: 'utf8' }).trim() : '') {
+  return platform === 'darwin' && Number(macOSVersion.split('.')[0]) >= 27
+    ? 'Playwright 1.63.0 webkit-2359 crashes on macOS 27+ with missing _WKBrowserContext. Do not run playwright install webkit; WebKit coverage stays in Linux CI.'
+    : false;
+}
 
 after(async () => {
   const results = await Promise.allSettled(pools.flatMap(pool => [...pool.values()]));
@@ -77,6 +84,7 @@ function browserEngine(engine) {
 
 export const chromium = browserEngine(playwrightChromium);
 export const webkit = browserEngine(playwrightWebkit);
+webkit.skip = webkitSkipReason();
 
 // Starts scripts/serve.mjs on a port the OS picks. A port drawn at random from
 // a fixed range can be taken by a parallel run or an ephemeral connection.
