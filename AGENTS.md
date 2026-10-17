@@ -51,7 +51,7 @@ not change CARR runtime or deployment.
 
 Every task, all required:
 
-1. Size it first. One obvious change: build it. Medium or large: run `/grill-with-docs` before writing code. Bigger than one session: map it with `/wayfinder`.
+1. Size it first under rule `8400cd3d`. One obvious change: build it. Medium or large: run `/grill-with-docs` before writing code. Bigger than one session: file a Work Request whose criteria define the slices, then size each slice again when dispatched.
 2. Work in `/poteto-mode` (pstack). Subtract before you add. Use a tool the way its own docs say, and build no proof, receipt or harness machinery nobody asked for.
 3. Code changes go test-first with `/tdd`. A bug starts with `/diagnosing-bugs`.
 4. Before the PR, run the design and debt pass below.
