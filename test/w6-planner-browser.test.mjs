@@ -55,7 +55,13 @@ test("W6 desktop and phone render, client prefill/undo, private files, wide popu
     await page.locator("#plan-area").fill("Typed tour area"); await page.getByLabel("Undo tour edit", { exact: true }).click();
     assert.equal(await page.locator("#plan-area").inputValue(), "Pensacola, FL");
     await page.locator("#plan-date").fill("2026-10-08"); await page.locator("#plan-dwell").fill("25");
+    assert.equal(await page.locator("#file-count").textContent(), "0 files");
     await page.locator("#packet-upload").setInputFiles({ name: "demo-report.txt", mimeType: "text/plain", buffer: Buffer.from("Synthetic private report bytes") });
+    assert.equal(await page.locator("#file-count").textContent(), "1 file");
+    await page.locator("#packet-upload").setInputFiles({ name: "demo-second.txt", mimeType: "text/plain", buffer: Buffer.from("Synthetic second private report") });
+    assert.equal(await page.locator("#file-count").textContent(), "2 files");
+    await page.getByRole("button", { name: "Remove demo-second.txt", exact: true }).click();
+    assert.equal(await page.locator("#file-count").textContent(), "1 file");
     assert.match(await page.locator("#packet-files").textContent(), /demo-report/);
     assert.equal(await page.evaluate(() => sessionStorage.getItem("doctorcre-tour-planning-drafts-v1").includes("demo-report")), false);
     await page.locator('[data-market="Pensacola, FL"]').click(); assert.equal(await page.locator("#space-area").inputValue(), "Pensacola, FL");

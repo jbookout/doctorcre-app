@@ -23,6 +23,7 @@
 //     error carrying a status. They are two different facts, not two paints of
 //     one, and they are never allowed to collapse into each other.
 import { PREFERENCES_KEY } from "./shell.js";
+import { isCalendarDay } from './calendar-model.js';
 
 /* -------------------------------------------------- the producer's own numbers */
 
@@ -72,7 +73,7 @@ export const SEARCH_PAYLOAD_KEYS = Object.freeze([
 
 const PARTY_KEYS = ["name", "city", "specialty", "org_name", "ref", "kind", "merged"];
 const ORGANIZATION_KEYS = ["name", "live_rows", "refs", "retired_aliases", "retired_refs", "retired_refs_truncated", "live_as_role", "role_refs", "all_retired"];
-const DEAL_KEYS = ["name", "phase", "owner", "client_ref"];
+const DEAL_KEYS = ["name", "phase", "owner", "client_ref", "invoiced_on", "closed_on", "lane", "outcome"];
 
 /** `kindFromRef` (tools.js:2065-2071) — the six words a candidate kind can be. */
 export const CANDIDATE_KINDS = Object.freeze(["deal", "lead", "client", "vendor", "party", "record"]);
@@ -136,7 +137,10 @@ export function validSearchDeal(row) {
   if (!exactKeys(row, DEAL_KEYS)) return false;
   if (!nonEmptyString(row.name)) return false;
   // owner is lead_owner and was observed null; client_ref is nullable too.
-  return nullableString(row.phase) && nullableString(row.owner) && nullableString(row.client_ref);
+  return nullableString(row.phase) && nullableString(row.owner) && nullableString(row.client_ref)
+    && (row.invoiced_on === null || isCalendarDay(row.invoiced_on))
+    && (row.closed_on === null || isCalendarDay(row.closed_on))
+    && nullableString(row.lane) && nullableString(row.outcome);
 }
 
 /**
@@ -145,8 +149,8 @@ export function validSearchDeal(row) {
  * eighth is refused rather than ignored, so a producer that starts sending a
  * field this page does not render has to come back and declare it.
  *
- * Every row shape below is checked as a shape, not as content: `connections`,
- * `lead_client_links` and `deals_via_link` carry producer-chosen columns whose
+ * Every row shape below is checked as a shape, not as content: `connections`
+ * and `lead_client_links` carry producer-chosen columns whose
  * set this page does not pin, so they are required to be objects with a name or
  * a ref the page can print and nothing more.
  */
@@ -158,7 +162,8 @@ export function validSearchPayload(payload) {
   if (!payload.parties.every((row) => validSearchParty(row))) return false;
   if (!payload.organizations.every((row) => validSearchOrganization(row))) return false;
   if (!payload.deals.every((row) => validSearchDeal(row))) return false;
-  for (const key of ["connections", "lead_client_links", "deals_via_link"]) {
+  if (!payload.deals_via_link.every((row) => validSearchDeal(row))) return false;
+  for (const key of ["connections", "lead_client_links"]) {
     if (!payload[key].every((row) => Boolean(row) && typeof row === "object" && !Array.isArray(row))) return false;
   }
   // `note` is the producer's own sentence and this page prints it verbatim.
