@@ -1,5 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { execFile } from 'node:child_process';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { promisify } from 'node:util';
 import { startFixtureServer } from '../scripts/fixture-server.mjs';
 
 const within = (promise, ms) => Promise.race([promise,
@@ -27,3 +32,53 @@ test('the real fixture server serves and stops', async () => {
   assert.equal((await fetch(server.url + '/')).status, 200);
   await within(server.stop(), 10000);
 });
+
+const run = promisify(execFile);
+const harness = new URL('./browser-harness.mjs', import.meta.url).href;
+const probe = `
+  import assert from 'node:assert/strict';
+  const { fixtureServer } = await import(${JSON.stringify(harness)});
+  const { options, expected } = JSON.parse(process.argv[1]);
+  const server = await fixtureServer(options);
+  try {
+    assert.equal(new URL(server.origin).hostname, '127.0.0.1');
+    assert.equal(new URL(server.origin).protocol, 'http:');
+    assert.ok(Number(new URL(server.origin).port) > 0);
+    const response = await fetch(server.origin + '/fixture-root-probe.txt');
+    if (expected === null) {
+      assert.equal(response.status, 404);
+      assert.equal((await fetch(server.origin + '/')).status, 200);
+    } else {
+      assert.equal(response.status, 200);
+      assert.equal(await response.text(), expected);
+    }
+  } finally {
+    const closed = server.close();
+    await closed;
+    assert.equal(typeof closed?.then, 'function');
+  }
+  await assert.rejects(fetch(server.origin + '/', { signal: AbortSignal.timeout(1000) }));
+  await server.close();
+`;
+
+for (const mode of ['default', 'ambient', 'explicit', 'empty']) {
+  test(`fixture adapter preserves ${mode} root and awaits repeatable shutdown`, async t => {
+    const directory = await mkdtemp(join(tmpdir(), 'doctorcre-fixture-adapter-'));
+    t.after(() => rm(directory, { recursive: true, force: true }));
+    const ambient = join(directory, 'ambient');
+    const explicit = join(directory, 'explicit');
+    await Promise.all([mkdir(ambient), mkdir(explicit)]);
+    await Promise.all([
+      writeFile(join(ambient, 'fixture-root-probe.txt'), 'ambient synthetic root'),
+      writeFile(join(explicit, 'fixture-root-probe.txt'), 'explicit synthetic root'),
+    ]);
+    const env = { ...process.env };
+    delete env.DOCTORCRE_FIXTURE_ROOT;
+    if (mode !== 'default') env.DOCTORCRE_FIXTURE_ROOT = ambient;
+    const options = mode === 'explicit' ? { root: explicit } : mode === 'empty' ? { root: '' } : {};
+    const expected = mode === 'default' ? null : mode === 'explicit' ? 'explicit synthetic root' : 'ambient synthetic root';
+    const result = await run(process.execPath, ['--input-type=module', '-e', probe, JSON.stringify({ options, expected })],
+      { env, timeout: 20000 });
+    assert.equal(result.stderr, '');
+  });
+}
