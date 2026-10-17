@@ -18,7 +18,7 @@ test('Vendors filter by owner, reset and search the loaded directory', async ({ 
   await expect(page.locator('.record-row').first()).toBeVisible();
 });
 
-test.fixme('V2-A02: Today covers Vendor Reset at 1280px after filtering by owner', { tag: '@fixme' }, async ({ page }) => {
+test('V2-A02: Vendor Reset remains available with Today open at 1280px', async ({ page }) => {
   await page.goto('/vendors');
   await expect(page.locator('.record-row').first()).toBeVisible();
   await page.locator('[data-owner="dell"]').click();
