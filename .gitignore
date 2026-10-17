@@ -11,13 +11,9 @@ __pycache__/
 *.pyc
 
 test-artifacts/
-# Assembled from slice-owned modules and route fragments.
-/contracts/app-routes.v1.json
-/js/slices.generated.js
 /tours/day-shell.generated.js
 /js/ui.generated.js
 /out/
-/_to_delete/
 # Ad-hoc screen captures; the journeys write their evidence under /.e2e/.
 mobile-a11y-evidence/
 

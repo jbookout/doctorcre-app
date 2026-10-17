@@ -184,7 +184,7 @@ export function readSnapshot(storage) {
 /** Returns whether the write landed; a refusing store is not an error here. */
 export function writeSnapshot(storage, snapshot) {
   try {
-    storage?.setItem?.(SNAPSHOT_KEY, JSON.stringify(snapshot));
+    storage.setItem(SNAPSHOT_KEY, JSON.stringify(snapshot));
     return true;
   } catch {
     return false;

@@ -9,7 +9,6 @@ export function preserveBoardFocus({ board, document, paint, announce = () => {}
   paint();
   if (!id) return;
 
-  // A dialog or another control can take focus while painting. That choice wins.
   const focused = document.activeElement;
   if (focused !== document.body && focused !== active) return;
 

@@ -1,5 +1,3 @@
-// Human words for the Tours page. Pure functions only, so they can be tested
-// without a browser; tours/app.js paints what these return.
 
 const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -32,7 +30,6 @@ export function cheatSheetText(content) {
   return JSON.stringify(content, null, 2);
 }
 
-// Projection keys as a broker would say them. Anything unmapped is humanized.
 const FACT_LABELS = Object.freeze({
   "display.name": "Property name",
   "display.address": "Address",

@@ -2,7 +2,7 @@ import { correspondenceState, meetingEvidence, readinessRequest, readinessState,
 const esc = value => String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
 const when = value => new Date(value).toLocaleString([], { year: 'numeric', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true });
 
-function evidenceGroup(title, state, source) {
+function evidenceGroup(title, state) {
   const group = title === 'Threads' ? 'threads' : 'meetings';
   if (state?.state !== 'ready') {
     const loading = state?.state === 'loading';
@@ -13,7 +13,7 @@ function evidenceGroup(title, state, source) {
   return `<div class="evidence-group" data-evidence-group="${group}"><h4>${title}</h4><ol class="evidence-timeline">${items.map(item => `<li class="evidence-item" data-kind="${esc(item.kind)}"><details><summary><span>${esc(item.title)}</span><time datetime="${esc(item.when)}">${esc(when(item.when))}</time></summary><p>${item.kind === 'thread' ? 'Email' : 'Meeting'}</p></details></li>`).join('')}</ol></div>`;
 }
 export function renderEvidence(view = {}) {
-  return `<section class="correspondence-evidence" aria-label="Evidence" aria-live="polite"><h3>Evidence</h3>${evidenceGroup('Threads', view.threads, 'CARR governed correspondence')}${evidenceGroup('Meetings', view.meetings, 'CARR deal activity')}</section>`;
+  return `<section class="correspondence-evidence" aria-label="Evidence" aria-live="polite"><h3>Evidence</h3>${evidenceGroup('Threads', view.threads)}${evidenceGroup('Meetings', view.meetings)}</section>`;
 }
 async function boundedRead(read, timeoutMs) {
   let timer;
@@ -41,7 +41,7 @@ export function mountEvidence(root, { client, detail = {}, timeoutMs } = {}) {
   root.innerHTML = renderEvidence({ threads: { state: 'loading' }, meetings: meetingEvidence(detail.activities) });
   const threads = root.querySelector('[data-evidence-group="threads"]');
   loadEvidence(client, detail, { timeoutMs }).then(view => {
-    if (!disposed) threads.outerHTML = evidenceGroup('Threads', view.threads, 'CARR governed correspondence');
+    if (!disposed) threads.outerHTML = evidenceGroup('Threads', view.threads);
   });
   return () => { disposed = true; };
 }

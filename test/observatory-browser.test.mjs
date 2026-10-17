@@ -7,7 +7,7 @@ import { groupConversations, labelFor, modelFor, summarizeNow } from '../js/obse
 const html = await readFile(new URL('../observatory.html', import.meta.url), 'utf8');
 const source = (await readFile(new URL('../js/observatory.js', import.meta.url), 'utf8')).replace(/^import .*;\n/gm, '');
 const settle = async () => { for (let i = 0; i < 10; i++) await new Promise(resolve => setImmediate(resolve)); };
-const turn = (seq, body = `WR-${seq}: Topic ${seq}`) => ({ seq: String(seq), msg_id: `m${seq}`, seat: 'human', sponsor: 'joe', kind: 'turn', body, at: new Date().toISOString() });
+const turn = (seq, body = `WR-${seq}: Topic ${seq}`) => ({ seq: String(seq), msg_id: `m${seq}`, seat: 'human', sponsor: 'joe', kind: 'turn', body, at: new Date(Date.UTC(2026, 9, 1) + seq * 60_000).toISOString() });
 const page = (seq, more = true, body) => ({ turns: [turn(seq, body)], before_seq: seq, more });
 
 function openRoom(fetch, thread = 'wr-000001') {

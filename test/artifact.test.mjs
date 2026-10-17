@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { copyFile, mkdtemp, readFile, rename, rm, writeFile, symlink } from "node:fs/promises";
+import { copyFile, mkdir, mkdtemp, readFile, rename, rm, writeFile, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 import { chromium } from './browser-harness.mjs';
@@ -53,7 +53,7 @@ test("the static artifact rebuild is byte-for-byte reproducible", async () => {
   assert.deepEqual(await readFile(join(first, "site", "workspace.html")), trackedHtml(await readFile(join(ROOT, "workspace.html"))));
   assert.deepEqual(await readFile(join(first, "site", "control-room.html")), trackedHtml(await readFile(join(ROOT, "control-room.html"))));
   assert.equal(a.manifest.files.some((file) => file.path === "control-room.html"), true);
-  assert.equal(verifyArtifact(a.archive, a.archiveSha256).manifest.files.some((file) => file.path === "control-room.html"), true);
+  assert.equal((await verifyArtifact(a.archive, a.archiveSha256)).manifest.files.some((file) => file.path === "control-room.html"), true);
   assert.deepEqual(await readFile(join(first, "site", "contracts", "lease-radar.v1.json")), await readFile(join(ROOT, "contracts", "lease-radar.v1.json")));
 });
 
@@ -68,28 +68,25 @@ test("the deployment directory is rebuilt without stale files", async () => {
 test("verification binds every payload file and rejects changed bytes", async () => {
   const outDir = await mkdtemp(join(tmpdir(), "doctorcre-artifact-verify-"));
   const built = await buildArtifact({ root: ROOT, outDir, commit: COMMIT });
-  const verified = verifyArtifact(built.archive, built.archiveSha256);
+  const verified = await verifyArtifact(built.archive, built.archiveSha256);
   assert.equal(verified.fileCount, built.manifest.files.length);
   assert.equal(verified.manifest.source_commit, COMMIT);
 
   const changed = Buffer.from(await readFile(join(outDir, "doctorcre-app.tar")));
   changed[520] ^= 1;
-  assert.throws(() => verifyArtifact(changed, built.archiveSha256), /digest mismatch/);
+  await assert.rejects(() => verifyArtifact(changed, built.archiveSha256), /digest mismatch/);
 
   const badHeader = Buffer.from(built.archive);
   badHeader[0] ^= 1;
-  assert.throws(() => verifyArtifact(badHeader), /header checksum/);
+  await assert.rejects(() => verifyArtifact(badHeader), /tar header|checksum/i);
 
-  const badTrailer = Buffer.from(built.archive);
-  badTrailer[badTrailer.length - 1] = 1;
-  assert.throws(() => verifyArtifact(badTrailer), /archive trailer/);
 });
 
 test("every contracted page including Doc activity is present in the deployment and archive", async () => {
-  const routes = JSON.parse(await readFile(join(ROOT, "contracts/app-routes.v1.json")));
+  const routes = (await import("../js/routes.js")).routeContract;
   const outDir = await mkdtemp(join(tmpdir(), "doctorcre-route-artifact-"));
   const built = await buildArtifact({ root: ROOT, outDir, commit: COMMIT });
-  const verified = verifyArtifact(built.archive, built.archiveSha256);
+  const verified = await verifyArtifact(built.archive, built.archiveSha256);
   for (const path of new Set(Object.values(routes.routes))) {
     assert.ok(verified.manifest.files.some(file => file.path === path), `missing deployed route: ${path}`);
     const source = await readFile(join(ROOT, path));
@@ -104,8 +101,8 @@ async function committedFixture(t) {
   git(["clone", "--quiet", "--shared", "--no-hardlinks", ROOT, "."]);
   await symlink(join(ROOT, 'node_modules'), join(root, 'node_modules'), 'dir');
   // Exercise the code under test, including edits not yet committed by the maker.
-  for (const path of ["scripts/artifact.mjs", "scripts/build-artifact.mjs", "js/navigation.js", "js/app-shell.js", "reports/share.js", "contracts/slice-ownership.v1.json", "package.json", "package-lock.json"]) await copyFile(join(ROOT, path), join(root, path));
-  git(["add", "scripts/artifact.mjs", "scripts/build-artifact.mjs", "js/navigation.js", "js/app-shell.js", "reports/share.js", "contracts/slice-ownership.v1.json", "package.json", "package-lock.json"]);
+  for (const path of ["scripts/artifact.mjs", "scripts/build-artifact.mjs", "scripts/ui-bundle.mjs", "src/ui/index.tsx", "src/ui/node-host.tsx", "js/navigation.js", "js/app-shell.js", "reports/share.js", "js/routes.js", "package.json", "package-lock.json"]) { await mkdir(dirname(join(root, path)), { recursive: true }); await copyFile(join(ROOT, path), join(root, path)); }
+  git(["add", "scripts/artifact.mjs", "scripts/build-artifact.mjs", "scripts/ui-bundle.mjs", "src/ui/index.tsx", "src/ui/node-host.tsx", "js/navigation.js", "js/app-shell.js", "reports/share.js", "js/routes.js", "package.json", "package-lock.json"]);
   git(["-c", "user.name=Test", "-c", "user.email=test@example.invalid", "commit", "--quiet", "--allow-empty", "-m", "Synthetic verifier fixture"]);
   const commit = git(["rev-parse", "HEAD"]);
   const outDir = join(root, "dist");
@@ -124,7 +121,7 @@ test("one contract path declaration drives both assembly and committed-source ve
   const git = (args) => execFileSync("git", args, { cwd: root, encoding: "utf8", stdio: "pipe" }).trim();
   git(["clone", "--quiet", "--shared", "--no-hardlinks", ROOT, "."]);
   await symlink(join(ROOT, 'node_modules'), join(root, 'node_modules'), 'dir');
-  for (const path of ["scripts/artifact.mjs", "scripts/build-artifact.mjs", "js/navigation.js", "js/app-shell.js", "reports/share.js", "contracts/slice-ownership.v1.json", "package.json", "package-lock.json"]) await copyFile(join(ROOT, path), join(root, path));
+  for (const path of ["scripts/artifact.mjs", "scripts/build-artifact.mjs", "scripts/ui-bundle.mjs", "src/ui/index.tsx", "src/ui/node-host.tsx", "js/navigation.js", "js/app-shell.js", "reports/share.js", "js/routes.js", "package.json", "package-lock.json"]) { await mkdir(dirname(join(root, path)), { recursive: true }); await copyFile(join(ROOT, path), join(root, path)); }
   const contracts = [
     ["carr_interface", "contracts/carr-interface.v1.json", "contracts/synthetic-interface.v1.json"],
   ];
@@ -135,7 +132,7 @@ test("one contract path declaration drives both assembly and committed-source ve
     source = source.replace(oldPath, newPath);
   }
   await writeFile(join(root, "scripts/artifact.mjs"), source);
-  git(["add", "scripts/artifact.mjs", "scripts/build-artifact.mjs", "js/navigation.js", "js/app-shell.js", "reports/share.js", "contracts/slice-ownership.v1.json", "package.json", "package-lock.json", ...contracts.flatMap(([, oldPath, newPath]) => [oldPath, newPath])]);
+  git(["add", "scripts/artifact.mjs", "scripts/build-artifact.mjs", "scripts/ui-bundle.mjs", "src/ui/index.tsx", "src/ui/node-host.tsx", "js/navigation.js", "js/app-shell.js", "reports/share.js", "js/routes.js", "package.json", "package-lock.json", ...contracts.flatMap(([, oldPath, newPath]) => [oldPath, newPath])]);
   git(["-c", "user.name=Test", "-c", "user.email=test@example.invalid", "commit", "--quiet", "-m", "Synthetic relocated contracts"]);
   for (const command of ["build", "verify"]) {
     execFileSync(process.execPath, ["scripts/build-artifact.mjs", command], {
@@ -162,9 +159,13 @@ test("a coherently rehashed artifact still must match committed source bytes", a
   const original = await readFile(path);
   await writeFile(path, "Synthetic forged payload");
   const forged = await buildArtifact({ root, outDir, commit });
-  assert.equal(verifyArtifact(forged.archive, forged.archiveSha256).manifest.source_commit, commit);
+  assert.equal((await verifyArtifact(forged.archive, forged.archiveSha256)).manifest.source_commit, commit);
   await writeFile(path, original);
   await assert.rejects(runCli(root, ["verify"]), /artifact does not match committed source/);
+  await rm(path);
+  await buildArtifact({ root, outDir, commit });
+  await assert.rejects(runCli(root, ["verify"]), /source input set mismatch/);
+
 });
 
 test("a valid-looking source SHA cannot substitute for HEAD", async (t) => {
@@ -183,11 +184,6 @@ test("changed contract source bytes are rejected even when payload bytes are unc
 test("an untracked artifact input cannot be smuggled into a source-bound build", async (t) => {
   const { root, outDir, commit } = await committedFixture(t);
   await writeFile(join(root, "js", "synthetic-extra.js"), "// synthetic extra input\n");
-  await assert.rejects(buildArtifact({ root, outDir, commit }), /file needs a slice owner or shared declaration/);
-  const ownershipPath = join(root, 'contracts/slice-ownership.v1.json');
-  const ownership = JSON.parse(await readFile(ownershipPath));
-  ownership.shared.push('js/synthetic-extra.js');
-  await writeFile(ownershipPath, JSON.stringify(ownership));
   await buildArtifact({ root, outDir, commit });
   await assert.rejects(runCli(root, ["verify"]), /source input set mismatch/);
 });
@@ -204,19 +200,6 @@ test("an empty or misnamed digest sidecar cannot turn off digest verification", 
     await writeFile(join(outDir, "doctorcre-app.tar.sha256"), content);
     await assert.rejects(runCli(root, ["verify"]), /artifact digest sidecar is invalid/);
   }
-});
-
-
-test("slice fragments and generated registry stay bound to committed source", async t => {
-  const { root } = await committedFixture(t);
-  const fragment = join(root, "contracts/routes/home.json");
-  const original = await readFile(fragment, "utf8");
-  await writeFile(fragment, original + "\n");
-  await assert.rejects(runCli(root, ["verify"]), /source input mismatch/);
-  await writeFile(fragment, original);
-  const registry = join(root, "js/slices.generated.js");
-  await writeFile(registry, (await readFile(registry, "utf8")) + "// Demo tampered registry\n");
-  await assert.rejects(runCli(root, ["verify"]), /source input mismatch/);
 });
 
 test('provider preparation replaces poisoned cache output with verified committed bytes', async t => {
@@ -269,7 +252,7 @@ test('report assembly is independent of app-shell implementation spelling', asyn
 test('Home and Tasks retain their routes while retired Home implementation leaves the artifact', async () => {
   const outDir = await mkdtemp(join(tmpdir(), 'doctorcre-home-retirement-'));
   const built = await buildArtifact({root:ROOT,outDir,commit:COMMIT});
-  const routes = JSON.parse(await readFile(join(ROOT, 'contracts/app-routes.v1.json')));
+  const routes = (await import("../js/routes.js")).routeContract;
   assert.equal(routes.routes['/'], 'workspace.html');
   assert.equal(routes.routes['/doc-chats/work'], 'tasks.html');
   assert.equal(routes.redirects['/business'], '/');

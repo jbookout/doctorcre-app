@@ -32,7 +32,6 @@ async function open(t, { width = 1280, motion = 'no-preference' } = {}) {
   return page;
 }
 
-// Every header a row's cells line up under, against the cells that show.
 const shownColumns = (page, table) => page.locator(table).evaluate(node => {
   const shown = cell => getComputedStyle(cell).display !== 'none';
   return { head: [...node.querySelectorAll('thead th')].filter(shown).map(cell => cell.textContent.trim()),
@@ -48,11 +47,9 @@ test('Charts on a phone keep every accounts and owner column under its own heade
   const owners = await shownColumns(page, '#chartOwners table');
   assert.deepEqual(owners.head, ['Owner', 'Records']);
   assert.equal(owners.row, 2);
-  // Only the paint column folds away, header and cells together.
   const phase = await shownColumns(page, '#chartPhase table');
   assert.equal(phase.head.length, 2);
   assert.equal(phase.row, 2);
-  // The accounts table scrolls inside its own scroller; no card is wider than the phone.
   assert.deepEqual(await page.locator('#chartsCanvas > *').evaluateAll(cards => cards.filter(card => card.getBoundingClientRect().right > innerWidth).map(card => card.id)), []);
   assert.equal(await page.locator('#chartAccounts .chart-scroll').evaluate(node => node.scrollWidth > node.clientWidth), true);
 });

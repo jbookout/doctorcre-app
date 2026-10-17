@@ -1,5 +1,4 @@
 import { mountDocPresence } from "./doc-presence.js";
-import { slices } from "./slices.generated.js";
 import { mountAppLayout } from "./app-layout.js";
 import { mountPrefs } from "./shell.js";
 import { resolveDealroomBoot } from "./boot-mode.js";
@@ -12,11 +11,13 @@ export function mountAppShell(root = document, pathname = globalThis.location?.p
   const host = mountNavigation(root, pathname, { location });
   if (!host) return;
   const base = appOriginForReport(location?.origin || "");
-  if (!base) mountAccount(root, host, pathname);
+  let disposeDocPresence = () => {};
+  if (!base) mountAccount(root, host, pathname, () => disposeDocPresence());
   if (!base && pathname !== "/share") {
-    mountAppLayout(root, host, pathname, slices);
+    mountAppLayout(root, host, pathname);
     root.querySelector(".app-layout-status").append(host.querySelector(".app-shell-call-availability"));
-    mountDocPresence({ document:root, window:root.defaultView });
+    const docPresence = mountDocPresence({ document:root, window:root.defaultView });
+    disposeDocPresence = () => docPresence?.dispose();
   }
 }
 
@@ -25,7 +26,7 @@ export function partnerIdentity(session) {
   return slug === "joe" || slug === "dell" ? { slug, name: slug === "joe" ? "Joe" : "Dell", initial: slug === "joe" ? "J" : "D" } : null;
 }
 
-function mountAccount(root, host, pathname) {
+function mountAccount(root, host, pathname, beforeSignOutReplace = () => {}) {
   mountPrefs();
   const avatar = host.querySelector("#selfAvatar");
   const panel = host.querySelector("#accountMenu");
@@ -86,10 +87,26 @@ function mountAccount(root, host, pathname) {
     if (!session?.csrf_token) { panel.querySelector("#accountStatus").textContent = "Sign-in unavailable"; return; }
     event.target.disabled = true;
     try {
-      const response = await fetch("/auth/signout", { method: "POST", credentials: "same-origin", headers: { "x-carr-csrf": session.csrf_token } });
-      if (!response.ok) throw new Error();
+      // The auth service responds with a redirect to /. Fetch must not follow
+      // that redirect into a fresh login flow before we check revocation.
+      const response = await fetch("/auth/signout", { method: "POST", credentials: "same-origin",
+        redirect: "manual", headers: { "x-carr-csrf": session.csrf_token } });
+      if (response.type !== "opaqueredirect") throw new Error();
+      const after = await fetch("/auth/session", { credentials: "same-origin", cache: "no-store",
+        redirect: "manual", headers: { accept: "application/json" } });
+      if (after.status !== 401) throw new Error();
       offlineTourSession(globalThis.window).revoke();
-      globalThis.location.assign("/auth/login");
+      session = null;
+      const view = root.createElement("main");
+      view.className = "app-shell-signed-out";
+      const title = root.createElement("h1");
+      title.textContent = "Signed out";
+      const link = root.createElement("a");
+      link.href = "/auth/login";
+      link.textContent = "Sign in again";
+      view.append(title, link);
+      beforeSignOutReplace();
+      root.body.replaceChildren(view);
     } catch { panel.querySelector("#accountStatus").textContent = "Sign-out unavailable"; event.target.disabled = false; }
   };
   if (!root.getElementById("callModeDialog")) {

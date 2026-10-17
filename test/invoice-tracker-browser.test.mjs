@@ -10,7 +10,7 @@ async function open(t, { width = 1440, reducedMotion = 'no-preference', query = 
   await page.clock.install({ time: new Date(today + 'T17:00:00Z') });
   const errors = []; page.on('pageerror', error => errors.push(error.message));
   const data = invoiceTrackerFixture(today); let failed = false, denied = false, reads = 0, writes = 0; const attempts = [];
-  const routes = JSON.parse(await readFile(new URL('contracts/app-routes.v1.json', root), 'utf8')).routes;
+  const routes = (await import("../js/routes.js")).routeContract.routes;
   await page.route('**/*', async route => {
     const url = new URL(route.request().url());
     if (url.origin !== 'http://localhost') return route.abort();

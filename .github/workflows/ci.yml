@@ -5,13 +5,11 @@ on:
     - cron: "17 3 * * *"
   workflow_dispatch:
   pull_request:
-    types: [opened, synchronize, reopened, edited, ready_for_review, closed]
+    types: [opened, synchronize, reopened, ready_for_review]
   push:
     branches: [main]
 
 concurrency:
-  # PR validation supersedes by workflow + PR. Non-PR verdicts are independent:
-  # sharing a non-cancelling group would still replace older pending runs.
   group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.run_id }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
@@ -38,8 +36,6 @@ jobs:
           cache: npm
           cache-dependency-path: doctorcre-app/package-lock.json
       - run: npm ci
-      - if: github.event_name == 'pull_request'
-        run: node scripts/check-pr-description.mjs
       - id: producer
         name: Read the CARR runtime revision from the consumer contract
         run: >-
@@ -51,7 +47,6 @@ jobs:
           path: carr-producer
           fetch-depth: 0
           persist-credentials: false
-      - run: npm run slices:check
       - run: node --test test/property-producer.test.mjs
         name: Verify the exact CARR runtime interface
         env:
@@ -64,24 +59,14 @@ jobs:
       # PRs test the merge candidate under the strict required `test` context.
       # Main retains build/input checks; tag releases still run the full suite.
       - run: npm test
-        if: github.event_name == 'pull_request'
+        if: ${{ github.event_name == 'pull_request' }}
       - run: node --test test/artifact.test.mjs test/ci-workflows.test.mjs
-        if: github.event_name == 'push'
-      - if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
-        run: node scripts/full-main.mjs app
+        if: ${{ github.event_name == 'push' }}
       - run: npm run build
       - run: npm run artifact:verify
-      - if: ${{ always() && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          include-hidden-files: true
-          name: full-main-app-receipt
-          path: doctorcre-app/.e2e/full-main-app/receipt.json
-          if-no-files-found: error
-          retention-days: 7
       # Lives inside the existing required test context; no ruleset change needed.
       - run: npm run performance:check
-        if: github.event_name == 'pull_request'
+        if: ${{ github.event_name == 'pull_request' }}
         env:
           PERFORMANCE_PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
       - if: ${{ !cancelled() && github.event_name == 'pull_request' }}
@@ -94,3 +79,6 @@ jobs:
             doctorcre-app/test-artifacts/performance/*.zip
           if-no-files-found: warn
           retention-days: 7
+      - name: Publish performance summary
+        if: ${{ !cancelled() && github.event_name == 'pull_request' }}
+        run: cat test-artifacts/performance/summary.md >> "$GITHUB_STEP_SUMMARY"

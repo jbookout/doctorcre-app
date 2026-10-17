@@ -29,7 +29,7 @@ const pageJs = await read("js/search.js");
 const modelJs = await read("js/search-model.js");
 const css = await read("css/business-workspace.css");
 const contract = JSON.parse(await read("contracts/carr-interface.v1.json"));
-const routes = JSON.parse(await read("contracts/app-routes.v1.json"));
+const routes = (await import("../js/routes.js")).routeContract;
 const syntheticCapture = JSON.parse(await read("test/fixtures/search-synthetic.json"));
 
 const seedText = await read("data/board-seed.json");
@@ -402,7 +402,6 @@ test("B05-synthetic-fixture the validator accepts synthetic find payloads, nulls
   assert.equal(deepLinkFor({ kind: "lead", name: "A B", merged: false }), null, "no page reads a lead by address");
   assert.equal(deepLinkFor({ kind: "client", name: "A B", merged: true }), null, "a retired alias opens nothing");
 });
-
 
 test('QA-007 every scope can be disabled, persisted, and enabled independently', () => {
   let kinds = [];

@@ -1,5 +1,3 @@
-// v4 purges anything an earlier worker cached under the rule this file already
-// stated but did not fully apply — see isLiveData below.
 const SHELL_CACHE = "dealroom-shell-v4";
 const SHELL = [
   "/offline.html",
@@ -7,19 +5,8 @@ const SHELL = [
   "/icons/dealroom-192.png",
   "/icons/dealroom-512.png",
 ];
-// /app-release is live-only for the same reason: V5-UX-C15's status page asks
-// the app whether it is serving, and a cached answer from an earlier visit
-// would report "serving" while the Worker is down — the one lie this surface
-// exists to prevent.
 const DATA_PATHS = new Set(["/pipeline/changes", "/mcp", "/app-release"]);
 
-// EVERY LIVE SURFACE, not just the two that existed when this file was written.
-// The exact-path set missed every /api/ route: a GET to /api/system-work/session
-// or /api/room/turns fell through to the shell-asset branch, which caches the
-// response AND serves the cached copy when the network fails. That is the exact
-// thing the DATA_PATHS comment below forbids — a Model Room showing an hour-old
-// roster, an hour-old cursor and a healthy pulse while the wire is unreachable
-// would be worse than showing nothing, because it reads as live.
 function isLiveData(pathname) {
   return DATA_PATHS.has(pathname) || pathname.startsWith("/api/");
 }
@@ -83,7 +70,6 @@ self.addEventListener("fetch", (event) => {
   const url = new URL(event.request.url);
   if (url.origin !== self.location.origin) return;
   if (isLiveData(url.pathname)) {
-    // Deliberately no Cache API fallback: stale deal data must never look live.
     event.respondWith(liveData(event.request));
   } else if (event.request.method !== "GET") {
     return;

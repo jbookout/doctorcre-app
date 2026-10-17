@@ -118,7 +118,7 @@ function edgeHarness({ assets, carr } = {}) {
     ASSETS: { fetch: assets || (async () => new Response('ok')) },
     CARR: { fetch: async request => { forwarded.push({ headers: Object.fromEntries(request.headers), body: await request.text() }); return carr ? carr(request) : new Response('{"ok":true}', { status: 202 }); } },
   };
-  const handle = createDoctorcreRequestHandler(undefined,
+  const handle = createDoctorcreRequestHandler(
     { browser: createErrorGate({ limit: EDGE_LIMIT }), edge: createErrorGate({ limit: EDGE_LIMIT }) });
   const call = async (request, ctx = { waitUntil: promise => waits.push(promise) }) => {
     const response = await handle(request, env, ctx);

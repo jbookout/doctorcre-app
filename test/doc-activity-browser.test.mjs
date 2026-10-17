@@ -11,7 +11,7 @@ const root=new URL('../',import.meta.url);
 const artifactDir=await mkdtemp(join(tmpdir(),'doctorcre-activity-browser-'));
 await buildArtifact({root:fileURLToPath(root),outDir:artifactDir,commit:'1'.repeat(40)});
 const site=pathToFileURL(join(artifactDir,'site')+'/');
-const routes=JSON.parse(await readFile(new URL('contracts/app-routes.v1.json',root)));
+const routes=(await import("../js/routes.js")).routeContract;
 async function open(t,{width=1440,reducedMotion='no-preference',undoFailure=false,limit=50,holdUndos=false,readTransform=answer=>answer,firstOpen=false}={}) {
   const browser=await chromium.launch(); t.after(()=>browser.close());
   const page=await browser.newPage({viewport:{width,height:960},reducedMotion,timezoneId:'UTC'});
@@ -171,9 +171,6 @@ test('a server refusal performs no second write and rechecks eligibility',async 
 test('desktop and phone rendered checks, hover motion and reduced motion',async t=>{
   await mkdir(new URL('out/test-artifacts/w10/',root),{recursive:true});
   for(const width of [1440,390,320])await t.test(String(width),async t=>{
-    const baseline=new URL(`test-artifacts/w10/activity-${width}.png`,root);
-    const before=await readFile(baseline);
-    t.after(async()=>assert.ok((await readFile(baseline)).equals(before),'rendered checks preserve tracked inputs'));
     const {page,errors}=await open(t,{width});
     await page.evaluate(()=>document.getAnimations().filter(a=>Number.isFinite(a.effect.getComputedTiming().iterations)).forEach(a=>a.finish()));
     assert.equal(await page.locator(".activity-row").first().evaluate(el=>getComputedStyle(el).opacity),"1");

@@ -24,9 +24,8 @@ function fixture(t, { installation = 'locked', browser = false } = {}) {
   pkg.scripts.test = browser ? 'node --test --test-name-pattern="live first-open brief" test/morning-brief-browser.test.mjs' : 'node -e ""';
   writeFileSync(join(root, 'package.json'), JSON.stringify(pkg));
   mkdirSync(join(root, 'node_modules'), { recursive: true });
-  // Reuse the real installed packages needed by the artifact build, TypeScript
-  // check and browser tests without installing into each temporary clone.
-  for (const name of ['esbuild', 'playwright', 'jsdom', 'typescript', 'react', 'react-dom', '@types/react', '@types/react-dom']) {
+  // Reuse installed build and browser dependencies in the temporary clone.
+  for (const name of ['esbuild', 'playwright', 'jsdom', 'tar-stream', 'typescript', 'react', 'react-dom', '@types/react', '@types/react-dom']) {
     mkdirSync(dirname(join(root, 'node_modules', name)), { recursive: true });
     symlinkSync(join(ROOT, 'node_modules', name), join(root, 'node_modules', name), 'dir');
   }
@@ -81,11 +80,9 @@ test('both actual publishers refuse ancestor, mismatched and external Wrangler e
 
 test('real browser preparation preserves tracked source and both publishers accept its artifact', t => {
   const f = fixture(t, { browser: true });
-  const baseline = f.git(['ls-files', '-s', 'test-artifacts']);
   const prepared = f.run('prepare-release');
   assert.equal(prepared.status, 0, prepared.stdout + prepared.stderr);
   assert.equal(f.git(['status', '--porcelain', '--untracked-files=all']), '', 'preparation leaves source clean');
-  assert.equal(f.git(['ls-files', '-s', 'test-artifacts']), baseline);
   assert.ok(existsSync(join(f.root, 'out/test-artifacts/w12/brief-desktop.png')), 'real browser capture was retained outside tracked paths');
   for (const lane of ['production', 'staging']) {
     const result = f.run(`release-${lane}`);

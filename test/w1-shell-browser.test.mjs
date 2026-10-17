@@ -8,25 +8,44 @@ import { chromium, settles, waitForAsync } from './browser-harness.mjs';
 import { createFixtureClient } from '../js/fixture-client.js';
 import { atlasFixtureResponse } from '../scripts/atlas-fixture.mjs';
 const root = new URL('../', import.meta.url);
-const contract = JSON.parse(await readFile(new URL('contracts/app-routes.v1.json', root)));
+const contract = (await import("../js/routes.js")).routeContract;
 const primary = navigationItems.filter(item => !item.group).map(item => item.label);
 const secondary = navigationItems.filter(item => item.group).map(item => item.label);
 
-async function open(t, { width = 1440, actor = 'joe', live = false, minimal = false, simulatedClock = false, reducedMotion = 'no-preference' } = {}) {
+async function open(t, { width = 1440, actor = 'joe', live = false, minimal = false, simulatedClock = false,
+  reducedMotion = 'no-preference', signoutMode = 'success', holdDocSuggestions = false } = {}) {
   const browser = await chromium.launch(); t.after(() => browser.close());
   const page = await browser.newPage({ viewport: { width, height: 960 }, reducedMotion });
   if (simulatedClock) await page.clock.install({ time: new Date('2026-10-01T15:00:00Z') });
   const fixture = await createFixtureClient({ selfActor: actor, seedUrl: `data:application/json;base64,${Buffer.from(await readFile(new URL('data/board-seed.json', root))).toString('base64')}` });
-  const errors = [], calls = []; page.on('pageerror', error => errors.push(error.message));
+  const errors = [], pageErrors = [], calls = []; let signedOut = false, docSuggestionsHeld = false;
+  let markDocSuggestionsHeld, releaseDocSuggestions;
+  const docSuggestionsStarted = holdDocSuggestions ? new Promise(resolve => { markDocSuggestionsHeld = resolve; }) : null;
+  const docSuggestionsRelease = holdDocSuggestions ? new Promise(resolve => { releaseDocSuggestions = resolve; }) : null;
+  page.on('pageerror', error => errors.push(error.message));
+  page.on('pageerror', error => pageErrors.push({ message: error.message, stack: error.stack }));
   await page.route('**/*', async route => {
     const request = route.request(), url = new URL(request.url()); calls.push({ url: url.pathname, method: request.method(), verb: request.postDataJSON?.()?.params?.name });
     if (url.origin === 'http://127.0.0.1:4682') return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ state: 'idle' }) });
     if (url.origin !== 'http://localhost') return route.abort();
-    if (url.pathname === '/api/system-work/session') return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ actor: { slug: actor }, csrf_token: 'synthetic-test-token' }) });
-    if (url.pathname === '/auth/signout') return route.fulfill({ status: 204 });
-    if (url.pathname === '/auth/login') return route.fulfill({ contentType: 'text/html', body: '<h1>Signed out</h1>' });
+    if (url.pathname === '/api/system-work/session') return route.fulfill({ status: signedOut ? 401 : 200,
+      contentType: 'application/json', body: JSON.stringify(signedOut ? {} : { actor: { slug: actor }, csrf_token: 'synthetic-test-token' }) });
+    if (url.pathname === '/auth/session') return route.fulfill({ status: signedOut ? 401 : 200,
+      contentType: 'application/json', body: JSON.stringify(signedOut ? {} : { actor: { slug: actor } }) });
+    if (url.pathname === '/auth/signout') {
+      if (request.method() !== 'POST' || request.headers()['x-carr-csrf'] !== 'synthetic-test-token' || signoutMode === 'refused')
+        return route.fulfill({ status: 403 });
+      signedOut = signoutMode === 'success';
+      return route.fulfill({ status: 302, headers: { location: '/' } });
+    }
+    if (url.pathname === '/auth/login') return route.fulfill({ status: 302, headers: { location: '/' } });
     if (url.pathname === '/api/v1/atlas-graph') { const answer = atlasFixtureResponse(url,'GET'); return route.fulfill({ status: answer.status, contentType: 'application/json', body: JSON.stringify(answer.body) }); }
     if (url.pathname === '/api/v1/command-center') return route.fulfill({ contentType: 'application/json', body: JSON.stringify(await fixture.commandCenter()) });
+    if (url.pathname === '/mcp' && holdDocSuggestions && !docSuggestionsHeld && request.postDataJSON()?.params?.name === 'list-doc-suggestions') {
+      docSuggestionsHeld = true;
+      markDocSuggestionsHeld();
+      await docSuggestionsRelease;
+    }
     if (url.pathname.startsWith('/api/') || ['/mcp', '/app-release'].includes(url.pathname)) return route.fulfill({ contentType: 'application/json', body: '{}' });
     if (minimal && !/\.(?:m?js|css|json)$/.test(url.pathname)) return route.fulfill({ contentType: 'text/html', body: '<!doctype html><html data-theme="dark"><head><link rel="stylesheet" href="/css/app-shell.css"></head><body><div id="appShell"></div><h1 id="viewerWorkspace">Workspace</h1><script type="module" src="/js/app-shell.js"></script></body></html>' });
     const file = contract.routes[url.pathname] || url.pathname.slice(1);
@@ -35,7 +54,7 @@ async function open(t, { width = 1440, actor = 'joe', live = false, minimal = fa
   });
   await page.goto(`http://localhost/?actor=${actor}${live ? '&mode=live' : ''}`);
   await page.waitForFunction(() => ['J','D'].includes(document.querySelector('#selfAvatar')?.textContent));
-  return { page, errors, calls };
+  return { page, errors, pageErrors, calls, docSuggestionsStarted, releaseDocSuggestions };
 }
 for (const actor of ['joe','dell']) test(`signed-in ${actor} gets workspace, account, persisted controls and sign-out`, async t => {
   const { page, errors, calls } = await open(t, { actor, live: true, minimal: true });
@@ -53,8 +72,43 @@ for (const actor of ['joe','dell']) test(`signed-in ${actor} gets workspace, acc
   assert.ok((await page.locator('.app-shell-profile').boundingBox()).width > 900);
   await page.getByLabel('Close profile').click(); await page.locator('#selfAvatar').click(); await page.keyboard.press('Escape'); assert.equal(await page.locator('#accountMenu').isVisible(), false);
   assert.equal(calls.some(call => call.method === 'POST' && !['deal-room-board','morning-brief','today-triage','list-feature-switches','list-doc-suggestions'].includes(call.verb)), false, 'opening controls has no write effect');
-  await page.locator('#selfAvatar').click(); await page.getByText('Sign out', {exact:true}).click(); await page.waitForURL('**/auth/login');
+  await page.locator('#selfAvatar').click(); await page.getByText('Sign out', {exact:true}).click();
+  await page.getByRole('heading', { name: 'Signed out' }).waitFor();
+  assert.equal(new URL(page.url()).pathname, '/');
+  assert.equal(await page.getByRole('link', { name: 'Sign in again' }).getAttribute('href'), '/auth/login');
+  assert.equal(await page.locator('#viewerWorkspace, #selfAvatar').count(), 0);
+  assert.equal(calls.filter(call => call.url === '/auth/session').length, 1);
   assert.equal(calls.filter(call => call.url === '/auth/signout' && call.method === 'POST' && !['deal-room-board','morning-brief','today-triage','list-feature-switches','list-doc-suggestions'].includes(call.verb)).length, 1); assert.deepEqual(errors, []);
+});
+
+test('sign-out disposes Doc before a pending refresh can write into replaced DOM', async t => {
+  const { page, errors, pageErrors, calls, docSuggestionsStarted, releaseDocSuggestions } = await open(t,
+    { actor: 'dell', live: true, minimal: true, holdDocSuggestions: true });
+  await docSuggestionsStarted;
+  await page.locator('#selfAvatar').click();
+  await page.getByText('Sign out', { exact: true }).click();
+  await page.getByRole('heading', { name: 'Signed out' }).waitFor();
+  assert.equal(await page.locator('#docUpdated').count(), 0);
+  releaseDocSuggestions();
+  const response = await page.waitForResponse(response => response.url().endsWith('/mcp') &&
+    response.request().postDataJSON()?.params?.name === 'list-doc-suggestions');
+  await response.finished();
+  await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+  assert.equal(calls.filter(call => call.verb === 'list-doc-suggestions').length, 1);
+  assert.deepEqual(pageErrors, []);
+  assert.deepEqual(errors, []);
+});
+
+for (const signoutMode of ['refused', 'still-authenticated']) test(`sign-out ${signoutMode} never claims a signed-out view`, async t => {
+  const { page, calls, errors } = await open(t, { live: true, minimal: true, signoutMode });
+  await page.locator('#selfAvatar').click();
+  await page.getByText('Sign out', { exact: true }).click();
+  await page.getByText('Sign-out unavailable', { exact: true }).waitFor();
+  assert.equal(await page.getByRole('heading', { name: 'Signed out' }).count(), 0);
+  assert.equal(await page.locator('#selfAvatar').count(), 1);
+  assert.equal(await page.locator('#accountSignOut').isEnabled(), true);
+  assert.equal(calls.filter(call => call.url === '/auth/session').length, signoutMode === 'refused' ? 0 : 1);
+  assert.deepEqual(errors, []);
 });
 
 test('desktop and phone navigation, account and Call mode work with reduced motion', async t => {
@@ -103,7 +157,6 @@ test('all authenticated pages have global controls and fit desktop and phone', a
   assert.deepEqual(errors, []);
 });
 
-
 test('an open Deal detail updates automatically without closing its popup', async t => {
   const { page, errors } = await open(t, { simulatedClock: true });
   await page.goto('http://localhost/deals');
@@ -121,7 +174,6 @@ test('an open Deal detail updates automatically without closing its popup', asyn
   assert.deepEqual(errors, []);
 });
 
-
 test('automatic Atlas refresh preserves the selected component', async t => {
   const { page, errors, calls } = await open(t, { simulatedClock: true });
   await page.goto('http://localhost/control-room?tab=system-map');
@@ -134,7 +186,6 @@ test('automatic Atlas refresh preserves the selected component', async t => {
   assert.equal(await page.evaluate(async () => (await import('/js/atlas.js')).view.selected), selected);
   assert.deepEqual(errors, []);
 });
-
 
 test('PR182 account portal preserves immediate forward and return keyboard paths', async t => {
   const { page } = await open(t);
@@ -157,7 +208,6 @@ test('PR182 account portal preserves immediate forward and return keyboard paths
   assert.equal(await page.locator('#accountMenu').isVisible(), false);
   assert.equal(await page.locator('#selfAvatar').evaluate(n => document.activeElement === n), true);
 });
-
 
 for (const { name, path, updated, retry, error } of [
   { name:'Leads', path:'/leads?mode=live', updated:'#boardUpdated', retry:'#refreshBoard', error:'#leadBoardError' },

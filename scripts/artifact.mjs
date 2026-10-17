@@ -1,16 +1,20 @@
-import { GENERATED_PATHS, prepareSlices, sliceNames, sliceOutputs } from "./slices.mjs";
-import { UI_SOURCE } from "./ui-bundle.mjs";
+import { offlineTourShell } from "./offline-tour-shell.mjs";
+import tarStream from "tar-stream";
+import { Readable } from "node:stream";
+import { UI_OUTPUT, UI_SOURCE, uiBundle } from "./ui-bundle.mjs";
 import { build } from "esbuild";
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { lstat, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { dirname, join, posix } from "node:path";
 
-const ROOT_FILES = ["manifest.webmanifest"];
+const ROOT_FILES = ["manifest.webmanifest", "contracts/lease-radar.v1.json"];
+const GENERATED_PATH = "tours/day-shell.generated.js";
+const GENERATED_PATHS = [GENERATED_PATH, UI_OUTPUT];
 const ROOT_DIRECTORIES = ["css", "data", "js", "public-shell", "reports", "tours"];
 const CONTRACT_INPUTS = {
   carr_interface: "contracts/carr-interface.v1.json",
-  route_contract: "contracts/app-routes.v1.json",
+  route_contract: "js/routes.js",
   runtime_errors: 'contracts/runtime-errors.v1.json',
 };
 const SHA = /^[0-9a-f]{64}$/;
@@ -32,82 +36,47 @@ function sourceCommit(root) {
   return execFileSync("git", ["rev-parse", "HEAD"], { cwd: root, encoding: "utf8" }).trim();
 }
 
-function field(buffer, offset, length, value) {
-  const bytes = Buffer.from(value);
-  if (bytes.length > length) throw new Error(`tar field is too long: ${value}`);
-  bytes.copy(buffer, offset);
-}
-
-function octal(value, length) {
-  const encoded = value.toString(8).padStart(length - 1, "0");
-  if (encoded.length >= length) throw new Error(`tar number is too large: ${value}`);
-  return `${encoded}\0`;
-}
-
-function tarHeader(path, size) {
-  const header = Buffer.alloc(512);
-  field(header, 0, 100, path);
-  field(header, 100, 8, octal(0o644, 8));
-  field(header, 108, 8, octal(0, 8));
-  field(header, 116, 8, octal(0, 8));
-  field(header, 124, 12, octal(size, 12));
-  field(header, 136, 12, octal(0, 12));
-  header.fill(0x20, 148, 156);
-  field(header, 156, 1, "0");
-  field(header, 257, 6, "ustar\0");
-  field(header, 263, 2, "00");
-  const checksum = [...header].reduce((sum, byte) => sum + byte, 0);
-  field(header, 148, 8, `${checksum.toString(8).padStart(6, "0")}\0 `);
-  return header;
-}
-
-function tar(entries) {
+async function tar(entries) {
+  const pack = tarStream.pack();
   const chunks = [];
+  const collecting = (async () => { for await (const chunk of pack) chunks.push(chunk); })();
   for (const { path, content } of entries) {
-    chunks.push(tarHeader(path, content.length), content);
-    const padding = (512 - (content.length % 512)) % 512;
-    if (padding) chunks.push(Buffer.alloc(padding));
+    await new Promise((resolve, reject) => pack.entry({ name: path, size: content.length, type: "file", mode: 0o644, mtime: new Date(0) }, content, error => error ? reject(error) : resolve()));
   }
-  chunks.push(Buffer.alloc(1024));
+  pack.finalize();
+  await collecting;
   return Buffer.concat(chunks);
 }
 
-function parseTar(archive) {
-  if (archive.length < 1024 || archive.length % 512 !== 0) throw new Error("invalid artifact archive length");
+async function parseTar(archive) {
   const entries = new Map();
-  let offset = 0;
-  while (offset + 512 <= archive.length) {
-    const header = archive.subarray(offset, offset + 512);
-    if (header.every((byte) => byte === 0)) {
-      const trailer = archive.subarray(offset);
-      if (trailer.length < 1024 || !trailer.every((byte) => byte === 0)) throw new Error("invalid artifact archive trailer");
-      return entries;
-    }
-    const storedChecksum = Number.parseInt(header.subarray(148, 156).toString("ascii").replace(/\0.*$/, "").trim(), 8);
-    const checksumHeader = Buffer.from(header);
-    checksumHeader.fill(0x20, 148, 156);
-    const calculatedChecksum = [...checksumHeader].reduce((sum, byte) => sum + byte, 0);
-    if (!Number.isSafeInteger(storedChecksum) || storedChecksum !== calculatedChecksum) throw new Error("invalid artifact header checksum");
-    const path = header.subarray(0, 100).toString("utf8").replace(/\0.*$/, "");
-    const size = Number.parseInt(header.subarray(124, 136).toString("ascii").replace(/\0.*$/, "").trim() || "0", 8);
-    const type = String.fromCharCode(header[156] || 0x30);
-    if (!path || path.startsWith("/") || path.split("/").includes("..") || type !== "0") throw new Error(`unsafe artifact entry: ${path}`);
-    if (!Number.isSafeInteger(size) || size < 0 || offset + 512 + size > archive.length) throw new Error(`invalid artifact entry size: ${path}`);
+  const extract = tarStream.extract();
+  const input = Readable.from([archive]);
+  input.pipe(extract);
+  for await (const entry of extract) {
+    const { name: path, type } = entry.header;
+    if (!path || path.startsWith("/") || path.includes("\\") || path.split("/").includes("..") || type !== "file") throw new Error(`unsafe artifact entry: ${path}`);
     if (entries.has(path)) throw new Error(`duplicate artifact entry: ${path}`);
-    entries.set(path, archive.subarray(offset + 512, offset + 512 + size));
-    offset += 512 + Math.ceil(size / 512) * 512;
+    const chunks = [];
+    for await (const chunk of entry) chunks.push(chunk);
+    entries.set(path, Buffer.concat(chunks));
   }
-  throw new Error("artifact archive trailer is missing");
+  return entries;
 }
 
-async function inputPaths(root, sliceRegistration) {
-  const sliceAssets = sliceRegistration.slices.flatMap(slice => slice.files || []).filter(path => !path.startsWith('test/'));
-  const paths = [...ROOT_FILES, ...sliceAssets];
+async function inputPaths(root) {
+  const pages = (await readdir(root)).filter(path => path.endsWith(".html"));
+  const paths = [...ROOT_FILES, ...pages, ...GENERATED_PATHS];
   for (const directory of ROOT_DIRECTORIES) {
     if (!(await lstat(join(root, directory))).isDirectory()) throw new Error(`artifact input must be a directory: ${directory}`);
     paths.push(...await walk(root, directory));
   }
   return [...new Set(paths)].sort();
+}
+
+async function generatedShell(readSource) {
+  const shell = await offlineTourShell(readSource);
+  return Buffer.from(`self.TOUR_DAY_SHELL = ${JSON.stringify(shell)};\n`);
 }
 
 const ERROR_CONTRACT_IMPORT = "import contract from '../contracts/runtime-errors.v1.json' with { type: 'json' };";
@@ -137,7 +106,7 @@ async function trackErrors(path, content, readSource, commit) {
   return content;
 }
 
-async function assembleArtifact(commit, paths, readSource, sliceRegistration) {
+async function assembleArtifact(commit, paths, readSource) {
   if (!/^[0-9a-f]{40}$/.test(commit)) throw new Error("source commit must be a full Git SHA");
   const payload = [];
   const files = new Map();
@@ -179,7 +148,9 @@ async function assembleArtifact(commit, paths, readSource, sliceRegistration) {
 
   const contract = async (path) => {
     const content = await readSource(path);
-    const parsed = JSON.parse(content);
+    const parsed = path.endsWith(".js")
+      ? (await import(`data:text/javascript;base64,${content.toString("base64")}`)).routeContract
+      : JSON.parse(content);
     return { path, schema: parsed.schema, version: parsed.version, sha256: digest(content) };
   };
   const contracts = {};
@@ -196,20 +167,23 @@ async function assembleArtifact(commit, paths, readSource, sliceRegistration) {
   const entries = [{ path: "artifact-manifest.json", content: manifestContent }];
   for (const path of paths) entries.push({ path, content: files.get(path) });
   entries.sort((left, right) => left.path < right.path ? -1 : left.path > right.path ? 1 : 0);
-  const archive = tar(entries);
+  const archive = await tar(entries);
   const archiveSha256 = digest(archive);
   return { archive, archiveSha256, manifest, manifestContent, files };
 }
 
 export async function buildArtifact({ root, outDir, commit = sourceCommit(root) }) {
-  const sliceRegistration = await prepareSlices(root);
-  const paths = await inputPaths(root, sliceRegistration);
+  const shell = await generatedShell(path => readFile(join(root, path)));
+  const ui = await uiBundle(path => readFile(join(root, path)));
+  const paths = await inputPaths(root);
   const readSource = async (path) => {
+    if (path === GENERATED_PATH) return shell;
+    if (path === UI_OUTPUT) return ui;
     const sourcePath = join(root, path);
     if (!(await lstat(sourcePath)).isFile()) throw new Error(`artifact input is not a file: ${path}`);
     return readFile(sourcePath);
   };
-  const { archive, archiveSha256, manifest, manifestContent, files } = await assembleArtifact(commit, paths, readSource, sliceRegistration);
+  const { archive, archiveSha256, manifest, manifestContent, files } = await assembleArtifact(commit, paths, readSource);
   const siteDir = join(outDir, "site");
   await rm(siteDir, { recursive: true, force: true });
   await mkdir(siteDir, { recursive: true });
@@ -225,10 +199,10 @@ export async function buildArtifact({ root, outDir, commit = sourceCommit(root) 
   return { archive, archiveSha256, manifest };
 }
 
-export function verifyArtifact(archive, expectedSha256 = null) {
+export async function verifyArtifact(archive, expectedSha256 = null) {
   const archiveSha256 = digest(archive);
   if (expectedSha256 && archiveSha256 !== expectedSha256) throw new Error("artifact archive digest mismatch");
-  const entries = parseTar(archive);
+  const entries = await parseTar(archive);
   const manifestContent = entries.get("artifact-manifest.json");
   if (!manifestContent) throw new Error("artifact manifest is missing");
   const manifest = JSON.parse(manifestContent);
@@ -245,18 +219,19 @@ export function verifyArtifact(archive, expectedSha256 = null) {
   return { archiveSha256, manifest, fileCount: manifest.files.length };
 }
 
-export async function verifyCommittedSource(root, archive, result = verifyArtifact(archive)) {
+export async function verifyCommittedSource(root, archive, result = null) {
+  result ||= await verifyArtifact(archive);
   const commit = sourceCommit(root);
   if (result.manifest.source_commit !== commit) throw new Error("artifact source commit mismatch");
-  const names = await sliceNames(root);
-  const onDiskRegistration = await sliceOutputs(names, path => readFile(join(root, path)));
-  const paths = await inputPaths(root, onDiskRegistration);
+  const paths = await inputPaths(root);
   const contractPaths = Object.values(CONTRACT_INPUTS);
-  // Generated outputs are rebuilt below from these committed inputs.
-  const slicePaths = ['contracts/routes.v1.json', 'contracts/slice-ownership.v1.json', ...names.map(name => `contracts/routes/${name}.json`), ...await walk(root, UI_SOURCE)];
-  const sourcePaths = [...new Set([...paths, ...contractPaths, ...slicePaths])].filter(path => !GENERATED_PATHS.includes(path)).sort();
-  const committedPaths = execFileSync("git", ["ls-tree", "-r", "--name-only", "-z", commit, "--",
-    ...ROOT_FILES, ...ROOT_DIRECTORIES, UI_SOURCE, ...contractPaths, ...slicePaths, ...paths], { cwd: root, encoding: "utf8" }).split("\0").filter(path => path && !GENERATED_PATHS.includes(path)).sort();
+  const uiPaths = await walk(root, UI_SOURCE);
+  const sourcePaths = [...new Set([...paths, ...contractPaths, ...uiPaths])].filter(path => !GENERATED_PATHS.includes(path)).sort();
+  const committedPaths = execFileSync("git", ["ls-tree", "-r", "--name-only", "-z", commit],
+    { cwd: root, encoding: "utf8" }).split("\0").filter(path => path && !GENERATED_PATHS.includes(path) && (
+      ROOT_FILES.includes(path) || contractPaths.includes(path) || path.startsWith(UI_SOURCE + "/") || ROOT_DIRECTORIES.some(directory => path.startsWith(directory + "/"))
+      || (!path.includes("/") && path.endsWith(".html"))
+    )).sort();
   if (JSON.stringify(sourcePaths) !== JSON.stringify(committedPaths)) throw new Error("artifact source input set mismatch");
 
   // Compare the bytes themselves, not Git's working-tree status/cache. A forged
@@ -270,12 +245,10 @@ export async function verifyCommittedSource(root, archive, result = verifyArtifa
     }
     source.set(path, committed);
   }
-  const sliceRegistration = await sliceOutputs(names, async path => source.get(path));
-  for (const [path, bytes] of sliceRegistration.outputs) {
-    if (!(await readFile(join(root, path))).equals(bytes)) throw new Error(`artifact source input mismatch: ${path}`);
-    source.set(path, bytes);
-  }
-  const expected = await assembleArtifact(commit, paths, async (path) => source.get(path), sliceRegistration);
+  const shell = await generatedShell(async path => source.get(path));
+  source.set(GENERATED_PATH, shell);
+  source.set(UI_OUTPUT, await uiBundle(async path => source.get(path)));
+  const expected = await assembleArtifact(commit, paths, async (path) => source.get(path));
   if (!archive.equals(expected.archive)) throw new Error("artifact does not match committed source");
   return expected;
 }
@@ -297,7 +270,7 @@ export async function runCli(root, args = process.argv.slice(2)) {
     const sidecar = await readFile(join(outDir, "doctorcre-app.tar.sha256"), "utf8");
     const match = sidecar.match(/^([0-9a-f]{64})  doctorcre-app\.tar\n?$/);
     if (!match) throw new Error("artifact digest sidecar is invalid");
-    const result = verifyArtifact(archive, match[1]);
+    const result = await verifyArtifact(archive, match[1]);
     const expected = await verifyCommittedSource(root, archive, result);
     if (!(await readFile(join(outDir, "doctorcre-app.manifest.json"))).equals(expected.manifestContent)) {
       throw new Error("published manifest mismatch");

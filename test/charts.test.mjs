@@ -32,9 +32,8 @@ const read = (file) => readFile(`${ROOT}${file}`, "utf8");
 const pageJs = await read("js/charts.js");
 const modelJs = await read("js/charts-model.js");
 const css = await read("css/business-workspace.css");
-const checkScript = await read("scripts/check-repository.mjs");
 const contract = JSON.parse(await read("contracts/carr-interface.v1.json"));
-const routes = JSON.parse(await read("contracts/app-routes.v1.json"));
+const routes = (await import("../js/routes.js")).routeContract;
 
 /** The synthetic fixture, generated from contract-shaped examples. */
 const capture = JSON.parse(await read("test/fixtures/charts-synthetic.json"));
@@ -393,7 +392,6 @@ test("B06-12 repository invariants: deal-room-board stays pinned, no route moves
   assert.ok(contract.mcp_operations.includes("deal-room-board"), "the Charts tab's one read stays pinned");
   assert.equal(contract.version, "1.45.0", "the current interface retains the Charts read");
   assert.equal(contract.producer.source_commit, "e2e484b1933bfd63c10cc9a1b3350132948f6f74");
-  assert.match(checkScript, /the Charts tab needs deal-room-board pinned/);
 
   // No route is added. `/business` already resolves, and the gate does not
   // inspect a query string, so `?charts=1` needs no admission of its own.

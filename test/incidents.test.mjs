@@ -21,7 +21,7 @@ const read = (file) => readFile(new URL(file, root), "utf8");
 const html = await read("incidents.html");
 const css = await read("css/incidents.css");
 const pageJs = await read("js/incidents.js");
-const routes = JSON.parse(await read("contracts/app-routes.v1.json"));
+const routes = (await import("../js/routes.js")).routeContract;
 const contract = JSON.parse(await read("contracts/carr-interface.v1.json"));
 
 const fixture = async (options = {}) => {

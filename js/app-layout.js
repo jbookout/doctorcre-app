@@ -1,4 +1,3 @@
-import { mountSliceSections } from './slice-registration.js';
 import { TOUCH_LAYOUT } from './touch-layout.js';
 import { radarToday } from './lease-radar-model.js';
 import { createClient } from './client.js';
@@ -10,7 +9,6 @@ import { scopedDeals } from './home-dashboard-model.js';
 import { localToday, toDay } from './calendar-model.js';
 const time = value => { const date = new Date(value || ''); return Number.isFinite(date.valueOf()) ? date.toLocaleTimeString([], { hour:'numeric', minute:'2-digit', hour12:true }) : '—'; };
 
-// Build validation and runtime use the same layout targets.
 export function createAppLayout(root, title = '') {
   const layout = root.createElement('div');
   layout.id = 'appLayout';
@@ -27,7 +25,7 @@ export function createAppLayout(root, title = '') {
 
 // Slots contain the page's original nodes, not copies. IDs, listeners, drafts and
 // lazy tab reads therefore retain their existing owner across layout changes.
-export function mountAppLayout(root, host, pathname, slices = []) {
+export function mountAppLayout(root, host, pathname) {
   if (root.getElementById('appLayout')) return;
   const win = root.defaultView || globalThis.window;
   const pageKey = pathname === '/deals' ? '/deals' : pathname;
@@ -35,7 +33,6 @@ export function mountAppLayout(root, host, pathname, slices = []) {
   const title = pathname === '/vendors' ? 'Vendors' : pathname === '/clients' ? 'Clients' : pathname === '/deals' ? 'Local Deals' : root.querySelector('main h1, .room-wordmark, .page-kicker')?.textContent.trim().replace(/Loading$/, '').trim() || root.title.split('·')[0].trim();
   const { layout, status } = createAppLayout(root, title);
   host.after(layout, status);
-  mountSliceSections(root, pathname, slices);
   const main = layout.querySelector('#appMainSlot');
   // Modals and fixed feedback belong to the viewport, outside page regions.
   root.querySelectorAll('.record-backdrop, aside.record-panel, .room-toast').forEach(node => root.body.append(node));

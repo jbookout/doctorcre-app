@@ -61,6 +61,25 @@ test('Doc detail exposes one activity destination when mounted repeatedly', t =>
   assert.equal(links.length, 1); assert.equal(links[0].getAttribute('href'), '/doc-activity');
 });
 
+test('disposing Doc cancels a pending refresh before its owner replaces the body', async t => {
+  const dom = new JSDOM('<!doctype html><html><head></head><body><main id="appMainSlot"></main></body></html>');
+  let release, startedResolve, unsubscribed = false;
+  const started = new Promise(resolve => { startedResolve = resolve; });
+  const answer = new Promise(resolve => { release = resolve; });
+  const snapshot = { state:'updating', ready:false, page:'home', epoch:0, label:'Home', records:[], observedAt:null };
+  const context = { snapshot:() => snapshot, subscribe:() => () => { unsubscribed = true; }, tick() {}, clear() {} };
+  const client = { listDocSuggestions:() => { startedResolve(); return answer; }, listFeatureSwitches:async() => ({}) };
+  const presence = mountDocPresence({ document:dom.window.document, window:dom.window, context, client });
+  t.after(() => { presence.dispose(); dom.window.close(); });
+  await started;
+  presence.dispose();
+  dom.window.document.body.replaceChildren(dom.window.document.createElement('main'));
+  release({ ok:true, suggestions:[] });
+  await presence.refresh();
+  assert.equal(unsubscribed, true);
+  assert.equal(dom.window.document.body.querySelector('main')?.id, '');
+});
+
 test('malformed or partial feed rows are unavailable rather than verified empty; incompatible inverses cannot execute',async()=>{
   const answer=await createDocActivityFixture().read(),row=answer.entries[0];
   for(const broken of [{...row,id:null},{...row,record:{...row.record,name:null}},{...row,what:null},{...row,before:{}},{...row,undo:null},{...row,evidence:{kind:'entry',summary:[]}}]){
@@ -72,15 +91,9 @@ test('malformed or partial feed rows are unavailable rather than verified empty;
   for(const undo of [{...row.undo,verb:'future-verb'},{...row.undo,event_id:'other'}])assert.equal(undoArgs({...row,undo},'key'),null);
 });
 
-test('Doc activity registers its route, gate and deployed files alongside every main slice', async () => {
-  const { prepareSlices } = await import('../scripts/slices.mjs');
-  const { fileURLToPath } = await import('node:url');
-  const { slices, contract } = await prepareSlices(fileURLToPath(new URL('../', import.meta.url)));
+test('Doc activity registers its route, gate and deployed files alongside the main routes', async () => {
+  const { routeContract: contract } = await import('../js/routes.js');
   assert.equal(contract.routes['/doc-activity'], 'activity.html');
   assert.equal(contract.gatePaths['/doc-activity'], '/control-room');
-  const activity = slices.find(slice => slice.id === 'doc-activity');
-  for (const path of ['activity.html', 'css/doc-activity.css', 'js/doc-activity.js', 'js/doc-activity-model.js', 'js/doc-activity-fixture.js', 'test/doc-activity.test.mjs', 'test/doc-activity-browser.test.mjs']) {
-    assert.ok(activity?.files.includes(path), `Doc activity must own ${path}`);
-  }
   for (const route of ['/deals', '/leads', '/relationships', '/invoices', '/control-room/progress']) assert.ok(contract.routes[route], `main route survives: ${route}`);
 });

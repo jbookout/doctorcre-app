@@ -35,7 +35,7 @@ fixture. Reviewed DoctorCRE production hosts boot the live adapter.
 | `work-inventory.html` | V5-UX-C10 Complete Work Inventory at `/work-inventory`: every work record from all six canonical CARR sources, in every status, with each source's coverage stated |
 | `js/work-inventory-model.js` | Pure census rules: exact-key validation, grouping, coverage summary, query building, page merge |
 | `js/work-inventory.js` | Work Inventory DOM wiring over `GET /api/v1/work-inventory` |
-| `tasks.html` | V5-UX-B02 Tasks at `/tasks`: the shared record of open task and team loops, with Quick add capture, handover, due dates and completion |
+| `/tasks` and `/tasks.html` | Legacy routes that redirect to Home at `/`, served by `workspace.html`. Declared in `js/routes.js` |
 | `js/task-records-model.js` | Pure task rules: board-row validation, owner scoping, handover/close/due argument sets, the Quick add plan and the operation keys |
 | `js/task-records.js` | Tasks DOM wiring over the loop verbs, through the shared command kernel and dock |
 | `pipeline.html` | V5-UX-B03 Deals at `/pipeline`: the eight-phase Kanban, moved by drag or keyboard, with the completion dialog, the crossed-edits chooser and the record panel |
@@ -66,12 +66,13 @@ fixture. Reviewed DoctorCRE production hosts boot the live adapter.
 | `js/status-model.js` | Pure status rules: the four headline scenarios, the sanitized refusal sentence, the payload-free last-known snapshot and the named integration gaps |
 | `js/status.js` | Status DOM wiring over `GET /app-release` and the four Control Room reads, each settled on its own |
 | `js/shell.js` | The shell every surface shares: the three presentation icons (one storage key, legacy key migrated), the tab strip, and the floating Doc |
-| `css/` | Product presentation and responsive behavior; `css/system.css` is the shared visual system bound to `contracts/visual-system.v1.json` |
+| `css/` | Product presentation and responsive behavior; `css/system.css` defines the shared visual system |
 | `js/doc-presence.js` and `js/doc-command-bar.js` | The persistent Doc and its command bar, shared by every surface |
+| `src/ui/` | Strict TypeScript React islands (decision d23358f1, V2-WORKSPACE). `scripts/ui-bundle.mjs` compiles them into `js/ui.generated.js`, shipped in the artifact and imported only behind a flag: `/ideas-events?ui=react` hosts the Ideas panel in a React node host on a fixture boot. The rest of the app stays static HTML and JavaScript modules |
 | `js/client.js` | Small client interface selected by the app |
 | `js/live-client.js` | Authenticated same-origin CARR adapter |
 | `js/fixture-client.js` | In-memory synthetic adapter |
-| `contracts/` | Pinned CARR consumer boundary, app routes and the visual-system contract |
+| `contracts/` | Pinned CARR consumer boundary and runtime contracts |
 | `data/board-seed.json` | Synthetic local/test fixture only |
 | `reports/` and `tours/` | DoctorCRE report and tour presentation |
 | `design*.html` | V5-UX-S01 review prototypes on synthetic data: `/design`, `/design/business`, `/design/operations` |
@@ -102,14 +103,10 @@ palette, same light theme. What changed is how information is arranged.
 - Motion runs about 1.5x slower and the spinner is gone: waiting is a circular
   stroke that draws and fades over `--motion-ring`. The reduced-motion floor is
   unchanged.
-- Titles carry their screens. No description paragraph sits under a heading,
-  and `test/visual-system.test.mjs` fails on the phrases the review refused, on
-  a 24-hour clock, on a missing tab strip or floating Doc, on a Move button, and
-  on a missing keyboard move path.
-| `test/` | Product, interface, accessibility, and concurrency tests |
+- Titles carry their screens. No description paragraph sits under a heading.
 
-The application deliberately has no build step and no package dependencies.
-That remains the default until a product requirement justifies more machinery.
+`test/visual-system.test.mjs` covers preferences, ordering, calendar formatting,
+command feedback and contrast arithmetic against CSS tokens.
 
 ## Boundary invariants
 

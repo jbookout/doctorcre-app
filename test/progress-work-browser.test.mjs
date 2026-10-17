@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { chromium, settles, animationsSettled } from './browser-harness.mjs';
-import routes from '../contracts/app-routes.v1.json' with {type:'json'};
+import { routeContract as routes } from "../js/routes.js";
 import fixture from './fixtures/progress-work.synthetic.json' with {type:'json'};
 import { canonicalFixture, multiEnvelopeCanonicalFixture, equalReviewCanonicalFixture } from './fixtures/progress-work.synthetic.mjs';
 import { scopedTurn, scopedQueueCard, executionTurn, passportAttempts, canonicalPassport, workScope, workDetailUrl } from '../js/progress-work-model.js';
@@ -604,15 +604,6 @@ test('shared activity retains stage, desks, presence, wire filters, composers an
   await page.locator('.queue-card').click();await page.waitForURL('**/control-room/progress/work?board=demo-project&task=**');assert.deepEqual(errors,[]);
 });
 
-test('baseline Observatory controls all remain mounted in layer 3',async()=>{
-  const before=await readFile(new URL('../_to_delete/room.html',import.meta.url),'utf8');
-  const after=await readFile(new URL('../progress-work.html',import.meta.url),'utf8');
-  const ids=source=>[...source.matchAll(/id="([^"]+)"/g)].map(match=>match[1]);
-  const relocated=new Set(['openTaskBoard','taskBoardDialog','taskBoardTitle','closeTaskBoard','queueDrawer','drawerClose','drawerTitle','drawerSummary','drawerMeta']);
-  assert.deepEqual(ids(before).filter(id=>!relocated.has(id)&&!ids(after).includes(id)),[]);
-  assert.match(after,/id="workTasks"/);assert.match(after,/id="queueColumns"/);
-});
-
 test('older task passports survive the current global wire window',async t=>{
   const {page,state,errors}=await open(t,{history:2000});
   await page.waitForSelector('.passport-card');assert.ok(state.turnReads>=11);
@@ -713,7 +704,6 @@ test('confirmed authentication loss clears protected queue and work evidence',as
 for(const [old,view] of [['/room.html','wire'],['/queue.html','tasks'],['/control-room/agents/queue','tasks'],['/agent-room','wire']])test(`legacy deep link ${old} opens matching Progress view`,async t=>{
   const {page}=await open(t,{path:`${old}?board=demo-project&task=${taskId}#jobPassport`});const url=new URL(page.url());assert.equal(url.pathname,'/control-room/progress/work');assert.equal(url.searchParams.get('view'),view);assert.equal(url.searchParams.get('task'),taskId);assert.equal(url.hash,'#jobPassport');
 });
-
 
 test('published task detail retains summary, model, safe PR links and related answers', async t => {
   const {page,errors} = await open(t,{rpcReply:(rpc,payload)=>{

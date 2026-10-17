@@ -2,7 +2,7 @@
 // Names are absent from the feed contract: use human record labels rather than
 // guessing a name or fetching a second record. Identifiers stay in Details.
 import { BOARD_ROUTE, boardIdFromPath } from './progress-board-route.js';
-import { routeContract } from "./slices.generated.js";
+import { routeContract } from "./routes.js";
 import { formatClock } from "./visual-system.js";
 import { REFUSAL_SENTENCE } from "./status-model.js";
 import { CONVERSATION_ID } from "./conversations-model.js";

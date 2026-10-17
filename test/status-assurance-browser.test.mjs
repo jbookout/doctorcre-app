@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { chromium } from './browser-harness.mjs';
 import { scope, NOW, projection } from './fixtures/assurance-health.mjs';
+import { writeSnapshot } from '../js/status-model.js';
 
 async function openStatus(t, { width = 390, answer = projection(), refused = false, query = true, timezoneId = 'UTC' } = {}) {
   const browser = await chromium.launch(); t.after(() => browser.close());
@@ -155,4 +156,33 @@ test('contradictory truth and malformed instants render unknown in the browser',
     await page.waitForFunction(() => document.querySelector('[data-gap="v5-a01"]')?.textContent.includes('invalid'));
     assert.equal(await page.locator('[data-gap="v5-a01"]').getAttribute('data-state'), 'unknown');
   });
+});
+
+const snapshot = {
+  schema: "doctorcre-status-snapshot.v1",
+  saved_at: "2026-10-15T00:00:00.000Z",
+  reads: [],
+};
+
+for (const [label, storage] of [["null", null], ["undefined", undefined], ["missing setter", {}]]) {
+  test(`snapshot write returns false for ${label} storage`, () => {
+    assert.equal(writeSnapshot(storage, snapshot), false);
+  });
+}
+
+test("snapshot write calls the store and reports success", () => {
+  const storage = {
+    writes: [],
+    setItem(key, value) { this.writes.push([key, value]); },
+  };
+  assert.equal(writeSnapshot(storage, snapshot), true);
+  assert.deepEqual(storage.writes, [[
+    "doctorcre.status-snapshot.v1",
+    '{"schema":"doctorcre-status-snapshot.v1","saved_at":"2026-10-15T00:00:00.000Z","reads":[]}',
+  ]]);
+});
+
+test("snapshot write returns false when the store refuses", () => {
+  const storage = { setItem() { throw new Error("Synthetic storage refusal"); } };
+  assert.equal(writeSnapshot(storage, snapshot), false);
 });
