@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile, mkdir } from "node:fs/promises";
 import { createServer } from "node:http";
-import { chromium } from "./browser-harness.mjs";
+import { chromium } from "playwright";
 import { detail, tourId } from "./fixtures/tour-day.synthetic.mjs";
 import { handleDoctorcreRequest } from "../src/worker.js";
 const root = new URL("../", import.meta.url);
@@ -34,8 +34,8 @@ async function open(t, { width = 390, reducedMotion = "reduce", denied = false, 
   await new Promise(r => server.listen(0, "127.0.0.1", r));
   const origin = `http://localhost:${server.address().port}`;
   const browser = await chromium.launch();
-  const page = await browser.newPage({ viewport: { width, height: 844 }, reducedMotion });
-  const context = page.context(); page.on("pageerror", e => errors.push(e.message));
+  const context = await browser.newContext({ viewport: { width, height: 844 }, reducedMotion });
+  const page = await context.newPage(); page.on("pageerror", e => errors.push(e.message));
   // All tests stay on the local synthetic server. Call/navigation links are
   // inspected as strings and never activated.
   await context.route("**/*", route => new URL(route.request().url()).origin === origin ? route.continue() : route.abort());

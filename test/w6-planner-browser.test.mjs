@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile, mkdir } from "node:fs/promises";
-import { chromium } from "./browser-harness.mjs";
+import { chromium } from "playwright";
 
 const root = new URL("../", import.meta.url);
 const clientId = "11111111-1111-4111-8111-111111111111", tourId = "22222222-2222-4222-8222-222222222222";

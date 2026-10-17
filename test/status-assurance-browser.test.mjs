@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { chromium } from './browser-harness.mjs';
+import { chromium } from 'playwright';
 import { scope, NOW, projection } from './fixtures/assurance-health.mjs';
 import { writeSnapshot } from '../js/status-model.js';
 

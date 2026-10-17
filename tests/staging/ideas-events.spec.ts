@@ -1,5 +1,7 @@
 import { test, expect } from '@playwright/test';
 
+test.describe.configure({ retries: 0 });
+
 test.beforeEach(async ({ page }) => {
   await page.addLocatorHandler(page.getByRole('button', { name: 'Dismiss morning brief' }), async dismiss => { await dismiss.click(); });
 });
@@ -21,6 +23,11 @@ test('A parked idea opens and closes without answering it', async ({ page }) => 
   await expect(page.locator('#ideaDialog')).toBeVisible();
   await page.locator('#ideaDialogClose').click();
   await expect(page.locator('#ideaDialog')).toBeHidden();
+});
+
+test.fixme('V2-F02: Ideas navigation intermittently times out before the app shell loads', { tag: '@fixme' }, async ({ page }) => {
+  await page.goto('/ideas-events?tab=ideas');
+  await expect(page.getByRole('button', { name: 'Joe: account and settings', exact: true })).toBeVisible();
 });
 
 test('Events tab opens and cancels a draft without saving', async ({ page }) => {
@@ -62,4 +69,3 @@ test.fixme('V2-B01: Events are unavailable, blocking event inspection and edit/r
     await expect(card).toContainText(original);
   }
 });
-

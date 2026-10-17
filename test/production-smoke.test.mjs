@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFile, readdir } from "node:fs/promises";
 import test from "node:test";
-import { chromium } from "./browser-harness.mjs";
+import { chromium } from "playwright";
 import { RELEASE_IDENTITY } from "../smoke/production/release-identity.mjs";
 
 // The production journeys run against the live app after every release
