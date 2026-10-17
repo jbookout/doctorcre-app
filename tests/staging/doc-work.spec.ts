@@ -8,7 +8,7 @@ test('Choose work reads Team/Mine and opens a record without changing it', async
   await expect(page.getByRole('button', { name: 'Mine', exact: true })).toHaveAttribute('aria-pressed', 'true');
   await page.getByRole('button', { name: 'Team', exact: true }).click();
   const record = page.locator('#taskList [data-task]').first();
-  test.skip(await record.count() === 0, 'Staging has no open partner record to inspect.');
+  test.skip(await record.count() === 0, 'No open partner record; staging add-loop refuses no_block for team_loop/open, and no supported API provisioner exists.');
   await record.click();
   await expect(page.locator('#taskDialog')).toBeVisible();
   await expect(page.locator('#taskDialogRows')).not.toBeEmpty();
