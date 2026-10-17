@@ -1,4 +1,5 @@
-
+/* Ruling 0892c539 puts this in Control Room. Rule 67580c28 owns the dark tokens; no light theme. Local dark ground differs from app.css's paper-derived night palette. */
+/* Motion follows 9293d609/eeb3d106: colour, shape and rate encode state; reduced motion disables motion while preserving colour and shape cues. */
 :root {
   --ground: #07090C;
   --ground-2: #0B0F16;
@@ -23,6 +24,7 @@
   --seat-grok: #E85BA0;
   --seat-system: #7D8BB0;
 
+  /* The halo identifies the partner; the seat fill identifies the assigned seat. */
   --halo-joe: #F08A2D;
   --halo-dell: #BFE3FF;
 
@@ -31,6 +33,7 @@
   --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
 
   --shadow: 0 18px 55px rgba(0, 0, 0, 0.55);
+  /* Clamp the stage on short laptop viewports before it starves the assignments rail. */
   --stage-h: clamp(150px, 27vh, 260px);
 }
 
@@ -140,6 +143,7 @@ button:disabled { cursor: not-allowed; opacity: 0.5; }
 .room-nav a:hover { color: var(--text); border-color: var(--line-bright); transform: translateY(-1px); }
 
 .live-badge {
+  /* Static replacement for the LIVE pulse when reduced motion is enabled. */
   display: none; align-items: center; gap: 5px; font-family: var(--display);
   font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase;
   color: var(--orange); border: 1px solid var(--orange); border-radius: 999px; padding: 2px 8px;
@@ -269,6 +273,7 @@ button:disabled { cursor: not-allowed; opacity: 0.5; }
 }
 .stage-connector.is-outer { stroke-opacity: 0.30; stroke-dasharray: 3 5; }
 .stage-connector.is-moon { stroke-opacity: 0.24; stroke-width: 1; stroke-dasharray: 2 4; }
+/* Moon tethers stay fainter than the stage's own spokes. */
 .stage-connector.is-hot { stroke: var(--orange); stroke-opacity: 0.95; }
 
 .stage-core-halo { fill: url(#coreHalo); animation: breathe 3.5s ease-in-out infinite; transform-box: fill-box; transform-origin: center; }
@@ -291,6 +296,7 @@ button:disabled { cursor: not-allowed; opacity: 0.5; }
 .stage-node.is-outer .stage-node-disc { fill-opacity: 0.18; stroke-opacity: 0.65; }
 .stage-node.is-outer { opacity: 0.55; }
 .stage-node.is-moon { opacity: 0.88; }
+/* Loop 528: staffed satellites are working, not dormant. */
 .stage-node.is-moon .stage-node-disc { fill-opacity: 0.24; stroke-width: 1.3; stroke-opacity: 0.8; }
 .stage-node.is-moon .stage-node-pulse { stroke-width: 1; }
 .stage-node.is-dim { opacity: 0.35; }
@@ -435,6 +441,7 @@ button:disabled { cursor: not-allowed; opacity: 0.5; }
 
 .receipt { animation: turn-in 240ms cubic-bezier(.2,.7,.3,1); }
 .receipt > summary {
+  /* The outer summary is distinct from the nested machine-detail disclosure. */
   display: flex; align-items: center; gap: 7px; cursor: pointer; list-style: none;
   font-size: 11px; color: var(--muted); padding: 4px 9px;
   border: 1px solid var(--line); border-radius: 8px; background: rgba(12, 17, 28, 0.5);
@@ -447,9 +454,11 @@ button:disabled { cursor: not-allowed; opacity: 0.5; }
 .receipt > summary:hover { border-color: var(--line-bright); color: var(--text); }
 .receipt-key { font-family: var(--display); letter-spacing: 0.08em; text-transform: uppercase; color: var(--text); }
 .receipt-human { margin: 6px 0 0; padding: 8px 10px; background: rgba(6, 9, 15, 0.5); border-radius: 8px; }
+/* Human-readable sentences come first. */
 .receipt-line { margin: 0 0 4px; font-size: 12px; color: var(--text); line-height: 1.5; }
 .receipt-line:last-child { margin-bottom: 0; }
 .receipt-machine { margin: 4px 0 0; }
+/* The raw contract stays one level down, never first. */
 .receipt-machine > summary {
   cursor: pointer; list-style: none; font-size: 10px; color: var(--muted);
   letter-spacing: 0.08em; text-transform: uppercase; padding: 2px 10px;
@@ -493,6 +502,7 @@ button:disabled { cursor: not-allowed; opacity: 0.5; }
 .rail-empty { padding: 4px 12px 12px; font-size: 11px; color: var(--muted); }
 
 .session-row {
+  /* Session context gauges keep token use visible to Joe. */
   margin: 0 10px 8px; padding: 8px 10px; border: 1px solid var(--line);
   border-radius: 10px; background: rgba(14, 19, 31, 0.6);
   border-left: 2px solid var(--halo);
@@ -529,6 +539,7 @@ button:disabled { cursor: not-allowed; opacity: 0.5; }
 .health-value { font-family: var(--display); font-size: 17px; line-height: 1.15; color: var(--text); font-variant-numeric: tabular-nums; }
 .health-sub { font-size: 10px; line-height: 1.25; color: var(--muted); }
 .health-cell.is-wide {
+  /* A slim full-width sign-in line leaves the assignments rail usable on short laptop viewports. */
   grid-column: 1 / -1; display: flex; align-items: center; gap: 8px; padding: 6px 9px;
 }
 .health-cell.is-wide .health-value { font-size: 14px; }
@@ -600,6 +611,7 @@ button:disabled { cursor: not-allowed; opacity: 0.5; }
 
 @media (max-width: 720px) {
   :root { --stage-h: 160px; }
+  /* The explicit Passport grid track prevents it from overlapping the wire. */
   body.room-body {
     overflow-y: auto;
     grid-template-columns: minmax(0, 1fr);
@@ -608,9 +620,11 @@ button:disabled { cursor: not-allowed; opacity: 0.5; }
     padding: 8px 8px 76px;
   }
   .room-header { flex-wrap: wrap; row-gap: 6px; padding: 6px 4px; }
+  /* Restore automatic row minimums; desktop zero minimums and column scrolling otherwise crush phone rows. */
   .room-desks, .room-rail, .room-health, .panel { min-height: auto; }
   .room-desks, .room-rail, .room-health, .room-health .health-grid { overflow: visible; }
   .room-wire { min-height: 60vh; }
+  /* Desktop overflow clipping makes the Passport invisible on the scrolling phone page. */
   .job-passport { overflow: visible; min-height: max-content; }
   .job-passport-list { grid-template-columns: 1fr; max-height: none; }
   .room-figures { gap: 10px; }
@@ -650,15 +664,19 @@ button:disabled { cursor: not-allowed; opacity: 0.5; }
 
 
 .stage-node-name { font-size: 6.5px; letter-spacing: 0.06em; text-transform: uppercase; }
+/* Full seat names distinguish Claude and Codex, whose initials collide. */
 
 .stage-moon-name { font-size: 5.5px; letter-spacing: 0.05em; text-transform: uppercase; fill: var(--muted); }
+/* External moon labels fit outside tiny discs; colour alone is not a state label. */
 
 .chip-view { font-weight: 600; }
 .chip-view[aria-pressed="true"] { color: var(--text); border-color: var(--orange); background: rgba(240, 138, 45, 0.14); }
 .chip-view::before { display: none; }
 .wire-filters[data-mode="conversation"] .chip-kind { display: none; }
+/* Conversation hides kind chips because they are inert in this mode. */
 
 .figure-value.is-changed, .health-sub.is-changed { animation: figure-flash 700ms ease-out; }
+/* Text figures flash on change; text cannot count up. */
 @keyframes figure-flash {
   0% { color: var(--orange); }
   100% { color: inherit; }

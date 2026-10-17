@@ -1,4 +1,4 @@
-
+/* The shared system owns tokens and reusable patterns; this sheet keeps page-only layout and helpers local. */
 .hero { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 14px; }
 .hero-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .row-wrap { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
@@ -9,14 +9,17 @@
 .pipeline-layout:has(.side-panel[hidden]) { grid-template-columns: minmax(0, 1fr); }
 
 .card-open { padding: 0; border: 0; background: none; color: var(--text); font: inherit; text-align: left; cursor: pointer; }
+/* Enter on the card body lifts it for moving, so the title needs its own open button. */
 .card-open:hover { color: var(--orange-text); }
 .card-move { margin-top: 8px; min-height: var(--touch); }
 .move-targets { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 8px; }
 .move-target { min-height: var(--touch); text-align: left; }
 
 .presence-chip { margin: 0; color: var(--cyan-text); font-size: 10px; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; }
+/* A presence lease identifies the partner; it does not imply intent. */
 
 .pending-bar { display: grid; gap: 8px; margin: 12px 0; padding: 12px; border: 1px dashed color-mix(in srgb, var(--amber) 60%, transparent); border-radius: var(--radius); background: color-mix(in srgb, var(--amber) 8%, transparent); font-size: 12px; }
+/* Pending writes stay above the board through every column filter until settled. */
 .pending-bar span { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 
 .check-option { display: flex; gap: 8px; align-items: center; min-height: var(--touch); font-size: 12px; }

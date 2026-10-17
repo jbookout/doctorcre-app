@@ -1,4 +1,4 @@
-
+/* Shared styles own the visual system; local controls raise its 36/38px sizes to the 44px accessibility floor. */
 .topbar { flex-wrap: wrap; }
 .global-controls { flex-wrap: wrap; justify-content: flex-end; }
 
@@ -12,6 +12,7 @@
 .chip-list { display: flex; flex-wrap: wrap; gap: 8px; }
 
 .quick-add > summary { list-style: none; }
+/* On phones, Quick add starts folded below open work so the task list appears first. */
 .quick-add > summary::-webkit-details-marker { display: none; }
 .quick-add-summary { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: var(--touch); cursor: pointer; }
 .quick-add-summary .eyebrow { display: block; margin: 0; }
@@ -32,6 +33,7 @@
 .detail-rows dd { margin: 0; font-size: 13px; overflow-wrap: anywhere; }
 
 .system-owned { margin-top: var(--gap); border: 1px dashed var(--line-strong); border-radius: var(--radius); padding: 10px 12px; }
+/* Keep the system-owned group present and collapsed; do not hide it. */
 .system-owned > summary { min-height: var(--touch); display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 12px; font-weight: 800; cursor: pointer; }
 .system-owned .work-list { margin-top: 10px; }
 

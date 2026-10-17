@@ -1,7 +1,9 @@
 .visually-hidden{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
 .workspace-directory .module-grid{grid-template-columns:repeat(auto-fit,minmax(196px,1fr))}
-
+/* Home links to both directories, so the grid fits whichever surfaces exist. */
+/* Loaded after workspace.css: reuse its tokens, buttons and motion; keep directory and record-panel styles here. */
 .nav-more{position:relative;margin-left:auto}
+/* Native disclosure keeps Operations reachable by keyboard and screen reader when phone navigation is hidden. */
 .nav-more>summary{display:inline-flex;align-items:center;gap:7px;min-height:44px;padding:9px 13px;border:1px solid var(--line);border-radius:10px;background:rgba(255,255,255,.035);color:var(--muted);font-size:12px;font-weight:700;list-style:none;cursor:pointer}
 .nav-more>summary::-webkit-details-marker{display:none}
 .nav-more>summary:after{content:"▾";font-size:10px;line-height:1}
@@ -106,6 +108,7 @@
 .record-field dd{margin:0;font-size:12px;line-height:1.5;overflow-wrap:anywhere}
 .unresolved-flag{display:block;color:var(--orange);font-size:9px;letter-spacing:.06em;text-transform:uppercase}
 .activity-list{position:relative;display:grid;gap:6px;margin:0;padding:0 0 0 16px;list-style:none}
+/* This page loads workspace.css, not system.css; motion tokens need system fallbacks and receipt-in is copied locally. */
 .activity-list:before{content:"";position:absolute;top:6px;bottom:6px;left:4px;width:2px;border-radius:2px;background:repeating-linear-gradient(to bottom,rgba(242,138,57,.55) 0 6px,transparent 6px 12px);background-size:2px 24px;animation:activity-rail var(--motion-flow,12s) linear infinite}
 .activity-row{position:relative;display:grid;gap:2px;padding:7px 10px;border:1px solid rgba(157,190,220,.13);border-radius:10px;animation:receipt-in var(--motion-enter,270ms) var(--ease,cubic-bezier(.2,.7,.2,1)) backwards;animation-delay:var(--stagger,0ms);transition:transform var(--motion-enter,270ms) var(--ease,cubic-bezier(.2,.7,.2,1)),border-color var(--motion-enter,270ms) var(--ease,cubic-bezier(.2,.7,.2,1))}
 .activity-row:hover{transform:translateX(3px);border-color:rgba(242,138,57,.45)}
@@ -138,6 +141,7 @@
   .pager{flex-direction:column;align-items:stretch}
   .pager .action,.pager .action.disabled{justify-content:center;text-align:center}
   .pager-position{order:-1;text-align:center}
+  /* Full-screen phone panel keeps records readable and Close reachable. */
   .record-panel.open{position:fixed;inset:0;z-index:26;max-height:none;border-radius:0;padding:16px 14px 104px;overflow:auto}
   .record-panel-head{position:sticky;top:0;padding:8px 0;background:rgba(7,17,31,.96)}
   .business-footnote{margin-bottom:12px}

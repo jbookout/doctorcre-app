@@ -1,4 +1,4 @@
-
+/* The shared contract cannot be widened here; keep page-specific wrapping and the 44px touch-target override local. */
 .topbar { flex-wrap: wrap; }
 .global-controls { flex-wrap: wrap; justify-content: flex-end; }
 
@@ -6,6 +6,7 @@
 .chip { min-height: var(--touch); }
 
 #sourceLine,
+/* Census references are unbroken tokens; aggressive wrapping keeps them from widening the phone page. */
 #requestPath,
 .work-meta,
 .work-meta span,
@@ -23,6 +24,7 @@
 }
 
 .stage-scroll { overflow-x: auto; }
+/* Keep the delivery table inside its own scroller; mobile cells carry captions and state colours stay independent of layout. */
 .stage-table td .btn,
 #dispositionRows .btn,
 .dialog .row-wrap .btn { min-height: var(--touch); }

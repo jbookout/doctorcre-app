@@ -1,4 +1,4 @@
-
+/* The shared sheet owns colour and type. Accountable activity stays separate from notifications; WR-000116 quiet rows remain marked, never hidden. */
 .topbar { flex-wrap: wrap; }
 .global-controls { flex-wrap: wrap; justify-content: flex-end; }
 
@@ -15,6 +15,7 @@
 .btn { min-height: var(--touch); }
 
 #feedList { grid-template-columns: minmax(0, 1fr); }
+/* A notification is a sentence, so its reason stays on a readable full-width line. */
 #feedList .work-item { grid-template-columns: minmax(0, 1fr); }
 .note-top { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
 .note-reason { margin: 6px 0 0; font: 600 17px/1.25 var(--body); overflow-wrap: anywhere; }
@@ -36,6 +37,7 @@
 [data-section="activity"] .work-item { color: var(--quiet); }
 
 .quiet-banner { margin: 0; padding: 10px 12px; border: 1px solid var(--amber); border-radius: 12px;
+  /* Amber marks quiet-hours suppression as state, not a failure. */
   background: color-mix(in srgb, var(--amber) 12%, transparent); color: var(--amber-text);
   font-size: 12px; line-height: 1.45; }
 .quiet-mark { display: inline-flex; align-items: center; gap: 6px; margin-top: 8px; padding: 4px 10px;
@@ -43,6 +45,7 @@
   color: var(--amber-text); font-size: 11px; font-weight: 600; overflow-wrap: anywhere; }
 
 .pref-form { display: grid; gap: 12px; margin-top: 12px; scroll-margin-top: 80px; }
+/* At 360px, clock fields share a row only when both can keep usable width. */
 .pref-grid { display: grid; gap: 12px; grid-template-columns: minmax(0, 1fr); }
 .pref-form .field { display: grid; gap: 6px; min-width: 0; }
 .pref-form label { color: var(--muted); font-size: 11px; font-weight: 600; letter-spacing: 0.02em; }
@@ -72,6 +75,7 @@
 }
 
 .record-details, .context-help { margin-top: 8px; color: var(--quiet); font-size: 12px; }
+/* Keep disclosure summaries at the 44px floor; reduced-motion contents appear without an entrance transition. */
 .record-details summary, .context-help summary { min-height: var(--touch); display: list-item; align-content: center; cursor: pointer; border-radius: 8px; transition: color .2s ease; }
 .record-details summary:hover, .context-help summary:hover, .record-details summary:focus-visible, .context-help summary:focus-visible { color: var(--text); }
 .record-details summary:focus-visible, .context-help summary:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
