@@ -1,6 +1,7 @@
 .visually-hidden{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
 .workspace-directory .module-grid{grid-template-columns:repeat(auto-fit,minmax(196px,1fr))}
 /* Home links to both directories, so the grid fits whichever surfaces exist. */
+
 /* Loaded after workspace.css: reuse its tokens, buttons and motion; keep directory and record-panel styles here. */
 .nav-more{position:relative;margin-left:auto}
 /* Native disclosure keeps Operations reachable by keyboard and screen reader when phone navigation is hidden. */

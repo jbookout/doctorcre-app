@@ -1,4 +1,5 @@
 /* Shared styles own the visual system; local controls raise its 36/38px sizes to the 44px accessibility floor. */
+
 .topbar { flex-wrap: wrap; }
 .global-controls { flex-wrap: wrap; justify-content: flex-end; }
 

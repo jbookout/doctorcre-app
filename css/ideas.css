@@ -1,4 +1,5 @@
 /* Motion follows rule 9293d609 and shared tokens; page-specific transforms also stop under reduced motion. */
+
 .topbar { flex-wrap: wrap; }
 .global-controls { flex-wrap: wrap; justify-content: flex-end; }
 

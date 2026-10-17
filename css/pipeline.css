@@ -1,4 +1,5 @@
 /* The shared system owns tokens and reusable patterns; this sheet keeps page-only layout and helpers local. */
+
 .hero { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 14px; }
 .hero-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .row-wrap { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }

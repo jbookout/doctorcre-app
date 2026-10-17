@@ -1,4 +1,5 @@
 /* The shared sheet owns colour and type. Hypotheses stay visibly distinct from findings so guesses cannot read as facts. */
+
 .topbar { flex-wrap: wrap; }
 .global-controls { flex-wrap: wrap; justify-content: flex-end; }
 
