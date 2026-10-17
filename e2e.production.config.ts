@@ -1,6 +1,8 @@
 import type { E2EConfig } from 'e2e';
 import { web } from '@e2e-dev/web';
 
+// Production journeys are read-only and signed out. carr-system release-smoke.py
+// runs them and collects reports, screenshots and traces as release evidence.
 process.env.E2E_TELEMETRY_DISABLED = '1';
 
 export default {

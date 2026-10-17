@@ -1,3 +1,4 @@
+// deal-room-board supplies account rows but no sub-client count; keep the middle SVG node neutral.
 export function renderAccountCards(accounts, { esc, relative, actorName }) {
   if (!accounts.length) return '<div class="empty">No national accounts yet. Add the first portfolio when it is won.</div>';
   return accounts.map((item) => {
