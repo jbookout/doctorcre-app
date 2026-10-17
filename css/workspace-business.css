@@ -1,15 +1,6 @@
-/* Clients and Vendors. Loaded AFTER workspace.css and reusing its tokens, glass,
-   topbar, buttons and motion rules — this file adds the list, the filter bar and
-   the record panel, and nothing that already exists. */
 .visually-hidden{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
-/* Home links to Clients and Vendors from the same directory, so its card grid
-   stops being a fixed five and simply fits whatever surfaces exist. */
 .workspace-directory .module-grid{grid-template-columns:repeat(auto-fit,minmax(196px,1fr))}
 
-/* Operations stay one keystroke away, in a secondary disclosure rather than as
-   a business tab. Native <details>, so it works with a keyboard and a screen
-   reader without a line of script, and it survives .primary-nav being hidden on
-   a phone — which is the width where operations would otherwise be lost. */
 .nav-more{position:relative;margin-left:auto}
 .nav-more>summary{display:inline-flex;align-items:center;gap:7px;min-height:44px;padding:9px 13px;border:1px solid var(--line);border-radius:10px;background:rgba(255,255,255,.035);color:var(--muted);font-size:12px;font-weight:700;list-style:none;cursor:pointer}
 .nav-more>summary::-webkit-details-marker{display:none}
@@ -26,7 +17,6 @@
 .back-home:hover{text-decoration:underline}
 .business-hero h1{font-size:clamp(38px,5.5vw,66px)}
 
-/* --- filters ------------------------------------------------------------- */
 .business-controls{display:grid;gap:11px;margin-bottom:14px}
 .filter-form{padding:16px 17px;border-radius:17px;display:grid;gap:13px}
 .filter-row{display:grid;grid-template-columns:minmax(220px,1.6fr) repeat(4,minmax(150px,1fr));gap:11px;align-items:end}
@@ -47,7 +37,6 @@
 .chip-reset{border-color:rgba(242,138,57,.5);background:rgba(242,138,57,.12)}
 .chip-empty{margin:0;color:var(--quiet);font-size:11px}
 
-/* --- notices ------------------------------------------------------------- */
 .notice-region{display:grid;gap:9px}
 .notice-region:empty{display:none}
 .notice{padding:12px 14px;border:1px solid var(--line);border-left-width:4px;border-radius:12px;background:rgba(18,39,63,.6)}
@@ -60,7 +49,6 @@
 .notice-refreshing{border-left-color:var(--cyan)}
 .notice-empty{border-left-color:var(--quiet)}
 
-/* --- results ------------------------------------------------------------- */
 .business-body{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(320px,.85fr);gap:16px;align-items:start;margin:14px 0 18px}
 .result-column{display:grid;gap:11px;min-width:0}
 .result-heading{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:10px}
@@ -96,7 +84,6 @@
 .pager-position{color:var(--muted);font-size:11px}
 .action.disabled{opacity:.4;border-color:var(--line);background:transparent;cursor:not-allowed}
 
-/* --- record panel -------------------------------------------------------- */
 .record-panel{position:sticky;top:88px;max-height:calc(100vh - 108px);overflow:auto;padding:18px;border-radius:18px}
 .record-panel[hidden]{display:none}
 .record-panel-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:12px}
@@ -118,11 +105,6 @@
 .record-field dt{margin:0;color:var(--quiet);font-size:10px;font-weight:800;letter-spacing:.08em;text-transform:uppercase}
 .record-field dd{margin:0;font-size:12px;line-height:1.5;overflow-wrap:anywhere}
 .unresolved-flag{display:block;color:var(--orange);font-size:9px;letter-spacing:.06em;text-transform:uppercase}
-/* V5-UX-B04 recent activity. This page loads css/workspace.css rather than the
-   shared system sheet, so the shared motion token names are used with the system
-   sheet's own values as fallbacks, and receipt-in is the same keyframe. Rows
-   enter on a stagger inside a second and answer the pointer; the timeline rail
-   carries a slow travelling dash so the eye follows the history down. */
 .activity-list{position:relative;display:grid;gap:6px;margin:0;padding:0 0 0 16px;list-style:none}
 .activity-list:before{content:"";position:absolute;top:6px;bottom:6px;left:4px;width:2px;border-radius:2px;background:repeating-linear-gradient(to bottom,rgba(242,138,57,.55) 0 6px,transparent 6px 12px);background-size:2px 24px;animation:activity-rail var(--motion-flow,12s) linear infinite}
 .activity-row{position:relative;display:grid;gap:2px;padding:7px 10px;border:1px solid rgba(157,190,220,.13);border-radius:10px;animation:receipt-in var(--motion-enter,270ms) var(--ease,cubic-bezier(.2,.7,.2,1)) backwards;animation-delay:var(--stagger,0ms);transition:transform var(--motion-enter,270ms) var(--ease,cubic-bezier(.2,.7,.2,1)),border-color var(--motion-enter,270ms) var(--ease,cubic-bezier(.2,.7,.2,1))}
@@ -135,14 +117,12 @@
 @keyframes receipt-in{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
 @keyframes activity-rail{to{background-position-y:24px}}
 
-/* --- footnote ------------------------------------------------------------ */
 .business-footnote{padding:16px 18px;border-radius:16px}
 .business-footnote h2{margin:0 0 8px;font:600 22px/1 var(--display)}
 .business-footnote p{margin:0 0 7px;color:var(--muted);font-size:11px;line-height:1.6}
 .inert-note{color:var(--quiet)}
 .inert-entry{display:inline-block;margin-left:6px;padding:3px 9px;border:1px dashed var(--line);border-radius:999px;color:var(--quiet);font-size:10px;font-weight:800;letter-spacing:.06em;text-transform:uppercase}
 
-/* --- responsive ---------------------------------------------------------- */
 @media(max-width:1180px){.filter-row{grid-template-columns:minmax(200px,1.4fr) repeat(2,minmax(150px,1fr))}}
 @media(max-width:1040px){
   .business-body{grid-template-columns:1fr}
@@ -158,8 +138,6 @@
   .pager{flex-direction:column;align-items:stretch}
   .pager .action,.pager .action.disabled{justify-content:center;text-align:center}
   .pager-position{order:-1;text-align:center}
-  /* The panel becomes the whole screen on a phone, so a record is readable
-     without pinching, and Close stays reachable by thumb. */
   .record-panel.open{position:fixed;inset:0;z-index:26;max-height:none;border-radius:0;padding:16px 14px 104px;overflow:auto}
   .record-panel-head{position:sticky;top:0;padding:8px 0;background:rgba(7,17,31,.96)}
   .business-footnote{margin-bottom:12px}
@@ -171,7 +149,6 @@
   .activity-row,.activity-list:before{animation:none!important;transition:none}
   .activity-row:hover{transform:none}
 }
-/* W5: full-width directory and one wide dialog at every screen size. */
 .business-shell{max-width:none;width:100%;padding-inline:clamp(16px,3vw,48px)}
 .business-hero{margin-bottom:24px;position:relative}
 .business-controls{position:static}

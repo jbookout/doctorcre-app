@@ -1,6 +1,3 @@
-// Portfolio cards render only the account rows supplied by deal-room-board.
-// The SVG shows the CARR record grain: parent, sub-client layer, market deals.
-// The middle node is neutral: the board supplies no sub-client count.
 export function renderAccountCards(accounts, { esc, relative, actorName }) {
   if (!accounts.length) return '<div class="empty">No national accounts yet. Add the first portfolio when it is won.</div>';
   return accounts.map((item) => {
