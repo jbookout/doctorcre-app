@@ -61,6 +61,11 @@ the account menu. It uses the fixed staging origin in `playwright.config.ts`.
 Keep the secret and saved browser state out of logs and commits. The existing
 fixture suites continue to run separately.
 
+`npx playwright test --project=fixtures` runs migrated, credential-free browser
+tests with Playwright's page and context fixtures. Known staging failures stay
+as individual `test.fixme` cases tagged `@fixme`; list them with
+`npx playwright test --project=chromium --list --grep @fixme`.
+
 `npm run release:prepare` runs checks, tests, build and source-bound artifact
 verification with a credential-free child environment. Run it before either
 publication command. The CARR pipeline invokes this entrypoint separately from
