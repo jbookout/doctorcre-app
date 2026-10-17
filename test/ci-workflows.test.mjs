@@ -9,8 +9,6 @@ import test from "node:test";
 
 const ci = await readFile(new URL("../.github/workflows/ci.yml", import.meta.url), "utf8");
 const release = await readFile(new URL("../.github/workflows/release.yml", import.meta.url), "utf8");
-const harnessSource = await readFile(new URL("./browser-harness.mjs", import.meta.url), "utf8");
-const nodeEngines = [...harnessSource.matchAll(/export const (\w+) = browserEngine\(/g)].map(match => match[1]).sort();
 const root = fileURLToPath(new URL("../", import.meta.url));
 
 test("the CI checkout layout keeps producer-owned content out of app repository checks", async (t) => {

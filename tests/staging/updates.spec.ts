@@ -1,5 +1,7 @@
 import { test, expect } from '@playwright/test';
 
+test.describe.configure({ retries: 0 });
+
 test('Updates reads the feed, quiet-hours preferences and original version', async ({ page }) => {
   await page.goto('/updates');
   await page.addLocatorHandler(page.getByRole('button', { name: 'Dismiss morning brief' }), async dismiss => { await dismiss.click(); });

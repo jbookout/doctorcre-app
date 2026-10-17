@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { readFile, mkdir } from 'node:fs/promises';
-import { chromium } from './browser-harness.mjs';
+import { chromium } from 'playwright';
 import { handleDoctorcreRequest } from '../src/worker.js';
 import { STAGES } from '../js/progress-board-model.js';
 import costs from './fixtures/progress-board-costs.json' with { type: 'json' };

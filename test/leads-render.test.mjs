@@ -1,4 +1,4 @@
-import test from 'node:test';import assert from 'node:assert/strict';import {mkdir} from 'node:fs/promises';import { chromium } from './browser-harness.mjs';
+import test from 'node:test';import assert from 'node:assert/strict';import {mkdir} from 'node:fs/promises';import { chromium } from 'playwright';
 import {workspace,id} from './leads-workspace-fixture.mjs';
 import {routeLeads} from './leads-browser-fixture.mjs';
 for(const width of [1440,390]) test(`Leads rendered board, map and wide popup fit ${width}px with automatic freshness`,async t=>{

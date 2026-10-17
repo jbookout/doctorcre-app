@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { JSDOM } from "jsdom";
 import { mountLeadsWorkspace } from "../js/leads-workspace-app.js";
-import { chromium } from "./browser-harness.mjs";
+import { chromium } from "playwright";
 import { TOUCH_LAYOUT } from "../js/touch-layout.js";
 
 const read = (path) => readFile(new URL(`../${path}`, import.meta.url), "utf8");
@@ -22,6 +22,7 @@ test("QA-002 light Home calendar tiles keep weekday and date text at 4.5:1", asy
   const css = (await Promise.all(sheets.map(read))).join("\n");
   const browser = await chromium.launch();
   const page = await browser.newPage();
+  await page.route('**/*', route => route.abort());
   try {
     await page.setContent(`<!doctype html><html data-theme="light"><head><style>${css}</style></head><body><main class="shell home-shell"><section class="home-panel glass"><div class="home-week"><div class="home-day"><span>Mon</span><strong>28</strong></div><div class="home-day today"><span>Tue</span><strong>29</strong></div></div></section></main></body></html>`);
     const ratios = await page.evaluate(() => {

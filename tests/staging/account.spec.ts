@@ -41,3 +41,13 @@ test.fixme('V2-D01: Shell intermittently keeps Connection available after an off
   await page.getByRole('button', { name: 'Refresh workspace', exact: true }).click();
   await expect(page.locator('#appConnection')).toHaveAttribute('aria-label', 'Connection available', { timeout: 27000 });
 });
+
+test('Doc command bar searches page navigation and opens Clients', async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Open Doc', exact: true }).click();
+  await expect(page.locator('#docDetail')).toBeVisible();
+  await page.getByRole('combobox', { name: 'Search anything or ask Doc', exact: true }).fill('Clients');
+  await page.getByRole('option', { name: /Clients/ }).first().click();
+  await expect(page).toHaveURL('/clients');
+  await expect(page.locator('.record-row').first()).toBeVisible();
+});

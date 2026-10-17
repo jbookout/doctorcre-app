@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
-import { chromium } from './browser-harness.mjs';
+import { chromium } from 'playwright';
 
 import { buildArtifact, runCli, verifyArtifact } from "../scripts/artifact.mjs";
 

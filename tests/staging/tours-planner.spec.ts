@@ -50,3 +50,27 @@ test.fixme('V2-C01: Planner intermittently reports Unavailable on the first sign
   await page.goto('/tours');
   await expect(page.locator('#planner-updated')).toContainText('Updated', { timeout: 27000 });
 });
+
+test('Tour planner refreshes then reviews a private packet and removes its attachment', async ({ page }) => {
+  await page.goto('/tours');
+  await expect(page.locator('#planner-updated')).not.toHaveText('Updating…', { timeout: 27000 });
+  await page.getByRole('button', { name: 'Refresh tours', exact: true }).click();
+  await expect(page.locator('#plan-client option')).not.toHaveCount(1, { timeout: 27000 });
+  await page.locator('#plan-client').selectOption({ index: 1 });
+  await page.locator('#plan-name').fill('V2 private packet review');
+  await page.locator('#packet-upload').setInputFiles({ name: 'v2-synthetic.txt', mimeType: 'text/plain', buffer: Buffer.from('Synthetic staging packet attachment; no client information.') });
+  await expect(page.locator('#packet-files li')).toHaveCount(1);
+  await page.getByRole('button', { name: 'Review packet draft', exact: true }).click();
+  await expect(page.locator('#tour-dialog')).toBeVisible();
+  await expect(page.locator('#detail-content')).toContainText('Private draft');
+  await expect(page.locator('#detail-content')).toContainText('v2-synthetic.txt');
+  await page.getByRole('button', { name: 'Close tour details', exact: true }).click();
+  await page.getByRole('button', { name: 'Remove v2-synthetic.txt', exact: true }).click();
+  await expect(page.locator('#file-count')).toHaveText('0 files');
+});
+
+test.fixme('V2-F01: A single private packet attachment is labelled 1 files', { tag: '@fixme' }, async ({ page }) => {
+  await page.goto('/tours');
+  await page.locator('#packet-upload').setInputFiles({ name: 'v2-synthetic.txt', mimeType: 'text/plain', buffer: Buffer.from('Synthetic staging attachment.') });
+  await expect(page.locator('#file-count')).toHaveText('1 file');
+});

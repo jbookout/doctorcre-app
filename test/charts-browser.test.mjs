@@ -3,7 +3,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { chromium } from './browser-harness.mjs';
+import { chromium } from 'playwright';
 
 const root = new URL('../', import.meta.url);
 const capture = JSON.parse(await readFile(new URL('test/fixtures/charts-synthetic.json', root), 'utf8'));
