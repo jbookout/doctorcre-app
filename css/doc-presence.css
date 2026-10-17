@@ -71,7 +71,7 @@
 @media(max-width:480px) { .doc-command-meta { align-items:start; } #docCommandForm { gap:6px; padding:6px; } #docCommandInput { font-size:16px; } .doc-context-tools { flex-wrap:wrap; } }
 @media(prefers-reduced-motion:reduce) { #docCommandResults>button { transition:none; transform:none; } }
 
-/* Popup controls keep their own row and stay reachable while the record scrolls. */
+/* Popup controls stay in their own row and reachable while the record scrolls. */
 :is(dialog[open],aside#recordPanel:not([hidden])) > .doc-presence { position:sticky; top:0; right:auto; bottom:auto; display:flex; align-items:center; gap:8px; margin:0 0 12px; }
 
 @media(max-width:760px),(hover:none) and (pointer:coarse) and (max-width:1023px){.has-app-layout .app-layout-sidebar,.has-app-layout .app-layout-today{padding-bottom:100px}}

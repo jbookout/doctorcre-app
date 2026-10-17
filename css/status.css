@@ -1,16 +1,4 @@
-/* V5-UX-C15 status — page layer over css/system.css.
- *
- * The shared sheet is contract-bound, so nothing here invents a colour or a
- * type scale. This page adds only what the shared sheet leaves to a page:
- *
- *  1. The hero row and the one headline sentence under it.
- *  2. The 44px floor on the controls this page adds, and wrapping for chips
- *     that are long single sentences on a 375px screen.
- *  3. The dimmed treatment for a last-known chip, which must be visibly not
- *     current so a stored picture can never be mistaken for a live read.
- *  4. Uncovered health, drawn quiet and dashed so it can
- *     never be mistaken for a zero or an outage.
- */
+/* The shared sheet owns colour and type; last-known status must not look live, and uncovered health must not look like zero or outage. */
 
 .topbar { flex-wrap: wrap; }
 .global-controls { flex-wrap: wrap; justify-content: flex-end; }
