@@ -105,8 +105,12 @@ body.has-app-layout { padding: 0 0 var(--layout-bottom) var(--layout-rail) !impo
 .app-layout[data-today=closed] { --layout-right: 0px; }
 /* Page stylesheets still set V1 ink names on their own :root; the shared regions
    read the token roles so their text holds contrast in both themes. */
+/* V1 page panels (.glass) paint a dark navy fill; on light they take the light
+   surface until each page slice replaces them. */
+:root[data-theme="light"] .glass { background: var(--surface-1); color: var(--fg); }
+:root[data-theme="light"] .glass :is(h1, h2, h3) { color: var(--fg); }
 .app-layout-sidebar, .app-layout-today, .has-app-layout #recordPanel { --text: var(--fg); --muted: var(--fg-muted); --quiet: var(--fg-quiet); --line: var(--hairline); }
-.app-layout-sidebar :is(input, select, textarea), .has-app-layout #recordPanel :is(input, select, textarea) { background: var(--surface-2); color: var(--fg); border-color: var(--hairline-strong); color-scheme: inherit; }
+:root .app-layout-sidebar :is(input, select, textarea), :root .has-app-layout #recordPanel :is(input, select, textarea) { background: var(--surface-2); color: var(--fg); border-color: var(--hairline-strong); color-scheme: inherit; }
 .app-layout-sidebar, .app-layout-today { min-width: 0; overflow: auto; position: sticky; top: 0; height: calc(100dvh - var(--layout-bottom)); box-sizing: border-box; background: var(--ground); border-right: var(--hairline-width) solid var(--hairline); color: var(--fg); scrollbar-width: thin; scrollbar-color: var(--hairline-strong) transparent; }
 .app-layout-today { border: 0; border-left: var(--hairline-width) solid var(--hairline); }
 .app-layout-sidebar > *, .app-layout-today > * { margin: 0 var(--space-4); }
@@ -135,7 +139,6 @@ body.has-app-layout { padding: 0 0 var(--layout-bottom) var(--layout-rail) !impo
 .app-layout-sidebar .hero-actions { display: flex; flex-wrap: wrap; margin-top: var(--space-3); }
 .app-layout-sidebar .controls { display: grid; grid-template-columns: 1fr; gap: var(--space-3); }
 .app-layout-sidebar input, .app-layout-sidebar select { box-sizing: border-box; max-width: 100%; width: 100%; min-width: 0; }
-.app-layout-sidebar :is(input, select, textarea) { background: var(--surface-1); color: var(--fg); border-color: var(--hairline-strong); }
 .app-layout-sidebar .controls output { padding: 0; }
 .app-layout-sidebar .filters { display: flex; flex-direction: column; align-items: stretch; gap: var(--space-1); }
 .app-layout-sidebar .filter { width: 100%; text-align: left; }
@@ -171,7 +174,6 @@ body.has-app-layout { padding: 0 0 var(--layout-bottom) var(--layout-rail) !impo
 .has-app-layout dialog { max-width: none; width: min(1100px, calc(100vw - 32px)); box-sizing: border-box; }
 .has-app-layout #recordPanel { position: fixed; inset: 50% auto auto 50%; transform: translate(-50%, -50%); width: min(1100px, calc(100vw - 32px)); max-height: 85dvh; z-index: 1300; overflow: auto; background: var(--surface-1); color: var(--fg); box-shadow: 0 0 0 100vmax var(--scrim), var(--shadow-overlay); }
 .has-app-layout #recordPanel h2, .has-app-layout #recordPanel h3 { color: var(--fg); }
-.has-app-layout #recordPanel :is(input, select, textarea) { background: var(--surface-2); color: var(--fg); border-color: var(--hairline-strong); }
 .has-app-layout #recordPanel summary { color: var(--fg); }
 .has-app-layout #panelBody { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-5); }
 .has-app-layout #panelEvidence { grid-column: 1 / -1; }
