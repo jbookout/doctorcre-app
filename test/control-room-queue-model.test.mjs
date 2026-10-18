@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   SECTION_KEYS, sectionForTab, kindLabel, statusGroup, validCensus, createQueue, addPage,
-  queueItems, groupItems, triageItems, coverageLine, isTriageState,
+  queueItems, groupItems, triageItems, coverageLine, isTriageState, refreshQueue, bugItems,
 } from "../js/control-room-queue-model.js";
 
 // Synthetic rows in the producer's own vocabulary (unfinished-work.v1,
@@ -114,29 +114,78 @@ test("cursor paging appends without duplicates and keeps the latest cursor and c
   assert.equal(queue.censusComplete, true);
 });
 
-test("an incomplete census says so in the coverage honesty line", () => {
+test("the coverage line is one short sentence; per-source detail sits behind it in plain words", () => {
   const partial = census(NINE, {
     census_complete: false, next_cursor: "cursor-2",
     coverage: [
       { kind: "work_request", source_ref: "ops.work_request", state: "complete", count_total: 445, count_returned: 1, reason: null },
       { kind: "defect", source_ref: "public.defect", state: "partial", count_total: 645, count_returned: 1, reason: "fix_status_not_recorded" },
-      { kind: "builder_brief_file", source_ref: "builder_files", state: "unavailable", count_total: null, count_returned: 0, reason: "github_cache_missing_stale_or_incomplete" },
+      { kind: "pull_request", source_ref: "github", state: "unavailable", count_total: null, count_returned: 0, reason: "github_cache_missing_stale_or_incomplete" },
+      { kind: "builder_brief_file", source_ref: "builder_files", state: "partial", count_total: 3, count_returned: 0, reason: "unstructured_brief_pr_relationships" },
     ],
   });
   const line = coverageLine(addPage(createQueue(), partial));
   assert.equal(line.complete, false);
-  assert.match(line.text, /^Showing 9 loaded/);
-  assert.match(line.text, /total unknown/, "a null source count makes the total unknown, never a guess");
-  assert.match(line.text, /more to load/);
-  assert.match(line.text, /Defect: partial \(fix status not recorded\)/);
-  assert.match(line.text, /Builder brief file: unavailable/);
+  assert.equal(line.text, "9 loaded · more to load · 3 sources incomplete");
+  assert.doesNotMatch(line.text, /_|cache|unstructured/, "no internal codes in the default line");
+  assert.deepEqual(line.details, [
+    { source: "Defect", text: "Partly read: fix status not recorded" },
+    { source: "Pull request", text: "Not read: GitHub data has not been refreshed" },
+    { source: "Builder brief file", text: "Partly read: links to pull requests are not recorded" },
+  ]);
+  for (const detail of line.details) assert.doesNotMatch(detail.text, /_/);
   const complete = coverageLine(addPage(createQueue(), census(NINE)));
   assert.equal(complete.complete, true);
-  assert.equal(complete.text, "All 9 sources read · 9 of 9 items");
-  const empty = coverageLine(addPage(createQueue(), census([])));
-  assert.equal(empty.complete, true);
-  assert.equal(empty.text, "All 0 sources read · 0 of 0 items");
+  assert.equal(complete.text, "9 items · every source read");
+  assert.deepEqual(complete.details, []);
+  assert.equal(coverageLine(addPage(createQueue(), census([]))).text, "0 items · every source read");
+  const one = coverageLine(addPage(createQueue(), census(NINE, { census_complete: false, coverage: [{ kind: "loop", state: "partial", count_total: 2, reason: "brand_new_reason" }] })));
+  assert.equal(one.text, "9 loaded · 1 source incomplete");
+  assert.deepEqual(one.details, [{ source: "Loop", text: "Partly read: brand new reason" }], "an unknown reason still reads as words");
   assert.equal(coverageLine(createQueue()).complete, false, "nothing read is not complete");
+});
+
+test("every real Work Request, incident and loop state lands in a named group, never Other", () => {
+  // States from carr-system migrations 0114 (ops.work_request), 0115 (ops.incident), 0024 (loop_item).
+  const expected = {
+    work_request: { captured: "triage", triaged: "ready", ready: "ready", claimed: "in_progress", in_progress: "in_progress",
+      verification: "review", awaiting_release: "review", released: "review", needs_joe: "blocked", blocked: "blocked",
+      failed: "blocked", confirmed_closed: "closed", declined: "closed", superseded: "closed" },
+    incident: { detected: "triage", triaged: "ready", investigating: "in_progress", mitigating: "in_progress",
+      monitoring: "review", resolved: "closed", reviewed: "closed" },
+    loop: { open: "backlog", done: "closed", dropped: "closed" },
+  };
+  for (const [kind, states] of Object.entries(expected))
+    for (const [state, group] of Object.entries(states)) assert.equal(statusGroup(kind, state), group, `${kind}:${state}`);
+  const queue = addPage(createQueue(), census([row("work_request", "WR-000930", "needs_joe", { identity: { human_ref: "WR-000930" } })]));
+  assert.equal(queueItems(queue)[0].statusGroup, "blocked", "needs_joe shows as blocked on Joe, not Other");
+});
+
+test("a refresh re-reads every page already loaded, so Load more survives the 15-second update", async () => {
+  const pages = { "": census(NINE.slice(0, 5), { census_complete: false, next_cursor: "c1" }),
+    c1: census(NINE.slice(5), { census_complete: true, next_cursor: null }) };
+  const reads = [];
+  const read = async (cursor) => { reads.push(cursor); return pages[cursor ?? ""]; };
+  let queue = addPage(createQueue(), await read(null));
+  queue = addPage(queue, await read("c1"));
+  assert.equal(queueItems(queue, { includeTriage: true }).length, 9);
+  reads.length = 0;
+  pages[""] = census(NINE.slice(1, 5), { census_complete: false, next_cursor: "c1" });
+  const refreshed = await refreshQueue(queue, read);
+  assert.deepEqual(reads, [null, "c1"], "both loaded pages are re-read in order");
+  assert.equal(refreshed.pages, 2);
+  assert.equal(queueItems(refreshed, { includeTriage: true }).length, 8, "a row gone from the source leaves the queue");
+  const fresh = await refreshQueue(createQueue(), read);
+  assert.equal(fresh.pages, 1, "an unread queue refreshes to one page");
+  pages[""] = census(NINE.slice(0, 3), { census_complete: true, next_cursor: null });
+  const shrunk = await refreshQueue(queue, read);
+  assert.equal(shrunk.pages, 1, "stops when the source has no further page");
+});
+
+test("the Bugs view holds defects and incidents, untracked defects included (X2)", () => {
+  const queue = addPage(createQueue(), census([...NINE,
+    row("incident", "INC-20261002-01", "detected", { identity: { ref: "INC-20261002-01" }, version: null })]));
+  assert.deepEqual(bugItems(queue).map((issue) => issue.kind).sort(), ["defect", "incident", "incident"]);
 });
 
 test("an invalid census is refused instead of rendering as an empty queue", () => {

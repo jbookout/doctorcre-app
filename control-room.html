@@ -60,13 +60,13 @@
   <template id="crTriageEmpty"><div class="state-block" data-state="empty"><h3>Triage is clear</h3><p>New captures and detected incidents arrive here first.</p></div></template>
 </section>
 <section id="panelQueue" class="tabpanel cr-section" role="tabpanel" aria-labelledby="tabQueue" tabindex="0">
-  <header class="cr-section-head"><h2 id="crQueueTitle">Queue</h2><p class="cr-section-lead">Every open item the record layer tracks, grouped by status. Triage items are left out.</p></header><p id="crQueueCoverage" class="cr-coverage" role="status"></p>
+  <header class="cr-section-head"><h2 id="crQueueTitle">Queue</h2><p class="cr-section-lead">Every open item the record layer tracks, grouped by status. Triage items are left out.</p></header><div class="cr-coverage-row"><p id="crQueueCoverage" class="cr-coverage" role="status"></p><details id="crQueueSources" class="cr-sources" hidden><summary>Which sources</summary><ul id="crQueueSourceList"></ul></details></div>
   <div id="crQueueList" class="cr-list" aria-labelledby="crQueueTitle"><div class="state-block" data-state="loading"><h3>Reading queue…</h3></div></div>
   <button id="crQueueMore" class="btn cr-more" type="button" hidden>Load more</button>
   <template id="crQueueEmpty"><div class="state-block" data-state="empty"><h3>The queue is empty</h3><p>Nothing open has been recorded. New work arrives through Triage.</p></div></template>
 </section>
 <section id="panelViews" class="tabpanel cr-section" role="tabpanel" aria-labelledby="tabViews" tabindex="0" hidden>
-  <header class="cr-section-head"><h2 id="crViewsTitle">Views</h2><p class="cr-section-lead">Saved slices of the queue. Counts come from the items loaded so far.</p></header>
+  <header class="cr-section-head"><h2 id="crViewsTitle">Views</h2><p class="cr-section-lead">Built-in views of the queue. Counts cover the items loaded so far.</p></header>
   <div id="crViewsList" class="cr-list" aria-labelledby="crViewsTitle"><div class="state-block" data-state="loading"><h3>Reading views…</h3></div></div>
       <section class="cr-ledger" data-section="incidents" aria-labelledby="attentionTitle">
         <div class="cr-ledger-head">
@@ -87,19 +87,12 @@
         <summary id="directory-title" class="directory-summary">Published boards<span id="directory-error" class="error" role="alert" hidden></span></summary>
         <nav id="board-directory" class="board-directory" aria-label="Published progress boards"></nav>
       </details>
-        <form id="system-work-filters" class="work-filters">
-          <label>Search<input name="text" type="search" maxlength="200"></label>
-          <label>Category<select name="source"><option value="">All categories</option></select></label>
-          <label>Kind<select name="kind"><option value="">All kinds</option></select></label>
-          <label>Minimum age in days<input name="age" type="number" min="0" value="0"></label>
-          <button type="submit">Search</button>
-        </form>
-<a href="/control-room/progress/work">Project activity</a></div><div class="board-switch"><a id="switch-project" href="/control-room/progress?board=carr-v5">Project</a><a id="switch-all" href="/control-room/progress?board=all-repos">All repositories</a><button id="legend-toggle" class="legend-toggle" type="button" aria-controls="legend" aria-expanded="false">Key</button></div><aside id="legend" class="panel legend" aria-labelledby="legend-title" hidden>
+</div><div class="board-switch"><a id="switch-project" href="/control-room/progress?board=carr-v5">Project</a><a id="switch-all" href="/control-room/progress?board=all-repos">All repositories</a><button id="legend-toggle" class="legend-toggle" type="button" aria-controls="legend" aria-expanded="false">Key</button></div><aside id="legend" class="panel legend" aria-labelledby="legend-title" hidden>
       <div class="panel-heading"><div><h2 id="legend-title">What every mark means</h2></div></div>
       <div id="legend-body" class="legend-body"></div>
     </aside>
 
-      <nav aria-label="Breadcrumb"><a href="/control-room/progress">Progress</a> › <span id="board-parent-name">Board</span> · <a id="board-activity" href="/control-room/progress/work">Project activity</a></nav>
+      <nav aria-label="Breadcrumb" hidden><a href="/control-room/progress">Progress</a> › <span id="board-parent-name">Board</span> · <a id="board-activity" href="/control-room/progress/work">Project activity</a></nav>
       <section class="intro" aria-labelledby="board-title">
         <p class="eyebrow" id="board-eyebrow">Progress board</p>
         <h1 id="board-title" class="sr-only" tabindex="-1">System Job Board</h1>
@@ -131,6 +124,13 @@
       </section>
       <section id="system-work-panel" class="panel" hidden aria-labelledby="system-work-title">
         <div class="panel-heading"><h2 id="system-work-title">System design and build work</h2><button id="live-library" type="button" aria-pressed="false">Completed records</button></div>
+        <form id="system-work-filters" class="work-filters">
+          <label>Search<input name="text" type="search" maxlength="200"></label>
+          <label>Category<select name="source"><option value="">All categories</option></select></label>
+          <label>Kind<select name="kind"><option value="">All kinds</option></select></label>
+          <label>Minimum age in days<input name="age" type="number" min="0" value="0"></label>
+          <button type="submit">Search</button>
+        </form>
         <p id="system-work-coverage" class="caption" role="status"></p>
         <p id="system-work-error" class="error" role="alert" hidden></p>
         <div id="system-work-cards"></div><button id="system-work-more" type="button" hidden>Load more</button>

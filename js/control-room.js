@@ -15,7 +15,7 @@ import { mountJobDetail } from './job-detail.js';
 import { escapeText as escapeHtml } from './change-receipts.mjs';
 import { validGovernanceQueuePayload, validScheduleBoardPayload } from './operations-model.js';
 import {snapshotFromReads,writeSnapshot} from './status-model.js';
-import { sectionForTab, createQueue, addPage, queueItems, triageItems, groupItems, coverageLine, STATUS_GROUPS } from './control-room-queue-model.js';
+import { sectionForTab, createQueue, addPage, refreshQueue, queueItems, triageItems, bugItems, groupItems, coverageLine, STATUS_GROUPS } from './control-room-queue-model.js';
 import { notificationCards, validFeedPayload } from './notifications-model.js';
 const $=id=>document.getElementById(id);
 export { escapeHtml };
@@ -64,7 +64,7 @@ function renderIncidents() {
           <div class="stack-end"><button class="btn" type="button" data-room-control="${escapeHtml(card.ref)}" data-incident-open="${escapeHtml(card.ref)}">Details</button></div>
         </li>`).join("")}
       </ul>
-    </section>`).join("") || `<div class="state-block" data-state="empty"><h3>No incident matches this severity</h3></div>`);
+    </section>`).join("") || `<div class="state-block" data-state="empty"><h3>${view.reads.incidents?.payload?.incidents?.length?"No incident matches this severity":"No incidents"}</h3></div>`);
 }
 
 function openIncident(ref) { const row=payloadOf('incidents')?.incidents?.find(item=>item.ref===ref);if(row){selectDocRecord("incident", row.ref);details.open({...row,id:row.ref},{source:'incidents'});} }
@@ -123,7 +123,7 @@ async function load(){
 // and the detail pane, C3 the triage actions, C5 the saved views.
 const ISSUE_SECTIONS=new Set(['inbox','waiting','triage','queue','views']);
 const QUEUE_PAGE=100;
-const GLYPH={triage:'◇',in_progress:'◑',review:'◔',blocked:'■',ready:'●',backlog:'○',other:'·'};
+const GLYPH={triage:'◇',in_progress:'◑',review:'◔',blocked:'■',ready:'●',backlog:'○',closed:'✓',other:'·'};
 const emptyBlock=id=>$(id)?.innerHTML||'';
 const stateBlock=(state,title,text='')=>`<div class="state-block" data-state="${state}"><h3>${escapeHtml(title)}</h3>${text?`<p>${escapeHtml(text)}</p>`:''}</div>`;
 const plural=(n,one,many=one+'s')=>`${n.toLocaleString('en-US')} ${n===1?one:many}`;
@@ -139,11 +139,13 @@ function renderQueue(){
  const coverage=$('crQueueCoverage'),more=$('crQueueMore');
  if(read.state!=='read'&&queue.pages===0){
   const failed=read.state==='unknown';
-  coverage.textContent=failed?read.reason:'Reading the record layer…';coverage.dataset.complete='false';
+  coverage.textContent=failed?read.reason:'Reading the record layer…';coverage.dataset.complete='false';$('crQueueSources').hidden=true;
   for(const id of ['crQueueList','crTriageList','crViewsList'])replaceHtml($(id),failed?stateBlock('offline','The queue could not be read',`${read.reason}. Nothing is shown rather than a partial guess.`):stateBlock('loading','Reading the queue…'));
   more.hidden=true;return;
  }
  const line=coverageLine(queue);coverage.textContent=line.text;coverage.dataset.complete=String(line.complete);
+ $('crQueueSources').hidden=line.details.length===0;
+ replaceHtml($('crQueueSourceList'),line.details.map(d=>`<li><strong>${escapeHtml(d.source)}</strong> ${escapeHtml(d.text)}</li>`).join(''));
  const open=queueItems(queue),triage=triageItems(queue),everything=queueItems(queue,{includeTriage:true});
  replaceHtml($('crQueueList'),open.length?groupedList(open):emptyBlock('crQueueEmpty'));
  replaceHtml($('crTriageList'),triage.length?`<ul class="cr-rows">${triage.map(issueRow).join('')}</ul>`:emptyBlock('crTriageEmpty'));
@@ -151,29 +153,29 @@ function renderQueue(){
   ['Everything','Every loaded item, triage included',everything.length],
   ['Blocked','Items that cannot move',open.filter(i=>i.statusGroup==='blocked').length],
   ['In review','Waiting for a review or verification',open.filter(i=>i.statusGroup==='review').length],
-  ['Incidents','Open incidents outside triage',open.filter(i=>i.kind==='incident').length],
+  ['Bugs','Defects and incidents, untracked defects included',bugItems(queue).length],
  ];
  replaceHtml($('crViewsList'),`<ul class="cr-views">${views.map(([name,hint,n])=>`<li data-view="${escapeHtml(name)}"><span>${escapeHtml(name)}<small>${escapeHtml(hint)}</small></span><strong>${n.toLocaleString('en-US')}</strong></li>`).join('')}</ul>`);
  setCount('queue',open.length);setCount('triage',triage.length);
  more.hidden=!queue.nextCursor;more.disabled=read.loading===true;more.textContent=read.loading?'Loading…':'Load more';
 }
-async function readQueuePage(cursor=null){
- const sequence=view.sequence;
- const args={limit:QUEUE_PAGE,...(cursor?{cursor}:{})};
- const [census,incidents,current]=await Promise.all([readWithDeadline(()=>client.unfinishedWork(args)),payloadOf('incidents')?Promise.resolve(payloadOf('incidents')):Promise.resolve(null),client.currentWorkItem?readWithDeadline(()=>client.currentWorkItem()).catch(()=>null):Promise.resolve(null)]);
- if(sequence!==view.sequence&&!cursor)return null;
- return addPage(cursor?view.queue.model:createQueue(),census,{incidents,current});
+// One page of the census; incidents and current holders enrich every page alike.
+async function queueContext(){
+ const current=client.currentWorkItem?await readWithDeadline(()=>client.currentWorkItem()).catch(()=>null):null;
+ return {incidents:payloadOf('incidents')||null,current};
 }
+const readCensus=cursor=>readWithDeadline(()=>client.unfinishedWork({limit:QUEUE_PAGE,...(cursor?{cursor}:{})}));
+// The 15-second refresh re-reads every page already loaded, so Load more survives it.
 async function loadQueue(){
  const sequence=view.sequence;
- try{const model=await readQueuePage();if(!model||sequence!==view.sequence)return;view.queue={state:'read',model};}
+ try{const context=await queueContext();const model=await refreshQueue(view.queue.model,readCensus,context);if(sequence!==view.sequence)return;view.queue={state:'read',model};}
  catch(error){if(sequence!==view.sequence)return;view.queue={state:'unknown',reason:[401,403].includes(error.status)?'Sign in required':'Updates unavailable',model:view.queue.model};}
  renderQueue();
 }
 async function loadMoreQueue(){
  const cursor=view.queue.model.nextCursor;if(!cursor||view.queue.loading)return;
  view.queue={...view.queue,loading:true};renderQueue();
- try{const model=await readQueuePage(cursor);view.queue={state:'read',model};announce(`Loaded ${plural(model.items.length,'item')}`);}
+ try{const [census,context]=await Promise.all([readCensus(cursor),queueContext()]);const model=addPage(view.queue.model,census,context);view.queue={state:'read',model};announce(`Loaded ${plural(model.items.length,'item')}`);}
  catch{view.queue={...view.queue,loading:false};announce('More items could not be loaded');}
  renderQueue();
 }
