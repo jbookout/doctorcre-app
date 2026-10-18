@@ -61,6 +61,8 @@ for (const width of [1440, 390]) for (const theme of ['dark', 'light']) {
     await expect(pane.locator('[data-detail-unavailable]')).toContainText('Work request not found');
     await expect(pane.locator('.cr-next')).toContainText('Unavailable');
     await expect(pane).not.toContainText('None recorded');
+    await page.screenshot({ path: test.info().outputPath('short-title.png') });
+    await expect(pane.getByText('Show full title', { exact: true })).toBeHidden();
     const order = await pane.evaluate(node => [...node.children].map(child => child.className));
     expect(order.indexOf('state-block cr-detail-availability')).toBeLessThan(order.indexOf('cr-next'));
     await page.screenshot({ path: test.info().outputPath('unavailable.png') });

@@ -216,7 +216,22 @@ const reasonOf = (error) => [401, 403].includes(error?.status) ? 'Sign in requir
  */
 export function mountDetail({ node, client, onClose = () => {}, readDeadline = (run) => run() }) {
   let current = null, read = { state: 'loading' }, showAll = false, sequence = 0;
-  const render = () => { if (current) node.innerHTML = detailHtml(current, read, { showAll }); };
+  const measureTitle = () => {
+    const heading = node.querySelector('.cr-detail-heading');
+    const title = heading?.querySelector('.cr-detail-title');
+    if (!title || heading.open) return;
+    const truncated = title.scrollHeight > title.clientHeight;
+    heading.dataset.truncated = String(truncated);
+    heading.querySelector('summary').tabIndex = truncated ? 0 : -1;
+  };
+  const titleObserver = new ResizeObserver(measureTitle);
+  const render = () => {
+    if (!current) return;
+    titleObserver.disconnect();
+    node.innerHTML = detailHtml(current, read, { showAll });
+    measureTitle();
+    titleObserver.observe(node.querySelector('.cr-detail-title'));
+  };
   async function load() {
     const ticket = ++sequence, request = detailRequest(current);
     if (!request || typeof client?.[request.method] !== 'function') { read = { state: 'none' }; render(); return; }
@@ -231,13 +246,14 @@ export function mountDetail({ node, client, onClose = () => {}, readDeadline = (
   }
   node.addEventListener('click', (event) => {
     const target = event.target instanceof Element ? event.target : null;
+    if (target?.closest('.cr-detail-heading[data-truncated="false"] summary')) { event.preventDefault(); return; }
     if (target?.closest('[data-detail-close]')) { onClose(); return; }
     if (target?.closest('[data-show-older]')) { showAll = true; render(); return; }
     if (target?.closest('[data-detail-retry]')) load();
   });
   return {
     open(item) { if (current?.id === item.id && read.state !== 'error') return; current = item; showAll = false; load(); },
-    clear() { sequence++; current = null; },
+    clear() { sequence++; current = null; titleObserver.disconnect(); },
     get item() { return current; },
   };
 }
