@@ -143,3 +143,20 @@ test('R6: without a readable tour the page resolves its freshness and shows one 
     assert.equal(doc.querySelector('#day-record').disabled, true);
   }
 });
+
+
+test('draft Tour day uses a readable name and links directly to route recovery', async t => {
+  const h = await harness(t);
+  h.current.name = `Synthetic ${tourId} draft tour`;
+  h.current.routes[0].accepted = false;
+  await h.view.refresh();
+  assert.equal(h.doc.querySelector('#day-title').textContent, 'Synthetic draft tour');
+  const recovery = h.doc.querySelector('#day-map a');
+  assert.equal(recovery?.textContent, 'Review route in Itinerary');
+  assert.equal(recovery.getAttribute('href'), `/tours/route-editor.html?tour=${tourId}`);
+  assert.equal(h.doc.querySelector('#day-record').disabled, true);
+  h.current.routes[0].accepted = true;
+  await h.view.refresh();
+  assert.equal(h.doc.querySelector('#day-map a'), null);
+  assert.equal(h.doc.querySelectorAll('.day-stop').length, 2);
+});

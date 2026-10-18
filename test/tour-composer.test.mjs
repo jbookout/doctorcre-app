@@ -877,3 +877,33 @@ test("the committed digest producer detail reaches composer acceptance unchanged
   assert.equal(store.calls.find(call => call.path === "/api/tours/route-accept").body.acceptance_digest, reviewedDigest);
   assert.equal([...store.tours.values()][0].routes[0].accepted, true);
 });
+
+
+test("library failure offers inline retry and clears it after recovery", async () => {
+  const store = domain(), fetch = store.fetch;
+  let fail = true;
+  store.fetch = (path, options) => path === '/api/tours/library' && fail ? Promise.resolve(response(null, 503)) : fetch(path, options);
+  const { dom, doc } = await open(store);
+  try {
+    const retry = doc.querySelector('#retry-library');
+    assert.equal(retry?.hidden, false);
+    fail = false; retry.click(); await settle();
+    assert.equal(retry.hidden, true);
+    assert.match(doc.querySelector('#empty-copy').textContent, /No tours yet/);
+  } finally { dom.window.close(); }
+});
+
+test("excluded stop keeps its state visible and folds optional editing details", async () => {
+  const { dom, doc } = await open(domain());
+  try {
+    await create(doc); await addCart(doc);
+    fill(doc, `#route-stops [data-property-id="${propA}"] [data-field="stop_state"]`, 'excluded', 'change');
+    const row = doc.querySelector(`#route-stops [data-property-id="${propA}"]`);
+    const details = row.querySelector('.stop-edit-details');
+    assert.ok(details);
+    assert.equal(details.open, false);
+    assert.equal(row.querySelector('[data-field="stop_state"]').closest('details'), null);
+    assert.ok(details.querySelector('[data-field="dwell_minutes"]'));
+    assert.equal(doc.querySelector('#reload-composer').hidden, true);
+  } finally { dom.window.close(); }
+});

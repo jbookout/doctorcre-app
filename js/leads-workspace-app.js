@@ -15,7 +15,7 @@ const options = (rows, selected, all) => `<option value="">${all}</option>${rows
 
 export function mountLeadsWorkspace(doc = document, client = createLeadBoardClient(), { mapFactory = mountTerritoryMap } = {}) {
   const $ = id => doc.getElementById(id), win = doc.defaultView || globalThis.window;
-  const state = { board: null, readFailed: false, actor: null, epoch: 0, detailEpoch: 0, reviewEpoch: 0, filters: { search: "", owner: "", stage: "", market: "" },
+  const state = { board: null, readFailed: false, actor: null, epoch: 0, detailEpoch: 0, reviewEpoch: 0, filters: { search: "", owner: "", stage: "", market: "" }, mobileStage: null,
     detail: null, detailId: null, resumeReview: null, commandFeedback: null, connectionFeedback: null, proposal: null, reviewTarget: null, pending: null, writing: false, identityReady: false, trigger: null, drag: null, map: null };
   const leadById = id => state.board?.leads.find(lead => lead.id === id && eligibleLead(lead));
   const reviewComplete = (lead, target, undoEventId) => (undoEventId ? lead.stage : normalizedStage(lead)) === target;
@@ -75,12 +75,14 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
       : hot.newTotal ? `All ${hot.newTotal} New leads are claimed` : "No New leads yet. The next new-lead search adds them here.";
     $("hotLeads").innerHTML = hot.rows.map((lead, i) => `<article class="hot-row" data-lead-id="${esc(lead.id)}" tabindex="0" role="button" aria-label="${esc(leadTitle(lead))}"><span class="hot-rank">${i + 1}</span><div><h3>${esc(leadTitle(lead))}</h3><small>${esc(marketKey(lead))}</small></div><span class="score">${score(lead)}</span>${hot.claimable ? `<button data-claim="${esc(lead.id)}">Claim</button>` : `<span class="hot-owner">${esc(ownerName(lead.owner))}</span>`}</article>`).join("");
     $("hotLeads").setAttribute("aria-busy", "false");
+    const currentStage = state.filters.stage || state.mobileStage || BOARD_STAGES.find(([key]) => shown.some(lead => normalizedStage(lead) === key))?.[0] || "new";
+    $("mobileStage").innerHTML = FILTER_STAGES.map(([key, label]) => `<option value="${key}"${key === currentStage ? " selected" : ""}>${esc(label)} · ${visibleLeads(leads, { ...state.filters, stage: key }).length}</option>`).join("");
     if (state.filters.stage === "archived") {
       $("leadBoard").innerHTML = `<div class="filtered-list" aria-label="${stageLabel(state.filters.stage)}">${shown.map(card).join("") || '<p class="empty">No matching leads</p>'}</div>`;
     } else {
       $("leadBoard").innerHTML = `<div class="stage-columns">${BOARD_STAGES.map(([key, text]) => {
         const rows = shown.filter(lead => normalizedStage(lead) === key);
-        return `<section class="stage-column" data-stage="${key}" aria-label="${text}"><h2 class="stage-head">${text}<span>${rows.length}</span></h2><div class="lead-stack">${rows.map(card).join("") || `<p class="stage-empty">No leads in ${text}</p>`}</div></section>`;
+        return `<section class="stage-column" data-mobile-current="${key === currentStage}" data-stage="${key}" aria-label="${text}"><h2 class="stage-head">${text}<span>${rows.length}</span></h2><div class="lead-stack">${rows.map(card).join("") || `<p class="stage-empty">No leads in ${text}</p>`}</div></section>`;
       }).join("")}</div>`;
     }
     // The time states the snapshot on screen, as Deals does: a failed refresh
@@ -146,6 +148,7 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
             (state.pending.kind === "stage" && move?.idempotency_key === state.pending.key) ||
             (state.pending.kind === "claim" && current?.owner === state.pending.actor)) {
           state.pending = null; state.commandFeedback = null; $("stageDialog").close();
+      if (pending.kind === "stage") state.mobileStage = pending.stage;
         }
       }
       paintCommandFeedback();
@@ -277,6 +280,7 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
       else await client.recordStage(pending.lead, pending.stage, pending.review, pending.key, pending.actor);
       if (state.pending !== pending || state.actor !== actor) return;
       state.pending = null; state.commandFeedback = null; $("stageDialog").close();
+      if (pending.kind === "stage") state.mobileStage = pending.stage;
       $("moveAnnouncement").textContent = pending.kind === "link" ? "Client linked" : pending.kind === "claim" ? "Lead claimed" : pending.review.undo_event_id ? "Stage restored" : `Moved to ${stageLabel(pending.stage)}`;
       await refresh();
     } catch (error) {
@@ -297,6 +301,12 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
   for (const [id, key] of [["leadSearch", "search"], ["ownerFilter", "owner"], ["stageFilter", "stage"], ["marketFilter", "market"]]) {
     $(id).addEventListener(id === "leadSearch" ? "input" : "change", event => { state.filters[key] = event.target.value; render(); });
   }
+  $("mobileStage").addEventListener("change", event => {
+    state.mobileStage = event.target.value;
+    state.filters.stage = event.target.value === "archived" ? "archived" : "";
+    render();
+    $("mobileStage").scrollIntoView({ block: "start" });
+  });
   $("clearMarket").addEventListener("click", () => { state.filters.market = ""; render(); });
   $("marketCounts").addEventListener("click", event => { const button = event.target.closest("[data-market]"); if (button) selectMarket(button.dataset.market); });
   $("refreshBoard").addEventListener("click", () => refresh());
@@ -355,6 +365,7 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
   }
   function stopTouch() {
     const prior = touch; touch = null;
+    delete board.dataset.touchDragging;
     if (scrollFrame !== null) win.cancelAnimationFrame(scrollFrame);
     scrollFrame = null;
     if (prior?.handle.hasPointerCapture?.(prior.pointer)) prior.handle.releasePointerCapture(prior.pointer);
@@ -373,6 +384,7 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
   board.addEventListener("pointerdown", event => {
     const handle = event.target.closest("[data-drag-handle]"); if (!handle || state.pending || !state.identityReady) return;
     stopTouch(); const card = handle.closest("[data-lead-id]");
+    board.dataset.touchDragging = "true";
     touch = { id: card.dataset.leadId, handle, pointer: event.pointerId, startX: event.clientX, startY: event.clientY, x: event.clientX, y: event.clientY };
     handle.setPointerCapture?.(event.pointerId); scrollFrame = win.requestAnimationFrame(scrollTouch);
   });

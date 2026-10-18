@@ -64,17 +64,13 @@
 .territory-heading { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); }
 .territory-heading h2 { font-size: var(--font-size-3); }
 .territory-caption { color: var(--fg-muted); font-size: var(--font-size-1); }
-/* A fixed measure, narrower than the card with or without the app shell: the shell
-   re-parents the page into a wider column, and a lead that re-wrapped there would
-   repaint larger and move LCP to shell-mount time. */
-.territory-lead { max-width: 30ch; margin: 0 0 var(--space-3); color: var(--fg-muted); font-size: var(--font-size-2); }
 .territory-map { display: block; width: 100%; height: clamp(120px, 14vw, 190px); margin: var(--space-2) auto; }
 .territory-land { fill: var(--surface-2); stroke: var(--hairline); stroke-width: 1; }
 .territory-state-line { fill: none; stroke: var(--hairline-strong); stroke-dasharray: 3 6; }
 .territory-map .territory-coast { fill: none; stroke: var(--hairline-strong); stroke-width: 1.5; stroke-dasharray: none; }
 .map-market circle { fill: var(--data-1); stroke: var(--surface-1); stroke-width: 2; }
-.map-market text { fill: var(--fg); font: var(--font-size-1) var(--font-text); }
-.map-state, .map-water { fill: var(--fg-muted); font: var(--font-size-1) var(--font-text); }
+.map-market text { fill: var(--fg); font: var(--font-size-3) var(--font-text); }
+.map-state, .map-water { fill: var(--fg-muted); font: var(--font-size-2) var(--font-text); }
 .market-buttons { display: flex; flex-wrap: wrap; justify-content: center; gap: var(--space-2); }
 .market-buttons button { font-weight: var(--font-weight-regular); }
 .market-buttons button[aria-pressed="true"] { border-color: var(--fg); background: var(--surface-3); font-weight: var(--font-weight-strong); }
@@ -122,9 +118,8 @@
   .planner-grid { grid-template-columns: minmax(0, 1fr); padding: 0 var(--space-4) var(--space-6); }
   .planner-grid > .card { padding: var(--space-4); }
   .drop-heading { flex-wrap: wrap; }
-  .territory-map { height: 150px; }
-  .map-market text { font-size: var(--font-size-3); }
-  .map-state, .map-water { font-size: var(--font-size-2); }
+  .territory-map { display: none; }
+  .territory-heading { margin-bottom: var(--space-2); }
   .market-buttons button { flex: 1 1 42%; }
   .tour-dialog { width: calc(100vw - 20px); max-height: calc(100dvh - 20px); padding: var(--space-4); }
   .detail-stops { grid-template-columns: minmax(0, 1fr); }

@@ -10,6 +10,7 @@
  */
 
 *, *::before, *::after { box-sizing: border-box; }
+[hidden] { display: none !important; }
 body { margin: 0; min-width: 320px; background: var(--ground); color: var(--fg); font: var(--font-size-2) / var(--line-height-body) var(--font-text); }
 h1, h2, h3, h4 { margin: 0; font-family: var(--font-text); font-weight: var(--font-weight-strong); line-height: var(--line-height-heading); color: var(--fg); }
 p { margin: 0; }
@@ -184,6 +185,8 @@ button.primary:hover:not(:disabled) { border-color: var(--accent-hover); backgro
 .stop-number { display: grid; flex: 0 0 auto; place-items: center; width: 32px; height: 32px; border: var(--hairline-width) solid var(--hairline-strong); border-radius: 50%; color: var(--fg); font-size: var(--font-size-1); font-variant-numeric: tabular-nums; }
 .stop-fields { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--space-3); }
 .stop-fields label { align-content: start; min-width: 0; margin-top: var(--space-2); }
+.stop-edit-details { margin-top: var(--space-3); }
+.stop-edit-details > summary { cursor: pointer; font-size: var(--font-size-1); }
 .stop-fields input[type="checkbox"] { width: 20px; height: var(--touch); }
 .stop-identity { margin: var(--space-2) 0; color: var(--fg-muted); font-size: var(--font-size-1); overflow-wrap: anywhere; }
 .stop-identity summary { display: flex; align-items: center; min-height: var(--touch); }

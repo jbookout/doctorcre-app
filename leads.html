@@ -24,7 +24,7 @@
 <label>Market<select id="marketFilter"><option value="">All markets</option></select></label>
 <output id="filterSummary" aria-live="polite"></output>
 </section>
-<p id="leadBoardError" role="alert" hidden></p><div id="leadBoard" aria-busy="true"><p class="empty">Loading leads…</p></div>
+<p id="leadBoardError" role="alert" hidden></p><label class="mobile-stage-nav">Stage<select id="mobileStage" aria-label="Board stage"></select></label><div id="leadBoard" aria-busy="true"><p class="empty">Loading leads…</p></div>
 </main>
 <dialog id="leadDetail" class="detail-dialog" aria-labelledby="detailTitle"><div class="dialog-heading"><h2 id="detailTitle"></h2><button id="closeDetail" aria-label="Close lead details">×</button></div><div id="detailBody"></div></dialog>
 <dialog id="stageDialog" class="stage-dialog" aria-labelledby="stageTitle"><div class="dialog-heading"><h2 id="stageTitle">Doc</h2><button id="closeStage" aria-label="Cancel stage change">×</button></div><div id="stageContext"></div><form id="stageForm"><div id="stageQuestions"></div><p id="stageError" role="alert" hidden></p><button id="saveStage" type="submit">Confirm</button></form></dialog>

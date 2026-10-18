@@ -61,7 +61,7 @@
 @media (hover: hover) { .cal-chip:hover { background: var(--hairline); } }
 .cal-chip:active { background: var(--hairline-strong); }
 .cal-chip:focus-visible { outline: var(--focus-width) solid var(--focus-ring); outline-offset: 1px; }
-.cal-chip-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cal-chip-label { overflow-wrap: anywhere; white-space: normal; }
 .cal-chip-deal { grid-column: 2; overflow: hidden; color: var(--fg-muted); text-overflow: ellipsis; white-space: nowrap; }
 .cal-grid[data-view="month"] .cal-chip-deal { display: none; }
 .cal-chip[data-band="overdue"], .cal-day-entry[data-band="overdue"] { border-left-color: var(--status-danger); }
@@ -131,16 +131,15 @@
 
 /* ------------------------------------------------------------ responsive */
 @media (max-width: 640px) {
-  .cal-day { min-height: 56px; padding: 2px; }
-  .cal-day-open { justify-content: center; padding: 2px; }
+  .cal-coming { order: -1; }
+  .cal-week { grid-template-columns: minmax(0, 1fr); }
+  .cal-weekday { display: none; }
+  .cal-day { grid-template-columns: 48px minmax(0, 1fr); min-height: var(--touch); align-items: start; padding: var(--space-1); border-left: 0; border-top: var(--hairline-width) solid var(--hairline); }
+  .cal-day-open { justify-content: center; min-height: var(--touch); padding: 2px; }
   .cal-day-count { display: none; }
-  .cal-grid[data-view="month"] .cal-chips { justify-items: center; }
-  .cal-grid[data-view="month"] .cal-chip-label { display: none; }
-  .cal-grid[data-view="month"] .cal-chip { grid-template-columns: auto; justify-content: center; width: auto; min-height: 18px; padding: 2px var(--space-1); border-left-width: 2px; }
-  .cal-grid[data-view="month"] .cal-more { display: none; }
-  .cal-grid[data-view="week"] .cal-week { grid-template-columns: minmax(0, 1fr); }
-  .cal-grid[data-view="week"] .cal-weekday { display: none; }
-  .cal-grid[data-view="week"] .cal-day { min-height: 0; border-left: 0; border-top: var(--hairline-width) solid var(--hairline); }
+  .cal-day .cal-chips { padding: var(--space-1) 0; }
+  .cal-grid[data-view="week"] .cal-day { min-height: var(--touch); }
+  .cal-more { grid-column: 2; }
   .cal-agenda-item { grid-template-columns: auto minmax(0, 1fr); gap: var(--space-1) var(--space-3); }
   .cal-agenda-item > :not(.cal-pulse) { grid-column: 2; min-width: 0; overflow-wrap: anywhere; white-space: normal; }
   .cal-agenda-item .cal-pulse { grid-column: 1; grid-row: 1; }

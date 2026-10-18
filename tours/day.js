@@ -1,3 +1,4 @@
+import { tourDisplayName } from "./tour-format.js";
 import { acceptedRouteFromDetail, buildAcceptedRouteState, mountAcceptedItinerary } from "./itinerary-map.js";
 import { createDayClient } from "./day-client.js";
 import { createDayStore, noteState } from "./day-store.js";
@@ -177,7 +178,8 @@ export function mountTourDay({ document, window, api = createDayClient(), store 
   function render() {
     if (!tour) return;
     const focus = rememberFocus();
-    $("#day-title").textContent = tour.name || "Tour day";
+    $("#day-title").textContent = tourDisplayName(tour.name, "Tour day");
+    $("#day-title").title = tour.name || "Tour day";
     const stops = orderedDayStops(tour), root = $("#day-stops");
     root.replaceChildren();
     for (const stop of stops) {
@@ -253,9 +255,14 @@ export function mountTourDay({ document, window, api = createDayClient(), store 
     const route = acceptedRouteFromDetail(tour);
     if (route) {
       const options = { route, scope, user_ref: userRef, presentation: "day", canSelect: () => !recorder.active, promotion_receipt: tour.map_promotion_receipt || null, onSelect: id => { if (!recorder.active) { selected = id; render(); } } };
-      try { if (map) map.update(options); else map = mapFactory($("#day-map"), options); selected = map.projection?.card?.route_stop_id || selected; }
+      try { if (map) map.update(options); else { $("#day-map").replaceChildren(); map = mapFactory($("#day-map"), options); } selected = map.projection?.card?.route_stop_id || selected; }
       catch { map?.destroy(); map = null; $("#day-map").replaceChildren(make("p", "Map unavailable", "day-map-state")); }
-    } else { map?.destroy(); map = null; $("#day-map").replaceChildren(make("p", "Route unavailable", "day-map-state")); }
+    } else {
+      map?.destroy(); map = null;
+      const recovery = make("a", "Review route in Itinerary", "day-empty-link");
+      recovery.href = `/tours/route-editor.html?tour=${encodeURIComponent(tourId)}`;
+      $("#day-map").replaceChildren(make("p", "Route unavailable. Review and accept a route before starting Tour day.", "day-map-state"), recovery);
+    }
     await loadNotes(); render();
   }
   $("#day-record").onclick = async () => {

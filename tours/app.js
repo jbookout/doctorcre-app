@@ -403,6 +403,9 @@ import { cheatSheetText, factSummary, formatTourDate, tourDisplayName, tourMetaL
       item.append(head, node("p", text(row.address, text(knownProperty(row.property_id)?.address, "Address unavailable")), "hint"));
       const identity = node("details", "", "stop-identity"); identity.append(node("summary", "Property identity"), node("code", row.property_id)); item.append(identity);
       const fields = node("div", "", "stop-fields");
+      const extra = node("details", "", "stop-edit-details"), extraFields = node("div", "", "stop-fields");
+      extra.append(node("summary", "Timing and details"), extraFields);
+      const folded = row.stop_state !== "active";
       for (const [field, title, type] of [["route_label", "Route label", "text"], ["stop_state", "Stop state", "select"], ["dwell_minutes", "Dwell minutes", "number"], ["buffer_minutes", "Buffer minutes", "number"], ["appointment_start", "Appointment start", "datetime-local"], ["appointment_end", "Appointment end", "datetime-local"], ["locked_appointment", "Fixed appointment", "checkbox"]]) {
         const label = node("label", title), control = node(type === "select" ? "select" : "input"); control.dataset.field = field;
         control.setAttribute("aria-label", `${title} for ${text(row.name, "saved property")}`);
@@ -419,9 +422,10 @@ import { cheatSheetText, factSummary, formatTourDate, tourDisplayName, tourMetaL
           row[field] = type === "checkbox" ? control.checked : type === "number" ? control.value === "" ? NaN : Number(control.value) : type === "datetime-local" ? control.value ? new Date(control.value).toISOString() : null : control.value;
           if (type === "select") renderComposer(); else renderComposerSummary();
         });
-        label.append(control); fields.append(label);
+        label.append(control); (folded && field !== "stop_state" ? extraFields : fields).append(label);
       }
       item.append(fields);
+      if (folded) { extra.append(identity); item.append(extra); }
       const controls = node("div", "", "stop-controls");
       for (const [word, delta] of [["Up", -1], ["Down", 1]]) {
         const button = node("button", word); button.type = "button"; button.disabled = !editable || index + delta < 0 || index + delta >= composer.rows.length;
@@ -459,6 +463,7 @@ import { cheatSheetText, factSummary, formatTourDate, tourDisplayName, tourMetaL
     $("#save-composer").disabled = !editableComposer() || !composer.dirty || !composer.rows.some(row => row.stop_state === "active");
     $("#reconcile-composer").hidden = composer.phase !== "unknown";
     $("#retry-composer").hidden = composer.phase !== "reconciled";
+    $("#reload-composer").hidden = state.tour.route_version_state === "draft" && !["stale", "refused", "session-changed"].includes(composer.phase) && !(composer.saved && !digest(composer.reviewDigest));
     $("#reload-composer").disabled = navigationBusy || composer.busy || composer.phase === "unknown" || composer.phase === "reconciled";
     $("#route-reviewed").disabled = navigationBusy || Boolean(createPending) || composer.busy || composer.dirty || composer.phase !== "ready" || !composer.saved || !digest(composer.reviewDigest);
     $("#accept-route").hidden = state.tour.route_version_state !== "draft";
@@ -661,10 +666,12 @@ import { cheatSheetText, factSummary, formatTourDate, tourDisplayName, tourMetaL
       data = await observeDocRead("tourLibrary", [], () => request("/api/tours/library"));
       if (!Array.isArray(data.tours) || !data.tours.every(tour => id(tour?.id))) throw new Error("read_invalid");
     } catch (error) {
-      if (!libraryReady) $("#empty-copy").textContent = "The tour library did not load. Refresh Tours to try again.";
+      if (!libraryReady) $("#empty-copy").textContent = "The tour library did not load. Try again.";
+      $("#retry-library").hidden = false;
       throw error;
     }
     libraryReady = true;
+    $("#retry-library").hidden = true;
     if (!createPending && readPending()?.create) { createPending = readPending().create; createPhase = "unknown"; $("#create-tour-panel").open = true; $("#create-tour-state").textContent = "Creation outcome unknown after reload. Reconcile before retrying the retained request."; renderCreate(); }
     state.tours = Array.isArray(data.tours) ? data.tours.filter((tour) => id(tour?.id)) : []; renderLibrary(); status("Tour library ready.");
     const retained = readPending()?.composer;
@@ -804,6 +811,10 @@ import { cheatSheetText, factSummary, formatTourDate, tourDisplayName, tourMetaL
     composer.endpointDraft = endpointValues(); composer.undo = null; composer.dirty = true; composer.message = "Last route edit undone. Save to keep this draft."; renderComposer();
   });
   $("#route-reviewed").addEventListener("change", renderComposerSummary);
+  $("#retry-library").addEventListener("click", () => void action(async () => {
+    $("#retry-library").disabled = true;
+    try { await loadLibrary(); } finally { $("#retry-library").disabled = false; }
+  }));
   $("#reload-composer").addEventListener("click", () => void action(async () => {
     if (!composer || navigationBusy || composer.busy || ["unknown", "reconciled"].includes(composer.phase)) return;
     const current = composer, plan = current.plan; current.busy = true; renderComposer();
