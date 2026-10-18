@@ -22,7 +22,15 @@ test('Inbox keeps at least 720px above the phone shell in both themes', async ({
   for (const theme of ['dark', 'light']) {
     await page.evaluate(value => { document.documentElement.dataset.theme = value; }, theme);
     await testInfo.attach(`inbox-390-${theme}`, { body: await page.screenshot(), contentType: 'image/png' });
-    const contentBottom = await page.locator('.app-layout-status').evaluate(status => status.getBoundingClientRect().top);
+    const contentBottom = await page.locator('.app-layout-status, #appShell').evaluateAll(bars => Math.min(...bars.filter(bar => bar.getClientRects().length).map(bar => bar.getBoundingClientRect().top)));
     expect(contentBottom, `${theme} Inbox space above the persistent shell`).toBeGreaterThanOrEqual(720);
   }
+  await page.route('http://127.0.0.1:4682/**', route => route.fulfill({
+    json: { state: 'recording', started_at: new Date().toISOString() },
+  }));
+  await page.locator('#selfAvatar').click();
+  await page.getByRole('button', { name: 'Recheck Quill' }).click();
+  await expect(page.locator('#callModeButton')).toHaveClass(/recording/);
+  await page.keyboard.press('Escape');
+  expect(await page.locator('#selfAvatar').evaluate(avatar => getComputedStyle(avatar, '::after').width)).toBe('8px');
 });

@@ -189,7 +189,7 @@ body.has-app-layout { padding: 0 0 var(--layout-bottom) var(--layout-rail) !impo
   .app-layout-tabbar { padding: 0 var(--space-3); gap: var(--space-1); }
 }
 @media (max-width: 760px), (hover: none) and (pointer: coarse) and (max-width: 1023px) {
-  :root { --layout-rail: 0px; --layout-bottom: 180px; }
+  :root { --layout-rail: 0px; --layout-bottom: 112px; }
   body.has-app-layout { padding: 0 0 var(--layout-bottom) !important; }
   .app-layout { display: block; min-height: calc(100dvh - var(--layout-bottom)); }
   .app-layout-center { width: 100%; }
@@ -197,18 +197,26 @@ body.has-app-layout { padding: 0 0 var(--layout-bottom) var(--layout-rail) !impo
   .app-layout-tabbar { min-height: 52px; padding: var(--space-2) var(--space-2); gap: var(--space-1); }
   .app-layout-tabs { gap: var(--space-1); overflow: visible; flex-wrap: wrap; }
   .app-layout-tabs a, .app-layout-tabs button, .app-layout-tabs .deal-page-view-current { padding: var(--space-1) var(--space-2); font-size: var(--font-size-1); }
-  #appShell { inset: auto 0 0; width: 100%; height: 100px; }
-  .app-shell-header { display: grid; grid-template-columns: 1fr auto; grid-template-rows: 48px 44px; align-items: center; gap: 0 !important; padding: var(--space-1) var(--space-2) !important; border: 0; border-top: var(--hairline-width) solid var(--hairline); height: 100px; }
+  #appShell { inset: auto 0 0; width: 100%; height: calc(56px + env(safe-area-inset-bottom)); }
+  .app-shell-header { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-rows: 44px; align-items: center; gap: 0 !important; padding: var(--space-1) var(--space-2) !important; border: 0; border-top: var(--hairline-width) solid var(--hairline); height: calc(56px + env(safe-area-inset-bottom)); padding-bottom: max(var(--space-1), env(safe-area-inset-bottom)) !important; }
   .app-shell-brand { display: none; }
-  .app-shell-menu { grid-column: 1 / -1; grid-row: 1; flex: none !important; }
-  .app-shell-navigation { flex-direction: row; justify-content: space-around; gap: 0; }
+  .app-shell-menu { grid-column: 1; grid-row: 1; min-width: 0; flex: none !important; }
+  .app-shell-navigation { flex-direction: row; justify-content: space-between; gap: 0; overflow-x: auto; }
+  .app-shell-navigation > a, .app-shell-more { flex: none; }
   .app-shell-navigation > a, .app-shell-more-toggle { width: var(--touch); height: var(--touch); min-height: var(--touch); font-size: var(--font-size-3); padding: var(--space-1) !important; }
   .app-shell-navigation > a[aria-current=page]::before, .app-shell-more-current::before { left: 10px; right: 10px; top: auto; bottom: -3px; width: auto; height: 2px; }
-  .app-shell-controls { flex-direction: row; grid-column: 2; grid-row: 2; gap: var(--space-1) !important; }
-  .app-shell-search { grid-column: 1; grid-row: 2; }
-  .app-shell-more-list { left: var(--space-2) !important; top: auto !important; bottom: 108px; width: calc(100vw - 16px); max-height: calc(100dvh - 125px); grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
-  .app-shell-account-menu { left: var(--space-2) !important; bottom: 108px; width: calc(100vw - 16px) !important; max-width: none; }
-  .app-layout-status { bottom: 100px; height: calc(var(--layout-bottom) - 100px); padding: var(--space-1) var(--space-3); gap: var(--space-1) var(--space-3); align-content: center; z-index: 1090; }
+  .app-shell-controls { flex-direction: row; grid-column: 2; grid-row: 1; gap: var(--space-1) !important; }
+  .app-shell-account-menu .app-shell-search { display: flex; gap: var(--space-3); width: 100%; justify-content: start; padding: var(--space-3); }
+  .app-shell-account-menu .app-shell-search::after { content: "Search"; }
+  .app-shell-account-menu .app-shell-control { display: flex; gap: var(--space-3); width: 100%; height: auto; }
+  .app-shell-account-menu .app-shell-control[hidden], .app-shell-account-menu #accountTheme { display: none; }
+  .app-shell-account-menu .app-shell-control::after { content: attr(aria-label); }
+  body:has(#callModeButton.recording) #selfAvatar::after { content: ""; position: absolute; top: 0; right: 0; width: 8px; height: 8px; border-radius: 50%; background: var(--status-danger); border: 2px solid var(--surface-1); }
+  .app-shell-more-list { left: var(--space-2) !important; top: auto !important; bottom: calc(var(--layout-bottom) + 8px); width: calc(100vw - 16px); max-height: calc(100dvh - 125px); grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+  .app-shell-account-menu { left: var(--space-2) !important; bottom: calc(var(--layout-bottom) + 8px); width: calc(100vw - 16px) !important; max-width: none; max-height: calc(100dvh - var(--layout-bottom) - 16px); overflow-y: auto; }
+  .app-layout-status > span:not(.app-layout-health) { display: none; }
+  #appStatusSlot { flex: 1 1 auto; }
+  .app-layout-status { bottom: calc(56px + env(safe-area-inset-bottom)); height: 56px; padding: var(--space-1) var(--space-3); gap: var(--space-1) var(--space-3); align-content: center; z-index: 1090; }
   .app-shell-doc, .doc-fab { right: var(--space-4) !important; bottom: calc(var(--layout-bottom) + 16px) !important; }
   .doc-chat { bottom: calc(var(--layout-bottom) + 76px) !important; }
   .app-layout-sidebar, .app-layout-today { position: fixed; top: 0; bottom: var(--layout-bottom); height: auto; width: min(330px, calc(100vw - 28px)); z-index: 1150; visibility: hidden; pointer-events: none; transition: transform var(--duration-panel) var(--ease-out); background: var(--surface-1); box-shadow: var(--shadow-overlay); }
@@ -292,7 +300,7 @@ body.has-app-layout:has(#callModeAvailability:not([hidden])) { --layout-bottom: 
   .app-shell-call-availability { flex: 0 1 auto; }
   .app-layout-status .app-layout-health { order: 1; margin-left: 0; }
 }
-@media (max-width: 760px), (hover: none) and (pointer: coarse) and (max-width: 1023px) { body.has-app-layout:has(#callModeAvailability:not([hidden])) { --layout-bottom: 224px; } }
+@media (max-width: 760px), (hover: none) and (pointer: coarse) and (max-width: 1023px) { body.has-app-layout, body.has-app-layout:has(#callModeAvailability:not([hidden])) { --layout-bottom: calc(112px + env(safe-area-inset-bottom)); } }
 
 @media (max-width: 760px), (hover: none) and (pointer: coarse) and (max-width: 1023px) {
   .has-app-layout :is(button, a, input, select, textarea, summary, [role="button"]) { min-width: 44px; min-height: 44px; box-sizing: border-box; touch-action: manipulation; }

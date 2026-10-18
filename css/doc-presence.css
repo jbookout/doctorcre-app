@@ -90,10 +90,8 @@ body.has-app-layout:has(> #docPresence) .app-layout-status { padding-right: calc
 
 @media (max-width: 480px) { .doc-command-meta { align-items: start; } #docCommandForm { gap: var(--space-1); padding: var(--space-1); } #docCommandInput { font-size: var(--font-size-2); } .doc-context-tools { flex-wrap: wrap; } }
 
-/* Touch layout: the status band sits on top of the 100px shell bar, so the
-   presence centres in the band's own height above that bar. */
 @media(max-width:760px),(hover:none) and (pointer:coarse) and (max-width:1023px){
-  .doc-presence { right: var(--space-3); bottom: calc(100px + (var(--layout-bottom) - 100px - var(--touch)) / 2); }
+  .doc-presence { right: var(--space-3); bottom: calc(var(--layout-bottom) - 50px); }
   body.has-app-layout:has(> #docPresence) .app-layout-status { padding-right: calc(var(--space-3) * 2 + var(--touch)); }
   .doc-detail { width: calc(100vw - 20px); max-height: calc(100dvh - 24px); padding: var(--space-4); }
   .doc-detail-grid { grid-template-columns: minmax(0, 1fr); gap: var(--space-3); }

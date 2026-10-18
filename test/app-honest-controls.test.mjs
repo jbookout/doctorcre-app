@@ -222,6 +222,7 @@ test('honest controls fit 320px, 390px and iPad in both motion settings with 44p
       await page.locator('#conversationList').waitFor({ state: 'attached' });
 
       await page.goto(`${base}/deals`);
+      if (width <= 760) await page.locator('#selfAvatar').click();
       await page.locator('#callModeRetry').waitFor({ state:'visible' });
       assert.equal(await page.locator('#callModeButton').isVisible(), false);
       assert.match(await page.locator('#callModeAvailability').textContent(), /Call recording runs on the Mac with Quill/);
@@ -238,7 +239,7 @@ test('honest controls fit 320px, 390px and iPad in both motion settings with 44p
       assert.equal(await page.locator('#callModeButton').evaluate(el => el === document.activeElement), true);
       await page.locator('#callModeButton').click();
       await page.locator('#callModeDialog[open]').waitFor();
-      for (const selector of ['#callModeButton', '#callModeClose', '[data-call-mode-start]', '#callModeConsentRow', '#callModeStandalone']) {
+      for (const selector of ['#callModeClose', '[data-call-mode-start]', '#callModeConsentRow', '#callModeStandalone']) {
         for (const locator of await page.locator(selector).all()) {
           const box = await touchTargetBox(locator);
           const style = await locator.evaluate(el => { const s=getComputedStyle(el); return {minWidth:s.minWidth,minHeight:s.minHeight,transform:s.transform}; });

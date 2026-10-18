@@ -40,8 +40,8 @@ test("QA-005 the Doc control docks in the status band, so phone drawers and cont
   const start = css.lastIndexOf(`@media${TOUCH_LAYOUT}{`);
   assert.ok(start >= 0, "doc-presence.css has a touch-layout block");
   const touch = css.slice(start);
-  // Centred in the band above the 100px shell bar, and the band reserves the slot.
-  assert.match(touch, /\.doc-presence\s*\{[^}]*bottom:\s*calc\(100px \+ \(var\(--layout-bottom\) - 100px - var\(--touch\)\) \/ 2\)/);
+  // The compact phone status row reserves room for the Doc control.
+  assert.match(touch, /\.doc-presence\s*\{[^}]*bottom:\s*calc\(var\(--layout-bottom\) - 50px\)/);
   assert.match(touch, /\.app-layout-status\s*\{[^}]*padding-right:/);
   // On a desktop it centres in the band's own height; it never floats above it.
   assert.match(css, /^\.doc-presence \{[^}]*bottom: calc\(\(var\(--layout-bottom\) - var\(--touch\)\) \/ 2\)/m);
