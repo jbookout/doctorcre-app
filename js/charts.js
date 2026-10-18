@@ -46,7 +46,7 @@ const boardReads = createCurrentRead();
  * the control — a button inside the first cell, so it is reachable by Tab, by
  * Enter and by a 44 px tap, in that one place.
  */
-function chartHtml({ id, title, eyebrow, rows, note = "", group = null }) {
+function chartHtml({ id, title, rows, note = "", group = null }) {
   const total = rowTotal(rows);
   const body = rows.map((row) => {
     const share = barShare(row, rows);
@@ -61,7 +61,7 @@ function chartHtml({ id, title, eyebrow, rows, note = "", group = null }) {
     </tr>`;
   }).join("");
   return `<section class="card glass chart-card" id="${escapeHtml(id)}" aria-labelledby="${escapeHtml(id)}Title">
-    <div class="card-heading"><div><p class="eyebrow">${escapeHtml(eyebrow)}</p><h2 id="${escapeHtml(id)}Title">${escapeHtml(title)}</h2></div></div>
+    <div class="card-heading"><div><h2 id="${escapeHtml(id)}Title">${escapeHtml(title)}</h2></div></div>
     <table class="chart-table">
       <caption class="sr-only">${escapeHtml(title)} — ${escapeHtml(String(total))} records</caption>
       <thead><tr><th scope="col">${escapeHtml(dimensionById(group)?.label || "Row")}</th><th scope="col">Records</th><th scope="col" class="chart-bar-head"><span class="sr-only">Share</span></th></tr></thead>
@@ -74,7 +74,7 @@ function chartHtml({ id, title, eyebrow, rows, note = "", group = null }) {
 function accountsHtml(accounts) {
   if (accounts.length === 0) {
     return `<section class="card glass chart-card" id="chartAccounts" aria-labelledby="chartAccountsTitle">
-      <div class="card-heading"><div><p class="eyebrow">National accounts</p><h2 id="chartAccountsTitle">Accounts</h2></div></div>
+      <div class="card-heading"><div><h2 id="chartAccountsTitle">Accounts</h2></div></div>
       <div class="state-block" data-state="empty"><h3>No national accounts on this board</h3></div>
     </section>`;
   }
@@ -85,7 +85,7 @@ function accountsHtml(accounts) {
     <td>${account.ref ? `<details class="chart-details" data-account="${escapeHtml(account.ref)}"${view.openAccounts.has(account.ref) ? " open" : ""}><summary data-focus-key="${escapeHtml(`account:${account.ref}`)}">Details<span class="sr-only"> for ${escapeHtml(account.name)}</span></summary><dl><dt>Account reference</dt><dd>${escapeHtml(account.ref)}</dd></dl></details>` : "—"}</td>
   </tr>`).join("");
   return `<section class="card glass chart-card" id="chartAccounts" aria-labelledby="chartAccountsTitle">
-    <div class="card-heading"><div><p class="eyebrow">National accounts</p><h2 id="chartAccountsTitle">Accounts</h2></div></div>
+    <div class="card-heading"><div><h2 id="chartAccountsTitle">Accounts</h2></div></div>
     <div class="chart-scroll"><table class="chart-table">
       <thead><tr><th scope="col">Account</th><th scope="col">Open</th><th scope="col">Flagged</th><th scope="col">Overdue</th><th scope="col">Stale</th><th scope="col">Parked</th><th scope="col">Last review</th><th scope="col">Details</th></tr></thead>
       <tbody>${rows}</tbody>
@@ -97,7 +97,7 @@ function accountsHtml(accounts) {
 function ownerHtml(deals) {
   const rows = ownerRows(deals);
   return `<section class="card glass chart-card" id="chartOwners" aria-labelledby="chartOwnersTitle">
-    <div class="card-heading"><div><p class="eyebrow">By name, never by count</p><h2 id="chartOwnersTitle">Owner split</h2></div></div>
+    <div class="card-heading"><div><h2 id="chartOwnersTitle">Owner split</h2></div></div>
     <details id="ownerDisclosure"${view.ownerOpen ? " open" : ""}>
       <summary data-focus-key="owner-disclosure">Show the owner split</summary>
       <table class="chart-table">
@@ -188,16 +188,16 @@ function render({ focusFallback = null } = {}) {
       const waiting = waitingSummary(deals);
       canvas.innerHTML = [
         selectionHtml(deals, all),
-        chartHtml({ id: "chartPhase", eyebrow: "Pipeline", title: "By phase", rows: phaseRows(deals), group: "phase" }),
-        chartHtml({ id: "chartType", eyebrow: "Mix", title: "By deal type", rows: bucketRows(deals, "type"), group: "type" }),
-        chartHtml({ id: "chartSegment", eyebrow: "Mix", title: "By segment", rows: bucketRows(deals, "segment"), group: "segment", note: "A record with no segment is counted in its own row, never dropped." }),
-        chartHtml({ id: "chartMarket", eyebrow: "Mix", title: "By market", rows: bucketRows(deals, "market"), group: "market" }),
+        chartHtml({ id: "chartPhase", title: "By phase", rows: phaseRows(deals), group: "phase" }),
+        chartHtml({ id: "chartType", title: "By deal type", rows: bucketRows(deals, "type"), group: "type" }),
+        chartHtml({ id: "chartSegment", title: "By segment", rows: bucketRows(deals, "segment"), group: "segment", note: "A record with no segment is counted in its own row, never dropped." }),
+        chartHtml({ id: "chartMarket", title: "By market", rows: bucketRows(deals, "market"), group: "market" }),
         chartHtml({
-          id: "chartWaiting", eyebrow: "Waiting", title: "By operating state", rows: waiting.states, group: "operating_state",
+          id: "chartWaiting", title: "By operating state", rows: waiting.states, group: "operating_state",
           note: `${waiting.attentionLine}.${waiting.parked.length > 0 ? ` Parked: ${waiting.parked.map((row) => `${row.name} — ${row.reason}`).join("; ")}.` : ""}`,
         }),
         `<section class="card glass chart-card" id="chartCoverage" aria-labelledby="chartCoverageTitle">
-          <div class="card-heading"><div><p class="eyebrow">What is missing</p><h2 id="chartCoverageTitle">Coverage</h2></div></div>
+          <div class="card-heading"><div><h2 id="chartCoverageTitle">Coverage</h2></div></div>
           <p class="count-line">${escapeHtml(coverage.sentence)}</p>
           <p class="caption">${escapeHtml(touch.sentence)}. A record with no last review recorded is "${escapeHtml(NEVER_REVIEWED)}"; this board carried no review time on any record, so no review clock is drawn.</p>
         </section>`,

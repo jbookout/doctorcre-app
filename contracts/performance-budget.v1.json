@@ -31,8 +31,8 @@
   "screens": {
     "home": {
       "lcpMs": {
-        "baseline": 5320,
-        "limit": 7980
+        "baseline": 3492,
+        "limit": 5238
       },
       "jsBytes": {
         "baseline": 644667,

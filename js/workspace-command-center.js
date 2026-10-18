@@ -1,15 +1,8 @@
 import { pageDocContext, publishDocRead, selectDocRecord, setDocFilters } from './doc-context.js';
-import { mountPastClientWidget } from './lease-radar.js';
-import { createLeaseRadarClient } from './lease-radar-client.js';
-import { leaseRadarFixture } from './lease-radar-fixture.js';
 import { projectInvoices, invoiceHref, invoiceMoney, invoiceDate } from './invoice-tracker-model.js';
 import { introductionSuggestions } from './relationship-network-model.js';
-import { mountRelationshipDialog } from './relationship-dialog.js';
 import { mountAutoRefresh, readWithDeadline, updatedLabel } from './auto-refresh.mjs';
-import { createFixtureClient } from './fixture-client.js';
-import { createLiveClient } from './live-client.js';
-import { createLeadBoardClient } from './leads-client.js';
-import { resolveDealroomBoot } from './boot-mode.js';
+import { homeClient } from './home-boot.js';
 import { localToday } from './calendar-model.js';
 import { agendaSnapshot, controlSnapshot, dealHref, dealSnapshot, HOME_SCOPES, readHomeDashboard, scopedDeals, topNewLeads } from './home-dashboard-model.js';
 import { mountNotificationBadge } from './shell.js';
@@ -22,7 +15,9 @@ const dateLabel = day => new Date(`${day}T12:00:00`).toLocaleDateString(undefine
 export function mountHomeDashboard({ document, window, client, now = () => Date.now(), intervalMs = 30_000 }) {
   const $ = id => document.getElementById(id);
   let snapshotDocObservedAt = null;
-  const relationshipDialog = $('homeIntroductions') ? mountRelationshipDialog({document}) : null;
+  // The relationship dialog and the past-client widget are secondary: they load
+  // after the first data paint so they never compete with the deal flags.
+  let relationshipDialog = null, pastWidget = null, secondaryRequested = false;
   let scope = 'team', snapshot = null, sequence = 0, updatedAt = null, disposed = false, leadEntries = new Map(), selectedLead = null;
   const docSources = [['board','getBoard'],['leads','getLeadBoard'],['work','currentWorkItem'],['requests','currentWorkRequests'],['incidents','incidentBoard']];
   const docPayload = (source, view) => source === 'board' ? {deals:scopedDeals(view?.board,scope)}
@@ -45,14 +40,14 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
     $('homeNotice').innerHTML = signedOut ? '<a href="/auth/login?return_to=%2F">Sign in</a>' : unavailable ? 'Some Home data is unavailable.' : '';
     const summary = signedOut ? null : dealSnapshot(snapshot?.board, scope);
     $('dealAttention').setAttribute('aria-busy', String(snapshot?.loading ?? true));
-    $('dealCounts').innerHTML = `Active Deals: ${count(summary?.active ?? null)} <span>Deals in Market: ${count(summary?.inMarket ?? null)}</span> <span>National Account Deals: ${count(summary?.national ?? null)}</span>`;
-    paint($('dealFlags'), summary ? (summary.flagged.length ? summary.flagged.map(deal => `<a class="home-flag" data-home-key="deal:${E(deal.id)}" href="${E(dealHref(deal.id))}"><span class="home-flag-light" aria-hidden="true"></span><div><strong>${E(deal.name)}</strong><span>${E(deal.next_step || deal.phase || 'Needs attention')}</span></div><span class="home-arrow" aria-hidden="true">↗</span></a>`).join('') : '<p class="home-empty">No deal flags</p>') : `<p class="home-empty">${signedOut ? 'Sign in to view deals' : snapshot?.reads?.board?.state === 'error' ? 'Deals unavailable' : 'Updating…'}</p>`);
+    $('dealCounts').innerHTML = `<span>Active deals: <b>${count(summary?.active ?? null)}</b></span> <span>In market: <b>${count(summary?.inMarket ?? null)}</b></span> <span>National accounts: <b>${count(summary?.national ?? null)}</b></span>`;
+    paint($('dealFlags'), summary ? (summary.flagged.length ? summary.flagged.map(deal => `<a class="home-flag" data-home-key="deal:${E(deal.id)}" href="${E(dealHref(deal.id))}"><span class="home-flag-light" aria-hidden="true"></span><div><strong>${E(deal.name)}</strong><span>${E(deal.next_step || deal.phase || 'Needs attention')}</span></div><span class="home-arrow" aria-hidden="true">↗</span></a>`).join('') : '<p class="home-empty">Nothing needs you right now</p>') : `<p class="home-empty">${signedOut ? 'Sign in to view deals' : snapshot?.reads?.board?.state === 'error' ? 'Deals unavailable' : 'Updating…'}</p>`);
     const today = localToday(new Date(now()));
     if ($('homeInvoices')) {
       const invoices = signedOut ? null : projectInvoices(snapshot?.invoices, { scope, today: localToday(new Date(now())) });
       const overdue = invoices?.filter(row => row.overdue) || [];
       const invoiceUnavailable = snapshot?.reads?.invoices?.state === 'error';
-      widget('homeInvoices', overdue.length ? `<header class="home-panel-head"><h2>Invoice attention · ${overdue.length}</h2><a class="home-outline" href="/invoices">Invoices ↗</a></header><div class="home-flags">${overdue.map(row => `<a class="home-flag" data-home-key="invoice:${E(row.key)}" href="${E(invoiceHref(row.key))}"><span class="home-flag-light" aria-hidden="true"></span><div><strong>${E(row.name)}</strong><span>${E(invoiceMoney(row.amount))} · overdue since ${E(invoiceDate(row.due_on))}</span></div><span class="home-arrow" aria-hidden="true">↗</span></a>`).join('')}</div>` : invoiceUnavailable && !signedOut ? '<header class="home-panel-head"><h2>Invoice attention</h2></header><p class="home-empty">Invoices unavailable</p>' : null);
+      widget('homeInvoices', overdue.length ? `<header class="home-panel-head"><h2>Invoice attention · ${overdue.length}</h2><a class="home-outline" href="/invoices">Invoices <span aria-hidden="true">↗</span></a></header><div class="home-flags">${overdue.map(row => `<a class="home-flag" data-home-key="invoice:${E(row.key)}" href="${E(invoiceHref(row.key))}"><span class="home-flag-light" aria-hidden="true"></span><div><strong>${E(row.name)}</strong><span>${E(invoiceMoney(row.amount))} · overdue since ${E(invoiceDate(row.due_on))}</span></div><span class="home-arrow" aria-hidden="true">↗</span></a>`).join('')}</div>` : invoiceUnavailable && !signedOut ? '<header class="home-panel-head"><h2>Invoice attention</h2></header><p class="home-empty">Invoices unavailable</p>' : null);
     }
     let agenda = null;
     try { if (!signedOut) agenda = agendaSnapshot(snapshot?.board, snapshot?.details || new Map(), { scope, today }); }
@@ -67,8 +62,8 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
     if ($('homeIntroductions')) {
       const suggestions = signedOut ? [] : introductionSuggestions(snapshot?.relationships, {scope,actor:snapshot?.board?.actor,now:now()});
       widget('homeIntroductions', suggestions.length ? `<header class="home-panel-head"><h2>Suggested introductions</h2><a class="home-icon-link" href="/relationships" aria-label="Open relationships">↗</a></header><div class="relationship-intro-list">${suggestions.map(s=>`<button type="button" class="relationship-card" data-intro-node="${E(s.to)}" data-home-key="intro:${E(s.id)}"><span class="intro-route">${E(s.fromNode.name)} → ${E(s.toNode.name)}</span><strong>${E(s.reason)}</strong></button>`).join('')}</div>` : null);
-      if (signedOut || snapshot?.reads?.relationships?.state === 'error') relationshipDialog.clear();
-      else if(snapshot?.relationships) relationshipDialog.update(snapshot.relationships);
+      if (signedOut || snapshot?.reads?.relationships?.state === 'error') relationshipDialog?.clear();
+      else if(snapshot?.relationships) relationshipDialog?.update(snapshot.relationships);
     }
     $('observedAt').textContent = signedOut ? 'Sign in' : unavailable ? (updatedAt ? `Partial · ${updatedLabel(updatedAt)}` : 'Unavailable') : updatedLabel(updatedAt);
     if (signedOut || snapshot?.reads?.leads?.state === 'error') $('homeDetail').close();
@@ -96,6 +91,7 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
       await readWithDeadline(innerSignal => readHomeDashboard(client, { signal: innerSignal, onUpdate: result => {
         if (disposed || epoch !== sequence || innerSignal.aborted) return;
         latest = result; snapshot = project(result); updatedAt = snapshot.board && !result.unauthorized ? result.updatedAt : null; render();
+        if (snapshot.board) loadSecondary();
       } }), { signal, timeoutMs: 25_000 });
     } catch {
       if (epoch === sequence && !disposed && latest) {
@@ -116,7 +112,7 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
   const paintLeadDetail = lead => {
     const expanded = $('homeDetail').querySelector('details')?.open;
     const focused = $('homeDetail').contains(document.activeElement) ? document.activeElement.dataset.homeKey : null;
-    const html = `<header class="home-panel-head"><h2 id="homeDetailTitle">${E(lead.name)}</h2><button type="button" class="home-refresh" data-home-key="detail:close" data-close-detail aria-label="Close details">×</button></header><div class="home-detail-summary"><span class="home-detail-score">${E(lead.score)}<small>Score</small></span><div><h3>${E(lead.specialty || 'New lead')}</h3><p>${E([lead.city, lead.state].filter(Boolean).join(' · '))}</p></div></div><details><summary data-home-key="detail:summary">Details</summary><dl><dt>Added</dt><dd>${E(new Date(lead.created_at).toLocaleDateString())}</dd><dt>Stage</dt><dd>${E(lead.stage_label || lead.stage || '—')}</dd><dt>Owner</dt><dd>${E(lead.owner_label || lead.owner || '—')}</dd></dl></details><a class="home-outline" data-home-key="detail:leads" href="/leads">Leads ↗</a>`;
+    const html = `<header class="home-panel-head"><h2 id="homeDetailTitle">${E(lead.name)}</h2><button type="button" class="home-refresh" data-home-key="detail:close" data-close-detail aria-label="Close details">×</button></header><div class="home-detail-summary"><span class="home-detail-score">${E(lead.score)}<small>Score</small></span><div><h3>${E(lead.specialty || 'New lead')}</h3><p>${E([lead.city, lead.state].filter(Boolean).join(' · '))}</p></div></div><details><summary data-home-key="detail:summary">Details</summary><dl><dt>Added</dt><dd>${E(new Date(lead.created_at).toLocaleDateString())}</dd><dt>Stage</dt><dd>${E(lead.stage_label || lead.stage || '—')}</dd><dt>Owner</dt><dd>${E(lead.owner_label || lead.owner || '—')}</dd></dl></details><a class="home-outline" data-home-key="detail:leads" href="/leads">Leads <span aria-hidden="true">↗</span></a>`;
     if ($('homeDetailBody').innerHTML === html) return;
     $('homeDetailBody').innerHTML = html;
     if (expanded) $('homeDetail').querySelector('details').open = true;
@@ -133,7 +129,7 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
     $('homeDetail').showModal();
     $('homeDetail').querySelector('[data-close-detail]').onclick = () => $('homeDetail').close();
   });
-  $('homeIntroductions')?.addEventListener('click',event=>{const button=event.target.closest('[data-intro-node]');if(button && snapshot?.relationships)relationshipDialog.open(snapshot.relationships,button.dataset.introNode,button);});
+  $('homeIntroductions')?.addEventListener('click',event=>{const button=event.target.closest('[data-intro-node]');if(button && snapshot?.relationships)relationshipDialog?.open(snapshot.relationships,button.dataset.introNode,button);});
   const auto = mountAutoRefresh({ document, window, refresh, intervalMs });
   const expiry = window.setInterval(() => {
     if (snapshot?.relationships && Date.parse(snapshot.relationships.valid_until) <= now()) {
@@ -144,7 +140,19 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
     }
   }, 1000);
   $('refreshHome').addEventListener('click', auto.refresh);
-  const pastWidget = $('homePastClients') && client.readLeaseRadar ? mountPastClientWidget({document,window,client,host:$('homePastClients'),now:()=>new Date(now()),scope:()=>scope}) : null;
+  function loadSecondary() {
+    if (secondaryRequested) return;
+    secondaryRequested = true;
+    if ($('homeIntroductions')) import('./relationship-dialog.js').then(({ mountRelationshipDialog }) => {
+      if (disposed) return;
+      relationshipDialog = mountRelationshipDialog({document});
+      render();
+    });
+    if ($('homePastClients') && client.readLeaseRadar) import('./lease-radar.js').then(({ mountPastClientWidget }) => {
+      if (disposed) return;
+      pastWidget = mountPastClientWidget({document,window,client,host:$('homePastClients'),now:()=>new Date(now()),scope:()=>scope});
+    });
+  }
   const buttons = [...$('scopeSwitch').querySelectorAll('[data-scope]')];
   const select = value => {
     scope = value; setDocFilters({ scope }); pastWidget?.render();
@@ -163,10 +171,7 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
 }
 
 if (typeof document !== 'undefined' && document.getElementById('dealAttention')) {
-  const boot = resolveDealroomBoot(location);
-  const client = boot.mode === 'live' ? createLiveClient({docContext:false}) : await createFixtureClient({...boot.options,docContext:false});
-  client.getLeadBoard = boot.mode === 'live' ? createLeadBoardClient({docContext:false}).getLeadBoard : async () => ({ leads: [] });
-  client.readLeaseRadar = boot.mode === 'live' ? createLeaseRadarClient().readLeaseRadar : async()=>leaseRadarFixture();
+  const client = await homeClient;
   mountHomeDashboard({ document, window, client });
   mountNotificationBadge(client);
 }

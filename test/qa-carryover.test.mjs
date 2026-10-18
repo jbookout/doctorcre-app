@@ -8,13 +8,11 @@ import { TOUCH_LAYOUT } from "../js/touch-layout.js";
 
 const read = (path) => readFile(new URL(`../${path}`, import.meta.url), "utf8");
 
-test("QA-002 light Home overrides only the light text tokens, leaving the dark register alone", async () => {
+test("QA-002 Home takes text colour from the theme tokens, with no per-theme hex overrides", async () => {
   const css = await read("css/home-dashboard.css");
-  const rule = css.match(/:root\[data-theme="light"\]\s+\.home-shell\s*\{([^}]*)\}/);
-  assert.ok(rule, "light-theme rule for .home-shell exists");
-  for (const token of ["--text", "--muted", "--quiet"]) assert.match(rule[1], new RegExp(`${token}:\\s*#[0-9a-f]{6}`, "i"), `${token} is set for light`);
-  assert.doesNotMatch(rule[1], /background|--orange|--ground/, "light rule adjusts text tokens only");
-  assert.doesNotMatch(css.replace(/:root\[data-theme="light"\][^{]*\{[^}]*\}/g, ""), /\.home-shell\s*\{[^}]*--(text|muted|quiet):/);
+  assert.doesNotMatch(css, /#[0-9a-f]{3,8}\b/i, "home-dashboard.css carries no raw hex");
+  assert.doesNotMatch(css, /:root\[data-theme="light"\]\s+\.home-shell/, "no light-only .home-shell override");
+  assert.doesNotMatch(css, /\.home-shell\s*\{[^}]*--(text|muted|quiet|fg)[\w-]*:/, ".home-shell does not redefine text tokens");
 });
 
 test("QA-002 light Home calendar tiles keep weekday and date text at 4.5:1", async () => {

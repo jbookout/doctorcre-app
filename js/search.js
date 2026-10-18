@@ -172,7 +172,7 @@ function render() {
   if (results) {
     results.setAttribute("aria-busy", String(phase === "loading"));
     results.innerHTML = shown.map((group) => `<section class="card glass" data-group="${escapeHtml(group.id)}" aria-label="${escapeHtml(group.label)}">
-      <div class="card-heading"><div><p class="eyebrow">Results</p><h2>${escapeHtml(group.label)} · ${escapeHtml(String(group.count))}</h2></div></div>
+      <div class="card-heading"><div><h2>${escapeHtml(group.label)} · ${escapeHtml(String(group.count))}</h2></div></div>
       <ul class="work-list">${group.rows.map((row) => rowHtml(row)).join("")}</ul>
     </section>`).join("");
   }
