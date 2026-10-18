@@ -253,6 +253,8 @@ body.has-app-layout .toast { right: var(--toast-right); bottom: calc(var(--layou
   .app-shell-account-menu .app-shell-search { display: flex; gap: var(--space-3); width: 100%; justify-content: start; padding: var(--space-3); }
   .app-shell-account-menu .app-shell-search::after { content: "Search"; }
   .app-shell-account-menu :is(.app-shell-control, #appSyncRefresh) { display: flex; gap: var(--space-3); width: 100%; height: auto; }
+  .app-shell-account-menu :is(.doc-identity, .app-shell-search, .app-shell-control, #appSyncRefresh) { display: grid; grid-template-columns: var(--space-5) minmax(0, 1fr); align-items: center; justify-items: start; }
+  .app-shell-account-menu .doc-orb { width: var(--space-5); height: var(--space-4); }
   .app-shell-account-menu .app-shell-control[hidden], .app-shell-account-menu #accountTheme { display: none; }
   .app-shell-account-menu :is(.app-shell-control, #appSyncRefresh)::after { content: attr(aria-label); }
   .app-shell-account-menu #callModeButton.recording::after { content: "Recording"; }

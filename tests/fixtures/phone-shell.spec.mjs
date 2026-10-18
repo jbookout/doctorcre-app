@@ -24,6 +24,26 @@ test('Inbox uses one phone shell row and grouped controls in both themes', async
     await testInfo.attach(`inbox-390-${theme}`, { body: await page.screenshot(), contentType: 'image/png' });
     const contentBottom = await page.locator('.app-layout-status, #appShell').evaluateAll(bars => Math.min(...bars.filter(bar => bar.getClientRects().length).map(bar => bar.getBoundingClientRect().top)));
     expect(contentBottom, `${theme} Inbox space above the persistent shell`).toBeGreaterThanOrEqual(780);
+    await page.locator('#selfAvatar').click();
+    const session = await page.context().newCDPSession(page);
+    const { documents, strings } = await session.send('DOMSnapshot.captureSnapshot', { computedStyles: [] });
+    const labels = ['Open Doc', 'Search', 'Dark mode', 'Color assist', 'Refresh workspace'];
+    const { layout } = documents[0];
+    const positions = labels.map(label => {
+      const index = layout.text.findIndex(text => strings[text] === label);
+      expect(index, `${theme} visible Workspace label ${label}`).toBeGreaterThanOrEqual(0);
+      return { label, left: layout.bounds[index][0], top: layout.bounds[index][1] };
+    });
+    await session.detach();
+    const rows = await Promise.all(['#docOpen', '.app-shell-search', '[data-pref="theme"]', '#colorAssistButton', '#appSyncRefresh']
+      .map(selector => page.locator(selector).boundingBox()));
+    const offsets = positions.map((item, index) => item.top - rows[index].y);
+    await testInfo.attach(`workspace-390-${theme}-geometry`, { body: JSON.stringify({ positions, offsets }), contentType: 'application/json' });
+    expect(Math.max(...positions.map(item => item.left)) - Math.min(...positions.map(item => item.left)),
+      `${theme} Workspace label left edges ${JSON.stringify(positions)}`).toBeLessThanOrEqual(1);
+    expect(Math.max(...offsets) - Math.min(...offsets), `${theme} Workspace label vertical offsets`).toBeLessThanOrEqual(1);
+    await testInfo.attach(`workspace-390-${theme}`, { body: await page.screenshot(), contentType: 'image/png' });
+    await page.keyboard.press('Escape');
   }
   await page.locator('#selfAvatar').click();
   await page.getByRole('button', { name: 'Open Doc', exact: true }).click();
