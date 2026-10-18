@@ -60,6 +60,7 @@ const V2_MIGRATED_STYLESHEETS = [
   "css/tokens.css", "css/system.css", "css/app-shell.css", "css/workspace.css",
   "css/correspondence.css", "public-shell/shell.css",
   "css/home-dashboard.css", "css/relationship-network.css", "css/lease-radar.css", "css/business-workspace.css",
+  "css/app.css", "css/pipeline.css", "css/deal-timeline.css",
   "css/workspace-business.css", "css/leads.css", "css/invoice-tracker.css",
 ];
 const v2Tells = [

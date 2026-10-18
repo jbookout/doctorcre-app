@@ -391,8 +391,6 @@ function renderChrome() {
   const selected = account();
   const isAccountHome = state.workspace === 'national_account' && !state.accountId && !state.query;
   $('#accountBack').hidden = !state.accountId;
-  $('#workspaceEyebrow').textContent = state.query ? 'Global Deal Room search'
-    : state.workspace === 'team' ? 'Shared territory pipeline' : selected ? 'National account agenda' : 'Partner-owned portfolios';
   // Never print the partners' names as a label: the team is both partners by
   // definition, so the combined list is just "Deals". The team view carries no
   // description sentence under its title (2026-09-16 review).
@@ -503,7 +501,7 @@ function renderStats(deals) {
   $('#stats').innerHTML = `
     <div class="stat"><strong>${deals.length}</strong><span>Active work</span></div>
     <div class="stat"><strong>${deals.filter((deal) => deal.phase === 'Closing').length}</strong><span>At closing</span></div>
-    <div class="stat risk"><strong>${overdue}</strong><span>Overdue dates</span></div>
+    <div class="stat${overdue ? ' risk' : ''}"><strong>${overdue}</strong><span>Overdue dates</span></div>
     <div class="stat"><strong>${clarity}</strong><span>Need clarity</span></div>`;
 }
 
@@ -921,9 +919,9 @@ async function patchOperatingState(dealId, value, options = {}) {
   return result;
 }
 
-function openForm({ eyebrow='Deal Room', title, submit='Save', body, onSubmit }) {
+function openForm({ context='Deal Room', title, submit='Save', body, onSubmit }) {
   const dialog = $('#formDialog');
-  $('#dialogEyebrow').textContent = eyebrow;
+  $('#dialogContext').textContent = context;
   $('#dialogTitle').textContent = title;
   $('#dialogSubmit').textContent = submit;
   $('#dialogBody').innerHTML = body;
@@ -1000,7 +998,7 @@ function nextStepForm(dealId) {
 
 function parkDealForm(dealId) {
   const deal = state.deals.get(dealId);
-  openForm({ eyebrow:'Active work', title:`Park — ${deal.name}`, submit:'Park record', body:`
+  openForm({ context:'Active work', title:`Park — ${deal.name}`, submit:'Park record', body:`
     <p class="form-guidance">Parking removes this record from active counts, focus lists, and weekly agendas. Its Salesforce link, phase, history, and participants stay intact.</p>
     <div class="field"><label for="parkingReason">Why is this not active work?</label><select id="parkingReason" name="reason" required>
       <option value="prospect_never_active">Prospect never became active work</option>
@@ -1060,7 +1058,7 @@ function addTeamDealForm() {
 }
 
 function addAccountForm() {
-  openForm({ eyebrow:'National accounts', title:'Add national account', submit:'Create account', body:`
+  openForm({ context:'National accounts', title:'Add national account', submit:'Create account', body:`
     <div class="field"><label for="accountName">Brand / organization</label><input id="accountName" name="name" required><small>Creates one parent account. Market transactions will live under their own sub-clients.</small></div>
     <div class="field-row"><div class="field"><label for="accountOwner">Account owner</label><select id="accountOwner" name="owner"><option value="${esc(state.selfActor)}">${esc(actorName(state.selfActor))}</option><option value="${state.selfActor === 'joe' ? 'dell' : 'joe'}">${esc(actorName(state.selfActor === 'joe' ? 'dell' : 'joe'))}</option></select></div>
     <div class="field"><label for="accountVertical">Healthcare vertical</label><input id="accountVertical" name="vertical"></div></div>`,
@@ -1069,7 +1067,7 @@ function addAccountForm() {
 
 function addMarketDealForm() {
   const selected = account();
-  openForm({ eyebrow:selected.account_name, title:'Add market transaction', submit:'Create market deal', body:`
+  openForm({ context:selected.account_name, title:'Add market transaction', submit:'Create market deal', body:`
     <div class="field"><label for="marketClient">Franchisee / local client</label><input id="marketClient" name="client_name" required><small>Reuses the exact sub-client if it exists; otherwise creates one under ${esc(selected.account_name)}.</small></div>
     <div class="field"><label for="marketDealName">Deal name</label><input id="marketDealName" name="deal_name" required></div>
     <div class="field-row"><div class="field"><label for="marketCity">Market</label><input id="marketCity" name="market" required placeholder="City"></div><div class="field"><label for="marketState">State</label><input id="marketState" name="state" maxlength="2"></div></div>
@@ -1081,7 +1079,7 @@ function addMarketDealForm() {
 
 function accountOwnerForm() {
   const selected = account();
-  openForm({ eyebrow:selected.account_name, title:'Change account owner', submit:'Save owner', body:`
+  openForm({ context:selected.account_name, title:'Change account owner', submit:'Save owner', body:`
     <div class="field"><label for="newAccountOwner">Accountable partner</label><select id="newAccountOwner" name="owner"><option value="joe"${selected.account_owner === 'joe' ? ' selected' : ''}>Joe</option><option value="dell"${selected.account_owner === 'dell' ? ' selected' : ''}>Dell</option></select><small>This changes portfolio accountability only. Individual market-deal owners stay untouched.</small></div>`,
     onSubmit:async (data) => { await state.client.setNationalAccountOwner({ account_client_id:selected.account_client_id,
       owner:data.get('owner'), idempotency_key:uuidv4() }); await loadHome(); showToast(`${selected.account_name} owner updated`); } });
@@ -1092,7 +1090,7 @@ function showConflict(conflict) {
   // about the same choice under the same key, never create a second decision.
   let request = null;
   const choice = (side, caption) => `<div class="field"><label><input type="radio" name="winner" value="${side}" required> <strong>${caption}</strong> · ${esc(actorName(conflict[side].actor))}: ${esc(readableValue(conflict.field, conflict[side].value, { actorLabel: actorName }))}</label></div>`;
-  openForm({ eyebrow:'Two edits crossed', title:`Choose the ${fieldLabel(conflict.field)} value`, submit:'Keep selected value', body:`
+  openForm({ context:'Two edits crossed', title:`Choose the ${fieldLabel(conflict.field)} value`, submit:'Keep selected value', body:`
     <p>Review both values, then choose one. Both edits remain in the deal history.</p>
     ${choice('a', 'Previously recorded value')} ${choice('b', 'Your proposed value')}`,
     onSubmit:async (data) => {
@@ -1142,7 +1140,7 @@ async function openDeal(dealId, { background = false } = {}) {
   dealDetailSnapshot = JSON.stringify(detail);
   const deal = detail.deal;
   const parked = deal.operating_state === 'parked';
-  const html = `<header><div><p class="eyebrow">${esc(deal.account_name || deal.client_name || 'Work record')}</p><h2>${esc(deal.name)}</h2><p class="subhead">${parked ? `${esc(parkingReasonLabel(deal.parking_reason))} · ` : ''}${esc(phaseLabel(deal.phase))} · ${esc(deal.market || 'Market not captured')}</p></div><div class="detail-header-actions"><button type="button" class="park-button" data-operating-state="${parked ? 'active' : 'parked'}" data-deal="${esc(deal.id)}">${parked ? 'Restore to active' : 'Park'}</button><button type="button" class="icon-button" data-close-deal aria-label="Close details">×</button></div></header>
+  const html = `<header><div><h2>${esc(deal.name)}</h2><p class="subhead">${esc(deal.account_name || deal.client_name || 'Work record')} · ${parked ? `${esc(parkingReasonLabel(deal.parking_reason))} · ` : ''}${esc(phaseLabel(deal.phase))} · ${esc(deal.market || 'Market not captured')}</p></div><div class="detail-header-actions"><button type="button" class="park-button" data-operating-state="${parked ? 'active' : 'parked'}" data-deal="${esc(deal.id)}">${parked ? 'Restore to active' : 'Park'}</button><button type="button" class="icon-button" data-close-deal aria-label="Close details">×</button></div></header>
     <div class="deal-content">${parked ? `<div class="parking-banner"><b>${esc(parkingReasonLabel(deal.parking_reason))}</b>${deal.parking_note ? `<span>${esc(deal.parking_note)}</span>` : ''}<small>This record is outside active counts and weekly agendas.</small></div>` : ''}<div class="deal-summary">
       <div class="detail-card"><label>Next step</label><p>${esc(deal.next_step || 'Not set')}</p></div>
       <div class="detail-card"><label>Next date</label><p>${esc(dateLabel(deal.next_date))}</p></div>
@@ -1222,7 +1220,7 @@ function renderAgenda() {
   $('#agendaMeter').max = review.deals.length;
   $('#agendaMeter').value = review.index;
   if (!deal) return finishAgenda();
-  $('#agendaCard').innerHTML = `<article class="agenda-deal"><p class="eyebrow">${esc(deal.market || deal.client_name || '')}</p><h3>${esc(deal.name)}</h3>
+  $('#agendaCard').innerHTML = `<article class="agenda-deal"><h3>${esc(deal.name)}</h3><p class="agenda-context">${esc(deal.market || deal.client_name || '')}</p>
     <span class="agenda-reason">${esc(reasonFor(deal))}</span>
     <div class="agenda-fact"><label>Phase</label><p>${esc(phaseLabel(deal.phase))}</p></div>
     <div class="agenda-fact"><label>Next step</label><p>${esc(deal.next_step || 'Not set')}</p></div>
@@ -1335,14 +1333,8 @@ function wireEvents() {
 }
 
 async function boot() {
-  let savedTheme = 'dark', colorAssist = false;
-  try { savedTheme = localStorage.getItem('dealroom-theme') || 'dark'; colorAssist = localStorage.getItem('dealroom-color-assist') === 'on'; } catch {}
-  document.body.classList.toggle('night', savedTheme !== 'light');
-  if (colorAssist) {
-    document.body.classList.add('color-assist');
-    $('#colorAssistButton').setAttribute('aria-pressed', 'true');
-    $('#colorAssistButton').setAttribute('aria-label', 'Color assist');
-  }
+  // Theme and Color Assist live on <html>, set before paint by js/theme-boot.js
+  // and kept current by the shell; this page reads them through css/tokens.css.
   const bootConfig = resolveDealroomBoot(location);
   const params = new URLSearchParams(location.search);
   if (params.get('workspace') === 'team') state.workspace = 'team';
