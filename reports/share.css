@@ -12,7 +12,10 @@ h2 { margin: var(--space-6) 0 var(--space-3); font-size: var(--font-size-3); }
 h3 { font-size: var(--font-size-2); }
 a { color: var(--fg); }
 
-.shell { width: min(100% - 2 * var(--space-5), 860px); margin: 0 auto; padding: var(--space-6) 0 var(--space-7); }
+/* The shared shell widens every .shell to the full column; the report keeps a
+   reading measure and a gutter on both sides of the rail-offset body. */
+body.report-shell .shell, body.report-shell .report-footer { width: min(100% - 2 * var(--space-6), 860px); margin-inline: auto; }
+.shell { padding: var(--space-6) 0 var(--space-7); }
 .masthead { padding-bottom: var(--space-5); border-bottom: var(--hairline-width) solid var(--hairline); }
 .eyebrow { margin: 0 0 var(--space-2); color: var(--fg-muted); font-size: var(--font-size-1); }
 .summary, .status { max-width: 65ch; color: var(--fg-muted); }
@@ -21,14 +24,18 @@ a { color: var(--fg); }
 
 /* Journey diagram: three static stops; the reached stretch is a solid line,
    the rest dashed, so it reads without colour. */
-.tour-flow { margin: var(--space-5) 0; padding: var(--space-3) var(--space-5); border: var(--hairline-width) solid var(--hairline); border-radius: var(--panel-radius); background: var(--surface-1); }
-.tour-flow svg { display: block; width: 100%; overflow: visible; }
+.tour-flow { margin: var(--space-5) 0; padding: var(--space-3) var(--space-4); border: var(--hairline-width) solid var(--hairline); border-radius: var(--panel-radius); background: var(--surface-1); }
+.tour-flow svg { display: block; width: 100%; max-width: 560px; margin: 0 auto; overflow: visible; }
 .tour-flow .flow-track { fill: none; stroke: var(--hairline-strong); stroke-width: 2; stroke-dasharray: 4 6; }
 .tour-flow .flow-active { fill: none; stroke: var(--fg-muted); stroke-width: 2; }
 .tour-flow circle { fill: var(--surface-2); stroke: var(--hairline-strong); stroke-width: 1.5; }
 .tour-flow g:nth-of-type(2) circle { fill: var(--surface-3); stroke: var(--fg); stroke-width: 2; }
-.tour-flow text { fill: var(--fg); font: var(--font-weight-strong) 16px var(--font-text); text-anchor: middle; }
-.tour-flow g text:last-child { fill: var(--fg-muted); font-size: 13px; font-weight: var(--font-weight-regular); }
+.tour-flow text { fill: var(--fg); font: var(--font-weight-strong) 15px var(--font-text); text-anchor: middle; }
+.tour-flow g text:last-child { fill: var(--fg-muted); font-size: 17px; font-weight: var(--font-weight-regular); }
+
+/* The page closes on the firm's name, above the shared bottom bar. */
+.report-footer { padding: var(--space-5) 0 var(--space-6); border-top: var(--hairline-width) solid var(--hairline); color: var(--fg-muted); font-size: var(--font-size-1); }
+.report-footer p { margin: 0 0 var(--space-1); }
 
 /* Map chrome only; the MapLibre style itself is untouched. */
 #map-section { padding: var(--space-4); border: var(--hairline-width) solid var(--hairline); border-radius: var(--panel-radius); background: var(--surface-1); }
@@ -77,8 +84,10 @@ button:focus-visible, .download-link:focus-visible, select:focus-visible, textar
 :root[data-color-assist="on"] button[aria-pressed="true"] { border-width: 3px; border-style: double; }
 
 @media (max-width: 560px) {
-  .shell { width: min(100% - 2 * var(--space-4), 860px); padding-top: var(--space-5); }
-  .tour-flow { margin: var(--space-4) 0; padding: var(--space-3) var(--space-1); }
+  body.report-shell .shell, body.report-shell .report-footer { width: min(100% - 2 * var(--space-4), 860px); }
+  .shell { padding-top: var(--space-5); }
+  .tour-flow { margin: var(--space-4) 0; padding: var(--space-2) var(--space-1); }
+  .tour-flow text { font-size: 22px; }
   .tour-flow g text:last-child { font-size: 32px; }
   .report-item { padding: var(--space-4); }
   #tour-map { height: 340px; }
@@ -87,3 +96,5 @@ button:focus-visible, .download-link:focus-visible, select:focus-visible, textar
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
 }
+
+[hidden] { display: none !important; }

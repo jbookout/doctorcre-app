@@ -87,7 +87,7 @@ async function open(t, { width = 1440, motion = 'reduce', leads = true, delayDet
   });
   await page.goto(`${origin}/?mode=live`);
   await page.waitForFunction(() => /Active deals: \d/.test(document.querySelector('#dealCounts')?.textContent || '') || /unavailable/i.test(document.querySelector('#observedAt')?.textContent || ''));
-  if (firstOpen) { await page.locator('#docMorningBrief[open]').waitFor(); await page.locator('#morningClose').click(); }
+  if (firstOpen) { await page.locator('#docOpen[data-brief-unseen]').waitFor(); await page.locator('#docOpen').click(); await page.locator('#docMorning').click(); await page.locator('#docMorningBrief[open]').waitFor(); await page.locator('#morningClose').click(); }
   return { page, errors, calls, releaseInitialFeed, responses, get boardReads() { return boardReads; }, get feedReads() { return feedReads; }, malformBoard(value) { boardMalformed = value; }, failLeads(value) { leadFailure = value; }, failDetails(value) { detailFailure = value; }, failBoard(value) { failBoard = value; }, updateLead(id, score) { liveLeads.find(row => row.id === id).score = score; } };
 }
 
@@ -115,6 +115,10 @@ test('PR123 R1: Home models the daily morning brief and rejects unknown operatio
   assert.equal(await page.locator('#docMorningBrief').evaluate(dialog => dialog.open), false);
   assert.equal((await preference()).day, '2026-10-01');
   await page.mouse.move(10, 10); await page.mouse.move(20, 20);
+  await page.locator('#docOpen[data-brief-unseen]').waitFor();
+  assert.equal(await page.locator('#docMorningBrief').evaluate(dialog => dialog.open), false);
+  assert.equal((await preference()).day, '2026-10-01');
+  await page.locator('#docOpen').click(); await page.locator('#docMorning').click();
   await page.locator('#docMorningBrief[open]').waitFor();
   assert.ok(calls.filter(name => name === 'morning-brief').length > briefReads);
   assert.equal((await preference()).day, '2026-10-02');
@@ -247,6 +251,9 @@ test('suggested introductions keep readable text on their dark cards in both the
     assert.equal(await page.evaluate(() => document.documentElement.dataset.theme || 'dark'), theme);
     const audit = await page.evaluate(() => window.axe.run(document.querySelector('#homeIntroductions'), { runOnly: ['color-contrast'] }));
     assert.deepEqual(audit.violations.flatMap(v => v.nodes.map(n => n.target.join(' '))), [], `${theme}: introduction text contrast`);
+    const card = await page.locator('#homeIntroductions .relationship-card').first().evaluate(node => { const s = getComputedStyle(node); return { border: s.borderTopColor, radius: s.borderTopLeftRadius, hairline: getComputedStyle(document.documentElement).getPropertyValue('--hairline').trim() }; });
+    assert.notEqual(card.border, 'rgb(255, 255, 255)', `${theme}: introduction cards use the family hairline, not the browser button border`);
+    assert.notEqual(card.radius, '0px', `${theme}: introduction cards are rounded like other cards`);
   }
   assert.deepEqual(errors, []);
 });

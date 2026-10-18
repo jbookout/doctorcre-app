@@ -44,8 +44,12 @@ export function mountDocPresence({ document: root = document, window: win = wind
   // controls placement only; record identity still comes from the page read.
   function placePresence() {
     const hosts = [...root.querySelectorAll('dialog[open]:not(#docDetail):not(#docMorningBrief), aside#recordPanel:not([hidden])')];
-    const host = hosts.at(-1) || root.body;
-    if (strip.parentElement !== host) host.prepend(strip);
+    const workspace = root.getElementById('accountWorkspaceControls');
+    const host = hosts.at(-1) || (workspace && !workspace.hidden ? workspace : root.body);
+    if (strip.parentElement !== host) {
+      if (host === workspace) host.querySelector('h3').after(strip);
+      else host.prepend(strip);
+    }
   }
   const render = () => {
     placePresence();
@@ -107,7 +111,12 @@ export function mountDocPresence({ document: root = document, window: win = wind
     }, intervalMs,
   });
   const open = command.open;
-  $('docOpen').onclick = open;
+  $('docOpen').onclick = () => {
+    if (strip.closest('#accountWorkspaceControls')) {
+      const avatar = $('selfAvatar'); avatar?.click(); avatar?.focus();
+    }
+    open();
+  };
   $('docClose').onclick = () => dialog.close();
 
   dialog.addEventListener('click', async event => {
@@ -139,7 +148,7 @@ export function mountDocPresence({ document: root = document, window: win = wind
   const tick = globalThis.setInterval(() => context.tick(), 1_000); tick?.unref?.();
   root.addEventListener('doctorcre:open-doc', open);
   auto.refresh();
-  const brief = mountMorningBrief({ document:root, window:win, automatic:resolveDealroomBoot(win.location).mode === 'live', getClient:ensureClient, intervalMs });
+  const brief = mountMorningBrief({ document:root, window:win, getClient:ensureClient, intervalMs });
   const dispose = () => { disposed = true; ++readEpoch; approval?.dispose(); actionGate.dispose(); auto.dispose(); brief.dispose(); command.dispose(); placement.disconnect(); unsubscribe(); globalThis.clearInterval(tick); root.removeEventListener('doctorcre:open-doc',open); };
   win.addEventListener('pagehide', event => { if (!event.persisted) dispose(); });
   return { open, refresh:auto.refresh, dispose };

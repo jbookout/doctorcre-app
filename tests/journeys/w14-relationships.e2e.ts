@@ -1,11 +1,12 @@
 import { test } from '@e2e-dev/web';
 import { expect } from 'e2e';
 
-// W14: the relationship graph opens a party's evidence and filters by territory.
-test('W14 relationship graph opens a party with its evidence and filters by territory', async ({ app, browser }) => {
+test('W14 Relationships opens a party with its evidence and filters by territory', async ({ app, browser }) => {
   await app.open('/relationships');
 
-  const lender = browser.locator('.relationship-node[data-node="party:demo-lender"]');
+  const lender = browser.locator(await browser.locator('.relationship-graph-panel').isHidden()
+    ? '#networkNodes [data-node="party:demo-lender"]'
+    : '.relationship-node[data-node="party:demo-lender"]');
   await expect(lender).toBeVisible();
   await lender.tap();
   const dialog = browser.locator('.relationship-dialog');
