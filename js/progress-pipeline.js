@@ -15,19 +15,16 @@ export function mountProgressPipeline({ flow, taskCount, focusFallback, onTask }
     return node;
   }
 
-  function titleLines(value, width) {
-    const words = String(value).split(/\s+/).filter(Boolean);
-    const lines = [];
-    for (const word of words) {
-      const last = lines.length - 1;
-      if (last >= 0 && `${lines[last]} ${word}`.length <= width) lines[last] += ` ${word}`;
-      else lines.push(word);
-    }
-    if (lines.length > 2) return [lines[0], `${lines[1].slice(0, width - 1)}…`];
-    return lines;
+  function copy(className, x, y, width, value) {
+    const node = svg("foreignObject", className, { x, y, width, height: className === "node-label" ? 36 : 16 });
+    const text = document.createElement("div");
+    text.textContent = value;
+    text.title = value;
+    node.append(text);
+    return node;
   }
 
-  function taskNode(task, stage, x, y, width, height, phone) {
+  function taskNode(task, stage, x, y, width, height) {
     const pulse = taskPulse(task);
     const identity = taskIdentity(task);
     const node = svg("g", "pipeline-node", { "data-task-id": task.id, "data-stage": stage.id,
@@ -36,20 +33,10 @@ export function mountProgressPipeline({ flow, taskCount, focusFallback, onTask }
     node.append(svg("rect", "node-shape", { x, y, width, height, rx: 12 }));
     node.append(svg("circle", "node-halo", { cx: x + 20, cy: y + 23, r: 8 }));
     node.append(svg("circle", "node-pulse", { cx: x + 20, cy: y + 23, r: 12 }));
-    const title = String(task.title || task.id);
-    const lines = titleLines(title, phone ? 38 : 18);
-    const label = svg("text", "node-label", { x: x + 35, y: y + 26 });
-    for (const [index, line] of lines.entries()) {
-      label.append(svg("tspan", "", { x: x + 35, dy: index ? 14 : 0 }, line));
-    }
-    node.append(label);
-    const summary = taskSummary(task);
-    const summaryLimit = phone ? 46 : 24;
-    node.append(svg("text", "node-summary", { x: x + 12, y: y + height - 42 },
-      summary.length > summaryLimit ? `${summary.slice(0, summaryLimit - 1)}…` : summary));
-    node.append(svg("text", "node-meta", { x: x + 12, y: y + height - 27 }, identity.provider));
-    node.append(svg("text", "node-meta", { x: x + 12, y: y + height - 13 },
-      `${identity.model} · ${identity.effort}`));
+    node.append(copy("node-label", x + 35, y + 10, width - 47, String(task.title || task.id)));
+    node.append(copy("node-summary", x + 12, y + height - 50, width - 24, taskSummary(task)));
+    node.append(copy("node-meta", x + 12, y + height - 34, width - 24, identity.provider));
+    node.append(copy("node-meta", x + 12, y + height - 18, width - 24, `${identity.model} · ${identity.effort}`));
     const retained = taskNodes.get(task.id);
     const target = retained?.node || node;
     if (retained) {
@@ -87,6 +74,7 @@ export function mountProgressPipeline({ flow, taskCount, focusFallback, onTask }
     const maxTasks = Math.max(1, ...view.stages.map(stage => stage.tasks.length));
     const height = phone ? view.stages.reduce((sum, stage) => sum + Math.max(106, 69 + stage.tasks.length * 115) + 21, 0) - 21
       : Math.max(270, 93 + maxTasks * 115);
+    flow.style.minWidth = `${width}px`;
     flow.setAttribute("viewBox", `0 0 ${width} ${height}`);
     flow.setAttribute("aria-label", `${total} tasks positioned across ${view.stages.map(stage => stage.label).join(", ")}`);
     let offset = 0;
@@ -94,7 +82,7 @@ export function mountProgressPipeline({ flow, taskCount, focusFallback, onTask }
       const x = phone ? 8 : 8 + index * 199;
       const y = phone ? offset : 8;
       const wellWidth = phone ? 344 : 186;
-      const wellHeight = phone ? Math.max(106, 69 + stage.tasks.length * 115) : height - 16;
+      const wellHeight = Math.max(106, 69 + stage.tasks.length * 115);
       const group = svg("g", "flow-stage", { "data-stage": stage.id });
       group.style.color = stage.color; // CSSOM, which the page CSP allows; a style attribute it refuses
       group.append(svg("rect", "stage-well", { x, y, width: wellWidth, height: wellHeight, rx: 15 }));
@@ -102,7 +90,7 @@ export function mountProgressPipeline({ flow, taskCount, focusFallback, onTask }
       group.append(svg("text", "stage-count", { x: x + wellWidth - 14, y: y + 27, "text-anchor": "end" }, String(stage.tasks.length)));
       if (!stage.tasks.length) group.append(svg("text", "flow-empty", { x: x + 15, y: y + 79 }, "No tasks"));
       stage.tasks.forEach((task, taskIndex) => group.append(taskNode(task, stage, x + 9,
-        y + 44 + taskIndex * 115, wellWidth - 18, 106, phone)));
+        y + 44 + taskIndex * 115, wellWidth - 18, 106)));
       flow.append(group);
       if (index < view.stages.length - 1 && stage.sequence !== false && view.stages[index + 1].sequence !== false) {
         const d = phone ? `M 180 ${y + wellHeight + 2} V ${y + wellHeight + 19}`

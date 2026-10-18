@@ -96,3 +96,5 @@ button:focus-visible, .download-link:focus-visible, select:focus-visible, textar
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
 }
+
+[hidden] { display: none !important; }

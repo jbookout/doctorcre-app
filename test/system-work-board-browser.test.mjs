@@ -99,3 +99,24 @@ test('recorded completion never claims Live in the real system-work diagram',asy
  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);assert.deepEqual(errors,[]);
  await page.screenshot({path:'out/test-artifacts/recorded-completion/completed-records-desktop.png',fullPage:true});
 });
+
+for (const width of [390, 1440]) test(`S8 populated Progress preserves readable text at ${width}px`, async t => {
+ const {page}=await open(t,width);
+ const sizes=await page.locator('#system-work-flow text, #system-work-flow foreignObject > div').evaluateAll(nodes=>nodes.map(node=>parseFloat(getComputedStyle(node).fontSize)*node.closest('svg').getScreenCTM().a));
+ assert.ok(Math.min(...sizes)>=12, `smallest rendered text is ${Math.min(...sizes)}px`);
+ const empty=await page.locator('#system-work-flow .flow-stage').evaluateAll(nodes=>nodes.filter(n=>!n.querySelector('[data-task-id]')).map(n=>n.getBoundingClientRect().height));
+ assert.ok(empty.every(height=>height<150), `empty lanes do not stretch to the largest lane: ${empty}`);
+});
+test('S8 unpublished Progress explains its empty sections and keeps Key in the header row', async t=>{
+ const {page}=await open(t,390,{snapshot:false});
+ await page.waitForFunction(()=>document.querySelector('#board-meta').textContent==='No published snapshot');
+ assert.match(await page.locator('#board-stages').textContent(), /published/i);
+ assert.match(await page.locator('#board-blocked').textContent(), /published/i);
+ const dimensions=await page.evaluate(()=>{
+  const box=s=>document.querySelector(s).getBoundingClientRect();
+  const key=box('#legend-toggle'),nav=box('.board-switch'),check=box('#filter-blocked');
+  return {keyTop:key.top,navBottom:nav.bottom,check:check.height};
+ });
+ assert.ok(dimensions.keyTop<dimensions.navBottom, 'Key shares the navigation row');
+ assert.ok(dimensions.check<=20, `checkbox height ${dimensions.check}`);
+});

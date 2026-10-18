@@ -74,14 +74,16 @@
 .relationship-graph-tools { display: flex; gap: var(--space-2); }
 
 .relationship-canvas {
-  overflow: hidden;
-  touch-action: none;
-  min-height: 420px;
+  overflow: auto;
+  touch-action: pan-x pan-y;
   margin-top: var(--space-3);
   border-radius: var(--radius-2);
   background: var(--ground);
 }
-.relationship-canvas svg { display: block; width: 100%; height: 100%; min-height: 420px; }
+.relationship-canvas svg { display: block; width: 100%; min-width: 820px; height: auto; }
+.relationship-node .node-name,
+.relationship-node .node-territory { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 13px/18px var(--font-text); color: var(--fg); }
+.relationship-node .node-territory { color: var(--fg-muted); }
 .relationship-arrow { fill: var(--fg-quiet); }
 .relationship-edge { fill: none; stroke: var(--fg-quiet); stroke-width: 1.5; opacity: 0.6; }
 .relationship-edge[data-kind="can_introduce"] { stroke: var(--data-2); stroke-dasharray: 5 6; }
@@ -106,14 +108,6 @@
 .relationship-node[data-kind="deal"] .node-icon { fill: var(--data-3); }
 .relationship-node[data-kind="lead"] .node-icon,
 .relationship-node[data-kind="contact"] .node-icon { fill: var(--data-4); }
-.relationship-edge-label {
-  fill: var(--fg-muted);
-  font: var(--font-size-1) var(--font-text);
-  paint-order: stroke;
-  stroke: var(--ground);
-  stroke-width: 4px;
-  stroke-linejoin: round;
-}
 
 .relationship-intro-list,
 #networkIntroductions,
@@ -195,8 +189,7 @@
   .relationship-directory,
   #referralsView { padding: var(--space-4); }
   .relationship-legend { gap: var(--space-2); }
-  .relationship-canvas,
-  .relationship-canvas svg { min-height: 540px; }
+  .relationship-canvas svg { min-width: 400px; }
   .relationship-dialog { width: calc(100vw - 24px); max-height: 90dvh; padding: var(--space-5); }
   .relationship-detail-grid { grid-template-columns: 1fr; gap: var(--space-5); }
   .relationship-dialog h2 { font-size: var(--font-size-4); }

@@ -905,6 +905,10 @@ export function mountBoard(deps = {}) {
     pendingRequests.clear();
     for (const id of BOARD_PANELS) byId(id)?.replaceChildren();
     for (const id of BOARD_COUNTS) byId(id).textContent = "—";
+    if (state === "unpublished") {
+      byId("board-stages").append(el("p", "empty", "Tasks appear when this board is published."));
+      byId("board-blocked").append(el("p", "empty", "Blocked work appears when this board is published."));
+    }
     byId("repos-panel").hidden = true;
     byId("board-sync").hidden = true;
     byId("board-title").textContent = deps.openTask ? "System Job Board" : "Progress";

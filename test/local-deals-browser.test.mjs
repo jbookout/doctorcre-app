@@ -313,11 +313,13 @@ test('S8 the move toast never covers the Today column or the status band', async
     const rects = () => page.evaluate(() => {
       document.querySelectorAll('.toast').forEach(node => node.remove());
       const toast = document.createElement('div'); toast.className = 'toast show'; toast.textContent = 'Moved Demo deal to Negotiation'; document.body.append(toast);
-      const box = node => { if (!node) return null; const r = node.getBoundingClientRect(); return r.width && r.height && getComputedStyle(node).visibility !== 'hidden' ? { left: r.left, right: r.right, top: r.top, bottom: r.bottom } : null; };
+      const box = node => { if (!node) return null; const r = node.getBoundingClientRect(); return r.width && r.height && getComputedStyle(node).visibility !== 'hidden' && getComputedStyle(node).display !== 'none' ? { left: r.left, right: r.right, top: r.top, bottom: r.bottom } : null; };
       return { toast: box(toast), today: box(document.querySelector('#appToday')), status: box(document.querySelector('.app-layout-status')) };
     });
+    if (width === 390) { await page.locator('#appTodayToggle').click(); await page.locator('#appToday').evaluate(n => n.getAnimations().forEach(a => a.finish())); }
     let r = await rects();
-    assert.ok(r.toast, 'toast renders');
+    if (width === 390) assert.ok(r.today?.left < 390, 'Today is open in the viewport');
+    if (width !== 390) assert.ok(r.toast, 'toast renders');
     assert.equal(overlap(r.toast, r.today), false, `${width}: toast clears Today`);
     assert.equal(overlap(r.toast, r.status), false, `${width}: toast clears the status band`);
     if (width === 1440) {

@@ -20,7 +20,11 @@ a { color: inherit; }
 .eyebrow { font-size: var(--font-size-1); font-weight: var(--font-weight-regular); color: var(--fg-muted); margin: 0; }
 /* Section numbers ("01 / DELIVERY") are eyebrows; the heading already names the section. */
 .panel-heading .eyebrow { display: none; }
-.intro { padding: 30px 0 20px; }
+.intro { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 16px 0; }
+.intro > .eyebrow, #board-freshness:empty { display: none; }
+.intro h1 { width: 100%; margin: 0; }
+.intro p { margin-bottom: 0; }
+.intro .headline { width: 100%; margin-top: 0; }
 h1, h2, h3, p { margin-top: 0; }
 h1, h2, h3, .stage-label, .headline strong { font-family: var(--font-text); }
 h1 { font-size: var(--font-size-5); line-height: var(--line-height-heading); letter-spacing: -0.02em; margin: 10px 0; overflow-wrap: anywhere; }
@@ -46,6 +50,7 @@ h3 { font-size: var(--font-size-2); }
 .filters label { display: flex; align-items: center; gap: 7px; }
 .filters select { max-width: 11rem; color: var(--fg); background: var(--surface-1); border: var(--hairline-width) solid var(--hairline-strong); border-radius: var(--radius-2); padding: 5px 8px; }
 .filters input { accent-color: var(--fg-muted); }
+.filters input[type=checkbox] { width: 16px; height: 16px; min-height: 0; padding: 0; margin: 0; }
 
 /* the rail: six stages joined by a line */
 .pipeline-rail { display: block; width: 100%; height: 34px; margin: 4px 0 12px; }
@@ -240,8 +245,12 @@ footer { padding-top: 8px; }
 }
 @media (max-width: 680px) {
   .shell { padding: 14px 12px 80px; }
-  .masthead { flex-wrap: wrap; }
-  .intro { padding: 22px 0 14px; }
+  .masthead { gap: 8px; }
+  .masthead .brand { display: none; }
+  .masthead .board-switch { margin-left: 0; }
+  .masthead .legend-toggle { margin-left: auto; }
+  .intro { padding: 14px 0; }
+  .intro h1 { font-size: var(--font-size-4); }
   .panel { padding: 16px 13px; }
   .columns, .lower-grid { grid-template-columns: minmax(0, 1fr); }
   .questions { grid-template-columns: 1fr; }
@@ -316,11 +325,11 @@ footer { padding-top: 8px; }
 @media (prefers-reduced-motion: reduce) { .cost-bar, .cost-controls select { transition: none; } }
 
 /* The independent system-work census diagram. */
-.flow-wrap { margin-top: 16px; overflow: hidden; }
+.flow-wrap { margin-top: 16px; overflow: auto; }
 .pipeline-diagram { display: block; width: 100%; height: auto; }
 .pipeline-diagram .flow-stage { --stage-accent: currentColor; }
 .pipeline-diagram .stage-well { fill: var(--surface-2); stroke: var(--stage-accent); stroke-width: 1.25; }
-.pipeline-diagram .stage-label { fill: var(--fg); font-size: 21px; font-weight: var(--font-weight-strong); }
+.pipeline-diagram .stage-label { fill: var(--fg); font-size: 18px; font-weight: var(--font-weight-strong); }
 .pipeline-diagram .stage-count { fill: var(--fg-muted); font: var(--font-weight-strong) 12px var(--font-text); }
 .pipeline-diagram .flow-empty { fill: var(--fg-muted); font: 12px var(--font-text); }
 .pipeline-diagram .pipeline-connector { fill: none; stroke: var(--hairline-strong); stroke-width: 2.5; stroke-linecap: round; stroke-dasharray: 5 5; }
@@ -336,6 +345,9 @@ footer { padding-top: 8px; }
 .pipeline-diagram .pipeline-node[data-pulse="still"] { --pulse-accent: var(--status-ok); }
 .pipeline-diagram .pipeline-node[data-pulse="attention"] .node-pulse { stroke-dasharray: 4 3; }
 .pipeline-diagram .pipeline-node[data-pulse="critical"] .node-shape { stroke-dasharray: 5 3; stroke-width: 2; }
-.pipeline-diagram .node-label { fill: var(--fg); font: var(--font-weight-strong) 12px var(--font-text); }
-.pipeline-diagram .node-meta { fill: var(--fg-muted); font: var(--font-weight-strong) 9px var(--font-text); }
-.pipeline-diagram .node-summary { fill: var(--fg-muted); font: var(--font-weight-regular) 9px var(--font-text); }
+.pipeline-diagram .node-label { color: var(--fg); font: var(--font-weight-strong) 14px var(--font-text); }
+.pipeline-diagram .node-meta { color: var(--fg-muted); font: var(--font-weight-strong) 13px var(--font-text); }
+.pipeline-diagram .node-summary { color: var(--fg-muted); font: var(--font-weight-regular) 13px var(--font-text); }
+
+.pipeline-diagram foreignObject div { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; line-height: 16px; }
+.pipeline-diagram .node-label div { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; white-space: normal; overflow-wrap: anywhere; }

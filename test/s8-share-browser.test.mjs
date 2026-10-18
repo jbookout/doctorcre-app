@@ -26,6 +26,12 @@ test('S8 the share page sits in the V2 shell with a gutter, a compact stepper an
     const page = await browser.newPage({ viewport: { width, height: 900 } });
     await page.goto(`${origin}/share`);
     await page.locator('body.report-shell').waitFor();
+    await page.waitForFunction(() => document.querySelector('#status').textContent.includes('unavailable'));
+    assert.equal(await page.locator('#open-tour').isVisible(), false);
+    assert.equal(await page.locator('.tour-flow').isVisible(), false);
+    assert.equal(await page.getByRole('heading', {name: 'Properties', exact: true}).isVisible(), false);
+    assert.equal(await page.getByRole('button', {name: 'Retry feedback'}).isVisible(), false);
+    assert.match(await page.locator('#report-summary').textContent(), /ask your broker/i);
     const layout = await page.evaluate(() => {
       const box = selector => document.querySelector(selector)?.getBoundingClientRect().toJSON();
       const rail = document.querySelector('.app-shell-header')?.getBoundingClientRect();

@@ -38,6 +38,11 @@ async function open(t, width = 1440) {
       if (version) payload.nodes[0].summary = "Demo refreshed summary";
       if (mode === "malformed") payload.edges[0].from = "missing";
       if (mode === "territory") payload.nodes[0].territory = 123;
+      if (mode === "labels") {
+        payload.nodes[0].name = "Demo Healthcare Lending North Partners";
+        payload.nodes[0].territory = "Demo Northern Coastal Territory";
+        payload.nodes.find(n => n.kind === "deal").name = JSON.stringify({value:"Demo Dental Relocation"});
+      }
       if (mode === "twins") {
         payload.nodes[0].name = "Demo Healthcare Lending North Partners";
         payload.nodes[3].name = "Demo Healthcare Lending South Partners";
@@ -216,10 +221,10 @@ for (const width of [1440, 320])
     await page.goto("http://localhost/relationships?mode=live");
     await page.waitForSelector(".relationship-node");
     const shown = await page.locator(".relationship-node").evaluateAll((nodes) =>
-      nodes.map((node) => node.querySelector("text:not([aria-hidden])").textContent));
-    assert.equal(shown.filter((text) => text.includes("Demo Healthcare…")).length, 2, "both records share one shortened visible label");
+      nodes.map((node) => node.querySelector(".node-name").textContent));
+    assert.equal(shown.filter((text) => text.startsWith("Demo Healthcare Lending")).length, 2, "both similar names remain present for accessible identification");
     for (const side of ["North", "South"])
-      assert.equal(await page.getByRole("button", { name: `Open vendor, Demo Coast, Demo Healthcare Lending ${side} Partners`, exact: true }).count(), 1);
+      assert.equal(await page.getByRole("button", { name: `Open vendor, Demo Healthcare Lending ${side} Partners, Demo Coast`, exact: true }).count(), 1);
     await page.addScriptTag({ content: axe.source });
     const audit = await page.evaluate(() => window.axe.run(document.querySelector("#networkCanvas"), { runOnly: ["label-content-name-mismatch"] }));
     assert.deepEqual(audit.violations, []);
@@ -409,4 +414,23 @@ test("W14 drag stays pending during graph resizing and uses the settled center",
   assert.equal(inputs[0].width, 320, "measure only after the resize finishes");
   assert.ok(Math.abs(inputs[0].x - (box.x + box.width / 2)) <= 1);
   assert.ok(Math.abs(inputs[0].y - (box.y + box.height / 2)) <= 1);
+});
+
+for(const width of [1440,390]) test(`S8 relationship names fit their nodes and structured deal names read as text at ${width}px`,async t=>{
+ const {page,setMode}=await open(t,width);setMode('labels');
+ await page.goto('http://localhost/relationships?mode=live');
+ await page.waitForSelector('.relationship-node');
+ assert.doesNotMatch(await page.locator('#networkNodes').textContent(), /"value"/);
+ assert.match(await page.locator('#networkNodes').textContent(), /Demo Dental Relocation/);
+ const overflow=await page.locator('.relationship-node').evaluateAll(nodes=>nodes.flatMap(n=>{
+  const box=n.querySelector('rect').getBoundingClientRect();
+  return [...n.querySelectorAll('text,foreignObject')].filter(text=>{const r=text.getBoundingClientRect();return r.left<box.left-1||r.right>box.right+1;}).map(text=>text.textContent);
+ }));
+ assert.deepEqual(overflow,[]);
+ assert.equal(await page.locator('.relationship-edge-label:visible').count(),0,'edge names stay in details rather than colliding with the graph');
+ const fonts=await page.locator('.relationship-node').first().evaluate(n=>{
+  const svg=n.ownerSVGElement, text=n.querySelector('.node-name')||n.querySelector('text');
+  return parseFloat(getComputedStyle(text).fontSize)*svg.getScreenCTM().a;
+ });
+ assert.ok(fonts>=12, `rendered node text ${fonts}px`);
 });
