@@ -92,10 +92,10 @@ test("unavailable detail reads announce availability before any derived content"
   assert.match(detailHtml(item("work_request", "WR-1"), { state: "read", payload: {} }), /None recorded in this read/);
 });
 
-test("long titles have a native expand control and one copy of their metadata", () => {
+test("detail shows full titles without an expand control and one copy of metadata", () => {
   const html = detailHtml(item("defect", "DEF-1", { title: "A long synthetic title ".repeat(20) }), { state: "none" });
-  assert.match(html, /<details class="cr-detail-heading"><summary>/);
-  assert.match(html, /Show full title/);
+  assert.match(html, /A long synthetic title /);
+  assert.doesNotMatch(html, /cr-detail-heading|Show full title|Show less/);
   assert.doesNotMatch(html, /<dt>Kind<|<dt>State</);
 });
 

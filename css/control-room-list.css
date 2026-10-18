@@ -57,13 +57,6 @@
 .cr-detail-ref { margin: 0; color: var(--fg-muted); font-size: var(--font-size-1); font-variant-numeric: tabular-nums; }
 .cr-detail-title { margin: 0; font: var(--font-weight-strong) var(--font-size-3)/1.25 var(--font-text); color: var(--fg); overflow-wrap: anywhere; }
 .cr-detail-title:focus { outline: none; }
-.cr-detail-heading summary { cursor: pointer; list-style: none; }
-.cr-detail-heading summary::-webkit-details-marker { display: none; }
-.cr-detail-heading:not([open]) .cr-detail-title { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-.cr-title-expand, .cr-title-collapse { display: block; margin-top: var(--space-1); color: var(--fg-muted); font-size: var(--font-size-1); }
-.cr-title-collapse, .cr-detail-heading[open] .cr-title-expand { display: none; }
-.cr-detail-heading[open] .cr-title-collapse { display: block; }
-.cr-detail-heading summary:focus-visible { outline: var(--focus-width, 2px) solid var(--focus-ring); outline-offset: 2px; }
 .cr-detail-availability.state-block { margin: 0 0 var(--space-3); padding: var(--space-3); gap: var(--space-2); }
 .cr-detail-availability h3 { font-size: var(--font-size-2); }
 .cr-detail-availability p { font-size: var(--font-size-1); }

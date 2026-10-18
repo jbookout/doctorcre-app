@@ -181,7 +181,7 @@ export function timelineHtml(item, events, { showAll = false } = {}) {
 export const SKELETON_HTML = `<div class="cr-timeline-skeleton" aria-hidden="true">${'<span class="skeleton-line"></span><span class="skeleton-line short"></span>'.repeat(4)}</div>`;
 
 function header(item) {
-  return `<header class="cr-detail-head"><button class="cr-detail-back" type="button" data-detail-close aria-label="Back to the list"><span aria-hidden="true">←</span> Back</button><p class="cr-detail-ref" data-detail-ref>${escapeHtml(item.ref)}</p><details class="cr-detail-heading"><summary><h2 class="cr-detail-title" id="crDetailTitle" tabindex="-1">${escapeHtml(item.title)}</h2><span class="cr-title-expand">Show full title</span><span class="cr-title-collapse">Show less</span></summary></details><p class="cr-detail-kind"><span>${escapeHtml(item.kindLabel)}</span><span aria-hidden="true">·</span><span>${escapeHtml(humanize(item.state) || 'State not recorded')}</span></p><button class="cr-detail-close" type="button" data-detail-close aria-label="Close detail" title="Close (Esc)"><span aria-hidden="true">×</span></button></header>`;
+  return `<header class="cr-detail-head"><button class="cr-detail-back" type="button" data-detail-close aria-label="Back to the list"><span aria-hidden="true">←</span> Back</button><p class="cr-detail-ref" data-detail-ref>${escapeHtml(item.ref)}</p><h2 class="cr-detail-title" id="crDetailTitle" tabindex="-1">${escapeHtml(item.title)}</h2><p class="cr-detail-kind"><span>${escapeHtml(item.kindLabel)}</span><span aria-hidden="true">·</span><span>${escapeHtml(humanize(item.state) || 'State not recorded')}</span></p><button class="cr-detail-close" type="button" data-detail-close aria-label="Close detail" title="Close (Esc)"><span aria-hidden="true">×</span></button></header>`;
 }
 function nextBlock(next, state) {
   if (state === 'loading') return '<section class="cr-next" aria-label="Next human action"><h3>Next human action</h3><span class="skeleton-line"></span></section>';
@@ -216,7 +216,10 @@ const reasonOf = (error) => [401, 403].includes(error?.status) ? 'Sign in requir
  */
 export function mountDetail({ node, client, onClose = () => {}, readDeadline = (run) => run() }) {
   let current = null, read = { state: 'loading' }, showAll = false, sequence = 0;
-  const render = () => { if (current) node.innerHTML = detailHtml(current, read, { showAll }); };
+  const render = () => {
+    if (!current) return;
+    node.innerHTML = detailHtml(current, read, { showAll });
+  };
   async function load() {
     const ticket = ++sequence, request = detailRequest(current);
     if (!request || typeof client?.[request.method] !== 'function') { read = { state: 'none' }; render(); return; }

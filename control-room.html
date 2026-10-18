@@ -46,20 +46,20 @@
 <div data-layout-slot="tabs" class="cr-command-tools"><button id="crCommandsOpen" type="button" aria-keyshortcuts="Meta+K Control+K" aria-label="Open Control Room commands" aria-haspopup="dialog" aria-controls="crCommands">Commands <kbd class="cr-keyboard-hint" aria-hidden="true">⌘ / Ctrl K</kbd></button></div>
 <div id="crWorkbench" class="cr-workbench" data-detail="closed">
 <div class="cr-list-region">
-<section id="panelInbox" class="tabpanel cr-section" role="tabpanel" aria-labelledby="tabInbox" tabindex="0" hidden>
-  <header class="cr-section-head"><h2 id="crInboxTitle">Inbox</h2><p class="cr-section-lead">Notifications about work you follow.</p></header>
+<section id="panelInbox" class="tabpanel cr-section cr-attention" role="tabpanel" aria-labelledby="tabInbox" tabindex="0" hidden>
+  <header class="cr-section-head"><h2 id="crInboxTitle">Inbox</h2></header>
   <div id="crInboxList" class="cr-list" aria-labelledby="crInboxTitle"><div class="state-block" data-state="loading"><h3>Reading inbox…</h3></div></div>
-  <template id="crInboxEmpty"><div class="state-block" data-state="empty"><h3>Inbox zero</h3><p>New notifications about work you follow land here.</p></div></template>
+  <template id="crInboxEmpty"><div class="cr-quiet-state" data-state="empty"><span class="cr-quiet-glyph" aria-hidden="true">✓</span><h3>Inbox zero</h3><p>New notifications about work you follow land here.</p></div></template>
 </section>
-<section id="panelWaiting" class="tabpanel cr-section" role="tabpanel" aria-labelledby="tabWaiting" tabindex="0" hidden>
-  <header class="cr-section-head"><h2 id="crWaitingTitle">Waiting on you</h2><p class="cr-section-lead">Work Requests that need your answer before anyone can move.</p></header>
+<section id="panelWaiting" class="tabpanel cr-section cr-attention" role="tabpanel" aria-labelledby="tabWaiting" tabindex="0" hidden>
+  <header class="cr-section-head"><h2 id="crWaitingTitle">Waiting on you</h2></header>
   <div id="crWaitingList" class="cr-list" aria-labelledby="crWaitingTitle"><div class="state-block" data-state="loading"><h3>Reading waiting on you…</h3></div></div>
-  <template id="crWaitingEmpty"><div class="state-block" data-state="empty"><h3>Nothing is waiting on you</h3><p>When a Work Request needs your answer, it shows up here.</p></div></template>
+  <template id="crWaitingEmpty"><div class="cr-quiet-state" data-state="empty"><span class="cr-quiet-glyph" aria-hidden="true">✓</span><h3>Nothing is waiting on you</h3><p>When a Work Request needs your answer, it shows up here.</p></div></template>
 </section>
-<section id="panelTriage" class="tabpanel cr-section" role="tabpanel" aria-labelledby="tabTriage" tabindex="0" hidden>
-  <header class="cr-section-head"><h2 id="crTriageTitle">Triage</h2><p class="cr-section-lead">New captures and detected incidents, before they join the queue. Defects are listed in Views, under Bugs.</p></header>
+<section id="panelTriage" class="tabpanel cr-section cr-attention" role="tabpanel" aria-labelledby="tabTriage" tabindex="0" hidden>
+  <header class="cr-section-head"><h2 id="crTriageTitle">Triage</h2><p class="cr-section-lead">Defects are listed in Views, under Bugs.</p></header>
   <div id="crTriageList" class="cr-list" aria-labelledby="crTriageTitle"><div class="state-block" data-state="loading"><h3>Reading triage…</h3></div></div>
-  <template id="crTriageEmpty"><div class="state-block" data-state="empty"><h3>Triage is clear</h3><p>New captures and detected incidents arrive here first.</p></div></template>
+  <template id="crTriageEmpty"><div class="cr-quiet-state" data-state="empty"><span class="cr-quiet-glyph" aria-hidden="true">✓</span><h3>Triage is clear</h3><p>New captures and detected incidents arrive here first.</p></div></template>
 </section>
 <section id="panelQueue" class="tabpanel cr-section" role="tabpanel" aria-labelledby="tabQueue" tabindex="0">
   <header class="cr-section-head"><h2 id="crQueueTitle">Queue</h2><p class="cr-section-lead">Every open item the record layer tracks, grouped by status. Triage items are left out.</p></header><div class="cr-coverage-row"><p id="crQueueCoverage" class="cr-coverage" role="status"></p><details id="crQueueSources" class="cr-sources" hidden><summary>Which sources</summary><ul id="crQueueSourceList"></ul></details></div>
@@ -459,6 +459,7 @@
     </section>
 </main>
 <dialog id="work-triage" aria-label="Review system work action"><button id="work-triage-close" type="button" aria-label="Close">×</button><form id="work-triage-form"></form></dialog>
+<dialog id="crInboxDialog" class="job-dialog cr-inbox-dialog" aria-labelledby="crInboxDialogTitle"><header><h2 id="crInboxDialogTitle">Inbox item</h2><button id="crInboxClose" type="button" aria-label="Close inbox item">×</button></header><div id="crInboxBody"></div></dialog>
 <dialog id="jobDialog" class="job-dialog" aria-labelledby="jobTitle"><header><h2 id="jobTitle"></h2><button id="jobClose" type="button" aria-label="Close job details">×</button></header><div id="jobBody"></div></dialog>
 
 

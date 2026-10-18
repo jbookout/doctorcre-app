@@ -13,7 +13,7 @@ const methods = { 'unfinished-work': 'unfinishedWork', 'incident-board': 'incide
   'list-progress-boards': 'listProgressBoards' };
 
 for (const width of [1440, 390]) for (const theme of ['dark', 'light']) {
-  test(`Queue pending, unavailable and expanded title at ${width} ${theme}`, async ({ page }) => {
+  test(`Queue pending, unavailable and full title at ${width} ${theme}`, async ({ page }) => {
     await page.setViewportSize({ width, height: 960 });
     await page.clock.install({ time: new Date('2026-10-17T12:00:00Z') });
     const fixture = await createFixtureClient({ seedUrl: `data:application/json;base64,${Buffer.from(await readFile(new URL('data/board-seed.json', root))).toString('base64')}` });
@@ -30,7 +30,7 @@ for (const width of [1440, 390]) for (const theme of ['dark', 'light']) {
         if (name === 'incident-board') await pending;
         let payload = methods[name] ? await fixture[methods[name]](args) : {};
         if (name === 'unfinished-work') payload = { ...payload, items: [
-          { kind: 'work_request', id: 'WR-000910', identity: { human_ref: 'WR-000910' }, state: 'in_progress', title: 'Synthetic request', owner: 'joe' },
+          { kind: 'work_request', id: 'WR-000910', identity: { human_ref: 'WR-000910' }, state: 'in_progress', title: 'Evidence graph', owner: 'joe' },
           { kind: 'retrieval_proposal', id: 'proposal-1', identity: {}, state: 'pending', title, owner: 'joe' },
         ] };
         if (name === 'work-request-card') {
@@ -61,6 +61,10 @@ for (const width of [1440, 390]) for (const theme of ['dark', 'light']) {
     await expect(pane.locator('[data-detail-unavailable]')).toContainText('Work request not found');
     await expect(pane.locator('.cr-next')).toContainText('Unavailable');
     await expect(pane).not.toContainText('None recorded');
+    await page.evaluate(() => document.fonts.ready);
+    await page.screenshot({ path: test.info().outputPath('short-title.png') });
+    await expect(pane.locator('.cr-title-expand, .cr-title-collapse, .cr-detail-heading summary')).toHaveCount(0);
+    await expect(pane.locator('#crDetailTitle')).toHaveText('Evidence graph');
     const order = await pane.evaluate(node => [...node.children].map(child => child.className));
     expect(order.indexOf('state-block cr-detail-availability')).toBeLessThan(order.indexOf('cr-next'));
     await page.screenshot({ path: test.info().outputPath('unavailable.png') });
@@ -70,12 +74,11 @@ for (const width of [1440, 390]) for (const theme of ['dark', 'light']) {
     await expect(pane.locator('.cr-next')).toContainText('Unavailable');
     await expect(pane.locator('.cr-props dt').filter({ hasText: /^(Kind|State)$/ })).toHaveCount(0);
     const heading = pane.locator('#crDetailTitle');
-    const compact = (await heading.boundingBox()).height;
-    await page.screenshot({ path: test.info().outputPath('compact.png') });
-    await pane.getByText('Show full title', { exact: true }).click();
-    expect((await heading.boundingBox()).height).toBeGreaterThan(compact * 2);
-    await pane.getByText('Show less', { exact: true }).click();
-    expect((await heading.boundingBox()).height).toBe(compact);
+    await page.evaluate(() => document.fonts.ready);
+    await expect(heading).toHaveText(title.trim());
+    expect(await heading.evaluate(node => ({ fits: node.scrollHeight <= node.clientHeight + 1, clamp: getComputedStyle(node).webkitLineClamp }))).toEqual({ fits: true, clamp: 'none' });
+    await expect(pane.locator('.cr-title-expand, .cr-title-collapse')).toHaveCount(0);
+    await page.screenshot({ path: test.info().outputPath('full-title.png') });
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     expect(errors).toEqual([]);
   });
