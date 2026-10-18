@@ -51,6 +51,7 @@ for (const width of [1440, 390]) for (const theme of ['dark', 'light']) for (con
         return { key: node.id, introHeight: node.querySelector('header').getBoundingClientRect().height,
           rowHeights: [...node.querySelectorAll('.cr-row')].map(row => row.getBoundingClientRect().height),
           titleLines: [...node.querySelectorAll('.cr-row-title')].map(title => getComputedStyle(title).whiteSpace),
+          stacked: ['panelInbox', 'panelWaiting'].includes(node.id),
           empty: empty ? { border: getComputedStyle(state).borderTopWidth, background: getComputedStyle(state).backgroundColor, height: state.getBoundingClientRect().height } : null };
       }, empty));
       if (key === 'triage') await expect(panel).toContainText('Defects are listed in Views, under Bugs.');
@@ -64,8 +65,13 @@ for (const width of [1440, 390]) for (const theme of ['dark', 'light']) for (con
         expect(result.empty.height, result.key).toBeLessThan(150);
       } else {
         expect(result.rowHeights.length, result.key).toBeGreaterThan(0);
-        for (const height of result.rowHeights) expect(height, result.key).toBeLessThanOrEqual(44);
-        expect(result.titleLines.every(value => value === 'nowrap'), result.key).toBe(true);
+        if (width === 390 && result.stacked) {
+          for (const height of result.rowHeights) expect(height, result.key).toBeGreaterThan(44);
+          expect(result.titleLines.every(value => value === 'normal'), result.key).toBe(true);
+        } else {
+          for (const height of result.rowHeights) expect(height, result.key).toBeLessThanOrEqual(44);
+          expect(result.titleLines.every(value => value === 'nowrap'), result.key).toBe(true);
+        }
       }
     }
     expect(errors).toEqual([]);

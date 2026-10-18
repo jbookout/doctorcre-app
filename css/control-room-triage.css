@@ -14,4 +14,15 @@
   .cr-attention .cr-row { grid-template-columns: 1rem 6rem minmax(0, 1fr); min-height: var(--touch); gap: var(--space-2); }
   .cr-attention .cr-row-meta { position: absolute; width: 1px; height: 1px; clip-path: inset(50%); }
   .cr-attention .cr-section-head { margin-bottom: var(--space-2); }
+  :is(#panelWaiting, #panelInbox) .cr-row { grid-template-columns: 1rem minmax(0, 1fr); padding-block: var(--space-3); row-gap: var(--space-1); }
+  :is(#panelWaiting, #panelInbox) .cr-row-glyph { grid-column: 1; grid-row: 1; }
+  :is(#panelWaiting, #panelInbox) .cr-row-ref { grid-column: 2; grid-row: 1; }
+  :is(#panelWaiting, #panelInbox) .cr-row-title { grid-column: 2; grid-row: 2; white-space: normal; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+  #panelInbox .cr-row-title { display: block; overflow-wrap: anywhere; }
+  :is(#panelWaiting, #panelInbox) .cr-row-meta { grid-column: 2; grid-row: 3; position: static; width: auto; height: auto; clip-path: none; text-align: left; white-space: normal; }
 }
+#crInboxList button.cr-row { width: 100%; border: 0; border-bottom: var(--hairline-width) solid var(--hairline); background: transparent; font-family: inherit; text-align: left; cursor: pointer; }
+#crInboxList button.cr-row:hover { background: var(--surface-1); }
+#crInboxList button.cr-row:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: -2px; }
+.cr-inbox-dialog { width: min(640px, calc(100vw - 40px)); }
+.cr-inbox-dialog p, .cr-inbox-dialog dd { overflow-wrap: anywhere; }

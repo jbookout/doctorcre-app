@@ -189,9 +189,20 @@ async function loadInbox(){
   const payload=await readWithDeadline(()=>client.notificationFeed({limit:50}));
   if(!validFeedPayload(payload))throw new Error('Invalid notification feed');
   const cards=notificationCards(payload);
-  replaceHtml($('crInboxList'),cards.length?`<ul class="cr-rows">${cards.map(card=>`<li class="cr-row" data-notification="${escapeHtml(card.id)}" data-read="${card.read}"><span class="cr-row-glyph" role="img" aria-label="${card.read?'Read':'Unread'}">${card.read?'○':'●'}</span><span class="cr-row-ref">${escapeHtml(card.subject)}</span><span class="cr-row-title">${escapeHtml(card.reason)}</span><span class="cr-row-meta">${escapeHtml(card.clock)}</span></li>`).join('')}</ul>`:emptyBlock('crInboxEmpty'));
+  view.inbox={state:'read',cards};
+  replaceHtml($('crInboxList'),cards.length?`<ul class="cr-rows">${cards.map(card=>`<li><button type="button" class="cr-row" aria-haspopup="dialog" aria-controls="crInboxDialog" data-room-control="${escapeHtml(card.id)}" data-notification="${escapeHtml(card.id)}" data-read="${card.read}"><span class="cr-row-glyph" role="img" aria-label="${card.read?'Read':'Unread'}">${card.read?'○':'●'}</span><span class="cr-row-ref">${escapeHtml(card.subject)}</span><span class="cr-row-title">${escapeHtml(card.reason)}</span><span class="cr-row-meta">${escapeHtml(card.clock)}</span></button></li>`).join('')}</ul>`:emptyBlock('crInboxEmpty'));
+  if($('crInboxDialog').open)showInboxDetail($('crInboxDialog').dataset.notification);
   setCount('inbox',Number.isInteger(payload.unread_count)?payload.unread_count:cards.filter(c=>!c.read).length);
- }catch(error){replaceHtml($('crInboxList'),stateBlock('offline','Notifications could not be read',[401,403].includes(error?.status)?'Sign in required.':'Updates unavailable. Try again shortly.'));}
+ }catch(error){view.inbox={state:'unknown'};$('crInboxDialog').close();replaceHtml($('crInboxList'),stateBlock('offline','Notifications could not be read',[401,403].includes(error?.status)?'Sign in required.':'Updates unavailable. Try again shortly.'));}
+}
+function showInboxDetail(id){
+ const card=view.inbox.cards?.find(card=>card.id===id),dialog=$('crInboxDialog');
+ if(!card){dialog.close();return;}
+ dialog.dataset.notification=id;
+ const properties=[['Category',card.subject],['Received',card.clock],['Status',card.read?'Read':'Unread'],['Severity',card.severityLabel],['Reference',card.details.subjectRef]].filter(([,value])=>value);
+ const link=card.link.href?`<p><a href="${escapeHtml(card.link.href)}">${escapeHtml(card.link.label)}</a></p>`:card.link.sentence?`<p>${escapeHtml(card.link.sentence)}</p>`:'';
+ replaceHtml($('crInboxBody'),`<p>${escapeHtml(card.reason)}</p><dl>${properties.map(([label,value])=>`<dt>${escapeHtml(label)}</dt><dd>${escapeHtml(value)}</dd>`).join('')}</dl>${link}`);
+ if(!dialog.open)dialog.showModal();
 }
 async function loadWaiting(){
  try{
@@ -247,6 +258,9 @@ async function boot(){
   const row=event.target.closest('[data-incident]');
   if(row)openIncident(row.dataset.incident);
  });
+ $('crInboxList').addEventListener('click',event=>{const row=event.target.closest('[data-notification]');if(row)showInboxDetail(row.dataset.notification);});
+ $('crInboxClose').onclick=()=>$('crInboxDialog').close();
+ $('crInboxDialog').addEventListener('close',()=>{const id=$('crInboxDialog').dataset.notification;[...$('crInboxList').querySelectorAll('[data-notification]')].find(row=>row.dataset.notification===id)?.focus();$('crInboxBody').textContent='';});
  mountNotificationBadge(client);tabs=wireTabs('controlRoomTabs');wireQueuePane();
  const strip=$('controlRoomTabs'),tabFor=key=>strip.querySelector(`[data-tab-key="${key}"]`);
  const commands=mountControlRoomCommands({tabs:strip,onEscape:()=>closePane()});
