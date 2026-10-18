@@ -74,6 +74,7 @@ for (const width of [1440, 390]) for (const theme of ['dark', 'light']) {
         const directory = await page.locator('.relationship-directory').boundingBox();
         const intros = await page.locator('.relationship-intros').boundingBox();
         expect(directory.y).toBeLessThan(intros.y);
+        expect(await page.locator('.relationship-directory').evaluate(node => Boolean(node.compareDocumentPosition(document.querySelector('.relationship-intros')) & Node.DOCUMENT_POSITION_FOLLOWING))).toBe(true);
         const names = await page.locator('#networkNodes strong').evaluateAll(nodes => nodes.map(node => ({ text: node.textContent, fits: node.scrollWidth <= node.clientWidth && node.scrollHeight <= node.clientHeight })));
         expect(names.every(name => name.fits)).toBe(true);
         expect(names.some(name => name.text.endsWith('North Partners'))).toBe(true);

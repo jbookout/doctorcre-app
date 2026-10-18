@@ -431,8 +431,9 @@ export function mountBoard(deps = {}) {
     const grouped = kind === ALL_REPOS_BOARD;
     byId("task-count").textContent = `${visible.length} OF ${all.length} CARD${all.length === 1 ? "" : "S"}`;
     renderRail(visible, stages);
-    stages.forEach((stage, index) => {
+    stages.forEach(stage => {
       const cards = visible.filter(card => card.stage === stage.id);
+      if (!cards.length) return;
       const column = el("section", "column", undefined,
         { "data-stage": stage.id, style: `--stage-accent:${stage.color}`, "aria-label": `${stage.label}: ${cards.length}` });
       const head = el("header", "column-head");
@@ -454,10 +455,10 @@ export function mountBoard(deps = {}) {
       } else {
         appendCards(body, cards, grouped);
       }
-      if (!cards.length) body.append(el("p", "column-empty", "Nothing here"));
       column.append(body);
       container.append(column);
     });
+    if (!visible.length) container.append(el("p", "empty", all.length ? "No tasks match these filters." : "No tasks on this board yet."));
     for (const id of [...cardNodes.keys()]) if (!all.some(card => card.id === id)) cardNodes.delete(id);
     if (focusedId || focusedControlId) {
       const node = focusedId ? cardNodes.get(focusedId) : byId(focusedControlId);

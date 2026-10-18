@@ -101,6 +101,9 @@ export function mountRelationshipNetwork({
     const focusedNode = document.activeElement?.dataset.node;
     const view = filterNetwork(snapshot, currentFilters),
       phone = window.matchMedia(TOUCH_LAYOUT).matches;
+    const directory = $("networkNodes").parentElement, graphView = $("graphView");
+    if (phone && graphView.firstElementChild !== directory) graphView.prepend(directory);
+    else if (!phone && graphView.lastElementChild !== directory) graphView.append(directory);
     const selected = view.nodes.some((n) => n.id === focus)
       ? focus
       : view.suggestions[0]?.to || view.nodes[0]?.id;

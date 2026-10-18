@@ -59,7 +59,7 @@ h3 { font-size: var(--font-size-2); }
 .rail-node[data-active="true"] { fill: var(--stage-accent); }
 
 /* columns */
-.columns { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 10px; }
+.columns { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr)); gap: 10px; }
 /* The app layout's sidebars narrow the board below the viewport width, so the
    stage grid follows its own panel rather than the window. */
 .pipeline-panel { container-type: inline-size; }
@@ -70,7 +70,6 @@ h3 { font-size: var(--font-size-2); }
 .stage-label { margin: 0; color: var(--fg); font-size: var(--font-size-2); font-weight: var(--font-weight-strong); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .stage-count { margin-left: auto; color: var(--fg-muted); font-size: var(--font-size-1); font-weight: var(--font-weight-strong); font-variant-numeric: tabular-nums; }
 .column-body { display: flex; flex-direction: column; gap: 8px; min-width: 0; padding: 10px; }
-.column-empty { margin: 4px 2px; color: var(--fg-muted); font-size: var(--font-size-1); }
 .repo-group { margin: 6px 2px 0; color: var(--fg-muted); font-size: var(--font-size-1); font-weight: var(--font-weight-strong); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .live-summary { margin: 0 2px; color: var(--status-ok-ink); font-size: var(--font-size-1); font-weight: var(--font-weight-strong); }
 .live-toggle { align-self: flex-start; max-width: 100%; padding: 6px 12px; border: var(--hairline-width) solid var(--status-ok); border-radius: var(--radius-round); background: transparent; color: var(--status-ok-ink); font-size: var(--font-size-1); font-weight: var(--font-weight-strong); cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; transition: background-color var(--duration-hover) var(--ease-out); }

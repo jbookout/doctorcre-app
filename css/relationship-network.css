@@ -189,7 +189,11 @@
   .relationship-directory,
   #referralsView { padding: var(--space-4); }
   .relationship-legend { gap: var(--space-2); }
-  .relationship-canvas svg { min-width: 400px; }
+  .relationship-graph-panel { display: none; }
+  #networkNodes { grid-template-columns: minmax(0, 1fr); gap: 0; }
+  #networkNodes .relationship-card { border: 0; border-bottom: var(--hairline-width) solid var(--hairline); border-radius: 0; padding: var(--space-3) 0; background: transparent; }
+  #networkNodes .relationship-card:last-child { border-bottom: 0; }
+  #networkNodes strong { overflow-wrap: anywhere; }
   .relationship-dialog { width: calc(100vw - 24px); max-height: 90dvh; padding: var(--space-5); }
   .relationship-detail-grid { grid-template-columns: 1fr; gap: var(--space-5); }
   .relationship-dialog h2 { font-size: var(--font-size-4); }
