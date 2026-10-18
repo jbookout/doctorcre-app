@@ -2,7 +2,7 @@ import { observeDocRead, selectDocRecord } from '../js/doc-context.js';
 import { mountAutoRefresh } from "../js/auto-refresh.mjs";
 import { mountAcceptedItinerary, acceptedRouteFromDetail } from "./itinerary-map.js";
 import { mountPropertyPanel } from "./property-panel.js";
-import { cheatSheetText, factSummary, formatTourDate, tourMetaLine } from "./tour-format.js";
+import { cheatSheetText, factSummary, formatTourDate, tourDisplayName, tourMetaLine } from "./tour-format.js";
 
 (() => {
   "use strict";
@@ -114,9 +114,24 @@ import { cheatSheetText, factSummary, formatTourDate, tourMetaLine } from "./tou
   }
   function renderLibrary() {
     const list = $("#tour-list"); list.replaceChildren();
-    for (const tour of state.tours) { const button = document.createElement("button"); button.type = "button"; button.className = "tour-button"; button.textContent = `${text(tour.name, "Untitled tour")} · ${text(tour.status, "draft")}`; button.addEventListener("click", () => void loadTour(tour.id)); const item = document.createElement("li"); item.append(button); list.append(item); }
+    for (const tour of state.tours) { const item = document.createElement("li"); item.append(tourButton(tour, "tour-button")); list.append(item); }
     if (!state.tours.length) list.textContent = "No tours are available.";
     list.setAttribute("aria-busy", "false");
+    renderEmptyTours();
+  }
+  function tourButton(tour, className) {
+    const button = document.createElement("button"); button.type = "button"; button.className = className; button.title = text(tour.name, "Untitled tour");
+    const name = document.createElement("strong"); name.textContent = tourDisplayName(tour.name);
+    const status = document.createElement("span"); status.textContent = text(tour.status, "draft").replaceAll("_", " ");
+    button.append(name, status); button.addEventListener("click", () => void loadTour(tour.id));
+    return button;
+  }
+  // With no tour open, the workspace offers the most recent tours (the library
+  // is off-screen on a phone) and the Start a tour action above it.
+  function renderEmptyTours() {
+    const list = $("#empty-tours"); list.replaceChildren();
+    for (const tour of state.tours.slice(0, 6)) { const item = document.createElement("li"); item.append(tourButton(tour, "empty-tour")); list.append(item); }
+    $("#empty-copy").textContent = state.tours.length ? "Open a tour to edit its route, cheat sheet and client share, or start a new one." : "No tours yet. Start a tour to plan its route.";
   }
   const countyNames = ["Escambia", "Santa Rosa", "Okaloosa", "Walton", "Bay"];
   function displayDate(value) { const time = Date.parse(value); return Number.isFinite(time) ? new Date(time).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric", timeZone: "UTC" }) : "unknown"; }
@@ -388,6 +403,9 @@ import { cheatSheetText, factSummary, formatTourDate, tourMetaLine } from "./tou
       item.append(head, node("p", text(row.address, text(knownProperty(row.property_id)?.address, "Address unavailable")), "hint"));
       const identity = node("details", "", "stop-identity"); identity.append(node("summary", "Property identity"), node("code", row.property_id)); item.append(identity);
       const fields = node("div", "", "stop-fields");
+      const extra = node("details", "", "stop-edit-details"), extraFields = node("div", "", "stop-fields");
+      extra.append(node("summary", "Timing and details"), extraFields);
+      const folded = row.stop_state !== "active";
       for (const [field, title, type] of [["route_label", "Route label", "text"], ["stop_state", "Stop state", "select"], ["dwell_minutes", "Dwell minutes", "number"], ["buffer_minutes", "Buffer minutes", "number"], ["appointment_start", "Appointment start", "datetime-local"], ["appointment_end", "Appointment end", "datetime-local"], ["locked_appointment", "Fixed appointment", "checkbox"]]) {
         const label = node("label", title), control = node(type === "select" ? "select" : "input"); control.dataset.field = field;
         control.setAttribute("aria-label", `${title} for ${text(row.name, "saved property")}`);
@@ -404,9 +422,10 @@ import { cheatSheetText, factSummary, formatTourDate, tourMetaLine } from "./tou
           row[field] = type === "checkbox" ? control.checked : type === "number" ? control.value === "" ? NaN : Number(control.value) : type === "datetime-local" ? control.value ? new Date(control.value).toISOString() : null : control.value;
           if (type === "select") renderComposer(); else renderComposerSummary();
         });
-        label.append(control); fields.append(label);
+        label.append(control); (folded && field !== "stop_state" ? extraFields : fields).append(label);
       }
       item.append(fields);
+      if (folded) { extra.append(identity); item.append(extra); }
       const controls = node("div", "", "stop-controls");
       for (const [word, delta] of [["Up", -1], ["Down", 1]]) {
         const button = node("button", word); button.type = "button"; button.disabled = !editable || index + delta < 0 || index + delta >= composer.rows.length;
@@ -444,6 +463,7 @@ import { cheatSheetText, factSummary, formatTourDate, tourMetaLine } from "./tou
     $("#save-composer").disabled = !editableComposer() || !composer.dirty || !composer.rows.some(row => row.stop_state === "active");
     $("#reconcile-composer").hidden = composer.phase !== "unknown";
     $("#retry-composer").hidden = composer.phase !== "reconciled";
+    $("#reload-composer").hidden = state.tour.route_version_state === "draft" && !["stale", "refused", "session-changed"].includes(composer.phase) && !(composer.saved && !digest(composer.reviewDigest));
     $("#reload-composer").disabled = navigationBusy || composer.busy || composer.phase === "unknown" || composer.phase === "reconciled";
     $("#route-reviewed").disabled = navigationBusy || Boolean(createPending) || composer.busy || composer.dirty || composer.phase !== "ready" || !composer.saved || !digest(composer.reviewDigest);
     $("#accept-route").hidden = state.tour.route_version_state !== "draft";
@@ -598,7 +618,7 @@ import { cheatSheetText, factSummary, formatTourDate, tourMetaLine } from "./tou
     const tour = state.tour; if (!tour) return;
     const priorProjectionId = state.projectionId;
     $("#empty-state").hidden = true; $("#tour-panel").hidden = false;
-    $("#tour-name").textContent = text(tour.name, "Untitled tour"); $("#tour-state").textContent = text(tour.status, "Draft");
+    $("#tour-name").textContent = tourDisplayName(tour.name); $("#tour-name").title = text(tour.name, "Untitled tour"); $("#tour-state").textContent = text(tour.status, "Draft");
     $("#tour-meta").textContent = tourMetaLine(tour);
     $("#route-version").textContent = text(tour.route_version_label, tour.route_version_id ? "Current version" : "No route version");
     $("#save-route").hidden = tour.route_version_state !== "accepted";
@@ -640,9 +660,18 @@ import { cheatSheetText, factSummary, formatTourDate, tourMetaLine } from "./tou
     renderAcceptedItinerary();
   }
   async function loadLibrary() {
-    status("Loading tours…"); const data = await observeDocRead("tourLibrary", [], () => request("/api/tours/library"));
-    if (!Array.isArray(data.tours) || !data.tours.every(tour => id(tour?.id))) throw new Error("read_invalid");
+    status("Loading tours…");
+    let data;
+    try {
+      data = await observeDocRead("tourLibrary", [], () => request("/api/tours/library"));
+      if (!Array.isArray(data.tours) || !data.tours.every(tour => id(tour?.id))) throw new Error("read_invalid");
+    } catch (error) {
+      if (!libraryReady) $("#empty-copy").textContent = "The tour library did not load. Try again.";
+      $("#retry-library").hidden = false;
+      throw error;
+    }
     libraryReady = true;
+    $("#retry-library").hidden = true;
     if (!createPending && readPending()?.create) { createPending = readPending().create; createPhase = "unknown"; $("#create-tour-panel").open = true; $("#create-tour-state").textContent = "Creation outcome unknown after reload. Reconcile before retrying the retained request."; renderCreate(); }
     state.tours = Array.isArray(data.tours) ? data.tours.filter((tour) => id(tour?.id)) : []; renderLibrary(); status("Tour library ready.");
     const retained = readPending()?.composer;
@@ -782,6 +811,10 @@ import { cheatSheetText, factSummary, formatTourDate, tourMetaLine } from "./tou
     composer.endpointDraft = endpointValues(); composer.undo = null; composer.dirty = true; composer.message = "Last route edit undone. Save to keep this draft."; renderComposer();
   });
   $("#route-reviewed").addEventListener("change", renderComposerSummary);
+  $("#retry-library").addEventListener("click", () => void action(async () => {
+    $("#retry-library").disabled = true;
+    try { await loadLibrary(); } finally { $("#retry-library").disabled = false; }
+  }));
   $("#reload-composer").addEventListener("click", () => void action(async () => {
     if (!composer || navigationBusy || composer.busy || ["unknown", "reconciled"].includes(composer.phase)) return;
     const current = composer, plan = current.plan; current.busy = true; renderComposer();

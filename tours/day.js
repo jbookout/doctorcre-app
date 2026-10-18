@@ -1,3 +1,4 @@
+import { tourDisplayName } from "./tour-format.js";
 import { acceptedRouteFromDetail, buildAcceptedRouteState, mountAcceptedItinerary } from "./itinerary-map.js";
 import { createDayClient } from "./day-client.js";
 import { createDayStore, noteState } from "./day-store.js";
@@ -57,6 +58,14 @@ export function mountTourDay({ document, window, api = createDayClient(), store 
   let scope = null, userRef = null, tour = null, selected = null, map = null, notes = [], disposed = false, epoch = 0, opener = null, urls = [], dialogNoteId = null, dialogSignature = null;
   let volatileNote = null, recordingMessage = "", offline = false, itineraryError = "", shellError = "", shellReady = false, preparingShell = null;
   const status = text => { $("#day-status").textContent = text; };
+  // The page shows a tour or says why it cannot: the route, stop panel and
+  // capture dock appear only once a tour is in hand.
+  const EMPTY_COPY = {
+    none: "Tour day runs one tour at a time. Choose a tour with an accepted route on the itinerary, then open Tour day from it.",
+    failed: "This tour could not be read and no copy is saved on this phone. Refresh to try again.",
+    signedOut: "Sign in, then reopen this tour from the itinerary.",
+  };
+  const showState = (state, copy = "") => { $("#tour-day").dataset.state = state; $("#day-empty-copy").textContent = copy; };
   const renderStatus = () => { if (tour) status([recordingMessage, itineraryError, shellError].filter(Boolean).join(" · ") || (offline ? "Offline · Notes saved on phone" : "Voice notes stay on this phone")); };
   const rememberFocus = () => document.activeElement?.dataset.focusKey;
   const focusControl = key => [...document.querySelectorAll("[data-focus-key]")].find(node => node.dataset.focusKey === key)?.focus({ preventScroll: true });
@@ -169,7 +178,8 @@ export function mountTourDay({ document, window, api = createDayClient(), store 
   function render() {
     if (!tour) return;
     const focus = rememberFocus();
-    $("#day-title").textContent = tour.name || "Tour day";
+    $("#day-title").textContent = tourDisplayName(tour.name, "Tour day");
+    $("#day-title").title = tour.name || "Tour day";
     const stops = orderedDayStops(tour), root = $("#day-stops");
     root.replaceChildren();
     for (const stop of stops) {
@@ -203,10 +213,12 @@ export function mountTourDay({ document, window, api = createDayClient(), store 
     scope = userRef = tour = selected = null; notes = []; volatileNote = null; recordingMessage = itineraryError = "";
     $("#day-current").replaceChildren(); $("#day-stops").replaceChildren(); $("#day-notes").replaceChildren(); $("#day-title").textContent = "Tour day";
     try { offlineSession.clear(); } catch {}
+    showState("unavailable", EMPTY_COPY.signedOut); $("#day-updated").textContent = "Not loaded";
     renderControls();
   }
   async function refresh({ signal } = {}) {
     const seq = ++epoch;
+    if (!tourId) { showState("unavailable", EMPTY_COPY.none); $("#day-updated").textContent = "No tour chosen"; status("Tour unavailable"); renderControls(); return; }
     try {
       const session = await api.session({ signal });
       if (disposed || seq !== epoch) return;
@@ -219,7 +231,7 @@ export function mountTourDay({ document, window, api = createDayClient(), store 
       try { await store.putTour(scope, tour); if (disposed || seq !== epoch) return; itineraryError = ""; }
       catch { if (disposed || seq !== epoch) return; itineraryError = "Offline itinerary unavailable"; }
       void ensureOfflineShell();
-      await present(); $("#day-updated").textContent = updatedLabel(new Date());
+      showState("ready"); await present(); $("#day-updated").textContent = updatedLabel(new Date());
       renderStatus();
     } catch (error) {
       if (disposed || seq !== epoch) return;
@@ -231,9 +243,10 @@ export function mountTourDay({ document, window, api = createDayClient(), store 
       if (!tour && scope) {
         const saved = await store.getTour(scope, tourId).catch(() => null);
         if (disposed || seq !== epoch) return;
-        if (saved) { tour = saved.tour; $("#day-updated").textContent = updatedLabel(saved.updated_at); await present(); }
+        if (saved) { tour = saved.tour; showState("ready"); $("#day-updated").textContent = updatedLabel(saved.updated_at); await present(); }
       }
-      renderControls(); if (!tour) status("Tour unavailable");
+      renderControls();
+      if (!tour) { showState("unavailable", EMPTY_COPY.failed); $("#day-updated").textContent = "Not loaded"; status("Tour unavailable"); }
     }
   }
   async function present() {
@@ -242,9 +255,14 @@ export function mountTourDay({ document, window, api = createDayClient(), store 
     const route = acceptedRouteFromDetail(tour);
     if (route) {
       const options = { route, scope, user_ref: userRef, presentation: "day", canSelect: () => !recorder.active, promotion_receipt: tour.map_promotion_receipt || null, onSelect: id => { if (!recorder.active) { selected = id; render(); } } };
-      try { if (map) map.update(options); else map = mapFactory($("#day-map"), options); selected = map.projection?.card?.route_stop_id || selected; }
+      try { if (map) map.update(options); else { $("#day-map").replaceChildren(); map = mapFactory($("#day-map"), options); } selected = map.projection?.card?.route_stop_id || selected; }
       catch { map?.destroy(); map = null; $("#day-map").replaceChildren(make("p", "Map unavailable", "day-map-state")); }
-    } else { map?.destroy(); map = null; $("#day-map").replaceChildren(make("p", "Route unavailable", "day-map-state")); }
+    } else {
+      map?.destroy(); map = null;
+      const recovery = make("a", "Review route in Itinerary", "day-empty-link");
+      recovery.href = `/tours/route-editor.html?tour=${encodeURIComponent(tourId)}`;
+      $("#day-map").replaceChildren(make("p", "Route unavailable. Review and accept a route before starting Tour day.", "day-map-state"), recovery);
+    }
     await loadNotes(); render();
   }
   $("#day-record").onclick = async () => {

@@ -148,7 +148,12 @@ test("client outage clears on automatic recovery and form caret survives backgro
 test("unsupported search UI is absent from the landing page and backend actions are withheld", () => {
   const doc = new JSDOM(html).window.document;
   assert.equal(doc.querySelector("#property-search-form"), null);
-  assert.equal(doc.querySelectorAll(".widget-actions button[disabled]").length, 2);
+  const withheld = [...doc.querySelectorAll(".widget-actions button[disabled]")];
+  assert.equal(withheld.length, 1);
+  for (const button of withheld) {
+    const reason = doc.getElementById(button.getAttribute("aria-describedby") || "");
+    assert.match(reason?.textContent || "", /\bnot connected\b/, "a withheld action says why in words");
+  }
   assert.equal(doc.querySelectorAll(".hint, .selection-footnote").length, 0);
 });
 

@@ -144,7 +144,7 @@ function paintSelection() {
 function detailRow(label, value) {
   return value
     ? `<dt>${escapeHtml(label)}</dt><dd>${escapeHtml(value)}</dd>`
-    : `<dt>${escapeHtml(label)}</dt><dd class="unknown">not recorded</dd>`;
+    : `<dt>${escapeHtml(label)}</dt><dd class="unknown">Not recorded</dd>`;
 }
 
 function paintDayPanel() {
