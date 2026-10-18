@@ -6,8 +6,8 @@ import {createFixtureClient} from '../js/fixture-client.js';
 import {atlasFixtureResponse} from '../scripts/atlas-fixture.mjs';
 import { routeContract as routes } from "../js/routes.js";
 const root=new URL('../',import.meta.url);
-const reads={'list-feature-switches':'listFeatureSwitches','list-doc-suggestions':'listDocSuggestions','read-progress-board':'readProgressBoard','list-progress-boards':'listProgressBoards','unfinished-work':'unfinishedWork','incident-board':'incidentBoard','governance-queue':'governanceQueue','schedule-board':'scheduleBoard','work-request-card':'workRequestCard','deal-room-board':'getBoard','today-triage':'todayTriage','notification-feed':'notificationFeed','list-notifications':'listNotifications'};
-async function open(t,{width=1440,path='/control-room?mode=live',connectionsBad=false,countIncidentClicks=false,unboundBoard=false}={}){
+const reads={'list-feature-switches':'listFeatureSwitches','list-doc-suggestions':'listDocSuggestions','read-progress-board':'readProgressBoard','list-progress-boards':'listProgressBoards','unfinished-work':'unfinishedWork','incident-board':'incidentBoard','governance-queue':'governanceQueue','schedule-board':'scheduleBoard','work-request-card':'workRequestCard','deal-room-board':'getBoard','today-triage':'todayTriage','notification-feed':'notificationFeed','current-work-item':'currentWorkItem','list-notifications':'listNotifications'};
+async function open(t,{width=1440,path='/control-room?mode=live&tab=boards',connectionsBad=false,countIncidentClicks=false,unboundBoard=false}={}){
  const browser=await chromium.launch();t.after(()=>browser.close());
  const page=await browser.newPage({viewport:{width,height:960},timezoneId:'UTC',reducedMotion:'reduce'});
  if(countIncidentClicks)await page.addInitScript(()=>{
@@ -80,10 +80,12 @@ async function advanceRoom(page, ms) {
  await page.clock.runFor(ms);
  await waitForRoom(page,sequence);
 }
+// The V2 section nav lives in the workspace sidebar, which is a drawer on a phone.
+async function section(page,id){const tab=page.locator(`#${id}`);if(!(await tab.isVisible()))await page.locator('#appSidebarToggle').click();await tab.click();await page.waitForFunction(id=>document.getElementById(id).getAttribute('aria-selected')==='true',id);}
 async function capture(page,name){await mkdir(new URL('out/test-artifacts/w7/',root),{recursive:true});await page.screenshot({path:new URL(`out/test-artifacts/w7/${name}.png`,root).pathname,fullPage:true});}
 for(const width of [1440,390,320])test(`W7 shared room, cards and wide popup fit ${width}px`,async t=>{
  const {page,calls,errors}=await open(t,{width});await page.waitForSelector('[data-task-id="work_request:WR-000901"]');
- assert.equal(await page.locator('#appLayout').count(),1);assert.equal(await page.locator('#appTabsSlot #controlRoomTabs').count(),1);assert.equal(await page.locator('#appSidebarSlot #board-directory').count(),1);
+ assert.equal(await page.locator('#appLayout').count(),1);assert.equal(await page.locator('#appSidebarSlot #controlRoomTabs').count(),1);assert.equal(await page.locator('#panelDashboard #board-directory').count(),1);
  assert.equal(await page.locator('.board-card[data-task-id^="governance:"]').count(),4);
  assert.equal(await page.locator('#panelDashboard [id="operationsBlocks"],#resourceDashboard,#headerCoverage').count(),0);
  assert.match(await page.locator('[data-task-id="work_request:WR-000901"]').textContent(),/WR-000901.*#17/);
@@ -102,7 +104,7 @@ for(const width of [1440,390,320])test(`W7 shared room, cards and wide popup fit
  await page.locator('#jobClose').click();assert.equal(await card.evaluate(e=>document.activeElement===e),true);
  await page.locator('.board-card[data-task-id^="governance:"]').first().click();await page.waitForFunction(()=>document.querySelector('#jobDialog').open);await page.locator('#jobBody summary').click();assert.match(await page.locator('#jobBody pre').textContent(),/Demo rule/);await page.locator('#jobClose').click();
  await page.locator('.work-card').first().click();await page.waitForFunction(()=>document.querySelector('#jobDialog').open);await page.locator('#jobClose').click();
- await page.locator('#tabConnections').click();await page.locator('[data-connection="claude"] a').waitFor();assert.equal(await page.locator('[data-device]').count(),2);assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);if(width!==320)await capture(page,`connections-${width}`);
+ await section(page,'tabConnections');await page.locator('[data-connection="claude"] a').waitFor();assert.equal(await page.locator('[data-device]').count(),2);assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);if(width!==320)await capture(page,`connections-${width}`);
  assert.ok(calls.every(name=>Object.keys(reads).includes(name)||name==='read-resource-dashboard'||name==='morning-brief'),calls.join(', '));assert.deepEqual(errors,[]);
 });
 
@@ -133,7 +135,7 @@ for(const width of [1440,390])test(`Recorded work refresh preserves task focus a
  assert.deepEqual(errors,[]);
 });
 for(const width of [1440,390])test(`W7 Action Items rows open the same wide popup at ${width}px`,async t=>{
- const {page,errors}=await open(t,{width});await page.locator('#tabAttention').click();
+ const {page,errors}=await open(t,{width});await section(page,'tabViews');
  const row=page.locator('#incidentGroups [data-incident]').first();await row.waitFor();
  const title=await row.locator('h3').textContent();await capture(page,`action-items-${width}`);await row.locator('h3').click();
  await page.waitForFunction(()=>document.querySelector('#jobDialog').open);assert.equal(await page.locator('#jobTitle').textContent(),title);
@@ -144,13 +146,13 @@ test('W7 automatic refresh updates PR, provider spend and open details without l
  state.pr=23;state.title='Demo updated dashboard';state.spend=18.50;await advanceRoom(page,16001);
  await page.waitForFunction(()=>document.querySelector('#jobBody').textContent.includes('PR #23'));
  assert.equal(await page.locator('#jobDialog').evaluate(e=>e.open),true);assert.equal(await page.locator('#jobBody details').evaluate(e=>e.open),true);assert.equal(await page.locator('#jobBody summary').evaluate(e=>e===document.activeElement),true);
- await page.locator('#jobClose').click();await page.locator('#tabConnections').click();await page.getByText('$18.50 · October 2026',{exact:true}).first().waitFor();
+ await page.locator('#jobClose').click();await section(page,'tabConnections');await page.getByText('$18.50 · October 2026',{exact:true}).first().waitFor();
  assert.equal(await page.locator('[data-connection="grok"]').getAttribute('data-state'),'needs_reconnect');assert.equal(await page.locator('[data-device]').count(),2);
  await page.emulateMedia({reducedMotion:'no-preference'});await page.evaluate(()=>document.documentElement.dataset.motion='full');assert.equal(await page.locator('.connection-dot').first().evaluate(e=>getComputedStyle(e).animationName),'none');assert.equal(await page.locator('[data-connection="grok"] .connection-dot').evaluate(e=>getComputedStyle(e).borderRadius),'1px');await page.emulateMedia({reducedMotion:'reduce'});assert.equal(await page.locator('.connection-dot').first().evaluate(e=>getComputedStyle(e).animationName),'none');
  state.denied=true;await advanceRoom(page,15001);await page.waitForFunction(()=>document.querySelector('[data-connection="claude"]').dataset.state==='unknown');assert.equal(await page.locator('[data-device]').count(),0);assert.match(await page.locator('#devicesState').textContent(),/unavailable/);
 });
 for(const width of [1440,390])test(`W7 calendar defaults and dedicated automation list at ${width}px`,async t=>{
- const {page,errors}=await open(t,{width});await page.locator('#tabAutomations').click();await page.waitForSelector('.calendar-day');assert.equal(await page.locator('.calendar-day').count(),31);
+ const {page,errors}=await open(t,{width});await section(page,'tabAutomations');await page.waitForSelector('.calendar-day');assert.equal(await page.locator('.calendar-day').count(),31);
  if(width===390){const marker=page.locator('.calendar-day .automation-job').first();assert.ok((await marker.boundingBox()).height<=28);assert.equal(await page.locator('#automationAgenda .automation-job').count(),1);await marker.click();await page.waitForFunction(()=>document.querySelector('#jobDialog').open);await page.locator('#jobClose').click();}
  await capture(page,`calendar-${width}`);await page.getByRole('button',{name:'Next month'}).click();assert.match(await page.locator('#automationMonth').textContent(),/November/);await page.getByRole('button',{name:'Previous month'}).click();
  const link=page.locator('#panelAutomations').getByRole('link',{name:'List',exact:true});assert.equal(await link.getAttribute('href'),'/control-room/automations');await link.click();await page.waitForURL('**/control-room/automations');await page.waitForSelector('#automationList .automation-job');
@@ -165,26 +167,26 @@ for(const failure of ['http','invalid'])test(`finding 5: ${failure} governance r
  state.approvalFailure=null;await advanceRoom(page,15001);await page.waitForFunction(()=>document.querySelector('#governanceState').hidden);
 });
 test('finding 6: open incident reconciles with its source while unrelated reads leave it open',async t=>{
- const {page,state}=await open(t);await page.locator('#tabAttention').click();await page.locator('#incidentGroups [data-incident-open]').first().click();await page.locator('#jobBody summary').click();
+ const {page,state}=await open(t);await section(page,'tabViews');await page.locator('#incidentGroups [data-incident-open]').first().click();await page.locator('#jobBody summary').click();
  state.incidentState='monitoring';await advanceRoom(page,16001);await page.waitForFunction(()=>document.querySelector('.job-summary').textContent.includes('monitoring'));
  assert.equal(await page.locator('#jobDialog').evaluate(e=>e.open),true);
- await page.locator('#jobClose').click();await page.locator('#tabAutomations').click();await page.locator('.calendar-day .automation-job').first().click();state.removeJobs=true;await advanceRoom(page,15001);
+ await page.locator('#jobClose').click();await section(page,'tabAutomations');await page.locator('.calendar-day .automation-job').first().click();state.removeJobs=true;await advanceRoom(page,15001);
  await page.waitForFunction(()=>/no longer|removed/.test(document.querySelector('#jobBody').textContent));
 });
 for(const initial of [false,true])test(`finding 7: malformed Connections ${initial?'initial':'poll'} render unavailable and polling continues`,async t=>{
- const {page,state,errors}=await open(t,{connectionsBad:initial});await page.locator('#tabConnections').click();await page.waitForSelector('[data-connection="claude"]');
+ const {page,state,errors}=await open(t,{connectionsBad:initial});await section(page,'tabConnections');await page.waitForSelector('[data-connection="claude"]');
  if(!initial){await page.waitForFunction(()=>document.querySelector('[data-connection="claude"]').dataset.state==='connected');state.connectionsBad=true;await advanceRoom(page,16001);}
  await page.waitForFunction(()=>document.querySelector('[data-connection="claude"]').dataset.state==='unknown');assert.equal(await page.locator('[data-device]').count(),0);assert.match(await page.locator('[data-connection="claude"]').textContent(),/Spend unavailable/);
  state.connectionsBad=false;await advanceRoom(page,16001);await page.waitForFunction(()=>document.querySelector('[data-connection="claude"]').dataset.state==='connected');assert.deepEqual(errors,[]);
 });
 test('finding 8: poll preserves calendar, management and popup activity focus plus current card return',async t=>{
- const {page,state}=await open(t);await page.locator('#tabAutomations').click();const job=page.locator('.calendar-day .automation-job').first();await job.focus();state.spend=20;await advanceRoom(page,16001);assert.equal(await job.evaluate(e=>e===document.activeElement),true);
- await page.locator('#tabConnections').click();const manage=page.locator('[data-connection="claude"] a');await manage.focus();state.spend=30;await advanceRoom(page,15001);await page.waitForFunction(()=>document.querySelector('[data-connection="claude"]').textContent.includes('$30.00'));assert.equal(await page.evaluate(()=>document.querySelector('[data-connection="claude"] a')===document.activeElement),true);
- await page.locator('#tabDashboard').click();const card=page.locator('.work-card h4 a').first();await card.click();await page.locator('.job-summary').getByText('Demo acceptance summary',{exact:true}).waitFor();await page.locator('#jobBody summary').click();const activity=page.locator('#jobBody details a');await activity.focus();state.pr=77;await advanceRoom(page,15001);await page.waitForFunction(()=>document.querySelector('#jobBody').textContent.includes('PR #77'));assert.equal(await activity.evaluate(e=>e===document.activeElement),true);
+ const {page,state}=await open(t);await section(page,'tabAutomations');const job=page.locator('.calendar-day .automation-job').first();await job.focus();state.spend=20;await advanceRoom(page,16001);assert.equal(await job.evaluate(e=>e===document.activeElement),true);
+ await section(page,'tabConnections');const manage=page.locator('[data-connection="claude"] a');await manage.focus();state.spend=30;await advanceRoom(page,15001);await page.waitForFunction(()=>document.querySelector('[data-connection="claude"]').textContent.includes('$30.00'));assert.equal(await page.evaluate(()=>document.querySelector('[data-connection="claude"] a')===document.activeElement),true);
+ await section(page,'tabDashboard');const card=page.locator('.work-card h4 a').first();await card.click();await page.locator('.job-summary').getByText('Demo acceptance summary',{exact:true}).waitFor();await page.locator('#jobBody summary').click();const activity=page.locator('#jobBody details a');await activity.focus();state.pr=77;await advanceRoom(page,15001);await page.waitForFunction(()=>document.querySelector('#jobBody').textContent.includes('PR #77'));assert.equal(await activity.evaluate(e=>e===document.activeElement),true);
  await page.locator('#jobClose').click();await page.waitForFunction(()=>document.querySelector('.work-card h4 a')===document.activeElement);
 });
 test('finding 9: persisted pagehide/pageshow continues Control Room polling',async t=>{
- const {page,state}=await open(t);await page.locator('#tabAttention').click();await page.waitForSelector('#incidentGroups [data-incident]');
+ const {page,state}=await open(t);await section(page,'tabViews');await page.waitForSelector('#incidentGroups [data-incident]');
  const incidentRead=()=>page.waitForResponse(response=>new URL(response.url()).pathname==='/mcp'
   && response.request().postDataJSON()?.params?.name==='incident-board');
  const showsState=state=>page.waitForFunction(expected=>document.querySelector('#incidentGroups [data-incident] .work-meta')?.textContent.includes(expected),state);
@@ -208,7 +210,7 @@ test('finding 11: sidebar shares active-deal scope including adapter-normalized 
  for(const id of ['appTodayNeeds','appWorkingList']){assert.deepEqual(await page.locator(`#${id} [data-layout-deal]`).allTextContents(),['Demo active']);}
 });
 test('incident filters and details dispatch once per click after retained and replaced renders',async t=>{
- const {page,state,errors}=await open(t,{countIncidentClicks:true});await page.locator('#tabAttention').click();
+ const {page,state,errors}=await open(t,{countIncidentClicks:true});await section(page,'tabViews');
  const all=page.locator('#severityChips [data-severity="all"]');await all.waitFor();await all.focus();
  for(const sequence of [2,3]){
   await advanceRoom(page,15001);
@@ -241,7 +243,7 @@ test('incident filters and details dispatch once per click after retained and re
 });
 
 for(const failure of [503,403,'unpublished'])test(`PR132 #1: board ${failure} reconciles shared detail state`,async t=>{
- const {page,state}=await open(t,{path:'/control-room?mode=live&board=demo-project',unboundBoard:true});
+ const {page,state}=await open(t,{path:'/control-room?mode=live&tab=boards&board=demo-project',unboundBoard:true});
  const card=page.locator('#board-stages .board-card').first();await card.waitFor();await card.click();await page.waitForFunction(()=>document.querySelector('#jobDialog').open);
  assert.match(await page.locator('#jobBody').textContent(),/Work Request unavailable/);
  if(failure==='unpublished')state.boardUnpublished=true;else state.boardFailure=failure;await page.locator('#board-retry').evaluate(button=>button.click());await page.waitForFunction(()=>document.querySelector('#board-error').hidden===false);
@@ -249,7 +251,7 @@ for(const failure of [503,403,'unpublished'])test(`PR132 #1: board ${failure} re
  else {assert.match(await page.locator('#jobBody').textContent(),/Source unavailable.*Last-known/);await page.locator('#jobClose').click();await card.click();assert.match(await page.locator('#jobBody').textContent(),/Source unavailable.*Last-known/);}
 });
 for(const partial of [false,true])test(`PR132 #4: ${partial?'partial':'unknown'} schedule observations remain visible in calendar and List`,async t=>{
- const {page,state}=await open(t);state[partial?'partialSchedule':'scheduleUnknown']=true;await advanceRoom(page,16001);await page.locator('#tabAutomations').click();
+ const {page,state}=await open(t);state[partial?'partialSchedule':'scheduleUnknown']=true;await advanceRoom(page,16001);await section(page,'tabAutomations');
  assert.match(await page.locator('#panelAutomations').textContent(),partial?/unavailable.*source|source.*unavailable/i:/Automations unavailable/);
  const calendar=page.locator('#automationCalendar');assert.equal(await calendar.locator('[role="status"]').evaluate(node=>getComputedStyle(node).gridColumn),'1 / -1');
  const grid=await calendar.boundingBox(),sunday=await calendar.locator('.calendar-weekday').first().boundingBox();assert.ok(sunday.x<grid.x+grid.width/7,'Sunday occupies the first calendar column');
@@ -262,7 +264,7 @@ test('PR132 #3: failed List read retains unavailable selection state',async t=>{
  await page.locator('#automationList .automation-job').first().click();assert.match(await page.locator('#jobBody').textContent(),/Source unavailable.*Last-known/);
 });
 test('PR132 #5: paused configured jobs have an unknown next time in both surfaces',async t=>{
- const {page}=await open(t);await page.locator('#tabAutomations').click();
+ const {page}=await open(t);await section(page,'tabAutomations');
  const paused=page.locator('#automationUndated [data-state="paused"]');await paused.waitFor();assert.doesNotMatch(await paused.textContent(),/Unscheduled/);assert.match(await paused.textContent(),/unknown.*paused/i);
  assert.doesNotMatch(await page.locator('#automationUndated h3').textContent(),/Unscheduled/);
  await page.getByRole('link',{name:'List',exact:true}).click();await page.locator('#automationList [data-state="paused"]').waitFor();assert.match(await page.locator('#automationList [data-state="paused"]').textContent(),/unknown.*paused/i);

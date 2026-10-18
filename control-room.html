@@ -18,10 +18,72 @@
   <link rel="stylesheet" href="/css/progress-board.css">
   <link rel="stylesheet" href="/css/app-shell.css">
   <link rel="stylesheet" href="/css/control-room-workspace.css">
+  <link rel="stylesheet" href="/css/control-room-list.css">
+  <link rel="stylesheet" href="/css/control-room-triage.css">
+  <link rel="stylesheet" href="/css/control-room-views.css">
 </head>
 <body>
 <div id="appShell"></div><script type="module" src="/js/app-shell.js"></script>
-<div data-layout-slot="sidebar" class="control-room-sidebar"><a class="room-name" href="/control-room">Control Room</a><h3>System Job Boards</h3>      <details class="panel directory-panel" aria-labelledby="directory-title">
+<nav data-layout-slot="sidebar" class="control-room-sidebar" aria-label="Control Room">
+<div class="cr-nav" id="controlRoomTabs" role="tablist" aria-orientation="vertical" aria-label="Control Room sections">
+<button class="cr-nav-item" type="button" role="tab" id="tabInbox" data-tab-key="inbox" aria-controls="panelInbox" aria-selected="false"><span class="cr-nav-label">Inbox</span><span class="cr-nav-count" data-count-for="inbox"></span></button>
+<button class="cr-nav-item" type="button" role="tab" id="tabWaiting" data-tab-key="waiting" aria-controls="panelWaiting" aria-selected="false"><span class="cr-nav-label">Waiting on you</span><span class="cr-nav-count" data-count-for="waiting"></span></button>
+<button class="cr-nav-item" type="button" role="tab" id="tabTriage" data-tab-key="triage" aria-controls="panelTriage" aria-selected="false"><span class="cr-nav-label">Triage</span><span class="cr-nav-count" data-count-for="triage"></span></button>
+<button class="cr-nav-item" type="button" role="tab" id="tabQueue" data-tab-key="queue" aria-controls="panelQueue" aria-selected="true"><span class="cr-nav-label">Queue</span><span class="cr-nav-count" data-count-for="queue"></span></button>
+<button class="cr-nav-item" type="button" role="tab" id="tabViews" data-tab-key="views" aria-controls="panelViews" aria-selected="false"><span class="cr-nav-label">Views</span></button>
+<button class="cr-nav-item" type="button" role="tab" id="tabDashboard" data-tab-key="boards" aria-controls="panelDashboard" aria-selected="false"><span class="cr-nav-label">Boards</span></button>
+<span class="cr-nav-group" role="none">System</span>
+<button class="cr-nav-item" type="button" role="tab" id="tabAutomations" data-tab-key="automations" aria-controls="panelAutomations" aria-selected="false"><span class="cr-nav-label">Automations</span></button>
+<button class="cr-nav-item" type="button" role="tab" id="tabConnections" data-tab-key="connections" aria-controls="panelConnections" aria-selected="false"><span class="cr-nav-label">Connections</span></button>
+<button class="cr-nav-item" type="button" role="tab" id="tabModelRoom" data-tab-key="agents" aria-controls="panelModelRoom" aria-selected="false"><span class="cr-nav-label">Agents</span></button>
+<button class="cr-nav-item" type="button" role="tab" id="tabAtlas" data-tab-key="system-map" aria-controls="panelAtlas" aria-selected="false"><span class="cr-nav-label">System map</span></button>
+<button class="cr-nav-item" type="button" role="tab" id="tabSessions" data-tab-key="sessions" aria-controls="panelSessions" aria-selected="false"><span class="cr-nav-label">Sessions</span></button>
+</div>
+</nav>
+<main id="main" class="shell control-room-workspace" data-board-embedded>
+<h1 class="sr-only">Control Room</h1>
+<div id="crWorkbench" class="cr-workbench" data-detail="closed">
+<div class="cr-list-region">
+<section id="panelInbox" class="tabpanel cr-section" role="tabpanel" aria-labelledby="tabInbox" tabindex="0" hidden>
+  <header class="cr-section-head"><h2 id="crInboxTitle">Inbox</h2><p class="cr-section-lead">Notifications about work you follow.</p></header>
+  <div id="crInboxList" class="cr-list" aria-labelledby="crInboxTitle"><div class="state-block" data-state="loading"><h3>Reading inbox…</h3></div></div>
+  <template id="crInboxEmpty"><div class="state-block" data-state="empty"><h3>Inbox zero</h3><p>New notifications about work you follow land here.</p></div></template>
+</section>
+<section id="panelWaiting" class="tabpanel cr-section" role="tabpanel" aria-labelledby="tabWaiting" tabindex="0" hidden>
+  <header class="cr-section-head"><h2 id="crWaitingTitle">Waiting on you</h2><p class="cr-section-lead">Work Requests that need your answer before anyone can move.</p></header>
+  <div id="crWaitingList" class="cr-list" aria-labelledby="crWaitingTitle"><div class="state-block" data-state="loading"><h3>Reading waiting on you…</h3></div></div>
+  <template id="crWaitingEmpty"><div class="state-block" data-state="empty"><h3>Nothing is waiting on you</h3><p>When a Work Request needs your answer, it shows up here.</p></div></template>
+</section>
+<section id="panelTriage" class="tabpanel cr-section" role="tabpanel" aria-labelledby="tabTriage" tabindex="0" hidden>
+  <header class="cr-section-head"><h2 id="crTriageTitle">Triage</h2><p class="cr-section-lead">New captures and detected incidents, before they join the queue. Defects stay out until a Bugs view exists.</p></header>
+  <div id="crTriageList" class="cr-list" aria-labelledby="crTriageTitle"><div class="state-block" data-state="loading"><h3>Reading triage…</h3></div></div>
+  <template id="crTriageEmpty"><div class="state-block" data-state="empty"><h3>Triage is clear</h3><p>New captures and detected incidents arrive here first.</p></div></template>
+</section>
+<section id="panelQueue" class="tabpanel cr-section" role="tabpanel" aria-labelledby="tabQueue" tabindex="0">
+  <header class="cr-section-head"><h2 id="crQueueTitle">Queue</h2><p class="cr-section-lead">Every open item the record layer tracks, grouped by status. Triage items are left out.</p></header><p id="crQueueCoverage" class="cr-coverage" role="status"></p>
+  <div id="crQueueList" class="cr-list" aria-labelledby="crQueueTitle"><div class="state-block" data-state="loading"><h3>Reading queue…</h3></div></div>
+  <button id="crQueueMore" class="btn cr-more" type="button" hidden>Load more</button>
+  <template id="crQueueEmpty"><div class="state-block" data-state="empty"><h3>The queue is empty</h3><p>Nothing open has been recorded. New work arrives through Triage.</p></div></template>
+</section>
+<section id="panelViews" class="tabpanel cr-section" role="tabpanel" aria-labelledby="tabViews" tabindex="0" hidden>
+  <header class="cr-section-head"><h2 id="crViewsTitle">Views</h2><p class="cr-section-lead">Saved slices of the queue. Counts come from the items loaded so far.</p></header>
+  <div id="crViewsList" class="cr-list" aria-labelledby="crViewsTitle"><div class="state-block" data-state="loading"><h3>Reading views…</h3></div></div>
+      <section class="cr-ledger" data-section="incidents" aria-labelledby="attentionTitle">
+        <div class="cr-ledger-head">
+          <h3 id="attentionTitle">Open incidents</h3>
+          <span class="as-of" id="attentionAsOf">unknown</span>
+        </div>
+        <div class="chip-bar" id="severityChips" role="group" aria-label="Severity">
+          <span class="chip-label">Severity</span>
+        </div>
+        <div id="incidentGroups"></div>
+        <div class="state-block" id="attentionState" data-state="unknown" hidden><h3>The incident ledger could not be verified</h3></div>
+      </section>
+</section>
+</div>
+<aside id="crDetail" class="cr-detail" aria-label="Item detail"><div class="state-block" data-state="empty"><h3>Nothing selected</h3><p>Choose an item in the list to see its detail here.</p></div></aside>
+</div>
+<p id="roomLive" class="sr-only" role="status" aria-live="polite"></p><section id="panelDashboard" class="tabpanel" role="tabpanel" aria-labelledby="tabDashboard"><div class="cr-boards-directory"><h2 class="cr-boards-heading">System Job Boards</h2><details class="panel directory-panel" aria-labelledby="directory-title">
         <summary id="directory-title" class="directory-summary">Published boards<span id="directory-error" class="error" role="alert" hidden></span></summary>
         <nav id="board-directory" class="board-directory" aria-label="Published progress boards"></nav>
       </details>
@@ -32,19 +94,8 @@
           <label>Minimum age in days<input name="age" type="number" min="0" value="0"></label>
           <button type="submit">Search</button>
         </form>
-<a href="/control-room/progress/work">Project activity</a></div>
-<div class="tabs" id="controlRoomTabs" data-layout-slot="tabs" role="tablist" aria-label="Control Room sections">
-<button class="tab" type="button" role="tab" id="tabDashboard" data-tab-key="overview" aria-controls="panelDashboard" aria-selected="true">System Job Board</button>
-<button class="tab" type="button" role="tab" id="tabConnections" data-tab-key="connections" aria-controls="panelConnections" aria-selected="false">Connections</button>
-<button class="tab" type="button" role="tab" id="tabAutomations" data-tab-key="automations" aria-controls="panelAutomations" aria-selected="false">Automations</button>
-<button class="tab" type="button" role="tab" id="tabAttention" data-tab-key="attention" aria-controls="panelAttention" aria-selected="false">Action Items</button>
-<button class="tab" type="button" role="tab" id="tabModelRoom" data-tab-key="agents" aria-controls="panelModelRoom" aria-selected="false">Agents</button>
-<button class="tab" type="button" role="tab" id="tabAtlas" data-tab-key="system-map" aria-controls="panelAtlas" aria-selected="false">System Map</button>
-<button class="tab" type="button" role="tab" id="tabSessions" data-tab-key="sessions" aria-controls="panelSessions" aria-selected="false">Sessions</button>
-</div>
-<main id="main" class="shell control-room-workspace" data-board-embedded>
-<p id="roomLive" class="sr-only" role="status" aria-live="polite"></p><section id="panelDashboard" class="tabpanel" role="tabpanel" aria-labelledby="tabDashboard"><div class="board-switch"><a id="switch-project" href="/control-room/progress?board=carr-v5">Project</a><a id="switch-all" href="/control-room/progress?board=all-repos">All repositories</a><button id="legend-toggle" class="legend-toggle" type="button" aria-controls="legend" aria-expanded="false">Key</button></div><aside id="legend" class="panel legend" aria-labelledby="legend-title" hidden>
-      <div class="panel-heading"><div><p class="eyebrow">KEY</p><h2 id="legend-title">What every mark means</h2></div></div>
+<a href="/control-room/progress/work">Project activity</a></div><div class="board-switch"><a id="switch-project" href="/control-room/progress?board=carr-v5">Project</a><a id="switch-all" href="/control-room/progress?board=all-repos">All repositories</a><button id="legend-toggle" class="legend-toggle" type="button" aria-controls="legend" aria-expanded="false">Key</button></div><aside id="legend" class="panel legend" aria-labelledby="legend-title" hidden>
+      <div class="panel-heading"><div><h2 id="legend-title">What every mark means</h2></div></div>
       <div id="legend-body" class="legend-body"></div>
     </aside>
 
@@ -60,12 +111,12 @@
         <div id="board-headline" class="headline" aria-label="Board summary"></div>
       </section>
       <section id="repos-panel" class="panel repos-panel" aria-labelledby="repos-title" hidden>
-        <div class="panel-heading"><div><p class="eyebrow">00 / REPOSITORIES</p><h2 id="repos-title">Every jbookout repository</h2></div><span id="repo-count" class="panel-count">—</span></div>
+        <div class="panel-heading"><div><h2 id="repos-title">Every jbookout repository</h2></div><span id="repo-count" class="panel-count">—</span></div>
         <div id="board-repos" class="repo-list"></div>
       </section>
       <p id="board-live" class="sr-only" role="status" aria-live="polite"></p>
       <section class="panel pipeline-panel" aria-labelledby="pipeline-title">
-        <div class="panel-heading"><div><p class="eyebrow">01 / DELIVERY</p><h2 id="pipeline-title">The path to live</h2></div><span id="task-count" class="panel-count">—</span></div>
+        <div class="panel-heading"><div><h2 id="pipeline-title">The path to live</h2></div><span id="task-count" class="panel-count">—</span></div>
         <form id="board-filters" class="filters" aria-label="Filter cards">
           <label>Repository <select id="filter-repo"><option value="">All</option></select></label>
           <label>Stage <select id="filter-stage"><option value="">All</option></select></label>
@@ -75,7 +126,7 @@
         <div id="board-stages" class="columns" aria-live="polite"></div>
       </section>
       <section class="panel blocked-panel" aria-labelledby="blocked-title">
-        <div class="panel-heading"><div><p class="eyebrow">02 / BLOCKED</p><h2 id="blocked-title">Blocked, with the next action</h2></div><span id="blocked-count" class="panel-count">—</span></div>
+        <div class="panel-heading"><div><h2 id="blocked-title">Blocked, with the next action</h2></div><span id="blocked-count" class="panel-count">—</span></div>
         <div id="board-blocked" class="blocked-list"></div>
       </section>
       <section id="system-work-panel" class="panel" hidden aria-labelledby="system-work-title">
@@ -86,49 +137,35 @@
       </section>
       <section id="board-costs" class="panel cost-panel" aria-label="System costs" hidden></section>
       <section class="panel questions-panel" aria-labelledby="questions-title">
-        <div class="panel-heading"><div><p class="eyebrow">03 / YOUR DECISIONS</p><h2 id="questions-title">Questions waiting on you</h2></div><span id="question-count" class="panel-count">—</span></div>
+        <div class="panel-heading"><div><h2 id="questions-title">Questions waiting on you</h2></div><span id="question-count" class="panel-count">—</span></div>
         <div id="board-questions" class="questions" aria-live="polite"></div>
       </section>
       <div class="lower-grid">
         <section class="panel" aria-labelledby="ledger-title">
-          <div class="panel-heading"><div><p class="eyebrow">04 / EXECUTORS</p><h2 id="ledger-title">Executor ledger</h2></div></div>
+          <div class="panel-heading"><div><h2 id="ledger-title">Executor ledger</h2></div></div>
           <div id="board-ledger" class="ledger"></div>
         </section>
         <section class="panel" aria-labelledby="delivery-title">
-          <div class="panel-heading"><div><p class="eyebrow">05 / DELIVERY</p><h2 id="delivery-title">Latest deliverables</h2></div><span id="deliverable-count" class="panel-count">—</span></div>
+          <div class="panel-heading"><div><h2 id="delivery-title">Latest deliverables</h2></div><span id="deliverable-count" class="panel-count">—</span></div>
           <div id="board-deliverables" class="link-list"></div>
         </section>
         <section class="panel" aria-labelledby="decisions-title">
-          <div class="panel-heading"><div><p class="eyebrow">06 / DECISIONS</p><h2 id="decisions-title">Decisions made</h2></div><span id="decision-count" class="panel-count">—</span></div>
+          <div class="panel-heading"><div><h2 id="decisions-title">Decisions made</h2></div><span id="decision-count" class="panel-count">—</span></div>
           <div id="board-decisions" class="decision-list"></div>
         </section>
         <section class="panel" aria-labelledby="notes-title">
-          <div class="panel-heading"><div><p class="eyebrow">07 / NOTES</p><h2 id="notes-title">Notes</h2></div></div>
+          <div class="panel-heading"><div><h2 id="notes-title">Notes</h2></div></div>
           <div id="board-notes" class="note-list"></div>
         </section>
       </div>
       <section class="panel completed-panel" aria-labelledby="completed-title">
-        <div class="panel-heading"><div><p class="eyebrow">08 / COMPLETED</p><h2 id="completed-title">Completed history</h2></div><span id="completed-count" class="panel-count">—</span></div>
+        <div class="panel-heading"><div><h2 id="completed-title">Completed history</h2></div><span id="completed-count" class="panel-count">—</span></div>
         <div id="completed-list" class="completed-list"></div>
       </section>
 <p id="governanceState" class="state-block" role="status" hidden></p></section><section class="tabpanel" id="panelConnections" role="tabpanel" aria-labelledby="tabConnections" hidden>
 <section class="panel"><div class="panel-heading"><h2>Connections</h2><time id="connectionsUpdated">Updating…</time></div><div id="connectionsProviders" class="connection-grid"></div></section>
 <section class="panel"><h2>Devices</h2><div id="connectionDevices" class="connection-grid"></div><p id="devicesState" role="status"></p></section></section>
-<section class="tabpanel" id="panelAutomations" role="tabpanel" aria-labelledby="tabAutomations" hidden><section class="panel"><div class="panel-heading"><h2>Automations</h2><div class="calendar-controls"><button id="automationPrev" type="button" aria-label="Previous month">‹</button><strong id="automationMonth"></strong><button id="automationNext" type="button" aria-label="Next month">›</button><a class="btn" href="/control-room/automations">List</a></div></div><div id="automationCalendar" class="automation-calendar"></div><div id="automationAgenda" class="automation-month-agenda"></div><div id="automationUndated" class="automation-undated"></div></section></section>    <section class="tabpanel" id="panelAttention" role="tabpanel" aria-labelledby="tabAttention" tabindex="0" hidden>
-      <section class="card glass" data-section="incidents" aria-labelledby="attentionTitle">
-        <div class="card-heading">
-          <div><p class="eyebrow">Operational ledger</p><h2 id="attentionTitle">Action Items</h2></div>
-          <span class="as-of" id="attentionAsOf">unknown</span>
-        </div>
-        <div class="chip-bar" id="severityChips" role="group" aria-label="Severity">
-          <span class="chip-label">Severity</span>
-        </div>
-        <div id="incidentGroups"></div>
-        <div class="state-block" id="attentionState" data-state="unknown" hidden><h3>The incident ledger could not be verified</h3></div>
-      </section>
-    </section>
-
-    <section class="tabpanel" id="panelModelRoom" role="tabpanel" aria-labelledby="tabModelRoom" tabindex="0" hidden>
+<section class="tabpanel" id="panelAutomations" role="tabpanel" aria-labelledby="tabAutomations" hidden><section class="panel"><div class="panel-heading"><h2>Automations</h2><div class="calendar-controls"><button id="automationPrev" type="button" aria-label="Previous month">‹</button><strong id="automationMonth"></strong><button id="automationNext" type="button" aria-label="Next month">›</button><a class="btn" href="/control-room/automations">List</a></div></div><div id="automationCalendar" class="automation-calendar"></div><div id="automationAgenda" class="automation-month-agenda"></div><div id="automationUndated" class="automation-undated"></div></section></section>    <section class="tabpanel" id="panelModelRoom" role="tabpanel" aria-labelledby="tabModelRoom" tabindex="0" hidden>
       <section class="card glass" data-section="model_room_assignments" aria-labelledby="modelRoomTitle">
         <div class="card-heading">
           <div><p class="eyebrow">Who is assigned what</p><h2 id="modelRoomTitle">Model Room</h2></div>
