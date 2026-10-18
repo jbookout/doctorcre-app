@@ -66,6 +66,7 @@ const V2_MIGRATED_STYLESHEETS = [
   "css/control-room.css", "css/control-room-workspace.css", "css/progress-board.css", "css/progress-work.css",
   "css/queue.css", "css/room.css", "css/observatory.css", "css/system-work.css", "css/work-inventory.css",
   "css/incidents.css", "css/status.css",
+  "css/calendar.css", "css/ideas.css", "css/notifications.css",
 ];
 const v2Tells = [
   [/(?<!repeating-linear-)gradient\(/, "gradient (only repeating-linear-gradient pattern encoding is allowed)"],

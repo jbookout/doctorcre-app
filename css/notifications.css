@@ -1,91 +1,83 @@
-/* V5-UX-B12a notifications page — page layer over css/system.css.
+/* Updates (notifications): page layer over css/system.css, on css/tokens.css.
  *
- * The shared sheet is contract-bound, so nothing here invents a colour or a
- * type scale; the dark cinematic register comes from its tokens alone. This
- * page adds only what the shared sheet leaves to a page:
- *
- *  1. The one-column card list, authored at 360px and widened. The severity
- *     chip and the clock share one row ABOVE the reason, so the reason — the
- *     sentence a person actually reads — never starts halfway down a card.
- *  2. The 44px floor on every control this page adds, including the
- *     full-width acknowledge button, and wrapping so a long subject reference
- *     reads without a horizontal scrollbar at any width.
- *  3. The visible separation of the accountable-activity panel. An event is
- *     not a notification, and a stream drawn like a feed would merge the two;
- *     that panel is dashed, quieter, and sits UNDER the feed on a phone.
- *  4. The quiet-hours panel, which now carries a REAL form (V5-UX-B12,
- *     WR-000116): a switch, two clock fields, a timezone field and two
- *     actions. Every control clears the 44px floor, the grid is one column at
- *     360px and only widens when there is room, and the quiet-now banner and
- *     the per-row quiet marker use the shared amber token rather than a new
- *     colour — a suppressed row is MARKED, never hidden.
+ *  1. One column of notification cards. Severity and clock share the first
+ *     row, the reason is the sentence a person reads, and the acknowledge
+ *     button is full width with a 44px floor.
+ *  2. Severity rides on a word plus a border style (action required: solid;
+ *     failure: double), so it never rests on hue alone.
+ *  3. Quiet hours are a state, not an error: a moon glyph and the warn role
+ *     mark the quiet-now banner and each held row. A held row is marked,
+ *     never hidden. When quiet hours are off, the form says so in one line.
+ *  4. Accountable activity is not a notification: its panel is dashed and
+ *     quieter, and sits under the feed.
  */
 
-.topbar { flex-wrap: wrap; }
-.global-controls { flex-wrap: wrap; justify-content: flex-end; }
+.hero { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: var(--space-3); }
+.hero-meta { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+.hero-card { display: grid; gap: var(--space-3); }
+.page-sub { display: flex; align-items: center; gap: var(--space-2); margin: var(--space-1) 0 0; color: var(--fg-muted); font-size: var(--font-size-1); }
 
-.hero { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 14px; }
-.hero-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
-.hero-card { display: grid; gap: 12px; }
+.headline { margin: 0; font: var(--font-weight-strong) var(--font-size-3)/var(--line-height-heading) var(--font-text); font-variant-numeric: tabular-nums; }
+.caption { margin: 0; color: var(--fg-muted); font-size: var(--font-size-1); line-height: var(--line-height-body); }
+.mono { font-family: var(--font-mono); overflow-wrap: anywhere; }
 
-.headline { margin: 0; font: 600 20px/1.3 var(--display); }
-.caption { margin: 0; color: var(--quiet); font-size: 11px; line-height: 1.5; }
-.mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; letter-spacing: 0.02em; overflow-wrap: anywhere; }
-
-.chip-bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.chip-bar { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; }
 .chip { min-height: var(--touch); overflow-wrap: anywhere; }
 .btn { min-height: var(--touch); }
 
-/* One column, always. A notification is a sentence, not a table row. */
+/* --------------------------------------------------------------- the feed */
 #feedList { grid-template-columns: minmax(0, 1fr); }
-#feedList .work-item { grid-template-columns: minmax(0, 1fr); }
-.note-top { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
-.note-reason { margin: 6px 0 0; font: 600 17px/1.25 var(--body); overflow-wrap: anywhere; }
-.note-subject { margin: 4px 0 0; color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
-.note-delivery { margin: 8px 0 0; padding: 0; list-style: none; display: grid; gap: 4px; color: var(--quiet); font-size: 11px; }
-.note-link { margin: 8px 0 0; font-size: 11px; color: var(--quiet); overflow-wrap: anywhere; }
-.note-act { margin-top: 10px; }
+#feedList .work-item { grid-template-columns: minmax(0, 1fr); background: var(--surface-2); border-color: var(--hairline); }
+#feedList .work-item[data-priority="overdue"] { border-left-color: var(--status-danger); border-left-style: double; border-left-width: 4px; }
+#feedList .work-item[data-priority="deadline"] { border-left-color: var(--status-warn); }
+.note-top { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-2); }
+.note-reason { margin: var(--space-2) 0 0; font: var(--font-weight-strong) var(--font-size-2)/1.3 var(--font-text); overflow-wrap: anywhere; }
+.note-subject { margin: var(--space-1) 0 0; color: var(--fg-muted); font-size: var(--font-size-1); overflow-wrap: anywhere; }
+.note-delivery { display: grid; gap: var(--space-1); margin: var(--space-2) 0 0; padding: 0; list-style: none; color: var(--fg-quiet); font-size: var(--font-size-1); font-variant-numeric: tabular-nums; }
+.note-link { margin: var(--space-2) 0 0; color: var(--fg-muted); font-size: var(--font-size-1); overflow-wrap: anywhere; }
+.note-act { margin-top: var(--space-3); }
 .note-act .btn { width: 100%; }
 
-.severity-chip { display: inline-flex; align-items: center; min-height: var(--touch); padding: 6px 11px; border-radius: 999px; font-size: 11px; font-weight: 700; }
-.severity-chip[data-severity="action_required"] { border: 1px solid var(--amber); color: var(--amber-text); background: color-mix(in srgb, var(--amber) 14%, transparent); }
-.severity-chip[data-severity="failure"] { border: 1px solid var(--red); color: var(--red-text); background: color-mix(in srgb, var(--red) 14%, transparent); }
-.read-mark { color: var(--quiet); font-size: 11px; }
+.severity-chip { display: inline-flex; align-items: center; min-height: 28px; padding: var(--space-1) var(--space-3); border: var(--hairline-width) solid var(--hairline-strong); border-radius: var(--radius-round); background: transparent; color: var(--fg-muted); font-size: var(--font-size-1); font-weight: var(--font-weight-strong); }
+.severity-chip[data-severity="action_required"] { border-color: var(--status-warn); color: var(--status-warn-ink); }
+.severity-chip[data-severity="failure"] { border: 3px double var(--status-danger); color: var(--status-danger-ink); }
+.read-mark { color: var(--fg-quiet); font-size: var(--font-size-1); font-variant-numeric: tabular-nums; }
 
-.state-block { border: 1px dashed var(--line); border-radius: 12px; padding: 12px; margin-bottom: 10px; color: var(--quiet); }
+/* ------------------------------------------------------------------ states
+   The shared .state-block draws the frame; this page adds the second line
+   that says what will fill the space, and hides the block once ready. */
 .state-block[data-state="ready"] { display: none; }
+.state-hint { margin: 0; color: var(--fg-muted); font-size: var(--font-size-1); }
+.state-hint:empty { display: none; }
 
-[data-section="activity"] { border-style: dashed; }
-[data-section="activity"] .work-item { color: var(--quiet); }
+[data-section="activity"] { border-style: dashed; background: transparent; }
+[data-section="activity"] .work-item { border-left-width: var(--hairline-width); background: transparent; color: var(--fg-muted); }
 
-/* The quiet-now banner and the per-row marker share one amber, from the shared
- * sheet's token. They are a state, not an error: nothing failed. */
-.quiet-banner { margin: 0; padding: 10px 12px; border: 1px solid var(--amber); border-radius: 12px;
-  background: color-mix(in srgb, var(--amber) 12%, transparent); color: var(--amber-text);
-  font-size: 12px; line-height: 1.45; }
-.quiet-mark { display: inline-flex; align-items: center; gap: 6px; margin-top: 8px; padding: 4px 10px;
-  border: 1px solid var(--amber); border-radius: 999px; background: color-mix(in srgb, var(--amber) 10%, transparent);
-  color: var(--amber-text); font-size: 11px; font-weight: 600; overflow-wrap: anywhere; }
+/* ------------------------------------------------------------- quiet hours */
+.quiet-banner, .quiet-mark { display: flex; align-items: center; gap: var(--space-2); color: var(--status-warn-ink); font-size: var(--font-size-1); line-height: 1.45; overflow-wrap: anywhere; }
+.quiet-banner::before, .quiet-mark::before { content: "\263E"; flex: none; font-size: var(--font-size-2); line-height: 1; }
+.quiet-banner { margin: 0; padding: var(--space-2) var(--space-3); border: var(--hairline-width) solid var(--status-warn); border-left-width: 3px; border-radius: var(--radius-2); background: var(--surface-2); }
+.quiet-mark { display: inline-flex; margin-top: var(--space-2); padding: 2px var(--space-3); border: var(--hairline-width) dashed var(--status-warn); border-radius: var(--radius-round); font-weight: var(--font-weight-strong); }
 
-/* The preference form. One column at 360px; the grid only widens where there
- * is room for two clock fields to sit side by side without either shrinking. */
-.pref-form { display: grid; gap: 12px; margin-top: 12px; scroll-margin-top: 80px; }
-.pref-grid { display: grid; gap: 12px; grid-template-columns: minmax(0, 1fr); }
-.pref-form .field { display: grid; gap: 6px; min-width: 0; }
-.pref-form label { color: var(--muted); font-size: 11px; font-weight: 600; letter-spacing: 0.02em; }
-.pref-form input[type="time"], .pref-form input[type="text"] {
-  min-height: var(--touch); width: 100%; box-sizing: border-box; padding: 8px 10px;
-  border: 1px solid var(--line); border-radius: 10px; background: var(--ground-1);
-  color: var(--text); font: 500 14px/1.2 var(--body); }
-.pref-form input:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
-.switch-field { display: flex; align-items: center; gap: 10px; min-height: var(--touch); }
-.switch-field input { width: 22px; height: 22px; flex: 0 0 auto; accent-color: var(--focus); }
-.switch-field label { color: var(--text); font-size: 13px; font-weight: 500; }
-.pref-act { display: flex; flex-wrap: wrap; gap: 8px; }
+.pref-form { display: grid; gap: var(--space-3); margin-top: var(--space-3); scroll-margin-top: 80px; }
+.pref-grid { display: grid; gap: var(--space-3); grid-template-columns: minmax(0, 1fr); }
+.pref-form .field { display: grid; gap: var(--space-1); min-width: 0; }
+.pref-form label { color: var(--fg-muted); font-size: var(--font-size-1); font-weight: var(--font-weight-strong); }
+.pref-form input[type="time"], .pref-form input[type="text"] { box-sizing: border-box; width: 100%; min-height: var(--touch); padding: var(--space-2) var(--space-3); border: var(--hairline-width) solid var(--hairline-strong); border-radius: var(--radius-2); background: var(--surface-2); color: var(--fg); font: var(--font-weight-regular) var(--font-size-2)/1.2 var(--font-text); font-variant-numeric: tabular-nums; }
+.pref-form input:focus-visible { outline: var(--focus-width) solid var(--focus-ring); outline-offset: 2px; }
+.pref-form input:disabled { color: var(--fg-quiet); border-style: dashed; }
+.switch-field { display: flex; align-items: center; gap: var(--space-3); min-height: var(--touch); }
+.switch-field input { flex: 0 0 auto; width: 22px; height: 22px; accent-color: var(--fg); }
+.switch-field label { color: var(--fg); font-size: var(--font-size-2); font-weight: var(--font-weight-regular); }
+.pref-summary { padding: var(--space-2) var(--space-3); border-radius: var(--radius-2); background: var(--surface-2); color: var(--fg); }
+.pref-form[data-quiet="set"] .pref-summary { border-left: 3px solid var(--status-warn); }
+.pref-form[data-quiet="set"] .pref-summary::before { content: "\263E  "; color: var(--status-warn-ink); }
+.pref-form[data-quiet="off"] .pref-summary { border-left: 3px dashed var(--hairline-strong); color: var(--fg-muted); }
+.pref-act { display: flex; flex-wrap: wrap; gap: var(--space-2); }
 .pref-act .btn { flex: 1 1 160px; }
-.pref-message { color: var(--amber-text); overflow-wrap: anywhere; }
+.pref-message { color: var(--status-warn-ink); overflow-wrap: anywhere; }
 .pref-message:empty { display: none; }
-.pref-form[data-disabled="true"] { opacity: 0.55; }
+.pref-form[data-disabled="true"] { opacity: 0.6; }
 
 @media (min-width: 560px) {
   .pref-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -99,14 +91,21 @@
 }
 
 /* Details and contextual help: collapsed by default, a 44px summary that
- * brightens on hover and focus, and contents that ease in when opened. With
- * motion reduced (system.css, either preference) the contents simply appear. */
-.record-details, .context-help { margin-top: 8px; color: var(--quiet); font-size: 12px; }
-.record-details summary, .context-help summary { min-height: var(--touch); display: list-item; align-content: center; cursor: pointer; border-radius: 8px; transition: color .2s ease; }
-.record-details summary:hover, .context-help summary:hover, .record-details summary:focus-visible, .context-help summary:focus-visible { color: var(--text); }
-.record-details summary:focus-visible, .context-help summary:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
-.record-details[open] > :not(summary), .context-help[open] > :not(summary) { animation: details-reveal .24s ease both; }
+ * brightens on hover and focus. Opening is a state change, so the contents
+ * ease in once (opacity and transform); with motion reduced they just appear. */
+.record-details, .context-help { margin-top: var(--space-2); color: var(--fg-muted); font-size: var(--font-size-1); }
+.record-details summary, .context-help summary { display: list-item; align-content: center; min-height: var(--touch); border-radius: var(--radius-2); cursor: pointer; transition: color var(--duration-hover) var(--ease-out); }
+@media (hover: hover) { .record-details summary:hover, .context-help summary:hover { color: var(--fg); } }
+.record-details summary:focus-visible, .context-help summary:focus-visible { color: var(--fg); outline: var(--focus-width) solid var(--focus-ring); outline-offset: 2px; }
+.record-details[open] > :not(summary), .context-help[open] > :not(summary) { animation: details-reveal var(--duration-menu) var(--ease-out) both; }
 .record-details dl { margin: 0; }
-.record-details dt { color: var(--muted); }
-.record-details dd { margin: 0 0 8px; overflow-wrap: anywhere; }
+.record-details dt { color: var(--fg-muted); }
+.record-details dd { margin: 0 0 var(--space-2); overflow-wrap: anywhere; }
+
+/* ------------------------------------------------------------ Color Assist */
+:root[data-color-assist="on"] .severity-chip[data-severity="action_required"] { border-style: dashed; }
+:root[data-color-assist="on"] #feedList .work-item[data-priority="overdue"] { background-image: repeating-linear-gradient(135deg, color-mix(in srgb, var(--status-danger) 14%, transparent) 0 2px, transparent 2px 7px); }
+:root[data-color-assist="on"] #feedList .work-item[data-priority="deadline"] { border-left-style: dashed; }
+:root[data-color-assist="on"] .quiet-banner { border-style: dashed; }
+
 @keyframes details-reveal { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }

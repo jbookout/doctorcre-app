@@ -12,7 +12,7 @@ import { createLiveClient } from "./live-client.js";
 import { deploymentIdentity, resolveDealroomBoot } from "./boot-mode.js";
 import { mountNotificationBadge, mountPrefs, wireTabs } from "./shell.js";
 import { formatCalendarDate } from "./visual-system.js";
-import { approach, localToday, staggerDelay } from "./calendar-model.js";
+import { approach, localToday } from "./calendar-model.js";
 import { partnerName } from "./task-records-model.js";
 import {
   IDEA_BOARD_ARGS, filterIdeas, ideaDetailRows, ideaReadState, ideasHref, ideasPhase,
@@ -27,7 +27,6 @@ const escapeHtml = (value) => String(value ?? "").replace(/[&<>"']/g, (char) => 
   "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
 }[char]));
 const SEARCH_DEBOUNCE_MS = 250;
-const TILT_DEGREES = 5;
 
 const view = {
   state: parseIdeasState(globalThis.location?.search || ""),
@@ -41,24 +40,6 @@ const view = {
 let client = null;
 let tabs = null;
 let searchTimer = null;
-
-function motionReduced() {
-  const media = typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-  return media || document.documentElement.getAttribute("data-motion") === "reduced";
-}
-
-/**
- * A staggered entrance, set through CSSOM: the Worker's CSP (src/worker.js)
- * refuses a `style` attribute written into markup, so the templates above
- * only emit `data-stagger-index`, and this post-render pass reads it back
- * and sets `--stagger` on each node directly.
- */
-function applyStagger(root, selector) {
-  root?.querySelectorAll(selector).forEach((node) => {
-    const index = Number(node.dataset.staggerIndex);
-    node.style.setProperty("--stagger", `${motionReduced() ? 0 : staggerDelay(index)}ms`);
-  });
-}
 
 function announce(text) {
   const live = $("ideaLive");
@@ -81,14 +62,14 @@ function remember({ push = false } = {}) {
 
 /* ------------------------------------------------------------------ painting */
 
-function tileHtml(row, index) {
+function tileHtml(row) {
   const due = row.due_on ? approach({ day: row.due_on, settled: false }, localToday()) : null;
   const meta = [
     row.owner ? `<span>${escapeHtml(partnerName(row.owner))}</span>` : '<span>owner not recorded</span>',
     row.since_text ? `<span>${escapeHtml(row.since_text)}</span>` : "",
     due ? `<span><span class="cal-pulse" data-pulse="${due.pulse}" aria-hidden="true"></span> due ${escapeHtml(formatCalendarDate(row.due_on))} · ${escapeHtml(due.label)}</span>` : "",
   ].join("");
-  return `<li><button class="idea-tile" type="button" data-idea="${escapeHtml(row.number)}" data-stagger-index="${index}">`
+  return `<li><button class="idea-tile" type="button" data-idea="${escapeHtml(row.number)}">`
     + `<span class="idea-number">#${escapeHtml(row.number)}</span>`
     + `<h3 class="idea-label">${escapeHtml(row.label)}</h3>`
     + `<span class="idea-meta">${meta}</span>`
@@ -101,6 +82,13 @@ const STATE_COPY = {
   unavailable: "The idea board could not be read. Nothing here has been inferred.",
   empty: "No idea is parked right now.",
   no_match: "No parked idea matches this search.",
+};
+
+/** The second line of a state: what fills this space, or what to do next. */
+const STATE_HINT = {
+  empty: "An idea parked from a meeting or a chat with Dr. CRE lands here for both partners.",
+  no_match: "Search reads the idea, its number and its owner. Clear the search to see every idea.",
+  unavailable: "Refresh to read the board again.",
 };
 
 function render() {
@@ -122,12 +110,12 @@ function render() {
     block.setAttribute("data-state", phase === "unauthorized" ? "no_access" : phase === "unavailable" ? "offline" : phase);
     const signIn = phase === "unauthorized"
       ? ` <a class="btn btn-primary" href="/auth/login?return_to=${encodeURIComponent(`${location.pathname}${location.search}`)}">Sign in</a>` : "";
-    block.innerHTML = visible ? `<h3>${escapeHtml(STATE_COPY[phase])}</h3>${signIn}` : "";
+    const hint = STATE_HINT[phase] ? `<p class="state-hint">${escapeHtml(STATE_HINT[phase])}</p>` : "";
+    block.innerHTML = visible ? `<h3>${escapeHtml(STATE_COPY[phase])}</h3>${hint}${signIn}` : "";
   }
   const list = $("ideaList");
   if (list) {
     list.innerHTML = phase === "ready" ? shown.map(tileHtml).join("") : "";
-    applyStagger(list, ".idea-tile");
   }
   const asOf = $("ideaAsOf");
   if (asOf && view.status === "ready") asOf.textContent = updatedLabel(view.updatedAt);
@@ -153,8 +141,8 @@ const ATTENDANCE_LABEL = { considering: "Considering", plan_to_attend: "Plan to 
 const eventWhen = (stamp) => new Intl.DateTimeFormat("en-US", { dateStyle: "medium", timeStyle: "short" }).format(new Date(stamp));
 const eventDay = (stamp) => new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric" }).format(new Date(stamp));
 
-function eventCard(row, index) {
-  return `<li><button class="event-card" type="button" data-event-id="${escapeHtml(row.id)}" data-status="${escapeHtml(row.status)}" data-stagger-index="${index}">`
+function eventCard(row) {
+  return `<li><button class="event-card" type="button" data-event-id="${escapeHtml(row.id)}" data-status="${escapeHtml(row.status)}">`
     + `<span class="event-date">${escapeHtml(eventWhen(row.starts_at))}</span>`
     + `<strong class="event-name">${escapeHtml(row.title)}</strong>`
     + `<span class="event-meta">${escapeHtml(KIND_LABEL[row.kind] || row.kind)} · ${escapeHtml(row.organizer || "Organizer not recorded")}</span>`
@@ -166,15 +154,15 @@ function eventCard(row, index) {
 function drawTimeline(rows) {
   const svg = $("eventTimelineSvg");
   if (!svg) return;
+  svg.parentElement?.setAttribute("data-empty", rows.length ? "false" : "true");
   const width = Math.max(320, rows.length * 126, svg.parentElement?.clientWidth - 24 || 0);
   svg.setAttribute("viewBox", `0 0 ${width} 118`);
-  svg.style.width = `${width}px`;
+  svg.setAttribute("width", String(width));
   const track = `<path class="event-timeline-track" d="M24 57 H${width - 24}"/>`;
   const nodes = rows.map((row, index) => {
     const x = rows.length === 1 ? width / 2 : 54 + index * ((width - 108) / (rows.length - 1));
     const title = String(row.title).slice(0, 18);
     return `<g class="event-timeline-node" data-event-id="${escapeHtml(row.id)}" tabindex="0" role="button" aria-label="Edit ${escapeHtml(row.title)} on ${escapeHtml(eventDay(row.starts_at))}">`
-      + `<circle class="event-timeline-glow" cx="${x}" cy="57" r="16" opacity=".16"/>`
       + `<circle cx="${x}" cy="57" r="8"/>`
       + `<text x="${x}" y="31">${escapeHtml(title)}</text>`
       + `<text class="event-timeline-date" x="${x}" y="87">${escapeHtml(eventDay(row.starts_at))}</text></g>`;
@@ -190,12 +178,12 @@ function renderEvents() {
     block.hidden = phase === "ready";
     block.setAttribute("data-state", phase);
     block.innerHTML = phase === "ready" ? "" : `<h3>${escapeHtml(EVENT_COPY[phase])}</h3>`
+      + (phase === "empty" ? '<p class="state-hint">Add a conference or association meeting with its source, and it shows on the timeline.</p>' : "")
       + (phase === "unauthorized" ? `<a class="btn btn-primary" href="/auth/login?return_to=${encodeURIComponent(`${location.pathname}${location.search}`)}">Sign in</a>` : "");
   }
   const list = $("eventList");
   if (list) {
     list.innerHTML = phase === "ready" || phase === "partial" ? rows.map(eventCard).join("") : "";
-    applyStagger(list, ".event-card");
   }
   drawTimeline(phase === "ready" || phase === "partial" ? rows : []);
   const source = $("eventSource");
@@ -478,19 +466,6 @@ function wire() {
     const tile = event.target.closest(".idea-tile");
     if (tile) openIdea(tile.dataset.idea);
   });
-  // The tilt follows the pointer; motion off, it never moves.
-  $("ideaList")?.addEventListener("pointermove", (event) => {
-    const tile = event.target.closest(".idea-tile");
-    if (!tile || motionReduced()) return;
-    const box = tile.getBoundingClientRect();
-    const x = (event.clientX - box.left) / box.width - 0.5;
-    const y = (event.clientY - box.top) / box.height - 0.5;
-    tile.style.setProperty("--tilt-y", `${(x * TILT_DEGREES).toFixed(2)}deg`);
-    tile.style.setProperty("--tilt-x", `${(-y * TILT_DEGREES).toFixed(2)}deg`);
-  });
-  $("ideaList")?.addEventListener("pointerleave", () => {
-    document.querySelectorAll(".idea-tile").forEach((tile) => { tile.style.removeProperty("--tilt-x"); tile.style.removeProperty("--tilt-y"); });
-  }, true);
 
   $("ideaDialogClose")?.addEventListener("click", closeIdea);
   $("ideaDialog")?.addEventListener("close", () => {
