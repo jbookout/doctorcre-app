@@ -238,17 +238,12 @@ function renderList() {
  * distinguish recommendation, submission and outcome on the card itself,
  * exactly as the spec's third included-scope clause asks — none of the three
  * is inferred; each is the field the producer actually returned. Rule
- * 9293d609 (every CARR surface ships with real motion, never a static page)
- * adds four things beyond the markup: a staggered entrance
- * (`--outcome-card-delay`, css/room.css's `--drift-delay` convention), a
- * live pulse on the freshness dot tied to the SERVER's own `as_of`
- * comparison (`isLive`, never a decorative timer), a flash on any field that
- * changed since the previous read (`.is-changed`, css/room.css's
- * `figure-flash` convention — a phrase cannot count up, so it brightens once
- * instead of cutting), and the recommendation → submission → outcome flow
- * line, modeled on css/workspace.css's own animated pipeline flow diagram
- * (`.flow-node`/`.flow-path`, reusing the SAME `flow-dash` keyframe and
- * `--motion-flow` token from css/system.css).
+ * The V2 look keeps motion to real state changes, so the card adds three
+ * still signals and one transition: a freshness dot read from the SERVER's
+ * own `as_of` comparison (filled when fresh, hollow when stale), the
+ * recommendation → submission → outcome flow line (solid where reached,
+ * dashed where not), and `.is-changed` on any field that differed from the
+ * previous read, which settles in rather than cutting.
  */
 function outcomeFlowSvg(card) {
   const stages = flowStages(card);
@@ -267,7 +262,7 @@ function outcomeFieldSpan(className, changed, text) {
   return `<span class="outcome-field${changed ? " is-changed" : ""}" data-field="${escapeHtml(className)}">${escapeHtml(text)}</span>`;
 }
 
-function outcomeCardHtml(card, { delayMs = 0, changed = { phase: false, nextCheck: false, result: false, routingState: false } } = {}) {
+function outcomeCardHtml(card, { changed = { phase: false, nextCheck: false, result: false, routingState: false } } = {}) {
   const owner = card.owner ?? "unassigned";
   const phase = card.phase ?? "unrecorded";
   const nextCheck = card.nextCheck.available ? card.nextCheck.value : card.nextCheck.text;
@@ -276,7 +271,7 @@ function outcomeCardHtml(card, { delayMs = 0, changed = { phase: false, nextChec
   const sessionRefLine = entry.sessionRef
     ? `<p class="small mono">session ref: ${escapeHtml(entry.sessionRef)}</p>`
     : "";
-  return `<li class="work-item outcome-card" data-outcome-card-delay="${delayMs}" data-priority="ordinary" data-outcome-card="${escapeHtml(card.id)}" data-routing-state="${escapeHtml(card.routingState)}" data-intent="${escapeHtml(card.intentKind)}">
+  return `<li class="work-item outcome-card" data-priority="ordinary" data-outcome-card="${escapeHtml(card.id)}" data-routing-state="${escapeHtml(card.routingState)}" data-intent="${escapeHtml(card.intentKind)}">
     <div>
       <h3 class="list-title">${escapeHtml(card.requestedOutcome ?? card.workRequestRef)}</h3>
       <p class="list-meta">
@@ -297,11 +292,6 @@ function outcomeCardHtml(card, { delayMs = 0, changed = { phase: false, nextChec
     </div>
   </li>`;
 }
-
-/** Entrance stagger step, in ms. Six cards land in 5*70 + 270 = 620ms — well
- *  under the rule's ~1s ceiling — and css/system.css's motion floor removes
- *  the delay and the animation entirely under reduced motion. */
-const OUTCOME_CARD_STAGGER_MS = 70;
 
 function renderOutcomeCards() {
   const list = $("outcomeCardsList");
@@ -329,12 +319,9 @@ function renderOutcomeCards() {
     hostAvailable: /Mac/.test(globalThis.navigator?.platform || globalThis.navigator?.userAgent || ''),
     checkpoints: view.outcomeCards.checkpoints,
   });
-  // Every card gets its own delay so the entrance is ORCHESTRATED rather
-  // than simultaneous, and every card's change flags come from comparing
-  // THIS read against the previous one — new cards (no prior entry) never
-  // flash, since the entrance animation already says "this just appeared".
-  list.innerHTML = cards.map((card, index) => outcomeCardHtml(card, {
-    delayMs: index * OUTCOME_CARD_STAGGER_MS,
+  // Every card's change flags come from comparing THIS read against the
+  // previous one; a new card (no prior entry) never marks a field changed.
+  list.innerHTML = cards.map((card) => outcomeCardHtml(card, {
     changed: changedFields(view.outcomeCards.previousById.get(card.id) ?? null, card),
   })).join("");
   for (const link of list.querySelectorAll('[data-open-outcome-session]')) {
@@ -351,12 +338,6 @@ function renderOutcomeCards() {
       catch { announceOutcomeCards('Copy was unavailable; the session ID is shown on the card.'); }
     });
   }
-  // A staggered entrance, set through CSSOM: the Worker's CSP (src/worker.js)
-  // refuses a `style` attribute written into markup, so the template above
-  // only emits `data-outcome-card-delay`, and this reads it back.
-  list.querySelectorAll(".outcome-card").forEach((node) => {
-    node.style.setProperty("--outcome-card-delay", `${node.dataset.outcomeCardDelay}ms`);
-  });
   view.outcomeCards.previousById = new Map(cards.map((card) => [card.id, card]));
   const empty = outcomeCardsEmptyMessage({ cards: view.outcomeCards.rows });
   block.hidden = !(cards.length === 0 && empty);
@@ -438,8 +419,6 @@ function renderSuggestions() {
         ${conflict.choice ? `<p>Your ${escapeHtml(conflict.choice)} choice was not saved.</p>` : `<p>Your correction: ${escapeHtml(conflict.draft)}</p>`}
         <p>Updating…</p></div>
     </li>`).join("");
-  list.querySelectorAll(".suggestion-card").forEach((node, index) =>
-    node.style.setProperty("--suggestion-delay", `${Math.min(index * 75, 600)}ms`));
 }
 
 function render() {

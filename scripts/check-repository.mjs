@@ -61,6 +61,7 @@ const V2_MIGRATED_STYLESHEETS = [
   "css/correspondence.css", "public-shell/shell.css",
   "css/home-dashboard.css", "css/relationship-network.css", "css/lease-radar.css", "css/business-workspace.css",
   "css/app.css", "css/pipeline.css", "css/deal-timeline.css",
+  "css/conversations.css", "css/tasks.css", "css/doc-activity.css", "css/doc-presence.css", "css/morning-brief.css",
 ];
 const v2Tells = [
   [/(?<!repeating-linear-)gradient\(/, "gradient (only repeating-linear-gradient pattern encoding is allowed)"],
