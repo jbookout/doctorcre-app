@@ -4,7 +4,6 @@ import { readFile } from "node:fs/promises";
 import { JSDOM } from "jsdom";
 import { mountLeadsWorkspace } from "../js/leads-workspace-app.js";
 import { chromium } from "playwright";
-import { TOUCH_LAYOUT } from "../js/touch-layout.js";
 
 const read = (path) => readFile(new URL(`../${path}`, import.meta.url), "utf8");
 
@@ -35,17 +34,6 @@ test("QA-002 light Home calendar tiles keep weekday and date text at 4.5:1", asy
   } finally { await browser.close(); }
 });
 
-test("QA-005 the Doc control docks in the status band, so phone drawers and content never sit under it", async () => {
-  const css = await read("css/doc-presence.css");
-  const start = css.lastIndexOf(`@media${TOUCH_LAYOUT}{`);
-  assert.ok(start >= 0, "doc-presence.css has a touch-layout block");
-  const touch = css.slice(start);
-  // Centred in the band above the 100px shell bar, and the band reserves the slot.
-  assert.match(touch, /\.doc-presence\s*\{[^}]*bottom:\s*calc\(100px \+ \(var\(--layout-bottom\) - 100px - var\(--touch\)\) \/ 2\)/);
-  assert.match(touch, /\.app-layout-status\s*\{[^}]*padding-right:/);
-  // On a desktop it centres in the band's own height; it never floats above it.
-  assert.match(css, /^\.doc-presence \{[^}]*bottom: calc\(\(var\(--layout-bottom\) - var\(--touch\)\) \/ 2\)/m);
-});
 
 test("QA-009 thread controls are disabled until a conversation is selected", async () => {
   const js = await read("js/conversations.js");

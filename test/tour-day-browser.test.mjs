@@ -87,18 +87,25 @@ test("W16 desktop and phone renders: reachable capture, wide Details, full width
     await page.locator('body.has-app-layout').waitFor();
     assert.equal(await page.locator('#appMainSlot #tour-day').count(), 1, 'Tour day belongs in the workspace main region');
     const record = await page.locator("#day-record").boundingBox();
-    const status = await page.locator('.app-layout-status').boundingBox();
+    const status = await page.locator(width <= 760 ? '#appShell' : '.app-layout-status').boundingBox();
     assert.ok(record.width >= 140 && record.height >= 60 && record.y + record.height < status.y,
       JSON.stringify({record,status,width}));
     const dock = await page.locator('.capture-dock').boundingBox();
-    const docPresence = await page.locator('#docPresence').boundingBox();
+    const docPresence = await page.locator(width <= 760 ? '#selfAvatar' : '#docPresence').boundingBox();
     assert.ok(dock.x + dock.width <= docPresence.x || docPresence.x + docPresence.width <= dock.x ||
       dock.y + dock.height <= docPresence.y || docPresence.y + docPresence.height <= dock.y,
       `Capture and Doc must not overlap: ${JSON.stringify({ dock, docPresence, width })}`);
-    for (const id of ['day-record', 'day-previous', 'day-next', 'docOpen']) assert.equal(await page.locator('#' + id).evaluate(button => {
+    for (const id of ['day-record', 'day-previous', 'day-next', width <= 760 ? 'selfAvatar' : 'docOpen']) assert.equal(await page.locator('#' + id).evaluate(button => {
       const rect = button.getBoundingClientRect();
       return button.contains(document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2));
     }), true, `The shared shell must leave ${id} reachable`);
+    if (width <= 760) {
+      await page.locator('#selfAvatar').click();
+      await page.locator('#docOpen').click();
+      assert.equal(await page.locator('#docDetail').isVisible(), true);
+      await page.keyboard.press('Escape');
+      assert.equal(await page.locator('#selfAvatar').evaluate(button => document.activeElement === button), true);
+    }
     assert.equal(await page.locator(".day-stop").count(), 2);
     assert.match(await page.locator("#day-current").textContent(), /100 Example Way.*Demo listing contact.*West entrance/s);
     assert.equal(await page.locator(".property-actions a").getAttribute("href"), "tel:+12025550100");
