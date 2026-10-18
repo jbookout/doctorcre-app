@@ -29,12 +29,15 @@ export function mountAppShell(root = document, pathname = globalThis.location?.p
     const controls = host.querySelector(".app-shell-controls");
     const settings = [...controls.querySelectorAll(":scope > button")];
     const search = host.querySelector(".app-shell-search");
+    const refresh = status.querySelector("#appSyncRefresh");
+    const freshness = refresh.parentElement;
     const phone = root.defaultView.matchMedia(TOUCH_LAYOUT);
     const arrangeControls = () => {
-      if (phone.matches) panel.append(search, ...settings, availability);
+      if (phone.matches) panel.append(search, ...settings, refresh, availability);
       else {
         controls.before(search);
         controls.prepend(...settings);
+        freshness.append(refresh);
         status.append(availability);
       }
     };

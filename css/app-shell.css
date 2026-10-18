@@ -208,9 +208,9 @@ body.has-app-layout { padding: 0 0 var(--layout-bottom) var(--layout-rail) !impo
   .app-shell-controls { flex-direction: row; grid-column: 2; grid-row: 1; gap: var(--space-1) !important; }
   .app-shell-account-menu .app-shell-search { display: flex; gap: var(--space-3); width: 100%; justify-content: start; padding: var(--space-3); }
   .app-shell-account-menu .app-shell-search::after { content: "Search"; }
-  .app-shell-account-menu .app-shell-control { display: flex; gap: var(--space-3); width: 100%; height: auto; }
+  .app-shell-account-menu :is(.app-shell-control, #appSyncRefresh) { display: flex; gap: var(--space-3); width: 100%; height: auto; }
   .app-shell-account-menu .app-shell-control[hidden], .app-shell-account-menu #accountTheme { display: none; }
-  .app-shell-account-menu .app-shell-control::after { content: attr(aria-label); }
+  .app-shell-account-menu :is(.app-shell-control, #appSyncRefresh)::after { content: attr(aria-label); }
   body:has(#callModeButton.recording) #selfAvatar::after { content: ""; position: absolute; top: 0; right: 0; width: 8px; height: 8px; border-radius: 50%; background: var(--status-danger); border: 2px solid var(--surface-1); }
   .app-shell-more-list { left: var(--space-2) !important; top: auto !important; bottom: calc(var(--layout-bottom) + 8px); width: calc(100vw - 16px); max-height: calc(100dvh - 125px); grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
   .app-shell-account-menu { left: var(--space-2) !important; bottom: calc(var(--layout-bottom) + 8px); width: calc(100vw - 16px) !important; max-width: none; max-height: calc(100dvh - var(--layout-bottom) - 16px); overflow-y: auto; }
