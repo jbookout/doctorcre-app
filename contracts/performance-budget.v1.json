@@ -59,8 +59,8 @@
     },
     "vendors": {
       "lcpMs": {
-        "baseline": 5556,
-        "limit": 8334
+        "baseline": 3408,
+        "limit": 5112
       },
       "jsBytes": {
         "baseline": 704591,
