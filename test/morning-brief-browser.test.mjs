@@ -66,7 +66,9 @@ test('unavailable brief recovers on background read, clears prior facts, partner
 });
 test('V2 motion: hover is a state transition with no pulse; reduced motion is measured at desktop and phone widths',async t=>{
  for(const motion of ['no-preference','reduce'])for(const width of [1440,390]){
-  const {page,goto}=await setup(t,{motion,width});await goto();await page.locator('#docOpen[data-brief-unseen]').waitFor();await page.locator('#docOpen').click();await page.locator('#docMorning').click();await page.locator('#docMorningBrief[open]').waitFor();await page.locator('.morning-card').first().hover();
+  const {page,goto}=await setup(t,{motion,width});await goto();
+  if(width===390)await page.locator('#selfAvatar').click();
+  await page.locator('#docOpen[data-brief-unseen]').waitFor();await page.locator('#docOpen').click();await page.locator('#docMorning').click();await page.locator('#docMorningBrief[open]').waitFor();await page.locator('.morning-card').first().hover();
   const css=await page.locator('.morning-card').first().evaluate(node=>({transform:getComputedStyle(node).transform,transition:getComputedStyle(node).transitionDuration,pulse:getComputedStyle(node.querySelector('.morning-marker')).animationName}));
   assert.equal(css.pulse,'none','V2 removed the ambient pulse');assert.equal(css.transform,'none');
   if(motion==='reduce')assert.equal(css.transition,'0s');else assert.notEqual(css.transition,'0s');
