@@ -342,3 +342,59 @@ test('S8 phone status strip scrolls inside its own lane, never under the workspa
   });
   assert.ok(lanes.clipRight <= lanes.blockerLeft + 1, `status clips at ${lanes.clipRight}, controls start at ${lanes.blockerLeft}`);
 });
+
+for (const theme of ['dark', 'light']) {
+  const movePhoneDeal = async page => {
+    await page.locator('#appTodayToggle').evaluate(node => {
+      if (node.getAttribute('aria-expanded') === 'true') node.click();
+    });
+    const card = page.locator('.kanban-column [data-id="d14"]');
+    await card.focus();
+    await page.keyboard.press('Enter');
+    await page.keyboard.press('ArrowRight');
+    await page.keyboard.press('Enter');
+    await page.locator('#completionConfirm').click();
+    await waitForAsync(page, async () => (await import('/js/pipeline.js')).state.deals.get('d14').phase === 'Legal');
+  };
+
+  test(`phone ${theme} move toast Undo restores the exact move once`, async t => {
+    const { page, errors } = await open(t, { width: 390, reducedMotion: 'reduce' });
+    await page.evaluate(theme => { document.documentElement.dataset.theme = theme; }, theme);
+    await movePhoneDeal(page);
+    const undo = page.locator('.toast button[data-undo]');
+    assert.equal(await undo.count(), 1, 'move toast offers Undo');
+    const eventId = await undo.getAttribute('data-undo');
+    await page.evaluate(async () => { const { state } = await import('/js/pipeline.js'); await state.boardSync.pollChanges({ force: true }); });
+    assert.equal(await page.locator(`#receiptsList [data-undo="${eventId}"]`).count(), 1, 'Today and toast target the same event');
+    await undo.click();
+    await waitForAsync(page, async () => (await import('/js/pipeline.js')).state.deals.get('d14').phase === 'Negotiation');
+    const reverted = await page.evaluate(async () => (await (await import('/js/pipeline.js')).state.client.getChanges(null)).events.filter(event => event.verb === 'revert-deal-field'));
+    assert.equal(reverted.length, 1);
+    await refresh(page);
+    await waitForAsync(page, async () => (await import('/js/pipeline.js')).state.deals.get('d14').phase === 'Negotiation');
+    assert.deepEqual(errors, []);
+  });
+
+  test(`phone ${theme} Today hides floating feedback and contains receipt text`, async t => {
+    const { page, errors } = await open(t, { width: 390, reducedMotion: 'reduce' });
+    await page.evaluate(theme => { document.documentElement.dataset.theme = theme; }, theme);
+    await movePhoneDeal(page);
+    await page.evaluate(async () => { const { state } = await import('/js/pipeline.js'); await state.boardSync.pollChanges({ force: true }); });
+    await page.locator('#appTodayToggle').click();
+    assert.equal(await page.locator('.toast').isVisible(), false);
+    assert.equal(await page.locator('.receipt-dock').isVisible(), false, 'floating command receipt cannot cover Today');
+    await page.locator('#receiptsList [data-undo]').first().click();
+    await waitForAsync(page, async () => (await import('/js/pipeline.js')).state.deals.get('d14').phase === 'Negotiation');
+    await page.evaluate(async () => { const { state } = await import('/js/pipeline.js'); await state.boardSync.pollChanges({ force: true }); });
+    const clipping = await page.locator('#receiptsList .receipt').evaluateAll(rows => rows.flatMap(row => {
+      const bounds = row.getBoundingClientRect();
+      return [...row.querySelectorAll('.receipt-line, .receipt-meta, .receipt-actions, .receipt-message, .receipt-badge, .receipt-deal')]
+        .filter(node => node.getBoundingClientRect().right > bounds.right + 1 || node.scrollWidth > node.clientWidth + 1)
+        .map(node => node.className);
+    }));
+    assert.deepEqual(clipping, [], 'all receipt text and status fit inside the card');
+    await mkdir(new URL('out/test-artifacts/share-followup/', root), { recursive: true });
+    await page.screenshot({ path: new URL(`out/test-artifacts/share-followup/today-390-${theme}.png`, root).pathname });
+    assert.deepEqual(errors, []);
+  });
+}
