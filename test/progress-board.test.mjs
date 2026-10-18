@@ -438,9 +438,12 @@ test("live client sends answer through same-origin MCP with the retained key", a
   assert.equal("answered_by" in rpc.params.arguments, false);
 });
 
-test("page keeps motion real and respects reduced motion; phone stacks one column", () => {
-  assert.match(CSS, /\.board-card:not\(\[data-pulse="still"\]\) \.halo \{ animation: pulse var\(--pulse-speed\)/);
-  assert.match(CSS, /\.rail-line \{[^}]*animation: flow/);
+test("page holds still except on a real change, respects reduced motion; phone stacks one column", () => {
+  // V2: the pulse is a still ring whose border style carries the state, and
+  // the rail line no longer flows. Only a changed card animates, once.
+  assert.doesNotMatch(CSS, /infinite/, "no looping ambient animation on the board");
+  assert.match(CSS, /\.board-card\[data-pulse="critical"\] \.halo \{ border: 3px double/);
+  assert.match(CSS, /\.board-card\.changed \{ animation: changed-in var\(--duration-panel\)[^}]* 1; \}/);
   assert.match(CSS, /\.board-card\.outline-dashed \{ border-style: dashed;/, "blocked stays distinct without motion");
   assert.match(CSS, /@media \(prefers-reduced-motion: reduce\) \{[^@]*animation: none !important;/);
   assert.match(CSS, /@media \(max-width: 680px\) \{[^@]*\.columns, \.lower-grid \{ grid-template-columns: minmax\(0, 1fr\); \}/);

@@ -82,10 +82,8 @@
   }
   .stage-table td[data-stage-label]::before {
     content: attr(data-stage-label);
-    color: var(--muted);
+    color: var(--fg-muted);
     font-size: 11px;
-    text-transform: uppercase;
-    letter-spacing: .08em;
   }
   .stage-table td .btn { min-height: var(--touch); }
 }

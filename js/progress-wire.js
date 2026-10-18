@@ -1056,7 +1056,7 @@ export function mountProgressWire({ scope = {}, onRead = () => {} } = {}) {
       group.appendChild(badge);
       const chip = svg("text", { class: "stage-hemi-label", y: 44, "text-anchor": "middle" });
       chip.textContent = "RECONNECT";
-      chip.style.setProperty("fill", "#F08A2D");
+      chip.style.setProperty("fill", "var(--status-warn-ink)");
       chip.style.setProperty("cursor", "pointer");
       chip.addEventListener("click", (event) => { event.stopPropagation(); requestReconnect(node.label); });
       group.appendChild(chip);
@@ -1251,8 +1251,8 @@ export function mountProgressWire({ scope = {}, onRead = () => {} } = {}) {
     body.appendChild(name);
     body.appendChild(el("div", "desk-sub"));
     const reconnect = el("span", "assignment-badge", "⛓ signed out — RECONNECT");
-    reconnect.style.setProperty("color", "#F08A2D");
-    reconnect.style.setProperty("border-color", "#F08A2D");
+    reconnect.style.setProperty("color", "var(--status-warn-ink)");
+    reconnect.style.setProperty("border-color", "var(--status-warn)");
     reconnect.hidden = true;
     body.appendChild(reconnect);
     card.appendChild(body);
