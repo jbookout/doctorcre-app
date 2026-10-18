@@ -1338,8 +1338,10 @@ async function boot() {
   let savedTheme = 'dark', colorAssist = false;
   try { savedTheme = localStorage.getItem('dealroom-theme') || 'dark'; colorAssist = localStorage.getItem('dealroom-color-assist') === 'on'; } catch {}
   document.body.classList.toggle('night', savedTheme !== 'light');
+  document.documentElement.dataset.theme = savedTheme === 'light' ? 'light' : 'dark';
   if (colorAssist) {
     document.body.classList.add('color-assist');
+    document.documentElement.dataset.colorAssist = 'on';
     $('#colorAssistButton').setAttribute('aria-pressed', 'true');
     $('#colorAssistButton').setAttribute('aria-label', 'Color assist');
   }
