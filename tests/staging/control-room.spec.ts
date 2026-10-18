@@ -39,3 +39,15 @@ test('old Control Room tab links land on their new sections', async ({ page }) =
     await expect(page.getByRole('tab', { name, exact: true })).toHaveAttribute('aria-selected', 'true');
   }
 });
+
+test('opening a Queue row shows that record in the detail pane', async ({ page }) => {
+  await page.goto('/control-room?tab=queue');
+  await page.addLocatorHandler(page.getByRole('button', { name: 'Dismiss morning brief' }), async dismiss => { await dismiss.click(); });
+  const row = page.locator('#crQueueList [role="option"]').first();
+  await expect(row).toBeVisible();
+  const ref = (await row.locator('.cr-row-ref').textContent())?.trim() || '';
+  expect(ref).not.toBe('');
+  await row.click();
+  await expect(page.locator('#crWorkbench')).toHaveAttribute('data-detail', 'open');
+  await expect(page.locator('#crDetail [data-detail-ref]')).toHaveText(ref);
+});

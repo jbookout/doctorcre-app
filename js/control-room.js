@@ -17,10 +17,12 @@ import { validGovernanceQueuePayload, validScheduleBoardPayload } from './operat
 import {snapshotFromReads,writeSnapshot} from './status-model.js';
 import { sectionForTab, createQueue, addPage, queueItems, triageItems, groupItems, coverageLine, STATUS_GROUPS } from './control-room-queue-model.js';
 import { notificationCards, validFeedPayload } from './notifications-model.js';
+import { mountQueueList, paneShortcut, ignoreKey } from './control-room-list.js';
+import { mountDetail } from './control-room-detail.js';
 const $=id=>document.getElementById(id);
 export { escapeHtml };
 export const view={status:'loading',sequence:0,severity:'all',queue:{state:'pending',model:createQueue()},inbox:{state:'pending'},waiting:{state:'pending'},reads:{incidents:{state:'pending'},approvals:{state:'pending'},schedule:{state:'pending'},connections:{state:'pending'}},atlas:{status:'idle',payload:null}};
-let client,tabs,board,details;
+let client,tabs,board,details,queueList,detail;
 const now=new Date();let year=now.getFullYear(),month=now.getMonth();
 const payloadOf=id=>view.reads[id]?.state==='read'?view.reads[id].payload:null;
 const asOf=read=>updatedLabel(read?.observed_at);
@@ -140,12 +142,13 @@ function renderQueue(){
  if(read.state!=='read'&&queue.pages===0){
   const failed=read.state==='unknown';
   coverage.textContent=failed?read.reason:'Reading the record layer…';coverage.dataset.complete='false';
-  for(const id of ['crQueueList','crTriageList','crViewsList'])replaceHtml($(id),failed?stateBlock('offline','The queue could not be read',`${read.reason}. Nothing is shown rather than a partial guess.`):stateBlock('loading','Reading the queue…'));
+  if(failed)queueList.error(read.reason);else queueList.loading();
+  for(const id of ['crTriageList','crViewsList'])replaceHtml($(id),failed?stateBlock('offline','The queue could not be read',`${read.reason}. Nothing is shown rather than a partial guess.`):stateBlock('loading','Reading the queue…'));
   more.hidden=true;return;
  }
  const line=coverageLine(queue);coverage.textContent=line.text;coverage.dataset.complete=String(line.complete);
  const open=queueItems(queue),triage=triageItems(queue),everything=queueItems(queue,{includeTriage:true});
- replaceHtml($('crQueueList'),open.length?groupedList(open):emptyBlock('crQueueEmpty'));
+ queueList.rows(open,{triage:triage.length});
  replaceHtml($('crTriageList'),triage.length?`<ul class="cr-rows">${triage.map(issueRow).join('')}</ul>`:emptyBlock('crTriageEmpty'));
  const views=[
   ['Everything','Every loaded item, triage included',everything.length],
@@ -197,6 +200,34 @@ async function loadWaiting(){
 }
 function showSection(key){
  $('crWorkbench').hidden=!ISSUE_SECTIONS.has(key);
+ if(key!=='queue'&&$('crWorkbench').dataset.detail==='open')closePane({restoreFocus:false});
+}
+// V2 C2: the Queue list and its detail pane. The pane is a fixed column (Linear
+// study #0 adaptation): Enter or a click opens it, Space or Cmd+I toggles it, Esc
+// closes it, and the list runs full width while it is closed. On a phone the
+// list and the record are two screens with a back control.
+const paneOpen=()=>$('crWorkbench').dataset.detail==='open';
+function openPane(item){
+ if(!item)return;
+ $('crWorkbench').dataset.detail='open';queueList.setOpen(item.id);detail.open(item);
+ if(matchMedia('(max-width: 760px), (hover: none) and (pointer: coarse) and (max-width: 1023px)').matches){scrollTo({top:0});$('crDetail').querySelector('#crDetailTitle')?.focus({preventScroll:true});}
+}
+function closePane({restoreFocus=true}={}){
+ if(!paneOpen())return false;
+ $('crWorkbench').dataset.detail='closed';queueList.setOpen(null);detail.clear();
+ if(restoreFocus)queueList.focus();
+ return true;
+}
+const togglePane=item=>paneOpen()?closePane():openPane(item||queueList.highlighted);
+function wireQueuePane(){
+ detail=mountDetail({node:$('crDetail'),client,onClose:()=>closePane(),readDeadline:readWithDeadline});
+ queueList=mountQueueList({node:$('crQueueList'),onOpen:openPane,onToggle:togglePane,onEscape:()=>closePane()});
+ $('crDetail').addEventListener('keydown',event=>{if(event.key==='Escape'&&!ignoreKey(event)&&closePane())event.preventDefault();});
+ $('crQueueList').addEventListener('click',event=>{if(event.target instanceof Element&&event.target.closest('[data-queue-retry]'))loadQueue();});
+ document.addEventListener('keydown',event=>{
+  if(!paneShortcut(event)||$('crWorkbench').hidden||$('panelQueue').hidden)return;
+  event.preventDefault();togglePane();
+ });
 }
 
 function openAtlas(node=null){mountAtlas({client,getIncidentsRead:()=>view.reads.incidents,node,onChange:atlas=>{view.atlas=atlas;}});}
@@ -212,7 +243,7 @@ async function boot(){
   const row=event.target.closest('[data-incident]');
   if(row)openIncident(row.dataset.incident);
  });
- mountNotificationBadge(client);tabs=wireTabs('controlRoomTabs');
+ mountNotificationBadge(client);tabs=wireTabs('controlRoomTabs');wireQueuePane();
  const strip=$('controlRoomTabs'),tabFor=key=>strip.querySelector(`[data-tab-key="${key}"]`);
  const activate=selected=>{showSection(selected.dataset.tabKey);if(selected.id==='tabAtlas')openAtlas(new URLSearchParams(location.search).get('node'));if(selected.id==='tabSessions')mountSessions({});if(selected.id==='tabModelRoom')mountModelRoom({});};
  // The nav is vertical, so Up and Down move through it too.
