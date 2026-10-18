@@ -19,6 +19,7 @@ import { sectionForTab, createQueue, addPage, refreshQueue, settleRefresh, queue
 import { notificationCards, validFeedPayload } from './notifications-model.js';
 import { mountQueueList, paneShortcut, ignoreKey } from './control-room-list.js';
 import { mountDetail } from './control-room-detail.js';
+import { mountControlRoomCommands } from './control-room-commands.js';
 const $=id=>document.getElementById(id);
 export { escapeHtml };
 export const view={status:'loading',sequence:0,severity:'all',queue:{state:'pending',model:createQueue()},inbox:{state:'pending'},waiting:{state:'pending'},reads:{incidents:{state:'pending'},approvals:{state:'pending'},schedule:{state:'pending'},connections:{state:'pending'}},atlas:{status:'idle',payload:null}};
@@ -228,7 +229,7 @@ function wireQueuePane(){
  $('crDetail').addEventListener('keydown',event=>{if(event.key==='Escape'&&!ignoreKey(event)&&closePane())event.preventDefault();});
  $('crQueueList').addEventListener('click',event=>{if(event.target instanceof Element&&event.target.closest('[data-queue-retry]'))loadQueue();});
  document.addEventListener('keydown',event=>{
-  if(!paneShortcut(event)||$('crWorkbench').hidden||$('panelQueue').hidden)return;
+  if(!paneShortcut(event)||document.querySelector('dialog[open]')||$('crWorkbench').hidden||$('panelQueue').hidden)return;
   event.preventDefault();togglePane();
  });
 }
@@ -248,6 +249,7 @@ async function boot(){
  });
  mountNotificationBadge(client);tabs=wireTabs('controlRoomTabs');wireQueuePane();
  const strip=$('controlRoomTabs'),tabFor=key=>strip.querySelector(`[data-tab-key="${key}"]`);
+ const commands=mountControlRoomCommands({tabs:strip,onEscape:()=>closePane()});
  const activate=selected=>{showSection(selected.dataset.tabKey);if(selected.id==='tabAtlas')openAtlas(new URLSearchParams(location.search).get('node'));if(selected.id==='tabSessions')mountSessions({});if(selected.id==='tabModelRoom')mountModelRoom({});};
  // The nav is vertical, so Up and Down move through it too.
  strip.addEventListener('keydown',event=>{if(event.key!=='ArrowDown'&&event.key!=='ArrowUp')return;const all=[...strip.querySelectorAll('[role="tab"]')];const index=all.indexOf(document.activeElement);if(index<0)return;event.preventDefault();all[(index+(event.key==='ArrowDown'?1:-1)+all.length)%all.length].click();});
@@ -258,6 +260,6 @@ async function boot(){
  if(strip.contains(document.activeElement))document.activeElement.blur();
  $('crQueueMore').addEventListener('click',loadMoreQueue);
  $('automationPrev').onclick=()=>{month--;if(month<0){month=11;year--;}renderAutomations();};$('automationNext').onclick=()=>{month++;if(month>11){month=0;year++;}renderAutomations();};
- await load();const auto=mountAutoRefresh({document,window,refresh:load,intervalMs:15000});window.addEventListener('pagehide',event=>{if(!event.persisted){auto.dispose();board.dispose();}});
+ await load();const auto=mountAutoRefresh({document,window,refresh:load,intervalMs:15000});window.addEventListener('pagehide',event=>{if(!event.persisted){auto.dispose();board.dispose();commands.dispose();}});
 }
 boot();
