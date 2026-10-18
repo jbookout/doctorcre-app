@@ -34,7 +34,7 @@ async function open(t, width) {
       }
       else if (url.pathname === `/api/v1/business/clients/${clientId}`) data = { record: client };
       else data = {};
-      return route.fulfill({ contentType: "application/json", body: JSON.stringify({ data, csrf_token: "synthetic-session" }) });
+      return route.fulfill({ contentType: "application/json", body: JSON.stringify(url.pathname.startsWith("/api/v1/business/") ? data : { data, csrf_token: "synthetic-session" }) });
     }
     const file = url.pathname === "/tours" ? "tours/index.html" : url.pathname.slice(1);
     try {

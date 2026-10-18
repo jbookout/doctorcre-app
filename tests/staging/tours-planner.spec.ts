@@ -46,7 +46,7 @@ test('Tour library opens details and its itinerary link', async ({ page }) => {
   await expect(page.locator('#tour-dialog')).toBeHidden();
 });
 
-test.fixme('V2-C01: Planner intermittently reports Unavailable on the first signed-in read', { tag: '@fixme' }, async ({ page }) => {
+test('V2-C01: Planner completes its first signed-in read', async ({ page }) => {
   await page.goto('/tours');
   await expect(page.locator('#planner-updated')).toContainText('Updated', { timeout: 27000 });
 });
