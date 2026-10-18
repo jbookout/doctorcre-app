@@ -64,13 +64,22 @@ test('Leads drag and keyboard moves review evidence before using the same stage 
  const{page,goto,writes,errors}=await open(t,{motion:'reduce'});await goto('/leads');
  const card=()=>page.locator(`#leadBoard [data-lead-id="${id(1)}"]`);
  assert.equal(await card().locator('.lead-market').textContent(),'Pensacola, FL');
- // Wait for the entrance animation and expose both endpoints before mouse-down.
- // A second scroll during dragTo can move the source and cancel dragstart.
  await animationsSettled(page);
  const target=page.locator('.stage-column[data-stage="engaged"] .stage-head');
- await target.scrollIntoViewIfNeeded();await card().scrollIntoViewIfNeeded();
- await card().dragTo(target);
+ await card().scrollIntoViewIfNeeded();
+ const source=await card().boundingBox();
+ await page.mouse.move(source.x+source.width/2,source.y+source.height/2);
+ await page.mouse.down();
+ // Start the native drag before scrolling to a stage on another grid row.
+ // dragTo scrolls its target before moving, which can start dragging another card.
+ await page.mouse.move(source.x+source.width/2+12,source.y+source.height/2,{steps:4});
+ await page.locator('.lead-card.dragging').waitFor();
+ await target.scrollIntoViewIfNeeded();
+ const destination=await target.boundingBox();
+ await page.mouse.move(destination.x+destination.width/2,destination.y+destination.height/2,{steps:10});
+ await page.mouse.up();
  await page.locator('#stageDialog[open] .stage-proposal').waitFor();assert.deepEqual(writes,[]);
+ assert.equal(await page.locator('#stageTitle').textContent(),'Doc · Dr. Example 1');
  await page.locator('#saveStage').click();await page.locator(`#leadBoard [data-stage="engaged"] [data-lead-id="${id(1)}"]`).waitFor();
  await card().focus();await page.keyboard.press('Alt+ArrowRight');await page.locator('#stageDialog[open] .stage-proposal').waitFor();assert.deepEqual(writes,['update-lead']);
  await page.locator('#stageQuestions textarea').fill('Synthetic preference for follow-up later');await page.locator('#saveStage').click();
