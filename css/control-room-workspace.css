@@ -12,7 +12,11 @@
 .control-room-sidebar .work-filters { display: grid; gap: 8px; grid-template-columns: 1fr; }
 .control-room-sidebar .work-filters label { display: grid; gap: 4px; font-size: var(--font-size-1); color: var(--fg-muted); }
 .control-room-sidebar input, .control-room-sidebar select { width: 100%; min-width: 0; padding: 9px; border: var(--hairline-width) solid var(--hairline-strong); border-radius: var(--radius-2); background: var(--surface-1); color: var(--fg); }
-.room-name { font-family: var(--font-text); font-weight: var(--font-weight-strong); font-size: var(--font-size-3); text-decoration: none; }
+.control-room-sidebar .work-filters button { min-height: var(--touch); padding: var(--space-2) var(--space-3); border: var(--hairline-width) solid var(--hairline-strong); border-radius: var(--radius-2); background: var(--surface-2); color: var(--fg); font: var(--font-weight-strong) var(--font-size-1) var(--font-text); cursor: pointer; }
+@media (hover: hover) { .control-room-sidebar .work-filters button:hover { background: var(--surface-3); } }
+/* The rail reads at rail scale, like every other page's sidebar: no page-title sizes. */
+.control-room-sidebar .directory-summary { font-size: var(--font-size-2); }
+.room-name { font-family: var(--font-text); font-weight: var(--font-weight-strong); font-size: var(--font-size-2); text-decoration: none; }
 .read-recovery button { min-width: 36px; min-height: 36px; background: none; border: 0; color: var(--fg); text-decoration: underline; }
 .connection-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 215px), 1fr)); gap: 12px; margin-top: 16px; }
 .connection-card { border: var(--hairline-width) solid var(--hairline); border-radius: var(--radius-3); padding: 18px; display: flex; flex-direction: column; gap: 10px; background: var(--surface-2); transition: border-color var(--duration-hover) var(--ease-out); }

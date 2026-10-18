@@ -942,7 +942,8 @@ export function mountBoard(deps = {}) {
       setError(message);
       const meta = byId("board-meta");
       meta.setAttribute("data-read-state", state);
-      if (currentView) meta.textContent = `Updated ${formatTime(currentView.updated_at)} ↻`;
+      // A failed first read must not keep saying "Loading" beside the error.
+      meta.textContent = currentView ? `Updated ${formatTime(currentView.updated_at)} ↻` : "Board not loaded";
     }
     if (status === 401) byId("board-sign-in").hidden = false;
     byId("board-retry").hidden = false;
