@@ -25,7 +25,7 @@ test('A parked idea opens and closes without answering it', async ({ page }) => 
   await expect(page.locator('#ideaDialog')).toBeHidden();
 });
 
-test.fixme('V2-F02: Ideas navigation intermittently times out before the app shell loads', { tag: '@fixme' }, async ({ page }) => {
+test('V2-F02: Ideas navigation loads the signed-in app shell', async ({ page }) => {
   await page.goto('/ideas-events?tab=ideas');
   await expect(page.getByRole('button', { name: 'Joe: account and settings', exact: true })).toBeVisible();
 });

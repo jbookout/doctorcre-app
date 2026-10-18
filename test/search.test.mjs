@@ -403,6 +403,27 @@ test("B05-synthetic-fixture the validator accepts synthetic find payloads, nulls
   assert.equal(deepLinkFor({ kind: "client", name: "A B", merged: true }), null, "a retired alias opens nothing");
 });
 
+test('A01 search accepts the producer lifecycle fields without accepting unknown deal fields', () => {
+  const deal = { name: 'Synthetic deal', phase: 'closed', owner: null, client_ref: null,
+    invoiced_on: '2026-10-17', closed_on: '2026-10-16', lane: 'local', outcome: 'won' };
+  const payload = { ...emptyPayload, deals: [deal], deals_via_link: [{ ...deal }] };
+  assert.deepEqual(Object.keys(deal), contract.mcp_read_contracts.find.deal_keys);
+  assert.equal(validSearchPayload(payload), true);
+  assert.equal(visibleCount(groupSearchResults(payload)), 2);
+  assert.equal(validSearchPayload({ ...payload, deals: [{ ...deal,
+    invoiced_on: null, closed_on: null, lane: null, outcome: null }] }), true);
+  for (const key of ['invoiced_on', 'closed_on', 'lane', 'outcome']) {
+    const missing = { ...deal };
+    delete missing[key];
+    assert.equal(validSearchPayload({ ...payload, deals: [missing] }), false, `${key} is required`);
+    assert.equal(validSearchPayload({ ...payload, deals: [{ ...deal, [key]: 42 }] }), false, `${key} keeps its wire type`);
+  }
+  assert.equal(validSearchPayload({ ...payload, deals: [{ ...deal, invented: true }] }), false);
+  assert.equal(validSearchPayload({ ...payload, deals: [{ ...deal, invoiced_on: '2026-02-30' }] }), false);
+  assert.equal(validSearchPayload({ ...payload, deals: [{ ...deal, closed_on: '2026-10-17T00:00:00Z' }] }), false);
+  assert.equal(validSearchPayload({ ...payload, deals_via_link: [{ ...deal, invented: true }] }), false);
+});
+
 test('QA-007 every scope can be disabled, persisted, and enabled independently', () => {
   let kinds = [];
   for (const id of SEARCH_GROUP_IDS) kinds = toggleSearchScope(kinds, id);

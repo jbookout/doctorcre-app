@@ -74,6 +74,7 @@ the provider step.
 `npm run release:staging` accepts only a clean checkout whose `HEAD` exactly
 matches `origin/main`, verifies the prepared artifact, creates the staging
 Worker on first use, and otherwise uploads and promotes an immutable version.
+For a clean staging candidate, `npm run release:staging -- --source-sha <HEAD-SHA>` pins that exact commit instead of `origin/main`.
 `npm run rollback:staging -- <version-id>` restores one explicit earlier staging
 version.
 

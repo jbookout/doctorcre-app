@@ -4,13 +4,13 @@ test.beforeEach(async ({ page }) => {
   await page.addLocatorHandler(page.getByRole('button', { name: 'Dismiss morning brief' }), async dismiss => { await dismiss.click(); });
 });
 
-test.fixme('V2-A01: Global Search reports unavailable for a synthetic record term', { tag: '@fixme' }, async ({ page }) => {
+test('V2-A01: Global Search returns results for a synthetic record term', async ({ page }) => {
   await page.goto('/search');
   await page.getByRole('searchbox', { name: 'Name to search', exact: true }).fill('Synthetic');
   await page.getByRole('button', { name: 'Search', exact: true }).click();
   await expect(page).toHaveURL(/q=Synthetic/);
   await expect(page.locator('#searchResults')).toHaveAttribute('aria-busy', 'false');
-  await expect(page.locator('#searchState')).not.toHaveAttribute('data-state', /error|loading/);
+  await expect(page.locator('#searchState')).not.toHaveAttribute('data-state', /error|loading|unknown|unavailable/);
   await expect(page.locator('#searchCount')).not.toBeEmpty();
 });
 
