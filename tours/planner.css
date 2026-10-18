@@ -64,6 +64,7 @@
 .territory-heading { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); }
 .territory-heading h2 { font-size: var(--font-size-3); }
 .territory-caption { color: var(--fg-muted); font-size: var(--font-size-1); }
+.territory-lead { margin: 0 0 var(--space-3); color: var(--fg-muted); font-size: var(--font-size-2); }
 .territory-map { display: block; width: 100%; height: clamp(120px, 14vw, 190px); margin: var(--space-2) auto; }
 .territory-land { fill: var(--surface-2); stroke: var(--hairline); stroke-width: 1; }
 .territory-state-line { fill: none; stroke: var(--hairline-strong); stroke-dasharray: 3 6; }
