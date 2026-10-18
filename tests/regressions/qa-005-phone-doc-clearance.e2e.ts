@@ -5,6 +5,8 @@ const test = reproTest();
 test('QA-005 final Opportunity score remains uncovered on a phone', { tags: ['regression'], requires: ['browser'], retries: 0 }, async ({ app, browser, screen }) => {
   await browser.setViewport({ width: 390, height: 844 });
   await app.open('/leads');
+  await expect(browser.locator('#leadBoard')).toHaveAttribute('aria-busy', 'false');
+  await screen.getByLabel('Board stage', { exact: true }).selectOption({ value: 'opportunity' });
   const card = screen.getByRole('button', 'Dr. Demo 12', { exact: true });
   await expect(card).toBeVisible();
   await card.scrollIntoView();

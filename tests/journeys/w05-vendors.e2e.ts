@@ -24,5 +24,5 @@ test('W5 Vendors filters by owner and opens a vendor with its original entries',
 
   await browser.locator('#recordPanel [aria-label="Close record"]').tap();
   await expect(browser.locator('#recordPanel')).toBeHidden();
-  await expect(screen.getByRole('heading', 'Results')).toBeVisible();
+  await expect(browser.locator('#resultsTitle')).toHaveText('Vendors');
 });

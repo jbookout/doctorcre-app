@@ -5,7 +5,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
-import { cheatSheetText, factLabel, factSummary, formatTourDate, tourMetaLine } from "../tours/tour-format.js";
+import { cheatSheetText, factLabel, factSummary, formatTourDate, tourMetaLine, tourDisplayName } from "../tours/tour-format.js";
 
 const read = (path) => readFile(new URL(`../${path}`, import.meta.url), "utf8");
 const appJs = await read("tours/app.js");
@@ -79,4 +79,11 @@ test("the Tours page scrollbars follow the theme, including the phone navigation
   assert.match(css, /\.app-shell-navigation[^{]*::-webkit-scrollbar/);
   const print = css.match(/@media\s+print\s*\{[\s\S]*$/)?.[0] || "";
   assert.match(print, /color-scheme\s*:\s*light/);
+});
+
+test("tour names in lists drop record IDs so generated names read as words", () => {
+  assert.equal(tourDisplayName("Synthetic staging QA fc7b047a-84a1-45c0-a1b6-df27edb6e1f5 draft tour"), "Synthetic staging QA draft tour");
+  assert.equal(tourDisplayName("Demo Gulf Coast Tour"), "Demo Gulf Coast Tour");
+  assert.equal(tourDisplayName("fc7b047a-84a1-45c0-a1b6-df27edb6e1f5"), "Untitled tour");
+  assert.equal(tourDisplayName(null), "Untitled tour");
 });

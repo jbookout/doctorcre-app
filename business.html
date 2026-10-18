@@ -36,6 +36,11 @@
       </div>
     </section>
 
+    <div class="result-heading" data-panel-background>
+      <p class="result-title" id="resultsTitle">Clients</p>
+      <p class="result-summary" id="resultSummary" tabindex="-1">Checking…</p>
+    </div>
+
     <div class="search-dock glass" data-panel-background>
       <div class="field field-search">
         <label for="searchInput">Search</label>
@@ -44,7 +49,7 @@
     </div>
     <section class="business-controls" aria-labelledby="controlsTitle" data-panel-background>
       <h2 class="visually-hidden" id="controlsTitle">Search and filter</h2>
-      <form id="filterForm" class="filter-form glass" novalidate>
+      <form id="filterForm" class="filter-form" novalidate>
         <div class="filter-row">
           <div class="field" data-field="a">
             <label for="filterA" id="filterALabel">Status</label>
@@ -90,10 +95,6 @@
 
     <section class="business-body" aria-labelledby="resultsTitle">
       <div class="result-column" data-panel-background>
-        <div class="result-heading">
-          <h2 id="resultsTitle">Results</h2>
-          <p class="result-summary" id="resultSummary" tabindex="-1">Checking…</p>
-        </div>
         <div id="listRegion" class="list-region" aria-busy="true" aria-describedby="resultSummary">
           <ol class="record-list" id="recordList">
             <li class="record-skeleton"><span class="skeleton-line"></span><span class="skeleton-line short"></span></li>

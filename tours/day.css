@@ -24,6 +24,15 @@ p { margin: var(--space-2) 0; }
 .freshness button { width: 48px; padding: 0; border-color: transparent; background: transparent; color: var(--fg-muted); font-size: var(--font-size-3); }
 #day-status { min-height: 24px; color: var(--fg-muted); }
 
+/* A tour in hand shows the route, the stop and the capture dock; without one
+   the page shows a single authored panel that says why and where to go. */
+#tour-day:not([data-state="ready"]) :is(.day-grid, .capture-dock) { display: none; }
+.day-empty { display: none; max-width: 560px; margin-top: var(--space-4); }
+#tour-day[data-state="unavailable"] .day-empty { display: block; }
+.day-empty p { color: var(--fg-muted); }
+.day-empty-link { display: inline-flex; align-items: center; min-height: 48px; margin-top: var(--space-3); padding: var(--space-2) var(--space-4); border: var(--hairline-width) solid var(--hairline-strong); border-radius: var(--radius-2); background: var(--surface-2); font-weight: var(--font-weight-strong); text-decoration: none; }
+.day-empty-link:hover { border-color: var(--fg-quiet); background: var(--surface-3); }
+
 .day-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); gap: var(--panel-gap); align-items: start; padding-bottom: var(--capture-scroll-space); }
 .day-panel { min-width: 0; padding: var(--space-5); border: var(--hairline-width) solid var(--hairline); border-radius: var(--panel-radius); background: var(--surface-1); }
 
@@ -90,6 +99,15 @@ audio { width: 100%; max-width: 100%; margin: var(--space-3) 0; }
 .day-map-state { margin: var(--space-1) 0; color: var(--fg-muted); font-size: var(--font-size-1); }
 .maplibregl-ctrl-attrib { color: var(--fg-muted); }
 .maplibregl-ctrl-attrib a { color: inherit; }
+
+/* On a wide screen the dock sits in the page flow under the two panels and
+   sticks to the bottom edge only while the panels run past the fold, so it
+   never floats over the stop list. Phones keep the fixed thumb dock. */
+@media (min-width: 1024px) {
+  .capture-dock { position: sticky; bottom: calc(var(--layout-bottom, 0px) + var(--space-4)); left: auto; margin: var(--space-4) auto 0; transform: none; }
+  .day-grid { padding-bottom: 0; }
+}
+#day-notes { margin-top: var(--space-5); }
 
 /* Color Assist: the current stop and recording gain a second, shape cue. */
 :root[data-color-assist="on"] .day-stop[aria-current] { border-style: double; border-width: 3px; }

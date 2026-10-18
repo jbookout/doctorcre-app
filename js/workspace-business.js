@@ -21,7 +21,7 @@ import { fetchRead, mountAutoRefresh, updatedLabel } from "./auto-refresh.mjs";
 // set are the server's answers; this file renders them or says why it cannot.
 
 import {
-  DATASET_LABEL, DATASET_ROUTE, DATASET_SINGULAR, MAX_QUERY_LENGTH, PIPELINE_FILTERS, PIPELINE_LABEL, SORTS,
+  DATASET_LABEL, DATASET_ROUTE, DATASET_SINGULAR, MAX_QUERY_LENGTH, NOT_RECORDED, PIPELINE_FILTERS, PIPELINE_LABEL, SORTS,
   SOURCE_LABEL, acceptsResponse, cachedPayload, createBusinessState, datasetForPath, defaultQuery,
   displayedFreshness, echoesQuery, emptyCopy, expireSession, filterChips, freshnessSignature, hasActiveFilters,
   isSessionExpiry, listPhase, listRequestUrl, ownerPresentation, pageSummary, panelModality, panelTabTarget,
@@ -39,6 +39,7 @@ const SEARCH_DEBOUNCE_MS = 350;
 
 const dom = {
   title: document.querySelector("#pageTitle"),
+  resultsTitle: document.querySelector("#resultsTitle"),
   intro: document.querySelector("#pageIntro"),
   viewer: document.querySelector("#viewerWorkspace"),
   healthOrb: document.querySelector("#healthOrb"),
@@ -440,8 +441,12 @@ function rowHtml(dataset, row, selectedId) {
   const tone = rowTone(dataset, row);
   const owner = ownerPresentation(row);
   const selected = row.id === selectedId;
-  const facts = rowFacts(dataset, row).map((fact) =>
-    `<span class="row-fact${fact.known ? "" : " unknown"}${fact.unresolved ? " unresolved" : ""}"><span class="fact-label">${escapeHtml(fact.label)}</span><span class="fact-value">${escapeHtml(fact.value)}</span></span>`).join("");
+  // A blank is said once per row, quietly, instead of repeating per field.
+  const allFacts = rowFacts(dataset, row);
+  const missing = allFacts.filter((fact) => !fact.known).map((fact) => fact.label.toLowerCase());
+  const facts = allFacts.filter((fact) => fact.known).map((fact) =>
+    `<span class="row-fact${fact.unresolved ? " unresolved" : ""}"><span class="fact-label">${escapeHtml(fact.label)}</span><span class="fact-value">${escapeHtml(fact.value)}</span></span>`).join("")
+    + (missing.length ? `<span class="row-missing">${NOT_RECORDED}: ${escapeHtml(missing.join(", "))}</span>` : "");
   return `<li class="record-item"><a class="record-row${selected ? " selected" : ""}" id="row-${escapeHtml(row.id)}" data-record-id="${escapeHtml(row.id)}" href="${escapeHtml(viewHref(view.query, row.id))}"${selected ? ' aria-current="true"' : ""}><span class="row-head"><span class="row-name">${escapeHtml(row.name)}</span><span class="tone tone-${escapeHtml(tone.tone)}">${escapeHtml(tone.label)}</span></span><span class="row-facts">${facts}</span>${dataset === "vendors" ? tierHtml(row.relationship) + `<span class="contact-note">${escapeHtml(shortNote(row.relationship?.last_contact_note))}</span>` : ""}<span class="row-foot"><span class="row-owner${owner.known ? "" : " unknown"}">Owner: ${escapeHtml(owner.text)}${owner.ownedByViewer ? '<span class="row-you">Yours</span>' : ""}</span><span class="row-updated">Updated ${escapeHtml(formatMoment(row.updated_at))}</span></span></a></li>`;
 }
 
@@ -883,6 +888,7 @@ function applyLocation({ reason = "initial", restoreScroll = null } = {}) {
   view.recordId = parsed.recordId;
   document.title = `${DATASET_LABEL[parsed.dataset]} · DoctorCRE`;
   if (dom.title) dom.title.textContent = DATASET_LABEL[parsed.dataset];
+  if (dom.resultsTitle) dom.resultsTitle.textContent = DATASET_LABEL[parsed.dataset];
   if (dom.intro) {
     dom.intro.textContent = "";
   }
