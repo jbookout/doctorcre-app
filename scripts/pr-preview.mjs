@@ -178,9 +178,10 @@ function deploy(number, dryRun) {
     // PR sources as plain files: no .git, so the build cannot reach this repository.
     execFileSync('tar', ['-x', '-C', work], { input: execFileSync('git', ['archive', '--format=tar', sha], { cwd: root, maxBuffer: 1 << 30 }) });
     rmSync(join(work, '.npmrc'), { force: true });
-    writeFileSync(join(home, 'npmrc'), '');
+    writeFileSync(join(home, 'npmrc-user'), '');
+    writeFileSync(join(home, 'npmrc-global'), '');
     const env = { ...credentialFreeEnv(), HOME: home, TMPDIR: join(home, 'tmp'), XDG_CONFIG_HOME: join(home, 'config'),
-      npm_config_userconfig: join(home, 'npmrc'), npm_config_globalconfig: join(home, 'npmrc'), NO_COLOR: '1' };
+      npm_config_userconfig: join(home, 'npmrc-user'), npm_config_globalconfig: join(home, 'npmrc-global'), NO_COLOR: '1' };
     confined(home, 'npm', ['ci', '--ignore-scripts', '--no-audit', '--no-fund'], { cwd: work, env, network: true });
     confined(home, 'npm', ['run', 'build'], { cwd: work, env: { ...env, DOCTORCRE_SOURCE_COMMIT: sha }, network: false });
 
@@ -232,12 +233,16 @@ function clean(number, dryRun) {
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  try {
-    const { command, number, dryRun } = parseArgs(process.argv.slice(2));
-    if (command === 'deploy') deploy(number, dryRun);
-    else clean(number, dryRun);
-  } catch (error) {
+  let parsed;
+  try { parsed = parseArgs(process.argv.slice(2)); } catch (error) {
     console.error(`${error.message}\nusage: pr-preview.mjs deploy <PR#> [--dry-run] | clean [<PR#>] [--dry-run]`);
     process.exit(2);
+  }
+  try {
+    if (parsed.command === 'deploy') deploy(parsed.number, parsed.dryRun);
+    else clean(parsed.number, parsed.dryRun);
+  } catch (error) {
+    console.error(error.message);
+    process.exit(1);
   }
 }
