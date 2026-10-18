@@ -64,7 +64,7 @@ for (const width of [1440, 390]) for (const theme of ['dark', 'light']) {
       assert.equal(layout.lanes.length, 2, 'only populated stages consume desktop width');
       assert.ok(layout.lanes.every(lane => lane.width >= 280), JSON.stringify(layout));
       const card = page.locator('.lead-card').first();
-      await card.dispatchEvent('dragstart');
+      await card.dispatchEvent('dragstart', { dataTransfer: await page.evaluateHandle(() => new DataTransfer()) });
       assert.equal(await page.locator('.stage-column:visible').count(), 6, 'drag still offers every stage destination');
       await card.dispatchEvent('dragend');
       assert.equal(await page.locator('.stage-column:visible').count(), 2);

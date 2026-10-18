@@ -69,7 +69,7 @@
 
 /* --- the board ---------------------------------------------------------------- */
 .mobile-stage-nav { display: none; }
-.stage-columns, .has-app-layout .leads-workspace .stage-columns { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); align-items: start; gap: var(--space-3); }
+.stage-columns, .has-app-layout .leads-workspace .stage-columns { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr)); align-items: start; gap: var(--space-3); }
 .stage-column { min-width: 0; padding: var(--space-2); border: var(--hairline-width) solid var(--hairline); border-top: 2px solid var(--hairline-strong); border-radius: var(--radius-3); background: var(--surface-1); transition: border-color var(--duration-hover) var(--ease-out), background-color var(--duration-hover) var(--ease-out); }
 .stage-head { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-1) var(--space-1) var(--space-3); border-bottom: var(--hairline-width) solid var(--hairline); font-size: var(--font-size-1); }
 .stage-head::before { content: ""; flex: none; width: 8px; height: 8px; border: var(--hairline-width) solid currentColor; border-radius: var(--radius-round); color: var(--fg-muted); }
@@ -152,9 +152,11 @@ dialog::backdrop { background: var(--scrim); }
 .maplibregl-canvas:focus-visible { outline-offset: -4px; }
 
 /* --- responsive ---------------------------------------------------------------- */
+@media (min-width: 761px) and (not ((hover: none) and (pointer: coarse) and (max-width: 1023px))) {
+  #leadBoard:not(:has(.dragging)) .stage-columns:has(.lead-card) > .stage-column:not(:has(.lead-card)) { display: none; }
+}
 @media (max-width: 1100px) {
   .leads-workspace { padding: var(--space-4); }
-  .stage-columns, .has-app-layout .leads-workspace .stage-columns { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .top-grid { gap: var(--space-3); }
   .section-heading { flex-wrap: wrap; }
   .detail-overview { grid-template-columns: 1fr 1fr; }
@@ -162,8 +164,9 @@ dialog::backdrop { background: var(--scrim); }
 }
 @media (max-width: 760px), (hover: none) and (pointer: coarse) and (max-width: 1023px) {
   .leads-workspace { padding: var(--space-3) var(--space-4) calc(var(--tabbar-height) + var(--space-6)); }
-  .mobile-stage-nav { position: sticky; top: 0; z-index: 2; display: flex; align-items: center; gap: var(--space-3); padding: var(--space-2); background: var(--surface-1); border-bottom: var(--hairline-width) solid var(--hairline); }
-  .mobile-stage-nav select { flex: 1; }
+  .has-app-layout .leads-workspace { --leads-header-offset: calc(var(--touch) + 2 * var(--space-2) + var(--hairline-width)); }
+  .mobile-stage-nav { position: sticky; top: var(--leads-header-offset, 0px); z-index: 2; display: flex; align-items: center; gap: var(--space-3); padding: var(--space-2); background: var(--surface-1); border-bottom: var(--hairline-width) solid var(--hairline); }
+  .mobile-stage-nav select { flex: 1; scroll-margin-top: calc(var(--leads-header-offset, 0px) + var(--space-2)); }
   #leadBoard:not([data-touch-dragging]) .stage-column[data-mobile-current="false"] { display: none; }
   .page-heading { margin-bottom: var(--space-3); }
   .top-grid { grid-template-columns: minmax(0, 1fr); }
