@@ -80,6 +80,25 @@ test("loading reserves the timeline height; a refusal shows the reason with a re
   assert.equal(payloadRefusal("work_request", { ok: true, human_ref: "WR-1" }), null);
 });
 
+test("unavailable detail reads announce availability before any derived content", () => {
+  for (const read of [{ state: "error", reason: "Not found" }, { state: "none" }]) {
+    const html = detailHtml(item("defect", "DEF-1"), read);
+    assert.ok(html.indexOf('data-detail-unavailable') < html.indexOf('class="cr-next"'));
+    assert.ok(html.indexOf('data-detail-unavailable') >= 0);
+    assert.match(html, /Next human action<\/h3><p[^>]*>Unavailable/);
+    assert.doesNotMatch(html, /None recorded|properties below/);
+    assert.doesNotMatch(html, /<dt>Kind<|<dt>State</);
+  }
+  assert.match(detailHtml(item("work_request", "WR-1"), { state: "read", payload: {} }), /None recorded in this read/);
+});
+
+test("long titles have a native expand control and one copy of their metadata", () => {
+  const html = detailHtml(item("defect", "DEF-1", { title: "A long synthetic title ".repeat(20) }), { state: "none" });
+  assert.match(html, /<details class="cr-detail-heading"><summary>/);
+  assert.match(html, /Show full title/);
+  assert.doesNotMatch(html, /<dt>Kind<|<dt>State</);
+});
+
 test("every Queue row the fixture lists for a readable kind opens through the fixture client", async () => {
   const client = await fixture();
   const queue = addPage(createQueue(), await client.unfinishedWork({ limit: 100 }));
