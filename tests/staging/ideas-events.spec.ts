@@ -18,7 +18,7 @@ test('Ideas search and clear a loaded board, including its empty state', async (
 test('A parked idea opens and closes without answering it', async ({ page }) => {
   await page.goto('/ideas-events?tab=ideas');
   await expect(page.locator('#ideaStatusLabel')).toHaveText('Current', { timeout: 27000 });
-  test.skip(await page.locator('.idea-tile').count() === 0, 'Staging has no parked idea; detail requires a test record.');
+  test.skip(await page.locator('.idea-tile').count() === 0, 'No parked idea; staging add-loop refuses no_block for idea/parked, and no supported API provisioner exists.');
   await page.locator('.idea-tile').first().click();
   await expect(page.locator('#ideaDialog')).toBeVisible();
   await page.locator('#ideaDialogClose').click();

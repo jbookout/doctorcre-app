@@ -23,7 +23,7 @@ test('An accepted tour opens day mode, selects a stop and returns from property 
     if (await day.count()) { href = await day.getAttribute('href'); break; }
     await page.getByRole('button', { name: 'Close tour details', exact: true }).click();
   }
-  test.skip(!href, 'No staging tour has an accepted route for day mode.');
+  test.skip(!href, 'No staging tour has an accepted route; its append-only writers have no fixture deletion or acceptance undo.');
   if (!href) throw new Error('Tour day link is missing its address');
   await page.goto(href);
   await expect(page.locator('#day-stops li').first()).toBeVisible({ timeout: 27000 });

@@ -17,7 +17,8 @@ test('A lease opens and closes its details', async ({ page }) => {
   await page.goto('/leases');
   await expect(page.locator('#leaseUpdated')).toContainText('Updated', { timeout: 27000 });
   const lease = page.locator('#leaseRadar [data-lease]').first();
-  test.skip(await lease.count() === 0, 'Staging has no lease in the radar window; detail requires a test record.');
+  if (await lease.count() === 0) await page.getByRole('button', { name: 'Missing dates', exact: true }).click();
+  test.skip(await lease.count() === 0, 'Staging has no dated or missing-date lease; its append-only lease writer has no complete fixture cleanup.');
   await lease.click();
   await expect(page.locator('#leaseDetail')).toBeVisible();
   await expect(page.locator('#leaseDetailTitle')).not.toBeEmpty();
@@ -39,4 +40,3 @@ test('Leases search, clear, scope to mine and refresh', async ({ page }) => {
   await page.getByRole('button', { name: 'Refresh lease dates', exact: true }).click();
   await expect(page.locator('#leaseUpdated')).toContainText('Updated', { timeout: 27000 });
 });
-
