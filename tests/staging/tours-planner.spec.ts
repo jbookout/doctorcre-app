@@ -69,7 +69,7 @@ test('Tour planner refreshes then reviews a private packet and removes its attac
   await expect(page.locator('#file-count')).toHaveText('0 files');
 });
 
-test.fixme('V2-F01: A single private packet attachment is labelled 1 files', { tag: '@fixme' }, async ({ page }) => {
+test('V2-F01: A single private packet attachment is labelled 1 file', async ({ page }) => {
   await page.goto('/tours');
   await page.locator('#packet-upload').setInputFiles({ name: 'v2-synthetic.txt', mimeType: 'text/plain', buffer: Buffer.from('Synthetic staging attachment.') });
   await expect(page.locator('#file-count')).toHaveText('1 file');
