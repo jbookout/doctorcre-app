@@ -133,8 +133,8 @@ test("C12-04 a stale projection renders F2 with its age and still lists the even
   const fresh = queueFreshness(LIVE_QUEUE, { now });
   assert.equal(fresh.state, "stale");
   assert.notEqual(fresh.state, "unavailable", "a stale projection is the ordinary state, never an error");
-  assert.match(fresh.text, /stale by \d+ days?/, "the age is stated in plain text, not only in colour");
-  assert.match(fresh.text, /the assignments below are the last projection/);
+  assert.match(fresh.text, /\d+ days? old/, "the age is stated in plain text, not only in colour");
+  assert.match(fresh.text, /Showing the last recorded assignments/);
   const board = assignmentBoard(LIVE_QUEUE);
   assert.equal(board.cards.length, LIVE_QUEUE.events.length, "the events are still listed under a stale projection");
   assert.ok(board.cards.length > 0);
@@ -147,7 +147,7 @@ test("C12-05 a null projection renders F3 never, and never F2 stale", () => {
   const fresh = queueFreshness(NEVER_QUEUE, { now: Date.parse("2026-09-18T22:00:00Z") });
   assert.equal(fresh.state, "never");
   assert.equal(fresh.ageMs, null, "a projection that never happened has no age");
-  assert.match(fresh.text, /Nothing has been projected into this queue/);
+  assert.match(fresh.text, /No assignments have been recorded yet/);
   assert.equal(/stale by/.test(fresh.text), false, "never-projected carries no age and is not staleness");
   const stale = queueFreshness(LIVE_QUEUE, { now: Date.parse("2026-09-18T22:00:00Z") });
   assert.notEqual(fresh.text, stale.text, "two states, two sentences, no helper collapses them");

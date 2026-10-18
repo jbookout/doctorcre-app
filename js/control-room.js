@@ -74,8 +74,11 @@ function openIncident(ref) { const row=payloadOf('incidents')?.incidents?.find(i
 
 function renderConnections(){
  const projection=connectionView(payloadOf('connections'));
- $('connectionsUpdated').textContent=updatedLabel(projection.generated_at);
- replaceHtml($('connectionsProviders'),projection.providers.map(row=>`<article class="connection-card" data-connection="${escapeHtml(row.id)}" data-state="${row.status}"><div class="connection-heading"><span class="connection-dot" aria-hidden="true"></span><h3>${row.name}</h3></div><span class="connection-state">${row.label}</span><strong class="connection-spend">${escapeHtml(meteredSpend(row.spend))}</strong>${row.spend?`<time>${escapeHtml(updatedLabel(row.spend.as_of))}</time>`:''}${row.manage_url?`<a data-room-control="manage:${escapeHtml(row.id)}" href="${escapeHtml(row.manage_url)}" target="_blank" rel="noopener noreferrer">Manage ↗</a>`:''}</article>`).join(''));
+ $('connectionsUpdated').textContent=projection.generated_at?updatedLabel(projection.generated_at):view.reads.connections.state==='pending'?'Updating…':'No current reading';
+ const missing=projection.providers.some(row=>row.status==='unknown'||!row.spend);
+ const state=$('connectionsState');state.hidden=!missing;
+ state.textContent=projection.providers.every(row=>row.status==='unknown'&&!row.spend)?'Provider status and spend are unavailable. Dashes mark missing readings.':'Some provider status or spend readings are unavailable. Dashes mark missing readings.';
+ replaceHtml($('connectionsProviders'),projection.providers.map(row=>`<article class="connection-card" data-connection="${escapeHtml(row.id)}" data-state="${row.status}"><div class="connection-heading"><span class="connection-dot" aria-hidden="true"></span><h3>${row.name}</h3></div><span class="connection-state">${row.status==='unknown'?'—':row.label}</span><strong class="connection-spend">${row.spend?escapeHtml(meteredSpend(row.spend)):'—'}</strong>${row.spend?`<time>${escapeHtml(updatedLabel(row.spend.as_of))}</time>`:''}${row.manage_url?`<a data-room-control="manage:${escapeHtml(row.id)}" href="${escapeHtml(row.manage_url)}" target="_blank" rel="noopener noreferrer">Manage ↗</a>`:''}</article>`).join(''));
  $('connectionDevices').innerHTML=(projection.devices||[]).map(row=>`<article class="connection-card" data-device="${escapeHtml(row.id)}" data-state="${row.status}"><h3>${escapeHtml(row.name)}</h3><span>${{connected:'Connected',offline:'Not connected',unknown:'Status unavailable'}[row.status]}</span><time>${escapeHtml(updatedLabel(row.checked_at))}</time></article>`).join('');
  $('devicesState').textContent=projection.devices?projection.devices.length?'':'No devices':'Device status unavailable';
 }
@@ -83,9 +86,12 @@ function automationButton(job){return `<button type="button" class="automation-j
 function renderAutomations(){
  const data=automationMonth(payloadOf('schedule'),year,month);$('automationMonth').textContent=data.label;
  details?.update((data.jobs||[]).map(job=>({...job,id:`automation:${job.owner}:${job.key}`,title:job.name})),{source:'schedule',state:view.reads.schedule.state});
- const calendar=$('automationCalendar');replaceHtml(calendar,data.jobs?(data.notice?`<p role="status">${escapeHtml(data.notice)}</p>`:'')+['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map(day=>`<span class="calendar-weekday">${day}</span>`).join('')+Array.from({length:data.blanks},()=>'<div class="calendar-blank"></div>').join('')+data.days.map(day=>`<section class="calendar-day" aria-label="${day.key}"><time datetime="${day.key}">${day.day}</time>${day.jobs.map(automationButton).join('')}</section>`).join(''):'<p role="status">Automations unavailable</p>');
+ const scheduled=data.days.some(day=>day.jobs.length);
+ $('automationControls').hidden=!data.jobs?.some(job=>job.next_due_at);
+ const state=$('automationState');state.textContent=data.notice||(!scheduled?`No scheduled runs in ${data.label}`:'');state.hidden=!state.textContent;
+ const calendar=$('automationCalendar');replaceHtml(calendar,scheduled?['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map(day=>`<span class="calendar-weekday">${day}</span>`).join('')+Array.from({length:data.blanks},()=>'<div class="calendar-blank"></div>').join('')+data.days.map(day=>`<section class="calendar-day" aria-label="${day.key}"><time datetime="${day.key}">${day.day}</time>${day.jobs.map(automationButton).join('')}</section>`).join(''):'');
  replaceHtml($('automationAgenda'),data.jobs?data.days.flatMap(day=>day.jobs.map(job=>`<div><time datetime="${day.key}">${day.day} ${data.label}</time>${automationButton(job)}</div>`)).join(''):'');
- replaceHtml($('automationUndated'),data.undated.length?`<h3>Next time unavailable</h3><div class="automation-undated-grid">${data.undated.map(automationButton).join('')}</div>`:'');
+ replaceHtml($('automationUndated'),data.jobs?.length?`<h3>All automations</h3><div class="automation-undated-grid">${data.jobs.map(automationButton).join('')}</div>`:'');
  document.querySelectorAll('[data-automation]').forEach(button=>button.onclick=()=>{const job=data.jobs.find(j=>j.key===button.dataset.automation&&j.owner===button.dataset.owner);if(job)details.open({...job,id:`automation:${job.owner}:${job.key}`,title:job.name},{source:'schedule'});});
 }
 function renderRead(id){

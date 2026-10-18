@@ -47,7 +47,8 @@ for (const modifier of ['Meta', 'Control']) test(`${modifier}-K opens, filters, 
   assert.equal(await dialog.evaluate(node => node.matches(':modal')), true);
   const input = dialog.getByRole('combobox', { name: 'Find a command' });
   assert.equal(await input.evaluate(node => node === document.activeElement), true);
-  assert.equal(await dialog.getByRole('option').count(), 17);
+  assert.equal(await dialog.getByRole('option').count(), 16);
+  assert.equal(await dialog.getByRole('option', { name: 'Go to Automations', exact: true }).count(), 1);
   await input.fill('waiting');
   await page.keyboard.press('Enter');
   await page.waitForFunction(() => location.search.includes('tab=waiting'));

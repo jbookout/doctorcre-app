@@ -18,6 +18,7 @@
   <link rel="stylesheet" href="/css/progress-board.css">
   <link rel="stylesheet" href="/css/app-shell.css">
   <link rel="stylesheet" href="/css/control-room-workspace.css">
+  <link rel="stylesheet" href="/css/control-room-support.css">
   <link rel="stylesheet" href="/css/control-room-list.css">
   <link rel="stylesheet" href="/css/control-room-commands.css">
   <link rel="stylesheet" href="/css/control-room-triage.css">
@@ -164,28 +165,23 @@
         <div id="completed-list" class="completed-list"></div>
       </section>
 <p id="governanceState" class="state-block" role="status" hidden></p></section><section class="tabpanel" id="panelConnections" role="tabpanel" aria-labelledby="tabConnections" hidden>
-<section class="panel"><div class="panel-heading"><h2>Connections</h2><time id="connectionsUpdated">Updating…</time></div><div id="connectionsProviders" class="connection-grid"></div></section>
+<section class="panel"><div class="panel-heading"><h2>Connections</h2><time id="connectionsUpdated">Updating…</time></div><p id="connectionsState" class="small" role="status" hidden></p><div class="connection-columns" aria-hidden="true"><span>Provider</span><span>Status</span><span>Spend</span></div><div id="connectionsProviders" class="connection-grid"></div></section>
 <section class="panel"><h2>Devices</h2><div id="connectionDevices" class="connection-grid"></div><p id="devicesState" role="status"></p></section></section>
-<section class="tabpanel" id="panelAutomations" role="tabpanel" aria-labelledby="tabAutomations" hidden><section class="panel"><div class="panel-heading"><h2>Automations</h2><div class="calendar-controls"><button id="automationPrev" type="button" aria-label="Previous month">‹</button><strong id="automationMonth"></strong><button id="automationNext" type="button" aria-label="Next month">›</button><a class="btn" href="/control-room/automations">List</a></div></div><div id="automationCalendar" class="automation-calendar"></div><div id="automationAgenda" class="automation-month-agenda"></div><div id="automationUndated" class="automation-undated"></div></section></section>    <section class="tabpanel" id="panelModelRoom" role="tabpanel" aria-labelledby="tabModelRoom" tabindex="0" hidden>
+<section class="tabpanel" id="panelAutomations" role="tabpanel" aria-labelledby="tabAutomations" hidden><section class="panel"><div class="panel-heading"><h2>Automations</h2><div class="calendar-controls" id="automationControls"><button id="automationPrev" type="button" aria-label="Previous month">‹</button><strong id="automationMonth"></strong><button id="automationNext" type="button" aria-label="Next month">›</button></div></div><p id="automationState" class="small" role="status" hidden></p><div id="automationCalendar" class="automation-calendar"></div><div id="automationAgenda" class="automation-month-agenda"></div><div id="automationUndated" class="automation-undated"></div></section></section>    <section class="tabpanel" id="panelModelRoom" role="tabpanel" aria-labelledby="tabModelRoom" tabindex="0" hidden>
       <section class="card glass" data-section="model_room_assignments" aria-labelledby="modelRoomTitle">
         <div class="card-heading">
-          <div><p class="eyebrow">Who is assigned what</p><h2 id="modelRoomTitle">Model Room</h2></div>
+          <div><h2 id="modelRoomTitle">Agents</h2></div>
           <button class="btn" type="button" id="modelRoomRetry" aria-label="Refresh" title="Refresh"><span aria-hidden="true">↻</span></button>
         </div>
-        <!-- V5-UX-C12: written from js/model-room-model.js, because the room the
-             queue is projected into is NOT the room this tab is named after. -->
-        <p class="caption" id="modelRoomQueueRoom"></p>
         <p class="model-room-freshness" id="modelRoomFreshness" data-state="idle">unknown</p>
         <div class="row-wrap"><a class="btn" href="/control-room/agents/queue">Open task board</a><a class="btn" href="/control-room/progress">Delivery progress</a></div>
-        <div class="row-wrap"><button class="btn" type="button" id="modelRoomQueueRetry" hidden aria-label="Refresh" title="Refresh"> <span aria-hidden="true">↻</span></button></div>
+        <button class="btn" type="button" id="modelRoomQueueRetry" hidden aria-label="Refresh" title="Refresh"><span aria-hidden="true">↻</span></button>
         <p class="model-room-dropped" id="modelRoomDropped" hidden></p>
-        <p class="model-room-empty" id="modelRoomAssignmentsEmpty" hidden></p>
         <div class="assignment-rail" id="modelRoomAssignments"></div>
-        <p class="caption"></p>
         <!-- V5-UX-C13b: dragging a card is real; every drop is refused the same
              honest way, because no pinned verb changes a projected card's
              status. See ASSIGNMENT_MOVE_UNSUPPORTED_SENTENCE. -->
-        <div class="assignment-move-target" id="modelRoomMoveTarget" data-drop-zone="true">Drag a card here to move it</div>
+        <div class="assignment-move-target" id="modelRoomMoveTarget" data-drop-zone="true" hidden>Drag a card here to move it</div>
         <p class="model-room-move-result" id="modelRoomMoveResult" hidden></p>
       </section>
 
@@ -196,7 +192,7 @@
            or refused send keeps the draft and shows the record layer's own
            refusal verbatim. -->
       <section class="card glass" data-section="model_room_composer" aria-labelledby="modelRoomComposerTitle">
-        <div class="card-heading"><div><p class="eyebrow">Send into this room</p><h2 id="modelRoomComposerTitle">Composer</h2></div></div>
+        <div class="card-heading"><div><h2 id="modelRoomComposerTitle">Composer</h2></div></div>
         <form id="modelRoomComposerForm">
           <div class="field">
             <label for="modelRoomComposerText">Message</label>
@@ -205,28 +201,6 @@
           <button class="btn" type="submit" id="modelRoomComposerSend">Send</button>
         </form>
         <p class="model-room-composer-result" id="modelRoomComposerResult" hidden></p>
-      </section>
-
-      <section class="card glass" data-section="model_room_sessions" aria-labelledby="modelRoomSessionsTitle">
-        <div class="card-heading"><div><p class="eyebrow">Who is working</p><h2 id="modelRoomSessionsTitle">Sessions</h2></div></div>
-        <form class="dispatch-search" id="modelRoomDispatchSearch" role="search">
-          <label for="modelRoomDispatchQuery">Session name or ID</label>
-          <div class="dispatch-search-row">
-            <input id="modelRoomDispatchQuery" name="query" type="search" maxlength="200" autocomplete="off" required>
-            <button class="btn" type="submit">Search</button>
-            <button class="btn" type="button" id="modelRoomDispatchClear">Clear</button>
-          </div>
-          <p class="caption"></p>
-        </form>
-        <p class="count-line" id="modelRoomCounts" data-state="unavailable">unknown</p>
-        <p class="session-banner" id="modelRoomBanner" hidden></p>
-        <p class="model-room-empty" id="modelRoomSessionsEmpty" hidden></p>
-        <div class="session-picks" id="modelRoomSessions"></div>
-      </section>
-
-      <section class="card glass" data-section="model_room_context" aria-labelledby="modelRoomContextTitle">
-        <div class="card-heading"><div><p class="eyebrow">Evidence behind one session</p><h2 id="modelRoomContextTitle">Context</h2></div></div>
-        <div id="modelRoomContext"></div>
       </section>
 
       <section class="card glass" data-section="model_room_participants" aria-labelledby="modelRoomParticipantsTitle">
@@ -240,6 +214,27 @@
         <ul class="room-turns" id="modelRoomTurns"></ul>
       </section>
 
+      <section class="card glass" data-section="model_room_sessions" aria-labelledby="modelRoomSessionsTitle">
+        <div class="card-heading"><div><p class="eyebrow">Who is working</p><h2 id="modelRoomSessionsTitle">Sessions</h2></div></div>
+        <form class="dispatch-search field" id="modelRoomDispatchSearch" role="search">
+          <label for="modelRoomDispatchQuery">Session name or ID</label>
+          <div class="dispatch-search-row">
+            <input id="modelRoomDispatchQuery" name="query" type="search" maxlength="200" autocomplete="off" required>
+            <button class="btn" type="submit">Search</button>
+            <button class="btn" type="button" id="modelRoomDispatchClear">Clear</button>
+          </div>
+          </form>
+        <p class="count-line" id="modelRoomCounts" data-state="unavailable">unknown</p>
+        <p class="session-banner" id="modelRoomBanner" hidden></p>
+        <p class="model-room-empty" id="modelRoomSessionsEmpty" hidden></p>
+        <div class="session-picks" id="modelRoomSessions"></div>
+      </section>
+
+      <section class="card glass" data-section="model_room_context" aria-labelledby="modelRoomContextTitle">
+        <div class="card-heading"><div><p class="eyebrow">Evidence behind one session</p><h2 id="modelRoomContextTitle">Context</h2></div></div>
+        <div id="modelRoomContext"></div>
+      </section>
+
       <!-- V5-UX-C13a: topic/work-item history. Read-only; no composer, no
            execute path lives here. A topic is the same Kanban ticket the
            assignments board above already shows; a work item is a shared
@@ -248,7 +243,6 @@
         <div class="card-heading">
           <div><p class="eyebrow">One topic or work item, in full</p><h2 id="modelRoomHistoryTitle">Topic and work-item history</h2></div>
         </div>
-        <p class="caption"></p>
         <div class="history-picker">
           <div class="field">
             <label for="modelRoomHistoryTopic">Topic (Kanban ticket)</label>
@@ -294,60 +288,20 @@
     </section>
 
     <section class="tabpanel" id="panelAtlas" role="tabpanel" aria-labelledby="tabAtlas" tabindex="0" hidden>
-      <section class="card glass" data-section="atlas" aria-labelledby="atlasTitle">
-        <div class="card-heading">
-          <div><p class="eyebrow">Inventory of machinery</p><h2 id="atlasTitle">Atlas</h2></div>
-          <span class="status" id="atlasStatus" data-state="still"><span class="orb" id="atlasOrb" data-state="still" aria-hidden="true"></span> Atlas</span>
-        </div>
-        <div class="atlas-version" id="atlasVersionLine"></div>
-        <div class="state-block" id="atlasState" data-state="idle"></div>
-        <div class="row-wrap"><button class="btn" type="button" id="atlasRetry" hidden aria-label="Refresh" title="Refresh"> <span aria-hidden="true">↻</span></button></div>
-        <!-- V5-UX-C09 — C15/CR-AC-07: how this system is wired, separated up
-             front from what has actually been seen running. -->
-        <p class="small" id="atlasHowThisWorksNote"></p>
-      </section>
-
-      <section class="card glass" data-section="atlas_tour" aria-labelledby="atlasTourTitle">
-        <div class="card-heading"><div><p class="eyebrow">Optional</p><h2 id="atlasTourTitle">Doc's tour</h2></div></div>
-        <p class="small">A scripted walkthrough of real components on this page. It explains; it does not replay a run.</p>
-        <div class="row-wrap">
-          <button class="btn" type="button" id="atlasTourStart">Start Doc's tour</button>
-        </div>
-        <div id="atlasTourPanel" hidden>
-          <p class="small" id="atlasTourIntro"></p>
-          <p class="atlas-tour-status" id="atlasTourStatus"></p>
-          <p class="atlas-tour-narration" id="atlasTourNarration"></p>
-          <div class="row-wrap">
-            <button class="btn" type="button" id="atlasTourPrev">Back</button>
-            <button class="btn" type="button" id="atlasTourNext">Next</button>
-            <button class="btn" type="button" id="atlasTourExit">Exit tour</button>
-          </div>
-          <p class="caption">Select any other component at any time — the tour keeps its place and picks up again on Next.</p>
-        </div>
-        <p class="sr-only" id="atlasTourLive" aria-live="polite"></p>
-      </section>
-
-      <section class="card glass" data-section="atlas_coverage" aria-labelledby="atlasCoverageHeading">
-        <div class="card-heading"><div><p class="eyebrow">Coverage</p><h2 id="atlasCoverageHeading">Coverage</h2></div></div>
-        <p class="small" id="atlasSafeExplanation"></p>
-        <h3 class="atlas-subhead">Availability</h3>
-        <ul class="work-list" id="atlasCoverageAnswered"></ul>
-        <h3 class="atlas-subhead">Known gaps in this release</h3>
-        <ul class="work-list" id="atlasCoverageGaps"></ul>
-      </section>
-
-      <section class="card glass" data-section="atlas_controls" aria-labelledby="atlasControlsTitle">
-        <div class="card-heading"><div><p class="eyebrow">Ask the graph</p><h2 id="atlasControlsTitle">Search the index</h2></div></div>
-        <div class="field"><label for="atlasSearch">Search id, key or title</label><input id="atlasSearch" type="search" autocomplete="off" placeholder="dealroom-worker"></div>
+      <header class="cr-section-head"><h2 id="atlasTitle">System map</h2><button class="btn" type="button" id="atlasToolsToggle" aria-expanded="false" aria-controls="atlasControls atlasIndexHeading atlasRendererNote">Filters and view</button><span class="status" id="atlasStatus"><span class="orb" id="atlasOrb" aria-hidden="true"></span></span></header>
+      <div class="state-block" id="atlasState" data-state="idle"></div>
+      <button class="btn" type="button" id="atlasRetry" hidden aria-label="Refresh" title="Refresh">↻</button>
+      <section class="card glass" id="atlasControls" data-section="atlas_controls" aria-labelledby="atlasControlsTitle">
+        <div class="card-heading"><div><h3 id="atlasControlsTitle">Components</h3></div></div>
+        <div class="field"><label for="atlasSearch">Find a component</label><input id="atlasSearch" type="search" autocomplete="off" placeholder="dealroom-worker"></div>
         <div class="btn-group atlas-filters" id="atlasLayerFilters" role="group" aria-label="Layer"></div>
         <label class="switch" for="atlasRetired"><input type="checkbox" id="atlasRetired"> Show retired</label>
         <p class="small mono" id="atlasRequestPath"></p>
-        <p class="caption"></p>
       </section>
 
       <section class="card glass" data-section="atlas_index" aria-labelledby="atlasIndexTitle">
-        <div class="card-heading">
-          <div><p class="eyebrow">Hierarchy</p><h2 id="atlasIndexTitle">Layer, class, node</h2></div>
+        <div class="card-heading" id="atlasIndexHeading">
+          <div><h3 id="atlasIndexTitle">System components</h3></div>
           <div class="btn-group" id="atlasRendererSwitch" role="group" aria-label="Atlas view">
             <button class="btn" type="button" data-atlas-view="index" aria-pressed="true">Index</button>
             <button class="btn" type="button" data-atlas-view="anatomical" aria-pressed="false">Anatomical</button>
@@ -421,6 +375,35 @@
         </div>
       </section>
 
+      <details class="cr-disclosure" data-section="atlas_coverage">
+        <summary id="atlasCoverageHeading">Coverage</summary>
+        <p class="small" id="atlasSafeExplanation"></p>
+        <h3 class="atlas-subhead">Availability</h3>
+        <ul class="work-list" id="atlasCoverageAnswered"></ul>
+        <h3 class="atlas-subhead">Known gaps in this release</h3>
+        <ul class="work-list" id="atlasCoverageGaps"></ul>
+      </details>
+
+      <details class="cr-disclosure" data-section="atlas_tour">
+        <summary>Doc's tour</summary>
+        <p class="small">A scripted walkthrough of real components on this page. It explains; it does not replay a run.</p>
+        <div class="row-wrap">
+          <button class="btn" type="button" id="atlasTourStart">Start Doc's tour</button>
+        </div>
+        <div id="atlasTourPanel" hidden>
+          <p class="small" id="atlasTourIntro"></p>
+          <p class="atlas-tour-status" id="atlasTourStatus"></p>
+          <p class="atlas-tour-narration" id="atlasTourNarration"></p>
+          <div class="row-wrap">
+            <button class="btn" type="button" id="atlasTourPrev">Back</button>
+            <button class="btn" type="button" id="atlasTourNext">Next</button>
+            <button class="btn" type="button" id="atlasTourExit">Exit tour</button>
+          </div>
+          <p class="caption">Select any other component at any time — the tour keeps its place and picks up again on Next.</p>
+        </div>
+        <p class="sr-only" id="atlasTourLive" aria-live="polite"></p>
+      </details>
+
       <section class="card glass" data-section="atlas_selection" aria-labelledby="atlasSelectionTitle">
         <div class="card-heading"><div><p class="eyebrow">Selection</p><h2 id="atlasSelectionTitle">This node</h2></div></div>
         <div id="atlasSelection"></div>
@@ -435,27 +418,20 @@
     <section class="tabpanel" id="panelSessions" role="tabpanel" aria-labelledby="tabSessions" tabindex="0" hidden>
       <section class="card glass" data-section="sessions" aria-labelledby="sessionsTitle">
         <div class="card-heading">
-          <div><p class="eyebrow">Who is working</p><h2 id="sessionsTitle">Sessions</h2></div>
+          <div><h2 id="sessionsTitle">Sessions</h2></div>
           <button class="btn" type="button" id="sessionsRetry" aria-label="Refresh" title="Refresh"> <span aria-hidden="true">↻</span></button>
         </div>
-        <!-- V5-UX-S02: permanent, and written from js/sessions-model.js so it
-             cannot be deleted from the page alone. This tab opens nothing. -->
-        <p class="session-no-open" id="sessionsNoOpen"></p>
-        <div class="field"><label for="sessionsLookup">Find a session by name or id</label><input id="sessionsLookup" type="search" autocomplete="off" placeholder="reverent-bardeen"></div>
+        <div class="cr-session-search"><div class="field"><label for="sessionsLookup">Find a session by name or ID</label><input id="sessionsLookup" type="search" autocomplete="off" placeholder="Search sessions"></div><p class="small" id="sessionsCounts" data-state="unavailable">Coverage unavailable</p></div>
         <label class="switch" for="sessionsIncludeClosed"><input type="checkbox" id="sessionsIncludeClosed"> Include closed sessions</label>
-        <p class="caption"></p>
       </section>
 
-      <section class="card glass" data-section="sessions_counts" aria-labelledby="sessionsCountsTitle">
-        <div class="card-heading"><div><p class="eyebrow">Counts</p><h2 id="sessionsCountsTitle">What this answer covers</h2></div></div>
-        <p class="count-line" id="sessionsCounts" data-state="unavailable">unknown</p>
-        <p class="session-banner" id="sessionsBanner" hidden></p>
-        <p class="session-lineage-summary" id="sessionsLineageSummary" hidden></p>
-      </section>
+      <p class="session-banner" id="sessionsBanner" hidden></p>
+      <p class="session-lineage-summary" id="sessionsLineageSummary" hidden></p>
 
       <p class="sr-only" id="sessionsLive" aria-live="polite"></p>
       <p class="session-empty" id="sessionsEmpty" hidden></p>
       <div id="sessionsList"></div>
+      <details class="cr-disclosure"><summary>About opening sessions</summary><p id="sessionsNoOpen" class="small"></p></details>
     </section>
 </main>
 <dialog id="work-triage" aria-label="Review system work action"><button id="work-triage-close" type="button" aria-label="Close">×</button><form id="work-triage-form"></form></dialog>

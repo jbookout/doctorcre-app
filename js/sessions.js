@@ -59,7 +59,8 @@ function renderCounts() {
   const line = $("sessionsCounts");
   if (!line) return;
   const counts = countsLine(view.payload);
-  line.textContent = counts.text;
+  line.textContent = counts.seen === null ? "Coverage unavailable" : `${counts.shown} shown · ${counts.visible} visible · ${counts.seen} total`;
+  line.title = counts.text;
   line.dataset.state = counts.seen === null ? "unavailable" : "read";
 }
 

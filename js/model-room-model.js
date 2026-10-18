@@ -202,7 +202,7 @@ export function queueFreshness(payload, { now = Date.now() } = {}) {
       state: "live",
       ageMs: projectedAt ? Math.max(0, now - Date.parse(projectedAt)) : null,
       projectedAt,
-      text: `Projected ${projectedAt}, inside the projector's ${QUEUE_STALE_MS / 1000}-second window.`,
+      text: `Updated ${projectedAt}.`,
     };
   }
   if (projectedAt === null) {
@@ -210,8 +210,7 @@ export function queueFreshness(payload, { now = Date.now() } = {}) {
       state: "never",
       ageMs: null,
       projectedAt: null,
-      text: "Nothing has been projected into this queue. That is not a stale projection and not an empty board: "
-        + "the projector has never written here.",
+      text: "No assignments have been recorded yet.",
     };
   }
   const ageMs = Math.max(0, now - Date.parse(projectedAt));
@@ -219,7 +218,7 @@ export function queueFreshness(payload, { now = Date.now() } = {}) {
     state: "stale",
     ageMs,
     projectedAt,
-    text: `Projected ${projectedAt}, stale by ${humanAge(ageMs)}; the assignments below are the last projection.`,
+    text: `Last updated ${projectedAt} · ${humanAge(ageMs)} old. Showing the last recorded assignments.`,
   };
 }
 
