@@ -260,7 +260,7 @@ for(const partial of [false,true])test(`PR132 #4: ${partial?'partial':'unknown'}
  assert.match(await page.locator('#panelAutomations').textContent(),partial?/unavailable.*source|source.*unavailable/i:/Automations unavailable/);
  const calendar=page.locator('#automationCalendar');assert.equal(await calendar.locator('[role="status"]').evaluate(node=>getComputedStyle(node).gridColumn),'1 / -1');
  const grid=await calendar.boundingBox(),sunday=await calendar.locator('.calendar-weekday').first().boundingBox();assert.ok(sunday.x<grid.x+grid.width/7,'Sunday occupies the first calendar column');
- await page.getByRole('link',{name:'List',exact:true}).click();await page.waitForFunction(()=>document.querySelector('#automationListState').textContent.includes('unavailable'));
+ await page.getByRole('link',{name:'List',exact:true}).click();await page.waitForURL('**/control-room/automations');await page.waitForFunction(()=>document.querySelector('#automationListState').textContent.includes('unavailable'));
  assert.match(await page.locator('#automationListState').textContent(),/unavailable/i);assert.doesNotMatch(await page.locator('#automationListState').textContent(),/No automations/);
 });
 test('PR132 #3: failed List read retains unavailable selection state',async t=>{
@@ -296,7 +296,7 @@ for(const width of [1440,390])for(const theme of ['dark','light']){
   assert.equal(await page.locator('.directory-panel').evaluate(n=>n.open),true);
   assert.ok(await page.locator('#board-directory a').count()>0);
   const first=await page.locator('#board-stages .board-card').first().boundingBox();
-  const bottom=await page.locator('.app-layout-status').boundingBox();
+  const bottom=await page.locator(width===390?'#appShell':'.app-layout-status').boundingBox();
   assert.ok(first.y+Math.min(first.height,80)<bottom.y,`pipeline card starts at ${first.y}, content ends at ${bottom.y}`);
   assert.equal(await page.locator('#board-data-mode').count(),1,'data mode is labeled beside board state');
   assert.match(await page.locator('#board-data-mode').textContent(),/Live work.*pipeline/i);
@@ -312,7 +312,7 @@ for(const width of [1440,390])for(const theme of ['dark','light']){
   if(process.env.C5_CAPTURE_PHASE){const dir=new URL(`out/test-artifacts/c5/${process.env.C5_CAPTURE_PHASE}/`,root);await mkdir(dir,{recursive:true});await page.screenshot({path:new URL(`views-${width}-${theme}.png`,dir).pathname});}
   assert.ok((await empty.boundingBox()).height<=48,'empty ledger stays a compact row');
   assert.ok(await page.locator('#attentionTitle').evaluate(n=>getComputedStyle(n).fontSize===getComputedStyle(document.querySelector('.cr-views li')).fontSize),'ledger heading matches view summary scale');
-  const box=await empty.boundingBox(),bottom=await page.locator('.app-layout-status').boundingBox();
+  const box=await empty.boundingBox(),bottom=await page.locator(width===390?'#appShell':'.app-layout-status').boundingBox();
   assert.ok(box.y+box.height<bottom.y,'empty ledger fits first screen');
   assert.equal(await empty.evaluate(n=>getComputedStyle(n).backgroundColor),'rgba(0, 0, 0, 0)');
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
@@ -327,7 +327,7 @@ test('C5 two expanded published boards leave the live pipeline on the first phon
  assert.equal(await page.locator('#filter-repo').isVisible(),true);
  if(process.env.C5_CAPTURE_PHASE)await page.screenshot({path:new URL('out/test-artifacts/c5/after/boards-two-390.png',root).pathname});
  const first=await page.locator('#board-stages .board-card').first().boundingBox();
- const footer=await page.locator('.app-layout-status').boundingBox();
+ const footer=await page.locator('#appShell').boundingBox();
  assert.ok(first.y+80<footer.y,`pipeline starts at ${first.y}, content ends at ${footer.y}`);
 });
 
