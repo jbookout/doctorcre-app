@@ -35,7 +35,7 @@
 .quick-add > summary::-webkit-details-marker { display: none; }
 .quick-add-summary { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); min-height: var(--touch); cursor: pointer; }
 .quick-add-summary .eyebrow { display: block; margin: 0; }
-.quick-add-title { display: block; font: var(--font-weight-strong) var(--font-size-4) / var(--line-height-heading) var(--font-text); color: var(--fg); }
+.quick-add-title { display: block; font: var(--font-weight-strong) var(--font-size-3) / var(--line-height-heading) var(--font-text); color: var(--fg); }
 .quick-add-toggle { width: 12px; height: 12px; flex: 0 0 auto; border-right: 2px solid var(--fg-muted); border-bottom: 2px solid var(--fg-muted); transform: rotate(45deg); transition: transform var(--duration-menu) var(--ease-out); }
 .quick-add[open] .quick-add-toggle { transform: rotate(-135deg); }
 
@@ -72,3 +72,6 @@
 
 @media (prefers-reduced-motion: reduce) { .quick-add-toggle { transition: none; } }
 :root[data-motion="reduced"] .quick-add-toggle { transition: none; }
+
+/* Section headings sit one step under the page title the shell already shows. */
+main.shell .card h2 { font-size: var(--font-size-3); }

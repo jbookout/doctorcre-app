@@ -23,7 +23,7 @@
 .hero-meta { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
 .hero-card { display: grid; gap: var(--space-3); }
 
-.headline { margin: 0; font: var(--font-weight-strong) var(--font-size-3) / var(--line-height-heading) var(--font-text); }
+.headline { margin: 0 0 var(--space-3); color: var(--fg-muted); font: var(--font-size-2) / var(--line-height-body) var(--font-text); }
 .caption { margin: 0; color: var(--fg-muted); font-size: var(--font-size-1); line-height: var(--line-height-body); }
 .mono { font-family: var(--font-mono); font-size: var(--font-size-1); overflow-wrap: anywhere; }
 
@@ -162,3 +162,9 @@
 @media (max-width: 600px) { .suggestion-flow { padding: var(--space-2); } }
 @media (prefers-reduced-motion: reduce) { .suggestion-card { transition: none; } }
 :root[data-motion="reduced"] .suggestion-card { transition: none; }
+
+/* Section headings sit one step under the page title the shell already shows,
+   and a hero card whose header moved into the shell's sidebar does not leave
+   an empty panel behind. */
+main.shell .card h2 { font-size: var(--font-size-3); }
+.hero-card:not(:has(> :not([hidden]))) { display: none; }
