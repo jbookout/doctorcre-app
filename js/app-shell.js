@@ -1,5 +1,6 @@
 import { mountDocPresence } from "./doc-presence.js";
 import { mountAppLayout } from "./app-layout.js";
+import { TOUCH_LAYOUT } from "./touch-layout.js";
 import { mountPrefs } from "./shell.js";
 import { resolveDealroomBoot } from "./boot-mode.js";
 import { mountAutoRefresh } from "./auto-refresh.mjs";
@@ -21,7 +22,30 @@ export function mountAppShell(root = document, pathname = globalThis.location?.p
   if (!base) mountAccount(root, host, pathname, () => disposeDocPresence());
   if (!base && pathname !== "/share") {
     mountAppLayout(root, host, pathname);
-    root.querySelector(".app-layout-status").append(host.querySelector(".app-shell-call-availability"));
+    const status = root.querySelector(".app-layout-status");
+    const availability = host.querySelector(".app-shell-call-availability");
+    status.append(availability);
+    const workspace = root.getElementById("accountWorkspaceControls");
+    const connection = root.getElementById("appConnection");
+    const controls = host.querySelector(".app-shell-controls");
+    const settings = [...controls.querySelectorAll(":scope > button")];
+    const search = host.querySelector(".app-shell-search");
+    const refresh = status.querySelector("#appSyncRefresh");
+    const freshness = refresh.parentElement;
+    const phone = root.defaultView.matchMedia(TOUCH_LAYOUT);
+    const arrangeControls = () => {
+      workspace.hidden = !phone.matches;
+      if (phone.matches) workspace.append(search, ...settings, refresh, availability, connection);
+      else {
+        controls.before(search);
+        controls.prepend(...settings);
+        freshness.append(refresh);
+        status.insertBefore(connection, root.getElementById("appStatusSlot"));
+        status.append(availability);
+      }
+    };
+    phone.addEventListener("change", arrangeControls);
+    arrangeControls();
     const docPresence = mountDocPresence({ document:root, window:root.defaultView });
     disposeDocPresence = () => docPresence?.dispose();
   }
@@ -58,16 +82,19 @@ function mountAccount(root, host, pathname, beforeSignOutReplace = () => {}) {
   };
   const close = () => { panel.hidden = true; avatar.setAttribute("aria-expanded", "false"); };
   avatar.onclick = () => { panel.hidden = !panel.hidden; avatar.setAttribute("aria-expanded", String(!panel.hidden)); };
+  panel.addEventListener("click", event => {
+    if (event.target.closest("#appSyncRefresh")) { close(); avatar.focus(); }
+  });
   root.addEventListener("keydown", (event) => {
     if (event.key !== "Tab" || panel.hidden) return;
-    const options = [...panel.querySelectorAll("button:not(:disabled), a[href]")];
+    const options = [...panel.querySelectorAll("button:not(:disabled), a[href]")].filter(node => node.getClientRects().length);
     const focused = root.activeElement;
     if (focused === avatar && !event.shiftKey) { event.preventDefault(); options[0]?.focus(); }
     else if ((focused === options[0] && event.shiftKey) || (focused === options.at(-1) && !event.shiftKey)) {
       event.preventDefault(); close(); avatar.focus();
     }
   });
-  panel.querySelector("#accountTheme").onclick = () => host.querySelector('[data-pref="theme"]').click();
+  panel.querySelector("#accountTheme").onclick = () => root.querySelector('[data-pref="theme"]').click();
   root.addEventListener("click", (event) => { if (!panel.contains(event.target) && !avatar.contains(event.target)) close(); });
   root.addEventListener("keydown", (event) => { if (event.key === "Escape" && !panel.hidden) { close(); avatar.focus(); } });
   const assist = host.querySelector("#colorAssistButton");
@@ -118,7 +145,7 @@ function mountAccount(root, host, pathname, beforeSignOutReplace = () => {}) {
   if (!root.getElementById("callModeDialog")) {
     import("./global-call-mode.js").then(async ({ mountGlobalCallMode }) => {
       const call = await mountGlobalCallMode(root);
-      host.querySelector("#callModeButton").onclick = () => call.open();
+      root.querySelector("#callModeButton").onclick = () => { close(); call.open(); };
       root.querySelector("#callModeRetry").onclick = (event) => call.handleClick(event.target);
     });
   }
