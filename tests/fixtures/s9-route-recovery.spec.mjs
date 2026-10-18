@@ -58,6 +58,8 @@ for (const theme of ['light', 'dark']) test(`Leads mobile keeps stage context an
   await stage.selectOption('qualified');
   await expect(page.locator('.stage-column:visible')).toHaveAttribute('data-stage', 'qualified');
   await expect(stage).toBeInViewport();
+  await page.locator('#marketCounts button').filter({ hasText: 'Pensacola' }).click();
+  await expect(page.locator('.stage-column:visible')).toHaveAttribute('data-stage', 'new');
 });
 
 for (const width of [390, 1440]) for (const theme of ['light', 'dark']) test(`Itinerary draft prioritizes editing and folds excluded stops at ${width} ${theme}`, async ({ page }) => {

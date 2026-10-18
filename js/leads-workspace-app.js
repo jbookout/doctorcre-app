@@ -108,7 +108,7 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
   function clearPrivateView() {
     pageDocContext?.clear();
     state.commandFeedback = null; state.connectionFeedback = null; state.board = null; state.detailId = null; state.detail = null; state.proposal = null; state.reviewTarget = null; state.resumeReview = null; state.pending = null;
-    state.filters = { search: "", owner: "", stage: "", market: "" }; state.trigger = null; state.drag = null;
+    state.filters = { search: "", owner: "", stage: "", market: "" }; state.mobileStage = null; state.trigger = null; state.drag = null;
     $("leadSearch").value = ""; $("detailTitle").textContent = ""; $("stageTitle").textContent = "";
     $("stageError").textContent = ""; $("moveAnnouncement").textContent = ""; $("saveStage").disabled = true;
     ++state.detailEpoch; ++state.reviewEpoch; $("leadDetail").close(); $("stageDialog").close();
@@ -140,17 +140,18 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
       if (epoch !== state.epoch) return;
       validateLeadWorkspace(next);
       state.connectionFeedback = null;
-      state.readFailed = false; state.board = next; render();
+      state.readFailed = false; state.board = next;
       if (state.pending) {
         const current = next.leads.find(l => l.id === state.pending.lead.id);
         const move = current?.last_stage_move;
         if ((state.pending.kind === "link" && current?.client_id === state.pending.clientId) ||
             (state.pending.kind === "stage" && move?.idempotency_key === state.pending.key) ||
             (state.pending.kind === "claim" && current?.owner === state.pending.actor)) {
+          if (state.pending.kind === "stage") state.mobileStage = state.pending.stage;
           state.pending = null; state.commandFeedback = null; $("stageDialog").close();
-      if (pending.kind === "stage") state.mobileStage = pending.stage;
         }
       }
+      render();
       paintCommandFeedback();
       const resumeReview = state.resumeReview;
       state.resumeReview = null;
@@ -297,9 +298,9 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
       paintCommandFeedback();
     } finally { state.writing = false; paintCommandFeedback(); }
   }
-  function selectMarket(key) { state.filters.market = state.filters.market === key ? "" : key; render(); }
+  function selectMarket(key) { state.filters.market = state.filters.market === key ? "" : key; state.mobileStage = null; render(); }
   for (const [id, key] of [["leadSearch", "search"], ["ownerFilter", "owner"], ["stageFilter", "stage"], ["marketFilter", "market"]]) {
-    $(id).addEventListener(id === "leadSearch" ? "input" : "change", event => { state.filters[key] = event.target.value; render(); });
+    $(id).addEventListener(id === "leadSearch" ? "input" : "change", event => { state.filters[key] = event.target.value; state.mobileStage = null; render(); });
   }
   $("mobileStage").addEventListener("change", event => {
     state.mobileStage = event.target.value;
@@ -307,7 +308,7 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
     render();
     $("mobileStage").scrollIntoView({ block: "start" });
   });
-  $("clearMarket").addEventListener("click", () => { state.filters.market = ""; render(); });
+  $("clearMarket").addEventListener("click", () => { state.filters.market = ""; state.mobileStage = null; render(); });
   $("marketCounts").addEventListener("click", event => { const button = event.target.closest("[data-market]"); if (button) selectMarket(button.dataset.market); });
   $("refreshBoard").addEventListener("click", () => refresh());
   $("closeDetail").addEventListener("click", () => $("leadDetail").close());
