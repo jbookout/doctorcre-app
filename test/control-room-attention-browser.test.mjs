@@ -90,3 +90,12 @@ for (const width of [390, 1440]) test(`Inbox opens the selected item detail and 
   assert.ok((await dialog.innerText()).includes('Demo document conversation is waiting on your answer'));
   assert.equal(await dialog.getByRole('link').count(), 0);
 });
+
+for (const theme of ['dark', 'light']) test(`desktop Inbox detail stays within 640px in ${theme}`, async t => {
+  const page = await open(t, 'inbox', 1440, theme);
+  await page.locator('#crInboxList .cr-row').first().click();
+  const dialog = page.getByRole('dialog', { name: 'Inbox item', exact: true });
+  await dialog.waitFor({ timeout: 2500 });
+  const bounds = await dialog.boundingBox();
+  assert.ok(bounds.width > 0 && bounds.width <= 640, `rendered dialog width is ${bounds.width}px`);
+});

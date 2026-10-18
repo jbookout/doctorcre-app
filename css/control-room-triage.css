@@ -24,5 +24,8 @@
 #crInboxList button.cr-row { width: 100%; border: 0; border-bottom: var(--hairline-width) solid var(--hairline); background: transparent; font-family: inherit; text-align: left; cursor: pointer; }
 #crInboxList button.cr-row:hover { background: var(--surface-1); }
 #crInboxList button.cr-row:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: -2px; }
-.cr-inbox-dialog { width: min(640px, calc(100vw - 40px)); }
+#crInboxDialog { max-width: 640px; }
 .cr-inbox-dialog p, .cr-inbox-dialog dd { overflow-wrap: anywhere; }
+.cr-inbox-dialog dl { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: var(--space-2) var(--space-4); margin: var(--space-4) 0; font-size: var(--font-size-1); }
+.cr-inbox-dialog dt { color: var(--fg-muted); }
+.cr-inbox-dialog dd { margin: 0; color: var(--fg); }
