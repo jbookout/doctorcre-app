@@ -18,7 +18,8 @@
 /* --- search and filters --------------------------------------------------- */
 .search-dock { position: sticky; top: calc(var(--tabbar-height) + var(--space-4)); z-index: 20; margin-bottom: var(--space-3); padding: var(--space-3) var(--space-4); border-radius: var(--radius-3); }
 .business-controls { display: grid; gap: var(--space-3); margin-bottom: var(--space-4); }
-.filter-form { display: grid; gap: var(--space-3); padding: var(--space-4); border-radius: var(--radius-3); }
+/* One card: the sticky search. The filters sit under it as a plain row. */
+.filter-form { display: grid; gap: var(--space-3); padding: 0 var(--space-1); }
 .filter-row { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--space-3); align-items: end; }
 .filter-row-actions { display: flex; flex-wrap: wrap; align-items: end; gap: var(--space-3); }
 .filter-row-actions .scope-option { min-width: var(--touch); }
@@ -58,7 +59,7 @@
 /* --- the record ledger ---------------------------------------------------- */
 .business-body { display: block; margin: 0 0 var(--space-5); }
 .result-column { display: grid; gap: var(--space-3); min-width: 0; }
-.result-heading { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: var(--space-2); }
+.result-heading { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: var(--space-2); margin-bottom: var(--space-3); }
 .result-heading h2 { margin: 0; font-size: var(--font-size-3); font-weight: var(--font-weight-strong); line-height: var(--line-height-heading); }
 .result-summary { margin: 0; color: var(--fg-muted); font-size: var(--font-size-1); font-variant-numeric: tabular-nums; }
 .result-summary:focus-visible { outline: var(--focus-width) solid var(--focus-ring); outline-offset: var(--space-1); }
@@ -81,7 +82,8 @@
 .row-fact { display: inline-flex; align-items: baseline; gap: var(--space-2); min-width: 0; }
 .fact-label { color: var(--fg-muted); font-size: var(--font-size-1); }
 .fact-value { color: var(--fg); font-size: var(--font-size-1); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
-.row-fact.unknown .fact-value, .row-owner.unknown, .record-field.unknown dd { color: var(--fg-quiet); font-style: italic; }
+.row-owner.unknown, .record-field.unknown dd { color: var(--fg-quiet); }
+.row-missing { color: var(--fg-quiet); font-size: var(--font-size-1); }
 .row-fact.unresolved .fact-value::after { content: " · recorded code, no label"; color: var(--status-warn-ink); }
 .row-foot { display: flex; flex-direction: column; align-items: flex-end; gap: var(--space-1) var(--space-3); color: var(--fg-muted); font-size: var(--font-size-1); font-variant-numeric: tabular-nums; text-align: right; }
 .row-you { margin-left: var(--space-1); padding: 0 var(--space-2); border: var(--hairline-width) solid var(--hairline-strong); border-radius: var(--radius-round); color: var(--fg); font-size: var(--font-size-1); }
@@ -97,7 +99,7 @@
 .tone-unknown::before { background: transparent; border: var(--hairline-width) solid currentColor; }
 .tone-plain { color: var(--fg-muted); }
 .tone-plain::before { display: none; }
-.tone-plain.unknown { color: var(--fg-quiet); font-style: italic; }
+.tone-plain.unknown { color: var(--fg-quiet); }
 [data-color-assist="on"] .tone-active { border-style: solid; border-width: 2px; }
 [data-color-assist="on"] .tone-warm { border-style: dashed; }
 [data-color-assist="on"] .tone-unknown { border-style: dotted; }
@@ -197,7 +199,7 @@ body.record-open { overflow: hidden; }
   .business-hero h1 { font-size: var(--font-size-4); }
   .search-dock { top: calc(var(--tabbar-height) + var(--space-2)); padding: var(--space-2) var(--space-3); }
   .field input, .field select { font-size: var(--font-size-2); }
-  .filter-form { gap: var(--space-2); padding: var(--space-3); }
+  .filter-form { gap: var(--space-2); padding: 0; }
   .filter-row { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-2); }
   .search-dock .field label, .filter-form .field label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
   .filter-row-actions { gap: var(--space-2); }

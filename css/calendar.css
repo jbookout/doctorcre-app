@@ -14,8 +14,13 @@
 .page-sub { display: flex; align-items: center; gap: var(--space-2); margin: var(--space-1) 0 0; color: var(--fg-muted); font-size: var(--font-size-1); }
 
 /* ------------------------------------------------------------------ layout */
-.cal-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(260px, 320px); gap: var(--gap); align-items: start; margin-bottom: var(--gap); }
-.cal-board { overflow: hidden; }
+/* The board takes the full width so a month cell can name its dates; the day
+   panel and the agenda share the row beneath it and stack on a phone. */
+.cal-layout { display: flex; flex-wrap: wrap; align-items: flex-start; gap: var(--gap); margin-bottom: var(--gap); }
+.cal-layout > * { min-width: 0; margin: 0; }
+.cal-board { flex: 1 1 100%; overflow: hidden; }
+.cal-day-panel { flex: 1 1 280px; position: static; max-height: none; }
+.cal-coming { flex: 2 1 420px; }
 .cal-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-3); margin-bottom: var(--space-4); }
 .cal-steps { display: flex; gap: var(--space-1); }
 .cal-period { flex: 1 1 180px; margin: 0; font: var(--font-weight-strong) var(--font-size-3)/var(--line-height-heading) var(--font-text); font-variant-numeric: tabular-nums; }
@@ -84,7 +89,7 @@
 .cal-day-entry dl { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: var(--space-1) var(--space-3); margin: 0; font-size: var(--font-size-1); }
 .cal-day-entry dt { color: var(--fg-quiet); }
 .cal-day-entry dd { margin: 0; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
-.cal-day-entry dd.unknown { color: var(--fg-quiet); font-style: italic; }
+.cal-day-entry dd.unknown { color: var(--fg-quiet); }
 
 /* ---------------------------------------------------------------- agenda */
 .cal-agenda { display: grid; margin: 0; padding: 0; list-style: none; }
@@ -125,10 +130,6 @@
 @keyframes cal-zoom-out { from { opacity: 0.4; transform: scale(1.02); } to { opacity: 1; transform: none; } }
 
 /* ------------------------------------------------------------ responsive */
-@media (max-width: 1040px) {
-  .cal-layout { grid-template-columns: minmax(0, 1fr); }
-  .cal-day-panel { position: static; max-height: none; }
-}
 @media (max-width: 640px) {
   .cal-day { min-height: 56px; padding: 2px; }
   .cal-day-open { justify-content: center; padding: 2px; }

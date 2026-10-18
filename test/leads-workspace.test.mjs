@@ -15,9 +15,20 @@ async function setup(overrides={}){
 }
 test('board renders six full columns, five hottest, quiet IDs/scores and timestamps; filter-only archive',async()=>{
  const s=await setup();try{assert.equal(s.d.querySelectorAll('[data-stage]').length,6);assert.equal(s.d.querySelectorAll('.hot-row').length,5);assert.equal(s.d.querySelectorAll('.lead-card').length,14);
- assert.match(s.d.getElementById('searchUpdated').textContent,/Oct 1/);assert.match(s.d.querySelector('.party-id').textContent,/30000000/);assert.match(s.d.querySelector('.auto-move').textContent,/Moved by Doc: reply received 10\/1/);
+ assert.match(s.d.getElementById('searchUpdated').textContent,/Oct 1/);assert.match(s.d.querySelector('.lead-card .lead-market').textContent,/Pensacola, FL/);assert.equal(s.d.querySelector('.lead-card .party-id'),null);assert.match(s.d.querySelector('.stage-column[data-stage="opportunity"]').textContent,/Opportunity/);assert.match(s.d.querySelector('.auto-move').textContent,/Moved by Doc: reply received 10\/1/);
  const select=s.d.getElementById('stageFilter');select.value='archived';select.dispatchEvent(new s.w.Event('change'));assert.equal(s.d.querySelectorAll('[data-stage]').length,0);assert.equal(s.d.querySelectorAll('.lead-card').length,1);
  }finally{s.close()}
+});
+test('all New leads claimed: the panel names the claimed count and owners, never "No New leads"',async()=>{
+ const s=await setup({getWorkspace:async()=>{const b=workspace();for(const l of b.leads)if(l.stage==='new')l.owner='joe';return b}});
+ try{assert.equal(s.d.getElementById('hotTitle').textContent,'Hottest New leads');assert.match(s.d.getElementById('hotSummary').textContent,/All 9 New leads are claimed/);
+ assert.equal(s.d.querySelectorAll('.hot-row').length,5);assert.equal(s.d.querySelectorAll('#hotLeads [data-claim]').length,0);assert.equal(s.d.querySelector('.hot-owner').textContent,'Joe');
+ assert.doesNotMatch(s.d.querySelector('.top-grid').textContent,/No New leads/);
+ }finally{s.close()}
+});
+test('empty stage columns say so in words',async()=>{
+ const s=await setup({getWorkspace:async()=>{const b=workspace();b.leads=b.leads.filter(l=>l.stage==='new');return b}});
+ try{assert.equal(s.d.querySelector('.stage-column[data-stage="engaged"] .stage-empty').textContent,'No leads in Engaged');}finally{s.close()}
 });
 test('card opens wide details with original entries; polling preserves expanded details',async()=>{
  const s=await setup();try{s.d.querySelector('.lead-card').click();await tick();assert.equal(s.d.getElementById('leadDetail').open,true);assert.match(s.d.getElementById('detailBody').textContent,/Contact.*Market.*Vertical.*Plans.*Correspondence.*Stage history/s);

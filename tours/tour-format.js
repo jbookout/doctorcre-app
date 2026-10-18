@@ -15,6 +15,14 @@ export function formatTourDate(value, { timeZone } = {}) {
   });
 }
 
+const UUID_IN_TEXT = /\b[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}\b/gi;
+/** A tour's name for lists and headings: record IDs inside a generated name
+ *  are dropped so it reads as words; the full name stays in the title. */
+export function tourDisplayName(name, fallback = "Untitled tour") {
+  const words = typeof name === "string" ? name.replace(UUID_IN_TEXT, " ").replace(/\s+/g, " ").trim() : "";
+  return words || fallback;
+}
+
 export function tourMetaLine(tour, options) {
   const updated = formatTourDate(tour?.updated_at, options);
   return [tour?.client_name, tour?.market, updated ? `Updated ${updated}` : ""].filter(Boolean).join(" · ");

@@ -2,7 +2,7 @@ import { pageDocContext, publishDocRead, selectDocRecord, setDocFilters } from '
 import { createLeadBoardClient, validateLeadWorkspace, validateLeadDetail } from "./leads-client.js";
 import { mountAutoRefresh, updatedLabel } from "./auto-refresh.mjs";
 import { BOARD_STAGES, FILTER_STAGES, stageLabel, normalizedStage, eligibleLead, leadTitle, marketKey,
-  visibleLeads, hottestLeads, marketCounts, stageReview, automaticMove, undoReview } from "./leads-model.js";
+  visibleLeads, hotLeadPanel, marketCounts, stageReview, automaticMove, undoReview } from "./leads-model.js";
 import { mountTerritoryMap } from "./leads-territory-map.js";
 
 const esc = value => String(value ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -10,6 +10,7 @@ const shortDate = value => Number.isFinite(Date.parse(value)) ? new Date(value).
 const stamp = value => Number.isFinite(Date.parse(value)) ? new Date(value).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit", hour12: true }) : "—";
 const summary = value => String(value || "").split(/\n\s*\n/)[0].slice(0, 230);
 const score = lead => lead.score == null ? "—" : esc(Math.round(Number(lead.score)));
+const ownerName = owner => owner.charAt(0).toUpperCase() + owner.slice(1);
 const options = (rows, selected, all) => `<option value="">${all}</option>${rows.map(([key, text]) => `<option value="${esc(key)}"${key === selected ? " selected" : ""}>${esc(text)}</option>`).join("")}`;
 
 export function mountLeadsWorkspace(doc = document, client = createLeadBoardClient(), { mapFactory = mountTerritoryMap } = {}) {
@@ -28,7 +29,7 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
     const possible = lead.possible_clients || [];
     return `<article class="lead-card" data-lead-id="${esc(lead.id)}" tabindex="0" role="button" aria-label="${esc(leadTitle(lead))}" draggable="true">
       <span class="drag-handle" data-drag-handle aria-hidden="true">⠿</span><h3>${esc(leadTitle(lead))}</h3>
-      <div class="card-foot"><span class="party-id" title="${esc(lead.party_id)}">${esc(lead.party_id ? lead.party_id.slice(0, 8) : "Party pending")}</span><span class="score"><small>Score</small>${score(lead)}</span></div>
+      <div class="card-foot"><span class="lead-market">${esc(marketKey(lead))}</span><span class="score"><small>Score</small>${score(lead)}</span></div>
       ${move ? `<div class="auto-move">Moved by Doc: ${esc(move.reason || "stage updated")} ${shortDate(move.evidence_date || move.occurred_at)}${undo ? `<button data-undo="${esc(lead.id)}">Undo</button>` : ""}</div>` : ""}
       ${possible.map(match => `<div class="client-hint">possible client: ${esc(match.name)} <button data-link="${esc(lead.id)}" data-client-id="${esc(match.client_id)}" aria-label="Link ${esc(leadTitle(lead))} to ${esc(match.name)}">Link</button></div>`).join("")}
     </article>`;
@@ -62,20 +63,24 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
     $("leadCount").textContent = `${active.length}`;
     $("filterSummary").textContent = `${shown.length} ${shown.length === 1 ? "lead" : "leads"}`;
     $("stageFilter").innerHTML = options(FILTER_STAGES, state.filters.stage, "All stages");
-    $("ownerFilter").innerHTML = options(owners.map(k => [k, k.charAt(0).toUpperCase() + k.slice(1)]), state.filters.owner, "All owners");
+    $("ownerFilter").innerHTML = options(owners.map(k => [k, ownerName(k)]), state.filters.owner, "All owners");
     const groups = marketCounts(leads, state.filters);
     $("marketFilter").innerHTML = options(markets.map(k => [k, k]), state.filters.market, "All markets");
     $("clearMarket").hidden = !state.filters.market;
     $("marketCounts").innerHTML = groups.map(g => `<button data-market="${esc(g.key)}" aria-pressed="${g.key === state.filters.market}">${esc(g.key)}<b>${g.count}</b></button>`).join("") || '<p class="empty">No leads in these markets</p>';
     state.map?.update(groups, state.filters.market);
-    $("hotLeads").innerHTML = hottestLeads(leads).map((lead, i) => `<article class="hot-row" data-lead-id="${esc(lead.id)}" tabindex="0" role="button" aria-label="${esc(leadTitle(lead))}"><span class="hot-rank">${i + 1}</span><div><h3>${esc(leadTitle(lead))}</h3><small>${esc(marketKey(lead))}</small></div><span class="score">${score(lead)}</span><button data-claim="${esc(lead.id)}">Claim</button></article>`).join("") || '<p class="empty">No New leads</p>';
+    const hot = hotLeadPanel(leads);
+    $("hotTitle").textContent = hot.claimable || !hot.newTotal ? "Hottest leads to claim" : "Hottest New leads";
+    $("hotSummary").textContent = !state.board ? "The hottest leads appear once the lead board loads." : hot.claimable ? `${hot.newTotal - hot.claimed} of ${hot.newTotal} New leads unclaimed`
+      : hot.newTotal ? `All ${hot.newTotal} New leads are claimed` : "No New leads yet. The next new-lead search adds them here.";
+    $("hotLeads").innerHTML = hot.rows.map((lead, i) => `<article class="hot-row" data-lead-id="${esc(lead.id)}" tabindex="0" role="button" aria-label="${esc(leadTitle(lead))}"><span class="hot-rank">${i + 1}</span><div><h3>${esc(leadTitle(lead))}</h3><small>${esc(marketKey(lead))}</small></div><span class="score">${score(lead)}</span>${hot.claimable ? `<button data-claim="${esc(lead.id)}">Claim</button>` : `<span class="hot-owner">${esc(ownerName(lead.owner))}</span>`}</article>`).join("");
     $("hotLeads").setAttribute("aria-busy", "false");
     if (state.filters.stage === "archived") {
       $("leadBoard").innerHTML = `<div class="filtered-list" aria-label="${stageLabel(state.filters.stage)}">${shown.map(card).join("") || '<p class="empty">No matching leads</p>'}</div>`;
     } else {
       $("leadBoard").innerHTML = `<div class="stage-columns">${BOARD_STAGES.map(([key, text]) => {
         const rows = shown.filter(lead => normalizedStage(lead) === key);
-        return `<section class="stage-column" data-stage="${key}" aria-label="${text}"><h2 class="stage-head">${text}<span>${rows.length}</span></h2><div class="lead-stack">${rows.map(card).join("") || '<p class="stage-empty">—</p>'}</div></section>`;
+        return `<section class="stage-column" data-stage="${key}" aria-label="${text}"><h2 class="stage-head">${text}<span>${rows.length}</span></h2><div class="lead-stack">${rows.map(card).join("") || `<p class="stage-empty">No leads in ${text}</p>`}</div></section>`;
       }).join("")}</div>`;
     }
     // The time states the snapshot on screen, as Deals does: a failed refresh

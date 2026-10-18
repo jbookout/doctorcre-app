@@ -2,7 +2,7 @@ import { observeDocRead, selectDocRecord } from '../js/doc-context.js';
 import { mountAutoRefresh } from "../js/auto-refresh.mjs";
 import { mountAcceptedItinerary, acceptedRouteFromDetail } from "./itinerary-map.js";
 import { mountPropertyPanel } from "./property-panel.js";
-import { cheatSheetText, factSummary, formatTourDate, tourMetaLine } from "./tour-format.js";
+import { cheatSheetText, factSummary, formatTourDate, tourDisplayName, tourMetaLine } from "./tour-format.js";
 
 (() => {
   "use strict";
@@ -114,9 +114,24 @@ import { cheatSheetText, factSummary, formatTourDate, tourMetaLine } from "./tou
   }
   function renderLibrary() {
     const list = $("#tour-list"); list.replaceChildren();
-    for (const tour of state.tours) { const button = document.createElement("button"); button.type = "button"; button.className = "tour-button"; button.textContent = `${text(tour.name, "Untitled tour")} · ${text(tour.status, "draft")}`; button.addEventListener("click", () => void loadTour(tour.id)); const item = document.createElement("li"); item.append(button); list.append(item); }
+    for (const tour of state.tours) { const item = document.createElement("li"); item.append(tourButton(tour, "tour-button")); list.append(item); }
     if (!state.tours.length) list.textContent = "No tours are available.";
     list.setAttribute("aria-busy", "false");
+    renderEmptyTours();
+  }
+  function tourButton(tour, className) {
+    const button = document.createElement("button"); button.type = "button"; button.className = className; button.title = text(tour.name, "Untitled tour");
+    const name = document.createElement("strong"); name.textContent = tourDisplayName(tour.name);
+    const status = document.createElement("span"); status.textContent = text(tour.status, "draft").replaceAll("_", " ");
+    button.append(name, status); button.addEventListener("click", () => void loadTour(tour.id));
+    return button;
+  }
+  // With no tour open, the workspace offers the most recent tours (the library
+  // is off-screen on a phone) and the Start a tour action above it.
+  function renderEmptyTours() {
+    const list = $("#empty-tours"); list.replaceChildren();
+    for (const tour of state.tours.slice(0, 6)) { const item = document.createElement("li"); item.append(tourButton(tour, "empty-tour")); list.append(item); }
+    $("#empty-copy").textContent = state.tours.length ? "Open a tour to edit its route, cheat sheet and client share, or start a new one." : "No tours yet. Start a tour to plan its route.";
   }
   const countyNames = ["Escambia", "Santa Rosa", "Okaloosa", "Walton", "Bay"];
   function displayDate(value) { const time = Date.parse(value); return Number.isFinite(time) ? new Date(time).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric", timeZone: "UTC" }) : "unknown"; }
@@ -598,7 +613,7 @@ import { cheatSheetText, factSummary, formatTourDate, tourMetaLine } from "./tou
     const tour = state.tour; if (!tour) return;
     const priorProjectionId = state.projectionId;
     $("#empty-state").hidden = true; $("#tour-panel").hidden = false;
-    $("#tour-name").textContent = text(tour.name, "Untitled tour"); $("#tour-state").textContent = text(tour.status, "Draft");
+    $("#tour-name").textContent = tourDisplayName(tour.name); $("#tour-name").title = text(tour.name, "Untitled tour"); $("#tour-state").textContent = text(tour.status, "Draft");
     $("#tour-meta").textContent = tourMetaLine(tour);
     $("#route-version").textContent = text(tour.route_version_label, tour.route_version_id ? "Current version" : "No route version");
     $("#save-route").hidden = tour.route_version_state !== "accepted";
@@ -640,8 +655,15 @@ import { cheatSheetText, factSummary, formatTourDate, tourMetaLine } from "./tou
     renderAcceptedItinerary();
   }
   async function loadLibrary() {
-    status("Loading tours…"); const data = await observeDocRead("tourLibrary", [], () => request("/api/tours/library"));
-    if (!Array.isArray(data.tours) || !data.tours.every(tour => id(tour?.id))) throw new Error("read_invalid");
+    status("Loading tours…");
+    let data;
+    try {
+      data = await observeDocRead("tourLibrary", [], () => request("/api/tours/library"));
+      if (!Array.isArray(data.tours) || !data.tours.every(tour => id(tour?.id))) throw new Error("read_invalid");
+    } catch (error) {
+      if (!libraryReady) $("#empty-copy").textContent = "The tour library did not load. Refresh Tours to try again.";
+      throw error;
+    }
     libraryReady = true;
     if (!createPending && readPending()?.create) { createPending = readPending().create; createPhase = "unknown"; $("#create-tour-panel").open = true; $("#create-tour-state").textContent = "Creation outcome unknown after reload. Reconcile before retrying the retained request."; renderCreate(); }
     state.tours = Array.isArray(data.tours) ? data.tours.filter((tour) => id(tour?.id)) : []; renderLibrary(); status("Tour library ready.");

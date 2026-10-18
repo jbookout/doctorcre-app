@@ -1,6 +1,6 @@
 /* Tours planner (V2): plan a tour, search for space, the tour library and the
    territory picker. Builds on tours/app.css and reads only token roles.
-   Phone order puts the one clear thing first: the plan form, then search. */
+   The territory map leads the page, then the plan form, then search. */
 
 .planner-page { background: var(--ground); }
 
@@ -19,13 +19,12 @@
 .widget-heading h2 { flex: 1; font-size: var(--font-size-3); }
 .widget-heading > button { border-color: transparent; background: transparent; color: var(--fg-muted); font-size: var(--font-size-3); }
 .widget-heading > button:hover:not(:disabled) { border-color: transparent; background: var(--surface-2); color: var(--fg); }
-.widget-icon { display: grid; place-items: center; width: 32px; height: 32px; border: var(--hairline-width) solid var(--hairline-strong); border-radius: var(--radius-2); color: var(--fg-muted); font-size: var(--font-size-2); }
 
 .form-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-3); }
 .planner-page textarea { min-height: 72px; }
 
-.drop-heading, .results-heading { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); margin: var(--space-5) 0 var(--space-2); padding-top: var(--space-4); border-top: var(--hairline-width) solid var(--hairline); }
-.drop-heading h3, .results-heading h3, .library-card h3 { font-size: var(--font-size-2); }
+.drop-heading { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); margin: var(--space-5) 0 var(--space-2); padding-top: var(--space-4); border-top: var(--hairline-width) solid var(--hairline); }
+.drop-heading h3, .library-card h3 { font-size: var(--font-size-2); }
 .pill { display: inline-flex; align-items: center; padding: 2px var(--space-2); border: var(--hairline-width) solid var(--hairline-strong); border-radius: var(--radius-round); color: var(--fg-muted); font-size: var(--font-size-1); white-space: nowrap; }
 
 .planner-page .packet-drop { position: relative; display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: var(--space-2); margin: 0; padding: var(--space-5) var(--space-3); border: var(--hairline-width) dashed var(--hairline-strong); border-radius: var(--radius-3); color: var(--fg-muted); cursor: pointer; }
@@ -46,9 +45,8 @@
 .form-message:not(:empty) { margin-top: var(--space-3); }
 .capability-state { color: var(--fg-muted); font-size: var(--font-size-1); }
 .capability-state::before { content: "◌ "; }
-.empty-options { display: grid; place-items: center; height: 104px; border: var(--hairline-width) dashed var(--hairline-strong); border-radius: var(--radius-3); color: var(--fg-muted); }
-.empty-options h4 { font-size: var(--font-size-1); font-weight: var(--font-weight-regular); color: var(--fg-muted); }
-.space-results { margin: 0; padding: 0; list-style: none; }
+/* A control that cannot run says why in words beside it, not in a tooltip. */
+.capability-note { margin: var(--space-3) 0 0; color: var(--fg-muted); font-size: var(--font-size-1); line-height: var(--line-height-body); }
 
 /* Library: a quiet list; the open tour is the one accent marker. */
 .library-filter { margin: var(--space-3) 0 var(--space-5); }
@@ -66,13 +64,13 @@
 .territory-heading { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); }
 .territory-heading h2 { font-size: var(--font-size-3); }
 .territory-caption { color: var(--fg-muted); font-size: var(--font-size-1); }
-.territory-map { display: block; width: 100%; height: clamp(140px, 19vw, 230px); margin: var(--space-2) auto; }
+.territory-map { display: block; width: 100%; height: clamp(120px, 14vw, 190px); margin: var(--space-2) auto; }
 .territory-land { fill: var(--surface-2); stroke: var(--hairline); stroke-width: 1; }
 .territory-state-line { fill: none; stroke: var(--hairline-strong); stroke-dasharray: 3 6; }
 .territory-map .territory-coast { fill: none; stroke: var(--hairline-strong); stroke-width: 1.5; stroke-dasharray: none; }
 .map-market circle { fill: var(--data-1); stroke: var(--surface-1); stroke-width: 2; }
-.map-market text { fill: var(--fg); font: 14px var(--font-text); }
-.map-state, .map-water { fill: var(--fg-muted); font: 12px var(--font-text); }
+.map-market text { fill: var(--fg); font: var(--font-size-1) var(--font-text); }
+.map-state, .map-water { fill: var(--fg-muted); font: var(--font-size-1) var(--font-text); }
 .market-buttons { display: flex; flex-wrap: wrap; justify-content: center; gap: var(--space-2); }
 .market-buttons button { font-weight: var(--font-weight-regular); }
 .market-buttons button[aria-pressed="true"] { border-color: var(--fg); background: var(--surface-3); font-weight: var(--font-weight-strong); }
@@ -121,8 +119,8 @@
   .planner-grid > .card { padding: var(--space-4); }
   .drop-heading { flex-wrap: wrap; }
   .territory-map { height: 150px; }
-  .map-market text { font-size: 21px; }
-  .map-state, .map-water { font-size: 18px; }
+  .map-market text { font-size: var(--font-size-3); }
+  .map-state, .map-water { font-size: var(--font-size-2); }
   .market-buttons button { flex: 1 1 42%; }
   .tour-dialog { width: calc(100vw - 20px); max-height: calc(100dvh - 20px); padding: var(--space-4); }
   .detail-stops { grid-template-columns: minmax(0, 1fr); }

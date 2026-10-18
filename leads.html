@@ -14,7 +14,7 @@
 <main class="leads-workspace">
 <header class="page-heading"><h1>Leads <span id="leadCount"></span></h1><div data-layout-slot="status" class="freshness"><time id="boardUpdated">Updating…</time><button data-layout-refresh id="refreshBoard" aria-label="Refresh leads" title="Refresh leads">↻</button></div></header>
 <section class="top-grid">
-<div class="hot-section glass"><div class="section-heading"><h2>5 hottest leads to claim</h2><time id="searchUpdated" title="Last new-lead search">New-lead search —</time></div><div id="hotLeads" aria-busy="true"></div></div>
+<div class="hot-section glass"><div class="section-heading"><h2 id="hotTitle">Hottest leads to claim</h2><time id="searchUpdated" title="Last new-lead search">New-lead search —</time></div><p id="hotSummary" class="hot-summary"></p><div id="hotLeads" aria-busy="true"></div></div>
 <div class="territory glass"><div class="section-heading"><h2>Territory</h2><button id="clearMarket" hidden>All markets</button></div><div id="territoryMap" aria-label="Lead count by market" role="region"></div><div id="marketCounts" aria-label="Markets"></div><small class="map-credit">U.S. Census · 2025</small></div>
 </section>
 <section data-layout-slot="sidebar" class="controls glass" aria-label="Lead filters">
