@@ -256,7 +256,7 @@ tr.parked .park-button { border-color: var(--hairline-strong); color: var(--fg);
 .post-call-status small { display: block; margin-left: auto; color: inherit; font-size: var(--font-size-1); }
 .post-call-status.failed { color: var(--status-danger-ink); }
 /* Processing is a real state: a soft opacity beat, stopped by reduced motion. */
-.post-call-spinner { flex: 0 0 auto; width: 9px; height: 9px; border-radius: 50%; background: var(--status-info); animation: post-call-breathe 1.8s var(--ease-out) infinite; }
+.post-call-spinner { flex: 0 0 auto; width: 9px; height: 9px; border-radius: 50%; background: var(--status-info); }
 .post-call-status.failed .post-call-spinner { background: var(--status-danger); animation: none; }
 .post-call-summary { margin: var(--space-4) 0 0; padding: var(--space-3) var(--space-4); border-left: 3px solid var(--hairline-strong); background: var(--surface-1); font-size: var(--font-size-1); }
 .post-call-group { margin-top: var(--space-5); }
@@ -287,7 +287,6 @@ tr.parked .park-button { border-color: var(--hairline-strong); color: var(--fg);
 .post-call-checks ul { margin: var(--space-1) 0 0; padding-left: var(--space-4); }
 .post-call-checks-flagged { border-left: 3px solid var(--status-danger); color: var(--status-danger-ink); }
 .post-call-checks-unavailable { background: var(--surface-2); color: var(--fg-muted); }
-@keyframes post-call-breathe { 50% { opacity: 0.4; } }
 
 /* ------------------------------------------------------------ recent changes */
 .receipts-jump { display: inline-flex; align-items: center; gap: var(--space-2); flex: 0 0 auto; min-height: var(--touch); padding: var(--space-1) var(--space-3); border: var(--hairline-width) solid var(--hairline); border-radius: var(--radius-2); background: transparent; color: var(--fg-muted); font-size: var(--font-size-1); font-weight: var(--font-weight-strong); white-space: nowrap; }

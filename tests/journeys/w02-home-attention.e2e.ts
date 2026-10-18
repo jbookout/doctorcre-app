@@ -9,10 +9,10 @@ test('W2 Home attention lists flagged deals, scopes to the viewer and opens the 
   await expect(flags).toContainText(['Demo Dental North', 'Demo Vision Center', 'Demo Family Clinic', 'Demo Specialty Clinic']);
   await expect(flags).toHaveCount(4);
 
-  await screen.getByRole('button', 'Just Me', { exact: true }).tap();
-  await expect(screen.getByRole('button', 'Just Me', { exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await screen.getByRole('button', 'Just me', { exact: true }).tap();
+  await expect(screen.getByRole('button', 'Just me', { exact: true })).toHaveAttribute('aria-pressed', 'true');
   await expect(flags).toHaveCount(2);
-  await screen.getByRole('button', 'Team View', { exact: true }).tap();
+  await screen.getByRole('button', 'Team view', { exact: true }).tap();
   await expect(flags).toHaveCount(4);
 
   await expect(flags.first()).toHaveAttribute('href', '/deals?deal=d01');

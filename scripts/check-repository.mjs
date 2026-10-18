@@ -59,6 +59,7 @@ for (const path of await files(ROOT_PATH)) {
 const V2_MIGRATED_STYLESHEETS = [
   "css/tokens.css", "css/system.css", "css/app-shell.css", "css/workspace.css",
   "css/correspondence.css", "public-shell/shell.css",
+  "css/home-dashboard.css", "css/relationship-network.css", "css/lease-radar.css", "css/business-workspace.css",
   "css/app.css", "css/pipeline.css", "css/deal-timeline.css",
 ];
 const v2Tells = [

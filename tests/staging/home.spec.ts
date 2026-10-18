@@ -8,10 +8,10 @@ test('Home scope switches and refreshes loaded deal attention', async ({ page })
   test.setTimeout(60_000);
   await page.goto('/');
   await expect(page.locator('#dealAttention')).toHaveAttribute('aria-busy', 'false', { timeout: 27_000 });
-  await page.getByRole('button', { name: 'Just Me', exact: true }).click();
-  await expect(page.getByRole('button', { name: 'Just Me', exact: true })).toHaveAttribute('aria-pressed', 'true');
-  await page.getByRole('button', { name: 'Team View', exact: true }).click();
-  await expect(page.getByRole('button', { name: 'Team View', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await page.getByRole('button', { name: 'Just me', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Just me', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await page.getByRole('button', { name: 'Team view', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Team view', exact: true })).toHaveAttribute('aria-pressed', 'true');
   await page.getByRole('button', { name: 'Refresh Home', exact: true }).click();
   await expect(page.locator('#dealAttention')).toHaveAttribute('aria-busy', 'false', { timeout: 27_000 });
   await expect(page.locator('#observedAt')).not.toContainText(/Unavailable|Sign in/);
