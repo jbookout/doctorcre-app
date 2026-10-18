@@ -29,8 +29,6 @@ import {
   rememberPayload, restoreSession, rowTone, sameQuery, scrollIntent, searchBoxValue, sourceIsFresh,
   validListPayload, validRecordPayload, viewHref,
 } from "./workspace-business-model.js";
-import { createFixtureClient } from "./fixture-client.js";
-import { createLiveClient } from "./live-client.js";
 import { resolveDealroomBoot } from "./boot-mode.js";
 import { mountNotificationBadge } from "./shell.js";
 import { activityCopy, activityRequest, activityState } from "./record-activity-model.js";
@@ -102,12 +100,15 @@ const initialBootMode = resolveDealroomBoot(window.location);
 /**
  * The one dealroom client this page builds, for the MCP reads it makes (the
  * unread badge and a record's activity). The list and record reads above stay
- * plain REST against DATASET_ROUTE.
+ * plain REST against DATASET_ROUTE. Both clients load on first use, so the list
+ * never waits on them: the fixture client alone is the largest script here.
  */
 function dealroomClient() {
   if (!dealroomClientPromise) {
     const bootMode = initialBootMode;
-    dealroomClientPromise = bootMode.mode === "live" ? Promise.resolve(createLiveClient()) : createFixtureClient(bootMode.options);
+    dealroomClientPromise = bootMode.mode === "live"
+      ? import("./live-client.js").then(({ createLiveClient }) => createLiveClient())
+      : import("./fixture-client.js").then(({ createFixtureClient }) => createFixtureClient(bootMode.options));
   }
   return dealroomClientPromise;
 }
@@ -643,12 +644,6 @@ function renderRecordPanel() {
     dom.panelBody.dataset.recordId = payload.record.id;
     restorePanelState();
 
-    // A staggered entrance, set through CSSOM: the Worker's CSP (src/worker.js)
-    // refuses a `style` attribute written into markup, so the activity-row
-    // template above only emits `data-stagger-ms`, and this reads it back.
-    dom.panelBody.querySelectorAll(".activity-row").forEach((node) => {
-      node.style.setProperty("--stagger", `${node.dataset.staggerMs}ms`);
-    });
     const evidence = document.createElement('div');
     evidence.innerHTML = renderEvidence(view.evidence.id === payload.record.id ? view.evidence.result || { threads: { state: 'loading' } } : {});
     dom.panelBody.append(evidence);
@@ -660,7 +655,7 @@ function activityHtml(recordId) {
   const result = view.activity.id === recordId ? view.activity.result : null;
   const state = result || { state: "loading" };
   const body = state.state === "ready"
-    ? `<ol class="activity-list">${state.rows.map((row, index) => `<li class="activity-row" data-kind="${escapeHtml(row.kind)}" data-stagger-ms="${Math.min(index * 30, 540)}"><span class="activity-dot" aria-hidden="true"></span><span class="activity-what">${escapeHtml(row.what)}${row.owed ? ` <b>· owed: ${escapeHtml(row.owed)}</b>` : ""}</span><span class="activity-when">${escapeHtml(row.when ? formatMoment(row.when) : "an unknown time")}${row.actor ? ` · ${escapeHtml(row.actor)}` : ""}</span></li>`).join("")}</ol>`
+    ? `<ol class="activity-list">${state.rows.map((row) => `<li class="activity-row" data-kind="${escapeHtml(row.kind)}"><span class="activity-dot" aria-hidden="true"></span><span class="activity-what">${escapeHtml(row.what)}${row.owed ? ` <b>· owed: ${escapeHtml(row.owed)}</b>` : ""}</span><span class="activity-when">${escapeHtml(row.when ? formatMoment(row.when) : "an unknown time")}${row.actor ? ` · ${escapeHtml(row.actor)}` : ""}</span></li>`).join("")}</ol>`
     : `<p class="record-note activity-note" data-state="${escapeHtml(state.state)}">${escapeHtml(activityCopy(state))}</p>`;
   return `<section class="record-section" id="recordActivity" aria-live="polite"><h3>Recent activity</h3>${body}<p class="record-note"></p></section>`;
 }
@@ -1076,7 +1071,10 @@ function start() {
   mountAutoRefresh({ document, window: globalThis.window, refresh: async () => { await loadList("background"); if (view.recordId) await loadRecord(view.recordId); } });
   window.history.replaceState({ ...(window.history.state || {}), scrollY: 0 }, "", currentHref());
   applyLocation({ reason: "initial" });
-  mountBadge();
+  // The unread badge is chrome, not content: it loads the dealroom client, so
+  // it waits until the browser is idle after the first rows have painted.
+  const idle = window.requestIdleCallback || ((callback) => setTimeout(callback, 1500));
+  idle(() => mountBadge(), { timeout: 4000 });
 }
 
 /**

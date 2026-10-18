@@ -81,15 +81,12 @@ test("the Vendors and Clients panel reads activity through the pinned verb and n
   assert.match(js, /activityState\(/);
   assert.match(js, /activityRequest\(/);
   assert.match(js, /id="recordActivity"/);
-  // This page loads css/workspace.css, not the shared system sheet, so the
-  // shared token names are used with the system sheet's own values as the
-  // fallback — the same durations every other surface runs on.
+  // V2 (S3a): history rows answer the pointer with a token-timed hairline step
+  // and never move; no entrance keyframe and no transform, in either motion mode.
   const css = await read("css/workspace-business.css");
-  const tokens = await read("css/tokens.css");
-  const enter = tokens.match(/--motion-enter: ([^;]+);/)[1];
-  assert.ok(css.includes(`.activity-row{`) && css.includes(`animation:receipt-in var(--motion-enter,${enter})`), "rows enter on the shared keyframe and duration");
-  assert.match(css, /\.activity-row\{[^}]*backwards/);
-  assert.match(css, /@keyframes receipt-in\{from\{opacity:0;transform:translateY\(6px\)\}to\{opacity:1;transform:none\}\}/, "the same keyframe the system sheet defines");
-  assert.match(css, /\.activity-row:hover\{transform:translateX/, "the full-motion hover, not the reduced-motion reset");
-  assert.match(css, /prefers-reduced-motion:reduce[^{]*\{[^@]*\.activity-row:hover\{transform:none/);
+  const rule = css.match(/\.activity-row\s*\{[^}]*\}/);
+  assert.ok(rule, "the activity row is styled");
+  assert.match(rule[0], /transition:[^;]*var\(--duration-hover\)/, "the hover step uses the shared duration token");
+  assert.doesNotMatch(css, /@keyframes\s+(receipt-in|activity-rail)/, "no decorative entrance or rail keyframes");
+  assert.doesNotMatch(css, /\.activity-row[^{]*\{[^}]*(animation|transform)\s*:/, "rows neither animate in nor move");
 });
