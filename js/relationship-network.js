@@ -151,13 +151,13 @@ export function mountRelationshipNetwork({
       })
       .join("");
     $("networkCanvas").innerHTML = graph.nodes.length
-      ? `<svg viewBox="0 0 ${width} ${height}" role="group" aria-label="Connected relationships"><defs><marker id="relationshipArrow" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0 0L10 5L0 10" fill="#9ab5d4"/></marker></defs><g id="networkScene" transform="translate(${(width * (1 - zoom)) / 2} ${(height * (1 - zoom)) / 2}) scale(${zoom})">${lines}<circle class="network-halo" cx="${width / 2}" cy="${height / 2}" r="${Math.min(width, height) / 2 - 24}"/>${graph.nodes
+      ? `<svg viewBox="0 0 ${width} ${height}" role="group" aria-label="Connected relationships"><defs><marker id="relationshipArrow" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path class="relationship-arrow" d="M0 0L10 5L0 10"/></marker></defs><g id="networkScene" transform="translate(${(width * (1 - zoom)) / 2} ${(height * (1 - zoom)) / 2}) scale(${zoom})">${lines}${graph.nodes
           .map((n) => {
             const p = visiblePositions.get(n.id);
             // One text in reading order, so the visible words stay a contiguous
             // part of the accessible name, which also carries the full name.
             const territory = (n.territory || "").slice(0, 25);
-            return `<g class="relationship-node" data-node="${E(n.id)}" role="button" tabindex="0" aria-label="Open ${E([n.kind, territory, n.name].filter(Boolean).join(", "))}" transform="translate(${p.x} ${p.y})"><rect width="160" height="74" rx="12"/><text aria-hidden="true" class="node-icon" x="12" y="24">${{ vendor: "◇", client: "○", lead: "◎", deal: "▣", contact: "◉" }[n.kind]}</text><text><tspan class="node-kind" x="39" y="23">${E(n.kind)}</tspan> <tspan class="node-kind" x="12" y="64">${E(territory)}</tspan> <tspan x="12" y="48">${E(shortName(n.name))}</tspan></text></g>`;
+            return `<g class="relationship-node" data-node="${E(n.id)}" data-kind="${E(n.kind)}" role="button" tabindex="0" aria-label="Open ${E([n.kind, territory, n.name].filter(Boolean).join(", "))}" transform="translate(${p.x} ${p.y})"><rect width="160" height="74" rx="12"/><text aria-hidden="true" class="node-icon" x="12" y="24">${{ vendor: "◇", client: "○", lead: "◎", deal: "▣", contact: "◉" }[n.kind]}</text><text><tspan class="node-kind" x="39" y="23">${E(n.kind)}</tspan> <tspan class="node-kind" x="12" y="64">${E(territory)}</tspan> <tspan x="12" y="48">${E(shortName(n.name))}</tspan></text></g>`;
           })
           .join("")}</g></svg>`
       : '<p class="relationship-empty">No matching relationships</p>';
@@ -184,7 +184,7 @@ export function mountRelationshipNetwork({
         .sort((a, b) => b.deals - a.deals || a.node_id.localeCompare(b.node_id))
         .map((r) => {
           const n = view.nodes.find((n) => n.id === r.node_id);
-          return `<button type="button" class="relationship-card relationship-referral" data-node="${E(n.id)}"><strong>${E(n.name)}</strong><b>${r.deals}</b><span>${E(n.kind)}</span><span class="referral-rate">${r.win_rate === null ? "—" : `${Math.round(r.win_rate * 100)}%`} win rate</span><svg viewBox="0 0 300 16" role="img" aria-label="${r.deals} recorded deals sent; ${r.won} won, ${r.lost} lost, ${r.deals - r.won - r.lost} unresolved"><rect width="300" height="10" rx="5" fill="#29415d"/><rect width="${(r.deals / max) * 300}" height="10" rx="5" fill="#f5a367"/></svg><small>${r.won} won · ${r.lost} lost · ${r.deals - r.won - r.lost} open</small></button>`;
+          return `<button type="button" class="relationship-card relationship-referral" data-node="${E(n.id)}"><strong>${E(n.name)}</strong><b>${r.deals}</b><span>${E(n.kind)}</span><span class="referral-rate">${r.win_rate === null ? "—" : `${Math.round(r.win_rate * 100)}%`} win rate</span><svg viewBox="0 0 300 16" role="img" aria-label="${r.deals} recorded deals sent; ${r.won} won, ${r.lost} lost, ${r.deals - r.won - r.lost} unresolved"><rect class="referral-track" width="300" height="10" rx="5"/><rect width="${(r.deals / max) * 300}" height="10" rx="5" class="referral-fill"/></svg><small>${r.won} won · ${r.lost} lost · ${r.deals - r.won - r.lost} open</small></button>`;
         })
         .join("") ||
       '<p class="relationship-empty">No deal referrals recorded</p>';

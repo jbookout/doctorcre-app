@@ -86,7 +86,7 @@ async function open(t, { width = 1440, motion = 'reduce', leads = true, delayDet
     catch { return route.fulfill({ status: 404, body: '' }); }
   });
   await page.goto(`${origin}/?mode=live`);
-  await page.waitForFunction(() => /Active Deals: \d/.test(document.querySelector('#dealCounts')?.textContent || '') || /unavailable/i.test(document.querySelector('#observedAt')?.textContent || ''));
+  await page.waitForFunction(() => /Active deals: \d/.test(document.querySelector('#dealCounts')?.textContent || '') || /unavailable/i.test(document.querySelector('#observedAt')?.textContent || ''));
   if (firstOpen) { await page.locator('#docMorningBrief[open]').waitFor(); await page.locator('#morningClose').click(); }
   return { page, errors, calls, releaseInitialFeed, responses, get boardReads() { return boardReads; }, get feedReads() { return feedReads; }, malformBoard(value) { boardMalformed = value; }, failLeads(value) { leadFailure = value; }, failDetails(value) { detailFailure = value; }, failBoard(value) { failBoard = value; }, updateLead(id, score) { liveLeads.find(row => row.id === id).score = score; } };
 }
@@ -146,12 +146,12 @@ test('PR123 finding 8: malformed and mixed live reads settle unavailable and rec
       assert.match(await page.locator('#observedAt').textContent(), /unavailable|partial/i);
       assert.equal(await page.locator('#dealAttention').getAttribute('aria-busy'), 'false');
       if (name === 'deal-room-board') {
-        assert.match(await page.locator('#dealCounts').textContent(), /Active Deals: —/);
+        assert.match(await page.locator('#dealCounts').textContent(), /Active deals: —/);
         assert.match(await page.locator('#dealFlags').textContent(), /unavailable/i);
-        assert.doesNotMatch(await page.locator('#dealFlags').textContent(), /Updating|No deal flags/);
+        assert.doesNotMatch(await page.locator('#dealFlags').textContent(), /Updating|No deal flags|Nothing needs you/);
         assert.equal(await page.locator('#homeLeads').isVisible(), true);
       } else {
-        assert.match(await page.locator('#dealCounts').textContent(), /Active Deals: \d/);
+        assert.match(await page.locator('#dealCounts').textContent(), /Active deals: \d/);
         assert.equal(await page.locator('#homeDetail').evaluate(dialog => dialog.open), false);
       }
     } finally { responses.delete(name); await refresh(); }
@@ -194,7 +194,7 @@ test('PR124 R2 malformed initial or refreshed Home board shows unavailable count
   await unavailable();
   state.malformBoard(false);
   await page.evaluate(() => dispatchEvent(new Event('online'))); await settled();
-  assert.match(await page.locator('#dealCounts').textContent(), /Active Deals: [1-9]/);
+  assert.match(await page.locator('#dealCounts').textContent(), /Active deals: [1-9]/);
   assert.equal(await page.locator('#homeNotice').isVisible(), false);
   state.malformBoard(true);
   await page.evaluate(() => dispatchEvent(new Event('online'))); await unavailable();
@@ -229,11 +229,11 @@ test('Home desktop and phone show flags, visual agenda, ranked leads and wide en
     assert.match(await page.locator('#homeDetail dd').first().textContent(), /10\/1\/2026/);
     await screenshot(page, width === 1440 ? 'desktop-detail' : `phone-detail-${width}`);
     await page.keyboard.press('Escape'); assert.equal(await first.evaluate(node => document.activeElement === node), true);
-    await page.getByRole('button', { name: 'Just Me', exact: true }).click();
+    await page.getByRole('button', { name: 'Just me', exact: true }).click();
     assert.equal(await page.locator('.home-flags .home-flag').count(), 2);
     assert.match(await page.locator('.home-lead').first().textContent(), /Demo New Practice 2/);
-    await page.getByRole('button', { name: 'Just Me', exact: true }).press('ArrowLeft');
-    assert.equal(await page.getByRole('button', { name: 'Team View', exact: true }).getAttribute('aria-pressed'), 'true');
+    await page.getByRole('button', { name: 'Just me', exact: true }).press('ArrowLeft');
+    assert.equal(await page.getByRole('button', { name: 'Team view', exact: true }).getAttribute('aria-pressed'), 'true');
     assert.deepEqual(errors, []);
   });
 });
@@ -251,10 +251,10 @@ test('suggested introductions keep readable text on their dark cards in both the
   assert.deepEqual(errors, []);
 });
 
-test('reduced motion stops ambient and hover motion without hiding data', async t => {
+test('Home has no ambient motion and hover never moves a row, without hiding data', async t => {
   const { page } = await open(t, { motion: 'no-preference' });
   await page.locator('.home-radar').waitFor();
-  assert.ok(await page.locator('.radar-wave').evaluate(node => getComputedStyle(node).animationName !== 'none'));
+  assert.equal(await page.locator('.radar-wave').evaluate(node => getComputedStyle(node).animationName), 'none');
   await page.emulateMedia({ reducedMotion: 'reduce' });
   assert.equal(await page.locator('.radar-wave').evaluate(node => getComputedStyle(node).animationName), 'none');
   await page.locator('.home-flag').first().hover();
@@ -273,17 +273,17 @@ test('no eligible leads means hidden widget; polling, resume and online recover 
   state.failBoard(true);
   await page.clock.fastForward(31_000);
   // Recover only after the failing refresh ends: a resume during it joins that read.
-  await page.waitForFunction(() => document.querySelector('#dealCounts').textContent.includes('Active Deals: —') && document.querySelector('#refreshHome').getAttribute('aria-busy') === 'false');
+  await page.waitForFunction(() => document.querySelector('#dealCounts').textContent.includes('Active deals: —') && document.querySelector('#refreshHome').getAttribute('aria-busy') === 'false');
   assert.equal(await page.locator('#homeCalendar').isVisible(), false);
   assert.doesNotMatch(await page.locator('main').textContent(), /retry|read again/i);
   state.failBoard(false);
   await page.evaluate(() => window.dispatchEvent(new Event('online')));
-  await page.waitForFunction(() => /Active Deals: \d/.test(document.querySelector('#dealCounts').textContent));
+  await page.waitForFunction(() => /Active deals: \d/.test(document.querySelector('#dealCounts').textContent));
   await page.waitForFunction(() => document.querySelector('#refreshHome').getAttribute('aria-busy') === 'false');
   const before = state.boardReads;
   const resumed = page.waitForResponse(response => response.url().endsWith('/mcp') && response.request().postDataJSON()?.params.name === 'deal-room-board');
   await page.evaluate(() => window.dispatchEvent(new PageTransitionEvent('pageshow', { persisted: true })));
-  await page.waitForFunction(() => /Active Deals: \d/.test(document.querySelector('#dealCounts').textContent));
+  await page.waitForFunction(() => /Active deals: \d/.test(document.querySelector('#dealCounts').textContent));
   await resumed; assert.ok(state.boardReads > before);
   assert.deepEqual(state.errors, []);
 });
@@ -326,7 +326,7 @@ test('R5 whole refresh deadline preserves completed widgets across multiple hung
     await page.waitForTimeout(20);
   }
   await page.waitForFunction(() => document.querySelector('#refreshHome').getAttribute('aria-busy') === 'false');
-  assert.match(await page.locator('#dealCounts').textContent(), /Active Deals: 12/);
+  assert.match(await page.locator('#dealCounts').textContent(), /Active deals: 12/);
   assert.equal(await page.locator('#homeLeads').isVisible(), true);
   assert.equal(await page.locator('#homeControl').isVisible(), true);
   await settles(() => assert.equal(calls.filter(name => name === 'get-deal-room').length, 12));
@@ -458,7 +458,7 @@ test('R14 a task with no critical dates opens its exact deal and visible task', 
 test('R12 malformed tasks retain independent widgets and settled agenda reports partial data', async t => {
   const { page, errors } = await open(t, { malformedTasks: true });
   await page.waitForFunction(() => document.querySelector('#refreshHome').getAttribute('aria-busy') === 'false');
-  assert.match(await page.locator('#dealCounts').textContent(), /Active Deals: \d/);
+  assert.match(await page.locator('#dealCounts').textContent(), /Active deals: \d/);
   assert.equal(await page.locator('#homeLeads').isVisible(), true);
   assert.equal(await page.locator('#homeControl').isVisible(), true);
   assert.match(await page.locator('#homeCalendar').textContent(), /unavailable|missing/i);

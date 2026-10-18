@@ -21,33 +21,34 @@
   <link rel="stylesheet" href="/css/relationship-network.css">
 </head>
 <body>
+  <script type="module" async src="/js/home-boot.js"></script>
   <div id="appShell"></div><script type="module" src="/js/app-shell.js"></script>
   <a class="skip" href="#main">Skip to Home</a>
 
 
   <main id="main" class="shell home-shell">
     <section data-layout-slot="sidebar" class="hero home-hero">
-      <div><p class="eyebrow">Your day, in focus</p><h1 id="pageTitle">Home</h1></div>
+      <div><h1 id="pageTitle">Home</h1></div>
       <div class="home-tools">
         <div data-layout-slot="tabs" class="scope-switch" id="scopeSwitch" role="group" aria-label="Home scope">
-          <button type="button" class="scope-option on" data-scope="team" aria-pressed="true">Team View</button>
-          <button type="button" class="scope-option" data-scope="mine" aria-pressed="false">Just Me</button>
+          <button type="button" class="scope-option on" data-scope="team" aria-pressed="true">Team view</button>
+          <button type="button" class="scope-option" data-scope="mine" aria-pressed="false">Just me</button>
         </div>
         <div data-layout-slot="status" class="home-updated"><span id="observedAt" class="observed" role="status">Updating…</span><button data-layout-refresh id="refreshHome" class="home-refresh" type="button" aria-label="Refresh Home" title="Refresh"><span aria-hidden="true">↻</span></button></div>
       </div>
     </section>
     <p id="homeNotice" class="home-notice" role="status" hidden></p>
-    <section id="dealAttention" class="home-panel home-deals glass" aria-label="Deal flags" aria-live="polite" aria-busy="true">
-      <header class="home-panel-head"><h2 id="dealCounts">Active Deals: — <span>Deals in Market: —</span> <span>National Account Deals: —</span></h2><a id="homePrimaryAction" class="home-outline" href="/deals">Deal Room <span aria-hidden="true">↗</span></a></header>
+    <section id="dealAttention" class="home-panel home-deals" aria-labelledby="dealAttentionTitle" aria-live="polite" aria-busy="true">
+      <header class="home-panel-head"><div><h2 id="dealAttentionTitle">Deals that need you</h2><p id="dealCounts" class="home-counts"><span>Active deals: <b>—</b></span> <span>In market: <b>—</b></span> <span>National accounts: <b>—</b></span></p></div><a id="homePrimaryAction" class="home-outline" href="/deals">Open deal room <span aria-hidden="true">↗</span></a></header>
       <div id="dealFlags" class="home-flags"><p class="home-empty">Updating…</p></div>
     </section>
-    <section id="homeInvoices" class="home-panel glass" aria-label="Invoice attention" hidden></section>
+    <section id="homeInvoices" class="home-panel" aria-label="Invoice attention" hidden></section>
     <div class="home-grid">
-      <section id="homeCalendar" class="home-panel glass" aria-label="Calendar" hidden></section>
-      <section id="homeControl" class="home-panel glass" aria-label="Control room" hidden></section>
-      <section id="homePastClients" class="home-panel glass" aria-label="Past clients" hidden></section>
-      <section id="homeIntroductions" class="home-panel glass" aria-label="Suggested introductions" hidden></section>
-      <section id="homeLeads" class="home-panel glass" aria-label="New leads" hidden></section>
+      <section id="homeCalendar" class="home-panel" aria-label="Calendar" hidden></section>
+      <section id="homeControl" class="home-panel" aria-label="Control room" hidden></section>
+      <section id="homePastClients" class="home-panel" aria-label="Past clients" hidden></section>
+      <section id="homeIntroductions" class="home-panel" aria-label="Suggested introductions" hidden></section>
+      <section id="homeLeads" class="home-panel" aria-label="New leads" hidden></section>
     </div>
   </main>
   <dialog id="homeDetail" class="home-detail" aria-labelledby="homeDetailTitle"><article id="homeDetailBody"></article></dialog>

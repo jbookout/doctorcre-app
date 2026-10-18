@@ -25,7 +25,7 @@ export function mountRelationshipDialog({ document }) {
       [e.from, e.to, e.via].includes(node.id),
     );
     const refs = snapshot.referrals.find((r) => r.node_id === node.id);
-    dialog.innerHTML = `<header><div><span class="relationship-kicker">${E(node.kind)}</span><h2 id="relationshipTitle" tabindex="-1">${E(node.name)}</h2></div><button data-card-key="close" data-close-card type="button" aria-label="Close relationship">×</button></header><div class="relationship-detail-grid"><section><div class="relationship-tags">${[
+    dialog.innerHTML = `<header><div><span class="relationship-kicker">${E(String(node.kind || "").replace(/^./, (c) => c.toUpperCase()))}</span><h2 id="relationshipTitle" tabindex="-1">${E(node.name)}</h2></div><button data-card-key="close" data-close-card type="button" aria-label="Close relationship">×</button></header><div class="relationship-detail-grid"><section><div class="relationship-tags">${[
       node.territory,
       ...node.verticals,
       node.owner,
