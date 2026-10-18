@@ -312,7 +312,7 @@ body.has-app-layout:has(#callModeAvailability:not([hidden])) { --layout-bottom: 
 }
 @media (max-width: 760px), (hover: none) and (pointer: coarse) and (max-width: 1023px) {
   body.has-app-layout, body.has-app-layout:has(#callModeAvailability:not([hidden])) { --layout-bottom: calc(56px + env(safe-area-inset-bottom)); }
-  body.has-app-layout:has(#appStatusSlot > *) { --layout-bottom: calc(112px + env(safe-area-inset-bottom)); }
+  body.has-app-layout:has(#appStatusSlot > *):has(#callModeAvailability) { --layout-bottom: calc(112px + env(safe-area-inset-bottom)); }
 }
 
 @media (max-width: 760px), (hover: none) and (pointer: coarse) and (max-width: 1023px) {
