@@ -48,7 +48,9 @@
 #panelDashboard .filters select { min-height: var(--touch); }
 @media (max-width: 760px) {
   .cr-boards-heading { font-size: var(--font-size-3); }
-  .cr-boards-directory .board-directory { grid-template-columns: 1fr; }
+  .cr-boards-directory .board-directory { grid-template-columns: 1fr; gap: var(--space-1); }
+  .cr-boards-directory .board-link { padding-block: var(--space-1); }
+  #panelDashboard .intro { padding-block: var(--space-1); }
   #panelDashboard .board-switch a, #panelDashboard .legend-toggle { padding-inline: var(--space-2); }
   #panelDashboard .filters { flex-wrap: nowrap; align-items: end; }
   #panelDashboard .filters label:not(.check) { display: grid; flex: 1; min-width: 0; gap: var(--space-1); }

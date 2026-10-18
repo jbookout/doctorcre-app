@@ -323,6 +323,7 @@ test('C5 two expanded published boards leave the live pipeline on the first phon
  await advanceRoom(page,16001);await page.locator('#board-stages .board-card').first().waitFor();
  assert.equal(await page.locator('#board-directory a').count(),2);
  assert.equal(await page.locator('#filter-repo').isVisible(),true);
+ if(process.env.C5_CAPTURE_PHASE)await page.screenshot({path:new URL('out/test-artifacts/c5/after/boards-two-390.png',root).pathname});
  const first=await page.locator('#board-stages .board-card').first().boundingBox();
  const footer=await page.locator('.app-layout-status').boundingBox();
  assert.ok(first.y+80<footer.y,`pipeline starts at ${first.y}, content ends at ${footer.y}`);
