@@ -39,7 +39,7 @@ export function mountMorningBrief({ document:root, window:win, getClient, interv
     const unseen = !!(view && preferences && preferences.value.day !== localDay(now()));
     const doc = $('docOpen');
     doc?.toggleAttribute('data-brief-unseen', unseen);
-    doc?.setAttribute('aria-label', unseen ? 'Open Doc · morning brief ready' : 'Open Doc');
+    if (unseen) doc?.setAttribute('aria-description', 'Morning brief ready'); else doc?.removeAttribute('aria-description');
     control.textContent = unseen ? 'Morning brief · new today' : 'Morning brief';
   };
   const remember = () => { if (preferences && view) preferences.save({ day:localDay(now()), lastShownAt:now().toISOString(), since }); cue(); };
@@ -131,7 +131,8 @@ export function mountMorningBrief({ document:root, window:win, getClient, interv
   const auto = mountAutoRefresh({ document:root,window:win,refresh,onResume:stop,intervalMs });
   control.onclick = () => { open(); auto.refresh(); };
   $('morningClose').onclick = close;
-  dialog.addEventListener('close', () => { stop(); ++detailEpoch; selected = null; (opener?.isConnected && !opener.closest('dialog:not([open])') ? opener : $('docOpen'))?.focus(); });
+  // A modal that replaced the brief (Doc's command bar) already owns focus.
+  dialog.addEventListener('close', () => { stop(); ++detailEpoch; selected = null; if (root.querySelector('dialog[open]')) return; (opener?.isConnected && !opener.closest('dialog:not([open])') ? opener : $('docOpen'))?.focus(); });
   $('morningBack').onclick = back;
   $('morningRefresh').onclick = () => auto.refresh();
   $('morningContent').onclick = event => { const link = event.target.closest('[data-brief-record]'); if (!link) return; event.preventDefault(); const row = view?.groups[Number(link.dataset.briefRecord)]?.row; if (row) showRecord(row); };

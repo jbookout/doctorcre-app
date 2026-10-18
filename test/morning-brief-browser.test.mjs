@@ -99,6 +99,8 @@ for (const key of ['d', 'k']) test(`Doc Control+${key} switches from a speaking 
  await page.keyboard.press(`Control+${key}`);
  await page.locator('#docDetail[open]').waitFor();
  assert.equal(await page.locator('dialog[open]').count(), 1);
+ // The brief's close event lands a task later; focus must still be on the command bar after it.
+ await page.evaluate(() => new Promise(resolve => setTimeout(resolve, 50)));
  assert.equal(await page.locator('#docCommandInput').evaluate(node => document.activeElement === node), true);
  await page.waitForFunction(() => window.speechStops > 0);
  await page.keyboard.press('Escape');
