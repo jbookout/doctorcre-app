@@ -50,7 +50,7 @@ import {
 import {
   CLOSED_SLUG, COLUMNS, COMPLETION_CAPTIONS, closedColumnCaption, columnBySlug, columnByValue,
   columnLabel, completionPlan, contextDrawerSections, groupByColumn, keyboardTarget,
-  loadDealContext, moveIntent, moveSummary, moveTitle, noteText, presenceChip,
+  loadDealContext, moveIntent, moveSummary, moveTitle, noteText, dealName, presenceChip,
   dealInsightLines,
 } from './pipeline-model.js';
 import { localDeals, needsAttention, urgencyOrder, concise, automaticMove, OWNER_FILTERS, PHASE_TRIGGERS } from './local-deals-model.js';
@@ -130,25 +130,26 @@ const dateWords = (value) => (value ? formatCalendarDate(value) || value : 'no d
 
 function autoHtml(deal) {
   const move = automaticMove(deal);
-  return move ? `<div class="auto-move"><span>${esc(move.text.slice(0, move.text.lastIndexOf(' ')))}</span> <time>${esc(move.text.slice(move.text.lastIndexOf(' ') + 1))}</time><button class="btn btn-quiet" type="button" data-undo="${esc(move.eventId)}" aria-label="Undo phase change on ${esc(deal.name)}">Undo</button></div>` : '';
+  return move ? `<div class="auto-move"><span>${esc(move.text.slice(0, move.text.lastIndexOf(' ')))}</span> <time>${esc(move.text.slice(move.text.lastIndexOf(' ') + 1))}</time><button class="btn btn-quiet" type="button" data-undo="${esc(move.eventId)}" aria-label="Undo phase change on ${esc(dealTitle(deal))}">Undo</button></div>` : '';
 }
+const dealTitle = (deal) => dealName(deal.name);
 function cardHtml(deal) {
   const attention = needsAttention(deal);
   const pending = pendingCommand(state.fieldWrites, cellKey(deal.id, 'phase'));
-  return `<article class="kanban-card" data-id="${esc(deal.id)}" data-attention="${attention}" data-phase="${esc(deal.phase)}" draggable="true" tabindex="0"${pending ? ' data-pending="true"' : ''}${state.lifted === deal.id ? ' data-lifted="true"' : ''} aria-label="${esc(deal.name)}, ${esc(columnLabel(deal.phase))}">
-    <h4><button class="card-open" type="button" data-open="${esc(deal.id)}">${esc(deal.name)}</button></h4>
-    <div class="work-meta"><span class="owner">${esc(actorName(deal.owner))}</span>${attention ? '<span class="attention-dot" role="img" aria-label="Needs attention"></span>' : ''}</div>
+  return `<article class="kanban-card" data-id="${esc(deal.id)}" data-attention="${attention}" data-phase="${esc(deal.phase)}" draggable="true" tabindex="0"${pending ? ' data-pending="true"' : ''}${state.lifted === deal.id ? ' data-lifted="true"' : ''} aria-label="${esc(dealTitle(deal))}, ${esc(columnLabel(deal.phase))}">
+    <h4><button class="card-open" type="button" data-open="${esc(deal.id)}">${esc(dealTitle(deal))}</button></h4>
+    <div class="work-meta"><span class="owner">${esc(actorName(deal.owner))}</span>${attention ? '<span class="attention-flag"><span aria-hidden="true">◆</span> Needs you</span>' : ''}</div>
     <p class="next-line">${esc(concise(deal.next_step) || 'Next step pending')}</p>
     ${autoHtml(deal)}
   </article>`;
 }
 function rowHtml(deal) {
   return `<article class="kanban-card deal-row" data-id="${esc(deal.id)}" tabindex="0" data-attention="${needsAttention(deal)}">
-    <h4>${esc(deal.name)}</h4><span>${esc(columnLabel(deal.phase))}</span>
+    <h4>${esc(dealTitle(deal))}</h4><span>${esc(columnLabel(deal.phase))}</span>
     <p class="next-line">${esc(concise(deal.next_step) || 'Next step pending')}</p><span>${esc(actorName(deal.owner))}</span>${autoHtml(deal)}</article>`;
 }
 function parkedHtml(deal) {
-  return `<article class="kanban-card parked-card" data-id="${esc(deal.id)}" tabindex="0"><h4>${esc(deal.name)}</h4><p class="next-line">${esc(deal.parking_note || deal.parking_reason?.replaceAll('_',' ') || 'Parked')}</p><button class="btn btn-quiet" type="button" data-revive="${esc(deal.id)}">Revive</button></article>`;
+  return `<article class="kanban-card parked-card" data-id="${esc(deal.id)}" tabindex="0"><h4>${esc(dealTitle(deal))}</h4><p class="next-line">${esc(deal.parking_note || deal.parking_reason?.replaceAll('_',' ') || 'Parked')}</p><button class="btn btn-quiet" type="button" data-revive="${esc(deal.id)}">Revive</button></article>`;
 }
 
 function renderBoard() {
@@ -301,12 +302,12 @@ async function pollOnce(initial = false) {
     if (event.field) noteCellBase(cellKey(event.subject_id, event.field), event);
     if (!initial && state.feed.caught_up && event.actor !== state.selfActor && event.field === 'phase') {
       const deal = state.deals.get(event.subject_id);
-      if (deal) showToast(`${actorName(event.actor)} moved ${deal.name}`);
+      if (deal) showToast(`${actorName(event.actor)} moved ${dealTitle(deal)}`);
     }
   }
   if (state.feed.caught_up && batchTouchesBoard(batch)) state.boardSync.requestRefresh('change-feed');
   state.receipts = ingestChangeEvents(state.receipts, batch, {
-    dealName: (dealId) => state.deals.get(dealId)?.name || null,
+    dealName: (dealId) => (state.deals.has(dealId) ? dealTitle(state.deals.get(dealId)) : null),
     actorLabel: actorName,
   });
   renderReceipts();
@@ -848,7 +849,7 @@ async function refreshPanel() {
       if (next) next.textContent = noteText(detail.deal.next_step) || 'Next step pending';
       syncNextForm(detail.deal);
       $('detailReadStatus').textContent = '';
-      $('panelTitle').textContent = detail.deal.name;
+      $('panelTitle').textContent = dealTitle(detail.deal);
       const template = document.createElement('div'); template.innerHTML = detailHtml(detail);
       for (const fresh of template.querySelectorAll('[data-detail-read]')) {
         const current = $('panelBody').querySelector(`[data-detail-read="${fresh.dataset.detailRead}"]`);
@@ -899,7 +900,7 @@ function updateDetailTimestamp() {
   if (time) { time.dateTime = at; time.textContent = new Date(at).toLocaleTimeString([], {hour:'numeric',minute:'2-digit',hour12:true}); }
 }
 function paintPanel(detail) {
-  $('panelTitle').textContent = detail.deal.name;
+  $('panelTitle').textContent = dealTitle(detail.deal);
   $('panelBody').innerHTML = detailHtml(detail);
   disposeEvidence?.();
   disposeEvidence = mountEvidence($('panelEvidence'), {client:state.client,detail});
@@ -1075,7 +1076,7 @@ function wireBoard() {
       state.lifted = id;
       state.target = here ? here.slug : COLUMNS[0].slug;
       leasePhase(id);
-      announce(`${deal.name} lifted from ${columnLabel(deal.phase)}. Use the arrow keys to choose a column, Enter to drop, Escape to cancel.`);
+      announce(`${dealTitle(deal)} lifted from ${columnLabel(deal.phase)}. Use the arrow keys to choose a column, Enter to drop, Escape to cancel.`);
       renderBoard();
       document.querySelector(`.kanban-card[data-id="${CSS.escape(id)}"]`)?.focus();
       return;
@@ -1085,7 +1086,7 @@ function wireBoard() {
       event.preventDefault();
       state.lifted = null;
       state.target = null;
-      announce(`Move cancelled. ${deal.name} stays in ${columnLabel(deal.phase)}.`);
+      announce(`Move cancelled. ${dealTitle(deal)} stays in ${columnLabel(deal.phase)}.`);
       renderBoard();
       document.querySelector(`.kanban-card[data-id="${CSS.escape(id)}"]`)?.focus();
       return;
@@ -1094,7 +1095,7 @@ function wireBoard() {
     if (next) {
       event.preventDefault();
       state.target = next;
-      announce(`${columnBySlug(next).label} selected. Enter drops ${deal.name} here.`);
+      announce(`${columnBySlug(next).label} selected. Enter drops ${dealTitle(deal)} here.`);
       renderBoard();
       document.querySelector(`.kanban-card[data-id="${CSS.escape(id)}"]`)?.focus();
       return;

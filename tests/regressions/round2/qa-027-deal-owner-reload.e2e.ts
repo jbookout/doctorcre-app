@@ -5,7 +5,6 @@ const test = reproTest();
 test('QA-027 Reload retains the selected Local Deals owner', { tags: ['regression'], requires: ['browser'], retries: 0 }, async ({ app, browser, screen }) => {
   await app.open('/deals?mode=live&view=list');
   await expect(browser.locator('#kanban .deal-row')).toHaveCount(16);
-  await screen.getByRole('button', 'Dismiss morning brief', { exact: true }).tap();
   await screen.getByRole('button', 'Dell', { exact: true }).tap();
   await expect(screen.getByRole('button', 'Dell', { exact: true })).toHaveAttribute('aria-pressed', 'true');
   await expect(browser.locator('#kanban .deal-row')).toHaveCount(8);

@@ -63,32 +63,33 @@ test('live read sends no audience parameters and both adapters implement the rea
  assert.deepEqual((await fixture.getChanges(null,{since:'2050-01-01T00:00:00.000Z'})).events,[]);
  assert.deepEqual((await fixture.getChanges(all.cursor,{since:'2050-01-01T00:00:00.000Z'})).events,[]);
 });
-function setup(t,{automatic=true,storage,read}={}) {
+function setup(t,{storage,read}={}) {
  const dom=new JSDOM('<button id="docOpen">Doc</button><button id="docMorning">Morning brief</button>',{url:'http://localhost'});t.after(()=>dom.window.close());
  const {window:win}=dom,root=win.document;
  win.HTMLDialogElement.prototype.showModal=function(){this.open=true;};win.HTMLDialogElement.prototype.close=function(){this.open=false;this.dispatchEvent(new win.Event('close'));};
  if(storage)for(const [key,value]of storage)win.localStorage.setItem(key,value);
  let data=payload(),count=0,current=now,fail=false;
  const client={morningBrief:async()=>{count++;if(fail)throw Error('Offline');return read ? read():data;},getChanges:async()=>({events:[],cursor:'end'}),getDeal:async id=>({deal:deal(id),thread:[{id:'demo-note',text:'Demo short note. Original demo note continues.'}]}),readLoop:async args=>({loop:{number:args.number,kind:args.kind,title:'Demo task',status:'open',body:'Demo task entry.'}})};
- const ui=mountMorningBrief({document:root,window:win,getClient:async()=>client,automatic,intervalMs:100000,now:()=>current});t.after(()=>ui.dispose());
+ const ui=mountMorningBrief({document:root,window:win,getClient:async()=>client,intervalMs:100000,now:()=>current});t.after(()=>ui.dispose());
  return {ui,root,win,client,get count(){return count;},set data(value){data=value;},set current(value){current=value;},set fail(value){fail=value;}};
 }
-test('first live opening once per day; dismissal, reopen, next day and partner switch',async t=>{
- const state=setup(t);await state.ui.refresh();assert.equal(state.root.querySelector('dialog').open,true);
- state.root.getElementById('morningClose').click();await state.ui.refresh();assert.equal(state.root.querySelector('dialog').open,false);
- state.ui.open();assert.equal(state.root.querySelector('dialog').open,true);state.root.getElementById('morningClose').click();
- state.current=new Date(2026,9,4,8);await state.ui.refresh();assert.equal(state.root.querySelector('dialog').open,true);state.root.getElementById('morningClose').click();
- const other=payload();other.sponsor='dell';other.sections.today=section([due('d','dell')]);state.data=other;await state.ui.refresh();assert.match(state.root.getElementById('morningTitle').textContent,/Dell/);
+test('the brief never opens itself; an unseen cue shows once per day until opened, then returns the next day',async t=>{
+ const state=setup(t);const dialog=()=>state.root.querySelector('dialog'),cue=()=>state.root.getElementById('docOpen').hasAttribute('data-brief-unseen');
+ await state.ui.refresh();assert.equal(dialog().open,false);assert.equal(cue(),true);assert.match(state.root.getElementById('docMorning').textContent,/new today/);
+ state.root.getElementById('docMorning').click();assert.equal(dialog().open,true);assert.equal(cue(),false);assert.equal(state.root.getElementById('docMorning').textContent,'Morning brief');
+ state.root.getElementById('morningClose').click();await state.ui.refresh();assert.equal(dialog().open,false);assert.equal(cue(),false);
+ state.current=new Date(2026,9,4,8);await state.ui.refresh();assert.equal(dialog().open,false);assert.equal(cue(),true);
+ const other=payload();other.sponsor='dell';other.sections.today=section([due('d','dell')]);state.data=other;await state.ui.refresh();state.ui.open();assert.match(state.root.getElementById('morningTitle').textContent,/Dell/);
  assert.doesNotMatch(state.win.localStorage.getItem('doctorcre:morning:joe'),/Demo|lease/);
 });
 test('failed and malformed reads do not consume daily opening, supported refresh recovers automatically',async t=>{
- const state=setup(t,{read:()=>({ok:true})});await state.ui.refresh();assert.equal(state.root.querySelector('dialog').open,false);assert.equal(state.win.localStorage.length,0);
- state.client.morningBrief=async()=>payload();await state.ui.refresh();assert.equal(state.root.querySelector('dialog').open,true);
+ const state=setup(t,{read:()=>({ok:true})});await state.ui.refresh();assert.equal(state.root.getElementById('docOpen').hasAttribute('data-brief-unseen'),false);assert.equal(state.win.localStorage.length,0);
+ state.client.morningBrief=async()=>payload();await state.ui.refresh();assert.equal(state.root.getElementById('docOpen').hasAttribute('data-brief-unseen'),true);
  state.client.morningBrief=async()=>{throw Error();};await state.ui.refresh();assert.equal(state.root.querySelectorAll('[data-brief-record]').length,0);assert.equal(state.root.getElementById('morningListen').disabled,true);
  state.client.morningBrief=async()=>payload();await state.ui.refresh();assert.equal(state.root.querySelectorAll('[data-brief-record]').length,2);
 });
-test('manual fixture preview does not auto-open; exact record popup with original entry details and late-result guard',async t=>{
- const state=setup(t,{automatic:false});await state.ui.refresh();assert.equal(state.root.querySelector('dialog').open,false);state.ui.open();
+test('exact record popup with original entry details and late-result guard',async t=>{
+ const state=setup(t);await state.ui.refresh();state.ui.open();
  state.root.querySelector('[data-brief-record]').click();await new Promise(resolve=>setTimeout(resolve,10));
  assert.match(state.root.getElementById('morningTitle').textContent,/Demo a/);assert.match(state.root.querySelector('details').textContent,/Original demo note/);
  state.root.getElementById('morningBack').click();assert.equal(state.root.querySelectorAll('[data-brief-record]').length,2);
@@ -97,7 +98,7 @@ test('manual fixture preview does not auto-open; exact record popup with origina
 test('speech is opt-in, user-triggered, same transcript, stops on dismiss/off/hidden, error permits replay',async t=>{
  const state=setup(t);const calls=[];state.win.SpeechSynthesisUtterance=class{constructor(text){this.text=text;}};state.win.speechSynthesis={speak:value=>calls.push(value),cancel:()=>calls.push('cancel')};
  // Capabilities are inspected when mounted, so mount this test after installing the adapter.
- state.ui.dispose();const ui=mountMorningBrief({document:state.root,window:state.win,getClient:async()=>state.client,automatic:true,now:()=>now});t.after(()=>ui.dispose());await ui.refresh();
+ state.ui.dispose();const ui=mountMorningBrief({document:state.root,window:state.win,getClient:async()=>state.client,now:()=>now});t.after(()=>ui.dispose());await ui.refresh();ui.open();
  assert.deepEqual(calls,[]);state.root.getElementById('morningSpeech').click();state.root.getElementById('morningListen').click();assert.equal(calls.length,1);assert.equal(calls[0].text,morningBriefView(payload(),{...options,events:[]}).spoken);
  state.root.getElementById('morningSpeech').click();assert.equal(calls.at(-1),'cancel');assert.equal(state.root.getElementById('morningListen').disabled,true);
  state.root.getElementById('morningSpeech').click();state.root.getElementById('morningListen').click();calls.at(-1).onerror();assert.equal(state.root.getElementById('morningListen').textContent,'▶');

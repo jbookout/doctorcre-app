@@ -124,10 +124,16 @@
   gap: var(--space-2);
   width: 100%;
   min-width: 0;
+  padding: var(--space-3);
+  border: var(--hairline-width) solid var(--hairline);
+  border-radius: var(--radius-2);
   text-align: left;
   color: var(--fg);
   background: var(--surface-2);
+  cursor: pointer;
+  transition: border-color var(--duration-hover) var(--ease-out);
 }
+.relationship-card:hover { border-color: var(--hairline-strong); }
 .relationship-card strong { font-size: var(--font-size-2); font-weight: var(--font-weight-strong); }
 .relationship-card span,
 .relationship-card small { color: var(--fg-muted); font-size: var(--font-size-1); line-height: 1.5; }

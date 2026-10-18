@@ -74,7 +74,7 @@
 .kanban { grid-auto-flow: row; grid-auto-columns: auto; grid-template-columns: repeat(8,minmax(0,1fr)); overflow: visible; gap: var(--space-2); }
 .kanban-column { min-width: 0; padding: var(--space-2); background: var(--ground); }
 .kanban-column > h3 { min-height: var(--space-7); gap: var(--space-1); }
-.kanban-card { height: 212px; min-width: 0; grid-template-rows: 44px 24px 20px 1fr; gap: var(--space-1); padding: var(--space-2); overflow: hidden; }
+.kanban-card { height: auto; min-width: 0; grid-template-rows: none; align-content: start; gap: var(--space-1); padding: var(--space-2); overflow: hidden; }
 .kanban-card h4 { overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
 .work-meta { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1); min-width: 0; font-variant-numeric: tabular-nums; }
 .kanban-lane-label { display: none; }
@@ -82,15 +82,14 @@
 .auto-move { display: grid; align-content: end; gap: var(--space-1); font-size: var(--font-size-1); color: var(--status-info-ink); }
 .auto-move span { overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
 .auto-move button { justify-self: start; padding: 0 var(--space-2); min-height: var(--touch); }
-/* Attention is a status, not the brand colour: a warn rule on top and a still dot. */
+/* Attention is a status, not the brand colour: a warn rule on top and the words. */
 .kanban-card[data-attention="true"] { border-top: 2px solid var(--status-warn); }
-.attention-dot { width: 6px; height: 6px; border-radius: var(--radius-round); background: var(--status-warn); }
+.attention-flag { color: var(--status-warn-ink); font-size: var(--font-size-1); font-weight: var(--font-weight-strong); }
 :root[data-color-assist="on"] .kanban-card[data-attention="true"] { border-top-style: double; border-top-width: 4px; }
-:root[data-color-assist="on"] .attention-dot { background: repeating-linear-gradient(45deg, var(--status-warn) 0 2px, transparent 2px 4px); outline: 1px solid var(--status-warn); }
 .parked-lane { grid-column: 1/-1; margin-top: var(--space-2); padding: var(--space-3); border: var(--hairline-width) solid var(--hairline); border-radius: var(--radius-2); }
 .parked-lane > summary { cursor: pointer; color: var(--fg-muted); min-height: var(--touch); }
 .parked-cards { display: grid; grid-template-columns: repeat(auto-fill,minmax(180px,1fr)); gap: var(--space-3); margin-top: var(--space-3); }
-.parked-card { height: 212px; grid-template-rows: 44px 1fr 44px; }
+.parked-card { height: auto; grid-template-rows: none; align-content: start; }
 .deal-list { display: grid; grid-column: 1/-1; gap: var(--space-2); }
 .deal-row { height: auto; min-height: 96px; grid-template-rows: auto auto; overflow: visible; display: grid; grid-template-columns: minmax(160px,1.3fr) minmax(100px,.7fr) minmax(180px,2fr) 80px; align-items: center; gap: var(--space-4); cursor: pointer; font-variant-numeric: tabular-nums; }
 .deal-row h4 { margin: 0; }

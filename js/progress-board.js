@@ -436,8 +436,7 @@ export function mountBoard(deps = {}) {
       const column = el("section", "column", undefined,
         { "data-stage": stage.id, style: `--stage-accent:${stage.color}`, "aria-label": `${stage.label}: ${cards.length}` });
       const head = el("header", "column-head");
-      if (stage.sequence !== false) head.append(el("span", "stage-index", String(index + 1).padStart(2, "0")));
-      head.append(el("h3", "stage-label", stage.label), el("span", "stage-count", String(cards.length).padStart(2, "0")));
+      head.append(el("h3", "stage-label", stage.label), el("span", "stage-count", String(cards.length)));
       column.append(head);
       const body = el("div", "column-body");
       if (stage.id === "live") {

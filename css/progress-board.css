@@ -62,7 +62,6 @@ h3 { font-size: var(--font-size-2); }
 @container (max-width: 520px) { .columns { grid-template-columns: minmax(0, 1fr); } }
 .column { min-width: 0; display: flex; flex-direction: column; border: var(--hairline-width) solid var(--hairline); border-top: 3px solid var(--stage-accent); border-radius: var(--radius-3); background: var(--surface-2); }
 .column-head { display: flex; align-items: baseline; gap: 8px; padding: 12px 12px 8px; border-bottom: var(--hairline-width) solid var(--hairline); }
-.stage-index { color: var(--fg-muted); font-size: var(--font-size-1); font-weight: var(--font-weight-strong); font-variant-numeric: tabular-nums; }
 .stage-label { margin: 0; color: var(--fg); font-size: var(--font-size-2); font-weight: var(--font-weight-strong); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .stage-count { margin-left: auto; color: var(--fg-muted); font-size: var(--font-size-1); font-weight: var(--font-weight-strong); font-variant-numeric: tabular-nums; }
 .column-body { display: flex; flex-direction: column; gap: 8px; min-width: 0; padding: 10px; }
@@ -195,14 +194,10 @@ textarea { width: 100%; min-height: 88px; resize: vertical; color: var(--fg); ba
 .answer-text { margin: 12px 0 0; font-size: var(--font-size-1); white-space: pre-wrap; overflow-wrap: anywhere; }
 footer { padding-top: 8px; }
 
-/* legend: one tap away on every screen, bottom-left so it never sits under the shell's Doc button (bottom-right) */
-.legend-toggle { position: fixed; left: calc(var(--layout-rail, 0px) + 16px); bottom: calc(var(--layout-bottom, 0px) + 16px); z-index: 30; padding: 10px 16px; border: var(--hairline-width) solid var(--hairline-strong); border-radius: var(--radius-round); background: var(--surface-2); color: var(--fg); font-weight: var(--font-weight-strong); cursor: pointer; box-shadow: var(--shadow-overlay); }
+/* legend: one tap away in the page header, in flow, so it never covers a heading or card; the Key opens as a panel below it */
+.legend-toggle { position: static; flex: none; min-height: var(--touch); padding: 0 var(--space-4); border: var(--hairline-width) solid var(--hairline-strong); border-radius: var(--radius-2); background: var(--surface-2); color: var(--fg); font-weight: var(--font-weight-strong); cursor: pointer; }
 .legend-toggle[aria-expanded="true"] { background: var(--surface-3); border-color: var(--fg-muted); }
-.legend { position: fixed; left: calc(var(--layout-rail, 0px) + 16px); bottom: calc(var(--layout-bottom, 0px) + 84px); z-index: 30; width: min(440px, calc(100vw - var(--layout-rail, 0px) - 32px)); max-height: min(70vh, 640px); overflow: auto; margin: 0; box-shadow: var(--shadow-overlay); animation: legend-in var(--duration-menu) var(--ease-out); }
-/* Beside a docked sidebar the Key sits at the start of the work column, never over the rail's items. */
-@media (min-width: 761px) and (not ((hover: none) and (pointer: coarse) and (max-width: 1023px))) {
-  .has-app-layout .legend-toggle, .has-app-layout .legend { left: calc(var(--layout-rail, 0px) + var(--layout-left, 0px) + 16px); }
-}
+.legend { position: static; width: auto; max-width: 640px; margin: var(--space-4) 0; animation: legend-in var(--duration-menu) var(--ease-out); }
 @keyframes legend-in { from { opacity: 0; transform: translateY(8px); } }
 .legend-body { display: grid; gap: 12px; }
 .legend-group h3 { margin: 0 0 6px; color: var(--fg-muted); font-size: var(--font-size-1); }
@@ -325,7 +320,6 @@ footer { padding-top: 8px; }
 .pipeline-diagram { display: block; width: 100%; height: auto; }
 .pipeline-diagram .flow-stage { --stage-accent: currentColor; }
 .pipeline-diagram .stage-well { fill: var(--surface-2); stroke: var(--stage-accent); stroke-width: 1.25; }
-.pipeline-diagram .stage-index { fill: var(--fg-muted); font: var(--font-weight-strong) 12px var(--font-text); }
 .pipeline-diagram .stage-label { fill: var(--fg); font-size: 21px; font-weight: var(--font-weight-strong); }
 .pipeline-diagram .stage-count { fill: var(--fg-muted); font: var(--font-weight-strong) 12px var(--font-text); }
 .pipeline-diagram .flow-empty { fill: var(--fg-muted); font: 12px var(--font-text); }

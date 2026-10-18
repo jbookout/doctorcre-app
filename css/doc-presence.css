@@ -21,6 +21,7 @@ body.has-app-layout:has(> #docPresence) .app-layout-status { padding-right: calc
 .doc-detail button:disabled { cursor: default; opacity: .5; transform: none; }
 
 .doc-identity { display: grid; place-items: center; width: var(--touch); height: var(--touch); padding: 0 !important; border-radius: var(--radius-round) !important; background: var(--surface-1) !important; box-shadow: var(--shadow-raised); }
+.doc-identity[data-brief-unseen] { outline: 2px dashed var(--accent); outline-offset: 2px; }
 .doc-orb { display: inline-grid; place-items: center; width: 28px; height: 28px; border-radius: var(--radius-round); color: var(--accent-ink); font-size: var(--font-size-3); line-height: 1; transition: opacity var(--duration-panel) var(--ease-out); }
 .doc-presence[data-state="updating"] .doc-orb { opacity: .5; }
 .doc-presence[data-state="unavailable"] .doc-orb { color: var(--fg-quiet); }
@@ -90,11 +91,11 @@ body.has-app-layout:has(> #docPresence) .app-layout-status { padding-right: calc
 
 @media (max-width: 480px) { .doc-command-meta { align-items: start; } #docCommandForm { gap: var(--space-1); padding: var(--space-1); } #docCommandInput { font-size: var(--font-size-2); } .doc-context-tools { flex-wrap: wrap; } }
 
-/* Touch layout: the status band sits on top of the 100px shell bar, so the
-   presence centres in the band's own height above that bar. */
+/* Touch layout: the presence takes the right end of the status strip that sits
+   on the shell bar, and the strip reserves that slot beside the controls. */
 @media(max-width:760px),(hover:none) and (pointer:coarse) and (max-width:1023px){
-  .doc-presence { right: var(--space-3); bottom: calc(100px + (var(--layout-bottom) - 100px - var(--touch)) / 2); }
-  body.has-app-layout:has(> #docPresence) .app-layout-status { padding-right: calc(var(--space-3) * 2 + var(--touch)); }
+  .doc-presence { right: var(--space-3); bottom: calc(var(--layout-tabbar) + var(--layout-notice) + (var(--layout-strip) - var(--touch)) / 2); }
+  body.has-app-layout:has(> #docPresence) { --strip-doc: calc(var(--space-3) + var(--touch)); }
   .doc-detail { width: calc(100vw - 20px); max-height: calc(100dvh - 24px); padding: var(--space-4); }
   .doc-detail-grid { grid-template-columns: minmax(0, 1fr); gap: var(--space-3); }
   .doc-detail-grid > section:last-child { order: -1; }

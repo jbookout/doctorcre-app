@@ -3,7 +3,7 @@ import { escapeText } from './change-receipts.mjs';
 import { entryDetailsHtml } from './entry-details.mjs';
 import { localDay, validBrief, morningBriefView, briefPreferences } from './morning-brief-model.js';
 
-export function mountMorningBrief({ document:root, window:win, getClient, automatic = true, intervalMs = 30_000, now = () => new Date() }) {
+export function mountMorningBrief({ document:root, window:win, getClient, intervalMs = 30_000, now = () => new Date() }) {
   const dialog = root.createElement('dialog'); dialog.id = 'docMorningBrief'; dialog.className = 'morning-brief'; dialog.setAttribute('aria-labelledby','morningTitle');
   dialog.innerHTML = '<header><div><span class="doc-orb" aria-hidden="true">◍</span><h2 id="morningTitle">Morning brief</h2></div><button id="morningClose" type="button" aria-label="Dismiss morning brief">×</button></header><div class="morning-toolbar"><button id="morningBack" type="button" hidden>← Morning brief</button><time id="morningUpdated">Updating…</time><button id="morningRefresh" type="button" aria-label="Refresh morning brief" title="Refresh morning brief">↻</button><button id="morningSpeech" type="button" aria-label="Brief speech" title="Brief speech" aria-pressed="false">◖))</button><button id="morningListen" type="button" aria-label="Listen to morning brief" title="Listen to morning brief" disabled>▶</button></div><div id="morningCoverage" role="status"></div><div id="morningContent"></div>';
   root.body.append(dialog);
@@ -33,7 +33,16 @@ export function mountMorningBrief({ document:root, window:win, getClient, automa
       if (focus !== undefined) focusCard(focus);
     }
   };
-  const remember = () => { if (preferences && view) preferences.save({ day:localDay(now()), lastShownAt:now().toISOString(), since }); };
+  // The brief never opens itself. Today's unseen brief is a quiet cue on Doc
+  // and on the Doc detail button until the partner opens it once.
+  const cue = () => {
+    const unseen = !!(view && preferences && preferences.value.day !== localDay(now()));
+    const doc = $('docOpen');
+    doc?.toggleAttribute('data-brief-unseen', unseen);
+    doc?.setAttribute('aria-label', unseen ? 'Open Doc · morning brief ready' : 'Open Doc');
+    control.textContent = unseen ? 'Morning brief · new today' : 'Morning brief';
+  };
+  const remember = () => { if (preferences && view) preferences.save({ day:localDay(now()), lastShownAt:now().toISOString(), since }); cue(); };
   const close = () => { stop(); dialog.close(); };
   const open = () => {
     opener = root.activeElement;
@@ -48,7 +57,7 @@ export function mountMorningBrief({ document:root, window:win, getClient, automa
   };
   const focusCard = key => ([...$('morningContent').querySelectorAll('[data-brief-key]')].find(node => node.dataset.briefKey === key) || $('morningClose')).focus();
   const back = () => { const key = selected?.key; selected = null; ++detailEpoch; render(); focusCard(key); };
-  const clear = () => { stop(); ++detailEpoch; selected = null; view = null; sponsor = null; preferences = null; since = null; events = []; cursor = null; render(); };
+  const clear = () => { stop(); ++detailEpoch; selected = null; view = null; sponsor = null; preferences = null; since = null; events = []; cursor = null; render(); cue(); };
   const showRecord = async (row, { background = false } = {}) => {
     selected = row; const epoch = ++detailEpoch, owner = sponsor;
     stop(); controls(); $('morningBack').hidden = false; $('morningTitle').textContent = row.title;
@@ -110,14 +119,13 @@ export function mountMorningBrief({ document:root, window:win, getClient, automa
       const next = morningBriefView(payload,{ now:now(),since,events,caughtUp });
       if (view?.spoken !== next.spoken) stop();
       view = next; render();
-      if (dialog.open && preferences.value.day !== localDay(now())) remember();
+      if (dialog.open && preferences.value.day !== localDay(now())) remember(); else cue();
       if (selected) {
         // Removed or reassigned records leave the popup immediately.
         const source = payload.sections[selected.kind === 'deal' ? 'deals' : selected.kind === 'action' ? 'today' : 'loops'];
         const admitted = source.state !== 'unavailable' && source.items.find(row => selected.kind === 'loop' ? String(row.number) === selected.id && row.kind === selected.loopKind : row.id === selected.id && (selected.kind !== 'action' || row.item_kind === 'next_action'));
         if (admitted) await showRecord(selected.kind === 'action' ? {...selected,action:admitted} : selected,{background:true}); else back();
       }
-      if (automatic && preferences.value.day !== localDay(now()) && !root.querySelector('dialog[open]')) open();
     } catch { if (!disposed) clear(); }
   };
   const auto = mountAutoRefresh({ document:root,window:win,refresh,onResume:stop,intervalMs });

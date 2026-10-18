@@ -47,7 +47,8 @@ test('W4 desktop/phone render, owner filters, equal cards, wide detail and reduc
     assert.equal(await page.locator('.parked-lane').evaluate(e => e.open), false);
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
     const sizes = await page.locator('.kanban-column .kanban-card').evaluateAll(es => es.map(e => ({ height: e.getBoundingClientRect().height, transform: getComputedStyle(e).transform, transition: getComputedStyle(e).transitionDuration })));
-    assert.ok(sizes.every(e => e.height === 212 && e.transform === 'none' && e.transition === '0s'));
+    // Cards size to their content (S8): no fixed tall box with half of it empty.
+    assert.ok(sizes.every(e => e.height < 212 && e.transform === 'none' && e.transition === '0s'), JSON.stringify(sizes));
     await page.screenshot({ path: new URL(`out/test-artifacts/w4/${width === 1440 ? 'desktop' : 'phone-' + width}.png`, root).pathname, fullPage: true });
     await page.locator('[data-filter="dell"]').click();
     assert.equal(await page.locator('.kanban-column .owner').evaluateAll(es => es.every(e => e.textContent === 'Dell')), true);
@@ -264,7 +265,8 @@ test('W4 a long automatic reason keeps its date and Undo visible inside the fixe
   const restingBorder = await card.evaluate(e => getComputedStyle(e).borderRightColor);
   await card.hover();
   await page.waitForFunction(resting => getComputedStyle(document.querySelector('[data-id="d14"]')).borderRightColor !== resting, restingBorder);
-  assert.equal(await page.locator('[data-id="d20"] .attention-dot').evaluate(e => getComputedStyle(e).animationName), 'none');
+  // Attention reads in words with a glyph, never a bare colour dot (S8).
+  assert.equal(await page.locator('[data-id="d20"] .attention-flag').textContent(), '◆ Needs you');
 });
 
 
@@ -302,4 +304,39 @@ test('W4 detail and next-step rereads time out at the client seam and recover wi
   await page.evaluate(() => window.detailProbe.release());
   assert.equal(await page.locator('#detailNextForm textarea').inputValue(), 'Unsaved deadline demo');
   assert.deepEqual(errors, []);
+});
+
+test('S8 the move toast never covers the Today column or the status band', async t => {
+  for (const width of [1440, 1000, 390]) await t.test(String(width), async t => {
+    const { page } = await open(t, { width });
+    const overlap = (a, b) => !!a && !!b && a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
+    const rects = () => page.evaluate(() => {
+      document.querySelectorAll('.toast').forEach(node => node.remove());
+      const toast = document.createElement('div'); toast.className = 'toast show'; toast.textContent = 'Moved Demo deal to Negotiation'; document.body.append(toast);
+      const box = node => { if (!node) return null; const r = node.getBoundingClientRect(); return r.width && r.height && getComputedStyle(node).visibility !== 'hidden' ? { left: r.left, right: r.right, top: r.top, bottom: r.bottom } : null; };
+      return { toast: box(toast), today: box(document.querySelector('#appToday')), status: box(document.querySelector('.app-layout-status')) };
+    });
+    let r = await rects();
+    assert.ok(r.toast, 'toast renders');
+    assert.equal(overlap(r.toast, r.today), false, `${width}: toast clears Today`);
+    assert.equal(overlap(r.toast, r.status), false, `${width}: toast clears the status band`);
+    if (width === 1440) {
+      await page.locator('#appTodayToggle').click();
+      r = await rects();
+      assert.ok(r.toast.right > 1440 - 120, 'with Today closed the toast returns to the right edge');
+    }
+  });
+});
+
+test('S8 phone status strip scrolls inside its own lane, never under the workspace controls or Doc', async t => {
+  const { page } = await open(t, { width: 390 });
+  const lanes = await page.evaluate(() => {
+    const status = document.querySelector('.app-layout-status');
+    const r = status.getBoundingClientRect(), s = getComputedStyle(status);
+    const clipRight = r.right - parseFloat(s.borderRightWidth);
+    const blockers = [...document.querySelectorAll('.app-shell-controls, #docPresence')]
+      .map(node => node.getBoundingClientRect()).filter(box => box.width && box.top < r.bottom && box.bottom > r.top);
+    return { clipRight, blockerLeft: Math.min(...blockers.map(box => box.left)) };
+  });
+  assert.ok(lanes.clipRight <= lanes.blockerLeft + 1, `status clips at ${lanes.clipRight}, controls start at ${lanes.blockerLeft}`);
 });

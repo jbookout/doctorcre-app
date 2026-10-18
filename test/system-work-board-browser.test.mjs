@@ -39,7 +39,9 @@ test('all source cards and ten recorded completions fit phone and desktop; libra
   assert.equal(await page.locator('#system-work-flow [data-stage="live"].pipeline-node').count(),0);
   assert.equal(await page.locator('#system-work-flow [data-stage="recorded"].pipeline-node').count(),10);
   assert.equal(await page.locator('#system-work-flow .pipeline-connector').count(),5);
-  assert.equal(await page.locator('#system-work-flow .flow-stage[data-stage="recorded"] .stage-index').count(),0);
+  // S8: the path-to-live diagram numbers no lanes and pads no counts.
+  assert.equal(await page.locator('#system-work-flow .stage-index').count(),0);
+  assert.equal((await page.locator('#system-work-flow .stage-count').allTextContents()).some(text => /^0\d/.test(text)),false);
   assert.equal(await page.locator('#board-stages .board-card').count(),0,'the empty published snapshot stays independent of the census');
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
   await page.getByRole('button',{name:'Completed records',exact:true}).click();

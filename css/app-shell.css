@@ -172,6 +172,39 @@ body.has-app-layout { padding: 0 0 var(--layout-bottom) var(--layout-rail) !impo
 .has-app-layout #recordPanel summary { color: var(--fg); }
 .has-app-layout #panelBody { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-5); }
 .has-app-layout #panelEvidence { grid-column: 1 / -1; }
+/* Change receipts: every page that reports moves into the Today panel shares these. */
+.receipt-list { display: grid; gap: var(--space-2); margin: var(--space-3) 0 0; padding: 0; list-style: none; }
+/* A new receipt fades in once; nothing moves. */
+.receipt { display: grid; gap: var(--space-1); padding: var(--space-3) var(--space-4); border-radius: var(--radius-2); background: var(--surface-1); animation: receipt-in var(--duration-menu) var(--ease-out); }
+.receipt.superseded { color: var(--fg-muted); }
+.receipt-line { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-2); margin: 0; }
+.receipt-deal { min-height: var(--touch); margin-left: calc(var(--space-2) * -1); padding: var(--space-1) var(--space-2); border: 0; border-radius: var(--radius-2); background: transparent; color: var(--fg); font-size: var(--font-size-1); font-weight: var(--font-weight-strong); text-align: left; }
+.receipt-deal:hover { background: var(--surface-2); }
+.receipt-action { color: var(--fg-muted); font-size: var(--font-size-1); }
+.receipt-values { display: inline-flex; align-items: center; flex-wrap: wrap; gap: var(--space-2); min-width: 0; font-size: var(--font-size-1); }
+.receipt-before { color: var(--fg-muted); text-decoration: line-through; }
+.receipt-arrow { color: var(--fg-muted); }
+.receipt-after { font-weight: var(--font-weight-strong); }
+.receipt-meta { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-2); margin: 0; color: var(--fg-muted); font-size: var(--font-size-1); }
+.receipt-time { color: var(--fg-muted); font-variant-numeric: tabular-nums; }
+.receipt-badge { padding: 0 var(--space-2); border: var(--hairline-width) solid var(--hairline); border-radius: var(--radius-round); color: var(--fg-muted); font-size: var(--font-size-1); }
+.receipt-badge.undone { border-color: var(--status-info); color: var(--status-info-ink); }
+.receipt-badge.refused { border-color: var(--status-danger); color: var(--status-danger-ink); }
+.receipt-badge.unconfirmed { border-color: var(--status-warn); color: var(--status-warn-ink); }
+.receipt-actions { display: flex; gap: var(--space-2); }
+.receipt-undo { min-width: var(--touch); min-height: var(--touch); padding: var(--space-2) var(--space-4); border: var(--hairline-width) solid var(--hairline-strong); border-radius: var(--radius-2); background: var(--surface-2); color: var(--fg); font-size: var(--font-size-1); font-weight: var(--font-weight-strong); }
+.receipt-undo:hover { background: var(--surface-3); }
+.receipt-undo[disabled] { background: transparent; color: var(--fg-muted); }
+.receipt-message { margin: 0; padding: var(--space-2) var(--space-3); border-left: 3px solid var(--status-warn); color: var(--status-warn-ink); font-size: var(--font-size-1); }
+.receipt-message.refused { border-left-color: var(--status-danger); color: var(--status-danger-ink); }
+@keyframes receipt-in { from { opacity: 0; } }
+:root[data-color-assist="on"] .receipt { border-left: 3px solid var(--status-warn); }
+:root[data-color-assist="on"] .receipt.superseded { border-left: 3px dotted var(--fg-muted); }
+:root[data-color-assist="on"] .receipts-jump { border: 2px dashed var(--fg-muted); }
+/* Toasts sit above the status band and beside, never over, the open Today column. */
+body.has-app-layout { --toast-right: calc(260px + var(--space-4)); }
+body.has-app-layout:has(.app-layout[data-today=closed]) { --toast-right: var(--space-4); }
+body.has-app-layout .toast { right: var(--toast-right); bottom: calc(var(--layout-bottom) + var(--space-3)); }
 .has-app-layout #appTodayMoves .receipt-list { padding: 0; list-style: none; }
 .has-app-layout #appTodayMoves .receipt { min-width: 0; }
 .has-app-layout #appTodayMoves .receipt-line { display: flex; flex-wrap: wrap; }
@@ -185,11 +218,17 @@ body.has-app-layout { padding: 0 0 var(--layout-bottom) var(--layout-rail) !impo
 
 @media (max-width: 1100px) and (min-width: 761px) and (not ((hover: none) and (pointer: coarse) and (max-width: 1023px))) {
   .app-layout { --layout-left: 210px; --layout-right: 220px; }
+  body.has-app-layout:not(:has(.app-layout[data-today=closed])) { --toast-right: calc(220px + var(--space-4)); }
   .app-layout-main { padding: var(--space-4); }
   .app-layout-tabbar { padding: 0 var(--space-3); gap: var(--space-1); }
 }
 @media (max-width: 760px), (hover: none) and (pointer: coarse) and (max-width: 1023px) {
-  :root { --layout-rail: 0px; --layout-bottom: 180px; }
+  /* One 56px bar (navigation and search) plus one 44px strip (status on the
+     left, workspace controls and Doc on the right). */
+  :root { --layout-rail: 0px; --layout-tabbar: 56px; --layout-strip: 44px; --layout-notice: 0px; --layout-bottom: calc(var(--layout-tabbar) + var(--layout-notice) + var(--layout-strip));
+    --strip-controls: calc(var(--touch) * 3 + var(--space-1) * 2); --strip-doc: 0px; }
+  body.has-app-layout .toast { left: var(--space-3); right: var(--space-3); }
+  body.has-app-layout:has(#callModeButton:not([hidden])) { --strip-controls: calc(var(--touch) * 4 + var(--space-1) * 3); }
   body.has-app-layout { padding: 0 0 var(--layout-bottom) !important; }
   .app-layout { display: block; min-height: calc(100dvh - var(--layout-bottom)); }
   .app-layout-center { width: 100%; }
@@ -197,18 +236,22 @@ body.has-app-layout { padding: 0 0 var(--layout-bottom) var(--layout-rail) !impo
   .app-layout-tabbar { min-height: 52px; padding: var(--space-2) var(--space-2); gap: var(--space-1); }
   .app-layout-tabs { gap: var(--space-1); overflow: visible; flex-wrap: wrap; }
   .app-layout-tabs a, .app-layout-tabs button, .app-layout-tabs .deal-page-view-current { padding: var(--space-1) var(--space-2); font-size: var(--font-size-1); }
-  #appShell { inset: auto 0 0; width: 100%; height: 100px; }
-  .app-shell-header { display: grid; grid-template-columns: 1fr auto; grid-template-rows: 48px 44px; align-items: center; gap: 0 !important; padding: var(--space-1) var(--space-2) !important; border: 0; border-top: var(--hairline-width) solid var(--hairline); height: 100px; }
+  #appShell { inset: auto 0 0; width: 100%; height: var(--layout-tabbar); }
+  .app-shell-header { flex-direction: row; justify-content: space-between; gap: 0 !important; padding: 0 var(--space-1) !important; border: 0; border-top: var(--hairline-width) solid var(--hairline); height: var(--layout-tabbar); overflow: visible; }
   .app-shell-brand { display: none; }
-  .app-shell-menu { grid-column: 1 / -1; grid-row: 1; flex: none !important; }
+  .app-shell-menu { flex: 1 1 auto !important; min-width: 0; }
   .app-shell-navigation { flex-direction: row; justify-content: space-around; gap: 0; }
-  .app-shell-navigation > a, .app-shell-more-toggle { width: var(--touch); height: var(--touch); min-height: var(--touch); font-size: var(--font-size-3); padding: var(--space-1) !important; }
+  .app-shell-navigation > a, .app-shell-more-toggle, .app-shell-search { flex: 0 1 var(--touch); width: var(--touch); height: var(--touch); min-height: var(--touch); font-size: var(--font-size-3); padding: var(--space-1) !important; }
   .app-shell-navigation > a[aria-current=page]::before, .app-shell-more-current::before { left: 10px; right: 10px; top: auto; bottom: -3px; width: auto; height: 2px; }
-  .app-shell-controls { flex-direction: row; grid-column: 2; grid-row: 2; gap: var(--space-1) !important; }
-  .app-shell-search { grid-column: 1; grid-row: 2; }
-  .app-shell-more-list { left: var(--space-2) !important; top: auto !important; bottom: 108px; width: calc(100vw - 16px); max-height: calc(100dvh - 125px); grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
-  .app-shell-account-menu { left: var(--space-2) !important; bottom: 108px; width: calc(100vw - 16px) !important; max-width: none; }
-  .app-layout-status { bottom: 100px; height: calc(var(--layout-bottom) - 100px); padding: var(--space-1) var(--space-3); gap: var(--space-1) var(--space-3); align-content: center; z-index: 1090; }
+  .app-shell-search { flex: none; border-color: transparent; }
+  .app-shell-controls { position: fixed; right: calc(var(--space-2) + var(--strip-doc)); bottom: calc(var(--layout-tabbar) + var(--layout-notice)); height: var(--layout-strip); flex-direction: row; align-items: center; gap: var(--space-1) !important; }
+  .app-shell-more-list { left: var(--space-2) !important; top: auto !important; bottom: calc(var(--layout-bottom) + var(--space-2)); width: calc(100vw - 16px); max-height: calc(100dvh - var(--layout-bottom) - var(--space-5)); grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+  .app-shell-account-menu { left: var(--space-2) !important; bottom: calc(var(--layout-bottom) + var(--space-2)); width: calc(100vw - 16px) !important; max-width: none; }
+  /* The status scrolls sideways; its right border is the strip's background
+     behind the controls, so scrolled status never runs under them. */
+  .app-layout-status { bottom: calc(var(--layout-tabbar) + var(--layout-notice)); height: var(--layout-strip); flex-wrap: nowrap; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; white-space: nowrap; padding: 0 var(--space-2) 0 var(--space-3) !important; border-right: calc(var(--space-2) * 2 + var(--strip-controls) + var(--strip-doc)) solid var(--surface-1); gap: var(--space-3); z-index: 1090; }
+  .app-layout-status > * { flex: none; }
+  .app-layout-status .app-layout-health { margin-left: 0; }
   .app-shell-doc, .doc-fab { right: var(--space-4) !important; bottom: calc(var(--layout-bottom) + 16px) !important; }
   .doc-chat { bottom: calc(var(--layout-bottom) + 76px) !important; }
   .app-layout-sidebar, .app-layout-today { position: fixed; top: 0; bottom: var(--layout-bottom); height: auto; width: min(330px, calc(100vw - 28px)); z-index: 1150; visibility: hidden; pointer-events: none; transition: transform var(--duration-panel) var(--ease-out); background: var(--surface-1); box-shadow: var(--shadow-overlay); }
@@ -245,7 +288,7 @@ body.report-shell { padding-left: var(--layout-rail); padding-bottom: 34px; }
 .app-layout-sidebar .library-scroll { max-height: 250px; }
 .app-layout-sidebar .library-filter input { width: 100%; }
 @media (max-width: 760px), (hover: none) and (pointer: coarse) and (max-width: 1023px) {
-  body.report-shell { padding-left: 0; padding-bottom: 100px; }
+  body.report-shell { padding-left: 0; padding-bottom: calc(var(--layout-bottom) + var(--space-3)); }
   .lead-detail-grid, .has-app-layout .planner-grid { grid-template-columns: 1fr; }
 }
 .has-app-layout .card-move, .has-app-layout .lead-move { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
@@ -267,8 +310,8 @@ body.report-shell { padding-left: var(--layout-rail); padding-bottom: 34px; }
 #appStatusSlot .home-updated { width: auto; justify-content: flex-start; }
 #appStatusSlot button { min-width: 28px; min-height: 28px; }
 @media (max-width: 760px), (hover: none) and (pointer: coarse) and (max-width: 1023px) {
-  #appStatusSlot { gap: var(--space-1); }
-  #appStatusSlot > [data-layout-slot="status"] { gap: var(--space-1); }
+  #appStatusSlot { flex: none; gap: var(--space-2); }
+  #appStatusSlot > [data-layout-slot="status"], #appStatusSlot .top-actions { flex-wrap: nowrap; gap: var(--space-2); }
 }
 
 /* One scrolling rail owns navigation and controls at short viewport heights. */
@@ -292,7 +335,12 @@ body.has-app-layout:has(#callModeAvailability:not([hidden])) { --layout-bottom: 
   .app-shell-call-availability { flex: 0 1 auto; }
   .app-layout-status .app-layout-health { order: 1; margin-left: 0; }
 }
-@media (max-width: 760px), (hover: none) and (pointer: coarse) and (max-width: 1023px) { body.has-app-layout:has(#callModeAvailability:not([hidden])) { --layout-bottom: 224px; } }
+/* On touch the Quill notice is its own row on the bar, only while it shows; the
+   strip rises above it, so the strip's top stays the edge of the bottom chrome. */
+@media (max-width: 760px), (hover: none) and (pointer: coarse) and (max-width: 1023px) {
+  body.has-app-layout:has(#callModeAvailability:not([hidden])) { --layout-notice: var(--layout-strip); --layout-bottom: calc(var(--layout-tabbar) + var(--layout-notice) + var(--layout-strip)); }
+  .app-shell-call-availability { position: fixed; left: 0; right: 0; bottom: var(--layout-tabbar); height: var(--layout-strip); padding: 0 var(--space-3); box-sizing: border-box; background: var(--surface-1); border-top: var(--hairline-width) solid var(--hairline); white-space: normal; }
+}
 
 @media (max-width: 760px), (hover: none) and (pointer: coarse) and (max-width: 1023px) {
   .has-app-layout :is(button, a, input, select, textarea, summary, [role="button"]) { min-width: 44px; min-height: 44px; box-sizing: border-box; touch-action: manipulation; }
@@ -303,6 +351,10 @@ body.has-app-layout:has(#callModeAvailability:not([hidden])) { --layout-bottom: 
   .has-app-layout .skip:focus, .has-app-layout .invoice-skip:focus { min-height: 44px; display: flex; align-items: center; }
   /* A scripted scroll lands at once; animated, the page moves under the next tap. */
   :root { scroll-behavior: auto; }
+}
+/* Below 360px the eight bar targets share the width rather than overflow it. */
+@media (max-width: 359px) {
+  .has-app-layout .app-shell-header :is(.app-shell-navigation > a, .app-shell-more-toggle, .app-shell-search) { min-width: 0; }
 }
 
 /* Shared by every page: the two loading keyframes and the reduced-motion floor

@@ -45,8 +45,10 @@ for (const label of document.querySelectorAll(".board-card .card-pr, .blocked-ca
   if (label.scrollWidth > label.clientWidth + 1)
     problems.push(owner + ": PR label clipped (" + label.clientWidth + " < " + label.scrollWidth + ")");
 }
-// Every fixed control is the thing a tap at its centre reaches, with the app shell mounted.
+// Every control is the thing a tap at its centre reaches, with the app shell mounted.
+// S8: the Key sits in the page flow, so it is scrolled to before it is tapped.
 for (const control of document.querySelectorAll("#legend-toggle, .app-shell-doc:not([hidden])")) {
+  control.scrollIntoView({ block: "center" });
   const rect = control.getBoundingClientRect();
   const hit = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
   const target = hit?.closest("a, button");
