@@ -155,7 +155,7 @@ export function mountAppLayout(root, host, pathname) {
     && optionalText(i.what) && optionalText(i.due_on) && (!i.due_on || toDay(i.due_on)));
   const connection = connected => {
     connected = connected && win.navigator.onLine !== false;
-    const dot = status.querySelector('#appConnection'); dot.dataset.state = connected ? 'healthy' : 'unknown';
+    const dot = root.getElementById('appConnection'); dot.dataset.state = connected ? 'healthy' : 'unknown';
     dot.setAttribute('aria-label', connected ? 'Connection available' : 'Connection unavailable'); dot.title = dot.getAttribute('aria-label');
   };
   const unavailableRead = () => {

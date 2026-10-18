@@ -57,14 +57,16 @@ for (const viewport of viewports) {
         await expect(browser.locator('#prefForm')).toBeHidden();
         await expect(browser.locator('#prefState')).toContainText(/unavailable|could not/i);
         await browser.unroute('**/mcp');
+        if (viewport.width < 760) await browser.locator('#selfAvatar').tap();
         await browser.locator('#appSyncRefresh').tap();
+        if (viewport.width < 760) await browser.keyboard.press('Escape');
       }
       await expect(browser.locator('#deviceOptIn')).toBeEnabled();
       // Wait on geometry, including the actual first control under sticky tabs.
       await expect.poll(async () => (await preferenceGeometry(browser)).clear).toBe(true);
       await expect.poll(async () => (await preferenceGeometry(browser)).uncovered).toBe(true);
       // Anchoring scrolls without taking focus from the user's retry control.
-      if (initialFailure) await expect(browser.locator('#appSyncRefresh')).toBeFocused();
+      if (initialFailure) await expect(browser.locator(viewport.width < 760 ? '#selfAvatar' : '#appSyncRefresh')).toBeFocused();
       await app.screenshot(`preferences-anchor-${viewport.width}`);
       const observed = await browser.evaluate(async () => (await import('/js/notifications.js')).view.preference.observed_at);
       await browser.locator('#deviceOptIn').focus();

@@ -1,1 +1,119 @@
-/* V2 C2: the issue list and detail pane. Linked by control-room.html in C1 so C2 only fills this file. */
+/* V2 C2: the Queue list and the detail pane. Tokens only. Loaded after
+ * control-room-workspace.css, so the Queue rows here refine C1's base row.
+ * The pane is a fixed grid column (Linear study #0 adaptation, no window
+ * management): closed, the list runs full width; on a phone the list and the
+ * record are two screens. */
+
+/* The list itself is the listbox; it holds focus and the rows are options. */
+#crQueueList { gap: var(--space-5); border-radius: var(--radius-2); }
+#crQueueList:focus { outline: none; }
+/* Focus shows on the highlighted row (its leading bar takes the focus colour), not as a box round the whole list. */
+#crQueueList:focus-visible { outline: none; }
+#crQueueList:focus-visible .cr-row[aria-selected="true"] { box-shadow: inset 3px 0 0 var(--focus-ring); }
+#crQueueList:focus-visible:not(:has([aria-selected="true"])) { outline: var(--hairline-width) solid var(--focus-ring); outline-offset: var(--space-1); }
+
+.cr-group-head { position: sticky; top: var(--tabbar-height, 0px); z-index: 2; display: flex; align-items: baseline; gap: var(--space-2); margin: 0; padding: var(--space-2) var(--space-2); background: var(--ground); font: var(--font-weight-strong) var(--font-size-1)/1.3 var(--font-text); color: var(--fg); }
+.cr-group-count { color: var(--fg-quiet); font-weight: var(--font-weight-regular); font-variant-numeric: tabular-nums; }
+
+#crQueueList .cr-row { grid-template-columns: 8.5rem 8rem 8.5rem minmax(0, 1fr) 7.5rem 3.5rem; min-height: 40px; cursor: pointer; }
+#crQueueList .cr-row > span { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cr-cell-kind, .cr-cell-state, .cr-cell-owner { color: var(--fg-muted); font-size: var(--font-size-1); }
+.cr-kind-glyph, #crQueueList .cr-row-glyph { display: inline-block; width: 1.25em; margin-right: var(--space-1); text-align: center; color: var(--fg-quiet); }
+.cr-cell-owner.is-empty { color: var(--fg-quiet); }
+.cr-cell-age { justify-self: end; color: var(--fg-muted); font-size: var(--font-size-1); font-variant-numeric: tabular-nums; }
+@media (hover: hover) { #crQueueList .cr-row:hover { background: var(--surface-1); } }
+#crQueueList .cr-row[aria-selected="true"] { background: var(--surface-2); box-shadow: inset 2px 0 0 var(--fg-muted); }
+#crQueueList .cr-row[data-open="true"] .cr-row-title { font-weight: var(--font-weight-strong); }
+#crQueueList:not(:focus-visible) .cr-row[aria-selected="true"]:not([data-open]) { box-shadow: none; }
+
+/* Narrow list (a phone, the pane open, or both rails open): two lines per row, so the title is never cut to a few words. */
+@container (max-width: 900px) {
+  #crQueueList .cr-row { grid-template-columns: auto auto minmax(0, 1fr) auto auto; row-gap: 2px; column-gap: var(--space-3); padding: var(--space-2); min-height: 52px; }
+  #crQueueList .cr-row > .cr-row-title { grid-column: 1 / -1; grid-row: 1; white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+  .cr-cell-kind { grid-column: 1; grid-row: 2; }
+  #crQueueList .cr-row-ref { grid-column: 2; grid-row: 2; }
+  .cr-cell-state { grid-column: 3; grid-row: 2; }
+  .cr-cell-owner { grid-column: 4; grid-row: 2; }
+  .cr-cell-age { grid-column: 5; grid-row: 2; }
+}
+@container (max-width: 480px) {
+  .cr-cell-owner { display: none; }
+}
+
+/* Loading reserves the list's height instead of an empty box. */
+.cr-list-skeleton { display: grid; border-top: var(--hairline-width) solid var(--hairline); }
+.cr-skeleton-row { display: grid; grid-template-columns: 8rem minmax(0, 1fr); align-items: center; gap: var(--space-4); min-height: 40px; padding: 0 var(--space-2); border-bottom: var(--hairline-width) solid var(--hairline); }
+.cr-skeleton-row .skeleton-line { width: 100%; }
+.cr-skeleton-row .skeleton-line.short { width: 70%; }
+@container (max-width: 900px) {
+  .cr-skeleton-row { min-height: 52px; }
+}
+.cr-empty { max-width: 44ch; }
+
+/* The pane. */
+.cr-workbench[data-detail="open"] { grid-template-columns: minmax(0, 1fr) minmax(320px, 420px); }
+.cr-detail { top: var(--tabbar-height, 0px); max-height: calc(100dvh - var(--tabbar-height, 0px) - var(--layout-bottom, 0px)); overflow: auto; scrollbar-width: thin; padding-bottom: var(--space-5); }
+.cr-detail-head { position: relative; display: grid; gap: var(--space-1); padding-right: var(--touch); margin-bottom: var(--space-3); }
+.cr-detail-ref { margin: 0; color: var(--fg-muted); font-size: var(--font-size-1); font-variant-numeric: tabular-nums; }
+.cr-detail-title { margin: 0; font: var(--font-weight-strong) var(--font-size-3)/1.25 var(--font-text); color: var(--fg); overflow-wrap: anywhere; }
+.cr-detail-title:focus { outline: none; }
+.cr-detail-heading summary { cursor: pointer; list-style: none; }
+.cr-detail-heading summary::-webkit-details-marker { display: none; }
+.cr-detail-heading:not([open]) .cr-detail-title { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.cr-title-expand, .cr-title-collapse { display: block; margin-top: var(--space-1); color: var(--fg-muted); font-size: var(--font-size-1); }
+.cr-title-collapse, .cr-detail-heading[open] .cr-title-expand { display: none; }
+.cr-detail-heading[open] .cr-title-collapse { display: block; }
+.cr-detail-heading summary:focus-visible { outline: var(--focus-width, 2px) solid var(--focus-ring); outline-offset: 2px; }
+.cr-detail-availability.state-block { margin: 0 0 var(--space-3); padding: var(--space-3); gap: var(--space-2); }
+.cr-detail-availability h3 { font-size: var(--font-size-2); }
+.cr-detail-availability p { font-size: var(--font-size-1); }
+.cr-detail-kind { display: flex; flex-wrap: wrap; gap: var(--space-2); margin: 0; color: var(--fg-muted); font-size: var(--font-size-1); }
+.cr-detail-close { position: absolute; top: calc(-1 * var(--space-2)); right: calc(-1 * var(--space-2)); width: var(--touch); height: var(--touch); border: 0; border-radius: var(--radius-2); background: transparent; color: var(--fg-muted); font: var(--font-weight-regular) var(--font-size-3)/1 var(--font-text); cursor: pointer; }
+@media (hover: hover) { .cr-detail-close:hover { background: var(--surface-2); color: var(--fg); } }
+.cr-detail-close:focus-visible, .cr-detail-back:focus-visible, .cr-older:focus-visible { outline: var(--focus-width, 2px) solid var(--focus-ring); outline-offset: 1px; }
+.cr-detail-back { display: none; justify-self: start; min-height: var(--touch); margin: 0 0 var(--space-2) calc(-1 * var(--space-2)); padding: 0 var(--space-2); border: 0; border-radius: var(--radius-2); background: transparent; color: var(--fg); font: var(--font-weight-regular) var(--font-size-2)/1 var(--font-text); cursor: pointer; }
+
+.cr-next { margin-bottom: var(--space-3); padding: var(--space-2) var(--space-3); border-radius: var(--radius-2); background: var(--surface-1); }
+.cr-next h3, .cr-activity h3 { margin: 0 0 var(--space-1); color: var(--fg-muted); font: var(--font-weight-regular) var(--font-size-1)/1.3 var(--font-text); }
+.cr-next-label { margin: 0; color: var(--fg); font-size: var(--font-size-2); line-height: 1.4; overflow-wrap: anywhere; }
+.cr-next-note, .cr-next-none { margin: var(--space-1) 0 0; color: var(--fg-muted); font-size: var(--font-size-1); overflow-wrap: anywhere; }
+.cr-next-none { margin: 0; }
+
+.cr-props { display: grid; gap: 0; margin: 0 0 var(--space-3); }
+.cr-props > div { display: grid; grid-template-columns: 8rem minmax(0, 1fr); gap: var(--space-3); padding: var(--space-2) 0; border-bottom: var(--hairline-width) solid var(--hairline); font-size: var(--font-size-1); }
+.cr-props dt { color: var(--fg-muted); }
+.cr-props dd { margin: 0; color: var(--fg); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+
+/* Activity: chronological, newest at the bottom, consecutive same-kind events grouped. */
+.cr-activity h3 { margin-bottom: var(--space-3); }
+.cr-timeline { list-style: none; margin: 0; padding: 0 0 0 var(--space-4); border-left: var(--hairline-width) solid var(--hairline); display: grid; gap: var(--space-3); }
+.cr-timeline-nested { margin-top: var(--space-3); }
+.cr-event { position: relative; display: grid; gap: 2px; font-size: var(--font-size-1); }
+.cr-event::before { content: ""; position: absolute; left: calc(-1 * var(--space-4) - 3px); top: 0.45em; width: 5px; height: 5px; border-radius: var(--radius-round); background: var(--fg-quiet); }
+.cr-event-label { color: var(--fg); }
+.cr-event-detail { color: var(--fg-muted); overflow-wrap: anywhere; }
+.cr-event-time, .cr-event-count { color: var(--fg-quiet); font-variant-numeric: tabular-nums; }
+.cr-event-group summary { display: grid; gap: 2px; cursor: pointer; list-style: none; }
+.cr-event-group summary::-webkit-details-marker { display: none; }
+.cr-event-group summary .cr-event-label::after { content: " ▸"; color: var(--fg-quiet); }
+.cr-event-group details[open] summary .cr-event-label::after { content: " ▾"; }
+.cr-event-group .cr-timeline-nested { border-left-style: dashed; }
+.cr-older { min-height: 36px; margin: 0 0 var(--space-3); padding: 0 var(--space-3); border: var(--hairline-width) solid var(--hairline-strong); border-radius: var(--radius-2); background: transparent; color: var(--fg); font: inherit; font-size: var(--font-size-1); cursor: pointer; }
+@media (hover: hover) { .cr-older:hover { background: var(--surface-2); } }
+.cr-timeline-empty { margin: 0; color: var(--fg-muted); font-size: var(--font-size-1); line-height: 1.5; max-width: 52ch; }
+.cr-timeline-skeleton { display: grid; gap: var(--space-2); min-height: 12rem; align-content: start; }
+.cr-next .skeleton-line { display: block; margin-top: var(--space-2); }
+
+/* Phone: the list and the record are two screens, with a back control. */
+@media (max-width: 760px), (hover: none) and (pointer: coarse) and (max-width: 1023px) {
+  .cr-workbench[data-detail="open"] { grid-template-columns: minmax(0, 1fr); }
+  .cr-workbench[data-detail="open"] .cr-list-region { display: none; }
+  .cr-workbench[data-detail="open"] .cr-detail { position: static; max-height: none; overflow: visible; margin: 0; padding: 0; border: 0; }
+  .cr-detail-back { display: inline-flex; align-items: center; gap: var(--space-2); }
+  .cr-detail-close { display: none; }
+  .cr-detail-head { padding-right: 0; }
+  .cr-props > div { grid-template-columns: 7rem minmax(0, 1fr); }
+}
+
+/* Color Assist: the highlight also changes shape, not only tone. */
+:root[data-color-assist="on"] #crQueueList .cr-row[aria-selected="true"] { outline: var(--hairline-width) dashed var(--fg-muted); outline-offset: -1px; }

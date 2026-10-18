@@ -77,6 +77,8 @@ function normalizeItem(row, { incidents, holders }) {
     title: text(row.title) ? row.title : ref, statusGroup: statusGroup(row.kind, row.state), state: row.state ?? null,
     source: row.source ?? row.source_ref ?? null, owner: text(row.owner) ? row.owner : null,
     age: Number.isFinite(row.age) ? row.age : null, version: row.version ?? null, link: text(row.link) ? row.link : null,
+    openedAt: text(row.opened_at) ? row.opened_at : null, lastActivityAt: text(row.last_activity_at) ? row.last_activity_at : null,
+    loopKind: row.kind === "loop" && text(row.identity?.kind) ? row.identity.kind : null,
     triageActions: (Array.isArray(row.available_triage_actions) ? row.available_triage_actions : [])
       .map(({ action, verb, args, fields, versioned }) => ({ action, verb, args: args ?? {}, fields: fields ?? [], versioned: versioned === true })),
     holder: holders.get(ref) ?? null,
