@@ -19,6 +19,7 @@
   <link rel="stylesheet" href="/css/app-shell.css">
   <link rel="stylesheet" href="/css/control-room-workspace.css">
   <link rel="stylesheet" href="/css/control-room-list.css">
+  <link rel="stylesheet" href="/css/control-room-commands.css">
   <link rel="stylesheet" href="/css/control-room-triage.css">
   <link rel="stylesheet" href="/css/control-room-views.css">
 </head>
@@ -42,6 +43,7 @@
 </nav>
 <main id="main" class="shell control-room-workspace" data-board-embedded>
 <h1 class="sr-only">Control Room</h1>
+<div data-layout-slot="tabs" class="cr-command-tools"><button id="crCommandsOpen" type="button" aria-keyshortcuts="Meta+K Control+K" aria-label="Open Control Room commands" aria-haspopup="dialog" aria-controls="crCommands">Commands <kbd class="cr-keyboard-hint" aria-hidden="true">⌘ / Ctrl K</kbd></button></div>
 <div id="crWorkbench" class="cr-workbench" data-detail="closed">
 <div class="cr-list-region">
 <section id="panelInbox" class="tabpanel cr-section cr-attention" role="tabpanel" aria-labelledby="tabInbox" tabindex="0" hidden>

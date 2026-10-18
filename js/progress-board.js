@@ -431,13 +431,13 @@ export function mountBoard(deps = {}) {
     const grouped = kind === ALL_REPOS_BOARD;
     byId("task-count").textContent = `${visible.length} OF ${all.length} CARD${all.length === 1 ? "" : "S"}`;
     renderRail(visible, stages);
-    stages.forEach((stage, index) => {
+    stages.forEach(stage => {
       const cards = visible.filter(card => card.stage === stage.id);
+      if (!cards.length) return;
       const column = el("section", "column", undefined,
         { "data-stage": stage.id, style: `--stage-accent:${stage.color}`, "aria-label": `${stage.label}: ${cards.length}` });
       const head = el("header", "column-head");
-      if (stage.sequence !== false) head.append(el("span", "stage-index", String(index + 1).padStart(2, "0")));
-      head.append(el("h3", "stage-label", stage.label), el("span", "stage-count", String(cards.length).padStart(2, "0")));
+      head.append(el("h3", "stage-label", stage.label), el("span", "stage-count", String(cards.length)));
       column.append(head);
       const body = el("div", "column-body");
       if (stage.id === "live") {
@@ -455,10 +455,10 @@ export function mountBoard(deps = {}) {
       } else {
         appendCards(body, cards, grouped);
       }
-      if (!cards.length) body.append(el("p", "column-empty", "Nothing here"));
       column.append(body);
       container.append(column);
     });
+    if (!visible.length) container.append(el("p", "empty", all.length ? "No tasks match these filters." : "No tasks on this board yet."));
     for (const id of [...cardNodes.keys()]) if (!all.some(card => card.id === id)) cardNodes.delete(id);
     if (focusedId || focusedControlId) {
       const node = focusedId ? cardNodes.get(focusedId) : byId(focusedControlId);
@@ -906,6 +906,10 @@ export function mountBoard(deps = {}) {
     pendingRequests.clear();
     for (const id of BOARD_PANELS) byId(id)?.replaceChildren();
     for (const id of BOARD_COUNTS) byId(id).textContent = "—";
+    if (state === "unpublished") {
+      byId("board-stages").append(el("p", "empty", "Tasks appear when this board is published."));
+      byId("board-blocked").append(el("p", "empty", "Blocked work appears when this board is published."));
+    }
     byId("repos-panel").hidden = true;
     byId("board-sync").hidden = true;
     byId("board-title").textContent = deps.openTask ? "System Job Board" : "Progress";

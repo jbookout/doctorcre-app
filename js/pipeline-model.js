@@ -365,6 +365,14 @@ function dictSentence(raw) {
   return '';
 }
 
+// A name written as a structured value ({"value":"…"}, seen on staging) reads
+// as its text; anything else falls through to the note rules.
+export function dealName(value) {
+  const wrapped = typeof value === 'string' && /^\s*\{\s*"value"\s*:\s*"((?:\\.|[^"\\])*)"/.exec(value);
+  const text = wrapped ? JSON.parse(`"${wrapped[1]}"`).trim() : noteText(value);
+  return text || 'Untitled deal';
+}
+
 /**
  * The sentence a note value carries, or '' when it carries none. A string
  * shaped like a dict never paints as raw braces.

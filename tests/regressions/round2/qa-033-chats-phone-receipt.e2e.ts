@@ -5,7 +5,6 @@ const test = reproTest();
 test('QA-033 phone Chats command receipt keeps its safety key above the footer', { tags: ['regression'], requires: ['browser'], retries: 0 }, async ({ app, browser, screen }) => {
   await browser.setViewport({ width: 390, height: 844 });
   await app.open('/doc-chats?mode=live');
-  await screen.getByRole('button', 'Dismiss morning brief', { exact: true }).tap();
   await expect(browser.locator('.suggestion-card')).toHaveCount(2);
   await browser.locator('.suggestion-card [data-work-number]').nth(0).fill('205');
   await browser.locator('.suggestion-card button[data-choice="act"]').nth(0).tap();

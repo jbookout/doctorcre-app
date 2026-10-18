@@ -164,7 +164,8 @@ test("legend is one tap away and closes with Escape", async () => {
   assert.equal(toggle.getAttribute("aria-expanded"), "true");
   window.document.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Escape" }));
   assert.equal($("#legend").hidden, true);
-  assert.match(CSS, /\.legend-toggle \{ position: fixed;/);
+  // S8: the Key sits in the page flow beside the board switch; it never floats over a heading or card.
+  assert.match(CSS, /\.legend-toggle \{ position: static;/);
 });
 
 test("Live sorts newest first: highest PR first within a repo, all-repos by release time", () => {
@@ -500,7 +501,9 @@ test("recorded source cards retain their filter and detail outside the release s
   $("#filter-stage").dispatchEvent(new window.Event("change"));
   assert.equal($$("#board-stages [data-stage='recorded'] .board-card").length, 1);
   assert.equal($$("#board-stages [data-stage='live'] .board-card").length, 0);
-  assert.equal($$("#board-stages [data-stage='recorded'] .stage-index").length, 0);
+  // S8: lanes carry no index numbers, and counts are plain numbers, never zero-padded.
+  assert.equal($$("#board-stages .stage-index").length, 0);
+  assert.ok($$("#board-stages .stage-count").every(node => !/^0\d/.test(node.textContent)));
   assert.equal($$("#completed-list [data-stage='recorded']").length, 1);
   assert.match($("#completed-count").textContent, /1 RECORDED/);
   board.dispose();

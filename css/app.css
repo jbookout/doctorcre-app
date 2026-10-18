@@ -298,33 +298,8 @@ tr.parked .park-button { border-color: var(--hairline-strong); color: var(--fg);
 .receipts-note { max-width: 52ch; margin: 0; color: var(--fg-muted); font-size: var(--font-size-1); }
 .receipts-live { min-height: 14px; margin: var(--space-3) 0 0; color: var(--fg-muted); font-size: var(--font-size-1); }
 .receipts-live:empty { min-height: 0; margin: 0; }
-.receipt-list { display: grid; gap: var(--space-2); margin: var(--space-3) 0 0; padding: 0; list-style: none; }
-/* A new receipt fades in once; nothing moves. */
-.receipt { display: grid; gap: var(--space-1); padding: var(--space-3) var(--space-4); border-radius: var(--radius-2); background: var(--surface-1); animation: receipt-in var(--duration-menu) var(--ease-out); }
-.receipt.superseded { color: var(--fg-muted); }
-.receipt-line { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-2); margin: 0; }
-.receipt-deal { min-height: var(--touch); margin-left: calc(var(--space-2) * -1); padding: var(--space-1) var(--space-2); border: 0; border-radius: var(--radius-2); background: transparent; color: var(--fg); font-size: var(--font-size-1); font-weight: var(--font-weight-strong); text-align: left; }
-.receipt-deal:hover { background: var(--surface-2); }
-.receipt-action { color: var(--fg-muted); font-size: var(--font-size-1); }
-.receipt-values { display: inline-flex; align-items: center; flex-wrap: wrap; gap: var(--space-2); min-width: 0; font-size: var(--font-size-1); }
-.receipt-before { color: var(--fg-muted); text-decoration: line-through; }
-.receipt-arrow { color: var(--fg-muted); }
-.receipt-after { font-weight: var(--font-weight-strong); }
-.receipt-meta { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-2); margin: 0; color: var(--fg-muted); font-size: var(--font-size-1); }
-.receipt-time { color: var(--fg-muted); font-variant-numeric: tabular-nums; }
-.receipt-badge { padding: 0 var(--space-2); border: var(--hairline-width) solid var(--hairline); border-radius: var(--radius-round); color: var(--fg-muted); font-size: var(--font-size-1); }
-.receipt-badge.undone { border-color: var(--status-info); color: var(--status-info-ink); }
-.receipt-badge.refused { border-color: var(--status-danger); color: var(--status-danger-ink); }
-.receipt-badge.unconfirmed { border-color: var(--status-warn); color: var(--status-warn-ink); }
-.receipt-actions { display: flex; gap: var(--space-2); }
-.receipt-undo { min-width: var(--touch); min-height: var(--touch); padding: var(--space-2) var(--space-4); border: var(--hairline-width) solid var(--hairline-strong); border-radius: var(--radius-2); background: var(--surface-2); color: var(--fg); font-size: var(--font-size-1); font-weight: var(--font-weight-strong); }
-.receipt-undo:hover { background: var(--surface-3); }
-.receipt-undo[disabled] { background: transparent; color: var(--fg-muted); }
-.receipt-message { margin: 0; padding: var(--space-2) var(--space-3); border-left: 3px solid var(--status-warn); color: var(--status-warn-ink); font-size: var(--font-size-1); }
-.receipt-message.refused { border-left-color: var(--status-danger); color: var(--status-danger-ink); }
 #receiptsTitle:focus { outline: none; }
 #receiptsTitle:focus-visible { outline: var(--focus-width) solid var(--focus-ring); outline-offset: 3px; }
-@keyframes receipt-in { from { opacity: 0; } }
 
 /* ------------------------------------------------------------ Color Assist */
 /* Pattern encoding: every status keeps its word or glyph, and also gets a shape
@@ -344,9 +319,6 @@ tr.parked .park-button { border-color: var(--hairline-strong); color: var(--fg);
 :root[data-color-assist="on"] .account-card[data-pulse="overdue"] { border: 3px double var(--status-danger); }
 :root[data-color-assist="on"] .account-card[data-pulse="attention"] { border-style: dashed; border-color: var(--status-warn); }
 :root[data-color-assist="on"] .account-metrics .is-alert { padding-left: var(--space-2); border-left: 3px double var(--status-danger); }
-:root[data-color-assist="on"] .receipt { border-left: 3px solid var(--status-warn); }
-:root[data-color-assist="on"] .receipt.superseded { border-left: 3px dotted var(--fg-muted); }
-:root[data-color-assist="on"] .receipts-jump { border: 2px dashed var(--fg-muted); }
 
 /* ------------------------------------------------------------ phone */
 /* QA batch 1: at phone width the strips scroll inside their own regions, never the page. */

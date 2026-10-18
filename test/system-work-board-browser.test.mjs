@@ -39,7 +39,9 @@ test('all source cards and ten recorded completions fit phone and desktop; libra
   assert.equal(await page.locator('#system-work-flow [data-stage="live"].pipeline-node').count(),0);
   assert.equal(await page.locator('#system-work-flow [data-stage="recorded"].pipeline-node').count(),10);
   assert.equal(await page.locator('#system-work-flow .pipeline-connector').count(),5);
-  assert.equal(await page.locator('#system-work-flow .flow-stage[data-stage="recorded"] .stage-index').count(),0);
+  // S8: the path-to-live diagram numbers no lanes and pads no counts.
+  assert.equal(await page.locator('#system-work-flow .stage-index').count(),0);
+  assert.equal((await page.locator('#system-work-flow .stage-count').allTextContents()).some(text => /^0\d/.test(text)),false);
   assert.equal(await page.locator('#board-stages .board-card').count(),0,'the empty published snapshot stays independent of the census');
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
   await page.getByRole('button',{name:'Completed records',exact:true}).click();
@@ -96,4 +98,25 @@ test('recorded completion never claims Live in the real system-work diagram',asy
  assert.equal(await page.locator('#system-work-flow [data-stage="live"].pipeline-node').count(),0);
  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);assert.deepEqual(errors,[]);
  await page.screenshot({path:'out/test-artifacts/recorded-completion/completed-records-desktop.png',fullPage:true});
+});
+
+for (const width of [390, 1440]) test(`S8 populated Progress preserves readable text at ${width}px`, async t => {
+ const {page}=await open(t,width);
+ const sizes=await page.locator('#system-work-flow text, #system-work-flow foreignObject > div').evaluateAll(nodes=>nodes.map(node=>parseFloat(getComputedStyle(node).fontSize)*node.closest('svg').getScreenCTM().a));
+ assert.ok(Math.min(...sizes)>=12, `smallest rendered text is ${Math.min(...sizes)}px`);
+ const empty=await page.locator('#system-work-flow .flow-stage').evaluateAll(nodes=>nodes.filter(n=>!n.querySelector('[data-task-id]')).map(n=>n.getBoundingClientRect().height));
+ assert.ok(empty.every(height=>height<150), `empty lanes do not stretch to the largest lane: ${empty}`);
+});
+test('S8 unpublished Progress explains its empty sections and keeps Key in the header row', async t=>{
+ const {page}=await open(t,390,{snapshot:false});
+ await page.waitForFunction(()=>document.querySelector('#board-meta').textContent==='No published snapshot');
+ assert.match(await page.locator('#board-stages').textContent(), /published/i);
+ assert.match(await page.locator('#board-blocked').textContent(), /published/i);
+ const dimensions=await page.evaluate(()=>{
+  const box=s=>document.querySelector(s).getBoundingClientRect();
+  const key=box('#legend-toggle'),nav=box('.board-switch'),check=box('#filter-blocked');
+  return {keyTop:key.top,navBottom:nav.bottom,check:check.height};
+ });
+ assert.ok(dimensions.keyTop<dimensions.navBottom, 'Key shares the navigation row');
+ assert.ok(dimensions.check<=20, `checkbox height ${dimensions.check}`);
 });
