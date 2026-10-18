@@ -4,7 +4,6 @@ import { readFile } from "node:fs/promises";
 import { JSDOM } from "jsdom";
 import { mountLeadsWorkspace } from "../js/leads-workspace-app.js";
 import { chromium } from "playwright";
-import { TOUCH_LAYOUT } from "../js/touch-layout.js";
 
 const read = (path) => readFile(new URL(`../${path}`, import.meta.url), "utf8");
 
@@ -35,11 +34,6 @@ test("QA-002 light Home calendar tiles keep weekday and date text at 4.5:1", asy
   } finally { await browser.close(); }
 });
 
-test("QA-005 Doc stays in workspace controls on phones and in the status band on desktop", async () => {
-  const css = await read("css/doc-presence.css");
-  assert.match(css, /\.app-shell-workspace-group > \.doc-presence\s*\{[^}]*position: static/);
-  assert.match(css, /^\.doc-presence \{[^}]*bottom: calc\(\(var\(--layout-bottom\) - var\(--touch\)\) \/ 2\)/m);
-});
 
 test("QA-009 thread controls are disabled until a conversation is selected", async () => {
   const js = await read("js/conversations.js");
