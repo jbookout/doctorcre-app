@@ -14,11 +14,15 @@ export async function mountTerritoryMap(root, selectMarket) {
     fetch("/data/leads-territory.geojson").then(r => { if (!r.ok) throw new Error("Map unavailable"); return r.json(); }),
     fetch("/data/leads-market-locations.json").then(r => { if (!r.ok) throw new Error("Map unavailable"); return r.json(); }),
   ]);
+  // The map paints from the page's colour tokens so it follows the theme; the
+  // literals are only the fallback when no stylesheet is present.
+  const style = root.ownerDocument.defaultView?.getComputedStyle(root.ownerDocument.documentElement);
+  const token = (name, fallback) => style?.getPropertyValue(name).trim() || fallback;
   const map = new gl.Map({ container: root, attributionControl: false, interactive: false,
     center: [-86.5, 31.9], zoom: 5.5, style: { version: 8, sources: { territory: { type: "geojson", data: geometry } },
-      layers: [{ id: "ground", type: "background", paint: { "background-color": "#070f1b" } },
-        { id: "land", type: "fill", source: "territory", paint: { "fill-color": "#19365a", "fill-opacity": .65 } },
-        { id: "borders", type: "line", source: "territory", paint: { "line-color": "#637f9e", "line-opacity": .5, "line-width": 1 } }] } });
+      layers: [{ id: "ground", type: "background", paint: { "background-color": token("--surface-2", "#070f1b") } },
+        { id: "land", type: "fill", source: "territory", paint: { "fill-color": token("--surface-3", "#19365a"), "fill-opacity": .9 } },
+        { id: "borders", type: "line", source: "territory", paint: { "line-color": token("--hairline-strong", "#637f9e"), "line-opacity": .9, "line-width": 1 } }] } });
   const markers = new Map();
   let latest = [], selected = "";
   map.fitBounds([[-89.2, 29.9], [-83.2, 34.95]], { padding: 24, duration: 0 });
