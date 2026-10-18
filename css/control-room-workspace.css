@@ -27,8 +27,13 @@
 .cr-section-head { display: grid; gap: var(--space-1); margin-bottom: var(--space-4); }
 .cr-section-head h2 { margin: 0; font: var(--font-weight-strong) var(--font-size-4)/1.2 var(--font-text); color: var(--fg); }
 .cr-section-lead { margin: 0; color: var(--fg-muted); font-size: var(--font-size-2); max-width: 60ch; }
-.cr-coverage { margin: 0 0 var(--space-3); color: var(--fg-muted); font-size: var(--font-size-1); font-variant-numeric: tabular-nums; }
+.cr-coverage-row { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-1) var(--space-3); margin: 0 0 var(--space-3); }
+.cr-coverage { margin: 0; color: var(--fg-muted); font-size: var(--font-size-1); font-variant-numeric: tabular-nums; }
 .cr-coverage[data-complete="false"]::before { content: "◐ "; color: var(--fg-quiet); }
+.cr-sources { font-size: var(--font-size-1); color: var(--fg-muted); }
+.cr-sources summary { cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
+.cr-sources ul { list-style: none; margin: var(--space-2) 0 0; padding: 0; display: grid; gap: var(--space-1); }
+.cr-sources strong { color: var(--fg); font-weight: var(--font-weight-strong); }
 .cr-list { display: grid; gap: var(--space-5); min-width: 0; }
 .cr-group h3 { display: flex; align-items: baseline; gap: var(--space-2); margin: 0 0 var(--space-2); font: var(--font-weight-strong) var(--font-size-2)/1.3 var(--font-text); color: var(--fg); }
 .cr-group h3 span { color: var(--fg-quiet); font-weight: var(--font-weight-regular); font-variant-numeric: tabular-nums; }
@@ -55,8 +60,8 @@
   .cr-row-meta { grid-column: 3; grid-row: 2; overflow: hidden; text-overflow: ellipsis; }
 }
 .cr-views { list-style: none; margin: 0; padding: 0; border-top: var(--hairline-width) solid var(--hairline); }
-.cr-views li { display: flex; justify-content: space-between; gap: var(--space-3); min-height: var(--touch); align-items: center; padding: 0 var(--space-2); border-bottom: var(--hairline-width) solid var(--hairline); }
-.cr-views small { display: block; color: var(--fg-muted); font-size: var(--font-size-1); }
+.cr-views li { display: flex; justify-content: space-between; gap: var(--space-3); min-height: var(--touch); align-items: center; padding: var(--space-3) var(--space-3); border-bottom: var(--hairline-width) solid var(--hairline); }
+.cr-views small { display: block; margin-top: 2px; color: var(--fg-muted); font-size: var(--font-size-1); }
 .cr-views strong { font-variant-numeric: tabular-nums; }
 .cr-ledger { margin-top: var(--space-6); }
 .cr-ledger-head { display: flex; justify-content: space-between; align-items: baseline; gap: var(--space-3); margin-bottom: var(--space-3); }
@@ -73,12 +78,11 @@
 .cr-boards-directory .board-link { padding: var(--space-3); min-width: 0; }
 .cr-boards-directory .board-link h3 { font-size: var(--font-size-2); margin: var(--space-1) 0; }
 .cr-boards-directory .directory-summary { font-size: var(--font-size-2); min-height: var(--touch); display: flex; align-items: center; cursor: pointer; }
-.cr-boards-directory .work-filters { margin: 0; gap: var(--space-3); }
-.cr-boards-directory .work-filters label { flex: 1 1 140px; gap: var(--space-1); font-size: var(--font-size-1); }
-.cr-boards-directory .work-filters input, .cr-boards-directory .work-filters select { padding: var(--space-2); min-height: var(--touch); }
-.cr-boards-directory .work-filters button { min-height: var(--touch); padding: 0 var(--space-4); border: var(--hairline-width) solid var(--hairline-strong); border-radius: var(--radius-2); background: var(--surface-2); color: var(--fg); font: inherit; cursor: pointer; }
-@media (hover: hover) { .cr-boards-directory .work-filters button:hover { background: var(--surface-3); } }
-.cr-boards-directory > a { justify-self: start; font-size: var(--font-size-1); }
+.control-room-workspace #system-work-panel .work-filters { margin: 0; gap: var(--space-3); }
+.control-room-workspace #system-work-panel .work-filters label { flex: 1 1 140px; gap: var(--space-1); font-size: var(--font-size-1); }
+.control-room-workspace #system-work-panel .work-filters input, .control-room-workspace #system-work-panel .work-filters select { padding: var(--space-2); min-height: var(--touch); }
+.control-room-workspace #system-work-panel .work-filters button { min-height: var(--touch); padding: 0 var(--space-4); border: var(--hairline-width) solid var(--hairline-strong); border-radius: var(--radius-2); background: var(--surface-2); color: var(--fg); font: inherit; cursor: pointer; }
+@media (hover: hover) { .control-room-workspace #system-work-panel .work-filters button:hover { background: var(--surface-3); } }
 .control-room-workspace #board-eyebrow { display: none; }
 /* The Key sits in the board's own toolbar here, never floating over cards. */
 .control-room-workspace .board-switch { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); }

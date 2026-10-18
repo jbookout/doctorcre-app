@@ -27,15 +27,21 @@ export const isTriageState = (state) => TRIAGE_STATES.has(state);
 export const STATUS_GROUPS = Object.freeze([
   { key: "triage", label: "Needs triage" }, { key: "in_progress", label: "In progress" },
   { key: "review", label: "In review" }, { key: "blocked", label: "Blocked" },
-  { key: "ready", label: "Ready" }, { key: "backlog", label: "Backlog" }, { key: "other", label: "Other" },
+  { key: "ready", label: "Ready" }, { key: "backlog", label: "Backlog" },
+  { key: "closed", label: "Closed" }, { key: "other", label: "Other" },
 ]);
+// Every state the record layer defines (carr-system migrations 0114 ops.work_request,
+// 0115 ops.incident, 0024 loop_item) plus the census's own derived states.
+// `needs_joe` is a Work Request waiting on Joe: it cannot move, so it is Blocked.
 const GROUP_OF_STATE = {
   captured: "triage", detected: "triage", fix_untracked: "triage",
-  claimed: "in_progress", in_progress: "in_progress", investigating: "in_progress", mitigating: "in_progress",
-  verification: "review", review: "review", monitoring: "review", pending: "review",
-  blocked: "blocked", needs_answer: "blocked", stale: "blocked",
+  claimed: "in_progress", in_progress: "in_progress", investigating: "in_progress", mitigating: "in_progress", reopened: "in_progress",
+  verification: "review", awaiting_release: "review", released: "review", review: "review", monitoring: "review", pending: "review",
+  needs_joe: "blocked", blocked: "blocked", failed: "blocked", needs_answer: "blocked", stale: "blocked",
   ready: "ready", triaged: "ready",
   open: "backlog", queued: "backlog", unmarked: "backlog",
+  confirmed_closed: "closed", declined: "closed", superseded: "closed", resolved: "closed", reviewed: "closed",
+  done: "closed", dropped: "closed", complete: "closed", accepted: "closed",
 };
 export const statusGroup = (_kind, state) => GROUP_OF_STATE[state] || "other";
 
@@ -98,6 +104,19 @@ export function addPage(queue, census, { incidents = null, current = null } = {}
 export const queueItems = (queue, { includeTriage = false } = {}) =>
   includeTriage ? queue.items.slice() : queue.items.filter((item) => !isTriageState(item.state));
 
+// Re-read as many pages as were loaded, from page one, so an automatic refresh
+// never throws away what "Load more" fetched and rows gone at the source leave.
+export async function refreshQueue(queue, readPage, context = {}) {
+  const wanted = Math.max(1, queue.pages);
+  let fresh = createQueue(), cursor = null;
+  do { fresh = addPage(fresh, await readPage(cursor), context); cursor = fresh.nextCursor; }
+  while (cursor && fresh.pages < wanted);
+  return fresh;
+}
+
+// X2: defects have no triage action yet, so they live in a Bugs view beside incidents.
+export const bugItems = (queue) => queue.items.filter((item) => item.kind === "defect" || item.kind === "incident");
+
 // X2: untracked defects have no allowed first transition, so Triage lists only
 // triage-state rows the record layer offers an action for.
 export const triageItems = (queue) => queue.items.filter((item) => isTriageState(item.state) && item.triageActions.length > 0);
@@ -107,15 +126,32 @@ export const groupItems = (items) => STATUS_GROUPS
   .filter((group) => group.items.length > 0);
 
 const count = (n) => n.toLocaleString("en-US");
+const SOURCE_STATE = { partial: "Partly read", unavailable: "Not read" };
+const REASON_WORDS = {
+  fix_status_not_recorded: "fix status not recorded",
+  github_cache_missing_stale_or_incomplete: "GitHub data has not been refreshed",
+  unstructured_brief_pr_relationships: "links to pull requests are not recorded",
+  cache_contains_open_github_work_only: "only open GitHub work is known",
+  external_history_pages_missing_or_invalid: "some GitHub history is missing",
+  rows_rejected_invalid_dates_or_identity: "some rows had unreadable dates",
+  rows_missing_dates: "some rows have no dates",
+  count_unavailable: "the total is not known",
+  DEPENDENCY_UNAVAILABLE: "this source could not be reached",
+  source_read_failed: "this source could not be read",
+};
+const sentence = (state, reason) => {
+  const head = SOURCE_STATE[state] || humanize(state);
+  const why = reason ? REASON_WORDS[reason] || humanize(reason).toLowerCase() : null;
+  return why ? `${head}: ${why}` : head;
+};
+// One short line for the default view; per-source detail, in plain words, for a disclosure.
 export function coverageLine(queue) {
-  if (queue.pages === 0) return { complete: false, text: "Queue not read yet" };
+  if (queue.pages === 0) return { complete: false, text: "Queue not read yet", details: [] };
   const loaded = queue.items.length;
-  const totals = queue.coverage.map((source) => source.count_total);
-  const total = totals.every(Number.isFinite) ? totals.reduce((sum, n) => sum + n, 0) : null;
-  const gaps = queue.coverage.filter((source) => source.state !== "complete")
-    .map((source) => `${kindLabel(source.kind)}: ${source.state}${source.reason ? ` (${humanize(source.reason).toLowerCase()})` : ""}`);
-  const complete = queue.censusComplete === true && gaps.length === 0 && !queue.nextCursor;
-  if (complete) return { complete, text: `All ${queue.coverage.length} sources read · ${count(loaded)} of ${count(total ?? loaded)} items` };
-  return { complete, text: [`Showing ${count(loaded)} loaded${total === null ? "; total unknown" : ` of ${count(total)}`}`,
-    queue.nextCursor ? "more to load" : null, ...gaps].filter(Boolean).join(" · ") };
+  const details = queue.coverage.filter((source) => source.state !== "complete")
+    .map((source) => ({ source: kindLabel(source.kind), text: sentence(source.state, source.reason) }));
+  const complete = queue.censusComplete === true && details.length === 0 && !queue.nextCursor;
+  if (complete) return { complete, text: `${count(loaded)} ${loaded === 1 ? "item" : "items"} · every source read`, details };
+  return { complete, details, text: [`${count(loaded)} loaded`, queue.nextCursor ? "more to load" : null,
+    details.length ? `${details.length} ${details.length === 1 ? "source" : "sources"} incomplete` : null].filter(Boolean).join(" · ") };
 }
