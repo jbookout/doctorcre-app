@@ -181,7 +181,7 @@ export function timelineHtml(item, events, { showAll = false } = {}) {
 export const SKELETON_HTML = `<div class="cr-timeline-skeleton" aria-hidden="true">${'<span class="skeleton-line"></span><span class="skeleton-line short"></span>'.repeat(4)}</div>`;
 
 function header(item) {
-  return `<header class="cr-detail-head"><button class="cr-detail-back" type="button" data-detail-close aria-label="Back to the list"><span aria-hidden="true">←</span> Back</button><p class="cr-detail-ref" data-detail-ref>${escapeHtml(item.ref)}</p><details class="cr-detail-heading"><summary><h2 class="cr-detail-title" id="crDetailTitle" tabindex="-1">${escapeHtml(item.title)}</h2><span class="cr-title-expand">Show full title</span><span class="cr-title-collapse">Show less</span></summary></details><p class="cr-detail-kind"><span>${escapeHtml(item.kindLabel)}</span><span aria-hidden="true">·</span><span>${escapeHtml(humanize(item.state) || 'State not recorded')}</span></p><button class="cr-detail-close" type="button" data-detail-close aria-label="Close detail" title="Close (Esc)"><span aria-hidden="true">×</span></button></header>`;
+  return `<header class="cr-detail-head"><button class="cr-detail-back" type="button" data-detail-close aria-label="Back to the list"><span aria-hidden="true">←</span> Back</button><p class="cr-detail-ref" data-detail-ref>${escapeHtml(item.ref)}</p><h2 class="cr-detail-title" id="crDetailTitle" tabindex="-1">${escapeHtml(item.title)}</h2><p class="cr-detail-kind"><span>${escapeHtml(item.kindLabel)}</span><span aria-hidden="true">·</span><span>${escapeHtml(humanize(item.state) || 'State not recorded')}</span></p><button class="cr-detail-close" type="button" data-detail-close aria-label="Close detail" title="Close (Esc)"><span aria-hidden="true">×</span></button></header>`;
 }
 function nextBlock(next, state) {
   if (state === 'loading') return '<section class="cr-next" aria-label="Next human action"><h3>Next human action</h3><span class="skeleton-line"></span></section>';
@@ -216,21 +216,9 @@ const reasonOf = (error) => [401, 403].includes(error?.status) ? 'Sign in requir
  */
 export function mountDetail({ node, client, onClose = () => {}, readDeadline = (run) => run() }) {
   let current = null, read = { state: 'loading' }, showAll = false, sequence = 0;
-  const measureTitle = () => {
-    const heading = node.querySelector('.cr-detail-heading');
-    const title = heading?.querySelector('.cr-detail-title');
-    if (!title || heading.open) return;
-    const truncated = title.scrollHeight > title.clientHeight;
-    heading.dataset.truncated = String(truncated);
-    heading.querySelector('summary').tabIndex = truncated ? 0 : -1;
-  };
-  const titleObserver = new ResizeObserver(measureTitle);
   const render = () => {
     if (!current) return;
-    titleObserver.disconnect();
     node.innerHTML = detailHtml(current, read, { showAll });
-    measureTitle();
-    titleObserver.observe(node.querySelector('.cr-detail-title'));
   };
   async function load() {
     const ticket = ++sequence, request = detailRequest(current);
@@ -246,14 +234,13 @@ export function mountDetail({ node, client, onClose = () => {}, readDeadline = (
   }
   node.addEventListener('click', (event) => {
     const target = event.target instanceof Element ? event.target : null;
-    if (target?.closest('.cr-detail-heading[data-truncated="false"] summary')) { event.preventDefault(); return; }
     if (target?.closest('[data-detail-close]')) { onClose(); return; }
     if (target?.closest('[data-show-older]')) { showAll = true; render(); return; }
     if (target?.closest('[data-detail-retry]')) load();
   });
   return {
     open(item) { if (current?.id === item.id && read.state !== 'error') return; current = item; showAll = false; load(); },
-    clear() { sequence++; current = null; titleObserver.disconnect(); },
+    clear() { sequence++; current = null; },
     get item() { return current; },
   };
 }
