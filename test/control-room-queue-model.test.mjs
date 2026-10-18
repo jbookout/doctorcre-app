@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   SECTION_KEYS, sectionForTab, kindLabel, statusGroup, validCensus, createQueue, addPage,
-  queueItems, groupItems, triageItems, coverageLine, isTriageState, refreshQueue, bugItems,
+  queueItems, groupItems, triageItems, coverageLine, isTriageState, refreshQueue, settleRefresh, bugItems, REASON_WORDS,
 } from "../js/control-room-queue-model.js";
 
 // Synthetic rows in the producer's own vocabulary (unfinished-work.v1,
@@ -195,4 +195,35 @@ test("an invalid census is refused instead of rendering as an empty queue", () =
   assert.throws(() => addPage(createQueue(), { schema: "nope" }), /Invalid unfinished-work read/);
   const rows = addPage(createQueue(), census([row("loop", "", "open"), ...NINE.slice(0, 1)]));
   assert.equal(queueItems(rows, { includeTriage: true }).length, 1, "a row without an id is dropped, not invented");
+});
+
+test("every reason code the census producer emits has a plain-words entry, including github_cache_unavailable", () => {
+  const emitted = ["fix_status_not_recorded", "github_cache_missing_stale_or_incomplete", "github_cache_unavailable",
+    "unstructured_brief_pr_relationships", "cache_contains_open_github_work_only", "external_history_pages_missing_or_invalid",
+    "rows_rejected_invalid_dates_or_identity", "rows_missing_dates", "count_unavailable", "DEPENDENCY_UNAVAILABLE", "source_read_failed"];
+  for (const code of emitted) assert.ok(REASON_WORDS[code], `${code} has plain words`);
+  const line = coverageLine(addPage(createQueue(), census(NINE, { census_complete: false,
+    coverage: [{ kind: "builder_brief_file", state: "unavailable", count_total: null, reason: "github_cache_unavailable" }] })));
+  assert.equal(line.details[0].text, "Not read: GitHub data could not be read");
+});
+
+test("a refresh in flight while Load more lands cannot overwrite the page just loaded", async () => {
+  const pages = { "": census(NINE.slice(0, 5), { census_complete: false, next_cursor: "c1" }),
+    c1: census(NINE.slice(5), { census_complete: true, next_cursor: null }) };
+  let release;
+  const gate = new Promise((resolve) => { release = resolve; });
+  let queue = addPage(createQueue(), pages[""]);
+  const inFlight = refreshQueue(queue, async (cursor) => { await gate; return pages[cursor ?? ""]; });
+  queue = addPage(queue, pages.c1); // Load more lands while the refresh is still reading
+  assert.equal(queue.pages, 2);
+  release();
+  const stale = await inFlight;
+  assert.equal(stale.pages, 1, "the in-flight refresh only knew about one page");
+  queue = settleRefresh(queue, stale);
+  assert.equal(queue.pages, 2, "the stale response is dropped");
+  assert.equal(queueItems(queue, { includeTriage: true }).length, 9);
+  const next = await refreshQueue(queue, async (cursor) => pages[cursor ?? ""]);
+  assert.equal(settleRefresh(queue, next).pages, 2, "later refreshes keep the larger page count");
+  const fresher = addPage(addPage(createQueue(), pages[""]), pages.c1);
+  assert.equal(settleRefresh(queue, fresher), fresher, "an equal or larger refresh replaces the queue");
 });

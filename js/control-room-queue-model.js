@@ -114,6 +114,10 @@ export async function refreshQueue(queue, readPage, context = {}) {
   return fresh;
 }
 
+// A refresh that was in flight while "Load more" landed holds fewer pages than
+// the queue now shows. Keep the larger queue; the next refresh re-reads it all.
+export const settleRefresh = (current, refreshed) => (refreshed.pages < current.pages ? current : refreshed);
+
 // X2: defects have no triage action yet, so they live in a Bugs view beside incidents.
 export const bugItems = (queue) => queue.items.filter((item) => item.kind === "defect" || item.kind === "incident");
 
@@ -127,8 +131,9 @@ export const groupItems = (items) => STATUS_GROUPS
 
 const count = (n) => n.toLocaleString("en-US");
 const SOURCE_STATE = { partial: "Partly read", unavailable: "Not read" };
-const REASON_WORDS = {
+export const REASON_WORDS = {
   fix_status_not_recorded: "fix status not recorded",
+  github_cache_unavailable: "GitHub data could not be read",
   github_cache_missing_stale_or_incomplete: "GitHub data has not been refreshed",
   unstructured_brief_pr_relationships: "links to pull requests are not recorded",
   cache_contains_open_github_work_only: "only open GitHub work is known",

@@ -55,7 +55,7 @@
   <template id="crWaitingEmpty"><div class="state-block" data-state="empty"><h3>Nothing is waiting on you</h3><p>When a Work Request needs your answer, it shows up here.</p></div></template>
 </section>
 <section id="panelTriage" class="tabpanel cr-section" role="tabpanel" aria-labelledby="tabTriage" tabindex="0" hidden>
-  <header class="cr-section-head"><h2 id="crTriageTitle">Triage</h2><p class="cr-section-lead">New captures and detected incidents, before they join the queue. Defects stay out until a Bugs view exists.</p></header>
+  <header class="cr-section-head"><h2 id="crTriageTitle">Triage</h2><p class="cr-section-lead">New captures and detected incidents, before they join the queue. Defects are listed in Views, under Bugs.</p></header>
   <div id="crTriageList" class="cr-list" aria-labelledby="crTriageTitle"><div class="state-block" data-state="loading"><h3>Reading triage…</h3></div></div>
   <template id="crTriageEmpty"><div class="state-block" data-state="empty"><h3>Triage is clear</h3><p>New captures and detected incidents arrive here first.</p></div></template>
 </section>
@@ -83,7 +83,7 @@
 </div>
 <aside id="crDetail" class="cr-detail" aria-label="Item detail"><div class="state-block" data-state="empty"><h3>Nothing selected</h3><p>Choose an item in the list to see its detail here.</p></div></aside>
 </div>
-<p id="roomLive" class="sr-only" role="status" aria-live="polite"></p><section id="panelDashboard" class="tabpanel" role="tabpanel" aria-labelledby="tabDashboard"><div class="cr-boards-directory"><h2 class="cr-boards-heading">System Job Boards</h2><details class="panel directory-panel" aria-labelledby="directory-title">
+<p id="roomLive" class="sr-only" role="status" aria-live="polite"></p><section id="panelDashboard" class="tabpanel" role="tabpanel" aria-labelledby="tabDashboard"><div class="cr-boards-directory"><h2 class="cr-boards-heading">System Job Boards</h2><details class="panel directory-panel" aria-labelledby="directory-title" open>
         <summary id="directory-title" class="directory-summary">Published boards<span id="directory-error" class="error" role="alert" hidden></span></summary>
         <nav id="board-directory" class="board-directory" aria-label="Published progress boards"></nav>
       </details>

@@ -15,7 +15,7 @@ import { mountJobDetail } from './job-detail.js';
 import { escapeText as escapeHtml } from './change-receipts.mjs';
 import { validGovernanceQueuePayload, validScheduleBoardPayload } from './operations-model.js';
 import {snapshotFromReads,writeSnapshot} from './status-model.js';
-import { sectionForTab, createQueue, addPage, refreshQueue, queueItems, triageItems, bugItems, coverageLine, STATUS_GROUPS } from './control-room-queue-model.js';
+import { sectionForTab, createQueue, addPage, refreshQueue, settleRefresh, queueItems, triageItems, bugItems, coverageLine, STATUS_GROUPS } from './control-room-queue-model.js';
 import { notificationCards, validFeedPayload } from './notifications-model.js';
 import { mountQueueList, paneShortcut, ignoreKey } from './control-room-list.js';
 import { mountDetail } from './control-room-detail.js';
@@ -170,7 +170,7 @@ const readCensus=cursor=>readWithDeadline(()=>client.unfinishedWork({limit:QUEUE
 // The 15-second refresh re-reads every page already loaded, so Load more survives it.
 async function loadQueue(){
  const sequence=view.sequence;
- try{const context=await queueContext();const model=await refreshQueue(view.queue.model,readCensus,context);if(sequence!==view.sequence)return;view.queue={state:'read',model};}
+ try{const context=await queueContext();const model=await refreshQueue(view.queue.model,readCensus,context);if(sequence!==view.sequence)return;view.queue={state:'read',model:settleRefresh(view.queue.model,model)};}
  catch(error){if(sequence!==view.sequence)return;view.queue={state:'unknown',reason:[401,403].includes(error.status)?'Sign in required':'Updates unavailable',model:view.queue.model};}
  renderQueue();
 }
