@@ -19,8 +19,8 @@
 .hero-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .hero-card { display: grid; gap: 12px; }
 
-.headline { margin: 0; font: 600 20px/1.3 var(--display); }
-.caption { margin: 0; color: var(--quiet); font-size: 11px; line-height: 1.5; }
+.headline { margin: 0; font: 600 20px/1.3 var(--font-text); }
+.caption { margin: 0; color: var(--fg-quiet); font-size: 11px; line-height: 1.5; }
 
 .chip-bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .chip { min-height: var(--touch); overflow-wrap: anywhere; }
@@ -30,8 +30,8 @@
 .link-list .btn { min-height: var(--touch); }
 .btn { min-height: var(--touch); }
 
-.state-block { border: 1px dashed var(--line); border-radius: 12px; padding: 12px; margin-top: 8px; color: var(--quiet); }
-.state-block h3 { margin: 0 0 4px; font: 600 14px/1.3 var(--display); color: var(--text); }
+.state-block { border: 1px dashed var(--hairline); border-radius: 12px; padding: 12px; margin-top: 8px; color: var(--fg-quiet); }
+.state-block h3 { margin: 0 0 4px; font: 600 14px/1.3 var(--font-text); color: var(--fg); }
 .state-block p { margin: 0; font-size: 12px; }
 .gap-word { text-transform: none; font-weight: 600; }
 
@@ -42,13 +42,13 @@
 }
 
 .assurance-scope { display: grid; grid-template-columns: minmax(0, 2fr) minmax(70px, 1fr) minmax(0, 2fr); gap: 12px; }
-.assurance-scope label { display: grid; gap: 6px; min-width: 0; font-size: 12px; color: var(--quiet); }
-.assurance-scope input { width: 100%; min-width: 0; min-height: 44px; color: var(--text); background: var(--ground-1); border: 1px solid var(--line); border-radius: 8px; padding: 8px; }
+.assurance-scope label { display: grid; gap: 6px; min-width: 0; font-size: 12px; color: var(--fg-quiet); }
+.assurance-scope input { width: 100%; min-width: 0; min-height: 44px; color: var(--fg); background: var(--surface-1); border: 1px solid var(--hairline); border-radius: 8px; padding: 8px; }
 .assurance-scope button { justify-self: start; }
 .state-block { overflow-wrap: anywhere; }
-.state-block[data-state="healthy"] { border-style: solid; border-color: var(--status-healthy); }
-.state-block[data-state="degraded"], .state-block[data-state="failed"] { border-style: solid; border-color: var(--orange); }
-.assurance-context { color: var(--quiet); padding-bottom: 8px; }
+.state-block[data-state="healthy"] { border-style: solid; border-color: var(--status-ok); }
+.state-block[data-state="degraded"], .state-block[data-state="failed"] { border-style: solid; border-color: var(--accent); }
+.assurance-context { color: var(--fg-quiet); padding-bottom: 8px; }
 .assurance-evidence { list-style: none; margin: 12px 0 0; padding: 0; }
-.assurance-evidence li { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 12px; padding: 8px 0; border-top: 1px solid var(--line); font-size: 12px; }
+.assurance-evidence li { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 12px; padding: 8px 0; border-top: 1px solid var(--hairline); font-size: 12px; }
 @media (max-width: 480px) { .assurance-scope { grid-template-columns: minmax(0, 1fr); } }

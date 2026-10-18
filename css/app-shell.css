@@ -105,11 +105,6 @@ body.has-app-layout { padding: 0 0 var(--layout-bottom) var(--layout-rail) !impo
 .app-layout[data-today=closed] { --layout-right: 0px; }
 /* Page stylesheets still set V1 ink names on their own :root; the shared regions
    read the token roles so their text holds contrast in both themes. */
-/* V1 page panels (.glass) paint a dark navy fill; on light they take the light
-   surface until each page slice replaces them. */
-:root[data-theme="light"] .glass { background: var(--surface-1); color: var(--fg); }
-:root[data-theme="light"] .glass :is(h1, h2, h3) { color: var(--fg); }
-.app-layout-sidebar, .app-layout-today, .has-app-layout #recordPanel { --text: var(--fg); --muted: var(--fg-muted); --quiet: var(--fg-quiet); --line: var(--hairline); }
 :root .app-layout-sidebar :is(input, select, textarea), :root .has-app-layout #recordPanel :is(input, select, textarea) { background: var(--surface-2); color: var(--fg); border-color: var(--hairline-strong); color-scheme: inherit; }
 .app-layout-sidebar, .app-layout-today { min-width: 0; overflow: auto; position: sticky; top: 0; height: calc(100dvh - var(--layout-bottom)); box-sizing: border-box; background: var(--ground); border-right: var(--hairline-width) solid var(--hairline); color: var(--fg); scrollbar-width: thin; scrollbar-color: var(--hairline-strong) transparent; }
 .app-layout-today { border: 0; border-left: var(--hairline-width) solid var(--hairline); }

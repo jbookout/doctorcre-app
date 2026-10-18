@@ -37,22 +37,23 @@ import { scopedTurn } from './progress-work-model.js';
 
 /* ------------------------------------------------------------------ palette */
 
-// Fixed by the complete specification. Colour is never the only channel: every
-// seat also carries its NAME in text wherever it appears.
+// Seat colours are token data series (css/tokens.css), so they follow theme and
+// Color Assist. Colour is never the only channel: every seat also carries its
+// NAME in text wherever it appears.
 export const SEAT_COLORS = {
-  human: "#F08A2D",
-  joe: "#F08A2D",
-  claude: "#2DD496",
-  opus: "#2DD496",
-  sonnet: "#2DD496",
-  sol: "#4E9EE8",
-  codex: "#4E9EE8",
-  hermes: "#9B7BE8",
-  grok: "#E85BA0",
-  system: "#7D8BB0",
+  human: "var(--data-2)",
+  joe: "var(--data-2)",
+  claude: "var(--data-4)",
+  opus: "var(--data-4)",
+  sonnet: "var(--data-4)",
+  sol: "var(--data-1)",
+  codex: "var(--data-1)",
+  hermes: "var(--data-3)",
+  grok: "var(--status-danger)",
+  system: "var(--fg-quiet)",
 };
-export const SEAT_FALLBACK = "#7D8BB0";
-export const PARTNER_HALO = { joe: "#F08A2D", dell: "#BFE3FF" };
+export const SEAT_FALLBACK = "var(--fg-quiet)";
+export const PARTNER_HALO = { joe: "var(--data-2)", dell: "var(--status-info)" };
 export const HUMAN_PARTNERS = ["joe", "dell"];
 export const PARTNER_LABEL = { joe: "Joe", dell: "Dell" };
 

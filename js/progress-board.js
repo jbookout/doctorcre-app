@@ -79,14 +79,23 @@ export function mountBoard(deps = {}) {
     const node = doc.createElement(tag);
     if (className) node.className = className;
     if (text !== undefined && text !== null) node.textContent = String(text);
-    for (const [name, value] of Object.entries(attributes)) node.setAttribute(name, String(value));
+    setAttributes(node, attributes);
     return node;
+  }
+
+  // The page CSP (style-src 'self') refuses a style attribute written with setAttribute;
+  // the CSSOM write below is allowed, so stage and pulse colours actually paint.
+  function setAttributes(node, attributes) {
+    for (const [name, value] of Object.entries(attributes)) {
+      if (name === "style") node.style.cssText = String(value);
+      else node.setAttribute(name, String(value));
+    }
   }
 
   function svg(tag, className, attributes = {}, text) {
     const node = doc.createElementNS(SVG_NS, tag);
     if (className) node.setAttribute("class", className);
-    for (const [name, value] of Object.entries(attributes)) node.setAttribute(name, String(value));
+    setAttributes(node, attributes);
     if (text !== undefined) node.textContent = String(text);
     return node;
   }

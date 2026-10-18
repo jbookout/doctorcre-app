@@ -409,14 +409,6 @@ test("Dot 27: automatic board refresh preserves an unchanged questions answer dr
   assert.equal(dom.window.document.querySelector("textarea").value,"Unsaved answer");dom.window.close();
 });
 
-test("Dot 28: queue assets resolve on its nested route through the Worker", async () => {
-  const {handleDoctorcreRequest}=await import("../src/worker.js");const base="https://doctorcre-app-staging.joe-bookout-carr-us.workers.dev/control-room/agents/queue";
-  const dom=new JSDOM(source("queue.html"));const assets=[...dom.window.document.querySelectorAll('link[rel="stylesheet"],script[src]')].map(node=>new URL(node.getAttribute("href")||node.getAttribute("src"),base));
-  const env={APP_ENV:"staging",CARR:{fetch:async()=>new Response("gate")},ASSETS:{fetch:async()=>new Response("asset")}};
-  for(const asset of assets){const result=await handleDoctorcreRequest(new Request(asset),env);assert.equal(result.status,200,asset.pathname);}
-  dom.window.close();
-});
-
 test("Dot 29: Quick Add completion preserves a newer task draft and date", async () => {
   const $=elements();$("quickAddInput").value="First task";$("quickAddDate").value="2026-09-30";const pending=deferred();
   handlers("js/task-records.js",'  $("quickAddForm")?.addEventListener("submit",', '  $("quickAddDraft")?.addEventListener',{$,draftViewer:"joe",viewer:"joe",renderQuickAdd:()=>({sentence:$("quickAddInput").value,plan:{args:{title:$("quickAddInput").value},summary:"Demo task"}}),announce:noop,operationKeys:{quickAdd:()=>"task-key"},matchingDraftId:()=>null,localDrafts:{list:()=>[]},restoredDraftId:null,draftOperations:new Map(),operations:new Map(),client:{addLoop:noop},dispatch:()=>pending.promise,renderDrafts:noop});

@@ -95,7 +95,8 @@ export function mountProgressPipeline({ flow, taskCount, focusFallback, onTask }
       const y = phone ? offset : 8;
       const wellWidth = phone ? 344 : 186;
       const wellHeight = phone ? Math.max(106, 69 + stage.tasks.length * 115) : height - 16;
-      const group = svg("g", "flow-stage", { "data-stage": stage.id, color: stage.color });
+      const group = svg("g", "flow-stage", { "data-stage": stage.id });
+      group.style.color = stage.color; // CSSOM, which the page CSP allows; a style attribute it refuses
       group.append(svg("rect", "stage-well", { x, y, width: wellWidth, height: wellHeight, rx: 15 }));
       if (stage.sequence !== false) group.append(svg("text", "stage-index", { x: x + 15, y: y + 27 }, String(index + 1).padStart(2, "0")));
       group.append(svg("text", "stage-label", { x: x + (stage.sequence === false ? 15 : 47), y: y + 28 }, stage.label));

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { chromium, settles, animationsSettled } from './browser-harness.mjs';
 import { routeContract as routes } from "../js/routes.js";
+import { handleDoctorcreRequest } from '../src/worker.js';
 import fixture from './fixtures/progress-work.synthetic.json' with {type:'json'};
 import { canonicalFixture, multiEnvelopeCanonicalFixture, equalReviewCanonicalFixture } from './fixtures/progress-work.synthetic.mjs';
 import { scopedTurn, scopedQueueCard, executionTurn, passportAttempts, canonicalPassport, workScope, workDetailUrl } from '../js/progress-work-model.js';
@@ -71,8 +72,11 @@ async function open(t,{width=390,path=taskPath,empty=false,stale=false,history=0
       return route.fulfill({contentType:'application/json',body:JSON.stringify({ok:true,seq:11,msg_id:'synthetic-post'})});
     }
     if(url.pathname.startsWith('/api/')||url.pathname==='/app-release')return route.fulfill({contentType:'application/json',body:'{}'});
-    const legacy=routes.redirects[url.pathname]?.startsWith('/control-room/progress/work');
-    const file=legacy ? (url.pathname.includes('queue')?'queue.html':'room.html') : routes.routes[url.pathname.startsWith('/control-room/progress/board/')?'/control-room/progress/board/:boardId':url.pathname]||url.pathname.slice(1);
+    // Legacy deep links take the Worker's own 308 Location, as in production. Chromium does not
+    // re-intercept a fulfilled redirect, so the page follows that Location itself, keeping the
+    // fragment the browser never sends, exactly as an HTTP redirect without one does.
+    if(routes.redirects[url.pathname]?.startsWith('/control-room/progress/work')){const moved=await handleDoctorcreRequest(new Request(url.href),{});assert.equal(moved.status,308);return route.fulfill({contentType:'text/html',body:`<script>const to=new URL(${JSON.stringify(moved.headers.get('location'))});to.hash||=location.hash;location.replace(to)</script>`});}
+    const file=routes.routes[url.pathname.startsWith('/control-room/progress/board/')?'/control-room/progress/board/:boardId':url.pathname]||url.pathname.slice(1);
     try{const body=await readFile(new URL('../'+file,import.meta.url));return route.fulfill({body,contentType:/\.m?js$/.test(file)?'text/javascript':file.endsWith('.css')?'text/css':'text/html'});}catch{return route.fulfill({status:404,body:''});}
   });
   await page.goto(`http://localhost${path}`);await page.waitForFunction(()=>document.getElementById('workTitle')?.textContent!=='Work detail');
