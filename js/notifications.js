@@ -48,6 +48,14 @@ const escapeHtml = (value) => String(value ?? "").replace(/[&<>"']/g, (char) => 
   "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
 }[char]));
 
+/** The second line of a feed state: what fills this space, or what to do next. */
+const FEED_HINT = {
+  empty: "Action-required items and failures addressed to you land here. Routine progress shows under Who did what.",
+  no_match: "Nothing in this view. Refresh to read the whole feed again.",
+  unavailable: "Nothing is shown rather than a guess. Refresh to read again.",
+  refused: "Sign in again to read your notifications.",
+};
+
 /** The cap this page asks for, and the number it compares the count against. */
 const LIMIT = 25;
 
@@ -105,7 +113,7 @@ function cardHtml(card) {
     : "";
   const act = card.read
     ? `<p class="read-mark" data-read="true">Acknowledged at ${escapeHtml(card.readClock || "unknown")}</p>`
-    : `<div class="note-act"><button class="btn btn-primary" type="button" data-ack="${escapeHtml(card.id)}">Acknowledge this notification</button></div>`;
+    : `<div class="note-act"><button class="btn btn-secondary" type="button" data-ack="${escapeHtml(card.id)}">Acknowledge this notification</button></div>`;
   return `<li class="work-item" data-priority="${card.severity === "failure" ? "overdue" : "deadline"}" data-notification="${escapeHtml(card.id)}">
     <div>
       <div class="note-top">
@@ -130,6 +138,8 @@ function renderFeed() {
   const block = $("feedState");
   block.setAttribute("data-state", state.state);
   $("feedStateTitle").textContent = state.sentence || "";
+  const hint = $("feedStateHint");
+  if (hint) hint.textContent = FEED_HINT[state.state] || "";
   block.hidden = state.state === "ready";
   const payload = read.state === "read" ? read.payload : null;
   $("unreadLine").textContent = unreadLine(payload);
@@ -172,6 +182,7 @@ function renderPreference() {
     requestAnimationFrame(() => form.scrollIntoView({ block: "start", behavior: "instant" }));
   }
   form.setAttribute("data-disabled", String(saving));
+  form.setAttribute("data-quiet", model?.quietHoursSet ? "set" : "off");
   for (const id of ["deviceOptIn", "quietStart", "quietEnd", "quietTimezone", "prefSave", "prefClear"]) {
     const field = $(id);
     if (field) field.disabled = saving || !model;

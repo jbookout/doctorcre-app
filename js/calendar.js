@@ -7,10 +7,10 @@ import { selectDocRecord, pageDocContext } from './doc-context.js';
 //   1. THE URL IS THE VIEW'S MEMORY. Month or week, the period on screen and the
 //      selected day all live in the address, so Back returns to the place a
 //      partner was reading and a link opens the same view on the other device.
-//   2. NOTHING WAITS ON MOTION. The grid is painted whole and then animated; the
-//      agenda and the day panel are plain lists that never animate in from
-//      nothing, and the reduced-motion preference (the OS setting or the
-//      in-app toggle) skips every programmatic animation below.
+//   2. NOTHING WAITS ON MOTION. The grid is painted whole; only a change of
+//      period or view moves it, once. The agenda and the day panel are plain
+//      lists, and the reduced-motion preference (the OS setting or the in-app
+//      toggle) skips the period transition and smooth scrolling.
 //   3. READ ONLY. No write verb is reachable from this page. A critical date is
 //      added on the deal itself.
 
@@ -22,7 +22,7 @@ import { formatCalendarDate } from "./visual-system.js";
 import { mountAutoRefresh, updatedLabel } from "./auto-refresh.mjs";
 import {
   addDays, approach, calendarHref, calendarPhase, entriesByDay, localToday, monthGrid, motionDirection,
-  parseCalendarState, readCalendar, staggerDelay, stepAnchor, upcomingEntries, weekStrip,
+  parseCalendarState, readCalendar, stepAnchor, upcomingEntries, weekStrip,
 } from "./calendar-model.js";
 
 const $ = (id) => document.getElementById(id);
@@ -51,19 +51,6 @@ let client = null;
 function motionReduced() {
   const media = typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   return media || document.documentElement.getAttribute("data-motion") === "reduced";
-}
-
-/**
- * A staggered entrance, set through CSSOM: the Worker's CSP (src/worker.js)
- * refuses a `style` attribute written into markup, so the templates above
- * only emit `data-stagger-index`, and this post-render pass reads it back
- * and sets `--stagger` on each node directly.
- */
-function applyStagger(root, selector) {
-  root?.querySelectorAll(selector).forEach((node) => {
-    const index = Number(node.dataset.staggerIndex);
-    node.style.setProperty("--stagger", `${motionReduced() ? 0 : staggerDelay(index)}ms`);
-  });
 }
 
 function announce(text) {
@@ -101,7 +88,7 @@ function dayHtml(cell, index) {
   const readable = formatCalendarDate(cell.day);
   const count = rows.length ? ` · ${rows.length} critical date${rows.length === 1 ? "" : "s"}` : "";
   const dayNumber = Number(cell.day.slice(8));
-  return `<div class="cal-day" role="gridcell" data-day="${cell.day}" data-today="${isToday}" data-out-month="${!cell.inMonth}" aria-selected="${selected}" data-stagger-index="${index}">`
+  return `<div class="cal-day" role="gridcell" data-day="${cell.day}" data-today="${isToday}" data-out-month="${!cell.inMonth}" aria-selected="${selected}">`
     + `<button class="cal-day-open" type="button" data-select-day="${cell.day}" tabindex="${selected || (!state.day && isToday) ? 0 : -1}" aria-label="${escapeHtml(`${readable}${isToday ? " · today" : ""}${count}`)}">`
     + `<span class="cal-day-num">${week ? `${WEEKDAYS[index % 7]} ${dayNumber}` : dayNumber}</span>`
     + (rows.length ? `<span class="cal-day-count" aria-hidden="true">${rows.length}</span>` : "")
@@ -125,7 +112,6 @@ function paintGrid() {
   const direction = motionDirection(view.painted, state);
   grid.dataset.view = state.view;
   grid.innerHTML = header + weeks.join("");
-  applyStagger(grid, ".cal-day");
   // Restart the transition on every paint: removing the attribute and reading
   // layout lets the same direction play twice in a row.
   grid.removeAttribute("data-enter");
@@ -189,13 +175,12 @@ function paintDayPanel() {
   }
   body.innerHTML = `<ol class="cal-day-entries">${rows.map((entry, index) => {
     const near = approach(entry, view.today);
-    return `<li class="cal-day-entry" data-band="${near.band}" data-focus="${entry.key === view.focusEntry}" data-stagger-index="${index}">`
+    return `<li class="cal-day-entry" data-band="${near.band}" data-focus="${entry.key === view.focusEntry}">`
       + `<h3><span class="cal-pulse" data-pulse="${near.pulse}" aria-hidden="true"></span>${escapeHtml(entry.label)}</h3>`
       + `<dl>${detailRow("Deal", entry.deal_name)}${detailRow("When", near.label)}${detailRow("Kind", entry.kind_label)}${detailRow("Reference", entry.source)}${detailRow("Status", entry.status)}</dl>`
       + `<a class="small" href="/deals">Open the Deals board</a>`
       + "</li>";
   }).join("")}</ol>`;
-  applyStagger(body, ".cal-day-entry");
 }
 
 function paintAgenda() {
@@ -207,17 +192,16 @@ function paintAgenda() {
   } else {
     const rows = upcomingEntries(view.result.entries, view.today);
     list.innerHTML = rows.length === 0
-      ? '<li class="small">No open critical date is recorded.</li>'
+      ? '<li class="cal-agenda-empty">No open critical date is recorded. Settled and past dates stay on the grid.</li>'
       : rows.map((entry, index) => {
         const near = approach(entry, view.today);
-        return `<li><button class="cal-agenda-item" type="button" data-entry="${escapeHtml(entry.key)}" data-day="${entry.day}" data-band="${near.band}" data-stagger-index="${index}">`
+        return `<li><button class="cal-agenda-item" type="button" data-entry="${escapeHtml(entry.key)}" data-day="${entry.day}" data-band="${near.band}">`
           + `<span class="cal-pulse" data-pulse="${near.pulse}" aria-hidden="true"></span>`
           + `<span class="cal-agenda-day">${escapeHtml(formatCalendarDate(entry.day))}</span>`
           + `<span><b>${escapeHtml(entry.label)}</b> · ${escapeHtml(entry.deal_name)}</span>`
           + `<span class="cal-agenda-when">${escapeHtml(near.label)}</span>`
           + "</button></li>";
       }).join("");
-    applyStagger(list, ".cal-agenda-item");
   }
   const undated = $("calUndated");
   const undatedList = $("calUndatedList");
@@ -235,6 +219,12 @@ const STATE_COPY = {
   empty: "No deal carries a critical date yet.",
 };
 
+/** The second line of a state: what fills this space, or what to do next. */
+const STATE_HINT = {
+  empty: "Critical dates come from each deal. Add one on the deal and it appears here for both partners.",
+  unavailable: "Nothing is shown rather than a guess. Refresh to read again.",
+};
+
 function paintState(phase) {
   const block = $("calState");
   if (!block) return;
@@ -244,7 +234,8 @@ function paintState(phase) {
   if (!visible) { block.innerHTML = ""; return; }
   const signIn = phase === "unauthorized"
     ? ` <a class="btn btn-primary" href="/auth/login?return_to=${encodeURIComponent(`${location.pathname}${location.search}`)}">Sign in</a>` : "";
-  block.innerHTML = `<h3>${escapeHtml(STATE_COPY[phase])}</h3>${signIn}`;
+  const hint = STATE_HINT[phase] ? `<p class="state-hint">${escapeHtml(STATE_HINT[phase])}</p>` : "";
+  block.innerHTML = `<h3>${escapeHtml(STATE_COPY[phase])}</h3>${hint}${signIn}`;
 }
 
 function paintNotices(phase) {

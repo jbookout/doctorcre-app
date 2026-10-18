@@ -34,8 +34,8 @@
     <section class="card glass hero-card" aria-labelledby="pageTitle">
       <div data-layout-slot="sidebar" class="hero">
         <div>
-          <p class="eyebrow"><span class="orb" data-state="still" id="feedOrb" aria-hidden="true"></span> Addressed to you</p>
           <h1 id="pageTitle">Updates</h1>
+          <p class="page-sub"><span class="orb" data-state="still" id="feedOrb" aria-hidden="true"></span> Addressed to you</p>
         </div>
         <div class="hero-meta">
           <span class="as-of" id="feedAsOf">unknown</span>
@@ -49,14 +49,14 @@
     <p class="sr-only" id="feedLive" aria-live="polite" role="status">Reading your notifications…</p>
 
     <section class="card glass" data-section="feed" id="feedBlock" aria-labelledby="feedTitle">
-      <div class="card-heading"><div><p class="eyebrow">Your feed</p><h2 id="feedTitle">Notifications</h2></div></div>
-      <div class="state-block" id="feedState" data-state="loading"><h3 id="feedStateTitle">Reading your notifications…</h3></div>
+      <div class="card-heading"><div><h2 id="feedTitle">Notifications</h2></div></div>
+      <div class="state-block" id="feedState" data-state="loading"><h3 id="feedStateTitle">Reading your notifications…</h3><p class="state-hint" id="feedStateHint"></p></div>
       <ul class="work-list" id="feedList"></ul>
     </section>
 
     <section class="card glass" data-section="quiet_hours" id="quietHoursBlock" aria-labelledby="quietHoursTitle">
       <div class="card-heading">
-        <div><p class="eyebrow">Quiet hours</p><h2 id="quietHoursTitle">Your notification preferences</h2></div>
+        <div><h2 id="quietHoursTitle">Your notification preferences</h2><p class="page-sub">Quiet hours hold device pushes until they end</p></div>
         <span class="as-of" id="prefAsOf">unknown</span>
       </div>
       <p class="caption" id="prefOrigin">unknown</p>
@@ -71,7 +71,7 @@
           <div class="field"><label for="quietEnd">Quiet hours end</label><input id="quietEnd" type="text" autocomplete="off" placeholder="7:00 AM"></div>
           <div class="field"><label for="quietTimezone">Timezone</label><input id="quietTimezone" type="text" list="timezoneNames" autocomplete="off" spellcheck="false" placeholder="UTC"><datalist id="timezoneNames"></datalist></div>
         </div>
-        <p class="caption" id="prefSummary">unknown</p>
+        <p class="caption pref-summary" id="prefSummary">unknown</p>
         <details class="record-details"><summary>Details</summary><p class="caption" id="prefVersion"></p></details>
         <div class="pref-act">
           <button class="btn btn-primary" type="submit" id="prefSave">Save preferences</button>
@@ -83,7 +83,7 @@
 
     <section class="card glass" data-section="activity" id="activityBlock" aria-labelledby="activityTitle">
       <div class="card-heading">
-        <div><p class="eyebrow">Accountable activity</p><h2 id="activityTitle">Who did what</h2></div>
+        <div><h2 id="activityTitle">Who did what</h2><p class="page-sub">Accountable activity, not notifications</p></div>
         <span class="as-of" id="activityAsOf">unknown</span>
       </div>
       <ul class="work-list" id="activityList"></ul>
