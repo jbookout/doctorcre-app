@@ -7,9 +7,10 @@ import {atlasFixtureResponse} from '../scripts/atlas-fixture.mjs';
 import { routeContract as routes } from "../js/routes.js";
 const root=new URL('../',import.meta.url);
 const reads={'list-feature-switches':'listFeatureSwitches','list-doc-suggestions':'listDocSuggestions','read-progress-board':'readProgressBoard','list-progress-boards':'listProgressBoards','unfinished-work':'unfinishedWork','incident-board':'incidentBoard','governance-queue':'governanceQueue','schedule-board':'scheduleBoard','work-request-card':'workRequestCard','deal-room-board':'getBoard','today-triage':'todayTriage','notification-feed':'notificationFeed','current-work-item':'currentWorkItem','list-notifications':'listNotifications'};
-async function open(t,{width=1440,path='/control-room?mode=live&tab=boards',connectionsBad=false,countIncidentClicks=false,unboundBoard=false}={}){
+async function open(t,{width=1440,path='/control-room?mode=live&tab=boards',connectionsBad=false,countIncidentClicks=false,unboundBoard=false,boardUnpublished=false,emptyIncidents=false,theme='dark'}={}){
  const browser=await chromium.launch();t.after(()=>browser.close());
- const page=await browser.newPage({viewport:{width,height:960},timezoneId:'UTC',reducedMotion:'reduce'});
+ const page=await browser.newPage({viewport:{width,height:width===1440?1000:844},timezoneId:'UTC',reducedMotion:'reduce'});
+ await page.addInitScript(theme=>localStorage.setItem('doctorcre.visual-preferences',JSON.stringify({theme})),theme);
  if(countIncidentClicks)await page.addInitScript(()=>{
   window.incidentClickCallbacks={filters:0,incidents:0};
   const add=EventTarget.prototype.addEventListener;
@@ -26,7 +27,7 @@ async function open(t,{width=1440,path='/control-room?mode=live&tab=boards',conn
  });
  await page.clock.install({time:new Date('2026-10-02T12:00:00Z')});
  const fixture=await createFixtureClient({seedUrl:`data:application/json;base64,${Buffer.from(await readFile(new URL('data/board-seed.json',root))).toString('base64')}`});
- const errors=[],calls=[];const state={pr:17,title:'Demo dashboard refresh',spend:12.34,denied:false,approvalFailure:null,incidentState:'investigating',removeJobs:false,connectionsBad,dealStates:false,liveItems:[],boardFailure:null,scheduleFailure:false,scheduleUnknown:false,partialSchedule:false,duplicateJobs:false,bindingOnly:false,boardUnpublished:false};page.on('pageerror',e=>errors.push(e.message));
+ const errors=[],calls=[];const state={pr:17,title:'Demo dashboard refresh',spend:12.34,denied:false,approvalFailure:null,incidentState:'investigating',removeJobs:false,connectionsBad,dealStates:false,liveItems:[],boardFailure:null,scheduleFailure:false,scheduleUnknown:false,partialSchedule:false,duplicateJobs:false,bindingOnly:false,boardUnpublished};page.on('pageerror',e=>errors.push(e.message));
  await page.route('**/*',async route=>{
   const request=route.request(),url=new URL(request.url());if(url.origin!=='http://localhost')return route.abort();
   if(url.pathname==='/mcp'){
@@ -38,7 +39,7 @@ async function open(t,{width=1440,path='/control-room?mode=live&tab=boards',conn
    if(rpc.name==='governance-queue'&&state.approvalFailure==='invalid')payload={ok:true};
    if(rpc.name==='read-progress-board'&&unboundBoard&&payload.snapshot)for(const task of Object.values(payload.snapshot.snapshot_json.tasks)){delete task.work_request;delete task.work_request_ref;delete task.human_ref;task.related=[];}
    if(rpc.name==='read-progress-board'&&state.boardUnpublished)payload.snapshot=null;
-   if(rpc.name==='incident-board')payload.incidents[0].state=state.incidentState;
+   if(rpc.name==='incident-board'){if(emptyIncidents)Object.assign(payload,{incidents:[],count:0,by_severity:{},ready_to_close:0});else payload.incidents[0].state=state.incidentState;}
    if(rpc.name==='schedule-board'&&state.scheduleUnknown){payload.overall_state='unknown';payload.jobs=[];payload.sources=payload.sources.map(row=>({...row,state:'unknown',count:null}));}
    if(rpc.name==='schedule-board'&&state.partialSchedule){payload.jobs=payload.jobs.filter(job=>job.owner===payload.sources[0].owner);payload.sources=payload.sources.map((source,i)=>i===0?source:{...source,state:'unknown',count:null});}
    if(rpc.name==='schedule-board'&&state.duplicateJobs){payload.jobs=payload.jobs.map((job,i)=>({...job,key:'same',next_due_at:payload.jobs[0].next_due_at,next_due_basis:payload.jobs[0].next_due_basis}));}
@@ -280,3 +281,37 @@ test('PR132 #8: explicit binding fields are visible on pipeline cards as in deta
  await page.waitForFunction(()=>document.querySelector('.work-card-links')?.textContent.includes('WR-000999'));
  const card=page.locator('#board-stages .board-card[data-task-id^="work_request:"]').first();assert.match(await card.textContent(),/WR-000999.*PR #88/);
 });
+
+for(const width of [1440,390])for(const theme of ['dark','light']){
+ test(`C5 Boards pipeline and data mode are visible on first screen at ${width}px ${theme}`,async t=>{
+  const {page,errors}=await open(t,{width,theme,boardUnpublished:true});
+  await advanceRoom(page,16001);
+  await page.locator('#board-stages .board-card').first().waitFor();
+  await page.locator('#board-meta[data-read-state="unpublished"]').waitFor();
+  if(process.env.C5_CAPTURE_PHASE){const dir=new URL(`out/test-artifacts/c5/${process.env.C5_CAPTURE_PHASE}/`,root);await mkdir(dir,{recursive:true});await page.screenshot({path:new URL(`boards-${width}-${theme}.png`,dir).pathname});}
+  assert.equal(await page.locator('.directory-panel').evaluate(n=>n.open),true);
+  assert.ok(await page.locator('#board-directory a').count()>0);
+  const first=await page.locator('#board-stages .board-card').first().boundingBox();
+  const bottom=await page.locator('.app-layout-status').boundingBox();
+  assert.ok(first.y+Math.min(first.height,80)<bottom.y,`pipeline card starts at ${first.y}, content ends at ${bottom.y}`);
+  assert.equal(await page.locator('#board-data-mode').count(),1,'data mode is labeled beside board state');
+  assert.match(await page.locator('#board-data-mode').textContent(),/Live work.*pipeline/i);
+  assert.match(await page.locator('.cr-board-state').textContent(),/No published snapshot/);
+  assert.equal(await page.locator('#board-error').isVisible(),false);
+  assert.equal(new URL(page.url()).searchParams.get('tab'),'boards');
+  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
+  assert.deepEqual(errors,[]);
+ });
+ test(`C5 Views uses compact ledger and empty state at ${width}px ${theme}`,async t=>{
+  const {page,errors}=await open(t,{width,theme,emptyIncidents:true,path:'/control-room?mode=live&tab=views'});
+  const empty=page.locator('#incidentGroups [data-state="empty"]');await empty.waitFor();
+  if(process.env.C5_CAPTURE_PHASE){const dir=new URL(`out/test-artifacts/c5/${process.env.C5_CAPTURE_PHASE}/`,root);await mkdir(dir,{recursive:true});await page.screenshot({path:new URL(`views-${width}-${theme}.png`,dir).pathname});}
+  assert.ok((await empty.boundingBox()).height<=48,'empty ledger stays a compact row');
+  assert.ok(await page.locator('#attentionTitle').evaluate(n=>parseFloat(getComputedStyle(n).fontSize)<=16),'ledger heading matches view summary scale');
+  const box=await empty.boundingBox(),bottom=await page.locator('.app-layout-status').boundingBox();
+  assert.ok(box.y+box.height<bottom.y,'empty ledger fits first screen');
+  assert.equal(await empty.evaluate(n=>getComputedStyle(n).backgroundColor),'rgba(0, 0, 0, 0)');
+  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
+  assert.deepEqual(errors,[]);
+ });
+}
