@@ -59,29 +59,6 @@
   .cr-row-ref { grid-column: 2; grid-row: 2; }
   .cr-row-meta { grid-column: 3; grid-row: 2; overflow: hidden; text-overflow: ellipsis; }
 }
-.cr-views { list-style: none; margin: 0; padding: 0; border-top: var(--hairline-width) solid var(--hairline); }
-.cr-views li { display: flex; justify-content: space-between; gap: var(--space-3); min-height: var(--touch); align-items: center; padding: var(--space-3) var(--space-3); border-bottom: var(--hairline-width) solid var(--hairline); }
-.cr-views small { display: block; margin-top: 2px; color: var(--fg-muted); font-size: var(--font-size-1); }
-.cr-views strong { font-variant-numeric: tabular-nums; }
-.cr-ledger { margin-top: var(--space-6); }
-.cr-ledger-head { display: flex; justify-content: space-between; align-items: baseline; gap: var(--space-3); margin-bottom: var(--space-3); }
-.cr-ledger-head h3 { margin: 0; font: var(--font-weight-strong) var(--font-size-3)/1.2 var(--font-text); }
-.cr-ledger .as-of { color: var(--fg-muted); font-size: var(--font-size-1); }
-
-/* Boards keeps the progress dashboard as it was; its directory and filters sit
- * above it instead of in the rail. */
-.cr-boards-directory { display: grid; gap: var(--space-3); margin-bottom: var(--space-5); }
-.cr-boards-heading { margin: 0; font: var(--font-weight-strong) var(--font-size-4)/1.2 var(--font-text); }
-.cr-boards-directory .panel { margin: 0; padding: 0; background: none; border: 0; box-shadow: none; }
-.cr-boards-directory .panel-heading, .cr-boards-directory .board-counts, .cr-boards-directory .board-published { display: none; }
-.cr-boards-directory .board-directory { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 240px), 1fr)); gap: var(--space-2); margin-top: var(--space-2); }
-.cr-boards-directory .board-link { padding: var(--space-3); min-width: 0; }
-.cr-boards-directory .board-link h3 { font-size: var(--font-size-2); margin: var(--space-1) 0; }
-.cr-boards-directory .directory-summary { font-size: var(--font-size-2); min-height: var(--touch); display: flex; align-items: center; gap: var(--space-2); cursor: pointer; list-style: none; }
-.cr-boards-directory .directory-summary::-webkit-details-marker { display: none; }
-.cr-boards-directory .directory-summary::before { content: "\25B8"; display: inline-block; transition: transform 120ms; }
-.cr-boards-directory details[open] > .directory-summary::before { transform: rotate(90deg); }
-@media (prefers-reduced-motion: reduce) { .cr-boards-directory .directory-summary::before { transition: none; } }
 .control-room-workspace #system-work-panel .work-filters { margin: 0; gap: var(--space-3); }
 .control-room-workspace #system-work-panel .work-filters label { flex: 1 1 140px; gap: var(--space-1); font-size: var(--font-size-1); }
 .control-room-workspace #system-work-panel .work-filters input, .control-room-workspace #system-work-panel .work-filters select { padding: var(--space-2); min-height: var(--touch); }
