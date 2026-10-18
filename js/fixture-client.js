@@ -1103,6 +1103,38 @@ export async function createFixtureClient(opts = {}) {
    * shape, not an omission of this fixture.
    */
   const sharedRequestCards = new Map([
+    // V2 C2: the Queue's own Work Requests, so its detail pane reads a real
+    // card shape with a recorded-acts history (and one consecutive repeat to group).
+    ['WR-000910', {
+      ok: true, human_ref: 'WR-000910', title: 'Demo lease abstract importer', desired_outcome: 'Demo lease abstracts import without retyping.',
+      state: 'in_progress', version: 5, projection_state: 'queued',
+      acceptance_criteria: [{ id: 'AC-1', text: 'A demo abstract imports with every date field filled.' }, { id: 'AC-2', text: 'A malformed demo abstract is refused with a reason.' }],
+      source: { label: 'Demo leasing backlog', freshness: 'fresh' },
+      triage: { classification: 'feature', human_actor_slug: 'joe', triaged_at: '2026-10-09T15:05:00Z' },
+      plan: null, outcome_feedback: null, pending_outcome_feedback: null, outcome_feedback_history: [], accepted_feedback_count: 0,
+      incident_evidence: [], shape: null, withdrawal: null,
+      acting_identity: [
+        { act: 'report-problem', recorded_as: 'joe', performed_by: 'joe', authorization_class: null, via: 'mcp', hand: 'human', acted_at: '2026-10-09T14:40:00Z' },
+        { act: 'review-and-triage', recorded_as: 'joe', performed_by: 'joe', authorization_class: null, via: 'mcp', hand: 'human', acted_at: '2026-10-09T15:05:00Z' },
+        { act: 'accept-ready-plan', recorded_as: 'joe', performed_by: 'claude', authorization_class: 'sponsored_agent', via: 'mcp', hand: 'agent', acted_at: '2026-10-11T10:20:00Z' },
+        { act: 'mark-slice-progress', recorded_as: 'joe', performed_by: 'claude', authorization_class: 'sponsored_agent', via: 'mcp', hand: 'agent', acted_at: '2026-10-13T16:02:00Z' },
+        { act: 'mark-slice-progress', recorded_as: 'joe', performed_by: 'claude', authorization_class: 'sponsored_agent', via: 'mcp', hand: 'agent', acted_at: '2026-10-14T11:47:00Z' },
+        { act: 'mark-slice-progress', recorded_as: 'joe', performed_by: 'claude', authorization_class: 'sponsored_agent', via: 'mcp', hand: 'agent', acted_at: '2026-10-15T09:31:00Z' },
+      ],
+      next_human_action: { label: 'Review the importer once slice 2 lands', effect: 'none' }, actions: [],
+    }],
+    ['WR-000911', {
+      ok: true, human_ref: 'WR-000911', title: 'Demo vendor merge waits on a name decision', desired_outcome: null,
+      state: 'blocked', version: 2, projection_state: 'queued', acceptance_criteria: [],
+      source: { label: 'Demo vendor cleanup', freshness: 'fresh' },
+      triage: { classification: 'data_quality', human_actor_slug: 'joe', triaged_at: '2026-10-08T13:00:00Z' },
+      plan: null, outcome_feedback: null, pending_outcome_feedback: null, outcome_feedback_history: [], accepted_feedback_count: 0,
+      incident_evidence: [], shape: null, withdrawal: null,
+      acting_identity: [
+        { act: 'review-and-triage', recorded_as: 'joe', performed_by: 'joe', authorization_class: null, via: 'mcp', hand: 'human', acted_at: '2026-10-08T13:00:00Z' },
+      ],
+      next_human_action: { label: 'Choose the canonical name for Demo Coastal Surveying', effect: 'none' }, actions: [],
+    }],
     ['WR-000906', {
       ok: true, human_ref: 'WR-000906', title: 'Demo bounded request: reconcile the demo vendor names',
       desired_outcome: 'Every demo vendor row resolves to exactly one canonical demo vendor name.',
@@ -2721,11 +2753,11 @@ export async function createFixtureClient(opts = {}) {
       const close=[{action:'cancel',verb:'close-loop',args:{},fields:[{name:'outcome'}],versioned:true}];
       const rows=[
         row('work_request','WR-000901','verification','Demo dashboard refresh',{human_ref:'WR-000901',identity:{human_ref:'WR-000901'},pr:17}),
-        row('work_request','WR-000910','in_progress','Demo lease abstract importer',{identity:{human_ref:'WR-000910'},age:3}),
-        row('work_request','WR-000911','blocked','Demo vendor merge waits on a name decision',{identity:{human_ref:'WR-000911'},age:9}),
-        row('incident','INC-20261001-01','monitoring','Demo calendar sync retries after a timeout',{identity:{ref:'INC-20261001-01'},version:null,age:2}),
+        row('work_request','WR-000910','in_progress','Demo lease abstract importer',{identity:{human_ref:'WR-000910'},owner:'claude',age:9}),
+        row('work_request','WR-000911','blocked','Demo vendor merge waits on a name decision',{identity:{human_ref:'WR-000911'},owner:'joe',age:10}),
+        row('incident','INC-20260915-01','investigating','Demo export service stopped writing its nightly generation',{identity:{ref:'INC-20260915-01'},owner:'joe',version:null,age:4}),
         row('defect','0d3f6c2a-0000-4000-8000-00000000d001','fix_untracked','Demo tour PDF drops the last stop',{identity:{defect_id:'0d3f6c2a-0000-4000-8000-00000000d001'},owner:null,version:null,age:12}),
-        row('loop','1a2b3c4d-0000-4000-8000-00000000a001','open','Demo follow up on the rate card question',{identity:{loop_id:'1a2b3c4d-0000-4000-8000-00000000a001'},available_triage_actions:close,age:5}),
+        row('loop','loop-006','open','Demo tenant-rep packet: regenerate the market comparison',{identity:{kind:'open_loop',loop_id:'loop-006'},owner:'claude',available_triage_actions:close,age:5}),
         row('work_shape','5e6f7a8b-0000-4000-8000-00000000b001','ready','Demo shape for the notes export',{identity:{work_request:'WR-000912'},age:1}),
         row('builder_brief','5e6f7a8b-0000-4000-8000-00000000b002','triaged','Demo brief for the map legend',{identity:{work_request:'WR-000913'},age:1}),
         row('slice_plan','9c8d7e6f-0000-4000-8000-00000000c001','blocked','Demo slice plan waiting on review capacity',{identity:{work_request:'WR-000914'},age:6}),

@@ -1,8 +1,7 @@
 /* Dr. CRE presence: the one control that lives on every page, plus its dialog.
  *
  * The presence never floats over page content. It docks at the right end of
- * the shell's bottom status band, which is chrome, and the band reserves that
- * slot (padding-right below) so its own status words never slide under it.
+ * desktop shell's bottom status band; phones keep it in Workspace controls.
  * Inside a record popup it keeps its own sticky row instead.
  *
  * Colour: the orb glyph is the screen's one recurring accent marker; the
@@ -91,11 +90,10 @@ body.has-app-layout:has(> #docPresence) .app-layout-status { padding-right: calc
 
 @media (max-width: 480px) { .doc-command-meta { align-items: start; } #docCommandForm { gap: var(--space-1); padding: var(--space-1); } #docCommandInput { font-size: var(--font-size-2); } .doc-context-tools { flex-wrap: wrap; } }
 
-/* Touch layout: the presence takes the right end of the status strip that sits
-   on the shell bar, and the strip reserves that slot beside the controls. */
 @media(max-width:760px),(hover:none) and (pointer:coarse) and (max-width:1023px){
-  .doc-presence { right: var(--space-3); bottom: calc(var(--layout-tabbar) + var(--layout-notice) + (var(--layout-strip) - var(--touch)) / 2); }
-  body.has-app-layout:has(> #docPresence) { --strip-doc: calc(var(--space-3) + var(--touch)); }
+  .app-shell-workspace-group > .doc-presence { position: static; }
+  .app-shell-workspace-group .doc-identity { width: 100%; display: flex; align-items: center; gap: var(--space-3); padding: var(--space-3) !important; border: 0; border-radius: var(--radius-2) !important; box-shadow: none; background: transparent !important; font-size: var(--font-size-1); }
+  .app-shell-workspace-group .doc-identity::after { content: "Open Doc"; }
   .doc-detail { width: calc(100vw - 20px); max-height: calc(100dvh - 24px); padding: var(--space-4); }
   .doc-detail-grid { grid-template-columns: minmax(0, 1fr); gap: var(--space-3); }
   .doc-detail-grid > section:last-child { order: -1; }

@@ -15,12 +15,15 @@ import { mountJobDetail } from './job-detail.js';
 import { escapeText as escapeHtml } from './change-receipts.mjs';
 import { validGovernanceQueuePayload, validScheduleBoardPayload } from './operations-model.js';
 import {snapshotFromReads,writeSnapshot} from './status-model.js';
-import { sectionForTab, createQueue, addPage, refreshQueue, settleRefresh, queueItems, triageItems, bugItems, groupItems, coverageLine, STATUS_GROUPS } from './control-room-queue-model.js';
+import { sectionForTab, createQueue, addPage, refreshQueue, settleRefresh, queueItems, triageItems, bugItems, coverageLine, STATUS_GROUPS } from './control-room-queue-model.js';
 import { notificationCards, validFeedPayload } from './notifications-model.js';
+import { mountQueueList, paneShortcut, ignoreKey } from './control-room-list.js';
+import { mountDetail } from './control-room-detail.js';
+import { mountControlRoomCommands } from './control-room-commands.js';
 const $=id=>document.getElementById(id);
 export { escapeHtml };
 export const view={status:'loading',sequence:0,severity:'all',queue:{state:'pending',model:createQueue()},inbox:{state:'pending'},waiting:{state:'pending'},reads:{incidents:{state:'pending'},approvals:{state:'pending'},schedule:{state:'pending'},connections:{state:'pending'}},atlas:{status:'idle',payload:null}};
-let client,tabs,board,details;
+let client,tabs,board,details,queueList,detail;
 const now=new Date();let year=now.getFullYear(),month=now.getMonth();
 const payloadOf=id=>view.reads[id]?.state==='read'?view.reads[id].payload:null;
 const asOf=read=>updatedLabel(read?.observed_at);
@@ -112,6 +115,7 @@ async function take(id,run){
 }
 async function load(){
  view.sequence++;view.status='loading';
+ renderQueue();
  await Promise.all([take('incidents',()=>client.incidentBoard({state:'open'})),take('approvals',()=>client.governanceQueue()),take('schedule',()=>client.scheduleBoard()),take('connections',()=>client.readConnections())]);
  await Promise.all([loadQueue(),loadInbox(),loadWaiting()]);
  await details.refresh();view.status='ready';
@@ -133,21 +137,21 @@ function issueRow(item){
  const group=STATUS_GROUPS.find(g=>g.key===item.statusGroup)?.label||'Other';
  return `<li class="cr-row" data-issue="${escapeHtml(item.id)}" data-group="${escapeHtml(item.statusGroup)}" data-kind="${escapeHtml(item.kind)}"><span class="cr-row-glyph" role="img" aria-label="${escapeHtml(group)}">${GLYPH[item.statusGroup]||'·'}</span><span class="cr-row-ref">${escapeHtml(item.ref)}</span><span class="cr-row-title">${escapeHtml(item.title)}</span><span class="cr-row-meta">${escapeHtml(meta)}</span></li>`;
 }
-const groupedList=items=>groupItems(items).map(group=>`<section class="cr-group" data-group="${group.key}" aria-label="${escapeHtml(group.label)}"><h3>${escapeHtml(group.label)} <span>${group.items.length.toLocaleString('en-US')}</span></h3><ul class="cr-rows">${group.items.map(issueRow).join('')}</ul></section>`).join('');
 function renderQueue(){
  const read=view.queue,queue=read.model;
  const coverage=$('crQueueCoverage'),more=$('crQueueMore');
  if(read.state!=='read'&&queue.pages===0){
   const failed=read.state==='unknown';
   coverage.textContent=failed?read.reason:'Reading the record layer…';coverage.dataset.complete='false';$('crQueueSources').hidden=true;
-  for(const id of ['crQueueList','crTriageList','crViewsList'])replaceHtml($(id),failed?stateBlock('offline','The queue could not be read',`${read.reason}. Nothing is shown rather than a partial guess.`):stateBlock('loading','Reading the queue…'));
+  if(failed)queueList.error(read.reason);else queueList.loading();
+  for(const id of ['crTriageList','crViewsList'])replaceHtml($(id),failed?stateBlock('offline','The queue could not be read',`${read.reason}. Nothing is shown rather than a partial guess.`):stateBlock('loading','Reading the queue…'));
   more.hidden=true;return;
  }
  const line=coverageLine(queue);coverage.textContent=line.text;coverage.dataset.complete=String(line.complete);
  $('crQueueSources').hidden=line.details.length===0;
  replaceHtml($('crQueueSourceList'),line.details.map(d=>`<li><strong>${escapeHtml(d.source)}</strong> ${escapeHtml(d.text)}</li>`).join(''));
  const open=queueItems(queue),triage=triageItems(queue),everything=queueItems(queue,{includeTriage:true});
- replaceHtml($('crQueueList'),open.length?groupedList(open):emptyBlock('crQueueEmpty'));
+ queueList.rows(open,{triage:triage.length});
  replaceHtml($('crTriageList'),triage.length?`<ul class="cr-rows">${triage.map(issueRow).join('')}</ul>`:emptyBlock('crTriageEmpty'));
  const views=[
   ['Everything','Every loaded item, triage included',everything.length],
@@ -168,6 +172,7 @@ const readCensus=cursor=>readWithDeadline(()=>client.unfinishedWork({limit:QUEUE
 // The 15-second refresh re-reads every page already loaded, so Load more survives it.
 async function loadQueue(){
  const sequence=view.sequence;
+ if(view.queue.model.pages===0){view.queue={...view.queue,state:'pending'};renderQueue();}
  try{const context=await queueContext();const model=await refreshQueue(view.queue.model,readCensus,context);if(sequence!==view.sequence)return;view.queue={state:'read',model:settleRefresh(view.queue.model,model)};}
  catch(error){if(sequence!==view.sequence)return;view.queue={state:'unknown',reason:[401,403].includes(error.status)?'Sign in required':'Updates unavailable',model:view.queue.model};}
  renderQueue();
@@ -199,6 +204,34 @@ async function loadWaiting(){
 }
 function showSection(key){
  $('crWorkbench').hidden=!ISSUE_SECTIONS.has(key);
+ if(key!=='queue'&&$('crWorkbench').dataset.detail==='open')closePane({restoreFocus:false});
+}
+// V2 C2: the Queue list and its detail pane. The pane is a fixed column (Linear
+// study #0 adaptation): Enter or a click opens it, Space or Cmd+I toggles it, Esc
+// closes it, and the list runs full width while it is closed. On a phone the
+// list and the record are two screens with a back control.
+const paneOpen=()=>$('crWorkbench').dataset.detail==='open';
+function openPane(item){
+ if(!item)return;
+ $('crWorkbench').dataset.detail='open';queueList.setOpen(item.id);detail.open(item);
+ if(matchMedia('(max-width: 760px), (hover: none) and (pointer: coarse) and (max-width: 1023px)').matches){scrollTo({top:0});$('crDetail').querySelector('#crDetailTitle')?.focus({preventScroll:true});}
+}
+function closePane({restoreFocus=true}={}){
+ if(!paneOpen())return false;
+ $('crWorkbench').dataset.detail='closed';queueList.setOpen(null);detail.clear();
+ if(restoreFocus)queueList.focus();
+ return true;
+}
+const togglePane=item=>paneOpen()?closePane():openPane(item||queueList.highlighted);
+function wireQueuePane(){
+ detail=mountDetail({node:$('crDetail'),client,onClose:()=>closePane(),readDeadline:readWithDeadline});
+ queueList=mountQueueList({node:$('crQueueList'),onOpen:openPane,onToggle:togglePane,onEscape:()=>closePane()});
+ $('crDetail').addEventListener('keydown',event=>{if(event.key==='Escape'&&!ignoreKey(event)&&closePane())event.preventDefault();});
+ $('crQueueList').addEventListener('click',event=>{if(event.target instanceof Element&&event.target.closest('[data-queue-retry]'))loadQueue();});
+ document.addEventListener('keydown',event=>{
+  if(!paneShortcut(event)||document.querySelector('dialog[open]')||$('crWorkbench').hidden||$('panelQueue').hidden)return;
+  event.preventDefault();togglePane();
+ });
 }
 
 function openAtlas(node=null){mountAtlas({client,getIncidentsRead:()=>view.reads.incidents,node,onChange:atlas=>{view.atlas=atlas;}});}
@@ -214,8 +247,9 @@ async function boot(){
   const row=event.target.closest('[data-incident]');
   if(row)openIncident(row.dataset.incident);
  });
- mountNotificationBadge(client);tabs=wireTabs('controlRoomTabs');
+ mountNotificationBadge(client);tabs=wireTabs('controlRoomTabs');wireQueuePane();
  const strip=$('controlRoomTabs'),tabFor=key=>strip.querySelector(`[data-tab-key="${key}"]`);
+ const commands=mountControlRoomCommands({tabs:strip,onEscape:()=>closePane()});
  const activate=selected=>{showSection(selected.dataset.tabKey);if(selected.id==='tabAtlas')openAtlas(new URLSearchParams(location.search).get('node'));if(selected.id==='tabSessions')mountSessions({});if(selected.id==='tabModelRoom')mountModelRoom({});};
  // The nav is vertical, so Up and Down move through it too.
  strip.addEventListener('keydown',event=>{if(event.key!=='ArrowDown'&&event.key!=='ArrowUp')return;const all=[...strip.querySelectorAll('[role="tab"]')];const index=all.indexOf(document.activeElement);if(index<0)return;event.preventDefault();all[(index+(event.key==='ArrowDown'?1:-1)+all.length)%all.length].click();});
@@ -226,6 +260,6 @@ async function boot(){
  if(strip.contains(document.activeElement))document.activeElement.blur();
  $('crQueueMore').addEventListener('click',loadMoreQueue);
  $('automationPrev').onclick=()=>{month--;if(month<0){month=11;year--;}renderAutomations();};$('automationNext').onclick=()=>{month++;if(month>11){month=0;year++;}renderAutomations();};
- await load();const auto=mountAutoRefresh({document,window,refresh:load,intervalMs:15000});window.addEventListener('pagehide',event=>{if(!event.persisted){auto.dispose();board.dispose();}});
+ await load();const auto=mountAutoRefresh({document,window,refresh:load,intervalMs:15000});window.addEventListener('pagehide',event=>{if(!event.persisted){auto.dispose();board.dispose();commands.dispose();}});
 }
 boot();
