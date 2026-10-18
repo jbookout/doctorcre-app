@@ -1,13 +1,12 @@
 import { execFileSync } from 'node:child_process';
-import { copyFileSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join, relative, resolve, sep } from 'node:path';
+import { join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { credentialFreeEnv } from './release-environment.mjs';
 
-// Same-repo PR code builds in a disposable clone with an empty HOME and no
-// inherited credentials. Only checked assets cross into main's deploy stage.
-// This is environment separation, not containment of hostile code on the host.
+// PR code runs only in hosted CI. Locally, download static assets and deploy
+// them with main's Worker, config and lockfile-pinned Wrangler.
 export const REPO = 'jbookout/doctorcre-app';
 const root = fileURLToPath(new URL('../', import.meta.url));
 const MARK = '<!-- doctorcre-pr-preview -->';
@@ -83,13 +82,6 @@ export function checkedSiteFiles(siteDir, limits = SITE_LIMITS) {
   return files;
 }
 
-function copySite(from, to) {
-  for (const rel of checkedSiteFiles(from)) {
-    mkdirSync(dirname(join(to, rel)), { recursive: true });
-    copyFileSync(join(from, rel), join(to, rel));
-  }
-}
-
 const run = (command, args, { cwd = root, env = process.env, capture = false } = {}) =>
   execFileSync(command, args, { cwd, env, encoding: 'utf8', stdio: ['ignore', capture ? 'pipe' : 'inherit', 'inherit'] });
 const gh = (...args) => run('gh', [...args], { capture: true }).trim();
@@ -122,40 +114,29 @@ export function pinnedWrangler(trustedRoot = root) {
 const wrangler = (args, { cwd = root, capture = false } = {}) => run(process.execPath,
   [pinnedWrangler(), ...args], { cwd, env: { ...credentialFreeEnv(), NO_COLOR: '1' }, capture });
 
-export function previewBuildEnv(work, home, sha) {
-  const configs = ['.wrangler', '.config/.wrangler', 'Library/Preferences/.wrangler'];
-  if ([work, home].some(dir => configs.some(path => existsSync(join(dir, path)))
-    || readdirSync(dir).some(name => /^(\.env($|\.)|\.dev\.vars($|\.)|\.npmrc$)/.test(name))))
-    throw new Error('build has visible auth/config files');
-  return { PATH: `${dirname(process.execPath)}:/usr/bin:/bin`, HOME: home, TMPDIR: join(home, 'tmp'),
-    NODE_ENV: 'development', DOCTORCRE_SOURCE_COMMIT: sha };
+export function downloadPreview(number, sha, directory, ghCall = gh) {
+  const [run] = JSON.parse(ghCall('run', 'list', '--repo', REPO, '--workflow', 'ci.yml',
+    '--commit', sha, '--event', 'pull_request', '--limit', '1', '--json', 'databaseId,headSha,status,conclusion'));
+  if (!run || run.headSha !== sha || run.status !== 'completed' || run.conclusion !== 'success')
+    throw new Error('preview needs the exact head SHA in a completed-success CI run');
+  ghCall('run', 'download', String(run.databaseId), '--repo', REPO,
+    '--name', `pr-preview-${number}-${sha}`, '--dir', directory);
 }
 
 function deploy(number, dryRun) {
   const head = assertRunningFromMain();
-  pinnedWrangler();
   const pr = JSON.parse(ghPr('pr', 'view', number, '--json', 'state,headRefOid,isCrossRepository'));
   if (pr.state !== 'OPEN') throw new Error(`PR ${number} is ${pr.state}; previews are for open PRs`);
-  if (pr.isCrossRepository) throw new Error(`PR ${number} comes from a fork; refusing to build it here`);
+  if (pr.isCrossRepository) throw new Error(`PR ${number} comes from a fork; previews require same-repository PRs`);
   const sha = pr.headRefOid;
-  run('git', ['fetch', '--quiet', 'origin', `pull/${number}/head`]);
-  if (git('rev-parse', 'FETCH_HEAD') !== sha) throw new Error('the PR moved while fetching; run it again');
 
   const scratch = mkdtempSync(join(tmpdir(), `doctorcre-pr-${number}-`));
-  const home = join(scratch, 'home');
-  const work = join(scratch, 'work');
   const stage = join(scratch, 'stage');
-  for (const dir of [home, join(home, 'tmp'), stage]) mkdirSync(dir, { recursive: true });
+  const site = join(stage, 'dist/site');
+  mkdirSync(site, { recursive: true });
   try {
-    run('git', ['clone', '--quiet', '--no-hardlinks', '--no-checkout', root, work]);
-    run('git', ['checkout', '--quiet', '--detach', sha], { cwd: work });
-    run('git', ['remote', 'remove', 'origin'], { cwd: work });
-    const env = previewBuildEnv(work, home, sha);
-    const npmConfig = ['--userconfig=/dev/null', `--globalconfig=${join(home, 'npmrc-global')}`];
-    run('npm', [...npmConfig, 'ci', '--ignore-scripts', '--no-audit', '--no-fund'], { cwd: work, env });
-    run('npm', [...npmConfig, 'run', 'build'], { cwd: work, env: previewBuildEnv(work, home, sha) });
-
-    copySite(join(work, 'dist/site'), join(stage, 'dist/site'));
+    downloadPreview(number, sha, site);
+    checkedSiteFiles(site);
     execFileSync('tar', ['-x', '-C', stage], { input: execFileSync('git', ['archive', '--format=tar', head, 'src/preview-worker.js', 'src/worker.js', 'js', 'contracts'], { cwd: root, maxBuffer: 1 << 30 }) });
     const name = workerName(number);
     writeFileSync(join(stage, 'wrangler.json'),
@@ -189,7 +170,6 @@ function upsertComment(number, body) {
 
 function clean(number, dryRun) {
   assertRunningFromMain();
-  pinnedWrangler();
   const prs = JSON.parse(ghPr('pr', 'list', '--state', 'all', '--limit', '200', '--json', 'number,state'));
   for (const n of cleanTargets(prs, number)) {
     const own = ownComment(n);

@@ -83,23 +83,19 @@ fixture-only preview. Run it where Wrangler is logged in (hosted CI never holds
 Cloudflare credentials), from a checkout of `jbookout/doctorcre-app` that is
 clean `main` at `origin/main`: the script fetches, then refuses to run on any
 other commit or with edits to tracked files, because that checkout supplies the deploy
-script and pinned Wrangler. The PR's code runs
-only to build: from a throwaway clone of the PR head (without a remote), an empty
-`HOME`, an explicit credential-free environment, and `npm ci --ignore-scripts`.
-Auth/config files in the build HOME or clone cause a refusal. This separates
-build and deploy environments; it does not contain hostile code on the host.
-Deploy uses Wrangler pinned by main's lockfile on a fresh staging directory holding
-only the checked `dist/site` (regular files only: no links, dotfiles or escapes),
-main's `src/preview-worker.js` with its imports, and a config generated from
-main's `wrangler.jsonc` (account, compatibility date and flags) with the assets
-block fixed to `./dist/site`. Nothing in that config comes from the PR. The Worker
-is `doctorcre-app-pr-<PR#>`, with the static assets and Worker only: no CARR
-service, secret, route or database, and the page gate and every API call are
-answered locally or refused. One PR comment carries the `workers.dev` URL. Add
-`--dry-run` to build and validate without deploying or commenting. Unknown
-arguments are rejected. When PRs close or merge, `npm run preview:clean` deletes
-the Workers of every non-open PR that still has a live preview comment
-(`-- <PR#>` targets one and refuses an open PR; `--dry-run` previews it).
+script and pinned Wrangler. PR code runs only in the hosted CI preview job,
+which builds the exact PR head without deployment secrets and uploads
+`pr-preview-<PR#>-<head SHA>`. The local command requires a completed-success CI
+run for that exact SHA, then uses `gh run download` to retrieve only its named
+artifact. It never clones, installs or builds PR code locally.
+
+Downloaded assets must be regular files (no links, dotfiles or escapes). The
+script stages them with main's fixture Worker and generated config, then uses
+main's lockfile-pinned Wrangler. The Worker remains `doctorcre-app-pr-<PR#>`;
+one owned PR comment carries its `workers.dev` URL. `--dry-run` downloads and
+validates without deploying or commenting. When PRs close or merge,
+`npm run preview:clean` deletes Workers with live preview comments
+(`-- <PR#>` targets one closed PR; `--dry-run` previews removal).
 
 The production Worker configuration deliberately has no route. It binds only to
 the production `carr-mcp` service and enables version preview URLs, so a release
