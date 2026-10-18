@@ -232,19 +232,20 @@ test("Events offers a timeline, sourced cards, and one keyboard-accessible add/e
 
 const css = await read("css/ideas.css");
 
-test("idea tiles enter on a stagger, lift and tilt under the pointer and press down", () => {
-  assert.match(css, /\.idea-tile \{[^}]*animation: receipt-in var\(--motion-enter\) var\(--ease\) backwards/);
-  assert.match(css, /animation-delay: var\(--stagger, 0ms\)/);
-  assert.match(css, /\.idea-tile:hover[^{]*\{[^}]*transform:[^;]*rotateX/, "a depth response on hover");
-  assert.match(css, /\.idea-tile:active \{[^}]*transform: (?!none)/, "the full-motion press, not the reduced-motion reset");
-  const durations = [...css.matchAll(/var\((--motion-[a-z]+)\)/g)].map((match) => match[1]);
-  for (const token of durations) assert.match(token, /^--motion-(calm|attention|urgent|flow|enter|move|ring|toast)$/);
+test("idea tiles use the card grammar: one even grid, a surface step on hover and press, nothing tilts or enters", async () => {
+  assert.match(css, /\.idea-grid, \.event-list \{[^}]*grid-template-columns: repeat\(auto-fill, minmax\(240px, 1fr\)\)/, "an even grid, no bento");
+  assert.doesNotMatch(css, /grid-(?:column|row): span/, "no tile spans more than one cell");
+  assert.match(css, /\.idea-tile:hover, \.event-card:hover \{[^}]*background:/, "hover is a surface step");
+  assert.match(css, /\.idea-tile:active, \.event-card:active \{[^}]*background:/, "press is a surface step");
+  assert.doesNotMatch(css, /rotateX|rotateY|translateY|--tilt|--stagger|receipt-in|breathe|infinite|@keyframes/, "no tilt, lift, entrance or loop");
+  const js = await read("js/ideas.js");
+  assert.doesNotMatch(js, /\.style\.|data-stagger-index|pointermove/, "ideas.js writes no inline style and tracks no pointer");
 });
 
 test("reduced motion: forcing the fallback leaves every idea visible and removes the tilt", () => {
   const block = css.match(/@media \(prefers-reduced-motion: reduce\) \{([\s\S]*?)\n\}/)?.[1] || "";
-  assert.match(block, /transform: none/);
-  assert.match(css, /:root\[data-motion="reduced"\] \.idea-tile:hover/);
+  assert.match(block, /transition: none/);
+  assert.match(css, /:root\[data-motion="reduced"\] \.idea-tile/);
   const forced = css
     .replace(/@keyframes[^{]+\{(?:[^{}]*\{[^}]*\})*[^}]*\}/g, "")
     .replace(/(?:animation|transition)(?:-[a-z]+)?\s*:[^;}]+;?/g, "");
@@ -255,7 +256,7 @@ test("reduced motion: forcing the fallback leaves every idea visible and removes
 });
 
 test("event motion has a reduced-motion fallback and a narrow-screen layout", () => {
-  assert.match(css, /\.event-timeline.*animation:/s);
+  assert.doesNotMatch(css, /\.event-timeline[^{]*\{[^}]*animation:/, "the timeline track no longer flows");
   assert.match(css, /@media \(max-width: 640px\)/);
   assert.match(css, /@media \(prefers-reduced-motion: reduce\)[\s\S]*?\.event-/);
   assert.match(css, /:root\[data-motion="reduced"\] \.event-/);
