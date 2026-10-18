@@ -78,6 +78,25 @@ For a clean staging candidate, `npm run release:staging -- --source-sha <HEAD-SH
 `npm run rollback:staging -- <version-id>` restores one explicit earlier staging
 version.
 
+`npm run preview:pr -- <PR#>` gives an open same-repository PR a clickable,
+fixture-only preview. Run it where Wrangler is logged in (hosted CI never holds
+Cloudflare credentials), from a checkout of `jbookout/doctorcre-app` that is
+clean `main` at `origin/main`: the script fetches, then refuses to run on any
+other commit or with edits to tracked files, because that checkout supplies the deploy
+script and pinned Wrangler. PR code runs only in the hosted CI preview job,
+which builds the exact PR head without deployment secrets and uploads
+`pr-preview-<PR#>-<head SHA>`. The local command requires a completed-success CI
+run for that exact SHA, then uses `gh run download` to retrieve only its named
+artifact. It never clones, installs or builds PR code locally.
+
+Downloaded assets must be regular files (no links, dotfiles or escapes). The
+script stages them with main's fixture Worker and generated config, then uses
+main's lockfile-pinned Wrangler. The Worker remains `doctorcre-app-pr-<PR#>`;
+one owned PR comment carries its `workers.dev` URL. `--dry-run` downloads and
+validates without deploying or commenting. When PRs close or merge,
+`npm run preview:clean` deletes Workers with live preview comments
+(`-- <PR#>` targets one closed PR; `--dry-run` previews removal).
+
 The production Worker configuration deliberately has no route. It binds only to
 the production `carr-mcp` service and enables version preview URLs, so a release
 can be built, uploaded, and verified before any public hostname moves. Run

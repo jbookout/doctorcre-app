@@ -2711,7 +2711,33 @@ export async function createFixtureClient(opts = {}) {
     },
     async listProgressBoards(){return {schema:'progress-board-directory.v1',boards:[{board_id:'carr-v5',title:'System Job Board',updated_at:nowIso(),task_counts:{running:1}}]};},
     async readProgressBoard({board_id}={}){return {ok:true,snapshot:{board_id,version:1,updated_at:nowIso(),snapshot_json:{title:'System Job Board',tasks:{demo:{title:'Demo dashboard refresh',status:'review',work_request:'WR-000901',pr:17}}}},questions:[]};},
-    async unfinishedWork({live_library=false}={}){if(live_library)return {schema:'unfinished-work.v1',items:[],coverage:[],census_complete:true,as_of:nowIso(),next_cursor:null};return {schema:'unfinished-work.v1',items:[{id:'WR-000901',kind:'work_request',human_ref:'WR-000901',title:'Demo dashboard refresh',state:'verification',source:'demo',source_ref:'demo',last_activity_at:nowIso(),age:0,owner:'Demo builder',pr:17,available_triage_actions:[]}],coverage:[],census_complete:true,as_of:nowIso(),next_cursor:null};},
+    // V2 C1: one demo row per unfinished-work kind the live census returns,
+    // plus a captured Work Request and a detected incident for Triage. Shapes
+    // follow unfinished-work.v1 (mcp-server/src/system-work-census.v5.js);
+    // every title says Demo and every id is invented. WR-000901 stays first.
+    async unfinishedWork({live_library=false,limit=100,cursor=null}={}){
+      if(live_library)return {schema:'unfinished-work.v1',items:[],coverage:[],census_complete:true,as_of:nowIso(),next_cursor:null};
+      const at=nowIso(),row=(kind,id,state,title,extra={})=>({id,kind,state,status:state,title,source:`demo.${kind}`,source_ref:`demo.${kind}`,opened_at:at,last_activity_at:at,age:0,owner:'Demo builder',version:'1',link:null,identity:{},available_triage_actions:[],completed:false,cancelled:false,...extra});
+      const close=[{action:'cancel',verb:'close-loop',args:{},fields:[{name:'outcome'}],versioned:true}];
+      const rows=[
+        row('work_request','WR-000901','verification','Demo dashboard refresh',{human_ref:'WR-000901',identity:{human_ref:'WR-000901'},pr:17}),
+        row('work_request','WR-000910','in_progress','Demo lease abstract importer',{identity:{human_ref:'WR-000910'},age:3}),
+        row('work_request','WR-000911','blocked','Demo vendor merge waits on a name decision',{identity:{human_ref:'WR-000911'},age:9}),
+        row('incident','INC-20261001-01','monitoring','Demo calendar sync retries after a timeout',{identity:{ref:'INC-20261001-01'},version:null,age:2}),
+        row('defect','0d3f6c2a-0000-4000-8000-00000000d001','fix_untracked','Demo tour PDF drops the last stop',{identity:{defect_id:'0d3f6c2a-0000-4000-8000-00000000d001'},owner:null,version:null,age:12}),
+        row('loop','1a2b3c4d-0000-4000-8000-00000000a001','open','Demo follow up on the rate card question',{identity:{loop_id:'1a2b3c4d-0000-4000-8000-00000000a001'},available_triage_actions:close,age:5}),
+        row('work_shape','5e6f7a8b-0000-4000-8000-00000000b001','ready','Demo shape for the notes export',{identity:{work_request:'WR-000912'},age:1}),
+        row('builder_brief','5e6f7a8b-0000-4000-8000-00000000b002','triaged','Demo brief for the map legend',{identity:{work_request:'WR-000913'},age:1}),
+        row('slice_plan','9c8d7e6f-0000-4000-8000-00000000c001','blocked','Demo slice plan waiting on review capacity',{identity:{work_request:'WR-000914'},age:6}),
+        row('capability_session','2b3c4d5e-0000-4000-8000-00000000e001','claimed','Demo capability session for doc search',{identity:{sequence:2},age:0}),
+        row('retrieval_proposal','3c4d5e6f-0000-4000-8000-00000000f001','pending','Demo retrieval phrase for lease options',{owner:null,age:4}),
+        row('work_request','WR-000920','captured','Demo capture: Today panel shows raw timestamps',{identity:{human_ref:'WR-000920'},available_triage_actions:[{action:'progress',verb:'review-and-triage',args:{},fields:[],versioned:true}],owner:null}),
+        row('incident','INC-20261018-02','detected','Demo detected: notes canary missed a beat',{identity:{ref:'INC-20261018-02'},version:null,available_triage_actions:[{action:'progress',verb:'triage-incident',args:{},fields:[],versioned:false}],owner:null}),
+      ];
+      const start=Number.parseInt(cursor||'0',10)||0,size=Math.max(1,Math.min(500,Number(limit)||100)),items=rows.slice(start,start+size),next=start+size<rows.length?String(start+size):null;
+      const coverage=[...new Set(rows.map(r=>r.kind))].map(kind=>({kind,source_ref:`demo.${kind}`,state:kind==='defect'?'partial':'complete',count_total:rows.filter(r=>r.kind===kind).length,count_returned:items.filter(r=>r.kind===kind).length,reason:kind==='defect'?'fix_status_not_recorded':null}));
+      return {schema:'unfinished-work.v1',items,coverage,census_complete:false,as_of:at,next_cursor:next,limit:size};
+    },
     async governanceQueue() {
       refuseIfOutage('approvals', 'governance-queue');
       const ago = (hours) => new Date(Date.now() - hours * 3_600_000).toISOString();
