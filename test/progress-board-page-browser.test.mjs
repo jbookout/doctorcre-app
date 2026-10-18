@@ -188,7 +188,7 @@ test('cost panel has day popup, month history, provider selection and measured r
   const panel = page.locator('#board-costs');
   await panel.waitFor();
   assert.match(await panel.textContent(), /Coverage incomplete/);
-  assert.equal(await panel.locator('.cost-state').evaluate(node => getComputedStyle(node, '::before').animationDuration), '2s');
+  assert.equal(await panel.locator('.cost-state').evaluate(node => getComputedStyle(node, '::before').animationName), 'none');
   await panel.getByLabel('Cost provider').selectOption('jev');
   assert.match(await panel.textContent(), /Projected month\$93\.00/);
   if (process.env.COST_EVIDENCE_DIR) {
