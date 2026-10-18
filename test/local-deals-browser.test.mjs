@@ -357,6 +357,35 @@ for (const theme of ['dark', 'light']) {
     await waitForAsync(page, async () => (await import('/js/pipeline.js')).state.deals.get('d14').phase === 'Legal');
   };
 
+  for (const width of [390, 1440]) test(`${width} ${theme} move feedback keeps the dock clear of the phone toast`, async t => {
+    const { page, errors } = await open(t, { width, height: 844 });
+    await page.evaluate(theme => { document.documentElement.dataset.theme = theme; }, theme);
+    await movePhoneDeal(page);
+    for (const advance of [350, 1400]) {
+      await page.clock.runFor(advance);
+      assert.equal(await page.locator('.toast').isVisible(), true);
+      const boxes = await page.evaluate(() => {
+        const toast = document.querySelector('.toast').getBoundingClientRect();
+        const dock = document.querySelector('.receipt-dock').getBoundingClientRect();
+        return { dockArea: dock.width * dock.height,
+          overlap: Math.max(0, Math.min(toast.right, dock.right) - Math.max(toast.left, dock.left)) *
+            Math.max(0, Math.min(toast.bottom, dock.bottom) - Math.max(toast.top, dock.top)) };
+      });
+      if (width === 390) {
+        assert.equal(boxes.dockArea, 0, 'phone uses only the Undo toast during its lifetime');
+        assert.equal(boxes.overlap, 0, 'phone toast and command receipt never overlap');
+      } else {
+        assert.ok(boxes.dockArea > 0, 'desktop command receipt stays visible');
+      }
+    }
+    await mkdir(new URL('out/test-artifacts/share-followup/', root), { recursive: true });
+    await page.screenshot({ path: new URL(`out/test-artifacts/share-followup/feedback-${width}-${theme}.png`, root).pathname });
+    await page.clock.runFor(4101);
+    assert.equal(await page.locator('.toast').count(), 0);
+    assert.equal(await page.locator('.receipt-dock').isVisible(), true, 'dock returns after toast removal');
+    assert.deepEqual(errors, []);
+  });
+
   test(`phone ${theme} move toast Undo restores the exact move once`, async t => {
     const { page, errors } = await open(t, { width: 390, height: 844, reducedMotion: 'reduce' });
     await page.evaluate(theme => { document.documentElement.dataset.theme = theme; }, theme);

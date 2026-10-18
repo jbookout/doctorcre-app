@@ -225,6 +225,9 @@ body.has-app-layout .toast { right: var(--toast-right); bottom: calc(var(--layou
   .app-layout-main { padding: var(--space-4); }
   .app-layout-tabbar { padding: 0 var(--space-3); gap: var(--space-1); }
 }
+@media (max-width: 760px) {
+  body.has-app-layout:has(.toast) .receipt-dock { display: none; }
+}
 @media (max-width: 760px), (hover: none) and (pointer: coarse) and (max-width: 1023px) {
   :root { --layout-rail: 0px; --layout-bottom: 112px; }
   body.has-app-layout .toast { left: var(--space-3); right: var(--space-3); }
