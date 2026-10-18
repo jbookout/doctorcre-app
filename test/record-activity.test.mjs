@@ -85,8 +85,8 @@ test("the Vendors and Clients panel reads activity through the pinned verb and n
   // shared token names are used with the system sheet's own values as the
   // fallback — the same durations every other surface runs on.
   const css = await read("css/workspace-business.css");
-  const system = await read("css/system.css");
-  const enter = system.match(/--motion-enter: ([^;]+);/)[1];
+  const tokens = await read("css/tokens.css");
+  const enter = tokens.match(/--motion-enter: ([^;]+);/)[1];
   assert.ok(css.includes(`.activity-row{`) && css.includes(`animation:receipt-in var(--motion-enter,${enter})`), "rows enter on the shared keyframe and duration");
   assert.match(css, /\.activity-row\{[^}]*backwards/);
   assert.match(css, /@keyframes receipt-in\{from\{opacity:0;transform:translateY\(6px\)\}to\{opacity:1;transform:none\}\}/, "the same keyframe the system sheet defines");

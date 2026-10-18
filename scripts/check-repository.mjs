@@ -54,4 +54,25 @@ for (const path of await files(ROOT_PATH)) {
   }
 }
 
+// V2 look tells (plan F4): stylesheets already moved onto css/tokens.css stay free of the
+// V1 tells. Add a file here when its slice migrates it; never remove one.
+const V2_MIGRATED_STYLESHEETS = [
+  "css/tokens.css", "css/system.css", "css/app-shell.css", "css/workspace.css",
+  "css/correspondence.css", "public-shell/shell.css",
+];
+const v2Tells = [
+  [/(?<!repeating-linear-)gradient\(/, "gradient (only repeating-linear-gradient pattern encoding is allowed)"],
+  [/backdrop-filter/, "backdrop-filter"],
+  [/Barlow|Oswald|Montserrat/, "font family other than the token faces"],
+  [/#[0-9a-fA-F]{3,8}\b/, "raw hex colour outside css/tokens.css", (path) => path !== "css/tokens.css"],
+  [/:root\s*\{[^}]*--(?:ground|surface-\d|hairline|fg|accent|font-size-\d|font-text)\s*:/, "palette or type token outside css/tokens.css", (path) => path !== "css/tokens.css"],
+];
+for (const path of V2_MIGRATED_STYLESHEETS) {
+  const source = (await read(path)).replace(/\/\*[\s\S]*?\*\//g, "");
+  for (const [pattern, label, applies = () => true] of v2Tells) {
+    if (!applies(path)) continue;
+    assert.doesNotMatch(source, pattern, `${path} contains a V2 tell: ${label}`);
+  }
+}
+
 console.log(`repository check passed: ${fixture.deals.length} synthetic deals, ${contract.mcp_operations.length} pinned MCP operations`);

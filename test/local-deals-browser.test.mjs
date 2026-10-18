@@ -260,8 +260,10 @@ test('W4 a long automatic reason keeps its date and Undo visible inside the fixe
   const outer = await card.boundingBox(), stamp = await date.boundingBox(), undo = await card.locator('[data-undo]').boundingBox();
   assert.ok(stamp.y >= outer.y && stamp.y + stamp.height <= outer.y + outer.height);
   assert.ok(undo.y + undo.height <= outer.y + outer.height);
+  // V2 hover is a hairline step on the border, not a lift (no hover transforms).
+  const restingBorder = await card.evaluate(e => getComputedStyle(e).borderRightColor);
   await card.hover();
-  await page.waitForFunction(() => getComputedStyle(document.querySelector('[data-id="d14"]')).transform !== 'none');
+  await page.waitForFunction(resting => getComputedStyle(document.querySelector('[data-id="d14"]')).borderRightColor !== resting, restingBorder);
   assert.equal(await page.locator('[data-id="d20"] .attention-dot').evaluate(e => getComputedStyle(e).animationName), 'none');
 });
 

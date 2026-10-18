@@ -52,7 +52,7 @@ test('390px and iPad Status render server scoped state and evidence age with dar
       const box = await control.boundingBox(); assert.ok(box.height >= 44 && box.width >= 44);
     }
     const glass = await covered.evaluate(el => getComputedStyle(el.closest('.glass')).backdropFilter);
-    assert.notEqual(glass, 'none'); assert.equal(await page.locator('html').getAttribute('data-theme'), 'dark');
+    assert.equal(glass, 'none'); // V2 S0: panels are solid surfaces, no backdrop blur assert.equal(await page.locator('html').getAttribute('data-theme'), 'dark');
     await page.emulateMedia({ reducedMotion: 'reduce' });
     assert.equal(await covered.evaluate(el => el.getAnimations({ subtree: true }).length), 0);
     assert.deepEqual(errors, []);

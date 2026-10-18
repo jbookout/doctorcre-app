@@ -12,7 +12,7 @@ test('390px and iPad fixture evidence stays readable, sourced, read-only and tou
   const browser = await chromium.launch(); t.after(() => browser.close());
   const page = await browser.newPage();
   const css = await readFile(new URL('../css/correspondence.css', import.meta.url), 'utf8');
-  const system = await readFile(new URL('../css/system.css', import.meta.url), 'utf8');
+  const system = (await readFile(new URL('../css/tokens.css', import.meta.url), 'utf8')) + (await readFile(new URL('../css/system.css', import.meta.url), 'utf8'));
   for (const width of [390, 768]) {
     await page.setViewportSize({ width, height: 844 });
     await page.setContent(`<style>${system}\n${css}</style><main style="padding:16px">${renderEvidence(readyView)}</main>`);

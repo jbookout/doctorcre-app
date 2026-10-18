@@ -63,8 +63,9 @@ test("Deal Room phone strips scroll in their own regions with dark scrollbars", 
   assert.match(css, /\.focus\{[^}]*overflow:auto/);
   assert.match(css, /\.filters\{[^}]*overflow:auto/);
   assert.match(css, /@media\(max-width:680px\)\{html,body\{max-width:100%;overflow-x:clip\}/);
-  assert.match(shell, /\.app-shell-more-list[^}]*max-height:calc\(100dvh - 125px\)/);
-  assert.match(shell, /scrollbar-color:#3a5878 #0a1a2e/);
+  assert.match(shell, /\.app-shell-more-list[^}]*max-height:\s*calc\(100dvh - 125px\)/);
+  // V2 S0: the shared shell reads scrollbar colours from css/tokens.css.
+  assert.match(shell, /\.app-shell-more-list[^{]*\{[^}]*scrollbar-color:\s*var\(--hairline-strong\) transparent/);
 });
 
 test("Search on a phone caps the candidate list inside its own scroll region", async () => {

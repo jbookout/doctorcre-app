@@ -118,12 +118,21 @@ test("contrast arithmetic matches the WCAG reference values", () => {
   assert.throws(() => contrastRatio("navy", "#fff"), TypeError);
 });
 
-const css = await readFile(new URL('../css/system.css', import.meta.url), 'utf8');
-test('both CSS themes meet the contrast floor', () => {
+const tokensCss = await readFile(new URL('../css/tokens.css', import.meta.url), 'utf8');
+test('both token themes meet the contrast floor', () => {
   for (const selector of [':root {', ':root[data-theme="light"]']) {
-    const tokens = readTokens(css, selector);
-    for (const [foreground, background] of [["--text", "--ground-0"], ["--text", "--ground-2"], ["--muted", "--ground-0"], ["--muted", "--ground-2"], ["--quiet", "--ground-0"], ["--quiet", "--ground-1"], ["--orange-text", "--ground-0"], ["--orange-text", "--ground-2"], ["--cyan-text", "--ground-0"], ["--green-text", "--ground-0"], ["--amber-text", "--ground-0"], ["--red-text", "--ground-0"], ["--violet-text", "--ground-0"], ["--on-accent", "--orange"]]) {
+    const tokens = readTokens(tokensCss, selector);
+    for (const [foreground, background] of [["--fg", "--ground"], ["--fg", "--surface-2"], ["--fg-muted", "--ground"], ["--fg-muted", "--surface-2"], ["--fg-quiet", "--ground"], ["--fg-quiet", "--surface-1"], ["--accent-ink", "--ground"], ["--accent-ink", "--surface-2"], ["--status-info-ink", "--ground"], ["--status-ok-ink", "--ground"], ["--status-warn-ink", "--ground"], ["--status-danger-ink", "--ground"], ["--status-hold-ink", "--ground"], ["--on-accent", "--accent"]]) {
       assert.ok(contrastRatio(tokens[foreground], tokens[background]) >= 4.5, `${selector}: ${foreground} on ${background}`);
     }
+  }
+});
+
+test('only css/tokens.css declares palette or type tokens', async () => {
+  const { readdir } = await import('node:fs/promises');
+  for (const name of await readdir(new URL('../css/', import.meta.url))) {
+    if (!name.endsWith('.css') || name === 'tokens.css') continue;
+    const source = await readFile(new URL(`../css/${name}`, import.meta.url), 'utf8');
+    assert.doesNotMatch(source, /--(?:surface-\d|hairline(?:-strong)?|fg(?:-muted|-quiet)?|accent(?:-ink|-hover)?|font-size-\d|font-text)\s*:/, `css/${name} redeclares a V2 token`);
   }
 });

@@ -139,8 +139,12 @@ async function assembleArtifact(commit, paths, readSource) {
       content = Buffer.from(result.outputFiles[0].contents);
     }
     if (path === "reports/share.css") {
-      const shell = await readSource("css/app-shell.css");
-      content = Buffer.concat([content, Buffer.from("\n"), shell]);
+      // The share page is served from a restricted asset set, so the V2 tokens and the
+      // shared shell travel inside its one stylesheet: tokens first, shell last.
+      // The shell's own @import of the tokens is dropped because the tokens are inlined here.
+      const [tokens, shell] = await Promise.all([readSource("css/tokens.css"), readSource("css/app-shell.css")]);
+      const inlinedShell = Buffer.from(shell.toString("utf8").replace('@import url("/css/tokens.css");\n', ""));
+      content = Buffer.concat([tokens, Buffer.from("\n"), content, Buffer.from("\n"), inlinedShell]);
     }
     files.set(path, content);
     payload.push({ path, bytes: content.length, sha256: digest(content) });
