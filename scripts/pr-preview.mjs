@@ -1,24 +1,13 @@
 import { execFileSync } from 'node:child_process';
-import { copyFileSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { credentialFreeEnv } from './release-environment.mjs';
 
-// Fixture-only PR previews, run by hand on the machine where Wrangler is logged
-// in. Hosted CI never holds Cloudflare credentials. Each PR gets its own Worker
-// (doctorcre-app-pr-<number>) with the static assets and main's
-// src/preview-worker.js only: no service binding, secret, route or production data.
-//   npm run preview:pr -- <PR#> [--dry-run]
-//   npm run preview:clean [-- <PR#>] [--dry-run]   (no number: every non-open PR)
-//
-// Trust model. The PR's code runs only in the build step, with a throwaway HOME,
-// the credential-free environment, no lifecycle scripts at install, and (on macOS)
-// a sandbox that blocks the network during the build and hides Wrangler's login
-// directory. The only credentialed step is Wrangler from THIS checkout's locked
-// install, deploying a fresh staging directory that holds the checked build
-// output, main's Worker sources and a config generated from main's wrangler.jsonc.
-// So this script refuses to run unless this checkout is clean main at origin/main.
+// Same-repo PR code builds in a disposable clone with an empty HOME and no
+// inherited credentials. Only checked assets cross into main's deploy stage.
+// This is environment separation, not containment of hostile code on the host.
 export const REPO = 'jbookout/doctorcre-app';
 const root = fileURLToPath(new URL('../', import.meta.url));
 const MARK = '<!-- doctorcre-pr-preview -->';
@@ -46,9 +35,6 @@ export function parseArgs(argv) {
   return { command, number, dryRun };
 }
 
-// Everything that shapes the Worker comes from main (`base` is main's parsed
-// wrangler.jsonc) or is fixed here. Nothing is read from the PR: no account id,
-// no path, no binding.
 export function previewConfig(base, name, sha) {
   const { account_id, compatibility_date, compatibility_flags } = base;
   return { name, main: 'src/preview-worker.js', account_id, compatibility_date, compatibility_flags,
@@ -57,7 +43,6 @@ export function previewConfig(base, name, sha) {
     version_metadata: { binding: 'CF_VERSION_METADATA' }, vars: { GIT_SHA: sha } };
 }
 
-// Cleanup targets: PRs that are no longer open. A single named PR must also be non-open.
 export function cleanTargets(prs, number = null) {
   const closed = prs.filter(pr => pr.state !== 'OPEN').map(pr => String(pr.number));
   if (number === null) return closed;
@@ -71,8 +56,6 @@ export const liveComment = (url, sha) => `${MARK}
 Built from \`${sha}\`. Updated each time the preview is redeployed; removed when the PR closes.`;
 export const removedComment = () => `${MARK}\nPreview removed.`;
 
-// The PR's build output is data, never code: only regular files under one real
-// directory, no links, no dotfiles, bounded size.
 export function checkedSiteFiles(siteDir, limits = SITE_LIMITS) {
   const top = lstatSync(siteDir);
   if (top.isSymbolicLink() || !top.isDirectory()) throw new Error('build output dist/site must be a real directory');
@@ -113,7 +96,6 @@ const gh = (...args) => run('gh', [...args], { capture: true }).trim();
 const ghPr = (...args) => gh(...args, '-R', REPO);
 const git = (...args) => run('git', args, { capture: true }).trim();
 
-// This checkout is the trusted code: it must be the repository's own main.
 function assertRunningFromMain() {
   const origin = git('config', '--get', 'remote.origin.url');
   if (!new RegExp(`^(https://github\\.com/|git@github\\.com:|ssh://git@github\\.com/)${REPO}(\\.git)?$`).test(origin)) {
@@ -128,42 +110,32 @@ function assertRunningFromMain() {
   return head;
 }
 
-function assertPinnedWrangler() {
-  const wanted = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')).devDependencies.wrangler;
-  const have = JSON.parse(readFileSync(join(root, 'node_modules/wrangler/package.json'), 'utf8')).version;
-  if (have !== wanted) throw new Error(`installed Wrangler ${have} is not the pinned ${wanted}; run npm ci here first`);
+export function pinnedWrangler(trustedRoot = root) {
+  const wanted = JSON.parse(readFileSync(join(trustedRoot, 'package-lock.json'), 'utf8')).packages['node_modules/wrangler'].version;
+  const have = JSON.parse(readFileSync(join(trustedRoot, 'node_modules/wrangler/package.json'), 'utf8')).version;
+  const binary = realpathSync(join(trustedRoot, 'node_modules/wrangler/bin/wrangler.js'));
+  if (have !== wanted || !binary.startsWith(realpathSync(trustedRoot) + sep))
+    throw new Error('Wrangler must come from this main checkout at its lockfile-pinned version; run npm ci here first');
+  return binary;
 }
 
-// The ONLY credentialed step. Wrangler is this checkout's, never the PR's.
 const wrangler = (args, { cwd = root, capture = false } = {}) => run(process.execPath,
-  [join(root, 'node_modules/wrangler/bin/wrangler.js'), ...args],
-  { cwd, env: { ...credentialFreeEnv(), NO_COLOR: '1' }, capture });
+  [pinnedWrangler(), ...args], { cwd, env: { ...credentialFreeEnv(), NO_COLOR: '1' }, capture });
 
-// macOS sandbox for PR code: Wrangler's login lives under the real HOME, which a
-// throwaway HOME alone does not hide from absolute paths. Deny those reads, and
-// the network once dependencies are installed.
-function sandboxProfile(realHome, network) {
-  const hidden = ['Library/Preferences/.wrangler', '.wrangler', '.config/.wrangler', '.config/gh', '.ssh', '.aws', '.npmrc', '.netrc', 'Library/Keychains']
-    .map(path => `(subpath ${JSON.stringify(join(realHome, path))})`).join(' ');
-  return `(version 1)(allow default)${network ? '' : '(deny network*)'}(deny file-read* ${hidden})`;
-}
-
-function confined(home, command, args, { cwd, env, network }) {
-  const profile = join(home, 'confine.sb');
-  if (process.platform === 'darwin') {
-    writeFileSync(profile, sandboxProfile(process.env.HOME, network));
-    return run('/usr/bin/sandbox-exec', ['-f', profile, command, ...args], { cwd, env });
-  }
-  console.warn('warning: no sandbox on this platform; PR code runs with the throwaway HOME only');
-  return run(command, args, { cwd, env });
+export function previewBuildEnv(work, home, sha) {
+  const configs = ['.wrangler', '.config/.wrangler', 'Library/Preferences/.wrangler'];
+  if ([work, home].some(dir => configs.some(path => existsSync(join(dir, path)))
+    || readdirSync(dir).some(name => /^(\.env($|\.)|\.dev\.vars($|\.)|\.npmrc$)/.test(name))))
+    throw new Error('build has visible auth/config files');
+  return { PATH: `${dirname(process.execPath)}:/usr/bin:/bin`, HOME: home, TMPDIR: join(home, 'tmp'),
+    NODE_ENV: 'development', DOCTORCRE_SOURCE_COMMIT: sha };
 }
 
 function deploy(number, dryRun) {
   const head = assertRunningFromMain();
-  assertPinnedWrangler();
+  pinnedWrangler();
   const pr = JSON.parse(ghPr('pr', 'view', number, '--json', 'state,headRefOid,isCrossRepository'));
   if (pr.state !== 'OPEN') throw new Error(`PR ${number} is ${pr.state}; previews are for open PRs`);
-  // The build runs the PR's code on this machine; only our own branches qualify.
   if (pr.isCrossRepository) throw new Error(`PR ${number} comes from a fork; refusing to build it here`);
   const sha = pr.headRefOid;
   run('git', ['fetch', '--quiet', 'origin', `pull/${number}/head`]);
@@ -173,19 +145,16 @@ function deploy(number, dryRun) {
   const home = join(scratch, 'home');
   const work = join(scratch, 'work');
   const stage = join(scratch, 'stage');
-  for (const dir of [home, join(home, 'tmp'), work, stage]) mkdirSync(dir, { recursive: true });
+  for (const dir of [home, join(home, 'tmp'), stage]) mkdirSync(dir, { recursive: true });
   try {
-    // PR sources as plain files: no .git, so the build cannot reach this repository.
-    execFileSync('tar', ['-x', '-C', work], { input: execFileSync('git', ['archive', '--format=tar', sha], { cwd: root, maxBuffer: 1 << 30 }) });
-    rmSync(join(work, '.npmrc'), { force: true });
-    writeFileSync(join(home, 'npmrc-user'), '');
-    writeFileSync(join(home, 'npmrc-global'), '');
-    const env = { ...credentialFreeEnv(), HOME: home, TMPDIR: join(home, 'tmp'), XDG_CONFIG_HOME: join(home, 'config'),
-      npm_config_userconfig: join(home, 'npmrc-user'), npm_config_globalconfig: join(home, 'npmrc-global'), NO_COLOR: '1' };
-    confined(home, 'npm', ['ci', '--ignore-scripts', '--no-audit', '--no-fund'], { cwd: work, env, network: true });
-    confined(home, 'npm', ['run', 'build'], { cwd: work, env: { ...env, DOCTORCRE_SOURCE_COMMIT: sha }, network: false });
+    run('git', ['clone', '--quiet', '--no-hardlinks', '--no-checkout', root, work]);
+    run('git', ['checkout', '--quiet', '--detach', sha], { cwd: work });
+    run('git', ['remote', 'remove', 'origin'], { cwd: work });
+    const env = previewBuildEnv(work, home, sha);
+    const npmConfig = ['--userconfig=/dev/null', `--globalconfig=${join(home, 'npmrc-global')}`];
+    run('npm', [...npmConfig, 'ci', '--ignore-scripts', '--no-audit', '--no-fund'], { cwd: work, env });
+    run('npm', [...npmConfig, 'run', 'build'], { cwd: work, env: previewBuildEnv(work, home, sha) });
 
-    // Fresh staging directory: checked build output + main's Worker sources + generated config.
     copySite(join(work, 'dist/site'), join(stage, 'dist/site'));
     execFileSync('tar', ['-x', '-C', stage], { input: execFileSync('git', ['archive', '--format=tar', head, 'src/preview-worker.js', 'src/worker.js', 'js', 'contracts'], { cwd: root, maxBuffer: 1 << 30 }) });
     const name = workerName(number);
@@ -204,7 +173,6 @@ function deploy(number, dryRun) {
   }
 }
 
-// The one owned comment on a PR: first one that starts with MARK and was written by us.
 function ownComment(number) {
   const me = gh('api', 'user', '-q', '.login');
   const found = gh('api', '--paginate', `repos/${REPO}/issues/${number}/comments`, '-q',
@@ -221,7 +189,7 @@ function upsertComment(number, body) {
 
 function clean(number, dryRun) {
   assertRunningFromMain();
-  assertPinnedWrangler();
+  pinnedWrangler();
   const prs = JSON.parse(ghPr('pr', 'list', '--state', 'all', '--limit', '200', '--json', 'number,state'));
   for (const n of cleanTargets(prs, number)) {
     const own = ownComment(n);

@@ -2,10 +2,10 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { checkedSiteFiles, cleanTargets, liveComment, parseArgs, previewConfig, prNumber, workerName } from '../scripts/pr-preview.mjs';
+import { join, relative } from 'node:path';
+import { previewBuildEnv, pinnedWrangler, checkedSiteFiles, cleanTargets, liveComment, parseArgs, previewConfig, prNumber, workerName } from '../scripts/pr-preview.mjs';
 import preview from '../src/preview-worker.js';
 
 const base = JSON.parse(await readFile(new URL('../wrangler.jsonc', import.meta.url), 'utf8'));
@@ -92,4 +92,25 @@ test('the preview serves pages from its own gate and refuses everything that cou
     const response = await preview.fetch(new Request(`https://preview.test${path}`, { method, body: method === 'POST' ? '{}' : undefined }), env);
     assert.ok(response.status >= 400, `${method} ${path} -> ${response.status}`);
   }
+});
+
+test('PR builds have no credentials and deploy uses locked Wrangler outside the clone', t => {
+  const dir = mkdtempSync(join(tmpdir(), 'preview-build-'));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const home = join(dir, 'home'), work = join(dir, 'clone'), trusted = join(dir, 'main');
+  for (const path of [home, work, join(trusted, 'node_modules/wrangler/bin')]) mkdirSync(path, { recursive: true });
+  const buildEnv = previewBuildEnv(work, home, sha);
+  assert.deepEqual(Object.keys(buildEnv).sort(), ['DOCTORCRE_SOURCE_COMMIT', 'HOME', 'NODE_ENV', 'PATH', 'TMPDIR']);
+  assert.equal(buildEnv.HOME, home);
+  assert.equal(buildEnv.DOCTORCRE_SOURCE_COMMIT, sha);
+  mkdirSync(join(home, '.wrangler'));
+  assert.throws(() => previewBuildEnv(work, home, sha), /config/);
+  writeFileSync(join(trusted, 'package-lock.json'), JSON.stringify({ packages: { 'node_modules/wrangler': { version: '4.131.2' } } }));
+  writeFileSync(join(trusted, 'node_modules/wrangler/package.json'), JSON.stringify({ version: '4.131.2' }));
+  const binary = join(trusted, 'node_modules/wrangler/bin/wrangler.js');
+  writeFileSync(binary, '');
+  assert.equal(pinnedWrangler(trusted), realpathSync(binary));
+  assert.ok(relative(realpathSync(work), pinnedWrangler(trusted)).startsWith('..'));
+  writeFileSync(join(trusted, 'node_modules/wrangler/package.json'), JSON.stringify({ version: '0.0.0' }));
+  assert.throws(() => pinnedWrangler(trusted), /pinned/);
 });

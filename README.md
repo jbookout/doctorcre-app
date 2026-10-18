@@ -82,12 +82,13 @@ version.
 fixture-only preview. Run it where Wrangler is logged in (hosted CI never holds
 Cloudflare credentials), from a checkout of `jbookout/doctorcre-app` that is
 clean `main` at `origin/main`: the script fetches, then refuses to run on any
-other commit or with edits to tracked files, because that checkout's script and
-pinned Wrangler are the only code that touches the login. The PR's code runs
-only to build: from a plain export of the PR head (no `.git`), with a throwaway
-`HOME`, the credential-free environment, `npm ci --ignore-scripts`, and on macOS
-a sandbox that hides Wrangler's login directory and blocks the network during
-the build. Deploy then uses main's Wrangler on a fresh staging directory holding
+other commit or with edits to tracked files, because that checkout supplies the deploy
+script and pinned Wrangler. The PR's code runs
+only to build: from a throwaway clone of the PR head (without a remote), an empty
+`HOME`, an explicit credential-free environment, and `npm ci --ignore-scripts`.
+Auth/config files in the build HOME or clone cause a refusal. This separates
+build and deploy environments; it does not contain hostile code on the host.
+Deploy uses Wrangler pinned by main's lockfile on a fresh staging directory holding
 only the checked `dist/site` (regular files only: no links, dotfiles or escapes),
 main's `src/preview-worker.js` with its imports, and a config generated from
 main's `wrangler.jsonc` (account, compatibility date and flags) with the assets
