@@ -114,12 +114,22 @@ function say(text) {
   if (live && live.textContent !== text) live.textContent = text;
 }
 
-function showToast(text) {
+function showToast(text, eventId = null) {
   document.querySelectorAll('.toast').forEach((node) => node.remove());
   const toast = document.createElement('div');
   toast.className = 'toast';
   toast.setAttribute('role', 'status');
-  toast.textContent = text;
+  const message = document.createElement('span');
+  message.textContent = text;
+  toast.append(message);
+  if (eventId) {
+    const undo = document.createElement('button');
+    undo.type = 'button';
+    undo.className = 'receipt-undo';
+    undo.dataset.undo = eventId;
+    undo.textContent = 'Undo';
+    toast.append(undo);
+  }
   document.body.append(toast);
   setTimeout(() => toast.remove(), 4100);
 }
@@ -500,7 +510,7 @@ async function runMove(intent, form) {
   } else {
     confirmLocalWrite(intent.deal, { phase: phaseStep.args.value });
     renderBoard();
-    showToast(`${intent.name} moved to ${intent.to_label}`);
+    showToast(`${intent.name} moved to ${intent.to_label}`, result.event_id);
   }
   announce(`${intent.name} moved to ${intent.to_label}.`);
 

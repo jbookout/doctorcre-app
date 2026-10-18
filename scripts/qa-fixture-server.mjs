@@ -61,7 +61,16 @@ function makeState(variant) {
   const leads = Array.from({length:variant==='empty'?0:variant==='large'?180:template.length}, (_, i) => ({ ...structuredClone(template[i%template.length]), id:leadId(i+1), party_id:leadId(i+1000), registry_ref:`L-${i+1}`, name:`Demo Lead ${String(i+1).padStart(3,'0')}`, doctor_name:`Dr. Demo ${i+1}`, owner:i%3===0?'joe':i%3===1?'dell':null, created_at:now(), first_seen_at:now(), score:95-i%70 }));
   const invoiceRows = invoiceTrackerFixture(today).entries;
   const entries = variant==='empty'?[]:variant==='large'?Array.from({length:120},(_,i)=>({...structuredClone(invoiceRows[i%invoiceRows.length]), deal_id:`qa-invoice-deal-${i+1}`,name:`Demo Invoice Practice ${i+1}`,commission_id:invoiceRows[i%invoiceRows.length].commission_id===null?null:`10000000-0000-4000-8000-${String(i+1).padStart(12,'0')}`, owner:i%2?'dell':'joe'})):invoiceRows;
-  return { variant, deals, leads, invoices:createInvoiceFixture({entries}), clients:new Map() };
+  const stops = variant === 'empty' ? [] : [
+    { property_ref:'property:public:synthetic_qa_property_01', route_sequence:1, route_label:'A', name:'Demo Meadow Medical', address:'100 Example Meadow Way', suite:'Suite 101' },
+    { property_ref:'property:public:synthetic_qa_property_02', route_sequence:2, route_label:'B', name:'Demo Harbor Offices', address:'200 Sample Harbor Lane', suite:'Suite 202' },
+  ];
+  const sharedTour = {
+    report:{stops},
+    map:{points:stops.map((stop,index) => ({property_ref:stop.property_ref,route_sequence:stop.route_sequence,route_label:stop.route_label,latitude:30.4+index*0.01,longitude:-87.2+index*0.01}))},
+    feedback:{projection_ref:'projection:public:synthetic_qa_tour_01',permission_scopes:['shortlist','comment'],items:stops.map(stop => ({property_ref:stop.property_ref,shortlisted:false,comments:[{comment:'Synthetic feedback for this demo property.'}]}))},
+  };
+  return { variant, deals, leads, sharedTour, invoices:createInvoiceFixture({entries}), clients:new Map() };
 }
 
 export async function createQaServer({ buildRoot=resolve(repository,'dist/site') }={}) {
@@ -153,7 +162,14 @@ export async function createQaServer({ buildRoot=resolve(repository,'dist/site')
       headers.set('cache-control','no-store');
       return new Response(response.body,{status:response.status,headers});
     }
-    if(url.pathname.startsWith('/api/share/'))return json({error:'fixture_endpoint_unavailable'},404);
+    if(url.pathname.startsWith('/api/share/')) {
+      const identity=identify(request);
+      if(!identity)return json({error:'not_authenticated'},401);
+      if(request.method!=='GET')return json({error:'fixture_method_unavailable'},405);
+      const resource=url.pathname.slice('/api/share/'.length);
+      if(!['report','map','feedback'].includes(resource))return json({error:'fixture_endpoint_unavailable'},404);
+      return json({data:stateFor(identity.namespace).sharedTour[resource]});
+    }
     if(url.pathname==='/api/test/health')return json({ok:true,synthetic:true});
     if(url.pathname==='/api/test/seed'&&request.method==='POST') {
       const {namespace,variant='realistic',viewer='joe',reset=false}=await request.json();

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, mkdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -80,7 +80,8 @@ test('QA populated Share shows its stepper, properties, map and feedback at 390 
     assert.equal(await page.locator('.feedback-controls').count(),2);
     assert.match(await page.locator('.comment-list').first().textContent(),/Synthetic/);
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),true);
-    await page.screenshot({path:join(outDir,`share-390-${theme}.png`),fullPage:true});
+    await mkdir(join(root,'out/test-artifacts/share-followup'),{recursive:true});
+    await page.screenshot({path:join(root,`out/test-artifacts/share-followup/share-390-${theme}.png`),fullPage:true});
     assert.deepEqual(errors,[]);
     await page.close();
   });

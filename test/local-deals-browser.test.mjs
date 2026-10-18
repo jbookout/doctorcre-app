@@ -4,9 +4,9 @@ import { readFile, mkdir } from 'node:fs/promises';
 import { chromium, waitForAsync } from './browser-harness.mjs';
 const root = new URL('../', import.meta.url);
 const phases = ['On Deck', 'Research', 'Site selection', 'Negotiation', 'Legal', 'Diligence', 'Closing', 'Closed'];
-async function open(t, { width = 1440, reducedMotion = 'no-preference', many = false } = {}) {
+async function open(t, { width = 1440, height = 960, reducedMotion = 'no-preference', many = false } = {}) {
   const browser = await chromium.launch(); t.after(() => browser.close());
-  const page = await browser.newPage({ viewport: { width, height: 960 }, reducedMotion });
+  const page = await browser.newPage({ viewport: { width, height }, reducedMotion });
   const errors = []; page.on('pageerror', e => errors.push(e.message));
   const seed = JSON.parse(await readFile(new URL('data/board-seed.json', root), 'utf8'));
   seed.deals.forEach((d, i) => Object.assign(d, { phase: phases[i % 8], next_step: 'Confirm the next appointment', last_touch: '2026-10-01', last_review_at: '2026-10-01T16:00:00Z', next_date: null, attention: false }));
@@ -358,15 +358,17 @@ for (const theme of ['dark', 'light']) {
   };
 
   test(`phone ${theme} move toast Undo restores the exact move once`, async t => {
-    const { page, errors } = await open(t, { width: 390, reducedMotion: 'reduce' });
+    const { page, errors } = await open(t, { width: 390, height: 844, reducedMotion: 'reduce' });
     await page.evaluate(theme => { document.documentElement.dataset.theme = theme; }, theme);
     await movePhoneDeal(page);
     const undo = page.locator('.toast button[data-undo]');
     assert.equal(await undo.count(), 1, 'move toast offers Undo');
     const eventId = await undo.getAttribute('data-undo');
-    await page.evaluate(async () => { const { state } = await import('/js/pipeline.js'); await state.boardSync.pollChanges({ force: true }); });
-    assert.equal(await page.locator(`#receiptsList [data-undo="${eventId}"]`).count(), 1, 'Today and toast target the same event');
+    await mkdir(new URL('out/test-artifacts/share-followup/', root), { recursive: true });
+    await page.screenshot({ path: new URL(`out/test-artifacts/share-followup/toast-390-${theme}.png`, root).pathname });
     await undo.click();
+    await page.clock.runFor(5001);
+    assert.equal(await page.locator(`#receiptsList [data-receipt="${eventId}"]`).count(), 1, 'Today and toast target the same event');
     await waitForAsync(page, async () => (await import('/js/pipeline.js')).state.deals.get('d14').phase === 'Negotiation');
     const reverted = await page.evaluate(async () => (await (await import('/js/pipeline.js')).state.client.getChanges(null)).events.filter(event => event.verb === 'revert-deal-field'));
     assert.equal(reverted.length, 1);
@@ -376,16 +378,17 @@ for (const theme of ['dark', 'light']) {
   });
 
   test(`phone ${theme} Today hides floating feedback and contains receipt text`, async t => {
-    const { page, errors } = await open(t, { width: 390, reducedMotion: 'reduce' });
+    const { page, errors } = await open(t, { width: 390, height: 844, reducedMotion: 'reduce' });
     await page.evaluate(theme => { document.documentElement.dataset.theme = theme; }, theme);
     await movePhoneDeal(page);
-    await page.evaluate(async () => { const { state } = await import('/js/pipeline.js'); await state.boardSync.pollChanges({ force: true }); });
+    await page.clock.runFor(1401);
     await page.locator('#appTodayToggle').click();
+    assert.equal(await page.locator('.toast').count(), 1);
     assert.equal(await page.locator('.toast').isVisible(), false);
     assert.equal(await page.locator('.receipt-dock').isVisible(), false, 'floating command receipt cannot cover Today');
     await page.locator('#receiptsList [data-undo]').first().click();
     await waitForAsync(page, async () => (await import('/js/pipeline.js')).state.deals.get('d14').phase === 'Negotiation');
-    await page.evaluate(async () => { const { state } = await import('/js/pipeline.js'); await state.boardSync.pollChanges({ force: true }); });
+    await page.clock.runFor(1401);
     const clipping = await page.locator('#receiptsList .receipt').evaluateAll(rows => rows.flatMap(row => {
       const bounds = row.getBoundingClientRect();
       return [...row.querySelectorAll('.receipt-line, .receipt-meta, .receipt-actions, .receipt-message, .receipt-badge, .receipt-deal')]
