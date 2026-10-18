@@ -29,7 +29,7 @@ import {
   ACK_UNAVAILABLE_SENTENCE, ACKNOWLEDGEMENT_SENTENCE,
   ANSWER_EVIDENCE_MAX, ANSWER_TEXT_MAX, ANSWER_VERSION_CONFLICT_SENTENCE, ANSWER_VERSION_UNAVAILABLE_SENTENCE,
   ASSIGNMENT_MOVE_UNSUPPORTED_SENTENCE, DISPATCH_SEARCH_SENTENCE, DISPATCH_STAGES_SENTENCE, NO_OPEN_SENTENCE,
-  QUEUE_ROOM_SENTENCE, TOPIC_HISTORY_SENTENCE, WORK_ITEM_HISTORY_SENTENCE,
+  TOPIC_HISTORY_SENTENCE, WORK_ITEM_HISTORY_SENTENCE,
   answerBaseVersion, answerDraftAfterAttempt, answerWorkRequestRequest, assignmentBoard, assignmentMoveOutcome,
   composerDraftAfterAttempt, composerRequest, contextPanel, countsLine, dispatchSearchRequest, dispatchView,
   historyTopics, historyWorkItems, listState, participants, queueFreshness, queueRequest, refuseDispatchHistory,
@@ -109,13 +109,13 @@ function renderAssignments() {
   const line = $("modelRoomFreshness");
   const list = $("modelRoomAssignments");
   const dropped = $("modelRoomDropped");
-  const empty = $("modelRoomAssignmentsEmpty");
   if (!line || !list) return;
+  const moveTarget = $("modelRoomMoveTarget");
+  if (moveTarget) moveTarget.hidden = true;
   if (view.queue.state === "loading") {
     line.dataset.state = "loading";
     line.textContent = "Updating…";
     list.innerHTML = "";
-    if (empty) empty.hidden = true;
     if (dropped) dropped.hidden = true;
     return;
   }
@@ -133,11 +133,11 @@ function renderAssignments() {
   if (retry) retry.hidden = fresh.state !== "unavailable";
   if (!payload) {
     list.innerHTML = "";
-    if (empty) empty.hidden = true;
     if (dropped) dropped.hidden = true;
     return;
   }
   const board = assignmentBoard(payload);
+  if (!board.cards.length && fresh.state !== "never") line.textContent = `No assignments in the last update. ${line.textContent}`;
   // V5-UX-C13b: every card is draggable, and every drop is refused the same
   // honest way (assignmentMoveOutcome) — a real interaction with no pinned
   // verb behind it, never a fake move and never a disabled card standing in
@@ -157,10 +157,6 @@ function renderAssignments() {
     <p class="assignment-summary">${escapeHtml(card.summary)}</p>
     <p class="assignment-meta small mono">${escapeHtml(card.taskId)} · updated ${escapeHtml(clock(card.updatedAt))}</p>
   </article>`).join("");
-  if (empty) {
-    empty.hidden = board.cards.length > 0;
-    empty.textContent = board.emptyText ?? "";
-  }
   if (dropped) {
     // Counted, never silent. A dropped card the reader is not told about is a
     // lie about the assignment list.
@@ -177,6 +173,7 @@ function renderAssignments() {
     });
     article.addEventListener("dragend", () => { delete article.dataset.lifted; });
   }
+  if (moveTarget) moveTarget.hidden = board.cards.length === 0;
   renderMoveTarget(board);
 }
 
@@ -876,8 +873,6 @@ export function mountModelRoom({ outage = null } = {}) {
   });
   // Written from the model so deleting them from the page alone cannot blur
   // room participation into dispatch acknowledgement.
-  const room = $("modelRoomQueueRoom");
-  if (room) room.textContent = QUEUE_ROOM_SENTENCE;
   const ack = $("modelRoomNoAck");
   if (ack) ack.textContent = ACKNOWLEDGEMENT_SENTENCE;
   $("modelRoomRetry")?.addEventListener("click", () => readAll());

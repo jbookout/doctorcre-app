@@ -28,7 +28,7 @@ import {
   atlasPhase, atlasRequestPath, atlasSceneAvailability, classifyAtlasFailure, coverageGroups, coverageOrbFor, groupIndex,
   mergeNodePages, pagingState, selectionFor, validAtlasPayload, NO_OBSERVED_CLOCK, NO_OBSERVED_STATUS,
   // V5-UX-C09 — incidents, recorded trace and the Doc tour.
-  CAUSAL_GRAPH_GAP_SENTENCE, DOC_TOUR_EMPTY, DOC_TOUR_END, DOC_TOUR_INTRO, HOW_THIS_WORKS_VS_RUN_SENTENCE,
+  CAUSAL_GRAPH_GAP_SENTENCE, DOC_TOUR_EMPTY, DOC_TOUR_END, DOC_TOUR_INTRO,
   INCIDENT_JOIN_SENTENCE, INCIDENT_TRACE_HEADING,
   NO_INCIDENT_READ_SENTENCE, NO_INCIDENT_TRACE_SENTENCE, TRACE_NOT_COMMAND_FLOW_SENTENCE,
   buildDocTour, groupHasOpenIncident, incidentServiceIndex, incidentTraceRows, serviceNodeOpenIncidents,
@@ -201,14 +201,6 @@ function appendPage(previous, incoming) {
 /* ------------------------------------------------------------------- painting */
 
 const chip = (label, value) => `<span class="chip" data-atlas-chip="${escapeHtml(label)}"><span class="chip-label">${escapeHtml(label)}</span>${escapeHtml(value)}</span>`;
-
-function renderVersion() {
-  const line = $("atlasVersionLine");
-  if (!line) return;
-  const payload = view.payload;
-  if (!payload) { line.innerHTML = `<span class="small">${view.status === "loading" || view.status === "idle" ? "Updating…" : "Unavailable"}</span>`; return; }
-  line.innerHTML = `<span class="as-of">${escapeHtml(updatedLabel(payload.observed_at))}</span>`;
-}
 
 function coverageRow(entry) {
   const orb = coverageOrbFor(entry);
@@ -598,7 +590,6 @@ function renderTour() {
 
 function render() {
   renderState();
-  renderVersion();
   renderCoverage();
   renderControls();
   renderIndex();
@@ -703,8 +694,6 @@ export function mountAtlas({ outage = null, node = null, getIncidentsRead: incid
   if (typeof changed === "function") onChange = changed;
   const exposure = $("atlasExposure");
   if (exposure) exposure.textContent = EXPOSURE_STATEMENT;
-  const howNote = $("atlasHowThisWorksNote");
-  if (howNote) howNote.textContent = HOW_THIS_WORKS_VS_RUN_SENTENCE;
   const filters = $("atlasLayerFilters");
   if (filters) {
     filters.innerHTML = [["all", "All"], ...ATLAS_LAYERS.map((layer) => [layer, LAYER_LABEL[layer]])]

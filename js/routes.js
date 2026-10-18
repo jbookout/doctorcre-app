@@ -22,7 +22,6 @@ export const routeEntries = [
   ["/doc-chats","conversations.html","/conversations"],
   ["/doc-chats/work","tasks.html","/tasks"],
   ["/relationships","relationships.html","/business"],
-  ["/control-room/automations","automations.html","/control-room"],
   ["/doc-activity","activity.html","/control-room"],
   ["/invoices","invoices.html","/control-room"],
   ["/leases","lease-radar.html","/business"],
@@ -30,9 +29,11 @@ export const routeEntries = [
 ];
 export const routeContract = {
   schema: "doctorcre-app-routes.v1",
-  version: "1.20.0",
+  version: "1.21.0",
   routes: Object.fromEntries(routeEntries.map(([path, asset]) => [path, asset])),
   redirects: {
+  "/control-room/automations": "/control-room?tab=automations",
+  "/automations.html": "/control-room?tab=automations",
   "/progress-board": "/control-room/progress",
   "/workspace": "/",
   "/queue.html": "/control-room/progress/work?view=tasks",

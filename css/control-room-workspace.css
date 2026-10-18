@@ -149,8 +149,6 @@
   .cr-section-head h2, .cr-boards-heading { font-size: var(--font-size-3); }
 }
 @media (prefers-reduced-motion: reduce) { .connection-card, .automation-job { transition: none !important; transform: none !important; } }
-.automation-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr)); gap: 12px; margin-top: 16px; }
-.automation-list .automation-job { padding: 16px; gap: 12px; margin: 0; }
 
 .automation-month-agenda { display: none; }
 @media (max-width: 760px), (hover: none) and (pointer: coarse) and (max-width: 1023px) {
@@ -162,5 +160,4 @@
   .automation-month-agenda { display: grid; gap: 12px; margin-top: 18px; }
   .automation-month-agenda > div > time { font-size: var(--font-size-1); color: var(--fg-muted); }
   .automation-month-agenda .automation-job { font-size: var(--font-size-1); padding: 10px; }
-  .automation-list .automation-job { font-size: var(--font-size-1); }
 }

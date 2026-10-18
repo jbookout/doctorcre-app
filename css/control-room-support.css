@@ -1,0 +1,48 @@
+#panelModelRoom > .card, #panelAtlas > .card, #panelSessions > .card { background: none; border: 0; box-shadow: none; padding: 0; margin-bottom: var(--space-5); }
+#panelModelRoom h2, #panelAtlas h2, #panelSessions h2, #panelConnections h2, #panelAutomations h2 { margin: 0; font: var(--font-weight-strong) var(--font-size-3)/1.3 var(--font-text); }
+#panelModelRoom .card-heading, #panelAtlas .card-heading, #panelSessions .card-heading { margin-bottom: var(--space-3); }
+#panelModelRoom .eyebrow { display: none; }
+#panelModelRoom .model-room-freshness { border: 0; padding: 0; margin: var(--space-2) 0; font-size: var(--font-size-1); }
+#panelModelRoom .assignment-rail:empty { display: none; }
+#panelModelRoom [data-section="model_room_composer"] { border-top: var(--hairline-width) solid var(--hairline); padding-top: var(--space-4); }
+#panelModelRoom .count-line { font: inherit; color: var(--fg-muted); }
+#modelRoomMoveTarget[hidden], #automationControls[hidden] { display: none; }
+#panelConnections .panel, #panelAutomations .panel { padding: 0; border: 0; background: none; box-shadow: none; }
+#panelConnections .connection-grid { display: block; margin-top: var(--space-3); }
+#panelConnections .connection-card { display: grid; grid-template-columns: minmax(110px, 1fr) minmax(100px, 1fr) minmax(100px, 1fr) auto; align-items: center; gap: var(--space-3); min-height: var(--touch); padding: var(--space-2) 0; border: 0; border-bottom: var(--hairline-width) solid var(--hairline); border-radius: 0; background: none; }
+#panelConnections .connection-card h3 { margin: 0; font: var(--font-weight-strong) var(--font-size-2)/1.3 var(--font-text); }
+#panelConnections .connection-card > time { display: none; }
+#panelConnections .connection-card a { margin: 0; min-height: var(--touch); display: inline-flex; align-items: center; font-size: var(--font-size-1); }
+#panelConnections .connection-spend { font-weight: 400; }
+#panelConnections .panel + .panel { margin-top: var(--space-5); }
+.cr-disclosure { border-top: var(--hairline-width) solid var(--hairline); padding: var(--space-2) 0; margin-top: var(--space-3); font-size: var(--font-size-1); }
+.cr-disclosure > summary { cursor: pointer; min-height: var(--touch); align-content: center; color: var(--fg-muted); }
+#panelAtlas [data-section="atlas_controls"] .card-heading, #atlasRequestPath, #atlasRendererNote:empty { display: none; }
+#panelAtlas .atlas-layer { margin-top: var(--space-3); }
+#panelAtlas #atlasState[data-state="ready"]:empty { display: none; }
+.cr-session-search { display: flex; flex-wrap: wrap; gap: var(--space-3); align-items: end; }
+.cr-session-search .field { flex: 1; min-width: min(100%, 240px); }
+.cr-session-search > p { margin: 0 0 var(--space-2); font-variant-numeric: tabular-nums; }
+#automationState { margin: var(--space-4) 0; color: var(--fg-muted); }
+#automationCalendar:empty, #automationAgenda:empty, #automationUndated:empty { display: none; }
+#automationUndated h3 { font-size: var(--font-size-2); }
+@media (max-width: 760px) {
+  #panelConnections .connection-card { grid-template-columns: minmax(100px, 1fr) 1fr auto; gap: var(--space-2); }
+  #panelConnections .connection-spend { grid-column: 2; font-size: var(--font-size-1); }
+  #panelConnections .connection-spend:empty { display: none; }
+  #panelConnections .connection-card:has(a) a { grid-column: 3; grid-row: 1 / span 2; }
+  #panelConnections .connection-card:has(.connection-spend) { row-gap: 0; }
+  #panelConnections .connection-heading { grid-row: 1 / span 2; }
+  #panelConnections .connection-dot { flex-shrink: 0; }
+}
+
+#panelAtlas > .cr-section-head { display: flex; align-items: center; justify-content: space-between; }
+#atlasStatus { border: 0; padding: 0; min-height: 0; }
+#panelAtlas #atlasState { padding: 0; margin: 0 0 var(--space-3); border: 0; border-radius: 0; background: none; }
+#panelAtlas #atlasState h3, #panelAtlas #atlasState p { display: inline; font: 400 var(--font-size-1)/1.5 var(--font-text); margin: 0 var(--space-2) 0 0; color: var(--fg-muted); }
+#panelAtlas .atlas-filters { margin: var(--space-2) 0; }
+#panelAtlas [data-section="atlas_controls"] { margin-bottom: var(--space-3); }
+
+.connection-columns { display: grid; grid-template-columns: minmax(110px, 1fr) minmax(100px, 1fr) minmax(100px, 1fr); gap: var(--space-3); margin-top: var(--space-4); padding-bottom: var(--space-2); border-bottom: var(--hairline-width) solid var(--hairline); color: var(--fg-muted); font-size: var(--font-size-1); }
+#panelConnections #connectionsProviders { margin-top: 0; }
+@media (max-width: 760px) { .connection-columns { grid-template-columns: minmax(100px, 1fr) 1fr auto; } .connection-columns > :last-child { display: none; } }
