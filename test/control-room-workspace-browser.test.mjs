@@ -93,7 +93,9 @@ for(const width of [1440,390,320])test(`W7 shared room, cards and wide popup fit
  assert.match(await page.locator('[data-task-id="work_request:WR-000901"]').textContent(),/WR-000901.*#17/);
  assert.equal(await page.locator('#board-retry').getAttribute('aria-label'),'Refresh');
  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
- assert.deepEqual(await page.locator('#board-stages .column').evaluateAll(columns=>columns.map(column=>column.dataset.stage)),['queued','build','review','ci','merged','live','recorded']);
+ const populatedStages=await page.locator('#board-stages .column').evaluateAll(columns=>columns.map(column=>({stage:column.dataset.stage,cards:column.querySelectorAll('.board-card').length})));
+ assert.ok(populatedStages.every(column=>column.cards>0),'empty stages never precede actionable work');
+ assert.deepEqual(populatedStages.map(column=>column.stage),['queued','build','review','ci','merged','live','recorded'].filter(stage=>populatedStages.some(column=>column.stage===stage)),'populated stages preserve lifecycle order');
  assert.equal(await page.locator('#board-stages [data-stage="live"] .board-card').count(),0);
  assert.equal(await page.locator('#live-library').textContent(),'Completed records');
  assert.equal(await page.locator('#board-stages .board-card').evaluateAll(cards=>cards.every(card=>card.scrollWidth<=card.clientWidth+1)),true,'all task cards fit inside their stage');

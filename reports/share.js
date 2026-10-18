@@ -24,6 +24,13 @@ mountNavigation(document, location.pathname, { report: true });
 
   function setStatus(message) { status.textContent = message; }
 
+  function showUnavailable() {
+    setStatus("This shared report is unavailable.");
+    summary.textContent = "Access may have expired or been removed. Please ask your broker for an updated Tour.";
+    list.setAttribute("aria-busy", "false");
+    for (const node of [openButton, document.querySelector(".tour-flow"), document.querySelector("#map-section"), list.closest("section"), feedbackStatus, retryFeedbackButton]) node.hidden = true;
+  }
+
   async function request(path, options = {}) {
     const controller = new AbortController(); let timer;
     try {
@@ -288,9 +295,7 @@ mountNavigation(document, location.pathname, { report: true });
       if (feedbackResult.status === "rejected") showFeedbackUnavailable();
       else setStatus(contentStatus);
     } catch {
-      setStatus("This shared report is unavailable.");
-      summary.textContent = "Access may have expired or been removed. Please ask your broker for an updated Tour.";
-      list.setAttribute("aria-busy", "false");
+      showUnavailable();
     }
   }
 
@@ -307,8 +312,7 @@ mountNavigation(document, location.pathname, { report: true });
       });
       await loadTour();
     } catch {
-      setStatus("This shared report is unavailable.");
-      list.setAttribute("aria-busy", "false");
+      showUnavailable();
     }
   }
 

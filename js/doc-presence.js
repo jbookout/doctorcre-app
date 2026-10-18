@@ -148,7 +148,7 @@ export function mountDocPresence({ document: root = document, window: win = wind
   const tick = globalThis.setInterval(() => context.tick(), 1_000); tick?.unref?.();
   root.addEventListener('doctorcre:open-doc', open);
   auto.refresh();
-  const brief = mountMorningBrief({ document:root, window:win, automatic:resolveDealroomBoot(win.location).mode === 'live', getClient:ensureClient, intervalMs });
+  const brief = mountMorningBrief({ document:root, window:win, getClient:ensureClient, intervalMs });
   const dispose = () => { disposed = true; ++readEpoch; approval?.dispose(); actionGate.dispose(); auto.dispose(); brief.dispose(); command.dispose(); placement.disconnect(); unsubscribe(); globalThis.clearInterval(tick); root.removeEventListener('doctorcre:open-doc',open); };
   win.addEventListener('pagehide', event => { if (!event.persisted) dispose(); });
   return { open, refresh:auto.refresh, dispose };

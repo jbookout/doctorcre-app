@@ -21,7 +21,7 @@ function fixture(t, { installation = 'locked', browser = false } = {}) {
   const pkg = JSON.parse(readFileSync(join(root, 'package.json')));
   // Keep real npm, Git, artifact build/verification and (when requested) an
   // existing browser capture test. Avoid recursively running this test suite.
-  pkg.scripts.test = browser ? 'node --test --test-name-pattern="live first-open brief" test/morning-brief-browser.test.mjs' : 'node -e ""';
+  pkg.scripts.test = browser ? 'node --test --test-name-pattern="live brief opens on request" test/morning-brief-browser.test.mjs' : 'node -e ""';
   writeFileSync(join(root, 'package.json'), JSON.stringify(pkg));
   mkdirSync(join(root, 'node_modules'), { recursive: true });
   // Reuse installed build and browser dependencies in the temporary clone.

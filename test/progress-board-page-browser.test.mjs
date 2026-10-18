@@ -83,7 +83,7 @@ for (const unfinished of [false, true]) test(`board tile opens its page and publ
   await board.locator('#board-title').filter({ hasText: 'System delivery' }).waitFor();
   assert.equal(await board.locator('#board-stages [data-card-id="build"]').count(), 1, 'published task remains visible');
   assert.equal(new URL(board.url()).pathname, '/control-room/progress/board/carr-v5');
-  assert.equal(await board.locator('#board-stages .column').count(), 6);
+  assert.deepEqual(await board.locator('#board-stages .column').evaluateAll(columns => columns.map(column => column.dataset.stage)), ['build']);
   assert.equal(await board.locator('.directory-panel').isVisible(), false);
   if (!unfinished) {
     assert.match(await board.locator('#system-work-error').textContent(), /System work updates unavailable/);

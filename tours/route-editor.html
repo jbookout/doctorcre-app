@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Itinerary · DoctorCRE</title>
   <link rel="stylesheet" href="/tours/app.css">
+  <link rel="preload" as="style" data-font-stylesheet href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600&display=swap">
   <link rel="stylesheet" href="/tours/vendor/maplibre-gl-6.4.1/maplibre-gl.css">
   <link rel="stylesheet" href="/tours/property-panel.css">
   <script type="module" src="/tours/app.js"></script>
@@ -50,7 +51,7 @@
           <section class="card selection-card" aria-labelledby="selection-title"><div class="section-head"><h3 id="selection-title">Tour selection</h3><span id="selection-version" class="badge">No saved version</span></div><p id="selection-tour" class="selection-tour">Select a Tour from the library to save a selection.</p><ol id="selection-list" class="selection-list"></ol><p id="selection-state" class="hint" role="status" aria-live="polite">No Tour selected.</p><div class="selection-actions"><button id="save-selection" class="primary" type="button" disabled>Save selection</button><button id="undo-selection" type="button" hidden>Undo change</button></div><p class="selection-footnote">Selection keeps property identity only. Route order and client sharing require separate review.</p></section>
         </div>
       </section>
-      <div id="empty-state" class="empty"><h2>Select a tour</h2></div>
+      <div id="empty-state" class="empty"><h2>Choose a tour</h2><p id="empty-copy">Reading the tour library…</p><button id="retry-library" type="button" hidden>Retry tour library</button><ul id="empty-tours" class="empty-tours" aria-label="Recent tours"></ul></div>
       <div id="tour-panel" hidden>
         <header class="tour-heading"><div><p id="tour-state" class="badge">Draft</p><h2 id="tour-name">Tour</h2><p id="tour-meta"></p></div><div class="status-grid"><span>Projection <b id="projection-state">Not generated</b></span><span>Share <b id="share-state">Not issued</b></span></div></header>
         <div class="workspace-grid">
