@@ -351,8 +351,9 @@ test("broker feedback is confined to the authenticated Tours view", () => {
   assert.match(tours, /\/api\/tours\/feedback\?projection_id=/);
   assert.match(tourHtml, /id="client-feedback"/);
   assert.match(tourHtml, /<svg[\s\S]*<\/svg>/);
-  assert.match(css, /color-scheme: dark/);
-  assert.match(css, /backdrop-filter: blur/);
+  // V2: tokens.css (inlined at build) owns color-scheme per theme; no blur or glass.
+  assert.match(readFileSync(new URL("../reports/share-bootstrap.js", import.meta.url), "utf8"), /prefers-color-scheme: light/);
+  assert.doesNotMatch(css, /backdrop-filter|gradient\(/);
   assert.match(css, /prefers-reduced-motion/);
 });
 

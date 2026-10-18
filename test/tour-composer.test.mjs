@@ -574,13 +574,15 @@ test("phone and iPad composers fit the viewport and reduced motion leaves every 
     const css = await readFile(new URL("../tours/app.css", import.meta.url), "utf8");
     const evidenceCss = await readFile(new URL("../tours/property-panel.css", import.meta.url), "utf8");
     const shellCss = await readFile(new URL("../css/app-shell.css", import.meta.url), "utf8");
+    // V2: every Tours value is a token, so the inlined page needs css/tokens.css first.
+    const tokensCss = await readFile(new URL("../css/tokens.css", import.meta.url), "utf8");
     const { build } = await import('esbuild');
     const { outputFiles } = await build({
       stdin: { contents: 'import { mountNavigation } from "./js/navigation.js"; mountNavigation(document, "/tours");', resolveDir: new URL('../', import.meta.url).pathname },
       bundle: true, write: false, format: 'iife', platform: 'browser', target: 'es2022',
     });
     const shellScript = outputFiles[0].text;
-    const pageHtml = html.replace(/<script\b[^>]*>[\s\S]*?<\/script>/g, "").replace(/<link\b[^>]*>/g, "").replace("</head>", `<style>${css}\n${evidenceCss}\n${shellCss}</style></head>`);
+    const pageHtml = html.replace(/<script\b[^>]*>[\s\S]*?<\/script>/g, "").replace(/<link\b[^>]*>/g, "").replace("</head>", `<style>${tokensCss}\n${css}\n${evidenceCss}\n${shellCss.replace(/@import[^;]+;/, "")}</style></head>`);
     await page.route("https://tour.test/**", async route => {
       const request = route.request(), url = new URL(request.url());
       if (url.pathname === "/api/system-work/session") return route.fulfill({ contentType: "application/json", body: JSON.stringify({ actor: {slug: "joe"} }) });
@@ -664,7 +666,7 @@ test("phone and iPad composers fit the viewport and reduced motion leaves every 
     }
     await page.getByRole("button", { name: "Close", exact: true }).click();
     await page.emulateMedia({ reducedMotion: "no-preference" });
-    assert.ok(await page.locator("#composer-badge").evaluate(el => el.getAnimations({ subtree: true }).length > 0), "live status has motion");
+    assert.equal(await page.locator("#composer-badge").evaluate(el => el.getAnimations({ subtree: true }).length), 0, "V2: live status is a word and a border style, not a pulse");
     await page.emulateMedia({ reducedMotion: "reduce" });
     const motion = await page.locator(".route-card").evaluate(el => ({ animations: el.getAnimations({ subtree: true }).length, opacity: getComputedStyle(el).opacity, text: el.textContent }));
     assert.equal(motion.animations, 0); assert.equal(motion.opacity, "1"); assert.match(motion.text, /Changes to review/);

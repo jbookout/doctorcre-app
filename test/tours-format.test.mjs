@@ -71,8 +71,10 @@ test("tours/app.js paints through the formatter", () => {
   assert.doesNotMatch(appJs, /expires \$\{text\(grant\.expires_at/);
 });
 
-test("the Tours page uses dark scrollbars, including the phone navigation", () => {
-  assert.match(css, /color-scheme\s*:\s*dark/);
+test("the Tours page scrollbars follow the theme, including the phone navigation", async () => {
+  const tokens = await read("css/tokens.css");
+  assert.match(tokens, /color-scheme\s*:\s*dark/);
+  assert.match(tokens, /color-scheme\s*:\s*light/);
   assert.match(css, /scrollbar-color\s*:/);
   assert.match(css, /\.app-shell-navigation[^{]*::-webkit-scrollbar/);
   const print = css.match(/@media\s+print\s*\{[\s\S]*$/)?.[0] || "";

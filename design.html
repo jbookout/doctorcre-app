@@ -20,29 +20,21 @@
 </head>
 <body data-prototype="index">
   <div id="appShell"></div><script type="module" src="/js/app-shell.js"></script>
-  <a class="skip" href="#main">Skip to the system</a>
+  <a class="skip" href="#main">Skip to the specimen</a>
   <div data-layout-slot="status">
-
-
-
     <div class="global-controls pref-icons" role="group" aria-label="Presentation">
       <p id="prefsLive" class="sr-only" aria-live="polite"></p>
     </div>
   </div>
 
-  <main id="main" class="shell">
-    <p class="prototype-banner" role="note"><span class="orb" data-state="still" aria-hidden="true"></span> Synthetic examples. No record is read or changed.</p>
-    <p class="prototype-links">Synthetic reference examples are saved below.</p>
-    <div data-layout-slot="sidebar" class="hero">
+  <main id="main" class="shell specimen">
+    <header class="specimen-head">
       <div>
-        <p class="eyebrow">V5-UX-S01</p>
         <h1 id="pageTitle">Design Lab</h1>
+        <p class="specimen-lede">The V2 token specimen. Every colour, size and duration here is read live from <code>css/tokens.css</code>; switch theme or Color Assist and the page follows.</p>
       </div>
-      <div class="hero-meta">
-        <span class="status" data-state="healthy"><span class="orb" data-state="healthy" aria-hidden="true"></span> Contract v1.0.0</span>
-        <span class="as-of">Defined in <code>css/system.css</code></span>
-      </div>
-    </div>
+      <p class="specimen-note" role="note">Synthetic examples. No record is read or changed.</p>
+    </header>
 
     <div data-layout-slot="tabs" class="page-views" id="systemTabs" role="tablist" aria-label="Visual system sections">
       <button class="tab" type="button" role="tab" id="tabTokens" aria-controls="panelTokens" aria-selected="true">Tokens</button>
@@ -52,44 +44,105 @@
     </div>
 
     <section class="tabpanel" id="panelTokens" role="tabpanel" aria-labelledby="tabTokens" tabindex="0">
-      <section class="card glass" aria-labelledby="tokensTitle">
-        <div class="card-heading"><div><p class="eyebrow">Tokens</p><h2 id="tokensTitle">Colour by role</h2></div><span class="panel-note">WCAG 2.2 AA · 4.5:1</span></div>
-        <div class="swatch-grid" aria-label="Colour roles">
-          <div class="token token-ground-0"><span></span><b>--ground-0</b><small>page ground</small></div>
-          <div class="token token-ground-2"><span></span><b>--ground-2</b><small>raised ground</small></div>
-          <div class="token token-text"><span></span><b>--text</b><small>primary text</small></div>
-          <div class="token token-muted"><span></span><b>--muted</b><small>secondary text</small></div>
-          <div class="token token-quiet"><span></span><b>--quiet</b><small>labels, as-of</small></div>
-          <div class="token token-navy"><span></span><b>--navy</b><small>CARR navy</small></div>
-          <div class="token token-orange"><span></span><b>--orange</b><small>the light in the frame</small></div>
-          <div class="token token-cyan"><span></span><b>--cyan</b><small>refreshing, data</small></div>
-          <div class="token token-green"><span></span><b>--green</b><small>healthy, infra</small></div>
-          <div class="token token-amber"><span></span><b>--amber</b><small>deadline, degraded</small></div>
-          <div class="token token-red"><span></span><b>--red</b><small>urgent, failed</small></div>
-          <div class="token token-violet"><span></span><b>--violet</b><small>blocked, rules</small></div>
+      <section class="specimen-section" aria-labelledby="surfacesTitle">
+        <div class="section-heading"><h2 id="surfacesTitle">Surfaces and ink</h2><span class="section-meta">A panel is one tone step off its ground</span></div>
+        <div class="swatch-grid" aria-label="Surface and ink roles">
+          <div class="token" data-t="ground"><span></span><b>--ground</b><small>page ground</small></div>
+          <div class="token" data-t="surface-1"><span></span><b>--surface-1</b><small>panels, cards</small></div>
+          <div class="token" data-t="surface-2"><span></span><b>--surface-2</b><small>controls, hover rows</small></div>
+          <div class="token" data-t="surface-3"><span></span><b>--surface-3</b><small>pressed, selected</small></div>
+          <div class="token" data-t="hairline"><span></span><b>--hairline</b><small>panel edges</small></div>
+          <div class="token" data-t="hairline-strong"><span></span><b>--hairline-strong</b><small>control edges</small></div>
+          <div class="token" data-t="fg"><span></span><b>--fg</b><small>primary text</small></div>
+          <div class="token" data-t="fg-muted"><span></span><b>--fg-muted</b><small>secondary text</small></div>
+          <div class="token" data-t="fg-quiet"><span></span><b>--fg-quiet</b><small>placeholders, as-of</small></div>
         </div>
-        <table class="data-table" id="contrastTable" data-pairs='[["--text","--ground-0"],["--text","--ground-2"],["--muted","--ground-0"],["--quiet","--ground-1"],["--orange-text","--ground-0"],["--cyan-text","--ground-0"],["--green-text","--ground-0"],["--amber-text","--ground-0"],["--red-text","--ground-0"],["--violet-text","--ground-0"],["--on-accent","--orange"]]'>
-          <caption>Contrast of the current theme, computed live in this page.</caption>
+      </section>
+
+      <section class="specimen-section" aria-labelledby="signalTitle">
+        <div class="section-heading"><h2 id="signalTitle">Accent, status and data</h2><span class="section-meta">Accent: primary action, focus ring, one marker</span></div>
+        <div class="swatch-grid" aria-label="Accent, status and data roles">
+          <div class="token" data-t="accent"><span></span><b>--accent</b><small>the one primary action</small></div>
+          <div class="token" data-t="accent-hover"><span></span><b>--accent-hover</b><small>primary on hover</small></div>
+          <div class="token" data-t="focus-ring"><span></span><b>--focus-ring</b><small>keyboard focus</small></div>
+          <div class="token" data-t="status-ok"><span></span><b>--status-ok</b><small>healthy, confirmed</small></div>
+          <div class="token" data-t="status-warn"><span></span><b>--status-warn</b><small>attention, conflict</small></div>
+          <div class="token" data-t="status-danger"><span></span><b>--status-danger</b><small>refused, failed</small></div>
+          <div class="token" data-t="status-info"><span></span><b>--status-info</b><small>refreshing, notes</small></div>
+          <div class="token" data-t="status-hold"><span></span><b>--status-hold</b><small>held, blocked</small></div>
+          <div class="token" data-t="data-1"><span></span><b>--data-1</b><small>series one</small></div>
+          <div class="token" data-t="data-2"><span></span><b>--data-2</b><small>series two</small></div>
+          <div class="token" data-t="data-3"><span></span><b>--data-3</b><small>series three</small></div>
+          <div class="token" data-t="data-4"><span></span><b>--data-4</b><small>series four</small></div>
+        </div>
+        <table class="data-table" id="contrastTable" data-pairs='[["--fg","--ground"],["--fg","--surface-1"],["--fg","--surface-2"],["--fg-muted","--ground"],["--fg-muted","--surface-1"],["--fg-quiet","--surface-1"],["--accent-ink","--ground"],["--on-accent","--accent"],["--status-ok-ink","--ground"],["--status-warn-ink","--ground"],["--status-danger-ink","--ground"],["--status-info-ink","--ground"],["--status-hold-ink","--ground"]]'>
+          <caption>Contrast in the current theme, computed live. Switch theme to read the other column of the system.</caption>
           <thead><tr><th scope="col">Pair</th><th scope="col">Ratio</th><th scope="col">Result</th></tr></thead>
           <tbody></tbody>
         </table>
       </section>
-      <section class="card glass" aria-labelledby="typeTitle">
-        <div class="card-heading"><div><p class="eyebrow">Type</p><h2 id="typeTitle">Condensed display, quiet body</h2></div></div>
-        <p class="type-sample display" style="font-size:56px;line-height:.9">Barlow Condensed 600</p>
-        <p class="type-sample" style="font-size:15px">DM Sans 400 carries reading text at 14 to 15 pixels with a 1.5 line height.</p>
-        <p class="type-sample mono">ui-monospace for ids, digests and receipts: 0180b7d2…</p>
+
+      <section class="specimen-section" aria-labelledby="typeTitle">
+        <div class="section-heading"><h2 id="typeTitle">Type</h2><span class="section-meta">One face, five sizes, two weights</span></div>
+        <ol class="type-scale">
+          <li><span class="type-meta">--font-size-5</span><span class="type-sample" data-fs="font-size-5">Demo Gulf Breeze Dental</span></li>
+          <li><span class="type-meta">--font-size-4</span><span class="type-sample" data-fs="font-size-4">Tour for Tuesday, Oct 20</span></li>
+          <li><span class="type-meta">--font-size-3</span><span class="type-sample" data-fs="font-size-3">Section heading</span></li>
+          <li><span class="type-meta">--font-size-2</span><span class="type-sample" data-fs="font-size-2">Reading text sits here, at a comfortable length and a calm line height.</span></li>
+          <li><span class="type-meta">--font-size-1</span><span class="type-sample" data-fs="font-size-1">Labels, meta and as-of times · 2:02 PM</span></li>
+          <li><span class="type-meta">--font-mono</span><span class="type-sample mono">0180b7d2 · receipt digest</span></li>
+        </ol>
+        <p class="numerals">Tabular figures <span class="num">1,800 – 3,000 sf</span> <span class="num">$24.50 / sf</span> <span class="num">11:00 AM</span></p>
+      </section>
+
+      <section class="specimen-section" aria-labelledby="shapeTitle">
+        <div class="section-heading"><h2 id="shapeTitle">Space, radius and motion</h2><span class="section-meta">Motion only on a state change</span></div>
+        <div class="scale-grid">
+          <div>
+            <h3>Space</h3>
+            <ul class="space-scale">
+              <li><span class="space-bar" data-w="space-1"></span><code>--space-1</code></li>
+              <li><span class="space-bar" data-w="space-2"></span><code>--space-2</code></li>
+              <li><span class="space-bar" data-w="space-3"></span><code>--space-3</code></li>
+              <li><span class="space-bar" data-w="space-4"></span><code>--space-4</code></li>
+              <li><span class="space-bar" data-w="space-5"></span><code>--space-5</code></li>
+              <li><span class="space-bar" data-w="space-6"></span><code>--space-6</code></li>
+              <li><span class="space-bar" data-w="space-7"></span><code>--space-7</code></li>
+            </ul>
+          </div>
+          <div>
+            <h3>Radius</h3>
+            <ul class="radius-scale">
+              <li><span data-r="radius-1"></span><code>--radius-1</code></li>
+              <li><span data-r="radius-2"></span><code>--radius-2</code></li>
+              <li><span data-r="radius-3"></span><code>--radius-3</code></li>
+              <li><span data-r="panel-radius"></span><code>--panel-radius</code></li>
+              <li><span data-r="radius-round"></span><code>--radius-round</code></li>
+            </ul>
+          </div>
+          <div>
+            <h3>Motion</h3>
+            <dl class="motion-list">
+              <div><dt><code>--duration-press</code></dt><dd>button press, transform only</dd></div>
+              <div><dt><code>--duration-hover</code></dt><dd>colour on hover</dd></div>
+              <div><dt><code>--duration-menu</code></dt><dd>menus open and close</dd></div>
+              <div><dt><code>--duration-panel</code></dt><dd>panels slide in place</dd></div>
+              <div><dt><code>--ease-out</code></dt><dd>one curve for all of it</dd></div>
+            </dl>
+            <button class="btn motion-demo" type="button">Press to feel <code>--press-scale</code></button>
+          </div>
+        </div>
       </section>
     </section>
 
     <section class="tabpanel" id="panelComponents" role="tabpanel" aria-labelledby="tabComponents" tabindex="0" hidden>
-      <section class="card glass" aria-labelledby="componentsTitle">
-        <div class="card-heading"><div><p class="eyebrow">Components</p><h2 id="componentsTitle">The kit</h2></div><span class="panel-note">44px targets · keyboard first</span></div>
+      <section class="specimen-section" aria-labelledby="componentsTitle">
+        <div class="section-heading"><h2 id="componentsTitle">Primitives</h2><span class="section-meta">44px targets · keyboard first</span></div>
         <div class="component-row">
           <h3>Buttons</h3>
           <div class="row-wrap">
             <button class="btn btn-primary" type="button">Primary</button>
-            <button class="btn btn-secondary" type="button">Secondary <span aria-hidden="true">›</span></button>
+            <button class="btn btn-secondary" type="button">Secondary</button>
             <button class="btn" type="button">Default</button>
             <button class="btn btn-quiet" type="button">Quiet</button>
             <button class="btn btn-danger" type="button">Danger</button>
@@ -99,12 +152,8 @@
           </div>
         </div>
         <div class="component-row">
-          <h3>Waiting</h3>
-          <div class="row-wrap"><span class="ring" role="img" aria-label="Waiting"></span><span class="ring" data-tone="orange" role="img" aria-label="Waiting"></span><small>a circular stroke that draws and fades over 3 seconds; no spinner anywhere</small></div>
-        </div>
-        <div class="component-row">
           <h3>Tabs</h3>
-          <div data-layout-slot="tabs" class="page-views" role="tablist" aria-label="Sample">
+          <div class="page-views" role="tablist" aria-label="Sample">
             <button class="tab" type="button" role="tab" aria-selected="true" aria-controls="sampleTabPanel" id="sampleTab">Selected</button>
             <button class="tab" type="button" role="tab" aria-selected="false" aria-controls="sampleTabPanel">Other</button>
           </div>
@@ -145,7 +194,7 @@
           </div>
         </div>
         <div class="component-row">
-          <h3>Category legend (Atlas)</h3>
+          <h3>Category legend</h3>
           <ul class="legend">
             <li><span class="swatch" data-cat="data" aria-hidden="true"></span> Data · circle</li>
             <li><span class="swatch" data-cat="execution" aria-hidden="true"></span> Execution · square</li>
@@ -157,19 +206,29 @@
     </section>
 
     <section class="tabpanel" id="panelStates" role="tabpanel" aria-labelledby="tabStates" tabindex="0" hidden>
-      <section class="card glass" aria-labelledby="statusTitle">
-        <div class="card-heading"><div><p class="eyebrow">Status</p><h2 id="statusTitle">Colour, shape and motion</h2></div></div>
+      <section class="specimen-section" aria-labelledby="statusTitle">
+        <div class="section-heading"><h2 id="statusTitle">Status</h2><span class="section-meta">A word, a colour and a shape; nothing pulses</span></div>
         <ul class="status-list">
-          <li><span class="status" data-state="healthy"><span class="orb" data-state="healthy" aria-hidden="true"></span> Healthy</span><small>solid dot · breathes at 5.25s</small></li>
-          <li><span class="status" data-state="attention"><span class="orb" data-state="attention" aria-hidden="true"></span> Attention</span><small>ring dot · 3s</small></li>
-          <li><span class="status" data-state="urgent"><span class="orb" data-state="urgent" aria-hidden="true"></span> Urgent</span><small>double ring · 1.5s</small></li>
-          <li><span class="status" data-state="refreshing"><span class="orb" data-state="refreshing" aria-hidden="true"></span> Refreshing</span><small>cyan dot · 3s</small></li>
-          <li><span class="status" data-state="unknown"><span class="orb" data-state="unknown" aria-hidden="true"></span> Unknown</span><small>dashed hollow · still</small></li>
-          <li><span class="status" data-state="still"><span class="orb" data-state="still" aria-hidden="true"></span> Still</span><small>hollow · never moves</small></li>
+          <li><span class="status" data-state="healthy"><span class="orb" data-state="healthy" aria-hidden="true"></span> Healthy</span><small>solid dot</small></li>
+          <li><span class="status" data-state="attention"><span class="orb" data-state="attention" aria-hidden="true"></span> Attention</span><small>ring</small></li>
+          <li><span class="status" data-state="urgent"><span class="orb" data-state="urgent" aria-hidden="true"></span> Urgent</span><small>double ring</small></li>
+          <li><span class="status" data-state="refreshing"><span class="orb" data-state="refreshing" aria-hidden="true"></span> Refreshing</span><small>info dot</small></li>
+          <li><span class="status" data-state="unknown"><span class="orb" data-state="unknown" aria-hidden="true"></span> Unknown</span><small>dashed hollow</small></li>
+          <li><span class="status" data-state="still"><span class="orb" data-state="still" aria-hidden="true"></span> Still</span><small>hollow</small></li>
         </ul>
       </section>
-      <section class="card glass" aria-labelledby="dataStatesTitle">
-        <div class="card-heading"><div><p class="eyebrow">Data states</p><h2 id="dataStatesTitle">The whole vocabulary</h2></div><span class="panel-note">Reference page only</span></div>
+      <section class="specimen-section" aria-labelledby="assistTitle">
+        <div class="section-heading"><h2 id="assistTitle">Color Assist</h2><span class="section-meta">Pattern encoding survives greyscale</span></div>
+        <ul class="assist-grid">
+          <li class="assist-sample" data-pattern="ok"><span></span><b>Confirmed</b><small>solid edge · ✓</small></li>
+          <li class="assist-sample" data-pattern="warn"><span></span><b>Conflict</b><small>diagonal hatch · !</small></li>
+          <li class="assist-sample" data-pattern="danger"><span></span><b>Refused</b><small>double edge · ×</small></li>
+          <li class="assist-sample" data-pattern="info"><span></span><b>Refreshing</b><small>dotted edge · ◌</small></li>
+          <li class="assist-sample" data-pattern="hold"><span></span><b>Held</b><small>dashed edge · ‖</small></li>
+        </ul>
+      </section>
+      <section class="specimen-section" aria-labelledby="dataStatesTitle">
+        <div class="section-heading"><h2 id="dataStatesTitle">Data states</h2><span class="section-meta">The whole vocabulary</span></div>
         <div class="btn-group state-picker" id="statePicker" role="group" aria-label="Show a data state">
           <button class="btn" type="button" data-state="loading" aria-pressed="true">Loading</button>
           <button class="btn" type="button" data-state="refreshing" aria-pressed="false">Refreshing</button>
@@ -200,41 +259,32 @@
 
     <section class="tabpanel" id="panelRules" role="tabpanel" aria-labelledby="tabRules" tabindex="0" hidden>
       <div class="two-up">
-        <div class="card glass" aria-labelledby="rulesTitle">
-          <div class="card-heading"><div><p class="eyebrow">Rules</p><h2 id="rulesTitle">What every surface holds</h2></div></div>
+        <section class="specimen-section" aria-labelledby="rulesTitle">
+          <div class="section-heading"><h2 id="rulesTitle">What every surface holds</h2></div>
           <ul class="rule-list">
-            <li>Cards move by drag, and the same move runs on the keyboard: Enter lifts, arrows choose, Enter drops, Escape cancels. Nothing is drag-only.</li>
+            <li>Five type sizes and two weights. Numbers use tabular figures.</li>
+            <li>The accent marks the primary action, the focus ring and one recurring marker. Nothing else.</li>
+            <li>A panel is one tone step off its ground with a hairline. No box sits inside a box.</li>
+            <li>Motion only on a state change, and only transform and opacity. Nothing loops.</li>
+            <li>No gradients, blur or glow. Sentence case; no tracked capitals.</li>
+            <li>Status is a word plus a shape or border, so it reads without colour.</li>
             <li>Focus is visible and returns to the control that opened a popup, panel or dialog.</li>
-            <li>A modal dialog and a pinnable nonmodal side panel are different components.</li>
             <li>Saving is not confirmed. Refused keeps the input. Unknown is not failed.</li>
             <li>Every clock time is AM/PM. Every due date is a calendar date with a picker.</li>
-            <li>Titles carry the screen. No description paragraph sits under a title.</li>
-            <li>Doc is one floating icon at the bottom right, on every surface.</li>
-            <li>Theme, density and motion are personal icons. Follow mode never changes them.</li>
-            <li>No partner ranking anywhere by default.</li>
           </ul>
-        </div>
-        <div class="card glass" aria-labelledby="refsTitle">
-          <div class="card-heading"><div><p class="eyebrow">References</p><h2 id="refsTitle">Seven dispositions</h2></div></div>
+        </section>
+        <section class="specimen-section" aria-labelledby="refsTitle">
+          <div class="section-heading"><h2 id="refsTitle">References</h2></div>
           <ul class="rule-list">
+            <li><b>Linear</b>: calm neutral surfaces, one accent, quiet hairlines.</li>
             <li><b>Apple HIG principles</b> shape the state vocabulary; no native mandate.</li>
-            <li><b>HIG agent skills</b>: platform distinctions kept; not installed.</li>
-            <li><b>shadcn, rareui, transitions.dev, beui</b>: chip, tab and receipt interaction references; no framework rewrite.</li>
-            <li><b>lieflat-charts</b>: one chart grammar with table equivalents; product charts bound to V5-R04.</li>
-            <li><b>21st.dev, Magic UI</b>: component references only.</li>
-            <li><b>Carbon palettes, C4 notation</b>: categorical colour with a persistent legend, separate from status.</li>
-            <li><b>WCAG 2.2</b> dragging, pause-stop-hide and animation criteria: the keyboard move path, motion pause, reduced-motion floor.</li>
+            <li><b>Carbon palettes</b>: categorical colour with a persistent legend, separate from status.</li>
+            <li><b>WCAG 2.2</b>: contrast floor, the keyboard move path, the reduced-motion floor.</li>
           </ul>
-        </div>
+        </section>
       </div>
-      <section class="card glass" aria-labelledby="reviewTitle">
-        <div class="card-heading"><div><p class="eyebrow">Review</p><h2 id="reviewTitle">What Joe looks at</h2></div></div>
-        <ol class="rule-list">
-          <li>Business reference: action cards, a four-view strip, a popup, Quick add and Handover.</li>
-          <li>Control Room reference: dashboard, System Map, agent board and Sessions.</li>
-          <li>Switch theme, density and motion. Use only the keyboard for one full pass, then only touch on a phone.</li>
-          <li>Record what still feels wrong. Palette shades, geometry and motion timing are open until this review closes.</li>
-        </ol>
+      <section class="specimen-section" aria-labelledby="reviewTitle">
+        <div class="section-heading"><h2 id="reviewTitle">Archived references</h2><span class="section-meta">Synthetic prototypes, kept for comparison</span></div>
         <div class="reference-grid" id="referenceExamples">
           <figure><a href="/public-shell/references/business-desktop.png" target="_blank" rel="noopener"><img src="/public-shell/references/business-desktop.png" alt="Archived synthetic business prototype at desktop width" loading="lazy"></a><figcaption>Business · desktop</figcaption></figure>
           <figure><a href="/public-shell/references/business-390.png" target="_blank" rel="noopener"><img src="/public-shell/references/business-390.png" alt="Archived synthetic business prototype at 390 pixels" loading="lazy"></a><figcaption>Business · 390px</figcaption></figure>
@@ -252,7 +302,6 @@
     </article>
   </dialog>
 
-  <footer class="footer"><span>DoctorCRE · Visual system prototype</span><span>Synthetic examples. No record was read or changed.</span></footer>
   <div id="receiptDock" class="receipt-dock" role="group" aria-label="Command feedback"></div>
   <script type="module" src="/js/design-prototype.js"></script>
 </body>

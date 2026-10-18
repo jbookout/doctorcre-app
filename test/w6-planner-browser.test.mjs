@@ -69,7 +69,7 @@ test("W6 desktop and phone render, client prefill/undo, private files, wide popu
     await page.locator("#space-requirements").fill("Ground floor · accessible entry");
     await page.locator("#save-search").click(); assert.match(await page.locator("#space-message").textContent(), /saved/);
     assert.equal(await page.locator("#property-search-form").count(), 0);
-    assert.ok(await page.locator(".territory-map").evaluate(el => el.getAnimations({ subtree: true }).length > 0));
+    assert.equal(await page.locator(".territory-map").evaluate(el => el.getAnimations({ subtree: true }).length), 0, "V2: the territory map has no decorative motion");
     await page.evaluate(() => { document.activeElement?.blur(); window.scrollTo(0, 0); });
     await page.screenshot({ path: new URL(`out/test-artifacts/w6/${name}.png`, root).pathname, fullPage: true, animations: "disabled" });
     await page.locator("#review-packet").click(); await page.locator("#tour-dialog").waitFor({ state: "visible" });
