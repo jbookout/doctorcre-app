@@ -203,7 +203,7 @@ test('honest controls fit 320px, 390px and iPad in both motion settings with 44p
         const style = getComputedStyle(el);
         return { outline: style.outlineStyle, width: style.outlineWidth, color: style.outlineColor };
       });
-      assert.deepEqual(accountFocus, { outline: 'solid', width: '2px', color: 'rgb(255, 174, 104)' }, `${width}: account keyboard focus stays visible alongside recorder availability`);
+      assert.deepEqual(accountFocus, { outline: 'solid', width: '2px', color: 'rgb(245, 127, 41)' }, `${width}: account keyboard focus stays visible alongside recorder availability`);
       await page.keyboard.press('Escape');
       await page.locator('#docOpen').click();
       assert.equal(await page.locator('#docDetail form:not(#docCommandForm), #docMic, #docInput').count(), 0);
@@ -256,7 +256,7 @@ test('touch targets are measured after their entry animation settles', async () 
   const browser = await chromium.launch();
   try {
     const page = await browser.newPage({ viewport: { width: 820, height: 1180 } });
-    await page.setContent(`<style>${await read('css/system.css')} .doc-chat { top: 986.5px; bottom: auto; display: block; }</style><div class="doc-chat"><button class="btn">Dictate with Quill</button></div>`);
+    await page.setContent(`<style>${await read('css/tokens.css')}${await read('css/system.css')} .doc-chat { top: 986.5px; bottom: auto; display: block; }</style><div class="doc-chat"><button class="btn">Dictate with Quill</button></div>`);
     await page.locator('.doc-chat').evaluate(el => {
       el.getAnimations().forEach(animation => animation.cancel());
       el.animate([{ transform: 'translateY(4.6646px)' }, { transform: 'translateY(4.6646px)' }], { duration: 500 });

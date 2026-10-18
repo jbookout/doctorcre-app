@@ -1,5 +1,6 @@
 /* Shared rail, navigation, menus and the five-region workspace. Every value
    comes from css/tokens.css. Page navigation lives in app-layout slots. */
+@import url("/css/tokens.css");
 .app-shell-header, .app-shell-header * { box-sizing: border-box; }
 
 /* The brand mark is flat and still. */
@@ -71,7 +72,7 @@ body .shell, body .workspace-shell, body .system-shell { max-width: none; width:
 
 /* W1b: shared five-region workspace. The rail and status stay put; only the
    workspace regions scroll. Page controls fill slots without changing owners. */
-:root { --layout-rail: 64px; --layout-bottom: 48px; }
+:root { --layout-rail: 72px; --layout-bottom: 64px; }
 html { scroll-padding-bottom: 150px; }
 body.has-app-layout { padding: 0 0 var(--layout-bottom) var(--layout-rail) !important; overflow-x: clip; background: var(--ground); color: var(--fg); font-family: var(--font-text); }
 #appShell { position: fixed !important; inset: 0 auto var(--layout-bottom) 0; width: var(--layout-rail); min-height: 0; background: transparent; z-index: 1100; }
@@ -102,6 +103,10 @@ body.has-app-layout { padding: 0 0 var(--layout-bottom) var(--layout-rail) !impo
 .app-layout { --layout-left: 236px; --layout-right: 260px; display: grid; grid-template-columns: var(--layout-left) minmax(0, 1fr) var(--layout-right); min-height: calc(100dvh - var(--layout-bottom)); isolation: isolate; }
 .app-layout[data-sidebar=closed] { --layout-left: 0px; }
 .app-layout[data-today=closed] { --layout-right: 0px; }
+/* Page stylesheets still set V1 ink names on their own :root; the shared regions
+   read the token roles so their text holds contrast in both themes. */
+.app-layout-sidebar, .app-layout-today, .has-app-layout #recordPanel { --text: var(--fg); --muted: var(--fg-muted); --quiet: var(--fg-quiet); --line: var(--hairline); }
+.app-layout-sidebar :is(input, select, textarea), .has-app-layout #recordPanel :is(input, select, textarea) { background: var(--surface-2); color: var(--fg); border-color: var(--hairline-strong); color-scheme: inherit; }
 .app-layout-sidebar, .app-layout-today { min-width: 0; overflow: auto; position: sticky; top: 0; height: calc(100dvh - var(--layout-bottom)); box-sizing: border-box; background: var(--ground); border-right: var(--hairline-width) solid var(--hairline); color: var(--fg); scrollbar-width: thin; scrollbar-color: var(--hairline-strong) transparent; }
 .app-layout-today { border: 0; border-left: var(--hairline-width) solid var(--hairline); }
 .app-layout-sidebar > *, .app-layout-today > * { margin: 0 var(--space-4); }
@@ -111,7 +116,7 @@ body.has-app-layout { padding: 0 0 var(--layout-bottom) var(--layout-rail) !impo
 .app-layout button:focus-visible, .app-layout a:focus-visible, .app-shell-header :focus-visible { outline: var(--focus-width) solid var(--focus-ring); outline-offset: 2px; }
 .app-layout-sidebar-head button, .app-layout-tabbar > button { display: grid; place-items: center; flex: none; width: var(--touch); height: var(--touch); border: var(--hairline-width) solid transparent; border-radius: var(--radius-2); background: transparent; color: var(--fg-muted); font-size: var(--font-size-3); cursor: pointer; transition: background-color var(--duration-hover) var(--ease-out), color var(--duration-hover) var(--ease-out), transform var(--duration-press) var(--ease-out); }
 @media (hover: hover) { .app-layout-sidebar-head button:hover, .app-layout-tabbar > button:hover { background: var(--surface-2); color: var(--fg); } }
-.app-layout button:active { transform: scale(var(--press-scale)); }
+.app-layout-sidebar-head button:active, .app-layout-tabbar > button:active { transform: scale(var(--press-scale)); }
 .app-layout-center { min-width: 0; max-width: 100%; position: relative; }
 .app-layout-tabbar { position: sticky; top: 0; z-index: 80; display: flex; align-items: center; gap: var(--space-2); min-height: var(--tabbar-height); padding: 0 var(--space-4); background: var(--ground); border-bottom: var(--hairline-width) solid var(--hairline); }
 .app-layout-tabbar > #appTodayToggle { margin-left: auto; }
@@ -187,7 +192,7 @@ body.has-app-layout { padding: 0 0 var(--layout-bottom) var(--layout-rail) !impo
   .app-layout-tabbar { padding: 0 var(--space-3); gap: var(--space-1); }
 }
 @media (max-width: 760px), (hover: none) and (pointer: coarse) and (max-width: 1023px) {
-  :root { --layout-rail: 0px; --layout-bottom: 168px; }
+  :root { --layout-rail: 0px; --layout-bottom: 180px; }
   body.has-app-layout { padding: 0 0 var(--layout-bottom) !important; }
   .app-layout { display: block; min-height: calc(100dvh - var(--layout-bottom)); }
   .app-layout-center { width: 100%; }
@@ -277,13 +282,13 @@ body.report-shell { padding-left: var(--layout-rail); padding-bottom: 34px; }
 }
 
 .app-shell-control[hidden] { display: none; }
-body.has-app-layout:has(#callModeAvailability:not([hidden])) { --layout-bottom: 96px; }
+body.has-app-layout:has(#callModeAvailability:not([hidden])) { --layout-bottom: 108px; }
 .app-shell-call-availability { display: flex; align-items: center; gap: var(--space-2); flex: 1 0 100%; min-width: 0; min-height: var(--touch); color: var(--fg-muted); font-size: var(--font-size-1); }
 .app-shell-call-availability[hidden], .app-shell-call-availability:has(#callModeAvailability[hidden]) { display: none; }
 #callModeAvailability { flex: 1; min-width: 0; }
 .app-shell-call-availability #callModeRetry { flex: none; min-width: var(--touch); min-height: var(--touch); height: auto; padding: var(--space-2) var(--space-3); border: var(--hairline-width) solid var(--hairline-strong); border-radius: var(--radius-2); background: var(--surface-2); color: var(--fg); font-size: var(--font-size-1); }
 #callModeRetry[hidden] { display: none; }
-@media (max-width: 760px), (hover: none) and (pointer: coarse) and (max-width: 1023px) { body.has-app-layout:has(#callModeAvailability:not([hidden])) { --layout-bottom: 212px; } }
+@media (max-width: 760px), (hover: none) and (pointer: coarse) and (max-width: 1023px) { body.has-app-layout:has(#callModeAvailability:not([hidden])) { --layout-bottom: 224px; } }
 
 @media (max-width: 760px), (hover: none) and (pointer: coarse) and (max-width: 1023px) {
   .has-app-layout :is(button, a, input, select, textarea, summary, [role="button"]) { min-width: 44px; min-height: 44px; box-sizing: border-box; touch-action: manipulation; }
@@ -296,14 +301,14 @@ body.has-app-layout:has(#callModeAvailability:not([hidden])) { --layout-bottom: 
   :root { scroll-behavior: auto; }
 }
 
-/* Shared by every page: the two loading keyframes and the reduced-motion floor.
-   0.01ms, not none: animationend and transitionend still fire. */
+/* Shared by every page: the two loading keyframes and the reduced-motion floor
+   (the same floor css/system.css carries for the pages that load it). */
 @keyframes spin { to { transform: rotate(360deg); } }
 @keyframes skeleton-fade { from { opacity: 0.55; } to { opacity: 1; } }
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
-  *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
-  .app-layout button:active, .app-shell-control:active, .app-shell-avatar:active { transform: none; }
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+  .app-layout-sidebar-head button:active, .app-layout-tabbar > button:active, .app-shell-control:active, .app-shell-avatar:active { transform: none; }
 }
 :root[data-motion="reduced"] { scroll-behavior: auto; }
-:root[data-motion="reduced"] *, :root[data-motion="reduced"] *::before, :root[data-motion="reduced"] *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
+:root[data-motion="reduced"] *, :root[data-motion="reduced"] *::before, :root[data-motion="reduced"] *::after { animation: none !important; transition: none !important; }

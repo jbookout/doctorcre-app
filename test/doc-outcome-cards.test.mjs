@@ -32,6 +32,7 @@ const html = await read("conversations.html");
 const pageJs = await read("js/conversations.js");
 const pageCss = await read("css/conversations.css");
 const systemCss = await read("css/system.css");
+const tokensCss = await read("css/tokens.css");
 const contract = JSON.parse(await read("contracts/carr-interface.v1.json"));
 
 const fixture = async (options = {}) => {
@@ -439,7 +440,7 @@ test("MEASURED: under reduced motion, the flow line's active segment loses both 
 test("1. entrance is staggered and bounded to about 1 second, measured from the real tokens and the real fixture card count", async () => {
   assert.match(pageJs, /OUTCOME_CARD_STAGGER_MS = (\d+)/);
   const staggerMs = Number(pageJs.match(/OUTCOME_CARD_STAGGER_MS = (\d+)/)[1]);
-  const motionEnterMs = Number(systemCss.match(/--motion-enter: (\d+)ms/)[1]);
+  const motionEnterMs = Number(tokensCss.match(/--motion-enter: (\d+)ms/)[1]);
   const client = await fixture();
   const cardCount = (await client.docOutcomeCards({ limit: 50 })).cards.length;
   assert.ok(cardCount >= 2, "the fixture must exercise more than one card to prove a stagger");
