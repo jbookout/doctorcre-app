@@ -21,6 +21,17 @@ test('W6 Tours drafts prefill from a client, undo an edit and survive a reload',
     route.fulfill({ json: { data: tourData(new URL(route.request.url)), csrf_token: 'synthetic-e2e-token' } }));
   await app.open('/tours');
 
+  // S6: the page title stays in the workspace at the top on every target,
+  // including 390px phones; only the freshness control rides the status band.
+  const title = await browser.evaluate(() => {
+    const heading = document.querySelector('.planner-header h1');
+    const box = heading?.getBoundingClientRect();
+    return { inStatus: Boolean(heading?.closest('.app-layout-status')), top: box ? box.top + scrollY : -1 };
+  });
+  expect(title.inStatus).toBe(false);
+  expect(title.top).toBeGreaterThanOrEqual(0);
+  expect(title.top).toBeLessThan(160);
+
   await browser.locator('#plan-client').selectOption('Demo Harbor Practice');
   await expect(browser.locator('#plan-name')).toHaveValue(/Demo Harbor/);
   await expect(browser.locator('#plan-area')).toHaveValue('Pensacola, FL');

@@ -2,12 +2,12 @@ import { expect } from 'e2e';
 import { reproTest } from '../support.mjs';
 
 const test = reproTest();
-test('QA-031 Design Lab renders distinct orange and cyan token swatches', { tags: ['regression'], requires: ['browser'], retries: 0 }, async ({ app, browser, screen }) => {
+test('QA-031 Design Lab renders distinct accent and data token swatches', { tags: ['regression'], requires: ['browser'], retries: 0 }, async ({ app, browser, screen }) => {
   await app.open('/design-lab');
   await expect(screen.getByRole('tab', 'Tokens', { exact: true })).toHaveAttribute('aria-selected', 'true');
-  await expect(browser.locator('.swatch-grid .token')).toHaveCount(12);
+  await expect(browser.locator('.swatch-grid .token')).toHaveCount(21);
   const colors = await browser.evaluate(() => {
-    const tokens = ['--orange', '--cyan'];
+    const tokens = ['--accent', '--data-1'];
     const root = getComputedStyle(document.documentElement);
     const expected = tokens.map(token => {
       const hex = root.getPropertyValue(token).trim().replace('#', '');
