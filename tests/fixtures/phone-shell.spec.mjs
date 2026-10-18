@@ -25,6 +25,11 @@ test('Inbox uses one phone shell row and grouped controls in both themes', async
     const contentBottom = await page.locator('.app-layout-status, #appShell').evaluateAll(bars => Math.min(...bars.filter(bar => bar.getClientRects().length).map(bar => bar.getBoundingClientRect().top)));
     expect(contentBottom, `${theme} Inbox space above the persistent shell`).toBeGreaterThanOrEqual(780);
   }
+  await page.locator('#selfAvatar').click();
+  await page.getByRole('button', { name: 'Open Doc', exact: true }).click();
+  await expect(page.locator('#docDetail')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(page.locator('#selfAvatar')).toBeFocused();
   await page.route('http://127.0.0.1:4682/**', route => route.fulfill({
     json: { state: 'recording', started_at: new Date().toISOString() },
   }));

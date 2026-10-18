@@ -35,15 +35,9 @@ test("QA-002 light Home calendar tiles keep weekday and date text at 4.5:1", asy
   } finally { await browser.close(); }
 });
 
-test("QA-005 the Doc control docks in the status band, so phone drawers and content never sit under it", async () => {
+test("QA-005 Doc stays in workspace controls on phones and in the status band on desktop", async () => {
   const css = await read("css/doc-presence.css");
-  const start = css.lastIndexOf(`@media${TOUCH_LAYOUT}{`);
-  assert.ok(start >= 0, "doc-presence.css has a touch-layout block");
-  const touch = css.slice(start);
-  // The compact phone status row reserves room for the Doc control.
-  assert.match(touch, /\.doc-presence\s*\{[^}]*bottom:\s*calc\(var\(--layout-bottom\) - 50px\)/);
-  assert.match(touch, /\.app-layout-status\s*\{[^}]*padding-right:/);
-  // On a desktop it centres in the band's own height; it never floats above it.
+  assert.match(css, /\.app-shell-workspace-group > \.doc-presence\s*\{[^}]*position: static/);
   assert.match(css, /^\.doc-presence \{[^}]*bottom: calc\(\(var\(--layout-bottom\) - var\(--touch\)\) \/ 2\)/m);
 });
 

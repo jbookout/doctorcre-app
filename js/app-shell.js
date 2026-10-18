@@ -25,7 +25,8 @@ export function mountAppShell(root = document, pathname = globalThis.location?.p
     const status = root.querySelector(".app-layout-status");
     const availability = host.querySelector(".app-shell-call-availability");
     status.append(availability);
-    const panel = root.getElementById("accountMenu");
+    const workspace = root.getElementById("accountWorkspaceControls");
+    const connection = root.getElementById("appConnection");
     const controls = host.querySelector(".app-shell-controls");
     const settings = [...controls.querySelectorAll(":scope > button")];
     const search = host.querySelector(".app-shell-search");
@@ -33,11 +34,13 @@ export function mountAppShell(root = document, pathname = globalThis.location?.p
     const freshness = refresh.parentElement;
     const phone = root.defaultView.matchMedia(TOUCH_LAYOUT);
     const arrangeControls = () => {
-      if (phone.matches) panel.append(search, ...settings, refresh, availability);
+      workspace.hidden = !phone.matches;
+      if (phone.matches) workspace.append(search, ...settings, refresh, availability, connection);
       else {
         controls.before(search);
         controls.prepend(...settings);
         freshness.append(refresh);
+        status.insertBefore(connection, root.getElementById("appStatusSlot"));
         status.append(availability);
       }
     };

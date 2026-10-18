@@ -38,6 +38,9 @@
 .app-shell-account { position: relative; }
 
 .app-shell-account-menu { position: absolute; right: 0; top: calc(100% + 12px); width: 260px; display: grid; gap: 2px; padding: var(--space-3); border: var(--hairline-width) solid var(--hairline-strong); border-radius: var(--radius-3); background: var(--surface-2); box-shadow: var(--shadow-overlay); }
+.app-shell-account-group { display: contents; }
+.app-shell-account-group h3 { display: none; }
+.app-shell-workspace-group[hidden] { display: none; }
 .app-shell-account-menu[hidden] { display: none; }
 .app-shell-account-menu strong { padding: var(--space-2); color: var(--fg); font: var(--font-weight-strong) var(--font-size-2) var(--font-text); }
 .app-shell-account-menu button, .app-shell-account-menu a { padding: var(--space-3); border: 0; border-radius: var(--radius-2); text-align: left; background: transparent; color: var(--fg); cursor: pointer; font: var(--font-weight-regular) var(--font-size-1) var(--font-text); text-decoration: none; transition: background-color var(--duration-hover) var(--ease-out); }
@@ -206,14 +209,21 @@ body.has-app-layout { padding: 0 0 var(--layout-bottom) var(--layout-rail) !impo
   .app-shell-navigation > a, .app-shell-more-toggle { width: var(--touch); height: var(--touch); min-height: var(--touch); font-size: var(--font-size-3); padding: var(--space-1) !important; }
   .app-shell-navigation > a[aria-current=page]::before, .app-shell-more-current::before { left: 10px; right: 10px; top: auto; bottom: -3px; width: auto; height: 2px; }
   .app-shell-controls { flex-direction: row; grid-column: 2; grid-row: 1; gap: var(--space-1) !important; }
+  .app-shell-account-group, .app-shell-workspace-group { display: grid; gap: 2px; }
+  .app-shell-account-group h3, .app-shell-workspace-group h3 { display: block; margin: 0; padding: var(--space-2) var(--space-3); color: var(--fg-muted); font: var(--font-weight-strong) var(--font-size-1) var(--font-text); }
+  .app-shell-workspace-group, #accountSignOut { border-top: var(--hairline-width) solid var(--hairline-strong); padding-top: var(--space-2); margin-top: var(--space-2); }
+  .app-shell-workspace-group #appConnection { width: auto; height: auto; margin: var(--space-2) var(--space-3); color: var(--fg-muted); background: transparent; border: 0; font-size: var(--font-size-1); }
+  .app-shell-workspace-group #appConnection::after { content: attr(aria-label); }
   .app-shell-account-menu .app-shell-search { display: flex; gap: var(--space-3); width: 100%; justify-content: start; padding: var(--space-3); }
   .app-shell-account-menu .app-shell-search::after { content: "Search"; }
   .app-shell-account-menu :is(.app-shell-control, #appSyncRefresh) { display: flex; gap: var(--space-3); width: 100%; height: auto; }
   .app-shell-account-menu .app-shell-control[hidden], .app-shell-account-menu #accountTheme { display: none; }
   .app-shell-account-menu :is(.app-shell-control, #appSyncRefresh)::after { content: attr(aria-label); }
+  .app-shell-account-menu #callModeButton.recording::after { content: "Recording"; }
   body:has(#callModeButton.recording) #selfAvatar::after { content: ""; position: absolute; top: 0; right: 0; width: 8px; height: 8px; border-radius: 50%; background: var(--status-danger); border: 2px solid var(--surface-1); }
   .app-shell-more-list { left: var(--space-2) !important; top: auto !important; bottom: calc(var(--layout-bottom) + 8px); width: calc(100vw - 16px); max-height: calc(100dvh - 125px); grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
   .app-shell-account-menu { left: var(--space-2) !important; bottom: calc(var(--layout-bottom) + 8px); width: calc(100vw - 16px) !important; max-width: none; max-height: calc(100dvh - var(--layout-bottom) - 16px); overflow-y: auto; }
+  .app-layout-status:not(:has(#appStatusSlot > *)), #appStatusSlot [data-layout-refresh] { display: none; }
   .app-layout-status > span:not(.app-layout-health) { display: none; }
   #appStatusSlot { flex: 1 1 auto; }
   .app-layout-status { bottom: calc(56px + env(safe-area-inset-bottom)); height: 56px; padding: var(--space-1) var(--space-3); gap: var(--space-1) var(--space-3); align-content: center; z-index: 1090; }
@@ -300,7 +310,10 @@ body.has-app-layout:has(#callModeAvailability:not([hidden])) { --layout-bottom: 
   .app-shell-call-availability { flex: 0 1 auto; }
   .app-layout-status .app-layout-health { order: 1; margin-left: 0; }
 }
-@media (max-width: 760px), (hover: none) and (pointer: coarse) and (max-width: 1023px) { body.has-app-layout, body.has-app-layout:has(#callModeAvailability:not([hidden])) { --layout-bottom: calc(112px + env(safe-area-inset-bottom)); } }
+@media (max-width: 760px), (hover: none) and (pointer: coarse) and (max-width: 1023px) {
+  body.has-app-layout, body.has-app-layout:has(#callModeAvailability:not([hidden])) { --layout-bottom: calc(56px + env(safe-area-inset-bottom)); }
+  body.has-app-layout:has(#appStatusSlot > *) { --layout-bottom: calc(112px + env(safe-area-inset-bottom)); }
+}
 
 @media (max-width: 760px), (hover: none) and (pointer: coarse) and (max-width: 1023px) {
   .has-app-layout :is(button, a, input, select, textarea, summary, [role="button"]) { min-width: 44px; min-height: 44px; box-sizing: border-box; touch-action: manipulation; }

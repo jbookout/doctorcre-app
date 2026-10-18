@@ -205,11 +205,14 @@ test('honest controls fit 320px, 390px and iPad in both motion settings with 44p
       });
       assert.deepEqual(accountFocus, { outline: 'solid', width: '2px', color: 'rgb(245, 127, 41)' }, `${width}: account keyboard focus stays visible alongside recorder availability`);
       await page.keyboard.press('Escape');
+      if (width <= 760) await page.locator('#selfAvatar').click();
+      const docTarget = await touchTargetBox(page.locator('#docOpen'));
+      assert.ok(docTarget.width >= 44 && docTarget.height >= 44);
       await page.locator('#docOpen').click();
       assert.equal(await page.locator('#docDetail form:not(#docCommandForm), #docMic, #docInput').count(), 0);
       assert.equal(await page.locator('#docCommandForm').count(), 1);
       assert.match(await page.locator('#docSuggestions').textContent(), /Unavailable|Updating/);
-      for (const selector of ['#docOpen', '#docClose', '.doc-chats-link']) {
+      for (const selector of ['#docClose', '.doc-chats-link']) {
         for (const locator of await page.locator(selector).all()) {
           const box = await touchTargetBox(locator);
           assert.ok(box.width >= 44 && box.height >= 44, `${width}: ${selector} touch target ${JSON.stringify(box)}`);
