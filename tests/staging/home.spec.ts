@@ -17,7 +17,7 @@ test('Home scope switches and refreshes loaded deal attention', async ({ page })
   await expect(page.locator('#observedAt')).not.toContainText(/Unavailable|Sign in/);
 });
 
-test.fixme('V2-F03: Charts navigation intermittently fails with ERR_TIMED_OUT', { tag: '@fixme' }, async ({ page }) => {
+test('V2-F03: Charts navigation opens, selects and returns to Overview', async ({ page }) => {
   await page.goto('/?view=charts');
   await expect(page.locator('.chart-card').first()).toBeVisible();
   await page.locator('.chart-pick').first().click();
