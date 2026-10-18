@@ -29,7 +29,6 @@
     <section data-layout-slot="sidebar" class="card glass" aria-labelledby="pageTitle">
       <div class="hero">
         <div>
-          <p class="eyebrow"><span class="orb" data-state="still" id="boardOrb" aria-hidden="true"></span> Pipeline</p>
           <h1 id="pageTitle">Local Deals</h1>
           <nav class="app-section-tabs" aria-label="Deals pages"><a href="/deals">Local Deals</a><a href="/deals?view=national">National Accounts</a></nav>
         </div>
@@ -88,7 +87,7 @@
   <dialog id="completionDialog" class="dialog" aria-labelledby="completionTitle">
     <form id="completionForm">
       <header>
-        <div><p class="eyebrow">Phase change</p><h2 id="completionTitle">Move</h2></div>
+        <div><h2 id="completionTitle">Move</h2><p class="dialog-context">Phase change</p></div>
         <button class="btn icon-btn" type="button" id="completionDismiss" aria-label="Cancel">×</button>
       </header>
       <div class="dialog-body">
@@ -163,7 +162,7 @@
 
   <dialog id="conflictDialog" class="dialog" aria-labelledby="conflictTitle">
     <form id="conflictForm">
-      <header><div><p class="eyebrow">Two edits crossed</p><h2 id="conflictTitle">Choose the value</h2></div></header>
+      <header><div><h2 id="conflictTitle">Choose the value</h2><p class="dialog-context">Two edits crossed</p></div></header>
       <div class="dialog-body">
         <div id="conflictChoices"></div>
 
@@ -180,7 +179,7 @@
   <dialog id="contextDrawer" class="dialog" aria-labelledby="contextDrawerTitle">
     <article>
       <header>
-        <div><p class="eyebrow">Read-only</p><h2 id="contextDrawerTitle">Client &amp; vendor context</h2></div>
+        <div><h2 id="contextDrawerTitle">Client &amp; vendor context</h2><p class="dialog-context">Read-only</p></div>
         <button class="btn icon-btn" type="button" id="contextDrawerClose" aria-label="Close">×</button>
       </header>
       <div class="dialog-body">

@@ -1,7 +1,7 @@
 /* V5-UX-B03 — Deals (pipeline.html).
  *
- * css/system.css owns the register: the dark cinematic ground, the glass, the
- * palette, the 44px touch floor, the .kanban* rules the prototype proved, the
+ * css/system.css owns the register on css/tokens.css: the ground, the surfaces,
+ * the status roles, the 44px touch floor, the .kanban* rules the prototype proved, the
  * side panel, the dialogs and the receipt dock. This file adds ONLY what is
  * particular to this surface and is not in the shared system:
  *
@@ -15,45 +15,49 @@
  *      Recent changes in the shared Today drawer.
  *
  * Nothing here restates a token, a colour or a motion duration: those have one
- * home and it is the shared system.
+ * home, css/tokens.css. Attention and overdue use the status roles; the accent
+ * is chrome (focus, the primary button) and never marks data.
  */
 
 /* ------------------------------------------------------ page furniture */
-.hero { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 14px; }
-.hero-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
-.row-wrap { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
-.field-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin-top: 12px; }
+.hero { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: var(--space-3); }
+.hero h1 { font-size: var(--font-size-4); }
+.hero-meta { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); color: var(--fg-muted); font-size: var(--font-size-1); }
+.row-wrap { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; }
+.field-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: var(--space-3); margin-top: var(--space-3); }
+/* What an eyebrow used to say, as a quiet line under the dialog heading. */
+.dialog-context { margin: var(--space-1) 0 0; color: var(--fg-muted); font-size: var(--font-size-1); }
 
 /* ------------------------------------------------------ board and panel */
 /* The phase grid uses the page width; record details open in a modal. */
-.pipeline-layout { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 14px; align-items: start; margin-top: 12px; }
+.pipeline-layout { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: var(--space-3); align-items: start; margin-top: var(--space-3); }
 .pipeline-layout .side-panel:not([hidden]) { display: grid; }
 .pipeline-layout:has(.side-panel[hidden]) { grid-template-columns: minmax(0, 1fr); }
 
 /* The card's title is the way into the record, because Enter on the card body
    lifts it for a move. A button that reads as a heading, and nothing else. */
-.card-open { padding: 0; border: 0; background: none; color: var(--text); font: inherit; text-align: left; cursor: pointer; }
-.card-open:hover { color: var(--orange-text); }
-.card-move { margin-top: 8px; min-height: var(--touch); }
-.move-targets { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 8px; }
+.card-open { padding: 0; border: 0; background: none; color: var(--fg); font: inherit; text-align: left; cursor: pointer; }
+.card-open:hover { text-decoration: underline; text-underline-offset: 3px; }
+.card-move { margin-top: var(--space-2); min-height: var(--touch); }
+.move-targets { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: var(--space-2); }
 .move-target { min-height: var(--touch); text-align: left; }
 
 /* A partner's open lease on this record's phase. It says who, and nothing about
    what they intend to do. */
-.presence-chip { margin: 0; color: var(--cyan-text); font-size: 10px; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; }
+.presence-chip { margin: 0; color: var(--status-info-ink); font-size: var(--font-size-1); font-weight: var(--font-weight-strong); }
 
 /* ------------------------------------------------------ unconfirmed writes */
 /* A write that was never answered belongs to the page, not to a column: it stays
    above the board until the person settles it, whatever the filter is showing. */
-.pending-bar { display: grid; gap: 8px; margin: 12px 0; padding: 12px; border: 1px dashed color-mix(in srgb, var(--amber) 60%, transparent); border-radius: var(--radius); background: color-mix(in srgb, var(--amber) 8%, transparent); font-size: 12px; }
-.pending-bar span { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.pending-bar { display: grid; gap: var(--space-2); margin: var(--space-3) 0; padding: var(--space-3); border: var(--hairline-width) dashed var(--status-warn); border-radius: var(--radius-2); background: var(--surface-2); font-size: var(--font-size-1); }
+.pending-bar span { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; }
 
 /* ------------------------------------------------------ dialog additions */
-.check-option { display: flex; gap: 8px; align-items: center; min-height: var(--touch); font-size: 12px; }
-.field-hint.error { color: var(--red-text); font-size: 12px; font-weight: 700; }
+.check-option { display: flex; gap: var(--space-2); align-items: center; min-height: var(--touch); font-size: var(--font-size-1); }
+.field-hint.error { color: var(--status-danger-ink); font-size: var(--font-size-1); font-weight: var(--font-weight-strong); }
 
 /* ------------------------------------------------------ Recent changes in Today */
-.receipt-list { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.receipt-list { display: grid; gap: var(--space-2); margin: 0; padding: 0; list-style: none; }
 
 @media (max-width: 1100px) {
   .pipeline-layout { grid-template-columns: minmax(0, 1fr); }
@@ -63,69 +67,71 @@
 }
 
 /* W4: one local workspace, responsive phase grid, modal details. */
-.shell { width: 100%; max-width: none; padding-inline: clamp(12px, 1.5vw, 28px); }
-.board-toolbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; margin-top: 18px; }
+.shell { width: 100%; max-width: none; padding-inline: clamp(var(--space-3), 1.5vw, var(--space-6)); }
+.board-toolbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-3); margin-top: var(--space-4); }
 .pipeline-layout { display: block; }
-.kanban { grid-auto-flow: row; grid-auto-columns: auto; grid-template-columns: repeat(8,minmax(0,1fr)); overflow: visible; gap: 10px; }
-.kanban-column { min-width: 0; padding: 9px; }
-.kanban-column > h3 { min-height: 48px; font-size: 21px; gap: 6px; }
-.kanban-card { height: 212px; min-width: 0; grid-template-rows: 44px 24px 20px 1fr; gap: 6px; padding: 10px; overflow: hidden; }
+/* Columns are a tonal step below the cards, so a card is not a box inside a box. */
+.kanban { grid-auto-flow: row; grid-auto-columns: auto; grid-template-columns: repeat(8,minmax(0,1fr)); overflow: visible; gap: var(--space-2); }
+.kanban-column { min-width: 0; padding: var(--space-2); background: var(--ground); }
+.kanban-column > h3 { min-height: var(--space-7); gap: var(--space-1); }
+.kanban-card { height: 212px; min-width: 0; grid-template-rows: 44px 24px 20px 1fr; gap: var(--space-1); padding: var(--space-2); overflow: hidden; }
 .kanban-card h4 { overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
-.work-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; min-width: 0; }
+.work-meta { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1); min-width: 0; font-variant-numeric: tabular-nums; }
 .kanban-lane-label { display: none; }
-.next-line { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin: 0; font-size: 12px; }
-.auto-move { display: grid; align-content: end; gap: 3px; font-size: 10px; color: var(--orange-text); }
+.next-line { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin: 0; font-size: var(--font-size-1); color: var(--fg-muted); }
+.auto-move { display: grid; align-content: end; gap: var(--space-1); font-size: var(--font-size-1); color: var(--status-info-ink); }
 .auto-move span { overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
-.auto-move button { justify-self: start; padding: 0 8px; min-height: 44px; }
-.kanban-card[data-attention="true"] { border-top: 2px solid var(--orange); }
-.attention-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--orange); animation: deal-breathe 2s ease-in-out infinite; }
-@keyframes deal-breathe { 50% { box-shadow: 0 0 10px 3px #ff8a3340; } }
-.parked-lane { grid-column: 1/-1; margin-top: 10px; padding: 14px; border: 1px solid var(--line); border-radius: var(--radius); }
-.parked-lane > summary { cursor: pointer; color: var(--quiet); min-height: 44px; }
-.parked-cards { display: grid; grid-template-columns: repeat(auto-fill,minmax(180px,1fr)); gap: 12px; margin-top: 14px; }
+.auto-move button { justify-self: start; padding: 0 var(--space-2); min-height: var(--touch); }
+/* Attention is a status, not the brand colour: a warn rule on top and a still dot. */
+.kanban-card[data-attention="true"] { border-top: 2px solid var(--status-warn); }
+.attention-dot { width: 6px; height: 6px; border-radius: var(--radius-round); background: var(--status-warn); }
+:root[data-color-assist="on"] .kanban-card[data-attention="true"] { border-top-style: double; border-top-width: 4px; }
+:root[data-color-assist="on"] .attention-dot { background: repeating-linear-gradient(45deg, var(--status-warn) 0 2px, transparent 2px 4px); outline: 1px solid var(--status-warn); }
+.parked-lane { grid-column: 1/-1; margin-top: var(--space-2); padding: var(--space-3); border: var(--hairline-width) solid var(--hairline); border-radius: var(--radius-2); }
+.parked-lane > summary { cursor: pointer; color: var(--fg-muted); min-height: var(--touch); }
+.parked-cards { display: grid; grid-template-columns: repeat(auto-fill,minmax(180px,1fr)); gap: var(--space-3); margin-top: var(--space-3); }
 .parked-card { height: 212px; grid-template-rows: 44px 1fr 44px; }
-.deal-list { display: grid; grid-column: 1/-1; gap: 8px; }
-.deal-row { height: auto; min-height: 96px; grid-template-rows: auto auto; overflow: visible; display: grid; grid-template-columns: minmax(160px,1.3fr) minmax(100px,.7fr) minmax(180px,2fr) 80px; align-items: center; gap: 16px; cursor: pointer; }
+.deal-list { display: grid; grid-column: 1/-1; gap: var(--space-2); }
+.deal-row { height: auto; min-height: 96px; grid-template-rows: auto auto; overflow: visible; display: grid; grid-template-columns: minmax(160px,1.3fr) minmax(100px,.7fr) minmax(180px,2fr) 80px; align-items: center; gap: var(--space-4); cursor: pointer; font-variant-numeric: tabular-nums; }
 .deal-row h4 { margin: 0; }
 .deal-row .auto-move { grid-column: 3; grid-row: 2; }
 .deal-detail { max-width: none; width: min(1180px,calc(100vw - 28px)); }
-.detail-grid { display: grid; grid-template-columns: minmax(0,1.15fr) minmax(0,1fr); gap: 24px; }
+.detail-grid { display: grid; grid-template-columns: minmax(0,1.15fr) minmax(0,1fr); gap: var(--space-5); }
 .detail-grid section { min-width: 0; }
-.detail-controls { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-.detail-controls label { display: grid; gap: 8px; }
-.detail-controls select, .detail-controls input, .detail-controls textarea { width: 100%; min-height: 44px; }
-.detail-next { line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; }
-.deal-note { padding: 14px 0; border-bottom: 1px solid var(--line); }
-.deal-note p { margin: 8px 0; line-height: 1.5; }
-.deal-note time { color: var(--quiet); font-size: 11px; }
-.deal-note details { margin-top: 8px; }
-.deal-note summary { cursor: pointer; color: var(--orange-text); min-height: 44px; }
+.detail-controls { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3); }
+.detail-controls label { display: grid; gap: var(--space-2); }
+.detail-controls select, .detail-controls input, .detail-controls textarea { width: 100%; min-height: var(--touch); }
+.detail-next { line-height: var(--line-height-body); white-space: pre-wrap; overflow-wrap: anywhere; }
+.deal-note { padding: var(--space-3) 0; border-bottom: var(--hairline-width) solid var(--hairline); }
+.deal-note p { margin: var(--space-2) 0; line-height: var(--line-height-body); }
+.deal-note time { color: var(--fg-muted); font-size: var(--font-size-1); font-variant-numeric: tabular-nums; }
+.deal-note details { margin-top: var(--space-2); }
+.deal-note summary { cursor: pointer; color: var(--fg-muted); min-height: var(--touch); }
 .note-original { white-space: pre-wrap; overflow-wrap: anywhere; }
-.park-control { color: var(--red-text); background: transparent; border: 0; margin-top: 20px; }
-.phase-rail { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 18px; }
-.phase-rail span { border: 1px solid var(--line); padding: 6px; border-radius: 6px; font-size: 11px; color: var(--quiet); }
-.phase-rail span[aria-current="step"] { border-color: var(--orange); color: var(--orange-text); }
+.park-control { color: var(--status-danger-ink); background: transparent; border: 0; margin-top: var(--space-4); }
+.phase-rail { display: flex; flex-wrap: wrap; gap: var(--space-1); margin-bottom: var(--space-4); }
+.phase-rail span { border: var(--hairline-width) solid var(--hairline); padding: var(--space-1) var(--space-2); border-radius: var(--radius-1); font-size: var(--font-size-1); color: var(--fg-muted); }
+.phase-rail span[aria-current="step"] { border-color: var(--fg); background: var(--surface-3); color: var(--fg); font-weight: var(--font-weight-strong); }
 @media(max-width:1200px) { .kanban { grid-template-columns: repeat(4,minmax(0,1fr)); } }
-@media(max-width:650px) { .kanban { grid-template-columns: repeat(2,minmax(0,1fr)); } .detail-grid { grid-template-columns: 1fr; } .deal-row { height: auto; min-height: 148px; grid-template-rows: auto auto auto; grid-template-columns: minmax(0,1fr) 80px; gap: 8px; } .deal-row .next-line { grid-column: 1/-1; } .deal-row .auto-move { grid-column: 1/-1; grid-row: auto; } .detail-controls { grid-template-columns: 1fr; } }
+@media(max-width:650px) { .kanban { grid-template-columns: repeat(2,minmax(0,1fr)); } .kanban-column:not(:has(.kanban-card)) { min-height: 0; } .detail-grid { grid-template-columns: 1fr; } .deal-row { height: auto; min-height: 148px; grid-template-rows: auto auto auto; grid-template-columns: minmax(0,1fr) 80px; gap: var(--space-2); } .deal-row .next-line { grid-column: 1/-1; } .deal-row .auto-move { grid-column: 1/-1; grid-row: auto; } .detail-controls { grid-template-columns: 1fr; } }
 @media(max-width:360px) { .kanban { grid-template-columns: minmax(0,1fr); } }
-@media(prefers-reduced-motion:reduce) { .kanban-card, .kanban-card:hover, .kanban-card[data-lifted="true"] { transition: none; transform: none; animation: none; } .attention-dot { animation: none; } }
+@media(prefers-reduced-motion:reduce) { .kanban-card, .kanban-card:hover, .kanban-card[data-lifted="true"] { transition: none; transform: none; } }
+:root[data-motion="reduced"] :is(.kanban-card, .kanban-card:hover, .kanban-card[data-lifted="true"]) { transition: none; transform: none; }
 
-.deal-detail select, .deal-detail input, .deal-detail textarea { color: var(--text); background: #091420; border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; font: inherit; color-scheme: dark; }
-.deal-detail :is(select,input,textarea):focus { outline: 2px solid var(--orange); outline-offset: 2px; }
-.detail-controls { margin-bottom: 20px; align-items: start; }
-.detail-controls label { color: var(--quiet); font-size: 12px; }
+.deal-detail select, .deal-detail input, .deal-detail textarea { color: var(--fg); background: var(--ground); border: var(--hairline-width) solid var(--hairline-strong); border-radius: var(--radius-2); padding: var(--space-2) var(--space-3); font: inherit; }
+.deal-detail :is(select,input,textarea):focus-visible { outline: var(--focus-width) solid var(--focus-ring); outline-offset: 2px; }
+.detail-controls { margin-bottom: var(--space-4); align-items: start; }
+.detail-controls label { color: var(--fg-muted); font-size: var(--font-size-1); }
 #detailNextForm label:first-child { grid-column: 1/-1; }
 #detailNextForm button { align-self: end; }
 .park-options summary { cursor: pointer; min-height: 44px; }
-#detailParkForm { display: grid; gap: 12px; }
-#detailParkForm label { display: grid; gap: 8px; }
-.shell { padding-top: 18px; }
-@media(max-width:650px) { .hero h1 { font-size: 40px; } .board-toolbar { gap: 8px; margin-top: 12px; } }
+#detailParkForm { display: grid; gap: var(--space-3); }
+#detailParkForm label { display: grid; gap: var(--space-2); }
+.shell { padding-top: var(--space-4); }
+@media(max-width:650px) { .hero h1 { font-size: var(--font-size-3); } .board-toolbar { gap: var(--space-2); margin-top: var(--space-3); } }
 
 .hero-meta .as-of::after { content: none; }
-.hero-meta #retryRead { border: 0; background: transparent; color: var(--quiet); }
-
-.kanban-card[data-phase="Closed"] .attention-dot { animation: none; }
+.hero-meta #retryRead { border: 0; background: transparent; color: var(--fg-muted); }
 
 .kanban-card .auto-move span { display: block; white-space: nowrap; text-overflow: ellipsis; }
 
