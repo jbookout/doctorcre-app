@@ -59,6 +59,7 @@ for (const path of await files(ROOT_PATH)) {
 const V2_MIGRATED_STYLESHEETS = [
   "css/tokens.css", "css/system.css", "css/app-shell.css", "css/workspace.css",
   "css/correspondence.css", "public-shell/shell.css",
+  "css/conversations.css", "css/tasks.css", "css/doc-activity.css", "css/doc-presence.css", "css/morning-brief.css",
 ];
 const v2Tells = [
   [/(?<!repeating-linear-)gradient\(/, "gradient (only repeating-linear-gradient pattern encoding is allowed)"],

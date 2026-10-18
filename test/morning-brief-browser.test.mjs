@@ -64,11 +64,12 @@ test('unavailable brief recovers on background read, clears prior facts, partner
  state.ready=true;await page.evaluate(()=>window.dispatchEvent(new Event('online')));try { await page.locator('[data-brief-record]').first().waitFor(); } catch(error) { throw new Error(JSON.stringify({calls:state.calls.filter(call=>call.name==='morning-brief').length,text:await page.locator('#docMorningBrief').innerText(),errors:state.errors})+error.message); }state.fail=true;await page.evaluate(()=>window.dispatchEvent(new Event('online')));await page.waitForFunction(()=>document.getElementById('morningCoverage').textContent==='Brief unavailable');assert.equal(await page.locator('[data-brief-record]').count(),0);
  state.fail=false;state.scope='dell';await page.evaluate(()=>window.dispatchEvent(new Event('online')));await page.waitForFunction(()=>document.getElementById('morningTitle').textContent.includes('Dell'));assert.equal(await page.locator('#morningSpeech').getAttribute('aria-pressed'),'false');assert.deepEqual(state.errors,[]);
 });
-test('motion includes hover and ambient pulse; reduced motion is measured at desktop and phone widths',async t=>{
+test('V2 motion: hover is a state transition with no pulse; reduced motion is measured at desktop and phone widths',async t=>{
  for(const motion of ['no-preference','reduce'])for(const width of [1440,390]){
   const {page,goto}=await setup(t,{motion,width});await goto();await page.locator('#docMorningBrief[open]').waitFor();await page.locator('.morning-card').first().hover();
-  const css=await page.locator('.morning-card').first().evaluate(node=>({transform:getComputedStyle(node).transform,transition:getComputedStyle(node).transitionDuration,pulse:getComputedStyle(node.querySelector('.morning-marker')).animationName,duration:getComputedStyle(node.querySelector('.morning-marker')).animationDuration}));
-  if(motion==='reduce'){assert.equal(css.transform,'none');assert.equal(css.transition,'0s');assert.equal(css.pulse,'none');}else{assert.notEqual(css.pulse,'none');assert.equal(css.duration,'1s');assert.notEqual(css.transition,'0s');}
+  const css=await page.locator('.morning-card').first().evaluate(node=>({transform:getComputedStyle(node).transform,transition:getComputedStyle(node).transitionDuration,pulse:getComputedStyle(node.querySelector('.morning-marker')).animationName}));
+  assert.equal(css.pulse,'none','V2 removed the ambient pulse');assert.equal(css.transform,'none');
+  if(motion==='reduce')assert.equal(css.transition,'0s');else assert.notEqual(css.transition,'0s');
   if(motion==='reduce')await snap(page,`reduced-${width}`);
  }
 });

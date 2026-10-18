@@ -1,14 +1,11 @@
-/* V5-UX-B07 Doc conversations page — page layer over css/system.css.
+/* Dr. CRE chats — page layer over css/system.css, on the V2 tokens.
  *
- * The shared sheet is contract-bound, so nothing here invents a colour or a
- * type scale; the dark cinematic register comes from its tokens alone. This
- * page adds only what the shared sheet leaves to a page:
+ * This page adds only what the shared sheet leaves to a page:
  *
  *  1. PRIVATE VERSUS SHARED, drawn as the strongest distinction on the page.
- *     Private carries the CARR orange ring and a closed lock; shared carries
- *     the navy accent and an open lock. Colour is never the only carrier — each
- *     state has its own word and its own glyph, so the difference survives a
- *     monochrome screen and a reader who cannot tell the two hues apart.
+ *     Each state has its own word, its own glyph and its own border style
+ *     (private solid, shared double), so the difference survives a monochrome
+ *     screen and a reader who cannot tell hues apart. Colour is never data.
  *  2. The one-column transcript, authored at 360px and widened once. A turn is
  *     a sentence somebody said, not a table row, and a long body wraps rather
  *     than pushing a horizontal scrollbar onto a phone.
@@ -22,55 +19,55 @@
 .topbar { flex-wrap: wrap; }
 .global-controls { flex-wrap: wrap; justify-content: flex-end; }
 
-.hero { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 14px; }
-.hero-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
-.hero-card { display: grid; gap: 12px; }
+.hero { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: var(--space-3); }
+.hero-meta { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+.hero-card { display: grid; gap: var(--space-3); }
 
-.headline { margin: 0; font: 600 20px/1.3 var(--display); }
-.caption { margin: 0; color: var(--quiet); font-size: 11px; line-height: 1.5; }
-.mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; letter-spacing: 0.02em; overflow-wrap: anywhere; }
+.headline { margin: 0; font: var(--font-weight-strong) var(--font-size-3) / var(--line-height-heading) var(--font-text); }
+.caption { margin: 0; color: var(--fg-muted); font-size: var(--font-size-1); line-height: var(--line-height-body); }
+.mono { font-family: var(--font-mono); font-size: var(--font-size-1); overflow-wrap: anywhere; }
 
 .btn { min-height: var(--touch); }
 .chip { min-height: var(--touch); overflow-wrap: anywhere; }
 .field input, .field select { min-height: var(--touch); }
 
-/* The slice's central distinction: a word, a glyph and an accent, never a hue alone. */
-.visibility-badge { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0; min-height: var(--touch); padding: 8px 12px; border-radius: 999px; font: 700 13px/1.3 var(--body); overflow-wrap: anywhere; }
-.visibility-badge[data-visibility="private"] { border: 1px solid var(--orange); color: var(--orange-text); background: color-mix(in srgb, var(--orange) 12%, transparent); }
-.visibility-badge[data-visibility="shared"] { border: 1px solid var(--navy); color: var(--text); background: color-mix(in srgb, var(--navy) 26%, transparent); }
-.visibility-badge[data-visibility="none"] { border: 1px dashed var(--line); color: var(--quiet); background: transparent; }
-.lock-glyph { font-size: 15px; line-height: 1; }
+/* The slice's central distinction: a word, a glyph and a border style, never a hue alone. */
+.visibility-badge { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); min-height: var(--touch); margin: 0; padding: var(--space-2) var(--space-3); border-radius: var(--radius-round); font: var(--font-weight-strong) var(--font-size-1) / 1.3 var(--font-text); overflow-wrap: anywhere; }
+.visibility-badge[data-visibility="private"] { border: var(--hairline-width) solid var(--fg); color: var(--fg); background: var(--surface-2); }
+.visibility-badge[data-visibility="shared"] { border: 3px double var(--hairline-strong); color: var(--fg); background: transparent; }
+.visibility-badge[data-visibility="none"] { border: var(--hairline-width) dashed var(--hairline-strong); color: var(--fg-muted); background: transparent; }
+.lock-glyph { font-size: var(--font-size-2); line-height: 1; }
 
-.hero-facts { margin: 0; padding: 0; list-style: none; display: grid; gap: 4px; color: var(--quiet); font-size: 11px; }
+.hero-facts { display: grid; gap: var(--space-1); margin: 0; padding: 0; color: var(--fg-muted); font-size: var(--font-size-1); list-style: none; }
 .hero-facts li { overflow-wrap: anywhere; }
 
 /* One column, always: a turn is a sentence, not a table row. */
-.turn-list { margin: 0; padding: 0; list-style: none; display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; }
-.turn { padding: 10px 12px; border: 1px solid var(--line); border-left-width: 3px; border-radius: 12px; }
-.turn[data-role="human"] { border-left-color: var(--orange); }
-.turn[data-role="assistant"] { border-left-color: var(--navy); }
-.turn-top { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; color: var(--quiet); font-size: 11px; }
-.turn-role { font-weight: 800; letter-spacing: 0.04em; text-transform: uppercase; }
-.turn-body { margin: 6px 0 0; font: 400 15px/1.45 var(--body); overflow-wrap: anywhere; white-space: pre-wrap; }
+.turn-list { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-2); margin: 0; padding: 0; list-style: none; }
+.turn { padding: var(--space-3); border: var(--hairline-width) solid var(--hairline); border-left-width: 3px; border-radius: var(--radius-2); }
+.turn[data-role="human"] { border-left-color: var(--fg); }
+.turn[data-role="assistant"] { border-left-color: var(--hairline-strong); border-left-style: double; }
+.turn-top { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-2); color: var(--fg-muted); font-size: var(--font-size-1); }
+.turn-role { color: var(--fg); font-weight: var(--font-weight-strong); }
+.turn-body { margin: var(--space-1) 0 0; font: var(--font-weight-regular) var(--font-size-2) / var(--line-height-body) var(--font-text); overflow-wrap: anywhere; white-space: pre-wrap; }
 
 #conversationList { grid-template-columns: minmax(0, 1fr); }
 #conversationList .work-item, #archivedList .work-item { grid-template-columns: minmax(0, 1fr); }
-.list-title { margin: 0; font: 600 16px/1.25 var(--body); overflow-wrap: anywhere; }
-.list-meta { margin: 4px 0 0; color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
-.list-open { margin-top: 10px; }
+.list-title { margin: 0; font: var(--font-weight-strong) var(--font-size-2) / 1.25 var(--font-text); overflow-wrap: anywhere; }
+.list-meta { margin: var(--space-1) 0 0; color: var(--fg-muted); font-size: var(--font-size-1); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.list-open { margin-top: var(--space-3); }
 .list-open .btn { width: 100%; }
 
 .access-row { margin: 0; overflow-wrap: anywhere; }
-.action-row { display: grid; gap: 8px; margin-top: 10px; }
+.action-row { display: grid; gap: var(--space-2); margin-top: var(--space-3); }
 .action-row .btn { width: 100%; }
-.note-act { margin-top: 10px; }
+.note-act { margin-top: var(--space-3); }
 .note-act .btn { width: 100%; }
-.share-toggle[aria-pressed="true"] { border-color: var(--navy); color: var(--text); background: color-mix(in srgb, var(--navy) 22%, transparent); }
-.share-toggle[aria-pressed="false"] { border-color: var(--line-strong); color: var(--muted); }
+.share-toggle[aria-pressed="true"] { border-color: var(--fg); color: var(--fg); background: var(--surface-3); }
+.share-toggle[aria-pressed="false"] { border-color: var(--hairline-strong); color: var(--fg-muted); }
 
-.state-block { border: 1px dashed var(--line); border-radius: 12px; padding: 12px; margin-bottom: 10px; color: var(--quiet); }
+.state-block { margin-bottom: var(--space-3); padding: var(--space-3); border: var(--hairline-width) dashed var(--hairline-strong); border-radius: var(--radius-2); color: var(--fg-muted); }
 .state-block[data-state="ready"] { display: none; }
-.state-block[data-state="not_found"] { border-style: solid; border-color: color-mix(in srgb, var(--amber) 55%, transparent); }
+.state-block[data-state="not_found"] { border-style: solid; border-color: var(--status-warn); color: var(--fg); }
 
 @media (min-width: 720px) {
   .action-row { grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); }
@@ -82,134 +79,86 @@
   .turn-top { flex-direction: column; align-items: flex-start; }
 }
 
-/* --------------------------------------------- V5-UX-B09 outcome cards motion
- * Rule 9293d609: every CARR surface ships with real motion, never a static
- * page. This block adds only what css/system.css's shared tokens and
- * keyframes do not already give a page for free — the same `--motion-*`
- * custom properties, the same `breathe` and `flow-dash` keyframes used by
- * the shared `.orb` and Atlas edges, and the same "brighten once, do not
- * cut" idiom css/room.css uses for `.figure-value.is-changed`
- * (`figure-flash`). The recommendation → submission → outcome flow line is
- * deliberately modeled on css/workspace.css's own animated pipeline flow
- * diagram (`.flow-node`/`.flow-path`/`.flow-particle`), which Joe named the
- * reference standard.
- *
- * Every animation here is opacity/filter/stroke/transform only — nothing
- * animates width, height, margin or position in a way that shifts layout —
- * and css/system.css's own `@media (prefers-reduced-motion: reduce)` /
- * `:root[data-motion="reduced"]` floor already turns off every animation and
- * transition on the page by selector (`*, *::before, *::after`). The rules
- * below repeat that floor for this block's own selectors anyway, matching
- * how css/charts.css's `.chart-bar` and css/room.css's `.figure-value` each
- * restate it, so a reader — and a test — can find the reduced-motion
- * behavior for THIS component without re-deriving it from the global rule.
+/* --------------------------------------------- V5-UX-B09 outcome cards
+ * V2 motion rule: motion only on a state change, opacity and transform only.
+ * Cards arrive in place (no entrance), hover is a border step (no lift), the
+ * freshness dot and flow line are still, and the one animation left is the
+ * field that just changed settling in from half opacity, because that marks a
+ * real change the server reported.
  */
+.outcome-card { transition: border-color var(--duration-hover) var(--ease-out); }
+@media (hover: hover) { .outcome-card:hover { border-color: var(--hairline-strong); } }
+.outcome-card:active { border-color: var(--fg-muted); }
 
-/* 1. Orchestrated staggered entrance. `--outcome-card-delay` is set through
- * CSSOM by js/conversations.js per card index (the Worker's CSP refuses a
- * `style` attribute written into markup), the same `animation-delay: var(...)`
- * convention css/room.css uses for `--drift-delay`. Nothing here sets a
- * persistent `opacity` outside the keyframe, so removing the animation
- * (reduced motion) leaves the card at its ordinary, fully visible style —
- * never stuck invisible. */
-.outcome-card {
-  animation: outcome-card-in var(--motion-enter) var(--ease) both;
-  animation-delay: var(--outcome-card-delay, 0ms);
-  /* 2. Hover and press feedback on the card itself (buttons and chips already
-   * carry their own from css/system.css's `.btn`/`.chip` rules). */
-  transition: transform var(--motion-move) var(--ease), border-color var(--motion-move) var(--ease), box-shadow var(--motion-move) var(--ease);
-}
-.outcome-card:hover { transform: translateY(-3px); border-color: var(--line-strong); box-shadow: var(--shadow-float); }
-.outcome-card:active { transform: translateY(-1px) scale(0.99); }
-@keyframes outcome-card-in { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
-
-/* 3. A changed field brightens once and settles — it transitions, it never
- * cuts — exactly css/room.css's `figure-flash` idiom for a text figure that
- * "cannot count up". js/conversations.js adds `.is-changed` only to the
- * specific field that differed from the previous read. */
+/* A changed field settles in rather than cutting. js/conversations.js adds
+ * `.is-changed` only to the specific field that differed from the previous read. */
 .outcome-field { display: inline; }
-.outcome-field.is-changed { animation: outcome-field-flash 700ms ease-out; border-radius: 4px; }
-@keyframes outcome-field-flash {
-  0% { background: color-mix(in srgb, var(--orange) 35%, transparent); color: var(--orange-text); }
-  100% { background: transparent; color: inherit; }
-}
+.outcome-field.is-changed { animation: outcome-field-flash var(--duration-panel) var(--ease-out); text-decoration: underline; text-decoration-color: var(--hairline-strong); text-underline-offset: 3px; }
+@keyframes outcome-field-flash { from { opacity: 0.4; } to { opacity: 1; } }
 
-/* 4. Ambient life: a small dot beside the card title pulses ONLY while
- * `data-fresh="fresh"` — the server's own `source_freshness.state`, itself
- * derived from comparing the real `observed_at` to the real `as_of`
- * (migration 0546). A stale card's dot is dim and static: never faked
- * activity for a card the record layer itself calls stale. */
-.outcome-live-dot { display: inline-block; width: 8px; height: 8px; margin-right: 2px; border-radius: 50%; background: var(--green); vertical-align: middle; }
-.outcome-live-dot[data-fresh="fresh"] { animation: breathe var(--motion-calm) ease-in-out infinite; }
-.outcome-live-dot[data-fresh="stale"] { background: var(--quiet); opacity: 0.55; }
+/* Freshness is the server's own `source_freshness.state`: fresh is a filled
+ * dot, stale is hollow. Shape carries it; nothing pulses. */
+.outcome-live-dot { display: inline-block; width: 8px; height: 8px; margin-right: 2px; border: var(--hairline-width) solid var(--status-ok); border-radius: 50%; background: var(--status-ok); vertical-align: middle; }
+.outcome-live-dot[data-fresh="stale"] { border-color: var(--fg-quiet); background: transparent; }
 
-/* 5. The recommendation → submission → outcome flow line. Only the SEGMENT
- * leading into a reached stage draws and animates; an unreached stage's dot
- * stays hollow and its incoming segment stays a static, dim dash — the
- * line never draws a stage the server did not report. */
-.outcome-flow { display: block; width: 100%; max-width: 220px; height: 20px; margin: 8px 0 2px; overflow: visible; }
-.outcome-flow-node { fill: var(--ground-2); stroke: var(--line-strong); stroke-width: 1.5; }
-.outcome-flow-node[data-reached="true"] { fill: var(--orange); stroke: var(--orange); }
-.outcome-flow-path { fill: none; stroke: var(--line); stroke-width: 2; stroke-dasharray: 4 6; }
-.outcome-flow-path[data-active="true"] { stroke: var(--orange); stroke-dasharray: 8 10; animation: flow-dash var(--motion-flow) linear infinite; }
-.outcome-flow-labels { display: flex; flex-wrap: wrap; gap: 2px; margin: 2px 0 0; color: var(--quiet); font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; }
-.outcome-flow-labels span[data-reached="true"] { color: var(--orange-text); }
+/* The recommendation → submission → outcome flow line. A reached stage is a
+ * filled node joined by a solid segment; an unreached stage is hollow behind a
+ * dashed segment. The text row under it carries the same meaning in words. */
+.outcome-flow { display: block; width: 100%; max-width: 220px; height: 20px; margin: var(--space-2) 0 2px; overflow: visible; }
+.outcome-flow-node { fill: var(--surface-1); stroke: var(--hairline-strong); stroke-width: 1.5; }
+.outcome-flow-node[data-reached="true"] { fill: var(--fg); stroke: var(--fg); }
+.outcome-flow-path { fill: none; stroke: var(--hairline-strong); stroke-width: 2; stroke-dasharray: 4 6; }
+.outcome-flow-path[data-active="true"] { stroke: var(--fg); stroke-dasharray: none; }
+.outcome-flow-labels { display: flex; flex-wrap: wrap; gap: 2px; margin: 2px 0 0; color: var(--fg-muted); font-size: var(--font-size-1); }
+.outcome-flow-labels span[data-reached="true"] { color: var(--fg); font-weight: var(--font-weight-strong); }
 
 @media (prefers-reduced-motion: reduce) {
   .outcome-card { animation: none; transition: none; }
   .outcome-field.is-changed { animation: none; }
-  .outcome-live-dot[data-fresh="fresh"] { animation: none; }
-  .outcome-flow-path[data-active="true"] { animation: none; stroke-dasharray: none; }
 }
 :root[data-motion="reduced"] .outcome-card { animation: none; transition: none; }
 :root[data-motion="reduced"] .outcome-field.is-changed { animation: none; }
-:root[data-motion="reduced"] .outcome-live-dot[data-fresh="fresh"] { animation: none; }
-:root[data-motion="reduced"] .outcome-flow-path[data-active="true"] { animation: none; stroke-dasharray: none; }
 
 /* B08: source → suggestion → choice → canonical work/proposal. The visual
  * shows the structure; it is not a row of icons masquerading as a diagram. */
-.suggestion-section { position: relative; overflow: hidden; }
-.suggestion-section::before { content: ""; position: absolute; inset: -20% -10% auto auto; width: 45%; height: 220px; border-radius: 50%; background: radial-gradient(circle, color-mix(in srgb, var(--orange) 15%, transparent), transparent 70%); pointer-events: none; }
+.suggestion-section { position: relative; }
 .suggestion-list { position: relative; }
-.suggestion-card { animation: suggestion-arrive 650ms var(--ease) both; animation-delay: var(--suggestion-delay, 0ms); transition: transform var(--motion-move) var(--ease), border-color var(--motion-move) var(--ease), box-shadow var(--motion-move) var(--ease); }
-.suggestion-card:hover { transform: translateY(-3px); border-color: var(--line-strong); box-shadow: var(--shadow-float); }
+.suggestion-card { transition: border-color var(--duration-hover) var(--ease-out); }
+@media (hover: hover) { .suggestion-card:hover { border-color: var(--hairline-strong); } }
 .suggestion-card[data-disposition="dismissed"], .suggestion-card[data-disposition="snoozed"] { opacity: .7; }
-@keyframes suggestion-arrive { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
-.suggestion-content { min-width: 0; width: 100%; }
-.suggestion-heading { display: flex; align-items: flex-start; gap: 12px; }
-.suggestion-heading h3 { margin: 0; font: 600 clamp(19px, 2vw, 25px)/1.2 var(--display); letter-spacing: .01em; }
-.suggestion-beacon { width: 11px; height: 11px; flex: 0 0 11px; margin-top: 7px; border: 2px solid var(--orange); border-radius: 50%; box-shadow: 0 0 18px color-mix(in srgb, var(--orange) 65%, transparent); animation: breathe 3.6s ease-in-out infinite; }
+.suggestion-content { width: 100%; min-width: 0; }
+.suggestion-heading { display: flex; align-items: flex-start; gap: var(--space-3); }
+.suggestion-heading h3 { margin: 0; font: var(--font-weight-strong) var(--font-size-3) / var(--line-height-heading) var(--font-text); }
+.suggestion-beacon { flex: 0 0 10px; width: 10px; height: 10px; margin-top: 7px; border: 2px solid var(--fg); border-radius: 50%; background: var(--fg); }
 .suggestion-card[data-disposition="dismissed"] .suggestion-beacon,
-.suggestion-card[data-disposition="snoozed"] .suggestion-beacon { animation: none; box-shadow: none; }
-.suggestion-uncertainty { color: var(--amber); margin: 8px 0; }
-.suggestion-flow { margin: 16px 0 12px; border-radius: 12px; padding: 10px 16px; border: 1px solid var(--line); background: color-mix(in srgb, var(--navy) 22%, transparent); backdrop-filter: blur(12px); }
+.suggestion-card[data-disposition="snoozed"] .suggestion-beacon { background: transparent; border-color: var(--fg-quiet); }
+.suggestion-uncertainty { margin: var(--space-2) 0; color: var(--status-warn-ink); }
+.suggestion-flow { margin: var(--space-4) 0 var(--space-3); padding: var(--space-3) var(--space-4); border: var(--hairline-width) solid var(--hairline); border-radius: var(--radius-2); }
 .suggestion-flow svg { display: block; width: 100%; height: 42px; }
-.suggestion-flow-line { fill: none; stroke: var(--orange); stroke-width: 3; stroke-dasharray: 10 12; animation: flow-dash var(--motion-flow) linear infinite; }
-.suggestion-flow-node { fill: var(--ground-2); stroke: var(--orange); stroke-width: 3; transition: fill var(--motion-move) ease, transform var(--motion-move) ease; transform-box: fill-box; transform-origin: center; }
-.suggestion-card:hover .suggestion-flow-node { fill: var(--orange); transform: scale(1.12); }
-.suggestion-flow-labels { display: grid; grid-template-columns: repeat(4,1fr); text-align: center; gap: 4px; font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--orange-text); }
-.suggestion-original { margin: 8px 0 16px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; }
-.suggestion-original summary { cursor: pointer; color: var(--orange-text); }
+.suggestion-flow-line { fill: none; stroke: var(--hairline-strong); stroke-width: 2; }
+.suggestion-flow-node { fill: var(--surface-1); stroke: var(--fg); stroke-width: 2; }
+.suggestion-flow-labels { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--space-1); color: var(--fg-muted); font-size: var(--font-size-1); text-align: center; }
+.suggestion-original { margin: var(--space-2) 0 var(--space-4); padding: var(--space-3); border: var(--hairline-width) solid var(--hairline); border-radius: var(--radius-2); }
+.suggestion-original summary { color: var(--fg); cursor: pointer; }
 .suggestion-original ul { padding-left: 18px; }
-.suggestion-original li { margin: 6px 0; }
-.suggestion-original li span { color: var(--muted); }
-.suggestion-decisions { display: flex; flex-wrap: wrap; gap: 8px; }
-.suggestion-fields { display: flex; flex-wrap: wrap; align-items: end; gap: 12px; margin: 12px 0; font-size: 12px; }
-.suggestion-fields label { display: grid; gap: 5px; min-width: 190px; }
-.suggestion-fields input { min-height: 38px; }
-.suggestion-fields a { padding-bottom: 10px; }
-.suggestion-correction textarea { display: block; width: 100%; min-height: 80px; margin: 6px 0 9px; }
-.suggestion-conflict { border-left: 3px solid var(--amber); padding: 8px 12px; margin: 12px 0; background: color-mix(in srgb, var(--amber) 10%, transparent); }
-.suggestion-conflict p { margin: 5px 0; }
-.suggestion-conflict-only { grid-template-columns: minmax(0, 1fr); border-left: 3px solid var(--amber); background: color-mix(in srgb, var(--amber) 10%, var(--ground-2)); }
-.suggestion-conflict-only p { margin: 6px 0 0; overflow-wrap: anywhere; }
-.suggestion-proposals { margin-top: 14px; padding: 12px 14px; border: 1px solid color-mix(in srgb, var(--orange) 42%, var(--line)); border-radius: 12px; background: color-mix(in srgb, var(--orange) 7%, var(--ground-2)); }
-.suggestion-proposals strong { color: var(--orange-text); }
-.suggestion-proposals ul { margin: 8px 0 0; padding-left: 18px; }
-.suggestion-proposals li { margin-top: 8px; }
+.suggestion-original li { margin: var(--space-1) 0; }
+.suggestion-original li span { color: var(--fg-muted); }
+.suggestion-decisions { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.suggestion-fields { display: flex; flex-wrap: wrap; align-items: end; gap: var(--space-3); margin: var(--space-3) 0; font-size: var(--font-size-1); }
+.suggestion-fields label { display: grid; gap: var(--space-1); min-width: 190px; }
+.suggestion-fields input { min-height: var(--touch); }
+.suggestion-fields a { padding-bottom: var(--space-3); }
+.suggestion-correction textarea { display: block; width: 100%; min-height: 80px; margin: var(--space-2) 0; }
+.suggestion-conflict { margin: var(--space-3) 0; padding: var(--space-2) var(--space-3); border-left: 3px solid var(--status-warn); background: var(--surface-2); }
+.suggestion-conflict p { margin: var(--space-1) 0; }
+.suggestion-conflict-only { grid-template-columns: minmax(0, 1fr); border-left: 3px solid var(--status-warn); background: var(--surface-2); }
+.suggestion-conflict-only p { margin: var(--space-1) 0 0; overflow-wrap: anywhere; }
+.suggestion-proposals { margin-top: var(--space-4); padding: var(--space-3) var(--space-4); border: var(--hairline-width) solid var(--hairline-strong); border-radius: var(--radius-2); background: var(--surface-2); }
+.suggestion-proposals strong { color: var(--fg); }
+.suggestion-proposals ul { margin: var(--space-2) 0 0; padding-left: 18px; }
+.suggestion-proposals li { margin-top: var(--space-2); }
 .suggestion-proposals p { margin: 0 0 3px; }
-.suggestion-proposals span { color: var(--muted); font-size: 12px; }
-@media (max-width: 600px) { .suggestion-flow { padding: 8px; } .suggestion-flow-labels { font-size: 9px; } }
-@media (prefers-reduced-motion: reduce) { .suggestion-card, .suggestion-beacon, .suggestion-flow-line { animation: none; transition: none; } .suggestion-flow-line { stroke-dasharray: none; } }
-:root[data-motion="reduced"] .suggestion-card, :root[data-motion="reduced"] .suggestion-beacon, :root[data-motion="reduced"] .suggestion-flow-line { animation: none; transition: none; }
-:root[data-motion="reduced"] .suggestion-flow-line { stroke-dasharray: none; }
+.suggestion-proposals span { color: var(--fg-muted); font-size: var(--font-size-1); }
+@media (max-width: 600px) { .suggestion-flow { padding: var(--space-2); } }
+@media (prefers-reduced-motion: reduce) { .suggestion-card { transition: none; } }
+:root[data-motion="reduced"] .suggestion-card { transition: none; }

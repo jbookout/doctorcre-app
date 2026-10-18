@@ -1,4 +1,4 @@
-/* V5-UX-B02 Tasks — page layer over css/system.css.
+/* V5-UX-B02 Tasks — page layer over css/system.css, on the V2 tokens.
  *
  * The shared sheet is contract-bound, so nothing here redefines the register:
  * no colours of its own, no type scale, no new component vocabulary. It does
@@ -23,49 +23,52 @@
 .chip { min-height: var(--touch); }
 
 /* Quick add, lifted from the prototype card. */
-.row-wrap { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 12px; }
-.field-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin-top: 12px; }
-.parsed { margin: 12px 0; grid-template-columns: repeat(4, minmax(0, 1fr)); }
-.parsed i { color: var(--quiet); }
-.chip-list { display: flex; flex-wrap: wrap; gap: 8px; }
+.row-wrap { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; margin-top: var(--space-3); }
+.field-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: var(--space-3); margin-top: var(--space-3); }
+.parsed { margin: var(--space-3) 0; grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.parsed i { color: var(--fg-muted); }
+.chip-list { display: flex; flex-wrap: wrap; gap: var(--space-2); }
 
 /* Quick add folds away. On a phone it starts folded and sits under the open
  * work, so the list is the first thing on screen. */
 .quick-add > summary { list-style: none; }
 .quick-add > summary::-webkit-details-marker { display: none; }
-.quick-add-summary { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: var(--touch); cursor: pointer; }
+.quick-add-summary { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); min-height: var(--touch); cursor: pointer; }
 .quick-add-summary .eyebrow { display: block; margin: 0; }
-.quick-add-title { display: block; font: 700 clamp(22px, 2.6vw, 30px)/1.05 var(--display); color: var(--text); }
-.quick-add-toggle { width: 12px; height: 12px; flex: 0 0 auto; border-right: 2px solid var(--muted); border-bottom: 2px solid var(--muted); transform: rotate(45deg); transition: transform 180ms var(--ease); }
+.quick-add-title { display: block; font: var(--font-weight-strong) var(--font-size-4) / var(--line-height-heading) var(--font-text); color: var(--fg); }
+.quick-add-toggle { width: 12px; height: 12px; flex: 0 0 auto; border-right: 2px solid var(--fg-muted); border-bottom: 2px solid var(--fg-muted); transform: rotate(45deg); transition: transform var(--duration-menu) var(--ease-out); }
 .quick-add[open] .quick-add-toggle { transform: rotate(-135deg); }
 
 /* A task row: title and meta on the left, owner and state on the right. */
-.stack-end { display: grid; gap: 8px; justify-items: end; }
+.stack-end { display: grid; gap: var(--space-2); justify-items: end; }
 .task-open { display: block; width: 100%; padding: 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
-.task-open h3 { margin: 0; font: 600 17px/1.15 var(--body); }
+.task-open h3 { margin: 0; font: var(--font-weight-strong) var(--font-size-2) / 1.25 var(--font-text); }
 .work-item h3,
 .work-meta,
 .work-meta span { min-width: 0; overflow-wrap: anywhere; }
 .work-item > div { min-width: 0; }
 
 /* The popup's label/value rows. */
-.detail-rows { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); gap: 8px 14px; margin: 0; }
-.detail-rows dt { color: var(--quiet); font-size: 10px; font-weight: 800; letter-spacing: 0.12em; text-transform: uppercase; }
-.detail-rows dd { margin: 0; font-size: 13px; overflow-wrap: anywhere; }
+.detail-rows { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); gap: var(--space-2) var(--space-4); margin: 0; }
+.detail-rows dt { color: var(--fg-muted); font-size: var(--font-size-1); }
+.detail-rows dd { margin: 0; font-size: var(--font-size-1); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
 
 /* The system-owned group: present, collapsed, never hidden. */
-.system-owned { margin-top: var(--gap); border: 1px dashed var(--line-strong); border-radius: var(--radius); padding: 10px 12px; }
-.system-owned > summary { min-height: var(--touch); display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 12px; font-weight: 800; cursor: pointer; }
-.system-owned .work-list { margin-top: 10px; }
+.system-owned { margin-top: var(--space-4); border: var(--hairline-width) dashed var(--hairline-strong); border-radius: var(--radius-3); padding: var(--space-2) var(--space-3); }
+.system-owned > summary { min-height: var(--touch); display: flex; align-items: center; gap: var(--space-2); color: var(--fg-muted); font-size: var(--font-size-1); font-weight: var(--font-weight-strong); cursor: pointer; }
+.system-owned .work-list { margin-top: var(--space-3); }
 
 @media (max-width: 640px) {
   #main { display: flex; flex-direction: column; }
   .tasks-open { order: 1; }
-  .tasks-quick-add { order: 2; padding: 10px 14px; }
-  .quick-add-title { font-size: 20px; }
+  .tasks-quick-add { order: 2; padding: var(--space-3) var(--space-4); }
+  .quick-add-title { font-size: var(--font-size-3); }
   .parsed { grid-template-columns: 1fr; }
   .detail-rows { grid-template-columns: minmax(0, 1fr); gap: 2px; }
-  .detail-rows dd { margin-bottom: 8px; }
+  .detail-rows dd { margin-bottom: var(--space-2); }
   .work-item { grid-template-columns: minmax(0, 1fr); }
   .stack-end { justify-items: start; }
 }
+
+@media (prefers-reduced-motion: reduce) { .quick-add-toggle { transition: none; } }
+:root[data-motion="reduced"] .quick-add-toggle { transition: none; }
