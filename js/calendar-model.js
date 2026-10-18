@@ -21,9 +21,6 @@
 
 export const CALENDAR_VIEWS = Object.freeze(["month", "week"]);
 export const READ_CONCURRENCY = 4;
-/** The last cell of a staggered entrance starts no later than this. */
-export const ENTRANCE_BUDGET_MS = 540;
-const STAGGER_STEP_MS = 12;
 const UPCOMING_LIMIT = 40;
 
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
@@ -159,10 +156,10 @@ export function motionDirection(before, after) {
 /* ------------------------------------------------------------------- motion */
 
 /**
- * How near a date is, and the pulse that says so. Nearer is faster: a date
- * this week breathes at the attention pace, today and anything overdue at the
- * urgent pace, the rest of the month calmly, and anything further out, or any
- * settled date, not at all.
+ * How near a date is, and the marker that says so. The marker is a still
+ * shape: a double ring for today and anything overdue (urgent), a ringed dot
+ * for this week (attention), a dot for the rest of the month (calm), and a
+ * hollow ring for anything further out or settled (still).
  */
 export function approach(entry, today) {
   const days = daysBetween(today, entry.day);
@@ -174,11 +171,6 @@ export function approach(entry, today) {
   if (days <= 7) return { band: "soon", days, pulse: "attention", label };
   if (days <= 30) return { band: "near", days, pulse: "calm", label };
   return { band: "later", days, pulse: "still", label };
-}
-
-/** The entrance delay for the Nth cell, capped so the whole grid lands in time. */
-export function staggerDelay(index) {
-  return Math.min(Math.max(0, index) * STAGGER_STEP_MS, ENTRANCE_BUDGET_MS);
 }
 
 /* ---------------------------------------------------------------- entries */
