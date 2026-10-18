@@ -79,6 +79,9 @@ function mountAccount(root, host, pathname, beforeSignOutReplace = () => {}) {
   };
   const close = () => { panel.hidden = true; avatar.setAttribute("aria-expanded", "false"); };
   avatar.onclick = () => { panel.hidden = !panel.hidden; avatar.setAttribute("aria-expanded", String(!panel.hidden)); };
+  panel.addEventListener("click", event => {
+    if (event.target.closest("#appSyncRefresh")) { close(); avatar.focus(); }
+  });
   root.addEventListener("keydown", (event) => {
     if (event.key !== "Tab" || panel.hidden) return;
     const options = [...panel.querySelectorAll("button:not(:disabled), a[href]")].filter(node => node.getClientRects().length);
