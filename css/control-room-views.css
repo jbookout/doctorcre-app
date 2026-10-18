@@ -19,6 +19,7 @@
 #panelViews .work-item h3 { margin: 0 0 var(--space-1); font-weight: var(--font-weight-regular); }
 #panelViews .work-item .btn { background: none; border-color: var(--hairline); box-shadow: none; }
 
+#panelDashboard { gap: var(--space-2); }
 .cr-boards-directory { display: grid; gap: var(--space-2); }
 .cr-boards-toolbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-2); }
 .cr-boards-heading { margin: 0; font: var(--font-weight-strong) var(--font-size-4)/1.2 var(--font-text); }
@@ -47,6 +48,9 @@
 #panelDashboard .filters { margin-block: var(--space-2); gap: var(--space-2); }
 #panelDashboard .filters select { min-height: var(--touch); }
 @media (max-width: 760px) {
+  #panelDashboard { gap: var(--space-1); }
+  #panelDashboard .pipeline-panel .panel-heading { margin-bottom: var(--space-1); }
+  #panelDashboard .filters { margin-block: var(--space-1); }
   .cr-boards-heading { font-size: var(--font-size-3); }
   .cr-boards-directory .board-directory { grid-template-columns: 1fr; gap: var(--space-1); }
   .cr-boards-directory .board-link { padding-block: var(--space-1); }

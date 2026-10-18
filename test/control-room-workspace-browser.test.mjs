@@ -47,7 +47,7 @@ async function open(t,{width=1440,path='/control-room?mode=live&tab=boards',conn
    if(rpc.name==='schedule-board'&&state.removeJobs){payload.jobs=[];payload.sources=payload.sources.map(source=>({...source,state:'unknown',count:null}));}
    if(rpc.name==='deal-room-board'&&state.dealStates)payload={...payload,actor:'joe',deals:['active','closed','inactive','completed'].map((state,i)=>({id:`demo-deal-${i}`,name:`Demo ${state}`,owner:'joe',attention:true,phase:state==='closed'?'closed':'pending',operating_state:['active','closed'].includes(state)?'active':state}))};
    if(rpc.name==='unfinished-work'&&state.bindingOnly)for(const row of payload.items||[]){row.work_request_ref='WR-000999';row.human_ref=null;row.work_request=null;row.related=[];row.pr_url='https://github.com/example/demo/pull/88';row.pr=null;}
-   if(rpc.name==='unfinished-work')for(const row of payload.items||[]){row.pr=state.pr;row.title=state.title;}
+   if(rpc.name==='unfinished-work')for(const row of payload.items||[]){row.pr=state.pr;row.title=state.title;if(state.cardDetails)Object.assign(row,{summary:"Keep distinct acceptance details.",provider:"OpenAI",model:"gpt-6-sol",effort:"high"});}
    if(rpc.name==='unfinished-work'&&extraBoard)payload.items.forEach((row,i)=>row.repo=i%2?'example/second-project':'example/demo');
    if(rpc.name==='unfinished-work'&&rpc.arguments.live_library)payload.items=state.liveItems;
    if(rpc.name==='read-resource-dashboard'){payload=await fixture.readResourceDashboard();payload.connections=await fixture.readConnections();payload.connections.providers[0].spend.amount=state.spend;if(state.connectionsBad){payload.connections.providers.push(null);payload.connections.devices.items.push(null);}}
@@ -327,4 +327,29 @@ test('C5 two expanded published boards leave the live pipeline on the first phon
  const first=await page.locator('#board-stages .board-card').first().boundingBox();
  const footer=await page.locator('.app-layout-status').boundingBox();
  assert.ok(first.y+80<footer.y,`pipeline starts at ${first.y}, content ends at ${footer.y}`);
+});
+
+for(const width of [1440,390])for(const theme of ['dark','light'])test(`C5 round 2 Boards removes empty card metadata at ${width}px ${theme}`,async t=>{
+ const {page,errors}=await open(t,{width,theme,boardUnpublished:true,extraBoard:true});
+ await advanceRoom(page,16001);await page.locator('#board-stages .board-card').first().waitFor();
+ if(process.env.C5_ROUND2_CAPTURE){const dir=new URL(`out/test-artifacts/c5-round2/${process.env.C5_ROUND2_CAPTURE}/`,root);await mkdir(dir,{recursive:true});await page.screenshot({path:new URL(`boards-${width}-${theme}.png`,dir).pathname});}
+ const cards=page.locator('#board-stages .board-card');
+ for(const card of await cards.all()){
+  const title=(await card.locator('.card-title').textContent()).replace(/\.+$/, '');
+  for(const summary of await card.locator('.card-summary').all())assert.notEqual((await summary.textContent()).replace(/\.+$/, ''),title,'title appears only once');
+  assert.doesNotMatch(await card.textContent(),/Work Request unavailable|No PR|Unknown|Not recorded|\bunknown\b/,'missing metadata adds no visible row');
+ }
+ assert.match(await page.locator('[data-task-id="work_request:WR-000901"] .card-meta').textContent(),/WR-000901.*demo #17/,'known bindings remain visible');
+ assert.equal(await page.locator('.directory-panel').evaluate(n=>n.open),true);
+ assert.match(await page.locator('#board-data-mode').textContent(),/Live work.*pipeline/);
+ if(width===390)assert.ok((await cards.first().boundingBox()).y<510,'phone header and filters form a compact group');
+ assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
+ assert.deepEqual(errors,[]);
+});
+
+test('C5 round 2 Boards keeps meaningful descriptions and recorded model metadata',async t=>{
+ const {page,state}=await open(t);state.cardDetails=true;await advanceRoom(page,16001);
+ const card=page.locator('#board-stages .board-card').first();
+ assert.equal(await card.locator('.card-summary').textContent(),'Keep distinct acceptance details.');
+ assert.equal(await card.locator('.card-model').textContent(),'OpenAI · gpt-6-sol · high');
 });

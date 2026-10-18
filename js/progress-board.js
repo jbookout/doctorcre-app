@@ -297,16 +297,23 @@ export function mountBoard(deps = {}) {
         { title: "GitHub could not be read for this card; it shows its last verified state" }));
     node.append(top);
 
+    const compact = Boolean(deps.openTask);
     const summary = taskSummary(card);
-    node.append(el("p", "card-summary", summary, { title: summary }));
+    if (!compact || summary.replace(/\.+$/, "") !== String(card.title || card.id).replace(/\.+$/, ""))
+      node.append(el("p", "card-summary", summary, { title: summary }));
     const meta = el("p", "card-meta");
-    meta.append(el("span", "card-wr", jobLinks(card).workRequest || "Work Request unavailable"), el("span", "card-pr", jobLinks(card).prLabel || "No PR"), el("span", "dot", "·"),
-      el("span", "stage-timer", `${card.stage} ${ageText(stageEnteredAt(card), currentNow())}`,
-        { "data-stage-since": stageEnteredAt(card) || "", "data-stage": card.stage,
-          title: "Time in this stage" }));
-    node.append(meta);
-    const model = modelLine(card);
-    node.append(el("p", "card-model", model, { title: model }));
+    const links = jobLinks(card);
+    if (links.workRequest || !compact) meta.append(el("span", "card-wr", links.workRequest || "Work Request unavailable"));
+    if (links.prLabel || !compact) meta.append(el("span", "card-pr", links.prLabel || "No PR"));
+    const entered = stageEnteredAt(card);
+    if (entered || !compact) {
+      if (meta.childElementCount) meta.append(el("span", "dot", "·"));
+      meta.append(el("span", "stage-timer", `${card.stage} ${ageText(entered, currentNow())}`,
+        { "data-stage-since": entered || "", "data-stage": card.stage, title: "Time in this stage" }));
+    }
+    if (meta.childElementCount) node.append(meta);
+    const model = modelLine(card).split(" · ").filter(value => !compact || !/^(unknown|not recorded)$/i.test(value)).join(" · ");
+    if (model) node.append(el("p", "card-model", model, { title: model }));
     if (card.blocked) {
       const blocked = el("div", "card-blocked");
       blocked.append(el("p", "", `Why: ${card.blocked.reason}`), el("p", "", `Next: ${card.blocked.next}`));
