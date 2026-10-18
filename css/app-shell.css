@@ -257,7 +257,7 @@ body.has-app-layout .toast { right: var(--toast-right); bottom: calc(var(--layou
   .app-shell-account-menu :is(.app-shell-control, #appSyncRefresh)::after { content: attr(aria-label); }
   .app-shell-account-menu #callModeButton.recording::after { content: "Recording"; }
   body:has(#callModeButton.recording) #selfAvatar::after { content: ""; position: absolute; top: 0; right: 0; width: 8px; height: 8px; border-radius: 50%; background: var(--status-danger); border: 2px solid var(--surface-1); }
-  .app-shell-more-list { left: var(--space-2) !important; top: auto !important; bottom: calc(var(--layout-bottom) + 8px); width: calc(100vw - 16px); max-height: calc(100dvh - 125px); grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+  .app-shell-more-list { left: var(--space-2) !important; top: auto !important; bottom: calc(var(--layout-bottom) + 8px); width: calc(100vw - 16px); max-height: calc(100dvh - var(--layout-bottom) - var(--space-5)); grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
   .app-shell-account-menu { left: var(--space-2) !important; bottom: calc(var(--layout-bottom) + 8px); width: calc(100vw - 16px) !important; max-width: none; max-height: calc(100dvh - var(--layout-bottom) - 16px); overflow-y: auto; }
   .app-layout-status:not(:has(#appStatusSlot > *)), #appStatusSlot #retryRead { display: none; }
   .app-layout-status > span:not(.app-layout-health) { display: none; }
