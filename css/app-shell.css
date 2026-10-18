@@ -223,7 +223,7 @@ body.has-app-layout { padding: 0 0 var(--layout-bottom) var(--layout-rail) !impo
   body:has(#callModeButton.recording) #selfAvatar::after { content: ""; position: absolute; top: 0; right: 0; width: 8px; height: 8px; border-radius: 50%; background: var(--status-danger); border: 2px solid var(--surface-1); }
   .app-shell-more-list { left: var(--space-2) !important; top: auto !important; bottom: calc(var(--layout-bottom) + 8px); width: calc(100vw - 16px); max-height: calc(100dvh - 125px); grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
   .app-shell-account-menu { left: var(--space-2) !important; bottom: calc(var(--layout-bottom) + 8px); width: calc(100vw - 16px) !important; max-width: none; max-height: calc(100dvh - var(--layout-bottom) - 16px); overflow-y: auto; }
-  .app-layout-status:not(:has(#appStatusSlot > *)), #appStatusSlot [data-layout-refresh] { display: none; }
+  .app-layout-status:not(:has(#appStatusSlot > *)), #appStatusSlot #retryRead { display: none; }
   .app-layout-status > span:not(.app-layout-health) { display: none; }
   #appStatusSlot { flex: 1 1 auto; }
   .app-layout-status { bottom: calc(56px + env(safe-area-inset-bottom)); height: 56px; padding: var(--space-1) var(--space-3); gap: var(--space-1) var(--space-3); align-content: center; z-index: 1090; }
