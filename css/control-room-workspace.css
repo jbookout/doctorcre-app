@@ -3,19 +3,97 @@
  * hairline step, and connection state holds still (dot shape plus its word). */
 .control-room-workspace { max-width: none !important; width: 100%; margin: 0 !important; padding: 18px !important; min-width: 0; }
 .control-room-workspace .panel { padding: 18px; background: var(--surface-1); }
-.control-room-sidebar { display: grid; gap: 14px; min-width: 0; }
-.control-room-sidebar .panel { margin: 0; padding: 0; background: none; border: 0; box-shadow: none; }
-.control-room-sidebar .panel-heading, .control-room-sidebar .board-counts, .control-room-sidebar .board-published { display: none; }
-.control-room-sidebar .board-directory { display: grid; grid-template-columns: 1fr; gap: 8px; }
-.control-room-sidebar .board-link { padding: 10px; min-width: 0; }
-.control-room-sidebar .board-link h3 { font-size: var(--font-size-2); margin: 4px 0; }
-.control-room-sidebar .work-filters { display: grid; gap: 8px; grid-template-columns: 1fr; }
-.control-room-sidebar .work-filters label { display: grid; gap: 4px; font-size: var(--font-size-1); color: var(--fg-muted); }
-.control-room-sidebar input, .control-room-sidebar select { width: 100%; min-width: 0; padding: 9px; border: var(--hairline-width) solid var(--hairline-strong); border-radius: var(--radius-2); background: var(--surface-1); color: var(--fg); }
-.control-room-sidebar .work-filters button { min-height: var(--touch); padding: var(--space-2) var(--space-3); border: var(--hairline-width) solid var(--hairline-strong); border-radius: var(--radius-2); background: var(--surface-2); color: var(--fg); font: var(--font-weight-strong) var(--font-size-1) var(--font-text); cursor: pointer; }
-@media (hover: hover) { .control-room-sidebar .work-filters button:hover { background: var(--surface-3); } }
-/* The rail reads at rail scale, like every other page's sidebar: no page-title sizes. */
-.control-room-sidebar .directory-summary { font-size: var(--font-size-2); }
+/* V2 C1 workbench. The section nav lives in the shared workspace sidebar; main
+ * is a list region plus a detail column that collapses to let the list run
+ * full width. C2 wires the toggle; this file lays out both grid states. */
+.control-room-sidebar { display: block; min-width: 0; }
+.cr-nav { display: grid; gap: var(--space-1); }
+.cr-nav-item { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); width: 100%; min-height: var(--touch); padding: 0 var(--space-3); border: var(--hairline-width) solid transparent; border-radius: var(--radius-2); background: transparent; color: var(--fg-muted); font: var(--font-weight-regular) var(--font-size-2)/1.2 var(--font-text); text-align: left; cursor: pointer; transition: background-color var(--duration-hover) var(--ease-out), color var(--duration-hover) var(--ease-out); }
+@media (hover: hover) { .cr-nav-item:hover { background: var(--surface-2); color: var(--fg); } }
+.cr-nav-item[aria-selected="true"] { background: var(--surface-2); border-color: var(--hairline); color: var(--fg); font-weight: var(--font-weight-strong); }
+.cr-nav-item:focus-visible { outline: var(--focus-width, 2px) solid var(--focus-ring); outline-offset: 1px; }
+.cr-nav-count { color: var(--fg-quiet); font-size: var(--font-size-1); font-variant-numeric: tabular-nums; }
+.cr-nav-count:empty { display: none; }
+.cr-nav-group { display: block; margin: var(--space-4) 0 var(--space-1); padding: 0 var(--space-3); color: var(--fg-quiet); font-size: var(--font-size-1); }
+.cr-nav-group ~ .cr-nav-item { min-height: 36px; font-size: var(--font-size-1); }
+
+.cr-workbench { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0; min-width: 0; }
+.cr-workbench[data-detail="open"] { grid-template-columns: minmax(0, 1fr) minmax(280px, 360px); }
+.cr-workbench[data-detail="closed"] .cr-detail { display: none; }
+.cr-workbench[hidden] { display: none; }
+.cr-list-region { min-width: 0; container-type: inline-size; }
+.cr-detail { position: sticky; top: 0; align-self: start; min-width: 0; margin-left: var(--space-5); padding-left: var(--space-5); border-left: var(--hairline-width) solid var(--hairline); }
+.cr-section { max-width: 72rem; }
+.cr-section-head { display: grid; gap: var(--space-1); margin-bottom: var(--space-4); }
+.cr-section-head h2 { margin: 0; font: var(--font-weight-strong) var(--font-size-4)/1.2 var(--font-text); color: var(--fg); }
+.cr-section-lead { margin: 0; color: var(--fg-muted); font-size: var(--font-size-2); max-width: 60ch; }
+.cr-coverage-row { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-1) var(--space-3); margin: 0 0 var(--space-3); }
+.cr-coverage { margin: 0; color: var(--fg-muted); font-size: var(--font-size-1); font-variant-numeric: tabular-nums; }
+.cr-coverage[data-complete="false"]::before { content: "◐ "; color: var(--fg-quiet); }
+.cr-sources { font-size: var(--font-size-1); color: var(--fg-muted); }
+.cr-sources summary { cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
+.cr-sources ul { list-style: none; margin: var(--space-2) 0 0; padding: 0; display: grid; gap: var(--space-1); }
+.cr-sources strong { color: var(--fg); font-weight: var(--font-weight-strong); }
+.cr-list { display: grid; gap: var(--space-5); min-width: 0; }
+.cr-group h3 { display: flex; align-items: baseline; gap: var(--space-2); margin: 0 0 var(--space-2); font: var(--font-weight-strong) var(--font-size-2)/1.3 var(--font-text); color: var(--fg); }
+.cr-group h3 span { color: var(--fg-quiet); font-weight: var(--font-weight-regular); font-variant-numeric: tabular-nums; }
+.cr-rows { list-style: none; margin: 0; padding: 0; border-top: var(--hairline-width) solid var(--hairline); }
+.cr-row { display: grid; grid-template-columns: 1.25rem 7.5rem minmax(0, 1fr) auto; align-items: center; gap: var(--space-3); min-height: var(--touch); padding: 0 var(--space-2); border-bottom: var(--hairline-width) solid var(--hairline); font-size: var(--font-size-2); }
+.cr-row-glyph { color: var(--fg-quiet); text-align: center; }
+.cr-row-ref { color: var(--fg-muted); font-size: var(--font-size-1); font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cr-row-title { min-width: 0; color: var(--fg); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cr-row-meta { color: var(--fg-muted); font-size: var(--font-size-1); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.cr-row[data-group="blocked"] .cr-row-glyph { color: var(--status-danger); }
+.cr-row[data-group="in_progress"] .cr-row-glyph { color: var(--status-info); }
+.cr-row[data-group="review"] .cr-row-glyph { color: var(--status-warn); }
+.cr-row[data-group="ready"] .cr-row-glyph { color: var(--status-ok); }
+:root[data-color-assist="on"] .cr-row[data-group="blocked"] { border-left: 3px double var(--status-danger); }
+:root[data-color-assist="on"] .cr-row[data-group="review"] { border-left: 3px dashed var(--status-warn); }
+:root[data-color-assist="on"] .cr-row[data-group="in_progress"] { border-left: 3px dotted var(--status-info); }
+:root[data-color-assist="on"] .cr-row[data-group="ready"] { border-left: 3px solid var(--status-ok); }
+/* After the base row rules so it wins the cascade. A narrow list (a phone, or the detail column open) stacks each row on two lines. */
+@container (max-width: 760px) {
+  .cr-row { grid-template-columns: 1.25rem auto minmax(0, 1fr); align-content: center; row-gap: 2px; column-gap: var(--space-2); padding: var(--space-2); }
+  .cr-row-glyph { grid-row: 1 / span 2; align-self: start; }
+  .cr-row-title { grid-column: 2 / -1; grid-row: 1; white-space: normal; }
+  .cr-row-ref { grid-column: 2; grid-row: 2; }
+  .cr-row-meta { grid-column: 3; grid-row: 2; overflow: hidden; text-overflow: ellipsis; }
+}
+.cr-views { list-style: none; margin: 0; padding: 0; border-top: var(--hairline-width) solid var(--hairline); }
+.cr-views li { display: flex; justify-content: space-between; gap: var(--space-3); min-height: var(--touch); align-items: center; padding: var(--space-3) var(--space-3); border-bottom: var(--hairline-width) solid var(--hairline); }
+.cr-views small { display: block; margin-top: 2px; color: var(--fg-muted); font-size: var(--font-size-1); }
+.cr-views strong { font-variant-numeric: tabular-nums; }
+.cr-ledger { margin-top: var(--space-6); }
+.cr-ledger-head { display: flex; justify-content: space-between; align-items: baseline; gap: var(--space-3); margin-bottom: var(--space-3); }
+.cr-ledger-head h3 { margin: 0; font: var(--font-weight-strong) var(--font-size-3)/1.2 var(--font-text); }
+.cr-ledger .as-of { color: var(--fg-muted); font-size: var(--font-size-1); }
+
+/* Boards keeps the progress dashboard as it was; its directory and filters sit
+ * above it instead of in the rail. */
+.cr-boards-directory { display: grid; gap: var(--space-3); margin-bottom: var(--space-5); }
+.cr-boards-heading { margin: 0; font: var(--font-weight-strong) var(--font-size-4)/1.2 var(--font-text); }
+.cr-boards-directory .panel { margin: 0; padding: 0; background: none; border: 0; box-shadow: none; }
+.cr-boards-directory .panel-heading, .cr-boards-directory .board-counts, .cr-boards-directory .board-published { display: none; }
+.cr-boards-directory .board-directory { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 240px), 1fr)); gap: var(--space-2); margin-top: var(--space-2); }
+.cr-boards-directory .board-link { padding: var(--space-3); min-width: 0; }
+.cr-boards-directory .board-link h3 { font-size: var(--font-size-2); margin: var(--space-1) 0; }
+.cr-boards-directory .directory-summary { font-size: var(--font-size-2); min-height: var(--touch); display: flex; align-items: center; gap: var(--space-2); cursor: pointer; list-style: none; }
+.cr-boards-directory .directory-summary::-webkit-details-marker { display: none; }
+.cr-boards-directory .directory-summary::before { content: "\25B8"; display: inline-block; transition: transform 120ms; }
+.cr-boards-directory details[open] > .directory-summary::before { transform: rotate(90deg); }
+@media (prefers-reduced-motion: reduce) { .cr-boards-directory .directory-summary::before { transition: none; } }
+.control-room-workspace #system-work-panel .work-filters { margin: 0; gap: var(--space-3); }
+.control-room-workspace #system-work-panel .work-filters label { flex: 1 1 140px; gap: var(--space-1); font-size: var(--font-size-1); }
+.control-room-workspace #system-work-panel .work-filters input, .control-room-workspace #system-work-panel .work-filters select { padding: var(--space-2); min-height: var(--touch); }
+.control-room-workspace #system-work-panel .work-filters button { min-height: var(--touch); padding: 0 var(--space-4); border: var(--hairline-width) solid var(--hairline-strong); border-radius: var(--radius-2); background: var(--surface-2); color: var(--fg); font: inherit; cursor: pointer; }
+@media (hover: hover) { .control-room-workspace #system-work-panel .work-filters button:hover { background: var(--surface-3); } }
+.control-room-workspace #board-eyebrow { display: none; }
+/* The Key sits in the board's own toolbar here, never floating over cards. */
+.control-room-workspace .board-switch { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); }
+.control-room-workspace .legend-toggle { position: static; min-height: var(--touch); }
+.control-room-workspace .legend { position: static; width: auto; max-height: none; margin: var(--space-3) 0; box-shadow: none; animation: none; }
+/* The board's "Blocked only" checkbox stays a checkbox, not a grey block. */
+.control-room-workspace .filters input[type="checkbox"] { appearance: auto; width: 1rem; height: 1rem; min-width: 0; min-height: 0; padding: 0; margin: 0; border: 0; background: none; accent-color: var(--fg); }
 .room-name { font-family: var(--font-text); font-weight: var(--font-weight-strong); font-size: var(--font-size-2); text-decoration: none; }
 .read-recovery button { min-width: 36px; min-height: 36px; background: none; border: 0; color: var(--fg); text-decoration: underline; }
 .connection-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 215px), 1fr)); gap: 12px; margin-top: 16px; }
@@ -66,6 +144,9 @@
   .job-dialog { width: calc(100vw - 20px); padding: 18px; }
   .job-summary { grid-template-columns: 1fr; gap: 20px; }
   .job-dialog h2 { font-size: var(--font-size-3); }
+  .cr-workbench[data-detail="open"] { grid-template-columns: minmax(0, 1fr); }
+  .cr-workbench[data-detail="open"] .cr-detail { position: static; margin: var(--space-5) 0 0; padding: var(--space-5) 0 0; border-left: 0; border-top: var(--hairline-width) solid var(--hairline); }
+  .cr-section-head h2, .cr-boards-heading { font-size: var(--font-size-3); }
 }
 @media (prefers-reduced-motion: reduce) { .connection-card, .automation-job { transition: none !important; transform: none !important; } }
 .automation-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr)); gap: 12px; margin-top: 16px; }

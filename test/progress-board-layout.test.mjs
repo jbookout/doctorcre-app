@@ -46,8 +46,8 @@ for (const label of document.querySelectorAll(".board-card .card-pr, .blocked-ca
     problems.push(owner + ": PR label clipped (" + label.clientWidth + " < " + label.scrollWidth + ")");
 }
 // Every control is the thing a tap at its centre reaches, with the app shell mounted.
-// S8: the Key sits in the page flow, so it is scrolled to before it is tapped.
 for (const control of document.querySelectorAll("#legend-toggle, .app-shell-doc:not([hidden])")) {
+  // In the Control Room the Key sits in the board toolbar, so bring it on screen first.
   control.scrollIntoView({ block: "center" });
   const rect = control.getBoundingClientRect();
   const hit = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
@@ -128,7 +128,7 @@ for (const width of [390, 1280]) {
       t.after(() => browser.close());
       const page = await browser.newPage({ viewport: { width, height: 900 } });
       const { port } = server.address();
-      await page.goto(`http://127.0.0.1:${port}/progress-board?board=${board}&mode=live`);
+      await page.goto(`http://127.0.0.1:${port}/progress-board?board=${board}&mode=live&tab=boards`);
       await page.waitForFunction(() => document.body.hasAttribute("data-measure"));
       const result = await page.evaluate(() => JSON.parse(document.body.getAttribute("data-measure")));
       assert.equal(result.width, width);
