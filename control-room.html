@@ -83,11 +83,11 @@
 </div>
 <aside id="crDetail" class="cr-detail" aria-label="Item detail"><div class="state-block" data-state="empty"><h3>Nothing selected</h3><p>Choose an item in the list to see its detail here.</p></div></aside>
 </div>
-<p id="roomLive" class="sr-only" role="status" aria-live="polite"></p><section id="panelDashboard" class="tabpanel" role="tabpanel" aria-labelledby="tabDashboard"><div class="cr-boards-directory"><h2 class="cr-boards-heading">System Job Boards</h2><details class="panel directory-panel" aria-labelledby="directory-title" open>
+<p id="roomLive" class="sr-only" role="status" aria-live="polite"></p><section id="panelDashboard" class="tabpanel" role="tabpanel" aria-labelledby="tabDashboard"><div class="cr-boards-directory"><header class="cr-boards-toolbar"><h2 class="cr-boards-heading">Boards</h2><div class="board-switch"><a id="switch-project" href="/control-room/progress?board=carr-v5">Project</a><a id="switch-all" href="/control-room/progress?board=all-repos">All repositories</a><button id="legend-toggle" class="legend-toggle" type="button" aria-controls="legend" aria-expanded="false">Key</button></div></header><details class="panel directory-panel" aria-labelledby="directory-title" open>
         <summary id="directory-title" class="directory-summary">Published boards<span id="directory-error" class="error" role="alert" hidden></span></summary>
         <nav id="board-directory" class="board-directory" aria-label="Published progress boards"></nav>
       </details>
-</div><div class="board-switch"><a id="switch-project" href="/control-room/progress?board=carr-v5">Project</a><a id="switch-all" href="/control-room/progress?board=all-repos">All repositories</a><button id="legend-toggle" class="legend-toggle" type="button" aria-controls="legend" aria-expanded="false">Key</button></div><aside id="legend" class="panel legend" aria-labelledby="legend-title" hidden>
+</div><aside id="legend" class="panel legend" aria-labelledby="legend-title" hidden>
       <div class="panel-heading"><div><h2 id="legend-title">What every mark means</h2></div></div>
       <div id="legend-body" class="legend-body"></div>
     </aside>
@@ -96,8 +96,7 @@
       <section class="intro" aria-labelledby="board-title">
         <p class="eyebrow" id="board-eyebrow">Progress board</p>
         <h1 id="board-title" class="sr-only" tabindex="-1">System Job Board</h1>
-        <p id="board-meta" class="board-meta">Loading published board…</p>
-        <span id="board-freshness" class="freshness-badge"></span>
+        <div class="cr-board-state"><p id="board-meta" class="board-meta">Loading published board…</p><span id="board-freshness" class="freshness-badge"></span><p id="board-data-mode" class="board-meta" role="status"></p></div>
         <p id="board-sync" class="board-sync" role="status" hidden></p>
         <p id="board-error" class="error" role="alert" hidden></p>
         <div class="read-recovery"><button data-layout-refresh id="board-retry" type="button" hidden aria-label="Refresh" title="Refresh"><span aria-hidden="true">↻</span></button><a id="board-sign-in" href="/auth/login" hidden>Sign in</a></div>

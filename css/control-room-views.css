@@ -1,1 +1,56 @@
-/* V2 C5: built-in and saved views. Linked by control-room.html in C1 so C5 only fills this file. */
+.cr-views, #panelViews .work-list { list-style: none; margin: 0; padding: 0; border-top: var(--hairline-width) solid var(--hairline); }
+.cr-views li, #panelViews .work-item { display: flex; justify-content: space-between; gap: var(--space-3); min-height: var(--touch); align-items: center; padding: var(--space-2) var(--space-3); border: 0; border-bottom: var(--hairline-width) solid var(--hairline); border-radius: 0; background: none; font-size: var(--font-size-2); }
+.cr-views small { display: block; margin-top: 2px; color: var(--fg-muted); font-size: var(--font-size-1); }
+.cr-views strong { font-variant-numeric: tabular-nums; }
+.cr-ledger { margin-top: var(--space-5); }
+.cr-ledger-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: var(--space-2); margin-bottom: var(--space-2); }
+#panelViews .cr-ledger-head h3 { margin: 0; font: var(--font-weight-strong) var(--font-size-2)/1.3 var(--font-text); }
+.cr-ledger .as-of { color: var(--fg-muted); font-size: var(--font-size-1); }
+#panelViews .chip-bar { margin-bottom: var(--space-2); gap: var(--space-1); }
+#panelViews .chip { padding-inline: var(--space-3); }
+#panelViews .cr-ledger .state-block { margin: 0; padding: var(--space-3); border: 0; border-block: var(--hairline-width) solid var(--hairline); border-radius: 0; background: none; }
+#panelViews .cr-ledger .state-block h3 { margin: 0; color: var(--fg-muted); font: var(--font-weight-regular) var(--font-size-2)/1.3 var(--font-text); }
+#panelViews #incidentGroups .card { margin: 0; padding: 0; border: 0; background: none; box-shadow: none; }
+#panelViews #incidentGroups .card-heading { margin: var(--space-3) var(--space-3) var(--space-2); }
+#panelViews #incidentGroups .card-heading h3 { font-size: var(--font-size-1); margin: 0; color: var(--fg-muted); }
+#panelViews #incidentGroups .card-heading .eyebrow { display: inline; margin-right: var(--space-2); }
+#panelViews #incidentGroups .card-heading > div { display: flex; align-items: baseline; }
+#panelViews .work-list { gap: 0; }
+#panelViews .work-item h3 { margin: 0 0 var(--space-1); font-weight: var(--font-weight-regular); }
+#panelViews .work-item .btn { background: none; border-color: var(--hairline); box-shadow: none; }
+
+.cr-boards-directory { display: grid; gap: var(--space-2); }
+.cr-boards-toolbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-2); }
+.cr-boards-heading { margin: 0; font: var(--font-weight-strong) var(--font-size-4)/1.2 var(--font-text); }
+.cr-boards-directory .panel { margin: 0; padding: 0; background: none; border: 0; box-shadow: none; }
+.cr-boards-directory .board-counts, .cr-boards-directory .board-published, .cr-boards-directory .board-link .eyebrow { display: none; }
+.cr-boards-directory .board-directory { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 240px), 1fr)); gap: var(--space-2); margin: 0; max-height: 144px; }
+.cr-boards-directory .board-link { padding: var(--space-2) var(--space-3); gap: var(--space-1); min-width: 0; }
+.cr-boards-directory .board-link h3 { font-size: var(--font-size-2); margin: 0; }
+.cr-boards-directory .directory-summary { font-size: var(--font-size-1); min-height: var(--touch); display: flex; align-items: center; gap: var(--space-2); cursor: pointer; list-style: none; color: var(--fg-muted); }
+.cr-boards-directory .directory-summary::-webkit-details-marker { display: none; }
+.cr-boards-directory .directory-summary::before { content: "\25B8"; display: inline-block; }
+.cr-boards-directory details[open] > .directory-summary::before { transform: rotate(90deg); }
+#panelDashboard .board-switch { margin: 0; gap: var(--space-1); }
+#panelDashboard .board-switch a, #panelDashboard .legend-toggle { display: inline-flex; align-items: center; min-height: var(--touch); padding: var(--space-1) var(--space-3); font-size: var(--font-size-1); box-shadow: none; }
+#panelDashboard .intro { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: var(--space-2); margin: 0; padding: var(--space-2) 0; }
+#panelDashboard .intro > :not(.cr-board-state, .read-recovery) { grid-column: 1 / -1; }
+.cr-board-state { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-1) var(--space-3); }
+.cr-board-state p { margin: 0; }
+.cr-board-state .freshness-badge:empty { display: none; }
+#panelDashboard .read-recovery { display: flex; justify-content: flex-end; }
+#panelDashboard .headline:empty { display: none; }
+#panelDashboard .pipeline-panel { border: 0; padding: 0; border-radius: 0; background: none; }
+#panelDashboard .pipeline-panel .panel-heading { align-items: baseline; margin-bottom: var(--space-2); }
+#panelDashboard #pipeline-title { font-size: var(--font-size-2); margin: 0; }
+#panelDashboard .pipeline-rail { display: none; }
+#panelDashboard .filters { margin-block: var(--space-2); gap: var(--space-2); }
+#panelDashboard .filters select { min-height: var(--touch); }
+@media (max-width: 760px) {
+  .cr-boards-heading { font-size: var(--font-size-3); }
+  .cr-boards-directory .board-directory { grid-template-columns: 1fr; }
+  #panelDashboard .board-switch a, #panelDashboard .legend-toggle { padding-inline: var(--space-2); }
+  #panelDashboard .filters { flex-wrap: nowrap; align-items: end; }
+  #panelDashboard .filters label:not(.check) { display: grid; flex: 1; min-width: 0; gap: var(--space-1); }
+  #panelDashboard .filters select { width: 100%; min-width: 0; }
+}

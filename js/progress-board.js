@@ -408,6 +408,9 @@ export function mountBoard(deps = {}) {
 
   function renderStages(view) {
     const census = deps.openTask ? censusCards() : null;
+    const mode = byId("board-data-mode");
+    if (mode) mode.textContent = census ? "Live work · The pipeline shows current work."
+      : view ? "Published snapshot · The pipeline shows published work." : "";
     if (!view && !census) return;
     const original = census || view.cards;
     const approvals = governanceTasks(governanceRead);
@@ -894,6 +897,7 @@ export function mountBoard(deps = {}) {
     governanceRead = null;
     deps.onTasks?.([], {state});
     censusPipeline = null;
+    if (byId("board-data-mode")) byId("board-data-mode").textContent = "";
     currentView = null;
     lastRead = null;
     viewSignature = "";
@@ -979,7 +983,7 @@ export function mountBoard(deps = {}) {
       if (view.error) { boardState="unknown"; deps.onTasks?.([], {state:"unknown"}); setError(view.error); return false; }
       if (!view.version) {
         clearBoard("unpublished");
-        setError("This board has not been published yet.");
+        setError(byId("board-data-mode") ? "" : "This board has not been published yet.");
         byId("board-retry").hidden = false;
         return false;
       }

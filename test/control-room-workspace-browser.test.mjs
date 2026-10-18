@@ -7,7 +7,7 @@ import {atlasFixtureResponse} from '../scripts/atlas-fixture.mjs';
 import { routeContract as routes } from "../js/routes.js";
 const root=new URL('../',import.meta.url);
 const reads={'list-feature-switches':'listFeatureSwitches','list-doc-suggestions':'listDocSuggestions','read-progress-board':'readProgressBoard','list-progress-boards':'listProgressBoards','unfinished-work':'unfinishedWork','incident-board':'incidentBoard','governance-queue':'governanceQueue','schedule-board':'scheduleBoard','work-request-card':'workRequestCard','deal-room-board':'getBoard','today-triage':'todayTriage','notification-feed':'notificationFeed','current-work-item':'currentWorkItem','list-notifications':'listNotifications'};
-async function open(t,{width=1440,path='/control-room?mode=live&tab=boards',connectionsBad=false,countIncidentClicks=false,unboundBoard=false,boardUnpublished=false,emptyIncidents=false,theme='dark'}={}){
+async function open(t,{width=1440,path='/control-room?mode=live&tab=boards',connectionsBad=false,countIncidentClicks=false,unboundBoard=false,boardUnpublished=false,emptyIncidents=false,extraBoard=false,theme='dark'}={}){
  const browser=await chromium.launch();t.after(()=>browser.close());
  const page=await browser.newPage({viewport:{width,height:width===1440?1000:844},timezoneId:'UTC',reducedMotion:'reduce'});
  await page.addInitScript(theme=>localStorage.setItem('doctorcre.visual-preferences',JSON.stringify({theme})),theme);
@@ -38,6 +38,7 @@ async function open(t,{width=1440,path='/control-room?mode=live&tab=boards',conn
    let payload={};if(reads[rpc.name]&&fixture[reads[rpc.name]])payload=await fixture[reads[rpc.name]](rpc.arguments);
    if(rpc.name==='governance-queue'&&state.approvalFailure==='invalid')payload={ok:true};
    if(rpc.name==='read-progress-board'&&unboundBoard&&payload.snapshot)for(const task of Object.values(payload.snapshot.snapshot_json.tasks)){delete task.work_request;delete task.work_request_ref;delete task.human_ref;task.related=[];}
+   if(rpc.name==='list-progress-boards'&&extraBoard)payload.boards.push({...payload.boards[0],board_id:'demo-project',title:'Demo project board'});
    if(rpc.name==='read-progress-board'&&state.boardUnpublished)payload.snapshot=null;
    if(rpc.name==='incident-board'){if(emptyIncidents)Object.assign(payload,{incidents:[],count:0,by_severity:{},ready_to_close:0});else payload.incidents[0].state=state.incidentState;}
    if(rpc.name==='schedule-board'&&state.scheduleUnknown){payload.overall_state='unknown';payload.jobs=[];payload.sources=payload.sources.map(row=>({...row,state:'unknown',count:null}));}
@@ -47,6 +48,7 @@ async function open(t,{width=1440,path='/control-room?mode=live&tab=boards',conn
    if(rpc.name==='deal-room-board'&&state.dealStates)payload={...payload,actor:'joe',deals:['active','closed','inactive','completed'].map((state,i)=>({id:`demo-deal-${i}`,name:`Demo ${state}`,owner:'joe',attention:true,phase:state==='closed'?'closed':'pending',operating_state:['active','closed'].includes(state)?'active':state}))};
    if(rpc.name==='unfinished-work'&&state.bindingOnly)for(const row of payload.items||[]){row.work_request_ref='WR-000999';row.human_ref=null;row.work_request=null;row.related=[];row.pr_url='https://github.com/example/demo/pull/88';row.pr=null;}
    if(rpc.name==='unfinished-work')for(const row of payload.items||[]){row.pr=state.pr;row.title=state.title;}
+   if(rpc.name==='unfinished-work'&&extraBoard)payload.items.forEach((row,i)=>row.repo=i%2?'example/second-project':'example/demo');
    if(rpc.name==='unfinished-work'&&rpc.arguments.live_library)payload.items=state.liveItems;
    if(rpc.name==='read-resource-dashboard'){payload=await fixture.readResourceDashboard();payload.connections=await fixture.readConnections();payload.connections.providers[0].spend.amount=state.spend;if(state.connectionsBad){payload.connections.providers.push(null);payload.connections.devices.items.push(null);}}
    if(rpc.name==='work-request-card')payload.desired_outcome='Demo acceptance summary';
@@ -247,7 +249,7 @@ for(const failure of [503,403,'unpublished'])test(`PR132 #1: board ${failure} re
  const {page,state}=await open(t,{path:'/control-room?mode=live&tab=boards&board=demo-project',unboundBoard:true});
  const card=page.locator('#board-stages .board-card').first();await card.waitFor();await card.click();await page.waitForFunction(()=>document.querySelector('#jobDialog').open);
  assert.match(await page.locator('#jobBody').textContent(),/Work Request unavailable/);
- if(failure==='unpublished')state.boardUnpublished=true;else state.boardFailure=failure;await page.locator('#board-retry').evaluate(button=>button.click());await page.waitForFunction(()=>document.querySelector('#board-error').hidden===false);
+ if(failure==='unpublished')state.boardUnpublished=true;else state.boardFailure=failure;await page.locator('#board-retry').evaluate(button=>button.click());await page.waitForFunction(failure=>failure==='unpublished'?document.querySelector('#board-meta').dataset.readState==='unpublished':document.querySelector('#board-error').hidden===false,failure);
  if(failure!==503){assert.equal(await page.locator('#jobDialog').evaluate(node=>node.open),false);assert.equal(await page.locator('#jobBody').textContent(),'');}
  else {assert.match(await page.locator('#jobBody').textContent(),/Source unavailable.*Last-known/);await page.locator('#jobClose').click();await card.click();assert.match(await page.locator('#jobBody').textContent(),/Source unavailable.*Last-known/);}
 });
@@ -307,7 +309,7 @@ for(const width of [1440,390])for(const theme of ['dark','light']){
   const empty=page.locator('#incidentGroups [data-state="empty"]');await empty.waitFor();
   if(process.env.C5_CAPTURE_PHASE){const dir=new URL(`out/test-artifacts/c5/${process.env.C5_CAPTURE_PHASE}/`,root);await mkdir(dir,{recursive:true});await page.screenshot({path:new URL(`views-${width}-${theme}.png`,dir).pathname});}
   assert.ok((await empty.boundingBox()).height<=48,'empty ledger stays a compact row');
-  assert.ok(await page.locator('#attentionTitle').evaluate(n=>parseFloat(getComputedStyle(n).fontSize)<=16),'ledger heading matches view summary scale');
+  assert.ok(await page.locator('#attentionTitle').evaluate(n=>getComputedStyle(n).fontSize===getComputedStyle(document.querySelector('.cr-views li')).fontSize),'ledger heading matches view summary scale');
   const box=await empty.boundingBox(),bottom=await page.locator('.app-layout-status').boundingBox();
   assert.ok(box.y+box.height<bottom.y,'empty ledger fits first screen');
   assert.equal(await empty.evaluate(n=>getComputedStyle(n).backgroundColor),'rgba(0, 0, 0, 0)');
@@ -315,3 +317,13 @@ for(const width of [1440,390])for(const theme of ['dark','light']){
   assert.deepEqual(errors,[]);
  });
 }
+
+test('C5 two expanded published boards leave the live pipeline on the first phone screen',async t=>{
+ const {page}=await open(t,{width:390,boardUnpublished:true,extraBoard:true});
+ await advanceRoom(page,16001);await page.locator('#board-stages .board-card').first().waitFor();
+ assert.equal(await page.locator('#board-directory a').count(),2);
+ assert.equal(await page.locator('#filter-repo').isVisible(),true);
+ const first=await page.locator('#board-stages .board-card').first().boundingBox();
+ const footer=await page.locator('.app-layout-status').boundingBox();
+ assert.ok(first.y+80<footer.y,`pipeline starts at ${first.y}, content ends at ${footer.y}`);
+});
