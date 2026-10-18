@@ -53,8 +53,15 @@ for (const theme of ['light', 'dark']) test(`Leads mobile keeps stage context an
   await expect(page.locator('.stage-column:visible')).toHaveCount(1);
   await expect(page.locator('.stage-column:visible')).toHaveAttribute('data-stage', 'new');
   await expect(page.locator('body')).toHaveClass(/has-app-layout/);
-  await page.locator('#leadBoard .lead-card').nth(30).evaluate(node => node.scrollIntoView());
+  const distantCard = page.locator('#leadBoard .stage-column:visible .lead-card').nth(30);
+  // Resolve the card during the scroll: map readiness can replace the board's cards.
+  await page.locator('#leadBoard').evaluate(board => board.querySelectorAll('.lead-card')[30].scrollIntoView());
+  await expect(distantCard).toBeInViewport();
   await expect(stage).toBeInViewport();
+  expect(await stage.evaluate(node => {
+    const rect = node.getBoundingClientRect();
+    return document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2) === node;
+  })).toBe(true);
   await stage.selectOption('qualified');
   await expect(page.locator('.stage-column:visible')).toHaveAttribute('data-stage', 'qualified');
   await expect(stage).toBeInViewport();
