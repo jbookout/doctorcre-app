@@ -24,7 +24,11 @@
             "name": "Example Search Deal 1",
             "phase": "pending",
             "owner": null,
-            "client_ref": "C-981"
+            "client_ref": "C-981",
+            "invoiced_on": null,
+            "closed_on": null,
+            "lane": null,
+            "outcome": null
           }
         ],
         "connections": [],
@@ -80,7 +84,11 @@
             "name": "Example Search Deal 2",
             "phase": "pending",
             "owner": null,
-            "client_ref": "C-982"
+            "client_ref": "C-982",
+            "invoiced_on": "2026-10-17",
+            "closed_on": "2026-10-16",
+            "lane": "national",
+            "outcome": "won"
           }
         ],
         "connections": [],
