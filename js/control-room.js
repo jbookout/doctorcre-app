@@ -114,6 +114,7 @@ async function take(id,run){
 }
 async function load(){
  view.sequence++;view.status='loading';
+ renderQueue();
  await Promise.all([take('incidents',()=>client.incidentBoard({state:'open'})),take('approvals',()=>client.governanceQueue()),take('schedule',()=>client.scheduleBoard()),take('connections',()=>client.readConnections())]);
  await Promise.all([loadQueue(),loadInbox(),loadWaiting()]);
  await details.refresh();view.status='ready';
@@ -170,6 +171,7 @@ const readCensus=cursor=>readWithDeadline(()=>client.unfinishedWork({limit:QUEUE
 // The 15-second refresh re-reads every page already loaded, so Load more survives it.
 async function loadQueue(){
  const sequence=view.sequence;
+ if(view.queue.model.pages===0){view.queue={...view.queue,state:'pending'};renderQueue();}
  try{const context=await queueContext();const model=await refreshQueue(view.queue.model,readCensus,context);if(sequence!==view.sequence)return;view.queue={state:'read',model:settleRefresh(view.queue.model,model)};}
  catch(error){if(sequence!==view.sequence)return;view.queue={state:'unknown',reason:[401,403].includes(error.status)?'Sign in required':'Updates unavailable',model:view.queue.model};}
  renderQueue();

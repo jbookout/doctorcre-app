@@ -125,7 +125,7 @@ const days = (n) => `${n.toLocaleString('en-US')} ${n === 1 ? 'day' : 'days'}`;
 
 /** Property rows: what the queue row and the read both know, labelled in words. */
 export function properties(item, payload) {
-  const rows = [['Kind', item.kindLabel], ['State', humanize(item.state) || 'Not recorded']];
+  const rows = [];
   const owner = item.holder || item.owner;
   rows.push(['Owner', owner || 'Unassigned']);
   if (Number.isFinite(item.age)) rows.push(['Open for', days(item.age)]);
@@ -181,10 +181,11 @@ export function timelineHtml(item, events, { showAll = false } = {}) {
 export const SKELETON_HTML = `<div class="cr-timeline-skeleton" aria-hidden="true">${'<span class="skeleton-line"></span><span class="skeleton-line short"></span>'.repeat(4)}</div>`;
 
 function header(item) {
-  return `<header class="cr-detail-head"><button class="cr-detail-back" type="button" data-detail-close aria-label="Back to the list"><span aria-hidden="true">←</span> Back</button><p class="cr-detail-ref" data-detail-ref>${escapeHtml(item.ref)}</p><h2 class="cr-detail-title" id="crDetailTitle" tabindex="-1">${escapeHtml(item.title)}</h2><p class="cr-detail-kind"><span>${escapeHtml(item.kindLabel)}</span><span aria-hidden="true">·</span><span>${escapeHtml(humanize(item.state) || 'State not recorded')}</span></p><button class="cr-detail-close" type="button" data-detail-close aria-label="Close detail" title="Close (Esc)"><span aria-hidden="true">×</span></button></header>`;
+  return `<header class="cr-detail-head"><button class="cr-detail-back" type="button" data-detail-close aria-label="Back to the list"><span aria-hidden="true">←</span> Back</button><p class="cr-detail-ref" data-detail-ref>${escapeHtml(item.ref)}</p><details class="cr-detail-heading"><summary><h2 class="cr-detail-title" id="crDetailTitle" tabindex="-1">${escapeHtml(item.title)}</h2><span class="cr-title-expand">Show full title</span><span class="cr-title-collapse">Show less</span></summary></details><p class="cr-detail-kind"><span>${escapeHtml(item.kindLabel)}</span><span aria-hidden="true">·</span><span>${escapeHtml(humanize(item.state) || 'State not recorded')}</span></p><button class="cr-detail-close" type="button" data-detail-close aria-label="Close detail" title="Close (Esc)"><span aria-hidden="true">×</span></button></header>`;
 }
 function nextBlock(next, state) {
   if (state === 'loading') return '<section class="cr-next" aria-label="Next human action"><h3>Next human action</h3><span class="skeleton-line"></span></section>';
+  if (state !== 'read') return '<section class="cr-next" aria-label="Next human action"><h3>Next human action</h3><p class="cr-next-none">Unavailable</p></section>';
   return `<section class="cr-next" aria-label="Next human action"><h3>Next human action</h3>${next ? `<p class="cr-next-label">${escapeHtml(next.label)}</p>${next.note ? `<p class="cr-next-note">${escapeHtml(next.note)}</p>` : ''}` : '<p class="cr-next-none">None recorded in this read.</p>'}</section>`;
 }
 function propertyBlock(rows) {
@@ -196,11 +197,14 @@ export function detailHtml(item, read = { state: 'loading' }, { showAll = false 
   const loading = read.state === 'loading';
   const payload = read.state === 'read' ? read.payload : null;
   const events = read.state === 'read' ? timelineEvents(item.kind, payload) : null;
+  const unavailable = read.state === 'error' || read.state === 'none';
+  const availability = read.state === 'error'
+    ? `<div class="state-block cr-detail-availability" data-detail-unavailable role="status"><h3>The record could not be read</h3><p>${escapeHtml(read.reason)}. Only queue properties are available.</p><button class="btn" type="button" data-detail-retry>Try again</button></div>`
+    : read.state === 'none' ? `<div class="state-block cr-detail-availability" data-detail-unavailable role="status"><h3>Detail read unavailable</h3><p>${escapeHtml(NO_READ)}</p></div>` : '';
   let activity;
   if (loading) activity = SKELETON_HTML;
-  else if (read.state === 'error') activity = `<div class="state-block" data-state="offline"><h3>The record could not be read</h3><p>${escapeHtml(read.reason)}. The properties below come from the queue row.</p><button class="btn" type="button" data-detail-retry>Try again</button></div>`;
-  else activity = timelineHtml(item, read.state === 'none' ? null : events, { showAll });
-  return `${header(item)}${nextBlock(payload ? nextHumanAction(item.kind, payload) : null, loading ? 'loading' : read.state)}${propertyBlock(properties(item, payload))}<section class="cr-activity" aria-labelledby="crActivityTitle"><h3 id="crActivityTitle">Activity</h3>${activity}</section>`;
+  else activity = timelineHtml(item, events, { showAll });
+  return `${header(item)}${availability}${nextBlock(payload ? nextHumanAction(item.kind, payload) : null, read.state)}${propertyBlock(properties(item, payload))}${unavailable ? '' : `<section class="cr-activity" aria-labelledby="crActivityTitle"><h3 id="crActivityTitle">Activity</h3>${activity}</section>`}`;
 }
 
 const reasonOf = (error) => [401, 403].includes(error?.status) ? 'Sign in required'
