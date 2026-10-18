@@ -80,14 +80,25 @@ version.
 
 `npm run preview:pr -- <PR#>` gives an open same-repository PR a clickable,
 fixture-only preview. Run it where Wrangler is logged in (hosted CI never holds
-Cloudflare credentials). It builds the PR head in a throwaway worktree, deploys
-it as its own Worker, `doctorcre-app-pr-<PR#>`, and posts or updates one PR
-comment with the `workers.dev` URL. The Worker has the static assets and
-`src/preview-worker.js` only: no CARR service, secret, route or database, and
-the page gate and every API call are answered locally or refused. Add
-`--dry-run` to build and validate without deploying or commenting. When PRs
-close, `npm run preview:clean` deletes the Workers of closed PRs that still have
-a live preview comment (`-- <PR#>` targets one; `--dry-run` previews it).
+Cloudflare credentials), from a checkout of `jbookout/doctorcre-app` that is
+clean `main` at `origin/main`: the script fetches, then refuses to run on any
+other commit or with edits to tracked files, because that checkout's script and
+pinned Wrangler are the only code that touches the login. The PR's code runs
+only to build: from a plain export of the PR head (no `.git`), with a throwaway
+`HOME`, the credential-free environment, `npm ci --ignore-scripts`, and on macOS
+a sandbox that hides Wrangler's login directory and blocks the network during
+the build. Deploy then uses main's Wrangler on a fresh staging directory holding
+only the checked `dist/site` (regular files only: no links, dotfiles or escapes),
+main's `src/preview-worker.js` with its imports, and a config generated from
+main's `wrangler.jsonc` (account, compatibility date and flags) with the assets
+block fixed to `./dist/site`. Nothing in that config comes from the PR. The Worker
+is `doctorcre-app-pr-<PR#>`, with the static assets and Worker only: no CARR
+service, secret, route or database, and the page gate and every API call are
+answered locally or refused. One PR comment carries the `workers.dev` URL. Add
+`--dry-run` to build and validate without deploying or commenting. Unknown
+arguments are rejected. When PRs close or merge, `npm run preview:clean` deletes
+the Workers of every non-open PR that still has a live preview comment
+(`-- <PR#>` targets one and refuses an open PR; `--dry-run` previews it).
 
 The production Worker configuration deliberately has no route. It binds only to
 the production `carr-mcp` service and enables version preview URLs, so a release
