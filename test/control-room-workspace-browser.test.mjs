@@ -53,7 +53,14 @@ async function open(t,{width=1440,height=960,path='/control-room?mode=live&tab=b
    if(rpc.name==='work-request-card')payload.desired_outcome='Demo acceptance summary';
    return route.fulfill({contentType:'application/json',body:JSON.stringify({result:{content:[{text:JSON.stringify(payload)}]}})});
   }
-  if(url.pathname==='/api/v1/atlas-graph'){const result=atlasFixtureResponse(url,'GET');if(state.longAtlasLabels&&result.body.nodes?.[0])Object.assign(result.body.nodes[0],{key:'demo-accept-portfolio-revision',title:'Demo human-only review: accept one exact immutable portfolio revision and preserve its current approval history.'});return route.fulfill({status:result.status,contentType:'application/json',body:JSON.stringify(result.body)});}
+  if(url.pathname==='/api/v1/atlas-graph'){const result=atlasFixtureResponse(url,'GET');
+   if(state.largeAtlas&&!url.searchParams.has('layer')&&!url.searchParams.has('q')){
+    const payload=result.body,verb=payload.nodes.find(node=>node.class==='verb');
+    const extra=Array.from({length:500-payload.nodes.length},(_,i)=>({...verb,id:`verb:demo-extra-${i}`,key:`demo-extra-${i}`,unlinked:true}));
+    payload.nodes.push(...extra);payload.index.declared.verb.push(...extra.map(node=>node.id));payload.limit=500;
+    payload.coverage.find(row=>row.source_ref==='mcp-server/src/tools.js').node_count+=extra.length;
+   }
+   if(state.longAtlasLabels&&result.body.nodes?.[0])Object.assign(result.body.nodes[0],{key:'demo-accept-portfolio-revision',title:'Demo human-only review: accept one exact immutable portfolio revision and preserve its current approval history.'});return route.fulfill({status:result.status,contentType:'application/json',body:JSON.stringify(result.body)});}
   if(url.pathname==='/api/system-work/session')return route.fulfill({contentType:'application/json',body:JSON.stringify({actor:{slug:'joe'},csrf_token:'synthetic-test-token'})});
   if(url.pathname==='/app-release'&&state.denied)return route.fulfill({status:503,body:'{}'});
   if(url.pathname.startsWith('/api/')||url.pathname==='/app-release')return route.fulfill({contentType:'application/json',body:'{}'});
@@ -349,6 +356,37 @@ for(const width of [1440,390])for(const theme of ['dark','light'])test(`C6 revie
  await shots('connections');
  await section(page,'tabSessions');await page.waitForFunction(()=>document.querySelector('#sessionsCounts').dataset.state==='read');await shots('sessions');
  await section(page,'tabAutomations');await shots('automations');
+ assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
+ assert.deepEqual(errors,[]);
+});
+
+for(const theme of ['dark','light'])test(`C6 phone map opens with components at 390px ${theme}`,async t=>{
+ const {page,state,errors}=await open(t,{width:390,height:844});
+ await page.evaluate(theme=>{localStorage.setItem('doctorcre.visual-preferences',JSON.stringify({theme}));},theme);
+ await page.reload();await waitForRoom(page);state.largeAtlas=true;
+ await section(page,'tabAtlas');await waitForAsync(page,async()=> (await import('/js/atlas.js')).view.status==='ready');
+ assert.equal(await page.locator('.atlas-node').count(),500,'The large inventory reproduces anatomical guidance');
+ assert.match(await page.locator('#atlasRendererNote').textContent(),/too many components/);
+ const first=await page.locator('.atlas-node h3').first().boundingBox();
+ assert.ok(first.y<=260,`First component starts at ${first.y}px, within the opening 260px`);
+ const out=new URL('out/test-artifacts/c6-review-r3/',root);await mkdir(out,{recursive:true});
+ await page.screenshot({path:new URL(`system-map-390-${theme}.png`,out).pathname});
+ const toggle=page.getByRole('button',{name:'Filters and view',exact:true});
+ assert.equal(await page.locator('#atlasSearch').isVisible(),false);
+ assert.equal(await page.locator('#atlasRendererNote').isVisible(),false);
+ await toggle.click();assert.equal(await toggle.getAttribute('aria-expanded'),'true');
+ assert.equal(await page.locator('#atlasRendererNote').isVisible(),true,'Guidance remains available with its view controls');
+ await page.locator('#atlasLayerFilters [data-layer="declared"]').click();
+ await waitForAsync(page,async()=> (await import('/js/atlas.js')).view.payload?.layer.join(',')==='declared');
+ await page.locator('#atlasRetired').check();
+ await waitForAsync(page,async()=> (await import('/js/atlas.js')).view.payload?.include_retired===true);
+ await page.locator('#atlasSearch').fill('demo-add-loop');await page.clock.runFor(300);
+ await waitForAsync(page,async()=> (await import('/js/atlas.js')).view.payload?.q==='demo-add-loop');
+ await toggle.click();assert.equal(await toggle.getAttribute('aria-expanded'),'false');
+ await page.evaluate(()=>scrollTo(0,0));
+ assert.ok((await page.locator('.atlas-node h3').first().boundingBox()).y<=260,'Filtered components stay in the opening work area');
+ await page.locator('.atlas-node [data-atlas-select]').first().click();
+ assert.equal(await page.locator('.atlas-node').first().getAttribute('data-selected'),'true');
  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
  assert.deepEqual(errors,[]);
 });

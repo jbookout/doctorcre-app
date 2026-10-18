@@ -289,10 +289,10 @@
     </section>
 
     <section class="tabpanel" id="panelAtlas" role="tabpanel" aria-labelledby="tabAtlas" tabindex="0" hidden>
-      <header class="cr-section-head"><h2 id="atlasTitle">System map</h2><span class="status" id="atlasStatus"><span class="orb" id="atlasOrb" aria-hidden="true"></span></span></header>
+      <header class="cr-section-head"><h2 id="atlasTitle">System map</h2><button class="btn" type="button" id="atlasToolsToggle" aria-expanded="false" aria-controls="atlasControls atlasIndexHeading atlasRendererNote">Filters and view</button><span class="status" id="atlasStatus"><span class="orb" id="atlasOrb" aria-hidden="true"></span></span></header>
       <div class="state-block" id="atlasState" data-state="idle"></div>
       <button class="btn" type="button" id="atlasRetry" hidden aria-label="Refresh" title="Refresh">↻</button>
-      <section class="card glass" data-section="atlas_controls" aria-labelledby="atlasControlsTitle">
+      <section class="card glass" id="atlasControls" data-section="atlas_controls" aria-labelledby="atlasControlsTitle">
         <div class="card-heading"><div><h3 id="atlasControlsTitle">Components</h3></div></div>
         <div class="field"><label for="atlasSearch">Find a component</label><input id="atlasSearch" type="search" autocomplete="off" placeholder="dealroom-worker"></div>
         <div class="btn-group atlas-filters" id="atlasLayerFilters" role="group" aria-label="Layer"></div>
@@ -301,7 +301,7 @@
       </section>
 
       <section class="card glass" data-section="atlas_index" aria-labelledby="atlasIndexTitle">
-        <div class="card-heading">
+        <div class="card-heading" id="atlasIndexHeading">
           <div><h3 id="atlasIndexTitle">System components</h3></div>
           <div class="btn-group" id="atlasRendererSwitch" role="group" aria-label="Atlas view">
             <button class="btn" type="button" data-atlas-view="index" aria-pressed="true">Index</button>

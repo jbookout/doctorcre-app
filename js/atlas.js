@@ -718,6 +718,10 @@ export function mountAtlas({ outage = null, node = null, getIncidentsRead: incid
     if (paging.more) read(paging.cursor);
   });
   $("atlasRetry")?.addEventListener("click", () => read());
+  $("atlasToolsToggle")?.addEventListener("click", (event) => {
+    const toggle = event.currentTarget;
+    toggle.setAttribute("aria-expanded", String(toggle.getAttribute("aria-expanded") !== "true"));
+  });
   $("atlasRendererSwitch")?.addEventListener("click", (event) => {
     const button = event.target.closest("button[data-atlas-view]");
     if (!button || button.disabled) return;

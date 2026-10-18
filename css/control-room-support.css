@@ -71,3 +71,16 @@
   #panelAtlas .atlas-node h3 { font-size: var(--font-size-1); }
   #panelAtlas .atlas-class > summary { flex-wrap: wrap; gap: var(--space-1) var(--space-2); }
 }
+
+#atlasToolsToggle { display: none; }
+@media (max-width: 600px) {
+  #panelAtlas > .cr-section-head { align-items: center; gap: var(--space-2); margin-bottom: var(--space-2); }
+  #atlasTitle { flex: 1; }
+  #atlasToolsToggle { display: inline-flex; align-items: center; }
+  #panelAtlas:has(#atlasToolsToggle[aria-expanded="false"]) #atlasControls,
+  #panelAtlas:has(#atlasToolsToggle[aria-expanded="false"]) #atlasIndexHeading,
+  #panelAtlas:has(#atlasToolsToggle[aria-expanded="false"]) #atlasRendererNote { display: none; }
+  #panelAtlas:has(#atlasToolsToggle[aria-expanded="false"]) #atlasState[data-state="partial"] p { display: none; }
+  #panelAtlas #atlasState[data-state="partial"] { margin-bottom: 0; }
+  #panelAtlas .atlas-layer, #panelAtlas .atlas-class, #panelAtlas .atlas-layer-label { margin-top: 0; }
+}
