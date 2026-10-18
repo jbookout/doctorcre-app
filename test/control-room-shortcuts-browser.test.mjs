@@ -59,6 +59,42 @@ for (const modifier of ['Meta', 'Control']) test(`${modifier}-K opens, filters, 
   assert.deepEqual(errors, []);
 });
 
+for (const width of [1440, 390]) for (const theme of ['dark', 'light']) {
+  test(`Escape dismisses searched commands in one press at ${width} ${theme}`, async t => {
+    const { page } = await open(t, { width, theme, touch: width === 390 });
+    const trigger = page.getByRole('button', { name: 'Open Control Room commands' });
+    const dialog = page.getByRole('dialog', { name: 'Control Room commands', exact: true });
+    for (const query of ['waiting', 'zzzz-no-command']) {
+      await trigger.click();
+      await dialog.getByRole('combobox').fill(query);
+      await page.keyboard.press('Escape');
+      assert.equal(await dialog.isVisible(), false, `Escape must close after ${query}`);
+      assert.equal(await trigger.evaluate(node => node === document.activeElement), true);
+    }
+  });
+
+  test(`shortcut sheet separates tab jumps and omits list instructions at ${width} ${theme}`, async t => {
+    const { page } = await open(t, { width, theme, touch: width === 390 });
+    await page.keyboard.press('?');
+    const dialog = page.getByRole('dialog', { name: 'Keyboard shortcuts', exact: true });
+    await dialog.waitFor();
+    assert.equal(await dialog.locator('footer').getByText('Select', { exact: false }).isVisible(), false);
+    const tabs = dialog.getByRole('definition').filter({ hasText: /^g/ });
+    assert.equal(await tabs.count(), 11);
+    const heading = dialog.getByRole('heading', { name: 'Go to a tab', exact: true });
+    assert.equal(await heading.isVisible(), true);
+    assert.equal(await dialog.getByLabel('Go to a tab', { exact: true }).getByRole('definition').count(), 11);
+    const spacing = await dialog.evaluate(node => {
+      const header = node.querySelector('header').getBoundingClientRect();
+      const intro = node.querySelector('[data-command-sheet] p').getBoundingClientRect();
+      return intro.top - header.bottom;
+    });
+    assert.ok(spacing >= 16, `intro gap was ${spacing}px`);
+    await dialog.getByRole('button', { name: 'Back to commands', exact: true }).click();
+    assert.equal(await page.locator('#crCommands footer').getByText('Select', { exact: false }).isVisible(), width === 1440);
+  });
+}
+
 test('j/k select Queue rows, Enter opens, and Escape restores list focus', async t => {
   const { page } = await open(t);
   await page.locator('#main').click({ position: { x: 5, y: 5 } });

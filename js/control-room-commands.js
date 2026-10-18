@@ -9,6 +9,7 @@ const LINK_COMMANDS = [
   ['Agent task board', '#panelModelRoom a[href]'],
 ];
 const keysHtml = keys => keys.map(key => `<kbd>${escapeText(key)}</kbd>`).join(' ');
+const shortcutHtml = ([label, keys]) => `<div><dt>${escapeText(label)}</dt><dd>${keysHtml(keys)}</dd></div>`;
 
 export function mountControlRoomCommands({ tabs, onEscape }) {
   const root = tabs.ownerDocument, win = root.defaultView;
@@ -52,12 +53,12 @@ export function mountControlRoomCommands({ tabs, onEscape }) {
     search.hidden = mode !== 'commands'; sheet.hidden = mode !== 'shortcuts';
     root.getElementById('crCommandsTitle').textContent = mode === 'commands' ? 'Control Room commands' : 'Keyboard shortcuts';
     help.textContent = mode === 'commands' ? 'Keyboard shortcuts' : 'Back to commands';
+    dialog.querySelector('footer .cr-keyboard-hint').hidden = mode !== 'commands';
     if (mode === 'commands') { input.value = ''; selected = 0; paint(); }
     else sheet.innerHTML = `<p>Use shortcuts outside text fields.</p><dl>${[
       ['Open command menu', ['⌘ / Ctrl', 'K']], ['Move selection', ['j', 'k', '↑', '↓']],
       ['Open selected detail', ['Enter']], ['Close menu or detail', ['Esc']],
-      ...commands.filter(command => command.keys[0] === 'g').map(command => [command.label, command.keys]),
-    ].map(([label, keys]) => `<div><dt>${escapeText(label)}</dt><dd>${keysHtml(keys)}</dd></div>`).join('')}</dl>`;
+    ].map(shortcutHtml).join('')}</dl><h3 id="crTabShortcutsTitle">Go to a tab</h3><dl aria-labelledby="crTabShortcutsTitle">${commands.filter(command => command.keys[0] === 'g').map(command => shortcutHtml([command.label, command.keys])).join('')}</dl>`;
     if (!dialog.open) { focusBefore = root.activeElement; dialog.showModal(); }
     (mode === 'commands' ? input : dialog.querySelector('[data-command-close]')).focus();
   }
@@ -79,6 +80,8 @@ export function mountControlRoomCommands({ tabs, onEscape }) {
     }
   });
   dialog.addEventListener('keydown', event => {
+    if (event.isComposing || event.keyCode === 229) return;
+    if (event.key === 'Escape') { event.preventDefault(); dialog.close(); return; }
     if (event.key !== 'Tab') return;
     const controls = [...dialog.querySelectorAll('button,input')].filter(node => node.checkVisibility() && !node.disabled);
     const first = controls[0], last = controls.at(-1);
