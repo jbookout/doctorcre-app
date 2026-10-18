@@ -1,29 +1,42 @@
-.morning-brief { box-sizing:border-box; width:min(1100px,calc(100vw - 32px)); max-width:1100px; max-height:calc(100dvh - 32px); padding:28px; color:#edf2fc; border:1px solid #8bb6eb38; border-radius:24px; background:radial-gradient(ellipse at 0 0,#002f6c80,transparent 55%),radial-gradient(ellipse at 100% 100%,#f2692424,transparent 60%),#080e19f7; backdrop-filter:blur(22px); box-shadow:0 28px 120px #000b; font:15px/1.5 'DM Sans',sans-serif; }
-.morning-brief[open] { animation:doc-arrive 200ms ease-out; }
-.morning-brief::backdrop { background:#01050ccc; backdrop-filter:blur(8px); }
-.morning-brief header,.morning-brief header>div,.morning-toolbar { display:flex; align-items:center; gap:12px; }
-.morning-brief header { justify-content:space-between; }
-.morning-brief h2,.morning-brief h3 { font-family:'Barlow Condensed','Arial Narrow',sans-serif; margin:0; }
-.morning-brief h2 { font-size:32px; }.morning-brief h3 { font-size:23px; color:#b4c9e8; margin:12px 0; }
-.morning-brief button { min-height:44px; min-width:44px; border:1px solid #8bb6eb30; border-radius:10px; background:#14213680; color:inherit; font:inherit; cursor:pointer; }
-.morning-toolbar { margin:20px 0; flex-wrap:wrap; }
-#morningUpdated { margin-right:auto; color:#99aecb; font-size:12px; }
-#morningSpeech[aria-pressed=true] { color:#ff9a61; background:#f2692430; border-color:#f26924; }
-.morning-brief button:disabled { opacity:.4; cursor:default; }
-#morningCoverage { color:#e2bc90; font-size:12px; }
-#morningContent { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px 20px; }
-#morningContent>section:first-child { grid-column:1/-1; }
-.morning-brief .morning-card { display:flex; width:100%; text-align:left; align-items:center; gap:18px; min-height:90px; padding:22px; color:inherit; text-decoration:none; border:1px solid #8bb6eb30; border-radius:16px; background:linear-gradient(110deg,#002f6c50,#10203790); transition:transform 160ms,box-shadow 160ms,border-color 160ms; overflow-wrap:anywhere; }
-.morning-card>div { display:grid; gap:7px; flex:1; min-width:0; }.morning-card strong { font:600 25px/1.2 'Barlow Condensed','Arial Narrow',sans-serif; }.morning-card span { color:#b3c6df; }.morning-card time { color:#ffaf79; font-size:12px; }
-.morning-card:hover { transform:translateY(-2px); border-color:#f2692480; box-shadow:0 10px 28px #0005; }
-.morning-marker { display:grid; place-items:center; flex:none; width:42px; height:42px; border-radius:50%; border:1px solid #f2692460; color:#ffa466!important; }
-#morningContent>section:first-child .morning-card { border-color:#f2692460; background:linear-gradient(110deg,#f269241c,#002f6c55); }
-#morningContent>section:first-child .morning-marker { animation:morning-pulse 2s ease-in-out infinite; }
-.morning-brief :is(a,button,summary):focus-visible { outline:2px solid #ff8a48; outline-offset:3px; }
-.morning-record { grid-column:1/-1; display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1.4fr); gap:28px; overflow-wrap:anywhere; }.morning-record dl { margin:0; }.morning-record dl>div,.morning-record article { padding:16px; margin:0 0 12px; border:1px solid #8bb6eb25; border-radius:12px; background:#10203780; }.morning-record dt { color:#99aecb; font-size:12px; }.morning-record dd { margin:6px 0 0; }.morning-record summary { cursor:pointer; min-height:44px; display:flex; align-items:center; color:#9dbfeb; }.morning-record .entry-original { white-space:pre-wrap; }
-#morningContent>section:first-child .morning-card[data-urgency=overdue] .morning-marker { animation-duration:1s; }
-@keyframes morning-pulse { 50% { box-shadow:0 0 18px #f2692450; } }
-@media(max-width:760px),(hover:none) and (pointer:coarse) and (max-width:1023px){ .morning-brief { width:calc(100vw - 20px); padding:18px; }.morning-brief h2 { font-size:28px; }#morningContent,.morning-record { grid-template-columns:minmax(0,1fr); }.morning-brief .morning-card { padding:16px; gap:12px; }.morning-card strong { font-size:23px; } }
-@media(prefers-reduced-motion:reduce) { .morning-brief[open],#morningContent>section:first-child .morning-marker { animation:none; }.morning-brief .morning-card { transition:none; }.morning-card:hover { transform:none; } }
-:root[data-motion=reduced] :is(.morning-brief[open],.morning-marker) { animation:none!important; }
-:root[data-motion=reduced] .morning-brief .morning-card { transition:none; transform:none; }
+/* Dr. CRE's morning brief dialog, on the V2 tokens. The first card is the one
+   thing that needs Joe; it leads by position and a hairline step, never by a
+   pulse. */
+.morning-brief { box-sizing: border-box; width: min(1100px, calc(100vw - 32px)); max-width: 1100px; max-height: calc(100dvh - 32px); padding: var(--space-6); border: var(--hairline-width) solid var(--hairline); border-radius: var(--panel-radius); background: var(--surface-1); color: var(--fg); box-shadow: var(--shadow-overlay); font: var(--font-size-2) / var(--line-height-body) var(--font-text); }
+.morning-brief[open] { animation: none; }
+.morning-brief::backdrop { background: var(--scrim); }
+.morning-brief header, .morning-brief header > div, .morning-toolbar { display: flex; align-items: center; gap: var(--space-3); }
+.morning-brief header { justify-content: space-between; }
+.morning-brief header .doc-orb { display: inline-grid; place-items: center; width: var(--touch); height: var(--touch); border: var(--hairline-width) solid var(--hairline); border-radius: var(--radius-round); background: var(--surface-2); color: var(--accent-ink); font-size: var(--font-size-3); }
+.morning-brief h2, .morning-brief h3 { margin: 0; font-family: var(--font-text); font-weight: var(--font-weight-strong); line-height: var(--line-height-heading); }
+.morning-brief h2 { font-size: var(--font-size-4); }
+.morning-brief h3 { margin: var(--space-3) 0; color: var(--fg-muted); font-size: var(--font-size-1); }
+.morning-brief button { min-height: var(--touch); min-width: var(--touch); padding: var(--space-2) var(--space-3); border: var(--hairline-width) solid var(--hairline); border-radius: var(--radius-2); background: var(--surface-2); color: inherit; font: inherit; cursor: pointer; transition: background-color var(--duration-hover) var(--ease-out), border-color var(--duration-hover) var(--ease-out); }
+@media (hover: hover) { .morning-brief button:not(:disabled):hover { background: var(--surface-3); border-color: var(--hairline-strong); } }
+.morning-toolbar { flex-wrap: wrap; margin: var(--space-5) 0; }
+#morningUpdated { margin-right: auto; color: var(--fg-muted); font-size: var(--font-size-1); font-variant-numeric: tabular-nums; }
+#morningSpeech[aria-pressed=true] { border-color: var(--fg); background: var(--surface-3); box-shadow: inset 0 0 0 1px var(--fg); }
+.morning-brief button:disabled { opacity: .45; cursor: default; }
+#morningCoverage { color: var(--status-warn-ink); font-size: var(--font-size-1); }
+#morningContent { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-3) var(--space-5); }
+#morningContent > section:first-child { grid-column: 1 / -1; }
+.morning-brief .morning-card { display: flex; align-items: center; gap: var(--space-4); width: 100%; min-height: 80px; padding: var(--space-4) var(--space-5); border: var(--hairline-width) solid var(--hairline); border-radius: var(--radius-3); background: var(--surface-2); color: inherit; text-align: left; text-decoration: none; overflow-wrap: anywhere; transition: border-color var(--duration-hover) var(--ease-out); }
+.morning-card > div { display: grid; flex: 1; gap: var(--space-1); min-width: 0; }
+.morning-card strong { font: var(--font-weight-strong) var(--font-size-3) / var(--line-height-heading) var(--font-text); }
+.morning-card span { color: var(--fg-muted); }
+.morning-card time { color: var(--fg-muted); font-size: var(--font-size-1); font-variant-numeric: tabular-nums; }
+@media (hover: hover) { .morning-brief .morning-card:hover { border-color: var(--hairline-strong); background: var(--surface-3); } }
+.morning-marker { display: grid; flex: none; place-items: center; width: 40px; height: 40px; border: var(--hairline-width) solid var(--hairline-strong); border-radius: var(--radius-round); color: var(--fg) !important; }
+#morningContent > section:first-child .morning-card { border-color: var(--hairline-strong); box-shadow: inset 3px 0 0 var(--fg); }
+#morningContent > section:first-child .morning-card[data-urgency=overdue] { box-shadow: inset 3px 0 0 var(--status-danger); }
+#morningContent > section:first-child .morning-card[data-urgency=overdue] time { color: var(--status-danger-ink); }
+.morning-brief :is(a, button, summary):focus-visible { outline: var(--focus-width) solid var(--focus-ring); outline-offset: 2px; }
+.morning-record { display: grid; grid-column: 1 / -1; grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr); gap: var(--space-6); overflow-wrap: anywhere; }
+.morning-record dl { margin: 0; }
+.morning-record dl > div, .morning-record article { margin: 0 0 var(--space-3); padding: var(--space-4); border: var(--hairline-width) solid var(--hairline); border-radius: var(--radius-2); background: var(--surface-2); }
+.morning-record dt { color: var(--fg-muted); font-size: var(--font-size-1); }
+.morning-record dd { margin: var(--space-1) 0 0; font-variant-numeric: tabular-nums; }
+.morning-record summary { display: flex; align-items: center; min-height: var(--touch); color: var(--fg); cursor: pointer; }
+.morning-record .entry-original { white-space: pre-wrap; }
+@media(max-width:760px),(hover:none) and (pointer:coarse) and (max-width:1023px){ .morning-brief { width: calc(100vw - 20px); padding: var(--space-4); } #morningContent, .morning-record { grid-template-columns: minmax(0, 1fr); } .morning-brief .morning-card { gap: var(--space-3); padding: var(--space-4); } }
+@media (prefers-reduced-motion: reduce) { .morning-brief button, .morning-brief .morning-card { transition: none; } }
+:root[data-motion=reduced] :is(.morning-brief button, .morning-brief .morning-card) { transition: none; }
