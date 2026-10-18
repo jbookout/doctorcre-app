@@ -192,7 +192,7 @@ export function mountBoard(deps = {}) {
   }
 
   function stageColor(id) {
-    return STAGE_DEFINITIONS.find(stage => stage.id === id)?.color || "#f2f6fc";
+    return STAGE_DEFINITIONS.find(stage => stage.id === id)?.color || "var(--fg)";
   }
 
   function clickable(node, open) {
@@ -851,7 +851,7 @@ export function mountBoard(deps = {}) {
     currentView = view;
     costs.update(view.costs);
     byId("board-title").textContent = deps.openTask ? "System Job Board" : view.title;
-    byId("board-eyebrow").textContent = view.kind === ALL_REPOS_BOARD ? "DELIVERY / ALL REPOSITORIES" : "DELIVERY / PROGRESS BOARD";
+    byId("board-eyebrow").textContent = view.kind === ALL_REPOS_BOARD ? "All repositories" : "Progress board";
     doc.title = "Control Room · DoctorCRE";
     byId("board-meta").textContent = `${view.board_id} · Published ${formatTime(view.updated_at)} · Version ${view.version}`;
     renderSync(view);

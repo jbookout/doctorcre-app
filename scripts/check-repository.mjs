@@ -63,6 +63,9 @@ const V2_MIGRATED_STYLESHEETS = [
   "css/app.css", "css/pipeline.css", "css/deal-timeline.css",
   "css/conversations.css", "css/tasks.css", "css/doc-activity.css", "css/doc-presence.css", "css/morning-brief.css",
   "css/workspace-business.css", "css/leads.css", "css/invoice-tracker.css",
+  "css/control-room.css", "css/control-room-workspace.css", "css/progress-board.css", "css/progress-work.css",
+  "css/queue.css", "css/room.css", "css/observatory.css", "css/system-work.css", "css/work-inventory.css",
+  "css/incidents.css", "css/status.css",
   "css/calendar.css", "css/ideas.css", "css/notifications.css",
 ];
 const v2Tells = [
