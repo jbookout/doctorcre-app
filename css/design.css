@@ -18,7 +18,7 @@
 .swatch-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: var(--space-2); margin-bottom: var(--space-5); }
 .swatch-grid:last-child { margin-bottom: 0; }
 .token { display: grid; gap: 2px; padding: var(--space-2); border: var(--hairline-width) solid var(--hairline); border-radius: var(--radius-3); background: var(--ground); font-size: var(--font-size-1); }
-.token span { display: block; height: 44px; margin-bottom: var(--space-1); border: var(--hairline-width) solid var(--hairline-strong); border-radius: var(--radius-2); background: var(--t); }
+.token span { display: block; height: 44px; margin-bottom: var(--space-1); border: var(--hairline-width) solid var(--hairline-strong); border-radius: var(--radius-2); }
 .token b { color: var(--fg); font: var(--font-weight-strong) var(--font-size-1) var(--font-mono); }
 .token small { color: var(--fg-muted); }
 .data-table td.num, .num { font-variant-numeric: tabular-nums; }
@@ -157,3 +157,44 @@
   .motion-demo { transition: none; }
   .motion-demo:active { transform: none; }
 }
+
+/* Specimen values come from data attributes, not inline styles, so the
+   worker CSP (no inline style) still renders every swatch and scale. */
+.token[data-t="ground"] span { background: var(--ground); }
+.token[data-t="surface-1"] span { background: var(--surface-1); }
+.token[data-t="surface-2"] span { background: var(--surface-2); }
+.token[data-t="surface-3"] span { background: var(--surface-3); }
+.token[data-t="hairline"] span { background: var(--hairline); }
+.token[data-t="hairline-strong"] span { background: var(--hairline-strong); }
+.token[data-t="fg"] span { background: var(--fg); }
+.token[data-t="fg-muted"] span { background: var(--fg-muted); }
+.token[data-t="fg-quiet"] span { background: var(--fg-quiet); }
+.token[data-t="accent"] span { background: var(--accent); }
+.token[data-t="accent-hover"] span { background: var(--accent-hover); }
+.token[data-t="focus-ring"] span { background: var(--focus-ring); }
+.token[data-t="status-ok"] span { background: var(--status-ok); }
+.token[data-t="status-warn"] span { background: var(--status-warn); }
+.token[data-t="status-danger"] span { background: var(--status-danger); }
+.token[data-t="status-info"] span { background: var(--status-info); }
+.token[data-t="status-hold"] span { background: var(--status-hold); }
+.token[data-t="data-1"] span { background: var(--data-1); }
+.token[data-t="data-2"] span { background: var(--data-2); }
+.token[data-t="data-3"] span { background: var(--data-3); }
+.token[data-t="data-4"] span { background: var(--data-4); }
+[data-fs="font-size-5"] { font-size: var(--font-size-5); }
+[data-fs="font-size-4"] { font-size: var(--font-size-4); }
+[data-fs="font-size-3"] { font-size: var(--font-size-3); }
+[data-fs="font-size-2"] { font-size: var(--font-size-2); }
+[data-fs="font-size-1"] { font-size: var(--font-size-1); }
+[data-w="space-1"] { width: var(--space-1); }
+[data-w="space-2"] { width: var(--space-2); }
+[data-w="space-3"] { width: var(--space-3); }
+[data-w="space-4"] { width: var(--space-4); }
+[data-w="space-5"] { width: var(--space-5); }
+[data-w="space-6"] { width: var(--space-6); }
+[data-w="space-7"] { width: var(--space-7); }
+[data-r="radius-1"] { border-radius: var(--radius-1); }
+[data-r="radius-2"] { border-radius: var(--radius-2); }
+[data-r="radius-3"] { border-radius: var(--radius-3); }
+[data-r="panel-radius"] { border-radius: var(--panel-radius); }
+[data-r="radius-round"] { border-radius: var(--radius-round); }
