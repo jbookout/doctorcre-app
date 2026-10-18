@@ -302,18 +302,11 @@ test("W14 malformed data, zoom fit and measured reduced motion", async (t) => {
   await dragLender(page);
   assert.notEqual(await dragged.getAttribute('transform'), before);
   assert.equal(await page.locator('.relationship-dialog').isVisible(), false);
-  assert.ok(
-    await page
-      .locator(".network-halo")
-      .evaluate((n) => getComputedStyle(n).animationName !== "none"),
-  );
+  // V2: the network carries no ambient animation, with or without reduced motion.
+  const animated = () => page.locator(".relationship-canvas").evaluate((root) => [...root.querySelectorAll("*")].filter((n) => getComputedStyle(n).animationName !== "none").length);
+  assert.equal(await animated(), 0);
   await page.emulateMedia({ reducedMotion: "reduce" });
-  assert.equal(
-    await page
-      .locator(".network-halo")
-      .evaluate((n) => getComputedStyle(n).animationName),
-    "none",
-  );
+  assert.equal(await animated(), 0);
   assert.equal(
     await page
       .locator(".relationship-node rect")
