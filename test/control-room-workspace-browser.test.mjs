@@ -7,9 +7,9 @@ import {atlasFixtureResponse} from '../scripts/atlas-fixture.mjs';
 import { routeContract as routes } from "../js/routes.js";
 const root=new URL('../',import.meta.url);
 const reads={'list-feature-switches':'listFeatureSwitches','list-doc-suggestions':'listDocSuggestions','read-progress-board':'readProgressBoard','list-progress-boards':'listProgressBoards','unfinished-work':'unfinishedWork','incident-board':'incidentBoard','governance-queue':'governanceQueue','schedule-board':'scheduleBoard','work-request-card':'workRequestCard','deal-room-board':'getBoard','today-triage':'todayTriage','notification-feed':'notificationFeed','read-room-queue':'roomQueue','read-room':'roomTurns','read-session-identity':'sessionIdentity','list-my-codex-sessions':'codexSessions','current-work-item':'currentWorkItem','list-notifications':'listNotifications'};
-async function open(t,{width=1440,path='/control-room?mode=live&tab=boards',connectionsBad=false,countIncidentClicks=false,unboundBoard=false}={}){
+async function open(t,{width=1440,height=960,path='/control-room?mode=live&tab=boards',connectionsBad=false,countIncidentClicks=false,unboundBoard=false}={}){
  const browser=await chromium.launch();t.after(()=>browser.close());
- const page=await browser.newPage({viewport:{width,height:960},timezoneId:'UTC',reducedMotion:'reduce'});
+ const page=await browser.newPage({viewport:{width,height},timezoneId:'UTC',reducedMotion:'reduce'});
  if(countIncidentClicks)await page.addInitScript(()=>{
   window.incidentClickCallbacks={filters:0,incidents:0};
   const add=EventTarget.prototype.addEventListener;
@@ -53,7 +53,7 @@ async function open(t,{width=1440,path='/control-room?mode=live&tab=boards',conn
    if(rpc.name==='work-request-card')payload.desired_outcome='Demo acceptance summary';
    return route.fulfill({contentType:'application/json',body:JSON.stringify({result:{content:[{text:JSON.stringify(payload)}]}})});
   }
-  if(url.pathname==='/api/v1/atlas-graph'){const result=atlasFixtureResponse(url,'GET');return route.fulfill({status:result.status,contentType:'application/json',body:JSON.stringify(result.body)});}
+  if(url.pathname==='/api/v1/atlas-graph'){const result=atlasFixtureResponse(url,'GET');if(state.longAtlasLabels&&result.body.nodes?.[0])Object.assign(result.body.nodes[0],{key:'demo-accept-portfolio-revision',title:'Demo human-only review: accept one exact immutable portfolio revision and preserve its current approval history.'});return route.fulfill({status:result.status,contentType:'application/json',body:JSON.stringify(result.body)});}
   if(url.pathname==='/api/system-work/session')return route.fulfill({contentType:'application/json',body:JSON.stringify({actor:{slug:'joe'},csrf_token:'synthetic-test-token'})});
   if(url.pathname==='/app-release'&&state.denied)return route.fulfill({status:503,body:'{}'});
   if(url.pathname.startsWith('/api/')||url.pathname==='/app-release')return route.fulfill({contentType:'application/json',body:'{}'});
@@ -314,5 +314,39 @@ for(const width of [1440,390])test(`C6 compact support tabs at ${width}px`,async
  assert.equal(await page.locator('.calendar-day').count(),0);
  assert.match(await page.locator('#automationState').textContent(),/unavailable/i);
  assert.equal(await page.locator('#automationPrev').isVisible(),false);
+ assert.deepEqual(errors,[]);
+});
+
+for(const width of [1440,390])for(const theme of ['dark','light'])test(`C6 review blockers at ${width}px ${theme}`,async t=>{
+ const {page,state,errors}=await open(t,{width,height:width===1440?1000:844,connectionsBad:true});
+ await page.evaluate(theme=>{localStorage.setItem('doctorcre.visual-preferences',JSON.stringify({theme}));},theme);
+ await page.reload();await waitForRoom(page);
+ state.emptyAgents=true;state.emptySessions=true;state.partialSchedule=true;state.longAtlasLabels=true;await advanceRoom(page,16001);
+ await section(page,'tabModelRoom');
+ await page.waitForFunction(()=>document.querySelector('#modelRoomFreshness').dataset.state==='never');
+ assert.equal(await page.locator('[data-section="model_room_context"]').isVisible(),false,'Empty Context does not displace room activity');
+ assert.equal(await page.locator('#modelRoomCounts').textContent(),'0 shown · 0 visible · 0 total');
+ assert.ok((await page.locator('#modelRoomParticipantsTitle').boundingBox()).y<600,'Existing activity appears in the first work area');
+ const inputs=await page.evaluate(()=>['modelRoomDispatchQuery','sessionsLookup'].map(id=>{const css=getComputedStyle(document.getElementById(id));return {background:css.backgroundColor,border:css.borderRadius};}));
+ assert.deepEqual(inputs[0],inputs[1],'Session lookup uses the shared themed input');
+ const out=new URL('out/test-artifacts/c6-review/',root);await mkdir(out,{recursive:true});
+ const shots=async name=>{await page.evaluate(()=>scrollTo(0,0));await page.screenshot({path:new URL(`${name}-${width}-${theme}.png`,out).pathname});await page.screenshot({path:new URL(`${name}-${width}-${theme}-full.png`,out).pathname,fullPage:true});};
+ await shots('agents');
+ await section(page,'tabAtlas');await waitForAsync(page,async()=> (await import('/js/atlas.js')).view.status==='ready');
+ const node=page.locator('.atlas-node').first(),select=node.locator('[data-atlas-select]');
+ assert.ok((await node.boundingBox()).height<=160,'Component rows fit a compact list');
+ assert.ok((await select.boundingBox()).height<=48,'Select is a compact control');
+ assert.ok((await node.boundingBox()).x-(await page.locator('#atlasIndex').boundingBox()).x<=8,'Nested frames do not consume the list width');
+ await select.click();assert.equal(await node.getAttribute('data-selected'),'true');
+ await shots('system-map');
+ await section(page,'tabConnections');
+ assert.equal(await page.locator('.connection-columns').getByText('Spend',{exact:true}).isVisible(),true,'Spend keeps its own visible heading');
+ const provider=page.locator('[data-connection]').first();
+ const status=await provider.locator('.connection-state').boundingBox(),spend=await provider.locator('.connection-spend').boundingBox();
+ assert.ok(Math.abs(status.y-spend.y)<3,'Status and Spend remain distinct columns');
+ await shots('connections');
+ await section(page,'tabSessions');await page.waitForFunction(()=>document.querySelector('#sessionsCounts').dataset.state==='read');await shots('sessions');
+ await section(page,'tabAutomations');await shots('automations');
+ assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
  assert.deepEqual(errors,[]);
 });

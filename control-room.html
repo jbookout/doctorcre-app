@@ -176,10 +176,9 @@
         </div>
         <p class="model-room-freshness" id="modelRoomFreshness" data-state="idle">unknown</p>
         <div class="row-wrap"><a class="btn" href="/control-room/agents/queue">Open task board</a><a class="btn" href="/control-room/progress">Delivery progress</a></div>
-        <div class="row-wrap"><button class="btn" type="button" id="modelRoomQueueRetry" hidden aria-label="Refresh" title="Refresh"> <span aria-hidden="true">↻</span></button></div>
+        <button class="btn" type="button" id="modelRoomQueueRetry" hidden aria-label="Refresh" title="Refresh"><span aria-hidden="true">↻</span></button>
         <p class="model-room-dropped" id="modelRoomDropped" hidden></p>
         <div class="assignment-rail" id="modelRoomAssignments"></div>
-        <p class="caption"></p>
         <!-- V5-UX-C13b: dragging a card is real; every drop is refused the same
              honest way, because no pinned verb changes a projected card's
              status. See ASSIGNMENT_MOVE_UNSUPPORTED_SENTENCE. -->
@@ -205,28 +204,6 @@
         <p class="model-room-composer-result" id="modelRoomComposerResult" hidden></p>
       </section>
 
-      <section class="card glass" data-section="model_room_sessions" aria-labelledby="modelRoomSessionsTitle">
-        <div class="card-heading"><div><p class="eyebrow">Who is working</p><h2 id="modelRoomSessionsTitle">Sessions</h2></div></div>
-        <form class="dispatch-search" id="modelRoomDispatchSearch" role="search">
-          <label for="modelRoomDispatchQuery">Session name or ID</label>
-          <div class="dispatch-search-row">
-            <input id="modelRoomDispatchQuery" name="query" type="search" maxlength="200" autocomplete="off" required>
-            <button class="btn" type="submit">Search</button>
-            <button class="btn" type="button" id="modelRoomDispatchClear">Clear</button>
-          </div>
-          <p class="caption"></p>
-        </form>
-        <p class="count-line" id="modelRoomCounts" data-state="unavailable">unknown</p>
-        <p class="session-banner" id="modelRoomBanner" hidden></p>
-        <p class="model-room-empty" id="modelRoomSessionsEmpty" hidden></p>
-        <div class="session-picks" id="modelRoomSessions"></div>
-      </section>
-
-      <section class="card glass" data-section="model_room_context" aria-labelledby="modelRoomContextTitle">
-        <div class="card-heading"><div><p class="eyebrow">Evidence behind one session</p><h2 id="modelRoomContextTitle">Context</h2></div></div>
-        <div id="modelRoomContext"></div>
-      </section>
-
       <section class="card glass" data-section="model_room_participants" aria-labelledby="modelRoomParticipantsTitle">
         <div class="card-heading"><div><p class="eyebrow">Who is in the room</p><h2 id="modelRoomParticipantsTitle">Participants and acknowledgment</h2></div></div>
         <!-- Conversation participants and dispatch acknowledgments are separate
@@ -238,6 +215,27 @@
         <ul class="room-turns" id="modelRoomTurns"></ul>
       </section>
 
+      <section class="card glass" data-section="model_room_sessions" aria-labelledby="modelRoomSessionsTitle">
+        <div class="card-heading"><div><p class="eyebrow">Who is working</p><h2 id="modelRoomSessionsTitle">Sessions</h2></div></div>
+        <form class="dispatch-search field" id="modelRoomDispatchSearch" role="search">
+          <label for="modelRoomDispatchQuery">Session name or ID</label>
+          <div class="dispatch-search-row">
+            <input id="modelRoomDispatchQuery" name="query" type="search" maxlength="200" autocomplete="off" required>
+            <button class="btn" type="submit">Search</button>
+            <button class="btn" type="button" id="modelRoomDispatchClear">Clear</button>
+          </div>
+          </form>
+        <p class="count-line" id="modelRoomCounts" data-state="unavailable">unknown</p>
+        <p class="session-banner" id="modelRoomBanner" hidden></p>
+        <p class="model-room-empty" id="modelRoomSessionsEmpty" hidden></p>
+        <div class="session-picks" id="modelRoomSessions"></div>
+      </section>
+
+      <section class="card glass" data-section="model_room_context" aria-labelledby="modelRoomContextTitle">
+        <div class="card-heading"><div><p class="eyebrow">Evidence behind one session</p><h2 id="modelRoomContextTitle">Context</h2></div></div>
+        <div id="modelRoomContext"></div>
+      </section>
+
       <!-- V5-UX-C13a: topic/work-item history. Read-only; no composer, no
            execute path lives here. A topic is the same Kanban ticket the
            assignments board above already shows; a work item is a shared
@@ -246,7 +244,6 @@
         <div class="card-heading">
           <div><p class="eyebrow">One topic or work item, in full</p><h2 id="modelRoomHistoryTitle">Topic and work-item history</h2></div>
         </div>
-        <p class="caption"></p>
         <div class="history-picker">
           <div class="field">
             <label for="modelRoomHistoryTopic">Topic (Kanban ticket)</label>
@@ -301,7 +298,6 @@
         <div class="btn-group atlas-filters" id="atlasLayerFilters" role="group" aria-label="Layer"></div>
         <label class="switch" for="atlasRetired"><input type="checkbox" id="atlasRetired"> Show retired</label>
         <p class="small mono" id="atlasRequestPath"></p>
-        <p class="caption"></p>
       </section>
 
       <section class="card glass" data-section="atlas_index" aria-labelledby="atlasIndexTitle">
@@ -428,7 +424,6 @@
         </div>
         <div class="cr-session-search"><div class="field"><label for="sessionsLookup">Find a session by name or ID</label><input id="sessionsLookup" type="search" autocomplete="off" placeholder="Search sessions"></div><p class="small" id="sessionsCounts" data-state="unavailable">Coverage unavailable</p></div>
         <label class="switch" for="sessionsIncludeClosed"><input type="checkbox" id="sessionsIncludeClosed"> Include closed sessions</label>
-        <p class="caption"></p>
       </section>
 
       <p class="session-banner" id="sessionsBanner" hidden></p>

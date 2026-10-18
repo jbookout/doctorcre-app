@@ -9,7 +9,7 @@
 #modelRoomMoveTarget[hidden], #automationControls[hidden] { display: none; }
 #panelConnections .panel, #panelAutomations .panel { padding: 0; border: 0; background: none; box-shadow: none; }
 #panelConnections .connection-grid { display: block; margin-top: var(--space-3); }
-#panelConnections .connection-card { display: grid; grid-template-columns: minmax(110px, 1fr) minmax(100px, 1fr) minmax(100px, 1fr) auto; align-items: center; gap: var(--space-3); min-height: var(--touch); padding: var(--space-2) 0; border: 0; border-bottom: var(--hairline-width) solid var(--hairline); border-radius: 0; background: none; }
+#panelConnections .connection-card { display: grid; grid-template-columns: minmax(110px, 1fr) minmax(100px, 1fr) minmax(100px, 1fr) 65px; align-items: center; gap: var(--space-3); min-height: var(--touch); padding: var(--space-2) 0; border: 0; border-bottom: var(--hairline-width) solid var(--hairline); border-radius: 0; background: none; }
 #panelConnections .connection-card h3 { margin: 0; font: var(--font-weight-strong) var(--font-size-2)/1.3 var(--font-text); }
 #panelConnections .connection-card > time { display: none; }
 #panelConnections .connection-card a { margin: 0; min-height: var(--touch); display: inline-flex; align-items: center; font-size: var(--font-size-1); }
@@ -26,15 +26,6 @@
 #automationState { margin: var(--space-4) 0; color: var(--fg-muted); }
 #automationCalendar:empty, #automationAgenda:empty, #automationUndated:empty { display: none; }
 #automationUndated h3 { font-size: var(--font-size-2); }
-@media (max-width: 760px) {
-  #panelConnections .connection-card { grid-template-columns: minmax(100px, 1fr) 1fr auto; gap: var(--space-2); }
-  #panelConnections .connection-spend { grid-column: 2; font-size: var(--font-size-1); }
-  #panelConnections .connection-spend:empty { display: none; }
-  #panelConnections .connection-card:has(a) a { grid-column: 3; grid-row: 1 / span 2; }
-  #panelConnections .connection-card:has(.connection-spend) { row-gap: 0; }
-  #panelConnections .connection-heading { grid-row: 1 / span 2; }
-  #panelConnections .connection-dot { flex-shrink: 0; }
-}
 
 #panelAtlas > .cr-section-head { display: flex; align-items: center; justify-content: space-between; }
 #atlasStatus { border: 0; padding: 0; min-height: 0; }
@@ -43,6 +34,40 @@
 #panelAtlas .atlas-filters { margin: var(--space-2) 0; }
 #panelAtlas [data-section="atlas_controls"] { margin-bottom: var(--space-3); }
 
-.connection-columns { display: grid; grid-template-columns: minmax(110px, 1fr) minmax(100px, 1fr) minmax(100px, 1fr); gap: var(--space-3); margin-top: var(--space-4); padding-bottom: var(--space-2); border-bottom: var(--hairline-width) solid var(--hairline); color: var(--fg-muted); font-size: var(--font-size-1); }
+.connection-columns { display: grid; grid-template-columns: minmax(110px, 1fr) minmax(100px, 1fr) minmax(100px, 1fr) 65px; gap: var(--space-3); margin-top: var(--space-4); padding-bottom: var(--space-2); border-bottom: var(--hairline-width) solid var(--hairline); color: var(--fg-muted); font-size: var(--font-size-1); }
 #panelConnections #connectionsProviders { margin-top: 0; }
-@media (max-width: 760px) { .connection-columns { grid-template-columns: minmax(100px, 1fr) 1fr auto; } .connection-columns > :last-child { display: none; } }
+
+#panelModelRoom > .card { margin-bottom: var(--space-4); }
+#panelModelRoom .card-heading { margin-bottom: var(--space-2); }
+#panelModelRoom .card-heading h2 { font-size: var(--font-size-2); }
+#panelModelRoom #modelRoomTitle { font-size: var(--font-size-3); }
+#panelModelRoom [data-section="model_room_composer"] { padding-top: var(--space-3); }
+#modelRoomComposerForm { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: var(--space-2); }
+#modelRoomComposerText { min-height: 72px; resize: vertical; }
+#modelRoomComposerSend { margin-bottom: 1px; }
+#panelModelRoom .dispatch-search { margin-top: 0; }
+#panelModelRoom .dispatch-search-row { grid-template-columns: minmax(0, 1fr) auto auto; }
+#panelModelRoom .count-line { margin: var(--space-2) 0; font-size: var(--font-size-1); }
+#panelModelRoom .session-picks:empty { display: none; }
+#panelModelRoom .room-turns { gap: 0; }
+#panelModelRoom .room-turns > li { border: 0; border-bottom: var(--hairline-width) solid var(--hairline); border-radius: 0; background: none; padding: var(--space-2) 0; }
+#panelAtlas .atlas-layer, #panelAtlas .atlas-class { border: 0; border-radius: 0; padding: 0; margin-top: var(--space-2); }
+#panelAtlas .atlas-layer-label { margin: var(--space-3) 0 0; color: var(--fg-muted); font-size: var(--font-size-1); }
+#panelAtlas .atlas-class > summary { gap: var(--space-2); min-height: var(--touch); }
+#panelAtlas .atlas-class .work-list { gap: 0; margin-top: 0; }
+#panelAtlas .atlas-node { grid-template-columns: minmax(0, 1fr) auto; align-items: start; gap: var(--space-2); padding: var(--space-3) 0; border: 0; border-bottom: var(--hairline-width) solid var(--hairline); border-radius: 0; background: none; }
+#panelAtlas .atlas-node[data-selected="true"] { background: var(--surface-2); }
+#panelAtlas .atlas-node h3 { font-size: var(--font-size-2); }
+#panelAtlas .atlas-node .work-meta { font-size: var(--font-size-1); }
+#panelAtlas .atlas-node .chip-bar { margin-top: var(--space-1); }
+#panelAtlas .atlas-node .chip { min-height: 0; border: 0; padding: 0; border-radius: 0; background: none; font-size: var(--font-size-1); }
+#panelAtlas .atlas-node .stack-end { align-self: start; }
+#panelAtlas .atlas-node .btn { min-height: var(--touch); }
+@media (max-width: 760px) {
+  #panelConnections .connection-card, #panelConnections .connection-columns { grid-template-columns: minmax(95px, 1.2fr) minmax(48px, .7fr) minmax(48px, .7fr) 65px; gap: var(--space-2); }
+  #panelConnections .connection-state, #panelConnections .connection-spend { font-size: var(--font-size-1); }
+  #panelConnections .connection-dot { flex-shrink: 0; }
+  #panelConnections [data-device] { grid-template-columns: minmax(95px, 1fr) 1fr; }
+  #panelAtlas .atlas-node h3 { font-size: var(--font-size-1); }
+  #panelAtlas .atlas-class > summary { flex-wrap: wrap; gap: var(--space-1) var(--space-2); }
+}

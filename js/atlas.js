@@ -278,10 +278,9 @@ function incidentChip(node, index) {
   return `<span class="chip" data-atlas-chip="incident" data-state="urgent"><span class="chip-label">open incident</span>${escapeHtml(label)}</span>`;
 }
 
-function nodeRow(node, index) {
+function nodeRow(node, index, groupEvidence) {
   const chips = [
-    chip("layer", node.layer),
-    chip("evidence", node.evidence),
+    node.evidence === groupEvidence ? "" : chip("evidence", node.evidence),
     chip("status", node.status ?? "unstated"),
     node.unlinked ? chip("unlinked", "on this page") : "",
     node.retired_at ? chip("retired", formatClock(node.retired_at) || node.retired_at) : "",
@@ -302,30 +301,25 @@ function renderIndex() {
   if (!root) return;
   if (!view.payload) { root.innerHTML = ""; return; }
   const index = incidentIndex();
-  // CR-AC-03: "collapsed ancestors retain alert visibility." A <details> the
-  // reader has collapsed must still show that something inside it carries an
-  // open incident, so the alert marker is printed on every <summary>, not
-  // only on the leaf row.
-  // V5-UX-C09 motion pass: `data-atlas-alert="group"` is the ONLY thing that
-  // distinguishes this collapsed-ancestor marker from the per-node incident
-  // chip below — same fact, same chip, but this one plays a one-shot arrival
-  // pop (css/control-room.css) on top of the ordinary pulse, because a reader
-  // who has this layer collapsed needs the alert to draw the eye the moment
-  // it appears, not just sit there pulsing quietly.
+  // Collapsed component groups retain their open-incident marker.
   const alertMark = (nodes) => (groupHasOpenIncident(nodes, index) ? ` <span class="chip" data-atlas-chip="incident" data-atlas-alert="group" data-state="urgent">open incident inside</span>` : "");
   root.innerHTML = groupIndex(view.payload).map((group) => {
     const groupNodes = group.classes.flatMap((entry) => entry.nodes);
     return `
-    <details class="atlas-layer" open>
-      <summary><span class="eyebrow">Layer</span> ${escapeHtml(group.label)}${alertMark(groupNodes)}</summary>
-      ${group.classes.map((entry) => `
+    <section class="atlas-layer">
+      <h4 class="atlas-layer-label">${escapeHtml(group.label)}${alertMark(groupNodes)}</h4>
+      ${group.classes.map((entry) => {
+        const evidence = new Set(entry.nodes.map(node => node.evidence));
+        const groupEvidence = evidence.size === 1 ? entry.nodes[0].evidence : null;
+        return `
         <details class="atlas-class" open>
-          <summary><span class="eyebrow">${escapeHtml(entry.class)}</span> ${escapeHtml(entry.label)} · ${entry.nodes.length} on this page${alertMark(entry.nodes)}</summary>
+          <summary>${escapeHtml(entry.label)} <span class="small">${entry.nodes.length} on this page${groupEvidence ? ` · ${escapeHtml(groupEvidence)} evidence` : ""}</span>${alertMark(entry.nodes)}</summary>
           ${entry.nodes.length === 0
             ? `<p class="small">This class returned no node on this page.</p>`
-            : `<ul class="work-list">${entry.nodes.map((node) => nodeRow(node, index)).join("")}</ul>`}
-        </details>`).join("")}
-    </details>`;
+            : `<ul class="work-list">${entry.nodes.map((node) => nodeRow(node, index, groupEvidence)).join("")}</ul>`}
+        </details>`;
+      }).join("")}
+    </section>`;
   }).join("");
   for (const button of root.querySelectorAll("button[data-atlas-select]")) {
     button.addEventListener("click", () => selectNode(button.dataset.atlasSelect));

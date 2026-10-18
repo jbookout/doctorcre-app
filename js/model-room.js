@@ -251,8 +251,9 @@ function renderSessions() {
     const line = countsLine(payload);
     counts.textContent = view.sessions.refusal
       ? `The session read could not be rendered: ${view.sessions.refusal}.`
-      : line.text;
+      : line.shown === null ? "Coverage unavailable" : `${line.shown} shown · ${line.visible} visible · ${line.seen} total`;
     counts.dataset.state = payload ? "read" : "unavailable";
+    counts.hidden = line.seen === 0 && line.shown === 0;
   }
   if (banner) {
     const filtered = payload?.permission_filtered === true;
@@ -335,6 +336,8 @@ function renderContext() {
   let row = null;
   for (const candidate of rows) if (candidate.canonical_session_id === view.selected) row = candidate;
   const panel = contextPanel(row, payload, { hostAvailable: hostAvailable(), checkpoints: view.checkpoints });
+  const section = root.closest('[data-section="model_room_context"]');
+  if (section) section.hidden = !panel;
   if (!panel) {
     root.innerHTML = '<p class="small">Choose a session above to see its work-state evidence, its lineage and '
       + 'its dispatch history.</p>'
