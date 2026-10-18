@@ -77,7 +77,11 @@
 .cr-boards-directory .board-directory { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 240px), 1fr)); gap: var(--space-2); margin-top: var(--space-2); }
 .cr-boards-directory .board-link { padding: var(--space-3); min-width: 0; }
 .cr-boards-directory .board-link h3 { font-size: var(--font-size-2); margin: var(--space-1) 0; }
-.cr-boards-directory .directory-summary { font-size: var(--font-size-2); min-height: var(--touch); display: flex; align-items: center; cursor: pointer; }
+.cr-boards-directory .directory-summary { font-size: var(--font-size-2); min-height: var(--touch); display: flex; align-items: center; gap: var(--space-2); cursor: pointer; list-style: none; }
+.cr-boards-directory .directory-summary::-webkit-details-marker { display: none; }
+.cr-boards-directory .directory-summary::before { content: "\25B8"; display: inline-block; transition: transform 120ms; }
+.cr-boards-directory details[open] > .directory-summary::before { transform: rotate(90deg); }
+@media (prefers-reduced-motion: reduce) { .cr-boards-directory .directory-summary::before { transition: none; } }
 .control-room-workspace #system-work-panel .work-filters { margin: 0; gap: var(--space-3); }
 .control-room-workspace #system-work-panel .work-filters label { flex: 1 1 140px; gap: var(--space-1); font-size: var(--font-size-1); }
 .control-room-workspace #system-work-panel .work-filters input, .control-room-workspace #system-work-panel .work-filters select { padding: var(--space-2); min-height: var(--touch); }

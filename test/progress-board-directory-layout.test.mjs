@@ -36,9 +36,14 @@ for (const [width, height] of [[1440, 960], [390, 844]]) {
       const directory = page.locator('.directory-panel');
       const lanesTop = await page.locator('#board-filters').evaluate(node => node.getBoundingClientRect().top);
       if (file === 'progress-board.html') assert.ok(lanesTop < height, `filters start at ${lanesTop}px, within the first screen`);
-      else assert.ok(await directory.evaluate(node => node.getBoundingClientRect().height) < 150, 'embedded directory remains a compact sidebar control');
-      assert.equal(await directory.evaluate(node => node.open), false, 'directory starts collapsed');
       const summary = directory.locator('summary');
+      if (file === 'progress-board.html') assert.equal(await directory.evaluate(node => node.open), false, 'directory starts collapsed');
+      else {
+        assert.equal(await directory.evaluate(node => node.open), true, 'embedded directory shows its boards on first view');
+        assert.ok(await page.locator('#board-directory a').first().isVisible(), 'a board card is visible without a click');
+        assert.ok(await summary.evaluate(node => getComputedStyle(node, '::before').content !== 'none'), 'the disclosure shows a marker');
+        await summary.focus(); await page.keyboard.press('Space');
+      }
       await summary.focus(); await page.keyboard.press('Enter');
       assert.equal(await directory.evaluate(node => node.open), true);
       const nav = page.locator('#board-directory');
