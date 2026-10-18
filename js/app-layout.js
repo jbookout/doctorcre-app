@@ -6,7 +6,7 @@ import { mountAutoRefresh, readWithDeadline } from './auto-refresh.mjs';
 import { createFeedProgress, observeChangeBatch, ingestChangeEvents, receiptViews, escapeText as escape } from './change-receipts.mjs';
 
 import { scopedDeals } from './home-dashboard-model.js';
-import { localToday, toDay } from './calendar-model.js';
+import { localToday, shortDay, toDay } from './calendar-model.js';
 const time = value => { const date = new Date(value || ''); return Number.isFinite(date.valueOf()) ? date.toLocaleTimeString([], { hour:'numeric', minute:'2-digit', hour12:true }) : '—'; };
 
 export function createAppLayout(root, title = '') {
@@ -141,7 +141,7 @@ export function mountAppLayout(root, host, pathname) {
   const empty = '<span class="app-layout-empty">—</span>';
   const renderMoves = () => {
     const moves = feed.caught_up ? receiptViews(receipts).slice(0,6) : [];
-    render('#appTodayMoves', moves.map(move => row({ id:move.deal_id, name:move.deal_name }, `${move.actor === 'doc' ? 'Doc · ' : ''}${move.action}${move.after ? ` → ${move.after}` : ''} · ${time(move.recorded_at)}`)).join('') || empty);
+    render('#appTodayMoves', moves.map(move => row({ id:move.deal_id, name:move.deal_name }, `${move.actor === 'doc' ? 'Doc · ' : ''}${move.action}${move.after ? ` → ${shortDay(move.after, localToday())}` : ''} · ${time(move.recorded_at)}`)).join('') || empty);
   };
   const text = value => typeof value === 'string' && value.trim().length > 0;
   const optionalText = value => value == null || typeof value === 'string';
@@ -176,7 +176,7 @@ export function mountAppLayout(root, host, pathname) {
     const triageValid = triage.status === 'fulfilled' && validTriage(triage.value);
     connection(connected && triageValid);
     const items = triageValid ? triage.value.items : null;
-    render('#appTodayNext', items ? items.filter(i => i.subject_type === 'deal').slice(0,6).map(i => row(i,`${i.what || 'Due'} · ${i.due_on || ''}`)).join('') || empty : unavailable);
+    render('#appTodayNext', items ? items.filter(i => i.subject_type === 'deal').slice(0,6).map(i => row(i,`${i.what || 'Due'} · ${shortDay(i.due_on || '', localToday())}`)).join('') || empty : unavailable);
     if (connected) {
       const value = board.value;
       if (feedActor !== value.actor) resetFeed();

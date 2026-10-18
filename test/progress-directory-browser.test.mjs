@@ -81,7 +81,7 @@ test("no-param load shows system board, counts, timestamps and stale project; se
   assert.match(await project.locator('[data-freshness="stale"]').textContent(), /2d 1h ago.*Stale.*24h/);
   assert.equal(calls.find(c => c.name === "read-progress-board").arguments.board_id, "carr-v5");
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
-  assert.equal(await page.locator("#board-stages .column").count(), 6);
+  assert.deepEqual(await page.locator("#board-stages .column").evaluateAll(columns => columns.map(column => column.dataset.stage)), ["build"], "only the populated Building stage renders");
   await project.evaluate(node => node.removeAttribute("target"));
   await page.locator('.directory-summary').click();
   await project.click();

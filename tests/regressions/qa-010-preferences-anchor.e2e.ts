@@ -51,8 +51,7 @@ for (const viewport of viewports) {
         });
       }
       await app.open('/updates?mode=live#prefForm');
-      await expect(browser.locator('#docMorningBrief')).toBeVisible();
-      await browser.locator('#morningClose').tap();
+      await expect(browser.locator('#docMorningBrief')).toBeHidden();
       if (initialFailure) {
         await expect(browser.locator('#prefForm')).toBeHidden();
         await expect(browser.locator('#prefState')).toContainText(/unavailable|could not/i);

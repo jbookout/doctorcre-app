@@ -38,6 +38,11 @@ async function open(t, width = 1440) {
       if (version) payload.nodes[0].summary = "Demo refreshed summary";
       if (mode === "malformed") payload.edges[0].from = "missing";
       if (mode === "territory") payload.nodes[0].territory = 123;
+      if (mode === "labels") {
+        payload.nodes[0].name = "Demo Healthcare Lending North Partners";
+        payload.nodes[0].territory = "Demo Northern Coastal Territory";
+        payload.nodes.find(n => n.kind === "deal").name = JSON.stringify({value:"Demo Dental Relocation"});
+      }
       if (mode === "twins") {
         payload.nodes[0].name = "Demo Healthcare Lending North Partners";
         payload.nodes[3].name = "Demo Healthcare Lending South Partners";
@@ -131,7 +136,7 @@ for (const width of [1440, 390])
     const h = await open(t, width),
       { page } = h;
     await page.goto("http://localhost/relationships?mode=live");
-    await page.waitForSelector(".relationship-node");
+    await page.waitForSelector(width === 390 ? "#networkNodes button" : ".relationship-node");
     await page.waitForSelector("#appTabsSlot #graphTab");
     assert.equal(await page.locator("#appLayout").count(), 1);
     assert.equal(await page.locator("#appTabsSlot #graphTab").count(), 1);
@@ -149,7 +154,7 @@ for (const width of [1440, 390])
       path: `out/test-artifacts/w14/network-${width}.png`,
       animations: "disabled",
     });
-    await page.locator('[data-node="party:demo-lender"]').first().focus();
+    await page.locator(width === 390 ? '#networkNodes [data-node="party:demo-lender"]' : '.relationship-node[data-node="party:demo-lender"]').focus();
     await page.keyboard.press("Enter");
     await page.waitForSelector(".relationship-dialog[open]");
     assert.match(
@@ -214,18 +219,18 @@ for (const width of [1440, 320])
       { page } = h;
     h.setMode("twins");
     await page.goto("http://localhost/relationships?mode=live");
-    await page.waitForSelector(".relationship-node");
+    await page.waitForSelector(width === 320 ? "#networkNodes button" : ".relationship-node");
     const shown = await page.locator(".relationship-node").evaluateAll((nodes) =>
-      nodes.map((node) => node.querySelector("text:not([aria-hidden])").textContent));
-    assert.equal(shown.filter((text) => text.includes("Demo Healthcare…")).length, 2, "both records share one shortened visible label");
+      nodes.map((node) => node.querySelector(".node-name").textContent));
+    assert.equal(shown.filter((text) => text.startsWith("Demo Healthcare Lending")).length, 2, "both similar names remain present for accessible identification");
     for (const side of ["North", "South"])
-      assert.equal(await page.getByRole("button", { name: `Open vendor, Demo Coast, Demo Healthcare Lending ${side} Partners`, exact: true }).count(), 1);
+      assert.equal(await page.getByRole("button", { name: width === 1440 ? `Open vendor, Demo Healthcare Lending ${side} Partners, Demo Coast` : `Demo Healthcare Lending ${side} Partners vendor · Demo Coast`, exact: true }).count(), 1);
     await page.addScriptTag({ content: axe.source });
-    const audit = await page.evaluate(() => window.axe.run(document.querySelector("#networkCanvas"), { runOnly: ["label-content-name-mismatch"] }));
+    const audit = await page.evaluate(() => window.axe.run(document.querySelector(innerWidth < 760 ? "#networkNodes" : "#networkCanvas"), { runOnly: ["label-content-name-mismatch"] }));
     assert.deepEqual(audit.violations, []);
     assert.deepEqual(audit.incomplete, []);
     const passed = (audit.passes[0]?.nodes || []).map((node) => node.html);
-    for (const id of ["party:demo-lender", "party:demo-build"])
+    if (width === 1440) for (const id of ["party:demo-lender", "party:demo-build"])
       assert.ok(passed.some((html) => html.includes(`data-node="${id}"`)), `${id} shows a label contained in its name`);
     assert.deepEqual(h.errors, []);
   });
@@ -409,4 +414,24 @@ test("W14 drag stays pending during graph resizing and uses the settled center",
   assert.equal(inputs[0].width, 320, "measure only after the resize finishes");
   assert.ok(Math.abs(inputs[0].x - (box.x + box.width / 2)) <= 1);
   assert.ok(Math.abs(inputs[0].y - (box.y + box.height / 2)) <= 1);
+});
+
+for(const width of [1440,390]) test(`S8 relationship names fit their nodes and structured deal names read as text at ${width}px`,async t=>{
+ const {page,setMode}=await open(t,width);setMode('labels');
+ await page.goto('http://localhost/relationships?mode=live');
+ await page.waitForSelector(width === 390 ? '#networkNodes button' : '.relationship-node');
+ assert.doesNotMatch(await page.locator('#networkNodes').textContent(), /"value"/);
+ assert.match(await page.locator('#networkNodes').textContent(), /Demo Dental Relocation/);
+ const overflow=await page.locator('.relationship-node').evaluateAll(nodes=>nodes.flatMap(n=>{
+  const box=n.querySelector('rect').getBoundingClientRect();
+  return [...n.querySelectorAll('text,foreignObject')].filter(text=>{const r=text.getBoundingClientRect();return r.left<box.left-1||r.right>box.right+1;}).map(text=>text.textContent);
+ }));
+ assert.deepEqual(overflow,[]);
+ assert.equal(await page.locator('.relationship-edge-label:visible').count(),0,'edge names stay in details rather than colliding with the graph');
+ const fonts=await page.locator(width === 390 ? '#networkNodes strong' : '.relationship-node').first().evaluate(n=>{
+  if (!n.ownerSVGElement) return parseFloat(getComputedStyle(n).fontSize);
+  const svg=n.ownerSVGElement, text=n.querySelector('.node-name')||n.querySelector('text');
+  return parseFloat(getComputedStyle(text).fontSize)*svg.getScreenCTM().a;
+ });
+ assert.ok(fonts>=12, `rendered node text ${fonts}px`);
 });

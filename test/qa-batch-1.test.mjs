@@ -64,7 +64,8 @@ test("Deal Room phone strips scroll in their own regions with token scrollbars",
   assert.match(css, /\.focus\s*\{[^}]*overflow:\s*auto/);
   assert.match(css, /\.filters\s*\{[^}]*overflow:\s*auto/);
   assert.match(css, /@media\s*\(max-width:\s*680px\)\s*\{\s*html,\s*body\s*\{\s*max-width:\s*100%;\s*overflow-x:\s*clip;?\s*\}/);
-  assert.match(shell, /\.app-shell-more-list[^}]*max-height:\s*calc\(100dvh - 125px\)/);
+  // S8: the list stops above the phone bottom chrome, whatever its height.
+  assert.match(shell, /\.app-shell-more-list[^}]*max-height:\s*calc\(100dvh - var\(--layout-bottom\) - var\(--space-5\)\)/);
   // V2 S0: the shared shell reads scrollbar colours from css/tokens.css.
   assert.match(shell, /\.app-shell-more-list[^{]*\{[^}]*scrollbar-color:\s*var\(--hairline-strong\) transparent/);
 });

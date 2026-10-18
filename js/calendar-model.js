@@ -57,6 +57,15 @@ export function toDay(value) {
   return fromUtc(asUtc(day)) === day ? day : null;
 }
 
+/** "Oct 8", with the year only when it is not this year's; non-dates pass through. */
+export function shortDay(value, today) {
+  const day = toDay(value);
+  if (!day) return value;
+  const [year, month, date] = day.split("-");
+  const label = `${SHORT_MONTHS[Number(month) - 1]} ${Number(date)}`;
+  return year === String(today).slice(0, 4) ? label : `${label}, ${year}`;
+}
+
 /** Strict date-only contracts share the calendar validation without midnight coercion. */
 export function isCalendarDay(value) {
   return typeof value === "string" && DAY_PATTERN.test(value) && toDay(value) === value;
