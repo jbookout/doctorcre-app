@@ -16,6 +16,8 @@
     "dev:staging": "npm run build && wrangler dev --env staging",
     "release:prepare": "node scripts/prepare-release.mjs",
     "release:staging": "node scripts/release-staging.mjs",
+    "preview:pr": "node scripts/pr-preview.mjs deploy",
+    "preview:clean": "node scripts/pr-preview.mjs clean",
     "rollback:staging": "node scripts/rollback-staging.mjs",
     "release:production": "node scripts/release-production.mjs",
     "rollback:production": "node scripts/rollback-production.mjs",
