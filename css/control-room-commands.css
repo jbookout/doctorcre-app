@@ -1,0 +1,35 @@
+.cr-command-tools { display: flex; align-items: center; gap: var(--space-2); }
+.cr-command-tools button { display: inline-flex; align-items: center; gap: var(--space-3); color: var(--fg-muted); background: transparent; border: var(--hairline-width) solid var(--hairline); border-radius: var(--radius-2); padding: var(--space-1) var(--space-3); font: inherit; cursor: pointer; }
+.cr-command-tools kbd, .cr-command-dialog kbd { color: var(--fg-quiet); font: var(--font-size-1)/1.4 var(--font-text); }
+#crCommands { box-sizing: border-box; width: min(560px, calc(100% - var(--space-6))); max-height: min(720px, calc(100dvh - var(--space-6))); margin: min(16vh, 140px) auto auto; padding: 0; border: var(--hairline-width) solid var(--hairline-strong); border-radius: var(--radius-3); background: var(--surface-1); color: var(--fg); box-shadow: var(--shadow-overlay); overflow: auto; }
+.cr-command-dialog::backdrop { background: var(--scrim); }
+.cr-command-head { display: flex; justify-content: space-between; align-items: center; gap: var(--space-3); padding: var(--space-3) var(--space-4); border-bottom: var(--hairline-width) solid var(--hairline); }
+.cr-command-head h2 { margin: 0; font: var(--font-weight-strong) var(--font-size-1)/1.4 var(--font-text); }
+.cr-command-dialog button { border: 0; background: transparent; color: var(--fg-muted); font: inherit; cursor: pointer; }
+.cr-command-head button { min-width: 32px; min-height: 32px; font-size: var(--font-size-3); }
+#crCommandInput { display: block; box-sizing: border-box; width: calc(100% - var(--space-6)); margin: var(--space-3) var(--space-4); padding: var(--space-2) 0; background: transparent; color: var(--fg); border: 0; border-radius: 0; font: var(--font-size-2)/1.4 var(--font-text); }
+#crCommandInput:focus-visible { outline-offset: var(--space-1); }
+#crCommandResults { max-height: min(420px, 50dvh); overflow-y: auto; padding: 0 var(--space-2) var(--space-2); }
+.cr-command-row { display: grid; grid-template-columns: 20px 1fr auto; align-items: center; gap: var(--space-2); min-height: 36px; padding: 0 var(--space-3); border-radius: var(--radius-2); font-size: var(--font-size-1); cursor: pointer; }
+.cr-command-row[aria-selected="true"] { background: var(--surface-3); }
+.cr-command-row:hover { background: var(--surface-2); }
+.cr-command-symbol { color: var(--fg-quiet); }
+.cr-command-empty { padding: var(--space-3) var(--space-4); color: var(--fg-muted); }
+.cr-command-footer { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); padding: var(--space-3) var(--space-4); border-top: var(--hairline-width) solid var(--hairline); font-size: var(--font-size-1); color: var(--fg-quiet); }
+.cr-command-footer button { font-size: var(--font-size-1); }
+.cr-shortcut-sheet { padding: 0 var(--space-4) var(--space-3); }
+.cr-shortcut-sheet p { color: var(--fg-muted); font-size: var(--font-size-1); }
+.cr-shortcut-sheet dl { margin: 0; }
+.cr-shortcut-sheet dl > div { display: flex; align-items: center; justify-content: space-between; gap: var(--space-4); min-height: 32px; font-size: var(--font-size-1); }
+.cr-shortcut-sheet dd { margin: 0; }
+.cr-shortcut-sheet kbd { display: inline-block; min-width: 20px; text-align: center; border: var(--hairline-width) solid var(--hairline); border-radius: var(--radius-1); padding: 0 var(--space-1); }
+@media (max-width: 760px) {
+  #crCommands { margin-top: var(--space-4); }
+  .cr-command-tools button, .cr-command-head button, .cr-command-footer button { min-height: var(--touch); }
+  .cr-command-row { min-height: var(--touch); }
+}
+@media (hover: none) and (pointer: coarse) {
+  .cr-keyboard-hint { display: none; }
+}
+
+#crCommands > #docPresence { display: none; }
