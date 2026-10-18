@@ -10,6 +10,12 @@ export function mountAppShell(root = document, pathname = globalThis.location?.p
   const location = globalThis.location;
   const host = mountNavigation(root, pathname, { location });
   if (!host) return;
+  const fontStylesheet = root.querySelector('link[data-font-stylesheet][rel="preload"][as="style"]');
+  if (fontStylesheet) {
+    const activate = () => { fontStylesheet.rel = "stylesheet"; };
+    if (root.readyState === "complete") activate();
+    else root.defaultView.addEventListener("load", activate, { once: true });
+  }
   const base = appOriginForReport(location?.origin || "");
   let disposeDocPresence = () => {};
   if (!base) mountAccount(root, host, pathname, () => disposeDocPresence());
