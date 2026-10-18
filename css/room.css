@@ -13,22 +13,12 @@
  */
 
 :root {
-  --line-bright: var(--hairline-strong);
-  --glass-strong: var(--surface-2);
   --danger: var(--status-danger);
 
   /* seat palette: identity data, never chrome (colour-roles ruling 1). */
   --seat-human: var(--data-2);
   --seat-claude: var(--data-4);
   --seat-sol: var(--data-1);
-  --seat-codex: var(--data-1);
-  --seat-hermes: var(--data-3);
-  --seat-grok: var(--status-danger);
-  --seat-system: var(--fg-quiet);
-
-  /* partner halo: the ring is the partner channel, the fill is the seat */
-  --halo-joe: var(--data-2);
-  --halo-dell: var(--status-info);
 
   /* The stage is a 260px band by design. It clamps down on a short viewport
      rather than starving the assignments rail below it: a laptop browser pane

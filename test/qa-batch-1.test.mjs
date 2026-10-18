@@ -84,7 +84,7 @@ test("Search on a phone caps the candidate list inside its own scroll region", a
     assert.equal(list.style.getPropertyValue("overflow-y"), "auto");
     assert.equal(list.style.getPropertyValue("overscroll-behavior"), "contain");
     assert.equal(list.style.getPropertyValue("scrollbar-width"), "thin");
-    assert.equal(list.style.getPropertyValue("scrollbar-color"), "var(--line-strong) transparent");
+    assert.equal(list.style.getPropertyValue("scrollbar-color"), "var(--hairline-strong) transparent");
     const state = phoneRules.find((rule) => rule.selectorText === '#searchState[data-state^="disamb"]');
     assert.ok(state, "disambiguation notice rule exists inside the phone media query");
     assert.equal(state.style.getPropertyValue("display"), "none");

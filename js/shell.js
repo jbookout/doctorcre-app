@@ -75,7 +75,6 @@ export function applyPreferences(preferences) {
     button.setAttribute("aria-label", words);
     button.setAttribute("title", words);
   });
-  document.body?.classList.toggle("night", preferences.theme === "dark");
   try { localStorage.setItem("dealroom-theme", preferences.theme === "dark" ? "night" : "light"); } catch {}
   const live = document.getElementById("prefsLive");
   if (live) live.textContent = `${PREF_WORDS.theme[preferences.theme]}.`;

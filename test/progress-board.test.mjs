@@ -145,13 +145,13 @@ test("every indicator the renderer emits has a legend entry, from the same const
   assert.deepEqual(unknown, ["glyph-mystery"]);
   // The legend samples use the renderer's own values.
   const { $ } = await mount(FULL.project);
-  assert.match($('[data-legend-id="pulse-critical"] .legend-pulse').getAttribute("style"), /--pulse-speed:1s/);
-  assert.match($('[data-legend-id="pulse-healthy"] .legend-pulse').getAttribute("style"), /--pulse-speed:3\.5s/);
-  assert.match($('[data-legend-id="stage-build"] .swatch').getAttribute("style"), /#fb7b32/);
+  assert.match($('[data-legend-id="pulse-critical"] .legend-pulse').getAttribute("style"), /--pulse-speed:\s*1s/);
+  assert.match($('[data-legend-id="pulse-healthy"] .legend-pulse').getAttribute("style"), /--pulse-speed:\s*3\.5s/);
+  assert.match($('[data-legend-id="stage-build"] .swatch').getAttribute("style"), /--swatch:\s*var\(--data-2\)/);
   assert.equal($('[data-legend-id="glyph-codex"] .glyph').textContent, "C");
   const card = $('[data-card-id="ci-card"]');
-  assert.match(card.getAttribute("style"), /--pulse-speed:1s/);
-  assert.match(card.getAttribute("style"), /--stage-accent:#ff88bd/);
+  assert.match(card.getAttribute("style"), /--pulse-speed:\s*1s/);
+  assert.match(card.getAttribute("style"), /--stage-accent:\s*var\(--status-warn\)/);
   assert.equal(card.querySelector(".glyph").textContent, "G");
 });
 

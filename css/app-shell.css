@@ -105,11 +105,6 @@ body.has-app-layout { padding: 0 0 var(--layout-bottom) var(--layout-rail) !impo
 .app-layout[data-today=closed] { --layout-right: 0px; }
 /* Page stylesheets still set V1 ink names on their own :root; the shared regions
    read the token roles so their text holds contrast in both themes. */
-/* V1 page panels (.glass) paint a dark navy fill; on light they take the light
-   surface until each page slice replaces them. */
-:root[data-theme="light"] .glass { background: var(--surface-1); color: var(--fg); }
-:root[data-theme="light"] .glass :is(h1, h2, h3) { color: var(--fg); }
-.app-layout-sidebar, .app-layout-today, .has-app-layout #recordPanel { --text: var(--fg); --muted: var(--fg-muted); --quiet: var(--fg-quiet); --line: var(--hairline); }
 :root .app-layout-sidebar :is(input, select, textarea), :root .has-app-layout #recordPanel :is(input, select, textarea) { background: var(--surface-2); color: var(--fg); border-color: var(--hairline-strong); color-scheme: inherit; }
 .app-layout-sidebar, .app-layout-today { min-width: 0; overflow: auto; position: sticky; top: 0; height: calc(100dvh - var(--layout-bottom)); box-sizing: border-box; background: var(--ground); border-right: var(--hairline-width) solid var(--hairline); color: var(--fg); scrollbar-width: thin; scrollbar-color: var(--hairline-strong) transparent; }
 .app-layout-today { border: 0; border-left: var(--hairline-width) solid var(--hairline); }
@@ -148,7 +143,7 @@ body.has-app-layout { padding: 0 0 var(--layout-bottom) var(--layout-rail) !impo
 .app-layout-sidebar .eyebrow { display: none; }
 .app-layout-working h3, .app-layout-today h3 { font: var(--font-weight-strong) var(--font-size-1) var(--font-text); letter-spacing: 0; text-transform: none; color: var(--fg-muted); margin: var(--space-5) 0 var(--space-2); }
 .app-layout-today section { padding-bottom: var(--space-4); }
-.app-layout-item { display: grid; gap: var(--space-1); width: 100%; padding: var(--space-3); margin: 0 0 var(--space-2); text-align: left; border: var(--hairline-width) solid var(--hairline); border-radius: var(--radius-2); background: var(--surface-1); color: var(--fg); cursor: pointer; transition: background-color var(--duration-hover) var(--ease-out), border-color var(--duration-hover) var(--ease-out); font: var(--font-weight-regular) var(--font-size-1)/1.45 var(--font-text); }
+.app-layout-item { display: grid; justify-content: stretch; gap: var(--space-1); width: 100%; padding: var(--space-3); margin: 0 0 var(--space-2); text-align: left; border: var(--hairline-width) solid var(--hairline); border-radius: var(--radius-2); background: var(--surface-1); color: var(--fg); cursor: pointer; transition: background-color var(--duration-hover) var(--ease-out), border-color var(--duration-hover) var(--ease-out); font: var(--font-weight-regular) var(--font-size-1)/1.45 var(--font-text); }
 .app-layout-item strong { font-weight: var(--font-weight-strong); }
 .app-layout-item span { font-size: var(--font-size-1); color: var(--fg-muted); overflow-wrap: anywhere; }
 @media (hover: hover) { .app-layout-item:hover { background: var(--surface-2); border-color: var(--hairline-strong); } }
@@ -290,6 +285,13 @@ body.has-app-layout:has(#callModeAvailability:not([hidden])) { --layout-bottom: 
 #callModeAvailability { flex: 1; min-width: 0; }
 .app-shell-call-availability #callModeRetry { flex: none; min-width: var(--touch); min-height: var(--touch); height: auto; padding: var(--space-2) var(--space-3); border: var(--hairline-width) solid var(--hairline-strong); border-radius: var(--radius-2); background: var(--surface-2); color: var(--fg); font-size: var(--font-size-1); }
 #callModeRetry[hidden] { display: none; }
+/* Wide screens keep the status bar to one row: clock, page status, Quill and health side by side. */
+@media (min-width: 1101px) {
+  body.has-app-layout:has(#callModeAvailability:not([hidden])) { --layout-bottom: 64px; }
+  #appStatusSlot { flex: 1 1 auto; }
+  .app-shell-call-availability { flex: 0 1 auto; }
+  .app-layout-status .app-layout-health { order: 1; margin-left: 0; }
+}
 @media (max-width: 760px), (hover: none) and (pointer: coarse) and (max-width: 1023px) { body.has-app-layout:has(#callModeAvailability:not([hidden])) { --layout-bottom: 224px; } }
 
 @media (max-width: 760px), (hover: none) and (pointer: coarse) and (max-width: 1023px) {

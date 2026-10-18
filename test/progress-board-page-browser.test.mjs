@@ -218,9 +218,13 @@ test('independent census diagram uses the same stage colors as the published boa
   const { page, errors } = await open(t, { path: systemPath, rows: [workRow('open')] });
   await page.locator('#system-work-flow .flow-stage').first().waitFor();
   for (const stage of STAGES) {
-    const expected = `rgb(${stage.color.slice(1).match(/../g).map(value => parseInt(value, 16)).join(', ')})`;
+    // Stage colours are token roles, so the expected paint is whatever that role resolves to here.
+    const expected = await page.evaluate(color => { const probe = document.body.appendChild(document.createElement('i')); probe.style.color = color; const value = getComputedStyle(probe).color; probe.remove(); return value; }, stage.color);
+    assert.notEqual(expected, 'rgba(0, 0, 0, 0)');
     assert.equal(await page.locator(`#system-work-flow [data-stage="${stage.id}"] .stage-well`).evaluate(node => getComputedStyle(node).stroke), expected);
   }
+  assert.equal(new Set(await Promise.all(STAGES.map(stage => page.locator(`#system-work-flow [data-stage="${stage.id}"] .stage-well`).evaluate(node => getComputedStyle(node).stroke)))).size, STAGES.length,
+    'each stage keeps its own colour');
   assert.deepEqual(errors, []);
 });
 async function panelTasks(page, ids) {

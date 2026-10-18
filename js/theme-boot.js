@@ -13,11 +13,4 @@
   }
   root.dataset.theme = theme;
   if (assist) root.dataset.colorAssist = "on";
-  // Legacy body aliases until css/app.css stops reading them (V2 slice S1).
-  const syncBody = () => {
-    document.body.classList.toggle("night", theme === "dark");
-    if (assist) document.body.classList.add("color-assist");
-  };
-  if (document.body) syncBody();
-  else document.addEventListener("DOMContentLoaded", syncBody, { once: true });
 })();

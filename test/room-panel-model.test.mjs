@@ -221,11 +221,11 @@ test("Conversation admits only useful Queue milestones, and says the projector s
 });
 
 test("seat colour is fixed per seat and falls back rather than throwing", () => {
-  assert.equal(seatColor("human"), "#F08A2D");
-  assert.equal(seatColor("CLAUDE"), "#2DD496");
+  assert.equal(seatColor("human"), "var(--data-2)");
+  assert.equal(seatColor("CLAUDE"), "var(--data-4)");
   assert.equal(seatColor("codex"), seatColor("sol"));
-  assert.equal(seatColor("a-seat-nobody-has-invented"), "#7D8BB0");
-  assert.equal(seatColor(undefined), "#7D8BB0");
+  assert.equal(seatColor("a-seat-nobody-has-invented"), "var(--fg-quiet)");
+  assert.equal(seatColor(undefined), "var(--fg-quiet)");
 });
 
 test("relative time is short, human, and never negative", () => {

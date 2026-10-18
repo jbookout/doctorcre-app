@@ -35,7 +35,7 @@ const forbidden = [
 async function files(directory) {
   const result = [];
   for (const entry of await readdir(directory, { withFileTypes: true })) {
-    if ([".git", "node_modules", "coverage", "dist", "build"].includes(entry.name)) continue;
+    if ([".git", ".worktrees", "node_modules", "coverage", "dist", "build"].includes(entry.name)) continue;
     const path = join(directory, entry.name);
     if (entry.isDirectory()) result.push(...await files(path));
     else result.push(path);
@@ -54,34 +54,44 @@ for (const path of await files(ROOT_PATH)) {
   }
 }
 
-// V2 look tells (plan F4): stylesheets already moved onto css/tokens.css stay free of the
-// V1 tells. Add a file here when its slice migrates it; never remove one.
-const V2_MIGRATED_STYLESHEETS = [
-  "css/tokens.css", "css/system.css", "css/app-shell.css", "css/workspace.css",
-  "css/correspondence.css", "public-shell/shell.css",
-  "css/home-dashboard.css", "css/relationship-network.css", "css/lease-radar.css", "css/business-workspace.css",
-  "css/app.css", "css/pipeline.css", "css/deal-timeline.css",
-  "css/conversations.css", "css/tasks.css", "css/doc-activity.css", "css/doc-presence.css", "css/morning-brief.css",
-  "css/workspace-business.css", "css/leads.css", "css/invoice-tracker.css",
-  "tours/app.css", "tours/planner.css", "tours/property-panel.css", "tours/day.css", "reports/share.css", "css/design.css",
-  "css/control-room.css", "css/control-room-workspace.css", "css/progress-board.css", "css/progress-work.css",
-  "css/queue.css", "css/room.css", "css/observatory.css", "css/system-work.css", "css/work-inventory.css",
-  "css/incidents.css", "css/status.css",
-  "css/calendar.css", "css/ideas.css", "css/notifications.css",
-];
+// V2 look tells (plan F4), repo-wide: every first-party stylesheet, page and script stays free
+// of the V1 tells, so css/tokens.css is the one place a colour is written. Tests, vendored
+// libraries and generated test output (out/, gitignored) are not first-party UI.
+const TELL_EXTENSIONS = new Set([".css", ".html", ".js", ".mjs"]);
+const notFirstParty = (path) => /^(?:test|tests|out)\//.test(path) || /(?:^|\/)vendor\//.test(path);
+// Files allowed to write a raw colour, each with its reason. Keep this list short and never
+// add chrome to it: a new colour belongs in css/tokens.css as a role.
+const RAW_COLOUR_EXCEPTIONS = new Map([
+  ["css/tokens.css", "the token file: the one place a colour is written"],
+  // MapLibre style JSON takes literal colours, not CSS custom properties, and plan G5 keeps
+  // basemap styling outside V2. Both are the placeholder background under a basemap.
+  ["tours/itinerary-map.js", "MapLibre placeholder basemap background"],
+  ["reports/share.js", "MapLibre basemap background on the public tour share"],
+]);
+const HEX = "#(?:[0-9a-fA-F]{3,4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})";
 const v2Tells = [
-  [/(?<!repeating-linear-)gradient\(/, "gradient (only repeating-linear-gradient pattern encoding is allowed)"],
+  [/(?<!repeating-linear-)gradient\(|<(?:linear|radial)Gradient\b|create(?:Linear|Radial)Gradient\(/, "gradient (only repeating-linear-gradient pattern encoding is allowed)"],
   [/backdrop-filter/, "backdrop-filter"],
   [/Barlow|Oswald|Montserrat/, "font family other than the token faces"],
-  [/#[0-9a-fA-F]{3,8}\b/, "raw hex colour outside css/tokens.css", (path) => path !== "css/tokens.css"],
-  [/:root\s*\{[^}]*--(?:ground|surface-\d|hairline|fg|accent|font-size-\d|font-text)\s*:/, "palette or type token outside css/tokens.css", (path) => path !== "css/tokens.css"],
+  // In CSS any hex is a colour. In pages and scripts a colour is a quoted literal or a style
+  // declaration value; prose ("PR #1190"), anchors (href="#add") and selector arguments
+  // (querySelector("#bad")) are not.
+  [new RegExp(`${HEX}\\b`), "raw hex colour outside css/tokens.css", (path) => path.endsWith(".css") && !RAW_COLOUR_EXCEPTIONS.has(path)],
+  [new RegExp(`(?<!href=|\\()(["'\`])${HEX}\\1|:\\s*${HEX}(?![\\w-])`), "raw hex colour outside css/tokens.css", (path) => !path.endsWith(".css") && !RAW_COLOUR_EXCEPTIONS.has(path)],
+  [/:root\s*\{[^}]*--(?:ground|surface-\d|hairline|fg|accent|font-size-\d|font-text)\s*:/, "palette or type token outside css/tokens.css", (path) => path.endsWith(".css") && path !== "css/tokens.css"],
 ];
-for (const path of V2_MIGRATED_STYLESHEETS) {
-  const source = (await read(path)).replace(/\/\*[\s\S]*?\*\//g, "");
+const withoutComments = (source) => source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/<!--[\s\S]*?-->/g, "");
+let tellFiles = 0;
+for (const path of await files(ROOT_PATH)) {
+  const repositoryPath = relative(ROOT_PATH, path);
+  if (!TELL_EXTENSIONS.has(extname(path)) || notFirstParty(repositoryPath) || repositoryPath === "scripts/check-repository.mjs") continue;
+  tellFiles++;
+  const source = withoutComments(await readFile(path, "utf8"));
   for (const [pattern, label, applies = () => true] of v2Tells) {
-    if (!applies(path)) continue;
-    assert.doesNotMatch(source, pattern, `${path} contains a V2 tell: ${label}`);
+    if (!applies(repositoryPath)) continue;
+    assert.doesNotMatch(source, pattern, `${repositoryPath} contains a V2 tell: ${label}`);
   }
 }
+assert.ok(tellFiles > 100, "the V2 tells rule must reach the whole first-party tree");
 
-console.log(`repository check passed: ${fixture.deals.length} synthetic deals, ${contract.mcp_operations.length} pinned MCP operations`);
+console.log(`repository check passed: ${fixture.deals.length} synthetic deals, ${contract.mcp_operations.length} pinned MCP operations, V2 tells absent from ${tellFiles} first-party files`);

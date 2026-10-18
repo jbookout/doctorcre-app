@@ -115,8 +115,8 @@ a.tab[aria-current="page"] { border-color: var(--hairline-strong); background: v
   [data-search="ask"] .field { margin-bottom: var(--space-2); }
   #searchState[data-state^="disamb"] { display: none; }
   #searchCandidates { padding: var(--space-3); }
-  #searchCandidates > .work-list { max-height: min(30vh, 220px); overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: var(--line-strong) transparent; }
+  #searchCandidates > .work-list { max-height: min(30vh, 220px); overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: var(--hairline-strong) transparent; }
   #searchCandidates > .work-list::-webkit-scrollbar { width: 8px; background: transparent; }
-  #searchCandidates > .work-list::-webkit-scrollbar-thumb { border-radius: 8px; background: var(--line-strong); }
+  #searchCandidates > .work-list::-webkit-scrollbar-thumb { border-radius: 8px; background: var(--hairline-strong); }
 }
 #searchChips .chip:focus { outline: 2px solid var(--focus-ring); outline-offset: 2px; }

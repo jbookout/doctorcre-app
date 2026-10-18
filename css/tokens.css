@@ -164,71 +164,22 @@
   --panel-gap: var(--space-3);
   --tabbar-height: 56px;
 
-  /* V1 names, kept as aliases so page stylesheets read the new roles until
-     their own slice renames them. Nothing new reads these. */
-  --ground-0: var(--ground);
-  --ground-1: var(--surface-1);
-  --ground-2: var(--surface-2);
-  --glass: var(--surface-1);
-  --glass-hi: var(--surface-2);
-  --glass-blur: 0px;
-  --line: var(--hairline);
-  --line-strong: var(--hairline-strong);
-  --layout-line: var(--hairline);
-  --shadow: none;
-  --shadow-float: var(--shadow-overlay);
-  --text: var(--fg);
-  --muted: var(--fg-muted);
-  --quiet: var(--fg-quiet);
-  --navy: var(--surface-3);
-  --navy-deep: var(--surface-2);
-  --orange: var(--accent);
-  --orange-text: var(--accent-ink);
-  --cyan: var(--status-info);
-  --cyan-text: var(--status-info-ink);
-  --green: var(--status-ok);
-  --green-text: var(--status-ok-ink);
-  --amber: var(--status-warn);
-  --amber-text: var(--status-warn-ink);
-  --red: var(--status-danger);
-  --red-text: var(--status-danger-ink);
-  --violet: var(--status-hold);
-  --violet-text: var(--status-hold-ink);
-  --focus: var(--focus-ring);
-  --status-healthy: var(--status-ok);
-  --status-attention: var(--status-warn);
-  --status-urgent: var(--status-danger);
-  --status-refreshing: var(--status-info);
-  --status-unknown: var(--fg-quiet);
-  --status-still: var(--fg-quiet);
-  --cat-data: var(--data-1);
-  --cat-execution: var(--data-2);
-  --cat-rules: var(--data-3);
-  --cat-infra: var(--data-4);
-  --health-ok: color-mix(in srgb, var(--status-ok) 18%, transparent);
+  /* Long-running state motion: the Atlas core and observed edges (a real
+     "switched on" state, paused by the motion control) and toast life. */
+  --motion-calm: 5.25s;
+  --motion-flow: 12s;
+  --motion-toast: 4s;
+
+  /* Status tints for health fills; the word or glyph still carries the state. */
   --health-degraded: color-mix(in srgb, var(--status-warn) 26%, transparent);
   --health-failed: color-mix(in srgb, var(--status-danger) 30%, transparent);
   --health-unknown: color-mix(in srgb, var(--fg-quiet) 26%, transparent);
-  --display: var(--font-text);
-  --body: var(--font-text);
-  --mono: var(--font-mono);
-  --radius-s: var(--radius-2);
-  --radius: var(--radius-3);
-  --radius-l: var(--radius-3);
-  --unit: var(--space-1);
+
+  /* Density (data-density on <html>): comfortable by default, compact on request. */
   --density: 1;
   --gap: calc(var(--space-4) * var(--density));
   --pad: calc(var(--space-4) * var(--density));
   --pad-card: calc(var(--space-5) * var(--density));
-  --motion-enter: 270ms;
-  --motion-move: 375ms;
-  --motion-calm: 5.25s;
-  --motion-attention: 3s;
-  --motion-urgent: 1.5s;
-  --motion-flow: 12s;
-  --motion-ring: 1.2s;
-  --motion-toast: 4s;
-  --ease: var(--ease-out);
 }
 
 :root[data-density="compact"] { --density: 0.75; }

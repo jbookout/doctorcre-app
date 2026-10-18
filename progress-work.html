@@ -3,7 +3,6 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-  <meta name="theme-color" content="#07090C">
   <meta name="description" content="Progress work detail">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -70,17 +69,6 @@
          role="img" aria-labelledby="stageTitle stageDesc">
       <title id="stageTitle">The shared wire and every seat orbiting it</title>
       <desc id="stageDesc">Joe's seats orbit the left of the shared wire, Dell's the right. The inner ring carries desks with a live wire; the outer ring carries seats and backend workers seen on the wire without one. The same information is listed as text in the desk column and the health strip.</desc>
-      <defs>
-        <radialGradient id="coreHalo">
-          <stop offset="0%" stop-color="#F08A2D" stop-opacity="0.42"></stop>
-          <stop offset="55%" stop-color="#1B3E74" stop-opacity="0.30"></stop>
-          <stop offset="100%" stop-color="#1B3E74" stop-opacity="0"></stop>
-        </radialGradient>
-        <filter id="arcGlow" x="-120%" y="-120%" width="340%" height="340%">
-          <feGaussianBlur stdDeviation="4" result="blur"></feGaussianBlur>
-          <feMerge><feMergeNode in="blur"></feMergeNode><feMergeNode in="SourceGraphic"></feMergeNode></feMerge>
-        </filter>
-      </defs>
       <g id="stageGuides"></g>
       <g id="stageConnectors"></g>
       <g id="stageCore"></g>

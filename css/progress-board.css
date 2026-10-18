@@ -18,6 +18,8 @@ a { color: inherit; }
 .board-switch a { padding: 6px 12px; border: var(--hairline-width) solid var(--hairline); border-radius: var(--radius-round); color: var(--fg-muted); font-size: var(--font-size-1); font-weight: var(--font-weight-strong); text-decoration: none; white-space: nowrap; }
 .board-switch a[aria-current] { color: var(--fg); border-color: var(--hairline-strong); background: var(--surface-3); }
 .eyebrow { font-size: var(--font-size-1); font-weight: var(--font-weight-regular); color: var(--fg-muted); margin: 0; }
+/* Section numbers ("01 / DELIVERY") are eyebrows; the heading already names the section. */
+.panel-heading .eyebrow { display: none; }
 .intro { padding: 30px 0 20px; }
 h1, h2, h3, p { margin-top: 0; }
 h1, h2, h3, .stage-label, .headline strong { font-family: var(--font-text); }
@@ -197,6 +199,10 @@ footer { padding-top: 8px; }
 .legend-toggle { position: fixed; left: calc(var(--layout-rail, 0px) + 16px); bottom: calc(var(--layout-bottom, 0px) + 16px); z-index: 30; padding: 10px 16px; border: var(--hairline-width) solid var(--hairline-strong); border-radius: var(--radius-round); background: var(--surface-2); color: var(--fg); font-weight: var(--font-weight-strong); cursor: pointer; box-shadow: var(--shadow-overlay); }
 .legend-toggle[aria-expanded="true"] { background: var(--surface-3); border-color: var(--fg-muted); }
 .legend { position: fixed; left: calc(var(--layout-rail, 0px) + 16px); bottom: calc(var(--layout-bottom, 0px) + 84px); z-index: 30; width: min(440px, calc(100vw - var(--layout-rail, 0px) - 32px)); max-height: min(70vh, 640px); overflow: auto; margin: 0; box-shadow: var(--shadow-overlay); animation: legend-in var(--duration-menu) var(--ease-out); }
+/* Beside a docked sidebar the Key sits at the start of the work column, never over the rail's items. */
+@media (min-width: 761px) and (not ((hover: none) and (pointer: coarse) and (max-width: 1023px))) {
+  .has-app-layout .legend-toggle, .has-app-layout .legend { left: calc(var(--layout-rail, 0px) + var(--layout-left, 0px) + 16px); }
+}
 @keyframes legend-in { from { opacity: 0; transform: translateY(8px); } }
 .legend-body { display: grid; gap: 12px; }
 .legend-group h3 { margin: 0 0 6px; color: var(--fg-muted); font-size: var(--font-size-1); }

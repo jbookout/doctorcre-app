@@ -52,9 +52,9 @@
 .dialog .row-wrap .btn { min-height: var(--touch); }
 .stage-table td { overflow-wrap: anywhere; }
 .stage-cell { font-weight: 600; }
-.stage-cell[data-state="complete"] { color: var(--green); }
-.stage-cell[data-state="not reached"] { color: var(--muted); }
-.stage-cell[data-state="unknown"] { color: var(--amber); }
+.stage-cell[data-state="complete"] { color: var(--status-ok); }
+.stage-cell[data-state="not reached"] { color: var(--fg-muted); }
+.stage-cell[data-state="unknown"] { color: var(--status-warn); }
 
 /* At phone width nine columns cannot be a table. Each row becomes a bordered
  * card and each cell carries its own column caption, so nothing is read by
@@ -67,11 +67,11 @@
   .stage-table tr,
   .stage-table td { display: block; }
   .stage-table tr {
-    border: 1px solid var(--line);
+    border: 1px solid var(--hairline);
     border-radius: 12px;
     margin-bottom: 10px;
     padding: 6px 0;
-    background: var(--ground-1);
+    background: var(--surface-1);
   }
   .stage-table td {
     display: flex;
