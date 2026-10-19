@@ -1,3 +1,4 @@
+import {onDialogClosed} from './dialog-lifecycle.js';
 import { createClient } from './client.js';
 import { resolveDealroomBoot } from './boot-mode.js';
 import { mountAutoRefresh, updatedLabel } from './auto-refresh.mjs';
@@ -89,7 +90,7 @@ export function mountInvoiceTracker({ document, window, client, today=localToday
     focusVisible(button || opener);
   }
   function closeDetail(){ $('invoiceDetail').close();returnFocus(); }
-  $('invoiceDetail').addEventListener('close',returnFocus);
+  onDialogClosed($('invoiceDetail'),returnFocus);
   $('closeInvoiceDetail').addEventListener('click',closeDetail);
   $('invoiceRows').addEventListener('click',event=>{const button=event.target.closest('[data-invoice]');if(button)openDetail(button.dataset.invoice,button);});
   $('invoiceTabs').addEventListener('click',event=>{const button=event.target.closest('[data-status]');if(button){status=button.dataset.status;if(['paid','awaiting'].includes(status))age=null;render();}});

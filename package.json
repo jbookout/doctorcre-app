@@ -33,6 +33,7 @@
     "preserve": "node scripts/prepare-offline-tour.mjs",
     "predeployment:check:staging": "node scripts/prepare-offline-tour.mjs",
     "predeployment:check:production": "node scripts/prepare-offline-tour.mjs",
+    "ci:fast": "node scripts/check-action-pins.mjs",
     "docs:check": "node scripts/check-docs.mjs"
   },
   "devDependencies": {

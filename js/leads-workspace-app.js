@@ -1,3 +1,4 @@
+import {onDialogClosed} from './dialog-lifecycle.js';
 import { pageDocContext, publishDocRead, selectDocRecord, setDocFilters } from './doc-context.js';
 import { createLeadBoardClient, validateLeadWorkspace, validateLeadDetail } from "./leads-client.js";
 import { mountAutoRefresh, updatedLabel } from "./auto-refresh.mjs";
@@ -315,8 +316,7 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
   $("refreshBoard").addEventListener("click", () => refresh());
   $("closeDetail").addEventListener("click", () => $("leadDetail").close());
   $("closeStage").addEventListener("click", () => $("stageDialog").close());
-  for (const id of ["leadDetail", "stageDialog"]) $(id).addEventListener("close", () => {
-    if ($(id).open) return; // A queued close event may belong to an earlier opening.
+  for (const id of ["leadDetail", "stageDialog"]) onDialogClosed($(id), () => {
     if (id === "stageDialog") { ++state.reviewEpoch; state.reviewTarget = null; state.proposal = null; }
     else { ++state.detailEpoch; state.detailId = null; state.detail = null; }
     paintCommandFeedback();

@@ -1,11 +1,12 @@
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { chmod, mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
+import { checkActionPins } from "../scripts/check-action-pins.mjs";
 
 const ci = await readFile(new URL("../.github/workflows/ci.yml", import.meta.url), "utf8");
 const release = await readFile(new URL("../.github/workflows/release.yml", import.meta.url), "utf8");
@@ -59,10 +60,9 @@ test("release build is read-only and publisher receives only this run's digest-b
   assert.match(publisher, /sha256sum -c/);
 });
 
-test("every external action is immutable, and checkout never persists credentials", async () => {
+test("checkout never persists credentials", async () => {
   for (const file of ["ci.yml", "e2e.yml", "release.yml"]) {
     const workflow = await readFile(new URL(`../.github/workflows/${file}`, import.meta.url), "utf8");
-    for (const ref of workflow.matchAll(/uses: ([^\s#]+)/g)) assert.match(ref[1], /^[\w-]+\/[\w-]+@[a-f0-9]{40}$/);
     for (const step of workflow.split(/^      - /m).slice(1).filter(s => s.includes("actions/checkout@"))) assert.match(step, /persist-credentials: false/);
   }
 });
@@ -109,38 +109,8 @@ test('publisher handoff rejects tampering, missing digests, fork identity and sy
   await assert.rejects(readFile(join(directory,'published.json')),/ENOENT/);
 });
 
-test('action pins agree with authenticated canonical release evidence',async()=>{
-  const pins=JSON.parse(await readFile(new URL('../.github/action-pins.json',import.meta.url)));
-  const runtimes={
-    'actions/checkout':'node24',
-    'actions/setup-node':'node24',
-    'actions/upload-artifact':'node24',
-    'actions/download-artifact':'node24',
-    'actions/setup-python':'node20',
-  };
-  const check=(action,sha,pin=pins.actions[action])=>{
-    assert.ok(Object.hasOwn(runtimes,action),`unverified action: ${action}`);
-    assert.equal(pin.sha,sha); assert.equal(pin.canonical_tag_sha,sha);
-    assert.match(pin.tag,/^v\d+\.\d+\.\d+$/);
-    assert.equal(pin.release_url,`https://github.com/${action}/releases/tag/${pin.tag}`);
-    assert.equal(pin.tag_url,`https://api.github.com/repos/${action}/git/refs/tags/${pin.tag}`);
-    assert.match(pin.metadata_blob,/^[a-f0-9]{40}$/); assert.equal(pin.runtime,runtimes[action]);
-  };
-  // Every workflow, so a newly added one cannot keep an unverified or stale pin.
-  const workflows=new URL('../.github/workflows/',import.meta.url);
-  for(const file of await readdir(workflows)) {
-    const workflow=await readFile(new URL(file,workflows),'utf8');
-    for(const match of workflow.matchAll(/uses: ([\w-]+\/[\w-]+)@([a-f0-9]{40})/g)) check(match[1],match[2]);
-  }
-  for(const [action,pin] of Object.entries(pins.actions)) {
-    check(action,pin.sha);
-    for(const bad of [{runtime:pin.runtime==='node24'?'node20':'node24'},
-      {canonical_tag_sha:'f'.repeat(40)},{release_url:'https://example.invalid/release'},
-      {tag_url:'https://example.invalid/tag'},{metadata_blob:'invalid'}]) {
-      assert.throws(()=>check(action,pin.sha,{...pin,...bad}),assert.AssertionError);
-    }
-  }
-  assert.throws(()=>check('actions/checkout','f'.repeat(40)),/strictly equal/);
+test('action pins agree with authenticated canonical release evidence', async () => {
+  await checkActionPins(root);
 });
 
 {
