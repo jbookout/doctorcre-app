@@ -17,7 +17,7 @@ import assert from "node:assert/strict";
 import { runInNewContext } from "node:vm";
 import { JSDOM } from "jsdom";
 import { HEALTH, SYNC_STATES } from "../js/board-sync.mjs";
-import { localDeals } from "../js/local-deals-model.js";
+import { localDeals } from "../js/deal-review-model.js";
 import { readFile } from "node:fs/promises";
 
 import { createFixtureClient } from "../js/fixture-client.js";

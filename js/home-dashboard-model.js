@@ -1,4 +1,4 @@
-import { isClosedDeal, localDeals, needsAttention } from './local-deals-model.js';
+import { isClosedDeal, localDeals, needsAttention } from './deal-review-model.js';
 import { validInvoiceTracker } from './invoice-tracker-model.js';
 import { validNetwork } from './relationship-network-model.js';
 import { addDays, criticalDateEntries, localToday, toDay } from './calendar-model.js';

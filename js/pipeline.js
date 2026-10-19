@@ -53,7 +53,8 @@ import {
   loadDealContext, attachedParties, moveIntent, moveSummary, moveTitle, noteText, dealName, presenceChip,
   dealInsightLines,
 } from './pipeline-model.js';
-import { isClosedDeal, lostDeals, closedDeals, localDeals, needsAttention, urgencyOrder, concise, automaticMove, OWNER_FILTERS, PHASE_TRIGGERS } from './local-deals-model.js';
+import { isClosedDeal, localDeals, needsAttention } from './deal-review-model.js';
+import { lostDeals, closedDeals, urgencyOrder, concise, automaticMove, OWNER_FILTERS, PHASE_TRIGGERS } from './local-deals-model.js';
 import { DATE_KINDS, renderCriticalDates, renderDealTimeline, renderDealUpdates, updateCountdowns } from './deal-timeline.js';
 import { uuidv4 } from './uuid.js';
 import { mountVisibilityPoll } from './visibility-poll.mjs';

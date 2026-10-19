@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { localDeals, needsAttention, urgencyOrder, automaticMove, noteEntries, PHASE_TRIGGERS } from '../js/local-deals-model.js';
+import { localDeals, needsAttention } from '../js/deal-review-model.js';
+import { urgencyOrder, automaticMove, noteEntries, PHASE_TRIGGERS } from '../js/local-deals-model.js';
 const base={id:'demo-1',name:'Demo One',phase:'Research',owner:'joe',next_step:'Confirm tour',last_touch:'2026-10-01',last_review_at:'2026-10-01T16:00:00Z'};
 const now=Date.parse('2026-10-01T17:00:00Z');
 test('local scope excludes national and invoiced assignments and filters only owner',() => {

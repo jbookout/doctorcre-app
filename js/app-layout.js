@@ -1,5 +1,5 @@
 import { TOUCH_LAYOUT } from './touch-layout.js';
-import { needsAttention } from './local-deals-model.js';
+import { needsAttention } from './deal-review-model.js';
 import { createClient } from './client.js';
 import { resolveDealroomBoot } from './boot-mode.js';
 import { mountAutoRefresh, readWithDeadline } from './auto-refresh.mjs';

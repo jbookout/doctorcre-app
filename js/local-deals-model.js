@@ -1,6 +1,5 @@
 import { noteText } from './pipeline-model.js';
-import { toDay } from './calendar-model.js';
-import { radarToday } from './lease-radar-model.js';
+import { needsAttention } from './deal-review-model.js';
 
 export const PHASE_TRIGGERS = Object.freeze({
   pending: 'Prospective client', research: 'ETL signed', site_selection: 'Tour prepared or scheduled',
@@ -10,13 +9,6 @@ export const PHASE_TRIGGERS = Object.freeze({
 export const OWNER_FILTERS = Object.freeze([
   { value: 'all', label: 'All' }, { value: 'joe', label: 'Joe' }, { value: 'dell', label: 'Dell' },
 ]);
-export function localDeals(rows, owner = 'all') {
-  return (rows || []).filter(d => d.workspace_kind !== 'national_account' && !d.account_client_id
-    && !isClosedDeal(d) && (owner === 'all' || d.owner === owner));
-}
-export function isClosedDeal(deal) {
-  return String(deal.phase).toLowerCase() === 'closed' || Boolean(deal.outcome || deal.invoiced_on);
-}
 export function lostDeals(rows, owner = 'all', query = '') { return historyDeals(rows, owner, query, true); }
 export function closedDeals(rows, owner = 'all', query = '') { return historyDeals(rows, owner, query, false); }
 function historyDeals(rows, owner = 'all', query = '', lost = false) {
@@ -25,11 +17,6 @@ function historyDeals(rows, owner = 'all', query = '', lost = false) {
     && (owner === 'all' || d.owner === owner)
     && (!search || [d.name, d.client_name, d.client_ref, d.type, d.closed_on].some(v => String(v || '').toLowerCase().includes(search))))
     .sort((a,b) => String(b.closed_on || '').localeCompare(String(a.closed_on || '')) || String(a.name).localeCompare(String(b.name)));
-}
-export function needsAttention(deal, now = Date.now()) {
-  if (isClosedDeal(deal) || (deal.operating_state || 'active') !== 'active') return false;
-  const due = toDay(deal.next_date);
-  return Boolean(noteText(deal.next_step).trim() && due && due < radarToday(new Date(now)));
 }
 export function urgencyOrder(rows, now = Date.now()) {
   return [...rows].sort((a,b) => Number(needsAttention(b,now)) - Number(needsAttention(a,now))

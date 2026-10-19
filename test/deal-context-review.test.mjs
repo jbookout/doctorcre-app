@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {loadDealContext,contextDrawerSections} from '../js/pipeline-model.js';
-import {closedDeals,lostDeals,localDeals} from '../js/local-deals-model.js';
+import {localDeals} from '../js/deal-review-model.js';
+import {closedDeals,lostDeals} from '../js/local-deals-model.js';
 test('uses the actual client and exact vendor association, never a participant party id',async()=>{
  const calls=[];
  const context=await loadDealContext({getPartyRecord:async arg=>{calls.push(arg);return {record:{name:'Demo Client'}};},getRelationshipNetwork:async()=>({nodes:[{id:'party:demo-party',record_id:'demo-vendor',kind:'vendor',name:'Demo Vendor'}],edges:[{from:'party:demo-party',to:'deal:demo-deal',kind:'referred'}]})},{deal:{id:'demo-deal',client_id:'demo-client',account_client_id:'demo-parent'},participants:[{party_id:'wrong-id',name:'Demo Contact',role:'listing_side'}]});
