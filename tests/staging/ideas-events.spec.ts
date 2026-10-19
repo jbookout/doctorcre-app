@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { createLoopFixture } from './loop-fixture';
 
 test.describe.configure({ retries: 0 });
 
@@ -16,13 +17,17 @@ test('Ideas search and clear a loaded board, including its empty state', async (
 });
 
 test('A parked idea opens and closes without answering it', async ({ page }) => {
-  await page.goto('/ideas-events?tab=ideas');
-  await expect(page.locator('#ideaStatusLabel')).toHaveText('Current', { timeout: 27000 });
-  test.skip(await page.locator('.idea-tile').count() === 0, 'No parked idea; staging add-loop refuses no_block for idea/parked, and no supported API provisioner exists.');
-  await page.locator('.idea-tile').first().click();
-  await expect(page.locator('#ideaDialog')).toBeVisible();
-  await page.locator('#ideaDialogClose').click();
-  await expect(page.locator('#ideaDialog')).toBeHidden();
+  const fixture = await createLoopFixture(page.request, 'idea');
+  try {
+    await page.goto('/ideas-events?tab=ideas');
+    await expect(page.locator('#ideaStatusLabel')).toHaveText('Current', { timeout: 27000 });
+    await page.locator('.idea-tile').filter({ hasText: fixture.title }).click();
+    await expect(page.locator('#ideaDialog')).toBeVisible();
+    await page.locator('#ideaDialogClose').click();
+    await expect(page.locator('#ideaDialog')).toBeHidden();
+  } finally {
+    await fixture.cleanup();
+  }
 });
 
 test('V2-F02: Ideas navigation loads the signed-in app shell', async ({ page }) => {

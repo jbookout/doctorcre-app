@@ -5,13 +5,8 @@ test('Automations reads schedules and opens job history without running a job', 
   await page.addLocatorHandler(page.getByRole('button', { name: 'Dismiss morning brief' }), async dismiss => { await dismiss.click(); });
   await expect(page).toHaveURL(/control-room\?tab=automations/);
   await expect(page.locator('#panelAutomations')).toBeVisible();
-  await page.waitForFunction(async () => {
-    const modulePath = '/js/control-room.js';
-    const { view } = await import(modulePath);
-    return view.reads.schedule.state !== 'pending';
-  });
   const job = page.locator('.automation-job').first();
-  test.skip(await job.count() === 0, 'Staging has no automation schedule to inspect.');
+  await expect(job).toBeVisible();
   await job.click();
   await expect(page.locator('#jobDialog')).toBeVisible();
   await expect(page.locator('#jobTitle')).not.toBeEmpty();
