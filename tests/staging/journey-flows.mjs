@@ -77,16 +77,22 @@ export async function shareLifecycle(page, fixture) {
   await page.locator('#share-form button[type="submit"]').click();
   expect((await issue).ok()).toBe(true);
   await expect(page.locator('#share-link')).toBeVisible();
-  const issued = new URL(await page.locator('#share-url').inputValue());
-  expect(issued.pathname).toBe('/share');
-  expect(issued.search).toBe('');
-  expect(issued.hash).toMatch(/^#token=[A-Za-z0-9_-]{43}$/);
+  const link = await page.locator('#share-url').inputValue();
+  await page.locator('#share-url').evaluate(node => { node.value = ''; });
+  let issued;
+  try { issued = new URL(link); } catch { throw new Error('Malformed confidential Share URL'); }
+  expect(issued.pathname === '/share' && issued.search === '' && /^#token=[A-Za-z0-9_-]{43}$/.test(issued.hash),
+    'confidential Share URL has the required shape').toBe(true);
   const client = await page.context().newPage();
   try {
-    const exchange = client.waitForResponse(response => new URL(response.url()).pathname === '/api/share/exchange');
-    await client.goto(`/share${issued.hash}`);
-    await client.locator('#open-tour').click();
-    expect((await exchange).ok()).toBe(true);
+    await client.goto(`/share${issued.hash}`).catch(() => {
+      throw new Error('Share navigation failed; confidential URL omitted');
+    });
+    const [exchange] = await Promise.all([
+      client.waitForResponse(response => new URL(response.url()).pathname === '/api/share/exchange'),
+      client.locator('#open-tour').click(),
+    ]);
+    expect(exchange.ok()).toBe(true);
     await expect(client.locator('#report-list .report-item')).toHaveCount(2, { timeout: 27000 });
     await expect(client.locator('#report-list')).toContainText(fixture.tour.property_names[0]);
     await expect(client.locator('#report-list')).toContainText(fixture.tour.property_names[1]);
@@ -113,7 +119,7 @@ export async function shareLifecycle(page, fixture) {
     expect((await client.request.get('/api/share/report')).status()).toBe(404);
     const retry = await client.request.post('/api/share/exchange', {
       headers: { origin: new URL(client.url()).origin, 'sec-fetch-site': 'same-origin' }, data: { token: issued.hash.slice('#token='.length) },
-    });
+    }).catch(() => { throw new Error('Share exchange failed; confidential request omitted'); });
     expect(retry.status()).toBe(404);
     await client.reload();
     await expect(client.locator('#report-list .report-item')).toHaveCount(0);
