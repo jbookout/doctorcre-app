@@ -70,6 +70,11 @@
 </section>
 <section id="panelViews" class="tabpanel cr-section" role="tabpanel" aria-labelledby="tabViews" tabindex="0" hidden>
   <header class="cr-section-head"><h2 id="crViewsTitle">Views</h2><p class="cr-section-lead">Built-in views of the queue. Counts cover the items loaded so far.</p></header>
+  <section class="cr-attention" aria-labelledby="crAttentionTitle">
+    <div class="cr-ledger-head"><h3 id="crAttentionTitle">Needs attention</h3><span id="crAttentionCount" class="as-of"></span></div>
+    <p id="crAttentionCoverage" class="cr-coverage" role="status">Reading work…</p>
+    <div id="crAttentionList"></div>
+  </section>
   <div id="crViewsList" class="cr-list" aria-labelledby="crViewsTitle"><div class="state-block" data-state="loading"><h3>Reading views…</h3></div></div>
       <section class="cr-ledger" data-section="incidents" aria-labelledby="attentionTitle">
         <div class="cr-ledger-head">

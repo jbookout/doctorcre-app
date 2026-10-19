@@ -1,5 +1,26 @@
 import { GOVERNANCE_LANES, validGovernanceQueuePayload, validScheduleBoardPayload, formatScheduleDateTime } from './operations-model.js';
 
+const recordedText = value => typeof value === 'string' && value.trim() ? value : null;
+
+export function jobFacts(task) {
+  return {
+    id: task.id, task, title: task.title || task.name || 'Untitled work',
+    state: task.status || task.state || 'unknown',
+    owner: recordedText(task.held?.owner) || recordedText(task.owner) || 'unknown',
+    agent: recordedText(task.held?.executor) || (!task.kind ? recordedText(task.executor) : null) || 'unknown',
+    model: recordedText(task.model) || 'unknown', effort: recordedText(task.effort) || 'unknown',
+    blocker: recordedText(task.held?.blocker?.detail) || recordedText(task.blocked_reason) || recordedText(task.blocker?.detail) || 'unknown',
+    progress: recordedText(task.last_progress) || (!task.kind ? recordedText(task.note) : null) || 'unknown',
+    updatedAt: recordedText(task.updated_at),
+  };
+}
+
+export function attentionTasks(tasks) {
+  const unique = new Map(tasks.filter(task => task.id).map(task => [task.id, task]));
+  return [...unique.values()].filter(task => ['failed', 'blocked', 'needs_joe'].includes(task.status || task.state)
+    || task.health === 'blocked').map(jobFacts).sort((a, b) => Number(b.state === 'failed') - Number(a.state === 'failed'));
+}
+
 export function governanceTasks(payload) {
   if (!validGovernanceQueuePayload(payload)) return null;
   return GOVERNANCE_LANES.flatMap(lane => payload[lane.id].map(row => ({
