@@ -266,7 +266,7 @@ async function boot(){
  });
  $('crInboxList').addEventListener('click',event=>{const row=event.target.closest('[data-notification]');if(row)showInboxDetail(row.dataset.notification);});
  $('crInboxClose').onclick=()=>$('crInboxDialog').close();
- $('crInboxDialog').addEventListener('close',()=>{const id=$('crInboxDialog').dataset.notification;[...$('crInboxList').querySelectorAll('[data-notification]')].find(row=>row.dataset.notification===id)?.focus();$('crInboxBody').textContent='';});
+ $('crInboxDialog').addEventListener('close',()=>{if($('crInboxDialog').open)return;const id=$('crInboxDialog').dataset.notification;[...$('crInboxList').querySelectorAll('[data-notification]')].find(row=>row.dataset.notification===id)?.focus();$('crInboxBody').textContent='';});
  mountNotificationBadge(client);tabs=wireTabs('controlRoomTabs');wireQueuePane();
  const strip=$('controlRoomTabs'),tabFor=key=>strip.querySelector(`[data-tab-key="${key}"]`);
  const commands=mountControlRoomCommands({tabs:strip,onEscape:()=>closePane()});
