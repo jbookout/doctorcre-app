@@ -117,7 +117,14 @@ function render() {
   }
   const list = $("ideaList");
   if (list) {
+    const focused = document.activeElement;
+    const number = list.contains(focused) ? focused.dataset.idea : null;
     list.innerHTML = phase === "ready" ? shown.map(tileHtml).join("") : "";
+    const current = document.activeElement;
+    if (number && (!current || current === document.body || !current.isConnected)) {
+      const tile = [...list.querySelectorAll('.idea-tile')].find(node => node.dataset.idea === number);
+      (tile || $("ideaSearch"))?.focus({ preventScroll: true });
+    }
   }
   const asOf = $("ideaAsOf");
   if (asOf && view.status === "ready") asOf.textContent = updatedLabel(view.updatedAt);
@@ -321,7 +328,10 @@ async function saveEvent(event) {
     await loadEvents();
     const savedCard = [...document.querySelectorAll(".event-card")]
       .find((card) => card.dataset.eventId === result.event.id);
-    (savedCard || $("eventAdd"))?.focus({ preventScroll: true });
+    const focused = document.activeElement;
+    if (view.state.tab === 'events' && (!focused || focused === document.body || !focused.isConnected)) {
+      (savedCard || $("eventAdd"))?.focus({ preventScroll: true });
+    }
     announce(`${result.event.title || "Event"} saved. Events refreshed from the record.`);
   } catch (error) {
     const outcome = eventWriteOutcome(error);

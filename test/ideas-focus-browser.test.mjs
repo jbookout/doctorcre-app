@@ -103,3 +103,27 @@ for (const moved of [false, true]) {
     assert.equal(await page.evaluate(moved => moved ? document.activeElement.id : document.activeElement.matches('.event-card') && document.activeElement.textContent.includes('Synthetic focus event'), moved), moved ? 'eventAdd' : true);
   });
 }
+
+for (const scenario of ['removed', 'moved']) {
+  test(`Ideas close after refresh handles ${scenario === 'removed' ? 'a missing opener' : 'focus moved before queued cleanup'}`, async t => {
+    const page = await open(t);
+    await page.locator('.idea-tile').first().focus();
+    await page.keyboard.press('Enter');
+    await page.locator('#ideaDialog').waitFor({state: 'visible'});
+    await page.evaluate(removed => {
+      window.openerTile = document.querySelector('.idea-tile');
+      if (removed) window.ideaRows = [];
+    }, scenario === 'removed');
+    await page.clock.fastForward(30_000);
+    await waitForAsync(page, () => !window.openerTile.isConnected);
+    await page.evaluate(moved => {
+      const dialog = document.querySelector('#ideaDialog');
+      window.ideaClosed = false;
+      dialog.addEventListener('close', () => { window.ideaClosed = true; }, {once: true});
+      dialog.close();
+      if (moved) document.querySelector('#ideaSearch').focus();
+    }, scenario === 'moved');
+    await waitForAsync(page, () => window.ideaClosed);
+    assert.equal(await page.evaluate(() => document.activeElement.id), 'ideaSearch');
+  });
+}
