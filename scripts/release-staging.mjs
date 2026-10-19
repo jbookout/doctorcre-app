@@ -1,51 +1,10 @@
-import { execFileSync } from "node:child_process";
+import { spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 
-import { credentialFreeEnv } from "./release-environment.mjs";
-import { providerRelease } from "./provider-release.mjs";
-import { uploadedVersionId } from "./provider-version.mjs";
-
-const run = (command, args, { capture = false } = {}) => execFileSync(command, args, {
-  cwd: new URL("../", import.meta.url),
-  encoding: "utf8",
-  stdio: capture ? "pipe" : "inherit",
-  env: credentialFreeEnv(),
-});
-
-const args = process.argv.slice(2);
-if (args.length && (args.length !== 2 || args[0] !== '--source-sha' || !/^[0-9a-f]{40}$/.test(args[1]))) {
-  throw new Error('usage: release:staging [--source-sha <exact-HEAD-SHA>]');
-}
-const candidateCommit = args[1];
-const sourceCommit = run("git", ["rev-parse", "HEAD"], { capture: true }).trim();
-const mainCommit = run("git", ["rev-parse", "origin/main"], { capture: true }).trim();
-const status = run("git", ["status", "--porcelain", "--untracked-files=all"], { capture: true }).trim();
-
-if (!/^[0-9a-f]{40}$/.test(sourceCommit)) throw new Error("HEAD is not a full Git commit");
-if (candidateCommit) {
-  if (sourceCommit !== candidateCommit) throw new Error('staging candidate differs from the exact source SHA');
-} else if (sourceCommit !== mainCommit) throw new Error("staging releases must use the exact origin/main commit");
-if (status) throw new Error("staging releases require a clean checkout");
-
-// Verification also replaces dist/site from the verified archive, so restored
-// workspace/cache output can never become the provider's deployment input.
-run("node", ["scripts/build-artifact.mjs", "prepare-deployment"]);
-const provider = providerRelease();
-
-const versionTag = `staging-${sourceCommit.slice(0, 12)}`;
-const message = `DoctorCRE staging ${sourceCommit}`;
-const deploymentStatus = provider(["deployments", "status", "--env", "staging", "--json"], { capture: true, allowFailure: true });
-const providerOutput = `${deploymentStatus.stdout || ""}\n${deploymentStatus.stderr || ""}`;
-if (deploymentStatus.status === 0) {
-  const uploadOutput = provider(["versions", "upload", "--env", "staging", "--strict",
-    "--tag", versionTag, "--message", message, "--var", `GIT_SHA:${sourceCommit}`], { capture: true });
-  process.stdout.write(uploadOutput);
-  const providerVersionId = uploadedVersionId(uploadOutput);
-  provider(["versions", "deploy", `${providerVersionId}@100%`, "--env", "staging",
-    "--message", message, "--yes"]);
-} else if (/code:\s*10007/.test(providerOutput)) {
-  provider(["deploy", "--env", "staging", "--strict", "--tag", versionTag,
-    "--message", message, "--var", `GIT_SHA:${sourceCommit}`]);
-} else {
-  throw new Error("could not establish the current DoctorCRE staging deployment state");
-}
-provider(["deployments", "status", "--env", "staging", "--json"]);
+const result = spawnSync('python3', [fileURLToPath(new URL('./release-staging.py', import.meta.url)),
+  process.execPath, ...process.argv.slice(2)], { encoding: 'utf8', maxBuffer: Infinity, stdio: ['inherit', 'inherit', 'pipe'] });
+const failure = result.stderr?.split('\n').find(line => line.startsWith('release:staging failed at '));
+if (result.error || result.signal || (result.status !== 0 && !failure)) {
+  console.error('release:staging failed at python-launch. Recovery: install Python 3 or repair its runtime configuration; inspect any interrupted release state before retrying.');
+} else process.stderr.write(result.status === 0 ? result.stderr || '' : `${failure}\n`);
+process.exitCode = result.status ?? 1;
