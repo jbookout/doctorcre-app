@@ -245,14 +245,11 @@ export function dispatchSearchRequest(query) {
 
 /** How a card's `effective_model` is shown. Fact: it may be an object. */
 export function effectiveModelText(value) {
-  if (typeof value === "string") return value;
+  if (typeof value === "string") return value.trim() ? value : "unknown";
   if (value && typeof value === "object" && !Array.isArray(value)) {
-    // A named model inside the object, else the object's own field list. Never
-    // String(value), which is the `[object Object]` this branch exists to stop.
-    const named = ["id", "model", "name", "slug"].find((key) => isText(value[key]));
+    const named = ["id", "model", "name", "slug"].find((key) => isText(value[key]) && value[key].trim());
     if (named) return String(value[named]);
-    const keys = Object.keys(value);
-    return keys.length === 0 ? "a model object with no fields" : `a model object: ${keys.join(", ")}`;
+    return "unknown";
   }
   return "unknown";
 }
@@ -276,6 +273,8 @@ export function assignmentBoard(payload) {
       title: event.card.title,
       target: event.card.target,
       effectiveModel: effectiveModelText(event.card.effective_model),
+      effort: [event.card.effort, event.card.effective_model?.effort]
+        .find(value => typeof value === "string" && value.trim()) || "unknown",
       effectiveModelIsObject: typeof event.card.effective_model === "object",
       status: event.card.status,
       priority: event.card.priority,

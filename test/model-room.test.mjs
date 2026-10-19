@@ -321,8 +321,8 @@ test("C12-11 an effective_model object renders through its branch, not as [objec
   // SYNTHETIC: every live card carries a string, so only a fixture reaches this
   // branch — and the producer explicitly accepts `typeof` string OR object.
   assert.equal(effectiveModelText({ id: "claude-opus-5-high", host: "desktop" }), "claude-opus-5-high");
-  assert.equal(effectiveModelText({ host: "desktop", tier: "high" }), "a model object: host, tier");
-  assert.equal(effectiveModelText({}), "a model object with no fields");
+  assert.equal(effectiveModelText({ host: "desktop", tier: "high" }), "unknown");
+  assert.equal(effectiveModelText({}), "unknown");
   for (const value of [{ id: "x" }, { host: "desktop" }, {}]) {
     assert.equal(/\[object Object\]/.test(effectiveModelText(value)), false);
   }

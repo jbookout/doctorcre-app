@@ -137,3 +137,12 @@ test('dangling ancestor references remain readable without self-links',()=>{
  assert.equal(url.searchParams.get('work_request'),'WR-900');
  assert.equal(url.searchParams.has('task'),false,'WR navigation reads the request independently of this card');
 });
+
+test('attention detail keeps blocker, progress and unknown model facts above the fold',()=>{
+ const {detail,body}=setup();
+ detail.open({id:'demo-failed',title:'Demo failed export',status:'failed',executor:'cx-app',blocked_reason:'Demo source unavailable',last_progress:'Demo validation complete'});
+ const summary=body.querySelector('.job-summary');
+ for(const value of ['Demo source unavailable','Demo validation complete','cx-app','Model','Effort','unknown'])assert.ok(summary.textContent.includes(value),value);
+ detail.update([{id:'other',title:'Demo other work'}],{source:'agents'});
+ assert.match(body.textContent,/Demo validation complete/);
+});
