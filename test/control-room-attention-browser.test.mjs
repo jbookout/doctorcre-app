@@ -91,6 +91,33 @@ for (const width of [390, 1440]) test(`Inbox opens the selected item detail and 
   assert.equal(await dialog.getByRole('link').count(), 0);
 });
 
+for (const width of [390, 1440]) test(`Inbox retains the next item when a previous close event arrives at ${width}`, async t => {
+  const page = await open(t, 'inbox', width);
+  const detail = await page.evaluate(async () => {
+    const rows = document.querySelectorAll('#crInboxList .cr-row');
+    const dialog = document.querySelector('#crInboxDialog');
+    rows[0].click();
+    const closed = new Promise(resolve => dialog.addEventListener('close', resolve, { once: true }));
+    document.querySelector('#crInboxClose').click();
+    rows[1].click();
+    await closed;
+    return { open: dialog.open, body: document.querySelector('#crInboxBody').textContent,
+      reason: rows[1].querySelector('.cr-row-title').textContent, focused: document.activeElement.id };
+  });
+  assert.equal(detail.open, true);
+  assert.ok(detail.body.includes(detail.reason), 'the newly opened item survives the queued close event');
+  assert.equal(detail.focused, 'crInboxClose');
+  const closed = await page.evaluate(async () => {
+    const dialog = document.querySelector('#crInboxDialog');
+    const closed = new Promise(resolve => dialog.addEventListener('close', resolve, { once: true }));
+    document.querySelector('#crInboxClose').click();
+    await closed;
+    return { open: dialog.open, body: document.querySelector('#crInboxBody').textContent,
+      focused: document.activeElement === document.querySelectorAll('#crInboxList .cr-row')[1] };
+  });
+  assert.deepEqual(closed, { open: false, body: '', focused: true });
+});
+
 for (const theme of ['dark', 'light']) test(`desktop Inbox detail stays within 640px in ${theme}`, async t => {
   const page = await open(t, 'inbox', 1440, theme);
   await page.locator('#crInboxList .cr-row').first().click();

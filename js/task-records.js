@@ -1,3 +1,4 @@
+import {onDialogClosed} from './dialog-lifecycle.js';
 import { selectDocRecord, publishDocRead, setDocFilters } from './doc-context.js';
 // V5-UX-B02 — Tasks: DOM wiring only.
 //
@@ -515,7 +516,7 @@ function wire() {
     await refreshVerified();
   });
   $("taskDialogClose")?.addEventListener("click", closeDialog);
-  $("taskDialog")?.addEventListener("close", () => { selectDocRecord(null,null); view.open = null; view.openViewer = null; view.closing = null; });
+  onDialogClosed($("taskDialog"), () => { selectDocRecord(null,null); view.open = null; view.openViewer = null; view.closing = null; });
 
   $("taskHandover")?.addEventListener("click", () => {
     const row = currentRow();

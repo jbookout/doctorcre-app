@@ -1,3 +1,4 @@
+import {onDialogClosed} from './dialog-lifecycle.js';
 import { selectDocRecord } from './doc-context.js';
 import { mountAutoRefresh, updatedLabel, readWithDeadline } from './auto-refresh.mjs';
 import { createFixtureClient } from './fixture-client.js';
@@ -274,7 +275,7 @@ function wireQueuePane(){
 function openAtlas(node=null){mountAtlas({client,getIncidentsRead:()=>view.reads.incidents,node,onChange:atlas=>{view.atlas=atlas;}});}
 async function boot(){
  const resolved=resolveDealroomBoot(globalThis.location);client=resolved.mode==='live'?createLiveClient():await createFixtureClient(resolved.options);
- $("jobDialog").addEventListener("close",()=>selectDocRecord(null,null));
+ onDialogClosed($("jobDialog"),()=>selectDocRecord(null,null));
  details=mountJobDetail({client,document});board=mountBoard({client,openTask:task=>details.open(withHolders([task])[0]),onTasks:renderAttention});board.start();
  $('crAttentionList').addEventListener('click',event=>{const button=event.target.closest('[data-attention-open]');const task=attention.state==='read'&&withHolders(attention.tasks).find(task=>task.id===button?.dataset.attentionOpen);if(task)details.open(task);});
  $('severityChips').addEventListener('click',event=>{
@@ -287,7 +288,7 @@ async function boot(){
  });
  $('crInboxList').addEventListener('click',event=>{const row=event.target.closest('[data-notification]');if(row)showInboxDetail(row.dataset.notification);});
  $('crInboxClose').onclick=()=>$('crInboxDialog').close();
- $('crInboxDialog').addEventListener('close',()=>{const id=$('crInboxDialog').dataset.notification;[...$('crInboxList').querySelectorAll('[data-notification]')].find(row=>row.dataset.notification===id)?.focus();$('crInboxBody').textContent='';});
+ onDialogClosed($('crInboxDialog'),()=>{const id=$('crInboxDialog').dataset.notification;[...$('crInboxList').querySelectorAll('[data-notification]')].find(row=>row.dataset.notification===id)?.focus();$('crInboxBody').textContent='';});
  mountNotificationBadge(client);tabs=wireTabs('controlRoomTabs');wireQueuePane();
  const strip=$('controlRoomTabs'),tabFor=key=>strip.querySelector(`[data-tab-key="${key}"]`);
  const commands=mountControlRoomCommands({tabs:strip,onEscape:()=>closePane()});

@@ -71,6 +71,12 @@ verification with a credential-free child environment. Run it before either
 publication command. The CARR pipeline invokes this entrypoint separately from
 the provider step.
 
+`npm run release:staging` requires Python 3 on `PATH`. Python owns staging
+orchestration; the shared Node adapter keeps credential filtering and locked
+Wrangler selection identical to production. Failures name the stopped step and
+a recovery action. Publication failures require inspecting provider state before
+retrying because the provider may have completed the request.
+
 `npm run release:staging` accepts only a clean checkout whose `HEAD` exactly
 matches `origin/main`, verifies the prepared artifact, creates the staging
 Worker on first use, and otherwise uploads and promotes an immutable version.
