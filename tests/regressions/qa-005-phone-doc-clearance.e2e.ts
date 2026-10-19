@@ -10,7 +10,6 @@ test('QA-005 final Opportunity score remains uncovered on a phone', { tags: ['re
   const card = screen.getByRole('button', 'Dr. Demo 12', { exact: true });
   await expect(card).toBeVisible();
   await card.scrollIntoView();
-  await browser.evaluate(() => { const main = document.querySelector('.app-layout-main') || document.scrollingElement; main.scrollTop = main.scrollHeight; window.scrollTo(0, document.body.scrollHeight); });
   const visibility = await browser.evaluate(() => {
     const card = [...document.querySelectorAll('.lead-card')].find(n => n.getAttribute('aria-label') === 'Dr. Demo 12');
     const score = card.querySelector('.score'), b = score.getBoundingClientRect();
