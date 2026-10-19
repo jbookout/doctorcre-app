@@ -73,6 +73,7 @@
           "done": 1
         },
         "status": "done",
+        "job_counts": {},
         "updated_at": ""
       },
       "WR14.S2": {
@@ -88,6 +89,7 @@
           "review": 1
         },
         "status": "active",
+        "job_counts": {},
         "updated_at": ""
       }
     },
@@ -118,5 +120,5 @@
     "history": 0
   },
   "costs": {},
-  "producer_source_commit": "19679c4852bcfad4509e3427ae27d0483a560849"
+  "producer_source_commit": "47ac85da75c2263d3c2b91206905cfca0f0336fa"
 }

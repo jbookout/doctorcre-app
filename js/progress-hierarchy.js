@@ -59,6 +59,8 @@ export function mountHierarchy({ container, window: win, boardId, onOpen }) {
     article.append(button, node('p', card.card_description, 'hierarchy-description'));
     const counts = card.counts || card.pr_counts;
     if (counts) article.append(node('p', Object.entries(counts).map(([stage, count]) => `${count} ${stage}`).join(' · '), 'hierarchy-counts'));
+    if (card.job_counts && Object.keys(card.job_counts).length)
+      article.append(node('p', Object.entries(card.job_counts).map(([stage, count]) => `${count} jobs ${stage}`).join(' · '), 'hierarchy-counts'));
     if (card.updated_at) {
       const time = node('time', `Latest activity ${new Date(card.updated_at).toLocaleString()}`, 'hierarchy-activity');
       time.dateTime = card.updated_at;
