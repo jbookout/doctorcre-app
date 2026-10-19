@@ -7,7 +7,7 @@ import { leaseRadarFixture } from '../../js/lease-radar-fixture.js';
 import { leaseDetails, tourDay, itinerary, shareLifecycle } from '../staging/journey-flows.mjs';
 
 const root = new URL('../../', import.meta.url);
-const fixture = {
+export const fixture = {
   lease: { id: 'aa000000-0000-4000-8000-000000000001', client_id: 'aa000000-0000-4000-8000-000000000002', client_name: 'Synthetic staging QA lease' },
   tour: { id: detail.id, name: 'Synthetic staging QA accepted tour', route_id: detail.routes[0].id,
     property_ids: detail.stops.map(stop => stop.property_id), stop_ids: detail.stops.map(stop => stop.id),
@@ -15,7 +15,7 @@ const fixture = {
     unrelated_property_id: 'aa000000-0000-4000-8000-000000000004' },
 };
 
-async function localFixture(browser) {
+export async function localFixture(browser) {
   let active = false, exchanged = false, tokenDigest = '';
   const tour = structuredClone(detail);
   Object.assign(tour, { name: fixture.tour.name, route_version_id: fixture.tour.route_id, route_version_state: 'accepted',
