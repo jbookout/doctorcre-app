@@ -69,6 +69,7 @@ export async function mountTerritoryMap(root, selectMarket, selectLead) {
     }
   }
   map.on("moveend",draw);
+  await new Promise(resolve => map.once("idle", resolve));
   return { locate(lead) { return marketLocation(lead, places); },
     update(groups, leadId) { latest=groups;selected=leadId;draw(); },
     dispose() {map.off("moveend",draw);for(const item of markers.values())item.marker.remove();map.remove();} };
