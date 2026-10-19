@@ -500,7 +500,7 @@ test('deal review works in both themes at 390 and 1280 pixels', async t => {
   assert.equal(await page.locator('.kanban-column').count(),7);
   const widths=await page.locator('.kanban-card').evaluateAll(nodes=>nodes.map(n=>n.getBoundingClientRect().width));
   assert.ok(widths.every(w=>w>=130),JSON.stringify(widths));
-  const shot=name=>page.screenshot({path:new URL(`out/test-artifacts/dealroom-review/${width}-${theme}-${name}.png`,root).pathname});
+  const shot=name=>page.screenshot({path:new URL(`out/test-artifacts/dealroom-review/${width}-${theme}-${name}.png`,root).pathname,animations:'disabled'});
   await shot('board');
   await page.getByRole('button',{name:'Parked',exact:true}).click();
   assert.equal(await page.locator('.parked-lane').evaluate(e=>e.open),true);
