@@ -76,6 +76,17 @@ button:disabled { cursor: not-allowed; opacity: 0.55; }
 .focus-item b { display: block; font-size: var(--font-size-1); font-weight: var(--font-weight-strong); }
 .focus-item span { color: var(--fg-muted); font-size: var(--font-size-1); }
 
+.stats.account-priority { display: block; padding: 0 0 var(--space-3); border-bottom: var(--hairline-width) solid var(--hairline); }
+.next-action-label { color: var(--fg-muted); font-size: var(--font-size-1); font-weight: var(--font-weight-strong); }
+.next-action-label.is-alert { color: var(--status-danger-ink); }
+.next-account-action { display: block; width: 100%; padding: var(--space-2) 0; border: 0; background: transparent; color: var(--fg); text-align: left; }
+.next-account-action:hover strong { text-decoration: underline; }
+.next-account-action strong { display: block; font-size: var(--font-size-3); line-height: var(--line-height-heading); }
+.next-account-action span { display: block; margin-top: var(--space-1); color: var(--fg-muted); font-size: var(--font-size-1); }
+.next-account-action .next-action-open { color: var(--fg); }
+.account-urgency { margin: var(--space-2) 0 0; color: var(--fg-muted); font-size: var(--font-size-1); font-variant-numeric: tabular-nums; }
+.account-urgency .is-alert { color: var(--status-danger-ink); }
+
 /* ------------------------------------------------------------ toolbar and table */
 .board-sticky { position: sticky; top: 0; z-index: 39; margin: 0 -2px; padding: var(--space-2) 2px 0; background: var(--ground); }
 .toolbar { display: flex; align-items: center; gap: var(--space-3); margin-bottom: var(--space-2); }

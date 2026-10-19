@@ -485,13 +485,34 @@ function renderBoardOnly() {
   renderFocus(deals);
   const rows = $('#rows');
   rows.innerHTML = deals.map(rowHtml).join('');
+  const emptySearch = Boolean(state.query && !deals.length);
+  $('#stats').hidden = emptySearch;
+  $('#tableFrame table').hidden = emptySearch;
+  $('.sticky-table-header').hidden = emptySearch;
   $('#emptyState').hidden = deals.length > 0;
-  $('#emptyState').textContent = state.query ? 'No work record matches this search.'
+  $('#emptyState').innerHTML = emptySearch
+    ? `<strong>No work records match “${esc(state.query)}”</strong><p>Try another name, market, or next step.</p><button type="button" class="secondary" data-clear-search>Clear search</button>`
     : state.filter === 'parked' ? 'No parked work records.' : 'No active work matches this filter.';
   applyPresence();
 }
 
 function renderStats(deals) {
+  const accountDetail = state.workspace === 'national_account' && state.accountId && !state.query && state.filter !== 'parked';
+  $('#stats').classList.toggle('account-priority', Boolean(accountDetail));
+  if (accountDetail) {
+    const overdue = deals.filter((deal) => (daysFromNow(deal.next_date) ?? 0) < 0)
+      .sort((a, b) => a.next_date.localeCompare(b.next_date) || a.name.localeCompare(b.name));
+    const next = overdue[0] || deals[0];
+    $('#stats').innerHTML = next ? `
+      <span class="next-action-label${overdue.length ? ' is-alert' : ''}">${overdue.length ? 'Next overdue action' : 'Next market action'}</span>
+      <button type="button" class="next-account-action" data-open-deal="${esc(next.id)}">
+        <strong>${esc(next.next_step || 'Set the next step')}</strong>
+        <span>${esc(next.name)} · ${esc(dateLabel(next.next_date))}</span>
+        <span class="next-action-open">Open work record →</span>
+      </button>
+      <p class="account-urgency">${deals.length} active work · <span${overdue.length ? ' class="is-alert"' : ''}>${overdue.length} overdue dates</span> · ${deals.filter((deal) => deal.phase === 'Closing').length} at closing</p>` : '';
+    return;
+  }
   if (state.filter === 'parked') {
     $('#stats').innerHTML = `
       <div class="stat"><strong>${deals.length}</strong><span>Parked records</span></div>
@@ -510,7 +531,7 @@ function renderStats(deals) {
 }
 
 function renderFocus(deals) {
-  if (state.filter === 'parked') { $('#focusStrip').innerHTML = ''; return; }
+  if (state.filter === 'parked' || (state.workspace === 'national_account' && state.accountId && !state.query)) { $('#focusStrip').innerHTML = ''; return; }
   const items = deals.filter((deal) => priority(deal) > 0).slice(0, 4);
   $('#focusStrip').innerHTML = items.length ? '<span class="focus-label">Focus first</span>' + items.map((deal) => `
     <button type="button" class="focus-item" data-open-deal="${esc(deal.id)}"><b>${esc(deal.name)}</b><span>${esc(reasonFor(deal))}</span></button>`).join('') : '';
@@ -1271,6 +1292,14 @@ function wireEvents() {
       state.accountId = null; state.filter = 'active'; state.deepLinkMine = false; state.query = ''; $('#search').value = '';
       history.pushState({ dealView: state.workspace }, '', state.workspace === 'team' ? '/deals' : '/deals?view=national');
       render(); return;
+    }
+    if (event.target.closest('[data-clear-search]')) {
+      state.query = ''; $('#search').value = '';
+      render();
+      const target = state.accountId ? $('#accountName')
+        : $('#accountGrid:not([hidden]) [data-account]') || $('#rows .deal-link') || $('#workspaceTitle');
+      target.focus({ preventScroll: true });
+      return;
     }
     const accountButton = event.target.closest('[data-account]');
     if (accountButton) { state.workspace = 'national_account'; state.accountId = accountButton.dataset.account; render(); return; }
