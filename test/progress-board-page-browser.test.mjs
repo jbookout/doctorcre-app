@@ -6,9 +6,10 @@ import { chromium } from 'playwright';
 import { handleDoctorcreRequest } from '../src/worker.js';
 import { STAGES } from '../js/progress-board-model.js';
 import costs from './fixtures/progress-board-costs.json' with { type: 'json' };
+import hierarchy from './fixtures/progress-board-hierarchy.json' with { type: 'json' };
 
 const boards = [{ board_id: 'carr-v5', title: 'System delivery' }, { board_id: 'demo-project', title: 'Demo project' }];
-async function open(t, { unfinished = true, path = '/control-room/progress', boardRead = 'ready', rows = [], control, width = 390, costData } = {}) {
+async function open(t, { unfinished = true, path = '/control-room/progress', boardRead = 'ready', rows = [], control, width = 390, costData, snapshotData } = {}) {
   const browser = await chromium.launch(); t.after(() => browser.close());
   const page = await browser.newPage({ viewport: { width, height: 900 } });
   const context = page.context();
@@ -26,7 +27,7 @@ async function open(t, { unfinished = true, path = '/control-room/progress', boa
         const board = boards.find(b => b.board_id === rpc.arguments.board_id);
         if (readState === 'failed') { payload = { error: 'board_read_failed' }; isError = true; }
         else payload = { snapshot: readState === 'missing' ? null : { board_id: board.board_id, version: 1,
-          updated_at: '2026-10-02T08:00:00Z', snapshot_json: { title: board.title, costs: costData, tasks: {
+          updated_at: '2026-10-02T08:00:00Z', snapshot_json: snapshotData || { title: board.title, costs: costData, tasks: {
             build: { title: `${board.title} task`, status: 'running' },
           } } }, questions: [] };
       }
@@ -429,3 +430,28 @@ for (const width of [390, 1440]) {
     assert.deepEqual(errors, []);
   });
 }
+
+
+for (const width of [390, 1440]) test(`Work Request drill-down works in the rendered page at ${width}px`, async t => {
+  const { page, errors } = await open(t, {width, path:'/control-room/progress/board/carr-v5', snapshotData:hierarchy});
+  const card = id => page.locator(`[data-hierarchy-id="${id}"]`);
+  await card('WR14').getByRole('button', {name:'Board cleanup'}).click();
+  await card('WR14.S2').getByRole('button', {name:'Board navigation'}).click();
+  await page.locator('#board-stages .column[data-stage="review"]').waitFor();
+  assert.equal(await card('WR14.S1.J1.carr#1960').count(), 0);
+  assert.equal(await card('WR14.S2.J1.app#316').count(), 1);
+  assert.equal(new URL(page.url()).searchParams.get('card'), 'WR14.S2');
+  await page.locator('#hierarchy-back').click();
+  assert.equal(new URL(page.url()).searchParams.get('card'), 'WR14');
+  const completed = page.locator('#hierarchy-completed > details');
+  assert.equal(await completed.getAttribute('open'), null);
+  await completed.locator('summary').first().click();
+  await card('WR14.S1').getByRole('button', {name:'Board grouping'}).click();
+  await page.locator('#hierarchy-completed > details > summary').click();
+  await card('WR14.S1.J1.carr#1960').locator('summary').click();
+  await card('WR14.S1.J1.carr#1960').getByText('merge sha · ' + 'a'.repeat(40)).waitFor();
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
+  assert.deepEqual(errors, []);
+  await mkdir('test-artifacts/progress-hierarchy', {recursive:true});
+  await page.screenshot({path:`test-artifacts/progress-hierarchy/${width}.png`, fullPage:true});
+});

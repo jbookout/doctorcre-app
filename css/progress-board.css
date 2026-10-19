@@ -350,3 +350,24 @@ footer { padding-top: 8px; }
 
 .pipeline-diagram foreignObject div { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; line-height: 16px; }
 .pipeline-diagram .node-label div { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; white-space: normal; overflow-wrap: anywhere; }
+
+.hierarchy-board { display: block; }
+.hierarchy-breadcrumbs { display: flex; flex-wrap: wrap; align-items: center; gap: 1rem; margin-block: 1rem; }
+.hierarchy-breadcrumbs a { color: var(--fg); text-decoration: underline; text-underline-offset: .25em; }
+#hierarchy-jump { display: flex; flex-wrap: wrap; gap: .75rem; align-items: end; margin-bottom: 1.5rem; }
+#hierarchy-jump label { display: grid; gap: .4rem; color: var(--fg-quiet); }
+#hierarchy-jump input { min-width: 15rem; padding: .6rem; }
+.hierarchy-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 17rem), 1fr)); gap: 1rem; }
+.hierarchy-card { padding: 1.25rem; border: 1px solid var(--hairline); border-radius: .75rem; background: var(--surface-1); min-width: 0; }
+.hierarchy-card-title { font-size: 1.15rem; font-weight: 650; text-align: left; min-height: 44px; }
+.hierarchy-description { color: var(--fg); line-height: 1.5; margin-block: .8rem; }
+.hierarchy-counts, .hierarchy-activity, .hierarchy-details { color: var(--fg-quiet); font-size: .85rem; }
+.hierarchy-activity { display: block; margin-block: .6rem; }
+.hierarchy-details { overflow-wrap: anywhere; }
+.hierarchy-details summary, #hierarchy-completed > details > summary { cursor: pointer; min-height: 44px; align-content: center; }
+#hierarchy-completed { margin-top: 1.5rem; }
+.hierarchy-card-title { display: block; color: var(--fg); background: transparent; border: 0; padding: 0; cursor: pointer; }
+.hierarchy-card-title:hover { text-decoration: underline; text-underline-offset: .2em; }
+.hierarchy-card-title:focus-visible { outline: 2px solid var(--focus); outline-offset: .25rem; }
+#hierarchy-jump input { color: var(--fg); background: var(--surface-1); border: 1px solid var(--hairline-strong); border-radius: var(--radius-2); }
+#hierarchy-jump button, .hierarchy-breadcrumbs button { color: var(--fg); background: var(--surface-2); border: 1px solid var(--hairline-strong); border-radius: var(--radius-2); padding: .6rem .9rem; min-height: 44px; cursor: pointer; }

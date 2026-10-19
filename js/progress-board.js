@@ -1,3 +1,4 @@
+import { mountHierarchy } from './progress-hierarchy.js';
 import { boardIdFromPath, boardPageUrl } from './progress-board-route.js';
 import { governanceTasks, withGovernance } from "./control-room-workspace-model.js";
 import { createLiveClient } from "./live-client.js";
@@ -74,6 +75,7 @@ export function mountBoard(deps = {}) {
   let systemWork = null;
   let censusPipeline = null;
   let pipelineCards = [];
+  let hierarchyUI = null;
 
   function el(tag, className, text, attributes = {}) {
     const node = doc.createElement(tag);
@@ -414,6 +416,18 @@ export function mountBoard(deps = {}) {
   }
 
   function renderStages(view) {
+    if (view?.hierarchy) {
+      pipelineCards = Object.entries(view.hierarchy.cards).map(([id, card]) => ({...card, id, title:card.card_title, summary:card.card_description}));
+      deps.onTasks?.(pipelineCards, {state:boardState});
+      hierarchyUI ||= mountHierarchy({container:byId("board-stages"), window:win, boardId, onOpen:card=>openWork(card.id)});
+      hierarchyUI.update({hierarchy:view.hierarchy, tasks:view.hierarchy.cards});
+      byId("board-rail").hidden = true;
+      byId("board-filters").hidden = true;
+      byId("task-count").textContent = `${Object.keys(view.hierarchy.work_requests).length} WORK REQUESTS`;
+      for (const id of ["board-completed", "completed-list", "board-blocked", "system-work-panel"])
+        byId(id)?.closest(".panel")?.setAttribute("hidden", "");
+      return;
+    }
     const census = deps.openTask ? censusCards() : null;
     const mode = byId("board-data-mode");
     if (mode) mode.textContent = census ? "Live work · The pipeline shows current work."
@@ -869,7 +883,7 @@ export function mountBoard(deps = {}) {
   function render(view) {
     currentView = view;
     costs.update(view.costs);
-    byId("board-title").textContent = deps.openTask ? "System Job Board" : view.title;
+    byId("board-title").textContent = view.hierarchy ? "Work Requests" : deps.openTask ? "System Job Board" : view.title;
     byId("board-eyebrow").textContent = view.kind === ALL_REPOS_BOARD ? "All repositories" : "Progress board";
     doc.title = "Control Room · DoctorCRE";
     byId("board-meta").textContent = `${view.board_id} · Published ${formatTime(view.updated_at)} · Version ${view.version}`;
@@ -1054,7 +1068,7 @@ export function mountBoard(deps = {}) {
       status.textContent = governanceState === "read" ? "" : `Approvals unavailable${governanceRead ? " · last-known cards" : ""}`;
       renderStages(currentView);
     },
-    dispose() { poller?.dispose(); timers.forEach(id=>win.clearInterval(id)); clearTimer(ageTimer); doc.removeEventListener("visibilitychange",refreshAges); },
+    dispose() { hierarchyUI?.dispose(); poller?.dispose(); timers.forEach(id=>win.clearInterval(id)); clearTimer(ageTimer); doc.removeEventListener("visibilitychange",refreshAges); },
     get view() { return currentView; }, get liveExpanded() { return liveExpanded; } };
 }
 

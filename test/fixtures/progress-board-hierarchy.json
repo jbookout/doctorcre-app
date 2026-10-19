@@ -1,0 +1,122 @@
+{
+  "schema": "carr-progress-board.v4",
+  "project": "carr-v5",
+  "title": "Work Requests",
+  "kind": "project",
+  "tasks": {
+    "WR14.S1.J1.carr#1960": {
+      "card_title": "Board grouping",
+      "card_description": "Keep related changes together.",
+      "status": "review",
+      "stage": "merged",
+      "work_request": "WR-000014",
+      "slice_id": "group",
+      "repo": "jbookout/carr-system",
+      "pr": 1960,
+      "merge_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "merged_at": "2026-10-19T12:00:00Z",
+      "id": "WR14.S1.J1.carr#1960",
+      "task_id": "group",
+      "parent_id": "WR14.S1",
+      "archived": false,
+      "done": true
+    },
+    "WR14.S2.J1.app#316": {
+      "card_title": "Board navigation",
+      "card_description": "Follow a request through its slices and changes.",
+      "status": "review",
+      "stage": "review",
+      "work_request": "WR-000014",
+      "slice_id": "navigate",
+      "repo": "jbookout/doctorcre-app",
+      "pr": 316,
+      "id": "WR14.S2.J1.app#316",
+      "task_id": "navigate",
+      "parent_id": "WR14.S2",
+      "archived": false,
+      "done": false
+    }
+  },
+  "hierarchy": {
+    "schema": "work-request-hierarchy.v1",
+    "work_requests": {
+      "WR14": {
+        "id": "WR14",
+        "work_request": "WR-000014",
+        "card_title": "Board cleanup",
+        "card_description": "Board cleanup.",
+        "slices": [
+          "WR14.S1",
+          "WR14.S2"
+        ],
+        "counts": {
+          "done": 1,
+          "active": 1,
+          "blocked": 0,
+          "failed": 0
+        },
+        "status": "active",
+        "updated_at": ""
+      }
+    },
+    "slices": {
+      "WR14.S1": {
+        "id": "WR14.S1",
+        "parent_id": "WR14",
+        "slice_id": "group",
+        "card_title": "Board grouping",
+        "card_description": "Board grouping.",
+        "cards": [
+          "WR14.S1.J1.carr#1960"
+        ],
+        "pr_counts": {
+          "done": 1
+        },
+        "status": "done",
+        "updated_at": ""
+      },
+      "WR14.S2": {
+        "id": "WR14.S2",
+        "parent_id": "WR14",
+        "slice_id": "navigate",
+        "card_title": "Board navigation",
+        "card_description": "Board navigation.",
+        "cards": [
+          "WR14.S2.J1.app#316"
+        ],
+        "pr_counts": {
+          "review": 1
+        },
+        "status": "active",
+        "updated_at": ""
+      }
+    },
+    "aliases": {
+      "group": "WR14.S1.J1.carr#1960",
+      "navigate": "WR14.S2.J1.app#316"
+    },
+    "later_triage": []
+  },
+  "task_counts": {
+    "queued": 0,
+    "running": 0,
+    "review": 2,
+    "blocked": 0,
+    "question-for-orchestrator": 0,
+    "done": 0,
+    "failed": 0,
+    "superseded": 0,
+    "stale": 0
+  },
+  "github_sync": null,
+  "updated_at": null,
+  "questions": {},
+  "history": {},
+  "omitted": {
+    "live": 0,
+    "merged": 0,
+    "history": 0
+  },
+  "costs": {},
+  "producer_source_commit": "19679c4852bcfad4509e3427ae27d0483a560849"
+}
