@@ -83,6 +83,12 @@ export function mountHierarchy({ container, window: win, boardId, onOpen }) {
   }
   function render() {
     const view = hierarchyView(data, address);
+    const counter = doc.getElementById('task-count');
+    if (counter) counter.textContent = [
+      `${view.active.length} active`,
+      ...(view.completed.length ? [`${view.completed.length} completed`] : []),
+      ...(view.history.length ? [`${view.history.length} in history`] : [])
+    ].join(' · ');
     const heading = doc.getElementById('pipeline-title');
     if (heading) heading.textContent = ({requests:'Work Requests', slices:'Slices', prs:'Pull requests'})[view.level] || 'Work Requests';
     const previous = doc.activeElement?.closest('[data-hierarchy-id]')?.dataset.hierarchyId;

@@ -49,6 +49,7 @@ test('board drills down, pastes aliases, opens evidence, and Back restores the p
   doc.querySelector('[data-hierarchy-id="WR14"]').click();
   assert.equal(new URL(dom.window.location.href).searchParams.get('card'), 'WR14');
   assert.match(doc.querySelector('#board-stages').textContent, /Board navigation/);
+  assert.equal(doc.querySelector('#task-count').textContent, '1 active · 1 completed');
   assert.ok(doc.querySelector('#hierarchy-completed details:not([open])'));
   doc.querySelector('[data-hierarchy-id="WR14.S2"]').click();
   assert.match(doc.querySelector('#board-stages').textContent, /Board navigation/);

@@ -423,7 +423,6 @@ export function mountBoard(deps = {}) {
       hierarchyUI.update({hierarchy:view.hierarchy, tasks:view.hierarchy.cards});
       byId("board-rail").hidden = true;
       byId("board-filters").hidden = true;
-      byId("task-count").textContent = `${Object.keys(view.hierarchy.work_requests).length} WORK REQUESTS`;
       for (const id of ["board-completed", "completed-list", "board-blocked", "system-work-panel", "board-ledger"])
         byId(id)?.closest(".panel")?.setAttribute("hidden", "");
       return;
