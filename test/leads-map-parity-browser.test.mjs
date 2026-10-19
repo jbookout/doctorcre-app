@@ -5,6 +5,43 @@ import { chromium } from './browser-harness.mjs';
 import { routeLeads } from './leads-browser-fixture.mjs';
 import { workspace, lead, id } from './leads-workspace-fixture.mjs';
 
+for (const width of [1440, 390]) for (const reversed of [false, true])
+test(`shared market location membership is order independent at ${width}px (reversed=${reversed})`, async t => {
+  const browser = await chromium.launch({ args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
+  t.after(() => browser.close());
+  const page = await browser.newPage({ viewport: { width, height: 1000 }, reducedMotion: 'reduce' });
+  const board = workspace();
+  board.leads = [lead(1, { market: 'Synthetic shared market' }),
+    lead(2, { market: 'Synthetic shared market', city: null, state: null })];
+  if (reversed) board.leads.reverse();
+  await routeLeads(page, { getBoard: () => board });
+  await page.goto('http://localhost/leads');
+  await page.locator('.lead-location').filter({ hasText: 'Market area only' }).waitFor();
+  const located = await page.locator('.market-marker').evaluateAll(nodes => nodes.flatMap(node => JSON.parse(node.dataset.leadIds)));
+  const unlocated = await page.locator('#mapLeadMembers [data-lead-id]').evaluateAll(nodes =>
+    nodes.filter(node => node.textContent.includes('No location')).map(node => node.dataset.leadId));
+  assert.deepEqual(located, [id(1)], 'only the located member belongs to a marker');
+  assert.deepEqual(unlocated, [id(2)]);
+  assert.deepEqual([...located, ...unlocated].sort(), board.leads.map(row => row.id).sort());
+  assert.equal(await page.locator('.market-marker').innerText(), '1');
+});
+
+test('phone All stages count describes the destination membership', async t => {
+  const browser = await chromium.launch({ args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
+  t.after(() => browser.close());
+  const page = await browser.newPage({ viewport: { width: 390, height: 1000 }, hasTouch: true, reducedMotion: 'reduce' });
+  const board = { ...workspace(), leads: [lead(1), lead(2, { stage: 'qualified' }), lead(3, { stage: 'engaged' })] };
+  await routeLeads(page, { getBoard: () => board });
+  await page.goto('http://localhost/leads');
+  await page.locator('.lead-card').first().waitFor();
+  await page.locator('#mobileStage').selectOption('new');
+  const label = await page.locator('#mobileStage option[value=""]').innerText();
+  await page.locator('#mobileStage').selectOption('');
+  const count = await page.locator('.lead-card:visible').count();
+  assert.equal(count, 3);
+  assert.equal(label, `All stages · ${count}`);
+});
+
 for (const width of [1440, 390]) test(`map members and board select the same lead and retain an unlocated lead at ${width}px`, async t => {
   const browser = await chromium.launch({ args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
   t.after(() => browser.close());
