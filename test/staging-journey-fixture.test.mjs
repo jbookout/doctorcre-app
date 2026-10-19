@@ -42,3 +42,26 @@ test('cleanup also runs when fixture preparation loses its response', async () =
   }), /lost response/);
   assert.deepEqual(actions, ['prepare', 'cleanup']);
 });
+
+test('cleanup recovers from a transient failure without replacing the browser error or run', async () => {
+  const browserError = new Error('original browser assertion');
+  const actions = [];
+  let fixtureRun, owned = true, failed = false;
+  const producer = async (action, run) => {
+    fixtureRun ||= run;
+    assert.equal(run, fixtureRun);
+    actions.push(action);
+    if (action === 'prepare') return { run };
+    if (action === 'remaining') return { remaining: owned ? 1 : 0 };
+    if (!failed) { failed = true; throw new Error('transient cleanup outage'); }
+    owned = false;
+    return { remaining: 0 };
+  };
+  await assert.rejects(withJourneyFixture(async () => { throw browserError; }, producer), error => {
+    assert.equal(error, browserError);
+    assert.equal(error.fixtureRun, fixtureRun);
+    return true;
+  });
+  assert.equal(owned, false);
+  assert.deepEqual(actions, ['prepare', 'cleanup', 'remaining', 'cleanup']);
+});
