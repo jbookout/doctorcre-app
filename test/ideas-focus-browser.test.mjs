@@ -17,13 +17,14 @@ async function open(t, tab = 'ideas') {
     source += `
       export async function createFixtureClient(options) {
         const client = await originalFixture(options);
+        if (options?.docContext !== false) return client;
         window.ideaRows = [{number: '12', kind: 'idea', label: 'Synthetic focus idea', owner: 'joe', version: 1}];
         client.readLoop = async () => ({loop: {...window.ideaRows[0], title: 'Synthetic focus idea'}});
         window.ideaReads = 0;
         client.loopBoard = async args => {
           ++window.ideaReads;
           const payload = {loops: [...window.ideaRows]};
-          if (window.holdIdeas) await new Promise(resolve => { window.releaseIdeas = resolve; });
+          if (window.holdIdeas) await new Promise(resolve => { (window.ideaResponses ||= []).push(resolve); });
           return payload;
         };
         const events = client.listIndustryEvents;
@@ -69,14 +70,14 @@ for (const moved of [false, true]) {
     await page.locator('#ideaDialog').waitFor({state: 'visible'});
     await page.evaluate(() => { window.holdIdeas = true; });
     await page.clock.fastForward(30_000);
-    await waitForAsync(page, () => Boolean(window.releaseIdeas));
+    await waitForAsync(page, () => window.ideaResponses?.length > 0);
     await page.evaluate(() => {
       window.ideaClosed = false; document.querySelector('#ideaDialog').addEventListener('close', () => { window.ideaClosed = true; }, {once: true});
     });
     await page.locator('#ideaDialogClose').click();
     await waitForAsync(page, () => window.ideaClosed);
     if (moved) await page.locator('#ideaSearch').focus();
-    await page.evaluate(() => { window.oldTile = document.querySelector('.idea-tile'); window.holdIdeas = false; window.releaseIdeas(); });
+    await page.evaluate(() => { window.oldTile = document.querySelector('.idea-tile'); window.holdIdeas = false; window.ideaResponses.splice(0).forEach(resolve => resolve()); });
     await waitForAsync(page, () => !window.oldTile.isConnected);
     assert.equal(await page.evaluate(moved => moved ? document.activeElement.id : document.activeElement.dataset.idea, moved), moved ? 'ideaSearch' : number);
   });
