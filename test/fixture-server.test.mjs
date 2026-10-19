@@ -1,10 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { execFile, execFileSync } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { promisify } from 'node:util';
 import { setTimeout as delay } from 'node:timers/promises';
 import { startFixtureServer } from '../scripts/fixture-server.mjs';
 
@@ -34,7 +33,29 @@ test('the real fixture server serves and stops', async () => {
   await within(server.stop(), 10000);
 });
 
-const run = promisify(execFile);
+const run = (file, args, { timeout, signal, ...options }) => {
+  const child = spawn(file, args, { ...options, detached: true, stdio: ['ignore', 'pipe', 'pipe'] });
+  let stderr = '';
+  child.stderr.on('data', data => { stderr += data; });
+  child.stdout.resume();
+  const result = new Promise((resolve, reject) => {
+    child.once('error', reject);
+    child.once('close', (code, signal) => code === 0 ? resolve({ stderr })
+      : reject(Error(`fixture probe exited ${code ?? signal}: ${stderr}`)));
+  });
+  const stop = () => {
+    if (!child.pid) return;
+    try { process.kill(-child.pid, 'SIGKILL'); } catch (error) { if (error.code !== 'ESRCH') throw error; }
+  };
+  const timer = setTimeout(stop, timeout);
+  signal?.addEventListener('abort', stop, { once: true });
+  if (signal?.aborted) stop();
+  return Object.assign(result.finally(() => {
+    clearTimeout(timer);
+    signal?.removeEventListener('abort', stop);
+    stop();
+  }), { child });
+};
 const harness = new URL('./browser-harness.mjs', import.meta.url).href;
 const probe = `
   import assert from 'node:assert/strict';
@@ -79,7 +100,7 @@ for (const mode of ['default', 'ambient', 'explicit', 'empty']) {
     const options = mode === 'explicit' ? { root: explicit } : mode === 'empty' ? { root: '' } : {};
     const expected = mode === 'default' ? null : mode === 'explicit' ? 'explicit synthetic root' : 'ambient synthetic root';
     const result = await run(process.execPath, ['--input-type=module', '-e', probe, JSON.stringify({ options, expected })],
-      { env, timeout: 20000 });
+      { env, timeout: 20000, signal: t.signal });
     assert.equal(result.stderr, '');
   });
 }
