@@ -256,7 +256,7 @@ function openAtlas(node=null){mountAtlas({client,getIncidentsRead:()=>view.reads
 async function boot(){
  const resolved=resolveDealroomBoot(globalThis.location);client=resolved.mode==='live'?createLiveClient():await createFixtureClient(resolved.options);
  onDialogClosed($("jobDialog"),()=>selectDocRecord(null,null));
- details=mountJobDetail({client,document});board=mountBoard({client,openTask:task=>details.open(task),onTasks:(tasks,observation)=>details.update(tasks,observation)});board.start();
+ details=mountJobDetail({client,document});board=mountBoard({client,openTask:task=>details.open(task),closeTask:()=>details.clear(),onTasks:(tasks,observation)=>details.update(tasks,observation)});board.start();
  $('severityChips').addEventListener('click',event=>{
   const chip=event.target.closest('button[data-severity]');
   if(chip){view.severity=chip.dataset.severity;renderIncidents();}
