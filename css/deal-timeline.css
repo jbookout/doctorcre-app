@@ -14,7 +14,7 @@
 .phase-rail time { display:block; color:var(--fg-muted); font-size:var(--font-size-1); font-weight:var(--font-weight-regular); margin-top:var(--space-1); font-variant-numeric:tabular-nums; }
 .critical-dates { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:var(--space-2); margin-bottom:var(--space-5); }
 .critical-date { min-width:0; padding:var(--space-3); border:var(--hairline-width) solid var(--hairline); border-radius:var(--radius-2); background:var(--surface-2); color:var(--fg); display:flex; flex-direction:column; gap:var(--space-2); text-align:left; overflow-wrap:anywhere; transition:border-color var(--duration-hover) var(--ease-out); }
-@media (hover:hover) { .critical-date:hover,.timeline-entry:hover { border-color:var(--hairline-strong); } }
+@media (hover:hover) { .critical-date:hover,.deal-note:hover { border-color:var(--hairline-strong); } }
 .critical-date > span { color:var(--fg-muted); font-size:var(--font-size-1); }
 .critical-date strong { font-size:var(--font-size-3); line-height:var(--line-height-heading); font-weight:var(--font-weight-strong); font-variant-numeric:tabular-nums; }
 .critical-date time { font-size:var(--font-size-1); color:var(--fg-muted); font-variant-numeric:tabular-nums; }
@@ -31,44 +31,20 @@
 .add-date strong { font-size:var(--font-size-1); font-weight:var(--font-weight-strong); color:var(--fg-muted); margin-top:var(--space-2); }
 @media (hover:hover) { .add-date:hover strong { color:var(--fg); } }
 .deal-timeline { container-type:inline-size; border:var(--hairline-width) solid var(--hairline); border-radius:var(--radius-3); background:var(--surface-1); color:var(--fg); padding:var(--space-4); margin-bottom:var(--space-6); min-width:0; }
-.timeline-heading { display:flex; justify-content:space-between; align-items:center; gap:var(--space-3); }
-.timeline-heading h3 { margin:0; font-size:var(--font-size-3); }
-.timeline-heading select { max-width:100%; }
-.timeline-chart { width:100%; height:180px; display:block; overflow:visible; margin:var(--space-4) 0; }
-.timeline-chart text { fill:var(--fg-muted); font-family:var(--font-text); font-size:var(--font-size-1); font-variant-numeric:tabular-nums; }
-.timeline-baseline { stroke:var(--hairline-strong); stroke-width:2; }
-.timeline-grid { stroke:var(--hairline); stroke-dasharray:3 4; }
-.timeline-point { fill:var(--fg); stroke:var(--surface-1); stroke-width:3; }
-/* 3% keeps 24px markers apart on charts of 800px and wider; 11% down to 218px. */
-.timeline-marks-narrow { display:none; }
-@container (max-width:880px) { .timeline-marks-wide { display:none; } .timeline-marks-narrow { display:inline; } }
-.timeline-today { stroke:var(--status-info); stroke-dasharray:4 4; }
-.timeline-chart .timeline-count { fill:var(--ground); font-size:var(--font-size-1); font-weight:var(--font-weight-strong); }
-.timeline-chart .timeline-today-label { fill:var(--status-info-ink); }
-.timeline-date-links { display:flex; flex-wrap:wrap; gap:var(--space-1); margin-bottom:var(--space-4); }
-.timeline-date-links button { cursor:pointer; background:var(--surface-2); border:var(--hairline-width) solid var(--hairline); border-radius:var(--radius-2); color:var(--fg-muted); min-height:var(--touch); padding:var(--space-2) var(--space-3); font-size:var(--font-size-1); font-variant-numeric:tabular-nums; }
-.timeline-entries { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:var(--space-3); }
-.timeline-entry { min-width:0; border:var(--hairline-width) solid var(--hairline); border-radius:var(--radius-2); padding:var(--space-3); background:var(--surface-2); transition:border-color var(--duration-hover) var(--ease-out); }
 .timeline-entry-top { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:var(--space-1); font-size:var(--font-size-1); color:var(--fg-muted); font-variant-numeric:tabular-nums; }
-.timeline-entry b { font-size:var(--font-size-1); color:var(--fg); text-transform:capitalize; }
-.timeline-entry p { font-size:var(--font-size-1); overflow-wrap:anywhere; }
-.timeline-entry summary { min-height:var(--touch); display:flex; align-items:center; }
+.deal-note b { font-size:var(--font-size-1); color:var(--fg); text-transform:capitalize; }
+.deal-note p { font-size:var(--font-size-1); overflow-wrap:anywhere; }
+.deal-note summary { min-height:var(--touch); display:flex; align-items:center; }
 .deal-timeline :focus-visible,.critical-dates :focus-visible { outline:var(--focus-width) solid var(--focus-ring); outline-offset:3px; }
 .deal-detail .full-record { margin-top:0; }
 #dealDateDialog input { width:100%; min-width:0; color:var(--fg); background:var(--ground); padding:var(--space-3); border:var(--hairline-width) solid var(--hairline-strong); border-radius:var(--radius-2); }
-@media(max-width:760px),(hover:none) and (pointer:coarse) and (max-width:1023px){
-  .timeline-entries { grid-template-columns:repeat(2,minmax(0,1fr)); }
-}
 @media(max-width:500px) {
   .deal-timeline { padding:var(--space-3); }
-  .timeline-heading { align-items:flex-start; flex-direction:column; }
-  .timeline-tick-inner { display:none; }
-  .timeline-entries { grid-template-columns:1fr; }
   .critical-dates { grid-template-columns:repeat(2,minmax(0,1fr)); }
   .critical-date { padding:var(--space-3); }
 }
-@media(prefers-reduced-motion:reduce) { .critical-date,.timeline-entry { transition:none; } }
-:root[data-motion="reduced"] :is(.critical-date,.timeline-entry) { transition:none; }
+@media(prefers-reduced-motion:reduce) { .critical-date,.deal-note { transition:none; } }
+:root[data-motion="reduced"] :is(.critical-date,.deal-note) { transition:none; }
 
 /* The header stays in reach while the record scrolls; it sits on an opaque surface. */
 .deal-detail > header { position:sticky; top:0; z-index:2; background:var(--surface-1); border-bottom:var(--hairline-width) solid var(--hairline); }
@@ -78,6 +54,5 @@
 .detail-actions [data-detail-read="parking"] { max-width:300px; }
 @media(max-width:500px) { .detail-actions { flex-wrap:wrap; gap:var(--space-2); } .detail-actions > .detail-controls { min-width:100%; grid-template-columns:1fr 1fr; } }
 
-.timeline-actor { color:var(--fg-muted); font-size:var(--font-size-1); }
 
 .detail-actions .park-control { color:var(--status-danger-ink); }

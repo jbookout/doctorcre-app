@@ -425,89 +425,39 @@ export function attachedParties(participants = []) {
   return participants.filter((row) => EXTERNAL_PARTY_ROLES.includes(row?.role));
 }
 
-/**
- * Read-only client/vendor/calendar context for one deal (V5-UX-B04), opened
- * from the pipeline record panel. `detail` is the same answer `openPanel`
- * already read from `get-deal-room` — this makes no second call for anything
- * that read already carries.
- *
- * The one further read is the client's own contact record, through the
- * pinned `/api/v1/business/clients/<id>` surface the Clients page already
- * uses, keyed on the deal's `account_client_id`. Attached parties/vendors are
- * NOT looked up the same way: `deal_participant.party_id` and
- * `client.id`/`vendor.id` are different id spaces (the party table underlies
- * both, joined through a `party_id` column client/vendor-side that a bare
- * participant row never carries), so guessing a lookup id for them would risk
- * showing one party's contact detail under another party's name. That gap is
- * a real one, not an oversight; it is stated in the rendered section rather
- * than papered over.
- *
- * @param {{getPartyRecord?: (args:{dataset:'clients'|'vendors', id:string}) => Promise<{record:Object}>}} client
- * @param {Object} detail the answer from `getDeal`
- * @returns {Promise<{client: {status:'not_linked'|'unavailable'|'ok', reason?:string, record?:Object}, parties: Object[], criticalDates: Object[]}>}
- */
+/** Read exact client identity and recorded vendor-to-deal evidence only. */
 export async function loadDealContext(client, detail) {
   const deal = detail?.deal || {};
-  const parties = attachedParties(detail?.participants || []);
-  const criticalDates = (detail?.critical_dates || []).map((entry) => ({ ...entry }));
-
-  let clientContext = { status: 'not_linked' };
-  if (deal.account_client_id) {
-    if (typeof client?.getPartyRecord !== 'function') {
-      clientContext = { status: 'unavailable', reason: 'read_not_wired' };
-    } else {
-      try {
-        const answer = await client.getPartyRecord({ dataset: 'clients', id: deal.account_client_id });
-        clientContext = answer?.record
-          ? { status: 'ok', record: answer.record }
-          : { status: 'unavailable', reason: 'empty_response' };
-      } catch {
-        clientContext = { status: 'unavailable', reason: 'fetch_failed' };
-      }
-    }
+  const id = deal.client_id || deal.account_client_id;
+  let record = null;
+  const status = id ? 'unavailable' : 'not_linked';
+  if (id && client?.getPartyRecord) {
+    try { record = (await client.getPartyRecord({dataset:'clients',id}))?.record || null; } catch { /* Optional context stays hidden when unreadable. */ }
   }
-  return { client: clientContext, parties, criticalDates };
-}
-
-function clientContextLines(clientContext) {
-  if (clientContext.status === 'not_linked') return ['This deal is not linked to a client record.'];
-  if (clientContext.status === 'unavailable') {
-    return clientContext.reason === 'fetch_failed'
-      ? ['The client record could not be read. Nothing here has been inferred.']
-      : ['Client contact detail is not available from this read.'];
+  let vendors = [];
+  if (client?.getRelationshipNetwork && deal.id) {
+    try {
+      const network = await client.getRelationshipNetwork();
+      const linked = new Set((network.edges || []).filter(e => e.to === `deal:${deal.id}` && e.kind !== 'client_deal').map(e => e.from));
+      vendors = (network.nodes || []).filter(n => n.kind === 'vendor' && linked.has(n.id));
+    } catch { /* The card remains usable without optional network context. */ }
   }
-  const record = clientContext.record || {};
-  const lines = [record.name || 'Unnamed client'];
-  const contact = [record.title, record.phone, record.cell, record.email].filter(Boolean).join(' · ');
-  if (contact) lines.push(contact);
-  const place = [record.city, record.state].filter(Boolean).join(', ');
-  if (place) lines.push(place);
-  return lines;
+  if (record && !record.id) record = {...record,id};
+  return {client: record ? {status:'ok',record} : {status,reason:id ? 'fetch_failed' : undefined}, vendors,
+    parties:attachedParties(detail?.participants || []),criticalDates:detail?.critical_dates || []};
 }
-
-/**
- * Read-only context sections. Empty sections say what is missing.
- *
- * @param {Awaited<ReturnType<typeof loadDealContext>>} context
- * @param {{dateLabel?:(value:string)=>string}} [options]
- */
 export function contextDrawerSections(context, options = {}) {
-  const date = options.dateLabel || ((value) => String(value ?? ''));
+  const sections = [];
+  const record = context?.client?.record;
+  if (record) sections.push({title:'Client',links:record.id ? [{label:'Open client record',href:`/clients?record=${encodeURIComponent(record.id)}`}] : [],lines:[record.name,
+    [record.title,record.phone,record.cell,record.email].filter(Boolean).join(' · '),
+    [record.city,record.state].filter(Boolean).join(', ')].filter(Boolean)});
   const parties = context?.parties || [];
-  const partyLines = parties.length
-    ? parties.map((row) => `${partyRoleLabel(row.role)} · ${row.name || 'Unnamed party'}`)
-    : ['No attached parties or vendors recorded on this deal.'];
-  const dates = context?.criticalDates || [];
-  const dateLines = dates.length
-    ? dates.map((entry) => `${entry.label || entry.kind || 'Date'} · ${date(entry.date || entry.due_on)}${entry.source ? ` · ${entry.source}` : ''}`)
-    : ['None recorded.'];
-
-  return [
-    { title: 'Client', lines: clientContextLines(context?.client || { status: 'not_linked' }),
-      state: (context?.client?.status && context.client.status !== 'ok') ? context.client.status : undefined },
-    { title: 'Attached parties & vendors', lines: partyLines },
-    { title: 'Critical dates', lines: dateLines },
-  ];
+  if (parties.length) sections.push({title:'Attached parties',lines:parties.map(p => `${partyRoleLabel(p.role)} · ${p.name}`)});
+  if (context?.vendors?.length) sections.push({title:'Vendors',links:context.vendors.filter(v=>v.record_id).map(v=>({label:`Open ${v.name}`,href:`/vendors?record=${encodeURIComponent(v.record_id)}`})),lines:context.vendors.map(v => [v.name,v.territory,v.summary].filter(Boolean).join(' · '))});
+  const date = options.dateLabel || String;
+  if (context?.criticalDates?.length) sections.push({title:'Critical dates',lines:context.criticalDates.map(d => `${d.label || d.kind} · ${date(d.date || d.due_on)}${d.source ? ` · ${d.source}` : ''}`)});
+  return sections;
 }
 
 export function dealInsightLines(reading) {

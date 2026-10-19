@@ -175,7 +175,7 @@ test('PR124 R1 generated Home flag and task links open the requested record thro
     assert.ok(id);
     await link.click();
     await page.locator('.kanban-card').first().waitFor();
-    await page.waitForFunction(id => document.querySelector('#recordPanel')?.open && document.querySelector('#detailNextForm') && document.querySelector('#detailOwner'), id);
+    await page.waitForFunction(id => document.querySelector('#recordPanel')?.open && document.querySelector('#detailUpdateForm') && document.querySelector('#detailOwner'), id);
     const detail = await page.evaluate(async () => (await import('/js/pipeline.js')).state.panelDetail);
     assert.equal(detail.deal.id, id);
     assert.equal(await page.locator('#panelTitle').textContent(), detail.deal.name);
@@ -301,13 +301,13 @@ test('a flagged Home deal opens that exact Deals record; unknown IDs show a fail
   assert.equal(href, '/deals?deal=d01');
   // Keep this synthetic test on the fixture adapter on the receiving page.
   await page.locator('.home-flag').first().click();
-  await page.waitForFunction(() => document.querySelector('#recordPanel')?.open && document.querySelector('#detailNextForm'));
+  await page.waitForFunction(() => document.querySelector('#recordPanel')?.open && document.querySelector('#detailUpdateForm'));
   assert.equal(await page.evaluate(async () => (await import('/js/pipeline.js')).state.panelDeal), 'd01');
   assert.match(await page.locator('#panelTitle').textContent(), /Demo Dental North/);
   await page.goto('http://localhost/deals?deal=unknown');
   await page.locator('#panelBody').getByText('Updates temporarily unavailable',{exact:true}).waitFor();
   assert.equal(await page.evaluate(async () => (await import('/js/pipeline.js')).state.panelDetail), null);
-  assert.equal(await page.locator('#detailNextForm').count(), 0);
+  assert.equal(await page.locator('#detailUpdateForm').count(), 0);
   assert.deepEqual(errors, []);
 });
 
@@ -457,7 +457,7 @@ test('R14 a task with no critical dates opens its exact deal and visible task', 
   await task.waitFor();
   assert.equal(await task.getAttribute('href'), '/deals?deal=d01');
   await task.click();
-  await page.waitForFunction(() => document.querySelector('#recordPanel')?.open && document.querySelector('#detailNextForm'));
+  await page.waitForFunction(() => document.querySelector('#recordPanel')?.open && document.querySelector('#detailUpdateForm'));
   assert.equal(await page.evaluate(async () => (await import('/js/pipeline.js')).state.panelDeal), 'd01');
   assert.match(await page.locator('#panelBody').textContent(), /Demo follow-up/);
 });

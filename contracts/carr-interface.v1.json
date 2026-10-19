@@ -1,6 +1,6 @@
 {
   "schema": "doctorcre-carr-interface.v1",
-  "version": "1.47.0",
+  "version": "1.48.0",
   "producer": {
     "repository": "jbookout/carr-system",
     "source_commit": "e2e484b1933bfd63c10cc9a1b3350132948f6f74"
@@ -167,9 +167,21 @@
         "lane",
         "outcome"
       ],
-      "deal_sources": ["deals", "deals_via_link"],
-      "nullable_calendar_days": ["invoiced_on", "closed_on"],
-      "nullable_strings": ["phase", "owner", "client_ref", "lane", "outcome"],
+      "deal_sources": [
+        "deals",
+        "deals_via_link"
+      ],
+      "nullable_calendar_days": [
+        "invoiced_on",
+        "closed_on"
+      ],
+      "nullable_strings": [
+        "phase",
+        "owner",
+        "client_ref",
+        "lane",
+        "outcome"
+      ],
       "unknown_deal_fields": "refused"
     },
     "correspondence-readiness": {
@@ -492,7 +504,7 @@
       "write": false,
       "producer": {
         "repository": "jbookout/carr-system",
-        "source_commit": "785c125c839cbebebeb78b4f722fe08e942cb639"
+        "source_commit": "786b73d06cf18d7fc29a53db5be37a76fc8ac32e"
       },
       "response": {
         "schema_version": "local-deals-board.v1",
@@ -529,15 +541,32 @@
             "account_client_id",
             "workspace_kind"
           ],
-          "membership": "Closed phase, a recorded outcome, or an invoice date; includes invoiced deals omitted from deals. Uses the same workspace and account scope.",
+          "membership": "Recorded won outcome, or no outcome with a recorded close/invoice date. Lost and paused outcomes are excluded; same workspace and account scope.",
           "order": "Close date descending, missing dates last, then name and id."
+        },
+        "lost_deals": {
+          "keys": [
+            "id",
+            "name",
+            "client_ref",
+            "client_name",
+            "type",
+            "phase",
+            "outcome",
+            "owner",
+            "closed_on",
+            "invoiced_on",
+            "account_client_id",
+            "workspace_kind"
+          ],
+          "membership": "Recorded lost outcome, independent of phase. Same workspace and account scope."
         }
       }
     },
     "get-deal-room": {
       "producer": {
         "repository": "jbookout/carr-system",
-        "source_commit": "8aa6deb8557dd0ddb566a120f8e65282e89c4b07"
+        "source_commit": "786b73d06cf18d7fc29a53db5be37a76fc8ac32e"
       },
       "response": {
         "schema_version": "deal-timeline.v1",
@@ -553,7 +582,8 @@
           "evidence_ref",
           "source"
         ],
-        "lease_absence": null
+        "lease_absence": null,
+        "client_id": "Exact client record UUID, including closed and invoiced records; use for the authenticated clients record read."
       },
       "critical_date_write": "add-critical-date",
       "never_derive": [

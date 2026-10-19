@@ -15,9 +15,11 @@ export function localDeals(rows, owner = 'all') {
 export function isClosedDeal(deal) {
   return String(deal.phase).toLowerCase() === 'closed' || Boolean(deal.outcome || deal.invoiced_on);
 }
-export function closedDeals(rows, owner = 'all', query = '') {
+export function lostDeals(rows, owner = 'all', query = '') { return historyDeals(rows, owner, query, true); }
+export function closedDeals(rows, owner = 'all', query = '') { return historyDeals(rows, owner, query, false); }
+function historyDeals(rows, owner = 'all', query = '', lost = false) {
   const search = query.trim().toLowerCase();
-  return (rows || []).filter(d => isClosedDeal(d) && d.workspace_kind !== 'national_account' && !d.account_client_id
+  return (rows || []).filter(d => (lost ? d.outcome === 'lost' : Boolean(d.outcome === 'won' || !d.outcome && (d.closed_on || d.invoiced_on))) && d.workspace_kind !== 'national_account' && !d.account_client_id
     && (owner === 'all' || d.owner === owner)
     && (!search || [d.name, d.client_name, d.client_ref, d.type, d.closed_on].some(v => String(v || '').toLowerCase().includes(search))))
     .sort((a,b) => String(b.closed_on || '').localeCompare(String(a.closed_on || '')) || String(a.name).localeCompare(String(b.name)));

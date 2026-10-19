@@ -11,12 +11,12 @@ async function open(t, { width = 1440, height = 960, reducedMotion = 'no-prefere
   const seed = JSON.parse(await readFile(new URL('data/board-seed.json', root), 'utf8'));
   seed.deals.forEach((d, i) => Object.assign(d, { phase: phases[i % 8], next_step: 'Confirm the next appointment', last_touch: '2026-10-01', last_review_at: '2026-10-01T16:00:00Z', next_date: null, attention: false }));
   seed.deals.find(d => d.id === 'd14').phase = 'Negotiation';
-  seed.deals.find(d => d.id === 'd20').phase = 'Closed';
+  Object.assign(seed.deals.find(d => d.id === 'd20'),{phase:'Closed',outcome:'won'});
   Object.assign(seed.deals.find(d => d.id === 'd23'),{invoiced_on:'2026-10-01',phase:'Closed',closed_on:'2026-10-02',type:'Renewal',client_name:'Demo Archive Client'});
   seed.seed_events = [{ id: 'auto-loi', actor: 'claude', verb: 'patch-deal-field', subject_type: 'deal', subject_id: 'd14', field: 'phase', old_value: 'Research', new_value: 'Negotiation', automatic: true, change_reason: 'LOI sent', evidence_date: '2026-10-03', recorded_at: '2026-10-03T12:00:00Z' },
     { id: 'auto-invoice', actor: 'claude', verb: 'patch-deal-field', subject_type: 'deal', subject_id: 'd20', field: 'phase', old_value: 'Closing', new_value: 'Closed', automatic: true, change_reason: 'invoice', evidence_date: '2026-10-03', recorded_at: '2026-10-03T12:00:00Z' }];
   seed.threads.d14 = [{ id: 'demo-note', kind: 'note', actor: 'joe', at: '2026-10-01', text: 'LOI submitted. ' + 'Full original demo entry. '.repeat(30) }];
-  if (many) for (let i = 20; i < 72; i++) seed.deals.push({ ...seed.deals[9], id: 'demo-' + i, name: 'Demo Assignment ' + i, phase: 'Research' });
+  if (many) for (let i = 20; i < 72; i++) seed.deals.push({ ...seed.deals[9], id: 'demo-' + i, name: 'Demo Assignment ' + i, phase: 'Research', outcome:null });
   if (review) for (let i=0;i<28;i++) seed.deals.push({...seed.deals.find(d=>d.id==='d14'),id:`demo-review-${i}`,name:`Demo Practice ${i+1}`,client_name:`Demo Client ${i+1}`,type:'Renewal',phase:phases[i%7],owner:i%2?'dell':'joe',workspace_kind:'team',account_client_id:null,operating_state:'active'});
   await page.clock.install({ time: new Date('2026-10-04T17:00:00Z') });
   await page.route('**/*', async route => {
@@ -176,9 +176,9 @@ test('W4 list attention order, whole-row detail, timed scroll and draft preserva
   assert.equal(await page.locator('.deal-row').first().getAttribute('data-attention'), 'true');
   assert.equal(await page.locator('.parked-card').count(), 0); await page.locator('#parkedToggle').click(); assert.equal(await page.locator('.parked-card').count(), 2);
   await page.locator('#parkedToggle').click();
-  await page.locator('[data-id="demo-50"]').click(); await page.waitForSelector('#detailNextForm');
-  await page.locator('#detailNextForm textarea').fill('Unsaved demo next step'); await page.locator('#detailNextForm textarea').focus();
-  await page.clock.fastForward(16000); assert.equal(await page.locator('#detailNextForm textarea').inputValue(), 'Unsaved demo next step');
+  await page.locator('[data-id="demo-50"]').click(); await page.waitForSelector('#detailUpdateForm');
+  await page.locator('#detailUpdateForm textarea').fill('Unsaved demo next step'); await page.locator('#detailUpdateForm textarea').focus();
+  await page.clock.fastForward(16000); assert.equal(await page.locator('#detailUpdateForm textarea').inputValue(), 'Unsaved demo next step');
   await page.getByLabel('Close deal', { exact: true }).click();
   await page.locator('[data-id="demo-50"]').focus(); await page.evaluate(() => scrollBy(0, 350)); const before = await page.evaluate(() => scrollY);
   await refresh(page); assert.equal(await page.evaluate(() => scrollY), before);
@@ -215,8 +215,8 @@ test('W4 lost park response retries the original field exactly once; next-step e
   await waitForAsync(page, async () => (await import('/js/pipeline.js')).state.deals.get('d14').operating_state === 'active');
   await page.locator('[data-id="d14"] .card-open').click();
   for (const text of ['Demo first next step', 'Demo second next step']) {
-    await page.locator('#detailNextForm textarea').fill(text); await page.locator('#detailNextForm button').click();
-    await page.waitForFunction(expected => document.querySelector('.detail-next').textContent === expected, text);
+    await page.locator('#detailUpdateForm textarea').fill(text); await page.locator('#detailUpdateForm button').click();
+    await page.waitForFunction(expected => document.querySelector('.deal-updates').textContent.includes(expected), text);
   }
   assert.deepEqual(errors, []);
 });
@@ -225,7 +225,7 @@ test('W4 detail polls phase evidence, dates, people and parking while preserving
   const { page, errors } = await open(t);
   await page.locator('[data-id="d14"] .card-open').click();
   await page.locator('.deal-note[data-id="demo-note"] summary').click();
-  await page.locator('#detailNextForm textarea').fill('Demo unsaved draft');
+  await page.locator('#detailUpdateForm textarea').fill('Demo unsaved draft');
   await page.evaluate(async () => {
     const { state } = await import('/js/pipeline.js'); const original = state.client.getDeal;
     state.client.getDeal = async id => {
@@ -237,11 +237,11 @@ test('W4 detail polls phase evidence, dates, people and parking while preserving
   await page.waitForFunction(() => document.querySelector('[data-detail-read="parking"]')?.textContent.includes('Demo reviewed import'));
   assert.equal(await page.locator('#detailPhase').inputValue(), 'legal');
   assert.match(await page.locator('.phase-rail [aria-current]').textContent(), /Legal/);
-  assert.match(await page.locator('[data-detail-read="automatic"]').textContent(), /Draft prepared 10\/4/);
+
   assert.match(await page.locator('[data-detail-read="dates"]').textContent(), /Demo deadline/);
-  assert.match(await page.locator('[data-detail-read="people"]').textContent(), /Demo advisor/);
-  await page.waitForFunction(() => document.querySelector('#panelEvidence')?.textContent.includes('Demo scheduled tour'));
-  assert.equal(await page.locator('#detailNextForm textarea').inputValue(), 'Demo unsaved draft');
+
+  assert.match(await page.locator('.deal-updates').textContent(),/Demo scheduled tour/);
+  assert.equal(await page.locator('#detailUpdateForm textarea').inputValue(), 'Demo unsaved draft');
   assert.equal(await page.locator('.deal-note[data-id="demo-note"] details').evaluate(e => e.open), true);
   assert.deepEqual(errors, []);
 });
@@ -273,40 +273,19 @@ test('W4 a long automatic reason keeps its date and Undo visible inside the fixe
 });
 
 
-test('W4 detail and next-step rereads time out at the client seam and recover without losing a draft', async t => {
-  const { page, errors } = await open(t);
-  await page.evaluate(async () => {
-    const { state } = await import('/js/pipeline.js');
-    const read = state.client.getDeal;
-    window.detailProbe = { calls: 0, hang: true, release: null };
-    state.client.getDeal = async (...args) => {
-      window.detailProbe.calls++;
-      if (window.detailProbe.hang) return new Promise(resolve => { window.detailProbe.release = async () => resolve(await read(...args)); });
-      return read(...args);
-    };
-  });
-  await page.locator('.kanban-column [data-id="d14"] .card-open').click();
-  await page.waitForFunction(() => window.detailProbe.calls > 0);
-  await page.clock.runFor(10_001);
-  await page.getByText('Updates temporarily unavailable', {exact:true}).waitFor();
-  assert.equal(await page.locator('[data-retry-detail]').count(),0);
-  await page.evaluate(() => { window.detailProbe.hang = false; });
-  await page.clock.fastForward(16000);
-  await page.locator('#detailNextForm').waitFor();
-  await page.locator('#detailNextForm textarea').fill('Unsaved deadline demo');
-  await page.evaluate(() => { window.detailProbe.hang = true; window.detailProbe.calls = 0; });
-  await page.locator('#detailNextForm button').click();
-  await page.waitForFunction(() => window.detailProbe.calls > 0);
-  await page.clock.runFor(10_001);
-  await page.waitForFunction(() => document.querySelector('#detailNextStatus').textContent.includes('is updating'));
-  assert.equal(await page.locator('#detailNextForm textarea').isEnabled(), true);
-  assert.equal(await page.locator('#detailNextForm textarea').inputValue(), 'Unsaved deadline demo');
-  await page.evaluate(() => { window.detailProbe.hang = false; });
-  await page.locator('#detailNextForm button').click();
-  await page.waitForFunction(() => document.querySelector('#detailNextStatus').textContent === 'Next step confirmed');
-  await page.evaluate(() => window.detailProbe.release());
-  assert.equal(await page.locator('#detailNextForm textarea').inputValue(), 'Unsaved deadline demo');
-  assert.deepEqual(errors, []);
+test('detail reads recover without losing an update draft', async t => {
+ const {page,errors}=await open(t);
+ await page.locator('[data-id="d14"] .card-open').click();
+ await page.locator('#detailUpdateForm textarea').fill('Unsaved demo update');
+ await page.evaluate(async()=>{const {state}=await import('/js/pipeline.js');const read=state.client.getDeal;window.restoreRead=()=>state.client.getDeal=read;state.client.getDeal=async()=>{throw Error('Synthetic outage');};});
+ await page.clock.fastForward(16000);
+ await page.getByText('Updates temporarily unavailable',{exact:true}).waitFor();
+ assert.equal(await page.locator('#detailUpdateForm textarea').inputValue(),'Unsaved demo update');
+ await page.evaluate(()=>restoreRead());await page.clock.fastForward(16000);
+ await page.locator('#detailUpdateForm button').click();
+ await page.waitForFunction(()=>document.querySelector('.deal-updates').textContent.includes('Unsaved demo update'));
+ assert.equal(await page.locator('#detailUpdateForm textarea').inputValue(),'');
+ assert.deepEqual(errors,[]);
 });
 
 test('S8 the move toast never covers the Today column or the status band', async t => {

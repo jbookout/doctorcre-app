@@ -149,6 +149,7 @@ export function createLiveClient(opts = {}) {
       }, options.signal);
       selfActor = board.actor || selfActor;
       return { ...board, deals: Array.isArray(board.deals) ? board.deals.map(dealToUi) : board.deals,
+        lost_deals: Array.isArray(board.lost_deals) ? board.lost_deals.map(dealToUi) : undefined,
         closed_deals: Array.isArray(board.closed_deals) ? board.closed_deals.map(dealToUi) : undefined };
     },
 
@@ -167,7 +168,7 @@ export function createLiveClient(opts = {}) {
         if (n.kind === 'next_step') {
           if (!currentSeen) {
             currentSeen = true; currentStep = n.text;
-            if (!hasCanonicalStep || n.text === canonicalStep) continue;
+
           }
           uiThread.push({ ...n, kind: 'archived_step' });
         } else {

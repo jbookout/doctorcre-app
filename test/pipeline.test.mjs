@@ -269,17 +269,9 @@ test("loadDealContext never guesses a party's contact record from its party_id",
   assert.equal(context.parties[0].name, "Dr. Example");
 });
 
-test("contextDrawerSections states three distinct honest states for the client: not linked, unavailable, ok", () => {
-  const notLinked = contextDrawerSections({ client: { status: "not_linked" }, parties: [], criticalDates: [] });
-  assert.equal(notLinked[0].lines[0], "This deal is not linked to a client record.");
-  assert.equal(notLinked[0].state, "not_linked");
-
-  const failed = contextDrawerSections({
-    client: { status: "unavailable", reason: "fetch_failed" }, parties: [], criticalDates: [],
-  });
-  assert.match(failed[0].lines[0], /could not be read/);
-  assert.equal(failed[0].state, "unavailable");
-
+test("contextDrawerSections renders recorded context and hides unavailable sections", () => {
+  assert.deepEqual(contextDrawerSections({client:{status:'not_linked'},parties:[],criticalDates:[]}),[]);
+  assert.deepEqual(contextDrawerSections({client:{status:'unavailable'},parties:[],criticalDates:[]}),[]);
   const ok = contextDrawerSections({
     client: { status: "ok", record: { name: "Demo Dental North", phone: "205-555-0142", email: "a@example.com", city: "Demo City", state: "DM" } },
     parties: [{ role: "client_contact", name: "Dr. Example" }],
@@ -293,10 +285,8 @@ test("contextDrawerSections states three distinct honest states for the client: 
   assert.deepEqual(ok[2].lines, ["LOI expires · 2026-10-01 · email"]);
 });
 
-test("contextDrawerSections never invents a party or a date: an empty deal says so in both sections", () => {
-  const sections = contextDrawerSections({ client: { status: "not_linked" }, parties: [], criticalDates: [] });
-  assert.deepEqual(sections[1].lines, ["No attached parties or vendors recorded on this deal."]);
-  assert.deepEqual(sections[2].lines, ["None recorded."]);
+test("empty context has no placeholder sections",()=>{
+ assert.deepEqual(contextDrawerSections({client:{status:'not_linked'},parties:[],criticalDates:[]}),[]);
 });
 
 /* -------------------------------------------------------- the fixture round trip */
@@ -602,8 +592,7 @@ test("a deal with no parties: the drawer states plainly that none are recorded, 
   assert.deepEqual(context.parties, []);
 
   const sections = contextDrawerSections(context, { dateLabel: (v) => v });
-  assert.equal(sections[0].lines[0], "This deal is not linked to a client record.");
-  assert.deepEqual(sections[1].lines, ["No attached parties or vendors recorded on this deal."]);
+  assert.equal(sections.some(s=>s.title === "Client" || s.title === "Attached parties"),false);
 });
 
 test("a fetch failure reading the client record: the drawer says the read failed, not that the client is empty", async () => {
@@ -621,8 +610,7 @@ test("a fetch failure reading the client record: the drawer says the read failed
   assert.equal(context.client.reason, "fetch_failed");
 
   const sections = contextDrawerSections(context, { dateLabel: (v) => v });
-  assert.match(sections[0].lines[0], /could not be read/);
-  assert.doesNotMatch(sections[0].lines[0], /not linked/);
+  assert.equal(sections.some(s=>s.title === "Client"),false);
 });
 
 test("the fixture accepts every one of the eight phases by its board value", async () => {
@@ -749,7 +737,7 @@ test("the Closed dialog offers the three outcomes, a picker for the date, and bo
 
   const contract = JSON.parse(await read("contracts/carr-interface.v1.json"));
   assert.ok(contract.mcp_operations.includes("update-deal"));
-  assert.equal(contract.version, "1.47.0");
+  assert.equal(contract.version, "1.48.0");
 });
 
 test("the fixture carries the reason and the sentence onto the phase event, word for word", async () => {

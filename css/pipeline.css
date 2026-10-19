@@ -154,3 +154,16 @@
 .add-deal-fields .field-grid { grid-template-columns: repeat(auto-fit,minmax(min(100%,180px),1fr)); }
 #addDealError:not(:empty) { color: var(--status-danger-ink); }
 #addDealOpen { margin-top: var(--space-3); }
+
+.deal-update-form { display:grid; gap:var(--space-2); margin-bottom:var(--space-4); }
+.deal-update-form textarea { min-height:80px; width:100%; box-sizing:border-box; }
+.deal-update-form button { justify-self:start; }
+.deal-update-form [role="status"]:empty { display:none; }
+.deal-snapshot-facts { display:flex; flex-wrap:wrap; gap:var(--space-3) var(--space-6); margin:0 0 var(--space-4); }
+.deal-snapshot-facts div { min-width:0; }
+.deal-snapshot-facts dt { color:var(--fg-muted); font-size:var(--font-size-1); }
+.deal-snapshot-facts dd { margin:0; overflow-wrap:anywhere; }
+.deal-detail .detail-grid { grid-template-columns:minmax(0,1fr); }
+.deal-updates { margin-bottom:var(--space-4); }
+.deal-updates .deal-note p { line-height:var(--line-height-body); }
+.deal-dates > summary { min-height:var(--touch); cursor:pointer; }

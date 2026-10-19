@@ -2,7 +2,6 @@ import {onDialogClosed} from './dialog-lifecycle.js';
 import { dealInsightLines } from './pipeline-model.js';
 import { selectDocRecord, setDocFilters, publishDocRead } from './doc-context.js';
 import { createClient, PHASES, PHICON, ACTOR_LABEL, phaseLabel } from './client.js';
-import { entryDetailsHtml } from './entry-details.mjs';
 import { deploymentIdentity, resolveDealroomBoot } from './boot-mode.js';
 import { uuidv4 } from './uuid.js';
 import { createPostCallClient } from './post-call-client.js';
@@ -20,8 +19,7 @@ import {
 } from './field-write-reconciliation.mjs';
 import { classifyCommandOutcome, commandMessage, pendingCommand } from './command-feedback.mjs';
 import { renderAccountCards } from './account-cards.js';
-import { mountEvidence } from './correspondence.js';
-import { mountAutoRefresh, updatedLabel } from './auto-refresh.mjs';
+import { updatedLabel } from './auto-refresh.mjs';
 import { mountVisibilityPoll } from './visibility-poll.mjs';
 
 const POLL_MS = 1400;
@@ -1116,76 +1114,8 @@ function showConflict(conflict) {
     } });
 }
 
-function detailRows(items, renderer, empty='Nothing captured yet.') {
-  return items?.length ? items.map(renderer).join('') : `<div class="detail-row">${esc(empty)}</div>`;
-}
-
-let disposeDealEvidence = null;
-let dealDetailSequence = 0;
-let dealDetailSnapshot = null;
-async function openDeal(dealId, { background = false } = {}) {
-  if (!background) selectDocRecord('deal', dealId);
-  const dialog = $('#dealDialog');
-  if (background && (!dialog.open || dialog.dataset.dealId !== dealId)) return;
-  const sequence = ++dealDetailSequence;
-  const detail = await state.client.getDeal(dealId);
-  if (sequence !== dealDetailSequence) return;
-  if (background && (!dialog.open || dialog.dataset.dealId !== dealId || $('#formDialog').open || dialog.querySelector('[data-jev-deal]:disabled'))) return;
-  // Interaction may have changed during the read. Capture it at paint time.
-  const scroll = dialog.scrollTop;
-  const disclosures = background ? [...dialog.querySelectorAll('details[open]')].map(node => node.querySelector('summary')?.textContent) : [];
-  const advice = background ? dialog.querySelector('[data-jev-result]')?.innerHTML : null;
-  const focused = background && dialog.contains(document.activeElement) ? document.activeElement : null;
-  const focusAttributes = focused ? [...focused.attributes].filter(a => a.name === 'id' || a.name.startsWith('data-')).map(a => [a.name, a.value]) : [];
-  const unchanged = JSON.stringify(detail) === dealDetailSnapshot;
-  dealDetailSnapshot = JSON.stringify(detail);
-  const deal = detail.deal;
-  const parked = deal.operating_state === 'parked';
-  const html = `<header><div><h2>${esc(deal.name)}</h2><p class="subhead">${esc(deal.account_name || deal.client_name || 'Work record')} · ${parked ? `${esc(parkingReasonLabel(deal.parking_reason))} · ` : ''}${esc(phaseLabel(deal.phase))} · ${esc(deal.market || 'Market not captured')}</p></div><div class="detail-header-actions"><button type="button" class="park-button" data-operating-state="${parked ? 'active' : 'parked'}" data-deal="${esc(deal.id)}">${parked ? 'Restore to active' : 'Park'}</button><button type="button" class="icon-button" data-close-deal aria-label="Close details">×</button></div></header>
-    <div class="deal-content">${parked ? `<div class="parking-banner"><b>${esc(parkingReasonLabel(deal.parking_reason))}</b>${deal.parking_note ? `<span>${esc(deal.parking_note)}</span>` : ''}<small>This record is outside active counts and weekly agendas.</small></div>` : ''}<div class="deal-summary">
-      <div class="detail-card"><label>Next step</label><p>${esc(deal.next_step || 'Not set')}</p></div>
-      <div class="detail-card"><label>Next date</label><p>${esc(dateLabel(deal.next_date))}</p></div>
-      <div class="detail-card"><label>${deal.workspace_kind === 'national_account' ? 'Market agent' : 'Owner'}</label><p>${esc(deal.workspace_kind === 'national_account' ? deal.market_agent || 'Unassigned' : actorName(deal.owner))}</p></div>
-      <div class="detail-card"><label>Last touch</label><p>${esc(relative(deal.last_touch))}</p></div></div>
-      <section class="detail-section"><h3>Insights</h3><button type="button" class="secondary" data-jev-deal="${esc(deal.id)}">Review deal</button><div data-jev-result class="detail-list" aria-live="polite"></div></section>
-      <section class="detail-section"><h3>Open next actions</h3><div class="detail-list">${detailRows((detail.next_actions || []).filter((a) => a.status === 'open'), (a) => `<div class="detail-row"><b>${esc(a.description)}</b><small>${esc(actorName(a.owner))} · ${esc(dateLabel(a.due_on))}</small></div>`)}</div></section>
-      <section class="detail-section"><h3>Critical dates</h3><div class="detail-list">${detailRows(detail.critical_dates, (d) => `<div class="detail-row"><b>${esc(d.label || d.kind)}</b><small>${esc(dateLabel(d.date || d.due_on))}</small></div>`)}</div></section>
-      <section class="detail-section"><h3>Premises</h3><div class="detail-list">${detailRows(detail.premises, (p) => `<div class="detail-row"><b>${esc(p.label)}</b><small>${esc([p.address,p.suite,p.city,p.state].filter(Boolean).join(' · '))}${p.area_amount ? ` · ${esc(p.area_amount)} ${esc(p.area_basis || 'SF')}` : ''}</small></div>`)}</div></section>
-      <section class="detail-section"><h3>Negotiation rounds</h3><div class="detail-list">${detailRows(detail.negotiation_rounds, (n) => `<div class="detail-row"><b>Round ${esc(n.round_no)} · ${esc(n.side)}</b><small>${esc(n.rate_amount ? `${n.rate_amount} ${n.rate_basis || ''}` : 'Rate not captured')} · ${esc(n.term_months ? `${n.term_months} months` : 'Term not captured')}</small></div>`)}</div></section>
-      <section class="detail-section"><h3>Participants</h3><div class="detail-list">${detailRows(detail.participants, (p) => `<div class="detail-row"><b>${esc(p.name)}</b><small>${esc(String(p.role).replaceAll('_',' '))}</small></div>`)}</div></section>
-      <section class="detail-section"><h3>Recent activity</h3><div class="detail-list">${detailRows(detail.activities, (a) => `<div class="detail-row"><b>${esc(a.summary)}</b><small>${esc(actorName(a.actor))} · ${esc(relative(a.occurred_at))} · ${esc(a.kind)}</small></div>`)}</div></section>
-      <section class="detail-section"><h3>Notes and prior next steps</h3><div class="detail-list">${detailRows(detail.thread, (n) => `<div class="detail-row">${entryDetailsHtml(n.text)}<small>${esc(actorName(n.actor))} · ${esc(n.kind === 'archived_step' ? 'prior next step' : 'note')}</small></div>`)}</div></section>
-      <section class="detail-section"><h3>Documents</h3><div class="detail-list">${detailRows(detail.documents, (d) => `<div class="detail-row"><b>${esc(String(d.sent_status).replaceAll('_',' '))}</b><small>Prepared ${esc(relative(d.prepared_at))} · lint ${d.lint_passed ? 'passed' : 'not confirmed'} · leak check ${d.leak_check_passed ? 'passed' : 'not confirmed'}</small></div>`)}</div></section>
-      <section class="detail-section"><h3>Change history</h3><div class="detail-list">${detailRows(detail.history, (h) => `<div class="detail-row">${esc(h.summary)}<small>${esc(actorName(h.actor))} · ${esc(relative(h.recorded_at))}</small></div>`)}</div></section>
-    </div>`;
-  disposeDealEvidence?.();
-  $('#dealDetail').innerHTML = html;
-  const clock = document.createElement('time'); clock.className = 'as-of'; clock.textContent = updatedLabel(new Date().toISOString());
-  $('#dealDetail header').append(clock);
-  const evidenceRoot = document.createElement('div');
-  $('#dealDetail .deal-content').append(evidenceRoot);
-  disposeDealEvidence = mountEvidence(evidenceRoot, { client: state.client, detail });
-  dialog.dataset.dealId = dealId;
-  if (unchanged && advice) dialog.querySelector('[data-jev-result]').innerHTML = advice;
-  for (const node of dialog.querySelectorAll('details')) node.open = disclosures.includes(node.querySelector('summary')?.textContent);
-  if (!dialog.open) dialog.showModal();
-  if (background) dialog.scrollTop = scroll;
-  if (focused) [...dialog.querySelectorAll(focused.tagName)].find(node =>
-    focusAttributes.length ? focusAttributes.every(([name, value]) => node.getAttribute(name) === value) : node.textContent === focused.textContent)?.focus({ preventScroll: true });
-}
-
-async function readJevDeal(button) {
-  const target = $('#dealDialog [data-jev-result]');
-  button.disabled = true;
-  target.innerHTML = '<div class="detail-row">Reviewing…</div>';
-  try {
-    const reading = await state.client.getJevDealReading(button.dataset.jevDeal);
-    target.innerHTML = dealInsightLines(reading).map(line => `<div class="detail-row">${esc(line)}</div>`).join('');
-  } catch {
-    target.innerHTML = `<div class="detail-row">${esc(dealInsightLines(null)[0])}</div>`;
-  } finally {
-    button.disabled = false;
-  }
+async function openDeal(dealId) {
+  location.assign(`/deals?deal=${encodeURIComponent(dealId)}`);
 }
 
 function agendaDeals() {
@@ -1256,11 +1186,6 @@ async function finishAgenda(status = 'completed') {
 }
 
 function wireEvents() {
-  onDialogClosed($('#dealDialog'), () => {
-    ++dealDetailSequence;
-    disposeDealEvidence?.();
-    disposeDealEvidence = null;
-  });
   document.addEventListener('click', async (event) => {
     const workspace = event.target.closest('[data-workspace]');
     if (workspace) {
@@ -1283,7 +1208,6 @@ function wireEvents() {
       return;
     }
     const open = event.target.closest('[data-open-deal]'); if (open) { await openDeal(open.dataset.openDeal); return; }
-    const jevDeal = event.target.closest('[data-jev-deal]'); if (jevDeal) { await readJevDeal(jevDeal); return; }
     const attention = event.target.closest('[data-attention]'); if (attention) { const deal=state.deals.get(attention.dataset.attention); await patchField(deal.id,'attention',!deal.attention); return; }
     const step = event.target.closest('[data-next-step],[data-agenda-step]'); if (step) { nextStepForm(step.dataset.nextStep || step.dataset.agendaStep); return; }
     const agent = event.target.closest('[data-market-agent]'); if (agent) { marketAgentForm(agent.dataset.marketAgent); return; }
@@ -1354,7 +1278,6 @@ async function boot() {
   badge.title = identity.detail;
   badge.setAttribute('aria-label', identity.detail);
   state.client = await createClient(bootConfig.mode, bootConfig.options);
-  mountAutoRefresh({ document, window, shouldRefresh: () => $('#dealDialog').open && !$('#formDialog').open && !$('#dealDialog').querySelector('[data-jev-deal]:disabled'), refresh: () => openDeal($('#dealDialog').dataset.dealId, { background: true }) });
   state.boardSync = createBoardSync({
     readBoard: () => state.client.getBoard({ workspace:'all' }),
     readChanges: (cursor) => state.client.getChanges(cursor),

@@ -1374,7 +1374,8 @@ export async function createFixtureClient(opts = {}) {
         // event for each editable cell, from the same pass as the values, so a
         // first edit has a base here too. A cell with no history has no entry.
         deals: [...deals.values()].filter(d => !d.invoiced_on).map((d) => ({ ...d, phase_change: phaseChangeFor(d.id), field_base: fieldBaseFor(d.id) })),
-        closed_deals: [...deals.values()].filter(d => String(d.phase).toLowerCase() === 'closed' || d.outcome || d.invoiced_on).map(d => ({...d})),
+        lost_deals: [...deals.values()].filter(d => d.outcome === 'lost').map(d => ({...d})),
+        closed_deals: [...deals.values()].filter(d => (d.outcome === 'won' || !d.outcome && (d.closed_on || d.invoiced_on))).map(d => ({...d})),
         accounts: [{ account_client_id: fixtureAccountId, account_client_ref: 'DEMO-ACCOUNT-001',
           account_name: 'Demo National Practice', account_owner: fixtureAccountOwner, open_deals: activeNational.length,
           attention_deals: activeNational.filter((d) => d.attention).length,
