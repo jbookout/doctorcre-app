@@ -1,3 +1,4 @@
+import { showToast } from './toast.js';
 import { pageDocContext, selectDocRecord, setDocFilters, publishDocRead } from './doc-context.js';
 // V5-UX-B03 — Deals: the Kanban board's DOM wiring, and nothing else.
 //
@@ -116,33 +117,13 @@ function say(text) {
   if (live && live.textContent !== text) live.textContent = text;
 }
 
-function showToast(text, eventId = null) {
-  document.querySelectorAll('.toast').forEach((node) => node.remove());
-  const toast = document.createElement('div');
-  toast.className = 'toast';
-  toast.setAttribute('role', 'status');
-  const message = document.createElement('span');
-  message.textContent = text;
-  toast.append(message);
-  if (eventId) {
-    const undo = document.createElement('button');
-    undo.type = 'button';
-    undo.className = 'receipt-undo';
-    undo.dataset.undo = eventId;
-    undo.textContent = 'Undo';
-    toast.append(undo);
-  }
-  document.body.append(toast);
-  setTimeout(() => toast.remove(), 4100);
-}
-
 const dateWords = (value) => (value ? formatCalendarDate(value) || value : 'no date recorded');
 
 /* ------------------------------------------------------------------ painting */
 
 function autoHtml(deal) {
   const move = automaticMove(deal);
-  return move ? `<div class="auto-move"><span>${esc(move.text.slice(0, move.text.lastIndexOf(' ')))}</span> <time>${esc(move.text.slice(move.text.lastIndexOf(' ') + 1))}</time><button class="btn btn-quiet" type="button" data-undo="${esc(move.eventId)}" aria-label="Undo phase change on ${esc(dealTitle(deal))}">Undo</button></div>` : '';
+  return move ? `<div class="auto-move"><span>${esc(move.text.slice(0, move.text.lastIndexOf(' ')))}</span> <time>${esc(move.text.slice(move.text.lastIndexOf(' ') + 1))}</time></div>` : '';
 }
 const dealTitle = (deal) => dealName(deal.name);
 function cardHtml(deal) {
@@ -346,7 +327,7 @@ function renderReceipts() {
   const signature = receiptsSignature(views);
   if (signature === state.receiptSignature) return;
   state.receiptSignature = signature;
-  list.innerHTML = views.length ? receiptListHtml(views)
+  list.innerHTML = views.length ? receiptListHtml(views.map(view => ({...view, can_undo:false})))
     : '<li class="receipt"><p class="receipt-line">Nothing has changed in this session yet.</p></li>';
 }
 
@@ -589,7 +570,7 @@ async function runMove(intent, form) {
   if (result.status !== 'ok') {
     renderBoard();
     const message = fieldWriteMessage(result, `${fieldLabel('phase')} on ${intent.name}`);
-    if (message) { showToast(message); say(message); }
+    if (message) { showToast(message, {error:true}); say(message); }
     return { ok: false, errors: [] };
   }
   if (result.superseded) {
@@ -603,7 +584,7 @@ async function runMove(intent, form) {
   } else {
     confirmLocalWrite(intent.deal, { phase: phaseStep.args.value });
     renderBoard();
-    showToast(`${intent.name} moved to ${intent.to_label}`, result.event_id);
+    showToast(`${intent.name} moved to ${intent.to_label}`, {eventId: result.event_id});
   }
   announce(`${intent.name} moved to ${intent.to_label}.`);
 
@@ -641,7 +622,7 @@ async function retryFieldWrite(cell) {
   }
   renderBoard();
   const message = fieldWriteMessage(result, subject);
-  if (message) showToast(message);
+  if (message) showToast(message, {error:result.status !== 'ok'});
 }
 
 async function runUndo(eventId) {
@@ -659,7 +640,7 @@ async function runUndo(eventId) {
     showToast('Change undone');
     return;
   }
-  showToast(result.outcome.message);
+  showToast(result.outcome.message, {error:true});
 }
 
 /* ----------------------------------------------------------- the two dialogs */
@@ -1004,7 +985,7 @@ async function setOperatingState(id, value) {
     showToast(accepted.state === 'active' ? 'Deal revived' : 'Deal parked');
     if (state.panelDeal === id) closePanel();
   } else if (result.conflict) showConflict(result.conflict);
-  else { showToast(fieldWriteMessage(result,'Operating state') || 'Change not confirmed'); state.boardSync.requestRefresh('operating-state'); }
+  else { showToast(fieldWriteMessage(result,'Operating state') || 'Change not confirmed', {error:true}); state.boardSync.requestRefresh('operating-state'); }
   renderPendingWrites();
 }
 
@@ -1316,7 +1297,7 @@ function wire() {
       e.target.value = columnByValue(state.deals.get(id)?.phase)?.slug || '';
       beginMove(id, destination);
     }
-    if (e.target.id === 'detailOwner') { const value = e.target.value || null; const result = await sendFieldWrite(id,'owner',value); if(result.status === 'ok' && !result.superseded) confirmLocalWrite(id,{owner:result.request.value}); else if(result.conflict) showConflict(result.conflict); else showToast(fieldWriteMessage(result,'Owner') || 'Change not confirmed'); renderPendingWrites(); }
+    if (e.target.id === 'detailOwner') { const value = e.target.value || null; const result = await sendFieldWrite(id,'owner',value); if(result.status === 'ok' && !result.superseded) confirmLocalWrite(id,{owner:result.request.value}); else if(result.conflict) showConflict(result.conflict); else showToast(fieldWriteMessage(result,'Owner') || 'Change not confirmed', {error:true}); renderPendingWrites(); }
   });
   $('panelBody').addEventListener('submit', async e => {
     e.preventDefault(); const id=state.panelDeal; const form = new FormData(e.target);

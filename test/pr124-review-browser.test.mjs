@@ -148,7 +148,8 @@ for (const status of [401,403]) test(`PR129 R3 a pending date receipt survives H
  reads.status=status;await page.clock.fastForward(15000);
  await page.waitForFunction(()=>!document.querySelector('#panelBody .detail-grid'));
  reads.status=200;await page.evaluate(()=>finishDate());
- await page.waitForFunction(()=>document.querySelector('[data-op="critical-date:d14:rent_start"]').dataset.state==='confirmed');
+ await page.locator('.toast').waitFor({state:'attached'});
+ assert.equal(await page.locator('#receiptDock [data-op="critical-date:d14:rent_start"]').count(),0);
  await page.waitForTimeout(30);
  assert.equal(await page.locator('#dealDateDialog').evaluate(e=>e.open),false);
  assert.equal(await page.locator('#detailUpdateForm').count(),0);
@@ -178,13 +179,14 @@ for (const status of [401,403]) for (const outcome of ['ok','refused']) test(`PR
  // A completion must not implicitly reopen a detail, even if later reads succeed.
  reads.status=200;
  await page.evaluate(outcome=>finishNext(outcome),outcome);
- await page.waitForFunction(()=>document.querySelector('#receiptDock').textContent.includes('Deal update')&&!document.querySelector('#receiptDock').textContent.includes('Sending'));
+ await page.waitForFunction(outcome=> { const node=document.querySelector(outcome==='ok'?'.toast':'#receiptDock'); return node?.textContent.includes('Deal update')&&!node.textContent.includes('Sending'); }, outcome);
  assert.deepEqual(errors,[]);
  assert.deepEqual(await page.evaluate(()=>nextRefreshes.filter(reason=>reason==='deal-update')),['deal-update']);
  assert.equal(await page.evaluate(async()=>(await import('/js/pipeline.js')).state.panelDetail),null);
  assert.equal(await page.locator('#detailUpdateForm').count(),0);
  assert.match(await page.locator('#panelBody').textContent(),/Unavailable/);
- assert.match(await page.locator('#receiptDock').textContent(),outcome==='ok'?/Confirmed/:/synthetic refusal/);
+ if(outcome==='ok') { assert.match(await page.locator('.toast').textContent(),/Deal update/);assert.equal(await page.locator('#receiptDock .receipt').count(),0); }
+ else assert.match(await page.locator('#receiptDock').textContent(),/synthetic refusal/);
 });
 
 test('PR129 R1 an older successful detail read cannot repopulate refused detail',async t=>{
@@ -343,11 +345,10 @@ test('R7 detail outages recover automatically and late failure cannot replace an
  await page.getByLabel('Close deal',{exact:true}).click();await page.locator('.kanban-column [data-id="demo-20"]').click();await page.waitForSelector('#detailUpdateForm');await page.evaluate(()=>failOld());await page.waitForTimeout(30);
  assert.doesNotMatch(await page.locator('#panelBody').textContent(),/Updates temporarily unavailable/);
 });
-for(const width of [1440,390]) test('R8 list Undo is visible and clickable at '+width,async t=>{
+for(const width of [1440,390]) test('R8 list history has no persistent Undo at '+width,async t=>{
  const {page}=await open(t,{width});await page.locator('#listView').click();
- const undo=page.locator('[data-id="d14"] [data-undo]');
- const boxes=await undo.evaluate(e=>{const a=e.getBoundingClientRect(),b=e.closest('article').getBoundingClientRect();return {button:a.bottom,row:b.bottom};});assert.ok(boxes.button<=boxes.row);
- await undo.click();await waitForAsync(page, async()=>(await import('/js/pipeline.js')).state.deals.get('d14').phase==='Research');
+ assert.equal(await page.locator('[data-id="d14"] [data-undo]').count(),0);
+ assert.match(await page.locator('[data-id="d14"] .auto-move').textContent(),/Moved automatically/);
 });
 test('R9 original prior step and actors survive without synthetic activity echo',async t=>{
  const {page}=await open(t);

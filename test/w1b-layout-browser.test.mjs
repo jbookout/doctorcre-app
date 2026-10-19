@@ -113,7 +113,7 @@ test('recent moves catch up through history and update read-only on pages withou
  assert.deepEqual(writes,[]);assert.deepEqual(errors,[]);
 });
 
-test('Local Deals opens a wide popup, refreshes its original note, and retains one-tap Undo in Today',async t=>{
+test('Local Deals opens a wide popup, refreshes its original note, and keeps Today history free of persistent Undo',async t=>{
  const{page,goto,errors}=await open(t,{clock:true});await goto('/deals?view=board');
  await page.evaluate(async()=>{const{state}=await import('/js/pipeline.js');await state.client.addDealNote({deal:'d14',text:'Synthetic original. '.repeat(30),idempotency_key:'demo-original-long'});});
  await page.evaluate(async()=>{const{state}=await import('/js/pipeline.js');await state.client.addDealNote({deal:'d14',text:'Latest synthetic short update',idempotency_key:'demo-latest-short'});});
@@ -127,9 +127,9 @@ test('Local Deals opens a wide popup, refreshes its original note, and retains o
  await page.keyboard.press('Escape');assert.equal(await page.locator('#recordPanel').evaluate(n=>n.open),false);
  await page.locator('#appTodayToggle').click();
  await page.locator('#appTodayNeeds [data-layout-deal]').first().click();await page.waitForFunction(()=>document.querySelector('#recordPanel')?.open);await page.keyboard.press('Escape');
- const attention=await page.evaluate(async()=>{const{state}=await import('/js/pipeline.js');const d=state.deals.get('d23');const value=d.attention;await state.client.patchDealField({deal:d.id,field:'attention',value:!value,base_event_id:d.field_base?.attention?.id||null,idempotency_key:'demo-w1b-attention'});return value;});
- await page.clock.fastForward(3_000);await page.waitForSelector('#appTodayMoves [data-undo]');await page.locator('#appTodayMoves [data-undo]').first().click();
- await waitForAsync(page, async original=>(await import('/js/pipeline.js')).state.deals.get('d23').attention===original,attention);
+ await page.evaluate(async()=>{const{state}=await import('/js/pipeline.js');const d=state.deals.get('d23');const value=d.attention;await state.client.patchDealField({deal:d.id,field:'attention',value:!value,base_event_id:d.field_base?.attention?.id||null,idempotency_key:'demo-w1b-attention'});});
+ await page.clock.fastForward(3_000);
+ assert.equal(await page.locator('#appTodayMoves [data-undo]').count(),0);
  assert.deepEqual(errors,[]);
 });
 

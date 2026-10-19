@@ -140,14 +140,6 @@ test('board refresh preserves a native drag until its drop is reviewed', async t
 
 test('W4 drag and keyboard phase writes, manual phase, park, revive and undo record history', async t => {
   const { page, errors } = await open(t);
-  await page.locator('.kanban-column [data-id="d14"] [data-undo]').click();
-  await waitForAsync(page, async () => (await import('/js/pipeline.js')).state.deals.get('d14').phase === 'Research');
-  assert.equal(await page.locator('.kanban-column [data-id="d14"] .auto-move').count(), 0);
-  assert.equal(await page.evaluate(async () => (await (await import('/js/pipeline.js')).state.client.getChanges(null)).events.filter(e => e.verb === 'revert-deal-field').length), 1);
-  await page.getByRole('button',{name:'Closed deals',exact:true}).click();
-  await page.locator('[data-id="d20"] [data-undo]').click();
-  await page.getByRole('button',{name:'Board',exact:true}).click();
-  await waitForAsync(page, async () => (await import('/js/pipeline.js')).state.deals.get('d20').phase === 'Closing');
   await page.locator('.kanban-column [data-id="d14"]').dragTo(page.locator('[data-column="legal"]'));
   await page.waitForFunction(() => document.querySelector('#completionDialog').open);
   await page.locator('#completionConfirm').click();
@@ -247,7 +239,7 @@ test('W4 detail polls phase evidence, dates, people and parking while preserving
 });
 
 
-test('W4 a long automatic reason keeps its date and Undo visible inside the fixed-size card', async t => {
+test('W4 a long automatic reason keeps its date visible without persistent card controls', async t => {
   const { page } = await open(t);
   await page.evaluate(async () => {
     const { state } = await import('/js/pipeline.js'); const original = state.client.getBoard;
@@ -261,9 +253,9 @@ test('W4 a long automatic reason keeps its date and Undo visible inside the fixe
   const card = page.locator('[data-id="d14"]');
   const date = card.locator('.auto-move time');
   assert.equal(await date.textContent(), '10/3');
-  const outer = await card.boundingBox(), stamp = await date.boundingBox(), undo = await card.locator('[data-undo]').boundingBox();
+  const outer = await card.boundingBox(), stamp = await date.boundingBox();
   assert.ok(stamp.y >= outer.y && stamp.y + stamp.height <= outer.y + outer.height);
-  assert.ok(undo.y + undo.height <= outer.y + outer.height);
+  assert.equal(await card.locator('[data-undo]').count(), 0);
   // V2 hover is a hairline step on the border, not a lift (no hover transforms).
   const restingBorder = await card.evaluate(e => getComputedStyle(e).borderRightColor);
   await card.hover();
@@ -362,7 +354,7 @@ for (const theme of ['dark', 'light']) {
     await page.screenshot({ path: new URL(`out/test-artifacts/share-followup/feedback-${width}-${theme}.png`, root).pathname });
     await page.clock.runFor(4101);
     assert.equal(await page.locator('.toast').count(), 0);
-    assert.equal(await page.locator('.receipt-dock').isVisible(), true, 'dock returns after toast removal');
+    assert.equal(await page.locator('.receipt-dock .receipt').count(), 0, 'success feedback leaves no permanent receipt');
     assert.deepEqual(errors, []);
   });
 
@@ -395,7 +387,10 @@ for (const theme of ['dark', 'light']) {
     assert.equal(await page.locator('.toast').count(), 1);
     assert.equal(await page.locator('.toast').isVisible(), false);
     assert.equal(await page.locator('.receipt-dock').isVisible(), false, 'floating command receipt cannot cover Today');
-    await page.locator('#receiptsList [data-undo]').first().click();
+    assert.equal(await page.locator('#receiptsList [data-undo]').count(), 0, 'Today history has no persistent Undo');
+    await page.getByRole('button', {name:'Close Today',exact:true}).click();
+    await page.locator('.toast [data-undo]').click();
+    await page.locator('#appTodayToggle').click();
     await waitForAsync(page, async () => (await import('/js/pipeline.js')).state.deals.get('d14').phase === 'Negotiation');
     await page.clock.runFor(1401);
     const clipping = await page.locator('#receiptsList .receipt').evaluateAll(rows => rows.flatMap(row => {
@@ -584,4 +579,23 @@ test('move Undo lasts five seconds, fades calmly, and successful updates leave n
   assert.equal(await page.locator('#receiptDock .receipt').count(), 0, 'a confirmed move leaves no permanent bottom notification');
   assert.equal(await page.locator('[data-undo]').count(), 0, 'history is not another Undo surface');
   assert.deepEqual(errors, []);
+});
+
+
+test('successful deal updates disappear from the DOM within three seconds in both motion modes', async t => {
+  for (const reducedMotion of ['no-preference', 'reduce']) await t.test(reducedMotion, async t => {
+    const {page, errors} = await open(t, {reducedMotion});
+    await page.locator('.kanban-column [data-id="d14"] .card-open').click();
+    await page.locator('.park-options summary').click();
+    await page.locator('#detailParkForm input').fill('Demo review later');
+    await page.locator('#detailParkForm button').click();
+    await waitForAsync(page, async () => (await import('/js/pipeline.js')).state.deals.get('d14').operating_state === 'parked');
+    assert.equal(await page.locator('.toast').textContent(), 'Deal parked');
+    await page.clock.runFor(1900);
+    assert.equal(await page.locator('.toast').isVisible(), true);
+    await page.clock.runFor(1000);
+    assert.equal(await page.locator('.toast').count(), 0);
+    assert.equal(await page.locator('#receiptDock .receipt').count(), 0);
+    assert.deepEqual(errors, []);
+  });
 });

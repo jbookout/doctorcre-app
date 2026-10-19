@@ -11,8 +11,7 @@ seed.seed_events.push({
   change_reason: 'LOI sent', evidence_date: '2026-10-03', recorded_at: '2026-10-03T12:00:00Z',
 });
 
-// W4: the Local Deals board moves a card by drag and undoes an automatic move.
-test('W4 Local Deals board drags a phase change and undoes an automatic move', async ({ app, browser, screen }) => {
+test('W4 Local Deals board moves a deal and undoes only the move just made', async ({ app, browser, screen }) => {
   await browser.route('**/data/board-seed.json', route => route.fulfill({ json: seed }));
   await app.open('/deals');
 
@@ -21,10 +20,7 @@ test('W4 Local Deals board drags a phase change and undoes an automatic move', a
   const autoMove = browser.locator('[data-column="negotiation"] [data-id="d14"] .auto-move');
   await expect(autoMove).toContainText('Moved automatically: LOI sent');
 
-  await screen.getByRole('button', 'Undo phase change on Demo Surgical Practice').tap();
-  await expect(screen.getByRole('status').filter({ hasText: 'Change undone' })).toBeVisible();
-  await expect(browser.locator('[data-column="research"] [data-id="d14"]')).toBeVisible();
-  await expect(browser.locator('[data-id="d14"] .auto-move')).toHaveCount(0);
+  await expect(browser.locator('[data-id="d14"] [data-undo]')).toHaveCount(0);
 
   const phone = await browser.evaluate(() => innerWidth <= 760);
   const move = async () => {
@@ -56,4 +52,9 @@ test('W4 Local Deals board drags a phase change and undoes an automatic move', a
   }
   await expect(browser.locator('[data-column="legal"] [data-id="d23"]')).toBeVisible();
   await expect(browser.locator('[data-column="negotiation"] [data-id="d23"]')).toHaveCount(0);
+  await browser.locator('.toast [data-undo]').tap();
+  await expect(screen.getByRole('status').filter({ hasText: 'Change undone' })).toBeVisible();
+  await expect(browser.locator('[data-column="negotiation"] [data-id="d23"]')).toBeVisible();
+  await expect(browser.locator('[data-id="d23"] [data-undo]')).toHaveCount(0);
+
 });

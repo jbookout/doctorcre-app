@@ -1,3 +1,4 @@
+import { showToast } from './toast.js';
 import {onDialogClosed} from './dialog-lifecycle.js';
 import { dealInsightLines } from './pipeline-model.js';
 import { selectDocRecord, setDocFilters, publishDocRead } from './doc-context.js';
@@ -130,16 +131,6 @@ function priority(deal) {
   return (deal.attention ? 10000 : 0) + (days !== null && days < 0 ? 7000 + Math.abs(days) : 0)
     + (!deal.next_step ? 4000 : 0) + (isStale(deal) ? 2000 : 0)
     + (deal.workspace_kind === 'national_account' && !deal.market_agent ? 1000 : 0);
-}
-
-function showToast(message, undoEventId = null) {
-  const el = $('#toast');
-  // The toast's Undo is the same event-specific action as the receipt row's:
-  // it names its event, and both go through runUndo.
-  el.innerHTML = `${esc(message)}${undoEventId ? `<button type="button" data-undo="${esc(undoEventId)}">Undo</button>` : ''}`;
-  el.classList.add('show');
-  clearTimeout(showToast.timer);
-  showToast.timer = setTimeout(() => el.classList.remove('show'), undoEventId ? 7000 : 3200);
 }
 
 function clockLabel(ms) {
@@ -286,7 +277,7 @@ async function pollOnce(initial = false, { force = false } = {}) {
     // record as changed, name the base for the next write, and — below — ask for
     // a fresh authoritative snapshot.
     if (announce && event.actor === state.selfActor && REVERTIBLE_FIELDS.includes(event.field)) {
-      showToast(`${deal.name} updated`, event.id);
+      showToast(`${deal.name} updated`, {eventId:event.id});
     } else if (announce && event.actor !== state.selfActor && event.field) {
       showToast(`${actorName(event.actor)} updated ${deal.name}`);
     }
@@ -627,7 +618,7 @@ function renderReceipts() {
   const announcement = opened ? receiptsAnnouncement(state.receiptAnnounced, views) : '';
   if (opened) state.receiptAnnounced = views.map((view) => view.event_id);
   $('#receiptsLive').textContent = announcement;
-  list.innerHTML = receiptListHtml(views);
+  list.innerHTML = receiptListHtml(views.map(view => ({...view, can_undo:false})));
   if (keep) focusReceipt(keep);
 }
 
@@ -702,7 +693,7 @@ async function runUndo(eventId, trigger = null) {
     showToast('Change undone');
     return;
   }
-  showToast(result.outcome.message);
+  showToast(result.outcome.message, {error:true});
 }
 
 /**
@@ -837,7 +828,7 @@ function reportCellWrite(dealId, field, result, { surface = 'toast' } = {}) {
   const retryCell = result.status === 'unknown' || result.status === 'blocked'
     ? result.pending?.cell || null : null;
   if (surface === 'dialog' && showDealDialogNotice(message, retryCell)) return result;
-  showToast(message);
+  showToast(message, {error:result.status !== 'ok'});
   return result;
 }
 

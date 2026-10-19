@@ -364,6 +364,10 @@ small, .small { font-size: var(--font-size-1); color: var(--fg-muted); }
 
 /* ------------------------------------------------------------- keyframes: real states only */
 @keyframes toast-life { 0% { opacity: 0; transform: translateY(6px); } 8%, 62% { opacity: 1; transform: none; } 100% { opacity: 0; visibility: hidden; transform: none; } }
+.toast[data-transient] { animation: none; opacity: 1; transition: opacity 800ms var(--ease-out); }
+.toast[data-transient].is-leaving { opacity: 0; pointer-events: none; }
+.toast[role="alert"] { border-left-color: var(--status-danger); }
+.toast button, .receipt-dismiss { min-width: var(--touch); min-height: var(--touch); }
 @keyframes receipt-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
 /* Long-running state: a send in flight, and the Atlas "switched on" signal,
    both paused by the motion control. */
@@ -403,7 +407,7 @@ small, .small { font-size: var(--font-size-1); color: var(--fg-muted); }
 :root[data-motion="reduced"] *, :root[data-motion="reduced"] *::before, :root[data-motion="reduced"] *::after { animation: none !important; transition: none !important; }
 :root[data-motion="reduced"] .flow-path { stroke-dasharray: none; }
 :root[data-motion="reduced"] html { scroll-behavior: auto; }
-/* A toast's life is its animation; with motion off it simply stays put. */
+
 
 /* ------------------------------------------------- V5-UX-C08 Anatomical Atlas
    Product styling for the anatomical renderer (js/atlas-scene.js, js/atlas-anatomy.js),

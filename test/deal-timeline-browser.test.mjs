@@ -132,7 +132,8 @@ test('review 3: an old date submission cannot disable, close or change a later d
  await page.locator('#dealDateForm [name="evidence"]').fill('Demo option clause 5');
  assert.equal(await page.locator('#dealDateForm button[type="submit"]').isEnabled(),true);
  await page.evaluate(()=>window.finishDate());
- await page.waitForFunction(()=>document.querySelector('[data-op="critical-date:d14:rent_start"]').dataset.state==='confirmed');
+ await page.locator('.toast').waitFor({state:'attached'});
+ assert.equal(await page.locator('#receiptDock [data-op="critical-date:d14:rent_start"]').count(),0);
  assert.equal(await page.locator('#dealDateDialog').evaluate(e=>e.open),true);
  assert.equal(await page.locator('#dealDateTitle').textContent(),'Options');
  assert.equal(await page.locator('#dealDateForm [name="date"]').inputValue(),'2027-01-15');
@@ -170,13 +171,14 @@ test('review 5: hanging date writes become unknown and reconcile only the retain
  await page.locator('#dealDateCancel').click();
  await page.getByLabel('Close deal',{exact:true}).click();
  await receipt.getByRole('button',{name:'Check outcome'}).click();
- await page.waitForFunction(()=>document.querySelector('.receipt[data-op="critical-date:d14:rent_start"]').dataset.state==='confirmed');
+ await page.locator('.toast').waitFor({state:'attached'});
+ assert.equal(await receipt.count(),0);
  const requests=await page.evaluate(()=>window.dateRequests);
  assert.equal(requests.length,2);assert.deepEqual(requests[1],requests[0]);
  assert.ok(requests[0].idempotency_key);
  // An abandoned transport answer cannot overwrite the reconciled outcome.
  await page.evaluate(()=>window.finishLateDate({ok:false}));
- assert.equal(await receipt.getAttribute('data-state'),'confirmed');
+ assert.equal(await receipt.count(),0,'a late response never restores the settled notification');
  const events=await page.evaluate(async()=> (await (await import('/js/pipeline.js')).state.client.getChanges(null)).events);
  assert.equal(events.filter(e=>e.verb==='add-critical-date'&&e.new_value==='2026-12-01').length,1);
  assert.deepEqual(errors,[]);
