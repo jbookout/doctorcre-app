@@ -7,6 +7,7 @@ import test from 'node:test';
 import { checkActionPins } from '../scripts/check-action-pins.mjs';
 
 const sha = '1'.repeat(40);
+const workflow = steps => `name: Probe\non: push\njobs:\n  test:\n    runs-on: ubuntu-latest\n    steps:\n${steps}\n`;
 async function fixture(t, ref = sha, manifest = true) {
   const root = await mkdtemp(join(tmpdir(), 'app-action-pins-'));
   t.after(() => rm(root, { recursive: true, force: true }));
@@ -84,3 +85,32 @@ test('CI checks pins before dependency and browser setup while retaining the ful
   assert.ok(ci.indexOf('run: npm run ci:fast') < ci.indexOf('run: npx playwright install'));
   assert.match(ci, /run: npm test/);
 });
+
+for (const [name, source, valid] of [
+  ['block floating', workflow('      - uses: actions/checkout@v7'), false],
+  ['single-quoted floating value', workflow("      - uses: 'actions/checkout@v7'"), false],
+  ['double-quoted floating value', workflow('      - uses: "actions/checkout@v7"'), false],
+  ['flow step floating', workflow('      - { uses: actions/checkout@v7 }'), false],
+  ['single-quoted uses key', workflow("      - 'uses': actions/checkout@v7"), false],
+  ['double-quoted uses key', workflow('      - "uses": actions/checkout@v7'), false],
+  ['block reusable floating', 'jobs:\n  test:\n    uses: octo-org/example/.github/workflows/reuse.yml@main\n', false],
+  ['flow reusable floating', 'jobs:\n  test: { uses: octo-org/example/.github/workflows/reuse.yml@main }\n', false],
+  ['block docker floating', workflow('      - uses: docker://alpine:latest'), false],
+  ['flow docker floating', workflow('      - { uses: "docker://alpine:latest" }'), false],
+  ['local action', workflow('      - uses: ./.github/actions/local'), true],
+  ['pinned block', workflow(`      - uses: actions/checkout@${sha}`), true],
+  ['pinned quoted', workflow(`      - uses: "actions/checkout@${sha}"`), true],
+  ['uses in run scalar', workflow('      - run: |\n          uses: actions/checkout@v7'), true],
+  ['local composite with floating child', workflow('      - uses: ./.github/actions/composite'), false],
+]) {
+  test(`review regression: ${name}`, async t => {
+    const root = await fixture(t);
+    await mkdir(join(root, '.github/actions/local'), { recursive: true });
+    await writeFile(join(root, '.github/actions/local/action.yml'), 'name: Local\nruns: { using: node24, main: index.js }\n');
+    await mkdir(join(root, '.github/actions/composite'), { recursive: true });
+    await writeFile(join(root, '.github/actions/composite/action.yml'), 'name: Composite\nruns:\n  using: composite\n  steps:\n    - uses: actions/checkout@v7\n');
+    await writeFile(join(root, '.github/workflows/ci.yml'), source);
+    if (valid) await checkActionPins(root);
+    else await assert.rejects(checkActionPins(root));
+  });
+}
