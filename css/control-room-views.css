@@ -60,3 +60,14 @@
   #panelDashboard .filters label:not(.check) { display: grid; flex: 1; min-width: 0; gap: var(--space-1); }
   #panelDashboard .filters select { width: 100%; min-width: 0; }
 }
+
+@media (min-width: 761px) {
+  body:has(#panelDashboard:not([hidden])) .app-layout[data-sidebar=open] { --layout-left: 12rem; }
+  body:has(#panelDashboard:not([hidden])) .app-layout[data-today=open] { --layout-right: 13rem; }
+}
+body:has(#panelDashboard:not([hidden])) .app-layout-center { height: calc(100dvh - var(--layout-bottom)); overflow-y: auto; overscroll-behavior-y: contain; scroll-padding-block: var(--tabbar-height) var(--space-5); }
+#panelDashboard:has(.hierarchy-breadcrumbs) .intro { display: flex; justify-content: space-between; padding: 0; margin: 0; min-height: var(--touch); }
+
+#panelDashboard:has(.hierarchy-breadcrumbs) :is(#board-meta, #legend-toggle, #legend) { display: none; }
+#panelDashboard:has(.hierarchy-breadcrumbs) .board-switch a { border: 0; background: transparent; color: var(--fg-muted); padding-inline: var(--space-2); }
+#panelDashboard:has(.hierarchy-breadcrumbs) .board-switch a[aria-current] { color: var(--fg); font-weight: var(--font-weight-strong); }

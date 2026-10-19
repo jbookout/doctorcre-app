@@ -1,8 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {readFile,mkdir} from 'node:fs/promises';
+import {readFile,mkdir,writeFile} from 'node:fs/promises';
 import {chromium,waitForAsync} from './browser-harness.mjs';
 import {createFixtureClient} from '../js/fixture-client.js';
+import axe from 'axe-core';
 import hierarchy from './fixtures/progress-board-hierarchy.json' with {type:'json'};
 import {atlasFixtureResponse} from '../scripts/atlas-fixture.mjs';
 import { routeContract as routes } from "../js/routes.js";
@@ -522,6 +523,78 @@ test('blocked hierarchy jobs expose their status and next action without opening
  assert.equal(await card.locator('details').getAttribute('open'),null);
  assert.equal(await card.getByText('Blocked',{exact:true}).isVisible(),true);
  assert.equal(await card.getByText('Next action: Check the keyboard focus before resuming review.',{exact:true}).isVisible(),true);
+ assert.deepEqual(errors,[]);
+});
+
+function hierarchyTasteFixture() {
+ const snapshot=structuredClone(hierarchy);
+ const parent=snapshot.hierarchy.slices['WR14.S2'];
+ const sample=snapshot.tasks['WR14.S2.J1.app#316'];
+ for(const [id,fields] of [
+  ['WR14.S2.J2.app#320',{pr:320,card_title:'Keyboard navigation',card_description:'Keep focus on the work when moving between requests, slices, and jobs.',status:'blocked',stage:'review',next_action:'Check keyboard focus before resuming review.'}],
+  ['WR14.S2.J3.carr#1971',{pr:1971,repo:'jbookout/carr-system',card_title:'History checks',card_description:'Verify that browser history returns to the selected work.',status:'running',stage:'build'}],
+ ]) {snapshot.tasks[id]={...sample,...fields,id};parent.cards.push(id);}
+ parent.pr_counts={build:1,review:2};parent.status='blocked';
+ snapshot.hierarchy.work_requests.WR14.status='blocked';
+ snapshot.hierarchy.work_requests.WR14.counts={done:1,active:0,blocked:1,failed:0};
+ return snapshot;
+}
+
+for(const width of [320,390,1280])for(const theme of ['light','dark'])test(`hierarchy taste journey ${width}px ${theme}`,async t=>{
+ const {page,errors}=await open(t,{width,height:900,theme,snapshotData:hierarchyTasteFixture()});
+ const card=id=>page.locator(`[data-hierarchy-id="${id}"] > button`);
+ const out=new URL('out/test-artifacts/taste-317/',root);await mkdir(out,{recursive:true});
+ const screenshot=state=>page.screenshot({path:new URL(`${width}-${theme}-${state}.png`,out).pathname});
+ await card('WR14').focus();await page.keyboard.press('Enter');
+ assert.equal(await page.locator('#pipeline-title').evaluate(n=>n===document.activeElement),true);
+ await screenshot('slices');
+ await card('WR14.S2').click();
+ assert.equal(await page.locator('.hierarchy-breadcrumbs [aria-current="page"]').textContent(),'Board navigation');
+ assert.equal(await page.locator('#hierarchy-jump input').isVisible(),false);
+ const blocked=page.locator('[data-hierarchy-id="WR14.S2.J2.app#320"]');
+ assert.equal(await blocked.getByText('Blocked',{exact:true}).isVisible(),true);
+ assert.equal(await blocked.getByText('Next action: Check keyboard focus before resuming review.',{exact:true}).isVisible(),true);
+ await screenshot('jobs');
+ await page.addScriptTag({content:axe.source});
+ const violations=await page.evaluate(async()=> (await axe.run('.pipeline-panel')).violations.map(v=>({id:v.id,targets:v.nodes.map(n=>n.target)})));
+ assert.deepEqual(violations,[]);
+ const columns=await page.locator('#board-stages .columns').evaluate(node=>({tracks:getComputedStyle(node).gridTemplateColumns.split(' ').filter(w=>parseFloat(w)>0).length,count:node.children.length,widths:[...node.children].map(c=>c.getBoundingClientRect().width)}));
+ if(width===1280){
+  assert.equal(columns.tracks,columns.count);
+  assert.equal(columns.count,2);
+  assert.ok(columns.widths.every(w=>w>=300),JSON.stringify(columns));
+  assert.ok(await page.evaluate(()=>document.querySelector('.app-layout-center').clientWidth>document.querySelector('#appSidebar').clientWidth+document.querySelector('#appToday').clientWidth));
+  assert.ok(await page.evaluate(()=>document.querySelector('.app-layout-center').getBoundingClientRect().bottom<=document.querySelector('.app-layout-status').getBoundingClientRect().top));
+ }
+ await card('WR14.S2.J1.app#316').focus();await page.keyboard.press('Enter');
+ await page.locator('#jobDialog').waitFor({state:'visible'});
+ await screenshot('dialog');
+ await page.goBack();
+ assert.equal(await page.locator('#panelDashboard').isVisible(),true);
+ assert.equal(await card('WR14.S2.J1.app#316').evaluate(n=>n===document.activeElement),true);
+ await screenshot('dialog-back');
+ await page.goForward();await page.locator('#jobDialog').waitFor({state:'visible'});
+ assert.equal(await page.locator('#panelDashboard').isVisible(),true);
+ await page.keyboard.press('Escape');await page.clock.runFor(50);
+ assert.equal(await card('WR14.S2.J1.app#316').evaluate(n=>n===document.activeElement),true);
+ if(width<761){
+  await blocked.locator('summary').click();
+  const occlusion=await page.evaluate(()=>{
+   const region=document.querySelector('.app-layout-center');region.scrollTop=211;
+   const bounds=region.getBoundingClientRect(),nav=document.querySelector('#appShell').getBoundingClientRect();
+   const top=document.querySelector('.app-layout-tabbar').getBoundingClientRect().bottom;
+   const controls=[...document.querySelectorAll('#board-stages button,#board-stages summary')].filter(n=>{if(!n.checkVisibility())return false;const r=n.getBoundingClientRect();return r.top+r.height/2>top&&r.top+r.height/2<bounds.bottom;});
+   return {bottom:bounds.bottom,navTop:nav.top,checked:controls.length,covered:controls.filter(n=>{const r=n.getBoundingClientRect(),hit=document.elementFromPoint(r.left+r.width/2,r.top+r.height/2);return !n.contains(hit);}).map(n=>n.textContent)};
+  });
+  assert.ok(occlusion.bottom<=occlusion.navTop,JSON.stringify(occlusion));
+  assert.ok(occlusion.checked>0);
+  assert.deepEqual(occlusion.covered,[]);
+  await writeFile(new URL(`${width}-${theme}-occlusion.json`,out),JSON.stringify(occlusion,null,2));
+  await screenshot('scroll');
+  await blocked.scrollIntoViewIfNeeded();
+  await screenshot('blocked');
+ }
+ assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
  assert.deepEqual(errors,[]);
 });
 
