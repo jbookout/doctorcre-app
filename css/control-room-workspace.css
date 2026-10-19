@@ -138,3 +138,29 @@
   .automation-month-agenda > div > time { font-size: var(--font-size-1); color: var(--fg-muted); }
   .automation-month-agenda .automation-job { font-size: var(--font-size-1); padding: 10px; }
 }
+.cr-attention { margin-block: var(--space-3) var(--space-5); }
+.cr-attention h3 { margin: 0; font-size: var(--font-size-3); }
+.cr-attention-row { padding-block: var(--space-4); border-bottom: var(--hairline-width) solid var(--hairline); }
+.cr-attention-subject { display: flex; align-items: baseline; gap: var(--space-3); }
+.cr-attention-subject h4 { margin: 0; font-size: var(--font-size-2); font-weight: var(--font-weight-strong); }
+.cr-work-status { color: var(--fg-muted); font-size: var(--font-size-1); white-space: nowrap; }
+[data-state="failed"] > .cr-attention-subject .cr-work-status { color: var(--status-danger); }
+.cr-work-facts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-3) var(--space-5); margin-block: var(--space-3); }
+.cr-work-facts div { min-width: 0; }
+.cr-work-facts dt, .assignment-progress-label { display: block; color: var(--fg-muted); font-size: var(--font-size-1); margin-bottom: var(--space-1); }
+.cr-work-facts dd { margin: 0; color: var(--fg); font-size: var(--font-size-2); line-height: 1.5; overflow-wrap: anywhere; }
+.cr-attention-footer { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); color: var(--fg-muted); font-size: var(--font-size-1); }
+.cr-attention-footer .btn { min-height: var(--touch); flex-shrink: 0; }
+#modelRoomAssignments { display: grid; grid-template-columns: 1fr; gap: 0; overflow: visible; }
+#modelRoomAssignments .assignment-card { min-width: 0; max-width: none; padding: var(--space-4) 0; border: 0; border-bottom: var(--hairline-width) solid var(--hairline); border-radius: 0; background: none; box-shadow: none; }
+#modelRoomAssignments .assignment-head { align-items: baseline; }
+#modelRoomAssignments .assignment-head h4 { font-size: var(--font-size-2); margin: var(--space-1) 0 0; }
+.assignment-desk { font-size: var(--font-size-3); font-weight: var(--font-weight-strong); color: var(--fg); overflow-wrap: anywhere; }
+#modelRoomAssignments .assignment-summary { margin-block: var(--space-3); font-size: var(--font-size-2); line-height: 1.5; overflow-wrap: anywhere; }
+.job-summary .job-progress { grid-column: 1 / -1; }
+.job-summary dd { overflow-wrap: anywhere; }
+@media (max-width: 47.5rem) {
+  .cr-attention-subject { flex-direction: column; gap: var(--space-1); }
+  .cr-attention-row { padding-block: var(--space-3); }
+  .cr-attention-row .cr-work-facts > div:nth-child(n+3) { grid-column: 1 / -1; }
+}

@@ -90,12 +90,11 @@ test('PR card exposes exact work lineage and keeps links through a rename',()=>{
  detail.open(task);
  const refs=['WR-900','plan:synthetic-v2','slice:seven','task:linked-card','job:synthetic-build'];
  const links=()=>[...body.querySelectorAll('.work-lineage a')];
- assert.equal(links().length,5);
- for(const [i,link] of links().entries()) {
-  const url=new URL(link.href);assert.equal(url.pathname,'/control-room/progress/work');
-  assert.equal(url.searchParams.get('task'),'app-pr-73');assert.ok(link.textContent.includes(refs[i]));
-  assert.equal(decodeURIComponent(url.hash.slice(1)),`work-lineage-${['work_request','plan','slice','task','job'][i]}-${refs[i]}`);
- }
+ assert.equal(links().length,1);
+ const requestUrl=new URL(links()[0].href);
+ assert.equal(requestUrl.searchParams.get('work_request'),'WR-900');
+ assert.equal(requestUrl.searchParams.has('task'),false);
+ for(const ref of refs)assert.ok(body.querySelector('.work-lineage').textContent.includes(ref));
  const before=links().map(link=>link.href);
  detail.update([{...task,title:'Renamed without changing the work'}]);
  assert.deepEqual(links().map(link=>link.href),before);
@@ -123,4 +122,37 @@ test('PR detail explains verified checks, remaining work and scope history',asyn
  assert.match(progress.textContent,/2 of 5 acceptance checks verified/);assert.match(progress.textContent,/3 remaining/);
  assert.match(progress.textContent,/Scope revision 2/);assert.match(progress.textContent,/Revision 1.*4 acceptance checks/);
  assert.equal(progress.querySelector('progress').value,2);
+});
+
+test('PR activity uses the board key while preserving the canonical task ID as data',()=>{
+ const {detail,body}=setup();
+ detail.open({id:'app-pr-73',task_id:'task:canonical-900',repo:'jbookout/doctorcre-app',pr:73,title:'Synthetic distinct identities'});
+ const activity=body.querySelector('[data-job-control="activity"]');
+ assert.equal(new URL(activity.href).searchParams.get('task'),'app-pr-73');
+ assert.match(body.querySelector('pre').textContent,/task id: task:canonical-900/);
+});
+
+test('dangling ancestor references remain readable without self-links',()=>{
+ const {detail,body}=setup();
+ detail.open({id:'app-pr-73',task_id:'task:canonical-900',repo:'jbookout/doctorcre-app',pr:73,
+  work_request_ref:'WR-900',plan_ref:'plan:missing',slice_ref:'slice:missing',job_ref:'job:missing',
+  related:[{kind:'plan',id:'plan:also-missing'}]});
+ for(const ref of ['plan:missing','plan:also-missing','slice:missing','task:canonical-900','job:missing']) {
+  const row=[...body.querySelectorAll('.work-lineage dd > *')].find(node=>node.textContent===ref);
+  assert.ok(row,`${ref} remains visible`);
+  assert.equal(row.tagName,'SPAN',`${ref} has no resolved destination`);
+ }
+ const wr=body.querySelector('.work-lineage a');
+ const url=new URL(wr.href);
+ assert.equal(url.searchParams.get('work_request'),'WR-900');
+ assert.equal(url.searchParams.has('task'),false,'WR navigation reads the request independently of this card');
+});
+
+test('attention detail keeps blocker, progress and unknown model facts above the fold',()=>{
+ const {detail,body}=setup();
+ detail.open({id:'demo-failed',title:'Demo failed export',status:'failed',executor:'cx-app',blocked_reason:'Demo source unavailable',last_progress:'Demo validation complete'});
+ const summary=body.querySelector('.job-summary');
+ for(const value of ['Demo source unavailable','Demo validation complete','cx-app','Model','Effort','unknown'])assert.ok(summary.textContent.includes(value),value);
+ detail.update([{id:'other',title:'Demo other work'}],{source:'agents'});
+ assert.match(body.textContent,/Demo validation complete/);
 });

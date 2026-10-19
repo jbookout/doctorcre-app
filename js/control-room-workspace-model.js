@@ -1,5 +1,45 @@
 import { GOVERNANCE_LANES, validGovernanceQueuePayload, validScheduleBoardPayload, formatScheduleDateTime } from './operations-model.js';
 
+const recordedText = value => typeof value === 'string' && value.trim() ? value : null;
+
+export function jobFacts(task) {
+  return {
+    id: task.id, task, title: task.title || task.name || 'Untitled work',
+    state: task.status || task.state || 'unknown',
+    owner: recordedText(task.held?.owner) || recordedText(task.owner) || 'unknown',
+    agent: recordedText(task.held?.executor) || (!task.kind ? recordedText(task.executor) : null) || 'unknown',
+    model: recordedText(task.model) || 'unknown', effort: recordedText(task.effort) || 'unknown',
+    blocker: recordedText(task.held?.blocker?.detail) || recordedText(task.blocked_reason) || recordedText(task.blocker?.detail) || 'unknown',
+    progress: recordedText(task.last_progress) || (!task.kind ? recordedText(task.note) : null) || 'unknown',
+    updatedAt: recordedText(task.updated_at),
+  };
+}
+
+export function resolveJobTasks(tasks) {
+  const unique = new Map();
+  for (const task of tasks.filter(task => task.id)) {
+    const previous = unique.get(task.id);
+    const at = Date.parse(task.updated_at || task.last_activity_at);
+    const before = Date.parse(previous?.updated_at || previous?.last_activity_at);
+    const preferNext = Number.isFinite(at) && Number.isFinite(before) && at !== before
+      ? at > before
+      : Number((task.status || task.state) === 'failed') >= Number((previous?.status || previous?.state) === 'failed');
+    if (!previous) { unique.set(task.id, task); continue; }
+    const [current, other] = preferNext ? [task, previous] : [previous, task];
+    const facts = jobFacts(current), recorded = jobFacts(other);
+    unique.set(task.id, { ...current,
+      ...(facts.blocker === 'unknown' && recorded.blocker !== 'unknown' ? { blocked_reason: recorded.blocker } : {}),
+      ...(facts.progress === 'unknown' && recorded.progress !== 'unknown' ? { last_progress: recorded.progress } : {}),
+    });
+  }
+  return [...unique.values()];
+}
+
+export function attentionTasks(tasks) {
+  return resolveJobTasks(tasks).filter(task => ['failed', 'blocked', 'needs_joe'].includes(task.status || task.state)
+    || task.health === 'blocked').map(jobFacts).sort((a, b) => Number(b.state === 'failed') - Number(a.state === 'failed'));
+}
+
 export function governanceTasks(payload) {
   if (!validGovernanceQueuePayload(payload)) return null;
   return GOVERNANCE_LANES.flatMap(lane => payload[lane.id].map(row => ({
