@@ -31,7 +31,7 @@ async function open(t, { width = 1440, height = 960, reducedMotion = 'no-prefere
   });
   await page.goto('http://localhost/deals');
   await waitForAsync(page, async () => (await import('/js/pipeline.js')).state.deals.size > 0);
-  return { page, errors };
+  return { page, errors, seed };
 }
 const refresh = page => page.evaluate(async () => (await import('/js/pipeline.js')).state.boardSync.refreshBoard({ reason: 'test' }));
 
@@ -542,4 +542,46 @@ test('failed board reads remain unavailable after local view repaints',async t=>
  assert.match(await page.locator('#boardLive').textContent(),/could not be read|unavailable/i);
  assert.match(await page.locator('#boardAsOf').textContent(),/unavailable/i);
  assert.deepEqual(errors,[]);
+});
+
+
+test('a move offers Undo only in its temporary toast, never on cards after reload', async t => {
+  const {page, errors, seed} = await open(t);
+  await page.locator('.kanban-column [data-id="d14"] .card-open').click();
+  await page.locator('#detailPhase').selectOption('legal');
+  await page.locator('#completionConfirm').click();
+  await waitForAsync(page, async () => (await import('/js/pipeline.js')).state.deals.get('d14').phase === 'Legal');
+  await page.getByLabel('Close deal', {exact:true}).click();
+  assert.equal(await page.locator('.toast [data-undo]').count(), 1);
+  const saved = await page.evaluate(async () => {
+    const {state} = await import('/js/pipeline.js');
+    return {deal: (await state.client.getBoard()).deals.find(d => d.id === 'd14'),
+      events: (await state.client.getChanges(null)).events};
+  });
+  Object.assign(seed.deals.find(d => d.id === 'd14'), saved.deal);
+  seed.seed_events = saved.events;
+  await page.reload();
+  await waitForAsync(page, async () => (await import('/js/pipeline.js')).state.deals.size > 0);
+  assert.equal(await page.locator('[data-id="d14"] [data-undo]').count(), 0, 'the moved card has no Undo after reload');
+  await page.getByRole('button', {name:'Closed deals', exact:true}).click();
+  await page.locator('[data-id="d20"]').waitFor();
+  assert.equal(await page.locator('[data-id="d20"] [data-undo]').count(), 0, 'persisted automatic move history never restores card Undo');
+  assert.equal(await page.locator('.toast [data-undo]').count(), 0, 'reload never restores an Undo toast');
+  assert.deepEqual(errors, []);
+});
+
+test('move Undo lasts five seconds, fades calmly, and successful updates leave no dock notifications', async t => {
+  const {page, errors} = await open(t);
+  await page.locator('.kanban-column [data-id="d14"] .card-open').click();
+  await page.locator('#detailPhase').selectOption('legal');
+  await page.locator('#completionConfirm').click();
+  await waitForAsync(page, async () => (await import('/js/pipeline.js')).state.deals.get('d14').phase === 'Legal');
+  await page.getByLabel('Close deal', {exact:true}).click();
+  await page.clock.runFor(4500);
+  assert.equal(await page.locator('.toast [data-undo]').count(), 1, 'Undo remains available through its five-second window');
+  await page.clock.runFor(1400);
+  assert.equal(await page.locator('.toast').count(), 0, 'the expired Undo toast leaves the DOM');
+  assert.equal(await page.locator('#receiptDock .receipt').count(), 0, 'a confirmed move leaves no permanent bottom notification');
+  assert.equal(await page.locator('[data-undo]').count(), 0, 'history is not another Undo surface');
+  assert.deepEqual(errors, []);
 });
