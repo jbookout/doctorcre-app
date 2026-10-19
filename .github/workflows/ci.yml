@@ -30,12 +30,12 @@ jobs:
           path: doctorcre-app
           ref: ${{ github.sha }}
           persist-credentials: false
+      - run: npm run ci:fast
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22.23.2
           cache: npm
           cache-dependency-path: doctorcre-app/package-lock.json
-      - run: npm run ci:fast
       - run: npm ci
       - id: producer
         name: Read the CARR runtime revision from the consumer contract
