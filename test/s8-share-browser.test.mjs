@@ -55,7 +55,7 @@ test('S8 the share page sits in the V2 shell with a gutter, a compact stepper an
   }
 });
 
-test('QA populated Share shows its stepper, properties, map and feedback at 390 in both themes', async t => {
+test('QA confidential Share exchanges its scrubbed link before showing properties, map and feedback at 390 in both themes', async t => {
   const outDir = await mkdtemp(join(tmpdir(), 'populated-share-'));
   t.after(() => rm(outDir, { recursive:true, force:true }));
   await buildArtifact({ root, outDir, commit:'0'.repeat(40) });
@@ -67,11 +67,27 @@ test('QA populated Share shows its stepper, properties, map and feedback at 390 
   for (const theme of ['dark','light']) await t.test(theme, async () => {
     const page = await browser.newPage({ viewport:{width:390,height:844}, colorScheme:theme });
     const errors = []; page.on('pageerror', error => errors.push(error.message));
+    const reads = [], exchanges = [];
+    const syntheticLink = 'synthetic_share_'.padEnd(43, '0');
+    page.on('request', request => {
+      if (request.method() === 'GET' && new URL(request.url()).pathname.startsWith('/api/share/')) reads.push(request.url());
+    });
+    await page.route('**/api/share/exchange', route => {
+      exchanges.push(route.request().postDataJSON());
+      return route.fulfill({ json: { data: {} } });
+    });
     const seeded = await page.request.post(`${origin}/api/test/seed`, {data:{namespace:`share-${theme}`,reset:true}});
     assert.equal(seeded.status(),200);
-    await page.goto(`${origin}/share`);
+    await page.goto(`${origin}/share#${syntheticLink}`);
+    await page.getByRole('button', { name: 'Open tour', exact: true }).waitFor();
+    assert.equal(await page.evaluate(() => location.hash), '');
+    assert.equal(await page.locator('.report-item').count(), 0);
+    assert.deepEqual(reads, [], 'the confidential report is not read before deliberate exchange');
+    await page.getByRole('button', { name: 'Open tour', exact: true }).click();
     await page.waitForFunction(() => /loaded|unavailable/.test(document.querySelector('#status').textContent));
     assert.equal(await page.locator('#status').textContent(),'Report and map loaded.');
+    assert.deepEqual(exchanges, [{ token: syntheticLink }]);
+    assert.equal(await page.evaluate(() => '__CARR_TOUR_TAKE_SHARE_TOKEN__' in globalThis), false);
     assert.equal(await page.locator('html').getAttribute('data-theme'),theme);
     assert.equal(await page.locator('.tour-flow').isVisible(),true);
     assert.equal(await page.locator('.report-item').count(),2);

@@ -255,7 +255,7 @@ const endedSession = (error) => error?.status === 401 || error?.status === 403;
  * Read the board, then every deal's own record, at most `concurrency` at a
  * time. Returns what was read and what was not; it never throws.
  */
-export async function readCalendar(client, { concurrency = READ_CONCURRENCY } = {}) {
+export async function readCalendar(client, { concurrency = READ_CONCURRENCY, onProgress } = {}) {
   const empty = { entries: [], undated: [], failed: [], dealCount: 0, readCount: 0 };
   let board;
   try {
@@ -284,9 +284,17 @@ export async function readCalendar(client, { concurrency = READ_CONCURRENCY } = 
         undated.push(...read.undated);
         readCount += 1;
       } catch (error) {
-        if (endedSession(error)) { signedOut = true; return; }
+        if (endedSession(error)) {
+          signedOut = true;
+          onProgress?.({ ...empty, status: "unauthorized" });
+          return;
+        }
         failed.push({ deal_id: deal.id, deal_name: deal.name || "Unnamed deal" });
       }
+      if (!signedOut) onProgress?.({
+        status: "reading", entries: [...entries], undated: [...undated], failed: [...failed],
+        dealCount: deals.length, readCount, actor: board.actor || null,
+      });
     }
   }
 
@@ -300,6 +308,7 @@ export async function readCalendar(client, { concurrency = READ_CONCURRENCY } = 
 export function calendarPhase(result) {
   if (!result || result.status === "loading") return "loading";
   if (result.status === "unauthorized") return "unauthorized";
+  if (result.status === "reading") return "reading";
   if (result.status !== "ready") return "unavailable";
   if (result.failed.length > 0) return "partial";
   if (result.entries.length === 0 && result.undated.length === 0) return "empty";
