@@ -16,7 +16,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { runInNewContext } from "node:vm";
 import { JSDOM } from "jsdom";
-import { SYNC_STATES } from "../js/board-sync.mjs";
+import { HEALTH, SYNC_STATES } from "../js/board-sync.mjs";
+import { localDeals } from "../js/local-deals-model.js";
 import { readFile } from "node:fs/promises";
 
 import { createFixtureClient } from "../js/fixture-client.js";
@@ -787,10 +788,11 @@ test('deal insight lines distinguish insufficient evidence from unavailable and 
 // polling. The coordinator's transitions are covered in dealroom-board-sync.
 for (const status of [503, 401, 403]) test(`QA008 Deals freshness settles after failed read and retry: ${status}`, async () => {
   const source = await read("js/pipeline.js");
-  const renderer = source.slice(source.indexOf("function renderStatus("), source.indexOf("function renderPendingWrites("));
-  const dom = new JSDOM('<span id="boardAsOf"></span><span id="boardStatusLabel"></span><span id="boardOrb"></span><span id="boardStatus"></span>');
+  const renderer = source.slice(source.indexOf("function visibleBoardDeals("), source.indexOf("function renderBoard("))
+    + source.slice(source.indexOf("function renderStatus("), source.indexOf("function renderPendingWrites("));
+  const dom = new JSDOM('<p id="boardLive"></p><span id="boardAsOf"></span><span id="boardStatusLabel"></span><span id="boardOrb"></span><span id="boardStatus"></span>');
   try {
-    const paint = status => runInNewContext(`${renderer}renderStatus(status);`, { state: {}, SYNC_STATES, status, $: id => dom.window.document.getElementById(id) });
+    const paint = status => runInNewContext(`${renderer}renderStatus(status);`, { state: {deals:new Map(),filter:'all'}, HEALTH, SYNC_STATES, localDeals, status, say:text=>{dom.window.document.getElementById('boardLive').textContent=text;}, $: id => dom.window.document.getElementById(id) });
     const freshness = () => dom.window.document.getElementById('boardAsOf').textContent;
     const { createBoardSync } = await import('../js/board-sync.mjs');
     let failing = true;
@@ -804,6 +806,7 @@ for (const status of [503, 401, 403]) test(`QA008 Deals freshness settles after 
     });
     await sync.requestRefresh('initial');
     assert.equal(freshness(), 'Unavailable');
+    assert.match(dom.window.document.getElementById('boardLive').textContent,/unavailable/i);
     await sync.requestRefresh('retry');
     assert.equal(freshness(), 'Unavailable');
     failing = false;
