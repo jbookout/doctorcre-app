@@ -528,3 +528,18 @@ test('a refused client stays editable with a clear error and a fresh creation ke
  const keys=await page.evaluate(()=>window.createKeys);assert.notEqual(keys[0],keys[1]);
  assert.deepEqual(errors,[]);
 });
+
+
+test('failed board reads remain unavailable after local view repaints',async t=>{
+ const {page,errors}=await open(t);
+ await page.evaluate(async()=>{
+  const {state}=await import('/js/pipeline.js');
+  state.client.getBoard=async()=>{throw Object.assign(new Error('Synthetic read refused'),{status:503});};
+  await state.boardSync.refreshBoard({reason:'failed-read-regression'});
+ });
+ await waitForAsync(page,async()=>(await import('/js/pipeline.js')).state.boardSync.stats().board_failed>0);
+ await page.locator('#listView').click();
+ assert.match(await page.locator('#boardLive').textContent(),/could not be read|unavailable/i);
+ assert.match(await page.locator('#boardAsOf').textContent(),/unavailable/i);
+ assert.deepEqual(errors,[]);
+});

@@ -38,7 +38,7 @@ import { ACTOR_LABEL } from './client.js';
 import { mountNotificationBadge, mountPrefs } from './shell.js';
 import { formatCalendarDate } from './visual-system.js';
 import {
-  createBoardSync, batchTouchesBoard, SYNC_STATES,
+  createBoardSync, batchTouchesBoard, HEALTH, SYNC_STATES,
 } from './board-sync.mjs';
 import {
   cellKey, performFieldWrite, unresolvedFieldWrites, fieldWriteMessage, nextCellBase,
@@ -232,6 +232,20 @@ function renderClosedDeals() {
     <div><dt>Owner</dt><dd>${esc(actorName(d.owner))}</dd></div></dl>${autoHtml(d)}</article>`).join('') || (archived === null ? '' : `<p>No ${label} deals match this search.</p>`);
 }
 
+function visibleBoardDeals() {
+  return localDeals([...state.deals.values()], state.personalScope ? state.selfActor : state.filter)
+    .filter(d => state.scopeFilter !== 'flagged' || d.attention === true);
+}
+function renderBoardMessage(status = state.boardSync?.status()) {
+  if (status && (!status.online || [HEALTH.FAILED,HEALTH.RENDER_FAILED].includes(status.board_health))) {
+    say('The board is unavailable. Refresh to try again.');
+    return;
+  }
+  const rows = visibleBoardDeals();
+  const parked = rows.filter(d => d.operating_state === 'parked').length;
+  say(`${rows.length - parked} open deals · ${parked} parked`);
+}
+
 function renderBoard() {
   const board = $('kanban');
   // Fresh snapshots still enter state; dragend or the press's release paints
@@ -244,13 +258,12 @@ function renderBoard() {
   if (['closed','lost'].includes(state.view)) { renderClosedDeals(); return; }
   if (board.dataset.pressed === 'true' || board.querySelector('[data-dragging="true"]')) { state.paintDeferred = true; return; }
   state.paintDeferred = false;
-  const rows = localDeals([...state.deals.values()], state.personalScope ? state.selfActor : state.filter)
-    .filter(d => state.scopeFilter !== 'flagged' || d.attention === true);
+  const rows = visibleBoardDeals();
   setDocFilters({ owner: state.personalScope ? state.selfActor : state.filter, filter: state.scopeFilter });
   publishDocRead('getBoard', { deals: rows });
   const active = rows.filter(d => d.operating_state !== 'parked');
   const parked = rows.filter(d => d.operating_state === 'parked');
-  say(`${active.length} open deals · ${parked.length} parked`);
+  renderBoardMessage();
   const grouped = groupByColumn(active);
   state.unplaced = grouped.unplaced.length;
   preserveBoardFocus({ board, document, announce, paint() {
@@ -284,6 +297,7 @@ function renderChips() {
 }
 
 function renderStatus(status) {
+  renderBoardMessage(status);
   state.boardStatus = status.state;
   const label = status.state === SYNC_STATES.OFFLINE ? 'Offline'
     : status.state === SYNC_STATES.ERROR ? 'Board view error'
@@ -300,7 +314,7 @@ function renderStatus(status) {
   if (text && text.textContent !== label) text.textContent = label;
   const asOf = $('boardAsOf');
   if (asOf) {
-    asOf.textContent = status.last_read_at
+    asOf.textContent = [HEALTH.FAILED,HEALTH.RENDER_FAILED].includes(status.board_health) || !status.online ? 'Unavailable' : status.last_read_at
       ? `Updated ${new Date(status.last_read_at).toLocaleTimeString([], {hour:'numeric',minute:'2-digit',hour12:true})}`
       : [SYNC_STATES.STARTING, SYNC_STATES.SYNCING].includes(status.state) ? 'Updating…' : 'Unavailable';
   }
