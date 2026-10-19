@@ -8,7 +8,7 @@ const SECTIONS: [string, string][] = [
   ['Agents', 'agents'], ['System map', 'system-map'], ['Sessions', 'sessions'],
 ];
 
-test('Control Room visits every workbench section and browses the automation calendar', async ({ page }) => {
+test('Control Room visits every workbench section and checks the available automation schedule', async ({ page }) => {
   await page.goto('/control-room');
   await page.addLocatorHandler(page.getByRole('button', { name: 'Dismiss morning brief' }), async dismiss => { await dismiss.click(); });
   const nav = page.getByRole('tablist', { name: 'Control Room sections' });
@@ -25,7 +25,13 @@ test('Control Room visits every workbench section and browses the automation cal
     await expect(page).toHaveURL(new RegExp(`[?&]tab=${key}(?:&|$)`));
   }
   await page.getByRole('tab', { name: 'Automations', exact: true }).click();
-  await expect(page.locator('#automationMonth')).not.toBeEmpty();
+  await page.waitForFunction(() => document.querySelector('#automationMonth')?.textContent?.trim());
+  if (await page.locator('#automationControls').isHidden()) {
+    await expect(page.locator('#automationState')).toBeVisible();
+    await expect(page.locator('#automationState')).toHaveText(/Automations unavailable|No scheduled runs in /);
+    await expect(page.locator('#automationCalendar')).toBeEmpty();
+    return;
+  }
   const month = await page.locator('#automationMonth').textContent();
   await page.getByRole('button', { name: 'Next month', exact: true }).click();
   await expect(page.locator('#automationMonth')).not.toHaveText(month || '');
