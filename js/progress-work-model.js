@@ -16,7 +16,7 @@ export function workScope(search = '') {
 export function workTaskId(task) {
   if (task.governance?.ref) return `governance_item:${task.governance.ref}`;
   if (task.kind && task.id?.startsWith(`${task.kind}:`)) return task.id;
-  return task.task_id || (jobLinks(task).prLabel ? task.id : null);
+  return task.task_id || jobLinks(task).prLabel ? task.id || null : null;
 }
 const lineageFields = [
   ['Work Request', 'work_request', []],
@@ -27,13 +27,17 @@ const lineageFields = [
 ];
 export function workLineage(task, board = 'carr-v5', taskId = workTaskId(task)) {
   const workRequest = jobLinks(task).workRequest;
-  const base = taskId || workRequest ? workDetailUrl({board, task: taskId, workRequest}) : null;
   return lineageFields.map(([label, kind, fields]) => {
     const related = (Array.isArray(task.related) ? task.related : []).filter(row => row?.kind === kind).map(row => row.id);
     const refs = [...new Set((kind === 'work_request' ? [workRequest] : [fields.map(field => task[field]).find(ref => typeof ref === 'string' && ref.trim()), ...related])
       .filter(ref => typeof ref === 'string' && ref.trim() && !/[\u0000-\u001f]/.test(ref)))];
     if (kind === 'task' && !refs.length && taskId) refs.push(taskId);
-    const entries = refs.map(ref => ({ref, target: `work-lineage-${kind}-${ref}`, href: base ? `${base}#${encodeURIComponent(`work-lineage-${kind}-${ref}`)}` : null}));
+    const entries = refs.map(ref => {
+      const target = `work-lineage-${kind}-${ref}`;
+      const destination = kind === 'work_request' ? workDetailUrl({board, workRequest: ref})
+        : kind === 'task' && ref === taskId ? workDetailUrl({board, task: taskId, workRequest}) : null;
+      return {ref, target, href: destination ? `${destination}#${encodeURIComponent(target)}` : null};
+    });
     return {label, kind, entries};
   });
 }

@@ -427,7 +427,7 @@ export function mountBoard(deps = {}) {
     const merged = withGovernance({stages:stages.map(stage=>({...stage,
       tasks:original.filter(card=>card.stage===stage.id)}))},approvalCards);
     const all = merged.stages.flatMap(stage=>stage.tasks.map(task=>({...task,
-      ...(boardId !== SYSTEM_BOARD_ID ? {task_id:task.id} : {})})));
+      ...(boardId !== SYSTEM_BOARD_ID ? {task_id:task.task_id || task.id} : {})})));
     renderFilters({repos:view?.repos || [],cards:all,stages});
     deps.onTasks?.(all,{state:boardState});
     renderCompleted({...view, cards:all,stages});

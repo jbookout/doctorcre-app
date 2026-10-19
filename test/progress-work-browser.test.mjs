@@ -720,7 +720,7 @@ test('published task detail retains summary, model, safe PR links and related an
     payload.questions=[{question_id:'synthetic-choice',prompt:'Synthetic choice?',answer_text:'Proceed with synthetic fixture',status:'Applied'},
       {question_id:'unrelated',prompt:'Unrelated question',answer_text:'Unrelated answer'}];return payload;
   }});
-  await page.waitForFunction(()=>document.querySelector('#workMetadata').textContent.includes('Demo work request'));
+  await page.waitForFunction(()=>document.querySelector('#workTitle').textContent==='Demo work request',null,{timeout:5000});
   const detail=page.locator('#workMetadata');
   assert.match(await detail.textContent(),/Codex.*gpt-6-sol.*high/s);
   assert.equal(await detail.locator('a[href="https://github.com/demo/example/pull/12"]').count(),1);
@@ -783,7 +783,7 @@ test('merged work detail displays the release wait and inline question', async t
 
 
 for (const width of [1440,390]) test(`PR card navigation preserves exact lineage at ${width}px`,async t=>{
-  const task={title:'Synthetic · Link work cards to their source',status:'review',repo:'jbookout/doctorcre-app',pr:73,
+  const task={task_id:'task:canonical-900',title:'Synthetic · Link work cards to their source',status:'review',repo:'jbookout/doctorcre-app',pr:73,
     work_request_ref:'WR-900',plan_ref:'plan:synthetic-v2',slice_ref:'slice:seven',task_ref:'task:linked-card',job_ref:'job:synthetic-build'};
   const {page,errors}=await open(t,{width,path:'/control-room/progress/board/demo-project',rpcReply:(rpc,payload)=>{
     if(rpc.name==='read-progress-board') payload.snapshot.snapshot_json.tasks[taskId]={...task};
@@ -793,13 +793,14 @@ for (const width of [1440,390]) test(`PR card navigation preserves exact lineage
   await page.locator('.work-lineage').waitFor();
   assert.equal(new URL(page.url()).searchParams.get('task'),taskId);
   const refs=['WR-900','plan:synthetic-v2','slice:seven','task:linked-card','job:synthetic-build'];
-  for(const [i,ref] of refs.entries()) {
-    const target=`work-lineage-${['work_request','plan','slice','task','job'][i]}-${ref}`;
-    await page.locator('.work-lineage a').filter({hasText:ref}).click();
-    await page.waitForFunction(target=>document.activeElement?.id===target,target);
-    assert.equal(decodeURIComponent(new URL(page.url()).hash.slice(1)),target);
-    assert.equal(new URL(page.url()).searchParams.get('task'),taskId);
-  }
+  for(const ref of refs)assert.ok((await page.locator('.work-lineage').textContent()).includes(ref));
+  assert.equal(await page.locator('.work-lineage a').count(),1);
+  for(const ref of refs.slice(1))assert.equal(await page.locator('.work-lineage a').filter({hasText:ref}).count(),0);
+  assert.match(await page.locator('#workMetadata').textContent(),/task:canonical-900/);
+  task.title='Synthetic renamed card';
+  await page.clock.runFor(5100);
+  await page.waitForFunction(()=>document.querySelector('#workTitle').textContent==='Synthetic renamed card');
+  assert.equal(new URL(page.url()).searchParams.get('task'),taskId);
   assert.match(await page.locator('#workMetadata').textContent(),/Demo work request/);
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
   if(process.env.SLICE7_CAPTURE_DIR) {
@@ -808,5 +809,9 @@ for (const width of [1440,390]) test(`PR card navigation preserves exact lineage
     await page.clock.runFor(300);
     await page.screenshot({path:resolve(process.env.SLICE7_CAPTURE_DIR,`linked-work-${width}.png`)});
   }
+  await page.locator('.work-lineage a').filter({hasText:'WR-900'}).click();
+  await page.waitForFunction(()=>new URL(location.href).searchParams.get('work_request')==='WR-900');
+  assert.equal(new URL(page.url()).searchParams.has('task'),false);
+  await page.waitForFunction(()=>document.querySelector('#workTitle').textContent==='Demo work request',null,{timeout:5000});
   assert.deepEqual(errors,[]);
 });
