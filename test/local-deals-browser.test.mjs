@@ -4,7 +4,7 @@ import { readFile, mkdir } from 'node:fs/promises';
 import { chromium, waitForAsync } from './browser-harness.mjs';
 const root = new URL('../', import.meta.url);
 const phases = ['On Deck', 'Research', 'Site selection', 'Negotiation', 'Legal', 'Diligence', 'Closing', 'Closed'];
-async function open(t, { width = 1440, height = 960, reducedMotion = 'no-preference', many = false, review = false } = {}) {
+async function open(t, { width = 1440, height = 960, reducedMotion = 'no-preference', many = false, review = false, deal = null } = {}) {
   const browser = await chromium.launch(); t.after(() => browser.close());
   const page = await browser.newPage({ viewport: { width, height }, reducedMotion });
   const errors = []; page.on('pageerror', e => errors.push(e.message));
@@ -29,7 +29,7 @@ async function open(t, { width = 1440, height = 960, reducedMotion = 'no-prefere
     try { return route.fulfill({ body: await readFile(new URL(file, root)), contentType: /\.m?js$/.test(file) ? 'text/javascript' : file.endsWith('.css') ? 'text/css' : file.endsWith('.json') ? 'application/json' : 'text/html' }); }
     catch { return route.fulfill({ status: 404, body: '' }); }
   });
-  await page.goto('http://localhost/deals');
+  await page.goto('http://localhost/deals' + (deal ? '?deal='+encodeURIComponent(deal) : ''));
   await waitForAsync(page, async () => (await import('/js/pipeline.js')).state.deals.size > 0);
   return { page, errors, seed };
 }
@@ -565,16 +565,16 @@ test('a move offers Undo only in its temporary toast, never on cards after reloa
   assert.deepEqual(errors, []);
 });
 
-test('move Undo lasts five seconds, fades calmly, and successful updates leave no dock notifications', async t => {
+test('move Undo uses the same two-second success hold and fade, without permanent notifications', async t => {
   const {page, errors} = await open(t);
   await page.locator('.kanban-column [data-id="d14"] .card-open').click();
   await page.locator('#detailPhase').selectOption('legal');
   await page.locator('#completionConfirm').click();
   await waitForAsync(page, async () => (await import('/js/pipeline.js')).state.deals.get('d14').phase === 'Legal');
   await page.getByLabel('Close deal', {exact:true}).click();
-  await page.clock.runFor(4500);
-  assert.equal(await page.locator('.toast [data-undo]').count(), 1, 'Undo remains available through its five-second window');
-  await page.clock.runFor(1400);
+  await page.clock.runFor(1900);
+  assert.equal(await page.locator('.toast [data-undo]').count(), 1, 'Undo remains available during the success hold');
+  await page.clock.runFor(1000);
   assert.equal(await page.locator('.toast').count(), 0, 'the expired Undo toast leaves the DOM');
   assert.equal(await page.locator('#receiptDock .receipt').count(), 0, 'a confirmed move leaves no permanent bottom notification');
   assert.equal(await page.locator('[data-undo]').count(), 0, 'history is not another Undo surface');
@@ -614,13 +614,14 @@ for (const width of [390,1280]) test(`move follow-ups preserve the original Undo
   await page.locator('#completionConfirm').click();
   await waitForAsync(page, () => typeof window.finishEvidence === 'function');
   const eventId = await page.locator('.toast [data-undo]').getAttribute('data-undo');
-  await page.clock.runFor(4000);
+  await page.clock.runFor(1000);
   await page.evaluate(() => window.finishEvidence());
   await page.locator('#completionDialog').waitFor({state:'hidden'});
   assert.equal(await page.locator('.toast [data-undo]').count(),1,'evidence and next-step confirmations preserve move Undo');
   assert.equal(await page.locator('.toast [data-undo]').getAttribute('data-undo'),eventId);
   await page.clock.runFor(1001);
-  assert.equal(await page.locator('.toast [data-undo]').isDisabled(),true,'follow-ups never restart the original five-second window');
+  assert.equal(await page.locator('.toast').evaluate(n=>n.classList.contains('is-leaving')),true,'follow-ups never restart the original two-second hold');
+  assert.equal(await page.locator('.toast [data-undo]').isEnabled(),true,'Undo remains usable through the fade');
   await page.clock.runFor(800);
   assert.equal(await page.locator('.toast').count(),0);
   assert.deepEqual(errors,[]);
@@ -655,7 +656,7 @@ for (const width of [390,1280]) test(`Undo follows modal open and close without 
   await page.locator('#completionDialog').waitFor({state:'hidden'});
   await waitForAsync(page, () => document.querySelector('.toast')?.parentElement.id === 'recordPanel');
   await page.evaluate(() => { window.moveToast = document.querySelector('.toast'); });
-  await page.clock.runFor(2000);
+  await page.clock.runFor(500);
   await page.locator('#panelClose').click();
   await waitForAsync(page, () => document.querySelector('.toast')?.parentElement === document.body);
   assert.equal(await page.locator('.toast').isVisible(),true);
@@ -667,9 +668,83 @@ for (const width of [390,1280]) test(`Undo follows modal open and close without 
   const box = await undo.boundingBox();
   assert.ok(box && box.x >= 0 && box.y >= 0 && box.x+box.width <= width && box.y+box.height <= 960,'Undo stays inside the viewport while the detail scrolls');
   assert.equal(await undo.evaluate(n=>{const r=n.getBoundingClientRect();return n.contains(document.elementFromPoint(r.x+r.width/2,r.y+r.height/2));}),true,'the scrolled detail never covers Undo');
-  await page.clock.runFor(3001);
-  assert.equal(await undo.isDisabled(),true);
+  await page.clock.runFor(1501);
+  assert.equal(await undo.isEnabled(),true);
+  assert.equal(await page.locator('.toast').evaluate(n=>n.classList.contains('is-leaving')),true);
   await page.clock.runFor(800);
   assert.equal(await page.locator('.toast').count(),0);
+  assert.deepEqual(errors,[]);
+});
+
+for (const width of [390,1280]) test(`move success fades after two seconds and Undo is clickable during the fade at ${width}px`, async t => {
+  const {page,errors}=await open(t,{width});
+  await page.locator('.kanban-column [data-id="d14"] .card-open').click();
+  await page.locator('#detailPhase').selectOption('legal');
+  await page.locator('#completionConfirm').click();
+  await page.locator('#completionDialog').waitFor({state:'hidden'});
+  await page.clock.runFor(2001);
+  assert.equal(await page.locator('.toast').evaluate(n=>n.classList.contains('is-leaving')),true,'moves use the ordinary success fade');
+  const undo=page.locator('.toast [data-undo]');
+  assert.equal(await undo.isEnabled(),true);
+  await undo.click({timeout:500});
+  await waitForAsync(page,async()=>(await import('/js/pipeline.js')).state.deals.get('d14').phase==='Negotiation');
+  await page.clock.runFor(2801);
+  assert.equal(await page.locator('.toast').count(),0);
+  assert.deepEqual(errors,[]);
+});
+
+test('unreadable linked client with no context rows hides the context control',async t=>{
+  const {page,errors}=await open(t,{deal:'d02'});
+  await page.locator('#detailUpdateForm').waitFor();
+  assert.equal(await page.locator('#panelContextOpenWrap').isVisible(),false);
+  assert.equal(await page.locator('#contextDrawer').evaluate(n=>n.open),false);
+  assert.deepEqual(errors,[]);
+});
+
+test('context becoming unreadable on its fresh open closes the empty dialog and hides its control',async t=>{
+  const {page,errors}=await open(t);
+  await page.evaluate(async()=>{
+    const {state}=await import('/js/pipeline.js');const read=state.client.getDeal.bind(state.client);
+    state.client.getDeal=async id=>{const detail=await read(id);return {...detail,deal:{...detail.deal,client_id:'demo-context-client',account_client_id:null},critical_dates:[],participants:[]};};
+    state.client.getPartyRecord=async()=>{if(window.contextUnavailable)throw Error('Synthetic unreadable client');return {record:{id:'demo-context-client',name:'Demo Context Client'}};};
+    state.client.getRelationshipNetwork=async()=>({nodes:[],edges:[]});
+  });
+  await page.locator('.kanban-column [data-id="d14"] .card-open').click();
+  await page.locator('#panelContextOpen').waitFor({state:'visible'});
+  await page.evaluate(()=>{window.contextUnavailable=true;});
+  await page.locator('#panelContextOpen').click();
+  await waitForAsync(page,()=>!document.querySelector('#contextDrawerBody').textContent.includes('Updating'));
+  assert.equal(await page.locator('#contextDrawer').evaluate(n=>n.open),false);
+  assert.equal(await page.locator('#panelContextOpenWrap').isVisible(),false);
+  assert.deepEqual(errors,[]);
+});
+
+test('readable vendor context survives a failed linked client read',async t=>{
+  const {page,errors}=await open(t);
+  await page.evaluate(async()=>{
+    const {state}=await import('/js/pipeline.js');
+    const read=state.client.getDeal.bind(state.client);state.client.getDeal=async id=>{const detail=await read(id);return {...detail,deal:{...detail.deal,client_id:'demo-unreadable'},critical_dates:[],participants:[]};};
+    state.client.getPartyRecord=async()=>{throw Error('Synthetic unreadable client');};
+    state.client.getRelationshipNetwork=async()=>({nodes:[{id:'party:demo-vendor',record_id:'demo-vendor',kind:'vendor',name:'Demo Vendor'}],edges:[{from:'party:demo-vendor',to:'deal:d14',kind:'referred'}]});
+  });
+  await page.locator('.kanban-column [data-id="d14"] .card-open').click();
+  await page.locator('#panelContextOpen').waitFor({state:'visible'});
+  await page.locator('#panelContextOpen').click();
+  await page.locator('#contextDrawer a[href="/vendors?record=demo-vendor"]').waitFor();
+  assert.equal(await page.locator('#contextDrawer .panel-section').count(),1);
+  assert.deepEqual(errors,[]);
+});
+
+test('desktop next steps wrap to two lines and retain the full recorded text',async t=>{
+  const {page,errors}=await open(t,{width:1280,review:true});
+  const line=page.locator('.kanban-column [data-id="d14"] .next-line');
+  const box=await line.evaluate(n=>{const s=getComputedStyle(n);return {height:n.getBoundingClientRect().height,lineHeight:parseFloat(s.lineHeight),text:n.textContent,title:n.title,width:n.clientWidth,scrollWidth:n.scrollWidth};});
+  assert.ok(box.height>box.lineHeight*1.5 && box.height<=box.lineHeight*2+1,JSON.stringify(box));
+  assert.equal(box.text,'Confirm the next appointment');
+  assert.equal(box.title,box.text);
+  const full='Confirm the next appointment with the demo practice and review the complete recorded lease terms before the next joint review.';
+  await page.evaluate(async full=>{const {state}=await import('/js/pipeline.js');await state.client.setNextStep({deal:'d14',text:full,idempotency_key:'demo-full-next-step'});await state.boardSync.refreshBoard({reason:'test'});},full);
+  assert.equal(await line.textContent(),full);
+  assert.equal(await line.getAttribute('title'),full);
   assert.deepEqual(errors,[]);
 });

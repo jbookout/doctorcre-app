@@ -183,3 +183,17 @@ test('review 5: hanging date writes become unknown and reconcile only the retain
  assert.equal(events.filter(e=>e.verb==='add-critical-date'&&e.new_value==='2026-12-01').length,1);
  assert.deepEqual(errors,[]);
 });
+
+for (const theme of ['light','dark']) test(`phone phase labels are legible along one continuous rail in ${theme}`,async t=>{
+ const {page,errors}=await open(t,{width:390,reducedMotion:'reduce'});
+ await page.evaluate(theme=>document.documentElement.dataset.theme=theme,theme);
+ const labels=await page.locator('.phase-rail li').evaluateAll(items=>items.map(item=>{
+  const labels=[...item.querySelectorAll('span,abbr')].filter(n=>{const r=n.getBoundingClientRect(),s=getComputedStyle(n);return s.display!=='none' && s.clipPath==='none' && r.width>=16 && r.height>=12 && parseFloat(s.fontSize)>=12;});
+  return {top:item.getBoundingClientRect().top,labels:labels.map(n=>n.textContent)};
+ }));
+ assert.equal(labels.length,8);
+ assert.ok(labels.every(p=>p.labels.length>0),JSON.stringify(labels));
+ assert.ok(labels.every(p=>Math.abs(p.top-labels[0].top)<1),'the rail stays on a single row');
+ assert.equal(await page.locator('#recordPanel').evaluate(n=>n.scrollWidth<=n.clientWidth),true);
+ assert.deepEqual(errors,[]);
+});
