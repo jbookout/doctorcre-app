@@ -168,7 +168,7 @@ for (const width of [1440, 390]) test(`map/list IDs, count and highlight match a
     assert.deepEqual(result.members, expected, `map members ${context}`);
     assert.deepEqual(result.represented, expected, `markers plus no location ${context}`);
     assert.equal(result.count, expected.length, context);
-    assert.match(result.summary, new RegExp(`^${expected.length} leads?$`), context);
+    assert.match(result.summary, new RegExp(`^${expected.length} matching leads?$`), context);
     const highlight = result.selected ? [result.selected] : [];
     assert.deepEqual(result.boardHighlight, highlight, context);
     assert.deepEqual(result.mapHighlight, highlight, context);

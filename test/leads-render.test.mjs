@@ -16,12 +16,10 @@ for(const width of [1440,390]) test(`Leads rendered board, map and wide popup fi
  await cluster.click();await page.getByRole('button',{name:'Mobile, AL: 1 leads',exact:true}).waitFor();
  await page.getByRole('button',{name:'Mobile, AL: 1 leads',exact:true}).click();
  await page.locator('#closeDetail').click();
- await page.locator('#appSidebarToggle').click();
  await page.waitForFunction(()=>{const root=document.getElementById('territoryMap');return root.querySelector('canvas').clientWidth===root.clientWidth});
  assert.equal(await page.locator('#marketFilter').inputValue(),'Mobile, AL');assert.equal(await page.locator('.lead-card').count(),1);
  const position=await page.getByRole('button',{name:'Mobile, AL: 1 leads',exact:true}).evaluate(e=>e.style.transform);const canvas=await page.locator('#territoryMap canvas').elementHandle();await page.locator('#marketFilter').selectOption('');assert.equal(await page.locator('.lead-card').count(),14);
  assert.ok(await canvas.evaluate(e=>e.isConnected),'filter updates preserve the map instance');assert.equal(await page.getByRole('button',{name:'Mobile, AL: 1 leads',exact:true}).evaluate(e=>e.style.transform),position,'filter updates preserve the zoomed territory');
- if(width===390)await page.keyboard.press('Escape');
  await page.locator('.lead-card').first().click();await page.locator('#detailStage').waitFor();const box=await page.locator('#leadDetail').boundingBox();assert.ok(box.width>=Math.min(1100,width-32));
  await page.locator('#detailBody details').first().locator('summary').click();assert.match(await page.locator('#detailBody').innerText(),/Original synthetic entry/);
  if(process.env.W3_SCREENSHOT_DIR)await page.screenshot({path:`${process.env.W3_SCREENSHOT_DIR}/lead-detail-${width}.png`});

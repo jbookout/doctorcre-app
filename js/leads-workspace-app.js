@@ -63,8 +63,8 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
     setDocFilters(state.filters);
     if (state.board) publishDocRead("getWorkspace", { ...state.board, leads: shown });
     const active = visibleLeads(leads);
-    $("leadCount").textContent = `${active.length}`;
-    $("filterSummary").textContent = `${shown.length} ${shown.length === 1 ? "lead" : "leads"}`;
+    $("leadCount").textContent = `${active.length} total`;
+    $("filterSummary").textContent = `${shown.length} matching ${shown.length === 1 ? "lead" : "leads"}`;
     $("stageFilter").innerHTML = options(FILTER_STAGES, state.filters.stage, "All stages");
     $("ownerFilter").innerHTML = options(owners.map(k => [k, ownerName(k)]), state.filters.owner, "All owners");
     const groups = marketCounts(leads, state.filters, state.map?.locate);
@@ -76,9 +76,9 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
     $("mapLeadMembers").querySelector("summary").textContent = `${shown.length} ${shown.length === 1 ? "lead" : "leads"} · ${unlocated} no location`;
     $("mapLeadMembers").querySelector("div").innerHTML = shown.map(lead => `<button data-lead-id="${esc(lead.id)}" aria-pressed="${lead.id === state.selectedId}">${esc(leadTitle(lead))}<small>${esc(marketKey(lead))} · ${locationLabel(lead)}</small></button>`).join("") || '<p class="empty">No matching leads</p>';
     const hot = hotLeadPanel(leads);
-    $("hotTitle").textContent = hot.claimable || !hot.newTotal ? "Hottest leads to claim" : "Hottest New leads";
-    $("hotSummary").textContent = !state.board ? "The hottest leads appear once the lead board loads." : hot.claimable ? `${hot.newTotal - hot.claimed} of ${hot.newTotal} New leads unclaimed`
-      : hot.newTotal ? `All ${hot.newTotal} New leads are claimed` : "No New leads yet. The next new-lead search adds them here.";
+    $("hotTitle").textContent = hot.claimable || !hot.newTotal ? "Top new leads to claim" : "Top new leads";
+    $("hotSummary").textContent = !state.board ? "The hottest leads appear once the lead board loads." : hot.claimable ? `Across all markets and filters: ${hot.newTotal - hot.claimed} of ${hot.newTotal} New leads unclaimed`
+      : hot.newTotal ? `Across all markets and filters: All ${hot.newTotal} New leads are claimed` : "No New leads yet. The next new-lead search adds them here.";
     $("hotLeads").innerHTML = hot.rows.map((lead, i) => `<article class="hot-row" data-lead-id="${esc(lead.id)}" tabindex="0" role="button" aria-label="${esc(leadTitle(lead))}"><span class="hot-rank">${i + 1}</span><div><h3>${esc(leadTitle(lead))}</h3><small>${esc(marketKey(lead))}</small></div><span class="score">${score(lead)}</span>${hot.claimable ? `<button data-claim="${esc(lead.id)}">Claim</button>` : `<span class="hot-owner">${esc(ownerName(lead.owner))}</span>`}</article>`).join("");
     $("hotLeads").setAttribute("aria-busy", "false");
     const currentStage = state.filters.stage;
@@ -197,7 +197,7 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
     const scroll = $("leadDetail").scrollTop;
     $("detailTitle").textContent = leadTitle(detail);
     const contact = (kind, value) => value ? `<a href="${kind === "Email" ? "mailto:" : "tel:"}${esc(value)}">${esc(value)}</a>` : "—";
-    $("detailBody").innerHTML = `<div class="detail-overview"><section class="detail-panel"><h3>Contact</h3><dl><dt>Phone</dt><dd>${contact("Phone", detail.phone)}</dd><dt>Email</dt><dd>${contact("Email", detail.email)}</dd><dt>Market</dt><dd>${esc(marketKey(detail))}</dd><dt>Vertical</dt><dd>${esc(detail.specialty || detail.vertical || "—")}</dd><dt>Party</dt><dd class="party-id">${esc(detail.party_id || "—")}</dd></dl></section>
+    $("detailBody").innerHTML = `<div class="detail-overview"><section class="detail-panel"><h3>Contact</h3><dl><dt>Phone</dt><dd>${contact("Phone", detail.phone)}</dd><dt>Email</dt><dd>${contact("Email", detail.email)}</dd><dt>Market</dt><dd>${esc(marketKey(detail))}</dd><dt>Vertical</dt><dd>${esc(detail.specialty || detail.vertical || "—")}</dd></dl></section>
       <section class="detail-panel"><h3>Plans</h3><p>${esc(summary(detail.plans || detail.notes) || "—")}</p>${detail.notes ? `<details data-entry-key="plans"><summary>Details</summary><div class="original-entry">${esc(detail.notes)}</div></details>` : ""}<dl class="plan-window"><dt>Lease window</dt><dd>${esc(detail.est_lease_event || "—")}</dd></dl></section>
       <section class="detail-panel"><h3>Lead score</h3><div class="detail-score">${score(detail)}<span>/ 100</span></div><label>Stage<select id="detailStage">${FILTER_STAGES.filter(([key]) => key !== "do_not_contact").map(([key,text]) => `<option value="${key}"${normalizedStage(detail) === key ? " selected" : ""}>${text}</option>`).join("")}</select></label></section></div>
       <div class="detail-columns"><section class="detail-panel"><h3>Correspondence</h3><ol class="correspondence">${(detail.correspondence || []).map(entry => `<li><time>${stamp(entry.occurred_at)}</time><p>${esc(summary(entry.summary))}</p><details data-entry-key="${esc(entry.id)}"><summary>Details</summary><div class="original-entry">${esc(entry.detail || entry.summary)}</div></details></li>`).join("") || '<li class="empty">No correspondence yet</li>'}</ol></section><section class="detail-panel"><h3>Stage history</h3><ol class="history">${(detail.stage_history || []).map(entry => `<li><time>${stamp(entry.occurred_at)}</time>${esc(stageLabel(entry.prior_stage))} → ${esc(stageLabel(entry.stage))}${entry.reason ? `<br><small>${esc(summary(entry.reason))}</small>` : ""}</li>`).join("") || '<li class="empty">No stage changes</li>'}</ol></section></div>`;

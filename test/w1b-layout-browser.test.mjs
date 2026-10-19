@@ -50,7 +50,7 @@ test('five regions, rail destinations, Leads filters and per-page sidebar memory
  const{page,goto,errors}=await open(t);
  await goto('/leads');assert.equal(await page.locator('#appLayout').getAttribute('data-sidebar'),'closed');
  assert.deepEqual(await page.locator('.app-shell-navigation > a').evaluateAll(nodes=>nodes.map(n=>n.title)),['Home','Leads','Tours','Local Deals','Vendors','Control Room']);
- assert.equal(await page.locator('#appSidebarSlot #leadSearch').count(),1);assert.equal(await page.locator('#appStatusSlot #boardUpdated').count(),1);
+ assert.equal(await page.locator('#appMainSlot #leadSearch').count(),1);assert.equal(await page.locator('#appStatusSlot #boardUpdated').count(),1);
  await page.locator('#appSidebarToggle').click();await page.locator('#leadSearch').fill('Example 3');assert.equal(await page.locator('.lead-card').count(),1);
  await goto('/deals?view=board');assert.equal(await page.locator('#appLayout').getAttribute('data-sidebar'),'closed');
  await goto('/leads');assert.equal(await page.locator('#appLayout').getAttribute('data-sidebar'),'open');
@@ -270,9 +270,9 @@ for(const width of [844,1440]) test(`PR129 #10 short rail destinations remain po
 test('PR129 #11 light theme pairs popup and filter text with light surfaces',async t=>{
  const {page,goto}=await open(t);await goto('/leads');await page.evaluate(()=>document.documentElement.dataset.theme='light');await page.locator('#appSidebarToggle').click();
  const luminance=rgb=>{const c=rgb.match(/[\d.]+/g).slice(0,3).map(n=>{const x=Number(n)/255;return x<=.04045?x/12.92:((x+.055)/1.055)**2.4});return .2126*c[0]+.7152*c[1]+.0722*c[2];};
- const colors=await page.locator('#appSidebarSlot').evaluate(n=>({background:getComputedStyle(n.closest('aside')).backgroundColor,text:getComputedStyle(n).color}));
+ const colors=await page.locator('.controls').evaluate(n=>({background:getComputedStyle(n).backgroundColor,text:getComputedStyle(n).color}));
  assert.ok((Math.max(luminance(colors.background),luminance(colors.text))+.05)/(Math.min(luminance(colors.background),luminance(colors.text))+.05)>=4.5,JSON.stringify(colors));
- const labelColor=await page.locator('#appSidebarSlot label').first().evaluate(n=>getComputedStyle(n).color);assert.ok((luminance(colors.background)+.05)/(luminance(labelColor)+.05)>=4.5,labelColor);
+ const labelColor=await page.locator('.controls label').first().evaluate(n=>getComputedStyle(n).color);assert.ok((luminance(colors.background)+.05)/(luminance(labelColor)+.05)>=4.5,labelColor);
  await goto('/deals?view=board');await page.evaluate(()=>document.documentElement.dataset.theme='light');await page.locator('.kanban-card[data-id="d14"]').click();await page.locator('#detailPhase').waitFor();
  const pair=await page.locator('#recordPanel').evaluate(n=>({background:getComputedStyle(n).backgroundColor,text:getComputedStyle(n.querySelector('h2')).color}));
  assert.ok((Math.max(luminance(pair.background),luminance(pair.text))+.05)/(Math.min(luminance(pair.background),luminance(pair.text))+.05)>=4.5,JSON.stringify(pair));

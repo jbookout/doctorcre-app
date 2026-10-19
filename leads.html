@@ -13,11 +13,7 @@
 <a class="skip" href="#leadBoard">Skip to lead board</a>
 <main class="leads-workspace">
 <header class="page-heading"><h1>Leads <span id="leadCount"></span></h1><div data-layout-slot="status" class="freshness"><time id="boardUpdated">Updating…</time><button data-layout-refresh id="refreshBoard" aria-label="Refresh leads" title="Refresh leads">↻</button></div></header>
-<section class="top-grid">
-<div class="hot-section glass"><div class="section-heading"><h2 id="hotTitle">Hottest leads to claim</h2><time id="searchUpdated" title="Last new-lead search">New-lead search —</time></div><p id="hotSummary" class="hot-summary"></p><div id="hotLeads" aria-busy="true"></div></div>
-<div class="territory glass"><div class="section-heading"><h2>Territory</h2><button id="clearMarket" hidden>All markets</button></div><div id="territoryMap" aria-label="Lead count by market" role="region"></div><details id="mapLeadMembers"><summary>Map leads</summary><div></div></details><div id="marketCounts" aria-label="Markets"></div><small class="map-credit">Market areas only · U.S. Census · 2025</small></div>
-</section>
-<section data-layout-slot="sidebar" class="controls glass" aria-label="Lead filters">
+<section class="controls glass" aria-label="Lead filters">
 <label class="search"><span class="sr-only">Search leads</span><input id="leadSearch" type="search" placeholder="Search leads" autocomplete="off"></label>
 <label>Owner<select id="ownerFilter"><option value="">All owners</option></select></label>
 <label>Stage<select id="stageFilter"><option value="">All stages</option></select></label>
@@ -25,6 +21,10 @@
 <output id="filterSummary" aria-live="polite"></output>
 </section>
 <p id="leadBoardError" role="alert" hidden></p><label class="mobile-stage-nav">Stage<select id="mobileStage" aria-label="Board stage"></select></label><div id="leadBoard" aria-busy="true"><p class="empty">Loading leads…</p></div>
+<section class="top-grid">
+<div class="hot-section glass"><div class="section-heading"><h2 id="hotTitle">Hottest leads to claim</h2><time id="searchUpdated" title="Last new-lead search">New-lead search —</time></div><p id="hotSummary" class="hot-summary"></p><div id="hotLeads" aria-busy="true"></div></div>
+<div class="territory glass"><div class="section-heading"><h2>Territory</h2><button id="clearMarket" hidden>All markets</button></div><div id="territoryMap" aria-label="Lead count by market" role="region"></div><details id="mapLeadMembers"><summary>Map leads</summary><div></div></details><div id="marketCounts" aria-label="Markets"></div><small class="map-credit">Market areas only · U.S. Census · 2025</small></div>
+</section>
 </main>
 <dialog id="leadDetail" class="detail-dialog" aria-labelledby="detailTitle"><div class="dialog-heading"><h2 id="detailTitle"></h2><button id="closeDetail" aria-label="Close lead details">×</button></div><div id="detailBody"></div></dialog>
 <dialog id="stageDialog" class="stage-dialog" aria-labelledby="stageTitle"><div class="dialog-heading"><h2 id="stageTitle">Doc</h2><button id="closeStage" aria-label="Cancel stage change">×</button></div><div id="stageContext"></div><form id="stageForm"><div id="stageQuestions"></div><p id="stageError" role="alert" hidden></p><button id="saveStage" type="submit">Confirm</button></form></dialog>
