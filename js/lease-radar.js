@@ -1,3 +1,4 @@
+import {onDialogClosed} from './dialog-lifecycle.js';
 import { mountAutoRefresh, readWithDeadline, updatedLabel } from './auto-refresh.mjs';
 import { projectLeaseRadar, pastClientTouches, radarToday, leaseRadarAddress, parseLeaseRadarAddress } from './lease-radar-model.js';
 const E = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -32,8 +33,7 @@ function mountLeaseDetail({document, dialog, rows, fallback, onClose = () => {}}
   const closeDialog = () => { dismiss(); if (dialog.open) dialog.close(); };
   dialog.addEventListener('click', e => { if (e.target.closest('[data-close-lease]')) closeDialog(); });
   dialog.addEventListener('cancel', e => { e.preventDefault(); closeDialog(); });
-  dialog.addEventListener('close', () => {
-    if (dialog.open) return;
+  onDialogClosed(dialog, () => {
     dismiss();
     const current = opener?.dataset.radarKey && [...document.querySelectorAll('[data-radar-key]')].find(n => n.dataset.radarKey === opener.dataset.radarKey);
     (opener?.isConnected ? opener : current || fallback)?.focus();
