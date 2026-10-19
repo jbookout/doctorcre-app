@@ -94,7 +94,7 @@ test("grouping files every row under its column and never guesses at one it cann
     { id: "c", name: "Demo C", phase: "Not a phase" },
   ];
   const { columns, unplaced } = groupByColumn(deals);
-  assert.equal(columns.length, 8);
+  assert.equal(columns.length, 7);
   assert.deepEqual(columns.find((c) => c.slug === "pending").deals.map((d) => d.id), ["a"]);
   assert.deepEqual(columns.find((c) => c.slug === "site_selection").deals.map((d) => d.id), ["b"]);
   assert.deepEqual(unplaced.map((d) => d.id), ["c"], "an unknown phase is reported, not filed under a guess");
@@ -749,7 +749,7 @@ test("the Closed dialog offers the three outcomes, a picker for the date, and bo
 
   const contract = JSON.parse(await read("contracts/carr-interface.v1.json"));
   assert.ok(contract.mcp_operations.includes("update-deal"));
-  assert.equal(contract.version, "1.46.0");
+  assert.equal(contract.version, "1.47.0");
 });
 
 test("the fixture carries the reason and the sentence onto the phase event, word for word", async () => {

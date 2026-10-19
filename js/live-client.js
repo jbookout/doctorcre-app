@@ -148,7 +148,8 @@ export function createLiveClient(opts = {}) {
         ...(options.account_client_id ? { account_client_id: options.account_client_id } : {}),
       }, options.signal);
       selfActor = board.actor || selfActor;
-      return { ...board, deals: Array.isArray(board.deals) ? board.deals.map(dealToUi) : board.deals };
+      return { ...board, deals: Array.isArray(board.deals) ? board.deals.map(dealToUi) : board.deals,
+        closed_deals: Array.isArray(board.closed_deals) ? board.closed_deals.map(dealToUi) : undefined };
     },
 
     async getDeal(dealId, { signal } = {}) {
@@ -369,10 +370,11 @@ export function createLiveClient(opts = {}) {
         reason: 'Created in the Deal Room',
         idempotency_key: key,
       };
+      const intent = { ...request, owner: args.owner || selfActor, notes: args.notes || '' };
       let operation = dealCreations.get(key);
-      if (operation && JSON.stringify(operation.request) !== JSON.stringify(request)) throw new Error('Reconcile the original deal creation before changing its fields.');
+      if (operation && JSON.stringify(operation.intent) !== JSON.stringify(intent)) throw new Error('Reconcile the original deal creation before changing its fields.');
       if (!operation) {
-        operation = { request, actor: selfActor };
+        operation = { request, intent, actor: intent.owner };
         dealCreations.set(key, operation);
       }
       if (operation.result) return operation.result;
@@ -401,8 +403,17 @@ export function createLiveClient(opts = {}) {
           if (!Number.isInteger(fresh?.base_version)) throw new Error('Created deal version is unavailable; lead was not assigned.');
           operation.lead = { deal: res.deal_id, new_lead: operation.actor, base_version: fresh.base_version, idempotency_key: uuidv4() };
         }
-        const lead = await write('set-lead', operation.lead);
-        if (lead?.ok !== true) throw new Error('Lead receipt is unavailable. Reconcile the same request.');
+        if (!operation.leadConfirmed) {
+          const lead = await write('set-lead', operation.lead);
+          if (lead?.ok !== true) throw new Error('Lead receipt is unavailable. Reconcile the same request.');
+          operation.leadConfirmed = true;
+        }
+        if (intent.notes && !operation.noteConfirmed) {
+          operation.note ||= { deal: res.deal_id, text: intent.notes, idempotency_key: uuidv4() };
+          const note = await write('add-deal-note', operation.note);
+          if (note?.ok !== true) throw new Error('Note receipt is unavailable. Reconcile the same request.');
+          operation.noteConfirmed = true;
+        }
         operation.result = { status: 'ok', deal_id: res.deal_id };
         return operation.result;
       })();

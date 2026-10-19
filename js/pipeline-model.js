@@ -8,7 +8,7 @@
 //
 // Two rules shape the file:
 //
-//   1. The eight columns are the record layer's own `deal_phase` order, and the
+//   1. The phases follow the record layer's own `deal_phase` order, and the
 //      map between a phase slug and what a person reads is ONE-TO-ONE. The map
 //      that shipped before this slice sent two different phases — `research`
 //      and `site_selection` — to a single board label, so writing that label
@@ -52,6 +52,9 @@ export const COLUMNS = Object.freeze([
   { slug: 'closed', value: 'Closed', label: 'Closed' },
 ].map((column) => Object.freeze(column)));
 
+/** Phase destinations on the open board. Closing remains available in deal details. */
+export const OPEN_COLUMNS = Object.freeze(COLUMNS.filter(column => column.slug !== 'closed'));
+
 /** The column whose slug is this, or null. Never a guess. */
 export function columnBySlug(slug) {
   return COLUMNS.find((column) => column.slug === slug) || null;
@@ -68,7 +71,7 @@ export function columnLabel(value) {
 }
 
 /**
- * Group the board's rows into the eight columns, in table order.
+ * Group the board's rows into the seven open columns, in table order.
  *
  * A record whose phase is not one of the eight is NOT dropped and NOT filed
  * under a guess: it is returned separately, so the page can say that the board
@@ -79,14 +82,14 @@ export function columnLabel(value) {
  */
 export function groupByColumn(deals) {
   const rows = Array.isArray(deals) ? deals : [];
-  const columns = COLUMNS.map((column) => ({ ...column, deals: [] }));
+  const columns = OPEN_COLUMNS.map((column) => ({ ...column, deals: [] }));
   const byValue = new Map(columns.map((column) => [column.value, column]));
   const unplaced = [];
   for (const deal of rows) {
     if (!deal || typeof deal !== 'object') continue;
     const column = byValue.get(deal.phase);
     if (column) column.deals.push(deal);
-    else unplaced.push(deal);
+    else if (deal.phase !== 'Closed' && deal.phase !== 'closed') unplaced.push(deal);
   }
   return { columns, unplaced };
 }

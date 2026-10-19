@@ -4,7 +4,7 @@ import { readFile, mkdir } from 'node:fs/promises';
 import { chromium, waitForAsync } from './browser-harness.mjs';
 const root = new URL('../', import.meta.url);
 const phases = ['On Deck', 'Research', 'Site selection', 'Negotiation', 'Legal', 'Diligence', 'Closing', 'Closed'];
-async function open(t, { width = 1440, height = 960, reducedMotion = 'no-preference', many = false } = {}) {
+async function open(t, { width = 1440, height = 960, reducedMotion = 'no-preference', many = false, review = false } = {}) {
   const browser = await chromium.launch(); t.after(() => browser.close());
   const page = await browser.newPage({ viewport: { width, height }, reducedMotion });
   const errors = []; page.on('pageerror', e => errors.push(e.message));
@@ -12,11 +12,12 @@ async function open(t, { width = 1440, height = 960, reducedMotion = 'no-prefere
   seed.deals.forEach((d, i) => Object.assign(d, { phase: phases[i % 8], next_step: 'Confirm the next appointment', last_touch: '2026-10-01', last_review_at: '2026-10-01T16:00:00Z', next_date: null, attention: false }));
   seed.deals.find(d => d.id === 'd14').phase = 'Negotiation';
   seed.deals.find(d => d.id === 'd20').phase = 'Closed';
-  seed.deals.find(d => d.id === 'd23').invoiced_on = '2026-10-01';
+  Object.assign(seed.deals.find(d => d.id === 'd23'),{invoiced_on:'2026-10-01',phase:'Closed',closed_on:'2026-10-02',type:'Renewal',client_name:'Demo Archive Client'});
   seed.seed_events = [{ id: 'auto-loi', actor: 'claude', verb: 'patch-deal-field', subject_type: 'deal', subject_id: 'd14', field: 'phase', old_value: 'Research', new_value: 'Negotiation', automatic: true, change_reason: 'LOI sent', evidence_date: '2026-10-03', recorded_at: '2026-10-03T12:00:00Z' },
     { id: 'auto-invoice', actor: 'claude', verb: 'patch-deal-field', subject_type: 'deal', subject_id: 'd20', field: 'phase', old_value: 'Closing', new_value: 'Closed', automatic: true, change_reason: 'invoice', evidence_date: '2026-10-03', recorded_at: '2026-10-03T12:00:00Z' }];
   seed.threads.d14 = [{ id: 'demo-note', kind: 'note', actor: 'joe', at: '2026-10-01', text: 'LOI submitted. ' + 'Full original demo entry. '.repeat(30) }];
   if (many) for (let i = 20; i < 72; i++) seed.deals.push({ ...seed.deals[9], id: 'demo-' + i, name: 'Demo Assignment ' + i, phase: 'Research' });
+  if (review) for (let i=0;i<28;i++) seed.deals.push({...seed.deals.find(d=>d.id==='d14'),id:`demo-review-${i}`,name:`Demo Practice ${i+1}`,client_name:`Demo Client ${i+1}`,type:'Renewal',phase:phases[i%7],owner:i%2?'dell':'joe',workspace_kind:'team',account_client_id:null,operating_state:'active'});
   await page.clock.install({ time: new Date('2026-10-04T17:00:00Z') });
   await page.route('**/*', async route => {
     const url = new URL(route.request().url());
@@ -41,7 +42,7 @@ test('W4 desktop/phone render, owner filters, equal cards, wide detail and reduc
     assert.equal(await page.locator('#pageTitle').textContent(), 'Local Deals');
     assert.equal(await page.locator('#boardView').getAttribute('aria-pressed'), 'true');
     assert.deepEqual(await page.locator('#boardChips button').allTextContents(), ['All', 'Joe', 'Dell']);
-    assert.equal(await page.locator('.kanban-column').count(), 8);
+    assert.equal(await page.locator('.kanban-column').count(), 7);
     assert.equal(await page.locator('.kanban-column [data-id="d06"],.kanban-column [data-id="d07"],.kanban-column [data-id="d08"]').count(), 0);
     assert.equal(await page.locator('[data-id="d01"],[data-id="d23"]').count(), 0);
     assert.equal(await page.locator('.parked-lane').evaluate(e => e.open), false);
@@ -143,7 +144,9 @@ test('W4 drag and keyboard phase writes, manual phase, park, revive and undo rec
   await waitForAsync(page, async () => (await import('/js/pipeline.js')).state.deals.get('d14').phase === 'Research');
   assert.equal(await page.locator('.kanban-column [data-id="d14"] .auto-move').count(), 0);
   assert.equal(await page.evaluate(async () => (await (await import('/js/pipeline.js')).state.client.getChanges(null)).events.filter(e => e.verb === 'revert-deal-field').length), 1);
+  await page.getByRole('button',{name:'Closed deals',exact:true}).click();
   await page.locator('[data-id="d20"] [data-undo]').click();
+  await page.getByRole('button',{name:'Board',exact:true}).click();
   await waitForAsync(page, async () => (await import('/js/pipeline.js')).state.deals.get('d20').phase === 'Closing');
   await page.locator('.kanban-column [data-id="d14"]').dragTo(page.locator('[data-column="legal"]'));
   await page.waitForFunction(() => document.querySelector('#completionDialog').open);
@@ -171,7 +174,7 @@ test('W4 list attention order, whole-row detail, timed scroll and draft preserva
   const { page, errors } = await open(t, { many: true });
   await page.locator('#listView').click();
   assert.equal(await page.locator('.deal-row').first().getAttribute('data-attention'), 'true');
-  assert.equal(await page.locator('.parked-card').count(), 0); await page.locator('#parkedToggle').click(); assert.equal(await page.locator('.parked-card').count(), 3);
+  assert.equal(await page.locator('.parked-card').count(), 0); await page.locator('#parkedToggle').click(); assert.equal(await page.locator('.parked-card').count(), 2);
   await page.locator('#parkedToggle').click();
   await page.locator('[data-id="demo-50"]').click(); await page.waitForSelector('#detailNextForm');
   await page.locator('#detailNextForm textarea').fill('Unsaved demo next step'); await page.locator('#detailNextForm textarea').focus();
@@ -266,7 +269,7 @@ test('W4 a long automatic reason keeps its date and Undo visible inside the fixe
   await card.hover();
   await page.waitForFunction(resting => getComputedStyle(document.querySelector('[data-id="d14"]')).borderRightColor !== resting, restingBorder);
   // Attention reads in words with a glyph, never a bare colour dot (S8).
-  assert.equal(await page.locator('[data-id="d20"] .attention-flag').textContent(), '◆ Needs you');
+  assert.equal(await page.locator('[data-id="d14"] .attention-flag').textContent(), '◆ Needs you');
 });
 
 
@@ -427,3 +430,121 @@ for (const theme of ['dark', 'light']) {
     assert.deepEqual(errors, []);
   });
 }
+
+
+test('deal review keeps closed deals off the board and searches invoiced history', async t => {
+ const {page,errors}=await open(t,{width:1280});
+ assert.equal(await page.locator('#boardLive').textContent(),'1 open deals · 2 parked');
+ assert.equal(await page.locator('[data-column="closed"]').count(),0);
+ assert.equal(await page.locator('#kanban [data-id="d20"]').count(),0);
+ await page.getByRole('button',{name:'Closed deals',exact:true}).click();
+ assert.match(await page.locator('#closedDealsList').textContent(),/Demo/);
+ const closed=page.locator('#closedDealsList [data-id="d20"]');
+ assert.equal(await closed.count(),1);
+ assert.match(await closed.textContent(),/Client|Demo/);
+ await page.getByLabel('Search closed deals').fill('Demo Archive Client');
+ assert.equal(await page.locator('#closedDealsList [data-id="d23"]').count(),1);
+ assert.match(await page.locator('#closedDealsList').textContent(),/Renewal/);
+ await page.getByLabel('Search closed deals').fill('2026-10-02');
+ assert.equal(await page.locator('#closedDealsList [data-id="d23"]').count(),1);
+ await page.getByLabel('Search closed deals').fill('no matching demo deal');
+ assert.match(await page.locator('#closedDealsList').textContent(),/No closed deals/);
+ await page.getByLabel('Search closed deals').fill('');
+ await page.getByRole('button',{name:'Board',exact:true}).click();
+ assert.equal(await page.locator('.kanban-column').count(),7);
+ assert.deepEqual(errors,[]);
+});
+
+
+test('add deal validates input, retains an uncertain request and immediately shows the selected owner card', async t => {
+ const {page,errors}=await open(t,{width:390});
+ assert.equal(await page.getByRole('button',{name:'Add deal',exact:true}).count(),1);
+ await page.evaluate(async()=>{
+  const {state}=await import('/js/pipeline.js');const create=state.client.createDeal.bind(state.client);window.createRequests=[];
+  state.client.createDeal=async args=>{window.createRequests.push({...args});const result=await create(args);if(window.createRequests.length===1)throw new Error('Lost receipt');return result;};
+ });
+ await page.getByRole('button',{name:'Add deal',exact:true}).focus();await page.keyboard.press('Enter');
+ await page.getByLabel('Deal name',{exact:true}).fill('  ');
+ await page.getByLabel('Client',{exact:true}).fill('C-demo');
+ await page.getByRole('button',{name:'Create deal',exact:true}).click();
+ assert.equal(await page.evaluate(()=>window.createRequests.length),0);
+ await page.getByLabel('Deal name',{exact:true}).fill('Demo Partner Review');
+ await page.getByLabel('Owner',{exact:true}).selectOption('dell');
+ await page.getByLabel('Type',{exact:true}).selectOption('renewal');
+ await page.getByLabel('Stage',{exact:true}).selectOption('Research');
+ await page.getByLabel('Notes',{exact:true}).fill('Demo initial review note');
+ await page.getByRole('button',{name:'Create deal',exact:true}).click();
+ await waitForAsync(page,()=>document.querySelector('#addDealError').textContent.includes('not confirmed'));
+ assert.equal(await page.getByLabel('Deal name',{exact:true}).isDisabled(),true);
+ await page.getByRole('button',{name:'Cancel',exact:true}).click();
+ await page.getByRole('button',{name:'Add deal',exact:true}).click();
+ await page.getByRole('button',{name:'Check creation outcome',exact:true}).click();
+ await waitForAsync(page,()=>!document.querySelector('#addDealDialog').open);
+ const requests=await page.evaluate(()=>window.createRequests);assert.deepEqual(requests[0],requests[1]);
+ assert.equal(requests[0].owner,'dell');assert.equal(requests[0].notes,'Demo initial review note');
+ const cards=page.locator('.kanban-column .kanban-card').filter({hasText:'Demo Partner Review'});assert.equal(await cards.count(),1);
+ assert.match(await cards.textContent(),/Dell/);
+ assert.equal(await page.evaluate(()=>new URL(location.href).searchParams.get('owner')),'dell');
+ await cards.getByRole('button',{name:'Demo Partner Review'}).click();
+ await page.waitForSelector('#detailPhase');assert.match(await page.locator('#panelBody').textContent(),/Demo initial review note/);
+ assert.deepEqual(errors,[]);
+});
+
+
+test('deal review works in both themes at 390 and 1280 pixels', async t => {
+ await mkdir(new URL('out/test-artifacts/dealroom-review/',root),{recursive:true});
+ for (const width of [390,1280]) for (const theme of ['light','dark']) await t.test(`${width} ${theme}`,async t=>{
+  const {page,errors}=await open(t,{width,review:true});
+  await page.evaluate(theme=>document.documentElement.dataset.theme=theme,theme);
+  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
+  assert.equal(await page.locator('.kanban-column').count(),7);
+  const widths=await page.locator('.kanban-card').evaluateAll(nodes=>nodes.map(n=>n.getBoundingClientRect().width));
+  assert.ok(widths.every(w=>w>=130),JSON.stringify(widths));
+  const shot=name=>page.screenshot({path:new URL(`out/test-artifacts/dealroom-review/${width}-${theme}-${name}.png`,root).pathname});
+  await shot('board');
+  await page.getByRole('button',{name:'Parked',exact:true}).click();
+  assert.equal(await page.locator('.parked-lane').evaluate(e=>e.open),true);
+  await page.getByRole('button',{name:'Closed deals',exact:true}).click();await shot('closed');
+  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
+  await page.getByRole('button',{name:'Add deal',exact:true}).click();
+  assert.equal(await page.locator('#addDealDialog').evaluate(e=>e.scrollWidth<=e.clientWidth),true);
+  await shot('add');await page.keyboard.press('Escape');
+  assert.equal(await page.locator('#addDealOpen').evaluate(e=>e===document.activeElement),true);
+  assert.deepEqual(errors,[]);
+ });
+});
+
+
+test('closing a deal from its details removes the card and retains its close date in history', async t=>{
+ const {page,errors}=await open(t);
+ await page.locator('.kanban-column [data-id="d14"] .card-open').click();await page.waitForSelector('#detailPhase');
+ await page.locator('#detailPhase').selectOption('closed');
+ await page.getByLabel('Won',{exact:true}).check();
+ await page.locator('#completionClosedOn').fill('2026-10-04');
+ await page.locator('#completionConfirm').click();
+ await waitForAsync(page,()=>!document.querySelector('#completionDialog').open);
+ await page.getByLabel('Close deal',{exact:true}).click();
+ assert.equal(await page.locator('#kanban [data-id="d14"]').count(),0);
+ await page.getByRole('button',{name:'Closed deals',exact:true}).click();
+ assert.match(await page.locator('#closedDealsList [data-id="d14"]').textContent(),/Oct 4, 2026/);
+ assert.deepEqual(errors,[]);
+});
+
+test('a refused client stays editable with a clear error and a fresh creation key', async t=>{
+ const {page,errors}=await open(t);
+ await page.evaluate(async()=>{
+  const {state}=await import('/js/pipeline.js');const create=state.client.createDeal.bind(state.client);window.createKeys=[];
+  state.client.createDeal=async args=>{window.createKeys.push(args.idempotency_key);if(window.createKeys.length===1)throw Object.assign(new Error('Refused'),{creationRefused:true,payload:{error:'subject_not_found'}});return create(args);};
+ });
+ await page.getByRole('button',{name:'Add deal',exact:true}).click();
+ await page.getByLabel('Deal name',{exact:true}).fill('Demo Corrected Deal');
+ await page.getByLabel('Client',{exact:true}).fill('Unknown demo');
+ await page.getByRole('button',{name:'Create deal',exact:true}).click();
+ await waitForAsync(page,()=>document.querySelector('#addDealError').textContent.includes('Client not found'));
+ assert.equal(await page.getByLabel('Client',{exact:true}).isEnabled(),true);
+ await page.getByLabel('Client',{exact:true}).fill('C-demo');
+ await page.getByRole('button',{name:'Create deal',exact:true}).click();
+ await waitForAsync(page,()=>!document.querySelector('#addDealDialog').open);
+ const keys=await page.evaluate(()=>window.createKeys);assert.notEqual(keys[0],keys[1]);
+ assert.deepEqual(errors,[]);
+});

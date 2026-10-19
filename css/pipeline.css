@@ -71,7 +71,7 @@
 .board-toolbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-3); margin-top: var(--space-4); }
 .pipeline-layout { display: block; }
 /* Columns are a tonal step below the cards, so a card is not a box inside a box. */
-.kanban { grid-auto-flow: row; grid-auto-columns: auto; grid-template-columns: repeat(8,minmax(0,1fr)); overflow: visible; gap: var(--space-2); }
+.kanban { grid-auto-flow: row; grid-auto-columns: auto; grid-template-columns: repeat(7,minmax(0,1fr)); overflow: visible; gap: var(--space-2); }
 .kanban-column { min-width: 0; padding: var(--space-2); background: var(--ground); }
 .kanban-column > h3 { min-height: var(--space-7); gap: var(--space-1); }
 .kanban-card { height: auto; min-width: 0; grid-template-rows: none; align-content: start; gap: var(--space-1); padding: var(--space-2); overflow: hidden; }
@@ -115,7 +115,7 @@
 .phase-rail { display: flex; flex-wrap: wrap; gap: var(--space-1); margin-bottom: var(--space-4); }
 .phase-rail span { border: var(--hairline-width) solid var(--hairline); padding: var(--space-1) var(--space-2); border-radius: var(--radius-1); font-size: var(--font-size-1); color: var(--fg-muted); }
 .phase-rail span[aria-current="step"] { border-color: var(--fg); background: var(--surface-3); color: var(--fg); font-weight: var(--font-weight-strong); }
-@media(max-width:1200px) { .kanban { grid-template-columns: repeat(4,minmax(0,1fr)); } }
+@media(max-width:1440px) { .kanban { grid-template-columns: repeat(4,minmax(0,1fr)); } }
 @media(max-width:650px) { .kanban { grid-template-columns: repeat(2,minmax(0,1fr)); } .kanban-column:not(:has(.kanban-card)) { min-height: 0; } .detail-grid { grid-template-columns: 1fr; } .deal-row { grid-template-columns: minmax(0,1fr) auto; gap: var(--space-1) var(--space-2); } .deal-row h4 { grid-column: 1/-1; } .deal-row > .deal-stage { grid-column: 1; grid-row: 2; } .deal-row > .owner { grid-column: 2; grid-row: 2; } .deal-row .next-line, .deal-row .auto-move { grid-column: 1/-1; } .detail-controls { grid-template-columns: 1fr; } }
 @media(max-width:360px) { .kanban { grid-template-columns: minmax(0,1fr); } }
 @media(prefers-reduced-motion:reduce) { .kanban-card, .kanban-card:hover, .kanban-card[data-lifted="true"] { transition: none; transform: none; } }
@@ -141,3 +141,16 @@
 /* The editable deal dialog owns its grid; the shell supplies its viewport placement. */
 .has-app-layout dialog.deal-detail#recordPanel { width: min(1180px,calc(100vw - 28px)); padding: 0; }
 .has-app-layout .deal-detail #panelBody { display: block; }
+
+.closed-deals-list { display: grid; grid-template-columns: repeat(auto-fit,minmax(min(100%,280px),1fr)); gap: var(--space-3); }
+.closed-deal { padding: var(--space-4); min-width: 0; overflow-wrap: anywhere; }
+.closed-deal h3 { margin: 0 0 var(--space-3); }
+.closed-deal dl { display: grid; gap: var(--space-2); margin: 0; }
+.closed-deal dl > div { display: grid; grid-template-columns: 90px minmax(0,1fr); gap: var(--space-2); }
+.closed-deal dt { color: var(--fg-muted); }
+.closed-deal dd { margin: 0; }
+
+.add-deal-fields { border: 0; margin: 0; padding: 0; min-width: 0; }
+.add-deal-fields .field-grid { grid-template-columns: repeat(auto-fit,minmax(min(100%,180px),1fr)); }
+#addDealError:not(:empty) { color: var(--status-danger-ink); }
+#addDealOpen { margin-top: var(--space-3); }

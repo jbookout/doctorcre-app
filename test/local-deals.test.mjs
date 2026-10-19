@@ -32,7 +32,7 @@ test('notes summarize but retain original entry, including hostile text as data'
 test('W4 read binds the separate producer revision and versioned phase/parking fields', async () => {
  const {readFile} = await import('node:fs/promises');
  const contract = JSON.parse(await readFile(new URL('../contracts/carr-interface.v1.json',import.meta.url),'utf8')).mcp_read_contracts['deal-room-board'];
- assert.equal(contract.producer.source_commit,'7214532128a836a84d3e75a584e56facbf6662ba');
+ assert.equal(contract.producer.source_commit,'785c125c839cbebebeb78b4f722fe08e942cb639');
  assert.equal(contract.response.schema_version,'local-deals-board.v1');
  for(const key of ['operating_state','parking_note','phase_change','invoiced_on']) assert.ok(contract.response.deal_keys.includes(key));
 });
@@ -43,4 +43,10 @@ test('R11 non-phase board field evidence newer than review requests attention',(
   assert.equal(needsAttention(deal,now),true,field);
   assert.equal(needsAttention({...deal,last_review_at:'2026-10-01T17:00:00Z'},now),false);
  }
+});
+
+
+test('open local deals omit closed phases, terminal outcomes and invoices, including parked closures', () => {
+ const rows=[base,{...base,id:'closed',phase:'Closed'},{...base,id:'closed-slug',phase:'closed',operating_state:'parked'},{...base,id:'won',outcome:'won'},{...base,id:'paused',outcome:'paused'},{...base,id:'invoiced',invoiced_on:'2026-10-01'}];
+ assert.deepEqual(localDeals(rows).map(d=>d.id),['demo-1']);
 });

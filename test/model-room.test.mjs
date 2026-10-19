@@ -592,7 +592,7 @@ test("C13c-04 the honest unavailable and version-conflict sentences name the rea
 
 // MUTATION: remove read-room-queue from contracts/carr-interface.v1.json.
 test("C13-04 the contract pins the merged producer, its two dispatch writes, and V5-UX-C13b's composer write", () => {
-  assert.equal(contract.version, "1.46.0", "the current contract retains the Model Room operation");
+  assert.equal(contract.version, "1.47.0", "the current contract retains the Model Room operation");
   assert.deepEqual(contract.mcp_operations, [...contract.mcp_operations].toSorted(), "mcp_operations stays sorted");
   for (const verb of ["read-room", "read-room-queue", "read-session-identity", "read-dispatch-history"]) {
     assert.ok(contract.mcp_operations.includes(verb), `${verb} is not pinned`);

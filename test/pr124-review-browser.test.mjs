@@ -353,7 +353,7 @@ test('R6 resolution retains unknown request, reports refusal and never loses che
  await page.locator('#conflictForm button[type="submit"]').click();await page.waitForFunction(()=>!document.querySelector('#conflictDialog').open);assert.deepEqual(errors,[]);
 });
 test('R7 detail outages recover automatically and late failure cannot replace another detail',async t=>{
- const {page}=await open(t);
+ const {page}=await open(t,{many:true});
  await page.evaluate(async()=>{const {state}=await import('/js/pipeline.js');window.originalRead=state.client.getDeal.bind(state.client);state.client.getDeal=async()=>{throw Error('offline');};});
  await page.locator('.kanban-column [data-id="d14"]').click();await page.waitForTimeout(30);
  assert.match(await page.locator('#panelBody').textContent(),/Updates temporarily unavailable/);
@@ -361,7 +361,7 @@ test('R7 detail outages recover automatically and late failure cannot replace an
  await page.evaluate(async()=>{const {state}=await import('/js/pipeline.js');state.client.getDeal=async()=>({deal:null});});await readPanel(page);
  assert.match(await page.locator('#detailReadStatus').textContent(),/Updates temporarily unavailable/);
  await page.evaluate(async()=>{const {state}=await import('/js/pipeline.js');state.client.getDeal=id=>id==='d14'?new Promise((_,reject)=>window.failOld=()=>reject(Error('old'))):originalRead(id);dispatchEvent(new Event('online'));});
- await page.getByLabel('Close deal',{exact:true}).click();await page.locator('.kanban-column [data-id="d20"]').click();await page.waitForSelector('#detailNextForm');await page.evaluate(()=>failOld());await page.waitForTimeout(30);
+ await page.getByLabel('Close deal',{exact:true}).click();await page.locator('.kanban-column [data-id="demo-20"]').click();await page.waitForSelector('#detailNextForm');await page.evaluate(()=>failOld());await page.waitForTimeout(30);
  assert.doesNotMatch(await page.locator('#panelBody').textContent(),/Updates temporarily unavailable/);
 });
 for(const width of [1440,390]) test('R8 list Undo is visible and clickable at '+width,async t=>{

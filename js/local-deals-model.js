@@ -10,7 +10,17 @@ export const OWNER_FILTERS = Object.freeze([
 ]);
 export function localDeals(rows, owner = 'all') {
   return (rows || []).filter(d => d.workspace_kind !== 'national_account' && !d.account_client_id
-    && !d.invoiced_on && (owner === 'all' || d.owner === owner));
+    && !isClosedDeal(d) && (owner === 'all' || d.owner === owner));
+}
+export function isClosedDeal(deal) {
+  return String(deal.phase).toLowerCase() === 'closed' || Boolean(deal.outcome || deal.invoiced_on);
+}
+export function closedDeals(rows, owner = 'all', query = '') {
+  const search = query.trim().toLowerCase();
+  return (rows || []).filter(d => isClosedDeal(d) && d.workspace_kind !== 'national_account' && !d.account_client_id
+    && (owner === 'all' || d.owner === owner)
+    && (!search || [d.name, d.client_name, d.client_ref, d.type, d.closed_on].some(v => String(v || '').toLowerCase().includes(search))))
+    .sort((a,b) => String(b.closed_on || '').localeCompare(String(a.closed_on || '')) || String(a.name).localeCompare(String(b.name)));
 }
 export function needsAttention(deal, now = Date.now()) {
   if (deal.operating_state === 'parked') return false;

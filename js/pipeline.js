@@ -48,12 +48,12 @@ import {
   receiptsSignature, createFeedProgress, observeChangeBatch, performUndo,
 } from './change-receipts.mjs';
 import {
-  CLOSED_SLUG, COLUMNS, COMPLETION_CAPTIONS, closedColumnCaption, columnBySlug, columnByValue,
+  CLOSED_SLUG, COLUMNS, OPEN_COLUMNS, COMPLETION_CAPTIONS, closedColumnCaption, columnBySlug, columnByValue,
   columnLabel, completionPlan, contextDrawerSections, groupByColumn, keyboardTarget,
   loadDealContext, moveIntent, moveSummary, moveTitle, noteText, dealName, presenceChip,
   dealInsightLines,
 } from './pipeline-model.js';
-import { localDeals, needsAttention, urgencyOrder, concise, automaticMove, OWNER_FILTERS, PHASE_TRIGGERS } from './local-deals-model.js';
+import { closedDeals, localDeals, needsAttention, urgencyOrder, concise, automaticMove, OWNER_FILTERS, PHASE_TRIGGERS } from './local-deals-model.js';
 import { DATE_KINDS, renderPhaseTimeline, renderCriticalDates, renderDealTimeline, updateCountdowns } from './deal-timeline.js';
 import { uuidv4 } from './uuid.js';
 import { mountVisibilityPoll } from './visibility-poll.mjs';
@@ -86,7 +86,8 @@ const state = {
   filter: ['joe','dell'].includes(incomingScope.get('owner')) ? incomingScope.get('owner') : 'all',
   personalScope: incomingScope.get('owner') === 'me',
   scopeFilter: incomingScope.get('filter') === 'flagged' ? 'flagged' : 'all',
-  view: incomingScope.get('view') === 'list' ? 'list' : 'board',
+  view: ['list','closed'].includes(incomingScope.get('view')) ? incomingScope.get('view') : 'board',
+  closedDeals: null,
   parkedOpen: false,
   timelineFull: true,
   /** Ids, never rows: a lifted card, a chosen column, an open panel, a move in hand. */
@@ -162,11 +163,79 @@ function parkedHtml(deal) {
   return `<article class="kanban-card parked-card" data-id="${esc(deal.id)}" tabindex="0"><h4>${esc(dealTitle(deal))}</h4><p class="next-line">${esc(deal.parking_note || deal.parking_reason?.replaceAll('_',' ') || 'Parked')}</p><button class="btn btn-quiet" type="button" data-revive="${esc(deal.id)}">Revive</button></article>`;
 }
 
+let dealCreation = null;
+let creatingDeal = false;
+function syncDealCreation() {
+  $('addDealFields').disabled = creatingDeal || Boolean(dealCreation);
+  $('addDealSubmit').disabled = creatingDeal;
+  $('addDealCancel').disabled = creatingDeal;
+  $('addDealSubmit').textContent = creatingDeal ? 'Saving…' : dealCreation ? 'Check creation outcome' : 'Create deal';
+}
+function openAddDeal() {
+  if (!dealCreation) {
+    $('addDealForm').reset();
+    $('addDealOwner').value = state.selfActor || 'joe';
+    $('addDealError').textContent = '';
+  }
+  syncDealCreation();
+  $('addDealDialog').showModal();
+}
+async function submitDeal(event) {
+  event.preventDefault();
+  if (creatingDeal) return;
+  const errorBox = $('addDealError');
+  if (!dealCreation) {
+    const args = Object.fromEntries(new FormData($('addDealForm')));
+    for (const name of ['name','client','notes']) args[name] = args[name].trim();
+    if (!args.name || !args.client) {
+      errorBox.textContent = 'Enter a deal name and an existing client.'; errorBox.focus(); return;
+    }
+    dealCreation = {...args, lane:'territory', idempotency_key:uuidv4()};
+  }
+  creatingDeal = true; syncDealCreation(); errorBox.textContent = '';
+  try {
+    const request = dealCreation;
+    const result = await state.client.createDeal(request);
+    if (result?.status !== 'ok') throw new Error('Creation receipt unavailable');
+    dealCreation = null;
+    state.filter = request.owner; state.personalScope = false; state.scopeFilter = 'all';
+    const url = new URL(location.href); url.searchParams.set('owner',request.owner); url.searchParams.delete('filter'); history.replaceState({},'',url);
+    await loadBoard();
+    $('boardView').click();
+    $('addDealDialog').close();
+    const id = result.deal_id || result.deal?.id;
+    document.querySelector(`.kanban-card[data-id="${CSS.escape(id || '')}"] .card-open`)?.focus();
+    showToast('Deal created');
+  } catch (error) {
+    if (error.creationRefused) {
+      dealCreation = null;
+      const reasons = { subject_not_found:'Client not found. Use an existing client reference or exact name.', not_a_client:'Choose an existing client.', needs_disambiguation:'More than one client matches. Use the client reference.', deal_name_exists:'A deal with this name already exists. Use a distinct name.' };
+      errorBox.textContent = reasons[error.payload?.error] || 'Deal creation was refused. Check the client, name, type, and stage.';
+    } else errorBox.textContent = 'Creation not confirmed. The original request is retained. Check creation outcome to finish the same deal, owner, and notes.';
+    errorBox.focus();
+  } finally { creatingDeal = false; syncDealCreation(); }
+}
+
+function renderClosedDeals() {
+  const archived = state.closedDeals;
+  const rows = closedDeals([...new Map([...(archived || []), ...state.deals.values()].map(d => [d.id,d])).values()], state.filter, $('closedSearch').value);
+  $('closedCount').textContent = archived === null ? 'Closed history is unavailable. Refresh to try again.' : `${rows.length} closed deals`;
+  $('closedDealsList').innerHTML = rows.map(d => `<article class="closed-deal glass" data-id="${esc(d.id)}">
+    <h3>${esc(dealTitle(d))}</h3><dl><div><dt>Client</dt><dd>${esc(d.client_name || d.client_ref || 'Not recorded')}</dd></div>
+    <div><dt>Type</dt><dd>${esc(d.type || 'Not recorded')}</dd></div><div><dt>Close date</dt><dd>${esc(d.closed_on ? dateWords(d.closed_on) : 'Not recorded')}</dd></div>
+    <div><dt>Owner</dt><dd>${esc(actorName(d.owner))}</dd></div></dl>${autoHtml(d)}</article>`).join('') || (archived === null ? '' : '<p>No closed deals match this search.</p>');
+}
+
 function renderBoard() {
   const board = $('kanban');
   // Fresh snapshots still enter state; dragend or the press's release paints
   // them, so a refresh never detaches a card under a press or drag.
   if (!board) return;
+  board.hidden = state.view === 'closed';
+  $('boardLive').hidden = state.view === 'closed';
+  $('closedDealsView').hidden = state.view !== 'closed';
+  $('parkedToggle').hidden = state.view === 'closed';
+  if (state.view === 'closed') { renderClosedDeals(); return; }
   if (board.dataset.pressed === 'true' || board.querySelector('[data-dragging="true"]')) { state.paintDeferred = true; return; }
   state.paintDeferred = false;
   const rows = localDeals([...state.deals.values()], state.personalScope ? state.selfActor : state.filter)
@@ -175,6 +244,7 @@ function renderBoard() {
   publishDocRead('getBoard', { deals: rows });
   const active = rows.filter(d => d.operating_state !== 'parked');
   const parked = rows.filter(d => d.operating_state === 'parked');
+  say(`${active.length} open deals · ${parked.length} parked`);
   const grouped = groupByColumn(active);
   state.unplaced = grouped.unplaced.length;
   preserveBoardFocus({ board, document, announce, paint() {
@@ -272,6 +342,7 @@ function noteCellBase(cell, event) {
 function applyBoardSnapshot(board) {
   state.selfActor = board.actor || state.client.selfActor || state.selfActor;
   if (state.personalScope && ['joe','dell'].includes(state.selfActor)) state.filter = state.selfActor;
+  state.closedDeals = Array.isArray(board.closed_deals) ? board.closed_deals : null;
   state.deals = new Map((board.deals || []).map((deal) => [deal.id, deal]));
   // The base for each editable cell, from the same read as the values, through
   // the forward-only rule — a read already open when a write was confirmed
@@ -293,7 +364,6 @@ async function loadBoard() {
     return;
   }
   await pollOnce(true);
-  say(`${state.deals.size} deals`);
 }
 
 async function pollOnce(initial = false) {
@@ -1101,7 +1171,7 @@ function wireBoard() {
       document.querySelector(`.kanban-card[data-id="${CSS.escape(id)}"]`)?.focus();
       return;
     }
-    const next = keyboardTarget(state.target, event.key, COLUMNS);
+    const next = keyboardTarget(state.target, event.key, OPEN_COLUMNS);
     if (next) {
       event.preventDefault();
       state.target = next;
@@ -1131,7 +1201,6 @@ function wire() {
     history.replaceState({},'',url);
     renderChips();
     renderBoard();
-    say(`Showing ${state.filter === 'all' ? 'all owners' : actorName(state.filter)} on the board.`);
   });
 
   document.addEventListener('click', async (event) => {
@@ -1152,6 +1221,13 @@ function wire() {
       openPanel(openDeal.dataset.openDeal, null);
     }
   });
+
+  $('addDealStage').innerHTML = OPEN_COLUMNS.map(c => `<option value="${esc(c.value)}">${esc(c.label)}</option>`).join('');
+  $('addDealOpen').addEventListener('click', openAddDeal);
+  $('addDealForm').addEventListener('submit', submitDeal);
+  $('addDealCancel').addEventListener('click', () => $('addDealDialog').close());
+  $('addDealDialog').addEventListener('cancel', event => { if (creatingDeal) event.preventDefault(); });
+  $('addDealDialog').addEventListener('close', () => $('addDealOpen').focus());
 
   $('recordPanel')?.addEventListener('cancel', (event) => { event.preventDefault(); closePanel(); });
   $('panelClose')?.addEventListener('click', closePanel);
@@ -1225,8 +1301,11 @@ function wire() {
     state.view = view;
     const url = new URL(location.href); url.searchParams.set('view',view); history.replaceState({},'',url);
     $('boardView').setAttribute('aria-pressed', String(view === 'board'));
-    $('listView').setAttribute('aria-pressed', String(view === 'list')); renderBoard();
+    $('listView').setAttribute('aria-pressed', String(view === 'list'));
+    $('closedView').setAttribute('aria-pressed', String(view === 'closed')); renderBoard();
   };
+  $('closedView').addEventListener('click', () => changeView('closed'));
+  $('closedSearch').addEventListener('input', renderClosedDeals);
   $('boardView').addEventListener('click', () => changeView('board'));
   $('listView').addEventListener('click', () => changeView('list'));
   $('parkedToggle').addEventListener('click', () => { state.parkedOpen = !state.parkedOpen; $('parkedToggle').setAttribute('aria-pressed',String(state.parkedOpen)); renderBoard(); });
@@ -1340,6 +1419,7 @@ async function boot() {
   });
   $('boardView').setAttribute('aria-pressed',String(state.view === 'board'));
   $('listView').setAttribute('aria-pressed',String(state.view === 'list'));
+  $('closedView').setAttribute('aria-pressed',String(state.view === 'closed'));
   await loadBoard();
   mountVisibilityPoll({ intervalMs: BOARD_REFRESH_MS, poll: () => { refreshPanel(); } });
   setInterval(() => updateCountdowns($('panelBody')),1000);
