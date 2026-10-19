@@ -3,8 +3,10 @@ import {readFile} from 'node:fs/promises';
 import test from 'node:test';
 import {JSDOM} from 'jsdom';
 import {createLiveClient} from '../js/live-client.js';
-import {boardView, deliveryDetail} from '../js/progress-board-model.js';
+import {boardView, deliveryDetail, expandBoardRead} from '../js/progress-board-model.js';
 import {mountJobDetail} from '../js/job-detail.js';
+import {observeDocClient} from '../js/doc-context.js';
+import {createDocContext, docAnswer} from '../js/doc-context-model.js';
 
 test('a compact published board restores every task fact before cards and raw details read it', async () => {
   const read = {ok:true, snapshot:{board_id:'synthetic', version:3,
@@ -18,8 +20,12 @@ test('a compact published board restores every task fact before cards and raw de
         status:'running', executor:'', evidence:null, question:'', health:'healthy', optional:false,
         consumer_proof:{result:'failed', receipt:{ref:'different-receipt'}}, stage_history:[]}}}}, questions:[]};
   const original = structuredClone(read);
-  const client = createLiveClient({fetchImpl:async () => new Response(JSON.stringify({result:{content:[{text:JSON.stringify(read)}]}}))});
+  const context = createDocContext({page:'progress'});
+  const client = observeDocClient(createLiveClient({docContext:false,
+    fetchImpl:async () => new Response(JSON.stringify({result:{content:[{text:JSON.stringify(read)}]}}))}), context);
   const expanded = await client.readProgressBoard({board_id:'synthetic'});
+  context.select('task', 'inherited');
+  assert.equal(docAnswer(context.snapshot(), {recordId:'inherited', question:'Status'}).value, 'review');
   assert.deepEqual(expanded.snapshot.snapshot_json.tasks, {
     inherited:{title:'Synthetic inherited task', status:'review', executor:'Codex gpt-6-sol high',
       evidence:'https://example.test/proof', question:'Synthetic review question', health:'question', optional:true,
@@ -30,11 +36,14 @@ test('a compact published board restores every task fact before cards and raw de
       health:'healthy', optional:false, consumer_proof:{result:'failed', receipt:{ref:'different-receipt'}}, stage_history:[]},
   });
   assert.equal('task_defaults' in expanded.snapshot.snapshot_json, false);
+  assert.equal(expanded.snapshot.snapshot_json.schema, 'carr-progress-board.v2');
+  assert.strictEqual(expandBoardRead(expanded), expanded, 'expanded reads are idempotent');
   assert.deepEqual(read, original);
   const at = new Date('2026-10-19T12:00:00Z');
   const view = boardView(expanded, at);
   assert.equal(view.error, null);
   assert.deepEqual(boardView(read, at), view, 'direct model consumers expand the same envelope');
+  assert.deepEqual(read, original, 'direct expansion leaves its input unchanged');
   assert.equal(view.cards[0].stage, 'review');
   assert.deepEqual(deliveryDetail(view.cards[0], at).history.map(row => row.stage), ['queued','review']);
   const dom = new JSDOM(await readFile(new URL('../control-room.html', import.meta.url), 'utf8'), {url:'https://example.test/control-room'});
@@ -46,4 +55,31 @@ test('a compact published board restores every task fact before cards and raw de
   assert.match(body, /original detail/);
   assert.match(body, /2026-10-18T12:00:00Z/);
   dom.window.close();
+});
+
+test('legacy published boards keep their task values and malformed optional rows retain their existing handling', () => {
+  for (const schema of [undefined, 'carr-progress-board.v1', 'carr-progress-board.v2']) {
+    const read = {snapshot:{board_id:'synthetic', snapshot_json:{schema,
+      tasks:{valid:{title:'Synthetic legacy task', status:'queued'}, invalid:null}}}};
+    assert.strictEqual(expandBoardRead(read), read);
+    assert.deepEqual(boardView(read).cards.map(row => row.title), ['Synthetic legacy task']);
+  }
+});
+
+test('malformed compact defaults and task rows fail the read before incomplete facts can be shown', async () => {
+  const malformed = [
+    {tasks:{synthetic:{title:'Synthetic task'}}},
+    ...[null, [], 'wrong', 1, {}].map(task_defaults => ({task_defaults, tasks:{synthetic:{title:'Synthetic task'}}})),
+    ...[null, [], 'wrong', 1].map(task => ({task_defaults:{status:'review'}, tasks:{synthetic:task}})),
+    ...[null, [], 'wrong', 1].map(tasks => ({task_defaults:{status:'review'}, tasks})),
+  ];
+  for (const data of malformed) {
+    const read = {ok:true, snapshot:{board_id:'synthetic', version:1,
+      snapshot_json:{schema:'carr-progress-board.v3', ...data}}};
+    const client = createLiveClient({fetchImpl:async () => new Response(JSON.stringify({result:{content:[{text:JSON.stringify(read)}]}}))});
+    await assert.rejects(client.readProgressBoard({board_id:'synthetic'}), /compact|defaults|tasks/i);
+    const view = boardView(read);
+    assert.match(view.error, /compact|defaults|tasks/i);
+    assert.deepEqual(view.cards, []);
+  }
 });

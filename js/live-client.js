@@ -11,6 +11,7 @@ import { readinessRequest, threadRequest } from './correspondence-model.js';
 import { fetchRead, readWithDeadline } from './current-read.mjs';
 import { createMcpRequests, unknownMcpOutcome } from './mcp-requests.mjs';
 import { observeDocClient } from './doc-context.js';
+import { expandBoardRead } from './progress-board-model.js';
 
 // Verified pre-commit refusals from new-deal and its argument/subject checks
 // in CARR producer 0cc6fe2538a81521bf8c25b0df58aa4063ed614b. Internal and
@@ -593,7 +594,7 @@ export function createLiveClient(opts = {}) {
       return write(verb, args);
     },
     async listProgressBoards(_args = {}, { signal } = {}) { return rpc('list-progress-boards', {}, signal); },
-    async readProgressBoard(args, { signal } = {}) { return rpc('read-progress-board', args, signal); },
+    async readProgressBoard(args, { signal } = {}) { return expandBoardRead(await rpc('read-progress-board', args, signal)); },
     async answerBoardQuestion(args) { return write('answer-board-question', args); },
     async setNotificationPreference(args) { return write('set-notification-preference', args); },
 
