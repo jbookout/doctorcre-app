@@ -474,7 +474,10 @@ function wire() {
     selectDocRecord(null,null); pageDocContext?.release('readLoop');
     view.detailSequence += 1;
     if (view.state.idea) { view.state = { ...view.state, idea: null }; remember({ push: true }); }
-    if (selectedIdea && view.state.tab === 'ideas') {
+    const activeElement = document.activeElement;
+    if (selectedIdea && view.state.tab === 'ideas'
+      && (!activeElement || activeElement === document.body || !activeElement.isConnected
+        || $("ideaDialog")?.contains(activeElement))) {
       const cards = $("ideaList")?.querySelectorAll("[data-idea]") || [];
       const card = [...cards].find((candidate) => candidate.dataset.idea === selectedIdea);
       (card || $("ideaRefresh"))?.focus({ preventScroll: true });
