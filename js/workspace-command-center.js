@@ -1,3 +1,4 @@
+import {onDialogClosed} from './dialog-lifecycle.js';
 import { pageDocContext, publishDocRead, selectDocRecord, setDocFilters } from './doc-context.js';
 import { projectInvoices, invoiceHref, invoiceMoney, invoiceDate } from './invoice-tracker-model.js';
 import { introductionSuggestions } from './relationship-network-model.js';
@@ -119,7 +120,7 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
     $('homeDetail').querySelector('[data-close-detail]').onclick = () => $('homeDetail').close();
     if (focused) ([...$('homeDetail').querySelectorAll('[data-home-key]')].find(node => node.dataset.homeKey === focused) || $('homeDetail').querySelector('[data-close-detail]'))?.focus();
   };
-  $('homeDetail').addEventListener('close', () => { selectedLead = null; selectDocRecord(null,null); });
+  onDialogClosed($('homeDetail'), () => { selectedLead = null; selectDocRecord(null,null); });
   $('homeLeads').addEventListener('click', event => {
     const button = event.target.closest('[data-lead]');
     const lead = leadEntries.get(button?.dataset.lead);

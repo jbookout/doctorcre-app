@@ -1,3 +1,4 @@
+import {onDialogClosed} from './dialog-lifecycle.js';
 import { dealInsightLines } from './pipeline-model.js';
 import { selectDocRecord, setDocFilters, publishDocRead } from './doc-context.js';
 import { createClient, PHASES, PHICON, ACTOR_LABEL, phaseLabel } from './client.js';
@@ -1255,7 +1256,7 @@ async function finishAgenda(status = 'completed') {
 }
 
 function wireEvents() {
-  $('#dealDialog').addEventListener('close', () => {
+  onDialogClosed($('#dealDialog'), () => {
     ++dealDetailSequence;
     disposeDealEvidence?.();
     disposeDealEvidence = null;
@@ -1405,4 +1406,4 @@ if (typeof document !== 'undefined' && document.getElementById('rows')) {
   });
 }
 
-if (typeof document !== 'undefined') document.getElementById('dealDialog')?.addEventListener('close', () => selectDocRecord(null, null));
+if (typeof document !== 'undefined') onDialogClosed(document.getElementById('dealDialog'), () => selectDocRecord(null, null));

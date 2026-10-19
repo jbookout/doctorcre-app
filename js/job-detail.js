@@ -1,3 +1,4 @@
+import {onDialogClosed} from './dialog-lifecycle.js';
 import {taskSummary,jobLinks} from './progress-board-model.js';
 import {readWithDeadline} from './auto-refresh.mjs';
 import {escapeText as escape} from './change-receipts.mjs';
@@ -68,7 +69,7 @@ export function mountJobDetail({client,document}) {
   }catch(error){if(current()){if([401,403].includes(error.status)){dialog.close();body.replaceChildren();return;}paint(false,'Linked Work Request temporarily unavailable');}}
   await progressReading;
  }
- dialog.addEventListener('close',()=>{selected=null;workRequest=null;progressRead=undefined;paintedHtml=null;++generation;currentTrigger(document,trigger)?.focus();});
+ onDialogClosed(dialog,()=>{selected=null;workRequest=null;progressRead=undefined;paintedHtml=null;++generation;currentTrigger(document,trigger)?.focus();});
  document.getElementById('jobClose').onclick=()=>dialog.close();
  return {
   open(task,{source:readSource='board'}={}){trigger=rememberTrigger(document);selected=task;source=readSource;sourceState=task.source_state||'read';workRequest=null;progressRead=undefined;++generation;paint(Boolean(jobLinks(task).workRequest));if(!dialog.open)dialog.showModal();refresh();},refresh,

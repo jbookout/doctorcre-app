@@ -1,4 +1,6 @@
 import { test, expect } from '@playwright/test';
+import { requireStagingAuthority, withJourneyFixture } from './journey-fixture.mjs';
+import { leaseDetails } from './journey-flows.mjs';
 
 test.beforeEach(async ({ page }) => {
   await page.addLocatorHandler(page.getByRole('button', { name: 'Dismiss morning brief' }), async dismiss => { await dismiss.click(); });
@@ -14,16 +16,9 @@ test('Leases switch missing dates and timeline', async ({ page }) => {
 });
 
 test('A lease opens and closes its details', async ({ page }) => {
-  await page.goto('/leases');
-  await expect(page.locator('#leaseUpdated')).toContainText('Updated', { timeout: 27000 });
-  const lease = page.locator('#leaseRadar [data-lease]').first();
-  if (await lease.count() === 0) await page.getByRole('button', { name: 'Missing dates', exact: true }).click();
-  test.skip(await lease.count() === 0, 'Staging has no dated or missing-date lease; its append-only lease writer has no complete fixture cleanup.');
-  await lease.click();
-  await expect(page.locator('#leaseDetail')).toBeVisible();
-  await expect(page.locator('#leaseDetailTitle')).not.toBeEmpty();
-  await page.keyboard.press('Escape');
-  await expect(page.locator('#leaseDetail')).toBeHidden();
+  test.setTimeout(420000);
+  await requireStagingAuthority(page.request);
+  await withJourneyFixture(fixture => leaseDetails(page, fixture));
 });
 
 test('Leases search, clear, scope to mine and refresh', async ({ page }) => {
