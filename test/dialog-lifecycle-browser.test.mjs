@@ -122,4 +122,45 @@ for (const width of [390, 1440]) {
     });
     assert.deepEqual(closed, {trusted: true, open: false, selected: null, focus: '22222222-2222-4222-8222-222222222222'});
   });
+
+  test(`Tour Day preserves reopened note audio until a true native close at ${width}px`, async t => {
+    const page = await open(t, width);
+    await page.evaluate(async () => {
+      const {mountTourDay} = await import('/tours/day.js');
+      const {detail} = await import('/test/fixtures/tour-day.synthetic.mjs');
+      const html = await (await fetch('/tours/day.html')).text();
+      document.body.innerHTML = new DOMParser().parseFromString(html, 'text/html').body.innerHTML;
+      history.replaceState(null, '', `?tour=${detail.id}`);
+      const note = {id: 'synthetic-note', scope: 'synthetic', tour_id: detail.id, property_id: detail.stops[0].property_id,
+        status: 'local', captured_at: '2026-10-01T10:00:00Z', audio: new Blob(['synthetic audio'], {type: 'audio/webm'})};
+      const api = {session: async () => ({scope: 'synthetic', user_ref: 'synthetic'}), tour: async () => detail};
+      const store = {list: async () => [note], putTour: async () => {}};
+      window.tourDay = mountTourDay({document, window, api, store, prepareOffline: async () => {},
+        mapFactory: () => ({dispatch() {}, update() {}, navigationLinks: () => [], destroy() {}})});
+      await window.tourDay.ready;
+      document.querySelector('.note-card').click();
+    });
+    const reopened = await page.evaluate(async () => {
+      const dialog = document.querySelector('#day-dialog');
+      const closed = new Promise(resolve => dialog.addEventListener('close', event => resolve({trusted: event.isTrusted, open: dialog.open}), {once: true}));
+      document.querySelector('#day-dialog-close').click();
+      document.querySelector('.note-card').click();
+      window.noteAudioUrl = dialog.querySelector('audio').src;
+      const stale = await closed;
+      const audio = await fetch(window.noteAudioUrl).then(response => response.text(), () => null);
+      return {stale, open: dialog.open, audio, focusInside: dialog.contains(document.activeElement)};
+    });
+    assert.deepEqual(reopened, {stale: {trusted: true, open: true}, open: true, audio: 'synthetic audio', focusInside: true});
+    const closed = await page.evaluate(async () => {
+      const dialog = document.querySelector('#day-dialog');
+      const event = new Promise(resolve => dialog.addEventListener('close', event => resolve(event.isTrusted), {once: true}));
+      dialog.close();
+      const trusted = await event;
+      const readable = await fetch(window.noteAudioUrl).then(() => true, () => false);
+      const result = {trusted, open: dialog.open, readable, noteFocused: document.activeElement.matches('.note-card')};
+      window.tourDay.dispose();
+      return result;
+    });
+    assert.deepEqual(closed, {trusted: true, open: false, readable: false, noteFocused: true});
+  });
 }
