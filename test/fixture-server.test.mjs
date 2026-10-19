@@ -1,10 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { execFile } from 'node:child_process';
+import { execFile, execFileSync } from 'node:child_process';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
+import { setTimeout as delay } from 'node:timers/promises';
 import { startFixtureServer } from '../scripts/fixture-server.mjs';
 
 const within = (promise, ms) => Promise.race([promise,
@@ -80,5 +81,45 @@ for (const mode of ['default', 'ambient', 'explicit', 'empty']) {
     const result = await run(process.execPath, ['--input-type=module', '-e', probe, JSON.stringify({ options, expected })],
       { env, timeout: 20000 });
     assert.equal(result.stderr, '');
+  });
+}
+
+for (const cancellation of ['timeout', 'abort']) {
+  test(`fixture probe ${cancellation} reaps its fixture and releases its port`, async () => {
+    const controller = new AbortController();
+    const result = run(process.execPath, ['--input-type=module', '-e', `
+      const { fixtureServer } = await import(${JSON.stringify(harness)});
+      const server = await fixtureServer();
+      console.log('READY ' + server.origin);
+      try { await new Promise(() => {}); } finally { await server.close(); }
+    `], { timeout: 5000, signal: controller.signal });
+    const finished = result.then(() => null, error => error);
+    let fixturePid;
+    try {
+      const origin = await within(new Promise(resolve => {
+        let output = '';
+        result.child.stdout.on('data', data => {
+          output += data;
+          const match = output.match(/READY (http:\/\/127\.0\.0\.1:\d+)/);
+          if (match) resolve(match[1]);
+        });
+      }), 4000);
+      fixturePid = Number(execFileSync('pgrep', ['-P', String(result.child.pid)], { encoding: 'utf8' }).trim());
+      assert.ok(fixturePid);
+      if (cancellation === 'abort') controller.abort();
+      assert.ok(await within(finished, 7000), 'cancellation must reject the probe');
+      await assert.rejects(fetch(origin, { signal: AbortSignal.timeout(1000) }), 'fixture port must be closed');
+      for (let attempt = 0; attempt < 100; attempt++) {
+        try { process.kill(fixturePid, 0); } catch { break; }
+        await delay(20);
+      }
+      assert.throws(() => process.kill(fixturePid, 0), { code: 'ESRCH' }, 'fixture process must be reaped');
+    } finally {
+      if (fixturePid) {
+        try { process.kill(fixturePid, 'SIGKILL'); } catch (error) { if (error.code !== 'ESRCH') throw error; }
+      }
+      result.child.kill('SIGKILL');
+      await within(finished, 5000);
+    }
   });
 }
