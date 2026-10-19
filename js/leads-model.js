@@ -43,10 +43,9 @@ export function hotLeadPanel(leads) {
 const scoreValue = lead => lead.score == null || !Number.isFinite(Number(lead.score)) ? -Infinity : Number(lead.score);
 export function marketCounts(leads, filters = {}) {
   const counts = new Map();
-  for (const lead of visibleLeads(leads, { ...filters, market: "", stage: filters.stage === "archived" ? "" : filters.stage })) {
-    if (normalizedStage(lead) === "archived") continue;
-    const key = marketKey(lead); const group = counts.get(key) || { key, count: 0, city: lead.city, state: lead.state };
-    group.count++; counts.set(key, group);
+  for (const lead of visibleLeads(leads, filters)) {
+    const key = marketKey(lead); const group = counts.get(key) || { key, count: 0, city: lead.city, state: lead.state, leadIds: [] };
+    group.count++; group.leadIds.push(lead.id); counts.set(key, group);
   }
   return [...counts.values()].sort((a, b) => b.count - a.count || a.key.localeCompare(b.key));
 }

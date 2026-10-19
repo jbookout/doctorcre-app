@@ -15,8 +15,8 @@ const options = (rows, selected, all) => `<option value="">${all}</option>${rows
 
 export function mountLeadsWorkspace(doc = document, client = createLeadBoardClient(), { mapFactory = mountTerritoryMap } = {}) {
   const $ = id => doc.getElementById(id), win = doc.defaultView || globalThis.window;
-  const state = { board: null, readFailed: false, actor: null, epoch: 0, detailEpoch: 0, reviewEpoch: 0, filters: { search: "", owner: "", stage: "", market: "" }, mobileStage: null,
-    detail: null, detailId: null, resumeReview: null, commandFeedback: null, connectionFeedback: null, proposal: null, reviewTarget: null, pending: null, writing: false, identityReady: false, trigger: null, drag: null, map: null };
+  const state = { board: null, readFailed: false, actor: null, epoch: 0, detailEpoch: 0, reviewEpoch: 0, filters: { search: "", owner: "", stage: "", market: "" },
+    selectedId: null, detail: null, detailId: null, resumeReview: null, commandFeedback: null, connectionFeedback: null, proposal: null, reviewTarget: null, pending: null, writing: false, identityReady: false, trigger: null, drag: null, map: null };
   const leadById = id => state.board?.leads.find(lead => lead.id === id && eligibleLead(lead));
   const reviewComplete = (lead, target, undoEventId) => (undoEventId ? lead.stage : normalizedStage(lead)) === target;
   function captureReviewDraft() {
@@ -24,18 +24,19 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
     if (draft && input) draft.answer = input.value;
     return draft;
   }
+  const locationLabel = lead => !state.map ? "Checking location…" : state.map.hasLocation?.(lead) ? "Market area only" : "No location";
   function card(lead) {
     const move = automaticMove(lead), undo = undoReview(lead);
     const possible = lead.possible_clients || [];
-    return `<article class="lead-card" data-lead-id="${esc(lead.id)}" tabindex="0" role="button" aria-label="${esc(leadTitle(lead))}" draggable="true">
+    return `<article class="lead-card" data-lead-id="${esc(lead.id)}" tabindex="0" role="button" aria-label="${esc(leadTitle(lead))}" aria-pressed="${lead.id === state.selectedId}" draggable="true">
       <span class="drag-handle" data-drag-handle aria-hidden="true">⠿</span><h3>${esc(leadTitle(lead))}</h3>
-      <div class="card-foot"><span class="lead-market">${esc(marketKey(lead))}</span><span class="score"><small>Score</small>${score(lead)}</span></div>
+      <div class="card-foot"><span class="lead-market">${esc(marketKey(lead))}<small class="lead-location">${locationLabel(lead)}</small></span><span class="score"><small>Score</small>${score(lead)}</span></div>
       ${move ? `<div class="auto-move">Moved by Doc: ${esc(move.reason || "stage updated")} ${shortDate(move.evidence_date || move.occurred_at)}${undo ? `<button data-undo="${esc(lead.id)}">Undo</button>` : ""}</div>` : ""}
       ${possible.map(match => `<div class="client-hint">possible client: ${esc(match.name)} <button data-link="${esc(lead.id)}" data-client-id="${esc(match.client_id)}" aria-label="Link ${esc(leadTitle(lead))} to ${esc(match.name)}">Link</button></div>`).join("")}
     </article>`;
   }
   function focusIdentity(node) {
-    const container = node?.closest?.("#leadBoard, #hotLeads, #marketCounts");
+    const container = node?.closest?.("#leadBoard, #hotLeads, #marketCounts, #mapLeadMembers");
     if (container) {
       for (const attr of ["data-claim", "data-undo", "data-link", "data-lead-id", "data-market"]) {
         if (node.hasAttribute(attr)) return { container: container.id, attr, value: node.getAttribute(attr), client: node.dataset.clientId };
@@ -57,6 +58,7 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
     if (state.board && !owners.includes(state.filters.owner)) state.filters.owner = "";
     if (state.board && !markets.includes(state.filters.market)) state.filters.market = "";
     const shown = visibleLeads(leads, state.filters);
+    if (!shown.some(lead => lead.id === state.selectedId)) state.selectedId = null;
     setDocFilters(state.filters);
     if (state.board) publishDocRead("getWorkspace", { ...state.board, leads: shown });
     const active = visibleLeads(leads);
@@ -68,21 +70,24 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
     $("marketFilter").innerHTML = options(markets.map(k => [k, k]), state.filters.market, "All markets");
     $("clearMarket").hidden = !state.filters.market;
     $("marketCounts").innerHTML = groups.map(g => `<button data-market="${esc(g.key)}" aria-pressed="${g.key === state.filters.market}">${esc(g.key)}<b>${g.count}</b></button>`).join("") || '<p class="empty">No leads in these markets</p>';
-    state.map?.update(groups, state.filters.market);
+    state.map?.update(groups, state.selectedId);
+    const unlocated = state.map ? shown.filter(lead => !state.map.hasLocation?.(lead)).length : 0;
+    $("mapLeadMembers").querySelector("summary").textContent = `${shown.length} ${shown.length === 1 ? "lead" : "leads"} · ${unlocated} no location`;
+    $("mapLeadMembers").querySelector("div").innerHTML = shown.map(lead => `<button data-lead-id="${esc(lead.id)}" aria-pressed="${lead.id === state.selectedId}">${esc(leadTitle(lead))}<small>${esc(marketKey(lead))} · ${locationLabel(lead)}</small></button>`).join("") || '<p class="empty">No matching leads</p>';
     const hot = hotLeadPanel(leads);
     $("hotTitle").textContent = hot.claimable || !hot.newTotal ? "Hottest leads to claim" : "Hottest New leads";
     $("hotSummary").textContent = !state.board ? "The hottest leads appear once the lead board loads." : hot.claimable ? `${hot.newTotal - hot.claimed} of ${hot.newTotal} New leads unclaimed`
       : hot.newTotal ? `All ${hot.newTotal} New leads are claimed` : "No New leads yet. The next new-lead search adds them here.";
     $("hotLeads").innerHTML = hot.rows.map((lead, i) => `<article class="hot-row" data-lead-id="${esc(lead.id)}" tabindex="0" role="button" aria-label="${esc(leadTitle(lead))}"><span class="hot-rank">${i + 1}</span><div><h3>${esc(leadTitle(lead))}</h3><small>${esc(marketKey(lead))}</small></div><span class="score">${score(lead)}</span>${hot.claimable ? `<button data-claim="${esc(lead.id)}">Claim</button>` : `<span class="hot-owner">${esc(ownerName(lead.owner))}</span>`}</article>`).join("");
     $("hotLeads").setAttribute("aria-busy", "false");
-    const currentStage = state.filters.stage || state.mobileStage || BOARD_STAGES.find(([key]) => shown.some(lead => normalizedStage(lead) === key))?.[0] || "new";
-    $("mobileStage").innerHTML = FILTER_STAGES.map(([key, label]) => `<option value="${key}"${key === currentStage ? " selected" : ""}>${esc(label)} · ${visibleLeads(leads, { ...state.filters, stage: key }).length}</option>`).join("");
+    const currentStage = state.filters.stage;
+    $("mobileStage").innerHTML = `<option value="">All stages · ${shown.length}</option>` + FILTER_STAGES.map(([key, label]) => `<option value="${key}"${key === currentStage ? " selected" : ""}>${esc(label)} · ${visibleLeads(leads, { ...state.filters, stage: key }).length}</option>`).join("");
     if (state.filters.stage === "archived") {
       $("leadBoard").innerHTML = `<div class="filtered-list" aria-label="${stageLabel(state.filters.stage)}">${shown.map(card).join("") || '<p class="empty">No matching leads</p>'}</div>`;
     } else {
       $("leadBoard").innerHTML = `<div class="stage-columns">${BOARD_STAGES.map(([key, text]) => {
         const rows = shown.filter(lead => normalizedStage(lead) === key);
-        return `<section class="stage-column" data-mobile-current="${key === currentStage}" data-stage="${key}" aria-label="${text}"><h2 class="stage-head">${text}<span>${rows.length}</span></h2><div class="lead-stack">${rows.map(card).join("") || `<p class="stage-empty">No leads in ${text}</p>`}</div></section>`;
+        return `<section class="stage-column" data-mobile-current="${!currentStage || key === currentStage}" data-stage="${key}" aria-label="${text}"><h2 class="stage-head">${text}<span>${rows.length}</span></h2><div class="lead-stack">${rows.map(card).join("") || `<p class="stage-empty">No leads in ${text}</p>`}</div></section>`;
       }).join("")}</div>`;
     }
     // The time states the snapshot on screen, as Deals does: a failed refresh
@@ -108,7 +113,7 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
   function clearPrivateView() {
     pageDocContext?.clear();
     state.commandFeedback = null; state.connectionFeedback = null; state.board = null; state.detailId = null; state.detail = null; state.proposal = null; state.reviewTarget = null; state.resumeReview = null; state.pending = null;
-    state.filters = { search: "", owner: "", stage: "", market: "" }; state.mobileStage = null; state.trigger = null; state.drag = null;
+    state.filters = { search: "", owner: "", stage: "", market: "" }; state.trigger = null; state.drag = null;
     $("leadSearch").value = ""; $("detailTitle").textContent = ""; $("stageTitle").textContent = "";
     $("stageError").textContent = ""; $("moveAnnouncement").textContent = ""; $("saveStage").disabled = true;
     ++state.detailEpoch; ++state.reviewEpoch; $("leadDetail").close(); $("stageDialog").close();
@@ -147,7 +152,6 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
         if ((state.pending.kind === "link" && current?.client_id === state.pending.clientId) ||
             (state.pending.kind === "stage" && move?.idempotency_key === state.pending.key) ||
             (state.pending.kind === "claim" && current?.owner === state.pending.actor)) {
-          if (state.pending.kind === "stage") state.mobileStage = state.pending.stage;
           state.pending = null; state.commandFeedback = null; $("stageDialog").close();
         }
       }
@@ -206,7 +210,7 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
   async function readDetail(id, open = true) {
     const lead = leadById(id), epoch = ++state.detailEpoch, actor = state.actor;
     if (!lead || !state.identityReady) return;
-    if (open) { selectDocRecord("lead", id); state.detailId = id; state.detail = null; state.trigger = focusIdentity(doc.activeElement); $("detailTitle").textContent = leadTitle(lead); $("detailBody").innerHTML = '<p class="empty">Updating…</p>'; $("leadDetail").showModal(); }
+    if (open) { state.selectedId = id; render(); selectDocRecord("lead", id); state.detailId = id; state.detail = null; state.trigger = focusIdentity(doc.activeElement); $("detailTitle").textContent = leadTitle(lead); $("detailBody").innerHTML = '<p class="empty">Updating…</p>'; $("leadDetail").showModal(); }
     try {
       const response = await client.getLeadDetail(lead);
       if (epoch !== state.detailEpoch || actor !== state.actor) return;
@@ -281,7 +285,6 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
       else await client.recordStage(pending.lead, pending.stage, pending.review, pending.key, pending.actor);
       if (state.pending !== pending || state.actor !== actor) return;
       state.pending = null; state.commandFeedback = null; $("stageDialog").close();
-      if (pending.kind === "stage") state.mobileStage = pending.stage;
       $("moveAnnouncement").textContent = pending.kind === "link" ? "Client linked" : pending.kind === "claim" ? "Lead claimed" : pending.review.undo_event_id ? "Stage restored" : `Moved to ${stageLabel(pending.stage)}`;
       await refresh();
     } catch (error) {
@@ -298,17 +301,16 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
       paintCommandFeedback();
     } finally { state.writing = false; paintCommandFeedback(); }
   }
-  function selectMarket(key) { state.filters.market = state.filters.market === key ? "" : key; state.mobileStage = null; render(); }
+  function selectMarket(key) { state.filters.market = state.filters.market === key ? "" : key; $("mapLeadMembers").open = true; render(); }
   for (const [id, key] of [["leadSearch", "search"], ["ownerFilter", "owner"], ["stageFilter", "stage"], ["marketFilter", "market"]]) {
-    $(id).addEventListener(id === "leadSearch" ? "input" : "change", event => { state.filters[key] = event.target.value; state.mobileStage = null; render(); });
+    $(id).addEventListener(id === "leadSearch" ? "input" : "change", event => { state.filters[key] = event.target.value; render(); });
   }
   $("mobileStage").addEventListener("change", event => {
-    state.mobileStage = event.target.value;
-    state.filters.stage = event.target.value === "archived" ? "archived" : "";
+    state.filters.stage = event.target.value;
     render();
     $("mobileStage").scrollIntoView({ block: "start" });
   });
-  $("clearMarket").addEventListener("click", () => { state.filters.market = ""; state.mobileStage = null; render(); });
+  $("clearMarket").addEventListener("click", () => { state.filters.market = ""; render(); });
   $("marketCounts").addEventListener("click", event => { const button = event.target.closest("[data-market]"); if (button) selectMarket(button.dataset.market); });
   $("refreshBoard").addEventListener("click", () => refresh());
   $("closeDetail").addEventListener("click", () => $("leadDetail").close());
@@ -338,7 +340,7 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
     const claim = event.target.closest("[data-claim]"); if (claim) { const lead = leadById(claim.dataset.claim); if (lead) command({ kind: "claim", lead }); return; }
     const card = event.target.closest("[data-lead-id]"); if (card && !event.target.closest("[data-drag-handle]")) readDetail(card.dataset.leadId);
   }
-  for (const id of ["leadBoard", "hotLeads"]) {
+  for (const id of ["leadBoard", "hotLeads", "mapLeadMembers"]) {
     $(id).addEventListener("click", clickLead);
     $(id).addEventListener("keydown", event => {
       if (event.target.closest("button")) return;
@@ -398,7 +400,7 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
   });
   board.addEventListener("pointercancel", stopTouch);
   board.addEventListener("lostpointercapture", stopTouch);
-  mapFactory($("territoryMap"), selectMarket).then(map => { state.map = map; render(); }).catch(() => { $("territoryMap").innerHTML = '<p class="empty">Map unavailable</p>'; });
+  mapFactory($("territoryMap"), selectMarket, readDetail).then(map => { state.map = map; render(); }).catch(() => { $("territoryMap").innerHTML = '<p class="empty">Map unavailable</p>'; });
   function suspendPrivateView() {
     if (state.reviewTarget && $("stageDialog").open) state.resumeReview = captureReviewDraft();
     stopTouch(); ++state.epoch; ++state.detailEpoch; ++state.reviewEpoch;

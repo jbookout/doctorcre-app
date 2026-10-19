@@ -91,6 +91,7 @@
 .lead-stack { display: grid; gap: var(--space-2); padding-top: var(--space-2); }
 .stage-column[data-drop-active="true"] { border-color: var(--fg-muted); background: var(--surface-2); }
 .lead-card { position: relative; display: grid; gap: var(--space-2); min-width: 0; padding: var(--space-3); border: var(--hairline-width) solid var(--hairline); border-radius: var(--radius-2); background: var(--surface-2); cursor: pointer; transition: border-color var(--duration-hover) var(--ease-out), background-color var(--duration-hover) var(--ease-out); }
+.lead-card[aria-pressed="true"] { border-color: var(--fg); outline: var(--focus-width) solid var(--fg); }
 .lead-card:hover { border-color: var(--hairline-strong); background: var(--surface-3); }
 .lead-card h3 { padding-right: var(--space-4); font-size: var(--font-size-1); overflow-wrap: anywhere; }
 .card-foot { display: flex; align-items: flex-end; justify-content: space-between; gap: var(--space-1); }
@@ -186,3 +187,10 @@ dialog::backdrop { background: var(--scrim); }
 @media (prefers-reduced-motion: reduce) {
   button, .hot-row, .lead-card, .stage-column { transition: none; }
 }
+
+.lead-location { display: block; color: var(--fg-quiet); font-size: var(--font-size-0); }
+#mapLeadMembers { margin-top: var(--space-3); }
+#mapLeadMembers > div { display: grid; gap: var(--space-2); max-height: 220px; overflow-y: auto; padding: var(--space-2); }
+#mapLeadMembers button { min-height: 44px; padding: var(--space-2); text-align: left; overflow-wrap: anywhere; }
+#mapLeadMembers button small { display: block; color: var(--fg-muted); }
+#mapLeadMembers button[aria-pressed="true"] { border-color: var(--fg); background: var(--surface-3); }

@@ -37,7 +37,8 @@ test('filters and market counts share exact eligibility; archive never adds to a
  assert.equal(visibleLeads(leads,{search:'gulf'}).length,1);
  assert.equal(visibleLeads(leads,{owner:'example-partner'}).length,1);
  assert.equal(marketCounts(leads).reduce((n,g)=>n+g.count,0),14);
- assert.deepEqual(marketCounts(leads,{stage:'archived'}),marketCounts(leads));
+ assert.deepEqual(marketCounts(leads,{stage:'archived'}).map(g=>[g.key,g.count]),[['Pensacola, FL',1]]);
+ assert.deepEqual(marketCounts(leads,{market:'Mobile, AL'}).map(g=>[g.key,g.count]),[['Mobile, AL',1]]);
  const features=marketFeatures([{key:'Exact',city:'Mobile',state:'AL',count:2},{key:'Unknown',city:'Atlantis',state:'FL',count:1}], [{name:'Mobile',state:'AL',id:'1',position:[-88,30]}]);
  assert.equal(features.features.length,1);assert.equal(features.features[0].properties.count,2);
 });
@@ -86,4 +87,14 @@ test('blocking 17: committed duplicate city/state labels never choose an arbitra
  const groups=[{key:`${pair[0].name}, FL`,city:pair[0].name,state:'FL',count:3}];
  assert.deepEqual(marketFeatures(groups,places).features,[]);assert.deepEqual(marketFeatures(groups,[...places].reverse()).features,[]);
  assert.equal(groups[0].count,3,'ambiguous markets keep their count in the list');
+});
+
+test('market features exclude missing, malformed and zero coordinates without losing list members', () => {
+ const group={key:'Synthetic, FL',city:'Synthetic',state:'FL',count:1,leadIds:[lead(1).id]};
+ for(const position of [undefined,null,[],[0,0],['-88',30],[-88,NaN],[181,30],[-88,91]]) {
+  assert.deepEqual(marketFeatures([group],[{id:'synthetic',name:'Synthetic',state:'FL',position}]).features,[],String(position));
+ }
+ const point=marketFeatures([group],[{id:'synthetic',name:'Synthetic',state:'FL',position:[-88,30]}]).features[0];
+ assert.deepEqual(point.properties.leadIds,[lead(1).id]);
+ assert.deepEqual(point.geometry.coordinates,[-88,30]);
 });

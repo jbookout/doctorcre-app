@@ -1,14 +1,20 @@
 // One persistent MapLibre Search Mode component; counts come from the same
 // eligible lead projection as the board. Census points represent places only.
+function marketPlace(group, places) {
+  const matches = places.filter(item => item.name.toLowerCase() === String(group.city || "").toLowerCase() && item.state === group.state);
+  const place = matches.length === 1 ? matches[0] : null;
+  const position = place?.position;
+  return Array.isArray(position) && position.length === 2 && position.every(Number.isFinite) &&
+    Math.abs(position[0]) <= 180 && Math.abs(position[1]) <= 90 && position.some(value => value !== 0) ? place : null;
+}
 export function marketFeatures(groups, places) {
   return { type: "FeatureCollection", features: groups.flatMap(group => {
-    const matches = places.filter(item => item.name.toLowerCase() === String(group.city || "").toLowerCase() && item.state === group.state);
-    const place = matches.length === 1 ? matches[0] : null;
-    return place ? [{ type: "Feature", id: place.id, properties: { key: group.key, count: group.count },
+    const place = marketPlace(group, places);
+    return place ? [{ type: "Feature", id: place.id, properties: { key: group.key, count: group.count, leadIds: group.leadIds || [] },
       geometry: { type: "Point", coordinates: place.position } }] : [];
   }) };
 }
-export async function mountTerritoryMap(root, selectMarket) {
+export async function mountTerritoryMap(root, selectMarket, selectLead) {
   const [gl, geometry, places] = await Promise.all([
     import("../tours/vendor/maplibre-gl-6.4.1/maplibre-gl.mjs"),
     fetch("/data/leads-territory.geojson").then(r => { if (!r.ok) throw new Error("Map unavailable"); return r.json(); }),
@@ -43,7 +49,12 @@ export async function mountTerritoryMap(root, selectMarket) {
         const button=root.ownerDocument.createElement("button");button.type="button";button.className="market-marker";
         item={button,features:cluster.features,marker:new gl.Marker({element:button}).setLngLat(cluster.features[0].geometry.coordinates).addTo(map)};
         button.addEventListener("click",()=>{
-          if(item.features.length===1) {selectMarket(item.features[0].properties.key);return;}
+          if(item.features.length===1) {
+            const { key, leadIds } = item.features[0].properties;
+            selectMarket(key);
+            if (leadIds.length === 1) selectLead(leadIds[0]);
+            return;
+          }
           const bounds=new gl.LngLatBounds();item.features.forEach(f=>bounds.extend(f.geometry.coordinates));
           map.fitBounds(bounds,{padding:65,maxZoom:11,duration:root.ownerDocument.defaultView.matchMedia("(prefers-reduced-motion: reduce)").matches?0:200});
         });
@@ -54,10 +65,13 @@ export async function mountTerritoryMap(root, selectMarket) {
       const title=cluster.features.map(f=>`${f.properties.key}: ${f.properties.count}`).join(" · ");
       item.button.textContent=count;item.button.title=title;
       item.button.setAttribute("aria-label",cluster.features.length>1?`Zoom to markets · ${title}`:`${title} leads`);
-      item.button.setAttribute("aria-pressed",String(cluster.features.some(f=>f.properties.key===selected)));
+      const leadIds = cluster.features.flatMap(f => f.properties.leadIds);
+      item.button.dataset.leadIds = JSON.stringify(leadIds);
+      item.button.setAttribute("aria-pressed",String(leadIds.includes(selected)));
     }
   }
   map.on("moveend",draw);
-  return { update(groups, market) { latest=groups;selected=market;draw(); },
+  return { hasLocation(lead) { return Boolean(marketPlace(lead, places)); },
+    update(groups, leadId) { latest=groups;selected=leadId;draw(); },
     dispose() {map.off("moveend",draw);for(const item of markers.values())item.marker.remove();map.remove();} };
 }
