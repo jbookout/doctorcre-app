@@ -1,6 +1,6 @@
 {
   "schema": "doctorcre-carr-interface.v1",
-  "version": "1.45.0",
+  "version": "1.46.0",
   "producer": {
     "repository": "jbookout/carr-system",
     "source_commit": "e2e484b1933bfd63c10cc9a1b3350132948f6f74"
@@ -46,6 +46,7 @@
     "decline-work-request",
     "end-deal-review",
     "engineering-passport",
+    "engineering-progress",
     "find",
     "find-and-catch-up",
     "get-call-context",
@@ -730,6 +731,19 @@
     ],
     "overnight_read": "GET /pipeline/changes; initial base64url JSON keyset cursor {recorded_at: ISO cutoff, id: zero UUID}; subsequent opaque cursors are server-issued; only brief-authorized deal IDs render",
     "content_storage": "memory only"
+  },
+  "engineering_progress": {
+    "schema": "engineering-progress.v1",
+    "operation": "engineering-progress",
+    "producer": {
+      "repository": "jbookout/carr-system",
+      "source_commit": "9932b0ade78fd8162d729cfc40b9980b48f37cdb"
+    },
+    "counted_unit": "unique planned (slice_ref, check_ref)",
+    "verification": "current independently reviewed slice receipt",
+    "denominator": "current accepted registered plan",
+    "unknown_denominator": "unavailable",
+    "scope_history": "registered plan revisions only"
   },
   "runtime_errors": {
     "contract": "contracts/runtime-errors.v1.json",

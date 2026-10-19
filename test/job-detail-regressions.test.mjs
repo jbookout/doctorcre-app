@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {JSDOM} from 'jsdom';
+import progressFixture from './fixtures/engineering-progress.synthetic.json' with {type:'json'};
 import {mountJobDetail} from '../js/job-detail.js';
 const tick=()=>new Promise(resolve=>setImmediate(resolve));
 function setup(client={}){
@@ -112,4 +113,14 @@ test('lineage refuses display-only automation and incident IDs and canonicalizes
  detail.open({id:'governance:pending:demo',kind:'governance_item',governance:{ref:'demo',entry:{statement:'Synthetic'}}});
  const link=body.querySelector('.work-lineage a');
  assert.equal(new URL(link.href).searchParams.get('task'),'governance_item:demo');
+});
+
+
+test('PR detail explains verified checks, remaining work and scope history',async()=>{
+ const {detail,body}=setup({workRequestCard:async()=>({ok:true,human_ref:'WR-900'}),engineeringProgress:async()=>structuredClone(progressFixture)});
+ detail.open({id:'pr-73',pr:73,work_request_ref:'WR-900'});await tick();
+ const progress=body.querySelector('.work-progress');assert.ok(progress);
+ assert.match(progress.textContent,/2 of 5 acceptance checks verified/);assert.match(progress.textContent,/3 remaining/);
+ assert.match(progress.textContent,/Scope revision 2/);assert.match(progress.textContent,/Revision 1.*4 acceptance checks/);
+ assert.equal(progress.querySelector('progress').value,2);
 });

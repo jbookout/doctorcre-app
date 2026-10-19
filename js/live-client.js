@@ -469,6 +469,7 @@ export function createLiveClient(opts = {}) {
     // payload the command kernel classifies; nothing here turns one into an
     // empty answer, because an empty answer would paint as "no evidence" rather
     // than "unknown".
+    async engineeringProgress(args = {}, { signal } = {}) { return rpc('engineering-progress', args, signal); },
     async engineeringPassport(args = {}, { signal } = {}) { return rpc('engineering-passport', args, signal); },
     async readPortfolio(args = {}) { return rpc('read-portfolio', args); },
     async workRequestCard(args = {}, { signal } = {}) { return rpc('work-request-card', args, signal); },

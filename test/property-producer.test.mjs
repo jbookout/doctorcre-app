@@ -11,16 +11,17 @@ const contract = JSON.parse(await readFile(new URL("../contracts/carr-interface.
 const pinnedProducer = "e2e484b1933bfd63c10cc9a1b3350132948f6f74";
 
 const producerModules = new Map();
-async function producerModuleUrl(path) {
-  if (producerModules.has(path)) return producerModules.get(path);
+async function producerModuleUrl(path, pin = contract.producer.source_commit) {
+  const key = `${pin}:${path}`;
+  if (producerModules.has(key)) return producerModules.get(key);
   let source = execFileSync("git", ["-C", process.env.CARR_PRODUCER_CHECKOUT,
-    "show", `${contract.producer.source_commit}:${path}`], { encoding: "utf8" });
+    "show", `${pin}:${path}`], { encoding: "utf8" });
   for (const match of [...source.matchAll(/from\s+(["'])(\.\/[^"'\n]+)\1/g)]) {
-    const dependency = await producerModuleUrl(posix.join(posix.dirname(path), match[2]));
+    const dependency = await producerModuleUrl(posix.join(posix.dirname(path), match[2]),pin);
     source = source.replace(match[1] + match[2] + match[1], JSON.stringify(dependency));
   }
   const url = `data:text/javascript;base64,${Buffer.from(source).toString("base64")}`;
-  producerModules.set(path, url);
+  producerModules.set(key, url);
   return url;
 }
 
@@ -296,4 +297,18 @@ test("runtime error wire contract and scrub rules match the exact pinned produce
     { type: "Alice", message: "aliceRecord is not defined", stack: "f@https://app/js/a.js:1:2", route: "no-slash" },
     {},
   ]) assert.deepEqual(scrubError(input), producer.scrubError(input));
+});
+
+
+test('the exact scoped progress producer keeps an unknown acceptance denominator unavailable',{
+ skip:!process.env.CARR_PRODUCER_CHECKOUT && 'Set CARR_PRODUCER_CHECKOUT to verify the scoped progress producer',
+},async()=>{
+ const pin=contract.engineering_progress.producer.source_commit;
+ const {engineeringRuntimeTools}=await import(await producerModuleUrl('mcp-server/src/engineering-runtime.js',pin));
+ const tools=engineeringRuntimeTools({withEnvelope:()=>{throw new Error('No writes');},writeEvent:()=>{throw new Error('No writes');},ToolError:Error});
+ const calls=[];const c={query:async(sql)=>{calls.push(sql);return {rows:[{facts:{source:{work_request:{id:'wr:10000000-0000-4000-8000-000000000001',ref:'WR-900'},accepted_plan:null},slice_plans:[]}}]};}};
+ const read=await tools['engineering-progress'].handler(c,{}, {work_request:'WR-900'});
+ assert.equal(read.schema,'engineering-progress.v1');assert.equal(read.state,'unavailable');
+ assert.equal(read.total,null);assert.equal(read.completed,null);assert.deepEqual(read.history,[]);
+ assert.equal(calls.length,1);assert.match(calls[0],/^select ops.engineering_passport_facts/);
 });

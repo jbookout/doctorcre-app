@@ -44,6 +44,44 @@ export function workLineageHtml(task, board, {linked = true, targets = false, ta
       return `<${tag}${targets ? ` id="${escape(target)}" tabindex="-1"` : ''}${tag === 'a' ? ` data-job-control="lineage-${row.kind}-${escape(ref)}" href="${escape(href)}"` : ''}>${escape(ref)}</${tag}>`;
     }).join(' · ') : '<span data-missing>Not linked</span>'}</dd></div>`).join('')}</dl></section>`;
 }
+const progressScope = scope => scope && typeof scope.plan_ref === 'string' && scope.plan_ref.trim()
+  && Number.isSafeInteger(scope.revision) && scope.revision > 0 && /^sha256:[a-f0-9]{64}$/.test(scope.digest);
+const progressHistory = history => Array.isArray(history) && history.every(scope => progressScope(scope) && Number.isSafeInteger(scope.total_checks) && scope.total_checks > 0);
+export function workProgress(read, workRequest) {
+  const unavailable = reason => ({state:'unavailable',label:'Progress unavailable',reason,
+    scope:read?.work_request === workRequest && progressScope(read?.scope) ? read.scope : null,checks:[],history:[]});
+  if (!workRequest) return unavailable('No canonical Work Request is linked.');
+  if (read === undefined) return {state:'loading',label:'Reading acceptance checks…',checks:[],history:[]};
+  if (read?.schema !== 'engineering-progress.v1' || read.work_request !== workRequest)
+    return unavailable('Acceptance scope could not be verified.');
+  if (read.state === 'unavailable') return {...unavailable(({current_accepted_plan_unavailable:'No accepted scope is available.',current_scope_binding_invalid:'The current scope could not be verified.',current_registered_plan_unavailable:'Acceptance checks are unavailable for this scope.',registered_plan_stale:'Acceptance checks belong to an earlier scope.'})[read.reason] || 'The acceptance scope is unavailable.'),history:progressHistory(read.history) ? read.history : []};
+  const checks = read.checks;
+  if (read.state !== 'available' || !progressScope(read.scope) || !Number.isSafeInteger(read.total) || read.total < 1
+    || !Number.isSafeInteger(read.completed) || !Array.isArray(checks) || checks.length !== read.total
+    || checks.some(check => !check || typeof check.slice_ref !== 'string' || !check.slice_ref.trim()
+      || typeof check.check_ref !== 'string' || !check.check_ref.trim() || typeof check.objective !== 'string' || !check.objective.trim() || !['verified','remaining'].includes(check.state))
+    || new Set(checks.map(check => JSON.stringify([check.slice_ref,check.check_ref]))).size !== checks.length
+    || checks.filter(check => check.state === 'verified').length !== read.completed)
+    return unavailable('The acceptance check count is unavailable.');
+  if (!progressHistory(read.history))
+    return unavailable('Scope history could not be verified.');
+  return {...read,label:`${read.completed} of ${read.total} acceptance checks verified`,remaining:read.total-read.completed};
+}
+export function workProgressHtml(read, workRequest) {
+  const progress = workProgress(read,workRequest);
+  const history = progress.history || [];
+  const slices = new Map();
+  for (const check of progress.checks) {
+    if (!slices.has(check.slice_ref)) slices.set(check.slice_ref,{objective:check.objective,checks:[]});
+    slices.get(check.slice_ref).checks.push(check);
+  }
+  return `<section class="work-progress" aria-label="Acceptance progress" data-progress-state="${progress.state}"><h3>Acceptance checks</h3>
+    <p class="work-progress-summary">${escape(progress.label)}</p>
+    ${progress.state === 'available' ? `<progress max="${progress.total}" value="${progress.completed}" aria-label="Verified acceptance checks"></progress><p>${progress.remaining} remaining</p>` : `<p>${escape(progress.reason || '')}</p>`}
+    ${progress.scope ? `<p>Scope revision ${progress.scope.revision} · ${escape(progress.scope.plan_ref)}</p>` : ''}
+    ${[...slices.values()].map(slice => `<h4>${escape(slice.objective)}</h4><ul class="work-progress-checks">${slice.checks.map(check => `<li data-check-state="${check.state}"><strong>${check.state === 'verified' ? 'Verified' : 'Remaining'}</strong><span>${escape(check.check_ref)}</span></li>`).join('')}</ul>`).join('')}
+    <details><summary data-job-control="progress-history">Scope history</summary>${history.length ? `<ol>${history.map(scope => `<li>Revision ${scope.revision} · ${scope.total_checks} acceptance checks · ${escape(scope.plan_ref)}</li>`).join('')}</ol>` : '<p>No registered scope history is available.</p>'}</details></section>`;
+}
 const workFields = new Set(['work_request','work_request_id','work_request_ref','canonical_work_ref']);
 const taskFields = new Set(['task_id','task_ref']);
 const jobFields = new Set(['job_ref','job_id']);

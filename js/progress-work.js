@@ -5,7 +5,7 @@ import { mountVisibilityPoll } from './visibility-poll.mjs';
 import { boardView, boardFreshness, jobLinks, taskIdentity, taskSummary, relatedQuestions, deliveryDetail } from './progress-board-model.js';
 import { mountProgressWire } from './progress-wire.js';
 import { validEngineeringPassport } from './job-passport.js';
-import { workScope, workDetailUrl, workLineageHtml, scopedTurn, scopedQueueCard, passportAttempts, canonicalPassport, executionTurn, sourceSequence } from './progress-work-model.js';
+import { workScope, workDetailUrl, workLineageHtml, workProgressHtml, scopedTurn, scopedQueueCard, passportAttempts, canonicalPassport, executionTurn, sourceSequence } from './progress-work-model.js';
 import { systemPipeline, validSystemWork } from './system-work-board-model.js';
 
 const client = createLiveClient();
@@ -23,15 +23,15 @@ let sessionIds = new Set(), dispatchCursor = null, reading = false;
 let dispatchRows = [], dispatchPages = 0;
 let sessionQuery = '', sessionRequest = 0;
 let dispatchSelection = 0, dispatchPending = null;
-let bindingGeneration = 0;
+let bindingGeneration = 0, progressRead;
 const signatures = new Map();
 function clearRequestEvidence(message) {
-  engineering = null; card = null; turns = []; dotCards = [];
+  progressRead = undefined; engineering = null; card = null; turns = []; dotCards = [];
   scope.refs = []; scope.attempts = []; sessionIds.clear(); ++sessionRequest;
   selectedSession = scope.session; ++dispatchSelection;
   dispatchRows = []; dispatchCursor = null; dispatchPages = 0;
   $('workDispatchMore').hidden = true; signatures.clear();
-  for (const id of ['workMetadata','workSessionList','workDispatchHistory','workCanonicalBody','workReviewList','workDotList']) empty($(id),message);
+  for (const id of ['workProgress','workMetadata','workSessionList','workDispatchHistory','workCanonicalBody','workReviewList','workDotList']) empty($(id),message);
 }
 function reconcileWorkRequest(task) {
   const reference = task ? jobLinks(task).workRequest : null;
@@ -258,7 +258,15 @@ function lineageRecord(task) {
   });
   return host.firstElementChild;
 }
+function renderProgress() {
+  const host=$('workProgress'),html=workProgressHtml(progressRead,scope.workRequest);
+  if(host.innerHTML===html)return;
+  const expanded=host.querySelector('details')?.open,focused=host.contains(document.activeElement);
+  host.innerHTML=html;host.querySelector('details').open=Boolean(expanded);
+  if(focused)host.querySelector('summary').focus({preventScroll:true});
+}
 function renderMetadata(task, questions) {
+  renderProgress();
   const delivery = task ? deliveryDetail(task) : null;
   const linkedTask = task || (scope.workRequest ? {work_request:scope.workRequest} : null);
   // Displayed delivery ages change independently of publication revisions.
@@ -296,6 +304,8 @@ async function refresh() {
     $('workReadState').dataset.state = age.state;
     renderMetadata(task, view.questions);
     if (workRequest) await Promise.allSettled([
+      client.engineeringProgress({work_request:workRequest}).then(value=>{if(!currentBinding()||!authReadable(epoch))return;progressRead=value;renderProgress();})
+        .catch(error=>{if(!currentBinding())return;progressRead=null;renderProgress();fail(error,$('workProgress'),'Acceptance progress');}),
       client.workRequestCard({work_request:workRequest}).then(value => { if (!currentBinding()) return; if (value.human_ref !== workRequest) throw new Error('work binding'); card = value; $('workTitle').textContent = task?.title || card.title || title; renderMetadata(task, view.questions); }).catch(error=>currentBinding() && fail(error,$('workMetadata'),'Work request')),
       client.engineeringPassport({work_request:workRequest}).then(value => { if (!currentBinding()) return;
         if (!canonicalPassport(value) && !validEngineeringPassport(value)) throw new Error('passport binding'); engineering = value;

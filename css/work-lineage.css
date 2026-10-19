@@ -10,3 +10,16 @@
 .work-lineage a:target { background: var(--surface-2); }
 @media (hover: hover) { .work-lineage a:hover { background: var(--surface-2); } }
 @media (max-width: 480px) { .work-lineage dl > div { grid-template-columns: 6rem minmax(0, 1fr); } }
+
+.work-progress { margin-block: var(--space-6); color: var(--fg); }
+.work-progress h3 { font: var(--font-weight-strong) var(--font-size-2) var(--font-text); margin: 0 0 var(--space-3); }
+.work-progress-summary { font-size: var(--font-size-3); margin: 0 0 var(--space-3); }
+.work-progress progress { appearance: none; display: block; width: min(100%, 360px); height: var(--space-2); border: 0; background: var(--surface-2); border-radius: var(--radius-1); }
+.work-progress progress::-webkit-progress-bar { background: var(--surface-2); border-radius: var(--radius-1); }
+.work-progress progress::-webkit-progress-value { background: var(--status-ok); border-radius: var(--radius-1); }
+.work-progress progress::-moz-progress-bar { background: var(--status-ok); border-radius: var(--radius-1); }
+.work-progress-checks { list-style: none; padding: 0; display: grid; gap: var(--space-3); }
+.work-progress-checks li { display: grid; grid-template-columns: 6rem minmax(0, 1fr); gap: var(--space-1) var(--space-3); overflow-wrap: anywhere; }
+.work-progress h4 { margin: var(--space-5) 0 var(--space-3); font: var(--font-weight-strong) var(--font-size-2) var(--font-text); }
+.work-progress summary { min-height: 44px; cursor: pointer; }
+.work-progress summary:focus-visible { outline: var(--focus-width) solid var(--focus-ring); outline-offset: var(--focus-width); }

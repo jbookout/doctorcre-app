@@ -112,14 +112,14 @@ for(const width of [1440,390,320])test(`W7 shared room, cards and wide popup fit
  if(width!==320)await capture(page,`board-${width}`);
  const card=page.locator('[data-task-id="work_request:WR-000901"]');await card.click();await page.waitForFunction(()=>document.querySelector('#jobDialog').open);
  await page.locator('.job-summary').getByText('Demo acceptance summary',{exact:true}).waitFor();assert.ok((await page.locator('#jobDialog').boundingBox()).width>=Math.min(900,width-40));
- assert.equal(await page.locator('#jobBody details').evaluate(e=>e.open),false);await page.locator('#jobBody summary').click();
+ assert.equal(await page.locator('#jobBody > details').evaluate(e=>e.open),false);await page.locator('#jobBody > details > summary').click();
  assert.match(await page.locator('#jobBody pre').textContent(),/Demo acceptance summary/);assert.doesNotMatch(await page.locator('#jobBody pre').textContent(),/projection_state|next_human_action/);
  if(width!==320)await capture(page,`popup-${width}`);
  await page.locator('#jobClose').click();assert.equal(await card.evaluate(e=>document.activeElement===e),true);
- await page.locator('.board-card[data-task-id^="governance:"]').first().click();await page.waitForFunction(()=>document.querySelector('#jobDialog').open);await page.locator('#jobBody summary').click();assert.match(await page.locator('#jobBody pre').textContent(),/Demo rule/);await page.locator('#jobClose').click();
+ await page.locator('.board-card[data-task-id^="governance:"]').first().click();await page.waitForFunction(()=>document.querySelector('#jobDialog').open);await page.locator('#jobBody > details > summary').click();assert.match(await page.locator('#jobBody pre').textContent(),/Demo rule/);await page.locator('#jobClose').click();
  await page.locator('.work-card').first().click();await page.waitForFunction(()=>document.querySelector('#jobDialog').open);await page.locator('#jobClose').click();
  await section(page,'tabConnections');await page.locator('[data-connection="claude"] a').waitFor();assert.equal(await page.locator('[data-device]').count(),2);assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);if(width!==320)await capture(page,`connections-${width}`);
- assert.ok(calls.every(name=>Object.keys(reads).includes(name)||name==='read-resource-dashboard'||name==='morning-brief'),calls.join(', '));assert.deepEqual(errors,[]);
+ assert.ok(calls.every(name=>Object.keys(reads).includes(name)||name==='read-resource-dashboard'||name==='morning-brief'||name==='engineering-progress'),calls.join(', '));assert.deepEqual(errors,[]);
 });
 
 for(const width of [1440,390])test(`Recorded work refresh preserves task focus and handles removal at ${width}px`,async t=>{
@@ -156,10 +156,10 @@ for(const width of [1440,390])test(`W7 Action Items rows open the same wide popu
  assert.ok((await page.locator('#jobDialog').boundingBox()).width>=Math.min(900,width-40));await page.locator('#jobClose').click();assert.deepEqual(errors,[]);
 });
 test('W7 automatic refresh updates PR, provider spend and open details without losing focus',async t=>{
- const {page,state}=await open(t);const card=page.locator('.work-card h4 a').first();await card.click();await page.locator('.job-summary').getByText('Demo acceptance summary',{exact:true}).waitFor();await page.locator('#jobBody summary').click();
+ const {page,state}=await open(t);const card=page.locator('.work-card h4 a').first();await card.click();await page.locator('.job-summary').getByText('Demo acceptance summary',{exact:true}).waitFor();await page.locator('#jobBody > details > summary').click();
  state.pr=23;state.title='Demo updated dashboard';state.spend=18.50;await advanceRoom(page,16001);
  await page.waitForFunction(()=>document.querySelector('#jobBody').textContent.includes('PR #23'));
- assert.equal(await page.locator('#jobDialog').evaluate(e=>e.open),true);assert.equal(await page.locator('#jobBody details').evaluate(e=>e.open),true);assert.equal(await page.locator('#jobBody summary').evaluate(e=>e===document.activeElement),true);
+ assert.equal(await page.locator('#jobDialog').evaluate(e=>e.open),true);assert.equal(await page.locator('#jobBody > details').evaluate(e=>e.open),true);assert.equal(await page.locator('#jobBody > details > summary').evaluate(e=>e===document.activeElement),true);
  await page.locator('#jobClose').click();await section(page,'tabConnections');await page.getByText('$18.50 · October 2026',{exact:true}).first().waitFor();
  assert.equal(await page.locator('[data-connection="grok"]').getAttribute('data-state'),'needs_reconnect');assert.equal(await page.locator('[data-device]').count(),2);
  await page.emulateMedia({reducedMotion:'no-preference'});await page.evaluate(()=>document.documentElement.dataset.motion='full');assert.equal(await page.locator('.connection-dot').first().evaluate(e=>getComputedStyle(e).animationName),'none');assert.equal(await page.locator('[data-connection="grok"] .connection-dot').evaluate(e=>getComputedStyle(e).borderRadius),'1px');await page.emulateMedia({reducedMotion:'reduce'});assert.equal(await page.locator('.connection-dot').first().evaluate(e=>getComputedStyle(e).animationName),'none');
@@ -182,7 +182,7 @@ for(const failure of ['http','invalid'])test(`finding 5: ${failure} governance r
  state.approvalFailure=null;await advanceRoom(page,15001);await page.waitForFunction(()=>document.querySelector('#governanceState').hidden);
 });
 test('finding 6: open incident reconciles with its source while unrelated reads leave it open',async t=>{
- const {page,state}=await open(t);await section(page,'tabViews');await page.locator('#incidentGroups [data-incident-open]').first().click();await page.locator('#jobBody summary').click();
+ const {page,state}=await open(t);await section(page,'tabViews');await page.locator('#incidentGroups [data-incident-open]').first().click();await page.locator('#jobBody > details > summary').click();
  state.incidentState='monitoring';await advanceRoom(page,16001);await page.waitForFunction(()=>document.querySelector('.job-summary').textContent.includes('monitoring'));
  assert.equal(await page.locator('#jobDialog').evaluate(e=>e.open),true);
  await page.locator('#jobClose').click();await section(page,'tabAutomations');await page.locator('.calendar-day .automation-job').first().click();state.removeJobs=true;await advanceRoom(page,15001);
@@ -197,7 +197,7 @@ for(const initial of [false,true])test(`finding 7: malformed Connections ${initi
 test('finding 8: poll preserves calendar, management and popup activity focus plus current card return',async t=>{
  const {page,state}=await open(t);await section(page,'tabAutomations');const job=page.locator('.calendar-day .automation-job').first();await job.focus();state.spend=20;await advanceRoom(page,16001);assert.equal(await job.evaluate(e=>e===document.activeElement),true);
  await section(page,'tabConnections');const manage=page.locator('[data-connection="claude"] a');await manage.focus();state.spend=30;await advanceRoom(page,15001);await page.waitForFunction(()=>document.querySelector('[data-connection="claude"]').textContent.includes('$30.00'));assert.equal(await page.evaluate(()=>document.querySelector('[data-connection="claude"] a')===document.activeElement),true);
- await section(page,'tabDashboard');const card=page.locator('.work-card h4 a').first();await card.click();await page.locator('.job-summary').getByText('Demo acceptance summary',{exact:true}).waitFor();await page.locator('#jobBody summary').click();const activity=page.locator('#jobBody details a');await activity.focus();state.pr=77;await advanceRoom(page,15001);await page.waitForFunction(()=>document.querySelector('#jobBody').textContent.includes('PR #77'));assert.equal(await activity.evaluate(e=>e===document.activeElement),true);
+ await section(page,'tabDashboard');const card=page.locator('.work-card h4 a').first();await card.click();await page.locator('.job-summary').getByText('Demo acceptance summary',{exact:true}).waitFor();await page.locator('#jobBody > details > summary').click();const activity=page.locator('#jobBody details a');await activity.focus();state.pr=77;await advanceRoom(page,15001);await page.waitForFunction(()=>document.querySelector('#jobBody').textContent.includes('PR #77'));assert.equal(await activity.evaluate(e=>e===document.activeElement),true);
  await page.locator('#jobClose').click();await page.waitForFunction(()=>document.querySelector('.work-card h4 a')===document.activeElement);
 });
 test('finding 9: persisted pagehide/pageshow continues Control Room polling',async t=>{

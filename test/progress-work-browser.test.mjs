@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { chromium, settles, animationsSettled } from './browser-harness.mjs';
 import { routeContract as routes } from "../js/routes.js";
 import { handleDoctorcreRequest } from '../src/worker.js';
+import progressFixture from './fixtures/engineering-progress.synthetic.json' with {type:'json'};
 import fixture from './fixtures/progress-work.synthetic.json' with {type:'json'};
 import { canonicalFixture, multiEnvelopeCanonicalFixture, equalReviewCanonicalFixture } from './fixtures/progress-work.synthetic.mjs';
 import { scopedTurn, scopedQueueCard, executionTurn, passportAttempts, canonicalPassport, workScope, workDetailUrl } from '../js/progress-work-model.js';
@@ -49,6 +50,7 @@ async function open(t,{width=390,path=taskPath,empty=false,stale=false,history=0
         :rpc.name==='list-progress-boards'?{schema:'progress-board-directory.v1',boards:[{board_id:'carr-v5',title:'System progress',updated_at:NOW.toISOString(),task_counts:{}},{board_id:'demo-project',title:'Demo project',updated_at:NOW.toISOString(),task_counts:{review:1}}]}
         :rpc.name==='read-session-identity'?{sessions:sessions || (empty?[]:[{canonical_session_id:'session:fresh',display_name:'Demo builder',surface:'codex',work_state:'working'},{canonical_session_id:'session:other',display_name:'Other builder',surface:'codex'}]),permission_filtered:false}
         :rpc.name==='read-dispatch-history'?{events:[{event_id:rpc.arguments.cursor?2:1,stage:rpc.arguments.cursor?'acted':'sent',evidence:'synthetic dispatch',session_id:'session:fresh',attempt_ref:'attempt:a',work_request_ref:taskId}],more:!rpc.arguments.cursor,next_cursor:rpc.arguments.cursor?null:'synthetic-cursor'}
+        :rpc.name==='engineering-progress'?structuredClone(progressFixture)
         :rpc.name==='engineering-passport'?canonicalFixture()
         :rpc.name==='work-request-card'?{ok:true,human_ref:'WR-900',title:'Demo work request',state:'needs_revision',version:1,desired_outcome:'Synthetic acceptance',acting_identity:[{act:'review',performed_by:'actor:builder'}]}
         :rpc.name==='unfinished-work'?{schema:'unfinished-work.v1',items:[],coverage:[],census_complete:true}:{};
@@ -809,4 +811,51 @@ for (const width of [1440,390]) test(`PR card navigation preserves exact lineage
     await page.screenshot({path:resolve(process.env.SLICE7_CAPTURE_DIR,`linked-work-${width}.png`)});
   }
   assert.deepEqual(errors,[]);
+});
+
+
+for(const width of [1440,390]) test(`trustworthy acceptance progress and scope history at ${width}px`,async t=>{
+ let read=structuredClone(progressFixture);
+ const {page,calls,errors}=await open(t,{width,rpcReply:(rpc,payload)=>rpc.name==='engineering-progress'?structuredClone(read):payload});
+ await page.waitForFunction(()=>document.querySelector('.work-progress-summary')?.textContent==='2 of 5 acceptance checks verified');
+ assert.equal(calls.some(call=>call.name==='engineering-progress'&&call.arguments.work_request==='WR-900'),true);
+ await page.locator('.work-progress summary').click();
+ assert.match(await page.locator('.work-progress details').textContent(),/Revision 1.*4 acceptance checks/);
+ await page.clock.runFor(5100);
+ assert.equal(await page.locator('.work-progress-summary').textContent(),'2 of 5 acceptance checks verified');
+ if(process.env.SLICE9_CAPTURE_DIR) {
+  await mkdir(process.env.SLICE9_CAPTURE_DIR,{recursive:true});
+  await page.evaluate(()=>window.scrollBy(0,document.querySelector('.work-progress').getBoundingClientRect().top-85));
+  await page.clock.runFor(300);
+  await page.screenshot({path:resolve(process.env.SLICE9_CAPTURE_DIR,`acceptance-progress-${width}.png`)});
+ }
+ read.scope.revision=3;read.scope.digest='sha256:'+'c'.repeat(64);read.total=6;
+ read.checks.push({slice_ref:'slice:nine',check_ref:'check:scope-addition',objective:'Explain the added scope',state:'remaining'});
+ read.history.push({...read.scope,total_checks:6});
+ await page.clock.runFor(5100);
+ await page.waitForFunction(()=>document.querySelector('.work-progress-summary')?.textContent==='2 of 6 acceptance checks verified');
+ assert.match(await page.locator('.work-progress').textContent(),/Scope revision 3/);
+ assert.equal(await page.locator('.work-progress details').evaluate(node=>node.open),true);
+ assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
+ assert.deepEqual(errors,[]);
+});
+
+
+test('unknown acceptance denominator stays unavailable and late reads cannot cross Work Requests',async t=>{
+ let request='WR-900',release;
+ const first=new Promise(resolve=>{release=resolve;});
+ const {page,errors}=await open(t,{rpcReply:(rpc,payload)=>{
+  if(rpc.name==='read-progress-board')payload.snapshot.snapshot_json.tasks[taskId].work_request=request;
+  if(rpc.name==='work-request-card')return {...payload,human_ref:rpc.arguments.work_request};
+  if(rpc.name==='engineering-progress')return rpc.arguments.work_request==='WR-900'?first:
+   {...structuredClone(progressFixture),work_request:'WR-901',state:'unavailable',reason:'current_registered_plan_unavailable',completed:null,total:null,checks:[],scope:{...progressFixture.scope,revision:3}};
+  return payload;
+ }});
+ request='WR-901';await page.clock.runFor(11000);
+ await page.waitForFunction(()=>document.querySelector('.work-progress')?.textContent.includes('Scope revision 3'));
+ release(structuredClone(progressFixture));await page.clock.runFor(1000);
+ assert.match(await page.locator('.work-progress').textContent(),/Progress unavailable/);
+ assert.equal(await page.locator('.work-progress progress').count(),0);
+ assert.doesNotMatch(await page.locator('.work-progress').textContent(),/2 of 5|[0-9]+%/);
+ assert.deepEqual(errors,[]);
 });

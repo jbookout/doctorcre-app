@@ -1,0 +1,59 @@
+{
+  "schema": "engineering-progress.v1",
+  "work_request": "WR-900",
+  "state": "available",
+  "reason": null,
+  "scope": {
+    "plan_ref": "plan:synthetic-v2",
+    "revision": 2,
+    "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  },
+  "completed": 2,
+  "total": 5,
+  "checks": [
+    {
+      "slice_ref": "slice:seven",
+      "check_ref": "check:stable-links",
+      "state": "verified",
+      "objective": "Link work cards to their source"
+    },
+    {
+      "slice_ref": "slice:seven",
+      "check_ref": "check:rename",
+      "state": "verified",
+      "objective": "Link work cards to their source"
+    },
+    {
+      "slice_ref": "slice:nine",
+      "check_ref": "check:verified-fraction",
+      "state": "remaining",
+      "objective": "Explain verified progress and scope changes"
+    },
+    {
+      "slice_ref": "slice:nine",
+      "check_ref": "check:scope-revision",
+      "state": "remaining",
+      "objective": "Explain verified progress and scope changes"
+    },
+    {
+      "slice_ref": "slice:nine",
+      "check_ref": "check:unknown-scope",
+      "state": "remaining",
+      "objective": "Explain verified progress and scope changes"
+    }
+  ],
+  "history": [
+    {
+      "plan_ref": "plan:synthetic-v2",
+      "revision": 1,
+      "digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "total_checks": 4
+    },
+    {
+      "plan_ref": "plan:synthetic-v2",
+      "revision": 2,
+      "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "total_checks": 5
+    }
+  ]
+}
