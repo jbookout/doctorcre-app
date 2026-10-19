@@ -11,7 +11,7 @@ import hierarchy from './fixtures/progress-board-hierarchy.json' with { type: 'j
 import workQueue from '../js/progress-work-queue-fixture.js';
 
 const boards = [{ board_id: 'carr-v5', title: 'System delivery' }, { board_id: 'demo-project', title: 'Demo project' }];
-async function open(t, { unfinished = true, path = '/control-room/progress', boardRead = 'ready', rows = [], control, width = 390, costData, snapshotData } = {}) {
+async function open(t, { unfinished = true, path = '/control-room/progress', boardRead = 'ready', rows = [], control, width = 390, costData, snapshotData, autoMount = true } = {}) {
   const browser = await chromium.launch(); t.after(() => browser.close());
   const page = await browser.newPage({ viewport: { width, height: 900 } });
   const context = page.context();
@@ -74,6 +74,7 @@ async function open(t, { unfinished = true, path = '/control-room/progress', boa
     if (url.pathname === '/mcp' && control && await control(route, route.request().postDataJSON().params)) return;
     return route.continue();
   });
+  if (!autoMount) await page.addInitScript(() => { window.__BOARD_NO_AUTOMOUNT = true; });
   const target = new URL(path, origin);
   if (!target.searchParams.has('mode')) target.searchParams.set('mode', 'live');
   await page.goto(target.href);
@@ -562,5 +563,39 @@ for (const status of [401, 403]) test(`denied queue read ${status} recovers the 
   await page.locator('#board-retry').click();
   await page.waitForLoadState('networkidle');
   assert.equal(await cards.count(), count);
+  assert.deepEqual(errors, []);
+});
+
+test('leaving a job through browser history closes its actual detail dialog', async t => {
+  const { page, errors } = await open(t, {path:systemPath, snapshotData:hierarchy, autoMount:false});
+  await page.evaluate(async ({fixture, html}) => {
+    const {mountBoard} = await import('/js/progress-board.js');
+    const {mountJobDetail} = await import('/js/job-detail.js');
+    const template = new DOMParser().parseFromString(html, 'text/html');
+    document.body.append(template.getElementById('jobDialog'));
+    const client = {readProgressBoard:async()=>({snapshot:{version:1,snapshot_json:fixture}})};
+    const detail = mountJobDetail({client, document});
+    window.historyBoard = mountBoard({window, client, openTask:task=>detail.open(task), closeTask:()=>detail.clear()});
+    await window.historyBoard.refresh(true);
+  }, {fixture:hierarchy, html:await readFile(new URL('../control-room.html', import.meta.url), 'utf8')});
+  const card = id => page.locator(`[data-hierarchy-id="${id}"] > button`);
+  await card('WR14').click();
+  await card('WR14.S2').click();
+  await card('WR14.S2.J1.app#316').click();
+  const dialog = page.locator('#jobDialog');
+  await dialog.waitFor({state:'visible'});
+  assert.equal(await page.locator('#jobTitle').textContent(), 'Board navigation');
+  await page.goBack();
+  assert.equal(new URL(page.url()).searchParams.get('card'), 'WR14.S2');
+  assert.equal(await dialog.isVisible(), false);
+  await page.goForward();
+  await dialog.waitFor({state:'visible'});
+  await page.goBack();
+  await page.goBack();
+  assert.equal(new URL(page.url()).searchParams.get('card'), 'WR14');
+  assert.equal(await dialog.isVisible(), false);
+  await page.goBack();
+  assert.equal(new URL(page.url()).searchParams.get('card'), null);
+  assert.equal(await dialog.isVisible(), false);
   assert.deepEqual(errors, []);
 });

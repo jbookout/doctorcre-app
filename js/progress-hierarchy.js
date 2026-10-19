@@ -30,7 +30,7 @@ export function hierarchyView(data, address = '') {
       ...(slice ? [{ id: slice.id, label: slice.card_title }] : [])] };
 }
 
-export function mountHierarchy({ container, window: win, boardId, onOpen }) {
+export function mountHierarchy({ container, window: win, boardId, onOpen, onClose }) {
   const doc = container.ownerDocument;
   let data;
   let firstRead = true;
@@ -51,6 +51,7 @@ export function mountHierarchy({ container, window: win, boardId, onOpen }) {
   function openSelected() {
     const selected = hierarchyView(data, address).selected;
     if (selected) onOpen({ ...selected, title: selected.card_title, summary: selected.card_description });
+    else onClose?.();
   }
   function cardNode(card) {
     const article = node('article', '', 'hierarchy-card');
