@@ -74,7 +74,7 @@ export async function localFixture(browser) {
   const origin = `http://127.0.0.1:${server.address().port}`;
   const context = await browser.newContext({ baseURL: origin });
   await context.route('**/*', route => new URL(route.request().url()).origin === origin ? route.continue() : route.abort());
-  return { page: await context.newPage(), close: async () => { await context.close(); server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); } };
+  return { page: await context.newPage(), server, close: async () => { await context.close(); server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); } };
 }
 
 for (const [name, flow] of Object.entries({ leaseDetails, tourDay, itinerary, shareLifecycle })) {
@@ -86,12 +86,21 @@ for (const [name, flow] of Object.entries({ leaseDetails, tourDay, itinerary, sh
 
 test('Share acceptance rejects a server denying every shortlist write', async ({ browser }) => {
   const local = await localFixture(browser);
-  await local.page.context().route('**/api/share/shortlist', route => route.fulfill({ status: 404, json: { error: 'not_found' } }));
+  const [respond] = local.server.listeners('request');
+  local.server.removeListener('request', respond);
+  let denied = false;
+  local.server.on('request', (request, response) => {
+    if (request.url !== '/api/share/shortlist') return respond(request, response);
+    denied = true;
+    response.writeHead(404, { 'content-type': 'application/json' });
+    response.end(JSON.stringify({ error: 'not_found' }));
+  });
   try {
     await assert.rejects(shareLifecycle(local.page, fixture), error => {
       assert.equal(error.message.includes('allowed-property shortlist write succeeds'), true);
       return true;
     });
+    assert.equal(denied, true, 'the HTTP server must receive the shortlist write');
   } finally {
     await local.close();
   }
