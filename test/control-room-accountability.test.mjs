@@ -50,3 +50,16 @@ test('attention puts failures first, retains same-title distinct work, and exclu
   ]);
   assert.deepEqual(rows.map(row => row.id), ['failed', 'blocked']);
 });
+
+test('failed then blocked duplicates retain recorded blocker and progress in either source order', () => {
+  const failed = { id: 'demo-export', status: 'failed', blocked_reason: 'Demo source stopped', last_progress: 'Demo validation complete' };
+  const blocked = { id: 'demo-export', status: 'blocked' };
+  for (const tasks of [[failed, blocked], [blocked, failed]]) {
+    const [result] = workspace.attentionTasks(tasks);
+    assert.equal(result.state, 'failed');
+    assert.equal(result.blocker, 'Demo source stopped');
+    assert.equal(result.progress, 'Demo validation complete');
+    assert.equal(result.model, 'unknown');
+    assert.equal(result.effort, 'unknown');
+  }
+});
