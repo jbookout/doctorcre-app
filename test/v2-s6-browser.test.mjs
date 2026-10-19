@@ -26,10 +26,12 @@ after(async () => {
 async function open(t, width, theme) {
   const page = await browser.newPage({ viewport: { width, height: 900 }, colorScheme: theme, reducedMotion: 'reduce' });
   t.after(() => page.close());
+  await page.addInitScript(theme => localStorage.setItem('doctorcre.visual-preferences', JSON.stringify({ theme })), theme);
   const seeded = await page.request.post(`${origin}/api/test/seed`, { data: { namespace: `s6-${++sequence}`, reset: true } });
   assert.equal(seeded.status(), 200);
   await page.goto(`${origin}/design-lab`);
   await page.locator('#contrastTable tbody tr').first().waitFor();
+  assert.equal(await page.locator('html').getAttribute('data-theme'), theme);
   return page;
 }
 
