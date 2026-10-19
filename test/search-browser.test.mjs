@@ -59,6 +59,7 @@ for (const answer of ['Demo renamed', null]) {
     const page = await browser.newPage();
     await page.addInitScript(key => localStorage.setItem(key, JSON.stringify([
       {name: 'Demo saved search', query: 'Demo Dental', kinds: []},
+      {name: 'Other saved search', query: 'Demo', kinds: []},
     ])), SAVED_VIEWS_KEY);
     await page.route('**/api/**', route => route.fulfill({json: {}}));
     await page.goto(`${server.origin}/search?mode=fixture`);
@@ -68,6 +69,6 @@ for (const answer of ['Demo renamed', null]) {
     await page.keyboard.press('Enter');
     assert.equal(await page.evaluate(() => document.activeElement?.dataset.rename), answer || 'Demo saved search');
     await page.keyboard.press('Tab');
-    assert.equal(await page.evaluate(() => document.activeElement?.id), 'resetViewsButton');
+    assert.equal(await page.evaluate(() => document.activeElement?.dataset.view), 'Other saved search');
   });
 }
