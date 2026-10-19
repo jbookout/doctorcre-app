@@ -49,3 +49,25 @@ test('S2 saved search stays under the keyboard while its results update', async 
     });
   }
 });
+
+for (const answer of ['Demo renamed', null]) {
+  test(`Search Rename ${answer === null ? 'cancel' : 'accept'} keeps keyboard focus`, async t => {
+    const server = await fixtureServer();
+    t.after(() => server.close());
+    const browser = await chromium.launch();
+    t.after(() => browser.close());
+    const page = await browser.newPage();
+    await page.addInitScript(key => localStorage.setItem(key, JSON.stringify([
+      {name: 'Demo saved search', query: 'Demo Dental', kinds: []},
+    ])), SAVED_VIEWS_KEY);
+    await page.route('**/api/**', route => route.fulfill({json: {}}));
+    await page.goto(`${server.origin}/search?mode=fixture`);
+    const rename = page.locator('[data-rename="Demo saved search"]');
+    await rename.focus();
+    page.once('dialog', dialog => answer === null ? dialog.dismiss() : dialog.accept(answer));
+    await page.keyboard.press('Enter');
+    assert.equal(await page.evaluate(() => document.activeElement?.dataset.rename), answer || 'Demo saved search');
+    await page.keyboard.press('Tab');
+    assert.equal(await page.evaluate(() => document.activeElement?.id), 'resetViewsButton');
+  });
+}
