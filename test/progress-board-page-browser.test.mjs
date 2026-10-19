@@ -379,7 +379,9 @@ for (const width of [390, 1440]) {
       assert.equal(await card.evaluate(node => node === document.activeElement), true);
       assert.equal(await card.evaluate(node => node === window.focusedLiveCard), true, 'retain the same card by task identity');
       await page.keyboard.press('Enter');
-      await page.waitForURL('**/control-room/progress/work?board=demo-project&task=released&work_request=WR-102');
+      await page.waitForURL(url => url.pathname === '/control-room/progress/work'
+        && url.searchParams.get('board') === 'demo-project' && url.searchParams.get('task') === 'released'
+        && url.searchParams.get('work_request') === 'WR-102');
     } else {
       assert.equal(await page.locator('.completed-card').count(), change === 'removed' ? 1 : 0);
       assert.equal(await page.evaluate(() => document.activeElement.id), 'completed-title');
@@ -426,7 +428,9 @@ for (const width of [390, 1440]) {
         assert.equal(await page.locator('#board-blocked .blocked-card').first().getAttribute('data-card-id'), 'blocked');
       }
       await page.keyboard.press('Enter');
-      await page.waitForURL(`**/control-room/progress/work?board=demo-project&task=blocked&work_request=${change === 'updated' ? 'WR-102' : 'WR-101'}`);
+      await page.waitForURL(url => url.pathname === '/control-room/progress/work'
+        && url.searchParams.get('board') === 'demo-project' && url.searchParams.get('task') === 'blocked'
+        && url.searchParams.get('work_request') === (change === 'updated' ? 'WR-102' : 'WR-101'));
     } else {
       assert.equal(await card.count(), 0);
       const count = change === 'empty' ? 0 : 1;
