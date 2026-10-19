@@ -41,6 +41,8 @@ test('board drills down, pastes aliases, opens evidence, and Back restores the p
   await board.refresh(true);
   const doc = dom.window.document;
   assert.equal(doc.querySelectorAll('#board-stages [data-hierarchy-id]').length, 1);
+  assert.equal(doc.querySelector('.headline').hidden, true);
+  assert.equal(doc.querySelector('#board-ledger').closest('.panel').hidden, true);
   doc.querySelector('#hierarchy-jump input').value = 'WR14';
   await board.refresh(true);
   assert.equal(doc.querySelector('#hierarchy-jump input').value, 'WR14');

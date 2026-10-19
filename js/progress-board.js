@@ -424,7 +424,7 @@ export function mountBoard(deps = {}) {
       byId("board-rail").hidden = true;
       byId("board-filters").hidden = true;
       byId("task-count").textContent = `${Object.keys(view.hierarchy.work_requests).length} WORK REQUESTS`;
-      for (const id of ["board-completed", "completed-list", "board-blocked", "system-work-panel"])
+      for (const id of ["board-completed", "completed-list", "board-blocked", "system-work-panel", "board-ledger"])
         byId(id)?.closest(".panel")?.setAttribute("hidden", "");
       return;
     }
@@ -889,6 +889,7 @@ export function mountBoard(deps = {}) {
     byId("board-meta").textContent = `${view.board_id} · Published ${formatTime(view.updated_at)} · Version ${view.version}`;
     renderSync(view);
     renderHeadline(view);
+    doc.querySelector(".headline").hidden = Boolean(view.hierarchy);
     renderRepos(view);
     renderStages(view);
     renderBlocked(view);
