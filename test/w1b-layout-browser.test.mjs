@@ -124,6 +124,7 @@ test('Local Deals opens a wide popup, refreshes its original note, and retains o
  await page.clock.fastForward(16_000);await page.waitForFunction(()=>document.querySelector('#panelBody')?.textContent.includes('A synthetic update.'));
  assert.equal(await original.evaluate(n=>n.open),true);assert.equal(await page.locator('#recordPanel').evaluate(n=>n.open),true);
  await page.keyboard.press('Escape');assert.equal(await page.locator('#recordPanel').evaluate(n=>n.open),false);
+ await page.locator('#appTodayToggle').click();
  await page.locator('#appTodayNeeds [data-layout-deal]').first().click();await page.waitForFunction(()=>document.querySelector('#recordPanel')?.open);await page.keyboard.press('Escape');
  const attention=await page.evaluate(async()=>{const{state}=await import('/js/pipeline.js');const d=state.deals.get('d23');const value=d.attention;await state.client.patchDealField({deal:d.id,field:'attention',value:!value,base_event_id:d.field_base?.attention?.id||null,idempotency_key:'demo-w1b-attention'});return value;});
  await page.clock.fastForward(3_000);await page.waitForSelector('#appTodayMoves [data-undo]');await page.locator('#appTodayMoves [data-undo]').first().click();
@@ -134,6 +135,7 @@ test('Local Deals opens a wide popup, refreshes its original note, and retains o
 test('blocked localStorage, automatic Today refresh, and wide item details stay usable',async t=>{
  const{page,goto,errors}=await open(t,{deniedStorage:true,clock:true});await goto('/deals');
  await page.locator('#appSidebarToggle').click();
+ await page.locator('#appTodayToggle').click();
  const first=page.locator('#appTodayNeeds [data-layout-deal]').first();await first.click();
  await page.waitForFunction(()=>document.querySelector('#recordPanel')?.open);assert.ok((await page.locator('#recordPanel').boundingBox()).width>=900);
  const before=await page.locator('#appSyncTime').getAttribute('datetime');await page.clock.fastForward(31_000);await page.waitForFunction(before=>document.querySelector('#appSyncTime').getAttribute('datetime')!==before,before);
