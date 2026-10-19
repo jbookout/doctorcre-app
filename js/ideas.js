@@ -41,6 +41,7 @@ const view = {
 let client = null;
 let tabs = null;
 let searchTimer = null;
+let ideaOpener = null;
 
 function announce(text) {
   const live = $("ideaLive");
@@ -116,7 +117,14 @@ function render() {
   }
   const list = $("ideaList");
   if (list) {
+    const focused = document.activeElement;
+    const number = list.contains(focused) ? focused.dataset.idea : null;
     list.innerHTML = phase === "ready" ? shown.map(tileHtml).join("") : "";
+    const current = document.activeElement;
+    if (number && (!current || current === document.body || !current.isConnected)) {
+      const tile = [...list.querySelectorAll('.idea-tile')].find(node => node.dataset.idea === number);
+      (tile || $("ideaSearch"))?.focus({ preventScroll: true });
+    }
   }
   const asOf = $("ideaAsOf");
   if (asOf && view.status === "ready") asOf.textContent = updatedLabel(view.updatedAt);
@@ -320,7 +328,10 @@ async function saveEvent(event) {
     await loadEvents();
     const savedCard = [...document.querySelectorAll(".event-card")]
       .find((card) => card.dataset.eventId === result.event.id);
-    (savedCard || $("eventAdd"))?.focus({ preventScroll: true });
+    const focused = document.activeElement;
+    if (view.state.tab === 'events' && (!focused || focused === document.body || !focused.isConnected)) {
+      (savedCard || $("eventAdd"))?.focus({ preventScroll: true });
+    }
     announce(`${result.event.title || "Event"} saved. Events refreshed from the record.`);
   } catch (error) {
     const outcome = eventWriteOutcome(error);
@@ -342,6 +353,7 @@ async function saveEvent(event) {
 /* ------------------------------------------------------------------- detail */
 
 async function openIdea(number, { push = true } = {}) {
+  ideaOpener = number;
   view.state = { ...view.state, idea: number };
   remember({ push });
   const dialog = $("ideaDialog");
@@ -470,18 +482,17 @@ function wire() {
 
   $("ideaDialogClose")?.addEventListener("click", closeIdea);
   onDialogClosed($("ideaDialog"), () => {
-    const selectedIdea = view.state.idea;
     selectDocRecord(null,null); pageDocContext?.release('readLoop');
     view.detailSequence += 1;
     if (view.state.idea) { view.state = { ...view.state, idea: null }; remember({ push: true }); }
-    const activeElement = document.activeElement;
-    if (selectedIdea && view.state.tab === 'ideas'
-      && (!activeElement || activeElement === document.body || !activeElement.isConnected
-        || $("ideaDialog")?.contains(activeElement))) {
-      const cards = $("ideaList")?.querySelectorAll("[data-idea]") || [];
-      const card = [...cards].find((candidate) => candidate.dataset.idea === selectedIdea);
-      (card || $("ideaRefresh"))?.focus({ preventScroll: true });
+    const focused = document.activeElement;
+    if ($("ideaDialog").contains(focused)) focused.blur();
+    const current = document.activeElement;
+    if (view.state.tab === 'ideas' && (!current || current === document.body || !current.isConnected)) {
+      const tile = [...document.querySelectorAll('.idea-tile')].find(node => node.dataset.idea === ideaOpener);
+      (tile || $("ideaSearch"))?.focus({ preventScroll: true });
     }
+    ideaOpener = null;
   });
   $("ideaRefresh")?.addEventListener("click", () => load());
   $("eventRefresh")?.addEventListener("click", () => loadEvents());
