@@ -198,15 +198,15 @@ export function mountTourDay({ document, window, api = createDayClient(), store 
     if (stop) {
       const open = make("button", null, "property-open"); open.type = "button"; open.append(make("h2", title(stop)), make("span", address(stop), "property-address")); open.onclick = () => openDetails(open);
       open.dataset.focusKey = `property:${stop.property_id}`;
-      current.append(make("p", `Stop ${stop.route_label || stop.route_sequence} · ${stops.findIndex(s => s.id === selected) + 1} of ${stops.length}`, "stop-eyebrow"), open, facts(stop), make("p", string(stop.access_notes, "Access notes unavailable"), "access-note"));
+      current.append(make("p", `Stop ${stop.route_label || stop.route_sequence} · ${stops.findIndex(s => s.id === selected) + 1} of ${stops.length}`, "stop-eyebrow"), open);
       const actions = make("div", null, "property-actions"), phone = safePhone(stop.contact_phone);
-      if (phone) { const call = make("a", "Call contact"); call.href = phone; call.dataset.focusKey = `call:${stop.property_id}`; actions.append(call); }
       // Reuse the exact-coordinate, exact-promotion native handoff, including
       // its current-stop return receipt. No address or centroid fallback.
-      for (const link of map?.navigationLinks?.() || []) { link.dataset.focusKey = `navigation:${link.textContent}:${stop.property_id}`; actions.append(link); }
+      for (const link of map?.navigationLinks?.() || []) { link.textContent = `Navigate with ${link.textContent}`; link.dataset.focusKey = `navigation:${link.textContent}:${stop.property_id}`; actions.append(link); }
+      if (phone) { const call = make("a", "Call contact"); call.href = phone; call.dataset.focusKey = `call:${stop.property_id}`; actions.append(call); }
       if (!actions.children.length) actions.append(make("p", "Directions unavailable", "note-state"));
       if (map?.projection?.card?.display === "unknown") current.append(make("p", `${map.projection.card.precision_label} · Directions unavailable`, "note-state"));
-      current.append(actions);
+      current.append(actions, facts(stop), make("p", string(stop.access_notes, "Access notes unavailable"), "access-note"));
     } else current.append(make("h2", "No scheduled stops"));
     renderNotes(); renderControls();
     if ($("#day-dialog").open) openDetails(opener, dialogNoteId ? currentNotes().find(note => note.id === dialogNoteId) : null, true);

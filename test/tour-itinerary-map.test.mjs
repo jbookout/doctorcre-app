@@ -27,7 +27,7 @@ async function open(options = {}, storage = {}) {
   const dom = new JSDOM('<section id="map-root"></section>', { url: "https://example.test/tours" });
   for (const [k, v] of Object.entries(storage)) dom.window.sessionStorage.setItem(k, v);
   const root = dom.window.document.querySelector("section"), gl = provider();
-  const view = mountAcceptedItinerary(root, { route: structuredClone(route), promotion_receipt: receipt, user_ref: "synthetic-user", scope: "synthetic-session", loadMapLibre: async () => gl, ...options });
+  const view = mountAcceptedItinerary(root, { route: structuredClone(route), promotion_receipt: receipt, user_ref: "synthetic-user", scope: "synthetic-session", basemapStyle: { version: 8, sources: {}, layers: [] }, loadMapLibre: async () => gl, ...options });
   await view.ready;
   return { dom, root, view, gl, storage: () => Object.fromEntries(Object.entries(dom.window.sessionStorage)) };
 }

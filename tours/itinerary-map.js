@@ -22,9 +22,6 @@ export function acceptedRouteFromDetail(detail) {
   };
 }
 
-const PLACEHOLDER_STYLE = { version: 8, sources: {}, layers: [
-  { id: "background", type: "background", paint: { "background-color": "#07111f" } },
-] };
 async function loadVendoredMapLibre() {
   return import("./vendor/maplibre-gl-6.4.1/maplibre-gl.mjs");
 }
@@ -74,19 +71,16 @@ export function mountAcceptedItinerary(root, initial) {
   const notice = make("p", "", "hint"); notice.dataset.mapStatus = ""; notice.setAttribute("role", "status");
   const stage = make("div", "", "itinerary-stage"), canvas = make("div", "", "itinerary-map");
   canvas.setAttribute("role", "region"); canvas.setAttribute("aria-label", "Accepted itinerary map");
-  const placeholder = make("p", "Basemap not configured · pins use CARR record coordinates", "itinerary-basemap-note");
-  stage.append(canvas, placeholder);
+  stage.append(canvas);
   const legend = make("p", "● Fixed appointment · ◆ Flexible stop · Dashed pin: approximate location", "hint itinerary-legend");
   const grid = make("div", "", "itinerary-grid"), list = make("ol", "", "itinerary-list"), card = make("article", "", "itinerary-property-card");
   list.setAttribute("aria-label", "Accepted stops in visit order"); card.dataset.itineraryCard = "";
   card.setAttribute("aria-label", "Selected itinerary property"); grid.append(list, card);
   const day = initial.presentation === "day";
   if (day) {
-    placeholder.textContent = "Stop locations · Street map unavailable";
-    placeholder.className = "day-map-state";
-    stage.removeChild(placeholder); notice.className = "day-map-state";
-    root.replaceChildren(stage, placeholder, notice);
-  } else root.replaceChildren(header, notice, stage, legend, grid);
+    notice.className = "day-map-state";
+    root.replaceChildren(stage, notice);
+  } else root.replaceChildren(header, notice, grid, stage, legend);
 
   function key() {
     return `doctorcre-current-stop-v1:${JSON.stringify([options.scope, state.tour_id, state.route_version_id, state.route_version, state.projection_id])}`;
@@ -124,16 +118,20 @@ export function mountAcceptedItinerary(root, initial) {
   }
   function renderStatus() {
     const noCoordinates = projection && !projection.markers.some(marker => marker.position);
-    canvas.hidden = Boolean(mapFailure || noCoordinates);
+    const unavailable = !initial.basemapStyle || Boolean(mapFailure || noCoordinates);
+    stage.hidden = unavailable;
+    modes.hidden = !initial.basemapStyle;
+    legend.hidden = unavailable;
     if (day) {
-      notice.textContent = mapFailure ? "Map unavailable" : noCoordinates ? "Stop locations unavailable" : "";
-      placeholder.hidden = Boolean(mapFailure || noCoordinates);
+      notice.textContent = noCoordinates ? "Stop locations unavailable. Use the ordered stops below."
+        : unavailable ? "Street map unavailable. Use the ordered stops below." : "";
       return;
     }
-    notice.textContent = [storageNotice, returnNotice || (mapFailure || noCoordinates
-      ? `${mapFailure || "No recorded coordinates are available."} Use the ordered list; visit order and current stop are preserved.`
-      : "Pins show recorded locations. The basemap is a configured placeholder; use the ordered list for visit order.")].filter(Boolean).join(" ");
+    notice.textContent = [storageNotice, returnNotice || (unavailable
+      ? `${mapFailure || (noCoordinates ? "No recorded coordinates are available." : "Street map unavailable.")} Use the ordered list; visit order and current stop are preserved.`
+      : "Pins show recorded locations.")].filter(Boolean).join(" ");
   }
+
   function select(stopId, feature = false) {
     if (options.canSelect?.() === false) return;
     const stop = state.route.stops.find(item => item.route_stop_id === stopId);
@@ -151,7 +149,7 @@ export function mountAcceptedItinerary(root, initial) {
   }
   function focus() {
     const selected = projection?.markers.find(marker => marker.selected);
-    if (!map || !selected?.position || canvas.hidden) return;
+    if (!map || !selected?.position || stage.hidden) return;
     const camera = { center: [selected.position.longitude, selected.position.latitude], zoom: 12, duration: projection.camera_plan.duration_ms };
     map[projection.camera_plan.method](camera);
   }
@@ -271,14 +269,15 @@ export function mountAcceptedItinerary(root, initial) {
   const initialize = () => initializing ||= (async () => {
     const thisGeneration = generation;
     try {
+      if (!initial.basemapStyle) return;
       if (win.navigator.onLine === false) { offline(); return; }
       gl = await (initial.loadMapLibre || loadVendoredMapLibre)();
       if (destroyed || generation !== thisGeneration) return;
       gl.setWorkerUrl(new URL("./vendor/maplibre-gl-6.4.1/maplibre-gl-worker.mjs", import.meta.url).href);
-      map = new gl.Map({ container: canvas, style: structuredClone(PLACEHOLDER_STYLE), center: [-87.3, 30.5], zoom: 8, attributionControl: false });
+      map = new gl.Map({ container: canvas, style: structuredClone(initial.basemapStyle), center: [-87.3, 30.5], zoom: 8, attributionControl: false });
       map.on("error", () => fallback("Map could not load."));
       map.on("moveend", () => { if (!state || destroyed) return; dispatch({ type: "bounds_change", bounds: normalizedProviderBounds(map.getBounds().toArray()) }); });
-      map.on("load", () => { if (!canvas.hidden && !destroyed) { renderMarkers(); focus(); } });
+      map.on("load", () => { if (!stage.hidden && !destroyed) { renderMarkers(); focus(); } });
       renderMarkers(); renderStatus(); focus();
     } catch { fallback("Map could not load."); }
   })().finally(() => { initializing = null; });

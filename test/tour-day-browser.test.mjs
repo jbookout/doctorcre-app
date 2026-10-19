@@ -8,7 +8,7 @@ import { receipt as mapReceipt } from "./fixtures/tour-map.synthetic.mjs";
 import { handleDoctorcreRequest } from "../src/worker.js";
 const root = new URL("../", import.meta.url);
 
-async function open(t, { width = 390, reducedMotion = "reduce", denied = false, workerHeaders = false, fixture = detail } = {}) {
+async function open(t, { width = 390, reducedMotion = "reduce", denied = false, workerHeaders = false, fixture = detail, basemap = false } = {}) {
   const requests = [], errors = [], current = structuredClone(fixture);
   let actor = "joe", refuse = false;
   const server = createServer(async (request, response) => {
@@ -29,7 +29,9 @@ async function open(t, { width = 390, reducedMotion = "reduce", denied = false, 
         const secured = await handleDoctorcreRequest(new Request(`https://doctorcre.com${url.pathname}`), { CARR: { fetch: async () => new Response('synthetic gate') }, ASSETS: { fetch: async () => new Response('synthetic asset') } });
         for (const header of ['content-security-policy', 'permissions-policy', 'x-content-type-options', 'cross-origin-opener-policy', 'cross-origin-resource-policy']) response.setHeader(header, secured.headers.get(header));
       }
-      response.end(await readFile(new URL(file, root)));
+      const content = await readFile(new URL(file, root));
+      response.end(basemap && file === 'tours/day.js' ? content.toString().replace('mountTourDay({ document, window });',
+        'mountTourDay({ document, window, mapFactory: (root, options) => mountAcceptedItinerary(root, { ...options, basemapStyle: { version: 8, sources: {}, layers: [] } }) });') : content);
     } catch { response.writeHead(404); response.end(); }
   });
   await new Promise(r => server.listen(0, "127.0.0.1", r));
@@ -190,9 +192,9 @@ test('R6: another tab cannot finalize a live owner recording', async t => {
   await second.locator('#day-refresh').click(); await second.waitForFunction(() => document.querySelector('.note-card')?.textContent.includes('Saved on phone'));
 });
 
-test('R10: map pin, list and dock share one restored selection', async t => {
+test('R10: ordered list and dock share one restored selection', async t => {
   const { page } = await open(t);
-  await page.locator('[data-route-stop-id="66666666-6666-4666-8666-666666666666"]').click();
+  await page.locator('.day-stop[data-stop-id="66666666-6666-4666-8666-666666666666"]').click();
   await page.waitForFunction(() => document.querySelector('#day-current').textContent.includes('garden'));
   await page.reload(); await page.waitForFunction(() => document.querySelector('#day-title').textContent === 'Synthetic tour');
   assert.match(await page.locator('#day-current').textContent(), /garden/);
@@ -242,7 +244,7 @@ test("static offline shell reload resumes tour and audio in the same tab, then r
   await page.waitForFunction(() => document.querySelector("#day-status")?.textContent.includes("Offline"));
   assert.equal(await page.locator(".day-stop").count(), 2); assert.equal(await page.locator(".note-card").count(), 1);
   assert.equal(await page.locator("#appMainSlot #tour-day").count(), 1);
-  assert.equal(await page.getByLabel("Workspace sidebar", { exact: true }).isVisible(), true);
+  assert.equal(await page.getByLabel("Workspace sidebar", { exact: true }).isVisible(), false);
   await page.screenshot({ path: new URL("out/test-artifacts/w16/phone-offline.png", root).pathname, fullPage: true });
   await context.setOffline(false);
   await page.waitForFunction(() => document.querySelector("#day-status").textContent === "Voice notes stay on this phone");
@@ -263,7 +265,7 @@ test("open property and note popups update automatically without closing Details
 test("accepted Tour exposes an unlocated stop without offering coordinate navigation", async t => {
   const fixture = structuredClone(detail);
   fixture.routes[0].stops[1].position = null;
-  const { page } = await open(t, { fixture });
+  const { page } = await open(t, { fixture, basemap: true });
   await page.locator('.day-stop').nth(1).click();
   await page.getByLabel("Close property", { exact: true }).click();
   assert.match(await page.locator('.day-stop').nth(1).textContent(), /Location unknown/);
@@ -286,7 +288,7 @@ function parityFixture() {
 
 test("accepted Tour keeps itinerary, numbered markers, next stop and phone handoff aligned across reload and reorder", async t => {
   for (const width of [1440, 390]) await t.test(String(width), async t => {
-    const { page, current, errors, requests } = await open(t, { width, fixture: parityFixture(), workerHeaders: true });
+    const { page, current, errors, requests } = await open(t, { width, fixture: parityFixture(), workerHeaders: true, basemap: true });
     const first = "44444444-4444-4444-8444-444444444444", second = "66666666-6666-4666-8666-666666666666", unknown = "88888888-8888-4888-8888-888888888888";
     const names = { [first]: 'Demo waterfront office', [second]: 'Demo garden suites', [unknown]: 'Demo unlocated office' };
     const currentIs = async (id, coordinate) => {

@@ -649,6 +649,7 @@ test("phone and iPad composers fit the viewport and reduced motion leaves every 
       assert.ok(layout.targets.every(target => target.height >= 44 && target.width >= 44), `${width}px touch targets: ${JSON.stringify(layout.targets.filter(target => target.height < 44 || target.width < 44))}`);
     }
     await page.setViewportSize({ width: 375, height: 900 });
+    await page.locator(".projection-card > summary").click();
     for (const label of await page.locator(".share-scopes label").all()) {
       const box = label.locator("input");
       const checked = await box.isChecked();
@@ -902,7 +903,7 @@ test("excluded stop keeps its state visible and folds optional editing details",
     const details = row.querySelector('.stop-edit-details');
     assert.ok(details);
     assert.equal(details.open, false);
-    assert.equal(row.querySelector('[data-field="stop_state"]').closest('details'), null);
+    assert.equal(row.querySelector('[data-field="stop_state"]').closest('.stop-edit-details'), null);
     assert.ok(details.querySelector('[data-field="dwell_minutes"]'));
     assert.equal(doc.querySelector('#reload-composer').hidden, true);
   } finally { dom.window.close(); }
