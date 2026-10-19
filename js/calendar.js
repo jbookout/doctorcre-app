@@ -169,6 +169,10 @@ function paintDayPanel() {
   }
   const rows = view.byDay.get(day) || [];
   if (rows.length === 0) {
+    if (phase === "reading") {
+      body.innerHTML = '<p class="small">Still reading critical dates. This day may have dates that have not arrived yet.</p>';
+      return;
+    }
     const partial = view.result.failed?.length ? " Some deals temporarily unavailable, so this may not be every date." : "";
     body.innerHTML = `<p class="small">No critical date is recorded on this day.${escapeHtml(partial)}</p>`;
     return;
@@ -187,11 +191,14 @@ function paintAgenda() {
   const list = $("calAgenda");
   if (!list) return;
   const phase = calendarPhase(view.result);
+  list.setAttribute("aria-busy", String(phase === "loading" || phase === "reading"));
   if (phase === "loading" || phase === "unauthorized" || phase === "unavailable") {
     list.innerHTML = "";
   } else {
     const rows = upcomingEntries(view.result.entries, view.today);
-    list.innerHTML = rows.length === 0
+    list.innerHTML = rows.length === 0 && phase === "reading"
+      ? '<li class="cal-agenda-empty">Still reading critical dates…</li>'
+      : rows.length === 0
       ? '<li class="cal-agenda-empty">No open critical date is recorded. Settled and past dates stay on the grid.</li>'
       : rows.map((entry, index) => {
         const near = approach(entry, view.today);
@@ -205,7 +212,7 @@ function paintAgenda() {
   }
   const undated = $("calUndated");
   const undatedList = $("calUndatedList");
-  const missing = phase === "ready" || phase === "partial" || phase === "empty" ? view.result.undated : [];
+  const missing = ["ready", "partial", "empty", "reading"].includes(phase) ? view.result.undated : [];
   if (undated) undated.hidden = missing.length === 0;
   if (undatedList) {
     undatedList.innerHTML = missing.map((entry) => `<li><b>${escapeHtml(entry.label)}</b> · ${escapeHtml(entry.deal_name)} — Date unavailable</li>`).join("");
@@ -214,6 +221,7 @@ function paintAgenda() {
 
 const STATE_COPY = {
   loading: "Reading every deal's critical dates…",
+  reading: "Reading critical dates. More dates may still arrive…",
   unauthorized: "Your session has ended. Sign in again to read the calendar; nothing is shown from an ended session.",
   unavailable: "Calendar temporarily unavailable.",
   empty: "No deal carries a critical date yet.",
@@ -241,7 +249,7 @@ function paintState(phase) {
 function paintNotices(phase) {
   const region = $("calNotices");
   if (!region) return;
-  if (phase !== "partial") { region.innerHTML = ""; return; }
+  if (phase !== "partial" && !(phase === "reading" && view.result.failed.length)) { region.innerHTML = ""; return; }
   const failed = view.result.failed;
   const names = failed.slice(0, 6).map((row) => escapeHtml(row.deal_name)).join(", ");
   const rest = failed.length > 6 ? ` and ${failed.length - 6} more` : "";
@@ -251,14 +259,20 @@ function paintNotices(phase) {
 }
 
 function render() {
+  const active = document.activeElement;
+  const focusScope = active?.closest("#calGrid, #calAgenda");
+  const focusSelector = active?.dataset.selectDay
+    ? `[data-select-day="${CSS.escape(active.dataset.selectDay)}"]`
+    : active?.dataset.entry ? `[data-entry="${CSS.escape(active.dataset.entry)}"]` : null;
   const phase = calendarPhase(view.result);
   if (phase === "loading") setStatus("refreshing", "Updating…");
+  else if (phase === "reading") setStatus("refreshing", `Reading ${view.result.readCount + view.result.failed.length} of ${view.result.dealCount} deals…`);
   else if (phase === "unauthorized") setStatus("unknown", "Session ended");
   else if (phase === "unavailable") setStatus("urgent", "Unavailable");
   else if (phase === "partial") setStatus("attention", "Partly available");
   else setStatus("healthy", "Current");
 
-  view.byDay = phase === "ready" || phase === "partial" ? entriesByDay(view.result.entries) : new Map();
+  view.byDay = ["ready", "partial", "reading"].includes(phase) ? entriesByDay(view.result.entries) : new Map();
   paintState(phase);
   paintNotices(phase);
   const gridNode = $("calGrid");
@@ -270,6 +284,7 @@ function render() {
   }
   paintSelection();
   paintAgenda();
+  if (focusScope && focusSelector) focusScope.querySelector(focusSelector)?.focus({ preventScroll: true });
 
   const asOf = $("calAsOf");
   if (asOf && view.result.status === "ready") {
@@ -371,7 +386,11 @@ async function load({ failClosed = false } = {}) {
   if (failClosed) { view.result = { status: "loading" }; render(); }
   else if (view.result.status !== "ready") { view.result = { status: "loading" }; render(); }
   else setStatus("refreshing", "Updating…");
-  const result = await readCalendar(client);
+  const result = await readCalendar(client, { onProgress: result => {
+    if (sequence !== view.sequence) return;
+    view.result = result;
+    render();
+  } });
   if (sequence !== view.sequence) return;
   view.result = result;
   const selected = pageDocContext?.snapshot().selected;
