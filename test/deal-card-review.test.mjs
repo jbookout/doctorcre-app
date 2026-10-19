@@ -125,3 +125,17 @@ test('phone timeline has one rail and unlinked snapshots hide context',async t=>
  });
  await t.test('no empty context',async()=>assert.equal(await page.locator('#panelContextOpen').isVisible(),false));
 });
+
+
+test('an open snapshot removes board controls when a refresh records closure',async t=>{
+ const {page,errors}=await open(t);
+ await page.evaluate(async()=>{
+  const {state}=await import('/js/pipeline.js');const read=state.client.getDeal;
+  state.client.getDeal=async id=>{const detail=await read(id);return {...detail,deal:{...detail.deal,phase:'Closed',outcome:'won'}};};
+ });
+ await page.getByRole('button',{name:'Refresh deal',exact:true}).click();
+ await page.waitForFunction(()=>document.querySelector('.phase-rail [aria-current] span')?.textContent==='Closed');
+ assert.equal(await page.locator('#detailPhase').count(),0);
+ assert.equal(await page.locator('#detailOwner').count(),0);
+ assert.deepEqual(errors,[]);
+});
