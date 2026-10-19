@@ -1,5 +1,6 @@
 import { mountHierarchy } from './progress-hierarchy.js';
 import { mountWorkQueue } from './progress-work-queue.js';
+import { resolveDealroomBoot } from './boot-mode.js';
 import { boardIdFromPath, boardPageUrl } from './progress-board-route.js';
 import { governanceTasks, withGovernance } from "./control-room-workspace-model.js";
 import { createLiveClient } from "./live-client.js";
@@ -1084,4 +1085,9 @@ export function mountBoard(deps = {}) {
     get view() { return currentView; }, get liveExpanded() { return liveExpanded; } };
 }
 
-if (typeof document !== "undefined" && document.getElementById("board-completed") && !globalThis.__BOARD_NO_AUTOMOUNT) mountBoard().start();
+if (typeof document !== "undefined" && document.getElementById("board-completed") && !globalThis.__BOARD_NO_AUTOMOUNT) {
+  const boot = resolveDealroomBoot(globalThis.location);
+  const client = boot.mode === 'live' ? createLiveClient()
+    : await (await import('./fixture-client.js')).createFixtureClient(boot.options);
+  mountBoard({ client }).start();
+}

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { readFile, mkdir } from 'node:fs/promises';
 import { chromium } from 'playwright';
+import axe from 'axe-core';
 import { handleDoctorcreRequest } from '../src/worker.js';
 import { STAGES } from '../js/progress-board-model.js';
 import costs from './fixtures/progress-board-costs.json' with { type: 'json' };
@@ -69,7 +70,9 @@ async function open(t, { unfinished = true, path = '/control-room/progress', boa
     if (url.pathname === '/mcp' && control && await control(route, route.request().postDataJSON().params)) return;
     return route.continue();
   });
-  await page.goto(`${origin}${path}`);
+  const target = new URL(path, origin);
+  if (!target.searchParams.has('mode')) target.searchParams.set('mode', 'live');
+  await page.goto(target.href);
   return { page, context, calls, errors, setSnapshot: value => { snapshotData = value; }, setRows: value => { rows = value; }, recover: () => { readState = 'ready'; } };
 }
 
@@ -98,7 +101,7 @@ for (const id of ['carr-v5', 'demo-project']) test(`legacy query redirects to th
   const { page, errors } = await open(t, { path: `/control-room/progress?board=${id}&view=flow` });
   await page.locator('#board-stages [data-card-id="build"]').waitFor();
   assert.equal(new URL(page.url()).pathname, `/control-room/progress/board/${id}`);
-  assert.equal(new URL(page.url()).search, '?view=flow');
+  assert.equal(new URL(page.url()).search, '?view=flow&mode=live');
   assert.deepEqual(errors, []);
 });
 
@@ -491,6 +494,16 @@ for (const width of [320, 390, 1280]) for (const theme of ['light', 'dark'])
     await page.locator('[data-queue-root] > details:first-child[data-queue-id="WR20"]').waitFor({ timeout: 5000 });
     assert.equal(await page.locator('[data-queue-root]').evaluate(el => el.getAnimations({ subtree: true }).length), 0);
     assert.deepEqual(errors, []);
+    await page.evaluate(axe.source);
+    assert.deepEqual(await page.evaluate(async () => (await axe.run('#board-stages')).violations.map(v => v.id)), []);
     await mkdir('test-artifacts/work-queue', { recursive: true });
     await page.screenshot({ path: `test-artifacts/work-queue/${width}-${theme}.png`, fullPage: true });
   });
+
+test('an unreviewed fixture preview renders queue details without calling the live board', async t => {
+  const { page, calls, errors } = await open(t, {path:'/control-room/progress/board/carr-v5?mode=fixture&card=WR14.S1.J1', boardRead:'failed'});
+  await page.locator('[data-queue-id="WR14.S1.J1"][open]').waitFor({ timeout: 3000 });
+  assert.equal(calls.filter(call => call.name === 'read-progress-board').length, 0);
+  assert.match(await page.locator('#board-stages').textContent(), /Demo queue ordering/);
+  assert.deepEqual(errors, []);
+});

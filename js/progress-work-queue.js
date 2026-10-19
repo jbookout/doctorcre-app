@@ -77,11 +77,11 @@ export function mountWorkQueue({ container, window: win, boardId }) {
     record.body.append(node('p', card.description, 'queue-description'), list);
     const times = node('dl', null, 'queue-facts');
     for (const stage of card.stages) row(times, `${stage.stage}${stage.finished_at ? '' : ' · current'}`, stage.started_at ? duration(stage.elapsed) : 'Not started');
-    record.body.append(node('h4', 'Time per stage'), times, node('h4', 'Review findings'));
+    record.body.append(node('h3', 'Time per stage'), times, node('h3', 'Review findings'));
     const findings = node('ul', null, 'queue-findings');
     for (const finding of card.findings) findings.append(node('li', `${finding.level} · ${finding.summary} · ${finding.resolved ? 'Resolved' : 'Open'}`));
     if (!card.findings.length) findings.append(node('li', 'No findings recorded.'));
-    record.body.append(findings, node('h4', 'Recent priority changes'));
+    record.body.append(findings, node('h3', 'Recent priority changes'));
     for (const event of card.priority_changes) record.body.append(node('p', `${event.at} · ${event.actor} · ${event.reason} · ${event.from.position} to ${event.to.position}`));
     if (!card.priority_changes.length) record.body.append(node('p', 'No priority changes recorded.'));
     const last = card.last_event;

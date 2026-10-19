@@ -383,7 +383,7 @@ footer { padding-top: 8px; }
 .queue-state { display: block; margin-top: 5px; color: var(--fg-muted); font-size: var(--font-size-1); font-weight: var(--font-weight-regular); }
 .queue-card > summary:focus-visible, .queue-log > summary:focus-visible, .queue-links a:focus-visible { outline: var(--focus-width) solid var(--focus-ring); outline-offset: 3px; border-radius: var(--radius-2); }
 .queue-detail-body { padding: 0 20px 16px; }
-.queue-detail-body h4 { margin-block: 24px 10px; font-size: var(--font-size-2); }
+.queue-detail-body h3 { margin-block: 24px 10px; font-size: var(--font-size-2); }
 .queue-detail-body p, .queue-detail-body li { line-height: 1.6; }
 .queue-facts { display: grid; grid-template-columns: minmax(7rem, 1fr) minmax(0, 2fr); gap: 10px 20px; margin: 16px 0; font-size: var(--font-size-1); }
 .queue-facts dt { color: var(--fg-muted); }
