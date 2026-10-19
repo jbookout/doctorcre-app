@@ -260,7 +260,7 @@ test('incident filters and details dispatch once per click after retained and re
 for(const failure of [503,403,'unpublished'])test(`PR132 #1: board ${failure} reconciles shared detail state`,async t=>{
  const {page,state}=await open(t,{path:'/control-room?mode=live&tab=boards&board=demo-project',unboundBoard:true});
  const card=page.locator('#board-stages .board-card').first();await card.waitFor();await card.click();await page.waitForFunction(()=>document.querySelector('#jobDialog').open);
- assert.match(await page.locator('#jobBody .work-lineage dl > div').filter({hasText:'Work Request'}).textContent(),/Work Request.*Not linked/);
+ assert.match(await page.locator('#jobBody .work-lineage dl > div').filter({hasText:'Work Request'}).textContent(),/Work Request.*Unavailable/);
  if(failure==='unpublished')state.boardUnpublished=true;else state.boardFailure=failure;await page.locator('#board-retry').evaluate(button=>button.click());await page.waitForFunction(failure=>failure==='unpublished'?document.querySelector('#board-meta').dataset.readState==='unpublished':document.querySelector('#board-error').hidden===false,failure);
  if(failure!==503){assert.equal(await page.locator('#jobDialog').evaluate(node=>node.open),false);assert.equal(await page.locator('#jobBody').textContent(),'');}
  else {assert.match(await page.locator('#jobBody').textContent(),/Source unavailable.*Last-known/);await page.locator('#jobClose').click();await card.click();assert.match(await page.locator('#jobBody').textContent(),/Source unavailable.*Last-known/);}

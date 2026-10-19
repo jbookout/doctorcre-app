@@ -1,6 +1,6 @@
 {
   "schema": "doctorcre-carr-interface.v1",
-  "version": "1.46.0",
+  "version": "1.47.0",
   "producer": {
     "repository": "jbookout/carr-system",
     "source_commit": "e2e484b1933bfd63c10cc9a1b3350132948f6f74"
@@ -168,9 +168,21 @@
         "lane",
         "outcome"
       ],
-      "deal_sources": ["deals", "deals_via_link"],
-      "nullable_calendar_days": ["invoiced_on", "closed_on"],
-      "nullable_strings": ["phase", "owner", "client_ref", "lane", "outcome"],
+      "deal_sources": [
+        "deals",
+        "deals_via_link"
+      ],
+      "nullable_calendar_days": [
+        "invoiced_on",
+        "closed_on"
+      ],
+      "nullable_strings": [
+        "phase",
+        "owner",
+        "client_ref",
+        "lane",
+        "outcome"
+      ],
       "unknown_deal_fields": "refused"
     },
     "correspondence-readiness": {
@@ -752,5 +764,26 @@
       "repository": "jbookout/carr-system",
       "source_commit": "a3a6913f7af0d721ab538090b1347976befcf421"
     }
+  },
+  "work_linkage": {
+    "schema": "work-linkage.v1",
+    "producer": {
+      "repository": "jbookout/carr-system",
+      "source_commit": "d55cc55c6e3fc57eb4d07d2662aeffffefcbbdac"
+    },
+    "operations": [
+      "read-progress-board",
+      "unfinished-work"
+    ],
+    "subject": [
+      "board_id",
+      "task_id",
+      "version"
+    ],
+    "absence": "Empty references certify no recorded linkage only with publisher linkage_metadata_version=1; legacy empty publications are unavailable.",
+    "scope": "Recorded relationships on a scoped published task; never inferred from census coverage, title, shared WR, or seat.",
+    "unavailable": "Unknown source, missing/denied/version-mismatched observation, malformed or omitted metadata; other census kinds default unavailable.",
+    "targets": "Exact same-board task keys; separately authorized WR references; validated GitHub PR URLs. Missing or self task targets and opaque ancestors are unresolved.",
+    "content_storage": "memory only"
   }
 }

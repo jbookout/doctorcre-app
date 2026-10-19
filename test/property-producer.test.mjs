@@ -312,3 +312,39 @@ test('the exact scoped progress producer keeps an unknown acceptance denominator
  assert.equal(read.total,null);assert.equal(read.completed,null);assert.deepEqual(read.history,[]);
  assert.equal(calls.length,1);assert.match(calls[0],/^select ops.engineering_passport_facts/);
 });
+
+test('the exact scoped linkage producer distinguishes recorded absence from unresolved work links', {
+ skip: !process.env.CARR_PRODUCER_CHECKOUT && 'Set CARR_PRODUCER_CHECKOUT to verify the scoped linkage producer',
+}, async () => {
+ const pin = contract.work_linkage.producer.source_commit;
+ const { boardAnswerTools } = await import(await producerModuleUrl('mcp-server/src/board-answers.js', pin));
+ const { workDependenciesHtml } = await import('../js/progress-work-model.js');
+ const { JSDOM } = await import('jsdom');
+ const source = { board_id: 'demo-project', version: 7, updated_at: '2026-10-01T12:00:00Z',
+  snapshot_json: { title: 'Demo dependency review', tasks: {
+   'demo-dependent': { title: 'Demo release check', status: 'blocked', blocked_reason: 'Waiting for the source contract', blocked_by_task_ids: ['demo-blocker'], plan_ref: 'plan:demo-missing' },
+   'demo-blocker': { title: 'Demo source contract', status: 'review' },
+   'demo-unlinked': { title: 'Demo standalone work', status: 'queued', linkage_metadata_version: 1 },
+  } } };
+ const queries = [];
+ const client = { query: async (sql, args) => {
+  queries.push({ sql, args });
+  return { rows: sql.includes('select board_id,version,snapshot_json,updated_at from board_snapshot') ? [structuredClone(source)] : [] };
+ } };
+ const tools = boardAnswerTools({ withEnvelope: () => { throw new Error('No writes'); }, writeEvent: () => { throw new Error('No writes'); } });
+ const read = await tools['read-progress-board'].handler(client, { slug: 'joe', human: true }, { board_id: 'demo-project' });
+ const tasks = boardView(read).stages.flatMap(stage => stage.tasks);
+ const dependent = new JSDOM(workDependenciesHtml(tasks.find(task => task.id === 'demo-dependent'), 'demo-project')).window.document;
+ const target = [...dependent.querySelectorAll('a')].find(link => link.textContent.includes('Demo source contract'));
+ assert.ok(target, 'the actual producer supplies a resolvable blocker');
+ const url = new URL(target.getAttribute('href'), 'http://localhost');
+ assert.equal(url.searchParams.get('board'), 'demo-project');
+ assert.equal(url.searchParams.get('task'), 'demo-blocker');
+ assert.equal(url.searchParams.has('work_request'), false);
+ assert.match(dependent.body.textContent, /plan:demo-missing.*Unresolved|Unresolved.*plan:demo-missing/s);
+ const empty = new JSDOM(workDependenciesHtml(tasks.find(task => task.id === 'demo-unlinked'), 'demo-project')).window.document;
+ assert.equal(empty.querySelector('[data-linkage-state]').dataset.linkageState, 'unlinked');
+ assert.ok(queries.every(({sql}) => /^select\b/i.test(sql.trim())), 'the linkage projection is read-only');
+ assert.ok(queries[0].args.includes('carr-internal'));
+ assert.ok(queries[0].args.includes('joe'));
+});

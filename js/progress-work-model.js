@@ -42,11 +42,12 @@ export function workLineage(task, board = 'carr-v5', taskId = workTaskId(task)) 
   });
 }
 export function workLineageHtml(task, board, {linked = true, targets = false, taskId = workTaskId(task)} = {}) {
+  const missingState=workDependencies(task,board,{linked}).state==='unlinked'?'Unlinked':'Unavailable';
   return `<section class="work-lineage" aria-label="Linked work"><h3>Linked work</h3><dl>${workLineage(task, board, taskId).map(row =>
     `<div><dt>${row.label}</dt><dd>${row.entries.length ? row.entries.map(({ref, href, target}) => {
       const tag = linked && href ? 'a' : 'span';
       return `<${tag}${targets ? ` id="${escape(target)}" tabindex="-1"` : ''}${tag === 'a' ? ` data-job-control="lineage-${row.kind}-${escape(ref)}" href="${escape(href)}"` : ''}>${escape(ref)}</${tag}>`;
-    }).join(' · ') : '<span data-missing>Not linked</span>'}</dd></div>`).join('')}</dl></section>`;
+    }).join(' · ') : `<span data-missing>${missingState}</span>`}</dd></div>`).join('')}</dl></section>`;
 }
 const progressScope = scope => scope && typeof scope.plan_ref === 'string' && scope.plan_ref.trim()
   && Number.isSafeInteger(scope.revision) && scope.revision > 0 && /^sha256:[a-f0-9]{64}$/.test(scope.digest);
@@ -191,4 +192,46 @@ export function scopedQueueCard(card, scope) {
 // renderer's sealed historical form is a separate contract and stays strict.
 export function canonicalPassport(value) {
   try { return validCanonicalEngineeringPassport(value); } catch { return false; }
+}
+
+const linkageText=value=>typeof value==='string'&&!!value.trim()&&!/[\u0000-\u001f]/.test(value);
+const linkageRelations=new Set(['blocked_by','parent','work_request','pull_request','plan','slice','job','related']);
+function validLinkageReference(ref) {
+ if(!ref||!linkageRelations.has(ref.relation)||!linkageText(ref.ref)||!linkageText(ref.title)||!['resolved','unresolved','unavailable'].includes(ref.state))return false;
+ if(ref.state!=='resolved')return ref.target===null;
+ const target=ref.target;
+ if(!target||typeof target!=='object'||Array.isArray(target))return false;
+ const keys=Object.keys(target).sort().join(',');
+ if(keys==='board_id,task_id')return ['blocked_by','parent','related'].includes(ref.relation)&&linkageText(target.board_id)&&linkageText(target.task_id)&&target.task_id===ref.ref;
+ if(keys==='work_request')return ref.relation==='work_request'&&/^WR-[0-9]{1,12}$/.test(target.work_request)&&target.work_request===ref.ref;
+ if(keys==='url')return ref.relation==='pull_request'&&target.url===ref.ref&&/^https:\/\/github\.com\/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+\/pull\/[1-9][0-9]*$/.test(target.url);
+ return false;
+}
+
+export function workDependencies(task,board,{linked=true}={}) {
+ const read=task?.linkage;
+ const source=task?.linkage_source || {board_id:task?.identity?.board_id||board,task_id:task?.kind==='progress_task'?task.identity?.task_id:task?.id,version:task?.version};
+ if(!linked||read?.schema!=='work-linkage.v1'||read.state!=='complete'||!Array.isArray(read.references)
+  ||read.subject?.board_id!==source.board_id||read.subject?.task_id!==source.task_id
+  ||!Number.isSafeInteger(source.version)||source.version<1||read.subject?.version!==source.version||read.reason!==null||!read.references.every(validLinkageReference)||read.references.some(ref=>ref.target?.board_id&&ref.target.board_id!==source.board_id)
+  ||task.linkage_metadata_unavailable!=null||['dependency_refs','depends_on','blocked_by','blocker_ref','blocker_task_id','parent_refs','related_refs','dependencies'].some(key=>task[key]!=null)||task.held?.blocker!=null
+  ||!read.references.length&&['work_request','work_request_ref','work_request_id','canonical_work_ref','human_ref','parent_task_id','parent_ref','parent_id','parent','plan_ref','plan_id','plan','slice_ref','slice_id','slice','job_ref','job_id','pr','pr_url','pr_links','blocked_by_task_ids','related'].some(key=>task[key]!=null&&(!Array.isArray(task[key])||task[key].length>0)))
+  return {state:'unavailable',references:[]};
+ const references=[...new Map(read.references.map(reference=>[JSON.stringify([reference.relation,reference.ref]),reference])).values()].map(reference=>{
+  const self=reference.target?.board_id===source.board_id&&reference.target?.task_id===source.task_id;
+  const state=self?'unresolved':reference.state;
+  const target=self?null:reference.target;
+  const href=state==='resolved'&&target
+   ? target.task_id?workDetailUrl({board:target.board_id,task:target.task_id})
+    : target.work_request?workDetailUrl({board,workRequest:target.work_request}):target.url||null:null;
+  return {...reference,state,target,href};
+ });
+ return {state:references.some(ref=>ref.state==='unavailable')?'unavailable':references.some(ref=>ref.state==='unresolved')?'unresolved':references.length?'linked':'unlinked',references};
+}
+export function workDependenciesHtml(task,board,options) {
+ const model=workDependencies(task,board,options);
+ const label={linked:'Linked',unlinked:'Unlinked',unavailable:'Unavailable',unresolved:'Unresolved'}[model.state];
+ const labels={blocked_by:'Blocked by',parent:'Parent',work_request:'Work Request',pull_request:'Pull request',plan:'Plan',slice:'Slice',job:'Job',related:'Related work'};
+ const rows=model.references.map(ref=>`<li><span class="work-dependency-relation">${labels[ref.relation]}</span><${ref.href?'a':'span'}${ref.href?` data-job-control="dependency-${escape(ref.relation)}-${escape(ref.ref)}" href="${escape(ref.href)}"`:''}>${escape(ref.title||ref.ref)}</${ref.href?'a':'span'}>${ref.title&&ref.title!==ref.ref?`<small>${escape(ref.ref)}</small>`:''}${ref.state!=='resolved'?`<span class="work-dependency-state">${ref.state==='unresolved'?'Unresolved':'Unavailable'}</span>`:''}</li>`).join('');
+ return `<section class="work-dependencies" aria-label="Dependencies and linkage" data-linkage-state="${model.state}"><h3>Dependencies and linkage</h3><p>${label}</p>${rows?`<ul>${rows}</ul>`:''}${model.state==='unlinked'?'<p>No recorded linkage on this fully observed work record.</p>':''}</section>`;
 }

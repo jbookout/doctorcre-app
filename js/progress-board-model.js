@@ -427,7 +427,7 @@ export function boardView(read, at = new Date()) {
   const cards = [];
   for (const [id, task] of entries) {
     if (!isRecord(task)) continue;
-    const card = { ...task, id };
+    const card = { ...task, id, linkage_source: {board_id:snapshot.board_id,task_id:id,version:snapshot.version} };
     card.stage = taskStage(task);
     card.health = taskHealth(task, at);
     card.pulse = taskPulse(task, at);

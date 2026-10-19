@@ -5,7 +5,7 @@ import { mountVisibilityPoll } from './visibility-poll.mjs';
 import { boardView, boardFreshness, jobLinks, taskIdentity, taskSummary, relatedQuestions, deliveryDetail } from './progress-board-model.js';
 import { mountProgressWire } from './progress-wire.js';
 import { validEngineeringPassport } from './job-passport.js';
-import { workScope, workDetailUrl, workLineageHtml, workProgressHtml, scopedTurn, scopedQueueCard, passportAttempts, canonicalPassport, executionTurn, sourceSequence } from './progress-work-model.js';
+import { workScope, workDetailUrl, workDependenciesHtml, workLineageHtml, workProgressHtml, scopedTurn, scopedQueueCard, passportAttempts, canonicalPassport, executionTurn, sourceSequence } from './progress-work-model.js';
 import { systemPipeline, validSystemWork } from './system-work-board-model.js';
 
 const client = createLiveClient();
@@ -23,9 +23,14 @@ let sessionIds = new Set(), dispatchCursor = null, reading = false;
 let dispatchRows = [], dispatchPages = 0;
 let sessionQuery = '', sessionRequest = 0;
 let dispatchSelection = 0, dispatchPending = null;
-let bindingGeneration = 0, progressRead;
+let bindingGeneration = 0, progressRead, dependencyTask = null;
 const signatures = new Map();
+function renderDependencies(task=dependencyTask) {
+  const host=$('workDependencies'),html=workDependenciesHtml(task,scope.board);
+  if(host.innerHTML!==html)host.innerHTML=html;
+}
 function clearRequestEvidence(message) {
+  dependencyTask=null;renderDependencies();
   progressRead = undefined; engineering = null; card = null; turns = []; dotCards = [];
   scope.refs = []; scope.attempts = []; sessionIds.clear(); ++sessionRequest;
   selectedSession = scope.session; ++dispatchSelection;
@@ -266,6 +271,7 @@ function renderProgress() {
   if(focused)host.querySelector('summary').focus({preventScroll:true});
 }
 function renderMetadata(task, questions) {
+  renderDependencies();
   renderProgress();
   const delivery = task ? deliveryDetail(task) : null;
   const linkedTask = task || (scope.workRequest ? {work_request:scope.workRequest} : null);
@@ -291,8 +297,10 @@ async function refresh() {
       if (!authReadable(epoch)) return;
       task = systemPipeline(census.items,[]).stages.flatMap(stage => stage.tasks).find(item => item.id === scope.task);
     }
+    const sourceTask=task;
     task ||= queueTask;
     reconcileWorkRequest(task);
+    dependencyTask=sourceTask || null;
     const workRequest = scope.workRequest, binding = bindingGeneration;
     const currentBinding = () => authCurrent(epoch) && binding === bindingGeneration && workRequest === scope.workRequest;
     const title = task?.title || card?.title || (scope.task ? 'Task work' : 'Project activity');
@@ -320,7 +328,7 @@ async function refresh() {
     if (!currentBinding() || !authReadable(epoch)) return;
     renderReviews(); await readSessions();
     if (authReadable(epoch)) wire?.refreshScope();
-  } catch (error) { if (authCurrent(epoch)) fail(error,$('workMetadata'),'Publication'); }
+  } catch (error) { if (authCurrent(epoch)) { dependencyTask=null;renderDependencies();++bindingGeneration;fail(error,$('workMetadata'),'Publication'); } }
   finally { reading = false; }
 }
 document.addEventListener('progress-queue', event => {
