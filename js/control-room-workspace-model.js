@@ -15,9 +15,19 @@ export function jobFacts(task) {
   };
 }
 
+export function resolveJobTasks(tasks) {
+  const unique = new Map();
+  for (const task of tasks.filter(task => task.id)) {
+    const previous = unique.get(task.id);
+    const at = Date.parse(task.updated_at || task.last_activity_at);
+    const before = Date.parse(previous?.updated_at || previous?.last_activity_at);
+    if (!previous || !Number.isFinite(at) || !Number.isFinite(before) || at >= before) unique.set(task.id, task);
+  }
+  return [...unique.values()];
+}
+
 export function attentionTasks(tasks) {
-  const unique = new Map(tasks.filter(task => task.id).map(task => [task.id, task]));
-  return [...unique.values()].filter(task => ['failed', 'blocked', 'needs_joe'].includes(task.status || task.state)
+  return resolveJobTasks(tasks).filter(task => ['failed', 'blocked', 'needs_joe'].includes(task.status || task.state)
     || task.health === 'blocked').map(jobFacts).sort((a, b) => Number(b.state === 'failed') - Number(a.state === 'failed'));
 }
 
