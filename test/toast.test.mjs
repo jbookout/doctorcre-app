@@ -78,6 +78,7 @@ test('quick successes replace each other and old timers never remove the newest 
   t.mock.timers.tick(900);
   assert.equal(doc.querySelectorAll('.toast').length, 1);
   assert.equal(latest.classList.contains('is-leaving'), false);
-  t.mock.timers.tick(1900);
+  t.mock.timers.tick(1100);
+  t.mock.timers.tick(800);
   assert.equal(doc.querySelectorAll('.toast').length, 0);
 });
