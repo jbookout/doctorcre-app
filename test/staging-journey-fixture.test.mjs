@@ -65,3 +65,52 @@ test('cleanup recovers from a transient failure without replacing the browser er
   assert.equal(owned, false);
   assert.deepEqual(actions, ['prepare', 'cleanup', 'remaining', 'cleanup']);
 });
+
+test('lost cleanup response is reconciled without replaying a committed cleanup', async () => {
+  const actions = [];
+  let owned = true;
+  const result = await withJourneyFixture(async () => 'browser complete', async action => {
+    actions.push(action);
+    if (action === 'prepare') return {};
+    if (action === 'remaining') return { remaining: owned ? 1 : 0 };
+    owned = false;
+    throw new Error('cleanup committed but response was lost');
+  });
+  assert.equal(result, 'browser complete');
+  assert.equal(owned, false);
+  assert.deepEqual(actions, ['prepare', 'cleanup', 'remaining']);
+});
+
+test('failed state reads never permit a cleanup replay until ownership reads back', async () => {
+  const actions = [];
+  let reads = 0, writes = 0;
+  await withJourneyFixture(async () => {}, async action => {
+    actions.push(action);
+    if (action === 'prepare') return {};
+    if (action === 'remaining') {
+      if (++reads === 1) throw new Error('state read unavailable');
+      return { remaining: 1 };
+    }
+    if (++writes === 1) throw new Error('cleanup response lost');
+    return { remaining: 0 };
+  });
+  assert.deepEqual(actions, ['prepare', 'cleanup', 'remaining', 'remaining', 'cleanup']);
+});
+
+test('exhausted recovery retains the original error and cause and reports the recoverable run', async () => {
+  const cause = new Error('original browser cause');
+  const browserError = new Error('original browser assertion', { cause });
+  let fixtureRun;
+  await assert.rejects(withJourneyFixture(async () => { throw browserError; }, async (action, run) => {
+    fixtureRun = run;
+    if (action === 'prepare') return {};
+    throw new Error('persistent producer outage');
+  }), error => {
+    assert.equal(error, browserError);
+    assert.equal(error.cause, cause);
+    assert.equal(error.fixtureRun, fixtureRun);
+    assert.equal(error.message.includes('original browser assertion'), true);
+    assert.equal(error.message.includes(fixtureRun), true);
+    return true;
+  });
+});
