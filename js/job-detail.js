@@ -32,7 +32,7 @@ function currentTrigger(document, trigger) {
 }
 function rememberTrigger(document) {
  const node=document.activeElement;
- for(const attribute of ['data-task-id','data-work-id','data-automation-id','data-automation','data-incident']){
+ for(const attribute of ['data-hierarchy-id','data-task-id','data-work-id','data-automation-id','data-automation','data-incident']){
   const record=node?.closest(`[${attribute}]`);
   if(record)return {node,attribute,value:record.getAttribute(attribute),owner:record.dataset.owner,container:record.closest('#automationCalendar')?'#automationCalendar':record.closest('#automationAgenda')?'#automationAgenda':null,
    control:record===node?null:node.matches('h4 a')?'h4 a':node.matches('.work-actions a')?'.work-actions a':node.tagName.toLowerCase()};

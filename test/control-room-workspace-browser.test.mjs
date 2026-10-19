@@ -3,11 +3,12 @@ import assert from 'node:assert/strict';
 import {readFile,mkdir} from 'node:fs/promises';
 import {chromium,waitForAsync} from './browser-harness.mjs';
 import {createFixtureClient} from '../js/fixture-client.js';
+import hierarchy from './fixtures/progress-board-hierarchy.json' with {type:'json'};
 import {atlasFixtureResponse} from '../scripts/atlas-fixture.mjs';
 import { routeContract as routes } from "../js/routes.js";
 const root=new URL('../',import.meta.url);
 const reads={'list-feature-switches':'listFeatureSwitches','list-doc-suggestions':'listDocSuggestions','read-progress-board':'readProgressBoard','list-progress-boards':'listProgressBoards','unfinished-work':'unfinishedWork','incident-board':'incidentBoard','governance-queue':'governanceQueue','schedule-board':'scheduleBoard','work-request-card':'workRequestCard','deal-room-board':'getBoard','today-triage':'todayTriage','notification-feed':'notificationFeed','read-room-queue':'roomQueue','read-room':'roomTurns','read-session-identity':'sessionIdentity','list-my-codex-sessions':'codexSessions','current-work-item':'currentWorkItem','list-notifications':'listNotifications'};
-async function open(t,{width=1440,height=width===1440?1000:844,path='/control-room?mode=live&tab=boards',connectionsBad=false,countIncidentClicks=false,unboundBoard=false,boardUnpublished=false,emptyIncidents=false,extraBoard=false,theme='dark'}={}){
+async function open(t,{width=1440,height=width===1440?1000:844,path='/control-room?mode=live&tab=boards',connectionsBad=false,countIncidentClicks=false,unboundBoard=false,boardUnpublished=false,emptyIncidents=false,extraBoard=false,theme='dark',snapshotData}={}){
  const browser=await chromium.launch();t.after(()=>browser.close());
  const page=await browser.newPage({viewport:{width,height},timezoneId:'UTC',reducedMotion:'reduce'});
  await page.addInitScript(theme=>localStorage.setItem('doctorcre.visual-preferences',JSON.stringify({theme})),theme);
@@ -35,10 +36,12 @@ async function open(t,{width=1440,height=width===1440?1000:844,path='/control-ro
    if(rpc.name==='read-progress-board'&&state.boardFailure)return route.fulfill({status:state.boardFailure,body:'{}'});
    if(rpc.name==='schedule-board'&&state.scheduleFailure)return route.fulfill({status:503,body:'{}'});
    if(rpc.name==='governance-queue'&&state.approvalFailure==='http')return route.fulfill({status:503,body:'{}'});
-   let payload={};if(reads[rpc.name]&&fixture[reads[rpc.name]])payload=await fixture[reads[rpc.name]](rpc.arguments);
+   let payload={};if(snapshotData&&rpc.name==='work-request-card')payload={ok:true,human_ref:rpc.arguments.work_request};
+   else if(reads[rpc.name]&&fixture[reads[rpc.name]])payload=await fixture[reads[rpc.name]](rpc.arguments);
    if(rpc.name==='read-room-queue'&&state.emptyAgents)payload={ok:true,room:'partner-line',live:false,projected_at:null,events:[]};
    if(rpc.name==='read-session-identity'&&state.emptySessions)payload={ok:true,total_seen:0,total_returned:0,permission_filtered:false,sessions:[]};
    if(rpc.name==='governance-queue'&&state.approvalFailure==='invalid')payload={ok:true};
+   if(rpc.name==='read-progress-board'&&snapshotData)payload.snapshot.snapshot_json=snapshotData;
    if(rpc.name==='read-progress-board'&&unboundBoard&&payload.snapshot)for(const task of Object.values(payload.snapshot.snapshot_json.tasks)){delete task.work_request;delete task.work_request_ref;delete task.human_ref;task.related=[];}
    if(rpc.name==='list-progress-boards'&&extraBoard)payload.boards.push({...payload.boards[0],board_id:'demo-project',title:'Demo project board'});
    if(rpc.name==='read-progress-board'&&state.boardUnpublished)payload.snapshot=null;
@@ -460,4 +463,78 @@ test('C5 round 2 Boards keeps meaningful descriptions and recorded model metadat
  const card=page.locator('#board-stages .board-card').first();
  assert.equal(await card.locator('.card-summary').textContent(),'Keep distinct acceptance details.');
  assert.equal(await card.locator('.card-model').textContent(),'OpenAI · gpt-6-sol · high');
+});
+
+
+test('hierarchy browser history keeps the full Control Room in Boards', async t => {
+ const {page,errors}=await open(t,{snapshotData:hierarchy});
+ const card=id=>page.locator(`[data-hierarchy-id="${id}"] > button`);
+ await card('WR14').click();
+ await card('WR14.S2').click();
+ await card('WR14.S2.J1.app#316').click();
+ await page.locator('#jobDialog').waitFor({state:'visible'});
+ await page.goBack();
+ assert.equal(await page.locator('#jobDialog').isVisible(),false);
+ assert.equal(await page.locator('#panelDashboard').isVisible(),true);
+ assert.equal(await page.locator('#tabDashboard').getAttribute('aria-selected'),'true');
+ assert.equal(new URL(page.url()).pathname,'/control-room');
+ assert.equal(new URL(page.url()).searchParams.get('card'),'WR14.S2');
+ await page.goForward();
+ await page.locator('#jobDialog').waitFor({state:'visible'});
+ assert.equal(await page.locator('#panelDashboard').isVisible(),true);
+ assert.deepEqual(errors,[]);
+});
+
+
+test('hierarchy drill-down focuses headings and history restores the originating job control', async t => {
+ const {page,errors}=await open(t,{snapshotData:hierarchy});
+ const card=id=>page.locator(`[data-hierarchy-id="${id}"] > button`);
+ await card('WR14').focus();
+ await page.keyboard.press('Enter');
+ assert.equal(await page.locator('#pipeline-title').evaluate(node=>node===document.activeElement),true);
+ await card('WR14.S2').focus();
+ await page.keyboard.press('Enter');
+ assert.equal(await page.locator('#pipeline-title').evaluate(node=>node===document.activeElement),true);
+ await card('WR14.S2.J1.app#316').focus();
+ await page.keyboard.press('Enter');
+ await page.locator('#jobDialog').waitFor({state:'visible'});
+ await page.goBack();
+ await page.waitForFunction(()=>!document.querySelector('#jobDialog').open);
+ assert.equal(await card('WR14.S2.J1.app#316').evaluate(node=>node===document.activeElement),true);
+ await page.goForward();
+ await page.locator('#jobDialog').waitFor({state:'visible'});
+ await page.keyboard.press('Escape');
+ await page.clock.runFor(50);
+
+ assert.equal(await card('WR14.S2.J1.app#316').evaluate(node=>node===document.activeElement),true);
+ assert.deepEqual(errors,[]);
+});
+
+
+test('blocked hierarchy jobs expose their status and next action without opening details', async t => {
+ const snapshot=structuredClone(hierarchy);
+ const job=snapshot.tasks['WR14.S2.J1.app#316'];
+ Object.assign(job,{status:'blocked',stage:'review',next_action:'Check the keyboard focus before resuming review.'});
+ const {page,errors}=await open(t,{snapshotData:snapshot});
+ await page.locator('[data-hierarchy-id="WR14"] > button').click();
+ await page.locator('[data-hierarchy-id="WR14.S2"] > button').click();
+ const card=page.locator('[data-hierarchy-id="WR14.S2.J1.app#316"]');
+ assert.equal(await card.locator('details').getAttribute('open'),null);
+ assert.equal(await card.getByText('Blocked',{exact:true}).isVisible(),true);
+ assert.equal(await card.getByText('Next action: Check the keyboard focus before resuming review.',{exact:true}).isVisible(),true);
+ assert.deepEqual(errors,[]);
+});
+
+test('completed hierarchy jobs restore a visible originating control on dialog close',async t=>{
+ const {page}=await open(t,{snapshotData:hierarchy});
+ await page.locator('[data-hierarchy-id="WR14"] > button').click();
+ await page.locator('#hierarchy-completed > details > summary').click();
+ await page.locator('[data-hierarchy-id="WR14.S1"] > button').click();
+ await page.locator('#hierarchy-completed > details > summary').click();
+ const job=page.locator('[data-hierarchy-id="WR14.S1.J1.carr#1960"] > button');
+ await job.click();
+ await page.locator('#jobDialog').waitFor({state:'visible'});
+ await page.keyboard.press('Escape');await page.clock.runFor(50);
+ assert.equal(await job.isVisible(),true);
+ assert.equal(await job.evaluate(n=>n===document.activeElement),true);
 });

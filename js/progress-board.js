@@ -419,7 +419,8 @@ export function mountBoard(deps = {}) {
     if (view?.hierarchy) {
       pipelineCards = Object.entries(view.hierarchy.cards).map(([id, card]) => ({...card, id, title:card.card_title, summary:card.card_description}));
       deps.onTasks?.(pipelineCards, {state:boardState});
-      hierarchyUI ||= mountHierarchy({container:byId("board-stages"), window:win, boardId, onOpen:card=>openWork(card.id), onClose:deps.closeTask});
+      if (!hierarchyUI) doc.querySelector("details.directory-panel")?.removeAttribute("open");
+      hierarchyUI ||= mountHierarchy({container:byId("board-stages"), window:win, onOpen:card=>openWork(card.id), onClose:deps.closeTask});
       hierarchyUI.update({hierarchy:view.hierarchy, tasks:view.hierarchy.cards});
       byId("board-rail").hidden = true;
       byId("board-filters").hidden = true;
