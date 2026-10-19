@@ -24,7 +24,7 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
     if (draft && input) draft.answer = input.value;
     return draft;
   }
-  const locationLabel = lead => !state.map ? "Checking location…" : state.map.hasLocation?.(lead) ? "Market area only" : "No location";
+  const locationLabel = lead => !state.map ? "Checking location…" : state.map.locate?.(lead) ? "Market area only" : "No location";
   function card(lead) {
     const move = automaticMove(lead), undo = undoReview(lead);
     const possible = lead.possible_clients || [];
@@ -66,12 +66,12 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
     $("filterSummary").textContent = `${shown.length} ${shown.length === 1 ? "lead" : "leads"}`;
     $("stageFilter").innerHTML = options(FILTER_STAGES, state.filters.stage, "All stages");
     $("ownerFilter").innerHTML = options(owners.map(k => [k, ownerName(k)]), state.filters.owner, "All owners");
-    const groups = marketCounts(leads, state.filters);
+    const groups = marketCounts(leads, state.filters, state.map?.locate);
     $("marketFilter").innerHTML = options(markets.map(k => [k, k]), state.filters.market, "All markets");
     $("clearMarket").hidden = !state.filters.market;
     $("marketCounts").innerHTML = groups.map(g => `<button data-market="${esc(g.key)}" aria-pressed="${g.key === state.filters.market}">${esc(g.key)}<b>${g.count}</b></button>`).join("") || '<p class="empty">No leads in these markets</p>';
     state.map?.update(groups, state.selectedId);
-    const unlocated = state.map ? shown.filter(lead => !state.map.hasLocation?.(lead)).length : 0;
+    const unlocated = state.map ? groups.reduce((count, group) => count + group.unlocatedIds.length, 0) : 0;
     $("mapLeadMembers").querySelector("summary").textContent = `${shown.length} ${shown.length === 1 ? "lead" : "leads"} · ${unlocated} no location`;
     $("mapLeadMembers").querySelector("div").innerHTML = shown.map(lead => `<button data-lead-id="${esc(lead.id)}" aria-pressed="${lead.id === state.selectedId}">${esc(leadTitle(lead))}<small>${esc(marketKey(lead))} · ${locationLabel(lead)}</small></button>`).join("") || '<p class="empty">No matching leads</p>';
     const hot = hotLeadPanel(leads);
@@ -81,7 +81,7 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
     $("hotLeads").innerHTML = hot.rows.map((lead, i) => `<article class="hot-row" data-lead-id="${esc(lead.id)}" tabindex="0" role="button" aria-label="${esc(leadTitle(lead))}"><span class="hot-rank">${i + 1}</span><div><h3>${esc(leadTitle(lead))}</h3><small>${esc(marketKey(lead))}</small></div><span class="score">${score(lead)}</span>${hot.claimable ? `<button data-claim="${esc(lead.id)}">Claim</button>` : `<span class="hot-owner">${esc(ownerName(lead.owner))}</span>`}</article>`).join("");
     $("hotLeads").setAttribute("aria-busy", "false");
     const currentStage = state.filters.stage;
-    $("mobileStage").innerHTML = `<option value="">All stages · ${shown.length}</option>` + FILTER_STAGES.map(([key, label]) => `<option value="${key}"${key === currentStage ? " selected" : ""}>${esc(label)} · ${visibleLeads(leads, { ...state.filters, stage: key }).length}</option>`).join("");
+    $("mobileStage").innerHTML = `<option value="">All stages · ${visibleLeads(leads, { ...state.filters, stage: "" }).length}</option>` + FILTER_STAGES.map(([key, label]) => `<option value="${key}"${key === currentStage ? " selected" : ""}>${esc(label)} · ${visibleLeads(leads, { ...state.filters, stage: key }).length}</option>`).join("");
     if (state.filters.stage === "archived") {
       $("leadBoard").innerHTML = `<div class="filtered-list" aria-label="${stageLabel(state.filters.stage)}">${shown.map(card).join("") || '<p class="empty">No matching leads</p>'}</div>`;
     } else {

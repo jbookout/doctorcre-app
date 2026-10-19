@@ -1,18 +1,16 @@
 // One persistent MapLibre Search Mode component; counts come from the same
 // eligible lead projection as the board. Census points represent places only.
-function marketPlace(group, places) {
-  const matches = places.filter(item => item.name.toLowerCase() === String(group.city || "").toLowerCase() && item.state === group.state);
+export function marketLocation(lead, places) {
+  const matches = places.filter(item => item.name.toLowerCase() === String(lead.city || "").toLowerCase() && item.state === lead.state);
   const place = matches.length === 1 ? matches[0] : null;
   const position = place?.position;
   return Array.isArray(position) && position.length === 2 && position.every(Number.isFinite) &&
     Math.abs(position[0]) <= 180 && Math.abs(position[1]) <= 90 && position.some(value => value !== 0) ? place : null;
 }
-export function marketFeatures(groups, places) {
-  return { type: "FeatureCollection", features: groups.flatMap(group => {
-    const place = marketPlace(group, places);
-    return place ? [{ type: "Feature", id: place.id, properties: { key: group.key, count: group.count, leadIds: group.leadIds || [] },
-      geometry: { type: "Point", coordinates: place.position } }] : [];
-  }) };
+export function marketFeatures(groups) {
+  return { type: "FeatureCollection", features: groups.flatMap(group => group.locations.map(({ place, leadIds }) =>
+    ({ type: "Feature", id: place.id, properties: { key: group.key, count: leadIds.length, leadIds },
+      geometry: { type: "Point", coordinates: place.position } }))) };
 }
 export async function mountTerritoryMap(root, selectMarket, selectLead) {
   const [gl, geometry, places] = await Promise.all([
@@ -34,7 +32,7 @@ export async function mountTerritoryMap(root, selectMarket, selectLead) {
   map.fitBounds([[-89.2, 29.9], [-83.2, 34.95]], { padding: 24, duration: 0 });
   function draw() {
     const clusters = [];
-    for (const feature of marketFeatures(latest, places).features.sort((a,b) => b.properties.count-a.properties.count)) {
+    for (const feature of marketFeatures(latest).features.sort((a,b) => b.properties.count-a.properties.count)) {
       const position = map.project(feature.geometry.coordinates);
       const cluster = clusters.find(c => Math.hypot(c.position.x-position.x,c.position.y-position.y)<34);
       if (cluster) cluster.features.push(feature);
@@ -71,7 +69,7 @@ export async function mountTerritoryMap(root, selectMarket, selectLead) {
     }
   }
   map.on("moveend",draw);
-  return { hasLocation(lead) { return Boolean(marketPlace(lead, places)); },
+  return { locate(lead) { return marketLocation(lead, places); },
     update(groups, leadId) { latest=groups;selected=leadId;draw(); },
     dispose() {map.off("moveend",draw);for(const item of markers.values())item.marker.remove();map.remove();} };
 }

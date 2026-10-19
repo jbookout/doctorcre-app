@@ -41,13 +41,19 @@ export function hotLeadPanel(leads) {
   return { claimable: open.length > 0, rows: (open.length ? open : fresh).slice(0, 5), newTotal: fresh.length, claimed: fresh.length - open.length };
 }
 const scoreValue = lead => lead.score == null || !Number.isFinite(Number(lead.score)) ? -Infinity : Number(lead.score);
-export function marketCounts(leads, filters = {}) {
+export function marketCounts(leads, filters = {}, locate = () => null) {
   const counts = new Map();
   for (const lead of visibleLeads(leads, filters)) {
-    const key = marketKey(lead); const group = counts.get(key) || { key, count: 0, city: lead.city, state: lead.state, leadIds: [] };
-    group.count++; group.leadIds.push(lead.id); counts.set(key, group);
+    const place = locate(lead), key = marketKey(lead);
+    const group = counts.get(key) || { key, count: 0, locations: new Map(), unlocatedIds: [] };
+    if (place) {
+      const location = group.locations.get(place.id) || { place, leadIds: [] };
+      location.leadIds.push(lead.id); group.locations.set(place.id, location);
+    } else group.unlocatedIds.push(lead.id);
+    group.count++; counts.set(key, group);
   }
-  return [...counts.values()].sort((a, b) => b.count - a.count || a.key.localeCompare(b.key));
+  return [...counts.values()].sort((a, b) => b.count - a.count || a.key.localeCompare(b.key))
+    .map(group => ({ ...group, locations: [...group.locations.values()] }));
 }
 export function stageReview(detail, target, now = Date.now()) {
   const kinds = target === "engaged" ? ["email_in", "meeting", "call"] : target === "outreach_active" ? ["email_out"] : [];
