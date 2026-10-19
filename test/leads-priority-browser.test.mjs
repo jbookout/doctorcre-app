@@ -9,10 +9,10 @@ for (const width of [390, 800, 1280]) for (const theme of ['dark', 'light']) {
     const browser = await chromium.launch();
     t.after(() => browser.close());
     const page = await browser.newPage({ viewport: { width, height: 900 }, reducedMotion: 'reduce' });
+    await page.addInitScript(theme => localStorage.setItem('doctorcre.visual-preferences', JSON.stringify({ theme })), theme);
     await routeLeads(page);
     await page.goto('http://localhost/leads');
     await page.locator('.market-marker').first().waitFor();
-    await page.evaluate(theme => document.documentElement.dataset.theme = theme, theme);
     if (process.env.UI_SCREENSHOT_DIR) {
       await mkdir(process.env.UI_SCREENSHOT_DIR, { recursive: true });
       await page.screenshot({ path: `${process.env.UI_SCREENSHOT_DIR}/leads-${width}-${theme}.png`, fullPage: true });
