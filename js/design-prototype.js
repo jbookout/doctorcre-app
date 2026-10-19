@@ -846,7 +846,7 @@ function wireIndex() {
     }));
   };
   render();
-  new MutationObserver(render).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+  new MutationObserver(render).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme", "data-color-assist"] });
 }
 
 // ---------------------------------------------------------------- boot
