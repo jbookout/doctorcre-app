@@ -784,6 +784,28 @@ test('merged work detail displays the release wait and inline question', async t
 });
 
 
+test('publication failure invalidates unlinked lineage claims and recovery restores them',async t=>{
+  const {page,state,errors}=await open(t,{rpcReply:(rpc,payload)=>{
+    if(rpc.name==='read-progress-board')payload.snapshot.snapshot_json.tasks[taskId]={
+      title:'Fully observed unlinked work',status:'review',version:1,
+      linkage:{schema:'work-linkage.v1',state:'complete',subject:{board_id:'demo-project',task_id:taskId,version:1},references:[],reason:null},
+    };
+    return payload;
+  }});
+  const missing=page.locator('.work-lineage [data-missing]');
+  await page.waitForSelector('[data-linkage-state="unlinked"]');
+  assert.deepEqual(await missing.allTextContents(),Array(4).fill('Unlinked'));
+  state.offline=true;await page.clock.runFor(5100);
+  await page.waitForFunction(()=>document.querySelector('#workMetadata').textContent.includes('Publication unavailable'));
+  assert.equal(await page.locator('[data-linkage-state="unavailable"]').count(),1);
+  assert.deepEqual(await missing.allTextContents(),Array(4).fill('Unavailable'));
+  state.offline=false;await page.clock.runFor(11000);
+  await page.waitForSelector('[data-linkage-state="unlinked"]');
+  assert.deepEqual(await missing.allTextContents(),Array(4).fill('Unlinked'));
+  assert.doesNotMatch(await page.locator('#workMetadata').textContent(),/Publication unavailable/);
+  assert.deepEqual(errors,[]);
+});
+
 for (const width of [1440,390]) test(`PR card navigation preserves exact lineage at ${width}px`,async t=>{
   const task={task_id:'task:canonical-900',title:'Synthetic · Link work cards to their source',status:'review',repo:'jbookout/doctorcre-app',pr:73,
     work_request_ref:'WR-900',plan_ref:'plan:synthetic-v2',slice_ref:'slice:seven',task_ref:'task:linked-card',job_ref:'job:synthetic-build'};
