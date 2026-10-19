@@ -723,6 +723,7 @@ test('published task detail retains summary, model, safe PR links and related an
       {question_id:'unrelated',prompt:'Unrelated question',answer_text:'Unrelated answer'}];return payload;
   }});
   await page.waitForFunction(()=>document.querySelector('#workMetadata').textContent.includes('Demo work request'));
+  assert.equal(await page.locator('#workTitle').textContent(), 'Synthetic detail');
   const detail=page.locator('#workMetadata');
   assert.match(await detail.textContent(),/Codex.*gpt-6-sol.*high/s);
   assert.equal(await detail.locator('a[href="https://github.com/demo/example/pull/12"]').count(),1);
