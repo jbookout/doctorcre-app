@@ -115,6 +115,7 @@ test('recent moves catch up through history and update read-only on pages withou
 
 test('Local Deals opens a wide popup, refreshes its original note, and retains one-tap Undo in Today',async t=>{
  const{page,goto,errors}=await open(t,{clock:true});await goto('/deals?view=board');
+ await page.evaluate(async()=>{const{state}=await import('/js/pipeline.js');await state.client.addDealNote({deal:'d14',text:'Synthetic original. '.repeat(30),idempotency_key:'demo-original-long'});});
  await page.locator('.kanban-card[data-id="d14"]').click({position:{x:8,y:8}});await page.waitForFunction(()=>document.querySelector('.deal-note details'));
  assert.ok((await page.locator('#recordPanel').boundingBox()).width>=900);
  const entry=await page.locator('.deal-note').first().getAttribute('data-id');
@@ -276,7 +277,7 @@ test('PR129 #11 light theme pairs popup and filter text with light surfaces',asy
  await goto('/deals?view=board');await page.evaluate(()=>document.documentElement.dataset.theme='light');await page.locator('.kanban-card[data-id="d14"]').click();await page.locator('#detailPhase').waitFor();
  const pair=await page.locator('#recordPanel').evaluate(n=>({background:getComputedStyle(n).backgroundColor,text:getComputedStyle(n.querySelector('h2')).color}));
  assert.ok((Math.max(luminance(pair.background),luminance(pair.text))+.05)/(Math.min(luminance(pair.background),luminance(pair.text))+.05)>=4.5,JSON.stringify(pair));
- assert.equal(await page.locator('#recordPanel input[type="date"]').evaluate(n=>getComputedStyle(n).colorScheme),'light');
+ assert.equal(await page.locator('#recordPanel textarea').evaluate(n=>getComputedStyle(n).colorScheme),'light');
  const fields=await page.locator('#recordPanel input,#recordPanel select,#recordPanel textarea').evaluateAll(ns=>ns.map(n=>({background:getComputedStyle(n).backgroundColor,text:getComputedStyle(n).color})));
  for(const field of fields)assert.ok((Math.max(luminance(field.background),luminance(field.text))+.05)/(Math.min(luminance(field.background),luminance(field.text))+.05)>=4.5,JSON.stringify(field));
  const summaryColor=await page.locator('#recordPanel summary').first().evaluate(n=>getComputedStyle(n).color);assert.ok((luminance(pair.background)+.05)/(luminance(summaryColor)+.05)>=4.5,summaryColor);
@@ -316,6 +317,7 @@ for (const status of [401,403,503]) test(`Add date editor handles HTTP ${status}
   return route.fulfill({json:{result:{content:[{type:'text',text:JSON.stringify({deal_id:'d14',name:'Synthetic authorized deal',phase:'negotiation',owner:'joe',thread:[],events:[],critical_dates:[]})}]}}});
  });
  await goto('/deals?view=board&mode=live');await page.locator('.kanban-card[data-id="d14"] .card-open').click();
+ await page.locator('.deal-dates').evaluate(e=>e.open=true);
  await page.locator('[data-add-date="loi_expiry"]').click();
  const form=page.locator('#dealDateForm'),save=form.locator('button[type="submit"]');
  await form.locator('[name="date"]').fill('2026-12-01');await form.locator('[name="evidence"]').fill('Synthetic protected clause');
@@ -335,6 +337,7 @@ for (const status of [401,403,503]) test(`Add date editor handles HTTP ${status}
  failure=false;await page.clock.fastForward(16000);await page.locator('#detailPhase').waitFor();
  if(status!==503) {
   assert.equal(await save.isDisabled(),true,'recovery requires opening a new editor');
+  await page.locator('.deal-dates').evaluate(e=>e.open=true);
   await page.locator('[data-add-date="loi_expiry"]').click();assert.equal(await save.isEnabled(),true);
   assert.equal(await form.locator('[name="evidence"]').inputValue(),'');
   await form.locator('[name="date"]').fill('2026-12-01');await form.locator('[name="evidence"]').fill('Synthetic fresh clause');
@@ -352,7 +355,7 @@ for (const status of [401,403,503]) test(`Deal detail refresh distinguishes HTTP
  await page.route('**/mcp',route=>{
   if(route.request().postDataJSON().params.name!=='get-deal-room') return route.fallback();
   if(failure) {failedReads++;return route.fulfill({status,body:'Unavailable'});}
-  return route.fulfill({json:{result:{content:[{type:'text',text:JSON.stringify({deal_id:'d14',name:'Synthetic authorized deal',phase:'negotiation',owner:'joe',next_step:'Synthetic recorded next step',thread:[{id:'synthetic-note',kind:'note',text:'Synthetic protected note',actor:'joe',recorded_at:'2026-10-01T12:00:00Z'}],events:[],critical_dates:[]})}]}}});
+  return route.fulfill({json:{result:{content:[{type:'text',text:JSON.stringify({deal_id:'d14',name:'Synthetic authorized deal',phase:'negotiation',owner:'joe',client_id:'demo-client',client_name:'Synthetic client',next_step:'Synthetic recorded next step',thread:[{id:'synthetic-note',kind:'note',text:'Synthetic protected note',actor:'joe',recorded_at:'2026-10-01T12:00:00Z'}],events:[],critical_dates:[]})}]}}});
  });
  await goto('/deals?view=board&mode=live');
  await page.locator('.kanban-card[data-id="d14"] .card-open').click();
