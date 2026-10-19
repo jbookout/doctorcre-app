@@ -371,3 +371,38 @@ footer { padding-top: 8px; }
 .hierarchy-card-title:focus-visible { outline: 2px solid var(--focus); outline-offset: .25rem; }
 #hierarchy-jump input { color: var(--fg); background: var(--surface-1); border: 1px solid var(--hairline-strong); border-radius: var(--radius-2); }
 #hierarchy-jump button, .hierarchy-breadcrumbs button { color: var(--fg); background: var(--surface-2); border: 1px solid var(--hairline-strong); border-radius: var(--radius-2); padding: .6rem .9rem; min-height: 44px; cursor: pointer; }
+
+.queue-board { display: block; overflow-anchor: none; }
+.queue-root { display: grid; gap: 20px; }
+.queue-status { color: var(--fg-muted); margin-block: 0 20px; font-size: var(--font-size-1); }
+.queue-card { min-width: 0; border: 1px solid var(--hairline-strong); border-radius: var(--radius-3); background: var(--surface-1); color: var(--fg); overflow-wrap: anywhere; }
+.queue-card > summary { min-height: 52px; padding: 14px 20px; cursor: pointer; }
+.queue-card > summary::marker { color: var(--fg-muted); }
+.queue-card > summary:hover { background: var(--surface-2); border-radius: var(--radius-3); }
+.queue-title { font-weight: var(--font-weight-strong); }
+.queue-state { display: block; margin-top: 5px; color: var(--fg-muted); font-size: var(--font-size-1); font-weight: var(--font-weight-regular); }
+.queue-card > summary:focus-visible, .queue-log > summary:focus-visible, .queue-links a:focus-visible { outline: var(--focus-width) solid var(--focus-ring); outline-offset: 3px; border-radius: var(--radius-2); }
+.queue-detail-body { padding: 0 20px 16px; }
+.queue-detail-body h4 { margin-block: 24px 10px; font-size: var(--font-size-2); }
+.queue-detail-body p, .queue-detail-body li { line-height: 1.6; }
+.queue-facts { display: grid; grid-template-columns: minmax(7rem, 1fr) minmax(0, 2fr); gap: 10px 20px; margin: 16px 0; font-size: var(--font-size-1); }
+.queue-facts dt { color: var(--fg-muted); }
+.queue-facts dd { margin: 0; font-variant-numeric: tabular-nums; }
+.queue-children { display: grid; gap: 12px; padding: 0 16px 16px; }
+.queue-children:empty { display: none; }
+.queue-slice { background: var(--surface-2); }
+.queue-request > .queue-detail-body .queue-facts, .queue-slice > .queue-detail-body .queue-facts { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px 12px; }
+.queue-job { background: var(--surface-1); border-left: 3px solid var(--data-2); }
+.queue-links { display: flex; flex-wrap: wrap; gap: 12px 24px; margin-block: 20px; }
+.queue-links a { color: var(--fg); min-height: 44px; align-content: center; text-decoration: underline; text-underline-offset: .2em; }
+.queue-log { border-top: 1px solid var(--hairline); padding-top: 12px; }
+.queue-log > summary { min-height: 44px; align-content: center; cursor: pointer; }
+.queue-rollup > summary { min-height: 44px; align-content: center; color: var(--fg-muted); cursor: pointer; font-size: var(--font-size-1); }
+.queue-log li { margin-bottom: 12px; }
+@media (max-width: 600px) {
+  .queue-card > summary { padding: 12px; }
+  .queue-detail-body { padding: 0 12px 12px; }
+  .queue-children { padding: 0 8px 8px; gap: 8px; }
+  .queue-facts { grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr); gap: 10px; }
+  .queue-request > .queue-detail-body .queue-facts, .queue-slice > .queue-detail-body .queue-facts { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+}

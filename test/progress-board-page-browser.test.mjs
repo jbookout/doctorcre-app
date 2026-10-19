@@ -7,6 +7,7 @@ import { handleDoctorcreRequest } from '../src/worker.js';
 import { STAGES } from '../js/progress-board-model.js';
 import costs from './fixtures/progress-board-costs.json' with { type: 'json' };
 import hierarchy from './fixtures/progress-board-hierarchy.json' with { type: 'json' };
+import workQueue from '../js/progress-work-queue-fixture.js';
 
 const boards = [{ board_id: 'carr-v5', title: 'System delivery' }, { board_id: 'demo-project', title: 'Demo project' }];
 async function open(t, { unfinished = true, path = '/control-room/progress', boardRead = 'ready', rows = [], control, width = 390, costData, snapshotData } = {}) {
@@ -69,7 +70,7 @@ async function open(t, { unfinished = true, path = '/control-room/progress', boa
     return route.continue();
   });
   await page.goto(`${origin}${path}`);
-  return { page, context, calls, errors, setRows: value => { rows = value; }, recover: () => { readState = 'ready'; } };
+  return { page, context, calls, errors, setSnapshot: value => { snapshotData = value; }, setRows: value => { rows = value; }, recover: () => { readState = 'ready'; } };
 }
 
 for (const unfinished of [false, true]) test(`board tile opens its page and published task flow with unfinishedWork ${unfinished ? 'available' : 'unavailable'}`, async t => {
@@ -455,3 +456,41 @@ for (const width of [390, 1440]) test(`Work Request drill-down works in the rend
   await mkdir('test-artifacts/progress-hierarchy', {recursive:true});
   await page.screenshot({path:`test-artifacts/progress-hierarchy/${width}.png`, fullPage:true});
 });
+
+for (const width of [320, 390, 1280]) for (const theme of ['light', 'dark'])
+  test(`living queue preserves focus, scroll and expanded detail at ${width}px in ${theme}`, async t => {
+    const { page, errors, setSnapshot } = await open(t, { width,
+      path: '/control-room/progress/board/carr-v5?card=WR14.S1.J1', snapshotData: structuredClone(workQueue) });
+    await page.evaluate(theme => document.documentElement.dataset.theme = theme, theme);
+    const job = page.locator('[data-queue-id="WR14.S1.J1"]');
+    await job.locator('> summary').waitFor();
+    assert.equal(await job.getAttribute('open'), '');
+    await job.locator('> summary').focus();
+    await page.keyboard.press('Enter');
+    assert.equal(await job.getAttribute('open'), null, 'keyboard collapses job');
+    await page.keyboard.press('Enter');
+    assert.equal(await job.getAttribute('open'), '', 'keyboard expands job');
+    await job.locator('> summary').scrollIntoViewIfNeeded();
+    const scroll = await page.evaluate(() => scrollY);
+    const changed = structuredClone(workQueue);
+    changed.work_queue.board.order.reverse();
+    changed.work_queue.revision++;
+    setSnapshot(changed);
+    await page.clock.runFor(2300);
+    await page.locator('[data-queue-root] > details:first-child[data-queue-id="WR14"]').waitFor({ timeout: 5000 });
+    assert.deepEqual(await page.locator('[data-queue-root] > details').evaluateAll(cards => cards.map(c => c.dataset.queueId)), ['WR14','WR20']);
+    assert.equal(await page.evaluate(() => document.activeElement.parentElement.dataset.queueId), 'WR14.S1.J1');
+    assert.equal(await page.evaluate(() => scrollY), scroll);
+    assert.equal(await job.getAttribute('open'), '');
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
+    assert.match(await job.textContent(), /gpt-6.1-sol/);
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    changed.work_queue.board.order.reverse(); changed.work_queue.revision++;
+    setSnapshot(structuredClone(changed));
+    await page.clock.runFor(2300);
+    await page.locator('[data-queue-root] > details:first-child[data-queue-id="WR20"]').waitFor({ timeout: 5000 });
+    assert.equal(await page.locator('[data-queue-root]').evaluate(el => el.getAnimations({ subtree: true }).length), 0);
+    assert.deepEqual(errors, []);
+    await mkdir('test-artifacts/work-queue', { recursive: true });
+    await page.screenshot({ path: `test-artifacts/work-queue/${width}-${theme}.png`, fullPage: true });
+  });

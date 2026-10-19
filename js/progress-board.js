@@ -1,4 +1,5 @@
 import { mountHierarchy } from './progress-hierarchy.js';
+import { mountWorkQueue } from './progress-work-queue.js';
 import { boardIdFromPath, boardPageUrl } from './progress-board-route.js';
 import { governanceTasks, withGovernance } from "./control-room-workspace-model.js";
 import { createLiveClient } from "./live-client.js";
@@ -76,6 +77,7 @@ export function mountBoard(deps = {}) {
   let censusPipeline = null;
   let pipelineCards = [];
   let hierarchyUI = null;
+  let queueUI = null;
 
   function el(tag, className, text, attributes = {}) {
     const node = doc.createElement(tag);
@@ -416,6 +418,16 @@ export function mountBoard(deps = {}) {
   }
 
   function renderStages(view) {
+    if (view?.work_queue) {
+      queueUI ||= mountWorkQueue({container:byId('board-stages'), window:win, boardId});
+      queueUI.update(view.work_queue);
+      byId('task-count').textContent = `${view.work_queue.items.length} jobs`;
+      byId('pipeline-title').textContent = 'Work queue';
+      for (const id of ['board-rail', 'board-filters']) byId(id).hidden = true;
+      for (const id of ['board-completed', 'completed-list', 'board-blocked', 'system-work-panel', 'board-ledger'])
+        byId(id)?.closest('.panel')?.setAttribute('hidden', '');
+      return;
+    }
     if (view?.hierarchy) {
       pipelineCards = Object.entries(view.hierarchy.cards).map(([id, card]) => ({...card, id, title:card.card_title, summary:card.card_description}));
       deps.onTasks?.(pipelineCards, {state:boardState});
@@ -888,7 +900,7 @@ export function mountBoard(deps = {}) {
     byId("board-meta").textContent = `${view.board_id} · Published ${formatTime(view.updated_at)} · Version ${view.version}`;
     renderSync(view);
     renderHeadline(view);
-    doc.querySelector(".headline").hidden = Boolean(view.hierarchy);
+    doc.querySelector(".headline").hidden = Boolean(view.hierarchy || view.work_queue);
     renderRepos(view);
     renderStages(view);
     renderBlocked(view);
@@ -1045,7 +1057,7 @@ export function mountBoard(deps = {}) {
     if (boardId === SYSTEM_BOARD_ID && typeof client.unfinishedWork === "function" && byId("system-work-panel"))
       systemWork = mountSystemWorkBoard({ client, openTask:deps.openTask, onAccessDenied: cause => readFailure(cause, "board"), onPipeline: pipeline => { censusPipeline = pipeline; renderStages(currentView); } });
     refresh().catch(() => setError("Progress temporarily unavailable."));
-    poller = mountVisibilityPoll({ document: doc, window: win, setTimeout: setTimer, clearTimeout: clearTimer, intervalMs: REFRESH_MS,
+    poller = mountVisibilityPoll({ document: doc, window: win, setTimeout: setTimer, clearTimeout: clearTimer, intervalMs: () => !currentView || currentView.work_queue ? 2000 : REFRESH_MS,
       poll: () => refresh().catch(() => setError("Progress temporarily unavailable.")) });
     timers.push(schedule(tick, TICK_MS));
   }
@@ -1068,7 +1080,7 @@ export function mountBoard(deps = {}) {
       status.textContent = governanceState === "read" ? "" : `Approvals unavailable${governanceRead ? " · last-known cards" : ""}`;
       renderStages(currentView);
     },
-    dispose() { hierarchyUI?.dispose(); poller?.dispose(); timers.forEach(id=>win.clearInterval(id)); clearTimer(ageTimer); doc.removeEventListener("visibilitychange",refreshAges); },
+    dispose() { queueUI?.dispose(); hierarchyUI?.dispose(); poller?.dispose(); timers.forEach(id=>win.clearInterval(id)); clearTimer(ageTimer); doc.removeEventListener("visibilitychange",refreshAges); },
     get view() { return currentView; }, get liveExpanded() { return liveExpanded; } };
 }
 
