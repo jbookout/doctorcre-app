@@ -89,3 +89,52 @@ test('legacy receipts stay in expandable History without becoming completed proo
   assert.equal(view.completed.length, 0);
   assert.equal(view.history[0].id, 'WR14.S2.J1.app#316');
 });
+
+for (const status of [401, 403]) test(`denied hierarchy read ${status} cannot be restored by history and identical recovery renders`, async () => {
+  const page = await readFile(new URL('../control-room.html', import.meta.url), 'utf8');
+  const dom = new JSDOM(page, { url: 'https://app.doctorcre.com/control-room/progress/board/carr-v5' });
+  let denied = false;
+  const board = mountBoard({ window: dom.window, client: { readProgressBoard: async () => {
+    if (denied) throw Object.assign(new Error('Denied'), {status});
+    return {snapshot: {board_id:'carr-v5', version:1, snapshot_json:data}};
+  } }, setInterval: () => 0, setTimeout: () => 0, clearTimeout() {} });
+  try {
+    await board.refresh(true);
+    const doc = dom.window.document;
+    assert.equal(doc.querySelectorAll('[data-hierarchy-id]').length, 1);
+    denied = true;
+    await assert.rejects(board.refresh(true), {status});
+    assert.equal(doc.querySelectorAll('[data-hierarchy-id]').length, 0);
+    dom.window.dispatchEvent(new dom.window.PopStateEvent('popstate'));
+    assert.equal(doc.querySelectorAll('[data-hierarchy-id]').length, 0);
+    denied = false;
+    await board.refresh(true);
+    assert.equal(doc.querySelectorAll('[data-hierarchy-id]').length, 1);
+  } finally { board.dispose(); dom.window.close(); }
+});
+
+test('browser history opens the selected job detail in both directions', async () => {
+  const page = await readFile(new URL('../control-room.html', import.meta.url), 'utf8');
+  const dom = new JSDOM(page, {url:'https://app.doctorcre.com/control-room/progress/board/carr-v5'});
+  const opened = [];
+  const board = mountBoard({window:dom.window, client:{readProgressBoard:async()=>({snapshot:{version:1,snapshot_json:data}})},
+    openTask:card=>opened.push(card.id), setInterval:()=>0, setTimeout:()=>0, clearTimeout(){}});
+  try {
+    await board.refresh(true);
+    const jump = id => {
+      dom.window.document.querySelector('#hierarchy-jump input').value = id;
+      dom.window.document.querySelector('#hierarchy-jump').dispatchEvent(new dom.window.Event('submit', {cancelable:true}));
+    };
+    jump('WR14.S1.J1.carr#1960');
+    jump('WR14.S2.J1.app#316');
+    const history = async direction => {
+      const popped = new Promise(resolve=>dom.window.addEventListener('popstate',resolve,{once:true}));
+      dom.window.history[direction]();
+      await popped;
+    };
+    await history('back');
+    assert.equal(opened.at(-1), 'WR14.S1.J1.carr#1960');
+    await history('forward');
+    assert.equal(opened.at(-1), 'WR14.S2.J1.app#316');
+  } finally {board.dispose(); dom.window.close();}
+});

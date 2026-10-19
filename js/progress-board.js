@@ -913,6 +913,8 @@ export function mountBoard(deps = {}) {
 
   // A confirmed unpublished or denied read removes the protected board.
   function clearBoard(state) {
+    hierarchyUI?.dispose();
+    hierarchyUI = null;
     costs.update(null);
     boardState = state;
     governanceRead = null;

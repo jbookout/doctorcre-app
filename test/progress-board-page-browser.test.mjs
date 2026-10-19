@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { readFile, mkdir } from 'node:fs/promises';
-import { chromium } from 'playwright';
+import { chromium } from './browser-harness.mjs';
 import { handleDoctorcreRequest } from '../src/worker.js';
 import { STAGES } from '../js/progress-board-model.js';
 import costs from './fixtures/progress-board-costs.json' with { type: 'json' };
@@ -454,4 +454,27 @@ for (const width of [390, 1440]) test(`Work Request drill-down works in the rend
   assert.deepEqual(errors, []);
   await mkdir('test-artifacts/progress-hierarchy', {recursive:true});
   await page.screenshot({path:`test-artifacts/progress-hierarchy/${width}.png`, fullPage:true});
+});
+
+for (const status of [401, 403]) test(`denied hierarchy read ${status} stays empty through browser Back and recovers unchanged data`, async t => {
+  let denied = false;
+  const {page, errors} = await open(t, {path:systemPath, snapshotData:hierarchy, control:async(route,rpc)=>{
+    if (!denied || rpc.name !== 'read-progress-board') return false;
+    await route.fulfill({status, body:'{}'});
+    return true;
+  }});
+  const cards = page.locator('#board-stages [data-hierarchy-id]');
+  await page.locator('[data-hierarchy-id="WR14"] > button').click();
+  assert.equal(await cards.count(), 2);
+  denied = true;
+  await page.clock.runFor(15000);
+  await page.locator('#board-error').waitFor({state:'visible'});
+  assert.equal(await cards.count(), 0);
+  await page.goBack();
+  assert.equal(await cards.count(), 0);
+  denied = false;
+  await page.locator('#board-retry').click();
+  await page.locator('[data-hierarchy-id="WR14"]').waitFor();
+  assert.equal(await cards.count(), 1);
+  assert.deepEqual(errors, []);
 });
