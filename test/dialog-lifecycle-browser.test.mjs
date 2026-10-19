@@ -39,9 +39,10 @@ for (const width of [390, 1440]) {
         dialog.close();
         document.getElementById('second').focus(); show(1);
         const stale = await staleClose;
+        const focusInside = dialog.contains(document.activeElement);
         rows[1] = {...rows[1], title: 'Synthetic updated', name: 'Synthetic updated'};
         detail.update(kind === 'job' ? rows : snapshot());
-        const reopened = {open: dialog.open, text: dialog.textContent, focusInside: dialog.contains(document.activeElement)};
+        const reopened = {open: dialog.open, text: dialog.textContent, focusInside};
         const trueClose = new Promise(resolve => dialog.addEventListener('close', event => resolve(event.isTrusted), {once: true}));
         dialog.close();
         const trusted = await trueClose;
