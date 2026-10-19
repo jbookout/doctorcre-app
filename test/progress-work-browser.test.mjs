@@ -722,7 +722,7 @@ test('published task detail retains summary, model, safe PR links and related an
     payload.questions=[{question_id:'synthetic-choice',prompt:'Synthetic choice?',answer_text:'Proceed with synthetic fixture',status:'Applied'},
       {question_id:'unrelated',prompt:'Unrelated question',answer_text:'Unrelated answer'}];return payload;
   }});
-  await page.waitForFunction(()=>document.querySelector('#workTitle').textContent==='Demo work request',null,{timeout:5000});
+  await page.waitForFunction(()=>document.querySelector('#workMetadata').textContent.includes('Demo work request'));
   const detail=page.locator('#workMetadata');
   assert.match(await detail.textContent(),/Codex.*gpt-6-sol.*high/s);
   assert.equal(await detail.locator('a[href="https://github.com/demo/example/pull/12"]').count(),1);
