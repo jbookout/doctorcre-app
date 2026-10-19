@@ -1,3 +1,4 @@
+import {onDialogClosed} from './dialog-lifecycle.js';
 import { selectDocRecord } from './doc-context.js';
 import { mountAutoRefresh, updatedLabel, readWithDeadline } from './auto-refresh.mjs';
 import { createFixtureClient } from './fixture-client.js';
@@ -254,7 +255,7 @@ function wireQueuePane(){
 function openAtlas(node=null){mountAtlas({client,getIncidentsRead:()=>view.reads.incidents,node,onChange:atlas=>{view.atlas=atlas;}});}
 async function boot(){
  const resolved=resolveDealroomBoot(globalThis.location);client=resolved.mode==='live'?createLiveClient():await createFixtureClient(resolved.options);
- $("jobDialog").addEventListener("close",()=>selectDocRecord(null,null));
+ onDialogClosed($("jobDialog"),()=>selectDocRecord(null,null));
  details=mountJobDetail({client,document});board=mountBoard({client,openTask:task=>details.open(task),onTasks:(tasks,observation)=>details.update(tasks,observation)});board.start();
  $('severityChips').addEventListener('click',event=>{
   const chip=event.target.closest('button[data-severity]');
@@ -266,7 +267,7 @@ async function boot(){
  });
  $('crInboxList').addEventListener('click',event=>{const row=event.target.closest('[data-notification]');if(row)showInboxDetail(row.dataset.notification);});
  $('crInboxClose').onclick=()=>$('crInboxDialog').close();
- $('crInboxDialog').addEventListener('close',()=>{if($('crInboxDialog').open)return;const id=$('crInboxDialog').dataset.notification;[...$('crInboxList').querySelectorAll('[data-notification]')].find(row=>row.dataset.notification===id)?.focus();$('crInboxBody').textContent='';});
+ onDialogClosed($('crInboxDialog'),()=>{const id=$('crInboxDialog').dataset.notification;[...$('crInboxList').querySelectorAll('[data-notification]')].find(row=>row.dataset.notification===id)?.focus();$('crInboxBody').textContent='';});
  mountNotificationBadge(client);tabs=wireTabs('controlRoomTabs');wireQueuePane();
  const strip=$('controlRoomTabs'),tabFor=key=>strip.querySelector(`[data-tab-key="${key}"]`);
  const commands=mountControlRoomCommands({tabs:strip,onEscape:()=>closePane()});

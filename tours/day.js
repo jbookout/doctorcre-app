@@ -1,3 +1,4 @@
+import {onDialogClosed} from '../js/dialog-lifecycle.js';
 import { tourDisplayName } from "./tour-format.js";
 import { acceptedRouteFromDetail, buildAcceptedRouteState, mountAcceptedItinerary } from "./itinerary-map.js";
 import { createDayClient } from "./day-client.js";
@@ -80,7 +81,7 @@ export function mountTourDay({ document, window, api = createDayClient(), store 
   const selectedStop = () => orderedDayStops(tour).find(s => s.id === selected);
   const close = () => { $("#day-dialog").close(); urls.forEach(url => window.URL.revokeObjectURL(url)); urls = []; focusControl(opener); };
   $("#day-dialog-close").onclick = close;
-  $("#day-dialog").addEventListener("close", () => { urls.forEach(url => window.URL.revokeObjectURL(url)); urls = []; focusControl(opener); });
+  onDialogClosed($("#day-dialog"), () => { urls.forEach(url => window.URL.revokeObjectURL(url)); urls = []; focusControl(opener); });
   const recorder = createDayRecorder({ window, store,
     onChange(note) { if (disposed || (note && note.scope !== scope)) return; volatileNote = note; renderControls(); if (!note || note.status !== "recording") void loadNotes(); },
     onError(text, note) { if (disposed || note?.scope !== scope) return; recordingMessage = text; volatileNote = note; renderStatus(); },

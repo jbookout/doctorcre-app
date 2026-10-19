@@ -31,7 +31,7 @@ export async function createLoopFixture(request: APIRequestContext, kind: 'team_
   return {
     title,
     async cleanup() {
-      const current = await call(request, 'read-loop', { loop_id: created.loop_id });
+      const { loop: current } = await call(request, 'read-loop', { loop_id: created.loop_id });
       expect(current.title).toBe(title);
       expect(current.status).toBe('open');
       const closed = await call(request, 'close-loop', {
@@ -39,7 +39,7 @@ export async function createLoopFixture(request: APIRequestContext, kind: 'team_
         resolution: 'done', outcome: 'Synthetic browser fixture completed and cleaned up.',
       });
       expect(closed.ok).toBe(true);
-      const after = await call(request, 'read-loop', { loop_id: created.loop_id });
+      const { loop: after } = await call(request, 'read-loop', { loop_id: created.loop_id });
       expect(after.status).toBe('done');
     },
   };
