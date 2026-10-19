@@ -2,10 +2,10 @@ import { authGeneration, authCurrent, authReadable, establishAuth, invalidateAut
 import { boardPageUrl } from './progress-board-route.js';
 import { createLiveClient } from './live-client.js';
 import { mountVisibilityPoll } from './visibility-poll.mjs';
-import { boardView, boardFreshness, taskIdentity, taskSummary, relatedQuestions, deliveryDetail } from './progress-board-model.js';
+import { boardView, boardFreshness, jobLinks, taskIdentity, taskSummary, relatedQuestions, deliveryDetail } from './progress-board-model.js';
 import { mountProgressWire } from './progress-wire.js';
 import { validEngineeringPassport } from './job-passport.js';
-import { workScope, workDetailUrl, scopedTurn, scopedQueueCard, passportAttempts, canonicalPassport, executionTurn, sourceSequence } from './progress-work-model.js';
+import { workScope, workDetailUrl, workLineageHtml, scopedTurn, scopedQueueCard, passportAttempts, canonicalPassport, executionTurn, sourceSequence } from './progress-work-model.js';
 import { systemPipeline, validSystemWork } from './system-work-board-model.js';
 
 const client = createLiveClient();
@@ -34,7 +34,7 @@ function clearRequestEvidence(message) {
   for (const id of ['workMetadata','workSessionList','workDispatchHistory','workCanonicalBody','workReviewList','workDotList']) empty($(id),message);
 }
 function reconcileWorkRequest(task) {
-  const reference = task?.work_request || task?.human_ref || task?.id;
+  const reference = task ? jobLinks(task).workRequest : null;
   const next = explicitWorkRequest || (/^WR-\d+$/.test(reference || '') ? reference : null);
   if (next === scope.workRequest) return;
   scope.workRequest = next; ++bindingGeneration;
@@ -247,11 +247,23 @@ document.addEventListener('progress-auth-lost', () => {
     $('workTitle').textContent = 'Work detail'; document.title = 'Work detail · Progress';
     breadcrumbs('Progress', 'Sign in');
 });
+let focusedLineage = false;
+function lineageRecord(task) {
+  const host = node('div'); host.innerHTML = workLineageHtml(task, scope.board, {targets:true,taskId:scope.task});
+  let hash;
+  try { hash = decodeURIComponent(location.hash.slice(1)); } catch { return host.firstElementChild; }
+  queueMicrotask(() => {
+    const target = document.getElementById(hash);
+    if (!focusedLineage && hash.startsWith('work-lineage-') && target) { focusedLineage = true; target.focus(); }
+  });
+  return host.firstElementChild;
+}
 function renderMetadata(task, questions) {
   const delivery = task ? deliveryDetail(task) : null;
+  const linkedTask = task || (scope.workRequest ? {work_request:scope.workRequest} : null);
   // Displayed delivery ages change independently of publication revisions.
   patch($('workMetadata'), {task, card, questions, delivery}, () => [
-    flow(task), ...(task ? [deliveryRecord(delivery), taskRecord(task, questions)] : [node('p', scope.task
+    ...(linkedTask ? [lineageRecord(linkedTask)] : []), flow(task), ...(task ? [deliveryRecord(delivery), taskRecord(task, questions)] : [node('p', scope.task
       ? 'This task is not in the loaded publication; linked wire evidence remains available.'
       : 'Shared project activity · infrastructure and queue cover all projects.', 'work-empty')]),
     ...(card ? [record('Work request', card)] : []),

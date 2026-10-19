@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { handleDoctorcreRequest } from '../src/worker.js';
-import { canonicalPassport } from '../js/progress-work-model.js';
+import { canonicalPassport, workLineageHtml } from '../js/progress-work-model.js';
 import { passportProjectionDigest } from '../js/job-passport.js';
 import { canonicalFixture } from './fixtures/progress-work.synthetic.mjs';
 
@@ -43,4 +43,11 @@ test('Progress work detail uses the existing Control Room auth gate', async () =
   });
   assert.equal(new URL(requests[0]).pathname, '/control-room');
   assert.equal(new URL(response.headers.get('location')).searchParams.get('return_to'), '/control-room/progress/work?board=synthetic&task=t_demo');
+});
+
+
+test('work lineage targets stay distinct when a task and request share the same reference',()=>{
+ const html=workLineageHtml({id:'WR-900',task_id:'WR-900',work_request_ref:'WR-900'},'synthetic',{targets:true});
+ const ids=[...html.matchAll(/ id="([^"]+)"/g)].map(match=>match[1]);
+ assert.equal(new Set(ids).size,ids.length);
 });

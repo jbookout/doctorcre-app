@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
+import { readFile, mkdir } from 'node:fs/promises';
+import { resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { chromium, settles, animationsSettled } from './browser-harness.mjs';
 import { routeContract as routes } from "../js/routes.js";
 import { handleDoctorcreRequest } from '../src/worker.js';
@@ -77,7 +79,7 @@ async function open(t,{width=390,path=taskPath,empty=false,stale=false,history=0
     // fragment the browser never sends, exactly as an HTTP redirect without one does.
     if(routes.redirects[url.pathname]?.startsWith('/control-room/progress/work')){const moved=await handleDoctorcreRequest(new Request(url.href),{});assert.equal(moved.status,308);return route.fulfill({contentType:'text/html',body:`<script>const to=new URL(${JSON.stringify(moved.headers.get('location'))});to.hash||=location.hash;location.replace(to)</script>`});}
     const file=routes.routes[url.pathname.startsWith('/control-room/progress/board/')?'/control-room/progress/board/:boardId':url.pathname]||url.pathname.slice(1);
-    try{const body=await readFile(new URL('../'+file,import.meta.url));return route.fulfill({body,contentType:/\.m?js$/.test(file)?'text/javascript':file.endsWith('.css')?'text/css':'text/html'});}catch{return route.fulfill({status:404,body:''});}
+    try{const body=await readFile(resolve(process.env.DOCTORCRE_FIXTURE_ROOT || fileURLToPath(new URL('..',import.meta.url)),file));return route.fulfill({body,contentType:/\.m?js$/.test(file)?'text/javascript':file.endsWith('.css')?'text/css':'text/html'});}catch{return route.fulfill({status:404,body:''});}
   });
   await page.goto(`http://localhost${path}`);await page.waitForFunction(()=>document.getElementById('workTitle')?.textContent!=='Work detail');
   return {page,state,errors,calls,posts};
@@ -777,4 +779,34 @@ test('merged work detail displays the release wait and inline question', async t
   assert.equal(await row.locator('dd').textContent(), 'Synthetic canary pending');
   assert.match(await task.textContent(), /SYNTHETIC V1 QUESTION/);
   assert.deepEqual(errors, []);
+});
+
+
+for (const width of [1440,390]) test(`PR card navigation preserves exact lineage at ${width}px`,async t=>{
+  const task={title:'Synthetic · Link work cards to their source',status:'review',repo:'jbookout/doctorcre-app',pr:73,
+    work_request_ref:'WR-900',plan_ref:'plan:synthetic-v2',slice_ref:'slice:seven',task_ref:'task:linked-card',job_ref:'job:synthetic-build'};
+  const {page,errors}=await open(t,{width,path:'/control-room/progress/board/demo-project',rpcReply:(rpc,payload)=>{
+    if(rpc.name==='read-progress-board') payload.snapshot.snapshot_json.tasks[taskId]={...task};
+    return payload;
+  }});
+  await page.locator(`[data-task-id="${taskId}"]`).first().click();
+  await page.locator('.work-lineage').waitFor();
+  assert.equal(new URL(page.url()).searchParams.get('task'),taskId);
+  const refs=['WR-900','plan:synthetic-v2','slice:seven','task:linked-card','job:synthetic-build'];
+  for(const [i,ref] of refs.entries()) {
+    const target=`work-lineage-${['work_request','plan','slice','task','job'][i]}-${ref}`;
+    await page.locator('.work-lineage a').filter({hasText:ref}).click();
+    await page.waitForFunction(target=>document.activeElement?.id===target,target);
+    assert.equal(decodeURIComponent(new URL(page.url()).hash.slice(1)),target);
+    assert.equal(new URL(page.url()).searchParams.get('task'),taskId);
+  }
+  assert.match(await page.locator('#workMetadata').textContent(),/Demo work request/);
+  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
+  if(process.env.SLICE7_CAPTURE_DIR) {
+    await mkdir(process.env.SLICE7_CAPTURE_DIR,{recursive:true});
+    await page.evaluate(()=>window.scrollBy(0,document.querySelector('.work-lineage').getBoundingClientRect().top-100));
+    await page.clock.runFor(300);
+    await page.screenshot({path:resolve(process.env.SLICE7_CAPTURE_DIR,`linked-work-${width}.png`)});
+  }
+  assert.deepEqual(errors,[]);
 });

@@ -1,3 +1,5 @@
+import { jobLinks } from './progress-board-model.js';
+import { escapeText as escape } from './change-receipts.mjs';
 import { validCanonicalEngineeringPassport, passportProjectionDigest } from './job-passport.js';
 // Exact reference joins; titles and shared seats never establish task identity.
 export const PROGRESS_WORK_PATH = '/control-room/progress/work';
@@ -10,6 +12,37 @@ export function workScope(search = '') {
   const query = new URLSearchParams(search);
   return { board: query.get('board') || 'carr-v5', task: query.get('task') || query.get('task_id'),
     workRequest: query.get('work_request') || query.get('work-request'), session: query.get('session') || query.get('session_id'), view: query.get('view') || 'wire' };
+}
+export function workTaskId(task) {
+  if (task.governance?.ref) return `governance_item:${task.governance.ref}`;
+  if (task.kind && task.id?.startsWith(`${task.kind}:`)) return task.id;
+  return task.task_id || (jobLinks(task).prLabel ? task.id : null);
+}
+const lineageFields = [
+  ['Work Request', 'work_request', []],
+  ['Plan', 'plan', ['plan_ref', 'plan_id']],
+  ['Slice', 'slice', ['slice_ref', 'slice_id']],
+  ['Task', 'task', ['task_ref', 'task_id']],
+  ['Job', 'job', ['job_ref', 'job_id']],
+];
+export function workLineage(task, board = 'carr-v5', taskId = workTaskId(task)) {
+  const workRequest = jobLinks(task).workRequest;
+  const base = taskId || workRequest ? workDetailUrl({board, task: taskId, workRequest}) : null;
+  return lineageFields.map(([label, kind, fields]) => {
+    const related = (Array.isArray(task.related) ? task.related : []).filter(row => row?.kind === kind).map(row => row.id);
+    const refs = [...new Set((kind === 'work_request' ? [workRequest] : [fields.map(field => task[field]).find(ref => typeof ref === 'string' && ref.trim()), ...related])
+      .filter(ref => typeof ref === 'string' && ref.trim() && !/[\u0000-\u001f]/.test(ref)))];
+    if (kind === 'task' && !refs.length && taskId) refs.push(taskId);
+    const entries = refs.map(ref => ({ref, target: `work-lineage-${kind}-${ref}`, href: base ? `${base}#${encodeURIComponent(`work-lineage-${kind}-${ref}`)}` : null}));
+    return {label, kind, entries};
+  });
+}
+export function workLineageHtml(task, board, {linked = true, targets = false, taskId = workTaskId(task)} = {}) {
+  return `<section class="work-lineage" aria-label="Linked work"><h3>Linked work</h3><dl>${workLineage(task, board, taskId).map(row =>
+    `<div><dt>${row.label}</dt><dd>${row.entries.length ? row.entries.map(({ref, href, target}) => {
+      const tag = linked && href ? 'a' : 'span';
+      return `<${tag}${targets ? ` id="${escape(target)}" tabindex="-1"` : ''}${tag === 'a' ? ` data-job-control="lineage-${row.kind}-${escape(ref)}" href="${escape(href)}"` : ''}>${escape(ref)}</${tag}>`;
+    }).join(' · ') : '<span data-missing>Not linked</span>'}</dd></div>`).join('')}</dl></section>`;
 }
 const workFields = new Set(['work_request','work_request_id','work_request_ref','canonical_work_ref']);
 const taskFields = new Set(['task_id','task_ref']);

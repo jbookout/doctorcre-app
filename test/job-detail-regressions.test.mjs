@@ -80,3 +80,36 @@ test('PR132 #6: replaced calendar trigger returns focus to its owner and origina
  calendar.innerHTML=calendar.innerHTML;agenda.innerHTML=agenda.innerHTML;document.getElementById('jobClose').click();
  assert.equal(document.activeElement,calendar.lastElementChild);
 });
+
+
+test('PR card exposes exact work lineage and keeps links through a rename',()=>{
+ const {detail,body}=setup();
+ const task={id:'app-pr-73',task_id:'app-pr-73',title:'Synthetic linked card',repo:'jbookout/doctorcre-app',pr:73,
+  work_request_ref:'WR-900',plan_ref:'plan:synthetic-v2',slice_ref:'slice:seven',task_ref:'task:linked-card',job_ref:'job:synthetic-build'};
+ detail.open(task);
+ const refs=['WR-900','plan:synthetic-v2','slice:seven','task:linked-card','job:synthetic-build'];
+ const links=()=>[...body.querySelectorAll('.work-lineage a')];
+ assert.equal(links().length,5);
+ for(const [i,link] of links().entries()) {
+  const url=new URL(link.href);assert.equal(url.pathname,'/control-room/progress/work');
+  assert.equal(url.searchParams.get('task'),'app-pr-73');assert.ok(link.textContent.includes(refs[i]));
+  assert.equal(decodeURIComponent(url.hash.slice(1)),`work-lineage-${['work_request','plan','slice','task','job'][i]}-${refs[i]}`);
+ }
+ const before=links().map(link=>link.href);
+ detail.update([{...task,title:'Renamed without changing the work'}]);
+ assert.deepEqual(links().map(link=>link.href),before);
+ detail.open({id:'unbound',task_id:'unbound',title:'WR-900 plan:synthetic-v2',slice:'Slice seven'});
+ assert.equal(body.querySelectorAll('.work-lineage a').length,1);
+ assert.equal(body.querySelectorAll('.work-lineage [data-missing]').length,4);
+});
+
+
+test('lineage refuses display-only automation and incident IDs and canonicalizes governance',()=>{
+ const {detail,body}=setup();
+ for(const task of [{id:'automation:joe:nightly'},{id:'INC-DEMO'}]) {
+  detail.open(task);assert.equal(body.querySelectorAll('.work-lineage a').length,0);
+ }
+ detail.open({id:'governance:pending:demo',kind:'governance_item',governance:{ref:'demo',entry:{statement:'Synthetic'}}});
+ const link=body.querySelector('.work-lineage a');
+ assert.equal(new URL(link.href).searchParams.get('task'),'governance_item:demo');
+});
