@@ -46,7 +46,10 @@ export function mountHierarchy({ container, window: win, boardId, onOpen }) {
     address = id;
     win.history[replace ? 'replaceState' : 'pushState']({}, '', hierarchyUrl(boardId, id));
     render();
-    const selected = hierarchyView(data, id).selected;
+    openSelected();
+  }
+  function openSelected() {
+    const selected = hierarchyView(data, address).selected;
     if (selected) onOpen({ ...selected, title: selected.card_title, summary: selected.card_description });
   }
   function cardNode(card) {
@@ -149,7 +152,11 @@ export function mountHierarchy({ container, window: win, boardId, onOpen }) {
     container.replaceChildren(nav, jump, grid, completed);
     if (previous) [...container.querySelectorAll('[data-hierarchy-id]')].find(card => card.dataset.hierarchyId === previous)?.querySelector('button')?.focus();
   }
-  const pop = () => { address = new URL(win.location.href).searchParams.get('card') || ''; render(); };
+  const pop = () => {
+    address = new URL(win.location.href).searchParams.get('card') || '';
+    render();
+    openSelected();
+  };
   win.addEventListener('popstate', pop);
   return { update(value) {
     const signature = JSON.stringify(value);
@@ -158,8 +165,7 @@ export function mountHierarchy({ container, window: win, boardId, onOpen }) {
     data = value; render();
     if (firstRead) {
       firstRead = false;
-      const selected = hierarchyView(data, address).selected;
-      if (selected) onOpen({...selected, title:selected.card_title, summary:selected.card_description});
+      openSelected();
     }
   }, dispose() { win.removeEventListener('popstate', pop); } };
 }

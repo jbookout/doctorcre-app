@@ -5,7 +5,7 @@ export default {
   "title": "Demo work queue",
   "producer": {
     "repo": "jbookout/carr-system",
-    "source_commit": "57560029d4d16ae99a5d3346f11537575902d08b"
+    "source_commit": "5c9e9ea8f4f6125b2d0edcb40b34a818c91c5b81"
   },
   "tasks": {},
   "work_queue": {

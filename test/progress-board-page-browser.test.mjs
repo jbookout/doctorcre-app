@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { readFile, mkdir } from 'node:fs/promises';
-import { chromium } from 'playwright';
+import { chromium } from './browser-harness.mjs';
 import axe from 'axe-core';
 import { handleDoctorcreRequest } from '../src/worker.js';
 import { STAGES } from '../js/progress-board-model.js';
@@ -468,6 +468,7 @@ for (const width of [390, 1440]) test(`Work Request drill-down works in the rend
   await page.screenshot({path:`test-artifacts/progress-hierarchy/${width}.png`, fullPage:true});
 });
 
+
 for (const width of [320, 390, 1280]) for (const theme of ['light', 'dark'])
   test(`living queue preserves focus, scroll and expanded detail at ${width}px in ${theme}`, async t => {
     const { page, errors, setSnapshot } = await open(t, { width,
@@ -513,5 +514,53 @@ test('an unreviewed fixture preview renders queue details without calling the li
   await page.locator('[data-queue-id="WR14.S1.J1"][open]').waitFor({ timeout: 3000 });
   assert.equal(calls.filter(call => call.name === 'read-progress-board').length, 0);
   assert.match(await page.locator('#board-stages').textContent(), /Demo queue ordering/);
+  assert.deepEqual(errors, []);
+});
+
+for (const status of [401, 403]) test(`denied hierarchy read ${status} stays empty through browser Back and recovers unchanged data`, async t => {
+  let denied = false;
+  const {page, errors} = await open(t, {path:systemPath, snapshotData:hierarchy, control:async(route,rpc)=>{
+    if (!denied || rpc.name !== 'read-progress-board') return false;
+    await route.fulfill({status, body:'{}'});
+    return true;
+  }});
+  const cards = page.locator('#board-stages [data-hierarchy-id]');
+  await page.locator('[data-hierarchy-id="WR14"] > button').click();
+  assert.equal(await cards.count(), 2);
+  denied = true;
+  await page.clock.runFor(15000);
+  await page.locator('#board-error').waitFor({state:'visible'});
+  assert.equal(await cards.count(), 0);
+  await page.goBack();
+  assert.equal(await cards.count(), 0);
+  denied = false;
+  await page.locator('#board-retry').click();
+  await page.locator('[data-hierarchy-id="WR14"]').waitFor();
+  assert.equal(await cards.count(), 1);
+
+  assert.deepEqual(errors, []);
+});
+
+for (const status of [401, 403]) test(`denied queue read ${status} recovers the same queue after browser Back`, async t => {
+  let denied = false;
+  const {page, errors} = await open(t, {path:systemPath, snapshotData:workQueue, control:async(route,rpc)=>{
+    if (!denied || rpc.name !== 'read-progress-board') return false;
+    await route.fulfill({status, body:'{}'});
+    return true;
+  }});
+  const cards = page.locator('#board-stages [data-queue-id]');
+  await cards.first().waitFor({state:'attached'});
+  const count = await cards.count();
+  await page.evaluate(()=>history.pushState({},'',location.pathname+'?card=WR14.S1.J1'));
+  denied = true;
+  await page.clock.runFor(15000);
+  await page.locator('#board-error').waitFor({state:'visible'});
+  assert.equal(await cards.count(), 0);
+  await page.goBack();
+  assert.equal(await cards.count(), 0);
+  denied = false;
+  await page.locator('#board-retry').click();
+  await page.waitForLoadState('networkidle');
+  assert.equal(await cards.count(), count);
   assert.deepEqual(errors, []);
 });
