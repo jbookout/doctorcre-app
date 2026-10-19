@@ -769,7 +769,7 @@
     "schema": "work-linkage.v1",
     "producer": {
       "repository": "jbookout/carr-system",
-      "source_commit": "d55cc55c6e3fc57eb4d07d2662aeffffefcbbdac"
+      "source_commit": "485cc148bb8ee77fde7f22bb0022238c569c6b8a"
     },
     "operations": [
       "read-progress-board",
