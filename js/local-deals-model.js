@@ -1,4 +1,6 @@
 import { noteText } from './pipeline-model.js';
+import { toDay } from './calendar-model.js';
+import { radarToday } from './lease-radar-model.js';
 
 export const PHASE_TRIGGERS = Object.freeze({
   pending: 'Prospective client', research: 'ETL signed', site_selection: 'Tour prepared or scheduled',
@@ -25,18 +27,9 @@ function historyDeals(rows, owner = 'all', query = '', lost = false) {
     .sort((a,b) => String(b.closed_on || '').localeCompare(String(a.closed_on || '')) || String(a.name).localeCompare(String(b.name)));
 }
 export function needsAttention(deal, now = Date.now()) {
-  if (deal.operating_state === 'parked') return false;
-  const changed = Math.max(...[deal.phase_change?.recorded_at, deal.updated_at,
-    ...Object.values(deal.field_base || {}).map(event => event?.recorded_at)]
-    .map(value => Date.parse(value || '')).filter(Number.isFinite), -Infinity);
-  const review = Date.parse(deal.last_review_at || '');
-  const touch = Date.parse(deal.last_touch || '');
-  const due = Date.parse(deal.next_date || '');
-  return Boolean(deal.attention || deal.needs_attention || deal.flagged || deal.missing_step
-    || deal.changed_since_review || deal.gone_quiet || !noteText(deal.next_step)
-    || (Number.isFinite(changed) && (!Number.isFinite(review) || changed > review))
-    || (Number.isFinite(touch) && now - touch > 14 * 86400000)
-    || (Number.isFinite(due) && due < now));
+  if (isClosedDeal(deal) || (deal.operating_state || 'active') !== 'active') return false;
+  const due = toDay(deal.next_date);
+  return Boolean(noteText(deal.next_step).trim() && due && due < radarToday(new Date(now)));
 }
 export function urgencyOrder(rows, now = Date.now()) {
   return [...rows].sort((a,b) => Number(needsAttention(b,now)) - Number(needsAttention(a,now))

@@ -7,11 +7,19 @@ test('local scope excludes national and invoiced assignments and filters only ow
   const rows=[base,{...base,id:'national',workspace_kind:'national_account'},{...base,id:'parent',account_client_id:'demo-account'},{...base,id:'invoice',invoiced_on:'2026-10-01'},{...base,id:'dell',owner:'dell'}];
   assert.deepEqual(localDeals(rows).map(d=>d.id),['demo-1','dell']); assert.deepEqual(localDeals(rows,'joe').map(d=>d.id),['demo-1']);
 });
-test('every requested attention condition ranks before the rest; parked never requests attention',() => {
-  for(const fields of [{attention:true},{needs_attention:true},{flagged:true},{missing_step:true},{changed_since_review:true},{gone_quiet:true},{next_step:''},{last_touch:'2026-09-01'},{phase_change:{recorded_at:'2026-10-01T17:00:00Z'}}]) {
-    const d={...base,id:'urgent',...fields};assert.equal(needsAttention(d,now),true);assert.equal(urgencyOrder([base,d],now)[0].id,'urgent');assert.equal(needsAttention({...d,operating_state:'parked'},now),false);
-  }
-  assert.equal(needsAttention(base,now),false);
+test('only a recorded overdue next step requests attention; flags and edits alone do not', () => {
+  for (const fields of [{attention:true},{needs_attention:true},{flagged:true},{missing_step:true},{changed_since_review:true},{gone_quiet:true},{next_step:''},{last_touch:'2026-09-01'},{phase_change:{recorded_at:'2026-10-01T17:00:00Z'}},{next_date:'2026-10-01'},{next_date:'2026-02-30'}])
+    assert.equal(needsAttention({...base,...fields},now),false);
+  const overdue={...base,id:'overdue',next_date:'2026-09-30'};
+  assert.equal(needsAttention(overdue,now),true);
+  assert.equal(urgencyOrder([base,overdue],now)[0].id,'overdue');
+  for(const fields of [{operating_state:'parked'},{phase:'closed'},{outcome:'lost'},{invoiced_on:'2026-10-01'},{next_step:''}])
+    assert.equal(needsAttention({...overdue,...fields},now),false);
+});
+test('overdue uses the Chicago business day across browser timezones', () => {
+  const midnightInParis=Date.parse('2026-10-02T00:30:00Z');
+  assert.equal(needsAttention({...base,next_date:'2026-10-01'},midnightInParis),false);
+  assert.equal(needsAttention({...base,next_date:'2026-09-30'},midnightInParis),true);
 });
 test('automatic move and invoice close name only dated evidence with an exact undo target',() => {
  const change={event_id:'event-1',prior_phase:'research',phase:'negotiation',automatic:true,reason:'LOI sent',evidence_date:'2026-10-03'};
@@ -36,15 +44,6 @@ test('W4 read binds the separate producer revision and versioned phase/parking f
  assert.equal(contract.response.schema_version,'local-deals-board.v1');
  for(const key of ['operating_state','parking_note','phase_change','invoiced_on']) assert.ok(contract.response.deal_keys.includes(key));
 });
-
-test('R11 non-phase board field evidence newer than review requests attention',()=>{
- for(const field of ['owner','next_date','attention','operating_state']) {
-  const deal={...base,phase_change:{recorded_at:'2026-10-01T15:00:00Z'},field_base:{[field]:{id:'new-event',recorded_at:'2026-10-01T16:30:00Z'}}};
-  assert.equal(needsAttention(deal,now),true,field);
-  assert.equal(needsAttention({...deal,last_review_at:'2026-10-01T17:00:00Z'},now),false);
- }
-});
-
 
 test('open local deals omit closed phases, terminal outcomes and invoices, including parked closures', () => {
  const rows=[base,{...base,id:'closed',phase:'Closed'},{...base,id:'closed-slug',phase:'closed',operating_state:'parked'},{...base,id:'won',outcome:'won'},{...base,id:'paused',outcome:'paused'},{...base,id:'invoiced',invoiced_on:'2026-10-01'}];

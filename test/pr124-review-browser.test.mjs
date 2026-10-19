@@ -11,7 +11,7 @@ async function open(t, { width = 1440, reducedMotion = 'no-preference', many = f
   const seed = JSON.parse(await readFile(new URL('data/board-seed.json', root), 'utf8'));
   seed.deals.forEach((d, i) => Object.assign(d, { phase: phases[i % 8], next_step: 'Confirm the next appointment', last_touch: '2026-10-01', last_review_at: '2026-10-01T16:00:00Z', next_date: null, attention: false }));
   seed.deals.find(d => d.id === 'd14').phase = 'Negotiation';
-  Object.assign(seed.deals.find(d => d.id === 'd14'), {owner:'joe',attention:true});
+  Object.assign(seed.deals.find(d => d.id === 'd14'), {owner:'joe',attention:true,next_date:'2026-09-30'});
   Object.assign(seed.deals.find(d => d.id === 'd20'), {owner:'dell',attention:true});
   seed.deals.find(d => d.id === 'd20').phase = 'Closed';
   seed.deals.find(d => d.id === 'd23').invoiced_on = '2026-10-01';
@@ -356,7 +356,7 @@ test('R9 original prior step and actors survive without synthetic activity echo'
 });
 test('R10 Home flagged personal URL reaches only flagged records for current actor',async t=>{
  const {page}=await open(t,{query:'?workspace=team&filter=flagged&owner=me'});
- const observed=await page.evaluate(async()=>{const {state}=await import('/js/pipeline.js');return {filter:state.filter,scope:state.scopeFilter,expected:[...state.deals.values()].filter(d=>d.owner===state.selfActor&&d.attention&&d.operating_state!=='parked'&&d.workspace_kind!=='national_account'&&!d.account_client_id&&!d.invoiced_on).map(d=>d.id).sort(),shown:[...document.querySelectorAll('.kanban-column [data-id]')].map(e=>e.dataset.id).sort()};});
+ const observed=await page.evaluate(async()=>{const {state}=await import('/js/pipeline.js');return {filter:state.filter,scope:state.scopeFilter,expected:['d14'],shown:[...document.querySelectorAll('.kanban-column [data-id]')].map(e=>e.dataset.id).sort()};});
  assert.equal(observed.filter,'joe');assert.equal(observed.scope,'flagged');assert.deepEqual(observed.shown,observed.expected);
 });
 test('R12 full-record disclosures preserve actions, premises, rounds, documents and change history',async t=>{
