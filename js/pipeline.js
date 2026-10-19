@@ -51,7 +51,7 @@ import {
 import {
   CLOSED_SLUG, COLUMNS, OPEN_COLUMNS, COMPLETION_CAPTIONS, closedColumnCaption, columnBySlug, columnByValue,
   columnLabel, completionPlan, contextDrawerSections, groupByColumn, keyboardTarget,
-  loadDealContext, attachedParties, moveIntent, moveSummary, moveTitle, noteText, dealName, presenceChip,
+  loadDealContext, moveIntent, moveSummary, moveTitle, noteText, dealName, presenceChip,
   dealInsightLines,
 } from './pipeline-model.js';
 import { isClosedDeal, localDeals, needsAttention } from './deal-review-model.js';
@@ -126,20 +126,24 @@ function autoHtml(deal) {
   return move ? `<div class="auto-move"><span>${esc(move.text.slice(0, move.text.lastIndexOf(' ')))}</span> <time>${esc(move.text.slice(move.text.lastIndexOf(' ') + 1))}</time></div>` : '';
 }
 const dealTitle = (deal) => dealName(deal.name);
+function nextStepHtml(deal) {
+  const text = noteText(deal.next_step) || 'Next step pending';
+  return `<p class="next-line" title="${esc(text)}">${esc(text)}</p>`;
+}
 function cardHtml(deal) {
   const attention = needsAttention(deal);
   const pending = pendingCommand(state.fieldWrites, cellKey(deal.id, 'phase'));
   return `<article class="kanban-card" data-id="${esc(deal.id)}" data-attention="${attention}" data-phase="${esc(deal.phase)}" draggable="true" tabindex="0"${pending ? ' data-pending="true"' : ''}${state.lifted === deal.id ? ' data-lifted="true"' : ''} aria-label="${esc(dealTitle(deal))}, ${esc(columnLabel(deal.phase))}">
     <h4><button class="card-open" type="button" data-open="${esc(deal.id)}">${esc(dealTitle(deal))}</button></h4>
     <div class="work-meta"><span class="owner">${esc(actorName(deal.owner))}</span>${attention ? '<span class="attention-flag"><span aria-hidden="true">◆</span> Overdue</span>' : ''}</div>
-    <p class="next-line">${esc(concise(deal.next_step) || 'Next step pending')}</p>
+    ${nextStepHtml(deal)}
     ${autoHtml(deal)}
   </article>`;
 }
 function rowHtml(deal) {
   return `<article class="kanban-card deal-row" data-id="${esc(deal.id)}" tabindex="0" data-attention="${needsAttention(deal)}">
     <h4>${esc(dealTitle(deal))}</h4><span class="deal-stage">${esc(columnLabel(deal.phase))}</span>
-    <p class="next-line">${esc(concise(deal.next_step) || 'Next step pending')}</p><span class="owner">${esc(actorName(deal.owner))}</span>${autoHtml(deal)}</article>`;
+    ${nextStepHtml(deal)}<span class="owner">${esc(actorName(deal.owner))}</span>${autoHtml(deal)}</article>`;
 }
 function parkedHtml(deal) {
   return `<article class="kanban-card parked-card" data-id="${esc(deal.id)}" tabindex="0"><h4>${esc(dealTitle(deal))}</h4><p class="next-line">${esc(deal.parking_note || deal.parking_reason?.replaceAll('_',' ') || 'Parked')}</p><button class="btn btn-quiet" type="button" data-revive="${esc(deal.id)}">Revive</button></article>`;
@@ -880,7 +884,6 @@ async function refreshPanel() {
     const detail = await readDealDetail(id);
     if (state.panelDeal !== id || seq !== panelReadSequence) return;
     state.panelDetail = detail;
-    setContextOpenVisible(Boolean(detail.deal.client_id || detail.deal.account_client_id || attachedParties(detail.participants).length));
     updateDetailTimestamp();
     // A poll preserves drafts, expanded entries and the dialog scroll position.
     if (!$('panelBody').querySelector('.detail-grid')) paintPanel(detail);
@@ -924,6 +927,8 @@ async function refreshPanel() {
         root.querySelectorAll('details').forEach(n => { if (expanded.has(n.querySelector('summary')?.textContent)) n.open = true; });
       }
     }
+    const context = await loadDealContext(state.client, detail);
+    if (state.panelDeal === id && seq === panelReadSequence) setContextOpenVisible(contextDrawerSections(context).length > 0);
   } catch (error) {
     if (state.panelDeal !== id || seq !== panelReadSequence) return;
     if (refusePanelDetail(error)) return;
@@ -1016,7 +1021,10 @@ async function openContextDrawer() {
   // Same late-answer guard as the record panel: a slower client read must
   // never paint over a drawer the person has since moved on from.
   if (state.panelDeal !== dealId || seq !== contextReadSequence || !dialog.open) return;
-  $('contextDrawerBody').innerHTML = contextDrawerSections(context, { dateLabel: dateWords })
+  const sections = contextDrawerSections(context, { dateLabel: dateWords });
+  setContextOpenVisible(sections.length > 0);
+  if (!sections.length) { dialog.close(); $('contextDrawerBody').replaceChildren(); return; }
+  $('contextDrawerBody').innerHTML = sections
     .map((section) => `<div class="panel-section"${section.state ? ` data-state="${esc(section.state)}"` : ''}>
       <h3>${esc(section.title)}</h3>${section.lines.map((line) => `<p>${esc(line)}</p>`).join('')}${(section.links || []).map(link=>`<p><a href="${esc(link.href)}">${esc(link.label)}</a></p>`).join('')}</div>`).join('');
 }

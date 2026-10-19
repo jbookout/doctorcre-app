@@ -78,7 +78,7 @@
 .kanban-card h4 { overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
 .work-meta { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1); min-width: 0; font-variant-numeric: tabular-nums; }
 .kanban-lane-label { display: none; }
-.next-line { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin: 0; font-size: var(--font-size-1); color: var(--fg-muted); }
+.next-line { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; white-space: normal; overflow: hidden; overflow-wrap: anywhere; margin: 0; font-size: var(--font-size-1); color: var(--fg-muted); }
 .auto-move { display: grid; align-content: end; gap: var(--space-1); font-size: var(--font-size-1); color: var(--status-info-ink); }
 .auto-move span { overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
 .auto-move button { justify-self: start; padding: 0 var(--space-2); min-height: var(--touch); }

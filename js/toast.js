@@ -1,5 +1,4 @@
 const SUCCESS_HOLD_MS = 2_000;
-const UNDO_HOLD_MS = 5_000;
 const FADE_MS = 800;
 
 let active = null;
@@ -79,13 +78,11 @@ export function showToast(message, { eventId = null, error = false, preserveUndo
   state.observer = new doc.defaultView.MutationObserver(() => place(state, doc));
   state.observer.observe(doc.body, { subtree: true, attributes: true, attributeFilter: ['open'] });
   if (!error) {
-    const hold = undo ? UNDO_HOLD_MS : SUCCESS_HOLD_MS;
     timer(() => {
       if (active !== state) return;
-      if (undo) undo.disabled = true;
       node.classList.add('is-leaving');
       timer(() => remove(state), FADE_MS, state);
-    }, hold, state);
-  } else if (undo) timer(() => { if (active === state) undo.disabled = true; }, UNDO_HOLD_MS, state);
+    }, SUCCESS_HOLD_MS, state);
+  } else if (undo) timer(() => { if (active === state) undo.disabled = true; }, SUCCESS_HOLD_MS + FADE_MS, state);
   return node;
 }
