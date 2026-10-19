@@ -182,7 +182,6 @@ function render() {
   if (total) total.textContent = view.payload ? `${visibleCount(shown)} grouped results in scope` : "";
 
   renderChips(groups);
-  renderSavedViews();
   renderRefusal();
   renderDisambiguation();
   renderRetired();
@@ -290,7 +289,7 @@ function wire() {
     view.views = writeSavedViews(storage, saveView(view.views, { name, query: view.query, kinds: view.kinds }));
     const field = $("saveViewName");
     if (field) field.value = "";
-    render();
+    renderSavedViews();
   });
 
   $("savedViewList")?.addEventListener("click", (event) => {
@@ -299,7 +298,7 @@ function wire() {
       event.preventDefault();
       const next = globalThis.prompt?.("New name for this saved view", rename.dataset.rename);
       if (typeof next === "string") view.views = writeSavedViews(storage, renameView(view.views, rename.dataset.rename, next));
-      render();
+      renderSavedViews();
       return;
     }
     const open = event.target.closest("[data-view]");
@@ -314,7 +313,7 @@ function wire() {
 
   $("resetViewsButton")?.addEventListener("click", () => {
     view.views = writeSavedViews(storage, Object.freeze([]));
-    render();
+    renderSavedViews();
   });
 
   globalThis.addEventListener?.("popstate", () => restoreFromAddress({ reread: true }));
@@ -329,6 +328,7 @@ export function mountSearch({ client: searchClient, storage: storageImpl } = {})
   client = searchClient;
   storage = storageImpl === undefined ? (globalThis.localStorage || null) : storageImpl;
   view.views = readSavedViews(storage);
+  renderSavedViews();
   for (const [id, text] of [
     ["searchAuthorization", AUTHORIZATION_SENTENCE],
     ["searchScopeNote", SCOPE_CHIP_SENTENCE],
