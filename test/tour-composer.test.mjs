@@ -586,6 +586,7 @@ test("phone and iPad composers fit the viewport and reduced motion leaves every 
     await page.route("https://tour.test/**", async route => {
       const request = route.request(), url = new URL(request.url());
       if (url.pathname === "/api/system-work/session") return route.fulfill({ contentType: "application/json", body: JSON.stringify({ actor: {slug: "joe"} }) });
+      if (url.pathname === "/api/tours/property-evidence/v1") return route.fulfill({ json: { data: { schema: "tour-property-evidence.v1", facts: { county: { status: "reviewed", value: "Escambia" } } } } });
       if (!url.pathname.startsWith("/api/")) return route.fulfill({ contentType: "text/html", body: pageHtml });
       const response = await store.fetch(url.pathname + url.search, { headers: request.headers(), body: request.postData() || undefined });
       await route.fulfill({ status: response.status, contentType: "application/json", body: JSON.stringify(await response.json()) });

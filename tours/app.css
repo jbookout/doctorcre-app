@@ -327,4 +327,4 @@ button.primary:hover:not(:disabled) { border-color: var(--accent-hover); backgro
   .card, .empty { border-color: CanvasText; background: Canvas; break-inside: avoid; }
 }
 
-.route-card > summary, .projection-card > summary { display: flex; align-items: center; min-height: var(--touch); cursor: pointer; font-weight: var(--font-weight-strong); }
+.workspace-grid > details > summary { display: flex; align-items: center; min-height: var(--touch); cursor: pointer; font-weight: var(--font-weight-strong); }
