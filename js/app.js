@@ -392,6 +392,9 @@ function renderChrome() {
   const selected = account();
   const isAccountHome = state.workspace === 'national_account' && !state.accountId && !state.query;
   $('#accountBack').hidden = !state.accountId;
+  $('#accountContext').hidden = !state.accountId;
+  $('#accountName').textContent = selected?.account_name || 'National account';
+  $('#accountOwner').textContent = selected ? `Owned by ${actorName(selected.account_owner)}` : '';
   // Never print the partners' names as a label: the team is both partners by
   // definition, so the combined list is just "Deals". The team view carries no
   // description sentence under its title (2026-09-16 review).
