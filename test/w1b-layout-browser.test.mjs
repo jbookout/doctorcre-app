@@ -116,10 +116,11 @@ test('recent moves catch up through history and update read-only on pages withou
 test('Local Deals opens a wide popup, refreshes its original note, and retains one-tap Undo in Today',async t=>{
  const{page,goto,errors}=await open(t,{clock:true});await goto('/deals?view=board');
  await page.evaluate(async()=>{const{state}=await import('/js/pipeline.js');await state.client.addDealNote({deal:'d14',text:'Synthetic original. '.repeat(30),idempotency_key:'demo-original-long'});});
+ await page.evaluate(async()=>{const{state}=await import('/js/pipeline.js');await state.client.addDealNote({deal:'d14',text:'Latest synthetic short update',idempotency_key:'demo-latest-short'});});
  await page.locator('.kanban-card[data-id="d14"]').click({position:{x:8,y:8}});await page.waitForFunction(()=>document.querySelector('.deal-note details'));
  assert.ok((await page.locator('#recordPanel').boundingBox()).width>=900);
- const entry=await page.locator('.deal-note').first().getAttribute('data-id');
- const original=page.locator(`.deal-note[data-id="${entry}"] details`);await original.locator('summary').click();
+ const original=page.locator('.deal-note').filter({hasText:'Synthetic original.'}).locator('details');
+ await original.locator('summary').click();
  await page.evaluate(async()=>{const{state}=await import('/js/pipeline.js');await state.client.addDealNote({deal:'d14',text:'A synthetic update. Original detail continues here.',idempotency_key:'demo-w1b-note'});});
  await page.clock.fastForward(16_000);await page.waitForFunction(()=>document.querySelector('#panelBody')?.textContent.includes('A synthetic update.'));
  assert.equal(await original.evaluate(n=>n.open),true);assert.equal(await page.locator('#recordPanel').evaluate(n=>n.open),true);
