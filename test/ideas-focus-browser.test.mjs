@@ -45,7 +45,10 @@ test('Ideas Back returns focus to the current tile after a refresh replaces its 
   await page.evaluate(() => { window.openerTile = document.querySelector('.idea-tile'); });
   await page.clock.fastForward(30_000);
   await waitForAsync(page, () => !window.openerTile.isConnected);
+  await page.evaluate(() => {
+    window.ideaClosed = new Promise(resolve => document.querySelector('#ideaDialog').addEventListener('close', resolve, {once: true}));
+  });
   await page.goBack();
-  await waitForAsync(page, () => !document.querySelector('#ideaDialog').open);
-  assert.equal(await page.evaluate(() => document.activeElement?.dataset.idea), number);
+  await page.evaluate(() => window.ideaClosed.then(() => {}));
+  assert.deepEqual(await page.evaluate(() => ({id: document.activeElement?.id, tag: document.activeElement?.tagName, idea: document.activeElement?.dataset.idea})), {id: '', tag: 'BUTTON', idea: number});
 });

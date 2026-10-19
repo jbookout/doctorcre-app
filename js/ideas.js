@@ -41,6 +41,7 @@ const view = {
 let client = null;
 let tabs = null;
 let searchTimer = null;
+let ideaOpener = null;
 
 function announce(text) {
   const live = $("ideaLive");
@@ -342,6 +343,7 @@ async function saveEvent(event) {
 /* ------------------------------------------------------------------- detail */
 
 async function openIdea(number, { push = true } = {}) {
+  ideaOpener = number;
   view.state = { ...view.state, idea: number };
   remember({ push });
   const dialog = $("ideaDialog");
@@ -473,6 +475,14 @@ function wire() {
     selectDocRecord(null,null); pageDocContext?.release('readLoop');
     view.detailSequence += 1;
     if (view.state.idea) { view.state = { ...view.state, idea: null }; remember({ push: true }); }
+    const focused = document.activeElement;
+    if ($("ideaDialog").contains(focused)) focused.blur();
+    const current = document.activeElement;
+    if (view.state.tab === 'ideas' && (!current || current === document.body || !current.isConnected)) {
+      const tile = [...document.querySelectorAll('.idea-tile')].find(node => node.dataset.idea === ideaOpener);
+      (tile || $("ideaSearch"))?.focus({ preventScroll: true });
+    }
+    ideaOpener = null;
   });
   $("ideaRefresh")?.addEventListener("click", () => load());
   $("eventRefresh")?.addEventListener("click", () => loadEvents());
