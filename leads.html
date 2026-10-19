@@ -16,11 +16,10 @@
 <section class="controls glass" aria-label="Lead filters">
 <label class="search"><span class="sr-only">Search leads</span><input id="leadSearch" type="search" placeholder="Search leads" autocomplete="off"></label>
 <label>Owner<select id="ownerFilter"><option value="">All owners</option></select></label>
-<label>Stage<select id="stageFilter"><option value="">All stages</option></select></label>
 <label>Market<select id="marketFilter"><option value="">All markets</option></select></label>
 <output id="filterSummary" aria-live="polite"></output>
 </section>
-<p id="leadBoardError" role="alert" hidden></p><label class="mobile-stage-nav">Stage<select id="mobileStage" aria-label="Board stage"></select></label><div id="leadBoard" aria-busy="true"><p class="empty">Loading leads…</p></div>
+<p id="leadBoardError" role="alert" hidden></p><label class="stage-nav">Stage<select id="stageFilter" aria-label="Board stage"></select></label><div id="leadBoard" aria-busy="true"><p class="empty">Loading leads…</p></div>
 <section class="top-grid">
 <div class="hot-section glass"><div class="section-heading"><h2 id="hotTitle">Hottest leads to claim</h2><time id="searchUpdated" title="Last new-lead search">New-lead search —</time></div><p id="hotSummary" class="hot-summary"></p><div id="hotLeads" aria-busy="true"></div></div>
 <div class="territory glass"><div class="section-heading"><h2>Territory</h2><button id="clearMarket" hidden>All markets</button></div><div id="territoryMap" aria-label="Lead count by market" role="region"></div><details id="mapLeadMembers"><summary>Map leads</summary><div></div></details><div id="marketCounts" aria-label="Markets"></div><small class="map-credit">Market areas only · U.S. Census · 2025</small></div>

@@ -65,7 +65,6 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
     const active = visibleLeads(leads);
     $("leadCount").textContent = `${active.length} total`;
     $("filterSummary").textContent = `${shown.length} matching ${shown.length === 1 ? "lead" : "leads"}`;
-    $("stageFilter").innerHTML = options(FILTER_STAGES, state.filters.stage, "All stages");
     $("ownerFilter").innerHTML = options(owners.map(k => [k, ownerName(k)]), state.filters.owner, "All owners");
     const groups = marketCounts(leads, state.filters, state.map?.locate);
     $("marketFilter").innerHTML = options(markets.map(k => [k, k]), state.filters.market, "All markets");
@@ -82,7 +81,7 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
     $("hotLeads").innerHTML = hot.rows.map((lead, i) => `<article class="hot-row" data-lead-id="${esc(lead.id)}" tabindex="0" role="button" aria-label="${esc(leadTitle(lead))}"><span class="hot-rank">${i + 1}</span><div><h3>${esc(leadTitle(lead))}</h3><small>${esc(marketKey(lead))}</small></div><span class="score">${score(lead)}</span>${hot.claimable ? `<button data-claim="${esc(lead.id)}">Claim</button>` : `<span class="hot-owner">${esc(ownerName(lead.owner))}</span>`}</article>`).join("");
     $("hotLeads").setAttribute("aria-busy", "false");
     const currentStage = state.filters.stage;
-    $("mobileStage").innerHTML = `<option value="">All stages · ${visibleLeads(leads, { ...state.filters, stage: "" }).length}</option>` + FILTER_STAGES.map(([key, label]) => `<option value="${key}"${key === currentStage ? " selected" : ""}>${esc(label)} · ${visibleLeads(leads, { ...state.filters, stage: key }).length}</option>`).join("");
+    $("stageFilter").innerHTML = `<option value="">All stages · ${visibleLeads(leads, { ...state.filters, stage: "" }).length}</option>` + FILTER_STAGES.map(([key, label]) => `<option value="${key}"${key === currentStage ? " selected" : ""}>${esc(label)} · ${visibleLeads(leads, { ...state.filters, stage: key }).length}</option>`).join("");
     if (state.filters.stage === "archived") {
       $("leadBoard").innerHTML = `<div class="filtered-list" aria-label="${stageLabel(state.filters.stage)}">${shown.map(card).join("") || '<p class="empty">No matching leads</p>'}</div>`;
     } else {
@@ -197,9 +196,10 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
     const scroll = $("leadDetail").scrollTop;
     $("detailTitle").textContent = leadTitle(detail);
     const contact = (kind, value) => value ? `<a href="${kind === "Email" ? "mailto:" : "tel:"}${esc(value)}">${esc(value)}</a>` : "—";
-    $("detailBody").innerHTML = `<div class="detail-overview"><section class="detail-panel"><h3>Contact</h3><dl><dt>Phone</dt><dd>${contact("Phone", detail.phone)}</dd><dt>Email</dt><dd>${contact("Email", detail.email)}</dd><dt>Market</dt><dd>${esc(marketKey(detail))}</dd><dt>Vertical</dt><dd>${esc(detail.specialty || detail.vertical || "—")}</dd></dl></section>
+    $("detailBody").innerHTML = `<section class="detail-summary"><div><h3>Lead score</h3><div class="detail-score">${score(detail)}<span>/ 100</span></div></div><label>Stage<select id="detailStage">${FILTER_STAGES.filter(([key]) => key !== "do_not_contact").map(([key,text]) => `<option value="${key}"${normalizedStage(detail) === key ? " selected" : ""}>${text}</option>`).join("")}</select></label></section>
+      <div class="detail-overview"><section class="detail-panel"><h3>Contact</h3><dl><dt>Phone</dt><dd>${contact("Phone", detail.phone)}</dd><dt>Email</dt><dd>${contact("Email", detail.email)}</dd><dt>Market</dt><dd>${esc(marketKey(detail))}</dd><dt>Vertical</dt><dd>${esc(detail.specialty || detail.vertical || "—")}</dd></dl></section>
       <section class="detail-panel"><h3>Plans</h3><p>${esc(summary(detail.plans || detail.notes) || "—")}</p>${detail.notes ? `<details data-entry-key="plans"><summary>Details</summary><div class="original-entry">${esc(detail.notes)}</div></details>` : ""}<dl class="plan-window"><dt>Lease window</dt><dd>${esc(detail.est_lease_event || "—")}</dd></dl></section>
-      <section class="detail-panel"><h3>Lead score</h3><div class="detail-score">${score(detail)}<span>/ 100</span></div><label>Stage<select id="detailStage">${FILTER_STAGES.filter(([key]) => key !== "do_not_contact").map(([key,text]) => `<option value="${key}"${normalizedStage(detail) === key ? " selected" : ""}>${text}</option>`).join("")}</select></label></section></div>
+      </div>
       <div class="detail-columns"><section class="detail-panel"><h3>Correspondence</h3><ol class="correspondence">${(detail.correspondence || []).map(entry => `<li><time>${stamp(entry.occurred_at)}</time><p>${esc(summary(entry.summary))}</p><details data-entry-key="${esc(entry.id)}"><summary>Details</summary><div class="original-entry">${esc(entry.detail || entry.summary)}</div></details></li>`).join("") || '<li class="empty">No correspondence yet</li>'}</ol></section><section class="detail-panel"><h3>Stage history</h3><ol class="history">${(detail.stage_history || []).map(entry => `<li><time>${stamp(entry.occurred_at)}</time>${esc(stageLabel(entry.prior_stage))} → ${esc(stageLabel(entry.stage))}${entry.reason ? `<br><small>${esc(summary(entry.reason))}</small>` : ""}</li>`).join("") || '<li class="empty">No stage changes</li>'}</ol></section></div>`;
     $("detailStage").addEventListener("change", event => openReview(detail.id, event.target.value));
     for (const node of $("detailBody").querySelectorAll("details")) node.open = expanded.has(node.dataset.entryKey);
@@ -303,13 +303,13 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
     } finally { state.writing = false; paintCommandFeedback(); }
   }
   function selectMarket(key) { state.filters.market = state.filters.market === key ? "" : key; $("mapLeadMembers").open = true; render(); }
-  for (const [id, key] of [["leadSearch", "search"], ["ownerFilter", "owner"], ["stageFilter", "stage"], ["marketFilter", "market"]]) {
+  for (const [id, key] of [["leadSearch", "search"], ["ownerFilter", "owner"], ["marketFilter", "market"]]) {
     $(id).addEventListener(id === "leadSearch" ? "input" : "change", event => { state.filters[key] = event.target.value; render(); });
   }
-  $("mobileStage").addEventListener("change", event => {
+  $("stageFilter").addEventListener("change", event => {
     state.filters.stage = event.target.value;
     render();
-    $("mobileStage").scrollIntoView({ block: "start" });
+    $("stageFilter").scrollIntoView?.({ block: "start" });
   });
   $("clearMarket").addEventListener("click", () => { state.filters.market = ""; render(); });
   $("marketCounts").addEventListener("click", event => { const button = event.target.closest("[data-market]"); if (button) selectMarket(button.dataset.market); });

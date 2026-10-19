@@ -27,10 +27,10 @@ for (const width of [390, 800, 1280]) for (const theme of ['dark', 'light']) {
       });
     });
     assert.equal(controlsFit, true, 'filters fit the available main-column width');
-    if (width === 390) {
+    {
       const positions = await page.evaluate(() => Object.fromEntries(['#leadSearch', '.lead-card', '.top-grid'].map(selector => [selector, document.querySelector(selector).getBoundingClientRect().top])));
       assert.ok(positions['#leadSearch'] < positions['.lead-card'], JSON.stringify(positions));
-      assert.ok(positions['.lead-card'] < 700, 'matching records start on the first phone screen');
+      assert.ok(positions['.lead-card'] < 700, 'matching records start on the first screen');
       assert.ok(positions['.lead-card'] < positions['.top-grid'], 'matching records precede territory and global candidates');
     }
 
@@ -42,6 +42,18 @@ for (const width of [390, 800, 1280]) for (const theme of ['dark', 'light']) {
     await page.locator('.lead-card:visible').first().click();
     await page.locator('#detailStage').waitFor();
     if (process.env.UI_SCREENSHOT_DIR) await page.screenshot({ path: `${process.env.UI_SCREENSHOT_DIR}/detail-${width}-${theme}.png`, fullPage: true });
+    const detailLayout = await page.locator('#detailBody').evaluate(node => {
+      const score = node.querySelector('.detail-score').getBoundingClientRect();
+      const stage = node.querySelector('#detailStage').getBoundingClientRect();
+      const contact = [...node.querySelectorAll('h3')].find(heading => heading.textContent === 'Contact').getBoundingClientRect();
+      return { scoreTop: score.top, stageTop: stage.top, contactTop: contact.top,
+        panelsAreFlat: [...node.querySelectorAll('.detail-panel')].every(panel => {
+          const style = getComputedStyle(panel);
+          return style.backgroundColor === 'rgba(0, 0, 0, 0)' && parseFloat(style.borderLeftWidth) === 0 && parseFloat(style.borderRadius) === 0;
+        }) };
+    });
+    assert.ok(detailLayout.scoreTop < detailLayout.contactTop && detailLayout.stageTop < detailLayout.contactTop, 'score and stage action lead the detail');
+    assert.equal(detailLayout.panelsAreFlat, true, 'detail groups use spacing and dividers instead of nested cards');
     const detailText = await page.locator('#detailBody').innerText();
     assert.doesNotMatch(detailText, /[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}/i, 'human details do not expose raw record UUIDs');
     const sizes = await page.locator('.lead-location, #mapLeadMembers small, .history small').evaluateAll(nodes => nodes.map(node => parseFloat(getComputedStyle(node).fontSize)));

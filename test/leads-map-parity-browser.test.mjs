@@ -51,9 +51,9 @@ test('phone All stages count describes the destination membership', async t => {
   await routeLeads(page, { getBoard: () => board });
   await page.goto('http://localhost/leads');
   await page.locator('.lead-card').first().waitFor();
-  await page.locator('#mobileStage').selectOption('new');
-  const label = await page.locator('#mobileStage option[value=""]').innerText();
-  await page.locator('#mobileStage').selectOption('');
+  await page.locator('#stageFilter').selectOption('new');
+  const label = await page.locator('#stageFilter option[value=""]').innerText();
+  await page.locator('#stageFilter').selectOption('');
   const count = await page.locator('.lead-card:visible').count();
   assert.equal(count, 3);
   assert.equal(label, `All stages · ${count}`);
@@ -203,7 +203,7 @@ for (const width of [1440,390]) test(`marker selection survives matching filters
   assert.equal(await page.locator('.market-marker[aria-pressed="true"]').count(), 0);
   await page.locator('#ownerFilter').selectOption('', { force: true });
   assert.equal(await page.locator('.lead-card[aria-pressed="true"]').count(), 0, 'cleared selection does not resurrect');
-  await page.locator('#mobileStage').selectOption('qualified', { force: true });
+  await page.locator('#stageFilter').selectOption('qualified', { force: true });
   assert.equal(await page.locator('.lead-card:visible').count(), 1);
   assert.equal(await page.locator('#mapLeadMembers [data-lead-id]').getAttribute('data-lead-id'), id(2));
 });

@@ -22,20 +22,21 @@ for (const width of [1440, 390]) for (const theme of ['dark', 'light']) {
     await page.locator('.lead-card').first().waitFor();
     await page.evaluate(theme => document.documentElement.dataset.theme = theme, theme);
     await page.locator('#appSidebarToggle').waitFor();
+    assert.equal(await page.locator('select:visible').filter({ has: page.locator('option[value="qualified"]') }).count(), 1, 'one visible stage selector serves the board');
     if (width === 390) {
       await page.mouse.move(195, 600);
       await page.mouse.wheel(0, 1600);
       await page.waitForFunction(() => scrollY > 1000);
-      await page.waitForFunction(() => document.querySelector('.mobile-stage-nav').getBoundingClientRect().top <= 100);
+      await page.waitForFunction(() => document.querySelector('.stage-nav').getBoundingClientRect().top <= 100);
     } else {
       await page.evaluate(() => scrollTo(0, document.querySelector('#leadBoard').getBoundingClientRect().top + scrollY - 80));
     }
     const layout = await page.evaluate(() => {
-      const select = document.querySelector('#mobileStage'), r = select.getBoundingClientRect();
+      const select = document.querySelector('#stageFilter'), r = select.getBoundingClientRect();
       const hit = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2);
       return {
         headerBottom: document.querySelector('.app-layout-tabbar').getBoundingClientRect().bottom,
-        navTop: document.querySelector('.mobile-stage-nav').getBoundingClientRect().top,
+        navTop: document.querySelector('.stage-nav').getBoundingClientRect().top,
         selectTop: r.top, selectHit: hit === select, hitClass: hit?.className,
         lanes: [...document.querySelectorAll('.stage-column')].filter(node => node.getBoundingClientRect().width > 0).map(node => ({ stage: node.dataset.stage, width: node.getBoundingClientRect().width })),
         overflow: document.documentElement.scrollWidth > innerWidth,
@@ -51,14 +52,14 @@ for (const width of [1440, 390]) for (const theme of ['dark', 'light']) {
     if (width === 390) {
       assert.ok(layout.navTop >= layout.headerBottom, JSON.stringify(layout));
       assert.equal(layout.selectHit, true, 'stage selector receives its own center hit after wheel scrolling');
-      await page.locator('#mobileStage').selectOption('qualified');
+      await page.locator('#stageFilter').selectOption('qualified');
       await page.waitForFunction(() => document.querySelector('[data-stage="qualified"]').getBoundingClientRect().width > 0);
       assert.equal(await page.locator('.stage-column:visible .lead-card').count(), 2);
-      assert.equal(await page.locator('#mobileStage').evaluate(select => {
+      assert.equal(await page.locator('#stageFilter').evaluate(select => {
         const r = select.getBoundingClientRect();
         return document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2) === select;
       }), true, 'stage selection scroll keeps the selector unobscured');
-      await page.locator('#mobileStage').selectOption('engaged');
+      await page.locator('#stageFilter').selectOption('engaged');
       assert.equal(await page.locator('.stage-column:visible .stage-empty').innerText(), 'No leads in Engaged');
     } else {
       assert.equal(layout.lanes.length, 2, 'only populated stages consume desktop width');
