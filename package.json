@@ -35,7 +35,7 @@
     "predeployment:check:production": "node scripts/prepare-offline-tour.mjs",
     "ci:fast": "node scripts/check-action-pins.mjs",
     "docs:check": "node scripts/check-docs.mjs",
-    "copy:check": "node scripts/check-ui-copy.mjs *.html js css data public-shell reports tours test/fixtures tests/fixtures"
+    "copy:check": "node scripts/check-ui-copy.mjs *.html js src/ui css data public-shell reports tours test/fixtures tests/fixtures"
   },
   "devDependencies": {
     "@ai-sdk/openai": "4.0.83",

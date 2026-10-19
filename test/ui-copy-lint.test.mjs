@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, writeFile, rm } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -31,4 +31,23 @@ test('UI copy CLI requires explicit source paths', () => {
   const result = spawnSync(process.execPath, [checker.pathname], { encoding: 'utf8' });
   assert.equal(result.status, 1);
   assert.match(result.stderr, /requires source paths/);
+});
+
+
+test('configured CI lint covers React island source', async t => {
+  const dir = await mkdtemp(join(tmpdir(), 'doctorcre-copy-roots-'));
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  for (const path of ['scripts', 'js', 'css', 'data', 'public-shell', 'reports', 'tours', 'test/fixtures', 'tests/fixtures', 'src/ui'])
+    await mkdir(join(dir, path), { recursive: true });
+  const pkg = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));
+  await writeFile(join(dir, 'package.json'), JSON.stringify({ scripts: { 'copy:check': pkg.scripts['copy:check'] } }));
+  await writeFile(join(dir, 'scripts/check-ui-copy.mjs'), await readFile(checker));
+  await writeFile(join(dir, 'index.html'), '<h1>Deals</h1>');
+  const run = () => spawnSync('npm', ['run', 'copy:check'], { cwd: dir, encoding: 'utf8' });
+  const clean = run();
+  assert.equal(clean.status, 0, clean.stdout + clean.stderr);
+  await writeFile(join(dir, 'src/ui/planted.tsx'), '<span>Needs you</span>');
+  const planted = run();
+  assert.equal(planted.status, 1, planted.stdout + planted.stderr);
+  assert.match(planted.stderr, /planted\.tsx:1/);
 });
