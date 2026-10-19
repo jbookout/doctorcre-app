@@ -1,9 +1,26 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdir } from 'node:fs/promises';
+import { mkdir, readFile } from 'node:fs/promises';
 import { chromium } from './browser-harness.mjs';
 import { routeLeads } from './leads-browser-fixture.mjs';
 import { workspace, lead, id } from './leads-workspace-fixture.mjs';
+
+test('phone territory markers appear only after the Census map is painted', async t => {
+  const browser = await chromium.launch({ args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
+  t.after(() => browser.close());
+  const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
+  await routeLeads(page);
+  const source = await readFile(new URL('../js/leads-territory-map.js', import.meta.url), 'utf8');
+  // Observe the real renderer through its public read methods without changing its scheduling.
+  await page.route('**/js/leads-territory-map.js', route => route.fulfill({ contentType: 'text/javascript',
+    body: source.replace('const markers = new Map();', 'globalThis.territoryRenderer = map; const markers = new Map();') }));
+  await page.goto('http://localhost/leads');
+  await page.locator('.market-marker').first().waitFor({ state: 'attached' });
+  const painted = await page.evaluate(() => ({ loaded: territoryRenderer.loaded(),
+    land: territoryRenderer.queryRenderedFeatures({ layers: ['land'] }).length }));
+  assert.equal(painted.loaded, true, 'a DOM marker must not claim that an unpainted map is ready');
+  assert.ok(painted.land > 0, 'the Gulf states are painted before the first marker is exposed');
+});
 
 for (const width of [1440, 390]) for (const reversed of [false, true])
 test(`shared market location membership is order independent at ${width}px (reversed=${reversed})`, async t => {
