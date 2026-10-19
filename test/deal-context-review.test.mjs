@@ -25,3 +25,7 @@ test('the current recorded status stays in the feed when the Update composer is 
  const client=createLiveClient({fetchImpl:async()=>new Response(JSON.stringify({result:{content:[{text:JSON.stringify({deal_id:'demo',name:'Demo',next_step:'Recorded status',thread:[{id:'n',kind:'next_step',text:'Recorded status',actor:'joe',created_at:'2026-10-01T15:00:00Z'}]})}]}}),{status:200})});
  const detail=await client.getDeal('demo');assert.equal(detail.thread.length,1);assert.equal(detail.thread[0].text,'Recorded status');
 });
+
+test('dates alone stay in the deal snapshot and do not advertise client or vendor context',()=>{
+ assert.deepEqual(contextDrawerSections({client:{status:'not_linked'},parties:[],vendors:[],criticalDates:[{label:'Next date',date:'2026-10-05'}]}),[]);
+});
