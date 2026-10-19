@@ -26,6 +26,12 @@ async function open(t, tab = 'ideas') {
           if (window.holdIdeas) await new Promise(resolve => { window.releaseIdeas = resolve; });
           return payload;
         };
+        const events = client.listIndustryEvents;
+        client.listIndustryEvents = async args => {
+          const payload = await events.call(client, args);
+          if (window.holdEvents) await new Promise(resolve => { window.releaseEvents = resolve; });
+          return payload;
+        };
         return client;
       }`;
     await route.fulfill({contentType: 'text/javascript', body: source});
@@ -46,9 +52,53 @@ test('Ideas Back returns focus to the current tile after a refresh replaces its 
   await page.clock.fastForward(30_000);
   await waitForAsync(page, () => !window.openerTile.isConnected);
   await page.evaluate(() => {
-    window.ideaClosed = new Promise(resolve => document.querySelector('#ideaDialog').addEventListener('close', resolve, {once: true}));
+    window.ideaClosed = false; document.querySelector('#ideaDialog').addEventListener('close', () => { window.ideaClosed = true; }, {once: true});
   });
   await page.goBack();
-  await page.evaluate(() => window.ideaClosed.then(() => {}));
+  await waitForAsync(page, () => window.ideaClosed);
   assert.deepEqual(await page.evaluate(() => ({id: document.activeElement?.id, tag: document.activeElement?.tagName, idea: document.activeElement?.dataset.idea})), {id: '', tag: 'BUTTON', idea: number});
 });
+
+for (const moved of [false, true]) {
+  test(`Ideas refresh finishing after close ${moved ? 'preserves moved focus' : 'keeps focus on the current tile'}`, async t => {
+    const page = await open(t);
+    const tile = page.locator('.idea-tile').first();
+    const number = await tile.getAttribute('data-idea');
+    await tile.focus();
+    await page.keyboard.press('Enter');
+    await page.locator('#ideaDialog').waitFor({state: 'visible'});
+    await page.evaluate(() => { window.holdIdeas = true; });
+    await page.clock.fastForward(30_000);
+    await waitForAsync(page, () => Boolean(window.releaseIdeas));
+    await page.evaluate(() => {
+      window.ideaClosed = false; document.querySelector('#ideaDialog').addEventListener('close', () => { window.ideaClosed = true; }, {once: true});
+    });
+    await page.locator('#ideaDialogClose').click();
+    await waitForAsync(page, () => window.ideaClosed);
+    if (moved) await page.locator('#ideaSearch').focus();
+    await page.evaluate(() => { window.oldTile = document.querySelector('.idea-tile'); window.holdIdeas = false; window.releaseIdeas(); });
+    await waitForAsync(page, () => !window.oldTile.isConnected);
+    assert.equal(await page.evaluate(moved => moved ? document.activeElement.id : document.activeElement.dataset.idea, moved), moved ? 'ideaSearch' : number);
+  });
+}
+
+for (const moved of [false, true]) {
+  test(`Event save refresh ${moved ? 'preserves moved focus' : 'restores stranded focus'}`, async t => {
+    const page = await open(t, 'events');
+    await page.locator('#eventAdd').click();
+    await page.locator('#eventTitle').fill('Synthetic focus event');
+    await page.locator('#eventOrganizer').fill('Synthetic organizer');
+    await page.locator('#eventOwner').selectOption('joe');
+    await page.locator('#eventStarts').fill('2026-11-01T10:00');
+    await page.locator('#eventEnds').fill('2026-11-01T11:00');
+    await page.locator('#eventSourceInput').fill('Synthetic invitation');
+    await page.evaluate(() => { window.holdEvents = true; });
+    await page.locator('#eventSave').click();
+    await waitForAsync(page, () => Boolean(window.releaseEvents) && !document.querySelector('#eventDialog').open);
+    if (moved) await page.locator('#eventAdd').focus();
+    else await page.evaluate(() => document.activeElement.blur());
+    await page.evaluate(() => { window.holdEvents = false; window.releaseEvents(); });
+    await waitForAsync(page, () => [...document.querySelectorAll('.event-card')].some(card => card.textContent.includes('Synthetic focus event')));
+    assert.equal(await page.evaluate(moved => moved ? document.activeElement.id : document.activeElement.matches('.event-card') && document.activeElement.textContent.includes('Synthetic focus event'), moved), moved ? 'eventAdd' : true);
+  });
+}
