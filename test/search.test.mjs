@@ -360,7 +360,7 @@ test("B05-14 the interface contract still pins both verbs alphabetically and no 
   for (const verb of ["find", "find-and-catch-up"]) assert.ok(contract.mcp_operations.includes(verb), `${verb} is pinned`);
   assert.deepEqual(contract.mcp_operations, [...contract.mcp_operations].toSorted(), "mcp_operations stays sorted");
   const at = contract.mcp_operations.indexOf("find");
-  assert.equal(contract.mcp_operations[at - 1], "engineering-passport");
+  assert.equal(contract.mcp_operations[at - 1], "engineering-progress");
   assert.equal(contract.mcp_operations[at + 1], "find-and-catch-up");
   assert.equal(contract.mcp_operations[at + 2], "get-call-context");
   // Both verbs travel over the existing /mcp mount, so no HTTP surface is added.
