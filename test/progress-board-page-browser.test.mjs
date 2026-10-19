@@ -67,6 +67,10 @@ async function open(t, { unfinished = true, path = '/control-room/progress', boa
   await context.route('**/*', async route => {
     const url = new URL(route.request().url());
     if (url.origin !== origin) return route.abort();
+    if (route.request().isNavigationRequest() && !url.searchParams.has('mode')) {
+      url.searchParams.set('mode', 'live');
+      return route.fulfill({ status: 302, headers: { location: url.href } });
+    }
     if (url.pathname === '/mcp' && control && await control(route, route.request().postDataJSON().params)) return;
     return route.continue();
   });
