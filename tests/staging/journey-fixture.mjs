@@ -47,13 +47,40 @@ async function produce(action, run) {
   return value;
 }
 
+async function cleanupJourney(producer, run) {
+  let action = 'cleanup';
+  for (let attempt = 0; attempt < 6; attempt++) {
+    try {
+      const state = await producer(action, run);
+      if (state.remaining === 0) return;
+      action = 'cleanup';
+    } catch {
+      action = 'remaining';
+    }
+  }
+  throw new Error(`leftover fixture or unverified cleanup for synthetic run ${run}`);
+}
+
 export async function withJourneyFixture(body, producer = produce) {
   const run = randomUUID();
+  let result, failure;
   try {
     const fixture = await producer('prepare', run);
-    return await body(fixture);
-  } finally {
-    const cleaned = await producer('cleanup', run);
-    if (cleaned.remaining !== 0) throw new Error(`leftover fixture for synthetic run ${run}`);
+    result = await body(fixture);
+  } catch (error) {
+    failure = error;
+    failure.fixtureRun = run;
   }
+  try {
+    await cleanupJourney(producer, run);
+  } catch (error) {
+    if (!failure) failure = error;
+    else {
+      failure.message += `\n${error.message}`;
+      failure.cleanupError = error;
+    }
+    failure.fixtureRun = run;
+  }
+  if (failure) throw failure;
+  return result;
 }
