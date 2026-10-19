@@ -298,7 +298,13 @@ function wire() {
       event.preventDefault();
       const next = globalThis.prompt?.("New name for this saved view", rename.dataset.rename);
       if (typeof next === "string") view.views = writeSavedViews(storage, renameView(view.views, rename.dataset.rename, next));
-      renderSavedViews();
+      [...$("savedViewList").children].forEach((row, index) => {
+        const saved = view.views[index], link = row.querySelector("[data-view]");
+        link.textContent = saved.name;
+        link.dataset.view = saved.name;
+        link.href = searchAddress(saved);
+        row.querySelector("[data-rename]").dataset.rename = saved.name;
+      });
       return;
     }
     const open = event.target.closest("[data-view]");
