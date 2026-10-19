@@ -204,3 +204,9 @@ test("long site names fit the diagram while the fact card keeps the full value",
   assert.match(html, /<text[^>]*class="node-value">123 Gulf View Drive, San…<\/text>/);
   assert.match(html, /<strong>123 Gulf View Drive, Santa Rosa Beach, Florida<\/strong>/);
 });
+
+test("an evidence response without useful facts uses one unavailable summary", () => {
+  const html = renderPropertyPanel({ schema: "tour-property-evidence.v1", facts: { county: unknown } });
+  assert.match(html, /Property evidence is unavailable/);
+  assert.doesNotMatch(html, /property-fact-grid|property-layer-diagram|data-evidence-field/);
+});

@@ -51,10 +51,11 @@ export function mountAppLayout(root, host, pathname) {
   root.body.classList.add('has-app-layout');
   const pageOwnsMoves = Boolean(layout.querySelector('#appTodayMoves [data-layout-slot="moves"]'));
   const phone = win.matchMedia(TOUCH_LAYOUT);
-  let sidebar = !boardPage, today = true, drawer = null;
+  const itineraryPage = Boolean(root.getElementById('accepted-itinerary'));
+  let sidebar = !boardPage && !itineraryPage, today = !itineraryPage, drawer = null;
   let drawerOpener = null;
   const background = new Map();
-  try { const saved = win.localStorage.getItem(`doctorcre:sidebar:${pageKey}`); if (saved !== null) sidebar = saved === 'open'; today = win.localStorage.getItem('doctorcre:today') !== 'closed'; } catch {}
+  try { const saved = win.localStorage.getItem(`doctorcre:sidebar:${pageKey}`); if (saved !== null) sidebar = saved === 'open'; const savedToday = win.localStorage.getItem('doctorcre:today'); if (savedToday !== null) today = savedToday === 'open'; } catch {}
   const sidebarToggle = layout.querySelector('#appSidebarToggle'), todayToggle = layout.querySelector('#appTodayToggle');
   const paint = () => {
     layout.dataset.sidebar = sidebar ? 'open' : 'closed'; layout.dataset.today = today ? 'open' : 'closed'; layout.dataset.drawer = drawer || '';

@@ -356,6 +356,8 @@ import { cheatSheetText, factSummary, formatTourDate, tourDisplayName, tourMetaL
     composer = { sessionBinding, tourId: tour.id, routeId: tour.route_version_id, prior: Number(tour.accepted_route_version || 0), snapshot: routeSnapshot(tour), reviewDigest: tour.routes?.[0]?.acceptance_digest || "", rows, base, dirty: false, saved: tour.route_version_state === "draft" && rows.length > 0,
       phase: "ready", message: "", busy: false, plan: null, undo: null };
     $("#route-editing").open = !accepted;
+    $("#internal-cheat-sheet").open = !accepted;
+    $("#property-evidence-panel").open = !accepted;
     const retained = readPending()?.composer;
     if (retained?.tourId === tour.id && retained.plan) composer = { ...retained, busy: false, phase: "unknown", message: "Outcome unknown after reload. Reconcile the saved route before retrying the retained request." };
     if (composer.phase !== "ready") $("#route-editing").open = true;

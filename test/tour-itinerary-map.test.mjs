@@ -201,8 +201,8 @@ test("centroids, unreviewed, geocoder and imprecise access pins have no navigati
 test("approved access pins produce exact-coordinate Apple and Google handoff URLs", async () => {
   const { root } = await open();
   assert.deepEqual([...root.querySelectorAll('[data-itinerary-card] a')].map(a => a.href), [
-    "https://maps.apple.com/?daddr=30.6001,-88.0001&dirflg=d",
     "https://www.google.com/maps/dir/?api=1&destination=30.6001,-88.0001&travelmode=driving",
+    "https://maps.apple.com/?daddr=30.6001,-88.0001&dirflg=d",
   ]);
 });
 test("missing or wrong-version promotion receipt withholds even approved access links", async () => {

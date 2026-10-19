@@ -31,6 +31,10 @@ for (const width of [390, 1280]) for (const theme of ['dark', 'light']) {
     await page.goto(`${server.origin}/tours/day.html?tour=${tourId}`);
     await page.locator('.day-stop').nth(1).waitFor();
     await shot('day');
+    assert.equal(await page.locator('#day-current a.primary').count(), 1, 'current stop has one primary navigation action');
+    assert.equal(await page.locator('#day-current a.primary').innerText(), 'Navigate');
+    assert.match(await page.locator('#day-current a.primary').getAttribute('href'), /google\.com/);
+    assert.equal(await page.locator('#day-current a[href*="apple"]').innerText(), 'Apple Maps', 'alternate provider stays secondary');
     if (width === 1280) assert.ok((await page.locator('.stop-panel').boundingBox()).width >= 400, 'Tour day uses the freed desktop workspace width');
     await page.locator('#day-next').click();
     await page.reload(); await page.locator('.day-stop[aria-current="step"]').waitFor();
@@ -54,10 +58,17 @@ for (const width of [390, 1280]) for (const theme of ['dark', 'light']) {
     await page.goto(`${server.origin}/tours/route-editor.html?tour=${tourId}`);
     await page.locator('[data-itinerary-stop]').nth(1).waitFor();
     await shot('itinerary');
+    assert.equal(await page.locator('#appSidebarToggle').getAttribute('aria-expanded'), 'false', 'itinerary starts with the Tour library collapsed');
+    assert.equal(await page.locator('#appTodayToggle').getAttribute('aria-expanded'), 'false', 'itinerary starts with Today collapsed');
+    if (width === 1280) assert.ok((await page.locator('#tour-detail').boundingBox()).width > 1000, 'itinerary owns the desktop workspace');
+    assert.equal(await page.locator('#accepted-itinerary').getByText(route.stops[0].property_address, { exact: true }).count(), 1, 'each stop address appears once');
+    assert.equal(await page.locator('[data-itinerary-stop][aria-current="step"] [data-itinerary-card]').count(), 1, 'selected facts live in the ordered stop');
     assert.equal(await page.locator('#accepted-itinerary canvas').count(), 0, 'unconfigured basemap uses a compact list fallback');
     const navigateTour = page.getByRole('link', { name: 'Navigate tour', exact: true });
     assert.equal(await navigateTour.count(), 1, 'accepted itinerary offers its Tour day action');
     assert.ok(await navigateTour.evaluate(node => node.getBoundingClientRect().bottom < 700), 'Navigate tour is on the first phone screen');
+    assert.equal(await page.locator('#internal-cheat-sheet').getAttribute('open'), null, 'internal notes start collapsed on an accepted itinerary');
+    assert.equal(await page.locator('#property-evidence-panel').getAttribute('open'), null, 'property evidence starts collapsed on an accepted itinerary');
     assert.equal(await page.locator('#route-editing').getAttribute('open'), null, 'route editing is collapsed for the accepted itinerary');
     assert.match(await page.locator('#accepted-itinerary [data-map-status]').innerText(), /Street map unavailable/);
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);

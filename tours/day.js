@@ -202,7 +202,7 @@ export function mountTourDay({ document, window, api = createDayClient(), store 
       const actions = make("div", null, "property-actions"), phone = safePhone(stop.contact_phone);
       // Reuse the exact-coordinate, exact-promotion native handoff, including
       // its current-stop return receipt. No address or centroid fallback.
-      for (const link of map?.navigationLinks?.() || []) { link.textContent = `Navigate with ${link.textContent}`; link.dataset.focusKey = `navigation:${link.textContent}:${stop.property_id}`; actions.append(link); }
+      for (const link of map?.navigationLinks?.() || []) { link.dataset.focusKey = `navigation:${link.href}:${stop.property_id}`; actions.append(link); }
       if (phone) { const call = make("a", "Call contact"); call.href = phone; call.dataset.focusKey = `call:${stop.property_id}`; actions.append(call); }
       if (!actions.children.length) actions.append(make("p", "Directions unavailable", "note-state"));
       if (map?.projection?.card?.display === "unknown") current.append(make("p", `${map.projection.card.precision_label} · Directions unavailable`, "note-state"));

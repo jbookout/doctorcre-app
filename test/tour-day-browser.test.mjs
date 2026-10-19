@@ -299,8 +299,8 @@ test("accepted Tour keeps itinerary, numbered markers, next stop and phone hando
         assert.equal(await page.locator(`.itinerary-pin[data-route-stop-id="${id}"]`).getAttribute('aria-pressed'), 'true');
         const links = await page.locator('#day-current a[href*="maps"]').evaluateAll(links => links.map(link => link.href));
         assert.deepEqual(links, [
-          `https://maps.apple.com/?daddr=${coordinate}&dirflg=d`,
           `https://www.google.com/maps/dir/?api=1&destination=${coordinate}&travelmode=driving`,
+          `https://maps.apple.com/?daddr=${coordinate}&dirflg=d`,
         ]);
       } else {
         assert.match(await page.locator('#day-current').textContent(), /Location unknown/);

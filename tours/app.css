@@ -238,8 +238,8 @@ button.primary:hover:not(:disabled) { border-color: var(--accent-hover); backgro
 .itinerary-map { width: 100%; height: 310px; }
 .itinerary-map[hidden] { display: none; }
 .itinerary-legend { margin-top: var(--space-2); }
-.itinerary-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--space-4); margin-top: var(--space-4); }
-.itinerary-list { display: grid; align-content: start; gap: 0; max-height: 440px; margin: 0; padding: 0; overflow: auto; list-style: none; }
+.itinerary-grid { margin-top: var(--space-4); }
+.itinerary-list { display: grid; align-content: start; gap: 0; margin: 0; padding: 0; list-style: none; }
 .itinerary-stop { border-top: var(--hairline-width) solid var(--hairline); }
 .itinerary-stop.selected { box-shadow: inset 2px 0 0 var(--fg-muted); background: var(--surface-2); }
 .itinerary-stop.downgraded .itinerary-stop-label { border-style: dashed; }
@@ -247,8 +247,7 @@ button.primary:hover:not(:disabled) { border-color: var(--accent-hover); backgro
 .itinerary-stop button:hover:not(:disabled) { background: var(--surface-2); }
 .itinerary-stop-label { display: flex; flex: 0 0 auto; align-items: center; justify-content: center; min-width: 36px; min-height: 36px; border: var(--hairline-width) solid var(--hairline-strong); border-radius: 50%; color: var(--fg); font-weight: var(--font-weight-strong); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
 .itinerary-stop small { display: block; padding: 0 var(--space-2) var(--space-2) calc(36px + var(--space-5)); color: var(--fg-muted); font-size: var(--font-size-1); line-height: var(--line-height-body); overflow-wrap: anywhere; }
-.itinerary-property-card { order: -1; min-width: 0; padding: 0 0 0 var(--space-4); border-left: var(--hairline-width) solid var(--hairline); overflow-wrap: anywhere; }
-.itinerary-property-card h4 { font-size: var(--font-size-3); }
+.itinerary-property-card { min-width: 0; padding: 0 var(--space-3) var(--space-3) calc(36px + var(--space-5)); overflow-wrap: anywhere; }
 .itinerary-property-card p { margin-top: var(--space-2); }
 .itinerary-precision { color: var(--status-ok-ink); font-size: var(--font-size-1); }
 .itinerary-precision::before { content: "● "; }
@@ -257,6 +256,8 @@ button.primary:hover:not(:disabled) { border-color: var(--accent-hover); backgro
 .itinerary-navigation { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-top: var(--space-3); }
 .itinerary-navigation a { display: inline-flex; align-items: center; justify-content: center; min-width: var(--touch); min-height: var(--touch); padding: var(--space-2) var(--space-4); border: var(--hairline-width) solid var(--hairline-strong); border-radius: var(--radius-2); background: var(--surface-2); color: var(--fg); font-size: var(--font-size-1); font-weight: var(--font-weight-strong); text-decoration: none; }
 .itinerary-navigation a:hover { background: var(--surface-3); }
+.itinerary-navigation a.primary { background: var(--fg); color: var(--ground); border-color: var(--fg); }
+.itinerary-navigation a.navigation-alternate { border-color: transparent; background: transparent; text-decoration: underline; }
 
 /* Map pins: a circle for verified entrances, a diamond for other shapes,
    dashed when the coordinate is downgraded. The selected pin is the accent. */
@@ -308,10 +309,7 @@ button.primary:hover:not(:disabled) { border-color: var(--accent-hover); backgro
   .property-result-head button { width: 100%; }
   .tour-heading { flex-direction: column; gap: var(--space-3); }
   .share-actions button { flex: 1 1 40%; }
-  .itinerary-grid { grid-template-columns: minmax(0, 1fr); }
-  .itinerary-property-card { padding: var(--space-4) 0 0; border-left: 0; border-top: var(--hairline-width) solid var(--hairline); }
   .itinerary-map { height: 260px; }
-  .itinerary-list { max-height: none; }
   .itinerary-modes { width: 100%; }
   .itinerary-modes button { flex: 1; }
 }

@@ -64,6 +64,8 @@ p { margin: var(--space-2) 0; }
 .property-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); }
 .property-actions a { display: inline-flex; align-items: center; min-height: 48px; padding: var(--space-2) var(--space-4); border: var(--hairline-width) solid var(--hairline-strong); border-radius: var(--radius-2); background: var(--surface-2); text-decoration: none; }
 .property-actions a:hover { border-color: var(--fg-quiet); background: var(--surface-3); }
+.property-actions a.primary { background: var(--fg); color: var(--ground); border-color: var(--fg); font-weight: var(--font-weight-strong); }
+.property-actions a.navigation-alternate { border-color: transparent; background: transparent; text-decoration: underline; }
 .access-note { padding: var(--space-3) var(--space-4); border-left: 2px solid var(--status-info); border-radius: 0 var(--radius-2) var(--radius-2) 0; background: var(--surface-2); overflow-wrap: anywhere; }
 
 /* Notes. */

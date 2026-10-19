@@ -43,7 +43,7 @@ test("rendered composer uses compact fallback, keeps exact stop after reload, an
       const page = await browser.newPage({ viewport: { width, height }, reducedMotion: "reduce" });
       await page.route(url => !['localhost', '127.0.0.1', '[::1]'].includes(url.hostname), route => route.abort());
       const errors = []; page.on("pageerror", e => errors.push(e.message));
-      await page.goto(`${base}/tours`); if (width <= 760) await page.locator("#appSidebarToggle").click(); await page.locator(".tour-button").click(); if (width <= 760) await page.keyboard.press("Escape");
+      await page.goto(`${base}/tours`); await page.locator("#appSidebarToggle").click(); await page.locator(".tour-button").click(); if (width <= 760) await page.keyboard.press("Escape");
       const root = page.locator("#accepted-itinerary"); await root.waitFor({ state: "visible" });
       assert.equal(await root.locator("canvas").count(), 0);
       assert.match(await root.locator("[data-map-status]").innerText(), /Street map unavailable/);
@@ -64,7 +64,7 @@ test("rendered composer uses compact fallback, keeps exact stop after reload, an
         stops[1].property_address = "202 Example Way";
         await page.locator("#route-editing > summary").click();
         await page.locator("#reload-composer").click();
-        await page.waitForFunction(() => document.querySelector('[data-itinerary-card]').textContent.includes("Refreshed synthetic property"));
+        await page.waitForFunction(() => document.querySelector('[data-itinerary-stop][aria-current=step]').textContent.includes("Refreshed synthetic property"));
         assert.match(await root.locator('[data-itinerary-card]').textContent(), /202 Example Way/);
         await page.evaluate(async () => {
           const component = await import("/tours/itinerary-map.js"), gl = await import("/tours/vendor/maplibre-gl-6.4.1/maplibre-gl.mjs");

@@ -84,6 +84,7 @@ function diagram(items) {
 }
 export function renderPropertyPanel(evidence) {
   const items = propertyPanelView(evidence);
+  if (!items.some(item => item.status === "reviewed" || item.status === "conflicted")) return '<p class="hint">Property evidence is unavailable. No reviewed jurisdiction or site facts are recorded for this property and date.</p>';
   return `<div class="property-panel-body">
     ${diagram(items)}
     <div class="property-fact-grid">${items.map(item => `<button type="button" class="property-fact ${escape(item.status)}" data-evidence-field="${escape(item.field)}" aria-haspopup="dialog">

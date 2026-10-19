@@ -75,7 +75,7 @@ export function mountAcceptedItinerary(root, initial) {
   const legend = make("p", "● Fixed appointment · ◆ Flexible stop · Dashed pin: approximate location", "hint itinerary-legend");
   const grid = make("div", "", "itinerary-grid"), list = make("ol", "", "itinerary-list"), card = make("article", "", "itinerary-property-card");
   list.setAttribute("aria-label", "Accepted stops in visit order"); card.dataset.itineraryCard = "";
-  card.setAttribute("aria-label", "Selected itinerary property"); grid.append(list, card);
+  card.setAttribute("aria-label", "Selected itinerary property"); grid.append(list);
   const day = initial.presentation === "day";
   if (day) {
     notice.className = "day-map-state";
@@ -192,10 +192,12 @@ export function mountAcceptedItinerary(root, initial) {
       button.append(make("b", item.label, "itinerary-stop-label"), make("span", item.title));
       button.addEventListener("click", () => select(item.route_stop_id));
       const offlineStop = projection.offline_itinerary.find(stop => stop.route_stop_id === item.route_stop_id);
-      row.append(button, make("small", offlineStop.address_line || "Address unknown"),
+      row.append(button);
+      if (item.selected) row.append(card);
+      else row.append(make("small", offlineStop.address_line || "Address unknown"),
         make("small", `${item.precision_label} · ${item.current ? "Current stop · " : ""}${item.locked_state === "locked" ? "Fixed" : "Flexible"}`),
         make("small", `Dwell ${item.dwell_minutes ?? "unknown"} min · Buffer ${item.buffer_minutes ?? "unknown"} min`), make("small", provenance(item.route_stop_id)));
-      if (item.appointment) row.append(make("small", `${new Date(item.appointment.start).toLocaleString(undefined, { hour12: true })} → ${new Date(item.appointment.end).toLocaleString(undefined, { hour12: true })}`));
+      if (!item.selected && item.appointment) row.append(make("small", `${new Date(item.appointment.start).toLocaleString(undefined, { hour12: true })} → ${new Date(item.appointment.end).toLocaleString(undefined, { hour12: true })}`));
       list.append(row);
     }
     if (!projection.list.length) list.append(make("li", "No active stops on this accepted route."));
@@ -204,7 +206,7 @@ export function mountAcceptedItinerary(root, initial) {
     const selected = projection.card;
     if (selected) {
       card.dataset.propertyId = selected.property_id;
-      card.append(make("p", `Stop ${selected.label}`, "eyebrow"), make("h4", selected.title), make("p", selected.address_line || "Address unknown", "hint"),
+      card.append(make("p", selected.address_line || "Address unknown", "hint"),
         make("p", selected.precision_label, `itinerary-precision ${selected.display}`), make("p", provenance(selected.route_stop_id), "hint"),
         make("p", `${selected.locked_state === "locked" ? "Fixed appointment" : "Flexible stop"} · Dwell ${selected.dwell_minutes ?? "unknown"} min · Buffer ${selected.buffer_minutes ?? "unknown"} min`, "hint"));
       if (selected.appointment) {
@@ -212,10 +214,13 @@ export function mountAcceptedItinerary(root, initial) {
         card.append(make("p", `${local(selected.appointment.start)} → ${local(selected.appointment.end)}`, "hint"));
       }
       const actions = make("div", "", "itinerary-navigation");
-      for (const [platform, label] of [["apple_maps", "Apple Maps"], ["google_maps", "Google Maps"]]) {
+      for (const [platform, label] of [["google_maps", "Google Maps"], ["apple_maps", "Apple Maps"]]) {
         const handoff = buildNativeNavLink(state, { route_stop_id: selected.route_stop_id, platform, travel_mode: "driving", now: new Date().toISOString(), promotion_receipt: options.promotion_receipt, user_ref: options.user_ref });
         if (!handoff.available) continue;
-        const link = make("a", label); link.href = handoff.link; link.rel = "noopener noreferrer";
+        const link = make("a", platform === "google_maps" ? "Navigate" : label);
+        link.className = platform === "google_maps" ? "primary" : "navigation-alternate";
+        link.setAttribute("aria-label", `Navigate with ${label}`);
+        link.href = handoff.link; link.rel = "noopener noreferrer";
         link.addEventListener("click", event => {
           const freshHandoff = buildNativeNavLink(state, { route_stop_id: selected.route_stop_id, platform, travel_mode: "driving", now: new Date().toISOString(), promotion_receipt: options.promotion_receipt, user_ref: options.user_ref });
           if (!freshHandoff.available) { event.preventDefault(); render(); return; }
