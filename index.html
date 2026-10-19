@@ -32,7 +32,6 @@
   <main id="main" class="shell">
     <section data-layout-slot="sidebar" class="hero" aria-labelledby="workspaceTitle">
       <div>
-        <button type="button" class="back-link" id="accountBack" hidden>← All national accounts</button>
         <h1 id="workspaceTitle">Deals</h1>
         <nav data-layout-slot="tabs" class="page-views" aria-label="Deals pages">
           <button type="button" class="workspace on" data-workspace="team" aria-current="page">All Deals</button>
@@ -50,6 +49,8 @@
       <span class="deal-page-view-current" aria-current="page">List</span>
       <a href="/deals?view=board">Board</a>
     </div>
+
+    <button type="button" class="back-link" id="accountBack" hidden>← All national accounts</button>
 
     <section class="account-grid" id="accountGrid" aria-label="National accounts" hidden></section>
 

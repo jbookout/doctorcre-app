@@ -1301,7 +1301,12 @@ function wireEvents() {
   });
 
   $('#search').addEventListener('input', (event) => { state.query=event.target.value.trim(); render(); });
-  $('#accountBack').onclick = () => { state.accountId=null; render(); };
+  $('#accountBack').onclick = () => {
+    const accountId = state.accountId;
+    state.accountId = null;
+    render();
+    if (accountId) $(`[data-account="${CSS.escape(accountId)}"]`)?.focus({ preventScroll: true });
+  };
   const openAddForm = () => state.workspace === 'team' ? addTeamDealForm() : state.accountId ? addMarketDealForm() : addAccountForm();
   $('#stickyAddButton').onclick = openAddForm;
   $('#receiptsJump').onclick = goToReceipts;

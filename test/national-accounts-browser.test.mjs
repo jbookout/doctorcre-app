@@ -27,15 +27,15 @@ test('S1 returning to national accounts restores the selected card for keyboard 
       await page.keyboard.press('Enter');
       await page.locator('#accountGrid').waitFor({ state: 'hidden' });
       const back = page.locator('#accountBack');
-      if (!await back.isVisible()) await page.getByRole('button', { name: 'Workspace sidebar', exact: true }).click();
+      assert.equal(await back.isVisible(), true, 'account return is reachable without opening a modal sidebar');
       await back.focus();
       await page.keyboard.press('Enter');
       await page.locator('#accountGrid').waitFor({ state: 'visible' });
       assert.equal(await page.evaluate(() => document.activeElement?.getAttribute('data-account')), account);
+      await page.screenshot({ path: new URL(`account-${width}-${theme}.png`, artifacts).pathname });
       await page.keyboard.press('Enter');
       await page.locator('#accountGrid').waitFor({ state: 'hidden' });
       assert.deepEqual(errors, []);
-      await page.screenshot({ path: new URL(`account-${width}-${theme}.png`, artifacts).pathname });
       await page.close();
     });
   }
