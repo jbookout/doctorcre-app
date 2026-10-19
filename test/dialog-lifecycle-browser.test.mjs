@@ -80,3 +80,46 @@ test('shared close cleanup runs only for true native closes and can be disposed'
   assert.deepEqual(result.trueClose, {selected: null, cleanups: 1, open: false, focus: 'second', trusted: true});
   assert.equal(result.afterDispose, 1);
 });
+
+for (const width of [390, 1440]) {
+  test(`Tour Planner preserves a reopened tour and its pending read through native close at ${width}px`, async t => {
+    const page = await open(t, width);
+    await page.evaluate(async () => {
+      const {mountPlanner} = await import('/tours/planner.js');
+      const html = await (await fetch('/tours/index.html')).text();
+      document.body.innerHTML = new DOMParser().parseFromString(html, 'text/html').body.innerHTML;
+      const rows = ['11111111-1111-4111-8111-111111111111', '22222222-2222-4222-8222-222222222222']
+        .map((id, index) => ({id, name: `Synthetic tour ${index + 1}`, status: 'draft', stops: []}));
+      const api = {scope: 'synthetic', library: async () => rows, clients: async () => [],
+        tour: async id => id === rows[0].id ? rows[0] : new Promise(resolve => { window.resolveTour = () => resolve(rows[1]); })};
+      window.planner = mountPlanner({document, window, api});
+      await window.planner.ready;
+      document.querySelector('.tour-button').click();
+    });
+    assert.equal(await page.locator('#detail-title').textContent(), 'Synthetic tour 1');
+    const stale = await page.evaluate(async () => {
+      const dialog = document.querySelector('#tour-dialog');
+      const closed = new Promise(resolve => dialog.addEventListener('close', event => resolve({trusted: event.isTrusted, open: dialog.open}), {once: true}));
+      document.querySelector('#detail-close').click();
+      document.querySelectorAll('.tour-button')[1].click();
+      return closed;
+    });
+    assert.deepEqual(stale, {trusted: true, open: true});
+    assert.deepEqual(await page.evaluate(async () => (await import('/js/doc-context.js')).pageDocContext.snapshot().selected),
+      {kind: 'tour', id: '22222222-2222-4222-8222-222222222222'});
+    await page.evaluate(() => window.resolveTour());
+    assert.equal(await page.locator('#detail-title').textContent(), 'Synthetic tour 2');
+    assert.equal(await page.locator('#detail-message').textContent(), '');
+    const closed = await page.evaluate(async () => {
+      const {pageDocContext} = await import('/js/doc-context.js');
+      const dialog = document.querySelector('#tour-dialog');
+      const event = new Promise(resolve => dialog.addEventListener('close', event => resolve(event.isTrusted), {once: true}));
+      document.querySelector('#detail-close').click();
+      const trusted = await event;
+      const result = {trusted, open: dialog.open, selected: pageDocContext.snapshot().selected, focus: document.activeElement.dataset.tourId};
+      window.planner.dispose();
+      return result;
+    });
+    assert.deepEqual(closed, {trusted: true, open: false, selected: null, focus: '22222222-2222-4222-8222-222222222222'});
+  });
+}
