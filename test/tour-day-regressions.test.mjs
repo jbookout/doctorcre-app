@@ -126,3 +126,37 @@ test('R12: local capture has no dormant producer sync implementation or caller',
   assert.equal(drafts.createNoteSync, undefined); assert.equal(drafts.matchesNote, undefined);
   const source = await readFile(new URL('../tours/day.js', import.meta.url), 'utf8'); assert.doesNotMatch(source, /createNoteSync|\.sync\(/);
 });
+
+test('R6: without a readable tour the page resolves its freshness and shows one authored panel', async t => {
+  for (const [url, api, updated, copy] of [
+    ['https://synthetic.test/tours/day.html', { session: async () => { throw new Error('not called'); }, tour: async () => { throw new Error('not called'); } }, 'No tour chosen', /Choose a tour/],
+    [`https://synthetic.test/tours/day.html?tour=${tourId}`, { session: async () => ({ scope: 'account-A', user_ref: 'account-A' }), tour: async () => { throw new Error('unavailable'); } }, 'Not loaded', /could not be read/],
+  ]) {
+    const dom = new JSDOM(html, { url, pretendToBeVisual: true }); const doc = dom.window.document;
+    const dialog = doc.querySelector('dialog'); dialog.showModal = function() { this.open = true; }; dialog.close = function() { this.open = false; };
+    const view = mountTourDay({ document: doc, window: dom.window, api: { capabilities: { voiceNotes: false }, ...api }, store: storage(), prepareOffline: async () => {}, mapFactory: () => ({ dispatch() {}, update() {}, navigationLinks: () => [], destroy() {} }) });
+    t.after(() => { view.dispose(); dom.window.close(); }); await view.ready; await settle();
+    assert.equal(doc.querySelector('#day-status').textContent, 'Tour unavailable');
+    assert.equal(doc.querySelector('#day-updated').textContent, updated);
+    assert.equal(doc.querySelector('#tour-day').dataset.state, 'unavailable');
+    assert.match(doc.querySelector('#day-empty-copy').textContent, copy);
+    assert.equal(doc.querySelector('#day-record').disabled, true);
+  }
+});
+
+
+test('draft Tour day uses a readable name and links directly to route recovery', async t => {
+  const h = await harness(t);
+  h.current.name = `Synthetic ${tourId} draft tour`;
+  h.current.routes[0].accepted = false;
+  await h.view.refresh();
+  assert.equal(h.doc.querySelector('#day-title').textContent, 'Synthetic draft tour');
+  const recovery = h.doc.querySelector('#day-map a');
+  assert.equal(recovery?.textContent, 'Review route in Itinerary');
+  assert.equal(recovery.getAttribute('href'), `/tours/route-editor.html?tour=${tourId}`);
+  assert.equal(h.doc.querySelector('#day-record').disabled, true);
+  h.current.routes[0].accepted = true;
+  await h.view.refresh();
+  assert.equal(h.doc.querySelector('#day-map a'), null);
+  assert.equal(h.doc.querySelectorAll('.day-stop').length, 2);
+});

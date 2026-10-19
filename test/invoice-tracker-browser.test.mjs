@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile, mkdir } from 'node:fs/promises';
-import { chromium } from './browser-harness.mjs';
+import { chromium } from 'playwright';
 import { invoiceTrackerFixture } from '../js/invoice-tracker-fixture.js';
 const root = new URL('../', import.meta.url), today = '2026-10-02';
 async function open(t, { width = 1440, reducedMotion = 'no-preference', query = '', home = false, receipt = 'ok' } = {}) {

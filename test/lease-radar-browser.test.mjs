@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile, mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
-import { chromium } from './browser-harness.mjs';
+import { chromium } from 'playwright';
 import { createFixtureClient } from '../js/fixture-client.js';
 import { leaseRadarFixture } from '../js/lease-radar-fixture.js';
 import { invoiceTrackerFixture } from '../js/invoice-tracker-fixture.js';
@@ -161,9 +161,11 @@ test('timeout clears stale details and automatically recovers', async t => {
   state.fail(null); await page.clock.runFor(31_000); await settled(page);
   assert.equal(await page.locator('#leaseRadar .lease-card').count(), 9);
 });
-test('reduced motion stops urgency and hover motion without hiding leases', async t => {
+test('urgency lights stay still and cards never lift, with or without reduced motion', async t => {
   const { page } = await open(t, { motion: 'no-preference' });
-  assert.notEqual(await page.locator('.lease-light').first().evaluate(n => getComputedStyle(n).animationName), 'none');
+  assert.equal(await page.locator('.lease-light').first().evaluate(n => getComputedStyle(n).animationName), 'none');
+  await page.locator('.lease-card').first().hover();
+  assert.equal(await page.locator('.lease-card').first().evaluate(n => getComputedStyle(n).transform), 'none');
   await page.emulateMedia({ reducedMotion: 'reduce' });
   assert.equal(await page.locator('.lease-light').first().evaluate(n => getComputedStyle(n).animationName), 'none');
   await page.locator('.lease-card').first().hover();
@@ -182,7 +184,7 @@ test('Home shows next eligible past-client touches, opens lease details and refr
   assert.match(await page.locator('#pastLeaseDetailTitle').textContent(), /Demo Practice 1/);
   await page.keyboard.press('Escape'); state.payload.leases[0].touch_eligible = false; await online(page);
   await page.waitForFunction(() => !document.querySelector('#homePastClients').textContent.includes('Demo Practice 1'));
-  await page.getByRole('button', { name: 'Just Me', exact: true }).click();
+  await page.getByRole('button', { name: 'Just me', exact: true }).click();
   assert.equal(await page.locator('#homePastClients .lease-card').count(), 4);
   state.fail(503); await page.clock.runFor(31_000);
   await page.getByText('Follow-ups unavailable', { exact: true }).waitFor();

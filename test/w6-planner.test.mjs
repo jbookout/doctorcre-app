@@ -148,7 +148,12 @@ test("client outage clears on automatic recovery and form caret survives backgro
 test("unsupported search UI is absent from the landing page and backend actions are withheld", () => {
   const doc = new JSDOM(html).window.document;
   assert.equal(doc.querySelector("#property-search-form"), null);
-  assert.equal(doc.querySelectorAll(".widget-actions button[disabled]").length, 2);
+  const withheld = [...doc.querySelectorAll(".widget-actions button[disabled]")];
+  assert.equal(withheld.length, 1);
+  for (const button of withheld) {
+    const reason = doc.getElementById(button.getAttribute("aria-describedby") || "");
+    assert.match(reason?.textContent || "", /\bnot connected\b/, "a withheld action says why in words");
+  }
   assert.equal(doc.querySelectorAll(".hint, .selection-footnote").length, 0);
 });
 
@@ -261,6 +266,69 @@ test("cancelled refresh cannot publish its late data or freshness", async () => 
     late.resolve([{ id: clientA, name: "Cancelled", status: "draft" }]); await pending;
     assert.match(app.doc.querySelector("#upcoming-tours").textContent, /Newest/); assert.doesNotMatch(app.doc.querySelector("#upcoming-tours").textContent, /Cancelled/);
   } finally { app.close(); }
+});
+
+for (const first of ["library", "clients"]) test(`initial ${first}-first reads preserve the producer's distinct response envelopes`, async () => {
+  const libraryResponse = deferred(), clientsResponse = deferred();
+  let clientReads = 0;
+  const stale = { ...record(clientA), name: "Before scope was established" };
+  const current = { ...record(clientA), name: "Current scoped client" };
+  const api = createPlannerClient({ fetchImpl: async path => ({
+    ok: true,
+    json: () => path.includes("library") ? libraryResponse.promise : ++clientReads === 1
+      ? clientsResponse.promise : { page: 1, page_count: 1, rows: [current] },
+  }) });
+  const library = api.library(), clients = api.clients();
+  if (first === "library") {
+    libraryResponse.resolve({ csrf_token: "synthetic-A", data: { tours: [] } });
+    await library;
+    clientsResponse.resolve({ page: 1, page_count: 1, rows: [stale] });
+    assert.deepEqual(await clients, [current]);
+    assert.equal(clientReads, 2);
+  } else {
+    clientsResponse.resolve({ page: 1, page_count: 1, rows: [stale] });
+    assert.deepEqual(await clients, [stale]);
+    libraryResponse.resolve({ csrf_token: "synthetic-A", data: { tours: [] } });
+    await library;
+    assert.equal(clientReads, 1);
+  }
+  assert.ok(api.scope);
+});
+
+test("known-scope client answers cannot cross an account transition", async () => {
+  const pendingClients = deferred(); let token = "synthetic-A", clientReads = 0;
+  const api = createPlannerClient({ fetchImpl: async path => ({
+    ok: true, json: () => {
+      if (path.includes("library")) return { csrf_token: token, data: { tours: [] } };
+      clientReads++; return pendingClients.promise;
+    },
+  }) });
+  await api.library();
+  const clients = api.clients();
+  token = "synthetic-B"; await api.library();
+  const scopeB = api.scope;
+  pendingClients.resolve({ page: 1, page_count: 1, rows: [record(clientA)] });
+  await assert.rejects(clients, /Session superseded/);
+  assert.equal(api.scope, scopeB); assert.equal(clientReads, 1);
+});
+
+test("the initial client re-read still refuses a later account transition", async () => {
+  const unscoped = deferred(), scoped = deferred(), rereadStarted = deferred();
+  let token = "synthetic-A", clientReads = 0;
+  const api = createPlannerClient({ fetchImpl: async path => ({
+    ok: true, json: () => {
+      if (path.includes("library")) return { csrf_token: token, data: { tours: [] } };
+      if (++clientReads === 1) return unscoped.promise;
+      rereadStarted.resolve(); return scoped.promise;
+    },
+  }) });
+  const clients = api.clients(); await api.library();
+  unscoped.resolve({ page: 1, page_count: 1, rows: [record(clientA)] });
+  await rereadStarted.promise;
+  token = "synthetic-B"; await api.library(); const scopeB = api.scope;
+  scoped.resolve({ page: 1, page_count: 1, rows: [record(clientA)] });
+  await assert.rejects(clients, /Session superseded/);
+  assert.equal(api.scope, scopeB); assert.equal(clientReads, 2);
 });
 
 test("late transport response cannot roll the adapter back to an earlier session", async () => {

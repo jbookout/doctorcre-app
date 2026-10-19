@@ -19,3 +19,4 @@ mobile-a11y-evidence/
 
 # e2e runner output (report, artifacts, logs, local replay cache).
 /.e2e/
+/playwright/.auth/

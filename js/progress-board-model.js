@@ -10,17 +10,19 @@ export const DEFAULT_REPO = "jbookout/carr-system";
 export const LIVE_PREVIEW = 5;
 export const LIVE_PREF_KEY = "carr-board:live-expanded";
 
+// Stage colours are token roles (css/tokens.css), so they follow theme and Color Assist;
+// every stage also carries its label in text.
 export const STAGES = [
-  { id: "queued", label: "Queued", color: "#f2f6fc", meaning: "Waiting to start" },
-  { id: "build", label: "Building", color: "#fb7b32", meaning: "Being built; a draft PR" },
-  { id: "review", label: "Review", color: "#bf9cff", meaning: "Waiting on independent review" },
-  { id: "ci", label: "CI", color: "#ff88bd", meaning: "Checks running or failing" },
-  { id: "merged", label: "Merged", color: "#65baff", meaning: "On main, not yet in a verified release" },
-  { id: "live", label: "Live", color: "#7dddc0", meaning: "Released and verified where it runs" },
+  { id: "queued", label: "Queued", color: "var(--fg-quiet)", meaning: "Waiting to start" },
+  { id: "build", label: "Building", color: "var(--data-2)", meaning: "Being built; a draft PR" },
+  { id: "review", label: "Review", color: "var(--data-3)", meaning: "Waiting on independent review" },
+  { id: "ci", label: "CI", color: "var(--status-warn)", meaning: "Checks running or failing" },
+  { id: "merged", label: "Merged", color: "var(--data-1)", meaning: "On main, not yet in a verified release" },
+  { id: "live", label: "Live", color: "var(--data-4)", meaning: "Released and verified where it runs" },
 ];
 
 export const RECORDED_STAGE = {
-  id: "recorded", label: "Recorded", color: "#f2f6fc", sequence: false,
+  id: "recorded", label: "Recorded", color: "var(--fg-quiet)", sequence: false,
   meaning: "Completed in its source record; live consumer verification is separate",
 };
 export const STAGE_DEFINITIONS = [...STAGES, RECORDED_STAGE];
@@ -37,10 +39,10 @@ export const EXECUTORS = [
 
 // Pulse speed carries urgency. The renderer sets --pulse-speed from here.
 export const PULSES = [
-  { id: "healthy", speed: "3.5s", color: "#65baff", label: "Slow pulse", meaning: "Healthy and moving" },
-  { id: "attention", speed: "2s", color: "#fb7b32", label: "Faster pulse", meaning: "Needs attention: a question or review" },
-  { id: "critical", speed: "1s", color: "#ff696b", label: "Fastest pulse", meaning: "Blocked: see the reason and next action" },
-  { id: "still", speed: null, color: "#7dddc0", label: "No pulse", meaning: "Queued or finished" },
+  { id: "healthy", speed: "3.5s", color: "var(--status-info)", label: "Slow pulse", meaning: "Healthy and moving" },
+  { id: "attention", speed: "2s", color: "var(--status-warn)", label: "Faster pulse", meaning: "Needs attention: a question or review" },
+  { id: "critical", speed: "1s", color: "var(--status-danger)", label: "Fastest pulse", meaning: "Blocked: see the reason and next action" },
+  { id: "still", speed: null, color: "var(--status-ok)", label: "No pulse", meaning: "Queued or finished" },
 ];
 
 export const STALE_AFTER_MS = 6 * 60 * 60 * 1000;

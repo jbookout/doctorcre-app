@@ -31,9 +31,14 @@ export function visibleLeads(leads, filters = {}) {
       (!search || [leadTitle(lead), lead.specialty, marketKey(lead), lead.party_id].join(" ").toLowerCase().includes(search));
   });
 }
-export function hottestLeads(leads) {
-  return leads.filter(eligibleLead).filter(lead => normalizedStage(lead) === "new" && !lead.owner)
-    .sort((a, b) => scoreValue(b) - scoreValue(a) || leadTitle(a).localeCompare(leadTitle(b))).slice(0, 5);
+const byScore = (a, b) => scoreValue(b) - scoreValue(a) || leadTitle(a).localeCompare(leadTitle(b));
+// The hottest panel answers from the whole New column: unclaimed leads to
+// claim when there are any, otherwise the top-scored New leads with their
+// owners, so it never reads "no New leads" beside a full New column.
+export function hotLeadPanel(leads) {
+  const fresh = leads.filter(eligibleLead).filter(lead => normalizedStage(lead) === "new").sort(byScore);
+  const open = fresh.filter(lead => !lead.owner);
+  return { claimable: open.length > 0, rows: (open.length ? open : fresh).slice(0, 5), newTotal: fresh.length, claimed: fresh.length - open.length };
 }
 const scoreValue = lead => lead.score == null || !Number.isFinite(Number(lead.score)) ? -Infinity : Number(lead.score);
 export function marketCounts(leads, filters = {}) {

@@ -1,98 +1,106 @@
-/* V5-UX-B04 Ideas — page layer over css/system.css.
+/* Ideas and Events: page layer over css/system.css, on css/tokens.css only.
  *
- * Ideas are tiles on a glass board. Motion (rule 9293d609), on the shared
- * tokens only: the tiles enter on a stagger inside a second, lift and tilt
- * toward the pointer (a depth response), press down, and an idea with a due
- * date carries the same approach pulse as the Calendar. The event timeline
- * shows date order and cross-highlights the corresponding event card.
+ * Ideas and events share one card grammar: a number or date line, a title,
+ * one meta line, on surface-2 one step off the panel, all the same size in an
+ * even grid (no bento, no spans). A due idea carries the Calendar's still
+ * nearness marker. The event timeline is a flat SVG rail: hairline track,
+ * hollow nodes, and the active node filled in ink.
  *
- * Reduced motion: the shared floor stops every animation and transition, and
- * the block at the end removes the lift, tilt and press as well.
+ * Motion: hover and press are a surface step; nothing enters, tilts or loops.
  */
 
-.topbar { flex-wrap: wrap; }
-.global-controls { flex-wrap: wrap; justify-content: flex-end; }
+.page-sub { display: flex; align-items: center; gap: var(--space-2); margin: var(--space-1) 0 0; color: var(--fg-muted); font-size: var(--font-size-1); }
 
 .idea-search { min-width: 0; flex: 1 1 240px; max-width: 100%; }
 .idea-search input { min-height: var(--touch); width: 100%; min-width: 0; box-sizing: border-box; }
 
-.idea-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; margin: 0 0 var(--gap); padding: 0; list-style: none; perspective: 1000px; }
-.idea-grid:empty { display: none; }
+/* ------------------------------------------------------------ card grammar */
+.idea-grid, .event-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: var(--space-3); margin: 0 0 var(--gap); padding: 0; list-style: none; }
+.idea-grid:empty, .event-list:empty { display: none; }
 
-.idea-tile { display: grid; align-content: start; gap: 10px; width: 100%; min-height: 132px; padding: 14px 16px; border: 1px solid var(--line); border-radius: var(--radius); background: linear-gradient(160deg, var(--glass-hi), var(--glass)); color: var(--text); font: inherit; text-align: left; cursor: pointer; transform-style: preserve-3d; animation: receipt-in var(--motion-enter) var(--ease) backwards; animation-delay: var(--stagger, 0ms); transition: transform var(--motion-move) var(--ease), border-color var(--motion-enter) var(--ease), box-shadow var(--motion-move) var(--ease); }
-.idea-tile:hover { transform: translateY(-3px) rotateX(var(--tilt-x, 3deg)) rotateY(var(--tilt-y, 0deg)); border-color: color-mix(in srgb, var(--orange) 55%, var(--line)); box-shadow: var(--shadow-float); }
-.idea-tile:active { transform: translateY(0) scale(0.98); }
-.idea-tile:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
-.idea-number { color: var(--orange-text); font: 700 13px/1 var(--display); letter-spacing: 0.06em; }
-.idea-label { margin: 0; font: 600 16px/1.25 var(--body); overflow-wrap: anywhere; }
-.idea-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; color: var(--muted); font-size: 12px; }
-.idea-meta .cal-pulse { display: inline-block; width: 9px; height: 9px; border-radius: 999px; }
-.idea-meta .cal-pulse[data-pulse="urgent"] { background: var(--red); box-shadow: 0 0 0 2px var(--ground-0), 0 0 0 3.5px var(--red); animation: breathe var(--motion-urgent) ease-in-out infinite; }
-.idea-meta .cal-pulse[data-pulse="attention"] { background: var(--amber); box-shadow: 0 0 0 2px var(--ground-0), 0 0 0 3px var(--amber); animation: breathe var(--motion-attention) ease-in-out infinite; }
-.idea-meta .cal-pulse[data-pulse="calm"] { background: var(--cyan); animation: breathe var(--motion-calm) ease-in-out infinite; }
-.idea-meta .cal-pulse[data-pulse="still"] { background: transparent; border: 1.5px solid var(--quiet); }
+.idea-tile, .event-card { display: grid; align-content: start; gap: var(--space-2); width: 100%; height: 100%; min-height: 128px; padding: var(--space-4); border: var(--hairline-width) solid var(--hairline); border-radius: var(--radius-3); background: var(--surface-2); color: var(--fg); font: inherit; text-align: left; cursor: pointer; transition: background-color var(--duration-hover) var(--ease-out), border-color var(--duration-hover) var(--ease-out); }
+@media (hover: hover) { .idea-tile:hover, .event-card:hover { border-color: var(--hairline-strong); background: var(--surface-3); } }
+.idea-tile:active, .event-card:active { background: var(--surface-3); border-color: var(--fg-quiet); }
+.idea-tile:focus-visible, .event-card:focus-visible { outline: var(--focus-width) solid var(--focus-ring); outline-offset: 2px; }
+.event-card[data-active="true"] { border-color: var(--fg-muted); background: var(--surface-3); }
 
-/* The detail popup's rows and body. */
-.idea-rows { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); gap: 8px 14px; margin: 0 0 14px; }
-.idea-rows dt { color: var(--quiet); font-size: 10px; font-weight: 800; letter-spacing: 0.12em; text-transform: uppercase; }
-.idea-rows dd { margin: 0; font-size: 13px; overflow-wrap: anywhere; }
-.idea-rows dd.unknown { color: var(--quiet); font-style: italic; }
-.idea-body { margin: 0; padding: 12px 14px; border: 1px solid var(--line); border-radius: var(--radius-s); background: color-mix(in srgb, var(--ground-1) 60%, transparent); font: 14px/1.5 var(--body); white-space: pre-wrap; overflow-wrap: anywhere; animation: receipt-in var(--motion-enter) var(--ease) backwards; }
+.idea-number { color: var(--fg-quiet); font: var(--font-weight-regular) var(--font-size-1)/1 var(--font-mono); font-variant-numeric: tabular-nums; }
+.idea-label, .event-name { margin: 0; font: var(--font-weight-strong) var(--font-size-2)/1.3 var(--font-text); overflow-wrap: anywhere; }
+.idea-meta { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1) var(--space-3); color: var(--fg-muted); font-size: var(--font-size-1); font-variant-numeric: tabular-nums; }
+.idea-meta > span { display: inline-flex; align-items: center; gap: var(--space-1); }
+.event-date { color: var(--fg-muted); font-size: var(--font-size-1); font-variant-numeric: tabular-nums; }
+.event-meta { color: var(--fg-muted); font-size: var(--font-size-1); }
+.event-source { color: var(--fg-quiet); font-size: var(--font-size-1); overflow-wrap: anywhere; }
+.event-card[data-status="cancelled"] .event-name, .event-card[data-status="skipped"] .event-name { color: var(--fg-muted); text-decoration: line-through; }
+.event-card[data-status="cancelled"], .event-card[data-status="skipped"] { border-style: dashed; }
 
-.event-timeline { overflow-x: auto; overflow-y: hidden; overscroll-behavior-inline: contain; margin: 0 0 var(--gap); padding: 8px 12px; border: 1px solid var(--line); border-radius: var(--radius); background: radial-gradient(ellipse at 50% 120%, color-mix(in srgb, var(--orange) 13%, transparent), transparent 65%), var(--glass); backdrop-filter: blur(16px); }
-.event-timeline svg { display: block; width: 100%; height: 118px; }
-.event-timeline-track { fill: none; stroke: var(--line); stroke-width: 2; stroke-dasharray: 6 9; animation: event-flow var(--motion-flow) linear infinite; }
+/* The Calendar's still nearness marker, for a due idea. */
+.idea-meta .cal-pulse { display: inline-block; flex: none; box-sizing: border-box; width: 10px; height: 10px; border-radius: var(--radius-round); }
+.idea-meta .cal-pulse[data-pulse="urgent"] { width: 12px; height: 12px; border: 3px double var(--status-danger); background: transparent; }
+.idea-meta .cal-pulse[data-pulse="attention"] { padding: 1px; border: 2px solid var(--status-warn); background: var(--status-warn) content-box; }
+.idea-meta .cal-pulse[data-pulse="calm"] { background: var(--status-info); }
+.idea-meta .cal-pulse[data-pulse="still"] { border: 1.5px solid var(--fg-quiet); background: transparent; }
+
+/* ------------------------------------------------------- the detail popup */
+.idea-rows { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); gap: var(--space-2) var(--space-4); margin: 0 0 var(--space-4); }
+.idea-rows dt { color: var(--fg-quiet); font-size: var(--font-size-1); }
+.idea-rows dd { margin: 0; font-size: var(--font-size-1); overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+.idea-rows dd.unknown { color: var(--fg-quiet); font-style: italic; }
+.idea-body { margin: 0; padding: var(--space-3) var(--space-4); border-radius: var(--radius-2); background: var(--surface-2); font: var(--font-weight-regular) var(--font-size-2)/var(--line-height-body) var(--font-text); white-space: pre-wrap; overflow-wrap: anywhere; }
+
+/* --------------------------------------------------------- event timeline */
+.event-timeline { overflow-x: auto; overflow-y: hidden; overscroll-behavior-inline: contain; margin: 0 0 var(--gap); padding: var(--space-2) var(--space-3); border-width: 0 0 var(--hairline-width); border-style: solid; border-color: var(--hairline); border-radius: 0; background: transparent; }
+/* With no event there is nothing to place on the rail, so it steps aside. */
+.event-timeline[data-empty="true"] { display: none; }
+.event-timeline svg { display: block; height: 118px; max-width: none; }
+.event-timeline-track { fill: none; stroke: var(--hairline-strong); stroke-width: 1; }
 .event-timeline-node { cursor: pointer; }
-.event-timeline-node circle { fill: var(--ground-1); stroke: var(--orange); stroke-width: 2; transition: r var(--motion-move) var(--ease), fill var(--motion-move) var(--ease); }
-.event-timeline-node:hover circle, .event-timeline-node:focus-visible circle, .event-timeline-node[data-active="true"] circle { fill: var(--orange); r: 12; }
-.event-timeline-node:focus-visible { outline: 2px solid var(--focus); outline-offset: 4px; }
-.event-timeline-node text { fill: var(--text); font: 700 14px var(--display); text-anchor: middle; pointer-events: none; }
-.event-timeline-node .event-timeline-date { fill: var(--muted); font: 11px var(--body); }
-.event-timeline-glow { fill: var(--orange); animation: breathe var(--motion-calm) ease-in-out infinite; }
-@keyframes event-flow { to { stroke-dashoffset: -30; } }
+.event-timeline-node circle { fill: var(--surface-1); stroke: var(--fg-muted); stroke-width: 1.5; transition: fill var(--duration-hover) var(--ease-out), stroke var(--duration-hover) var(--ease-out); }
+.event-timeline-node:hover circle, .event-timeline-node:focus-visible circle, .event-timeline-node[data-active="true"] circle { fill: var(--fg); stroke: var(--fg); }
+.event-timeline-node:focus-visible { outline: var(--focus-width) solid var(--focus-ring); outline-offset: 4px; }
+.event-timeline-node text { fill: var(--fg); font: var(--font-weight-strong) var(--font-size-1) var(--font-text); text-anchor: middle; pointer-events: none; }
+.event-timeline-node .event-timeline-date { fill: var(--fg-muted); font-weight: var(--font-weight-regular); font-variant-numeric: tabular-nums; }
 
-.event-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 12px; list-style: none; padding: 0; margin: 0 0 var(--gap); }
-.event-list:empty { display: none; }
-.event-card { width: 100%; height: 100%; min-height: 150px; display: grid; gap: 8px; align-content: start; padding: 15px; border: 1px solid var(--line); border-radius: var(--radius); background: linear-gradient(150deg, var(--glass-hi), var(--glass)); color: var(--text); text-align: left; font: inherit; cursor: pointer; animation: receipt-in var(--motion-enter) var(--ease) backwards; animation-delay: var(--stagger, 0ms); transition: transform var(--motion-move) var(--ease), border-color var(--motion-move) var(--ease), box-shadow var(--motion-move) var(--ease); }
-.event-card:hover, .event-card:focus-visible, .event-card[data-active="true"] { transform: translateY(-3px); border-color: var(--orange); box-shadow: var(--shadow-float); }
-.event-card:active { transform: translateY(0) scale(.98); }
-.event-card:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
-.event-date { color: var(--orange-text); font: 700 15px var(--display); letter-spacing: .04em; }
-.event-name { font: 600 17px/1.2 var(--body); }
-.event-meta { color: var(--muted); font-size: 12px; }
-.event-source { color: var(--quiet); font-size: 12px; overflow-wrap: anywhere; }
-.event-card[data-status="cancelled"], .event-card[data-status="skipped"] { opacity: .7; }
-.event-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; padding: 16px; max-height: min(72vh, 700px); overflow-y: auto; }
+/* ------------------------------------------------------------ event form */
+.event-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-3); padding: var(--space-4); max-height: min(72vh, 700px); overflow-y: auto; }
 .event-form .field { min-width: 0; }
 .event-form input, .event-form select, .event-form textarea { width: 100%; min-height: var(--touch); }
 .event-wide { grid-column: 1 / -1; }
-.event-check { align-self: end; display: flex; align-items: center; gap: 10px; min-height: var(--touch); }
+.event-check { align-self: end; display: flex; align-items: center; gap: var(--space-2); min-height: var(--touch); }
 .event-check input { width: auto; min-height: auto; }
-.event-form-message { margin: 0; color: var(--amber); min-height: 1.5em; }
-.event-conflict { padding: 12px; border: 1px solid var(--amber); border-radius: var(--radius-s); background: color-mix(in srgb, var(--amber) 9%, var(--glass)); }
-.event-conflict h3 { margin: 0 0 8px; font: 700 18px var(--display); }
-.event-conflict dl { display: grid; grid-template-columns: minmax(90px, 1fr) 2fr; gap: 5px 12px; margin: 0 0 12px; font-size: 13px; }
-.event-conflict dt { color: var(--muted); }
+.event-form-message { margin: 0; min-height: 1.5em; color: var(--status-warn-ink); font-size: var(--font-size-1); }
+.event-conflict { padding: var(--space-3); border: var(--hairline-width) solid var(--status-warn); border-left-width: 3px; border-left-style: double; border-radius: var(--radius-2); background: var(--surface-2); }
+.event-conflict h3 { margin: 0 0 var(--space-2); font: var(--font-weight-strong) var(--font-size-2)/1.3 var(--font-text); }
+.event-conflict dl { display: grid; grid-template-columns: minmax(90px, 1fr) 2fr; gap: var(--space-1) var(--space-3); margin: 0 0 var(--space-3); font-size: var(--font-size-1); }
+.event-conflict dt { color: var(--fg-muted); }
 .event-conflict dd { margin: 0; overflow-wrap: anywhere; }
-.event-conflict p { margin: 0 0 12px; }
-.event-actions { display: flex; justify-content: flex-end; gap: 8px; }
+.event-conflict p { margin: 0 0 var(--space-3); }
+.event-actions { display: flex; justify-content: flex-end; gap: var(--space-2); }
 .event-dialog article { width: min(720px, calc(100vw - 24px)); }
 
+/* The empty and unavailable states carry a second line that says what to do. */
+#ideaState .state-hint, #eventState .state-hint { margin: 0; color: var(--fg-muted); font-size: var(--font-size-1); }
+
+/* ------------------------------------------------------------ Color Assist */
+:root[data-color-assist="on"] .event-card[data-status="cancelled"] { background-image: repeating-linear-gradient(135deg, color-mix(in srgb, var(--fg-quiet) 18%, transparent) 0 2px, transparent 2px 6px); }
+:root[data-color-assist="on"] .event-card[data-status="skipped"] { border-style: dotted; }
+:root[data-color-assist="on"] .idea-tile { border-left: 3px solid var(--hairline-strong); }
+
 @media (max-width: 640px) {
+  .idea-grid, .event-list { grid-template-columns: minmax(0, 1fr); gap: var(--space-2); }
+  .idea-tile, .event-card { min-height: 0; padding: var(--space-3); }
   .idea-rows { grid-template-columns: minmax(0, 1fr); gap: 2px; }
-  .idea-rows dd { margin-bottom: 8px; }
+  .idea-rows dd { margin-bottom: var(--space-2); }
   .event-form { grid-template-columns: 1fr; }
   .event-timeline svg { height: 100px; }
   .event-actions { justify-content: stretch; }
   .event-actions .btn { flex: 1; }
 }
 
-/* --------------------------------------------------------- reduced motion */
+/* --------------------------------------------------------- reduced motion
+   Nothing on this page animates; the shared floor removes the hover
+   transitions too, and every card is visible from the first paint. */
 @media (prefers-reduced-motion: reduce) {
-  .idea-tile:hover, .idea-tile:active { transform: none; }
-  .event-card:hover, .event-card:active { transform: none; }
-  .event-timeline-track, .event-timeline-glow, .event-card { animation: none; }
+  .idea-tile, .event-card, .event-timeline-node circle { transition: none; }
 }
-:root[data-motion="reduced"] .idea-tile:hover, :root[data-motion="reduced"] .idea-tile:active { transform: none; }
-:root[data-motion="reduced"] .event-card:hover, :root[data-motion="reduced"] .event-card:active { transform: none; }
-:root[data-motion="reduced"] .event-timeline-track, :root[data-motion="reduced"] .event-timeline-glow, :root[data-motion="reduced"] .event-card { animation: none; }
+:root[data-motion="reduced"] .idea-tile, :root[data-motion="reduced"] .event-card, :root[data-motion="reduced"] .event-timeline-node circle { transition: none; }

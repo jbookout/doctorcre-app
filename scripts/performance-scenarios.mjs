@@ -7,6 +7,6 @@ export const screens = [
   { id: 'deals', route: '/deals', ready: '.kanban-card[data-id="d23"]', tap: '.kanban-card[data-id="d23"]', complete: () => document.querySelector('#detailNextForm')?.getClientRects().length > 0 },
   { id: 'vendors', route: '/vendors', ready: '.record-row', tap: '.record-row', complete: () => document.querySelector('#recordPanel')?.getClientRects().length > 0 },
   { id: 'tours', route: '/tours', ready: '[data-market="Pensacola, FL"]', tap: '[data-market="Pensacola, FL"]', complete: () => document.querySelector('#space-area')?.value === 'Pensacola, FL' },
-  { id: 'relationships', route: '/relationships', ready: '.relationship-node[data-node="party:demo-lender"]', tap: '.relationship-node[data-node="party:demo-lender"]', complete: () => document.querySelector('.relationship-dialog')?.getClientRects().length > 0 },
+  { id: 'relationships', route: '/relationships', ready: '#networkNodes [data-node="party:demo-lender"]', tap: '#networkNodes [data-node="party:demo-lender"]', complete: () => document.querySelector('.relationship-dialog')?.getClientRects().length > 0 },
   { id: 'invoices', route: '/invoices', ready: '[data-invoice]', tap: '#invoiceAging [data-age="2"]', complete: () => document.querySelectorAll('[data-invoice]').length === 1 },
 ];

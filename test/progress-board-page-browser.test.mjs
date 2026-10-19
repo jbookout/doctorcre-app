@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { readFile, mkdir } from 'node:fs/promises';
-import { chromium } from './browser-harness.mjs';
+import { chromium } from 'playwright';
 import { handleDoctorcreRequest } from '../src/worker.js';
 import { STAGES } from '../js/progress-board-model.js';
 import costs from './fixtures/progress-board-costs.json' with { type: 'json' };
@@ -83,7 +83,7 @@ for (const unfinished of [false, true]) test(`board tile opens its page and publ
   await board.locator('#board-title').filter({ hasText: 'System delivery' }).waitFor();
   assert.equal(await board.locator('#board-stages [data-card-id="build"]').count(), 1, 'published task remains visible');
   assert.equal(new URL(board.url()).pathname, '/control-room/progress/board/carr-v5');
-  assert.equal(await board.locator('#board-stages .column').count(), 6);
+  assert.deepEqual(await board.locator('#board-stages .column').evaluateAll(columns => columns.map(column => column.dataset.stage)), ['build']);
   assert.equal(await board.locator('.directory-panel').isVisible(), false);
   if (!unfinished) {
     assert.match(await board.locator('#system-work-error').textContent(), /System work updates unavailable/);
@@ -188,7 +188,7 @@ test('cost panel has day popup, month history, provider selection and measured r
   const panel = page.locator('#board-costs');
   await panel.waitFor();
   assert.match(await panel.textContent(), /Coverage incomplete/);
-  assert.equal(await panel.locator('.cost-state').evaluate(node => getComputedStyle(node, '::before').animationDuration), '2s');
+  assert.equal(await panel.locator('.cost-state').evaluate(node => getComputedStyle(node, '::before').animationName), 'none');
   await panel.getByLabel('Cost provider').selectOption('jev');
   assert.match(await panel.textContent(), /Projected month\$93\.00/);
   if (process.env.COST_EVIDENCE_DIR) {
@@ -218,9 +218,13 @@ test('independent census diagram uses the same stage colors as the published boa
   const { page, errors } = await open(t, { path: systemPath, rows: [workRow('open')] });
   await page.locator('#system-work-flow .flow-stage').first().waitFor();
   for (const stage of STAGES) {
-    const expected = `rgb(${stage.color.slice(1).match(/../g).map(value => parseInt(value, 16)).join(', ')})`;
+    // Stage colours are token roles, so the expected paint is whatever that role resolves to here.
+    const expected = await page.evaluate(color => { const probe = document.body.appendChild(document.createElement('i')); probe.style.color = color; const value = getComputedStyle(probe).color; probe.remove(); return value; }, stage.color);
+    assert.notEqual(expected, 'rgba(0, 0, 0, 0)');
     assert.equal(await page.locator(`#system-work-flow [data-stage="${stage.id}"] .stage-well`).evaluate(node => getComputedStyle(node).stroke), expected);
   }
+  assert.equal(new Set(await Promise.all(STAGES.map(stage => page.locator(`#system-work-flow [data-stage="${stage.id}"] .stage-well`).evaluate(node => getComputedStyle(node).stroke)))).size, STAGES.length,
+    'each stage keeps its own colour');
   assert.deepEqual(errors, []);
 });
 async function panelTasks(page, ids) {

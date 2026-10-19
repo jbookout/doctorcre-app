@@ -12,6 +12,7 @@
 //    so a CI-starved runner can be reproduced locally.
 import { after } from 'node:test';
 import { startFixtureServer } from '../scripts/fixture-server.mjs';
+import { execFileSync } from 'node:child_process';
 import { setTimeout as delay } from 'node:timers/promises';
 import { chromium as playwrightChromium, webkit as playwrightWebkit } from 'playwright';
 
@@ -20,6 +21,13 @@ const throttle = Number(process.env.BROWSER_CPU_THROTTLE || 1);
 const jitter = Number(process.env.BROWSER_ROUTE_JITTER_MS || 0);
 const LOOPBACK = new Set(['localhost', '127.0.0.1', '[::1]']);
 const pools = [];
+
+export function webkitSkipReason(platform = process.platform, macOSVersion = platform === 'darwin'
+  ? execFileSync('/usr/bin/sw_vers', ['-productVersion'], { encoding: 'utf8' }).trim() : '') {
+  return platform === 'darwin' && Number(macOSVersion.split('.')[0]) >= 27
+    ? 'Playwright 1.63.0 webkit-2359 crashes on macOS 27+ with missing _WKBrowserContext. Do not run playwright install webkit; WebKit coverage stays in Linux CI.'
+    : false;
+}
 
 after(async () => {
   const results = await Promise.allSettled(pools.flatMap(pool => [...pool.values()]));
@@ -77,6 +85,7 @@ function browserEngine(engine) {
 
 export const chromium = browserEngine(playwrightChromium);
 export const webkit = browserEngine(playwrightWebkit);
+webkit.skip = webkitSkipReason();
 
 export async function fixtureServer({ root } = {}) {
   const server = await startFixtureServer({ env: root ? { DOCTORCRE_FIXTURE_ROOT: root } : {} });
@@ -126,43 +135,4 @@ export async function animationsSettled(page) {
 export async function pausedClock(page, time) {
   await page.clock.install({ time: 0 });
   await page.clock.pauseAt(time);
-}
-
-// These assertions cross the same evaluate seam as Playwright and the e2e
-// browser fixture. Re-resolve selectors after repaint; detached nodes prove nothing.
-export async function retainDraftThroughRefresh(page, selector, refresh) {
-  const read = () => page.evaluate(selector => {
-    const el = document.querySelector(selector);
-    if (!el || !('value' in el)) throw new Error('draft field missing');
-    return {value:el.value, start:el.selectionStart, end:el.selectionEnd,
-      direction:el.selectionDirection, focused:document.activeElement === el};
-  }, selector);
-  const before = await read();
-  await refresh();
-  const after = await read();
-  if (before.value !== after.value || before.start !== after.start || before.end !== after.end || before.direction !== after.direction)
-    throw new Error('draft or selection changed through refresh');
-  if (before.focused && !after.focused) throw new Error('focus lost through refresh');
-}
-
-export async function assertFocusRoundTrip(page, selector, open, close) {
-  await page.evaluate(selector => {
-    const el=document.querySelector(selector); if (!el) throw new Error('focus trigger missing'); el.focus();
-  }, selector);
-  await open();
-  await close();
-  if (!(await page.evaluate(selector => document.activeElement === document.querySelector(selector), selector)))
-    throw new Error('focus did not return to the current trigger');
-}
-
-export async function assertFitsViewport(page, selectors = []) {
-  const fits = await page.evaluate(selectors => {
-    if (document.documentElement.scrollWidth > innerWidth) return false;
-    return selectors.every(selector => {
-      const el=document.querySelector(selector); if (!el) return false;
-      const box=el.getBoundingClientRect();
-      return box.width > 0 && box.left >= -1 && box.right <= innerWidth + 1 && el.scrollWidth <= el.clientWidth + 1;
-    });
-  }, selectors);
-  if (!fits) throw new Error('layout exceeds viewport or required surface is missing');
 }

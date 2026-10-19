@@ -19,8 +19,8 @@
 .hero-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .hero-card { display: grid; gap: 12px; }
 
-.headline { margin: 0; font: 600 20px/1.3 var(--display); }
-.caption { margin: 0; color: var(--quiet); font-size: 11px; line-height: 1.5; }
+.headline { margin: 0; font: 600 20px/1.3 var(--font-text); }
+.caption { margin: 0; color: var(--fg-quiet); font-size: 11px; line-height: 1.5; }
 .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; letter-spacing: 0.02em; }
 
 .chip-bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
@@ -30,14 +30,14 @@
 .work-meta span { overflow-wrap: anywhere; }
 
 [data-section="hypotheses"] { border-style: dashed; }
-[data-section="hypotheses"] .work-item { color: var(--quiet); }
+[data-section="hypotheses"] .work-item { color: var(--fg-quiet); }
 [data-section="hypotheses"] #hypothesesEyebrow { font-weight: 700; }
 
 .field input { min-height: var(--touch); }
-.field-hint { margin: 4px 0 0; color: var(--quiet); font-size: 11px; }
+.field-hint { margin: 4px 0 0; color: var(--fg-quiet); font-size: 11px; }
 
 .state-block[data-state="unknown"], .state-block[data-state="empty"] {
-  border: 1px dashed var(--line); border-radius: 12px; padding: 12px; margin-top: 8px; color: var(--quiet);
+  border: 1px dashed var(--hairline); border-radius: 12px; padding: 12px; margin-top: 8px; color: var(--fg-quiet);
 }
 
 @media (max-width: 480px) {

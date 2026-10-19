@@ -4,9 +4,9 @@ import { readFile, mkdir } from 'node:fs/promises';
 import { chromium, waitForAsync } from './browser-harness.mjs';
 const root = new URL('../', import.meta.url);
 const phases = ['On Deck', 'Research', 'Site selection', 'Negotiation', 'Legal', 'Diligence', 'Closing', 'Closed'];
-async function open(t, { width = 1440, reducedMotion = 'no-preference', many = false } = {}) {
+async function open(t, { width = 1440, height = 960, reducedMotion = 'no-preference', many = false } = {}) {
   const browser = await chromium.launch(); t.after(() => browser.close());
-  const page = await browser.newPage({ viewport: { width, height: 960 }, reducedMotion });
+  const page = await browser.newPage({ viewport: { width, height }, reducedMotion });
   const errors = []; page.on('pageerror', e => errors.push(e.message));
   const seed = JSON.parse(await readFile(new URL('data/board-seed.json', root), 'utf8'));
   seed.deals.forEach((d, i) => Object.assign(d, { phase: phases[i % 8], next_step: 'Confirm the next appointment', last_touch: '2026-10-01', last_review_at: '2026-10-01T16:00:00Z', next_date: null, attention: false }));
@@ -47,7 +47,8 @@ test('W4 desktop/phone render, owner filters, equal cards, wide detail and reduc
     assert.equal(await page.locator('.parked-lane').evaluate(e => e.open), false);
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
     const sizes = await page.locator('.kanban-column .kanban-card').evaluateAll(es => es.map(e => ({ height: e.getBoundingClientRect().height, transform: getComputedStyle(e).transform, transition: getComputedStyle(e).transitionDuration })));
-    assert.ok(sizes.every(e => e.height === 212 && e.transform === 'none' && e.transition === '0s'));
+    // Cards size to their content (S8): no fixed tall box with half of it empty.
+    assert.ok(sizes.every(e => e.height < 212 && e.transform === 'none' && e.transition === '0s'), JSON.stringify(sizes));
     await page.screenshot({ path: new URL(`out/test-artifacts/w4/${width === 1440 ? 'desktop' : 'phone-' + width}.png`, root).pathname, fullPage: true });
     await page.locator('[data-filter="dell"]').click();
     assert.equal(await page.locator('.kanban-column .owner').evaluateAll(es => es.every(e => e.textContent === 'Dell')), true);
@@ -260,9 +261,12 @@ test('W4 a long automatic reason keeps its date and Undo visible inside the fixe
   const outer = await card.boundingBox(), stamp = await date.boundingBox(), undo = await card.locator('[data-undo]').boundingBox();
   assert.ok(stamp.y >= outer.y && stamp.y + stamp.height <= outer.y + outer.height);
   assert.ok(undo.y + undo.height <= outer.y + outer.height);
+  // V2 hover is a hairline step on the border, not a lift (no hover transforms).
+  const restingBorder = await card.evaluate(e => getComputedStyle(e).borderRightColor);
   await card.hover();
-  await page.waitForFunction(() => getComputedStyle(document.querySelector('[data-id="d14"]')).transform !== 'none');
-  assert.equal(await page.locator('[data-id="d20"] .attention-dot').evaluate(e => getComputedStyle(e).animationName), 'none');
+  await page.waitForFunction(resting => getComputedStyle(document.querySelector('[data-id="d14"]')).borderRightColor !== resting, restingBorder);
+  // Attention reads in words with a glyph, never a bare colour dot (S8).
+  assert.equal(await page.locator('[data-id="d20"] .attention-flag').textContent(), '◆ Needs you');
 });
 
 
@@ -301,3 +305,125 @@ test('W4 detail and next-step rereads time out at the client seam and recover wi
   assert.equal(await page.locator('#detailNextForm textarea').inputValue(), 'Unsaved deadline demo');
   assert.deepEqual(errors, []);
 });
+
+test('S8 the move toast never covers the Today column or the status band', async t => {
+  for (const width of [1440, 1000, 390]) await t.test(String(width), async t => {
+    const { page } = await open(t, { width });
+    const overlap = (a, b) => !!a && !!b && a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
+    const rects = () => page.evaluate(() => {
+      document.querySelectorAll('.toast').forEach(node => node.remove());
+      const toast = document.createElement('div'); toast.className = 'toast show'; toast.textContent = 'Moved Demo deal to Negotiation'; document.body.append(toast);
+      const box = node => { if (!node) return null; const r = node.getBoundingClientRect(); return r.width && r.height && getComputedStyle(node).visibility !== 'hidden' && getComputedStyle(node).display !== 'none' ? { left: r.left, right: r.right, top: r.top, bottom: r.bottom } : null; };
+      return { toast: box(toast), today: box(document.querySelector('#appToday')), status: box(document.querySelector('.app-layout-status')) };
+    });
+    if (width === 390) { await page.locator('#appTodayToggle').click(); await page.locator('#appToday').evaluate(n => n.getAnimations().forEach(a => a.finish())); }
+    let r = await rects();
+    if (width === 390) assert.ok(r.today?.left < 390, 'Today is open in the viewport');
+    if (width !== 390) assert.ok(r.toast, 'toast renders');
+    assert.equal(overlap(r.toast, r.today), false, `${width}: toast clears Today`);
+    assert.equal(overlap(r.toast, r.status), false, `${width}: toast clears the status band`);
+    if (width === 1440) {
+      await page.locator('#appTodayToggle').click();
+      r = await rects();
+      assert.ok(r.toast.right > 1440 - 120, 'with Today closed the toast returns to the right edge');
+    }
+  });
+});
+
+test('S8 phone status strip scrolls inside its own lane, never under the workspace controls or Doc', async t => {
+  const { page } = await open(t, { width: 390 });
+  const lanes = await page.evaluate(() => {
+    const status = document.querySelector('.app-layout-status');
+    const r = status.getBoundingClientRect(), s = getComputedStyle(status);
+    const clipRight = r.right - parseFloat(s.borderRightWidth);
+    const blockers = [...document.querySelectorAll('.app-shell-controls, #docPresence')]
+      .map(node => node.getBoundingClientRect()).filter(box => box.width && box.top < r.bottom && box.bottom > r.top);
+    return { clipRight, blockerLeft: Math.min(...blockers.map(box => box.left)) };
+  });
+  assert.ok(lanes.clipRight <= lanes.blockerLeft + 1, `status clips at ${lanes.clipRight}, controls start at ${lanes.blockerLeft}`);
+});
+
+for (const theme of ['dark', 'light']) {
+  const moveDeal = async page => {
+    await page.locator('#appTodayToggle').evaluate(node => {
+      if (node.getAttribute('aria-expanded') === 'true') node.click();
+    });
+    const card = page.locator('.kanban-column [data-id="d14"]');
+    await card.focus();
+    await page.keyboard.press('Enter');
+    await page.keyboard.press('ArrowRight');
+    await page.keyboard.press('Enter');
+    await page.locator('#completionConfirm').click();
+    await waitForAsync(page, async () => (await import('/js/pipeline.js')).state.deals.get('d14').phase === 'Legal');
+  };
+
+  for (const width of [390, 1440]) test(`${width} ${theme} move feedback uses one Undo surface`, async t => {
+    const { page, errors } = await open(t, { width, height: 844 });
+    await page.evaluate(theme => { document.documentElement.dataset.theme = theme; }, theme);
+    await moveDeal(page);
+    for (const advance of [350, 1400]) {
+      await page.clock.runFor(advance);
+      assert.equal(await page.locator('.toast').isVisible(), true);
+      const boxes = await page.evaluate(() => {
+        const toast = document.querySelector('.toast').getBoundingClientRect();
+        const dock = document.querySelector('.receipt-dock').getBoundingClientRect();
+        return { dockArea: dock.width * dock.height,
+          overlap: Math.max(0, Math.min(toast.right, dock.right) - Math.max(toast.left, dock.left)) *
+            Math.max(0, Math.min(toast.bottom, dock.bottom) - Math.max(toast.top, dock.top)) };
+      });
+      assert.equal(boxes.overlap, 0, 'toast and command receipt never overlap');
+      assert.equal(boxes.dockArea, 0, 'move feedback uses only the Undo toast during its lifetime');
+      assert.equal(await page.locator('.toast:visible, .receipt-dock:visible').count(), 1, 'exactly one move feedback surface is visible');
+    }
+    await mkdir(new URL('out/test-artifacts/share-followup/', root), { recursive: true });
+    await page.screenshot({ path: new URL(`out/test-artifacts/share-followup/feedback-${width}-${theme}.png`, root).pathname });
+    await page.clock.runFor(4101);
+    assert.equal(await page.locator('.toast').count(), 0);
+    assert.equal(await page.locator('.receipt-dock').isVisible(), true, 'dock returns after toast removal');
+    assert.deepEqual(errors, []);
+  });
+
+  for (const width of [390, 1440]) test(`${width} ${theme} move toast Undo restores the exact move once`, async t => {
+    const { page, errors } = await open(t, { width, height: 844, reducedMotion: 'reduce' });
+    await page.evaluate(theme => { document.documentElement.dataset.theme = theme; }, theme);
+    await moveDeal(page);
+    const undo = page.locator('.toast button[data-undo]');
+    assert.equal(await undo.count(), 1, 'move toast offers Undo');
+    const eventId = await undo.getAttribute('data-undo');
+    await mkdir(new URL('out/test-artifacts/share-followup/', root), { recursive: true });
+    await page.screenshot({ path: new URL(`out/test-artifacts/share-followup/toast-${width}-${theme}.png`, root).pathname });
+    await undo.click();
+    await page.clock.runFor(5001);
+    assert.equal(await page.locator(`#receiptsList [data-receipt="${eventId}"]`).count(), 1, 'Today and toast target the same event');
+    await waitForAsync(page, async () => (await import('/js/pipeline.js')).state.deals.get('d14').phase === 'Negotiation');
+    const reverted = await page.evaluate(async () => (await (await import('/js/pipeline.js')).state.client.getChanges(null)).events.filter(event => event.verb === 'revert-deal-field'));
+    assert.equal(reverted.length, 1);
+    await refresh(page);
+    await waitForAsync(page, async () => (await import('/js/pipeline.js')).state.deals.get('d14').phase === 'Negotiation');
+    assert.deepEqual(errors, []);
+  });
+
+  test(`phone ${theme} Today hides floating feedback and contains receipt text`, async t => {
+    const { page, errors } = await open(t, { width: 390, height: 844, reducedMotion: 'reduce' });
+    await page.evaluate(theme => { document.documentElement.dataset.theme = theme; }, theme);
+    await moveDeal(page);
+    await page.clock.runFor(1401);
+    await page.locator('#appTodayToggle').click();
+    assert.equal(await page.locator('.toast').count(), 1);
+    assert.equal(await page.locator('.toast').isVisible(), false);
+    assert.equal(await page.locator('.receipt-dock').isVisible(), false, 'floating command receipt cannot cover Today');
+    await page.locator('#receiptsList [data-undo]').first().click();
+    await waitForAsync(page, async () => (await import('/js/pipeline.js')).state.deals.get('d14').phase === 'Negotiation');
+    await page.clock.runFor(1401);
+    const clipping = await page.locator('#receiptsList .receipt').evaluateAll(rows => rows.flatMap(row => {
+      const bounds = row.getBoundingClientRect();
+      return [...row.querySelectorAll('.receipt-line, .receipt-meta, .receipt-actions, .receipt-message, .receipt-badge, .receipt-deal')]
+        .filter(node => node.getBoundingClientRect().right > bounds.right + 1 || node.scrollWidth > node.clientWidth + 1)
+        .map(node => node.className);
+    }));
+    assert.deepEqual(clipping, [], 'all receipt text and status fit inside the card');
+    await mkdir(new URL('out/test-artifacts/share-followup/', root), { recursive: true });
+    await page.screenshot({ path: new URL(`out/test-artifacts/share-followup/today-390-${theme}.png`, root).pathname });
+    assert.deepEqual(errors, []);
+  });
+}

@@ -162,7 +162,7 @@ test('PR119 finding 8: a hung Home read expires and a late response cannot overw
  // carry a cancellation signal, may count; otherwise scheduling picks which read hangs.
  const hooks=`const read=c.getBoard;window.homeReads??=0;c.getBoard=async args=>{const p=await read(args);if(!args?.signal)return p;if(++window.homeReads===2){window.homeWaiting=true;await new Promise(r=>window.releaseHome=r);return {...p,deals:[]};}return p;};`;
  const {page,errors}=await open(t,{clientHooks:hooks});
- await page.goto(origin+'/', {waitUntil:'domcontentloaded'});await page.waitForFunction(()=>/Active Deals: \d/.test(document.querySelector('#dealCounts')?.textContent || ''));
+ await page.goto(origin+'/', {waitUntil:'domcontentloaded'});await page.waitForFunction(()=>/Active deals: \d/.test(document.querySelector('#dealCounts')?.textContent || ''));
  const expected=await page.locator('#dealCounts').textContent();
  await online(page);await page.waitForFunction(()=>window.homeWaiting);
  await page.clock.fastForward(120_000);await online(page);

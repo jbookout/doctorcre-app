@@ -1,4 +1,5 @@
 import { createLiveClient } from "./live-client.js";
+import { dealName } from "./pipeline-model.js";
 import { TOUCH_LAYOUT } from "./touch-layout.js";
 import { createFixtureClient } from "./fixture-client.js";
 import { resolveDealroomBoot } from "./boot-mode.js";
@@ -16,17 +17,6 @@ import {
   escapeHtml as E,
 } from "./relationship-network-model.js";
 import { mountRelationshipDialog } from "./relationship-dialog.js";
-
-// Shortens at a word boundary: the shown words stay words of the full name.
-function shortName(name) {
-  if (name.length <= 21) return name;
-  let shown = "";
-  for (const word of name.split(" ")) {
-    if (shown && shown.length + word.length + 1 > 20) break;
-    shown = shown ? `${shown} ${word}` : word;
-  }
-  return `${shown}…`;
-}
 
 export function mountRelationshipNetwork({
   document,
@@ -111,6 +101,9 @@ export function mountRelationshipNetwork({
     const focusedNode = document.activeElement?.dataset.node;
     const view = filterNetwork(snapshot, currentFilters),
       phone = window.matchMedia(TOUCH_LAYOUT).matches;
+    const directory = $("networkNodes").parentElement, graphView = $("graphView");
+    if (phone && graphView.firstElementChild !== directory) graphView.prepend(directory);
+    else if (!phone && graphView.lastElementChild !== directory) graphView.append(directory);
     const selected = view.nodes.some((n) => n.id === focus)
       ? focus
       : view.suggestions[0]?.to || view.nodes[0]?.id;
@@ -120,8 +113,8 @@ export function mountRelationshipNetwork({
       phone ? Math.max(6, limit - 6) : limit,
     );
     const height = phone
-        ? Math.max(540, Math.ceil(graph.nodes.length / 2) * 125 + 30)
-        : Math.max(440, Math.ceil(graph.nodes.length / 4) * 130 + 30),
+        ? Math.max(155, Math.ceil(graph.nodes.length / 2) * 125 + 30)
+        : Math.max(155, Math.ceil(graph.nodes.length / 4) * 125 + 30),
       width = phone ? 400 : 820;
     const visiblePositions = new Map(
       graph.nodes.map((n, i) => {
@@ -140,7 +133,7 @@ export function mountRelationshipNetwork({
           t = 1 / Math.max(Math.abs(dx) / 84, Math.abs(dy) / 40, 1),
           start = { x: a.x + 80 + dx * t, y: a.y + 35 + dy * t },
           end = { x: b.x + 80 - dx * t, y: b.y + 35 - dy * t };
-        return `<path class="relationship-edge" data-kind="${E(e.kind)}" data-edge-from="${E(e.from)}" data-edge-to="${E(e.to)}" data-edge-via="${E(e.via || "")}" d="M${start.x},${start.y} L${end.x},${end.y}" marker-end="url(#relationshipArrow)"><title>${E(e.kind)}${e.via ? ` · via ${E(view.nodes.find((n) => n.id === e.via)?.name)}` : ""}</title></path><text class="relationship-edge-label" x="${(start.x + end.x) / 2}" y="${(start.y + end.y) / 2 - 5}" text-anchor="middle">${E(EDGE_LABELS[e.kind])}</text>${
+        return `<path class="relationship-edge" data-kind="${E(e.kind)}" data-edge-from="${E(e.from)}" data-edge-to="${E(e.to)}" data-edge-via="${E(e.via || "")}" d="M${start.x},${start.y} L${end.x},${end.y}" marker-end="url(#relationshipArrow)"><title>${E(EDGE_LABELS[e.kind])}${e.via ? ` · via ${E(view.nodes.find((n) => n.id === e.via)?.name)}` : ""}</title></path>${
           e.via
             ? (() => {
                 const v = visiblePositions.get(e.via);
@@ -151,13 +144,11 @@ export function mountRelationshipNetwork({
       })
       .join("");
     $("networkCanvas").innerHTML = graph.nodes.length
-      ? `<svg viewBox="0 0 ${width} ${height}" role="group" aria-label="Connected relationships"><defs><marker id="relationshipArrow" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0 0L10 5L0 10" fill="#9ab5d4"/></marker></defs><g id="networkScene" transform="translate(${(width * (1 - zoom)) / 2} ${(height * (1 - zoom)) / 2}) scale(${zoom})">${lines}<circle class="network-halo" cx="${width / 2}" cy="${height / 2}" r="${Math.min(width, height) / 2 - 24}"/>${graph.nodes
+      ? `<svg viewBox="0 0 ${width} ${height}" role="group" aria-label="Connected relationships"><defs><marker id="relationshipArrow" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path class="relationship-arrow" d="M0 0L10 5L0 10"/></marker></defs><g id="networkScene" transform="translate(${(width * (1 - zoom)) / 2} ${(height * (1 - zoom)) / 2}) scale(${zoom})">${lines}${graph.nodes
           .map((n) => {
             const p = visiblePositions.get(n.id);
-            // One text in reading order, so the visible words stay a contiguous
-            // part of the accessible name, which also carries the full name.
-            const territory = (n.territory || "").slice(0, 25);
-            return `<g class="relationship-node" data-node="${E(n.id)}" role="button" tabindex="0" aria-label="Open ${E([n.kind, territory, n.name].filter(Boolean).join(", "))}" transform="translate(${p.x} ${p.y})"><rect width="160" height="74" rx="12"/><text aria-hidden="true" class="node-icon" x="12" y="24">${{ vendor: "◇", client: "○", lead: "◎", deal: "▣", contact: "◉" }[n.kind]}</text><text><tspan class="node-kind" x="39" y="23">${E(n.kind)}</tspan> <tspan class="node-kind" x="12" y="64">${E(territory)}</tspan> <tspan x="12" y="48">${E(shortName(n.name))}</tspan></text></g>`;
+            const territory = n.territory || "";
+            return `<g class="relationship-node" data-node="${E(n.id)}" data-kind="${E(n.kind)}" role="button" tabindex="0" aria-label="Open ${E([n.kind, n.name, territory].filter(Boolean).join(", "))}" transform="translate(${p.x} ${p.y})"><rect width="160" height="74" rx="12"/><text aria-hidden="true" class="node-icon" x="12" y="24">${{ vendor: "◇", client: "○", lead: "◎", deal: "▣", contact: "◉" }[n.kind]}</text><text class="node-kind" x="39" y="23">${E(n.kind)} </text><foreignObject x="12" y="32" width="136" height="38"><div xmlns="http://www.w3.org/1999/xhtml"><div class="node-name" title="${E(n.name)}">${E(n.name)} </div><div class="node-territory" title="${E(territory)}">${E(territory)}</div></div></foreignObject></g>`;
           })
           .join("")}</g></svg>`
       : '<p class="relationship-empty">No matching relationships</p>';
@@ -184,7 +175,7 @@ export function mountRelationshipNetwork({
         .sort((a, b) => b.deals - a.deals || a.node_id.localeCompare(b.node_id))
         .map((r) => {
           const n = view.nodes.find((n) => n.id === r.node_id);
-          return `<button type="button" class="relationship-card relationship-referral" data-node="${E(n.id)}"><strong>${E(n.name)}</strong><b>${r.deals}</b><span>${E(n.kind)}</span><span class="referral-rate">${r.win_rate === null ? "—" : `${Math.round(r.win_rate * 100)}%`} win rate</span><svg viewBox="0 0 300 16" role="img" aria-label="${r.deals} recorded deals sent; ${r.won} won, ${r.lost} lost, ${r.deals - r.won - r.lost} unresolved"><rect width="300" height="10" rx="5" fill="#29415d"/><rect width="${(r.deals / max) * 300}" height="10" rx="5" fill="#f5a367"/></svg><small>${r.won} won · ${r.lost} lost · ${r.deals - r.won - r.lost} open</small></button>`;
+          return `<button type="button" class="relationship-card relationship-referral" data-node="${E(n.id)}"><strong>${E(n.name)}</strong><b>${r.deals}</b><span>${E(n.kind)}</span><span class="referral-rate">${r.win_rate === null ? "—" : `${Math.round(r.win_rate * 100)}%`} win rate</span><svg viewBox="0 0 300 16" role="img" aria-label="${r.deals} recorded deals sent; ${r.won} won, ${r.lost} lost, ${r.deals - r.won - r.lost} unresolved"><rect class="referral-track" width="300" height="10" rx="5"/><rect width="${(r.deals / max) * 300}" height="10" rx="5" class="referral-fill"/></svg><small>${r.won} won · ${r.lost} lost · ${r.deals - r.won - r.lost} open</small></button>`;
         })
         .join("") ||
       '<p class="relationship-empty">No deal referrals recorded</p>';
@@ -292,7 +283,7 @@ export function mountRelationshipNetwork({
       if (disposed || seq !== epoch) return;
       if (!validNetwork(next) || Date.parse(next.valid_until) <= Date.now())
         throw Error("invalid_network");
-      snapshot = next;
+      snapshot = { ...next, nodes: next.nodes.map(node => node.kind === "deal" ? { ...node, name: dealName(node.name) } : node) };
       facets();
       $("networkNotice").hidden = true;
       $("networkUpdated").textContent = updatedLabel(next.observed_at);

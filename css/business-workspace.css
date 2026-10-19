@@ -1,50 +1,27 @@
-/* V5-UX-B01 Business workspace — page layer over css/system.css.
- *
- * The shared sheet is contract-bound, so nothing here redefines the register:
- * no colours of its own, no type scale, no new component vocabulary. It does
- * only what the shared sheet leaves to a page:
- *
- *  1. The hero row and the one freshness line under it.
- *  2. The small layout helpers this page's Quick add card is built from
- *     (row-wrap, field-grid, the parsed strip), which live in the prototype
- *     stylesheet and are not part of the product sheet.
- *  3. A tab that is a LINK to another page: it looks like the tabs beside it
- *     and is marked only by aria-current when the person is already there.
- *  4. The "absent" state — a section with no read behind it (Calls). It is
- *     neither a zero count nor a failure, so it is drawn quiet and dashed.
- */
+/* V2 S2 page layer for Charts and Search, the only two pages that load this
+ * sheet. Tokens only: no colour, gradient, blur or keyframe of its own. The
+ * retired Business Home blocks (hero card, week rail, waiting flow, due
+ * chips, quick add, Home motion) went with that page. */
 
-.topbar { flex-wrap: wrap; }
 .global-controls { flex-wrap: wrap; justify-content: flex-end; }
+.hero { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: var(--space-4); }
+.hero-meta { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
 
-/* The hero row: title on the left, the read's status on the right. */
-.hero { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 14px; }
-.hero-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
-.hero-card { display: grid; gap: 12px; }
+/* One freshness line under the page title and nowhere else. */
+.caption { margin: 0; color: var(--fg-quiet); font-size: var(--font-size-1); line-height: 1.5; }
+.freshness[data-freshness="stale"], .freshness[data-freshness="expired"], .freshness[data-freshness="missing"] { color: var(--status-warn-ink); }
 
-/* One line, under the hero and under nothing else: when the read was taken and
- * what it is against the current clock. */
-.caption { margin: 0; color: var(--quiet); font-size: 11px; line-height: 1.5; }
-.freshness[data-freshness="stale"], .freshness[data-freshness="expired"], .freshness[data-freshness="missing"] { color: var(--amber-text); }
+.count-line { margin: 0; font-size: var(--font-size-4); font-weight: var(--font-weight-strong); line-height: 1.1; font-variant-numeric: tabular-nums; }
+.count-line[data-state="unavailable"] { color: var(--fg-quiet); }
 
-.count-line { margin: 0; font: 600 24px/1.1 var(--display); }
-.count-line[data-state="unavailable"] { color: var(--quiet); }
-
-/* Quick add, the same card the Tasks page carries. */
-.row-wrap { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 12px; }
-.field-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin-top: 12px; }
-.parsed { margin: 12px 0; grid-template-columns: repeat(4, minmax(0, 1fr)); }
-.parsed i { color: var(--quiet); }
-.chip-list { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip-list { display: flex; flex-wrap: wrap; gap: var(--space-2); }
 .chip { min-height: var(--touch); }
 
-/* A tab that navigates. It carries the tab register and takes the selected
- * treatment only from aria-current, which the browser sets by being there. */
+/* A tab that navigates takes the selected treatment only from aria-current. */
 a.tab { text-decoration: none; }
-a.tab[aria-current="page"] { border-color: color-mix(in srgb, var(--orange) 55%, transparent); background: color-mix(in srgb, var(--orange) 16%, transparent); color: var(--text); box-shadow: inset 0 -2px var(--orange); }
+a.tab[aria-current="page"] { border-color: var(--hairline-strong); background: var(--surface-2); color: var(--fg); }
 
-/* A Home row: label and numbers on the left, the one Open button on the right. */
-.stack-end { display: grid; gap: 8px; justify-items: end; }
+.stack-end { display: grid; gap: var(--space-2); justify-items: end; }
 .work-item h3 { margin: 0; }
 .work-item h3,
 .work-meta,
@@ -52,191 +29,94 @@ a.tab[aria-current="page"] { border-color: color-mix(in srgb, var(--orange) 55%,
 .work-item > div { min-width: 0; }
 
 /* No read exists behind this section: not an outage and not a zero. */
-.state-block[data-state="absent"] { border-style: dashed; border-color: var(--line-strong); }
-.state-block[data-state="absent"] h3 { color: var(--muted); font-size: 18px; }
-.state-block + .state-block { margin-top: 10px; }
-
-/* This week and Waiting on others: an eyebrow orb, a count, and a due chip. */
-.eyebrow .orb { vertical-align: middle; margin-right: 4px; }
-.count-line + .week-rail, .count-line + .work-list { margin-top: 12px; }
-.card > .caption { margin-top: 10px; }
-.due-chip { display: inline-flex; align-items: center; padding: 5px 9px; border: 1px solid var(--line-strong); border-radius: 999px; color: var(--muted); font-size: 11px; font-weight: 800; white-space: nowrap; }
-.due-chip[data-overdue="true"] { border-color: color-mix(in srgb, var(--red) 55%, transparent); color: var(--red-text); }
-.work-item[data-priority="deadline"] .due-chip { border-color: color-mix(in srgb, var(--amber) 55%, transparent); color: var(--amber-text); }
-
-/* The seven-day rail: paint over the list, counting the rows the list shows. */
-.week-rail { display: grid; grid-template-columns: repeat(auto-fit, minmax(38px, 1fr)); gap: 6px; margin: 0 0 12px; padding: 0; list-style: none; }
-.week-rail:empty { margin: 0; }
-.week-day { display: grid; justify-items: center; gap: 5px; padding: 7px 2px; border: 1px solid var(--line); border-radius: var(--radius-s); color: var(--quiet); font-size: 10px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; }
-.week-day[data-count="0"] { opacity: 0.55; }
-.week-day[data-today="true"] { border-color: color-mix(in srgb, var(--orange) 55%, transparent); color: var(--text); }
-.week-day[data-overdue="true"] { border-color: color-mix(in srgb, var(--red) 55%, transparent); color: var(--red-text); }
-.week-day-dots { display: flex; gap: 3px; min-height: 6px; }
-.week-day-dots i { width: 6px; height: 6px; border-radius: 50%; background: var(--orange); }
-.week-day[data-overdue="true"] .week-day-dots i { background: var(--red); }
-
-/* The ball is in their court: a connector under each wait, carrying movement. */
-.waiting-flow { display: block; width: 100%; height: 8px; margin-top: 8px; }
-.waiting-flow .flow-path { stroke: color-mix(in srgb, var(--violet) 65%, transparent); }
-.work-item[data-priority="overdue"] .waiting-flow .flow-path { stroke: color-mix(in srgb, var(--red) 70%, transparent); }
+.state-block[data-state="absent"] { border-style: dashed; border-color: var(--hairline-strong); }
+.state-block[data-state="absent"] h3 { color: var(--fg-muted); font-size: var(--font-size-2); }
+.state-block + .state-block { margin-top: var(--space-3); }
 
 @media (max-width: 640px) {
-  .parsed { grid-template-columns: 1fr; }
   .work-item { grid-template-columns: minmax(0, 1fr); }
   .stack-end { justify-items: start; }
-  /* The bottom navigation mirrors the tabs, so the page keeps clear of it. */
   main.shell { padding-bottom: 96px; }
 }
 
-/* V5-UX-B05 Search tab — one column at 360 px, on the same shared ground.
- *
- * No colour of its own, no type scale of its own, no new component vocabulary:
- * a result is the work-item row this page already draws, a chip is the chip the
- * page already draws, and a state is the state-block. What is added here is
- * only what a list of grouped results needs and the shared sheet does not have:
- * the gap between groups, the monospace ref chip, and the quiet register for a
- * row that opens nothing.
- */
-.search-results { display: grid; gap: 12px; }
+/* V5-UX-B05 Search tab: one column at 360 px. A result is the shared
+ * work-item row, a chip is the shared chip, a state is the state-block. */
+.search-results { display: grid; gap: var(--space-3); }
 .search-results > .card + .card { margin-top: 0; }
-.search-row .work-meta { display: flex; flex-wrap: wrap; gap: 8px; }
-.search-row .chip-list { margin-top: 8px; }
-.search-row[data-retired="true"] { opacity: 0.85; }
-.search-row[data-retired="true"] h3 { color: var(--muted); }
+.search-row .work-meta { display: flex; flex-wrap: wrap; gap: var(--space-2); color: var(--fg-muted); }
+.search-row .chip-list { margin-top: var(--space-2); }
+.search-row[data-retired="true"] h3 { color: var(--fg-muted); }
 
 /* A ref is an address the record layer prints, so it is set as one. */
-.ref-chip { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; color: var(--muted); border: 1px solid var(--line-strong); border-radius: 6px; padding: 2px 6px; }
+.ref-chip { padding: 2px var(--space-2); border: 1px solid var(--hairline-strong); border-radius: var(--radius-1); color: var(--fg-muted); font-family: var(--font-mono); font-size: var(--font-size-1); }
 
-/* Every control the tab adds clears the touch floor, including a chip that is
- * a scope toggle rather than a label. */
 #searchChips .chip, #savedViewList .chip, .saved-view .chip { min-height: var(--touch); display: inline-flex; align-items: center; }
-#searchChips .chip[aria-pressed="false"] { opacity: 0.6; }
-.saved-view { display: inline-flex; flex-wrap: wrap; gap: 6px; align-items: center; }
-.quiet { color: var(--quiet); }
+#searchChips .chip[aria-pressed="false"] { color: var(--fg-muted); border-style: dashed; }
+.saved-view { display: inline-flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; }
+.quiet { color: var(--fg-quiet); }
+#searchForm .row-wrap { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); margin-top: var(--space-3); }
 
 @media (max-width: 640px) {
-  .search-row .work-meta { flex-direction: column; gap: 4px; }
+  .search-row .work-meta { flex-direction: column; gap: var(--space-1); }
 }
 
-/* V5-UX-B06 Charts tab — a table first, a bar second, on the same shared ground.
- *
- * No colour of its own, no type scale of its own, no new component vocabulary:
- * a chart is a <table> inside the card this page already draws, and the bar is
- * a single decorative span drawn from the shared orange. What is added here is
- * only what a table of counts needs and the shared sheet does not have.
- *
- * Three rules are enforced here rather than merely described:
- *  1. The row is the control. The pick is a full-width button that clears the
- *     touch floor, so keyboard, mouse and thumb all reach the same target.
- *  2. The bar is paint. It is aria-hidden in the markup and it is drawn at its
- *     final width with NO transition when motion is reduced.
- *  3. 360 px is the design width: below 480 px the bar column collapses and the
- *     table scrolls vertically. Nothing on this tab scrolls sideways except the
- *     seven-column accounts table, which says so by being in its own scroller.
+/* V5-UX-B06 Charts tab: a table first, a bar second.
+ *  1. The row is the control: a full-width pick over the touch floor.
+ *  2. The bar is paint: aria-hidden, a data colour (never the accent), and
+ *     drawn at its final width with no transition.
+ *  3. 360 px is the design width: below 480 px the bar column collapses.
  */
-.charts-canvas { display: grid; gap: 12px; }
+.charts-canvas { display: grid; gap: var(--space-4); }
+#chartsSelection { margin: var(--space-3) 0; }
 .chart-card table { width: 100%; border-collapse: collapse; }
-.chart-table th, .chart-table td { text-align: left; padding: 4px 8px 4px 0; border-bottom: 1px solid var(--line); vertical-align: middle; }
-.chart-table thead th { font: 600 11px/1.4 var(--display); color: var(--quiet); text-transform: uppercase; letter-spacing: 0.06em; }
-.chart-table tbody th { font-weight: 500; overflow-wrap: anywhere; }
+.chart-table th, .chart-table td { padding: var(--space-1) var(--space-2) var(--space-1) 0; border-bottom: 1px solid var(--hairline); text-align: left; vertical-align: middle; }
+.chart-table thead th { color: var(--fg-muted); font-size: var(--font-size-1); font-weight: var(--font-weight-strong); line-height: 1.4; }
+.chart-table tbody th { font-weight: var(--font-weight-regular); overflow-wrap: anywhere; }
 .chart-count { font-variant-numeric: tabular-nums; white-space: nowrap; }
-.chart-count[data-unknown="true"] { color: var(--quiet); font-style: italic; }
-.chart-table tr[data-missing="true"] th { color: var(--muted); }
-.chart-table tr[data-selected="true"] { background: color-mix(in srgb, var(--orange) 12%, transparent); }
+.chart-count[data-unknown="true"] { color: var(--fg-quiet); font-style: italic; }
+.chart-table tr[data-missing="true"] th { color: var(--fg-muted); }
+.chart-table tr[data-selected="true"] { background: var(--surface-2); }
+.chart-table tr[data-selected="true"] th { box-shadow: inset 2px 0 var(--fg); }
 
-/* The row's control: full width, over the touch floor, visible focus. */
-.chart-pick { display: flex; align-items: center; width: 100%; min-height: var(--touch); padding: 0; background: none; border: 0; color: inherit; font: inherit; text-align: left; cursor: pointer; }
-.chart-pick[aria-pressed="true"] { color: var(--text); font-weight: 600; }
+.chart-pick { display: flex; align-items: center; width: 100%; min-height: var(--touch); padding: 0 0 0 var(--space-2); background: none; border: 0; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.chart-pick:hover { color: var(--fg); }
+.chart-pick[aria-pressed="true"] { color: var(--fg); font-weight: var(--font-weight-strong); }
 
-/* Paint, and nothing else. */
 .chart-bar-cell { width: 45%; }
-.chart-bar { display: block; height: 8px; width: var(--share, 0%); min-width: 2px; border-radius: 4px; background: color-mix(in srgb, var(--orange) 70%, transparent); transition: width 240ms ease; }
+.chart-bar { display: block; height: 8px; width: var(--share, 0%); min-width: 2px; border-radius: var(--radius-1); background: var(--data-1); }
 @media (prefers-reduced-motion: reduce) { .chart-bar { transition: none; } }
 :root[data-motion="reduced"] .chart-bar { transition: none; }
+[data-color-assist="on"] .chart-bar { background: repeating-linear-gradient(45deg, var(--data-1) 0 3px, transparent 3px 6px); box-shadow: inset 0 0 0 1px var(--data-1); }
 
-/* The one table this tab cannot fit in 360 px says so by scrolling itself. */
 .chart-scroll { overflow-x: auto; }
-.chart-card details summary { min-height: var(--touch); display: flex; align-items: center; gap: 6px; cursor: pointer; }
-/* A flex summary loses the native marker, so the disclosure draws its own and
- * the opened content arrives on the shared receipt-in; reduced motion shows it
- * already open and the chevron already turned. */
-.chart-card details summary::after { content: ""; width: 6px; height: 6px; border-right: 2px solid currentColor; border-bottom: 2px solid currentColor; transform: translateY(-2px) rotate(45deg); transition: transform var(--motion-enter) var(--ease); }
+.chart-card details summary { min-height: var(--touch); display: flex; align-items: center; gap: var(--space-2); cursor: pointer; }
+.chart-card details summary::after { content: ""; width: 6px; height: 6px; border-right: 2px solid currentColor; border-bottom: 2px solid currentColor; transform: translateY(-2px) rotate(45deg); transition: transform var(--duration-hover) var(--ease-out); }
 .chart-card details[open] > summary::after { transform: translateY(1px) rotate(225deg); }
-.chart-details summary { color: var(--muted); font-size: 12px; font-weight: 600; }
-.chart-details[open] > summary { color: var(--text); }
-.chart-details dl { margin: 0 0 6px; animation: receipt-in var(--motion-enter) var(--ease); }
-.chart-details dt { font: 600 11px/1.4 var(--display); color: var(--quiet); text-transform: uppercase; letter-spacing: 0.06em; }
-.chart-details dd { margin: 2px 0 0; overflow-wrap: anywhere; font-family: var(--mono); font-size: 12px; }
-@media (prefers-reduced-motion: reduce) { .chart-card details summary::after, .chart-details dl { transition: none; animation: none; } }
-:root[data-motion="reduced"] .chart-card details summary::after, :root[data-motion="reduced"] .chart-details dl { transition: none; animation: none; }
+.chart-details summary { color: var(--fg-muted); font-size: var(--font-size-1); font-weight: var(--font-weight-strong); }
+.chart-details[open] > summary { color: var(--fg); }
+.chart-details dl { margin: 0 0 var(--space-2); }
+.chart-details dt { color: var(--fg-muted); font-size: var(--font-size-1); font-weight: var(--font-weight-strong); line-height: 1.4; }
+.chart-details dd { margin: 2px 0 0; overflow-wrap: anywhere; font-family: var(--font-mono); font-size: var(--font-size-1); }
+@media (prefers-reduced-motion: reduce) { .chart-card details summary::after { transition: none; } }
+:root[data-motion="reduced"] .chart-card details summary::after { transition: none; }
 
 /* A card may shrink below its widest table, so the accounts table scrolls
- * inside its own scroller instead of widening the page. Below 480 px only the
- * paint column goes, its cells and its own header together; every other
- * column keeps its header, so the accounts and owner tables still read across. */
+ * inside its own scroller. Below 480 px only the paint column goes. */
 .charts-canvas > * { min-width: 0; }
 @media (max-width: 480px) {
   .chart-bar-cell, .chart-bar-head { display: none; }
 }
 
-/* V5-UX-B01 Home motion — Joe's standing surface rule 9293d609, built only on
- * the shared tokens and keyframes in css/system.css (receipt-in, breathe, and
- * the flow-path connector); this sheet declares no keyframes of its own.
- *
- *  1. Entrance. The cards arrive in a stagger that finishes well inside a
- *     second. The fill is `backwards`, so a card's resting state IS its static
- *     state: with the animation removed it is simply there.
- *  2. State changes. A row or a state block that is new enters instead of
- *     cutting in; the script marks it data-enter only when it changed.
- *  3. Hover and press. A row lifts under the cursor; an Open link presses.
- *  4. Ambient life, from the data: today's dots breathe only when something is
- *     due today, an overdue marker breathes at the urgent pace, each wait's
- *     connector flows, and the section orbs are chosen by sectionPulse().
- *
- * Reduced motion: the shared floor removes every animation and transition, and
- * the block at the end removes the one thing it cannot — a hover transform that
- * would otherwise still jump. Nothing here hides content in its resting state.
- */
-#panelHome > .card { animation: receipt-in var(--motion-enter) var(--ease) backwards; }
-#panelHome > .card:nth-child(2) { animation-delay: 45ms; }
-#panelHome > .card:nth-child(3) { animation-delay: 90ms; }
-#panelHome > .card:nth-child(4) { animation-delay: 135ms; }
-#panelHome > .card:nth-child(5) { animation-delay: 180ms; }
-#panelHome > .card:nth-child(6) { animation-delay: 225ms; }
-#panelHome > .card:nth-child(7) { animation-delay: 270ms; }
-#panelHome > .card:nth-child(8) { animation-delay: 315ms; }
-#panelHome > .card:nth-child(9) { animation-delay: 360ms; }
-
-#panelHome [data-enter="true"] { animation: receipt-in var(--motion-enter) var(--ease) backwards; }
-#panelHome .work-list > [data-enter="true"]:nth-child(2) { animation-delay: 40ms; }
-#panelHome .work-list > [data-enter="true"]:nth-child(3) { animation-delay: 80ms; }
-#panelHome .work-list > [data-enter="true"]:nth-child(4) { animation-delay: 120ms; }
-#panelHome .work-list > [data-enter="true"]:nth-child(n+5) { animation-delay: 160ms; }
-
-#panelHome .home-row { transition: transform var(--motion-enter) var(--ease), border-color var(--motion-enter) var(--ease), box-shadow var(--motion-enter) var(--ease); }
-#panelHome .home-row:hover { transform: translateY(-2px); border-color: var(--line-strong); box-shadow: var(--shadow-float); }
-#panelHome .home-open:hover { border-color: color-mix(in srgb, var(--orange) 55%, transparent); }
-#panelHome .home-open:active { transform: scale(0.97); }
-
-.week-day[data-today="true"]:not([data-count="0"]) .week-day-dots i { animation: breathe var(--motion-calm) ease-in-out infinite; }
-.week-day[data-overdue="true"] .week-day-dots i { animation: breathe var(--motion-urgent) ease-in-out infinite; }
-
-@media (prefers-reduced-motion: reduce) {
-  #panelHome .home-row:hover, #panelHome .home-open:active { transform: none; }
-}
-:root[data-motion="reduced"] #panelHome .home-row:hover, :root[data-motion="reduced"] #panelHome .home-open:active { transform: none; }
-
-/* QA batch 1: on a phone the first candidate and the detailed results share the
- * first screen. The candidate list scrolls inside its own card, the repeated
- * matches notice is left to that card, and the ask card is tightened. */
+/* QA batch 1: on a phone the first candidate and the detailed results share
+ * the first screen. The candidate list scrolls inside its own card. */
 @media (max-width: 640px) {
-  [data-search="ask"] { padding: 14px; }
-  [data-search="ask"] .card-heading { margin-bottom: 4px; }
-  [data-search="ask"] .field { margin-bottom: 8px; }
+  [data-search="ask"] { padding: var(--space-4); }
+  [data-search="ask"] .card-heading { margin-bottom: var(--space-1); }
+  [data-search="ask"] .field { margin-bottom: var(--space-2); }
   #searchState[data-state^="disamb"] { display: none; }
-  #searchCandidates { padding: 12px; }
-  #searchCandidates > .work-list { max-height: min(30vh, 220px); overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: var(--line-strong) transparent; }
+  #searchCandidates { padding: var(--space-3); }
+  #searchCandidates > .work-list { max-height: min(30vh, 220px); overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: var(--hairline-strong) transparent; }
   #searchCandidates > .work-list::-webkit-scrollbar { width: 8px; background: transparent; }
-  #searchCandidates > .work-list::-webkit-scrollbar-thumb { border-radius: 8px; background: var(--line-strong); }
+  #searchCandidates > .work-list::-webkit-scrollbar-thumb { border-radius: 8px; background: var(--hairline-strong); }
 }
-#searchChips .chip:focus { outline: 3px solid var(--focus); outline-offset: 3px; }
+#searchChips .chip:focus { outline: 2px solid var(--focus-ring); outline-offset: 2px; }

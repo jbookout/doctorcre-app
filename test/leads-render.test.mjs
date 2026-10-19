@@ -1,4 +1,4 @@
-import test from 'node:test';import assert from 'node:assert/strict';import {mkdir} from 'node:fs/promises';import { chromium } from './browser-harness.mjs';
+import test from 'node:test';import assert from 'node:assert/strict';import {mkdir} from 'node:fs/promises';import { chromium } from 'playwright';
 import {workspace,id} from './leads-workspace-fixture.mjs';
 import {routeLeads} from './leads-browser-fixture.mjs';
 for(const width of [1440,390]) test(`Leads rendered board, map and wide popup fit ${width}px with automatic freshness`,async t=>{
@@ -7,7 +7,7 @@ for(const width of [1440,390]) test(`Leads rendered board, map and wide popup fi
  await routeLeads(page,{getBoard:()=>board,onRead:()=>reads++,onWrite:p=>writes.push(p)});
  await page.goto('http://localhost/leads');await page.locator('.lead-card').first().waitFor({state:'attached'}).catch(async e=>{console.log(await page.locator('#leadBoardError').textContent().catch(()=>'page unresponsive'),reads,errors);throw e});await page.locator('.market-marker').first().waitFor({state:'attached'});
  assert.equal(await page.locator('.stage-column').count(),6);assert.equal(await page.locator('.hot-row').count(),5);
- if(width===1440)assert.equal(await page.locator('.stage-column').evaluateAll(nodes=>new Set(nodes.map(n=>n.getBoundingClientRect().top)).size),1,'all six desktop stages share one row');
+ if(width===1440)assert.ok(await page.locator('.stage-column').evaluateAll(nodes=>nodes.every(n=>n.getBoundingClientRect().width>=280)),'populated desktop stages keep readable lane widths');
  const layout=await page.evaluate(()=>({width:innerWidth,scroll:document.documentElement.scrollWidth,cards:[...document.querySelectorAll('.lead-card')].map(e=>e.getBoundingClientRect().right)}));assert.ok(layout.scroll<=layout.width,JSON.stringify(layout));assert.ok(layout.cards.every(r=>r<=width));
  const before=reads;board.leads[0].doctor_name='Dr. Example Updated';await page.clock.fastForward(31_000);await page.getByRole('heading',{name:'Dr. Example Updated',exact:true}).last().waitFor();assert.ok(reads>before);assert.equal(writes.length,0,'polling has no outward effects');
  assert.equal(await page.locator('.lead-card').first().evaluate(e=>getComputedStyle(e).animationName),'none');

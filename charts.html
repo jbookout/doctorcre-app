@@ -3,9 +3,10 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-  <meta name="theme-color" content="#07111f">
   <title>Home Charts · DoctorCRE</title>
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=DM+Sans:wght@400;500;600;700&display=swap">
+  <script src="/js/theme-boot.js"></script>
+  <link rel="stylesheet" href="/css/tokens.css">
+  <link rel="preload" as="style" data-font-stylesheet href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600&display=swap">
   <link rel="stylesheet" href="/css/system.css">
   <link rel="stylesheet" href="/css/business-workspace.css">
   <link rel="stylesheet" href="/css/app-shell.css">
@@ -14,11 +15,11 @@
   <div id="appShell"></div><script type="module" src="/js/app-shell.js"></script>
   <a class="skip" href="#main">Skip to charts</a>
   <main id="main" class="shell">
-    <div data-layout-slot="sidebar" class="hero"><div><p class="eyebrow">Home · open deal board</p><h1>Charts</h1>
+    <div data-layout-slot="sidebar" class="hero"><div><h1>Charts</h1>
       <nav data-layout-slot="tabs" class="page-views" aria-label="Home pages"><a href="/">Overview</a><a href="/?view=charts" aria-current="page">Charts</a></nav>
     </div></div>
     <section class="card glass" data-charts="read" aria-labelledby="chartsTitle">
-      <div class="card-heading"><div><p class="eyebrow">The open board</p><h2 id="chartsTitle">Board snapshot</h2></div><span class="caption" id="chartsReadAt">Reading the board…</span></div>
+      <div class="card-heading"><div><h2 id="chartsTitle">Board snapshot</h2></div><span class="caption" id="chartsReadAt">Reading the board…</span></div>
       <p class="caption" id="chartsOneRead"></p><p class="caption" id="chartsSnapshot"></p><p class="caption" id="chartsForecast"></p>
     </section>
     <p class="sr-only" id="chartsLive" aria-live="polite" role="status"></p>

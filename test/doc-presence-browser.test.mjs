@@ -34,7 +34,7 @@ async function setup(t,{width=1440,motion='no-preference',onRoute,engine=chromiu
   const file=contract.routes[url.pathname]||url.pathname.slice(1);
   try{return route.fulfill({body:await readFile(new URL(file,root)),contentType:/\.m?js$/.test(file)?'text/javascript':file.endsWith('.css')?'text/css':file.endsWith('.json')?'application/json':'text/html'});}catch{return route.fulfill({status:404,body:''});}
  });
- const goto=async path=>{await page.goto('http://localhost'+path,{waitUntil:'domcontentloaded'});await page.locator('#docPresence').waitFor();};
+ const goto=async path=>{await page.goto('http://localhost'+path,{waitUntil:'domcontentloaded'});await page.locator('#docPresence').waitFor({state:'attached'});};
  return{page,goto,calls,errors};
 }
 
@@ -42,7 +42,8 @@ test('shared Doc presence appears on every authenticated route; narrow drawers n
  const{page,goto,errors,calls}=await setup(t);
  for(const width of [1440,390]) { await page.setViewportSize({width,height:960});
  for(const path of ['/', '/deals', '/leads', '/tours', '/clients','/vendors','/calendar','/ideas-events','/control-room','/control-room/progress','/work-requests','/all-work','/incidents','/control-room/progress/work','/updates','/doc-chats','/doc-chats/work','/search','/status','/design-lab']){
-  try { await goto(path); } catch(error) { throw new Error(path+' '+JSON.stringify(errors)+' '+error.message); } assert.equal(await page.locator('body > #docPresence').count(),1,path);
+  try { await goto(path); } catch(error) { throw new Error(path+' '+JSON.stringify(errors)+' '+error.message); } assert.equal(await page.locator(width <= 760 ? '#accountWorkspaceControls > #docPresence' : 'body > #docPresence').count(),1,path);
+  if (width <= 760) await page.locator('#selfAvatar').click();
   assert.equal(await page.locator('#docOpen').isVisible(),true,path);
   assert.equal(await page.locator('#docChat:visible').count(),0,path);
   await page.locator('#docOpen').click();assert.equal(await page.locator('#docDetail').evaluate(n=>n.open),true,path);await page.keyboard.press('Escape');
@@ -106,15 +107,15 @@ test('page facts and exact selection, existing suggestions, one-tap approval, in
  await mkdir(new URL('out/test-artifacts/w8/',root),{recursive:true});
  await page.screenshot({path:new URL('out/test-artifacts/w8/doc-desktop.png',root).pathname,fullPage:page.viewportSize().width>760,animations:'disabled'});
  await page.keyboard.press('Escape');await page.screenshot({path:new URL('out/test-artifacts/w8/presence-desktop.png',root).pathname,fullPage:page.viewportSize().width>760,animations:'disabled'});
- await page.setViewportSize({width:390,height:844});await page.locator('#docOpen').click();
+ await page.setViewportSize({width:390,height:844});await page.locator('#selfAvatar').click();await page.locator('#docOpen').click();
  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
  assert.equal(await page.locator('#docDetail').evaluate(n=>n.scrollWidth<=n.clientWidth),true);
  await page.screenshot({path:new URL('out/test-artifacts/w8/doc-phone.png',root).pathname,fullPage:page.viewportSize().width>760,animations:'disabled'});
  await page.keyboard.press('Escape');await page.screenshot({path:new URL('out/test-artifacts/w8/presence-phone.png',root).pathname,fullPage:page.viewportSize().width>760,animations:'disabled'});
  await page.emulateMedia({reducedMotion:'reduce'});
  assert.equal(await page.locator('.doc-presence .doc-orb').evaluate(n=>getComputedStyle(n).animationName),'none');
- await page.locator('#docOpen').focus();await page.keyboard.press('Enter');await page.keyboard.press('Escape');
- assert.equal(await page.locator('#docOpen').evaluate(n=>n===document.activeElement),true);
+ await page.locator('#selfAvatar').click();await page.locator('#docOpen').focus();await page.keyboard.press('Enter');await page.keyboard.press('Escape');
+ assert.equal(await page.locator('#selfAvatar').evaluate(n=>n===document.activeElement),true);
  assert.deepEqual(errors,[]);
 });
 
@@ -412,7 +413,7 @@ for(const prefix of ['plan','space'])test(`R6 ${prefix} client record authorizat
  await page.waitForFunction(()=>document.querySelector('#tour-library-state').textContent.includes('Sign in'));const c=await readContext(page);assert.equal(c.ready,false);assert.equal(c.records.length,0);
 });
 
-for (const [name,engine] of [['chromium',chromium],['webkit',webkit]]) test(`W11 ${name} command bar shortcuts, keyboard results, refresh and responsive motion`,async t=>{
+for (const [name,engine] of [['chromium',chromium],['webkit',webkit]]) test(`W11 ${name} command bar shortcuts, keyboard results, refresh and responsive motion`,{skip:engine.skip},async t=>{
  for(const width of [1440,390,320]) await t.test(String(width),async t=>{
   const {page,goto,calls,errors}=await setup(t,{width,motion:'reduce',engine,onRoute:async(route,{url})=>{if(url.pathname==='/api/tours/library'){await route.fulfill({json:{data:{tours:[{id:tourId,name:'Demo Tour'}]}}});return true;}return false;}});
   await goto('/deals?mode=live');
@@ -443,10 +444,10 @@ test('R1 Doc search consumes and validates the live wrapped tour library',async 
  await page.getByRole('option',{name:/Library Sample/}).waitFor();await page.getByRole('option',{name:/Library Sample/}).click();
  assert.equal(await page.locator('#docCommandDetail a').getAttribute('href'),`/tours?tour=${tourId}`);
 });
-for(const [name,engine] of [['chromium',chromium],['webkit',webkit]])test(`R8 ${name} long detail title fits inside the 320px Doc dialog`,async t=>{
+for(const [name,engine] of [['chromium',chromium],['webkit',webkit]])test(`R8 ${name} long detail title fits inside the 320px Doc dialog`,{skip:engine.skip},async t=>{
  const title='Demo'+ 'x'.repeat(180);
  const {page,goto}=await setup(t,{width:320,engine,onRoute:async(route,{url})=>{if(url.pathname==='/mcp'&&route.request().postDataJSON().params.name==='find'){await rpc(route,{parties:[{ref:'C-SAMPLE',kind:'client',name:title,merged:false}],deals:[],connections:[],organizations:[],lead_client_links:[],deals_via_link:[],note:'Synthetic'});return true;}return false;}});
- await goto('/deals?mode=live');await page.locator('#docOpen').click();await page.locator('#docCommandInput').fill('Demo');await page.getByRole('option',{name:new RegExp(title)}).click();
+ await goto('/deals?mode=live');await page.locator('#selfAvatar').click();await page.locator('#docOpen').click();await page.locator('#docCommandInput').fill('Demo');await page.getByRole('option',{name:new RegExp(title)}).click();
  assert.equal(await page.locator('#docDetail').evaluate(n=>n.scrollWidth<=n.clientWidth),true);
  assert.ok(await page.locator('#docCommandBack').evaluate(n=>n.getBoundingClientRect().width)>=44);
 });

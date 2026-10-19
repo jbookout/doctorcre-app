@@ -31,7 +31,7 @@ const read = (file) => readFile(new URL(file, root), "utf8");
 const html = await read("conversations.html");
 const pageJs = await read("js/conversations.js");
 const pageCss = await read("css/conversations.css");
-const systemCss = await read("css/system.css");
+const tokensCss = await read("css/tokens.css");
 const contract = JSON.parse(await read("contracts/carr-interface.v1.json"));
 
 const fixture = async (options = {}) => {
@@ -336,24 +336,20 @@ test("conversations.js reads doc outcome cards independently of the open convers
   assert.match(pageJs, /view\.outcomeCards\.sequence/);
   assert.match(pageJs, /takeOutcomeCards/);
 });
-
-/* ============================================================ motion (rule 9293d609)
+/* ============================================================ motion (V2)
  *
- * Every CARR surface ships with real motion, never a static page. The five
- * required behaviors, each with its own test below:
- *   1. An orchestrated staggered entrance.
- *   2. Hover and press feedback on each card and each control.
- *   3. An animated (not cut) change when phase/next-check/result changes.
- *   4. Ambient life tied to the real `as_of`/freshness value, never faked.
- *   5. Recommendation → submission → outcome made visible with motion.
+ * V2 (the Linear-like rebuild) replaced the V1 motion contract: no entrance
+ * stagger, no hover lift, no breathing dot, no marching flow line. Motion is
+ * kept only where state changes, and only on opacity or transform:
+ *   - a phase/next-check/result/routing-state change settles in (opacity)
+ *     rather than cutting, so the change is noticed;
+ *   - hover and press feedback is a border step, not movement.
+ * Freshness and the recommendation -> submission -> outcome flow are shown
+ * statically: filled vs hollow dot, solid vs dashed path, plus text labels.
  *
- * The two hard limits: `prefers-reduced-motion: reduce` leaves all content
- * visible, and motion never delays reading or clicking.
- *
- * A tiny CSS reader below extracts an actual rule's declarations rather than
- * grepping for a token, so "content stays visible under reduced motion" is a
- * MEASURED conclusion (no persistent `opacity` in the base rule, so removing
- * the animation leaves full opacity) rather than a read of the source text.
+ * The hard limits: reduced motion (media query and the in-app
+ * data-motion="reduced" toggle) removes the remaining animation, and content
+ * is never hidden behind an animation.
  */
 
 /** Balanced-brace block body starting at the `{` at or after `fromIndex`. */
@@ -374,7 +370,7 @@ function blockAt(css, fromIndex) {
 /** The first `selector { ... }` rule body found in `css`, or null. */
 function ruleBody(css, selector) {
   const escaped = selector.replace(/[.[\]"=]/g, (char) => `\\${char}`);
-  const at = css.search(new RegExp(`${escaped}\\s*\\{`));
+  const at = css.search(new RegExp(`(^|[\\s}])${escaped}\\s*\\{`, "m"));
   return at === -1 ? null : blockAt(css, at);
 }
 
@@ -389,90 +385,53 @@ function declarationsOf(body) {
   );
 }
 
-// The exact rule (with its trailing brace), not just the phrase — this
-// file's own explanatory comment above quotes "@media (prefers-reduced-motion:
-// reduce)" in prose, and a bare indexOf would find that mention first.
 const reducedMotionBlock = blockAt(pageCss, pageCss.indexOf("@media (prefers-reduced-motion: reduce) {"));
-const reducedMotionAttrBlockStart = pageCss.indexOf(':root[data-motion="reduced"] .outcome-card {');
 
-test("checkable_done / hard limit: a prefers-reduced-motion:reduce block exists in css/conversations.css and disables every new animation", () => {
+test("hard limit: css/conversations.css removes every remaining outcome animation under reduced motion, both doors", () => {
   assert.notEqual(reducedMotionBlock, null, "css/conversations.css must carry its own @media (prefers-reduced-motion: reduce) block");
-  for (const selector of [".outcome-card", ".outcome-field.is-changed", '.outcome-live-dot[data-fresh="fresh"]', '.outcome-flow-path[data-active="true"]']) {
-    const decls = declarationsOf(ruleBody(reducedMotionBlock, selector));
-    assert.equal(decls.animation, "none", `${selector} must set animation: none under reduced motion`);
+  for (const selector of [".outcome-card", ".outcome-field.is-changed"]) {
+    assert.equal(declarationsOf(ruleBody(reducedMotionBlock, selector)).animation, "none", `${selector} must set animation: none under reduced motion`);
   }
-  // The `data-motion="reduced"` in-app toggle (css/system.css's own second
-  // reduced-motion door) carries the same rules, not just the media query.
-  assert.notEqual(reducedMotionAttrBlockStart, -1, ':root[data-motion="reduced"] .outcome-card must exist alongside the media query');
+  assert.equal(declarationsOf(ruleBody(reducedMotionBlock, ".outcome-card")).transition, "none");
+  assert.match(pageCss, /:root\[data-motion="reduced"\] \.outcome-card \{ animation: none; transition: none; \}/);
+  assert.match(pageCss, /:root\[data-motion="reduced"\] \.outcome-field\.is-changed \{ animation: none; \}/);
 });
 
-test("MEASURED: under reduced motion, .outcome-card's effective opacity is 1 (visible), not the keyframe's 0", () => {
-  // The base rule (outside any @media/@keyframes) is the FIRST match in the
-  // file, before the reduced-motion block that appears later.
-  const baseBody = ruleBody(pageCss, "\\.outcome-card");
-  const baseDecls = declarationsOf(baseBody);
-  // Load-bearing: if the base rule ever gained a persistent `opacity`, an
-  // `animation: none` override would freeze the card at that value instead
-  // of the browser's ordinary (fully visible) default.
-  assert.equal(baseDecls.opacity, undefined, ".outcome-card must not set opacity outside its entrance keyframe");
-  const reducedDecls = declarationsOf(ruleBody(reducedMotionBlock, ".outcome-card"));
-  assert.equal(reducedDecls.animation, "none");
-  // Measured, not read: with animation:none and no persistent opacity
-  // anywhere in the cascade for this selector, the effective opacity a
-  // reader sees is the CSS initial value, 1 — full visibility.
-  const effectiveOpacity = reducedDecls.opacity !== undefined ? Number(reducedDecls.opacity)
-    : baseDecls.opacity !== undefined ? Number(baseDecls.opacity)
-      : 1;
-  assert.equal(effectiveOpacity, 1, "content must stay fully visible under reduced motion");
+test("MEASURED: .outcome-card carries no persistent opacity, so it is fully visible with or without motion", () => {
+  const baseDecls = declarationsOf(ruleBody(pageCss, ".outcome-card"));
+  assert.equal(baseDecls.opacity, undefined, ".outcome-card must not set opacity");
+  assert.equal(baseDecls.animation, undefined, ".outcome-card has no entrance animation in V2");
 });
 
-test("MEASURED: under reduced motion, the flow line's active segment loses both its animation and its illusion of motion", () => {
-  const reducedDecls = declarationsOf(ruleBody(reducedMotionBlock, '.outcome-flow-path[data-active="true"]'));
-  assert.equal(reducedDecls.animation, "none");
-  // stroke-dasharray:none removes the dashed/animated look entirely, the
-  // exact same move css/system.css's own global floor makes for `.flow-path`.
-  assert.equal(reducedDecls["stroke-dasharray"], "none");
-  assert.match(systemCss, /:root\[data-motion="reduced"\] \.flow-path \{ stroke-dasharray: none; \}/,
-    "this mirrors the shared .flow-path convention rather than inventing a new one");
+test("V2: the flow line is static — solid when active, dashed when not — and never animates", () => {
+  assert.equal(declarationsOf(ruleBody(pageCss, '.outcome-flow-path[data-active="true"]'))["stroke-dasharray"], "none");
+  assert.match(declarationsOf(ruleBody(pageCss, ".outcome-flow-path"))["stroke-dasharray"], /^\d/, "the inactive path is dashed, a pattern rather than a hue");
+  assert.doesNotMatch(pageCss, /flow-dash/, "no marching-ants flow animation");
 });
 
-test("1. entrance is staggered and bounded to about 1 second, measured from the real tokens and the real fixture card count", async () => {
-  assert.match(pageJs, /OUTCOME_CARD_STAGGER_MS = (\d+)/);
-  const staggerMs = Number(pageJs.match(/OUTCOME_CARD_STAGGER_MS = (\d+)/)[1]);
-  const motionEnterMs = Number(systemCss.match(/--motion-enter: (\d+)ms/)[1]);
-  const client = await fixture();
-  const cardCount = (await client.docOutcomeCards({ limit: 50 })).cards.length;
-  assert.ok(cardCount >= 2, "the fixture must exercise more than one card to prove a stagger");
-  const worstCaseEntranceMs = (cardCount - 1) * staggerMs + motionEnterMs;
-  assert.ok(worstCaseEntranceMs <= 1000, `${cardCount} cards at ${staggerMs}ms apart plus a ${motionEnterMs}ms entrance is ${worstCaseEntranceMs}ms, over the ~1s ceiling`);
-  assert.match(pageCss, /animation-delay: var\(--outcome-card-delay, 0ms\)/);
+test("1. no entrance stagger: cards render at once, and no inline style or CSSOM delay is written", () => {
+  assert.doesNotMatch(pageJs, /OUTCOME_CARD_STAGGER_MS|outcome-card-delay|data-outcome-card-delay/);
   // The Worker's CSP (src/worker.js, style-src with no 'unsafe-inline')
-  // refuses a `style=` attribute written into markup, so the delay is
-  // carried in a `data-outcome-card-delay` attribute and applied through
-  // CSSOM (`node.style.setProperty(...)`) in a post-render pass instead.
+  // refuses a `style=` attribute written into markup.
   assert.doesNotMatch(pageJs, /style\s*=\s*["'`]/, "no style= attribute may be written into markup; the CSP drops it");
-  assert.match(pageJs, /data-outcome-card-delay="\$\{delayMs\}"/, "each card's own delay is carried in a data attribute, per index");
-  assert.match(pageJs, /node\.style\.setProperty\("--outcome-card-delay",/, "the delay is applied through CSSOM after render");
-  assert.match(pageJs, /delayMs: index \* OUTCOME_CARD_STAGGER_MS/, "the delay must come from the card's position, i.e. an ORCHESTRATED stagger");
+  assert.doesNotMatch(pageCss, /@keyframes outcome-card-in/);
+  assert.match(tokensCss, /--duration-panel:/, "the one remaining settle uses a shared duration token");
 });
 
-test("2. hover and press feedback exist on the card and reuse the shared control feedback", () => {
-  assert.match(pageCss, /\.outcome-card:hover \{/);
+test("2. hover and press feedback exist on the card as a border step, never a lift", () => {
+  assert.match(pageCss, /\.outcome-card:hover \{ border-color: var\(--hairline-strong\); \}/);
   assert.match(pageCss, /\.outcome-card:active \{/);
-  // The card's own buttons are plain `.btn`, so they inherit css/system.css's
-  // shared hover/press rules rather than needing their own.
-  assert.match(systemCss, /\.btn:hover \{/);
-  assert.match(systemCss, /\.btn:active \{ transform: translateY\(1px\); \}/);
+  assert.doesNotMatch(declarationsOf(ruleBody(pageCss, ".outcome-card:hover")).transform ?? "", /translate/);
   assert.match(html, /id="outcomeCardsRetry"/);
   assert.match(html, /id="outcomeCardsShowMore"/);
 });
 
-test("3. a phase/next-check/result/routing-state change transitions (brightens and settles) rather than cutting", () => {
-  assert.match(pageCss, /\.outcome-field\.is-changed \{ animation: outcome-field-flash 700ms ease-out/);
+test("3. a phase/next-check/result/routing-state change settles in (opacity only) rather than cutting", () => {
+  assert.match(pageCss, /\.outcome-field\.is-changed \{ animation: outcome-field-flash var\(--duration-panel\) var\(--ease-out\)/);
   const keyframeBody = blockAt(pageCss, pageCss.indexOf("@keyframes outcome-field-flash"));
-  assert.match(keyframeBody, /0%\s*\{[^}]*color: var\(--orange-text\)/, "the flash STARTS highlighted");
-  assert.match(keyframeBody, /100%\s*\{[^}]*color: inherit/, "the flash SETTLES back, rather than vanishing instantly");
-  // The model function that decides which fields flash, unit-tested directly.
+  assert.match(keyframeBody, /from\s*\{\s*opacity: 0\.4;\s*\}/, "the change starts dimmed");
+  assert.match(keyframeBody, /to\s*\{\s*opacity: 1;\s*\}/, "and settles to full opacity");
+  assert.doesNotMatch(keyframeBody, /color|background|transform|width|height|margin|top|left/, "opacity only");
   const before = outcomeCard(baseCard({ controlled_phase: "claimed" }));
   const afterSamePhase = outcomeCard(baseCard({ controlled_phase: "claimed" }));
   assert.deepEqual(changedFields(before, afterSamePhase), { phase: false, nextCheck: false, result: false, routingState: false });
@@ -482,8 +441,7 @@ test("3. a phase/next-check/result/routing-state change transitions (brightens a
   const beforeResult = outcomeCard(baseCard({ result: { available: false, value: null, unavailable_reason: "no_accepted_outcome" } }));
   const afterResult = outcomeCard(baseCard({ result: { available: true, value: "Closed", unavailable_reason: null } }));
   assert.equal(changedFields(beforeResult, afterResult).result, true);
-  // A brand-new card (no previous entry) never flashes: the entrance
-  // animation already says "this just appeared".
+  // A brand-new card (no previous entry) never flashes.
   assert.deepEqual(changedFields(null, before), { phase: false, nextCheck: false, result: false, routingState: false });
 });
 
@@ -492,12 +450,10 @@ test("3b. conversations.js actually computes changedFields per card against the 
   assert.match(pageJs, /view\.outcomeCards\.previousById = new Map\(cards\.map\(\(card\) => \[card\.id, card\]\)\)/);
 });
 
-test("4. ambient life pulses ONLY when the server's own freshness says fresh, and is tied to the real as_of comparison, never a fake timer", () => {
-  assert.match(pageCss, /\.outcome-live-dot\[data-fresh="fresh"\] \{ animation: breathe var\(--motion-calm\)/);
-  assert.doesNotMatch(pageCss, /\.outcome-live-dot\[data-fresh="stale"\] \{[^}]*animation/, "a stale card must never pulse");
-  // The model function is a straight read of source_freshness.state, which
-  // migration 0546 computes from observed_at vs the real as_of — never a
-  // client clock.
+test("4. freshness is a static mark tied to the server's own freshness: filled when fresh, hollow when stale, never a pulse", () => {
+  assert.doesNotMatch(declarationsOf(ruleBody(pageCss, ".outcome-live-dot")).animation ?? "", /\S/);
+  assert.match(pageCss, /\.outcome-live-dot\[data-fresh="stale"\] \{[^}]*background: transparent/, "stale is hollow, so it reads without colour");
+  assert.doesNotMatch(pageCss, /outcome-live-dot[^{]*\{[^}]*animation/, "the freshness dot never pulses");
   assert.equal(isLive(outcomeCard(baseCard({ source_freshness: { state: "fresh", observed_at: "2026-09-24T00:00:00+00:00", source_ref: "x" } }))), true);
   assert.equal(isLive(outcomeCard(baseCard({ source_freshness: { state: "stale", observed_at: "2026-09-01T00:00:00+00:00", source_ref: "x" } }))), false);
   assert.match(pageJs, /data-fresh="\$\{escapeHtml\(card\.freshness\.state\)\}"/);
@@ -505,22 +461,12 @@ test("4. ambient life pulses ONLY when the server's own freshness says fresh, an
 
 test("5. recommendation, submission and outcome are made visible with a flow line whose stages come only from the fields the server reported", () => {
   assert.match(pageCss, /\.outcome-flow-node\[data-reached="true"\]/);
-  assert.match(pageCss, /animation: flow-dash var\(--motion-flow\) linear infinite/, "reuses the SAME flow-dash keyframe as the reference pipeline diagram");
-  assert.match(systemCss, /@keyframes flow-dash \{ to \{ stroke-dashoffset: -144; \} \}/, "the keyframe reused, not redefined, in css/conversations.css");
-  assert.doesNotMatch(pageCss, /@keyframes flow-dash/, "css/conversations.css must not redeclare the shared keyframe");
-
   const recommendationOnly = flowStages(outcomeCard(baseCard({ intent_kind: "recommendation", result: { available: false, value: null, unavailable_reason: "no_accepted_outcome" } })));
   assert.deepEqual(recommendationOnly.map((s) => s.reached), [true, false, false]);
-
   const submitted = flowStages(outcomeCard(baseCard({ intent_kind: "submission", result: { available: false, value: null, unavailable_reason: "no_accepted_outcome" } })));
   assert.deepEqual(submitted.map((s) => s.reached), [true, true, false]);
-
   const outcomeReached = flowStages(outcomeCard(baseCard({ intent_kind: "submission", result: { available: true, value: "Done", unavailable_reason: null } })));
   assert.deepEqual(outcomeReached.map((s) => s.reached), [true, true, true]);
-
-  // A recommendation is never drawn as though it reached submission just
-  // because a result somehow arrived without a submission being reported —
-  // the stages are read independently, never inferred from one another.
   assert.match(pageJs, /flowStages\(card\)/);
 });
 
@@ -530,17 +476,7 @@ test("the flow line carries a text label for every stage, so the distinction sur
   assert.match(pageJs, /aria-hidden="true" focusable="false"/, "the decorative SVG is hidden from assistive tech; the text row carries the meaning");
 });
 
-test("no new animation touches width, height, margin, top or left — only opacity, transform, filter, stroke and background", () => {
-  const motionBlockStart = pageCss.indexOf("V5-UX-B09 outcome cards motion");
-  assert.notEqual(motionBlockStart, -1);
-  const keyframeNames = ["outcome-card-in", "outcome-field-flash"];
-  const bodies = keyframeNames.map((name) => {
-    const at = pageCss.indexOf(`@keyframes ${name} {`, motionBlockStart);
-    assert.ok(at >= motionBlockStart, `@keyframes ${name} must exist in the new motion block`);
-    return blockAt(pageCss, at);
-  });
-  for (const [index, body] of bodies.entries()) {
-    assert.doesNotMatch(body, /\b(width|height|margin|top|left|right|bottom)\s*:/,
-      `@keyframes ${keyframeNames[index]} must not animate a layout-affecting property (layout shift)`);
-  }
+test("the only keyframe left in css/conversations.css is the opacity-only field settle", () => {
+  const names = [...pageCss.matchAll(/@keyframes ([\w-]+)/g)].map((match) => match[1]);
+  assert.deepEqual(names, ["outcome-field-flash"]);
 });

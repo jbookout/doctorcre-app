@@ -3,7 +3,6 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-  <meta name="theme-color" content="#07111f">
   <meta name="description" content="DoctorCRE Doc conversations — what you and Doc have said, who else can read it, and what turning sharing off can and cannot undo">
   <title>Doc Chats · DoctorCRE</title>
   <link rel="manifest" href="/manifest.webmanifest">
@@ -11,7 +10,9 @@
   <link rel="icon" href="/icons/dealroom.svg" type="image/svg+xml">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=DM+Sans:wght@400;500;600;700&display=swap">
+  <script src="/js/theme-boot.js"></script>
+  <link rel="stylesheet" href="/css/tokens.css">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600&display=swap">
   <link rel="stylesheet" href="/css/system.css">
   <link rel="stylesheet" href="/css/conversations.css">
   <link rel="stylesheet" href="/css/app-shell.css">
@@ -50,7 +51,7 @@
 
     <section class="card glass" data-section="list" aria-labelledby="listTitle">
       <div class="card-heading">
-        <div><p class="eyebrow">Your conversations</p><h2 id="listTitle">Your conversations</h2></div>
+        <div><h2 id="listTitle">Your conversations</h2></div>
         <button class="btn" type="button" id="archivedToggle" aria-pressed="false">Show archived</button>
       </div>
       <p class="caption" id="listScope">unknown</p>
@@ -62,7 +63,7 @@
 
     <section class="card glass" data-section="outcome-cards" aria-labelledby="outcomeCardsTitle">
       <div class="card-heading">
-        <div><p class="eyebrow">Doc outcome cards</p><h2 id="outcomeCardsTitle">What Doc is tracking for you</h2></div>
+        <div><h2 id="outcomeCardsTitle">What Doc is tracking for you</h2></div>
         <button class="btn" type="button" id="outcomeCardsRetry" aria-label="Refresh" title="Refresh"><span aria-hidden="true">↻</span></button>
       </div>
       <p class="caption" id="outcomeCardsNoOpen">unknown</p>
@@ -75,7 +76,7 @@
 
     <section class="card glass suggestion-section" data-section="suggestions" aria-labelledby="suggestionsTitle">
       <div class="card-heading">
-        <div><p class="eyebrow">From what was said</p><h2 id="suggestionsTitle">Doc’s suggestions</h2></div>
+        <div><h2 id="suggestionsTitle">Doc’s suggestions</h2></div>
         <button class="btn" type="button" id="suggestionsRetry" aria-label="Refresh" title="Refresh"><span aria-hidden="true">↻</span></button>
       </div>
       <button class="btn btn-quiet" type="button" id="suggestionsParked" aria-pressed="false">Show snoozed and dismissed</button>
@@ -85,7 +86,7 @@
     </section>
 
     <section class="card glass" data-section="turns" id="turnsBlock" aria-labelledby="turnsTitle">
-      <div class="card-heading"><div><p class="eyebrow">What was said</p><h2 id="turnsTitle">The conversation</h2></div></div>
+      <div class="card-heading"><div><h2 id="turnsTitle">The conversation</h2></div></div>
       <div class="state-block" id="turnsState" data-state="loading"><h3 id="turnsStateTitle">Reading this conversation…</h3></div>
       <ol class="turn-list" id="turnList"></ol>
       <p class="caption" id="composerAbsent">unknown</p>
@@ -93,19 +94,19 @@
     </section>
 
     <section class="card glass" data-section="paging" id="pagingBlock" aria-labelledby="pagingTitle" hidden>
-      <div class="card-heading"><div><p class="eyebrow">Earlier</p><h2 id="pagingTitle">More turns are held</h2></div></div>
+      <div class="card-heading"><div><h2 id="pagingTitle">More turns are held</h2></div></div>
       <div class="note-act"><button class="btn" type="button" id="showMore">Show more turns</button></div>
     </section>
 
     <section class="card glass" data-section="access" aria-labelledby="accessTitle">
-      <div class="card-heading"><div><p class="eyebrow">Who can read this</p><h2 id="accessTitle">Access</h2></div></div>
+      <div class="card-heading"><div><h2 id="accessTitle">Access</h2></div></div>
       <ul class="work-list" id="accessList"></ul>
       <p class="headline" id="sharingCaveat">unknown</p>
       <div class="action-row" id="shareControls"></div>
     </section>
 
     <section class="card glass" data-section="identity" aria-labelledby="identityTitle">
-      <div class="card-heading"><div><p class="eyebrow">Name and state</p><h2 id="identityTitle">Rename, pin, archive</h2></div></div>
+      <div class="card-heading"><div><h2 id="identityTitle">Rename, pin, archive</h2></div></div>
       <div class="field"><label for="renameInput">New title</label><input id="renameInput" type="text" autocomplete="off" maxlength="200" placeholder="A concise name for this conversation"></div>
       <div class="action-row">
         <button class="btn btn-primary" type="button" id="renameSave">Save the new title</button>
@@ -116,7 +117,7 @@
     </section>
 
     <section class="card glass" data-section="create" aria-labelledby="createTitle">
-      <div class="card-heading"><div><p class="eyebrow">Start one</p><h2 id="createTitle">New conversation</h2></div></div>
+      <div class="card-heading"><div><h2 id="createTitle">New conversation</h2></div></div>
       <div class="field"><label for="createTitleInput">Title</label><input id="createTitleInput" type="text" autocomplete="off" maxlength="200" placeholder="What is this conversation about?"></div>
       <div class="field"><label for="createVisibility">Who can read it</label>
         <select id="createVisibility">
@@ -128,13 +129,12 @@
     </section>
 
     <section class="card glass" data-section="exposure" aria-labelledby="exposureTitle">
-      <div class="card-heading"><div><p class="eyebrow">On a phone</p><h2 id="exposureTitle">What this page shows a passer-by</h2></div></div>
+      <div class="card-heading"><div><h2 id="exposureTitle">What this page shows a passer-by</h2></div></div>
       <p class="caption" id="exposureStatement">unknown</p>
     </section>
   </main>
 
   <div id="receiptDock" class="receipt-dock" role="group" aria-label="Command feedback"></div>
-  <footer class="shell"><p class="small"></p></footer>
   <script type="module" src="/js/conversations.js"></script>
 </body>
 </html>

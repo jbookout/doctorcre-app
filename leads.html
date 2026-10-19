@@ -1,10 +1,12 @@
 <!doctype html>
 <html lang="en">
 <head>
-<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#07090c">
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Leads · DoctorCRE</title>
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600&family=Montserrat:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="/js/theme-boot.js"></script>
+<link rel="stylesheet" href="/css/tokens.css">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/css/app-shell.css"><link rel="stylesheet" href="/css/leads.css"><link rel="stylesheet" href="/tours/vendor/maplibre-gl-6.4.1/maplibre-gl.css">
 </head>
 <body class="leads-body"><div id="appShell"></div><script type="module" src="/js/app-shell.js"></script>
@@ -12,7 +14,7 @@
 <main class="leads-workspace">
 <header class="page-heading"><h1>Leads <span id="leadCount"></span></h1><div data-layout-slot="status" class="freshness"><time id="boardUpdated">Updating…</time><button data-layout-refresh id="refreshBoard" aria-label="Refresh leads" title="Refresh leads">↻</button></div></header>
 <section class="top-grid">
-<div class="hot-section glass"><div class="section-heading"><h2>5 hottest leads to claim</h2><time id="searchUpdated" title="Last new-lead search">New-lead search —</time></div><div id="hotLeads" aria-busy="true"></div></div>
+<div class="hot-section glass"><div class="section-heading"><h2 id="hotTitle">Hottest leads to claim</h2><time id="searchUpdated" title="Last new-lead search">New-lead search —</time></div><p id="hotSummary" class="hot-summary"></p><div id="hotLeads" aria-busy="true"></div></div>
 <div class="territory glass"><div class="section-heading"><h2>Territory</h2><button id="clearMarket" hidden>All markets</button></div><div id="territoryMap" aria-label="Lead count by market" role="region"></div><div id="marketCounts" aria-label="Markets"></div><small class="map-credit">U.S. Census · 2025</small></div>
 </section>
 <section data-layout-slot="sidebar" class="controls glass" aria-label="Lead filters">
@@ -22,7 +24,7 @@
 <label>Market<select id="marketFilter"><option value="">All markets</option></select></label>
 <output id="filterSummary" aria-live="polite"></output>
 </section>
-<p id="leadBoardError" role="alert" hidden></p><div id="leadBoard" aria-busy="true"><p class="empty">Loading leads…</p></div>
+<p id="leadBoardError" role="alert" hidden></p><label class="mobile-stage-nav">Stage<select id="mobileStage" aria-label="Board stage"></select></label><div id="leadBoard" aria-busy="true"><p class="empty">Loading leads…</p></div>
 </main>
 <dialog id="leadDetail" class="detail-dialog" aria-labelledby="detailTitle"><div class="dialog-heading"><h2 id="detailTitle"></h2><button id="closeDetail" aria-label="Close lead details">×</button></div><div id="detailBody"></div></dialog>
 <dialog id="stageDialog" class="stage-dialog" aria-labelledby="stageTitle"><div class="dialog-heading"><h2 id="stageTitle">Doc</h2><button id="closeStage" aria-label="Cancel stage change">×</button></div><div id="stageContext"></div><form id="stageForm"><div id="stageQuestions"></div><p id="stageError" role="alert" hidden></p><button id="saveStage" type="submit">Confirm</button></form></dialog>

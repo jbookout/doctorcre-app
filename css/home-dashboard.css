@@ -1,23 +1,154 @@
-.home-shell{max-width:none;width:100%;padding:34px 32px 64px;position:relative}
-.home-hero{margin-bottom:28px;align-items:center}.home-hero h1{font-size:clamp(42px,5vw,66px);margin:6px 0 0}.home-tools{display:flex;align-items:center;gap:22px;flex-wrap:wrap}.home-updated{display:flex;align-items:center;gap:6px}.home-refresh{background:transparent;border:0;color:var(--quiet);font-size:22px;cursor:pointer;min-width:44px;min-height:44px;border-radius:12px;transition:color .15s,background .15s}.home-refresh:hover{color:var(--orange);background:rgba(242,138,57,.08)}.home-refresh[aria-busy=true] span{display:block;animation:home-spin 1.6s linear infinite}.scope-option{display:block;min-width:100px;text-align:center}.home-panel{min-width:0;padding:24px;border-radius:22px;animation:home-enter .28s ease-out both;transition:border-color .16s,transform .16s,box-shadow .16s}.home-panel:hover{border-color:rgba(242,138,57,.4);transform:translateY(-2px);box-shadow:0 18px 48px rgba(0,0,0,.26)}.home-panel[hidden]{display:none}.home-deals{margin-bottom:22px;background:linear-gradient(115deg,rgba(14,31,49,.94),rgba(8,17,28,.96))}.home-panel-head{display:flex;align-items:center;justify-content:space-between;gap:18px;margin-bottom:20px}.home-panel-head h2{margin:0;font:600 28px/1.2 var(--display);letter-spacing:.01em}.home-deals .home-panel-head h2{display:flex;align-items:center;gap:12px 24px;flex-wrap:wrap;font:500 18px/1.6 var(--display);color:var(--text)}.home-deals .home-panel-head h2 span{color:var(--muted)}.home-outline{display:flex;align-items:center;justify-content:center;gap:18px;flex:none;min-height:46px;padding:10px 20px;border:1px solid var(--orange);border-radius:12px;color:var(--orange);font-weight:700;font-size:12px;text-decoration:none;transition:background .15s}.home-outline:hover{background:rgba(242,138,57,.14)}.home-flags{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}.home-flag{display:flex;align-items:center;gap:12px;padding:16px;min-height:86px;border:1px solid rgba(242,138,57,.2);border-radius:14px;background:rgba(242,138,57,.04);text-decoration:none;color:inherit;transition:transform .16s,border-color .16s,background .16s}.home-flag:hover{transform:translateY(-3px);border-color:var(--orange);background:rgba(242,138,57,.09)}.home-flag-light{width:8px;height:8px;border-radius:50%;background:var(--orange);box-shadow:0 0 12px rgba(242,138,57,.5);flex:none;animation:home-breathe 2s ease-in-out infinite}.home-flag>div,.home-agenda a>div,.home-lead>div{min-width:0;flex:1}.home-flag strong,.home-agenda strong,.home-lead strong{font-size:13px;line-height:1.5;display:block;overflow-wrap:anywhere}.home-flag div>span,.home-agenda div>span,.home-lead div>span{display:block;color:var(--muted);font-size:11px;line-height:1.5;margin-top:4px;overflow-wrap:anywhere}.home-arrow{color:var(--orange);flex:none}.home-empty{margin:0;color:var(--muted);font-size:13px}.home-grid{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(0,1fr);gap:22px;align-items:start}.home-grid #homeLeads{grid-column:1/-1}.home-icon-link{display:grid;place-items:center;color:var(--orange);min-height:44px;min-width:44px;text-decoration:none;border:1px solid var(--line);border-radius:12px}.home-week{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px;position:relative}.home-week:before{content:"";position:absolute;left:0;right:0;top:48px;height:1px;background:linear-gradient(90deg,rgba(242,138,57,.5),rgba(125,211,252,.2));z-index:0}.home-day{position:relative;min-height:96px;display:flex;align-items:center;flex-direction:column;padding:10px 2px;border-radius:14px;border:1px solid transparent;background:rgba(9,21,35,.9)}.home-day>span:first-child{font-size:10px;color:var(--muted)}.home-day strong{font:500 28px/1.4 var(--display)}.home-day.today{border-color:rgba(242,138,57,.55);background:rgba(242,138,57,.1)}.home-day-marks{display:flex;justify-content:center;gap:3px;height:7px;margin-top:4px}.home-day-marks i{display:block;width:5px;height:5px;border-radius:50%;background:var(--orange)}.home-day-marks .task{background:var(--cyan);border-radius:1px}.home-calendar-link{display:block;text-decoration:none;color:inherit;border-radius:14px}.home-calendar-link:hover .home-day{border-color:rgba(125,211,252,.28)}.home-agenda{display:grid;margin-top:14px}.home-agenda a{display:flex;align-items:center;gap:15px;padding:12px 0;border-bottom:1px solid var(--line);color:inherit;text-decoration:none;transition:background .15s}.home-agenda a:hover{background:rgba(242,138,57,.04)}.home-agenda time{font-size:11px;min-width:46px;color:var(--orange)}.home-item-type,.home-period{font-size:10px;color:var(--quiet);flex:none}.home-partial{display:block;margin-top:12px;font-size:11px;color:var(--quiet)}.home-control-link{display:block;color:inherit;text-decoration:none}.home-control-status{display:flex;align-items:center;gap:16px;min-height:158px}.home-control-status>div{min-width:0}.home-control-status h3{font:600 30px/1.2 var(--display);margin:0 0 8px}.home-control-status p{font-size:12px;color:var(--muted);margin:0;line-height:1.6}.home-radar{width:120px;flex:none;stroke:currentColor;fill:none;stroke-width:.7;color:var(--green);overflow:visible}.home-control-status.attention .home-radar{color:var(--orange)}.home-radar .radar-dot{fill:currentColor;stroke:none}.home-radar .radar-wave{transform-origin:70px 70px;animation:home-radar 4s ease-out infinite;stroke-width:1.5}.home-control-status.attention .radar-wave{animation-duration:2s}.home-lead-list{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}.home-lead{display:flex;align-items:center;gap:14px;padding:16px;border:1px solid var(--line);border-radius:14px;color:inherit;text-decoration:none;transition:transform .16s,border-color .16s}.home-lead:hover{transform:translateY(-3px);border-color:var(--orange)}.home-lead-rank{font:500 32px/1 var(--display);color:var(--quiet)}.home-score{min-width:48px;display:grid;justify-items:center;border-left:1px solid var(--line);padding-left:12px}.home-score b{font:600 26px/1.2 var(--display);color:var(--orange)}.home-score small{font-size:9px;color:var(--quiet)}.home-notice{color:var(--orange)}.home-notice a{color:inherit}.home-shell a:focus-visible,.home-shell button:focus-visible{outline:2px solid var(--cyan);outline-offset:4px}.home-shell a:active{transform:translateY(1px)}
-@keyframes home-enter{from{opacity:.65;transform:translateY(6px)}to{opacity:1;transform:none}}@keyframes home-spin{to{transform:rotate(360deg)}}@keyframes home-breathe{50%{box-shadow:0 0 18px rgba(242,138,57,.8)}}@keyframes home-radar{0%{transform:scale(.35);opacity:.6}100%{transform:scale(1.12);opacity:0}}
-@media(max-width:1100px){.home-flags{grid-template-columns:repeat(2,minmax(0,1fr))}.home-tools{gap:12px}.home-control-status{gap:10px}.home-radar{width:94px}.home-control-status h3{font-size:26px}}
-@media(max-width:767px){.home-shell{padding:24px 16px 48px}.home-hero{display:block}.home-tools{margin-top:18px;justify-content:space-between}.home-tools .scope-switch{width:auto}.home-updated{width:100%;justify-content:flex-end}.home-panel{padding:18px;border-radius:18px}.home-panel-head{gap:10px}.home-deals .home-panel-head{align-items:flex-start;flex-direction:column}.home-deals .home-panel-head h2{display:grid;gap:0;font-size:17px}.home-outline{width:100%;min-height:46px}.home-flags,.home-grid,.home-lead-list{grid-template-columns:minmax(0,1fr)}.home-grid{gap:16px}.home-week{gap:3px}.home-day{min-height:86px;border-radius:10px}.home-day strong{font-size:24px}.home-day>span:first-child{font-size:9px}.home-control-status{min-height:130px;gap:20px}.home-radar{width:110px}}
-@media(prefers-reduced-motion:reduce){.home-shell *,.home-shell *:before{animation:none!important;transition:none!important;scroll-behavior:auto!important}.home-panel:hover,.home-flag:hover,.home-lead:hover,.home-shell a:active{transform:none}.home-radar .radar-wave{opacity:.3}}
+/* Home: one dominant element, the deals that need Joe, then quieter panels.
+ * Every value comes from css/tokens.css. Panels sit one tone step above the
+ * ground; rows inside a panel are separated by hairlines, never boxed again.
+ * Motion is state change only: hover and focus change border or ink. */
 
-.home-lead{width:100%;background:transparent;text-align:left;cursor:pointer}.home-lead-scores{width:100%;height:42px;fill:var(--orange)}.home-lead-scores .score-track{fill:rgba(242,138,57,.09)}.home-detail{width:min(1000px,calc(100vw - 32px));max-height:calc(100dvh - 32px);padding:32px;border:1px solid rgba(242,138,57,.4);border-radius:22px;color:var(--text);background:rgba(9,21,35,.96);backdrop-filter:blur(18px);box-shadow:0 36px 120px #0008;animation:home-enter .22s ease-out}.home-detail::backdrop{background:#03070dc9;backdrop-filter:blur(5px)}.home-detail-summary{display:flex;gap:30px;align-items:center;min-height:180px}.home-detail-score{font:600 72px/1 var(--display);color:var(--orange)}.home-detail-score small{display:block;font:12px var(--body);color:var(--muted);margin-top:8px}.home-detail h3{font:500 32px var(--display);margin:0}.home-detail p{color:var(--muted);font-size:14px}.home-detail summary{padding:16px 0;cursor:pointer;min-height:48px}.home-detail dl{display:grid;grid-template-columns:1fr 3fr;gap:16px;font-size:13px}.home-detail dt{color:var(--muted)}.home-detail dd{margin:0}.home-detail .home-outline{width:max-content;margin-top:24px}.home-detail button:focus-visible,.home-detail a:focus-visible,.home-detail summary:focus-visible{outline:2px solid var(--cyan);outline-offset:4px}@media(max-width:767px){.home-detail{padding:22px}.home-detail-summary{gap:20px;min-height:140px}}@media(prefers-reduced-motion:reduce){.home-detail{animation:none;transition:none}}
+.home-shell { max-width: 1180px; width: 100%; margin: 0 auto; padding: var(--space-6) var(--space-6) var(--space-7); }
+.home-hero { margin-bottom: var(--space-5); align-items: center; }
+.home-hero h1 { margin: 0; }
+.home-tools { display: flex; align-items: center; gap: var(--space-4); flex-wrap: wrap; }
+.home-updated { display: flex; align-items: center; gap: var(--space-2); color: var(--fg-quiet); font-size: var(--font-size-1); }
+.home-updated .observed::after { content: none; }
+.home-refresh { display: grid; place-items: center; min-width: var(--touch); min-height: var(--touch); border: 0; border-radius: var(--radius-2); background: transparent; color: var(--fg-muted); font-size: var(--font-size-3); cursor: pointer; transition: color var(--duration-hover) var(--ease-out), background-color var(--duration-hover) var(--ease-out); }
+.home-refresh:hover { color: var(--fg); background: var(--surface-2); }
+.home-refresh[aria-busy="true"] { opacity: 0.5; cursor: progress; }
+.scope-option { display: block; min-width: 100px; text-align: center; }
 
-.home-shell .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);clip-path:inset(50%);white-space:nowrap;border:0}.home-updated .observed::after{content:none}
-.home-detail h2,.home-detail h3,.home-detail p,.home-detail dt,.home-detail dd{min-width:0;overflow-wrap:anywhere}.home-detail .home-panel-head h2{flex:1}.home-detail .home-panel-head button{flex:none}.home-detail-summary>div{min-width:0;flex:1}.home-detail-score{flex:none}.home-detail dl{grid-template-columns:minmax(0,1fr) minmax(0,3fr)}@media(max-width:767px){.home-detail-summary{flex-wrap:wrap}.home-detail-summary>div{flex-basis:100%}}
-/* Invoice attention shares the dashboard card grid at every viewport. */
-#homeInvoices{margin-bottom:22px}
-#homeInvoices .home-panel-head{flex-wrap:wrap}
-#homeInvoices .home-panel-head h2{min-width:0;overflow-wrap:anywhere}
+.home-notice { margin: 0 0 var(--space-4); color: var(--status-warn-ink); font-size: var(--font-size-1); }
+.home-notice a { color: inherit; }
 
-#homeInvoices .home-flag-light{animation-duration:1s}
+/* Panels */
+.home-panel { min-width: 0; padding: var(--space-5); border: var(--hairline-width) solid var(--hairline); border-radius: var(--panel-radius); background: var(--surface-1); }
+.home-panel[hidden] { display: none; }
+.home-panel + .home-panel, .home-panel + .home-grid { margin-top: var(--space-4); }
+.home-panel-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-4); margin-bottom: var(--space-3); }
+.home-panel-head h2 { margin: 0; min-width: 0; font: var(--font-weight-strong) var(--font-size-2)/var(--line-height-heading) var(--font-text); color: var(--fg); overflow-wrap: anywhere; }
 
-/* Light theme only: darker text tokens for Home so deal and invoice titles reach 4.5:1. */
-:root[data-theme="light"] .home-shell{--text:#172d44;--muted:#425e7b;--quiet:#425e7b}
-/* Calendar tiles keep the dark fill otherwise; give them a light fill so the darker tokens stay readable. */
-:root[data-theme="light"] .home-day:not(.today){background:rgba(255,255,255,.72)}
-.home-introductions .relationship-card,.relationship-intro-list .relationship-card{font:inherit}
+/* The dominant panel: the deals that need Joe. */
+.home-deals { padding: var(--space-5) var(--space-6); }
+.home-deals .home-panel-head { align-items: flex-start; margin-bottom: var(--space-4); }
+.home-deals .home-panel-head h2 { font-size: var(--font-size-3); }
+.home-counts { display: flex; flex-wrap: wrap; gap: var(--space-1) var(--space-4); margin: var(--space-2) 0 0; color: var(--fg-muted); font-size: var(--font-size-1); font-variant-numeric: tabular-nums; }
+.home-counts span { white-space: nowrap; }
+.home-counts b { color: var(--fg); font-weight: var(--font-weight-strong); }
+
+/* Links that act. Only the primary one carries the accent. */
+.home-outline { display: inline-flex; align-items: center; justify-content: center; gap: var(--space-2); flex: none; min-height: var(--touch); padding: 0 var(--space-4); border: var(--hairline-width) solid var(--hairline-strong); border-radius: var(--radius-2); color: var(--fg); font-size: var(--font-size-1); font-weight: var(--font-weight-strong); text-decoration: none; transition: border-color var(--duration-hover) var(--ease-out), background-color var(--duration-hover) var(--ease-out); }
+.home-outline:hover { border-color: var(--fg-quiet); background: var(--surface-2); }
+#homePrimaryAction { border-color: var(--accent); background: var(--accent); color: var(--on-accent); }
+#homePrimaryAction:hover { border-color: var(--accent-hover); background: var(--accent-hover); }
+.home-icon-link { display: grid; place-items: center; flex: none; min-width: var(--touch); min-height: var(--touch); border-radius: var(--radius-2); color: var(--fg-muted); text-decoration: none; transition: color var(--duration-hover) var(--ease-out), background-color var(--duration-hover) var(--ease-out); }
+.home-icon-link:hover { color: var(--fg); background: var(--surface-2); }
+
+/* Rows: one line per item, separated by hairlines. */
+.home-flags { display: grid; margin: 0 calc(var(--space-3) * -1); }
+.home-flag { display: flex; align-items: center; gap: var(--space-3); min-height: 56px; padding: var(--space-3); border-top: var(--hairline-width) solid var(--hairline); border-radius: var(--radius-2); color: inherit; text-decoration: none; transition: background-color var(--duration-hover) var(--ease-out); }
+.home-flag:first-child { border-top-color: transparent; }
+.home-flag:hover { background: var(--surface-2); }
+.home-flag-light { flex: none; width: 8px; height: 8px; background: var(--status-warn); transform: rotate(45deg); }
+#homeInvoices .home-flag-light { background: var(--status-danger); transform: none; }
+.home-flag > div, .home-agenda a > div, .home-lead > div { min-width: 0; flex: 1; }
+.home-flag > div { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 var(--space-3); }
+.home-flag strong, .home-agenda strong, .home-lead strong { display: block; font-size: var(--font-size-2); font-weight: var(--font-weight-strong); line-height: 1.35; overflow-wrap: anywhere; }
+.home-flag div > span, .home-agenda div > span, .home-lead div > span { display: block; color: var(--fg-muted); font-size: var(--font-size-1); line-height: var(--line-height-body); overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+.home-arrow { flex: none; color: var(--fg-quiet); }
+.home-empty { margin: 0; padding: var(--space-3) 0; color: var(--fg-muted); font-size: var(--font-size-1); }
+
+/* The secondary grid. */
+.home-grid { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: var(--space-4); align-items: start; }
+.home-grid > .home-panel + .home-panel { margin-top: 0; }
+.home-grid #homeLeads, .home-grid #homePastClients { grid-column: 1 / -1; }
+
+/* Calendar: a quiet week strip, no tiles. */
+.home-calendar-link { display: block; color: inherit; text-decoration: none; border-radius: var(--radius-2); }
+.home-week { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: var(--space-1); padding-bottom: var(--space-3); border-bottom: var(--hairline-width) solid var(--hairline); }
+.home-day { display: flex; flex-direction: column; align-items: center; gap: var(--space-1); padding: var(--space-2) 0; border-radius: var(--radius-2); }
+.home-day > span:first-child { color: var(--fg-muted); font-size: var(--font-size-1); }
+.home-day strong { font: var(--font-weight-regular) var(--font-size-3)/1.2 var(--font-text); font-variant-numeric: tabular-nums; color: var(--fg); }
+.home-day.today { background: var(--surface-2); }
+.home-day.today strong { font-weight: var(--font-weight-strong); }
+.home-calendar-link:hover .home-day { background: var(--surface-2); }
+.home-day-marks { display: flex; justify-content: center; gap: 3px; height: 6px; }
+.home-day-marks i { display: block; width: 6px; height: 6px; border-radius: var(--radius-round); background: var(--data-1); }
+.home-day-marks .task { border-radius: 1px; background: var(--data-2); }
+.home-agenda { display: grid; margin: var(--space-2) calc(var(--space-3) * -1) 0; }
+.home-agenda a { display: flex; align-items: center; gap: var(--space-4); padding: var(--space-3); border-radius: var(--radius-2); color: inherit; text-decoration: none; transition: background-color var(--duration-hover) var(--ease-out); }
+.home-agenda a:hover { background: var(--surface-2); }
+.home-agenda time { min-width: 52px; color: var(--fg-muted); font-size: var(--font-size-1); font-variant-numeric: tabular-nums; }
+.home-item-type, .home-period { flex: none; color: var(--fg-quiet); font-size: var(--font-size-1); }
+.home-partial { display: block; margin-top: var(--space-3); color: var(--fg-quiet); font-size: var(--font-size-1); }
+
+/* Control room: a static status glyph and one sentence. */
+.home-control-link { display: block; color: inherit; text-decoration: none; }
+.home-control-link .home-panel-head > span { color: var(--fg-quiet); }
+.home-control-status { display: flex; align-items: center; gap: var(--space-4); }
+.home-control-status > div { min-width: 0; }
+.home-control-status h3 { margin: 0 0 var(--space-1); font: var(--font-weight-strong) var(--font-size-3)/var(--line-height-heading) var(--font-text); }
+.home-control-status p { margin: 0; color: var(--fg-muted); font-size: var(--font-size-1); line-height: var(--line-height-body); }
+.home-radar { flex: none; width: 48px; height: 48px; fill: none; stroke: currentColor; stroke-width: 4; color: var(--status-ok); }
+.home-control-status.attention .home-radar { color: var(--status-warn); }
+.home-radar .radar-wave { display: none; }
+.home-radar .radar-dot { fill: currentColor; stroke: none; }
+.home-control-link:hover h3 { text-decoration: underline; text-decoration-color: var(--hairline-strong); text-underline-offset: 4px; }
+
+/* New leads: scores are data, drawn in the first data series. */
+.home-lead-scores { display: block; width: 100%; height: 32px; margin-bottom: var(--space-2); fill: var(--data-1); }
+.home-lead-scores .score-track { fill: var(--surface-3); }
+.home-lead-list { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-3); }
+.home-lead { display: flex; align-items: center; gap: var(--space-3); width: 100%; padding: var(--space-3); border: var(--hairline-width) solid transparent; border-radius: var(--radius-2); background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; transition: border-color var(--duration-hover) var(--ease-out), background-color var(--duration-hover) var(--ease-out); }
+.home-lead:hover { border-color: var(--hairline); background: var(--surface-2); }
+.home-lead-rank { color: var(--fg-quiet); font-size: var(--font-size-3); font-variant-numeric: tabular-nums; }
+.home-score { display: grid; justify-items: end; min-width: 48px; }
+.home-score b { color: var(--fg); font-size: var(--font-size-3); font-weight: var(--font-weight-strong); font-variant-numeric: tabular-nums; }
+.home-score small { color: var(--fg-quiet); font-size: var(--font-size-1); }
+.home-introductions .relationship-card, .relationship-intro-list .relationship-card { font: inherit; }
+
+/* Focus and press, the shared ring. */
+.home-shell a:focus-visible, .home-shell button:focus-visible { outline: var(--focus-width) solid var(--focus-ring); outline-offset: 2px; }
+.home-shell .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); clip-path: inset(50%); white-space: nowrap; border: 0; }
+
+/* Lead detail dialog. */
+.home-detail { width: min(720px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); padding: var(--space-6); border: var(--hairline-width) solid var(--hairline-strong); border-radius: var(--panel-radius); background: var(--surface-2); color: var(--fg); box-shadow: var(--shadow-overlay); }
+.home-detail::backdrop { background: var(--scrim); }
+.home-detail .home-panel-head h2 { flex: 1; font-size: var(--font-size-4); }
+.home-detail .home-panel-head button { flex: none; }
+.home-detail-summary { display: flex; gap: var(--space-5); align-items: center; padding: var(--space-4) 0; }
+.home-detail-summary > div { min-width: 0; flex: 1; }
+.home-detail-score { flex: none; color: var(--fg); font: var(--font-weight-strong) var(--font-size-5)/1 var(--font-text); font-variant-numeric: tabular-nums; }
+.home-detail-score small { display: block; margin-top: var(--space-1); color: var(--fg-muted); font: var(--font-weight-regular) var(--font-size-1) var(--font-text); }
+.home-detail h3 { margin: 0; font: var(--font-weight-strong) var(--font-size-3) var(--font-text); }
+.home-detail p { margin: var(--space-1) 0 0; color: var(--fg-muted); font-size: var(--font-size-1); }
+.home-detail summary { display: flex; align-items: center; min-height: var(--touch); border-top: var(--hairline-width) solid var(--hairline); cursor: pointer; }
+.home-detail dl { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 3fr); gap: var(--space-3); margin: var(--space-2) 0; font-size: var(--font-size-1); }
+.home-detail dt { color: var(--fg-muted); }
+.home-detail dd { margin: 0; }
+.home-detail h2, .home-detail h3, .home-detail p, .home-detail dt, .home-detail dd { min-width: 0; overflow-wrap: anywhere; }
+.home-detail .home-outline { width: max-content; margin-top: var(--space-4); }
+.home-detail button:focus-visible, .home-detail a:focus-visible, .home-detail summary:focus-visible { outline: var(--focus-width) solid var(--focus-ring); outline-offset: 2px; }
+
+/* Invoice attention keeps its header from overflowing. */
+#homeInvoices .home-panel-head { flex-wrap: wrap; }
+
+/* Color Assist: markers carry a pattern as well as a hue. */
+:root[data-color-assist="on"] .home-flag-light { width: 10px; height: 10px; background: repeating-linear-gradient(45deg, var(--status-warn) 0 2px, transparent 2px 4px); outline: var(--hairline-width) solid var(--status-warn); }
+:root[data-color-assist="on"] #homeInvoices .home-flag-light { background: repeating-linear-gradient(0deg, var(--status-danger) 0 2px, transparent 2px 4px); outline-color: var(--status-danger); }
+
+@media (max-width: 1100px) {
+  .home-lead-list { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 767px) {
+  .home-shell { padding: var(--space-4) var(--space-4) var(--space-7); }
+  .home-hero { display: block; }
+  .home-tools { margin-top: var(--space-3); justify-content: space-between; }
+  .home-tools .scope-switch { width: auto; }
+  .home-updated { width: 100%; justify-content: flex-end; }
+  .home-panel, .home-deals { padding: var(--space-4); }
+  .home-deals .home-panel-head { flex-direction: column; align-items: stretch; gap: var(--space-3); }
+  #homePrimaryAction { width: 100%; }
+  .home-grid { grid-template-columns: minmax(0, 1fr); }
+  .home-flags, .home-agenda { margin-inline: calc(var(--space-2) * -1); }
+  .home-flag, .home-agenda a { padding-inline: var(--space-2); }
+  .home-detail { padding: var(--space-4); }
+  .home-detail-summary { flex-wrap: wrap; gap: var(--space-3); }
+  .home-detail-summary > div { flex-basis: 100%; }
+}

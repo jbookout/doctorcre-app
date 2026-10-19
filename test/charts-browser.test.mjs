@@ -3,7 +3,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { chromium } from './browser-harness.mjs';
+import { chromium } from 'playwright';
 
 const root = new URL('../', import.meta.url);
 const capture = JSON.parse(await readFile(new URL('test/fixtures/charts-synthetic.json', root), 'utf8'));
@@ -63,7 +63,9 @@ for (const motion of ['no-preference', 'reduce']) test(`Charts account Details o
   assert.equal(await details.evaluate(node => node.open), true);
   const style = await details.evaluate(node => ({ enter: getComputedStyle(node.querySelector('dl')).animationName,
     chevron: getComputedStyle(node.querySelector('summary'), '::after').transitionDuration }));
-  assert.deepEqual(style, motion === 'reduce' ? { enter: 'none', chevron: '0s' } : { enter: 'receipt-in', chevron: '0.27s' });
+  // V2: the opened content just appears; only the chevron turns, and not under reduced motion.
+  assert.equal(style.enter, 'none');
+  if (motion === 'reduce') assert.equal(style.chevron, '0s'); else assert.notEqual(style.chevron, '0s');
 });
 
 test('Charts keep keyboard focus on the slice control across its repaint', async t => {

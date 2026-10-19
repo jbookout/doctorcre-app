@@ -1,0 +1,75 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { mkdir, writeFile } from 'node:fs/promises';
+import { chromium } from './browser-harness.mjs';
+import { routeLeads } from './leads-browser-fixture.mjs';
+import { lead, workspace } from './leads-workspace-fixture.mjs';
+
+for (const width of [1440, 390]) for (const theme of ['dark', 'light']) {
+  test(`Leads uneven board stays readable and stage navigation stays usable at ${width}px ${theme}`, async t => {
+    const browser = await chromium.launch();
+    t.after(() => browser.close());
+    const page = await browser.newPage({ viewport: { width, height: width === 390 ? 844 : 1000 }, reducedMotion: 'reduce', colorScheme: theme });
+    const board = workspace();
+    board.leads = Array.from({ length: 45 }, (_, n) => lead(n + 1, {
+      doctor_name: `Synthetic practice ${n + 1}`, owner: 'example-partner',
+      stage: n < 43 ? 'new' : 'qualified', score: 90 - n,
+    }));
+    const writes = [], errors = [];
+    page.on('pageerror', error => errors.push(error.message));
+    await routeLeads(page, { getBoard: () => board, onWrite: value => writes.push(value) });
+    await page.goto('http://localhost/leads');
+    await page.locator('.lead-card').first().waitFor();
+    await page.evaluate(theme => document.documentElement.dataset.theme = theme, theme);
+    await page.locator('#appSidebarToggle').waitFor();
+    if (width === 390) {
+      await page.mouse.move(195, 600);
+      await page.mouse.wheel(0, 1600);
+      await page.waitForFunction(() => scrollY > 1000);
+      await page.waitForFunction(() => document.querySelector('.mobile-stage-nav').getBoundingClientRect().top <= 100);
+    } else {
+      await page.evaluate(() => scrollTo(0, document.querySelector('#leadBoard').getBoundingClientRect().top + scrollY - 80));
+    }
+    const layout = await page.evaluate(() => {
+      const select = document.querySelector('#mobileStage'), r = select.getBoundingClientRect();
+      const hit = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2);
+      return {
+        headerBottom: document.querySelector('.app-layout-tabbar').getBoundingClientRect().bottom,
+        navTop: document.querySelector('.mobile-stage-nav').getBoundingClientRect().top,
+        selectTop: r.top, selectHit: hit === select, hitClass: hit?.className,
+        lanes: [...document.querySelectorAll('.stage-column')].filter(node => node.getBoundingClientRect().width > 0).map(node => ({ stage: node.dataset.stage, width: node.getBoundingClientRect().width })),
+        overflow: document.documentElement.scrollWidth > innerWidth,
+      };
+    });
+    if (process.env.LEADS_SCREENSHOT_DIR) {
+      await mkdir(process.env.LEADS_SCREENSHOT_DIR, { recursive: true });
+      const path = `${process.env.LEADS_SCREENSHOT_DIR}/leads-${width}-${theme}`;
+      await page.screenshot({ path: `${path}.png` });
+      await writeFile(`${path}.json`, JSON.stringify(layout, null, 2));
+    }
+    assert.equal(layout.overflow, false);
+    if (width === 390) {
+      assert.ok(layout.navTop >= layout.headerBottom, JSON.stringify(layout));
+      assert.equal(layout.selectHit, true, 'stage selector receives its own center hit after wheel scrolling');
+      await page.locator('#mobileStage').selectOption('qualified');
+      await page.waitForFunction(() => document.querySelector('[data-stage="qualified"]').getBoundingClientRect().width > 0);
+      assert.equal(await page.locator('.stage-column:visible .lead-card').count(), 2);
+      assert.equal(await page.locator('#mobileStage').evaluate(select => {
+        const r = select.getBoundingClientRect();
+        return document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2) === select;
+      }), true, 'stage selection scroll keeps the selector unobscured');
+      await page.locator('#mobileStage').selectOption('engaged');
+      assert.equal(await page.locator('.stage-column:visible .stage-empty').innerText(), 'No leads in Engaged');
+    } else {
+      assert.equal(layout.lanes.length, 2, 'only populated stages consume desktop width');
+      assert.ok(layout.lanes.every(lane => lane.width >= 280), JSON.stringify(layout));
+      const card = page.locator('.lead-card').first();
+      await card.dispatchEvent('dragstart', { dataTransfer: await page.evaluateHandle(() => new DataTransfer()) });
+      assert.equal(await page.locator('.stage-column:visible').count(), 6, 'drag still offers every stage destination');
+      await card.dispatchEvent('dragend');
+      assert.equal(await page.locator('.stage-column:visible').count(), 2);
+    }
+    assert.deepEqual(writes, []);
+    assert.deepEqual(errors, []);
+  });
+}

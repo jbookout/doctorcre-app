@@ -8,5 +8,6 @@ test('QA-025 Atlas stops reporting Updating after a terminal read failure', { ta
   await expect(browser.locator('#atlasState')).toContainText('System map temporarily unavailable');
   await screen.getByRole('button', 'Refresh', { exact: true }).tap();
   await expect(browser.locator('#atlasState')).toContainText('System map temporarily unavailable');
-  await expect(browser.locator('#atlasVersionLine')).not.toContainText('Updating');
+  await expect(browser.locator('#atlasOrb')).toHaveAttribute('data-state', 'urgent');
+  await expect(browser.locator('#atlasState')).not.toContainText('Updating');
 });

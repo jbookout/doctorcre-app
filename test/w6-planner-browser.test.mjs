@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile, mkdir } from "node:fs/promises";
-import { chromium } from "./browser-harness.mjs";
+import { chromium } from "playwright";
 
 const root = new URL("../", import.meta.url);
 const clientId = "11111111-1111-4111-8111-111111111111", tourId = "22222222-2222-4222-8222-222222222222";
@@ -34,7 +34,7 @@ async function open(t, width) {
       }
       else if (url.pathname === `/api/v1/business/clients/${clientId}`) data = { record: client };
       else data = {};
-      return route.fulfill({ contentType: "application/json", body: JSON.stringify({ data, csrf_token: "synthetic-session" }) });
+      return route.fulfill({ contentType: "application/json", body: JSON.stringify(url.pathname.startsWith("/api/v1/business/") ? data : { data, csrf_token: "synthetic-session" }) });
     }
     const file = url.pathname === "/tours" ? "tours/index.html" : url.pathname.slice(1);
     try {
@@ -55,7 +55,13 @@ test("W6 desktop and phone render, client prefill/undo, private files, wide popu
     await page.locator("#plan-area").fill("Typed tour area"); await page.getByLabel("Undo tour edit", { exact: true }).click();
     assert.equal(await page.locator("#plan-area").inputValue(), "Pensacola, FL");
     await page.locator("#plan-date").fill("2026-10-08"); await page.locator("#plan-dwell").fill("25");
+    assert.equal(await page.locator("#file-count").textContent(), "0 files");
     await page.locator("#packet-upload").setInputFiles({ name: "demo-report.txt", mimeType: "text/plain", buffer: Buffer.from("Synthetic private report bytes") });
+    assert.equal(await page.locator("#file-count").textContent(), "1 file");
+    await page.locator("#packet-upload").setInputFiles({ name: "demo-second.txt", mimeType: "text/plain", buffer: Buffer.from("Synthetic second private report") });
+    assert.equal(await page.locator("#file-count").textContent(), "2 files");
+    await page.getByRole("button", { name: "Remove demo-second.txt", exact: true }).click();
+    assert.equal(await page.locator("#file-count").textContent(), "1 file");
     assert.match(await page.locator("#packet-files").textContent(), /demo-report/);
     assert.equal(await page.evaluate(() => sessionStorage.getItem("doctorcre-tour-planning-drafts-v1").includes("demo-report")), false);
     await page.locator('[data-market="Pensacola, FL"]').click(); assert.equal(await page.locator("#space-area").inputValue(), "Pensacola, FL");
@@ -63,7 +69,7 @@ test("W6 desktop and phone render, client prefill/undo, private files, wide popu
     await page.locator("#space-requirements").fill("Ground floor · accessible entry");
     await page.locator("#save-search").click(); assert.match(await page.locator("#space-message").textContent(), /saved/);
     assert.equal(await page.locator("#property-search-form").count(), 0);
-    assert.ok(await page.locator(".territory-map").evaluate(el => el.getAnimations({ subtree: true }).length > 0));
+    assert.equal(await page.locator(".territory-map").evaluate(el => el.getAnimations({ subtree: true }).length), 0, "V2: the territory map has no decorative motion");
     await page.evaluate(() => { document.activeElement?.blur(); window.scrollTo(0, 0); });
     await page.screenshot({ path: new URL(`out/test-artifacts/w6/${name}.png`, root).pathname, fullPage: true, animations: "disabled" });
     await page.locator("#review-packet").click(); await page.locator("#tour-dialog").waitFor({ state: "visible" });

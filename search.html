@@ -3,9 +3,10 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-  <meta name="theme-color" content="#07111f">
   <title>Search · DoctorCRE</title>
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=DM+Sans:wght@400;500;600;700&display=swap">
+  <script src="/js/theme-boot.js"></script>
+  <link rel="stylesheet" href="/css/tokens.css">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600&display=swap">
   <link rel="stylesheet" href="/css/system.css">
   <link rel="stylesheet" href="/css/business-workspace.css">
   <link rel="stylesheet" href="/css/app-shell.css">
@@ -14,7 +15,7 @@
   <div id="appShell"></div><script type="module" src="/js/app-shell.js"></script>
   <a class="skip" href="#main">Skip to search</a>
   <main id="main" class="shell">
-    <div data-layout-slot="sidebar" class="hero"><div><p class="eyebrow">Across authorized records</p><h1>Search</h1></div></div>
+    <div data-layout-slot="sidebar" class="hero"><div><h1>Search</h1></div></div>
     <section class="card glass" data-search="ask" aria-labelledby="searchTitle">
       <div class="card-heading"><h2 id="searchTitle">Find a record</h2></div>
       <form id="searchForm"><div class="field"><label for="searchQuery">Name to search</label><input id="searchQuery" type="search" maxlength="200" autocomplete="off" placeholder="Person, practice, building, deal, lead or vendor"></div><div class="row-wrap"><button class="btn btn-primary" type="submit">Search</button><span class="small" id="searchCount"></span></div></form>

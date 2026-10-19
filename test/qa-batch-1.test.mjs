@@ -55,16 +55,19 @@ test("every Home page control resolves to a real route, never /business", async 
   assert.equal(routes.redirects["/business"], "/");
 });
 
-test("Deal Room phone strips scroll in their own regions with dark scrollbars", async () => {
+test("Deal Room phone strips scroll in their own regions with token scrollbars", async () => {
   const css = await read("css/app.css");
   const shell = await read("css/app-shell.css");
-  assert.match(css, /\.focus,\.filters,\.table-frame[^{]*\{[^}]*max-width:100%[^}]*overscroll-behavior-x:contain[^}]*scrollbar-color:#3a5878 #0a1a2e/);
-  assert.match(css, /\.focus::-webkit-scrollbar-thumb[^{]*\{[^}]*background:#3a5878/);
-  assert.match(css, /\.focus\{[^}]*overflow:auto/);
-  assert.match(css, /\.filters\{[^}]*overflow:auto/);
-  assert.match(css, /@media\(max-width:680px\)\{html,body\{max-width:100%;overflow-x:clip\}/);
-  assert.match(shell, /\.app-shell-more-list[^}]*max-height:calc\(100dvh - 125px\)/);
-  assert.match(shell, /scrollbar-color:#3a5878 #0a1a2e/);
+  // V2 S1: app.css reads scrollbar colours from css/tokens.css, as the shell does.
+  assert.match(css, /\.focus,\s*\.filters,\s*\.table-frame[^{]*\{[^}]*max-width:\s*100%[^}]*overscroll-behavior-x:\s*contain[^}]*scrollbar-color:\s*var\(--hairline-strong\) transparent/);
+  assert.match(css, /\.focus::-webkit-scrollbar-thumb[^{]*\{[^}]*background:\s*var\(--hairline-strong\)/);
+  assert.match(css, /\.focus\s*\{[^}]*overflow:\s*auto/);
+  assert.match(css, /\.filters\s*\{[^}]*overflow:\s*auto/);
+  assert.match(css, /@media\s*\(max-width:\s*680px\)\s*\{\s*html,\s*body\s*\{\s*max-width:\s*100%;\s*overflow-x:\s*clip;?\s*\}/);
+  // S8: the list stops above the phone bottom chrome, whatever its height.
+  assert.match(shell, /\.app-shell-more-list[^}]*max-height:\s*calc\(100dvh - var\(--layout-bottom\) - var\(--space-5\)\)/);
+  // V2 S0: the shared shell reads scrollbar colours from css/tokens.css.
+  assert.match(shell, /\.app-shell-more-list[^{]*\{[^}]*scrollbar-color:\s*var\(--hairline-strong\) transparent/);
 });
 
 test("Search on a phone caps the candidate list inside its own scroll region", async () => {
@@ -82,7 +85,7 @@ test("Search on a phone caps the candidate list inside its own scroll region", a
     assert.equal(list.style.getPropertyValue("overflow-y"), "auto");
     assert.equal(list.style.getPropertyValue("overscroll-behavior"), "contain");
     assert.equal(list.style.getPropertyValue("scrollbar-width"), "thin");
-    assert.equal(list.style.getPropertyValue("scrollbar-color"), "var(--line-strong) transparent");
+    assert.equal(list.style.getPropertyValue("scrollbar-color"), "var(--hairline-strong) transparent");
     const state = phoneRules.find((rule) => rule.selectorText === '#searchState[data-state^="disamb"]');
     assert.ok(state, "disambiguation notice rule exists inside the phone media query");
     assert.equal(state.style.getPropertyValue("display"), "none");

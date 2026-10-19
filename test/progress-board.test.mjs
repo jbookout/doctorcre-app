@@ -145,13 +145,13 @@ test("every indicator the renderer emits has a legend entry, from the same const
   assert.deepEqual(unknown, ["glyph-mystery"]);
   // The legend samples use the renderer's own values.
   const { $ } = await mount(FULL.project);
-  assert.match($('[data-legend-id="pulse-critical"] .legend-pulse').getAttribute("style"), /--pulse-speed:1s/);
-  assert.match($('[data-legend-id="pulse-healthy"] .legend-pulse').getAttribute("style"), /--pulse-speed:3\.5s/);
-  assert.match($('[data-legend-id="stage-build"] .swatch').getAttribute("style"), /#fb7b32/);
+  assert.match($('[data-legend-id="pulse-critical"] .legend-pulse').getAttribute("style"), /--pulse-speed:\s*1s/);
+  assert.match($('[data-legend-id="pulse-healthy"] .legend-pulse').getAttribute("style"), /--pulse-speed:\s*3\.5s/);
+  assert.match($('[data-legend-id="stage-build"] .swatch').getAttribute("style"), /--swatch:\s*var\(--data-2\)/);
   assert.equal($('[data-legend-id="glyph-codex"] .glyph').textContent, "C");
   const card = $('[data-card-id="ci-card"]');
-  assert.match(card.getAttribute("style"), /--pulse-speed:1s/);
-  assert.match(card.getAttribute("style"), /--stage-accent:#ff88bd/);
+  assert.match(card.getAttribute("style"), /--pulse-speed:\s*1s/);
+  assert.match(card.getAttribute("style"), /--stage-accent:\s*var\(--status-warn\)/);
   assert.equal(card.querySelector(".glyph").textContent, "G");
 });
 
@@ -164,7 +164,8 @@ test("legend is one tap away and closes with Escape", async () => {
   assert.equal(toggle.getAttribute("aria-expanded"), "true");
   window.document.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Escape" }));
   assert.equal($("#legend").hidden, true);
-  assert.match(CSS, /\.legend-toggle \{ position: fixed;/);
+  // S8: the Key sits in the page flow beside the board switch; it never floats over a heading or card.
+  assert.match(CSS, /\.legend-toggle \{ position: static;/);
 });
 
 test("Live sorts newest first: highest PR first within a repo, all-repos by release time", () => {
@@ -438,9 +439,12 @@ test("live client sends answer through same-origin MCP with the retained key", a
   assert.equal("answered_by" in rpc.params.arguments, false);
 });
 
-test("page keeps motion real and respects reduced motion; phone stacks one column", () => {
-  assert.match(CSS, /\.board-card:not\(\[data-pulse="still"\]\) \.halo \{ animation: pulse var\(--pulse-speed\)/);
-  assert.match(CSS, /\.rail-line \{[^}]*animation: flow/);
+test("page holds still except on a real change, respects reduced motion; phone stacks one column", () => {
+  // V2: the pulse is a still ring whose border style carries the state, and
+  // the rail line no longer flows. Only a changed card animates, once.
+  assert.doesNotMatch(CSS, /infinite/, "no looping ambient animation on the board");
+  assert.match(CSS, /\.board-card\[data-pulse="critical"\] \.halo \{ border: 3px double/);
+  assert.match(CSS, /\.board-card\.changed \{ animation: changed-in var\(--duration-panel\)[^}]* 1; \}/);
   assert.match(CSS, /\.board-card\.outline-dashed \{ border-style: dashed;/, "blocked stays distinct without motion");
   assert.match(CSS, /@media \(prefers-reduced-motion: reduce\) \{[^@]*animation: none !important;/);
   assert.match(CSS, /@media \(max-width: 680px\) \{[^@]*\.columns, \.lower-grid \{ grid-template-columns: minmax\(0, 1fr\); \}/);
@@ -497,7 +501,9 @@ test("recorded source cards retain their filter and detail outside the release s
   $("#filter-stage").dispatchEvent(new window.Event("change"));
   assert.equal($$("#board-stages [data-stage='recorded'] .board-card").length, 1);
   assert.equal($$("#board-stages [data-stage='live'] .board-card").length, 0);
-  assert.equal($$("#board-stages [data-stage='recorded'] .stage-index").length, 0);
+  // S8: lanes carry no index numbers, and counts are plain numbers, never zero-padded.
+  assert.equal($$("#board-stages .stage-index").length, 0);
+  assert.ok($$("#board-stages .stage-count").every(node => !/^0\d/.test(node.textContent)));
   assert.equal($$("#completed-list [data-stage='recorded']").length, 1);
   assert.match($("#completed-count").textContent, /1 RECORDED/);
   board.dispose();

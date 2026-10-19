@@ -49,10 +49,13 @@ export function appShellMarkup(pathname, base = "", search = "") {
       <div class="app-shell-account"><button class="app-shell-avatar" id="selfAvatar" type="button" aria-label="Account and settings" aria-expanded="false" aria-controls="accountMenu">…</button>
         <div class="app-shell-account-menu" id="accountMenu" hidden>
           <strong id="accountWorkspace">Workspace</strong>
+          <div class="app-shell-account-group" role="group" aria-label="Account"><h3>Account</h3>
           <button type="button" id="accountProfile">Profile</button>
           <button type="button" id="accountTheme">Theme</button>
           <a href="${base}/updates#prefForm">Notification preferences</a>
           <a href="${base}/doc-activity"${pathname === "/doc-activity" ? ' aria-current="page"' : ""}>Doc Activity</a>
+          </div>
+          <div id="accountWorkspaceControls" class="app-shell-workspace-group" role="group" aria-label="Workspace" hidden><h3>Workspace</h3></div>
           <button type="button" id="accountSignOut">Sign out</button>
           <p id="accountStatus" role="status"></p>
         </div>

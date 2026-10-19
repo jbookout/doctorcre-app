@@ -3,15 +3,14 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-  <meta name="theme-color" content="#07111f">
   <meta name="description" content="DoctorCRE Ideas — the parked ideas both partners share, ">
   <title>Ideas &amp; Events · DoctorCRE</title>
   <link rel="manifest" href="/manifest.webmanifest">
   <link rel="apple-touch-icon" href="/icons/dealroom-192.png">
   <link rel="icon" href="/icons/dealroom.svg" type="image/svg+xml">
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=DM+Sans:wght@400;500;600;700&display=swap">
+  <script src="/js/theme-boot.js"></script>
+  <link rel="stylesheet" href="/css/tokens.css">
+  <link rel="preload" as="style" data-font-stylesheet href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600&display=swap">
   <link rel="stylesheet" href="/css/system.css">
   <link rel="stylesheet" href="/css/ideas.css">
   <link rel="stylesheet" href="/css/app-shell.css">
@@ -31,8 +30,8 @@
   <main id="main" class="shell">
     <section class="card glass" aria-labelledby="pageTitle">
       <div>
-        <p class="eyebrow"><span class="orb" data-state="still" id="ideaOrb" aria-hidden="true"></span> Parked ideas · one shared record for both partners</p>
         <h1 id="pageTitle">Ideas &amp; Events</h1>
+        <p class="page-sub"><span class="orb" data-state="still" id="ideaOrb" aria-hidden="true"></span> Parked ideas and industry events, shared by both partners</p>
       </div>
       <div class="chip-bar">
         <span class="status" data-state="unknown" id="ideaStatus"><span class="orb" data-state="unknown" aria-hidden="true"></span> <span id="ideaStatusLabel">Updating…</span></span>
@@ -49,7 +48,7 @@
 
     <section class="card glass" id="ideasPanel" role="tabpanel" aria-labelledby="tabIdeas">
       <div class="card-heading">
-        <div><p class="eyebrow">Open ideas</p><h2 id="ideaListTitle">Browse</h2></div>
+        <div><h2 id="ideaListTitle">Parked ideas</h2></div>
         <div class="field idea-search">
           <label for="ideaSearch">Search ideas</label>
           <input id="ideaSearch" type="search" autocomplete="off" placeholder="Words, a number, or an owner">
@@ -65,7 +64,7 @@
 
     <section class="card glass" id="eventsPanel" role="tabpanel" aria-labelledby="tabEvents" hidden>
       <div class="card-heading">
-        <div><p class="eyebrow">Industry events</p><h2>Conferences & connections</h2></div>
+        <div><h2>Industry events</h2></div>
         <button class="btn btn-primary" type="button" id="eventAdd">Add event</button>
       </div>
       <div class="event-timeline glass" id="eventTimeline" aria-label="Event timeline">

@@ -3,7 +3,6 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-  <meta name="theme-color" content="#07111f">
   <meta name="description" content="DoctorCRE Tasks — the shared record of open task and team loops, with capture, handover and completion">
   <title>Choose work · DoctorCRE</title>
   <link rel="manifest" href="/manifest.webmanifest">
@@ -11,7 +10,9 @@
   <link rel="icon" href="/icons/dealroom.svg" type="image/svg+xml">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=DM+Sans:wght@400;500;600;700&display=swap">
+  <script src="/js/theme-boot.js"></script>
+  <link rel="stylesheet" href="/css/tokens.css">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600&display=swap">
   <link rel="stylesheet" href="/css/system.css">
   <link rel="stylesheet" href="/css/tasks.css">
   <link rel="stylesheet" href="/css/app-shell.css">
@@ -44,7 +45,7 @@
 
     <section class="card glass tasks-quick-add" aria-labelledby="quickTitle">
       <details class="quick-add" id="quickAddPanel" open>
-      <summary class="quick-add-summary"><span><span class="eyebrow">Capture</span> <span class="quick-add-title" id="quickTitle">Quick add</span></span><span class="quick-add-toggle" aria-hidden="true"></span></summary>
+      <summary class="quick-add-summary"><span><span class="quick-add-title" id="quickTitle">Quick add</span></span><span class="quick-add-toggle" aria-hidden="true"></span></summary>
       <form id="quickAddForm" hidden>
         <div class="field">
           <label for="quickAddInput">Sentence</label>
@@ -71,7 +72,7 @@
 
     <section class="card glass tasks-open" aria-labelledby="listTitle">
       <div class="card-heading">
-        <div><p class="eyebrow">Open work</p><h2 id="listTitle">Records</h2></div>
+        <div><h2 id="listTitle">Records</h2></div>
         <div class="btn-group" id="scopeSwitch" role="group" aria-label="Scope">
           <button class="btn" type="button" data-scope="team" aria-pressed="true">Team</button>
           <button class="btn" type="button" data-scope="mine" aria-pressed="false">Mine</button>
@@ -116,7 +117,6 @@
   </dialog>
 
   <div id="receiptDock" class="receipt-dock" role="group" aria-label="Command feedback"></div>
-  <footer class="shell"><p class="small">DoctorCRE · Tasks · One record, one owner, one safety key per command.</p></footer>
   <script type="module" src="/js/task-records.js"></script>
 </body>
 </html>

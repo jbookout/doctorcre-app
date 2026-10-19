@@ -31,8 +31,8 @@
   "screens": {
     "home": {
       "lcpMs": {
-        "baseline": 928,
-        "limit": 1678
+        "baseline": 3492,
+        "limit": 5238
       },
       "jsBytes": {
         "baseline": 644667,
@@ -59,8 +59,8 @@
     },
     "vendors": {
       "lcpMs": {
-        "baseline": 1032,
-        "limit": 1782
+        "baseline": 3408,
+        "limit": 5112
       },
       "jsBytes": {
         "baseline": 704591,

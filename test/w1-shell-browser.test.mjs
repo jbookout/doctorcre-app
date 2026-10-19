@@ -123,6 +123,7 @@ test('desktop and phone navigation, account and Call mode work with reduced moti
     assert.ok(controls.every(e => e.width >= 44 && e.height >= 44)); assert.ok(controls.every(e => e.transition === '0s'));
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
     await page.keyboard.press('Escape');
+    if (width <= 760) await page.locator('#selfAvatar').click();
     await page.getByLabel('Call mode', {exact:true}).click(); await page.waitForFunction(() => document.querySelector('#callModeDialog')?.open);
     assert.equal(await page.locator('#callModeConsent').isChecked(), false);
     assert.equal(calls.some(call => call.method === 'POST' && !['deal-room-board','morning-brief','today-triage','list-feature-switches','list-doc-suggestions'].includes(call.verb)), false, 'opening Call mode never starts recording');

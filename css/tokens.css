@@ -1,0 +1,185 @@
+/* DoctorCRE V2 tokens: the one place a colour, size, face or duration is set.
+ *
+ * Calm neutral surfaces, real dark and light themes, one restrained accent
+ * (CARR orange, only on the primary action and the focus ring), one text face
+ * on five sizes, and quiet hairlines used sparingly. Every other stylesheet
+ * reads these roles and never writes a raw value.
+ *
+ * Theme travels on <html>: data-theme="dark|light", data-color-assist="on",
+ * data-motion="reduced". js/theme-boot.js sets them before first paint and
+ * js/shell.js keeps them current.
+ */
+
+:root {
+  color-scheme: dark;
+
+  /* Dark: a low-chroma deep navy-tinted neutral, never pure black. */
+  --ground: #111419;
+  --surface-1: #1a1e27;
+  --surface-2: #222833;
+  --surface-3: #283040;
+  --hairline: #2b3240;
+  --hairline-strong: #414b5c;
+  --fg: #e3e7ed;
+  --fg-muted: #b9c1cc;
+  --fg-quiet: #a3acb8;
+  --scrim: rgba(6, 9, 14, 0.72);
+
+  --accent: #f57f29;
+  --accent-hover: #f79348;
+  --on-accent: #1b1006;
+  --accent-ink: #f8a267;
+  --focus-ring: #f57f29;
+
+  /* Status roles: always carried by a word or glyph as well as colour. */
+  --status-ok: #6cc497;
+  --status-ok-ink: #8fd6b0;
+  --status-warn: #dcae55;
+  --status-warn-ink: #e8c47e;
+  --status-danger: #ec8479;
+  --status-danger-ink: #f3a59c;
+  --status-info: #7ab4dc;
+  --status-info-ink: #9cc8e6;
+  --status-hold: #a99bd6;
+  --status-hold-ink: #c3b9e6;
+
+  /* Data series for charts and diagrams: data, never chrome. */
+  --data-1: #7ab4dc;
+  --data-2: #d9925a;
+  --data-3: #a99bd6;
+  --data-4: #6cc497;
+
+  --shadow-overlay: 0 12px 32px rgba(0, 0, 0, 0.38);
+  --shadow-raised: 0 1px 2px rgba(0, 0, 0, 0.3);
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+
+  /* Light: a desaturated warm grey; cards one step lighter, never bright white. */
+  --ground: #e6e4df;
+  --surface-1: #eeece8;
+  --surface-2: #f4f2ee;
+  --surface-3: #dbd8d2;
+  --hairline: #d0ccc4;
+  --hairline-strong: #aaa59c;
+  --fg: #1e2126;
+  --fg-muted: #474c54;
+  --fg-quiet: #585d65;
+  --scrim: rgba(30, 33, 38, 0.42);
+
+  --accent: #f57f29;
+  --accent-hover: #f79348;
+  --on-accent: #1b1006;
+  --accent-ink: #9a440a;
+  --focus-ring: #b4520c;
+
+  --status-ok: #2f7a4f;
+  --status-ok-ink: #24613e;
+  --status-warn: #946100;
+  --status-warn-ink: #7a5000;
+  --status-danger: #b23a30;
+  --status-danger-ink: #962f26;
+  --status-info: #2a6a99;
+  --status-info-ink: #22587f;
+  --status-hold: #6151a3;
+  --status-hold-ink: #4f4189;
+
+  --data-1: #2a6a99;
+  --data-2: #a95a1c;
+  --data-3: #6151a3;
+  --data-4: #2f7a4f;
+
+  --shadow-overlay: 0 12px 32px rgba(40, 36, 30, 0.18);
+  --shadow-raised: 0 1px 2px rgba(40, 36, 30, 0.12);
+}
+
+/* Color Assist: status roles move to a colour-blind-safe set (Okabe-Ito);
+   pattern encoding in css/app-shell.css carries the same states by shape. */
+:root[data-color-assist="on"] {
+  --status-ok: #56b4e9;
+  --status-ok-ink: #8ccdf0;
+  --status-warn: #e69f00;
+  --status-warn-ink: #f0bb4a;
+  --status-danger: #e8743a;
+  --status-danger-ink: #f19a6c;
+  --status-info: #a8c8e0;
+  --status-info-ink: #c2d8e9;
+  --hairline: #4a5466;
+  --hairline-strong: #6a7588;
+}
+:root[data-theme="light"][data-color-assist="on"] {
+  --status-ok: #0b6aa6;
+  --status-ok-ink: #095a8d;
+  --status-warn: #8f5f00;
+  --status-warn-ink: #774f00;
+  --status-danger: #a64600;
+  --status-danger-ink: #8c3b00;
+  --status-info: #3c5a73;
+  --status-info-ink: #324b60;
+  --hairline: #a9a399;
+  --hairline-strong: #7d776d;
+}
+
+:root {
+  /* Type: one text face plus mono for code; five sizes at least 1.25x apart. */
+  --font-text: "DM Sans", "Helvetica Neue", Arial, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --font-size-1: 0.8125rem;  /* 13px  meta, captions */
+  --font-size-2: 1.03125rem; /* 16.5px body, controls */
+  --font-size-3: 1.3125rem;  /* 21px  heading */
+  --font-size-4: 1.6875rem;  /* 27px  title */
+  --font-size-5: 2.125rem;   /* 34px  page title, key figure */
+  --font-weight-regular: 400;
+  --font-weight-strong: 600;
+  --line-height-body: 1.5;
+  --line-height-heading: 1.15;
+
+  /* Space, shape, elevation. */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 48px;
+  --radius-1: 4px;
+  --radius-2: 6px;
+  --radius-3: 10px;
+  --radius-round: 999px;
+  --hairline-width: 1px;
+  --focus-width: 2px;
+  --touch: 44px;
+
+  /* Motion: state changes only, transform and opacity only. */
+  --duration-press: 120ms;
+  --duration-hover: 160ms;
+  --duration-menu: 200ms;
+  --duration-panel: 300ms;
+  --ease-out: cubic-bezier(0.2, 0, 0, 1);
+  --press-scale: 0.96;
+
+  /* Workspace panels (Trellis ruling 7); docking itself is V3. */
+  --panel-radius: var(--radius-3);
+  --panel-gap: var(--space-3);
+  --tabbar-height: 56px;
+
+  /* Long-running state motion: the Atlas core and observed edges (a real
+     "switched on" state, paused by the motion control) and toast life. */
+  --motion-calm: 5.25s;
+  --motion-flow: 12s;
+  --motion-toast: 4s;
+
+  /* Status tints for health fills; the word or glyph still carries the state. */
+  --health-degraded: color-mix(in srgb, var(--status-warn) 26%, transparent);
+  --health-failed: color-mix(in srgb, var(--status-danger) 30%, transparent);
+  --health-unknown: color-mix(in srgb, var(--fg-quiet) 26%, transparent);
+
+  /* Density (data-density on <html>): comfortable by default, compact on request. */
+  --density: 1;
+  --gap: calc(var(--space-4) * var(--density));
+  --pad: calc(var(--space-4) * var(--density));
+  --pad-card: calc(var(--space-5) * var(--density));
+}
+
+:root[data-density="compact"] { --density: 0.75; }

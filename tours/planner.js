@@ -1,7 +1,7 @@
 import { pageDocContext, publishDocRead, selectDocRecord, setDocFilters } from '../js/doc-context.js';
 import { mountAutoRefresh, updatedLabel } from "../js/auto-refresh.mjs";
 import { createPlannerClient, validateTourList, validateClientList, validateClientRecord, validateTourDetail } from "./planner-client.js";
-import { cheatSheetText } from "./tour-format.js";
+import { cheatSheetText, tourDisplayName } from "./tour-format.js";
 import { PLAN_FIELDS, SEARCH_FIELDS, createDraft, clientSuggestions, tourGroups, validateCriteria, addPrivateFiles } from "./planner-model.js";
 
 export function mountPlanner({ document, window, api = createPlannerClient() }) {
@@ -120,7 +120,7 @@ export function mountPlanner({ document, window, api = createPlannerClient() }) 
       for (const tour of groups[group]) {
         const item = element("li"), button = element("button", undefined, "tour-button");
         button.type = "button"; button.dataset.tourId = tour.id;
-        button.append(element("strong", tour.name || "Untitled tour"), element("span", (tour.status || "draft").replaceAll("_", " ")));
+        button.title = tour.name || "Untitled tour"; button.append(element("strong", tourDisplayName(tour.name)), element("span", (tour.status || "draft").replaceAll("_", " ")));
         button.addEventListener("click", () => void openTour(tour.id, button)); item.append(button); list.append(item);
       }
       if (!groups[group].length) list.append(element("li", $("#tour-filter").value ? "No matching tours" : group === "upcoming" ? "No upcoming tours" : "No past tours", "empty-library"));
@@ -142,7 +142,7 @@ export function mountPlanner({ document, window, api = createPlannerClient() }) 
     const body = $("#detail-content"), dialog = $("#tour-dialog"), scroll = dialog.scrollTop;
     const expanded = body.querySelector("details")?.open;
     const focused = body.contains(document.activeElement) ? document.activeElement.tagName : null;
-    message("#detail-title", tour.name || "Tour");
+    message("#detail-title", tourDisplayName(tour.name, "Tour"));
     body.replaceChildren();
     const summary = element("div", undefined, "detail-summary");
     summary.append(element("span", (tour.status || "draft").replaceAll("_", " "), "pill"));
@@ -190,7 +190,7 @@ export function mountPlanner({ document, window, api = createPlannerClient() }) 
       const remove = element("button", "×"); remove.type = "button"; remove.setAttribute("aria-label", `Remove ${file.name}`);
       remove.addEventListener("click", () => { files.splice(index, 1); renderFiles(); }); row.append(label, remove); list.append(row);
     });
-    message("#file-count", `${files.length} files`);
+    message("#file-count", `${files.length} ${files.length === 1 ? "file" : "files"}`);
   }
   function acceptFiles(incoming) {
     restoreOrClear();

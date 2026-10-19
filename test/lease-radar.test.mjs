@@ -84,7 +84,7 @@ test('HTTP seam is credentialed no-store read only; malformed/refused data canno
 
 test('merged route contract adds leases beside relationships and Progress under a new minor version', async () => {
   const routes = (await import("../js/routes.js")).routeContract;
-  assert.equal(routes.version, '1.20.0');
+  assert.equal(routes.version, '1.21.0');
   assert.equal(routes.routes['/leases'], 'lease-radar.html');
   assert.equal(routes.routes['/relationships'], 'relationships.html');
   assert.equal(routes.routes['/control-room/progress/work'], 'progress-work.html');

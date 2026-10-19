@@ -289,23 +289,24 @@ test("no verb this slice would need for a real causal failure graph is pinned as
 const css = await read("css/control-room.css");
 const systemCss = await read("css/system.css");
 
-test("the open-incident badge pulses for real, and the collapsed-ancestor alert pops on arrival", () => {
+test("the open-incident badge arrives once and then holds still, carried by shape and word", () => {
   assert.match(atlasJs, /data-atlas-alert="group"/, "the collapsed-group marker is distinguishable from the per-node chip");
-  assert.match(css, /\.chip\[data-atlas-chip="incident"\] \{ animation: breathe var\(--motion-urgent\)/);
-  assert.match(css, /\.chip\[data-atlas-chip="incident"\]\[data-atlas-alert="group"\] \{[\s\S]{0,120}animation: receipt-in var\(--motion-enter\)/);
+  assert.match(css, /\.chip\[data-atlas-chip="incident"\] \{ animation: receipt-in var\(--duration-panel\)[^}]*border-style: dashed;/);
+  assert.match(css, /\.chip\[data-atlas-chip="incident"\]\[data-atlas-alert="group"\] \{[\s\S]{0,120}animation: receipt-in var\(--duration-panel\)/);
+  assert.doesNotMatch(css, /data-atlas-chip="incident"[^{]*\{[^}]*infinite/, "V2: no looping pulse on the incident badge");
 });
 
 test("the recorded-steps trace drawer enters in sequence and its connector draws", () => {
   assert.match(css, /@keyframes atlas-connector-draw/);
-  assert.match(css, /\.atlas-trace \.work-list::before \{[\s\S]{0,200}animation: atlas-connector-draw var\(--motion-move\)/);
-  assert.match(css, /\.atlas-trace \.work-list li \{ animation: receipt-in var\(--motion-enter\)/);
+  assert.match(css, /\.atlas-trace \.work-list::before \{[\s\S]{0,200}animation: atlas-connector-draw var\(--duration-panel\)/);
+  assert.match(css, /\.atlas-trace \.work-list li \{ animation: receipt-in var\(--duration-panel\)/);
   // A real stagger, not every row arriving at once.
   assert.match(css, /\.atlas-trace \.work-list li:nth-child\(2\) \{ animation-delay: 70ms; \}/);
   assert.match(css, /\.atlas-trace \.work-list li:nth-child\(3\) \{ animation-delay: 140ms; \}/);
 });
 
 test("the Doc tour's step change animates the focus move, and nothing here touches the camera", () => {
-  assert.match(css, /\.atlas-identity \{ animation: receipt-in var\(--motion-enter\)/);
+  assert.match(css, /\.atlas-identity \{ animation: receipt-in var\(--duration-panel\)/);
   // "No camera hijack": neither the tour's advance/retreat nor selectNode
   // ever calls scrollIntoView or sets scrollTop/scrollLeft.
   assert.doesNotMatch(atlasJs, /scrollIntoView|scrollTop\s*=|scrollLeft\s*=/);

@@ -6,7 +6,7 @@ import { mountAutoRefresh, readWithDeadline } from './auto-refresh.mjs';
 import { createFeedProgress, observeChangeBatch, ingestChangeEvents, receiptViews, escapeText as escape } from './change-receipts.mjs';
 
 import { scopedDeals } from './home-dashboard-model.js';
-import { localToday, toDay } from './calendar-model.js';
+import { localToday, shortDay, toDay } from './calendar-model.js';
 const time = value => { const date = new Date(value || ''); return Number.isFinite(date.valueOf()) ? date.toLocaleTimeString([], { hour:'numeric', minute:'2-digit', hour12:true }) : '—'; };
 
 export function createAppLayout(root, title = '') {
@@ -141,7 +141,7 @@ export function mountAppLayout(root, host, pathname) {
   const empty = '<span class="app-layout-empty">—</span>';
   const renderMoves = () => {
     const moves = feed.caught_up ? receiptViews(receipts).slice(0,6) : [];
-    render('#appTodayMoves', moves.map(move => row({ id:move.deal_id, name:move.deal_name }, `${move.actor === 'doc' ? 'Doc · ' : ''}${move.action}${move.after ? ` → ${move.after}` : ''} · ${time(move.recorded_at)}`)).join('') || empty);
+    render('#appTodayMoves', moves.map(move => row({ id:move.deal_id, name:move.deal_name }, `${move.actor === 'doc' ? 'Doc · ' : ''}${move.action}${move.after ? ` → ${shortDay(move.after, localToday())}` : ''} · ${time(move.recorded_at)}`)).join('') || empty);
   };
   const text = value => typeof value === 'string' && value.trim().length > 0;
   const optionalText = value => value == null || typeof value === 'string';
@@ -154,22 +154,29 @@ export function mountAppLayout(root, host, pathname) {
     && text(i.subject_type) && text(i.subject_id) && text(i.subject_name)
     && optionalText(i.what) && optionalText(i.due_on) && (!i.due_on || toDay(i.due_on)));
   const connection = connected => {
-    const dot = status.querySelector('#appConnection'); dot.dataset.state = connected ? 'healthy' : 'unknown';
+    connected = connected && win.navigator.onLine !== false;
+    const dot = root.getElementById('appConnection'); dot.dataset.state = connected ? 'healthy' : 'unknown';
     dot.setAttribute('aria-label', connected ? 'Connection available' : 'Connection unavailable'); dot.title = dot.getAttribute('aria-label');
   };
+  const unavailableRead = () => {
+    resetFeed(); connection(false);
+    render('#appTodayNeeds', unavailable); render('#appTodayNext', unavailable); render('#appWorkingList', unavailable);
+    if (!pageOwnsMoves) render('#appTodayMoves', unavailable);
+  };
   const refresh = async ({ signal } = {}) => {
+    if (win.navigator.onLine === false) { unavailableRead(); return; }
     try { client ||= await createClient(boot.mode, { ...boot.options, docContext:false }); }
-    catch { resetFeed(); connection(false); render('#appTodayNeeds', unavailable); render('#appTodayNext', unavailable); render('#appWorkingList', unavailable); if (!pageOwnsMoves) render('#appTodayMoves', unavailable); return; }
+    catch { unavailableRead(); return; }
     const [board, triage] = await Promise.allSettled([
       readWithDeadline(() => client.getBoard({ workspace:'all' }), { signal }),
       readWithDeadline(() => client.todayTriage(), { signal }),
     ]);
-    if (signal?.aborted) return;
+    if (signal?.aborted || win.navigator.onLine === false) return;
     const connected = board.status === 'fulfilled' && validBoard(board.value);
     const triageValid = triage.status === 'fulfilled' && validTriage(triage.value);
     connection(connected && triageValid);
     const items = triageValid ? triage.value.items : null;
-    render('#appTodayNext', items ? items.filter(i => i.subject_type === 'deal').slice(0,6).map(i => row(i,`${i.what || 'Due'} · ${i.due_on || ''}`)).join('') || empty : unavailable);
+    render('#appTodayNext', items ? items.filter(i => i.subject_type === 'deal').slice(0,6).map(i => row(i,`${i.what || 'Due'} · ${shortDay(i.due_on || '', localToday())}`)).join('') || empty : unavailable);
     if (connected) {
       const value = board.value;
       if (feedActor !== value.actor) resetFeed();
@@ -194,7 +201,7 @@ export function mountAppLayout(root, host, pathname) {
           // page as recent; advance bounded pages until it reaches the present.
           for (let page = 0; page < 4; page++) {
             const changes = await readWithDeadline(() => client.getChanges(cursor), { signal });
-            if (signal?.aborted) return;
+            if (signal?.aborted || win.navigator.onLine === false) return;
             if (!Array.isArray(changes?.events)) throw new Error('Invalid change response');
             const batch = changes.events;
             feed = observeChangeBatch(feed, batch);
@@ -214,8 +221,11 @@ export function mountAppLayout(root, host, pathname) {
     if (existing) { closeDrawer(); existing.click(); }
     else globalThis.location.assign(`/deals?deal=${encodeURIComponent(id)}`);
   });
-  const auto = mountAutoRefresh({ document:root, window:win, refresh, intervalMs:30_000 });
+  win.addEventListener('offline', unavailableRead);
+  const auto = mountAutoRefresh({ document:root, window:win, refresh, onResume:unavailableRead, intervalMs:30_000 });
   status.querySelector('#appSyncRefresh').onclick = () => { auto.refresh(); root.querySelectorAll('[data-layout-refresh]').forEach(button => button.click()); };
   auto.refresh();
-  win.addEventListener('pagehide', event => { if (!event.persisted) auto.dispose(); });
+  win.addEventListener('pagehide', event => {
+    if (!event.persisted) { auto.dispose(); win.removeEventListener('offline', unavailableRead); }
+  });
 }

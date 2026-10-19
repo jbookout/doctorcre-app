@@ -48,8 +48,10 @@ for (const viewport of [{ width: 1440, height: 960 }, { width: 390, height: 844 
     const beforeRetry = refusedReads, beforeClients = refusedClientReads;
     let releaseRetry;
     retryGate = new Promise(resolve => { releaseRetry = resolve; });
+    if (viewport.width < 760) await browser.locator('#selfAvatar').tap();
     await browser.locator(refresh).focus();
     await browser.locator(refresh).press('Enter');
+    if (viewport.width < 760) await browser.keyboard.press('Escape');
     await expect.poll(() => refusedReads).toBeGreaterThan(beforeRetry);
     // Hold the refused responses until the retry lifecycle has been observed.
     // Old failure text cannot satisfy these completion checks.
@@ -93,7 +95,9 @@ for (const viewport of [{ width: 1440, height: 960 }, { width: 390, height: 844 
     if (surface.name === 'Tours') return;
     await browser.unroute('**/api/**');
     await browser.unroute('**/mcp');
+    if (viewport.width < 760) await browser.locator('#selfAvatar').tap();
     await browser.locator(refresh).tap();
+    if (viewport.width < 760) await browser.keyboard.press('Escape');
     await expect(browser.locator(surface.freshness)).toContainText(/Updated/i);
     if (surface.name === 'Leads') {
       await browser.locator('#appSidebarToggle').tap();

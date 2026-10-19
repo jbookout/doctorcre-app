@@ -1,16 +1,178 @@
-:root{--invoice-glow:#f68b3a;--invoice-green:#7fd2b3;--invoice-muted:#a5b4c7}
-body{background:#050a12;color:#eaf1fb;font-family:'DM Sans',sans-serif}.invoice-workspace{max-width:none!important;min-width:0;width:100%;padding:clamp(14px,2vw,28px);box-sizing:border-box;background:radial-gradient(ellipse at 15% 0,#142a4966,transparent 60%),radial-gradient(ellipse at 90% 30%,#a7471114,transparent 50%)}
-.invoice-workspace *, .invoice-detail *{box-sizing:border-box}.glass{background:linear-gradient(135deg,#112138aa,#0a152499);border:1px solid #8fa9cf22;box-shadow:0 12px 35px #0003;backdrop-filter:blur(16px);border-radius:16px}
-.invoice-controls{display:flex;flex-direction:column;gap:12px;padding:12px}.invoice-controls label{font-size:12px;color:var(--invoice-muted)}
-.invoice-controls input,.invoice-controls select,.invoice-payment input,.invoice-detail input{min-width:0;width:100%;background:#070f1d;color:#eaf1fb;border:1px solid #7284a848;border-radius:8px;padding:11px;font:inherit;color-scheme:dark}
-.invoice-controls button,.invoice-workspace button,.invoice-tabs button,.invoice-updated button,.invoice-detail button{cursor:pointer;color:inherit;font:inherit;border:1px solid #8ea7cf30;background:#17283d88;border-radius:8px;padding:9px 13px}.invoice-controls button{font-size:12px;margin-top:12px}.invoice-tabs{display:flex;gap:8px;align-items:center;min-width:0}.invoice-tabs button{white-space:nowrap;padding:9px 14px;font-size:13px}.invoice-tabs button[aria-pressed=true]{border-color:#f68b3a88;background:#f68b3a20;color:#ffb678}.invoice-updated{display:flex;align-items:center;gap:8px;font-size:11px;color:var(--invoice-muted)}.invoice-updated button{padding:3px 7px;border:0;background:none}
-.invoice-totals{display:grid;grid-template-columns:2fr 1fr 1fr;gap:14px;margin-bottom:18px}.invoice-total{padding:22px 24px}.invoice-total span{display:block;font-size:12px;text-transform:uppercase;letter-spacing:.1em;color:var(--invoice-muted)}.invoice-total strong{display:block;font:600 clamp(30px,3vw,48px) 'Barlow Condensed',sans-serif;margin-top:5px}.invoice-total small{color:var(--invoice-muted);font-size:12px}.invoice-total.owed{border-color:#f68b3a45;background:linear-gradient(125deg,#28364b88,#49260d44)}
-.invoice-section-head{display:flex;justify-content:space-between;gap:12px;align-items:center;padding:18px 24px}.invoice-section-head h2{font:600 25px 'Barlow Condensed',sans-serif;margin:0}.invoice-section-head button{font-size:11px;padding:5px 9px}.invoice-section-head span{font-size:11px;color:var(--invoice-muted)}.invoice-aging{margin-bottom:18px}.invoice-aging-bars{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:18px;padding:0 24px 24px}.invoice-age{--age:#76a6df;border:0!important;background:none!important;padding:0!important;text-align:left;display:flex;flex-direction:column;gap:8px}.invoice-age[aria-pressed=true]{outline:1px solid var(--age);outline-offset:8px}.invoice-age .age-label{font-size:12px;color:#c4d1e2}.invoice-age strong{font:600 25px 'Barlow Condensed',sans-serif}.age-track{height:8px;border-radius:6px;background:#edf5ff0b;overflow:hidden;display:block}.age-base{fill:#edf5ff0b}.age-fill{fill:var(--age);transition:width .4s ease}.invoice-age small{font-size:11px;color:var(--invoice-muted)}[data-age='1']{--age:#f4bc65}[data-age='2']{--age:#f79047}[data-age='3']{--age:#ed7683}
-.invoice-column-head,.invoice-row{display:grid;grid-template-columns:minmax(0,2fr) 1fr 1fr 1.15fr .85fr;gap:16px;align-items:center}.invoice-column-head{padding:10px 24px;font-size:10px;color:var(--invoice-muted);text-transform:uppercase;letter-spacing:.09em;border-bottom:1px solid #8ea7cf20}.invoice-row{width:100%;text-align:left;padding:20px 24px!important;border:0!important;border-bottom:1px solid #8ea7cf18!important;border-radius:0!important;background:none!important;transition:background .14s,transform .14s;position:relative}.invoice-row:hover{background:#456a9430!important;transform:translateY(-2px)}.invoice-row:last-child{border-bottom:0!important;border-radius:0 0 16px 16px!important}.invoice-row strong{font-size:14px;display:block;overflow-wrap:anywhere}.invoice-row .invoice-sub{font-size:11px;color:var(--invoice-muted);display:block;margin-top:5px}.invoice-row .row-date{font-size:12px;color:#bed0e4}.invoice-row .row-money{font:600 24px 'Barlow Condensed',sans-serif}.invoice-row .row-age{font:600 25px 'Barlow Condensed',sans-serif;color:var(--age,#c4d4ea)}.invoice-row .row-age small{font:11px 'DM Sans',sans-serif;display:block;color:var(--invoice-muted)}.invoice-state{font-size:11px;display:inline-flex;align-items:center;gap:7px}.invoice-state::before{content:'';width:6px;height:6px;background:var(--age,#7a9bbd);border-radius:50%}.invoice-row.paid .invoice-state{color:var(--invoice-green)}.invoice-row.paid .invoice-state::before{background:var(--invoice-green)}.invoice-row.overdue .invoice-state::before{animation:invoice-pulse 1s ease-in-out infinite}.invoice-row.awaiting{color:#bccadd}.invoice-row.awaiting .invoice-state{white-space:nowrap}#invoiceRows>p{padding:30px 24px;color:var(--invoice-muted);font-size:14px}#invoiceNotice{color:#edbe8e;font-size:13px;margin:0 0 18px}
-.invoice-detail{width:min(1000px,calc(100vw - 32px));max-width:none;max-height:calc(100dvh - 32px);margin:auto;background:linear-gradient(130deg,#132440,#070d17 85%);color:#eaf1fb;border:1px solid #7794c355;border-radius:20px;padding:30px;box-shadow:0 25px 100px #000b;overflow:auto}.invoice-detail::backdrop{background:#020710bc;backdrop-filter:blur(8px)}.invoice-detail-heading{display:flex;justify-content:space-between;gap:18px;align-items:start}.invoice-detail-heading h2{font:600 38px 'Barlow Condensed',sans-serif;margin:5px 0 24px;overflow-wrap:anywhere}.invoice-eyebrow{font-size:10px;letter-spacing:.13em;text-transform:uppercase;color:#ffac70}.invoice-detail-heading button{font-size:22px;padding:3px 11px}.invoice-detail-facts{display:grid;grid-template-columns:2fr 1fr 1fr;gap:18px;padding-bottom:24px}.invoice-detail-facts span{font-size:11px;color:var(--invoice-muted);display:block}.invoice-detail-facts strong{font:600 32px 'Barlow Condensed',sans-serif;display:block;margin-top:5px}.invoice-detail-facts .invoice-status-value{font-size:24px;color:#ffc08c}.invoice-timeline{display:flex;gap:0;margin:6px 0 30px;padding:24px 0;border-top:1px solid #8ea7cf20;border-bottom:1px solid #8ea7cf20}.invoice-milestone{flex:1;position:relative}.invoice-milestone::before{content:'';display:block;width:12px;height:12px;background:#263d5d;border:2px solid #6d8db455;border-radius:50%;position:relative;z-index:1;margin-bottom:12px}.invoice-milestone.done::before{background:#ff9950;border-color:#ffd3a4;box-shadow:0 0 20px #f68b3a66}.invoice-milestone:not(:last-child)::after{content:'';position:absolute;top:5px;left:12px;right:0;height:2px;background:#7896bf30}.invoice-milestone strong{font-size:13px;display:block}.invoice-milestone time{font-size:11px;color:var(--invoice-muted);display:block;margin-top:6px}.invoice-detail-bottom{display:grid;grid-template-columns:1.35fr 1fr;gap:40px}.invoice-detail h3{font:600 24px 'Barlow Condensed',sans-serif;margin:0 0 10px}.invoice-detail p{font-size:13px;line-height:1.6;color:#beccdd}.invoice-detail summary{cursor:pointer;font-size:12px;color:#ffba89;width:fit-content}.invoice-detail dl{display:grid;grid-template-columns:1fr 1fr;gap:10px;font-size:12px;line-height:1.5}.invoice-detail dt{color:var(--invoice-muted)}.invoice-detail dd{margin:0;overflow-wrap:anywhere}.invoice-detail form{display:flex;flex-direction:column;gap:12px;padding:18px;background:#030a1355;border-radius:12px;align-self:start}.invoice-detail form[hidden]{display:none}.invoice-detail label{font-size:12px;color:#b8c8dd}.invoice-detail form button{background:#f68b3a;color:#09111b;font-weight:700;border-color:#ffb476}.invoice-detail form button:disabled{opacity:.5;cursor:wait}.invoice-skip{position:fixed;top:-100px}.invoice-skip:focus{top:8px;z-index:10000;background:#10233f;padding:8px}button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,summary:focus-visible{outline:2px solid #ffbc86;outline-offset:3px}
-@keyframes invoice-pulse{50%{box-shadow:0 0 10px 3px #f68b3a55}}
-@media(max-width:850px){.invoice-column-head{display:none}.invoice-row{grid-template-columns:minmax(0,1.5fr) 1fr;gap:12px}.invoice-row .row-date{grid-column:1}.invoice-row .row-money{grid-column:2;grid-row:1;text-align:right}.invoice-row .invoice-state{grid-column:1}.invoice-row .row-age{grid-column:2;grid-row:2/4;text-align:right}.invoice-totals{gap:8px}.invoice-total{padding:16px}.invoice-aging-bars{gap:14px;padding:0 18px 20px}.invoice-section-head{padding:16px 18px}.invoice-detail-facts{grid-template-columns:1.5fr 1fr}.invoice-detail-facts>div:last-child{grid-column:1/-1}.invoice-detail-bottom{gap:24px}}
-@media(max-width:480px){.invoice-workspace{padding:12px}.invoice-totals{grid-template-columns:1fr 1fr}.invoice-total.owed{grid-column:1/-1}.invoice-total strong{font-size:34px}.invoice-aging-bars{grid-template-columns:1fr 1fr;gap:20px}.invoice-tabs{gap:4px}.invoice-tabs button{padding:9px 8px;font-size:11px}.invoice-detail{padding:20px;width:calc(100vw - 20px);max-height:calc(100dvh - 20px)}.invoice-detail-heading h2{font-size:30px}.invoice-detail-bottom{grid-template-columns:1fr}.invoice-timeline{gap:8px}.invoice-milestone time{font-size:10px}.invoice-row{padding:18px!important}.invoice-row .row-money,.invoice-age strong{font-size:clamp(18px,5.6vw,24px)}}
-@media(prefers-reduced-motion:reduce){.invoice-row,.age-fill{transition:none}.invoice-row:hover{transform:none}.invoice-row.overdue .invoice-state::before{animation:none}}
+/* Invoices (V2 S3a). Loaded after app-shell.css; every value is a token from
+   css/tokens.css. Element basics are scoped at zero specificity to the page's
+   own regions so the shell keeps its styles. Money and dates sit in tabular
+   figures; each age bucket and invoice state carries a shape, and Color Assist
+   adds a line pattern, so none is told by hue alone. */
+:where(.invoice-workspace, .invoice-controls, .invoice-tabs, .invoice-updated, .invoice-detail), :where(.invoice-workspace, .invoice-controls, .invoice-tabs, .invoice-updated, .invoice-detail) * { box-sizing: border-box; }
+:where(.invoice-workspace, .invoice-controls, .invoice-tabs, .invoice-updated, .invoice-detail) :is(button, input, select) { font: inherit; color: inherit; }
+:where(.invoice-workspace, .invoice-controls, .invoice-tabs, .invoice-updated, .invoice-detail) button { min-height: var(--touch); padding: var(--space-2) var(--space-3); border: var(--hairline-width) solid var(--hairline-strong); border-radius: var(--radius-2); background: var(--surface-2); cursor: pointer; transition: background-color var(--duration-hover) var(--ease-out), border-color var(--duration-hover) var(--ease-out); }
+:where(.invoice-workspace, .invoice-controls, .invoice-tabs, .invoice-updated, .invoice-detail) button:hover { background: var(--surface-3); }
+:where(.invoice-workspace, .invoice-controls, .invoice-tabs, .invoice-updated, .invoice-detail) :is(input, select) { width: 100%; min-width: 0; min-height: var(--touch); padding: var(--space-2) var(--space-3); border: var(--hairline-width) solid var(--hairline-strong); border-radius: var(--radius-2); background: var(--surface-2); }
+:where(.invoice-workspace, .invoice-controls, .invoice-tabs, .invoice-updated, .invoice-detail) :is(input, select):hover { border-color: var(--fg-quiet); }
+:where(.invoice-workspace, .invoice-controls, .invoice-tabs, .invoice-updated, .invoice-detail) input::placeholder { color: var(--fg-quiet); }
+:where(.invoice-workspace, .invoice-controls, .invoice-tabs, .invoice-updated, .invoice-detail) :is(button, a, input, select, summary):focus-visible { outline: var(--focus-width) solid var(--focus-ring); outline-offset: 2px; }
+:where(.invoice-workspace, .invoice-detail) :is(h2, h3) { margin: 0; font-weight: var(--font-weight-strong); line-height: var(--line-height-heading); }
+body { background: var(--ground); color: var(--fg); }
+.glass { border: var(--hairline-width) solid var(--hairline); border-radius: var(--radius-3); background: var(--surface-1); }
 
-.invoice-total,.invoice-age,.invoice-row>span,.invoice-detail-facts>div{min-width:0}.invoice-total strong,.invoice-age strong,.row-money,.invoice-detail-facts strong{min-width:0;max-width:100%;overflow-wrap:anywhere}.invoice-age strong,.row-money{display:block}.age-track.amount-unknown{background:repeating-linear-gradient(120deg,#edf5ff20 0 3px,transparent 3px 7px)}
+.invoice-workspace { width: 100%; min-width: 0; max-width: none !important; padding: var(--space-5); background: var(--ground); color: var(--fg); font-family: var(--font-text); font-size: var(--font-size-1); line-height: var(--line-height-body); }
+.invoice-skip { position: fixed; top: -100px; left: var(--space-4); }
+.invoice-skip:focus { top: var(--space-2); z-index: 10000; padding: var(--space-2) var(--space-3); border-radius: var(--radius-2); background: var(--accent); color: var(--on-accent); }
+
+/* --- sidebar, tabs, status -------------------------------------------------- */
+.invoice-controls { display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-3); font-size: var(--font-size-1); }
+.invoice-controls label { color: var(--fg-muted); font-size: var(--font-size-1); }
+.invoice-controls button { margin-top: var(--space-2); background: transparent; color: var(--fg-muted); }
+.invoice-tabs { display: flex; align-items: center; gap: var(--space-1); min-width: 0; }
+.app-layout-tabs > .invoice-tabs { flex-wrap: nowrap; max-width: 100%; overflow-x: auto; scrollbar-width: none; }
+.invoice-tabs button { font-size: var(--font-size-1); padding: var(--space-2) var(--space-3); border-color: transparent; background: transparent; color: var(--fg-muted); white-space: nowrap; }
+.invoice-tabs button:hover { background: var(--surface-2); color: var(--fg); }
+.invoice-tabs button[aria-pressed="true"] { border-color: var(--hairline-strong); background: var(--surface-3); color: var(--fg); }
+.invoice-updated { display: flex; align-items: center; gap: var(--space-2); color: var(--fg-muted); font-size: var(--font-size-1); font-variant-numeric: tabular-nums; }
+.invoice-updated button { min-width: var(--touch); padding: 0; border-color: var(--hairline); background: transparent; color: var(--fg-muted); font-size: var(--font-size-2); }
+.invoice-updated button:hover { background: var(--surface-2); color: var(--fg); }
+#invoiceNotice { margin: 0 0 var(--space-4); padding: var(--space-3) var(--space-4); border: var(--hairline-width) solid var(--hairline); border-left: 3px solid var(--status-warn); border-radius: var(--radius-2); background: var(--surface-1); color: var(--fg); }
+[data-color-assist="on"] #invoiceNotice { border-left-style: dashed; }
+
+/* --- totals ----------------------------------------------------------------- */
+.invoice-totals { display: grid; grid-template-columns: 2fr 1fr 1fr; gap: var(--space-3); margin-bottom: var(--space-4); }
+.invoice-totals:empty { display: none; }
+.invoice-total { min-width: 0; padding: var(--space-4) var(--space-5); }
+.invoice-total span { display: block; color: var(--fg-muted); font-size: var(--font-size-1); }
+.invoice-total strong { display: block; max-width: 100%; margin-top: var(--space-1); font-size: var(--font-size-5); font-weight: var(--font-weight-strong); line-height: var(--line-height-heading); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.invoice-total small { color: var(--fg-muted); font-size: var(--font-size-1); font-variant-numeric: tabular-nums; }
+.invoice-total.owed { border-color: var(--hairline-strong); }
+
+/* --- outstanding by age ------------------------------------------------------ */
+.invoice-section-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); padding: var(--space-4) var(--space-5); }
+.invoice-section-head h2 { font-size: var(--font-size-2); }
+.invoice-section-head button { min-height: 36px; padding: var(--space-1) var(--space-3); background: transparent; color: var(--fg-muted); }
+.invoice-section-head button[aria-pressed="true"] { background: var(--surface-3); color: var(--fg); }
+.invoice-section-head span { color: var(--fg-muted); font-size: var(--font-size-1); font-variant-numeric: tabular-nums; }
+.invoice-aging { margin-bottom: var(--space-4); }
+.invoice-aging-bars { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--space-3); padding: 0 var(--space-5) var(--space-5); }
+.invoice-age { --age: var(--data-1); display: flex; flex-direction: column; gap: var(--space-2); min-width: 0; padding: var(--space-3) !important; border: var(--hairline-width) solid transparent !important; border-radius: var(--radius-2) !important; background: transparent !important; text-align: left; }
+.invoice-age:hover { border-color: var(--hairline) !important; background: var(--surface-2) !important; }
+.invoice-age[aria-pressed="true"] { border-color: var(--hairline-strong) !important; background: var(--surface-2) !important; }
+.invoice-age .age-label { display: inline-flex; align-items: center; gap: var(--space-2); color: var(--fg-muted); font-size: var(--font-size-1); }
+.invoice-age strong { display: block; max-width: 100%; font-size: var(--font-size-3); font-weight: var(--font-weight-strong); line-height: var(--line-height-heading); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.age-track { display: block; width: 100%; height: 8px; overflow: hidden; border-radius: var(--radius-round); background: var(--surface-3); }
+.age-base { fill: var(--surface-3); }
+.age-fill { fill: var(--age); }
+.age-track.amount-unknown { background: repeating-linear-gradient(120deg, var(--hairline-strong) 0 3px, transparent 3px 7px); }
+.invoice-age small { color: var(--fg-muted); font-size: var(--font-size-1); font-variant-numeric: tabular-nums; }
+[data-age="1"] { --age: var(--data-2); }
+[data-age="2"] { --age: var(--status-warn); }
+[data-age="3"] { --age: var(--status-danger); }
+/* Bucket shapes: circle, square, diamond, triangle, oldest to the right. */
+.invoice-age .age-label::before, .invoice-state::before { content: ""; flex: none; width: 8px; height: 8px; border-radius: var(--radius-round); background: var(--age, var(--fg-muted)); }
+[data-age="1"] :is(.age-label, .invoice-state)::before { border-radius: 0; }
+[data-age="2"] :is(.age-label, .invoice-state)::before { border-radius: 0; transform: rotate(45deg) scale(.85); }
+[data-age="3"] :is(.age-label, .invoice-state)::before { border-radius: 0; clip-path: polygon(50% 0, 100% 100%, 0 100%); }
+[data-color-assist="on"] .invoice-age[data-age="1"] .age-track { outline: var(--hairline-width) dotted var(--age); outline-offset: 2px; }
+[data-color-assist="on"] .invoice-age[data-age="2"] .age-track { outline: var(--hairline-width) dashed var(--age); outline-offset: 2px; }
+[data-color-assist="on"] .invoice-age[data-age="3"] .age-track { outline: 3px double var(--age); outline-offset: 2px; }
+
+/* --- the ledger --------------------------------------------------------------- */
+.invoice-column-head, .invoice-row { display: grid; grid-template-columns: minmax(0, 2fr) 1fr 1fr 1.15fr .85fr; align-items: center; gap: var(--space-4); }
+.invoice-column-head { padding: var(--space-2) var(--space-5); border-bottom: var(--hairline-width) solid var(--hairline); color: var(--fg-muted); font-size: var(--font-size-1); }
+.invoice-column-head span:nth-child(n+2):nth-child(-n+3), .invoice-column-head span:last-child { text-align: right; }
+.invoice-row { position: relative; width: 100%; min-height: 56px; padding: var(--space-3) var(--space-5) !important; border: 0 !important; border-bottom: var(--hairline-width) solid var(--hairline) !important; border-radius: 0 !important; background: transparent !important; text-align: left; transition: background-color var(--duration-hover) var(--ease-out); }
+.invoice-row:hover { background: var(--surface-2) !important; }
+.invoice-row:focus-visible { outline-offset: calc(var(--focus-width) * -1); }
+.invoice-row:last-child { border-bottom: 0 !important; border-radius: 0 0 var(--radius-3) var(--radius-3) !important; }
+.invoice-row > span { min-width: 0; }
+.invoice-row strong { display: block; font-size: var(--font-size-1); font-weight: var(--font-weight-strong); overflow-wrap: anywhere; }
+.invoice-row .invoice-sub { display: block; margin-top: 2px; color: var(--fg-muted); font-size: var(--font-size-1); }
+.invoice-row .row-date { color: var(--fg-muted); font-variant-numeric: tabular-nums; text-align: right; }
+.invoice-row .row-money { display: block; max-width: 100%; font-size: var(--font-size-2); font-weight: var(--font-weight-strong); font-variant-numeric: tabular-nums; text-align: right; overflow-wrap: anywhere; }
+.invoice-row .row-age { color: var(--fg); font-size: var(--font-size-2); font-weight: var(--font-weight-strong); font-variant-numeric: tabular-nums; text-align: right; }
+.invoice-row .row-age small { display: block; white-space: nowrap; color: var(--fg-muted); font-size: var(--font-size-1); font-weight: var(--font-weight-regular); }
+.invoice-state { display: inline-flex; align-items: center; gap: var(--space-2); color: var(--fg); font-size: var(--font-size-1); }
+.invoice-row.paid .invoice-state { color: var(--status-ok-ink); }
+.invoice-row.paid .invoice-state::before { content: "✓"; width: auto; height: auto; background: none; clip-path: none; transform: none; color: var(--status-ok-ink); }
+.invoice-row.awaiting { color: var(--fg-muted); }
+.invoice-row.awaiting .invoice-state { color: var(--fg-muted); white-space: nowrap; }
+.invoice-row.awaiting .invoice-state::before { border: var(--hairline-width) solid currentColor; background: transparent; }
+.invoice-row.overdue .invoice-state { color: var(--status-danger-ink); }
+[data-color-assist="on"] .invoice-row.overdue { box-shadow: inset 3px 0 0 var(--status-danger); }
+[data-color-assist="on"] .invoice-row.overdue .invoice-state { text-decoration: underline double; text-underline-offset: 3px; }
+[data-color-assist="on"] .invoice-row.awaiting .invoice-state { text-decoration: underline dotted; text-underline-offset: 3px; }
+#invoiceRows > p { padding: var(--space-6) var(--space-5); color: var(--fg-muted); font-size: var(--font-size-1); }
+
+/* --- the invoice dialog -------------------------------------------------------- */
+.invoice-detail { width: min(1000px, calc(100vw - 32px)); max-width: none; max-height: calc(100dvh - 32px); margin: auto; overflow: auto; padding: var(--space-6); border: var(--hairline-width) solid var(--hairline-strong); border-radius: var(--panel-radius); background: var(--surface-1); color: var(--fg); font-family: var(--font-text); font-size: var(--font-size-1); line-height: var(--line-height-body); box-shadow: var(--shadow-overlay); }
+.invoice-detail::backdrop { background: var(--scrim); }
+.invoice-detail-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-4); margin-bottom: var(--space-5); padding-bottom: var(--space-4); border-bottom: var(--hairline-width) solid var(--hairline); }
+.invoice-detail-heading h2 { margin-top: var(--space-1); font-size: var(--font-size-4); overflow-wrap: anywhere; }
+.invoice-eyebrow { color: var(--fg-muted); font-size: var(--font-size-1); }
+.invoice-detail-heading button { min-width: var(--touch); padding: 0; border-color: var(--hairline); background: transparent; color: var(--fg-muted); font-size: var(--font-size-3); line-height: 1; }
+.invoice-detail-heading button:hover { background: var(--surface-2); color: var(--fg); }
+.invoice-detail-facts { display: grid; grid-template-columns: 2fr 1fr 1fr; gap: var(--space-4); padding-bottom: var(--space-5); }
+.invoice-detail-facts > div { min-width: 0; }
+.invoice-detail-facts span { display: block; color: var(--fg-muted); font-size: var(--font-size-1); }
+.invoice-detail-facts strong { display: block; max-width: 100%; margin-top: var(--space-1); font-size: var(--font-size-4); font-weight: var(--font-weight-strong); line-height: var(--line-height-heading); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.invoice-detail-facts .invoice-status-value { font-size: var(--font-size-3); }
+.invoice-timeline { display: flex; margin: 0 0 var(--space-5); padding: var(--space-5) 0; border-top: var(--hairline-width) solid var(--hairline); border-bottom: var(--hairline-width) solid var(--hairline); }
+.invoice-milestone { position: relative; flex: 1; }
+.invoice-milestone::before { content: ""; position: relative; z-index: 1; display: block; width: 12px; height: 12px; margin-bottom: var(--space-3); border: 2px solid var(--hairline-strong); border-radius: var(--radius-round); background: var(--surface-1); }
+.invoice-milestone.done::before { border-color: var(--fg); background: var(--fg); }
+.invoice-milestone:not(:last-child)::after { content: ""; position: absolute; top: 5px; left: 12px; right: 0; height: 2px; background: var(--hairline); }
+.invoice-milestone.done:not(:last-child)::after { background: var(--fg-quiet); }
+[data-color-assist="on"] .invoice-milestone:not(.done)::before { border-style: dashed; }
+.invoice-milestone strong { display: block; font-size: var(--font-size-1); font-weight: var(--font-weight-strong); }
+.invoice-milestone time { display: block; margin-top: var(--space-1); color: var(--fg-muted); font-size: var(--font-size-1); font-variant-numeric: tabular-nums; }
+.invoice-detail-bottom { display: grid; grid-template-columns: 1.35fr 1fr; gap: var(--space-6); }
+.invoice-detail h3 { margin-bottom: var(--space-2); font-size: var(--font-size-2); }
+.invoice-detail p { color: var(--fg-muted); font-size: var(--font-size-1); line-height: var(--line-height-body); }
+.invoice-detail summary { display: flex; align-items: center; width: fit-content; min-height: var(--touch); color: var(--fg-muted); cursor: pointer; }
+.invoice-detail summary:hover { color: var(--fg); }
+.invoice-detail dl { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-2); line-height: var(--line-height-body); }
+.invoice-detail dt { color: var(--fg-muted); }
+.invoice-detail dd { margin: 0; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.invoice-detail form { display: flex; flex-direction: column; align-self: start; gap: var(--space-3); padding: var(--space-4); border: var(--hairline-width) solid var(--hairline); border-radius: var(--radius-3); background: var(--surface-2); }
+.invoice-detail form[hidden] { display: none; }
+.invoice-detail label { color: var(--fg-muted); font-size: var(--font-size-1); }
+.invoice-detail input[type="date"] { font-variant-numeric: tabular-nums; }
+.invoice-detail form button { border-color: var(--accent); background: var(--accent); color: var(--on-accent); font-weight: var(--font-weight-strong); }
+.invoice-detail form button:hover { border-color: var(--accent-hover); background: var(--accent-hover); }
+.invoice-detail form button:disabled { opacity: .5; cursor: wait; }
+
+/* --- responsive ---------------------------------------------------------------- */
+@media (max-width: 850px) {
+  .invoice-column-head { display: none; }
+  .invoice-row { grid-template-columns: minmax(0, 1.5fr) 1fr; gap: var(--space-1) var(--space-3); }
+  .invoice-row .row-date { grid-column: 1; text-align: left; }
+  .invoice-row .row-money { grid-column: 2; grid-row: 1; }
+  .invoice-row .invoice-state { grid-column: 1; }
+  .invoice-row .row-age { grid-column: 2; grid-row: 2 / 4; }
+  .invoice-totals { gap: var(--space-2); }
+  .invoice-total { padding: var(--space-4); }
+  .invoice-aging-bars { gap: var(--space-2); padding: 0 var(--space-3) var(--space-4); }
+  .invoice-section-head { padding: var(--space-3) var(--space-4); }
+  .invoice-detail-facts { grid-template-columns: 1.5fr 1fr; }
+  .invoice-detail-facts > div:last-child { grid-column: 1 / -1; }
+  .invoice-detail-bottom { gap: var(--space-5); }
+}
+@media (max-width: 480px) {
+  .invoice-workspace { display: flex; flex-direction: column; }
+  .invoice-ledger { order: 1; margin-bottom: var(--space-4); }
+  .invoice-aging { order: 2; }
+  .invoice-workspace { padding: var(--space-3) var(--space-4) calc(var(--tabbar-height) + var(--space-6)); }
+  .invoice-totals { grid-template-columns: 1fr 1fr; }
+  .invoice-total.owed { grid-column: 1 / -1; }
+  .invoice-total strong { font-size: var(--font-size-4); }
+  .invoice-aging-bars { grid-template-columns: 1fr 1fr; }
+  .invoice-age strong { font-size: var(--font-size-2); }
+  .app-layout-tabs > .invoice-tabs { flex-wrap: nowrap; max-width: 100%; overflow-x: auto; scrollbar-width: none; }
+  .invoice-tabs button { flex: none; white-space: nowrap; font-size: var(--font-size-1); padding: var(--space-2); }
+  :where(.invoice-workspace, .invoice-controls, .invoice-detail) :is(input, select) { font-size: var(--font-size-2); }
+  .invoice-row { padding: var(--space-3) var(--space-4) !important; }
+  .invoice-detail { width: calc(100vw - 20px); max-height: calc(100dvh - 20px); padding: var(--space-4); border-radius: var(--radius-3); }
+  .invoice-detail-heading h2 { font-size: var(--font-size-3); }
+  .invoice-detail-bottom { grid-template-columns: 1fr; }
+  .invoice-timeline { gap: var(--space-2); }
+}
+@media (prefers-reduced-motion: reduce) {
+  :where(.invoice-workspace, .invoice-controls, .invoice-tabs, .invoice-updated, .invoice-detail) button, .invoice-row { transition: none; }
+}

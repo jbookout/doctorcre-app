@@ -3,7 +3,6 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-  <meta name="theme-color" content="#07111f">
   <meta name="description" content="DoctorCRE clients and vendors">
   <title>Clients · DoctorCRE</title>
   <link rel="manifest" href="/manifest.webmanifest">
@@ -11,7 +10,9 @@
   <link rel="icon" href="/icons/dealroom.svg" type="image/svg+xml">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=DM+Sans:wght@400;500;600;700&display=swap">
+  <script src="/js/theme-boot.js"></script>
+  <link rel="stylesheet" href="/css/tokens.css">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600&display=swap">
   <link rel="stylesheet" href="/css/workspace.css">
   <link rel="stylesheet" href="/css/workspace-business.css">
   <link rel="stylesheet" href="/css/correspondence.css">
@@ -35,6 +36,11 @@
       </div>
     </section>
 
+    <div class="result-heading" data-panel-background>
+      <p class="result-title" id="resultsTitle">Clients</p>
+      <p class="result-summary" id="resultSummary" tabindex="-1">Checking…</p>
+    </div>
+
     <div class="search-dock glass" data-panel-background>
       <div class="field field-search">
         <label for="searchInput">Search</label>
@@ -43,7 +49,7 @@
     </div>
     <section class="business-controls" aria-labelledby="controlsTitle" data-panel-background>
       <h2 class="visually-hidden" id="controlsTitle">Search and filter</h2>
-      <form id="filterForm" class="filter-form glass" novalidate>
+      <form id="filterForm" class="filter-form" novalidate>
         <div class="filter-row">
           <div class="field" data-field="a">
             <label for="filterA" id="filterALabel">Status</label>
@@ -89,10 +95,6 @@
 
     <section class="business-body" aria-labelledby="resultsTitle">
       <div class="result-column" data-panel-background>
-        <div class="result-heading">
-          <h2 id="resultsTitle">Results</h2>
-          <p class="result-summary" id="resultSummary" tabindex="-1">Checking…</p>
-        </div>
         <div id="listRegion" class="list-region" aria-busy="true" aria-describedby="resultSummary">
           <ol class="record-list" id="recordList">
             <li class="record-skeleton"><span class="skeleton-line"></span><span class="skeleton-line short"></span></li>

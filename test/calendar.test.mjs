@@ -20,9 +20,9 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
 import {
-  CALENDAR_VIEWS, ENTRANCE_BUDGET_MS, addDays, addMonths, approach, calendarHref, calendarPhase,
+  CALENDAR_VIEWS, addDays, addMonths, approach, calendarHref, calendarPhase,
   criticalDateEntries, daysBetween, entriesByDay, localToday, monthGrid, motionDirection,
-  parseCalendarState, readCalendar, staggerDelay, stepAnchor, toDay, upcomingEntries, weekStrip,
+  parseCalendarState, readCalendar, stepAnchor, toDay, upcomingEntries, weekStrip,
 } from "../js/calendar-model.js";
 
 test("Calendar rereads on return and clears prior-session dates while checking", async () => {
@@ -133,14 +133,6 @@ test("a date pulses faster as it approaches, and a settled date never pulses", (
   assert.deepEqual(approach({ day: "2026-12-01", settled: false }, today), { band: "later", days: 68, pulse: "still", label: "in 68 days" });
   assert.deepEqual(approach({ day: "2026-09-20", settled: true }, today), { band: "settled", days: -4, pulse: "still", label: "4 days ago" });
   assert.equal(approach({ day: "2026-09-23", settled: false }, today).label, "yesterday");
-});
-
-test("the staggered entrance finishes inside the one-second budget however many cells there are", () => {
-  assert.equal(staggerDelay(0), 0);
-  assert.ok(staggerDelay(1) > 0);
-  assert.ok(staggerDelay(41) <= ENTRANCE_BUDGET_MS);
-  assert.ok(staggerDelay(500) <= ENTRANCE_BUDGET_MS, "a long agenda never delays past the budget");
-  assert.ok(ENTRANCE_BUDGET_MS + 270 <= 1000, "stagger plus the shared --motion-enter stays under a second");
 });
 
 /* ------------------------------------------------------------- the entries */
@@ -321,7 +313,7 @@ test("the Calendar is a routed, shipped surface that reads only pinned verbs", a
   const carr = JSON.parse(await read("contracts/carr-interface.v1.json"));
   const summary = await read("SUMMARY.md");
   assert.equal(routes.routes["/calendar"], "calendar.html");
-  assert.equal(routes.version, "1.20.0", "two added routes are an additive, minor bump");
+  assert.equal(routes.version, "1.21.0", "two added routes are an additive, minor bump");
   for (const verb of ["deal-room-board", "get-deal-room"]) assert.ok(carr.mcp_operations.includes(verb), `${verb} must stay pinned`);
   assert.equal(await hasArtifactPage("calendar.html"), true, "the page ships in the verified artifact");
   assert.match(summary, /calendar\.html/);
@@ -366,40 +358,38 @@ test("the Calendar page carries the shared shell, an accessible grid and an agen
 
 const css = await read("css/calendar.css");
 
-test("month and week transitions animate between before and after on the shared tokens", () => {
+test("month and week transitions move once, on transform and opacity, with the V2 panel duration", () => {
   const frames = { forward: "cal-slide-forward", back: "cal-slide-back", "zoom-in": "cal-zoom-in", "zoom-out": "cal-zoom-out" };
   for (const [direction, frame] of Object.entries(frames)) {
-    assert.match(css, new RegExp(`\\.cal-grid\\[data-enter="${direction}"\\] \\{ animation: ${frame} var\\(--motion-move\\) var\\(--ease\\); \\}`), direction);
-    assert.match(css, new RegExp(`@keyframes ${frame} \\{ from \\{[^}]*transform: (?:translateX|scale)\\(`), `${frame} moves`);
+    assert.match(css, new RegExp(`\\.cal-grid\\[data-enter="${direction}"\\] \\{ animation: ${frame} var\\(--duration-panel\\) var\\(--ease-out\\); \\}`), direction);
+    const body = css.match(new RegExp(`@keyframes ${frame} \\{([^@]*?)\\}\\s*\\}`))?.[1] || "";
+    assert.match(body, /transform: (?:translateX|scale)\(/, `${frame} moves`);
+    assert.doesNotMatch(body.replace(/opacity:[^;]+;|transform:[^;]+;/g, ""), /[a-z-]+:/, `${frame} animates only transform and opacity`);
   }
 });
 
-test("dates pulse on the shared state durations as they approach", () => {
-  assert.match(css, /\.cal-pulse\[data-pulse="urgent"\][^{]*\{[^}]*animation:[^;]*var\(--motion-urgent\)/);
-  assert.match(css, /\.cal-pulse\[data-pulse="attention"\][^{]*\{[^}]*animation:[^;]*var\(--motion-attention\)/);
-  assert.match(css, /\.cal-pulse\[data-pulse="calm"\][^{]*\{[^}]*animation:[^;]*var\(--motion-calm\)/);
-  assert.doesNotMatch(css, /\.cal-pulse\[data-pulse="still"\][^{]*\{[^}]*animation/, "a distant or settled date is still");
+test("a date's nearness is a still shape: no marker loops", () => {
+  assert.doesNotMatch(css, /infinite/, "nothing on the calendar loops");
+  assert.doesNotMatch(css, /breathe|receipt-in/, "the V1 pulse and entrance keyframes are gone");
+  assert.match(css, /\.cal-pulse\[data-pulse="urgent"\][^{]*\{[^}]*border: 3px double/, "urgent is a double ring");
+  assert.match(css, /\.cal-pulse\[data-pulse="attention"\][^{]*\{[^}]*content-box/, "attention is a ringed dot");
+  assert.match(css, /\.cal-pulse\[data-pulse="still"\][^{]*\{[^}]*background: transparent/, "still is a hollow ring");
 });
 
-test("every interactive calendar element answers hover and press", () => {
-  // Read with the reduced-motion rules taken out: those set `transform: none`
-  // on purpose and must not stand in for the full-motion feedback.
-  const fullMotion = css
-    .replace(/@media \(prefers-reduced-motion: reduce\) \{[\s\S]*?\n\}/g, "")
-    .replace(/^:root\[data-motion="reduced"\].*$/gm, "");
+test("every interactive calendar element answers hover and press with a surface step, never a lift", () => {
   for (const selector of ["\\.cal-day", "\\.cal-chip", "\\.cal-agenda-item"]) {
-    assert.match(fullMotion, new RegExp(`${selector}:hover \\{[^}]*transform: (?!none)`), `${selector} hover`);
-    assert.match(fullMotion, new RegExp(`${selector}:active \\{[^}]*transform: (?!none)`), `${selector} press`);
+    assert.match(css, new RegExp(`${selector}:hover \\{[^}]*background:`), `${selector} hover`);
+    assert.match(css, new RegExp(`${selector}:active \\{[^}]*background:`), `${selector} press`);
+    assert.doesNotMatch(css, new RegExp(`${selector}:(?:hover|active) \\{[^}]*transform`), `${selector} does not move`);
   }
 });
 
-test("the entrance is staggered from a per-cell index on the shared receipt-in keyframe", () => {
-  assert.match(css, /\.cal-day \{[^}]*animation: receipt-in var\(--motion-enter\) var\(--ease\) backwards/);
-  assert.match(css, /animation-delay: var\(--stagger, 0ms\)/);
-  // No new motion vocabulary: only the shared duration tokens are used.
-  const durations = [...css.matchAll(/var\((--motion-[a-z]+)\)/g)].map((match) => match[1]);
-  for (const token of durations) assert.match(token, /^--motion-(calm|attention|urgent|flow|enter|move|ring|toast)$/);
-  assert.doesNotMatch(css, /--motion-[a-z]+:\s/, "the page defines no motion token of its own");
+test("no staggered entrance: every cell is painted whole", async () => {
+  assert.doesNotMatch(css, /--stagger|animation-delay/);
+  const js = await read("js/calendar.js");
+  assert.doesNotMatch(js, /data-stagger-index|\.style\./, "the calendar writes no inline style");
+  const durations = [...css.matchAll(/var\((--(?:motion|duration)-[a-z]+)\)/g)].map((match) => match[1]);
+  for (const token of durations) assert.match(token, /^--duration-(press|hover|menu|panel)$/, "only the V2 duration tokens");
 });
 
 /**
@@ -417,7 +407,7 @@ test("reduced motion: forcing the fallback leaves every date visible and every s
   assert.match(css, /:root\[data-motion="reduced"\]/, "the in-app motion preference is honoured too");
 
   const reducedBlock = css.match(/@media \(prefers-reduced-motion: reduce\) \{([\s\S]*?)\n\}/)?.[1] || "";
-  assert.match(reducedBlock, /transform: none/, "hover and press transforms are removed, not just their transitions");
+  assert.match(reducedBlock, /animation: none/, "the period move is dropped outright");
 
   const forced = css
     .replace(/@keyframes[^{]+\{(?:[^{}]*\{[^}]*\})*[^}]*\}/g, "")
@@ -434,8 +424,8 @@ test("reduced motion: forcing the fallback leaves every date visible and every s
     if (/\[hidden\]|:not\(|\.sr-only/.test(selector)) continue;
     assert.doesNotMatch(body, hides, `${selector.trim()} hides content once motion is gone`);
   }
-  // The pulse shape itself carries the state when it stops moving.
-  assert.match(css, /\.cal-pulse\[data-pulse="urgent"\][^{]*\{[^}]*box-shadow/, "urgent is a double ring, readable still");
+  // The marker shape carries the state; it never depended on motion.
+  assert.match(css, /\.cal-pulse\[data-pulse="urgent"\][^{]*\{[^}]*double/, "urgent is a double ring, readable still");
   assert.match(css, /\.cal-pulse\[data-pulse="still"\][^{]*\{[^}]*background: transparent/, "still is a hollow dot");
 });
 

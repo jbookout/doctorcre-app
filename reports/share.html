@@ -6,6 +6,9 @@
     <meta name="referrer" content="no-referrer">
     <title>Tour report</title>
     <link rel="stylesheet" href="/vendor/maplibre-gl-6.4.1/maplibre-gl.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="/share.css">
     <script src="/share-bootstrap.js"></script>
     <script type="module" src="/share.js"></script>
@@ -22,14 +25,14 @@
       <p id="status" class="status" role="status" aria-live="polite"></p>
       <button id="open-tour" type="button" disabled>Open tour</button>
       <figure class="tour-flow" aria-label="This Tour moves from properties to your choices to broker review">
-        <svg viewBox="0 0 720 120" role="img" aria-labelledby="flow-title flow-description">
+        <svg viewBox="0 0 720 76" role="img" aria-labelledby="flow-title flow-description">
           <title id="flow-title">Tour feedback journey</title>
           <desc id="flow-description">Three connected stops represent the shared properties, your shortlist and comments, and your broker's review.</desc>
-          <path class="flow-track" d="M132 60 H588"/>
-          <path class="flow-active" d="M132 60 H360"/>
-          <g><circle cx="132" cy="60" r="25"/><text x="132" y="66">1</text><text x="132" y="111">PROPERTIES</text></g>
-          <g><circle cx="360" cy="60" r="25"/><text x="360" y="66">2</text><text x="360" y="111">YOUR CHOICES</text></g>
-          <g><circle cx="588" cy="60" r="25"/><text x="588" y="66">3</text><text x="588" y="111">BROKER REVIEW</text></g>
+          <path class="flow-track" d="M132 24 H588"/>
+          <path class="flow-active" d="M132 24 H360"/>
+          <g><circle cx="132" cy="24" r="15"/><text x="132" y="29">1</text><text x="132" y="68">Properties</text></g>
+          <g><circle cx="360" cy="24" r="15"/><text x="360" y="29">2</text><text x="360" y="68">Your choices</text></g>
+          <g><circle cx="588" cy="24" r="15"/><text x="588" y="29">3</text><text x="588" y="68">Broker review</text></g>
         </svg>
       </figure>
       <section id="map-section" aria-labelledby="map-title" hidden>
@@ -43,5 +46,9 @@
       </section>
       <p id="feedback-status" class="status" role="status" aria-live="polite"></p>
     </main>
+    <footer class="report-footer">
+      <p>CARR Healthcare Real Estate · Tour report</p>
+      <p>Prepared for you by your CARR broker.</p>
+    </footer>
   </body>
 </html>

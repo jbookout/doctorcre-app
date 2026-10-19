@@ -3,7 +3,6 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-  <meta name="theme-color" content="#07111f">
   <meta name="description" content="DoctorCRE Calendar — every deal's critical dates by month and week, ">
   <title>Calendar · DoctorCRE</title>
   <link rel="manifest" href="/manifest.webmanifest">
@@ -11,7 +10,9 @@
   <link rel="icon" href="/icons/dealroom.svg" type="image/svg+xml">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=DM+Sans:wght@400;500;600;700&display=swap">
+  <script src="/js/theme-boot.js"></script>
+  <link rel="stylesheet" href="/css/tokens.css">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600&display=swap">
   <link rel="stylesheet" href="/css/system.css">
   <link rel="stylesheet" href="/css/calendar.css">
   <link rel="stylesheet" href="/css/app-shell.css">
@@ -31,8 +32,8 @@
   <main id="main" class="shell">
     <section class="card glass" aria-labelledby="pageTitle">
       <div>
-        <p class="eyebrow"><span class="orb" data-state="still" id="calOrb" aria-hidden="true"></span> Critical dates · one shared record for both partners</p>
         <h1 id="pageTitle">Calendar</h1>
+        <p class="page-sub"><span class="orb" data-state="still" id="calOrb" aria-hidden="true"></span> Critical dates from every deal, shared by both partners</p>
       </div>
       <div class="chip-bar">
         <span class="status" data-state="unknown" id="calStatus"><span class="orb" data-state="unknown" aria-hidden="true"></span> <span id="calStatusLabel">Updating…</span></span>
@@ -57,7 +58,7 @@
             <button class="btn icon-btn" type="button" id="calNext" aria-label="Next month">›</button>
           </div>
           <h2 class="cal-period" id="calPeriod" aria-live="polite">Calendar</h2>
-          <ul class="cal-legend" aria-label="What the pulse means">
+          <ul class="cal-legend" aria-label="What each marker means">
             <li><span class="cal-pulse" data-pulse="urgent" aria-hidden="true"></span>Today or overdue</li>
             <li><span class="cal-pulse" data-pulse="attention" aria-hidden="true"></span>This week</li>
             <li><span class="cal-pulse" data-pulse="calm" aria-hidden="true"></span>This month</li>
@@ -73,20 +74,19 @@
       </section>
 
       <aside class="side-panel glass cal-day-panel" id="dayPanel" aria-labelledby="dayPanelTitle">
-        <p class="eyebrow">Selected day</p>
         <h2 id="dayPanelTitle">Choose a day</h2>
         <div id="dayPanelBody"><p class="small">Select a day or a date to see what falls on it.</p></div>
       </aside>
-    </div>
 
-    <section class="card glass" aria-labelledby="agendaTitle">
-      <div class="card-heading"><div><p class="eyebrow">Open dates, nearest first</p><h2 id="agendaTitle">Coming up</h2></div></div>
-      <ol class="cal-agenda" id="calAgenda"></ol>
-      <div class="cal-undated" id="calUndated" hidden>
-        <h3>No readable date</h3>
-        <ul id="calUndatedList"></ul>
-      </div>
-    </section>
+      <section class="card glass cal-coming" aria-labelledby="agendaTitle">
+        <div class="card-heading"><div><h2 id="agendaTitle">Coming up</h2><p class="page-sub">Open dates, nearest first</p></div></div>
+        <ol class="cal-agenda" id="calAgenda"></ol>
+        <div class="cal-undated" id="calUndated" hidden>
+          <h3>No readable date</h3>
+          <ul id="calUndatedList"></ul>
+        </div>
+      </section>
+    </div>
   </main>
 
   <div id="receiptDock" class="receipt-dock" role="group" aria-label="Command feedback"></div>

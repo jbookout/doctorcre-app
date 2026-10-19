@@ -21,7 +21,7 @@ import { fetchRead, mountAutoRefresh, updatedLabel } from "./auto-refresh.mjs";
 // set are the server's answers; this file renders them or says why it cannot.
 
 import {
-  DATASET_LABEL, DATASET_ROUTE, DATASET_SINGULAR, MAX_QUERY_LENGTH, PIPELINE_FILTERS, PIPELINE_LABEL, SORTS,
+  DATASET_LABEL, DATASET_ROUTE, DATASET_SINGULAR, MAX_QUERY_LENGTH, NOT_RECORDED, PIPELINE_FILTERS, PIPELINE_LABEL, SORTS,
   SOURCE_LABEL, acceptsResponse, cachedPayload, createBusinessState, datasetForPath, defaultQuery,
   displayedFreshness, echoesQuery, emptyCopy, expireSession, filterChips, freshnessSignature, hasActiveFilters,
   isSessionExpiry, listPhase, listRequestUrl, ownerPresentation, pageSummary, panelModality, panelTabTarget,
@@ -29,8 +29,6 @@ import {
   rememberPayload, restoreSession, rowTone, sameQuery, scrollIntent, searchBoxValue, sourceIsFresh,
   validListPayload, validRecordPayload, viewHref,
 } from "./workspace-business-model.js";
-import { createFixtureClient } from "./fixture-client.js";
-import { createLiveClient } from "./live-client.js";
 import { resolveDealroomBoot } from "./boot-mode.js";
 import { mountNotificationBadge } from "./shell.js";
 import { activityCopy, activityRequest, activityState } from "./record-activity-model.js";
@@ -41,6 +39,7 @@ const SEARCH_DEBOUNCE_MS = 350;
 
 const dom = {
   title: document.querySelector("#pageTitle"),
+  resultsTitle: document.querySelector("#resultsTitle"),
   intro: document.querySelector("#pageIntro"),
   viewer: document.querySelector("#viewerWorkspace"),
   healthOrb: document.querySelector("#healthOrb"),
@@ -102,12 +101,15 @@ const initialBootMode = resolveDealroomBoot(window.location);
 /**
  * The one dealroom client this page builds, for the MCP reads it makes (the
  * unread badge and a record's activity). The list and record reads above stay
- * plain REST against DATASET_ROUTE.
+ * plain REST against DATASET_ROUTE. Both clients load on first use, so the list
+ * never waits on them: the fixture client alone is the largest script here.
  */
 function dealroomClient() {
   if (!dealroomClientPromise) {
     const bootMode = initialBootMode;
-    dealroomClientPromise = bootMode.mode === "live" ? Promise.resolve(createLiveClient()) : createFixtureClient(bootMode.options);
+    dealroomClientPromise = bootMode.mode === "live"
+      ? import("./live-client.js").then(({ createLiveClient }) => createLiveClient())
+      : import("./fixture-client.js").then(({ createFixtureClient }) => createFixtureClient(bootMode.options));
   }
   return dealroomClientPromise;
 }
@@ -439,8 +441,12 @@ function rowHtml(dataset, row, selectedId) {
   const tone = rowTone(dataset, row);
   const owner = ownerPresentation(row);
   const selected = row.id === selectedId;
-  const facts = rowFacts(dataset, row).map((fact) =>
-    `<span class="row-fact${fact.known ? "" : " unknown"}${fact.unresolved ? " unresolved" : ""}"><span class="fact-label">${escapeHtml(fact.label)}</span><span class="fact-value">${escapeHtml(fact.value)}</span></span>`).join("");
+  // A blank is said once per row, quietly, instead of repeating per field.
+  const allFacts = rowFacts(dataset, row);
+  const missing = allFacts.filter((fact) => !fact.known).map((fact) => fact.label.toLowerCase());
+  const facts = allFacts.filter((fact) => fact.known).map((fact) =>
+    `<span class="row-fact${fact.unresolved ? " unresolved" : ""}"><span class="fact-label">${escapeHtml(fact.label)}</span><span class="fact-value">${escapeHtml(fact.value)}</span></span>`).join("")
+    + (missing.length ? `<span class="row-missing">${NOT_RECORDED}: ${escapeHtml(missing.join(", "))}</span>` : "");
   return `<li class="record-item"><a class="record-row${selected ? " selected" : ""}" id="row-${escapeHtml(row.id)}" data-record-id="${escapeHtml(row.id)}" href="${escapeHtml(viewHref(view.query, row.id))}"${selected ? ' aria-current="true"' : ""}><span class="row-head"><span class="row-name">${escapeHtml(row.name)}</span><span class="tone tone-${escapeHtml(tone.tone)}">${escapeHtml(tone.label)}</span></span><span class="row-facts">${facts}</span>${dataset === "vendors" ? tierHtml(row.relationship) + `<span class="contact-note">${escapeHtml(shortNote(row.relationship?.last_contact_note))}</span>` : ""}<span class="row-foot"><span class="row-owner${owner.known ? "" : " unknown"}">Owner: ${escapeHtml(owner.text)}${owner.ownedByViewer ? '<span class="row-you">Yours</span>' : ""}</span><span class="row-updated">Updated ${escapeHtml(formatMoment(row.updated_at))}</span></span></a></li>`;
 }
 
@@ -643,12 +649,6 @@ function renderRecordPanel() {
     dom.panelBody.dataset.recordId = payload.record.id;
     restorePanelState();
 
-    // A staggered entrance, set through CSSOM: the Worker's CSP (src/worker.js)
-    // refuses a `style` attribute written into markup, so the activity-row
-    // template above only emits `data-stagger-ms`, and this reads it back.
-    dom.panelBody.querySelectorAll(".activity-row").forEach((node) => {
-      node.style.setProperty("--stagger", `${node.dataset.staggerMs}ms`);
-    });
     const evidence = document.createElement('div');
     evidence.innerHTML = renderEvidence(view.evidence.id === payload.record.id ? view.evidence.result || { threads: { state: 'loading' } } : {});
     dom.panelBody.append(evidence);
@@ -660,7 +660,7 @@ function activityHtml(recordId) {
   const result = view.activity.id === recordId ? view.activity.result : null;
   const state = result || { state: "loading" };
   const body = state.state === "ready"
-    ? `<ol class="activity-list">${state.rows.map((row, index) => `<li class="activity-row" data-kind="${escapeHtml(row.kind)}" data-stagger-ms="${Math.min(index * 30, 540)}"><span class="activity-dot" aria-hidden="true"></span><span class="activity-what">${escapeHtml(row.what)}${row.owed ? ` <b>· owed: ${escapeHtml(row.owed)}</b>` : ""}</span><span class="activity-when">${escapeHtml(row.when ? formatMoment(row.when) : "an unknown time")}${row.actor ? ` · ${escapeHtml(row.actor)}` : ""}</span></li>`).join("")}</ol>`
+    ? `<ol class="activity-list">${state.rows.map((row) => `<li class="activity-row" data-kind="${escapeHtml(row.kind)}"><span class="activity-dot" aria-hidden="true"></span><span class="activity-what">${escapeHtml(row.what)}${row.owed ? ` <b>· owed: ${escapeHtml(row.owed)}</b>` : ""}</span><span class="activity-when">${escapeHtml(row.when ? formatMoment(row.when) : "an unknown time")}${row.actor ? ` · ${escapeHtml(row.actor)}` : ""}</span></li>`).join("")}</ol>`
     : `<p class="record-note activity-note" data-state="${escapeHtml(state.state)}">${escapeHtml(activityCopy(state))}</p>`;
   return `<section class="record-section" id="recordActivity" aria-live="polite"><h3>Recent activity</h3>${body}<p class="record-note"></p></section>`;
 }
@@ -888,6 +888,7 @@ function applyLocation({ reason = "initial", restoreScroll = null } = {}) {
   view.recordId = parsed.recordId;
   document.title = `${DATASET_LABEL[parsed.dataset]} · DoctorCRE`;
   if (dom.title) dom.title.textContent = DATASET_LABEL[parsed.dataset];
+  if (dom.resultsTitle) dom.resultsTitle.textContent = DATASET_LABEL[parsed.dataset];
   if (dom.intro) {
     dom.intro.textContent = "";
   }
@@ -1076,7 +1077,10 @@ function start() {
   mountAutoRefresh({ document, window: globalThis.window, refresh: async () => { await loadList("background"); if (view.recordId) await loadRecord(view.recordId); } });
   window.history.replaceState({ ...(window.history.state || {}), scrollY: 0 }, "", currentHref());
   applyLocation({ reason: "initial" });
-  mountBadge();
+  // The unread badge is chrome, not content: it loads the dealroom client, so
+  // it waits until the browser is idle after the first rows have painted.
+  const idle = window.requestIdleCallback || ((callback) => setTimeout(callback, 1500));
+  idle(() => mountBadge(), { timeout: 4000 });
 }
 
 /**

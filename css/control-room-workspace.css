@@ -1,61 +1,140 @@
-/* W7 fills W1b slots. The shared layout owns all navigation and outer sizing. */
-.control-room-workspace {max-width:none!important;width:100%;margin:0!important;padding:18px!important;min-width:0}
-.control-room-workspace .panel {padding:18px;background:linear-gradient(145deg,rgba(15,35,57,.8),rgba(3,13,24,.92));backdrop-filter:blur(18px)}
-.control-room-sidebar {display:grid;gap:14px;min-width:0}
-.control-room-sidebar .panel {margin:0;padding:0;background:none;border:0;box-shadow:none;backdrop-filter:none}
-.control-room-sidebar .panel-heading,.control-room-sidebar .board-counts,.control-room-sidebar .board-published {display:none}
-.control-room-sidebar .board-directory {display:grid;grid-template-columns:1fr;gap:8px}
-.control-room-sidebar .board-link {padding:10px;min-width:0}
-.control-room-sidebar .board-link h3 {font-size:15px;margin:4px 0}
-.control-room-sidebar .work-filters {display:grid;gap:8px;grid-template-columns:1fr}
-.control-room-sidebar .work-filters label {display:grid;gap:4px;font-size:12px;color:var(--muted)}
-.control-room-sidebar input,.control-room-sidebar select {width:100%;min-width:0;padding:9px;border:1px solid var(--line);border-radius:8px;background:#0a182a;color:var(--ink)}
-.room-name {font-family:'Barlow Condensed',sans-serif;font-size:24px;text-decoration:none}
-.read-recovery button {min-width:36px;min-height:36px;background:none;border:0;color:var(--orange)}
-.connection-grid {display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,215px),1fr));gap:12px;margin-top:16px}
-.connection-card {border:1px solid var(--line);border-radius:14px;padding:18px;display:flex;flex-direction:column;gap:10px;background:rgba(10,25,43,.85);transition:transform 120ms,border-color 120ms}
-.connection-card:hover {transform:translateY(-2px);border-color:var(--orange)}
-.connection-heading {display:flex;gap:10px;align-items:center}
-.connection-heading h3 {margin:0;font-size:21px;font-family:'Barlow Condensed',sans-serif}
-.connection-dot {width:8px;height:8px;border-radius:50%;background:#8497ab}
-[data-state=connected] .connection-dot {background:#7dddc0;box-shadow:0 0 12px #7dddc050;animation:connection-breathe 3.5s ease-in-out infinite}
-[data-state=needs_reconnect] .connection-dot {background:var(--orange);animation:connection-breathe 2s ease-in-out infinite}
-.connection-state,.connection-card time {font-size:12px;color:var(--muted)}
-.connection-spend {font-size:14px}
-.connection-card a {margin-top:auto}
-.calendar-controls {display:flex;flex-wrap:wrap;align-items:center;gap:8px}
-.calendar-controls button {min-width:36px;min-height:36px;background:#12243b;color:var(--ink);border:1px solid var(--line);border-radius:8px}
-.automation-calendar {display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:5px;margin-top:20px}
-.automation-calendar > [role=status] {grid-column:1 / -1;margin:0}
-.calendar-weekday {text-align:center;font-size:11px;color:var(--muted)}
-.calendar-day {min-height:100px;padding:7px;border:1px solid var(--line);border-radius:10px;background:rgba(6,18,31,.65);min-width:0}
-.calendar-day>time {font-size:12px;color:var(--muted)}
-.automation-job {width:100%;border:1px solid #47799e40;border-radius:7px;background:#15314a;color:#eaf5ff;text-align:left;padding:7px;margin-top:6px;display:grid;gap:5px;cursor:pointer;font-size:12px;overflow-wrap:anywhere;transition:transform 120ms,border-color 120ms}
-.automation-job:hover {transform:translateY(-2px);border-color:var(--orange)}
-.automation-job[data-state=failed],.automation-job[data-state=missed] {border-color:#ff796a}
-.automation-job time,.automation-job small {font-size:10px;color:#a0bed6}
-.automation-undated {margin-top:18px}
-.automation-undated-grid {display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:8px}
-.job-dialog {width:min(1080px,calc(100vw - 40px));max-width:none;max-height:88vh;border:1px solid #84aec844;border-radius:20px;background:linear-gradient(140deg,#122943f5,#050e1cf5);color:#f2f6fc;padding:24px;box-shadow:0 32px 120px #000a;backdrop-filter:blur(20px)}
-.job-dialog::backdrop {background:#01040bdd;backdrop-filter:blur(6px)}
-.job-dialog>header {display:flex;justify-content:space-between;align-items:flex-start;gap:16px;margin-bottom:24px}
-.job-dialog h2 {font-family:'Barlow Condensed',sans-serif;font-size:34px;margin:0;overflow-wrap:anywhere}
-.job-dialog button {min-width:44px;min-height:44px;background:#132d45;border:1px solid var(--line);border-radius:10px;color:var(--ink);font-size:24px}
-.job-summary {display:grid;grid-template-columns:minmax(0,2fr) minmax(0,1fr);gap:32px}
-.job-summary p {line-height:1.6;margin-top:16px}
-.job-summary dl {display:grid;grid-template-columns:auto 1fr;gap:14px;margin:0}
-.job-summary dd {margin:0;overflow-wrap:anywhere}
-.job-summary dt {color:var(--muted)}
-.job-links {display:flex;flex-wrap:wrap;gap:16px}
-.job-dialog details {margin-top:24px;border-top:1px solid var(--line);padding-top:20px}
-.job-dialog summary {cursor:pointer;color:var(--blue);min-height:36px}
-.job-dialog pre {white-space:pre-wrap;overflow-wrap:anywhere;max-width:100%;font-size:12px;line-height:1.6;background:#07111f;padding:16px;border-radius:10px}
-.job-update {font-size:12px;color:var(--muted);margin:8px 0 0}
-@keyframes connection-breathe {50% {opacity:.4}}
-@media(max-width:760px),(hover:none) and (pointer:coarse) and (max-width:1023px){.control-room-workspace{padding:10px!important}.control-room-workspace .panel{padding:12px}.panel-heading{flex-wrap:wrap}.calendar-day{min-height:70px;padding:3px}.automation-job{font-size:10px;padding:4px}.automation-job time{font-size:9px}.job-dialog{width:calc(100vw - 20px);padding:18px}.job-summary{grid-template-columns:1fr;gap:20px}.job-dialog h2{font-size:28px}}
-@media(prefers-reduced-motion:reduce){.connection-card,.automation-job{transition:none!important;transform:none!important}.connection-dot{animation:none!important}}
-.automation-list {display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,280px),1fr));gap:12px;margin-top:16px}
-.automation-list .automation-job {padding:16px;gap:12px;margin:0}
+/* W7 fills W1b slots. The shared layout owns all navigation and outer sizing.
+ * Tokens-only pass (V2 S5): values come from css/tokens.css, hover is a
+ * hairline step, and connection state holds still (dot shape plus its word). */
+.control-room-workspace { max-width: none !important; width: 100%; margin: 0 !important; padding: 18px !important; min-width: 0; }
+.control-room-workspace .panel { padding: 18px; background: var(--surface-1); }
+/* V2 C1 workbench. The section nav lives in the shared workspace sidebar; main
+ * is a list region plus a detail column that collapses to let the list run
+ * full width. C2 wires the toggle; this file lays out both grid states. */
+.control-room-sidebar { display: block; min-width: 0; }
+.cr-nav { display: grid; gap: var(--space-1); }
+.cr-nav-item { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); width: 100%; min-height: var(--touch); padding: 0 var(--space-3); border: var(--hairline-width) solid transparent; border-radius: var(--radius-2); background: transparent; color: var(--fg-muted); font: var(--font-weight-regular) var(--font-size-2)/1.2 var(--font-text); text-align: left; cursor: pointer; transition: background-color var(--duration-hover) var(--ease-out), color var(--duration-hover) var(--ease-out); }
+@media (hover: hover) { .cr-nav-item:hover { background: var(--surface-2); color: var(--fg); } }
+.cr-nav-item[aria-selected="true"] { background: var(--surface-2); border-color: var(--hairline); color: var(--fg); font-weight: var(--font-weight-strong); }
+.cr-nav-item:focus-visible { outline: var(--focus-width, 2px) solid var(--focus-ring); outline-offset: 1px; }
+.cr-nav-count { color: var(--fg-quiet); font-size: var(--font-size-1); font-variant-numeric: tabular-nums; }
+.cr-nav-count:empty { display: none; }
+.cr-nav-group { display: block; margin: var(--space-4) 0 var(--space-1); padding: 0 var(--space-3); color: var(--fg-quiet); font-size: var(--font-size-1); }
+.cr-nav-group ~ .cr-nav-item { min-height: 36px; font-size: var(--font-size-1); }
 
-.automation-month-agenda{display:none}
-@media(max-width:760px),(hover:none) and (pointer:coarse) and (max-width:1023px){.calendar-day{min-height:56px}.calendar-day .automation-job{display:block;width:22px;height:22px;min-height:0;margin:5px auto 0;padding:0;border-radius:50%;background:#f6923640;border-color:#f69236}.calendar-day .automation-job[data-state=failed],.calendar-day .automation-job[data-state=missed]{background:#ff796a40;border-color:#ff796a}.calendar-day .automation-job span{position:absolute;width:1px;height:1px;clip-path:inset(50%);overflow:hidden}.calendar-day .automation-job time,.calendar-day .automation-job small{display:none}.automation-month-agenda{display:grid;gap:12px;margin-top:18px}.automation-month-agenda>div>time{font-size:12px;color:#a0bed6}.automation-month-agenda .automation-job{font-size:13px;padding:10px}.automation-list .automation-job{font-size:13px}}
+.cr-workbench { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0; min-width: 0; }
+.cr-workbench[data-detail="open"] { grid-template-columns: minmax(0, 1fr) minmax(280px, 360px); }
+.cr-workbench[data-detail="closed"] .cr-detail { display: none; }
+.cr-workbench[hidden] { display: none; }
+.cr-list-region { min-width: 0; container-type: inline-size; }
+.cr-detail { position: sticky; top: 0; align-self: start; min-width: 0; margin-left: var(--space-5); padding-left: var(--space-5); border-left: var(--hairline-width) solid var(--hairline); }
+.cr-section { max-width: 72rem; }
+.cr-section-head { display: grid; gap: var(--space-1); margin-bottom: var(--space-4); }
+.cr-section-head h2 { margin: 0; font: var(--font-weight-strong) var(--font-size-4)/1.2 var(--font-text); color: var(--fg); }
+.cr-section-lead { margin: 0; color: var(--fg-muted); font-size: var(--font-size-2); max-width: 60ch; }
+.cr-coverage-row { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-1) var(--space-3); margin: 0 0 var(--space-3); }
+.cr-coverage { margin: 0; color: var(--fg-muted); font-size: var(--font-size-1); font-variant-numeric: tabular-nums; }
+.cr-coverage[data-complete="false"]::before { content: "◐ "; color: var(--fg-quiet); }
+.cr-sources { font-size: var(--font-size-1); color: var(--fg-muted); }
+.cr-sources summary { cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
+.cr-sources ul { list-style: none; margin: var(--space-2) 0 0; padding: 0; display: grid; gap: var(--space-1); }
+.cr-sources strong { color: var(--fg); font-weight: var(--font-weight-strong); }
+.cr-list { display: grid; gap: var(--space-5); min-width: 0; }
+.cr-group h3 { display: flex; align-items: baseline; gap: var(--space-2); margin: 0 0 var(--space-2); font: var(--font-weight-strong) var(--font-size-2)/1.3 var(--font-text); color: var(--fg); }
+.cr-group h3 span { color: var(--fg-quiet); font-weight: var(--font-weight-regular); font-variant-numeric: tabular-nums; }
+.cr-rows { list-style: none; margin: 0; padding: 0; border-top: var(--hairline-width) solid var(--hairline); }
+.cr-row { display: grid; grid-template-columns: 1.25rem 7.5rem minmax(0, 1fr) auto; align-items: center; gap: var(--space-3); min-height: var(--touch); padding: 0 var(--space-2); border-bottom: var(--hairline-width) solid var(--hairline); font-size: var(--font-size-2); }
+.cr-row-glyph { color: var(--fg-quiet); text-align: center; }
+.cr-row-ref { color: var(--fg-muted); font-size: var(--font-size-1); font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cr-row-title { min-width: 0; color: var(--fg); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cr-row-meta { color: var(--fg-muted); font-size: var(--font-size-1); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.cr-row[data-group="blocked"] .cr-row-glyph { color: var(--status-danger); }
+.cr-row[data-group="in_progress"] .cr-row-glyph { color: var(--status-info); }
+.cr-row[data-group="review"] .cr-row-glyph { color: var(--status-warn); }
+.cr-row[data-group="ready"] .cr-row-glyph { color: var(--status-ok); }
+:root[data-color-assist="on"] .cr-row[data-group="blocked"] { border-left: 3px double var(--status-danger); }
+:root[data-color-assist="on"] .cr-row[data-group="review"] { border-left: 3px dashed var(--status-warn); }
+:root[data-color-assist="on"] .cr-row[data-group="in_progress"] { border-left: 3px dotted var(--status-info); }
+:root[data-color-assist="on"] .cr-row[data-group="ready"] { border-left: 3px solid var(--status-ok); }
+/* After the base row rules so it wins the cascade. A narrow list (a phone, or the detail column open) stacks each row on two lines. */
+@container (max-width: 760px) {
+  .cr-row { grid-template-columns: 1.25rem auto minmax(0, 1fr); align-content: center; row-gap: 2px; column-gap: var(--space-2); padding: var(--space-2); }
+  .cr-row-glyph { grid-row: 1 / span 2; align-self: start; }
+  .cr-row-title { grid-column: 2 / -1; grid-row: 1; white-space: normal; }
+  .cr-row-ref { grid-column: 2; grid-row: 2; }
+  .cr-row-meta { grid-column: 3; grid-row: 2; overflow: hidden; text-overflow: ellipsis; }
+}
+.control-room-workspace #system-work-panel .work-filters { margin: 0; gap: var(--space-3); }
+.control-room-workspace #system-work-panel .work-filters label { flex: 1 1 140px; gap: var(--space-1); font-size: var(--font-size-1); }
+.control-room-workspace #system-work-panel .work-filters input, .control-room-workspace #system-work-panel .work-filters select { padding: var(--space-2); min-height: var(--touch); }
+.control-room-workspace #system-work-panel .work-filters button { min-height: var(--touch); padding: 0 var(--space-4); border: var(--hairline-width) solid var(--hairline-strong); border-radius: var(--radius-2); background: var(--surface-2); color: var(--fg); font: inherit; cursor: pointer; }
+@media (hover: hover) { .control-room-workspace #system-work-panel .work-filters button:hover { background: var(--surface-3); } }
+.control-room-workspace #board-eyebrow { display: none; }
+/* The Key sits in the board's own toolbar here, never floating over cards. */
+.control-room-workspace .board-switch { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); }
+.control-room-workspace .legend-toggle { position: static; min-height: var(--touch); }
+.control-room-workspace .legend { position: static; width: auto; max-height: none; margin: var(--space-3) 0; box-shadow: none; animation: none; }
+/* The board's "Blocked only" checkbox stays a checkbox, not a grey block. */
+.control-room-workspace .filters input[type="checkbox"] { appearance: auto; width: 1rem; height: 1rem; min-width: 0; min-height: 0; padding: 0; margin: 0; border: 0; background: none; accent-color: var(--fg); }
+.room-name { font-family: var(--font-text); font-weight: var(--font-weight-strong); font-size: var(--font-size-2); text-decoration: none; }
+.read-recovery button { min-width: 36px; min-height: 36px; background: none; border: 0; color: var(--fg); text-decoration: underline; }
+.connection-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 215px), 1fr)); gap: 12px; margin-top: 16px; }
+.connection-card { border: var(--hairline-width) solid var(--hairline); border-radius: var(--radius-3); padding: 18px; display: flex; flex-direction: column; gap: 10px; background: var(--surface-2); transition: border-color var(--duration-hover) var(--ease-out); }
+.connection-card:hover { border-color: var(--hairline-strong); }
+.connection-heading { display: flex; gap: 10px; align-items: center; }
+.connection-heading h3 { margin: 0; font-size: var(--font-size-3); font-family: var(--font-text); }
+.connection-dot { width: 8px; height: 8px; border-radius: 50%; background: transparent; border: 1.5px solid var(--fg-quiet); }
+[data-state=connected] .connection-dot { background: var(--status-ok); border-color: var(--status-ok); }
+[data-state=needs_reconnect] .connection-dot { background: var(--status-warn); border-color: var(--status-warn); border-radius: 1px; }
+.connection-state, .connection-card time { font-size: var(--font-size-1); color: var(--fg-muted); }
+.connection-spend { font-size: var(--font-size-1); font-variant-numeric: tabular-nums; }
+.connection-card a { margin-top: auto; }
+.calendar-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.calendar-controls button { min-width: 36px; min-height: 36px; background: var(--surface-1); color: var(--fg); border: var(--hairline-width) solid var(--hairline-strong); border-radius: var(--radius-2); }
+.automation-calendar { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 5px; margin-top: 20px; }
+.automation-calendar > [role=status] { grid-column: 1 / -1; margin: 0; }
+.calendar-weekday { text-align: center; font-size: var(--font-size-1); color: var(--fg-muted); }
+.calendar-day { min-height: 100px; padding: 7px; border: var(--hairline-width) solid var(--hairline); border-radius: var(--radius-2); background: var(--surface-1); min-width: 0; }
+.calendar-day > time { font-size: var(--font-size-1); color: var(--fg-muted); font-variant-numeric: tabular-nums; }
+.automation-job { width: 100%; border: var(--hairline-width) solid var(--hairline); border-radius: var(--radius-2); background: var(--surface-2); color: var(--fg); text-align: left; padding: 7px; margin-top: 6px; display: grid; gap: 5px; cursor: pointer; font-size: var(--font-size-1); overflow-wrap: anywhere; transition: border-color var(--duration-hover) var(--ease-out); }
+.automation-job:hover { border-color: var(--hairline-strong); }
+.automation-job[data-state=failed], .automation-job[data-state=missed] { border-color: var(--status-danger); border-style: dashed; }
+.automation-job time, .automation-job small { font-size: var(--font-size-1); color: var(--fg-muted); }
+.automation-undated { margin-top: 18px; }
+.automation-undated-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 8px; }
+.job-dialog { width: min(1080px, calc(100vw - 40px)); max-width: none; max-height: 88vh; border: var(--hairline-width) solid var(--hairline-strong); border-radius: var(--radius-3); background: var(--surface-1); color: var(--fg); padding: 24px; box-shadow: var(--shadow-overlay); }
+.job-dialog::backdrop { background: var(--scrim); }
+.job-dialog > header { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; margin-bottom: 24px; }
+.job-dialog h2 { font-family: var(--font-text); font-size: var(--font-size-4); margin: 0; overflow-wrap: anywhere; }
+.job-dialog button { min-width: 44px; min-height: 44px; background: var(--surface-2); border: var(--hairline-width) solid var(--hairline-strong); border-radius: var(--radius-2); color: var(--fg); font-size: var(--font-size-3); }
+.job-summary { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: 32px; }
+.job-summary p { line-height: 1.6; margin-top: 16px; }
+.job-summary dl { display: grid; grid-template-columns: auto 1fr; gap: 14px; margin: 0; }
+.job-summary dd { margin: 0; overflow-wrap: anywhere; }
+.job-summary dt { color: var(--fg-muted); }
+.job-links { display: flex; flex-wrap: wrap; gap: 16px; }
+.job-dialog details { margin-top: 24px; border-top: var(--hairline-width) solid var(--hairline); padding-top: 20px; }
+.job-dialog summary { cursor: pointer; color: var(--fg); min-height: 36px; }
+.job-dialog pre { white-space: pre-wrap; overflow-wrap: anywhere; max-width: 100%; font-family: var(--font-mono); font-size: var(--font-size-1); line-height: 1.6; background: var(--surface-2); padding: 16px; border-radius: var(--radius-2); }
+.job-update { font-size: var(--font-size-1); color: var(--fg-muted); margin: 8px 0 0; }
+@media (max-width: 760px), (hover: none) and (pointer: coarse) and (max-width: 1023px) {
+  .control-room-workspace { padding: 10px !important; }
+  .control-room-workspace .panel { padding: 12px; }
+  .panel-heading { flex-wrap: wrap; }
+  .calendar-day { min-height: 70px; padding: 3px; }
+  .automation-job { padding: 4px; }
+  .job-dialog { width: calc(100vw - 20px); padding: 18px; }
+  .job-summary { grid-template-columns: 1fr; gap: 20px; }
+  .job-dialog h2 { font-size: var(--font-size-3); }
+  .cr-workbench[data-detail="open"] { grid-template-columns: minmax(0, 1fr); }
+  .cr-workbench[data-detail="open"] .cr-detail { position: static; margin: var(--space-5) 0 0; padding: var(--space-5) 0 0; border-left: 0; border-top: var(--hairline-width) solid var(--hairline); }
+  .cr-section-head h2, .cr-boards-heading { font-size: var(--font-size-3); }
+}
+@media (prefers-reduced-motion: reduce) { .connection-card, .automation-job { transition: none !important; transform: none !important; } }
+
+.automation-month-agenda { display: none; }
+@media (max-width: 760px), (hover: none) and (pointer: coarse) and (max-width: 1023px) {
+  .calendar-day { min-height: 56px; }
+  .calendar-day .automation-job { display: block; width: 22px; height: 22px; min-height: 0; margin: 5px auto 0; padding: 0; border-radius: 50%; background: var(--surface-3); border-color: var(--hairline-strong); }
+  .calendar-day .automation-job[data-state=failed], .calendar-day .automation-job[data-state=missed] { background: var(--surface-3); border: 2px dashed var(--status-danger); border-radius: 2px; }
+  .calendar-day .automation-job span { position: absolute; width: 1px; height: 1px; clip-path: inset(50%); overflow: hidden; }
+  .calendar-day .automation-job time, .calendar-day .automation-job small { display: none; }
+  .automation-month-agenda { display: grid; gap: 12px; margin-top: 18px; }
+  .automation-month-agenda > div > time { font-size: var(--font-size-1); color: var(--fg-muted); }
+  .automation-month-agenda .automation-job { font-size: var(--font-size-1); padding: 10px; }
+}

@@ -79,14 +79,23 @@ export function mountBoard(deps = {}) {
     const node = doc.createElement(tag);
     if (className) node.className = className;
     if (text !== undefined && text !== null) node.textContent = String(text);
-    for (const [name, value] of Object.entries(attributes)) node.setAttribute(name, String(value));
+    setAttributes(node, attributes);
     return node;
+  }
+
+  // The page CSP (style-src 'self') refuses a style attribute written with setAttribute;
+  // the CSSOM write below is allowed, so stage and pulse colours actually paint.
+  function setAttributes(node, attributes) {
+    for (const [name, value] of Object.entries(attributes)) {
+      if (name === "style") node.style.cssText = String(value);
+      else node.setAttribute(name, String(value));
+    }
   }
 
   function svg(tag, className, attributes = {}, text) {
     const node = doc.createElementNS(SVG_NS, tag);
     if (className) node.setAttribute("class", className);
-    for (const [name, value] of Object.entries(attributes)) node.setAttribute(name, String(value));
+    setAttributes(node, attributes);
     if (text !== undefined) node.textContent = String(text);
     return node;
   }
@@ -192,7 +201,7 @@ export function mountBoard(deps = {}) {
   }
 
   function stageColor(id) {
-    return STAGE_DEFINITIONS.find(stage => stage.id === id)?.color || "#f2f6fc";
+    return STAGE_DEFINITIONS.find(stage => stage.id === id)?.color || "var(--fg)";
   }
 
   function clickable(node, open) {
@@ -288,16 +297,23 @@ export function mountBoard(deps = {}) {
         { title: "GitHub could not be read for this card; it shows its last verified state" }));
     node.append(top);
 
+    const compact = Boolean(deps.openTask);
     const summary = taskSummary(card);
-    node.append(el("p", "card-summary", summary, { title: summary }));
+    if (!compact || summary.replace(/\.+$/, "") !== String(card.title || card.id).replace(/\.+$/, ""))
+      node.append(el("p", "card-summary", summary, { title: summary }));
     const meta = el("p", "card-meta");
-    meta.append(el("span", "card-wr", jobLinks(card).workRequest || "Work Request unavailable"), el("span", "card-pr", jobLinks(card).prLabel || "No PR"), el("span", "dot", "·"),
-      el("span", "stage-timer", `${card.stage} ${ageText(stageEnteredAt(card), currentNow())}`,
-        { "data-stage-since": stageEnteredAt(card) || "", "data-stage": card.stage,
-          title: "Time in this stage" }));
-    node.append(meta);
-    const model = modelLine(card);
-    node.append(el("p", "card-model", model, { title: model }));
+    const links = jobLinks(card);
+    if (links.workRequest || !compact) meta.append(el("span", "card-wr", links.workRequest || "Work Request unavailable"));
+    if (links.prLabel || !compact) meta.append(el("span", "card-pr", links.prLabel || "No PR"));
+    const entered = stageEnteredAt(card);
+    if (entered || !compact) {
+      if (meta.childElementCount) meta.append(el("span", "dot", "·"));
+      meta.append(el("span", "stage-timer", `${card.stage} ${ageText(entered, currentNow())}`,
+        { "data-stage-since": entered || "", "data-stage": card.stage, title: "Time in this stage" }));
+    }
+    if (meta.childElementCount) node.append(meta);
+    const model = modelLine(card).split(" · ").filter(value => !compact || !/^(unknown|not recorded)$/i.test(value)).join(" · ");
+    if (model) node.append(el("p", "card-model", model, { title: model }));
     if (card.blocked) {
       const blocked = el("div", "card-blocked");
       blocked.append(el("p", "", `Why: ${card.blocked.reason}`), el("p", "", `Next: ${card.blocked.next}`));
@@ -399,6 +415,9 @@ export function mountBoard(deps = {}) {
 
   function renderStages(view) {
     const census = deps.openTask ? censusCards() : null;
+    const mode = byId("board-data-mode");
+    if (mode) mode.textContent = census ? "Live work · The pipeline shows current work."
+      : view ? "Published snapshot · The pipeline shows published work." : "";
     if (!view && !census) return;
     const original = census || view.cards;
     const approvals = governanceTasks(governanceRead);
@@ -422,13 +441,13 @@ export function mountBoard(deps = {}) {
     const grouped = kind === ALL_REPOS_BOARD;
     byId("task-count").textContent = `${visible.length} OF ${all.length} CARD${all.length === 1 ? "" : "S"}`;
     renderRail(visible, stages);
-    stages.forEach((stage, index) => {
+    stages.forEach(stage => {
       const cards = visible.filter(card => card.stage === stage.id);
+      if (!cards.length) return;
       const column = el("section", "column", undefined,
         { "data-stage": stage.id, style: `--stage-accent:${stage.color}`, "aria-label": `${stage.label}: ${cards.length}` });
       const head = el("header", "column-head");
-      if (stage.sequence !== false) head.append(el("span", "stage-index", String(index + 1).padStart(2, "0")));
-      head.append(el("h3", "stage-label", stage.label), el("span", "stage-count", String(cards.length).padStart(2, "0")));
+      head.append(el("h3", "stage-label", stage.label), el("span", "stage-count", String(cards.length)));
       column.append(head);
       const body = el("div", "column-body");
       if (stage.id === "live") {
@@ -446,10 +465,10 @@ export function mountBoard(deps = {}) {
       } else {
         appendCards(body, cards, grouped);
       }
-      if (!cards.length) body.append(el("p", "column-empty", "Nothing here"));
       column.append(body);
       container.append(column);
     });
+    if (!visible.length) container.append(el("p", "empty", all.length ? "No tasks match these filters." : "No tasks on this board yet."));
     for (const id of [...cardNodes.keys()]) if (!all.some(card => card.id === id)) cardNodes.delete(id);
     if (focusedId || focusedControlId) {
       const node = focusedId ? cardNodes.get(focusedId) : byId(focusedControlId);
@@ -851,7 +870,7 @@ export function mountBoard(deps = {}) {
     currentView = view;
     costs.update(view.costs);
     byId("board-title").textContent = deps.openTask ? "System Job Board" : view.title;
-    byId("board-eyebrow").textContent = view.kind === ALL_REPOS_BOARD ? "DELIVERY / ALL REPOSITORIES" : "DELIVERY / PROGRESS BOARD";
+    byId("board-eyebrow").textContent = view.kind === ALL_REPOS_BOARD ? "All repositories" : "Progress board";
     doc.title = "Control Room · DoctorCRE";
     byId("board-meta").textContent = `${view.board_id} · Published ${formatTime(view.updated_at)} · Version ${view.version}`;
     renderSync(view);
@@ -885,6 +904,7 @@ export function mountBoard(deps = {}) {
     governanceRead = null;
     deps.onTasks?.([], {state});
     censusPipeline = null;
+    if (byId("board-data-mode")) byId("board-data-mode").textContent = "";
     currentView = null;
     lastRead = null;
     viewSignature = "";
@@ -897,6 +917,10 @@ export function mountBoard(deps = {}) {
     pendingRequests.clear();
     for (const id of BOARD_PANELS) byId(id)?.replaceChildren();
     for (const id of BOARD_COUNTS) byId(id).textContent = "—";
+    if (state === "unpublished") {
+      byId("board-stages").append(el("p", "empty", "Tasks appear when this board is published."));
+      byId("board-blocked").append(el("p", "empty", "Blocked work appears when this board is published."));
+    }
     byId("repos-panel").hidden = true;
     byId("board-sync").hidden = true;
     byId("board-title").textContent = deps.openTask ? "System Job Board" : "Progress";
@@ -933,7 +957,8 @@ export function mountBoard(deps = {}) {
       setError(message);
       const meta = byId("board-meta");
       meta.setAttribute("data-read-state", state);
-      if (currentView) meta.textContent = `Updated ${formatTime(currentView.updated_at)} ↻`;
+      // A failed first read must not keep saying "Loading" beside the error.
+      meta.textContent = currentView ? `Updated ${formatTime(currentView.updated_at)} ↻` : "Board not loaded";
     }
     if (status === 401) byId("board-sign-in").hidden = false;
     byId("board-retry").hidden = false;
@@ -969,7 +994,7 @@ export function mountBoard(deps = {}) {
       if (view.error) { boardState="unknown"; deps.onTasks?.([], {state:"unknown"}); setError(view.error); return false; }
       if (!view.version) {
         clearBoard("unpublished");
-        setError("This board has not been published yet.");
+        setError(byId("board-data-mode") ? "" : "This board has not been published yet.");
         byId("board-retry").hidden = false;
         return false;
       }

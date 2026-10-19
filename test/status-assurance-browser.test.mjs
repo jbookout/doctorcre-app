@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { chromium } from './browser-harness.mjs';
+import { chromium } from 'playwright';
 import { scope, NOW, projection } from './fixtures/assurance-health.mjs';
 import { writeSnapshot } from '../js/status-model.js';
 
@@ -52,7 +52,7 @@ test('390px and iPad Status render server scoped state and evidence age with dar
       const box = await control.boundingBox(); assert.ok(box.height >= 44 && box.width >= 44);
     }
     const glass = await covered.evaluate(el => getComputedStyle(el.closest('.glass')).backdropFilter);
-    assert.notEqual(glass, 'none'); assert.equal(await page.locator('html').getAttribute('data-theme'), 'dark');
+    assert.equal(glass, 'none'); // V2 S0: panels are solid surfaces, no backdrop blur assert.equal(await page.locator('html').getAttribute('data-theme'), 'dark');
     await page.emulateMedia({ reducedMotion: 'reduce' });
     assert.equal(await covered.evaluate(el => el.getAnimations({ subtree: true }).length), 0);
     assert.deepEqual(errors, []);
@@ -65,6 +65,7 @@ test('refused read renders unknown without server error prose and retry stays re
   await page.waitForFunction(() => document.querySelector('[data-gap="v5-a01"]')?.textContent.includes('refused'));
   assert.equal(await covered.getAttribute('data-state'), 'unknown');
   assert.doesNotMatch(await covered.textContent(), /healthy|private runbook|no producer yet/);
+  await page.locator('#selfAvatar').click();
   await page.locator('#appSyncRefresh').click();
   await page.waitForFunction(() => document.querySelector('[data-gap="v5-a01"]')?.textContent.includes('refused'));
   assert.ok(calls.every(call => ['read-assurance-health', 'incident-board', 'current-work-item', 'current-work-requests', 'read-session-identity', 'notification-feed', 'deal-room-board', 'morning-brief','today-triage', 'list-feature-switches','list-doc-suggestions'].includes(call.name)));

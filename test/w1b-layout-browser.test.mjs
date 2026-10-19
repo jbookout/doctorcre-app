@@ -63,14 +63,23 @@ test('five regions, rail destinations, Leads filters and per-page sidebar memory
 test('Leads drag and keyboard moves review evidence before using the same stage command',async t=>{
  const{page,goto,writes,errors}=await open(t,{motion:'reduce'});await goto('/leads');
  const card=()=>page.locator(`#leadBoard [data-lead-id="${id(1)}"]`);
- assert.equal(await card().locator('.party-id').textContent(),id(101).slice(0,8));
- // Wait for the entrance animation and expose both endpoints before mouse-down.
- // A second scroll during dragTo can move the source and cancel dragstart.
+ assert.equal(await card().locator('.lead-market').textContent(),'Pensacola, FL');
  await animationsSettled(page);
  const target=page.locator('.stage-column[data-stage="engaged"] .stage-head');
- await target.scrollIntoViewIfNeeded();await card().scrollIntoViewIfNeeded();
- await card().dragTo(target);
+ await card().scrollIntoViewIfNeeded();
+ const source=await card().boundingBox();
+ await page.mouse.move(source.x+source.width/2,source.y+source.height/2);
+ await page.mouse.down();
+ // Start the native drag before scrolling to a stage on another grid row.
+ // dragTo scrolls its target before moving, which can start dragging another card.
+ await page.mouse.move(source.x+source.width/2+12,source.y+source.height/2,{steps:4});
+ await page.locator('.lead-card.dragging').waitFor();
+ await target.scrollIntoViewIfNeeded();
+ const destination=await target.boundingBox();
+ await page.mouse.move(destination.x+destination.width/2,destination.y+destination.height/2,{steps:10});
+ await page.mouse.up();
  await page.locator('#stageDialog[open] .stage-proposal').waitFor();assert.deepEqual(writes,[]);
+ assert.equal(await page.locator('#stageTitle').textContent(),'Doc · Dr. Example 1');
  await page.locator('#saveStage').click();await page.locator(`#leadBoard [data-stage="engaged"] [data-lead-id="${id(1)}"]`).waitFor();
  await card().focus();await page.keyboard.press('Alt+ArrowRight');await page.locator('#stageDialog[open] .stage-proposal').waitFor();assert.deepEqual(writes,['update-lead']);
  await page.locator('#stageQuestions textarea').fill('Synthetic preference for follow-up later');await page.locator('#saveStage').click();
@@ -205,7 +214,7 @@ test('R8 page environment capture and freshness feedback stays visible in the st
   await page.setViewportSize({width,height:960});await goto('/deals?mode=fixture');await page.waitForFunction(()=>document.querySelector('#deploymentBadge').dataset.mode==='fixture');
   assert.equal(await page.locator('#deploymentBadge').isVisible(),true);assert.equal(await page.locator('#syncStatus').isVisible(),true);
   await page.evaluate(()=>{const n=document.querySelector('#captureStatus');n.hidden=false;n.textContent='Capture active';});assert.equal(await page.locator('#captureStatus').isVisible(),true);
-  const badge=await page.locator('#deploymentBadge').boundingBox(),bar=await page.locator('.app-layout-status').boundingBox();assert.ok(badge.y>=bar.y && badge.y+badge.height<=bar.y+bar.height);
+  const badge=await page.locator('#deploymentBadge').boundingBox(),bar=await page.locator('.app-layout-status').boundingBox();assert.ok(badge.y>=bar.y && badge.y+badge.height<=bar.y+bar.height,JSON.stringify({width,badge,bar}));
   await page.screenshot({animations:'disabled',path:new URL(`out/test-artifacts/w1b/environment-${width}.png`,root).pathname});
   await goto('/');assert.equal(await page.locator('#observedAt').isVisible(),true);
  }

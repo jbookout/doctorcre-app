@@ -22,7 +22,7 @@ test('human labels require an explicitly recorded partner', () => {
 });
 
 test('Observatory coexists with the current Progress navigation', async () => {
-  assert.match(await read('room.html'), /progress-legacy\.js/);
+  for (const retired of ['room.html', 'queue.html', 'js/progress-legacy.js']) await assert.rejects(read(retired), { code: 'ENOENT' });
   assert.match(await read('observatory.html'), /js\/observatory\.js/);
 });
 

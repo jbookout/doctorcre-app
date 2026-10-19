@@ -15,10 +15,15 @@ import { mountJobDetail } from './job-detail.js';
 import { escapeText as escapeHtml } from './change-receipts.mjs';
 import { validGovernanceQueuePayload, validScheduleBoardPayload } from './operations-model.js';
 import {snapshotFromReads,writeSnapshot} from './status-model.js';
+import { sectionForTab, createQueue, addPage, refreshQueue, settleRefresh, queueItems, triageItems, bugItems, coverageLine, STATUS_GROUPS } from './control-room-queue-model.js';
+import { notificationCards, validFeedPayload } from './notifications-model.js';
+import { mountQueueList, paneShortcut, ignoreKey } from './control-room-list.js';
+import { mountDetail } from './control-room-detail.js';
+import { mountControlRoomCommands } from './control-room-commands.js';
 const $=id=>document.getElementById(id);
 export { escapeHtml };
-export const view={status:'loading',sequence:0,severity:'all',reads:{incidents:{state:'pending'},approvals:{state:'pending'},schedule:{state:'pending'},connections:{state:'pending'}},atlas:{status:'idle',payload:null}};
-let client,tabs,board,details;
+export const view={status:'loading',sequence:0,severity:'all',queue:{state:'pending',model:createQueue()},inbox:{state:'pending'},waiting:{state:'pending'},reads:{incidents:{state:'pending'},approvals:{state:'pending'},schedule:{state:'pending'},connections:{state:'pending'}},atlas:{status:'idle',payload:null}};
+let client,tabs,board,details,queueList,detail;
 const now=new Date();let year=now.getFullYear(),month=now.getMonth();
 const payloadOf=id=>view.reads[id]?.state==='read'?view.reads[id].payload:null;
 const asOf=read=>updatedLabel(read?.observed_at);
@@ -62,15 +67,18 @@ function renderIncidents() {
           <div class="stack-end"><button class="btn" type="button" data-room-control="${escapeHtml(card.ref)}" data-incident-open="${escapeHtml(card.ref)}">Details</button></div>
         </li>`).join("")}
       </ul>
-    </section>`).join("") || `<div class="state-block" data-state="empty"><h3>No incident matches this severity</h3></div>`);
+    </section>`).join("") || `<div class="state-block" data-state="empty"><h3>${view.reads.incidents?.payload?.incidents?.length?"No incident matches this severity":"No incidents"}</h3></div>`);
 }
 
 function openIncident(ref) { const row=payloadOf('incidents')?.incidents?.find(item=>item.ref===ref);if(row){selectDocRecord("incident", row.ref);details.open({...row,id:row.ref},{source:'incidents'});} }
 
 function renderConnections(){
  const projection=connectionView(payloadOf('connections'));
- $('connectionsUpdated').textContent=updatedLabel(projection.generated_at);
- replaceHtml($('connectionsProviders'),projection.providers.map(row=>`<article class="connection-card" data-connection="${escapeHtml(row.id)}" data-state="${row.status}"><div class="connection-heading"><span class="connection-dot" aria-hidden="true"></span><h3>${row.name}</h3></div><span class="connection-state">${row.label}</span><strong class="connection-spend">${escapeHtml(meteredSpend(row.spend))}</strong>${row.spend?`<time>${escapeHtml(updatedLabel(row.spend.as_of))}</time>`:''}${row.manage_url?`<a data-room-control="manage:${escapeHtml(row.id)}" href="${escapeHtml(row.manage_url)}" target="_blank" rel="noopener noreferrer">Manage ↗</a>`:''}</article>`).join(''));
+ $('connectionsUpdated').textContent=projection.generated_at?updatedLabel(projection.generated_at):view.reads.connections.state==='pending'?'Updating…':'No current reading';
+ const missing=projection.providers.some(row=>row.status==='unknown'||!row.spend);
+ const state=$('connectionsState');state.hidden=!missing;
+ state.textContent=projection.providers.every(row=>row.status==='unknown'&&!row.spend)?'Provider status and spend are unavailable. Dashes mark missing readings.':'Some provider status or spend readings are unavailable. Dashes mark missing readings.';
+ replaceHtml($('connectionsProviders'),projection.providers.map(row=>`<article class="connection-card" data-connection="${escapeHtml(row.id)}" data-state="${row.status}"><div class="connection-heading"><span class="connection-dot" aria-hidden="true"></span><h3>${row.name}</h3></div><span class="connection-state">${row.status==='unknown'?'—':row.label}</span><strong class="connection-spend">${row.spend?escapeHtml(meteredSpend(row.spend)):'—'}</strong>${row.spend?`<time>${escapeHtml(updatedLabel(row.spend.as_of))}</time>`:''}${row.manage_url?`<a data-room-control="manage:${escapeHtml(row.id)}" href="${escapeHtml(row.manage_url)}" target="_blank" rel="noopener noreferrer">Manage ↗</a>`:''}</article>`).join(''));
  $('connectionDevices').innerHTML=(projection.devices||[]).map(row=>`<article class="connection-card" data-device="${escapeHtml(row.id)}" data-state="${row.status}"><h3>${escapeHtml(row.name)}</h3><span>${{connected:'Connected',offline:'Not connected',unknown:'Status unavailable'}[row.status]}</span><time>${escapeHtml(updatedLabel(row.checked_at))}</time></article>`).join('');
  $('devicesState').textContent=projection.devices?projection.devices.length?'':'No devices':'Device status unavailable';
 }
@@ -78,9 +86,12 @@ function automationButton(job){return `<button type="button" class="automation-j
 function renderAutomations(){
  const data=automationMonth(payloadOf('schedule'),year,month);$('automationMonth').textContent=data.label;
  details?.update((data.jobs||[]).map(job=>({...job,id:`automation:${job.owner}:${job.key}`,title:job.name})),{source:'schedule',state:view.reads.schedule.state});
- const calendar=$('automationCalendar');replaceHtml(calendar,data.jobs?(data.notice?`<p role="status">${escapeHtml(data.notice)}</p>`:'')+['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map(day=>`<span class="calendar-weekday">${day}</span>`).join('')+Array.from({length:data.blanks},()=>'<div class="calendar-blank"></div>').join('')+data.days.map(day=>`<section class="calendar-day" aria-label="${day.key}"><time datetime="${day.key}">${day.day}</time>${day.jobs.map(automationButton).join('')}</section>`).join(''):'<p role="status">Automations unavailable</p>');
+ const scheduled=data.days.some(day=>day.jobs.length);
+ $('automationControls').hidden=!data.jobs?.some(job=>job.next_due_at);
+ const state=$('automationState');state.textContent=data.notice||(!scheduled?`No scheduled runs in ${data.label}`:'');state.hidden=!state.textContent;
+ const calendar=$('automationCalendar');replaceHtml(calendar,scheduled?['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map(day=>`<span class="calendar-weekday">${day}</span>`).join('')+Array.from({length:data.blanks},()=>'<div class="calendar-blank"></div>').join('')+data.days.map(day=>`<section class="calendar-day" aria-label="${day.key}"><time datetime="${day.key}">${day.day}</time>${day.jobs.map(automationButton).join('')}</section>`).join(''):'');
  replaceHtml($('automationAgenda'),data.jobs?data.days.flatMap(day=>day.jobs.map(job=>`<div><time datetime="${day.key}">${day.day} ${data.label}</time>${automationButton(job)}</div>`)).join(''):'');
- replaceHtml($('automationUndated'),data.undated.length?`<h3>Next time unavailable</h3><div class="automation-undated-grid">${data.undated.map(automationButton).join('')}</div>`:'');
+ replaceHtml($('automationUndated'),data.jobs?.length?`<h3>All automations</h3><div class="automation-undated-grid">${data.jobs.map(automationButton).join('')}</div>`:'');
  document.querySelectorAll('[data-automation]').forEach(button=>button.onclick=()=>{const job=data.jobs.find(j=>j.key===button.dataset.automation&&j.owner===button.dataset.owner);if(job)details.open({...job,id:`automation:${job.owner}:${job.key}`,title:job.name},{source:'schedule'});});
 }
 function renderRead(id){
@@ -110,10 +121,134 @@ async function take(id,run){
 }
 async function load(){
  view.sequence++;view.status='loading';
+ renderQueue();
  await Promise.all([take('incidents',()=>client.incidentBoard({state:'open'})),take('approvals',()=>client.governanceQueue()),take('schedule',()=>client.scheduleBoard()),take('connections',()=>client.readConnections())]);
+ await Promise.all([loadQueue(),loadInbox(),loadWaiting()]);
  await details.refresh();view.status='ready';
  if(view.reads.incidents.state==='read'){try{writeSnapshot(window.localStorage,snapshotFromReads(view.reads,Date.now()));}catch{ /* Device storage may be unavailable. */ }}
  announce(Object.values(view.reads).every(read=>read.state==='read')?'Control Room updated':'Control Room updates unavailable');
+}
+
+// V2 C1: the workbench sections. Rows are read-only here; C2 owns selection
+// and the detail pane, C3 the triage actions, C5 the saved views.
+const ISSUE_SECTIONS=new Set(['inbox','waiting','triage','queue','views']);
+const QUEUE_PAGE=100;
+const GLYPH={triage:'◇',in_progress:'◑',review:'◔',blocked:'■',ready:'●',backlog:'○',closed:'✓',other:'·'};
+const emptyBlock=id=>$(id)?.innerHTML||'';
+const stateBlock=(state,title,text='')=>`<div class="state-block" data-state="${state}"><h3>${escapeHtml(title)}</h3>${text?`<p>${escapeHtml(text)}</p>`:''}</div>`;
+const plural=(n,one,many=one+'s')=>`${n.toLocaleString('en-US')} ${n===1?one:many}`;
+function setCount(key,n){const node=document.querySelector(`[data-count-for="${key}"]`);if(node)node.textContent=n>0?n.toLocaleString('en-US'):'';}
+function issueRow(item){
+ const meta=[item.kindLabel,item.holder||item.owner,Number.isFinite(item.age)?`${item.age}d`:null].filter(Boolean).join(' · ');
+ const group=STATUS_GROUPS.find(g=>g.key===item.statusGroup)?.label||'Other';
+ return `<li class="cr-row" data-issue="${escapeHtml(item.id)}" data-group="${escapeHtml(item.statusGroup)}" data-kind="${escapeHtml(item.kind)}"><span class="cr-row-glyph" role="img" aria-label="${escapeHtml(group)}">${GLYPH[item.statusGroup]||'·'}</span><span class="cr-row-ref">${escapeHtml(item.ref)}</span><span class="cr-row-title">${escapeHtml(item.title)}</span><span class="cr-row-meta">${escapeHtml(meta)}</span></li>`;
+}
+function renderQueue(){
+ const read=view.queue,queue=read.model;
+ const coverage=$('crQueueCoverage'),more=$('crQueueMore');
+ if(read.state!=='read'&&queue.pages===0){
+  const failed=read.state==='unknown';
+  coverage.textContent=failed?read.reason:'Reading the record layer…';coverage.dataset.complete='false';$('crQueueSources').hidden=true;
+  if(failed)queueList.error(read.reason);else queueList.loading();
+  for(const id of ['crTriageList','crViewsList'])replaceHtml($(id),failed?stateBlock('offline','The queue could not be read',`${read.reason}. Nothing is shown rather than a partial guess.`):stateBlock('loading','Reading the queue…'));
+  more.hidden=true;return;
+ }
+ const line=coverageLine(queue);coverage.textContent=line.text;coverage.dataset.complete=String(line.complete);
+ $('crQueueSources').hidden=line.details.length===0;
+ replaceHtml($('crQueueSourceList'),line.details.map(d=>`<li><strong>${escapeHtml(d.source)}</strong> ${escapeHtml(d.text)}</li>`).join(''));
+ const open=queueItems(queue),triage=triageItems(queue),everything=queueItems(queue,{includeTriage:true});
+ queueList.rows(open,{triage:triage.length});
+ replaceHtml($('crTriageList'),triage.length?`<ul class="cr-rows">${triage.map(issueRow).join('')}</ul>`:emptyBlock('crTriageEmpty'));
+ const views=[
+  ['Everything','Every loaded item, triage included',everything.length],
+  ['Blocked','Items that cannot move',open.filter(i=>i.statusGroup==='blocked').length],
+  ['In review','Waiting for a review or verification',open.filter(i=>i.statusGroup==='review').length],
+  ['Bugs','Defects and incidents, untracked defects included',bugItems(queue).length],
+ ];
+ replaceHtml($('crViewsList'),`<ul class="cr-views">${views.map(([name,hint,n])=>`<li data-view="${escapeHtml(name)}"><span>${escapeHtml(name)}<small>${escapeHtml(hint)}</small></span><strong>${n.toLocaleString('en-US')}</strong></li>`).join('')}</ul>`);
+ setCount('queue',open.length);setCount('triage',triage.length);
+ more.hidden=!queue.nextCursor;more.disabled=read.loading===true;more.textContent=read.loading?'Loading…':'Load more';
+}
+// One page of the census; incidents and current holders enrich every page alike.
+async function queueContext(){
+ const current=client.currentWorkItem?await readWithDeadline(()=>client.currentWorkItem()).catch(()=>null):null;
+ return {incidents:payloadOf('incidents')||null,current};
+}
+const readCensus=cursor=>readWithDeadline(()=>client.unfinishedWork({limit:QUEUE_PAGE,...(cursor?{cursor}:{})}));
+// The 15-second refresh re-reads every page already loaded, so Load more survives it.
+async function loadQueue(){
+ const sequence=view.sequence;
+ if(view.queue.model.pages===0){view.queue={...view.queue,state:'pending'};renderQueue();}
+ try{const context=await queueContext();const model=await refreshQueue(view.queue.model,readCensus,context);if(sequence!==view.sequence)return;view.queue={state:'read',model:settleRefresh(view.queue.model,model)};}
+ catch(error){if(sequence!==view.sequence)return;view.queue={state:'unknown',reason:[401,403].includes(error.status)?'Sign in required':'Updates unavailable',model:view.queue.model};}
+ renderQueue();
+}
+async function loadMoreQueue(){
+ const cursor=view.queue.model.nextCursor;if(!cursor||view.queue.loading)return;
+ view.queue={...view.queue,loading:true};renderQueue();
+ try{const [census,context]=await Promise.all([readCensus(cursor),queueContext()]);const model=addPage(view.queue.model,census,context);view.queue={state:'read',model};announce(`Loaded ${plural(model.items.length,'item')}`);}
+ catch{view.queue={...view.queue,loading:false};announce('More items could not be loaded');}
+ renderQueue();
+}
+async function loadInbox(){
+ try{
+  const payload=await readWithDeadline(()=>client.notificationFeed({limit:50}));
+  if(!validFeedPayload(payload))throw new Error('Invalid notification feed');
+  const cards=notificationCards(payload);
+  view.inbox={state:'read',cards};
+  replaceHtml($('crInboxList'),cards.length?`<ul class="cr-rows">${cards.map(card=>`<li><button type="button" class="cr-row" aria-haspopup="dialog" aria-controls="crInboxDialog" data-room-control="${escapeHtml(card.id)}" data-notification="${escapeHtml(card.id)}" data-read="${card.read}"><span class="cr-row-glyph" role="img" aria-label="${card.read?'Read':'Unread'}">${card.read?'○':'●'}</span><span class="cr-row-ref">${escapeHtml(card.subject)}</span><span class="cr-row-title">${escapeHtml(card.reason)}</span><span class="cr-row-meta">${escapeHtml(card.clock)}</span></button></li>`).join('')}</ul>`:emptyBlock('crInboxEmpty'));
+  if($('crInboxDialog').open)showInboxDetail($('crInboxDialog').dataset.notification);
+  setCount('inbox',Number.isInteger(payload.unread_count)?payload.unread_count:cards.filter(c=>!c.read).length);
+ }catch(error){view.inbox={state:'unknown'};$('crInboxDialog').close();replaceHtml($('crInboxList'),stateBlock('offline','Notifications could not be read',[401,403].includes(error?.status)?'Sign in required.':'Updates unavailable. Try again shortly.'));}
+}
+function showInboxDetail(id){
+ const card=view.inbox.cards?.find(card=>card.id===id),dialog=$('crInboxDialog');
+ if(!card){dialog.close();return;}
+ dialog.dataset.notification=id;
+ const properties=[['Category',card.subject],['Received',card.clock],['Status',card.read?'Read':'Unread'],['Severity',card.severityLabel],['Reference',card.details.subjectRef]].filter(([,value])=>value);
+ const link=card.link.href?`<p><a href="${escapeHtml(card.link.href)}">${escapeHtml(card.link.label)}</a></p>`:card.link.sentence?`<p>${escapeHtml(card.link.sentence)}</p>`:'';
+ replaceHtml($('crInboxBody'),`<p>${escapeHtml(card.reason)}</p><dl>${properties.map(([label,value])=>`<dt>${escapeHtml(label)}</dt><dd>${escapeHtml(value)}</dd>`).join('')}</dl>${link}`);
+ if(!dialog.open)dialog.showModal();
+}
+async function loadWaiting(){
+ try{
+  const payload=await readWithDeadline(()=>client.currentWorkRequests());
+  if(payload?.ok!==true||!Array.isArray(payload.items))throw new Error('Invalid current work requests');
+  const rows=payload.items.filter(row=>row?.state==='needs_joe'&&typeof row.human_ref==='string');
+  replaceHtml($('crWaitingList'),rows.length?`<ul class="cr-rows">${rows.map(row=>`<li class="cr-row" data-waiting="${escapeHtml(row.human_ref)}" data-group="blocked"><span class="cr-row-glyph" role="img" aria-label="Needs your answer">■</span><span class="cr-row-ref">${escapeHtml(row.human_ref)}</span><span class="cr-row-title">${escapeHtml(row.title||row.human_ref)}</span><span class="cr-row-meta">${escapeHtml(row.next_human_action||'Answer needed')}</span></li>`).join('')}</ul>`:emptyBlock('crWaitingEmpty'));
+  setCount('waiting',rows.length);
+ }catch(error){replaceHtml($('crWaitingList'),stateBlock('offline','Waiting work could not be read',[401,403].includes(error?.status)?'Sign in required.':'Updates unavailable. Try again shortly.'));}
+}
+function showSection(key){
+ $('crWorkbench').hidden=!ISSUE_SECTIONS.has(key);
+ if(key!=='queue'&&$('crWorkbench').dataset.detail==='open')closePane({restoreFocus:false});
+}
+// V2 C2: the Queue list and its detail pane. The pane is a fixed column (Linear
+// study #0 adaptation): Enter or a click opens it, Space or Cmd+I toggles it, Esc
+// closes it, and the list runs full width while it is closed. On a phone the
+// list and the record are two screens with a back control.
+const paneOpen=()=>$('crWorkbench').dataset.detail==='open';
+function openPane(item){
+ if(!item)return;
+ $('crWorkbench').dataset.detail='open';queueList.setOpen(item.id);detail.open(item);
+ if(matchMedia('(max-width: 760px), (hover: none) and (pointer: coarse) and (max-width: 1023px)').matches){scrollTo({top:0});$('crDetail').querySelector('#crDetailTitle')?.focus({preventScroll:true});}
+}
+function closePane({restoreFocus=true}={}){
+ if(!paneOpen())return false;
+ $('crWorkbench').dataset.detail='closed';queueList.setOpen(null);detail.clear();
+ if(restoreFocus)queueList.focus();
+ return true;
+}
+const togglePane=item=>paneOpen()?closePane():openPane(item||queueList.highlighted);
+function wireQueuePane(){
+ detail=mountDetail({node:$('crDetail'),client,onClose:()=>closePane(),readDeadline:readWithDeadline});
+ queueList=mountQueueList({node:$('crQueueList'),onOpen:openPane,onToggle:togglePane,onEscape:()=>closePane()});
+ $('crDetail').addEventListener('keydown',event=>{if(event.key==='Escape'&&!ignoreKey(event)&&closePane())event.preventDefault();});
+ $('crQueueList').addEventListener('click',event=>{if(event.target instanceof Element&&event.target.closest('[data-queue-retry]'))loadQueue();});
+ document.addEventListener('keydown',event=>{
+  if(!paneShortcut(event)||document.querySelector('dialog[open]')||$('crWorkbench').hidden||$('panelQueue').hidden)return;
+  event.preventDefault();togglePane();
+ });
 }
 
 function openAtlas(node=null){mountAtlas({client,getIncidentsRead:()=>view.reads.incidents,node,onChange:atlas=>{view.atlas=atlas;}});}
@@ -129,12 +264,22 @@ async function boot(){
   const row=event.target.closest('[data-incident]');
   if(row)openIncident(row.dataset.incident);
  });
- mountNotificationBadge(client);tabs=wireTabs('controlRoomTabs');
- const activate=selected=>{if(selected.id==='tabAtlas')openAtlas(new URLSearchParams(location.search).get('node'));if(selected.id==='tabSessions')mountSessions({});if(selected.id==='tabModelRoom')mountModelRoom({});};
- document.getElementById('controlRoomTabs')?.addEventListener('tabchange',event=>{const selected=event.detail.tab;if(!selected.dataset.tabKey)return;const next=new URL(location.href);if(next.searchParams.get('tab')!==selected.dataset.tabKey){next.searchParams.set('tab',selected.dataset.tabKey);history.pushState({},'',next);}activate(selected);});
- const restoreTab=()=>{const requested=new URLSearchParams(location.search).get('tab');const key={atlas:'system-map','model-room':'agents',dashboard:'overview'}[requested]||requested||'overview';const selected=[...document.querySelectorAll('#controlRoomTabs [data-tab-key]')].find(t=>t.dataset.tabKey===key);if(selected){tabs.select(selected.id);activate(selected);}};
- window.addEventListener('popstate',restoreTab);const parameters=new URLSearchParams(location.search);if(parameters.has("tab")) restoreTab();
+ $('crInboxList').addEventListener('click',event=>{const row=event.target.closest('[data-notification]');if(row)showInboxDetail(row.dataset.notification);});
+ $('crInboxClose').onclick=()=>$('crInboxDialog').close();
+ $('crInboxDialog').addEventListener('close',()=>{const id=$('crInboxDialog').dataset.notification;[...$('crInboxList').querySelectorAll('[data-notification]')].find(row=>row.dataset.notification===id)?.focus();$('crInboxBody').textContent='';});
+ mountNotificationBadge(client);tabs=wireTabs('controlRoomTabs');wireQueuePane();
+ const strip=$('controlRoomTabs'),tabFor=key=>strip.querySelector(`[data-tab-key="${key}"]`);
+ const commands=mountControlRoomCommands({tabs:strip,onEscape:()=>closePane()});
+ const activate=selected=>{showSection(selected.dataset.tabKey);if(selected.id==='tabAtlas')openAtlas(new URLSearchParams(location.search).get('node'));if(selected.id==='tabSessions')mountSessions({});if(selected.id==='tabModelRoom')mountModelRoom({});};
+ // The nav is vertical, so Up and Down move through it too.
+ strip.addEventListener('keydown',event=>{if(event.key!=='ArrowDown'&&event.key!=='ArrowUp')return;const all=[...strip.querySelectorAll('[role="tab"]')];const index=all.indexOf(document.activeElement);if(index<0)return;event.preventDefault();all[(index+(event.key==='ArrowDown'?1:-1)+all.length)%all.length].click();});
+ strip.addEventListener('tabchange',event=>{const selected=event.detail.tab;if(!selected.dataset.tabKey)return;const next=new URL(location.href);if(next.searchParams.get('tab')!==selected.dataset.tabKey){next.searchParams.set('tab',selected.dataset.tabKey);history.pushState({},'',next);}activate(selected);const scrim=document.getElementById('appDrawerScrim');if(scrim&&!scrim.hidden)scrim.click();});
+ const restoreTab=()=>{const selected=tabFor(sectionForTab(new URLSearchParams(location.search).get('tab')));if(selected){tabs.select(selected.id);activate(selected);}};
+ window.addEventListener('popstate',restoreTab);restoreTab();
+ // Opening the page restores a section without stealing focus for it.
+ if(strip.contains(document.activeElement))document.activeElement.blur();
+ $('crQueueMore').addEventListener('click',loadMoreQueue);
  $('automationPrev').onclick=()=>{month--;if(month<0){month=11;year--;}renderAutomations();};$('automationNext').onclick=()=>{month++;if(month>11){month=0;year++;}renderAutomations();};
- await load();const auto=mountAutoRefresh({document,window,refresh:load,intervalMs:15000});window.addEventListener('pagehide',event=>{if(!event.persisted){auto.dispose();board.dispose();}});
+ await load();const auto=mountAutoRefresh({document,window,refresh:load,intervalMs:15000});window.addEventListener('pagehide',event=>{if(!event.persisted){auto.dispose();board.dispose();commands.dispose();}});
 }
 boot();

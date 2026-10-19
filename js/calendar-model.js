@@ -21,9 +21,6 @@
 
 export const CALENDAR_VIEWS = Object.freeze(["month", "week"]);
 export const READ_CONCURRENCY = 4;
-/** The last cell of a staggered entrance starts no later than this. */
-export const ENTRANCE_BUDGET_MS = 540;
-const STAGGER_STEP_MS = 12;
 const UPCOMING_LIMIT = 40;
 
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
@@ -58,6 +55,15 @@ export function toDay(value) {
   const day = DAY_PATTERN.test(value) ? value : MIDNIGHT_PATTERN.exec(value)?.[1];
   if (!day) return null;
   return fromUtc(asUtc(day)) === day ? day : null;
+}
+
+/** "Oct 8", with the year only when it is not this year's; non-dates pass through. */
+export function shortDay(value, today) {
+  const day = toDay(value);
+  if (!day) return value;
+  const [year, month, date] = day.split("-");
+  const label = `${SHORT_MONTHS[Number(month) - 1]} ${Number(date)}`;
+  return year === String(today).slice(0, 4) ? label : `${label}, ${year}`;
 }
 
 /** Strict date-only contracts share the calendar validation without midnight coercion. */
@@ -159,10 +165,10 @@ export function motionDirection(before, after) {
 /* ------------------------------------------------------------------- motion */
 
 /**
- * How near a date is, and the pulse that says so. Nearer is faster: a date
- * this week breathes at the attention pace, today and anything overdue at the
- * urgent pace, the rest of the month calmly, and anything further out, or any
- * settled date, not at all.
+ * How near a date is, and the marker that says so. The marker is a still
+ * shape: a double ring for today and anything overdue (urgent), a ringed dot
+ * for this week (attention), a dot for the rest of the month (calm), and a
+ * hollow ring for anything further out or settled (still).
  */
 export function approach(entry, today) {
   const days = daysBetween(today, entry.day);
@@ -174,11 +180,6 @@ export function approach(entry, today) {
   if (days <= 7) return { band: "soon", days, pulse: "attention", label };
   if (days <= 30) return { band: "near", days, pulse: "calm", label };
   return { band: "later", days, pulse: "still", label };
-}
-
-/** The entrance delay for the Nth cell, capped so the whole grid lands in time. */
-export function staggerDelay(index) {
-  return Math.min(Math.max(0, index) * STAGGER_STEP_MS, ENTRANCE_BUDGET_MS);
 }
 
 /* ---------------------------------------------------------------- entries */

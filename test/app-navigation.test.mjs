@@ -40,7 +40,7 @@ test("built report uses only report-adapter asset routes and includes the shared
     assert.deepEqual(requested.filter((path) => !routed.has(path)), [], "every report asset request has an adapter route");
     assert.match(script, /<nav class="app-shell-navigation" aria-label="Primary navigation">/, "report JavaScript carries the shared navigation markup");
     assert.match(script, /class="app-shell-more-toggle/, "report JavaScript carries the More menu");
-    assert.match(style, /\.app-shell-header\{/, "report CSS carries the shared shell styles");
+    assert.match(style, /\.app-shell-header\s*\{/, "report CSS carries the shared shell styles");
     assert.doesNotMatch(script, /^export /m, "report JavaScript runs without an unrouted module import");
     assert.doesNotThrow(() => new Script(script), "the standalone report bundle parses after removing app-only mounting");
   } finally {
@@ -62,7 +62,7 @@ test("the shared navigation has one stable set of destinations, including every 
 
 test("Deals has one global Deals link and local views are labelled as views", () => {
   const html = readFileSync(new URL("index.html", root), "utf8");
-  assert.match(html, /<body class="night">\s*<script src="\/js\/theme-boot\.js"><\/script>/);
+  assert.match(html, /<body>\s*<script src="\/js\/theme-boot\.js"><\/script>/, "theme lives on <html>; the body carries no theme class");
   assert.doesNotMatch(html, /<nav class="workspaces"/);
   assert.match(html, /data-workspace="team"[^>]*>All Deals<\/button>/);
   assert.match(html, /data-workspace="national_account"[^>]*>National Accounts<\/button>/);

@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile, mkdir } from "node:fs/promises";
 import { createServer } from "node:http";
-import { chromium } from "./browser-harness.mjs";
+import { chromium } from "playwright";
 import { detail, tourId } from "./fixtures/tour-day.synthetic.mjs";
 import { handleDoctorcreRequest } from "../src/worker.js";
 const root = new URL("../", import.meta.url);
@@ -34,8 +34,8 @@ async function open(t, { width = 390, reducedMotion = "reduce", denied = false, 
   await new Promise(r => server.listen(0, "127.0.0.1", r));
   const origin = `http://localhost:${server.address().port}`;
   const browser = await chromium.launch();
-  const page = await browser.newPage({ viewport: { width, height: 844 }, reducedMotion });
-  const context = page.context(); page.on("pageerror", e => errors.push(e.message));
+  const context = await browser.newContext({ viewport: { width, height: 844 }, reducedMotion });
+  const page = await context.newPage(); page.on("pageerror", e => errors.push(e.message));
   // All tests stay on the local synthetic server. Call/navigation links are
   // inspected as strings and never activated.
   await context.route("**/*", route => new URL(route.request().url()).origin === origin ? route.continue() : route.abort());
@@ -87,18 +87,25 @@ test("W16 desktop and phone renders: reachable capture, wide Details, full width
     await page.locator('body.has-app-layout').waitFor();
     assert.equal(await page.locator('#appMainSlot #tour-day').count(), 1, 'Tour day belongs in the workspace main region');
     const record = await page.locator("#day-record").boundingBox();
-    const status = await page.locator('.app-layout-status').boundingBox();
+    const status = await page.locator(width <= 760 ? '#appShell' : '.app-layout-status').boundingBox();
     assert.ok(record.width >= 140 && record.height >= 60 && record.y + record.height < status.y,
       JSON.stringify({record,status,width}));
     const dock = await page.locator('.capture-dock').boundingBox();
-    const docPresence = await page.locator('#docPresence').boundingBox();
+    const docPresence = await page.locator(width <= 760 ? '#selfAvatar' : '#docPresence').boundingBox();
     assert.ok(dock.x + dock.width <= docPresence.x || docPresence.x + docPresence.width <= dock.x ||
       dock.y + dock.height <= docPresence.y || docPresence.y + docPresence.height <= dock.y,
       `Capture and Doc must not overlap: ${JSON.stringify({ dock, docPresence, width })}`);
-    for (const id of ['day-record', 'day-previous', 'day-next', 'docOpen']) assert.equal(await page.locator('#' + id).evaluate(button => {
+    for (const id of ['day-record', 'day-previous', 'day-next', width <= 760 ? 'selfAvatar' : 'docOpen']) assert.equal(await page.locator('#' + id).evaluate(button => {
       const rect = button.getBoundingClientRect();
       return button.contains(document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2));
     }), true, `The shared shell must leave ${id} reachable`);
+    if (width <= 760) {
+      await page.locator('#selfAvatar').click();
+      await page.locator('#docOpen').click();
+      assert.equal(await page.locator('#docDetail').isVisible(), true);
+      await page.keyboard.press('Escape');
+      assert.equal(await page.locator('#selfAvatar').evaluate(button => document.activeElement === button), true);
+    }
     assert.equal(await page.locator(".day-stop").count(), 2);
     assert.match(await page.locator("#day-current").textContent(), /100 Example Way.*Demo listing contact.*West entrance/s);
     assert.equal(await page.locator(".property-actions a").getAttribute("href"), "tel:+12025550100");

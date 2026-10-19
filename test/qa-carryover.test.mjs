@@ -3,18 +3,15 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { JSDOM } from "jsdom";
 import { mountLeadsWorkspace } from "../js/leads-workspace-app.js";
-import { chromium } from "./browser-harness.mjs";
-import { TOUCH_LAYOUT } from "../js/touch-layout.js";
+import { chromium } from "playwright";
 
 const read = (path) => readFile(new URL(`../${path}`, import.meta.url), "utf8");
 
-test("QA-002 light Home overrides only the light text tokens, leaving the dark register alone", async () => {
+test("QA-002 Home takes text colour from the theme tokens, with no per-theme hex overrides", async () => {
   const css = await read("css/home-dashboard.css");
-  const rule = css.match(/:root\[data-theme="light"\]\s+\.home-shell\s*\{([^}]*)\}/);
-  assert.ok(rule, "light-theme rule for .home-shell exists");
-  for (const token of ["--text", "--muted", "--quiet"]) assert.match(rule[1], new RegExp(`${token}:\\s*#[0-9a-f]{6}`, "i"), `${token} is set for light`);
-  assert.doesNotMatch(rule[1], /background|--orange|--ground/, "light rule adjusts text tokens only");
-  assert.doesNotMatch(css.replace(/:root\[data-theme="light"\][^{]*\{[^}]*\}/g, ""), /\.home-shell\s*\{[^}]*--(text|muted|quiet):/);
+  assert.doesNotMatch(css, /#[0-9a-f]{3,8}\b/i, "home-dashboard.css carries no raw hex");
+  assert.doesNotMatch(css, /:root\[data-theme="light"\]\s+\.home-shell/, "no light-only .home-shell override");
+  assert.doesNotMatch(css, /\.home-shell\s*\{[^}]*--(text|muted|quiet|fg)[\w-]*:/, ".home-shell does not redefine text tokens");
 });
 
 test("QA-002 light Home calendar tiles keep weekday and date text at 4.5:1", async () => {
@@ -22,6 +19,7 @@ test("QA-002 light Home calendar tiles keep weekday and date text at 4.5:1", asy
   const css = (await Promise.all(sheets.map(read))).join("\n");
   const browser = await chromium.launch();
   const page = await browser.newPage();
+  await page.route('**/*', route => route.abort());
   try {
     await page.setContent(`<!doctype html><html data-theme="light"><head><style>${css}</style></head><body><main class="shell home-shell"><section class="home-panel glass"><div class="home-week"><div class="home-day"><span>Mon</span><strong>28</strong></div><div class="home-day today"><span>Tue</span><strong>29</strong></div></div></section></main></body></html>`);
     const ratios = await page.evaluate(() => {
@@ -36,14 +34,6 @@ test("QA-002 light Home calendar tiles keep weekday and date text at 4.5:1", asy
   } finally { await browser.close(); }
 });
 
-test("QA-005 phone drawers leave room under the floating Doc control", async () => {
-  const css = await read("css/doc-presence.css");
-  const start = css.lastIndexOf(`@media${TOUCH_LAYOUT}{`);
-  assert.ok(start >= 0, "doc-presence.css has a touch-layout block");
-  const touch = css.slice(start);
-  assert.match(touch, /\.has-app-layout\s+\.app-layout-sidebar[^{]*\{[^}]*padding-bottom:\s*100px/);
-  assert.match(touch, /\.app-layout-today[^{]*\{[^}]*padding-bottom:\s*100px|\.app-layout-today[^{]*,[^{]*\{[^}]*padding-bottom:\s*100px/);
-});
 
 test("QA-009 thread controls are disabled until a conversation is selected", async () => {
   const js = await read("js/conversations.js");
