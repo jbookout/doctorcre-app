@@ -344,7 +344,7 @@ test('S8 phone status strip scrolls inside its own lane, never under the workspa
 });
 
 for (const theme of ['dark', 'light']) {
-  const movePhoneDeal = async page => {
+  const moveDeal = async page => {
     await page.locator('#appTodayToggle').evaluate(node => {
       if (node.getAttribute('aria-expanded') === 'true') node.click();
     });
@@ -357,10 +357,10 @@ for (const theme of ['dark', 'light']) {
     await waitForAsync(page, async () => (await import('/js/pipeline.js')).state.deals.get('d14').phase === 'Legal');
   };
 
-  for (const width of [390, 1440]) test(`${width} ${theme} move feedback keeps the dock clear of the phone toast`, async t => {
+  for (const width of [390, 1440]) test(`${width} ${theme} move feedback uses one Undo surface`, async t => {
     const { page, errors } = await open(t, { width, height: 844 });
     await page.evaluate(theme => { document.documentElement.dataset.theme = theme; }, theme);
-    await movePhoneDeal(page);
+    await moveDeal(page);
     for (const advance of [350, 1400]) {
       await page.clock.runFor(advance);
       assert.equal(await page.locator('.toast').isVisible(), true);
@@ -371,12 +371,9 @@ for (const theme of ['dark', 'light']) {
           overlap: Math.max(0, Math.min(toast.right, dock.right) - Math.max(toast.left, dock.left)) *
             Math.max(0, Math.min(toast.bottom, dock.bottom) - Math.max(toast.top, dock.top)) };
       });
-      if (width === 390) {
-        assert.equal(boxes.dockArea, 0, 'phone uses only the Undo toast during its lifetime');
-        assert.equal(boxes.overlap, 0, 'phone toast and command receipt never overlap');
-      } else {
-        assert.ok(boxes.dockArea > 0, 'desktop command receipt stays visible');
-      }
+      assert.equal(boxes.overlap, 0, 'toast and command receipt never overlap');
+      assert.equal(boxes.dockArea, 0, 'move feedback uses only the Undo toast during its lifetime');
+      assert.equal(await page.locator('.toast:visible, .receipt-dock:visible').count(), 1, 'exactly one move feedback surface is visible');
     }
     await mkdir(new URL('out/test-artifacts/share-followup/', root), { recursive: true });
     await page.screenshot({ path: new URL(`out/test-artifacts/share-followup/feedback-${width}-${theme}.png`, root).pathname });
@@ -386,15 +383,15 @@ for (const theme of ['dark', 'light']) {
     assert.deepEqual(errors, []);
   });
 
-  test(`phone ${theme} move toast Undo restores the exact move once`, async t => {
-    const { page, errors } = await open(t, { width: 390, height: 844, reducedMotion: 'reduce' });
+  for (const width of [390, 1440]) test(`${width} ${theme} move toast Undo restores the exact move once`, async t => {
+    const { page, errors } = await open(t, { width, height: 844, reducedMotion: 'reduce' });
     await page.evaluate(theme => { document.documentElement.dataset.theme = theme; }, theme);
-    await movePhoneDeal(page);
+    await moveDeal(page);
     const undo = page.locator('.toast button[data-undo]');
     assert.equal(await undo.count(), 1, 'move toast offers Undo');
     const eventId = await undo.getAttribute('data-undo');
     await mkdir(new URL('out/test-artifacts/share-followup/', root), { recursive: true });
-    await page.screenshot({ path: new URL(`out/test-artifacts/share-followup/toast-390-${theme}.png`, root).pathname });
+    await page.screenshot({ path: new URL(`out/test-artifacts/share-followup/toast-${width}-${theme}.png`, root).pathname });
     await undo.click();
     await page.clock.runFor(5001);
     assert.equal(await page.locator(`#receiptsList [data-receipt="${eventId}"]`).count(), 1, 'Today and toast target the same event');
@@ -409,7 +406,7 @@ for (const theme of ['dark', 'light']) {
   test(`phone ${theme} Today hides floating feedback and contains receipt text`, async t => {
     const { page, errors } = await open(t, { width: 390, height: 844, reducedMotion: 'reduce' });
     await page.evaluate(theme => { document.documentElement.dataset.theme = theme; }, theme);
-    await movePhoneDeal(page);
+    await moveDeal(page);
     await page.clock.runFor(1401);
     await page.locator('#appTodayToggle').click();
     assert.equal(await page.locator('.toast').count(), 1);
