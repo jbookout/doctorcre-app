@@ -599,3 +599,49 @@ test('successful deal updates disappear from the DOM within three seconds in bot
     assert.deepEqual(errors, []);
   });
 });
+
+for (const width of [390,1280]) test(`move follow-ups preserve the original Undo event and expiry at ${width}px`, async t => {
+  const {page, errors} = await open(t, {width, reducedMotion:'reduce'});
+  await page.evaluate(async () => {
+    const {state} = await import('/js/pipeline.js');
+    const add = state.client.addDealNote.bind(state.client);
+    state.client.addDealNote = args => new Promise(resolve => { window.finishEvidence = async () => resolve(await add(args)); });
+  });
+  const card = page.locator('.kanban-column [data-id="d14"]');
+  await card.focus(); await page.keyboard.press('Enter'); await page.keyboard.press('ArrowRight'); await page.keyboard.press('Enter');
+  await page.locator('#completionEvidence').fill('Demo lease evidence');
+  await page.locator('#completionNextStep').fill('Confirm demo appointment');
+  await page.locator('#completionConfirm').click();
+  await waitForAsync(page, () => typeof window.finishEvidence === 'function');
+  const eventId = await page.locator('.toast [data-undo]').getAttribute('data-undo');
+  await page.clock.runFor(4000);
+  await page.evaluate(() => window.finishEvidence());
+  await page.locator('#completionDialog').waitFor({state:'hidden'});
+  assert.equal(await page.locator('.toast [data-undo]').count(),1,'evidence and next-step confirmations preserve move Undo');
+  assert.equal(await page.locator('.toast [data-undo]').getAttribute('data-undo'),eventId);
+  await page.clock.runFor(1001);
+  assert.equal(await page.locator('.toast [data-undo]').isDisabled(),true,'follow-ups never restart the original five-second window');
+  await page.clock.runFor(800);
+  assert.equal(await page.locator('.toast').count(),0);
+  assert.deepEqual(errors,[]);
+});
+
+for (const width of [390,1280]) for (const input of ['pointer','keyboard']) test(`phase-picker Undo works inside the open modal with ${input} at ${width}px`, async t => {
+  const {page, errors} = await open(t, {width, reducedMotion:'reduce'});
+  await page.locator('.kanban-column [data-id="d14"] .card-open').click();
+  await page.locator('#detailPhase').selectOption('legal');
+  await page.locator('#completionConfirm').click();
+  await page.locator('#completionDialog').waitFor({state:'hidden'});
+  assert.equal(await page.locator('#recordPanel').evaluate(n=>n.open),true);
+  const undo = page.locator('.toast [data-undo]');
+  if (input === 'pointer') await undo.click({timeout:1500});
+  else {
+    await undo.focus();
+    assert.equal(await undo.evaluate(n=>n===document.activeElement),true,'Undo participates in the modal focus scope');
+    await page.keyboard.press('Enter');
+  }
+  await waitForAsync(page,async ()=>(await import('/js/pipeline.js')).state.deals.get('d14').phase==='Negotiation');
+  assert.equal(await page.locator('#recordPanel').evaluate(n=>n.open),true);
+  assert.equal(await page.locator('.toast [data-undo]').count(),0);
+  assert.deepEqual(errors,[]);
+});
