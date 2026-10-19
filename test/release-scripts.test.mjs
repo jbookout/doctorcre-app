@@ -292,3 +292,18 @@ test('staging reports the Python runtime dependency before executing release com
   assert.match(result.stderr, /Recovery: install Python 3/);
   assert.equal(readFileSync(trace, 'utf8'), '');
 });
+
+test('staging reports Python initialization failure without printing the runtime dump', t => {
+  const { root, trace, env } = releaseFixture(t);
+  const brokenHome = join(root, canary);
+  mkdirSync(brokenHome);
+  const result = spawnSync(process.execPath, ['scripts/release-staging.mjs'], {
+    cwd: root, env: { ...env, PYTHONHOME: brokenHome }, encoding: 'utf8',
+  });
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /release:staging failed at python-launch/);
+  assert.match(result.stderr, /Recovery:.*Python 3/);
+  assert.doesNotMatch(result.stdout + result.stderr, /Fatal Python error/);
+  assert.equal((result.stdout + result.stderr).includes(canary), false);
+  assert.equal(readFileSync(trace, 'utf8'), '');
+});
