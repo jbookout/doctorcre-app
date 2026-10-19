@@ -30,7 +30,7 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
     const possible = lead.possible_clients || [];
     return `<article class="lead-card" data-lead-id="${esc(lead.id)}" tabindex="0" role="button" aria-label="${esc(leadTitle(lead))}" aria-pressed="${lead.id === state.selectedId}" draggable="true">
       <span class="drag-handle" data-drag-handle aria-hidden="true">⠿</span><h3>${esc(leadTitle(lead))}</h3>
-      <div class="card-foot"><span class="lead-market">${esc(marketKey(lead))}<small class="lead-location">${locationLabel(lead)}</small></span><span class="score"><small>Score</small>${score(lead)}</span></div>
+      <div class="card-foot"><span><span class="lead-market">${esc(marketKey(lead))}</span><small class="lead-location">${locationLabel(lead)}</small></span><span class="score"><small>Score</small>${score(lead)}</span></div>
       ${move ? `<div class="auto-move">Moved by Doc: ${esc(move.reason || "stage updated")} ${shortDate(move.evidence_date || move.occurred_at)}${undo ? `<button data-undo="${esc(lead.id)}">Undo</button>` : ""}</div>` : ""}
       ${possible.map(match => `<div class="client-hint">possible client: ${esc(match.name)} <button data-link="${esc(lead.id)}" data-client-id="${esc(match.client_id)}" aria-label="Link ${esc(leadTitle(lead))} to ${esc(match.name)}">Link</button></div>`).join("")}
     </article>`;
