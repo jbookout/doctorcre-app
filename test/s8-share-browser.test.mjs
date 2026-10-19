@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, mkdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -53,4 +53,36 @@ test('S8 the share page sits in the V2 shell with a gutter, a compact stepper an
     if (width < 761) assert.ok(layout.bottomPad >= layout.bottomBand, `${width}: content clears the phone bottom chrome`);
     await page.close();
   }
+});
+
+test('QA populated Share shows its stepper, properties, map and feedback at 390 in both themes', async t => {
+  const outDir = await mkdtemp(join(tmpdir(), 'populated-share-'));
+  t.after(() => rm(outDir, { recursive:true, force:true }));
+  await buildArtifact({ root, outDir, commit:'0'.repeat(40) });
+  const { server } = await createQaServer({ buildRoot:join(outDir,'site') });
+  await new Promise(resolve => server.listen(0,'127.0.0.1',resolve));
+  t.after(() => new Promise(resolve => server.close(resolve)));
+  const origin = `http://127.0.0.1:${server.address().port}`;
+  const browser = await chromium.launch(); t.after(() => browser.close());
+  for (const theme of ['dark','light']) await t.test(theme, async () => {
+    const page = await browser.newPage({ viewport:{width:390,height:844}, colorScheme:theme });
+    const errors = []; page.on('pageerror', error => errors.push(error.message));
+    const seeded = await page.request.post(`${origin}/api/test/seed`, {data:{namespace:`share-${theme}`,reset:true}});
+    assert.equal(seeded.status(),200);
+    await page.goto(`${origin}/share`);
+    await page.waitForFunction(() => /loaded|unavailable/.test(document.querySelector('#status').textContent));
+    assert.equal(await page.locator('#status').textContent(),'Report and map loaded.');
+    assert.equal(await page.locator('html').getAttribute('data-theme'),theme);
+    assert.equal(await page.locator('.tour-flow').isVisible(),true);
+    assert.equal(await page.locator('.report-item').count(),2);
+    assert.equal(await page.locator('#map-section').isVisible(),true);
+    assert.equal(await page.locator('.maplibregl-marker').count(),2);
+    assert.equal(await page.locator('.feedback-controls').count(),2);
+    assert.match(await page.locator('.comment-list').first().textContent(),/Synthetic/);
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),true);
+    await mkdir(join(root,'out/test-artifacts/share-followup'),{recursive:true});
+    await page.screenshot({path:join(root,`out/test-artifacts/share-followup/share-390-${theme}.png`),fullPage:true});
+    assert.deepEqual(errors,[]);
+    await page.close();
+  });
 });

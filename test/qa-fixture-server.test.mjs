@@ -29,3 +29,27 @@ for (const [name, arguments_] of [
   const changes = await dispatch(new Request(`${origin}/pipeline/changes`,{headers:{cookie:`${cookie.name}=${cookie.value}`}}));
   assert.deepEqual((await changes.json()).events,[]);
 });
+
+test('QA seed provides a populated namespace-isolated synthetic shared tour', async () => {
+  const { dispatch } = await createQaServer();
+  const origin = 'http://localhost';
+  const seed = async namespace => {
+    const response = await dispatch(new Request(`${origin}/api/test/seed`, { method:'POST', headers:{'content-type':'application/json'}, body:JSON.stringify({namespace, reset:true}) }));
+    return response.json();
+  };
+  const first = await seed('shared-tour');
+  const headers = { cookie:`${first.cookie.name}=${first.cookie.value}` };
+  const read = path => dispatch(new Request(`${origin}/api/share/${path}`, {headers}));
+  const reportResponse = await read('report');
+  assert.equal(reportResponse.status, 200);
+  const {data:report} = await reportResponse.json();
+  assert.equal(report.stops.length, 2);
+  const {data:map} = await (await read('map')).json();
+  assert.deepEqual(map.points.map(point => point.property_ref), report.stops.map(stop => stop.property_ref));
+  const {data:feedback} = await (await read('feedback')).json();
+  assert.deepEqual(feedback.permission_scopes, ['shortlist','comment']);
+  assert.ok(feedback.items[0].comments[0].comment);
+  assert.equal((await dispatch(new Request(`${origin}/api/share/report`))).status, 401);
+  await seed('another-tour');
+  assert.deepEqual((await (await read('report')).json()).data, report);
+});

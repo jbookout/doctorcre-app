@@ -209,7 +209,7 @@ body.has-app-layout { --toast-right: calc(260px + var(--space-4)); }
 body.has-app-layout:has(.app-layout[data-today=closed]) { --toast-right: var(--space-4); }
 body.has-app-layout .toast { right: var(--toast-right); bottom: calc(var(--layout-bottom) + var(--space-3)); }
 .has-app-layout #appTodayMoves .receipt-list { padding: 0; list-style: none; }
-.has-app-layout #appTodayMoves .receipt { min-width: 0; }
+.has-app-layout #appTodayMoves .receipt { min-width: 0; grid-template-columns: minmax(0, 1fr); }
 .has-app-layout #appTodayMoves .receipt-line { display: flex; flex-wrap: wrap; }
 .has-app-layout #appTodayMoves .receipt-deal { font-size: var(--font-size-1); }
 .has-app-layout .room-header { position: static; }
@@ -225,10 +225,13 @@ body.has-app-layout .toast { right: var(--toast-right); bottom: calc(var(--layou
   .app-layout-main { padding: var(--space-4); }
   .app-layout-tabbar { padding: 0 var(--space-3); gap: var(--space-1); }
 }
+@media (max-width: 760px) {
+  body.has-app-layout:has(.toast) .receipt-dock { display: none; }
+}
 @media (max-width: 760px), (hover: none) and (pointer: coarse) and (max-width: 1023px) {
   :root { --layout-rail: 0px; --layout-bottom: 112px; }
   body.has-app-layout .toast { left: var(--space-3); right: var(--space-3); }
-  body.has-app-layout:has(.app-layout[data-drawer=today]) .toast { display: none; }
+  body.has-app-layout:has(.app-layout[data-drawer=today]) :is(.toast, .receipt-dock) { display: none; }
   body.has-app-layout { padding: 0 0 var(--layout-bottom) !important; }
   .app-layout { display: block; min-height: calc(100dvh - var(--layout-bottom)); }
   .app-layout-center { width: 100%; }

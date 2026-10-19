@@ -4,9 +4,9 @@ import { readFile, mkdir } from 'node:fs/promises';
 import { chromium, waitForAsync } from './browser-harness.mjs';
 const root = new URL('../', import.meta.url);
 const phases = ['On Deck', 'Research', 'Site selection', 'Negotiation', 'Legal', 'Diligence', 'Closing', 'Closed'];
-async function open(t, { width = 1440, reducedMotion = 'no-preference', many = false } = {}) {
+async function open(t, { width = 1440, height = 960, reducedMotion = 'no-preference', many = false } = {}) {
   const browser = await chromium.launch(); t.after(() => browser.close());
-  const page = await browser.newPage({ viewport: { width, height: 960 }, reducedMotion });
+  const page = await browser.newPage({ viewport: { width, height }, reducedMotion });
   const errors = []; page.on('pageerror', e => errors.push(e.message));
   const seed = JSON.parse(await readFile(new URL('data/board-seed.json', root), 'utf8'));
   seed.deals.forEach((d, i) => Object.assign(d, { phase: phases[i % 8], next_step: 'Confirm the next appointment', last_touch: '2026-10-01', last_review_at: '2026-10-01T16:00:00Z', next_date: null, attention: false }));
@@ -342,3 +342,91 @@ test('S8 phone status strip scrolls inside its own lane, never under the workspa
   });
   assert.ok(lanes.clipRight <= lanes.blockerLeft + 1, `status clips at ${lanes.clipRight}, controls start at ${lanes.blockerLeft}`);
 });
+
+for (const theme of ['dark', 'light']) {
+  const movePhoneDeal = async page => {
+    await page.locator('#appTodayToggle').evaluate(node => {
+      if (node.getAttribute('aria-expanded') === 'true') node.click();
+    });
+    const card = page.locator('.kanban-column [data-id="d14"]');
+    await card.focus();
+    await page.keyboard.press('Enter');
+    await page.keyboard.press('ArrowRight');
+    await page.keyboard.press('Enter');
+    await page.locator('#completionConfirm').click();
+    await waitForAsync(page, async () => (await import('/js/pipeline.js')).state.deals.get('d14').phase === 'Legal');
+  };
+
+  for (const width of [390, 1440]) test(`${width} ${theme} move feedback keeps the dock clear of the phone toast`, async t => {
+    const { page, errors } = await open(t, { width, height: 844 });
+    await page.evaluate(theme => { document.documentElement.dataset.theme = theme; }, theme);
+    await movePhoneDeal(page);
+    for (const advance of [350, 1400]) {
+      await page.clock.runFor(advance);
+      assert.equal(await page.locator('.toast').isVisible(), true);
+      const boxes = await page.evaluate(() => {
+        const toast = document.querySelector('.toast').getBoundingClientRect();
+        const dock = document.querySelector('.receipt-dock').getBoundingClientRect();
+        return { dockArea: dock.width * dock.height,
+          overlap: Math.max(0, Math.min(toast.right, dock.right) - Math.max(toast.left, dock.left)) *
+            Math.max(0, Math.min(toast.bottom, dock.bottom) - Math.max(toast.top, dock.top)) };
+      });
+      if (width === 390) {
+        assert.equal(boxes.dockArea, 0, 'phone uses only the Undo toast during its lifetime');
+        assert.equal(boxes.overlap, 0, 'phone toast and command receipt never overlap');
+      } else {
+        assert.ok(boxes.dockArea > 0, 'desktop command receipt stays visible');
+      }
+    }
+    await mkdir(new URL('out/test-artifacts/share-followup/', root), { recursive: true });
+    await page.screenshot({ path: new URL(`out/test-artifacts/share-followup/feedback-${width}-${theme}.png`, root).pathname });
+    await page.clock.runFor(4101);
+    assert.equal(await page.locator('.toast').count(), 0);
+    assert.equal(await page.locator('.receipt-dock').isVisible(), true, 'dock returns after toast removal');
+    assert.deepEqual(errors, []);
+  });
+
+  test(`phone ${theme} move toast Undo restores the exact move once`, async t => {
+    const { page, errors } = await open(t, { width: 390, height: 844, reducedMotion: 'reduce' });
+    await page.evaluate(theme => { document.documentElement.dataset.theme = theme; }, theme);
+    await movePhoneDeal(page);
+    const undo = page.locator('.toast button[data-undo]');
+    assert.equal(await undo.count(), 1, 'move toast offers Undo');
+    const eventId = await undo.getAttribute('data-undo');
+    await mkdir(new URL('out/test-artifacts/share-followup/', root), { recursive: true });
+    await page.screenshot({ path: new URL(`out/test-artifacts/share-followup/toast-390-${theme}.png`, root).pathname });
+    await undo.click();
+    await page.clock.runFor(5001);
+    assert.equal(await page.locator(`#receiptsList [data-receipt="${eventId}"]`).count(), 1, 'Today and toast target the same event');
+    await waitForAsync(page, async () => (await import('/js/pipeline.js')).state.deals.get('d14').phase === 'Negotiation');
+    const reverted = await page.evaluate(async () => (await (await import('/js/pipeline.js')).state.client.getChanges(null)).events.filter(event => event.verb === 'revert-deal-field'));
+    assert.equal(reverted.length, 1);
+    await refresh(page);
+    await waitForAsync(page, async () => (await import('/js/pipeline.js')).state.deals.get('d14').phase === 'Negotiation');
+    assert.deepEqual(errors, []);
+  });
+
+  test(`phone ${theme} Today hides floating feedback and contains receipt text`, async t => {
+    const { page, errors } = await open(t, { width: 390, height: 844, reducedMotion: 'reduce' });
+    await page.evaluate(theme => { document.documentElement.dataset.theme = theme; }, theme);
+    await movePhoneDeal(page);
+    await page.clock.runFor(1401);
+    await page.locator('#appTodayToggle').click();
+    assert.equal(await page.locator('.toast').count(), 1);
+    assert.equal(await page.locator('.toast').isVisible(), false);
+    assert.equal(await page.locator('.receipt-dock').isVisible(), false, 'floating command receipt cannot cover Today');
+    await page.locator('#receiptsList [data-undo]').first().click();
+    await waitForAsync(page, async () => (await import('/js/pipeline.js')).state.deals.get('d14').phase === 'Negotiation');
+    await page.clock.runFor(1401);
+    const clipping = await page.locator('#receiptsList .receipt').evaluateAll(rows => rows.flatMap(row => {
+      const bounds = row.getBoundingClientRect();
+      return [...row.querySelectorAll('.receipt-line, .receipt-meta, .receipt-actions, .receipt-message, .receipt-badge, .receipt-deal')]
+        .filter(node => node.getBoundingClientRect().right > bounds.right + 1 || node.scrollWidth > node.clientWidth + 1)
+        .map(node => node.className);
+    }));
+    assert.deepEqual(clipping, [], 'all receipt text and status fit inside the card');
+    await mkdir(new URL('out/test-artifacts/share-followup/', root), { recursive: true });
+    await page.screenshot({ path: new URL(`out/test-artifacts/share-followup/today-390-${theme}.png`, root).pathname });
+    assert.deepEqual(errors, []);
+  });
+}
