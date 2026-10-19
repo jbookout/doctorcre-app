@@ -63,3 +63,21 @@ test('failed then blocked duplicates retain recorded blocker and progress in eit
     assert.equal(result.effort, 'unknown');
   }
 });
+
+test('newer duplicate keeps absent recorded work facts without borrowing model or ownership', () => {
+  const failed = { id: 'demo-export', status: 'failed', updated_at: '2026-10-01T12:00:00Z',
+    blocked_reason: 'Demo source stopped', last_progress: 'Demo validation complete', model: 'demo-model', effort: 'high', owner: 'joe', executor: 'cx-app' };
+  const blocked = { id: 'demo-export', status: 'blocked', updated_at: '2026-10-02T12:00:00Z' };
+  const original = structuredClone([failed, blocked]);
+  for (const tasks of [[failed, blocked], [blocked, failed]]) {
+    const [result] = workspace.attentionTasks(tasks);
+    assert.equal(result.state, 'blocked');
+    assert.equal(result.blocker, 'Demo source stopped');
+    assert.equal(result.progress, 'Demo validation complete');
+    assert.equal(result.model, 'unknown');
+    assert.equal(result.effort, 'unknown');
+    assert.equal(result.owner, 'unknown');
+    assert.equal(result.agent, 'unknown');
+  }
+  assert.deepEqual([failed, blocked], original);
+});
