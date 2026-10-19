@@ -51,12 +51,13 @@ test('every deal snapshot opens with an empty Update above a full-width newest-f
 
 test('lost deals have a searchable view and open the shared snapshot',async t=>{
  const {page}=await open(t);
- await page.evaluate(async()=>{const {state}=await import('/js/pipeline.js');state.lostDeals=[{id:'d14',name:'Demo Lost Practice',client_name:'Demo Lost Client',type:'Relocation',outcome:'lost',phase:'Closed'}];});
+ await page.evaluate(async()=>{const {state}=await import('/js/pipeline.js');const read=state.client.getDeal;state.client.getDeal=async id=>{const detail=await read(id);return {...detail,deal:{...detail.deal,outcome:'lost'}};};state.lostDeals=[{id:'d14',name:'Demo Lost Practice',client_name:'Demo Lost Client',type:'Relocation',outcome:'lost',phase:'Closed'}];});
  await page.getByRole('button',{name:'Close deal',exact:true}).click();
  await page.getByRole('button',{name:'Lost deals',exact:true}).click();
  assert.equal(await page.locator('#closedCount').textContent(),'1 lost deals');
  await page.getByLabel('Search lost deals').fill('Demo Lost Client');
  await page.locator('#closedDealsList [data-open-deal="d14"]').click();
  await page.locator('#detailUpdateForm').waitFor();
+ assert.match(await page.locator('.deal-snapshot-facts').textContent(),/OutcomeLost/);
  assert.equal(await page.locator('#detailUpdateForm textarea').inputValue(),'');
 });
