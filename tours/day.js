@@ -188,6 +188,8 @@ export function mountTourDay({ document, window, api = createDayClient(), store 
       button.dataset.focusKey = `stop:${stop.id}`;
       if (stop.id === selected) button.setAttribute("aria-current", "step");
       text.append(make("strong", title(stop)), make("small", address(stop)), make("small", string(stop.contact_name, "Contact unavailable"), "stop-contact"), make("small", string(stop.access_notes, "Access notes unavailable")));
+      const location = map?.projection?.list.find(item => item.route_stop_id === stop.id);
+      if (location?.display === "unknown") text.append(make("small", location.precision_label, "note-state"));
       button.append(make("span", stop.route_label || String(stop.route_sequence), "stop-letter"), text);
       button.disabled = Boolean(recorder.active); button.onclick = () => select(stop.id, true, button); row.append(button); root.append(row);
     }
@@ -202,6 +204,7 @@ export function mountTourDay({ document, window, api = createDayClient(), store 
       // its current-stop return receipt. No address or centroid fallback.
       for (const link of map?.navigationLinks?.() || []) { link.dataset.focusKey = `navigation:${link.textContent}:${stop.property_id}`; actions.append(link); }
       if (!actions.children.length) actions.append(make("p", "Directions unavailable", "note-state"));
+      if (map?.projection?.card?.display === "unknown") current.append(make("p", `${map.projection.card.precision_label} · Directions unavailable`, "note-state"));
       current.append(actions);
     } else current.append(make("h2", "No scheduled stops"));
     renderNotes(); renderControls();
