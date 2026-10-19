@@ -37,6 +37,13 @@ test('S2 saved search stays under the keyboard while its results update', async 
       await page.locator('#resetViewsButton').click();
       assert.equal(await page.locator('[data-view]').count(), 0);
       assert.equal(await page.evaluate(key => localStorage.getItem(key), SAVED_VIEWS_KEY), '[]');
+      await page.locator('#saveViewName').fill('Demo replacement');
+      await page.locator('#saveViewButton').click();
+      assert.equal(await page.getByRole('link', { name: 'Demo replacement', exact: true }).isVisible(), true);
+      page.once('dialog', dialog => dialog.accept('Demo renamed'));
+      await page.locator('[data-rename="Demo replacement"]').click();
+      assert.equal(await page.getByRole('link', { name: 'Demo renamed', exact: true }).isVisible(), true);
+      assert.equal(await page.getByRole('link', { name: 'Demo replacement', exact: true }).count(), 0);
       assert.deepEqual(errors, []);
       await page.close();
     });
