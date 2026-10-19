@@ -470,9 +470,15 @@ function wire() {
 
   $("ideaDialogClose")?.addEventListener("click", closeIdea);
   onDialogClosed($("ideaDialog"), () => {
+    const selectedIdea = view.state.idea;
     selectDocRecord(null,null); pageDocContext?.release('readLoop');
     view.detailSequence += 1;
     if (view.state.idea) { view.state = { ...view.state, idea: null }; remember({ push: true }); }
+    if (selectedIdea && view.state.tab === 'ideas') {
+      const cards = $("ideaList")?.querySelectorAll("[data-idea]") || [];
+      const card = [...cards].find((candidate) => candidate.dataset.idea === selectedIdea);
+      (card || $("ideaRefresh"))?.focus({ preventScroll: true });
+    }
   });
   $("ideaRefresh")?.addEventListener("click", () => load());
   $("eventRefresh")?.addEventListener("click", () => loadEvents());
