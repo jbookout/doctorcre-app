@@ -105,10 +105,17 @@ export async function shareLifecycle(page, fixture) {
     const feedback = await client.request.get('/api/share/feedback');
     expect(feedback.ok()).toBe(true);
     const { data: feedbackData } = await feedback.json();
+    const headers = { origin: new URL(client.url()).origin, 'sec-fetch-site': 'same-origin' };
+    const allowed = await client.request.post('/api/share/shortlist', {
+      headers, data: { projection_ref: feedbackData.projection_ref, property_ref: data.stops[0].property_ref,
+        shortlisted: true, idempotency_key: randomUUID() },
+    });
+    expect(allowed.ok(), 'allowed-property shortlist write succeeds').toBe(true);
+    expect((await allowed.json()).data.saved).toBe(true);
     const unrelatedRef = 'property:public:' + createHash('sha256')
       .update(`carr-internal:${fixture.tour.projection_id}:${fixture.tour.unrelated_property_id}`).digest('hex').slice(0, 32);
     const refused = await client.request.post('/api/share/shortlist', {
-      headers: { origin: new URL(client.url()).origin, 'sec-fetch-site': 'same-origin' },
+      headers,
       data: { projection_ref: feedbackData.projection_ref, property_ref: unrelatedRef,
         shortlisted: true, idempotency_key: randomUUID() },
     });
