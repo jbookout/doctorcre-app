@@ -253,8 +253,8 @@ document.addEventListener('progress-auth-lost', () => {
     breadcrumbs('Progress', 'Sign in');
 });
 let focusedLineage = false;
-function lineageRecord(task) {
-  const host = node('div'); host.innerHTML = workLineageHtml(task, scope.board, {targets:true,taskId:scope.task});
+function lineageRecord(task, linked = true) {
+  const host = node('div'); host.innerHTML = workLineageHtml(task, scope.board, {linked,targets:true,taskId:scope.task});
   let hash;
   try { hash = decodeURIComponent(location.hash.slice(1)); } catch { return host.firstElementChild; }
   queueMicrotask(() => {
@@ -328,7 +328,11 @@ async function refresh() {
     if (!currentBinding() || !authReadable(epoch)) return;
     renderReviews(); await readSessions();
     if (authReadable(epoch)) wire?.refreshScope();
-  } catch (error) { if (authCurrent(epoch)) { dependencyTask=null;renderDependencies();++bindingGeneration;fail(error,$('workMetadata'),'Publication'); } }
+  } catch (error) { if (authCurrent(epoch)) {
+    if (dependencyTask) $('workMetadata').querySelector('.work-lineage')?.replaceWith(lineageRecord(dependencyTask,false));
+    signatures.delete('workMetadata');
+    dependencyTask=null;renderDependencies();++bindingGeneration;fail(error,$('workMetadata'),'Publication');
+  } }
   finally { reading = false; }
 }
 document.addEventListener('progress-queue', event => {
