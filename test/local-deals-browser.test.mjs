@@ -298,7 +298,8 @@ test('S8 the move toast never covers the Today column or the status band', async
       const box = node => { if (!node) return null; const r = node.getBoundingClientRect(); return r.width && r.height && getComputedStyle(node).visibility !== 'hidden' && getComputedStyle(node).display !== 'none' ? { left: r.left, right: r.right, top: r.top, bottom: r.bottom } : null; };
       return { toast: box(toast), today: box(document.querySelector('#appToday')), status: box(document.querySelector('.app-layout-status')) };
     });
-    if (width === 390) { await page.locator('#appTodayToggle').click(); await page.locator('#appToday').evaluate(n => n.getAnimations().forEach(a => a.finish())); }
+    await page.locator('#appTodayToggle').click();
+    await page.locator('#appToday').evaluate(n => n.getAnimations().forEach(a => a.finish()));
     let r = await rects();
     if (width === 390) assert.ok(r.today?.left < 390, 'Today is open in the viewport');
     if (width !== 390) assert.ok(r.toast, 'toast renders');

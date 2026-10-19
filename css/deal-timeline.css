@@ -4,8 +4,8 @@
 .deal-freshness { display:flex; justify-content:flex-end; align-items:center; gap:var(--space-1); color:var(--fg-muted); font-size:var(--font-size-1); }
 .deal-freshness button { border:0; background:transparent; }
 .deal-detail #detailReadStatus:empty { display:none; }
-/* Phases wrap onto further rows instead of scrolling, at every width. */
-.phase-rail { display:grid; grid-template-columns:repeat(auto-fit,minmax(112px,1fr)); gap:var(--space-4) 0; list-style:none; padding:0 0 var(--space-2); margin:var(--space-2) 0 var(--space-5); }
+/* Every phase shares one continuous rail; the phone caption names the current step. */
+.phase-rail { display:grid; grid-template-columns:repeat(8,minmax(0,1fr)); gap:var(--space-4) 0; list-style:none; padding:0 0 var(--space-2); margin:var(--space-2) 0 var(--space-5); }
 .phase-rail li { border-top:2px solid var(--hairline-strong); padding:var(--space-3) var(--space-2) 0; position:relative; font-size:var(--font-size-1); color:var(--fg-muted); }
 .phase-rail li::before { content:''; width:8px; height:8px; border-radius:var(--radius-round); background:var(--hairline-strong); position:absolute; top:-5px; left:var(--space-2); }
 .phase-rail li[aria-current] { border-color:var(--fg); color:var(--fg); font-weight:var(--font-weight-strong); }
@@ -56,3 +56,11 @@
 
 
 .detail-actions .park-control { color:var(--status-danger-ink); }
+
+.phase-caption { display:none; }
+@media(max-width:600px) {
+ .phase-caption { display:block; margin:var(--space-2) 0 var(--space-5); font-weight:var(--font-weight-strong); }
+ .phase-rail { margin-bottom:var(--space-3); }
+ .phase-rail li { padding-top:0; height:8px; }
+ .phase-rail li > span, .phase-rail li > time { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip-path:inset(50%); white-space:nowrap; }
+}

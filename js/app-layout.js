@@ -51,10 +51,11 @@ export function mountAppLayout(root, host, pathname) {
   root.body.classList.add('has-app-layout');
   const pageOwnsMoves = Boolean(layout.querySelector('#appTodayMoves [data-layout-slot="moves"]'));
   const phone = win.matchMedia(TOUCH_LAYOUT);
-  let sidebar = !boardPage, today = true, drawer = null;
+  const dealBoard = pathname === '/deals' && root.body.classList.contains('dealroom-page');
+  let sidebar = !boardPage, today = !dealBoard, drawer = null;
   let drawerOpener = null;
   const background = new Map();
-  try { const saved = win.localStorage.getItem(`doctorcre:sidebar:${pageKey}`); if (saved !== null) sidebar = saved === 'open'; today = win.localStorage.getItem('doctorcre:today') !== 'closed'; } catch {}
+  try { const saved = win.localStorage.getItem(`doctorcre:sidebar:${pageKey}`); if (saved !== null) sidebar = saved === 'open'; const savedToday = win.localStorage.getItem(dealBoard ? 'doctorcre:today:/deals' : 'doctorcre:today'); if (savedToday !== null) today = savedToday !== 'closed'; } catch {}
   const sidebarToggle = layout.querySelector('#appSidebarToggle'), todayToggle = layout.querySelector('#appTodayToggle');
   const paint = () => {
     layout.dataset.sidebar = sidebar ? 'open' : 'closed'; layout.dataset.today = today ? 'open' : 'closed'; layout.dataset.drawer = drawer || '';
@@ -87,7 +88,7 @@ export function mountAppLayout(root, host, pathname) {
   const toggle = region => {
     if (phone.matches) { if (drawer === region) closeDrawer(); else openRegion(region); return; }
     else if (region === 'sidebar') { sidebar = !sidebar; try { win.localStorage.setItem(`doctorcre:sidebar:${pageKey}`, sidebar ? 'open' : 'closed'); } catch {} }
-    else { today = !today; try { win.localStorage.setItem('doctorcre:today', today ? 'open' : 'closed'); } catch {} }
+    else { today = !today; try { win.localStorage.setItem(dealBoard ? 'doctorcre:today:/deals' : 'doctorcre:today', today ? 'open' : 'closed'); } catch {} }
     paint();
   };
   const closeDrawer = () => {

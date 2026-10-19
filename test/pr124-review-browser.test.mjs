@@ -52,7 +52,7 @@ async function liveDetailRead(page) {
  const wire = await page.evaluate(async () => {
    const {state}=await import('/js/pipeline.js');
    const detail=await state.client.getDeal('d14');
-   return {...detail.deal,deal_id:'d14',thread:detail.thread,critical_dates:[],events:[]};
+   return {...detail.deal,client_id:'synthetic-client',deal_id:'d14',thread:detail.thread,critical_dates:[],events:[]};
  });
  const reads={status:200,delayed:null,delayNext:false};
  await page.route('**/mcp',async route=>{

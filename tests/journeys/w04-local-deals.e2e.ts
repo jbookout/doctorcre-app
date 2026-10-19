@@ -17,7 +17,7 @@ test('W4 Local Deals board drags a phase change and undoes an automatic move', a
   await app.open('/deals');
 
   await expect(browser.locator('#pageTitle')).toHaveText('Local Deals');
-  await expect(browser.locator('.kanban-column')).toHaveCount(8);
+  await expect(browser.locator('.kanban-column')).toHaveCount(7);
   const autoMove = browser.locator('[data-column="negotiation"] [data-id="d14"] .auto-move');
   await expect(autoMove).toContainText('Moved automatically: LOI sent');
 

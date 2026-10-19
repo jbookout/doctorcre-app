@@ -112,9 +112,6 @@
 .deal-note summary { cursor: pointer; color: var(--fg-muted); min-height: var(--touch); }
 .note-original { white-space: pre-wrap; overflow-wrap: anywhere; }
 .park-control { color: var(--status-danger-ink); background: transparent; border: 0; margin-top: var(--space-4); }
-.phase-rail { display: flex; flex-wrap: wrap; gap: var(--space-1); margin-bottom: var(--space-4); }
-.phase-rail span { border: var(--hairline-width) solid var(--hairline); padding: var(--space-1) var(--space-2); border-radius: var(--radius-1); font-size: var(--font-size-1); color: var(--fg-muted); }
-.phase-rail span[aria-current="step"] { border-color: var(--fg); background: var(--surface-3); color: var(--fg); font-weight: var(--font-weight-strong); }
 @media(max-width:1440px) { .kanban { grid-template-columns: repeat(4,minmax(0,1fr)); } }
 @media(max-width:650px) { .kanban { grid-template-columns: repeat(2,minmax(0,1fr)); } .kanban-column:not(:has(.kanban-card)) { min-height: 0; } .detail-grid { grid-template-columns: 1fr; } .deal-row { grid-template-columns: minmax(0,1fr) auto; gap: var(--space-1) var(--space-2); } .deal-row h4 { grid-column: 1/-1; } .deal-row > .deal-stage { grid-column: 1; grid-row: 2; } .deal-row > .owner { grid-column: 2; grid-row: 2; } .deal-row .next-line, .deal-row .auto-move { grid-column: 1/-1; } .detail-controls { grid-template-columns: 1fr; } }
 @media(max-width:360px) { .kanban { grid-template-columns: minmax(0,1fr); } }
@@ -167,3 +164,16 @@
 .deal-updates { margin-bottom:var(--space-4); }
 .deal-updates .deal-note p { line-height:var(--line-height-body); }
 .deal-dates > summary { min-height:var(--touch); cursor:pointer; }
+
+.dealroom-heading { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:var(--space-3); margin-bottom:var(--space-4); }
+.app-section-tabs { display:flex; align-items:center; gap:var(--space-4); border-bottom:var(--hairline-width) solid var(--hairline); }
+.app-section-tabs a { display:flex; align-items:center; min-height:var(--touch); padding:var(--space-2) 0; color:var(--fg-muted); text-decoration:none; border-bottom:2px solid transparent; font-weight:var(--font-weight-strong); }
+.app-section-tabs a[aria-current=page] { color:var(--fg); border-bottom-color:var(--fg); }
+.dealroom-page.has-app-layout .kanban { grid-template-columns:repeat(7,minmax(0,1fr)); }
+@media(max-width:1100px) { .dealroom-page.has-app-layout .kanban { grid-template-columns:repeat(auto-fit,minmax(min(100%,180px),1fr)); } }
+@media(max-width:760px) {
+ .dealroom-page.has-app-layout .kanban { grid-template-columns:minmax(0,1fr); }
+ .dealroom-page .kanban-column:not(:has(.kanban-card)) { display:none; }
+ .dealroom-heading { gap:var(--space-2); }
+ .app-section-tabs { gap:var(--space-3); }
+}

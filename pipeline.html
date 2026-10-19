@@ -19,7 +19,7 @@
   <link rel="stylesheet" href="/css/deal-timeline.css">
   <link rel="stylesheet" href="/css/app-shell.css">
 </head>
-<body>
+<body class="dealroom-page">
   <div id="appShell"></div><script type="module" src="/js/app-shell.js"></script>
   <a class="skip" href="#main">Skip to the board</a>
   <p id="prefsLive" class="sr-only" aria-live="polite"></p>
@@ -29,7 +29,6 @@
       <div class="hero">
         <div>
           <h1 id="pageTitle">Local Deals</h1>
-          <nav class="app-section-tabs" aria-label="Deals pages"><a href="/deals">Local Deals</a><a href="/deals?view=national">National Accounts</a></nav>
         </div>
         <div data-layout-slot="status" class="hero-meta">
           <span id="deploymentBadge" class="small"></span>
@@ -48,10 +47,11 @@
           <button class="chip" id="lostView" type="button" aria-pressed="false" aria-controls="closedDealsView">Lost deals</button>
           <button class="chip" id="parkedToggle" type="button" aria-pressed="false">Parked</button>
         </div>
-        <button class="btn btn-primary" type="button" id="addDealOpen" aria-haspopup="dialog">Add deal</button>
       </div>
       <button class="btn" type="button" id="receiptsOpen" aria-controls="appToday">Recent changes <span id="receiptsCount">0</span></button>
     </section>
+
+    <div class="dealroom-heading"><nav class="app-section-tabs" aria-label="Deals pages"><a href="/deals" aria-current="page">Local Deals</a><a href="/deals?view=national">National Accounts</a></nav><button class="btn btn-primary" type="button" id="addDealOpen" aria-haspopup="dialog">Add deal</button></div>
 
     <p id="boardLive" aria-live="polite" role="status">Updating…</p>
     <p class="sr-only" id="dragLive" aria-live="assertive"></p>

@@ -53,7 +53,7 @@ import {
   loadDealContext, attachedParties, moveIntent, moveSummary, moveTitle, noteText, dealName, presenceChip,
   dealInsightLines,
 } from './pipeline-model.js';
-import { lostDeals, closedDeals, localDeals, needsAttention, urgencyOrder, concise, automaticMove, OWNER_FILTERS, PHASE_TRIGGERS } from './local-deals-model.js';
+import { isClosedDeal, lostDeals, closedDeals, localDeals, needsAttention, urgencyOrder, concise, automaticMove, OWNER_FILTERS, PHASE_TRIGGERS } from './local-deals-model.js';
 import { DATE_KINDS, renderCriticalDates, renderDealTimeline, renderDealUpdates, updateCountdowns } from './deal-timeline.js';
 import { uuidv4 } from './uuid.js';
 import { mountVisibilityPoll } from './visibility-poll.mjs';
@@ -868,8 +868,8 @@ function detailHtml(detail) {
   const parked = d.operating_state === 'parked';
   return `<div class="deal-freshness"><time id="detailUpdated" title="Last updated"></time><button class="btn icon-btn" type="button" data-refresh-detail aria-label="Refresh deal" title="Refresh">↻</button></div><p id="detailReadStatus" role="status"></p>
     <form id="detailUpdateForm" class="deal-update-form"><label for="dealUpdate">Update</label><textarea id="dealUpdate" name="text" rows="2" maxlength="10000" placeholder="What changed on this deal?" required></textarea><button class="btn btn-primary" type="submit">Add update</button><p id="detailUpdateStatus" role="status"></p></form>
-    <div class="detail-actions"><div class="detail-controls"><label>Phase<select id="detailPhase">${COLUMNS.map(c => `<option value="${esc(c.slug)}"${c.value === d.phase ? ' selected' : ''}>${esc(c.label)}</option>`).join('')}</select></label><label>Owner<select id="detailOwner"><option value="">Unassigned</option>${['joe','dell'].map(owner => `<option value="${owner}"${owner === d.owner ? ' selected' : ''}>${actorName(owner)}</option>`).join('')}</select></label></div><div data-detail-read="parking" data-parked="${parked}">${parked ? `<p>${esc(concise(d.parking_note) || 'Parked')}</p><button type="button" class="btn" data-revive="${esc(d.id)}">Revive</button>` : `<details class="park-options"><summary class="park-control">Park</summary><form id="detailParkForm"><label>Park reason<input name="reason" maxlength="500" required></label><button class="btn park-control" type="submit">Park deal</button></form></details>`}</div></div>
-    <dl class="deal-snapshot-facts">${d.client_name ? `<div><dt>Client</dt><dd>${esc(d.client_name)}</dd></div>` : ''}${d.type ? `<div><dt>Type</dt><dd>${esc(d.type)}</dd></div>` : ''}${d.outcome ? `<div><dt>Outcome</dt><dd>${esc(d.outcome[0].toUpperCase()+d.outcome.slice(1))}</dd></div>` : ''}</dl>
+    ${!isClosedDeal(d) ? `<div class="detail-actions"><div class="detail-controls"><label>Phase<select id="detailPhase">${COLUMNS.map(c => `<option value="${esc(c.slug)}"${c.value === d.phase ? ' selected' : ''}>${esc(c.label)}</option>`).join('')}</select></label><label>Owner<select id="detailOwner"><option value="">Unassigned</option>${['joe','dell'].map(owner => `<option value="${owner}"${owner === d.owner ? ' selected' : ''}>${actorName(owner)}</option>`).join('')}</select></label></div><div data-detail-read="parking" data-parked="${parked}">${parked ? `<p>${esc(concise(d.parking_note) || 'Parked')}</p><button type="button" class="btn" data-revive="${esc(d.id)}">Revive</button>` : `<details class="park-options"><summary class="park-control">Park</summary><form id="detailParkForm"><label>Park reason<input name="reason" maxlength="500" required></label><button class="btn park-control" type="submit">Park deal</button></form></details>`}</div></div>` : ''}
+    <dl class="deal-snapshot-facts">${d.workspace_kind === 'national_account' || d.account_client_id ? `<div><dt>Market agent</dt><dd>${esc(d.market_agent || 'Unassigned')}</dd></div>` : ''}${d.client_name ? `<div><dt>Client</dt><dd>${esc(d.client_name)}</dd></div>` : ''}${d.type ? `<div><dt>Type</dt><dd>${esc(d.type)}</dd></div>` : ''}${d.outcome ? `<div><dt>Outcome</dt><dd>${esc(d.outcome[0].toUpperCase()+d.outcome.slice(1))}</dd></div>` : ''}</dl>
     ${renderDealTimeline(detail)}${renderDealUpdates(detail)}
     <button class="btn" type="button" data-jev-deal="${esc(d.id)}">Deal outlook</button><p data-jev-result role="status"></p>
     <details class="deal-dates"><summary>Dates</summary>${renderCriticalDates(detail)}</details>
@@ -883,13 +883,13 @@ async function refreshPanel() {
     const detail = await readDealDetail(id);
     if (state.panelDeal !== id || seq !== panelReadSequence) return;
     state.panelDetail = detail;
-    setContextOpenVisible(Boolean(detail.deal.client_name || detail.deal.client_id || detail.deal.client_ref || detail.deal.account_client_id || attachedParties(detail.participants).length));
+    setContextOpenVisible(Boolean(detail.deal.client_id || detail.deal.account_client_id || attachedParties(detail.participants).length));
     updateDetailTimestamp();
     // A poll preserves drafts, expanded entries and the dialog scroll position.
     if (!$('panelBody').querySelector('.detail-grid')) paintPanel(detail);
     else {
-      if (document.activeElement !== $('detailPhase')) $('detailPhase').value = columnByValue(detail.deal.phase)?.slug || '';
-      if (document.activeElement !== $('detailOwner')) $('detailOwner').value = detail.deal.owner || '';
+      if ($('detailPhase') && document.activeElement !== $('detailPhase')) $('detailPhase').value = columnByValue(detail.deal.phase)?.slug || '';
+      if ($('detailOwner') && document.activeElement !== $('detailOwner')) $('detailOwner').value = detail.deal.owner || '';
       syncUpdateForm();
       $('detailReadStatus').textContent = '';
       $('panelTitle').textContent = dealTitle(detail.deal);

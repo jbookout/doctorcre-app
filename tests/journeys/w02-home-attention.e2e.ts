@@ -19,7 +19,7 @@ test('W2 Home attention lists flagged deals, scopes to the viewer and opens the 
   await flags.first().tap();
   await browser.waitForURL(/\/deals\?deal=d01$/);
   await expect(browser.locator('#panelTitle')).toContainText('Demo Dental North');
-  await expect(browser.locator('#detailNextForm')).toBeVisible();
+  await expect(browser.locator('#detailUpdateForm')).toBeVisible();
   await browser.locator('#recordPanel [aria-label="Close deal"]').tap();
   await expect(browser.locator('#recordPanel')).toBeHidden();
 });
