@@ -18,13 +18,25 @@ function clear(state) {
 
 function remove(state) {
   clear(state);
+  state?.observer?.disconnect();
   state?.node.remove();
   if (active === state) active = null;
 }
 
-export function showToast(message, { eventId = null, error = false } = {}) {
+function place(state, doc) {
+  const modals = [...doc.querySelectorAll('dialog[open]')].filter(dialog => dialog.matches(':modal'));
+  const focused = modals.find(dialog => dialog.contains(doc.activeElement));
+  const host = focused || modals.at(-1) || doc.body;
+  if (state.node.parentElement !== host) host.append(state.node);
+  // A popover escapes the detail panel's transformed, scrolling containing block.
+  // It stays a modal descendant so its actions remain in the modal focus scope.
+  if (state.node.showPopover && !state.node.matches(':popover-open')) state.node.showPopover();
+}
+
+export function showToast(message, { eventId = null, error = false, preserveUndo = false } = {}) {
   const doc = globalThis.document;
   if (!doc?.body) return null;
+  if (preserveUndo && !eventId && !error && active?.undo && !active.undo.disabled) return active.node;
   if (active) remove(active);
   doc.querySelectorAll('.toast').forEach((node) => node.remove());
 
@@ -48,6 +60,7 @@ export function showToast(message, { eventId = null, error = false } = {}) {
     undo.dataset.undo = String(eventId);
     undo.textContent = 'Undo';
     node.append(undo);
+    state.undo = undo;
   }
 
   if (error) {
@@ -61,7 +74,10 @@ export function showToast(message, { eventId = null, error = false } = {}) {
     node.append(close);
   }
 
-  doc.body.append(node);
+  if (node.showPopover) node.setAttribute('popover', 'manual');
+  place(state, doc);
+  state.observer = new doc.defaultView.MutationObserver(() => place(state, doc));
+  state.observer.observe(doc.body, { subtree: true, attributes: true, attributeFilter: ['open'] });
   if (!error) {
     const hold = undo ? UNDO_HOLD_MS : SUCCESS_HOLD_MS;
     timer(() => {

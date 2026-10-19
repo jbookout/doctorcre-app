@@ -9,6 +9,7 @@ function documentFor(t) {
   const previous = globalThis.document;
   globalThis.document = dom.window.document;
   t.after(() => {
+    showToast("Cleanup", {error:true}).querySelector("[data-toast-close]").click();
     dom.window.close();
     if (previous === undefined) delete globalThis.document;
     else globalThis.document = previous;
@@ -81,4 +82,43 @@ test('quick successes replace each other and old timers never remove the newest 
   t.mock.timers.tick(1100);
   t.mock.timers.tick(800);
   assert.equal(doc.querySelectorAll('.toast').length, 0);
+});
+
+
+test('follow-up success keeps the move action and original deadline; a new move replaces it', t => {
+  t.mock.timers.enable({apis:['setTimeout']});
+  const doc = documentFor(t);
+  const move = showToast('Moved to Legal', {eventId:'event-8'});
+  t.mock.timers.tick(4000);
+  assert.equal(showToast('Evidence saved', {preserveUndo:true}),move);
+  assert.equal(showToast('Next step saved', {preserveUndo:true}),move);
+  assert.equal(move.querySelector('[data-undo]').dataset.undo,'event-8');
+  assert.equal(move.textContent,'Moved to LegalUndo');
+  t.mock.timers.tick(1000);
+  assert.equal(move.querySelector('[data-undo]').disabled,true);
+  const next = showToast('Moved to Closing', {eventId:'event-9',preserveUndo:true});
+  assert.equal(move.isConnected,false);
+  assert.equal(next.querySelector('[data-undo]').dataset.undo,'event-9');
+  t.mock.timers.tick(800);
+  assert.equal(doc.querySelector('.toast'),next,'the previous fade cannot remove the new move');
+});
+
+test('Undo result and errors replace move Undo, while expired Undo does not swallow a new confirmation', t => {
+  t.mock.timers.enable({apis:['setTimeout']});
+  const doc = documentFor(t);
+  showToast('Moved', {eventId:'event-10'});
+  showToast('Change undone');
+  assert.equal(doc.querySelector('[data-undo]'),null);
+  showToast('Moved', {eventId:'event-11'});
+  const error = showToast('Could not save', {error:true,preserveUndo:true});
+  assert.equal(doc.querySelector('[data-undo]'),null);
+  assert.equal(error.getAttribute('role'),'alert');
+  error.querySelector('[data-toast-close]').click();
+  showToast('Moved', {eventId:'event-12'});
+  t.mock.timers.tick(5000);
+  const late = showToast('Evidence saved', {preserveUndo:true});
+  assert.equal(late.textContent,'Evidence saved');
+  t.mock.timers.tick(2000);
+  t.mock.timers.tick(800);
+  assert.equal(doc.querySelector('.toast'),null);
 });

@@ -636,12 +636,40 @@ for (const width of [390,1280]) for (const input of ['pointer','keyboard']) test
   const undo = page.locator('.toast [data-undo]');
   if (input === 'pointer') await undo.click({timeout:1500});
   else {
-    await undo.focus();
-    assert.equal(await undo.evaluate(n=>n===document.activeElement),true,'Undo participates in the modal focus scope');
+    await page.locator('#panelClose').focus();
+    for (let i=0; i<4 && !await undo.evaluate(n=>n===document.activeElement); i++) await page.keyboard.press('Shift+Tab');
+    assert.equal(await undo.evaluate(n=>n===document.activeElement),true,'Undo is reachable through the modal tab order');
     await page.keyboard.press('Enter');
   }
   await waitForAsync(page,async ()=>(await import('/js/pipeline.js')).state.deals.get('d14').phase==='Negotiation');
   assert.equal(await page.locator('#recordPanel').evaluate(n=>n.open),true);
   assert.equal(await page.locator('.toast [data-undo]').count(),0);
+  assert.deepEqual(errors,[]);
+});
+
+for (const width of [390,1280]) test(`Undo follows modal open and close without renewing its deadline at ${width}px`, async t => {
+  const {page, errors} = await open(t, {width, reducedMotion:'reduce'});
+  await page.locator('.kanban-column [data-id="d14"] .card-open').click();
+  await page.locator('#detailPhase').selectOption('legal');
+  await page.locator('#completionConfirm').click();
+  await page.locator('#completionDialog').waitFor({state:'hidden'});
+  await waitForAsync(page, () => document.querySelector('.toast')?.parentElement.id === 'recordPanel');
+  await page.evaluate(() => { window.moveToast = document.querySelector('.toast'); });
+  await page.clock.runFor(2000);
+  await page.locator('#panelClose').click();
+  await waitForAsync(page, () => document.querySelector('.toast')?.parentElement === document.body);
+  assert.equal(await page.locator('.toast').isVisible(),true);
+  await page.locator('.kanban-column [data-id="d14"] .card-open').click();
+  await waitForAsync(page, () => document.querySelector('.toast')?.parentElement.id === 'recordPanel');
+  assert.equal(await page.locator('.toast').evaluate(n=>n === window.moveToast),true,'modal handoffs keep the original toast node');
+  await page.locator('#recordPanel').evaluate(n=>{ n.scrollTop=n.scrollHeight; });
+  const undo = page.locator('.toast [data-undo]');
+  const box = await undo.boundingBox();
+  assert.ok(box && box.x >= 0 && box.y >= 0 && box.x+box.width <= width && box.y+box.height <= 960,'Undo stays inside the viewport while the detail scrolls');
+  assert.equal(await undo.evaluate(n=>{const r=n.getBoundingClientRect();return n.contains(document.elementFromPoint(r.x+r.width/2,r.y+r.height/2));}),true,'the scrolled detail never covers Undo');
+  await page.clock.runFor(3001);
+  assert.equal(await undo.isDisabled(),true);
+  await page.clock.runFor(800);
+  assert.equal(await page.locator('.toast').count(),0);
   assert.deepEqual(errors,[]);
 });

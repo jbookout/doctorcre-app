@@ -82,7 +82,7 @@ export function createCommandDock({ root, onDispatch = null, onReconcile = null,
     const nextState = commandReceiptView(next).state;
     entries.set(operationKey, next);
     if (nextState === 'confirmed' && previousState !== 'confirmed' && root) {
-      showToast(next.summary || 'Change confirmed');
+      showToast(next.summary || 'Change confirmed', { preserveUndo: true });
     }
     evict();
     render();
