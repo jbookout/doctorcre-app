@@ -84,8 +84,6 @@ test('W1: desktop work action uses a wide dialog with human category labels',asy
 
 test('recorded completion never claims Live in the real system-work diagram',async t=>{
  const {page,errors}=await open(t,1440);
- await mkdir('out/test-artifacts/recorded-completion',{recursive:true});
- await page.screenshot({path:'out/test-artifacts/recorded-completion/system-work-desktop.png',fullPage:true});
  assert.equal(await page.locator('#system-work-flow [data-stage="live"].pipeline-node').count(),0);
  assert.equal(await page.locator('#system-work-flow [data-stage="recorded"].pipeline-node').count(),10);
  await page.getByRole('button',{name:'Completed records',exact:true}).click();
@@ -97,7 +95,6 @@ test('recorded completion never claims Live in the real system-work diagram',asy
  assert.match(await page.locator('#system-work-flow').getAttribute('aria-label'),/Recorded/);
  assert.equal(await page.locator('#system-work-flow [data-stage="live"].pipeline-node').count(),0);
  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);assert.deepEqual(errors,[]);
- await page.screenshot({path:'out/test-artifacts/recorded-completion/completed-records-desktop.png',fullPage:true});
 });
 
 for (const width of [390, 1440]) test(`S8 populated Progress preserves readable text at ${width}px`, async t => {
