@@ -351,6 +351,8 @@ footer { padding-top: 8px; }
 .pipeline-diagram foreignObject div { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; line-height: 16px; }
 .pipeline-diagram .node-label div { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; white-space: normal; overflow-wrap: anywhere; }
 
+/* Both board routes scroll above the fixed navigation and status footer. */
+.app-layout-center:has(#board-stages):not(:has(#panelDashboard[hidden])) { height: calc(100dvh - var(--layout-bottom)); overflow-y: auto; overscroll-behavior-y: contain; scroll-padding-block: var(--tabbar-height) var(--space-5); }
 .hierarchy-board { display: block; }
 .hierarchy-breadcrumbs { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-4); margin-block: var(--space-3); font-size: var(--font-size-1); }
 .hierarchy-breadcrumbs a { display: inline-flex; align-items: center; min-height: var(--touch); color: var(--fg-muted); text-decoration: none; }

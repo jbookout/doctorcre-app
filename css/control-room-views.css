@@ -65,7 +65,6 @@
   body:has(#panelDashboard:not([hidden])) .app-layout[data-sidebar=open] { --layout-left: 12rem; }
   body:has(#panelDashboard:not([hidden])) .app-layout[data-today=open] { --layout-right: 13rem; }
 }
-body:has(#panelDashboard:not([hidden])) .app-layout-center { height: calc(100dvh - var(--layout-bottom)); overflow-y: auto; overscroll-behavior-y: contain; scroll-padding-block: var(--tabbar-height) var(--space-5); }
 #panelDashboard:has(.hierarchy-breadcrumbs) .intro { display: flex; justify-content: space-between; padding: 0; margin: 0; min-height: var(--touch); }
 
 #panelDashboard:has(.hierarchy-breadcrumbs) :is(#board-meta, #legend-toggle, #legend) { display: none; }

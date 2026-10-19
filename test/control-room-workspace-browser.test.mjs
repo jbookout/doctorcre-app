@@ -7,6 +7,7 @@ import axe from 'axe-core';
 import hierarchy from './fixtures/progress-board-hierarchy.json' with {type:'json'};
 import {atlasFixtureResponse} from '../scripts/atlas-fixture.mjs';
 import { routeContract as routes } from "../js/routes.js";
+import { BOARD_ROUTE, boardIdFromPath } from '../js/progress-board-route.js';
 const root=new URL('../',import.meta.url);
 const reads={'list-feature-switches':'listFeatureSwitches','list-doc-suggestions':'listDocSuggestions','read-progress-board':'readProgressBoard','list-progress-boards':'listProgressBoards','unfinished-work':'unfinishedWork','incident-board':'incidentBoard','governance-queue':'governanceQueue','schedule-board':'scheduleBoard','work-request-card':'workRequestCard','deal-room-board':'getBoard','today-triage':'todayTriage','notification-feed':'notificationFeed','read-room-queue':'roomQueue','read-room':'roomTurns','read-session-identity':'sessionIdentity','list-my-codex-sessions':'codexSessions','current-work-item':'currentWorkItem','list-notifications':'listNotifications'};
 async function open(t,{width=1440,height=width===1440?1000:844,path='/control-room?mode=live&tab=boards',connectionsBad=false,countIncidentClicks=false,unboundBoard=false,boardUnpublished=false,emptyIncidents=false,extraBoard=false,theme='dark',snapshotData}={}){
@@ -71,12 +72,13 @@ async function open(t,{width=1440,height=width===1440?1000:844,path='/control-ro
   if(url.pathname==='/api/system-work/session')return route.fulfill({contentType:'application/json',body:JSON.stringify({actor:{slug:'joe'},csrf_token:'synthetic-test-token'})});
   if(url.pathname==='/app-release'&&state.denied)return route.fulfill({status:503,body:'{}'});
   if(url.pathname.startsWith('/api/')||url.pathname==='/app-release')return route.fulfill({contentType:'application/json',body:'{}'});
-  const file=routes.routes[url.pathname]||url.pathname.slice(1);
+  const file=routes.routes[boardIdFromPath(url.pathname)?BOARD_ROUTE:url.pathname]||url.pathname.slice(1);
   try{const body=await readFile(new URL(file,root));return route.fulfill({body,contentType:/\.m?js$/.test(file)?'text/javascript':file.endsWith('.css')?'text/css':file.endsWith('.json')?'application/json':'text/html'});}catch{return route.fulfill({status:404,body:''});}
  });
  await page.goto(`http://localhost${path}`);
  await page.waitForFunction(()=>document.querySelector('#selfAvatar')?.textContent==='J');
- await waitForRoom(page);
+ if(new URL(page.url()).pathname==='/control-room')await waitForRoom(page);
+ else await page.locator('.hierarchy-breadcrumbs').waitFor();
  return {page,state,calls,errors};
 }
 // Polls finish over the network after virtual time stops. Await the complete
@@ -539,6 +541,41 @@ function hierarchyTasteFixture() {
  snapshot.hierarchy.work_requests.WR14.counts={done:1,active:0,blocked:1,failed:0};
  return snapshot;
 }
+
+for(const route of ['room','standalone'])for(const width of [320,390,1280])for(const theme of ['light','dark'])test(`hierarchy occlusion journey ${route} ${width}px ${theme}`,async t=>{
+ const path=route==='room'?'/control-room?mode=live&tab=boards&card=WR14.S2':'/control-room/progress/board/carr-v5?card=WR14.S2';
+ const snapshot=hierarchyTasteFixture();
+ snapshot.hierarchy.slices['WR14.S2'].cards=['WR14.S2.J2.app#320','WR14.S2.J1.app#316','WR14.S2.J3.carr#1971'];
+ for(const card of Object.values(snapshot.tasks)){
+  card.card_description='Keep reviewed changes moving so partners can find the work that needs them.';
+  card.executor='Synthetic review desk';
+ }
+ const {page,errors}=await open(t,{path,width,height:900,theme,snapshotData:snapshot});
+ const blocked=page.locator('[data-hierarchy-id="WR14.S2.J2.app#320"]');
+ await blocked.locator('summary').click();
+ // Try the reported document scroll, then sweep each job title through the
+ // fixed chrome boundary. A protected scrollport keeps document scroll at zero.
+ const checks=[];
+ await page.evaluate(y=>window.scrollTo(0,y),width===320?46:width===390?7:197);
+ for(const id of ['WR14.S2.J2.app#320','WR14.S2.J1.app#316']){
+  const title=page.locator(`[data-hierarchy-id="${id}"] > button`);
+  await title.scrollIntoViewIfNeeded();
+  const check=await title.evaluate(node=>{
+   const boundary=document.querySelector(innerWidth<761?'#appShell':'.app-layout-status').getBoundingClientRect().top;
+   let r=node.getBoundingClientRect();
+   window.scrollBy(0,r.top+r.height/2-boundary-2);
+   r=node.getBoundingClientRect();
+   const hit=document.elementFromPoint(r.left+r.width/2,r.top+r.height/2);
+   return {title:node.textContent,scrollY,centre:r.top+r.height/2,boundary,hit:hit?.tagName,uncovered:node.contains(hit)};
+  });
+  checks.push(check);
+ }
+ const out=new URL('out/test-artifacts/taste-317-round2/',root);await mkdir(out,{recursive:true});
+ await writeFile(new URL(`${route}-${width}-${theme}-occlusion.json`,out),JSON.stringify(checks,null,2));
+ await page.screenshot({path:new URL(`${route}-${width}-${theme}.png`,out).pathname});
+ assert.ok(checks.every(check=>check.uncovered),JSON.stringify(checks));
+ assert.deepEqual(errors,[]);
+});
 
 for(const width of [320,390,1280])for(const theme of ['light','dark'])test(`hierarchy taste journey ${width}px ${theme}`,async t=>{
  const {page,errors}=await open(t,{width,height:900,theme,snapshotData:hierarchyTasteFixture()});
