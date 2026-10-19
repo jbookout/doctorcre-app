@@ -1,4 +1,5 @@
 import { test } from '@playwright/test';
+import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
@@ -82,3 +83,16 @@ for (const [name, flow] of Object.entries({ leaseDetails, tourDay, itinerary, sh
     try { await flow(local.page, fixture); } finally { await local.close(); }
   });
 }
+
+test('Share acceptance rejects a server denying every shortlist write', async ({ browser }) => {
+  const local = await localFixture(browser);
+  await local.page.context().route('**/api/share/shortlist', route => route.fulfill({ status: 404, json: { error: 'not_found' } }));
+  try {
+    await assert.rejects(shareLifecycle(local.page, fixture), error => {
+      assert.equal(error.message.includes('allowed-property shortlist write succeeds'), true);
+      return true;
+    });
+  } finally {
+    await local.close();
+  }
+});
