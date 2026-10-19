@@ -21,7 +21,16 @@ export function resolveJobTasks(tasks) {
     const previous = unique.get(task.id);
     const at = Date.parse(task.updated_at || task.last_activity_at);
     const before = Date.parse(previous?.updated_at || previous?.last_activity_at);
-    if (!previous || !Number.isFinite(at) || !Number.isFinite(before) || at >= before) unique.set(task.id, task);
+    const preferNext = Number.isFinite(at) && Number.isFinite(before) && at !== before
+      ? at > before
+      : Number((task.status || task.state) === 'failed') >= Number((previous?.status || previous?.state) === 'failed');
+    if (!previous) { unique.set(task.id, task); continue; }
+    const [current, other] = preferNext ? [task, previous] : [previous, task];
+    const facts = jobFacts(current), recorded = jobFacts(other);
+    unique.set(task.id, { ...current,
+      ...(facts.blocker === 'unknown' && recorded.blocker !== 'unknown' ? { blocked_reason: recorded.blocker } : {}),
+      ...(facts.progress === 'unknown' && recorded.progress !== 'unknown' ? { last_progress: recorded.progress } : {}),
+    });
   }
   return [...unique.values()];
 }

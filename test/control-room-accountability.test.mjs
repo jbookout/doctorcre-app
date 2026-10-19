@@ -81,3 +81,10 @@ test('newer duplicate keeps absent recorded work facts without borrowing model o
   }
   assert.deepEqual([failed, blocked], original);
 });
+
+
+test('a newer completion supersedes an older failure in either source order', () => {
+  const failed = { id: 'demo-export', status: 'failed', updated_at: '2026-10-01T12:00:00Z' };
+  const completed = { id: 'demo-export', status: 'done', updated_at: '2026-10-02T12:00:00Z' };
+  for (const tasks of [[failed, completed], [completed, failed]]) assert.deepEqual(workspace.attentionTasks(tasks), []);
+});
