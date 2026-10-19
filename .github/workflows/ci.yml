@@ -35,6 +35,7 @@ jobs:
           node-version: 22.23.2
           cache: npm
           cache-dependency-path: doctorcre-app/package-lock.json
+      - run: npm run ci:fast
       - run: npm ci
       - id: producer
         name: Read the CARR runtime revision from the consumer contract
