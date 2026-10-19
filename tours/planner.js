@@ -1,3 +1,4 @@
+import {onDialogClosed} from '../js/dialog-lifecycle.js';
 import { pageDocContext, publishDocRead, selectDocRecord, setDocFilters } from '../js/doc-context.js';
 import { mountAutoRefresh, updatedLabel } from "../js/auto-refresh.mjs";
 import { createPlannerClient, validateTourList, validateClientList, validateClientRecord, validateTourDetail } from "./planner-client.js";
@@ -271,7 +272,7 @@ export function mountPlanner({ document, window, api = createPlannerClient() }) 
   drop.addEventListener("dragleave", () => drop.classList.remove("dragging"));
   drop.addEventListener("drop", event => { event.preventDefault(); drop.classList.remove("dragging"); acceptFiles([...event.dataTransfer.files]); });
   $("#detail-close").addEventListener("click", closeDialog);
-  $("#tour-dialog").addEventListener("close", () => { selectDocRecord(null,null); pageDocContext?.release('tourDetail'); ++dialogEpoch; currentTour=null; });
+  onDialogClosed($("#tour-dialog"), () => { selectDocRecord(null,null); pageDocContext?.release('tourDetail'); ++dialogEpoch; currentTour=null; });
   $("#tour-dialog").addEventListener("cancel", event => { event.preventDefault(); closeDialog(); });
   for (const button of document.querySelectorAll("[data-market]")) button.addEventListener("click", () => {
     search.set("area", button.dataset.market); syncForm("space", search); save("#space-message");

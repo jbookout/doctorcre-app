@@ -1,3 +1,4 @@
+import {onDialogClosed} from './dialog-lifecycle.js';
 import {
   escapeHtml as E,
   EDGE_LABELS,
@@ -64,7 +65,7 @@ export function mountRelationshipDialog({ document }) {
         ) || dialog.querySelector("[data-close-card]")
       ).focus();
   };
-  dialog.addEventListener("close", () => {
+  onDialogClosed(dialog, () => {
     selected = null;
     if (returnFocus?.isConnected) {
       returnFocus.focus();

@@ -1,3 +1,4 @@
+import {onDialogClosed} from './dialog-lifecycle.js';
 import { pageDocContext, selectDocRecord, publishDocRead, setDocFilters, observeDocRead } from './doc-context.js';
 import { mountAutoRefresh, updatedLabel } from "./auto-refresh.mjs";
 // V5-UX-B04 — Ideas and Events: DOM wiring only.
@@ -468,7 +469,7 @@ function wire() {
   });
 
   $("ideaDialogClose")?.addEventListener("click", closeIdea);
-  $("ideaDialog")?.addEventListener("close", () => {
+  onDialogClosed($("ideaDialog"), () => {
     selectDocRecord(null,null); pageDocContext?.release('readLoop');
     view.detailSequence += 1;
     if (view.state.idea) { view.state = { ...view.state, idea: null }; remember({ push: true }); }
@@ -517,7 +518,7 @@ function wire() {
     $("eventFormMessage").textContent = "Your draft now uses the latest event version. Review it before saving.";
     $("eventSave").focus();
   });
-  $("eventDialog")?.addEventListener("close", () => selectDocRecord(null,null));
+  onDialogClosed($("eventDialog"), () => selectDocRecord(null,null));
   $("eventDialogClose")?.addEventListener("click", () => closeEvent());
   $("eventCancel")?.addEventListener("click", () => closeEvent({ discard: true }));
   window.addEventListener("pagehide", () => { pageDocContext?.clear(); closeIdea(); closeEvent(); });

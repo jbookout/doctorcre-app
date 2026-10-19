@@ -1,3 +1,4 @@
+import {onDialogClosed} from '../js/dialog-lifecycle.js';
 import { hasArtifactPage } from "./artifact-pages-fixture.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -495,12 +496,12 @@ function duePicker(auditRow, client = null) {
   const sent = [];
   const picker = { addEventListener: (type, handler) => { if (type === "change") change = handler; } };
   const wire = new Function("$", "document", "currentRow", "closeDialog", "runCommand",
-    "operationKeys", "formatDueStamp", "dueDateArgs", "client", `${auditWiring}; return wire;`)(
+    "operationKeys", "formatDueStamp", "dueDateArgs", "client", "onDialogClosed", `${auditWiring}; return wire;`)(
     (id) => id === "taskDue" ? picker : null,
     { addEventListener() {} }, () => auditRow, () => { closed = true; },
     (target, command) => commands.push({ target, ...command }),
     operationKeys, formatDueStamp, dueDateArgs,
-    { updateLoop: async (request) => { sent.push(request); return client ? client.updateLoop(request) : { ok: true }; } },
+    { updateLoop: async (request) => { sent.push(request); return client ? client.updateLoop(request) : { ok: true }; } }, onDialogClosed,
   );
   wire();
   return { change: (value) => change({ target: { value } }), commands, sent, closed: () => closed };

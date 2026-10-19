@@ -1,3 +1,4 @@
+import {onDialogClosed} from './dialog-lifecycle.js';
 import { escapeText } from './change-receipts.mjs';
 import { ignoreKey } from './control-room-list.js';
 
@@ -70,7 +71,7 @@ export function mountControlRoomCommands({ tabs, onEscape }) {
   trigger.addEventListener('click', () => open());
   dialog.querySelector('[data-command-close]').addEventListener('click', () => dialog.close());
   help.addEventListener('click', () => open(mode === 'commands' ? 'shortcuts' : 'commands'));
-  dialog.addEventListener('close', () => { focusBefore?.focus({ preventScroll: true }); });
+  onDialogClosed(dialog, () => { focusBefore?.focus({ preventScroll: true }); });
   dialog.addEventListener('click', event => {
     const row = event.target.closest('[data-command-index]');
     if (row) execute(filtered[Number(row.dataset.commandIndex)]);
