@@ -232,7 +232,8 @@ test('deal card cleanup shows dates and one summary at 390/1280 in dark/light',a
   assert.equal(await page.locator('.deal-current-action strong').textContent(),'Confirm the appointment and review the lease draft');
   assert.equal(await page.locator('.updates-overview').count(),1);
   assert.equal(await page.locator('.deal-note:visible').count(),0);
-  assert.match(await page.locator('.updates-overview').textContent(),/Newest demo update.*Older demo update/s);
+  assert.match(await page.locator('.updates-overview').textContent(),/Newest demo update/);
+  assert.doesNotMatch(await page.locator('.updates-overview').textContent(),/Older demo update/);
   assert.equal(await page.locator('.phase-rail time:visible').count(),4);
   assert.equal(await page.locator('.phase-rail time[datetime="2026-08-31"]').textContent(),'Aug 31, 2026');
   assert.equal(await page.locator('.full-record,.deal-dates,[data-jev-deal]').count(),0);
@@ -287,6 +288,7 @@ test('thirty notes show one concise summary and expand inline at phone width',as
  assert.equal(box.overflow,'visible');
  assert.equal(await page.locator('.deal-note:visible').count(),0);
  await page.locator('.updates-history > summary').click();
- assert.equal(await page.locator('.deal-note:visible').count(),30);
+ assert.equal(await page.locator('.deal-note[data-id^="demo-note-"]:visible').count(),30);
+ assert.equal(await page.locator('.deal-note:visible').count(),32);
  assert.equal(await page.locator('.updates-history').evaluate(n=>getComputedStyle(n).overflowY),'visible');
 });

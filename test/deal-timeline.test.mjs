@@ -97,12 +97,12 @@ test('review 2: recorded and projected lease expiration share urgency while comm
  }
 });
 
-test('updates collapse into one deterministic overview of every entry with full history on demand',()=>{
+test('updates show the latest excerpt and expand into recorded history',()=>{
  const root=new JSDOM(renderDealUpdates(detail)).window.document;
  const overview=root.querySelector('.updates-overview');
  assert.ok(overview);
  assert.match(overview.textContent,/Demo negotiated allowance/);
- assert.match(overview.textContent,/Demo note/);
+ assert.doesNotMatch(overview.textContent,/Demo note/);
  assert.ok(overview.textContent.length<400);
  const history=root.querySelector('.updates-history');
  assert.equal(history.open,false);
