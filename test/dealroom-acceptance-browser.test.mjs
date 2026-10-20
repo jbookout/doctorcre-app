@@ -81,6 +81,7 @@ for (const width of [1280, 390]) for (const theme of ['light', 'dark']) test(`si
   });
   await page.getByRole('button',{name:'Refresh deal',exact:true}).click();
   await page.locator('.updates-history > summary').waitFor();
+  await page.locator('.deal-updates').scrollIntoViewIfNeeded();
   await page.screenshot({path:join(evidence,`${width}-${theme}-summary.png`),animations:'disabled'});
   await page.locator('.updates-history > summary').click();
   await page.locator('#recordPanel').evaluate(node => { node.scrollTop = 220; });
