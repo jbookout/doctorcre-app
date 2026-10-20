@@ -961,7 +961,7 @@ test('unresolved task with an explicit request has no clickable Task lineage', a
   await page.locator('.work-lineage').waitFor();
   const task = page.locator('.work-lineage dl > div').filter({has:page.locator('dt', {hasText:/^Task$/})});
   assert.equal(await task.locator('a').count(), 0);
-  assert.equal(await task.locator('dd').textContent(), 'Not linked');
+  assert.equal(await task.locator('dd').textContent(), 'Unavailable');
   assert.equal(await page.locator('.work-lineage a').filter({hasText:'WR-900'}).count(), 1);
   assert.match(await page.locator('#workMetadata').textContent(), /not in the loaded publication/);
   assert.deepEqual(errors, []);
@@ -1040,7 +1040,7 @@ for (const [name,aliases] of [
   });
   await page.locator('.work-lineage').waitFor();
   const task = page.locator('.work-lineage dl > div').filter({has:page.locator('dt', {hasText:/^Task$/})});
-  assert.equal(await task.locator('dd').textContent(), 'Not linked');
+  assert.equal(await task.locator('dd').textContent(), 'Unavailable');
   assert.equal(await task.locator('a').count(), 0);
   await page.waitForFunction(() => document.querySelector('#workMetadata').textContent.includes('Demo work request'));
   assert.deepEqual(errors, []);
