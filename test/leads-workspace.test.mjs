@@ -371,9 +371,9 @@ test('blocking 8: visibility interruption of initial detail preserves its subjec
 
 test('blocking 9: polling preserves focused lead/action identity and resolves the dialog return target',async()=>{
  const s=await setup();try{
- let card=s.d.querySelector('.lead-card');card.focus();await s.app.refresh();assert.equal(s.d.activeElement.dataset.leadId,id(1));
+ let card=s.d.querySelector('.lead-card .lead-open');card.focus();await s.app.refresh();assert.equal(s.d.activeElement.dataset.open,id(1));
  const claim=s.d.querySelector('[data-claim]');claim.focus();await s.app.refresh();assert.equal(s.d.activeElement.dataset.claim,claim.dataset.claim);
- card=s.d.querySelector('.lead-card');card.focus();await s.app.readDetail(id(1));await s.app.refresh();s.d.getElementById('leadDetail').close();assert.equal(s.d.activeElement.dataset.leadId,id(1));
+ card=s.d.querySelector('.lead-card .lead-open');card.focus();await s.app.readDetail(id(1));await s.app.refresh();s.d.getElementById('leadDetail').close();assert.equal(s.d.activeElement.dataset.open,id(1));
  }finally{s.close()}
 });
 

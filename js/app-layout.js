@@ -50,7 +50,7 @@ export function mountAppLayout(root, host, pathname) {
   }
   root.body.classList.add('has-app-layout');
   const pageOwnsMoves = Boolean(layout.querySelector('#appTodayMoves [data-layout-slot="moves"]'));
-  const phone = win.matchMedia(TOUCH_LAYOUT);
+  const phone = win.matchMedia(pathname === "/leads" ? "(max-width:1023px)" : TOUCH_LAYOUT);
   let sidebar = !boardPage, today = true, drawer = null;
   let drawerOpener = null;
   const background = new Map();

@@ -60,7 +60,7 @@ for (const width of [1440, 390]) for (const theme of ['dark', 'light']) {
         return document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2) === select;
       }), true, 'stage selection scroll keeps the selector unobscured');
       await page.locator('#stageFilter').selectOption('engaged');
-      assert.equal(await page.locator('.stage-column:visible .stage-empty').innerText(), 'No leads in Engaged');
+      assert.equal(await page.locator('.filtered-empty p').innerText(), 'No leads match these filters.');
     } else {
       assert.equal(layout.lanes.length, 2, 'only populated stages consume desktop width');
       assert.ok(layout.lanes.every(lane => lane.width >= 280), JSON.stringify(layout));

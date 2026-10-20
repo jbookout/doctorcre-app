@@ -73,7 +73,7 @@ for (const width of [1440, 390]) test(`map members and board select the same lea
   const member = page.locator(`#mapLeadMembers [data-lead-id="${id(1)}"]`);
   await member.click();
   await page.locator('#detailStage').waitFor();
-  assert.equal(await page.locator('.lead-card[aria-pressed="true"]').getAttribute('data-lead-id'), id(1));
+  assert.equal(await page.locator('.lead-card[data-selected="true"]').getAttribute('data-lead-id'), id(1));
   assert.equal(await page.locator('.market-marker[aria-pressed="true"]').count(), 1);
   await page.locator('#closeDetail').click();
   if (process.env.LEADS_MAP_SCREENSHOT_DIR) {
@@ -151,7 +151,7 @@ for (const width of [1440, 390]) test(`map/list IDs, count and highlight match a
       const located = markers.flatMap(node => JSON.parse(node.dataset.leadIds));
       const selected = cards[0]?.dataset.leadId;
       cards[0]?.click();
-      const boardHighlight = ids('.lead-card[aria-pressed="true"]');
+      const boardHighlight = ids('.lead-card[data-selected="true"]');
       const mapHighlight = ids('#mapLeadMembers [aria-pressed="true"]');
       const markerHighlight = [...document.querySelectorAll('.market-marker[aria-pressed="true"]')]
         .flatMap(node => JSON.parse(node.dataset.leadIds)).includes(selected);
@@ -194,15 +194,15 @@ for (const width of [1440,390]) test(`marker selection survives matching filters
   await page.locator('#closeDetail').click();
   await page.locator('#stageFilter').selectOption('', { force: true });
   await page.locator('#ownerFilter').selectOption('example-partner', { force: true });
-  assert.equal(await page.locator('.lead-card[aria-pressed="true"]').getAttribute('data-lead-id'), id(2));
+  assert.equal(await page.locator('.lead-card[data-selected="true"]').getAttribute('data-lead-id'), id(2));
   assert.equal(await page.locator('#mapLeadMembers [aria-pressed="true"]').getAttribute('data-lead-id'), id(2));
   assert.equal(await page.locator('.market-marker[aria-pressed="true"]').count(), 1);
   await page.locator('#ownerFilter').selectOption('other', { force: true });
-  assert.equal(await page.locator('.lead-card[aria-pressed="true"]').count(), 0);
+  assert.equal(await page.locator('.lead-card[data-selected="true"]').count(), 0);
   assert.equal(await page.locator('#mapLeadMembers [aria-pressed="true"]').count(), 0);
   assert.equal(await page.locator('.market-marker[aria-pressed="true"]').count(), 0);
   await page.locator('#ownerFilter').selectOption('', { force: true });
-  assert.equal(await page.locator('.lead-card[aria-pressed="true"]').count(), 0, 'cleared selection does not resurrect');
+  assert.equal(await page.locator('.lead-card[data-selected="true"]').count(), 0, 'cleared selection does not resurrect');
   await page.locator('#stageFilter').selectOption('qualified', { force: true });
   assert.equal(await page.locator('.lead-card:visible').count(), 1);
   assert.equal(await page.locator('#mapLeadMembers [data-lead-id]').getAttribute('data-lead-id'), id(2));
