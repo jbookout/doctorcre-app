@@ -1,5 +1,5 @@
 import { TOUCH_LAYOUT } from './touch-layout.js';
-import { radarToday } from './lease-radar-model.js';
+import { needsAttention } from './deal-review-model.js';
 import { createClient } from './client.js';
 import { resolveDealroomBoot } from './boot-mode.js';
 import { mountAutoRefresh, readWithDeadline } from './auto-refresh.mjs';
@@ -13,9 +13,9 @@ export function createAppLayout(root, title = '') {
   const layout = root.createElement('div');
   layout.id = 'appLayout';
   layout.className = 'app-layout';
-  layout.innerHTML = `<aside id="appSidebar" class="app-layout-sidebar" aria-label="${escape(title)} workspace"><div class="app-layout-sidebar-head"><h2>${escape(title)}</h2><button type="button" data-layout-close="sidebar" aria-label="Close workspace">‹</button></div><div id="appSidebarSlot"></div><section class="app-layout-working"><h3>Needs attention</h3><div id="appWorkingList">Updating…</div></section></aside>
+  layout.innerHTML = `<aside id="appSidebar" class="app-layout-sidebar" aria-label="${escape(title)} workspace"><div class="app-layout-sidebar-head"><h2>${escape(title)}</h2><button type="button" data-layout-close="sidebar" aria-label="Close workspace">‹</button></div><div id="appSidebarSlot"></div><section class="app-layout-working"><h3>Overdue</h3><div id="appWorkingList">Updating…</div></section></aside>
     <div class="app-layout-center"><div class="app-layout-tabbar"><button type="button" id="appSidebarToggle" aria-label="Workspace sidebar" aria-controls="appSidebar" aria-expanded="false" title="Workspace sidebar">☷</button><div id="appTabsSlot" class="app-layout-tabs" role="group" aria-label="${escape(title)} views"></div><button type="button" id="appTodayToggle" aria-label="Today sidebar" aria-controls="appToday" aria-expanded="true" title="Today">◷</button></div><div id="appMainSlot" class="app-layout-main"></div></div>
-    <aside id="appToday" class="app-layout-today" aria-labelledby="appTodayTitle"><div class="app-layout-sidebar-head"><h2 id="appTodayTitle">Today</h2><button type="button" data-layout-close="today" aria-label="Close Today">›</button></div><section><h3>Needs you</h3><div id="appTodayNeeds">Updating…</div></section><section><h3>Next up</h3><div id="appTodayNext">Updating…</div></section><section><h3>Recent moves</h3><div id="appTodayMoves"><span class="app-layout-empty">—</span></div></section></aside>
+    <aside id="appToday" class="app-layout-today" aria-labelledby="appTodayTitle"><div class="app-layout-sidebar-head"><h2 id="appTodayTitle">Today</h2><button type="button" data-layout-close="today" aria-label="Close Today">›</button></div><section><h3>Overdue</h3><div id="appTodayNeeds">Updating…</div></section><section><h3>Next up</h3><div id="appTodayNext">Updating…</div></section><section><h3>Recent moves</h3><div id="appTodayMoves"><span class="app-layout-empty">—</span></div></section></aside>
     <button class="app-layout-scrim" id="appDrawerScrim" type="button" aria-label="Close sidebar" hidden></button>`;
   const status = root.createElement('footer');
   status.className = 'app-layout-status';
@@ -52,10 +52,11 @@ export function mountAppLayout(root, host, pathname) {
   const pageOwnsMoves = Boolean(layout.querySelector('#appTodayMoves [data-layout-slot="moves"]'));
   const phone = win.matchMedia(TOUCH_LAYOUT);
   const itineraryPage = Boolean(root.getElementById('accepted-itinerary'));
-  let sidebar = !boardPage && !itineraryPage, today = !itineraryPage, drawer = null;
+  const dealBoard = pathname === '/deals' && root.body.classList.contains('dealroom-page');
+  let sidebar = !boardPage && !itineraryPage, today = !dealBoard && !itineraryPage, drawer = null;
   let drawerOpener = null;
   const background = new Map();
-  try { const saved = win.localStorage.getItem(`doctorcre:sidebar:${pageKey}`); if (saved !== null) sidebar = saved === 'open'; const savedToday = win.localStorage.getItem('doctorcre:today'); if (savedToday !== null) today = savedToday === 'open'; } catch {}
+  try { const saved = win.localStorage.getItem(`doctorcre:sidebar:${pageKey}`); if (saved !== null) sidebar = saved === 'open'; const savedToday = win.localStorage.getItem(dealBoard ? 'doctorcre:today:/deals' : 'doctorcre:today'); if (savedToday !== null) today = savedToday !== 'closed'; } catch {}
   const sidebarToggle = layout.querySelector('#appSidebarToggle'), todayToggle = layout.querySelector('#appTodayToggle');
   const paint = () => {
     layout.dataset.sidebar = sidebar ? 'open' : 'closed'; layout.dataset.today = today ? 'open' : 'closed'; layout.dataset.drawer = drawer || '';
@@ -88,7 +89,7 @@ export function mountAppLayout(root, host, pathname) {
   const toggle = region => {
     if (phone.matches) { if (drawer === region) closeDrawer(); else openRegion(region); return; }
     else if (region === 'sidebar') { sidebar = !sidebar; try { win.localStorage.setItem(`doctorcre:sidebar:${pageKey}`, sidebar ? 'open' : 'closed'); } catch {} }
-    else { today = !today; try { win.localStorage.setItem('doctorcre:today', today ? 'open' : 'closed'); } catch {} }
+    else { today = !today; try { win.localStorage.setItem(dealBoard ? 'doctorcre:today:/deals' : 'doctorcre:today', today ? 'open' : 'closed'); } catch {} }
     paint();
   };
   const closeDrawer = () => {
@@ -193,9 +194,9 @@ export function mountAppLayout(root, host, pathname) {
         status.querySelector('#appSyncTime').dateTime = observed;
       }
       const active = scopedDeals(value, 'team');
-      const needs = scopedDeals(value, 'mine').filter(d => d.attention || d.next_date && toDay(d.next_date) <= radarToday());
+      const needs = scopedDeals(value, 'mine').filter(d => needsAttention(d));
       render('#appTodayNeeds', needs.slice(0,6).map(d => row(d,d.next_step)).join('') || empty);
-      render('#appWorkingList', active.filter(d => d.attention).slice(0,8).map(d => row(d,d.next_step)).join('') || empty);
+      render('#appWorkingList', active.filter(d => needsAttention(d)).slice(0,8).map(d => row(d,d.next_step)).join('') || empty);
       if (!pageOwnsMoves) {
         try {
           // The existing feed starts with history. Never present its oldest

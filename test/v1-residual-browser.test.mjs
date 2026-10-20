@@ -128,9 +128,8 @@ for (const viewport of viewports) test(`V1 audit 15/21/25b: Updates uses human l
   assert.equal(typeof write.base_version, 'number');
   await settles(async () => assert.equal(await page.locator('#prefMessage').textContent(), 'Saved'));
   assert.equal(await page.locator('#quietStart').inputValue(), '9:00 PM');
-  // The shared dock's summary line is this page's words; its safety-key detail is app-wide grammar.
-  const summaries = () => page.locator('#receiptDock .receipt b').allTextContents();
-  assert.deepEqual(await summaries(), ['Save notification preferences']);
+  assert.equal(await page.locator('.toast').textContent(), 'Save notification preferences');
+  assert.equal(await page.locator('#receiptDock .receipt[data-state="confirmed"]').count(),0);
 
   // An unreadable time is refused in words, and nothing is sent.
   await page.locator('#quietEnd').fill('25:00');
@@ -140,6 +139,7 @@ for (const viewport of viewports) test(`V1 audit 15/21/25b: Updates uses human l
 
   // Acknowledging is summarized without the notification identifier.
   await deal.locator('[data-ack]').click();
+  const summaries = () => page.locator('#receiptDock .receipt b').allTextContents();
   await settles(async () => assert.ok((await summaries()).includes('Acknowledge notification')));
   for (const summary of await summaries()) assert.doesNotMatch(summary, /version|[0-9a-f]{8}-[0-9a-f]{4}-/i);
   assert.deepEqual(errors, []);

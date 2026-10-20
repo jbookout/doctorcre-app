@@ -192,8 +192,11 @@ tr.parked .park-button { border-color: var(--hairline-strong); color: var(--fg);
 .confirm-chip button { min-height: var(--touch); padding: 0 var(--space-3); border: var(--hairline-width) solid var(--hairline-strong); border-radius: var(--radius-2); background: var(--surface-1); color: var(--fg); font-weight: var(--font-weight-strong); }
 .confirm-chip .yes { border-color: var(--accent); background: var(--accent); color: var(--on-accent); }
 .confirm-chip .skip-confirm { color: var(--fg-muted); }
-.toast { position: fixed; left: 50%; bottom: var(--space-5); z-index: 120; padding: var(--space-2) var(--space-4); border: var(--hairline-width) solid var(--hairline-strong); border-radius: var(--radius-2); background: var(--surface-3); color: var(--fg); box-shadow: var(--shadow-overlay); font-size: var(--font-size-1); opacity: 0; pointer-events: none; transform: translate(-50%, 8px); transition: opacity var(--duration-menu) var(--ease-out), transform var(--duration-menu) var(--ease-out); }
-.toast.show { opacity: 1; pointer-events: auto; transform: translate(-50%, 0); }
+.toast { position: fixed; left: 50%; bottom: var(--space-5); z-index: 120; padding: var(--space-2) var(--space-4); border: var(--hairline-width) solid var(--hairline-strong); border-radius: var(--radius-2); background: var(--surface-3); color: var(--fg); box-shadow: var(--shadow-overlay); font-size: var(--font-size-1); opacity: 0; pointer-events: none; transform: translate(-50%, 8px); transition: opacity 800ms var(--ease-out); }
+.toast[popover] { top: auto; margin: 0; max-width: calc(100vw - 24px); }
+.toast.is-leaving:has([data-undo]) { pointer-events: auto; }
+.toast.is-leaving { opacity: 0; pointer-events: none; transform: translate(-50%, 0); }
+.toast.show:not(.is-leaving) { opacity: 1; pointer-events: auto; transform: translate(-50%, 0); }
 .toast button { margin-left: var(--space-3); border: 0; background: transparent; color: var(--fg); font-weight: var(--font-weight-strong); text-decoration: underline; text-underline-offset: 3px; }
 
 /* ------------------------------------------------------------ dialogs and forms */

@@ -49,3 +49,52 @@ test('S2 saved search stays under the keyboard while its results update', async 
     });
   }
 });
+
+for (const answer of ['Demo renamed', null]) {
+  test(`Search Rename ${answer === null ? 'cancel' : 'accept'} keeps keyboard focus`, async t => {
+    const server = await fixtureServer();
+    t.after(() => server.close());
+    const browser = await chromium.launch();
+    t.after(() => browser.close());
+    const page = await browser.newPage();
+    await page.addInitScript(key => localStorage.setItem(key, JSON.stringify([
+      {name: 'Demo saved search', query: 'Demo Dental', kinds: []},
+      {name: 'Other saved search', query: 'Demo', kinds: []},
+    ])), SAVED_VIEWS_KEY);
+    await page.route('**/api/**', route => route.fulfill({json: {}}));
+    await page.goto(`${server.origin}/search?mode=fixture`);
+    const rename = page.locator('[data-rename="Demo saved search"]');
+    await rename.focus();
+    page.once('dialog', dialog => answer === null ? dialog.dismiss() : dialog.accept(answer));
+    await page.keyboard.press('Enter');
+    assert.equal(await page.evaluate(() => document.activeElement?.dataset.rename), answer || 'Demo saved search');
+    await page.keyboard.press('Tab');
+    assert.equal(await page.evaluate(() => document.activeElement?.dataset.view), 'Other saved search');
+  });
+}
+
+test('Search Rename keeps duplicate names and queries consistent without replacing focused controls', async t => {
+  const server = await fixtureServer();
+  t.after(() => server.close());
+  const browser = await chromium.launch();
+  t.after(() => browser.close());
+  const page = await browser.newPage();
+  await page.addInitScript(key => localStorage.setItem(key, JSON.stringify([
+    {name: 'First', query: 'First query', kinds: []},
+    {name: 'Second', query: 'Second query', kinds: []},
+  ])), SAVED_VIEWS_KEY);
+  await page.route('**/api/**', route => route.fulfill({json: {}}));
+  await page.goto(`${server.origin}/search?mode=fixture`);
+  for (const name of ['Second', `Shared 'name' <&>`]) {
+    page.once('dialog', dialog => dialog.accept(name));
+    await page.locator('[data-rename]').first().focus();
+    await page.keyboard.press('Enter');
+  }
+  assert.deepEqual(await page.locator('[data-view]').evaluateAll(nodes => nodes.map(node => ({
+    name: node.dataset.view, text: node.textContent, query: new URL(node.href).searchParams.get('q'),
+  }))), [
+    {name: `Shared 'name' <&>`, text: `Shared 'name' <&>`, query: 'First query'},
+    {name: `Shared 'name' <&>`, text: `Shared 'name' <&>`, query: 'Second query'},
+  ]);
+  assert.equal(await page.evaluate(() => document.activeElement.dataset.rename), `Shared 'name' <&>`);
+});

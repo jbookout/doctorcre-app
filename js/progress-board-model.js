@@ -1,5 +1,5 @@
 // Progress board model: the one interactive board renders the CARR snapshot
-// contract (carr-progress-board.v2, older v1 snapshots still read). Every
+// contract (carr-progress-board.v3, older snapshots still read). Every
 // visual indicator the renderer can put on a card is declared here once, and
 // both the renderer and the legend read these constants, so the key cannot
 // drift from what the board shows.
@@ -382,8 +382,23 @@ function ledgerFromTasks(cards) {
   }).filter(row => row.pool !== "unassigned" || row.count);
 }
 
+const COMPACT_SCHEMA = "carr-progress-board.v3";
 const SUPPORTED_SCHEMAS = new Set(["carr-progress-board.v1", SNAPSHOT_SCHEMA]);
 const isRecord = value => Boolean(value) && typeof value === "object" && !Array.isArray(value);
+
+export function expandBoardRead(read) {
+  const data = read?.snapshot?.snapshot_json;
+  if (data?.schema !== COMPACT_SCHEMA) return read;
+  if (!isRecord(data.tasks) || Object.values(data.tasks).some(task => !isRecord(task)))
+    throw new Error("The compact snapshot has malformed tasks, so it cannot be shown.");
+  if (!isRecord(data.task_defaults) || !Object.keys(data.task_defaults).length)
+    throw new Error("The compact snapshot has malformed task defaults, so it cannot be shown.");
+  const { task_defaults, ...expanded } = data;
+  expanded.schema = SNAPSHOT_SCHEMA;
+  expanded.tasks = Object.fromEntries(Object.entries(data.tasks)
+    .map(([id, task]) => [id, { ...task_defaults, ...task }]));
+  return { ...read, snapshot: { ...read.snapshot, snapshot_json: expanded } };
+}
 
 // The snapshot boundary. The publishing API only checks object shape and size,
 // so the page checks the contract itself: an unsupported or incompatible
@@ -419,9 +434,12 @@ function syncState(data) {
 }
 
 export function boardView(read, at = new Date()) {
+  let expansionError = null;
+  try { read = expandBoardRead(read); }
+  catch (error) { expansionError = error.message; }
   const snapshot = isRecord(read?.snapshot) ? read.snapshot : null;
   const data = isRecord(snapshot?.snapshot_json) ? snapshot.snapshot_json : {};
-  const error = snapshotError(snapshot, data);
+  const error = expansionError || snapshotError(snapshot, data);
   const kind = data.kind === ALL_REPOS_BOARD || snapshot?.board_id === ALL_REPOS_BOARD ? ALL_REPOS_BOARD : "project";
   const entries = !error && isRecord(data.tasks) ? Object.entries(data.tasks) : [];
   const cards = [];
