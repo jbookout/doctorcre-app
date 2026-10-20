@@ -97,6 +97,11 @@ for (const width of [390, 1280]) test(`list, parked and archived cards retain ve
     const card = page.locator('#closedDealsList [data-id="d14"]');
     assert.equal(await card.locator('.deal-vendor-group').count(), 2);
     assert.equal(await card.evaluate(n => n.scrollWidth <= n.clientWidth), true);
+    const gap = await card.locator('.deal-vendors').evaluate(n => ({
+      roles: parseFloat(getComputedStyle(n).rowGap),
+      assignments: parseFloat(getComputedStyle(n.querySelector('ul')).rowGap),
+    }));
+    assert.ok(gap.roles >= 16 && gap.roles >= 2 * gap.assignments, `${name}: ${JSON.stringify(gap)}`);
   }
   assert.deepEqual(errors, []);
 });
