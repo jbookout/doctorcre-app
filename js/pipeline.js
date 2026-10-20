@@ -928,8 +928,9 @@ async function refreshPanel() {
       }
     }
     if (!$('contextDrawer').open) {
+      const contextSeq = contextReadSequence;
       const context = await loadDealContext(state.client, detail);
-      if (state.panelDeal === id && seq === panelReadSequence) setContextOpenVisible(contextDrawerSections(context).length > 0);
+      if (state.panelDeal === id && seq === panelReadSequence && contextSeq === contextReadSequence) setContextOpenVisible(contextDrawerSections(context).length > 0);
     }
   } catch (error) {
     if (state.panelDeal !== id || seq !== panelReadSequence) return;
