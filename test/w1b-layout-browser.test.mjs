@@ -248,11 +248,11 @@ test('PR129 #4 parked and normalized Closed records stay out of both attention l
  await goto('/leads?mode=live');assert.equal(await page.locator('#appTodayNeeds [data-layout-deal],#appWorkingList [data-layout-deal]').count(),0);
 });
 test('PR129 #7 closing Lead detail after polling resolves the current card by identity',async t=>{
- const {page,goto}=await open(t,{clock:true});await goto('/leads');const card=page.locator(`#leadBoard [data-lead-id="${id(1)}"]`);
+ const {page,goto}=await open(t,{clock:true});await goto('/leads');const card=page.locator(`#leadBoard [data-lead-id="${id(1)}"] .lead-open`);
  await card.focus();const original=await card.elementHandle();await page.keyboard.press('Enter');await page.locator('#detailStage').waitFor();
  // The poll's read is async: close only once it has re-rendered the card behind the open detail.
  await page.clock.fastForward(31_000);await page.waitForFunction(node=>!node.isConnected,original);await page.keyboard.press('Escape');
- await page.waitForFunction(leadId=>!document.querySelector('#leadDetail').open&&document.activeElement===document.querySelector(`#leadBoard [data-lead-id="${leadId}"]`),id(1));
+ await page.waitForFunction(leadId=>!document.querySelector('#leadDetail').open&&document.activeElement===document.querySelector(`#leadBoard [data-lead-id="${leadId}"] .lead-open`),id(1));
  assert.equal(await card.evaluate(n=>n===document.activeElement),true);
 });
 test('PR129 #9 touch taps open the existing reviewed stage and phase commands',async t=>{
