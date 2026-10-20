@@ -112,7 +112,7 @@ body.has-app-layout { padding: 0 0 var(--layout-bottom) var(--layout-rail) !impo
 .app-layout-sidebar, .app-layout-today { min-width: 0; overflow: auto; position: sticky; top: 0; height: calc(100dvh - var(--layout-bottom)); box-sizing: border-box; background: var(--ground); border-right: var(--hairline-width) solid var(--hairline); color: var(--fg); scrollbar-width: thin; scrollbar-color: var(--hairline-strong) transparent; }
 .app-layout-today { border: 0; border-left: var(--hairline-width) solid var(--hairline); }
 .app-layout-sidebar > *, .app-layout-today > * { margin: 0 var(--space-4); }
-.app-layout[data-sidebar=closed] .app-layout-sidebar, .app-layout[data-today=closed] .app-layout-today { visibility: hidden; pointer-events: none; }
+.app-layout[data-sidebar=closed] .app-layout-sidebar, .app-layout[data-today=closed] .app-layout-today { visibility: hidden; pointer-events: none; border: 0; }
 .app-layout[data-today=closed]:not([data-drawer=today]) .app-layout-today { display:none; }
 .app-layout-sidebar-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); min-height: var(--tabbar-height); border-bottom: var(--hairline-width) solid var(--hairline); margin-bottom: var(--space-4); }
 .app-layout-sidebar-head h2 { margin: 0; font: var(--font-weight-strong) var(--font-size-2)/1.2 var(--font-text); letter-spacing: 0; color: var(--fg); }

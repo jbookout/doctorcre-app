@@ -333,6 +333,8 @@ import { cheatSheetText, factSummary, formatTourDate, tourDisplayName, tourMetaL
     const root = $("#accepted-itinerary");
     const route = acceptedRouteFromDetail(state.tour);
     const options = { route, scope: sessionBinding };
+    $("#tour-day-link").hidden = !route;
+    $("#tour-day-link").href = `/tours/day.html?tour=${encodeURIComponent(state.tour.id)}`;
     // PR 1443 deliberately does not authenticate or retrieve promotion receipts.
     // This surface withholds navigation until that upstream seam supplies one.
     if (!route) { itineraryView?.destroy(); itineraryView = null; root.hidden = true; return; }
@@ -353,8 +355,12 @@ import { cheatSheetText, factSummary, formatTourDate, tourDisplayName, tourMetaL
     const base = accepted ? { ...accepted, stops: routeRows({ stops: accepted.stops }) } : null;
     composer = { sessionBinding, tourId: tour.id, routeId: tour.route_version_id, prior: Number(tour.accepted_route_version || 0), snapshot: routeSnapshot(tour), reviewDigest: tour.routes?.[0]?.acceptance_digest || "", rows, base, dirty: false, saved: tour.route_version_state === "draft" && rows.length > 0,
       phase: "ready", message: "", busy: false, plan: null, undo: null };
+    $("#route-editing").open = !accepted;
+    $("#internal-cheat-sheet").open = !accepted;
+    $("#property-evidence-panel").open = !accepted;
     const retained = readPending()?.composer;
     if (retained?.tourId === tour.id && retained.plan) composer = { ...retained, busy: false, phase: "unknown", message: "Outcome unknown after reload. Reconcile the saved route before retrying the retained request." };
+    if (composer.phase !== "ready") $("#route-editing").open = true;
     for (const role of ["start", "end"]) {
       const point = routeEndpoints.get(tour.id)?.[role];
       const retainedPoint = composer.endpointDraft?.[role];

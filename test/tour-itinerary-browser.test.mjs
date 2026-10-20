@@ -16,7 +16,7 @@ const detail = { id: tourId, name: "Synthetic itinerary", status: "draft", route
   canonical_dataset_version: "synthetic-v1", stops, routes: [{ id: routeId, route_version: 3, accepted: true, stops }], projection_status: "missing" };
 const type = { ".html": "text/html", ".js": "text/javascript", ".mjs": "text/javascript", ".css": "text/css", ".svg": "image/svg+xml", ".json": "application/json" };
 
-test("rendered composer loads vendored MapLibre, keeps exact stop after reload, and fits phone/iPad/desktop", async () => {
+test("rendered composer uses compact fallback, keeps exact stop after reload, and fits phone/iPad/desktop", async () => {
   const asset = await handleDoctorcreRequest(new Request("https://example.test/tours/vendor/maplibre-gl-6.4.1/maplibre-gl.mjs"), { ASSETS: { fetch: async () => new Response("fixture") } });
   assert.equal(asset.status, 200);
   const csp = asset.headers.get("content-security-policy");
@@ -43,10 +43,10 @@ test("rendered composer loads vendored MapLibre, keeps exact stop after reload, 
       const page = await browser.newPage({ viewport: { width, height }, reducedMotion: "reduce" });
       await page.route(url => !['localhost', '127.0.0.1', '[::1]'].includes(url.hostname), route => route.abort());
       const errors = []; page.on("pageerror", e => errors.push(e.message));
-      await page.goto(`${base}/tours`); if (width <= 760) await page.locator("#appSidebarToggle").click(); await page.locator(".tour-button").click(); if (width <= 760) await page.keyboard.press("Escape");
+      await page.goto(`${base}/tours`); await page.locator("#appSidebarToggle").click(); await page.locator(".tour-button").click(); if (width <= 760) await page.keyboard.press("Escape");
       const root = page.locator("#accepted-itinerary"); await root.waitFor({ state: "visible" });
-      await page.waitForFunction(() => document.querySelector("#accepted-itinerary .maplibregl-canvas"));
-      await page.waitForFunction(() => document.querySelectorAll("#accepted-itinerary .itinerary-pin").length === 2);
+      assert.equal(await root.locator("canvas").count(), 0);
+      assert.match(await root.locator("[data-map-status]").innerText(), /Street map unavailable/);
       assert.equal(await root.locator("[data-itinerary-stop]").count(), 2);
       const second = root.locator(`[data-itinerary-stop="${stops[1].id}"] button`);
       const first = root.locator(`[data-itinerary-stop="${stops[0].id}"] button`);
@@ -58,21 +58,20 @@ test("rendered composer loads vendored MapLibre, keeps exact stop after reload, 
       assert.equal(await second.evaluate(el => document.activeElement === el), true);
       await root.locator(`[data-itinerary-stop="${stops[1].id}"] button`).click();
       assert.equal(await root.locator("[data-itinerary-card]").getAttribute("data-property-id"), stops[1].property_id);
-      await root.locator('[data-map-mode="search"]').click();
-      assert.equal(await root.locator(".maplibregl-canvas").count(), 1);
-      await root.locator('[data-map-mode="tour"]').click();
+      assert.equal(await root.locator(".maplibregl-canvas").count(), 0);
       if (name === "phone") {
         stops[1].property_name = "Refreshed synthetic property";
         stops[1].property_address = "202 Example Way";
+        await page.locator("#route-editing > summary").click();
         await page.locator("#reload-composer").click();
-        await page.waitForFunction(() => document.querySelector('[data-itinerary-card]').textContent.includes("Refreshed synthetic property"));
+        await page.waitForFunction(() => document.querySelector('[data-itinerary-stop][aria-current=step]').textContent.includes("Refreshed synthetic property"));
         assert.match(await root.locator('[data-itinerary-card]').textContent(), /202 Example Way/);
         await page.evaluate(async () => {
           const component = await import("/tours/itinerary-map.js"), gl = await import("/tours/vendor/maplibre-gl-6.4.1/maplibre-gl.mjs");
           const detail = (await (await fetch("/api/tours/detail")).json()).data;
           const root = document.createElement("section"); root.id = "provider-regression"; document.body.append(root);
           const provider = { ...gl, Map: class extends gl.Map { constructor(options) { super(options); window.regressionMap = this; } } };
-          window.regressionView = component.mountAcceptedItinerary(root, { route: component.acceptedRouteFromDetail(detail), prefersReducedMotion: true, loadMapLibre: async () => provider });
+          window.regressionView = component.mountAcceptedItinerary(root, { route: component.acceptedRouteFromDetail(detail), prefersReducedMotion: true, basemapStyle: { version: 8, sources: {}, layers: [] }, loadMapLibre: async () => provider });
           await window.regressionView.ready;
         });
         await page.waitForFunction(() => window.regressionMap.loaded());
@@ -87,7 +86,7 @@ test("rendered composer loads vendored MapLibre, keeps exact stop after reload, 
       }
       await page.reload(); await root.waitFor({ state: "visible" });
       assert.equal(await root.locator("[aria-current=step]").getAttribute("data-itinerary-stop"), stops[1].id);
-      await page.waitForFunction(() => document.querySelectorAll("#accepted-itinerary .itinerary-pin").length === 2);
+      assert.equal(await root.locator("canvas").count(), 0);
       await root.scrollIntoViewIfNeeded();
       const bounds = await root.evaluate(el => ({ width: document.documentElement.scrollWidth, targets: [...el.querySelectorAll("button,a")].filter(n => n.getClientRects().length).map(n => { const b = n.getBoundingClientRect(); return { text: n.textContent, w: b.width, h: b.height }; }) }));
       assert.ok(bounds.width <= width, `${name}: overflow ${bounds.width}`);

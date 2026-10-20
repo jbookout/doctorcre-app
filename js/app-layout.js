@@ -51,8 +51,9 @@ export function mountAppLayout(root, host, pathname) {
   root.body.classList.add('has-app-layout');
   const pageOwnsMoves = Boolean(layout.querySelector('#appTodayMoves [data-layout-slot="moves"]'));
   const phone = win.matchMedia(TOUCH_LAYOUT);
+  const itineraryPage = Boolean(root.getElementById('accepted-itinerary'));
   const dealBoard = pathname === '/deals' && root.body.classList.contains('dealroom-page');
-  let sidebar = !boardPage, today = !dealBoard, drawer = null;
+  let sidebar = !boardPage && !itineraryPage, today = !dealBoard && !itineraryPage, drawer = null;
   let drawerOpener = null;
   const background = new Map();
   try { const saved = win.localStorage.getItem(`doctorcre:sidebar:${pageKey}`); if (saved !== null) sidebar = saved === 'open'; const savedToday = win.localStorage.getItem(dealBoard ? 'doctorcre:today:/deals' : 'doctorcre:today'); if (savedToday !== null) today = savedToday !== 'closed'; } catch {}
