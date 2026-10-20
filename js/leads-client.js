@@ -55,6 +55,7 @@ export function createLeadBoardClient(options = {}) {
       if (payload.detail !== null) validateLeadDetail(payload.detail, lead.id);
       return payload;
     },
+    setProspectEngagementStatus: args => rpc("set-prospect-engagement-status", args, true),
     claimLead(lead, key, actor) {
       return rpc("claim-lead", { lead: lead.registry_ref || lead.id, base_version: lead.base_version,
         expected_actor: actor, idempotency_key: key }, true);

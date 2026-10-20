@@ -125,3 +125,13 @@ test("the live client sends today-triage through the pinned MCP seam, and the fi
   assert.ok(items.every((item, i) => i === 0 || items[i - 1].due_on <= item.due_on), "rows arrive earliest first");
   assert.ok(items.every((item) => item.subject_name === null || String(item.subject_name).startsWith("Demo ")), "synthetic names only");
 });
+
+test('prospect engagement writes require acknowledged success and retain uncertain outcomes',async()=>{
+ for(const payload of [{ok:true},{}]) {
+  const calls=[];const live=createLiveClient({fetchImpl:async(path,init)=>{calls.push(JSON.parse(init.body).params);return new Response(JSON.stringify({result:{content:[{text:JSON.stringify(payload)}]}}),{status:200})}});
+  const args={client_id:'synthetic-client',base_version:7,status:'inactive',reason:'Synthetic deferral',idempotency_key:'synthetic-key'};
+  if(payload.ok) await live.setProspectEngagementStatus(args);
+  else await assert.rejects(live.setProspectEngagementStatus(args),{code:'unknown_outcome'});
+  assert.deepEqual(calls,[{name:'set-prospect-engagement-status',arguments:args}]);
+ }
+});

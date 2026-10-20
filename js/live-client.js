@@ -647,6 +647,11 @@ export function createLiveClient(opts = {}) {
     async find(args = {}, { signal } = {}) { return rpc('find', args, signal); },
     async findAndCatchUp(args = {}, { signal } = {}) { return rpc('find-and-catch-up', args, signal); },
 
+    async setProspectEngagementStatus(args) {
+      const result = await write('set-prospect-engagement-status', args);
+      if (result?.ok !== true) throw unknownMcpOutcome(result);
+      return result;
+    },
     async startReview(args) { return write('start-deal-review', args); },
     async reviewDeal(args) { return write('review-deal', args); },
     async endReview(args) { return write('end-deal-review', args); },

@@ -41,7 +41,7 @@ test('notes summarize but retain original entry, including hostile text as data'
 test('W4 read binds the separate producer revision and versioned phase/parking fields', async () => {
  const {readFile} = await import('node:fs/promises');
  const contract = JSON.parse(await readFile(new URL('../contracts/carr-interface.v1.json',import.meta.url),'utf8')).mcp_read_contracts['deal-room-board'];
- assert.equal(contract.producer.source_commit,'500391b0eea57e1b1f61e02d853115b850695de6');
+ assert.equal(contract.producer.source_commit,'7ed89cde35cda4f10ed55e687d6cb87c757a935d');
  assert.equal(contract.response.schema_version,'local-deals-board.v1');
  for(const key of ['operating_state','parking_note','phase_change','invoiced_on','prospect_engagement_status','client_version']) assert.ok(contract.response.deal_keys.includes(key));
 });
@@ -49,4 +49,13 @@ test('W4 read binds the separate producer revision and versioned phase/parking f
 test('open local deals omit closed phases, terminal outcomes and invoices, including parked closures', () => {
  const rows=[base,{...base,id:'closed',phase:'Closed'},{...base,id:'closed-slug',phase:'closed',operating_state:'parked'},{...base,id:'won',outcome:'won'},{...base,id:'paused',outcome:'paused'},{...base,id:'invoiced',invoiced_on:'2026-10-01'}];
  assert.deepEqual(localDeals(rows).map(d=>d.id),['demo-1']);
+});
+
+test('only active prospective clients remain on the deal board in every phase', () => {
+ const prospect={...base,client_status:'prospect',prospect_engagement_status:'active'};
+ const rows=[prospect,{...prospect,id:'inactive',prospect_engagement_status:'inactive'},
+  {...prospect,id:'inactive-research',phase:'Research',prospect_engagement_status:'inactive'},
+  {...prospect,id:'unknown',prospect_engagement_status:null},
+  {...base,id:'client',client_status:'active',prospect_engagement_status:'inactive'}];
+ assert.deepEqual(localDeals(rows).map(d=>d.id),['demo-1','client']);
 });

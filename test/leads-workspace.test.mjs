@@ -532,3 +532,18 @@ test('QA008 Leads freshness is Unavailable when a failed identity read clears th
   assert.equal(freshness().dateTime, '');
  } finally { s.close(); }
 });
+
+test('a returned prospect can be activated from Leads using its fresh client version',async()=>{
+ const s=await setup();try{
+  const row=s.board.leads.find(l=>l.stage==='nurture_drip');
+  Object.assign(row,{client_id:'synthetic-client',is_client:true,is_deal:true,prospect_client_id:'synthetic-client',prospect_client_version:7,prospect_engagement_status:'inactive'});
+  s.client.setProspectEngagementStatus=async args=>{s.writes.push(args);row.prospect_engagement_status='active';return{ok:true}};
+  await s.app.refresh();s.d.querySelector(`[data-lead-id="${row.id}"]`).click();await tick();
+  const form=s.d.getElementById('activateProspect');assert.ok(form);
+  form.querySelector('[name="reason"]').value='Synthetic renewed interest';
+  form.dispatchEvent(new s.w.Event('submit',{bubbles:true,cancelable:true}));await tick();
+  assert.equal(s.writes.length,1);assert.equal(s.writes[0].client_id,'synthetic-client');assert.equal(s.writes[0].base_version,7);
+  assert.equal(s.writes[0].status,'active');assert.equal(s.writes[0].reason,'Synthetic renewed interest');
+  assert.equal(s.d.querySelector(`[data-lead-id="${row.id}"]`),null);
+ }finally{s.close()}
+});

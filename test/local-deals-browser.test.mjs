@@ -35,7 +35,7 @@ async function open(t, { width = 1440, height = 960, reducedMotion = 'no-prefere
 }
 const refresh = page => page.evaluate(async () => (await import('/js/pipeline.js')).state.boardSync.refreshBoard({ reason: 'test' }));
 
-test('prospective clients show Active and Inactive groups at desktop and phone widths', async t => {
+test('only active prospects remain on the board at desktop and phone widths', async t => {
   for (const width of [1440,390]) await t.test(String(width), async t => {
     const {page,errors}=await open(t,{width});
     await page.evaluate(async()=>{
@@ -45,20 +45,18 @@ test('prospective clients show Active and Inactive groups at desktop and phone w
         const result=await get(...args);
         const template=result.deals.find(d=>d.workspace_kind!=='national_account'&&!d.account_client_id);
         return {...result,deals:[
-          {...template,id:'demo-prospect-active',name:'Demo Engaged Prospect',phase:'On Deck',operating_state:'active',prospect_engagement_status:'active'},
-          {...template,id:'demo-prospect-inactive',name:'Demo Inactive Prospect',phase:'On Deck',operating_state:'active',prospect_engagement_status:'inactive'},
-          {...template,id:'demo-prospect-parked',name:'Demo Parked Prospect',phase:'On Deck',operating_state:'parked',prospect_engagement_status:'inactive'},
+          {...template,id:'demo-prospect-active',name:'Demo Engaged Prospect',phase:'On Deck',client_status:'prospect',client_id:'synthetic-client',client_version:7,operating_state:'active',prospect_engagement_status:'active'},
+          {...template,id:'demo-prospect-inactive',name:'Demo Inactive Prospect',phase:'On Deck',client_status:'prospect',client_id:'synthetic-client',client_version:7,operating_state:'active',prospect_engagement_status:'inactive'},
+          {...template,id:'demo-prospect-parked',name:'Demo Parked Prospect',phase:'On Deck',client_status:'prospect',client_id:'synthetic-client',client_version:7,operating_state:'parked',prospect_engagement_status:'inactive'},
           {...template,id:'demo-research',name:'Demo Research',phase:'Research',operating_state:'active',prospect_engagement_status:'inactive'},
         ]};
       };
     });
     await refresh(page);
     const prospects=page.locator('[data-column="pending"]');
-    assert.equal(await prospects.locator('[data-engagement="active"] [data-id="demo-prospect-active"]').count(),1);
-    assert.equal(await prospects.locator('[data-engagement="inactive"] [data-id="demo-prospect-inactive"]').count(),1);
-    assert.equal(await prospects.locator('[data-engagement="inactive"] [data-id="demo-prospect-parked"]').count(),1);
-    assert.equal(await prospects.locator('[data-engagement="active"] > h4').textContent(),'Active1');
-    assert.equal(await prospects.locator('[data-engagement="inactive"] > h4').textContent(),'Inactive2');
+    assert.equal(await prospects.locator('[data-id="demo-prospect-active"]').count(),1);
+    assert.equal(await page.locator('[data-id="demo-prospect-inactive"],[data-id="demo-prospect-parked"]').count(),0);
+    assert.equal(await page.locator('.prospect-group,[data-engagement="inactive"]').count(),0);
     assert.equal(await page.locator('[data-column="research"] [data-id="demo-research"]').count(),1);
     assert.equal(await page.locator('.parked-lane [data-id="demo-prospect-parked"]').count(),0);
     assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
@@ -68,6 +66,23 @@ test('prospective clients show Active and Inactive groups at desktop and phone w
     assert.equal(await prospects.locator('[data-id]').count(),0);
     assert.deepEqual(errors,[]);
   });
+});
+
+test('marking a prospect inactive sends its version and returns it to Leads',async t=>{
+ const {page}=await open(t);
+ await page.evaluate(async()=>{
+  const {state}=await import('/js/pipeline.js');const get=state.client.getBoard;let inactive=false;
+  state.client.getBoard=async()=>{const b=await get();return {...b,deals:b.deals.filter(d=>!inactive||d.id!=='d14').map(d=>d.id==='d14'?{...d,client_status:'prospect',client_id:'synthetic-client',client_version:7,prospect_engagement_status:'active'}:d)}};
+  state.client.setProspectEngagementStatus=async args=>{window.prospectWrite=args;inactive=true;return{ok:true}};
+ });
+ await refresh(page);await page.locator('.kanban-column [data-id="d14"]').click();
+ await page.locator('#detailInactiveForm input[name="reason"]').fill('Synthetic deferred project');
+ await page.locator('#detailInactiveForm button').click();
+ await waitForAsync(page,async()=>!(await import('/js/pipeline.js')).state.deals.has('d14'));
+ const args=await page.evaluate(()=>window.prospectWrite);
+ assert.equal(args.client_id,'synthetic-client');assert.equal(args.base_version,7);assert.equal(args.status,'inactive');
+ assert.equal(args.reason,'Synthetic deferred project');assert.ok(args.idempotency_key);
+ assert.equal(await page.locator('#recordPanel').evaluate(e=>e.open),false);
 });
 
 test('W4 desktop/phone render, owner filters, equal cards, wide detail and reduced motion', async t => {

@@ -145,7 +145,8 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
       if (state.pending) {
         const current = next.leads.find(l => l.id === state.pending.lead.id);
         const move = current?.last_stage_move;
-        if ((state.pending.kind === "link" && current?.client_id === state.pending.clientId) ||
+        if ((state.pending.kind === "engagement" && current?.prospect_engagement_status === "active" && current.prospect_client_version > state.pending.lead.prospect_client_version) ||
+            (state.pending.kind === "link" && current?.client_id === state.pending.clientId) ||
             (state.pending.kind === "stage" && move?.idempotency_key === state.pending.key) ||
             (state.pending.kind === "claim" && current?.owner === state.pending.actor)) {
           if (state.pending.kind === "stage") state.mobileStage = state.pending.stage;
@@ -196,8 +197,14 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
     $("detailBody").innerHTML = `<div class="detail-overview"><section class="detail-panel"><h3>Contact</h3><dl><dt>Phone</dt><dd>${contact("Phone", detail.phone)}</dd><dt>Email</dt><dd>${contact("Email", detail.email)}</dd><dt>Market</dt><dd>${esc(marketKey(detail))}</dd><dt>Vertical</dt><dd>${esc(detail.specialty || detail.vertical || "—")}</dd><dt>Party</dt><dd class="party-id">${esc(detail.party_id || "—")}</dd></dl></section>
       <section class="detail-panel"><h3>Plans</h3><p>${esc(summary(detail.plans || detail.notes) || "—")}</p>${detail.notes ? `<details data-entry-key="plans"><summary>Details</summary><div class="original-entry">${esc(detail.notes)}</div></details>` : ""}<dl class="plan-window"><dt>Lease window</dt><dd>${esc(detail.est_lease_event || "—")}</dd></dl></section>
       <section class="detail-panel"><h3>Lead score</h3><div class="detail-score">${score(detail)}<span>/ 100</span></div><label>Stage<select id="detailStage">${FILTER_STAGES.filter(([key]) => key !== "do_not_contact").map(([key,text]) => `<option value="${key}"${normalizedStage(detail) === key ? " selected" : ""}>${text}</option>`).join("")}</select></label></section></div>
+      ${detail.prospect_client_id && detail.prospect_engagement_status === "inactive" ? `<form id="activateProspect"><p>Mark active to return this prospect to the deal board.</p><label>Reason<input name="reason" maxlength="1000" required></label><button type="submit">Mark active</button></form>` : ""}
       <div class="detail-columns"><section class="detail-panel"><h3>Correspondence</h3><ol class="correspondence">${(detail.correspondence || []).map(entry => `<li><time>${stamp(entry.occurred_at)}</time><p>${esc(summary(entry.summary))}</p><details data-entry-key="${esc(entry.id)}"><summary>Details</summary><div class="original-entry">${esc(entry.detail || entry.summary)}</div></details></li>`).join("") || '<li class="empty">No correspondence yet</li>'}</ol></section><section class="detail-panel"><h3>Stage history</h3><ol class="history">${(detail.stage_history || []).map(entry => `<li><time>${stamp(entry.occurred_at)}</time>${esc(stageLabel(entry.prior_stage))} → ${esc(stageLabel(entry.stage))}${entry.reason ? `<br><small>${esc(summary(entry.reason))}</small>` : ""}</li>`).join("") || '<li class="empty">No stage changes</li>'}</ol></section></div>`;
     $("detailStage").addEventListener("change", event => openReview(detail.id, event.target.value));
+    $("activateProspect")?.addEventListener("submit", event => {
+      event.preventDefault();
+      const reason = event.currentTarget.elements.reason.value.trim();
+      if (reason) command({kind:"engagement",lead:detail,reason});
+    });
     for (const node of $("detailBody").querySelectorAll("details")) node.open = expanded.has(node.dataset.entryKey);
     const focused = focusedId ? $(focusedId) : [...$("detailBody").querySelectorAll("details")]
       .find(node => node.dataset.entryKey === focusedEntry)?.querySelector("summary");
@@ -277,13 +284,16 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
       if (!actor) { authorizationFailure({ code: "unauthorized" }); return; }
       if (actor !== pending.actor) { clearPrivateView(); state.actor = actor; await refresh(); return; }
       mutationAttempted = true;
-      if (pending.kind === "link") await client.linkClient(pending.lead, pending.clientId, pending.key, pending.actor);
+      if (pending.kind === "engagement") await client.setProspectEngagementStatus({
+        client_id:pending.lead.prospect_client_id,base_version:pending.lead.prospect_client_version,
+        status:"active",reason:pending.reason,human_quote:pending.reason,expected_actor:pending.actor,idempotency_key:pending.key });
+      else if (pending.kind === "link") await client.linkClient(pending.lead, pending.clientId, pending.key, pending.actor);
       else if (pending.kind === "claim") await client.claimLead(pending.lead, pending.key, pending.actor);
       else await client.recordStage(pending.lead, pending.stage, pending.review, pending.key, pending.actor);
       if (state.pending !== pending || state.actor !== actor) return;
       state.pending = null; state.commandFeedback = null; $("stageDialog").close();
       if (pending.kind === "stage") state.mobileStage = pending.stage;
-      $("moveAnnouncement").textContent = pending.kind === "link" ? "Client linked" : pending.kind === "claim" ? "Lead claimed" : pending.review.undo_event_id ? "Stage restored" : `Moved to ${stageLabel(pending.stage)}`;
+      $("moveAnnouncement").textContent = pending.kind === "engagement" ? "Prospect returned to the deal board" : pending.kind === "link" ? "Client linked" : pending.kind === "claim" ? "Lead claimed" : pending.review.undo_event_id ? "Stage restored" : `Moved to ${stageLabel(pending.stage)}`;
       await refresh();
     } catch (error) {
       if (state.pending !== pending) return;

@@ -1,6 +1,6 @@
 {
   "schema": "doctorcre-carr-interface.v1",
-  "version": "1.49.0",
+  "version": "1.50.0",
   "producer": {
     "repository": "jbookout/carr-system",
     "source_commit": "e2e484b1933bfd63c10cc9a1b3350132948f6f74"
@@ -106,6 +106,7 @@
     "set-national-account-owner",
     "set-next-step",
     "set-notification-preference",
+    "set-prospect-engagement-status",
     "set-work-shape-disposition",
     "share-doc-conversation",
     "start-deal-review",
@@ -504,7 +505,7 @@
       "write": false,
       "producer": {
         "repository": "jbookout/carr-system",
-        "source_commit": "500391b0eea57e1b1f61e02d853115b850695de6"
+        "source_commit": "7ed89cde35cda4f10ed55e687d6cb87c757a935d"
       },
       "response": {
         "schema_version": "local-deals-board.v1",
@@ -570,12 +571,12 @@
             "inactive"
           ],
           "owner": "client",
-          "default": "inactive",
+          "default": "active",
           "independent_of": [
             "client_status",
             "operating_state"
           ],
-          "presentation": "Group pending-phase prospects by explicit engagement. Older producer rows without status appear inactive."
+          "presentation": "Only active prospects appear on the deal board. Inactive prospects return to the existing Leads pipeline."
         },
         "account_engagement_keys": [
           "prospect_engagement_status",
@@ -732,7 +733,7 @@
   "lead_workspace": {
     "producer": {
       "repository": "jbookout/carr-system",
-      "source_commit": "6d739deb1a31de8f257f4e1e11695d71ec3a74bf"
+      "source_commit": "7ed89cde35cda4f10ed55e687d6cb87c757a935d"
     },
     "schema_version": "lead-workspace.v1",
     "board": {
@@ -752,13 +753,20 @@
       "stage": "update-lead (base_version, stage_review evidence IDs, same idempotency key on retry)",
       "undo": "update-lead (latest exact undo_event_id and prior stage)",
       "claim": "claim-lead (authenticated human, unowned New, exact base_version)",
-      "link": "link-lead-client (exact client_id, confirmed human choice, exact base_version)"
+      "link": "link-lead-client (exact client_id, confirmed human choice, exact base_version)",
+      "engagement": "set-prospect-engagement-status (client_id, client base_version, active or inactive, reason, expected_actor, same idempotency key on retry)"
     },
     "coverage": {
       "correspondence": "captured_entries_only; Details exposes stored original entry",
       "search_run": "last_search_at null until CARR has an authoritative new-lead search completion field",
       "scores": "existing record score; null shown as missing"
-    }
+    },
+    "prospect_keys": [
+      "prospect_client_id",
+      "prospect_client_version",
+      "prospect_engagement_status"
+    ],
+    "prospect_lifecycle": "Inactive prospects remain eligible Leads despite retained exact client and deal links. Active prospects return to the existing deal board."
   },
   "invoice_tracker": {
     "schema_version": "invoice-tracker.v1",
@@ -818,5 +826,15 @@
     "task_defaults": "Fields present on every source card may be shared once. Each task overrides the shared values.",
     "validation": "Reject v3 reads without nonempty object defaults or object task rows.",
     "deployment_order": "Deploy the consumer before the producer can publish v3."
+  },
+  "prospect_engagement": {
+    "producer": {
+      "repository": "jbookout/carr-system",
+      "source_commit": "7ed89cde35cda4f10ed55e687d6cb87c757a935d"
+    },
+    "write": "set-prospect-engagement-status",
+    "inactive_stage": "nurture_drip",
+    "active_stage": "opportunity",
+    "history": "Retain the existing client, lead links, deals and events. Suppression and archived stages remain protected."
   }
 }
