@@ -418,10 +418,10 @@ export function mountBoard(deps = {}) {
   function renderStages(view) {
     if (view?.hierarchy) {
       pipelineCards = Object.entries(view.hierarchy.cards).map(([id, card]) => ({...card, id, title:card.card_title, summary:card.card_description}));
-      deps.onTasks?.(pipelineCards, {state:boardState});
       if (!hierarchyUI) doc.querySelector("details.directory-panel")?.removeAttribute("open");
       hierarchyUI ||= mountHierarchy({container:byId("board-stages"), window:win, onOpen:card=>openWork(card.id), onClose:deps.closeTask});
-      hierarchyUI.update({hierarchy:view.hierarchy, tasks:view.hierarchy.cards});
+      const selected = hierarchyUI.update({hierarchy:view.hierarchy, tasks:view.hierarchy.cards});
+      deps.onTasks?.(pipelineCards, {state:boardState, selectedId:selected?.id});
       byId("board-rail").hidden = true;
       byId("board-filters").hidden = true;
       for (const id of ["board-completed", "completed-list", "board-blocked", "system-work-panel", "board-ledger"])

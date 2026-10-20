@@ -525,7 +525,9 @@ test('hierarchy refresh reconciles an open job after PR and slice rekeys', async
   assert.equal(await page.locator('#jobBody summary').evaluate(node=>node===document.activeElement),true);
  }
  await page.locator('#jobClose').click();
- assert.equal(await page.locator(`[data-hierarchy-id="${id}"] > button`).evaluate(node=>node===document.activeElement),true);
+ await page.clock.runFor(50);
+ await page.waitForFunction(()=>document.activeElement.matches('[data-hierarchy-id] > button'));
+ assert.equal(await page.locator(`[data-hierarchy-id="${id}"] > button`).evaluate(node=>node===document.activeElement),true,await page.evaluate(()=>document.activeElement.outerHTML.slice(0,500)));
  snapshot.tasks[id].card_title='Updated while closed';
  await page.locator('#board-retry').evaluate(button=>button.click());
  await page.getByRole('button',{name:'Updated while closed',exact:true}).waitFor();

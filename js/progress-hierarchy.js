@@ -188,12 +188,14 @@ export function mountHierarchy({ container, window: win, onOpen, onClose }) {
   win.addEventListener('popstate', pop);
   return { update(value) {
     const signature = JSON.stringify(value);
-    if (signature === lastSignature) return;
-    lastSignature = signature;
-    data = value; render();
-    if (firstRead) {
-      firstRead = false;
-      openSelected();
+    if (signature !== lastSignature) {
+      lastSignature = signature;
+      data = value; render();
+      if (firstRead) {
+        firstRead = false;
+        openSelected();
+      }
     }
+    return hierarchyView(data, address).selected;
   }, dispose() { win.removeEventListener('popstate', pop); } };
 }
