@@ -67,4 +67,36 @@ for (const width of [390, 768, 1280, 1440]) for (const theme of ['dark', 'light'
     assert.equal(layout.overflow, false);
     assert.deepEqual(errors, []);
   });
+
+  test(`An empty board offers one explanation and a working refresh at ${width}px ${theme}`, async t => {
+    const browser = await chromium.launch();
+    t.after(() => browser.close());
+    const page = await browser.newPage({ viewport: { width, height: 900 }, reducedMotion: 'reduce', colorScheme: theme });
+    await page.addInitScript(theme => localStorage.setItem('doctorcre.visual-preferences', JSON.stringify({ theme })), theme);
+    const board = workspace();
+    board.leads = [];
+    const writes = [];
+    let reads = 0;
+    await routeLeads(page, { getBoard: () => board, onRead: () => reads++, onWrite: value => writes.push(value) });
+    await page.goto('http://localhost/leads');
+    await page.locator('#leadBoard[aria-busy="false"]').waitFor();
+    const content = await page.locator('#leadBoard').innerText();
+    await capture(page, `${width}-${theme}-empty`, { content });
+    assert.equal(await page.locator('#leadBoard .stage-column').count(), 0, 'empty boards do not render six empty stages');
+    assert.equal(await page.locator('#leadBoard p').count(), 1);
+    assert.equal(await page.locator('#leadBoard p').innerText(), 'No active leads are on the board.');
+    assert.equal(await page.locator('#leadBoard button').count(), 1);
+    const before = reads;
+    board.leads = [lead(1)];
+    await page.locator('#leadBoard').getByRole('button', { name: 'Refresh leads', exact: true }).click();
+    await page.locator('.lead-card').waitFor();
+    assert.ok(reads > before, 'the empty-state action fetches a fresh board');
+    await page.locator('#leadSearch').fill('no-synthetic-match');
+    await capture(page, `${width}-${theme}-filtered-empty`, { content: await page.locator('#leadBoard').innerText() });
+    await page.getByRole('button', { name: 'Reset filters', exact: true }).click();
+    assert.equal(await page.locator('#leadSearch').evaluate(node => node === document.activeElement), true, 'reset returns focus to search');
+    assert.equal(await page.locator('.lead-card').count(), 1);
+    assert.deepEqual(writes, []);
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
+  });
 }
