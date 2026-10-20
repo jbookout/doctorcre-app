@@ -24,6 +24,15 @@ test('deal card displays producer statuses, due work and escaped evidence by pha
   assert.equal(root.querySelector('[data-checklist-item="attorney_review"] time').dateTime, '2026-10-20');
 });
 
+test('the closed checklist summary names the first due item and its deadline', () => {
+  const root = new JSDOM(renderDealChecklist(checklist)).window.document;
+  const summary = root.querySelector('.deal-checklist > summary');
+  assert.match(summary.textContent, /Attorney review/);
+  assert.match(summary.textContent, /Due today/);
+  assert.equal(summary.querySelector('time').dateTime, '2026-10-20');
+  assert.equal(root.querySelector('.deal-checklist').open, false);
+});
+
 test('live getDeal preserves the runtime checklist without deriving it in the browser', async () => {
   const client = createLiveClient({ fetchImpl: async () => new Response(JSON.stringify({ result: { content: [{ text: JSON.stringify({ deal_id: 'demo', phase: 'legal', checklist }) }] } })) });
   assert.deepEqual((await client.getDeal('demo')).checklist, checklist);
