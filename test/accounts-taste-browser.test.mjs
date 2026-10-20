@@ -62,12 +62,11 @@ for (const width of [390, 1280]) for (const theme of ['dark', 'light']) {
     const order = await page.evaluate(() => {
       const snapshot = document.querySelector('.deal-opening-snapshot');
       const update = document.querySelector('#detailUpdateForm');
-      const notes = document.querySelector('.deal-updates');
       return { snapshotBeforeUpdate: Boolean(snapshot.compareDocumentPosition(update) & Node.DOCUMENT_POSITION_FOLLOWING),
-        updateBeforeNotes: Boolean(update.compareDocumentPosition(notes) & Node.DOCUMENT_POSITION_FOLLOWING),
         actionVisible: snapshot.getBoundingClientRect().bottom < innerHeight };
     });
-    assert.deepEqual(order, { snapshotBeforeUpdate: true, updateBeforeNotes: true, actionVisible: true });
+    assert.deepEqual(order, { snapshotBeforeUpdate: true, actionVisible: true });
+    assert.equal(await page.locator('.deal-updates').count(), 0, 'an account action without notes omits Updates');
     assert.equal(await page.locator('#dealUpdate').getAttribute('placeholder'), null);
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
   });

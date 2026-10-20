@@ -193,13 +193,14 @@ test('desktop board shows the full longest next step within three lines',async t
 
 
 test('empty next steps leave cards and snapshots free of invented status text',async t=>{
- const {page}=await open(t,390,{showDetail:false,nextStep:''});
+ const {page}=await open(t,390,{showDetail:false,nextStep:' \t\n '});
  const card=page.locator('.kanban-column [data-id="d14"]');
  assert.equal(await card.locator('.next-line').count(),0);
  await card.locator('.card-open').click();
  await page.locator('#detailUpdateForm').waitFor();
  assert.equal(await page.getByLabel('Update',{exact:true}).inputValue(),'');
  assert.equal(await page.locator('.deal-current-action').count(),0);
+ assert.equal(await page.locator('.deal-opening-snapshot time').count(),0,'a due date without an action stays omitted');
  assert.doesNotMatch(await page.locator('#recordPanel').textContent(),/Next step pending|Nothing needs you/i);
 });
 
@@ -226,4 +227,30 @@ test('refresh removes record sections when the source has no entries',async t=>{
  await page.getByRole('button',{name:'Refresh deal',exact:true}).click();
  await waitForAsync(page,async()=>(await import('/js/pipeline.js')).state.panelDetail.history.length===0);
  assert.equal(await page.locator('.full-record').count(),0);
+});
+
+
+test('refresh removes and restores Updates as recorded notes change',async t=>{
+ const {page}=await open(t);
+ assert.equal(await page.locator('.deal-updates').count(),1);
+ await page.getByLabel('Update',{exact:true}).fill('Demo unsaved draft');
+ await page.evaluate(async()=>{
+  const {state}=await import('/js/pipeline.js');const read=state.client.getDeal;
+  state.client.getDeal=async id=>{
+   const detail=await read(id);
+   return {...detail,thread:[],activities:[]};
+  };
+ });
+ await page.getByRole('button',{name:'Refresh deal',exact:true}).click();
+ await waitForAsync(page,async()=>(await import('/js/pipeline.js')).state.panelDetail.thread.length===0);
+ assert.equal(await page.locator('.deal-updates').count(),0);
+ assert.doesNotMatch(await page.locator('#recordPanel').textContent(),/No updates recorded/);
+ await page.evaluate(async()=>{
+  const {state}=await import('/js/pipeline.js');const read=state.client.getDeal;
+  state.client.getDeal=async id=>({...await read(id),thread:[{id:'demo-restored',kind:'note',actor:'joe',text:'Demo restored update',at:'2026-10-02'}]});
+ });
+ await page.getByRole('button',{name:'Refresh deal',exact:true}).click();
+ await page.locator('.deal-note[data-id="demo-restored"]').waitFor();
+ assert.equal(await page.locator('.deal-updates').count(),1);
+ assert.equal(await page.getByLabel('Update',{exact:true}).inputValue(),'Demo unsaved draft');
 });
