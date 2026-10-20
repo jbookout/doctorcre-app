@@ -97,6 +97,9 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
         render();
         $("leadSearch").focus({ preventScroll: true });
       });
+    } else if (state.board && !shown.length) {
+      $("leadBoard").innerHTML = '<div class="filtered-empty"><p>No active leads are on the board.</p><button id="refreshEmptyBoard">Refresh leads</button></div>';
+      $("refreshEmptyBoard").addEventListener("click", () => refresh());
     } else if (state.filters.stage === "archived") {
       $("leadBoard").innerHTML = `<div class="filtered-list" aria-label="${stageLabel(state.filters.stage)}">${shown.map(card).join("") || '<p class="empty">No matching leads</p>'}</div>`;
     } else {
