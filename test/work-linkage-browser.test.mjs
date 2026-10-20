@@ -109,3 +109,38 @@ test('source failure removes previously usable dependency links', async t => {
   assert.doesNotMatch(await page.locator('#workDependencies').textContent(), /\bUnlinked\b/);
   assert.deepEqual(errors, []);
 });
+
+for (const width of [390, 1280]) for (const theme of ['dark', 'light']) test(`dependency identifiers and popup priority at ${width}px ${theme}`, async t => {
+  const { page, errors } = await open(t, { width });
+  await page.evaluate(theme => { document.documentElement.dataset.theme = theme; }, theme);
+  const identifier = page.locator('#workDependencies small').first();
+  assert.ok(await identifier.evaluate(node => parseFloat(getComputedStyle(node).fontSize)) >= 13, 'secondary identifiers meet the 13px minimum');
+  await page.addStyleTag({ url: 'http://localhost/css/control-room-workspace.css' });
+  await page.evaluate(async task => {
+    document.body.insertAdjacentHTML('beforeend', '<dialog id="jobDialog" class="job-dialog" aria-labelledby="jobTitle"><header><button id="jobClose" aria-label="Close job details">×</button></header><h2 id="jobTitle"></h2><div id="jobBody"></div></dialog>');
+    const { mountJobDetail } = await import('/js/job-detail.js');
+    window.reviewDetail = mountJobDetail({ client: {}, document });
+    window.reviewTask = task;
+    window.reviewDetail.open(task);
+  }, { ...taskRows()['demo-dependent'], id: 'demo-dependent', version: 7, title: 'Demo release check', summary: 'Waiting for the source contract' });
+  const panel = page.locator('#jobBody .work-dependencies');
+  const blocker = panel.getByRole('link', { name: 'Demo source contract' });
+  const box = await blocker.boundingBox();
+  assert.ok(box && box.y >= 0 && box.y + box.height <= page.viewportSize().height, 'popup blocker is visible without scrolling');
+  assert.equal(await page.locator('#jobBody details[data-job-metadata]').getAttribute('open'), null);
+  assert.equal(await page.locator('#jobBody details[data-job-metadata] > summary').evaluate(node => getComputedStyle(node).display), 'list-item', 'metadata has a native disclosure indicator');
+  assert.ok(await panel.evaluate(node => node.previousElementSibling.className === 'job-summary'));
+  assert.ok(await page.locator('#jobDialog').evaluate(node => node.scrollWidth <= node.clientWidth), 'popup has no horizontal overflow');
+  await mkdir(out, { recursive: true });
+  await page.screenshot({ path: new URL(`popup-${width}-${theme}.png`, out).pathname });
+  await page.locator('#jobBody summary[data-job-control=metadata]').click();
+  assert.match(await page.locator('#jobBody details[data-job-metadata]').innerText(), /Owner.*Status.*Agent.*Model.*Effort/s);
+  await page.evaluate(() => window.reviewDetail.update([window.reviewTask]));
+  assert.notEqual(await page.locator('#jobBody details[data-job-metadata]').getAttribute('open'), null, 'metadata stays expanded after refresh');
+  await page.locator('#jobBody summary[data-job-control=metadata]').click();
+  await page.evaluate(() => window.reviewDetail.update([], { state: 'unknown' }));
+  assert.match(await panel.textContent(), /The source record is unavailable/);
+  assert.match(await panel.textContent(), /Refresh this page to retry/);
+  await page.screenshot({ path: new URL(`unavailable-${width}-${theme}.png`, out).pathname });
+  assert.deepEqual(errors, []);
+});

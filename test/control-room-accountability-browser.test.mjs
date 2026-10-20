@@ -71,6 +71,8 @@ for (const theme of ['dark', 'light']) for (const width of [1440, 390]) test(`at
   await page.screenshot({ path: new URL(`out/test-artifacts/slice8/attention-${width}${theme==='light'?'-light':''}.png`, root).pathname, fullPage: false });
   await failed.getByRole('button', { name: 'Open details' }).click();
   assert.equal(await page.locator('#jobTitle').innerText(), 'Demo export needs its source');
+  assert.equal(await page.locator('#jobBody [data-job-metadata]').evaluate(node => node.open), false);
+  await page.locator('#jobBody').getByText('Execution details', { exact: true }).click();
   assert.equal(await page.locator('#jobBody').getByText('Owner', { exact: true }).evaluate(node => node.nextElementSibling.textContent), 'cx-app');
   assert.match(await page.locator('#jobBody').innerText(), /Demo source did not answer/);
   assert.match(await page.locator('#jobBody').innerText(), /Demo validation finished; export has not started/);
@@ -92,6 +94,7 @@ for (const theme of ['dark', 'light']) for (const width of [1440, 390]) test(`ag
   await page.screenshot({ path: new URL(`out/test-artifacts/slice8/agents-${width}${theme==='light'?'-light':''}.png`, root).pathname, fullPage: false });
   await cards.first().getByRole('button', { name: 'Open details' }).click();
   assert.equal(await page.locator('#jobTitle').innerText(), 'Demo export');
+  await page.locator('#jobBody').getByText('Execution details', { exact: true }).click();
   assert.match(await page.locator('#jobBody').innerText(), /Demo validation finished before the source stopped/);
 });
 
@@ -124,6 +127,7 @@ test('older completion cannot hide newer failed work from another read source', 
   assert.equal(await page.locator('#completed-list').getByText('Demo older completion').count(), 0);
   await failed.getByRole('button').click();
   assert.equal(await page.locator('#jobTitle').innerText(), 'Demo export needs its source');
+  await page.locator('#jobBody').getByText('Execution details', { exact: true }).click();
   assert.match(await page.locator('#jobBody').innerText(), /Demo refreshed validation complete/);
 });
 test('agents retain exact selection through refresh and failure', async t => {

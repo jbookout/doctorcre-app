@@ -99,3 +99,27 @@ test('popup source loss removes dependency links and a late WR response cannot r
 test('publisher omission marker prevents fabricated empty linkage completeness',()=>{
  assert.equal(workDependencies({...task(),linkage_metadata_unavailable:true},'demo-project').state,'unavailable');
 });
+
+test('unavailable dependencies explain the missing evidence and how to recover',()=>{
+ const html=workDependenciesHtml({id:'dependent'},'demo-project');
+ assert.match(html,/No verified dependency observation is available for this work record/);
+ assert.match(html,/Refresh this page to retry/);
+ assert.match(html,/ask the work owner to republish its linkage/);
+ const lost=workDependenciesHtml(task([reference()]),'demo-project',{linked:false});
+ assert.match(lost,/The source record is unavailable/);
+ const partial=workDependenciesHtml(task([reference({state:'unavailable',target:null})]),'demo-project');
+ assert.match(partial,/This linked record could not be read/);
+ assert.match(partial,/ask the work owner to check access/);
+});
+
+test('popup puts dependencies after its summary and discloses execution metadata',()=>{
+ const {detail,body}=popup();
+ detail.open({...task([reference()]),title:'Dependent',summary:'Wait for the source contract'});
+ const panel=body.querySelector('.work-dependencies');
+ assert.equal(panel.previousElementSibling.className,'job-summary');
+ const metadata=body.querySelector('details[data-job-metadata]');
+ assert.ok(metadata,'execution facts have their own disclosure');
+ assert.equal(metadata.open,false);
+ assert.ok(panel.compareDocumentPosition(metadata)&4,'dependencies precede metadata');
+ assert.match(metadata.textContent,/Owner.*Status.*Agent.*Model.*Effort.*Blocker.*Last progress/s);
+});

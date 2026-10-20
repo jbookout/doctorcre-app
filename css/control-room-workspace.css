@@ -109,6 +109,7 @@
 .job-summary dt { color: var(--fg-muted); }
 .job-links { display: flex; flex-wrap: wrap; gap: 16px; }
 .job-dialog details { margin-top: 24px; border-top: var(--hairline-width) solid var(--hairline); padding-top: 20px; }
+.job-dialog details[data-job-metadata] > summary { display: list-item; }
 .job-dialog summary { cursor: pointer; color: var(--fg); min-height: 36px; }
 .job-dialog pre { white-space: pre-wrap; overflow-wrap: anywhere; max-width: 100%; font-family: var(--font-mono); font-size: var(--font-size-1); line-height: 1.6; background: var(--surface-2); padding: 16px; border-radius: var(--radius-2); }
 .job-update { font-size: var(--font-size-1); color: var(--fg-muted); margin: 8px 0 0; }

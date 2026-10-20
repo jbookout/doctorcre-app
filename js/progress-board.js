@@ -437,6 +437,8 @@ export function mountBoard(deps = {}) {
     }
     container.removeAttribute("aria-busy");
     if (view?.work_queue) {
+      pipelineCards = censusCards() || [];
+      deps.onTasks?.(pipelineCards, censusObservation);
       queueUI ||= mountWorkQueue({container:byId('board-stages'), window:win, boardId});
       queueUI.update(view.work_queue);
       byId('task-count').textContent = `${view.work_queue.items.length} jobs`;
