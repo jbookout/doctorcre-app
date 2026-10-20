@@ -504,7 +504,7 @@
       "write": false,
       "producer": {
         "repository": "jbookout/carr-system",
-        "source_commit": "47abddf47f46d66eecd50330e5f5aab198f30f53"
+        "source_commit": "bfe552a90e2e329f6b2c2b036d94d7237eff152a"
       },
       "response": {
         "schema_version": "local-deals-board.v1",
@@ -513,7 +513,8 @@
           "parking_note",
           "invoiced_on",
           "phase_change",
-          "field_base"
+          "field_base",
+          "phase_started_on"
         ],
         "phase_change_keys": [
           "event_id",
@@ -560,13 +561,17 @@
             "workspace_kind"
           ],
           "membership": "Recorded lost outcome, independent of phase. Same workspace and account scope."
+        },
+        "phase_started_on": {
+          "shape": "object keyed by phase slug; YYYY-MM-DD values",
+          "source": "First event occurred_at per phase, in America/Chicago. A revisit does not replace the first start. Missing evidence has no key."
         }
       }
     },
     "get-deal-room": {
       "producer": {
         "repository": "jbookout/carr-system",
-        "source_commit": "47abddf47f46d66eecd50330e5f5aab198f30f53"
+        "source_commit": "bfe552a90e2e329f6b2c2b036d94d7237eff152a"
       },
       "response": {
         "schema_version": "deal-timeline.v1",
@@ -583,7 +588,11 @@
           "source"
         ],
         "lease_absence": null,
-        "client_id": "Exact client record UUID, including closed and invoiced records; use for the authenticated clients record read."
+        "client_id": "Exact client record UUID, including closed and invoiced records; use for the authenticated clients record read.",
+        "phase_started_on": {
+          "shape": "object keyed by phase slug; YYYY-MM-DD values",
+          "source": "First event occurred_at per phase, in America/Chicago. A revisit does not replace the first start. Missing evidence has no key."
+        }
       },
       "critical_date_write": "add-critical-date",
       "never_derive": [

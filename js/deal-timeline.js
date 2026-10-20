@@ -3,7 +3,6 @@ import { escapeText } from './change-receipts.mjs';
 import { concise, noteEntries } from './local-deals-model.js';
 import { ACTOR_LABEL } from './client.js';
 
-const PHASE_SHORT = {pending:'Lead',research:'Res.',site_selection:'Site',negotiation:'Neg.',legal:'Legal',due_diligence:'DD',closing:'Cls.',closed:'Done'};
 const DAY = 86400000;
 const esc = escapeText;
 // Wire kinds, never prose matching or dates inferred from lease duration.
@@ -40,13 +39,9 @@ export function countdown(date, now = Date.now()) {
 }
 export function dealTimeline(detail, now = Date.now()) {
   const entryByPhase = new Map();
-  const changes = [...(detail.history || [])];
-  if (detail.deal.phase_change) changes.push({...detail.deal.phase_change,field:'phase',new_value:detail.deal.phase_change.phase});
-  for (const event of changes.sort((a,b) => Date.parse(a.recorded_at)-Date.parse(b.recorded_at))) {
-    if (event.field !== 'phase') continue;
-    const value = event.new_value?.phase ?? event.new_value;
-    const column = columnBySlug(value) || columnByValue(value);
-    const day = calendarDay(event.recorded_at);
+  for (const [phase, value] of Object.entries(detail.deal.phase_started_on || {})) {
+    const column = columnBySlug(phase) || columnByValue(phase);
+    const day = calendarDay(value);
     if (column && day) entryByPhase.set(column.slug, day);
   }
   const phases = COLUMNS.map(c => ({...c,day:entryByPhase.get(c.slug) || null,current:detail.deal.phase === c.value}));
@@ -90,8 +85,7 @@ export function renderCriticalDates(detail, now = Date.now()) {
 
 export function renderDealTimeline(detail, now = Date.now()) {
   const view = dealTimeline(detail,now);
-  const current = view.phases.find(p => p.current);
-  return `<section class="deal-timeline" data-detail-read="timeline" aria-label="Deal phases and timeline"><h3>Phase timeline</h3><p class="phase-caption">${esc(current?.label || detail.deal.phase)}${current?.day ? ` · ${esc(dateCaption(current.day))}` : ''}</p><ol class="phase-rail">${view.phases.map(p => `<li${p.current ? ' aria-current="step"' : ''}><span>${esc(p.label)}</span><abbr title="${esc(p.label)}">${esc(PHASE_SHORT[p.slug])}</abbr>${p.day ? `<time datetime="${esc(p.day)}">${esc(dateCaption(p.day))}</time>` : ''}</li>`).join('')}</ol></section>`;
+  return `<section class="deal-timeline" data-detail-read="timeline" aria-label="Deal phases and timeline"><h3>Phase timeline</h3><ol class="phase-rail">${view.phases.map(p => `<li${p.current ? ' aria-current="step"' : ''}><span>${esc(p.label)}</span>${p.day ? `<time datetime="${esc(p.day)}">${esc(dateCaption(p.day))}</time>` : '<small>Start date not recorded</small>'}</li>`).join('')}</ol></section>`;
 }
 export function renderDealUpdates(detail) {
   const entries = [...noteEntries(detail)].sort((a,b) => (Date.parse(b.when) || 0)-(Date.parse(a.when) || 0) || String(b.id).localeCompare(String(a.id)));
@@ -99,7 +93,8 @@ export function renderDealUpdates(detail) {
     const date = new Date(value);
     return Number.isFinite(date.getTime()) ? date.toLocaleString('en-US',{timeZone:'America/Chicago',month:'short',day:'numeric',year:'numeric',hour:'numeric',minute:'2-digit',timeZoneName:'short'}) : 'Date not recorded';
   };
-  return `<section class="deal-updates" data-detail-read="updates" aria-label="Deal updates"><h3>Updates</h3>${entries.map(e => `<article class="deal-note" data-id="${esc(e.id)}" data-kind="${esc(e.kind)}"><div class="timeline-entry-top"><b>${esc(ACTOR_LABEL[e.actor] || (e.actor === 'joe-local' ? 'Joe' : e.actor) || 'System')}</b><time datetime="${esc(e.when || '')}">${esc(stamp(e.when))}</time></div><small>${esc(e.kind)}</small><p>${esc(e.summary)}</p>${e.original && e.original !== e.summary ? `<details><summary data-detail-focus="entry-original:${esc(e.id)}">Read full update</summary><p class="note-original">${esc(e.original)}</p></details>` : ''}</article>`).join('') || '<p>No updates recorded.</p>'}</section>`;
+  const overview = entries.map(e => concise(e.summary, 72)).join(' · ');
+  return `<section class="deal-updates" data-detail-read="updates" aria-label="Deal updates"><h3>Updates</h3>${entries.length ? `<div class="updates-overview"><p tabindex="0" aria-label="Summary of recorded updates">${esc(overview)}</p></div><details class="updates-history"><summary data-detail-focus="update-history">Full history (${entries.length})</summary>${entries.map(e => `<article class="deal-note" data-id="${esc(e.id)}" data-kind="${esc(e.kind)}"><div class="timeline-entry-top"><b>${esc(ACTOR_LABEL[e.actor] || (e.actor === 'joe-local' ? 'Joe' : e.actor) || 'Author not recorded')}</b><time datetime="${esc(e.when || '')}">${esc(stamp(e.when))}</time></div><small>${esc(e.kind)}</small><p>${esc(e.summary)}</p>${e.original && e.original !== e.summary ? `<details><summary data-detail-focus="entry-original:${esc(e.id)}">Read full update</summary><p class="note-original">${esc(e.original)}</p></details>` : ''}</article>`).join('')}</details>` : '<p>No updates recorded.</p>'}</section>`;
 }
 export function updateCountdowns(root, now = Date.now()) {
   for (const node of root.querySelectorAll('[data-countdown]')) {
