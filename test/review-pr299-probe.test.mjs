@@ -10,11 +10,11 @@ async function open(t, tab = 'views') {
   t.after(() => server.stop());
   const browser = await chromium.launch();
   t.after(() => browser.close());
-  const page = await browser.newPage();
+  const page = await browser.newPage({ timezoneId: 'UTC' });
   await page.clock.install({ time: new Date('2026-10-20T12:00:00Z') });
   const seedUrl = `data:application/json;base64,${Buffer.from(await readFile(new URL('../data/board-seed.json', import.meta.url))).toString('base64')}`;
   const fixture = await createFixtureClient({ seedUrl });
-  const state = { censusUnavailable: false, queueReads: 0 };
+  const state = { censusUnavailable: false, queueReads: 0, live: true };
   await page.route('**/*', async route => {
     const url = new URL(route.request().url());
     if (url.origin !== server.url) return route.abort();
@@ -23,12 +23,16 @@ async function open(t, tab = 'views') {
       const boardCensus = rpc.name === 'unfinished-work' && Object.hasOwn(rpc.arguments, 'live_library');
       if (state.censusUnavailable && boardCensus) return route.fulfill({ status: 503, body: '{}' });
       if (rpc.name === 'unfinished-work' && !boardCensus) state.queueReads++;
-      const method = rpc.name.replace(/-([a-z])/g, (_, letter) => letter.toUpperCase());
+      const method = { 'read-room-queue': 'roomQueue', 'read-room': 'roomTurns', 'read-session-identity': 'sessionIdentity', 'read-dispatch-history': 'dispatchHistory' }[rpc.name] || rpc.name.replace(/-([a-z])/g, (_, letter) => letter.toUpperCase());
       let payload = typeof fixture[method] === 'function' ? await fixture[method](rpc.arguments || {}) : { ok: true };
       if (rpc.name === 'unfinished-work' && !rpc.arguments.live_library) {
         payload.items = [{ ...payload.items[0], id: 'INC-DEMO', kind: 'incident', title: 'Demo blocked incident',
           state: 'blocked', owner: 'dell', work_request_ref: 'WR-000901',
           blocked_reason: 'Demo incident source stopped', last_progress: 'Demo incident checked' }];
+      }
+      if (rpc.name === 'read-room-queue') {
+        payload.projected_at = '2026-10-20T11:55:00Z';
+        payload.live = state.live;
       }
       if (rpc.name === 'current-work-item') {
         payload.current = payload.current.map(row => ({ ...row, owner: 'joe', blocker: { code: 'dependency', detail: 'Demo linked WR dependency' } }));
@@ -40,7 +44,7 @@ async function open(t, tab = 'views') {
     return route.continue();
   });
   await page.goto(`${server.url}/control-room?mode=live&tab=${tab}`);
-  await page.locator('[data-attention-id="incident:INC-DEMO"]').waitFor();
+  await page.locator('[data-attention-id="incident:INC-DEMO"]').waitFor({ state: 'attached' });
   return { page, state };
 }
 
@@ -94,4 +98,20 @@ test('an old running timestamp does not record a blocked Attention state', async
   } } } }, new Date('2026-10-20T12:00:00Z'));
   assert.equal(cards.find(row => row.id === 'running').health, 'blocked', 'the board retains its age warning');
   assert.deepEqual(attentionTasks(cards).map(row => row.id), ['failed', 'blocked']);
+});
+
+test('Agents freshness uses relative time and exposes the absolute observation on hover', async t => {
+  const { page, state } = await open(t, 'agents');
+  const line = page.locator('#modelRoomFreshness');
+  await page.waitForFunction(() => document.querySelector('#modelRoomFreshness')?.dataset.state === 'live');
+  assert.match(await line.innerText(), /Updated 5 minutes ago/);
+  assert.doesNotMatch(await line.innerText(), /2026-10-20T/);
+  assert.match(await line.getAttribute('title'), /2026/);
+  assert.match(await line.getAttribute('title'), /11:55/);
+  state.live = false;
+  await page.locator('#modelRoomRetry').click();
+  await page.waitForFunction(() => document.querySelector('#modelRoomFreshness')?.dataset.state === 'stale');
+  assert.match(await line.innerText(), /Last updated 5 minutes ago.*last recorded assignments/);
+  assert.doesNotMatch(await line.innerText(), /2026-10-20T/);
+  assert.match(await line.getAttribute('title'), /11:55/);
 });
