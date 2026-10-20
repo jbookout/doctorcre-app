@@ -816,3 +816,16 @@ for (const width of [1440,390]) test(`PR card navigation preserves exact lineage
   await page.waitForFunction(()=>document.querySelector('#workTitle').textContent==='Demo work request',null,{timeout:5000});
   assert.deepEqual(errors,[]);
 });
+
+
+test('unresolved task with an explicit request has no clickable Task lineage', async t => {
+  const {page,errors} = await open(t, {empty:true,
+    path:'/control-room/progress/work?board=demo-project&task=legacy-pr-73&work_request=WR-900'});
+  await page.locator('.work-lineage').waitFor();
+  const task = page.locator('.work-lineage dl > div').filter({has:page.locator('dt', {hasText:/^Task$/})});
+  assert.equal(await task.locator('a').count(), 0);
+  assert.equal(await task.locator('dd').textContent(), 'Not linked');
+  assert.equal(await page.locator('.work-lineage a').filter({hasText:'WR-900'}).count(), 1);
+  assert.match(await page.locator('#workMetadata').textContent(), /not in the loaded publication/);
+  assert.deepEqual(errors, []);
+});
