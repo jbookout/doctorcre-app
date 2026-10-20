@@ -1,6 +1,6 @@
 import test, { before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, rm } from 'node:fs/promises';
+import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -35,7 +35,9 @@ for (const actionCount of [5, 30]) for (const width of [390, 1280]) for (const t
     const identity = await page.request.get(`${origin}/api/test/identity`);
     assert.equal((await identity.json()).viewer, viewer);
     const errors = [], detailReads = [];
-    let undatedOnly = false;
+    let undatedOnly = false, refreshed = false;
+    const requests = [];
+    page.on('request', request => requests.push(request.url()));
     page.on('pageerror', error => errors.push(error.message));
     await page.route('**/mcp', async route => {
       const rpc = route.request().postDataJSON();
@@ -51,6 +53,7 @@ for (const actionCount of [5, 30]) for (const width of [390, 1280]) for (const t
         action('also-undated', null), { ...action('done', null), status: 'done' },
       ] : [];
       if (actionCount === 30 && detail.deal_id === 'qa-deal-1') detail.next_actions.push(...Array.from({ length: 25 }, (_, i) => action(`extra-${String(i + 1).padStart(2, '0')}`, '2026-10-03')));
+      if (refreshed && actionCount === 30 && detail.deal_id === 'qa-deal-1') detail.next_actions.at(-1).description = 'Demo updated call';
       if (undatedOnly) detail.next_actions = detail.next_actions.filter(row => row.due_on === null);
       envelope.result.content[0].text = JSON.stringify(detail);
       await route.fulfill({ response, json: envelope });
@@ -58,9 +61,16 @@ for (const actionCount of [5, 30]) for (const width of [390, 1280]) for (const t
     await page.goto(`${origin}/?mode=live`);
     await page.locator('#refreshHome[aria-busy="false"]').waitFor();
     await page.locator('#homeCalendar').evaluate(node => node.scrollIntoView({ block: 'center' }));
+    const panel = await page.locator('#homeCalendar').boundingBox();
+    const grid = await page.locator('.home-grid').boundingBox();
+    if (width === 1280) assert.ok(panel.width >= grid.width - 1, 'the agenda uses the desktop grid width');
+    assert.ok(panel.height < 1000, 'the preview stays bounded with 5 or 30 actions');
     if (process.env.HOME_ACTION_SCREENSHOT_DIR) {
       await mkdir(process.env.HOME_ACTION_SCREENSHOT_DIR, { recursive: true });
-      await page.screenshot({ path: join(process.env.HOME_ACTION_SCREENSHOT_DIR, `${actionCount}-${width}-${theme}.png`), animations: 'disabled' });
+      const capture = join(process.env.HOME_ACTION_SCREENSHOT_DIR, `${actionCount}-${width}-${theme}`);
+      await page.screenshot({ path: `${capture}.png`, animations: 'disabled' });
+      await page.locator('#homeCalendar').screenshot({ path: `${capture}-panel.png`, animations: 'disabled' });
+      await writeFile(`${capture}.json`, JSON.stringify({ actionCount, width, theme, viewer, panel, grid }, null, 2));
     }
     const rows = page.locator('#homeCalendar .home-agenda > a');
     const firstFive = ['Demo call overdue', 'Demo call today', 'Demo call also-undated', 'Demo call undated', 'Demo call future'];
@@ -69,7 +79,7 @@ for (const actionCount of [5, 30]) for (const width of [390, 1280]) for (const t
     if (actionCount === 30) {
       const target = await showAll.boundingBox();
       assert.ok(target.width >= 44 && target.height >= 44, 'Show all is a touch target');
-      const readsBeforeExpansion = detailReads.length;
+      const readsBeforeExpansion = requests.length;
       await showAll.focus();
       await page.keyboard.press('Enter');
       assert.equal(await rows.count(), 30);
@@ -77,10 +87,12 @@ for (const actionCount of [5, 30]) for (const width of [390, 1280]) for (const t
         ...Array.from({ length: 25 }, (_, i) => `Demo call extra-${String(i + 1).padStart(2, '0')}`)]);
       assert.equal(await rows.nth(6).evaluate(node => node === document.activeElement), true, 'focus the seventh row');
       assert.equal(await showAll.count(), 0);
-      assert.equal(detailReads.length, readsBeforeExpansion, 'expansion uses the loaded agenda');
+      assert.equal(requests.length, readsBeforeExpansion, 'expansion makes no network request');
+      refreshed = true;
       await page.locator('#refreshHome').click();
       await page.locator('#refreshHome[aria-busy="false"]').waitFor();
       assert.equal(await rows.count(), 30, 'refresh keeps the expanded agenda');
+      assert.equal(await rows.last().locator('strong').textContent(), 'Demo updated call', 'new data actually repaints the expanded list');
       await page.getByRole('button', { name: 'Team view', exact: true }).click();
       assert.equal(await rows.count(), 30, 'reselecting the same scope keeps expansion');
     } else assert.equal(await showAll.count(), 0, 'short agendas need no expansion control');
