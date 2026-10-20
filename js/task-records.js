@@ -1,3 +1,4 @@
+import { showToast } from './toast.js';
 import {onDialogClosed} from './dialog-lifecycle.js';
 import { selectDocRecord, publishDocRead, setDocFilters } from './doc-context.js';
 // V5-UX-B02 — Tasks: DOM wiring only.
@@ -75,15 +76,7 @@ function announce(text) {
   if (live && live.textContent !== text) live.textContent = text;
 }
 
-function showToast(text) {
-  document.querySelectorAll(".toast").forEach((node) => node.remove());
-  const toast = document.createElement("div");
-  toast.className = "toast";
-  toast.setAttribute("role", "status");
-  toast.textContent = text;
-  document.body.append(toast);
-  setTimeout(() => toast.remove(), 4100);
-}
+
 
 /* ---------------------------------------------------------------- preferences */
 // The three presentation icons are wired by js/shell.js, which owns them for

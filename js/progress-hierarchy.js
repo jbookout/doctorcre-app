@@ -1,5 +1,6 @@
 import { STAGES } from './progress-board-model.js';
 import { boardPageUrl } from './progress-board-route.js';
+import { sectionForTab } from './control-room-queue-model.js';
 
 export function hierarchyUrl(boardId, cardId = '') {
   return boardPageUrl(boardId) + (cardId ? `?card=${encodeURIComponent(cardId)}` : '');
@@ -9,7 +10,7 @@ export function hierarchyView(data, address = '') {
   const tree = data.hierarchy;
   const cards = data.tasks || {};
   const seen = new Set();
-  while (tree.aliases?.[address] && !seen.has(address)) {
+  while (!Object.hasOwn(cards, address) && tree.aliases?.[address] && !seen.has(address)) {
     seen.add(address);
     address = tree.aliases[address];
   }
@@ -30,27 +31,46 @@ export function hierarchyView(data, address = '') {
       ...(slice ? [{ id: slice.id, label: slice.card_title }] : [])] };
 }
 
-export function mountHierarchy({ container, window: win, boardId, onOpen, onClose }) {
+export function mountHierarchy({ container, window: win, onOpen, onClose }) {
   const doc = container.ownerDocument;
   let data;
   let firstRead = true;
   let lastSignature = '';
   let address = new URL(win.location.href).searchParams.get('card') || '';
+  const inBoards = () => win.location.pathname !== '/control-room' ||
+    sectionForTab(new URLSearchParams(win.location.search).get('tab')) === 'boards';
   const node = (tag, text, className) => {
     const element = doc.createElement(tag);
     if (text) element.textContent = text;
     if (className) element.className = className;
     return element;
   };
-  function navigate(id, replace = false) {
+  function selectionUrl(id) {
+    const url = new URL(win.location.href);
+    if (id) url.searchParams.set('card', id);
+    else url.searchParams.delete('card');
+    return url.href;
+  }
+  function navigate(id) {
     address = id;
-    win.history[replace ? 'replaceState' : 'pushState']({}, '', hierarchyUrl(boardId, id));
+    win.history.pushState({}, '', selectionUrl(id));
     render();
     openSelected();
+    if (!hierarchyView(data, address).selected) focusDestination();
+  }
+  function focusDestination(origin = '') {
+    const trigger = [...container.querySelectorAll('[data-hierarchy-id]')]
+      .find(card => card.dataset.hierarchyId === origin)?.querySelector('button');
+    for (let details = trigger?.closest('details'); details; details = details.parentElement?.closest('details')) details.open = true;
+    (trigger || doc.getElementById('pipeline-title'))?.focus();
   }
   function openSelected() {
+    if (!inBoards()) { onClose?.(); return; }
     const selected = hierarchyView(data, address).selected;
-    if (selected) onOpen({ ...selected, title: selected.card_title, summary: selected.card_description });
+    if (selected) {
+      focusDestination(selected.id);
+      onOpen({ ...selected, title: selected.card_title, summary: selected.card_description });
+    }
     else onClose?.();
   }
   function cardNode(card) {
@@ -61,6 +81,11 @@ export function mountHierarchy({ container, window: win, boardId, onOpen, onClos
     button.addEventListener('click', () => navigate(card.id));
     article.addEventListener('click', event => { if (event.target === article) navigate(card.id); });
     article.append(button, node('p', card.card_description, 'hierarchy-description'));
+    if (card.status === 'blocked' || card.health === 'blocked' || card.status === 'question-for-orchestrator') {
+      article.dataset.blocked = 'true';
+      article.append(node('p', 'Blocked', 'hierarchy-status'));
+      article.append(node('p', `Next action: ${card.next_action || card.blocked_reason || 'Open details to review what is needed.'}`, 'hierarchy-next-action'));
+    }
     const counts = card.counts || card.pr_counts;
     if (counts) article.append(node('p', Object.entries(counts).map(([stage, count]) => `${count} ${stage}`).join(' · '), 'hierarchy-counts'));
     if (card.job_counts && Object.keys(card.job_counts).length)
@@ -94,6 +119,7 @@ export function mountHierarchy({ container, window: win, boardId, onOpen, onClos
       ...(view.history.length ? [`${view.history.length} in history`] : [])
     ].join(' · ');
     const heading = doc.getElementById('pipeline-title');
+    if (heading) heading.tabIndex = -1;
     if (heading) heading.textContent = ({requests:'Work Requests', slices:'Slices', prs:'Pull requests'})[view.level] || 'Work Requests';
     const previous = doc.activeElement?.closest('[data-hierarchy-id]')?.dataset.hierarchyId;
     const nav = node('nav', '', 'hierarchy-breadcrumbs');
@@ -105,9 +131,10 @@ export function mountHierarchy({ container, window: win, boardId, onOpen, onClos
       back.addEventListener('click', () => navigate(view.parent));
       nav.append(back);
     }
-    for (const crumb of view.crumbs) {
+    for (const [index, crumb] of view.crumbs.entries()) {
       const link = node('a', crumb.label);
-      link.href = hierarchyUrl(boardId, crumb.id);
+      link.href = selectionUrl(crumb.id);
+      if (index === view.crumbs.length - 1) link.setAttribute('aria-current', 'page');
       link.addEventListener('click', event => { event.preventDefault(); navigate(crumb.id); });
       nav.append(link);
     }
@@ -122,6 +149,10 @@ export function mountHierarchy({ container, window: win, boardId, onOpen, onClos
     submit.type = 'submit';
     jump.append(label, submit);
     jump.addEventListener('submit', event => { event.preventDefault(); navigate(input.value.trim()); });
+    const tools = node('details', '', 'hierarchy-tools');
+    tools.append(node('summary', 'Find by ID'), jump);
+    const toolbar = node('div', '', 'hierarchy-toolbar');
+    toolbar.append(nav, tools);
     const grid = node('div', '', view.level === 'prs' ? 'columns' : 'hierarchy-grid');
     if (view.level === 'prs') {
       for (const stage of STAGES.filter(stage => !['merged', 'live'].includes(stage.id))) {
@@ -137,7 +168,6 @@ export function mountHierarchy({ container, window: win, boardId, onOpen, onClos
         grid.append(column);
       }
     } else grid.append(...view.active.map(cardNode));
-    if (!view.active.length) grid.append(node('p', view.error || 'No active work at this level.', 'empty'));
     const completed = node('div');
     completed.id = 'hierarchy-completed';
     for (const [label, items] of [['Completed', view.completed], ['History', view.history]]) {
@@ -149,24 +179,47 @@ export function mountHierarchy({ container, window: win, boardId, onOpen, onClos
       disclosure.append(history);
       completed.append(disclosure);
     }
+    if (!view.active.length) {
+      const noun = ({ requests: 'Work Requests', slices: 'slices', prs: 'pull requests' })[view.level];
+      const place = ({ requests: 'on this board', slices: 'in this Work Request', prs: 'in this slice' })[view.level];
+      const empty = node('div', '', 'hierarchy-empty');
+      empty.append(node('p', view.error || (view.completed.length && !view.history.length
+        ? `All ${noun} ${place} are completed.` : `There are no active ${noun} ${place}.`)));
+      const action = node('button', view.completed.length ? `View completed ${noun}` : view.history.length ? 'View history'
+        : view.level === 'requests' ? 'Refresh board' : view.parent ? 'Back to slices' : 'Back to Work Requests');
+      action.type = 'button';
+      action.addEventListener('click', () => {
+        const disclosure = completed.querySelector('details');
+        if (disclosure) { disclosure.open = true; disclosure.querySelector('summary').focus(); }
+        else if (view.level === 'requests') doc.getElementById('board-retry')?.click();
+        else navigate(view.parent || '');
+      });
+      empty.append(action);
+      grid.append(empty);
+    }
     container.classList.add('hierarchy-board');
-    container.replaceChildren(nav, jump, grid, completed);
-    if (previous) [...container.querySelectorAll('[data-hierarchy-id]')].find(card => card.dataset.hierarchyId === previous)?.querySelector('button')?.focus();
+    container.replaceChildren(toolbar, grid, completed);
+    if (previous) focusDestination(previous);
   }
   const pop = () => {
+    if (!inBoards()) { onClose?.(); return; }
+    const origin = address;
     address = new URL(win.location.href).searchParams.get('card') || '';
     render();
     openSelected();
+    if (!hierarchyView(data, address).selected) focusDestination(origin);
   };
   win.addEventListener('popstate', pop);
   return { update(value) {
     const signature = JSON.stringify(value);
-    if (signature === lastSignature) return;
-    lastSignature = signature;
-    data = value; render();
-    if (firstRead) {
-      firstRead = false;
-      openSelected();
+    if (signature !== lastSignature) {
+      lastSignature = signature;
+      data = value; render();
+      if (firstRead) {
+        firstRead = false;
+        openSelected();
+      }
     }
+    return hierarchyView(data, address).selected;
   }, dispose() { win.removeEventListener('popstate', pop); } };
 }

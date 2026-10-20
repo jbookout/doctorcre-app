@@ -128,6 +128,75 @@ const workRow = (id, completed = false) => ({ id, kind: 'loop', source: 'synthet
   title: `Synthetic ${id}`, state: completed ? 'done' : 'open', completed,
   age: 1, last_activity_at: '2026-10-02T08:00:00Z', available_triage_actions: [] });
 const systemPath = '/control-room/progress/board/carr-v5';
+async function hierarchyEvidence(page, state, width, theme) {
+  await page.evaluate(theme => { document.documentElement.dataset.theme = theme; }, theme);
+  if (!process.env.HIERARCHY_EVIDENCE_DIR) return;
+  await mkdir(process.env.HIERARCHY_EVIDENCE_DIR, { recursive: true });
+  await page.screenshot({ path: `${process.env.HIERARCHY_EVIDENCE_DIR}/${state}-${width}-${theme}.png`, fullPage: true });
+}
+
+for (const width of [390, 1280]) for (const theme of ['dark', 'light']) {
+  test(`hierarchy taste has one heading and reaches work promptly at ${width}px ${theme}`, async t => {
+    const { page, errors } = await open(t, { width, path: systemPath, snapshotData: hierarchy });
+    const first = page.locator('[data-hierarchy-id="WR14"]');
+    await first.waitFor();
+    await hierarchyEvidence(page, 'requests', width, theme);
+    const headings = await page.locator('h1, h2').evaluateAll(nodes => nodes.filter(node =>
+      node.textContent === 'Work Requests' && node.getBoundingClientRect().height > 1 &&
+      getComputedStyle(node).clip === 'auto').length);
+    assert.equal(headings, 1, 'one visible Work Requests heading');
+    assert.equal(await page.locator('nav[aria-label="Breadcrumb"]').isVisible(), false, 'one hierarchy breadcrumb row');
+    const firstY = (await first.boundingBox()).y;
+    assert.ok(firstY < 380, `the first request starts at ${firstY}px, within 380px`);
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
+    assert.deepEqual(errors, []);
+  });
+
+  test(`hierarchy taste holds row skeletons while the census resolves first at ${width}px ${theme}`, async t => {
+    let release;
+    const held = new Promise(resolve => { release = resolve; });
+    t.after(() => release());
+    const { page, errors } = await open(t, { width, path: '/control-room?mode=live&tab=boards',
+      snapshotData: hierarchy, rows: Array.from({ length: 17 }, (_, index) => workRow(`pending-${index}`)),
+      control: async (route, rpc) => {
+        if (rpc.name !== 'read-progress-board') return false;
+        await held; await route.continue(); return true;
+      } });
+    await page.waitForFunction(() => document.querySelector('#system-work-coverage')?.textContent.length > 0);
+    await hierarchyEvidence(page, 'loading', width, theme);
+    assert.equal(await page.locator('#board-stages [data-card-id]').count(), 0, 'census cards do not replace the loading hierarchy');
+    const skeletons = page.locator('#board-stages .hierarchy-skeleton');
+    assert.equal(await skeletons.count(), 3, 'a short set of row-shaped skeletons holds the board frame');
+    assert.equal(await page.locator('#board-stages').getAttribute('aria-busy'), 'true');
+    const skeletonY = (await skeletons.first().boundingBox()).y;
+    release();
+    await page.locator('[data-hierarchy-id="WR14"]').waitFor();
+    assert.equal(await page.locator('#board-stages').getAttribute('aria-busy'), null);
+    assert.ok(Math.abs((await page.locator('[data-hierarchy-id="WR14"]').boundingBox()).y - skeletonY) < 48, 'the first row keeps its place after loading');
+    assert.deepEqual(errors, []);
+  });
+
+  for (const path of [systemPath, '/control-room?mode=live&tab=boards']) {
+    test(`hierarchy taste explains completed levels without empty panels at ${width}px ${theme} ${path}`, async t => {
+      const { page, errors } = await open(t, { width, path, snapshotData: hierarchy });
+      await page.locator('[data-hierarchy-id="WR14"] > button').click();
+      await page.locator('#hierarchy-completed > details > summary').click();
+      await page.locator('[data-hierarchy-id="WR14.S1"] > button').click();
+      await hierarchyEvidence(page, path === systemPath ? 'empty-page' : 'empty-room', width, theme);
+      assert.match(await page.locator('#board-stages').textContent(), /All pull requests in this slice are completed\./);
+      for (const id of ['board-questions', 'board-deliverables', 'board-decisions', 'board-notes']) {
+        assert.equal(await page.locator(`#${id}`).isVisible(), false, `${id} has no content to show`);
+      }
+      assert.doesNotMatch(await page.locator('#board-stages').textContent(), /Nothing needs you/);
+      await page.getByRole('button', { name: 'View completed pull requests', exact: true }).click();
+      assert.equal(await page.locator('#hierarchy-completed > details').getAttribute('open'), '');
+      assert.equal(await page.locator('#hierarchy-completed > details > summary').evaluate(node => node === document.activeElement), true);
+      assert.equal(await page.locator('[data-hierarchy-id="WR14.S1.J1.carr#1960"]').isVisible(), true);
+      assert.deepEqual(errors, []);
+    });
+  }
+}
+
 async function mountTestCosts(t, width = 390) {
   const { page, errors } = await open(t, { path: systemPath, width });
   await page.locator('#board-stages').waitFor();
@@ -484,7 +553,8 @@ for (const width of [320, 390, 1280]) for (const theme of ['light', 'dark'])
     await page.keyboard.press('Enter');
     assert.equal(await job.getAttribute('open'), '', 'keyboard expands job');
     await job.locator('> summary').scrollIntoViewIfNeeded();
-    const scroll = await page.evaluate(() => scrollY);
+    const scroll = await job.evaluate(node => node.closest('.app-layout-center').scrollTop);
+    assert.ok(scroll > 0, 'the job is scrolled into the board viewport');
     const changed = structuredClone(workQueue);
     changed.work_queue.board.order.reverse();
     changed.work_queue.revision++;
@@ -493,7 +563,7 @@ for (const width of [320, 390, 1280]) for (const theme of ['light', 'dark'])
     await page.locator('[data-queue-root] > details:first-child[data-queue-id="WR14"]').waitFor({ timeout: 5000 });
     assert.deepEqual(await page.locator('[data-queue-root] > details').evaluateAll(cards => cards.map(c => c.dataset.queueId)), ['WR14','WR20']);
     assert.equal(await page.evaluate(() => document.activeElement.parentElement.dataset.queueId), 'WR14.S1.J1');
-    assert.equal(await page.evaluate(() => scrollY), scroll);
+    assert.equal(await job.evaluate(node => node.closest('.app-layout-center').scrollTop), scroll);
     assert.equal(await job.getAttribute('open'), '');
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
     assert.match(await job.textContent(), /gpt-6.1-sol/);

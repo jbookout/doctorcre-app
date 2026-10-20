@@ -34,5 +34,9 @@ test('queue order is shown directly and every job opens its exported execution d
     assert.equal(doc.activeElement, button, 'same focused element survives reorder');
     assert.equal(doc.querySelector('[data-queue-detail="WR14.S1.J1"]'), panel);
     assert.ok(panel.open, 'open panel survives reorder');
+    board.dispose();
+    panel.open = false;
+    dom.window.dispatchEvent(new dom.window.PopStateEvent('popstate'));
+    assert.equal(panel.open, false, 'disposing the board releases queue history handling');
   } finally { board.dispose(); dom.window.close(); }
 });

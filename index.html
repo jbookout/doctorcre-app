@@ -32,8 +32,7 @@
   <main id="main" class="shell">
     <section data-layout-slot="sidebar" class="hero" aria-labelledby="workspaceTitle">
       <div>
-        <button type="button" class="back-link" id="accountBack" hidden>← All national accounts</button>
-        <h1 id="workspaceTitle">Deals</h1>
+        <h1 id="workspaceTitle" tabindex="-1">Deals</h1>
         <nav data-layout-slot="tabs" class="page-views" aria-label="Deals pages">
           <button type="button" class="workspace on" data-workspace="team" aria-current="page">All Deals</button>
           <button type="button" class="workspace" data-workspace="national_account">National Accounts</button>
@@ -51,9 +50,12 @@
       <a href="/deals?view=board">Board</a>
     </div>
 
+    <button type="button" class="back-link" id="accountBack" hidden>← All national accounts</button>
+
     <section class="account-grid" id="accountGrid" aria-label="National accounts" hidden></section>
 
     <section id="boardSection">
+      <header class="account-context" id="accountContext" hidden><div><h1 id="accountContextName" tabindex="-1"></h1><p id="accountContextOwner" class="subhead"></p></div></header>
       <div class="stats" id="stats" aria-label="Workspace summary"></div>
       <aside class="focus" id="focusStrip" aria-label="Suggested focus"></aside>
 
@@ -120,7 +122,6 @@
   </aside>
 
   <div class="confirm-dock" id="confirmDock" aria-label="Call capture suggestions" hidden></div>
-  <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
   <dialog id="formDialog" class="dialog">
     <form method="dialog" id="dialogForm">

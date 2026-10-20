@@ -1,3 +1,4 @@
+import { showToast } from './toast.js';
 // Wiring for the V5-UX-S01 prototype pages. Synthetic fixtures only: nothing
 // here reaches CARR, the network or a real record. The page attribute
 // data-prototype names which surface to wire; the pure decisions live in
@@ -70,12 +71,7 @@ function wireDetailDialog() {
 
 // ---------------------------------------------------------------- toast
 // Shows briefly, then is fully gone. With motion reduced it simply disappears.
-function showToast(text) {
-  document.querySelectorAll(".toast").forEach((node) => node.remove());
-  const toast = el("div", { class: "toast", role: "status" }, [el("span", { class: "orb", "data-state": "healthy", "aria-hidden": "true" }), document.createTextNode(text)]);
-  document.body.append(toast);
-  setTimeout(() => toast.remove(), 4100);
-}
+
 
 // ---------------------------------------------------------------- command feedback
 // The prototype runs the REAL kernel (command-feedback.mjs) against a simulated

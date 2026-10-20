@@ -568,3 +568,22 @@ test("Dot 23 follow-through: a cleared canonical action stays cleared", async ()
   const client=createLiveClient({fetchImpl:async()=>rpc({deal_id:"demo",next_step:null,next_action:null,thread:[{kind:"next_step",text:"Historical action"}],events:[]})});
   const page=await client.getDeal("demo");assert.equal(page.deal.next_step,"");assert.equal(page.thread[0]?.text,"Historical action");
 });
+
+
+test('deal creation honors Dell ownership and retries a lost note without recreating the deal or lead', async () => {
+ const calls=[]; let failNote=true;
+ const client=createLiveClient({selfActor:'joe',fetchImpl:async(_path,init)=>{
+  const req=JSON.parse(init.body).params;calls.push(req);
+  if(req.name==='new-deal') return rpc({deal_id:'demo-created'});
+  if(req.name==='get-deal-room') return rpc({base_version:3});
+  if(req.name==='add-deal-note' && failNote){failNote=false;throw new Error('receipt lost');}
+  return rpc({ok:true});
+ }});
+ const args={client:'C-demo',name:'Demo Review',owner:'dell',notes:'Demo opening note',idempotency_key:'demo-create-key'};
+ await assert.rejects(client.createDeal(args));
+ await client.createDeal(args);
+ assert.equal(calls.filter(c=>c.name==='new-deal').length,1);
+ const lead=calls.filter(c=>c.name==='set-lead');assert.equal(lead.length,1);assert.equal(lead[0].arguments.new_lead,'dell');
+ const notes=calls.filter(c=>c.name==='add-deal-note');assert.equal(notes.length,2);assert.deepEqual(notes[0],notes[1]);
+ assert.equal(notes[0].arguments.text,'Demo opening note');
+});

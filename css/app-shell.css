@@ -112,7 +112,8 @@ body.has-app-layout { padding: 0 0 var(--layout-bottom) var(--layout-rail) !impo
 .app-layout-sidebar, .app-layout-today { min-width: 0; overflow: auto; position: sticky; top: 0; height: calc(100dvh - var(--layout-bottom)); box-sizing: border-box; background: var(--ground); border-right: var(--hairline-width) solid var(--hairline); color: var(--fg); scrollbar-width: thin; scrollbar-color: var(--hairline-strong) transparent; }
 .app-layout-today { border: 0; border-left: var(--hairline-width) solid var(--hairline); }
 .app-layout-sidebar > *, .app-layout-today > * { margin: 0 var(--space-4); }
-.app-layout[data-sidebar=closed] .app-layout-sidebar, .app-layout[data-today=closed] .app-layout-today { visibility: hidden; pointer-events: none; }
+.app-layout[data-sidebar=closed] .app-layout-sidebar, .app-layout[data-today=closed] .app-layout-today { visibility: hidden; pointer-events: none; border: 0; }
+.app-layout[data-today=closed]:not([data-drawer=today]) .app-layout-today { display:none; }
 .app-layout-sidebar-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); min-height: var(--tabbar-height); border-bottom: var(--hairline-width) solid var(--hairline); margin-bottom: var(--space-4); }
 .app-layout-sidebar-head h2 { margin: 0; font: var(--font-weight-strong) var(--font-size-2)/1.2 var(--font-text); letter-spacing: 0; color: var(--fg); }
 .app-layout button:focus-visible, .app-layout a:focus-visible, .app-shell-header :focus-visible { outline: var(--focus-width) solid var(--focus-ring); outline-offset: 2px; }
@@ -218,6 +219,34 @@ body.has-app-layout .toast { right: var(--toast-right); bottom: calc(var(--layou
 .has-app-layout .workspace-directory .module-card p { display: none; }
 .has-app-layout .scope-switch small, .has-app-layout .scope-note, .has-app-layout .pipeline-copy { display: none; }
 .has-app-layout .sticky-table-header { display: none; }
+@media (min-width: 681px) {
+  .has-app-layout .table-frame thead { position: static; width: auto; height: auto; margin: 0; overflow: visible; clip: auto; white-space: normal; }
+  .has-app-layout .table-frame { container-type: inline-size; }
+  .has-app-layout .table-frame table { min-width: 0; }
+  .has-app-layout .col-work { width: 28%; }
+  .has-app-layout .col-phase { width: 16%; }
+  .has-app-layout .col-step { width: 27%; }
+  .has-app-layout .col-date { width: 12%; }
+  .has-app-layout .col-owner { width: 10%; }
+  .has-app-layout .col-actions { width: 7%; }
+  .has-app-layout .table-frame :is(th, td) { padding-inline: var(--space-2); }
+  .has-app-layout .table-frame .deal-cell { min-width: 0; }
+  .has-app-layout .table-frame .due { white-space: normal; }
+  @container (max-width: 850px) {
+    .has-app-layout .table-frame table { display: block; }
+    .has-app-layout .table-frame thead { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; }
+    .has-app-layout .table-frame tbody { display: grid; gap: var(--space-3); }
+    .has-app-layout .table-frame tr { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 200px), 1fr)); background: var(--surface-1); border-radius: var(--radius-2); }
+    .has-app-layout .table-frame td { display: block; min-width: 0; border: 0; }
+    .has-app-layout .table-frame td::before { display: block; margin-bottom: var(--space-1); color: var(--fg-muted); }
+    .has-app-layout .table-frame td:nth-child(1)::before { content: "Work record"; }
+    .has-app-layout .table-frame td:nth-child(2)::before { content: "Phase"; }
+    .has-app-layout .table-frame td:nth-child(3)::before { content: "Next step"; }
+    .has-app-layout .table-frame td:nth-child(4)::before { content: "Next date"; }
+    .has-app-layout .table-frame td:nth-child(5)::before { content: "Owner or agent"; }
+    .has-app-layout .table-frame .row-actions { display: flex; align-self: end; }
+  }
+}
 
 @media (max-width: 1100px) and (min-width: 761px) and (not ((hover: none) and (pointer: coarse) and (max-width: 1023px))) {
   .app-layout { --layout-left: 210px; --layout-right: 220px; }

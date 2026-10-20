@@ -497,12 +497,12 @@ test('Dr. CRE suggestion dock retry and reconcile hold while the switch is off a
  await card.locator('[data-choice="discuss"]').waitFor({state:'visible'});
  const id=await card.getAttribute('data-suggestion');
  await card.locator('[data-choice="discuss"]').click();
- const decisionAction=page.locator(`#receiptDock button[data-op="doc-suggestion:${id}:decision"]`);
+ const decisionAction=page.locator(`#receiptDock button[data-event][data-op="doc-suggestion:${id}:decision"]`);
  await decisionAction.waitFor({state:'visible'});
  assert.equal(await decisionAction.getAttribute('data-event'),'reconcile');
  await card.locator('[data-correction]').fill('Synthetic narrower wording.');
  await card.locator('[data-propose]').click();
- const correctionAction=page.locator(`#receiptDock button[data-op="doc-suggestion:${id}:correction"]`);
+ const correctionAction=page.locator(`#receiptDock button[data-event][data-op="doc-suggestion:${id}:correction"]`);
  await correctionAction.waitFor({state:'visible'});
  assert.equal(await correctionAction.getAttribute('data-event'),'dispatch');
  assert.equal(writes.length,2);

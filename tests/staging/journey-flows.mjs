@@ -56,6 +56,7 @@ export async function itinerary(page, fixture) {
   const stops = page.locator('#route-stops .composer-stop');
   await expect(stops).toHaveCount(2);
   expect(await stops.evaluateAll(nodes => nodes.map(node => node.dataset.propertyId))).toEqual(fixture.tour.property_ids);
+  await page.locator('#route-editing > summary').click();
   await stops.first().locator('[data-field="route_label"]').fill('X');
   await page.locator('#reload-composer').click();
   await expect(page.locator('#composer-state')).toHaveText('Saved route reloaded. Local edits were discarded.');
@@ -71,6 +72,7 @@ export async function itinerary(page, fixture) {
 export async function shareLifecycle(page, fixture) {
   await page.goto(`/tours/route-editor.html?tour=${fixture.tour.id}`);
   await expect(page.locator('#tour-name')).toHaveAttribute('title', fixture.tour.name, { timeout: 27000 });
+  await page.locator('.projection-card > summary').click();
   await page.locator('#receipt-digest').fill('sha256:' + 'b'.repeat(64));
   await page.locator('input[name="scope"][value="shortlist"]').check();
   const issue = page.waitForResponse(response => new URL(response.url()).pathname === '/api/tours/share/issue');
