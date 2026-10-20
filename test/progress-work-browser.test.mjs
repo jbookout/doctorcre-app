@@ -818,6 +818,23 @@ for (const width of [1440,390]) test(`PR card navigation preserves exact lineage
 });
 
 
+test('review history leads with the verdict and keeps execution receipts collapsed', async t => {
+  const {page,errors} = await open(t,{rpcReply:(rpc,payload) =>
+    rpc.name === 'engineering-passport' ? multiEnvelopeCanonicalFixture({reviewed:true}) : payload});
+  await page.waitForFunction(() => document.querySelector('#workReviewList').textContent.includes('actor:second'));
+  const history = page.locator('#workReviewList');
+  const review = history.locator('article').first();
+  assert.deepEqual(await review.locator(':scope > dl dt').allTextContents(), ['Verdict','Reviewer','Round','Next action']);
+  assert.deepEqual(await review.locator(':scope > dl dd').allTextContents(),
+    ['Passed','actor:second','Not recorded','Check remaining closure requirements.']);
+  assert.doesNotMatch(await history.innerText(), /schema version|envelope digest|sha256:/);
+  const receipts = history.locator('details').filter({has:page.locator('summary', {hasText:/^Execution receipts/})});
+  assert.equal(await receipts.getAttribute('open'), null);
+  await receipts.locator(':scope > summary').click();
+  assert.match(await receipts.innerText(), /engineering-slice-receipt.v1/);
+  assert.deepEqual(errors, []);
+});
+
 test('Tab reaches the linked Work Request and Enter opens its standalone detail', async t => {
   const {page,errors} = await open(t);
   const link = page.locator('.work-lineage a').filter({hasText:'WR-900'});
