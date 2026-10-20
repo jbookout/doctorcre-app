@@ -292,3 +292,40 @@ test('thirty notes show one concise summary and expand inline at phone width',as
  assert.equal(await page.locator('.deal-note:visible').count(),32);
  assert.equal(await page.locator('.updates-history').evaluate(n=>getComputedStyle(n).overflowY),'visible');
 });
+
+test('deal card controls meet the 44px target floor at phone and desktop widths',async t=>{
+ for(const width of [390,1280])for(const theme of ['dark','light'])await t.test(`${width}-${theme}`,async t=>{
+  const {page}=await open(t,width,{theme});
+  const undersized=[];
+  for(const expanded of [false,true]){
+   if(expanded){
+    await page.locator('.park-options > summary').click();
+    await page.locator('.updates-history > summary').click();
+   }
+   await animationsSettled(page);
+   const controls=await page.locator('#recordPanel :is(button,a,input,select,textarea,summary,[role="button"]):visible').evaluateAll(nodes=>nodes.map(n=>{
+    const {width,height}=n.getBoundingClientRect();
+    return {control:n.id||n.getAttribute('aria-label')||n.getAttribute('name')||n.textContent.trim().slice(0,60),width,height};
+   }));
+   assert.ok(controls.length>0,'card exercises its controls');
+   undersized.push(...controls.filter(n=>n.width<44||n.height<44));
+  }
+  assert.deepEqual(undersized,[]);
+ });
+});
+
+test('phone phase dates and secondary timeline text stay readable at 13px',async t=>{
+ const {page}=await open(t,390);
+ const sizes=await page.locator('.phase-rail :is(time,small)').evaluateAll(nodes=>nodes.map(n=>({text:n.textContent,size:parseFloat(getComputedStyle(n).fontSize)})));
+ assert.ok(sizes.length>=4,'recorded phase dates are present');
+ assert.deepEqual(sizes.filter(n=>n.size<13),[]);
+});
+
+test('readable phone phase labels stay inside their rail columns',async t=>{
+ const {page}=await open(t,390);
+ const overflow=await page.locator('.phase-rail li > span').evaluateAll(nodes=>nodes.flatMap(n=>{
+  const box=n.getBoundingClientRect(),range=document.createRange();range.selectNodeContents(n);
+  return [...range.getClientRects()].filter(line=>line.right>box.right+1).map(()=>n.textContent);
+ }));
+ assert.deepEqual(overflow,[]);
+});
