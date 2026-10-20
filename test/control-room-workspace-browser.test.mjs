@@ -488,6 +488,51 @@ test('hierarchy browser history keeps the full Control Room in Boards', async t 
  assert.deepEqual(errors,[]);
 });
 
+test('hierarchy refresh reconciles an open job after PR and slice rekeys', async t => {
+ const snapshot=structuredClone(hierarchy);
+ let id='WR14.S2.J1';
+ const original=snapshot.tasks['WR14.S2.J1.app#316'];
+ delete snapshot.tasks[original.id];
+ delete original.pr;
+ original.id=id;
+ snapshot.tasks[id]=original;
+ snapshot.hierarchy.slices['WR14.S2'].cards=[id];
+ snapshot.hierarchy.aliases={};
+ const {page,errors}=await open(t,{snapshotData:snapshot});
+ await page.locator('[data-hierarchy-id="WR14"] > button').click();
+ await page.locator('[data-hierarchy-id="WR14.S2"] > button').click();
+ await page.locator(`[data-hierarchy-id="${id}"] > button`).click();
+ await page.locator('#jobDialog').waitFor({state:'visible'});
+ await page.locator('#jobBody summary').click();
+ for (const [next,parent,title] of [
+  ['WR14.S2.J1.app#317','WR14.S2','Job now has a PR'],
+  ['WR14.S1.J2.app#317','WR14.S1','Job moved to another slice'],
+ ]) {
+  const job=snapshot.tasks[id];
+  delete snapshot.tasks[id];
+  snapshot.hierarchy.slices[job.parent_id].cards=snapshot.hierarchy.slices[job.parent_id].cards.filter(card=>card!==id);
+  Object.assign(job,{id:next,parent_id:parent,pr:317,card_title:title});
+  snapshot.tasks[next]=job;
+  snapshot.hierarchy.slices[parent].cards.push(next);
+  snapshot.hierarchy.aliases[id]=next;
+  id=next;
+  await page.locator('#board-retry').evaluate(button=>button.click());
+  await page.locator(`[data-hierarchy-id="${id}"] > button`).waitFor();
+  assert.equal(await page.locator('#jobTitle').textContent(),title);
+  assert.equal(await page.locator('#jobBody a[data-job-control="pr"]').getAttribute('href'),'https://github.com/jbookout/doctorcre-app/pull/317');
+  assert.doesNotMatch(await page.locator('#jobBody').textContent(),/Source entry is no longer present/);
+  assert.equal(await page.locator('#jobBody details').evaluate(node=>node.open),true);
+  assert.equal(await page.locator('#jobBody summary').evaluate(node=>node===document.activeElement),true);
+ }
+ await page.locator('#jobClose').click();
+ assert.equal(await page.locator(`[data-hierarchy-id="${id}"] > button`).evaluate(node=>node===document.activeElement),true);
+ snapshot.tasks[id].card_title='Updated while closed';
+ await page.locator('#board-retry').evaluate(button=>button.click());
+ await page.getByRole('button',{name:'Updated while closed',exact:true}).waitFor();
+ assert.equal(await page.locator('#jobDialog').isVisible(),false);
+ assert.deepEqual(errors,[]);
+});
+
 
 test('hierarchy drill-down focuses headings and history restores the originating job control', async t => {
  const {page,errors}=await open(t,{snapshotData:hierarchy});
