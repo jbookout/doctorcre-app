@@ -75,3 +75,36 @@ test('Clearing an empty portfolio search returns focus to the account card', asy
   await page.locator('.account-card').first().waitFor();
   assert.equal(await page.evaluate(() => document.activeElement.dataset.account), 'demo-account-001');
 });
+
+for (const reverse of [false, true]) {
+  test(`Account fallback agrees with the portfolio regardless of input order (reversed=${reverse})`, async t => {
+    const server = await fixtureServer();
+    t.after(() => server.close());
+    const browser = await chromium.launch();
+    t.after(() => browser.close());
+    const page = await browser.newPage({ viewport: { width: 1280, height: 900 }, reducedMotion: 'reduce' });
+    await page.clock.setFixedTime(new Date('2026-10-19T15:00:00Z'));
+    await page.route('**/api/**', route => route.fulfill({ json: {} }));
+    await page.route('**/data/board-seed.json', async route => {
+      const seed = await (await route.fetch()).json();
+      seed.deals = seed.deals.slice(0, 5).map(deal => ({ ...deal, attention: false, next_date: '2026-11-30' }));
+      Object.assign(seed.deals[0], { next_step: 'Later action' });
+      Object.assign(seed.deals[2], { name: 'Demo Same Name', next_date: '2026-10-20', next_step: 'Sooner flagged action', attention: true });
+      Object.assign(seed.deals[3], { name: 'Demo Same Name', next_date: '2026-10-20', next_step: 'Tied action' });
+      Object.assign(seed.deals[4], { next_date: null, next_step: 'Undated flagged action', attention: true });
+      if (reverse) seed.deals.reverse();
+      await route.fulfill({ json: seed });
+    });
+    await page.goto(`${server.origin}/deals?view=national&mode=fixture`);
+    const card = page.locator('.account-card').first();
+    const cardAction = await card.locator('.account-next-action strong').innerText();
+    await card.click();
+    const action = page.locator('#stats .next-account-action');
+    const accountAction = await action.locator('strong').innerText();
+    assert.deepEqual({ cardAction, accountAction }, {
+      cardAction: 'Sooner flagged action', accountAction: 'Sooner flagged action',
+    });
+    await action.click();
+    await page.waitForURL('**/deals?deal=d03');
+  });
+}
