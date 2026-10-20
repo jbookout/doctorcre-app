@@ -1,15 +1,17 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile, mkdir, access} from 'node:fs/promises';
-import {chromium, waitForAsync} from './browser-harness.mjs';
+import {chromium, waitForAsync, animationsSettled} from './browser-harness.mjs';
 const root=new URL('../',import.meta.url);
-async function open(t,width=1280,{theme='dark',sparse=false,showDetail=true}={}) {
+const longestNextStep='Confirm appointment with Demo Clinic';
+async function open(t,width=1280,{theme='dark',sparse=false,showDetail=true,height=960}={}) {
  const browser=await chromium.launch();t.after(()=>browser.close());
- const page=await browser.newPage({viewport:{width,height:960}});
+ const page=await browser.newPage({viewport:{width,height}});
  await page.addInitScript(theme=>localStorage.setItem('doctorcre.visual-preferences',JSON.stringify({theme})),theme);
  const errors=[];page.on('pageerror',e=>errors.push(e.message));
  const seed=JSON.parse(await readFile(new URL('data/board-seed.json',root),'utf8'));
  Object.assign(seed.deals.find(d=>d.id==='d14'),{phase:'Negotiation',next_step:'Prior status that must not prefill',workspace_kind:'team',account_client_id:null,operating_state:'active'});
+ seed.deals.find(d=>d.id==='d20').next_step=longestNextStep;
  if(sparse) seed.deals=seed.deals.filter((d,i)=>i<5||d.id==='d14');
  seed.threads.d14=[{id:'demo-old',kind:'note',actor:'joe',text:'Older demo update',created_at:'2026-09-01T15:30:00Z',recorded_at:'2026-09-01T15:30:00Z'},
  {id:'demo-new',kind:'note',actor:'dell',text:'Newest demo update. '+ 'Detailed synthetic context. '.repeat(120),created_at:'2026-10-02T17:45:00Z',recorded_at:'2026-10-02T17:45:00Z'}];
@@ -20,10 +22,9 @@ async function open(t,width=1280,{theme='dark',sparse=false,showDetail=true}={})
   const file=url.pathname==='/deals'?'pipeline.html':url.pathname.slice(1);
   try{return route.fulfill({body:await readFile(new URL(file,root)),contentType:/\.m?js$/.test(file)?'text/javascript':file.endsWith('.css')?'text/css':file.endsWith('.json')?'application/json':'text/html'});}catch{return route.fulfill({status:404,body:''});}
  });
- await page.goto('http://localhost/deals');
+ await page.goto('http://localhost/deals'+(showDetail?'?deal=d14':''));
  await waitForAsync(page,async()=>(await import('/js/pipeline.js')).state.deals.size>0);
- if(showDetail){await page.locator('.kanban-column [data-id="d14"] .card-open').click();
- await page.waitForSelector('#detailPhase');}
+ if(showDetail) await page.waitForSelector('#detailPhase');
  return {page,errors};
 }
 
@@ -138,4 +139,49 @@ test('an open snapshot removes board controls when a refresh records closure',as
  assert.equal(await page.locator('#detailPhase').count(),0);
  assert.equal(await page.locator('#detailOwner').count(),0);
  assert.deepEqual(errors,[]);
+});
+
+
+test('phone deal title stays clear of Doc through the full timeline scroll',async t=>{
+ const {page}=await open(t,390,{height:844});
+ await page.locator('#recordPanel > #docPresence').waitFor();
+ await animationsSettled(page);
+ const maxScroll=await page.locator('#recordPanel').evaluate(n=>n.scrollHeight-n.clientHeight);
+ assert.ok(maxScroll>0,'fixture exercises a scrolling snapshot');
+ for(const top of [...new Set([0,44,...Array.from({length:Math.ceil(maxScroll/16)},(_,i)=>i*16),maxScroll])]){
+  await page.locator('#recordPanel').evaluate((n,top)=>{n.scrollTop=top;},top);
+  const obscured=await page.locator('#panelTitle').evaluate(title=>{
+   const box=title.getBoundingClientRect(),hits=[];
+   for(let y=box.top+1;y<box.bottom;y+=4)for(let x=box.left+1;x<box.right;x+=4){
+    const hit=document.elementFromPoint(x,y);
+    if(!title.contains(hit))hits.push({x,y,hit:hit?.id||hit?.className});
+   }
+   return hits.slice(0,5);
+  });
+  assert.deepEqual(obscured,[],`title remains hit-testable at scroll ${top}`);
+ }
+ await page.locator('.deal-timeline').scrollIntoViewIfNeeded();
+ await mkdir(new URL('out/test-artifacts/dealroom-final/',root),{recursive:true});
+ await page.screenshot({path:new URL('out/test-artifacts/dealroom-final/390-d14-scrolled.png',root).pathname,animations:'disabled'});
+});
+
+
+test('desktop board shows the full longest next step within three lines',async t=>{
+ const {page}=await open(t,1280,{theme:'light',showDetail:false});
+ await animationsSettled(page);
+ const step=page.locator('.kanban-column [data-id="d20"] .next-line');
+ assert.equal(await step.textContent(),longestNextStep);
+ assert.equal(await step.getAttribute('title'),longestNextStep);
+ const layout=await step.evaluate(n=>{
+  const box=n.getBoundingClientRect(),range=document.createRange();range.selectNodeContents(n);
+  const lines=[...range.getClientRects()];
+  return {height:box.height,lineHeight:parseFloat(getComputedStyle(n).lineHeight),
+   clipped:lines.filter(line=>line.bottom>box.bottom+1||line.right>box.right+1).length};
+ });
+ assert.equal(layout.clipped,0,'the whole sentence fits inside the visible next step');
+ assert.ok(layout.height>layout.lineHeight*2,'fixture exercises the third line');
+ assert.ok(layout.height<=layout.lineHeight*3+1,'next step uses at most three lines');
+ assert.ok((await step.locator('..').boundingBox()).height<240,'card stays compact');
+ await mkdir(new URL('out/test-artifacts/dealroom-final/',root),{recursive:true});
+ await page.screenshot({path:new URL('out/test-artifacts/dealroom-final/1280-light-board.png',root).pathname,animations:'disabled'});
 });
