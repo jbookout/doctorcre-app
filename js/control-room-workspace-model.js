@@ -42,8 +42,7 @@ export function resolveJobTasks(tasks) {
 }
 
 export function attentionTasks(tasks) {
-  return resolveJobTasks(tasks).filter(task => ['failed', 'blocked', 'needs_joe'].includes(task.status || task.state)
-    || task.health === 'blocked').map(jobFacts).sort((a, b) => Number(b.state === 'failed') - Number(a.state === 'failed'));
+  return resolveJobTasks(tasks).filter(task => ['failed', 'blocked', 'needs_joe'].includes(task.status || task.state)).map(jobFacts).sort((a, b) => Number(b.state === 'failed') - Number(a.state === 'failed'));
 }
 
 export function governanceTasks(payload) {
