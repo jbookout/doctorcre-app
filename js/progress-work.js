@@ -165,10 +165,26 @@ function flow(task) {
   return svg;
 }
 function renderReviews() {
-  const facts = engineering ? [...engineering.reviewer_facts, ...engineering.receipts] : [];
+  const reviews = engineering?.reviewer_facts || [], receipts = engineering?.receipts || [];
   const observed = turns.filter(turn => scopedTurn(turn, scope) && /review|fix|revision/i.test(turn.kind + ' ' + turn.body));
-  patch($('workReviewList'), {facts, observed}, () => {
-    const rows = facts.map(fact => record(fact.slice_ref ? `Slice ${fact.slice_ref}` : 'Attempt receipt', fact));
+  patch($('workReviewList'), {reviews, receipts, observed}, () => {
+    const rows = reviews.map(fact => {
+      const verdict = fact.state[0].toUpperCase() + fact.state.slice(1);
+      const article = node('article', null, 'work-record');
+      article.append(node('h3', `${verdict} · ${fact.slice_ref} · ${fact.attempt_id}`), fields({
+        Verdict: verdict, Reviewer: fact.reviewer_ref, Round: 'Not recorded',
+        'Next action': {passed:'Check remaining closure requirements.', failed:'Resolve review findings and request another review.',
+          blocked:'Resolve the review blocker.'}[fact.state],
+      }));
+      const detail = node('details'); detail.append(node('summary', 'Review evidence'), node('pre', JSON.stringify(fact, null, 2)));
+      article.append(detail); return article;
+    });
+    if (!reviews.length && receipts.length) rows.push(node('p', 'No independent review is recorded. Request independent review.', 'work-empty'));
+    if (receipts.length) {
+      const detail = node('details'); detail.append(node('summary', `Execution receipts · ${receipts.length}`));
+      for (const receipt of receipts) detail.append(record(`Slice ${receipt.slice_ref} · ${receipt.attempt_id}`, receipt));
+      rows.push(detail);
+    }
     if (observed.length) { const history = node('details'); history.append(node('summary', 'Observed review and fix turns · not closure proof'));
       for (const turn of observed) history.append(record(`Turn ${turn.seq}`, {at:turn.created_at,seat:turn.origin_actor || turn.actor,body:turn.body})); rows.push(history); }
     return rows.length ? rows : [node('p','No linked review or fix receipt is available.','work-empty')];
