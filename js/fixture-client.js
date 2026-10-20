@@ -1382,7 +1382,7 @@ export async function createFixtureClient(opts = {}) {
           account_name: 'Demo National Practice', account_owner: fixtureAccountOwner, open_deals: activeNational.length,
           attention_deals: activeNational.filter((d) => d.attention).length,
           overdue_deals: activeNational.filter((d) => d.next_date && d.next_date < today).length,
-          stale_deals: activeNational.filter((d) => !d.last_touch || d.last_touch < addDays(today, -14)).length,
+          stale_deals: activeNational.filter((d) => !d.last_touch || d.last_touch <= addDays(today, -14)).length,
           parked_deals: national.length - activeNational.length, last_review_at: lastCallAt }],
         open_session: [...reviewSessions.values()].find((s) => s.status === 'open') || null,
         as_of: asOf,

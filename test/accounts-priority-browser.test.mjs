@@ -23,8 +23,9 @@ for (const width of [390, 1280]) for (const theme of ['dark', 'light']) {
     assert.equal(await page.locator('#focusStrip').innerText(), '');
     assert.ok(await nextAction.evaluate(node => node.getBoundingClientRect().bottom < innerHeight), 'next action fits the first phone viewport');
     await nextAction.click();
-    await page.locator('#dealDialog').waitFor({ state: 'visible' });
-    assert.match(await page.locator('#dealDialog').innerText(), /Demo Vision Center/);
+    await page.waitForURL('**/deals?deal=*');
+    await page.locator('#detailUpdateForm').waitFor();
+    assert.match(await page.locator('#recordPanel').innerText(), /Demo Vision Center/);
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
   });
 }
