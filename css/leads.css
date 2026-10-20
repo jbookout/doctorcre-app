@@ -33,6 +33,7 @@
 
 /* --- hottest leads and territory ----------------------------------------- */
 .top-grid { display: grid; grid-template-columns: minmax(0, 1.12fr) minmax(0, 1fr); gap: var(--space-4); margin-top: var(--space-5); }
+.leads-workspace:has(#refreshEmptyBoard) .top-grid { display: none; }
 .hot-section, .territory { min-width: 0; padding: var(--space-4); }
 .section-heading { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-3); margin-bottom: var(--space-3); }
 .section-heading h2 { font-size: var(--font-size-2); }

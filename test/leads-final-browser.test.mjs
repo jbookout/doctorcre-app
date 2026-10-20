@@ -24,6 +24,7 @@ test('An unclaimed New lead can be claimed on the first screen of a 45-lead boar
   await routeLeads(page, { getBoard: () => board, onWrite: value => writes.push(value) });
   await page.goto('http://localhost/leads');
   await page.locator('.lead-card').first().waitFor();
+  await page.locator('.market-marker').first().waitFor();
   const claim = page.locator('#leadBoard').getByRole('button', { name: 'Claim', exact: true }).first();
   assert.ok(await claim.count(), 'the board exposes a labelled Claim action');
   const bounds = await claim.boundingBox();
