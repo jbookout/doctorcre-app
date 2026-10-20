@@ -73,3 +73,7 @@
 .deal-checklist li strong { font-size: var(--font-size-1); }
 .deal-checklist li details { grid-column: 1 / -1; font-size: var(--font-size-1); }
 .deal-checklist li[data-state="due"] strong, .deal-checklist li[data-state="overdue"] strong { color: var(--status-danger-ink); }
+
+.deal-checklist .checklist-next { display: grid; gap: var(--space-1); margin-block-start: var(--space-2); padding: var(--space-3); border-inline-start: 3px solid var(--status-danger-ink); background: var(--surface-raised); }
+.deal-checklist .checklist-next strong { font-size: var(--font-size-3); }
+.deal-checklist .checklist-next > span { color: var(--status-danger-ink); font-size: var(--font-size-1); font-weight: normal; }

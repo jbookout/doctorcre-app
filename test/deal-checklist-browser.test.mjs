@@ -23,7 +23,7 @@ for (const width of [390, 1280]) test(`deal checklist opens and refreshes in the
     window.checklistComplete = false;
     state.client.getDeal = async (...args) => ({ ...await get(...args), checklist: {
       schema_version: 'deal-checklist.v1', template_state: 'current',
-      due_items: window.checklistComplete ? [] : [{ id: 'demo', status: 'due' }],
+      due_items: window.checklistComplete ? [] : [{ id: 'review', label: 'Demo attorney review', status: 'due', due_on: '2026-10-20' }],
       phases: [{ id: 'legal', label: 'Legal / lease', items: [{ id: 'review', label: 'Demo attorney review', status: window.checklistComplete ? 'complete' : 'due', due_on: '2026-10-20', evidence_ref: 'Demo contract clause 3', source: { document: 'deal-room-kit', version: 1 } }] }],
     } });
   });
