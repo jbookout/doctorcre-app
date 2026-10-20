@@ -4,7 +4,7 @@ import {readFile, mkdir, access} from 'node:fs/promises';
 import {chromium, waitForAsync, animationsSettled} from './browser-harness.mjs';
 const root=new URL('../',import.meta.url);
 const longestNextStep='Confirm the Demo Clinic appointment and send notes';
-async function open(t,width=1280,{theme='dark',sparse=false,showDetail=true,height=960,nextStep='Prior status that must not prefill',closedOn=null}={}) {
+async function open(t,width=1280,{theme='dark',sparse=false,showDetail=true,height=960,nextStep='Prior status that must not prefill',closedOn=null,manyUpdates=false}={}) {
  const browser=await chromium.launch();t.after(()=>browser.close());
  const page=await browser.newPage({viewport:{width,height}});
  await page.addInitScript(theme=>localStorage.setItem('doctorcre.visual-preferences',JSON.stringify({theme})),theme);
@@ -15,6 +15,7 @@ async function open(t,width=1280,{theme='dark',sparse=false,showDetail=true,heig
  if(sparse) seed.deals=seed.deals.filter((d,i)=>i<5||d.id==='d14');
  seed.threads.d14=[{id:'demo-old',kind:'note',actor:'joe',text:'Older demo update',created_at:'2026-09-01T15:30:00Z',recorded_at:'2026-09-01T15:30:00Z'},
  {id:'demo-new',kind:'note',actor:'dell',text:'Newest demo update. '+ 'Detailed synthetic context. '.repeat(120),created_at:'2026-10-02T17:45:00Z',recorded_at:'2026-10-02T17:45:00Z'}];
+ if(manyUpdates) seed.threads.d14=Array.from({length:30},(_,i)=>({id:`demo-note-${i}`,kind:'note',actor:'joe',text:`Demo update ${i}. `+'Detailed synthetic context. '.repeat(12),created_at:new Date(Date.UTC(2026,9,20,12,0,i)).toISOString()}));
  await page.route('**/*',async route=>{
   const url=new URL(route.request().url());if(url.origin!=='http://localhost')return route.abort();
   if(url.pathname==='/data/board-seed.json')return route.fulfill({json:seed});
@@ -272,4 +273,20 @@ test('refresh removes and restores Updates as recorded notes change',async t=>{
  await page.locator('.deal-note[data-id="demo-restored"]').waitFor({state:'attached'});
  assert.equal(await page.locator('.deal-updates').count(),1);
  assert.equal(await page.getByLabel('Update',{exact:true}).inputValue(),'Demo unsaved draft');
+});
+
+
+test('thirty notes show one concise summary and expand inline at phone width',async t=>{
+ const {page}=await open(t,390,{manyUpdates:true});
+ const overview=page.locator('.updates-overview p');
+ assert.ok((await overview.textContent()).length<=180);
+ assert.match(await overview.textContent(),/Demo update 29/);
+ assert.doesNotMatch(await overview.textContent(),/Demo update 28/);
+ const box=await overview.evaluate(n=>({height:n.getBoundingClientRect().height,lineHeight:parseFloat(getComputedStyle(n).lineHeight),overflow:getComputedStyle(n).overflowY}));
+ assert.ok(box.height<=box.lineHeight*2+1,JSON.stringify(box));
+ assert.equal(box.overflow,'visible');
+ assert.equal(await page.locator('.deal-note:visible').count(),0);
+ await page.locator('.updates-history > summary').click();
+ assert.equal(await page.locator('.deal-note:visible').count(),30);
+ assert.equal(await page.locator('.updates-history').evaluate(n=>getComputedStyle(n).overflowY),'visible');
 });
