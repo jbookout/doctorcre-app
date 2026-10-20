@@ -504,7 +504,7 @@
       "write": false,
       "producer": {
         "repository": "jbookout/carr-system",
-        "source_commit": "bfe552a90e2e329f6b2c2b036d94d7237eff152a"
+        "source_commit": "2819da61ed85797f78e7d8fd332c865fd551bd05"
       },
       "response": {
         "schema_version": "local-deals-board.v1",
@@ -571,7 +571,7 @@
     "get-deal-room": {
       "producer": {
         "repository": "jbookout/carr-system",
-        "source_commit": "bfe552a90e2e329f6b2c2b036d94d7237eff152a"
+        "source_commit": "2819da61ed85797f78e7d8fd332c865fd551bd05"
       },
       "response": {
         "schema_version": "deal-timeline.v1",
