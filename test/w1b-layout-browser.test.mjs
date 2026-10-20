@@ -355,6 +355,7 @@ for (const status of [401,403,503]) test(`Add date editor handles HTTP ${status}
 
 for (const status of [401,403,503]) test(`Deal detail refresh distinguishes HTTP ${status} from authorization refusal`,async t=>{
  const {page,goto,errors}=await open(t,{clock:true});let failure=false,failedReads=0;
+ await page.route('**/api/v1/business/clients/demo-client',route=>route.fulfill({json:{record:{id:'demo-client',name:'Synthetic client'}}}));
  await page.route('**/mcp',route=>{
   if(route.request().postDataJSON().params.name!=='get-deal-room') return route.fallback();
   if(failure) {failedReads++;return route.fulfill({status,body:'Unavailable'});}
