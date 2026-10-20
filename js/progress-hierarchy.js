@@ -168,7 +168,6 @@ export function mountHierarchy({ container, window: win, onOpen, onClose }) {
         grid.append(column);
       }
     } else grid.append(...view.active.map(cardNode));
-    if (!view.active.length) grid.append(node('p', view.error || 'No active work at this level.', 'empty'));
     const completed = node('div');
     completed.id = 'hierarchy-completed';
     for (const [label, items] of [['Completed', view.completed], ['History', view.history]]) {
@@ -179,6 +178,24 @@ export function mountHierarchy({ container, window: win, onOpen, onClose }) {
       history.append(...items.map(cardNode));
       disclosure.append(history);
       completed.append(disclosure);
+    }
+    if (!view.active.length) {
+      const noun = ({ requests: 'Work Requests', slices: 'slices', prs: 'pull requests' })[view.level];
+      const place = ({ requests: 'on this board', slices: 'in this Work Request', prs: 'in this slice' })[view.level];
+      const empty = node('div', '', 'hierarchy-empty');
+      empty.append(node('p', view.error || (view.completed.length && !view.history.length
+        ? `All ${noun} ${place} are completed.` : `There are no active ${noun} ${place}.`)));
+      const action = node('button', view.completed.length ? `View completed ${noun}` : view.history.length ? 'View history'
+        : view.level === 'requests' ? 'Refresh board' : view.parent ? 'Back to slices' : 'Back to Work Requests');
+      action.type = 'button';
+      action.addEventListener('click', () => {
+        const disclosure = completed.querySelector('details');
+        if (disclosure) { disclosure.open = true; disclosure.querySelector('summary').focus(); }
+        else if (view.level === 'requests') doc.getElementById('board-retry')?.click();
+        else navigate(view.parent || '');
+      });
+      empty.append(action);
+      grid.append(empty);
     }
     container.classList.add('hierarchy-board');
     container.replaceChildren(toolbar, grid, completed);

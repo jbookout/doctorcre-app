@@ -390,10 +390,13 @@ footer { padding-top: 8px; }
 .hierarchy-status { color: var(--status-danger-ink); font-size: var(--font-size-1); font-weight: var(--font-weight-strong); margin-block: var(--space-2); }
 .hierarchy-next-action { color: var(--fg); font-size: var(--font-size-2); margin-block: var(--space-2) var(--space-3); }
 #hierarchy-completed { margin-top: var(--space-5); }
+.hierarchy-empty { grid-column: 1 / -1; padding-block: var(--space-5); color: var(--fg-muted); font-size: var(--font-size-2); }
+.hierarchy-empty p { margin-bottom: var(--space-3); }
+.lower-grid:not(:has(> .panel:not([hidden]))) { display: none; }
 @media (hover: hover) { .hierarchy-card-title:hover, .hierarchy-breadcrumbs a:hover { color: var(--fg); text-decoration: underline; text-underline-offset: .2em; } }
 .hierarchy-card-title:active { transform: scale(var(--press-scale)); transform-origin: left; }
 .hierarchy-board :is(a, button, input, summary):focus-visible, #pipeline-title:focus-visible { outline: var(--focus-width) solid var(--focus-ring); outline-offset: var(--space-1); }
-#hierarchy-jump button, .hierarchy-breadcrumbs button { color: var(--fg-muted); background: transparent; border: var(--hairline-width) solid var(--hairline); border-radius: var(--radius-2); padding: var(--space-2) var(--space-3); min-height: var(--touch); cursor: pointer; }
+#hierarchy-jump button, .hierarchy-breadcrumbs button, .hierarchy-empty button { color: var(--fg-muted); background: transparent; border: var(--hairline-width) solid var(--hairline); border-radius: var(--radius-2); padding: var(--space-2) var(--space-3); min-height: var(--touch); cursor: pointer; }
 
 @media (max-width: 760px) {
   .hierarchy-breadcrumbs a:not([aria-current]) { display: none; }
