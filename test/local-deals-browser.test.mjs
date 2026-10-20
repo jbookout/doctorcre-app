@@ -754,3 +754,26 @@ test('desktop next steps wrap to two lines and retain the full recorded text',as
   assert.equal(await line.textContent(),'Counsel replied','structured notes render as the recorded sentence');
   assert.deepEqual(errors,[]);
 });
+
+test('a delayed context availability probe cannot hide a newer readable drawer',async t=>{
+ const {page,errors}=await open(t);
+ await page.evaluate(async()=>{
+  const {state}=await import('/js/pipeline.js');const read=state.client.getDeal.bind(state.client);
+  state.client.getDeal=async id=>{const detail=await read(id);return {...detail,deal:{...detail.deal,client_id:'demo-client'},critical_dates:[],participants:[]};};
+  state.client.getPartyRecord=async()=>({record:{id:'demo-client',name:'Demo Current Client'}});
+ });
+ await page.locator('.kanban-column [data-id="d14"] .card-open').click();
+ await page.locator('#panelContextOpen').waitFor({state:'visible'});
+ await page.evaluate(async()=>{
+  const {state}=await import('/js/pipeline.js');const read=state.client.getPartyRecord;let first=true;
+  state.client.getPartyRecord=args=>{if(first){first=false;return new Promise(resolve=>{window.finishAvailability=()=>resolve({record:null});});}return read(args);};
+  dispatchEvent(new Event('online'));
+ });
+ await waitForAsync(page,()=>typeof window.finishAvailability==='function');
+ await page.locator('#panelContextOpen').click();
+ await page.getByText('Demo Current Client',{exact:true}).waitFor();
+ await page.evaluate(()=>window.finishAvailability());
+ await page.locator('#contextDrawerClose').click();
+ assert.equal(await page.locator('#panelContextOpenWrap').isVisible(),true);
+ assert.deepEqual(errors,[]);
+});
