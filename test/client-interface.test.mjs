@@ -4,7 +4,7 @@ import { readFile } from "node:fs/promises";
 import { createFixtureClient } from "../js/fixture-client.js";
 import { createLiveClient } from "../js/live-client.js";
 
-const required = ["getInvoiceTracker", "markInvoicePaid", "getBoard", "getDeal", "getJevDealReading", "getChanges", "presenceLease", "patchDealField", "resolveConflict", "addDealNote", "setNextStep", "addCriticalDate", "createDeal", "loopBoard", "todayTriage", "readLoop", "addLoop", "updateLoop", "closeLoop", "loopHeaders", "listIndustryEvents", "addIndustryEvent", "updateIndustryEvent", "commandCenter", "engineeringPassport", "readPortfolio", "workRequestCard", "declineWorkRequest", "supersedeWorkRequest", "setWorkShapeDisposition", "incidentBoard", "currentWorkItem", "currentWorkRequests", "governanceQueue", "getIncident", "linkIncidentWorkRequest", "notificationFeed", "acknowledgeNotification", "notificationPreferences", "setNotificationPreference", "readDocConversation", "listDocConversations", "createDocConversation", "renameDocConversation", "shareDocConversation", "docOutcomeCards"];
+const required = ["setProspectEngagementStatus", "getInvoiceTracker", "markInvoicePaid", "getBoard", "getDeal", "getJevDealReading", "getChanges", "presenceLease", "patchDealField", "resolveConflict", "addDealNote", "setNextStep", "addCriticalDate", "createDeal", "loopBoard", "todayTriage", "readLoop", "addLoop", "updateLoop", "closeLoop", "loopHeaders", "listIndustryEvents", "addIndustryEvent", "updateIndustryEvent", "commandCenter", "engineeringPassport", "readPortfolio", "workRequestCard", "declineWorkRequest", "supersedeWorkRequest", "setWorkShapeDisposition", "incidentBoard", "currentWorkItem", "currentWorkRequests", "governanceQueue", "getIncident", "linkIncidentWorkRequest", "notificationFeed", "acknowledgeNotification", "notificationPreferences", "setNotificationPreference", "readDocConversation", "listDocConversations", "createDocConversation", "renameDocConversation", "shareDocConversation", "docOutcomeCards"];
 
 test("industry events use the authenticated read and versioned writes", async () => {
   const calls = [];
@@ -134,4 +134,39 @@ test('prospect engagement writes require acknowledged success and retain uncerta
   else await assert.rejects(live.setProspectEngagementStatus(args),{code:'unknown_outcome'});
   assert.deepEqual(calls,[{name:'set-prospect-engagement-status',arguments:args}]);
  }
+});
+
+for (const failure of ['network','json','http','rpc','tool']) test(`prospect engagement classifies ${failure} as uncertain and permits same-key replay`,async()=>{
+ const calls=[];
+ const client=createLiveClient({docContext:false,fetchImpl:async(_path,init)=>{
+  calls.push(JSON.parse(init.body).params.arguments);
+  if(calls.length>1)return new Response(JSON.stringify({result:{content:[{text:'{"ok":true}'}]}}));
+  if(failure==='network')throw new TypeError('Synthetic network failure');
+  if(failure==='json')return new Response('invalid JSON');
+  if(failure==='http')return new Response('Unavailable',{status:503});
+  if(failure==='rpc')return new Response(JSON.stringify({error:{message:'Synthetic uncertain error'}}));
+  return new Response(JSON.stringify({result:{isError:true,content:[{text:'{"error":"internal_error"}'}]}}));
+ }});
+ const args={client_id:'synthetic-client',base_version:7,status:'inactive',reason:'Synthetic deferral',idempotency_key:'same-key'};
+ await assert.rejects(client.setProspectEngagementStatus(args),{code:'unknown_outcome'});
+ await client.setProspectEngagementStatus(args);
+ assert.deepEqual(calls,[args,args]);
+});
+
+test('fixture engagement preserves deal history, shares client state and replays the same key',async()=>{
+ const seed=JSON.parse(await readFile(new URL('../data/board-seed.json',import.meta.url),'utf8'));
+ for(const deal of seed.deals.filter(d=>['d14','d20'].includes(d.id)))Object.assign(deal,{client_id:'demo-client',client_status:'prospect',client_version:7,invoiced_on:null});
+ const client=await createFixtureClient({seedUrl:`data:application/json;base64,${Buffer.from(JSON.stringify(seed)).toString('base64')}`,docContext:false});
+ const before=await client.getDeal('d14');
+ const args={client_id:'demo-client',base_version:7,status:'inactive',reason:'Synthetic deferral',expected_actor:'joe',idempotency_key:'synthetic-fixture-inactive'};
+ const result=await client.setProspectEngagementStatus(args);
+ assert.deepEqual(await client.setProspectEngagementStatus(args),result);
+ assert.equal((await client.getBoard()).deals.some(d=>['d14','d20'].includes(d.id)),false);
+ const hidden=await client.getDeal('d14');
+ assert.equal(hidden.deal.prospect_engagement_status,'inactive');assert.deepEqual(hidden.thread,before.thread);
+ assert.deepEqual(hidden.history,before.history);
+ await assert.rejects(client.setProspectEngagementStatus({...args,status:'active',idempotency_key:'synthetic-stale'}));
+ await client.setProspectEngagementStatus({...args,status:'active',base_version:result.client_version,idempotency_key:'synthetic-fixture-active'});
+ const restored=(await client.getBoard()).deals.filter(d=>['d14','d20'].includes(d.id));
+ assert.equal(restored.length,2);assert.ok(restored.every(d=>d.client_version===9&&d.prospect_engagement_status==='active'));
 });

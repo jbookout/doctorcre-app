@@ -827,3 +827,89 @@ test('a delayed context availability probe cannot hide a newer readable drawer',
  assert.equal(await page.locator('#panelContextOpenWrap').isVisible(),true);
  assert.deepEqual(errors,[]);
 });
+
+for(const failure of ['network','json','http']) test(`inactive ${failure} retry keeps its original request key`,async t=>{
+ const {page}=await open(t);
+ await page.evaluate(async failure=>{
+  const {state}=await import('/js/pipeline.js');const get=state.client.getBoard;const detail=state.client.getDeal;
+  const {createLiveClient}=await import('/js/live-client.js');window.engagementWrites=[];
+  let inactive=false;
+  state.client.getBoard=async()=>{const b=await get();return {...b,deals:b.deals.filter(d=>!inactive||d.id!=='d14').map(d=>d.id==='d14'?{...d,client_status:'prospect',client_id:'demo-client',client_version:7,prospect_engagement_status:'active'}:d)}};
+  state.client.getDeal=async id=>{const r=await detail(id);return {...r,deal:{...r.deal,client_id:'demo-client',client_version:7,prospect_engagement_status:inactive?'inactive':'active'}}};
+  const live=createLiveClient({docContext:false,fetchImpl:async(_url,init)=>{
+   window.engagementWrites.push(JSON.parse(init.body).params.arguments);
+   if(window.engagementWrites.length===1){
+    if(failure==='network')throw new TypeError('Synthetic network failure');
+    return new Response(failure==='json'?'invalid JSON':'Unavailable',{status:failure==='http'?503:200});
+   }
+   inactive=true;return new Response(JSON.stringify({result:{content:[{text:'{"ok":true}'}]}}));
+  }});
+  state.client.setProspectEngagementStatus=live.setProspectEngagementStatus;
+ },failure);
+ await refresh(page);await page.locator('.kanban-column [data-id="d14"] .card-open').click();
+ await page.locator('#detailInactiveForm input').fill('Synthetic deferred project');
+ await page.locator('#detailInactiveForm button').click();
+ await page.getByRole('button',{name:'Check outcome',exact:true}).waitFor();
+ await page.getByRole('button',{name:'Check outcome',exact:true}).click();
+ await waitForAsync(page,async()=>!(await import('/js/pipeline.js')).state.deals.has('d14'));
+ const writes=await page.evaluate(()=>window.engagementWrites);
+ assert.equal(writes.length,2);assert.deepEqual(writes[1],writes[0]);
+});
+
+for(const width of [390,1280]) test(`uncertain committed engagement resolves by read-back and permits another prospect at ${width}`,async t=>{
+ const {page,errors}=await open(t,{width});
+ await page.evaluate(async()=>{
+  const {state}=await import('/js/pipeline.js');const get=state.client.getBoard;const detail=state.client.getDeal;
+  window.engagementWrites=[];window.engagementReads=[];const inactive=new Set();
+  state.client.getBoard=async()=>{const b=await get();return {...b,deals:b.deals.filter(d=>!inactive.has(d.id)).map(d=>['d14','d20'].includes(d.id)?{...d,client_status:'prospect',client_id:'demo-client-'+d.id,client_version:7,prospect_engagement_status:'active',phase:'Research',outcome:null,closed_on:null}:d)}};
+  state.client.getDeal=async id=>{window.engagementReads.push(id);const r=await detail(id);return {...r,deal:{...r.deal,id,phase:'Research',outcome:null,closed_on:null,client_id:'demo-client-'+id,client_version:inactive.has(id)?8:7,prospect_engagement_status:inactive.has(id)?'inactive':'active'}}};
+  state.client.setProspectEngagementStatus=async args=>{
+   window.engagementWrites.push(args);inactive.add(args.client_id.replace('demo-client-',''));
+   if(window.engagementWrites.length===1)throw Object.assign(new Error('Synthetic lost confirmation'),{code:'unknown_outcome'});
+   return {ok:true};
+  };
+ });
+ await refresh(page);await page.locator('.kanban-column [data-id="d14"] .card-open').click();
+ await page.locator('#detailInactiveForm input').fill('Synthetic deferred project');
+ await page.locator('#detailInactiveForm button').click();
+ await waitForAsync(page,()=>!document.querySelector('#recordPanel').open);
+ await page.locator('.kanban-column [data-id="d20"] .card-open').click();
+ await page.locator('#detailInactiveForm input').fill('Synthetic second deferral');
+ await page.locator('#detailInactiveForm button').click();
+ await waitForAsync(page,async()=>!(await import('/js/pipeline.js')).state.deals.has('d20'));
+ const observed=await page.evaluate(()=>({writes:window.engagementWrites,reads:window.engagementReads}));
+ assert.equal(observed.writes.length,2);assert.notEqual(observed.writes[0].idempotency_key,observed.writes[1].idempotency_key);
+ assert.ok(observed.reads.filter(id=>id==='d14').length>=2);
+ assert.deepEqual(errors,[]);
+});
+
+test('an unresolved prospect permits another prospect while keeping its own same-key retry',async t=>{
+ const {page,errors}=await open(t);
+ await page.evaluate(async()=>{
+  const {state}=await import('/js/pipeline.js');const get=state.client.getBoard;const detail=state.client.getDeal;
+  window.engagementWrites=[];const inactive=new Set();
+  state.client.getBoard=async()=>{const b=await get();return {...b,deals:b.deals.filter(d=>!inactive.has(d.id)).map(d=>['d14','d20'].includes(d.id)?{...d,client_status:'prospect',client_id:'demo-client-'+d.id,client_version:7,prospect_engagement_status:'active',phase:'Research',outcome:null,closed_on:null}:d)}};
+  state.client.getDeal=async id=>{const r=await detail(id);return {...r,deal:{...r.deal,id,phase:'Research',outcome:null,closed_on:null,client_id:'demo-client-'+id,client_version:7,prospect_engagement_status:'active'}}};
+  state.client.setProspectEngagementStatus=async args=>{
+   window.engagementWrites.push(args);
+   if(window.engagementWrites.length===1)throw Object.assign(new Error('Synthetic lost confirmation'),{code:'unknown_outcome'});
+   inactive.add(args.client_id.replace('demo-client-',''));return {ok:true};
+  };
+ });
+ await refresh(page);await page.locator('.kanban-column [data-id="d14"] .card-open').click();
+ await page.locator('#detailInactiveForm input').fill('Synthetic first deferral');
+ await page.locator('#detailInactiveForm button').click();
+ await page.getByRole('button',{name:'Check outcome',exact:true}).waitFor();
+ await page.getByLabel('Close deal',{exact:true}).click();
+ await page.locator('.kanban-column [data-id="d20"] .card-open').click();
+ await page.locator('#detailInactiveForm input').fill('Synthetic second deferral');
+ await page.locator('#detailInactiveForm button').click();
+ await waitForAsync(page,()=>!document.querySelector('#recordPanel').open);
+ await page.locator('.kanban-column [data-id="d14"] .card-open').click();
+ assert.equal(await page.locator('#detailInactiveForm input').inputValue(),'Synthetic first deferral');
+ await page.getByRole('button',{name:'Check outcome',exact:true}).click();
+ await waitForAsync(page,()=>!document.querySelector('#recordPanel').open);
+ const writes=await page.evaluate(()=>window.engagementWrites);
+ assert.equal(writes.length,3);assert.deepEqual(writes[2],writes[0]);assert.notEqual(writes[1].idempotency_key,writes[0].idempotency_key);
+ assert.deepEqual(errors,[]);
+});
