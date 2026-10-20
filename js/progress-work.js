@@ -276,7 +276,15 @@ async function refresh() {
     const read = await client.readProgressBoard({board_id:scope.board});
     if (!authCurrent(epoch)) return;
     establishAuth(epoch);
-    const view = boardView(read); let task = view.stages.flatMap(stage => stage.tasks).find(task => task.id === scope.task);
+    const view = boardView(read);
+    const tasks = new Map(view.stages.flatMap(stage => stage.tasks).map(task => [task.id, task]));
+    const aliases = read.snapshot?.snapshot_json?.hierarchy?.aliases;
+    const seen = new Set();
+    let taskId = scope.task;
+    while (!tasks.has(taskId) && typeof taskId === 'string' && typeof aliases?.[taskId] === 'string' && Object.hasOwn(aliases, taskId) && !seen.has(taskId)) {
+      seen.add(taskId); taskId = aliases[taskId];
+    }
+    let task = tasks.get(taskId);
     if (!task && scope.board === 'carr-v5' && /^[a-z_]+:.+/.test(scope.task || '')) {
       const split = scope.task.indexOf(':'), kind = scope.task.slice(0,split), id = scope.task.slice(split+1);
       const census = validSystemWork(await client.unfinishedWork({kinds:kind,id,limit:1}));
