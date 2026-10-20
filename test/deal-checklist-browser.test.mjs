@@ -32,11 +32,13 @@ for (const width of [390, 1280]) test(`deal checklist opens and refreshes in the
   await checklist.locator(':scope > summary').click();
   assert.match(await checklist.textContent(), /1 due/);
   assert.equal(await checklist.locator('input').count(), 0);
+  await checklist.locator('[data-checklist-item="review"] summary').click();
   await page.getByLabel('Update', { exact: true }).fill('Demo unsaved update');
   await page.evaluate(() => { window.checklistComplete = true; });
   await page.locator('[data-refresh-detail]').click();
   await page.getByText('Recorded complete', { exact: true }).waitFor();
   assert.equal(await checklist.evaluate(element => element.open), true);
+  assert.equal(await checklist.locator('[data-checklist-item="review"] details').evaluate(element => element.open), true, 'refresh preserves evidence disclosure by item ID');
   assert.equal(await page.getByLabel('Update', { exact: true }).inputValue(), 'Demo unsaved update');
   assert.equal(await page.locator('#recordPanel').evaluate(element => element.scrollWidth <= element.clientWidth), true);
   await mkdir(new URL('out/test-artifacts/deal-checklist/', root), { recursive: true });
