@@ -532,3 +532,136 @@ test('QA008 Leads freshness is Unavailable when a failed identity read clears th
   assert.equal(freshness().dateTime, '');
  } finally { s.close(); }
 });
+
+test('a returned prospect can be activated from Leads using its fresh client version',async()=>{
+ const s=await setup();try{
+  const row=s.board.leads.find(l=>l.stage==='nurture_drip');
+  Object.assign(row,{client_id:'synthetic-client',is_client:true,is_deal:true,prospect_client_id:'synthetic-client',prospect_client_version:7,prospect_engagement_status:'inactive'});
+  s.client.setProspectEngagementStatus=async args=>{s.writes.push(args);row.prospect_engagement_status='active';return{ok:true}};
+  await s.app.refresh();s.d.querySelector(`[data-lead-id="${row.id}"]`).click();await tick();
+  const form=s.d.getElementById('activateProspect');assert.ok(form);
+  form.querySelector('[name="reason"]').value='Synthetic renewed interest';
+  form.dispatchEvent(new s.w.Event('submit',{bubbles:true,cancelable:true}));await tick();
+  assert.equal(s.writes.length,1);assert.equal(s.writes[0].client_id,'synthetic-client');assert.equal(s.writes[0].base_version,7);
+  assert.equal(s.writes[0].status,'active');assert.equal(s.writes[0].reason,'Synthetic renewed interest');
+  assert.equal(s.d.querySelector(`[data-lead-id="${row.id}"]`),null);
+ }finally{s.close()}
+});
+
+test('uncertain Leads activation preserves each prospect request without blocking another prospect',async()=>{
+ const s=await setup();try{
+  const rows=s.board.leads.slice(0,2);
+  rows.forEach((row,index)=>Object.assign(row,{client_id:`synthetic-client-${index}`,is_client:true,is_deal:true,
+   prospect_client_id:`synthetic-client-${index}`,prospect_client_version:7,prospect_engagement_status:'inactive'}));
+  s.client.setProspectEngagementStatus=async args=>{s.writes.push(structuredClone(args));throw Object.assign(new Error('Uncertain'),{code:'unknown_outcome'})};
+  await s.app.refresh();
+  const submit=async(row,reason)=>{
+   s.d.getElementById('leadDetail').close();await s.app.readDetail(row.id);
+   const form=s.d.getElementById('activateProspect');assert.ok(form);
+   form.elements.reason.value=reason;
+   form.dispatchEvent(new s.w.Event('submit',{bubbles:true,cancelable:true}));await tick();
+  };
+  await submit(rows[0],'Synthetic first renewed interest');
+  await submit(rows[1],'Synthetic second renewed interest');
+  assert.equal(s.writes.length,2,'each prospect submits its own activation');
+  assert.deepEqual(s.writes.map(args=>args.client_id),['synthetic-client-0','synthetic-client-1']);
+  assert.notEqual(s.writes[0].idempotency_key,s.writes[1].idempotency_key);
+  await s.app.refresh();assert.equal(s.writes.length,2,'polling never resends an uncertain write');
+  await submit(rows[0],'Synthetic edited reason must not replace the request');
+  assert.equal(s.writes.length,3);assert.deepEqual(s.writes[2],s.writes[0],'retry preserves the complete original request');
+  rows[0].prospect_engagement_status='active';rows[0].prospect_client_version++;
+  await s.app.refresh();assert.equal(s.writes.length,3,'committed read-back never replays');
+  await submit(rows[1],'Synthetic second edited reason');
+  assert.equal(s.writes.length,4);assert.deepEqual(s.writes[3],s.writes[1],'reconciling one client retains the other request');
+ }finally{s.close()}
+});
+
+for (const failure of ['internal_error','unclassified_error']) test(`Leads activation retains an identical replay after ${failure}`,async()=>{
+ const board=workspace(),row=board.leads[0],writes=[];
+ Object.assign(row,{client_id:'synthetic-client',is_client:true,is_deal:true,prospect_client_id:'synthetic-client',
+  prospect_client_version:7,prospect_engagement_status:'inactive'});
+ const client=createLeadBoardClient({docContext:false,fetchImpl:async(_path,init)=>{
+  const {name,arguments:args}=JSON.parse(init.body).params;
+  let payload,isError=false;
+  if(name==='set-prospect-engagement-status'){
+   writes.push(args);
+   if(writes.length===1){payload={ok:false,error:failure};isError=true}
+   else{row.prospect_engagement_status='active';row.prospect_client_version++;payload={ok:true}}
+  }else payload=name==='deal-room-board'?{actor:'example-partner'}:{...board,...(args.lead_id?{detail:detail(row)}:{})};
+  return new Response(JSON.stringify({result:{isError,content:[{type:'text',text:JSON.stringify(payload)}]}}));
+ }});
+ const s=await setup(client);try{
+  await s.app.readDetail(row.id);
+  let form=s.d.getElementById('activateProspect');form.elements.reason.value='Synthetic renewed interest';
+  form.dispatchEvent(new s.w.Event('submit',{bubbles:true,cancelable:true}));await tick();
+  assert.equal(writes.length,1);
+  form=s.d.getElementById('activateProspect');
+  assert.equal(form.querySelector('button').textContent,'Check outcome','unclassified errors preserve recovery');
+  assert.equal(form.elements.reason.readOnly,true);
+  await s.app.refresh();assert.equal(writes.length,1,'read-back never resends');
+  form.dispatchEvent(new s.w.Event('submit',{bubbles:true,cancelable:true}));await tick();
+  assert.equal(writes.length,2);assert.deepEqual(writes[1],writes[0]);
+  assert.equal(s.d.getElementById('leadDetail').open,false);
+  assert.equal(s.d.getElementById('leadBoardError').hidden,true);
+ }finally{s.close()}
+});
+
+test('Leads activation allows another client in flight and isolates recovery when the actor changes',async()=>{
+ const s=await setup(),releases=[];try{
+  const rows=s.board.leads.slice(0,3);
+  rows.forEach((row,index)=>Object.assign(row,{client_id:`synthetic-client-${index%2}`,is_client:true,is_deal:true,
+   prospect_client_id:`synthetic-client-${index%2}`,prospect_client_version:7,prospect_engagement_status:'inactive'}));
+  s.client.setProspectEngagementStatus=args=>{s.writes.push(structuredClone(args));return new Promise((resolve,reject)=>releases.push({resolve,reject}))};
+  await s.app.refresh();
+  const submit=async row=>{
+   s.d.getElementById('leadDetail').close();await s.app.readDetail(row.id);
+   const form=s.d.getElementById('activateProspect');form.elements.reason.value='Synthetic renewed interest';
+   form.dispatchEvent(new s.w.Event('submit',{bubbles:true,cancelable:true}));await tick();
+  };
+  await submit(rows[0]);await submit(rows[2]);
+  assert.equal(s.writes.length,1,'two leads for the same client share one in-flight request');
+  assert.equal(s.d.querySelector('#activateProspect button').disabled,true);
+  await submit(rows[1]);assert.equal(s.writes.length,2,'another client does not wait for the first response');
+  for(const release of releases)release.reject(Object.assign(new Error('Uncertain'),{code:'unknown_outcome'}));
+  await tick();
+  assert.equal(s.d.querySelectorAll('[data-check-engagement]').length,2);
+  s.setActor('another-example-partner');await s.app.refresh();
+  assert.equal(s.d.querySelectorAll('[data-check-engagement]').length,0);
+  await submit(rows[0]);assert.equal(s.writes.length,3);
+  assert.notEqual(s.writes[2].idempotency_key,s.writes[0].idempotency_key,'another actor gets a separate request');
+  assert.equal(s.writes[2].expected_actor,'another-example-partner');
+ }finally{for(const release of releases)release.resolve({ok:true});await tick();s.close()}
+});
+
+test('rendered Leads recovery survives remount with a new client and storage restores the request',async()=>{
+ const row=workspace().leads[0],sent=[];
+ Object.assign(row,{client_id:'synthetic-refresh-client',is_client:true,is_deal:true,prospect_client_id:'synthetic-refresh-client',prospect_client_version:7,prospect_engagement_status:'inactive'});
+ const board={...workspace(),leads:[row]};
+ const overrides={getWorkspace:async()=>structuredClone(board),getLeadDetail:async()=>({detail:detail(row)}),setProspectEngagementStatus:async args=>{sent.push(structuredClone(args));throw Object.assign(new Error('Synthetic lost reply'),{code:'internal_error'})}};
+ const s=await setup(overrides);let remounted;
+ try{
+  await s.app.readDetail(row.id);
+  let form=s.d.getElementById('activateProspect');form.elements.reason.value='Synthetic original reason';
+  form.dispatchEvent(new s.w.Event('submit',{bubbles:true,cancelable:true}));await tick();
+  s.app.dispose();
+  remounted=mountLeadsWorkspace(s.d,{...s.client},{mapFactory:async()=>({update(){},dispose(){}})});await tick();
+  await remounted.readDetail(row.id);form=s.d.getElementById('activateProspect');
+  assert.equal(form.querySelector('button').textContent,'Check outcome');
+  assert.equal(form.elements.reason.value,'Synthetic original reason');
+  form.dispatchEvent(new s.w.Event('submit',{bubbles:true,cancelable:true}));await tick();
+  assert.deepEqual(sent[1],sent[0]);
+ }finally{remounted?.dispose();s.close()}
+});
+
+test('Leads recovery reports the retained inactive target from pipeline',async()=>{
+ const s=await setup();try{
+  const row=s.board.leads[0];Object.assign(row,{client_id:'synthetic-cross-page',is_client:true,is_deal:true,prospect_client_id:'synthetic-cross-page',prospect_client_version:7,prospect_engagement_status:'inactive'});
+  s.client.setProspectEngagementStatus=async args=>{s.writes.push(args);if(s.writes.length===1)throw new Error('Synthetic lost deferral');return {ok:true}};
+  const {engagementWriterFor}=await import('../js/prospect-engagement.mjs');
+  await assert.rejects(engagementWriterFor(s.client,s.w.sessionStorage)({client_id:'synthetic-cross-page',base_version:7,status:'inactive',reason:'Synthetic original deferral',human_quote:'Synthetic original deferral',expected_actor:'example-partner'}));
+  await s.app.refresh();await s.app.readDetail(row.id);
+  const form=s.d.getElementById('activateProspect');form.dispatchEvent(new s.w.Event('submit',{bubbles:true,cancelable:true}));await tick();
+  assert.equal(s.d.getElementById('moveAnnouncement').textContent,'Prospect returned to Leads');
+  assert.deepEqual(s.writes[1],s.writes[0]);
+ }finally{s.close()}
+});

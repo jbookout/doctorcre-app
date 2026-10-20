@@ -1,3 +1,4 @@
+import { engagementWriterFor } from './prospect-engagement.mjs';
 import { showToast } from './toast.js';
 import { renderDealVendors } from './deal-vendors.js';
 import { pageDocContext, selectDocRecord, setDocFilters, publishDocRead } from './doc-context.js';
@@ -250,18 +251,20 @@ function renderBoard() {
   setDocFilters({ owner: state.personalScope ? state.selfActor : state.filter, filter: state.scopeFilter });
   publishDocRead('getBoard', { deals: rows });
   const active = rows.filter(d => d.operating_state !== 'parked');
-  const parked = rows.filter(d => d.operating_state === 'parked');
+  const prospects = rows.filter(d => columnByValue(d.phase)?.slug === 'pending');
+  const parked = rows.filter(d => d.operating_state === 'parked' && columnByValue(d.phase)?.slug !== 'pending');
   renderBoardMessage();
   const grouped = groupByColumn(active);
   state.unplaced = grouped.unplaced.length;
   preserveBoardFocus({ board, document, announce, paint() {
     board.innerHTML = state.view === 'list' ? `<div class="deal-list">${urgencyOrder(state.parkedOpen ? rows : active).map(d => d.operating_state === 'parked' ? parkedHtml(d) : rowHtml(d)).join('')}</div>` : grouped.columns.map((column) => {
-      const cards = urgencyOrder(column.deals);
+      const cards = urgencyOrder(column.slug === 'pending' ? prospects : column.deals);
+      const content = cards.map(d => d.operating_state === 'parked' ? parkedHtml(d) : cardHtml(d)).join('');
       const chosen = state.lifted && state.target === column.slug;
       return `<section class="kanban-column glass" data-column="${esc(column.slug)}"${chosen ? ' data-drop="true"' : ''}
         aria-label="${esc(column.label)}, ${cards.length} cards">
         <h3 title="${esc(PHASE_TRIGGERS[column.slug])}">${esc(column.label)}<small>${cards.length}</small></h3>
-        ${cards.map(cardHtml).join('')}
+        ${content}
       </section>`;
     }).join('') + `<details class="parked-lane"${state.parkedOpen ? ' open' : ''}><summary>Parked · ${parked.length}</summary><div class="parked-cards">${parked.map(parkedHtml).join('')}</div></details>`;
   } });
@@ -846,6 +849,8 @@ async function saveUpdate(id) {
 }
 function detailHtml(detail) {
   const d = detail.deal;
+  const prospect = state.deals.get(d.id);
+  const pendingProspect = engagementWriterFor(state.client).get(prospect?.client_id, state.selfActor);
   const nextStep = noteText(d.next_step).trim();
   const parked = d.operating_state === 'parked';
   const controlsAvailable = state.deals.has(d.id) && !isClosedDeal(d);
@@ -857,6 +862,7 @@ function detailHtml(detail) {
     <form id="detailUpdateForm" class="deal-update-form"><label for="dealUpdate">Update</label><textarea id="dealUpdate" name="text" rows="2" maxlength="10000" required></textarea><button class="btn btn-primary" type="submit">Add update</button><p id="detailUpdateStatus" role="status"></p></form>
     <div data-detail-read="vendors">${renderDealVendors(d.vendors)}</div>
     <div data-detail-read="board-controls" data-available="${controlsAvailable}">${controlsAvailable ? `<div class="detail-actions"><div class="detail-controls"><label>Phase<select id="detailPhase">${COLUMNS.map(c => `<option value="${esc(c.slug)}"${c.value === d.phase ? ' selected' : ''}>${esc(c.label)}</option>`).join('')}</select></label><label>Owner<select id="detailOwner"><option value="">Unassigned</option>${['joe','dell'].map(owner => `<option value="${owner}"${owner === d.owner ? ' selected' : ''}>${actorName(owner)}</option>`).join('')}</select></label></div><div data-detail-read="parking" data-parked="${parked}">${parked ? `<p>${esc(concise(d.parking_note) || 'Parked')}</p><button type="button" class="btn" data-revive="${esc(d.id)}">Revive</button>` : `<details class="park-options"><summary class="park-control">Park</summary><form id="detailParkForm"><label>Park reason<input name="reason" maxlength="500" required></label><button class="btn park-control" type="submit">Park deal</button></form></details>`}</div></div>` : ''}</div>
+    <div data-detail-read="prospect">${controlsAvailable && prospect?.client_status === 'prospect' ? `<form id="detailInactiveForm"><p>Inactive prospects return to Leads.</p><label>Reason<input name="reason" maxlength="1000" required value="${esc(pendingProspect?.request.reason || '')}"${pendingProspect ? ' readonly' : ''}></label><button class="btn" type="submit">${pendingProspect ? 'Check outcome' : 'Mark inactive'}</button><p role="status" data-prospect-status>${pendingProspect ? 'Confirmation pending for this prospect. Check outcome to retry the same request.' : ''}</p></form>` : ''}</div>
     ${renderDealTimeline(detail)}<div data-detail-read="updates">${renderDealUpdates(detail)}</div>
     <div id="panelEvidence"></div>`;
 }
@@ -978,6 +984,41 @@ async function setOperatingState(id, value) {
   } else if (result.conflict) showConflict(result.conflict);
   else { showToast(fieldWriteMessage(result,'Operating state') || 'Change not confirmed', {error:true}); state.boardSync.requestRefresh('operating-state'); }
   renderPendingWrites();
+}
+
+async function markProspectInactive(form,id,reason) {
+  const prospect = state.deals.get(id);
+  if (!prospect || !reason) return;
+  const engagement = engagementWriterFor(state.client);
+  if (engagement.get(prospect.client_id, state.selfActor)?.sending) return;
+  const status = engagement.get(prospect.client_id, state.selfActor)?.request.status || 'inactive';
+  form.querySelector('button').disabled = true;
+  try {
+    await engagement({ client_id: prospect.client_id, base_version: prospect.client_version,
+      status: 'inactive', reason, human_quote: reason, expected_actor: state.selfActor }, {
+      readBack: async () => {
+        const { deal } = await state.client.getDeal(id);
+        return { client_id: deal.client_id, status: deal.prospect_engagement_status, version: deal.client_version };
+      },
+    });
+    await state.boardSync.refreshBoard({reason:'prospect-inactive'});
+    if (state.panelDeal === id) closePanel();
+    showToast(status === 'inactive' ? 'Prospect returned to Leads' : 'Prospect returned to the deal board');
+  } catch (error) {
+    await state.boardSync.refreshBoard({reason:'prospect-check'});
+    if (state.panelDeal === id) await refreshPanel();
+    if (error.code !== 'unknown_outcome') showToast('Change unavailable. Refresh and try again.',{error:true});
+  } finally {
+    const pending = engagement.get(prospect.client_id, state.selfActor);
+    const current = $('detailInactiveForm');
+    if (current && state.panelDeal === id) {
+      current.querySelector('button').disabled = false;
+      current.querySelector('button').textContent = pending ? 'Check outcome' : 'Mark inactive';
+      current.elements.reason.readOnly = Boolean(pending);
+      if (pending) current.elements.reason.value = pending.request.reason;
+      current.querySelector('[data-prospect-status]').textContent = pending ? 'Confirmation pending for this prospect. Check outcome to retry the same request.' : '';
+    }
+  }
 }
 
 function setContextOpenVisible(visible) {
@@ -1265,6 +1306,7 @@ function wire() {
   $('panelBody').addEventListener('submit', async e => {
     e.preventDefault(); const id=state.panelDeal; const form = new FormData(e.target);
     if (e.target.id === 'detailParkForm') await setOperatingState(id,{state:'parked',reason:'other',note:String(form.get('reason'))});
+    if (e.target.id === 'detailInactiveForm') await markProspectInactive(e.target,id,String(form.get('reason')).trim());
     if (e.target.id === 'detailUpdateForm') await saveUpdate(id);
   });
 
