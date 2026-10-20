@@ -505,7 +505,7 @@
       "write": false,
       "producer": {
         "repository": "jbookout/carr-system",
-        "source_commit": "7ed89cde35cda4f10ed55e687d6cb87c757a935d"
+        "source_commit": "e8c3c0bdbbc247038a22e12f98d2251c91f2efba"
       },
       "response": {
         "schema_version": "local-deals-board.v1",
@@ -733,7 +733,7 @@
   "lead_workspace": {
     "producer": {
       "repository": "jbookout/carr-system",
-      "source_commit": "7ed89cde35cda4f10ed55e687d6cb87c757a935d"
+      "source_commit": "e8c3c0bdbbc247038a22e12f98d2251c91f2efba"
     },
     "schema_version": "lead-workspace.v1",
     "board": {
@@ -830,11 +830,11 @@
   "prospect_engagement": {
     "producer": {
       "repository": "jbookout/carr-system",
-      "source_commit": "7ed89cde35cda4f10ed55e687d6cb87c757a935d"
+      "source_commit": "e8c3c0bdbbc247038a22e12f98d2251c91f2efba"
     },
     "write": "set-prospect-engagement-status",
     "inactive_stage": "nurture_drip",
     "active_stage": "opportunity",
-    "history": "Retain the existing client, lead links, deals and events. Suppression and archived stages remain protected."
+    "history": "Existing prospects and new prospects created over leads start active. Migration initialization is audited without changing board membership or client versions. Only an explicit partner engagement choice returns a prospect to Leads. Retain the existing client, lead links, deals and events. Suppression and archived stages remain protected."
   }
 }
