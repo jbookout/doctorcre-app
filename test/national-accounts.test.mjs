@@ -42,28 +42,18 @@ test('the portfolio surface renders only accounts supplied by the CARR read', ()
   assert.equal((html.match(/class="account-card"/g) || []).length, 1);
   assert.match(html, /Demo Care Network/);
   assert.doesNotMatch(html, /Demo Dental Group|Demo Therapy Network/);
-  assert.match(html, /<svg[^>]*role="img"/);
-  assert.match(html, /<path\b/);
+  assert.doesNotMatch(html, /<svg/);
   assert.match(html, /Market deals/);
   assert.match(html, />7</);
   assert.match(html, /data-pulse="attention"/);
 });
 
-test('an account without a sub-client count uses one neutral structure node', () => {
-  for (const open_deals of [0, 1, 7]) {
-    const html = renderAccountCards([{
-      account_client_id: 'demo-unmeasured', account_name: 'Demo Unmeasured', open_deals,
-    }], helpers);
-    assert.equal((html.match(/class="flow-child"/g) || []).length, 1);
-    assert.match(html, /<rect class="flow-child"/);
-    const label = html.match(/<svg[^>]*aria-label="([^"]*)"/)[1];
-    assert.match(label, /through sub-clients/);
-    assert.doesNotMatch(label, /(?:\d+|two) sub-clients/);
-    assert.match(label, new RegExp(`${open_deals} active market deals`));
-  }
+test('account structure names the record layers without inventing a sub-client count', () => {
+  const document = new JSDOM(renderAccountCards([portfolioFixture], helpers)).window.document;
+  assert.deepEqual([...document.querySelectorAll('.account-flow-labels span')].map(node => node.textContent), ['Account', 'Sub-clients', 'Market deals']);
 });
 
-test('account captions stay at least 11px and diagram captions do not scale with the SVG', async () => {
+test('account captions stay at least 13px', async () => {
   const css = await readFile(new URL('../css/app.css', import.meta.url), 'utf8');
   const tokens = await readFile(new URL('../css/tokens.css', import.meta.url), 'utf8');
   // Sizes are written as px or as a type token; a token resolves through css/tokens.css.
@@ -77,13 +67,12 @@ test('account captions stay at least 11px and diagram captions do not scale with
   const metricRules = [...css.matchAll(/\.account-metrics span\s*\{([^}]*)\}/g)];
   const sizes = sizesIn(metricRules);
   assert.ok(sizes.length > 0);
-  assert.ok(sizes.every((size) => size >= 11), `metric font sizes: ${sizes}`);
+  assert.ok(sizes.every((size) => size >= 13), `metric font sizes: ${sizes}`);
   const html = renderAccountCards([portfolioFixture], helpers);
-  assert.doesNotMatch(html.match(/<svg[\s\S]*?<\/svg>/)[0], /class="flow-label"/);
   assert.match(html, /class="account-flow-labels"[^>]*><span>Account<\/span><span>Sub-clients<\/span><span>Market deals<\/span>/);
   const captionRules = [...css.matchAll(/\.account-flow-labels\s*\{([^}]*)\}/g)];
   const captionSizes = sizesIn(captionRules);
-  assert.ok(captionSizes.length > 0 && captionSizes.every((size) => size >= 11));
+  assert.ok(captionSizes.length > 0 && captionSizes.every((size) => size >= 13));
 });
 
 test('portfolio motion rate follows urgency without hiding the still-state labels', () => {
@@ -94,7 +83,7 @@ test('portfolio motion rate follows urgency without hiding the still-state label
   assert.match(renderAccountCards([{ ...account, open_deals: 0 }], helpers), /data-pulse="dormant"/);
 });
 
-test('an overdue-only account exposes its count in visible text and the accessible diagram', () => {
+test('an overdue-only account exposes its count in visible text', () => {
   for (const overdue_deals of [0, 1, 3]) {
     const html = renderAccountCards([{
       account_client_id: 'demo-due', account_name: 'Demo Due', open_deals: 3,
@@ -106,7 +95,6 @@ test('an overdue-only account exposes its count in visible text and the accessib
     assert.ok(overdue, 'Overdue must have a visible metric independent of attention');
     assert.equal(overdue.querySelector('b').textContent, String(overdue_deals));
     assert.equal(overdue.closest('[aria-hidden="true"], [hidden]'), null);
-    assert.match(document.querySelector('svg').getAttribute('aria-label'), new RegExp(`${overdue_deals} overdue`));
     assert.match(metrics.find((metric) => metric.querySelector('span').textContent === 'Attention').textContent, /^0/);
   }
 });

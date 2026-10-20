@@ -42,7 +42,7 @@ function replaceHtml(node,html){
 function renderAttention(tasks, observation) {
  attention = { tasks, state: observation.state };
  const state = observation.state === 'read' && view.queue.state === 'unknown' ? 'unknown' : observation.state;
- details?.update(withHolders(tasks), { state });
+ details?.update(withHolders(tasks), { ...observation, state });
  const current = state === 'read';
  const rows = current ? attentionTasks(withHolders(tasks)) : [];
  $('crAttentionCount').textContent = current ? `${rows.length} ${rows.length === 1 ? 'item' : 'items'}` : '';
@@ -276,7 +276,7 @@ function openAtlas(node=null){mountAtlas({client,getIncidentsRead:()=>view.reads
 async function boot(){
  const resolved=resolveDealroomBoot(globalThis.location);client=resolved.mode==='live'?createLiveClient():await createFixtureClient(resolved.options);
  onDialogClosed($("jobDialog"),()=>selectDocRecord(null,null));
- details=mountJobDetail({client,document});board=mountBoard({client,openTask:task=>details.open(withHolders([task])[0]),onTasks:renderAttention});board.start();
+ details=mountJobDetail({client,document});board=mountBoard({client,openTask:task=>details.open(withHolders([task])[0]),closeTask:()=>details.clear(),onTasks:renderAttention});board.start();
  $('crAttentionList').addEventListener('click',event=>{const button=event.target.closest('[data-attention-open]');const task=attention.state==='read'&&withHolders(attention.tasks).find(task=>task.id===button?.dataset.attentionOpen);if(task)details.open(task);});
  $('severityChips').addEventListener('click',event=>{
   const chip=event.target.closest('button[data-severity]');
@@ -296,7 +296,7 @@ async function boot(){
  // The nav is vertical, so Up and Down move through it too.
  strip.addEventListener('keydown',event=>{if(event.key!=='ArrowDown'&&event.key!=='ArrowUp')return;const all=[...strip.querySelectorAll('[role="tab"]')];const index=all.indexOf(document.activeElement);if(index<0)return;event.preventDefault();all[(index+(event.key==='ArrowDown'?1:-1)+all.length)%all.length].click();});
  strip.addEventListener('tabchange',event=>{const selected=event.detail.tab;if(!selected.dataset.tabKey)return;const next=new URL(location.href);if(next.searchParams.get('tab')!==selected.dataset.tabKey){next.searchParams.set('tab',selected.dataset.tabKey);history.pushState({},'',next);}activate(selected);const scrim=document.getElementById('appDrawerScrim');if(scrim&&!scrim.hidden)scrim.click();});
- const restoreTab=()=>{const selected=tabFor(sectionForTab(new URLSearchParams(location.search).get('tab')));if(selected){tabs.select(selected.id);activate(selected);}};
+ const restoreTab=()=>{const selected=tabFor(sectionForTab(new URLSearchParams(location.search).get('tab')));if(selected){if(selected.getAttribute('aria-selected')!=='true')tabs.select(selected.id);activate(selected);}};
  window.addEventListener('popstate',restoreTab);restoreTab();
  // Opening the page restores a section without stealing focus for it.
  if(strip.contains(document.activeElement))document.activeElement.blur();

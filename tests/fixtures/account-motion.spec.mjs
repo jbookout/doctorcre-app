@@ -15,20 +15,18 @@ const accounts = [
   { account_client_id: 'demo-dormant', account_name: 'Demo Dormant', open_deals: 0 },
 ];
 
-// V2 S1: the account diagram is a still drawing. Urgency is a status-coloured
-// outline (and a pattern under Color Assist), never a loop, in every motion mode.
 const styles = async () => {
   const tokens = await readFile(new URL('../../css/tokens.css', import.meta.url), 'utf8');
   const css = await readFile(new URL('../../css/app.css', import.meta.url), 'utf8');
   return `<style>${tokens}</style><style>${css}</style>`;
 };
 
-test('the portfolio diagram stays still in every urgency state and motion preference', async ({ page }) => {
+test('portfolio metrics stay still and preserve every urgency state and motion preference', async ({ page }) => {
   await page.setContent(`${await styles()}<div class="account-grid">${renderAccountCards(accounts, helpers)}</div>`);
   const readMotion = () => page.locator('.account-card').evaluateAll((cards) => cards.map((card) => ({
     pulse: card.dataset.pulse,
-    stroke: getComputedStyle(card.querySelector('.flow-deals')).stroke,
-    elements: [...card.querySelectorAll('.flow-link, .flow-deals')].map((element) => ({
+    metrics: [...card.querySelectorAll('.account-metrics > div')].map(metric => metric.textContent.trim()),
+    elements: [card, ...card.querySelectorAll('.account-metrics *, .account-flow-labels')].map((element) => ({
       name: getComputedStyle(element).animationName,
       animations: element.getAnimations().length,
     })),
@@ -41,10 +39,10 @@ test('the portfolio diagram stays still in every urgency state and motion prefer
       .filter((element) => element.name !== 'none' || element.animations !== 0)
       .map((element) => ({ reducedMotion, pulse, ...element })));
     assert.deepEqual(moving, []);
-    const [healthy, attention, overdue] = states.map(({ stroke }) => stroke);
-    assert.notEqual(attention, healthy, 'attention reads as a different outline');
-    assert.notEqual(overdue, healthy, 'overdue reads as a different outline');
-    assert.notEqual(overdue, attention, 'overdue and attention are distinct');
+    assert.ok(states[0].metrics.includes('0Attention'));
+    assert.ok(states[1].metrics.includes('1Attention'));
+    assert.ok(states[2].metrics.includes('1Overdue'));
+    assert.ok(states[3].metrics.includes('0Active work'));
   }
 });
 
@@ -53,7 +51,7 @@ test('overdue-only status stays visible and accessible in the phone and desktop 
   await page.setContent(`${await styles()}<main class="shell"><div class="account-grid">${renderAccountCards([accounts[2]], helpers)}</div></main>`);
   for (const width of [320, 390, 680, 1280]) {
     await page.setViewportSize({ width, height: 900 });
-    assert.equal(await page.getByRole('img', { name: /Demo Overdue:.*1 overdue/ }).count(), 1);
+    assert.equal(await page.getByRole('button', { name: /Demo Overdue/ }).count(), 1);
     assert.equal(await page.getByText('Overdue', { exact: true }).isVisible(), true);
     const layout = await page.evaluate(() => ({
       viewport: innerWidth,
@@ -67,7 +65,7 @@ test('overdue-only status stays visible and accessible in the phone and desktop 
     }));
     assert.ok(layout.document <= layout.viewport, `${width}px document overflow`);
     assert.ok(layout.card <= layout.cardWidth, `${width}px card overflow`);
-    assert.ok(layout.sizes.every((size) => size >= 11), `${width}px caption size`);
+    assert.ok(layout.sizes.every((size) => size >= 13), `${width}px caption size`);
     assert.equal(layout.overdue, '1Overdue');
   }
 });

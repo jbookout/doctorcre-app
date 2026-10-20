@@ -23,6 +23,6 @@
   "maplibre": {
     "version": "6.4.1",
     "source": "existing reports/vendor/maplibre-gl-6.4.1 vendored distribution",
-    "style": "explicit blank placeholder; no paid key or external tiles"
+    "style": "ordered-stop fallback until a basemap style is configured; no paid key or external tiles"
   }
 }

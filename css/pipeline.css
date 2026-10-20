@@ -179,3 +179,7 @@
  .dealroom-heading { gap:var(--space-2); }
  .app-section-tabs { gap:var(--space-3); }
 }
+
+.deal-current-action { display: grid; gap: var(--space-1); margin: 0 0 var(--space-4); overflow-wrap: anywhere; }
+.deal-current-action strong { font-size: var(--font-size-3); }
+.deal-current-action span { color: var(--fg-muted); font-size: var(--font-size-1); }
