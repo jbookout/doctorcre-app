@@ -24,14 +24,14 @@ after(async () => {
   if (outDir) await rm(outDir, { recursive: true, force: true });
 });
 
-for (const width of [390, 1280]) for (const theme of ['light', 'dark']) {
-  test(`signed-in Home shows dated and undated call actions at ${width}px in ${theme}`, async t => {
+for (const actionCount of [5, 30]) for (const width of [390, 1280]) for (const theme of ['light', 'dark']) {
+  test(`signed-in Home previews and expands ${actionCount} call actions at ${width}px in ${theme}`, async t => {
     const page = await browser.newPage({ viewport: { width, height: 960 }, timezoneId: 'America/Chicago', reducedMotion: 'reduce' });
     t.after(() => page.close());
     await page.clock.install({ time: new Date('2026-10-01T15:00:00Z') });
     await page.addInitScript(theme => localStorage.setItem('doctorcre.visual-preferences', JSON.stringify({ theme })), theme);
     const viewer = theme === 'light' ? 'joe' : 'dell';
-    assert.equal((await page.request.post(`${origin}/api/test/seed`, { data: { namespace: `home-${width}-${theme}`, viewer, reset: true } })).status(), 200);
+    assert.equal((await page.request.post(`${origin}/api/test/seed`, { data: { namespace: `home-${actionCount}-${width}-${theme}`, viewer, reset: true } })).status(), 200);
     const identity = await page.request.get(`${origin}/api/test/identity`);
     assert.equal((await identity.json()).viewer, viewer);
     const errors = [], detailReads = [];
@@ -50,6 +50,7 @@ for (const width of [390, 1280]) for (const theme of ['light', 'dark']) {
         action('today', '2026-10-01'), action('overdue', '2026-09-30'),
         action('also-undated', null), { ...action('done', null), status: 'done' },
       ] : [];
+      if (actionCount === 30 && detail.deal_id === 'qa-deal-1') detail.next_actions.push(...Array.from({ length: 25 }, (_, i) => action(`extra-${String(i + 1).padStart(2, '0')}`, '2026-10-03')));
       if (undatedOnly) detail.next_actions = detail.next_actions.filter(row => row.due_on === null);
       envelope.result.content[0].text = JSON.stringify(detail);
       await route.fulfill({ response, json: envelope });
@@ -59,28 +60,47 @@ for (const width of [390, 1280]) for (const theme of ['light', 'dark']) {
     await page.locator('#homeCalendar').evaluate(node => node.scrollIntoView({ block: 'center' }));
     if (process.env.HOME_ACTION_SCREENSHOT_DIR) {
       await mkdir(process.env.HOME_ACTION_SCREENSHOT_DIR, { recursive: true });
-      await page.screenshot({ path: join(process.env.HOME_ACTION_SCREENSHOT_DIR, `${width}-${theme}.png`), animations: 'disabled' });
+      await page.screenshot({ path: join(process.env.HOME_ACTION_SCREENSHOT_DIR, `${actionCount}-${width}-${theme}.png`), animations: 'disabled' });
     }
     const rows = page.locator('#homeCalendar .home-agenda > a');
-    assert.deepEqual(await rows.locator('strong').allTextContents(), [
-      'Demo call overdue', 'Demo call today', 'Demo call also-undated', 'Demo call undated', 'Demo call future',
-    ]);
+    const firstFive = ['Demo call overdue', 'Demo call today', 'Demo call also-undated', 'Demo call undated', 'Demo call future'];
+    assert.deepEqual(await rows.locator('strong').allTextContents(), actionCount === 5 ? firstFive : [...firstFive, 'Demo call extra-01']);
+    const showAll = page.getByRole('button', { name: 'Show all 30', exact: true });
+    if (actionCount === 30) {
+      const target = await showAll.boundingBox();
+      assert.ok(target.width >= 44 && target.height >= 44, 'Show all is a touch target');
+      const readsBeforeExpansion = detailReads.length;
+      await showAll.focus();
+      await page.keyboard.press('Enter');
+      assert.equal(await rows.count(), 30);
+      assert.deepEqual(await rows.locator('strong').allTextContents(), [...firstFive,
+        ...Array.from({ length: 25 }, (_, i) => `Demo call extra-${String(i + 1).padStart(2, '0')}`)]);
+      assert.equal(await rows.nth(6).evaluate(node => node === document.activeElement), true, 'focus the seventh row');
+      assert.equal(await showAll.count(), 0);
+      assert.equal(detailReads.length, readsBeforeExpansion, 'expansion uses the loaded agenda');
+      await page.locator('#refreshHome').click();
+      await page.locator('#refreshHome[aria-busy="false"]').waitFor();
+      assert.equal(await rows.count(), 30, 'refresh keeps the expanded agenda');
+      await page.getByRole('button', { name: 'Team view', exact: true }).click();
+      assert.equal(await rows.count(), 30, 'reselecting the same scope keeps expansion');
+    } else assert.equal(await showAll.count(), 0, 'short agendas need no expansion control');
     const undated = rows.filter({ hasText: 'Demo call undated' });
     assert.match(await undated.innerText(), /No date/);
     assert.match(await undated.innerText(), /Dell/);
     assert.equal(await undated.getAttribute('href'), '/deals?deal=qa-deal-1');
     assert.equal(await undated.locator('time').count(), 0);
-    assert.equal(await rows.locator('time').count(), 3);
+    assert.equal(await rows.locator('time').count(), actionCount === 5 ? 3 : 28);
     assert.equal(await page.locator('#homeCalendar .home-partial').count(), 0);
     assert.doesNotMatch(await page.locator('body').innerText(), /Nothing needs you|Invalid Date|Demo call done/i);
     assert.equal(await page.locator('html').getAttribute('data-theme'), theme);
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
-    assert.equal(detailReads.length, 16);
+    assert.equal(detailReads.length, actionCount === 5 ? 16 : 32);
     assert.equal(new Set(detailReads).size, 16, 'reuse each existing deal read once');
     await page.getByRole('button', { name: 'Just me', exact: true }).click();
     assert.equal(await page.locator('#homeCalendar').isVisible(), viewer === 'joe');
-    if (viewer === 'joe') assert.equal(await rows.count(), 4);
+    if (viewer === 'joe') assert.equal(await rows.count(), actionCount === 5 ? 4 : 6, 'scope changes reset expansion');
     await page.getByRole('button', { name: 'Team view', exact: true }).click();
+    assert.equal(await rows.count(), actionCount === 5 ? 5 : 6, 'returning to team starts with the preview');
     undatedOnly = true;
     await page.locator('#refreshHome').click();
     await page.locator('#refreshHome[aria-busy="false"]').waitFor();
