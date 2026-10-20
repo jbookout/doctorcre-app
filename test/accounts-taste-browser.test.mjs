@@ -31,7 +31,7 @@ for (const width of [390, 1280]) for (const theme of ['dark', 'light']) {
     const urgency = card.locator('.account-next-action');
     assert.equal(await urgency.count(), 1, 'the card names one next action');
     assert.match(await urgency.innerText(), /Review sample documents/);
-    assert.match(await urgency.innerText(), /\d+d overdue/);
+    assert.match(await urgency.innerText(), /Jan 18 · 274d overdue/);
     const hierarchy = await card.evaluate(node => {
       const action = node.querySelector('.account-next-action');
       const structure = node.querySelector('.account-flow-labels');
@@ -57,7 +57,7 @@ for (const width of [390, 1280]) for (const theme of ['dark', 'light']) {
     assert.equal(await snapshot.count(), 1, 'the opening snapshot retains the selected action');
     assert.match(await snapshot.innerText(), new RegExp(description));
     assert.match(await snapshot.innerText(), /Overdue|overdue/);
-    assert.equal(await snapshot.locator('time[datetime]').count(), 1, 'the action has an explicit due date');
+    assert.equal(await snapshot.locator('time').getAttribute('datetime'), '2026-01-18', 'the opening retains the selected action due date');
     const order = await page.evaluate(() => {
       const snapshot = document.querySelector('.deal-opening-snapshot');
       const update = document.querySelector('#detailUpdateForm');

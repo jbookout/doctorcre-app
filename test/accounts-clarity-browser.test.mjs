@@ -24,8 +24,8 @@ for (const width of [390, 1280]) for (const theme of ['dark', 'light']) {
     const accountName = await card.locator('h2').innerText();
     const owner = await card.locator('.account-owner').getAttribute('title');
     await shot('accounts');
-    const metricOffset = await card.evaluate(node => node.querySelector('.account-metrics').getBoundingClientRect().top - node.getBoundingClientRect().top);
-    assert.ok(metricOffset <= 160, `account metrics start ${metricOffset}px into the card`);
+    const actionOffset = await card.evaluate(node => node.querySelector('.account-next-action').getBoundingClientRect().top - node.getBoundingClientRect().top);
+    assert.ok(actionOffset <= 160, `account action starts ${actionOffset}px into the card`);
     assert.match(await card.innerText(), /Open account/);
     await card.click();
     await page.locator('#accountGrid').waitFor({ state: 'hidden' });

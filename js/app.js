@@ -384,9 +384,18 @@ function renderChrome() {
   $('#boardSection').hidden = isAccountHome;
 }
 
+function accountPriority(deals) {
+  const overdue = deals.filter((deal) => (daysFromNow(deal.next_date) ?? 0) < 0)
+    .sort((a, b) => a.next_date.localeCompare(b.next_date) || a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
+  return { overdue, next: overdue[0] || deals[0] };
+}
+
 function renderAccounts() {
   const grid = $('#accountGrid');
-  grid.innerHTML = renderAccountCards(state.accounts, { esc, relative, actorName });
+  grid.innerHTML = renderAccountCards(state.accounts.map(item => ({ ...item, next_action: accountPriority(
+    [...state.deals.values()].filter(deal => deal.account_client_id === item.account_client_id
+      && (deal.operating_state || 'active') === 'active' && !deal.invoiced_on)
+  ).next })), { esc, relative, actorName, dateLabel });
 }
 
 /**
@@ -471,9 +480,7 @@ function renderStats(deals) {
   const accountDetail = state.workspace === 'national_account' && state.accountId && !state.query && state.filter !== 'parked';
   $('#stats').classList.toggle('account-priority', Boolean(accountDetail));
   if (accountDetail) {
-    const overdue = deals.filter((deal) => (daysFromNow(deal.next_date) ?? 0) < 0)
-      .sort((a, b) => a.next_date.localeCompare(b.next_date) || a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
-    const next = overdue[0] || deals[0];
+    const { overdue, next } = accountPriority(deals);
     $('#stats').innerHTML = next ? `
       <span class="next-action-label${overdue.length ? ' is-alert' : ''}">${overdue.length ? 'Next overdue action' : 'Next market action'}</span>
       <button type="button" class="next-account-action" data-open-deal="${esc(next.id)}">
