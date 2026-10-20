@@ -547,3 +547,31 @@ test('a returned prospect can be activated from Leads using its fresh client ver
   assert.equal(s.d.querySelector(`[data-lead-id="${row.id}"]`),null);
  }finally{s.close()}
 });
+
+test('uncertain Leads activation preserves each prospect request without blocking another prospect',async()=>{
+ const s=await setup();try{
+  const rows=s.board.leads.slice(0,2);
+  rows.forEach((row,index)=>Object.assign(row,{client_id:`synthetic-client-${index}`,is_client:true,is_deal:true,
+   prospect_client_id:`synthetic-client-${index}`,prospect_client_version:7,prospect_engagement_status:'inactive'}));
+  s.client.setProspectEngagementStatus=async args=>{s.writes.push(structuredClone(args));throw Object.assign(new Error('Uncertain'),{code:'unknown_outcome'})};
+  await s.app.refresh();
+  const submit=async(row,reason)=>{
+   s.d.getElementById('leadDetail').close();await s.app.readDetail(row.id);
+   const form=s.d.getElementById('activateProspect');assert.ok(form);
+   form.elements.reason.value=reason;
+   form.dispatchEvent(new s.w.Event('submit',{bubbles:true,cancelable:true}));await tick();
+  };
+  await submit(rows[0],'Synthetic first renewed interest');
+  await submit(rows[1],'Synthetic second renewed interest');
+  assert.equal(s.writes.length,2,'each prospect submits its own activation');
+  assert.deepEqual(s.writes.map(args=>args.client_id),['synthetic-client-0','synthetic-client-1']);
+  assert.notEqual(s.writes[0].idempotency_key,s.writes[1].idempotency_key);
+  await s.app.refresh();assert.equal(s.writes.length,2,'polling never resends an uncertain write');
+  await submit(rows[0],'Synthetic edited reason must not replace the request');
+  assert.equal(s.writes.length,3);assert.deepEqual(s.writes[2],s.writes[0],'retry preserves the complete original request');
+  rows[0].prospect_engagement_status='active';rows[0].prospect_client_version++;
+  await s.app.refresh();assert.equal(s.writes.length,3,'committed read-back never replays');
+  await submit(rows[1],'Synthetic second edited reason');
+  assert.equal(s.writes.length,4);assert.deepEqual(s.writes[3],s.writes[1],'reconciling one client retains the other request');
+ }finally{s.close()}
+});
