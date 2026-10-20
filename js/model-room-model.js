@@ -202,7 +202,7 @@ export function queueFreshness(payload, { now = Date.now() } = {}) {
       state: "live",
       ageMs: projectedAt ? Math.max(0, now - Date.parse(projectedAt)) : null,
       projectedAt,
-      text: `Updated ${projectedAt}.`,
+      text: `Updated ${humanAge(Math.max(0, now - Date.parse(projectedAt)))} ago.`,
     };
   }
   if (projectedAt === null) {
@@ -218,7 +218,7 @@ export function queueFreshness(payload, { now = Date.now() } = {}) {
     state: "stale",
     ageMs,
     projectedAt,
-    text: `Last updated ${projectedAt} · ${humanAge(ageMs)} old. Showing the last recorded assignments.`,
+    text: `Last updated ${humanAge(ageMs)} ago. Showing the last recorded assignments.`,
   };
 }
 

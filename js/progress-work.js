@@ -10,6 +10,7 @@ import { systemPipeline, validSystemWork } from './system-work-board-model.js';
 
 const client = createLiveClient();
 const scope = workScope(location.search);
+const requestedTask = scope.task;
 const explicitWorkRequest = scope.workRequest;
 const $ = id => document.getElementById(id);
 const node = (tag, value, className) => {
@@ -151,23 +152,34 @@ function deriveLinks() {
   if (changed) readSessions();
 }
 function flow(task) {
-  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-  svg.setAttribute('viewBox','0 0 720 90'); svg.setAttribute('role','img'); svg.setAttribute('aria-label','Task links to sessions, attempts and independent review'); svg.classList.add('work-flow');
+  const list = node('ol', null, 'work-flow');
+  list.setAttribute('aria-label','Task links to sessions, attempts and independent review');
   const status = task?.status || card?.state;
-  svg.dataset.pulse = ['failed','blocked'].includes(status) ? 'critical' : ['review','needs_revision'].includes(status) ? 'attention' : ['running','in_progress','claimed'].includes(status) ? 'healthy' : 'still';
-  for (const [index, label] of ['Task', 'Sessions', 'Attempts', 'Review'].entries()) {
-    const x = index * 180;
-    if (index) { const line = document.createElementNS(svg.namespaceURI,'line'); for (const [key,value] of Object.entries({x1:x-40,y1:40,x2:x,y2:40})) line.setAttribute(key,value); svg.append(line); }
-    const rect = document.createElementNS(svg.namespaceURI,'rect'); for (const [key,value] of Object.entries({x,y:10,width:140,height:60,rx:10})) rect.setAttribute(key,value);
-    const text = document.createElementNS(svg.namespaceURI,'text'); text.setAttribute('x',x+12); text.setAttribute('y',45); text.textContent = label; svg.append(rect,text);
-  }
-  return svg;
+  list.dataset.pulse = ['failed','blocked'].includes(status) ? 'critical' : ['review','needs_revision'].includes(status) ? 'attention' : ['running','in_progress','claimed'].includes(status) ? 'healthy' : 'still';
+  for (const label of ['Task', 'Sessions', 'Attempts', 'Review']) list.append(node('li', label));
+  return list;
 }
 function renderReviews() {
-  const facts = engineering ? [...engineering.reviewer_facts, ...engineering.receipts] : [];
+  const reviews = engineering?.reviewer_facts || [], receipts = engineering?.receipts || [];
   const observed = turns.filter(turn => scopedTurn(turn, scope) && /review|fix|revision/i.test(turn.kind + ' ' + turn.body));
-  patch($('workReviewList'), {facts, observed}, () => {
-    const rows = facts.map(fact => record(fact.slice_ref ? `Slice ${fact.slice_ref}` : 'Attempt receipt', fact));
+  patch($('workReviewList'), {reviews, receipts, observed}, () => {
+    const rows = reviews.map(fact => {
+      const verdict = fact.state[0].toUpperCase() + fact.state.slice(1);
+      const article = node('article', null, 'work-record');
+      article.append(node('h3', `${verdict} · ${fact.slice_ref} · ${fact.attempt_id}`), fields({
+        Verdict: verdict, Reviewer: fact.reviewer_ref, Round: 'Not recorded',
+        'Next action': {passed:'Check remaining closure requirements.', failed:'Resolve review findings and request another review.',
+          blocked:'Resolve the review blocker.'}[fact.state],
+      }));
+      const detail = node('details'); detail.append(node('summary', 'Review evidence'), node('pre', JSON.stringify(fact, null, 2)));
+      article.append(detail); return article;
+    });
+    if (!reviews.length && receipts.length) rows.push(node('p', 'No independent review is recorded. Request independent review.', 'work-empty'));
+    if (receipts.length) {
+      const detail = node('details'); detail.append(node('summary', `Execution receipts · ${receipts.length}`));
+      for (const receipt of receipts) detail.append(record(`Slice ${receipt.slice_ref} · ${receipt.attempt_id}`, receipt));
+      rows.push(detail);
+    }
     if (observed.length) { const history = node('details'); history.append(node('summary', 'Observed review and fix turns · not closure proof'));
       for (const turn of observed) history.append(record(`Turn ${turn.seq}`, {at:turn.created_at,seat:turn.origin_actor || turn.actor,body:turn.body})); rows.push(history); }
     return rows.length ? rows : [node('p','No linked review or fix receipt is available.','work-empty')];
@@ -248,8 +260,8 @@ document.addEventListener('progress-auth-lost', () => {
     breadcrumbs('Progress', 'Sign in');
 });
 let focusedLineage = false;
-function lineageRecord(task) {
-  const host = node('div'); host.innerHTML = workLineageHtml(task, scope.board, {targets:true,taskId:scope.task});
+function lineageRecord(task, taskId) {
+  const host = node('div'); host.innerHTML = workLineageHtml(task, scope.board, {targets:true,taskId});
   let hash;
   try { hash = decodeURIComponent(location.hash.slice(1)); } catch { return host.firstElementChild; }
   queueMicrotask(() => {
@@ -271,7 +283,7 @@ function renderMetadata(task, questions) {
   const linkedTask = task || (scope.workRequest ? {work_request:scope.workRequest} : null);
   // Displayed delivery ages change independently of publication revisions.
   patch($('workMetadata'), {task, card, questions, delivery}, () => [
-    ...(linkedTask ? [lineageRecord(linkedTask)] : []), flow(task), ...(task ? [deliveryRecord(delivery), taskRecord(task, questions)] : [node('p', scope.task
+    ...(linkedTask ? [lineageRecord(linkedTask, task ? task.id || scope.task : null)] : []), flow(task), ...(task ? [deliveryRecord(delivery), taskRecord(task, questions)] : [node('p', scope.task
       ? 'This task is not in the loaded publication; linked wire evidence remains available.'
       : 'Shared project activity · infrastructure and queue cover all projects.', 'work-empty')]),
     ...(card ? [record('Work request', card)] : []),
@@ -284,7 +296,16 @@ async function refresh() {
     const read = await client.readProgressBoard({board_id:scope.board});
     if (!authCurrent(epoch)) return;
     establishAuth(epoch);
-    const view = boardView(read); let task = view.stages.flatMap(stage => stage.tasks).find(task => task.id === scope.task);
+    const view = boardView(read);
+    const tasks = new Map(view.stages.flatMap(stage => stage.tasks).map(task => [task.id, task]));
+    const aliases = read.snapshot?.snapshot_json?.hierarchy?.aliases;
+    const seen = new Set();
+    let taskId = requestedTask;
+    while (!tasks.has(taskId) && typeof taskId === 'string' && typeof aliases?.[taskId] === 'string' && Object.hasOwn(aliases, taskId) && !seen.has(taskId)) {
+      seen.add(taskId); taskId = aliases[taskId];
+    }
+    let task = tasks.get(taskId);
+    scope.task = task?.id || requestedTask;
     if (!task && scope.board === 'carr-v5' && /^[a-z_]+:.+/.test(scope.task || '')) {
       const split = scope.task.indexOf(':'), kind = scope.task.slice(0,split), id = scope.task.slice(split+1);
       const census = validSystemWork(await client.unfinishedWork({kinds:kind,id,limit:1}));

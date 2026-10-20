@@ -3,15 +3,21 @@ import { GOVERNANCE_LANES, validGovernanceQueuePayload, validScheduleBoardPayloa
 const recordedText = value => typeof value === 'string' && value.trim() ? value : null;
 
 export function jobFacts(task) {
+  const ownHolder = task.kind === 'work_request' ? task.held : null;
   return {
     id: task.id, task, title: task.title || task.name || 'Untitled work',
     state: task.status || task.state || 'unknown',
-    owner: recordedText(task.held?.owner) || recordedText(task.owner) || 'unknown',
-    agent: recordedText(task.held?.executor) || (!task.kind ? recordedText(task.executor) : null) || 'unknown',
+    owner: recordedText(task.owner) || recordedText(ownHolder?.owner) || 'unknown',
+    agent: recordedText(ownHolder?.executor) || (!task.kind ? recordedText(task.executor) : null) || 'unknown',
     model: recordedText(task.model) || 'unknown', effort: recordedText(task.effort) || 'unknown',
-    blocker: recordedText(task.held?.blocker?.detail) || recordedText(task.blocked_reason) || recordedText(task.blocker?.detail) || 'unknown',
+    blocker: recordedText(task.blocked_reason) || recordedText(task.blocker?.detail) || recordedText(ownHolder?.blocker?.detail) || 'unknown',
     progress: recordedText(task.last_progress) || (!task.kind ? recordedText(task.note) : null) || 'unknown',
     updatedAt: recordedText(task.updated_at),
+    linked: task.held && !ownHolder ? {
+      owner: recordedText(task.held.owner) || 'unknown',
+      agent: recordedText(task.held.executor) || 'unknown',
+      blocker: recordedText(task.held.blocker?.detail) || 'unknown',
+    } : null,
   };
 }
 
@@ -36,8 +42,7 @@ export function resolveJobTasks(tasks) {
 }
 
 export function attentionTasks(tasks) {
-  return resolveJobTasks(tasks).filter(task => ['failed', 'blocked', 'needs_joe'].includes(task.status || task.state)
-    || task.health === 'blocked').map(jobFacts).sort((a, b) => Number(b.state === 'failed') - Number(a.state === 'failed'));
+  return resolveJobTasks(tasks).filter(task => ['failed', 'blocked', 'needs_joe'].includes(task.status || task.state)).map(jobFacts).sort((a, b) => Number(b.state === 'failed') - Number(a.state === 'failed'));
 }
 
 export function governanceTasks(payload) {

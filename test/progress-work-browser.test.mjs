@@ -676,7 +676,7 @@ for(const width of [320,390,1440])test(`work detail has no horizontal scroll at 
   }
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
   assert.equal(await page.locator('#composerSend').evaluate(button=>{const r=button.getBoundingClientRect();return button.contains(document.elementFromPoint(r.x+r.width/2,r.y+r.height/2));}),true);
-  await page.emulateMedia({reducedMotion:'reduce'});assert.equal(await page.locator('.work-flow line').first().evaluate(node=>getComputedStyle(node).animationName),'none');assert.deepEqual(errors,[]);
+  await page.emulateMedia({reducedMotion:'reduce'});assert.equal(await page.locator('.work-flow li').first().evaluate(node=>getComputedStyle(node).animationName),'none');assert.deepEqual(errors,[]);
 });
 
 test('empty, stale and offline states stay legible without inventing work',async t=>{
@@ -864,4 +864,157 @@ test('unknown acceptance denominator stays unavailable and late reads cannot cro
  assert.equal(await page.locator('.work-progress progress').count(),0);
  assert.doesNotMatch(await page.locator('.work-progress').textContent(),/2 of 5|[0-9]+%/);
  assert.deepEqual(errors,[]);
+});
+
+for (const width of [390,1280]) for (const theme of ['dark','light'])
+test(`work flow labels remain readable at ${width}px in ${theme} theme`, async t => {
+  const {page,errors} = await open(t,{width,rpcReply:(rpc,payload) =>
+    rpc.name === 'engineering-passport' ? multiEnvelopeCanonicalFixture({reviewed:true}) : payload});
+  await page.evaluate(theme => document.documentElement.dataset.theme = theme, theme);
+  await page.emulateMedia({reducedMotion:'reduce'});
+  const labels = page.locator('.work-flow text, .work-flow li');
+  assert.deepEqual(await labels.allTextContents(), ['Task','Sessions','Attempts','Review']);
+  const boxes = await labels.evaluateAll(labels => labels.map(label => {
+    const box = label.getBoundingClientRect();
+    const scale = label instanceof SVGGraphicsElement ? label.getScreenCTM().a : 1;
+    return {size:parseFloat(getComputedStyle(label).fontSize) * scale, x:box.x, y:box.y};
+  }));
+  for (const box of boxes) assert.ok(box.size >= 12, `Rendered label is ${box.size}px`);
+  for (let i = 1; i < boxes.length; i++)
+    assert.ok(width === 390 ? boxes[i].y > boxes[i-1].y : boxes[i].x > boxes[i-1].x);
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+  if (process.env.SLICE7_TASTE_CAPTURE_DIR) {
+    await page.waitForFunction(() => document.querySelector('#workReviewList').textContent.includes('actor:second'));
+    await mkdir(process.env.SLICE7_TASTE_CAPTURE_DIR,{recursive:true});
+    for (const [name,selector] of [['flow','.work-flow'], ['reviews','#workReviews']]) {
+      await page.locator(selector).scrollIntoViewIfNeeded();
+      if (name === 'reviews') await page.locator(selector).evaluate(el => window.scrollBy(0, el.getBoundingClientRect().top - 90));
+      await page.screenshot({path:resolve(process.env.SLICE7_TASTE_CAPTURE_DIR,`${name}-${width}-${theme}.png`)});
+    }
+  }
+  assert.deepEqual(errors, []);
+});
+
+test('review history leads with the verdict and keeps execution receipts collapsed', async t => {
+  const {page,errors} = await open(t,{rpcReply:(rpc,payload) =>
+    rpc.name === 'engineering-passport' ? multiEnvelopeCanonicalFixture({reviewed:true}) : payload});
+  await page.waitForFunction(() => document.querySelector('#workReviewList').textContent.includes('actor:second'));
+  const history = page.locator('#workReviewList');
+  const review = history.locator('article').first();
+  assert.deepEqual(await review.locator(':scope > dl dt').allTextContents(), ['Verdict','Reviewer','Round','Next action']);
+  assert.deepEqual(await review.locator(':scope > dl dd').allTextContents(),
+    ['Passed','actor:second','Not recorded','Check remaining closure requirements.']);
+  assert.doesNotMatch(await history.innerText(), /schema version|envelope digest|sha256:/);
+  const receipts = history.locator('details').filter({has:page.locator('summary', {hasText:/^Execution receipts/})});
+  assert.equal(await receipts.getAttribute('open'), null);
+  await receipts.locator(':scope > summary').click();
+  assert.match(await receipts.innerText(), /engineering-slice-receipt.v1/);
+  assert.deepEqual(errors, []);
+});
+
+test('Tab reaches the linked Work Request and Enter opens its standalone detail', async t => {
+  const {page,errors} = await open(t);
+  const link = page.locator('.work-lineage a').filter({hasText:'WR-900'});
+  await link.waitFor();
+  await page.locator('#workTitle').focus();
+  await page.keyboard.press('Tab');
+  assert.equal(await page.locator('.work-progress summary').evaluate(el => el === document.activeElement), true, 'Scope history remains in native tab order');
+  await page.keyboard.press('Tab');
+  assert.equal(await link.evaluate(el => el === document.activeElement), true, 'Tab must reach the Work Request');
+  await page.keyboard.press('Enter');
+  await page.waitForFunction(() => new URL(location.href).searchParams.get('work_request') === 'WR-900');
+  assert.equal(new URL(page.url()).searchParams.has('task'), false);
+  await page.waitForFunction(() => document.querySelector('#workTitle').textContent === 'Demo work request');
+  assert.deepEqual(errors, []);
+});
+
+test('unresolved task with an explicit request has no clickable Task lineage', async t => {
+  const {page,errors} = await open(t, {empty:true,
+    path:'/control-room/progress/work?board=demo-project&task=legacy-pr-73&work_request=WR-900'});
+  await page.locator('.work-lineage').waitFor();
+  const task = page.locator('.work-lineage dl > div').filter({has:page.locator('dt', {hasText:/^Task$/})});
+  assert.equal(await task.locator('a').count(), 0);
+  assert.equal(await task.locator('dd').textContent(), 'Not linked');
+  assert.equal(await page.locator('.work-lineage a').filter({hasText:'WR-900'}).count(), 1);
+  assert.match(await page.locator('#workMetadata').textContent(), /not in the loaded publication/);
+  assert.deepEqual(errors, []);
+});
+
+
+test('work detail follows two alias hops to the published task', async t => {
+  const {page,calls,errors} = await open(t, {
+    path:'/control-room/progress/work?board=demo-project&task=legacy-pr-73',
+    rpcReply:(rpc,payload) => {
+      if (rpc.name === 'read-progress-board') payload.snapshot.snapshot_json.hierarchy = {
+        aliases:{'legacy-pr-73':'rekeyed-pr-73', 'rekeyed-pr-73':taskId},
+      };
+      return payload;
+    },
+  });
+  assert.equal(await page.locator('#workTitle').textContent(), 'Demo work detail');
+  const task = page.locator('.work-lineage dl > div').filter({has:page.locator('dt', {hasText:/^Task$/})});
+  assert.equal(await task.locator('a').textContent(), taskId);
+  assert.equal(new URL(await task.locator('a').getAttribute('href'), page.url()).searchParams.get('task'), taskId);
+  await page.waitForFunction(() => document.querySelector('#workMetadata').textContent.includes('Demo work request'));
+  assert.ok(calls.some(call => call.name === 'work-request-card' && call.arguments.work_request === 'WR-900'));
+  assert.deepEqual(errors, []);
+});
+
+
+test('chained alias and direct task URLs show identical work evidence', async t => {
+  const evidence = [];
+  for (const requested of [taskId, 'legacy-pr-73']) {
+    const {page,errors} = await open(t, {
+      path:`/control-room/progress/work?board=demo-project&task=${requested}`,
+      rpcReply:(rpc,payload) => {
+        if (rpc.name === 'read-progress-board') payload.snapshot.snapshot_json.hierarchy = {
+          aliases:{'legacy-pr-73':'middle', middle:taskId},
+        };
+        return payload;
+      },
+    });
+    await page.waitForFunction(() => document.querySelector('#workCanonicalBody').textContent.includes('Closure: blocked'));
+    await page.waitForFunction(() => document.querySelector('#workSessionList').textContent.includes('Demo builder'));
+    await page.clock.runFor(5100);
+    evidence.push(await page.locator('#workReviewList, #workDotList, #workSessionList, #workCanonicalBody, #wireFeed').allTextContents());
+    assert.deepEqual(errors, []);
+  }
+  assert.match(evidence[0].join('\n'), /Fix round one/);
+  assert.deepEqual(evidence[1], evidence[0]);
+});
+
+for (const requested of [taskId, 'legacy-pr-73']) test(`work detail prefers an exact published key reached from ${requested}`, async t => {
+  const {page,errors} = await open(t, {
+    path:`/control-room/progress/work?board=demo-project&task=${requested}`,
+    rpcReply:(rpc,payload) => {
+      if (rpc.name === 'read-progress-board') {
+        payload.snapshot.snapshot_json.hierarchy = {aliases:{'legacy-pr-73':taskId, [taskId]:'other-task'}};
+        payload.snapshot.snapshot_json.tasks['other-task'] = {title:'Wrong alias destination', status:'review'};
+      }
+      return payload;
+    },
+  });
+  assert.equal(await page.locator('#workTitle').textContent(), 'Demo work detail');
+  assert.deepEqual(errors, []);
+});
+
+for (const [name,aliases] of [
+  ['two-node cycle', {'legacy-pr-73':'rekeyed-pr-73', 'rekeyed-pr-73':'legacy-pr-73'}],
+  ['self-cycle', {'legacy-pr-73':'legacy-pr-73'}],
+  ['missing target', {'legacy-pr-73':'missing-pr-73'}],
+  ['malformed target', {'legacy-pr-73':{id:taskId}}],
+]) test(`work detail leaves an alias ${name} unresolved`, {timeout:10000}, async t => {
+  const {page,errors} = await open(t, {empty:true,
+    path:'/control-room/progress/work?board=demo-project&task=legacy-pr-73&work_request=WR-900',
+    rpcReply:(rpc,payload) => {
+      if (rpc.name === 'read-progress-board') payload.snapshot.snapshot_json.hierarchy = {aliases};
+      return payload;
+    },
+  });
+  await page.locator('.work-lineage').waitFor();
+  const task = page.locator('.work-lineage dl > div').filter({has:page.locator('dt', {hasText:/^Task$/})});
+  assert.equal(await task.locator('dd').textContent(), 'Not linked');
+  assert.equal(await task.locator('a').count(), 0);
+  await page.waitForFunction(() => document.querySelector('#workMetadata').textContent.includes('Demo work request'));
+  assert.deepEqual(errors, []);
 });

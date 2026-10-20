@@ -74,6 +74,7 @@ export function mountBoard(deps = {}) {
   // reads the snapshot.
   let systemWork = null;
   let censusPipeline = null;
+  let censusObservation = {state:'pending'};
   let pipelineCards = [];
   let hierarchyUI = null;
 
@@ -460,7 +461,7 @@ export function mountBoard(deps = {}) {
     const all = merged.stages.flatMap(stage=>stage.tasks.map(task=>({...task,
       ...(boardId !== SYSTEM_BOARD_ID ? {task_id:task.task_id || task.id} : {})})));
     renderFilters({repos:view?.repos || [],cards:all,stages});
-    deps.onTasks?.(all,{state:boardState});
+    deps.onTasks?.(all,systemWork ? censusObservation : {state:boardState});
     renderCompleted({...view, cards:all,stages});
     const kind = census ? "project" : view.kind;
     pipelineCards = all;
@@ -1072,7 +1073,7 @@ export function mountBoard(deps = {}) {
   function start() {
     renderStages(currentView);
     if (boardId === SYSTEM_BOARD_ID && typeof client.unfinishedWork === "function" && byId("system-work-panel"))
-      systemWork = mountSystemWorkBoard({ client, openTask:deps.openTask, onAccessDenied: cause => readFailure(cause, "board"), onPipeline: pipeline => { censusPipeline = pipeline; renderStages(currentView); } });
+      systemWork = mountSystemWorkBoard({ client, openTask:deps.openTask, onAccessDenied: cause => readFailure(cause, "board"), onPipeline: (pipeline, observation) => { if (pipeline) censusPipeline = pipeline; censusObservation = observation; renderStages(currentView); } });
     refresh().catch(() => setError("Progress temporarily unavailable."));
     poller = mountVisibilityPoll({ document: doc, window: win, setTimeout: setTimer, clearTimeout: clearTimer, intervalMs: REFRESH_MS,
       poll: () => refresh().catch(() => setError("Progress temporarily unavailable.")) });
