@@ -849,3 +849,40 @@ test('work detail follows two alias hops to the published task', async t => {
   assert.ok(calls.some(call => call.name === 'work-request-card' && call.arguments.work_request === 'WR-900'));
   assert.deepEqual(errors, []);
 });
+
+
+for (const requested of [taskId, 'legacy-pr-73']) test(`work detail prefers an exact published key reached from ${requested}`, async t => {
+  const {page,errors} = await open(t, {
+    path:`/control-room/progress/work?board=demo-project&task=${requested}`,
+    rpcReply:(rpc,payload) => {
+      if (rpc.name === 'read-progress-board') {
+        payload.snapshot.snapshot_json.hierarchy = {aliases:{'legacy-pr-73':taskId, [taskId]:'other-task'}};
+        payload.snapshot.snapshot_json.tasks['other-task'] = {title:'Wrong alias destination', status:'review'};
+      }
+      return payload;
+    },
+  });
+  assert.equal(await page.locator('#workTitle').textContent(), 'Demo work detail');
+  assert.deepEqual(errors, []);
+});
+
+for (const [name,aliases] of [
+  ['two-node cycle', {'legacy-pr-73':'rekeyed-pr-73', 'rekeyed-pr-73':'legacy-pr-73'}],
+  ['self-cycle', {'legacy-pr-73':'legacy-pr-73'}],
+  ['missing target', {'legacy-pr-73':'missing-pr-73'}],
+  ['malformed target', {'legacy-pr-73':{id:taskId}}],
+]) test(`work detail leaves an alias ${name} unresolved`, {timeout:10000}, async t => {
+  const {page,errors} = await open(t, {empty:true,
+    path:'/control-room/progress/work?board=demo-project&task=legacy-pr-73&work_request=WR-900',
+    rpcReply:(rpc,payload) => {
+      if (rpc.name === 'read-progress-board') payload.snapshot.snapshot_json.hierarchy = {aliases};
+      return payload;
+    },
+  });
+  await page.locator('.work-lineage').waitFor();
+  const task = page.locator('.work-lineage dl > div').filter({has:page.locator('dt', {hasText:/^Task$/})});
+  assert.equal(await task.locator('dd').textContent(), 'Not linked');
+  assert.equal(await task.locator('a').count(), 0);
+  await page.waitForFunction(() => document.querySelector('#workMetadata').textContent.includes('Demo work request'));
+  assert.deepEqual(errors, []);
+});
