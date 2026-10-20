@@ -1,4 +1,5 @@
 import { noteText } from './pipeline-model.js';
+import { needsAttention } from './deal-review-model.js';
 
 export const PHASE_TRIGGERS = Object.freeze({
   pending: 'Prospective client', research: 'ETL signed', site_selection: 'Tour prepared or scheduled',
@@ -8,23 +9,14 @@ export const PHASE_TRIGGERS = Object.freeze({
 export const OWNER_FILTERS = Object.freeze([
   { value: 'all', label: 'All' }, { value: 'joe', label: 'Joe' }, { value: 'dell', label: 'Dell' },
 ]);
-export function localDeals(rows, owner = 'all') {
-  return (rows || []).filter(d => d.workspace_kind !== 'national_account' && !d.account_client_id
-    && !d.invoiced_on && (owner === 'all' || d.owner === owner));
-}
-export function needsAttention(deal, now = Date.now()) {
-  if (deal.operating_state === 'parked') return false;
-  const changed = Math.max(...[deal.phase_change?.recorded_at, deal.updated_at,
-    ...Object.values(deal.field_base || {}).map(event => event?.recorded_at)]
-    .map(value => Date.parse(value || '')).filter(Number.isFinite), -Infinity);
-  const review = Date.parse(deal.last_review_at || '');
-  const touch = Date.parse(deal.last_touch || '');
-  const due = Date.parse(deal.next_date || '');
-  return Boolean(deal.attention || deal.needs_attention || deal.flagged || deal.missing_step
-    || deal.changed_since_review || deal.gone_quiet || !noteText(deal.next_step)
-    || (Number.isFinite(changed) && (!Number.isFinite(review) || changed > review))
-    || (Number.isFinite(touch) && now - touch > 14 * 86400000)
-    || (Number.isFinite(due) && due < now));
+export function lostDeals(rows, owner = 'all', query = '') { return historyDeals(rows, owner, query, true); }
+export function closedDeals(rows, owner = 'all', query = '') { return historyDeals(rows, owner, query, false); }
+function historyDeals(rows, owner = 'all', query = '', lost = false) {
+  const search = query.trim().toLowerCase();
+  return (rows || []).filter(d => (lost ? d.outcome === 'lost' : Boolean(d.outcome === 'won' || !d.outcome && (d.closed_on || d.invoiced_on))) && d.workspace_kind !== 'national_account' && !d.account_client_id
+    && (owner === 'all' || d.owner === owner)
+    && (!search || [d.name, d.client_name, d.client_ref, d.type, d.closed_on].some(v => String(v || '').toLowerCase().includes(search))))
+    .sort((a,b) => String(b.closed_on || '').localeCompare(String(a.closed_on || '')) || String(a.name).localeCompare(String(b.name)));
 }
 export function urgencyOrder(rows, now = Date.now()) {
   return [...rows].sort((a,b) => Number(needsAttention(b,now)) - Number(needsAttention(a,now))

@@ -1,8 +1,8 @@
+import { showToast } from './toast.js';
 import {onDialogClosed} from './dialog-lifecycle.js';
 import { dealInsightLines } from './pipeline-model.js';
 import { selectDocRecord, setDocFilters, publishDocRead } from './doc-context.js';
 import { createClient, PHASES, PHICON, ACTOR_LABEL, phaseLabel } from './client.js';
-import { entryDetailsHtml } from './entry-details.mjs';
 import { deploymentIdentity, resolveDealroomBoot } from './boot-mode.js';
 import { uuidv4 } from './uuid.js';
 import { createPostCallClient } from './post-call-client.js';
@@ -20,8 +20,7 @@ import {
 } from './field-write-reconciliation.mjs';
 import { classifyCommandOutcome, commandMessage, pendingCommand } from './command-feedback.mjs';
 import { renderAccountCards } from './account-cards.js';
-import { mountEvidence } from './correspondence.js';
-import { mountAutoRefresh, updatedLabel } from './auto-refresh.mjs';
+import { updatedLabel } from './auto-refresh.mjs';
 import { mountVisibilityPoll } from './visibility-poll.mjs';
 
 const POLL_MS = 1400;
@@ -132,16 +131,6 @@ function priority(deal) {
   return (deal.attention ? 10000 : 0) + (days !== null && days < 0 ? 7000 + Math.abs(days) : 0)
     + (!deal.next_step ? 4000 : 0) + (isStale(deal) ? 2000 : 0)
     + (deal.workspace_kind === 'national_account' && !deal.market_agent ? 1000 : 0);
-}
-
-function showToast(message, undoEventId = null) {
-  const el = $('#toast');
-  // The toast's Undo is the same event-specific action as the receipt row's:
-  // it names its event, and both go through runUndo.
-  el.innerHTML = `${esc(message)}${undoEventId ? `<button type="button" data-undo="${esc(undoEventId)}">Undo</button>` : ''}`;
-  el.classList.add('show');
-  clearTimeout(showToast.timer);
-  showToast.timer = setTimeout(() => el.classList.remove('show'), undoEventId ? 7000 : 3200);
 }
 
 function clockLabel(ms) {
@@ -288,7 +277,7 @@ async function pollOnce(initial = false, { force = false } = {}) {
     // record as changed, name the base for the next write, and — below — ask for
     // a fresh authoritative snapshot.
     if (announce && event.actor === state.selfActor && REVERTIBLE_FIELDS.includes(event.field)) {
-      showToast(`${deal.name} updated`, event.id);
+      showToast(`${deal.name} updated`, {eventId:event.id});
     } else if (announce && event.actor !== state.selfActor && event.field) {
       showToast(`${actorName(event.actor)} updated ${deal.name}`);
     }
@@ -317,38 +306,20 @@ async function pollOnce(initial = false, { force = false } = {}) {
       console.warn('Deal Room confirm queue read failed', error);
     }
   }
-  if (!userIsEditing()) renderBoardOnly();
+  if (!userIsEditing()) renderPreservingFocus(renderBoardOnly);
 }
 
 function userIsEditing() {
   return Boolean(document.querySelector('dialog[open]') || document.activeElement?.matches('input,textarea,select'));
 }
 
-/**
- * A full render that does not throw the keyboard on the floor.
- *
- * `userIsEditing` guards dialogs and form fields; a focused BUTTON is invisible
- * to it, and the National Accounts home is nothing but buttons that
- * `renderAccounts` replaces wholesale. That grid never used to re-render on its
- * own — the poll only called `renderBoardOnly`, which returns immediately while
- * the board section is hidden — but a snapshot now lands on a 15-second timer,
- * so a card under the keyboard would be destroyed with no user action at all.
- *
- * The card is restored by its `data-account`, the same way an Undo button is
- * restored by its event id after the receipts list is rebuilt: only what was
- * taken is given back, the page is never scrolled to do it, and a card the
- * board no longer returns is not replaced with a different one — focus stays
- * where the browser put it rather than landing somewhere unrelated.
- */
-function renderPreservingFocus() {
-  const grid = $('#accountGrid');
+function renderPreservingFocus(paint = render) {
   const active = document.activeElement;
-  const focused = grid && active && grid.contains(active)
-    ? active.closest('[data-account]')?.dataset.account || null
-    : null;
-  render();
-  if (!focused) return;
-  $(`[data-account="${CSS.escape(focused)}"]`)?.focus({ preventScroll: true });
+  const root = active?.closest('#accountGrid, #stats, #emptyState');
+  const attribute = ['data-account', 'data-open-deal', 'data-clear-search'].find(key => active?.hasAttribute(key));
+  const selector = root && attribute ? `#${root.id} [${attribute}="${CSS.escape(active.getAttribute(attribute))}"]` : null;
+  paint();
+  if (selector && document.activeElement === document.body) $(selector)?.focus({ preventScroll: true });
 }
 
 function workspaceDeals() {
@@ -372,7 +343,7 @@ function workspaceDeals() {
   if (state.filter === 'stale') deals = deals.filter(isStale);
   if (state.filter === 'missing') deals = deals.filter((deal) => !deal.next_step);
   if (state.filter === 'delta') deals = deals.filter((deal) => state.changed.has(deal.id));
-  return deals.sort((a,b) => priority(b) - priority(a) || a.name.localeCompare(b.name));
+  return deals.sort((a,b) => priority(b) - priority(a) || a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
 }
 
 function render() {
@@ -392,6 +363,9 @@ function renderChrome() {
   const selected = account();
   const isAccountHome = state.workspace === 'national_account' && !state.accountId && !state.query;
   $('#accountBack').hidden = !state.accountId;
+  $('#accountContext').hidden = !state.accountId || Boolean(state.query);
+  $('#accountContextName').textContent = selected?.account_name || 'National account';
+  $('#accountContextOwner').textContent = selected ? `Owned by ${actorName(selected.account_owner)}` : '';
   // Never print the partners' names as a label: the team is both partners by
   // definition, so the combined list is just "Deals". The team view carries no
   // description sentence under its title (2026-09-16 review).
@@ -410,9 +384,19 @@ function renderChrome() {
   $('#boardSection').hidden = isAccountHome;
 }
 
+function accountPriority(deals) {
+  const ordered = [...deals].sort((a, b) => (a.next_date || '9999-12-31').localeCompare(b.next_date || '9999-12-31')
+    || a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
+  const overdue = ordered.filter((deal) => (daysFromNow(deal.next_date) ?? 0) < 0);
+  return { overdue, next: ordered[0] };
+}
+
 function renderAccounts() {
   const grid = $('#accountGrid');
-  grid.innerHTML = renderAccountCards(state.accounts, { esc, relative, actorName });
+  grid.innerHTML = renderAccountCards(state.accounts.map(item => ({ ...item, next_action: accountPriority(
+    [...state.deals.values()].filter(deal => deal.account_client_id === item.account_client_id
+      && (deal.operating_state || 'active') === 'active' && !deal.invoiced_on)
+  ).next })), { esc, relative, actorName, dateLabel });
 }
 
 /**
@@ -482,13 +466,32 @@ function renderBoardOnly() {
   renderFocus(deals);
   const rows = $('#rows');
   rows.innerHTML = deals.map(rowHtml).join('');
+  const emptySearch = Boolean(state.query && !deals.length);
+  $('#stats').hidden = emptySearch;
+  $('#tableFrame table').hidden = emptySearch;
+  $('.sticky-table-header').hidden = emptySearch;
   $('#emptyState').hidden = deals.length > 0;
-  $('#emptyState').textContent = state.query ? 'No work record matches this search.'
+  $('#emptyState').innerHTML = emptySearch
+    ? `<strong>No work records match “${esc(state.query)}”</strong><p>Try another name, market, or next step.</p><button type="button" class="secondary" data-clear-search>Clear search</button>`
     : state.filter === 'parked' ? 'No parked work records.' : 'No active work matches this filter.';
   applyPresence();
 }
 
 function renderStats(deals) {
+  const accountDetail = state.workspace === 'national_account' && state.accountId && !state.query && state.filter !== 'parked';
+  $('#stats').classList.toggle('account-priority', Boolean(accountDetail));
+  if (accountDetail) {
+    const { overdue, next } = accountPriority(deals);
+    $('#stats').innerHTML = next ? `
+      <span class="next-action-label${overdue.length ? ' is-alert' : ''}">${overdue.length ? 'Next overdue action' : 'Next market action'}</span>
+      <button type="button" class="next-account-action" data-open-deal="${esc(next.id)}">
+        <strong>${esc(next.next_step || 'Set the next step')}</strong>
+        <span>${esc(next.name)} · ${esc(dateLabel(next.next_date))}</span>
+        <span class="next-action-open">Open work record →</span>
+      </button>
+      <p class="account-urgency">${deals.length} active work · <span${overdue.length ? ' class="is-alert"' : ''}>${overdue.length} overdue dates</span> · ${deals.filter((deal) => deal.phase === 'Closing').length} at closing</p>` : '';
+    return;
+  }
   if (state.filter === 'parked') {
     $('#stats').innerHTML = `
       <div class="stat"><strong>${deals.length}</strong><span>Parked records</span></div>
@@ -507,7 +510,7 @@ function renderStats(deals) {
 }
 
 function renderFocus(deals) {
-  if (state.filter === 'parked') { $('#focusStrip').innerHTML = ''; return; }
+  if (state.filter === 'parked' || (state.workspace === 'national_account' && state.accountId && !state.query)) { $('#focusStrip').innerHTML = ''; return; }
   const items = deals.filter((deal) => priority(deal) > 0).slice(0, 4);
   $('#focusStrip').innerHTML = items.length ? '<span class="focus-label">Focus first</span>' + items.map((deal) => `
     <button type="button" class="focus-item" data-open-deal="${esc(deal.id)}"><b>${esc(deal.name)}</b><span>${esc(reasonFor(deal))}</span></button>`).join('') : '';
@@ -629,7 +632,7 @@ function renderReceipts() {
   const announcement = opened ? receiptsAnnouncement(state.receiptAnnounced, views) : '';
   if (opened) state.receiptAnnounced = views.map((view) => view.event_id);
   $('#receiptsLive').textContent = announcement;
-  list.innerHTML = receiptListHtml(views);
+  list.innerHTML = receiptListHtml(views.map(view => ({...view, can_undo:false})));
   if (keep) focusReceipt(keep);
 }
 
@@ -704,7 +707,7 @@ async function runUndo(eventId, trigger = null) {
     showToast('Change undone');
     return;
   }
-  showToast(result.outcome.message);
+  showToast(result.outcome.message, {error:true});
 }
 
 /**
@@ -839,7 +842,7 @@ function reportCellWrite(dealId, field, result, { surface = 'toast' } = {}) {
   const retryCell = result.status === 'unknown' || result.status === 'blocked'
     ? result.pending?.cell || null : null;
   if (surface === 'dialog' && showDealDialogNotice(message, retryCell)) return result;
-  showToast(message);
+  showToast(message, {error:result.status !== 'ok'});
   return result;
 }
 
@@ -1116,76 +1119,8 @@ function showConflict(conflict) {
     } });
 }
 
-function detailRows(items, renderer, empty='Nothing captured yet.') {
-  return items?.length ? items.map(renderer).join('') : `<div class="detail-row">${esc(empty)}</div>`;
-}
-
-let disposeDealEvidence = null;
-let dealDetailSequence = 0;
-let dealDetailSnapshot = null;
-async function openDeal(dealId, { background = false } = {}) {
-  if (!background) selectDocRecord('deal', dealId);
-  const dialog = $('#dealDialog');
-  if (background && (!dialog.open || dialog.dataset.dealId !== dealId)) return;
-  const sequence = ++dealDetailSequence;
-  const detail = await state.client.getDeal(dealId);
-  if (sequence !== dealDetailSequence) return;
-  if (background && (!dialog.open || dialog.dataset.dealId !== dealId || $('#formDialog').open || dialog.querySelector('[data-jev-deal]:disabled'))) return;
-  // Interaction may have changed during the read. Capture it at paint time.
-  const scroll = dialog.scrollTop;
-  const disclosures = background ? [...dialog.querySelectorAll('details[open]')].map(node => node.querySelector('summary')?.textContent) : [];
-  const advice = background ? dialog.querySelector('[data-jev-result]')?.innerHTML : null;
-  const focused = background && dialog.contains(document.activeElement) ? document.activeElement : null;
-  const focusAttributes = focused ? [...focused.attributes].filter(a => a.name === 'id' || a.name.startsWith('data-')).map(a => [a.name, a.value]) : [];
-  const unchanged = JSON.stringify(detail) === dealDetailSnapshot;
-  dealDetailSnapshot = JSON.stringify(detail);
-  const deal = detail.deal;
-  const parked = deal.operating_state === 'parked';
-  const html = `<header><div><h2>${esc(deal.name)}</h2><p class="subhead">${esc(deal.account_name || deal.client_name || 'Work record')} · ${parked ? `${esc(parkingReasonLabel(deal.parking_reason))} · ` : ''}${esc(phaseLabel(deal.phase))} · ${esc(deal.market || 'Market not captured')}</p></div><div class="detail-header-actions"><button type="button" class="park-button" data-operating-state="${parked ? 'active' : 'parked'}" data-deal="${esc(deal.id)}">${parked ? 'Restore to active' : 'Park'}</button><button type="button" class="icon-button" data-close-deal aria-label="Close details">×</button></div></header>
-    <div class="deal-content">${parked ? `<div class="parking-banner"><b>${esc(parkingReasonLabel(deal.parking_reason))}</b>${deal.parking_note ? `<span>${esc(deal.parking_note)}</span>` : ''}<small>This record is outside active counts and weekly agendas.</small></div>` : ''}<div class="deal-summary">
-      <div class="detail-card"><label>Next step</label><p>${esc(deal.next_step || 'Not set')}</p></div>
-      <div class="detail-card"><label>Next date</label><p>${esc(dateLabel(deal.next_date))}</p></div>
-      <div class="detail-card"><label>${deal.workspace_kind === 'national_account' ? 'Market agent' : 'Owner'}</label><p>${esc(deal.workspace_kind === 'national_account' ? deal.market_agent || 'Unassigned' : actorName(deal.owner))}</p></div>
-      <div class="detail-card"><label>Last touch</label><p>${esc(relative(deal.last_touch))}</p></div></div>
-      <section class="detail-section"><h3>Insights</h3><button type="button" class="secondary" data-jev-deal="${esc(deal.id)}">Review deal</button><div data-jev-result class="detail-list" aria-live="polite"></div></section>
-      <section class="detail-section"><h3>Open next actions</h3><div class="detail-list">${detailRows((detail.next_actions || []).filter((a) => a.status === 'open'), (a) => `<div class="detail-row"><b>${esc(a.description)}</b><small>${esc(actorName(a.owner))} · ${esc(dateLabel(a.due_on))}</small></div>`)}</div></section>
-      <section class="detail-section"><h3>Critical dates</h3><div class="detail-list">${detailRows(detail.critical_dates, (d) => `<div class="detail-row"><b>${esc(d.label || d.kind)}</b><small>${esc(dateLabel(d.date || d.due_on))}</small></div>`)}</div></section>
-      <section class="detail-section"><h3>Premises</h3><div class="detail-list">${detailRows(detail.premises, (p) => `<div class="detail-row"><b>${esc(p.label)}</b><small>${esc([p.address,p.suite,p.city,p.state].filter(Boolean).join(' · '))}${p.area_amount ? ` · ${esc(p.area_amount)} ${esc(p.area_basis || 'SF')}` : ''}</small></div>`)}</div></section>
-      <section class="detail-section"><h3>Negotiation rounds</h3><div class="detail-list">${detailRows(detail.negotiation_rounds, (n) => `<div class="detail-row"><b>Round ${esc(n.round_no)} · ${esc(n.side)}</b><small>${esc(n.rate_amount ? `${n.rate_amount} ${n.rate_basis || ''}` : 'Rate not captured')} · ${esc(n.term_months ? `${n.term_months} months` : 'Term not captured')}</small></div>`)}</div></section>
-      <section class="detail-section"><h3>Participants</h3><div class="detail-list">${detailRows(detail.participants, (p) => `<div class="detail-row"><b>${esc(p.name)}</b><small>${esc(String(p.role).replaceAll('_',' '))}</small></div>`)}</div></section>
-      <section class="detail-section"><h3>Recent activity</h3><div class="detail-list">${detailRows(detail.activities, (a) => `<div class="detail-row"><b>${esc(a.summary)}</b><small>${esc(actorName(a.actor))} · ${esc(relative(a.occurred_at))} · ${esc(a.kind)}</small></div>`)}</div></section>
-      <section class="detail-section"><h3>Notes and prior next steps</h3><div class="detail-list">${detailRows(detail.thread, (n) => `<div class="detail-row">${entryDetailsHtml(n.text)}<small>${esc(actorName(n.actor))} · ${esc(n.kind === 'archived_step' ? 'prior next step' : 'note')}</small></div>`)}</div></section>
-      <section class="detail-section"><h3>Documents</h3><div class="detail-list">${detailRows(detail.documents, (d) => `<div class="detail-row"><b>${esc(String(d.sent_status).replaceAll('_',' '))}</b><small>Prepared ${esc(relative(d.prepared_at))} · lint ${d.lint_passed ? 'passed' : 'not confirmed'} · leak check ${d.leak_check_passed ? 'passed' : 'not confirmed'}</small></div>`)}</div></section>
-      <section class="detail-section"><h3>Change history</h3><div class="detail-list">${detailRows(detail.history, (h) => `<div class="detail-row">${esc(h.summary)}<small>${esc(actorName(h.actor))} · ${esc(relative(h.recorded_at))}</small></div>`)}</div></section>
-    </div>`;
-  disposeDealEvidence?.();
-  $('#dealDetail').innerHTML = html;
-  const clock = document.createElement('time'); clock.className = 'as-of'; clock.textContent = updatedLabel(new Date().toISOString());
-  $('#dealDetail header').append(clock);
-  const evidenceRoot = document.createElement('div');
-  $('#dealDetail .deal-content').append(evidenceRoot);
-  disposeDealEvidence = mountEvidence(evidenceRoot, { client: state.client, detail });
-  dialog.dataset.dealId = dealId;
-  if (unchanged && advice) dialog.querySelector('[data-jev-result]').innerHTML = advice;
-  for (const node of dialog.querySelectorAll('details')) node.open = disclosures.includes(node.querySelector('summary')?.textContent);
-  if (!dialog.open) dialog.showModal();
-  if (background) dialog.scrollTop = scroll;
-  if (focused) [...dialog.querySelectorAll(focused.tagName)].find(node =>
-    focusAttributes.length ? focusAttributes.every(([name, value]) => node.getAttribute(name) === value) : node.textContent === focused.textContent)?.focus({ preventScroll: true });
-}
-
-async function readJevDeal(button) {
-  const target = $('#dealDialog [data-jev-result]');
-  button.disabled = true;
-  target.innerHTML = '<div class="detail-row">Reviewing…</div>';
-  try {
-    const reading = await state.client.getJevDealReading(button.dataset.jevDeal);
-    target.innerHTML = dealInsightLines(reading).map(line => `<div class="detail-row">${esc(line)}</div>`).join('');
-  } catch {
-    target.innerHTML = `<div class="detail-row">${esc(dealInsightLines(null)[0])}</div>`;
-  } finally {
-    button.disabled = false;
-  }
+async function openDeal(dealId) {
+  location.assign(`/deals?deal=${encodeURIComponent(dealId)}`);
 }
 
 function agendaDeals() {
@@ -1256,11 +1191,6 @@ async function finishAgenda(status = 'completed') {
 }
 
 function wireEvents() {
-  onDialogClosed($('#dealDialog'), () => {
-    ++dealDetailSequence;
-    disposeDealEvidence?.();
-    disposeDealEvidence = null;
-  });
   document.addEventListener('click', async (event) => {
     const workspace = event.target.closest('[data-workspace]');
     if (workspace) {
@@ -1268,6 +1198,14 @@ function wireEvents() {
       state.accountId = null; state.filter = 'active'; state.deepLinkMine = false; state.query = ''; $('#search').value = '';
       history.pushState({ dealView: state.workspace }, '', state.workspace === 'team' ? '/deals' : '/deals?view=national');
       render(); return;
+    }
+    if (event.target.closest('[data-clear-search]')) {
+      state.query = ''; $('#search').value = '';
+      render();
+      const target = state.accountId ? $('#accountContextName')
+        : $('#accountGrid:not([hidden]) [data-account]') || $('#rows .deal-link') || $('#workspaceTitle');
+      target.focus({ preventScroll: true });
+      return;
     }
     const accountButton = event.target.closest('[data-account]');
     if (accountButton) { state.workspace = 'national_account'; state.accountId = accountButton.dataset.account; render(); return; }
@@ -1283,7 +1221,6 @@ function wireEvents() {
       return;
     }
     const open = event.target.closest('[data-open-deal]'); if (open) { await openDeal(open.dataset.openDeal); return; }
-    const jevDeal = event.target.closest('[data-jev-deal]'); if (jevDeal) { await readJevDeal(jevDeal); return; }
     const attention = event.target.closest('[data-attention]'); if (attention) { const deal=state.deals.get(attention.dataset.attention); await patchField(deal.id,'attention',!deal.attention); return; }
     const step = event.target.closest('[data-next-step],[data-agenda-step]'); if (step) { nextStepForm(step.dataset.nextStep || step.dataset.agendaStep); return; }
     const agent = event.target.closest('[data-market-agent]'); if (agent) { marketAgentForm(agent.dataset.marketAgent); return; }
@@ -1301,7 +1238,13 @@ function wireEvents() {
   });
 
   $('#search').addEventListener('input', (event) => { state.query=event.target.value.trim(); render(); });
-  $('#accountBack').onclick = () => { state.accountId=null; render(); };
+  $('#accountBack').onclick = () => {
+    const accountId = state.accountId;
+    state.accountId = null;
+    state.query = ''; $('#search').value = '';
+    render();
+    if (accountId) $(`[data-account="${CSS.escape(accountId)}"]`)?.focus({ preventScroll: true });
+  };
   const openAddForm = () => state.workspace === 'team' ? addTeamDealForm() : state.accountId ? addMarketDealForm() : addAccountForm();
   $('#stickyAddButton').onclick = openAddForm;
   $('#receiptsJump').onclick = goToReceipts;
@@ -1354,7 +1297,6 @@ async function boot() {
   badge.title = identity.detail;
   badge.setAttribute('aria-label', identity.detail);
   state.client = await createClient(bootConfig.mode, bootConfig.options);
-  mountAutoRefresh({ document, window, shouldRefresh: () => $('#dealDialog').open && !$('#formDialog').open && !$('#dealDialog').querySelector('[data-jev-deal]:disabled'), refresh: () => openDeal($('#dealDialog').dataset.dealId, { background: true }) });
   state.boardSync = createBoardSync({
     readBoard: () => state.client.getBoard({ workspace:'all' }),
     readChanges: (cursor) => state.client.getChanges(cursor),

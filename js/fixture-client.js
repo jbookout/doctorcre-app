@@ -1,3 +1,4 @@
+import { addDays, localToday } from './calendar-model.js';
 import { createInvoiceFixture } from './invoice-tracker-fixture.js';
 import { relationshipNetworkFixture } from './relationship-network-fixture.js';
 import { EXAMPLE_SESSION_ROWS, BRANCH_SESSION_ROWS } from './example-sessions.js';
@@ -1366,7 +1367,8 @@ export async function createFixtureClient(opts = {}) {
     selfActor,
 
     async getBoard() {
-      const national = [...deals.values()].filter((d) => d.account_client_id === fixtureAccountId);
+      const today = (opts.today || localToday)();
+      const national = [...deals.values()].filter((d) => d.account_client_id === fixtureAccountId && !d.invoiced_on);
       const activeNational = national.filter((d) => d.operating_state === 'active');
       return {
         actor: selfActor,
@@ -1374,10 +1376,13 @@ export async function createFixtureClient(opts = {}) {
         // event for each editable cell, from the same pass as the values, so a
         // first edit has a base here too. A cell with no history has no entry.
         deals: [...deals.values()].filter(d => !d.invoiced_on).map((d) => ({ ...d, phase_change: phaseChangeFor(d.id), field_base: fieldBaseFor(d.id) })),
+        lost_deals: [...deals.values()].filter(d => d.outcome === 'lost').map(d => ({...d})),
+        closed_deals: [...deals.values()].filter(d => (d.outcome === 'won' || !d.outcome && (d.closed_on || d.invoiced_on))).map(d => ({...d})),
         accounts: [{ account_client_id: fixtureAccountId, account_client_ref: 'DEMO-ACCOUNT-001',
           account_name: 'Demo National Practice', account_owner: fixtureAccountOwner, open_deals: activeNational.length,
           attention_deals: activeNational.filter((d) => d.attention).length,
-          overdue_deals: 0, stale_deals: 2,
+          overdue_deals: activeNational.filter((d) => d.next_date && d.next_date < today).length,
+          stale_deals: activeNational.filter((d) => !d.last_touch || d.last_touch <= addDays(today, -14)).length,
           parked_deals: national.length - activeNational.length, last_review_at: lastCallAt }],
         open_session: [...reviewSessions.values()].find((s) => s.status === 'open') || null,
         as_of: asOf,
@@ -1668,7 +1673,7 @@ export async function createFixtureClient(opts = {}) {
       });
     },
 
-    async createDeal({ name, client, deal_type, phase, segment, market, lane, idempotency_key }) {
+    async createDeal({ name, client, deal_type, phase, segment, market, lane, owner, notes, idempotency_key }) {
       return withIdem(idempotency_key, () => {
         const n = String(name || '').trim();
         if (!n) throw new Error('empty name');
@@ -1678,7 +1683,7 @@ export async function createFixtureClient(opts = {}) {
           name: n,
           type: deal_type || 'Other',
           phase: phase || 'On Deck',
-          owner: selfActor,
+          owner: owner || selfActor,
           attention: false,
           last_touch: nowIso().slice(0, 10),
           next_step: '',
@@ -1692,6 +1697,7 @@ export async function createFixtureClient(opts = {}) {
           account_name: lane === 'national' ? 'Demo National Practice' : null,
         };
         deals.set(id, d);
+        if (notes) threads.set(id, [{ id: `note-${seq++}`, kind: 'note', actor: selfActor, text: notes, at: nowIso() }]);
         const e = pushEvent({
           actor: selfActor,
           verb: 'create-deal',

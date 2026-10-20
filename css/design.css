@@ -52,8 +52,8 @@
 .row-wrap { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
 .field-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: var(--space-3); }
 .stack-end { display: grid; justify-items: end; gap: var(--space-2); }
-.receipt-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: var(--space-2); }
-.receipt-grid .receipt { animation: none; box-shadow: none; }
+.receipt-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); gap: var(--space-2); }
+.receipt-grid .receipt { grid-template-columns: minmax(0, 1fr); justify-items: start; animation: none; box-shadow: none; }
 .state-picker { flex-wrap: wrap; margin-bottom: var(--space-4); }
 .status-list { display: grid; gap: var(--space-2); margin: 0; padding: 0; list-style: none; }
 .status-list li { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); padding: var(--space-2) 0; border-top: var(--hairline-width) solid var(--hairline); }

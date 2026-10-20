@@ -250,7 +250,8 @@ test('honest controls fit 320px, 390px and iPad in both motion settings with 44p
           assert.ok(box.width >= 44 && box.height >= 44, `${width}: ${selector} touch target ${JSON.stringify({box,style})}`);
         }
       }
-      assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+      const overflow = await page.evaluate(() => [...document.querySelectorAll('body *')].filter(n=>n.getBoundingClientRect().right>innerWidth+1&&getComputedStyle(n).position!=='fixed').map(n=>({tag:n.tagName,id:n.id,class:n.className,right:n.getBoundingClientRect().right})).slice(0,12));
+      assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, `${width}: ${JSON.stringify(overflow)}`);
       await page.close();
     }
   } finally { await browser.close(); await new Promise(resolve => server.close(resolve)); }
