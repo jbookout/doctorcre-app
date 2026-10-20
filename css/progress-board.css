@@ -350,3 +350,56 @@ footer { padding-top: 8px; }
 
 .pipeline-diagram foreignObject div { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; line-height: 16px; }
 .pipeline-diagram .node-label div { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; white-space: normal; overflow-wrap: anywhere; }
+
+/* Both board routes scroll above the fixed navigation and status footer. */
+.app-layout-center:has(#board-stages):not(:has(#panelDashboard[hidden])) { height: calc(100dvh - var(--layout-bottom)); overflow-y: auto; overscroll-behavior-y: contain; scroll-padding-block: var(--tabbar-height) var(--space-5); }
+.hierarchy-board { display: block; }
+body:has(#board-stages[aria-busy="true"]) #board-directory { display: none; }
+.pipeline-panel:has([aria-busy="true"]) :is(.filters, .pipeline-rail),
+:is(main, #panelDashboard):has(#board-stages[aria-busy="true"]) > :is(.headline, .lower-grid, .panel:not(.pipeline-panel)),
+:is(main, #panelDashboard):has(#board-stages[aria-busy="true"]) .intro .headline { display: none; }
+.hierarchy-loading .hierarchy-toolbar { height: var(--touch); }
+.hierarchy-skeleton { min-height: 190px; }
+.hierarchy-skeleton::before, .hierarchy-skeleton::after { content: ''; display: block; height: var(--space-3); background: var(--surface-3); border-radius: var(--radius-1); margin-block: var(--space-4); }
+.hierarchy-skeleton::before { width: 55%; }
+.hierarchy-skeleton::after { width: 85%; }
+.hierarchy-toolbar { display: flex; flex-wrap: wrap; align-items: start; justify-content: space-between; gap: var(--space-2) var(--space-4); }
+.hierarchy-breadcrumbs { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-4); margin: 0; font-size: var(--font-size-1); }
+.hierarchy-breadcrumbs a { display: inline-flex; align-items: center; min-height: var(--touch); color: var(--fg-muted); text-decoration: none; }
+.hierarchy-breadcrumbs a[aria-current] { color: var(--fg); font-weight: var(--font-weight-strong); }
+.hierarchy-breadcrumbs a + a::before { content: '/'; color: var(--fg-quiet); margin-right: var(--space-4); font-weight: var(--font-weight-regular); }
+.hierarchy-tools { margin: 0; color: var(--fg-muted); font-size: var(--font-size-1); }
+.hierarchy-tools[open] { flex-basis: 100%; }
+.pipeline-panel:has(.hierarchy-board) > .panel-heading { margin-bottom: var(--space-2); }
+.hierarchy-tools > summary { width: fit-content; min-height: var(--touch); align-content: center; cursor: pointer; }
+#hierarchy-jump { display: flex; flex-wrap: wrap; gap: var(--space-3); align-items: end; margin-block: var(--space-3); }
+#hierarchy-jump label { display: grid; gap: var(--space-1); }
+#hierarchy-jump input { width: min(100%, 18rem); min-width: 0; padding: var(--space-2); color: var(--fg); background: var(--surface-1); border: var(--hairline-width) solid var(--hairline-strong); border-radius: var(--radius-2); }
+.hierarchy-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 17rem), 1fr)); gap: var(--space-5); }
+.hierarchy-board .columns { grid-template-columns: repeat(auto-fit, minmax(min(100%, 17rem), 1fr)); gap: var(--space-5); }
+.hierarchy-board .column { border: 0; border-radius: 0; background: transparent; }
+.hierarchy-board .column-head { padding: var(--space-2) 0 var(--space-3); margin: 0; color: var(--fg-muted); font-size: var(--font-size-1); font-weight: var(--font-weight-regular); }
+.hierarchy-board .column-body { padding: 0; gap: 0; }
+.hierarchy-card { padding: var(--space-4) 0; border: 0; border-bottom: var(--hairline-width) solid var(--hairline); background: transparent; min-width: 0; }
+.hierarchy-card-title { display: block; width: 100%; color: var(--fg); background: transparent; border: 0; padding: 0; cursor: pointer; font-size: var(--font-size-2); font-weight: var(--font-weight-strong); text-align: left; min-height: var(--touch); }
+.hierarchy-description { color: var(--fg-muted); font-size: var(--font-size-2); line-height: var(--line-height-body); margin-block: var(--space-1) var(--space-3); }
+.hierarchy-counts, .hierarchy-activity, .hierarchy-details { color: var(--fg-muted); font-size: var(--font-size-1); }
+.hierarchy-activity { display: block; margin-block: var(--space-2); }
+.hierarchy-details { overflow-wrap: anywhere; }
+.hierarchy-details p { margin-block: var(--space-2); }
+.hierarchy-details summary, #hierarchy-completed > details > summary { cursor: pointer; min-height: var(--touch); align-content: center; }
+.hierarchy-status { color: var(--status-danger-ink); font-size: var(--font-size-1); font-weight: var(--font-weight-strong); margin-block: var(--space-2); }
+.hierarchy-next-action { color: var(--fg); font-size: var(--font-size-2); margin-block: var(--space-2) var(--space-3); }
+#hierarchy-completed { margin-top: var(--space-5); }
+.hierarchy-empty { grid-column: 1 / -1; padding-block: var(--space-5); color: var(--fg-muted); font-size: var(--font-size-2); }
+.hierarchy-empty p { margin-bottom: var(--space-3); }
+.lower-grid:not(:has(> .panel:not([hidden]))) { display: none; }
+@media (hover: hover) { .hierarchy-card-title:hover, .hierarchy-breadcrumbs a:hover { color: var(--fg); text-decoration: underline; text-underline-offset: .2em; } }
+.hierarchy-card-title:active { transform: scale(var(--press-scale)); transform-origin: left; }
+.hierarchy-board :is(a, button, input, summary):focus-visible, #pipeline-title:focus-visible { outline: var(--focus-width) solid var(--focus-ring); outline-offset: var(--space-1); }
+#hierarchy-jump button, .hierarchy-breadcrumbs button, .hierarchy-empty button { color: var(--fg-muted); background: transparent; border: var(--hairline-width) solid var(--hairline); border-radius: var(--radius-2); padding: var(--space-2) var(--space-3); min-height: var(--touch); cursor: pointer; }
+
+@media (max-width: 760px) {
+  .hierarchy-breadcrumbs a:not([aria-current]) { display: none; }
+  .hierarchy-breadcrumbs a[aria-current]::before { content: none; }
+}
