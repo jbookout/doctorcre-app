@@ -15,6 +15,7 @@ import { mountGlobalCallMode } from '../js/global-call-mode.js';
 const read = (path) => readFile(new URL(`../${path}`, import.meta.url), 'utf8');
 
 async function touchTargetBox(locator) {
+  await locator.waitFor({state:'visible'});
   await animationsSettled(locator.page());
   return locator.boundingBox();
 }
@@ -226,7 +227,7 @@ test('honest controls fit 320px, 390px and iPad in both motion settings with 44p
 
       await page.goto(`${base}/deals`);
       if (width <= 760) await page.locator('#selfAvatar').click();
-      await page.locator('#callModeRetry').waitFor({ state:'visible' });
+      await page.locator('#callModeRetry:enabled').waitFor({ state:'visible' });
       assert.equal(await page.locator('#callModeButton').isVisible(), false);
       assert.match(await page.locator('#callModeAvailability').textContent(), /Call recording runs on the Mac with Quill/);
       const notice = await page.locator('#callModeAvailability').boundingBox();
