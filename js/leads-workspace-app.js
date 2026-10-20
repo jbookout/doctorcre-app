@@ -32,7 +32,7 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
     const possible = lead.possible_clients || [];
     return `<article class="lead-card" data-lead-id="${esc(lead.id)}" data-selected="${lead.id === state.selectedId}" draggable="true">
       <span class="drag-handle" data-drag-handle aria-hidden="true">⠿</span><h3><button class="lead-open" data-open="${esc(lead.id)}" aria-pressed="${lead.id === state.selectedId}">${esc(leadTitle(lead))}</button></h3>
-      <div class="card-foot"><span><span class="lead-market">${esc(marketKey(lead))}</span><small class="lead-location">${locationLabel(lead)}</small></span><span class="score"><small>Score</small>${score(lead)}</span></div>
+      <div class="card-foot"><span><span class="lead-market">${esc(marketKey(lead))}</span><small class="lead-location">${locationLabel(lead)}</small></span><div class="card-actions"><span class="score"><small>Score</small>${score(lead)}</span>${normalizedStage(lead) === "new" && !lead.owner ? `<button data-claim="${esc(lead.id)}">Claim</button>` : ""}</div></div>
       ${move ? `<div class="auto-move">Moved by Doc: ${esc(move.reason || "stage updated")} ${shortDate(move.evidence_date || move.occurred_at)}${undo ? `<button data-undo="${esc(lead.id)}">Undo</button>` : ""}</div>` : ""}
       ${possible.map(match => `<div class="client-hint">possible client: ${esc(match.name)} <button data-link="${esc(lead.id)}" data-client-id="${esc(match.client_id)}" aria-label="Link ${esc(leadTitle(lead))} to ${esc(match.name)}">Link</button></div>`).join("")}
     </article>`;

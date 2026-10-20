@@ -35,6 +35,6 @@ test('An unclaimed New lead can be claimed on the first screen of a 45-lead boar
   await settles(async () => assert.equal(await page.locator('#moveAnnouncement').innerText(), 'Lead claimed'));
   assert.equal(writes.length, 1);
   assert.equal(writes[0].name, 'claim-lead');
-  assert.equal(writes[0].arguments.lead_id, board.leads[0].id);
+  assert.equal(writes[0].arguments.lead, 'L-1');
   assert.equal(await page.locator('#leadDetail').evaluate(node => node.open), false);
 });
