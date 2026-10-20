@@ -111,6 +111,7 @@ function renderAssignments() {
   const list = $("modelRoomAssignments");
   const dropped = $("modelRoomDropped");
   if (!line || !list) return;
+  line.title = '';
   const moveTarget = $("modelRoomMoveTarget");
   if (moveTarget) moveTarget.hidden = true;
   if (view.queue.state === "loading") {
@@ -126,6 +127,7 @@ function renderAssignments() {
   const payload = view.queue.refusal ? null : view.queue.payload;
   const fresh = queueFreshness(payload);
   line.dataset.state = fresh.state;
+  if (fresh.projectedAt) line.title = new Date(fresh.projectedAt).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'long' });
   // The state is carried by colour AND shape (the data-state rules) AND this
   // text, so a still screenshot reads correctly with no colour at all.
   line.textContent = view.queue.refusal
