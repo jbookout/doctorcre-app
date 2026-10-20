@@ -143,6 +143,30 @@ for (const width of [390, 1280]) for (const theme of ['dark', 'light']) {
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
     assert.deepEqual(errors, []);
   });
+
+  test(`hierarchy taste holds row skeletons while the census resolves first at ${width}px ${theme}`, async t => {
+    let release;
+    const held = new Promise(resolve => { release = resolve; });
+    t.after(() => release());
+    const { page, errors } = await open(t, { width, path: '/control-room?mode=live&tab=boards',
+      snapshotData: hierarchy, rows: Array.from({ length: 17 }, (_, index) => workRow(`pending-${index}`)),
+      control: async (route, rpc) => {
+        if (rpc.name !== 'read-progress-board') return false;
+        await held; await route.continue(); return true;
+      } });
+    await page.waitForFunction(() => document.querySelector('#system-work-coverage')?.textContent.length > 0);
+    await hierarchyEvidence(page, 'loading', width, theme);
+    assert.equal(await page.locator('#board-stages [data-card-id]').count(), 0, 'census cards do not replace the loading hierarchy');
+    const skeletons = page.locator('#board-stages .hierarchy-skeleton');
+    assert.equal(await skeletons.count(), 3, 'a short set of row-shaped skeletons holds the board frame');
+    assert.equal(await page.locator('#board-stages').getAttribute('aria-busy'), 'true');
+    const skeletonY = (await skeletons.first().boundingBox()).y;
+    release();
+    await page.locator('[data-hierarchy-id="WR14"]').waitFor();
+    assert.equal(await page.locator('#board-stages').getAttribute('aria-busy'), null);
+    assert.ok(Math.abs((await page.locator('[data-hierarchy-id="WR14"]').boundingBox()).y - skeletonY) < 48, 'the first row keeps its place after loading');
+    assert.deepEqual(errors, []);
+  });
 }
 
 async function mountTestCosts(t, width = 390) {
