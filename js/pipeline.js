@@ -1,3 +1,4 @@
+import { engagementWriterFor } from './prospect-engagement.mjs';
 import { showToast } from './toast.js';
 import { pageDocContext, selectDocRecord, setDocFilters, publishDocRead } from './doc-context.js';
 // V5-UX-B03 — Deals: the Kanban board's DOM wiring, and nothing else.
@@ -870,7 +871,7 @@ function fullRecordHtml(detail) {
 function detailHtml(detail) {
   const d = detail.deal;
   const prospect = state.deals.get(d.id);
-  const pendingProspect = prospectWrites.get(prospect?.client_id);
+  const pendingProspect = engagementWriterFor(state.client).get(prospect?.client_id, state.selfActor);
   const parked = d.operating_state === 'parked';
   const controlsAvailable = state.deals.has(d.id) && !isClosedDeal(d);
   return `<div class="deal-freshness"><time id="detailUpdated" title="Last updated"></time><button class="btn icon-btn" type="button" data-refresh-detail aria-label="Refresh deal" title="Refresh">↻</button></div><p id="detailReadStatus" role="status"></p>
@@ -880,7 +881,7 @@ function detailHtml(detail) {
     </section>
     <form id="detailUpdateForm" class="deal-update-form"><label for="dealUpdate">Update</label><textarea id="dealUpdate" name="text" rows="2" maxlength="10000" required></textarea><button class="btn btn-primary" type="submit">Add update</button><p id="detailUpdateStatus" role="status"></p></form>
     <div data-detail-read="board-controls" data-available="${controlsAvailable}">${controlsAvailable ? `<div class="detail-actions"><div class="detail-controls"><label>Phase<select id="detailPhase">${COLUMNS.map(c => `<option value="${esc(c.slug)}"${c.value === d.phase ? ' selected' : ''}>${esc(c.label)}</option>`).join('')}</select></label><label>Owner<select id="detailOwner"><option value="">Unassigned</option>${['joe','dell'].map(owner => `<option value="${owner}"${owner === d.owner ? ' selected' : ''}>${actorName(owner)}</option>`).join('')}</select></label></div><div data-detail-read="parking" data-parked="${parked}">${parked ? `<p>${esc(concise(d.parking_note) || 'Parked')}</p><button type="button" class="btn" data-revive="${esc(d.id)}">Revive</button>` : `<details class="park-options"><summary class="park-control">Park</summary><form id="detailParkForm"><label>Park reason<input name="reason" maxlength="500" required></label><button class="btn park-control" type="submit">Park deal</button></form></details>`}</div></div>` : ''}</div>
-    ${controlsAvailable && prospect?.client_status === 'prospect' ? `<form id="detailInactiveForm" data-detail-read="prospect"><p>Inactive prospects return to Leads.</p><label>Reason<input name="reason" maxlength="1000" required value="${esc(pendingProspect?.args.reason || '')}"${pendingProspect ? ' readonly' : ''}></label><button class="btn" type="submit">${pendingProspect ? 'Check outcome' : 'Mark inactive'}</button><p role="status" data-prospect-status>${pendingProspect ? 'Confirmation pending for this prospect. Check outcome to retry the same request.' : ''}</p></form>` : ''}
+    ${controlsAvailable && prospect?.client_status === 'prospect' ? `<form id="detailInactiveForm" data-detail-read="prospect"><p>Inactive prospects return to Leads.</p><label>Reason<input name="reason" maxlength="1000" required value="${esc(pendingProspect?.request.reason || '')}"${pendingProspect ? ' readonly' : ''}></label><button class="btn" type="submit">${pendingProspect ? 'Check outcome' : 'Mark inactive'}</button><p role="status" data-prospect-status>${pendingProspect ? 'Confirmation pending for this prospect. Check outcome to retry the same request.' : ''}</p></form>` : ''}
     ${renderDealTimeline(detail)}${renderDealUpdates(detail)}
     <button class="btn" type="button" data-jev-deal="${esc(d.id)}">Deal outlook</button><p data-jev-result role="status"></p>
     <details class="deal-dates"><summary>Dates</summary>${renderCriticalDates(detail)}</details>
@@ -1007,49 +1008,37 @@ async function setOperatingState(id, value) {
   renderPendingWrites();
 }
 
-const prospectWrites = new Map();
-async function prospectWriteReached(pending) {
-  try {
-    const {deal} = await state.client.getDeal(pending.id);
-    return deal.client_id === pending.args.client_id &&
-      deal.prospect_engagement_status === pending.args.status && deal.client_version > pending.args.base_version;
-  } catch { return false; }
-}
 async function markProspectInactive(form,id,reason) {
   const prospect = state.deals.get(id);
   if (!prospect || !reason) return;
-  const clientId = prospect.client_id;
-  let pending = prospectWrites.get(clientId);
-  if (pending?.sending) return;
-  const retry = Boolean(pending);
-  if (!pending) {
-    pending = {id,args:{client_id:clientId,base_version:prospect.client_version,
-      status:'inactive',reason,human_quote:reason,expected_actor:state.selfActor,idempotency_key:uuidv4()}};
-    prospectWrites.set(clientId,pending);
-  }
-  pending.sending = true;
+  const engagement = engagementWriterFor(state.client);
+  if (engagement.get(prospect.client_id, state.selfActor)?.sending) return;
   form.querySelector('button').disabled = true;
   try {
-    if (!retry || !await prospectWriteReached(pending)) await state.client.setProspectEngagementStatus(pending.args);
-    prospectWrites.delete(clientId);
+    await engagement({ client_id: prospect.client_id, base_version: prospect.client_version,
+      status: 'inactive', reason, human_quote: reason, expected_actor: state.selfActor }, {
+      readBack: async () => {
+        const { deal } = await state.client.getDeal(id);
+        return { client_id: deal.client_id, status: deal.prospect_engagement_status, version: deal.client_version };
+      },
+    });
     await state.boardSync.refreshBoard({reason:'prospect-inactive'});
     if (state.panelDeal === id) closePanel();
     showToast('Prospect returned to Leads');
   } catch (error) {
-    if (error.code === 'unknown_outcome' && await prospectWriteReached(pending)) {
-      prospectWrites.delete(clientId);
-      await state.boardSync.refreshBoard({reason:'prospect-confirmed'});
-      if (state.panelDeal === id) closePanel();
-      showToast('Prospect returned to Leads');
-    } else {
-      if (error.code !== 'unknown_outcome') prospectWrites.delete(clientId);
-      await state.boardSync.refreshBoard({reason:'prospect-check'});
-      if (state.panelDeal === id) await refreshPanel();
-      if (error.code !== 'unknown_outcome') showToast('Change unavailable. Refresh and try again.',{error:true});
-    }
+    await state.boardSync.refreshBoard({reason:'prospect-check'});
+    if (state.panelDeal === id) await refreshPanel();
+    if (error.code !== 'unknown_outcome') showToast('Change unavailable. Refresh and try again.',{error:true});
   } finally {
-    pending.sending = false;
-    form.querySelector('button').disabled = false;
+    const pending = engagement.get(prospect.client_id, state.selfActor);
+    const current = $('detailInactiveForm');
+    if (current && state.panelDeal === id) {
+      current.querySelector('button').disabled = false;
+      current.querySelector('button').textContent = pending ? 'Check outcome' : 'Mark inactive';
+      current.elements.reason.readOnly = Boolean(pending);
+      if (pending) current.elements.reason.value = pending.request.reason;
+      current.querySelector('[data-prospect-status]').textContent = pending ? 'Confirmation pending for this prospect. Check outcome to retry the same request.' : '';
+    }
   }
 }
 

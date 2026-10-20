@@ -1,7 +1,5 @@
-import { createLiveClient } from "./live-client.js";
 import { dealName } from "./pipeline-model.js";
 import { TOUCH_LAYOUT } from "./touch-layout.js";
-import { createFixtureClient } from "./fixture-client.js";
 import { resolveDealroomBoot } from "./boot-mode.js";
 import {
   mountAutoRefresh,
@@ -402,7 +400,7 @@ if (
   const boot = resolveDealroomBoot(location);
   const client =
     boot.mode === "live"
-      ? createLiveClient()
-      : await createFixtureClient(boot.options);
+      ? (await import("./live-client.js")).createLiveClient()
+      : await (await import("./fixture-client.js")).createFixtureClient(boot.options);
   mountRelationshipNetwork({ document, window, client });
 }

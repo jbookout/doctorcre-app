@@ -123,3 +123,16 @@ for (const code of ['version_conflict','not_a_prospect','not_authenticated','for
  await assert.rejects(client.setProspectEngagementStatus({client_id:'synthetic-client',base_version:7,status:'active',
   reason:'Synthetic renewed interest',expected_actor:'example-partner',idempotency_key:'synthetic-key'}),{code});
 });
+
+test('Leads client owns the pending request when a caller supplies a replacement key', async () => {
+ const sent=[];
+ const client=createLeadBoardClient({docContext:false,fetchImpl:async(_path,init)=>{
+  sent.push(JSON.parse(init.body).params.arguments);
+  if(sent.length===1)throw new TypeError('Synthetic lost reply');
+  return jsonResponse({result:{content:[{type:'text',text:'{"ok":true}'}]}});
+ }});
+ const args={client_id:'synthetic-client',base_version:7,status:'active',reason:'Synthetic renewed interest',expected_actor:'joe',idempotency_key:'original-key'};
+ await assert.rejects(client.setProspectEngagementStatus(args),{code:'unknown_outcome'});
+ await client.setProspectEngagementStatus({...args,idempotency_key:'replacement-key',reason:'Changed draft'});
+ assert.deepEqual(sent,[args,args]);
+});

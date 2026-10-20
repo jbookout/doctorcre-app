@@ -942,3 +942,30 @@ test('round 3: offline retry preserves the uncertain inactive request through re
  assert.deepEqual(writes[1],writes[0],'offline retry must preserve the entire original request');
  assert.deepEqual(errors,[]);
 });
+
+test('rendered pipeline restores its pending request after page refresh',async t=>{
+ const {page,errors}=await open(t);
+ const install=async()=>{
+  const {state}=await import('/js/pipeline.js');const get=state.client.getBoard,detail=state.client.getDeal;
+  window.engagementWrites=[];
+  state.client.getBoard=async()=>{const b=await get();return {...b,deals:b.deals.map(d=>d.id==='d14'?{...d,client_status:'prospect',client_id:'synthetic-refresh-client',client_version:7,prospect_engagement_status:'active'}:d)}};
+  state.client.getDeal=async id=>{const r=await detail(id);return {...r,deal:{...r.deal,client_id:'synthetic-refresh-client',client_version:7,prospect_engagement_status:'active'}}};
+  state.client.setProspectEngagementStatus=async args=>{window.engagementWrites.push(args);throw Object.assign(new Error('Synthetic lost reply'),{code:'internal_error'})};
+ };
+ await page.evaluate(install);await refresh(page);
+ await page.locator('.kanban-column [data-id="d14"] .card-open').click();
+ await page.locator('#detailInactiveForm input').fill('Synthetic original reason');
+ await page.locator('#detailInactiveForm button').click();
+ await page.getByRole('button',{name:'Check outcome',exact:true}).waitFor();
+ const original=await page.evaluate(()=>window.engagementWrites[0]);
+ await page.reload();
+ await waitForAsync(page,async()=>(await import('/js/pipeline.js')).state.deals.size>0);
+ await page.evaluate(install);await refresh(page);
+ await page.getByLabel('Close deal',{exact:true}).click();
+ await page.locator('.kanban-column [data-id="d14"] .card-open').click();
+ assert.equal(await page.locator('#detailInactiveForm input').inputValue(),'Synthetic original reason');
+ await page.getByRole('button',{name:'Check outcome',exact:true}).click();
+ await waitForAsync(page,()=>window.engagementWrites.length===1&&!document.querySelector('#detailInactiveForm button').disabled);
+ assert.deepEqual(await page.evaluate(()=>window.engagementWrites[0]),original);
+ assert.deepEqual(errors,[]);
+});

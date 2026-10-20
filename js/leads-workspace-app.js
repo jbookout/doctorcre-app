@@ -1,3 +1,4 @@
+import { engagementWriterFor, engagementStorage } from './prospect-engagement.mjs';
 import {onDialogClosed} from './dialog-lifecycle.js';
 import { pageDocContext, publishDocRead, selectDocRecord, setDocFilters } from './doc-context.js';
 import { createLeadBoardClient, validateLeadWorkspace, validateLeadDetail } from "./leads-client.js";
@@ -16,8 +17,9 @@ const options = (rows, selected, all) => `<option value="">${all}</option>${rows
 
 export function mountLeadsWorkspace(doc = document, client = createLeadBoardClient(), { mapFactory = mountTerritoryMap } = {}) {
   const $ = id => doc.getElementById(id), win = doc.defaultView || globalThis.window;
+  const engagement = engagementWriterFor(client, engagementStorage(win));
   const state = { board: null, readFailed: false, actor: null, epoch: 0, detailEpoch: 0, reviewEpoch: 0, filters: { search: "", owner: "", stage: "", market: "" }, mobileStage: null,
-    detail: null, detailId: null, resumeReview: null, commandFeedback: null, connectionFeedback: null, proposal: null, reviewTarget: null, pending: null, engagementPending: new Map(), writing: false, identityReady: false, trigger: null, drag: null, map: null };
+    detail: null, detailId: null, resumeReview: null, commandFeedback: null, connectionFeedback: null, proposal: null, reviewTarget: null, pending: null, writing: false, identityReady: false, trigger: null, drag: null, map: null };
   const leadById = id => state.board?.leads.find(lead => lead.id === id && eligibleLead(lead));
   const reviewComplete = (lead, target, undoEventId) => (undoEventId ? lead.stage : normalizedStage(lead)) === target;
   function captureReviewDraft() {
@@ -97,17 +99,17 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
   function paintCommandFeedback() {
     const box = $("leadBoardError");
     const command = state.pending ? 'Confirmation pending <button id="checkPending">Check outcome</button>' : esc(state.commandFeedback);
-    const engagements = [...state.engagementPending.values()].map(pending => `${esc(leadTitle(pending.lead))}: Confirmation pending <button data-check-engagement="${esc(pending.args.client_id)}"${pending.writing ? " disabled" : ""}>Check outcome</button>`);
+    const engagements = engagement.values(state.actor).map(pending => `${esc(leadTitle(state.board?.leads.find(lead => lead.prospect_client_id === pending.request.client_id) || { name: "Prospect" }))}: Confirmation pending <button data-check-engagement="${esc(pending.request.client_id)}"${pending.sending ? " disabled" : ""}>Check outcome</button>`);
     box.hidden = !state.pending && !engagements.length && !state.commandFeedback && !state.connectionFeedback;
     box.innerHTML = [command, ...engagements, esc(state.connectionFeedback)].filter(Boolean).join(" · ");
     if (!state.actor && state.connectionFeedback === "Sign-in required") box.insertAdjacentHTML("beforeend", ` · <a href="/auth/login?return_to=${encodeURIComponent(win.location.pathname + win.location.search)}">Sign in</a>`);
     $("checkPending")?.addEventListener("click", executePending);
-    for (const button of box.querySelectorAll("[data-check-engagement]")) button.addEventListener("click", () => executeEngagement(state.engagementPending.get(button.dataset.checkEngagement)));
-    const form = $("activateProspect"), activation = state.engagementPending.get(state.detail?.prospect_client_id);
+    for (const button of box.querySelectorAll("[data-check-engagement]")) button.addEventListener("click", () => executeEngagement(engagement.get(button.dataset.checkEngagement, state.actor)?.request));
+    const form = $("activateProspect"), activation = engagement.get(state.detail?.prospect_client_id, state.actor);
     if (form) {
       form.elements.reason.readOnly = Boolean(activation);
-      if (activation) form.elements.reason.value = activation.args.reason;
-      form.querySelector("button").disabled = Boolean(activation?.writing);
+      if (activation) form.elements.reason.value = activation.request.reason;
+      form.querySelector("button").disabled = Boolean(activation?.sending);
       form.querySelector("button").textContent = activation ? "Check outcome" : "Mark active";
     }
     if (state.pending && $("stageDialog").open) {
@@ -118,7 +120,6 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
   function clearPrivateView() {
     pageDocContext?.clear();
     state.commandFeedback = null; state.connectionFeedback = null; state.board = null; state.detailId = null; state.detail = null; state.proposal = null; state.reviewTarget = null; state.resumeReview = null; state.pending = null;
-    state.engagementPending.clear();
     state.filters = { search: "", owner: "", stage: "", market: "" }; state.mobileStage = null; state.trigger = null; state.drag = null;
     $("leadSearch").value = ""; $("detailTitle").textContent = ""; $("stageTitle").textContent = "";
     $("stageError").textContent = ""; $("moveAnnouncement").textContent = ""; $("saveStage").disabled = true;
@@ -152,9 +153,8 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
       validateLeadWorkspace(next);
       state.connectionFeedback = null;
       state.readFailed = false; state.board = next;
-      for (const [clientId, pending] of state.engagementPending) {
-        if (next.leads.some(lead => lead.prospect_client_id === clientId && lead.prospect_engagement_status === "active" && lead.prospect_client_version > pending.args.base_version)) state.engagementPending.delete(clientId);
-      }
+      for (const lead of next.leads) engagement.confirm({ client_id: lead.prospect_client_id,
+        status: lead.prospect_engagement_status, version: lead.prospect_client_version }, state.actor);
       if (state.pending) {
         const current = next.leads.find(l => l.id === state.pending.lead.id);
         const move = current?.last_stage_move;
@@ -283,47 +283,42 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
     if (intent.kind === "engagement") {
       if (!state.identityReady) return;
       const clientId = intent.lead.prospect_client_id;
-      let pending = state.engagementPending.get(clientId);
-      if (!pending) {
-        pending = { lead: intent.lead, args: { client_id: clientId, base_version: intent.lead.prospect_client_version,
-          status: "active", reason: intent.reason, human_quote: intent.reason, expected_actor: state.actor, idempotency_key: win.crypto.randomUUID() } };
-        state.engagementPending.set(clientId, pending);
-      }
-      return executeEngagement(pending);
+      return executeEngagement({ client_id: clientId, base_version: intent.lead.prospect_client_version,
+        status: "active", reason: intent.reason, human_quote: intent.reason, expected_actor: state.actor });
     }
     if (!state.identityReady || state.writing || state.pending) return;
     state.commandFeedback = null;
     state.pending = { ...intent, key: win.crypto.randomUUID(), actor: state.actor };
     return executePending();
   }
-  async function executeEngagement(pending) {
-    if (!pending || pending.writing) return;
-    const { args } = pending;
-    const current = () => state.engagementPending.get(args.client_id) === pending;
-    pending.writing = true;
+  async function executeEngagement(args) {
+    if (!args || engagement.get(args.client_id, state.actor)?.sending) return;
     state.commandFeedback = null;
+    const operation = engagement(args, {
+      readBack: async () => {
+        if (await refresh() !== true) return null;
+        const lead = state.board?.leads.find(lead => lead.prospect_client_id === args.client_id);
+        return { client_id: lead?.prospect_client_id, status: lead?.prospect_engagement_status, version: lead?.prospect_client_version };
+      },
+      beforeSend: async request => {
+        const actor = await client.getActor();
+        if (actor !== request.expected_actor) {
+          clearPrivateView(); state.actor = actor; await refresh();
+          throw Object.assign(new Error("Account changed"), { code: "account_changed" });
+        }
+      },
+    });
     paintCommandFeedback();
     try {
-      if (pending.attempted && await refresh() !== true) return;
-      if (!current()) return;
-      const actor = await client.getActor();
-      if (!current()) return;
-      if (!actor) { authorizationFailure({ code: "unauthorized" }); return; }
-      if (actor !== args.expected_actor) { clearPrivateView(); state.actor = actor; await refresh(); return; }
-      pending.attempted = true;
-      await client.setProspectEngagementStatus(args);
-      if (!current()) return;
-      state.engagementPending.delete(args.client_id);
+      await operation;
+      if (state.actor !== args.expected_actor) return;
       $("moveAnnouncement").textContent = "Prospect returned to the deal board";
       await refresh();
     } catch (error) {
-      if (!current() || authorizationFailure(error)) return;
-      if (error.code !== "unknown_outcome") {
-        state.engagementPending.delete(args.client_id);
-        state.commandFeedback = error.code === "version_conflict" ? "Lead updated" : "Change unavailable";
-      }
+      if (state.actor !== args.expected_actor || authorizationFailure(error)) return;
+      if (!engagement.get(args.client_id, state.actor)) state.commandFeedback = error.code === "version_conflict" ? "Lead updated" : "Change unavailable";
       await refresh();
-    } finally { pending.writing = false; paintCommandFeedback(); }
+    } finally { paintCommandFeedback(); }
   }
   async function executePending() {
     if (state.writing || !state.pending) return;

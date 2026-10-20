@@ -606,7 +606,7 @@ for (const failure of ['internal_error','unclassified_error']) test(`Leads activ
  }finally{s.close()}
 });
 
-test('Leads activation allows another client in flight and clears recovery when the actor changes',async()=>{
+test('Leads activation allows another client in flight and isolates recovery when the actor changes',async()=>{
  const s=await setup(),releases=[];try{
   const rows=s.board.leads.slice(0,3);
   rows.forEach((row,index)=>Object.assign(row,{client_id:`synthetic-client-${index%2}`,is_client:true,is_deal:true,
@@ -628,7 +628,27 @@ test('Leads activation allows another client in flight and clears recovery when 
   s.setActor('another-example-partner');await s.app.refresh();
   assert.equal(s.d.querySelectorAll('[data-check-engagement]').length,0);
   await submit(rows[0]);assert.equal(s.writes.length,3);
-  assert.notEqual(s.writes[2].idempotency_key,s.writes[0].idempotency_key,'an actor change clears the old request');
+  assert.notEqual(s.writes[2].idempotency_key,s.writes[0].idempotency_key,'another actor gets a separate request');
   assert.equal(s.writes[2].expected_actor,'another-example-partner');
  }finally{for(const release of releases)release.resolve({ok:true});await tick();s.close()}
+});
+
+test('rendered Leads recovery survives remount with a new client and storage restores the request',async()=>{
+ const row=workspace().leads[0],sent=[];
+ Object.assign(row,{client_id:'synthetic-refresh-client',is_client:true,is_deal:true,prospect_client_id:'synthetic-refresh-client',prospect_client_version:7,prospect_engagement_status:'inactive'});
+ const board={...workspace(),leads:[row]};
+ const overrides={getWorkspace:async()=>structuredClone(board),getLeadDetail:async()=>({detail:detail(row)}),setProspectEngagementStatus:async args=>{sent.push(structuredClone(args));throw Object.assign(new Error('Synthetic lost reply'),{code:'internal_error'})}};
+ const s=await setup(overrides);let remounted;
+ try{
+  await s.app.readDetail(row.id);
+  let form=s.d.getElementById('activateProspect');form.elements.reason.value='Synthetic original reason';
+  form.dispatchEvent(new s.w.Event('submit',{bubbles:true,cancelable:true}));await tick();
+  s.app.dispose();
+  remounted=mountLeadsWorkspace(s.d,{...s.client},{mapFactory:async()=>({update(){},dispose(){}})});await tick();
+  await remounted.readDetail(row.id);form=s.d.getElementById('activateProspect');
+  assert.equal(form.querySelector('button').textContent,'Check outcome');
+  assert.equal(form.elements.reason.value,'Synthetic original reason');
+  form.dispatchEvent(new s.w.Event('submit',{bubbles:true,cancelable:true}));await tick();
+  assert.deepEqual(sent[1],sent[0]);
+ }finally{remounted?.dispose();s.close()}
 });
