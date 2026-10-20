@@ -86,12 +86,14 @@ for (const width of [390, 768, 1280, 1440]) for (const theme of ['dark', 'light'
     assert.equal(await page.locator('#leadBoard p').count(), 1);
     assert.equal(await page.locator('#leadBoard p').innerText(), 'No active leads are on the board.');
     assert.equal(await page.locator('#leadBoard button').count(), 1);
+    assert.equal(await page.locator('.top-grid').isVisible(), false, 'a genuinely empty board has no empty supporting panels');
     const before = reads;
     board.leads = [lead(1)];
     await page.locator('#leadBoard').getByRole('button', { name: 'Refresh leads', exact: true }).click();
     await page.locator('.lead-card').waitFor();
     assert.ok(reads > before, 'the empty-state action fetches a fresh board');
     await page.locator('#leadSearch').fill('no-synthetic-match');
+    assert.equal(await page.locator('.top-grid').isVisible(), true, 'global claim candidates remain available for filtered emptiness');
     await capture(page, `${width}-${theme}-filtered-empty`, { content: await page.locator('#leadBoard').innerText() });
     await page.getByRole('button', { name: 'Reset filters', exact: true }).click();
     assert.equal(await page.locator('#leadSearch').evaluate(node => node === document.activeElement), true, 'reset returns focus to search');
