@@ -127,7 +127,8 @@ function autoHtml(deal) {
 }
 const dealTitle = (deal) => dealName(deal.name);
 function nextStepHtml(deal) {
-  const text = noteText(deal.next_step) || 'Next step pending';
+  const text = noteText(deal.next_step);
+  if (!text.trim()) return '';
   return `<p class="next-line" title="${esc(text)}">${esc(text)}</p>`;
 }
 function cardHtml(deal) {
@@ -854,14 +855,15 @@ async function saveUpdate(id) {
   }
 }
 function fullRecordHtml(detail) {
-  const section = (title, rows, describe) => `<section><h3>${title}</h3>${rows.map(row => `<p>${esc(describe(row))}</p>`).join('') || '<p>None recorded</p>'}</section>`;
-  return `<details class="full-record" data-detail-read="full"><summary>Full record</summary>
+  const section = (title, rows, describe) => rows.length ? `<section><h3>${title}</h3>${rows.map(row => `<p>${esc(describe(row))}</p>`).join('')}</section>` : '';
+  const sections = `
     ${section('Open next actions',(detail.next_actions || []).filter(a => a.status === 'open'), a => `${a.description} · ${actorName(a.owner)} · ${dateWords(a.due_on)}`)}
     ${section('Premises',detail.premises || [], p => [p.label,p.address,p.suite,p.city,p.state,p.area_amount ? `${p.area_amount} ${p.area_basis || 'SF'}` : null].filter(Boolean).join(' · '))}
     ${section('Negotiation rounds',detail.negotiation_rounds || [], n => `Round ${n.round_no} · ${n.side} · ${n.rate_amount ?? 'Rate not captured'} ${n.rate_basis || ''} · ${n.term_months ? `${n.term_months} months` : 'Term not captured'}`)}
     ${section('Documents',detail.documents || [], d => `${String(d.sent_status || 'Prepared').replaceAll('_',' ')} · ${dateWords(d.prepared_at)}`)}
     ${section('Change history',detail.history || [], e => `${e.summary || `${fieldLabel(e.field)} changed`} · ${actorName(e.actor)} · ${dateWords(e.recorded_at)}`)}
-  </details>`;
+  `;
+  return sections.trim() ? `<details class="full-record" data-detail-read="full"><summary>Full record</summary>${sections}</details>` : '<div data-detail-read="full"></div>';
 }
 function detailHtml(detail) {
   const d = detail.deal;

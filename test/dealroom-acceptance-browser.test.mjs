@@ -1,0 +1,66 @@
+import test, { before, after } from 'node:test';
+import assert from 'node:assert/strict';
+import { mkdtemp, mkdir, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { buildArtifact } from '../scripts/artifact.mjs';
+import { createQaServer } from '../scripts/qa-fixture-server.mjs';
+import { chromium } from './browser-harness.mjs';
+
+const root = fileURLToPath(new URL('../', import.meta.url));
+const evidence = join(root, 'out/test-artifacts/dealroom-acceptance');
+let outDir, server, browser, origin;
+before(async () => {
+  outDir = await mkdtemp(join(tmpdir(), 'dealroom-acceptance-'));
+  await buildArtifact({ root, outDir, commit: '0'.repeat(40) });
+  ({ server } = await createQaServer({ buildRoot: join(outDir, 'site') }));
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  origin = `http://127.0.0.1:${server.address().port}`;
+  browser = await chromium.launch();
+  await mkdir(evidence, { recursive: true });
+});
+after(async () => {
+  await browser?.close();
+  if (server) await new Promise(resolve => server.close(resolve));
+  if (outDir) await rm(outDir, { recursive: true, force: true });
+});
+
+for (const width of [390, 1280]) test(`signed-in deal room preserves every board-contract row at ${width}px`, async t => {
+  const page = await browser.newPage({ viewport: { width, height: 960 }, timezoneId: 'America/Chicago', reducedMotion: 'reduce' });
+  t.after(() => page.close());
+  const errors = [];
+  page.on('pageerror', error => errors.push(error.message));
+  const seeded = await page.request.post(`${origin}/api/test/seed`, { data: { namespace: `dealroom-${width}`, viewer: 'joe', reset: true } });
+  assert.equal(seeded.status(), 200);
+  const response = await page.request.post(`${origin}/mcp`, { data: { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'deal-room-board', arguments: {} } } });
+  const envelope = await response.json();
+  const board = JSON.parse(envelope.result.content[0].text);
+  assert.equal(board.schema_version, 'local-deals-board.v1');
+  assert.equal(board.actor, 'joe');
+  assert.equal(board.deals.length, 16);
+  assert.deepEqual(board.closed_deals, []);
+  assert.deepEqual(board.lost_deals, []);
+  await page.goto(`${origin}/deals?mode=live`);
+  await page.locator('.kanban-card').first().waitFor();
+  const ids = await page.locator('.kanban-column .kanban-card').evaluateAll(nodes => nodes.map(node => node.dataset.id).sort());
+  assert.deepEqual(ids, board.deals.map(deal => deal.id).sort());
+  assert.equal(await page.locator('.kanban-column').count(), 7);
+  assert.equal(await page.locator('[data-column="closed"]').count(), 0);
+  assert.doesNotMatch(await page.locator('body').innerText(), /Nothing needs you/i);
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+  await page.screenshot({ path: join(evidence, `${width}-board.png`), animations: 'disabled' });
+  await page.getByRole('button', { name: 'Dell', exact: true }).click();
+  const dellIds = await page.locator('.kanban-column .kanban-card').evaluateAll(nodes => nodes.map(node => node.dataset.id).sort());
+  assert.deepEqual(dellIds, board.deals.filter(deal => deal.owner === 'dell').map(deal => deal.id).sort());
+  await page.locator('.card-open').first().click();
+  await page.locator('#detailUpdateForm').waitFor();
+  assert.equal(await page.getByLabel('Update', { exact: true }).inputValue(), '');
+  assert.equal(await page.locator('#dealUpdate').getAttribute('placeholder'), null);
+  assert.equal(await page.locator('[aria-label="Deal phases and timeline"]').count(), 1);
+  assert.equal(await page.locator('.timeline-chart').count(), 0);
+  assert.equal(await page.locator('#detailOwner').inputValue(), 'dell');
+  assert.equal(await page.locator('#recordPanel').evaluate(node => node.scrollWidth <= node.clientWidth), true);
+  await page.screenshot({ path: join(evidence, `${width}-snapshot.png`), animations: 'disabled' });
+  assert.deepEqual(errors, []);
+});
