@@ -449,7 +449,7 @@ export function mountBoard(deps = {}) {
     const mode = byId("board-data-mode");
     if (mode) mode.textContent = census ? "Live work · The pipeline shows current work."
       : view ? "Published snapshot · The pipeline shows published work." : "";
-    if (!view && !census) { container.replaceChildren(); return; }
+    if (!view && !census) { container.querySelector(".hierarchy-loading")?.remove(); return; }
     const original = census || view.cards;
     const approvals = governanceTasks(governanceRead);
     const approvalCards = approvals && boardView({snapshot:{board_id:boardId, version:1,
