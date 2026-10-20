@@ -1,4 +1,5 @@
 import { showToast } from './toast.js';
+import { renderDealVendors } from './deal-vendors.js';
 import { pageDocContext, selectDocRecord, setDocFilters, publishDocRead } from './doc-context.js';
 // V5-UX-B03 — Deals: the Kanban board's DOM wiring, and nothing else.
 //
@@ -137,16 +138,17 @@ function cardHtml(deal) {
     <h4><button class="card-open" type="button" data-open="${esc(deal.id)}">${esc(dealTitle(deal))}</button></h4>
     <div class="work-meta"><span class="owner">${esc(actorName(deal.owner))}</span>${attention ? '<span class="attention-flag"><span aria-hidden="true">◆</span> Overdue</span>' : ''}</div>
     ${nextStepHtml(deal)}
+    ${renderDealVendors(deal.vendors)}
     ${autoHtml(deal)}
   </article>`;
 }
 function rowHtml(deal) {
   return `<article class="kanban-card deal-row" data-id="${esc(deal.id)}" tabindex="0" data-attention="${needsAttention(deal)}">
     <h4>${esc(dealTitle(deal))}</h4><span class="deal-stage">${esc(columnLabel(deal.phase))}</span>
-    ${nextStepHtml(deal)}<span class="owner">${esc(actorName(deal.owner))}</span>${autoHtml(deal)}</article>`;
+    ${nextStepHtml(deal)}<span class="owner">${esc(actorName(deal.owner))}</span>${renderDealVendors(deal.vendors)}${autoHtml(deal)}</article>`;
 }
 function parkedHtml(deal) {
-  return `<article class="kanban-card parked-card" data-id="${esc(deal.id)}" tabindex="0"><h4>${esc(dealTitle(deal))}</h4><p class="next-line">${esc(deal.parking_note || deal.parking_reason?.replaceAll('_',' ') || 'Parked')}</p><button class="btn btn-quiet" type="button" data-revive="${esc(deal.id)}">Revive</button></article>`;
+  return `<article class="kanban-card parked-card" data-id="${esc(deal.id)}" tabindex="0"><h4>${esc(dealTitle(deal))}</h4><p class="next-line">${esc(deal.parking_note || deal.parking_reason?.replaceAll('_',' ') || 'Parked')}</p>${renderDealVendors(deal.vendors)}<button class="btn btn-quiet" type="button" data-revive="${esc(deal.id)}">Revive</button></article>`;
 }
 
 let dealCreation = null;
@@ -215,7 +217,7 @@ function renderClosedDeals() {
   $('closedDealsList').innerHTML = rows.map(d => `<article class="closed-deal glass" data-id="${esc(d.id)}">
     <h3><button type="button" class="card-open" data-open-deal="${esc(d.id)}">${esc(dealTitle(d))}</button></h3><dl><div><dt>Client</dt><dd>${esc(d.client_name || d.client_ref || 'Not recorded')}</dd></div>
     <div><dt>Type</dt><dd>${esc(d.type || 'Not recorded')}</dd></div><div><dt>Close date</dt><dd>${esc(d.closed_on ? dateWords(d.closed_on) : 'Not recorded')}</dd></div>
-    <div><dt>Owner</dt><dd>${esc(actorName(d.owner))}</dd></div></dl>${autoHtml(d)}</article>`).join('') || (archived === null ? '' : `<p>No ${label} deals match this search.</p>`);
+    <div><dt>Owner</dt><dd>${esc(actorName(d.owner))}</dd></div></dl>${renderDealVendors(d.vendors)}${autoHtml(d)}</article>`).join('') || (archived === null ? '' : `<p>No ${label} deals match this search.</p>`);
 }
 
 function visibleBoardDeals() {
@@ -851,6 +853,7 @@ function detailHtml(detail) {
     <section class="deal-opening-snapshot" data-detail-read="snapshot" aria-label="Deal snapshot">
       ${nextStep.trim() ? `<p class="deal-current-action"><span>${d.next_date && d.next_date < todayIso() ? 'Overdue action' : 'Next action'}</span><strong>${esc(nextStep)}</strong>${d.next_date ? `<span>Due <time datetime="${esc(d.next_date)}">${esc(dateWords(d.next_date))}</time></span>` : ''}</p>` : '<p class="deal-current-action next-step-gap"><span>Next step missing</span><strong>Add the next step</strong></p>'}
       <dl class="deal-snapshot-facts">${d.workspace_kind === 'national_account' || d.account_client_id ? `<div><dt>Market agent</dt><dd>${esc(d.market_agent || 'Unassigned')}</dd></div>` : ''}${d.client_name ? `<div><dt>Client</dt><dd>${esc(d.client_name)}</dd></div>` : ''}${d.type ? `<div><dt>Type</dt><dd>${esc(d.type)}</dd></div>` : ''}${d.outcome ? `<div><dt>Outcome</dt><dd>${esc(d.outcome[0].toUpperCase()+d.outcome.slice(1))}</dd></div>` : ''}</dl>
+      ${renderDealVendors(d.vendors)}
     </section>
     <form id="detailUpdateForm" class="deal-update-form"><label for="dealUpdate">Update</label><textarea id="dealUpdate" name="text" rows="2" maxlength="10000" required></textarea><button class="btn btn-primary" type="submit">Add update</button><p id="detailUpdateStatus" role="status"></p></form>
     <div data-detail-read="board-controls" data-available="${controlsAvailable}">${controlsAvailable ? `<div class="detail-actions"><div class="detail-controls"><label>Phase<select id="detailPhase">${COLUMNS.map(c => `<option value="${esc(c.slug)}"${c.value === d.phase ? ' selected' : ''}>${esc(c.label)}</option>`).join('')}</select></label><label>Owner<select id="detailOwner"><option value="">Unassigned</option>${['joe','dell'].map(owner => `<option value="${owner}"${owner === d.owner ? ' selected' : ''}>${actorName(owner)}</option>`).join('')}</select></label></div><div data-detail-read="parking" data-parked="${parked}">${parked ? `<p>${esc(concise(d.parking_note) || 'Parked')}</p><button type="button" class="btn" data-revive="${esc(d.id)}">Revive</button>` : `<details class="park-options"><summary class="park-control">Park</summary><form id="detailParkForm"><label>Park reason<input name="reason" maxlength="500" required></label><button class="btn park-control" type="submit">Park deal</button></form></details>`}</div></div>` : ''}</div>

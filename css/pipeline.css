@@ -160,6 +160,13 @@
 .deal-snapshot-facts div { min-width:0; }
 .deal-snapshot-facts dt { color:var(--fg-muted); font-size:var(--font-size-1); }
 .deal-snapshot-facts dd { margin:0; overflow-wrap:anywhere; }
+.deal-vendors { display:grid; gap:var(--space-3); margin:var(--space-3) 0; min-width:0; overflow-wrap:anywhere; font-size:var(--font-size-1); }
+.deal-vendor-role { color:var(--fg-muted); font-weight:600; }
+.deal-vendors dd { margin:0; }
+.deal-vendors ul { list-style:none; padding:0; margin:0; display:grid; gap:var(--space-2); }
+.deal-vendor-company, .deal-vendor-contact { display:block; }
+.deal-vendor-contact { color:var(--fg-muted); }
+.deal-row .deal-vendors { grid-column:1/-1; }
 .deal-detail .detail-grid { grid-template-columns:minmax(0,1fr); }
 .deal-updates { margin-bottom:var(--space-4); }
 .deal-updates .deal-note p { line-height:var(--line-height-body); }
