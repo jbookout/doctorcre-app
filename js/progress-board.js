@@ -422,7 +422,7 @@ export function mountBoard(deps = {}) {
       hierarchyUI ||= mountHierarchy({container:byId("board-stages"), window:win, onOpen:card=>openWork(card.id), onClose:deps.closeTask});
       const selected = hierarchyUI.update({hierarchy:view.hierarchy, tasks:view.hierarchy.cards});
       deps.onTasks?.(pipelineCards, {state:boardState, selectedId:selected?.id});
-      byId("board-rail").hidden = true;
+      byId("board-rail").setAttribute("hidden", "");
       byId("board-filters").hidden = true;
       for (const id of ["board-completed", "completed-list", "board-blocked", "system-work-panel", "board-ledger"])
         byId(id)?.closest(".panel")?.setAttribute("hidden", "");
@@ -890,6 +890,9 @@ export function mountBoard(deps = {}) {
     renderSync(view);
     renderHeadline(view);
     doc.querySelector(".headline").hidden = Boolean(view.hierarchy);
+    byId("board-title").classList.toggle("sr-only", Boolean(view.hierarchy) || Boolean(deps.openTask));
+    const breadcrumb = doc.querySelector('nav[aria-label="Breadcrumb"]');
+    if (breadcrumb) breadcrumb.hidden = Boolean(view.hierarchy) || Boolean(deps.openTask);
     renderRepos(view);
     renderStages(view);
     renderBlocked(view);

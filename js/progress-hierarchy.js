@@ -150,7 +150,9 @@ export function mountHierarchy({ container, window: win, onOpen, onClose }) {
     jump.append(label, submit);
     jump.addEventListener('submit', event => { event.preventDefault(); navigate(input.value.trim()); });
     const tools = node('details', '', 'hierarchy-tools');
-    tools.append(node('summary', 'Find a card by ID'), jump);
+    tools.append(node('summary', 'Find by ID'), jump);
+    const toolbar = node('div', '', 'hierarchy-toolbar');
+    toolbar.append(nav, tools);
     const grid = node('div', '', view.level === 'prs' ? 'columns' : 'hierarchy-grid');
     if (view.level === 'prs') {
       for (const stage of STAGES.filter(stage => !['merged', 'live'].includes(stage.id))) {
@@ -179,7 +181,7 @@ export function mountHierarchy({ container, window: win, onOpen, onClose }) {
       completed.append(disclosure);
     }
     container.classList.add('hierarchy-board');
-    container.replaceChildren(nav, tools, grid, completed);
+    container.replaceChildren(toolbar, grid, completed);
     if (previous) focusDestination(previous);
   }
   const pop = () => {

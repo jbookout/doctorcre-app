@@ -134,11 +134,12 @@ for (const width of [390, 1280]) for (const theme of ['dark', 'light']) {
     await first.waitFor();
     await hierarchyEvidence(page, 'requests', width, theme);
     const headings = await page.locator('h1, h2').evaluateAll(nodes => nodes.filter(node =>
-      node.textContent === 'Work Requests' && node.getBoundingClientRect().height > 0 &&
+      node.textContent === 'Work Requests' && node.getBoundingClientRect().height > 1 &&
       getComputedStyle(node).clip === 'auto').length);
     assert.equal(headings, 1, 'one visible Work Requests heading');
     assert.equal(await page.locator('nav[aria-label="Breadcrumb"]').isVisible(), false, 'one hierarchy breadcrumb row');
-    assert.ok((await first.boundingBox()).y < 380, 'the first request starts within 380px');
+    const firstY = (await first.boundingBox()).y;
+    assert.ok(firstY < 380, `the first request starts at ${firstY}px, within 380px`);
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
     assert.deepEqual(errors, []);
   });
