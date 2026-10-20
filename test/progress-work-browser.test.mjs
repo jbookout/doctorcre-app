@@ -822,9 +822,8 @@ test('Tab reaches the linked Work Request and Enter opens its standalone detail'
   const {page,errors} = await open(t);
   const link = page.locator('.work-lineage a').filter({hasText:'WR-900'});
   await link.waitFor();
-  await page.locator('#sharedActivityLink').focus();
-  for (let step = 0; step < 20 && !await link.evaluate(el => el === document.activeElement); step++)
-    await page.keyboard.press('Tab');
+  await page.locator('#workTitle').focus();
+  await page.keyboard.press('Tab');
   assert.equal(await link.evaluate(el => el === document.activeElement), true, 'Tab must reach the Work Request');
   await page.keyboard.press('Enter');
   await page.waitForFunction(() => new URL(location.href).searchParams.get('work_request') === 'WR-900');
