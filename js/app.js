@@ -385,9 +385,10 @@ function renderChrome() {
 }
 
 function accountPriority(deals) {
-  const overdue = deals.filter((deal) => (daysFromNow(deal.next_date) ?? 0) < 0)
-    .sort((a, b) => a.next_date.localeCompare(b.next_date) || a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
-  return { overdue, next: overdue[0] || deals[0] };
+  const ordered = [...deals].sort((a, b) => (a.next_date || '9999-12-31').localeCompare(b.next_date || '9999-12-31')
+    || a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
+  const overdue = ordered.filter((deal) => (daysFromNow(deal.next_date) ?? 0) < 0);
+  return { overdue, next: ordered[0] };
 }
 
 function renderAccounts() {

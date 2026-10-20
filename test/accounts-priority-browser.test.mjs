@@ -106,5 +106,6 @@ for (const reverse of [false, true]) {
     });
     await action.click();
     await page.waitForURL('**/deals?deal=d03');
+    await page.locator('#detailUpdateForm').waitFor();
   });
 }
