@@ -74,6 +74,15 @@ test('unknown and prototype addresses fail safely and aliases cannot loop', () =
   assert.equal(hierarchyView(cyclic, 'a').error, 'Card not found.');
 });
 
+test('exact published cards take precedence at every step of an alias chain', () => {
+  const snapshot = structuredClone(data);
+  const id = 'WR14.S2.J1.app#316';
+  snapshot.hierarchy.aliases = { original: 'previous', previous: id, [id]: 'missing' };
+  for (const address of [id, 'previous', 'original']) {
+    assert.equal(hierarchyView(snapshot, address).selected?.id, id);
+  }
+});
+
 
 test('an incomplete hierarchy contract shows an error rather than a broken board', () => {
   const view = boardView({snapshot:{version:1, snapshot_json:{schema:'carr-progress-board.v4',tasks:{}}}});
