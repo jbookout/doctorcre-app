@@ -12,7 +12,7 @@ const ci = await readFile(new URL("../.github/workflows/ci.yml", import.meta.url
 const release = await readFile(new URL("../.github/workflows/release.yml", import.meta.url), "utf8");
 const root = fileURLToPath(new URL("../", import.meta.url));
 
-test("CI fetches a scoped progress producer outside the runtime checkout history", async t => {
+test("CI fetches scoped progress and linkage producers outside the runtime checkout history", async t => {
   const workspace = await mkdtemp(join(tmpdir(), "doctorcre-scoped-producer-"));
   t.after(() => rm(workspace, { recursive: true, force: true }));
   const source = join(workspace, "source"), app = join(workspace, "doctorcre-app"), producer = join(workspace, "carr-producer");
@@ -27,12 +27,19 @@ test("CI fetches a scoped progress producer outside the runtime checkout history
   git(source, "add", "progress.js");
   git(source, "-c", "user.name=Synthetic", "-c", "user.email=synthetic@example.invalid", "commit", "-qm", "progress");
   const progressPin = git(source, "rev-parse", "HEAD");
+  git(source, "checkout", "--detach", runtimePin);
+  await writeFile(join(source, "linkage.js"), "export const linkage = true;\n");
+  git(source, "add", "linkage.js");
+  git(source, "-c", "user.name=Synthetic", "-c", "user.email=synthetic@example.invalid", "commit", "-qm", "linkage");
+  const linkagePin = git(source, "rev-parse", "HEAD");
   git(producer, "init", "-q"); git(producer, "remote", "add", "origin", source);
   git(producer, "fetch", "--no-tags", "origin", runtimePin);
   assert.notEqual(spawnSync("git", ["cat-file", "-e", `${progressPin}:progress.js`], { cwd: producer }).status, 0);
+  assert.notEqual(spawnSync("git", ["cat-file", "-e", `${linkagePin}:linkage.js`], { cwd: producer }).status, 0);
   await writeFile(join(app, "contracts/carr-interface.v1.json"), JSON.stringify({
     producer: { repository: "jbookout/carr-system", source_commit: runtimePin },
     engineering_progress: { producer: { repository: "jbookout/carr-system", source_commit: progressPin } },
+    work_linkage: { producer: { repository: "jbookout/carr-system", source_commit: linkagePin } },
   }));
   const steps = ci.split(/^      - /m).slice(1);
   const checkout = steps.findIndex(step => /repository: jbookout\/carr-system/.test(step));
@@ -43,6 +50,7 @@ test("CI fetches a scoped progress producer outside the runtime checkout history
   assert.ok(command, "the scoped producer fetch is an executable workflow step");
   execFileSync("bash", ["-e", "-c", command], { cwd: app, stdio: "pipe" });
   assert.equal(git(producer, "show", `${progressPin}:progress.js`), "export const progress = true;");
+  assert.equal(git(producer, "show", `${linkagePin}:linkage.js`), "export const linkage = true;");
 });
 
 test("the CI checkout layout keeps producer-owned content out of app repository checks", async (t) => {

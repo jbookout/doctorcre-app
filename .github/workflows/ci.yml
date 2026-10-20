@@ -48,14 +48,16 @@ jobs:
           path: carr-producer
           fetch-depth: 0
           persist-credentials: false
-      - name: Fetch the exact scoped progress producer
+      - name: Fetch the exact scoped progress and linkage producers
         run: |
           node --input-type=module <<'NODE'
           import { readFileSync } from 'node:fs';
           import { execFileSync } from 'node:child_process';
-          const { engineering_progress: { producer } } = JSON.parse(readFileSync('contracts/carr-interface.v1.json', 'utf8'));
-          if (producer.repository !== 'jbookout/carr-system' || !/^[0-9a-f]{40}$/.test(producer.source_commit)) throw new Error('Invalid scoped progress producer pin');
-          execFileSync('git', ['-C', '../carr-producer', 'fetch', '--no-tags', 'origin', producer.source_commit], { stdio: 'inherit' });
+          const { engineering_progress, work_linkage } = JSON.parse(readFileSync('contracts/carr-interface.v1.json', 'utf8'));
+          for (const { producer } of [engineering_progress, work_linkage]) {
+            if (producer.repository !== 'jbookout/carr-system' || !/^[0-9a-f]{40}$/.test(producer.source_commit)) throw new Error('Invalid scoped producer pin');
+            execFileSync('git', ['-C', '../carr-producer', 'fetch', '--no-tags', 'origin', producer.source_commit], { stdio: 'inherit' });
+          }
           NODE
       - run: node --test test/property-producer.test.mjs
         name: Verify the exact CARR runtime interface
