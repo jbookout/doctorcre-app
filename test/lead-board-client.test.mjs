@@ -116,3 +116,10 @@ test('blocking 2: HTTP authorization headers reject reads and writes before a st
     assert.equal(bodyReads, 0);
   }
 });
+
+for (const code of ['version_conflict','not_a_prospect','not_authenticated','forbidden']) test(`Leads activation preserves confirmed ${code} refusal`,async()=>{
+ const client=createLeadBoardClient({docContext:false,fetchImpl:async()=>jsonResponse({result:{isError:true,
+  content:[{type:'text',text:JSON.stringify({ok:false,error:code})}]}})});
+ await assert.rejects(client.setProspectEngagementStatus({client_id:'synthetic-client',base_version:7,status:'active',
+  reason:'Synthetic renewed interest',expected_actor:'example-partner',idempotency_key:'synthetic-key'}),{code});
+});

@@ -605,3 +605,30 @@ for (const failure of ['internal_error','unclassified_error']) test(`Leads activ
   assert.equal(s.d.getElementById('leadBoardError').hidden,true);
  }finally{s.close()}
 });
+
+test('Leads activation allows another client in flight and clears recovery when the actor changes',async()=>{
+ const s=await setup(),releases=[];try{
+  const rows=s.board.leads.slice(0,3);
+  rows.forEach((row,index)=>Object.assign(row,{client_id:`synthetic-client-${index%2}`,is_client:true,is_deal:true,
+   prospect_client_id:`synthetic-client-${index%2}`,prospect_client_version:7,prospect_engagement_status:'inactive'}));
+  s.client.setProspectEngagementStatus=args=>{s.writes.push(structuredClone(args));return new Promise((resolve,reject)=>releases.push({resolve,reject}))};
+  await s.app.refresh();
+  const submit=async row=>{
+   s.d.getElementById('leadDetail').close();await s.app.readDetail(row.id);
+   const form=s.d.getElementById('activateProspect');form.elements.reason.value='Synthetic renewed interest';
+   form.dispatchEvent(new s.w.Event('submit',{bubbles:true,cancelable:true}));await tick();
+  };
+  await submit(rows[0]);await submit(rows[2]);
+  assert.equal(s.writes.length,1,'two leads for the same client share one in-flight request');
+  assert.equal(s.d.querySelector('#activateProspect button').disabled,true);
+  await submit(rows[1]);assert.equal(s.writes.length,2,'another client does not wait for the first response');
+  for(const release of releases)release.reject(Object.assign(new Error('Uncertain'),{code:'unknown_outcome'}));
+  await tick();
+  assert.equal(s.d.querySelectorAll('[data-check-engagement]').length,2);
+  s.setActor('another-example-partner');await s.app.refresh();
+  assert.equal(s.d.querySelectorAll('[data-check-engagement]').length,0);
+  await submit(rows[0]);assert.equal(s.writes.length,3);
+  assert.notEqual(s.writes[2].idempotency_key,s.writes[0].idempotency_key,'an actor change clears the old request');
+  assert.equal(s.writes[2].expected_actor,'another-example-partner');
+ }finally{for(const release of releases)release.resolve({ok:true});await tick();s.close()}
+});
