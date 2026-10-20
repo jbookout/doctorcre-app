@@ -9,7 +9,7 @@ export function hierarchyView(data, address = '') {
   const tree = data.hierarchy;
   const cards = data.tasks || {};
   const seen = new Set();
-  while (tree.aliases?.[address] && !seen.has(address)) {
+  while (!Object.hasOwn(cards, address) && tree.aliases?.[address] && !seen.has(address)) {
     seen.add(address);
     address = tree.aliases[address];
   }
