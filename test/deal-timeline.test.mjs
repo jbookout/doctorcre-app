@@ -106,7 +106,7 @@ test('updates collapse into one deterministic overview of every entry with full 
  assert.ok(overview.textContent.length<400);
  const history=root.querySelector('.updates-history');
  assert.equal(history.open,false);
- assert.match(history.querySelector('summary').textContent,/Full history.*2/);
+ assert.match(history.querySelector('summary').textContent,/Recorded updates.*2/);
  assert.match(history.textContent,/Original demo email <script>data only<\/script>/);
  assert.equal(root.querySelectorAll('.deal-note').length,2);
 });
