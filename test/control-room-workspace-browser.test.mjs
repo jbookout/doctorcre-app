@@ -761,9 +761,12 @@ test(`acceptance summary leads the job dialog at ${width}px in ${theme}`,async t
  await checks.nth(1).focus();await page.keyboard.press('Enter');
  assert.equal(await checks.nth(1).getAttribute('aria-expanded'),'true');
  assert.equal(await page.locator('[data-check-evidence]:visible h4').textContent(),'Rename');
- assert.equal(await inspector.evaluate(el=>el.previousElementSibling===document.activeElement),true);
+ assert.equal(await inspector.evaluate((el,width)=>width>=1024 ? el.parentElement.classList.contains('work-progress-layout') : el.previousElementSibling===document.activeElement,width),true);
  await page.clock.runFor(5100);
  assert.equal(await checks.nth(1).evaluate(el=>el===document.activeElement),true);
+ if(width>=1024)for(const check of (await checks.all()).slice(2)){
+  await page.keyboard.press('Tab');assert.equal(await check.evaluate(el=>el===document.activeElement),true);
+ }
  await page.keyboard.press('Tab');
  assert.equal(await page.locator('[data-check-evidence]:visible summary').evaluate(el=>el===document.activeElement),true);
  await page.keyboard.press('Enter');
@@ -775,6 +778,14 @@ test(`acceptance summary leads the job dialog at ${width}px in ${theme}`,async t
  await history.scrollIntoViewIfNeeded();
  if(process.env.SLICE9_TASTE_CAPTURE_DIR)await page.screenshot({path:`${process.env.SLICE9_TASTE_CAPTURE_DIR}/selected-receipt-${width}-${theme}.png`});
 
+ if(width>=1024){
+  await page.setViewportSize({width:390,height:800});
+  await page.waitForFunction(()=>document.querySelector('.work-progress-inspector').parentElement===document.querySelector('[data-progress-check][aria-expanded="true"]').parentElement);
+  assert.equal(await page.locator('[data-check-evidence]:visible summary').evaluate(el=>el===document.activeElement),true);
+  await page.setViewportSize({width,height:800});
+  await page.waitForFunction(()=>document.querySelector('.work-progress-inspector').parentElement.classList.contains('work-progress-layout'));
+  assert.equal(await checks.nth(1).getAttribute('aria-expanded'),'true');
+ }
  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
  assert.deepEqual(errors,[]);
 });

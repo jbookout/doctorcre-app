@@ -1,4 +1,4 @@
-import {selectedProgressCheck,selectProgressCheck} from './work-progress.js';
+import {selectedProgressCheck,positionProgressInspector,mountProgressChecks} from './work-progress.js';
 import { authGeneration, authCurrent, authReadable, establishAuth, invalidateAuth } from './progress-auth.js';
 import { boardPageUrl } from './progress-board-route.js';
 import { createLiveClient } from './live-client.js';
@@ -271,12 +271,12 @@ function lineageRecord(task, taskId) {
   });
   return host.firstElementChild;
 }
-$('workProgress').addEventListener('click',selectProgressCheck);
+mountProgressChecks($('workProgress'));
 function renderProgress() {
   const host=$('workProgress'),html=workProgressHtml(progressRead,scope.workRequest,engineering,selectedProgressCheck(host));
   if(host.innerHTML===html)return;
   const disclosures=new Map([...host.querySelectorAll('details > summary[data-job-control]')].map(node=>[node.dataset.jobControl,node.parentElement.open])),focused=host.contains(document.activeElement),control=document.activeElement?.dataset.jobControl;
-  host.innerHTML=html;for(const summary of host.querySelectorAll('details > summary[data-job-control]'))if(disclosures.has(summary.dataset.jobControl))summary.parentElement.open=disclosures.get(summary.dataset.jobControl);
+  host.innerHTML=html;positionProgressInspector(host);for(const summary of host.querySelectorAll('details > summary[data-job-control]'))if(disclosures.has(summary.dataset.jobControl))summary.parentElement.open=disclosures.get(summary.dataset.jobControl);
   if(focused)([...host.querySelectorAll('[data-job-control]')].find(el=>el.dataset.jobControl===control)||host.querySelector('summary')).focus({preventScroll:true});
 }
 function renderMetadata(task, questions) {

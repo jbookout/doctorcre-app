@@ -52,10 +52,8 @@
 .work-scope-history p { margin: var(--space-1) 0 0; color: var(--fg-muted); }
 #jobBody > .work-progress:first-child { margin-top: 0; }
 @media (min-width: 1024px) {
-  .work-progress-layout { display: grid; grid-template-columns: minmax(0, .85fr) minmax(0, 1.15fr); grid-template-rows: repeat(var(--progress-rows), min-content); column-gap: var(--space-6); align-items: start; }
-  .work-progress-checks, .work-progress-checks > li { display: contents; }
-  .work-progress-checks button, .job-dialog .work-progress-checks button, .work-check-objective { grid-column: 1; }
-  .work-progress-inspector { grid-column: 2; grid-row: 1 / -1; padding: 0 0 0 var(--space-5); border-left: 1px solid var(--hairline); }
+  .work-progress-layout { display: grid; grid-template-columns: minmax(0, .85fr) minmax(0, 1.15fr); column-gap: var(--space-6); align-items: start; }
+  .work-progress-inspector { grid-column: 2; grid-row: 1; padding: 0 0 0 var(--space-5); border-left: 1px solid var(--hairline); }
 }
 @media (min-width: 1024px) {
   .work-check-receipt { margin-block: var(--space-2); gap: var(--space-1) var(--space-3); }
