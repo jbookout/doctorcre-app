@@ -227,3 +227,29 @@ test('refresh removes record sections when the source has no entries',async t=>{
  await waitForAsync(page,async()=>(await import('/js/pipeline.js')).state.panelDetail.history.length===0);
  assert.equal(await page.locator('.full-record').count(),0);
 });
+
+
+test('refresh removes and restores Updates as recorded notes change',async t=>{
+ const {page}=await open(t);
+ assert.equal(await page.locator('.deal-updates').count(),1);
+ await page.getByLabel('Update',{exact:true}).fill('Demo unsaved draft');
+ await page.evaluate(async()=>{
+  const {state}=await import('/js/pipeline.js');const read=state.client.getDeal;
+  state.client.getDeal=async id=>{
+   const detail=await read(id);
+   return {...detail,thread:[],activities:[]};
+  };
+ });
+ await page.getByRole('button',{name:'Refresh deal',exact:true}).click();
+ await waitForAsync(page,async()=>(await import('/js/pipeline.js')).state.panelDetail.thread.length===0);
+ assert.equal(await page.locator('.deal-updates').count(),0);
+ assert.doesNotMatch(await page.locator('#recordPanel').textContent(),/No updates recorded/);
+ await page.evaluate(async()=>{
+  const {state}=await import('/js/pipeline.js');const read=state.client.getDeal;
+  state.client.getDeal=async id=>({...await read(id),thread:[{id:'demo-restored',kind:'note',actor:'joe',text:'Demo restored update',at:'2026-10-02'}]});
+ });
+ await page.getByRole('button',{name:'Refresh deal',exact:true}).click();
+ await page.locator('.deal-note[data-id="demo-restored"]').waitFor();
+ assert.equal(await page.locator('.deal-updates').count(),1);
+ assert.equal(await page.getByLabel('Update',{exact:true}).inputValue(),'Demo unsaved draft');
+});

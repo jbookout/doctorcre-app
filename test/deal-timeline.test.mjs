@@ -68,6 +68,10 @@ test('summary-only activity does not offer a fabricated original',()=>{
  assert.doesNotMatch(html,/unavailable|Read full update/);
 });
 
+test('zero notes omit the entire Updates section',()=>{
+ assert.equal(renderDealUpdates({thread:[],activities:[]}), '');
+});
+
 test('review 1: producer cleared and passed dates do not raise deadline alarms',()=>{
  for (const [status,state,text] of [['cleared','complete','Cleared'],['passed','past','Passed'],['open','overdue','1 day overdue']]) {
   const value={deal:detail.deal,critical_dates:[{id:'loi',kind:'loi_expiry',due_on:'2026-10-03',status}]};
