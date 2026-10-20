@@ -7,9 +7,10 @@ test('W9 deal timeline shows recorded phase dates and adds a contract date', asy
   await app.open('/deals?deal=d14');
 
   await expect(browser.locator('#panelTitle')).toContainText('Demo Surgical Practice');
-  await expect(browser.locator('#timelineRange')).toHaveValue('full');
+  await expect(browser.locator('[aria-label="Deal phases and timeline"]')).toBeVisible();
   await expect(browser.locator('.phase-rail [aria-current] time')).toHaveText('Jan 10, 2026');
 
+  await browser.locator('.deal-dates > summary').tap();
   await browser.locator('[data-add-date="rent_start"]').tap();
   await expect(browser.locator('#dealDateDialog')).toBeVisible();
   await browser.locator('#dealDateDialog #dealDateCancel').tap();

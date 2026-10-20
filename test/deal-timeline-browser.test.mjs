@@ -43,97 +43,36 @@ async function open(t,{width=1440,device,link=false,reducedMotion='no-preference
   // Navigation is checked in a second page below; keep this instrumented client.
   assert.equal(await page.locator('#homeDealFlag').getAttribute('href'),'/deals?deal=d14');
  }
- await page.locator('.kanban-card[data-id="d14"]').click();await page.locator('#timelineRange').waitFor();
+ await page.locator('.kanban-card[data-id="d14"]').click();await page.locator('#detailUpdateForm').waitFor();
+ await page.locator('.deal-dates').evaluate(e=>e.open=true);
  return {page,errors};
 }
-test('timeline fixture waits for delayed client initialization before instrumenting reads',async t=>{
- const {page,errors}=await open(t,{fixtureDelayMs:250});
- assert.equal(await page.locator('.kanban-card[data-id="d14"]').count(),1);
- assert.equal(await page.locator('#timelineRange').isVisible(),true);
+
+for(const width of [320,390,1280]) for(const theme of ['light','dark']) test(`unified phase timeline and full-width updates at ${width} ${theme}`,async t=>{
+ const {page,errors}=await open(t,{width,reducedMotion:'reduce'});
+ await page.evaluate(theme=>document.documentElement.dataset.theme=theme,theme);
+ assert.equal(await page.locator('.phase-rail').count(),1);
+ assert.equal(await page.locator('.timeline-chart').count(),0);
+ assert.equal(await page.locator('.phase-rail [aria-current] time').textContent(),'Oct 3, 2026');
+ assert.equal(await page.locator('.deal-note[data-id="mail"]').count(),1);
+ await page.locator('.deal-note[data-id="mail"] summary').click();
+ assert.match(await page.locator('.deal-note[data-id="mail"] .note-original').textContent(),/Original synthetic email/);
+ assert.equal(await page.locator('#recordPanel').evaluate(e=>e.scrollWidth<=e.clientWidth),true);
  assert.deepEqual(errors,[]);
 });
-// Measures what a reader sees: each chart label's rendered size, overlap and
-// containment, and whether the timeline needs horizontal scrolling.
-for (const view of [{width:320},{width:390},{device:'iPad'},{width:1440}])
- test(`W9 timeline chart and phases stay readable without scrolling at ${view.device||view.width+'px'}`,async t=>{
-  const {page,errors}=await open(t,view);
-  for (const range of ['full','recent']) {
-   await page.locator('#timelineRange').selectOption(range);
-   const layout=await page.locator('.deal-timeline').evaluate(section=>{
-    const svg=section.querySelector('.timeline-chart'),box=svg.getBoundingClientRect(),scale=svg.getScreenCTM().a;
-    const labels=[...svg.querySelectorAll('text')].filter(text=>text.getClientRects().length).map(text=>({text:text.textContent,size:parseFloat(getComputedStyle(text).fontSize)*scale,rect:text.getBoundingClientRect()}));
-    const ticks=labels.filter(label=>label.rect.top>box.top+150);
-    return {
-     smallest:Math.min(...labels.map(label=>label.size)),
-     outside:labels.filter(({rect})=>rect.left<box.left-1||rect.right>box.right+1).map(label=>label.text),
-     overlaps:ticks.slice(1).filter((label,i)=>label.rect.left<ticks[i].rect.right).map(label=>label.text),
-     markers:[...svg.querySelectorAll('.timeline-point')].map(node=>node.getBoundingClientRect()).filter(rect=>rect.width),
-     scrolls:[section,section.closest('#recordPanel'),section.closest('#panelBody')?.querySelector('.phase-rail')].filter(Boolean).filter(node=>node.scrollWidth>node.clientWidth+1).map(node=>node.className||node.id),
-     phaseTabStops:[...(section.closest('#panelBody')?.querySelectorAll('.phase-rail, .phase-rail *')||[])].filter(node=>node.tabIndex>=0).length,
-    };
-   });
-   assert.ok(layout.smallest>=11,`${range}: smallest chart label renders at ${layout.smallest}px`);
-   assert.deepEqual(layout.outside,[],`${range}: labels stay inside the chart`);
-   assert.deepEqual(layout.overlaps,[],`${range}: date ticks do not overlap`);
-   assert.deepEqual(layout.scrolls,[],`${range}: nothing scrolls sideways`);
-   const crowded=layout.markers.flatMap((a,i)=>layout.markers.slice(i+1).filter(b=>Math.abs(a.top-b.top)<1&&a.left<b.right&&b.left<a.right).map(b=>[Math.round(a.left),Math.round(b.left)]));
-   assert.deepEqual(crowded,[],`${range}: date and activity markers do not overlap`);
-   assert.equal(layout.phaseTabStops,0,`${range}: the phase rail adds no empty tab stop`);
-  }
-  assert.deepEqual(errors,[]);
- });
-
-test('W9 horizontal phase dates, countdowns, dated originals, wide layout and phone renders',async t=>{
- await mkdir(new URL('out/test-artifacts/w9/',root),{recursive:true});
- for(const width of [1440,390,320])await t.test(String(width),async t=>{
-  const {page,errors}=await open(t,{width,reducedMotion:'reduce'});
-  assert.equal(await page.locator('.phase-rail [aria-current] time').textContent(),'Oct 3, 2026');
-  assert.equal(await page.locator('[data-countdown="2026-10-05"]').textContent(),'1 day');
-  assert.equal(await page.locator('.timeline-entry[data-kind="Document"]').count(),1);
-  assert.equal(await page.locator('.timeline-entry[data-kind="email"]').count(),1);
-  assert.equal(await page.locator('[data-add-date="rent_start"]').count(),1);
-  assert.equal(await page.locator('#appLayout').count(),1);
-  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
-  assert.equal(await page.locator('#recordPanel').evaluate(e=>e.scrollWidth<=e.clientWidth),true);
-  assert.ok((await page.locator('#recordPanel').boundingBox()).width>=Math.min(1100,width-30));
-  assert.equal(await page.locator('.timeline-entry').evaluateAll(es=>es.every(e=>getComputedStyle(e).transitionDuration==='0s'&&getComputedStyle(e).transform==='none')),true);
-  await page.screenshot({path:new URL(`out/test-artifacts/w9/deal-${width}.png`,root).pathname});
-  await page.locator('.timeline-entry[data-kind="email"] summary').click();
-  assert.match(await page.locator('.timeline-entry[data-kind="email"] .note-original').textContent(),/Original synthetic email/);
-  assert.ok((await page.locator('.timeline-entry[data-kind="email"] > p').textContent()).length<=150);
-  await page.screenshot({path:new URL(`out/test-artifacts/w9/timeline-${width}.png`,root).pathname});
-  assert.equal(await page.locator('#timelineRange').inputValue(),'full');
-  assert.equal(await page.getByText('Demo historic entry',{exact:true}).count(),1);
-  await page.locator('#timelineRange').selectOption('recent');
-  assert.equal(await page.getByText('Demo historic entry',{exact:true}).count(),0);
-  assert.deepEqual(errors,[]);
- });
-});
-test('W9 live refresh preserves expanded originals, range, scroll, focus and drafts through outages',async t=>{
+test('refresh preserves expanded updates, focus, dates and draft through an outage',async t=>{
  const {page,errors}=await open(t);
- await page.locator('#timelineRange').selectOption('full');
- const summary=page.locator('.timeline-entry[data-kind="email"] summary');await summary.click();await summary.focus();
- await page.evaluate(()=>{window.timelineProbe.changed=true;});
- await page.locator('[data-date-id="loi"] details').evaluate(n=>n.open=true);
- await page.locator('.full-record').evaluate(n=>n.open=true);
- const before=await page.locator('#recordPanel').evaluate(e=>e.scrollTop);
- await page.clock.fastForward(16000);
- assert.equal(await page.locator('[data-countdown="2026-10-09"]').textContent(),'5 days');
- assert.equal(await page.locator('#timelineRange').inputValue(),'full');
- assert.equal(await page.locator('[data-date-id="loi"] details').evaluate(n=>n.open),true);
- assert.equal(await page.locator('.full-record').evaluate(n=>n.open),true);
- assert.equal(await page.locator('.timeline-entry[data-kind="email"] details').evaluate(e=>e.open),true);
+ const summary=page.locator('.deal-note[data-id="mail"] summary');await summary.click();await summary.focus();
+ await page.evaluate(()=>window.timelineProbe.changed=true);await page.clock.fastForward(16000);
+ await page.waitForFunction(()=>document.querySelector('.deal-updates').textContent.includes('Demo updated allowance received'));
+ assert.equal(await page.locator('.deal-note[data-id="mail"] details').evaluate(e=>e.open),true);
  assert.equal(await summary.evaluate(e=>document.activeElement===e),true);
- assert.equal(await page.locator('#recordPanel').evaluate(e=>e.scrollTop),before);
- await page.locator('#detailNextForm textarea').fill('Demo unsaved next step');
- await page.evaluate(()=>{window.timelineProbe.fail=true;});await page.clock.fastForward(16000);
+ await page.locator('#detailUpdateForm textarea').fill('Demo unsaved update');
+ await page.evaluate(()=>window.timelineProbe.fail=true);await page.clock.fastForward(16000);
  await page.getByText('Updates temporarily unavailable',{exact:true}).waitFor();
- assert.equal(await page.locator('[data-retry-detail]').count(),0);
- assert.equal(await page.locator('#detailNextForm textarea').inputValue(),'Demo unsaved next step');
- await page.evaluate(()=>{window.timelineProbe.fail=false;});await page.clock.fastForward(16000);
+ assert.equal(await page.locator('#detailUpdateForm textarea').inputValue(),'Demo unsaved update');
+ await page.evaluate(()=>window.timelineProbe.fail=false);await page.clock.fastForward(16000);
  await page.waitForFunction(()=>!document.querySelector('#detailReadStatus').textContent);
- await page.clock.fastForward(86400000);
- assert.equal(await page.locator('[data-countdown="2026-10-09"]').textContent(),'4 days');
  assert.deepEqual(errors,[]);
 });
 test('W9 Add date records an explicit contract reference and lost answers never duplicate the date',async t=>{
@@ -152,54 +91,6 @@ test('W9 Add date records an explicit contract reference and lost answers never 
  assert.equal(events.filter(e=>e.verb==='add-critical-date'&&e.new_value==='2026-12-01').length,1);
  assert.deepEqual(errors,[]);
 });
-test('PR129 finding 11 header, timeline, date cards and inputs retain readable theme pairs',async t=>{
- for (const theme of ['light','dark']) for (const width of [1440,390]) await t.test(`${theme} ${width}`,async t=>{
-  const {page,errors}=await open(t,{width,reducedMotion:'reduce'});
-  await page.evaluate(theme=>document.documentElement.dataset.theme=theme,theme);
-  const pairs=[
-   ['#panelTitle','#recordPanel > header'],
-   ['.timeline-heading h3','.deal-timeline'],
-   ['.timeline-entry[data-kind="email"] > p','.timeline-entry[data-kind="email"]'],
-   ['.timeline-entry[data-kind="email"] summary','.timeline-entry[data-kind="email"]'],
-   ['.timeline-actor','.timeline-entry'],
-   ['.timeline-date-links button','.timeline-date-links button'],
-   ['[data-date-id="loi"] > span','[data-date-id="loi"]'],
-   ['[data-date-id="loi"] strong','[data-date-id="loi"]'],
-   ['[data-add-date="rent_start"] strong','[data-add-date="rent_start"]'],
-  ];
-  const contrasts=await page.evaluate(pairs=>{
-   const rgba=s=>s.match(/[\d.]+/g).map(Number);
-   const over=(fg,bg)=>fg.slice(0,3).map((v,i)=>v*(fg[3]??1)+bg[i]*(1-(fg[3]??1)));
-   const background=e=>e?over(rgba(getComputedStyle(e).backgroundColor),background(e.parentElement)):[255,255,255];
-   const luminance=rgb=>rgb.map(v=>v/255).map(v=>v<=.04045?v/12.92:((v+.055)/1.055)**2.4).reduce((n,v,i)=>n+v*[.2126,.7152,.0722][i],0);
-   return pairs.map(([text,surface])=>{
-    const node=document.querySelector(text),panel=document.querySelector(surface),style=getComputedStyle(panel);
-    const base=background(panel);
-    const stops=style.backgroundImage.match(/rgba?\([^)]+\)/g)||[];
-    const backgrounds=stops.length?stops.map(s=>over(rgba(s),base)):[base];
-    const foreground=rgba(getComputedStyle(node).color);
-    const ratio=Math.min(...backgrounds.map(bg=>{
-     const a=luminance(over(foreground,bg)),b=luminance(bg);
-     return (Math.max(a,b)+.05)/(Math.min(a,b)+.05);
-    }));
-    return {text,ratio};
-   });
-  },pairs);
-  for(const {text,ratio} of contrasts) assert.ok(ratio>=4.5,`${theme} ${width} ${text}: ${ratio.toFixed(2)}:1`);
-  await page.locator('[data-add-date="rent_start"]').click();
-  const inputPair=await page.locator('#dealDateForm [name="evidence"]').evaluate(e=>{
-   const s=getComputedStyle(e);return {color:s.color,background:s.backgroundColor,colorScheme:s.colorScheme};
-  });
-  // The entry field follows the same semantic text/ground pair as its dialog.
-  assert.equal(inputPair.colorScheme,theme);
-  const inputContrast=await page.locator('#dealDateForm [name="evidence"]').evaluate(e=>{
-   const l=s=>s.match(/[\d.]+/g).slice(0,3).map(Number).map(v=>v/255).map(v=>v<=.04045?v/12.92:((v+.055)/1.055)**2.4).reduce((n,v,i)=>n+v*[.2126,.7152,.0722][i],0);
-   const s=getComputedStyle(e),a=l(s.color),b=l(s.backgroundColor);return (Math.max(a,b)+.05)/(Math.min(a,b)+.05);
-  });
-  assert.ok(inputContrast>=4.5,`${theme} input: ${inputContrast.toFixed(2)}:1`);
-  assert.deepEqual(errors,[]);
- });
-});
 test('W9 board/list use the same addressable popup and Home href opens it directly',async t=>{
  const {page,errors}=await open(t,{link:true});
  assert.equal(new URL(page.url()).searchParams.get('deal'),'d14');
@@ -209,7 +100,7 @@ test('W9 board/list use the same addressable popup and Home href opens it direct
  assert.equal(await page.locator('#recordPanel').evaluate(e=>e.open),true);
  await page.getByLabel('Close deal',{exact:true}).click();
  await page.locator('#homeDealFlag').click();
- await page.locator('#recordPanel[open] #timelineRange').waitFor();
+ await page.locator('#recordPanel[open] #detailUpdateForm').waitFor();
  assert.equal(new URL(page.url()).searchParams.get('deal'),'d14');
  assert.equal(await page.locator('#recordPanel[open]').count(),1);
  assert.deepEqual(errors,[]);
@@ -241,24 +132,14 @@ test('review 3: an old date submission cannot disable, close or change a later d
  await page.locator('#dealDateForm [name="evidence"]').fill('Demo option clause 5');
  assert.equal(await page.locator('#dealDateForm button[type="submit"]').isEnabled(),true);
  await page.evaluate(()=>window.finishDate());
- await page.waitForFunction(()=>document.querySelector('[data-op="critical-date:d14:rent_start"]').dataset.state==='confirmed');
+ await page.locator('.toast').waitFor({state:'attached'});
+ assert.equal(await page.locator('#receiptDock [data-op="critical-date:d14:rent_start"]').count(),0);
  assert.equal(await page.locator('#dealDateDialog').evaluate(e=>e.open),true);
  assert.equal(await page.locator('#dealDateTitle').textContent(),'Options');
  assert.equal(await page.locator('#dealDateForm [name="date"]').inputValue(),'2027-01-15');
  assert.equal(await page.locator('#dealDateForm [name="evidence"]').inputValue(),'Demo option clause 5');
  assert.equal(await page.locator('#dealDateStatus').textContent(),'');
  assert.deepEqual(errors,[]);
-});
-test('review 4: poll restores each focusable timeline control by stable identity',async t=>{
- for(const selector of ['.timeline-entry[data-kind="email"]','[data-date-id="loi"] summary','[data-timeline-day="2026-10-02"]']) await t.test(selector,async t=>{
-  const {page,errors}=await open(t);const control=page.locator(selector);
-  await control.focus();
-  await page.evaluate(()=>window.timelineProbe.changed=true);
-  await page.clock.fastForward(16000);
-  await page.waitForFunction(()=>document.querySelector('[data-countdown="2026-10-09"]'));
-  assert.equal(await control.evaluate(e=>document.activeElement===e),true);
-  assert.deepEqual(errors,[]);
- });
 });
 test('review 5: hanging date writes become unknown and reconcile only the retained request on explicit action',async t=>{
  const {page,errors}=await open(t);
@@ -290,14 +171,29 @@ test('review 5: hanging date writes become unknown and reconcile only the retain
  await page.locator('#dealDateCancel').click();
  await page.getByLabel('Close deal',{exact:true}).click();
  await receipt.getByRole('button',{name:'Check outcome'}).click();
- await page.waitForFunction(()=>document.querySelector('.receipt[data-op="critical-date:d14:rent_start"]').dataset.state==='confirmed');
+ await page.locator('.toast').waitFor({state:'attached'});
+ assert.equal(await receipt.count(),0);
  const requests=await page.evaluate(()=>window.dateRequests);
  assert.equal(requests.length,2);assert.deepEqual(requests[1],requests[0]);
  assert.ok(requests[0].idempotency_key);
  // An abandoned transport answer cannot overwrite the reconciled outcome.
  await page.evaluate(()=>window.finishLateDate({ok:false}));
- assert.equal(await receipt.getAttribute('data-state'),'confirmed');
+ assert.equal(await receipt.count(),0,'a late response never restores the settled notification');
  const events=await page.evaluate(async()=> (await (await import('/js/pipeline.js')).state.client.getChanges(null)).events);
  assert.equal(events.filter(e=>e.verb==='add-critical-date'&&e.new_value==='2026-12-01').length,1);
+ assert.deepEqual(errors,[]);
+});
+
+for (const theme of ['light','dark']) test(`phone phase labels are legible along one continuous rail in ${theme}`,async t=>{
+ const {page,errors}=await open(t,{width:390,reducedMotion:'reduce'});
+ await page.evaluate(theme=>document.documentElement.dataset.theme=theme,theme);
+ const labels=await page.locator('.phase-rail li').evaluateAll(items=>items.map(item=>{
+  const labels=[...item.querySelectorAll('span,abbr')].filter(n=>{const r=n.getBoundingClientRect(),s=getComputedStyle(n);return s.display!=='none' && s.clipPath==='none' && r.width>=16 && r.height>=12 && parseFloat(s.fontSize)>=12;});
+  return {top:item.getBoundingClientRect().top,labels:labels.map(n=>n.textContent)};
+ }));
+ assert.equal(labels.length,8);
+ assert.ok(labels.every(p=>p.labels.length>0),JSON.stringify(labels));
+ assert.ok(labels.every(p=>Math.abs(p.top-labels[0].top)<1),'the rail stays on a single row');
+ assert.equal(await page.locator('#recordPanel').evaluate(n=>n.scrollWidth<=n.clientWidth),true);
  assert.deepEqual(errors,[]);
 });

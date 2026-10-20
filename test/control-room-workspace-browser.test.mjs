@@ -47,7 +47,7 @@ async function open(t,{width=1440,height=width===1440?1000:844,path='/control-ro
    if(rpc.name==='schedule-board'&&state.partialSchedule){payload.jobs=payload.jobs.filter(job=>job.owner===payload.sources[0].owner);payload.sources=payload.sources.map((source,i)=>i===0?source:{...source,state:'unknown',count:null});}
    if(rpc.name==='schedule-board'&&state.duplicateJobs){payload.jobs=payload.jobs.map((job,i)=>({...job,key:'same',next_due_at:payload.jobs[0].next_due_at,next_due_basis:payload.jobs[0].next_due_basis}));}
    if(rpc.name==='schedule-board'&&state.removeJobs){payload.jobs=[];payload.sources=payload.sources.map(source=>({...source,state:'unknown',count:null}));}
-   if(rpc.name==='deal-room-board'&&state.dealStates)payload={...payload,actor:'joe',deals:['active','closed','inactive','completed'].map((state,i)=>({id:`demo-deal-${i}`,name:`Demo ${state}`,owner:'joe',attention:true,phase:state==='closed'?'closed':'pending',operating_state:['active','closed'].includes(state)?'active':state}))};
+   if(rpc.name==='deal-room-board'&&state.dealStates)payload={...payload,actor:'joe',deals:['active','closed','inactive','completed'].map((state,i)=>({id:`demo-deal-${i}`,name:`Demo ${state}`,owner:'joe',attention:true,next_step:'Confirm synthetic step',next_date:'2026-09-30',phase:state==='closed'?'closed':'pending',operating_state:['active','closed'].includes(state)?'active':state}))};
    if(rpc.name==='unfinished-work'&&state.bindingOnly)for(const row of payload.items||[]){row.work_request_ref='WR-000999';row.human_ref=null;row.work_request=null;row.related=[];row.pr_url='https://github.com/example/demo/pull/88';row.pr=null;}
    if(rpc.name==='unfinished-work')for(const row of payload.items||[]){row.pr=state.pr;row.title=state.title;if(state.cardDetails)Object.assign(row,{summary:"Keep distinct acceptance details.",provider:"OpenAI",model:"gpt-6-sol",effort:"high"});}
    if(rpc.name==='unfinished-work'&&extraBoard)payload.items.forEach((row,i)=>row.repo=i%2?'example/second-project':'example/demo');
@@ -219,10 +219,10 @@ test('finding 10: System Map restores selected node on initial load and history 
  await page.evaluate(()=>{history.pushState({},'', '/control-room?mode=live&tab=system-map&node=service%3Ademo-exporter');dispatchEvent(new PopStateEvent('popstate'));});
  await waitForAsync(page,async()=> (await import('/js/atlas.js')).view.selected==='service:demo-exporter');
 });
-test('finding 11: sidebar shares active-deal scope including adapter-normalized Closed and inactive states',async t=>{
+test('finding 11: sidebar overdue scope excludes adapter-normalized Closed and inactive states',async t=>{
  const {page,state}=await open(t);state.dealStates=true;await page.locator('#appSyncRefresh').click();
  await page.waitForFunction(()=>document.querySelector('#appTodayNeeds').textContent.includes('Demo active'));
- for(const id of ['appTodayNeeds','appWorkingList']){assert.deepEqual(await page.locator(`#${id} [data-layout-deal]`).allTextContents(),['Demo active']);}
+ for(const id of ['appTodayNeeds','appWorkingList']){assert.deepEqual(await page.locator(`#${id} [data-layout-deal] strong`).allTextContents(),['Demo active']);}
 });
 test('incident filters and details dispatch once per click after retained and replaced renders',async t=>{
  const {page,state,errors}=await open(t,{countIncidentClicks:true});await section(page,'tabViews');

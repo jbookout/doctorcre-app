@@ -7,15 +7,15 @@ import { agendaSnapshot, controlSnapshot, dealHref, dealSnapshot, HIDDEN_HOME_WI
 
 const NOW = Date.parse('2026-10-01T15:00:00Z');
 const board = { actor: 'joe', deals: [
-  { id: 'demo-a', name: 'Demo A', owner: 'joe', attention: true, phase: 'Research' },
-  { id: 'demo-b', name: 'Demo B', owner: 'dell', attention: true, account_client_id: 'demo-account', phase: 'Legal' },
+  { id: 'demo-a', name: 'Demo A', owner: 'joe', attention: true, next_step:'Confirm synthetic step', next_date:'2026-09-30', phase: 'Research' },
+  { id: 'demo-b', name: 'Demo B', owner: 'dell', attention: true, next_step:'Confirm synthetic step', next_date:'2026-09-30', account_client_id: 'demo-account', phase: 'Legal' },
   { id: 'demo-c', name: 'Demo C', owner: 'joe', attention: true, operating_state: 'parked' },
   { id: 'demo-d', name: 'Demo D', owner: 'joe', attention: true, phase: 'Closed' },
 ] };
-test('Home flags and all headline counts use the same active owner-scoped set; unknown market membership stays unknown', () => {
-  const team = dealSnapshot(board);
-  assert.deepEqual([team.active, team.national, team.inMarket, team.flagged.map(row => row.id)], [2, 1, null, ['demo-a', 'demo-b']]);
-  const mine = dealSnapshot(board, 'mine');
+test('Home overdue list matches local board scope; team headline counts retain national accounts', () => {
+  const team = dealSnapshot(board, 'team', NOW);
+  assert.deepEqual([team.active, team.national, team.inMarket, team.flagged.map(row => row.id)], [2, 1, null, ['demo-a']]);
+  const mine = dealSnapshot(board, 'mine', NOW);
   assert.deepEqual([mine.active, mine.national, mine.flagged.map(row => row.id)], [1, 0, ['demo-a']]);
   assert.equal(dealSnapshot({ ...board, actor: null }, 'mine'), null);
   assert.equal(dealSnapshot(null), null);

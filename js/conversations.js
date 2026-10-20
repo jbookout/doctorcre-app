@@ -204,26 +204,32 @@ function renderAccess() {
 }
 
 function renderList() {
+  const list = $("conversationList");
+  const focusedId = list.contains(document.activeElement) ? document.activeElement.dataset.open : null;
   const payload = view.list.state === "read" ? view.list.payload : null;
   $("visibleCountLine").textContent = visibleCountLine(payload);
+  const loading = view.list.state === "pending";
+  $("visibleCountLine").hidden = loading;
   const rows = view.list.rows;
   // IN THE VERB'S ORDER. `.map` walks the array as the record layer handed it
   // over; nothing here sorts, filters or regroups, because pinned-first then
   // most-recently-updated is the store's rule and not this page's.
-  $("conversationList").innerHTML = rows.map((row) => `<li class="work-item" data-priority="${row.pinned ? "deadline" : "ordinary"}" data-conversation="${escapeHtml(row.id)}" data-visibility="${escapeHtml(row.visibility)}">
+  list.innerHTML = rows.map((row) => `<li class="work-item" data-priority="${row.pinned ? "deadline" : "ordinary"}" data-conversation="${escapeHtml(row.id)}" data-visibility="${escapeHtml(row.visibility)}">
     <div>
       <h3 class="list-title">${escapeHtml(row.title)}</h3>
       <p class="list-meta">${escapeHtml(row.visibility === "shared" ? "shared" : "private")}${row.pinned ? " · pinned" : ""}${row.archived ? " · archived" : ""}${row.latestClock ? ` · last said ${escapeHtml(row.latestClock)}` : ""} · <span class="mono">${escapeHtml(row.id)}</span></p>
       <div class="list-open"><button class="btn" type="button" data-open="${escapeHtml(row.id)}">Open this conversation</button></div>
     </div>
   </li>`).join("");
+  if (focusedId) [...list.querySelectorAll("[data-open]")].find(button => button.dataset.open === focusedId)?.focus({ preventScroll: true });
   $("archivedToggle").setAttribute("aria-pressed", String(view.includeArchived));
   $("archivedToggle").textContent = view.includeArchived ? "Hide archived" : "Show archived";
   $("listPagingBlock").hidden = !listPagingState(payload).more;
   const block = $("listState");
   const bare = view.list.state === "read" && rows.length === 0;
-  block.hidden = !(bare || view.list.state === "unavailable");
-  $("listStateTitle").textContent = view.list.state === "unavailable"
+  block.hidden = !(loading || bare || view.list.state === "unavailable");
+  block.dataset.state = loading ? "loading" : view.list.state === "unavailable" ? "unavailable" : bare ? "empty" : "ready";
+  $("listStateTitle").textContent = loading ? "Reading conversations…" : view.list.state === "unavailable"
     ? view.list.sentence
     : (bare ? LIST_EMPTY : "");
 }
@@ -296,6 +302,9 @@ function outcomeCardHtml(card, { changed = { phase: false, nextCheck: false, res
 function renderOutcomeCards() {
   const list = $("outcomeCardsList");
   const block = $("outcomeCardsState");
+  const focused = list?.contains(document.activeElement) ? document.activeElement : null;
+  const focusAttribute = focused?.hasAttribute("data-copy-outcome-session") ? "data-copy-outcome-session" : "data-open-outcome-session";
+  const focusKey = focused?.getAttribute(focusAttribute);
   const paging = $("outcomeCardsPagingBlock");
   if (!list || !block) return;
   if (view.outcomeCards.state === "loading" && view.outcomeCards.rows.length === 0) {
@@ -324,6 +333,7 @@ function renderOutcomeCards() {
   list.innerHTML = cards.map((card) => outcomeCardHtml(card, {
     changed: changedFields(view.outcomeCards.previousById.get(card.id) ?? null, card),
   })).join("");
+  if (focusKey) [...list.querySelectorAll(`[${focusAttribute}]`)].find(node => node.getAttribute(focusAttribute) === focusKey)?.focus({ preventScroll: true });
   for (const link of list.querySelectorAll('[data-open-outcome-session]')) {
     link.addEventListener('click', () => {
       const card = cards.find(item => item.id === link.dataset.openOutcomeSession);

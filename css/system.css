@@ -199,6 +199,8 @@ small, .small { font-size: var(--font-size-1); color: var(--fg-muted); }
 
 /* ------------------------------------------------------------- toast: shows briefly, then fully gone */
 .toast { position: fixed; left: auto; right: 88px; bottom: var(--space-4); z-index: 50; display: flex; align-items: center; gap: var(--space-2); padding: var(--space-3) var(--space-4); border: var(--hairline-width) solid var(--hairline-strong); border-left: 3px solid var(--status-ok); border-radius: var(--radius-2); background: var(--surface-2); color: var(--fg); font-size: var(--font-size-1); font-weight: var(--font-weight-strong); box-shadow: var(--shadow-overlay); animation: toast-life var(--motion-toast) var(--ease-out) forwards; }
+.toast[popover] { top: auto; margin: 0; max-width: calc(100vw - 24px); }
+.toast[data-transient].is-leaving:has([data-undo]) { pointer-events: auto; }
 
 /* ------------------------------------------------------------- panels: nonmodal aside vs modal dialog */
 .side-panel { position: sticky; top: 84px; align-self: start; display: grid; gap: var(--space-3); max-height: calc(100vh - 100px); overflow: auto; padding: var(--pad-card); border-radius: var(--radius-3); }
@@ -364,6 +366,10 @@ small, .small { font-size: var(--font-size-1); color: var(--fg-muted); }
 
 /* ------------------------------------------------------------- keyframes: real states only */
 @keyframes toast-life { 0% { opacity: 0; transform: translateY(6px); } 8%, 62% { opacity: 1; transform: none; } 100% { opacity: 0; visibility: hidden; transform: none; } }
+.toast[data-transient] { animation: none; opacity: 1; transition: opacity 800ms var(--ease-out); }
+.toast[data-transient].is-leaving { opacity: 0; pointer-events: none; }
+.toast[role="alert"] { border-left-color: var(--status-danger); }
+.toast button, .receipt-dismiss { min-width: var(--touch); min-height: var(--touch); }
 @keyframes receipt-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
 /* Long-running state: a send in flight, and the Atlas "switched on" signal,
    both paused by the motion control. */
@@ -403,7 +409,7 @@ small, .small { font-size: var(--font-size-1); color: var(--fg-muted); }
 :root[data-motion="reduced"] *, :root[data-motion="reduced"] *::before, :root[data-motion="reduced"] *::after { animation: none !important; transition: none !important; }
 :root[data-motion="reduced"] .flow-path { stroke-dasharray: none; }
 :root[data-motion="reduced"] html { scroll-behavior: auto; }
-/* A toast's life is its animation; with motion off it simply stays put. */
+
 
 /* ------------------------------------------------- V5-UX-C08 Anatomical Atlas
    Product styling for the anatomical renderer (js/atlas-scene.js, js/atlas-anatomy.js),
