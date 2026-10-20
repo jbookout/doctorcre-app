@@ -83,3 +83,15 @@ test('board census failure invalidates Attention and its open detail while Queue
   await page.locator('[data-attention-id="incident:INC-DEMO"]').waitFor();
   assert.doesNotMatch(await page.locator('#jobBody').innerText(), /Source unavailable/);
 });
+
+test('an old running timestamp does not record a blocked Attention state', async () => {
+  const { boardView } = await import('../js/progress-board-model.js');
+  const { attentionTasks } = await import('../js/control-room-workspace-model.js');
+  const { cards } = boardView({ snapshot: { board_id: 'demo', version: 1, snapshot_json: { tasks: {
+    running: { status: 'running', title: 'Demo slow work', updated_at: '2026-10-01T12:00:00Z' },
+    blocked: { status: 'blocked', title: 'Demo recorded blocker' },
+    failed: { status: 'failed', title: 'Demo recorded failure' },
+  } } } }, new Date('2026-10-20T12:00:00Z'));
+  assert.equal(cards.find(row => row.id === 'running').health, 'blocked', 'the board retains its age warning');
+  assert.deepEqual(attentionTasks(cards).map(row => row.id), ['failed', 'blocked']);
+});
