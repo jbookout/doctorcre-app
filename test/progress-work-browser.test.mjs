@@ -829,3 +829,23 @@ test('unresolved task with an explicit request has no clickable Task lineage', a
   assert.match(await page.locator('#workMetadata').textContent(), /not in the loaded publication/);
   assert.deepEqual(errors, []);
 });
+
+
+test('work detail follows two alias hops to the published task', async t => {
+  const {page,calls,errors} = await open(t, {
+    path:'/control-room/progress/work?board=demo-project&task=legacy-pr-73',
+    rpcReply:(rpc,payload) => {
+      if (rpc.name === 'read-progress-board') payload.snapshot.snapshot_json.hierarchy = {
+        aliases:{'legacy-pr-73':'rekeyed-pr-73', 'rekeyed-pr-73':taskId},
+      };
+      return payload;
+    },
+  });
+  assert.equal(await page.locator('#workTitle').textContent(), 'Demo work detail');
+  const task = page.locator('.work-lineage dl > div').filter({has:page.locator('dt', {hasText:/^Task$/})});
+  assert.equal(await task.locator('a').textContent(), taskId);
+  assert.equal(new URL(await task.locator('a').getAttribute('href'), page.url()).searchParams.get('task'), taskId);
+  await page.waitForFunction(() => document.querySelector('#workMetadata').textContent.includes('Demo work request'));
+  assert.ok(calls.some(call => call.name === 'work-request-card' && call.arguments.work_request === 'WR-900'));
+  assert.deepEqual(errors, []);
+});
