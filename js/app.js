@@ -317,38 +317,20 @@ async function pollOnce(initial = false, { force = false } = {}) {
       console.warn('Deal Room confirm queue read failed', error);
     }
   }
-  if (!userIsEditing()) renderBoardOnly();
+  if (!userIsEditing()) renderPreservingFocus(renderBoardOnly);
 }
 
 function userIsEditing() {
   return Boolean(document.querySelector('dialog[open]') || document.activeElement?.matches('input,textarea,select'));
 }
 
-/**
- * A full render that does not throw the keyboard on the floor.
- *
- * `userIsEditing` guards dialogs and form fields; a focused BUTTON is invisible
- * to it, and the National Accounts home is nothing but buttons that
- * `renderAccounts` replaces wholesale. That grid never used to re-render on its
- * own — the poll only called `renderBoardOnly`, which returns immediately while
- * the board section is hidden — but a snapshot now lands on a 15-second timer,
- * so a card under the keyboard would be destroyed with no user action at all.
- *
- * The card is restored by its `data-account`, the same way an Undo button is
- * restored by its event id after the receipts list is rebuilt: only what was
- * taken is given back, the page is never scrolled to do it, and a card the
- * board no longer returns is not replaced with a different one — focus stays
- * where the browser put it rather than landing somewhere unrelated.
- */
-function renderPreservingFocus() {
-  const grid = $('#accountGrid');
+function renderPreservingFocus(paint = render) {
   const active = document.activeElement;
-  const focused = grid && active && grid.contains(active)
-    ? active.closest('[data-account]')?.dataset.account || null
-    : null;
-  render();
-  if (!focused) return;
-  $(`[data-account="${CSS.escape(focused)}"]`)?.focus({ preventScroll: true });
+  const root = active?.closest('#accountGrid, #stats, #emptyState');
+  const attribute = ['data-account', 'data-open-deal', 'data-clear-search'].find(key => active?.hasAttribute(key));
+  const selector = root && attribute ? `#${root.id} [${attribute}="${CSS.escape(active.getAttribute(attribute))}"]` : null;
+  paint();
+  if (selector && document.activeElement === document.body) $(selector)?.focus({ preventScroll: true });
 }
 
 function workspaceDeals() {
@@ -372,7 +354,7 @@ function workspaceDeals() {
   if (state.filter === 'stale') deals = deals.filter(isStale);
   if (state.filter === 'missing') deals = deals.filter((deal) => !deal.next_step);
   if (state.filter === 'delta') deals = deals.filter((deal) => state.changed.has(deal.id));
-  return deals.sort((a,b) => priority(b) - priority(a) || a.name.localeCompare(b.name));
+  return deals.sort((a,b) => priority(b) - priority(a) || a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
 }
 
 function render() {
@@ -392,9 +374,9 @@ function renderChrome() {
   const selected = account();
   const isAccountHome = state.workspace === 'national_account' && !state.accountId && !state.query;
   $('#accountBack').hidden = !state.accountId;
-  $('#accountContext').hidden = !state.accountId;
-  $('#accountName').textContent = selected?.account_name || 'National account';
-  $('#accountOwner').textContent = selected ? `Owned by ${actorName(selected.account_owner)}` : '';
+  $('#accountContext').hidden = !state.accountId || Boolean(state.query);
+  $('#accountContextName').textContent = selected?.account_name || 'National account';
+  $('#accountContextOwner').textContent = selected ? `Owned by ${actorName(selected.account_owner)}` : '';
   // Never print the partners' names as a label: the team is both partners by
   // definition, so the combined list is just "Deals". The team view carries no
   // description sentence under its title (2026-09-16 review).
@@ -501,7 +483,7 @@ function renderStats(deals) {
   $('#stats').classList.toggle('account-priority', Boolean(accountDetail));
   if (accountDetail) {
     const overdue = deals.filter((deal) => (daysFromNow(deal.next_date) ?? 0) < 0)
-      .sort((a, b) => a.next_date.localeCompare(b.next_date) || a.name.localeCompare(b.name));
+      .sort((a, b) => a.next_date.localeCompare(b.next_date) || a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
     const next = overdue[0] || deals[0];
     $('#stats').innerHTML = next ? `
       <span class="next-action-label${overdue.length ? ' is-alert' : ''}">${overdue.length ? 'Next overdue action' : 'Next market action'}</span>
@@ -1296,7 +1278,7 @@ function wireEvents() {
     if (event.target.closest('[data-clear-search]')) {
       state.query = ''; $('#search').value = '';
       render();
-      const target = state.accountId ? $('#accountName')
+      const target = state.accountId ? $('#accountContextName')
         : $('#accountGrid:not([hidden]) [data-account]') || $('#rows .deal-link') || $('#workspaceTitle');
       target.focus({ preventScroll: true });
       return;
@@ -1336,6 +1318,7 @@ function wireEvents() {
   $('#accountBack').onclick = () => {
     const accountId = state.accountId;
     state.accountId = null;
+    state.query = ''; $('#search').value = '';
     render();
     if (accountId) $(`[data-account="${CSS.escape(accountId)}"]`)?.focus({ preventScroll: true });
   };

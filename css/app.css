@@ -173,6 +173,8 @@ tr.parked .park-button { border-color: var(--hairline-strong); color: var(--fg);
 .account-metrics .is-alert b { color: var(--status-danger-ink); }
 .account-card .account-summary { margin: 0; color: var(--fg-muted); font-size: var(--font-size-1); }
 
+.account-open { white-space: nowrap; }
+
 /* ------------------------------------------------------------ review agenda */
 .agenda-panel { position: fixed; right: 0; top: 0; bottom: 0; z-index: 90; width: min(440px, 100vw); padding: var(--space-5); overflow: auto; border-left: var(--hairline-width) solid var(--hairline); background: var(--surface-1); box-shadow: var(--shadow-overlay); }
 .agenda-panel > header { display: flex; justify-content: space-between; align-items: flex-start; gap: var(--space-3); }

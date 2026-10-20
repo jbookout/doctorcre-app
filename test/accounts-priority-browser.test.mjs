@@ -53,7 +53,7 @@ for (const width of [390, 1280]) for (const theme of ['dark', 'light']) {
     assert.equal(await page.locator('#search').inputValue(), '');
     assert.equal(await page.locator('#emptyState').isVisible(), false);
     assert.equal(await page.locator('#stats').isVisible(), true);
-    assert.equal(await page.evaluate(() => document.activeElement.id), 'accountName', 'recovery restores focus to the account heading');
+    assert.equal(await page.evaluate(() => document.activeElement.id), 'accountContextName', 'recovery restores focus to the account heading');
   });
 }
 

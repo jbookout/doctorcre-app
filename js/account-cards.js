@@ -18,7 +18,7 @@ export function renderAccountCards(accounts, { esc, relative, actorName }) {
         <div><b>${Number(item.attention_deals || 0)}</b><span>Attention</span></div>
         <div${overdue > 0 ? ' class="is-alert"' : ''}><b>${overdue}</b><span>Overdue</span></div>
         <div><b>${Number(item.stale_deals || 0)}</b><span>Gone quiet</span></div></div>
-      <p class="account-summary">${Number(item.parked_deals || 0)} parked · Last account review: ${esc(relative(item.last_review_at))} · Open account</p>
+      <p class="account-summary">${Number(item.parked_deals || 0)} parked · Last account review: ${esc(relative(item.last_review_at))} · <span class="account-open">Open account</span></p>
     </button>`;
   }).join('');
 }
