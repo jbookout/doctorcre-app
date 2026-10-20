@@ -6,6 +6,7 @@ import {createFixtureClient} from '../js/fixture-client.js';
 import axe from 'axe-core';
 import hierarchy from './fixtures/progress-board-hierarchy.json' with {type:'json'};
 import progressFixture from './fixtures/engineering-progress.synthetic.json' with {type:'json'};
+import {progressEvidenceFixture} from './fixtures/progress-work.synthetic.mjs';
 import {atlasFixtureResponse} from '../scripts/atlas-fixture.mjs';
 import { routeContract as routes } from "../js/routes.js";
 import { BOARD_ROUTE, boardIdFromPath } from '../js/progress-board-route.js';
@@ -37,7 +38,7 @@ async function open(t,{width=1440,height=width===1440?1000:844,path='/control-ro
   if(url.pathname==='/mcp'){
    const rpc=request.postDataJSON().params;calls.push(rpc.name);if(state.denied)return route.fulfill({status:401,body:'{}'});
    if(rpc.name==='read-progress-board'&&state.boardFailure)return route.fulfill({status:state.boardFailure,body:'{}'});
-   if(rpc.name==='engineering-passport')return route.fulfill({status:404,body:'{"error":"synthetic_passport_unavailable"}'});
+   if(rpc.name==='engineering-passport')return acceptanceProgress ? route.fulfill({contentType:'application/json',body:JSON.stringify({result:{content:[{text:JSON.stringify(progressEvidenceFixture(progressFixture,rpc.arguments.work_request))}]}})}) : route.fulfill({status:404,body:'{"error":"synthetic_passport_unavailable"}'});
    if(rpc.name==='schedule-board'&&state.scheduleFailure)return route.fulfill({status:503,body:'{}'});
    if(rpc.name==='governance-queue'&&state.approvalFailure==='http')return route.fulfill({status:503,body:'{}'});
    let payload={};if(snapshotData&&rpc.name==='work-request-card')payload={ok:true,human_ref:rpc.arguments.work_request};
@@ -729,7 +730,7 @@ test('completed hierarchy jobs restore a visible originating control on dialog c
 
 for(const width of [390,1280])for(const theme of ['dark','light'])
 test(`acceptance summary leads the job dialog at ${width}px in ${theme}`,async t=>{
- const {page,errors}=await open(t,{width,theme,acceptanceProgress:true});
+ const {page,errors}=await open(t,{width,height:800,theme,acceptanceProgress:true});
  await page.locator('[data-task-id="work_request:WR-000901"]').click();
  await page.locator('#jobBody .work-progress-summary').getByText('2 of 5 acceptance checks verified',{exact:true}).waitFor();
  const layout=await page.evaluate(()=>{
@@ -737,18 +738,43 @@ test(`acceptance summary leads the job dialog at ${width}px in ${theme}`,async t
   return {first:document.querySelector('#jobBody').firstElementChild.className,top:summary.top,bottom:summary.bottom,titleBottom:title.bottom,height:innerHeight};
  });
  assert.equal(layout.first,'work-progress');assert.ok(layout.top>=layout.titleBottom&&layout.bottom<layout.height);
- assert.equal(await page.locator('#jobBody .work-progress-checks a').count(),5);
- assert.doesNotMatch(await page.locator('#jobBody .work-progress-checks').allTextContents().then(rows=>rows.join(' ')),/check:/);
+ assert.equal(await page.locator('#jobBody [data-progress-check]').count(),5);
+ assert.doesNotMatch(await page.locator('#jobBody [data-progress-check]').allTextContents().then(rows=>rows.join(' ')),/check:/);
  assert.match(await page.locator('#jobBody .work-progress-checks').allTextContents().then(rows=>rows.join(' ')),/Verified fraction/);
  if(process.env.SLICE9_TASTE_CAPTURE_DIR){
   await mkdir(process.env.SLICE9_TASTE_CAPTURE_DIR,{recursive:true});
   await page.screenshot({path:`${process.env.SLICE9_TASTE_CAPTURE_DIR}/dialog-${width}-${theme}.png`});
  }
- await page.locator('#jobBody .work-progress summary').click();
- const history=page.locator('#jobBody .work-progress details');
+ const inspector=page.locator('.work-progress-inspector');
+ const history=page.locator('#jobBody .work-scope-history');
  assert.match(await history.textContent(),/Total increased by 1 check since revision 1/);
+ if(width>=1024){
+  const fit=await page.evaluate(()=>{
+   const checks=[...document.querySelectorAll('[data-progress-check]')].map(el=>el.getBoundingClientRect());
+   const panel=document.querySelector('.work-progress-inspector').getBoundingClientRect();
+   const history=document.querySelector('.work-scope-history').getBoundingClientRect();
+   return {right:panel.left>=checks[0].right,checksFit:checks.every(rect=>rect.bottom<innerHeight),historyFits:history.bottom<innerHeight};
+  });
+  assert.deepEqual(fit,{right:true,checksFit:true,historyFits:true});
+ }
+ const checks=page.locator('#jobBody [data-progress-check]');
+ await checks.nth(1).focus();await page.keyboard.press('Enter');
+ assert.equal(await checks.nth(1).getAttribute('aria-expanded'),'true');
+ assert.equal(await page.locator('[data-check-evidence]:visible h4').textContent(),'Rename');
+ assert.equal(await inspector.evaluate(el=>el.previousElementSibling===document.activeElement),true);
+ await page.clock.runFor(5100);
+ assert.equal(await checks.nth(1).evaluate(el=>el===document.activeElement),true);
+ await page.keyboard.press('Tab');
+ assert.equal(await page.locator('[data-check-evidence]:visible summary').evaluate(el=>el===document.activeElement),true);
+ await page.keyboard.press('Enter');
+ assert.equal(await page.locator('[data-check-evidence]:visible details').evaluate(el=>el.open),true);
+ await page.addScriptTag({content:axe.source});
+ const accessibility=await page.evaluate(()=>window.axe.run(document.querySelector('#jobDialog')));
+ assert.deepEqual(accessibility.violations,[]);
+ await page.locator('[data-check-evidence]:visible summary').click();
  await history.scrollIntoViewIfNeeded();
- if(process.env.SLICE9_TASTE_CAPTURE_DIR)await page.screenshot({path:`${process.env.SLICE9_TASTE_CAPTURE_DIR}/scope-history-${width}-${theme}.png`});
+ if(process.env.SLICE9_TASTE_CAPTURE_DIR)await page.screenshot({path:`${process.env.SLICE9_TASTE_CAPTURE_DIR}/selected-receipt-${width}-${theme}.png`});
+
  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
  assert.deepEqual(errors,[]);
 });

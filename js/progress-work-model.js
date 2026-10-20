@@ -75,28 +75,42 @@ const readableCheck = ref => {
   const words = ref.replace(/^check:/, '').replace(/([a-z])([A-Z])/g, '$1 $2').replace(/[-_:./]+/g, ' ').trim();
   return words.charAt(0).toUpperCase() + words.slice(1);
 };
-export function workProgressHtml(read, workRequest, passport) {
+const checkKey = check => JSON.stringify([check.slice_ref,check.check_ref]);
+function checkReceiptHtml(check, passport, planned, workRequest) {
+  const receipt = passport?.current_receipts.find(row => row.slice_ref === check.slice_ref);
+  const result = receipt?.checks.find(row => row.check_ref === check.check_ref);
+  const review = receipt && passport.current_reviewer_facts.find(row => row.slice_ref === receipt.slice_ref && row.attempt_id === receipt.attempt_id);
+  const claimTime = result ? Date.parse(receipt.executor_claim.claimed_at) : NaN;
+  const field = (label,value) => `<div><dt>${label}</dt><dd>${escape(value || 'Not recorded')}</dd></div>`;
+  return `<h4>${escape(readableCheck(check.check_ref))}</h4>
+    ${planned ? `<p>Fails if ${escape(planned.failure_condition)}</p>` : '<p>The exact acceptance criterion is unavailable for this scope.</p>'}
+    <dl class="work-check-receipt">${field('Receipt result',result ? ({passed:'Passed',failed:'Failed',blocked:'Blocked',not_run:'Not run'})[result.state] : check.state === 'verified' ? 'Verified in progress record' : 'Awaiting verification')}
+    ${field('Recorded by',result ? receipt.attribution.actor_ref : null)}${field('Recorded via',result ? receipt.attribution.adapter_ref : null)}
+    ${field('Claim recorded',Number.isFinite(claimTime) ? new Intl.DateTimeFormat('en-US',{dateStyle:'medium',timeStyle:'short',timeZone:'America/Chicago'}).format(claimTime) + ' CT' : null)}
+    </dl><p class="work-check-review">Independent review · ${escape(review ? `${readableCheck(review.state)} · ${review.reviewer_ref}` : 'Not recorded')}<br>Independent verification time · Not recorded</p>
+    <h5>Evidence</h5>${result?.evidence_refs.length ? `<ul class="work-check-evidence">${result.evidence_refs.map(item => `<li>${escape(item.ref)}<small>${escape(item.redaction_class.replaceAll('_',' '))}</small></li>`).join('')}</ul>` : `<p>${check.state === 'verified' ? 'The progress record verifies this check. Its receipt is unavailable for this scope.' : 'No verification receipt is recorded for this check.'}</p>`}
+    <details class="work-check-raw"><summary data-job-control="raw-${escape(checkKey(check))}">Receipt and Passport JSON</summary><pre tabindex="0" data-job-control="raw-content-${escape(checkKey(check))}" aria-label="Receipt JSON">${escape(JSON.stringify({check:result || check,receipt:result ? receipt : null,review:review || null,passport_scope:passport?.accepted_plan_revision || null},null,2))}</pre><a data-job-control="passport-${escape(checkKey(check))}" href="${escape(workDetailUrl({workRequest}))}#workCanonicalPassport">Open Engineering Passport</a></details>`;
+}
+export function workProgressHtml(read, workRequest, passport, selectedKey) {
   const progress = workProgress(read,workRequest);
   const history = progress.history || [];
   const accepted = passport?.accepted_plan_revision;
-  const plan = canonicalPassport(passport) && progress.scope?.plan_ref === accepted.id
-    && progress.scope.revision === accepted.revision && progress.scope.digest === accepted.digest ? passport.slice_plan : null;
-  const criterion = check => plan?.slices.find(slice => slice.slice_ref === check.slice_ref)?.planned_checks.find(row => row.check_ref === check.check_ref)?.failure_condition;
-  const slices = new Map();
-  for (const check of progress.checks) {
-    if (!slices.has(check.slice_ref)) slices.set(check.slice_ref,{objective:check.objective,checks:[]});
-    slices.get(check.slice_ref).checks.push(check);
-  }
+  const exactPassport = canonicalPassport(passport) && progress.scope?.plan_ref === accepted.id
+    && progress.scope.revision === accepted.revision && progress.scope.digest === accepted.digest ? passport : null;
+  const planned = check => exactPassport?.slice_plan.slices.find(slice => slice.slice_ref === check.slice_ref)?.planned_checks.find(row => row.check_ref === check.check_ref);
+  const selected = progress.checks.find(check => checkKey(check) === selectedKey) || progress.checks[0];
+  const historyHtml = `<details class="work-scope-history" open><summary data-job-control="progress-history">Scope history</summary>${history.length ? `<ol>${history.map((scope,index) => {
+    const prior = history[index-1], delta = prior ? scope.total_checks-prior.total_checks : null;
+    const change = prior ? delta === 0 ? `Total unchanged since revision ${prior.revision}.` : `Total ${delta > 0 ? 'increased' : 'decreased'} by ${Math.abs(delta)} check${Math.abs(delta) === 1 ? '' : 's'} since revision ${prior.revision}.` : 'Initial registered scope.';
+    return `<li><strong>Revision ${scope.revision}</strong> · ${scope.total_checks} acceptance checks<p>${change}</p></li>`;
+  }).join('')}</ol>` : '<p>No registered scope history is available.</p>'}</details>`;
+  const inspector = `<div class="work-progress-inspector">${progress.checks.map((check,index) => `<section id="work-check-${index}" data-check-evidence="${escape(checkKey(check))}" aria-label="${escape(readableCheck(check.check_ref))} evidence"${check === selected ? '' : ' hidden'}>${checkReceiptHtml(check,exactPassport,planned(check),workRequest)}</section>`).join('')}${historyHtml}</div>`;
   return `<section class="work-progress" aria-label="Acceptance progress" data-progress-state="${progress.state}"><h3>Acceptance checks</h3>
-    <p class="work-progress-summary">${escape(progress.label)}</p>
-    ${progress.state === 'available' ? `<progress max="${progress.total}" value="${progress.completed}" aria-label="Verified acceptance checks"></progress><p>${progress.remaining} remaining</p>` : `<p>${escape(progress.reason || '')}</p>`}
-    ${progress.scope ? `<p>Scope revision ${progress.scope.revision} · ${escape(progress.scope.plan_ref)}</p>` : ''}
-    ${[...slices.values()].map(slice => `<h4>${escape(slice.objective)}</h4><ul class="work-progress-checks">${slice.checks.map(check => `<li data-check-state="${check.state}"><strong>${check.state === 'verified' ? 'Verified' : 'Remaining'}</strong><span class="work-check-criterion">${escape(readableCheck(check.check_ref))}${criterion(check) ? `<small>Fails if ${escape(criterion(check))}</small>` : ''}</span><a data-job-control="check-${escape(check.slice_ref)}-${escape(check.check_ref)}" href="${escape(workDetailUrl({workRequest}))}#workCanonicalPassport">${check.state === 'verified' ? 'View evidence' : 'View acceptance source'}</a></li>`).join('')}</ul>`).join('')}
-    <details><summary data-job-control="progress-history">Scope history</summary>${history.length ? `<ol>${history.map((scope,index) => {
-      const prior = history[index-1], delta = prior ? scope.total_checks-prior.total_checks : null;
-      const change = prior ? delta === 0 ? `Total unchanged since revision ${prior.revision}.` : `Total ${delta > 0 ? 'increased' : 'decreased'} by ${Math.abs(delta)} check${Math.abs(delta) === 1 ? '' : 's'} since revision ${prior.revision}.` : 'Initial registered scope.';
-      return `<li>Revision ${scope.revision} · ${scope.total_checks} acceptance checks · ${escape(scope.plan_ref)}<p>${change}</p></li>`;
-    }).join('')}</ol>` : '<p>No registered scope history is available.</p>'}</details></section>`;
+    <div class="work-progress-overview"><p class="work-progress-summary">${escape(progress.label)}</p>
+    ${progress.state === 'available' ? `<span>${progress.remaining} remaining</span><progress max="${progress.total}" value="${progress.completed}" aria-label="Verified acceptance checks"></progress>` : `<p>${escape(progress.reason || '')}</p>`}</div>
+    ${progress.scope ? `<p class="work-progress-scope">Scope revision ${progress.scope.revision} · ${escape(progress.scope.plan_ref)}</p>` : ''}
+    ${selected ? `<div class="work-progress-layout" style="--progress-rows:${progress.checks.reduce((count,check,index) => count + 1 + Number(index === 0 || progress.checks[index-1].slice_ref !== check.slice_ref),0)}"><ul class="work-progress-checks">${progress.checks.map((check,index) => `<li data-check-state="${check.state}">
+      ${index === 0 || progress.checks[index-1].slice_ref !== check.slice_ref ? `<p class="work-check-objective">${escape(check.objective)}</p>` : ''}<button type="button" data-progress-check="${escape(checkKey(check))}" data-job-control="check-${escape(check.slice_ref)}-${escape(check.check_ref)}" aria-expanded="${check === selected}" aria-controls="work-check-${index}"><span class="work-check-criterion">${escape(readableCheck(check.check_ref))}</span><strong>${check.state === 'verified' ? 'Verified' : 'Remaining'}</strong></button>${check === selected ? inspector : ''}</li>`).join('')}</ul></div>` : historyHtml}</section>`;
 }
 const workFields = new Set(['work_request','work_request_id','work_request_ref','canonical_work_ref']);
 const taskFields = new Set(['task_id','task_ref']);
