@@ -283,3 +283,29 @@ test('older brief rows without action ids retain separate deal cards and all thr
  const data=payload();for(const row of data.sections.today.items)delete row.id;
  assert.deepEqual(morningBriefView(data,options).groups.map(group=>[group.label,group.row.id]),[['Do first','a'],['Overnight','c'],['Today','b']]);
 });
+
+for (const selfActor of ['joe','dell']) test(`fixture All keeps four Joe and four Dell next actions for ${selfActor}`, async () => {
+ const seed=await readFile(new URL('../data/board-seed.json',import.meta.url));
+ const client=await createFixtureClient({selfActor,seedUrl:`data:application/json;base64,${seed.toString('base64')}`});
+ const brief=await client.morningBrief();
+ const rows=brief.sections.today.items.filter(row=>row.item_kind==='next_action');
+ assert.deepEqual(['joe','dell'].map(owner=>rows.filter(row=>row.owner===owner).length),[4,4]);
+ assert.equal(brief.sponsor,selfActor);
+ const admitted=new Set(brief.sections.deals.items.map(row=>row.id));
+ assert.ok(rows.every(row=>admitted.has(row.subject_id)));
+});
+
+test('Overnight stays identical for All, Joe and Dell when their first priorities differ', () => {
+ const data=payload();
+ data.sections.today=section([
+  {...due('a','joe','2026-10-01'),owner_partner:'joe'},
+  {...due('b','dell','2026-10-02'),owner_partner:'dell'},
+ ]);
+ const settings={...options,events:[event('a'),event('b',new Date(now.valueOf()-1000).toISOString()),event('c',new Date(now.valueOf()-2000).toISOString())]};
+ const views=['all','joe','dell'].map(owner=>morningBriefView(data,{...settings,owner}));
+ assert.deepEqual(views.map(view=>view.groups.find(group=>group.key==='first').row.id),['a','a','b']);
+ const overnight=views.map(view=>view.groups.find(group=>group.key==='overnight'));
+ assert.equal(overnight[0].row.id,'b');
+ assert.deepEqual(overnight[1],overnight[0]);
+ assert.deepEqual(overnight[2],overnight[0]);
+});

@@ -24,6 +24,14 @@ for (const width of [390,1280]) test(`partner brief controls work at ${width}px`
   await page.locator('#appSyncTime[datetime]').waitFor({state:'attached'});
   await page.locator('#docMorning').click();
   assert.deepEqual(await page.locator('.morning-card .morning-owner').allTextContents(),['Dell','Joe']);
+  for (const theme of ['dark','light']) {
+    await page.evaluate(theme=>document.documentElement.dataset.theme=theme,theme);
+    const targets=await page.locator('#morningOwners .chip').evaluateAll(nodes=>nodes.map(node=>({label:node.textContent,width:node.getBoundingClientRect().width,height:node.getBoundingClientRect().height})));
+    for (const target of targets) {
+      assert.ok(target.width>=44 && target.height>=44,`${theme} ${width}px ${target.label}: ${target.width}x${target.height}`);
+    }
+    t.diagnostic(`${theme} ${width}px chips: ${JSON.stringify(targets)}`);
+  }
   await page.locator('#morningOwners [data-brief-owner="dell"]').click();
   assert.deepEqual(await page.locator('.morning-card .morning-owner').allTextContents(),['Dell']);
   assert.equal(await page.locator('#appTodayOwners [data-brief-owner="dell"]').getAttribute('aria-pressed'),'true');

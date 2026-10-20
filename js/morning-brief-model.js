@@ -19,7 +19,7 @@ export function morningBriefView(payload, { now = new Date(), since, events = []
   const { sponsor, sections } = payload, day = localDay(now);
   const deals = new Map(sections.deals.state === 'unavailable' ? [] : sections.deals.items.map(row => [row.id,row]));
   const due = [];
-  if (sections.today.state !== 'unavailable') for (const row of filterBriefOwners(sections.today.items, owner)) {
+  if (sections.today.state !== 'unavailable') for (const row of sections.today.items) {
     const deal = deals.get(row.subject_id);
     if (!text(row.what) || !/^\d{4}-\d{2}-\d{2}$/.test(row.due_on || '') || row.due_on > day) continue;
     if (row.subject_type === 'deal' && deal) {
@@ -29,17 +29,18 @@ export function morningBriefView(payload, { now = new Date(), since, events = []
       due.push({ key:`action:${row.id}`, kind:'action', id:row.id, action:row, title:row.subject_name || row.what, summary:row.what, due:row.due_on, owner_partner:row.owner_partner });
     }
   }
-  if (sections.loops.state !== 'unavailable') for (const row of filterBriefOwners(sections.loops.items, owner)) {
+  if (sections.loops.state !== 'unavailable') for (const row of sections.loops.items) {
     const title = text(row.title) || text(row.label);
     if (row.status !== 'open' || row.kind !== 'open_loop' || !title || !text(String(row.number || '')) || !/^\d{4}-\d{2}-\d{2}$/.test(row.due_on || '') || row.due_on > day) continue;
     due.push({ key:`loop:${row.kind}:${row.number}`, kind:'loop', id:String(row.number), loopKind:row.kind, title, summary:row.blocker_detail || '', due:row.due_on, owner_partner:row.owner_partner });
   }
   due.sort((a,b) => a.due.localeCompare(b.due) || a.key.localeCompare(b.key));
   const seen = new Set();
-  const unique = due.filter(row => { if (seen.has(row.key)) return false; seen.add(row.key); return true; });
-  const first = unique[0] || null;
+  const ranked = due.filter(row => { if (seen.has(row.key)) return false; seen.add(row.key); return true; });
+  const unique = filterBriefOwners(ranked, owner);
+  const first = unique[0] || null, teamFirst = ranked[0] || null;
   const receipts = caughtUp ? events.map(event => normalizeChangeEvent(event, { dealName:id => deals.get(id)?.name })).filter(row => row && Date.parse(row.recorded_at) >= Date.parse(since) && Date.parse(row.recorded_at) <= now.valueOf()).sort(compareReceipts) : [];
-  const change = receipts.find(row => ['phase','next_step','next_date','note','attention','operating_state'].includes(row.field) && !(first?.kind === 'deal' && row.deal_id === first.id));
+  const change = receipts.find(row => ['phase','next_step','next_date','note','attention','operating_state'].includes(row.field) && !(teamFirst?.kind === 'deal' && row.deal_id === teamFirst.id));
   const overnight = change ? { key:`deal:${change.deal_id}`, kind:'deal', id:change.deal_id, title:change.deal_name, summary:change.kind === 'note' ? 'New note' : `${change.action}${change.after ? `: ${change.after}` : ''}`, due:null } : null;
   const remaining = unique.find(row => row.key !== first?.key && !(row.kind === 'deal' && row.id === overnight?.id)) || null;
   const groups = [ ['first','Do first',first], ['overnight','Overnight',overnight], ['today','Today',remaining] ]
