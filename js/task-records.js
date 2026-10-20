@@ -1,3 +1,4 @@
+import { showToast } from './toast.js';
 import {onDialogClosed} from './dialog-lifecycle.js';
 import { selectDocRecord, publishDocRead, setDocFilters } from './doc-context.js';
 // V5-UX-B02 — Tasks: DOM wiring only.
@@ -75,15 +76,7 @@ function announce(text) {
   if (live && live.textContent !== text) live.textContent = text;
 }
 
-function showToast(text) {
-  document.querySelectorAll(".toast").forEach((node) => node.remove());
-  const toast = document.createElement("div");
-  toast.className = "toast";
-  toast.setAttribute("role", "status");
-  toast.textContent = text;
-  document.body.append(toast);
-  setTimeout(() => toast.remove(), 4100);
-}
+
 
 /* ---------------------------------------------------------------- preferences */
 // The three presentation icons are wired by js/shell.js, which owns them for
@@ -709,10 +702,14 @@ async function loadViewer({ signal } = {}) {
 }
 
 async function refreshVerified({ signal } = {}) {
+  const focusAttribute = document.activeElement?.hasAttribute("data-task") ? "data-task" : "data-handover";
+  const focusKey = document.activeElement?.getAttribute(focusAttribute);
+  const focusViewer = viewer;
   const verified = await loadViewer({ signal });
   if (verified == null) return;
   if (!verified) { refuseUnverifiedViewer(); return; }
   await load({ signal });
+  if (focusKey && viewer === focusViewer && document.activeElement === document.body) [...document.querySelectorAll(`#taskList [${focusAttribute}], #systemList [${focusAttribute}]`)].find(node => node.getAttribute(focusAttribute) === focusKey)?.focus({ preventScroll: true });
 }
 
 /* ------------------------------------------------------------------------ boot */
@@ -739,10 +736,6 @@ async function boot() {
     localDrafts = createLocalDrafts({ storage: browserDraftStorage(), viewer });
     draftViewer = viewer;
   }
-  window.addEventListener('online', async () => {
-    if (!client) return;
-    await refreshVerified();
-  });
   mountAutoRefresh({ document, window: globalThis.window, refresh: async ({ signal }) => {
     await refreshVerified({ signal });
     renderQuickAdd();

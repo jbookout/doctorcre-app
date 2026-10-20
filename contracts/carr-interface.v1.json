@@ -1,6 +1,6 @@
 {
   "schema": "doctorcre-carr-interface.v1",
-  "version": "1.45.0",
+  "version": "1.48.0",
   "producer": {
     "repository": "jbookout/carr-system",
     "source_commit": "e2e484b1933bfd63c10cc9a1b3350132948f6f74"
@@ -167,9 +167,21 @@
         "lane",
         "outcome"
       ],
-      "deal_sources": ["deals", "deals_via_link"],
-      "nullable_calendar_days": ["invoiced_on", "closed_on"],
-      "nullable_strings": ["phase", "owner", "client_ref", "lane", "outcome"],
+      "deal_sources": [
+        "deals",
+        "deals_via_link"
+      ],
+      "nullable_calendar_days": [
+        "invoiced_on",
+        "closed_on"
+      ],
+      "nullable_strings": [
+        "phase",
+        "owner",
+        "client_ref",
+        "lane",
+        "outcome"
+      ],
       "unknown_deal_fields": "refused"
     },
     "correspondence-readiness": {
@@ -492,7 +504,7 @@
       "write": false,
       "producer": {
         "repository": "jbookout/carr-system",
-        "source_commit": "7214532128a836a84d3e75a584e56facbf6662ba"
+        "source_commit": "47abddf47f46d66eecd50330e5f5aab198f30f53"
       },
       "response": {
         "schema_version": "local-deals-board.v1",
@@ -513,13 +525,48 @@
           "recorded_at"
         ],
         "evidence_date": "Original event occurred_at; phase-change occurrence date when the writer supplied no earlier evidence date.",
-        "undo": "revert-deal-field with exact event_id; latest-field guard and idempotency key apply."
+        "undo": "revert-deal-field with exact event_id; latest-field guard and idempotency key apply.",
+        "closed_deals": {
+          "keys": [
+            "id",
+            "name",
+            "client_ref",
+            "client_name",
+            "type",
+            "phase",
+            "outcome",
+            "owner",
+            "closed_on",
+            "invoiced_on",
+            "account_client_id",
+            "workspace_kind"
+          ],
+          "membership": "Recorded won outcome, or no outcome with a recorded close/invoice date. Lost and paused outcomes are excluded; same workspace and account scope.",
+          "order": "Close date descending, missing dates last, then name and id."
+        },
+        "lost_deals": {
+          "keys": [
+            "id",
+            "name",
+            "client_ref",
+            "client_name",
+            "type",
+            "phase",
+            "outcome",
+            "owner",
+            "closed_on",
+            "invoiced_on",
+            "account_client_id",
+            "workspace_kind"
+          ],
+          "membership": "Recorded lost outcome, independent of phase. Same workspace and account scope."
+        }
       }
     },
     "get-deal-room": {
       "producer": {
         "repository": "jbookout/carr-system",
-        "source_commit": "8aa6deb8557dd0ddb566a120f8e65282e89c4b07"
+        "source_commit": "47abddf47f46d66eecd50330e5f5aab198f30f53"
       },
       "response": {
         "schema_version": "deal-timeline.v1",
@@ -535,7 +582,8 @@
           "evidence_ref",
           "source"
         ],
-        "lease_absence": null
+        "lease_absence": null,
+        "client_id": "Exact client record UUID, including closed and invoiced records; use for the authenticated clients record read."
       },
       "critical_date_write": "add-critical-date",
       "never_derive": [
@@ -738,5 +786,16 @@
       "repository": "jbookout/carr-system",
       "source_commit": "a3a6913f7af0d721ab538090b1347976befcf421"
     }
+  },
+  "progress_board_snapshot": {
+    "producer": {
+      "repository": "jbookout/carr-system",
+      "source_commit": "b18589a1a2cd6fb9a04bd469ebf82e6146de74fd"
+    },
+    "wire_schema": "carr-progress-board.v3",
+    "decoded_schema": "carr-progress-board.v2",
+    "task_defaults": "Fields present on every source card may be shared once. Each task overrides the shared values.",
+    "validation": "Reject v3 reads without nonempty object defaults or object task rows.",
+    "deployment_order": "Deploy the consumer before the producer can publish v3."
   }
 }

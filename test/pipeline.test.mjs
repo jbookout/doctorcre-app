@@ -16,7 +16,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { runInNewContext } from "node:vm";
 import { JSDOM } from "jsdom";
-import { SYNC_STATES } from "../js/board-sync.mjs";
+import { HEALTH, SYNC_STATES } from "../js/board-sync.mjs";
+import { localDeals } from "../js/deal-review-model.js";
 import { readFile } from "node:fs/promises";
 
 import { createFixtureClient } from "../js/fixture-client.js";
@@ -94,7 +95,7 @@ test("grouping files every row under its column and never guesses at one it cann
     { id: "c", name: "Demo C", phase: "Not a phase" },
   ];
   const { columns, unplaced } = groupByColumn(deals);
-  assert.equal(columns.length, 8);
+  assert.equal(columns.length, 7);
   assert.deepEqual(columns.find((c) => c.slug === "pending").deals.map((d) => d.id), ["a"]);
   assert.deepEqual(columns.find((c) => c.slug === "site_selection").deals.map((d) => d.id), ["b"]);
   assert.deepEqual(unplaced.map((d) => d.id), ["c"], "an unknown phase is reported, not filed under a guess");
@@ -269,17 +270,9 @@ test("loadDealContext never guesses a party's contact record from its party_id",
   assert.equal(context.parties[0].name, "Dr. Example");
 });
 
-test("contextDrawerSections states three distinct honest states for the client: not linked, unavailable, ok", () => {
-  const notLinked = contextDrawerSections({ client: { status: "not_linked" }, parties: [], criticalDates: [] });
-  assert.equal(notLinked[0].lines[0], "This deal is not linked to a client record.");
-  assert.equal(notLinked[0].state, "not_linked");
-
-  const failed = contextDrawerSections({
-    client: { status: "unavailable", reason: "fetch_failed" }, parties: [], criticalDates: [],
-  });
-  assert.match(failed[0].lines[0], /could not be read/);
-  assert.equal(failed[0].state, "unavailable");
-
+test("contextDrawerSections renders recorded context and hides unavailable sections", () => {
+  assert.deepEqual(contextDrawerSections({client:{status:'not_linked'},parties:[],criticalDates:[]}),[]);
+  assert.deepEqual(contextDrawerSections({client:{status:'unavailable'},parties:[],criticalDates:[]}),[]);
   const ok = contextDrawerSections({
     client: { status: "ok", record: { name: "Demo Dental North", phone: "205-555-0142", email: "a@example.com", city: "Demo City", state: "DM" } },
     parties: [{ role: "client_contact", name: "Dr. Example" }],
@@ -293,10 +286,8 @@ test("contextDrawerSections states three distinct honest states for the client: 
   assert.deepEqual(ok[2].lines, ["LOI expires · 2026-10-01 · email"]);
 });
 
-test("contextDrawerSections never invents a party or a date: an empty deal says so in both sections", () => {
-  const sections = contextDrawerSections({ client: { status: "not_linked" }, parties: [], criticalDates: [] });
-  assert.deepEqual(sections[1].lines, ["No attached parties or vendors recorded on this deal."]);
-  assert.deepEqual(sections[2].lines, ["None recorded."]);
+test("empty context has no placeholder sections",()=>{
+ assert.deepEqual(contextDrawerSections({client:{status:'not_linked'},parties:[],criticalDates:[]}),[]);
 });
 
 /* -------------------------------------------------------- the fixture round trip */
@@ -602,8 +593,7 @@ test("a deal with no parties: the drawer states plainly that none are recorded, 
   assert.deepEqual(context.parties, []);
 
   const sections = contextDrawerSections(context, { dateLabel: (v) => v });
-  assert.equal(sections[0].lines[0], "This deal is not linked to a client record.");
-  assert.deepEqual(sections[1].lines, ["No attached parties or vendors recorded on this deal."]);
+  assert.equal(sections.some(s=>s.title === "Client" || s.title === "Attached parties"),false);
 });
 
 test("a fetch failure reading the client record: the drawer says the read failed, not that the client is empty", async () => {
@@ -621,8 +611,7 @@ test("a fetch failure reading the client record: the drawer says the read failed
   assert.equal(context.client.reason, "fetch_failed");
 
   const sections = contextDrawerSections(context, { dateLabel: (v) => v });
-  assert.match(sections[0].lines[0], /could not be read/);
-  assert.doesNotMatch(sections[0].lines[0], /not linked/);
+  assert.equal(sections.some(s=>s.title === "Client"),false);
 });
 
 test("the fixture accepts every one of the eight phases by its board value", async () => {
@@ -749,7 +738,7 @@ test("the Closed dialog offers the three outcomes, a picker for the date, and bo
 
   const contract = JSON.parse(await read("contracts/carr-interface.v1.json"));
   assert.ok(contract.mcp_operations.includes("update-deal"));
-  assert.equal(contract.version, "1.45.0");
+  assert.equal(contract.version, "1.48.0");
 });
 
 test("the fixture carries the reason and the sentence onto the phase event, word for word", async () => {
@@ -799,10 +788,11 @@ test('deal insight lines distinguish insufficient evidence from unavailable and 
 // polling. The coordinator's transitions are covered in dealroom-board-sync.
 for (const status of [503, 401, 403]) test(`QA008 Deals freshness settles after failed read and retry: ${status}`, async () => {
   const source = await read("js/pipeline.js");
-  const renderer = source.slice(source.indexOf("function renderStatus("), source.indexOf("function renderPendingWrites("));
-  const dom = new JSDOM('<span id="boardAsOf"></span><span id="boardStatusLabel"></span><span id="boardOrb"></span><span id="boardStatus"></span>');
+  const renderer = source.slice(source.indexOf("function visibleBoardDeals("), source.indexOf("function renderBoard("))
+    + source.slice(source.indexOf("function renderStatus("), source.indexOf("function renderPendingWrites("));
+  const dom = new JSDOM('<p id="boardLive"></p><span id="boardAsOf"></span><span id="boardStatusLabel"></span><span id="boardOrb"></span><span id="boardStatus"></span>');
   try {
-    const paint = status => runInNewContext(`${renderer}renderStatus(status);`, { state: {}, SYNC_STATES, status, $: id => dom.window.document.getElementById(id) });
+    const paint = status => runInNewContext(`${renderer}renderStatus(status);`, { state: {deals:new Map(),filter:'all'}, HEALTH, SYNC_STATES, localDeals, status, say:text=>{dom.window.document.getElementById('boardLive').textContent=text;}, $: id => dom.window.document.getElementById(id) });
     const freshness = () => dom.window.document.getElementById('boardAsOf').textContent;
     const { createBoardSync } = await import('../js/board-sync.mjs');
     let failing = true;
@@ -816,6 +806,7 @@ for (const status of [503, 401, 403]) test(`QA008 Deals freshness settles after 
     });
     await sync.requestRefresh('initial');
     assert.equal(freshness(), 'Unavailable');
+    assert.match(dom.window.document.getElementById('boardLive').textContent,/unavailable/i);
     await sync.requestRefresh('retry');
     assert.equal(freshness(), 'Unavailable');
     failing = false;

@@ -152,7 +152,7 @@ test('PR123 finding 8: malformed and mixed live reads settle unavailable and rec
       if (name === 'deal-room-board') {
         assert.match(await page.locator('#dealCounts').textContent(), /Active deals: —/);
         assert.match(await page.locator('#dealFlags').textContent(), /unavailable/i);
-        assert.doesNotMatch(await page.locator('#dealFlags').textContent(), /Updating|No deal flags|Nothing needs you/);
+        assert.doesNotMatch(await page.locator('#dealFlags').textContent(), /Updating|No deal flags|No overdue local next steps/);
         assert.equal(await page.locator('#homeLeads').isVisible(), true);
       } else {
         assert.match(await page.locator('#dealCounts').textContent(), /Active deals: \d/);
@@ -175,7 +175,7 @@ test('PR124 R1 generated Home flag and task links open the requested record thro
     assert.ok(id);
     await link.click();
     await page.locator('.kanban-card').first().waitFor();
-    await page.waitForFunction(id => document.querySelector('#recordPanel')?.open && document.querySelector('#detailNextForm') && document.querySelector('#detailOwner'), id);
+    await page.waitForFunction(id => document.querySelector('#recordPanel')?.open && document.querySelector('#detailUpdateForm') && document.querySelector('#detailOwner'), id);
     const detail = await page.evaluate(async () => (await import('/js/pipeline.js')).state.panelDetail);
     assert.equal(detail.deal.id, id);
     assert.equal(await page.locator('#panelTitle').textContent(), detail.deal.name);
@@ -215,7 +215,7 @@ test('Home desktop and phone show flags, visual agenda, ranked leads and wide en
     // The week link names its destination before the day tiles it wraps.
     assert.equal(await page.getByRole('link', { name: /^Open calendar\b.*deal dates and tasks/ }).getAttribute('data-home-key'), 'week');
     assert.equal(await page.locator('.home-lead').count(), 3);
-    assert.equal(await page.locator('.home-flags .home-flag').count(), 4);
+    assert.equal(await page.locator('.home-flags .home-flag').count(), 3);
     assert.match(await page.locator('#homeControl').textContent(), /Needs attention/);
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
     assert.match(await page.locator('#observedAt').textContent(), /^Updated /);
@@ -259,7 +259,8 @@ test('suggested introductions keep readable text on their dark cards in both the
 });
 
 test('Home has no ambient motion and hover never moves a row, without hiding data', async t => {
-  const { page } = await open(t, { motion: 'no-preference' });
+  const { page } = await open(t, { motion: 'no-preference', delayDetails: true });
+  await page.waitForFunction(() => document.querySelector('#refreshHome').getAttribute('aria-busy') === 'false');
   await page.locator('.home-radar').waitFor();
   assert.equal(await page.locator('.radar-wave').evaluate(node => getComputedStyle(node).animationName), 'none');
   await page.emulateMedia({ reducedMotion: 'reduce' });
@@ -267,7 +268,7 @@ test('Home has no ambient motion and hover never moves a row, without hiding dat
   await page.locator('.home-flag').first().hover();
   assert.equal(await page.locator('.home-flag').first().evaluate(node => getComputedStyle(node).transform), 'none');
   assert.equal(await page.locator('.home-day').count(), 7);
-  assert.equal(await page.locator('.home-flag').count(), 4);
+  assert.equal(await page.locator('.home-flag').count(), 3);
   await screenshot(page, 'desktop-reduced-motion');
 });
 
@@ -298,16 +299,16 @@ test('no eligible leads means hidden widget; polling, resume and online recover 
 test('a flagged Home deal opens that exact Deals record; unknown IDs show a failed detail instead of another deal', async t => {
   const { page, errors } = await open(t);
   const href = await page.locator('.home-flag').first().getAttribute('href');
-  assert.equal(href, '/deals?deal=d01');
+  assert.equal(href, '/deals?deal=d14');
   // Keep this synthetic test on the fixture adapter on the receiving page.
   await page.locator('.home-flag').first().click();
-  await page.waitForFunction(() => document.querySelector('#recordPanel')?.open && document.querySelector('#detailNextForm'));
-  assert.equal(await page.evaluate(async () => (await import('/js/pipeline.js')).state.panelDeal), 'd01');
-  assert.match(await page.locator('#panelTitle').textContent(), /Demo Dental North/);
+  await page.waitForFunction(() => document.querySelector('#recordPanel')?.open && document.querySelector('#detailUpdateForm'));
+  assert.equal(await page.evaluate(async () => (await import('/js/pipeline.js')).state.panelDeal), 'd14');
+  assert.match(await page.locator('#panelTitle').textContent(), /Demo Surgical Practice/);
   await page.goto('http://localhost/deals?deal=unknown');
   await page.locator('#panelBody').getByText('Updates temporarily unavailable',{exact:true}).waitFor();
   assert.equal(await page.evaluate(async () => (await import('/js/pipeline.js')).state.panelDetail), null);
-  assert.equal(await page.locator('#detailNextForm').count(), 0);
+  assert.equal(await page.locator('#detailUpdateForm').count(), 0);
   assert.deepEqual(errors, []);
 });
 
@@ -457,7 +458,7 @@ test('R14 a task with no critical dates opens its exact deal and visible task', 
   await task.waitFor();
   assert.equal(await task.getAttribute('href'), '/deals?deal=d01');
   await task.click();
-  await page.waitForFunction(() => document.querySelector('#recordPanel')?.open && document.querySelector('#detailNextForm'));
+  await page.waitForFunction(() => document.querySelector('#recordPanel')?.open && document.querySelector('#detailUpdateForm'));
   assert.equal(await page.evaluate(async () => (await import('/js/pipeline.js')).state.panelDeal), 'd01');
   assert.match(await page.locator('#panelBody').textContent(), /Demo follow-up/);
 });

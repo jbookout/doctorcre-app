@@ -9,6 +9,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
+import { JSDOM } from "jsdom";
 
 import {
   beginCommand, classifyCommandOutcome, commandDockHtml, commandMessage, commandReceiptView,
@@ -20,6 +21,18 @@ import { FEEDBACK_STATES } from "../js/visual-system.js";
 
 const root = new URL("..", import.meta.url);
 const read = (file) => readFile(new URL(file, root), "utf8");
+
+function useDocument(t) {
+  const dom = new JSDOM("<!doctype html><body><div id=\"dock\"></div></body>");
+  const previous = globalThis.document;
+  globalThis.document = dom.window.document;
+  t.after(() => {
+    dom.window.close();
+    if (previous === undefined) delete globalThis.document;
+    else globalThis.document = previous;
+  });
+  return dom.window.document;
+}
 
 /** A surface that owns one command state and one scripted transport. */
 function surface(answers = []) {
@@ -393,6 +406,65 @@ test("eviction never changes what the newest four render as", () => {
   }
   assert.equal(after, commandDockHtml([...expected.entries.values()].map(commandReceiptView)));
   assert.equal(after.includes("confirmed 9"), false, "the old ones are gone from the render too");
+});
+
+test("confirmed command feedback uses one transient toast instead of a dock receipt", (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const doc = useDocument(t);
+  const root = doc.querySelector("#dock");
+  const dock = createCommandDock({ root });
+  dock.mount();
+
+  dock.record("deal:1|phase", { summary: "Move deal", status: "ok" });
+  const toast = doc.querySelector("#toast.toast[data-transient]");
+  assert.ok(toast);
+  assert.match(toast.textContent, /Move deal/);
+  assert.equal(root.querySelectorAll(".receipt").length, 0, "confirmed commands leave the dock UI");
+  assert.equal(dock.entries.has("deal:1|phase"), true, "the entry remains available to normal cap and eviction rules");
+  t.mock.timers.tick(1000);
+  dock.record("deal:1|phase", { summary: "Move deal", status: "ok" });
+  dock.render();
+  t.mock.timers.tick(999);
+  assert.equal(toast.classList.contains("is-leaving"), false);
+  t.mock.timers.tick(1);
+  assert.equal(toast.classList.contains("is-leaving"), true, "re-record and render do not restart its timer");
+  t.mock.timers.tick(799);
+  assert.equal(toast.isConnected, true);
+  t.mock.timers.tick(1);
+  assert.equal(doc.querySelector("#toast"), null);
+
+  dock.record("deal:1|phase", { summary: "Move deal", status: "sending" });
+  assert.equal(root.querySelectorAll(".receipt").length, 1, "unresolved work remains in the dock");
+  dock.record("deal:1|phase", { summary: "Move deal", status: "ok" });
+  assert.ok(doc.querySelector("#toast[data-transient]"), "a transition from sending to confirmed shows a fresh toast");
+  assert.equal(root.querySelectorAll(".receipt").length, 0);
+});
+
+test("dismissal hides only a refused or unknown dock notification and re-recording reopens it", (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const doc = useDocument(t);
+  const root = doc.querySelector("#dock");
+  const dock = createCommandDock({ root });
+  dock.mount();
+
+  dock.record("deal:1|owner", { summary: "Change owner", status: "unknown" });
+  const receipt = root.querySelector(".receipt");
+  const close = receipt.querySelector("button[data-dock-close]");
+  assert.ok(close, "unknown outcomes can be hidden with a close control");
+  close.click();
+  assert.equal(root.querySelectorAll(".receipt").length, 0);
+  assert.equal(dock.entries.get("deal:1|owner").status, "unknown", "dismissal preserves the unresolved request");
+
+  dock.record("deal:1|owner", { summary: "Change owner", status: "unknown" });
+  assert.equal(root.querySelectorAll(".receipt").length, 1, "recording the outcome again reopens it");
+  assert.ok(root.querySelector("button[data-dock-close]"));
+
+  dock.record("deal:1|owner", { summary: "Change owner", status: "sending" });
+  assert.equal(root.querySelector("button[data-dock-close]"), null, "an in-flight operation cannot be hidden");
+  dock.record("deal:1|owner", { summary: "Change owner", status: "in_flight" });
+  assert.equal(root.querySelector("button[data-dock-close]"), null, "a command still awaiting an answer cannot be hidden");
+  dock.record("deal:1|owner", { summary: "Change owner", status: "refused" });
+  assert.ok(root.querySelector("button[data-dock-close]"), "a refusal can be dismissed");
 });
 
 test('review 5: command deadline retains unknown intent and ignores late transport completion',async t=>{
