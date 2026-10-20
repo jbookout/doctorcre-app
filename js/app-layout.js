@@ -1,13 +1,12 @@
 import { briefOwnerLabel, filterBriefOwners, mountBriefOwnerFilter } from './brief-owner-filter.js';
 import { validBrief } from './morning-brief-model.js';
 import { TOUCH_LAYOUT } from './touch-layout.js';
-import { needsAttention } from './deal-review-model.js';
+import { needsAttention, scopedDeals } from './deal-review-model.js';
 import { createClient } from './client.js';
 import { resolveDealroomBoot } from './boot-mode.js';
 import { mountAutoRefresh, readWithDeadline } from './auto-refresh.mjs';
 import { createFeedProgress, observeChangeBatch, ingestChangeEvents, receiptViews, escapeText as escape } from './change-receipts.mjs';
 
-import { scopedDeals } from './home-dashboard-model.js';
 import { localToday, shortDay, toDay } from './calendar-model.js';
 const time = value => { const date = new Date(value || ''); return Number.isFinite(date.valueOf()) ? date.toLocaleTimeString([], { hour:'numeric', minute:'2-digit', hour12:true }) : '—'; };
 

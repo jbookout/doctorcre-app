@@ -1,6 +1,21 @@
 import { toDay } from './calendar-model.js';
 import { radarToday } from './lease-radar-model.js';
 
+export function validDealBoard(board) {
+  return board && typeof board === 'object' && !Array.isArray(board) && Array.isArray(board.deals)
+    && board.deals.every(deal => deal && typeof deal === 'object' && !Array.isArray(deal)
+      && typeof deal.id === 'string' && deal.id.trim().length > 0
+      && ['name', 'owner', 'phase', 'operating_state', 'workspace_kind', 'account_client_id'].every(key => deal[key] == null || typeof deal[key] === 'string')
+      && ['attention', 'in_market'].every(key => deal[key] == null || typeof deal[key] === 'boolean'));
+}
+
+export function scopedDeals(board, scope) {
+  if (!validDealBoard(board) || (scope === 'mine' && !board.actor)) return null;
+  return board.deals.filter(deal => !isClosedDeal(deal)
+    && (deal.operating_state || 'active') === 'active'
+    && (scope !== 'mine' || deal.owner === board.actor));
+}
+
 export function localDeals(rows, owner = 'all') {
   return (rows || []).filter(d => d.workspace_kind !== 'national_account' && !d.account_client_id
     && !isClosedDeal(d) && (owner === 'all' || d.owner === owner));
