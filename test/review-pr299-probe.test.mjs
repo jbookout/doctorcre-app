@@ -1,26 +1,31 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
+import { readFile, mkdir } from 'node:fs/promises';
 import { chromium, waitForAsync } from './browser-harness.mjs';
 import { startFixtureServer } from '../scripts/fixture-server.mjs';
 import { createFixtureClient } from '../js/fixture-client.js';
 
-async function open(t, tab = 'views') {
+async function open(t, tab = 'views', { width = 1280, theme = 'dark', pending = false } = {}) {
   const server = await startFixtureServer();
   t.after(() => server.stop());
   const browser = await chromium.launch();
   t.after(() => browser.close());
-  const page = await browser.newPage({ timezoneId: 'UTC' });
+  const page = await browser.newPage({ timezoneId: 'UTC', viewport: { width, height: width === 390 ? 844 : 960 }, reducedMotion: 'reduce' });
+  await page.addInitScript(theme => localStorage.setItem('doctorcre.visual-preferences', JSON.stringify({ theme })), theme);
   await page.clock.install({ time: new Date('2026-10-20T12:00:00Z') });
   const seedUrl = `data:application/json;base64,${Buffer.from(await readFile(new URL('../data/board-seed.json', import.meta.url))).toString('base64')}`;
   const fixture = await createFixtureClient({ seedUrl });
   const state = { censusUnavailable: false, queueReads: 0, live: true };
+  let release;
+  const census = new Promise(resolve => { release = resolve; });
+  t.after(() => release());
   await page.route('**/*', async route => {
     const url = new URL(route.request().url());
     if (url.origin !== server.url) return route.abort();
     if (url.pathname === '/mcp') {
       const rpc = route.request().postDataJSON().params;
       const boardCensus = rpc.name === 'unfinished-work' && Object.hasOwn(rpc.arguments, 'live_library');
+      if (pending && boardCensus) await census;
       if (state.censusUnavailable && boardCensus) return route.fulfill({ status: 503, body: '{}' });
       if (rpc.name === 'unfinished-work' && !boardCensus) state.queueReads++;
       const method = { 'read-room-queue': 'roomQueue', 'read-room': 'roomTurns', 'read-session-identity': 'sessionIdentity', 'read-dispatch-history': 'dispatchHistory' }[rpc.name] || rpc.name.replace(/-([a-z])/g, (_, letter) => letter.toUpperCase());
@@ -44,8 +49,111 @@ async function open(t, tab = 'views') {
     return route.continue();
   });
   await page.goto(`${server.url}/control-room?mode=live&tab=${tab}`);
-  await page.locator('[data-attention-id="incident:INC-DEMO"]').waitFor({ state: 'attached' });
-  return { page, state };
+  if (!pending) await page.locator('[data-attention-id="incident:INC-DEMO"]').waitFor({ state: 'attached' });
+  return { page, state, release };
+}
+
+async function capture(page, name) {
+  if (!process.env.PR299_CAPTURE) return;
+  const dir = new URL(`../out/test-artifacts/pr299-taste/${process.env.PR299_CAPTURE}/`, import.meta.url);
+  await mkdir(dir, { recursive: true });
+  await page.screenshot({ path: new URL(`${name}.png`, dir).pathname });
+}
+
+for (const width of [390, 1280]) for (const theme of ['dark', 'light']) {
+  test(`Doc and close reserve an opaque row above incident headings at ${width} ${theme}`, async t => {
+    const { page } = await open(t, 'views', { width, theme });
+    await capture(page, `attention-${width}-${theme}`);
+    await page.locator('[data-attention-id="incident:INC-DEMO"] button').click();
+    await page.locator('#jobDialog #docPresence').waitFor();
+    const dialog = page.locator('#jobDialog');
+    const opening = await dialog.evaluate(node => ({
+      titleTop: node.querySelector('#jobTitle').getBoundingClientRect().top,
+      controlsBottom: node.querySelector('#docPresence').parentElement.getBoundingClientRect().bottom,
+    }));
+    assert.ok(opening.titleTop >= opening.controlsBottom, 'the title starts below the reserved controls row');
+    await capture(page, `incident-open-${width}-${theme}`);
+    await dialog.locator('details').evaluate(node => { node.open = true; });
+    await dialog.evaluate(node => { node.scrollTop = 70; });
+    await capture(page, `incident-scroll-${width}-${theme}`);
+    const layout = await dialog.evaluate(node => {
+      const doc = node.querySelector('#docOpen').getBoundingClientRect();
+      const close = node.querySelector('#jobClose').getBoundingClientRect();
+      const header = node.querySelector('#docPresence').parentElement;
+      return { doc: { top: doc.top, bottom: doc.bottom, right: doc.right },
+        close: { top: close.top, left: close.left }, headerBackground: getComputedStyle(header).backgroundColor,
+        sameRow: header.matches('header') && header.contains(node.querySelector('#jobClose')), scroll: node.scrollTop };
+    });
+    assert.equal(layout.sameRow, true, 'Doc and the close control share a reserved header row');
+    assert.notEqual(layout.headerBackground, 'rgba(0, 0, 0, 0)', 'the controls row is opaque');
+    assert.ok(Math.abs(layout.doc.top - layout.close.top) < 2, 'both controls stay on the same row while scrolling');
+    assert.ok(layout.doc.right < layout.close.left, 'controls cannot overlap');
+    assert.ok(layout.doc.top >= 0 && layout.doc.bottom < 844, 'Doc remains reachable');
+    await page.locator('#docOpen').click();
+    await page.locator('#docClose').click();
+    assert.equal(await page.locator('#docOpen').evaluate(node => node === document.activeElement), true);
+    await page.locator('#jobClose').click();
+    assert.equal(await dialog.isVisible(), false);
+    assert.equal(await page.locator('[data-attention-open]').first().evaluate(node => node === document.activeElement), true);
+  });
+}
+
+for (const width of [390, 1280]) for (const theme of ['dark', 'light']) {
+  test(`Attention leads with item facts and groups linked Work Request facts compactly at ${width} ${theme}`, async t => {
+    const { page } = await open(t, 'views', { width, theme });
+    await page.waitForFunction(() => document.querySelector('#crAttentionList')?.textContent.includes('claude'));
+    const row = page.locator('[data-attention-id="incident:INC-DEMO"]');
+    const layout = await row.evaluate(node => ({ height: node.getBoundingClientRect().height,
+      labels: [...node.querySelectorAll('dt')].map(node => node.textContent) }));
+    assert.ok(layout.height <= 360, `the attention row occupies ${layout.height}px, at most 360px`);
+    assert.deepEqual(layout.labels.slice(0, 2), ['Blocker', 'Owner'], 'item blocker and owner lead the facts');
+    const linked = row.getByRole('region', { name: 'Linked Work Request', exact: true });
+    assert.equal(await linked.isVisible(), true, 'linked facts have their own explicit group');
+    assert.match(await linked.innerText(), /joe.*Agent.*claude.*Blocker.*Demo linked WR dependency/s);
+    const primary = row.locator(':scope > dl');
+    assert.match(await primary.innerText(), /Blocker.*Demo incident source stopped.*Owner.*dell/s);
+    assert.doesNotMatch(await primary.innerText(), /claude|Demo linked WR dependency/);
+    const button = await row.getByRole('button', { name: 'Open details' }).boundingBox();
+    assert.ok(button.height >= 44, 'the action retains a phone touch target');
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+  });
+}
+
+for (const width of [390, 1280]) for (const theme of ['dark', 'light']) {
+  test(`Attention reserves its pending layout and retries only a real census failure at ${width} ${theme}`, async t => {
+    const { page, state, release } = await open(t, 'views', { width, theme, pending: true });
+    await page.locator('#crViewsList [data-view]').first().waitFor();
+    await capture(page, `pending-${width}-${theme}`);
+    const list = page.locator('#crAttentionList');
+    assert.doesNotMatch(await page.locator('#panelViews').innerText(), /unavailable|could not be read|try again/i,
+      'an unfinished census does not report a failed read');
+    assert.equal(await list.getAttribute('aria-busy'), 'true');
+    const pendingHeight = (await list.boundingBox()).height;
+    assert.ok(pendingHeight >= 240, 'pending reserves a full attention row');
+    assert.equal(await list.getByRole('button', { name: 'Retry attention' }).count(), 0);
+    release();
+    await page.locator('[data-attention-id="incident:INC-DEMO"]').waitFor();
+    assert.equal(await list.getAttribute('aria-busy'), 'false');
+    assert.ok(Math.abs((await list.boundingBox()).height - pendingHeight) <= 96, 'the loaded row uses the reserved space');
+    await page.locator('[data-attention-id="incident:INC-DEMO"] button').click();
+    state.censusUnavailable = true;
+    await page.clock.runFor(15001);
+    await page.waitForFunction(() => document.querySelector('#crAttentionList [data-state="offline"]'));
+    assert.match(await page.locator('#jobBody').innerText(), /Source unavailable.*Last-known/);
+    await page.locator('#jobClose').click();
+    await capture(page, `failed-${width}-${theme}`);
+    const retry = list.getByRole('button', { name: 'Retry attention' });
+    assert.equal(await retry.isVisible(), true, 'the failure has a local recovery action');
+    const failure = await list.locator('[data-state="offline"]').boundingBox();
+    const action = await retry.boundingBox();
+    assert.ok(action.y >= failure.y && action.y + action.height <= failure.y + failure.height,
+      'retry is next to the failure it recovers');
+    state.censusUnavailable = false;
+    await retry.click();
+    await page.locator('[data-attention-id="incident:INC-DEMO"]').waitFor();
+    assert.equal(await retry.count(), 0);
+    assert.doesNotMatch(await page.locator('#crQueueCoverage').textContent(), /unavailable|Reading/i);
+  });
 }
 
 test('linked Work Request facts stay separate from the selected incident in Attention and detail', async t => {
@@ -53,10 +161,11 @@ test('linked Work Request facts stay separate from the selected incident in Atte
   const row = page.locator('[data-attention-id="incident:INC-DEMO"]');
   await page.waitForFunction(() => document.querySelector('#crAttentionList')?.textContent.includes('claude'));
   const fact = async (node, label) => node.getByText(label, { exact: true }).evaluate(node => node.nextElementSibling.textContent);
-  assert.equal(await fact(row, 'Owner'), 'dell');
-  assert.equal(await fact(row, 'Blocker'), 'Demo incident source stopped');
-  assert.equal(await fact(row, 'Linked WR owner'), 'joe');
-  assert.equal(await fact(row, 'Linked WR blocker'), 'Demo linked WR dependency');
+  assert.equal(await fact(row.locator(':scope > dl'), 'Owner'), 'dell');
+  assert.equal(await fact(row.locator(':scope > dl'), 'Blocker'), 'Demo incident source stopped');
+  const linked = row.getByRole('region', { name: 'Linked Work Request', exact: true });
+  assert.equal(await fact(linked, 'Owner'), 'joe');
+  assert.equal(await fact(linked, 'Blocker'), 'Demo linked WR dependency');
   await row.getByRole('button', { name: 'Open details' }).click();
   const detail = page.locator('#jobBody');
   assert.equal(await fact(detail, 'Owner'), 'dell');

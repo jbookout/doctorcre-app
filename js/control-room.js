@@ -44,14 +44,23 @@ function renderAttention(tasks, observation) {
  const state = observation.state;
  details?.update(withHolders(tasks), { state });
  const current = state === 'read';
+ const pending = state === 'pending';
  const rows = current ? attentionTasks(withHolders(tasks)) : [];
  $('crAttentionCount').textContent = current ? `${rows.length} ${rows.length === 1 ? 'item' : 'items'}` : '';
- $('crAttentionCoverage').textContent = current ? 'Failed and blocked work from the loaded board. Missing facts stay unknown.' : 'Attention work unavailable. Refresh the board to try again.';
- replaceHtml($('crAttentionList'),current ? rows.length ? rows.map(row => `<article class="cr-attention-row" data-attention-id="${escapeHtml(row.id)}" data-state="${escapeHtml(row.state)}">
-  <div class="cr-attention-subject"><span class="cr-work-status"><span aria-hidden="true">${row.state==='failed'?'!':'■'}</span> ${escapeHtml(row.state.replaceAll('_',' '))}</span><h4>${escapeHtml(row.title)}</h4></div>
-  <dl class="cr-work-facts"><div><dt>Agent</dt><dd>${escapeHtml(row.agent)}</dd></div><div><dt>Owner</dt><dd>${escapeHtml(row.owner)}</dd></div><div><dt>Blocker</dt><dd>${escapeHtml(row.blocker)}</dd></div><div><dt>Last progress</dt><dd>${escapeHtml(row.progress)}</dd></div>${row.linked ? `<div><dt>Linked WR owner</dt><dd>${escapeHtml(row.linked.owner)}</dd></div><div><dt>Linked WR agent</dt><dd>${escapeHtml(row.linked.agent)}</dd></div><div><dt>Linked WR blocker</dt><dd>${escapeHtml(row.linked.blocker)}</dd></div>` : ''}</dl>
+ $('crAttentionCoverage').textContent = current ? 'Failed and blocked work from the loaded board. Missing facts stay unknown.' : pending ? 'Reading attention work…' : 'Attention work unavailable.';
+ $('crAttentionList').setAttribute('aria-busy', String(pending));
+ if (!current) {
+  replaceHtml($('crAttentionList'), pending
+   ? '<div class="cr-attention-loading" data-state="loading" aria-hidden="true"><span></span><span></span><span></span><span></span></div>'
+   : '<div class="state-block cr-attention-error" data-state="offline"><h3>Attention work could not be read</h3><button type="button" class="btn" data-attention-retry>Retry attention</button></div>');
+  return;
+ }
+ replaceHtml($('crAttentionList'),rows.length ? rows.map(row => `<article class="cr-attention-row" data-attention-id="${escapeHtml(row.id)}" data-state="${escapeHtml(row.state)}">
+  <div class="cr-attention-subject"><h4>${escapeHtml(row.title)}</h4><span class="cr-work-status"><span aria-hidden="true">${row.state==='failed'?'!':'■'}</span> ${escapeHtml(row.state.replaceAll('_',' '))}</span></div>
+  <dl class="cr-work-facts"><div class="cr-work-blocker"><dt>Blocker</dt><dd>${escapeHtml(row.blocker)}</dd></div><div><dt>Owner</dt><dd>${escapeHtml(row.owner)}</dd></div><div><dt>Agent</dt><dd>${escapeHtml(row.agent)}</dd></div><div class="cr-work-progress"><dt>Last progress</dt><dd>${escapeHtml(row.progress)}</dd></div></dl>
+  ${row.linked ? `<section class="cr-attention-linked" aria-label="Linked Work Request"><h5>Linked Work Request</h5><dl class="cr-work-facts"><div><dt>Owner</dt><dd>${escapeHtml(row.linked.owner)}</dd></div><div><dt>Agent</dt><dd>${escapeHtml(row.linked.agent)}</dd></div><div class="cr-work-blocker"><dt>Blocker</dt><dd>${escapeHtml(row.linked.blocker)}</dd></div></dl></section>` : ''}
   <div class="cr-attention-footer"><span>${escapeHtml(updatedLabel(row.updatedAt))}</span><button type="button" class="btn" data-room-control="attention:${escapeHtml(row.id)}" data-attention-open="${escapeHtml(row.id)}">Open details</button></div>
- </article>`).join('') : stateBlock('empty','No failed or blocked work in the loaded board') : stateBlock('offline','Attention work could not be read'));
+ </article>`).join('') : stateBlock('empty','No failed or blocked work in the loaded board'));
 }
 function renderIncidents() {
   const read = view.reads.incidents;
@@ -277,7 +286,7 @@ async function boot(){
  const resolved=resolveDealroomBoot(globalThis.location);client=resolved.mode==='live'?createLiveClient():await createFixtureClient(resolved.options);
  onDialogClosed($("jobDialog"),()=>selectDocRecord(null,null));
  details=mountJobDetail({client,document});board=mountBoard({client,openTask:task=>details.open(withHolders([task])[0]),onTasks:renderAttention});board.start();
- $('crAttentionList').addEventListener('click',event=>{const button=event.target.closest('[data-attention-open]');const task=attention.observation.state==='read'&&withHolders(attention.tasks).find(task=>task.id===button?.dataset.attentionOpen);if(task)details.open(task);});
+ $('crAttentionList').addEventListener('click',event=>{if(event.target.closest('[data-attention-retry]')){board.refresh(true).catch(()=>{});return;}const button=event.target.closest('[data-attention-open]');const task=attention.observation.state==='read'&&withHolders(attention.tasks).find(task=>task.id===button?.dataset.attentionOpen);if(task)details.open(task);});
  $('severityChips').addEventListener('click',event=>{
   const chip=event.target.closest('button[data-severity]');
   if(chip){view.severity=chip.dataset.severity;renderIncidents();}
