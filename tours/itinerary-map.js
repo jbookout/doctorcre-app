@@ -60,7 +60,7 @@ export function mountAcceptedItinerary(root, initial) {
   const markers = new Map();
   const motion = win.matchMedia?.("(prefers-reduced-motion: reduce)");
   let reducedMotion = initial.prefersReducedMotion ?? motion?.matches ?? false;
-  const header = make("div", "", "itinerary-header"), title = make("h4", "Accepted itinerary");
+  const header = make("div", "", "itinerary-header"), title = make("h3", "Accepted itinerary");
   const version = make("span", "", "badge"), modes = make("div", "", "itinerary-modes");
   modes.setAttribute("role", "group"); modes.setAttribute("aria-label", "Map mode");
   for (const [mode, label] of [["search", "Search Mode"], ["tour", "Tour Mode"]]) {

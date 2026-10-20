@@ -232,7 +232,7 @@ button.primary:hover:not(:disabled) { border-color: var(--accent-hover); backgro
 .tour-day-link { margin-bottom: var(--space-3); }
 .accepted-itinerary[hidden] { display: none; }
 .itinerary-header { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); margin-bottom: var(--space-3); }
-.itinerary-header h4 { margin: 0 auto 0 0; font-size: var(--font-size-2); }
+.itinerary-header h3 { margin: 0 auto 0 0; font-size: var(--font-size-2); }
 .itinerary-modes { display: flex; flex-wrap: wrap; gap: var(--space-1); }
 .itinerary-stage { position: relative; overflow: hidden; border: var(--hairline-width) solid var(--hairline); border-radius: var(--radius-3); background: var(--surface-2); }
 .itinerary-map { width: 100%; height: 310px; }
