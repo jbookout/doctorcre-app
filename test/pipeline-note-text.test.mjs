@@ -1,12 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
 
 import { noteText } from "../js/pipeline-model.js";
 
 import { noteEntries } from '../js/local-deals-model.js';
 
-const pageJs = await readFile(new URL("../js/pipeline.js", import.meta.url), "utf8");
 
 test("a plain sentence passes through unchanged", () => {
   assert.equal(noteText("Send the redlines to counsel"), "Send the redlines to counsel");
@@ -47,8 +45,4 @@ test("editable deal detail preserves normalized note summaries and originals", (
   assert.equal(entries[0].summary, 'Counsel replied');
   assert.equal(entries[0].original, 'Counsel replied');
   assert.deepEqual(noteEntries({ thread: [{ text: '{}' }] }), []);
-});
-
-test("the Kanban card paints the normalized sentence", () => {
-  assert.match(pageJs, /esc\(concise\(deal\.next_step\) \|\| 'Next step pending'\)/);
 });

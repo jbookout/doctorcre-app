@@ -92,7 +92,7 @@
  * @property {'fixture'|'live'} mode
  * @property {Actor} selfActor
  * @property {(args?:Object, options?:{signal?:AbortSignal}) => Promise<Object>} readDocActivity authenticated doc-activity.v1 projection
- * @property {() => Promise<{deals:BoardDeal[], as_of:string, last_call_at:string}>} getBoard
+ * @property {() => Promise<{deals:BoardDeal[], closed_deals?:Object[], as_of:string, last_call_at:string}>} getBoard
  * @property {(dealId:string) => Promise<DealDetail>} getDeal
  * @property {(cursor:string|null) => Promise<ChangesResponse>} getChanges
  * @property {(args:{deal:string, field:string, idempotency_key:string}) => Promise<{ok:true}>} presenceLease
@@ -100,7 +100,7 @@
  * @property {(args:{conflict_id:string, winner:'a'|'b', idempotency_key:string}) => Promise<WriteResult>} resolveConflict
  * @property {(args:{deal:string, text:string, idempotency_key:string}) => Promise<WriteResult>} addDealNote
  * @property {(args:{deal:string, text:string, next_date?:string|null, idempotency_key:string}) => Promise<WriteResult>} setNextStep
- * @property {(args:{name:string, idempotency_key:string}) => Promise<WriteResult>} createDeal
+ * @property {(args:{name:string, client?:string, deal_type?:string, phase?:string, owner?:'joe'|'dell', notes?:string, idempotency_key:string}) => Promise<WriteResult>} createDeal
  * @property {() => Promise<{proposals:ConfirmProposal[]}>} [getPendingConfirms]
  * @property {(args:{deal_ids:string[]}) => Promise<{deals:Object[]}>} [getCallContext] exact active agenda records and participants
  * @property {(args:{proposal_id:string, accept:boolean, idempotency_key:string}) => Promise<WriteResult>} [resolveConfirm]
