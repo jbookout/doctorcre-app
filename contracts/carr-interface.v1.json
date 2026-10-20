@@ -594,7 +594,7 @@
         "schema_version": "deal-checklist.v1",
         "producer": {
           "repository": "jbookout/carr-system",
-          "source_commit": "d19027d6cb8f2c7532aba0112de5ec509b1af956"
+          "source_commit": "4f6db2dc473423dff33eafa79c96aa31429f29f3"
         },
         "template_states": [
           "current",
