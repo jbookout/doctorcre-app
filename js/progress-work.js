@@ -10,6 +10,7 @@ import { systemPipeline, validSystemWork } from './system-work-board-model.js';
 
 const client = createLiveClient();
 const scope = workScope(location.search);
+const requestedTask = scope.task;
 const explicitWorkRequest = scope.workRequest;
 const $ = id => document.getElementById(id);
 const node = (tag, value, className) => {
@@ -280,11 +281,12 @@ async function refresh() {
     const tasks = new Map(view.stages.flatMap(stage => stage.tasks).map(task => [task.id, task]));
     const aliases = read.snapshot?.snapshot_json?.hierarchy?.aliases;
     const seen = new Set();
-    let taskId = scope.task;
+    let taskId = requestedTask;
     while (!tasks.has(taskId) && typeof taskId === 'string' && typeof aliases?.[taskId] === 'string' && Object.hasOwn(aliases, taskId) && !seen.has(taskId)) {
       seen.add(taskId); taskId = aliases[taskId];
     }
     let task = tasks.get(taskId);
+    scope.task = task?.id || requestedTask;
     if (!task && scope.board === 'carr-v5' && /^[a-z_]+:.+/.test(scope.task || '')) {
       const split = scope.task.indexOf(':'), kind = scope.task.slice(0,split), id = scope.task.slice(split+1);
       const census = validSystemWork(await client.unfinishedWork({kinds:kind,id,limit:1}));
