@@ -15,7 +15,7 @@ async function open(t,width=1280,{theme='dark',sparse=false,showDetail=true,heig
  if(sparse) seed.deals=seed.deals.filter((d,i)=>i<5||d.id==='d14');
  seed.threads.d14=[{id:'demo-old',kind:'note',actor:'joe',text:'Older demo update',created_at:'2026-09-01T15:30:00Z',recorded_at:'2026-09-01T15:30:00Z'},
  {id:'demo-new',kind:'note',actor:'dell',text:'Newest demo update. '+ 'Detailed synthetic context. '.repeat(120),created_at:'2026-10-02T17:45:00Z',recorded_at:'2026-10-02T17:45:00Z'}];
- if(manyUpdates) seed.threads.d14=Array.from({length:30},(_,i)=>({id:`demo-note-${i}`,kind:'note',actor:'joe',text:`Demo update ${i}. `+'Detailed synthetic context. '.repeat(12),created_at:new Date(Date.UTC(2026,9,20,12,0,i)).toISOString()}));
+ if(manyUpdates) seed.threads.d14=Array.from({length:30},(_,i)=>({id:`demo-note-${i}`,kind:'note',actor:'joe',text:`Demo update ${i}. `+'Detailed synthetic context. '.repeat(12),recorded_at:new Date(Date.UTC(2026,9,20,12,0,i)).toISOString()}));
  await page.route('**/*',async route=>{
   const url=new URL(route.request().url());if(url.origin!=='http://localhost')return route.abort();
   if(url.pathname==='/data/board-seed.json')return route.fulfill({json:seed});
