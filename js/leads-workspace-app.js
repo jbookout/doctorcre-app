@@ -293,6 +293,7 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
   }
   async function executeEngagement(args) {
     if (!args || engagement.get(args.client_id, state.actor)?.sending) return;
+    const status = engagement.get(args.client_id, state.actor)?.request.status || args.status;
     state.commandFeedback = null;
     const operation = engagement(args, {
       readBack: async () => {
@@ -312,7 +313,7 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
     try {
       await operation;
       if (state.actor !== args.expected_actor) return;
-      $("moveAnnouncement").textContent = "Prospect returned to the deal board";
+      $("moveAnnouncement").textContent = status === "active" ? "Prospect returned to the deal board" : "Prospect returned to Leads";
       await refresh();
     } catch (error) {
       if (state.actor !== args.expected_actor || authorizationFailure(error)) return;

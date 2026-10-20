@@ -652,3 +652,16 @@ test('rendered Leads recovery survives remount with a new client and storage res
   assert.deepEqual(sent[1],sent[0]);
  }finally{remounted?.dispose();s.close()}
 });
+
+test('Leads recovery reports the retained inactive target from pipeline',async()=>{
+ const s=await setup();try{
+  const row=s.board.leads[0];Object.assign(row,{client_id:'synthetic-cross-page',is_client:true,is_deal:true,prospect_client_id:'synthetic-cross-page',prospect_client_version:7,prospect_engagement_status:'inactive'});
+  s.client.setProspectEngagementStatus=async args=>{s.writes.push(args);if(s.writes.length===1)throw new Error('Synthetic lost deferral');return {ok:true}};
+  const {engagementWriterFor}=await import('../js/prospect-engagement.mjs');
+  await assert.rejects(engagementWriterFor(s.client,s.w.sessionStorage)({client_id:'synthetic-cross-page',base_version:7,status:'inactive',reason:'Synthetic original deferral',human_quote:'Synthetic original deferral',expected_actor:'example-partner'}));
+  await s.app.refresh();await s.app.readDetail(row.id);
+  const form=s.d.getElementById('activateProspect');form.dispatchEvent(new s.w.Event('submit',{bubbles:true,cancelable:true}));await tick();
+  assert.equal(s.d.getElementById('moveAnnouncement').textContent,'Prospect returned to Leads');
+  assert.deepEqual(s.writes[1],s.writes[0]);
+ }finally{s.close()}
+});

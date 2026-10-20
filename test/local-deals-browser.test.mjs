@@ -969,3 +969,21 @@ test('rendered pipeline restores its pending request after page refresh',async t
  assert.deepEqual(await page.evaluate(()=>window.engagementWrites[0]),original);
  assert.deepEqual(errors,[]);
 });
+
+test('pipeline recovery reports the original activation target from Leads',async t=>{
+ const {page}=await open(t);
+ await page.evaluate(async()=>{
+  const {state}=await import('/js/pipeline.js'),{engagementWriterFor}=await import('/js/prospect-engagement.mjs');
+  const get=state.client.getBoard,detail=state.client.getDeal;window.engagementWrites=[];
+  state.client.getBoard=async()=>{const b=await get();return {...b,deals:b.deals.map(d=>d.id==='d14'?{...d,client_status:'prospect',client_id:'synthetic-cross-page',client_version:7,prospect_engagement_status:'active'}:d)}};
+  state.client.getDeal=async id=>{const r=await detail(id);return {...r,deal:{...r.deal,client_id:'synthetic-cross-page',client_version:7,prospect_engagement_status:'active'}}};
+  state.client.setProspectEngagementStatus=async args=>{window.engagementWrites.push(args);if(window.engagementWrites.length===1)throw new Error('Synthetic lost activation');return {ok:true}};
+  try{await engagementWriterFor(state.client)({client_id:'synthetic-cross-page',base_version:7,status:'active',reason:'Synthetic original activation',human_quote:'Synthetic original activation',expected_actor:'joe'})}catch{}
+ });
+ await refresh(page);await page.locator('.kanban-column [data-id="d14"] .card-open').click();
+ await page.getByRole('button',{name:'Check outcome',exact:true}).click();
+ await page.locator('#toast').waitFor();
+ assert.equal(await page.locator('#toast').textContent(),'Prospect returned to the deal board');
+ const writes=await page.evaluate(()=>window.engagementWrites);
+ assert.deepEqual(writes[1],writes[0]);
+});

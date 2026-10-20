@@ -1013,6 +1013,7 @@ async function markProspectInactive(form,id,reason) {
   if (!prospect || !reason) return;
   const engagement = engagementWriterFor(state.client);
   if (engagement.get(prospect.client_id, state.selfActor)?.sending) return;
+  const status = engagement.get(prospect.client_id, state.selfActor)?.request.status || 'inactive';
   form.querySelector('button').disabled = true;
   try {
     await engagement({ client_id: prospect.client_id, base_version: prospect.client_version,
@@ -1024,7 +1025,7 @@ async function markProspectInactive(form,id,reason) {
     });
     await state.boardSync.refreshBoard({reason:'prospect-inactive'});
     if (state.panelDeal === id) closePanel();
-    showToast('Prospect returned to Leads');
+    showToast(status === 'inactive' ? 'Prospect returned to Leads' : 'Prospect returned to the deal board');
   } catch (error) {
     await state.boardSync.refreshBoard({reason:'prospect-check'});
     if (state.panelDeal === id) await refreshPanel();
