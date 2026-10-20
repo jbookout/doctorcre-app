@@ -29,11 +29,16 @@ test('live getDeal preserves the runtime checklist without deriving it in the br
   assert.deepEqual((await client.getDeal('demo')).checklist, checklist);
 });
 
-test('missing contracts and changed doctrine remain explicit without inventing a checklist', () => {
-  for (const value of [null, { schema_version: 'deal-checklist.v2' }, { ...checklist, template_state: 'source_changed' }]) {
-    const html = renderDealChecklist(value);
-    assert.match(html, /Checklist unavailable|Checklist needs a doctrine review/);
-    assert.doesNotMatch(html, /data-checklist-item/);
+test('absent and empty checklists render nothing', () => {
+  for (const value of [undefined, null, { ...checklist, phases: [] }, { ...checklist, due_items: [], phases: [{ id: 'legal', label: 'Legal', items: [] }] }]) {
+    assert.equal(renderDealChecklist(value), '');
+  }
+});
+
+test('unsupported contracts and changed doctrine retain their explicit review message', () => {
+  for (const value of [{ schema_version: 'deal-checklist.v2' }, { ...checklist, template_state: 'source_changed' }]) {
+    assert.match(renderDealChecklist(value), /Checklist unavailable|Checklist needs a doctrine review/);
+    assert.doesNotMatch(renderDealChecklist(value), /data-checklist-item/);
   }
 });
 
