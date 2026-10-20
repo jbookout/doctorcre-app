@@ -10,14 +10,14 @@ const assignments = [
   { party_id: 'demo-v3', role: 'lender', company: { id: 'demo-c3', name: 'Demo Second Bank' }, contact: { id: 'demo-p3', name: 'Demo Contact Three' } },
 ];
 
-async function open(t, width = 1280, theme = 'dark') {
+async function open(t, width = 1280, theme = 'dark', vendors = assignments) {
   const browser = await chromium.launch();
   t.after(() => browser.close());
   const page = await browser.newPage({ viewport: { width, height: 960 } });
   await page.addInitScript(theme => localStorage.setItem('doctorcre.visual-preferences', JSON.stringify({ theme })), theme);
   const seed = JSON.parse(await readFile(new URL('data/board-seed.json', root), 'utf8'));
-  seed.deals.find(d => d.id === 'd14').vendors = assignments;
-  seed.deals.find(d => d.id === 'd06').vendors = assignments;
+  seed.deals.find(d => d.id === 'd14').vendors = vendors;
+  seed.deals.find(d => d.id === 'd06').vendors = vendors;
   const errors = [];
   page.on('pageerror', error => errors.push(error.message));
   await page.route('**/*', async route => {
@@ -99,4 +99,17 @@ for (const width of [390, 1280]) test(`list, parked and archived cards retain ve
     assert.equal(await card.evaluate(n => n.scrollWidth <= n.clientWidth), true);
   }
   assert.deepEqual(errors, []);
+});
+
+
+for(const width of [390,1280]) test(`six assignments keep Add update on the opening screen at ${width}px`,async t=>{
+ const vendors=Array.from({length:6},(_,i)=>({party_id:`demo-six-${i}`,role:i<3?'lender':'landlord_rep',company:{id:`demo-company-${i}`,name:`Demo regional healthcare property and finance company ${i}`},contact:{id:`demo-contact-${i}`,name:`Demo assigned representative number ${i}`}}));
+ const {page}=await open(t,width,'dark',vendors);
+ await page.locator('.kanban-column [data-id="d14"] .card-open').click();
+ const action=page.getByRole('button',{name:'Add update',exact:true});
+ await action.waitFor();
+ const button=await action.boundingBox(),panel=await page.locator('#recordPanel').boundingBox();
+ assert.ok(button.y+button.height<=panel.y+panel.height,JSON.stringify({button,panel}));
+ assert.equal(await page.locator('#recordPanel .deal-vendor-company').count(),6);
+ assert.equal(await page.locator('#detailUpdateForm').evaluate(n=>Boolean(n.compareDocumentPosition(document.querySelector('#recordPanel .deal-vendors')) & Node.DOCUMENT_POSITION_FOLLOWING)),true);
 });
