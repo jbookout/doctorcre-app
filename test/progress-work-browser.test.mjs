@@ -840,14 +840,21 @@ for(const width of [1440,390]) test(`trustworthy acceptance progress and scope h
   await page.clock.runFor(300);
   await page.screenshot({path:resolve(process.env.SLICE9_CAPTURE_DIR,`acceptance-progress-${width}.png`)});
  }
+ await page.locator('.work-progress-checks a').first().focus();
  read.scope.revision=3;read.scope.digest='sha256:'+'c'.repeat(64);read.total=6;
  read.checks.push({slice_ref:'slice:nine',check_ref:'check:scope-addition',objective:'Explain the added scope',state:'remaining'});
  read.history.push({...read.scope,total_checks:6});
  await page.clock.runFor(5100);
  await page.waitForFunction(()=>document.querySelector('.work-progress-summary')?.textContent==='2 of 6 acceptance checks verified');
+ assert.equal(await page.locator('.work-progress-checks a').first().evaluate(el=>el===document.activeElement),true,'Evidence focus survives a progress refresh');
  assert.match(await page.locator('.work-progress').textContent(),/Scope revision 3/);
  assert.equal(await page.locator('.work-progress details').evaluate(node=>node.open),true);
  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
+ await page.locator('.work-progress-checks a').first().click();
+ await page.waitForURL('**/control-room/progress/work?**#workCanonicalPassport');
+ await page.waitForFunction(()=>document.querySelector('#workCanonicalBody')?.textContent.includes('Closure:'));
+ assert.equal(new URL(page.url()).searchParams.get('work_request'),'WR-900');
+ assert.equal(await page.locator('#workCanonicalPassport h2').textContent(),'Engineering Passport');
  assert.deepEqual(errors,[]);
 });
 

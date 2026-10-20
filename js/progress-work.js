@@ -271,11 +271,11 @@ function lineageRecord(task, taskId) {
   return host.firstElementChild;
 }
 function renderProgress() {
-  const host=$('workProgress'),html=workProgressHtml(progressRead,scope.workRequest);
+  const host=$('workProgress'),html=workProgressHtml(progressRead,scope.workRequest,engineering);
   if(host.innerHTML===html)return;
-  const expanded=host.querySelector('details')?.open,focused=host.contains(document.activeElement);
+  const expanded=host.querySelector('details')?.open,focused=host.contains(document.activeElement),control=document.activeElement?.dataset.jobControl;
   host.innerHTML=html;host.querySelector('details').open=Boolean(expanded);
-  if(focused)host.querySelector('summary').focus({preventScroll:true});
+  if(focused)([...host.querySelectorAll('[data-job-control]')].find(el=>el.dataset.jobControl===control)||host.querySelector('summary')).focus({preventScroll:true});
 }
 function renderMetadata(task, questions) {
   renderProgress();
@@ -329,7 +329,7 @@ async function refresh() {
         .catch(error=>{if(!currentBinding())return;progressRead=null;renderProgress();fail(error,$('workProgress'),'Acceptance progress');}),
       client.workRequestCard({work_request:workRequest}).then(value => { if (!currentBinding()) return; if (value.human_ref !== workRequest) throw new Error('work binding'); card = value; $('workTitle').textContent = task?.title || card.title || title; renderMetadata(task, view.questions); }).catch(error=>currentBinding() && fail(error,$('workMetadata'),'Work request')),
       client.engineeringPassport({work_request:workRequest}).then(value => { if (!currentBinding()) return;
-        if (!canonicalPassport(value) && !validEngineeringPassport(value)) throw new Error('passport binding'); engineering = value;
+        if (!canonicalPassport(value) && !validEngineeringPassport(value)) throw new Error('passport binding'); engineering = value; renderProgress();
         // The canonical projection resolves a human reference into its immutable
         // wr:<uuid> binding. Keep that binding for subsequent exact wire joins.
         scope.refs = [...new Set([...(scope.refs || []),typeof value.work_request === 'string' ? value.work_request : value.work_request.id])];

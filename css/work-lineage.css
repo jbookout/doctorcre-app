@@ -23,3 +23,8 @@
 .work-progress h4 { margin: var(--space-5) 0 var(--space-3); font: var(--font-weight-strong) var(--font-size-2) var(--font-text); }
 .work-progress summary { min-height: 44px; cursor: pointer; }
 .work-progress summary:focus-visible { outline: var(--focus-width) solid var(--focus-ring); outline-offset: var(--focus-width); }
+
+.work-progress-checks a { grid-column: 2; display: inline-flex; align-items: center; min-height: 44px; width: fit-content; color: var(--fg-muted); text-underline-offset: .2em; }
+.work-progress-checks a:focus-visible { outline: var(--focus-width) solid var(--focus-ring); outline-offset: var(--focus-width); }
+#jobBody > .work-progress:first-child { margin-top: 0; }
+.work-check-criterion small { display: block; margin-top: var(--space-1); color: var(--fg-muted); }
