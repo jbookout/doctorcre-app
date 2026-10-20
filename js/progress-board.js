@@ -440,7 +440,7 @@ export function mountBoard(deps = {}) {
       queueUI.update(view.work_queue);
       byId('task-count').textContent = `${view.work_queue.items.length} jobs`;
       byId('pipeline-title').textContent = 'Work queue';
-      for (const id of ['board-rail', 'board-filters']) byId(id).hidden = true;
+      for (const id of ['board-rail', 'board-filters']) byId(id).setAttribute('hidden', '');
       for (const id of ['board-completed', 'completed-list', 'board-blocked', 'system-work-panel', 'board-ledger'])
         byId(id)?.closest('.panel')?.setAttribute('hidden', '');
       return;

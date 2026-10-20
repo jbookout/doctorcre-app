@@ -11,9 +11,9 @@ import hierarchy from './fixtures/progress-board-hierarchy.json' with { type: 'j
 import workQueue from '../js/progress-work-queue-fixture.js';
 
 const boards = [{ board_id: 'carr-v5', title: 'System delivery' }, { board_id: 'demo-project', title: 'Demo project' }];
-async function open(t, { unfinished = true, path = '/control-room/progress', boardRead = 'ready', rows = [], control, width = 390, costData, snapshotData, autoMount = true } = {}) {
+async function open(t, { unfinished = true, path = '/control-room/progress', boardRead = 'ready', rows = [], control, width = 390, height = 900, costData, snapshotData, autoMount = true } = {}) {
   const browser = await chromium.launch(); t.after(() => browser.close());
-  const page = await browser.newPage({ viewport: { width, height: 900 } });
+  const page = await browser.newPage({ viewport: { width, height } });
   const context = page.context();
   await page.clock.install();
   const calls = [], errors = []; let readState = boardRead;
@@ -560,8 +560,8 @@ for (const width of [320, 390, 1280]) for (const theme of ['light', 'dark'])
     changed.work_queue.revision++;
     setSnapshot(changed);
     await page.clock.runFor(2300);
-    await page.locator('[data-queue-root] > details:first-child[data-queue-id="WR14"]').waitFor({ timeout: 5000 });
-    assert.deepEqual(await page.locator('[data-queue-root] > details').evaluateAll(cards => cards.map(c => c.dataset.queueId)), ['WR14','WR20']);
+    await page.locator('[data-queue-root] > section:first-child[data-queue-id="WR14"]').waitFor({ timeout: 5000 });
+    assert.deepEqual(await page.locator('[data-queue-root] > section').evaluateAll(cards => cards.map(c => c.dataset.queueId)), ['WR14','WR20']);
     assert.equal(await page.evaluate(() => document.activeElement.parentElement.dataset.queueId), 'WR14.S1.J1');
     assert.equal(await job.evaluate(node => node.closest('.app-layout-center').scrollTop), scroll);
     assert.equal(await job.getAttribute('open'), '');
@@ -571,7 +571,7 @@ for (const width of [320, 390, 1280]) for (const theme of ['light', 'dark'])
     changed.work_queue.board.order.reverse(); changed.work_queue.revision++;
     setSnapshot(structuredClone(changed));
     await page.clock.runFor(2300);
-    await page.locator('[data-queue-root] > details:first-child[data-queue-id="WR20"]').waitFor({ timeout: 5000 });
+    await page.locator('[data-queue-root] > section:first-child[data-queue-id="WR20"]').waitFor({ timeout: 5000 });
     assert.equal(await page.locator('[data-queue-root]').evaluate(el => el.getAnimations({ subtree: true }).length), 0);
     assert.deepEqual(errors, []);
     await page.evaluate(axe.source);
@@ -668,4 +668,81 @@ test('leaving a job through browser history closes its actual detail dialog', as
   assert.equal(new URL(page.url()).searchParams.get('card'), null);
   assert.equal(await dialog.isVisible(), false);
   assert.deepEqual(errors, []);
+});
+
+for (const width of [390, 1280]) test(`queue polling retains the open event log and keyboard focus at ${width}px`, async t => {
+  const {page, calls, errors, setSnapshot} = await open(t, {width, height:844,
+    path:'/control-room/progress/board/carr-v5?card=WR14.S1.J1', snapshotData:structuredClone(workQueue)});
+  const job = page.locator('[data-queue-id="WR14.S1.J1"]');
+  const log = job.locator('.queue-log');
+  await log.locator('summary').click();
+  await log.locator('summary').focus();
+  const reads = calls.filter(c => c.name === 'read-progress-board').length;
+  const changed = structuredClone(workQueue);
+  changed.work_queue.board.nodes['WR14.S1.J1'].total_time_s += 2;
+  changed.work_queue.revision++;
+  setSnapshot(changed);
+  await page.clock.runFor(2300);
+  await page.waitForFunction(() => document.querySelector('.queue-status').textContent.includes('revision 11'));
+  assert.ok(calls.filter(c => c.name === 'read-progress-board').length > reads, 'the actual board poll read the changed snapshot');
+  assert.equal(await log.getAttribute('open'), '', 'manual event-log disclosure survives polling');
+  assert.equal(await log.locator('summary').evaluate(el => document.activeElement === el), true, 'focus remains on the event-log summary');
+  assert.deepEqual(errors, []);
+  await mkdir('test/evidence/work-queue', {recursive:true});
+  await log.locator('summary').scrollIntoViewIfNeeded();
+  await page.screenshot({path:`test/evidence/work-queue/poll-${width}.png`});
+  await job.locator('.queue-execution > summary').click();
+  for (const control of [job.locator('.queue-execution > summary'), job.locator('[data-pr]')]) {
+    await control.focus();
+    changed.work_queue.revision++;
+    changed.work_queue.board.nodes['WR14.S1.J1'].total_time_s += 2;
+    setSnapshot(structuredClone(changed));
+    await page.clock.runFor(2300);
+    await page.waitForFunction(revision => document.querySelector('.queue-status').textContent.includes(`revision ${revision}`), changed.work_queue.revision);
+    assert.equal(await control.evaluate(el => document.activeElement === el), true, 'the same control keeps focus after a changed-card poll');
+    assert.equal(await job.locator('.queue-execution').getAttribute('open'), '');
+    assert.equal(await log.getAttribute('open'), '');
+  }
+
+});
+
+for (const width of [390, 1280]) test(`queue first view shows producer-ordered job titles and states at ${width}px`, async t => {
+  const {page, errors} = await open(t, {width, height:844, path:'/control-room/progress/board/carr-v5', snapshotData:structuredClone(workQueue)});
+  await page.locator('[data-queue-id="WR20.S1.J1"] > summary').waitFor({state:'attached'});
+  assert.equal(await page.locator('#board-rail').isVisible(), false, 'the pipeline rail does not occupy queue space');
+  assert.equal(await page.locator('#board-filters').isVisible(), false, 'pipeline filters do not occupy queue space');
+  assert.deepEqual(await page.locator('.queue-job').evaluateAll(jobs => jobs.map(el => el.dataset.queueId)), ['WR20.S1.J1','WR14.S2.J1','WR14.S1.J1']);
+  for (const [id, title, state] of [['WR20.S1.J1','Demo release checks','queued'],['WR14.S2.J1','Demo board details','queued'],['WR14.S1.J1','Demo queue ordering','review']]) {
+    const summary = page.locator(`[data-queue-id="${id}"] > summary`);
+    assert.match(await summary.textContent(), new RegExp(title));
+    assert.match(await summary.locator('.queue-state').textContent(), new RegExp(state));
+    assert.equal(await summary.isVisible(), true, `${title} is visible without expanding ancestors`);
+    const box = await summary.boundingBox();
+    const viewport = await summary.evaluate(el => { const rect = el.closest('.app-layout-center').getBoundingClientRect(); return {top:rect.top,bottom:rect.bottom}; });
+    assert.ok(box.y >= viewport.top && box.y + box.height <= viewport.bottom, `${title} and its state fit in the first viewport`);
+  }
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
+  assert.deepEqual(errors, []);
+  await mkdir('test/evidence/work-queue', {recursive:true});
+  await page.screenshot({path:`test/evidence/work-queue/queue-${width}.png`});
+});
+
+for (const width of [390, 1280]) test(`expanded queue detail leads with findings and PR/log actions at ${width}px`, async t => {
+  const {page, errors} = await open(t, {width, height:844,
+    path:'/control-room/progress/board/carr-v5', snapshotData:structuredClone(workQueue)});
+  const job = page.locator('[data-queue-id="WR14.S1.J1"]');
+  await job.locator('> summary').click();
+  const logLink = job.locator('[data-job-log]');
+  const box = await logLink.boundingBox();
+  const viewport = await logLink.evaluate(el => { const rect = el.closest('.app-layout-center').getBoundingClientRect(); return {top:rect.top,bottom:rect.bottom}; });
+  assert.ok(box && box.y >= viewport.top && box.y + box.height <= viewport.bottom, 'the log action sits in the first viewport of the expanded detail');
+  assert.equal(await job.locator('[data-pr]').isVisible(), true);
+  assert.match(await job.locator('.queue-findings').textContent(), /P2.*Show unknown timing.*Open/s);
+  assert.doesNotMatch(await job.locator('.queue-findings').textContent(), /Preserve keyboard focus/);
+  assert.equal(await job.getByText('gpt-6.1-sol', {exact:true}).isVisible(), false, 'execution metadata starts collapsed');
+  assert.deepEqual(errors, []);
+  await mkdir('test/evidence/work-queue', {recursive:true});
+  await page.screenshot({path:`test/evidence/work-queue/detail-${width}.png`});
+  await job.locator('.queue-execution > summary').click();
+  assert.equal(await job.getByText('gpt-6.1-sol', {exact:true}).isVisible(), true);
 });

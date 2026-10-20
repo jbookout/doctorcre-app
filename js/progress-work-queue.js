@@ -49,43 +49,24 @@ export function mountWorkQueue({ container, window: win, boardId }) {
     const link = node('a', text);
     link.href = href;
     link.dataset[key] = '';
+    link.dataset.queueFocus = `${key}:${href}`;
     parent.append(link);
   }
   function detail(record, card) {
-    const signature = JSON.stringify(card);
+    const events = queue.history.filter(event => event.card_id === card.id);
+    const signature = JSON.stringify([card, events]);
     if (record.signature === signature) return;
     record.signature = signature;
-    const focused = record.body.contains(doc.activeElement) ? doc.activeElement.dataset : null;
+    const focused = record.body.contains(doc.activeElement) ? doc.activeElement.dataset.queueFocus : null;
+    const disclosures = new Map([...record.body.querySelectorAll('details')].map(el => [el.className, el.open]));
     record.body.replaceChildren();
     const list = node('dl', null, 'queue-facts');
     row(list, 'Card ID', card.id);
-    if (card.kind !== 'job') {
-      for (const [label, value] of [['Jobs', card.totals.jobs], ['Pull requests', card.totals.prs],
-        ['Total time', duration(card.totals.total_time_s)], ['Review rounds', card.totals.review_rounds],
-        ['Findings opened', card.totals.findings_opened], ['Findings resolved', card.totals.findings_resolved]]) row(list, label, value);
-      row(list, 'Stages', Object.entries(card.totals.stages).map(([stage, count]) => `${count} ${stage}`).join(' · '));
-      const totals = node('details', null, 'queue-rollup');
-      totals.append(node('summary', 'Rolled-up totals'), list);
-      record.body.append(totals);
-      return;
-    }
     for (const [label, value] of [['Desk', card.desk], ['Agent', card.agent], ['Model used', card.model],
       ['Effort', card.effort], ['Stage', card.stage], ['Total time', card.timing_unknown ? null : duration(card.total_time_s)],
       ['Review round', `${card.review_round} of 3`], ['Findings opened', card.findings_opened],
       ['Findings resolved', card.findings_resolved], ['CI', card.ci_state],
       ['Merge-stage position', card.merge_position ?? 'Outside merge stage']]) row(list, label, value);
-    record.body.append(node('p', card.description, 'queue-description'), list);
-    const times = node('dl', null, 'queue-facts');
-    for (const stage of card.stages) row(times, `${stage.stage}${stage.finished_at ? '' : ' · current'}`, stage.started_at ? duration(stage.elapsed) : 'Not started');
-    record.body.append(node('h3', 'Time per stage'), times, node('h3', 'Review findings'));
-    const findings = node('ul', null, 'queue-findings');
-    for (const finding of card.findings) findings.append(node('li', `${finding.level} · ${finding.summary} · ${finding.resolved ? 'Resolved' : 'Open'}`));
-    if (!card.findings.length) findings.append(node('li', 'No findings recorded.'));
-    record.body.append(findings, node('h3', 'Recent priority changes'));
-    for (const event of card.priority_changes) record.body.append(node('p', `${event.at} · ${event.actor} · ${event.reason} · ${event.from.position} to ${event.to.position}`));
-    if (!card.priority_changes.length) record.body.append(node('p', 'No priority changes recorded.'));
-    const last = card.last_event;
-    record.body.append(node('p', last ? `Last event · ${last.at} · ${last.kind} · ${last.reason}` : 'Last event · Not recorded'));
     const links = node('nav', null, 'queue-links');
     links.setAttribute('aria-label', 'Job links');
     for (const pr of card.prs) {
@@ -98,54 +79,89 @@ export function mountWorkQueue({ container, window: win, boardId }) {
     record.body.append(links);
     const log = node('details', null, 'queue-log');
     log.id = logId;
-    log.append(node('summary', 'Job event log'));
-    const events = queue.history.filter(event => event.card_id === card.id);
+    const logSummary = node('summary', 'Job event log');
+    logSummary.dataset.queueFocus = 'event-log';
+    log.append(logSummary);
     const eventList = node('ol');
     for (const event of events) eventList.append(node('li', `${event.at} · ${event.kind} · ${event.actor} · ${event.reason}`));
     log.append(node('p', 'Audited queue events. Raw executor prompts and transcripts stay local.'), eventList);
-    record.body.append(log);
+    const findings = node('ul', null, 'queue-findings');
+    for (const finding of card.findings.filter(finding => !finding.resolved))
+      findings.append(node('li', `${finding.level} · ${finding.summary} · Open`));
+    if (!findings.children.length) findings.append(node('li', 'No unresolved findings.'));
+    const execution = node('details', null, 'queue-execution');
+    const executionSummary = node('summary', 'Execution details');
+    executionSummary.dataset.queueFocus = 'execution';
+    execution.append(executionSummary, node('p', card.description, 'queue-description'), list);
+    const times = node('dl', null, 'queue-facts');
+    for (const stage of card.stages) row(times, `${stage.stage}${stage.finished_at ? '' : ' · current'}`, stage.started_at ? duration(stage.elapsed) : 'Not started');
+    execution.append(node('h3', 'Time per stage'), times);
+    const resolved = node('ul');
+    for (const finding of card.findings.filter(finding => finding.resolved))
+      resolved.append(node('li', `${finding.level} · ${finding.summary} · Resolved`));
+    if (resolved.children.length) execution.append(node('h3', 'Resolved findings'), resolved);
+    execution.append(node('h3', 'Recent priority changes'));
+    for (const event of card.priority_changes) execution.append(node('p', `${event.at} · ${event.actor} · ${event.reason} · ${event.from.position} to ${event.to.position}`));
+    if (!card.priority_changes.length) execution.append(node('p', 'No priority changes recorded.'));
+    const last = card.last_event;
+    execution.append(node('p', last ? `Last event · ${last.at} · ${last.kind} · ${last.reason}` : 'Last event · Not recorded'));
+    record.body.append(node('h3', 'Unresolved findings'), findings, log, execution);
     links.querySelector('[data-job-log]').addEventListener('click', event => {
       event.preventDefault(); log.open = true; win.history.replaceState({}, '', `${url(card.id)}#${encodeURIComponent(logId)}`);
       log.querySelector('summary').focus({ preventScroll: true });
     });
     if (win.location.hash === `#${encodeURIComponent(logId)}`) log.open = true;
-    if (focused) {
-      const key = ['pr', 'cardLink', 'jobLog'].find(key => key in focused);
-      if (key) record.body.querySelector(`[data-${key.replace(/[A-Z]/g, ch => `-${ch.toLowerCase()}`)}]`)?.focus({ preventScroll: true });
+    for (const disclosure of record.body.querySelectorAll('details')) {
+      if (disclosures.has(disclosure.className)) disclosure.open = disclosures.get(disclosure.className);
     }
+    if (focused) [...record.body.querySelectorAll('[data-queue-focus]')]
+      .find(el => el.dataset.queueFocus === focused)?.focus({ preventScroll: true });
   }
   function ensure(card) {
     let record = records.get(card.id);
     if (!record) {
-      const element = node('details', null, `queue-card queue-${card.kind}`);
+      const job = card.kind === 'job';
+      const element = node(job ? 'details' : 'section', null, `queue-card queue-${card.kind}`);
       element.dataset.queueId = card.id;
       element.dataset.queueDetail = card.id;
-      const summary = node('summary');
-      const title = node('span', '', 'queue-title');
+      const summary = node(job ? 'summary' : 'div', null, 'queue-row');
+      const identity = node(job ? 'span' : 'div', null, 'queue-identity');
+      const title = node(job ? 'span' : card.kind === 'request' ? 'h3' : 'h4', '', 'queue-title');
+      const meta = node('span', '', 'queue-meta');
       const state = node('span', '', 'queue-state');
-      summary.append(title, state);
+      identity.append(title, meta);
+      summary.append(identity, state);
       const body = node('div', null, 'queue-detail-body');
       const children = node('div', null, 'queue-children');
-      element.append(summary, body, children);
-      record = { element, title, state, body, children, signature: '' };
+      element.append(summary, ...(job ? [body] : [children]));
+      record = { element, title, meta, state, body, children, signature: '' };
       records.set(card.id, record);
-      element.open = card.kind === 'request';
-      summary.addEventListener('click', event => {
+      if (job) summary.addEventListener('click', event => {
         event.preventDefault(); element.open = !element.open;
-        if (element.open) win.history.pushState({}, '', url(card.id));
+        if (element.open) {
+          win.history.pushState({}, '', url(card.id));
+          summary.scrollIntoView?.({ block: 'start' });
+        }
       });
     }
-    record.title.textContent = card.title || card.id;
-    record.state.textContent = card.kind === 'job' ? `${card.stage} · ${duration(card.total_time_s)}`
-      : `${card.totals.jobs} jobs · ${card.totals.prs} PRs · ${duration(card.totals.total_time_s)} · ${card.totals.findings_opened - card.totals.findings_resolved} open findings`;
-    detail(record, card);
+    if (card.kind === 'job') {
+      record.title.textContent = card.title || card.id;
+      record.meta.textContent = card.id;
+      record.state.textContent = card.stage;
+      record.state.dataset.stage = card.stage;
+      detail(record, card);
+    } else {
+      record.title.textContent = card.kind === 'request' ? 'Work Request' : 'Slice';
+      record.meta.textContent = card.title || card.id;
+      record.state.textContent = `${card.totals.jobs} ${card.totals.jobs === 1 ? 'job' : 'jobs'}`;
+    }
     return record;
   }
   function reveal() {
-    let id = address();
-    while (id && records.has(id)) {
-      records.get(id).element.open = true;
-      id = queue.board.nodes[id].parent_id;
+    const record = records.get(address());
+    if (record?.element.tagName === 'DETAILS') {
+      record.element.open = true;
+      record.element.querySelector('summary').scrollIntoView?.({ block: 'start' });
     }
   }
   const pop = () => reveal();
@@ -154,6 +170,9 @@ export function mountWorkQueue({ container, window: win, boardId }) {
     queue = value;
     const active = doc.activeElement;
     const left = win.scrollX, top = win.scrollY;
+    const scroll = [];
+    if (lastRevision !== undefined) for (let parent = container.parentElement; parent; parent = parent.parentElement)
+      scroll.push([parent, parent.scrollLeft, parent.scrollTop]);
     const positions = new Map([...records].map(([id, r]) => [id, r.element.getBoundingClientRect()]));
     const reduced = win.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
     const seen = new Set();
@@ -173,6 +192,7 @@ export function mountWorkQueue({ container, window: win, boardId }) {
     for (const [id, record] of records) if (!seen.has(id)) { record.element.remove(); records.delete(id); }
     if (address() !== lastAddress) { reveal(); lastAddress = address(); }
     if (active?.isConnected && doc.activeElement !== active) active.focus({ preventScroll: true });
+    for (const [parent, x, y] of scroll) { parent.scrollLeft = x; parent.scrollTop = y; }
     if (win.scrollX !== left || win.scrollY !== top) win.scrollTo(left, top);
     if (!reduced && lastRevision !== undefined && lastRevision !== queue.revision) {
       for (const [id, before] of positions) {
