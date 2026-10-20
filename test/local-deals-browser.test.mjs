@@ -913,3 +913,32 @@ test('an unresolved prospect permits another prospect while keeping its own same
  assert.equal(writes.length,3);assert.deepEqual(writes[2],writes[0]);assert.notEqual(writes[1].idempotency_key,writes[0].idempotency_key);
  assert.deepEqual(errors,[]);
 });
+
+
+test('round 3: offline retry preserves the uncertain inactive request through reconnect',async t=>{
+ const {page,errors}=await open(t);
+ await page.evaluate(async()=>{
+  const {state}=await import('/js/pipeline.js');const get=state.client.getBoard,detail=state.client.getDeal;
+  const {createLiveClient}=await import('/js/live-client.js');window.engagementWrites=[];
+  state.client.getBoard=async()=>{const b=await get();return {...b,deals:b.deals.map(d=>d.id==='d14'?{...d,client_status:'prospect',client_id:'demo-client',client_version:7,prospect_engagement_status:'active'}:d)}};
+  state.client.getDeal=async id=>{if(window.engagementWrites.length)throw new TypeError('Synthetic read unavailable');const r=await detail(id);return {...r,deal:{...r.deal,client_id:'demo-client',client_version:7,prospect_engagement_status:'active'}}};
+  const live=createLiveClient({docContext:false,fetchImpl:async(_url,init)=>{
+   window.engagementWrites.push(JSON.parse(init.body).params.arguments);
+   throw new TypeError('Synthetic lost response');
+  }});
+  state.client.setProspectEngagementStatus=live.setProspectEngagementStatus;
+ });
+ await refresh(page);await page.locator('.kanban-column [data-id="d14"] .card-open').click();
+ await page.locator('#detailInactiveForm input').fill('Synthetic deferred project');
+ await page.locator('#detailInactiveForm button').click();
+ await waitForAsync(page,()=>window.engagementWrites.length===1&&!document.querySelector('#detailInactiveForm button').disabled);
+ await page.context().setOffline(true);
+ await page.locator('#detailInactiveForm button').click();
+ await waitForAsync(page,()=>!document.querySelector('#detailInactiveForm button').disabled);
+ await page.context().setOffline(false);
+ await page.locator('#detailInactiveForm button').click();
+ await waitForAsync(page,()=>window.engagementWrites.length===2);
+ const writes=await page.evaluate(()=>window.engagementWrites);
+ assert.deepEqual(writes[1],writes[0],'offline retry must preserve the entire original request');
+ assert.deepEqual(errors,[]);
+});
