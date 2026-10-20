@@ -113,3 +113,10 @@ for(const width of [390,1280]) test(`six assignments keep Add update on the open
  assert.equal(await page.locator('#recordPanel .deal-vendor-company').count(),6);
  assert.equal(await page.locator('#detailUpdateForm').evaluate(n=>Boolean(n.compareDocumentPosition(document.querySelector('#recordPanel .deal-vendors')) & Node.DOCUMENT_POSITION_FOLLOWING)),true);
 });
+
+
+test('role groups have twice the space used within each role',async t=>{
+ const {page}=await open(t);
+ const gap=await page.locator('.kanban-column [data-id="d14"] .deal-vendors').evaluate(n=>({roles:parseFloat(getComputedStyle(n).rowGap),assignments:parseFloat(getComputedStyle(n.querySelector('ul')).rowGap)}));
+ assert.ok(gap.roles>=16 && gap.roles>=2*gap.assignments,JSON.stringify(gap));
+});
