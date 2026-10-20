@@ -131,3 +131,13 @@ test('the live adapter preserves authoritative start dates in both board and det
  assert.deepEqual(detail.deal.phase_started_on,phase_started_on);
  assert.equal(dealTimeline(detail).phases.find(p=>p.slug==='legal').day,'2026-09-30');
 });
+
+
+test('a capped activity feed never claims to be full history',()=>{
+ const allActivities=Array.from({length:51},(_,i)=>({id:`activity-${i}`,kind:'note',summary:`Demo activity ${i}`,occurred_at:new Date(Date.UTC(2026,9,20,12,0,-i)).toISOString()}));
+ const root=new JSDOM(renderDealUpdates({activities:allActivities.slice(0,50)})).window.document;
+ assert.equal(root.querySelectorAll('.deal-note').length,50);
+ assert.doesNotMatch(root.textContent,/Full history/i);
+ assert.match(root.querySelector('.updates-history > summary').textContent,/Recorded updates \(50\)/);
+ assert.match(root.textContent,/latest 50 activities.*older activities may be omitted/i);
+});
