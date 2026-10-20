@@ -167,6 +167,26 @@ for (const width of [390, 1280]) for (const theme of ['dark', 'light']) {
     assert.ok(Math.abs((await page.locator('[data-hierarchy-id="WR14"]').boundingBox()).y - skeletonY) < 48, 'the first row keeps its place after loading');
     assert.deepEqual(errors, []);
   });
+
+  for (const path of [systemPath, '/control-room?mode=live&tab=boards']) {
+    test(`hierarchy taste explains completed levels without empty panels at ${width}px ${theme} ${path}`, async t => {
+      const { page, errors } = await open(t, { width, path, snapshotData: hierarchy });
+      await page.locator('[data-hierarchy-id="WR14"] > button').click();
+      await page.locator('#hierarchy-completed > details > summary').click();
+      await page.locator('[data-hierarchy-id="WR14.S1"] > button').click();
+      await hierarchyEvidence(page, path === systemPath ? 'empty-page' : 'empty-room', width, theme);
+      assert.match(await page.locator('#board-stages').textContent(), /All pull requests in this slice are completed\./);
+      for (const id of ['board-questions', 'board-deliverables', 'board-decisions', 'board-notes']) {
+        assert.equal(await page.locator(`#${id}`).isVisible(), false, `${id} has no content to show`);
+      }
+      assert.doesNotMatch(await page.locator('#board-stages').textContent(), /Nothing needs you/);
+      await page.getByRole('button', { name: 'View completed pull requests', exact: true }).click();
+      assert.equal(await page.locator('#hierarchy-completed > details').getAttribute('open'), '');
+      assert.equal(await page.locator('#hierarchy-completed > details > summary').evaluate(node => node === document.activeElement), true);
+      assert.equal(await page.locator('[data-hierarchy-id="WR14.S1.J1.carr#1960"]').isVisible(), true);
+      assert.deepEqual(errors, []);
+    });
+  }
 }
 
 async function mountTestCosts(t, width = 390) {
