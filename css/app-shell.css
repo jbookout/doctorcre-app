@@ -219,6 +219,34 @@ body.has-app-layout .toast { right: var(--toast-right); bottom: calc(var(--layou
 .has-app-layout .workspace-directory .module-card p { display: none; }
 .has-app-layout .scope-switch small, .has-app-layout .scope-note, .has-app-layout .pipeline-copy { display: none; }
 .has-app-layout .sticky-table-header { display: none; }
+@media (min-width: 681px) {
+  .has-app-layout .table-frame thead { position: static; width: auto; height: auto; margin: 0; overflow: visible; clip: auto; white-space: normal; }
+  .has-app-layout .table-frame { container-type: inline-size; }
+  .has-app-layout .table-frame table { min-width: 0; }
+  .has-app-layout .col-work { width: 28%; }
+  .has-app-layout .col-phase { width: 16%; }
+  .has-app-layout .col-step { width: 27%; }
+  .has-app-layout .col-date { width: 12%; }
+  .has-app-layout .col-owner { width: 10%; }
+  .has-app-layout .col-actions { width: 7%; }
+  .has-app-layout .table-frame :is(th, td) { padding-inline: var(--space-2); }
+  .has-app-layout .table-frame .deal-cell { min-width: 0; }
+  .has-app-layout .table-frame .due { white-space: normal; }
+  @container (max-width: 850px) {
+    .has-app-layout .table-frame table { display: block; }
+    .has-app-layout .table-frame thead { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; }
+    .has-app-layout .table-frame tbody { display: grid; gap: var(--space-3); }
+    .has-app-layout .table-frame tr { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 200px), 1fr)); background: var(--surface-1); border-radius: var(--radius-2); }
+    .has-app-layout .table-frame td { display: block; min-width: 0; border: 0; }
+    .has-app-layout .table-frame td::before { display: block; margin-bottom: var(--space-1); color: var(--fg-muted); }
+    .has-app-layout .table-frame td:nth-child(1)::before { content: "Work record"; }
+    .has-app-layout .table-frame td:nth-child(2)::before { content: "Phase"; }
+    .has-app-layout .table-frame td:nth-child(3)::before { content: "Next step"; }
+    .has-app-layout .table-frame td:nth-child(4)::before { content: "Next date"; }
+    .has-app-layout .table-frame td:nth-child(5)::before { content: "Owner or agent"; }
+    .has-app-layout .table-frame .row-actions { display: flex; align-self: end; }
+  }
+}
 
 @media (max-width: 1100px) and (min-width: 761px) and (not ((hover: none) and (pointer: coarse) and (max-width: 1023px))) {
   .app-layout { --layout-left: 210px; --layout-right: 220px; }
