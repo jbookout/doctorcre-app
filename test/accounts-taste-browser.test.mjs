@@ -73,10 +73,12 @@ for (const width of [390, 1280]) for (const theme of ['dark', 'light']) {
 }
 
 for (const theme of ['dark', 'light']) {
-  test(`Desktop account headings align with readable next steps in ${theme}`, async t => {
+  test(`Desktop account headings align with readable next steps with the sidebar open in ${theme}`, async t => {
     const page = await accountPage(t, 1280, theme);
     await page.locator('.account-card').first().click();
-    await screenshot(page, 'columns', 1280, theme);
+    await page.getByRole('button', { name: 'Workspace sidebar', exact: true }).click();
+    assert.equal(await page.locator('.app-layout').getAttribute('data-sidebar'), 'open');
+    await screenshot(page, 'columns-sidebar', 1280, theme);
     const headings = page.locator('#tableFrame thead');
     const geometry = await headings.boundingBox();
     assert.ok(geometry && geometry.height >= 24 && geometry.width > 400, 'desktop column headings are visible');
@@ -85,11 +87,20 @@ for (const theme of ['dark', 'light']) {
       const step = row.querySelector('.step-button');
       const range = document.createRange();
       range.selectNodeContents(step);
+      const nameRange = document.createRange();
+      nameRange.selectNodeContents(row.querySelector('.deal-link'));
+      const metadata = [...row.querySelectorAll('.deal-meta span')].map(node => {
+        const range = document.createRange();
+        range.selectNodeContents(node);
+        return { text: node.textContent, lines: range.getClientRects().length };
+      });
       return { text: step.textContent, lines: range.getClientRects().length,
+        nameLines: nameRange.getClientRects().length, metadata,
         phaseWidth: row.querySelector('select[data-phase]').getBoundingClientRect().width,
         stepWidth: step.getBoundingClientRect().width };
     }));
     assert.ok(rows.every(row => row.lines <= 2), JSON.stringify(rows));
+    assert.ok(rows.every(row => row.nameLines <= 2 && row.metadata.every(item => item.lines <= 1)), JSON.stringify(rows));
     assert.ok(rows.every(row => row.stepWidth > row.phaseWidth), JSON.stringify(rows));
     assert.equal(await page.evaluate(() => document.querySelector('#tableFrame').scrollWidth > document.querySelector('#tableFrame').clientWidth), false);
   });
