@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { chromium } from './browser-harness.mjs';
+import { chromium, waitForAsync } from './browser-harness.mjs';
 import { startFixtureServer } from '../scripts/fixture-server.mjs';
 import { createFixtureClient } from '../js/fixture-client.js';
 
@@ -59,4 +59,27 @@ test('linked Work Request facts stay separate from the selected incident in Atte
   assert.equal(await fact(detail, 'Blocker'), 'Demo incident source stopped');
   assert.equal(await fact(detail, 'Linked WR owner'), 'joe');
   assert.equal(await fact(detail, 'Linked WR blocker'), 'Demo linked WR dependency');
+});
+
+test('board census failure invalidates Attention and its open detail while Queue succeeds', async t => {
+  const { page, state } = await open(t);
+  await page.locator('[data-attention-id="incident:INC-DEMO"] button').click();
+  const before = state.queueReads;
+  state.censusUnavailable = true;
+  await page.clock.runFor(15001);
+  await page.waitForFunction(() => document.querySelector('#system-work-error')?.hidden === false);
+  await waitForAsync(page, async () => {
+    const { view } = await import('/js/control-room.js');
+    return view.sequence >= 2 && view.status === 'ready';
+  });
+  assert.ok(state.queueReads > before, 'Queue reread succeeded independently');
+  assert.equal(await page.evaluate(async () => (await import('/js/control-room.js')).view.queue.state), 'read');
+  assert.equal(await page.locator('#crAttentionList [data-attention-id]').count(), 0);
+  assert.match(await page.locator('#crAttentionList').innerText(), /Attention work could not be read/);
+  assert.match(await page.locator('#jobBody').innerText(), /Source unavailable.*Last-known/);
+  assert.equal(await page.locator('#jobTitle').innerText(), 'Demo blocked incident');
+  state.censusUnavailable = false;
+  await page.clock.runFor(15001);
+  await page.locator('[data-attention-id="incident:INC-DEMO"]').waitFor();
+  assert.doesNotMatch(await page.locator('#jobBody').innerText(), /Source unavailable/);
 });
