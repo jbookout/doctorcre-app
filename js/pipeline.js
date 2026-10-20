@@ -128,7 +128,8 @@ function autoHtml(deal) {
 }
 const dealTitle = (deal) => dealName(deal.name);
 function nextStepHtml(deal) {
-  const text = noteText(deal.next_step) || 'Next step pending';
+  const text = noteText(deal.next_step);
+  if (!text.trim()) return '';
   return `<p class="next-line" title="${esc(text)}">${esc(text)}</p>`;
 }
 function cardHtml(deal) {
@@ -855,27 +856,29 @@ async function saveUpdate(id) {
   }
 }
 function fullRecordHtml(detail) {
-  const section = (title, rows, describe) => `<section><h3>${title}</h3>${rows.map(row => `<p>${esc(describe(row))}</p>`).join('') || '<p>None recorded</p>'}</section>`;
-  return `<details class="full-record" data-detail-read="full"><summary>Full record</summary>
+  const section = (title, rows, describe) => rows.length ? `<section><h3>${title}</h3>${rows.map(row => `<p>${esc(describe(row))}</p>`).join('')}</section>` : '';
+  const sections = `
     ${section('Open next actions',(detail.next_actions || []).filter(a => a.status === 'open'), a => `${a.description} · ${actorName(a.owner)} · ${dateWords(a.due_on)}`)}
     ${section('Premises',detail.premises || [], p => [p.label,p.address,p.suite,p.city,p.state,p.area_amount ? `${p.area_amount} ${p.area_basis || 'SF'}` : null].filter(Boolean).join(' · '))}
     ${section('Negotiation rounds',detail.negotiation_rounds || [], n => `Round ${n.round_no} · ${n.side} · ${n.rate_amount ?? 'Rate not captured'} ${n.rate_basis || ''} · ${n.term_months ? `${n.term_months} months` : 'Term not captured'}`)}
     ${section('Documents',detail.documents || [], d => `${String(d.sent_status || 'Prepared').replaceAll('_',' ')} · ${dateWords(d.prepared_at)}`)}
     ${section('Change history',detail.history || [], e => `${e.summary || `${fieldLabel(e.field)} changed`} · ${actorName(e.actor)} · ${dateWords(e.recorded_at)}`)}
-  </details>`;
+  `;
+  return sections.trim() ? `<details class="full-record" data-detail-read="full"><summary>Full record</summary>${sections}</details>` : '<div data-detail-read="full"></div>';
 }
 function detailHtml(detail) {
   const d = detail.deal;
+  const nextStep = noteText(d.next_step).trim();
   const parked = d.operating_state === 'parked';
   const controlsAvailable = state.deals.has(d.id) && !isClosedDeal(d);
   return `<div class="deal-freshness"><time id="detailUpdated" title="Last updated"></time><button class="btn icon-btn" type="button" data-refresh-detail aria-label="Refresh deal" title="Refresh">↻</button></div><p id="detailReadStatus" role="status"></p>
     <section class="deal-opening-snapshot" data-detail-read="snapshot" aria-label="Deal snapshot">
-      ${d.next_step ? `<p class="deal-current-action"><span>${d.next_date && d.next_date < todayIso() ? 'Overdue action' : 'Next action'}</span><strong>${esc(d.next_step)}</strong>${d.next_date ? `<span>Due <time datetime="${esc(d.next_date)}">${esc(dateWords(d.next_date))}</time></span>` : ''}</p>` : ''}
+      ${nextStep ? `<p class="deal-current-action"><span>${d.next_date && d.next_date < todayIso() ? 'Overdue action' : 'Next action'}</span><strong>${esc(nextStep)}</strong>${d.next_date ? `<span>Due <time datetime="${esc(d.next_date)}">${esc(dateWords(d.next_date))}</time></span>` : ''}</p>` : ''}
       <dl class="deal-snapshot-facts">${d.workspace_kind === 'national_account' || d.account_client_id ? `<div><dt>Market agent</dt><dd>${esc(d.market_agent || 'Unassigned')}</dd></div>` : ''}${d.client_name ? `<div><dt>Client</dt><dd>${esc(d.client_name)}</dd></div>` : ''}${d.type ? `<div><dt>Type</dt><dd>${esc(d.type)}</dd></div>` : ''}${d.outcome ? `<div><dt>Outcome</dt><dd>${esc(d.outcome[0].toUpperCase()+d.outcome.slice(1))}</dd></div>` : ''}</dl>
     </section>
     <form id="detailUpdateForm" class="deal-update-form"><label for="dealUpdate">Update</label><textarea id="dealUpdate" name="text" rows="2" maxlength="10000" required></textarea><button class="btn btn-primary" type="submit">Add update</button><p id="detailUpdateStatus" role="status"></p></form>
     <div data-detail-read="board-controls" data-available="${controlsAvailable}">${controlsAvailable ? `<div class="detail-actions"><div class="detail-controls"><label>Phase<select id="detailPhase">${COLUMNS.map(c => `<option value="${esc(c.slug)}"${c.value === d.phase ? ' selected' : ''}>${esc(c.label)}</option>`).join('')}</select></label><label>Owner<select id="detailOwner"><option value="">Unassigned</option>${['joe','dell'].map(owner => `<option value="${owner}"${owner === d.owner ? ' selected' : ''}>${actorName(owner)}</option>`).join('')}</select></label></div><div data-detail-read="parking" data-parked="${parked}">${parked ? `<p>${esc(concise(d.parking_note) || 'Parked')}</p><button type="button" class="btn" data-revive="${esc(d.id)}">Revive</button>` : `<details class="park-options"><summary class="park-control">Park</summary><form id="detailParkForm"><label>Park reason<input name="reason" maxlength="500" required></label><button class="btn park-control" type="submit">Park deal</button></form></details>`}</div></div>` : ''}</div>
-    ${renderDealTimeline(detail)}${renderDealUpdates(detail)}${renderDealChecklist(detail.checklist)}
+    ${renderDealTimeline(detail)}<div data-detail-read="updates">${renderDealUpdates(detail)}</div>${renderDealChecklist(detail.checklist)}
     <button class="btn" type="button" data-jev-deal="${esc(d.id)}">Deal outlook</button><p data-jev-result role="status"></p>
     <details class="deal-dates"><summary>Dates</summary>${renderCriticalDates(detail)}</details>
     <div class="detail-grid"><section>${fullRecordHtml(detail)}</section></div><div id="panelEvidence"></div>`;

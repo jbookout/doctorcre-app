@@ -4,13 +4,13 @@ import {readFile, mkdir, access} from 'node:fs/promises';
 import {chromium, waitForAsync, animationsSettled} from './browser-harness.mjs';
 const root=new URL('../',import.meta.url);
 const longestNextStep='Confirm the Demo Clinic appointment and send notes';
-async function open(t,width=1280,{theme='dark',sparse=false,showDetail=true,height=960}={}) {
+async function open(t,width=1280,{theme='dark',sparse=false,showDetail=true,height=960,nextStep='Prior status that must not prefill',closedOn=null}={}) {
  const browser=await chromium.launch();t.after(()=>browser.close());
  const page=await browser.newPage({viewport:{width,height}});
  await page.addInitScript(theme=>localStorage.setItem('doctorcre.visual-preferences',JSON.stringify({theme})),theme);
  const errors=[];page.on('pageerror',e=>errors.push(e.message));
  const seed=JSON.parse(await readFile(new URL('data/board-seed.json',root),'utf8'));
- Object.assign(seed.deals.find(d=>d.id==='d14'),{phase:'Negotiation',next_step:'Prior status that must not prefill',workspace_kind:'team',account_client_id:null,operating_state:'active'});
+ Object.assign(seed.deals.find(d=>d.id==='d14'),{phase:'Negotiation',next_step:nextStep,closed_on:closedOn,workspace_kind:'team',account_client_id:null,operating_state:'active'});
  seed.deals.find(d=>d.id==='d20').next_step=longestNextStep;
  if(sparse) seed.deals=seed.deals.filter((d,i)=>i<5||d.id==='d14');
  seed.threads.d14=[{id:'demo-old',kind:'note',actor:'joe',text:'Older demo update',created_at:'2026-09-01T15:30:00Z',recorded_at:'2026-09-01T15:30:00Z'},
@@ -81,6 +81,7 @@ test('archive-only snapshots hide board mutation controls',async t=>{
  assert.equal(await page.locator('#detailPhase').count(),0,'archived phase cannot use the board-only move path');
  assert.equal(await page.locator('#detailOwner').count(),0);
  assert.equal(await page.locator('#detailParkForm').count(),0);
+ assert.equal(await page.locator('.full-record').count(),0,'empty record sections do not create placeholder output');
  await page.getByRole('button',{name:'Refresh deal',exact:true}).click();
  await page.waitForTimeout(100);
  assert.deepEqual(errors,[]);
@@ -188,4 +189,68 @@ test('desktop board shows the full longest next step within three lines',async t
  await step.evaluate(n=>n.style.fontFamily='');
  await mkdir(new URL('out/test-artifacts/dealroom-final/',root),{recursive:true});
  await page.screenshot({path:new URL('out/test-artifacts/dealroom-final/1280-light-board.png',root).pathname,animations:'disabled'});
+});
+
+
+test('empty next steps leave cards and snapshots free of invented status text',async t=>{
+ const {page}=await open(t,390,{showDetail:false,nextStep:' \t\n '});
+ const card=page.locator('.kanban-column [data-id="d14"]');
+ assert.equal(await card.locator('.next-line').count(),0);
+ await card.locator('.card-open').click();
+ await page.locator('#detailUpdateForm').waitFor();
+ assert.equal(await page.getByLabel('Update',{exact:true}).inputValue(),'');
+ assert.equal(await page.locator('.deal-current-action').count(),0);
+ assert.equal(await page.locator('.deal-opening-snapshot time').count(),0,'a due date without an action stays omitted');
+ assert.doesNotMatch(await page.locator('#recordPanel').textContent(),/Next step pending|Nothing needs you/i);
+});
+
+
+test('a recorded close date keeps an imported deal in history without open-board controls',async t=>{
+ const {page,errors}=await open(t,1280,{showDetail:false,closedOn:'2026-10-01'});
+ assert.equal(await page.locator('.kanban-column [data-id="d14"]').count(),0);
+ await page.getByRole('button',{name:'List',exact:true}).click();
+ assert.equal(await page.locator('#kanban [data-id="d14"]').count(),0);
+ await page.getByRole('button',{name:'Closed deals',exact:true}).click();
+ await page.locator('#closedDealsList [data-open-deal="d14"]').click();
+ await page.locator('#detailUpdateForm').waitFor();
+ assert.equal(await page.locator('#detailPhase,#detailOwner,#detailParkForm').count(),0);
+ assert.deepEqual(errors,[]);
+});
+
+test('refresh removes record sections when the source has no entries',async t=>{
+ const {page}=await open(t);
+ assert.equal(await page.locator('.full-record').count(),1);
+ await page.evaluate(async()=>{
+  const {state}=await import('/js/pipeline.js');const read=state.client.getDeal;
+  state.client.getDeal=async id=>{const detail=await read(id);return {...detail,next_actions:[],premises:[],negotiation_rounds:[],documents:[],history:[]};};
+ });
+ await page.getByRole('button',{name:'Refresh deal',exact:true}).click();
+ await waitForAsync(page,async()=>(await import('/js/pipeline.js')).state.panelDetail.history.length===0);
+ assert.equal(await page.locator('.full-record').count(),0);
+});
+
+
+test('refresh removes and restores Updates as recorded notes change',async t=>{
+ const {page}=await open(t);
+ assert.equal(await page.locator('.deal-updates').count(),1);
+ await page.getByLabel('Update',{exact:true}).fill('Demo unsaved draft');
+ await page.evaluate(async()=>{
+  const {state}=await import('/js/pipeline.js');const read=state.client.getDeal;
+  state.client.getDeal=async id=>{
+   const detail=await read(id);
+   return {...detail,thread:[],activities:[]};
+  };
+ });
+ await page.getByRole('button',{name:'Refresh deal',exact:true}).click();
+ await waitForAsync(page,async()=>(await import('/js/pipeline.js')).state.panelDetail.thread.length===0);
+ assert.equal(await page.locator('.deal-updates').count(),0);
+ assert.doesNotMatch(await page.locator('#recordPanel').textContent(),/No updates recorded/);
+ await page.evaluate(async()=>{
+  const {state}=await import('/js/pipeline.js');const read=state.client.getDeal;
+  state.client.getDeal=async id=>({...await read(id),thread:[{id:'demo-restored',kind:'note',actor:'joe',text:'Demo restored update',at:'2026-10-02'}]});
+ });
+ await page.getByRole('button',{name:'Refresh deal',exact:true}).click();
+ await page.locator('.deal-note[data-id="demo-restored"]').waitFor();
+ assert.equal(await page.locator('.deal-updates').count(),1);
+ assert.equal(await page.getByLabel('Update',{exact:true}).inputValue(),'Demo unsaved draft');
 });
