@@ -7,12 +7,8 @@
 // re-renders only when the rendered signature changes, so a dock that is
 // already correct is left alone and a focused button keeps its focus.
 //
-// `onUndo` is wired by no production page today. The dock keys on operations;
-// Undo keys on change-feed events and lives in the Recent changes popup
-// (change-receipts.mjs). The hook stays for a page whose operation maps to
-// exactly one event; see the header of command-feedback.mjs for why the two
-// key spaces are kept apart on purpose.
 import { commandDockHtml, commandReceiptView } from './command-feedback.mjs';
+import { showToast } from './toast.js';
 
 /**
  * How many entries the dock keeps before it starts forgetting.
@@ -35,7 +31,27 @@ export function createCommandDock({ root, onDispatch = null, onReconcile = null,
   let signature = null;
   let wired = false;
 
-  const views = () => [...entries.values()].map(commandReceiptView);
+  const views = () => [...entries.values()]
+    .filter((entry) => !entry.dismissed && commandReceiptView(entry).state !== 'confirmed')
+    .map(commandReceiptView);
+
+  function present() {
+    if (!root) return;
+    for (const receipt of root.querySelectorAll('.receipt[data-op]')) {
+      const entry = entries.get(receipt.dataset.op);
+      if (!entry) continue;
+      const state = commandReceiptView(entry).state;
+      if (!['refused', 'unknown'].includes(state) || receipt.querySelector('[data-dock-close]')) continue;
+      const close = root.ownerDocument.createElement('button');
+      close.type = 'button';
+      close.className = 'btn btn-quiet receipt-dismiss';
+      close.dataset.dockClose = '';
+      close.dataset.op = entry.operationKey;
+      close.setAttribute('aria-label', `Dismiss ${entry.summary || 'command notification'}`);
+      close.textContent = 'Close';
+      receipt.lastElementChild?.append(close);
+    }
+  }
 
   function render() {
     if (!root) return '';
@@ -44,6 +60,7 @@ export function createCommandDock({ root, onDispatch = null, onReconcile = null,
       signature = html;
       root.innerHTML = html;
     }
+    present();
     for (const button of root.querySelectorAll('button[data-op][data-event]')) button.hidden = !actionable(button.dataset.op);
     return html;
   }
@@ -54,12 +71,19 @@ export function createCommandDock({ root, onDispatch = null, onReconcile = null,
    */
   function record(operationKey, { summary = '', status = null, state = null, reason = null, retry = false, undo = false, request = null } = {}) {
     const previous = entries.get(operationKey) || {};
-    entries.set(operationKey, {
+    const previousState = previous.operationKey ? commandReceiptView(previous).state : null;
+    const next = {
       ...previous, operationKey,
       summary: summary || previous.summary || '',
       status, state, reason, retry, undo,
       request: request || previous.request || null,
-    });
+      dismissed: false,
+    };
+    const nextState = commandReceiptView(next).state;
+    entries.set(operationKey, next);
+    if (nextState === 'confirmed' && previousState !== 'confirmed' && root) {
+      showToast(next.summary || 'Change confirmed', { preserveUndo: true });
+    }
     evict();
     render();
     return entries.get(operationKey);
@@ -90,6 +114,16 @@ export function createCommandDock({ root, onDispatch = null, onReconcile = null,
     if (!root || wired) return;
     wired = true;
     root.addEventListener('click', (event) => {
+      const close = event.target.closest('button[data-dock-close][data-op]');
+      if (close && root.contains(close)) {
+        const operationKey = close.dataset.op;
+        const entry = entries.get(operationKey);
+        if (entry && ['refused', 'unknown'].includes(commandReceiptView(entry).state)) {
+          entry.dismissed = true;
+          render();
+        }
+        return;
+      }
       const button = event.target.closest('button[data-op][data-event]');
       if (!button || !root.contains(button)) return;
       const operationKey = button.dataset.op;

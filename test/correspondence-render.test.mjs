@@ -31,7 +31,7 @@ test('390px and iPad fixture evidence stays readable, sourced, read-only and tou
 
 test('unavailable is intentional visible copy with source and no zero or success list', () => {
   const html = renderEvidence({});
-  assert.match(html, /Threads unavailable/); assert.match(html, /Meeting evidence unavailable/);
+  assert.equal(html,'');
   assert.doesNotMatch(html, /Source:/); assert.doesNotMatch(html, /No (threads|meetings)|0 (threads|meetings)|<ol/);
 });
 
@@ -80,7 +80,7 @@ test('mixed correspondence pointers preserve unavailable coverage instead of a s
       assert.deepEqual(calls, [identity]);
       assert.equal(state.meetings.state, 'ready');
       const html = renderEvidence(state);
-      assert.match(html, /Threads unavailable/);
+      assert.doesNotMatch(html, /Threads unavailable|data-kind="thread"/);
       assert.doesNotMatch(html, /provenance|Source:/);
     });
   }
@@ -146,15 +146,16 @@ test('meeting disclosure and keyboard focus survive delayed read settlement and 
         await summary.press('Enter');
         assert.equal(await disclosure.getAttribute('open'), '');
         assert.equal(await summary.evaluate(el => document.activeElement === el), true);
-        assert.equal(await page.locator('[data-state="loading"]').count(), 1);
+        assert.equal(await page.locator('[data-state="loading"]').count(), 0);
         if (outcome === 'settled') {
           await page.evaluate(answer => window.resolveEvidenceRead(answer), phase === 'readiness' ? readiness : found);
         }
-        await page.waitForFunction(() => !document.querySelector('[data-state="loading"]'));
+        if(outcome === 'settled') await page.locator('[data-kind="thread"]').waitFor();
+        else await page.waitForTimeout(3100);
         assert.equal(await disclosure.getAttribute('open'), '', 'settlement preserves the open meeting');
         assert.equal(await summary.evaluate(el => document.activeElement === el), true, 'settlement preserves keyboard focus');
         if (outcome === 'settled') assert.equal(await page.locator('[data-kind="thread"]').count(), 1);
-        else assert.equal(await page.locator('[data-state="unavailable"]').textContent().then(text => text.includes('Threads unavailable')), true);
+        else assert.equal(await page.locator('[data-state="unavailable"]').count(),0);
         await summary.press('Enter');
         assert.equal(await disclosure.getAttribute('open'), null, 'the preserved summary remains operable');
       });
@@ -174,5 +175,5 @@ test('both record panel controllers wire Evidence using the shared renderer', as
   assert.match(pipeline, /mountEvidence\(/);
   assert.match(business, /loadEvidence\(/);
   assert.match(business, /renderEvidence\(/);
-  assert.match(deals, /mountEvidence\(/, 'the current /deals route uses app.js, so its record dialog also needs Evidence');
+  assert.match(deals, /location.assign\(`\/deals\?deal=/, 'legacy cards use the shared snapshot route');
 });

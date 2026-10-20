@@ -47,7 +47,8 @@
 .assurance-scope button { justify-self: start; }
 .state-block { overflow-wrap: anywhere; }
 .state-block[data-state="healthy"] { border-style: solid; border-color: var(--status-ok); }
-.state-block[data-state="degraded"], .state-block[data-state="failed"] { border-style: solid; border-color: var(--accent); }
+.state-block[data-state="degraded"] { border-style: solid; border-color: var(--status-warn); }
+.state-block[data-state="failed"] { border-style: solid; border-color: var(--status-danger); }
 .assurance-context { color: var(--fg-quiet); padding-bottom: 8px; }
 .assurance-evidence { list-style: none; margin: 12px 0 0; padding: 0; }
 .assurance-evidence li { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 12px; padding: 8px 0; border-top: 1px solid var(--hairline); font-size: 12px; }
