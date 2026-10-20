@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {readFile, mkdir, access} from 'node:fs/promises';
 import {chromium, waitForAsync, animationsSettled} from './browser-harness.mjs';
 const root=new URL('../',import.meta.url);
-const longestNextStep='Confirm appointment with Demo Clinic';
+const longestNextStep='Confirm the Demo Clinic appointment and send notes';
 async function open(t,width=1280,{theme='dark',sparse=false,showDetail=true,height=960}={}) {
  const browser=await chromium.launch();t.after(()=>browser.close());
  const page=await browser.newPage({viewport:{width,height}});
@@ -172,16 +172,20 @@ test('desktop board shows the full longest next step within three lines',async t
  const step=page.locator('.kanban-column [data-id="d20"] .next-line');
  assert.equal(await step.textContent(),longestNextStep);
  assert.equal(await step.getAttribute('title'),longestNextStep);
- const layout=await step.evaluate(n=>{
-  const box=n.getBoundingClientRect(),range=document.createRange();range.selectNodeContents(n);
-  const lines=[...range.getClientRects()];
-  return {height:box.height,lineHeight:parseFloat(getComputedStyle(n).lineHeight),
-   clipped:lines.filter(line=>line.bottom>box.bottom+1||line.right>box.right+1).length};
- });
- assert.equal(layout.clipped,0,'the whole sentence fits inside the visible next step');
- assert.ok(layout.height>layout.lineHeight*2,'fixture exercises the third line');
- assert.ok(layout.height<=layout.lineHeight*3+1,'next step uses at most three lines');
- assert.ok((await step.locator('..').boundingBox()).height<240,'card stays compact');
+ for(const fontFamily of ['', 'Arial']){
+  await step.evaluate((n,fontFamily)=>n.style.fontFamily=fontFamily,fontFamily);
+  const layout=await step.evaluate(n=>{
+   const box=n.getBoundingClientRect(),range=document.createRange();range.selectNodeContents(n);
+   const lines=[...range.getClientRects()];
+   return {height:box.height,lineHeight:parseFloat(getComputedStyle(n).lineHeight),
+    clipped:lines.filter(line=>line.bottom>box.bottom+1||line.right>box.right+1).length};
+  });
+  assert.equal(layout.clipped,0,'the whole sentence fits inside the visible next step');
+  assert.ok(layout.height>layout.lineHeight*2,'fixture exercises the third line');
+  assert.ok(layout.height<=layout.lineHeight*3+1,'next step uses at most three lines');
+  assert.ok((await step.locator('..').boundingBox()).height<240,'card stays compact');
+ }
+ await step.evaluate(n=>n.style.fontFamily='');
  await mkdir(new URL('out/test-artifacts/dealroom-final/',root),{recursive:true});
  await page.screenshot({path:new URL('out/test-artifacts/dealroom-final/1280-light-board.png',root).pathname,animations:'disabled'});
 });

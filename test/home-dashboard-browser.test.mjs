@@ -259,7 +259,8 @@ test('suggested introductions keep readable text on their dark cards in both the
 });
 
 test('Home has no ambient motion and hover never moves a row, without hiding data', async t => {
-  const { page } = await open(t, { motion: 'no-preference' });
+  const { page } = await open(t, { motion: 'no-preference', delayDetails: true });
+  await page.waitForFunction(() => document.querySelector('#refreshHome').getAttribute('aria-busy') === 'false');
   await page.locator('.home-radar').waitFor();
   assert.equal(await page.locator('.radar-wave').evaluate(node => getComputedStyle(node).animationName), 'none');
   await page.emulateMedia({ reducedMotion: 'reduce' });
