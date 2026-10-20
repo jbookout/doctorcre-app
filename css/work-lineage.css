@@ -33,3 +33,7 @@
 .work-dependencies small { font-size: var(--font-size-1); }
 .work-dependencies a { display: inline-flex; align-items: center; min-height: 44px; max-width: 100%; color: inherit; text-underline-offset: .2em; }
 .work-dependencies a:focus-visible { outline: var(--focus-width) solid var(--focus-ring); outline-offset: var(--focus-width); border-radius: var(--radius-1); }
+.work-progress-checks a { grid-column: 2; display: inline-flex; align-items: center; min-height: 44px; width: fit-content; color: var(--fg-muted); text-underline-offset: .2em; }
+.work-progress-checks a:focus-visible { outline: var(--focus-width) solid var(--focus-ring); outline-offset: var(--focus-width); }
+#jobBody > .work-progress:first-child { margin-top: 0; }
+.work-check-criterion small { display: block; margin-top: var(--space-1); color: var(--fg-muted); }

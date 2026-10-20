@@ -5,12 +5,13 @@ import {chromium,waitForAsync} from './browser-harness.mjs';
 import {createFixtureClient} from '../js/fixture-client.js';
 import axe from 'axe-core';
 import hierarchy from './fixtures/progress-board-hierarchy.json' with {type:'json'};
+import progressFixture from './fixtures/engineering-progress.synthetic.json' with {type:'json'};
 import {atlasFixtureResponse} from '../scripts/atlas-fixture.mjs';
 import { routeContract as routes } from "../js/routes.js";
 import { BOARD_ROUTE, boardIdFromPath } from '../js/progress-board-route.js';
 const root=new URL('../',import.meta.url);
-const reads={'list-feature-switches':'listFeatureSwitches','list-doc-suggestions':'listDocSuggestions','read-progress-board':'readProgressBoard','list-progress-boards':'listProgressBoards','unfinished-work':'unfinishedWork','incident-board':'incidentBoard','governance-queue':'governanceQueue','schedule-board':'scheduleBoard','work-request-card':'workRequestCard','deal-room-board':'getBoard','today-triage':'todayTriage','notification-feed':'notificationFeed','read-room-queue':'roomQueue','read-room':'roomTurns','read-session-identity':'sessionIdentity','list-my-codex-sessions':'codexSessions','current-work-item':'currentWorkItem','list-notifications':'listNotifications'};
-async function open(t,{width=1440,height=width===1440?1000:844,path='/control-room?mode=live&tab=boards',connectionsBad=false,countIncidentClicks=false,unboundBoard=false,boardUnpublished=false,emptyIncidents=false,extraBoard=false,theme='dark',snapshotData}={}){
+const reads={'list-feature-switches':'listFeatureSwitches','list-doc-suggestions':'listDocSuggestions','read-progress-board':'readProgressBoard','list-progress-boards':'listProgressBoards','unfinished-work':'unfinishedWork','incident-board':'incidentBoard','governance-queue':'governanceQueue','schedule-board':'scheduleBoard','work-request-card':'workRequestCard','engineering-passport':'engineeringPassport','deal-room-board':'getBoard','today-triage':'todayTriage','notification-feed':'notificationFeed','read-room-queue':'roomQueue','read-room':'roomTurns','read-session-identity':'sessionIdentity','list-my-codex-sessions':'codexSessions','current-work-item':'currentWorkItem','list-notifications':'listNotifications'};
+async function open(t,{width=1440,height=width===1440?1000:844,path='/control-room?mode=live&tab=boards',connectionsBad=false,countIncidentClicks=false,unboundBoard=false,boardUnpublished=false,emptyIncidents=false,extraBoard=false,theme='dark',snapshotData,acceptanceProgress=false}={}){
  const browser=await chromium.launch();t.after(()=>browser.close());
  const page=await browser.newPage({viewport:{width,height},timezoneId:'UTC',reducedMotion:'reduce'});
  await page.addInitScript(theme=>localStorage.setItem('doctorcre.visual-preferences',JSON.stringify({theme})),theme);
@@ -59,6 +60,7 @@ async function open(t,{width=1440,height=width===1440?1000:844,path='/control-ro
    if(rpc.name==='unfinished-work'&&rpc.arguments.live_library)payload.items=state.liveItems;
    if(rpc.name==='read-resource-dashboard'){payload=await fixture.readResourceDashboard();payload.connections=await fixture.readConnections();payload.connections.providers[0].spend.amount=state.spend;if(state.connectionsBad){payload.connections.providers.push(null);payload.connections.devices.items.push(null);}}
    if(rpc.name==='work-request-card')payload.desired_outcome='Demo acceptance summary';
+   if(rpc.name==='engineering-progress'&&acceptanceProgress)payload={...structuredClone(progressFixture),work_request:rpc.arguments.work_request};
    return route.fulfill({contentType:'application/json',body:JSON.stringify({result:{content:[{text:JSON.stringify(payload)}]}})});
   }
   if(url.pathname==='/api/v1/atlas-graph'){const result=atlasFixtureResponse(url,'GET');
@@ -722,4 +724,30 @@ test('completed hierarchy jobs restore a visible originating control on dialog c
  await page.keyboard.press('Escape');await page.clock.runFor(50);
  assert.equal(await job.isVisible(),true);
  assert.equal(await job.evaluate(n=>n===document.activeElement),true);
+});
+
+for(const width of [390,1280])for(const theme of ['dark','light'])
+test(`acceptance summary leads the job dialog at ${width}px in ${theme}`,async t=>{
+ const {page,errors}=await open(t,{width,theme,acceptanceProgress:true});
+ await page.locator('[data-task-id="work_request:WR-000901"]').click();
+ await page.locator('#jobBody .work-progress-summary').getByText('2 of 5 acceptance checks verified',{exact:true}).waitFor();
+ const layout=await page.evaluate(()=>{
+  const title=document.querySelector('#jobTitle').getBoundingClientRect(),summary=document.querySelector('.work-progress-summary').getBoundingClientRect();
+  return {first:document.querySelector('#jobBody').firstElementChild.className,top:summary.top,bottom:summary.bottom,titleBottom:title.bottom,height:innerHeight};
+ });
+ assert.equal(layout.first,'work-progress');assert.ok(layout.top>=layout.titleBottom&&layout.bottom<layout.height);
+ assert.equal(await page.locator('#jobBody .work-progress-checks a').count(),5);
+ assert.doesNotMatch(await page.locator('#jobBody .work-progress-checks').allTextContents().then(rows=>rows.join(' ')),/check:/);
+ assert.match(await page.locator('#jobBody .work-progress-checks').allTextContents().then(rows=>rows.join(' ')),/Verified fraction/);
+ if(process.env.SLICE9_TASTE_CAPTURE_DIR){
+  await mkdir(process.env.SLICE9_TASTE_CAPTURE_DIR,{recursive:true});
+  await page.screenshot({path:`${process.env.SLICE9_TASTE_CAPTURE_DIR}/dialog-${width}-${theme}.png`});
+ }
+ await page.locator('#jobBody .work-progress summary').click();
+ const history=page.locator('#jobBody .work-progress details');
+ assert.match(await history.textContent(),/Total increased by 1 check since revision 1/);
+ await history.scrollIntoViewIfNeeded();
+ if(process.env.SLICE9_TASTE_CAPTURE_DIR)await page.screenshot({path:`${process.env.SLICE9_TASTE_CAPTURE_DIR}/scope-history-${width}-${theme}.png`});
+ assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
+ assert.deepEqual(errors,[]);
 });

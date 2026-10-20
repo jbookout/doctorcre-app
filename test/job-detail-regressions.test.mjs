@@ -119,6 +119,7 @@ test('PR detail explains verified checks, remaining work and scope history',asyn
  const {detail,body}=setup({workRequestCard:async()=>({ok:true,human_ref:'WR-900'}),engineeringProgress:async()=>structuredClone(progressFixture)});
  detail.open({id:'pr-73',pr:73,work_request_ref:'WR-900'});await tick();
  const progress=body.querySelector('.work-progress');assert.ok(progress);
+ assert.equal(body.firstElementChild,progress,'Acceptance progress leads the dialog, directly below its title');
  assert.match(progress.textContent,/2 of 5 acceptance checks verified/);assert.match(progress.textContent,/3 remaining/);
  assert.match(progress.textContent,/Scope revision 2/);assert.match(progress.textContent,/Revision 1.*4 acceptance checks/);
  assert.equal(progress.querySelector('progress').value,2);
