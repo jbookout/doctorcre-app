@@ -354,6 +354,14 @@ footer { padding-top: 8px; }
 /* Both board routes scroll above the fixed navigation and status footer. */
 .app-layout-center:has(#board-stages):not(:has(#panelDashboard[hidden])) { height: calc(100dvh - var(--layout-bottom)); overflow-y: auto; overscroll-behavior-y: contain; scroll-padding-block: var(--tabbar-height) var(--space-5); }
 .hierarchy-board { display: block; }
+.pipeline-panel:has([aria-busy="true"]) :is(.filters, .pipeline-rail),
+:is(main, #panelDashboard):has(#board-stages[aria-busy="true"]) > :is(.headline, .lower-grid, .panel:not(.pipeline-panel)),
+:is(main, #panelDashboard):has(#board-stages[aria-busy="true"]) .intro .headline { display: none; }
+.hierarchy-loading .hierarchy-toolbar { height: var(--touch); }
+.hierarchy-skeleton { min-height: 190px; }
+.hierarchy-skeleton::before, .hierarchy-skeleton::after { content: ''; display: block; height: var(--space-3); background: var(--surface-3); border-radius: var(--radius-1); margin-block: var(--space-4); }
+.hierarchy-skeleton::before { width: 55%; }
+.hierarchy-skeleton::after { width: 85%; }
 .hierarchy-toolbar { display: flex; flex-wrap: wrap; align-items: start; justify-content: space-between; gap: var(--space-2) var(--space-4); }
 .hierarchy-breadcrumbs { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-4); margin: 0; font-size: var(--font-size-1); }
 .hierarchy-breadcrumbs a { display: inline-flex; align-items: center; min-height: var(--touch); color: var(--fg-muted); text-decoration: none; }

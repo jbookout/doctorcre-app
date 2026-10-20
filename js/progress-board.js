@@ -416,6 +416,22 @@ export function mountBoard(deps = {}) {
   }
 
   function renderStages(view) {
+    const container = byId("board-stages");
+    if (!view && boardState === "pending") {
+      container.setAttribute("aria-busy", "true");
+      container.classList.add("hierarchy-board");
+      byId("pipeline-title").textContent = boardId === SYSTEM_BOARD_ID ? "Work Requests" : "Loading board";
+      doc.querySelector("details.directory-panel")?.removeAttribute("open");
+      const loading = el("div", "hierarchy-loading");
+      loading.setAttribute("aria-hidden", "true");
+      loading.append(el("div", "hierarchy-toolbar"));
+      const rows = el("div", "hierarchy-grid");
+      for (let index = 0; index < 3; index++) rows.append(el("div", "hierarchy-card hierarchy-skeleton"));
+      loading.append(rows);
+      container.replaceChildren(loading);
+      return;
+    }
+    container.removeAttribute("aria-busy");
     if (view?.hierarchy) {
       pipelineCards = Object.entries(view.hierarchy.cards).map(([id, card]) => ({...card, id, title:card.card_title, summary:card.card_description}));
       if (!hierarchyUI) doc.querySelector("details.directory-panel")?.removeAttribute("open");
@@ -428,11 +444,13 @@ export function mountBoard(deps = {}) {
         byId(id)?.closest(".panel")?.setAttribute("hidden", "");
       return;
     }
+    container.classList.remove("hierarchy-board");
+    byId("pipeline-title").textContent = "The path to live";
     const census = deps.openTask ? censusCards() : null;
     const mode = byId("board-data-mode");
     if (mode) mode.textContent = census ? "Live work · The pipeline shows current work."
       : view ? "Published snapshot · The pipeline shows published work." : "";
-    if (!view && !census) return;
+    if (!view && !census) { container.replaceChildren(); return; }
     const original = census || view.cards;
     const approvals = governanceTasks(governanceRead);
     const approvalCards = approvals && boardView({snapshot:{board_id:boardId, version:1,
@@ -447,7 +465,6 @@ export function mountBoard(deps = {}) {
     renderCompleted({...view, cards:all,stages});
     const kind = census ? "project" : view.kind;
     pipelineCards = all;
-    const container = byId("board-stages");
     const focusedId = [...cardNodes].find(([, node]) => node === doc.activeElement)?.[0];
     const focusedControlId = container.contains(doc.activeElement) ? doc.activeElement.id : null;
     container.replaceChildren();
@@ -936,6 +953,8 @@ export function mountBoard(deps = {}) {
     formState.clear();
     pendingRequests.clear();
     for (const id of BOARD_PANELS) byId(id)?.replaceChildren();
+    byId("board-stages").removeAttribute("aria-busy");
+    byId("board-stages").classList.remove("hierarchy-board");
     for (const id of BOARD_COUNTS) byId(id).textContent = "—";
     if (state === "unpublished") {
       byId("board-stages").append(el("p", "empty", "Tasks appear when this board is published."));
@@ -974,6 +993,7 @@ export function mountBoard(deps = {}) {
       error.hidden = false;
       error.setAttribute("data-read-state", state);
     } else {
+      if (!currentView) renderStages(null);
       setError(message);
       const meta = byId("board-meta");
       meta.setAttribute("data-read-state", state);
@@ -1048,6 +1068,7 @@ export function mountBoard(deps = {}) {
   }
 
   function start() {
+    renderStages(currentView);
     if (boardId === SYSTEM_BOARD_ID && typeof client.unfinishedWork === "function" && byId("system-work-panel"))
       systemWork = mountSystemWorkBoard({ client, openTask:deps.openTask, onAccessDenied: cause => readFailure(cause, "board"), onPipeline: pipeline => { censusPipeline = pipeline; renderStages(currentView); } });
     refresh().catch(() => setError("Progress temporarily unavailable."));
