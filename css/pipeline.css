@@ -142,8 +142,8 @@
 .closed-deals-list { display: grid; grid-template-columns: repeat(auto-fit,minmax(min(100%,280px),1fr)); gap: var(--space-3); }
 .closed-deal { padding: var(--space-4); min-width: 0; overflow-wrap: anywhere; }
 .closed-deal h3 { margin: 0 0 var(--space-3); }
-.closed-deal dl { display: grid; gap: var(--space-2); margin: 0; }
-.closed-deal dl > div { display: grid; grid-template-columns: 90px minmax(0,1fr); gap: var(--space-2); }
+.closed-deal dl:not(.deal-vendors) { display: grid; gap: var(--space-2); margin: 0; }
+.closed-deal dl:not(.deal-vendors) > div { display: grid; grid-template-columns: 90px minmax(0,1fr); gap: var(--space-2); }
 .closed-deal dt { color: var(--fg-muted); }
 .closed-deal dd { margin: 0; }
 
