@@ -152,17 +152,12 @@ function deriveLinks() {
   if (changed) readSessions();
 }
 function flow(task) {
-  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-  svg.setAttribute('viewBox','0 0 720 90'); svg.setAttribute('role','img'); svg.setAttribute('aria-label','Task links to sessions, attempts and independent review'); svg.classList.add('work-flow');
+  const list = node('ol', null, 'work-flow');
+  list.setAttribute('aria-label','Task links to sessions, attempts and independent review');
   const status = task?.status || card?.state;
-  svg.dataset.pulse = ['failed','blocked'].includes(status) ? 'critical' : ['review','needs_revision'].includes(status) ? 'attention' : ['running','in_progress','claimed'].includes(status) ? 'healthy' : 'still';
-  for (const [index, label] of ['Task', 'Sessions', 'Attempts', 'Review'].entries()) {
-    const x = index * 180;
-    if (index) { const line = document.createElementNS(svg.namespaceURI,'line'); for (const [key,value] of Object.entries({x1:x-40,y1:40,x2:x,y2:40})) line.setAttribute(key,value); svg.append(line); }
-    const rect = document.createElementNS(svg.namespaceURI,'rect'); for (const [key,value] of Object.entries({x,y:10,width:140,height:60,rx:10})) rect.setAttribute(key,value);
-    const text = document.createElementNS(svg.namespaceURI,'text'); text.setAttribute('x',x+12); text.setAttribute('y',45); text.textContent = label; svg.append(rect,text);
-  }
-  return svg;
+  list.dataset.pulse = ['failed','blocked'].includes(status) ? 'critical' : ['review','needs_revision'].includes(status) ? 'attention' : ['running','in_progress','claimed'].includes(status) ? 'healthy' : 'still';
+  for (const label of ['Task', 'Sessions', 'Attempts', 'Review']) list.append(node('li', label));
+  return list;
 }
 function renderReviews() {
   const reviews = engineering?.reviewer_facts || [], receipts = engineering?.receipts || [];

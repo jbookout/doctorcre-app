@@ -674,7 +674,7 @@ for(const width of [320,390,1440])test(`work detail has no horizontal scroll at 
   }
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
   assert.equal(await page.locator('#composerSend').evaluate(button=>{const r=button.getBoundingClientRect();return button.contains(document.elementFromPoint(r.x+r.width/2,r.y+r.height/2));}),true);
-  await page.emulateMedia({reducedMotion:'reduce'});assert.equal(await page.locator('.work-flow line').first().evaluate(node=>getComputedStyle(node).animationName),'none');assert.deepEqual(errors,[]);
+  await page.emulateMedia({reducedMotion:'reduce'});assert.equal(await page.locator('.work-flow li').first().evaluate(node=>getComputedStyle(node).animationName),'none');assert.deepEqual(errors,[]);
 });
 
 test('empty, stale and offline states stay legible without inventing work',async t=>{
