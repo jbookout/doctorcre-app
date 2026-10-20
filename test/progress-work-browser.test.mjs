@@ -951,6 +951,10 @@ test('Tab reaches the linked Work Request and Enter opens its standalone detail'
   const link = page.locator('.work-lineage a').filter({hasText:'WR-900'});
   await link.waitFor();
   await page.locator('#workTitle').focus();
+  for (const criterion of await page.locator('.work-progress-checks a').all()) {
+    await page.keyboard.press('Tab');
+    assert.equal(await criterion.evaluate(el => el === document.activeElement), true, 'Acceptance evidence stays in native tab order');
+  }
   await page.keyboard.press('Tab');
   assert.equal(await page.locator('.work-progress summary').evaluate(el => el === document.activeElement), true, 'Scope history remains in native tab order');
   await page.keyboard.press('Tab');
