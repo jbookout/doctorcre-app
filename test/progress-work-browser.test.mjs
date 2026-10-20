@@ -851,6 +851,28 @@ test('work detail follows two alias hops to the published task', async t => {
 });
 
 
+test('chained alias and direct task URLs show identical work evidence', async t => {
+  const evidence = [];
+  for (const requested of [taskId, 'legacy-pr-73']) {
+    const {page,errors} = await open(t, {
+      path:`/control-room/progress/work?board=demo-project&task=${requested}`,
+      rpcReply:(rpc,payload) => {
+        if (rpc.name === 'read-progress-board') payload.snapshot.snapshot_json.hierarchy = {
+          aliases:{'legacy-pr-73':'middle', middle:taskId},
+        };
+        return payload;
+      },
+    });
+    await page.waitForFunction(() => document.querySelector('#workCanonicalBody').textContent.includes('Closure: blocked'));
+    await page.waitForFunction(() => document.querySelector('#workSessionList').textContent.includes('Demo builder'));
+    await page.clock.runFor(5100);
+    evidence.push(await page.locator('#workReviewList, #workDotList, #workSessionList, #workCanonicalBody, #wireFeed').allTextContents());
+    assert.deepEqual(errors, []);
+  }
+  assert.match(evidence[0].join('\n'), /Fix round one/);
+  assert.deepEqual(evidence[1], evidence[0]);
+});
+
 for (const requested of [taskId, 'legacy-pr-73']) test(`work detail prefers an exact published key reached from ${requested}`, async t => {
   const {page,errors} = await open(t, {
     path:`/control-room/progress/work?board=demo-project&task=${requested}`,
