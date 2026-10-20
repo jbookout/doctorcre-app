@@ -35,6 +35,7 @@ for (const width of [390, 1280]) for (const theme of ['light', 'dark']) {
     const identity = await page.request.get(`${origin}/api/test/identity`);
     assert.equal((await identity.json()).viewer, viewer);
     const errors = [], detailReads = [];
+    let undatedOnly = false;
     page.on('pageerror', error => errors.push(error.message));
     await page.route('**/mcp', async route => {
       const rpc = route.request().postDataJSON();
@@ -49,14 +50,16 @@ for (const width of [390, 1280]) for (const theme of ['light', 'dark']) {
         action('today', '2026-10-01'), action('overdue', '2026-09-30'),
         action('also-undated', null), { ...action('done', null), status: 'done' },
       ] : [];
+      if (undatedOnly) detail.next_actions = detail.next_actions.filter(row => row.due_on === null);
       envelope.result.content[0].text = JSON.stringify(detail);
       await route.fulfill({ response, json: envelope });
     });
     await page.goto(`${origin}/?mode=live`);
     await page.locator('#refreshHome[aria-busy="false"]').waitFor();
+    await page.locator('#homeCalendar').evaluate(node => node.scrollIntoView({ block: 'center' }));
     if (process.env.HOME_ACTION_SCREENSHOT_DIR) {
       await mkdir(process.env.HOME_ACTION_SCREENSHOT_DIR, { recursive: true });
-      await page.screenshot({ path: join(process.env.HOME_ACTION_SCREENSHOT_DIR, `${width}-${theme}.png`), fullPage: true, animations: 'disabled' });
+      await page.screenshot({ path: join(process.env.HOME_ACTION_SCREENSHOT_DIR, `${width}-${theme}.png`), animations: 'disabled' });
     }
     const rows = page.locator('#homeCalendar .home-agenda > a');
     assert.deepEqual(await rows.locator('strong').allTextContents(), [
@@ -75,7 +78,15 @@ for (const width of [390, 1280]) for (const theme of ['light', 'dark']) {
     assert.equal(detailReads.length, 16);
     assert.equal(new Set(detailReads).size, 16, 'reuse each existing deal read once');
     await page.getByRole('button', { name: 'Just me', exact: true }).click();
-    assert.equal(await rows.count(), viewer === 'joe' ? 4 : 0);
+    assert.equal(await page.locator('#homeCalendar').isVisible(), viewer === 'joe');
+    if (viewer === 'joe') assert.equal(await rows.count(), 4);
+    await page.getByRole('button', { name: 'Team view', exact: true }).click();
+    undatedOnly = true;
+    await page.locator('#refreshHome').click();
+    await page.locator('#refreshHome[aria-busy="false"]').waitFor();
+    assert.equal(await page.locator('#homeCalendar').isVisible(), true);
+    assert.equal(await rows.count(), 2, 'a Home with only undated actions still shows its list');
+    assert.equal(await rows.locator('time').count(), 0);
     assert.deepEqual(errors, []);
   });
 }
