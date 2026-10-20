@@ -840,6 +840,7 @@ test(`work flow labels remain readable at ${width}px in ${theme} theme`, async t
     await mkdir(process.env.SLICE7_TASTE_CAPTURE_DIR,{recursive:true});
     for (const [name,selector] of [['flow','.work-flow'], ['reviews','#workReviews']]) {
       await page.locator(selector).scrollIntoViewIfNeeded();
+      if (name === 'reviews') await page.locator(selector).evaluate(el => window.scrollBy(0, el.getBoundingClientRect().top - 90));
       await page.screenshot({path:resolve(process.env.SLICE7_TASTE_CAPTURE_DIR,`${name}-${width}-${theme}.png`)});
     }
   }
