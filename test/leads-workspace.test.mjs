@@ -575,3 +575,33 @@ test('uncertain Leads activation preserves each prospect request without blockin
   assert.equal(s.writes.length,4);assert.deepEqual(s.writes[3],s.writes[1],'reconciling one client retains the other request');
  }finally{s.close()}
 });
+
+for (const failure of ['internal_error','unclassified_error']) test(`Leads activation retains an identical replay after ${failure}`,async()=>{
+ const board=workspace(),row=board.leads[0],writes=[];
+ Object.assign(row,{client_id:'synthetic-client',is_client:true,is_deal:true,prospect_client_id:'synthetic-client',
+  prospect_client_version:7,prospect_engagement_status:'inactive'});
+ const client=createLeadBoardClient({docContext:false,fetchImpl:async(_path,init)=>{
+  const {name,arguments:args}=JSON.parse(init.body).params;
+  let payload,isError=false;
+  if(name==='set-prospect-engagement-status'){
+   writes.push(args);
+   if(writes.length===1){payload={ok:false,error:failure};isError=true}
+   else{row.prospect_engagement_status='active';row.prospect_client_version++;payload={ok:true}}
+  }else payload=name==='deal-room-board'?{actor:'example-partner'}:{...board,...(args.lead_id?{detail:detail(row)}:{})};
+  return new Response(JSON.stringify({result:{isError,content:[{type:'text',text:JSON.stringify(payload)}]}}));
+ }});
+ const s=await setup(client);try{
+  await s.app.readDetail(row.id);
+  let form=s.d.getElementById('activateProspect');form.elements.reason.value='Synthetic renewed interest';
+  form.dispatchEvent(new s.w.Event('submit',{bubbles:true,cancelable:true}));await tick();
+  assert.equal(writes.length,1);
+  form=s.d.getElementById('activateProspect');
+  assert.equal(form.querySelector('button').textContent,'Check outcome','unclassified errors preserve recovery');
+  assert.equal(form.elements.reason.readOnly,true);
+  await s.app.refresh();assert.equal(writes.length,1,'read-back never resends');
+  form.dispatchEvent(new s.w.Event('submit',{bubbles:true,cancelable:true}));await tick();
+  assert.equal(writes.length,2);assert.deepEqual(writes[1],writes[0]);
+  assert.equal(s.d.getElementById('activateProspect'),null);
+  assert.equal(s.d.getElementById('leadBoardError').hidden,true);
+ }finally{s.close()}
+});
