@@ -4,7 +4,7 @@ import { readFile, mkdir } from 'node:fs/promises';
 import { chromium, waitForAsync } from './browser-harness.mjs';
 const root = new URL('../', import.meta.url);
 const phases = ['On Deck', 'Research', 'Site selection', 'Negotiation', 'Legal', 'Diligence', 'Closing', 'Closed'];
-async function open(t, { width = 1440, height = 960, reducedMotion = 'no-preference', many = false, review = false, deal = null } = {}) {
+async function open(t, { width = 1440, height = 960, reducedMotion = 'no-preference', many = false, review = false, deal = null, prospect = false } = {}) {
   const browser = await chromium.launch(); t.after(() => browser.close());
   const page = await browser.newPage({ viewport: { width, height }, reducedMotion });
   const errors = []; page.on('pageerror', e => errors.push(e.message));
@@ -15,6 +15,7 @@ async function open(t, { width = 1440, height = 960, reducedMotion = 'no-prefere
   Object.assign(seed.deals.find(d => d.id === 'd23'),{invoiced_on:'2026-10-01',phase:'Closed',closed_on:'2026-10-02',type:'Renewal',client_name:'Demo Archive Client'});
   seed.seed_events = [{ id: 'auto-loi', actor: 'claude', verb: 'patch-deal-field', subject_type: 'deal', subject_id: 'd14', field: 'phase', old_value: 'Research', new_value: 'Negotiation', automatic: true, change_reason: 'LOI sent', evidence_date: '2026-10-03', recorded_at: '2026-10-03T12:00:00Z' },
     { id: 'auto-invoice', actor: 'claude', verb: 'patch-deal-field', subject_type: 'deal', subject_id: 'd20', field: 'phase', old_value: 'Closing', new_value: 'Closed', automatic: true, change_reason: 'invoice', evidence_date: '2026-10-03', recorded_at: '2026-10-03T12:00:00Z' }];
+  if (prospect) Object.assign(seed.deals.find(d => d.id === 'd14'), {client_status:'prospect',client_id:'synthetic-closure-client',client_version:7,prospect_engagement_status:'active',outcome:null,closed_on:null});
   seed.threads.d14 = [{ id: 'demo-note', kind: 'note', actor: 'joe', at: '2026-10-01', text: 'LOI submitted. ' + 'Full original demo entry. '.repeat(30) }];
   if (many) for (let i = 20; i < 72; i++) seed.deals.push({ ...seed.deals[9], id: 'demo-' + i, name: 'Demo Assignment ' + i, phase: 'Research', outcome:null });
   if (review) for (let i=0;i<28;i++) seed.deals.push({...seed.deals.find(d=>d.id==='d14'),id:`demo-review-${i}`,name:`Demo Practice ${i+1}`,client_name:`Demo Client ${i+1}`,type:'Renewal',phase:phases[i%7],owner:i%2?'dell':'joe',workspace_kind:'team',account_client_id:null,operating_state:'active'});
@@ -83,6 +84,46 @@ test('marking a prospect inactive sends its version and returns it to Leads',asy
  assert.equal(args.client_id,'synthetic-client');assert.equal(args.base_version,7);assert.equal(args.status,'inactive');
  assert.equal(args.reason,'Synthetic deferred project');assert.ok(args.idempotency_key);
  assert.equal(await page.locator('#recordPanel').evaluate(e=>e.open),false);
+});
+
+test('a closed prospect removes Mark inactive and refuses submission from stale DOM', async t => {
+  const {page,errors}=await open(t,{prospect:true});
+  await page.locator('.kanban-column [data-id="d14"] .card-open').click();
+  await page.locator('#detailInactiveForm input').fill('Synthetic deferred project');
+  await page.evaluate(async()=>{
+    const {state}=await import('/js/pipeline.js');
+    window.staleProspectForm=document.querySelector('#detailInactiveForm').outerHTML;
+    const send=state.client.setProspectEngagementStatus.bind(state.client);
+    state.client.setProspectEngagementStatus=async args=>{
+      try { return await send(args); }
+      catch(error) { window.prospectRefusal=error.payload; throw error; }
+    };
+    const {deal}=await state.client.getDeal('d14');
+    await state.client.updateDeal({deal:'d14',base_version:deal.version,fields:{closed_on:'2026-10-04'},idempotency_key:'synthetic-prospect-closure'});
+  });
+  await refresh(page);
+  await page.getByRole('button',{name:'Refresh deal',exact:true}).click();
+  await page.locator('[data-detail-read="board-controls"][data-available="false"]').waitFor({state:'attached'});
+  const controls={
+    card:await page.locator('.kanban-column [data-id="d14"]').count(),
+    phase:await page.locator('#detailPhase').count(),
+    owner:await page.locator('#detailOwner').count(),
+    inactive:await page.getByRole('button',{name:'Mark inactive',exact:true}).count(),
+  };
+  await page.evaluate(()=>{
+    document.querySelector('#detailInactiveForm')?.remove();
+    document.querySelector('#panelBody').insertAdjacentHTML('beforeend',window.staleProspectForm);
+    document.querySelector('#detailInactiveForm input').value='Synthetic deferred project';
+    document.querySelector('#detailInactiveForm').dispatchEvent(new Event('submit',{bubbles:true,cancelable:true}));
+  });
+  await page.locator('#toast').waitFor();
+  const result=await page.evaluate(async()=>{
+    const {state}=await import('/js/pipeline.js');
+    const {deal}=await state.client.getDeal('d14');
+    return {refusal:window.prospectRefusal?.error || null,version:deal.client_version,status:deal.prospect_engagement_status};
+  });
+  assert.deepEqual({controls,...result},{controls:{card:0,phase:0,owner:0,inactive:0},refusal:'not_a_prospect',version:7,status:'active'});
+  assert.deepEqual(errors,[]);
 });
 
 test('W4 desktop/phone render, owner filters, equal cards, wide detail and reduced motion', async t => {
