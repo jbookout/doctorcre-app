@@ -1,4 +1,6 @@
 import { mountHierarchy } from './progress-hierarchy.js';
+import { mountWorkQueue } from './progress-work-queue.js';
+import { resolveDealroomBoot } from './boot-mode.js';
 import { boardIdFromPath, boardPageUrl } from './progress-board-route.js';
 import { governanceTasks, withGovernance } from "./control-room-workspace-model.js";
 import { createLiveClient } from "./live-client.js";
@@ -45,6 +47,7 @@ export function mountBoard(deps = {}) {
   byId("board-parent-name").textContent = boardId === SYSTEM_BOARD_ID ? "System board" : "Project board";
   const timers = [];
   let poller = null;
+  let disposed = false;
   let governanceRead = null;
   let governanceState = "pending";
   const completedNodes = new Map();
@@ -77,6 +80,7 @@ export function mountBoard(deps = {}) {
   let censusObservation = {state:'pending'};
   let pipelineCards = [];
   let hierarchyUI = null;
+  let queueUI = null;
 
   function el(tag, className, text, attributes = {}) {
     const node = doc.createElement(tag);
@@ -432,6 +436,16 @@ export function mountBoard(deps = {}) {
       return;
     }
     container.removeAttribute("aria-busy");
+    if (view?.work_queue) {
+      queueUI ||= mountWorkQueue({container:byId('board-stages'), window:win, boardId});
+      queueUI.update(view.work_queue);
+      byId('task-count').textContent = `${view.work_queue.items.length} jobs`;
+      byId('pipeline-title').textContent = 'Work queue';
+      for (const id of ['board-rail', 'board-filters']) byId(id).setAttribute('hidden', '');
+      for (const id of ['board-completed', 'completed-list', 'board-blocked', 'system-work-panel', 'board-ledger'])
+        byId(id)?.closest('.panel')?.setAttribute('hidden', '');
+      return;
+    }
     if (view?.hierarchy) {
       pipelineCards = Object.entries(view.hierarchy.cards).map(([id, card]) => ({...card, id, title:card.card_title, summary:card.card_description}));
       if (!hierarchyUI) doc.querySelector("details.directory-panel")?.removeAttribute("open");
@@ -906,10 +920,10 @@ export function mountBoard(deps = {}) {
     byId("board-meta").textContent = `${view.board_id} · Published ${formatTime(view.updated_at)} · Version ${view.version}`;
     renderSync(view);
     renderHeadline(view);
-    doc.querySelector(".headline").hidden = Boolean(view.hierarchy);
-    byId("board-title").classList.toggle("sr-only", Boolean(view.hierarchy) || Boolean(deps.openTask));
+    doc.querySelector(".headline").hidden = Boolean(view.hierarchy || view.work_queue);
+    byId("board-title").classList.toggle("sr-only", Boolean(view.hierarchy || view.work_queue) || Boolean(deps.openTask));
     const breadcrumb = doc.querySelector('nav[aria-label="Breadcrumb"]');
-    if (breadcrumb) breadcrumb.hidden = Boolean(view.hierarchy) || Boolean(deps.openTask);
+    if (breadcrumb) breadcrumb.hidden = Boolean(view.hierarchy || view.work_queue) || Boolean(deps.openTask);
     renderRepos(view);
     renderStages(view);
     renderBlocked(view);
@@ -937,6 +951,8 @@ export function mountBoard(deps = {}) {
 
   // A confirmed unpublished or denied read removes the protected board.
   function clearBoard(state) {
+    queueUI?.dispose();
+    queueUI = null;
     hierarchyUI?.dispose();
     hierarchyUI = null;
     costs.update(null);
@@ -1074,9 +1090,12 @@ export function mountBoard(deps = {}) {
     renderStages(currentView);
     if (boardId === SYSTEM_BOARD_ID && typeof client.unfinishedWork === "function" && byId("system-work-panel"))
       systemWork = mountSystemWorkBoard({ client, openTask:deps.openTask, onAccessDenied: cause => readFailure(cause, "board"), onPipeline: (pipeline, observation) => { if (pipeline) censusPipeline = pipeline; censusObservation = observation; renderStages(currentView); } });
-    refresh().catch(() => setError("Progress temporarily unavailable."));
-    poller = mountVisibilityPoll({ document: doc, window: win, setTimeout: setTimer, clearTimeout: clearTimer, intervalMs: REFRESH_MS,
-      poll: () => refresh().catch(() => setError("Progress temporarily unavailable.")) });
+    refresh().catch(() => setError("Progress temporarily unavailable.")).finally(() => {
+      if (disposed) return;
+      poller = mountVisibilityPoll({ document: doc, window: win, setTimeout: setTimer, clearTimeout: clearTimer,
+        intervalMs: () => currentView?.work_queue ? 2000 : REFRESH_MS,
+        poll: () => refresh().catch(() => setError("Progress temporarily unavailable.")) });
+    });
     timers.push(schedule(tick, TICK_MS));
   }
 
@@ -1098,8 +1117,13 @@ export function mountBoard(deps = {}) {
       status.textContent = governanceState === "read" ? "" : `Approvals unavailable${governanceRead ? " · last-known cards" : ""}`;
       renderStages(currentView);
     },
-    dispose() { hierarchyUI?.dispose(); poller?.dispose(); timers.forEach(id=>win.clearInterval(id)); clearTimer(ageTimer); doc.removeEventListener("visibilitychange",refreshAges); },
+    dispose() { disposed = true; queueUI?.dispose(); hierarchyUI?.dispose(); poller?.dispose(); timers.forEach(id=>win.clearInterval(id)); clearTimer(ageTimer); doc.removeEventListener("visibilitychange",refreshAges); },
     get view() { return currentView; }, get liveExpanded() { return liveExpanded; } };
 }
 
-if (typeof document !== "undefined" && document.getElementById("board-completed") && !globalThis.__BOARD_NO_AUTOMOUNT) mountBoard().start();
+if (typeof document !== "undefined" && document.getElementById("board-completed") && !globalThis.__BOARD_NO_AUTOMOUNT) {
+  const boot = resolveDealroomBoot(globalThis.location);
+  const client = boot.mode === 'live' ? createLiveClient()
+    : await (await import('./fixture-client.js')).createFixtureClient(boot.options);
+  mountBoard({ client }).start();
+}

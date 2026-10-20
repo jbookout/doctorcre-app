@@ -1,0 +1,43 @@
+{
+  "app_source_commit": "9d01cd6f",
+  "producer_commit": "57560029d4d16ae99a5d3346f11537575902d08b",
+  "environment": "local fixture staging candidate, synthetic records only",
+  "url": "http://127.0.0.1:8787/control-room/progress/board/carr-v5?card=WR14.S1.J1",
+  "reviewer": {
+    "model": "gpt-6-luna",
+    "effort": "medium",
+    "taste_score": 7,
+    "scale": 10,
+    "verdict": "Pass for the central queue. Hosted staging review remains required.",
+    "findings": [
+      {
+        "level": "P2",
+        "summary": "Desktop light-theme shell sidebar contrast; outside the queue diff."
+      },
+      {
+        "level": "P2",
+        "summary": "Narrow-screen detail labels wrap and make the expanded card tall."
+      }
+    ],
+    "withdrawn_finding": {
+      "level": "P1",
+      "summary": "Fixed navigation obstruction was a full-page screenshot artifact; actual viewport evidence did not support it."
+    }
+  },
+  "browser_checks": {
+    "viewports": [
+      320,
+      390,
+      1280
+    ],
+    "themes": [
+      "light",
+      "dark"
+    ],
+    "last_job_log_summary_center_hit_test": "reachable in all six cases; top about 353px and bottom about 397px in a 900px viewport"
+  },
+  "hosted_preview": {
+    "status": "not published",
+    "reason": "Exact-head hosted CI remained queued; canonical preview command refused without completed-success CI."
+  }
+}
