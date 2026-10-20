@@ -2,6 +2,11 @@ import { boardPageUrl } from './progress-board-route.js';
 
 const duration = seconds => seconds == null ? 'Not recorded' : `${Math.floor(seconds / 60)}m ${Math.floor(seconds % 60)}s`;
 const recorded = value => value === '' || value == null ? 'Not recorded' : String(value);
+const localTimestamp = value => {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? recorded(value)
+    : new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }).format(date);
+};
 
 export function queueError(queue) {
   if (queue == null) return null;
@@ -83,7 +88,7 @@ export function mountWorkQueue({ container, window: win, boardId }) {
     logSummary.dataset.queueFocus = 'event-log';
     log.append(logSummary);
     const eventList = node('ol');
-    for (const event of events) eventList.append(node('li', `${event.at} · ${event.kind} · ${event.actor} · ${event.reason}`));
+    for (const event of events) eventList.append(node('li', `${localTimestamp(event.at)} · ${event.kind} · ${event.actor} · ${event.reason}`));
     log.append(node('p', 'Audited queue events. Raw executor prompts and transcripts stay local.'), eventList);
     const findings = node('ul', null, 'queue-findings');
     for (const finding of card.findings.filter(finding => !finding.resolved))

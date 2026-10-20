@@ -933,7 +933,7 @@ export function mountBoard(deps = {}) {
     renderNotes(view);
     for (const [id, count] of [["board-questions", view.questions.length], ["board-deliverables", view.deliverables.length],
       ["board-decisions", view.decisions.length + view.questions.filter(q => q.status).length], ["board-notes", view.notes.length]])
-      byId(id).closest(".panel").hidden = Boolean(view.hierarchy) && !count;
+      byId(id).closest(".panel").hidden = Boolean(view.hierarchy || view.work_queue) && !count;
   }
 
   // Live time: every time-dependent mark (stage ages, stale, stuck, health,
