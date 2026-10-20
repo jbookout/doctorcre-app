@@ -40,3 +40,7 @@
 @media(max-width:760px),(hover:none) and (pointer:coarse) and (max-width:1023px){ .morning-brief { width: calc(100vw - 20px); padding: var(--space-4); } #morningContent, .morning-record { grid-template-columns: minmax(0, 1fr); } .morning-brief .morning-card { gap: var(--space-3); padding: var(--space-4); } }
 @media (prefers-reduced-motion: reduce) { .morning-brief button, .morning-brief .morning-card { transition: none; } }
 :root[data-motion=reduced] :is(.morning-brief button, .morning-brief .morning-card) { transition: none; }
+
+.brief-owner-filter { display: flex; gap: var(--space-2); margin: var(--space-3) 0; }
+.brief-owner-filter button[aria-pressed=true] { border-color: var(--fg); background: var(--surface-3); }
+.morning-owner { color: var(--fg-muted); font-size: var(--font-size-1); }
