@@ -320,3 +320,12 @@ test('phone phase dates and secondary timeline text stay readable at 13px',async
  assert.ok(sizes.length>=4,'recorded phase dates are present');
  assert.deepEqual(sizes.filter(n=>n.size<13),[]);
 });
+
+test('readable phone phase labels stay inside their rail columns',async t=>{
+ const {page}=await open(t,390);
+ const overflow=await page.locator('.phase-rail li > span').evaluateAll(nodes=>nodes.flatMap(n=>{
+  const box=n.getBoundingClientRect(),range=document.createRange();range.selectNodeContents(n);
+  return [...range.getClientRects()].filter(line=>line.right>box.right+1).map(()=>n.textContent);
+ }));
+ assert.deepEqual(overflow,[]);
+});
