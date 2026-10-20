@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdir } from 'node:fs/promises';
+import { mkdir, writeFile } from 'node:fs/promises';
 import { chromium, fixtureServer } from './browser-harness.mjs';
 
 async function accountPage(t, width, theme) {
@@ -47,6 +47,7 @@ for (const width of [390, 1280]) for (const theme of ['dark', 'light']) {
   test(`Opening an account action keeps its description and due date above the update at ${width}px ${theme}`, async t => {
     const page = await accountPage(t, width, theme);
     await page.locator('.account-card').first().click();
+    await screenshot(page, 'account', width, theme);
     const action = page.locator('#stats .next-account-action');
     const description = await action.locator('strong').innerText();
     await action.click();
@@ -72,17 +73,22 @@ for (const width of [390, 1280]) for (const theme of ['dark', 'light']) {
   });
 }
 
-for (const theme of ['dark', 'light']) {
-  test(`Desktop account headings align with readable next steps with the sidebar open in ${theme}`, async t => {
+for (const theme of ['dark', 'light']) for (const sidebarOpen of [false, true]) {
+  test(`Account columns stay readable with the sidebar ${sidebarOpen ? 'open' : 'closed'} in ${theme}`, async t => {
     const page = await accountPage(t, 1280, theme);
     await page.locator('.account-card').first().click();
-    await page.getByRole('button', { name: 'Workspace sidebar', exact: true }).click();
-    assert.equal(await page.locator('.app-layout').getAttribute('data-sidebar'), 'open');
-    await screenshot(page, 'columns-sidebar', 1280, theme);
+    if (sidebarOpen) await page.getByRole('button', { name: 'Workspace sidebar', exact: true }).click();
+    assert.equal(await page.locator('.app-layout').getAttribute('data-sidebar'), sidebarOpen ? 'open' : 'closed');
+    const captureName = sidebarOpen ? 'columns-sidebar' : 'columns';
+    await screenshot(page, captureName, 1280, theme);
     const headings = page.locator('#tableFrame thead');
-    const geometry = await headings.boundingBox();
-    assert.ok(geometry && geometry.height >= 24 && geometry.width > 400, 'desktop column headings are visible');
-    assert.match(await headings.innerText(), /Work record.*Phase.*Next step.*Next date/s);
+    assert.match(await headings.textContent(), /Work record.*Phase.*Next step.*Next date/s);
+    if (sidebarOpen) {
+      assert.equal(await page.locator('#rows tr').first().locator('td').nth(2).evaluate(node => getComputedStyle(node, '::before').content), '"Next step"');
+    } else {
+      const geometry = await headings.boundingBox();
+      assert.ok(geometry && geometry.height >= 24 && geometry.width > 400, 'wide workspace column headings remain visible');
+    }
     const rows = await page.locator('#rows tr').evaluateAll(rows => rows.map(row => {
       const step = row.querySelector('.step-button');
       const range = document.createRange();
@@ -99,9 +105,11 @@ for (const theme of ['dark', 'light']) {
         phaseWidth: row.querySelector('select[data-phase]').getBoundingClientRect().width,
         stepWidth: step.getBoundingClientRect().width };
     }));
+    if (process.env.UI_SCREENSHOT_DIR) await writeFile(`${process.env.UI_SCREENSHOT_DIR}/${captureName}-1280-${theme}.json`, JSON.stringify(rows, null, 2));
     assert.ok(rows.every(row => row.lines <= 2), JSON.stringify(rows));
     assert.ok(rows.every(row => row.nameLines <= 2 && row.metadata.every(item => item.lines <= 1)), JSON.stringify(rows));
     assert.ok(rows.every(row => row.stepWidth > row.phaseWidth), JSON.stringify(rows));
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
     assert.equal(await page.evaluate(() => document.querySelector('#tableFrame').scrollWidth > document.querySelector('#tableFrame').clientWidth), false);
   });
 }
