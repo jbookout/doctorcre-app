@@ -648,9 +648,18 @@ export function createLiveClient(opts = {}) {
     async findAndCatchUp(args = {}, { signal } = {}) { return rpc('find-and-catch-up', args, signal); },
 
     async setProspectEngagementStatus(args) {
-      const result = await write('set-prospect-engagement-status', args);
-      if (result?.ok !== true) throw unknownMcpOutcome(result);
-      return result;
+      try {
+        const result = await write('set-prospect-engagement-status', args, opts.writeTimeoutMs || 10_000);
+        if (result?.ok !== true) throw unknownMcpOutcome(result);
+        return result;
+      } catch (error) {
+        const refusals = ['offline', 'account_changed', 'human_confirmation_required',
+          'invalid_engagement_status', 'engagement_reason_required', 'version_conflict',
+          'not_found', 'client_merged_away', 'not_a_prospect', 'prospect_party_protected',
+          'prospect_lead_protected', 'missing_required', 'value_not_in_declared_vocabulary'];
+        if ([401,403].includes(error.status) || refusals.includes(error.payload?.error)) throw error;
+        throw unknownMcpOutcome(error);
+      }
     },
     async startReview(args) { return write('start-deal-review', args); },
     async reviewDeal(args) { return write('review-deal', args); },

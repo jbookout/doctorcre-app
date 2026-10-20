@@ -1367,16 +1367,30 @@ export async function createFixtureClient(opts = {}) {
     mode: /** @type {const} */ ('fixture'),
     selfActor,
 
+    async setProspectEngagementStatus(args) {
+      return withIdem(args.idempotency_key, () => {
+        const rows = [...deals.values()].filter(d => d.client_id === args.client_id);
+        if (!rows.length || rows.some(d => d.client_status !== 'prospect')) throw new Error('not_a_prospect');
+        if (args.expected_actor && args.expected_actor !== selfActor) throw new Error('account_changed');
+        if (!['active','inactive'].includes(args.status) || !args.reason?.trim()) throw new Error('invalid_engagement_status');
+        if (rows.some(d => d.client_version !== args.base_version)) throw new Error('version_conflict');
+        const client_version = args.base_version + 1;
+        rows.forEach(d => Object.assign(d, { prospect_engagement_status: args.status, client_version }));
+        return { ok:true, client_id:args.client_id, prospect_engagement_status:args.status, client_version };
+      });
+    },
+
     async getBoard() {
       const today = (opts.today || localToday)();
-      const national = [...deals.values()].filter((d) => d.account_client_id === fixtureAccountId && !d.invoiced_on);
+      const eligible = [...deals.values()].filter(d => d.client_status !== 'prospect' || d.prospect_engagement_status === 'active');
+      const national = eligible.filter((d) => d.account_client_id === fixtureAccountId && !d.invoiced_on);
       const activeNational = national.filter((d) => d.operating_state === 'active');
       return {
         actor: selfActor,
         // field_base, the same shape the live read returns: the latest committed
         // event for each editable cell, from the same pass as the values, so a
         // first edit has a base here too. A cell with no history has no entry.
-        deals: [...deals.values()].filter(d => !d.invoiced_on).map((d) => ({ ...d, phase_change: phaseChangeFor(d.id), field_base: fieldBaseFor(d.id) })),
+        deals: eligible.filter(d => !d.invoiced_on).map((d) => ({ ...d, phase_change: phaseChangeFor(d.id), field_base: fieldBaseFor(d.id) })),
         lost_deals: [...deals.values()].filter(d => d.outcome === 'lost').map(d => ({...d})),
         closed_deals: [...deals.values()].filter(d => (d.outcome === 'won' || !d.outcome && (d.closed_on || d.invoiced_on))).map(d => ({...d})),
         accounts: [{ account_client_id: fixtureAccountId, account_client_ref: 'DEMO-ACCOUNT-001',

@@ -95,7 +95,7 @@
  * @property {Actor} selfActor
  * @property {(args?:Object, options?:{signal?:AbortSignal}) => Promise<Object>} readDocActivity authenticated doc-activity.v1 projection
  * @property {() => Promise<{deals:BoardDeal[], closed_deals?:Object[], as_of:string, last_call_at:string}>} getBoard
- * @property {(args:{client_id:string,base_version:number,status:'active'|'inactive',reason:string,expected_actor?:string,idempotency_key:string}) => Promise<Object>} [setProspectEngagementStatus] audited transition between Leads and the deal board
+ * @property {(args:{client_id:string,base_version:number,status:'active'|'inactive',reason:string,expected_actor?:string,idempotency_key:string}) => Promise<Object>} setProspectEngagementStatus audited transition between Leads and the deal board
  * @property {(dealId:string) => Promise<DealDetail>} getDeal
  * @property {(cursor:string|null) => Promise<ChangesResponse>} getChanges
  * @property {(args:{deal:string, field:string, idempotency_key:string}) => Promise<{ok:true}>} presenceLease

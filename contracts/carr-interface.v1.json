@@ -505,7 +505,7 @@
       "write": false,
       "producer": {
         "repository": "jbookout/carr-system",
-        "source_commit": "e8c3c0bdbbc247038a22e12f98d2251c91f2efba"
+        "source_commit": "65a9947c917e5a5a97ac2d67baa34f081b0da026"
       },
       "response": {
         "schema_version": "local-deals-board.v1",
@@ -588,7 +588,7 @@
     "get-deal-room": {
       "producer": {
         "repository": "jbookout/carr-system",
-        "source_commit": "47abddf47f46d66eecd50330e5f5aab198f30f53"
+        "source_commit": "65a9947c917e5a5a97ac2d67baa34f081b0da026"
       },
       "response": {
         "schema_version": "deal-timeline.v1",
@@ -605,7 +605,12 @@
           "source"
         ],
         "lease_absence": null,
-        "client_id": "Exact client record UUID, including closed and invoiced records; use for the authenticated clients record read."
+        "client_id": "Exact client record UUID, including closed and invoiced records; use for the authenticated clients record read.",
+        "engagement_keys": [
+          "client_status",
+          "client_version",
+          "prospect_engagement_status"
+        ]
       },
       "critical_date_write": "add-critical-date",
       "never_derive": [
@@ -733,7 +738,7 @@
   "lead_workspace": {
     "producer": {
       "repository": "jbookout/carr-system",
-      "source_commit": "e8c3c0bdbbc247038a22e12f98d2251c91f2efba"
+      "source_commit": "65a9947c917e5a5a97ac2d67baa34f081b0da026"
     },
     "schema_version": "lead-workspace.v1",
     "board": {
@@ -830,7 +835,7 @@
   "prospect_engagement": {
     "producer": {
       "repository": "jbookout/carr-system",
-      "source_commit": "e8c3c0bdbbc247038a22e12f98d2251c91f2efba"
+      "source_commit": "65a9947c917e5a5a97ac2d67baa34f081b0da026"
     },
     "write": "set-prospect-engagement-status",
     "inactive_stage": "nurture_drip",
