@@ -589,7 +589,37 @@
       "never_derive": [
         "rent_start",
         "option_window"
-      ]
+      ],
+      "checklist": {
+        "schema_version": "deal-checklist.v1",
+        "producer": {
+          "repository": "jbookout/carr-system",
+          "source_commit": "9d34dea7ac7b821da07cd72128884cf3c8e22d09"
+        },
+        "template_states": [
+          "current",
+          "source_changed",
+          "deal_type_unknown"
+        ],
+        "statuses": [
+          "not_recorded",
+          "complete",
+          "due",
+          "overdue",
+          "upcoming"
+        ],
+        "phase_keys": [
+          "research",
+          "site_selection",
+          "negotiation",
+          "legal",
+          "closing",
+          "invoice"
+        ],
+        "source_of_truth": "CARR doctrine sections, with runtime content-hash validation; the app renders producer items and statuses.",
+        "due_basis": "Only open, sourced critical_date records. No legal or payment deadline is inferred.",
+        "first_slice": "Current lease, expiration, invoice and full commission receipt derive completion. Unlinked documents and lifecycle LOI records remain not_recorded."
+      }
     },
     "list-feature-switches": {
       "version": "1.0.0",

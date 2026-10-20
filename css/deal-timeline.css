@@ -66,3 +66,10 @@
  .phase-rail abbr { display:block; font-size:12px; line-height:1.5; text-decoration:none; overflow-wrap:anywhere; }
  .phase-rail li > span, .phase-rail li > time { display:none; }
 }
+.deal-checklist { margin-block: var(--space-4); overflow-wrap: anywhere; }
+.deal-checklist > summary { cursor: pointer; font-weight: var(--font-weight-strong); }
+.deal-checklist ul { padding: 0; list-style: none; }
+.deal-checklist li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--space-2) var(--space-3); padding-block: var(--space-3); border-bottom: var(--hairline-width) solid var(--hairline); }
+.deal-checklist li strong { font-size: var(--font-size-1); }
+.deal-checklist li details { grid-column: 1 / -1; font-size: var(--font-size-1); }
+.deal-checklist li[data-state="due"] strong, .deal-checklist li[data-state="overdue"] strong { color: var(--status-danger-ink); }
