@@ -1,5 +1,6 @@
 import { observeDocClient } from './doc-context.js';
 import { createMcpRequests, unknownMcpOutcome } from "./mcp-requests.mjs";
+import { confirmedEngagementRefusal } from './prospect-engagement.mjs';
 
 /** A deliberately small MCP client for Home reads and the versioned Leads workspace.
  * Authentication remains the host's
@@ -55,7 +56,13 @@ export function createLeadBoardClient(options = {}) {
       if (payload.detail !== null) validateLeadDetail(payload.detail, lead.id);
       return payload;
     },
-    setProspectEngagementStatus: args => rpc("set-prospect-engagement-status", args, true),
+    async setProspectEngagementStatus(args) {
+      try { return await rpc("set-prospect-engagement-status", args, true); }
+      catch (error) {
+        if (confirmedEngagementRefusal(error)) throw error;
+        throw unknownMcpOutcome(error);
+      }
+    },
     claimLead(lead, key, actor) {
       return rpc("claim-lead", { lead: lead.registry_ref || lead.id, base_version: lead.base_version,
         expected_actor: actor, idempotency_key: key }, true);

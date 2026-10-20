@@ -601,7 +601,7 @@ for (const failure of ['internal_error','unclassified_error']) test(`Leads activ
   await s.app.refresh();assert.equal(writes.length,1,'read-back never resends');
   form.dispatchEvent(new s.w.Event('submit',{bubbles:true,cancelable:true}));await tick();
   assert.equal(writes.length,2);assert.deepEqual(writes[1],writes[0]);
-  assert.equal(s.d.getElementById('activateProspect'),null);
+  assert.equal(s.d.getElementById('leadDetail').open,false);
   assert.equal(s.d.getElementById('leadBoardError').hidden,true);
  }finally{s.close()}
 });

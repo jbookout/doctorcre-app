@@ -12,6 +12,7 @@ import { fetchRead, readWithDeadline } from './current-read.mjs';
 import { createMcpRequests, unknownMcpOutcome } from './mcp-requests.mjs';
 import { observeDocClient } from './doc-context.js';
 import { expandBoardRead } from './progress-board-model.js';
+import { confirmedEngagementRefusal } from './prospect-engagement.mjs';
 
 // Verified pre-commit refusals from new-deal and its argument/subject checks
 // in CARR producer 0cc6fe2538a81521bf8c25b0df58aa4063ed614b. Internal and
@@ -653,11 +654,7 @@ export function createLiveClient(opts = {}) {
         if (result?.ok !== true) throw unknownMcpOutcome(result);
         return result;
       } catch (error) {
-        const refusals = ['offline', 'account_changed', 'human_confirmation_required',
-          'invalid_engagement_status', 'engagement_reason_required', 'version_conflict',
-          'not_found', 'client_merged_away', 'not_a_prospect', 'prospect_party_protected',
-          'prospect_lead_protected', 'missing_required', 'value_not_in_declared_vocabulary'];
-        if ([401,403].includes(error.status) || refusals.includes(error.payload?.error)) throw error;
+        if (confirmedEngagementRefusal(error)) throw error;
         throw unknownMcpOutcome(error);
       }
     },
