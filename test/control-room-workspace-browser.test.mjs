@@ -43,7 +43,7 @@ async function open(t,{width=1440,height=width===1440?1000:844,path='/control-ro
    if(rpc.name==='read-room-queue'&&state.emptyAgents)payload={ok:true,room:'partner-line',live:false,projected_at:null,events:[]};
    if(rpc.name==='read-session-identity'&&state.emptySessions)payload={ok:true,total_seen:0,total_returned:0,permission_filtered:false,sessions:[]};
    if(rpc.name==='governance-queue'&&state.approvalFailure==='invalid')payload={ok:true};
-   if(rpc.name==='read-progress-board'&&snapshotData)payload.snapshot.snapshot_json=snapshotData;
+   if(rpc.name==='read-progress-board')payload.snapshot.snapshot_json=snapshotData||{title:'System Job Board',tasks:{demo:{title:'Demo dashboard refresh',status:'review',work_request:'WR-000901',pr:17}}};
    if(rpc.name==='read-progress-board'&&unboundBoard&&payload.snapshot)for(const task of Object.values(payload.snapshot.snapshot_json.tasks)){delete task.work_request;delete task.work_request_ref;delete task.human_ref;task.related=[];}
    if(rpc.name==='list-progress-boards'&&extraBoard)payload.boards.push({...payload.boards[0],board_id:'demo-project',title:'Demo project board'});
    if(rpc.name==='read-progress-board'&&state.boardUnpublished)payload.snapshot=null;
@@ -75,7 +75,8 @@ async function open(t,{width=1440,height=width===1440?1000:844,path='/control-ro
   const file=routes.routes[boardIdFromPath(url.pathname)?BOARD_ROUTE:url.pathname]||url.pathname.slice(1);
   try{const body=await readFile(new URL(file,root));return route.fulfill({body,contentType:/\.m?js$/.test(file)?'text/javascript':file.endsWith('.css')?'text/css':file.endsWith('.json')?'application/json':'text/html'});}catch{return route.fulfill({status:404,body:''});}
  });
- await page.goto(`http://localhost${path}`);
+ const target=new URL(path,'http://localhost');target.searchParams.set('mode','live');
+ await page.goto(target.href);
  await page.waitForFunction(()=>document.querySelector('#selfAvatar')?.textContent==='J');
  if(new URL(page.url()).pathname==='/control-room')await waitForRoom(page);
  else await page.locator('.hierarchy-breadcrumbs').waitFor();
