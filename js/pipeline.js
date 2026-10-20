@@ -55,7 +55,7 @@ import {
   dealInsightLines,
 } from './pipeline-model.js';
 import { isClosedDeal, localDeals, needsAttention } from './deal-review-model.js';
-import { lostDeals, closedDeals, urgencyOrder, concise, automaticMove, OWNER_FILTERS, PHASE_TRIGGERS } from './local-deals-model.js';
+import { lostDeals, closedDeals, urgencyOrder, concise, automaticMove, OWNER_FILTERS, PHASE_TRIGGERS, prospectEngagementGroups } from './local-deals-model.js';
 import { DATE_KINDS, renderCriticalDates, renderDealTimeline, renderDealUpdates, updateCountdowns } from './deal-timeline.js';
 import { uuidv4 } from './uuid.js';
 import { mountVisibilityPoll } from './visibility-poll.mjs';
@@ -249,18 +249,24 @@ function renderBoard() {
   setDocFilters({ owner: state.personalScope ? state.selfActor : state.filter, filter: state.scopeFilter });
   publishDocRead('getBoard', { deals: rows });
   const active = rows.filter(d => d.operating_state !== 'parked');
-  const parked = rows.filter(d => d.operating_state === 'parked');
+  const prospects = rows.filter(d => columnByValue(d.phase)?.slug === 'pending');
+  const parked = rows.filter(d => d.operating_state === 'parked' && columnByValue(d.phase)?.slug !== 'pending');
   renderBoardMessage();
   const grouped = groupByColumn(active);
   state.unplaced = grouped.unplaced.length;
   preserveBoardFocus({ board, document, announce, paint() {
     board.innerHTML = state.view === 'list' ? `<div class="deal-list">${urgencyOrder(state.parkedOpen ? rows : active).map(d => d.operating_state === 'parked' ? parkedHtml(d) : rowHtml(d)).join('')}</div>` : grouped.columns.map((column) => {
-      const cards = urgencyOrder(column.deals);
+      const cards = urgencyOrder(column.slug === 'pending' ? prospects : column.deals);
+      const content = column.slug === 'pending' ? prospectEngagementGroups(cards).map(group => `
+        <section class="prospect-group" data-engagement="${group.status}" aria-label="${group.label} prospects">
+          <h4>${group.label}<small>${group.deals.length}</small></h4>
+          ${group.deals.map(d => d.operating_state === 'parked' ? parkedHtml(d) : cardHtml(d)).join('')}
+        </section>`).join('') : cards.map(cardHtml).join('');
       const chosen = state.lifted && state.target === column.slug;
       return `<section class="kanban-column glass" data-column="${esc(column.slug)}"${chosen ? ' data-drop="true"' : ''}
         aria-label="${esc(column.label)}, ${cards.length} cards">
         <h3 title="${esc(PHASE_TRIGGERS[column.slug])}">${esc(column.label)}<small>${cards.length}</small></h3>
-        ${cards.map(cardHtml).join('')}
+        ${content}
       </section>`;
     }).join('') + `<details class="parked-lane"${state.parkedOpen ? ' open' : ''}><summary>Parked · ${parked.length}</summary><div class="parked-cards">${parked.map(parkedHtml).join('')}</div></details>`;
   } });

@@ -47,6 +47,8 @@
  * @property {string|null} next_date
  * @property {string|null} segment
  * @property {string|null} market
+ * @property {'active'|'inactive'} [prospect_engagement_status] client engagement independently of deal parking
+ * @property {number} [client_version] version for the audited engagement write
  * @property {'active'|'parked'} operating_state whether this Salesforce-linked row is current work
  * @property {'prospect_never_active'|'client_paused'|'other'|null} parking_reason
  * @property {string|null} parking_note

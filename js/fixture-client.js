@@ -51,6 +51,7 @@ export async function createFixtureClient(opts = {}) {
   const deals = new Map(seed.deals.map((d) => [d.id, {
     operating_state: 'active', parking_reason: null, parking_note: null,
     parked_at: null, parked_by: null, version: 1,
+    prospect_engagement_status: 'inactive', client_version: 1,
     outcome: null, closed_on: null, won_value: null, ...d,
   }]));
   // Demonstrate that Salesforce-shaped records are not automatically active

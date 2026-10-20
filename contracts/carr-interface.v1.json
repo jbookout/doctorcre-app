@@ -1,6 +1,6 @@
 {
   "schema": "doctorcre-carr-interface.v1",
-  "version": "1.48.0",
+  "version": "1.49.0",
   "producer": {
     "repository": "jbookout/carr-system",
     "source_commit": "e2e484b1933bfd63c10cc9a1b3350132948f6f74"
@@ -504,7 +504,7 @@
       "write": false,
       "producer": {
         "repository": "jbookout/carr-system",
-        "source_commit": "47abddf47f46d66eecd50330e5f5aab198f30f53"
+        "source_commit": "500391b0eea57e1b1f61e02d853115b850695de6"
       },
       "response": {
         "schema_version": "local-deals-board.v1",
@@ -513,7 +513,10 @@
           "parking_note",
           "invoiced_on",
           "phase_change",
-          "field_base"
+          "field_base",
+          "prospect_engagement_status",
+          "client_status",
+          "client_version"
         ],
         "phase_change_keys": [
           "event_id",
@@ -560,7 +563,25 @@
             "workspace_kind"
           ],
           "membership": "Recorded lost outcome, independent of phase. Same workspace and account scope."
-        }
+        },
+        "prospect_engagement_status": {
+          "values": [
+            "active",
+            "inactive"
+          ],
+          "owner": "client",
+          "default": "inactive",
+          "independent_of": [
+            "client_status",
+            "operating_state"
+          ],
+          "presentation": "Group pending-phase prospects by explicit engagement. Older producer rows without status appear inactive."
+        },
+        "account_engagement_keys": [
+          "prospect_engagement_status",
+          "client_status",
+          "client_version"
+        ]
       }
     },
     "get-deal-room": {

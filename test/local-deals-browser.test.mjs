@@ -35,6 +35,41 @@ async function open(t, { width = 1440, height = 960, reducedMotion = 'no-prefere
 }
 const refresh = page => page.evaluate(async () => (await import('/js/pipeline.js')).state.boardSync.refreshBoard({ reason: 'test' }));
 
+test('prospective clients show Active and Inactive groups at desktop and phone widths', async t => {
+  for (const width of [1440,390]) await t.test(String(width), async t => {
+    const {page,errors}=await open(t,{width});
+    await page.evaluate(async()=>{
+      const {state}=await import('/js/pipeline.js');
+      const get=state.client.getBoard;
+      state.client.getBoard=async(...args)=>{
+        const result=await get(...args);
+        const template=result.deals.find(d=>d.workspace_kind!=='national_account'&&!d.account_client_id);
+        return {...result,deals:[
+          {...template,id:'demo-prospect-active',name:'Demo Engaged Prospect',phase:'On Deck',operating_state:'active',prospect_engagement_status:'active'},
+          {...template,id:'demo-prospect-inactive',name:'Demo Inactive Prospect',phase:'On Deck',operating_state:'active',prospect_engagement_status:'inactive'},
+          {...template,id:'demo-prospect-parked',name:'Demo Parked Prospect',phase:'On Deck',operating_state:'parked',prospect_engagement_status:'inactive'},
+          {...template,id:'demo-research',name:'Demo Research',phase:'Research',operating_state:'active',prospect_engagement_status:'inactive'},
+        ]};
+      };
+    });
+    await refresh(page);
+    const prospects=page.locator('[data-column="pending"]');
+    assert.equal(await prospects.locator('[data-engagement="active"] [data-id="demo-prospect-active"]').count(),1);
+    assert.equal(await prospects.locator('[data-engagement="inactive"] [data-id="demo-prospect-inactive"]').count(),1);
+    assert.equal(await prospects.locator('[data-engagement="inactive"] [data-id="demo-prospect-parked"]').count(),1);
+    assert.equal(await prospects.locator('[data-engagement="active"] > h4').textContent(),'Active1');
+    assert.equal(await prospects.locator('[data-engagement="inactive"] > h4').textContent(),'Inactive2');
+    assert.equal(await page.locator('[data-column="research"] [data-id="demo-research"]').count(),1);
+    assert.equal(await page.locator('.parked-lane [data-id="demo-prospect-parked"]').count(),0);
+    assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
+    await mkdir(new URL('out/test-artifacts/prospect-engagement/',root),{recursive:true});
+    await page.screenshot({path:new URL(`out/test-artifacts/prospect-engagement/${width}.png`,root).pathname,fullPage:true});
+    await page.locator('[data-filter="dell"]').click();
+    assert.equal(await prospects.locator('[data-id]').count(),0);
+    assert.deepEqual(errors,[]);
+  });
+});
+
 test('W4 desktop/phone render, owner filters, equal cards, wide detail and reduced motion', async t => {
   await mkdir(new URL('out/test-artifacts/w4/', root), { recursive: true });
   for (const width of [1440, 390, 320]) await t.test(String(width), async t => {

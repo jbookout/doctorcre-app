@@ -50,3 +50,10 @@ export function noteEntries(detail) {
   }));
   return [...activities, ...notes].filter(n => n.summary).sort((a,b) => (Date.parse(b.when) || 0) - (Date.parse(a.when) || 0));
 }
+
+export function prospectEngagementGroups(rows) {
+  return ['active','inactive'].map(status => ({
+    status, label: status === 'active' ? 'Active' : 'Inactive',
+    deals: rows.filter(deal => (deal.prospect_engagement_status === 'active' ? 'active' : 'inactive') === status),
+  }));
+}
