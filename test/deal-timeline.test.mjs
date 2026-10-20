@@ -116,7 +116,7 @@ test('timeline consumes first phase dates from the board projection and never ov
  const phases=dealTimeline(value,now).phases;
  assert.equal(phases.find(p=>p.slug==='research').day,'2026-08-31');
  assert.equal(phases.find(p=>p.slug==='legal').day,'2026-09-30');
- assert.match(renderDealTimeline(value,now),/Start date not recorded/);
+ assert.doesNotMatch(renderDealTimeline(value,now),/Start date not recorded/);
 });
 
 test('the live adapter preserves authoritative start dates in both board and detail reads',async()=>{
