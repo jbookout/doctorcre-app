@@ -455,6 +455,7 @@ export function contextDrawerSections(context, options = {}) {
   const parties = context?.parties || [];
   if (parties.length) sections.push({title:'Attached parties',lines:parties.map(p => `${partyRoleLabel(p.role)} · ${p.name}`)});
   if (context?.vendors?.length) sections.push({title:'Vendors',links:context.vendors.filter(v=>v.record_id).map(v=>({label:`Open ${v.name}`,href:`/vendors?record=${encodeURIComponent(v.record_id)}`})),lines:context.vendors.map(v => [v.name,v.territory,v.summary].filter(Boolean).join(' · '))});
+  if (!sections.length) return sections;
   const date = options.dateLabel || String;
   if (context?.criticalDates?.length) sections.push({title:'Critical dates',lines:context.criticalDates.map(d => `${d.label || d.kind} · ${date(d.date || d.due_on)}${d.source ? ` · ${d.source}` : ''}`)});
   return sections;

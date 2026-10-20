@@ -746,5 +746,11 @@ test('desktop next steps wrap to two lines and retain the full recorded text',as
   await page.evaluate(async full=>{const {state}=await import('/js/pipeline.js');await state.client.setNextStep({deal:'d14',text:full,idempotency_key:'demo-full-next-step'});await state.boardSync.refreshBoard({reason:'test'});},full);
   assert.equal(await line.textContent(),full);
   assert.equal(await line.getAttribute('title'),full);
+  await page.evaluate(async()=>{
+    const {state}=await import('/js/pipeline.js');const read=state.client.getBoard.bind(state.client);
+    state.client.getBoard=async(...args)=>{const board=await read(...args);board.deals.find(d=>d.id==='d14').next_step={text:'Counsel replied'};return board;};
+    await state.boardSync.refreshBoard({reason:'test'});
+  });
+  assert.equal(await line.textContent(),'Counsel replied','structured notes render as the recorded sentence');
   assert.deepEqual(errors,[]);
 });

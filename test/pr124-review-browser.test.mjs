@@ -52,7 +52,7 @@ async function liveDetailRead(page) {
  const wire = await page.evaluate(async () => {
    const {state}=await import('/js/pipeline.js');
    const detail=await state.client.getDeal('d14');
-   return {...detail.deal,client_id:'synthetic-client',deal_id:'d14',thread:detail.thread,critical_dates:[],events:[]};
+   return {...detail.deal,client_id:'demo-account-001',deal_id:'d14',thread:detail.thread,critical_dates:[],events:[]};
  });
  const reads={status:200,delayed:null,delayNext:false};
  await page.route('**/mcp',async route=>{
@@ -226,7 +226,7 @@ test('PR129 R1 a context read survives an authorized detail poll but not a refus
    const read=state.client.getDeal.bind(state.client);
    state.client.getDeal=async id=>{const detail=await read(id);detail.deal.account_client_id='synthetic-client';return detail;};
    window.contextReads=[];
-   state.client.getPartyRecord=()=>new Promise(resolve=>contextReads.push(resolve));
+   state.client.getPartyRecord=()=>document.querySelector('#contextDrawer').open ? new Promise(resolve=>contextReads.push(resolve)) : Promise.resolve({record:{id:'demo-account-001',name:'Synthetic Client'}});
  });
  await detail(page);const reads=await liveDetailRead(page);
  await page.locator('#panelContextOpen').click();

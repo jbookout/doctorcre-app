@@ -927,8 +927,10 @@ async function refreshPanel() {
         root.querySelectorAll('details').forEach(n => { if (expanded.has(n.querySelector('summary')?.textContent)) n.open = true; });
       }
     }
-    const context = await loadDealContext(state.client, detail);
-    if (state.panelDeal === id && seq === panelReadSequence) setContextOpenVisible(contextDrawerSections(context).length > 0);
+    if (!$('contextDrawer').open) {
+      const context = await loadDealContext(state.client, detail);
+      if (state.panelDeal === id && seq === panelReadSequence) setContextOpenVisible(contextDrawerSections(context).length > 0);
+    }
   } catch (error) {
     if (state.panelDeal !== id || seq !== panelReadSequence) return;
     if (refusePanelDetail(error)) return;
