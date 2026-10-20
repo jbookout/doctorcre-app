@@ -928,7 +928,14 @@ test('Tab reaches the linked Work Request and Enter opens its standalone detail'
   const {page,errors} = await open(t);
   const link = page.locator('.work-lineage a').filter({hasText:'WR-900'});
   await link.waitFor();
+  const evidence=page.locator('.work-progress-checks a');
+  await evidence.last().waitFor();
+  assert.equal(await evidence.count(),5);
   await page.locator('#workTitle').focus();
+  for(const check of await evidence.all()){
+    await page.keyboard.press('Tab');
+    assert.equal(await check.evaluate(el=>el===document.activeElement),true,'Each check source remains in native tab order');
+  }
   await page.keyboard.press('Tab');
   assert.equal(await page.locator('.work-progress summary').evaluate(el => el === document.activeElement), true, 'Scope history remains in native tab order');
   await page.keyboard.press('Tab');

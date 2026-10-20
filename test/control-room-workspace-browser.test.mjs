@@ -37,6 +37,7 @@ async function open(t,{width=1440,height=width===1440?1000:844,path='/control-ro
   if(url.pathname==='/mcp'){
    const rpc=request.postDataJSON().params;calls.push(rpc.name);if(state.denied)return route.fulfill({status:401,body:'{}'});
    if(rpc.name==='read-progress-board'&&state.boardFailure)return route.fulfill({status:state.boardFailure,body:'{}'});
+   if(rpc.name==='engineering-passport')return route.fulfill({status:404,body:'{"error":"synthetic_passport_unavailable"}'});
    if(rpc.name==='schedule-board'&&state.scheduleFailure)return route.fulfill({status:503,body:'{}'});
    if(rpc.name==='governance-queue'&&state.approvalFailure==='http')return route.fulfill({status:503,body:'{}'});
    let payload={};if(snapshotData&&rpc.name==='work-request-card')payload={ok:true,human_ref:rpc.arguments.work_request};
