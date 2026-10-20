@@ -96,7 +96,7 @@ export function mountSystemWorkBoard({client,onPipeline,openTask,onAccessDenied}
   // Access denial clears the protected view, but an unresolved write still
   // needs its original request for reconciliation after access recovers.
   current=null;actionForm.replaceChildren();if(dialog.open)dialog.close();
-  coverage.replaceChildren();render();pipeline?.clear();onPipeline?.(systemPipeline([],[]));more.disabled=false;
+  coverage.replaceChildren();render();pipeline?.clear();onPipeline?.(systemPipeline([],[]), {state:cause.status===401?'signed-out':'unauthorized'});more.disabled=false;
   error.textContent=cause.status===401?'Sign in to view system work.':'System work access unavailable.';
   error.hidden=false;if(retry)retry.hidden=false;
  }
@@ -131,9 +131,10 @@ export function mountSystemWorkBoard({client,onPipeline,openTask,onAccessDenied}
    render();
    if(retry)retry.hidden=true;
    if(liveRead)live=liveRead.items;
-   const projection=systemPipeline(items,queryArgs.live_library?[]:live);pipeline?.render(projection);onPipeline?.(projection);
+   const projection=systemPipeline(items,queryArgs.live_library?[]:live);pipeline?.render(projection);onPipeline?.(projection, {state:liveError?'unknown':'read'});
   }catch(cause){if(gen!==generation)return;error.textContent=cause.status===401?'Sign in to view system work.':'System work updates unavailable.';error.hidden=false;
    if(retry)retry.hidden=false;
+   onPipeline?.(systemPipeline(items,live), {state:'unknown'});
    if(cause.status===401||cause.status===403){if(onAccessDenied)onAccessDenied(cause);else clearAccess(cause);}}
   finally{if(gen===generation){loading=false;more.disabled=false;}}
  }
