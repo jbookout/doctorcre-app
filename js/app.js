@@ -306,38 +306,20 @@ async function pollOnce(initial = false, { force = false } = {}) {
       console.warn('Deal Room confirm queue read failed', error);
     }
   }
-  if (!userIsEditing()) renderBoardOnly();
+  if (!userIsEditing()) renderPreservingFocus(renderBoardOnly);
 }
 
 function userIsEditing() {
   return Boolean(document.querySelector('dialog[open]') || document.activeElement?.matches('input,textarea,select'));
 }
 
-/**
- * A full render that does not throw the keyboard on the floor.
- *
- * `userIsEditing` guards dialogs and form fields; a focused BUTTON is invisible
- * to it, and the National Accounts home is nothing but buttons that
- * `renderAccounts` replaces wholesale. That grid never used to re-render on its
- * own — the poll only called `renderBoardOnly`, which returns immediately while
- * the board section is hidden — but a snapshot now lands on a 15-second timer,
- * so a card under the keyboard would be destroyed with no user action at all.
- *
- * The card is restored by its `data-account`, the same way an Undo button is
- * restored by its event id after the receipts list is rebuilt: only what was
- * taken is given back, the page is never scrolled to do it, and a card the
- * board no longer returns is not replaced with a different one — focus stays
- * where the browser put it rather than landing somewhere unrelated.
- */
-function renderPreservingFocus() {
-  const grid = $('#accountGrid');
+function renderPreservingFocus(paint = render) {
   const active = document.activeElement;
-  const focused = grid && active && grid.contains(active)
-    ? active.closest('[data-account]')?.dataset.account || null
-    : null;
-  render();
-  if (!focused) return;
-  $(`[data-account="${CSS.escape(focused)}"]`)?.focus({ preventScroll: true });
+  const root = active?.closest('#accountGrid, #stats, #emptyState');
+  const attribute = ['data-account', 'data-open-deal', 'data-clear-search'].find(key => active?.hasAttribute(key));
+  const selector = root && attribute ? `#${root.id} [${attribute}="${CSS.escape(active.getAttribute(attribute))}"]` : null;
+  paint();
+  if (selector && document.activeElement === document.body) $(selector)?.focus({ preventScroll: true });
 }
 
 function workspaceDeals() {
@@ -361,7 +343,7 @@ function workspaceDeals() {
   if (state.filter === 'stale') deals = deals.filter(isStale);
   if (state.filter === 'missing') deals = deals.filter((deal) => !deal.next_step);
   if (state.filter === 'delta') deals = deals.filter((deal) => state.changed.has(deal.id));
-  return deals.sort((a,b) => priority(b) - priority(a) || a.name.localeCompare(b.name));
+  return deals.sort((a,b) => priority(b) - priority(a) || a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
 }
 
 function render() {
@@ -381,6 +363,9 @@ function renderChrome() {
   const selected = account();
   const isAccountHome = state.workspace === 'national_account' && !state.accountId && !state.query;
   $('#accountBack').hidden = !state.accountId;
+  $('#accountContext').hidden = !state.accountId || Boolean(state.query);
+  $('#accountContextName').textContent = selected?.account_name || 'National account';
+  $('#accountContextOwner').textContent = selected ? `Owned by ${actorName(selected.account_owner)}` : '';
   // Never print the partners' names as a label: the team is both partners by
   // definition, so the combined list is just "Deals". The team view carries no
   // description sentence under its title (2026-09-16 review).
@@ -399,9 +384,19 @@ function renderChrome() {
   $('#boardSection').hidden = isAccountHome;
 }
 
+function accountPriority(deals) {
+  const ordered = [...deals].sort((a, b) => (a.next_date || '9999-12-31').localeCompare(b.next_date || '9999-12-31')
+    || a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
+  const overdue = ordered.filter((deal) => (daysFromNow(deal.next_date) ?? 0) < 0);
+  return { overdue, next: ordered[0] };
+}
+
 function renderAccounts() {
   const grid = $('#accountGrid');
-  grid.innerHTML = renderAccountCards(state.accounts, { esc, relative, actorName });
+  grid.innerHTML = renderAccountCards(state.accounts.map(item => ({ ...item, next_action: accountPriority(
+    [...state.deals.values()].filter(deal => deal.account_client_id === item.account_client_id
+      && (deal.operating_state || 'active') === 'active' && !deal.invoiced_on)
+  ).next })), { esc, relative, actorName, dateLabel });
 }
 
 /**
@@ -471,13 +466,32 @@ function renderBoardOnly() {
   renderFocus(deals);
   const rows = $('#rows');
   rows.innerHTML = deals.map(rowHtml).join('');
+  const emptySearch = Boolean(state.query && !deals.length);
+  $('#stats').hidden = emptySearch;
+  $('#tableFrame table').hidden = emptySearch;
+  $('.sticky-table-header').hidden = emptySearch;
   $('#emptyState').hidden = deals.length > 0;
-  $('#emptyState').textContent = state.query ? 'No work record matches this search.'
+  $('#emptyState').innerHTML = emptySearch
+    ? `<strong>No work records match “${esc(state.query)}”</strong><p>Try another name, market, or next step.</p><button type="button" class="secondary" data-clear-search>Clear search</button>`
     : state.filter === 'parked' ? 'No parked work records.' : 'No active work matches this filter.';
   applyPresence();
 }
 
 function renderStats(deals) {
+  const accountDetail = state.workspace === 'national_account' && state.accountId && !state.query && state.filter !== 'parked';
+  $('#stats').classList.toggle('account-priority', Boolean(accountDetail));
+  if (accountDetail) {
+    const { overdue, next } = accountPriority(deals);
+    $('#stats').innerHTML = next ? `
+      <span class="next-action-label${overdue.length ? ' is-alert' : ''}">${overdue.length ? 'Next overdue action' : 'Next market action'}</span>
+      <button type="button" class="next-account-action" data-open-deal="${esc(next.id)}">
+        <strong>${esc(next.next_step || 'Set the next step')}</strong>
+        <span>${esc(next.name)} · ${esc(dateLabel(next.next_date))}</span>
+        <span class="next-action-open">Open work record →</span>
+      </button>
+      <p class="account-urgency">${deals.length} active work · <span${overdue.length ? ' class="is-alert"' : ''}>${overdue.length} overdue dates</span> · ${deals.filter((deal) => deal.phase === 'Closing').length} at closing</p>` : '';
+    return;
+  }
   if (state.filter === 'parked') {
     $('#stats').innerHTML = `
       <div class="stat"><strong>${deals.length}</strong><span>Parked records</span></div>
@@ -496,7 +510,7 @@ function renderStats(deals) {
 }
 
 function renderFocus(deals) {
-  if (state.filter === 'parked') { $('#focusStrip').innerHTML = ''; return; }
+  if (state.filter === 'parked' || (state.workspace === 'national_account' && state.accountId && !state.query)) { $('#focusStrip').innerHTML = ''; return; }
   const items = deals.filter((deal) => priority(deal) > 0).slice(0, 4);
   $('#focusStrip').innerHTML = items.length ? '<span class="focus-label">Focus first</span>' + items.map((deal) => `
     <button type="button" class="focus-item" data-open-deal="${esc(deal.id)}"><b>${esc(deal.name)}</b><span>${esc(reasonFor(deal))}</span></button>`).join('') : '';
@@ -1185,6 +1199,14 @@ function wireEvents() {
       history.pushState({ dealView: state.workspace }, '', state.workspace === 'team' ? '/deals' : '/deals?view=national');
       render(); return;
     }
+    if (event.target.closest('[data-clear-search]')) {
+      state.query = ''; $('#search').value = '';
+      render();
+      const target = state.accountId ? $('#accountContextName')
+        : $('#accountGrid:not([hidden]) [data-account]') || $('#rows .deal-link') || $('#workspaceTitle');
+      target.focus({ preventScroll: true });
+      return;
+    }
     const accountButton = event.target.closest('[data-account]');
     if (accountButton) { state.workspace = 'national_account'; state.accountId = accountButton.dataset.account; render(); return; }
     const retryWrite = event.target.closest('[data-retry-write]');
@@ -1216,7 +1238,13 @@ function wireEvents() {
   });
 
   $('#search').addEventListener('input', (event) => { state.query=event.target.value.trim(); render(); });
-  $('#accountBack').onclick = () => { state.accountId=null; render(); };
+  $('#accountBack').onclick = () => {
+    const accountId = state.accountId;
+    state.accountId = null;
+    state.query = ''; $('#search').value = '';
+    render();
+    if (accountId) $(`[data-account="${CSS.escape(accountId)}"]`)?.focus({ preventScroll: true });
+  };
   const openAddForm = () => state.workspace === 'team' ? addTeamDealForm() : state.accountId ? addMarketDealForm() : addAccountForm();
   $('#stickyAddButton').onclick = openAddForm;
   $('#receiptsJump').onclick = goToReceipts;

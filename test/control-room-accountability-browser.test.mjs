@@ -65,13 +65,13 @@ for (const theme of ['dark', 'light']) for (const width of [1440, 390]) test(`at
   assert.match(await failed.innerText(), /Demo source did not answer/);
   assert.match(await failed.innerText(), /Demo validation finished; export has not started/);
   assert.match(await failed.innerText(), /Agent\s+claude/, 'the held-work executor wins over the census owner');
-  assert.match(await failed.innerText(), /Owner\s+joe/);
+  assert.match(await failed.innerText(), /Owner\s+cx-app/);
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
   await mkdir(new URL('out/test-artifacts/slice8/', root), { recursive: true });
   await page.screenshot({ path: new URL(`out/test-artifacts/slice8/attention-${width}${theme==='light'?'-light':''}.png`, root).pathname, fullPage: false });
   await failed.getByRole('button', { name: 'Open details' }).click();
   assert.equal(await page.locator('#jobTitle').innerText(), 'Demo export needs its source');
-  assert.equal(await page.locator('#jobBody').getByText('Owner', { exact: true }).evaluate(node => node.nextElementSibling.textContent), 'joe');
+  assert.equal(await page.locator('#jobBody').getByText('Owner', { exact: true }).evaluate(node => node.nextElementSibling.textContent), 'cx-app');
   assert.match(await page.locator('#jobBody').innerText(), /Demo source did not answer/);
   assert.match(await page.locator('#jobBody').innerText(), /Demo validation finished; export has not started/);
   await page.getByRole('button', { name: 'Close job details' }).click();

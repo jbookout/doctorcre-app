@@ -45,7 +45,8 @@ export function mountDocPresence({ document: root = document, window: win = wind
   function placePresence() {
     const hosts = [...root.querySelectorAll('dialog[open]:not(#docDetail):not(#docMorningBrief), aside#recordPanel:not([hidden])')];
     const workspace = root.getElementById('accountWorkspaceControls');
-    const host = hosts.at(-1) || (workspace && !workspace.hidden ? workspace : root.body);
+    const popup = hosts.at(-1);
+    const host = popup?.querySelector('[data-doc-presence-slot]') || popup || (workspace && !workspace.hidden ? workspace : root.body);
     if (strip.parentElement !== host) {
       if (host === workspace) host.querySelector('h3').after(strip);
       else host.prepend(strip);

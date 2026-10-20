@@ -1,3 +1,4 @@
+import { addDays, localToday } from './calendar-model.js';
 import { createInvoiceFixture } from './invoice-tracker-fixture.js';
 import { relationshipNetworkFixture } from './relationship-network-fixture.js';
 import { EXAMPLE_SESSION_ROWS, BRANCH_SESSION_ROWS } from './example-sessions.js';
@@ -1366,7 +1367,8 @@ export async function createFixtureClient(opts = {}) {
     selfActor,
 
     async getBoard() {
-      const national = [...deals.values()].filter((d) => d.account_client_id === fixtureAccountId);
+      const today = (opts.today || localToday)();
+      const national = [...deals.values()].filter((d) => d.account_client_id === fixtureAccountId && !d.invoiced_on);
       const activeNational = national.filter((d) => d.operating_state === 'active');
       return {
         actor: selfActor,
@@ -1379,7 +1381,8 @@ export async function createFixtureClient(opts = {}) {
         accounts: [{ account_client_id: fixtureAccountId, account_client_ref: 'DEMO-ACCOUNT-001',
           account_name: 'Demo National Practice', account_owner: fixtureAccountOwner, open_deals: activeNational.length,
           attention_deals: activeNational.filter((d) => d.attention).length,
-          overdue_deals: 0, stale_deals: 2,
+          overdue_deals: activeNational.filter((d) => d.next_date && d.next_date < today).length,
+          stale_deals: activeNational.filter((d) => !d.last_touch || d.last_touch <= addDays(today, -14)).length,
           parked_deals: national.length - activeNational.length, last_review_at: lastCallAt }],
         open_session: [...reviewSessions.values()].find((s) => s.status === 'open') || null,
         as_of: asOf,

@@ -2,13 +2,14 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { readFile, mkdir } from 'node:fs/promises';
-import { chromium } from 'playwright';
+import { chromium } from './browser-harness.mjs';
 import { handleDoctorcreRequest } from '../src/worker.js';
 import { STAGES } from '../js/progress-board-model.js';
 import costs from './fixtures/progress-board-costs.json' with { type: 'json' };
+import hierarchy from './fixtures/progress-board-hierarchy.json' with { type: 'json' };
 
 const boards = [{ board_id: 'carr-v5', title: 'System delivery' }, { board_id: 'demo-project', title: 'Demo project' }];
-async function open(t, { unfinished = true, path = '/control-room/progress', boardRead = 'ready', rows = [], control, width = 390, costData } = {}) {
+async function open(t, { unfinished = true, path = '/control-room/progress', boardRead = 'ready', rows = [], control, width = 390, costData, snapshotData, autoMount = true } = {}) {
   const browser = await chromium.launch(); t.after(() => browser.close());
   const page = await browser.newPage({ viewport: { width, height: 900 } });
   const context = page.context();
@@ -26,7 +27,7 @@ async function open(t, { unfinished = true, path = '/control-room/progress', boa
         const board = boards.find(b => b.board_id === rpc.arguments.board_id);
         if (readState === 'failed') { payload = { error: 'board_read_failed' }; isError = true; }
         else payload = { snapshot: readState === 'missing' ? null : { board_id: board.board_id, version: 1,
-          updated_at: '2026-10-02T08:00:00Z', snapshot_json: { title: board.title, costs: costData, tasks: {
+          updated_at: '2026-10-02T08:00:00Z', snapshot_json: snapshotData || { title: board.title, costs: costData, tasks: {
             build: { title: `${board.title} task`, status: 'running' },
           } } }, questions: [] };
       }
@@ -67,6 +68,7 @@ async function open(t, { unfinished = true, path = '/control-room/progress', boa
     if (url.pathname === '/mcp' && control && await control(route, route.request().postDataJSON().params)) return;
     return route.continue();
   });
+  if (!autoMount) await page.addInitScript(() => { window.__BOARD_NO_AUTOMOUNT = true; });
   await page.goto(`${origin}${path}`);
   return { page, context, calls, errors, setRows: value => { rows = value; }, recover: () => { readState = 'ready'; } };
 }
@@ -118,6 +120,75 @@ const workRow = (id, completed = false) => ({ id, kind: 'loop', source: 'synthet
   title: `Synthetic ${id}`, state: completed ? 'done' : 'open', completed,
   age: 1, last_activity_at: '2026-10-02T08:00:00Z', available_triage_actions: [] });
 const systemPath = '/control-room/progress/board/carr-v5';
+async function hierarchyEvidence(page, state, width, theme) {
+  await page.evaluate(theme => { document.documentElement.dataset.theme = theme; }, theme);
+  if (!process.env.HIERARCHY_EVIDENCE_DIR) return;
+  await mkdir(process.env.HIERARCHY_EVIDENCE_DIR, { recursive: true });
+  await page.screenshot({ path: `${process.env.HIERARCHY_EVIDENCE_DIR}/${state}-${width}-${theme}.png`, fullPage: true });
+}
+
+for (const width of [390, 1280]) for (const theme of ['dark', 'light']) {
+  test(`hierarchy taste has one heading and reaches work promptly at ${width}px ${theme}`, async t => {
+    const { page, errors } = await open(t, { width, path: systemPath, snapshotData: hierarchy });
+    const first = page.locator('[data-hierarchy-id="WR14"]');
+    await first.waitFor();
+    await hierarchyEvidence(page, 'requests', width, theme);
+    const headings = await page.locator('h1, h2').evaluateAll(nodes => nodes.filter(node =>
+      node.textContent === 'Work Requests' && node.getBoundingClientRect().height > 1 &&
+      getComputedStyle(node).clip === 'auto').length);
+    assert.equal(headings, 1, 'one visible Work Requests heading');
+    assert.equal(await page.locator('nav[aria-label="Breadcrumb"]').isVisible(), false, 'one hierarchy breadcrumb row');
+    const firstY = (await first.boundingBox()).y;
+    assert.ok(firstY < 380, `the first request starts at ${firstY}px, within 380px`);
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
+    assert.deepEqual(errors, []);
+  });
+
+  test(`hierarchy taste holds row skeletons while the census resolves first at ${width}px ${theme}`, async t => {
+    let release;
+    const held = new Promise(resolve => { release = resolve; });
+    t.after(() => release());
+    const { page, errors } = await open(t, { width, path: '/control-room?mode=live&tab=boards',
+      snapshotData: hierarchy, rows: Array.from({ length: 17 }, (_, index) => workRow(`pending-${index}`)),
+      control: async (route, rpc) => {
+        if (rpc.name !== 'read-progress-board') return false;
+        await held; await route.continue(); return true;
+      } });
+    await page.waitForFunction(() => document.querySelector('#system-work-coverage')?.textContent.length > 0);
+    await hierarchyEvidence(page, 'loading', width, theme);
+    assert.equal(await page.locator('#board-stages [data-card-id]').count(), 0, 'census cards do not replace the loading hierarchy');
+    const skeletons = page.locator('#board-stages .hierarchy-skeleton');
+    assert.equal(await skeletons.count(), 3, 'a short set of row-shaped skeletons holds the board frame');
+    assert.equal(await page.locator('#board-stages').getAttribute('aria-busy'), 'true');
+    const skeletonY = (await skeletons.first().boundingBox()).y;
+    release();
+    await page.locator('[data-hierarchy-id="WR14"]').waitFor();
+    assert.equal(await page.locator('#board-stages').getAttribute('aria-busy'), null);
+    assert.ok(Math.abs((await page.locator('[data-hierarchy-id="WR14"]').boundingBox()).y - skeletonY) < 48, 'the first row keeps its place after loading');
+    assert.deepEqual(errors, []);
+  });
+
+  for (const path of [systemPath, '/control-room?mode=live&tab=boards']) {
+    test(`hierarchy taste explains completed levels without empty panels at ${width}px ${theme} ${path}`, async t => {
+      const { page, errors } = await open(t, { width, path, snapshotData: hierarchy });
+      await page.locator('[data-hierarchy-id="WR14"] > button').click();
+      await page.locator('#hierarchy-completed > details > summary').click();
+      await page.locator('[data-hierarchy-id="WR14.S1"] > button').click();
+      await hierarchyEvidence(page, path === systemPath ? 'empty-page' : 'empty-room', width, theme);
+      assert.match(await page.locator('#board-stages').textContent(), /All pull requests in this slice are completed\./);
+      for (const id of ['board-questions', 'board-deliverables', 'board-decisions', 'board-notes']) {
+        assert.equal(await page.locator(`#${id}`).isVisible(), false, `${id} has no content to show`);
+      }
+      assert.doesNotMatch(await page.locator('#board-stages').textContent(), /Nothing needs you/);
+      await page.getByRole('button', { name: 'View completed pull requests', exact: true }).click();
+      assert.equal(await page.locator('#hierarchy-completed > details').getAttribute('open'), '');
+      assert.equal(await page.locator('#hierarchy-completed > details > summary').evaluate(node => node === document.activeElement), true);
+      assert.equal(await page.locator('[data-hierarchy-id="WR14.S1.J1.carr#1960"]').isVisible(), true);
+      assert.deepEqual(errors, []);
+    });
+  }
+}
+
 async function mountTestCosts(t, width = 390) {
   const { page, errors } = await open(t, { path: systemPath, width });
   await page.locator('#board-stages').waitFor();
@@ -429,3 +500,85 @@ for (const width of [390, 1440]) {
     assert.deepEqual(errors, []);
   });
 }
+
+
+for (const width of [390, 1440]) test(`Work Request drill-down works in the rendered page at ${width}px`, async t => {
+  const { page, errors } = await open(t, {width, path:'/control-room/progress/board/carr-v5', snapshotData:hierarchy});
+  const card = id => page.locator(`[data-hierarchy-id="${id}"]`);
+  await card('WR14').getByRole('button', {name:'Board cleanup'}).click();
+  await card('WR14.S2').getByRole('button', {name:'Board navigation'}).click();
+  await page.locator('#board-stages .column[data-stage="review"]').waitFor();
+  assert.equal(await card('WR14.S1.J1.carr#1960').count(), 0);
+  assert.equal(await card('WR14.S2.J1.app#316').count(), 1);
+  assert.equal(new URL(page.url()).searchParams.get('card'), 'WR14.S2');
+  await page.locator('#hierarchy-back').click();
+  assert.equal(new URL(page.url()).searchParams.get('card'), 'WR14');
+  const completed = page.locator('#hierarchy-completed > details');
+  assert.equal(await completed.getAttribute('open'), null);
+  await completed.locator('summary').first().click();
+  await card('WR14.S1').getByRole('button', {name:'Board grouping'}).click();
+  await page.locator('#hierarchy-completed > details > summary').click();
+  await card('WR14.S1.J1.carr#1960').locator('summary').click();
+  await card('WR14.S1.J1.carr#1960').getByText('merge sha · ' + 'a'.repeat(40)).waitFor();
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
+  assert.deepEqual(errors, []);
+  await mkdir('test-artifacts/progress-hierarchy', {recursive:true});
+  await page.screenshot({path:`test-artifacts/progress-hierarchy/${width}.png`, fullPage:true});
+});
+
+for (const status of [401, 403]) test(`denied hierarchy read ${status} stays empty through browser Back and recovers unchanged data`, async t => {
+  let denied = false;
+  const {page, errors} = await open(t, {path:systemPath, snapshotData:hierarchy, control:async(route,rpc)=>{
+    if (!denied || rpc.name !== 'read-progress-board') return false;
+    await route.fulfill({status, body:'{}'});
+    return true;
+  }});
+  const cards = page.locator('#board-stages [data-hierarchy-id]');
+  await page.locator('[data-hierarchy-id="WR14"] > button').click();
+  assert.equal(await cards.count(), 2);
+  denied = true;
+  await page.clock.runFor(15000);
+  await page.locator('#board-error').waitFor({state:'visible'});
+  assert.equal(await cards.count(), 0);
+  await page.goBack();
+  assert.equal(await cards.count(), 0);
+  denied = false;
+  await page.locator('#board-retry').click();
+  await page.locator('[data-hierarchy-id="WR14"]').waitFor();
+  assert.equal(await cards.count(), 1);
+  assert.deepEqual(errors, []);
+});
+
+test('leaving a job through browser history closes its actual detail dialog', async t => {
+  const { page, errors } = await open(t, {path:systemPath, snapshotData:hierarchy, autoMount:false});
+  await page.evaluate(async ({fixture, html}) => {
+    const {mountBoard} = await import('/js/progress-board.js');
+    const {mountJobDetail} = await import('/js/job-detail.js');
+    const template = new DOMParser().parseFromString(html, 'text/html');
+    document.body.append(template.getElementById('jobDialog'));
+    const client = {readProgressBoard:async()=>({snapshot:{version:1,snapshot_json:fixture}})};
+    const detail = mountJobDetail({client, document});
+    window.historyBoard = mountBoard({window, client, openTask:task=>detail.open(task), closeTask:()=>detail.clear()});
+    await window.historyBoard.refresh(true);
+  }, {fixture:hierarchy, html:await readFile(new URL('../control-room.html', import.meta.url), 'utf8')});
+  const card = id => page.locator(`[data-hierarchy-id="${id}"] > button`);
+  await card('WR14').click();
+  await card('WR14.S2').click();
+  await card('WR14.S2.J1.app#316').click();
+  const dialog = page.locator('#jobDialog');
+  await dialog.waitFor({state:'visible'});
+  assert.equal(await page.locator('#jobTitle').textContent(), 'Board navigation');
+  await page.goBack();
+  assert.equal(new URL(page.url()).searchParams.get('card'), 'WR14.S2');
+  assert.equal(await dialog.isVisible(), false);
+  await page.goForward();
+  await dialog.waitFor({state:'visible'});
+  await page.goBack();
+  await page.goBack();
+  assert.equal(new URL(page.url()).searchParams.get('card'), 'WR14');
+  assert.equal(await dialog.isVisible(), false);
+  await page.goBack();
+  assert.equal(new URL(page.url()).searchParams.get('card'), null);
+  assert.equal(await dialog.isVisible(), false);
+  assert.deepEqual(errors, []);
+});

@@ -97,7 +97,7 @@
 .automation-job time, .automation-job small { font-size: var(--font-size-1); color: var(--fg-muted); }
 .automation-undated { margin-top: 18px; }
 .automation-undated-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 8px; }
-.job-dialog { width: min(1080px, calc(100vw - 40px)); max-width: none; max-height: 88vh; border: var(--hairline-width) solid var(--hairline-strong); border-radius: var(--radius-3); background: var(--surface-1); color: var(--fg); padding: 24px; box-shadow: var(--shadow-overlay); }
+.job-dialog { --popup-padding: 24px; width: min(1080px, calc(100vw - 40px)); max-width: none; max-height: 88vh; border: var(--hairline-width) solid var(--hairline-strong); border-radius: var(--radius-3); background: var(--surface-1); color: var(--fg); padding: var(--popup-padding); box-shadow: var(--shadow-overlay); }
 .job-dialog::backdrop { background: var(--scrim); }
 .job-dialog > header { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; margin-bottom: 24px; }
 .job-dialog h2 { font-family: var(--font-text); font-size: var(--font-size-4); margin: 0; overflow-wrap: anywhere; }
@@ -118,7 +118,7 @@
   .panel-heading { flex-wrap: wrap; }
   .calendar-day { min-height: 70px; padding: 3px; }
   .automation-job { padding: 4px; }
-  .job-dialog { width: calc(100vw - 20px); padding: 18px; }
+  .job-dialog { --popup-padding: 18px; width: calc(100vw - 20px); }
   .job-summary { grid-template-columns: 1fr; gap: 20px; }
   .job-dialog h2 { font-size: var(--font-size-3); }
   .cr-workbench[data-detail="open"] { grid-template-columns: minmax(0, 1fr); }
@@ -140,8 +140,13 @@
 }
 .cr-attention { margin-block: var(--space-3) var(--space-5); }
 .cr-attention h3 { margin: 0; font-size: var(--font-size-3); }
+.cr-attention-loading { box-sizing: border-box; min-height: 260px; display: grid; align-content: start; gap: var(--space-4); padding-block: var(--space-4); border-bottom: var(--hairline-width) solid var(--hairline); }
+.cr-attention-loading span { height: 16px; width: 75%; border-radius: var(--radius-1); background: var(--surface-3); }
+.cr-attention-loading span:first-child { width: 55%; height: 20px; }
+.cr-attention-loading span:last-child { width: 40%; }
+.cr-attention-error { display: flex; align-items: center; flex-wrap: wrap; justify-content: space-between; gap: var(--space-3); }
 .cr-attention-row { padding-block: var(--space-4); border-bottom: var(--hairline-width) solid var(--hairline); }
-.cr-attention-subject { display: flex; align-items: baseline; gap: var(--space-3); }
+.cr-attention-subject { display: flex; justify-content: space-between; align-items: baseline; gap: var(--space-3); }
 .cr-attention-subject h4 { margin: 0; font-size: var(--font-size-2); font-weight: var(--font-weight-strong); }
 .cr-work-status { color: var(--fg-muted); font-size: var(--font-size-1); white-space: nowrap; }
 [data-state="failed"] > .cr-attention-subject .cr-work-status { color: var(--status-danger); }
@@ -149,6 +154,15 @@
 .cr-work-facts div { min-width: 0; }
 .cr-work-facts dt, .assignment-progress-label { display: block; color: var(--fg-muted); font-size: var(--font-size-1); margin-bottom: var(--space-1); }
 .cr-work-facts dd { margin: 0; color: var(--fg); font-size: var(--font-size-2); line-height: 1.5; overflow-wrap: anywhere; }
+.cr-attention-row .cr-work-facts { gap: var(--space-2) var(--space-4); font-size: var(--font-size-1); line-height: 1.5; }
+.cr-attention-row .cr-work-facts div { display: flex; align-items: baseline; gap: var(--space-2); }
+.cr-attention-row .cr-work-facts dt { flex-shrink: 0; margin: 0; }
+.cr-attention-row .cr-work-facts dd { font-size: inherit; min-width: 0; }
+.cr-work-blocker, .cr-work-progress { grid-column: 1 / -1; }
+.cr-attention-row > .cr-work-facts > .cr-work-blocker { font-size: var(--font-size-2); }
+.cr-attention-linked { border-top: var(--hairline-width) solid var(--hairline); padding-top: var(--space-2); }
+.cr-attention-linked h5 { margin: 0; color: var(--fg-muted); font-size: var(--font-size-1); font-weight: var(--font-weight-strong); }
+.cr-attention-linked .cr-work-facts { margin-block: var(--space-2) var(--space-3); }
 .cr-attention-footer { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); color: var(--fg-muted); font-size: var(--font-size-1); }
 .cr-attention-footer .btn { min-height: var(--touch); flex-shrink: 0; }
 #modelRoomAssignments { display: grid; grid-template-columns: 1fr; gap: 0; overflow: visible; }
@@ -160,7 +174,6 @@
 .job-summary .job-progress { grid-column: 1 / -1; }
 .job-summary dd { overflow-wrap: anywhere; }
 @media (max-width: 47.5rem) {
-  .cr-attention-subject { flex-direction: column; gap: var(--space-1); }
   .cr-attention-row { padding-block: var(--space-3); }
-  .cr-attention-row .cr-work-facts > div:nth-child(n+3) { grid-column: 1 / -1; }
+  .cr-attention-subject { flex-wrap: wrap; gap: var(--space-1) var(--space-3); }
 }

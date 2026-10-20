@@ -133,7 +133,7 @@ test("C12-04 a stale projection renders F2 with its age and still lists the even
   const fresh = queueFreshness(LIVE_QUEUE, { now });
   assert.equal(fresh.state, "stale");
   assert.notEqual(fresh.state, "unavailable", "a stale projection is the ordinary state, never an error");
-  assert.match(fresh.text, /\d+ days? old/, "the age is stated in plain text, not only in colour");
+  assert.match(fresh.text, /\d+ days? ago/, "the age is stated in plain text, not only in colour");
   assert.match(fresh.text, /Showing the last recorded assignments/);
   const board = assignmentBoard(LIVE_QUEUE);
   assert.equal(board.cards.length, LIVE_QUEUE.events.length, "the events are still listed under a stale projection");

@@ -46,7 +46,7 @@ export function workLineageHtml(task, board, {linked = true, targets = false, ta
   return `<section class="work-lineage" aria-label="Linked work"><h3>Linked work</h3><dl>${workLineage(task, board, taskId).map(row =>
     `<div><dt>${row.label}</dt><dd>${row.entries.length ? row.entries.map(({ref, href, target}) => {
       const tag = linked && href ? 'a' : 'span';
-      return `<${tag}${targets ? ` id="${escape(target)}" tabindex="-1"` : ''}${tag === 'a' ? ` data-job-control="lineage-${row.kind}-${escape(ref)}" href="${escape(href)}"` : ''}>${escape(ref)}</${tag}>`;
+      return `<${tag}${targets ? ` id="${escape(target)}"${tag === 'a' ? '' : ' tabindex="-1"'}` : ''}${tag === 'a' ? ` data-job-control="lineage-${row.kind}-${escape(ref)}" href="${escape(href)}"` : ''}>${escape(ref)}</${tag}>`;
     }).join(' · ') : `<span data-missing>${missingState}</span>`}</dd></div>`).join('')}</dl></section>`;
 }
 const progressScope = scope => scope && typeof scope.plan_ref === 'string' && scope.plan_ref.trim()
