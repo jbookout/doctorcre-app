@@ -5,7 +5,6 @@
  * on each reviewed Deal Room host, so no baseUrl is needed in production or
  * staging; one may be passed directly for isolated client tests.
  */
-import { assuranceHealthRequest } from './assurance-health-model.js';
 import { uuidv4 } from './uuid.js';
 import { readinessRequest, threadRequest } from './correspondence-model.js';
 import { fetchRead, readWithDeadline } from './current-read.mjs';
@@ -126,7 +125,7 @@ export function createLiveClient(opts = {}) {
   const client = {
     mode: /** @type {const} */ ('live'),
     get selfActor() { return selfActor; },
-    async readAssuranceHealth(args) { return rpc('read-assurance-health', assuranceHealthRequest(args)); },
+    async readAssuranceHealth(args) { const { assuranceHealthRequest } = await import('./assurance-health-model.js'); return rpc('read-assurance-health', assuranceHealthRequest(args)); },
     async getRelationshipNetwork({ signal } = {}) {
       const response = await fetchReadImpl('/api/v1/business/relationships?contract=relationship-network.v1', {signal,credentials:'same-origin',cache:'no-store',headers:{accept:'application/json'}});
       if (!response.ok) throw Object.assign(new Error('Relationships unavailable'), {status:response.status});
