@@ -171,11 +171,11 @@
 .app-section-tabs a[aria-current=page] { color:var(--fg); border-bottom-color:var(--fg); }
 .dealroom-page.has-app-layout .kanban { grid-template-columns:repeat(7,minmax(0,1fr)); }
 @media(max-width:1100px) { .dealroom-page.has-app-layout .kanban { grid-template-columns:repeat(auto-fit,minmax(min(100%,180px),1fr)); } }
+.deal-detail#recordPanel > .doc-presence { width:max-content; }
+ .deal-detail#recordPanel > header { padding-inline-start:calc(var(--space-5) + var(--touch) + var(--space-3)); }
 @media(max-width:760px) {
  .dealroom-page.has-app-layout .kanban { grid-template-columns:minmax(0,1fr); }
  .dealroom-page .kanban-column:not(:has(.kanban-card)) { display:none; }
- .deal-detail#recordPanel > .doc-presence { width:max-content; }
- .deal-detail#recordPanel > header { padding-inline-start:calc(var(--space-5) + var(--touch) + var(--space-3)); }
  .dealroom-heading { gap:var(--space-2); }
  .app-section-tabs { gap:var(--space-3); }
 }
