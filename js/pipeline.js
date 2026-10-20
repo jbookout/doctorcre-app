@@ -912,11 +912,13 @@ async function refreshPanel() {
           const focusIdentity = focused?.dataset.detailFocus;
           const wasOpen = current.open;
           const dateOpens = new Set([...current.querySelectorAll('[data-date-id] details[open]')].map(n => n.closest('[data-date-id]').dataset.dateId));
+          const checklistOpens = new Set([...current.querySelectorAll('[data-checklist-item] details[open]')].map(n => n.closest('[data-checklist-item]').dataset.checklistItem));
           const oldScroll = current.scrollLeft;
           current.replaceWith(fresh);
           fresh.scrollLeft = oldScroll;
           if (wasOpen) fresh.open = true;
           fresh.querySelectorAll('[data-date-id]').forEach(n => { if (dateOpens.has(n.dataset.dateId)) n.querySelector('details').open = true; });
+          fresh.querySelectorAll('[data-checklist-item]').forEach(n => { if (checklistOpens.has(n.dataset.checklistItem)) n.querySelector('details').open = true; });
           fresh.querySelectorAll('.deal-note').forEach(n => { if (expanded.has(n.dataset.id)) n.querySelector('details').open = true; });
           if (focusIdentity) [...fresh.querySelectorAll('[data-detail-focus]')].find(n => n.dataset.detailFocus === focusIdentity)?.focus({preventScroll:true});
           else if (focused?.id) document.getElementById(focused.id)?.focus({preventScroll:true});
