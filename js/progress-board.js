@@ -421,7 +421,6 @@ export function mountBoard(deps = {}) {
       container.setAttribute("aria-busy", "true");
       container.classList.add("hierarchy-board");
       byId("pipeline-title").textContent = boardId === SYSTEM_BOARD_ID ? "Work Requests" : "Loading board";
-      doc.querySelector("details.directory-panel")?.removeAttribute("open");
       const loading = el("div", "hierarchy-loading");
       loading.setAttribute("aria-hidden", "true");
       loading.append(el("div", "hierarchy-toolbar"));
