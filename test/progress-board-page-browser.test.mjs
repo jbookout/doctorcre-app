@@ -120,6 +120,30 @@ const workRow = (id, completed = false) => ({ id, kind: 'loop', source: 'synthet
   title: `Synthetic ${id}`, state: completed ? 'done' : 'open', completed,
   age: 1, last_activity_at: '2026-10-02T08:00:00Z', available_triage_actions: [] });
 const systemPath = '/control-room/progress/board/carr-v5';
+async function hierarchyEvidence(page, state, width, theme) {
+  await page.evaluate(theme => { document.documentElement.dataset.theme = theme; }, theme);
+  if (!process.env.HIERARCHY_EVIDENCE_DIR) return;
+  await mkdir(process.env.HIERARCHY_EVIDENCE_DIR, { recursive: true });
+  await page.screenshot({ path: `${process.env.HIERARCHY_EVIDENCE_DIR}/${state}-${width}-${theme}.png`, fullPage: true });
+}
+
+for (const width of [390, 1280]) for (const theme of ['dark', 'light']) {
+  test(`hierarchy taste has one heading and reaches work promptly at ${width}px ${theme}`, async t => {
+    const { page, errors } = await open(t, { width, path: systemPath, snapshotData: hierarchy });
+    const first = page.locator('[data-hierarchy-id="WR14"]');
+    await first.waitFor();
+    await hierarchyEvidence(page, 'requests', width, theme);
+    const headings = await page.locator('h1, h2').evaluateAll(nodes => nodes.filter(node =>
+      node.textContent === 'Work Requests' && node.getBoundingClientRect().height > 0 &&
+      getComputedStyle(node).clip === 'auto').length);
+    assert.equal(headings, 1, 'one visible Work Requests heading');
+    assert.equal(await page.locator('nav[aria-label="Breadcrumb"]').isVisible(), false, 'one hierarchy breadcrumb row');
+    assert.ok((await first.boundingBox()).y < 380, 'the first request starts within 380px');
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
+    assert.deepEqual(errors, []);
+  });
+}
+
 async function mountTestCosts(t, width = 390) {
   const { page, errors } = await open(t, { path: systemPath, width });
   await page.locator('#board-stages').waitFor();
