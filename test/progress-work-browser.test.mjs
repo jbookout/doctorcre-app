@@ -818,6 +818,34 @@ for (const width of [1440,390]) test(`PR card navigation preserves exact lineage
 });
 
 
+for (const width of [390,1280]) for (const theme of ['dark','light'])
+test(`work flow labels remain readable at ${width}px in ${theme} theme`, async t => {
+  const {page,errors} = await open(t,{width,rpcReply:(rpc,payload) =>
+    rpc.name === 'engineering-passport' ? multiEnvelopeCanonicalFixture({reviewed:true}) : payload});
+  await page.evaluate(theme => document.documentElement.dataset.theme = theme, theme);
+  await page.emulateMedia({reducedMotion:'reduce'});
+  const labels = page.locator('.work-flow text, .work-flow li');
+  assert.deepEqual(await labels.allTextContents(), ['Task','Sessions','Attempts','Review']);
+  const boxes = await labels.evaluateAll(labels => labels.map(label => {
+    const box = label.getBoundingClientRect();
+    const scale = label instanceof SVGGraphicsElement ? label.getScreenCTM().a : 1;
+    return {size:parseFloat(getComputedStyle(label).fontSize) * scale, x:box.x, y:box.y};
+  }));
+  for (const box of boxes) assert.ok(box.size >= 12, `Rendered label is ${box.size}px`);
+  for (let i = 1; i < boxes.length; i++)
+    assert.ok(width === 390 ? boxes[i].y > boxes[i-1].y : boxes[i].x > boxes[i-1].x);
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+  if (process.env.SLICE7_TASTE_CAPTURE_DIR) {
+    await page.waitForFunction(() => document.querySelector('#workReviewList').textContent.includes('actor:second'));
+    await mkdir(process.env.SLICE7_TASTE_CAPTURE_DIR,{recursive:true});
+    for (const [name,selector] of [['flow','.work-flow'], ['reviews','#workReviews']]) {
+      await page.locator(selector).scrollIntoViewIfNeeded();
+      await page.screenshot({path:resolve(process.env.SLICE7_TASTE_CAPTURE_DIR,`${name}-${width}-${theme}.png`)});
+    }
+  }
+  assert.deepEqual(errors, []);
+});
+
 test('review history leads with the verdict and keeps execution receipts collapsed', async t => {
   const {page,errors} = await open(t,{rpcReply:(rpc,payload) =>
     rpc.name === 'engineering-passport' ? multiEnvelopeCanonicalFixture({reviewed:true}) : payload});
