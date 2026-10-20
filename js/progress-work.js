@@ -248,8 +248,8 @@ document.addEventListener('progress-auth-lost', () => {
     breadcrumbs('Progress', 'Sign in');
 });
 let focusedLineage = false;
-function lineageRecord(task) {
-  const host = node('div'); host.innerHTML = workLineageHtml(task, scope.board, {targets:true,taskId:scope.task});
+function lineageRecord(task, taskId) {
+  const host = node('div'); host.innerHTML = workLineageHtml(task, scope.board, {targets:true,taskId});
   let hash;
   try { hash = decodeURIComponent(location.hash.slice(1)); } catch { return host.firstElementChild; }
   queueMicrotask(() => {
@@ -263,7 +263,7 @@ function renderMetadata(task, questions) {
   const linkedTask = task || (scope.workRequest ? {work_request:scope.workRequest} : null);
   // Displayed delivery ages change independently of publication revisions.
   patch($('workMetadata'), {task, card, questions, delivery}, () => [
-    ...(linkedTask ? [lineageRecord(linkedTask)] : []), flow(task), ...(task ? [deliveryRecord(delivery), taskRecord(task, questions)] : [node('p', scope.task
+    ...(linkedTask ? [lineageRecord(linkedTask, task ? task.id || scope.task : null)] : []), flow(task), ...(task ? [deliveryRecord(delivery), taskRecord(task, questions)] : [node('p', scope.task
       ? 'This task is not in the loaded publication; linked wire evidence remains available.'
       : 'Shared project activity · infrastructure and queue cover all projects.', 'work-empty')]),
     ...(card ? [record('Work request', card)] : []),
