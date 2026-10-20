@@ -207,11 +207,8 @@ export function mountAppLayout(root, host, pathname) {
         status.querySelector('#appSyncTime').dateTime = observed;
       }
       const active = scopedDeals(value, 'team');
-      const labeled = items?.some(item => Object.hasOwn(item,'owner_partner'));
-      todayNeeds = active.filter(d => needsAttention(d)).map(deal => {
-        const action = items?.find(item => item.subject_type === 'deal' && item.subject_id === deal.id);
-        return {...deal, owner_partner:action && Object.hasOwn(action,'owner_partner') ? action.owner_partner : labeled && ['joe','dell'].includes(deal.owner) ? deal.owner : undefined};
-      });
+      todayNeeds = active.filter(d => needsAttention(d)).map(deal => ({...deal,
+        owner_partner:items?.find(item => item.subject_type === 'deal' && item.subject_id === deal.id)?.owner_partner}));
       render('#appWorkingList', active.filter(d => needsAttention(d)).slice(0,8).map(d => row(d,d.next_step)).join('') || empty);
       if (!pageOwnsMoves) {
         try {

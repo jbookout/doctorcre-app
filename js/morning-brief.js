@@ -41,8 +41,6 @@ export function mountMorningBrief({ document:root, window:win, getClient, interv
     view = facts ? morningBriefView(facts, {...viewOptions, owner:owners.current()}) : null;
     render();
   });
-  // The brief never opens itself. Today's unseen brief is a quiet cue on Doc
-  // and on the Doc detail button until the partner opens it once.
   const cue = () => {
     const unseen = !!(view && preferences && preferences.value.day !== localDay(now()));
     const doc = $('docOpen');
@@ -121,7 +119,6 @@ export function mountMorningBrief({ document:root, window:win, getClient, interv
         }
       } catch (error) {
         if ([401,403].includes(error.status)) throw error;
-        // Ordinary read failures retain supported priorities, with coverage missing.
       }
       if (disposed || signal?.aborted) return;
       facts = payload; viewOptions = { now:now(),since,events,caughtUp };
@@ -130,7 +127,6 @@ export function mountMorningBrief({ document:root, window:win, getClient, interv
       view = next; render();
       if (dialog.open && preferences.value.day !== localDay(now())) remember(); else cue();
       if (selected) {
-        // Removed or reassigned records leave the popup immediately.
         const source = payload.sections[selected.kind === 'deal' ? 'deals' : selected.kind === 'action' ? 'today' : 'loops'];
         const admitted = source.state !== 'unavailable' && source.items.find(row => selected.kind === 'loop' ? String(row.number) === selected.id && row.kind === selected.loopKind : row.id === selected.id && (selected.kind !== 'action' || row.item_kind === 'next_action'));
         if (admitted) await showRecord(selected.kind === 'action' ? {...selected,action:admitted} : selected,{background:true}); else back();

@@ -14,12 +14,9 @@ const short = (value, count) => {
   return words.length > count ? `${words.slice(0,count).join(' ')}…` : words.join(' ');
 };
 
-// A small, deterministic projection of facts. No model guesses, priority scores,
-// synthetic filler, or record writes. Earliest due commitments lead the brief.
 export function morningBriefView(payload, { now = new Date(), since, events = [], caughtUp = false, owner = 'all' } = {}) {
   if (!validBrief(payload)) return null;
   const { sponsor, sections } = payload, day = localDay(now);
-  // These sections have already been authorized by the authenticated producer.
   const deals = new Map(sections.deals.state === 'unavailable' ? [] : sections.deals.items.map(row => [row.id,row]));
   const due = [];
   if (sections.today.state !== 'unavailable') for (const row of filterBriefOwners(sections.today.items, owner)) {
@@ -27,7 +24,7 @@ export function morningBriefView(payload, { now = new Date(), since, events = []
     if (!text(row.what) || !/^\d{4}-\d{2}-\d{2}$/.test(row.due_on || '') || row.due_on > day) continue;
     if (row.subject_type === 'deal' && deal) {
       if (deal.operating_state === 'parked' || /^closed$/i.test(deal.phase || '')) continue;
-      due.push({ key:row.id && Object.hasOwn(row,'owner_partner') ? `action:${row.id}` : `deal:${row.subject_id}`, kind:'deal', id:row.subject_id, title:deal.name, summary:row.what, due:row.due_on, owner_partner:row.owner_partner });
+      due.push({ key:`action:${row.id}`, kind:'deal', id:row.subject_id, title:deal.name, summary:row.what, due:row.due_on, owner_partner:row.owner_partner });
     } else if (row.item_kind === 'next_action' && text(row.id)) {
       due.push({ key:`action:${row.id}`, kind:'action', id:row.id, action:row, title:row.subject_name || row.what, summary:row.what, due:row.due_on, owner_partner:row.owner_partner });
     }
@@ -42,7 +39,6 @@ export function morningBriefView(payload, { now = new Date(), since, events = []
   const unique = due.filter(row => { if (seen.has(row.key)) return false; seen.add(row.key); return true; });
   const first = unique[0] || null;
   const receipts = caughtUp ? events.map(event => normalizeChangeEvent(event, { dealName:id => deals.get(id)?.name })).filter(row => row && Date.parse(row.recorded_at) >= Date.parse(since) && Date.parse(row.recorded_at) <= now.valueOf()).sort(compareReceipts) : [];
-  // Only user-facing fields, with wording from the existing receipt vocabulary.
   const change = receipts.find(row => ['phase','next_step','next_date','note','attention','operating_state'].includes(row.field) && !(first?.kind === 'deal' && row.deal_id === first.id));
   const overnight = change ? { key:`deal:${change.deal_id}`, kind:'deal', id:change.deal_id, title:change.deal_name, summary:change.kind === 'note' ? 'New note' : `${change.action}${change.after ? `: ${change.after}` : ''}`, due:null } : null;
   const remaining = unique.find(row => row.key !== first?.key && !(row.kind === 'deal' && row.id === overnight?.id)) || null;
@@ -55,7 +51,6 @@ export function morningBriefView(payload, { now = new Date(), since, events = []
   return { sponsor, day, groups, unavailable, spoken, observedAt:now.toISOString() };
 }
 
-// Only app preferences go to storage, scoped to the authenticated partner.
 export function briefPreferences(storage, sponsor) {
   const key = `doctorcre:morning:${sponsor}`;
   let value = {};
