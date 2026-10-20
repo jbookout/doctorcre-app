@@ -313,3 +313,10 @@ test('deal card controls meet the 44px target floor at phone and desktop widths'
   assert.deepEqual(undersized,[]);
  });
 });
+
+test('phone phase dates and secondary timeline text stay readable at 13px',async t=>{
+ const {page}=await open(t,390);
+ const sizes=await page.locator('.phase-rail :is(time,small)').evaluateAll(nodes=>nodes.map(n=>({text:n.textContent,size:parseFloat(getComputedStyle(n).fontSize)})));
+ assert.ok(sizes.length>=4,'recorded phase dates are present');
+ assert.deepEqual(sizes.filter(n=>n.size<13),[]);
+});
