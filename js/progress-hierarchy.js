@@ -1,5 +1,6 @@
 import { STAGES } from './progress-board-model.js';
 import { boardPageUrl } from './progress-board-route.js';
+import { sectionForTab } from './control-room-queue-model.js';
 
 export function hierarchyUrl(boardId, cardId = '') {
   return boardPageUrl(boardId) + (cardId ? `?card=${encodeURIComponent(cardId)}` : '');
@@ -36,6 +37,8 @@ export function mountHierarchy({ container, window: win, onOpen, onClose }) {
   let firstRead = true;
   let lastSignature = '';
   let address = new URL(win.location.href).searchParams.get('card') || '';
+  const inBoards = () => win.location.pathname !== '/control-room' ||
+    sectionForTab(new URLSearchParams(win.location.search).get('tab')) === 'boards';
   const node = (tag, text, className) => {
     const element = doc.createElement(tag);
     if (text) element.textContent = text;
@@ -62,6 +65,7 @@ export function mountHierarchy({ container, window: win, onOpen, onClose }) {
     (trigger || doc.getElementById('pipeline-title'))?.focus();
   }
   function openSelected() {
+    if (!inBoards()) { onClose?.(); return; }
     const selected = hierarchyView(data, address).selected;
     if (selected) {
       focusDestination(selected.id);
@@ -179,6 +183,7 @@ export function mountHierarchy({ container, window: win, onOpen, onClose }) {
     if (previous) focusDestination(previous);
   }
   const pop = () => {
+    if (!inBoards()) { onClose?.(); return; }
     const origin = address;
     address = new URL(win.location.href).searchParams.get('card') || '';
     render();
