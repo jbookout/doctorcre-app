@@ -61,6 +61,7 @@ for (const width of [1280, 390]) for (const theme of ['light', 'dark']) test(`si
   assert.equal(await page.locator('[aria-label="Deal phases and timeline"]').count(), 1);
   assert.equal(await page.locator('.timeline-chart').count(), 0);
   assert.equal(await page.locator('#detailOwner').inputValue(), 'dell');
+  assert.equal(await page.locator('.deal-updates').count(), 0, 'the signed-in empty note feed renders no section');
   assert.equal(await page.locator('#recordPanel').evaluate(node => node.scrollWidth <= node.clientWidth), true);
   await page.screenshot({ path: join(evidence, `${width}-${theme}-snapshot.png`), animations: 'disabled' });
   const header = await page.locator('#recordPanel > header').evaluate(node => ({
@@ -87,7 +88,7 @@ for (const width of [1280, 390]) for (const theme of ['light', 'dark']) test(`si
     return {scrollTop: title.closest('dialog').scrollTop, orb: orb.toJSON(), text: text.toJSON(), hits,
       overlaps: orb.left < text.right && orb.right > text.left && orb.top < text.bottom && orb.bottom > text.top};
   });
-  await writeFile(join(evidence, `${width}-${theme}-hit-test.json`), JSON.stringify(titleHitTest, null, 2));
+  await writeFile(join(evidence, `${width}-${theme}-hit-test.json`), JSON.stringify({...titleHitTest, header}, null, 2));
   assert.ok(titleHitTest.scrollTop > 100, 'exercise the sticky header after scrolling');
   assert.equal(titleHitTest.overlaps, false, JSON.stringify(titleHitTest));
   assert.ok(titleHitTest.hits.length > 0 && titleHitTest.hits.every(hit => hit.visible), JSON.stringify(titleHitTest));
