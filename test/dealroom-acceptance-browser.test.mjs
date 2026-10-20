@@ -63,6 +63,16 @@ for (const width of [1280, 390]) for (const theme of ['light', 'dark']) test(`si
   assert.equal(await page.locator('#detailOwner').inputValue(), 'dell');
   assert.equal(await page.locator('#recordPanel').evaluate(node => node.scrollWidth <= node.clientWidth), true);
   await page.screenshot({ path: join(evidence, `${width}-${theme}-snapshot.png`), animations: 'disabled' });
+  const header = await page.locator('#recordPanel > header').evaluate(node => ({
+    stackHeight: node.getBoundingClientRect().bottom - node.parentElement.getBoundingClientRect().top,
+    titleFontSize: parseFloat(getComputedStyle(node.querySelector('h2')).fontSize),
+    paddingTop: parseFloat(getComputedStyle(node).paddingTop),
+  }));
+  if (width === 390) assert.ok(header.stackHeight <= 120, `phone header leaves room for the snapshot: ${JSON.stringify(header)}`);
+  else {
+    assert.equal(header.titleFontSize, 27, 'desktop title scale stays unchanged');
+    assert.equal(header.paddingTop, 16, 'desktop header spacing stays unchanged');
+  }
   assert.equal(await page.locator('html').getAttribute('data-theme'), theme);
   await page.locator('#recordPanel').evaluate(node => { node.scrollTop = 220; });
   await page.screenshot({ path: join(evidence, `${width}-${theme}-scrolled.png`), animations: 'disabled' });
