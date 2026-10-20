@@ -4,10 +4,12 @@ import { dateCaption } from './deal-timeline.js';
 const STATUS = { complete: 'Recorded complete', not_recorded: 'Not recorded', due: 'Due today', overdue: 'Overdue', upcoming: 'Upcoming' };
 
 export function renderDealChecklist(checklist) {
-  const unavailable = !checklist || checklist.schema_version !== 'deal-checklist.v1';
+  if (!checklist) return '';
+  const unavailable = checklist.schema_version !== 'deal-checklist.v1';
   if (unavailable || checklist.template_state === 'source_changed') {
     return `<section class="deal-checklist" data-detail-read="checklist" aria-label="Deal checklist"><h3>Deal checklist</h3><p>${unavailable ? 'Checklist unavailable.' : 'Checklist needs a doctrine review.'}</p></section>`;
   }
+  if (!checklist.phases.some(phase => phase.items.length)) return '';
   const due = checklist.due_items.length;
   return `<details class="deal-checklist" data-detail-read="checklist"><summary>Deal checklist${due ? ` · ${due} due` : ''}</summary>
     ${checklist.template_state === 'deal_type_unknown' ? '<p>Confirm the deal type to see its full checklist.</p>' : ''}
