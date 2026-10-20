@@ -818,6 +818,21 @@ for (const width of [1440,390]) test(`PR card navigation preserves exact lineage
 });
 
 
+test('Tab reaches the linked Work Request and Enter opens its standalone detail', async t => {
+  const {page,errors} = await open(t);
+  const link = page.locator('.work-lineage a').filter({hasText:'WR-900'});
+  await link.waitFor();
+  await page.locator('#sharedActivityLink').focus();
+  for (let step = 0; step < 20 && !await link.evaluate(el => el === document.activeElement); step++)
+    await page.keyboard.press('Tab');
+  assert.equal(await link.evaluate(el => el === document.activeElement), true, 'Tab must reach the Work Request');
+  await page.keyboard.press('Enter');
+  await page.waitForFunction(() => new URL(location.href).searchParams.get('work_request') === 'WR-900');
+  assert.equal(new URL(page.url()).searchParams.has('task'), false);
+  await page.waitForFunction(() => document.querySelector('#workTitle').textContent === 'Demo work request');
+  assert.deepEqual(errors, []);
+});
+
 test('unresolved task with an explicit request has no clickable Task lineage', async t => {
   const {page,errors} = await open(t, {empty:true,
     path:'/control-room/progress/work?board=demo-project&task=legacy-pr-73&work_request=WR-900'});
