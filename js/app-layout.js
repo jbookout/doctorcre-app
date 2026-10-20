@@ -32,7 +32,7 @@ export function mountAppLayout(root, host, pathname) {
   const win = root.defaultView || globalThis.window;
   const pageKey = pathname === '/deals' ? '/deals' : pathname;
   const boardPage = ['/leads','/deals','/pipeline'].includes(pathname);
-  const title = pathname === '/vendors' ? 'Vendors' : pathname === '/clients' ? 'Clients' : pathname === '/deals' ? 'Local Deals' : root.querySelector('main h1, .room-wordmark, .page-kicker')?.textContent.trim().replace(/Loading$/, '').trim() || root.title.split('·')[0].trim();
+  const title = pathname.startsWith('/control-room') ? 'Control Room' : pathname === '/vendors' ? 'Vendors' : pathname === '/clients' ? 'Clients' : pathname === '/deals' ? 'Local Deals' : root.querySelector('main h1, .room-wordmark, .page-kicker')?.textContent.trim().replace(/Loading$/, '').trim() || root.title.split('·')[0].trim();
   const { layout, status } = createAppLayout(root, title);
   host.after(layout, status);
   const main = layout.querySelector('#appMainSlot');
@@ -182,7 +182,7 @@ export function mountAppLayout(root, host, pathname) {
       readWithDeadline(() => client.getBoard({ workspace:'all' }), { signal }),
       readWithDeadline(async () => {
         const brief = await client.morningBrief();
-        if (validBrief(brief)) return brief.sections.today.state === 'unavailable' ? null : {items:brief.sections.today.items};
+        if (validBrief(brief)) { owners.setViewer(brief.sponsor); return brief.sections.today.state === 'unavailable' ? null : {items:brief.sections.today.items}; }
         return client.todayTriage();
       }, { signal }),
     ]);
@@ -207,8 +207,10 @@ export function mountAppLayout(root, host, pathname) {
         status.querySelector('#appSyncTime').dateTime = observed;
       }
       const active = scopedDeals(value, 'team');
-      todayNeeds = active.filter(d => needsAttention(d)).map(deal => ({...deal,
-        owner_partner:items?.find(item => item.subject_type === 'deal' && item.subject_id === deal.id)?.owner_partner}));
+      todayNeeds = active.flatMap(deal => {
+        const actions = items?.filter(item => item.subject_type === 'deal' && item.subject_id === deal.id) || [];
+        return actions.length ? actions.map(action => ({...deal, ...action, next_step:action.what, next_date:action.due_on})) : [deal];
+      }).filter(d => needsAttention(d));
       render('#appWorkingList', active.filter(d => needsAttention(d)).slice(0,8).map(d => row(d,d.next_step)).join('') || empty);
       if (!pageOwnsMoves) {
         try {

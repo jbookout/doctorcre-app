@@ -8,7 +8,7 @@ for (const width of [390,1280]) test(`partner brief controls work at ${width}px`
   const page=await browser.newPage({viewport:{width,height:900}});
   const errors=[];page.on('pageerror',error=>errors.push(error.message));
   await page.route('**/js/client.js',route=>route.fulfill({contentType:'text/javascript',body:'export async function createClient(){return window.exampleClient}'}));
-  await page.route('**/brief-owner-test',route=>route.fulfill({contentType:'text/html',body:`<!doctype html><html><head><link rel="stylesheet" href="/css/design.css"><link rel="stylesheet" href="/css/app-shell.css"><link rel="stylesheet" href="/css/morning-brief.css"></head><body><nav id="host"></nav><main><h1>Example</h1></main><button id="docOpen">Doc</button><button id="docMorning">Morning brief</button><script type="module">
+  await page.route('**/brief-owner-test',route=>route.fulfill({contentType:'text/html',body:`<!doctype html><html><head><link rel="stylesheet" href="/css/tokens.css"><link rel="stylesheet" href="/css/system.css"><link rel="stylesheet" href="/css/app-shell.css"><link rel="stylesheet" href="/css/morning-brief.css"></head><body><nav id="host"></nav><main><h1>Example</h1></main><button id="docOpen">Doc</button><button id="docMorning">Morning brief</button><script type="module">
     import {mountAppLayout} from '/js/app-layout.js';
     import {mountMorningBrief} from '/js/morning-brief.js';
     const day=new Date().toISOString().slice(0,10);
@@ -30,7 +30,12 @@ for (const width of [390,1280]) test(`partner brief controls work at ${width}px`
   assert.equal(await page.locator('#appTodayNext [data-layout-deal]').count(),1);
   const fits=await page.locator('dialog').evaluate(node=>node.scrollWidth<=node.clientWidth);
   assert.equal(fits,true);
+  assert.equal(await page.locator('#morningOwners [data-brief-owner="dell"]').evaluate(node=>getComputedStyle(node).borderRadius===getComputedStyle(document.documentElement).getPropertyValue('--radius-round').trim()),true,'reuse the pipeline owner chip style');
   await page.locator('#morningOwners [data-brief-owner="joe"]').focus();await page.keyboard.press('Enter');
+  assert.deepEqual(await page.locator('.morning-card .morning-owner').allTextContents(),['Joe']);
+  await page.reload();await page.locator('#appSyncTime[datetime]').waitFor({state:'attached'});
+  await page.locator('#docMorning').click();
+  assert.equal(await page.locator('#morningOwners [aria-pressed="true"]').textContent(),'Joe');
   assert.deepEqual(await page.locator('.morning-card .morning-owner').allTextContents(),['Joe']);
   assert.deepEqual(errors,[]);
 });

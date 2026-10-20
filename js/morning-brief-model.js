@@ -24,7 +24,7 @@ export function morningBriefView(payload, { now = new Date(), since, events = []
     if (!text(row.what) || !/^\d{4}-\d{2}-\d{2}$/.test(row.due_on || '') || row.due_on > day) continue;
     if (row.subject_type === 'deal' && deal) {
       if (deal.operating_state === 'parked' || /^closed$/i.test(deal.phase || '')) continue;
-      due.push({ key:`action:${row.id}`, kind:'deal', id:row.subject_id, title:deal.name, summary:row.what, due:row.due_on, owner_partner:row.owner_partner });
+      due.push({ key:row.id ? `action:${row.id}` : `deal:${row.subject_id}`, kind:'deal', id:row.subject_id, action:row.id ? row : null, title:deal.name, summary:row.what, due:row.due_on, owner_partner:row.owner_partner });
     } else if (row.item_kind === 'next_action' && text(row.id)) {
       due.push({ key:`action:${row.id}`, kind:'action', id:row.id, action:row, title:row.subject_name || row.what, summary:row.what, due:row.due_on, owner_partner:row.owner_partner });
     }
@@ -49,12 +49,4 @@ export function morningBriefView(payload, { now = new Date(), since, events = []
   if (!caughtUp || sections.deals.state === 'unavailable') unavailable.push('Overnight updates unavailable');
   const spoken = [...unavailable,...groups.map(group => `${group.label}. ${group.row.title}. ${group.row.summary}`)].join('. ');
   return { sponsor, day, groups, unavailable, spoken, observedAt:now.toISOString() };
-}
-
-export function briefPreferences(storage, sponsor) {
-  const key = `doctorcre:morning:${sponsor}`;
-  let value = {};
-  try { value = JSON.parse(storage?.getItem(key) || '{}') || {}; } catch {}
-  const save = patch => { value = { ...value, ...patch }; try { storage?.setItem(key,JSON.stringify(value)); } catch {} };
-  return { get value() { return value; }, save };
 }

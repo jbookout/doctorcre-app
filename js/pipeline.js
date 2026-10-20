@@ -1,3 +1,4 @@
+import { OWNER_FILTERS } from './owner-filters.js';
 import { showToast } from './toast.js';
 import { pageDocContext, selectDocRecord, setDocFilters, publishDocRead } from './doc-context.js';
 // V5-UX-B03 — Deals: the Kanban board's DOM wiring, and nothing else.
@@ -55,7 +56,7 @@ import {
   dealInsightLines,
 } from './pipeline-model.js';
 import { isClosedDeal, localDeals, needsAttention } from './deal-review-model.js';
-import { lostDeals, closedDeals, urgencyOrder, concise, automaticMove, OWNER_FILTERS, PHASE_TRIGGERS } from './local-deals-model.js';
+import { lostDeals, closedDeals, urgencyOrder, concise, automaticMove, PHASE_TRIGGERS } from './local-deals-model.js';
 import { DATE_KINDS, renderCriticalDates, renderDealTimeline, renderDealUpdates, updateCountdowns } from './deal-timeline.js';
 import { uuidv4 } from './uuid.js';
 import { mountVisibilityPoll } from './visibility-poll.mjs';

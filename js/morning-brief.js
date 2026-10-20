@@ -1,9 +1,10 @@
+import { briefPreferences } from './brief-preferences.js';
 import { briefOwnerLabel, mountBriefOwnerFilter } from './brief-owner-filter.js';
 import {onDialogClosed} from './dialog-lifecycle.js';
 import { mountAutoRefresh, readWithDeadline, updatedLabel } from './auto-refresh.mjs';
 import { escapeText } from './change-receipts.mjs';
 import { entryDetailsHtml } from './entry-details.mjs';
-import { localDay, validBrief, morningBriefView, briefPreferences } from './morning-brief-model.js';
+import { localDay, validBrief, morningBriefView } from './morning-brief-model.js';
 
 export function mountMorningBrief({ document:root, window:win, getClient, intervalMs = 30_000, now = () => new Date() }) {
   const dialog = root.createElement('dialog'); dialog.id = 'docMorningBrief'; dialog.className = 'morning-brief'; dialog.setAttribute('aria-labelledby','morningTitle');
@@ -29,7 +30,8 @@ export function mountMorningBrief({ document:root, window:win, getClient, interv
     const title = view ? `Morning brief · ${view.sponsor === 'joe' ? 'Joe' : 'Dell'}` : 'Morning brief';
     $('morningTitle').textContent = title;
     $('morningBack').hidden = true;
-    const html = view?.groups.map(({label,row},index) => `<section><h3>${label}</h3><button type="button" class="morning-card" data-urgency="${row.due && row.due < localDay(now()) ? 'overdue' : 'today'}" data-brief-record="${index}" data-brief-key="${escapeText(row.key)}"><span class="morning-marker" aria-hidden="true">${index === 0 ? '↗' : '◇'}</span><div><strong>${escapeText(row.title)}</strong>${briefOwnerLabel(row) ? `<small class="morning-owner">${briefOwnerLabel(row)}</small>` : ''}${row.summary ? `<span>${escapeText(row.summary)}</span>` : ''}${row.due ? `<time datetime="${escapeText(row.due)}">Due ${escapeText(row.due)}</time>` : ''}</div><span aria-hidden="true">↗</span></button></section>`).join('') || '';
+    const empty = view && !view.unavailable.length ? `<section><p>${owners.current() === 'all' ? 'No to-dos' : `No to-dos for ${owners.current() === 'joe' ? 'Joe' : 'Dell'}`}</p>${owners.current() !== 'all' ? '<button type="button" data-brief-show-all>Show all</button>' : ''}</section>` : '';
+    const html = view?.groups.map(({label,row},index) => `<section><h3>${label}</h3><button type="button" class="morning-card" data-urgency="${row.due && row.due < localDay(now()) ? 'overdue' : 'today'}" data-brief-record="${index}" data-brief-key="${escapeText(row.key)}"><span class="morning-marker" aria-hidden="true">${index === 0 ? '↗' : '◇'}</span><div><strong>${escapeText(row.title)}</strong>${briefOwnerLabel(row) ? `<small class="morning-owner">${briefOwnerLabel(row)}</small>` : ''}${row.summary ? `<span>${escapeText(row.summary)}</span>` : ''}${row.due ? `<time datetime="${escapeText(row.due)}">Due ${escapeText(row.due)}</time>` : ''}</div><span aria-hidden="true">↗</span></button></section>`).join('') || empty;
     if ($('morningContent').innerHTML !== html) {
       const focus = root.activeElement?.dataset.briefKey;
       $('morningContent').innerHTML = html;
@@ -74,7 +76,7 @@ export function mountMorningBrief({ document:root, window:win, getClient, interv
       const record = row.kind === 'action' ? value?.action : row.kind === 'deal' ? value?.deal : value?.loop;
       if (!record || (row.kind === 'loop' ? String(record.number) !== row.id || record.kind !== row.loopKind : record.id !== row.id)) throw new Error('Invalid record');
       $('morningTitle').textContent = record.name || record.title || record.subject_name || row.title;
-      const facts = row.kind === 'deal' ? [['Next step',record.next_step],['Due',record.next_date],['Phase',record.phase]] : row.kind === 'action' ? [['For',record.subject_name],['Reference',record.subject_ref],['Due',record.due_on],['Owner',record.owner]] : [['Due',record.due_on],['Status',record.status],['Blocker',record.blocker_detail]];
+      const facts = row.kind === 'deal' ? [['Next step',row.action ? row.action.what : record.next_step],['Due',row.action ? row.action.due_on : record.next_date],['Phase',record.phase]] : row.kind === 'action' ? [['For',record.subject_name],['Reference',record.subject_ref],['Due',record.due_on],['Owner',record.owner]] : [['Due',record.due_on],['Status',record.status],['Blocker',record.blocker_detail]];
       const entries = row.kind === 'deal' ? value.thread || [] : [{ id:row.key, text:row.kind === 'action' ? record.what : record.body }];
       const expanded = [...$('morningContent').querySelectorAll('details[open]')].map(node => node.dataset.entry);
       const focusedEntry = root.activeElement?.closest('details')?.dataset.entry;
@@ -98,7 +100,7 @@ export function mountMorningBrief({ document:root, window:win, getClient, interv
       if (disposed || signal?.aborted) return;
       if (!validBrief(payload)) throw new Error('Invalid brief');
       if (sponsor !== payload.sponsor || windowDay !== localDay(now())) {
-        clear(); sponsor = payload.sponsor; preferences = briefPreferences(storage,sponsor); windowDay = localDay(now());
+        clear(); sponsor = payload.sponsor; preferences = briefPreferences(storage,sponsor); windowDay = localDay(now()); owners.setViewer(sponsor);
         const currentDay = localDay(now());
         if (preferences.value.day === currentDay && Number.isFinite(Date.parse(preferences.value.since))) since = preferences.value.since;
         else if (Number.isFinite(Date.parse(preferences.value.lastShownAt))) since = preferences.value.lastShownAt;
@@ -127,9 +129,9 @@ export function mountMorningBrief({ document:root, window:win, getClient, interv
       view = next; render();
       if (dialog.open && preferences.value.day !== localDay(now())) remember(); else cue();
       if (selected) {
-        const source = payload.sections[selected.kind === 'deal' ? 'deals' : selected.kind === 'action' ? 'today' : 'loops'];
-        const admitted = source.state !== 'unavailable' && source.items.find(row => selected.kind === 'loop' ? String(row.number) === selected.id && row.kind === selected.loopKind : row.id === selected.id && (selected.kind !== 'action' || row.item_kind === 'next_action'));
-        if (admitted) await showRecord(selected.kind === 'action' ? {...selected,action:admitted} : selected,{background:true}); else back();
+        const source = payload.sections[selected.action ? 'today' : selected.kind === 'deal' ? 'deals' : 'loops'];
+        const admitted = source.state !== 'unavailable' && source.items.find(row => selected.kind === 'loop' ? String(row.number) === selected.id && row.kind === selected.loopKind : row.id === (selected.action?.id || selected.id) && (selected.kind !== 'action' || row.item_kind === 'next_action'));
+        if (admitted) await showRecord(selected.action ? {...selected,action:admitted} : selected,{background:true}); else back();
       }
     } catch { if (!disposed) clear(); }
   };
@@ -140,7 +142,7 @@ export function mountMorningBrief({ document:root, window:win, getClient, interv
   onDialogClosed(dialog, () => { stop(); ++detailEpoch; selected = null; if (root.querySelector('dialog[open]')) return; (opener?.isConnected && !opener.closest('dialog:not([open])') ? opener : $('docOpen'))?.focus(); });
   $('morningBack').onclick = back;
   $('morningRefresh').onclick = () => auto.refresh();
-  $('morningContent').onclick = event => { const link = event.target.closest('[data-brief-record]'); if (!link) return; event.preventDefault(); const row = view?.groups[Number(link.dataset.briefRecord)]?.row; if (row) showRecord(row); };
+  $('morningContent').onclick = event => { if (event.target.closest('[data-brief-show-all]')) { owners.setOwner('all'); $('morningOwners').querySelector('[data-brief-owner="all"]').focus(); return; } const link = event.target.closest('[data-brief-record]'); if (!link) return; event.preventDefault(); const row = view?.groups[Number(link.dataset.briefRecord)]?.row; if (row) showRecord(row); };
   $('morningSpeech').onclick = () => { preferences?.save({speech:preferences.value.speech !== true}); stop(); controls(); };
   $('morningListen').onclick = () => {
     if (speaking) { stop(); return; }
