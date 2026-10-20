@@ -40,7 +40,10 @@ async function open(t,{width=1440,height=width===1440?1000:844,path='/control-ro
    if(rpc.name==='schedule-board'&&state.scheduleFailure)return route.fulfill({status:503,body:'{}'});
    if(rpc.name==='governance-queue'&&state.approvalFailure==='http')return route.fulfill({status:503,body:'{}'});
    let payload={};if(snapshotData&&rpc.name==='work-request-card')payload={ok:true,human_ref:rpc.arguments.work_request};
-   else if(reads[rpc.name]&&fixture[reads[rpc.name]])payload=await fixture[reads[rpc.name]](rpc.arguments);
+   else if(reads[rpc.name]&&fixture[reads[rpc.name]]){
+    try{payload=await fixture[reads[rpc.name]](rpc.arguments);}
+    catch(error){if(rpc.name!=='engineering-passport')throw error;return route.fulfill({status:404,contentType:'application/json',body:JSON.stringify(error.payload)});}
+   }
    if(rpc.name==='read-room-queue'&&state.emptyAgents)payload={ok:true,room:'partner-line',live:false,projected_at:null,events:[]};
    if(rpc.name==='read-session-identity'&&state.emptySessions)payload={ok:true,total_seen:0,total_returned:0,permission_filtered:false,sessions:[]};
    if(rpc.name==='governance-queue'&&state.approvalFailure==='invalid')payload={ok:true};
@@ -727,15 +730,15 @@ test('completed hierarchy jobs restore a visible originating control on dialog c
 });
 
 for(const width of [390,1280])for(const theme of ['dark','light'])
-test(`acceptance summary leads the job dialog at ${width}px in ${theme}`,async t=>{
+test(`acceptance summary follows dependencies before execution details at ${width}px in ${theme}`,async t=>{
  const {page,errors}=await open(t,{width,theme,acceptanceProgress:true});
  await page.locator('[data-task-id="work_request:WR-000901"]').click();
  await page.locator('#jobBody .work-progress-summary').getByText('2 of 5 acceptance checks verified',{exact:true}).waitFor();
  const layout=await page.evaluate(()=>{
-  const title=document.querySelector('#jobTitle').getBoundingClientRect(),summary=document.querySelector('.work-progress-summary').getBoundingClientRect();
-  return {first:document.querySelector('#jobBody').firstElementChild.className,top:summary.top,bottom:summary.bottom,titleBottom:title.bottom,height:innerHeight};
+  const dependencies=document.querySelector('#jobBody .work-dependencies').getBoundingClientRect(),summary=document.querySelector('.work-progress-summary').getBoundingClientRect();
+  return {first:document.querySelector('#jobBody').firstElementChild.className,top:summary.top,bottom:summary.bottom,dependenciesBottom:dependencies.bottom,height:innerHeight};
  });
- assert.equal(layout.first,'work-progress');assert.ok(layout.top>=layout.titleBottom&&layout.bottom<layout.height);
+ assert.equal(layout.first,'job-summary');assert.ok(layout.top>=layout.dependenciesBottom&&layout.bottom<layout.height,'acceptance summary stays visible after dependencies');
  assert.equal(await page.locator('#jobBody .work-progress-checks a').count(),5);
  assert.doesNotMatch(await page.locator('#jobBody .work-progress-checks').allTextContents().then(rows=>rows.join(' ')),/check:/);
  assert.match(await page.locator('#jobBody .work-progress-checks').allTextContents().then(rows=>rows.join(' ')),/Verified fraction/);
