@@ -95,11 +95,12 @@ export function renderDealTimeline(detail, now = Date.now()) {
 }
 export function renderDealUpdates(detail) {
   const entries = [...noteEntries(detail)].sort((a,b) => (Date.parse(b.when) || 0)-(Date.parse(a.when) || 0) || String(b.id).localeCompare(String(a.id)));
+  if (!entries.length) return '';
   const stamp = value => {
     const date = new Date(value);
     return Number.isFinite(date.getTime()) ? date.toLocaleString('en-US',{timeZone:'America/Chicago',month:'short',day:'numeric',year:'numeric',hour:'numeric',minute:'2-digit',timeZoneName:'short'}) : 'Date not recorded';
   };
-  return `<section class="deal-updates" data-detail-read="updates" aria-label="Deal updates"><h3>Updates</h3>${entries.map(e => `<article class="deal-note" data-id="${esc(e.id)}" data-kind="${esc(e.kind)}"><div class="timeline-entry-top"><b>${esc(ACTOR_LABEL[e.actor] || (e.actor === 'joe-local' ? 'Joe' : e.actor) || 'System')}</b><time datetime="${esc(e.when || '')}">${esc(stamp(e.when))}</time></div><small>${esc(e.kind)}</small><p>${esc(e.summary)}</p>${e.original && e.original !== e.summary ? `<details><summary data-detail-focus="entry-original:${esc(e.id)}">Read full update</summary><p class="note-original">${esc(e.original)}</p></details>` : ''}</article>`).join('') || '<p>No updates recorded.</p>'}</section>`;
+  return `<section class="deal-updates" aria-label="Deal updates"><h3>Updates</h3>${entries.map(e => `<article class="deal-note" data-id="${esc(e.id)}" data-kind="${esc(e.kind)}"><div class="timeline-entry-top"><b>${esc(ACTOR_LABEL[e.actor] || (e.actor === 'joe-local' ? 'Joe' : e.actor) || 'System')}</b><time datetime="${esc(e.when || '')}">${esc(stamp(e.when))}</time></div><small>${esc(e.kind)}</small><p>${esc(e.summary)}</p>${e.original && e.original !== e.summary ? `<details><summary data-detail-focus="entry-original:${esc(e.id)}">Read full update</summary><p class="note-original">${esc(e.original)}</p></details>` : ''}</article>`).join('')}</section>`;
 }
 export function updateCountdowns(root, now = Date.now()) {
   for (const node of root.querySelectorAll('[data-countdown]')) {
