@@ -3,6 +3,7 @@ import { radarToday } from './lease-radar-model.js';
 
 export function localDeals(rows, owner = 'all') {
   return (rows || []).filter(d => d.workspace_kind !== 'national_account' && !d.account_client_id
+    && !(d.client_status === 'prospect' && d.prospect_engagement_status !== 'active')
     && !isClosedDeal(d) && (owner === 'all' || d.owner === owner));
 }
 export function isClosedDeal(deal) {
