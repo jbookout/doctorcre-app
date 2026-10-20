@@ -10,7 +10,6 @@ import { CONNECTION_NAMES } from './connections-model.js';
 import { uuidv4 } from './uuid.js';
 import { observeDocClient } from './doc-context.js';
 import { PHASES } from './client.js';
-import { assuranceHealthRequest, ASSURANCE_LAYERS } from './assurance-health-model.js';
 import { readinessRequest, threadRequest } from './correspondence-model.js';
 import {
   MY_FLAGGED_DESTINATION, NEEDS_JOE_DESTINATION, TEAM_ACTIVE_DESTINATION, TEAM_FLAGGED_DESTINATION,
@@ -1417,6 +1416,7 @@ export async function createFixtureClient(opts = {}) {
     },
 
     async readAssuranceHealth(args) {
+      const { assuranceHealthRequest, ASSURANCE_LAYERS } = await import('./assurance-health-model.js');
       const { scope } = assuranceHealthRequest(args);
       refuseIfOutage('assurance', 'read-assurance-health');
       const evidence = Object.fromEntries(ASSURANCE_LAYERS.map(layer => [layer, {
@@ -2748,7 +2748,7 @@ export async function createFixtureClient(opts = {}) {
       return {ok:true,schema:'doctorcre-connections.v1',generated_at:checked_at,providers:Object.entries(CONNECTION_NAMES).map(([id,name])=>({id,name,status:id==='grok'?'needs_reconnect':'connected',checked_at,manage_url:'/control-room?tab=connections',spend:{amount:12.34,currency:'USD',kind:id==='jev'?'estimate':'charge',period:'October 2026',as_of:checked_at}})),devices:{state:'read',observed_at:checked_at,items:[{id:'demo-laptop',name:'Demo laptop',connected:true},{id:'demo-workstation',name:'Demo workstation',connected:false}]}};
     },
     async listProgressBoards(){return {schema:'progress-board-directory.v1',boards:[{board_id:'carr-v5',title:'System Job Board',updated_at:nowIso(),task_counts:{running:1}}]};},
-    async readProgressBoard({board_id}={}){return {ok:true,snapshot:{board_id,version:1,updated_at:nowIso(),snapshot_json:{title:'System Job Board',tasks:{demo:{title:'Demo dashboard refresh',status:'review',work_request:'WR-000901',pr:17}}}},questions:[]};},
+    async readProgressBoard({board_id}={}){const {default:queueFixture}=await import('./progress-work-queue-fixture.js');return {ok:true,snapshot:{board_id,version:1,updated_at:nowIso(),snapshot_json:structuredClone(queueFixture)},questions:[]};},
     // V2 C1: one demo row per unfinished-work kind the live census returns,
     // plus a captured Work Request and a detected incident for Triage. Shapes
     // follow unfinished-work.v1 (mcp-server/src/system-work-census.v5.js);

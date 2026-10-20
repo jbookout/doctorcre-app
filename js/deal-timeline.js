@@ -89,6 +89,7 @@ export function renderDealTimeline(detail, now = Date.now()) {
 }
 export function renderDealUpdates(detail) {
   const entries = [...noteEntries(detail)].sort((a,b) => (Date.parse(b.when) || 0)-(Date.parse(a.when) || 0) || String(b.id).localeCompare(String(a.id)));
+  if (!entries.length) return '';
   const stamp = value => {
     const date = new Date(value);
     return Number.isFinite(date.getTime()) ? date.toLocaleString('en-US',{timeZone:'America/Chicago',month:'short',day:'numeric',year:'numeric',hour:'numeric',minute:'2-digit',timeZoneName:'short'}) : 'Date not recorded';

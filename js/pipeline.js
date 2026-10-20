@@ -127,7 +127,7 @@ function autoHtml(deal) {
 const dealTitle = (deal) => dealName(deal.name);
 function nextStepHtml(deal) {
   const text = noteText(deal.next_step);
-  if (!text.trim()) return '<p class="next-line next-step-gap">Add the next step</p>';
+  if (!text.trim()) return '';
   return `<p class="next-line" title="${esc(text)}">${esc(text)}</p>`;
 }
 function cardHtml(deal) {
@@ -844,17 +844,17 @@ async function saveUpdate(id) {
 }
 function detailHtml(detail) {
   const d = detail.deal;
-  const nextStep = noteText(d.next_step);
+  const nextStep = noteText(d.next_step).trim();
   const parked = d.operating_state === 'parked';
   const controlsAvailable = state.deals.has(d.id) && !isClosedDeal(d);
   return `<div class="deal-freshness"><time id="detailUpdated" title="Last updated"></time><button class="btn icon-btn" type="button" data-refresh-detail aria-label="Refresh deal" title="Refresh">↻</button></div><p id="detailReadStatus" role="status"></p>
     <section class="deal-opening-snapshot" data-detail-read="snapshot" aria-label="Deal snapshot">
-      ${nextStep.trim() ? `<p class="deal-current-action"><span>${d.next_date && d.next_date < todayIso() ? 'Overdue action' : 'Next action'}</span><strong>${esc(nextStep)}</strong>${d.next_date ? `<span>Due <time datetime="${esc(d.next_date)}">${esc(dateWords(d.next_date))}</time></span>` : ''}</p>` : '<p class="deal-current-action next-step-gap"><span>Next step missing</span><strong>Add the next step</strong></p>'}
+      ${nextStep ? `<p class="deal-current-action"><span>${d.next_date && d.next_date < todayIso() ? 'Overdue action' : 'Next action'}</span><strong>${esc(nextStep)}</strong>${d.next_date ? `<span>Due <time datetime="${esc(d.next_date)}">${esc(dateWords(d.next_date))}</time></span>` : ''}</p>` : ''}
       <dl class="deal-snapshot-facts">${d.workspace_kind === 'national_account' || d.account_client_id ? `<div><dt>Market agent</dt><dd>${esc(d.market_agent || 'Unassigned')}</dd></div>` : ''}${d.client_name ? `<div><dt>Client</dt><dd>${esc(d.client_name)}</dd></div>` : ''}${d.type ? `<div><dt>Type</dt><dd>${esc(d.type)}</dd></div>` : ''}${d.outcome ? `<div><dt>Outcome</dt><dd>${esc(d.outcome[0].toUpperCase()+d.outcome.slice(1))}</dd></div>` : ''}</dl>
     </section>
     <form id="detailUpdateForm" class="deal-update-form"><label for="dealUpdate">Update</label><textarea id="dealUpdate" name="text" rows="2" maxlength="10000" required></textarea><button class="btn btn-primary" type="submit">Add update</button><p id="detailUpdateStatus" role="status"></p></form>
     <div data-detail-read="board-controls" data-available="${controlsAvailable}">${controlsAvailable ? `<div class="detail-actions"><div class="detail-controls"><label>Phase<select id="detailPhase">${COLUMNS.map(c => `<option value="${esc(c.slug)}"${c.value === d.phase ? ' selected' : ''}>${esc(c.label)}</option>`).join('')}</select></label><label>Owner<select id="detailOwner"><option value="">Unassigned</option>${['joe','dell'].map(owner => `<option value="${owner}"${owner === d.owner ? ' selected' : ''}>${actorName(owner)}</option>`).join('')}</select></label></div><div data-detail-read="parking" data-parked="${parked}">${parked ? `<p>${esc(concise(d.parking_note) || 'Parked')}</p><button type="button" class="btn" data-revive="${esc(d.id)}">Revive</button>` : `<details class="park-options"><summary class="park-control">Park</summary><form id="detailParkForm"><label>Park reason<input name="reason" maxlength="500" required></label><button class="btn park-control" type="submit">Park deal</button></form></details>`}</div></div>` : ''}</div>
-    ${renderDealTimeline(detail)}${renderDealUpdates(detail)}
+    ${renderDealTimeline(detail)}<div data-detail-read="updates">${renderDealUpdates(detail)}</div>
     <div id="panelEvidence"></div>`;
 }
 async function refreshPanel() {
