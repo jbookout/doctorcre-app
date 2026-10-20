@@ -68,6 +68,10 @@ test('summary-only activity does not offer a fabricated original',()=>{
  assert.doesNotMatch(html,/unavailable|Read full update/);
 });
 
+test('zero notes omit the entire Updates section',()=>{
+ assert.equal(renderDealUpdates({thread:[],activities:[]}), '');
+});
+
 test('review 1: producer cleared and passed dates do not raise deadline alarms',()=>{
  for (const [status,state,text] of [['cleared','complete','Cleared'],['passed','past','Passed'],['open','overdue','1 day overdue']]) {
   const value={deal:detail.deal,critical_dates:[{id:'loi',kind:'loi_expiry',due_on:'2026-10-03',status}]};
@@ -93,16 +97,16 @@ test('review 2: recorded and projected lease expiration share urgency while comm
  }
 });
 
-test('updates collapse into one deterministic overview of every entry with full history on demand',()=>{
+test('updates show the latest excerpt and expand into recorded history',()=>{
  const root=new JSDOM(renderDealUpdates(detail)).window.document;
  const overview=root.querySelector('.updates-overview');
  assert.ok(overview);
  assert.match(overview.textContent,/Demo negotiated allowance/);
- assert.match(overview.textContent,/Demo note/);
+ assert.doesNotMatch(overview.textContent,/Demo note/);
  assert.ok(overview.textContent.length<400);
  const history=root.querySelector('.updates-history');
  assert.equal(history.open,false);
- assert.match(history.querySelector('summary').textContent,/Full history.*2/);
+ assert.match(history.querySelector('summary').textContent,/Recorded updates.*2/);
  assert.match(history.textContent,/Original demo email <script>data only<\/script>/);
  assert.equal(root.querySelectorAll('.deal-note').length,2);
 });
@@ -112,7 +116,7 @@ test('timeline consumes first phase dates from the board projection and never ov
  const phases=dealTimeline(value,now).phases;
  assert.equal(phases.find(p=>p.slug==='research').day,'2026-08-31');
  assert.equal(phases.find(p=>p.slug==='legal').day,'2026-09-30');
- assert.match(renderDealTimeline(value,now),/Start date not recorded/);
+ assert.doesNotMatch(renderDealTimeline(value,now),/Start date not recorded/);
 });
 
 test('the live adapter preserves authoritative start dates in both board and detail reads',async()=>{
@@ -126,4 +130,14 @@ test('the live adapter preserves authoritative start dates in both board and det
  const detail=await client.getDeal('demo');
  assert.deepEqual(detail.deal.phase_started_on,phase_started_on);
  assert.equal(dealTimeline(detail).phases.find(p=>p.slug==='legal').day,'2026-09-30');
+});
+
+
+test('a capped activity feed never claims to be full history',()=>{
+ const allActivities=Array.from({length:51},(_,i)=>({id:`activity-${i}`,kind:'note',summary:`Demo activity ${i}`,occurred_at:new Date(Date.UTC(2026,9,20,12,0,-i)).toISOString()}));
+ const root=new JSDOM(renderDealUpdates({activities:allActivities.slice(0,50)})).window.document;
+ assert.equal(root.querySelectorAll('.deal-note').length,50);
+ assert.doesNotMatch(root.body.textContent,/Full history/i);
+ assert.match(root.querySelector('.updates-history > summary').textContent,/Recorded updates \(50\)/);
+ assert.match(root.body.textContent,/latest 50 activities.*older activities may be omitted/i);
 });

@@ -85,16 +85,17 @@ export function renderCriticalDates(detail, now = Date.now()) {
 
 export function renderDealTimeline(detail, now = Date.now()) {
   const view = dealTimeline(detail,now);
-  return `<section class="deal-timeline" data-detail-read="timeline" aria-label="Deal phases and timeline"><h3>Phase timeline</h3><ol class="phase-rail">${view.phases.map(p => `<li${p.current ? ' aria-current="step"' : ''}><span>${esc(p.label)}</span>${p.day ? `<time datetime="${esc(p.day)}">${esc(dateCaption(p.day))}</time>` : '<small>Start date not recorded</small>'}</li>`).join('')}</ol></section>`;
+  return `<section class="deal-timeline" data-detail-read="timeline" aria-label="Deal phases and timeline"><h3>Phase timeline</h3><ol class="phase-rail">${view.phases.map(p => `<li${p.current ? ' aria-current="step"' : ''}><span>${esc(p.label)}</span>${p.day ? `<time datetime="${esc(p.day)}">${esc(dateCaption(p.day))}</time>` : ''}</li>`).join('')}</ol></section>`;
 }
 export function renderDealUpdates(detail) {
   const entries = [...noteEntries(detail)].sort((a,b) => (Date.parse(b.when) || 0)-(Date.parse(a.when) || 0) || String(b.id).localeCompare(String(a.id)));
+  if (!entries.length) return '';
   const stamp = value => {
     const date = new Date(value);
     return Number.isFinite(date.getTime()) ? date.toLocaleString('en-US',{timeZone:'America/Chicago',month:'short',day:'numeric',year:'numeric',hour:'numeric',minute:'2-digit',timeZoneName:'short'}) : 'Date not recorded';
   };
-  const overview = entries.map(e => concise(e.summary, 72)).join(' · ');
-  return `<section class="deal-updates" data-detail-read="updates" aria-label="Deal updates"><h3>Updates</h3>${entries.length ? `<div class="updates-overview"><p tabindex="0" aria-label="Summary of recorded updates">${esc(overview)}</p></div><details class="updates-history"><summary data-detail-focus="update-history">Full history (${entries.length})</summary>${entries.map(e => `<article class="deal-note" data-id="${esc(e.id)}" data-kind="${esc(e.kind)}"><div class="timeline-entry-top"><b>${esc(ACTOR_LABEL[e.actor] || (e.actor === 'joe-local' ? 'Joe' : e.actor) || 'Author not recorded')}</b><time datetime="${esc(e.when || '')}">${esc(stamp(e.when))}</time></div><small>${esc(e.kind)}</small><p>${esc(e.summary)}</p>${e.original && e.original !== e.summary ? `<details><summary data-detail-focus="entry-original:${esc(e.id)}">Read full update</summary><p class="note-original">${esc(e.original)}</p></details>` : ''}</article>`).join('')}</details>` : '<p>No updates recorded.</p>'}</section>`;
+  const overview = concise(entries[0]?.summary, 72);
+  return `<section class="deal-updates" data-detail-read="updates" aria-label="Deal updates"><h3>Updates</h3>${entries.length ? `<div class="updates-overview"><p aria-label="Latest recorded update">${esc(overview)}</p></div><details class="updates-history"><summary data-detail-focus="update-history">Recorded updates (${entries.length})</summary>${(detail.activities || []).length >= 50 ? '<p class="updates-scope">Includes the latest 50 activities; older activities may be omitted.</p>' : ''}${entries.map(e => `<article class="deal-note" data-id="${esc(e.id)}" data-kind="${esc(e.kind)}"><div class="timeline-entry-top"><b>${esc(ACTOR_LABEL[e.actor] || (e.actor === 'joe-local' ? 'Joe' : e.actor) || 'Author not recorded')}</b><time datetime="${esc(e.when || '')}">${esc(stamp(e.when))}</time></div><small>${esc(e.kind)}</small><p>${esc(e.summary)}</p>${e.original && e.original !== e.summary ? `<details><summary data-detail-focus="entry-original:${esc(e.id)}">Read full update</summary><p class="note-original">${esc(e.original)}</p></details>` : ''}</article>`).join('')}</details>` : '<p>No updates recorded.</p>'}</section>`;
 }
 export function updateCountdowns(root, now = Date.now()) {
   for (const node of root.querySelectorAll('[data-countdown]')) {

@@ -15,6 +15,11 @@ async function open(t, { width = 390, path = "/control-room/progress?board=demo-
   const page = await browser.newPage({ viewport: { width, height: 1000 }, timezoneId: "UTC" });
   if (publicationTime) await pausedClock(page, NOW);
   else await page.clock.install({ time: NOW });
+  await page.addInitScript(() => {
+    const url = new URL(location.href);
+    url.searchParams.set('mode', 'live');
+    history.replaceState({}, '', url);
+  });
   const calls = [], errors = [];
   page.on("pageerror", error => errors.push(error.message));
   await page.route("**/*", async route => {
@@ -64,7 +69,7 @@ test("desktop and phone navigation reach Progress through More", async t => {
     const selector = '[data-app-nav-item][aria-label="System Job Board"]';
     assert.equal(await page.locator(selector).isVisible(), true);
     await page.locator(selector).click();
-    await page.waitForURL("**/control-room/progress");
+    await page.waitForURL("**/control-room/progress?mode=live");
     await page.waitForFunction(() => document.querySelector("#board-title")?.textContent === "System progress");
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
     assert.deepEqual(errors, []);
@@ -85,7 +90,7 @@ test("no-param load shows system board, counts, timestamps and stale project; se
   await project.evaluate(node => node.removeAttribute("target"));
   await page.locator('.directory-summary').click();
   await project.click();
-  await page.waitForURL("**/control-room/progress/board/demo-project");
+  await page.waitForURL("**/control-room/progress/board/demo-project?mode=live");
   await page.waitForFunction(() => document.querySelector("#board-title")?.textContent === "Demo project");
   assert.equal(await page.locator("#board-freshness").getAttribute("data-freshness"), "stale");
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
@@ -113,7 +118,7 @@ test("state holds still at normal motion; reduced motion keeps stale shape and t
   assert.equal(await page.locator('[data-freshness="stale"]').first().evaluate(node => getComputedStyle(node, "::before").borderRadius), "1px");
   assert.equal(await page.locator("#board-activity").getAttribute("href"), "/control-room/progress/work?board=demo-project");
   await page.locator(".board-card").click();
-  await page.waitForURL("**/control-room/progress/work?board=demo-project&task=build");
+  await page.waitForURL("**/control-room/progress/work?board=demo-project&task=build&mode=live");
 });
 
 function holdRequests(t, name) {
@@ -199,6 +204,17 @@ function controlledReads(t) {
     },
   };
 }
+
+test('a non-queue board keeps its fifteen-second cadence after the initial read', async t => {
+  const reads = controlledReads(t);
+  const { page, calls } = await open(t, { onRpc: reads.onRpc });
+  await reads.reply(page, 'list-progress-boards', 0, listing('Initial directory'));
+  await reads.reply(page, 'read-progress-board', 0, snapshot());
+  await page.waitForFunction(() => document.querySelector('#board-title').textContent === 'System version 1');
+  await page.clock.runFor(2500);
+  await new Promise(resolve => setTimeout(resolve, 50));
+  assert.equal(calls.filter(call => call.name === 'read-progress-board').length, 1);
+});
 
 for (const failed of [false, true]) test(`answer refresh supersedes an older poll's ${failed ? "failures" : "successes"}`, async t => {
   const reads = controlledReads(t);
@@ -316,7 +332,7 @@ test("task focus and dialog return target survive unchanged and changed polls", 
   assert.equal(await page.evaluate(() => document.activeElement === window.retainedTask), true);
   assert.match(await task.getAttribute("aria-label"), /Synthetic task 2/);
   await task.press("Enter");
-  await page.waitForURL("**/control-room/progress/work?board=demo-project&task=build");
+  await page.waitForURL("**/control-room/progress/work?board=demo-project&task=build&mode=live");
   assert.deepEqual(errors, []);
 });
 
@@ -445,6 +461,6 @@ test("completed card keyboard opens the current routed task detail", async t => 
   }});
   await page.locator('.completed-card').focus();
   await page.keyboard.press('Enter');
-  await page.waitForURL('**/control-room/progress/work?board=demo-project&task=released');
+  await page.waitForURL('**/control-room/progress/work?board=demo-project&task=released&mode=live');
   assert.deepEqual(errors,[]);
 });

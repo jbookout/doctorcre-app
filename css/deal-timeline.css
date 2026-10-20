@@ -58,7 +58,7 @@
 .phase-rail li > span { display:block; min-height:2.5em; }
 .phase-rail small { font-size:11px; line-height:1.4; }
 .updates-overview { border:var(--hairline-width) solid var(--hairline); border-radius:var(--radius-2); padding:var(--space-3); background:var(--surface-2); }
-.updates-overview p { margin:0; max-height:7em; overflow:auto; line-height:var(--line-height-body); overflow-wrap:anywhere; }
+.updates-overview p { margin:0; line-height:var(--line-height-body); overflow-wrap:anywhere; }
 .updates-history > summary { cursor:pointer; min-height:var(--touch); display:flex; align-items:center; color:var(--fg-muted); }
 .next-step-gap { color:var(--fg-muted); }
 @media(max-width:600px) {

@@ -4,7 +4,7 @@ import {readFile, mkdir, access} from 'node:fs/promises';
 import {chromium, waitForAsync, animationsSettled} from './browser-harness.mjs';
 const root=new URL('../',import.meta.url);
 const longestNextStep='Confirm the Demo Clinic appointment and send notes';
-async function open(t,width=1280,{theme='dark',sparse=false,showDetail=true,height=960,nextStep='Prior status that must not prefill',closedOn=null}={}) {
+async function open(t,width=1280,{theme='dark',sparse=false,showDetail=true,height=960,nextStep='Prior status that must not prefill',closedOn=null,manyUpdates=false}={}) {
  const browser=await chromium.launch();t.after(()=>browser.close());
  const page=await browser.newPage({viewport:{width,height}});
  await page.addInitScript(theme=>localStorage.setItem('doctorcre.visual-preferences',JSON.stringify({theme})),theme);
@@ -15,6 +15,7 @@ async function open(t,width=1280,{theme='dark',sparse=false,showDetail=true,heig
  if(sparse) seed.deals=seed.deals.filter((d,i)=>i<5||d.id==='d14');
  seed.threads.d14=[{id:'demo-old',kind:'note',actor:'joe',text:'Older demo update',created_at:'2026-09-01T15:30:00Z',recorded_at:'2026-09-01T15:30:00Z'},
  {id:'demo-new',kind:'note',actor:'dell',text:'Newest demo update. '+ 'Detailed synthetic context. '.repeat(120),created_at:'2026-10-02T17:45:00Z',recorded_at:'2026-10-02T17:45:00Z'}];
+ if(manyUpdates) seed.threads.d14=Array.from({length:30},(_,i)=>({id:`demo-note-${i}`,kind:'note',actor:'joe',text:`Demo update ${i}. `+'Detailed synthetic context. '.repeat(12),recorded_at:new Date(Date.UTC(2026,9,20,12,0,i)).toISOString()}));
  await page.route('**/*',async route=>{
   const url=new URL(route.request().url());if(url.origin!=='http://localhost')return route.abort();
   if(url.pathname==='/data/board-seed.json')return route.fulfill({json:seed});
@@ -193,14 +194,15 @@ test('desktop board shows the full longest next step within three lines',async t
 });
 
 
-test('missing next steps show an explicit gap on cards and snapshots',async t=>{
- const {page}=await open(t,390,{showDetail:false,nextStep:''});
+test('empty next steps leave cards and snapshots free of invented status text',async t=>{
+ const {page}=await open(t,390,{showDetail:false,nextStep:' \t\n '});
  const card=page.locator('.kanban-column [data-id="d14"]');
- assert.equal(await card.locator('.next-line').textContent(),'Add the next step');
+ assert.equal(await card.locator('.next-line').count(),0);
  await card.locator('.card-open').click();
  await page.locator('#detailUpdateForm').waitFor();
  assert.equal(await page.getByLabel('Update',{exact:true}).inputValue(),'');
- assert.match(await page.locator('.deal-current-action').textContent(),/Next step missing.*Add the next step/);
+ assert.equal(await page.locator('.deal-current-action').count(),0);
+ assert.equal(await page.locator('.deal-opening-snapshot time').count(),0,'a due date without an action stays omitted');
  assert.doesNotMatch(await page.locator('#recordPanel').textContent(),/Next step pending|Nothing needs you/i);
 });
 
@@ -230,7 +232,8 @@ test('deal card cleanup shows dates and one summary at 390/1280 in dark/light',a
   assert.equal(await page.locator('.deal-current-action strong').textContent(),'Confirm the appointment and review the lease draft');
   assert.equal(await page.locator('.updates-overview').count(),1);
   assert.equal(await page.locator('.deal-note:visible').count(),0);
-  assert.match(await page.locator('.updates-overview').textContent(),/Newest demo update.*Older demo update/s);
+  assert.match(await page.locator('.updates-overview').textContent(),/Newest demo update/);
+  assert.doesNotMatch(await page.locator('.updates-overview').textContent(),/Older demo update/);
   assert.equal(await page.locator('.phase-rail time:visible').count(),4);
   assert.equal(await page.locator('.phase-rail time[datetime="2026-08-31"]').textContent(),'Aug 31, 2026');
   assert.equal(await page.locator('.full-record,.deal-dates,[data-jev-deal]').count(),0);
@@ -246,4 +249,46 @@ test('deal card cleanup shows dates and one summary at 390/1280 in dark/light',a
   await page.screenshot({path:new URL(`${width}-${theme}-history.png`,dir).pathname,animations:'disabled'});
   assert.deepEqual(errors,[]);
  });
+});
+
+test('refresh removes and restores Updates as recorded notes change',async t=>{
+ const {page}=await open(t);
+ assert.equal(await page.locator('.deal-updates').count(),1);
+ await page.getByLabel('Update',{exact:true}).fill('Demo unsaved draft');
+ await page.evaluate(async()=>{
+  const {state}=await import('/js/pipeline.js');const read=state.client.getDeal;
+  state.client.getDeal=async id=>{
+   const detail=await read(id);
+   return {...detail,thread:[],activities:[]};
+  };
+ });
+ await page.getByRole('button',{name:'Refresh deal',exact:true}).click();
+ await waitForAsync(page,async()=>(await import('/js/pipeline.js')).state.panelDetail.thread.length===0);
+ assert.equal(await page.locator('.deal-updates').count(),0);
+ assert.doesNotMatch(await page.locator('#recordPanel').textContent(),/No updates recorded/);
+ await page.evaluate(async()=>{
+  const {state}=await import('/js/pipeline.js');const read=state.client.getDeal;
+  state.client.getDeal=async id=>({...await read(id),thread:[{id:'demo-restored',kind:'note',actor:'joe',text:'Demo restored update',at:'2026-10-02'}]});
+ });
+ await page.getByRole('button',{name:'Refresh deal',exact:true}).click();
+ await page.locator('.deal-note[data-id="demo-restored"]').waitFor({state:'attached'});
+ assert.equal(await page.locator('.deal-updates').count(),1);
+ assert.equal(await page.getByLabel('Update',{exact:true}).inputValue(),'Demo unsaved draft');
+});
+
+
+test('thirty notes show one concise summary and expand inline at phone width',async t=>{
+ const {page}=await open(t,390,{manyUpdates:true});
+ const overview=page.locator('.updates-overview p');
+ assert.ok((await overview.textContent()).length<=180);
+ assert.match(await overview.textContent(),/Demo update 29/);
+ assert.doesNotMatch(await overview.textContent(),/Demo update 28/);
+ const box=await overview.evaluate(n=>({height:n.getBoundingClientRect().height,lineHeight:parseFloat(getComputedStyle(n).lineHeight),overflow:getComputedStyle(n).overflowY}));
+ assert.ok(box.height<=box.lineHeight*2+1,JSON.stringify(box));
+ assert.equal(box.overflow,'visible');
+ assert.equal(await page.locator('.deal-note:visible').count(),0);
+ await page.locator('.updates-history > summary').click();
+ assert.equal(await page.locator('.deal-note[data-id^="demo-note-"]:visible').count(),30);
+ assert.equal(await page.locator('.deal-note:visible').count(),32);
+ assert.equal(await page.locator('.updates-history').evaluate(n=>getComputedStyle(n).overflowY),'visible');
 });
