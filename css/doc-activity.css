@@ -3,7 +3,7 @@
    undo where the record allows it. */
 * { box-sizing: border-box; }
 body { margin: 0; min-height: 100vh; background: var(--ground); color: var(--fg); font: var(--font-size-2) / var(--line-height-body) var(--font-text); }
-.activity-page { width: 100%; min-width: 0; padding: var(--space-6) clamp(16px, 3vw, 48px) 100px; }
+.activity-page { container-type: inline-size; width: 100%; min-width: 0; padding: var(--space-6) clamp(16px, 3vw, 48px) 100px; }
 .activity-heading { display: flex; align-items: center; justify-content: space-between; gap: var(--space-4); margin-bottom: var(--space-5); }
 .activity-heading > div:first-child { display: flex; align-items: center; gap: var(--space-3); }
 h1, h2, h3 { font-family: var(--font-text); font-weight: var(--font-weight-strong); line-height: var(--line-height-heading); }
@@ -60,7 +60,7 @@ button:disabled { cursor: default; opacity: .5; }
 .activity-skip { position: fixed; top: -100px; left: var(--space-4); z-index: 1000; padding: var(--space-3); background: var(--surface-3); color: var(--fg); }
 .activity-skip:focus { top: var(--space-4); }
 
-@media (max-width: 950px) { .activity-open { grid-template-columns: 40px 1fr; gap: var(--space-3); padding: var(--space-4); } .activity-note, .activity-time { grid-column: 2; } .activity-row { gap: 0; } .activity-note { margin: 2px 0; } .activity-row-action { min-width: 100px; padding-right: var(--space-4); } }
+@container (max-width: 950px) { .activity-open { grid-template-columns: 40px 1fr; gap: var(--space-3); padding: var(--space-4); } .activity-note, .activity-time { grid-column: 2; } .activity-row { gap: 0; } .activity-note { margin: 2px 0; } .activity-row-action { min-width: 100px; padding-right: var(--space-4); } }
 @media (max-width: 550px) { .activity-page { padding-top: var(--space-5); } .activity-heading { align-items: start; } .activity-heading > div:first-child { gap: var(--space-2); } .activity-heading h1 { font-size: var(--font-size-4); } .activity-updated { flex-direction: column; gap: var(--space-1); } .activity-filters { gap: var(--space-3); padding: var(--space-3); } .activity-filters label { flex-basis: calc(50% - 12px); min-width: calc(50% - 12px); } .activity-filters > button { width: 100%; } .activity-row { flex-direction: column; align-items: stretch; } .activity-row-action { padding: 0 var(--space-4) var(--space-4); text-align: right; } .activity-open { grid-template-columns: 32px 1fr; padding: var(--space-4); } .activity-icon { width: 32px; height: 32px; font-size: var(--font-size-2); } .activity-detail { width: calc(100vw - 20px); padding: var(--space-4); } .activity-detail-grid { grid-template-columns: 1fr; gap: var(--space-5); } .activity-change { gap: var(--space-2); } .activity-change span { padding: var(--space-3); } input[type=date] { max-width: 100%; } }
 @media (prefers-reduced-motion: reduce) { button, .activity-row { transition: none; } button:active:not(:disabled) { transform: none; } }
 :root[data-motion="reduced"] :is(button, .activity-row) { transition: none; }

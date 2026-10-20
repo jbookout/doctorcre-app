@@ -187,3 +187,29 @@ test("snapshot write returns false when the store refuses", () => {
   const storage = { setItem() { throw new Error("Synthetic storage refusal"); } };
   assert.equal(writeSnapshot(storage, snapshot), false);
 });
+
+
+test('assurance health uses status tokens in both themes and Color Assist', async t => {
+  for (const state of ['degraded', 'failed']) for (const theme of ['dark', 'light']) for (const assist of ['off', 'on']) {
+    await t.test(`${state} ${theme} Color Assist ${assist}`, async t => {
+      const { page, errors } = await openStatus(t, { answer: projection(state) });
+      const covered = page.locator('[data-gap="v5-a01"]');
+      await page.waitForFunction(state => document.querySelector('[data-gap="v5-a01"]')?.dataset.state === state, state);
+      await page.evaluate(({ theme, assist }) => {
+        document.documentElement.dataset.theme = theme;
+        document.documentElement.dataset.colorAssist = assist;
+      }, { theme, assist });
+      const expected = await covered.evaluate((node, token) => {
+        const probe = document.createElement('span');
+        probe.style.color = `var(${token})`;
+        node.append(probe);
+        const color = getComputedStyle(probe).color;
+        probe.remove();
+        return color;
+      }, state === 'degraded' ? '--status-warn' : '--status-danger');
+      assert.equal(await covered.evaluate(node => getComputedStyle(node).borderTopColor), expected);
+      assert.match(await covered.textContent(), new RegExp(state));
+      assert.deepEqual(errors, []);
+    });
+  }
+});

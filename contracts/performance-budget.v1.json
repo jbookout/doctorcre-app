@@ -45,8 +45,8 @@
     },
     "deals": {
       "lcpMs": {
-        "baseline": 1564,
-        "limit": 2346
+        "baseline": 6400,
+        "limit": 9600
       },
       "jsBytes": {
         "baseline": 776804,
@@ -118,6 +118,51 @@
     "jsBytes": {
       "baseline": 4623471,
       "limit": 5085819
+    }
+  },
+  "metricBaselines": {
+    "deals.lcpMs": {
+      "measuredAt": "2026-10-19T20:47:22.069Z",
+      "sourceCommit": "b90863aeb2e05ba3e8f8a11f0f31653c086932fa",
+      "prHeadCommit": "ac4e4ca0f93551829f375247528a91c1c9298c77",
+      "buildDigest": "89d2394c66cf1a98d140e4f419f9f4d6e1a6a713ae167fe081bb6c3d8366ce3a",
+      "browserVersion": "153.0.8010.12",
+      "nodeVersion": "v22.23.2",
+      "platform": "linux",
+      "run": "https://github.com/jbookout/doctorcre-app/actions/runs/39320651637",
+      "reason": "Phone layout now exposes deal cards: the final LCP candidate changes from static section navigation to a card. Five alternating before/after runs show unchanged card readiness (medians 6310ms and 6313ms), while LCP changes from 1812ms to 6328ms. Rebaseline only this changed visual measurement; preserve all other limits. No speedup is claimed.",
+      "comparison": {
+        "beforeCommit": "1aaa516c71c762db0bb86f473117fab6407ffb55",
+        "afterCommit": "ac4e4ca0f93551829f375247528a91c1c9298c77",
+        "alternatingPairs": 5,
+        "errors": 0,
+        "cardReadyMs": {
+          "before": {
+            "median": 6310,
+            "min": 6286,
+            "max": 6334
+          },
+          "after": {
+            "median": 6313,
+            "min": 6302,
+            "max": 6344
+          }
+        },
+        "lcpMs": {
+          "before": {
+            "median": 1812,
+            "min": 1780,
+            "max": 1848,
+            "candidate": "nav.app-section-tabs"
+          },
+          "after": {
+            "median": 6328,
+            "min": 6316,
+            "max": 6360,
+            "candidate": "button.card-open"
+          }
+        }
+      }
     }
   }
 }
