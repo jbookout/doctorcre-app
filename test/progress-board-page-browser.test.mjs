@@ -141,9 +141,11 @@ for (const width of [390, 1280]) for (const theme of ['dark', 'light']) {
     const first = page.locator('[data-hierarchy-id="WR14"]');
     await first.waitFor();
     await hierarchyEvidence(page, 'requests', width, theme);
+    // Clipping must still win when a hidden heading has a fractional box.
+    await page.locator('#board-title').evaluate(node => { node.style.transform = 'scale(1.01)'; });
     const headings = await page.locator('h1, h2').evaluateAll(nodes => nodes.filter(node =>
       node.textContent === 'Work Requests' && node.getBoundingClientRect().height > 1 &&
-      getComputedStyle(node).clip === 'auto').length);
+      getComputedStyle(node).clip === 'auto' && getComputedStyle(node).clipPath === 'none').length);
     assert.equal(headings, 1, 'one visible Work Requests heading');
     assert.equal(await page.locator('nav[aria-label="Breadcrumb"]').isVisible(), false, 'one hierarchy breadcrumb row');
     const firstY = (await first.boundingBox()).y;
