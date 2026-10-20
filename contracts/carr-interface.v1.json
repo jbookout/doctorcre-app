@@ -1,6 +1,6 @@
 {
   "schema": "doctorcre-carr-interface.v1",
-  "version": "1.48.0",
+  "version": "1.50.0",
   "producer": {
     "repository": "jbookout/carr-system",
     "source_commit": "e2e484b1933bfd63c10cc9a1b3350132948f6f74"
@@ -106,6 +106,7 @@
     "set-national-account-owner",
     "set-next-step",
     "set-notification-preference",
+    "set-prospect-engagement-status",
     "set-work-shape-disposition",
     "share-doc-conversation",
     "start-deal-review",
@@ -514,6 +515,9 @@
           "invoiced_on",
           "phase_change",
           "field_base",
+          "prospect_engagement_status",
+          "client_status",
+          "client_version",
           "phase_started_on"
         ],
         "phase_change_keys": [
@@ -562,6 +566,24 @@
           ],
           "membership": "Recorded lost outcome, independent of phase. Same workspace and account scope."
         },
+        "prospect_engagement_status": {
+          "values": [
+            "active",
+            "inactive"
+          ],
+          "owner": "client",
+          "default": "active",
+          "independent_of": [
+            "client_status",
+            "operating_state"
+          ],
+          "presentation": "Only active prospects appear on the deal board. Inactive prospects return to the existing Leads pipeline."
+        },
+        "account_engagement_keys": [
+          "prospect_engagement_status",
+          "client_status",
+          "client_version"
+        ],
         "phase_started_on": {
           "shape": "object keyed by phase slug; YYYY-MM-DD values",
           "source": "First event occurred_at per phase, in America/Chicago. A revisit does not replace the first start. Missing evidence has no key."
@@ -589,6 +611,11 @@
         ],
         "lease_absence": null,
         "client_id": "Exact client record UUID, including closed and invoiced records; use for the authenticated clients record read.",
+        "engagement_keys": [
+          "client_status",
+          "client_version",
+          "prospect_engagement_status"
+        ],
         "phase_started_on": {
           "shape": "object keyed by phase slug; YYYY-MM-DD values",
           "source": "First event occurred_at per phase, in America/Chicago. A revisit does not replace the first start. Missing evidence has no key."
@@ -720,7 +747,7 @@
   "lead_workspace": {
     "producer": {
       "repository": "jbookout/carr-system",
-      "source_commit": "6d739deb1a31de8f257f4e1e11695d71ec3a74bf"
+      "source_commit": "65a9947c917e5a5a97ac2d67baa34f081b0da026"
     },
     "schema_version": "lead-workspace.v1",
     "board": {
@@ -740,13 +767,20 @@
       "stage": "update-lead (base_version, stage_review evidence IDs, same idempotency key on retry)",
       "undo": "update-lead (latest exact undo_event_id and prior stage)",
       "claim": "claim-lead (authenticated human, unowned New, exact base_version)",
-      "link": "link-lead-client (exact client_id, confirmed human choice, exact base_version)"
+      "link": "link-lead-client (exact client_id, confirmed human choice, exact base_version)",
+      "engagement": "set-prospect-engagement-status (client_id, client base_version, active or inactive, reason, expected_actor, same idempotency key on retry)"
     },
     "coverage": {
       "correspondence": "captured_entries_only; Details exposes stored original entry",
       "search_run": "last_search_at null until CARR has an authoritative new-lead search completion field",
       "scores": "existing record score; null shown as missing"
-    }
+    },
+    "prospect_keys": [
+      "prospect_client_id",
+      "prospect_client_version",
+      "prospect_engagement_status"
+    ],
+    "prospect_lifecycle": "Inactive prospects remain eligible Leads despite retained exact client and deal links. Active prospects return to the existing deal board."
   },
   "invoice_tracker": {
     "schema_version": "invoice-tracker.v1",
@@ -806,5 +840,15 @@
     "task_defaults": "Fields present on every source card may be shared once. Each task overrides the shared values.",
     "validation": "Reject v3 reads without nonempty object defaults or object task rows.",
     "deployment_order": "Deploy the consumer before the producer can publish v3."
+  },
+  "prospect_engagement": {
+    "producer": {
+      "repository": "jbookout/carr-system",
+      "source_commit": "65a9947c917e5a5a97ac2d67baa34f081b0da026"
+    },
+    "write": "set-prospect-engagement-status",
+    "inactive_stage": "nurture_drip",
+    "active_stage": "opportunity",
+    "history": "Existing prospects and new prospects created over leads start active. Migration initialization is audited without changing board membership or client versions. Only an explicit partner engagement choice returns a prospect to Leads. Retain the existing client, lead links, deals and events. Suppression and archived stages remain protected."
   }
 }

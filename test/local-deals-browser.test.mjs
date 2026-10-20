@@ -4,7 +4,7 @@ import { readFile, mkdir } from 'node:fs/promises';
 import { chromium, waitForAsync } from './browser-harness.mjs';
 const root = new URL('../', import.meta.url);
 const phases = ['On Deck', 'Research', 'Site selection', 'Negotiation', 'Legal', 'Diligence', 'Closing', 'Closed'];
-async function open(t, { width = 1440, height = 960, reducedMotion = 'no-preference', many = false, review = false, deal = null } = {}) {
+async function open(t, { width = 1440, height = 960, reducedMotion = 'no-preference', many = false, review = false, deal = null, prospect = false } = {}) {
   const browser = await chromium.launch(); t.after(() => browser.close());
   const page = await browser.newPage({ viewport: { width, height }, reducedMotion });
   const errors = []; page.on('pageerror', e => errors.push(e.message));
@@ -15,6 +15,7 @@ async function open(t, { width = 1440, height = 960, reducedMotion = 'no-prefere
   Object.assign(seed.deals.find(d => d.id === 'd23'),{invoiced_on:'2026-10-01',phase:'Closed',closed_on:'2026-10-02',type:'Renewal',client_name:'Demo Archive Client'});
   seed.seed_events = [{ id: 'auto-loi', actor: 'claude', verb: 'patch-deal-field', subject_type: 'deal', subject_id: 'd14', field: 'phase', old_value: 'Research', new_value: 'Negotiation', automatic: true, change_reason: 'LOI sent', evidence_date: '2026-10-03', recorded_at: '2026-10-03T12:00:00Z' },
     { id: 'auto-invoice', actor: 'claude', verb: 'patch-deal-field', subject_type: 'deal', subject_id: 'd20', field: 'phase', old_value: 'Closing', new_value: 'Closed', automatic: true, change_reason: 'invoice', evidence_date: '2026-10-03', recorded_at: '2026-10-03T12:00:00Z' }];
+  if (prospect) Object.assign(seed.deals.find(d => d.id === 'd14'), {client_status:'prospect',client_id:'synthetic-closure-client',client_version:7,prospect_engagement_status:'active',outcome:null,closed_on:null});
   seed.threads.d14 = [{ id: 'demo-note', kind: 'note', actor: 'joe', at: '2026-10-01', text: 'LOI submitted. ' + 'Full original demo entry. '.repeat(30) }];
   if (many) for (let i = 20; i < 72; i++) seed.deals.push({ ...seed.deals[9], id: 'demo-' + i, name: 'Demo Assignment ' + i, phase: 'Research', outcome:null });
   if (review) for (let i=0;i<28;i++) seed.deals.push({...seed.deals.find(d=>d.id==='d14'),id:`demo-review-${i}`,name:`Demo Practice ${i+1}`,client_name:`Demo Client ${i+1}`,type:'Renewal',phase:phases[i%7],owner:i%2?'dell':'joe',workspace_kind:'team',account_client_id:null,operating_state:'active'});
@@ -34,6 +35,96 @@ async function open(t, { width = 1440, height = 960, reducedMotion = 'no-prefere
   return { page, errors, seed };
 }
 const refresh = page => page.evaluate(async () => (await import('/js/pipeline.js')).state.boardSync.refreshBoard({ reason: 'test' }));
+
+test('only active prospects remain on the board at desktop and phone widths', async t => {
+  for (const width of [1440,390]) await t.test(String(width), async t => {
+    const {page,errors}=await open(t,{width});
+    await page.evaluate(async()=>{
+      const {state}=await import('/js/pipeline.js');
+      const get=state.client.getBoard;
+      state.client.getBoard=async(...args)=>{
+        const result=await get(...args);
+        const template=result.deals.find(d=>d.workspace_kind!=='national_account'&&!d.account_client_id);
+        return {...result,deals:[
+          {...template,id:'demo-prospect-active',name:'Demo Engaged Prospect',phase:'On Deck',client_status:'prospect',client_id:'synthetic-client',client_version:7,operating_state:'active',prospect_engagement_status:'active'},
+          {...template,id:'demo-prospect-inactive',name:'Demo Inactive Prospect',phase:'On Deck',client_status:'prospect',client_id:'synthetic-client',client_version:7,operating_state:'active',prospect_engagement_status:'inactive'},
+          {...template,id:'demo-prospect-parked',name:'Demo Parked Prospect',phase:'On Deck',client_status:'prospect',client_id:'synthetic-client',client_version:7,operating_state:'parked',prospect_engagement_status:'inactive'},
+          {...template,id:'demo-research',name:'Demo Research',phase:'Research',operating_state:'active',prospect_engagement_status:'inactive'},
+        ]};
+      };
+    });
+    await refresh(page);
+    const prospects=page.locator('[data-column="pending"]');
+    assert.equal(await prospects.locator('[data-id="demo-prospect-active"]').count(),1);
+    assert.equal(await page.locator('[data-id="demo-prospect-inactive"],[data-id="demo-prospect-parked"]').count(),0);
+    assert.equal(await page.locator('.prospect-group,[data-engagement="inactive"]').count(),0);
+    assert.equal(await page.locator('[data-column="research"] [data-id="demo-research"]').count(),1);
+    assert.equal(await page.locator('.parked-lane [data-id="demo-prospect-parked"]').count(),0);
+    assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
+    await mkdir(new URL('out/test-artifacts/prospect-engagement/',root),{recursive:true});
+    await page.screenshot({path:new URL(`out/test-artifacts/prospect-engagement/${width}.png`,root).pathname,fullPage:true});
+    await page.locator('[data-filter="dell"]').click();
+    assert.equal(await prospects.locator('[data-id]').count(),0);
+    assert.deepEqual(errors,[]);
+  });
+});
+
+test('marking a prospect inactive sends its version and returns it to Leads',async t=>{
+ const {page}=await open(t);
+ await page.evaluate(async()=>{
+  const {state}=await import('/js/pipeline.js');const get=state.client.getBoard;let inactive=false;
+  state.client.getBoard=async()=>{const b=await get();return {...b,deals:b.deals.filter(d=>!inactive||d.id!=='d14').map(d=>d.id==='d14'?{...d,client_status:'prospect',client_id:'synthetic-client',client_version:7,prospect_engagement_status:'active'}:d)}};
+  state.client.setProspectEngagementStatus=async args=>{window.prospectWrite=args;inactive=true;return{ok:true}};
+ });
+ await refresh(page);await page.locator('.kanban-column [data-id="d14"]').click();
+ await page.locator('#detailInactiveForm input[name="reason"]').fill('Synthetic deferred project');
+ await page.locator('#detailInactiveForm button').click();
+ await waitForAsync(page,async()=>!(await import('/js/pipeline.js')).state.deals.has('d14'));
+ const args=await page.evaluate(()=>window.prospectWrite);
+ assert.equal(args.client_id,'synthetic-client');assert.equal(args.base_version,7);assert.equal(args.status,'inactive');
+ assert.equal(args.reason,'Synthetic deferred project');assert.ok(args.idempotency_key);
+ assert.equal(await page.locator('#recordPanel').evaluate(e=>e.open),false);
+});
+
+test('a closed prospect removes Mark inactive and refuses submission from stale DOM', async t => {
+  const {page,errors}=await open(t,{prospect:true});
+  await page.locator('.kanban-column [data-id="d14"] .card-open').click();
+  await page.locator('#detailInactiveForm input').fill('Synthetic deferred project');
+  await page.evaluate(async()=>{
+    const {state}=await import('/js/pipeline.js');
+    window.staleProspectForm=document.querySelector('#detailInactiveForm').outerHTML;
+    const send=state.client.setProspectEngagementStatus.bind(state.client);
+    state.client.setProspectEngagementStatus=async args=>{
+      try { return await send(args); }
+      catch(error) { window.prospectRefusal=error.payload; throw error; }
+    };
+    const {deal}=await state.client.getDeal('d14');
+    await state.client.updateDeal({deal:'d14',base_version:deal.version,fields:{closed_on:'2026-10-04'},idempotency_key:'synthetic-prospect-closure'});
+  });
+  await refresh(page);
+  await page.getByRole('button',{name:'Refresh deal',exact:true}).click();
+  await page.locator('[data-detail-read="board-controls"][data-available="false"]').waitFor({state:'attached'});
+  const controls={
+    card:await page.locator('.kanban-column [data-id="d14"]').count(),
+    phase:await page.locator('#detailPhase').count(),
+    owner:await page.locator('#detailOwner').count(),
+    inactive:await page.getByRole('button',{name:'Mark inactive',exact:true}).count(),
+  };
+  await page.evaluate(()=>{
+    document.querySelector('#detailInactiveForm')?.remove();
+    document.querySelector('#panelBody').insertAdjacentHTML('beforeend',window.staleProspectForm);
+    document.querySelector('#detailInactiveForm input').value='Synthetic deferred project';
+    document.querySelector('#detailInactiveForm').dispatchEvent(new Event('submit',{bubbles:true,cancelable:true}));
+  });
+  await page.locator('#toast').waitFor();
+  const result=await page.evaluate(async()=>{
+    const {state}=await import('/js/pipeline.js');
+    const {deal}=await state.client.getDeal('d14');
+    return {refusal:window.prospectRefusal?.error || null,version:deal.client_version,status:deal.prospect_engagement_status};
+  });
+  assert.deepEqual({controls,...result},{controls:{card:0,phase:0,owner:0,inactive:0},refusal:'not_a_prospect',version:7,status:'active'});
+  assert.deepEqual(errors,[]);
+});
 
 test('W4 desktop/phone render, owner filters, equal cards, wide detail and reduced motion', async t => {
   await mkdir(new URL('out/test-artifacts/w4/', root), { recursive: true });
@@ -778,4 +869,164 @@ test('a delayed context availability probe cannot hide a newer readable drawer',
  await page.locator('#contextDrawerClose').click();
  assert.equal(await page.locator('#panelContextOpenWrap').isVisible(),true);
  assert.deepEqual(errors,[]);
+});
+
+for(const failure of ['network','json','http']) test(`inactive ${failure} retry keeps its original request key`,async t=>{
+ const {page}=await open(t);
+ await page.evaluate(async failure=>{
+  const {state}=await import('/js/pipeline.js');const get=state.client.getBoard;const detail=state.client.getDeal;
+  const {createLiveClient}=await import('/js/live-client.js');window.engagementWrites=[];
+  let inactive=false;
+  state.client.getBoard=async()=>{const b=await get();return {...b,deals:b.deals.filter(d=>!inactive||d.id!=='d14').map(d=>d.id==='d14'?{...d,client_status:'prospect',client_id:'demo-client',client_version:7,prospect_engagement_status:'active'}:d)}};
+  state.client.getDeal=async id=>{const r=await detail(id);return {...r,deal:{...r.deal,client_id:'demo-client',client_version:7,prospect_engagement_status:inactive?'inactive':'active'}}};
+  const live=createLiveClient({docContext:false,fetchImpl:async(_url,init)=>{
+   window.engagementWrites.push(JSON.parse(init.body).params.arguments);
+   if(window.engagementWrites.length===1){
+    if(failure==='network')throw new TypeError('Synthetic network failure');
+    return new Response(failure==='json'?'invalid JSON':'Unavailable',{status:failure==='http'?503:200});
+   }
+   inactive=true;return new Response(JSON.stringify({result:{content:[{text:'{"ok":true}'}]}}));
+  }});
+  state.client.setProspectEngagementStatus=live.setProspectEngagementStatus;
+ },failure);
+ await refresh(page);await page.locator('.kanban-column [data-id="d14"] .card-open').click();
+ await page.locator('#detailInactiveForm input').fill('Synthetic deferred project');
+ await page.locator('#detailInactiveForm button').click();
+ await page.getByRole('button',{name:'Check outcome',exact:true}).waitFor();
+ await page.getByRole('button',{name:'Check outcome',exact:true}).click();
+ await waitForAsync(page,async()=>!(await import('/js/pipeline.js')).state.deals.has('d14'));
+ const writes=await page.evaluate(()=>window.engagementWrites);
+ assert.equal(writes.length,2);assert.deepEqual(writes[1],writes[0]);
+});
+
+for(const width of [390,1280]) test(`uncertain committed engagement resolves by read-back and permits another prospect at ${width}`,async t=>{
+ const {page,errors}=await open(t,{width});
+ await page.evaluate(async()=>{
+  const {state}=await import('/js/pipeline.js');const get=state.client.getBoard;const detail=state.client.getDeal;
+  window.engagementWrites=[];window.engagementReads=[];const inactive=new Set();
+  state.client.getBoard=async()=>{const b=await get();return {...b,deals:b.deals.filter(d=>!inactive.has(d.id)).map(d=>['d14','d20'].includes(d.id)?{...d,client_status:'prospect',client_id:'demo-client-'+d.id,client_version:7,prospect_engagement_status:'active',phase:'Research',outcome:null,closed_on:null}:d)}};
+  state.client.getDeal=async id=>{window.engagementReads.push(id);const r=await detail(id);return {...r,deal:{...r.deal,id,phase:'Research',outcome:null,closed_on:null,client_id:'demo-client-'+id,client_version:inactive.has(id)?8:7,prospect_engagement_status:inactive.has(id)?'inactive':'active'}}};
+  state.client.setProspectEngagementStatus=async args=>{
+   window.engagementWrites.push(args);inactive.add(args.client_id.replace('demo-client-',''));
+   if(window.engagementWrites.length===1)throw Object.assign(new Error('Synthetic lost confirmation'),{code:'unknown_outcome'});
+   return {ok:true};
+  };
+ });
+ await refresh(page);await page.locator('.kanban-column [data-id="d14"] .card-open').click();
+ await page.locator('#detailInactiveForm input').fill('Synthetic deferred project');
+ await page.locator('#detailInactiveForm button').click();
+ await waitForAsync(page,()=>!document.querySelector('#recordPanel').open);
+ await page.locator('.kanban-column [data-id="d20"] .card-open').click();
+ await page.locator('#detailInactiveForm input').fill('Synthetic second deferral');
+ await page.locator('#detailInactiveForm button').click();
+ await waitForAsync(page,async()=>!(await import('/js/pipeline.js')).state.deals.has('d20'));
+ const observed=await page.evaluate(()=>({writes:window.engagementWrites,reads:window.engagementReads}));
+ assert.equal(observed.writes.length,2);assert.notEqual(observed.writes[0].idempotency_key,observed.writes[1].idempotency_key);
+ assert.ok(observed.reads.filter(id=>id==='d14').length>=2);
+ assert.deepEqual(errors,[]);
+});
+
+test('an unresolved prospect permits another prospect while keeping its own same-key retry',async t=>{
+ const {page,errors}=await open(t);
+ await page.evaluate(async()=>{
+  const {state}=await import('/js/pipeline.js');const get=state.client.getBoard;const detail=state.client.getDeal;
+  window.engagementWrites=[];const inactive=new Set();
+  state.client.getBoard=async()=>{const b=await get();return {...b,deals:b.deals.filter(d=>!inactive.has(d.id)).map(d=>['d14','d20'].includes(d.id)?{...d,client_status:'prospect',client_id:'demo-client-'+d.id,client_version:7,prospect_engagement_status:'active',phase:'Research',outcome:null,closed_on:null}:d)}};
+  state.client.getDeal=async id=>{const r=await detail(id);return {...r,deal:{...r.deal,id,phase:'Research',outcome:null,closed_on:null,client_id:'demo-client-'+id,client_version:7,prospect_engagement_status:'active'}}};
+  state.client.setProspectEngagementStatus=async args=>{
+   window.engagementWrites.push(args);
+   if(window.engagementWrites.length===1)throw Object.assign(new Error('Synthetic lost confirmation'),{code:'unknown_outcome'});
+   inactive.add(args.client_id.replace('demo-client-',''));return {ok:true};
+  };
+ });
+ await refresh(page);await page.locator('.kanban-column [data-id="d14"] .card-open').click();
+ await page.locator('#detailInactiveForm input').fill('Synthetic first deferral');
+ await page.locator('#detailInactiveForm button').click();
+ await page.getByRole('button',{name:'Check outcome',exact:true}).waitFor();
+ await page.getByLabel('Close deal',{exact:true}).click();
+ await page.locator('.kanban-column [data-id="d20"] .card-open').click();
+ await page.locator('#detailInactiveForm input').fill('Synthetic second deferral');
+ await page.locator('#detailInactiveForm button').click();
+ await waitForAsync(page,()=>!document.querySelector('#recordPanel').open);
+ await page.locator('.kanban-column [data-id="d14"] .card-open').click();
+ assert.equal(await page.locator('#detailInactiveForm input').inputValue(),'Synthetic first deferral');
+ await page.getByRole('button',{name:'Check outcome',exact:true}).click();
+ await waitForAsync(page,()=>!document.querySelector('#recordPanel').open);
+ const writes=await page.evaluate(()=>window.engagementWrites);
+ assert.equal(writes.length,3);assert.deepEqual(writes[2],writes[0]);assert.notEqual(writes[1].idempotency_key,writes[0].idempotency_key);
+ assert.deepEqual(errors,[]);
+});
+
+
+test('round 3: offline retry preserves the uncertain inactive request through reconnect',async t=>{
+ const {page,errors}=await open(t);
+ await page.evaluate(async()=>{
+  const {state}=await import('/js/pipeline.js');const get=state.client.getBoard,detail=state.client.getDeal;
+  const {createLiveClient}=await import('/js/live-client.js');window.engagementWrites=[];
+  state.client.getBoard=async()=>{const b=await get();return {...b,deals:b.deals.map(d=>d.id==='d14'?{...d,client_status:'prospect',client_id:'demo-client',client_version:7,prospect_engagement_status:'active'}:d)}};
+  state.client.getDeal=async id=>{if(window.engagementWrites.length)throw new TypeError('Synthetic read unavailable');const r=await detail(id);return {...r,deal:{...r.deal,client_id:'demo-client',client_version:7,prospect_engagement_status:'active'}}};
+  const live=createLiveClient({docContext:false,fetchImpl:async(_url,init)=>{
+   window.engagementWrites.push(JSON.parse(init.body).params.arguments);
+   throw new TypeError('Synthetic lost response');
+  }});
+  state.client.setProspectEngagementStatus=live.setProspectEngagementStatus;
+ });
+ await refresh(page);await page.locator('.kanban-column [data-id="d14"] .card-open').click();
+ await page.locator('#detailInactiveForm input').fill('Synthetic deferred project');
+ await page.locator('#detailInactiveForm button').click();
+ await waitForAsync(page,()=>window.engagementWrites.length===1&&!document.querySelector('#detailInactiveForm button').disabled);
+ await page.context().setOffline(true);
+ await page.locator('#detailInactiveForm button').click();
+ await waitForAsync(page,()=>!document.querySelector('#detailInactiveForm button').disabled);
+ await page.context().setOffline(false);
+ await page.locator('#detailInactiveForm button').click();
+ await waitForAsync(page,()=>window.engagementWrites.length===2);
+ const writes=await page.evaluate(()=>window.engagementWrites);
+ assert.deepEqual(writes[1],writes[0],'offline retry must preserve the entire original request');
+ assert.deepEqual(errors,[]);
+});
+
+test('rendered pipeline restores its pending request after page refresh',async t=>{
+ const {page,errors}=await open(t);
+ const install=async()=>{
+  const {state}=await import('/js/pipeline.js');const get=state.client.getBoard,detail=state.client.getDeal;
+  window.engagementWrites=[];
+  state.client.getBoard=async()=>{const b=await get();return {...b,deals:b.deals.map(d=>d.id==='d14'?{...d,client_status:'prospect',client_id:'synthetic-refresh-client',client_version:7,prospect_engagement_status:'active'}:d)}};
+  state.client.getDeal=async id=>{const r=await detail(id);return {...r,deal:{...r.deal,client_id:'synthetic-refresh-client',client_version:7,prospect_engagement_status:'active'}}};
+  state.client.setProspectEngagementStatus=async args=>{window.engagementWrites.push(args);throw Object.assign(new Error('Synthetic lost reply'),{code:'internal_error'})};
+ };
+ await page.evaluate(install);await refresh(page);
+ await page.locator('.kanban-column [data-id="d14"] .card-open').click();
+ await page.locator('#detailInactiveForm input').fill('Synthetic original reason');
+ await page.locator('#detailInactiveForm button').click();
+ await page.getByRole('button',{name:'Check outcome',exact:true}).waitFor();
+ const original=await page.evaluate(()=>window.engagementWrites[0]);
+ await page.reload();
+ await waitForAsync(page,async()=>(await import('/js/pipeline.js')).state.deals.size>0);
+ await page.evaluate(install);await refresh(page);
+ await page.getByLabel('Close deal',{exact:true}).click();
+ await page.locator('.kanban-column [data-id="d14"] .card-open').click();
+ assert.equal(await page.locator('#detailInactiveForm input').inputValue(),'Synthetic original reason');
+ await page.getByRole('button',{name:'Check outcome',exact:true}).click();
+ await waitForAsync(page,()=>window.engagementWrites.length===1&&!document.querySelector('#detailInactiveForm button').disabled);
+ assert.deepEqual(await page.evaluate(()=>window.engagementWrites[0]),original);
+ assert.deepEqual(errors,[]);
+});
+
+test('pipeline recovery reports the original activation target from Leads',async t=>{
+ const {page}=await open(t);
+ await page.evaluate(async()=>{
+  const {state}=await import('/js/pipeline.js'),{engagementWriterFor}=await import('/js/prospect-engagement.mjs');
+  const get=state.client.getBoard,detail=state.client.getDeal;window.engagementWrites=[];
+  state.client.getBoard=async()=>{const b=await get();return {...b,deals:b.deals.map(d=>d.id==='d14'?{...d,client_status:'prospect',client_id:'synthetic-cross-page',client_version:7,prospect_engagement_status:'active'}:d)}};
+  state.client.getDeal=async id=>{const r=await detail(id);return {...r,deal:{...r.deal,client_id:'synthetic-cross-page',client_version:7,prospect_engagement_status:'active'}}};
+  state.client.setProspectEngagementStatus=async args=>{window.engagementWrites.push(args);if(window.engagementWrites.length===1)throw new Error('Synthetic lost activation');return {ok:true}};
+  try{await engagementWriterFor(state.client)({client_id:'synthetic-cross-page',base_version:7,status:'active',reason:'Synthetic original activation',human_quote:'Synthetic original activation',expected_actor:'joe'})}catch{}
+ });
+ await refresh(page);await page.locator('.kanban-column [data-id="d14"] .card-open').click();
+ await page.getByRole('button',{name:'Check outcome',exact:true}).click();
+ await page.locator('#toast').waitFor();
+ assert.equal(await page.locator('#toast').textContent(),'Prospect returned to the deal board');
+ const writes=await page.evaluate(()=>window.engagementWrites);
+ assert.deepEqual(writes[1],writes[0]);
 });

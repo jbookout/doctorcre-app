@@ -1,3 +1,4 @@
+import { isClosedDeal } from './deal-review-model.js';
 import { addDays, localToday } from './calendar-model.js';
 import { createInvoiceFixture } from './invoice-tracker-fixture.js';
 import { relationshipNetworkFixture } from './relationship-network-fixture.js';
@@ -50,6 +51,7 @@ export async function createFixtureClient(opts = {}) {
   const deals = new Map(seed.deals.map((d) => [d.id, {
     operating_state: 'active', parking_reason: null, parking_note: null,
     parked_at: null, parked_by: null, version: 1,
+    prospect_engagement_status: 'active', client_version: 1,
     outcome: null, closed_on: null, won_value: null, phase_started_on: {}, ...d,
   }]));
   // Demonstrate that Salesforce-shaped records are not automatically active
@@ -1365,16 +1367,30 @@ export async function createFixtureClient(opts = {}) {
     mode: /** @type {const} */ ('fixture'),
     selfActor,
 
+    async setProspectEngagementStatus(args) {
+      return withIdem(args.idempotency_key, () => {
+        const rows = [...deals.values()].filter(d => d.client_id === args.client_id);
+        if (!rows.length || rows.some(d => d.client_status !== 'prospect') || !rows.some(d => !isClosedDeal(d))) refuse('set-prospect-engagement-status', 'not_a_prospect');
+        if (args.expected_actor && args.expected_actor !== selfActor) refuse('set-prospect-engagement-status', 'account_changed');
+        if (!['active','inactive'].includes(args.status) || !args.reason?.trim()) refuse('set-prospect-engagement-status', 'invalid_engagement_status');
+        if (rows.some(d => d.client_version !== args.base_version)) refuse('set-prospect-engagement-status', 'version_conflict');
+        const client_version = args.base_version + 1;
+        rows.forEach(d => Object.assign(d, { prospect_engagement_status: args.status, client_version }));
+        return { ok:true, client_id:args.client_id, prospect_engagement_status:args.status, client_version };
+      });
+    },
+
     async getBoard() {
       const today = (opts.today || localToday)();
-      const national = [...deals.values()].filter((d) => d.account_client_id === fixtureAccountId && !d.invoiced_on);
+      const eligible = [...deals.values()].filter(d => d.client_status !== 'prospect' || d.prospect_engagement_status === 'active');
+      const national = eligible.filter((d) => d.account_client_id === fixtureAccountId && !d.invoiced_on);
       const activeNational = national.filter((d) => d.operating_state === 'active');
       return {
         actor: selfActor,
         // field_base, the same shape the live read returns: the latest committed
         // event for each editable cell, from the same pass as the values, so a
         // first edit has a base here too. A cell with no history has no entry.
-        deals: [...deals.values()].filter(d => !d.invoiced_on).map((d) => ({ ...d, phase_change: phaseChangeFor(d.id), field_base: fieldBaseFor(d.id) })),
+        deals: eligible.filter(d => !d.invoiced_on).map((d) => ({ ...d, phase_change: phaseChangeFor(d.id), field_base: fieldBaseFor(d.id) })),
         lost_deals: [...deals.values()].filter(d => d.outcome === 'lost').map(d => ({...d})),
         closed_deals: [...deals.values()].filter(d => (d.outcome === 'won' || !d.outcome && (d.closed_on || d.invoiced_on))).map(d => ({...d})),
         accounts: [{ account_client_id: fixtureAccountId, account_client_ref: 'DEMO-ACCOUNT-001',
