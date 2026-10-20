@@ -488,6 +488,32 @@ test('hierarchy browser history keeps the full Control Room in Boards', async t 
  assert.deepEqual(errors,[]);
 });
 
+test('hierarchy history leaves Connections and Automations free of retained board dialogs', async t => {
+ const {page,errors}=await open(t,{snapshotData:hierarchy});
+ for (const id of ['WR14','WR14.S2','WR14.S2.J1.app#316']) {
+  await page.locator(`[data-hierarchy-id="${id}"] > button`).click();
+ }
+ await page.locator('#jobDialog').waitFor({state:'visible'});
+ await page.locator('#jobClose').click();
+ await section(page,'tabConnections');
+ await section(page,'tabAutomations');
+ await page.goBack();
+ assert.equal(await page.locator('#tabConnections').getAttribute('aria-selected'),'true');
+ assert.equal(await page.locator('#jobDialog').isVisible(),false);
+ await page.goForward();
+ assert.equal(await page.locator('#tabAutomations').getAttribute('aria-selected'),'true');
+ assert.equal(await page.locator('#jobDialog').isVisible(),false);
+ await page.goBack();
+ await page.goBack();
+ await page.locator('#jobDialog').waitFor({state:'visible'});
+ assert.equal(await page.locator('#tabDashboard').getAttribute('aria-selected'),'true');
+ assert.equal(await page.locator('#jobTitle').textContent(),'Board navigation');
+ await page.goForward();
+ assert.equal(await page.locator('#tabConnections').getAttribute('aria-selected'),'true');
+ assert.equal(await page.locator('#jobDialog').isVisible(),false);
+ assert.deepEqual(errors,[]);
+});
+
 test('hierarchy refresh reconciles an open job after PR and slice rekeys', async t => {
  const snapshot=structuredClone(hierarchy);
  let id='WR14.S2.J1';
