@@ -134,7 +134,7 @@ export function mountSystemWorkBoard({client,onPipeline,openTask,onAccessDenied}
    const projection=systemPipeline(items,queryArgs.live_library?[]:live);pipeline?.render(projection);onPipeline?.(projection, {state:liveError?'unknown':'read'});
   }catch(cause){if(gen!==generation)return;error.textContent=cause.status===401?'Sign in to view system work.':'System work updates unavailable.';error.hidden=false;
    if(retry)retry.hidden=false;
-   onPipeline?.(systemPipeline(items,live), {state:'unknown'});
+   onPipeline?.(null, {state:'unknown'});
    if(cause.status===401||cause.status===403){if(onAccessDenied)onAccessDenied(cause);else clearAccess(cause);}}
   finally{if(gen===generation){loading=false;more.disabled=false;}}
  }
