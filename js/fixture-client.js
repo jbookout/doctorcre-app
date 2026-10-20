@@ -1,3 +1,4 @@
+import { isClosedDeal } from './deal-review-model.js';
 import { addDays, localToday } from './calendar-model.js';
 import { createInvoiceFixture } from './invoice-tracker-fixture.js';
 import { relationshipNetworkFixture } from './relationship-network-fixture.js';
@@ -1370,7 +1371,7 @@ export async function createFixtureClient(opts = {}) {
     async setProspectEngagementStatus(args) {
       return withIdem(args.idempotency_key, () => {
         const rows = [...deals.values()].filter(d => d.client_id === args.client_id);
-        if (!rows.length || rows.some(d => d.client_status !== 'prospect')) refuse('set-prospect-engagement-status', 'not_a_prospect');
+        if (!rows.length || rows.some(d => d.client_status !== 'prospect') || !rows.some(d => !isClosedDeal(d))) refuse('set-prospect-engagement-status', 'not_a_prospect');
         if (args.expected_actor && args.expected_actor !== selfActor) refuse('set-prospect-engagement-status', 'account_changed');
         if (!['active','inactive'].includes(args.status) || !args.reason?.trim()) refuse('set-prospect-engagement-status', 'invalid_engagement_status');
         if (rows.some(d => d.client_version !== args.base_version)) refuse('set-prospect-engagement-status', 'version_conflict');
