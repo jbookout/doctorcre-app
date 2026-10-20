@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { createFixtureClient } from "../js/fixture-client.js";
 import { createLiveClient } from "../js/live-client.js";
-import { engagementWriterFor } from "../js/prospect-engagement.mjs";
+import { confirmedEngagementRefusal, engagementWriterFor } from "../js/prospect-engagement.mjs";
 
 const required = ["setProspectEngagementStatus", "getInvoiceTracker", "markInvoicePaid", "getBoard", "getDeal", "getJevDealReading", "getChanges", "presenceLease", "patchDealField", "resolveConflict", "addDealNote", "setNextStep", "addCriticalDate", "createDeal", "loopBoard", "todayTriage", "readLoop", "addLoop", "updateLoop", "closeLoop", "loopHeaders", "listIndustryEvents", "addIndustryEvent", "updateIndustryEvent", "commandCenter", "engineeringPassport", "readPortfolio", "workRequestCard", "declineWorkRequest", "supersedeWorkRequest", "setWorkShapeDisposition", "incidentBoard", "currentWorkItem", "currentWorkRequests", "governanceQueue", "getIncident", "linkIncidentWorkRequest", "notificationFeed", "acknowledgeNotification", "notificationPreferences", "setNotificationPreference", "readDocConversation", "listDocConversations", "createDocConversation", "renameDocConversation", "shareDocConversation", "docOutcomeCards"];
 
@@ -198,3 +198,31 @@ test('fixture stale-version refusal clears pending engagement and corrected resu
   assert.equal((await client.getDeal('d14')).deal.client_version, 8);
   assert.equal(write.get(args.client_id, 'joe'), undefined);
 });
+
+
+for (const [code, patch, confirmed] of [
+  ['not_a_prospect', { client_id: 'missing-prospect' }, true],
+  ['invalid_engagement_status', { status: 'invalid' }, true],
+  ['invalid_engagement_status', { reason: '' }, true],
+  ['account_changed', { expected_actor: 'dell' }, false],
+]) {
+  test(`fixture engagement ${code} carries the production refusal shape for ${JSON.stringify(patch)}`, async () => {
+    const seed = JSON.parse(await readFile(new URL('../data/board-seed.json', import.meta.url), 'utf8'));
+    Object.assign(seed.deals.find(deal => deal.id === 'd14'), {
+      client_id: 'synthetic-prospect', client_status: 'prospect', client_version: 7,
+    });
+    const client = await createFixtureClient({
+      seedUrl: `data:application/json;base64,${Buffer.from(JSON.stringify(seed)).toString('base64')}`,
+      docContext: false,
+    });
+    await assert.rejects(client.setProspectEngagementStatus({
+      client_id: 'synthetic-prospect', base_version: 7, status: 'inactive',
+      reason: 'Synthetic deferral', expected_actor: 'joe', idempotency_key: 'synthetic-refusal', ...patch,
+    }), error => {
+      assert.equal(error.payload?.error, code);
+      assert.equal(confirmedEngagementRefusal(error), confirmed);
+      return true;
+    });
+    assert.equal((await client.getDeal('d14')).deal.client_version, 7);
+  });
+}
