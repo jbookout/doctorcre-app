@@ -505,7 +505,8 @@
       "write": false,
       "producer": {
         "repository": "jbookout/carr-system",
-        "source_commit": "3067460e3106cb891c34a918436f608b76868ff5"
+        "source_commit": "3a57e47015916546fb2ffd11eaf880686c38e659",
+        "pull_request": "https://github.com/jbookout/carr-system/pull/2014"
       },
       "response": {
         "schema_version": "local-deals-board.v1",
@@ -518,7 +519,8 @@
           "prospect_engagement_status",
           "client_status",
           "client_version",
-          "phase_started_on"
+          "phase_started_on",
+          "vendors"
         ],
         "phase_change_keys": [
           "event_id",
@@ -544,7 +546,8 @@
             "closed_on",
             "invoiced_on",
             "account_client_id",
-            "workspace_kind"
+            "workspace_kind",
+            "vendors"
           ],
           "membership": "Recorded won outcome, or no outcome with a recorded close/invoice date. Lost and paused outcomes are excluded; same workspace and account scope.",
           "order": "Close date descending, missing dates last, then name and id."
@@ -562,7 +565,8 @@
             "closed_on",
             "invoiced_on",
             "account_client_id",
-            "workspace_kind"
+            "workspace_kind",
+            "vendors"
           ],
           "membership": "Recorded lost outcome, independent of phase. Same workspace and account scope."
         },
@@ -587,13 +591,37 @@
         "phase_started_on": {
           "shape": "object keyed by phase slug; YYYY-MM-DD values",
           "source": "First event occurred_at per phase, in America/Chicago. A revisit does not replace the first start. Missing evidence has no key."
+        },
+        "vendors": {
+          "shape": "Array of explicit active deal-vendor assignments; empty array when none. No assignments inferred from introductions or deal participants.",
+          "item_keys": [
+            "party_id",
+            "role",
+            "company",
+            "contact",
+            "note",
+            "updated_at"
+          ],
+          "company_keys": [
+            "id",
+            "name"
+          ],
+          "contact_keys": [
+            "id",
+            "name",
+            "email",
+            "phone"
+          ],
+          "role": "Specific service-role slug, displayed with underscores replaced by spaces.",
+          "order": "Role, company name, contact name, vendor party id."
         }
       }
     },
     "get-deal-room": {
       "producer": {
         "repository": "jbookout/carr-system",
-        "source_commit": "3067460e3106cb891c34a918436f608b76868ff5"
+        "source_commit": "3a57e47015916546fb2ffd11eaf880686c38e659",
+        "pull_request": "https://github.com/jbookout/carr-system/pull/2014"
       },
       "response": {
         "schema_version": "deal-timeline.v1",
@@ -619,6 +647,29 @@
         "phase_started_on": {
           "shape": "object keyed by phase slug; YYYY-MM-DD values",
           "source": "First event occurred_at per phase, in America/Chicago. A revisit does not replace the first start. Missing evidence has no key."
+        },
+        "vendors": {
+          "shape": "Current detail returns an array of explicit active assignments; empty array when none. The archived-detail fallback may omit this field.",
+          "item_keys": [
+            "party_id",
+            "role",
+            "company",
+            "contact",
+            "note",
+            "updated_at"
+          ],
+          "company_keys": [
+            "id",
+            "name"
+          ],
+          "contact_keys": [
+            "id",
+            "name",
+            "email",
+            "phone"
+          ],
+          "role": "Specific service-role slug, displayed with underscores replaced by spaces.",
+          "order": "Role, company name, contact name, vendor party id."
         }
       },
       "critical_date_write": "add-critical-date",

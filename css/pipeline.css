@@ -25,6 +25,7 @@
 .hero-meta { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); color: var(--fg-muted); font-size: var(--font-size-1); }
 .row-wrap { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; }
 .field-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: var(--space-3); margin-top: var(--space-3); }
+#boardChips .chip { min-width: var(--touch); }
 /* What an eyebrow used to say, as a quiet line under the dialog heading. */
 .dialog-context { margin: var(--space-1) 0 0; color: var(--fg-muted); font-size: var(--font-size-1); }
 
@@ -36,7 +37,7 @@
 
 /* The card's title is the way into the record, because Enter on the card body
    lifts it for a move. A button that reads as a heading, and nothing else. */
-.card-open { padding: 0; border: 0; background: none; color: var(--fg); font: inherit; text-align: left; cursor: pointer; }
+.card-open { min-width: var(--touch); min-height: var(--touch); padding: 0; border: 0; background: none; color: var(--fg); font: inherit; text-align: left; cursor: pointer; }
 .card-open:hover { text-decoration: underline; text-underline-offset: 3px; }
 .card-move { margin-top: var(--space-2); min-height: var(--touch); }
 .move-targets { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: var(--space-2); }
@@ -142,8 +143,8 @@
 .closed-deals-list { display: grid; grid-template-columns: repeat(auto-fit,minmax(min(100%,280px),1fr)); gap: var(--space-3); }
 .closed-deal { padding: var(--space-4); min-width: 0; overflow-wrap: anywhere; }
 .closed-deal h3 { margin: 0 0 var(--space-3); }
-.closed-deal dl { display: grid; gap: var(--space-2); margin: 0; }
-.closed-deal dl > div { display: grid; grid-template-columns: 90px minmax(0,1fr); gap: var(--space-2); }
+.closed-deal dl:not(.deal-vendors) { display: grid; gap: var(--space-2); margin: 0; }
+.closed-deal dl:not(.deal-vendors) > div { display: grid; grid-template-columns: 90px minmax(0,1fr); gap: var(--space-2); }
 .closed-deal dt { color: var(--fg-muted); }
 .closed-deal dd { margin: 0; }
 
@@ -160,6 +161,13 @@
 .deal-snapshot-facts div { min-width:0; }
 .deal-snapshot-facts dt { color:var(--fg-muted); font-size:var(--font-size-1); }
 .deal-snapshot-facts dd { margin:0; overflow-wrap:anywhere; }
+.deal-vendors { display:grid; gap:var(--space-4); margin:var(--space-3) 0; min-width:0; overflow-wrap:anywhere; font-size:var(--font-size-1); }
+.deal-vendor-role { color:var(--fg-muted); font-weight:600; }
+.deal-vendors dd { margin:0; }
+.deal-vendors ul { list-style:none; padding:0; margin:0; display:grid; gap:var(--space-2); }
+.deal-vendor-company, .deal-vendor-contact { display:block; }
+.deal-vendor-contact { color:var(--fg-muted); }
+.deal-row .deal-vendors { grid-column:1/-1; }
 .deal-detail .detail-grid { grid-template-columns:minmax(0,1fr); }
 .deal-updates { margin-bottom:var(--space-4); }
 .deal-updates .deal-note p { line-height:var(--line-height-body); }

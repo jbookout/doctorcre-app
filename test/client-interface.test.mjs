@@ -7,6 +7,21 @@ import { confirmedEngagementRefusal, engagementWriterFor } from "../js/prospect-
 
 const required = ["setProspectEngagementStatus", "getInvoiceTracker", "markInvoicePaid", "getBoard", "getDeal", "getJevDealReading", "getChanges", "presenceLease", "patchDealField", "resolveConflict", "addDealNote", "setNextStep", "addCriticalDate", "createDeal", "loopBoard", "todayTriage", "readLoop", "addLoop", "updateLoop", "closeLoop", "loopHeaders", "listIndustryEvents", "addIndustryEvent", "updateIndustryEvent", "commandCenter", "engineeringPassport", "readPortfolio", "workRequestCard", "declineWorkRequest", "supersedeWorkRequest", "setWorkShapeDisposition", "incidentBoard", "currentWorkItem", "currentWorkRequests", "governanceQueue", "getIncident", "linkIncidentWorkRequest", "notificationFeed", "acknowledgeNotification", "notificationPreferences", "setNotificationPreference", "readDocConversation", "listDocConversations", "createDocConversation", "renameDocConversation", "shareDocConversation", "docOutcomeCards"];
 
+test('live board, archived rows and detail preserve explicit vendor cards', async () => {
+  const vendors = [{ party_id: 'demo-vendor', role: 'attorney', company: { id: 'demo-company', name: 'Demo Legal' },
+    contact: { id: 'demo-contact', name: 'Demo Contact', email: null, phone: null }, note: null, updated_at: '2026-10-01T12:00:00Z' }];
+  const row = { id: 'demo-deal', name: 'Demo Deal', phase: 'legal', vendors };
+  const client = createLiveClient({ fetchImpl: async (_path, init) => {
+    const verb = JSON.parse(init.body).params.name;
+    const payload = verb === 'deal-room-board' ? { deals: [row], closed_deals: [row], lost_deals: [row] }
+      : { ...row, deal_id: row.id };
+    return new Response(JSON.stringify({ result: { content: [{ text: JSON.stringify(payload) }] } }));
+  } });
+  const board = await client.getBoard();
+  for (const key of ['deals', 'closed_deals', 'lost_deals']) assert.deepEqual(board[key][0].vendors, vendors);
+  assert.deepEqual((await client.getDeal(row.id)).deal.vendors, vendors);
+});
+
 test("industry events use the authenticated read and versioned writes", async () => {
   const calls = [];
   const live = createLiveClient({ fetchImpl: async (path, init) => {

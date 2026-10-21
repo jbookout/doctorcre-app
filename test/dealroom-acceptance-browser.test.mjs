@@ -77,10 +77,15 @@ for (const width of [1280, 390]) for (const theme of ['light', 'dark']) test(`si
   assert.equal(await page.locator('html').getAttribute('data-theme'), theme);
   await page.evaluate(async()=>{
     const {state}=await import('/js/pipeline.js');const read=state.client.getDeal;
-    state.client.getDeal=async id=>({...await read(id),thread:Array.from({length:30},(_,i)=>({id:`demo-${i}`,kind:'note',actor:'joe',text:`Demo update ${i}. `+'Synthetic context. '.repeat(20),recorded_at:new Date(Date.UTC(2026,9,20,12,0,i)).toISOString()}))});
+    state.client.getDeal=async id=>{const detail=await read(id);return {...detail,deal:{...detail.deal,vendors:Array.from({length:6},(_,i)=>({party_id:`demo-vendor-${i}`,role:i<3?'lender':'landlord_rep',company:{id:`demo-company-${i}`,name:`Demo regional healthcare property and finance company ${i}`},contact:{id:`demo-contact-${i}`,name:`Demo assigned representative number ${i}`}}))},thread:Array.from({length:30},(_,i)=>({id:`demo-${i}`,kind:'note',actor:'joe',text:`Demo update ${i}. `+'Synthetic context. '.repeat(20),recorded_at:new Date(Date.UTC(2026,9,20,12,0,i)).toISOString()}))};};
   });
   await page.getByRole('button',{name:'Refresh deal',exact:true}).click();
   await page.locator('.updates-history > summary').waitFor();
+  assert.equal(await page.locator('#recordPanel .deal-vendor-company').count(),6);
+  const action=await page.getByRole('button',{name:'Add update',exact:true}).boundingBox();
+  const panel=await page.locator('#recordPanel').boundingBox();
+  assert.ok(action.y+action.height<=panel.y+panel.height,JSON.stringify({action,panel}));
+  await page.screenshot({path:join(evidence,`${width}-${theme}-six-vendors.png`),animations:'disabled'});
   await page.locator('.deal-updates').scrollIntoViewIfNeeded();
   await page.screenshot({path:join(evidence,`${width}-${theme}-summary.png`),animations:'disabled'});
   await page.locator('.updates-history > summary').click();
