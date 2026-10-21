@@ -905,7 +905,7 @@
   "progress_orchestrator": {
     "producer": {
       "repository": "jbookout/carr-system",
-      "source_commit": "dd8d539eb78674c3d5cfdc433c2b44c44a7fcf82"
+      "source_commit": "6523617e135de55d7ab06b9ce20c767941142379"
     },
     "schema": "doctorcre-orchestrator/v1",
     "board_id": "orchestrator",
