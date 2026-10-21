@@ -87,6 +87,63 @@ test('Lead opening and actions are separate accessible keyboard controls', async
   assert.equal(writes.length, 2);
 });
 
+for (const action of ['Claim', 'Undo']) test(`Delayed native detail close preserves keyboard focus on ${action}`, async t => {
+  const browser = await chromium.launch();
+  const page = await browser.newPage({ viewport: { width: 1440, height: 900 }, reducedMotion: 'reduce' });
+  const writes = [];
+  let releaseRefresh, refreshHeld;
+  const gate = new Promise(resolve => { releaseRefresh = resolve; });
+  const held = new Promise(resolve => { refreshHeld = resolve; });
+  t.after(() => { releaseRefresh(); return browser.close(); });
+  await routeLeads(page, { onWrite: value => writes.push(value) });
+  await page.route('**/mcp', async route => {
+    const params = route.request().postDataJSON().params;
+    if (params.name === 'lead-board' && writes.some(write => write.name === 'claim-lead')) {
+      refreshHeld();
+      await gate;
+    }
+    await route.fallback();
+  });
+  await page.goto('http://localhost/leads');
+  await page.locator('.market-marker').first().waitFor();
+  if (action === 'Undo') {
+    await page.locator('.hot-row').first().getByRole('button', { name: 'Claim', exact: true }).focus();
+    await page.keyboard.press('Space');
+    await held;
+    const link = page.getByRole('button', { name: 'Link Dr. Example 19 to Example Client Match', exact: true });
+    assert.equal(await link.isDisabled(), true, 'Claim retains native busy controls through readback');
+    releaseRefresh();
+    await link.click();
+    await page.waitForFunction(() => document.querySelector('#moveAnnouncement').textContent === 'Client linked');
+    await settles(async () => assert.equal(await page.getByRole('button', { name: 'Undo', exact: true }).isEnabled(), true));
+  }
+  await page.locator('.hot-row .lead-open').first().focus();
+  await page.keyboard.press('Enter');
+  await page.locator('#detailStage').waitFor();
+  const closed = await page.evaluate(async action => {
+    const dialog = document.querySelector('#leadDetail');
+    const control = document.querySelector(action === 'Claim' ? '#hotLeads [data-claim]' : '[data-undo]');
+    const closed = new Promise(resolve => dialog.addEventListener('close', event => resolve(event.isTrusted), { once: true }));
+    document.querySelector('#closeDetail').click();
+    control.focus();
+    const focusedBeforeCleanup = document.activeElement === control;
+    const trusted = await closed;
+    return { focusedBeforeCleanup, trusted, focusedAfterCleanup: document.activeElement === control };
+  }, action);
+  assert.deepEqual(closed, { focusedBeforeCleanup: true, trusted: true, focusedAfterCleanup: true }, `${action} keeps focus after late native close cleanup`);
+  if (action === 'Claim') {
+    await page.keyboard.press('Space');
+    await held;
+    releaseRefresh();
+    assert.deepEqual(writes.map(write => write.name), ['claim-lead']);
+  } else {
+    await page.keyboard.press('Enter');
+    await page.locator('#stageDialog[open] .stage-proposal').waitFor();
+    assert.equal(await page.locator('#leadDetail').evaluate(node => node.open), false);
+    assert.deepEqual(writes.map(write => write.name), ['claim-lead', 'link-lead-client'], 'Undo still requires stage review');
+  }
+});
+
 test('Lead actions stay disabled until Claim refresh completes, then one Link click writes', async t => {
   const browser = await chromium.launch();
   const page = await browser.newPage({ viewport: { width: 1280, height: 900 }, reducedMotion: 'reduce' });
