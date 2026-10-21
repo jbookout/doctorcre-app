@@ -199,6 +199,7 @@ export function createLiveClient(opts = {}) {
         negotiation_rounds: page.negotiation_rounds || [],
         documents: page.documents || [],
         lease: page.lease ?? null,
+        checklist: page.checklist ?? null,
         schema_version: page.schema_version,
       };
     },

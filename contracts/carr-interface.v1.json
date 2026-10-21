@@ -3,7 +3,7 @@
   "version": "1.50.0",
   "producer": {
     "repository": "jbookout/carr-system",
-    "source_commit": "e2e484b1933bfd63c10cc9a1b3350132948f6f74"
+    "source_commit": "6dea7dc7661d72a3084778dbbb18ceee56bb2f9e"
   },
   "consumer": "jbookout/doctorcre-app",
   "transport": {
@@ -620,8 +620,8 @@
     "get-deal-room": {
       "producer": {
         "repository": "jbookout/carr-system",
-        "source_commit": "3a57e47015916546fb2ffd11eaf880686c38e659",
-        "pull_request": "https://github.com/jbookout/carr-system/pull/2014"
+        "source_commit": "6dea7dc7661d72a3084778dbbb18ceee56bb2f9e",
+        "pull_request": "https://github.com/jbookout/carr-system/pull/2013"
       },
       "response": {
         "schema_version": "deal-timeline.v1",
@@ -676,14 +676,46 @@
       "never_derive": [
         "rent_start",
         "option_window"
-      ]
+      ],
+      "checklist": {
+        "schema_version": "deal-checklist.v1",
+        "producer": {
+          "repository": "jbookout/carr-system",
+          "source_commit": "6dea7dc7661d72a3084778dbbb18ceee56bb2f9e"
+        },
+        "template_states": [
+          "current",
+          "source_changed",
+          "deal_type_unknown",
+          "unavailable"
+        ],
+        "statuses": [
+          "not_recorded",
+          "complete",
+          "due",
+          "overdue",
+          "upcoming"
+        ],
+        "phase_keys": [
+          "research",
+          "site_selection",
+          "negotiation",
+          "legal",
+          "closing",
+          "invoice"
+        ],
+        "source_of_truth": "CARR doctrine sections, with runtime content-hash validation; the app renders producer items and statuses.",
+        "due_basis": "Only open, sourced critical_date records. No legal or payment deadline is inferred.",
+        "first_slice": "Current lease, expiration, invoice and full commission receipt derive completion. Unlinked documents and lifecycle LOI records remain not_recorded.",
+        "unavailable": "Missing checklist storage returns no phases or due items; retain deal detail and its update form. Retry storage on each read."
+      }
     },
     "list-feature-switches": {
       "version": "1.0.0",
       "write": false,
       "producer": {
         "repository": "jbookout/carr-system",
-        "source_commit": "e2e484b1933bfd63c10cc9a1b3350132948f6f74",
+        "source_commit": "6dea7dc7661d72a3084778dbbb18ceee56bb2f9e",
         "module": "mcp-server/src/feature-switches.js"
       },
       "inputSchema": {

@@ -59,6 +59,7 @@ import {
 import { isClosedDeal, localDeals, needsAttention } from './deal-review-model.js';
 import { lostDeals, closedDeals, urgencyOrder, concise, automaticMove, PHASE_TRIGGERS } from './local-deals-model.js';
 import { renderDealTimeline, renderDealUpdates } from './deal-timeline.js';
+import { renderDealChecklist } from './deal-checklist.js';
 import { uuidv4 } from './uuid.js';
 import { mountVisibilityPoll } from './visibility-poll.mjs';
 
@@ -860,6 +861,7 @@ function detailHtml(detail) {
       ${nextStep ? `<p class="deal-current-action"><span>${d.next_date && d.next_date < todayIso() ? 'Overdue action' : 'Next action'}</span><strong>${esc(nextStep)}</strong>${d.next_date ? `<span>Due <time datetime="${esc(d.next_date)}">${esc(dateWords(d.next_date))}</time></span>` : ''}</p>` : ''}
       <dl class="deal-snapshot-facts">${d.workspace_kind === 'national_account' || d.account_client_id ? `<div><dt>Market agent</dt><dd>${esc(d.market_agent || 'Unassigned')}</dd></div>` : ''}${d.client_name ? `<div><dt>Client</dt><dd>${esc(d.client_name)}</dd></div>` : ''}${d.type ? `<div><dt>Type</dt><dd>${esc(d.type)}</dd></div>` : ''}${d.outcome ? `<div><dt>Outcome</dt><dd>${esc(d.outcome[0].toUpperCase()+d.outcome.slice(1))}</dd></div>` : ''}</dl>
     </section>
+    <div data-detail-read="checklist">${renderDealChecklist(detail.checklist)}</div>
     <form id="detailUpdateForm" class="deal-update-form"><label for="dealUpdate">Update</label><textarea id="dealUpdate" name="text" rows="2" maxlength="10000" required></textarea><button class="btn btn-primary" type="submit">Add update</button><p id="detailUpdateStatus" role="status"></p></form>
     <div data-detail-read="vendors">${renderDealVendors(d.vendors)}</div>
     <div data-detail-read="board-controls" data-available="${controlsAvailable}">${controlsAvailable ? `<div class="detail-actions"><div class="detail-controls"><label>Phase<select id="detailPhase">${COLUMNS.map(c => `<option value="${esc(c.slug)}"${c.value === d.phase ? ' selected' : ''}>${esc(c.label)}</option>`).join('')}</select></label><label>Owner<select id="detailOwner"><option value="">Unassigned</option>${['joe','dell'].map(owner => `<option value="${owner}"${owner === d.owner ? ' selected' : ''}>${actorName(owner)}</option>`).join('')}</select></label></div><div data-detail-read="parking" data-parked="${parked}">${parked ? `<p>${esc(concise(d.parking_note) || 'Parked')}</p><button type="button" class="btn" data-revive="${esc(d.id)}">Revive</button>` : `<details class="park-options"><summary class="park-control">Park</summary><form id="detailParkForm"><label>Park reason<input name="reason" maxlength="500" required></label><button class="btn park-control" type="submit">Park deal</button></form></details>`}</div></div>` : ''}</div>
@@ -894,12 +896,17 @@ async function refreshPanel() {
           const expanded = new Set([...current.querySelectorAll('.deal-note details[open]')].map(n => n.closest('.deal-note').dataset.id));
           const focused = current.contains(document.activeElement) ? document.activeElement : null;
           const focusIdentity = focused?.dataset.detailFocus;
-          const wasOpen = current.open;
+          const wasOpen = current.open || current.querySelector('.deal-checklist')?.open;
+          const checklistOpens = new Set([...current.querySelectorAll('[data-checklist-item] details[open]')].map(n => n.closest('[data-checklist-item]').dataset.checklistItem));
           const historyOpen = current.querySelector('.updates-history')?.open;
           const oldScroll = current.scrollLeft;
           current.replaceWith(fresh);
           fresh.scrollLeft = oldScroll;
-          if (wasOpen) fresh.open = true;
+          if (wasOpen) {
+            const disclosure = fresh.querySelector('.deal-checklist') || fresh;
+            disclosure.open = true;
+          }
+          fresh.querySelectorAll('[data-checklist-item]').forEach(n => { if (checklistOpens.has(n.dataset.checklistItem)) n.querySelector('details').open = true; });
           if (historyOpen && fresh.querySelector('.updates-history')) fresh.querySelector('.updates-history').open = true;
           fresh.querySelectorAll('.deal-note').forEach(n => { if (expanded.has(n.dataset.id)) n.querySelector('details').open = true; });
           if (focusIdentity) [...fresh.querySelectorAll('[data-detail-focus]')].find(n => n.dataset.detailFocus === focusIdentity)?.focus({preventScroll:true});
