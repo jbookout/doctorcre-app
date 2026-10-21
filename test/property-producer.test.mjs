@@ -15,7 +15,7 @@ async function producerModuleUrl(path) {
   if (producerModules.has(path)) return producerModules.get(path);
   let source = execFileSync("git", ["-C", process.env.CARR_PRODUCER_CHECKOUT,
     "show", `${contract.producer.source_commit}:${path}`], { encoding: "utf8" });
-  for (const match of [...source.matchAll(/from\s+(["'])(\.\/[^"'\n]+)\1/g)]) {
+  for (const match of [...source.matchAll(/from\s+(["'])(\.\.?\/[^"'\n]+)\1/g)]) {
     const dependency = await producerModuleUrl(posix.join(posix.dirname(path), match[2]));
     source = source.replace(match[1] + match[2] + match[1], JSON.stringify(dependency));
   }
@@ -30,6 +30,31 @@ test("the runtime pin binds the checklist and feature-switch reads to one produc
     contract.mcp_read_contracts["list-feature-switches"].producer]) {
     assert.equal(producer.repository, contract.producer.repository);
     assert.equal(producer.source_commit, contract.producer.source_commit);
+  }
+});
+
+test("the advertised runtime registers inherited conversation, notification, session and room contracts", {
+  skip: !process.env.CARR_PRODUCER_CHECKOUT && "Set CARR_PRODUCER_CHECKOUT to verify inherited registrations",
+}, async () => {
+  const registry = execFileSync("git", ["-C", process.env.CARR_PRODUCER_CHECKOUT,
+    "show", `${contract.producer.source_commit}:mcp-server/src/tools.js`], { encoding: "utf8" });
+  for (const [module, factory, verbs] of [
+    ["doc-conversation.js", "docConversationTools", ["read-doc-conversation", "list-doc-conversations", "create-doc-conversation", "rename-doc-conversation", "share-doc-conversation"]],
+    ["notifications.js", "notificationTools", ["notification-feed", "acknowledge-notification", "read-notification-preferences", "set-notification-preference"]],
+    ["codex-continuity.js", "codexContinuityTools", ["list-my-codex-sessions"]],
+    ["session-identity.js", "sessionIdentityTools", ["read-session-identity", "read-dispatch-history"]],
+    ["partner-room.js", "partnerRoomTools", ["read-room", "read-room-latest", "read-room-queue", "add-room-turn"]],
+    ["dispatch-spine.js", "dispatchSpineTools", ["record-dispatch-link", "acknowledge-dispatch"]],
+    ["tour-property-search.js", "tourPropertySearchTools", ["search-tour-properties", "read-tour-selection-cart", "append-tour-selection-cart-version"]],
+  ]) {
+    assert.match(registry, new RegExp(`registerTools\\(${factory}\\(`), `${factory} must be registered`);
+    const producer = await import(await producerModuleUrl(`mcp-server/src/${module}`));
+    const tools = producer[factory]({});
+    for (const verb of verbs) {
+      assert.ok(contract.mcp_operations.includes(verb), `${verb} must remain in the app interface`);
+      assert.equal(typeof tools[verb]?.handler, "function", `${verb} must exist at the advertised runtime`);
+      assert.equal(tools[verb].inputSchema.type, "object");
+    }
   }
 });
 
