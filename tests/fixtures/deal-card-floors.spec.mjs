@@ -8,6 +8,17 @@ import { buildArtifact } from '../../scripts/artifact.mjs';
 const root = fileURLToPath(new URL('../../', import.meta.url));
 let output;
 
+async function undersizedTargets(page, selectors) {
+  const targets = await page.locator(selectors.join(', ')).evaluateAll(nodes => nodes
+    .filter(node => node.getClientRects().length)
+    .map(node => {
+      const { width, height } = node.getBoundingClientRect();
+      return { text: node.textContent.trim(), selector: node.id || node.className || node.tagName, width, height };
+    }));
+  return targets
+    .filter(target => target.width < 44 || target.height < 44);
+}
+
 test.beforeAll(async () => {
   output = await mkdtemp(join(tmpdir(), 'doctorcre-card-floors-'));
   await buildArtifact({ root, outDir: output });
@@ -93,5 +104,22 @@ for (const width of [390, 1280]) for (const theme of ['light', 'dark']) {
         expect(gaps.roles).toBeGreaterThanOrEqual(2 * gaps.assignments);
       }
     });
+
+    if (width === 1280) {
+      test('built board controls meet the desktop 44px touch floor', async ({ page }) => {
+        const small = await undersizedTargets(page, ['#boardChips [data-filter="all"]', '.card-open', '#appSyncRefresh', '#retryRead']);
+        expect(small, JSON.stringify(small)).toEqual([]);
+      });
+
+      for (const [view, outcome] of [['Closed deals', 'won'], ['Lost deals', 'lost']]) {
+        test(`built ${view.toLowerCase()} title controls meet the desktop 44px touch floor`, async ({ page }) => {
+          await page.getByRole('button', { name: 'Close deal', exact: true }).click();
+          await page.getByRole('button', { name: view, exact: true }).click();
+          await expect(page.locator(`#closedDealsList [data-id="demo-${outcome}"] .card-open`)).toBeVisible();
+          const small = await undersizedTargets(page, ['.card-open', '#appSyncRefresh', '#retryRead']);
+          expect(small, JSON.stringify(small)).toEqual([]);
+        });
+      }
+    }
   });
 }
