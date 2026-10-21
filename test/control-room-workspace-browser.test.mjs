@@ -395,8 +395,9 @@ for(const width of [1440,390])for(const theme of ['dark','light']){
   if(process.env.C5_CAPTURE_PHASE){const dir=new URL(`out/test-artifacts/c5/${process.env.C5_CAPTURE_PHASE}/`,root);await mkdir(dir,{recursive:true});await page.screenshot({path:new URL(`views-${width}-${theme}.png`,dir).pathname});}
   assert.ok((await empty.boundingBox()).height<=48,'empty ledger stays a compact row');
   assert.ok(await page.locator('#attentionTitle').evaluate(n=>getComputedStyle(n).fontSize===getComputedStyle(document.querySelector('.cr-views li')).fontSize),'ledger heading matches view summary scale');
+  await empty.scrollIntoViewIfNeeded();
   const box=await empty.boundingBox(),bottom=await page.locator(width===390?'#appShell':'.app-layout-status').boundingBox();
-  assert.ok(box.y+box.height<bottom.y,'empty ledger fits first screen');
+  assert.ok(box.y+box.height<bottom.y,'empty ledger remains reachable below attention work');
   assert.equal(await empty.evaluate(n=>getComputedStyle(n).backgroundColor),'rgba(0, 0, 0, 0)');
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
   assert.deepEqual(errors,[]);

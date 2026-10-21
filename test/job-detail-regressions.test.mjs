@@ -80,3 +80,12 @@ test('PR132 #6: replaced calendar trigger returns focus to its owner and origina
  calendar.innerHTML=calendar.innerHTML;agenda.innerHTML=agenda.innerHTML;document.getElementById('jobClose').click();
  assert.equal(document.activeElement,calendar.lastElementChild);
 });
+
+test('attention detail keeps blocker, progress and unknown model facts above the fold',()=>{
+ const {detail,body}=setup();
+ detail.open({id:'demo-failed',title:'Demo failed export',status:'failed',executor:'cx-app',blocked_reason:'Demo source unavailable',last_progress:'Demo validation complete'});
+ const summary=body.querySelector('.job-summary');
+ for(const value of ['Demo source unavailable','Demo validation complete','cx-app','Model','Effort','unknown'])assert.ok(summary.textContent.includes(value),value);
+ detail.update([{id:'other',title:'Demo other work'}],{source:'agents'});
+ assert.match(body.textContent,/Demo validation complete/);
+});

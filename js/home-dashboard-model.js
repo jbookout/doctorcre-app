@@ -63,13 +63,13 @@ export function agendaSnapshot(board, details, { scope = 'team', today = localTo
     for (const task of taskRows) {
       const day = toDay(task.due_on);
       if (task.status !== 'open' || (scope === 'mine' && task.owner !== board.actor)) continue;
-      if (!day) { undated.push(task); continue; }
-      entries.push({ key: `task:${task.id}`, deal_id: deal.id, deal_name: deal.name, day, label: task.description || 'Task', type: 'task' });
+      entries.push({ key: `task:${task.id}`, deal_id: deal.id, deal_name: deal.name, day, owner: task.owner, label: task.description || 'Task', type: 'task' });
     }
   }
-  entries.sort((a, b) => a.day.localeCompare(b.day) || a.key.localeCompare(b.key));
+  const priority = entry => !entry.day ? 1 : entry.day <= today ? 0 : 2;
+  entries.sort((a, b) => priority(a) - priority(b) || (a.day || '').localeCompare(b.day || '') || a.key.localeCompare(b.key));
   const week = Array.from({ length: 7 }, (_, i) => ({ day: addDays(today, i), entries: entries.filter(entry => entry.day === addDays(today, i)) }));
-  return { entries, week, failed, undated, upcoming: entries.slice(0, 4) };
+  return { entries, week, failed, undated, upcoming: entries };
 }
 
 export function controlSnapshot(reads) {

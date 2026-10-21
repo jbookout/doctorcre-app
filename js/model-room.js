@@ -51,6 +51,7 @@ const escapeHtml = (value) => String(value ?? "").replace(/[&<>"']/g, (char) => 
 
 let mounted = false;
 let client = null;
+let assignmentCallbacks = {};
 let pendingOpen = null;
 const openLinks = createOpenLinkGuard();
 const hostAvailable = () => /Mac/.test(globalThis.navigator?.platform || globalThis.navigator?.userAgent || '');
@@ -110,12 +111,14 @@ function renderAssignments() {
   const list = $("modelRoomAssignments");
   const dropped = $("modelRoomDropped");
   if (!line || !list) return;
+  line.title = '';
   const moveTarget = $("modelRoomMoveTarget");
   if (moveTarget) moveTarget.hidden = true;
   if (view.queue.state === "loading") {
     line.dataset.state = "loading";
     line.textContent = "Updating…";
     list.innerHTML = "";
+    assignmentCallbacks.onTasks?.([], { state: "unknown" });
     if (dropped) dropped.hidden = true;
     return;
   }
@@ -124,6 +127,7 @@ function renderAssignments() {
   const payload = view.queue.refusal ? null : view.queue.payload;
   const fresh = queueFreshness(payload);
   line.dataset.state = fresh.state;
+  if (fresh.projectedAt) line.title = new Date(fresh.projectedAt).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'long' });
   // The state is carried by colour AND shape (the data-state rules) AND this
   // text, so a still screenshot reads correctly with no colour at all.
   line.textContent = view.queue.refusal
@@ -133,30 +137,31 @@ function renderAssignments() {
   if (retry) retry.hidden = fresh.state !== "unavailable";
   if (!payload) {
     list.innerHTML = "";
+    assignmentCallbacks.onTasks?.([], { state: "unknown" });
     if (dropped) dropped.hidden = true;
     return;
   }
   const board = assignmentBoard(payload);
   if (!board.cards.length && fresh.state !== "never") line.textContent = `No assignments in the last update. ${line.textContent}`;
-  // V5-UX-C13b: every card is draggable, and every drop is refused the same
-  // honest way (assignmentMoveOutcome) — a real interaction with no pinned
-  // verb behind it, never a fake move and never a disabled card standing in
-  // for one that could not be dragged.
-  list.innerHTML = board.cards.map((card) => `<article class="card glass assignment-card" draggable="true" data-task="${escapeHtml(card.taskId)}" data-status="${escapeHtml(card.status)}">
-    <div class="assignment-head">
-      <h4>${escapeHtml(card.title)}</h4>
-      <span class="chip" data-priority="${escapeHtml(card.priority)}">${escapeHtml(card.priority)}</span>
-    </div>
-    <div class="chip-bar assignment-chips">
-      ${chip("status", card.status)}
-      ${chip("target", card.target)}
-      ${chip("model", card.effectiveModel, card.effectiveModelIsObject ? "structured" : "read")}
-      ${chip("cap", card.cap)}
-      ${chip("event", card.event)}
-    </div>
-    <p class="assignment-summary">${escapeHtml(card.summary)}</p>
-    <p class="assignment-meta small mono">${escapeHtml(card.taskId)} · updated ${escapeHtml(clock(card.updatedAt))}</p>
+  const tasks = board.cards.map(card => ({
+    id: `assignment:${card.taskId}`, title: card.title, status: card.status,
+    executor: card.target, model: card.effectiveModel, effort: card.effort,
+    last_progress: card.summary, updated_at: card.updatedAt, assignment: card,
+    source_state: fresh.state === 'live' ? 'read' : 'unknown',
+  }));
+  assignmentCallbacks.onTasks?.(tasks, { state: 'read' });
+  const focusedTask = list.contains(document.activeElement) ? document.activeElement.closest('[data-agent-task]')?.dataset.agentTask : null;
+  list.innerHTML = board.cards.map((card) => `<article class="card assignment-card" draggable="true" data-agent-task="${escapeHtml(card.taskId)}" data-task="${escapeHtml(card.taskId)}" data-status="${escapeHtml(card.status)}">
+    <div class="assignment-head"><div><span class="assignment-desk">${escapeHtml(card.target)}</span><h4>${escapeHtml(card.title)}</h4></div><span class="cr-work-status">${escapeHtml(card.status.replaceAll('_', ' '))}</span></div>
+    <dl class="cr-work-facts"><div><dt>Model</dt><dd>${escapeHtml(card.effectiveModel)}</dd></div><div><dt>Effort</dt><dd>${escapeHtml(card.effort)}</dd></div></dl>
+    <p class="assignment-summary"><span class="assignment-progress-label">Last progress</span>${escapeHtml(card.summary || 'unknown')}</p>
+    <div class="cr-attention-footer"><span>Last activity ${escapeHtml(new Date(card.updatedAt).toLocaleDateString(undefined,{month:'short',day:'numeric'}))} · ${escapeHtml(clock(card.updatedAt))}</span>${assignmentCallbacks.onOpenTask ? `<button type="button" class="btn" data-agent-open="${escapeHtml(card.taskId)}">Open details</button>` : ''}</div>
   </article>`).join("");
+  for (const button of list.querySelectorAll('[data-agent-open]')) button.onclick = () => {
+    const task = tasks.find(task => task.assignment.taskId === button.dataset.agentOpen);
+    if (task) assignmentCallbacks.onOpenTask?.(task);
+  };
+  if (focusedTask) [...list.querySelectorAll('[data-agent-open]')].find(button => button.dataset.agentOpen === focusedTask)?.focus();
   if (dropped) {
     // Counted, never silent. A dropped card the reader is not told about is a
     // lie about the assignment list.
@@ -850,7 +855,8 @@ async function readDispatch(id) {
 /* ----------------------------------------------------------------- the mount */
 
 /** Mounted once, on demand. A second call is refused, as mountSessions is. */
-export function mountModelRoom({ outage = null } = {}) {
+export function mountModelRoom({ outage = null, onOpenTask, onTasks } = {}) {
+  assignmentCallbacks = { onOpenTask, onTasks };
   if (mounted) return;
   mounted = true;
   view.outage = outage;

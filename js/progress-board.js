@@ -77,6 +77,7 @@ export function mountBoard(deps = {}) {
   // reads the snapshot.
   let systemWork = null;
   let censusPipeline = null;
+  let censusObservation = {state:'pending'};
   let pipelineCards = [];
   let hierarchyUI = null;
   let queueUI = null;
@@ -435,17 +436,7 @@ export function mountBoard(deps = {}) {
       return;
     }
     container.removeAttribute("aria-busy");
-    if (view?.work_queue) {
-      queueUI ||= mountWorkQueue({container:byId('board-stages'), window:win, boardId});
-      queueUI.update(view.work_queue);
-      byId('task-count').textContent = `${view.work_queue.items.length} jobs`;
-      byId('pipeline-title').textContent = 'Work queue';
-      for (const id of ['board-rail', 'board-filters']) byId(id).setAttribute('hidden', '');
-      for (const id of ['board-completed', 'completed-list', 'board-blocked', 'system-work-panel', 'board-ledger'])
-        byId(id)?.closest('.panel')?.setAttribute('hidden', '');
-      return;
-    }
-    if (view?.hierarchy) {
+    if (view?.hierarchy && !view.work_queue) {
       pipelineCards = Object.entries(view.hierarchy.cards).map(([id, card]) => ({...card, id, title:card.card_title, summary:card.card_description}));
       if (!hierarchyUI) doc.querySelector("details.directory-panel")?.removeAttribute("open");
       hierarchyUI ||= mountHierarchy({container:byId("board-stages"), window:win, onOpen:card=>openWork(card.id), onClose:deps.closeTask});
@@ -473,8 +464,18 @@ export function mountBoard(deps = {}) {
       tasks:original.filter(card=>card.stage===stage.id)}))},approvalCards);
     const all = merged.stages.flatMap(stage=>stage.tasks.map(task=>({...task,
       ...(boardId !== SYSTEM_BOARD_ID ? {task_id:task.id} : {})})));
+    deps.onTasks?.(all,systemWork ? censusObservation : {state:boardState});
+    if (view?.work_queue) {
+      queueUI ||= mountWorkQueue({container:byId('board-stages'), window:win, boardId});
+      queueUI.update(view.work_queue);
+      byId('task-count').textContent = `${view.work_queue.items.length} jobs`;
+      byId('pipeline-title').textContent = 'Work queue';
+      for (const id of ['board-rail', 'board-filters']) byId(id).setAttribute('hidden', '');
+      for (const id of ['board-completed', 'completed-list', 'board-blocked', 'system-work-panel', 'board-ledger'])
+        byId(id)?.closest('.panel')?.setAttribute('hidden', '');
+      return;
+    }
     renderFilters({repos:view?.repos || [],cards:all,stages});
-    deps.onTasks?.(all,{state:boardState});
     renderCompleted({...view, cards:all,stages});
     const kind = census ? "project" : view.kind;
     pipelineCards = all;
@@ -1088,7 +1089,7 @@ export function mountBoard(deps = {}) {
   function start() {
     renderStages(currentView);
     if (boardId === SYSTEM_BOARD_ID && typeof client.unfinishedWork === "function" && byId("system-work-panel"))
-      systemWork = mountSystemWorkBoard({ client, openTask:deps.openTask, onAccessDenied: cause => readFailure(cause, "board"), onPipeline: pipeline => { censusPipeline = pipeline; renderStages(currentView); } });
+      systemWork = mountSystemWorkBoard({ client, openTask:deps.openTask, onAccessDenied: cause => readFailure(cause, "board"), onPipeline: (pipeline, observation) => { if (pipeline) censusPipeline = pipeline; censusObservation = observation; renderStages(currentView); } });
     refresh().catch(() => setError("Progress temporarily unavailable.")).finally(() => {
       if (disposed) return;
       poller = mountVisibilityPoll({ document: doc, window: win, setTimeout: setTimer, clearTimeout: clearTimer,
