@@ -75,6 +75,15 @@ for (const width of [1280, 390]) for (const theme of ['light', 'dark']) test(`si
     assert.equal(header.paddingTop, 16, 'desktop header spacing stays unchanged');
   }
   assert.equal(await page.locator('html').getAttribute('data-theme'), theme);
+  await page.evaluate(async()=>{
+    const {state}=await import('/js/pipeline.js');const read=state.client.getDeal;
+    state.client.getDeal=async id=>({...await read(id),thread:Array.from({length:30},(_,i)=>({id:`demo-${i}`,kind:'note',actor:'joe',text:`Demo update ${i}. `+'Synthetic context. '.repeat(20),recorded_at:new Date(Date.UTC(2026,9,20,12,0,i)).toISOString()}))});
+  });
+  await page.getByRole('button',{name:'Refresh deal',exact:true}).click();
+  await page.locator('.updates-history > summary').waitFor();
+  await page.locator('.deal-updates').scrollIntoViewIfNeeded();
+  await page.screenshot({path:join(evidence,`${width}-${theme}-summary.png`),animations:'disabled'});
+  await page.locator('.updates-history > summary').click();
   await page.locator('#recordPanel').evaluate(node => { node.scrollTop = 220; });
   await page.screenshot({ path: join(evidence, `${width}-${theme}-scrolled.png`), animations: 'disabled' });
   const titleHitTest = await page.locator('#panelTitle').evaluate(title => {

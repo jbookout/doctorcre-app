@@ -189,17 +189,6 @@ test('all legacy deal links open the shared addressable snapshot',async t=>{
  assert.equal(await page.locator('.phase-rail').count(),1);
  assert.deepEqual(errors,[]);
 });
-for(const [result,label] of [
- ["return {judged:false,reason:'insufficient_recorded_evidence'};",'Insufficient evidence'],
- ["return {judged:false,reason:'unavailable'};",'Insights unavailable'],
- ["throw new Error('Synthetic unavailable');",'Insights unavailable']
-])test('W8 deal insight outcomes use public labels: '+result,async t=>{
- const {page,errors}=await open(t,{clientHooks:`c.getJevDealReading=async()=>{${result}};`});
- await page.goto(origin+'/deals');await page.locator('.kanban-card').first().click();
- await page.getByRole('button',{name:'Deal outlook',exact:true}).click();
- await page.waitForFunction(label=>document.querySelector('[data-jev-result]')?.textContent===label,label);
- assert.equal(await page.locator('[data-jev-deal]').isEnabled(),true);assert.deepEqual(errors,[]);
-});
 for(const trigger of ['online','timer','resume'])test('PR119 finding 6: '+trigger+' preserves the active suggestion editor and snooze date',async t=>{
  const {page,errors}=await open(t,{smallChats:true});await page.goto(origin+'/doc-chats', {waitUntil:'domcontentloaded'});
  const card=page.locator('.suggestion-card').first();await card.locator('[data-correction]').fill('Synthetic correction');await card.locator('[data-snooze-date]').fill('2026-12-01');

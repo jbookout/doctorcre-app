@@ -52,7 +52,7 @@ export async function createFixtureClient(opts = {}) {
     operating_state: 'active', parking_reason: null, parking_note: null,
     parked_at: null, parked_by: null, version: 1,
     prospect_engagement_status: 'active', client_version: 1,
-    outcome: null, closed_on: null, won_value: null, ...d,
+    outcome: null, closed_on: null, won_value: null, phase_started_on: {}, ...d,
   }]));
   // Demonstrate that Salesforce-shaped records are not automatically active
   // transactions. These are fixture-only examples; production is never

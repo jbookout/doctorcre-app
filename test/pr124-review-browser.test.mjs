@@ -40,7 +40,6 @@ const refresh = page => page.evaluate(async () => (await import('/js/pipeline.js
 async function detail(page) {
  await page.locator('.kanban-column [data-id="d14"]').click();
  await page.waitForSelector('#detailUpdateForm');
- await page.locator('.deal-dates').evaluate(e=>e.open=true);
 }
 async function readPanel(page) {
  await page.evaluate(() => dispatchEvent(new Event('online')));
@@ -89,7 +88,7 @@ for(const status of [401,403]) test('PR129 R1 loaded detail clears protected sta
  await page.waitForFunction(()=>document.querySelector('#contextDrawer').open);
  reads.status=status;
  await page.clock.fastForward(15000);
- await page.waitForFunction(()=>!document.querySelector('#panelBody .detail-grid'));
+ await page.waitForFunction(()=>!document.querySelector('#panelBody .deal-opening-snapshot'));
  assert.equal(await page.evaluate(async()=>(await import('/js/pipeline.js')).state.panelDetail),null);
  assert.equal(await page.locator('#panelTitle').textContent(),'Deal');
  assert.match(await page.locator('#panelBody').textContent(),/Unavailable/);
@@ -104,59 +103,9 @@ for(const status of [401,403]) test('PR129 R1 loaded detail clears protected sta
  assert.deepEqual(errors,[]);
 });
 
-for (const status of [401,403]) test(`PR129 R3 an open date draft clears on HTTP ${status} and cannot be submitted`,async t=>{
- const {page,errors}=await open(t);await detail(page);
- const reads=await liveDetailRead(page);
- await page.evaluate(async()=>{
-   const {state}=await import('/js/pipeline.js');window.dateSends=[];
-   state.client.addCriticalDate=async args=>{dateSends.push(args);return {ok:true};};
- });
- await page.locator('.deal-dates').evaluate(e=>e.open=true);
- await page.locator('[data-add-date="rent_start"]').click();
- await page.locator('#dealDateForm [name="date"]').fill('2026-12-01');
- await page.locator('#dealDateForm [name="evidence"]').fill('Synthetic private unsent reference');
- reads.status=status;await page.clock.fastForward(15000);
- await page.waitForFunction(()=>!document.querySelector('#panelBody .detail-grid'));
- assert.equal(await page.locator('#dealDateDialog').evaluate(e=>e.open),false);
- assert.equal(await page.locator('#dealDateForm [name="date"]').inputValue(),'');
- assert.equal(await page.locator('#dealDateForm [name="evidence"]').inputValue(),'');
- // Even a queued/programmatic submit from the cleared form has no command path.
- await page.locator('#dealDateForm').evaluate(form=>form.dispatchEvent(new Event('submit',{bubbles:true,cancelable:true})));
- assert.deepEqual(await page.evaluate(()=>dateSends),[]);
- reads.status=200;await page.locator('[data-refresh-detail]').click();
- await page.waitForSelector('#detailUpdateForm');
- await page.locator('.deal-dates').evaluate(e=>e.open=true);
- await page.locator('[data-add-date="rent_start"]').click();
- assert.equal(await page.locator('#dealDateForm [name="evidence"]').inputValue(),'');
- assert.equal(await page.locator('#dealDateForm button[type="submit"]').isEnabled(),true);
- assert.deepEqual(errors,[]);
-});
 
-for (const status of [401,403]) test(`PR129 R3 a pending date receipt survives HTTP ${status} without reopening detail`,async t=>{
- const {page,errors}=await open(t);await detail(page);
- const reads=await liveDetailRead(page);
- await page.evaluate(async()=>{
-   const {state}=await import('/js/pipeline.js');window.dateSends=[];
-   state.client.addCriticalDate=args=>new Promise(resolve=>{dateSends.push(args);window.finishDate=()=>resolve({ok:true});});
- });
- await page.locator('.deal-dates').evaluate(e=>e.open=true);
- await page.locator('[data-add-date="rent_start"]').click();
- await page.locator('#dealDateForm [name="date"]').fill('2026-12-01');
- await page.locator('#dealDateForm [name="evidence"]').fill('Synthetic lease clause');
- await page.locator('#dealDateForm button[type="submit"]').click();
- await page.waitForFunction(()=>dateSends.length===1);
- reads.status=status;await page.clock.fastForward(15000);
- await page.waitForFunction(()=>!document.querySelector('#panelBody .detail-grid'));
- reads.status=200;await page.evaluate(()=>finishDate());
- await page.locator('.toast').waitFor({state:'attached'});
- assert.equal(await page.locator('#receiptDock [data-op="critical-date:d14:rent_start"]').count(),0);
- await page.waitForTimeout(30);
- assert.equal(await page.locator('#dealDateDialog').evaluate(e=>e.open),false);
- assert.equal(await page.locator('#detailUpdateForm').count(),0);
- assert.match(await page.locator('#panelBody').textContent(),/Unavailable/);
- assert.equal(await page.evaluate(()=>dateSends.length),1);
- assert.deepEqual(errors,[]);
-});
+
+
 
 for (const status of [401,403]) for (const outcome of ['ok','refused']) test(`PR129 R2 pending next-step ${outcome} settles after HTTP ${status} clearing`,async t=>{
  const {page,errors}=await open(t);await detail(page);
@@ -212,7 +161,7 @@ test('PR129 R1 refused next-step revalidation clears detail without sending the 
    state.client.addDealNote=async()=>{window.nextSends++;throw Object.assign(Error('Forbidden'),{status:403});};
  });
  reads.status=403;await page.locator('#detailUpdateForm button').click();
- await page.waitForFunction(()=>!document.querySelector('#panelBody .detail-grid'));
+ await page.waitForFunction(()=>!document.querySelector('#panelBody .deal-opening-snapshot'));
  assert.equal(await page.evaluate(()=>window.nextSends),1);
  assert.equal(await page.evaluate(async()=>(await import('/js/pipeline.js')).state.panelDetail),null);
  assert.match(await page.locator('#panelBody').textContent(),/Unavailable/);
@@ -360,10 +309,7 @@ test('R10 Home flagged personal URL reaches only flagged records for current act
  const observed=await page.evaluate(async()=>{const {state}=await import('/js/pipeline.js');return {filter:state.filter,scope:state.scopeFilter,expected:['d14'],shown:[...document.querySelectorAll('.kanban-column [data-id]')].map(e=>e.dataset.id).sort()};});
  assert.equal(observed.filter,'joe');assert.equal(observed.scope,'flagged');assert.deepEqual(observed.shown,observed.expected);
 });
-test('R12 full-record disclosures preserve actions, premises, rounds, documents and change history',async t=>{
- const {page}=await open(t);await page.evaluate(async()=>{const {state}=await import('/js/pipeline.js');const read=state.client.getDeal.bind(state.client);state.client.getDeal=async id=>({...await read(id),next_actions:[{id:'a',status:'open',description:'Additional action',owner:'joe',due_on:'2026-11-01'}],premises:[{label:'Demo premises',address:'123 Demo Street',area_amount:2200,area_basis:'SF'}],negotiation_rounds:[{round_no:3,side:'tenant',rate_amount:28,rate_basis:'SF',term_months:60}],documents:[{id:'demo-prepared',sent_status:'prepared',prepared_at:'2026-10-01',lint_passed:true,leak_check_passed:false},{id:'demo-unsent',sent_status:'not_sent',prepared_at:'2026-10-01'}],history:[{summary:'Demo history',actor:'dell',recorded_at:'2026-10-01'}]});});await detail(page);
- await page.getByText('Full record',{exact:true}).click();const text=await page.locator('.full-record').textContent();for(const value of ['Additional action','Joe','Demo premises','123 Demo Street','2200','Round 3','28','60 months','prepared','not sent','Demo history','Dell'])assert.ok(text.includes(value),value);assert.doesNotMatch(text,/lint|leak check/);
-});
+
 
 test('R2 a move follow-up cannot replace an unanswered next-step intent or its receipt',async t=>{
  const {page}=await open(t);await detail(page);

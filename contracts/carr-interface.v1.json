@@ -505,7 +505,7 @@
       "write": false,
       "producer": {
         "repository": "jbookout/carr-system",
-        "source_commit": "65a9947c917e5a5a97ac2d67baa34f081b0da026"
+        "source_commit": "3067460e3106cb891c34a918436f608b76868ff5"
       },
       "response": {
         "schema_version": "local-deals-board.v1",
@@ -517,7 +517,8 @@
           "field_base",
           "prospect_engagement_status",
           "client_status",
-          "client_version"
+          "client_version",
+          "phase_started_on"
         ],
         "phase_change_keys": [
           "event_id",
@@ -582,13 +583,17 @@
           "prospect_engagement_status",
           "client_status",
           "client_version"
-        ]
+        ],
+        "phase_started_on": {
+          "shape": "object keyed by phase slug; YYYY-MM-DD values",
+          "source": "First event occurred_at per phase, in America/Chicago. A revisit does not replace the first start. Missing evidence has no key."
+        }
       }
     },
     "get-deal-room": {
       "producer": {
         "repository": "jbookout/carr-system",
-        "source_commit": "65a9947c917e5a5a97ac2d67baa34f081b0da026"
+        "source_commit": "3067460e3106cb891c34a918436f608b76868ff5"
       },
       "response": {
         "schema_version": "deal-timeline.v1",
@@ -610,7 +615,11 @@
           "client_status",
           "client_version",
           "prospect_engagement_status"
-        ]
+        ],
+        "phase_started_on": {
+          "shape": "object keyed by phase slug; YYYY-MM-DD values",
+          "source": "First event occurred_at per phase, in America/Chicago. A revisit does not replace the first start. Missing evidence has no key."
+        }
       },
       "critical_date_write": "add-critical-date",
       "never_derive": [

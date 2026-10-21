@@ -118,13 +118,13 @@
 @media(prefers-reduced-motion:reduce) { .kanban-card, .kanban-card:hover, .kanban-card[data-lifted="true"] { transition: none; transform: none; } }
 :root[data-motion="reduced"] :is(.kanban-card, .kanban-card:hover, .kanban-card[data-lifted="true"]) { transition: none; transform: none; }
 
-.deal-detail select, .deal-detail input, .deal-detail textarea { color: var(--fg); background: var(--ground); border: var(--hairline-width) solid var(--hairline-strong); border-radius: var(--radius-2); padding: var(--space-2) var(--space-3); font: inherit; }
+.deal-detail select, .deal-detail input, .deal-detail textarea { min-width: var(--touch); min-height: var(--touch); color: var(--fg); background: var(--ground); border: var(--hairline-width) solid var(--hairline-strong); border-radius: var(--radius-2); padding: var(--space-2) var(--space-3); font: inherit; }
 .deal-detail :is(select,input,textarea):focus-visible { outline: var(--focus-width) solid var(--focus-ring); outline-offset: 2px; }
 .detail-controls { margin-bottom: var(--space-4); align-items: start; }
 .detail-controls label { color: var(--fg-muted); font-size: var(--font-size-1); }
 #detailNextForm label:first-child { grid-column: 1/-1; }
 #detailNextForm button { align-self: end; }
-.park-options summary { cursor: pointer; min-height: 44px; }
+.park-options summary { cursor: pointer; min-width: var(--touch); min-height: var(--touch); }
 #detailParkForm { display: grid; gap: var(--space-3); }
 #detailParkForm label { display: grid; gap: var(--space-2); }
 .shell { padding-top: var(--space-4); }
@@ -163,7 +163,6 @@
 .deal-detail .detail-grid { grid-template-columns:minmax(0,1fr); }
 .deal-updates { margin-bottom:var(--space-4); }
 .deal-updates .deal-note p { line-height:var(--line-height-body); }
-.deal-dates > summary { min-height:var(--touch); cursor:pointer; }
 
 .dealroom-heading { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:var(--space-3); margin-bottom:var(--space-4); }
 .app-section-tabs { display:flex; align-items:center; gap:var(--space-4); border-bottom:var(--hairline-width) solid var(--hairline); }

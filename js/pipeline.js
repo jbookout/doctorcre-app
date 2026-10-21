@@ -53,11 +53,10 @@ import {
   CLOSED_SLUG, COLUMNS, OPEN_COLUMNS, COMPLETION_CAPTIONS, closedColumnCaption, columnBySlug, columnByValue,
   columnLabel, completionPlan, contextDrawerSections, groupByColumn, keyboardTarget,
   loadDealContext, moveIntent, moveSummary, moveTitle, noteText, dealName, presenceChip,
-  dealInsightLines,
 } from './pipeline-model.js';
 import { isClosedDeal, localDeals, needsAttention } from './deal-review-model.js';
 import { lostDeals, closedDeals, urgencyOrder, concise, automaticMove, OWNER_FILTERS, PHASE_TRIGGERS } from './local-deals-model.js';
-import { DATE_KINDS, renderCriticalDates, renderDealTimeline, renderDealUpdates, updateCountdowns } from './deal-timeline.js';
+import { renderDealTimeline, renderDealUpdates } from './deal-timeline.js';
 import { uuidv4 } from './uuid.js';
 import { mountVisibilityPoll } from './visibility-poll.mjs';
 
@@ -790,16 +789,6 @@ async function settleConflictChoice(conflictId, result) {
 /* ------------------------------------------------------------- record panel */
 
 let disposeEvidence = null;
-let dateDraft = null;
-function closeDateEditor() {
-  dateDraft = null;
-  const form = $('dealDateForm');
-  form.reset();
-  form.querySelector('button[type="submit"]').disabled = true;
-  $('dealDateTitle').textContent = 'Add date';
-  $('dealDateStatus').textContent = '';
-  $('dealDateDialog').close();
-}
 let panelReadSequence = 0;
 let contextReadSequence = 0;
 let updateDraft = null;
@@ -809,7 +798,6 @@ function refusePanelDetail(error) {
   ++contextReadSequence;
   state.panelDetail = null;
   updateDraft = null;
-  closeDateEditor();
   disposeEvidence?.(); disposeEvidence = null;
   setContextOpenVisible(false);
   $('contextDrawer').close();
@@ -857,17 +845,6 @@ async function saveUpdate(id) {
     $('detailUpdateStatus').textContent = result.status === 'ok' ? 'Update added' : result.message || 'Update not confirmed';
   }
 }
-function fullRecordHtml(detail) {
-  const section = (title, rows, describe) => rows.length ? `<section><h3>${title}</h3>${rows.map(row => `<p>${esc(describe(row))}</p>`).join('')}</section>` : '';
-  const sections = `
-    ${section('Open next actions',(detail.next_actions || []).filter(a => a.status === 'open'), a => `${a.description} · ${actorName(a.owner)} · ${dateWords(a.due_on)}`)}
-    ${section('Premises',detail.premises || [], p => [p.label,p.address,p.suite,p.city,p.state,p.area_amount ? `${p.area_amount} ${p.area_basis || 'SF'}` : null].filter(Boolean).join(' · '))}
-    ${section('Negotiation rounds',detail.negotiation_rounds || [], n => `Round ${n.round_no} · ${n.side} · ${n.rate_amount ?? 'Rate not captured'} ${n.rate_basis || ''} · ${n.term_months ? `${n.term_months} months` : 'Term not captured'}`)}
-    ${section('Documents',detail.documents || [], d => `${String(d.sent_status || 'Prepared').replaceAll('_',' ')} · ${dateWords(d.prepared_at)}`)}
-    ${section('Change history',detail.history || [], e => `${e.summary || `${fieldLabel(e.field)} changed`} · ${actorName(e.actor)} · ${dateWords(e.recorded_at)}`)}
-  `;
-  return sections.trim() ? `<details class="full-record" data-detail-read="full"><summary>Full record</summary>${sections}</details>` : '<div data-detail-read="full"></div>';
-}
 function detailHtml(detail) {
   const d = detail.deal;
   const prospect = state.deals.get(d.id);
@@ -884,9 +861,7 @@ function detailHtml(detail) {
     <div data-detail-read="board-controls" data-available="${controlsAvailable}">${controlsAvailable ? `<div class="detail-actions"><div class="detail-controls"><label>Phase<select id="detailPhase">${COLUMNS.map(c => `<option value="${esc(c.slug)}"${c.value === d.phase ? ' selected' : ''}>${esc(c.label)}</option>`).join('')}</select></label><label>Owner<select id="detailOwner"><option value="">Unassigned</option>${['joe','dell'].map(owner => `<option value="${owner}"${owner === d.owner ? ' selected' : ''}>${actorName(owner)}</option>`).join('')}</select></label></div><div data-detail-read="parking" data-parked="${parked}">${parked ? `<p>${esc(concise(d.parking_note) || 'Parked')}</p><button type="button" class="btn" data-revive="${esc(d.id)}">Revive</button>` : `<details class="park-options"><summary class="park-control">Park</summary><form id="detailParkForm"><label>Park reason<input name="reason" maxlength="500" required></label><button class="btn park-control" type="submit">Park deal</button></form></details>`}</div></div>` : ''}</div>
     <div data-detail-read="prospect">${controlsAvailable && prospect?.client_status === 'prospect' ? `<form id="detailInactiveForm"><p>Inactive prospects return to Leads.</p><label>Reason<input name="reason" maxlength="1000" required value="${esc(pendingProspect?.request.reason || '')}"${pendingProspect ? ' readonly' : ''}></label><button class="btn" type="submit">${pendingProspect ? 'Check outcome' : 'Mark inactive'}</button><p role="status" data-prospect-status>${pendingProspect ? 'Confirmation pending for this prospect. Check outcome to retry the same request.' : ''}</p></form>` : ''}</div>
     ${renderDealTimeline(detail)}<div data-detail-read="updates">${renderDealUpdates(detail)}</div>
-    <button class="btn" type="button" data-jev-deal="${esc(d.id)}">Deal outlook</button><p data-jev-result role="status"></p>
-    <details class="deal-dates"><summary>Dates</summary>${renderCriticalDates(detail)}</details>
-    <div class="detail-grid"><section>${fullRecordHtml(detail)}</section></div><div id="panelEvidence"></div>`;
+    <div id="panelEvidence"></div>`;
 }
 async function refreshPanel() {
   const id = state.panelDeal;
@@ -898,7 +873,7 @@ async function refreshPanel() {
     state.panelDetail = detail;
     updateDetailTimestamp();
     // A poll preserves drafts, expanded entries and the dialog scroll position.
-    if (!$('panelBody').querySelector('.detail-grid')) paintPanel(detail);
+    if (!$('panelBody').querySelector('.deal-opening-snapshot')) paintPanel(detail);
     else {
       if ($('detailPhase') && document.activeElement !== $('detailPhase')) $('detailPhase').value = columnByValue(detail.deal.phase)?.slug || '';
       if ($('detailOwner') && document.activeElement !== $('detailOwner')) $('detailOwner').value = detail.deal.owner || '';
@@ -916,12 +891,12 @@ async function refreshPanel() {
           const focused = current.contains(document.activeElement) ? document.activeElement : null;
           const focusIdentity = focused?.dataset.detailFocus;
           const wasOpen = current.open;
-          const dateOpens = new Set([...current.querySelectorAll('[data-date-id] details[open]')].map(n => n.closest('[data-date-id]').dataset.dateId));
+          const historyOpen = current.querySelector('.updates-history')?.open;
           const oldScroll = current.scrollLeft;
           current.replaceWith(fresh);
           fresh.scrollLeft = oldScroll;
           if (wasOpen) fresh.open = true;
-          fresh.querySelectorAll('[data-date-id]').forEach(n => { if (dateOpens.has(n.dataset.dateId)) n.querySelector('details').open = true; });
+          if (historyOpen && fresh.querySelector('.updates-history')) fresh.querySelector('.updates-history').open = true;
           fresh.querySelectorAll('.deal-note').forEach(n => { if (expanded.has(n.dataset.id)) n.querySelector('details').open = true; });
           if (focusIdentity) [...fresh.querySelectorAll('[data-detail-focus]')].find(n => n.dataset.detailFocus === focusIdentity)?.focus({preventScroll:true});
           else if (focused?.id) document.getElementById(focused.id)?.focus({preventScroll:true});
@@ -985,7 +960,6 @@ function closePanel() {
   selectDocRecord('deal', null);
   pageDocContext?.release('getDeal');
   ++panelReadSequence;
-  closeDateEditor();
   const id = state.panelReturnTo;
   disposeEvidence?.(); disposeEvidence=null;
   const url = new URL(location.href); url.searchParams.delete('deal'); history.replaceState({},'',url);
@@ -1223,8 +1197,6 @@ function wire() {
   });
 
   document.addEventListener('click', async (event) => {
-    const outlook = event.target.closest('[data-jev-deal]');
-    if(outlook) { const id=state.panelDeal; outlook.disabled=true; try { const answer=await state.client.getJevDealReading(id); if(state.panelDeal===id && outlook.isConnected) $('panelBody').querySelector('[data-jev-result]').textContent=dealInsightLines(answer).join(' · '); } catch { if(outlook.isConnected) $('panelBody').querySelector('[data-jev-result]').textContent=dealInsightLines(null).join(' · '); } finally { if(outlook.isConnected) outlook.disabled=false; } return; }
     const revive = event.target.closest('button[data-revive]');
     if (revive) { setOperatingState(revive.dataset.revive, {state:'active'}); return; }
     const open = event.target.closest('button[data-open]');
@@ -1250,26 +1222,6 @@ function wire() {
 
   $('recordPanel')?.addEventListener('cancel', (event) => { event.preventDefault(); closePanel(); });
   $('panelClose')?.addEventListener('click', closePanel);
-  $('dealDateCancel').onclick = closeDateEditor;
-  $('dealDateDialog').addEventListener('cancel', closeDateEditor);
-  $('dealDateForm').addEventListener('submit', async event => {
-    event.preventDefault();
-    const form = event.currentTarget, values = new FormData(form);
-    const draft = dateDraft;
-    if (!draft || !$('dealDateDialog').open || state.panelDeal !== draft.deal || state.panelDetail?.deal.id !== draft.deal) return;
-    const {deal:id, kind} = draft;
-    // Lost responses retain exactly the same request and key in the command dock.
-    const args = {deal:id,kind,due_on:String(values.get('date')),source:String(values.get('evidence'))};
-    form.querySelector('button[type="submit"]').disabled = true;
-    const result = await runFollowUp(`critical-date:${id}:${kind}`,{verb:'add-critical-date',args,summary:'Date added'});
-    if (dateDraft === draft && $('dealDateDialog').open) {
-      form.querySelector('button[type="submit"]').disabled = false;
-      if (result?.status === 'ok') closeDateEditor();
-      else $('dealDateStatus').textContent = 'Date not confirmed';
-    }
-    if (result?.status === 'ok' && state.panelDeal === id && state.panelDetail?.deal.id === id) await refreshPanel();
-  });
-
   $('receiptsOpen')?.addEventListener('click', () => {
     renderReceipts();
     document.dispatchEvent(new Event('doctorcre:open-today'));
@@ -1333,16 +1285,7 @@ function wire() {
   $('kanban').addEventListener('toggle', e => { if(e.target.classList.contains('parked-lane')) { state.parkedOpen=e.target.open; $('parkedToggle').setAttribute('aria-pressed',String(state.parkedOpen)); } },true);
   $('panelBody').addEventListener('click', e => {
     if (e.target.closest('[data-refresh-detail]')) refreshPanel();
-    const add = e.target.closest('[data-add-date]');
-    if (add) {
-      if (!state.panelDetail || state.panelDetail.deal.id !== state.panelDeal) return;
-      const definition = DATE_KINDS.find(d => d.kind === add.dataset.addDate);
-      $('dealDateTitle').textContent = definition.label;
-      dateDraft = {deal:state.panelDeal,kind:definition.kind};
-      const form = $('dealDateForm'); form.reset();
-      form.querySelector('button[type="submit"]').disabled = false;
-      $('dealDateStatus').textContent = ''; $('dealDateDialog').showModal();
-    }
+
   });
   $('panelBody').addEventListener('input', e => {
     if (e.target.closest('#detailUpdateForm') && updateDraft) updateDraft.text = e.target.value;
@@ -1422,7 +1365,6 @@ async function boot() {
   $('closedView').setAttribute('aria-pressed',String(state.view === 'closed'));
   await loadBoard();
   mountVisibilityPoll({ intervalMs: BOARD_REFRESH_MS, poll: () => { refreshPanel(); } });
-  setInterval(() => updateCountdowns($('panelBody')),1000);
   mountVisibilityPoll({ intervalMs: POLL_MS, poll: () => { pollOnce().catch(() => { /* the badge already says the feed failed */ }); } });
   mountVisibilityPoll({ intervalMs: BOARD_REFRESH_MS, poll: () => { state.boardSync.requestRefresh('periodic'); } });
   // Home record links address a deal directly, including records outside the

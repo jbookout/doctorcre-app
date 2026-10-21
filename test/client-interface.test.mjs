@@ -127,6 +127,15 @@ test("the live client sends today-triage through the pinned MCP seam, and the fi
   assert.ok(items.every((item) => item.subject_name === null || String(item.subject_name).startsWith("Demo ")), "synthetic names only");
 });
 
+test('the synthetic board and detail carry the authoritative phase-date projection', async () => {
+  const text=await readFile(new URL('../data/board-seed.json',import.meta.url),'utf8');
+  const fixture=await createFixtureClient({seedUrl:`data:application/json;base64,${Buffer.from(text).toString('base64')}`});
+  const board=await fixture.getBoard();
+  assert.deepEqual(board.deals.find(d=>d.id==='d14').phase_started_on,{legal:'2026-01-10'});
+  assert.deepEqual((await fixture.getDeal('d14')).deal.phase_started_on,{legal:'2026-01-10'});
+  assert.deepEqual((await fixture.getDeal('d05')).deal.phase_started_on,{});
+});
+
 test('prospect engagement writes require acknowledged success and retain uncertain outcomes',async()=>{
  for(const payload of [{ok:true},{}]) {
   const calls=[];const live=createLiveClient({fetchImpl:async(path,init)=>{calls.push(JSON.parse(init.body).params);return new Response(JSON.stringify({result:{content:[{text:JSON.stringify(payload)}]}}),{status:200})}});

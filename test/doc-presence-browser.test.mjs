@@ -59,8 +59,7 @@ test('page facts and exact selection, existing suggestions, one-tap approval, in
  await page.locator('#recordPanel[open]').waitFor();
  await page.locator('#recordPanel > #docPresence').waitFor();
  await page.waitForFunction(()=>document.querySelector('#recordPanel > #docPresence')?.dataset.state==='ready');
- assert.equal(await page.getByRole('button',{name:'Deal outlook',exact:true}).count(),1);
- assert.ok(await page.locator('[data-jev-deal]').evaluate(n=>n.getBoundingClientRect().height)>=44);
+ assert.equal(await page.getByRole('button',{name:'Deal outlook',exact:true}).count(),0);
  assert.doesNotMatch(await page.locator('#recordPanel').innerText(),/Jev|Read this deal|lint|leak check/);
  await mkdir(new URL('out/test-artifacts/w8/',root),{recursive:true});
  await page.screenshot({path:new URL('out/test-artifacts/w8/record-presence-desktop.png',root).pathname,animations:'disabled'});

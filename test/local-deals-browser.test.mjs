@@ -148,6 +148,7 @@ test('W4 desktop/phone render, owner filters, equal cards, wide detail and reduc
     await page.locator('.kanban-column [data-id="d14"]').click(); await page.waitForSelector('#detailPhase');
     const box = await page.locator('#recordPanel').boundingBox(); assert.ok(box.width >= Math.min(1100, width - 30));
     assert.ok((await page.locator('.deal-note p').first().textContent()).length <= 150);
+    await page.locator('.updates-history > summary').click();
     await page.locator('.deal-note[data-id="demo-note"] summary').click();
     assert.match(await page.locator('.deal-note[data-id="demo-note"] .note-original').textContent(), /Full original demo entry/);
     await page.locator('#recordPanel').evaluate(e => { e.scrollTop = 0; });
@@ -307,7 +308,8 @@ test('W4 lost park response retries the original field exactly once; next-step e
 test('W4 detail polls phase evidence, dates, people and parking while preserving drafts and expanded originals', async t => {
   const { page, errors } = await open(t);
   await page.locator('[data-id="d14"] .card-open').click();
-  await page.locator('.deal-note[data-id="demo-note"] summary').click();
+  await page.locator('.updates-history > summary').click();
+    await page.locator('.deal-note[data-id="demo-note"] summary').click();
   await page.locator('#detailUpdateForm textarea').fill('Demo unsaved draft');
   await page.evaluate(async () => {
     const { state } = await import('/js/pipeline.js'); const original = state.client.getDeal;
@@ -321,7 +323,7 @@ test('W4 detail polls phase evidence, dates, people and parking while preserving
   assert.equal(await page.locator('#detailPhase').inputValue(), 'legal');
   assert.match(await page.locator('.phase-rail [aria-current]').textContent(), /Legal/);
 
-  assert.match(await page.locator('[data-detail-read="dates"]').textContent(), /Demo deadline/);
+  assert.equal(await page.locator('[data-detail-read="dates"]').count(),0);
 
   assert.match(await page.locator('.deal-updates').textContent(),/Demo scheduled tour/);
   assert.equal(await page.locator('#detailUpdateForm textarea').inputValue(), 'Demo unsaved draft');
