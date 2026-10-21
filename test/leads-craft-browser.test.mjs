@@ -13,6 +13,34 @@ async function capture(page, name, measurements = {}) {
   await writeFile(`${process.env.LEADS_CRAFT_DIR}/${name}.json`, JSON.stringify(measurements, null, 2));
 }
 
+async function loadingLayout(page) {
+  return page.evaluate(() => {
+    const bounds = node => {
+      const { x, y, width, height } = node.getBoundingClientRect();
+      return { x, y, width, height };
+    };
+    const region = selector => {
+      const node = document.querySelector(selector);
+      return node ? bounds(node) : null;
+    };
+    const columns = document.querySelector('.stage-columns');
+    const style = columns && getComputedStyle(columns);
+    return {
+      viewport: { width: innerWidth, height: innerHeight, clientWidth: document.documentElement.clientWidth },
+      document: { scrollHeight: document.documentElement.scrollHeight, clientHeight: document.documentElement.clientHeight,
+        bodyHeight: document.body.scrollHeight, readyState: document.readyState, fonts: document.fonts.status },
+      shell: { mounted: document.body.classList.contains('has-app-layout'), ...document.querySelector('#appLayout')?.dataset,
+        sidebar: region('#appSidebar'), today: region('#appToday'), center: region('.app-layout-center'), main: region('#appMainSlot'),
+        synced: Boolean(document.querySelector('#appSyncTime')?.dateTime) },
+      board: region('#leadBoard'),
+      columns: style && { ...bounds(columns), display: style.display, count: style.columnCount, width: style.columnWidth, gap: style.columnGap },
+      stages: [...document.querySelectorAll('.stage-column')].map(bounds),
+      boardBusy: document.querySelector('#leadBoard')?.getAttribute('aria-busy'),
+      mapBusy: document.querySelector('#territoryMap')?.getAttribute('aria-busy'),
+    };
+  });
+}
+
 test('Lead opening and actions are separate accessible keyboard controls', async t => {
   const browser = await chromium.launch();
   t.after(() => browser.close());
@@ -135,11 +163,12 @@ for (const width of [768, 1280, 1440]) test(`Leads loading uses board, ranked-ro
   assert.ok(await page.locator('#leadBoard .lead-skeleton').count() >= 6, 'loading reserves stage and card shapes');
   assert.equal(await page.locator('#hotLeads .hot-skeleton').count(), 5);
   assert.equal(await page.locator('#territoryMap').getAttribute('aria-busy'), 'true');
-  const loadingWidth = await page.locator('.stage-column').first().evaluate(node => node.getBoundingClientRect().width);
+  const loading = await loadingLayout(page);
   release();
   await page.locator('.lead-card').first().waitFor();
   assert.equal(await page.locator('#leadBoard .lead-skeleton, #hotLeads .hot-skeleton').count(), 0);
-  const loadedWidth = await page.locator('.stage-column').first().evaluate(node => node.getBoundingClientRect().width);
-  assert.ok(Math.abs(loadingWidth - loadedWidth) < 2, 'loading and final stage widths match');
+  const loaded = await loadingLayout(page);
+  assert.ok(Math.abs(loading.stages[0].width - loaded.stages[0].width) < 2,
+    `loading and final stage widths match: ${JSON.stringify({ loading, loaded })}`);
   assert.equal(await page.locator('#territoryMap').getAttribute('aria-busy'), 'false');
 });
