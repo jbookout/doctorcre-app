@@ -6,9 +6,9 @@ import { boardDirectory, boardView } from "../js/progress-board-model.js";
 import { execFileSync } from "node:child_process";
 import { handleDoctorcreRequest } from "../src/worker.js";
 import { validSystemWork, groupSystemWork, recentLive } from "../js/system-work-board-model.js";
+import { renderDealChecklist } from "../js/deal-checklist.js";
 
 const contract = JSON.parse(await readFile(new URL("../contracts/carr-interface.v1.json", import.meta.url), "utf8"));
-const pinnedProducer = "e2e484b1933bfd63c10cc9a1b3350132948f6f74";
 
 const producerModules = new Map();
 async function producerModuleUrl(path) {
@@ -24,8 +24,29 @@ async function producerModuleUrl(path) {
   return url;
 }
 
-test("the runtime pin integrates Doc activity with inherited Progress and system-work reads", () => {
-  assert.equal(contract.producer.source_commit, pinnedProducer);
+test("the runtime pin binds the checklist and feature-switch reads to one producer", () => {
+  for (const producer of [contract.mcp_read_contracts["get-deal-room"].producer,
+    contract.mcp_read_contracts["get-deal-room"].checklist.producer,
+    contract.mcp_read_contracts["list-feature-switches"].producer]) {
+    assert.equal(producer.repository, contract.producer.repository);
+    assert.equal(producer.source_commit, contract.producer.source_commit);
+  }
+});
+
+test("the same advertised producer derives the versioned checklist consumed by the app", {
+  skip: !process.env.CARR_PRODUCER_CHECKOUT && "Set CARR_PRODUCER_CHECKOUT to verify checklist derivation",
+}, async () => {
+  const { deriveDealChecklist, CHECKLIST_SOURCES } = await import(await producerModuleUrl("mcp-server/src/deal-checklist.js"));
+  const seam = contract.mcp_read_contracts["get-deal-room"].checklist;
+  const checklist = deriveDealChecklist({ type: "renewal", critical_dates: [
+    { id: "synthetic-review", kind: "attorney_review", due_on: "2026-10-20", source: "fixture:review", status: "open" },
+  ] }, CHECKLIST_SOURCES.map(source => ({ id: source.section_id, body_hash: source.content_hash, status: "active" })), "2026-10-20");
+  assert.equal(checklist.schema_version, seam.schema_version);
+  assert.equal(checklist.template_state, "current");
+  assert.deepEqual(checklist.phases.map(phase => phase.id), seam.phase_keys);
+  assert.ok(checklist.phases.flatMap(phase => phase.items).every(item => seam.statuses.includes(item.status)));
+  assert.equal(checklist.due_items[0].status, "due");
+  assert.match(renderDealChecklist(checklist), /data-checklist-item="critical-date:synthetic-review"/);
 });
 
 // Opt-in cross-repository verification reads committed source, never a working
@@ -83,7 +104,9 @@ test("the app consumes the merged producer's directory and selected-board interf
   const actor = { id: "10000000-0000-4000-8000-000000000001", slug: "codex", human: false,
     native_agent_verified: true, sponsoring_human_slug: "joe" };
   const row = { board_id: "carr-v5", version: 2, updated_at: "2026-10-01T12:00:00Z",
-    snapshot_json: { title: "Synthetic system board", tasks: { build: { status: "running", title: "Synthetic build" },
+    // Publisher totals include cards omitted from the bounded task payload.
+    snapshot_json: { title: "Synthetic system board", task_counts: JSON.parse('{"__proto__":1,"running":7}'),
+      tasks: { build: { status: "running", title: "Synthetic build" },
       malformed: [], prototype: { status: "__proto__" } } } };
   const calls = [];
   const client = { async query(sql, params) {
@@ -94,7 +117,7 @@ test("the app consumes the merged producer's directory and selected-board interf
   } };
   const directory = boardDirectory(await tools["list-progress-boards"].handler(client, actor, {}));
   assert.equal(directory[0].updated_at, row.updated_at);
-  assert.deepEqual(directory[0].task_counts, JSON.parse('{"__proto__":1,"running":1}'));
+  assert.deepEqual(directory[0].task_counts, JSON.parse('{"__proto__":1,"running":7}'));
   assert.equal("snapshot_json" in directory[0], false);
   const view = boardView(await tools["read-progress-board"].handler(client, actor, { board_id: "carr-v5" }));
   assert.equal(view.version, 2);
