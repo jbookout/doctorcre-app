@@ -3,6 +3,7 @@
 // visual indicator the renderer can put on a card is declared here once, and
 // both the renderer and the legend read these constants, so the key cannot
 // drift from what the board shows.
+import { orchestratorError } from './progress-orchestrator.js';
 import { queueError } from './progress-work-queue.js';
 
 export const SNAPSHOT_SCHEMA = "carr-progress-board.v2";
@@ -415,6 +416,7 @@ function snapshotError(snapshot, data) {
        !isRecord(data.hierarchy.work_requests) || !isRecord(data.hierarchy.slices)))
     return "The published Work Request hierarchy is incomplete, so it cannot be shown.";
   if (!isRecord(data.tasks)) return "The published snapshot has no tasks map, so it cannot be shown.";
+  if (orchestratorError(data.orchestrator)) return orchestratorError(data.orchestrator);
   if (queueError(data.work_queue)) return queueError(data.work_queue);
   return null;
 }
@@ -496,6 +498,7 @@ export function boardView(read, at = new Date()) {
     sync,
     costs: data.costs,
     work_queue: data.work_queue,
+    orchestrator: data.orchestrator,
     hierarchy: data.hierarchy ? { ...data.hierarchy, cards: data.tasks || {} } : null,
     cards,
     stages,

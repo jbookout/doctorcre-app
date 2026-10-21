@@ -297,3 +297,15 @@ test("runtime error wire contract and scrub rules match the exact pinned produce
     {},
   ]) assert.deepEqual(scrubError(input), producer.scrubError(input));
 });
+
+
+test('the pinned producer publishes the orchestrator contract consumed by the existing board', {
+  skip: !process.env.CARR_PRODUCER_CHECKOUT && 'Set CARR_PRODUCER_CHECKOUT to verify the pinned producer',
+}, () => {
+  assert.equal(contract.progress_orchestrator.producer.source_commit,'8da244d646bfc5d4dc5925cc21feafef11cf6ec4');
+  const source=execFileSync('git',['-C',process.env.CARR_PRODUCER_CHECKOUT,'show',`${contract.progress_orchestrator.producer.source_commit}:tools/progress_orchestrator.py`],{encoding:'utf8'});
+  const projection=JSON.parse(execFileSync('python3',['-c',source+"\nimport json\nprint(json.dumps(project({'tasks':{}},None)))"],{encoding:'utf8'}));
+  assert.equal(projection.schema,contract.progress_orchestrator.schema);
+  assert.equal(boardView({snapshot:{version:1,snapshot_json:{tasks:{},orchestrator:projection}}}).error,null);
+  assert.equal(projection.sources.queue.state,'unavailable');
+});

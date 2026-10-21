@@ -9,6 +9,7 @@ import { STAGES } from '../js/progress-board-model.js';
 import costs from './fixtures/progress-board-costs.json' with { type: 'json' };
 import hierarchy from './fixtures/progress-board-hierarchy.json' with { type: 'json' };
 import workQueue from '../js/progress-work-queue-fixture.js';
+import orchestratorSequence from './fixtures/progress-orchestrator.json' with {type:'json'};
 
 const boards = [{ board_id: 'carr-v5', title: 'System delivery' }, { board_id: 'demo-project', title: 'Demo project' }];
 async function open(t, { unfinished = true, path = '/control-room/progress', boardRead = 'ready', rows = [], control, width = 390, height = 900, costData, snapshotData, autoMount = true, timezoneId, setupPage } = {}) {
@@ -26,7 +27,7 @@ async function open(t, { unfinished = true, path = '/control-room/progress', boa
       let payload = { ok: true }, isError = false;
       if (rpc.name === 'list-progress-boards') payload = { schema: 'progress-board-directory.v1', boards };
       if (rpc.name === 'read-progress-board') {
-        const board = boards.find(b => b.board_id === rpc.arguments.board_id);
+        const board = boards.find(b => b.board_id === rpc.arguments.board_id) || (rpc.arguments.board_id === 'orchestrator' ? {board_id:'orchestrator',title:'Orchestrator'} : null);
         if (readState === 'failed') { payload = { error: 'board_read_failed' }; isError = true; }
         else payload = { snapshot: readState === 'missing' ? null : { board_id: board.board_id, version: 1,
           updated_at: '2026-10-02T08:00:00Z', snapshot_json: snapshotData || { title: board.title, costs: costData, tasks: {
@@ -774,3 +775,39 @@ for (const width of [390, 1280]) test(`expanded queue detail leads with findings
   await job.locator('.queue-execution > summary').click();
   assert.equal(await job.getByText('gpt-6.1-sol', {exact:true}).isVisible(), true);
 });
+
+
+for (const width of [390,1280]) for (const theme of ['light','dark'])
+  test(`orchestrator published queue observations update in place at ${width}px ${theme}`, async t => {
+    const {page,errors,setSnapshot}=await open(t,{width,timezoneId:'America/Chicago',
+      path:'/control-room/progress/board/orchestrator',snapshotData:orchestratorSequence[0].snapshot.snapshot_json});
+    await page.evaluate(theme=>document.documentElement.dataset.theme=theme,theme);
+    await page.locator('[data-orchestrator-card="queue:search"]').waitFor();
+    await page.evaluate(()=>{
+      window.__orchestratorCard=document.querySelector('[data-orchestrator-card="queue:search"]');
+      window.__orchestratorLink=window.__orchestratorCard.querySelector('a');
+      window.__orchestratorLink.focus({preventScroll:true});
+      window.__orchestratorCard.querySelector('details').open=true;
+    });
+    for(const [index,state] of [[1,'working'],[2,'review'],[3,'fixing'],[4,'merging'],[5,'merged'],[6,'live']]) {
+      setSnapshot(orchestratorSequence[index].snapshot.snapshot_json);
+      await page.clock.runFor(2100);
+      await page.locator(`[data-orchestrator-stage="${state}"] [data-orchestrator-card="queue:search"]`).waitFor();
+      assert.equal(await page.evaluate(()=>document.querySelector('[data-orchestrator-card="queue:search"]')===window.__orchestratorCard),true);
+      assert.equal(await page.evaluate(()=>document.activeElement===window.__orchestratorLink),true);
+      assert.equal(await page.locator('[data-orchestrator-card="queue:search"] details').getAttribute('open'),'');
+    }
+    setSnapshot(orchestratorSequence[7].snapshot.snapshot_json);
+    await page.clock.runFor(2100);
+    await page.locator('[data-orchestrator-status]').filter({hasText:'Queue observation unavailable or stale'}).waitFor();
+    assert.equal(await page.locator('[data-orchestrator-stage="live"] [data-orchestrator-card="queue:search"]').count(),1);
+    assert.equal(await page.locator('[data-orchestrator-stage]').count(),8);
+    assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
+    const targets=await page.locator('.orchestrator-count,.orchestrator-links a,.orchestrator-detail summary').evaluateAll(nodes=>nodes.map(el=>el.getBoundingClientRect().height));
+    assert.ok(targets.every(height=>height>=44));
+    const violations=await page.evaluate(async source=>{eval(source);return (await axe.run(document.querySelector('#board-stages'))).violations;},axe.source);
+    assert.deepEqual(violations.map(v=>v.id),[]);
+    assert.deepEqual(errors,[]);
+    await mkdir('test-artifacts/orchestrator',{recursive:true});
+    await page.screenshot({path:`test-artifacts/orchestrator/${width}-${theme}.png`,fullPage:true});
+  });
