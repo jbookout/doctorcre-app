@@ -117,9 +117,15 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
     $("boardUpdated").textContent = state.board ? updatedLabel(state.board.generated_at) : state.readFailed ? "Unavailable" : "Updating…";
     $("boardUpdated").dateTime = state.board?.generated_at || "";
     $("searchUpdated").textContent = `New-lead search ${state.board?.last_search_at ? stamp(state.board.last_search_at) : "—"}`;
+    paintWriteControls();
     if (focused?.container) restoreFocus(focused);
   }
+  function paintWriteControls() {
+    const disabled = !state.identityReady || state.writing || Boolean(state.pending);
+    for (const control of doc.querySelectorAll("[data-claim], [data-link], [data-undo], #detailStage")) control.disabled = disabled;
+  }
   function paintCommandFeedback() {
+    paintWriteControls();
     const box = $("leadBoardError");
     const command = state.pending ? 'Confirmation pending <button id="checkPending">Check outcome</button>' : esc(state.commandFeedback);
     const engagements = engagement.values(state.actor).map(pending => `${esc(leadTitle(state.board?.leads.find(lead => lead.prospect_client_id === pending.request.client_id) || { name: "Prospect" }))}: Confirmation pending <button data-check-engagement="${esc(pending.request.client_id)}"${pending.sending ? " disabled" : ""}>Check outcome</button>`);
@@ -163,6 +169,7 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
   async function refresh() {
     const epoch = ++state.epoch;
     state.identityReady = false;
+    paintWriteControls();
     $("leadBoard").setAttribute("aria-busy", "true");
     try {
       const actor = await client.getActor();
@@ -218,7 +225,10 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
       state.connectionFeedback = state.actor ? "Connection interrupted · reconnecting…" : "Sign-in required";
       paintCommandFeedback();
       return false;
-    } finally { if (epoch === state.epoch) $("leadBoard").setAttribute("aria-busy", "false"); }
+    } finally {
+      if (epoch === state.epoch) $("leadBoard").setAttribute("aria-busy", "false");
+      paintWriteControls();
+    }
   }
   function paintDetail(detail) {
     const active = doc.activeElement;
@@ -347,6 +357,7 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
   async function executePending() {
     if (state.writing || !state.pending) return;
     state.writing = true;
+    paintWriteControls();
     $("saveStage").disabled = true;
     const pending = state.pending, epoch = state.epoch;
     let mutationAttempted = false;
