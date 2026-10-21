@@ -317,9 +317,11 @@ test('an open lead detail updates automatically while preserving expanded Detail
   await page.waitForFunction(() => document.querySelector('#refreshHome').getAttribute('aria-busy') === 'false');
   await page.locator('.home-lead').first().click();
   await page.locator('#homeDetail summary').click();
+  assert.equal(await page.locator('#homeDetail summary').evaluate(node => document.activeElement === node), true);
   state.updateLead('demo-lead-0', 97);
   await page.evaluate(() => window.dispatchEvent(new Event('online')));
-  await page.waitForFunction(() => document.querySelector('.home-detail-score')?.textContent.includes('97'));
+  await page.waitForFunction(() => document.querySelector('.home-detail-score')?.textContent.includes('97')
+    && document.querySelector('#refreshHome').getAttribute('aria-busy') === 'false');
   assert.equal(await page.locator('#homeDetail details').evaluate(node => node.open), true);
   assert.equal(await page.locator('#homeDetail summary').evaluate(node => document.activeElement === node), true);
   assert.deepEqual(state.errors, []);
