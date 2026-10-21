@@ -45,9 +45,9 @@ for (const width of [390, 1280]) for (const theme of ['light', 'dark']) test(`si
       const review = { id: 'review', label: 'Demo attorney review', status: complete ? 'complete' : 'due', due_on: '2026-10-20', evidence_ref: 'Demo contract clause 3', source: { document: 'deal-room-kit', version: 1 } };
       const lease = { id: 'lease', label: 'Executed lease', status: 'not_recorded', evidence_ref: null, source: { document: 'deal-room-kit', version: 1 } };
       return { ...detail, checklist: window.checklistMode === 'absent' ? null : {
-        schema_version: 'deal-checklist.v1', template_state: 'current',
-        due_items: complete ? [] : [review],
-        phases: window.checklistMode === 'empty' ? [] : [{ id: 'legal', label: 'Legal / lease', items: complete ? [lease, review] : [review, lease] }],
+        schema_version: 'deal-checklist.v1', template_state: window.checklistMode === 'unavailable' ? 'unavailable' : 'current',
+        due_items: complete || window.checklistMode === 'unavailable' ? [] : [review],
+        phases: ['empty', 'unavailable'].includes(window.checklistMode) ? [] : [{ id: 'legal', label: 'Legal / lease', items: complete ? [lease, review] : [review, lease] }],
       } };
     };
   });
@@ -77,10 +77,13 @@ for (const width of [390, 1280]) for (const theme of ['light', 'dark']) test(`si
   assert.equal(await page.locator('html').getAttribute('data-theme'), theme);
   await checklist.scrollIntoViewIfNeeded();
   await page.screenshot({ path: join(evidence, `${width}-${theme}-refreshed.png`), animations: 'disabled' });
-  for (const mode of ['empty', 'due', 'absent', 'due']) {
+  for (const mode of ['empty', 'due', 'absent', 'due', 'unavailable', 'due']) {
     await page.evaluate(mode => { window.checklistMode = mode; }, mode);
     await page.locator('[data-refresh-detail]').click();
     await page.waitForFunction(visible => !!document.querySelector('.deal-checklist') === visible, mode === 'due');
+    assert.equal(await page.locator('#detailUpdateForm').count(), 1, `${mode} retains the update form`);
+    assert.equal(await page.getByLabel('Update', { exact: true }).inputValue(), 'Demo unsaved update');
+    assert.equal(await page.locator('.deal-opening-snapshot').count(), 1, `${mode} retains deal detail`);
   }
   assert.deepEqual(errors, []);
 });

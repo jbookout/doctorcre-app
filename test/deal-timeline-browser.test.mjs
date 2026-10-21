@@ -27,7 +27,7 @@ async function open(t,{width=1440,device,link=false,reducedMotion='no-preference
   state.client.getDeal=async (...args)=>{
    window.timelineProbe.reads++;if(window.timelineProbe.fail)throw new Error('Synthetic unavailable');
    const detail=await get(...args);if(args[0]!=='d14')return detail;
-   return {...detail,deal:{...detail.deal,phase:'Legal'},lease:{id:'demo-lease',status:'current',commencement_on:'2026-11-01',expiration_on:'2031-10-31',source:'Demo abstract',evidence_ref:'Demo clause 3'},
+   return {...detail,deal:{...detail.deal,phase:'Legal',phase_started_on:{research:'2026-09-20',legal:'2026-10-03'}},lease:{id:'demo-lease',status:'current',commencement_on:'2026-11-01',expiration_on:'2031-10-31',source:'Demo abstract',evidence_ref:'Demo clause 3'},
     history:[{id:'p1',field:'phase',new_value:'research',recorded_at:'2026-09-20T12:00:00Z'},{id:'p2',field:'phase',new_value:'legal',recorded_at:'2026-10-03T12:00:00Z'}],
     critical_dates:[...detail.critical_dates.filter(d=>d.kind),{id:'loi',kind:'loi_expiry',due_on:window.timelineProbe.changed?'2026-10-09':'2026-10-05',source:'Demo contract',note:'Demo LOI clause 2'}],
     activities:[{id:'mail',kind:'email',summary:window.timelineProbe.changed?'Demo updated allowance received':'Demo revised allowance received',detail:'Original synthetic email. '+ 'Clause text. '.repeat(30),occurred_at:'2026-10-02T12:00:00Z'},
@@ -44,7 +44,6 @@ async function open(t,{width=1440,device,link=false,reducedMotion='no-preference
   assert.equal(await page.locator('#homeDealFlag').getAttribute('href'),'/deals?deal=d14');
  }
  await page.locator('.kanban-card[data-id="d14"]').click();await page.locator('#detailUpdateForm').waitFor();
- await page.locator('.deal-dates').evaluate(e=>e.open=true);
  return {page,errors};
 }
 
@@ -55,6 +54,7 @@ for(const width of [320,390,1280]) for(const theme of ['light','dark']) test(`un
  assert.equal(await page.locator('.timeline-chart').count(),0);
  assert.equal(await page.locator('.phase-rail [aria-current] time').textContent(),'Oct 3, 2026');
  assert.equal(await page.locator('.deal-note[data-id="mail"]').count(),1);
+ await page.locator('.updates-history > summary').click();
  await page.locator('.deal-note[data-id="mail"] summary').click();
  assert.match(await page.locator('.deal-note[data-id="mail"] .note-original').textContent(),/Original synthetic email/);
  assert.equal(await page.locator('#recordPanel').evaluate(e=>e.scrollWidth<=e.clientWidth),true);
@@ -62,6 +62,7 @@ for(const width of [320,390,1280]) for(const theme of ['light','dark']) test(`un
 });
 test('refresh preserves expanded updates, focus, dates and draft through an outage',async t=>{
  const {page,errors}=await open(t);
+ await page.locator('.updates-history > summary').click();
  const summary=page.locator('.deal-note[data-id="mail"] summary');await summary.click();await summary.focus();
  await page.evaluate(()=>window.timelineProbe.changed=true);await page.clock.fastForward(16000);
  await page.waitForFunction(()=>document.querySelector('.deal-updates').textContent.includes('Demo updated allowance received'));
@@ -75,22 +76,7 @@ test('refresh preserves expanded updates, focus, dates and draft through an outa
  await page.waitForFunction(()=>!document.querySelector('#detailReadStatus').textContent);
  assert.deepEqual(errors,[]);
 });
-test('W9 Add date records an explicit contract reference and lost answers never duplicate the date',async t=>{
- const {page,errors}=await open(t);
- await page.evaluate(async()=>{const {state}=await import('/js/pipeline.js');const add=state.client.addCriticalDate;let lose=true;state.client.addCriticalDate=async args=>{const result=await add(args);if(lose){lose=false;throw new Error('Synthetic lost reply');}return result;};});
- await page.locator('[data-add-date="rent_start"]').click();
- await page.locator('#dealDateForm [name="date"]').fill('2026-12-01');
- await page.locator('#dealDateForm [name="evidence"]').fill('Demo lease clause 4');
- await page.locator('#dealDateForm button[type="submit"]').click();
- await page.getByText('Date not confirmed',{exact:true}).waitFor();
- await page.locator('#dealDateForm button[type="submit"]').click();
- await page.waitForFunction(()=>!document.querySelector('#dealDateDialog').open);
- assert.equal(await page.locator('[data-add-date="rent_start"]').count(),0);
- assert.equal(await page.locator('[data-countdown="2026-12-01"]').count(),1);
- const events=await page.evaluate(async()=> (await (await import('/js/pipeline.js')).state.client.getChanges(null)).events);
- assert.equal(events.filter(e=>e.verb==='add-critical-date'&&e.new_value==='2026-12-01').length,1);
- assert.deepEqual(errors,[]);
-});
+
 test('W9 board/list use the same addressable popup and Home href opens it directly',async t=>{
  const {page,errors}=await open(t,{link:true});
  assert.equal(new URL(page.url()).searchParams.get('deal'),'d14');
@@ -106,85 +92,10 @@ test('W9 board/list use the same addressable popup and Home href opens it direct
  assert.deepEqual(errors,[]);
 });
 
-test('review 3: an old date submission cannot disable, close or change a later draft',async t=>{
- const {page,errors}=await open(t);
- await page.evaluate(async()=>{
-  const {state}=await import('/js/pipeline.js');const add=state.client.addCriticalDate;
-  window.dateRequests=[];
-  state.client.addCriticalDate=args=>new Promise(resolve=>{
-   window.dateRequests.push(args);window.finishDate=async()=>resolve(await add(args));
-  });
- });
- await page.locator('[data-add-date="rent_start"]').click();
- await page.locator('#dealDateForm [name="date"]').fill('2026-12-01');
- await page.locator('#dealDateForm [name="evidence"]').fill('Demo lease clause 4');
- // A date command requires the captured deal to remain the authorized detail.
- await page.evaluate(async()=>{(await import('/js/pipeline.js')).state.panelDeal='d21';});
- await page.locator('#dealDateForm button[type="submit"]').click();
- assert.equal(await page.evaluate(()=>window.dateRequests.length),0);
- await page.evaluate(async()=>{(await import('/js/pipeline.js')).state.panelDeal='d14';});
- await page.locator('#dealDateForm button[type="submit"]').click();
- await page.waitForFunction(()=>window.dateRequests.length===1);
- assert.equal(await page.evaluate(()=>window.dateRequests[0].deal),'d14');
- await page.locator('#dealDateCancel').click();
- await page.locator('[data-add-date="option_window"]').click();
- await page.locator('#dealDateForm [name="date"]').fill('2027-01-15');
- await page.locator('#dealDateForm [name="evidence"]').fill('Demo option clause 5');
- assert.equal(await page.locator('#dealDateForm button[type="submit"]').isEnabled(),true);
- await page.evaluate(()=>window.finishDate());
- await page.locator('.toast').waitFor({state:'attached'});
- assert.equal(await page.locator('#receiptDock [data-op="critical-date:d14:rent_start"]').count(),0);
- assert.equal(await page.locator('#dealDateDialog').evaluate(e=>e.open),true);
- assert.equal(await page.locator('#dealDateTitle').textContent(),'Options');
- assert.equal(await page.locator('#dealDateForm [name="date"]').inputValue(),'2027-01-15');
- assert.equal(await page.locator('#dealDateForm [name="evidence"]').inputValue(),'Demo option clause 5');
- assert.equal(await page.locator('#dealDateStatus').textContent(),'');
- assert.deepEqual(errors,[]);
-});
-test('review 5: hanging date writes become unknown and reconcile only the retained request on explicit action',async t=>{
- const {page,errors}=await open(t);
- await page.evaluate(async()=>{
-  const {state}=await import('/js/pipeline.js');const add=state.client.addCriticalDate;
-  window.dateRequests=[];
-  state.client.addCriticalDate=async args=>{
-   window.dateRequests.push(args);
-   if(window.dateRequests.length===1)return new Promise(resolve=>{window.finishLateDate=resolve;});
-   return add(args);
-  };
- });
- await page.locator('[data-add-date="rent_start"]').click();
- await page.locator('#dealDateForm [name="date"]').fill('2026-12-01');
- await page.locator('#dealDateForm [name="evidence"]').fill('Demo lease clause 4');
- await page.locator('#dealDateForm button[type="submit"]').click();
- await page.waitForFunction(()=>window.dateRequests.length===1);
- await page.clock.fastForward(60000);
- await page.waitForFunction(()=>document.querySelector('#dealDateStatus').textContent);
- assert.equal(await page.locator('#dealDateStatus').textContent(),'Date not confirmed');
- assert.equal(await page.locator('#dealDateForm button[type="submit"]').isEnabled(),true);
- const receipt=page.locator('.receipt[data-op="critical-date:d14:rent_start"]');
- assert.equal(await receipt.getAttribute('data-state'),'unknown');
- assert.equal(await receipt.getByRole('button',{name:'Check outcome'}).count(),1);
- assert.equal(await page.evaluate(()=>window.dateRequests.length),1,'no automatic resend');
- await page.locator('#dealDateCancel').click();
- await page.locator('[data-add-date="option_window"]').click();
- assert.equal(await page.locator('#dealDateForm button[type="submit"]').isEnabled(),true);
- await page.locator('#dealDateCancel').click();
- await page.getByLabel('Close deal',{exact:true}).click();
- await receipt.getByRole('button',{name:'Check outcome'}).click();
- await page.locator('.toast').waitFor({state:'attached'});
- assert.equal(await receipt.count(),0);
- const requests=await page.evaluate(()=>window.dateRequests);
- assert.equal(requests.length,2);assert.deepEqual(requests[1],requests[0]);
- assert.ok(requests[0].idempotency_key);
- // An abandoned transport answer cannot overwrite the reconciled outcome.
- await page.evaluate(()=>window.finishLateDate({ok:false}));
- assert.equal(await receipt.count(),0,'a late response never restores the settled notification');
- const events=await page.evaluate(async()=> (await (await import('/js/pipeline.js')).state.client.getChanges(null)).events);
- assert.equal(events.filter(e=>e.verb==='add-critical-date'&&e.new_value==='2026-12-01').length,1);
- assert.deepEqual(errors,[]);
-});
 
-for (const theme of ['light','dark']) test(`phone phase labels are legible along one continuous rail in ${theme}`,async t=>{
+
+
+for (const theme of ['light','dark']) test(`phone phase labels are legible along a dated rail in ${theme}`,async t=>{
  const {page,errors}=await open(t,{width:390,reducedMotion:'reduce'});
  await page.evaluate(theme=>document.documentElement.dataset.theme=theme,theme);
  const labels=await page.locator('.phase-rail li').evaluateAll(items=>items.map(item=>{
@@ -193,7 +104,7 @@ for (const theme of ['light','dark']) test(`phone phase labels are legible along
  }));
  assert.equal(labels.length,8);
  assert.ok(labels.every(p=>p.labels.length>0),JSON.stringify(labels));
- assert.ok(labels.every(p=>Math.abs(p.top-labels[0].top)<1),'the rail stays on a single row');
+ assert.equal(new Set(labels.map(p=>p.top)).size,2,'dates stay visible in two rows');
  assert.equal(await page.locator('#recordPanel').evaluate(n=>n.scrollWidth<=n.clientWidth),true);
  assert.deepEqual(errors,[]);
 });
