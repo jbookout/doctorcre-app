@@ -57,7 +57,7 @@
 /* The secondary grid. */
 .home-grid { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: var(--space-4); align-items: start; }
 .home-grid > .home-panel + .home-panel { margin-top: 0; }
-.home-grid #homeLeads, .home-grid #homePastClients { grid-column: 1 / -1; }
+.home-grid #homeCalendar, .home-grid #homeLeads, .home-grid #homePastClients { grid-column: 1 / -1; }
 
 /* Calendar: a quiet week strip, no tiles. */
 .home-calendar-link { display: block; color: inherit; text-decoration: none; border-radius: var(--radius-2); }
@@ -73,8 +73,9 @@
 .home-day-marks .task { border-radius: 1px; background: var(--data-2); }
 .home-agenda { display: grid; margin: var(--space-2) calc(var(--space-3) * -1) 0; }
 .home-agenda a { display: flex; align-items: center; gap: var(--space-4); padding: var(--space-3); border-radius: var(--radius-2); color: inherit; text-decoration: none; transition: background-color var(--duration-hover) var(--ease-out); }
+.home-agenda-more { margin-top: var(--space-3); background: transparent; cursor: pointer; }
 .home-agenda a:hover { background: var(--surface-2); }
-.home-agenda time { min-width: 52px; color: var(--fg-muted); font-size: var(--font-size-1); font-variant-numeric: tabular-nums; }
+.home-agenda time, .home-agenda-date { min-width: 52px; color: var(--fg-muted); font-size: var(--font-size-1); font-variant-numeric: tabular-nums; }
 .home-item-type, .home-period { flex: none; color: var(--fg-quiet); font-size: var(--font-size-1); }
 .home-partial { display: block; margin-top: var(--space-3); color: var(--fg-quiet); font-size: var(--font-size-1); }
 
