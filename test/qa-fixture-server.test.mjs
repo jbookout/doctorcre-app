@@ -15,7 +15,12 @@ test('signed-in live creation persists the selected owner and attributed initial
   const request = {name:'Demo Shared Deal',client:'C-demo',phase:'Research',owner:'dell',notes:'Demo initial note',idempotency_key:'shared-create'};
   const created = await joe.createDeal(request);
   assert.equal(created.status,'ok');
-  assert.equal((await joe.getBoard()).deals.length,17);
+  const board = await joe.getBoard();
+  assert.equal(board.deals.length,17);
+  const seeded = board.deals.find(deal => deal.id === 'qa-deal-1');
+  assert.equal(seeded.prospect_engagement_status,'active');
+  assert.equal(seeded.client_version,1);
+  assert.deepEqual(seeded.phase_started_on,{});
   const dell = await clientFor('dell');
   const detail = await dell.getDeal(created.deal_id);
   assert.equal(detail.deal.owner,'dell');

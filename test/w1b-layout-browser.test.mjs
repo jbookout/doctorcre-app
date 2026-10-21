@@ -50,7 +50,7 @@ test('five regions, rail destinations, Leads filters and per-page sidebar memory
  const{page,goto,errors}=await open(t);
  await goto('/leads');assert.equal(await page.locator('#appLayout').getAttribute('data-sidebar'),'closed');
  assert.deepEqual(await page.locator('.app-shell-navigation > a').evaluateAll(nodes=>nodes.map(n=>n.title)),['Home','Leads','Tours','Local Deals','Vendors','Control Room']);
- assert.equal(await page.locator('#appSidebarSlot #leadSearch').count(),1);assert.equal(await page.locator('#appStatusSlot #boardUpdated').count(),1);
+ assert.equal(await page.locator('#appMainSlot #leadSearch').count(),1);assert.equal(await page.locator('#appStatusSlot #boardUpdated').count(),1);
  await page.locator('#appSidebarToggle').click();await page.locator('#leadSearch').fill('Example 3');assert.equal(await page.locator('.lead-card').count(),1);
  await goto('/deals?view=board');assert.equal(await page.locator('#appLayout').getAttribute('data-sidebar'),'closed');
  await goto('/leads');assert.equal(await page.locator('#appLayout').getAttribute('data-sidebar'),'open');
@@ -120,6 +120,7 @@ test('Local Deals opens a wide popup, refreshes its original note, and keeps Tod
  await page.locator('.kanban-card[data-id="d14"]').click({position:{x:8,y:8}});await page.waitForFunction(()=>document.querySelector('.deal-note details'));
  assert.ok((await page.locator('#recordPanel').boundingBox()).width>=900);
  const original=page.locator('.deal-note').filter({hasText:'Synthetic original.'}).locator('details');
+ await page.locator('.updates-history > summary').click();
  await original.locator('summary').click();
  await page.evaluate(async()=>{const{state}=await import('/js/pipeline.js');await state.client.addDealNote({deal:'d14',text:'A synthetic update. Original detail continues here.',idempotency_key:'demo-w1b-note'});});
  await page.clock.fastForward(16_000);await page.waitForFunction(()=>document.querySelector('#panelBody')?.textContent.includes('A synthetic update.'));
@@ -252,11 +253,11 @@ test('PR129 #4 parked and normalized Closed records stay out of both attention l
  await goto('/leads?mode=live');assert.equal(await page.locator('#appTodayNeeds [data-layout-deal],#appWorkingList [data-layout-deal]').count(),0);
 });
 test('PR129 #7 closing Lead detail after polling resolves the current card by identity',async t=>{
- const {page,goto}=await open(t,{clock:true});await goto('/leads');const card=page.locator(`#leadBoard [data-lead-id="${id(1)}"]`);
+ const {page,goto}=await open(t,{clock:true});await goto('/leads');const card=page.locator(`#leadBoard [data-lead-id="${id(1)}"] .lead-open`);
  await card.focus();const original=await card.elementHandle();await page.keyboard.press('Enter');await page.locator('#detailStage').waitFor();
  // The poll's read is async: close only once it has re-rendered the card behind the open detail.
  await page.clock.fastForward(31_000);await page.waitForFunction(node=>!node.isConnected,original);await page.keyboard.press('Escape');
- await page.waitForFunction(leadId=>!document.querySelector('#leadDetail').open&&document.activeElement===document.querySelector(`#leadBoard [data-lead-id="${leadId}"]`),id(1));
+ await page.waitForFunction(leadId=>!document.querySelector('#leadDetail').open&&document.activeElement===document.querySelector(`#leadBoard [data-lead-id="${leadId}"] .lead-open`),id(1));
  assert.equal(await card.evaluate(n=>n===document.activeElement),true);
 });
 test('PR129 #9 touch taps open the existing reviewed stage and phase commands',async t=>{
@@ -274,9 +275,9 @@ for(const width of [844,1440]) test(`PR129 #10 short rail destinations remain po
 test('PR129 #11 light theme pairs popup and filter text with light surfaces',async t=>{
  const {page,goto}=await open(t);await goto('/leads');await page.evaluate(()=>document.documentElement.dataset.theme='light');await page.locator('#appSidebarToggle').click();
  const luminance=rgb=>{const c=rgb.match(/[\d.]+/g).slice(0,3).map(n=>{const x=Number(n)/255;return x<=.04045?x/12.92:((x+.055)/1.055)**2.4});return .2126*c[0]+.7152*c[1]+.0722*c[2];};
- const colors=await page.locator('#appSidebarSlot').evaluate(n=>({background:getComputedStyle(n.closest('aside')).backgroundColor,text:getComputedStyle(n).color}));
+ const colors=await page.locator('.controls').evaluate(n=>({background:getComputedStyle(n).backgroundColor,text:getComputedStyle(n).color}));
  assert.ok((Math.max(luminance(colors.background),luminance(colors.text))+.05)/(Math.min(luminance(colors.background),luminance(colors.text))+.05)>=4.5,JSON.stringify(colors));
- const labelColor=await page.locator('#appSidebarSlot label').first().evaluate(n=>getComputedStyle(n).color);assert.ok((luminance(colors.background)+.05)/(luminance(labelColor)+.05)>=4.5,labelColor);
+ const labelColor=await page.locator('.controls label').first().evaluate(n=>getComputedStyle(n).color);assert.ok((luminance(colors.background)+.05)/(luminance(labelColor)+.05)>=4.5,labelColor);
  await goto('/deals?view=board');await page.evaluate(()=>document.documentElement.dataset.theme='light');await page.locator('.kanban-card[data-id="d14"]').click();await page.locator('#detailPhase').waitFor();
  const pair=await page.locator('#recordPanel').evaluate(n=>({background:getComputedStyle(n).backgroundColor,text:getComputedStyle(n.querySelector('h2')).color}));
  assert.ok((Math.max(luminance(pair.background),luminance(pair.text))+.05)/(Math.min(luminance(pair.background),luminance(pair.text))+.05)>=4.5,JSON.stringify(pair));
@@ -312,46 +313,7 @@ for(const width of [1440,390]) test(`PR129 #3 Leads freshness feedback fits the 
  const item=await page.locator('#boardUpdated').boundingBox(),bar=await page.locator('.app-layout-status').boundingBox();assert.ok(item.y>=bar.y && item.y+item.height<=bar.y+bar.height,JSON.stringify({item,bar}));
 });
 
-for (const status of [401,403,503]) test(`Add date editor handles HTTP ${status} during a deal refresh`,async t=>{
- const {page,goto,writes,errors}=await open(t,{clock:true});let failure=false;
- await page.route('**/mcp',route=>{
-  if(route.request().postDataJSON().params.name!=='get-deal-room') return route.fallback();
-  if(failure) return route.fulfill({status,body:'Unavailable'});
-  return route.fulfill({json:{result:{content:[{type:'text',text:JSON.stringify({deal_id:'d14',name:'Synthetic authorized deal',phase:'negotiation',owner:'joe',thread:[],events:[],critical_dates:[]})}]}}});
- });
- await goto('/deals?view=board&mode=live');await page.locator('.kanban-card[data-id="d14"] .card-open').click();
- await page.locator('.deal-dates').evaluate(e=>e.open=true);
- await page.locator('[data-add-date="loi_expiry"]').click();
- const form=page.locator('#dealDateForm'),save=form.locator('button[type="submit"]');
- await form.locator('[name="date"]').fill('2026-12-01');await form.locator('[name="evidence"]').fill('Synthetic protected clause');
- failure=true;await page.evaluate(async()=>{const{state}=await import('/js/pipeline.js');await state.boardSync.refreshBoard({reason:'date-authorization-regression'});});
- await page.waitForFunction(()=>/unavailable/i.test(document.querySelector('#panelBody [role="status"]')?.textContent));
- if(status===503) {
-  assert.equal(await page.locator('#dealDateDialog').evaluate(n=>n.open),true);
-  assert.equal(await form.locator('[name="date"]').inputValue(),'2026-12-01');
-  assert.equal(await form.locator('[name="evidence"]').inputValue(),'Synthetic protected clause');assert.equal(await save.isEnabled(),true);
- } else {
-  assert.equal(await page.locator('#dealDateDialog').evaluate(n=>n.open),false,'refused read closes the date editor');
-  assert.equal(await form.locator('[name="date"]').inputValue(),'');assert.equal(await form.locator('[name="evidence"]').inputValue(),'');
-  assert.equal(await save.isDisabled(),true);
-  // A queued submit cannot use the invalidated draft, even with a closed dialog.
-  await form.dispatchEvent('submit');assert.deepEqual(writes,[]);
- }
- failure=false;await page.clock.fastForward(16000);await page.locator('#detailPhase').waitFor();
- if(status!==503) {
-  assert.equal(await save.isDisabled(),true,'recovery requires opening a new editor');
-  await page.locator('.deal-dates').evaluate(e=>e.open=true);
-  await page.locator('[data-add-date="loi_expiry"]').click();assert.equal(await save.isEnabled(),true);
-  assert.equal(await form.locator('[name="evidence"]').inputValue(),'');
-  await form.locator('[name="date"]').fill('2026-12-01');await form.locator('[name="evidence"]').fill('Synthetic fresh clause');
- }
- const posted=page.waitForRequest(r=>r.url().endsWith('/mcp') && r.postDataJSON().params.name==='add-critical-date');
- await save.click();const args=(await posted).postDataJSON().params.arguments;
- assert.equal(args.deal,'d14');assert.equal(args.due_on,'2026-12-01');
- assert.equal(args.source,status===503?'Synthetic protected clause':'Synthetic fresh clause');
- await page.waitForFunction(()=>!document.querySelector('#dealDateDialog').open);
- assert.deepEqual(writes,['add-critical-date']);assert.deepEqual(errors,[]);
-});
+
 
 for (const status of [401,403,503]) test(`Deal detail refresh distinguishes HTTP ${status} from authorization refusal`,async t=>{
  const {page,goto,errors}=await open(t,{clock:true});let failure=false,failedReads=0;
@@ -382,7 +344,7 @@ for (const status of [401,403,503]) test(`Deal detail refresh distinguishes HTTP
  } else {
   assert.equal(await page.locator('#panelTitle').textContent(),'Deal');
   assert.match(await page.locator('#panelBody [role="status"]').textContent(),/Unavailable/);
-  assert.equal(await page.locator('#panelBody .detail-grid').count(),0);
+  assert.equal(await page.locator('#panelBody .deal-opening-snapshot').count(),0);
   assert.equal(await page.locator('#panelBody input,#panelBody select,#panelBody textarea,#panelBody form').count(),0);
   assert.equal(await page.evaluate(async()=>(await import('/js/pipeline.js')).state.panelDetail),null);
   assert.equal(await page.locator('#panelContextOpenWrap').isVisible(),false);

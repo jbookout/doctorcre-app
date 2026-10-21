@@ -50,6 +50,12 @@ for (const theme of ['light', 'dark']) test(`Leads mobile keeps stage context an
   await page.goto('http://localhost/leads?mode=live');
   const stage = page.getByRole('combobox', { name: 'Board stage' });
   await expect(stage).toBeVisible();
+  await expect(stage).toHaveValue('');
+  await expect(page.locator('.lead-card:visible')).toHaveCount(48);
+  await expect(page.locator('#mapLeadMembers [data-lead-id]')).toHaveCount(48);
+  await stage.selectOption('new');
+  await expect(page.locator('.lead-card:visible')).toHaveCount(43);
+  await expect(page.locator('#mapLeadMembers [data-lead-id]')).toHaveCount(43);
   await expect(page.locator('.stage-column:visible')).toHaveCount(1);
   await expect(page.locator('.stage-column:visible')).toHaveAttribute('data-stage', 'new');
   await expect(page.locator('body')).toHaveClass(/has-app-layout/);
@@ -65,8 +71,12 @@ for (const theme of ['light', 'dark']) test(`Leads mobile keeps stage context an
   await stage.selectOption('qualified');
   await expect(page.locator('.stage-column:visible')).toHaveAttribute('data-stage', 'qualified');
   await expect(stage).toBeInViewport();
-  await page.locator('#marketCounts button').filter({ hasText: 'Pensacola' }).click();
-  await expect(page.locator('.stage-column:visible')).toHaveAttribute('data-stage', 'new');
+  await expect(page.locator('#mapLeadMembers [data-lead-id]')).toHaveCount(1);
+  await page.locator('#marketCounts button').filter({ hasText: 'Gulf Breeze' }).click();
+  await expect(stage).toHaveValue('qualified');
+  await expect(page.locator('.stage-column:visible')).toHaveAttribute('data-stage', 'qualified');
+  await expect(page.locator('.lead-card:visible')).toHaveCount(1);
+  await expect(page.locator('#mapLeadMembers [data-lead-id]')).toHaveAttribute('data-lead-id', id(8));
 });
 
 for (const width of [390, 1440]) for (const theme of ['light', 'dark']) test(`Itinerary draft prioritizes editing and folds excluded stops at ${width} ${theme}`, async ({ page }) => {

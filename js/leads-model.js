@@ -11,6 +11,7 @@ export const normalizedStage = lead => lead.do_not_contact ? "do_not_contact" :
 // then terminal conversion stages. A name match is never an exclusion.
 export function eligibleLead(lead) {
   if (lead.suppressed || lead.merged_into || lead.deleted_at) return false;
+  if (lead.prospect_client_id && lead.prospect_engagement_status === "inactive") return true;
   if (lead.client_id || lead.linked_client || lead.is_client || lead.is_past_client || lead.is_deal || lead.deal_id) return false;
   return !["active_deal", "closed_won"].includes(lead.stage);
 }
@@ -41,14 +42,19 @@ export function hotLeadPanel(leads) {
   return { claimable: open.length > 0, rows: (open.length ? open : fresh).slice(0, 5), newTotal: fresh.length, claimed: fresh.length - open.length };
 }
 const scoreValue = lead => lead.score == null || !Number.isFinite(Number(lead.score)) ? -Infinity : Number(lead.score);
-export function marketCounts(leads, filters = {}) {
+export function marketCounts(leads, filters = {}, locate = () => null) {
   const counts = new Map();
-  for (const lead of visibleLeads(leads, { ...filters, market: "", stage: filters.stage === "archived" ? "" : filters.stage })) {
-    if (normalizedStage(lead) === "archived") continue;
-    const key = marketKey(lead); const group = counts.get(key) || { key, count: 0, city: lead.city, state: lead.state };
+  for (const lead of visibleLeads(leads, filters)) {
+    const place = locate(lead), key = marketKey(lead);
+    const group = counts.get(key) || { key, count: 0, locations: new Map(), unlocatedIds: [] };
+    if (place) {
+      const location = group.locations.get(place.id) || { place, leadIds: [] };
+      location.leadIds.push(lead.id); group.locations.set(place.id, location);
+    } else group.unlocatedIds.push(lead.id);
     group.count++; counts.set(key, group);
   }
-  return [...counts.values()].sort((a, b) => b.count - a.count || a.key.localeCompare(b.key));
+  return [...counts.values()].sort((a, b) => b.count - a.count || a.key.localeCompare(b.key))
+    .map(group => ({ ...group, locations: [...group.locations.values()] }));
 }
 export function stageReview(detail, target, now = Date.now()) {
   const kinds = target === "engaged" ? ["email_in", "meeting", "call"] : target === "outreach_active" ? ["email_out"] : [];

@@ -1,4 +1,4 @@
-import { isClosedDeal, localDeals, needsAttention } from './deal-review-model.js';
+import { localDeals, needsAttention, scopedDeals, validDealBoard } from './deal-review-model.js';
 import { validInvoiceTracker } from './invoice-tracker-model.js';
 import { validNetwork } from './relationship-network-model.js';
 import { addDays, criticalDateEntries, localToday, toDay } from './calendar-model.js';
@@ -20,21 +20,6 @@ export const HIDDEN_HOME_WIDGETS = Object.freeze({
 const validHomeRows = (payload, key) => payload && typeof payload === 'object' && !Array.isArray(payload)
   && Array.isArray(payload[key]) && payload[key].every(row => row && typeof row === 'object' && !Array.isArray(row)
     && typeof row.id === 'string' && row.id.trim().length > 0);
-
-// Validate the shape Home consumes as a whole. Dropping an invalid member
-// would turn an incomplete read into authoritative counts and missing flags.
-function validHomeBoard(board) {
-  return validHomeRows(board, 'deals') && board.deals.every(deal =>
-    ['name', 'owner', 'phase', 'operating_state', 'workspace_kind', 'account_client_id'].every(key => deal[key] == null || typeof deal[key] === 'string')
-    && ['attention', 'in_market'].every(key => deal[key] == null || typeof deal[key] === 'boolean'));
-}
-
-export function scopedDeals(board, scope) {
-  if (!validHomeBoard(board) || (scope === 'mine' && !board.actor)) return null;
-  return board.deals.filter(deal => !isClosedDeal(deal)
-    && (deal.operating_state || 'active') === 'active'
-    && (scope !== 'mine' || deal.owner === board.actor));
-}
 
 export function dealSnapshot(board, scope = 'team', now = Date.now()) {
   const deals = scopedDeals(board, scope);
@@ -78,13 +63,13 @@ export function agendaSnapshot(board, details, { scope = 'team', today = localTo
     for (const task of taskRows) {
       const day = toDay(task.due_on);
       if (task.status !== 'open' || (scope === 'mine' && task.owner !== board.actor)) continue;
-      if (!day) { undated.push(task); continue; }
-      entries.push({ key: `task:${task.id}`, deal_id: deal.id, deal_name: deal.name, day, label: task.description || 'Task', type: 'task' });
+      entries.push({ key: `task:${task.id}`, deal_id: deal.id, deal_name: deal.name, day, owner: task.owner, label: task.description || 'Task', type: 'task' });
     }
   }
-  entries.sort((a, b) => a.day.localeCompare(b.day) || a.key.localeCompare(b.key));
+  const priority = entry => !entry.day ? 1 : entry.day <= today ? 0 : 2;
+  entries.sort((a, b) => priority(a) - priority(b) || (a.day || '').localeCompare(b.day || '') || a.key.localeCompare(b.key));
   const week = Array.from({ length: 7 }, (_, i) => ({ day: addDays(today, i), entries: entries.filter(entry => entry.day === addDays(today, i)) }));
-  return { entries, week, failed, undated, upcoming: entries.slice(0, 4) };
+  return { entries, week, failed, undated, upcoming: entries };
 }
 
 export function controlSnapshot(reads) {
@@ -124,7 +109,7 @@ export async function readHomeDashboard(client, { onUpdate = () => {}, timeoutMs
       const value = await readWithDeadline(read, { timeoutMs, signal });
       if (name === 'invoices' && !validInvoiceTracker(value)) throw Object.assign(new Error('Invoices unavailable'), {code:'invalid_payload'});
       if (name === 'relationships' && (!validNetwork(value) || Date.parse(value.valid_until) <= Date.now())) throw Object.assign(new Error('Relationships unavailable'), {code:'invalid_payload'});
-      if (target === result && ((name === 'board' && !validHomeBoard(value)) || (name === 'leads' && !validHomeRows(value, 'leads')))) {
+      if (target === result && ((name === 'board' && !validDealBoard(value)) || (name === 'leads' && !validHomeRows(value, 'leads')))) {
         const error = new Error('Home board unavailable');
         error.code = 'malformed_response';
         throw error;

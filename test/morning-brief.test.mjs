@@ -1,7 +1,8 @@
+import { briefPreferences } from '../js/brief-preferences.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { JSDOM } from 'jsdom';
-import { morningBriefView, validBrief, briefPreferences, localDay } from '../js/morning-brief-model.js';
+import { morningBriefView, validBrief, localDay } from '../js/morning-brief-model.js';
 import { mountMorningBrief } from '../js/morning-brief.js';
 import { createLiveClient } from '../js/live-client.js';
 import { createFixtureClient } from '../js/fixture-client.js';
@@ -195,4 +196,116 @@ for(const status of [401,403]) {
 }
 test('ordinary changes network failure retains supported priorities with unavailable overnight coverage',async t=>{
  const state=setup(t);state.client.getChanges=async()=>{throw Error('Offline');};await state.ui.refresh();assert.equal(state.root.querySelectorAll('[data-brief-record]').length,2);assert.match(state.root.getElementById('morningCoverage').textContent,/Overnight updates unavailable/);
+});
+
+test('owner toggle filters before ranking, labels both partners, and retains unowned and older-server rows', async t=>{
+ const state=setup(t),data=payload();
+ data.sections.today=section([
+  {...due('a','joe','2026-10-02'),owner_partner:'joe'},
+  {...due('d','dell','2026-10-02'),item_kind:'next_action',subject_name:'Demo Dell deal',owner_partner:'dell'},
+  {...due('b'),owner_partner:null},
+ ]);
+ state.data=data;await state.ui.refresh();state.ui.open();
+ const labels=()=>[...state.root.querySelectorAll('.morning-owner')].map(node=>node.textContent);
+ assert.deepEqual(labels(),['Joe','Dell']);
+ const filter=state.root.querySelector('[aria-label="Brief owners"]');assert.ok(filter);
+ assert.equal(filter.querySelector('[aria-pressed="true"]').textContent,'All');
+ filter.querySelector('[data-brief-owner="dell"]').click();
+ assert.deepEqual(labels(),['Dell']);
+ assert.match(state.root.querySelector('#morningContent > section').textContent,/Do first.*Demo Dell deal/);
+ assert.equal(state.root.querySelectorAll('[data-brief-record]').length,2);
+ state.root.querySelector('[data-brief-record]').click();await new Promise(resolve=>setTimeout(resolve,10));
+ assert.match(state.root.querySelector('.entry-original').textContent,/Review demo lease/);
+ state.root.getElementById('morningBack').click();
+ filter.querySelector('[data-brief-owner="joe"]').click();assert.deepEqual(labels(),['Joe']);
+ await state.ui.refresh();assert.deepEqual(labels(),['Joe']);
+ for(const row of data.sections.today.items)delete row.owner_partner;
+ await state.ui.refresh();assert.deepEqual(labels(),[]);assert.equal(state.root.querySelectorAll('[data-brief-record]').length,2);
+});
+
+test('two partners retain separate to-dos on the same deal',()=>{
+ const data=payload();data.sections.today=section([
+  {...due('a'),id:'joe-action',owner_partner:'joe',what:'Demo Joe step'},
+  {...due('a','dell'),id:'dell-action',owner_partner:'dell',what:'Demo Dell step'},
+ ]);
+ const view=morningBriefView(data,{...options,events:[]});
+ assert.deepEqual(view.groups.map(group=>group.row.owner_partner),['dell','joe']);
+ assert.equal(new Set(view.groups.map(group=>group.row.key)).size,2);
+});
+
+test('owner selection survives reload and switches independently with the viewer', async t => {
+ const state=setup(t);await state.ui.refresh();
+ state.root.querySelector('#morningOwners [data-brief-owner="dell"]').click();state.ui.open();
+ const saved=Array.from({length:state.win.localStorage.length},(_,i)=>{const key=state.win.localStorage.key(i);return [key,state.win.localStorage.getItem(key)];});
+ const reloaded=setup(t,{storage:saved});await reloaded.ui.refresh();
+ const selected=()=>reloaded.root.querySelector('#morningOwners [aria-pressed="true"]').textContent;
+ assert.equal(selected(),'Dell');
+ const other=payload();other.sponsor='dell';reloaded.data=other;await reloaded.ui.refresh();
+ assert.equal(selected(),'All');
+ reloaded.root.querySelector('#morningOwners [data-brief-owner="joe"]').click();
+ reloaded.data=payload();await reloaded.ui.refresh();assert.equal(selected(),'Dell');
+ reloaded.data=other;await reloaded.ui.refresh();assert.equal(selected(),'Joe');
+ assert.deepEqual(saved.map(([key])=>key),['doctorcre:morning:joe']);
+ assert.doesNotMatch(saved[0][1],/Demo|lease/);
+});
+
+test('shared deal detail follows the selected action through refresh and removal', async t => {
+ const state=setup(t),data=payload();
+ data.sections.today=section(['joe','dell'].map(owner=>({...due('a'),id:`action-${owner}`,item_kind:'next_action',owner_partner:owner,what:`${owner} confirms access`})));
+ state.data=data;await state.ui.refresh();state.ui.open();
+ state.root.querySelector('#morningOwners [data-brief-owner="dell"]').click();
+ const view=morningBriefView(data,{...options,owner:'dell',events:[]});
+ assert.equal(view.groups[0].row.action.id,'action-dell');
+ state.root.querySelector('[data-brief-record]').click();await new Promise(resolve=>setTimeout(resolve,10));
+ assert.match(state.root.getElementById('morningContent').textContent,/dell confirms access/);
+ assert.doesNotMatch(state.root.getElementById('morningContent').textContent,/joe confirms access/);
+ data.sections.today.items[1].what='Dell sends access confirmation';await state.ui.refresh();
+ assert.match(state.root.getElementById('morningContent').textContent,/Dell sends access confirmation/);
+ data.sections.today.items.pop();await state.ui.refresh();
+ assert.equal(state.root.getElementById('morningBack').hidden,true);
+});
+
+test('empty partner filter explains the result and Show all restores to-dos', async t => {
+ const state=setup(t),data=payload();
+ for(const row of data.sections.today.items)row.owner_partner='joe';
+ state.data=data;await state.ui.refresh();state.ui.open();
+ state.root.querySelector('#morningOwners [data-brief-owner="dell"]').click();
+ const content=state.root.getElementById('morningContent');
+ assert.match(content.textContent,/No to-dos for Dell/);
+ const showAll=[...content.querySelectorAll('button')].find(node=>node.textContent==='Show all');assert.ok(showAll);
+ showAll.focus();showAll.click();
+ assert.equal(state.root.querySelector('#morningOwners [aria-pressed="true"]').textContent,'All');
+ assert.equal(content.querySelectorAll('[data-brief-record]').length,2);
+ assert.equal(state.root.activeElement.dataset.briefOwner,'all');
+});
+
+test('older brief rows without action ids retain separate deal cards and all three groups', () => {
+ const data=payload();for(const row of data.sections.today.items)delete row.id;
+ assert.deepEqual(morningBriefView(data,options).groups.map(group=>[group.label,group.row.id]),[['Do first','a'],['Overnight','c'],['Today','b']]);
+});
+
+for (const selfActor of ['joe','dell']) test(`fixture All keeps four Joe and four Dell next actions for ${selfActor}`, async () => {
+ const seed=await readFile(new URL('../data/board-seed.json',import.meta.url));
+ const client=await createFixtureClient({selfActor,seedUrl:`data:application/json;base64,${seed.toString('base64')}`});
+ const brief=await client.morningBrief();
+ const rows=brief.sections.today.items.filter(row=>row.item_kind==='next_action');
+ assert.deepEqual(['joe','dell'].map(owner=>rows.filter(row=>row.owner===owner).length),[4,4]);
+ assert.equal(brief.sponsor,selfActor);
+ const admitted=new Set(brief.sections.deals.items.map(row=>row.id));
+ assert.ok(rows.every(row=>admitted.has(row.subject_id)));
+});
+
+test('Overnight stays identical for All, Joe and Dell when their first priorities differ', () => {
+ const data=payload();
+ data.sections.today=section([
+  {...due('a','joe','2026-10-01'),owner_partner:'joe'},
+  {...due('b','dell','2026-10-02'),owner_partner:'dell'},
+ ]);
+ const settings={...options,events:[event('a'),event('b',new Date(now.valueOf()-1000).toISOString()),event('c',new Date(now.valueOf()-2000).toISOString())]};
+ const views=['all','joe','dell'].map(owner=>morningBriefView(data,{...settings,owner}));
+ assert.deepEqual(views.map(view=>view.groups.find(group=>group.key==='first').row.id),['a','a','b']);
+ const overnight=views.map(view=>view.groups.find(group=>group.key==='overnight'));
+ assert.equal(overnight[0].row.id,'b');
+ assert.deepEqual(overnight[1],overnight[0]);
+ assert.deepEqual(overnight[2],overnight[0]);
 });

@@ -4,17 +4,18 @@ import {readFile, mkdir, access} from 'node:fs/promises';
 import {chromium, waitForAsync, animationsSettled} from './browser-harness.mjs';
 const root=new URL('../',import.meta.url);
 const longestNextStep='Confirm the Demo Clinic appointment and send notes';
-async function open(t,width=1280,{theme='dark',sparse=false,showDetail=true,height=960,nextStep='Prior status that must not prefill',closedOn=null}={}) {
+async function open(t,width=1280,{theme='dark',sparse=false,showDetail=true,height=960,nextStep='Prior status that must not prefill',closedOn=null,manyUpdates=false}={}) {
  const browser=await chromium.launch();t.after(()=>browser.close());
  const page=await browser.newPage({viewport:{width,height}});
  await page.addInitScript(theme=>localStorage.setItem('doctorcre.visual-preferences',JSON.stringify({theme})),theme);
  const errors=[];page.on('pageerror',e=>errors.push(e.message));
  const seed=JSON.parse(await readFile(new URL('data/board-seed.json',root),'utf8'));
- Object.assign(seed.deals.find(d=>d.id==='d14'),{phase:'Negotiation',next_step:nextStep,closed_on:closedOn,workspace_kind:'team',account_client_id:null,operating_state:'active'});
+ Object.assign(seed.deals.find(d=>d.id==='d14'),{phase:'Negotiation',next_step:nextStep,closed_on:closedOn,workspace_kind:'team',account_client_id:null,operating_state:'active',phase_started_on:{pending:'2026-08-10',research:'2026-08-31',site_selection:'2026-09-08',negotiation:'2026-09-20'}});
  seed.deals.find(d=>d.id==='d20').next_step=longestNextStep;
  if(sparse) seed.deals=seed.deals.filter((d,i)=>i<5||d.id==='d14');
  seed.threads.d14=[{id:'demo-old',kind:'note',actor:'joe',text:'Older demo update',created_at:'2026-09-01T15:30:00Z',recorded_at:'2026-09-01T15:30:00Z'},
  {id:'demo-new',kind:'note',actor:'dell',text:'Newest demo update. '+ 'Detailed synthetic context. '.repeat(120),created_at:'2026-10-02T17:45:00Z',recorded_at:'2026-10-02T17:45:00Z'}];
+ if(manyUpdates) seed.threads.d14=Array.from({length:30},(_,i)=>({id:`demo-note-${i}`,kind:'note',actor:'joe',text:`Demo update ${i}. `+'Detailed synthetic context. '.repeat(12),recorded_at:new Date(Date.UTC(2026,9,20,12,0,i)).toISOString()}));
  await page.route('**/*',async route=>{
   const url=new URL(route.request().url());if(url.origin!=='http://localhost')return route.abort();
   if(url.pathname==='/data/board-seed.json')return route.fulfill({json:seed});
@@ -28,7 +29,7 @@ async function open(t,width=1280,{theme='dark',sparse=false,showDetail=true,heig
  return {page,errors};
 }
 
-test('every deal snapshot opens with an empty Update above a full-width newest-first attributed feed',async t=>{
+test('every deal snapshot opens with an empty Update above a concise overview and expandable attributed history',async t=>{
  await mkdir(new URL('out/test-artifacts/deal-card-review/',root),{recursive:true});
  for(const width of [390,1280]) await t.test(String(width),async t=>{
   const {page,errors}=await open(t,width);
@@ -38,6 +39,7 @@ test('every deal snapshot opens with an empty Update above a full-width newest-f
   assert.equal(await page.getByLabel('Update',{exact:true}).inputValue(),'');
   const form=await page.locator('#detailUpdateForm').boundingBox(),notes=await page.locator('.deal-updates').boundingBox();
   assert.ok(form.y+form.height<notes.y);assert.ok(form.y+form.height<960);
+  await page.locator('.updates-history > summary').click();
   assert.equal(await page.locator('.deal-note').first().getAttribute('data-id'),'demo-new');
   assert.match(await page.locator('.deal-note').first().textContent(),/Dell/);
   assert.equal(await page.locator('.deal-note').first().locator('time').getAttribute('datetime'),'2026-10-02T17:45:00Z');
@@ -108,8 +110,8 @@ test('deal review prioritizes cards, page tabs and Add deal in both themes and w
   await page.locator('[data-id="d14"] .card-open').click();await page.locator('#detailUpdateForm').waitFor();
 
   const rails=await page.locator('.phase-rail li').evaluateAll(nodes=>nodes.map(n=>Math.round(n.getBoundingClientRect().top)));
-  assert.equal(new Set(rails).size,1,'phase timeline is a continuous row');
-  assert.ok((await page.locator('.deal-timeline').boundingBox()).height<160,'phase timeline stays compact');
+  assert.equal(new Set(rails).size,width===390?2:1,'phase dates fit without horizontal scrolling');
+  assert.ok((await page.locator('.deal-timeline').boundingBox()).height<(width===390?330:200),'phase timeline stays compact');
   assert.equal(await page.locator('#panelContextOpen').isVisible(),false,'a name without a relationship does not advertise context');
   assert.equal(await page.locator('#recordPanel').evaluate(n=>n.scrollWidth<=n.clientWidth),true);
   assert.deepEqual(errors,[]);
@@ -123,7 +125,7 @@ test('phone timeline has one rail and unlinked snapshots hide context',async t=>
 
  await t.test('compact rail',async()=>{
   const tops=await page.locator('.phase-rail li').evaluateAll(nodes=>nodes.map(n=>Math.round(n.getBoundingClientRect().top)));
-  assert.equal(new Set(tops).size,1);
+  assert.equal(new Set(tops).size,2);
  });
  await t.test('no empty context',async()=>assert.equal(await page.locator('#panelContextOpen').isVisible(),false));
 });
@@ -193,13 +195,14 @@ test('desktop board shows the full longest next step within three lines',async t
 
 
 test('empty next steps leave cards and snapshots free of invented status text',async t=>{
- const {page}=await open(t,390,{showDetail:false,nextStep:''});
+ const {page}=await open(t,390,{showDetail:false,nextStep:' \t\n '});
  const card=page.locator('.kanban-column [data-id="d14"]');
  assert.equal(await card.locator('.next-line').count(),0);
  await card.locator('.card-open').click();
  await page.locator('#detailUpdateForm').waitFor();
  assert.equal(await page.getByLabel('Update',{exact:true}).inputValue(),'');
  assert.equal(await page.locator('.deal-current-action').count(),0);
+ assert.equal(await page.locator('.deal-opening-snapshot time').count(),0,'a due date without an action stays omitted');
  assert.doesNotMatch(await page.locator('#recordPanel').textContent(),/Next step pending|Nothing needs you/i);
 });
 
@@ -216,14 +219,113 @@ test('a recorded close date keeps an imported deal in history without open-board
  assert.deepEqual(errors,[]);
 });
 
-test('refresh removes record sections when the source has no entries',async t=>{
+test('card omits outlook, Dates and Full record sections',async t=>{
  const {page}=await open(t);
- assert.equal(await page.locator('.full-record').count(),1);
+ assert.equal(await page.locator('.full-record,.deal-dates,[data-jev-deal]').count(),0);
+ assert.doesNotMatch(await page.locator('#recordPanel').textContent(),/System note|Deal outlook|Full record/);
+});
+
+test('deal card cleanup shows dates and one summary at 390/1280 in dark/light',async t=>{
+ const dir=new URL('out/test-artifacts/deal-card-cleanup/',root);await mkdir(dir,{recursive:true});
+ for(const width of [390,1280])for(const theme of ['dark','light'])await t.test(`${width}-${theme}`,async t=>{
+  const {page,errors}=await open(t,width,{theme,nextStep:'Confirm the appointment and review the lease draft'});
+  assert.equal(await page.locator('.deal-current-action strong').textContent(),'Confirm the appointment and review the lease draft');
+  assert.equal(await page.locator('.updates-overview').count(),1);
+  assert.equal(await page.locator('.deal-note:visible').count(),0);
+  assert.match(await page.locator('.updates-overview').textContent(),/Newest demo update/);
+  assert.doesNotMatch(await page.locator('.updates-overview').textContent(),/Older demo update/);
+  assert.equal(await page.locator('.phase-rail time:visible').count(),4);
+  assert.equal(await page.locator('.phase-rail time[datetime="2026-08-31"]').textContent(),'Aug 31, 2026');
+  assert.equal(await page.locator('.full-record,.deal-dates,[data-jev-deal]').count(),0);
+  assert.equal(await page.locator('#recordPanel').evaluate(n=>n.scrollWidth<=n.clientWidth),true);
+  await page.screenshot({path:new URL(`${width}-${theme}.png`,dir).pathname,animations:'disabled'});
+  await page.locator('.updates-overview').scrollIntoViewIfNeeded();
+  const title=await page.locator('#panelTitle').boundingBox(),doc=await page.locator('#recordPanel > #docPresence').boundingBox();
+  assert.ok(title.x>=doc.x+doc.width,'the scrolled title clears Doc');
+  await page.screenshot({path:new URL(`${width}-${theme}-summary.png`,dir).pathname,animations:'disabled'});
+  await page.locator('.updates-history > summary').click();
+  assert.equal(await page.locator('.deal-note:visible').count()>1,true);
+  await page.locator('.updates-history').scrollIntoViewIfNeeded();
+  await page.screenshot({path:new URL(`${width}-${theme}-history.png`,dir).pathname,animations:'disabled'});
+  assert.deepEqual(errors,[]);
+ });
+});
+
+test('refresh removes and restores Updates as recorded notes change',async t=>{
+ const {page}=await open(t);
+ assert.equal(await page.locator('.deal-updates').count(),1);
+ await page.getByLabel('Update',{exact:true}).fill('Demo unsaved draft');
  await page.evaluate(async()=>{
   const {state}=await import('/js/pipeline.js');const read=state.client.getDeal;
-  state.client.getDeal=async id=>{const detail=await read(id);return {...detail,next_actions:[],premises:[],negotiation_rounds:[],documents:[],history:[]};};
+  state.client.getDeal=async id=>{
+   const detail=await read(id);
+   return {...detail,thread:[],activities:[]};
+  };
  });
  await page.getByRole('button',{name:'Refresh deal',exact:true}).click();
- await waitForAsync(page,async()=>(await import('/js/pipeline.js')).state.panelDetail.history.length===0);
- assert.equal(await page.locator('.full-record').count(),0);
+ await waitForAsync(page,async()=>(await import('/js/pipeline.js')).state.panelDetail.thread.length===0);
+ assert.equal(await page.locator('.deal-updates').count(),0);
+ assert.doesNotMatch(await page.locator('#recordPanel').textContent(),/No updates recorded/);
+ await page.evaluate(async()=>{
+  const {state}=await import('/js/pipeline.js');const read=state.client.getDeal;
+  state.client.getDeal=async id=>({...await read(id),thread:[{id:'demo-restored',kind:'note',actor:'joe',text:'Demo restored update',at:'2026-10-02'}]});
+ });
+ await page.getByRole('button',{name:'Refresh deal',exact:true}).click();
+ await page.locator('.deal-note[data-id="demo-restored"]').waitFor({state:'attached'});
+ assert.equal(await page.locator('.deal-updates').count(),1);
+ assert.equal(await page.getByLabel('Update',{exact:true}).inputValue(),'Demo unsaved draft');
+});
+
+
+test('thirty notes show one concise summary and expand inline at phone width',async t=>{
+ const {page}=await open(t,390,{manyUpdates:true});
+ const overview=page.locator('.updates-overview p');
+ assert.ok((await overview.textContent()).length<=180);
+ assert.match(await overview.textContent(),/Demo update 29/);
+ assert.doesNotMatch(await overview.textContent(),/Demo update 28/);
+ const box=await overview.evaluate(n=>({height:n.getBoundingClientRect().height,lineHeight:parseFloat(getComputedStyle(n).lineHeight),overflow:getComputedStyle(n).overflowY}));
+ assert.ok(box.height<=box.lineHeight*2+1,JSON.stringify(box));
+ assert.equal(box.overflow,'visible');
+ assert.equal(await page.locator('.deal-note:visible').count(),0);
+ await page.locator('.updates-history > summary').click();
+ assert.equal(await page.locator('.deal-note[data-id^="demo-note-"]:visible').count(),30);
+ assert.equal(await page.locator('.deal-note:visible').count(),32);
+ assert.equal(await page.locator('.updates-history').evaluate(n=>getComputedStyle(n).overflowY),'visible');
+});
+
+test('deal card controls meet the 44px target floor at phone and desktop widths',async t=>{
+ for(const width of [390,1280])for(const theme of ['dark','light'])await t.test(`${width}-${theme}`,async t=>{
+  const {page}=await open(t,width,{theme});
+  const undersized=[];
+  for(const expanded of [false,true]){
+   if(expanded){
+    await page.locator('.park-options > summary').click();
+    await page.locator('.updates-history > summary').click();
+   }
+   await animationsSettled(page);
+   const controls=await page.locator('#recordPanel :is(button,a,input,select,textarea,summary,[role="button"]):visible').evaluateAll(nodes=>nodes.map(n=>{
+    const {width,height}=n.getBoundingClientRect();
+    return {control:n.id||n.getAttribute('aria-label')||n.getAttribute('name')||n.textContent.trim().slice(0,60),width,height};
+   }));
+   assert.ok(controls.length>0,'card exercises its controls');
+   undersized.push(...controls.filter(n=>n.width<44||n.height<44));
+  }
+  assert.deepEqual(undersized,[]);
+ });
+});
+
+test('phone phase dates and secondary timeline text stay readable at 13px',async t=>{
+ const {page}=await open(t,390);
+ const sizes=await page.locator('.phase-rail :is(time,small)').evaluateAll(nodes=>nodes.map(n=>({text:n.textContent,size:parseFloat(getComputedStyle(n).fontSize)})));
+ assert.ok(sizes.length>=4,'recorded phase dates are present');
+ assert.deepEqual(sizes.filter(n=>n.size<13),[]);
+});
+
+test('readable phone phase labels stay inside their rail columns',async t=>{
+ const {page}=await open(t,390);
+ const overflow=await page.locator('.phase-rail li > span').evaluateAll(nodes=>nodes.flatMap(n=>{
+  const box=n.getBoundingClientRect(),range=document.createRange();range.selectNodeContents(n);
+  return [...range.getClientRects()].filter(line=>line.right>box.right+1).map(()=>n.textContent);
+ }));
+ assert.deepEqual(overflow,[]);
 });

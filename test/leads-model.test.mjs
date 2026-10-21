@@ -1,8 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { BOARD_STAGES,FILTER_STAGES,eligibleLead,leadTitle,visibleLeads,hotLeadPanel,marketCounts,stageReview,undoReview } from '../js/leads-model.js';
-import {marketFeatures} from '../js/leads-territory-map.js';
+import {marketFeatures,marketLocation} from '../js/leads-territory-map.js';
 import {lead,leads,detail} from './leads-workspace-fixture.mjs';
+const projectMarkets = (rows, places) => marketFeatures(marketCounts(rows, {}, row => marketLocation(row, places)));
 test('six stages, filter-only archive, exact lifecycle exclusions, suppression everywhere',()=>{
  assert.deepEqual(BOARD_STAGES.map(x=>x[1]),['New','Qualified','Outreach Active','Engaged','Nurture','Opportunity']);
  assert.equal(FILTER_STAGES.length,7);
@@ -37,8 +38,9 @@ test('filters and market counts share exact eligibility; archive never adds to a
  assert.equal(visibleLeads(leads,{search:'gulf'}).length,1);
  assert.equal(visibleLeads(leads,{owner:'example-partner'}).length,1);
  assert.equal(marketCounts(leads).reduce((n,g)=>n+g.count,0),14);
- assert.deepEqual(marketCounts(leads,{stage:'archived'}),marketCounts(leads));
- const features=marketFeatures([{key:'Exact',city:'Mobile',state:'AL',count:2},{key:'Unknown',city:'Atlantis',state:'FL',count:1}], [{name:'Mobile',state:'AL',id:'1',position:[-88,30]}]);
+ assert.deepEqual(marketCounts(leads,{stage:'archived'}).map(g=>[g.key,g.count]),[['Pensacola, FL',1]]);
+ assert.deepEqual(marketCounts(leads,{market:'Mobile, AL'}).map(g=>[g.key,g.count]),[['Mobile, AL',1]]);
+ const features=projectMarkets([lead(1,{city:'Mobile',state:'AL'}),lead(2,{city:'Mobile',state:'AL'}),lead(3,{city:'Atlantis'})], [{name:'Mobile',state:'AL',id:'1',position:[-88,30]}]);
  assert.equal(features.features.length,1);assert.equal(features.features[0].properties.count,2);
 });
 test('Doc evidence checks mail and calendar before asking only unanswered questions; excludes future entries',()=>{
@@ -83,7 +85,25 @@ test('blocking 16: suppressed Do Not Contact remains excluded and the active int
 test('blocking 17: committed duplicate city/state labels never choose an arbitrary map point',async()=>{
  const {readFile}=await import('node:fs/promises');const places=JSON.parse(await readFile(new URL('../data/leads-market-locations.json',import.meta.url),'utf8'));
  const pair=places.filter(place=>['1277467','1277470'].includes(place.id));assert.equal(pair.length,2);
- const groups=[{key:`${pair[0].name}, FL`,city:pair[0].name,state:'FL',count:3}];
- assert.deepEqual(marketFeatures(groups,places).features,[]);assert.deepEqual(marketFeatures(groups,[...places].reverse()).features,[]);
- assert.equal(groups[0].count,3,'ambiguous markets keep their count in the list');
+ const rows=[1,2,3].map(n=>lead(n,{city:pair[0].name}));
+ assert.deepEqual(projectMarkets(rows,places).features,[]);assert.deepEqual(projectMarkets(rows,[...places].reverse()).features,[]);
+ assert.equal(marketCounts(rows)[0].count,3,'ambiguous markets keep their count in the list');
+});
+
+test('market features exclude missing, malformed and zero coordinates without losing list members', () => {
+ const rows=[lead(1,{city:'Synthetic'})];
+ for(const position of [undefined,null,[],[0,0],['-88',30],[-88,NaN],[181,30],[-88,91]]) {
+  assert.deepEqual(projectMarkets(rows,[{id:'synthetic',name:'Synthetic',state:'FL',position}]).features,[],String(position));
+ }
+ const point=projectMarkets(rows,[{id:'synthetic',name:'Synthetic',state:'FL',position:[-88,30]}]).features[0];
+ assert.deepEqual(point.properties.leadIds,[lead(1).id]);
+ assert.deepEqual(point.geometry.coordinates,[-88,30]);
+});
+
+test('returned inactive prospects appear in Leads despite retained client and deal history', () => {
+ const returned=lead(90,{stage:'nurture_drip',client_id:'synthetic-client',is_client:true,linked_client:true,is_deal:true,
+  prospect_client_id:'synthetic-client',prospect_client_version:4,prospect_engagement_status:'inactive'});
+ assert.deepEqual(visibleLeads([returned]).map(l=>l.id),[returned.id]);
+ assert.deepEqual(visibleLeads([{...returned,prospect_engagement_status:'active'}]),[]);
+ assert.deepEqual(visibleLeads([{...returned,suppressed:true}]),[]);
 });

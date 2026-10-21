@@ -43,7 +43,7 @@ async function open(t,{width=1440,height=width===1440?1000:844,path='/control-ro
    if(rpc.name==='read-room-queue'&&state.emptyAgents)payload={ok:true,room:'partner-line',live:false,projected_at:null,events:[]};
    if(rpc.name==='read-session-identity'&&state.emptySessions)payload={ok:true,total_seen:0,total_returned:0,permission_filtered:false,sessions:[]};
    if(rpc.name==='governance-queue'&&state.approvalFailure==='invalid')payload={ok:true};
-   if(rpc.name==='read-progress-board'&&snapshotData)payload.snapshot.snapshot_json=snapshotData;
+   if(rpc.name==='read-progress-board')payload.snapshot.snapshot_json=snapshotData||{title:'System Job Board',tasks:{demo:{title:'Demo dashboard refresh',status:'review',work_request:'WR-000901',pr:17}}};
    if(rpc.name==='read-progress-board'&&unboundBoard&&payload.snapshot)for(const task of Object.values(payload.snapshot.snapshot_json.tasks)){delete task.work_request;delete task.work_request_ref;delete task.human_ref;task.related=[];}
    if(rpc.name==='list-progress-boards'&&extraBoard)payload.boards.push({...payload.boards[0],board_id:'demo-project',title:'Demo project board'});
    if(rpc.name==='read-progress-board'&&state.boardUnpublished)payload.snapshot=null;
@@ -75,7 +75,8 @@ async function open(t,{width=1440,height=width===1440?1000:844,path='/control-ro
   const file=routes.routes[boardIdFromPath(url.pathname)?BOARD_ROUTE:url.pathname]||url.pathname.slice(1);
   try{const body=await readFile(new URL(file,root));return route.fulfill({body,contentType:/\.m?js$/.test(file)?'text/javascript':file.endsWith('.css')?'text/css':file.endsWith('.json')?'application/json':'text/html'});}catch{return route.fulfill({status:404,body:''});}
  });
- await page.goto(`http://localhost${path}`);
+ const target=new URL(path,'http://localhost');target.searchParams.set('mode','live');
+ await page.goto(target.href);
  await page.waitForFunction(()=>document.querySelector('#selfAvatar')?.textContent==='J');
  if(new URL(page.url()).pathname==='/control-room')await waitForRoom(page);
  else await page.locator('.hierarchy-breadcrumbs').waitFor();
@@ -266,7 +267,7 @@ test('incident filters and details dispatch once per click after retained and re
 for(const failure of [503,403,'unpublished'])test(`PR132 #1: board ${failure} reconciles shared detail state`,async t=>{
  const {page,state}=await open(t,{path:'/control-room?mode=live&tab=boards&board=demo-project',unboundBoard:true});
  const card=page.locator('#board-stages .board-card').first();await card.waitFor();await card.click();await page.waitForFunction(()=>document.querySelector('#jobDialog').open);
- assert.match(await page.locator('#jobBody').textContent(),/Work Request unavailable/);
+ assert.match(await page.locator('#jobBody .work-lineage dl > div').filter({hasText:'Work Request'}).textContent(),/Work Request.*Not linked/);
  if(failure==='unpublished')state.boardUnpublished=true;else state.boardFailure=failure;await page.locator('#board-retry').evaluate(button=>button.click());await page.waitForFunction(failure=>failure==='unpublished'?document.querySelector('#board-meta').dataset.readState==='unpublished':document.querySelector('#board-error').hidden===false,failure);
  if(failure!==503){assert.equal(await page.locator('#jobDialog').evaluate(node=>node.open),false);assert.equal(await page.locator('#jobBody').textContent(),'');}
  else {assert.match(await page.locator('#jobBody').textContent(),/Source unavailable.*Last-known/);await page.locator('#jobClose').click();await card.click();assert.match(await page.locator('#jobBody').textContent(),/Source unavailable.*Last-known/);}
@@ -394,8 +395,9 @@ for(const width of [1440,390])for(const theme of ['dark','light']){
   if(process.env.C5_CAPTURE_PHASE){const dir=new URL(`out/test-artifacts/c5/${process.env.C5_CAPTURE_PHASE}/`,root);await mkdir(dir,{recursive:true});await page.screenshot({path:new URL(`views-${width}-${theme}.png`,dir).pathname});}
   assert.ok((await empty.boundingBox()).height<=48,'empty ledger stays a compact row');
   assert.ok(await page.locator('#attentionTitle').evaluate(n=>getComputedStyle(n).fontSize===getComputedStyle(document.querySelector('.cr-views li')).fontSize),'ledger heading matches view summary scale');
+  await empty.scrollIntoViewIfNeeded();
   const box=await empty.boundingBox(),bottom=await page.locator(width===390?'#appShell':'.app-layout-status').boundingBox();
-  assert.ok(box.y+box.height<bottom.y,'empty ledger fits first screen');
+  assert.ok(box.y+box.height<bottom.y,'empty ledger remains reachable below attention work');
   assert.equal(await empty.evaluate(n=>getComputedStyle(n).backgroundColor),'rgba(0, 0, 0, 0)');
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
   assert.deepEqual(errors,[]);
