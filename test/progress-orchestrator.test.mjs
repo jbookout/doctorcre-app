@@ -66,3 +66,28 @@ test('denied access clears protected observations and a later authorized read re
     denied=false;await board.refresh();assert.ok(dom.window.document.querySelector('[data-orchestrator-card]'));
   }finally{board.dispose();dom.window.close();}
 });
+
+test('older unresolved work has explicit totals and loads on demand without claiming live', async () => {
+  const dom = new JSDOM(readFileSync(new URL('../progress-board.html', import.meta.url),'utf8'), {
+    url:'https://app.doctorcre.com/control-room/progress/board/orchestrator',pretendToBeVisual:true});
+  const data = {...projection(), total_cards:2, state_counts:{review:1,merged:1}, pages:[{
+    board_id:'orchestrator-page-'+'a'.repeat(64),version:1,count:1}]};
+  let fail=true;
+  const board=mountBoard({window:dom.window,document:dom.window.document,client:{readProgressBoard:async ({board_id})=>{
+    if(board_id==='orchestrator') return {snapshot:{version:1,snapshot_json:{tasks:{},orchestrator:data}}};
+    if(fail) throw new Error('offline');
+    return {snapshot:{version:1,snapshot_json:{cards:[{...data.cards[0],id:'older',title:'Older unresolved release',state:'merged'}]}}};
+  }}});
+  try {
+    await board.refresh();
+    const doc=dom.window.document;
+    assert.match(doc.querySelector('#task-count').textContent,/2 active/);
+    const button=doc.querySelector('[data-orchestrator-more]');assert.ok(button);
+    button.click();await new Promise(resolve=>setTimeout(resolve,0));
+    assert.match(doc.querySelector('[data-orchestrator-pagination]').textContent,/unavailable/i);
+    assert.ok(doc.querySelector('[data-orchestrator-card="search"]'));
+    fail=false;button.click();await new Promise(resolve=>setTimeout(resolve,0));
+    assert.match(doc.querySelector('[data-orchestrator-card="older"]').textContent,/Merged \/ awaiting release/);
+    assert.equal(doc.querySelectorAll('[data-orchestrator-stage="live"] article').length,0);
+  } finally {board.dispose();dom.window.close();}
+});
