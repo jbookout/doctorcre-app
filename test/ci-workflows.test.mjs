@@ -148,7 +148,7 @@ test('action pins agree with authenticated canonical release evidence', async ()
 
 {
 const source = await readFile(new URL('../.githooks/pre-push', import.meta.url), 'utf8');
-async function fixture(t, { slow = false } = {}) {
+async function fixture(t, { slow = false, budgetMs = slow ? 100 : 170_000 } = {}) {
   const root = await mkdtemp(join(tmpdir(), 'pre-push-'));
   t.after(() => rm(root, { recursive: true, force: true }));
   await mkdir(join(root, '.githooks'));
@@ -156,7 +156,7 @@ async function fixture(t, { slow = false } = {}) {
   await mkdir(join(root, 'bin'));
   await symlink(fileURLToPath(new URL('../node_modules', import.meta.url)), join(root, 'node_modules'), 'dir');
   await writeFile(join(root, '.gitignore'), 'node_modules\n');
-  await writeFile(join(root, '.githooks/pre-push'), slow ? source.replace('170_000', '100') : source);
+  await writeFile(join(root, '.githooks/pre-push'), source.replace('170_000', String(budgetMs)));
   await writeFile(join(root, 'package.json'), JSON.stringify({ type: 'module', scripts: {
     check: slow ? 'node -e "setInterval(()=>{},1000)"' : 'node -e "console.log(\'CHECK-RAN\')"',
     test: 'node .githooks/pre-push --test',
@@ -270,6 +270,14 @@ test('failing touched tests and repository checks prevent the push', async t => 
   const checkFailure=f.push();
   assert.notEqual(checkFailure.status,0);
   assert.doesNotMatch(checkFailure.stdout,/seeded failure/);
+});
+
+test('an exhausted pre-push budget names the deadline before starting checks', async t => {
+  const f = await fixture(t, { budgetMs: 0 });
+  const result = f.push();
+  assert.equal(result.status, 124, result.stdout + result.stderr);
+  assert.match(result.stderr, /exceeded 170 seconds/);
+  assert.doesNotMatch(result.stdout, /CHECK-RAN|TOUCHED-RAN/);
 });
 
 test('deletion does no checks, invalid or unchecked source refuses, and deadline is enforced', async t => {

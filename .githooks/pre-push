@@ -12,6 +12,7 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const git = (...args) => execFileSync('git', args, { cwd: root, encoding: 'utf8', timeout: 10_000 }).trim();
 const ZERO = /^0+$/;
 const budget = 170_000;
+const deadlineMessage = 'pre-push: fast checks exceeded 170 seconds; push refused without starting browser tests';
 const started = Date.now();
 const environment = { ...process.env };
 delete environment.NODE_TEST_CONTEXT;
@@ -42,13 +43,13 @@ async function fastTests(paths) {
   return selected;
 }
 function run(command, args, timeout = budget - (Date.now() - started)) {
-  if (timeout <= 0) return Promise.resolve(124);
+  if (timeout <= 0) { console.error(deadlineMessage); return Promise.resolve(124); }
   return new Promise(done => {
     const child = spawn(command, args, { cwd: root, detached: true, stdio: 'inherit', env: environment });
     let expired = false, force;
     const timer = setTimeout(() => {
       expired = true;
-      console.error('pre-push: fast checks exceeded 170 seconds; push refused without starting browser tests');
+      console.error(deadlineMessage);
       try { process.kill(-child.pid, 'SIGTERM'); } catch {}
       force = setTimeout(() => { try { process.kill(-child.pid, 'SIGKILL'); } catch {} done(124); }, 1_000);
     }, timeout);
