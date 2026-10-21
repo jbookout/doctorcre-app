@@ -905,7 +905,7 @@
   "progress_orchestrator": {
     "producer": {
       "repository": "jbookout/carr-system",
-      "source_commit": "8da244d646bfc5d4dc5925cc21feafef11cf6ec4"
+      "source_commit": "d78847bcb0513ee1d99d169bfc67848ad650a52f"
     },
     "schema": "doctorcre-orchestrator/v1",
     "board_id": "orchestrator",
@@ -921,6 +921,14 @@
       "live",
       "blocked"
     ],
-    "freshness": "Queue events use the existing publisher. Scheduled GitHub and release refresh runs independently of a model. Page polling does not prove fresh upstream observations."
+    "freshness": "Queue events use the existing publisher. Scheduled GitHub and release refresh runs independently of a model. Page polling does not prove fresh upstream observations.",
+    "pagination": {
+      "first_page": 100,
+      "page_size": 100,
+      "pages": "Immutable content-addressed read-progress-board snapshots, published and verified before the manifest.",
+      "counts": "total_cards and state_counts include every unresolved item. cards is newest changes first.",
+      "unavailable": "Page failures retain visible cards and offer retry. Queue outage retains all previous queue pages.",
+      "legacy": "Queue acknowledgement verifies this feed only. Scheduled carr-v5 publication can fail independently."
+    }
   }
 }

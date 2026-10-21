@@ -12,13 +12,13 @@ const setText = (node, value) => { if (node.textContent !== value) node.textCont
 export function orchestratorError(value) {
   if (value == null) return null;
   if (value.schema !== 'doctorcre-orchestrator/v1' || !Array.isArray(value.cards) || !Array.isArray(value.history)
-      || !value.sources || [...value.cards,...value.history].some(card => !card || !LABELS[card.state]
+      || !value.sources || (value.pages !== undefined && (!Array.isArray(value.pages) || value.pages.some(page => !page || !/^orchestrator-page-[a-f0-9]{64}$/.test(page.board_id) || !Number.isInteger(page.version) || page.version < 1 || !Number.isInteger(page.count) || page.count < 1 || page.count > 100))) || [...value.cards,...value.history].some(card => !card || !LABELS[card.state]
         || typeof card.id !== 'string' || typeof card.title !== 'string' || !Array.isArray(card.prs)))
     return 'The orchestrator observation is incomplete.';
   return null;
 }
 
-export function mountOrchestrator({container, window:win, now = () => new Date()}) {
+export function mountOrchestrator({container, window:win, now = () => new Date(), readPage}) {
   const doc = container.ownerDocument;
   const node = (tag, className, text) => {
     const el = doc.createElement(tag);
@@ -50,7 +50,25 @@ export function mountOrchestrator({container, window:win, now = () => new Date()
   const omitted=node('p','orchestrator-empty');history.append(omitted);
   for(const id of ['blocked','fixing','review','working','merging','merged','waiting','live']) root.append(groups.get(id).group);
   container.classList.add('orchestrator-board');container.replaceChildren(status,explanation,counts,root,history,observations);
+  const pagination=node('p','orchestrator-explanation');pagination.dataset.orchestratorPagination='';
+  const more=node('button','', 'Load older unresolved work');more.type='button';more.dataset.orchestratorMore='';
+  root.after(pagination,more);
   const records = new Map();
+  let loaded=[], pageIndex=0, generation=0, disposed=false;
+  more.addEventListener('click', async () => {
+    const page=value?.pages?.[pageIndex];if(!page || more.disabled) return;
+    const epoch=generation;more.disabled=true;
+    try {
+      const read=await readPage({board_id:page.board_id});
+      if(disposed || epoch!==generation) return;
+      const saved=read?.snapshot, cards=saved?.snapshot_json?.cards;
+      if(saved?.version!==page.version || !Array.isArray(cards) || cards.length!==page.count
+        || orchestratorError({...value,cards,history:[]})) throw new Error('incomplete page');
+      loaded.push(...cards);pageIndex++;render();
+    } catch {
+      if(!disposed && epoch===generation) setText(pagination,'Older work is unavailable. The displayed observation is retained. Try again.');
+    } finally {if(!disposed && epoch===generation) more.disabled=false;}
+  });
   let value, offline=false, signature='';
   function ages() {
     if(!value) return;
@@ -92,9 +110,9 @@ export function mountOrchestrator({container, window:win, now = () => new Date()
     }
     return record.el;
   }
-  return {update(next) {
-    value=next;offline=false;
-    const nextSignature=JSON.stringify(next);
+  function render() {
+    const next=value;
+    const nextSignature=JSON.stringify([next,loaded]);
     if(signature===nextSignature){ages();return;}
     signature=nextSignature;
     const active=doc.activeElement, left=win.scrollX, top=win.scrollY;
@@ -108,8 +126,8 @@ export function mountOrchestrator({container, window:win, now = () => new Date()
       }
     });
     for(const [id,group] of groups) {
-      const cards=[...value.cards,...value.history.filter(card=>card.state==='live')].filter(card=>card.state===id);
-      setText(group.count,String(cards.length));place(cards,group.list);group.empty.hidden=Boolean(cards.length);group.group.hidden=!cards.length;
+      const cards=[...value.cards,...loaded,...value.history.filter(card=>card.state==='live')].filter(card=>card.state===id);
+      setText(group.count,String(value.state_counts?.[id] ?? cards.length));place(cards,group.list);group.empty.hidden=Boolean(cards.length);setText(group.empty, value.state_counts?.[id] ? 'Older work in this state is available using Load older unresolved work.' : 'No work in this state.');group.group.hidden=!cards.length && !value.state_counts?.[id];
     }
     place(value.history.filter(card=>card.state!=='live'),historyList);
     history.hidden=!historyList.children.length && !value.omitted_history;
@@ -118,6 +136,12 @@ export function mountOrchestrator({container, window:win, now = () => new Date()
     if(active?.isConnected && doc.activeElement!==active) active.focus({preventScroll:true});
     for(const [parent,x,y] of scroll){parent.scrollLeft=x;parent.scrollTop=y;}
     if(win.scrollX!==left || win.scrollY!==top) win.scrollTo(left,top);
+    setText(pagination,`${value.cards.length + loaded.length} of ${value.total_cards ?? value.cards.length} unresolved items shown, newest changes first. Older review and merged work keeps its recorded state. Legacy board publication is separate and is not verified by this feed.`);
+    more.hidden=pageIndex >= (value.pages?.length || 0);
     ages();
-  }, ages, offline(){offline=true;ages();}, dispose(){records.clear();}};
+  }
+  return {update(next) {
+    if(JSON.stringify(value)!==JSON.stringify(next)) {generation++;loaded=[];pageIndex=0;more.disabled=false;}
+    value=next;offline=false;render();
+  }, ages, offline(){offline=true;ages();}, dispose(){disposed=true;generation++;records.clear();}};
 }

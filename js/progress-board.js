@@ -450,9 +450,9 @@ export function mountBoard(deps = {}) {
         container.textContent = 'The orchestrator view has not been published yet. The last observation is unknown.';
         return;
       }
-      orchestratorUI ||= mountOrchestrator({container, window:win, now:currentNow});
+      orchestratorUI ||= mountOrchestrator({container, window:win, now:currentNow, readPage: args => client.readProgressBoard(args)});
       orchestratorUI.update(view.orchestrator);
-      byId('task-count').textContent = `${view.orchestrator.cards.length} active ${view.orchestrator.cards.length === 1 ? 'item' : 'items'}`;
+      byId('task-count').textContent = `${view.orchestrator.total_cards ?? view.orchestrator.cards.length} active ${(view.orchestrator.total_cards ?? view.orchestrator.cards.length) === 1 ? 'item' : 'items'}`;
       return;
     }
     if (view?.hierarchy && !view.work_queue) {
