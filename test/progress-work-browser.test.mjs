@@ -852,8 +852,7 @@ for(const width of [1440,390]) test(`trustworthy acceptance progress and scope h
  const {page,calls,errors}=await open(t,{width,rpcReply:(rpc,payload)=>rpc.name==='engineering-progress'?structuredClone(read):payload});
  await page.waitForFunction(()=>document.querySelector('.work-progress-summary')?.textContent==='2 of 5 acceptance checks verified');
  assert.equal(calls.some(call=>call.name==='engineering-progress'&&call.arguments.work_request==='WR-900'),true);
- await page.locator('.work-progress summary').click();
- assert.match(await page.locator('.work-progress details').textContent(),/Revision 1.*4 acceptance checks/);
+ assert.match(await page.locator('.work-scope-history').textContent(),/Revision 1.*4 acceptance checks/);
  await page.clock.runFor(5100);
  assert.equal(await page.locator('.work-progress-summary').textContent(),'2 of 5 acceptance checks verified');
  if(process.env.SLICE9_CAPTURE_DIR) {
@@ -862,17 +861,19 @@ for(const width of [1440,390]) test(`trustworthy acceptance progress and scope h
   await page.clock.runFor(300);
   await page.screenshot({path:resolve(process.env.SLICE9_CAPTURE_DIR,`acceptance-progress-${width}.png`)});
  }
- await page.locator('.work-progress-checks a').first().focus();
+ await page.locator('[data-progress-check]').first().focus();
  read.scope.revision=3;read.scope.digest='sha256:'+'c'.repeat(64);read.total=6;
  read.checks.push({slice_ref:'slice:nine',check_ref:'check:scope-addition',objective:'Explain the added scope',state:'remaining'});
  read.history.push({...read.scope,total_checks:6});
  await page.clock.runFor(5100);
  await page.waitForFunction(()=>document.querySelector('.work-progress-summary')?.textContent==='2 of 6 acceptance checks verified');
- assert.equal(await page.locator('.work-progress-checks a').first().evaluate(el=>el===document.activeElement),true,'Evidence focus survives a progress refresh');
+ assert.equal(await page.locator('[data-progress-check]').first().evaluate(el=>el===document.activeElement),true,'Evidence focus survives a progress refresh');
  assert.match(await page.locator('.work-progress').textContent(),/Scope revision 3/);
- assert.equal(await page.locator('.work-progress details').evaluate(node=>node.open),true);
+ assert.equal(await page.locator('.work-scope-history').evaluate(node=>node.open),true);
  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
- await page.locator('.work-progress-checks a').first().click();
+ await page.locator('[data-progress-check]').first().click();
+ await page.locator('[data-check-evidence]:visible summary').click();
+ await page.locator('[data-check-evidence]:visible a').click();
  await page.waitForURL('**/control-room/progress/work?**#workCanonicalPassport');
  await page.waitForFunction(()=>document.querySelector('#workCanonicalBody')?.textContent.includes('Closure:'));
  assert.equal(new URL(page.url()).searchParams.get('work_request'),'WR-900');
@@ -950,16 +951,21 @@ test('Tab reaches the linked Work Request and Enter opens its standalone detail'
   const {page,errors} = await open(t);
   const link = page.locator('.work-lineage a').filter({hasText:'WR-900'});
   await link.waitFor();
-  const evidence=page.locator('.work-progress-checks a');
-  await evidence.last().waitFor();
-  assert.equal(await evidence.count(),5);
+  const checks=page.locator('[data-progress-check]');
+  await checks.last().waitFor();
+  assert.equal(await checks.count(),5);
   await page.locator('#workTitle').focus();
-  for(const check of await evidence.all()){
-    await page.keyboard.press('Tab');
-    assert.equal(await check.evaluate(el=>el===document.activeElement),true,'Each check source remains in native tab order');
-  }
   await page.keyboard.press('Tab');
-  assert.equal(await page.locator('.work-progress summary').evaluate(el => el === document.activeElement), true, 'Scope history remains in native tab order');
+  assert.equal(await checks.first().evaluate(el=>el===document.activeElement),true);
+  await page.keyboard.press('Enter');
+  await page.keyboard.press('Tab');
+  assert.equal(await page.locator('[data-check-evidence]:visible summary').evaluate(el=>el===document.activeElement),true);
+  await page.keyboard.press('Tab');
+  assert.equal(await page.locator('.work-scope-history summary').evaluate(el=>el===document.activeElement),true);
+  for(const check of (await checks.all()).slice(1)){
+    await page.keyboard.press('Tab');
+    assert.equal(await check.evaluate(el=>el===document.activeElement),true,'Check selectors remain in native tab order');
+  }
   await page.keyboard.press('Tab');
   assert.equal(await link.evaluate(el => el === document.activeElement), true, 'Tab must reach the Work Request');
   await page.keyboard.press('Enter');

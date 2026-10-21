@@ -5,7 +5,7 @@ import { dealTimeline, countdown, renderDealTimeline, renderDealUpdates, renderC
 import { createLiveClient } from '../js/live-client.js';
 import { readFile } from 'node:fs/promises';
 const now = Date.parse('2026-10-04T17:00:00Z');
-const detail = {deal:{id:'demo',phase:'Legal'},history:[
+const detail = {deal:{id:'demo',phase:'Legal',phase_started_on:{research:'2026-09-20',legal:'2026-10-03'}},history:[
   {id:'p1',field:'phase',new_value:{phase:'research'},recorded_at:'2026-09-20T12:00:00Z'},
   {id:'p2',field:'phase',new_value:'legal',recorded_at:'2026-10-03T12:00:00Z'},
 ],lease:{id:'demo-lease',status:'current',commencement_on:'2026-11-01',expiration_on:'2031-10-31',source:'Demo abstract',evidence_ref:'Demo clause 3',free_rent_months:2},
@@ -68,6 +68,10 @@ test('summary-only activity does not offer a fabricated original',()=>{
  assert.doesNotMatch(html,/unavailable|Read full update/);
 });
 
+test('zero notes omit the entire Updates section',()=>{
+ assert.equal(renderDealUpdates({thread:[],activities:[]}), '');
+});
+
 test('review 1: producer cleared and passed dates do not raise deadline alarms',()=>{
  for (const [status,state,text] of [['cleared','complete','Cleared'],['passed','past','Passed'],['open','overdue','1 day overdue']]) {
   const value={deal:detail.deal,critical_dates:[{id:'loi',kind:'loi_expiry',due_on:'2026-10-03',status}]};
@@ -91,4 +95,49 @@ test('review 2: recorded and projected lease expiration share urgency while comm
   const date=dealTimeline({deal:detail.deal,critical_dates:[{kind:'lease_commencement',due_on:day,status:'open'}]},now).dates[0];
   assert.equal(countdown(date,now).state,day==='2026-10-03'?'past':'upcoming');
  }
+});
+
+test('updates show the latest excerpt and expand into recorded history',()=>{
+ const root=new JSDOM(renderDealUpdates(detail)).window.document;
+ const overview=root.querySelector('.updates-overview');
+ assert.ok(overview);
+ assert.match(overview.textContent,/Demo negotiated allowance/);
+ assert.doesNotMatch(overview.textContent,/Demo note/);
+ assert.ok(overview.textContent.length<400);
+ const history=root.querySelector('.updates-history');
+ assert.equal(history.open,false);
+ assert.match(history.querySelector('summary').textContent,/Recorded updates.*2/);
+ assert.match(history.textContent,/Original demo email <script>data only<\/script>/);
+ assert.equal(root.querySelectorAll('.deal-note').length,2);
+});
+
+test('timeline consumes first phase dates from the board projection and never overwrites them with a later revisit',()=>{
+ const value={...detail,deal:{...detail.deal,phase_started_on:{research:'2026-08-31',legal:'2026-09-30'}},history:[...detail.history,{field:'phase',new_value:'research',recorded_at:'2026-10-04T12:00:00Z'}]};
+ const phases=dealTimeline(value,now).phases;
+ assert.equal(phases.find(p=>p.slug==='research').day,'2026-08-31');
+ assert.equal(phases.find(p=>p.slug==='legal').day,'2026-09-30');
+ assert.doesNotMatch(renderDealTimeline(value,now),/Start date not recorded/);
+});
+
+test('the live adapter preserves authoritative start dates in both board and detail reads',async()=>{
+ const phase_started_on={research:'2026-08-31',legal:'2026-09-30'};
+ const client=createLiveClient({fetchImpl:async(_path,init)=>{
+  const {name}=JSON.parse(init.body).params;
+  const result=name==='deal-room-board'?{deals:[{id:'demo',phase:'legal',next_step:'Review the draft',phase_started_on}]}:{deal_id:'demo',phase:'legal',next_step:'Review the draft',phase_started_on};
+  return new Response(JSON.stringify({result:{content:[{text:JSON.stringify(result)}]}}));
+ }});
+ assert.deepEqual((await client.getBoard()).deals[0].phase_started_on,phase_started_on);
+ const detail=await client.getDeal('demo');
+ assert.deepEqual(detail.deal.phase_started_on,phase_started_on);
+ assert.equal(dealTimeline(detail).phases.find(p=>p.slug==='legal').day,'2026-09-30');
+});
+
+
+test('a capped activity feed never claims to be full history',()=>{
+ const allActivities=Array.from({length:51},(_,i)=>({id:`activity-${i}`,kind:'note',summary:`Demo activity ${i}`,occurred_at:new Date(Date.UTC(2026,9,20,12,0,-i)).toISOString()}));
+ const root=new JSDOM(renderDealUpdates({activities:allActivities.slice(0,50)})).window.document;
+ assert.equal(root.querySelectorAll('.deal-note').length,50);
+ assert.doesNotMatch(root.body.textContent,/Full history/i);
+ assert.match(root.querySelector('.updates-history > summary').textContent,/Recorded updates \(50\)/);
+ assert.match(root.body.textContent,/latest 50 activities.*older activities may be omitted/i);
 });

@@ -317,9 +317,11 @@ test('an open lead detail updates automatically while preserving expanded Detail
   await page.waitForFunction(() => document.querySelector('#refreshHome').getAttribute('aria-busy') === 'false');
   await page.locator('.home-lead').first().click();
   await page.locator('#homeDetail summary').click();
+  assert.equal(await page.locator('#homeDetail summary').evaluate(node => document.activeElement === node), true);
   state.updateLead('demo-lead-0', 97);
   await page.evaluate(() => window.dispatchEvent(new Event('online')));
-  await page.waitForFunction(() => document.querySelector('.home-detail-score')?.textContent.includes('97'));
+  await page.waitForFunction(() => document.querySelector('.home-detail-score')?.textContent.includes('97')
+    && document.querySelector('#refreshHome').getAttribute('aria-busy') === 'false');
   assert.equal(await page.locator('#homeDetail details').evaluate(node => node.open), true);
   assert.equal(await page.locator('#homeDetail summary').evaluate(node => document.activeElement === node), true);
   assert.deepEqual(state.errors, []);
@@ -452,7 +454,7 @@ test('R13 phone lead detail wraps specialty, maximum-length names and metadata w
   });
 });
 
-test('R14 a task with no critical dates opens its exact deal and visible task', async t => {
+test('R14 a task with no critical dates opens its exact deal and recorded next step', async t => {
   const { page } = await open(t, { tasksOnly: true });
   const task = page.locator('[data-home-key="agenda:task:demo-task-d01"]');
   await task.waitFor();
@@ -460,7 +462,7 @@ test('R14 a task with no critical dates opens its exact deal and visible task', 
   await task.click();
   await page.waitForFunction(() => document.querySelector('#recordPanel')?.open && document.querySelector('#detailUpdateForm'));
   assert.equal(await page.evaluate(async () => (await import('/js/pipeline.js')).state.panelDeal), 'd01');
-  assert.match(await page.locator('#panelBody').textContent(), /Demo follow-up/);
+  assert.equal(await page.locator('.deal-current-action strong').textContent(), 'Confirm fictional requirements');
 });
 
 test('R12 malformed tasks retain independent widgets and settled agenda reports partial data', async t => {

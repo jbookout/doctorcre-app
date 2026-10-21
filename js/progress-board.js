@@ -436,18 +436,7 @@ export function mountBoard(deps = {}) {
       return;
     }
     container.removeAttribute("aria-busy");
-    if (view?.work_queue) {
-      deps.onTasks?.(systemWork ? censusCards() || [] : view.cards, systemWork ? censusObservation : {state:boardState});
-      queueUI ||= mountWorkQueue({container:byId('board-stages'), window:win, boardId});
-      queueUI.update(view.work_queue);
-      byId('task-count').textContent = `${view.work_queue.items.length} jobs`;
-      byId('pipeline-title').textContent = 'Work queue';
-      for (const id of ['board-rail', 'board-filters']) byId(id).setAttribute('hidden', '');
-      for (const id of ['board-completed', 'completed-list', 'board-blocked', 'system-work-panel', 'board-ledger'])
-        byId(id)?.closest('.panel')?.setAttribute('hidden', '');
-      return;
-    }
-    if (view?.hierarchy) {
+    if (view?.hierarchy && !view.work_queue) {
       pipelineCards = Object.entries(view.hierarchy.cards).map(([id, card]) => ({...card, id, title:card.card_title, summary:card.card_description}));
       if (!hierarchyUI) doc.querySelector("details.directory-panel")?.removeAttribute("open");
       hierarchyUI ||= mountHierarchy({container:byId("board-stages"), window:win, onOpen:card=>openWork(card.id), onClose:deps.closeTask});
@@ -475,8 +464,18 @@ export function mountBoard(deps = {}) {
       tasks:original.filter(card=>card.stage===stage.id)}))},approvalCards);
     const all = merged.stages.flatMap(stage=>stage.tasks.map(task=>({...task,
       ...(boardId !== SYSTEM_BOARD_ID ? {task_id:task.task_id || task.id} : {})})));
-    renderFilters({repos:view?.repos || [],cards:all,stages});
     deps.onTasks?.(all,systemWork ? censusObservation : {state:boardState});
+    if (view?.work_queue) {
+      queueUI ||= mountWorkQueue({container:byId('board-stages'), window:win, boardId});
+      queueUI.update(view.work_queue);
+      byId('task-count').textContent = `${view.work_queue.items.length} jobs`;
+      byId('pipeline-title').textContent = 'Work queue';
+      for (const id of ['board-rail', 'board-filters']) byId(id).setAttribute('hidden', '');
+      for (const id of ['board-completed', 'completed-list', 'board-blocked', 'system-work-panel', 'board-ledger'])
+        byId(id)?.closest('.panel')?.setAttribute('hidden', '');
+      return;
+    }
+    renderFilters({repos:view?.repos || [],cards:all,stages});
     renderCompleted({...view, cards:all,stages});
     const kind = census ? "project" : view.kind;
     pipelineCards = all;

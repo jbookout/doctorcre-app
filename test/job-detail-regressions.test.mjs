@@ -159,3 +159,22 @@ test('attention detail retains blocker, progress and unknown model facts in exec
  detail.update([{id:'other',title:'Demo other work'}],{source:'agents'});
  assert.match(body.textContent,/Demo validation complete/);
 });
+
+test('selected check and its disclosure survive refresh, then close restores the trigger',async()=>{
+ const {detail,body,document}=setup({engineeringProgress:async()=>structuredClone(progressFixture),workRequestCard:async()=>({ok:true,human_ref:'WR-900'})});
+ detail.open({id:'progress-job',work_request:'WR-900'});await tick();
+ const second=()=>body.querySelectorAll('[data-progress-check]')[1];
+ second().focus();second().click();
+ const key=second().dataset.progressCheck;
+ assert.equal(body.querySelector('[data-check-evidence]:not([hidden]) h4').textContent,'Rename');
+ assert.equal(body.querySelector('.work-progress-inspector').parentElement,second().parentElement);
+ const raw=body.querySelector('[data-check-evidence]:not([hidden]) details');raw.open=true;
+ body.querySelector('.work-scope-history').open=false;
+ await detail.refresh();
+ assert.equal(document.activeElement,second());
+ assert.equal(second().getAttribute('aria-expanded'),'true');
+ assert.equal(body.querySelector('[data-check-evidence]:not([hidden])').dataset.checkEvidence,key);
+ assert.equal(body.querySelector('[data-check-evidence]:not([hidden]) details').open,true);
+ assert.equal(body.querySelector('.work-scope-history').open,false);
+ document.getElementById('jobClose').click();assert.equal(document.activeElement,document.getElementById('trigger'));
+});

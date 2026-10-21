@@ -178,3 +178,12 @@
   .cr-attention-row { padding-block: var(--space-3); }
   .cr-attention-subject { flex-wrap: wrap; gap: var(--space-1) var(--space-3); }
 }
+
+@media (min-width: 1024px) {
+  #jobDialog:has(.work-progress[data-progress-state="available"]) { width: min(1240px, calc(100vw - 40px)); }
+  #jobBody:has(> .work-progress[data-progress-state="available"]) { display: grid; grid-template-columns: minmax(0, .65fr) minmax(0, 2fr); column-gap: var(--space-5); align-items: start; }
+  #jobBody:has(> .work-progress[data-progress-state="available"]) > .job-summary { grid-column: 1; grid-row: 1; grid-template-columns: 1fr; }
+  #jobBody:has(> .work-progress[data-progress-state="available"]) > .work-dependencies { grid-column: 1; grid-row: 2; }
+  #jobBody:has(> .work-progress[data-progress-state="available"]) > .work-progress { grid-column: 2; grid-row: 1 / span 2; margin-block: 0; }
+  #jobBody:has(> .work-progress[data-progress-state="available"]) > :not(.job-summary):not(.work-dependencies):not(.work-progress) { grid-column: 1 / -1; }
+}
