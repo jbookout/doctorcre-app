@@ -409,7 +409,7 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
     if (!$("leadDetail").open && !$("stageDialog").open) {
       selectDocRecord("lead", null);
       pageDocContext?.release("getLeadDetail");
-      restoreFocus(state.trigger);
+      if (doc.activeElement === doc.body || $(id).contains(doc.activeElement)) restoreFocus(state.trigger);
     }
   });
   $("stageForm").addEventListener("submit", event => {
