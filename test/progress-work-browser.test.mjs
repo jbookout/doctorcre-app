@@ -923,6 +923,7 @@ test('chained alias and direct task URLs show identical work evidence', async t 
     const {page,errors} = await open(t, {
       clock:async clock => {
         await clock.runFor(requested === taskId ? 0 : 1100);
+        await clock.setFixedTime(new Date(NOW.getTime() + 5100));
       },
       path:`/control-room/progress/work?board=demo-project&task=${requested}`,
       rpcReply:(rpc,payload) => {
@@ -938,6 +939,7 @@ test('chained alias and direct task URLs show identical work evidence', async t 
     evidence.push(await page.locator('#workReviewList, #workDotList, #workSessionList, #workCanonicalBody, #wireFeed').allTextContents());
     assert.deepEqual(errors, []);
   }
+  assert.match(evidence[0].join('\n'), /human5s ago/);
   assert.match(evidence[0].join('\n'), /Fix round one/);
   assert.deepEqual(evidence[1], evidence[0]);
 });
