@@ -220,6 +220,7 @@ export function mountAppLayout(root, host, pathname) {
         return actions.length ? actions.map(action => ({...deal, ...action, next_step:action.what, next_date:action.due_on})) : [deal];
       }).filter(d => needsAttention(d));
       render('#appWorkingList', active.filter(d => needsAttention(d)).slice(0,8).map(d => row(d,d.next_step)).join('') || empty);
+      renderToday();
       if (!pageOwnsMoves) {
         try {
           // The existing feed starts with history. Never present its oldest
@@ -237,8 +238,7 @@ export function mountAppLayout(root, host, pathname) {
           renderMoves();
         } catch { render('#appTodayMoves', unavailable); }
       }
-    } else { todayNeeds = null; resetFeed(); render('#appTodayNeeds', unavailable); render('#appWorkingList', unavailable); if (!pageOwnsMoves) render('#appTodayMoves', unavailable); }
-    renderToday();
+    } else { todayNeeds = null; resetFeed(); render('#appTodayNeeds', unavailable); render('#appWorkingList', unavailable); if (!pageOwnsMoves) render('#appTodayMoves', unavailable); renderToday(); }
   };
   layout.addEventListener('click', event => {
     const item = event.target.closest('[data-layout-deal]'); if (!item) return;
