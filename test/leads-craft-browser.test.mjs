@@ -71,7 +71,9 @@ test('Lead opening and actions are separate accessible keyboard controls', async
   await page.waitForFunction(() => document.querySelector('#moveAnnouncement').textContent === 'Client linked');
   assert.equal(writes.at(-1).name, 'link-lead-client');
   assert.equal(await page.locator('#leadDetail').evaluate(node => node.open), false, 'Link does not open details');
-  await page.getByRole('button', { name: 'Undo', exact: true }).focus();
+  const undo = page.getByRole('button', { name: 'Undo', exact: true });
+  await settles(async () => assert.equal(await undo.isEnabled(), true, 'Undo is available after Link readback'));
+  await undo.focus();
   await page.keyboard.press('Enter');
   await page.locator('#stageDialog[open] .stage-proposal').waitFor();
   assert.equal(await page.locator('#leadDetail').evaluate(node => node.open), false, 'Undo opens stage review only');
