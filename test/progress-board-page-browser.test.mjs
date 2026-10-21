@@ -12,7 +12,7 @@ import workQueue from '../js/progress-work-queue-fixture.js';
 import orchestratorSequence from './fixtures/progress-orchestrator.json' with {type:'json'};
 
 const boards = [{ board_id: 'carr-v5', title: 'System delivery' }, { board_id: 'demo-project', title: 'Demo project' }];
-async function open(t, { unfinished = true, path = '/control-room/progress', boardRead = 'ready', rows = [], control, width = 390, height = 900, costData, snapshotData, autoMount = true, timezoneId, setupPage } = {}) {
+async function open(t, { unfinished = true, path = '/control-room/progress', boardRead = 'ready', rows = [], control, width = 390, height = 900, costData, snapshotData, assetRoot, autoMount = true, timezoneId, setupPage } = {}) {
   const browser = await chromium.launch(); t.after(() => browser.close());
   const page = await browser.newPage({ viewport: { width, height }, ...(timezoneId ? { timezoneId } : {}) });
   const context = page.context();
@@ -47,7 +47,7 @@ async function open(t, { unfinished = true, path = '/control-room/progress', boa
     } },
     ASSETS: { fetch: async request => {
       const path = new URL(request.url).pathname;
-      try { return new Response(await readFile(new URL('..' + path, import.meta.url)), {
+      try { return new Response(await readFile(assetRoot ? new URL('.' + path, assetRoot) : new URL('..' + path, import.meta.url)), {
         headers: { 'content-type': /\.m?js$/.test(path) ? 'text/javascript' : path.endsWith('.css') ? 'text/css' : 'text/html' },
       }); } catch { return new Response('Not found', { status: 404 }); }
     } },
@@ -780,7 +780,8 @@ for (const width of [390, 1280]) test(`expanded queue detail leads with findings
 for (const width of [390,1280]) for (const theme of ['light','dark'])
   test(`orchestrator published queue observations update in place at ${width}px ${theme}`, async t => {
     const {page,errors,setSnapshot}=await open(t,{width,timezoneId:'America/Chicago',
-      path:'/control-room/progress/board/orchestrator',snapshotData:orchestratorSequence[0].snapshot.snapshot_json});
+      path:'/control-room/progress/board/orchestrator',snapshotData:orchestratorSequence[0].snapshot.snapshot_json,
+      assetRoot:process.env.ORCHESTRATOR_BUILT_ROOT ? new URL(`file://${process.env.ORCHESTRATOR_BUILT_ROOT}/`) : undefined});
     await page.evaluate(theme=>document.documentElement.dataset.theme=theme,theme);
     await page.locator('[data-orchestrator-card="queue:search"]').waitFor();
     await page.evaluate(()=>{
