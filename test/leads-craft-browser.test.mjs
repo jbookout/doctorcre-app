@@ -33,7 +33,7 @@ async function loadingLayout(page) {
         sidebar: region('#appSidebar'), today: region('#appToday'), center: region('.app-layout-center'), main: region('#appMainSlot'),
         synced: Boolean(document.querySelector('#appSyncTime')?.dateTime) },
       board: region('#leadBoard'),
-      columns: style && { ...bounds(columns), display: style.display, count: style.columnCount, width: style.columnWidth, gap: style.columnGap },
+      columns: style && { ...bounds(columns), display: style.display, count: style.columnCount, columnWidth: style.columnWidth, gap: style.columnGap },
       stages: [...document.querySelectorAll('.stage-column')].map(bounds),
       boardBusy: document.querySelector('#leadBoard')?.getAttribute('aria-busy'),
       mapBusy: document.querySelector('#territoryMap')?.getAttribute('aria-busy'),
