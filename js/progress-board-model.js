@@ -3,6 +3,7 @@
 // visual indicator the renderer can put on a card is declared here once, and
 // both the renderer and the legend read these constants, so the key cannot
 // drift from what the board shows.
+import { queueError } from './progress-work-queue.js';
 
 export const SNAPSHOT_SCHEMA = "carr-progress-board.v2";
 export const ALL_REPOS_BOARD = "all-repos";
@@ -383,7 +384,7 @@ function ledgerFromTasks(cards) {
 }
 
 const COMPACT_SCHEMA = "carr-progress-board.v3";
-const SUPPORTED_SCHEMAS = new Set(["carr-progress-board.v1", SNAPSHOT_SCHEMA]);
+const SUPPORTED_SCHEMAS = new Set(["carr-progress-board.v1", SNAPSHOT_SCHEMA, "carr-progress-board.v4"]);
 const isRecord = value => Boolean(value) && typeof value === "object" && !Array.isArray(value);
 
 export function expandBoardRead(read) {
@@ -409,7 +410,12 @@ function snapshotError(snapshot, data) {
   if (!isRecord(snapshot.snapshot_json)) return "The published snapshot is not an object, so it cannot be shown.";
   if (data.schema !== undefined && !SUPPORTED_SCHEMAS.has(data.schema))
     return `Snapshot schema ${String(data.schema).slice(0, 60)} is not supported by this page.`;
+  if (data.schema === "carr-progress-board.v4" &&
+      (!isRecord(data.hierarchy) || data.hierarchy.schema !== "work-request-hierarchy.v1" ||
+       !isRecord(data.hierarchy.work_requests) || !isRecord(data.hierarchy.slices)))
+    return "The published Work Request hierarchy is incomplete, so it cannot be shown.";
   if (!isRecord(data.tasks)) return "The published snapshot has no tasks map, so it cannot be shown.";
+  if (queueError(data.work_queue)) return queueError(data.work_queue);
   return null;
 }
 
@@ -489,6 +495,8 @@ export function boardView(read, at = new Date()) {
     updated_at: snapshot?.updated_at || null,
     sync,
     costs: data.costs,
+    work_queue: data.work_queue,
+    hierarchy: data.hierarchy ? { ...data.hierarchy, cards: data.tasks || {} } : null,
     cards,
     stages,
     repos: rows(data.repos, row => typeof row.repo === "string"),

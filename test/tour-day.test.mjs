@@ -52,8 +52,8 @@ test("day map selection uses canonical IDs, short copy, navigation receipts and 
   Object.defineProperty(dom.window.navigator, "onLine", { get: () => online });
   class Map { constructor() { maps++; } on() {} resize() {} remove() {} jumpTo() {} flyTo() {} }
   class Marker { constructor({ element }) { this.element = element; } setLngLat() { return this; } addTo() { dom.window.document.body.append(this.element); return this; } remove() { this.element.remove(); } }
-  const view = mountAcceptedItinerary(dom.window.document.querySelector("section"), { route, promotion_receipt: mapReceipt, scope: "synthetic", user_ref: "synthetic-user", presentation: "day", canSelect: () => allow, onSelect: id => { selected = id; }, loadMapLibre: async () => ({ Map, Marker, setWorkerUrl() {} }) });
-  await view.ready; assert.equal(maps, 0); assert.match(dom.window.document.querySelector("section").textContent, /Map unavailable/);
+  const view = mountAcceptedItinerary(dom.window.document.querySelector("section"), { route, promotion_receipt: mapReceipt, scope: "synthetic", user_ref: "synthetic-user", presentation: "day", basemapStyle: { version: 8, sources: {}, layers: [] }, canSelect: () => allow, onSelect: id => { selected = id; }, loadMapLibre: async () => ({ Map, Marker, setWorkerUrl() {} }) });
+  await view.ready; assert.equal(maps, 0); assert.match(dom.window.document.querySelector("section").textContent, /map unavailable/i);
   online = true; dom.window.dispatchEvent(new dom.window.Event("online")); await new Promise(r => setImmediate(r));
   assert.equal(maps, 1); assert.doesNotMatch(dom.window.document.querySelector("section").textContent, /Source|record|Search Mode|every read/);
   dom.window.document.querySelector('[data-route-stop-id="stop-b"]').click(); assert.equal(selected, "stop-b");

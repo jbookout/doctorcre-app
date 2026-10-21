@@ -8,9 +8,10 @@ import { mountAtlas } from './atlas.js';
 import { mountSessions } from './sessions.js';
 import { mountModelRoom } from './model-room.js';
 import { mountNotificationBadge, wireTabs } from './shell.js';
-import { validIncidentBoardPayload, incidentFilters, groupedIncidents } from './control-room-model.js';
+import { validIncidentBoardPayload, validCurrentWorkItemPayload, incidentFilters, groupedIncidents } from './control-room-model.js';
+import { jobLinks } from './progress-board-model.js';
 import { mountBoard } from './progress-board.js';
-import { automationMonth, automationTiming } from './control-room-workspace-model.js';
+import { automationMonth, automationTiming, attentionTasks } from './control-room-workspace-model.js';
 import { connectionView, meteredSpend } from './connections-model.js';
 import { mountJobDetail } from './job-detail.js';
 import { escapeText as escapeHtml } from './change-receipts.mjs';
@@ -25,6 +26,9 @@ const $=id=>document.getElementById(id);
 export { escapeHtml };
 export const view={status:'loading',sequence:0,severity:'all',queue:{state:'pending',model:createQueue()},inbox:{state:'pending'},waiting:{state:'pending'},reads:{incidents:{state:'pending'},approvals:{state:'pending'},schedule:{state:'pending'},connections:{state:'pending'}},atlas:{status:'idle',payload:null}};
 let client,tabs,board,details,queueList,detail;
+let attention = { tasks: [], observation: { state: 'pending' } };
+let heldWork = [];
+const withHolders = tasks => tasks.map(task => ({ ...task, held: heldWork.find(row => row.human_ref === jobLinks(task).workRequest) }));
 const now=new Date();let year=now.getFullYear(),month=now.getMonth();
 const payloadOf=id=>view.reads[id]?.state==='read'?view.reads[id].payload:null;
 const asOf=read=>updatedLabel(read?.observed_at);
@@ -34,6 +38,29 @@ function replaceHtml(node,html){
  const key=node.contains(document.activeElement)?document.activeElement.dataset.roomControl:null;
  node.innerHTML=html;
  if(key)[...node.querySelectorAll('[data-room-control]')].find(control=>control.dataset.roomControl===key)?.focus();
+}
+function renderAttention(tasks, observation) {
+ attention = { tasks, observation };
+ const state = observation.state;
+ details?.update(withHolders(tasks), observation);
+ const current = state === 'read';
+ const pending = state === 'pending';
+ const rows = current ? attentionTasks(withHolders(tasks)) : [];
+ $('crAttentionCount').textContent = current ? `${rows.length} ${rows.length === 1 ? 'item' : 'items'}` : '';
+ $('crAttentionCoverage').textContent = current ? 'Failed and blocked work from the loaded board. Missing facts stay unknown.' : pending ? 'Reading attention work…' : 'Attention work unavailable.';
+ $('crAttentionList').setAttribute('aria-busy', String(pending));
+ if (!current) {
+  replaceHtml($('crAttentionList'), pending
+   ? '<div class="cr-attention-loading" data-state="loading" aria-hidden="true"><span></span><span></span><span></span><span></span></div>'
+   : '<div class="state-block cr-attention-error" data-state="offline"><h3>Attention work could not be read</h3><button type="button" class="btn" data-attention-retry>Retry attention</button></div>');
+  return;
+ }
+ replaceHtml($('crAttentionList'),rows.length ? rows.map(row => `<article class="cr-attention-row" data-attention-id="${escapeHtml(row.id)}" data-state="${escapeHtml(row.state)}">
+  <div class="cr-attention-subject"><h4>${escapeHtml(row.title)}</h4><span class="cr-work-status"><span aria-hidden="true">${row.state==='failed'?'!':'■'}</span> ${escapeHtml(row.state.replaceAll('_',' '))}</span></div>
+  <dl class="cr-work-facts"><div class="cr-work-blocker"><dt>Blocker</dt><dd>${escapeHtml(row.blocker)}</dd></div><div><dt>Owner</dt><dd>${escapeHtml(row.owner)}</dd></div><div><dt>Agent</dt><dd>${escapeHtml(row.agent)}</dd></div><div class="cr-work-progress"><dt>Last progress</dt><dd>${escapeHtml(row.progress)}</dd></div></dl>
+  ${row.linked ? `<section class="cr-attention-linked" aria-label="Linked Work Request"><h5>Linked Work Request</h5><dl class="cr-work-facts"><div><dt>Owner</dt><dd>${escapeHtml(row.linked.owner)}</dd></div><div><dt>Agent</dt><dd>${escapeHtml(row.linked.agent)}</dd></div><div class="cr-work-blocker"><dt>Blocker</dt><dd>${escapeHtml(row.linked.blocker)}</dd></div></dl></section>` : ''}
+  <div class="cr-attention-footer"><span>${escapeHtml(updatedLabel(row.updatedAt))}</span><button type="button" class="btn" data-room-control="attention:${escapeHtml(row.id)}" data-attention-open="${escapeHtml(row.id)}">Open details</button></div>
+ </article>`).join('') : stateBlock('empty','No failed or blocked work in the loaded board'));
 }
 function renderIncidents() {
   const read = view.reads.incidents;
@@ -173,6 +200,8 @@ function renderQueue(){
 // One page of the census; incidents and current holders enrich every page alike.
 async function queueContext(){
  const current=client.currentWorkItem?await readWithDeadline(()=>client.currentWorkItem()).catch(()=>null):null;
+ heldWork = validCurrentWorkItemPayload(current) ? current.current : [];
+ renderAttention(attention.tasks, attention.observation);
  return {incidents:payloadOf('incidents')||null,current};
 }
 const readCensus=cursor=>readWithDeadline(()=>client.unfinishedWork({limit:QUEUE_PAGE,...(cursor?{cursor}:{})}));
@@ -182,7 +211,7 @@ async function loadQueue(){
  if(view.queue.model.pages===0){view.queue={...view.queue,state:'pending'};renderQueue();}
  try{const context=await queueContext();const model=await refreshQueue(view.queue.model,readCensus,context);if(sequence!==view.sequence)return;view.queue={state:'read',model:settleRefresh(view.queue.model,model)};}
  catch(error){if(sequence!==view.sequence)return;view.queue={state:'unknown',reason:[401,403].includes(error.status)?'Sign in required':'Updates unavailable',model:view.queue.model};}
- renderQueue();
+ renderQueue();renderAttention(attention.tasks,attention.observation);
 }
 async function loadMoreQueue(){
  const cursor=view.queue.model.nextCursor;if(!cursor||view.queue.loading)return;
@@ -256,7 +285,8 @@ function openAtlas(node=null){mountAtlas({client,getIncidentsRead:()=>view.reads
 async function boot(){
  const resolved=resolveDealroomBoot(globalThis.location);client=resolved.mode==='live'?createLiveClient():await createFixtureClient(resolved.options);
  onDialogClosed($("jobDialog"),()=>selectDocRecord(null,null));
- details=mountJobDetail({client,document});board=mountBoard({client,openTask:task=>details.open(task),onTasks:(tasks,observation)=>details.update(tasks,observation)});board.start();
+ details=mountJobDetail({client,document});board=mountBoard({client,openTask:task=>details.open(withHolders([task])[0]),closeTask:()=>details.clear(),onTasks:renderAttention});board.start();
+ $('crAttentionList').addEventListener('click',event=>{if(event.target.closest('[data-attention-retry]')){board.refresh(true).catch(()=>{});return;}const button=event.target.closest('[data-attention-open]');const task=attention.observation.state==='read'&&withHolders(attention.tasks).find(task=>task.id===button?.dataset.attentionOpen);if(task)details.open(task);});
  $('severityChips').addEventListener('click',event=>{
   const chip=event.target.closest('button[data-severity]');
   if(chip){view.severity=chip.dataset.severity;renderIncidents();}
@@ -271,11 +301,11 @@ async function boot(){
  mountNotificationBadge(client);tabs=wireTabs('controlRoomTabs');wireQueuePane();
  const strip=$('controlRoomTabs'),tabFor=key=>strip.querySelector(`[data-tab-key="${key}"]`);
  const commands=mountControlRoomCommands({tabs:strip,onEscape:()=>closePane()});
- const activate=selected=>{showSection(selected.dataset.tabKey);if(selected.id==='tabAtlas')openAtlas(new URLSearchParams(location.search).get('node'));if(selected.id==='tabSessions')mountSessions({});if(selected.id==='tabModelRoom')mountModelRoom({});};
+ const activate=selected=>{showSection(selected.dataset.tabKey);if(selected.id==='tabAtlas')openAtlas(new URLSearchParams(location.search).get('node'));if(selected.id==='tabSessions')mountSessions({});if(selected.id==='tabModelRoom')mountModelRoom({onOpenTask:task=>details.open(task,{source:'agents'}),onTasks:(tasks,observation)=>details.update(tasks,{...observation,source:'agents'})});};
  // The nav is vertical, so Up and Down move through it too.
  strip.addEventListener('keydown',event=>{if(event.key!=='ArrowDown'&&event.key!=='ArrowUp')return;const all=[...strip.querySelectorAll('[role="tab"]')];const index=all.indexOf(document.activeElement);if(index<0)return;event.preventDefault();all[(index+(event.key==='ArrowDown'?1:-1)+all.length)%all.length].click();});
  strip.addEventListener('tabchange',event=>{const selected=event.detail.tab;if(!selected.dataset.tabKey)return;const next=new URL(location.href);if(next.searchParams.get('tab')!==selected.dataset.tabKey){next.searchParams.set('tab',selected.dataset.tabKey);history.pushState({},'',next);}activate(selected);const scrim=document.getElementById('appDrawerScrim');if(scrim&&!scrim.hidden)scrim.click();});
- const restoreTab=()=>{const selected=tabFor(sectionForTab(new URLSearchParams(location.search).get('tab')));if(selected){tabs.select(selected.id);activate(selected);}};
+ const restoreTab=()=>{const selected=tabFor(sectionForTab(new URLSearchParams(location.search).get('tab')));if(selected){if(selected.getAttribute('aria-selected')!=='true')tabs.select(selected.id);activate(selected);}};
  window.addEventListener('popstate',restoreTab);restoreTab();
  // Opening the page restores a section without stealing focus for it.
  if(strip.contains(document.activeElement))document.activeElement.blur();

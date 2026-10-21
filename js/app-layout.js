@@ -30,7 +30,8 @@ export function mountAppLayout(root, host, pathname) {
   const win = root.defaultView || globalThis.window;
   const pageKey = pathname === '/deals' ? '/deals' : pathname;
   const boardPage = ['/leads','/deals','/pipeline'].includes(pathname);
-  const title = pathname === '/vendors' ? 'Vendors' : pathname === '/clients' ? 'Clients' : pathname === '/deals' ? 'Local Deals' : root.querySelector('main h1, .room-wordmark, .page-kicker')?.textContent.trim().replace(/Loading$/, '').trim() || root.title.split('·')[0].trim();
+  const progressPage = pathname === '/control-room/progress' || pathname.startsWith('/control-room/progress/board/');
+  const title = pathname === '/vendors' ? 'Vendors' : pathname === '/clients' ? 'Clients' : pathname === '/deals' ? 'Local Deals' : progressPage ? 'Progress' : root.querySelector('main h1, .room-wordmark, .page-kicker')?.textContent.trim().replace(/Loading$/, '').trim() || root.title.split('·')[0].trim();
   const { layout, status } = createAppLayout(root, title);
   host.after(layout, status);
   const main = layout.querySelector('#appMainSlot');
@@ -51,8 +52,9 @@ export function mountAppLayout(root, host, pathname) {
   root.body.classList.add('has-app-layout');
   const pageOwnsMoves = Boolean(layout.querySelector('#appTodayMoves [data-layout-slot="moves"]'));
   const phone = win.matchMedia(pathname === "/leads" ? "(max-width:1023px)" : TOUCH_LAYOUT);
+  const itineraryPage = Boolean(root.getElementById('accepted-itinerary'));
   const dealBoard = pathname === '/deals' && root.body.classList.contains('dealroom-page');
-  let sidebar = !boardPage, today = !dealBoard, drawer = null;
+  let sidebar = !boardPage && !itineraryPage, today = !dealBoard && !itineraryPage, drawer = null;
   let drawerOpener = null;
   const background = new Map();
   try { const saved = win.localStorage.getItem(`doctorcre:sidebar:${pageKey}`); if (saved !== null) sidebar = saved === 'open'; const savedToday = win.localStorage.getItem(dealBoard ? 'doctorcre:today:/deals' : 'doctorcre:today'); if (savedToday !== null) today = savedToday !== 'closed'; } catch {}

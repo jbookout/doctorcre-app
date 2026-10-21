@@ -11,6 +11,7 @@ export const normalizedStage = lead => lead.do_not_contact ? "do_not_contact" :
 // then terminal conversion stages. A name match is never an exclusion.
 export function eligibleLead(lead) {
   if (lead.suppressed || lead.merged_into || lead.deleted_at) return false;
+  if (lead.prospect_client_id && lead.prospect_engagement_status === "inactive") return true;
   if (lead.client_id || lead.linked_client || lead.is_client || lead.is_past_client || lead.is_deal || lead.deal_id) return false;
   return !["active_deal", "closed_won"].includes(lead.stage);
 }

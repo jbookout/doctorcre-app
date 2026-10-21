@@ -99,3 +99,11 @@ test('market features exclude missing, malformed and zero coordinates without lo
  assert.deepEqual(point.properties.leadIds,[lead(1).id]);
  assert.deepEqual(point.geometry.coordinates,[-88,30]);
 });
+
+test('returned inactive prospects appear in Leads despite retained client and deal history', () => {
+ const returned=lead(90,{stage:'nurture_drip',client_id:'synthetic-client',is_client:true,linked_client:true,is_deal:true,
+  prospect_client_id:'synthetic-client',prospect_client_version:4,prospect_engagement_status:'inactive'});
+ assert.deepEqual(visibleLeads([returned]).map(l=>l.id),[returned.id]);
+ assert.deepEqual(visibleLeads([{...returned,prospect_engagement_status:'active'}]),[]);
+ assert.deepEqual(visibleLeads([{...returned,suppressed:true}]),[]);
+});

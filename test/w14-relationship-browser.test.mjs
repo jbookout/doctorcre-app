@@ -435,3 +435,12 @@ for(const width of [1440,390]) test(`S8 relationship names fit their nodes and s
  });
  assert.ok(fonts>=12, `rendered node text ${fonts}px`);
 });
+
+test('Relationships live boot loads its selected adapter without the fixture adapter',async t=>{
+ const {page}=await open(t),scripts=[];
+ page.on('request',request=>scripts.push(new URL(request.url()).pathname));
+ await page.goto('http://localhost/relationships?mode=live');
+ await page.locator('#networkNodes [data-node="party:demo-lender"]').waitFor();
+ assert.equal(scripts.includes('/js/fixture-client.js'),false);
+ assert.equal(scripts.includes('/js/live-client.js'),true);
+});

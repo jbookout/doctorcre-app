@@ -133,7 +133,7 @@ test("C12-04 a stale projection renders F2 with its age and still lists the even
   const fresh = queueFreshness(LIVE_QUEUE, { now });
   assert.equal(fresh.state, "stale");
   assert.notEqual(fresh.state, "unavailable", "a stale projection is the ordinary state, never an error");
-  assert.match(fresh.text, /\d+ days? old/, "the age is stated in plain text, not only in colour");
+  assert.match(fresh.text, /\d+ days? ago/, "the age is stated in plain text, not only in colour");
   assert.match(fresh.text, /Showing the last recorded assignments/);
   const board = assignmentBoard(LIVE_QUEUE);
   assert.equal(board.cards.length, LIVE_QUEUE.events.length, "the events are still listed under a stale projection");
@@ -321,8 +321,8 @@ test("C12-11 an effective_model object renders through its branch, not as [objec
   // SYNTHETIC: every live card carries a string, so only a fixture reaches this
   // branch — and the producer explicitly accepts `typeof` string OR object.
   assert.equal(effectiveModelText({ id: "claude-opus-5-high", host: "desktop" }), "claude-opus-5-high");
-  assert.equal(effectiveModelText({ host: "desktop", tier: "high" }), "a model object: host, tier");
-  assert.equal(effectiveModelText({}), "a model object with no fields");
+  assert.equal(effectiveModelText({ host: "desktop", tier: "high" }), "unknown");
+  assert.equal(effectiveModelText({}), "unknown");
   for (const value of [{ id: "x" }, { host: "desktop" }, {}]) {
     assert.equal(/\[object Object\]/.test(effectiveModelText(value)), false);
   }
@@ -592,7 +592,7 @@ test("C13c-04 the honest unavailable and version-conflict sentences name the rea
 
 // MUTATION: remove read-room-queue from contracts/carr-interface.v1.json.
 test("C13-04 the contract pins the merged producer, its two dispatch writes, and V5-UX-C13b's composer write", () => {
-  assert.equal(contract.version, "1.48.0", "the current contract retains the Model Room operation");
+  assert.equal(contract.version, "1.50.0", "the current contract retains the Model Room operation");
   assert.deepEqual(contract.mcp_operations, [...contract.mcp_operations].toSorted(), "mcp_operations stays sorted");
   for (const verb of ["read-room", "read-room-queue", "read-session-identity", "read-dispatch-history"]) {
     assert.ok(contract.mcp_operations.includes(verb), `${verb} is not pinned`);

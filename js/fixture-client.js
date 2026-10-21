@@ -1,3 +1,5 @@
+import { isClosedDeal } from './deal-review-model.js';
+import { addDays, localToday } from './calendar-model.js';
 import { createInvoiceFixture } from './invoice-tracker-fixture.js';
 import { relationshipNetworkFixture } from './relationship-network-fixture.js';
 import { EXAMPLE_SESSION_ROWS, BRANCH_SESSION_ROWS } from './example-sessions.js';
@@ -9,7 +11,6 @@ import { CONNECTION_NAMES } from './connections-model.js';
 import { uuidv4 } from './uuid.js';
 import { observeDocClient } from './doc-context.js';
 import { PHASES } from './client.js';
-import { assuranceHealthRequest, ASSURANCE_LAYERS } from './assurance-health-model.js';
 import { readinessRequest, threadRequest } from './correspondence-model.js';
 import {
   MY_FLAGGED_DESTINATION, NEEDS_JOE_DESTINATION, TEAM_ACTIVE_DESTINATION, TEAM_FLAGGED_DESTINATION,
@@ -50,7 +51,8 @@ export async function createFixtureClient(opts = {}) {
   const deals = new Map(seed.deals.map((d) => [d.id, {
     operating_state: 'active', parking_reason: null, parking_note: null,
     parked_at: null, parked_by: null, version: 1,
-    outcome: null, closed_on: null, won_value: null, ...d,
+    prospect_engagement_status: 'active', client_version: 1,
+    outcome: null, closed_on: null, won_value: null, phase_started_on: {}, ...d,
   }]));
   // Demonstrate that Salesforce-shaped records are not automatically active
   // transactions. These are fixture-only examples; production is never
@@ -1365,21 +1367,37 @@ export async function createFixtureClient(opts = {}) {
     mode: /** @type {const} */ ('fixture'),
     selfActor,
 
+    async setProspectEngagementStatus(args) {
+      return withIdem(args.idempotency_key, () => {
+        const rows = [...deals.values()].filter(d => d.client_id === args.client_id);
+        if (!rows.length || rows.some(d => d.client_status !== 'prospect') || !rows.some(d => !isClosedDeal(d))) refuse('set-prospect-engagement-status', 'not_a_prospect');
+        if (args.expected_actor && args.expected_actor !== selfActor) refuse('set-prospect-engagement-status', 'account_changed');
+        if (!['active','inactive'].includes(args.status) || !args.reason?.trim()) refuse('set-prospect-engagement-status', 'invalid_engagement_status');
+        if (rows.some(d => d.client_version !== args.base_version)) refuse('set-prospect-engagement-status', 'version_conflict');
+        const client_version = args.base_version + 1;
+        rows.forEach(d => Object.assign(d, { prospect_engagement_status: args.status, client_version }));
+        return { ok:true, client_id:args.client_id, prospect_engagement_status:args.status, client_version };
+      });
+    },
+
     async getBoard() {
-      const national = [...deals.values()].filter((d) => d.account_client_id === fixtureAccountId);
+      const today = (opts.today || localToday)();
+      const eligible = [...deals.values()].filter(d => d.client_status !== 'prospect' || d.prospect_engagement_status === 'active');
+      const national = eligible.filter((d) => d.account_client_id === fixtureAccountId && !d.invoiced_on);
       const activeNational = national.filter((d) => d.operating_state === 'active');
       return {
         actor: selfActor,
         // field_base, the same shape the live read returns: the latest committed
         // event for each editable cell, from the same pass as the values, so a
         // first edit has a base here too. A cell with no history has no entry.
-        deals: [...deals.values()].filter(d => !d.invoiced_on).map((d) => ({ ...d, phase_change: phaseChangeFor(d.id), field_base: fieldBaseFor(d.id) })),
+        deals: eligible.filter(d => !d.invoiced_on).map((d) => ({ ...d, phase_change: phaseChangeFor(d.id), field_base: fieldBaseFor(d.id) })),
         lost_deals: [...deals.values()].filter(d => d.outcome === 'lost').map(d => ({...d})),
         closed_deals: [...deals.values()].filter(d => (d.outcome === 'won' || !d.outcome && (d.closed_on || d.invoiced_on))).map(d => ({...d})),
         accounts: [{ account_client_id: fixtureAccountId, account_client_ref: 'DEMO-ACCOUNT-001',
           account_name: 'Demo National Practice', account_owner: fixtureAccountOwner, open_deals: activeNational.length,
           attention_deals: activeNational.filter((d) => d.attention).length,
-          overdue_deals: 0, stale_deals: 2,
+          overdue_deals: activeNational.filter((d) => d.next_date && d.next_date < today).length,
+          stale_deals: activeNational.filter((d) => !d.last_touch || d.last_touch <= addDays(today, -14)).length,
           parked_deals: national.length - activeNational.length, last_review_at: lastCallAt }],
         open_session: [...reviewSessions.values()].find((s) => s.status === 'open') || null,
         as_of: asOf,
@@ -1414,6 +1432,7 @@ export async function createFixtureClient(opts = {}) {
     },
 
     async readAssuranceHealth(args) {
+      const { assuranceHealthRequest, ASSURANCE_LAYERS } = await import('./assurance-health-model.js');
       const { scope } = assuranceHealthRequest(args);
       refuseIfOutage('assurance', 'read-assurance-health');
       const evidence = Object.fromEntries(ASSURANCE_LAYERS.map(layer => [layer, {
@@ -2745,7 +2764,7 @@ export async function createFixtureClient(opts = {}) {
       return {ok:true,schema:'doctorcre-connections.v1',generated_at:checked_at,providers:Object.entries(CONNECTION_NAMES).map(([id,name])=>({id,name,status:id==='grok'?'needs_reconnect':'connected',checked_at,manage_url:'/control-room?tab=connections',spend:{amount:12.34,currency:'USD',kind:id==='jev'?'estimate':'charge',period:'October 2026',as_of:checked_at}})),devices:{state:'read',observed_at:checked_at,items:[{id:'demo-laptop',name:'Demo laptop',connected:true},{id:'demo-workstation',name:'Demo workstation',connected:false}]}};
     },
     async listProgressBoards(){return {schema:'progress-board-directory.v1',boards:[{board_id:'carr-v5',title:'System Job Board',updated_at:nowIso(),task_counts:{running:1}}]};},
-    async readProgressBoard({board_id}={}){return {ok:true,snapshot:{board_id,version:1,updated_at:nowIso(),snapshot_json:{title:'System Job Board',tasks:{demo:{title:'Demo dashboard refresh',status:'review',work_request:'WR-000901',pr:17}}}},questions:[]};},
+    async readProgressBoard({board_id}={}){const {default:queueFixture}=await import('./progress-work-queue-fixture.js');return {ok:true,snapshot:{board_id,version:1,updated_at:nowIso(),snapshot_json:structuredClone(queueFixture)},questions:[]};},
     // V2 C1: one demo row per unfinished-work kind the live census returns,
     // plus a captured Work Request and a detected incident for Triage. Shapes
     // follow unfinished-work.v1 (mcp-server/src/system-work-census.v5.js);

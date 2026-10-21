@@ -1,6 +1,6 @@
 /* Tour day (V2): the in-car view of one tour. Stops, the open property, notes
    and the capture dock. Every value is a token role (tokens arrive through
-   css/app-shell.css). The accent marks the current stop and the record
+   css/app-shell.css). The accent marks the record
    action; recording is a word plus a double danger border, never a pulse.
    The dock geometry below is load-bearing for the shared status band. */
 
@@ -18,7 +18,10 @@ h2 { margin: 0 0 var(--space-4); font-size: var(--font-size-3); }
 h3 { margin: 0 0 var(--space-2); font-size: var(--font-size-2); }
 p { margin: var(--space-2) 0; }
 
-#tour-day { --capture-scroll-space: calc(230px + env(safe-area-inset-bottom)); width: 100%; min-width: 0; padding: var(--space-5) var(--space-5) 140px; }
+#tour-day { display: grid; grid-template-areas: "title" "status" "content" "capture"; grid-template-rows: auto auto minmax(0, 1fr) auto; height: calc(100dvh - var(--layout-bottom, 0px) - var(--space-6) - var(--space-4)); width: 100%; min-width: 0; padding: var(--space-4); }
+.day-title { grid-area: title; }
+#day-status { grid-area: status; }
+#day-empty, .day-grid { grid-area: content; }
 .day-title { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-3); }
 .freshness { display: flex; align-items: center; gap: var(--space-2); color: var(--fg-muted); font-size: var(--font-size-1); font-variant-numeric: tabular-nums; }
 .freshness button { width: 48px; padding: 0; border-color: transparent; background: transparent; color: var(--fg-muted); font-size: var(--font-size-3); }
@@ -33,16 +36,16 @@ p { margin: var(--space-2) 0; }
 .day-empty-link { display: inline-flex; align-items: center; min-height: 48px; margin-top: var(--space-3); padding: var(--space-2) var(--space-4); border: var(--hairline-width) solid var(--hairline-strong); border-radius: var(--radius-2); background: var(--surface-2); font-weight: var(--font-weight-strong); text-decoration: none; }
 .day-empty-link:hover { border-color: var(--fg-quiet); background: var(--surface-3); }
 
-.day-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); gap: var(--panel-gap); align-items: start; padding-bottom: var(--capture-scroll-space); }
+.day-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); gap: var(--panel-gap); align-items: start; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
 .day-panel { min-width: 0; padding: var(--space-5); border: var(--hairline-width) solid var(--hairline); border-radius: var(--panel-radius); background: var(--surface-1); }
 
-/* Stops: the current stop carries the accent marker; the rest are quiet rows. */
+/* Stops retain a shape cue for the current property. */
 #day-stops { display: grid; gap: var(--space-1); margin: var(--space-4) 0 0; padding: 0; list-style: none; }
 .day-stop { display: grid; grid-template-columns: 44px minmax(0, 1fr); gap: var(--space-3); width: 100%; padding: var(--space-3); border-color: transparent; background: transparent; text-align: left; }
 .day-stop:hover:not(:disabled) { border-color: transparent; background: var(--surface-2); }
-.day-stop[aria-current] { border-color: var(--hairline-strong); background: var(--surface-2); box-shadow: inset 3px 0 0 var(--accent); }
+.day-stop[aria-current] { border-color: var(--hairline-strong); background: var(--surface-2); box-shadow: inset 3px 0 0 var(--fg-muted); }
 .stop-letter { display: grid; place-items: center; height: 44px; border: var(--hairline-width) solid var(--hairline-strong); border-radius: 50%; color: var(--fg); font-size: var(--font-size-2); font-weight: var(--font-weight-strong); }
-.day-stop[aria-current] .stop-letter { border: 2px solid var(--accent); color: var(--accent-ink); }
+.day-stop[aria-current] .stop-letter { border: 2px solid var(--fg); color: var(--fg); }
 .day-stop strong, .day-stop small { display: block; overflow-wrap: anywhere; }
 .day-stop strong { font-weight: var(--font-weight-strong); }
 .day-stop small { margin-top: 2px; color: var(--fg-muted); font-size: var(--font-size-1); }
@@ -61,6 +64,8 @@ p { margin: var(--space-2) 0; }
 .property-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); }
 .property-actions a { display: inline-flex; align-items: center; min-height: 48px; padding: var(--space-2) var(--space-4); border: var(--hairline-width) solid var(--hairline-strong); border-radius: var(--radius-2); background: var(--surface-2); text-decoration: none; }
 .property-actions a:hover { border-color: var(--fg-quiet); background: var(--surface-3); }
+.property-actions a.primary { background: var(--fg); color: var(--ground); border-color: var(--fg); font-weight: var(--font-weight-strong); }
+.property-actions a.navigation-alternate { border-color: transparent; background: transparent; text-decoration: underline; }
 .access-note { padding: var(--space-3) var(--space-4); border-left: 2px solid var(--status-info); border-radius: 0 var(--radius-2) var(--radius-2) 0; background: var(--surface-2); overflow-wrap: anywhere; }
 
 /* Notes. */
@@ -68,8 +73,8 @@ p { margin: var(--space-2) 0; }
 .note-card p { color: var(--fg); overflow-wrap: anywhere; }
 .note-card small, .note-state { color: var(--fg-muted); font-size: var(--font-size-1); }
 
-/* Capture dock: fixed above the shared status band. Geometry is tested. */
-.capture-dock { position: fixed; bottom: calc(var(--layout-bottom, 0px) + 130px + env(safe-area-inset-bottom)); left: calc(50% + var(--layout-rail, 0px) / 2); z-index: 900; display: grid; grid-template-columns: 48px minmax(160px, 340px) 48px; gap: var(--space-3); width: min(540px, calc(100% - 32px)); padding: var(--space-2); border: var(--hairline-width) solid var(--hairline-strong); border-radius: var(--radius-3); background: var(--surface-1); box-shadow: var(--shadow-overlay); transform: translateX(-50%); }
+/* Capture has its own row above the shared status band. */
+.capture-dock { grid-area: capture; display: grid; grid-template-columns: 48px minmax(160px, 340px) 48px; gap: var(--space-3); width: min(540px, 100%); margin: var(--space-3) auto 0; padding: var(--space-2); border: var(--hairline-width) solid var(--hairline-strong); border-radius: var(--radius-3); background: var(--surface-1); }
 .capture-dock button, body.has-app-layout .capture-dock button { min-height: 62px; }
 .capture-dock #day-record { border-color: var(--accent); background: var(--accent); color: var(--on-accent); font-size: var(--font-size-2); font-weight: var(--font-weight-strong); }
 .capture-dock #day-record:hover:not(:disabled) { border-color: var(--accent-hover); background: var(--accent-hover); }
@@ -100,13 +105,6 @@ audio { width: 100%; max-width: 100%; margin: var(--space-3) 0; }
 .maplibregl-ctrl-attrib { color: var(--fg-muted); }
 .maplibregl-ctrl-attrib a { color: inherit; }
 
-/* On a wide screen the dock sits in the page flow under the two panels and
-   sticks to the bottom edge only while the panels run past the fold, so it
-   never floats over the stop list. Phones keep the fixed thumb dock. */
-@media (min-width: 1024px) {
-  .capture-dock { position: sticky; bottom: calc(var(--layout-bottom, 0px) + var(--space-4)); left: auto; margin: var(--space-4) auto 0; transform: none; }
-  .day-grid { padding-bottom: 0; }
-}
 #day-notes { margin-top: var(--space-5); }
 
 /* Color Assist: the current stop and recording gain a second, shape cue. */
@@ -114,7 +112,7 @@ audio { width: 100%; max-width: 100%; margin: var(--space-3) 0; }
 :root[data-color-assist="on"] .itinerary-pin.selected { border-style: double; border-width: 4px; }
 
 @media (max-width: 720px) {
-  #tour-day { padding: var(--space-4) var(--space-3) 140px; }
+  #tour-day { padding: var(--space-3); }
   .day-title { align-items: start; }
   h1 { font-size: var(--font-size-4); }
   .freshness { gap: var(--space-1); }
@@ -136,5 +134,7 @@ audio { width: 100%; max-width: 100%; margin: var(--space-3) 0; }
 
 #day-dialog { width: min(1100px, calc(100vw - 20px)); max-width: none; }
 
-/* The dock extends 214px above the status area; leave 16px of scroll clearance. */
-.day-grid :is(button, a, summary) { scroll-margin-top: 80px; scroll-margin-bottom: calc(var(--layout-bottom, 0px) + var(--capture-scroll-space)); }
+.day-grid :is(button, a, summary) { scroll-margin-block: var(--space-3); }
+
+.has-app-layout:has(#tour-day) .app-layout { grid-template-columns: minmax(0, 1fr); }
+.has-app-layout:has(#tour-day) :is(#appSidebar, #appToday, .app-layout-tabbar) { display: none; }

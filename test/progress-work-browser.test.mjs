@@ -21,6 +21,11 @@ function receipts() {
 async function open(t,{width=390,path=taskPath,empty=false,stale=false,history=0,sessions,rpcReply}={}) {
   const browser=await chromium.launch();t.after(()=>browser.close());
   const page=await browser.newPage({viewport:{width,height:900}}); await page.clock.install({time:NOW});
+  await page.addInitScript(() => {
+    const url = new URL(location.href);
+    url.searchParams.set('mode', 'live');
+    history.replaceState({}, '', url);
+  });
   const errors=[],calls=[],posts=[]; page.on('pageerror',error=>errors.push(error.message));
   const state={rpcReply,offline:false,authLost:false,postFailure:false,turns:empty?[]:receipts(),queueReads:0,turnReads:0};
   if(!empty) state.turns.push({seq:8,msg_id:'review',at:NOW.toISOString(),sponsor:'joe',seat:'human',kind:'turn',body:`${taskId} Fix round one; independent review requested.`},
@@ -539,7 +544,7 @@ for (const width of [390, 820, 1440]) test(`directory opens, board â†’ project â
   await page.locator('.directory-summary').click();
   await page.locator('[data-board-id="demo-project"]').evaluate(node=>node.removeAttribute("target"));
   await page.locator('[data-board-id="demo-project"]').click();
-  await page.waitForURL('**/control-room/progress/board/demo-project');
+  await page.waitForURL('**/control-room/progress/board/demo-project?mode=live');
   await page.locator(`.board-card[data-card-id="${taskId}"]`).first().click();
   await page.waitForURL('**/control-room/progress/work?**');
   await page.waitForFunction(()=>document.querySelector('#workTitle').textContent==='Demo work detail');
@@ -552,7 +557,7 @@ for (const width of [390, 820, 1440]) test(`directory opens, board â†’ project â
     }), true, `${width}px: breadcrumb remains reachable beside the rail and above the status bar`);
   }
   await page.locator('#workBreadcrumbs a').nth(1).click();
-  await page.waitForURL('**/control-room/progress/board/demo-project');assert.deepEqual(errors,[]);
+  await page.waitForURL('**/control-room/progress/board/demo-project?mode=live');assert.deepEqual(errors,[]);
 });
 
 test('task detail exposes sessions, reviews, Dot jobs, dispatch pages and every Passport section',async t=>{

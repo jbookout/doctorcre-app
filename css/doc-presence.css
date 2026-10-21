@@ -87,6 +87,9 @@ body.has-app-layout:has(> #docPresence) .app-layout-status { padding-right: calc
 
 /* Popup controls keep their own row and stay reachable while the record scrolls. */
 :is(dialog[open], aside#recordPanel:not([hidden])) > .doc-presence { position: sticky; top: 0; right: auto; bottom: auto; display: flex; align-items: center; gap: var(--space-2); margin: 0 0 var(--space-3); }
+.job-dialog > .doc-popup-controls { position: sticky; top: calc(-1 * var(--popup-padding)); z-index: 1; align-items: center; margin: calc(-1 * var(--popup-padding)) calc(-1 * var(--popup-padding)) var(--space-4); padding: var(--space-3) var(--popup-padding); background: var(--surface-1); border-bottom: var(--hairline-width) solid var(--hairline); }
+.doc-popup-controls > .doc-presence { position: static; margin: 0; }
+.doc-popup-controls > button { margin-left: auto; }
 
 @media (max-width: 480px) { .doc-command-meta { align-items: start; } #docCommandForm { gap: var(--space-1); padding: var(--space-1); } #docCommandInput { font-size: var(--font-size-2); } .doc-context-tools { flex-wrap: wrap; } }
 
