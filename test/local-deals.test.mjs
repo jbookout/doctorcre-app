@@ -41,12 +41,32 @@ test('notes summarize but retain original entry, including hostile text as data'
 test('W4 read binds the separate producer revision and versioned phase/parking fields', async () => {
  const {readFile} = await import('node:fs/promises');
  const contract = JSON.parse(await readFile(new URL('../contracts/carr-interface.v1.json',import.meta.url),'utf8')).mcp_read_contracts['deal-room-board'];
- assert.equal(contract.producer.source_commit,'47abddf47f46d66eecd50330e5f5aab198f30f53');
+ assert.equal(contract.producer.source_commit,'3067460e3106cb891c34a918436f608b76868ff5');
  assert.equal(contract.response.schema_version,'local-deals-board.v1');
- for(const key of ['operating_state','parking_note','phase_change','invoiced_on']) assert.ok(contract.response.deal_keys.includes(key));
+ for(const key of ['operating_state','parking_note','phase_change','invoiced_on','phase_started_on','prospect_engagement_status','client_version']) assert.ok(contract.response.deal_keys.includes(key));
 });
 
 test('open local deals omit closed phases, terminal outcomes and invoices, including parked closures', () => {
  const rows=[base,{...base,id:'closed',phase:'Closed'},{...base,id:'closed-slug',phase:'closed',operating_state:'parked'},{...base,id:'won',outcome:'won'},{...base,id:'paused',outcome:'paused'},{...base,id:'invoiced',invoiced_on:'2026-10-01'}];
  assert.deepEqual(localDeals(rows).map(d=>d.id),['demo-1']);
+});
+
+test('only active prospective clients remain on the deal board in every phase', () => {
+ const prospect={...base,client_status:'prospect',prospect_engagement_status:'active'};
+ const rows=[prospect,{...prospect,id:'inactive',prospect_engagement_status:'inactive'},
+  {...prospect,id:'inactive-research',phase:'Research',prospect_engagement_status:'inactive'},
+  {...prospect,id:'unknown',prospect_engagement_status:null},
+  {...base,id:'client',client_status:'active',prospect_engagement_status:'inactive'}];
+ assert.deepEqual(localDeals(rows).map(d=>d.id),['demo-1','client']);
+});
+
+test('active backfilled and newly created prospects retain board membership, including parked deals', () => {
+ const rows=['On Deck','Research','Negotiation','Legal','Closing'].flatMap((phase,index)=>[
+  {...base,id:`existing-${index}`,phase,client_status:'prospect',prospect_engagement_status:'active'},
+  {...base,id:`parked-${index}`,phase,client_status:'prospect',prospect_engagement_status:'active',operating_state:'parked'}
+ ]);
+ rows.push({...base,id:'new-prospect',phase:'On Deck',client_status:'prospect',prospect_engagement_status:'active'});
+ assert.deepEqual(localDeals(rows).map(d=>d.id),rows.map(d=>d.id));
+ const explicitlyInactive=rows.map(d=>d.id==='existing-0'?{...d,prospect_engagement_status:'inactive'}:d);
+ assert.deepEqual(localDeals(explicitlyInactive).map(d=>d.id),rows.slice(1).map(d=>d.id));
 });

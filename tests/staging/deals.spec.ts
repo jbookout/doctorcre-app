@@ -32,61 +32,31 @@ test('Local Deals shows parked records and recent changes read-only', async ({ p
   await expect(page.locator('#appToday')).toBeVisible();
 });
 
-test('Deal detail expands full history, switches timeline range and refreshes', async ({ page }) => {
-  await page.goto('/deals');
-  await page.locator('.card-open').first().click();
-  await expect(page.locator('#recordPanel')).toBeVisible();
-  await page.locator('.full-record summary').click();
-  await expect(page.locator('.full-record')).toContainText('Negotiation rounds');
-  await page.locator('#timelineRange').selectOption('full');
-  await expect(page.locator('#timelineRange')).toHaveValue('full');
+test('Deal detail expands update history and preserves it through refresh', async ({ page }) => {
+  await page.goto('/deals?deal=d14');
+  await expect(page.locator('#detailUpdateForm')).toBeVisible();
+  const history = page.locator('.updates-history');
+  test.skip(await history.count() === 0, 'The selected QA deal has no update history.');
+  await history.locator(':scope > summary').click();
+  await expect(history.locator('.deal-note').first()).toBeVisible();
   const observed = await page.locator('#detailUpdated').getAttribute('datetime');
   await page.getByRole('button', { name: 'Refresh deal', exact: true }).click();
   await expect(page.locator('#detailUpdated')).not.toHaveAttribute('datetime', observed || '', { timeout: 27000 });
-  await expect(page.locator('.full-record')).toHaveAttribute('open', '');
+  await expect(history).toHaveAttribute('open', '');
 });
 
-test('A missing deal date opens a draft that can be cancelled', async ({ page }) => {
-  await page.goto('/deals');
-  await page.locator('.card-open').first().click();
-  await expect(page.locator('#timelineRange')).toBeVisible();
-  const add = page.locator('[data-add-date]').first();
-  test.skip(await add.count() === 0, 'The selected staging deal has no missing date to inspect.');
-  await add.click();
-  await expect(page.locator('#dealDateDialog')).toBeVisible();
-  await page.getByRole('button', { name: 'Cancel date', exact: true }).click();
-  await expect(page.locator('#dealDateDialog')).toBeHidden();
+test('Deal card omits Dates, Full record and outlook controls', async ({ page }) => {
+  await page.goto('/deals?deal=d14');
+  await expect(page.locator('#detailUpdateForm')).toBeVisible();
+  await expect(page.locator('.deal-dates,.full-record,[data-jev-deal],#dealDateDialog')).toHaveCount(0);
 });
 
-test('A synthetic staging deal next step saves and restores its text and due date', async ({ page }) => {
-  test.setTimeout(90000);
-  await page.goto('/deals');
-  await page.locator('.card-open').first().click();
-  await expect(page.locator('#detailNextForm')).toBeVisible();
-  test.skip(!/^(E2E|Synthetic)\b/.test(await page.locator('#panelTitle').innerText()), 'Only an existing synthetic staging deal may be edited.');
-  const address = page.url();
-  const text = page.locator('#detailNextForm textarea[name=text]');
-  const date = page.locator('#detailNextForm input[name=date]');
-  const original = await text.inputValue();
-  const due = await date.inputValue();
-  const modified = 'V2 staging next-step cleanup 35f9009c';
-  try {
-    await text.fill(modified);
-    await page.getByRole('button', { name: 'Save next step', exact: true }).click();
-    await expect(page.locator('#detailNextStatus')).toHaveText('Next step confirmed', { timeout: 27000 });
-    await page.goto(address);
-    await expect(text).toHaveValue(modified, { timeout: 27000 });
-    await expect(date).toHaveValue(due);
-  } finally {
-    await page.goto(address);
-    await expect(text).toBeVisible({ timeout: 27000 });
-    if (await text.inputValue() === modified && await date.inputValue() === due) {
-      await text.fill(original);
-      await page.getByRole('button', { name: 'Save next step', exact: true }).click();
-      await expect(page.locator('#detailNextStatus')).toHaveText('Next step confirmed', { timeout: 27000 });
-    }
-    await page.goto(address);
-    await expect(text).toHaveValue(original, { timeout: 27000 });
-    await expect(date).toHaveValue(due);
-  }
+test('An unsaved Update draft clears when the deal reopens', async ({ page }) => {
+  await page.goto('/deals?deal=d14');
+  const update = page.getByLabel('Update', { exact: true });
+  await expect(update).toHaveValue('');
+  await update.fill('Synthetic unsaved review draft');
+  await page.getByRole('button', { name: 'Close deal', exact: true }).click();
+  await page.goto('/deals?deal=d14');
+  await expect(update).toHaveValue('');
 });

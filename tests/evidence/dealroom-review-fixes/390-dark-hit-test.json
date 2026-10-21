@@ -1,0 +1,55 @@
+{
+  "scrollTop": 161,
+  "orb": {
+    "x": 15,
+    "y": 73,
+    "width": 44,
+    "height": 44,
+    "top": 73,
+    "right": 59,
+    "bottom": 117,
+    "left": 15
+  },
+  "text": {
+    "x": 87,
+    "y": 84,
+    "width": 187.265625,
+    "height": 49.140625,
+    "top": 84,
+    "right": 274.265625,
+    "bottom": 133.140625,
+    "left": 87
+  },
+  "hits": [
+    {
+      "x": 88,
+      "visible": true
+    },
+    {
+      "x": 180.6328125,
+      "visible": true
+    },
+    {
+      "x": 273.265625,
+      "visible": true
+    },
+    {
+      "x": 88,
+      "visible": true
+    },
+    {
+      "x": 153.25,
+      "visible": true
+    },
+    {
+      "x": 218.5,
+      "visible": true
+    }
+  ],
+  "overlaps": false,
+  "header": {
+    "stackHeight": 74.28125,
+    "titleFontSize": 21,
+    "paddingTop": 12
+  }
+}
