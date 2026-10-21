@@ -783,6 +783,16 @@ for (const width of [390,1280]) for (const theme of ['light','dark'])
       path:'/control-room/progress/board/orchestrator',snapshotData:orchestratorSequence[0].snapshot.snapshot_json,
       assetRoot:process.env.ORCHESTRATOR_BUILT_ROOT ? new URL(`file://${process.env.ORCHESTRATOR_BUILT_ROOT}/`) : undefined});
     await page.evaluate(theme=>document.documentElement.dataset.theme=theme,theme);
+    const olderPage='orchestrator-page-'+'a'.repeat(64);
+    let pageUnavailable=true;
+    await page.route('**/mcp', async route => {
+      const rpc=route.request().postDataJSON().params;
+      if(rpc?.name!=='read-progress-board' || rpc.arguments.board_id!==olderPage) return route.fallback();
+      if(pageUnavailable) return route.fulfill({status:503,contentType:'application/json',body:'{}'});
+      return route.fulfill({contentType:'application/json',body:JSON.stringify({result:{content:[{text:JSON.stringify({snapshot:{version:1,snapshot_json:{cards:[{
+        id:'older-release',title:'Older unresolved release',state:'merged',owner:'cx-app2',prs:[],changed_at:'2026-01-01T00:00:00Z'
+      }]}}})}]}})});
+    });
     await page.locator('[data-orchestrator-card="queue:search"]').waitFor();
     await page.evaluate(()=>{
       window.__orchestratorCard=document.querySelector('[data-orchestrator-card="queue:search"]');
@@ -803,6 +813,17 @@ for (const width of [390,1280]) for (const theme of ['light','dark'])
     await page.locator('[data-orchestrator-status]').filter({hasText:'Queue observation unavailable or stale'}).waitFor();
     assert.equal(await page.locator('[data-orchestrator-stage="live"] [data-orchestrator-card="queue:search"]').count(),1);
     assert.equal(await page.locator('[data-orchestrator-stage]').count(),8);
+    const paged=structuredClone(orchestratorSequence[7].snapshot.snapshot_json);
+    paged.orchestrator.total_cards=paged.orchestrator.cards.length+1;
+    paged.orchestrator.pages=[{board_id:olderPage,version:1,count:1}];
+    setSnapshot(paged);await page.clock.runFor(2100);
+    await page.locator('[data-orchestrator-more]').click();
+    await page.locator('[data-orchestrator-pagination]').filter({hasText:'unavailable'}).waitFor();
+    assert.equal(await page.locator('[data-orchestrator-card="queue:search"]').count(),1);
+    pageUnavailable=false;await page.locator('[data-orchestrator-more]').click();
+    await page.locator('[data-orchestrator-card="older-release"]').waitFor();
+    assert.match(await page.locator('[data-orchestrator-card="older-release"]').textContent(),/Merged \/ awaiting release/);
+
     assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
     const targets=await page.locator('.orchestrator-count,.orchestrator-links a,.orchestrator-detail summary').evaluateAll(nodes=>nodes.map(el=>el.getBoundingClientRect().height));
     assert.ok(targets.every(height=>height>=44));
