@@ -1679,6 +1679,8 @@ export async function createFixtureClient(opts = {}) {
       return withIdem(idempotency_key, () => {
         const n = String(name || '').trim();
         if (!n) throw new Error('empty name');
+        const initialPhase = phase || 'On Deck';
+        if (!PHASES.includes(initialPhase)) refuse('new-deal', 'unknown_phase');
         const id = `d-new-${dealStore.seq++}`;
         const d = {
           id,
@@ -1686,7 +1688,7 @@ export async function createFixtureClient(opts = {}) {
           operating_state: 'active',
           name: n,
           type: deal_type || 'Other',
-          phase: phase || 'On Deck',
+          phase: initialPhase,
           owner: owner || selfActor,
           attention: false,
           last_touch: nowIso().slice(0, 10),

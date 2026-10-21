@@ -2,6 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createQaServer } from '../scripts/qa-fixture-server.mjs';
 import { createLiveClient } from '../js/live-client.js';
+import { createFixtureClient } from '../js/fixture-client.js';
+import { PHASES } from '../js/client.js';
 
 test('signed-in live creation persists the selected owner and attributed initial note across partner reads', async () => {
   const {dispatch} = await createQaServer();
@@ -32,6 +34,51 @@ test('signed-in live creation persists the selected owner and attributed initial
   const isolated = await clientFor('joe','isolated-deals');
   assert.equal((await isolated.getBoard()).deals.length,16);
   assert.ok(!(await isolated.getBoard()).deals.some(deal => deal.id === created.deal_id));
+});
+
+test('fixture creation validates phases before mutation and preserves every known phase and default', async () => {
+  const client = await createFixtureClient({seedUrl:`data:application/json,${encodeURIComponent(JSON.stringify({deals:[]}))}`});
+  const request = {name:'Demo Fixture Phase',phase:'not-a-phase',idempotency_key:'fixture-phase'};
+  await assert.rejects(client.createDeal(request), error => error.payload?.error === 'unknown_phase');
+  assert.deepEqual((await client.getBoard()).deals,[]);
+  assert.deepEqual((await client.getChanges(null)).events,[]);
+  const corrected = await client.createDeal({...request,phase:'Research'});
+  assert.equal(corrected.deal.id,'d-new-1');
+  for (const phase of PHASES) {
+    const created = await client.createDeal({name:`Demo ${phase}`,phase,idempotency_key:`fixture-${phase}`});
+    assert.equal((await client.getDeal(created.deal.id)).deal.phase,phase);
+  }
+  for (const phase of [undefined,null,'']) {
+    const created = await client.createDeal({name:'Demo Default',phase,idempotency_key:`default-${phase}`});
+    assert.equal(created.deal.phase,'On Deck');
+  }
+});
+
+test('QA rejects an unknown creation phase without writes and permits a corrected-key retry', async () => {
+  const {dispatch} = await createQaServer();
+  const origin = 'http://localhost';
+  const clientFor = async viewer => {
+    const response = await dispatch(new Request(`${origin}/api/test/seed`, {method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({namespace:'phase-validation',viewer})}));
+    const {cookie} = await response.json();
+    const fetchImpl = (path,init={}) => dispatch(new Request(new URL(path,origin),{...init,headers:{...init.headers,cookie:`${cookie.name}=${cookie.value}`}}));
+    return {client:createLiveClient({selfActor:viewer,fetchImpl}),fetchImpl};
+  };
+  const {client:joe,fetchImpl} = await clientFor('joe');
+  const before = (await joe.getBoard()).deals;
+  const request = {name:'Demo Phase Retry',phase:'not-a-phase',idempotency_key:'phase-retry'};
+  await assert.rejects(joe.createDeal(request), error => error.payload?.error === 'unknown_phase' && error.creationRefused === true);
+  assert.deepEqual((await joe.getBoard()).deals,before);
+  assert.deepEqual((await (await fetchImpl('/pipeline/changes')).json()).events,[]);
+  const corrected = {...request,phase:'Research'};
+  const created = await joe.createDeal(corrected);
+  assert.equal(created.deal_id,'d-new-1','a refused phase consumes no deal or event identity');
+  const {client:reloaded} = await clientFor('joe');
+  assert.equal((await reloaded.createDeal(corrected)).deal_id,created.deal_id);
+  const defaulted = await joe.createDeal({name:'Demo Default Phase',idempotency_key:'phase-default'});
+  const {client:dell} = await clientFor('dell');
+  assert.equal((await dell.getDeal(created.deal_id)).deal.phase,'Research');
+  assert.equal((await dell.getDeal(defaulted.deal_id)).deal.phase,'On Deck');
+  assert.equal((await dell.getBoard()).deals.length,before.length+2);
 });
 
 for (const [name, arguments_, error] of [
