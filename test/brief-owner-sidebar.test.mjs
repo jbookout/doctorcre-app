@@ -1,0 +1,47 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { JSDOM } from 'jsdom';
+import { mountAppLayout } from '../js/app-layout.js';
+import { mountMorningBrief } from '../js/morning-brief.js';
+
+for (const legacy of [false,true]) for (const shared of [false,true]) test(`Today sidebar shares brief owner selection, older server ${legacy}, shared deal ${shared}`, async t => {
+  const dom = new JSDOM('<nav id="host"></nav><main><h1>Example</h1></main><button id="docOpen">Doc</button><button id="docMorning">Morning brief</button>', {url:'http://localhost/?mode=live',pretendToBeVisual:true});
+  const {window:win} = dom, root = win.document;
+  win.matchMedia = () => ({matches:false,addEventListener(){},removeEventListener(){}});
+  win.HTMLDialogElement.prototype.showModal = function(){this.open=true;};
+  win.HTMLDialogElement.prototype.close = function(){this.open=false;};
+  const previousFetch = globalThis.fetch, previousLocation = globalThis.location;
+  globalThis.location = win.location;
+  const deals = ['joe','dell'].map((owner,index)=>({id:`demo-${owner}`,name:`Example ${owner}`,owner,attention:true,phase:'legal',operating_state:'active',next_step:`Call ${owner}`,next_date:'2026-01-01'}));
+  const items = deals.map(deal=>({id:`action-${deal.id}`,item_kind:'next_action',subject_type:'deal',subject_id:deal.id,subject_name:deal.name,owner:deal.owner,what:deal.next_step,due_on:deal.next_date,...legacy?{}:{owner_partner:deal.owner}}));
+  if (shared) { items[1].subject_id=deals[0].id;items[1].subject_name=deals[0].name;deals.pop();deals[0].next_date='2099-01-01'; }
+  const brief = {sponsor:'joe',sections:{today:{state:'ready',items},deals:{state:'ready',items:deals},loops:{state:'empty',items:[]}}};
+  const calls=[];
+  globalThis.fetch = async (path,init) => {
+    calls.push(String(path));
+    const name=init?.body ? JSON.parse(init.body).params.name : '';
+    const value = name==='deal-room-board' ? {actor:'joe',deals} : name==='morning-brief' ? brief : name==='today-triage' ? {items} : {events:[],cursor:'end'};
+    return new Response(JSON.stringify(init?.body?{result:{content:[{type:'text',text:JSON.stringify(value)}]}}:value));
+  };
+  let morning;
+  t.after(()=>{morning?.dispose();win.dispatchEvent(new win.Event('pagehide'));dom.window.close();globalThis.fetch=previousFetch;globalThis.location=previousLocation;});
+  mountAppLayout(root,root.getElementById('host'),'/example');
+  for(let i=0;i<100 && !root.querySelector('#appSyncTime[datetime]');i++)await new Promise(resolve=>setTimeout(resolve,5));
+  assert.ok(root.querySelector('#appSyncTime[datetime]'));
+  const rows=selector=>[...root.querySelectorAll(`${selector} [data-layout-deal]`)].map(node=>node.dataset.layoutDeal);
+  assert.deepEqual(rows('#appTodayNeeds'),shared?['demo-joe','demo-joe']:['demo-joe','demo-dell']);
+  assert.deepEqual(rows('#appTodayNext'),shared?['demo-joe','demo-joe']:['demo-joe','demo-dell']);
+  assert.equal(root.querySelectorAll('#appToday .morning-owner').length,legacy?0:4);
+  const filter=root.querySelector('#appToday [aria-label="Brief owners"]');assert.ok(filter);
+  filter.querySelector('[data-brief-owner="dell"]').click();
+  assert.deepEqual(rows('#appTodayNext'),legacy?(shared?['demo-joe','demo-joe']:['demo-joe','demo-dell']):[shared?'demo-joe':'demo-dell']);
+  assert.deepEqual(rows('#appTodayNeeds'),legacy?(shared?['demo-joe','demo-joe']:['demo-joe','demo-dell']):[shared?'demo-joe':'demo-dell']);
+  if (!legacy) assert.match(root.querySelector('#appTodayNeeds').textContent,/Call dell/);
+  morning=mountMorningBrief({document:root,window:win,getClient:async()=>({morningBrief:async()=>brief,getChanges:async()=>({events:[],cursor:'end'})})});
+  await morning.refresh();
+  assert.equal(root.querySelector('#morningOwners [aria-pressed="true"]').textContent,'Dell');
+  root.querySelector('#morningOwners [data-brief-owner="joe"]').click();
+  assert.deepEqual(rows('#appTodayNext'),legacy?(shared?['demo-joe','demo-joe']:['demo-joe','demo-dell']):['demo-joe']);
+  assert.equal(filter.querySelector('[aria-pressed="true"]').textContent,'Joe');
+  assert.equal(calls.includes('/mcp'),true);
+});

@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
+import { readFile, mkdir } from 'node:fs/promises';
+import { resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { chromium, settles, animationsSettled } from './browser-harness.mjs';
 import { routeContract as routes } from "../js/routes.js";
 import { handleDoctorcreRequest } from '../src/worker.js';
@@ -18,7 +20,7 @@ function receipts() {
   return Object.entries(kinds).map(([key,kind],i)=>({seq:i+1,msg_id:`synthetic-${i}`,at:NOW.toISOString(),sponsor:'joe',seat:'codex',kind:'receipt',...(kind === 'telemetry_measurement' ? {work_request_ref:fixture.projection.work_request_id} : {}),body:JSON.stringify({job_passport:{schema_version:'job-passport-wire.v1',kind,payload:fixture[key]}})}));
 }
 
-async function open(t,{width=390,path=taskPath,empty=false,stale=false,history=0,sessions,rpcReply}={}) {
+async function open(t,{width=390,path=taskPath,empty=false,stale=false,history=0,sessions,rpcReply,clock}={}) {
   const browser=await chromium.launch();t.after(()=>browser.close());
   const page=await browser.newPage({viewport:{width,height:900}}); await page.clock.install({time:NOW});
   await page.addInitScript(() => {
@@ -82,8 +84,9 @@ async function open(t,{width=390,path=taskPath,empty=false,stale=false,history=0
     // fragment the browser never sends, exactly as an HTTP redirect without one does.
     if(routes.redirects[url.pathname]?.startsWith('/control-room/progress/work')){const moved=await handleDoctorcreRequest(new Request(url.href),{});assert.equal(moved.status,308);return route.fulfill({contentType:'text/html',body:`<script>const to=new URL(${JSON.stringify(moved.headers.get('location'))});to.hash||=location.hash;location.replace(to)</script>`});}
     const file=routes.routes[url.pathname.startsWith('/control-room/progress/board/')?'/control-room/progress/board/:boardId':url.pathname]||url.pathname.slice(1);
-    try{const body=await readFile(new URL('../'+file,import.meta.url));return route.fulfill({body,contentType:/\.m?js$/.test(file)?'text/javascript':file.endsWith('.css')?'text/css':'text/html'});}catch{return route.fulfill({status:404,body:''});}
+    try{const body=await readFile(resolve(process.env.DOCTORCRE_FIXTURE_ROOT || fileURLToPath(new URL('..',import.meta.url)),file));return route.fulfill({body,contentType:/\.m?js$/.test(file)?'text/javascript':file.endsWith('.css')?'text/css':'text/html'});}catch{return route.fulfill({status:404,body:''});}
   });
+  if (clock) await clock(page.clock);
   await page.goto(`http://localhost${path}`);await page.waitForFunction(()=>document.getElementById('workTitle')?.textContent!=='Work detail');
   return {page,state,errors,calls,posts};
 }
@@ -677,7 +680,7 @@ for(const width of [320,390,1440])test(`work detail has no horizontal scroll at 
   }
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
   assert.equal(await page.locator('#composerSend').evaluate(button=>{const r=button.getBoundingClientRect();return button.contains(document.elementFromPoint(r.x+r.width/2,r.y+r.height/2));}),true);
-  await page.emulateMedia({reducedMotion:'reduce'});assert.equal(await page.locator('.work-flow line').first().evaluate(node=>getComputedStyle(node).animationName),'none');assert.deepEqual(errors,[]);
+  await page.emulateMedia({reducedMotion:'reduce'});assert.equal(await page.locator('.work-flow li').first().evaluate(node=>getComputedStyle(node).animationName),'none');assert.deepEqual(errors,[]);
 });
 
 test('empty, stale and offline states stay legible without inventing work',async t=>{
@@ -724,6 +727,7 @@ test('published task detail retains summary, model, safe PR links and related an
       {question_id:'unrelated',prompt:'Unrelated question',answer_text:'Unrelated answer'}];return payload;
   }});
   await page.waitForFunction(()=>document.querySelector('#workMetadata').textContent.includes('Demo work request'));
+  assert.equal(await page.locator('#workTitle').textContent(), 'Synthetic detail');
   const detail=page.locator('#workMetadata');
   assert.match(await detail.textContent(),/Codex.*gpt-6-sol.*high/s);
   assert.equal(await detail.locator('a[href="https://github.com/demo/example/pull/12"]').count(),1);
@@ -781,5 +785,197 @@ test('merged work detail displays the release wait and inline question', async t
   const row = page.locator('#workMetadata .work-delivery .work-detail-fields > div').filter({has:page.locator('dt',{hasText:/^Waiting on release$/})});
   assert.equal(await row.locator('dd').textContent(), 'Synthetic canary pending');
   assert.match(await task.textContent(), /SYNTHETIC V1 QUESTION/);
+  assert.deepEqual(errors, []);
+});
+
+
+for (const width of [1440,390]) test(`PR card navigation preserves exact lineage at ${width}px`,async t=>{
+  const task={task_id:'task:canonical-900',title:'Synthetic · Link work cards to their source',status:'review',repo:'jbookout/doctorcre-app',pr:73,
+    work_request_ref:'WR-900',plan_ref:'plan:synthetic-v2',slice_ref:'slice:seven',task_ref:'task:linked-card',job_ref:'job:synthetic-build'};
+  const {page,errors}=await open(t,{width,path:'/control-room/progress/board/demo-project',rpcReply:(rpc,payload)=>{
+    if(rpc.name==='read-progress-board') payload.snapshot.snapshot_json.tasks[taskId]={...task};
+    return payload;
+  }});
+  await page.locator(`[data-task-id="${taskId}"]`).first().click();
+  await page.locator('.work-lineage').waitFor();
+  assert.equal(new URL(page.url()).searchParams.get('task'),taskId);
+  const refs=['WR-900','plan:synthetic-v2','slice:seven','task:linked-card','job:synthetic-build'];
+  for(const ref of refs)assert.ok((await page.locator('.work-lineage').textContent()).includes(ref));
+  assert.equal(await page.locator('.work-lineage a').count(),1);
+  for(const ref of refs.slice(1))assert.equal(await page.locator('.work-lineage a').filter({hasText:ref}).count(),0);
+  assert.match(await page.locator('#workMetadata').textContent(),/task:canonical-900/);
+  task.title='Synthetic renamed card';
+  await page.clock.runFor(5100);
+  await page.waitForFunction(()=>document.querySelector('#workTitle').textContent==='Synthetic renamed card');
+  assert.equal(new URL(page.url()).searchParams.get('task'),taskId);
+  assert.match(await page.locator('#workMetadata').textContent(),/Demo work request/);
+  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
+  if(process.env.SLICE7_CAPTURE_DIR) {
+    await mkdir(process.env.SLICE7_CAPTURE_DIR,{recursive:true});
+    await page.evaluate(()=>window.scrollBy(0,document.querySelector('.work-lineage').getBoundingClientRect().top-100));
+    await page.clock.runFor(300);
+    await page.screenshot({path:resolve(process.env.SLICE7_CAPTURE_DIR,`linked-work-${width}.png`)});
+  }
+  await page.locator('.work-lineage a').filter({hasText:'WR-900'}).click();
+  await page.waitForFunction(()=>new URL(location.href).searchParams.get('work_request')==='WR-900');
+  assert.equal(new URL(page.url()).searchParams.has('task'),false);
+  await page.waitForFunction(()=>document.querySelector('#workTitle').textContent==='Demo work request',null,{timeout:5000});
+  assert.deepEqual(errors,[]);
+});
+
+
+for (const width of [390,1280]) for (const theme of ['dark','light'])
+test(`work flow labels remain readable at ${width}px in ${theme} theme`, async t => {
+  const {page,errors} = await open(t,{width,rpcReply:(rpc,payload) =>
+    rpc.name === 'engineering-passport' ? multiEnvelopeCanonicalFixture({reviewed:true}) : payload});
+  await page.evaluate(theme => document.documentElement.dataset.theme = theme, theme);
+  await page.emulateMedia({reducedMotion:'reduce'});
+  const labels = page.locator('.work-flow text, .work-flow li');
+  assert.deepEqual(await labels.allTextContents(), ['Task','Sessions','Attempts','Review']);
+  const boxes = await labels.evaluateAll(labels => labels.map(label => {
+    const box = label.getBoundingClientRect();
+    const scale = label instanceof SVGGraphicsElement ? label.getScreenCTM().a : 1;
+    return {size:parseFloat(getComputedStyle(label).fontSize) * scale, x:box.x, y:box.y};
+  }));
+  for (const box of boxes) assert.ok(box.size >= 12, `Rendered label is ${box.size}px`);
+  for (let i = 1; i < boxes.length; i++)
+    assert.ok(width === 390 ? boxes[i].y > boxes[i-1].y : boxes[i].x > boxes[i-1].x);
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+  if (process.env.SLICE7_TASTE_CAPTURE_DIR) {
+    await page.waitForFunction(() => document.querySelector('#workReviewList').textContent.includes('actor:second'));
+    await mkdir(process.env.SLICE7_TASTE_CAPTURE_DIR,{recursive:true});
+    for (const [name,selector] of [['flow','.work-flow'], ['reviews','#workReviews']]) {
+      await page.locator(selector).scrollIntoViewIfNeeded();
+      if (name === 'reviews') await page.locator(selector).evaluate(el => window.scrollBy(0, el.getBoundingClientRect().top - 90));
+      await page.screenshot({path:resolve(process.env.SLICE7_TASTE_CAPTURE_DIR,`${name}-${width}-${theme}.png`)});
+    }
+  }
+  assert.deepEqual(errors, []);
+});
+
+test('review history leads with the verdict and keeps execution receipts collapsed', async t => {
+  const {page,errors} = await open(t,{rpcReply:(rpc,payload) =>
+    rpc.name === 'engineering-passport' ? multiEnvelopeCanonicalFixture({reviewed:true}) : payload});
+  await page.waitForFunction(() => document.querySelector('#workReviewList').textContent.includes('actor:second'));
+  const history = page.locator('#workReviewList');
+  const review = history.locator('article').first();
+  assert.deepEqual(await review.locator(':scope > dl dt').allTextContents(), ['Verdict','Reviewer','Round','Next action']);
+  assert.deepEqual(await review.locator(':scope > dl dd').allTextContents(),
+    ['Passed','actor:second','Not recorded','Check remaining closure requirements.']);
+  assert.doesNotMatch(await history.innerText(), /schema version|envelope digest|sha256:/);
+  const receipts = history.locator('details').filter({has:page.locator('summary', {hasText:/^Execution receipts/})});
+  assert.equal(await receipts.getAttribute('open'), null);
+  await receipts.locator(':scope > summary').click();
+  assert.match(await receipts.innerText(), /engineering-slice-receipt.v1/);
+  assert.deepEqual(errors, []);
+});
+
+test('Tab reaches the linked Work Request and Enter opens its standalone detail', async t => {
+  const {page,errors} = await open(t);
+  const link = page.locator('.work-lineage a').filter({hasText:'WR-900'});
+  await link.waitFor();
+  await page.locator('#workTitle').focus();
+  await page.keyboard.press('Tab');
+  assert.equal(await link.evaluate(el => el === document.activeElement), true, 'Tab must reach the Work Request');
+  await page.keyboard.press('Enter');
+  await page.waitForFunction(() => new URL(location.href).searchParams.get('work_request') === 'WR-900');
+  assert.equal(new URL(page.url()).searchParams.has('task'), false);
+  await page.waitForFunction(() => document.querySelector('#workTitle').textContent === 'Demo work request');
+  assert.deepEqual(errors, []);
+});
+
+test('unresolved task with an explicit request has no clickable Task lineage', async t => {
+  const {page,errors} = await open(t, {empty:true,
+    path:'/control-room/progress/work?board=demo-project&task=legacy-pr-73&work_request=WR-900'});
+  await page.locator('.work-lineage').waitFor();
+  const task = page.locator('.work-lineage dl > div').filter({has:page.locator('dt', {hasText:/^Task$/})});
+  assert.equal(await task.locator('a').count(), 0);
+  assert.equal(await task.locator('dd').textContent(), 'Not linked');
+  assert.equal(await page.locator('.work-lineage a').filter({hasText:'WR-900'}).count(), 1);
+  assert.match(await page.locator('#workMetadata').textContent(), /not in the loaded publication/);
+  assert.deepEqual(errors, []);
+});
+
+
+test('work detail follows two alias hops to the published task', async t => {
+  const {page,calls,errors} = await open(t, {
+    path:'/control-room/progress/work?board=demo-project&task=legacy-pr-73',
+    rpcReply:(rpc,payload) => {
+      if (rpc.name === 'read-progress-board') payload.snapshot.snapshot_json.hierarchy = {
+        aliases:{'legacy-pr-73':'rekeyed-pr-73', 'rekeyed-pr-73':taskId},
+      };
+      return payload;
+    },
+  });
+  assert.equal(await page.locator('#workTitle').textContent(), 'Demo work detail');
+  const task = page.locator('.work-lineage dl > div').filter({has:page.locator('dt', {hasText:/^Task$/})});
+  assert.equal(await task.locator('a').textContent(), taskId);
+  assert.equal(new URL(await task.locator('a').getAttribute('href'), page.url()).searchParams.get('task'), taskId);
+  await page.waitForFunction(() => document.querySelector('#workMetadata').textContent.includes('Demo work request'));
+  assert.ok(calls.some(call => call.name === 'work-request-card' && call.arguments.work_request === 'WR-900'));
+  assert.deepEqual(errors, []);
+});
+
+
+test('chained alias and direct task URLs show identical work evidence', async t => {
+  const evidence = [];
+  for (const requested of [taskId, 'legacy-pr-73']) {
+    const {page,errors} = await open(t, {
+      clock:async clock => {
+        await clock.runFor(requested === taskId ? 0 : 1100);
+        await clock.setFixedTime(new Date(NOW.getTime() + 5100));
+      },
+      path:`/control-room/progress/work?board=demo-project&task=${requested}`,
+      rpcReply:(rpc,payload) => {
+        if (rpc.name === 'read-progress-board') payload.snapshot.snapshot_json.hierarchy = {
+          aliases:{'legacy-pr-73':'middle', middle:taskId},
+        };
+        return payload;
+      },
+    });
+    await page.waitForFunction(() => document.querySelector('#workCanonicalBody').textContent.includes('Closure: blocked'));
+    await page.waitForFunction(() => document.querySelector('#workSessionList').textContent.includes('Demo builder'));
+    await page.clock.runFor(5100);
+    evidence.push(await page.locator('#workReviewList, #workDotList, #workSessionList, #workCanonicalBody, #wireFeed').allTextContents());
+    assert.deepEqual(errors, []);
+  }
+  assert.match(evidence[0].join('\n'), /human5s ago/);
+  assert.match(evidence[0].join('\n'), /Fix round one/);
+  assert.deepEqual(evidence[1], evidence[0]);
+});
+
+for (const requested of [taskId, 'legacy-pr-73']) test(`work detail prefers an exact published key reached from ${requested}`, async t => {
+  const {page,errors} = await open(t, {
+    path:`/control-room/progress/work?board=demo-project&task=${requested}`,
+    rpcReply:(rpc,payload) => {
+      if (rpc.name === 'read-progress-board') {
+        payload.snapshot.snapshot_json.hierarchy = {aliases:{'legacy-pr-73':taskId, [taskId]:'other-task'}};
+        payload.snapshot.snapshot_json.tasks['other-task'] = {title:'Wrong alias destination', status:'review'};
+      }
+      return payload;
+    },
+  });
+  assert.equal(await page.locator('#workTitle').textContent(), 'Demo work detail');
+  assert.deepEqual(errors, []);
+});
+
+for (const [name,aliases] of [
+  ['two-node cycle', {'legacy-pr-73':'rekeyed-pr-73', 'rekeyed-pr-73':'legacy-pr-73'}],
+  ['self-cycle', {'legacy-pr-73':'legacy-pr-73'}],
+  ['missing target', {'legacy-pr-73':'missing-pr-73'}],
+  ['malformed target', {'legacy-pr-73':{id:taskId}}],
+]) test(`work detail leaves an alias ${name} unresolved`, {timeout:10000}, async t => {
+  const {page,errors} = await open(t, {empty:true,
+    path:'/control-room/progress/work?board=demo-project&task=legacy-pr-73&work_request=WR-900',
+    rpcReply:(rpc,payload) => {
+      if (rpc.name === 'read-progress-board') payload.snapshot.snapshot_json.hierarchy = {aliases};
+      return payload;
+    },
+  });
+  await page.locator('.work-lineage').waitFor();
+  const task = page.locator('.work-lineage dl > div').filter({has:page.locator('dt', {hasText:/^Task$/})});
+  assert.equal(await task.locator('dd').textContent(), 'Not linked');
+  assert.equal(await task.locator('a').count(), 0);
+  await page.waitForFunction(() => document.querySelector('#workMetadata').textContent.includes('Demo work request'));
   assert.deepEqual(errors, []);
 });

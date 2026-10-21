@@ -463,7 +463,7 @@ export function mountBoard(deps = {}) {
     const merged = withGovernance({stages:stages.map(stage=>({...stage,
       tasks:original.filter(card=>card.stage===stage.id)}))},approvalCards);
     const all = merged.stages.flatMap(stage=>stage.tasks.map(task=>({...task,
-      ...(boardId !== SYSTEM_BOARD_ID ? {task_id:task.id} : {})})));
+      ...(boardId !== SYSTEM_BOARD_ID ? {task_id:task.task_id || task.id} : {})})));
     deps.onTasks?.(all,systemWork ? censusObservation : {state:boardState});
     if (view?.work_queue) {
       queueUI ||= mountWorkQueue({container:byId('board-stages'), window:win, boardId});

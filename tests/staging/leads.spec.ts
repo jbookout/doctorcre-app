@@ -7,7 +7,6 @@ test.beforeEach(async ({ page }) => {
 test('Leads search narrows and clears the loaded board', async ({ page }) => {
   await page.goto('/leads');
   await expect(page.locator('.lead-card').first()).toBeVisible();
-  await page.getByRole('button', { name: 'Workspace sidebar', exact: true }).click();
   await page.getByRole('searchbox', { name: 'Search leads', exact: true }).fill('V2 no matching lead 35f9009c');
   await expect(page.locator('.lead-card')).toHaveCount(0);
   await page.getByRole('searchbox', { name: 'Search leads', exact: true }).fill('');
@@ -33,7 +32,6 @@ test('Lead details open and close without claiming or changing a stage', async (
 test('Lead owner and stage filters preserve a usable board', async ({ page }) => {
   await page.goto('/leads');
   await expect(page.locator('.lead-card').first()).toBeVisible();
-  await page.getByRole('button', { name: 'Workspace sidebar', exact: true }).click();
   await page.locator('#ownerFilter').selectOption('joe');
   await expect(page.locator('#ownerFilter')).toHaveValue('joe');
   await page.locator('#ownerFilter').selectOption('');

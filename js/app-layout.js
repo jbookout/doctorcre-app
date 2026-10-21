@@ -1,11 +1,12 @@
+import { briefOwnerLabel, filterBriefOwners, mountBriefOwnerFilter } from './brief-owner-filter.js';
+import { validBrief } from './morning-brief-model.js';
 import { TOUCH_LAYOUT } from './touch-layout.js';
-import { needsAttention } from './deal-review-model.js';
+import { needsAttention, scopedDeals } from './deal-review-model.js';
 import { createClient } from './client.js';
 import { resolveDealroomBoot } from './boot-mode.js';
 import { mountAutoRefresh, readWithDeadline } from './auto-refresh.mjs';
 import { createFeedProgress, observeChangeBatch, ingestChangeEvents, receiptViews, escapeText as escape } from './change-receipts.mjs';
 
-import { scopedDeals } from './home-dashboard-model.js';
 import { localToday, shortDay, toDay } from './calendar-model.js';
 const time = value => { const date = new Date(value || ''); return Number.isFinite(date.valueOf()) ? date.toLocaleTimeString([], { hour:'numeric', minute:'2-digit', hour12:true }) : '—'; };
 
@@ -15,7 +16,7 @@ export function createAppLayout(root, title = '') {
   layout.className = 'app-layout';
   layout.innerHTML = `<aside id="appSidebar" class="app-layout-sidebar" aria-label="${escape(title)} workspace"><div class="app-layout-sidebar-head"><h2>${escape(title)}</h2><button type="button" data-layout-close="sidebar" aria-label="Close workspace">‹</button></div><div id="appSidebarSlot"></div><section class="app-layout-working"><h3>Overdue</h3><div id="appWorkingList">Updating…</div></section></aside>
     <div class="app-layout-center"><div class="app-layout-tabbar"><button type="button" id="appSidebarToggle" aria-label="Workspace sidebar" aria-controls="appSidebar" aria-expanded="false" title="Workspace sidebar">☷</button><div id="appTabsSlot" class="app-layout-tabs" role="group" aria-label="${escape(title)} views"></div><button type="button" id="appTodayToggle" aria-label="Today sidebar" aria-controls="appToday" aria-expanded="true" title="Today">◷</button></div><div id="appMainSlot" class="app-layout-main"></div></div>
-    <aside id="appToday" class="app-layout-today" aria-labelledby="appTodayTitle"><div class="app-layout-sidebar-head"><h2 id="appTodayTitle">Today</h2><button type="button" data-layout-close="today" aria-label="Close Today">›</button></div><section><h3>Overdue</h3><div id="appTodayNeeds">Updating…</div></section><section><h3>Next up</h3><div id="appTodayNext">Updating…</div></section><section><h3>Recent moves</h3><div id="appTodayMoves"><span class="app-layout-empty">—</span></div></section></aside>
+    <aside id="appToday" class="app-layout-today" aria-labelledby="appTodayTitle"><div class="app-layout-sidebar-head"><h2 id="appTodayTitle">Today</h2><button type="button" data-layout-close="today" aria-label="Close Today">›</button></div><div id="appTodayOwners"></div><section><h3>Overdue</h3><div id="appTodayNeeds">Updating…</div></section><section><h3>Next up</h3><div id="appTodayNext">Updating…</div><button type="button" id="appTodayShowAll" class="app-layout-item app-layout-show-all" aria-controls="appTodayNext" hidden>Show all</button></section><section><h3>Recent moves</h3><div id="appTodayMoves"><span class="app-layout-empty">—</span></div></section></aside>
     <button class="app-layout-scrim" id="appDrawerScrim" type="button" aria-label="Close sidebar" hidden></button>`;
   const status = root.createElement('footer');
   status.className = 'app-layout-status';
@@ -31,7 +32,7 @@ export function mountAppLayout(root, host, pathname) {
   const pageKey = pathname === '/deals' ? '/deals' : pathname;
   const boardPage = ['/leads','/deals','/pipeline'].includes(pathname);
   const progressPage = pathname === '/control-room/progress' || pathname.startsWith('/control-room/progress/board/');
-  const title = pathname === '/vendors' ? 'Vendors' : pathname === '/clients' ? 'Clients' : pathname === '/deals' ? 'Local Deals' : progressPage ? 'Progress' : root.querySelector('main h1, .room-wordmark, .page-kicker')?.textContent.trim().replace(/Loading$/, '').trim() || root.title.split('·')[0].trim();
+  const title = progressPage ? 'Progress' : pathname.startsWith('/control-room') ? 'Control Room' : pathname === '/vendors' ? 'Vendors' : pathname === '/clients' ? 'Clients' : pathname === '/deals' ? 'Local Deals' : root.querySelector('main h1, .room-wordmark, .page-kicker')?.textContent.trim().replace(/Loading$/, '').trim() || root.title.split('·')[0].trim();
   const { layout, status } = createAppLayout(root, title);
   host.after(layout, status);
   const main = layout.querySelector('#appMainSlot');
@@ -51,7 +52,7 @@ export function mountAppLayout(root, host, pathname) {
   }
   root.body.classList.add('has-app-layout');
   const pageOwnsMoves = Boolean(layout.querySelector('#appTodayMoves [data-layout-slot="moves"]'));
-  const phone = win.matchMedia(TOUCH_LAYOUT);
+  const phone = win.matchMedia(pathname === "/leads" ? "(max-width:1023px)" : TOUCH_LAYOUT);
   const itineraryPage = Boolean(root.getElementById('accepted-itinerary'));
   const dealBoard = pathname === '/deals' && root.body.classList.contains('dealroom-page');
   let sidebar = !boardPage && !itineraryPage, today = !dealBoard && !itineraryPage, drawer = null;
@@ -138,10 +139,24 @@ export function mountAppLayout(root, host, pathname) {
   const boot = resolveDealroomBoot(globalThis.location);
   let client, feedActor = null, cursor = null, feed = createFeedProgress(), receipts = [];
   const resetFeed = () => { feedActor = null; cursor = null; feed = createFeedProgress(); receipts = []; if (!pageOwnsMoves) renderMoves(); };
-  const row = (item, extra = '') => `<button type="button" class="app-layout-item" data-layout-deal="${escape(item.subject_id || item.id)}"><strong>${escape(item.subject_name || item.name)}</strong>${extra ? `<span>${escape(extra)}</span>` : ''}</button>`;
+  let todayItems = null, todayNeeds = null, nextExpanded = false;
+  const row = (item, extra = '') => `<button type="button" class="app-layout-item" data-layout-deal="${escape(item.subject_id || item.id)}"><strong>${escape(item.subject_name || item.name)}</strong>${briefOwnerLabel(item) ? `<small class="morning-owner">${briefOwnerLabel(item)}</small>` : ''}${extra ? `<span>${escape(extra)}</span>` : ''}</button>`;
   const render = (target, html) => { const node = layout.querySelector(target); if (node.innerHTML !== html) { const id = node.contains(root.activeElement) ? root.activeElement.dataset.layoutDeal : null; node.innerHTML = html; if (id) [...node.querySelectorAll('button')].find(b => b.dataset.layoutDeal === id)?.focus(); } };
   const unavailable = '<span class="app-layout-empty">Unavailable</span>';
   const empty = '<span class="app-layout-empty">—</span>';
+  const renderToday = () => {
+    const next = todayItems && filterBriefOwners(todayItems, owners.current()).filter(i => i.subject_type === 'deal');
+    render('#appTodayNext', next ? (nextExpanded ? next : next.slice(0,6)).map(i => row(i,`${i.what || 'Due'} · ${shortDay(i.due_on || '', localToday())}`)).join('') || empty : unavailable);
+    const showAll = layout.querySelector('#appTodayShowAll');
+    showAll.hidden = !next || next.length <= 6 || nextExpanded;
+    showAll.textContent = `Show all ${next?.length || 0}`;
+    render('#appTodayNeeds', todayNeeds ? filterBriefOwners(todayNeeds, owners.current()).slice(0,6).map(d => row(d,d.next_step)).join('') || empty : unavailable);
+  };
+  const owners = mountBriefOwnerFilter(root, layout.querySelector('#appTodayOwners'), () => { nextExpanded = false; renderToday(); });
+  layout.querySelector('#appTodayShowAll').onclick = () => {
+    nextExpanded = true; renderToday();
+    layout.querySelectorAll('#appTodayNext [data-layout-deal]')[6]?.focus();
+  };
   const renderMoves = () => {
     const moves = feed.caught_up ? receiptViews(receipts).slice(0,6) : [];
     render('#appTodayMoves', moves.map(move => row({ id:move.deal_id, name:move.deal_name }, `${move.actor === 'doc' ? 'Doc · ' : ''}${move.action}${move.after ? ` → ${shortDay(move.after, localToday())}` : ''} · ${time(move.recorded_at)}`)).join('') || empty);
@@ -162,8 +177,9 @@ export function mountAppLayout(root, host, pathname) {
     dot.setAttribute('aria-label', connected ? 'Connection available' : 'Connection unavailable'); dot.title = dot.getAttribute('aria-label');
   };
   const unavailableRead = () => {
+    todayItems = null; todayNeeds = null;
     resetFeed(); connection(false);
-    render('#appTodayNeeds', unavailable); render('#appTodayNext', unavailable); render('#appWorkingList', unavailable);
+    renderToday(); render('#appWorkingList', unavailable);
     if (!pageOwnsMoves) render('#appTodayMoves', unavailable);
   };
   const refresh = async ({ signal } = {}) => {
@@ -172,14 +188,18 @@ export function mountAppLayout(root, host, pathname) {
     catch { unavailableRead(); return; }
     const [board, triage] = await Promise.allSettled([
       readWithDeadline(() => client.getBoard({ workspace:'all' }), { signal }),
-      readWithDeadline(() => client.todayTriage(), { signal }),
+      readWithDeadline(async () => {
+        const brief = await client.morningBrief();
+        if (validBrief(brief)) { owners.setViewer(brief.sponsor); return brief.sections.today.state === 'unavailable' ? null : {items:brief.sections.today.items}; }
+        return client.todayTriage();
+      }, { signal }),
     ]);
     if (signal?.aborted || win.navigator.onLine === false) return;
     const connected = board.status === 'fulfilled' && validBoard(board.value);
     const triageValid = triage.status === 'fulfilled' && validTriage(triage.value);
     connection(connected && triageValid);
     const items = triageValid ? triage.value.items : null;
-    render('#appTodayNext', items ? items.filter(i => i.subject_type === 'deal').slice(0,6).map(i => row(i,`${i.what || 'Due'} · ${shortDay(i.due_on || '', localToday())}`)).join('') || empty : unavailable);
+    todayItems = items;
     if (connected) {
       const value = board.value;
       if (feedActor !== value.actor) resetFeed();
@@ -195,9 +215,12 @@ export function mountAppLayout(root, host, pathname) {
         status.querySelector('#appSyncTime').dateTime = observed;
       }
       const active = scopedDeals(value, 'team');
-      const needs = scopedDeals(value, 'mine').filter(d => needsAttention(d));
-      render('#appTodayNeeds', needs.slice(0,6).map(d => row(d,d.next_step)).join('') || empty);
+      todayNeeds = active.flatMap(deal => {
+        const actions = items?.filter(item => item.subject_type === 'deal' && item.subject_id === deal.id) || [];
+        return actions.length ? actions.map(action => ({...deal, ...action, next_step:action.what, next_date:action.due_on})) : [deal];
+      }).filter(d => needsAttention(d));
       render('#appWorkingList', active.filter(d => needsAttention(d)).slice(0,8).map(d => row(d,d.next_step)).join('') || empty);
+      renderToday();
       if (!pageOwnsMoves) {
         try {
           // The existing feed starts with history. Never present its oldest
@@ -215,7 +238,7 @@ export function mountAppLayout(root, host, pathname) {
           renderMoves();
         } catch { render('#appTodayMoves', unavailable); }
       }
-    } else { resetFeed(); render('#appTodayNeeds', unavailable); render('#appWorkingList', unavailable); if (!pageOwnsMoves) render('#appTodayMoves', unavailable); }
+    } else { todayNeeds = null; resetFeed(); render('#appTodayNeeds', unavailable); render('#appWorkingList', unavailable); if (!pageOwnsMoves) render('#appTodayMoves', unavailable); renderToday(); }
   };
   layout.addEventListener('click', event => {
     const item = event.target.closest('[data-layout-deal]'); if (!item) return;
@@ -229,6 +252,6 @@ export function mountAppLayout(root, host, pathname) {
   status.querySelector('#appSyncRefresh').onclick = () => { auto.refresh(); root.querySelectorAll('[data-layout-refresh]').forEach(button => button.click()); };
   auto.refresh();
   win.addEventListener('pagehide', event => {
-    if (!event.persisted) { auto.dispose(); win.removeEventListener('offline', unavailableRead); }
+    if (!event.persisted) { auto.dispose(); owners.dispose(); win.removeEventListener('offline', unavailableRead); }
   });
 }
