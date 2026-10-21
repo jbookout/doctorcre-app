@@ -85,6 +85,41 @@ test('Lead opening and actions are separate accessible keyboard controls', async
   assert.equal(writes.length, 2);
 });
 
+test('Lead actions stay disabled until Claim refresh completes, then one Link click writes', async t => {
+  const browser = await chromium.launch();
+  t.after(() => browser.close());
+  const page = await browser.newPage({ viewport: { width: 1280, height: 900 }, reducedMotion: 'reduce' });
+  const writes = [];
+  let releaseRefresh, refreshHeld;
+  const gate = new Promise(resolve => { releaseRefresh = resolve; });
+  const held = new Promise(resolve => { refreshHeld = resolve; });
+  t.after(() => releaseRefresh());
+  await routeLeads(page, { onWrite: value => writes.push(value) });
+  await page.route('**/mcp', async route => {
+    const params = route.request().postDataJSON().params;
+    if (params.name === 'lead-board' && writes.some(write => write.name === 'claim-lead')) {
+      refreshHeld();
+      await gate;
+    }
+    await route.fallback();
+  });
+  await page.goto('http://localhost/leads');
+  await page.locator('.market-marker').first().waitFor();
+  await page.locator('.hot-row').first().getByRole('button', { name: 'Claim', exact: true }).click();
+  await held;
+  await page.waitForFunction(() => document.querySelector('#moveAnnouncement').textContent === 'Lead claimed');
+  const link = page.getByRole('button', { name: 'Link Dr. Example 19 to Example Client Match', exact: true });
+  assert.equal(await link.isDisabled(), true, 'Link communicates that Claim readback still owns the write lock');
+  assert.equal(await page.getByRole('button', { name: 'Claim', exact: true }).first().isDisabled(), true);
+  await page.locator('#stageFilter').selectOption('qualified');
+  assert.equal(await link.isDisabled(), true, 'rerendering cannot enable an action while its guard rejects writes');
+  assert.deepEqual(writes.map(write => write.name), ['claim-lead']);
+  releaseRefresh();
+  await link.click();
+  await page.waitForFunction(() => document.querySelector('#moveAnnouncement').textContent === 'Client linked');
+  assert.deepEqual(writes.map(write => write.name), ['claim-lead', 'link-lead-client']);
+});
+
 for (const width of [768, 1280, 1440]) for (const theme of ['light', 'dark']) {
   test(`Lead stages pack independently and names stay readable at ${width}px mouse ${theme}`, async t => {
     const browser = await chromium.launch();
