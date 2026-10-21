@@ -1,11 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { JSDOM } from 'jsdom';
-import { dealTimeline, countdown, renderDealTimeline, renderCriticalDates, calendarDay, updateCountdowns } from '../js/deal-timeline.js';
+import { dealTimeline, countdown, renderDealTimeline, renderDealUpdates, renderCriticalDates, calendarDay, updateCountdowns } from '../js/deal-timeline.js';
 import { createLiveClient } from '../js/live-client.js';
 import { readFile } from 'node:fs/promises';
 const now = Date.parse('2026-10-04T17:00:00Z');
-const detail = {deal:{id:'demo',phase:'Legal'},history:[
+const detail = {deal:{id:'demo',phase:'Legal',phase_started_on:{research:'2026-09-20',legal:'2026-10-03'}},history:[
   {id:'p1',field:'phase',new_value:{phase:'research'},recorded_at:'2026-09-20T12:00:00Z'},
   {id:'p2',field:'phase',new_value:'legal',recorded_at:'2026-10-03T12:00:00Z'},
 ],lease:{id:'demo-lease',status:'current',commencement_on:'2026-11-01',expiration_on:'2031-10-31',source:'Demo abstract',evidence_ref:'Demo clause 3',free_rent_months:2},
@@ -41,20 +41,13 @@ test('countdowns cross midnight and distinguish deadlines, cleared dates and pas
  updateCountdowns(root,now+86400000);
  assert.equal(root.querySelector('[data-countdown="2026-10-03"]').textContent,'2 days overdue');
 });
-test('chronology includes documents, correspondence and undated entries with escaped originals and concise summaries',()=>{
- const view=dealTimeline(detail,now);
- assert.deepEqual(view.entries.map(e=>e.kind),['Note','email','Document']);
- assert.ok(view.entries.every(e=>e.summary.length<=150));
- const html=renderDealTimeline(detail,now);
- assert.match(html,/Original demo email &lt;script&gt;/);
- assert.doesNotMatch(html,/<script>/);
- assert.match(html,/role="img"/);
+test('updates preserve escaped originals, author, exact date and newest-first order',()=>{
+ const html=renderDealUpdates(detail);
+ assert.match(html,/Original demo email &lt;script&gt;/);assert.doesNotMatch(html,/<script>/);
  const root=new JSDOM(html).window.document;
- assert.equal(root.querySelectorAll('.timeline-entry').length,3);
- assert.equal(root.querySelector('.timeline-entry time').dateTime,'2026-10-01');
- const old={...detail,activities:[{id:'old',kind:'call',summary:'Demo old call',detail:'Original demo call',occurred_at:'2020-01-01'}]};
- assert.doesNotMatch(renderDealTimeline(old,now),/Demo old call/);
- assert.match(renderDealTimeline(old,now,true),/Demo old call/);
+ assert.equal(root.querySelectorAll('.deal-note').length,2);
+ assert.equal(root.querySelector('.deal-note time').dateTime,'2026-10-02T12:00:00Z');
+ assert.equal(new JSDOM(renderDealTimeline(detail)).window.document.querySelectorAll('.phase-rail').length,1);
 });
 test('the live adapter preserves the versioned lease and explicit absence behind getDeal',async()=>{
  const contract=JSON.parse(await readFile(new URL('../contracts/carr-interface.v1.json',import.meta.url),'utf8')).mcp_read_contracts['get-deal-room'];
@@ -70,18 +63,13 @@ test('the live adapter preserves the versioned lease and explicit absence behind
  assert.ok(calls.every(c=>c.path==='/mcp' && c.init.credentials==='same-origin'));
  assert.deepEqual(JSON.parse(calls[0].init.body).params,{name:'get-deal-room',arguments:{deal:'demo'}});
 });
-test('missing activity originals never masquerade as original email bodies',()=>{
- const html=renderDealTimeline({deal:{phase:'Legal'},activities:[{id:'mail',kind:'email',summary:'Demo summary only',occurred_at:'2026-10-02T12:00:00Z'}]},now);
- const root=new JSDOM(html).window.document;
- assert.equal(root.querySelector('.note-original').textContent,'Original unavailable');
+test('summary-only activity does not offer a fabricated original',()=>{
+ const html=renderDealUpdates({activities:[{id:'mail',kind:'email',summary:'Demo summary',occurred_at:'2026-10-02T12:00:00Z'}]});
+ assert.doesNotMatch(html,/unavailable|Read full update/);
 });
 
-test('timeline labels use words while retaining exact wire kinds for identity',()=>{
- const value={deal:{phase:'Legal'},activities:[{id:'demo-email',kind:'email_in',summary:'Demo incoming email',detail:'Original demo message',occurred_at:'2026-10-02'}],critical_dates:[{kind:'tenant_notice',due_on:'2026-10-12'}]};
- const cards=new JSDOM(renderDealTimeline(value,now)).window.document;
- assert.equal(cards.querySelector('.timeline-entry b').textContent,'email in');
- assert.equal(cards.querySelector('.timeline-entry').dataset.kind,'email_in');
- assert.match(new JSDOM(renderCriticalDates(value,now)).window.document.body.textContent,/tenant notice/);
+test('zero notes omit the entire Updates section',()=>{
+ assert.equal(renderDealUpdates({thread:[],activities:[]}), '');
 });
 
 test('review 1: producer cleared and passed dates do not raise deadline alarms',()=>{
@@ -107,4 +95,49 @@ test('review 2: recorded and projected lease expiration share urgency while comm
   const date=dealTimeline({deal:detail.deal,critical_dates:[{kind:'lease_commencement',due_on:day,status:'open'}]},now).dates[0];
   assert.equal(countdown(date,now).state,day==='2026-10-03'?'past':'upcoming');
  }
+});
+
+test('updates show the latest excerpt and expand into recorded history',()=>{
+ const root=new JSDOM(renderDealUpdates(detail)).window.document;
+ const overview=root.querySelector('.updates-overview');
+ assert.ok(overview);
+ assert.match(overview.textContent,/Demo negotiated allowance/);
+ assert.doesNotMatch(overview.textContent,/Demo note/);
+ assert.ok(overview.textContent.length<400);
+ const history=root.querySelector('.updates-history');
+ assert.equal(history.open,false);
+ assert.match(history.querySelector('summary').textContent,/Recorded updates.*2/);
+ assert.match(history.textContent,/Original demo email <script>data only<\/script>/);
+ assert.equal(root.querySelectorAll('.deal-note').length,2);
+});
+
+test('timeline consumes first phase dates from the board projection and never overwrites them with a later revisit',()=>{
+ const value={...detail,deal:{...detail.deal,phase_started_on:{research:'2026-08-31',legal:'2026-09-30'}},history:[...detail.history,{field:'phase',new_value:'research',recorded_at:'2026-10-04T12:00:00Z'}]};
+ const phases=dealTimeline(value,now).phases;
+ assert.equal(phases.find(p=>p.slug==='research').day,'2026-08-31');
+ assert.equal(phases.find(p=>p.slug==='legal').day,'2026-09-30');
+ assert.doesNotMatch(renderDealTimeline(value,now),/Start date not recorded/);
+});
+
+test('the live adapter preserves authoritative start dates in both board and detail reads',async()=>{
+ const phase_started_on={research:'2026-08-31',legal:'2026-09-30'};
+ const client=createLiveClient({fetchImpl:async(_path,init)=>{
+  const {name}=JSON.parse(init.body).params;
+  const result=name==='deal-room-board'?{deals:[{id:'demo',phase:'legal',next_step:'Review the draft',phase_started_on}]}:{deal_id:'demo',phase:'legal',next_step:'Review the draft',phase_started_on};
+  return new Response(JSON.stringify({result:{content:[{text:JSON.stringify(result)}]}}));
+ }});
+ assert.deepEqual((await client.getBoard()).deals[0].phase_started_on,phase_started_on);
+ const detail=await client.getDeal('demo');
+ assert.deepEqual(detail.deal.phase_started_on,phase_started_on);
+ assert.equal(dealTimeline(detail).phases.find(p=>p.slug==='legal').day,'2026-09-30');
+});
+
+
+test('a capped activity feed never claims to be full history',()=>{
+ const allActivities=Array.from({length:51},(_,i)=>({id:`activity-${i}`,kind:'note',summary:`Demo activity ${i}`,occurred_at:new Date(Date.UTC(2026,9,20,12,0,-i)).toISOString()}));
+ const root=new JSDOM(renderDealUpdates({activities:allActivities.slice(0,50)})).window.document;
+ assert.equal(root.querySelectorAll('.deal-note').length,50);
+ assert.doesNotMatch(root.body.textContent,/Full history/i);
+ assert.match(root.querySelector('.updates-history > summary').textContent,/Recorded updates \(50\)/);
+ assert.match(root.body.textContent,/latest 50 activities.*older activities may be omitted/i);
 });

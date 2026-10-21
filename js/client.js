@@ -47,6 +47,8 @@
  * @property {string|null} next_date
  * @property {string|null} segment
  * @property {string|null} market
+ * @property {'active'|'inactive'} [prospect_engagement_status] client engagement independently of deal parking
+ * @property {number} [client_version] version for the audited engagement write
  * @property {'active'|'parked'} operating_state whether this Salesforce-linked row is current work
  * @property {'prospect_never_active'|'client_paused'|'other'|null} parking_reason
  * @property {string|null} parking_note
@@ -92,7 +94,8 @@
  * @property {'fixture'|'live'} mode
  * @property {Actor} selfActor
  * @property {(args?:Object, options?:{signal?:AbortSignal}) => Promise<Object>} readDocActivity authenticated doc-activity.v1 projection
- * @property {() => Promise<{deals:BoardDeal[], as_of:string, last_call_at:string}>} getBoard
+ * @property {() => Promise<{deals:BoardDeal[], closed_deals?:Object[], as_of:string, last_call_at:string}>} getBoard
+ * @property {(args:{client_id:string,base_version:number,status:'active'|'inactive',reason:string,expected_actor?:string,idempotency_key:string}) => Promise<Object>} setProspectEngagementStatus audited transition between Leads and the deal board
  * @property {(dealId:string) => Promise<DealDetail>} getDeal
  * @property {(cursor:string|null) => Promise<ChangesResponse>} getChanges
  * @property {(args:{deal:string, field:string, idempotency_key:string}) => Promise<{ok:true}>} presenceLease
@@ -100,7 +103,7 @@
  * @property {(args:{conflict_id:string, winner:'a'|'b', idempotency_key:string}) => Promise<WriteResult>} resolveConflict
  * @property {(args:{deal:string, text:string, idempotency_key:string}) => Promise<WriteResult>} addDealNote
  * @property {(args:{deal:string, text:string, next_date?:string|null, idempotency_key:string}) => Promise<WriteResult>} setNextStep
- * @property {(args:{name:string, idempotency_key:string}) => Promise<WriteResult>} createDeal
+ * @property {(args:{name:string, client?:string, deal_type?:string, phase?:string, owner?:'joe'|'dell', notes?:string, idempotency_key:string}) => Promise<WriteResult>} createDeal
  * @property {() => Promise<{proposals:ConfirmProposal[]}>} [getPendingConfirms]
  * @property {(args:{deal_ids:string[]}) => Promise<{deals:Object[]}>} [getCallContext] exact active agenda records and participants
  * @property {(args:{proposal_id:string, accept:boolean, idempotency_key:string}) => Promise<WriteResult>} [resolveConfirm]

@@ -4,16 +4,12 @@ const when = value => new Date(value).toLocaleString([], { year: 'numeric', mont
 
 function evidenceGroup(title, state) {
   const group = title === 'Threads' ? 'threads' : 'meetings';
-  if (state?.state !== 'ready') {
-    const loading = state?.state === 'loading';
-    const label = loading ? `Loading ${title.toLowerCase()}…` : title === 'Threads' ? 'Threads unavailable' : 'Meeting evidence unavailable';
-    return `<div class="evidence-state" data-evidence-group="${group}" data-state="${loading ? 'loading' : 'unavailable'}"><h4>${label}</h4></div>`;
-  }
   const items = [...state.items].sort((a, b) => Date.parse(b.when) - Date.parse(a.when));
   return `<div class="evidence-group" data-evidence-group="${group}"><h4>${title}</h4><ol class="evidence-timeline">${items.map(item => `<li class="evidence-item" data-kind="${esc(item.kind)}"><details><summary><span>${esc(item.title)}</span><time datetime="${esc(item.when)}">${esc(when(item.when))}</time></summary><p>${item.kind === 'thread' ? 'Email' : 'Meeting'}</p></details></li>`).join('')}</ol></div>`;
 }
 export function renderEvidence(view = {}) {
-  return `<section class="correspondence-evidence" aria-label="Evidence" aria-live="polite"><h3>Evidence</h3>${evidenceGroup('Threads', view.threads)}${evidenceGroup('Meetings', view.meetings)}</section>`;
+  const groups = [['Threads',view.threads],['Meetings',view.meetings]].filter(([,state]) => state?.state === 'ready' && state.items?.length);
+  return groups.length ? `<section class="correspondence-evidence" aria-label="Evidence"><h3>Evidence</h3>${groups.map(([title,state]) => evidenceGroup(title,state)).join('')}</section>` : '';
 }
 async function boundedRead(read, timeoutMs) {
   let timer;
@@ -38,10 +34,13 @@ export async function loadEvidence(client, detail = {}, { timeoutMs = 8000 } = {
 }
 export function mountEvidence(root, { client, detail = {}, timeoutMs } = {}) {
   let disposed = false;
-  root.innerHTML = renderEvidence({ threads: { state: 'loading' }, meetings: meetingEvidence(detail.activities) });
-  const threads = root.querySelector('[data-evidence-group="threads"]');
+  root.innerHTML = renderEvidence({meetings:meetingEvidence(detail.activities)});
   loadEvidence(client, detail, { timeoutMs }).then(view => {
-    if (!disposed) threads.outerHTML = evidenceGroup('Threads', view.threads);
+    if (disposed) return;
+    const section = root.querySelector('.correspondence-evidence');
+    if (!section) { root.innerHTML = renderEvidence(view); return; }
+    if (view.threads.state === 'ready' && view.threads.items.length)
+      section.insertAdjacentHTML('beforeend',evidenceGroup('Threads',view.threads));
   });
   return () => { disposed = true; };
 }

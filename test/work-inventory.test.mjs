@@ -525,7 +525,7 @@ test('V1 batch D All Work controls and broker copy', async t => {
     document.querySelector('#evidenceClose').click();
   });
 
-  await t.test('17: command feedback keeps operation and safety identifiers in Command details', async () => {
+  await t.test('17: confirmed command feedback contains no operation or safety identifiers', async () => {
     document.querySelector('#evidenceClose').click();
     assert.ok(detailsButton(), 'Open details remains available');
     detailsButton().click();
@@ -533,8 +533,9 @@ test('V1 batch D All Work controls and broker copy', async t => {
     document.querySelector('#evidenceDialog [data-action="decline"]').click();
     document.querySelector('#dispositionReason').value = 'Demo duplicate capture';
     document.querySelector('#dispositionForm').requestSubmit();
-    await until(() => document.querySelector('#receiptDock [data-state="confirmed"]') &&
+    await until(() => /Changes saved/.test(document.querySelector('#commandStatus').textContent) &&
       !document.querySelector('#dispositionDialog').open, 'supported write must be confirmed');
+    assert.equal(document.querySelector('#receiptDock [data-state="confirmed"]'),null);
     const copy = screenCopy(document);
     assert.doesNotMatch(copy, /WR-000904|decline:WR|safety key|operation decline|[a-f0-9]{8}-[a-f0-9-]{27,}/);
     assert.match(document.querySelector('#commandStatus').textContent, /Demo captured request.*Changes saved/);

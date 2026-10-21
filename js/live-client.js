@@ -5,12 +5,13 @@
  * on each reviewed Deal Room host, so no baseUrl is needed in production or
  * staging; one may be passed directly for isolated client tests.
  */
-import { assuranceHealthRequest } from './assurance-health-model.js';
 import { uuidv4 } from './uuid.js';
 import { readinessRequest, threadRequest } from './correspondence-model.js';
 import { fetchRead, readWithDeadline } from './current-read.mjs';
 import { createMcpRequests, unknownMcpOutcome } from './mcp-requests.mjs';
 import { observeDocClient } from './doc-context.js';
+import { expandBoardRead } from './progress-board-model.js';
+import { createEngagementWriter } from './prospect-engagement.mjs';
 
 // Verified pre-commit refusals from new-deal and its argument/subject checks
 // in CARR producer 0cc6fe2538a81521bf8c25b0df58aa4063ed614b. Internal and
@@ -124,7 +125,7 @@ export function createLiveClient(opts = {}) {
   const client = {
     mode: /** @type {const} */ ('live'),
     get selfActor() { return selfActor; },
-    async readAssuranceHealth(args) { return rpc('read-assurance-health', assuranceHealthRequest(args)); },
+    async readAssuranceHealth(args) { const { assuranceHealthRequest } = await import('./assurance-health-model.js'); return rpc('read-assurance-health', assuranceHealthRequest(args)); },
     async getRelationshipNetwork({ signal } = {}) {
       const response = await fetchReadImpl('/api/v1/business/relationships?contract=relationship-network.v1', {signal,credentials:'same-origin',cache:'no-store',headers:{accept:'application/json'}});
       if (!response.ok) throw Object.assign(new Error('Relationships unavailable'), {status:response.status});
@@ -147,7 +148,9 @@ export function createLiveClient(opts = {}) {
         ...(options.account_client_id ? { account_client_id: options.account_client_id } : {}),
       }, options.signal);
       selfActor = board.actor || selfActor;
-      return { ...board, deals: Array.isArray(board.deals) ? board.deals.map(dealToUi) : board.deals };
+      return { ...board, deals: Array.isArray(board.deals) ? board.deals.map(dealToUi) : board.deals,
+        lost_deals: Array.isArray(board.lost_deals) ? board.lost_deals.map(dealToUi) : undefined,
+        closed_deals: Array.isArray(board.closed_deals) ? board.closed_deals.map(dealToUi) : undefined };
     },
 
     async getDeal(dealId, { signal } = {}) {
@@ -165,7 +168,7 @@ export function createLiveClient(opts = {}) {
         if (n.kind === 'next_step') {
           if (!currentSeen) {
             currentSeen = true; currentStep = n.text;
-            if (!hasCanonicalStep || n.text === canonicalStep) continue;
+
           }
           uiThread.push({ ...n, kind: 'archived_step' });
         } else {
@@ -368,10 +371,11 @@ export function createLiveClient(opts = {}) {
         reason: 'Created in the Deal Room',
         idempotency_key: key,
       };
+      const intent = { ...request, owner: args.owner || selfActor, notes: args.notes || '' };
       let operation = dealCreations.get(key);
-      if (operation && JSON.stringify(operation.request) !== JSON.stringify(request)) throw new Error('Reconcile the original deal creation before changing its fields.');
+      if (operation && JSON.stringify(operation.intent) !== JSON.stringify(intent)) throw new Error('Reconcile the original deal creation before changing its fields.');
       if (!operation) {
-        operation = { request, actor: selfActor };
+        operation = { request, intent, actor: intent.owner };
         dealCreations.set(key, operation);
       }
       if (operation.result) return operation.result;
@@ -400,8 +404,17 @@ export function createLiveClient(opts = {}) {
           if (!Number.isInteger(fresh?.base_version)) throw new Error('Created deal version is unavailable; lead was not assigned.');
           operation.lead = { deal: res.deal_id, new_lead: operation.actor, base_version: fresh.base_version, idempotency_key: uuidv4() };
         }
-        const lead = await write('set-lead', operation.lead);
-        if (lead?.ok !== true) throw new Error('Lead receipt is unavailable. Reconcile the same request.');
+        if (!operation.leadConfirmed) {
+          const lead = await write('set-lead', operation.lead);
+          if (lead?.ok !== true) throw new Error('Lead receipt is unavailable. Reconcile the same request.');
+          operation.leadConfirmed = true;
+        }
+        if (intent.notes && !operation.noteConfirmed) {
+          operation.note ||= { deal: res.deal_id, text: intent.notes, idempotency_key: uuidv4() };
+          const note = await write('add-deal-note', operation.note);
+          if (note?.ok !== true) throw new Error('Note receipt is unavailable. Reconcile the same request.');
+          operation.noteConfirmed = true;
+        }
         operation.result = { status: 'ok', deal_id: res.deal_id };
         return operation.result;
       })();
@@ -593,7 +606,7 @@ export function createLiveClient(opts = {}) {
       return write(verb, args);
     },
     async listProgressBoards(_args = {}, { signal } = {}) { return rpc('list-progress-boards', {}, signal); },
-    async readProgressBoard(args, { signal } = {}) { return rpc('read-progress-board', args, signal); },
+    async readProgressBoard(args, { signal } = {}) { return expandBoardRead(await rpc('read-progress-board', args, signal)); },
     async answerBoardQuestion(args) { return write('answer-board-question', args); },
     async setNotificationPreference(args) { return write('set-notification-preference', args); },
 
@@ -634,6 +647,7 @@ export function createLiveClient(opts = {}) {
     async find(args = {}, { signal } = {}) { return rpc('find', args, signal); },
     async findAndCatchUp(args = {}, { signal } = {}) { return rpc('find-and-catch-up', args, signal); },
 
+    setProspectEngagementStatus: createEngagementWriter(args => write('set-prospect-engagement-status', args, opts.writeTimeoutMs || 10_000)),
     async startReview(args) { return write('start-deal-review', args); },
     async reviewDeal(args) { return write('review-deal', args); },
     async endReview(args) { return write('end-deal-review', args); },

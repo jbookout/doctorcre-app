@@ -19,7 +19,7 @@
   <link rel="stylesheet" href="/css/deal-timeline.css">
   <link rel="stylesheet" href="/css/app-shell.css">
 </head>
-<body>
+<body class="dealroom-page">
   <div id="appShell"></div><script type="module" src="/js/app-shell.js"></script>
   <a class="skip" href="#main">Skip to the board</a>
   <p id="prefsLive" class="sr-only" aria-live="polite"></p>
@@ -29,7 +29,6 @@
       <div class="hero">
         <div>
           <h1 id="pageTitle">Local Deals</h1>
-          <nav class="app-section-tabs" aria-label="Deals pages"><a href="/deals">Local Deals</a><a href="/deals?view=national">National Accounts</a></nav>
         </div>
         <div data-layout-slot="status" class="hero-meta">
           <span id="deploymentBadge" class="small"></span>
@@ -44,11 +43,15 @@
         <div class="chip-bar" role="group" aria-label="Deal view">
           <button class="chip" id="boardView" type="button" aria-pressed="true">Board</button>
           <button class="chip" id="listView" type="button" aria-pressed="false">List</button>
+          <button class="chip" id="closedView" type="button" aria-pressed="false" aria-controls="closedDealsView">Closed deals</button>
+          <button class="chip" id="lostView" type="button" aria-pressed="false" aria-controls="closedDealsView">Lost deals</button>
           <button class="chip" id="parkedToggle" type="button" aria-pressed="false">Parked</button>
         </div>
       </div>
       <button class="btn" type="button" id="receiptsOpen" aria-controls="appToday">Recent changes <span id="receiptsCount">0</span></button>
     </section>
+
+    <div class="dealroom-heading"><nav class="app-section-tabs" aria-label="Deals pages"><a href="/deals" aria-current="page">Local Deals</a><a href="/deals?view=national">National Accounts</a></nav><button class="btn btn-primary" type="button" id="addDealOpen" aria-haspopup="dialog">Add deal</button></div>
 
     <p id="boardLive" aria-live="polite" role="status">Updating…</p>
     <p class="sr-only" id="dragLive" aria-live="assertive"></p>
@@ -60,9 +63,37 @@
 
     <div class="pipeline-layout">
       <div class="kanban" id="kanban" aria-label="Deals by phase" tabindex="-1"></div>
+      <section id="closedDealsView" hidden aria-labelledby="closedDealsTitle">
+        <h2 id="closedDealsTitle">Closed deals</h2>
+        <div class="field"><label for="closedSearch">Search closed deals</label><input id="closedSearch" type="search" placeholder="Deal, client, type, or close date"></div>
+        <p id="closedCount" role="status"></p>
+        <div id="closedDealsList" class="closed-deals-list"></div>
+      </section>
 
     </div>
   </main>
+
+  <dialog id="addDealDialog" class="dialog" aria-labelledby="addDealTitle">
+    <form id="addDealForm">
+      <header><h2 id="addDealTitle">Add deal</h2></header>
+      <div class="dialog-body">
+        <p id="addDealError" role="alert" tabindex="-1"></p>
+        <fieldset id="addDealFields" class="add-deal-fields">
+          <div class="field"><label for="addDealName">Deal name</label><input id="addDealName" name="name" required maxlength="200" autofocus></div>
+          <div class="field"><label for="addDealClient">Client</label><input id="addDealClient" name="client" required maxlength="200" placeholder="C-ref or exact client name" aria-describedby="addDealClientHint"><small id="addDealClientHint">Use an existing client reference or exact name.</small></div>
+          <div class="field-grid">
+            <div class="field"><label for="addDealType">Type</label><select id="addDealType" name="deal_type" required>
+              <option value="startup">Startup</option><option value="relocation">Relocation</option><option value="additional_office">Additional office</option><option value="renewal">Renewal</option><option value="expansion">Expansion</option><option value="purchase">Purchase</option><option value="other">Other</option>
+            </select></div>
+            <div class="field"><label for="addDealStage">Stage</label><select id="addDealStage" name="phase" required></select></div>
+            <div class="field"><label for="addDealOwner">Owner</label><select id="addDealOwner" name="owner" required><option value="joe">Joe</option><option value="dell">Dell</option></select></div>
+          </div>
+          <div class="field"><label for="addDealNotes">Notes</label><textarea id="addDealNotes" name="notes" rows="3" maxlength="5000"></textarea></div>
+        </fieldset>
+      </div>
+      <footer><button class="btn" type="button" id="addDealCancel">Cancel</button><button class="btn btn-primary" id="addDealSubmit" type="submit">Create deal</button></footer>
+    </form>
+  </dialog>
 
   <dialog id="recordPanel" class="dialog deal-detail" aria-labelledby="panelTitle">
     <header><h2 id="panelTitle">Deal</h2><button class="btn icon-btn" id="panelClose" type="button" aria-label="Close deal">×</button></header>
@@ -72,16 +103,7 @@
     </div>
   </dialog>
 
-  <dialog id="dealDateDialog" class="dialog" aria-labelledby="dealDateTitle">
-    <form id="dealDateForm">
-      <header><h2 id="dealDateTitle">Add date</h2><button type="button" class="btn icon-btn" id="dealDateCancel" aria-label="Cancel date">×</button></header>
-      <div class="dialog-body detail-controls">
-        <label>Date<input type="date" name="date" required></label>
-        <label>Lease clause or contract reference<input type="text" name="evidence" maxlength="500" required></label>
-        <button class="btn btn-primary" type="submit">Save date</button><p id="dealDateStatus" role="status"></p>
-      </div>
-    </form>
-  </dialog>
+
 
   <dialog id="completionDialog" class="dialog" aria-labelledby="completionTitle">
     <form id="completionForm">

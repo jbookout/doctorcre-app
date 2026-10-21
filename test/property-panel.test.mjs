@@ -20,7 +20,7 @@ const evidence = { schema: "tour-property-evidence.v1", property_id: "10000000-0
 const panelSource = await readFile(new URL("../tours/property-panel.js", import.meta.url), "utf8");
 test("property evidence is an explicit additive CARR contract read above main's 1.33 release", async () => {
   const contract = JSON.parse(await readFile(new URL("../contracts/carr-interface.v1.json", import.meta.url), "utf8"));
-  assert.equal(contract.version, "1.45.0");
+  assert.equal(contract.version, "1.50.0");
   assert.ok(contract.http_surfaces.includes("/api/tours/property-evidence/v1"));
 });
 const otherProperty = "10000000-0000-4000-8000-000000000002";
@@ -203,4 +203,10 @@ test("long site names fit the diagram while the fact card keeps the full value",
     site_address: reviewed(address) } });
   assert.match(html, /<text[^>]*class="node-value">123 Gulf View Drive, San…<\/text>/);
   assert.match(html, /<strong>123 Gulf View Drive, Santa Rosa Beach, Florida<\/strong>/);
+});
+
+test("an evidence response without useful facts uses one unavailable summary", () => {
+  const html = renderPropertyPanel({ schema: "tour-property-evidence.v1", facts: { county: unknown } });
+  assert.match(html, /Property evidence is unavailable/);
+  assert.doesNotMatch(html, /property-fact-grid|property-layer-diagram|data-evidence-field/);
 });

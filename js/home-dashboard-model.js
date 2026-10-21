@@ -1,3 +1,4 @@
+import { isClosedDeal, localDeals, needsAttention } from './deal-review-model.js';
 import { validInvoiceTracker } from './invoice-tracker-model.js';
 import { validNetwork } from './relationship-network-model.js';
 import { addDays, criticalDateEntries, localToday, toDay } from './calendar-model.js';
@@ -30,12 +31,12 @@ function validHomeBoard(board) {
 
 export function scopedDeals(board, scope) {
   if (!validHomeBoard(board) || (scope === 'mine' && !board.actor)) return null;
-  return board.deals.filter(deal => !['closed', 'Closed'].includes(deal.phase)
+  return board.deals.filter(deal => !isClosedDeal(deal)
     && (deal.operating_state || 'active') === 'active'
     && (scope !== 'mine' || deal.owner === board.actor));
 }
 
-export function dealSnapshot(board, scope = 'team') {
+export function dealSnapshot(board, scope = 'team', now = Date.now()) {
   const deals = scopedDeals(board, scope);
   if (!deals) return null;
   return { active: deals.length,
@@ -44,7 +45,7 @@ export function dealSnapshot(board, scope = 'team') {
     inMarket: deals.every(deal => typeof deal.in_market === 'boolean')
       ? deals.filter(deal => deal.in_market).length : null,
     national: deals.filter(deal => deal.workspace_kind === 'national_account' || deal.account_client_id).length,
-    flagged: deals.filter(deal => deal.attention === true) };
+    flagged: localDeals(deals).filter(deal => needsAttention(deal, now)) };
 }
 
 export function dealHref(id) { return `/deals?deal=${encodeURIComponent(id)}`; }
@@ -77,13 +78,13 @@ export function agendaSnapshot(board, details, { scope = 'team', today = localTo
     for (const task of taskRows) {
       const day = toDay(task.due_on);
       if (task.status !== 'open' || (scope === 'mine' && task.owner !== board.actor)) continue;
-      if (!day) { undated.push(task); continue; }
-      entries.push({ key: `task:${task.id}`, deal_id: deal.id, deal_name: deal.name, day, label: task.description || 'Task', type: 'task' });
+      entries.push({ key: `task:${task.id}`, deal_id: deal.id, deal_name: deal.name, day, owner: task.owner, label: task.description || 'Task', type: 'task' });
     }
   }
-  entries.sort((a, b) => a.day.localeCompare(b.day) || a.key.localeCompare(b.key));
+  const priority = entry => !entry.day ? 1 : entry.day <= today ? 0 : 2;
+  entries.sort((a, b) => priority(a) - priority(b) || (a.day || '').localeCompare(b.day || '') || a.key.localeCompare(b.key));
   const week = Array.from({ length: 7 }, (_, i) => ({ day: addDays(today, i), entries: entries.filter(entry => entry.day === addDays(today, i)) }));
-  return { entries, week, failed, undated, upcoming: entries.slice(0, 4) };
+  return { entries, week, failed, undated, upcoming: entries };
 }
 
 export function controlSnapshot(reads) {
@@ -107,7 +108,7 @@ export function controlSnapshot(reads) {
       : stalled ? `${stalled} ${stalled === 1 ? 'item needs' : 'items need'} a decision`
       : waiting ? `${waiting} ${waiting === 1 ? 'request awaits' : 'requests await'} a decision`
       : wipIssues ? 'Work exceeds its limits'
-      : scheduledIssues ? 'Scheduled work needs attention' : !complete ? 'Status checks incomplete' : 'Everything is clear',
+      : scheduledIssues ? 'Scheduled work needs attention' : !complete ? 'Status checks incomplete' : 'No open issues',
     issues, complete };
 }
 

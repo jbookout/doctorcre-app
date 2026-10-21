@@ -11,6 +11,7 @@ import { mountNotificationBadge } from './shell.js';
 const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
 const E = escapeHtml;
 const count = value => value === null ? '—' : String(value);
+const AGENDA_PREVIEW = 6;
 const dateLabel = day => new Date(`${day}T12:00:00`).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 
 export function mountHomeDashboard({ document, window, client, now = () => Date.now(), intervalMs = 30_000 }) {
@@ -19,6 +20,7 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
   // The relationship dialog and the past-client widget are secondary: they load
   // after the first data paint so they never compete with the deal flags.
   let relationshipDialog = null, pastWidget = null, secondaryRequested = false;
+  let agendaExpanded = false;
   let scope = 'team', snapshot = null, sequence = 0, updatedAt = null, disposed = false, leadEntries = new Map(), selectedLead = null;
   const docSources = [['board','getBoard'],['leads','getLeadBoard'],['work','currentWorkItem'],['requests','currentWorkRequests'],['incidents','incidentBoard']];
   const docPayload = (source, view) => source === 'board' ? {deals:scopedDeals(view?.board,scope)}
@@ -39,10 +41,10 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
     const unavailable = Object.values(snapshot?.reads || {}).some(read => read.state === 'error');
     $('homeNotice').hidden = !signedOut && !unavailable;
     $('homeNotice').innerHTML = signedOut ? '<a href="/auth/login?return_to=%2F">Sign in</a>' : unavailable ? 'Some Home data is unavailable.' : '';
-    const summary = signedOut ? null : dealSnapshot(snapshot?.board, scope);
+    const summary = signedOut ? null : dealSnapshot(snapshot?.board, scope, now());
     $('dealAttention').setAttribute('aria-busy', String(snapshot?.loading ?? true));
-    $('dealCounts').innerHTML = `<span>Active deals: <b>${count(summary?.active ?? null)}</b></span> <span>In market: <b>${count(summary?.inMarket ?? null)}</b></span> <span>National accounts: <b>${count(summary?.national ?? null)}</b></span>`;
-    paint($('dealFlags'), summary ? (summary.flagged.length ? summary.flagged.map(deal => `<a class="home-flag" data-home-key="deal:${E(deal.id)}" href="${E(dealHref(deal.id))}"><span class="home-flag-light" aria-hidden="true"></span><div><strong>${E(deal.name)}</strong><span>${E(deal.next_step || deal.phase || 'Needs attention')}</span></div><span class="home-arrow" aria-hidden="true">↗</span></a>`).join('') : '<p class="home-empty">Nothing needs you right now</p>') : `<p class="home-empty">${signedOut ? 'Sign in to view deals' : snapshot?.reads?.board?.state === 'error' ? 'Deals unavailable' : 'Updating…'}</p>`);
+    $('dealCounts').innerHTML = `<span>Active deals: <b>${count(summary?.active ?? null)}</b></span> <span>In market: <b>${count(summary?.inMarket ?? null)}</b></span> <span>National accounts: <b>${count(summary?.national ?? null)}</b></span> <span>Overdue local deals: <b>${count(summary?.flagged.length ?? null)}</b></span>`;
+    paint($('dealFlags'), summary ? (summary.flagged.length ? summary.flagged.map(deal => `<a class="home-flag" data-home-key="deal:${E(deal.id)}" href="${E(dealHref(deal.id))}"><span class="home-flag-light" aria-hidden="true"></span><div><strong>${E(deal.name)}</strong><span>${E(deal.next_step || deal.phase || 'Needs attention')}</span></div><span class="home-arrow" aria-hidden="true">↗</span></a>`).join('') : '<p class="home-empty">No overdue local next steps</p>') : `<p class="home-empty">${signedOut ? 'Sign in to view deals' : snapshot?.reads?.board?.state === 'error' ? 'Deals unavailable' : 'Updating…'}</p>`);
     const today = localToday(new Date(now()));
     if ($('homeInvoices')) {
       const invoices = signedOut ? null : projectInvoices(snapshot?.invoices, { scope, today: localToday(new Date(now())) });
@@ -53,7 +55,7 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
     let agenda = null;
     try { if (!signedOut) agenda = agendaSnapshot(snapshot?.board, snapshot?.details || new Map(), { scope, today }); }
     catch { $('homeNotice').hidden = false; if (!signedOut) $('homeNotice').textContent = 'Calendar and tasks unavailable.'; }
-    const calendar = agenda?.entries.length ? `<header class="home-panel-head"><h2>Calendar & tasks</h2><a data-home-key="calendar" class="home-icon-link" href="/calendar" aria-label="Open Calendar">↗</a></header><a class="home-calendar-link" data-home-key="week" href="/calendar"><span class="sr-only">Open calendar</span><div class="home-week">${agenda.week.map(({ day, entries }) => `<div class="home-day${day === today ? ' today' : ''}"><span>${new Date(`${day}T12:00:00`).toLocaleDateString(undefined, { weekday: 'short' })}</span><strong>${Number(day.slice(-2))}</strong><div class="home-day-marks">${entries.slice(0, 4).map(entry => `<i class="${entry.type}" aria-hidden="true"></i>`).join('')}</div><span class="sr-only">${entries.length} deal dates and tasks</span></div>`).join('')}</div></a><div class="home-agenda">${agenda.upcoming.map(entry => `<a href="${E(entry.type === 'task' ? dealHref(entry.deal_id) : `/calendar?day=${entry.day}&d=${entry.day}`)}" data-home-key="agenda:${E(entry.key)}"><time datetime="${entry.day}">${dateLabel(entry.day)}</time><div><strong>${E(entry.label)}</strong><span>${E(entry.deal_name)}</span></div><span class="home-item-type">${entry.type === 'task' ? 'Task' : 'Date'}</span></a>`).join('')}</div>${(agenda.failed.length || agenda.undated.length) ? `<span class="home-partial">${snapshot?.loading ? 'Some dates are updating…' : 'Some dates unavailable or missing'}</span>` : ''}` : null;
+    const calendar = agenda?.entries.length ? `<header class="home-panel-head"><h2>Calendar & tasks</h2><a data-home-key="calendar" class="home-icon-link" href="/calendar" aria-label="Open Calendar">↗</a></header><a class="home-calendar-link" data-home-key="week" href="/calendar"><span class="sr-only">Open calendar</span><div class="home-week">${agenda.week.map(({ day, entries }) => `<div class="home-day${day === today ? ' today' : ''}"><span>${new Date(`${day}T12:00:00`).toLocaleDateString(undefined, { weekday: 'short' })}</span><strong>${Number(day.slice(-2))}</strong><div class="home-day-marks">${entries.slice(0, 4).map(entry => `<i class="${entry.type}" aria-hidden="true"></i>`).join('')}</div><span class="sr-only">${entries.length} deal dates and tasks</span></div>`).join('')}</div></a><div id="homeAgenda" class="home-agenda">${(agendaExpanded ? agenda.upcoming : agenda.upcoming.slice(0, AGENDA_PREVIEW)).map(entry => `<a href="${E(entry.type === 'task' ? dealHref(entry.deal_id) : `/calendar?day=${entry.day}&d=${entry.day}`)}" data-home-key="agenda:${E(entry.key)}">${entry.day ? `<time datetime="${entry.day}">${dateLabel(entry.day)}</time>` : '<span class="home-agenda-date">No date</span>'}<div><strong>${E(entry.label)}</strong><span>${E(entry.deal_name)}</span>${entry.owner ? `<span>${E(({joe: 'Joe', dell: 'Dell'})[entry.owner] || entry.owner)}</span>` : ''}</div><span class="home-item-type">${entry.type === 'task' ? 'Task' : 'Date'}</span></a>`).join('')}</div>${!agendaExpanded && agenda.upcoming.length > AGENDA_PREVIEW ? `<button type="button" class="home-outline home-agenda-more" data-home-key="agenda:show-all" data-agenda-show-all aria-controls="homeAgenda">Show all ${agenda.upcoming.length}</button>` : ''}${(agenda.failed.length || agenda.undated.length) ? `<span class="home-partial">${snapshot?.loading ? 'Some dates are updating…' : 'Some dates unavailable or missing'}</span>` : ''}` : null;
     widget('homeCalendar', calendar);
     const control = signedOut ? null : controlSnapshot(snapshot?.control || {});
     widget('homeControl', control ? `<a class="home-control-link" data-home-key="control" href="/control-room"><header class="home-panel-head"><h2>Control room</h2><span aria-hidden="true">↗</span></header><div class="home-control-status ${control.attention ? 'attention' : 'clear'}"><svg class="home-radar" viewBox="0 0 140 140" aria-hidden="true"><circle cx="70" cy="70" r="56"/><circle cx="70" cy="70" r="36"/><path d="M70 14V126M14 70H126"/><circle class="radar-wave" cx="70" cy="70" r="48"/><circle class="radar-dot" cx="70" cy="70" r="8"/></svg><div><h3>${control.attention ? 'Needs attention' : 'No issues'}</h3><p>${E(control.line)}</p></div></div></a>` : null);
@@ -130,6 +132,12 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
     $('homeDetail').showModal();
     $('homeDetail').querySelector('[data-close-detail]').onclick = () => $('homeDetail').close();
   });
+  $('homeCalendar').addEventListener('click', event => {
+    if (!event.target.closest('[data-agenda-show-all]')) return;
+    agendaExpanded = true;
+    render();
+    $('homeAgenda')?.querySelectorAll('a')[AGENDA_PREVIEW]?.focus();
+  });
   $('homeIntroductions')?.addEventListener('click',event=>{const button=event.target.closest('[data-intro-node]');if(button && snapshot?.relationships)relationshipDialog?.open(snapshot.relationships,button.dataset.introNode,button);});
   const auto = mountAutoRefresh({ document, window, refresh, intervalMs });
   const expiry = window.setInterval(() => {
@@ -156,6 +164,7 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
   }
   const buttons = [...$('scopeSwitch').querySelectorAll('[data-scope]')];
   const select = value => {
+    if (scope !== value) agendaExpanded = false;
     scope = value; setDocFilters({ scope }); pastWidget?.render();
     if (!snapshot?.unauthorized) for (const [key,method] of docSources) {
       if (snapshot?.reads?.[key]?.state === 'read') publishDocRead(method,docPayload(key,snapshot));

@@ -30,7 +30,7 @@ async function open(t,width,{snapshot=true}={}){
   let path=url.pathname==='/control-room/progress'?'progress-board.html':url.pathname.slice(1);
   try{return route.fulfill({body:await readFile(new URL('../'+path,import.meta.url)),contentType:/\.m?js$/.test(path)?'text/javascript':path.endsWith('.css')?'text/css':'text/html'});}catch{return route.fulfill({status:404,body:''});}
  });
- await page.goto('http://localhost/control-room/progress');await page.waitForFunction(()=>document.querySelectorAll('.work-card').length===19);
+ await page.goto('http://localhost/control-room/progress?mode=live');await page.waitForFunction(()=>document.querySelectorAll('.work-card').length===19);
  return {page,calls,errors};
 }
 test('all source cards and ten recorded completions fit phone and desktop; library finds old completion',async t=>{

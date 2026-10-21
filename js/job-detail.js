@@ -30,7 +30,7 @@ function currentTrigger(document, trigger) {
 }
 function rememberTrigger(document) {
  const node=document.activeElement;
- for(const attribute of ['data-task-id','data-work-id','data-automation-id','data-automation','data-incident','data-attention-id','data-agent-task']){
+ for(const attribute of ['data-hierarchy-id','data-task-id','data-work-id','data-automation-id','data-automation','data-incident','data-attention-id','data-agent-task']){
   const record=node?.closest(`[${attribute}]`);
   if(record)return {node,attribute,value:record.getAttribute(attribute),owner:record.dataset.owner,container:record.closest('#automationCalendar')?'#automationCalendar':record.closest('#automationAgenda')?'#automationAgenda':null,
    control:record===node?null:node.matches('h4 a')?'h4 a':node.matches('.work-actions a')?'.work-actions a':node.tagName.toLowerCase()};
@@ -69,13 +69,17 @@ export function mountJobDetail({client,document}) {
  document.getElementById('jobClose').onclick=()=>dialog.close();
  return {
   open(task,{source:readSource='board'}={}){trigger=rememberTrigger(document);selected=task;source=readSource;sourceState=task.source_state||'read';workRequest=null;++generation;paint(Boolean(jobLinks(task).workRequest));if(!dialog.open)dialog.showModal();refresh();},refresh,
-  update(tasks,{source:readSource='board',state='read'}={}){
+  update(tasks,{source:readSource='board',state='read',selectedId}={}){
    if(!selected||!dialog.open||readSource!==source)return;
    if(['unauthorized','signed-out','unpublished'].includes(state)){this.clear();return;}
-   const latest=tasks.find(task=>task.id===selected.id),nextState=state==='read'?(latest?(latest.source_state||'read'):'removed'):'unknown';
+   const latest=tasks.find(task=>task.id===(selectedId||selected.id)),nextState=state==='read'?(latest?(latest.source_state||'read'):'removed'):'unknown';
    if(nextState!==sourceState||latest&&JSON.stringify(latest)!==JSON.stringify(selected))++generation;
    sourceState=nextState;
-   if(latest&&state==='read'){if(jobLinks(latest).workRequest!==jobLinks(selected).workRequest)workRequest=null;selected=latest;}
+   if(latest&&state==='read'){
+    if(trigger?.attribute==='data-hierarchy-id'&&trigger.value===selected.id)trigger.value=latest.id;
+    if(jobLinks(latest).workRequest!==jobLinks(selected).workRequest)workRequest=null;
+    selected=latest;
+   }
    paint();
   },
   clear(){if(dialog.open)dialog.close();body.replaceChildren();}

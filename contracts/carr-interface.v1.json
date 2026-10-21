@@ -1,6 +1,6 @@
 {
   "schema": "doctorcre-carr-interface.v1",
-  "version": "1.45.0",
+  "version": "1.50.0",
   "producer": {
     "repository": "jbookout/carr-system",
     "source_commit": "e2e484b1933bfd63c10cc9a1b3350132948f6f74"
@@ -106,6 +106,7 @@
     "set-national-account-owner",
     "set-next-step",
     "set-notification-preference",
+    "set-prospect-engagement-status",
     "set-work-shape-disposition",
     "share-doc-conversation",
     "start-deal-review",
@@ -167,9 +168,21 @@
         "lane",
         "outcome"
       ],
-      "deal_sources": ["deals", "deals_via_link"],
-      "nullable_calendar_days": ["invoiced_on", "closed_on"],
-      "nullable_strings": ["phase", "owner", "client_ref", "lane", "outcome"],
+      "deal_sources": [
+        "deals",
+        "deals_via_link"
+      ],
+      "nullable_calendar_days": [
+        "invoiced_on",
+        "closed_on"
+      ],
+      "nullable_strings": [
+        "phase",
+        "owner",
+        "client_ref",
+        "lane",
+        "outcome"
+      ],
       "unknown_deal_fields": "refused"
     },
     "correspondence-readiness": {
@@ -492,7 +505,8 @@
       "write": false,
       "producer": {
         "repository": "jbookout/carr-system",
-        "source_commit": "7214532128a836a84d3e75a584e56facbf6662ba"
+        "source_commit": "3a57e47015916546fb2ffd11eaf880686c38e659",
+        "pull_request": "https://github.com/jbookout/carr-system/pull/2014"
       },
       "response": {
         "schema_version": "local-deals-board.v1",
@@ -501,7 +515,12 @@
           "parking_note",
           "invoiced_on",
           "phase_change",
-          "field_base"
+          "field_base",
+          "prospect_engagement_status",
+          "client_status",
+          "client_version",
+          "phase_started_on",
+          "vendors"
         ],
         "phase_change_keys": [
           "event_id",
@@ -513,13 +532,96 @@
           "recorded_at"
         ],
         "evidence_date": "Original event occurred_at; phase-change occurrence date when the writer supplied no earlier evidence date.",
-        "undo": "revert-deal-field with exact event_id; latest-field guard and idempotency key apply."
+        "undo": "revert-deal-field with exact event_id; latest-field guard and idempotency key apply.",
+        "closed_deals": {
+          "keys": [
+            "id",
+            "name",
+            "client_ref",
+            "client_name",
+            "type",
+            "phase",
+            "outcome",
+            "owner",
+            "closed_on",
+            "invoiced_on",
+            "account_client_id",
+            "workspace_kind",
+            "vendors"
+          ],
+          "membership": "Recorded won outcome, or no outcome with a recorded close/invoice date. Lost and paused outcomes are excluded; same workspace and account scope.",
+          "order": "Close date descending, missing dates last, then name and id."
+        },
+        "lost_deals": {
+          "keys": [
+            "id",
+            "name",
+            "client_ref",
+            "client_name",
+            "type",
+            "phase",
+            "outcome",
+            "owner",
+            "closed_on",
+            "invoiced_on",
+            "account_client_id",
+            "workspace_kind",
+            "vendors"
+          ],
+          "membership": "Recorded lost outcome, independent of phase. Same workspace and account scope."
+        },
+        "prospect_engagement_status": {
+          "values": [
+            "active",
+            "inactive"
+          ],
+          "owner": "client",
+          "default": "active",
+          "independent_of": [
+            "client_status",
+            "operating_state"
+          ],
+          "presentation": "Only active prospects appear on the deal board. Inactive prospects return to the existing Leads pipeline."
+        },
+        "account_engagement_keys": [
+          "prospect_engagement_status",
+          "client_status",
+          "client_version"
+        ],
+        "phase_started_on": {
+          "shape": "object keyed by phase slug; YYYY-MM-DD values",
+          "source": "First event occurred_at per phase, in America/Chicago. A revisit does not replace the first start. Missing evidence has no key."
+        },
+        "vendors": {
+          "shape": "Array of explicit active deal-vendor assignments; empty array when none. No assignments inferred from introductions or deal participants.",
+          "item_keys": [
+            "party_id",
+            "role",
+            "company",
+            "contact",
+            "note",
+            "updated_at"
+          ],
+          "company_keys": [
+            "id",
+            "name"
+          ],
+          "contact_keys": [
+            "id",
+            "name",
+            "email",
+            "phone"
+          ],
+          "role": "Specific service-role slug, displayed with underscores replaced by spaces.",
+          "order": "Role, company name, contact name, vendor party id."
+        }
       }
     },
     "get-deal-room": {
       "producer": {
         "repository": "jbookout/carr-system",
-        "source_commit": "8aa6deb8557dd0ddb566a120f8e65282e89c4b07"
+        "source_commit": "3a57e47015916546fb2ffd11eaf880686c38e659",
+        "pull_request": "https://github.com/jbookout/carr-system/pull/2014"
       },
       "response": {
         "schema_version": "deal-timeline.v1",
@@ -535,7 +637,40 @@
           "evidence_ref",
           "source"
         ],
-        "lease_absence": null
+        "lease_absence": null,
+        "client_id": "Exact client record UUID, including closed and invoiced records; use for the authenticated clients record read.",
+        "engagement_keys": [
+          "client_status",
+          "client_version",
+          "prospect_engagement_status"
+        ],
+        "phase_started_on": {
+          "shape": "object keyed by phase slug; YYYY-MM-DD values",
+          "source": "First event occurred_at per phase, in America/Chicago. A revisit does not replace the first start. Missing evidence has no key."
+        },
+        "vendors": {
+          "shape": "Current detail returns an array of explicit active assignments; empty array when none. The archived-detail fallback may omit this field.",
+          "item_keys": [
+            "party_id",
+            "role",
+            "company",
+            "contact",
+            "note",
+            "updated_at"
+          ],
+          "company_keys": [
+            "id",
+            "name"
+          ],
+          "contact_keys": [
+            "id",
+            "name",
+            "email",
+            "phone"
+          ],
+          "role": "Specific service-role slug, displayed with underscores replaced by spaces.",
+          "order": "Role, company name, contact name, vendor party id."
+        }
       },
       "critical_date_write": "add-critical-date",
       "never_derive": [
@@ -663,7 +798,7 @@
   "lead_workspace": {
     "producer": {
       "repository": "jbookout/carr-system",
-      "source_commit": "6d739deb1a31de8f257f4e1e11695d71ec3a74bf"
+      "source_commit": "65a9947c917e5a5a97ac2d67baa34f081b0da026"
     },
     "schema_version": "lead-workspace.v1",
     "board": {
@@ -683,13 +818,20 @@
       "stage": "update-lead (base_version, stage_review evidence IDs, same idempotency key on retry)",
       "undo": "update-lead (latest exact undo_event_id and prior stage)",
       "claim": "claim-lead (authenticated human, unowned New, exact base_version)",
-      "link": "link-lead-client (exact client_id, confirmed human choice, exact base_version)"
+      "link": "link-lead-client (exact client_id, confirmed human choice, exact base_version)",
+      "engagement": "set-prospect-engagement-status (client_id, client base_version, active or inactive, reason, expected_actor, same idempotency key on retry)"
     },
     "coverage": {
       "correspondence": "captured_entries_only; Details exposes stored original entry",
       "search_run": "last_search_at null until CARR has an authoritative new-lead search completion field",
       "scores": "existing record score; null shown as missing"
-    }
+    },
+    "prospect_keys": [
+      "prospect_client_id",
+      "prospect_client_version",
+      "prospect_engagement_status"
+    ],
+    "prospect_lifecycle": "Inactive prospects remain eligible Leads despite retained exact client and deal links. Active prospects return to the existing deal board."
   },
   "invoice_tracker": {
     "schema_version": "invoice-tracker.v1",
@@ -738,5 +880,26 @@
       "repository": "jbookout/carr-system",
       "source_commit": "a3a6913f7af0d721ab538090b1347976befcf421"
     }
+  },
+  "progress_board_snapshot": {
+    "producer": {
+      "repository": "jbookout/carr-system",
+      "source_commit": "b18589a1a2cd6fb9a04bd469ebf82e6146de74fd"
+    },
+    "wire_schema": "carr-progress-board.v3",
+    "decoded_schema": "carr-progress-board.v2",
+    "task_defaults": "Fields present on every source card may be shared once. Each task overrides the shared values.",
+    "validation": "Reject v3 reads without nonempty object defaults or object task rows.",
+    "deployment_order": "Deploy the consumer before the producer can publish v3."
+  },
+  "prospect_engagement": {
+    "producer": {
+      "repository": "jbookout/carr-system",
+      "source_commit": "65a9947c917e5a5a97ac2d67baa34f081b0da026"
+    },
+    "write": "set-prospect-engagement-status",
+    "inactive_stage": "nurture_drip",
+    "active_stage": "opportunity",
+    "history": "Existing prospects and new prospects created over leads start active. Migration initialization is audited without changing board membership or client versions. Only an explicit partner engagement choice returns a prospect to Leads. Retain the existing client, lead links, deals and events. Suppression and archived stages remain protected."
   }
 }

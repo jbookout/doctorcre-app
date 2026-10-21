@@ -586,6 +586,7 @@ test("phone and iPad composers fit the viewport and reduced motion leaves every 
     await page.route("https://tour.test/**", async route => {
       const request = route.request(), url = new URL(request.url());
       if (url.pathname === "/api/system-work/session") return route.fulfill({ contentType: "application/json", body: JSON.stringify({ actor: {slug: "joe"} }) });
+      if (url.pathname === "/api/tours/property-evidence/v1") return route.fulfill({ json: { data: { schema: "tour-property-evidence.v1", facts: { county: { status: "reviewed", value: "Escambia" } } } } });
       if (!url.pathname.startsWith("/api/")) return route.fulfill({ contentType: "text/html", body: pageHtml });
       const response = await store.fetch(url.pathname + url.search, { headers: request.headers(), body: request.postData() || undefined });
       await route.fulfill({ status: response.status, contentType: "application/json", body: JSON.stringify(await response.json()) });
@@ -649,6 +650,7 @@ test("phone and iPad composers fit the viewport and reduced motion leaves every 
       assert.ok(layout.targets.every(target => target.height >= 44 && target.width >= 44), `${width}px touch targets: ${JSON.stringify(layout.targets.filter(target => target.height < 44 || target.width < 44))}`);
     }
     await page.setViewportSize({ width: 375, height: 900 });
+    await page.locator(".projection-card > summary").click();
     for (const label of await page.locator(".share-scopes label").all()) {
       const box = label.locator("input");
       const checked = await box.isChecked();
@@ -902,7 +904,7 @@ test("excluded stop keeps its state visible and folds optional editing details",
     const details = row.querySelector('.stop-edit-details');
     assert.ok(details);
     assert.equal(details.open, false);
-    assert.equal(row.querySelector('[data-field="stop_state"]').closest('details'), null);
+    assert.equal(row.querySelector('[data-field="stop_state"]').closest('.stop-edit-details'), null);
     assert.ok(details.querySelector('[data-field="dwell_minutes"]'));
     assert.equal(doc.querySelector('#reload-composer').hidden, true);
   } finally { dom.window.close(); }
