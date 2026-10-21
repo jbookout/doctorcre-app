@@ -81,6 +81,63 @@ test('PR132 #6: replaced calendar trigger returns focus to its owner and origina
  assert.equal(document.activeElement,calendar.lastElementChild);
 });
 
+
+test('PR card exposes exact work lineage and keeps links through a rename',()=>{
+ const {detail,body}=setup();
+ const task={id:'app-pr-73',task_id:'app-pr-73',title:'Synthetic linked card',repo:'jbookout/doctorcre-app',pr:73,
+  work_request_ref:'WR-900',plan_ref:'plan:synthetic-v2',slice_ref:'slice:seven',task_ref:'task:linked-card',job_ref:'job:synthetic-build'};
+ detail.open(task);
+ const refs=['WR-900','plan:synthetic-v2','slice:seven','task:linked-card','job:synthetic-build'];
+ const links=()=>[...body.querySelectorAll('.work-lineage a')];
+ assert.equal(links().length,1);
+ const requestUrl=new URL(links()[0].href);
+ assert.equal(requestUrl.searchParams.get('work_request'),'WR-900');
+ assert.equal(requestUrl.searchParams.has('task'),false);
+ for(const ref of refs)assert.ok(body.querySelector('.work-lineage').textContent.includes(ref));
+ const before=links().map(link=>link.href);
+ detail.update([{...task,title:'Renamed without changing the work'}]);
+ assert.deepEqual(links().map(link=>link.href),before);
+ detail.open({id:'unbound',task_id:'unbound',title:'WR-900 plan:synthetic-v2',slice:'Slice seven'});
+ assert.equal(body.querySelectorAll('.work-lineage a').length,1);
+ assert.equal(body.querySelectorAll('.work-lineage [data-missing]').length,4);
+});
+
+
+test('lineage refuses display-only automation and incident IDs and canonicalizes governance',()=>{
+ const {detail,body}=setup();
+ for(const task of [{id:'automation:joe:nightly'},{id:'INC-DEMO'}]) {
+  detail.open(task);assert.equal(body.querySelectorAll('.work-lineage a').length,0);
+ }
+ detail.open({id:'governance:pending:demo',kind:'governance_item',governance:{ref:'demo',entry:{statement:'Synthetic'}}});
+ const link=body.querySelector('.work-lineage a');
+ assert.equal(new URL(link.href).searchParams.get('task'),'governance_item:demo');
+});
+
+
+test('PR activity uses the board key while preserving the canonical task ID as data',()=>{
+ const {detail,body}=setup();
+ detail.open({id:'app-pr-73',task_id:'task:canonical-900',repo:'jbookout/doctorcre-app',pr:73,title:'Synthetic distinct identities'});
+ const activity=body.querySelector('[data-job-control="activity"]');
+ assert.equal(new URL(activity.href).searchParams.get('task'),'app-pr-73');
+ assert.match(body.querySelector('pre').textContent,/task id: task:canonical-900/);
+});
+
+test('dangling ancestor references remain readable without self-links',()=>{
+ const {detail,body}=setup();
+ detail.open({id:'app-pr-73',task_id:'task:canonical-900',repo:'jbookout/doctorcre-app',pr:73,
+  work_request_ref:'WR-900',plan_ref:'plan:missing',slice_ref:'slice:missing',job_ref:'job:missing',
+  related:[{kind:'plan',id:'plan:also-missing'}]});
+ for(const ref of ['plan:missing','plan:also-missing','slice:missing','task:canonical-900','job:missing']) {
+  const row=[...body.querySelectorAll('.work-lineage dd > *')].find(node=>node.textContent===ref);
+  assert.ok(row,`${ref} remains visible`);
+  assert.equal(row.tagName,'SPAN',`${ref} has no resolved destination`);
+ }
+ const wr=body.querySelector('.work-lineage a');
+ const url=new URL(wr.href);
+ assert.equal(url.searchParams.get('work_request'),'WR-900');
+ assert.equal(url.searchParams.has('task'),false,'WR navigation reads the request independently of this card');
+});
+
 test('attention detail keeps blocker, progress and unknown model facts above the fold',()=>{
  const {detail,body}=setup();
  detail.open({id:'demo-failed',title:'Demo failed export',status:'failed',executor:'cx-app',blocked_reason:'Demo source unavailable',last_progress:'Demo validation complete'});

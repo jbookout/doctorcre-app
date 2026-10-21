@@ -1,0 +1,12 @@
+.work-lineage { margin-block: var(--space-6); color: var(--fg); }
+.work-lineage h3 { margin: 0 0 var(--space-3); font: var(--font-weight-strong) var(--font-size-2) var(--font-text); }
+.work-lineage dl { margin: 0; }
+.work-lineage dl > div { display: grid; grid-template-columns: 8rem minmax(0, 1fr); align-items: baseline; gap: var(--space-3); }
+.work-lineage dt, .work-lineage [data-missing] { color: var(--fg-muted); }
+.work-lineage dd { margin: 0; overflow-wrap: anywhere; }
+.work-lineage a, .work-lineage dd > span { display: inline-flex; align-items: center; min-height: 44px; max-width: 100%; color: inherit; }
+.work-lineage a { text-underline-offset: .2em; }
+.work-lineage a:focus-visible { outline: var(--focus-width) solid var(--focus-ring); outline-offset: var(--focus-width); border-radius: var(--radius-1); }
+.work-lineage a:target { background: var(--surface-2); }
+@media (hover: hover) { .work-lineage a:hover { background: var(--surface-2); } }
+@media (max-width: 480px) { .work-lineage dl > div { grid-template-columns: 6rem minmax(0, 1fr); } }

@@ -508,3 +508,13 @@ test("recorded source cards retain their filter and detail outside the release s
   assert.match($("#completed-count").textContent, /1 RECORDED/);
   board.dispose();
 });
+
+test('opening a published card retains its canonical task ID beside the board key',async()=>{
+ const {doc,opened,window}=await mount({snapshot:{board_id:'demo-project',version:1,snapshot_json:{tasks:{'app-pr-73':{
+  task_id:'task:canonical-900',title:'Synthetic distinct identities',status:'review',repo:'jbookout/doctorcre-app',pr:73,
+ }}}},questions:[]},{search:'?board=demo-project'});
+ doc.querySelector('.board-card').click();
+ assert.equal(opened[0].id,'app-pr-73');
+ assert.equal(opened[0].task_id,'task:canonical-900');
+ window.close();
+});

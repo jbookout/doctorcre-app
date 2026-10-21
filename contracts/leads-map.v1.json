@@ -1,7 +1,7 @@
 {
   "schema": "doctorcre-leads-map.v1",
   "contract": "carr-map-tour-v1",
-  "component_version": "1.0.0",
+  "component_version": "1.1.0",
   "mode": "search",
   "renderer": "MapLibre GL JS 6.4.1 (existing vendored distribution)",
   "geometry": {
@@ -20,7 +20,12 @@
   },
   "events": [
     "market_select",
-    "filter_change"
+    "filter_change",
+    "lead_select"
   ],
-  "unknown_market": "retained in list; never guessed or geocoded"
+  "unknown_market": "Retained in the board and map member list with No location; never guessed, geocoded or placed at 0,0. Missing, malformed and ambiguous market points are unlocated.",
+  "membership": "Exact canonical lead IDs and counts from the current search, owner, stage and market filters; marker members plus no-location members equal the board.",
+  "selection": "One selected lead ID highlights its board card, map member and containing market marker; retain it through matching filters and clear it when excluded.",
+  "precision": "Market area only. Census place points never claim lead-address coordinates.",
+  "phone_stage": "All stages shows all filtered lanes; both stage selectors apply the same filter."
 }
