@@ -1757,12 +1757,11 @@ export async function createFixtureClient(opts = {}) {
       return {ok:true,schema:'feature-switches.v1',switches:[{name:'doc-suggestion-actions',available:true}]};
     },
     async morningBrief() {
-      const own = row => !row.owner || row.owner === selfActor;
       const section = items => ({ state: items.length ? 'ready' : 'empty', items });
       return { state: 'ready', sponsor: selfActor, sections: {
-        today: section((await this.todayTriage()).items.filter(own)),
-        deals: section((await this.getBoard()).deals.filter(own)),
-        loops: section((await this.loopBoard({ owner: selfActor })).loops.filter(own)),
+        today: section((await this.todayTriage()).items),
+        deals: section((await this.getBoard()).deals),
+        loops: section((await this.loopBoard()).loops),
       } };
     },
 
