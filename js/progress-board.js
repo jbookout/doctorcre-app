@@ -447,12 +447,13 @@ export function mountBoard(deps = {}) {
       for (const id of ['board-completed','completed-list','board-blocked','system-work-panel','board-ledger'])
         byId(id)?.closest('.panel')?.setAttribute('hidden', '');
       if (!view?.orchestrator) {
+        if (orchestratorUI) { orchestratorUI.offline(); return; }
         container.textContent = 'The orchestrator view has not been published yet. The last observation is unknown.';
         return;
       }
       orchestratorUI ||= mountOrchestrator({container, window:win, now:currentNow, readPage: args => client.readProgressBoard(args)});
       orchestratorUI.update(view.orchestrator);
-      byId('task-count').textContent = `${view.orchestrator.total_cards ?? view.orchestrator.cards.length} active ${(view.orchestrator.total_cards ?? view.orchestrator.cards.length) === 1 ? 'item' : 'items'}`;
+      byId('task-count').textContent = `${view.orchestrator.total_cards ?? view.orchestrator.cards.length} recorded ${(view.orchestrator.total_cards ?? view.orchestrator.cards.length) === 1 ? 'item' : 'items'}`;
       return;
     }
     if (view?.hierarchy && !view.work_queue) {
@@ -932,6 +933,7 @@ export function mountBoard(deps = {}) {
 
   function render(view) {
     currentView = view;
+    doc.body.classList.toggle("orchestrator-route", orchestratorView);
     costs.update(view.costs);
     byId("board-title").textContent = view.hierarchy ? "Work Requests" : deps.openTask ? "System Job Board" : view.title;
     byId("board-eyebrow").textContent = view.kind === ALL_REPOS_BOARD ? "All repositories" : "Progress board";
@@ -956,7 +958,7 @@ export function mountBoard(deps = {}) {
     renderNotes(view);
     for (const [id, count] of [["board-questions", view.questions.length], ["board-deliverables", view.deliverables.length],
       ["board-decisions", view.decisions.length + view.questions.filter(q => q.status).length], ["board-notes", view.notes.length]])
-      byId(id).closest(".panel").hidden = Boolean(view.hierarchy || view.work_queue) && !count;
+      byId(id).closest(".panel").hidden = (orchestratorView || Boolean(view.hierarchy || view.work_queue)) && !count;
   }
 
   // Live time: every time-dependent mark (stage ages, stale, stuck, health,

@@ -783,6 +783,11 @@ for (const width of [390,1280]) for (const theme of ['light','dark'])
       path:'/control-room/progress/board/orchestrator',snapshotData:orchestratorSequence[0].snapshot.snapshot_json,
       assetRoot:process.env.ORCHESTRATOR_BUILT_ROOT ? new URL(`file://${process.env.ORCHESTRATOR_BUILT_ROOT}/`) : undefined});
     await page.evaluate(theme=>document.documentElement.dataset.theme=theme,theme);
+    const first=page.locator('[data-orchestrator-card]').first();await first.waitFor();
+    const box=await first.locator('.orchestrator-progress').boundingBox();
+    if(width===390) assert.ok(box && box.y+box.height<820,'first title, status and progress fit above phone navigation');
+    await mkdir('test-artifacts/orchestrator',{recursive:true});
+    await page.screenshot({path:`test-artifacts/orchestrator/initial-${width}-${theme}.png`});
     const olderPage='orchestrator-page-'+'a'.repeat(64);
     let pageUnavailable=true;
     await page.route('**/mcp', async route => {
@@ -823,6 +828,19 @@ for (const width of [390,1280]) for (const theme of ['light','dark'])
     pageUnavailable=false;await page.locator('[data-orchestrator-more]').click();
     await page.locator('[data-orchestrator-card="older-release"]').waitFor();
     assert.match(await page.locator('[data-orchestrator-card="older-release"]').textContent(),/Merged \/ awaiting release/);
+    const older=page.locator('[data-orchestrator-card="older-release"]');
+    await older.locator('details').evaluate(el=>el.open=true);
+    await older.locator('summary').focus();
+    const scroll=await older.evaluate(el=>el.closest('.app-layout-center').scrollTop);
+    const changed=structuredClone(paged);changed.orchestrator.observed_at='2026-10-21T20:00:00Z';
+    changed.orchestrator.cards[0].state='fixing';setSnapshot(changed);await page.clock.runFor(2100);
+    assert.equal(await older.locator('details').getAttribute('open'),'');
+    assert.equal(await older.locator('summary').evaluate(el=>el===document.activeElement),true);
+    assert.equal(await older.evaluate(el=>el.closest('.app-layout-center').scrollTop),scroll);
+    setSnapshot({tasks:{}});await page.clock.runFor(2100);
+    setSnapshot(changed);await page.clock.runFor(6300);
+    assert.equal(await older.count(),1);
+
 
     assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
     const targets=await page.locator('.orchestrator-count,.orchestrator-links a,.orchestrator-detail summary').evaluateAll(nodes=>nodes.map(el=>el.getBoundingClientRect().height));

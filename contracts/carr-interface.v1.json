@@ -905,7 +905,7 @@
   "progress_orchestrator": {
     "producer": {
       "repository": "jbookout/carr-system",
-      "source_commit": "87d05a66165941965cd241696ca00893ededbec2"
+      "source_commit": "c985250f155a743350cd1801a3fd6a463f6aa860"
     },
     "schema": "doctorcre-orchestrator/v1",
     "board_id": "orchestrator",
@@ -925,9 +925,9 @@
     "pagination": {
       "first_page": 100,
       "page_size": 100,
-      "pages": "Immutable content-addressed read-progress-board snapshots, published and verified before the manifest.",
+      "pages": "Two reusable banks of stable page slots, CAS-written and verified before publishing the root manifest last. Local publishers share a host lock across checkouts.",
       "counts": "total_cards and state_counts include every unresolved item. cards is newest changes first.",
-      "unavailable": "Page failures retain visible cards and offer retry. Queue outage retains all previous queue pages.",
+      "unavailable": "Version mismatches refuse mixed observations. Loaded older pages refresh together; page failure retains the complete displayed observation. Queue outage retains all previous queue pages.",
       "legacy": "Queue acknowledgement verifies this feed only. Scheduled carr-v5 publication can fail independently."
     }
   }

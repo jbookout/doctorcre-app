@@ -12,7 +12,7 @@ const setText = (node, value) => { if (node.textContent !== value) node.textCont
 export function orchestratorError(value) {
   if (value == null) return null;
   if (value.schema !== 'doctorcre-orchestrator/v1' || !Array.isArray(value.cards) || !Array.isArray(value.history)
-      || !value.sources || (value.pages !== undefined && (!Array.isArray(value.pages) || value.pages.some(page => !page || !/^orchestrator-page-[a-f0-9]{64}$/.test(page.board_id) || !Number.isInteger(page.version) || page.version < 1 || !Number.isInteger(page.count) || page.count < 1 || page.count > 100))) || [...value.cards,...value.history].some(card => !card || !LABELS[card.state]
+      || !value.sources || (value.pages !== undefined && (!Array.isArray(value.pages) || value.pages.some(page => !page || !/^orchestrator-page-(?:[01]-[1-9]\d*|[a-f0-9]{64})$/.test(page.board_id) || !Number.isInteger(page.version) || page.version < 1 || !Number.isInteger(page.count) || page.count < 1 || page.count > 100))) || [...value.cards,...value.history].some(card => !card || !LABELS[card.state]
         || typeof card.id !== 'string' || typeof card.title !== 'string' || !Array.isArray(card.prs)))
     return 'The orchestrator observation is incomplete.';
   return null;
@@ -89,16 +89,19 @@ export function mountOrchestrator({container, window:win, now = () => new Date()
     if(!record) {
       const el=node('article','orchestrator-card');el.dataset.orchestratorCard=card.id;
       const title=node('h4'), state=node('span','orchestrator-state'), owner=node('p','orchestrator-owner');
+      const delivery=node('p','orchestrator-delivery');
       const progress=node('p','orchestrator-progress'), changed=node('p','orchestrator-changed');
       const prs=node('nav','orchestrator-links');prs.setAttribute('aria-label','Source changes');
       const detail=node('details','orchestrator-detail');detail.append(node('summary','','More details'));
       const identity=node('p');detail.append(identity);
-      el.append(title,state,owner,progress,changed,prs,detail);
-      record={el,title,state,owner,progress,changed,prs,identity,links:new Map()};records.set(card.id,record);
+      el.append(title,state,owner,progress,delivery,changed,prs,detail);
+      record={el,title,state,owner,progress,delivery,changed,prs,identity,links:new Map()};records.set(card.id,record);
     }
     setText(record.title,card.title);setText(record.state,LABELS[card.state]);
     setText(record.owner,`Owner ${card.owner || 'Not recorded'} · ${card.area || 'Shared portfolio'}`);
     setText(record.progress,card.progress || 'Awaiting a recorded progress update');
+    record.delivery.hidden=card.state!=='live';
+    setText(record.delivery,card.delivery_evidence ? `Delivery evidence: ${card.delivery_evidence}` : 'Live is recorded. Matching delivery evidence detail is unavailable in this observation.');
     setText(record.changed,`Last changed ${timestamp(card.changed_at)}`);setText(record.identity,`Reference ${card.id}`);
     record.prs.setAttribute('aria-label',`Source changes for ${card.title} (${card.id})`);
     const valid=card.prs.filter(href=>/^https:\/\/github\.com\/jbookout\/(?:carr-system|doctorcre-app|software-factory)\/pull\/[1-9]\d*$/.test(href));
@@ -126,7 +129,7 @@ export function mountOrchestrator({container, window:win, now = () => new Date()
       }
     });
     for(const [id,group] of groups) {
-      const cards=[...value.cards,...loaded,...value.history.filter(card=>card.state==='live')].filter(card=>card.state===id);
+      const cards=[...new Map([...loaded,...value.cards,...value.history.filter(card=>card.state==='live')].map(card=>[card.id,card])).values()].filter(card=>card.state===id);
       setText(group.count,String(value.state_counts?.[id] ?? cards.length));place(cards,group.list);group.empty.hidden=Boolean(cards.length);setText(group.empty, value.state_counts?.[id] ? 'Older work in this state is available using Load older unresolved work.' : 'No work in this state.');group.group.hidden=!cards.length && !value.state_counts?.[id];
     }
     place(value.history.filter(card=>card.state!=='live'),historyList);
@@ -140,8 +143,27 @@ export function mountOrchestrator({container, window:win, now = () => new Date()
     more.hidden=pageIndex >= (value.pages?.length || 0);
     ages();
   }
-  return {update(next) {
-    if(JSON.stringify(value)!==JSON.stringify(next)) {generation++;loaded=[];pageIndex=0;more.disabled=false;}
+  return {async update(next) {
+    const epoch=++generation;
+    more.disabled=false;
+    if(value && loaded.length && JSON.stringify(value.pages)!==JSON.stringify(next.pages)) {
+      more.disabled=true;
+      try {
+        const pages=[];
+        for(const page of next.pages || []) {
+          const read=await readPage({board_id:page.board_id});
+          const saved=read?.snapshot, cards=saved?.snapshot_json?.cards;
+          if(saved?.version!==page.version || !Array.isArray(cards) || cards.length!==page.count
+            || orchestratorError({...next,cards,history:[]})) throw new Error('incomplete page');
+          pages.push(...cards);
+        }
+        if(disposed || epoch!==generation) return;
+        loaded=pages;pageIndex=next.pages?.length || 0;
+      }catch {
+        if(!disposed && epoch===generation) {offline=true;ages();setText(pagination,'Older work is unavailable. The complete displayed observation is retained. Try again.');}
+        return;
+      }finally {if(!disposed && epoch===generation) more.disabled=false;}
+    } else if(!loaded.length && JSON.stringify(value?.pages)!==JSON.stringify(next.pages)) pageIndex=0;
     value=next;offline=false;render();
   }, ages, offline(){offline=true;ages();}, dispose(){disposed=true;generation++;records.clear();}};
 }

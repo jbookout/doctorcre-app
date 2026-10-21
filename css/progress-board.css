@@ -473,3 +473,17 @@ body:has(#board-stages[aria-busy="true"]) #board-directory { display: none; }
 }
 
 .board-switch a { min-height: 44px; display: inline-flex; align-items: center; }
+
+.orchestrator-route .app-layout { --layout-left: 0px; --layout-right: 0px; }
+.orchestrator-route :is(.app-layout-sidebar,.app-layout-today,#appSidebarToggle,#appTodayToggle) { display: none; }
+.orchestrator-route .orchestrator-explanation { margin-block: 8px; }
+.orchestrator-route .orchestrator-counts { margin-block: 12px; }
+@media (max-width: 680px) {
+  .orchestrator-route .orchestrator-counts { display: flex; overflow-x: auto; gap: 6px; padding-bottom: 4px; }
+  .orchestrator-route .orchestrator-count { flex: 0 0 auto; padding: 6px 10px; }
+  .orchestrator-route .orchestrator-status { font-size: var(--font-size-1); line-height: 1.4; margin-block: 6px; }
+  .orchestrator-route .masthead { margin-bottom: 8px; }
+  .orchestrator-route .orchestrator-card { padding: 12px; }
+}
+.orchestrator-route .app-layout-center { grid-column: 2; }
+.orchestrator-route .app-layout-tabbar { display: none; }
