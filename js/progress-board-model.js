@@ -100,7 +100,7 @@ export function boardFreshness(updatedAt, at = new Date()) {
 export function boardDirectory(read) {
   if (read?.schema !== "progress-board-directory.v1" || !Array.isArray(read.boards))
     throw new Error("Published board directory is unavailable.");
-  return read.boards.filter(board => board && typeof board.board_id === "string")
+  return read.boards.filter(board => board && typeof board.board_id === "string" && !/^orchestrator-page-[a-f0-9]{64}$/.test(board.board_id))
     .slice().sort((a, b) => a.board_id === SYSTEM_BOARD_ID ? -1
       : b.board_id === SYSTEM_BOARD_ID ? 1 : String(a.title).localeCompare(String(b.title)));
 }

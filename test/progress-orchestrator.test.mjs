@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { JSDOM } from 'jsdom';
+import { boardDirectory } from '../js/progress-board-model.js';
 import { mountBoard } from '../js/progress-board.js';
 
 const projection = () => ({schema:'doctorcre-orchestrator/v1', observed_at:'2026-10-21T19:00:00Z',
@@ -90,4 +91,9 @@ test('older unresolved work has explicit totals and loads on demand without clai
     assert.match(doc.querySelector('[data-orchestrator-card="older"]').textContent,/Merged \/ awaiting release/);
     assert.equal(doc.querySelectorAll('[data-orchestrator-stage="live"] article').length,0);
   } finally {board.dispose();dom.window.close();}
+});
+
+test('internal inventory pages do not appear as separate project boards', () => {
+  const boards=[{board_id:'orchestrator',title:'Orchestrator'}, {board_id:'orchestrator-page-'+'a'.repeat(64),title:'Internal page'}];
+  assert.deepEqual(boardDirectory({schema:'progress-board-directory.v1',boards}).map(board=>board.board_id),['orchestrator']);
 });
