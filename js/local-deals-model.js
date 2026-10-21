@@ -6,9 +6,6 @@ export const PHASE_TRIGGERS = Object.freeze({
   negotiation: 'LOI submitted', legal: 'Draft lease prepared', due_diligence: 'Lease signed',
   closing: 'Due-diligence deadline passed', closed: 'Closed',
 });
-export const OWNER_FILTERS = Object.freeze([
-  { value: 'all', label: 'All' }, { value: 'joe', label: 'Joe' }, { value: 'dell', label: 'Dell' },
-]);
 export function lostDeals(rows, owner = 'all', query = '') { return historyDeals(rows, owner, query, true); }
 export function closedDeals(rows, owner = 'all', query = '') { return historyDeals(rows, owner, query, false); }
 function historyDeals(rows, owner = 'all', query = '', lost = false) {

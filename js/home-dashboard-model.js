@@ -1,4 +1,4 @@
-import { isClosedDeal, localDeals, needsAttention } from './deal-review-model.js';
+import { localDeals, needsAttention, scopedDeals, validDealBoard } from './deal-review-model.js';
 import { validInvoiceTracker } from './invoice-tracker-model.js';
 import { validNetwork } from './relationship-network-model.js';
 import { addDays, criticalDateEntries, localToday, toDay } from './calendar-model.js';
@@ -20,21 +20,6 @@ export const HIDDEN_HOME_WIDGETS = Object.freeze({
 const validHomeRows = (payload, key) => payload && typeof payload === 'object' && !Array.isArray(payload)
   && Array.isArray(payload[key]) && payload[key].every(row => row && typeof row === 'object' && !Array.isArray(row)
     && typeof row.id === 'string' && row.id.trim().length > 0);
-
-// Validate the shape Home consumes as a whole. Dropping an invalid member
-// would turn an incomplete read into authoritative counts and missing flags.
-function validHomeBoard(board) {
-  return validHomeRows(board, 'deals') && board.deals.every(deal =>
-    ['name', 'owner', 'phase', 'operating_state', 'workspace_kind', 'account_client_id'].every(key => deal[key] == null || typeof deal[key] === 'string')
-    && ['attention', 'in_market'].every(key => deal[key] == null || typeof deal[key] === 'boolean'));
-}
-
-export function scopedDeals(board, scope) {
-  if (!validHomeBoard(board) || (scope === 'mine' && !board.actor)) return null;
-  return board.deals.filter(deal => !isClosedDeal(deal)
-    && (deal.operating_state || 'active') === 'active'
-    && (scope !== 'mine' || deal.owner === board.actor));
-}
 
 export function dealSnapshot(board, scope = 'team', now = Date.now()) {
   const deals = scopedDeals(board, scope);
@@ -124,7 +109,7 @@ export async function readHomeDashboard(client, { onUpdate = () => {}, timeoutMs
       const value = await readWithDeadline(read, { timeoutMs, signal });
       if (name === 'invoices' && !validInvoiceTracker(value)) throw Object.assign(new Error('Invoices unavailable'), {code:'invalid_payload'});
       if (name === 'relationships' && (!validNetwork(value) || Date.parse(value.valid_until) <= Date.now())) throw Object.assign(new Error('Relationships unavailable'), {code:'invalid_payload'});
-      if (target === result && ((name === 'board' && !validHomeBoard(value)) || (name === 'leads' && !validHomeRows(value, 'leads')))) {
+      if (target === result && ((name === 'board' && !validDealBoard(value)) || (name === 'leads' && !validHomeRows(value, 'leads')))) {
         const error = new Error('Home board unavailable');
         error.code = 'malformed_response';
         throw error;
