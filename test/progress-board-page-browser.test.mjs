@@ -11,9 +11,9 @@ import hierarchy from './fixtures/progress-board-hierarchy.json' with { type: 'j
 import workQueue from '../js/progress-work-queue-fixture.js';
 
 const boards = [{ board_id: 'carr-v5', title: 'System delivery' }, { board_id: 'demo-project', title: 'Demo project' }];
-async function open(t, { unfinished = true, path = '/control-room/progress', boardRead = 'ready', rows = [], control, width = 390, height = 900, costData, snapshotData, autoMount = true } = {}) {
+async function open(t, { unfinished = true, path = '/control-room/progress', boardRead = 'ready', rows = [], control, width = 390, height = 900, costData, snapshotData, autoMount = true, timezoneId, setupPage } = {}) {
   const browser = await chromium.launch(); t.after(() => browser.close());
-  const page = await browser.newPage({ viewport: { width, height } });
+  const page = await browser.newPage({ viewport: { width, height }, ...(timezoneId ? { timezoneId } : {}) });
   const context = page.context();
   await page.clock.install();
   const calls = [], errors = []; let readState = boardRead;
@@ -77,6 +77,7 @@ async function open(t, { unfinished = true, path = '/control-room/progress', boa
   if (!autoMount) await page.addInitScript(() => { window.__BOARD_NO_AUTOMOUNT = true; });
   const target = new URL(path, origin);
   if (!target.searchParams.has('mode')) target.searchParams.set('mode', 'live');
+  await setupPage?.(page);
   await page.goto(target.href);
   return { page, context, calls, errors, setSnapshot: value => { snapshotData = value; }, setRows: value => { rows = value; }, recover: () => { readState = 'ready'; } };
 }
@@ -136,6 +137,22 @@ async function hierarchyEvidence(page, state, width, theme) {
 }
 
 for (const width of [390, 1280]) for (const theme of ['dark', 'light']) {
+  test(`hierarchy keeps one heading when shell arrives after board at ${width}px ${theme}`, async t => {
+    const { page, errors } = await open(t, { width, path: systemPath, snapshotData: hierarchy,
+      setupPage: page => page.route('**/js/app-shell.js', async route => {
+        await page.waitForFunction(() => document.querySelector('[data-hierarchy-id="WR14"]'));
+        await route.continue();
+      }) });
+    await hierarchyEvidence(page, 'shell-after-board', width, theme);
+    const headings = await page.locator('h1, h2').evaluateAll(nodes => nodes.filter(node =>
+      node.textContent === 'Work Requests' && node.getBoundingClientRect().height > 1 &&
+      getComputedStyle(node).clip === 'auto').map(node => ({ id: node.id, className: node.className,
+        parentClass: node.parentElement.className })));
+    assert.equal(headings.length, 1, `one visible Work Requests heading: ${JSON.stringify(headings)}`);
+    assert.equal(await page.locator('#appSidebar .app-layout-sidebar-head h2').textContent(), 'Progress');
+    assert.deepEqual(errors, []);
+  });
+
   test(`hierarchy taste has one heading and reaches work promptly at ${width}px ${theme}`, async t => {
     const { page, errors } = await open(t, { width, path: systemPath, snapshotData: hierarchy });
     const first = page.locator('[data-hierarchy-id="WR14"]');
@@ -541,12 +558,18 @@ for (const width of [390, 1440]) test(`Work Request drill-down works in the rend
 
 for (const width of [320, 390, 1280]) for (const theme of ['light', 'dark'])
   test(`living queue preserves focus, scroll and expanded detail at ${width}px in ${theme}`, async t => {
-    const { page, errors, setSnapshot } = await open(t, { width,
+    const { page, errors, setSnapshot } = await open(t, { width, timezoneId: 'America/Chicago',
       path: '/control-room/progress/board/carr-v5?card=WR14.S1.J1', snapshotData: structuredClone(workQueue) });
     await page.evaluate(theme => document.documentElement.dataset.theme = theme, theme);
     const job = page.locator('[data-queue-id="WR14.S1.J1"]');
     await job.locator('> summary').waitFor();
     assert.equal(await job.getAttribute('open'), '');
+    for (const id of ['board-questions', 'board-blocked', 'board-ledger', 'board-deliverables', 'board-decisions', 'board-notes'])
+      assert.equal(await page.locator(`#${id}`).evaluate(el => el.closest('.panel').hidden), true, `${id} stays hidden on the queue`);
+    const eventAt = workQueue.work_queue.history.find(event => event.card_id === 'WR14.S1.J1').at;
+    const eventText = await job.locator('.queue-log li').first().textContent();
+    assert.equal(eventText.startsWith(eventAt), false, 'event history does not expose the raw timestamp');
+    assert.match(eventText, /Oct 19, \d{1,2}:00 AM/, 'event history uses a compact local timestamp');
     await job.locator('> summary').focus();
     await page.keyboard.press('Enter');
     assert.equal(await job.getAttribute('open'), null, 'keyboard collapses job');
@@ -578,6 +601,11 @@ for (const width of [320, 390, 1280]) for (const theme of ['light', 'dark'])
     assert.deepEqual(await page.evaluate(async () => (await axe.run('#board-stages')).violations.map(v => v.id)), []);
     await mkdir('test-artifacts/work-queue', { recursive: true });
     await page.screenshot({ path: `test-artifacts/work-queue/${width}-${theme}.png`, fullPage: true });
+    if (width === 390 && theme === 'light') {
+      await mkdir('test/evidence/work-queue', { recursive: true });
+      await job.locator('.queue-log').evaluate(el => { el.open = true; });
+      await page.screenshot({ path: 'test/evidence/work-queue/followup-390.png', fullPage: true });
+    }
   });
 
 test('an unreviewed fixture preview renders queue details without calling the live board', async t => {

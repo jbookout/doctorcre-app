@@ -42,7 +42,7 @@ function replaceHtml(node,html){
 function renderAttention(tasks, observation) {
  attention = { tasks, observation };
  const state = observation.state;
- details?.update(withHolders(tasks), { ...observation, state });
+ details?.update(withHolders(tasks), observation);
  const current = state === 'read';
  const pending = state === 'pending';
  const rows = current ? attentionTasks(withHolders(tasks)) : [];

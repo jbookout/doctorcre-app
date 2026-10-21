@@ -154,7 +154,7 @@ body.has-app-layout { padding: 0 0 var(--layout-bottom) var(--layout-rail) !impo
 .app-layout-empty { display: block; padding: var(--space-3) 0; color: var(--fg-muted); font: var(--font-size-1) var(--font-text); }
 .app-layout-status { position: fixed; left: 0; right: 0; bottom: 0; height: var(--layout-bottom); display: flex; align-items: center; flex-wrap: wrap; align-content: center; gap: 2px var(--space-4); padding: 2px var(--space-5) 2px calc(var(--layout-rail) + var(--space-5)); background: var(--surface-1); border-top: var(--hairline-width) solid var(--hairline); color: var(--fg-muted); z-index: 1120; font: var(--font-size-1) var(--font-text); box-sizing: border-box; }
 .app-layout-status > span { display: flex; align-items: center; gap: var(--space-2); }
-.app-layout-status button { border: 0; background: transparent; color: var(--fg-muted); font-size: var(--font-size-2); cursor: pointer; min-width: 28px; min-height: 28px; height: 28px; border-radius: var(--radius-1); }
+.app-layout-status button { border: 0; background: transparent; color: var(--fg-muted); font-size: var(--font-size-2); cursor: pointer; min-width: var(--touch); min-height: var(--touch); height: var(--touch); border-radius: var(--radius-1); }
 @media (hover: hover) { .app-layout-status button:hover { background: var(--surface-2); color: var(--fg); } }
 /* Health is a still dot plus the words beside it; healthy is filled, unknown hollow. */
 .app-layout-status .app-layout-health { width: 8px; height: 8px; border: var(--hairline-width) solid var(--fg-quiet); border-radius: 50%; margin-left: auto; background: transparent; }
@@ -385,10 +385,8 @@ body.has-app-layout:has(#callModeAvailability:not([hidden])) { --layout-bottom: 
 
 @media (max-width: 760px), (hover: none) and (pointer: coarse) and (max-width: 1023px) {
   .has-app-layout :is(button, a, input, select, textarea, summary, [role="button"]) { min-width: 44px; min-height: 44px; box-sizing: border-box; touch-action: manipulation; }
-  .app-layout-status button, #appStatusSlot button { min-width: 44px; min-height: 44px; height: 44px; }
   .app-shell-account-menu a { min-height: 44px; box-sizing: border-box; }
   .app-layout-tabs > [data-layout-slot=tabs] { flex-wrap: wrap; min-width: 0; }
-  .has-app-layout .card-open { min-height: 44px; }
   .has-app-layout .skip:focus, .has-app-layout .invoice-skip:focus { min-height: 44px; display: flex; align-items: center; }
   /* A scripted scroll lands at once; animated, the page moves under the next tap. */
   :root { scroll-behavior: auto; }

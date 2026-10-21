@@ -1,0 +1,117 @@
+{
+  "signedIn": "local synthetic QA Joe session",
+  "results": [
+    {
+      "width": 390,
+      "theme": "dark",
+      "archiveGaps": [
+        {
+          "view": "Closed deals",
+          "gap": 16
+        },
+        {
+          "view": "Lost deals",
+          "gap": 16
+        }
+      ],
+      "park": {
+        "width": 44,
+        "height": 44
+      },
+      "reason": {
+        "width": 198,
+        "height": 44
+      },
+      "phaseDateFontSizes": [
+        13,
+        13,
+        13,
+        13
+      ]
+    },
+    {
+      "width": 390,
+      "theme": "light",
+      "archiveGaps": [
+        {
+          "view": "Closed deals",
+          "gap": 16
+        },
+        {
+          "view": "Lost deals",
+          "gap": 16
+        }
+      ],
+      "park": {
+        "width": 44,
+        "height": 44
+      },
+      "reason": {
+        "width": 198,
+        "height": 44
+      },
+      "phaseDateFontSizes": [
+        13,
+        13,
+        13,
+        13
+      ]
+    },
+    {
+      "width": 1280,
+      "theme": "dark",
+      "archiveGaps": [
+        {
+          "view": "Closed deals",
+          "gap": 16
+        },
+        {
+          "view": "Lost deals",
+          "gap": 16
+        }
+      ],
+      "park": {
+        "width": 44,
+        "height": 44
+      },
+      "reason": {
+        "width": 198,
+        "height": 44
+      },
+      "phaseDateFontSizes": [
+        13,
+        13,
+        13,
+        13
+      ]
+    },
+    {
+      "width": 1280,
+      "theme": "light",
+      "archiveGaps": [
+        {
+          "view": "Closed deals",
+          "gap": 16
+        },
+        {
+          "view": "Lost deals",
+          "gap": 16
+        }
+      ],
+      "park": {
+        "width": 44,
+        "height": 44
+      },
+      "reason": {
+        "width": 198,
+        "height": 44
+      },
+      "phaseDateFontSizes": [
+        13,
+        13,
+        13,
+        13
+      ]
+    }
+  ]
+}
