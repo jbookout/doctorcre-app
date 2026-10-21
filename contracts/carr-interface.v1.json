@@ -3,7 +3,7 @@
   "version": "1.50.0",
   "producer": {
     "repository": "jbookout/carr-system",
-    "source_commit": "950855b48d74330b3c4acd4c15e4923e5ecd4cee"
+    "source_commit": "6dea7dc7661d72a3084778dbbb18ceee56bb2f9e"
   },
   "consumer": "jbookout/doctorcre-app",
   "transport": {
@@ -620,7 +620,7 @@
     "get-deal-room": {
       "producer": {
         "repository": "jbookout/carr-system",
-        "source_commit": "950855b48d74330b3c4acd4c15e4923e5ecd4cee",
+        "source_commit": "6dea7dc7661d72a3084778dbbb18ceee56bb2f9e",
         "pull_request": "https://github.com/jbookout/carr-system/pull/2013"
       },
       "response": {
@@ -681,7 +681,7 @@
         "schema_version": "deal-checklist.v1",
         "producer": {
           "repository": "jbookout/carr-system",
-          "source_commit": "950855b48d74330b3c4acd4c15e4923e5ecd4cee"
+          "source_commit": "6dea7dc7661d72a3084778dbbb18ceee56bb2f9e"
         },
         "template_states": [
           "current",
@@ -715,7 +715,7 @@
       "write": false,
       "producer": {
         "repository": "jbookout/carr-system",
-        "source_commit": "950855b48d74330b3c4acd4c15e4923e5ecd4cee",
+        "source_commit": "6dea7dc7661d72a3084778dbbb18ceee56bb2f9e",
         "module": "mcp-server/src/feature-switches.js"
       },
       "inputSchema": {
