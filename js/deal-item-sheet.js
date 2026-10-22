@@ -94,7 +94,12 @@ export function mountDealItemSheet({ document, read, send, refresh, pending = ()
     if (event.target.closest('[data-complete-item]')) save('complete-deal-item');
     if (event.target.closest('[data-retry-item]')) load(selected);
   });
-  dialog.addEventListener('close', () => { selected = null; ++sequence; trigger?.isConnected && trigger.focus(); });
+  dialog.addEventListener('close', () => {
+    const deal = selected?.deal;
+    selected = null; ++sequence;
+    const fallback = [...document.querySelectorAll('.kanban-card')].find(card => card.dataset.id === deal)?.querySelector('.card-open');
+    (trigger?.isConnected ? trigger : fallback)?.focus();
+  });
   return { open(deal, item, element = null) {
     selected = { deal, item }; trigger = element;
     body.removeAttribute('aria-busy');
