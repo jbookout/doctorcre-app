@@ -235,11 +235,13 @@ test('blocking 2: shared transport clears private workspace on authorization hea
  for (const status of [401, 403]) for (const surface of ['actor', 'workspace', 'detail', 'review', 'mutation']) {
   const board = workspace(); let deny = false, bodyReads = 0;
   const client = createLeadBoardClient({ timeoutMs: 20, fetchImpl: async (_path, init) => {
-   const { name, arguments: args } = JSON.parse(init.body).params;
-   const denied = deny && (surface === 'mutation' ? name === 'update-lead' : surface === 'actor' ? name === 'deal-room-board' :
+   const session = _path === '/api/system-work/session';
+   const { name, arguments: args } = session ? { name: 'session', arguments: {} } : JSON.parse(init.body).params;
+   const denied = deny && (surface === 'mutation' ? name === 'update-lead' : surface === 'actor' ? session :
     name === 'lead-board' && (surface === 'workspace' ? !args.lead_id : Boolean(args.lead_id)));
    if (denied) return { ok: false, status, json: () => { bodyReads++; return new Promise(() => {}); } };
-   const payload = name === 'deal-room-board' ? { actor: 'example-partner' } :
+   if (session) return { ok: true, status: 200, json: async () => ({ actor: { slug: 'example-partner' } }) };
+   const payload =
     { ...board, ...(args.lead_id ? { detail: detail(board.leads.find(l => l.id === args.lead_id)) } : {}) };
    return { ok: true, status: 200, json: async () => ({ result: { content: [{ type: 'text', text: JSON.stringify(payload) }] } }) };
   } });
@@ -581,13 +583,14 @@ for (const failure of ['internal_error','unclassified_error']) test(`Leads activ
  Object.assign(row,{client_id:'synthetic-client',is_client:true,is_deal:true,prospect_client_id:'synthetic-client',
   prospect_client_version:7,prospect_engagement_status:'inactive'});
  const client=createLeadBoardClient({docContext:false,fetchImpl:async(_path,init)=>{
+  if (_path === '/api/system-work/session') return Response.json({actor:{slug:'example-partner'}});
   const {name,arguments:args}=JSON.parse(init.body).params;
   let payload,isError=false;
   if(name==='set-prospect-engagement-status'){
    writes.push(args);
    if(writes.length===1){payload={ok:false,error:failure};isError=true}
    else{row.prospect_engagement_status='active';row.prospect_client_version++;payload={ok:true}}
-  }else payload=name==='deal-room-board'?{actor:'example-partner'}:{...board,...(args.lead_id?{detail:detail(row)}:{})};
+  }else payload={...board,...(args.lead_id?{detail:detail(row)}:{})};
   return new Response(JSON.stringify({result:{isError,content:[{type:'text',text:JSON.stringify(payload)}]}}));
  }});
  const s=await setup(client);try{

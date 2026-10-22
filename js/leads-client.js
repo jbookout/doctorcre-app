@@ -1,3 +1,4 @@
+import { readWithDeadline } from "./current-read.mjs";
 import { observeDocClient } from './doc-context.js';
 import { createMcpRequests, unknownMcpOutcome } from "./mcp-requests.mjs";
 import { createEngagementWriter } from './prospect-engagement.mjs';
@@ -45,10 +46,15 @@ export function createLeadBoardClient(options = {}) {
   }
 
   return observeDocClient({
-    async getActor() {
-      const board = await rpc("deal-room-board", { workspace: "team" });
-      return typeof board.actor === "string" && board.actor.trim() ? board.actor : null;
-    },
+    getActor: () => readWithDeadline(async signal => {
+      const response = await fetchImpl("/api/system-work/session", { signal,
+        credentials: "same-origin", cache: "no-store", headers: { accept: "application/json" } });
+      if (!response.ok) throw typedError({ error: response.status === 401 ? "not_authenticated" :
+        response.status === 403 ? "forbidden" : "session_unavailable" }, "Sign-in required", response.status);
+      const session = await response.json();
+      const actor = session?.actor?.slug;
+      return typeof actor === "string" && actor.trim() ? actor : null;
+    }, { timeoutMs: options.timeoutMs || 10_000 }),
     getLeadBoard: (options = {}) => rpc("lead-board", {}, false, options),
     getWorkspace: async () => validateLeadWorkspace(await rpc("lead-board", { workspace: "leads" })),
     getLeadDetail: async (lead) => {
