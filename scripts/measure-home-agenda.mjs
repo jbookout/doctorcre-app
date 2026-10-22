@@ -73,6 +73,6 @@ const summary=Object.fromEntries(['before','after'].map(mode=>{
  return [mode,{median_ms:values[2],range_ms:[values[0],values[4]],runs_ms:values}];
 }));
 for(const run of runs)assert.deepEqual(run.membership,runs[0].membership);
-const report={baseline,environment:'Local Chromium, synthetic 54-deal fixture, fixed 350 ms per business read; not production latency',summary,errors:0,membership_count:108,runs:runs.map(({membership,...run})=>run)};
+const report={baseline,source_commit:execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim(),environment:'Local Chromium, synthetic 54-deal fixture, fixed 350 ms per business read; not production latency',summary,errors:0,membership_count:108,runs:runs.map(({membership,...run})=>run)};
 await writeFile(new URL('../test-artifacts/home-agenda-performance.json',import.meta.url),JSON.stringify(report,null,2)+'\n');
 console.log(JSON.stringify(summary));
