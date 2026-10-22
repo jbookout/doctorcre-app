@@ -620,7 +620,7 @@
     "get-deal-room": {
       "producer": {
         "repository": "jbookout/carr-system",
-        "source_commit": "8bb047d4cb2dc46267a8da20a2b93694f373a424",
+        "source_commit": "58af30ae50419c710a012cca4eff71b2ce981569",
         "pull_request": "https://github.com/jbookout/carr-system/pull/2066"
       },
       "response": {
