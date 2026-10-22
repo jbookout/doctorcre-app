@@ -312,3 +312,18 @@ test('the exact scoped progress producer keeps an unknown acceptance denominator
  assert.equal(read.total,null);assert.equal(read.completed,null);assert.deepEqual(read.history,[]);
  assert.equal(calls.length,1);assert.match(calls[0],/^select ops.engineering_passport_facts/);
 });
+
+test('the pinned producer publishes the orchestrator contract consumed by the existing board', {
+  skip: !process.env.CARR_PRODUCER_CHECKOUT && 'Set CARR_PRODUCER_CHECKOUT to verify the pinned producer',
+}, () => {
+  const { repository, source_commit: pin } = contract.progress_orchestrator.producer;
+  assert.equal(repository, 'jbookout/carr-system');
+  assert.match(pin, /^[a-f0-9]{40}$/);
+  const git = (...args) => execFileSync('git', ['-C', process.env.CARR_PRODUCER_CHECKOUT, ...args], { encoding: 'utf8' });
+  assert.equal(git('rev-parse', '--verify', `${pin}^{commit}`).trim(), pin);
+  const source = git('show', `${pin}:tools/progress_orchestrator.py`);
+  const projection=JSON.parse(execFileSync('python3',['-c',source+"\nimport json\nprint(json.dumps(project({'tasks':{}},None)))"],{encoding:'utf8'}));
+  assert.equal(projection.schema,contract.progress_orchestrator.schema);
+  assert.equal(boardView({snapshot:{version:1,snapshot_json:{tasks:{},orchestrator:projection}}}).error,null);
+  assert.equal(projection.sources.queue.state,'unavailable');
+});

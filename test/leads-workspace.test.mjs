@@ -21,7 +21,7 @@ test('board renders six full columns, five hottest, quiet IDs/scores and timesta
 });
 test('all New leads claimed: the panel names the claimed count and owners, never "No New leads"',async()=>{
  const s=await setup({getWorkspace:async()=>{const b=workspace();for(const l of b.leads)if(l.stage==='new')l.owner='joe';return b}});
- try{assert.equal(s.d.getElementById('hotTitle').textContent,'Hottest New leads');assert.match(s.d.getElementById('hotSummary').textContent,/All 9 New leads are claimed/);
+ try{assert.equal(s.d.getElementById('hotTitle').textContent,'Top new leads');assert.match(s.d.getElementById('hotSummary').textContent,/All 9 New leads are claimed/);
  assert.equal(s.d.querySelectorAll('.hot-row').length,5);assert.equal(s.d.querySelectorAll('#hotLeads [data-claim]').length,0);assert.equal(s.d.querySelector('.hot-owner').textContent,'Joe');
  assert.doesNotMatch(s.d.querySelector('.top-grid').textContent,/No New leads/);
  }finally{s.close()}
@@ -371,9 +371,9 @@ test('blocking 8: visibility interruption of initial detail preserves its subjec
 
 test('blocking 9: polling preserves focused lead/action identity and resolves the dialog return target',async()=>{
  const s=await setup();try{
- let card=s.d.querySelector('.lead-card');card.focus();await s.app.refresh();assert.equal(s.d.activeElement.dataset.leadId,id(1));
+ let card=s.d.querySelector('.lead-card .lead-open');card.focus();await s.app.refresh();assert.equal(s.d.activeElement.dataset.open,id(1));
  const claim=s.d.querySelector('[data-claim]');claim.focus();await s.app.refresh();assert.equal(s.d.activeElement.dataset.claim,claim.dataset.claim);
- card=s.d.querySelector('.lead-card');card.focus();await s.app.readDetail(id(1));await s.app.refresh();s.d.getElementById('leadDetail').close();assert.equal(s.d.activeElement.dataset.leadId,id(1));
+ card=s.d.querySelector('.lead-card .lead-open');card.focus();await s.app.readDetail(id(1));await s.app.refresh();s.d.getElementById('leadDetail').close();assert.equal(s.d.activeElement.dataset.open,id(1));
  }finally{s.close()}
 });
 
