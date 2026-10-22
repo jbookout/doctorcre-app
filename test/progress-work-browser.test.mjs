@@ -21,7 +21,7 @@ function receipts() {
   return Object.entries(kinds).map(([key,kind],i)=>({seq:i+1,msg_id:`synthetic-${i}`,at:NOW.toISOString(),sponsor:'joe',seat:'codex',kind:'receipt',...(kind === 'telemetry_measurement' ? {work_request_ref:fixture.projection.work_request_id} : {}),body:JSON.stringify({job_passport:{schema_version:'job-passport-wire.v1',kind,payload:fixture[key]}})}));
 }
 
-async function open(t,{width=390,path=taskPath,empty=false,stale=false,history=0,sessions,rpcReply}={}) {
+async function open(t,{width=390,path=taskPath,empty=false,stale=false,history=0,sessions,rpcReply,clock}={}) {
   const browser=await chromium.launch();t.after(()=>browser.close());
   const page=await browser.newPage({viewport:{width,height:900}}); await page.clock.install({time:NOW});
   await page.addInitScript(() => {
@@ -88,6 +88,7 @@ async function open(t,{width=390,path=taskPath,empty=false,stale=false,history=0
     const file=routes.routes[url.pathname.startsWith('/control-room/progress/board/')?'/control-room/progress/board/:boardId':url.pathname]||url.pathname.slice(1);
     try{const body=await readFile(resolve(process.env.DOCTORCRE_FIXTURE_ROOT || fileURLToPath(new URL('..',import.meta.url)),file));return route.fulfill({body,contentType:/\.m?js$/.test(file)?'text/javascript':file.endsWith('.css')?'text/css':'text/html'});}catch{return route.fulfill({status:404,body:''});}
   });
+  if (clock) await clock(page.clock);
   await page.goto(`http://localhost${path}`);await page.waitForFunction(()=>document.getElementById('workTitle')?.textContent!=='Work detail');
   return {page,state,errors,calls,posts};
 }
@@ -1012,6 +1013,10 @@ test('chained alias and direct task URLs show identical work evidence', async t 
   const evidence = [];
   for (const requested of [taskId, 'legacy-pr-73']) {
     const {page,errors} = await open(t, {
+      clock:async clock => {
+        await clock.runFor(requested === taskId ? 0 : 1100);
+        await clock.setFixedTime(new Date(NOW.getTime() + 5100));
+      },
       path:`/control-room/progress/work?board=demo-project&task=${requested}`,
       rpcReply:(rpc,payload) => {
         if (rpc.name === 'read-progress-board') payload.snapshot.snapshot_json.hierarchy = {
@@ -1026,6 +1031,7 @@ test('chained alias and direct task URLs show identical work evidence', async t 
     evidence.push(await page.locator('#workReviewList, #workDotList, #workSessionList, #workCanonicalBody, #wireFeed').allTextContents());
     assert.deepEqual(errors, []);
   }
+  assert.match(evidence[0].join('\n'), /human5s ago/);
   assert.match(evidence[0].join('\n'), /Fix round one/);
   assert.deepEqual(evidence[1], evidence[0]);
 });

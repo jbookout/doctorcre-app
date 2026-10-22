@@ -52,7 +52,7 @@ export function mountAppLayout(root, host, pathname) {
   }
   root.body.classList.add('has-app-layout');
   const pageOwnsMoves = Boolean(layout.querySelector('#appTodayMoves [data-layout-slot="moves"]'));
-  const phone = win.matchMedia(TOUCH_LAYOUT);
+  const phone = win.matchMedia(pathname === "/leads" ? "(max-width:1023px)" : TOUCH_LAYOUT);
   const itineraryPage = Boolean(root.getElementById('accepted-itinerary'));
   const dealBoard = pathname === '/deals' && root.body.classList.contains('dealroom-page');
   let sidebar = !boardPage && !itineraryPage, today = !dealBoard && !itineraryPage, drawer = null;

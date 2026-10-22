@@ -9,9 +9,10 @@ import { STAGES } from '../js/progress-board-model.js';
 import costs from './fixtures/progress-board-costs.json' with { type: 'json' };
 import hierarchy from './fixtures/progress-board-hierarchy.json' with { type: 'json' };
 import workQueue from '../js/progress-work-queue-fixture.js';
+import orchestratorSequence from './fixtures/progress-orchestrator.json' with {type:'json'};
 
 const boards = [{ board_id: 'carr-v5', title: 'System delivery' }, { board_id: 'demo-project', title: 'Demo project' }];
-async function open(t, { unfinished = true, path = '/control-room/progress', boardRead = 'ready', rows = [], control, width = 390, height = 900, costData, snapshotData, autoMount = true, timezoneId, setupPage } = {}) {
+async function open(t, { unfinished = true, path = '/control-room/progress', boardRead = 'ready', rows = [], control, width = 390, height = 900, costData, snapshotData, assetRoot, autoMount = true, timezoneId, setupPage } = {}) {
   const browser = await chromium.launch(); t.after(() => browser.close());
   const page = await browser.newPage({ viewport: { width, height }, ...(timezoneId ? { timezoneId } : {}) });
   const context = page.context();
@@ -26,7 +27,7 @@ async function open(t, { unfinished = true, path = '/control-room/progress', boa
       let payload = { ok: true }, isError = false;
       if (rpc.name === 'list-progress-boards') payload = { schema: 'progress-board-directory.v1', boards };
       if (rpc.name === 'read-progress-board') {
-        const board = boards.find(b => b.board_id === rpc.arguments.board_id);
+        const board = boards.find(b => b.board_id === rpc.arguments.board_id) || (rpc.arguments.board_id === 'orchestrator' ? {board_id:'orchestrator',title:'Orchestrator'} : null);
         if (readState === 'failed') { payload = { error: 'board_read_failed' }; isError = true; }
         else payload = { snapshot: readState === 'missing' ? null : { board_id: board.board_id, version: 1,
           updated_at: '2026-10-02T08:00:00Z', snapshot_json: snapshotData || { title: board.title, costs: costData, tasks: {
@@ -46,7 +47,7 @@ async function open(t, { unfinished = true, path = '/control-room/progress', boa
     } },
     ASSETS: { fetch: async request => {
       const path = new URL(request.url).pathname;
-      try { return new Response(await readFile(new URL('..' + path, import.meta.url)), {
+      try { return new Response(await readFile(assetRoot ? new URL('.' + path, assetRoot) : new URL('..' + path, import.meta.url)), {
         headers: { 'content-type': /\.m?js$/.test(path) ? 'text/javascript' : path.endsWith('.css') ? 'text/css' : 'text/html' },
       }); } catch { return new Response('Not found', { status: 404 }); }
     } },
@@ -776,3 +777,79 @@ for (const width of [390, 1280]) test(`expanded queue detail leads with findings
   await job.locator('.queue-execution > summary').click();
   assert.equal(await job.getByText('gpt-6.1-sol', {exact:true}).isVisible(), true);
 });
+
+
+for (const width of [390,1280]) for (const theme of ['light','dark'])
+  test(`orchestrator published queue observations update in place at ${width}px ${theme}`, async t => {
+    const {page,errors,setSnapshot}=await open(t,{width,timezoneId:'America/Chicago',
+      path:'/control-room/progress/board/orchestrator',snapshotData:orchestratorSequence[0].snapshot.snapshot_json,
+      assetRoot:process.env.ORCHESTRATOR_BUILT_ROOT ? new URL(`file://${process.env.ORCHESTRATOR_BUILT_ROOT}/`) : undefined});
+    await page.evaluate(theme=>document.documentElement.dataset.theme=theme,theme);
+    const first=page.locator('[data-orchestrator-card]').first();await first.waitFor();
+    const box=await first.locator('.orchestrator-progress').boundingBox();
+    if(width===390) assert.ok(box && box.y+box.height<820,'first title, status and progress fit above phone navigation');
+    await mkdir('test-artifacts/orchestrator',{recursive:true});
+    await page.screenshot({path:`test-artifacts/orchestrator/initial-${width}-${theme}.png`});
+    const olderPage='orchestrator-page-'+'a'.repeat(64);
+    let pageUnavailable=true;
+    await page.route('**/mcp', async route => {
+      const rpc=route.request().postDataJSON().params;
+      if(rpc?.name!=='read-progress-board' || rpc.arguments.board_id!==olderPage) return route.fallback();
+      if(pageUnavailable) return route.fulfill({status:503,contentType:'application/json',body:'{}'});
+      return route.fulfill({contentType:'application/json',body:JSON.stringify({result:{content:[{text:JSON.stringify({snapshot:{version:1,snapshot_json:{cards:[{
+        id:'older-release',title:'Older unresolved release',state:'merged',owner:'cx-app2',prs:[],changed_at:'2026-01-01T00:00:00Z'
+      }]}}})}]}})});
+    });
+    await page.locator('[data-orchestrator-card="queue:search"]').waitFor();
+    await page.evaluate(()=>{
+      window.__orchestratorCard=document.querySelector('[data-orchestrator-card="queue:search"]');
+      window.__orchestratorLink=window.__orchestratorCard.querySelector('a');
+      window.__orchestratorLink.focus({preventScroll:true});
+      window.__orchestratorCard.querySelector('details').open=true;
+    });
+    for(const [index,state] of [[1,'working'],[2,'review'],[3,'fixing'],[4,'merging'],[5,'merged'],[6,'live']]) {
+      setSnapshot(orchestratorSequence[index].snapshot.snapshot_json);
+      await page.clock.runFor(2100);
+      await page.locator(`[data-orchestrator-stage="${state}"] [data-orchestrator-card="queue:search"]`).waitFor();
+      assert.equal(await page.evaluate(()=>document.querySelector('[data-orchestrator-card="queue:search"]')===window.__orchestratorCard),true);
+      assert.equal(await page.evaluate(()=>document.activeElement===window.__orchestratorLink),true);
+      assert.equal(await page.locator('[data-orchestrator-card="queue:search"] details').getAttribute('open'),'');
+    }
+    setSnapshot(orchestratorSequence[7].snapshot.snapshot_json);
+    await page.clock.runFor(2100);
+    await page.locator('[data-orchestrator-status]').filter({hasText:'Queue observation unavailable or stale'}).waitFor();
+    assert.equal(await page.locator('[data-orchestrator-stage="live"] [data-orchestrator-card="queue:search"]').count(),1);
+    assert.equal(await page.locator('[data-orchestrator-stage]').count(),8);
+    const paged=structuredClone(orchestratorSequence[7].snapshot.snapshot_json);
+    paged.orchestrator.total_cards=paged.orchestrator.cards.length+1;
+    paged.orchestrator.pages=[{board_id:olderPage,version:1,count:1}];
+    setSnapshot(paged);await page.clock.runFor(2100);
+    await page.locator('[data-orchestrator-more]').click();
+    await page.locator('[data-orchestrator-pagination]').filter({hasText:'unavailable'}).waitFor();
+    assert.equal(await page.locator('[data-orchestrator-card="queue:search"]').count(),1);
+    pageUnavailable=false;await page.locator('[data-orchestrator-more]').click();
+    await page.locator('[data-orchestrator-card="older-release"]').waitFor();
+    assert.match(await page.locator('[data-orchestrator-card="older-release"]').textContent(),/Merged \/ awaiting release/);
+    const older=page.locator('[data-orchestrator-card="older-release"]');
+    await older.locator('details').evaluate(el=>el.open=true);
+    await older.locator('summary').focus();
+    const scroll=await older.evaluate(el=>el.closest('.app-layout-center').scrollTop);
+    const changed=structuredClone(paged);changed.orchestrator.observed_at='2026-10-21T20:00:00Z';
+    changed.orchestrator.cards[0].state='fixing';setSnapshot(changed);await page.clock.runFor(2100);
+    assert.equal(await older.locator('details').getAttribute('open'),'');
+    assert.equal(await older.locator('summary').evaluate(el=>el===document.activeElement),true);
+    assert.equal(await older.evaluate(el=>el.closest('.app-layout-center').scrollTop),scroll);
+    setSnapshot({tasks:{}});await page.clock.runFor(2100);
+    setSnapshot(changed);await page.clock.runFor(6300);
+    assert.equal(await older.count(),1);
+
+
+    assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
+    const targets=await page.locator('.orchestrator-count,.orchestrator-links a,.orchestrator-detail summary').evaluateAll(nodes=>nodes.map(el=>el.getBoundingClientRect().height));
+    assert.ok(targets.every(height=>height>=44));
+    const violations=await page.evaluate(async source=>{eval(source);return (await axe.run(document.querySelector('#board-stages'))).violations;},axe.source);
+    assert.deepEqual(violations.map(v=>v.id),[]);
+    assert.deepEqual(errors,[]);
+    await mkdir('test-artifacts/orchestrator',{recursive:true});
+    await page.screenshot({path:`test-artifacts/orchestrator/${width}-${theme}.png`,fullPage:true});
+  });

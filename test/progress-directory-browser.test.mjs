@@ -194,6 +194,11 @@ function controlledReads(t) {
       assert.ok(requests[name][index], `${name} request ${index} started`);
       return requests[name][index];
     },
+    async releaseCanceled(name, index, payload, failed = false) {
+      const request = await this.request(name, index);
+      assert.equal(request.route.request().failure()?.errorText, 'net::ERR_ABORTED');
+      request.resolve({ payload, failed });
+    },
     async reply(page, name, index, payload, failed = false) {
       const request = await this.request(name, index);
       const received = page.waitForResponse(response => response.request() === request.route.request());
@@ -230,7 +235,7 @@ for (const failed of [false, true]) test(`answer refresh supersedes an older pol
   await reads.reply(page, "list-progress-boards", 2, listing("New directory"));
   await page.waitForFunction(() => document.querySelector("#board-title").textContent === "System version 2");
   const old = failed ? { error: "old request failed" } : snapshot();
-  await reads.reply(page, "read-progress-board", 1, old, failed);
+  await reads.releaseCanceled("read-progress-board", 1, old, failed);
   await reads.reply(page, "list-progress-boards", 1, failed ? old : listing("Old directory"), failed);
   assert.equal(await page.locator("#board-title").textContent(), "System version 2");
   assert.equal(await page.locator(".board-link h3").textContent(), "New directory");
