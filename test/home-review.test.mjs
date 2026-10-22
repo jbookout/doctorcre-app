@@ -6,7 +6,7 @@ import { createLeadBoardClient } from '../js/leads-client.js';
 import { agendaSnapshot, controlSnapshot, readHomeDashboard, topNewLeads } from '../js/home-dashboard-model.js';
 
 const now = Date.parse('2026-10-01T15:00:00Z');
-const lead = score => ({ id: `demo-${score}`, name: 'Demo practice', score, created_at: new Date(now).toISOString() });
+const lead = score => ({ id: `demo-${score}`, name: 'Demo practice', stage: 'new', score, created_at: new Date(now).toISOString() });
 test('R1 live lead decimals rank numerically while malformed score strings are excluded', async () => {
   const rows = ['98.00', '9.50', '80.25', '', ' ', '98x', '0x62', 'Infinity', '1e2', null].map(lead);
   const client = createLeadBoardClient({ fetchImpl: async () => new Response(JSON.stringify({ result: { content: [{ type: 'text', text: JSON.stringify({ leads: rows }) }] } })) });
