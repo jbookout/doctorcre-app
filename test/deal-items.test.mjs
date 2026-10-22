@@ -54,3 +54,11 @@ test('the item sheet keeps the overdue date visible as a due chip', () => {
   assert.match(doc.querySelector('.deal-item-date').textContent, /Overdue/);
   assert.equal(doc.querySelector('.deal-item-date[data-overdue="true"] time').getAttribute('datetime'), '2026-10-01');
 });
+
+
+test('the instruction input accepts only the length supported by the record verb', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const contract = JSON.parse(await readFile(new URL('../contracts/carr-interface.v1.json', import.meta.url), 'utf8'));
+  const doc = new JSDOM(renderDealItemDetail(deal.items[0])).window.document;
+  assert.equal(doc.querySelector('textarea').maxLength, contract.mcp_write_contracts['instruct-deal-item'].inputSchema.properties.text.maxLength);
+});

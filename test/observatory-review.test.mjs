@@ -7,8 +7,8 @@ const read = path => readFile(new URL(`../${path}`, import.meta.url), 'utf8');
 
 test('Observatory extends the current contract under a new version and exact producer', async () => {
   const contract = JSON.parse(await read('contracts/carr-interface.v1.json'));
-  assert.equal(contract.version, '1.51.0');
-  assert.equal(contract.producer.source_commit, 'e2e484b1933bfd63c10cc9a1b3350132948f6f74');
+  assert.equal(contract.version, '1.52.0');
+  assert.equal(contract.producer.source_commit, '1763d9e0352b7d9c2772677818c456dbca745eea');
   assert.ok(contract.mcp_operations.includes('read-room-latest'));
   assert.ok(contract.mcp_operations.includes('append-tour-selection-cart-version'));
 });
