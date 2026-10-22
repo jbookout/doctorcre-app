@@ -8,7 +8,7 @@ import { handleDoctorcreRequest } from "../src/worker.js";
 import { validSystemWork, groupSystemWork, recentLive } from "../js/system-work-board-model.js";
 
 const contract = JSON.parse(await readFile(new URL("../contracts/carr-interface.v1.json", import.meta.url), "utf8"));
-const pinnedProducer = "1763d9e0352b7d9c2772677818c456dbca745eea";
+const pinnedProducer = "f011675bb94f9c02fd721dd94a01cc6f52ea4762";
 
 const producerModules = new Map();
 async function producerModuleUrl(path) {
@@ -337,7 +337,7 @@ test('the pinned producer item shapes and command schemas match the app contract
   const { renderDealAlert, renderDealItemDetail } = await import('../js/deal-items.js');
   const tools = dealItemTools({});
   assert.equal(DEAL_ITEMS_SCHEMA, contract.mcp_read_contracts['get-deal-room'].response.item_schema_version);
-  for (const verb of ['instruct-deal-item', 'complete-deal-item']) {
+  for (const verb of ['record-deal-item', 'instruct-deal-item', 'complete-deal-item']) {
     assert.deepEqual(tools[verb].inputSchema, contract.mcp_write_contracts[verb].inputSchema);
     assert.equal(tools[verb].write, true);
   }

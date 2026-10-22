@@ -41,7 +41,7 @@ test('notes summarize but retain original entry, including hostile text as data'
 test('W4 read binds the separate producer revision and versioned phase/parking fields', async () => {
  const {readFile} = await import('node:fs/promises');
  const contract = JSON.parse(await readFile(new URL('../contracts/carr-interface.v1.json',import.meta.url),'utf8')).mcp_read_contracts['deal-room-board'];
- assert.equal(contract.producer.source_commit,'1763d9e0352b7d9c2772677818c456dbca745eea');
+ assert.equal(contract.producer.source_commit,'f011675bb94f9c02fd721dd94a01cc6f52ea4762');
  assert.equal(contract.response.schema_version,'local-deals-board.v1');
  for(const key of ['operating_state','parking_note','phase_change','invoiced_on','phase_started_on','vendors','prospect_engagement_status','client_version']) assert.ok(contract.response.deal_keys.includes(key));
 });

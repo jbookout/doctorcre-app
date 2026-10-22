@@ -345,6 +345,7 @@ export function createLiveClient(opts = {}) {
       return write('update-deal', args);
     },
 
+    async recordDealItem(args) { return write('record-deal-item', { ...args, source_ref: args.source_ref || `app:deal-item:${args.idempotency_key}` }); },
     async instructDealItem(args) { return write('instruct-deal-item', args); },
     async completeDealItem(args) { return write('complete-deal-item', args); },
 

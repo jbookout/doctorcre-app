@@ -443,11 +443,11 @@ const FOLLOW_UP_SENDERS = {
   'add-deal-note': (request) => state.client.addDealNote(request),
   'instruct-deal-item': request => state.client.instructDealItem(request),
   'complete-deal-item': request => state.client.completeDealItem(request),
-  'set-next-step': (request) => state.client.setNextStep(request),
+  'record-deal-item': (request) => state.client.recordDealItem(request),
   'add-critical-date': (request) => state.client.addCriticalDate(request),
   'update-deal': (request) => state.client.updateDeal(request),
 };
-const nextStepKey = deal => `next-step:${deal}`;
+const newItemKey = deal => `new-item:${deal}`;
 
 /**
  * The outcome write, and the fresh read it is built on.
@@ -501,8 +501,8 @@ async function runOutcomeWrite(operationKey, step, intent) {
 
 /** One follow-up, its own key, its own receipt. A failure never un-moves a card. */
 async function runFollowUp(operationKey, step) {
-  // Every next-step control shares one operation for the deal, including moves.
-  if (step.verb === 'set-next-step') operationKey = nextStepKey(step.args.deal);
+  // One unresolved item creation per deal retains its request across moves.
+  if (step.verb === 'record-deal-item') operationKey = newItemKey(step.args.deal);
   const send = FOLLOW_UP_SENDERS[step.verb];
   if (!send) return null;
   if (!pendingCommand(commandState, operationKey)) operations.set(operationKey, { kind: 'command', verb: step.verb, args: step.args, send, summary: step.summary });

@@ -1594,11 +1594,21 @@ export async function createFixtureClient(opts = {}) {
       });
     },
 
+    async recordDealItem({ deal, title, due_on, bullets, source_ref, idempotency_key }) {
+      return withIdem(idempotency_key, () => {
+        const d = getDealOrThrow(deal);
+        const source = source_ref || `app:deal-item:${idempotency_key}`;
+        const existing = d.items?.find(item => item.title === title && item.source_ref === source);
+        const item = existing || { id: uuidv4(), title, due_on: due_on || null, status: 'open', bullets: structuredClone(bullets), source_ref: source };
+        if (!existing) (d.items ||= []).push(item);
+        return { status: 'ok', ok: true, item: structuredClone(item), rows_changed: existing ? 0 : 1 };
+      });
+    },
     async instructDealItem({ deal, item_id, text, idempotency_key }) {
       return withIdem(idempotency_key, () => {
         const item = getDealOrThrow(deal).items?.find(row => row.id === item_id);
         if (!item || !text?.trim()) throw new Error('Item or instruction unavailable');
-        item.bullets.push({ date: nowIso().slice(0,10), kind: 'suggestion', text: text.trim() });
+        item.bullets.push({ date: nowIso().slice(0,10), kind: 'status', text: text.trim() });
         return { ok: true, item: structuredClone(item) };
       });
     },
