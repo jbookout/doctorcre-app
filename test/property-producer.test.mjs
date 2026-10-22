@@ -8,7 +8,7 @@ import { handleDoctorcreRequest } from "../src/worker.js";
 import { validSystemWork, groupSystemWork, recentLive } from "../js/system-work-board-model.js";
 
 const contract = JSON.parse(await readFile(new URL("../contracts/carr-interface.v1.json", import.meta.url), "utf8"));
-const pinnedProducer = "1ac451932c14f23a6f9c54d963f9b9d11b685d3c";
+const pinnedProducer = "efcac9f166f2e6c7b2e904bca35571899a57f53c";
 
 const producerModules = new Map();
 async function producerModuleUrl(path) {
