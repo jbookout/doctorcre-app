@@ -53,6 +53,20 @@ test('changed tests fail on exact base and pass on exact head without running un
   assert.equal(f.git('worktree', 'list', '--porcelain').split('worktree ').length - 1, 1);
 });
 
+test('tracked executable source without an extension triggers the comparison', t => {
+  const f = fixture(t);
+  f.write('js/value', 'export const value = 2;\n');
+  f.write('test/value.test.mjs', regression.replace('../js/value.mjs', '../js/value'));
+  f.git('config', 'core.fileMode', 'false');
+  f.git('add', 'js/value');
+  f.git('update-index', '--chmod=+x', 'js/value');
+  f.commit();
+  const result = f.run();
+  assert.equal(result.status, 0, result.stdout + result.stderr);
+  assert.match(result.stdout, /Base: \*\*FAIL/);
+  assert.match(result.stdout, /Head: \*\*PASS/);
+});
+
 test('docs, configuration, deletion-only changes, and changes without tests skip the comparison', t => {
   for (const kind of ['docs', 'config', 'deletion', 'no-tests']) {
     const f = fixture(t);

@@ -20,7 +20,8 @@ try {
   const source = changed.filter(path =>
     !/^(test|tests|docs|\.github)\//.test(path)
     && !/(^|\/)(?:[^/]*[.-])?config\.[^/]+$/.test(path)
-    && /\.(?:[cm]?js|jsx|tsx?|html|css|py|sh)$/.test(path));
+    && (/\.(?:[cm]?js|jsx|tsx?|html|css|py|sh)$/.test(path)
+      || git('ls-tree', head, '--', path).startsWith('100755 ')));
   report(`## Test-first footprint\n\nBase: \`${base}\`\nHead: \`${head}\`\nChanged test files: ${tests.length}\nChanged source files: ${source.length}`);
   if (!tests.length || !source.length) {
     report('Skipped: no changed test files or no non-test executable source change. Base and head tests not run.');
