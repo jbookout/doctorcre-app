@@ -7,7 +7,7 @@ import {agendaSnapshot, readHomeDashboard} from '../js/home-dashboard-model.js';
 
 const fixture = async () => createFixtureClient({seedUrl: `data:application/json;base64,${Buffer.from(await readFile(new URL('../data/board-seed.json', import.meta.url))).toString('base64')}`});
 
-test('bounded Home agenda preserves legacy fixture membership for team and mine without opening records', async () => {
+test('Home model preserves legacy fixture agenda membership for team and mine without opening records', async () => {
   const client = await fixture();
   const board = await client.getBoard();
   const details = new Map(await Promise.all(board.deals.map(async d => [d.id, await client.getDeal(d.id)])));
