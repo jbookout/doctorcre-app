@@ -1,0 +1,580 @@
+[
+  {
+    "snapshot": {
+      "board_id": "orchestrator",
+      "version": 1,
+      "updated_at": "2026-10-21T19:00:00Z",
+      "snapshot_json": {
+        "schema": "carr-progress-board.v2",
+        "project": "orchestrator",
+        "title": "Orchestrator",
+        "tasks": {},
+        "history": {},
+        "omitted": {
+          "live": 0,
+          "merged": 0,
+          "history": 0
+        },
+        "orchestrator": {
+          "schema": "doctorcre-orchestrator/v1",
+          "observed_at": "2026-10-21T19:26:44+00:00",
+          "cards": [
+            {
+              "id": "queue:search",
+              "title": "Find a deal across the portfolio",
+              "state": "waiting",
+              "owner": "cx-app2",
+              "progress": "dispatch enqueued",
+              "changed_at": "2026-10-21T19:26:44.656+00:00",
+              "prs": [
+                "https://github.com/jbookout/doctorcre-app/pull/12"
+              ],
+              "origin": "queue",
+              "terminal": false,
+              "area": "doctorcre-app"
+            },
+            {
+              "id": "board:backend",
+              "title": "Shared search contract",
+              "state": "working",
+              "owner": "Not recorded",
+              "progress": "Awaiting a recorded progress update",
+              "changed_at": null,
+              "prs": [],
+              "origin": "board",
+              "terminal": false,
+              "area": "Shared backend"
+            }
+          ],
+          "history": [],
+          "omitted_history": 0,
+          "sources": {
+            "queue": {
+              "state": "observed",
+              "revision": 1,
+              "last_success_at": "2026-10-21T19:26:44+00:00",
+              "checked_at": "2026-10-21T19:26:44+00:00"
+            },
+            "github": {
+              "state": "observed",
+              "checked_at": "2026-10-21T19:00:00Z",
+              "last_success_at": "2026-10-21T19:00:00Z"
+            },
+            "portfolio": {
+              "state": "observed",
+              "checked_at": "2026-10-21T19:00:00Z",
+              "last_success_at": "2026-10-21T19:00:00Z"
+            }
+          }
+        }
+      }
+    },
+    "questions": []
+  },
+  {
+    "snapshot": {
+      "board_id": "orchestrator",
+      "version": 2,
+      "updated_at": "2026-10-21T19:00:00Z",
+      "snapshot_json": {
+        "schema": "carr-progress-board.v2",
+        "project": "orchestrator",
+        "title": "Orchestrator",
+        "tasks": {},
+        "history": {},
+        "omitted": {
+          "live": 0,
+          "merged": 0,
+          "history": 0
+        },
+        "orchestrator": {
+          "schema": "doctorcre-orchestrator/v1",
+          "observed_at": "2026-10-21T19:26:44+00:00",
+          "cards": [
+            {
+              "id": "queue:search",
+              "title": "Find a deal across the portfolio",
+              "state": "working",
+              "owner": "cx-app2",
+              "progress": "executor claimed",
+              "changed_at": "2026-10-21T19:26:44.661+00:00",
+              "prs": [
+                "https://github.com/jbookout/doctorcre-app/pull/12"
+              ],
+              "origin": "queue",
+              "terminal": false,
+              "area": "doctorcre-app"
+            },
+            {
+              "id": "board:backend",
+              "title": "Shared search contract",
+              "state": "working",
+              "owner": "Not recorded",
+              "progress": "Awaiting a recorded progress update",
+              "changed_at": null,
+              "prs": [],
+              "origin": "board",
+              "terminal": false,
+              "area": "Shared backend"
+            }
+          ],
+          "history": [],
+          "omitted_history": 0,
+          "sources": {
+            "queue": {
+              "state": "observed",
+              "revision": 2,
+              "last_success_at": "2026-10-21T19:26:44+00:00",
+              "checked_at": "2026-10-21T19:26:44+00:00"
+            },
+            "github": {
+              "state": "observed",
+              "checked_at": "2026-10-21T19:00:00Z",
+              "last_success_at": "2026-10-21T19:00:00Z"
+            },
+            "portfolio": {
+              "state": "observed",
+              "checked_at": "2026-10-21T19:00:00Z",
+              "last_success_at": "2026-10-21T19:00:00Z"
+            }
+          }
+        }
+      }
+    },
+    "questions": []
+  },
+  {
+    "snapshot": {
+      "board_id": "orchestrator",
+      "version": 3,
+      "updated_at": "2026-10-21T19:00:00Z",
+      "snapshot_json": {
+        "schema": "carr-progress-board.v2",
+        "project": "orchestrator",
+        "title": "Orchestrator",
+        "tasks": {},
+        "history": {},
+        "omitted": {
+          "live": 0,
+          "merged": 0,
+          "history": 0
+        },
+        "orchestrator": {
+          "schema": "doctorcre-orchestrator/v1",
+          "observed_at": "2026-10-21T19:26:44+00:00",
+          "cards": [
+            {
+              "id": "queue:search",
+              "title": "Find a deal across the portfolio",
+              "state": "review",
+              "owner": "cx-app2",
+              "progress": "executor completed",
+              "changed_at": "2026-10-21T19:26:44.662+00:00",
+              "prs": [
+                "https://github.com/jbookout/doctorcre-app/pull/12"
+              ],
+              "origin": "queue",
+              "terminal": false,
+              "area": "doctorcre-app"
+            },
+            {
+              "id": "board:backend",
+              "title": "Shared search contract",
+              "state": "working",
+              "owner": "Not recorded",
+              "progress": "Awaiting a recorded progress update",
+              "changed_at": null,
+              "prs": [],
+              "origin": "board",
+              "terminal": false,
+              "area": "Shared backend"
+            }
+          ],
+          "history": [],
+          "omitted_history": 0,
+          "sources": {
+            "queue": {
+              "state": "observed",
+              "revision": 3,
+              "last_success_at": "2026-10-21T19:26:44+00:00",
+              "checked_at": "2026-10-21T19:26:44+00:00"
+            },
+            "github": {
+              "state": "observed",
+              "checked_at": "2026-10-21T19:00:00Z",
+              "last_success_at": "2026-10-21T19:00:00Z"
+            },
+            "portfolio": {
+              "state": "observed",
+              "checked_at": "2026-10-21T19:00:00Z",
+              "last_success_at": "2026-10-21T19:00:00Z"
+            }
+          }
+        }
+      }
+    },
+    "questions": []
+  },
+  {
+    "snapshot": {
+      "board_id": "orchestrator",
+      "version": 4,
+      "updated_at": "2026-10-21T19:00:00Z",
+      "snapshot_json": {
+        "schema": "carr-progress-board.v2",
+        "project": "orchestrator",
+        "title": "Orchestrator",
+        "tasks": {},
+        "history": {},
+        "omitted": {
+          "live": 0,
+          "merged": 0,
+          "history": 0
+        },
+        "orchestrator": {
+          "schema": "doctorcre-orchestrator/v1",
+          "observed_at": "2026-10-21T19:26:44+00:00",
+          "cards": [
+            {
+              "id": "queue:search",
+              "title": "Find a deal across the portfolio",
+              "state": "fixing",
+              "owner": "cx-app2",
+              "progress": "Preserve keyboard focus when results change",
+              "changed_at": "2026-10-21T19:26:44.662+00:00",
+              "prs": [
+                "https://github.com/jbookout/doctorcre-app/pull/12"
+              ],
+              "origin": "queue",
+              "terminal": false,
+              "area": "doctorcre-app"
+            },
+            {
+              "id": "board:backend",
+              "title": "Shared search contract",
+              "state": "working",
+              "owner": "Not recorded",
+              "progress": "Awaiting a recorded progress update",
+              "changed_at": null,
+              "prs": [],
+              "origin": "board",
+              "terminal": false,
+              "area": "Shared backend"
+            }
+          ],
+          "history": [],
+          "omitted_history": 0,
+          "sources": {
+            "queue": {
+              "state": "observed",
+              "revision": 4,
+              "last_success_at": "2026-10-21T19:26:44+00:00",
+              "checked_at": "2026-10-21T19:26:44+00:00"
+            },
+            "github": {
+              "state": "observed",
+              "checked_at": "2026-10-21T19:00:00Z",
+              "last_success_at": "2026-10-21T19:00:00Z"
+            },
+            "portfolio": {
+              "state": "observed",
+              "checked_at": "2026-10-21T19:00:00Z",
+              "last_success_at": "2026-10-21T19:00:00Z"
+            }
+          }
+        }
+      }
+    },
+    "questions": []
+  },
+  {
+    "snapshot": {
+      "board_id": "orchestrator",
+      "version": 5,
+      "updated_at": "2026-10-21T19:00:00Z",
+      "snapshot_json": {
+        "schema": "carr-progress-board.v2",
+        "project": "orchestrator",
+        "title": "Orchestrator",
+        "tasks": {},
+        "history": {},
+        "omitted": {
+          "live": 0,
+          "merged": 0,
+          "history": 0
+        },
+        "orchestrator": {
+          "schema": "doctorcre-orchestrator/v1",
+          "observed_at": "2026-10-21T19:26:44+00:00",
+          "cards": [
+            {
+              "id": "queue:search",
+              "title": "Find a deal across the portfolio",
+              "state": "merging",
+              "owner": "cx-app2",
+              "progress": "Independent review passed",
+              "changed_at": "2026-10-21T19:26:44.663+00:00",
+              "prs": [
+                "https://github.com/jbookout/doctorcre-app/pull/12"
+              ],
+              "origin": "queue",
+              "terminal": false,
+              "area": "doctorcre-app"
+            },
+            {
+              "id": "board:backend",
+              "title": "Shared search contract",
+              "state": "working",
+              "owner": "Not recorded",
+              "progress": "Awaiting a recorded progress update",
+              "changed_at": null,
+              "prs": [],
+              "origin": "board",
+              "terminal": false,
+              "area": "Shared backend"
+            }
+          ],
+          "history": [],
+          "omitted_history": 0,
+          "sources": {
+            "queue": {
+              "state": "observed",
+              "revision": 7,
+              "last_success_at": "2026-10-21T19:26:44+00:00",
+              "checked_at": "2026-10-21T19:26:44+00:00"
+            },
+            "github": {
+              "state": "observed",
+              "checked_at": "2026-10-21T19:00:00Z",
+              "last_success_at": "2026-10-21T19:00:00Z"
+            },
+            "portfolio": {
+              "state": "observed",
+              "checked_at": "2026-10-21T19:00:00Z",
+              "last_success_at": "2026-10-21T19:00:00Z"
+            }
+          }
+        }
+      }
+    },
+    "questions": []
+  },
+  {
+    "snapshot": {
+      "board_id": "orchestrator",
+      "version": 6,
+      "updated_at": "2026-10-21T19:00:00Z",
+      "snapshot_json": {
+        "schema": "carr-progress-board.v2",
+        "project": "orchestrator",
+        "title": "Orchestrator",
+        "tasks": {},
+        "history": {},
+        "omitted": {
+          "live": 0,
+          "merged": 0,
+          "history": 0
+        },
+        "orchestrator": {
+          "schema": "doctorcre-orchestrator/v1",
+          "observed_at": "2026-10-21T19:26:44+00:00",
+          "cards": [
+            {
+              "id": "queue:search",
+              "title": "Find a deal across the portfolio",
+              "state": "merged",
+              "owner": "cx-app2",
+              "progress": "Provider confirmed the merge",
+              "changed_at": "2026-10-21T19:26:44.664+00:00",
+              "prs": [
+                "https://github.com/jbookout/doctorcre-app/pull/12"
+              ],
+              "origin": "queue",
+              "terminal": false,
+              "area": "doctorcre-app"
+            },
+            {
+              "id": "board:backend",
+              "title": "Shared search contract",
+              "state": "working",
+              "owner": "Not recorded",
+              "progress": "Awaiting a recorded progress update",
+              "changed_at": null,
+              "prs": [],
+              "origin": "board",
+              "terminal": false,
+              "area": "Shared backend"
+            }
+          ],
+          "history": [],
+          "omitted_history": 0,
+          "sources": {
+            "queue": {
+              "state": "observed",
+              "revision": 8,
+              "last_success_at": "2026-10-21T19:26:44+00:00",
+              "checked_at": "2026-10-21T19:26:44+00:00"
+            },
+            "github": {
+              "state": "observed",
+              "checked_at": "2026-10-21T19:00:00Z",
+              "last_success_at": "2026-10-21T19:00:00Z"
+            },
+            "portfolio": {
+              "state": "observed",
+              "checked_at": "2026-10-21T19:00:00Z",
+              "last_success_at": "2026-10-21T19:00:00Z"
+            }
+          }
+        }
+      }
+    },
+    "questions": []
+  },
+  {
+    "snapshot": {
+      "board_id": "orchestrator",
+      "version": 7,
+      "updated_at": "2026-10-21T19:00:00Z",
+      "snapshot_json": {
+        "schema": "carr-progress-board.v2",
+        "project": "orchestrator",
+        "title": "Orchestrator",
+        "tasks": {},
+        "history": {},
+        "omitted": {
+          "live": 0,
+          "merged": 0,
+          "history": 0
+        },
+        "orchestrator": {
+          "schema": "doctorcre-orchestrator/v1",
+          "observed_at": "2026-10-21T19:26:44+00:00",
+          "cards": [
+            {
+              "id": "board:backend",
+              "title": "Shared search contract",
+              "state": "working",
+              "owner": "Not recorded",
+              "progress": "Awaiting a recorded progress update",
+              "changed_at": null,
+              "prs": [],
+              "origin": "board",
+              "terminal": false,
+              "area": "Shared backend"
+            }
+          ],
+          "history": [
+            {
+              "id": "queue:search",
+              "title": "Find a deal across the portfolio",
+              "state": "live",
+              "owner": "cx-app2",
+              "progress": "Provider confirmed the merge",
+              "changed_at": "2026-10-21T19:26:44.664+00:00",
+              "prs": [
+                "https://github.com/jbookout/doctorcre-app/pull/12"
+              ],
+              "origin": "queue",
+              "terminal": false,
+              "area": "doctorcre-app"
+            }
+          ],
+          "omitted_history": 0,
+          "sources": {
+            "queue": {
+              "state": "observed",
+              "revision": 8,
+              "last_success_at": "2026-10-21T19:26:44+00:00",
+              "checked_at": "2026-10-21T19:26:44+00:00"
+            },
+            "github": {
+              "state": "observed",
+              "checked_at": "2026-10-21T19:00:00Z",
+              "last_success_at": "2026-10-21T19:00:00Z"
+            },
+            "portfolio": {
+              "state": "observed",
+              "checked_at": "2026-10-21T19:00:00Z",
+              "last_success_at": "2026-10-21T19:00:00Z"
+            }
+          }
+        }
+      }
+    },
+    "questions": []
+  },
+  {
+    "snapshot": {
+      "board_id": "orchestrator",
+      "version": 8,
+      "updated_at": "2026-10-21T19:00:00Z",
+      "snapshot_json": {
+        "schema": "carr-progress-board.v2",
+        "project": "orchestrator",
+        "title": "Orchestrator",
+        "tasks": {},
+        "history": {},
+        "omitted": {
+          "live": 0,
+          "merged": 0,
+          "history": 0
+        },
+        "orchestrator": {
+          "schema": "doctorcre-orchestrator/v1",
+          "observed_at": "2026-10-21T19:26:44+00:00",
+          "cards": [
+            {
+              "id": "board:backend",
+              "title": "Shared search contract",
+              "state": "working",
+              "owner": "Not recorded",
+              "progress": "Awaiting a recorded progress update",
+              "changed_at": null,
+              "prs": [],
+              "origin": "board",
+              "terminal": false,
+              "area": "Shared backend"
+            }
+          ],
+          "history": [
+            {
+              "id": "queue:search",
+              "title": "Find a deal across the portfolio",
+              "state": "live",
+              "owner": "cx-app2",
+              "progress": "Provider confirmed the merge",
+              "changed_at": "2026-10-21T19:26:44.664+00:00",
+              "prs": [
+                "https://github.com/jbookout/doctorcre-app/pull/12"
+              ],
+              "origin": "queue",
+              "terminal": false,
+              "area": "doctorcre-app"
+            }
+          ],
+          "omitted_history": 0,
+          "sources": {
+            "queue": {
+              "state": "unavailable",
+              "revision": null,
+              "last_success_at": "2026-10-21T19:26:44+00:00",
+              "checked_at": null
+            },
+            "github": {
+              "state": "observed",
+              "checked_at": "2026-10-21T19:00:00Z",
+              "last_success_at": "2026-10-21T19:00:00Z"
+            },
+            "portfolio": {
+              "state": "observed",
+              "checked_at": "2026-10-21T19:00:00Z",
+              "last_success_at": "2026-10-21T19:00:00Z"
+            }
+          }
+        }
+      }
+    },
+    "questions": []
+  }
+]
