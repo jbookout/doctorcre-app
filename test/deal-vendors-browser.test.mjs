@@ -40,17 +40,17 @@ for (const width of [390, 1280]) for (const theme of ['dark', 'light']) test(`de
   const evidence = new URL('out/test-artifacts/deal-vendors/', root);
   await mkdir(evidence, { recursive: true });
   const card = page.locator('.kanban-column [data-id="d14"]');
-  assert.equal(await card.locator('.deal-vendor-group').count(), 2);
-  assert.deepEqual(await card.locator('.deal-vendor-role').allTextContents(), ['Lender', 'Landlord rep']);
-  assert.deepEqual(await card.locator('.deal-vendor-company').allTextContents(), ['Demo Bank & Trust', 'Demo Second Bank', 'Demo Property Group']);
-  assert.deepEqual(await card.locator('.deal-vendor-contact').allTextContents(), ['Demo Contact <One>', 'Demo Contact Three', 'Demo Contact Two']);
-  assert.equal(await card.locator('.deal-vendor-contact one').count(), 0);
-  assert.equal(await page.locator('.kanban-column [data-id="d05"] .deal-vendors').count(), 0);
+  assert.equal(await card.locator('.deal-vendors').count(),0,'checklist cards contain no vendor prose');
   await card.scrollIntoViewIfNeeded();
   assert.equal(await card.evaluate(n => n.scrollWidth <= n.clientWidth), true);
   await page.screenshot({ path: new URL(`${width}-${theme}-board.png`, evidence).pathname, animations: 'disabled' });
   await card.locator('.card-open').click();
   await page.locator('#detailUpdateForm').waitFor();
+  assert.equal(await page.locator('#recordPanel').locator('.deal-vendor-group').count(), 2);
+  assert.deepEqual(await page.locator('#recordPanel').locator('.deal-vendor-role').allTextContents(), ['Lender', 'Landlord rep']);
+  assert.deepEqual(await page.locator('#recordPanel').locator('.deal-vendor-company').allTextContents(), ['Demo Bank & Trust', 'Demo Second Bank', 'Demo Property Group']);
+  assert.deepEqual(await page.locator('#recordPanel').locator('.deal-vendor-contact').allTextContents(), ['Demo Contact <One>', 'Demo Contact Three', 'Demo Contact Two']);
+  assert.equal(await page.locator('#recordPanel').locator('.deal-vendor-contact one').count(), 0);
   assert.equal(await page.locator('#recordPanel .deal-vendor-group').count(), 2);
   assert.equal(await page.locator('#recordPanel').evaluate(n => n.scrollWidth <= n.clientWidth), true);
   assert.equal(await page.locator('html').getAttribute('data-theme'), theme);
@@ -78,11 +78,11 @@ test('deal detail refresh replaces vendors and removes empty groups without losi
   assert.deepEqual(errors, []);
 });
 
-for (const width of [390, 1280]) test(`list, parked and archived cards retain vendor groups at ${width}px`, async t => {
+for (const width of [390, 1280]) test(`parked and archived cards retain vendor groups while active list cards stay concise at ${width}px`, async t => {
   const { page, errors } = await open(t, width);
   await page.getByRole('button', { name: 'List', exact: true }).click();
   const listCard = page.locator('.deal-list [data-id="d14"]');
-  assert.equal(await listCard.locator('.deal-vendor-group').count(), 2);
+  assert.equal(await listCard.locator('.deal-vendor-group').count(), 0,'active list cards contain only checklist items');
   assert.equal(await listCard.evaluate(n => n.scrollWidth <= n.clientWidth), true);
   await page.getByRole('button', { name: 'Parked', exact: true }).click();
   assert.equal(await page.locator('.deal-list [data-id="d06"] .deal-vendor-group').count(), 2);
@@ -122,6 +122,8 @@ for(const width of [390,1280]) test(`six assignments keep Add update on the open
 
 test('role groups have twice the space used within each role',async t=>{
  const {page}=await open(t);
- const gap=await page.locator('.kanban-column [data-id="d14"] .deal-vendors').evaluate(n=>({roles:parseFloat(getComputedStyle(n).rowGap),assignments:parseFloat(getComputedStyle(n.querySelector('ul')).rowGap)}));
+ await page.locator('.kanban-column [data-id="d14"] .card-open').click();
+ await page.locator('#detailUpdateForm').waitFor();
+ const gap=await page.locator('#recordPanel .deal-vendors').evaluate(n=>({roles:parseFloat(getComputedStyle(n).rowGap),assignments:parseFloat(getComputedStyle(n.querySelector('ul')).rowGap)}));
  assert.ok(gap.roles>=16 && gap.roles>=2*gap.assignments,JSON.stringify(gap));
 });

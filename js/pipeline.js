@@ -1,3 +1,5 @@
+import { renderDealAlert, renderDealItems } from './deal-items.js';
+import { mountDealItemSheet } from './deal-item-sheet.js';
 import { OWNER_FILTERS } from './owner-filters.js';
 import { engagementWriterFor } from './prospect-engagement.mjs';
 import { showToast } from './toast.js';
@@ -128,26 +130,15 @@ function autoHtml(deal) {
   return move ? `<div class="auto-move"><span>${esc(move.text.slice(0, move.text.lastIndexOf(' ')))}</span> <time>${esc(move.text.slice(move.text.lastIndexOf(' ') + 1))}</time></div>` : '';
 }
 const dealTitle = (deal) => dealName(deal.name);
-function nextStepHtml(deal) {
-  const text = noteText(deal.next_step);
-  if (!text.trim()) return '';
-  return `<p class="next-line" title="${esc(text)}">${esc(text)}</p>`;
-}
 function cardHtml(deal) {
   const attention = needsAttention(deal);
   const pending = pendingCommand(state.fieldWrites, cellKey(deal.id, 'phase'));
   return `<article class="kanban-card" data-id="${esc(deal.id)}" data-attention="${attention}" data-phase="${esc(deal.phase)}" draggable="true" tabindex="0"${pending ? ' data-pending="true"' : ''}${state.lifted === deal.id ? ' data-lifted="true"' : ''} aria-label="${esc(dealTitle(deal))}, ${esc(columnLabel(deal.phase))}">
-    <h4><button class="card-open" type="button" data-open="${esc(deal.id)}">${esc(dealTitle(deal))}</button></h4>
-    <div class="work-meta"><span class="owner">${esc(actorName(deal.owner))}</span>${attention ? '<span class="attention-flag"><span aria-hidden="true">◆</span> Overdue</span>' : ''}</div>
-    ${nextStepHtml(deal)}
-    ${renderDealVendors(deal.vendors)}
-    ${autoHtml(deal)}
+    <div class="deal-alert">${renderDealAlert(deal,{today:todayIso(),heading:'h4',buttons:true})}</div>
   </article>`;
 }
 function rowHtml(deal) {
-  return `<article class="kanban-card deal-row" data-id="${esc(deal.id)}" tabindex="0" data-attention="${needsAttention(deal)}">
-    <h4>${esc(dealTitle(deal))}</h4><span class="deal-stage">${esc(columnLabel(deal.phase))}</span>
-    ${nextStepHtml(deal)}<span class="owner">${esc(actorName(deal.owner))}</span>${renderDealVendors(deal.vendors)}${autoHtml(deal)}</article>`;
+  return `<article class="kanban-card deal-row" data-id="${esc(deal.id)}" tabindex="0" data-attention="${needsAttention(deal)}"><div class="deal-alert">${renderDealAlert(deal,{today:todayIso(),heading:'h4',buttons:true})}</div></article>`;
 }
 function parkedHtml(deal) {
   return `<article class="kanban-card parked-card" data-id="${esc(deal.id)}" tabindex="0"><h4>${esc(dealTitle(deal))}</h4><p class="next-line">${esc(deal.parking_note || deal.parking_reason?.replaceAll('_',' ') || 'Parked')}</p>${renderDealVendors(deal.vendors)}<button class="btn btn-quiet" type="button" data-revive="${esc(deal.id)}">Revive</button></article>`;
@@ -450,6 +441,8 @@ async function sendFieldWrite(dealId, field, value, extra = null) {
 const FOLLOW_UP_SENDERS = {
   'resolve-conflict': request => state.client.resolveConflict(request),
   'add-deal-note': (request) => state.client.addDealNote(request),
+  'instruct-deal-item': request => state.client.instructDealItem(request),
+  'complete-deal-item': request => state.client.completeDealItem(request),
   'set-next-step': (request) => state.client.setNextStep(request),
   'add-critical-date': (request) => state.client.addCriticalDate(request),
   'update-deal': (request) => state.client.updateDeal(request),
@@ -852,12 +845,11 @@ function detailHtml(detail) {
   const d = detail.deal;
   const prospect = state.deals.get(d.id);
   const pendingProspect = engagementWriterFor(state.client).get(prospect?.client_id, state.selfActor);
-  const nextStep = noteText(d.next_step).trim();
   const parked = d.operating_state === 'parked';
   const controlsAvailable = state.deals.has(d.id) && !isClosedDeal(d);
   return `<div class="deal-freshness"><time id="detailUpdated" title="Last updated"></time><button class="btn icon-btn" type="button" data-refresh-detail aria-label="Refresh deal" title="Refresh">↻</button></div><p id="detailReadStatus" role="status"></p>
     <section class="deal-opening-snapshot" data-detail-read="snapshot" aria-label="Deal snapshot">
-      ${nextStep ? `<p class="deal-current-action"><span>${d.next_date && d.next_date < todayIso() ? 'Overdue action' : 'Next action'}</span><strong>${esc(nextStep)}</strong>${d.next_date ? `<span>Due <time datetime="${esc(d.next_date)}">${esc(dateWords(d.next_date))}</time></span>` : ''}</p>` : ''}
+      <div class="deal-alert">${renderDealItems({...d,items:detail.items || d.items},{today:todayIso(),buttons:true})}</div>
       <dl class="deal-snapshot-facts">${d.workspace_kind === 'national_account' || d.account_client_id ? `<div><dt>Market agent</dt><dd>${esc(d.market_agent || 'Unassigned')}</dd></div>` : ''}${d.client_name ? `<div><dt>Client</dt><dd>${esc(d.client_name)}</dd></div>` : ''}${d.type ? `<div><dt>Type</dt><dd>${esc(d.type)}</dd></div>` : ''}${d.outcome ? `<div><dt>Outcome</dt><dd>${esc(d.outcome[0].toUpperCase()+d.outcome.slice(1))}</dd></div>` : ''}</dl>
     </section>
     <form id="detailUpdateForm" class="deal-update-form"><label for="dealUpdate">Update</label><textarea id="dealUpdate" name="text" rows="2" maxlength="10000" required></textarea><button class="btn btn-primary" type="submit">Add update</button><p id="detailUpdateStatus" role="status"></p></form>
@@ -1201,6 +1193,8 @@ function wire() {
   });
 
   document.addEventListener('click', async (event) => {
+    const item = event.target.closest('[data-deal-item]');
+    if (item) { itemSheet.open(item.dataset.itemDeal,item.dataset.dealItem,item); return; }
     const revive = event.target.closest('button[data-revive]');
     if (revive) { setOperatingState(revive.dataset.revive, {state:'active'}); return; }
     const open = event.target.closest('button[data-open]');
@@ -1341,6 +1335,7 @@ function mountDock() {
 
 /* ------------------------------------------------------------------------ boot */
 
+let itemSheet;
 async function boot() {
   mountPrefs();
 
@@ -1349,6 +1344,7 @@ async function boot() {
   const resolved = resolveDealroomBoot(globalThis.location || { hostname: '', search: '' });
   state.client = resolved.mode === 'live' ? createLiveClient() : await createFixtureClient(resolved.options);
   mountNotificationBadge(state.client);
+  itemSheet = mountDealItemSheet({document,today:todayIso,read:readDealDetail,send:runFollowUp,pending:key => pendingCommand(commandState,key),refresh:() => {state.boardSync.requestRefresh('deal-item');refreshPanel();}});
   state.mode = state.client.mode;
   const identity = deploymentIdentity(state.mode);
   $('deploymentBadge').textContent = identity.label;
@@ -1375,7 +1371,8 @@ async function boot() {
   // current board scope. The existing detail read enforces identity and shows
   // failures; its outcome must not hold up board/feed polling.
   const linkedDeal = incomingScope.get('deal');
-  if (linkedDeal) openPanel(linkedDeal);
+  if (linkedDeal && incomingScope.get('item')) itemSheet.open(linkedDeal,incomingScope.get('item'));
+  else if (linkedDeal) openPanel(linkedDeal);
 }
 
 if (globalThis.document) boot();

@@ -1421,7 +1421,7 @@ export async function createFixtureClient(opts = {}) {
         });
       }
       for (const entry of criticalDates.get(dealId) || []) critical_dates.push({ ...entry });
-      return { deal: {...deal, phase_change: phaseChangeFor(dealId)}, thread, critical_dates, history: hist,
+      return { items: structuredClone(deal.items || []), item_schema_version: 'deal-items.v1', deal: {...deal, phase_change: phaseChangeFor(dealId)}, thread, critical_dates, history: hist,
         next_actions: deal.next_step ? [{ id: `a-${deal.id}`, owner: deal.owner,
           description: deal.next_step, due_on: deal.next_date, status: 'open' }] : [],
         activities: hist.slice(0, 4).map((h) => ({ id: h.id, actor: h.actor,
@@ -1591,6 +1591,23 @@ export async function createFixtureClient(opts = {}) {
         pushHistory(c.deal, actor, `resolved conflict on ${c.field}`, e.recorded_at);
         conflicts.delete(conflict_id);
         return { status: 'ok', event: e };
+      });
+    },
+
+    async instructDealItem({ deal, item_id, text, idempotency_key }) {
+      return withIdem(idempotency_key, () => {
+        const item = getDealOrThrow(deal).items?.find(row => row.id === item_id);
+        if (!item || !text?.trim()) throw new Error('Item or instruction unavailable');
+        item.bullets.push({ date: nowIso().slice(0,10), kind: 'suggestion', text: text.trim() });
+        return { ok: true, item: structuredClone(item) };
+      });
+    },
+    async completeDealItem({ deal, item_id, idempotency_key }) {
+      return withIdem(idempotency_key, () => {
+        const item = getDealOrThrow(deal).items?.find(row => row.id === item_id);
+        if (!item) throw new Error('Item unavailable');
+        item.status = 'done';
+        return { ok: true, item: structuredClone(item) };
       });
     },
 

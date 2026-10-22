@@ -168,7 +168,7 @@ test('PR123 finding 8: malformed and mixed live reads settle unavailable and rec
 
 test('PR124 R1 generated Home flag and task links open the requested record through the deployed route', async t => {
   const { page, errors } = await open(t, { origin: 'https://app.doctorcre.com' });
-  for (const selector of ['.home-flag', '.home-agenda a:has(.home-item-type:text-is("Task"))']) {
+  for (const selector of ['.home-flag h3 a', '.home-agenda a:has(.home-item-type:text-is("Task"))']) {
     await page.locator(selector).first().waitFor();
     const link = page.locator(selector).first();
     const id = new URL(await link.getAttribute('href'), page.url()).searchParams.get('deal');
@@ -298,10 +298,10 @@ test('no eligible leads means hidden widget; polling, resume and online recover 
 
 test('a flagged Home deal opens that exact Deals record; unknown IDs show a failed detail instead of another deal', async t => {
   const { page, errors } = await open(t);
-  const href = await page.locator('.home-flag').first().getAttribute('href');
+  const href = await page.locator('.home-flag h3 a').first().getAttribute('href');
   assert.equal(href, '/deals?deal=d14');
   // Keep this synthetic test on the fixture adapter on the receiving page.
-  await page.locator('.home-flag').first().click();
+  await page.locator('.home-flag h3 a').first().click();
   await page.waitForFunction(() => document.querySelector('#recordPanel')?.open && document.querySelector('#detailUpdateForm'));
   assert.equal(await page.evaluate(async () => (await import('/js/pipeline.js')).state.panelDeal), 'd14');
   assert.match(await page.locator('#panelTitle').textContent(), /Demo Surgical Practice/);
@@ -394,7 +394,7 @@ test('R9 identical refresh retains lead and deal focus; modal repaint retains ex
   const state = await open(t); const { page } = state;
   const settled = () => page.waitForFunction(() => document.querySelector('#refreshHome').getAttribute('aria-busy') === 'false');
   await settled();
-  for (const selector of ['.home-lead', '.home-flag']) {
+  for (const selector of ['.home-lead', '.home-flag h3 a']) {
     await page.locator(selector).first().focus();
     await page.evaluate(() => window.dispatchEvent(new Event('online')));
     await settled();
@@ -454,7 +454,7 @@ test('R13 phone lead detail wraps specialty, maximum-length names and metadata w
   });
 });
 
-test('R14 a task with no critical dates opens its exact deal and recorded next step', async t => {
+test('R14 a task with no critical dates opens its exact deal without legacy prose', async t => {
   const { page } = await open(t, { tasksOnly: true });
   const task = page.locator('[data-home-key="agenda:task:demo-task-d01"]');
   await task.waitFor();
@@ -462,7 +462,8 @@ test('R14 a task with no critical dates opens its exact deal and recorded next s
   await task.click();
   await page.waitForFunction(() => document.querySelector('#recordPanel')?.open && document.querySelector('#detailUpdateForm'));
   assert.equal(await page.evaluate(async () => (await import('/js/pipeline.js')).state.panelDeal), 'd01');
-  assert.equal(await page.locator('.deal-current-action strong').textContent(), 'Confirm fictional requirements');
+  assert.equal(await page.locator('.deal-opening-snapshot').count(), 1);
+  assert.equal(await page.locator('.deal-current-action').count(), 0);
 });
 
 test('R12 malformed tasks retain independent widgets and settled agenda reports partial data', async t => {

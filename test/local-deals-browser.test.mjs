@@ -76,7 +76,7 @@ test('marking a prospect inactive sends its version and returns it to Leads',asy
   state.client.getBoard=async()=>{const b=await get();return {...b,deals:b.deals.filter(d=>!inactive||d.id!=='d14').map(d=>d.id==='d14'?{...d,client_status:'prospect',client_id:'synthetic-client',client_version:7,prospect_engagement_status:'active'}:d)}};
   state.client.setProspectEngagementStatus=async args=>{window.prospectWrite=args;inactive=true;return{ok:true}};
  });
- await refresh(page);await page.locator('.kanban-column [data-id="d14"]').click();
+ await refresh(page);await page.locator('.kanban-column [data-id="d14"] .card-open').click();
  await page.locator('#detailInactiveForm input[name="reason"]').fill('Synthetic deferred project');
  await page.locator('#detailInactiveForm button').click();
  await waitForAsync(page,async()=>!(await import('/js/pipeline.js')).state.deals.has('d14'));
@@ -140,12 +140,13 @@ test('W4 desktop/phone render, owner filters, equal cards, wide detail and reduc
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
     const sizes = await page.locator('.kanban-column .kanban-card').evaluateAll(es => es.map(e => ({ height: e.getBoundingClientRect().height, transform: getComputedStyle(e).transform, transition: getComputedStyle(e).transitionDuration })));
     // Cards size to their content (S8): no fixed tall box with half of it empty.
-    assert.ok(sizes.every(e => e.height < 212 && e.transform === 'none' && e.transition === '0s'), JSON.stringify(sizes));
+    assert.ok(sizes.every(e => e.height < 360 && e.transform === 'none' && e.transition === '0s'), JSON.stringify(sizes));
     await page.screenshot({ path: new URL(`out/test-artifacts/w4/${width === 1440 ? 'desktop' : 'phone-' + width}.png`, root).pathname, fullPage: true });
     await page.locator('[data-filter="dell"]').click();
-    assert.equal(await page.locator('.kanban-column .owner').evaluateAll(es => es.every(e => e.textContent === 'Dell')), true);
+    assert.equal(await page.locator('.kanban-column [data-id="d14"]').count(),0);
+    assert.equal(await page.locator('.kanban-column .kanban-card').count(),0);
     await page.locator('[data-filter="all"]').click();
-    await page.locator('.kanban-column [data-id="d14"]').click(); await page.waitForSelector('#detailPhase');
+    await page.locator('.kanban-column [data-id="d14"] .card-open').click(); await page.waitForSelector('#detailPhase');
     const box = await page.locator('#recordPanel').boundingBox(); assert.ok(box.width >= Math.min(1100, width - 30));
     assert.ok((await page.locator('.deal-note p').first().textContent()).length <= 150);
     await page.locator('.updates-history > summary').click();
@@ -174,7 +175,7 @@ test('board refresh keeps a pressed card until its drag or tap completes', async
     const {state}=await import('/js/pipeline.js');const get=state.client.getBoard;
     state.client.getBoard=async (...args)=>{
       const result=await get(...args);
-      return {...result,deals:result.deals.map(d=>d.id==='d14'?{...d,next_step:'Demo fresh action during press'}:d)};
+      return {...result,deals:result.deals.map(d=>d.id==='d14'?{...d,items:d.items.map((item,i)=>i===0?{...item,title:'Fresh item during press'}:item)}:d)};
     };
   });
   await freshAction();
@@ -195,7 +196,7 @@ test('board refresh keeps a pressed card until its drag or tap completes', async
       await page.waitForFunction(()=>document.querySelector('#recordPanel').open);
       await page.getByLabel('Close deal',{exact:true}).click();
     }
-    await waitForAsync(page,()=>/Demo fresh action during press/.test(document.querySelector('.kanban-column [data-id="d14"]').textContent));
+    await waitForAsync(page,()=>/Fresh item during press/.test(document.querySelector('.kanban-column [data-id="d14"]').textContent));
   }
   assert.deepEqual(errors,[]);
 });
@@ -215,28 +216,28 @@ test('board refresh preserves a native drag until its drop is reviewed', async t
     const {state}=await import('/js/pipeline.js');const get=state.client.getBoard;
     state.client.getBoard=async (...args)=>{
       const result=await get(...args);
-      return {...result,deals:result.deals.map(d=>d.id==='d14'?{...d,next_step:'Demo fresh action during drag'}:d)};
+      return {...result,deals:result.deals.map(d=>d.id==='d14'?{...d,items:d.items.map((item,i)=>i===0?{...item,title:'Fresh item during drag'}:item)}:d)};
     };
   });
   await refresh(page);
   assert.equal(await page.evaluate(()=>window.draggedCard.isConnected),true);
-  assert.equal(await page.evaluate(async()=> (await import('/js/pipeline.js')).state.deals.get('d14').next_step),'Demo fresh action during drag');
-  assert.doesNotMatch(await card.textContent(),/Demo fresh action during drag/);
+  assert.equal(await page.evaluate(async()=> (await import('/js/pipeline.js')).state.deals.get('d14').items[0].title),'Fresh item during drag');
+  assert.doesNotMatch(await card.textContent(),/Fresh item during drag/);
   const target=await page.locator('[data-column="legal"] > h3').boundingBox();
   await page.mouse.move(target.x+10,target.y+10,{steps:5});await page.mouse.up();
   await page.waitForFunction(()=>document.querySelector('#completionDialog').open);
   assert.equal(await page.evaluate(async()=> (await import('/js/pipeline.js')).state.deals.get('d14').phase),'Negotiation');
-  assert.match(await card.textContent(),/Demo fresh action during drag/);
+  assert.match(await card.textContent(),/Fresh item during drag/);
   assert.deepEqual(errors,[]);
 });
 
 test('W4 drag and keyboard phase writes, manual phase, park, revive and undo record history', async t => {
   const { page, errors } = await open(t);
-  await page.locator('.kanban-column [data-id="d14"]').dragTo(page.locator('[data-column="legal"]'));
+  await page.locator('.kanban-column [data-id="d14"]').dragTo(page.locator('[data-column="legal"]'),{sourcePosition:{x:8,y:8}});
   await page.waitForFunction(() => document.querySelector('#completionDialog').open);
   await page.locator('#completionConfirm').click();
   await waitForAsync(page, async () => (await import('/js/pipeline.js')).state.deals.get('d14').phase === 'Legal');
-  await page.locator('.kanban-column [data-id="d14"]').click(); await page.waitForSelector('#detailPhase');
+  await page.locator('.kanban-column [data-id="d14"] .card-open').click(); await page.waitForSelector('#detailPhase');
   await page.locator('#detailPhase').selectOption('site_selection');
   await page.locator('#completionDialog[open]').waitFor();
   assert.equal(await page.locator('#detailPhase').inputValue(), 'legal');
@@ -332,29 +333,12 @@ test('W4 detail polls phase evidence, dates, people and parking while preserving
 });
 
 
-test('W4 a long automatic reason keeps its date visible without persistent card controls', async t => {
-  const { page } = await open(t);
-  await page.evaluate(async () => {
-    const { state } = await import('/js/pipeline.js'); const original = state.client.getBoard;
-    state.client.getBoard = async (...args) => {
-      const board = await original(...args);
-      board.deals.find(d => d.id === 'd14').phase_change.reason = 'Demo submitted letter of intent with updated negotiated terms';
-      return board;
-    };
-  });
-  await refresh(page);
-  const card = page.locator('[data-id="d14"]');
-  const date = card.locator('.auto-move time');
-  assert.equal(await date.textContent(), '10/3');
-  const outer = await card.boundingBox(), stamp = await date.boundingBox();
-  assert.ok(stamp.y >= outer.y && stamp.y + stamp.height <= outer.y + outer.height);
-  assert.equal(await card.locator('[data-undo]').count(), 0);
-  // V2 hover is a hairline step on the border, not a lift (no hover transforms).
-  const restingBorder = await card.evaluate(e => getComputedStyle(e).borderRightColor);
-  await card.hover();
-  await page.waitForFunction(resting => getComputedStyle(document.querySelector('[data-id="d14"]')).borderRightColor !== resting, restingBorder);
-  // Attention reads in words with a glyph, never a bare colour dot (S8).
-  assert.equal(await page.locator('[data-id="d14"] .attention-flag').textContent(), '◆ Overdue');
+test('W4 checklist cards omit automatic history and show an overdue due chip', async t => {
+  const {page}=await open(t);
+  const card=page.locator('.kanban-column [data-id="d14"]');
+  assert.equal(await card.locator('.auto-move,[data-undo],.attention-flag').count(),0);
+  assert.equal(await card.locator('[data-overdue="true"] time').getAttribute('datetime'),'2026-02-01');
+
 });
 
 
@@ -551,7 +535,7 @@ test('add deal validates input, retains an uncertain request and immediately sho
  const requests=await page.evaluate(()=>window.createRequests);assert.deepEqual(requests[0],requests[1]);
  assert.equal(requests[0].owner,'dell');assert.equal(requests[0].notes,'Demo initial review note');
  const cards=page.locator('.kanban-column .kanban-card').filter({hasText:'Demo Partner Review'});assert.equal(await cards.count(),1);
- assert.match(await cards.textContent(),/Dell/);
+ assert.doesNotMatch(await cards.textContent(),/Dell/,'the checklist card omits owner prose');
  assert.equal(await page.evaluate(()=>new URL(location.href).searchParams.get('owner')),'dell');
  await cards.getByRole('button',{name:'Demo Partner Review'}).click();
  await page.waitForSelector('#detailPhase');assert.match(await page.locator('#panelBody').textContent(),/Demo initial review note/);
@@ -828,23 +812,13 @@ test('readable vendor context survives a failed linked client read',async t=>{
   assert.deepEqual(errors,[]);
 });
 
-test('desktop next steps wrap to two lines and retain the full recorded text',async t=>{
+test('legacy next-step writes do not replace structured checklist items',async t=>{
   const {page,errors}=await open(t,{width:1280,review:true});
-  const line=page.locator('.kanban-column [data-id="d14"] .next-line');
-  const box=await line.evaluate(n=>{const s=getComputedStyle(n);return {height:n.getBoundingClientRect().height,lineHeight:parseFloat(s.lineHeight),text:n.textContent,title:n.title,width:n.clientWidth,scrollWidth:n.scrollWidth};});
-  assert.ok(box.height>box.lineHeight*1.5 && box.height<=box.lineHeight*2+1,JSON.stringify(box));
-  assert.equal(box.text,'Confirm the next appointment');
-  assert.equal(box.title,box.text);
-  const full='Confirm the next appointment with the demo practice and review the complete recorded lease terms before the next joint review.';
-  await page.evaluate(async full=>{const {state}=await import('/js/pipeline.js');await state.client.setNextStep({deal:'d14',text:full,idempotency_key:'demo-full-next-step'});await state.boardSync.refreshBoard({reason:'test'});},full);
-  assert.equal(await line.textContent(),full);
-  assert.equal(await line.getAttribute('title'),full);
-  await page.evaluate(async()=>{
-    const {state}=await import('/js/pipeline.js');const read=state.client.getBoard.bind(state.client);
-    state.client.getBoard=async(...args)=>{const board=await read(...args);board.deals.find(d=>d.id==='d14').next_step={text:'Counsel replied'};return board;};
-    await state.boardSync.refreshBoard({reason:'test'});
-  });
-  assert.equal(await line.textContent(),'Counsel replied','structured notes render as the recorded sentence');
+  const card=page.locator('.kanban-column [data-id="d14"]');
+  const titles=await card.locator('ol button').allTextContents();
+  await page.evaluate(async()=>{const {state}=await import('/js/pipeline.js');await state.client.setNextStep({deal:'d14',text:'Counsel replied',idempotency_key:'demo-legacy-next-step'});await state.boardSync.refreshBoard({reason:'test'});});
+  assert.deepEqual(await card.locator('ol button').allTextContents(),titles);
+  assert.equal(await card.locator('.next-line').count(),0);
   assert.deepEqual(errors,[]);
 });
 

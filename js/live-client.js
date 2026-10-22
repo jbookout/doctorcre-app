@@ -193,6 +193,8 @@ export function createLiveClient(opts = {}) {
         critical_dates: critical_dates.map((cd) => ({ ...cd, label: cd.note || cd.kind, date: cd.due_on })),
         history,
         next_actions: page.next_actions || [],
+        items: page.items || [],
+        item_schema_version: page.item_schema_version,
         activities: page.activities || [],
         participants: page.participants || [],
         premises: page.premises || [],
@@ -342,6 +344,9 @@ export function createLiveClient(opts = {}) {
     async updateDeal(args) {
       return write('update-deal', args);
     },
+
+    async instructDealItem(args) { return write('instruct-deal-item', args); },
+    async completeDealItem(args) { return write('complete-deal-item', args); },
 
     async addDealNote(args) {
       return write('add-deal-note', args);
