@@ -1,0 +1,98 @@
+{
+  "baseline": "d23276125b82170fc6d5568a386ab32ce0e48e42",
+  "environment": "Local Chromium, synthetic 54-deal fixture, fixed 350 ms per business read; not production latency",
+  "summary": {
+    "before": {
+      "median_ms": 5889.689542000002,
+      "range_ms": [
+        5513.962291000001,
+        5896.7803749999985
+      ],
+      "runs_ms": [
+        5513.962291000001,
+        5884.549750000002,
+        5889.689542000002,
+        5893.205709,
+        5896.7803749999985
+      ]
+    },
+    "after": {
+      "median_ms": 868.9626250000001,
+      "range_ms": [
+        855.5208750000002,
+        878.4097080000001
+      ],
+      "runs_ms": [
+        855.5208750000002,
+        868.3110419999939,
+        868.9626250000001,
+        872.7558339999996,
+        878.4097080000001
+      ]
+    }
+  },
+  "errors": 0,
+  "membership_count": 108,
+  "runs": [
+    {
+      "mode": "before",
+      "ms": 5513.962291000001,
+      "detail_reads": 54,
+      "agenda_reads": 0
+    },
+    {
+      "mode": "after",
+      "ms": 878.4097080000001,
+      "detail_reads": 0,
+      "agenda_reads": 1
+    },
+    {
+      "mode": "before",
+      "ms": 5893.205709,
+      "detail_reads": 54,
+      "agenda_reads": 0
+    },
+    {
+      "mode": "after",
+      "ms": 855.5208750000002,
+      "detail_reads": 0,
+      "agenda_reads": 1
+    },
+    {
+      "mode": "before",
+      "ms": 5889.689542000002,
+      "detail_reads": 54,
+      "agenda_reads": 0
+    },
+    {
+      "mode": "after",
+      "ms": 868.9626250000001,
+      "detail_reads": 0,
+      "agenda_reads": 1
+    },
+    {
+      "mode": "before",
+      "ms": 5896.7803749999985,
+      "detail_reads": 54,
+      "agenda_reads": 0
+    },
+    {
+      "mode": "after",
+      "ms": 872.7558339999996,
+      "detail_reads": 0,
+      "agenda_reads": 1
+    },
+    {
+      "mode": "before",
+      "ms": 5884.549750000002,
+      "detail_reads": 54,
+      "agenda_reads": 0
+    },
+    {
+      "mode": "after",
+      "ms": 868.3110419999939,
+      "detail_reads": 0,
+      "agenda_reads": 1
+    }
+  ]
+}

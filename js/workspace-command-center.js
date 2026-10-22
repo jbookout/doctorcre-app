@@ -23,7 +23,7 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
   let relationshipDialog = null, pastWidget = null, secondaryRequested = false;
   let agendaExpanded = false;
   let scope = 'team', snapshot = null, sequence = 0, updatedAt = null, disposed = false, leadEntries = new Map(), selectedLead = null;
-  const docSources = [['board','getBoard'],['leads','getLeadBoard'],['work','currentWorkItem'],['requests','currentWorkRequests'],['incidents','incidentBoard']];
+  const docSources = [['board','getHomeAgenda'],['leads','getLeadBoard'],['work','currentWorkItem'],['requests','currentWorkRequests'],['incidents','incidentBoard']];
   const docPayload = (source, view) => source === 'board' ? {deals:scopedDeals(view?.board,scope)}
     : source === 'leads' ? (view?.leads ? {leads:topNewLeads(view.leads,{scope,actor:view.board?.actor,now:now()})} : null)
     : view?.control?.[source];
@@ -85,7 +85,7 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
       const view = { ...result, control: { ...result.control }, details: new Map(result.details) };
       for (const key of ['board', 'leads', 'invoices', 'relationships']) if (result.reads[key].state === 'loading') view[key] = previous?.[key] ?? null;
       for (const key of ['incidents', 'work', 'requests', 'resources', 'schedule']) if (result.reads[key].state === 'loading') view.control[key] = previous?.control[key] ?? null;
-      for (const [id, detail] of previous?.details || []) if (result.reads.board.state === 'loading' || result.reads[id]?.state === 'loading') view.details.set(id, detail);
+      if (result.reads.board.state === 'loading') view.details = new Map(previous?.details || []);
       return view;
     };
     if (snapshot) snapshot = { ...snapshot, loading: true };

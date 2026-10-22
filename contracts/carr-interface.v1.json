@@ -1,6 +1,6 @@
 {
   "schema": "doctorcre-carr-interface.v1",
-  "version": "1.51.0",
+  "version": "1.52.0",
   "producer": {
     "repository": "jbookout/carr-system",
     "source_commit": "e2e484b1933bfd63c10cc9a1b3350132948f6f74"
@@ -79,6 +79,7 @@
     "read-doc-activity",
     "read-doc-conversation",
     "read-doc-outcome-cards",
+    "read-home-agenda",
     "read-invoice-tracker",
     "read-loop",
     "read-notification-preferences",
@@ -741,6 +742,65 @@
           "propose-doc-correction"
         ],
         "seed_default": false
+      }
+    },
+    "read-home-agenda": {
+      "write": false,
+      "producer": {
+        "repository": "jbookout/carr-system",
+        "source_commit": "5091ced7a60b54e34170a7aa080a0676485b9a30"
+      },
+      "response": {
+        "schema_version": "home-agenda.v1",
+        "keys": [
+          "schema_version",
+          "actor",
+          "deals"
+        ],
+        "deal_keys": [
+          "id",
+          "name",
+          "phase",
+          "owner",
+          "type",
+          "attention",
+          "next_step",
+          "next_date",
+          "last_touch",
+          "last_review_at",
+          "workspace_kind",
+          "account_client_id",
+          "operating_state",
+          "outcome",
+          "closed_on",
+          "invoiced_on",
+          "client_status",
+          "prospect_engagement_status",
+          "critical_dates",
+          "next_actions"
+        ],
+        "critical_date_keys": [
+          "id",
+          "kind",
+          "due_on",
+          "note",
+          "status"
+        ],
+        "action_keys": [
+          "id",
+          "owner",
+          "description",
+          "due_on",
+          "status",
+          "hold_until"
+        ],
+        "membership": "Active deals without a closed phase, outcome, close date or invoice date. Includes both owners and national accounts. Open actions retain hold dates; Home applies viewer-local resume dates and owner scope.",
+        "limits": {
+          "deals": 1000,
+          "critical_dates": 10000,
+          "open_actions": 10000
+        },
+        "overflow": "agenda_limit_exceeded; no truncated or partial snapshot is returned."
       }
     }
   },

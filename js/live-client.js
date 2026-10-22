@@ -142,6 +142,12 @@ export function createLiveClient(opts = {}) {
     // rebuilding it would be inventing one.
     async getInvoiceTracker({ signal } = {}) { return rpc('read-invoice-tracker', {}, signal); },
     async markInvoicePaid(args) { return write('record-commission-receipt', args, opts.writeTimeoutMs || 10_000); },
+    async getHomeAgenda({ signal } = {}) {
+      const agenda = await rpc('read-home-agenda', {}, signal);
+      selfActor = agenda.actor || selfActor;
+      return { ...agenda, deals: Array.isArray(agenda.deals) ? agenda.deals.map(dealToUi) : agenda.deals };
+    },
+
     async getBoard(options = {}) {
       const board = await rpc('deal-room-board', {
         workspace: options.workspace || 'all',
