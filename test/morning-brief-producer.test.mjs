@@ -33,3 +33,38 @@ test('producer midnight action dates reach Do first with exact record identity',
   assert.equal(view.groups[0].row.action, payload.sections.today.items[0]);
   assert.deepEqual(payload, before);
 });
+
+test('producer loop dates and deal actions share calendar-day ordering', () => {
+  const payload = producerBrief();
+  payload.sections.today.items[0].subject_type = 'deal';
+  payload.sections.deals = section([{
+    id: payload.sections.today.items[0].subject_id, name: 'Example Deal',
+    operating_state: 'active', phase: 'legal', owner: 'joe',
+  }]);
+  payload.sections.loops = section([{
+    kind: 'open_loop', number: '7', status: 'open', title: 'Example earlier commitment',
+    due_on: '2026-10-20T00:00:00.000Z', owner_partner: 'dell',
+  }]);
+  assert.deepEqual(morningBriefView(payload, options).groups.map(group => [group.row.kind, group.row.due]), [
+    ['loop', '2026-10-20'], ['deal', '2026-10-21'],
+  ]);
+});
+
+test('date-only and midnight dates agree while invalid, ambiguous and future days stay out', () => {
+  for (const [value, count] of [
+    ['2026-10-21', 1], ['2026-10-21T00:00:00+00:00', 1],
+    ['2026-10-22T00:00:00.000Z', 0], ['2026-02-30', 0],
+    ['2026-10-21T08:00:00Z', 0], ['2026-10-21T00:00:00-05:00', 0],
+    [null, 0], ['not a date', 0],
+  ]) {
+    const payload = producerBrief();
+    payload.sections.today.items[0].due_on = value;
+    payload.sections.loops = section([{
+      kind: 'open_loop', number: '7', status: 'open', title: 'Example commitment',
+      due_on: value, owner_partner: 'dell',
+    }]);
+    const view = morningBriefView(payload, options);
+    assert.equal(view.groups.length, count * 2, String(value));
+    assert.ok(view.groups.every(group => group.row.due === '2026-10-21'));
+  }
+});
