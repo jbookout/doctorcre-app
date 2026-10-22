@@ -28,6 +28,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           path: doctorcre-app
+          fetch-depth: 0
           ref: ${{ github.sha }}
           persist-credentials: false
       - run: npm run ci:fast
@@ -37,6 +38,17 @@ jobs:
           cache: npm
           cache-dependency-path: doctorcre-app/package-lock.json
       - run: npm ci
+      - name: Fallow PR audit
+        if: ${{ github.event_name == 'pull_request' }}
+        uses: fallow-rs/fallow@4f2657d30ad9639d1f8ec29f0bd5b9d48ee44f31 # v3.35.0
+        with:
+          version: '3.35.0'
+          root: doctorcre-app
+          command: audit
+          only: dead-code,architecture,dupes
+          dead-code-baseline: doctorcre-app/fallow-baselines/dead-code.json
+          dupes-baseline: doctorcre-app/fallow-baselines/dupes.json
+          artifacts-dir: fallow-results
       - id: producer
         name: Read the CARR runtime revision from the consumer contract
         run: >-
