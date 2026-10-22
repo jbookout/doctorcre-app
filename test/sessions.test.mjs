@@ -395,7 +395,7 @@ test("S02-21 the contract keeps session verbs sorted with Codex checkpoint reads
 
 // MUTATION: leave the producer pin before the Codex checkpoint read.
 test("S02-22 producer.source_commit contains the Codex checkpoint read", () => {
-  assert.equal(contract.producer.source_commit, "f011675bb94f9c02fd721dd94a01cc6f52ea4762",
+  assert.equal(contract.producer.source_commit, "6ff2c19ff3178100632c05650464d8d09b076036",
     "the producer pin includes the sponsor-scoped Codex checkpoint read");
   assert.match(contract.producer.source_commit, /^[0-9a-f]{40}$/);
   assert.match(capture.source, /0f6cb388424e83a75396a3e2d3bfc14839e81b35/, "the fixture pins its contract shape reference");

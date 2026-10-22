@@ -9,7 +9,7 @@ test('deal vendor reads bind the board and detail to the reviewed assignment pro
   const contract = JSON.parse(await read('contracts/carr-interface.v1.json'));
   for (const verb of ['deal-room-board', 'get-deal-room']) {
     const operation = contract.mcp_read_contracts[verb];
-    assert.equal(operation.producer.source_commit, 'f011675bb94f9c02fd721dd94a01cc6f52ea4762');
+    assert.equal(operation.producer.source_commit, '6ff2c19ff3178100632c05650464d8d09b076036');
     assert.deepEqual(operation.response.vendors.item_keys, ['party_id', 'role', 'company', 'contact', 'note', 'updated_at']);
   }
 });
