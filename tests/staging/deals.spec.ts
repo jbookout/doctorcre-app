@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { withJourneyFixture } from './journey-fixture.mjs';
 
 test.describe.configure({ retries: 0 });
 
@@ -33,30 +34,41 @@ test('Local Deals shows parked records and recent changes read-only', async ({ p
 });
 
 test('Deal detail expands update history and preserves it through refresh', async ({ page }) => {
-  await page.goto('/deals?deal=d14');
-  await expect(page.locator('#detailUpdateForm')).toBeVisible();
-  const history = page.locator('.updates-history');
-  test.skip(await history.count() === 0, 'The selected QA deal has no update history.');
-  await history.locator(':scope > summary').click();
-  await expect(history.locator('.deal-note').first()).toBeVisible();
-  const observed = await page.locator('#detailUpdated').getAttribute('datetime');
-  await page.getByRole('button', { name: 'Refresh deal', exact: true }).click();
-  await expect(page.locator('#detailUpdated')).not.toHaveAttribute('datetime', observed || '', { timeout: 27000 });
-  await expect(history).toHaveAttribute('open', '');
+  test.setTimeout(420000);
+  await withJourneyFixture(async fixture => {
+    await page.goto(`/deals?deal=${fixture.deal.id}`);
+    await expect(page.locator('#detailUpdateForm')).toBeVisible();
+    const history = page.locator('.updates-history');
+    await expect(history).toHaveCount(1);
+    await history.locator(':scope > summary').click();
+    await expect(history.locator('.deal-note')).toHaveCount(2);
+    await expect(history.locator('.deal-note p')).toHaveText(fixture.deal.updates.toReversed());
+    await expect(history.locator('.deal-note').first()).toBeVisible();
+    const observed = await page.locator('#detailUpdated').getAttribute('datetime');
+    await page.getByRole('button', { name: 'Refresh deal', exact: true }).click();
+    await expect(page.locator('#detailUpdated')).not.toHaveAttribute('datetime', observed || '', { timeout: 27000 });
+    await expect(history).toHaveAttribute('open', '');
+  });
 });
 
 test('Deal card omits Dates, Full record and outlook controls', async ({ page }) => {
-  await page.goto('/deals?deal=d14');
-  await expect(page.locator('#detailUpdateForm')).toBeVisible();
-  await expect(page.locator('.deal-dates,.full-record,[data-jev-deal],#dealDateDialog')).toHaveCount(0);
+  test.setTimeout(420000);
+  await withJourneyFixture(async fixture => {
+    await page.goto(`/deals?deal=${fixture.deal.id}`);
+    await expect(page.locator('#detailUpdateForm')).toBeVisible();
+    await expect(page.locator('.deal-dates,.full-record,[data-jev-deal],#dealDateDialog')).toHaveCount(0);
+  });
 });
 
 test('An unsaved Update draft clears when the deal reopens', async ({ page }) => {
-  await page.goto('/deals?deal=d14');
-  const update = page.getByLabel('Update', { exact: true });
-  await expect(update).toHaveValue('');
-  await update.fill('Synthetic unsaved review draft');
-  await page.getByRole('button', { name: 'Close deal', exact: true }).click();
-  await page.goto('/deals?deal=d14');
-  await expect(update).toHaveValue('');
+  test.setTimeout(420000);
+  await withJourneyFixture(async fixture => {
+    await page.goto(`/deals?deal=${fixture.deal.id}`);
+    const update = page.getByLabel('Update', { exact: true });
+    await expect(update).toHaveValue('');
+    await update.fill('Synthetic unsaved review draft');
+    await page.getByRole('button', { name: 'Close deal', exact: true }).click();
+    await page.goto(`/deals?deal=${fixture.deal.id}`);
+    await expect(update).toHaveValue('');
+  });
 });

@@ -34,16 +34,34 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npx playwright install --with-deps chromium
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: DoctorCRE/carr-system
+          ref: 517ecc12c0480d859dd1f4cb270f2a283a853065
+          path: carr-fixture-producer
+          persist-credentials: false
+      - name: Install staging fixture producer
+        run: |
+          python3 -m venv carr-fixture-producer/.venv
+          carr-fixture-producer/.venv/bin/pip install 'psycopg[binary]==3.3.6'
+          npm ci --prefix carr-fixture-producer/mcp-server --ignore-scripts
       - name: Run signed-in staging tests
         id: playwright
-        run: npx playwright test --project=chromium --retries=1 --reporter=line,html,json
+        run: |
+          if [ -z "$NEON_API_KEY" ]; then
+            echo '::error::The staging environment must bind NEON_API_KEY for the pinned synthetic fixture producer.'
+            exit 1
+          fi
+          npx playwright test --project=chromium --retries=1 --reporter=line,html,json
         env:
           E2E_SESSION_SECRET: ${{ secrets.E2E_SESSION_SECRET }}
+          CARR_JOURNEY_FIXTURE_REPO: ${{ github.workspace }}/carr-fixture-producer
+          NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
           PLAYWRIGHT_HTML_OPEN: never
           PLAYWRIGHT_HTML_OUTPUT_DIR: .e2e/playwright-report
           PLAYWRIGHT_JSON_OUTPUT_FILE: .e2e/staging-results.json
       - name: Summarize results and flaky tests
-        if: ${{ !cancelled() && steps.playwright.outcome != 'skipped' }}
+        if: ${{ !cancelled() && steps.playwright.outcome != 'skipped' && hashFiles('.e2e/staging-results.json') != '' }}
         run: node scripts/staging-summary.mjs .e2e/staging-results.json >> "$GITHUB_STEP_SUMMARY"
       - if: failure()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
