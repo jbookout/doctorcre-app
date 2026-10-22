@@ -46,8 +46,8 @@ jobs:
           root: doctorcre-app
           command: audit
           only: dead-code,architecture,dupes
-          dead-code-baseline: doctorcre-app/fallow-baselines/dead-code.json
-          dupes-baseline: doctorcre-app/fallow-baselines/dupes.json
+          dead-code-baseline: fallow-baselines/dead-code.json
+          dupes-baseline: fallow-baselines/dupes.json
           artifacts-dir: fallow-results
       - id: producer
         name: Read the CARR runtime revision from the consumer contract
