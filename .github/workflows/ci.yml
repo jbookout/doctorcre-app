@@ -24,7 +24,7 @@ permissions:
 jobs:
   test:
     needs: [test-first]
-    if: ${{ always() && !cancelled() && (github.event_name != 'pull_request' || github.event.action != 'closed') }}
+    if: ${{ always() && (github.event_name != 'pull_request' || github.event.action != 'closed') }}
     runs-on: ubuntu-latest
     timeout-minutes: 25
     defaults:

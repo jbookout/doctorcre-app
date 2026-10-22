@@ -165,6 +165,7 @@ test('the required CI test context fails for every unsuccessful footprint result
   assert.equal(checkout.with.ref, '${{ github.event.pull_request.head.sha || github.sha }}');
   assert.equal(checkout.with['fetch-depth'], 0);
   assert.match(parsed.jobs.test.if, /always\(\)/);
+  assert.doesNotMatch(parsed.jobs.test.if, /cancelled\(\)/, 'cancelled prerequisites must still reach the aggregate');
   assert.deepEqual(parsed.jobs.test.needs, ['test-first']);
   const aggregate = parsed.jobs.test.steps[0];
   assert.equal(aggregate.env.TEST_FIRST_RESULT, '${{ needs.test-first.result }}');
