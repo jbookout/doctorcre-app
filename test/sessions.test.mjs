@@ -388,14 +388,15 @@ test("S02-21 the contract keeps session verbs sorted with Codex checkpoint reads
   assert.equal(contract.mcp_operations[identity - 1], "read-room-queue");
   assert.equal(contract.mcp_operations[identity + 1], "read-tour-selection-cart");
   assert.equal(contract.mcp_operations[identity + 2], "record-commission-receipt");
-  assert.equal(contract.mcp_operations[identity + 3], "record-dispatch-link");
+  assert.equal(contract.mcp_operations[identity + 3], "record-deal-item");
+  assert.equal(contract.mcp_operations[identity + 4], "record-dispatch-link");
   // No route moves: /control-room was admitted at 04139737 and this is a tab.
   assert.equal(/session/i.test(JSON.stringify(contract.http_surfaces)), false, "no new HTTP surface");
 });
 
 // MUTATION: leave the producer pin before the Codex checkpoint read.
 test("S02-22 producer.source_commit contains the Codex checkpoint read", () => {
-  assert.equal(contract.producer.source_commit, "6ff2c19ff3178100632c05650464d8d09b076036",
+  assert.equal(contract.producer.source_commit, "1ac451932c14f23a6f9c54d963f9b9d11b685d3c",
     "the producer pin includes the sponsor-scoped Codex checkpoint read");
   assert.match(contract.producer.source_commit, /^[0-9a-f]{40}$/);
   assert.match(capture.source, /0f6cb388424e83a75396a3e2d3bfc14839e81b35/, "the fixture pins its contract shape reference");
