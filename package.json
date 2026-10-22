@@ -58,6 +58,6 @@
     "react-dom": "19.3.0",
     "tar-stream": "3.2.2",
     "typescript": "7.0.2",
-    "wrangler": "4.131.2"
+    "wrangler": "4.149.0"
   }
 }
