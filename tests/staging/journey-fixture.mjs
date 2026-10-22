@@ -31,6 +31,7 @@ export async function requireStagingAuthority(request) {
 async function produce(action, run) {
   const repo = process.env.CARR_JOURNEY_FIXTURE_REPO;
   if (!repo) throw new Error('CARR_JOURNEY_FIXTURE_REPO must name the pinned CARR checkout containing tools/staging-journey-fixtures.py');
+  if (!process.env.NEON_API_KEY) throw new Error('NEON_API_KEY must be bound for the staging fixture producer');
   const source = await execute('git', ['-C', repo, 'rev-parse', 'HEAD']);
   const changed = await execute('git', ['-C', repo, 'status', '--porcelain', '--',
     'tools/staging-journey-fixtures.py', 'tools/staging-fixtures.py']);

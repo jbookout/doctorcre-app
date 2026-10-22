@@ -47,12 +47,7 @@ jobs:
           npm ci --prefix carr-fixture-producer/mcp-server --ignore-scripts
       - name: Run signed-in staging tests
         id: playwright
-        run: |
-          if [ -z "$NEON_API_KEY" ]; then
-            echo '::error::The staging environment must bind NEON_API_KEY for the pinned synthetic fixture producer.'
-            exit 1
-          fi
-          npx playwright test --project=chromium --retries=1 --reporter=line,html,json
+        run: npx playwright test --project=chromium --retries=1 --reporter=line,html,json
         env:
           E2E_SESSION_SECRET: ${{ secrets.E2E_SESSION_SECRET }}
           CARR_JOURNEY_FIXTURE_REPO: ${{ github.workspace }}/carr-fixture-producer

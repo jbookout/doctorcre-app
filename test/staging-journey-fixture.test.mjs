@@ -2,6 +2,22 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { requireStagingAuthority, withJourneyFixture } from '../tests/staging/journey-fixture.mjs';
 
+test('an unbound provider credential refuses before the producer can inspect local credentials', async () => {
+  const beforeRepo = process.env.CARR_JOURNEY_FIXTURE_REPO;
+  const beforeKey = process.env.NEON_API_KEY;
+  try {
+    process.env.CARR_JOURNEY_FIXTURE_REPO = '/nonexistent/synthetic-producer';
+    delete process.env.NEON_API_KEY;
+    await assert.rejects(withJourneyFixture(() => assert.fail('fixture must not run')),
+      /NEON_API_KEY must be bound for the staging fixture producer/);
+  } finally {
+    if (beforeRepo === undefined) delete process.env.CARR_JOURNEY_FIXTURE_REPO;
+    else process.env.CARR_JOURNEY_FIXTURE_REPO = beforeRepo;
+    if (beforeKey === undefined) delete process.env.NEON_API_KEY;
+    else process.env.NEON_API_KEY = beforeKey;
+  }
+});
+
 test('authority outage fails explicitly before preparing a fixture', async () => {
   const request = { post: async () => ({ status: () => 200, json: async () => ({ result: { content: [{ type: 'text', text: '{"error":"authority_connection_unavailable"}' }] } }) }) };
   await assert.rejects(requireStagingAuthority(request), /staging authority unavailable/);
