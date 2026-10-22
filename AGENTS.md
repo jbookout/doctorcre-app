@@ -69,6 +69,8 @@ Both are installed at `~/.agents/skills/` (sources: github.com/mattpocock/skills
 
 ## Agent skills
 
+Use `.claude/skills/verify-doctorcre-app/SKILL.md` when proving an app change by driving local fixtures or signed-in staging and retaining evidence.
+
 ### Issue tracker
 
 Issues are GitHub Issues in `jbookout/doctorcre-app`, via the `gh` CLI; the repo is public, so keep client and CARR data out of them. See `docs/agents/issue-tracker.md`.
