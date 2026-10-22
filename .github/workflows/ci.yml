@@ -4,6 +4,11 @@ on:
   schedule:
     - cron: "17 3 * * *"
   workflow_dispatch:
+    inputs:
+      test_first_base:
+        description: Optional full base commit SHA for a test-first comparison against the dispatched revision
+        required: false
+        type: string
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
   push:
@@ -18,13 +23,19 @@ permissions:
 
 jobs:
   test:
-    if: ${{ github.event_name != 'pull_request' || github.event.action != 'closed' }}
+    needs: [test-first]
+    if: ${{ always() && !cancelled() && (github.event_name != 'pull_request' || github.event.action != 'closed') }}
     runs-on: ubuntu-latest
     timeout-minutes: 25
     defaults:
       run:
         working-directory: doctorcre-app
     steps:
+      - name: Require test-first footprint success
+        working-directory: ${{ github.workspace }}
+        env:
+          TEST_FIRST_RESULT: ${{ needs.test-first.result }}
+        run: test "$TEST_FIRST_RESULT" = success
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           path: doctorcre-app
@@ -86,6 +97,37 @@ jobs:
       - name: Publish performance summary
         if: ${{ !cancelled() && github.event_name == 'pull_request' }}
         run: cat test-artifacts/performance/summary.md >> "$GITHUB_STEP_SUMMARY"
+
+  test-first:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      BASE_SHA: ${{ github.event.pull_request.base.sha || inputs.test_first_base }}
+    steps:
+      - name: Summarize events without a comparison
+        if: ${{ env.BASE_SHA == '' }}
+        run: echo 'Test-first footprint skipped. No pull request or explicit comparison base.' >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: ${{ env.BASE_SHA != '' }}
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        if: ${{ env.BASE_SHA != '' }}
+        with:
+          node-version: 22.23.4
+          cache: npm
+      - run: npm ci
+        if: ${{ env.BASE_SHA != '' }}
+      - run: npx playwright install --with-deps chromium webkit
+        if: ${{ env.BASE_SHA != '' }}
+      - name: Compare changed tests on base and head
+        if: ${{ env.BASE_SHA != '' }}
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || inputs.test_first_base }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: node scripts/test-first-footprint.mjs
 
   preview:
     if: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository }}
