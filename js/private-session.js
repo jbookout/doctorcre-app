@@ -57,7 +57,7 @@ export function createSessionBoundary({ fetchImpl, invalidate, epoch = () => '',
         try {
           const envelope = JSON.parse(new TextDecoder().decode(bytes));
           const payload = envelope?.result?.isError ? JSON.parse(envelope.result.content?.find(item => item.type === 'text')?.text || '{}') : envelope;
-          refused = ['unauthorized','not_authenticated','forbidden','permission_denied'].includes(payload?.error);
+          refused = ['unauthorized','not_authenticated','forbidden','permission_denied','authentication_required','authorization_refused','session_expired'].includes(String(payload?.error || '').toLowerCase());
         } catch { /* Payload validation belongs to the existing domain adapter. */ }
         if (refused) { revoke(); throw failure(); }
         current(ticket, startedEpoch);

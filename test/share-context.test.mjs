@@ -10,7 +10,7 @@ const flush=async()=>{for(let i=0;i<12;i++)await new Promise(r=>setTimeout(r,0))
 let cookie='A';
 const sharedStorage=new Map();
 let lock=Promise.resolve();
-async function open(t,{token='',state=null,flip=false,sameProjection=false}={}) {
+async function open(t,{token='',state=null,flip=false,sameProjection=false,missingScope=null}={}) {
  const dom=new JSDOM(html,{url:'https://reports.doctorcre.com/share',runScripts:'outside-only'});t.after(()=>dom.window.close());
  const win=dom.window;
  Object.defineProperty(win,'localStorage',{value:{getItem:key=>sharedStorage.get(key)||null,setItem:(key,value)=>sharedStorage.set(key,String(value)),removeItem:key=>sharedStorage.delete(key)}});
@@ -21,6 +21,7 @@ async function open(t,{token='',state=null,flip=false,sameProjection=false}={}) 
  win.fetch=async(path,init={})=>{
    if(path==='/api/share/exchange'){cookie=JSON.parse(init.body).token;return {ok:true,json:async()=>({ok:true})};}
    const target=cookie;reads++;
+   if(path === missingScope) return {ok:false,status:404,json:async()=>({error:'not_found'})};
    if(flip && path==='/api/share/map')cookie='B';
    const data=path==='/api/share/report'?{stops:[{property_ref:`property:public:synthetic_property_${target}`,name:`Private projection ${target}`}]}:path==='/api/share/map'?{points:[]}:{projection_ref:`projection:public:synthetic_projection_${sameProjection?'common':target}`,permission_scopes:[],items:[]};
    return {ok:true,json:async()=>({data})};
@@ -57,4 +58,10 @@ test('F11: two links to the same projection still retain their own link context'
  const refreshed=await open(t,{state,sameProjection:true});
  assert.equal(refreshed.doc.querySelectorAll('.report-item').length,0);
  assert.match(refreshed.doc.querySelector('#status').textContent,/unavailable/);
+});
+
+for (const missingScope of ['/api/share/map','/api/share/report']) test(`F11: verified independent scopes still open when ${missingScope} is excluded`,async t=>{
+ cookie='A';const a=await open(t,{token:'A',missingScope});
+ assert.match(a.doc.querySelector('#status').textContent,/loaded/);
+ assert.doesNotMatch(a.doc.querySelector('#status').textContent,/unavailable/);
 });

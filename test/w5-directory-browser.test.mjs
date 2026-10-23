@@ -88,6 +88,7 @@ test('W5 reduced motion stops hover travel and pulse while keeping content visib
 
 for(const mode of ['lost','rejected','uncertain','unknown200','unknownAck','unknownTool'])test(`W5 ${mode} override response is reconciled without replay`,async t=>{
   const h=await open(t);h.setWriteMode(mode);const {page}=h;await page.goto(origin+'/vendors?mode=live', {waitUntil:'domcontentloaded'});await page.locator('.record-row').first().click();await page.waitForSelector('#trustForm',{state:'attached'});await page.locator('[data-details-key="trust"] summary').click();await page.locator('[name="tier"]').selectOption('Trial');await page.locator('[name="reason"]').fill('Demo exception');await page.locator('#trustForm button').click();
+  if(mode==='rejected'){await page.waitForURL('**/public-shell/session-ended.html');assert.equal(h.writes,1);assert.equal(await page.locator('#trustForm').count(),0);assert.deepEqual(h.errors,[]);return;}
   await page.waitForFunction(()=>['Rating confirmed','Rating not confirmed'].includes(document.querySelector('#trustStatus')?.textContent));assert.equal(h.writes,1);
   if(mode==='lost'){assert.match(await page.locator('.relationship-section').innerText(),/Computed: Proven/);assert.equal(await page.locator('#trustStatus').textContent(),'Rating confirmed');assert.equal(await page.locator('#trustForm button').isDisabled(),false);}
   else assert.equal(await page.locator('#trustForm button').isDisabled(),['uncertain','unknown200','unknownAck','unknownTool'].includes(mode));

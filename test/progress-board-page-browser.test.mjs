@@ -218,7 +218,7 @@ for (const width of [390, 1280]) for (const theme of ['dark', 'light']) {
 
 async function mountTestCosts(t, width = 390) {
   const { page, errors } = await open(t, { path: systemPath, width });
-  await page.locator('#board-stages').waitFor();
+  await page.waitForFunction(()=>document.querySelector('#board-meta')?.dataset.readState === 'published');
   await page.evaluate(async fixture => {
     const { mountCostView } = await import('/js/progress-board-costs.js');
     const panel = document.querySelector('#board-costs'); panel.replaceChildren();
@@ -353,9 +353,9 @@ for (const denied of ['unfinished-work', 'read-progress-board']) {
       ? page.waitForResponse(response => response.url().endsWith('/mcp') && response.status() === 200) : null;
     await page.clock.runFor(15000);
     if (order === 'success-first') await success;
-    else await page.waitForURL('**/public-shell/session-ended.html');
+    else await page.waitForURL('**/public-shell/session-ended.html*');
     release();
-    await page.waitForURL('**/public-shell/session-ended.html');
+    await page.waitForURL('**/public-shell/session-ended.html*');
     assert.equal(await page.locator('#board-stages [data-card-id], #board-completed .completed-card, #system-work-flow [data-task-id], .work-card').count(), 0);
     assert.doesNotMatch(await page.locator('body').textContent(), /Synthetic build/);
     active = false;

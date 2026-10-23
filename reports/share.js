@@ -78,7 +78,7 @@ mountNavigation(document, location.pathname, { report: true });
           let data = null;
           try { data = await response.json(); } catch { /* errors remain generic */ }
           if (!response.ok) {
-            if ([401,403,404].includes(response.status)) showUnavailable();
+            if ([401,403].includes(response.status) || response.status === 404 && !['/api/share/report','/api/share/map'].includes(path)) showUnavailable();
             throw new Error(data?.error || "request_failed");
           }
           if (invalidated) throw new Error('share_context_changed');

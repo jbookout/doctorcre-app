@@ -46,9 +46,9 @@ test('F01: a same-session network outage does not revoke the view or misclassify
  await assert.rejects(boundary.fetch('/api/private'),/offline/);
  assert.equal(invalidated,false);
 });
-test('F01: an explicit MCP permission refusal revokes every view even with HTTP 200',async()=>{
+for(const code of ['forbidden','AUTHORIZATION_REFUSED','AUTHENTICATION_REQUIRED']) test(`F01: explicit MCP ${code} revokes every view even with HTTP 200`,async()=>{
  let invalidated=false;
- const boundary=createSessionBoundary({invalidate(){invalidated=true;},fetchImpl:async path=>path==='/api/system-work/session'?Response.json(session('joe')):Response.json({result:{isError:true,content:[{type:'text',text:JSON.stringify({error:'forbidden'})}]}})});
+ const boundary=createSessionBoundary({invalidate(){invalidated=true;},fetchImpl:async path=>path==='/api/system-work/session'?Response.json(session('joe')):Response.json({result:{isError:true,content:[{type:'text',text:JSON.stringify({error:code})}]}})});
  await assert.rejects(boundary.fetch('/mcp'),{code:'authentication_required'});assert.equal(invalidated,true);
 });
 test('public Status may start signed out, but loses the whole authenticated view after a verified session is denied',async()=>{

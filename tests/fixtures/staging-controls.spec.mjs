@@ -15,7 +15,7 @@ test.beforeEach(async ({ page }) => {
   }));
   await page.route('**/api/system-work/session', route => route.fulfill({
     contentType: 'application/json',
-    body: JSON.stringify({ actor: { slug: 'joe', display_name: 'Joe' } }),
+    body: JSON.stringify({ actor: { slug: 'joe', display_name: 'Joe' }, csrf_token: 'synthetic-session' }),
   }));
   await page.addInitScript(() => localStorage.setItem('doctorcre:today:/deals', 'closed'));
 });
