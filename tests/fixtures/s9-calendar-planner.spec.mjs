@@ -9,6 +9,7 @@ async function assets(page) {
   await page.route('**/*', async route => {
     const url = new URL(route.request().url());
     if (!['http://localhost', 'https://app.doctorcre.com'].includes(url.origin)) return route.abort();
+    if (url.pathname === '/auth/session') return route.fulfill({json:{actor:{slug:'joe'},csrf_token:'synthetic-fixture'}});
     if (url.pathname === '/mcp') {
       const name = route.request().postDataJSON().params.name;
       const data = name === 'deal-room-board' ? { actor: 'joe', deals: [{ id: 'synthetic-deal', name: 'Synthetic dental office' }] }

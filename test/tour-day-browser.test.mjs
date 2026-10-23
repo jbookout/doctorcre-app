@@ -14,7 +14,7 @@ async function open(t, { width = 390, reducedMotion = "reduce", denied = false, 
   const server = createServer(async (request, response) => {
     const url = new URL(request.url, "http://localhost"); requests.push({ path: url.pathname, method: request.method });
     if (url.pathname === "/auth/signout") { refuse = true; response.writeHead(302, { location: '/' }); response.end(); return; }
-    if (url.pathname === "/auth/session") { response.setHeader('content-type', 'application/json'); response.writeHead(refuse ? 401 : 200); response.end('{}'); return; }
+    if (url.pathname === "/auth/session") { response.setHeader('content-type', 'application/json'); response.writeHead(refuse ? 401 : 200); response.end(JSON.stringify(refuse ? {} : {actor:{slug:actor},csrf_token:`synthetic-${actor}`})); return; }
     if (url.pathname === "/auth/login") { response.end('<title>Synthetic login</title>'); return; }
     if (url.pathname.startsWith("/api/")) {
       response.setHeader("content-type", "application/json");
