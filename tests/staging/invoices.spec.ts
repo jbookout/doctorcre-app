@@ -8,7 +8,7 @@ test('Invoices switch all statuses and inspect original invoice facts', async ({
   await page.goto('/invoices');
   await expect(page.locator('.invoice-row').first()).toBeVisible();
   for (const name of ['Unpaid', 'Awaiting invoice', 'Paid', 'All']) {
-    const button = page.getByRole('button', { name, exact: true });
+    const button = page.getByRole('group', { name: 'Invoice status', exact: true }).getByRole('button', { name, exact: true });
     await button.click();
     await expect(button).toHaveAttribute('aria-pressed', 'true');
   }
@@ -32,4 +32,3 @@ test('Invoices search, reset and refresh without marking a payment', async ({ pa
   await page.getByRole('button', { name: 'Refresh invoices', exact: true }).click();
   await expect(page.locator('#invoiceRows')).toHaveAttribute('aria-busy', 'false');
 });
-
