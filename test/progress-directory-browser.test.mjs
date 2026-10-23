@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { chromium, pausedClock, settles } from "./browser-harness.mjs";
 import { boardFreshness, boardDirectory } from "../js/progress-board-model.js";
+import { routeContract } from "../js/routes.js";
 
 const NOW = new Date("2026-10-01T15:00:00Z");
 const boards = [
@@ -42,8 +43,8 @@ async function open(t, { width = 390, path = "/control-room/progress?board=demo-
       } }) });
     }
     if (url.pathname === "/app-release" || url.pathname.startsWith("/api/")) return route.fulfill({ contentType: "application/json", body: "{}" });
-    const path = url.pathname.startsWith("/control-room/progress/board/") || url.pathname === "/control-room/progress" || url.pathname === "/progress-board" ? "progress-board.html"
-      : url.pathname === "/control-room" ? "control-room.html" : url.pathname.slice(1);
+    const path = url.pathname.startsWith("/control-room/progress/board/") || url.pathname === "/progress-board" ? "progress-board.html"
+      : routeContract.routes[url.pathname] || url.pathname.slice(1);
     try {
       const body = await readFile(new URL("../" + path, import.meta.url));
       return route.fulfill({ body, contentType: /\.m?js$/.test(path) ? "text/javascript" : path.endsWith(".css") ? "text/css" : "text/html" });
