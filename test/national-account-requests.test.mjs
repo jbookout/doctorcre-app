@@ -38,7 +38,7 @@ function evidenceGate(evidence) {
   assert.ok(Array.isArray(evidence.discrepancies));
 }
 
-function harness(reply = () => ({ ok: true, account_client_id: 'demo-account', deal_id: 'demo-deal' })) {
+function harness(reply = () => ({ ok: true, account_client_id: 'demo-account', deal_id: 'demo-deal' }), {online = () => true} = {}) {
   const dom = new JSDOM('<dialog id="formDialog"><form id="dialogForm"><span id="dialogContext"></span><h2 id="dialogTitle"></h2><div id="dialogBody"></div><p id="formError" hidden></p><button id="dialogSubmit"></button></form></dialog>');
   const document = dom.window.document;
   const $ = selector => document.querySelector(selector);
@@ -47,7 +47,7 @@ function harness(reply = () => ({ ok: true, account_client_id: 'demo-account', d
   dialog.close = () => { dialog.open = false; };
   const sent = [], toasts = [];
   const state = { selfActor: 'joe', nationalCreations: {}, nationalConfirmations: {}, deals: new Map([['demo-deal', {name:'Demo deal'}]]) };
-  state.client = createLiveClient({docContext:false, fetchImpl:async (_, init) => {
+  state.client = createLiveClient({docContext:false, online, fetchImpl:async (_, init) => {
     const {name, arguments:args} = JSON.parse(init.body).params;
     sent.push({name, args});
     try {
@@ -187,4 +187,63 @@ test('fixture market creation supplies the producer receipt and replays the same
   assert.equal(result.ok,true); assert.equal(typeof result.deal_id,'string');
   assert.equal(result.account_client_id,args.account_client_id);
   assert.deepEqual(await client.createNationalMarketDeal(args),result);
+});
+
+for (const kind of ['account', 'market', 'separate brand']) {
+  test(`${kind} retains an unresolved creation through offline checks and reconnect`, async () => {
+    let online = true;
+    let lost = false;
+    const view = harness((_, args) => {
+      if (kind === 'separate brand' && !args.force_new)
+        return {needs_confirm:true,candidates:[{id:'demo-existing',name:'Demo Existing'}]};
+      if (!lost) { lost = true; throw Error('lost reply'); }
+      return {ok:true,account_client_id:args.account_client_id || 'demo-created',deal_id:'demo-deal'};
+    }, {online:() => online});
+    const action = kind === 'market' ? 'addMarketDealForm' : 'addAccountForm';
+    view.actions[action](); view.fill(kind === 'market' ? marketFields : accountFields);
+    await view.submit();
+    if (kind === 'separate brand') {
+      view.document.querySelector('[name="confirm_separate"]').checked = true;
+      await view.submit();
+    }
+    const original = view.sent.at(-1);
+    online = false;
+    view.actions[action](); await view.submit();
+    assert.equal(Object.keys(view.state.nationalCreations).length,1);
+    assert.equal(view.document.querySelector('#dialogSubmit').textContent,'Check creation outcome');
+    assert.equal(view.document.querySelector('#nationalCreationFields').disabled,true);
+    assert.deepEqual(view.toasts,[]);
+    online = true;
+    view.actions[action](); await view.submit();
+    assert.deepEqual(view.sent.at(-1),original);
+    assert.equal(view.toasts.length,1);
+  });
+}
+
+test('an initial offline creation releases unsent fields for correction', async () => {
+  const view = harness(undefined, {online:() => false});
+  view.actions.addAccountForm(); view.fill(accountFields); await view.submit();
+  assert.equal(view.sent.length,0);
+  assert.deepEqual(view.state.nationalCreations,{});
+  assert.equal(view.document.querySelector('#nationalCreationFields').disabled,false);
+});
+
+test('a refused reopened separate-brand replay allows deliberate reconfirmation', async () => {
+  const view = harness((_, args, count) => {
+    if (!args.force_new) return {needs_confirm:true,candidates:[{id:'demo-existing',name:'Demo Existing'}]};
+    if (count === 2) throw Error('lost reply');
+    if (count === 3) return {ok:false,error:'invalid_request'};
+    return {ok:true,account_client_id:'demo-created'};
+  });
+  view.actions.addAccountForm(); view.fill(accountFields); await view.submit();
+  view.document.querySelector('[name="confirm_separate"]').checked = true;
+  await view.submit(); view.actions.addAccountForm(); await view.submit();
+  const confirm = view.document.querySelector('[name="confirm_separate"]');
+  assert.equal(confirm.disabled,false);
+  assert.equal(confirm.checked,false);
+  await view.submit(); assert.equal(view.sent.length,3);
+  confirm.checked = true; await view.submit();
+  assert.equal(view.error(),''); assert.equal(view.sent.length,4);
+  assert.notEqual(view.sent[3].args.idempotency_key,view.sent[2].args.idempotency_key);
+  assert.equal(view.toasts.length,1);
 });

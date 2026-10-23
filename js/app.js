@@ -1103,11 +1103,17 @@ function nationalCreationForm({operationKey, context, title, submit, body, reque
           throw new Error('Creation could not be confirmed. Check creation outcome before starting another record.');
         }
       } catch (error) {
-        const outcome = classifyCommandOutcome({error});
+        const classified = classifyCommandOutcome({error});
+        const outcome = classified.reason === 'offline' && pending ? pending : classified;
         const unknown = outcome.status === 'unknown' && outcome.reason !== 'offline';
         state.nationalCreations = settleCommand(state.nationalCreations,key,unknown ? outcome : {status:'refused'});
         $('#nationalCreationFields').disabled = unknown || Boolean(confirmation);
         if ($('#nationalEditDetails')) $('#nationalEditDetails').disabled = unknown;
+        const confirm = $('[name="confirm_separate"]');
+        if (confirm) {
+          confirm.disabled = unknown;
+          if (!unknown) confirm.checked = false;
+        }
         $('#dialogSubmit').textContent = unknown ? 'Check creation outcome' : confirmation ? 'Create separate brand' : submit;
         if (unknown) throw new Error(commandMessage(outcome,'Creation'));
         if (error.payload?.error === 'research_evidence_required') throw new Error('Research evidence is required: the sub-client name did not match an existing client under this account. Choose New sub-client and provide reviewed sources.');
