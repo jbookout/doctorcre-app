@@ -1,6 +1,6 @@
 {
   "schema": "doctorcre-carr-interface.v1",
-  "version": "1.51.0",
+  "version": "1.52.0",
   "producer": {
     "repository": "jbookout/carr-system",
     "source_commit": "e2e484b1933bfd63c10cc9a1b3350132948f6f74"
@@ -620,8 +620,8 @@
     "get-deal-room": {
       "producer": {
         "repository": "jbookout/carr-system",
-        "source_commit": "3a57e47015916546fb2ffd11eaf880686c38e659",
-        "pull_request": "https://github.com/jbookout/carr-system/pull/2014"
+        "source_commit": "58af30ae50419c710a012cca4eff71b2ce981569",
+        "pull_request": "https://github.com/jbookout/carr-system/pull/2066"
       },
       "response": {
         "schema_version": "deal-timeline.v1",
@@ -670,6 +670,9 @@
           ],
           "role": "Specific service-role slug, displayed with underscores replaced by spaces.",
           "order": "Role, company name, contact name, vendor party id."
+        },
+        "next_actions": {
+          "hold_until": "YYYY-MM-DD or null. An open action is held while hold_until is later than the current calendar date. Held actions remain in this history read. Accepted post-call actions return null."
         }
       },
       "critical_date_write": "add-critical-date",
