@@ -68,7 +68,7 @@ test("Dot 6: deal dates use calendar-day offsets", () => {
 test("Dot 7: double Reviewed advances only one agenda item", async () => {
   const pending=deferred(); const calls=[];
   const review={deals:[{id:"A"},{id:"B"},{id:"C"}],index:0,reviewed:0,skipped:0,sessionId:"review"};
-  const h=handlers("js/app.js","async function advanceAgenda(","async function finishAgenda(",{state:{review,client:{reviewDeal:args=>{calls.push(args);return pending.promise;}}},uuidv4:()=>"key",renderAgenda:noop},["advanceAgenda"]);
+  const h=handlers("js/app.js","async function advanceAgenda(","async function finishAgenda(",{state:{review},runScreenAction:async (_key,args,_method,_label,accepted)=>{calls.push(args);return accepted(await pending.promise);},uuidv4:()=>"key",renderAgenda:noop},["advanceAgenda"]);
   const first=h.advanceAgenda("reviewed"),second=h.advanceAgenda("reviewed"); pending.resolve({ok:true}); await Promise.all([first,second]);
   assert.equal(calls.length,1); assert.equal(review.index,1); assert.equal(review.reviewed,1);
 });
@@ -215,11 +215,11 @@ function tourHarness() {
 }
 test("Dot 1: current main serializes Tour navigation instead of applying out-of-order loads", async () => {
   const {h,state,replies}=tourHarness();const a=deferred(),b=deferred(); replies.set("A",a.promise);replies.set("B",b.promise);
-  const first=h.loadTour("A"),second=h.loadTour("B");b.resolve({id:"B"});a.resolve({id:"A"});await Promise.all([first,second]);
+  const first=h.loadTour("A"),second=h.loadTour("B");b.resolve({id:"B",stops:[]});a.resolve({id:"A",stops:[]});await Promise.all([first,second]);
   assert.equal(h.tourLoadSeq,1,"PR109 blocks a second navigation while loading");assert.equal(state.tour.id,"A");
 });
 test("Dot 2: switching Tours clears the prior confidential link", async () => {
-  const {h,state,$,replies}=tourHarness();state.rawShareToken="secret-synthetic";state.shareGrantId="grant-A";$("#share-url").value="https://example.test/share#token=synthetic";$("#share-link").hidden=false;replies.set("B",Promise.resolve({id:"B"}));
+  const {h,state,$,replies}=tourHarness();state.rawShareToken="secret-synthetic";state.shareGrantId="grant-A";$("#share-url").value="https://example.test/share#token=synthetic";$("#share-link").hidden=false;replies.set("B",Promise.resolve({id:"B",stops:[]}));
   await h.loadTour("B");assert.equal($("#share-url").value,"");assert.equal($("#share-link").hidden,true);assert.equal(state.rawShareToken,"");
 });
 
@@ -488,7 +488,7 @@ for(const rotate of [false,true]) test(`PR111 #13: lost ${rotate?"rotation":"iss
 });
 
 test("PR111 #13: retained share recovery stays reachable on its original Tour",async()=>{
-  const {h,state,replies}=tourHarness();state.pendingShare={tourId:"A",projectionId:"projection-A"};replies.set("B",Promise.resolve({id:"B"}));
+  const {h,state,replies}=tourHarness();state.pendingShare={tourId:"A",projectionId:"projection-A"};replies.set("B",Promise.resolve({id:"B",stops:[]}));
   await h.loadTour("B");assert.equal(state.tour.id,"A");assert.equal(state.pendingShare.tourId,"A");
 });
 
@@ -501,7 +501,7 @@ for (const rotate of [false, true]) test(`PR111 #13: ${rotate ? "rotation" : "is
   const currentGrant="00000000-0000-4000-8000-000000000004";
   const reload=handlers("tours/app.js","  function renderTour()","  function moveStop(",{
     state,$,restoredTourId:"",navigationBusy:false,composer:null,createPending:null,tourLoadSeq:0,
-    request:async()=>({id:"A",projection_id:"projection-B",share_grant_id:currentGrant}),
+    request:async()=>({id:"A",stops:[],projection_id:"projection-B",share_grant_id:currentGrant}),
     status:noop,text:(value,fallback="")=>typeof value==="string"&&value?value:fallback,
     id:()=>false,tourMetaLine:()=>"",tourDisplayName:(value,fallback="Untitled tour")=>value||fallback,renderFeedback:noop,renderShareGrants:noop,
     cheatSheetText:()=>"",stops:()=>[],mountPropertyPanel:noop,renderComposer:noop,renderAcceptedItinerary:noop,

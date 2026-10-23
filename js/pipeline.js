@@ -806,7 +806,7 @@ function refusePanelDetail(error) {
   $('contextDrawer').close();
   $('contextDrawerBody').replaceChildren();
   $('panelTitle').textContent = 'Deal';
-  $('panelBody').innerHTML = '<p role="status">Unavailable. <button class="btn" type="button" data-refresh-detail>Retry</button></p>';
+  $('panelBody').innerHTML = '<p role="status">Unavailable. Sign in to reload this record. <a href="/auth/login">Sign in</a> <button class="btn" type="button" data-refresh-detail>Retry</button></p>';
   return true;
 }
 function syncUpdateForm() {
@@ -908,13 +908,14 @@ async function refreshPanel() {
       }
       const evidence = await loadEvidence(state.client, detail);
       if (state.panelDeal !== id || seq !== panelReadSequence) return;
+      if (evidence.threads.state === 'refused') { refusePanelDetail({status:evidence.threads.status}); return; }
       const root = $('panelEvidence');
       const html = renderEvidence(evidence);
       const evidenceTemplate = document.createElement('div'); evidenceTemplate.innerHTML = html;
       if (root.innerHTML !== evidenceTemplate.innerHTML) {
         const expanded = new Set([...root.querySelectorAll('details[open]')].map(n => n.querySelector('summary')?.textContent));
         disposeEvidence?.(); disposeEvidence = null;
-        root.innerHTML = html;
+        disposeEvidence = mountEvidence(root, {client:state.client,detail,onDenied:refusePanelDetail,initialView:evidence});
         root.querySelectorAll('details').forEach(n => { if (expanded.has(n.querySelector('summary')?.textContent)) n.open = true; });
       }
     }
@@ -943,7 +944,7 @@ function paintPanel(detail) {
   $('panelTitle').textContent = dealTitle(detail.deal);
   $('panelBody').innerHTML = detailHtml(detail);
   disposeEvidence?.();
-  disposeEvidence = mountEvidence($('panelEvidence'), {client:state.client,detail});
+  disposeEvidence = mountEvidence($('panelEvidence'), {client:state.client,detail,onDenied:refusePanelDetail});
   syncUpdateForm();
   updateDetailTimestamp();
 }
@@ -1045,7 +1046,9 @@ async function openContextDrawer() {
   $('contextDrawerBody').innerHTML = '<div class="state-block" data-state="loading"><h3>Updating…</h3></div>';
   if (typeof dialog.showModal === 'function' && !dialog.open) dialog.showModal();
   const dealId = state.panelDeal;
-  const context = await loadDealContext(state.client, detail);
+  let context;
+  try { context = await loadDealContext(state.client, detail); }
+  catch (error) { if (state.panelDeal === dealId && seq === contextReadSequence) refusePanelDetail(error); return; }
   // Same late-answer guard as the record panel: a slower client read must
   // never paint over a drawer the person has since moved on from.
   if (state.panelDeal !== dealId || seq !== contextReadSequence || !dialog.open) return;
@@ -1054,7 +1057,7 @@ async function openContextDrawer() {
   if (!sections.length) { dialog.close(); $('contextDrawerBody').replaceChildren(); return; }
   $('contextDrawerBody').innerHTML = sections
     .map((section) => `<div class="panel-section"${section.state ? ` data-state="${esc(section.state)}"` : ''}>
-      <h3>${esc(section.title)}</h3>${section.lines.map((line) => `<p>${esc(line)}</p>`).join('')}${(section.links || []).map(link=>`<p><a href="${esc(link.href)}">${esc(link.label)}</a></p>`).join('')}</div>`).join('');
+      <h3>${esc(section.title)}</h3>${section.state === 'unavailable' ? '<button type="button" data-context-retry>Retry</button>' : ''}${section.lines.map((line) => `<p>${esc(line)}</p>`).join('')}${(section.links || []).map(link=>`<p><a href="${esc(link.href)}">${esc(link.label)}</a></p>`).join('')}</div>`).join('');
 }
 
 /* -------------------------------------------------------- drag and keyboard */
@@ -1232,6 +1235,7 @@ function wire() {
   });
 
   $('panelContextOpen')?.addEventListener('click', () => { openContextDrawer(); });
+  $('contextDrawerBody')?.addEventListener('click', event => { if (event.target.closest('[data-context-retry]')) void openContextDrawer(); });
   $('contextDrawerClose')?.addEventListener('click', () => $('contextDrawer')?.close());
 
   $('completionCritical')?.addEventListener('change', renderCriticalState);

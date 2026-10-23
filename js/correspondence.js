@@ -4,43 +4,66 @@ const when = value => new Date(value).toLocaleString([], { year: 'numeric', mont
 
 function evidenceGroup(title, state) {
   const group = title === 'Threads' ? 'threads' : 'meetings';
+  if (state.state === 'refused') return `<div class="evidence-group" data-evidence-group="${group}" data-state="refused"><h4>${title} unavailable</h4><a href="/auth/login">Sign in</a></div>`;
+  if (state.state !== 'ready') return `<div class="evidence-group" data-evidence-group="${group}" data-state="${esc(state.state)}"><h4>${title} ${state.state === 'loading' ? 'loading…' : 'unavailable'}</h4>${state.state === 'loading' ? '' : '<button type="button" data-evidence-retry>Retry evidence</button>'}</div>`;
+  if (!state.items?.length) return `<div class="evidence-group" data-evidence-group="${group}"><h4>${title}</h4><p>No linked evidence</p></div>`;
   const items = [...state.items].sort((a, b) => Date.parse(b.when) - Date.parse(a.when));
   return `<div class="evidence-group" data-evidence-group="${group}"><h4>${title}</h4><ol class="evidence-timeline">${items.map(item => `<li class="evidence-item" data-kind="${esc(item.kind)}"><details><summary><span>${esc(item.title)}</span><time datetime="${esc(item.when)}">${esc(when(item.when))}</time></summary><p>${item.kind === 'thread' ? 'Email' : 'Meeting'}</p></details></li>`).join('')}</ol></div>`;
 }
 export function renderEvidence(view = {}) {
-  const groups = [['Threads',view.threads],['Meetings',view.meetings]].filter(([,state]) => state?.state === 'ready' && state.items?.length);
+  const groups = [['Threads',view.threads],['Meetings',view.meetings]].filter(([,state]) => state?.state);
   return groups.length ? `<section class="correspondence-evidence" aria-label="Evidence"><h3>Evidence</h3>${groups.map(([title,state]) => evidenceGroup(title,state)).join('')}</section>` : '';
 }
 async function boundedRead(read, timeoutMs) {
   let timer;
   try {
     return await Promise.race([Promise.resolve().then(read), new Promise(resolve => { timer = setTimeout(() => resolve(null), timeoutMs); })]);
-  } catch { return null; } finally { clearTimeout(timer); }
+  } catch (error) { if ([401,403].includes(error?.status)) throw error; return null; } finally { clearTimeout(timer); }
 }
 export async function loadEvidence(client, detail = {}, { timeoutMs = 8000 } = {}) {
-  const readiness = readinessState(await boundedRead(() => client.correspondenceReadiness(readinessRequest()), timeoutMs));
-  const { references, complete } = threadReferences(detail);
-  // No discovery verb exists. The get-deal-room activity pointer is the link to
-  // THIS deal; native ids are never inferred from names, note ids or deal ids.
-  const results = await Promise.all(references.map(async identity => correspondenceState(
-    await boundedRead(() => client.readCorrespondenceThread(identity), timeoutMs), identity)));
-  const items = results.flatMap(result => result.items);
-  const failed = results.some(result => result.state !== 'ready');
-  const threads = !complete ? unavailableEvidence('thread_coverage_unavailable')
-    : !references.length ? unavailableEvidence(readiness.reason === 'adapter_unavailable' ? readiness.reason : 'native_identity_unavailable')
-    : failed ? unavailableEvidence(results.find(result => result.state !== 'ready').reason)
-      : { state: 'ready', count: items.length, items };
-  return { threads, meetings: meetingEvidence(detail.activities) };
+  try {
+    const readiness = readinessState(await boundedRead(() => client.correspondenceReadiness(readinessRequest()), timeoutMs));
+    const { references, complete } = threadReferences(detail);
+    // No discovery verb exists. The get-deal-room activity pointer is the link to
+    // THIS deal; native ids are never inferred from names, note ids or deal ids.
+    const results = await Promise.all(references.map(async identity => correspondenceState(
+      await boundedRead(() => client.readCorrespondenceThread(identity), timeoutMs), identity)));
+    const items = results.flatMap(result => result.items);
+    const failed = results.some(result => result.state !== 'ready');
+    const threads = !complete ? unavailableEvidence('thread_coverage_unavailable')
+      : !references.length ? unavailableEvidence(readiness.reason === 'adapter_unavailable' ? readiness.reason : 'native_identity_unavailable')
+      : failed ? unavailableEvidence(results.find(result => result.state !== 'ready').reason)
+        : { state: 'ready', count: items.length, items };
+    return { threads, meetings: meetingEvidence(detail.activities) };
+  } catch (error) {
+    if (![401,403].includes(error?.status)) throw error;
+    const refused = {state:'refused',items:[],count:null,status:error.status};
+    return {threads:refused,meetings:refused};
+  }
 }
-export function mountEvidence(root, { client, detail = {}, timeoutMs } = {}) {
-  let disposed = false;
-  root.innerHTML = renderEvidence({meetings:meetingEvidence(detail.activities)});
-  loadEvidence(client, detail, { timeoutMs }).then(view => {
-    if (disposed) return;
-    const section = root.querySelector('.correspondence-evidence');
-    if (!section) { root.innerHTML = renderEvidence(view); return; }
-    if (view.threads.state === 'ready' && view.threads.items.length)
-      section.insertAdjacentHTML('beforeend',evidenceGroup('Threads',view.threads));
-  });
-  return () => { disposed = true; };
+export function mountEvidence(root, { client, detail = {}, timeoutMs, onDenied, initialView } = {}) {
+  let disposed = false, generation = 0;
+  async function refresh() {
+    const current = ++generation;
+    // Replace only the thread group so meeting disclosures and focus survive.
+    paint({threads:{state:'loading',items:[]},meetings:meetingEvidence(detail.activities)});
+    const view = await loadEvidence(client, detail, {timeoutMs});
+    if (disposed || current !== generation) return;
+    if (view.threads.state === 'refused') { root.innerHTML = renderEvidence(view); onDenied?.({status:view.threads.status}); return; }
+    paint(view);
+  }
+  function paint(view) {
+    if (!root.querySelector('.correspondence-evidence')) { root.innerHTML = renderEvidence(view); return; }
+    for (const [group, title] of [['threads','Threads'],['meetings','Meetings']]) {
+      const node = root.querySelector(`[data-evidence-group="${group}"]`);
+      if (group === 'meetings' && node && view.meetings.state === 'ready') continue;
+      if (node) node.outerHTML = evidenceGroup(title,view[group]);
+      else root.querySelector('.correspondence-evidence').insertAdjacentHTML('beforeend',evidenceGroup(title,view[group]));
+    }
+  }
+  const click = event => { if (event.target.closest('[data-evidence-retry]')) void refresh(); };
+  root.addEventListener('click',click);
+  if (initialView) root.innerHTML = renderEvidence(initialView);
+  else void refresh();
+  return () => { disposed = true; ++generation; root.removeEventListener('click',click); };
 }

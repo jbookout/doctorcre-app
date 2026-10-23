@@ -447,7 +447,7 @@ export const SEARCH_STATES = Object.freeze([
  * never collapse into one, and this page keeps them apart.
  */
 export function classifySearchFailure(error) {
-  if (error && error.payload && nonEmptyString(error.payload.error)) return "refused";
+  if ([401,403].includes(error?.status) || (error && error.payload && nonEmptyString(error.payload.error))) return "refused";
   return "unavailable";
 }
 
@@ -476,6 +476,7 @@ export function searchPhase({ status, payload, catchUp = null, submitted = false
   if (status === "loading") return "loading";
   if (status === "unavailable" || status === "refused" || status === "unknown") return status;
   if (!submitted) return "empty";
+  if (catchUp?.state === "unavailable") return "partial";
   if (catchUp && catchUp.state === "needs_disambiguation") return "disambiguation";
   if (!payload) return "empty";
   if (truncationNotes(payload, catchUp).length > 0) return "partial";
