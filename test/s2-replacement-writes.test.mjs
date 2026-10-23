@@ -10,7 +10,7 @@ function forms({version=1,lost=false}={}){
  const deal={id:'synthetic-deal',name:'Demo replacement',version:1,next_step:'Prior step',next_date:null,market_agent:'Prior agent',market:'Demo city'};
  const account={account_client_id:'synthetic-account',account_name:'Demo account',base_version:1,account_owner:'joe'};
  const state={selfActor:'joe',deals:new Map([[deal.id,deal]]),accounts:[account],nextStepRequests:new Map(),nextStepInFlight:new Set(),boardSync:{requestRefresh(){}}};
- const send=async request=>{writes.push(structuredClone(request));if(lost){lost=false;throw new Error('timeout after commit');}return {ok:true};};
+ const send=async request=>{writes.push(structuredClone(request));if(lost){lost=false;throw new Error('timeout after commit');}return {ok:true,deal_id:deal.id};};
  state.client={getDeal:async()=>{reads++;return {deal:{...deal,version,market_agent:version===1?'Prior agent':'Partner agent'}};},getBoard:async()=>{reads++;return {actor:'joe',accounts:[{...account,base_version:version,account_owner:version===1?'joe':'dell'}]};},setNextStep:send,setMarketAgent:send,setNationalAccountOwner:send};
  const $=key=>{if(!nodes.has(key))nodes.set(key,{value:'',disabled:false,textContent:''});return nodes.get(key);};
  const context=vm.createContext({state,$,esc:x=>x,openForm:value=>{options=value;},account:()=>state.accounts[0],createRetainedCommands,structuredClone,classifyCommandOutcome,commandMessage,uuidv4:()=>crypto.randomUUID(),loadHome:async()=>{},confirmLocalWrite:()=>deal,renderBoardOnly(){},showToast(){}});

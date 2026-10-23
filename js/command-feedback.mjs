@@ -236,6 +236,8 @@ export function classifyCommandOutcome({ response = null, error = null, retry = 
   if (response && response.conflict && (response.ok === false || response.status === 'conflict')) {
     return { status: 'conflict', reason: 'version_conflict', code: null, hint: null, conflict: response.conflict };
   }
+  if (response?.needs_confirm === true && response.ok !== false && !response.error)
+    return { status: 'conflict', reason: 'needs_confirm', code: null, hint: response.hint || null };
   if (response && response.ok !== false && (response.ok === true || response.status === 'ok')) {
     return {
       status: 'ok', reason: null, code: null, hint: null,

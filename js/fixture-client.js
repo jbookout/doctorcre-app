@@ -2964,10 +2964,12 @@ export async function createFixtureClient(opts = {}) {
     },
 
     async createNationalMarketDeal(args) {
-      return client.createDeal({ name: args.deal_name, client: args.client_name,
+      const result = await client.createDeal({ name: args.deal_name, client: args.client_name,
         deal_type: args.deal_type || 'Startup', phase: args.phase || 'On Deck',
         segment: args.segment, market: args.market, lane: 'national',
         idempotency_key: args.idempotency_key });
+      return { ok:true, deal_id:result.deal.id, client_ref:result.deal.client_ref,
+        account_client_id:result.deal.account_client_id };
     },
 
     // Mirrors the record layer's revert-deal-field verb: the reverted event
