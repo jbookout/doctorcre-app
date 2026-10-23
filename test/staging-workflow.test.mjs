@@ -31,3 +31,27 @@ test('signed-in staging runs nightly, manually and for its PR changes with the s
   assert.match(upload.with.path, /\.e2e\/playwright/);
   assert.doesNotMatch(upload.with.path, /\.auth/);
 });
+
+test('staging deploys the tested commit before signed-in journeys and keeps the deploy secret out of build steps', () => {
+  const document = workflow();
+  const events = document.on ?? document.true;
+  assert.deepEqual(events.push.branches, ['main']);
+  assert.ok(events.pull_request.paths.includes('**'));
+  const job = document.jobs.staging;
+  assert.match(job.if, /head\.repo\.full_name == github\.repository/);
+  assert.equal(document.concurrency['cancel-in-progress'], false);
+  const checkout = job.steps.find(step => step.uses?.startsWith('actions/checkout@'));
+  assert.equal(checkout.with.ref, '${{ github.sha }}');
+  assert.equal(checkout.with['fetch-depth'], 0);
+  const build = job.steps.findIndex(step => step.run === 'npm run build');
+  const deploy = job.steps.findIndex(step => step.run?.includes('npm run release:staging'));
+  const readback = job.steps.findIndex(step => step.run?.includes('scripts/verify-app-release.mjs'));
+  const journeys = job.steps.findIndex(step => step.id === 'playwright');
+  assert.ok(build >= 0 && build < deploy && deploy < readback && readback < journeys);
+  assert.equal(job.steps[build].env.DOCTORCRE_SOURCE_COMMIT, '${{ github.sha }}');
+  assert.match(job.steps[deploy].run, /--source-sha "\$SOURCE_COMMIT"/);
+  assert.equal(job.steps[deploy].env.CLOUDFLARE_API_TOKEN, '${{ secrets.CLOUDFLARE_API_TOKEN }}');
+  for (const [index, step] of job.steps.entries()) {
+    if (index !== deploy) assert.equal(step.env?.CLOUDFLARE_API_TOKEN, undefined);
+  }
+});
