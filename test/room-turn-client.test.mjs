@@ -23,7 +23,7 @@ test('S2 room timeout across minute boundaries replays the original request exac
 test('S2 room unknown failure with HTTP 503 retains key while a 400 refusal permits correction',async()=>{
  let fail=503,keys=0;const calls=[];
  const client=createRoomTurnClient({newKey:()=>`request-${++keys}`,session:async()=> 'synthetic-session-a',fetchImpl:async(_path,init)=>{
-  calls.push(JSON.parse(init.body));return fail?Response.json({error:'wire_unavailable'},{status:fail}):Response.json({ok:true,seq:1});
+  calls.push(JSON.parse(init.body));return fail?Response.json({error:fail===400?'body_required':'wire_unavailable'},{status:fail}):Response.json({ok:true,seq:1});
  }});
  await assert.rejects(client.send('queue',{body:'Queue command'}),error=>error.status===503);
  assert.ok(client.pending('queue'));
