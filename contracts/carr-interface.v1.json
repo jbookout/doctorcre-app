@@ -1,9 +1,9 @@
 {
   "schema": "doctorcre-carr-interface.v1",
-  "version": "1.52.0",
+  "version": "1.53.0",
   "producer": {
     "repository": "jbookout/carr-system",
-    "source_commit": "7572fac5d4184c2a90836fdb9f32f0ffe4ab9309"
+    "source_commit": "bda0b0afdf00f9a285c17aa81c6667d4eacb5696"
   },
   "consumer": "jbookout/doctorcre-app",
   "transport": {
@@ -509,7 +509,7 @@
       "write": false,
       "producer": {
         "repository": "jbookout/carr-system",
-        "source_commit": "7572fac5d4184c2a90836fdb9f32f0ffe4ab9309",
+        "source_commit": "bda0b0afdf00f9a285c17aa81c6667d4eacb5696",
         "pull_request": "https://github.com/DoctorCRE/carr-system/pull/2120"
       },
       "response": {
@@ -647,7 +647,7 @@
     "get-deal-room": {
       "producer": {
         "repository": "jbookout/carr-system",
-        "source_commit": "7572fac5d4184c2a90836fdb9f32f0ffe4ab9309",
+        "source_commit": "bda0b0afdf00f9a285c17aa81c6667d4eacb5696",
         "pull_request": "https://github.com/DoctorCRE/carr-system/pull/2120"
       },
       "response": {
@@ -734,7 +734,7 @@
       "write": false,
       "producer": {
         "repository": "jbookout/carr-system",
-        "source_commit": "7572fac5d4184c2a90836fdb9f32f0ffe4ab9309",
+        "source_commit": "bda0b0afdf00f9a285c17aa81c6667d4eacb5696",
         "module": "mcp-server/src/feature-switches.js"
       },
       "inputSchema": {
@@ -798,7 +798,8 @@
       "write": false,
       "producer": {
         "repository": "jbookout/carr-system",
-        "source_commit": "5091ced7a60b54e34170a7aa080a0676485b9a30"
+        "source_commit": "bda0b0afdf00f9a285c17aa81c6667d4eacb5696",
+        "pull_request": "https://github.com/DoctorCRE/carr-system/pull/2148"
       },
       "response": {
         "schema_version": "home-agenda.v1",
@@ -827,7 +828,10 @@
           "client_status",
           "prospect_engagement_status",
           "critical_dates",
-          "next_actions"
+          "next_actions",
+          "short_name",
+          "item_schema_version",
+          "items"
         ],
         "critical_date_keys": [
           "id",
@@ -848,9 +852,31 @@
         "limits": {
           "deals": 1000,
           "critical_dates": 10000,
-          "open_actions": 10000
+          "open_actions": 10000,
+          "checklist_items": 10000
         },
-        "overflow": "agenda_limit_exceeded; no truncated or partial snapshot is returned."
+        "overflow": "agenda_limit_exceeded; no truncated or partial snapshot is returned.",
+        "item_schema_version": "deal-items.v1",
+        "item_keys": [
+          "id",
+          "title",
+          "due_on",
+          "status",
+          "bullets",
+          "source_ref"
+        ],
+        "bullet_keys": [
+          "date",
+          "kind",
+          "text"
+        ],
+        "bullet_kinds": [
+          "promised",
+          "call",
+          "suggestion",
+          "status"
+        ],
+        "short_name": "Record-layer short deal name; fall back to the actual deal name when contact or market evidence is absent."
       }
     }
   },
@@ -1046,7 +1072,7 @@
       "write": true,
       "producer": {
         "repository": "jbookout/carr-system",
-        "source_commit": "7572fac5d4184c2a90836fdb9f32f0ffe4ab9309"
+        "source_commit": "bda0b0afdf00f9a285c17aa81c6667d4eacb5696"
       },
       "inputSchema": {
         "type": "object",
@@ -1081,7 +1107,7 @@
       "write": true,
       "producer": {
         "repository": "jbookout/carr-system",
-        "source_commit": "7572fac5d4184c2a90836fdb9f32f0ffe4ab9309"
+        "source_commit": "bda0b0afdf00f9a285c17aa81c6667d4eacb5696"
       },
       "inputSchema": {
         "type": "object",
@@ -1110,7 +1136,7 @@
       "write": true,
       "producer": {
         "repository": "jbookout/carr-system",
-        "source_commit": "7572fac5d4184c2a90836fdb9f32f0ffe4ab9309"
+        "source_commit": "bda0b0afdf00f9a285c17aa81c6667d4eacb5696"
       },
       "inputSchema": {
         "type": "object",

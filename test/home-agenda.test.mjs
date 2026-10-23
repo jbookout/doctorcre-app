@@ -63,3 +63,16 @@ test('Home agenda remains available to Doc through the same authorized read', as
   assert.equal(context.finish(context.begin('getHomeAgenda'), payload), true);
   assert.equal(context.snapshot().records.some(row => row.id === payload.deals[0].id), true);
 });
+
+
+test('the Home contract carries the stored checklist shape used by deal alerts', async () => {
+  const contract = JSON.parse(await readFile(new URL('../contracts/carr-interface.v1.json', import.meta.url), 'utf8'));
+  const home = contract.mcp_read_contracts['read-home-agenda'];
+  const items = contract.mcp_read_contracts['get-deal-room'].response;
+  for (const field of ['short_name', 'item_schema_version', 'items']) assert.ok(home.response.deal_keys.includes(field), field);
+  assert.equal(home.response.item_schema_version, items.item_schema_version);
+  assert.deepEqual(home.response.item_keys, items.item_keys);
+  assert.deepEqual(home.response.bullet_keys, items.bullet_keys);
+  assert.deepEqual(home.response.bullet_kinds, items.bullet_kinds);
+  assert.equal(home.producer.source_commit, contract.producer.source_commit);
+});
