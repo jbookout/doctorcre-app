@@ -102,7 +102,7 @@ import { cheatSheetText, factSummary, formatTourDate, tourDisplayName, tourMetaL
       const data = await post("/api/tours/create", createPending);
       if (!id(data.tour_id)) throw new Error("outcome_unknown");
       routeEndpoints.set(data.tour_id, { start: createPending.start_point, end: createPending.end_point });
-      await loadLibrary(); await loadTour(data.tour_id);
+      await loadLibrary(); await loadTour(data.tour_id,{throwOnFailure:true});
       createPending = null; createPhase = "ready"; persistPending(); $("#create-tour-state").textContent = "Tour created. Add properties from the selection cart.";
       $("#create-tour-panel").open = false;
     } catch (error) {
@@ -679,7 +679,7 @@ import { cheatSheetText, factSummary, formatTourDate, tourDisplayName, tourMetaL
     libraryReady = true;
     $("#retry-library").hidden = true;
     if (!createPending && readPending()?.create) { createPending = readPending().create; createPhase = "unknown"; $("#create-tour-panel").open = true; $("#create-tour-state").textContent = "Creation outcome unknown after reload. Reconcile before retrying the retained request."; renderCreate(); }
-    state.tours = Array.isArray(data.tours) ? data.tours.filter((tour) => id(tour?.id)) : []; renderLibrary(); status("Tour library ready.");
+    state.tours = Array.isArray(data.tours) ? data.tours.filter((tour) => id(tour?.id)) : []; renderLibrary(); if ($("#tour-recovery").hidden) status("Tour library ready.");
     const retained = readPending()?.composer;
     if (!composer && retained?.plan && id(retained.tourId)) {
       restoredTourId = retained.tourId; renderCreate(); status("An unresolved route request must be reconciled before another Tour can be edited.");
@@ -701,7 +701,7 @@ import { cheatSheetText, factSummary, formatTourDate, tourDisplayName, tourMetaL
   }
   async function loadProjectionPreview() { const preview = $("#projection-preview"); state.candidateDigest = ""; preview.hidden = true; preview.textContent = ""; if (!id(state.projectionDraftId)) return; const data = await request(`/api/tours/projection/candidates?projection_id=${encodeURIComponent(state.projectionDraftId)}`); state.candidateDigest = text(data.candidate_digest); const rows = Array.isArray(data.preview) ? data.preview : []; preview.textContent = rows.map(row => { const facts = row?.facts && typeof row.facts === "object" ? row.facts : {}; return `${text(row.route_label, `Stop ${row.route_sequence || ""}`)} · ${text(facts["display.name"], "Unnamed property")}\n${text(facts["display.address"], "Address unavailable")}${factSummary(facts) ? `\n${factSummary(facts)}` : ""}`; }).join("\n\n"); preview.hidden = false; }
   let tourLoadSeq = 0;
-  async function loadTour(tourId, { requireComposerDetail = false } = {}) {
+  async function loadTour(tourId, { requireComposerDetail = false, throwOnFailure = false } = {}) {
     if (state.pendingShare && state.pendingShare.tourId !== tourId) { status("Check link outcome before switching Tours."); return; }
     if (state.shareBusy) return;
     if (restoredTourId && restoredTourId !== tourId) { status("Reconcile the retained Tour before switching Tours."); return; }
@@ -710,11 +710,15 @@ import { cheatSheetText, factSummary, formatTourDate, tourDisplayName, tourMetaL
     navigationBusy = true; if (composer) renderComposer(); renderCreate();
     try {
       const seq = ++tourLoadSeq; ++state.feedbackSeq; status("Loading tour…");
+      $("#tour-recovery").hidden = true;
+      $("#tour-panel").hidden = true;
+      $("#empty-state").hidden = true;
       const tour = await observeDocRead("tourDetail", [tourId], () => request(`/api/tours/detail?tour_id=${encodeURIComponent(tourId)}`));
+      if (tour?.id !== tourId || !Array.isArray(tour.stops)) throw new Error("read_invalid");
       if (requireComposerDetail || tour.routes?.length || createPending || restoredTourId) validateDetail(tour, tourId);
       if (seq !== tourLoadSeq) return;
       const changed = composer && composer.snapshot !== routeSnapshot(tour);
-      if (changed && (composer.dirty || composer.plan || composer.busy)) { status("Saved route changed. Save or reconcile the displayed draft before reloading."); return; }
+      if (changed && (composer.dirty || composer.plan || composer.busy)) { $("#tour-panel").hidden = false; status("Saved route changed. Save or reconcile the displayed draft before reloading."); return; }
       if (state.tour?.id !== tourId) { state.rawShareToken = ""; state.shareGrantId = ""; $("#share-url").value = ""; $("#share-link").hidden = true; ++state.hydrationSeq; state.cheatDirty = false; state.cheatDraftTourId = tourId; state.selectedIds = []; state.cart = null; state.selectionDirty = false; state.pendingSelection = null; state.undoSelectionIds = null; state.selectionTourId = tourId; }
       state.tour = tour;
       selectDocRecord("tour", tour.id);
@@ -722,6 +726,32 @@ import { cheatSheetText, factSummary, formatTourDate, tourDisplayName, tourMetaL
       restoredTourId = "";
       renderTour(); renderSelection(); await loadSelectionCart(tourId); await Promise.all([loadProjectionPreview(), loadFeedback()]);
       if (state.tour?.id === tourId) status(state.feedbackStatus === "unavailable" ? "Tour loaded. Client responses are unavailable." : "Tour ready.");
+    } catch (error) {
+      const denied = [401,403].includes(error.status) || error.message === "session_changed";
+      state.tour = null;
+      selectDocRecord(null,null);
+      $("#tour-panel").hidden = true;
+      $("#empty-state").hidden = true;
+      itineraryView?.destroy(); itineraryView = null;
+      $("#accepted-itinerary").hidden = true;
+      if (denied) {
+        ++state.feedbackSeq; ++state.hydrationSeq;
+        state.feedback = null; state.cart = null; state.selectedIds = [];
+        state.rawShareToken = ""; state.projectionId = ""; state.shareGrants = [];
+        $("#share-url").value = ""; $("#share-link").hidden = true;
+        $("#cheat-content").value = ""; state.cheatDirty = false;
+        // Unanswered writes stay bound to the original session for reconciliation.
+        if (!composer?.plan) composer = null;
+        persistPending();
+      }
+      status(denied ? "Sign in to reload this Tour." : "Tour detail unavailable. Reload this Tour to try again.");
+      const recovery = $("#tour-recovery"); recovery.replaceChildren(); recovery.hidden = false;
+      const control = document.createElement(denied ? "a" : "button");
+      if (denied) { control.href = "/auth/login"; control.dataset.tourSignin = ""; control.textContent = "Sign in"; }
+      else { control.type = "button"; control.dataset.tourRetry = ""; control.textContent = "Retry Tour detail"; control.onclick = () => void loadTour(tourId,{requireComposerDetail}); }
+      recovery.append(control);
+      if (throwOnFailure) throw error;
+      return false;
     } finally { navigationBusy = false; if (composer) renderComposer(); renderCreate(); }
   }
   function moveStop(stopId, delta) { const list = stops(); const index = list.findIndex((stop) => stop.id === stopId); const destination = index + delta; if (index < 0 || destination < 0 || destination >= list.length) return; [list[index], list[destination]] = [list[destination], list[index]]; renderTour(); }

@@ -18,3 +18,5 @@
 @media (max-width: 480px) { .correspondence-evidence { padding: var(--space-3); } .evidence-timeline { padding-left: var(--space-2); } }
 @media (prefers-reduced-motion: reduce) { .evidence-item summary { transition: none; } }
 html[data-motion="reduced"] .evidence-item summary { transition: none; }
+
+.correspondence-evidence :is(button, a) { display: inline-flex; align-items: center; justify-content: center; min-height: var(--touch); min-width: var(--touch); padding: var(--space-2); }

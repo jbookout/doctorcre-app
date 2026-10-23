@@ -37,7 +37,8 @@ for (const failure of ["503", "timeout", "malformed"]) test(`automatic itinerary
   const scope = `sha256:${createHash("sha256").update("synthetic-csrf").digest("hex")}`;
   const { dom, doc } = await open(store, { "doctorcre-itinerary-tour-v1": JSON.stringify({ scope, tour_id: tourId }) });
   assert.equal(reads, 1);
-  assert.match(doc.querySelector("#status").textContent, /Saved Tour temporarily unavailable/i);
+  assert.match(doc.querySelector("#status").textContent, /Tour detail unavailable/i);
+  assert.ok(doc.querySelector("[data-tour-retry]"));
   assert.equal(doc.querySelector("#create-tour").disabled, false);
   fail = false; doc.querySelector(".tour-button").click(); await settle();
   assert.equal(reads, 2); assert.match(doc.querySelector("#status").textContent, /Tour ready/);
@@ -908,4 +909,28 @@ test("excluded stop keeps its state visible and folds optional editing details",
     assert.ok(details.querySelector('[data-field="dwell_minutes"]'));
     assert.equal(doc.querySelector('#reload-composer').hidden, true);
   } finally { dom.window.close(); }
+});
+
+test('denied creation readback hides detail while retaining the session-bound creation request',async()=>{
+  const store=domain(), normal=store.fetch;
+  store.fetch=async(path,options)=>path.startsWith('/api/tours/detail') ? response(null,403) : normal(path,options);
+  const {dom,doc}=await open(store);
+  try{
+    await create(doc);
+    assert.equal(doc.querySelector('#tour-panel').hidden,true);
+    assert.match(doc.querySelector('#create-tour-state').textContent,/outcome unknown/i);
+    const retained=JSON.parse(dom.window.sessionStorage.getItem('doctorcre-tour-pending-v1'));
+    assert.equal(retained.create.idempotency_key,store.calls.find(call=>call.path==='/api/tours/create').body.idempotency_key);
+  }finally{dom.window.close();}
+});
+
+test('a changed Tour read keeps the guarded unsaved composer visible',async()=>{
+ const store=domain(),{dom,doc}=await open(store);
+ try{
+  await create(doc);await addCart(doc);
+  const tour=[...store.tours.values()][0];tour.routes[0].id=uuid();
+  doc.querySelector('.tour-button').click();await settle();
+  assert.match(doc.querySelector('#status').textContent,/Save or reconcile the displayed draft/);
+  assert.equal(doc.querySelector('#tour-panel').hidden,false);
+ }finally{dom.window.close();}
 });

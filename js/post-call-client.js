@@ -1,15 +1,26 @@
+import { readWithDeadline } from './current-read.mjs';
 const DEFAULT_LOOPBACK = 'http://127.0.0.1:4682';
 const DEFAULT_HEADER = { 'X-CARR-Call-Mode': 'deal-room-v1' };
 
-async function payload(response, fallback) {
-  const body = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    const error = new Error(body.error || fallback);
-    error.status = response.status;
-    error.payload = body;
-    throw error;
+// One deadline includes headers and JSON, even when the transport ignores abort.
+export async function requestCompanion(url, init = {}, {fetchImpl = fetch, timeoutMs = 15000, fallback = 'Call Mode request failed.'} = {}) {
+  const write = init.method === 'POST';
+  try {
+    return await readWithDeadline(async signal => {
+      const response = await fetchImpl(url, {targetAddressSpace:'loopback', ...init, signal});
+      let body;
+      try { body = await response.json(); }
+      catch { throw Object.assign(new Error('Invalid companion response'),{status:response.ok ? undefined : response.status}); }
+      if (!response.ok) throw Object.assign(new Error(body?.error || fallback), {status:response.status, payload:body});
+      if (!body || typeof body !== 'object' || Array.isArray(body)) throw new Error('Invalid companion response');
+      return body;
+    }, {timeoutMs});
+  } catch (cause) {
+    const unknown = write && (!cause.status || cause.status >= 500);
+    const message = cause.code === 'read_timeout' ? 'Local Call Mode timed out.' : cause.status ? fallback : 'Local Call Mode could not read the companion response.';
+    throw Object.assign(new Error(`${message}${unknown ? ' Outcome unknown. Check local state or the report before retrying.' : ' Retry to check the local companion.'}`),
+      {cause, status:cause.status, outcomeUnknown:unknown, code:cause.code});
   }
-  return body;
 }
 
 /** Narrow client for the loopback-only post-call review surface. */
@@ -19,46 +30,38 @@ export function createPostCallClient(options = {}) {
   const postHeaders = { 'content-type': 'application/json', ...DEFAULT_HEADER,
     ...(options.postHeaders || {}) };
 
-  async function loopbackFetch(path, init = {}) {
-    try {
-      return await fetchImpl(`${loopback}${path}`, { targetAddressSpace: 'loopback', ...init });
-    } catch (cause) {
-      const error = new Error('Call Mode could not reach the local post-call processor.');
-      error.cause = cause;
-      error.permission = true;
-      throw error;
-    }
+  function loopbackFetch(path, init = {}) {
+    return requestCompanion(`${loopback}${path}`, init, {fetchImpl, timeoutMs:options.timeoutMs});
   }
 
   return {
     async publishCallContext(context) {
-      const response = await loopbackFetch('/api/call-context', {
+      return loopbackFetch('/api/call-context', {
         method: 'POST', headers: postHeaders, body: JSON.stringify(context),
       });
-      return payload(response, 'Call Mode could not prepare the weekly agenda context.');
     },
 
     async getStatus(session) {
-      const response = await loopbackFetch(`/api/post-call?session=${encodeURIComponent(session)}`, {
+      const body = await loopbackFetch(`/api/post-call?session=${encodeURIComponent(session)}`, {
         headers: { ...DEFAULT_HEADER },
       });
-      return payload(response, 'The post-call report could not be loaded.');
+      const status = typeof body.status === 'object' ? body.status?.state : body.status || body.state;
+      if (typeof status !== 'string' || !status) throw new Error('Post-call report unavailable: invalid status.');
+      return body;
     },
 
     async syncStatus(session) {
-      const response = await loopbackFetch('/api/post-call/sync', {
+      return loopbackFetch('/api/post-call/sync', {
         method: 'POST', headers: postHeaders, body: JSON.stringify({ session }),
       });
-      return payload(response, 'Call Mode could not verify the post-call review state.');
     },
 
     async createOutlookDraft(session, draftId, approvedContentHash) {
-      const response = await loopbackFetch(
+      return loopbackFetch(
         `/api/post-call/drafts/${encodeURIComponent(draftId)}/create`, {
           method: 'POST', headers: postHeaders,
           body: JSON.stringify({ session, approved_content_hash: approvedContentHash }),
         });
-      return payload(response, 'Outlook could not create this draft.');
     },
   };
 }
