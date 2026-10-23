@@ -99,9 +99,26 @@ export function controlSnapshot(reads) {
 
 // A single board snapshot supplies flags and agenda. Slow or failed optional
 // data never prevents the deals from arriving. Every read has a deadline.
-export async function readHomeDashboard(client, { onUpdate = () => {}, timeoutMs = 10_000, signal } = {}) {
+export function readHomeDashboard(client, options) {
+  return readHome(client, [
+    ['invoices', signal => client.getInvoiceTracker({ signal })],
+    ['leads', signal => client.getLeadBoard({ signal })],
+    ['relationships', signal => client.getRelationshipNetwork({ signal })],
+    ['incidents', signal => client.incidentBoard({ state: 'open', limit: 1000 }, { signal }), 'control'],
+    ['work', signal => client.currentWorkItem({ signal }), 'control'],
+    ['requests', signal => client.currentWorkRequests({ signal }), 'control'],
+    ['resources', signal => client.readResourceDashboard({ signal }), 'control'],
+    ['schedule', signal => client.scheduleBoard({ signal }), 'control'],
+  ], options);
+}
+
+export function readHomeAgenda(client, options) {
+  return readHome(client, [], options);
+}
+
+async function readHome(client, feeds, { onUpdate = () => {}, timeoutMs = 10_000, signal } = {}) {
   const result = { board: null, details: new Map(), leads: null, invoices: null, relationships: null, control: {}, unauthorized: false, updatedAt: null, loading: true,
-    reads: Object.fromEntries(['board', 'leads', 'invoices', 'relationships', 'incidents', 'work', 'requests', 'resources', 'schedule'].map(key => [key, { state: 'loading' }])) };
+    reads: Object.fromEntries(['board', ...feeds.map(([key]) => key)].map(key => [key, { state: 'loading' }])) };
   const publish = () => onUpdate(result);
   const take = async (name, read, target = result) => {
     try {
@@ -136,11 +153,7 @@ export async function readHomeDashboard(client, { onUpdate = () => {}, timeoutMs
       }
     }));
   });
-  await Promise.all([board, take('invoices', signal => client.getInvoiceTracker({ signal })), take('leads', signal => client.getLeadBoard({ signal })), take('relationships', signal => client.getRelationshipNetwork({ signal })),
-    ...[['incidents', signal => client.incidentBoard({ state: 'open', limit: 1000 }, { signal })],
-      ['work', signal => client.currentWorkItem({ signal })], ['requests', signal => client.currentWorkRequests({ signal })],
-      ['resources', signal => client.readResourceDashboard({ signal })], ['schedule', signal => client.scheduleBoard({ signal })]]
-      .map(([key, read]) => take(key, read, result.control))]);
+  await Promise.all([board, ...feeds.map(([key, read, target]) => take(key, read, target === 'control' ? result.control : result))]);
   result.loading = false;
   publish();
   return result;
