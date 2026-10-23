@@ -908,13 +908,14 @@ async function refreshPanel() {
       }
       const evidence = await loadEvidence(state.client, detail);
       if (state.panelDeal !== id || seq !== panelReadSequence) return;
+      if (evidence.threads.state === 'refused') { refusePanelDetail({status:evidence.threads.status}); return; }
       const root = $('panelEvidence');
       const html = renderEvidence(evidence);
       const evidenceTemplate = document.createElement('div'); evidenceTemplate.innerHTML = html;
       if (root.innerHTML !== evidenceTemplate.innerHTML) {
         const expanded = new Set([...root.querySelectorAll('details[open]')].map(n => n.querySelector('summary')?.textContent));
         disposeEvidence?.(); disposeEvidence = null;
-        root.innerHTML = html;
+        disposeEvidence = mountEvidence(root, {client:state.client,detail,onDenied:refusePanelDetail,initialView:evidence});
         root.querySelectorAll('details').forEach(n => { if (expanded.has(n.querySelector('summary')?.textContent)) n.open = true; });
       }
     }

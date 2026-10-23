@@ -41,7 +41,7 @@ export async function loadEvidence(client, detail = {}, { timeoutMs = 8000 } = {
     return {threads:refused,meetings:refused};
   }
 }
-export function mountEvidence(root, { client, detail = {}, timeoutMs, onDenied } = {}) {
+export function mountEvidence(root, { client, detail = {}, timeoutMs, onDenied, initialView } = {}) {
   let disposed = false, generation = 0;
   async function refresh() {
     const current = ++generation;
@@ -63,6 +63,7 @@ export function mountEvidence(root, { client, detail = {}, timeoutMs, onDenied }
   }
   const click = event => { if (event.target.closest('[data-evidence-retry]')) void refresh(); };
   root.addEventListener('click',click);
-  void refresh();
+  if (initialView) root.innerHTML = renderEvidence(initialView);
+  else void refresh();
   return () => { disposed = true; ++generation; root.removeEventListener('click',click); };
 }

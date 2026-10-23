@@ -193,11 +193,10 @@ export function createCallMode(deps) {
   async function reconcileRecorder() {
     if (!state.recorderUncertain) return false;
     const snapshot = await api('state');
-    state.callMode = snapshot;
     if (snapshot.state === 'state_unknown') throw new Error('Recorder outcome unknown. Check Quill before another action.');
     state.recorderUncertain = false;
     const notice = $('#callModePermission'); if (notice) notice.hidden = true;
-    render();
+    await refresh({snapshot});
     toast('Local recorder state refreshed. Review it before another recording action.');
     return true;
   }
@@ -442,6 +441,7 @@ export function createCallMode(deps) {
       state.postCall = { ...state.postCall, status, report: payload.report || null,
         error: reason ? `Local processing stopped: ${reason}` : null };
       if (['review_ready', 'filed', 'failed'].includes(status)) stopPolling();
+      else if (!state.pollTimer) startPolling(session, {immediate:false});
       renderPostCall();
       // The stall this closes: a weekly recording whose companion never got
       // the context index. Supply it now, once per session unless a partner
@@ -460,7 +460,7 @@ export function createCallMode(deps) {
     }
   }
 
-  function startPolling(session, { weekly = false } = {}) {
+  function startPolling(session, { weekly = false, immediate = true } = {}) {
     stopPolling();
     if (state.postCall.session !== session) state.callGeneration = (state.callGeneration || 0) + 1;
     state.postCall = { ...state.postCall, session, weekly: weekly || state.postCall.weekly };
@@ -471,7 +471,7 @@ export function createCallMode(deps) {
     state.pollTimer = mountVisibilityPoll({ document: root, window: root.defaultView, keepAlive: () => true,
       setTimeout: timers.setTimeout, clearTimeout: timers.clearTimeout,
       intervalMs: 1600, poll: () => refreshPostCall({ quiet: true }) });
-    state.pollTimer.refresh();
+    if (immediate) state.pollTimer.refresh();
   }
 
   // ------------------------------------------------------ per-item approval
@@ -561,13 +561,18 @@ export function createCallMode(deps) {
       if (notice) notice.hidden = true;
       render();
       const snapshot = state.callMode;
-      if (snapshot.mode === 'weekly_deal_call' && snapshot.session) {
-        if (callModeActive(snapshot) && state.postCall.session !== snapshot.session) {
-          state.postCall = { ...idlePostCall(), session: snapshot.session, weekly: true };
-          await publishOrRecord(snapshot.session);
-        } else if (!callModeActive(snapshot) && state.postCall.session !== snapshot.session) {
-          state.postCall = { ...idlePostCall(), session: snapshot.session, weekly: true };
-          startPolling(snapshot.session, { weekly: true });
+      const session = snapshot.session || state.postCall.session;
+      const weekly = snapshot.mode === 'weekly_deal_call' || state.postCall.weekly;
+      if (session && (weekly || state.postCall.contextReady)) {
+        const changed = state.postCall.session !== session;
+        if (changed) state.postCall = {...idlePostCall(),session,weekly};
+        if (callModeActive(snapshot)) {
+          if (changed && weekly) await publishOrRecord(session);
+        } else if (changed || ['idle','context_ready','context_loading'].includes(state.postCall.status)) {
+          state.postCall = {...state.postCall,status:'waiting_for_transcript',session,weekly,error:null,
+            contextAttempted:state.postCall.contextReady};
+          renderPostCall();
+          startPolling(session,{weekly});
         }
       }
     } catch (error) {
@@ -646,18 +651,7 @@ export function createCallMode(deps) {
     if (button) button.disabled = true;
     try {
       if (await reconcileRecorder()) return;
-      state.callMode = await api('stop', {});
-      render();
-      const session = state.callMode.session || state.postCall.session;
-      const weekly = state.callMode.mode === 'weekly_deal_call' || state.postCall.weekly;
-      if (session && (weekly || state.postCall.contextReady)) {
-        // If the index never reached the companion, the first poll that sees
-        // awaiting_context gets one more automatic attempt.
-        state.postCall = { ...state.postCall, status: 'waiting_for_transcript', session, weekly, error: null,
-          contextAttempted: state.postCall.contextReady };
-        renderPostCall();
-        startPolling(session, { weekly });
-      }
+      await refresh({snapshot:await api('stop', {})});
       toast('Recording stopped. Quill is processing the call.');
     } catch (error) {
       if (error.outcomeUnknown) state.recorderUncertain = true;
