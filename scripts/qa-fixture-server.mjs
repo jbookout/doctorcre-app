@@ -116,6 +116,7 @@ export async function createQaServer({ buildRoot=resolve(repository,'dist/site')
     if(url.pathname==='/auth/login')return new Response('<!doctype html><title>Fixture sign in</title><h1>Fixture sign in required</h1><p>Synthetic identities are created by the QA setup fixture.</p>',{headers:{'content-type':'text/html'}});
     if(!identity)return url.pathname==='/mcp'||url.pathname.startsWith('/api/')||url.pathname==='/pipeline/changes'?json({error:'not_authenticated'},401):new Response(null,{status:302,headers:{location:`/auth/login?return_to=${encodeURIComponent(url.pathname+url.search)}`}});
     const {viewer,namespace}=identity;const state=stateFor(namespace);
+    if(url.pathname==='/api/system-work/session')return request.method==='GET'?json({actor:{slug:viewer}}):json({error:'fixture_method_unavailable'},405);
     if(url.pathname==='/mcp') {
       let input;try{input=await request.json();}catch{return json({error:'invalid_json'},400);}
       if(input.method!=='tools/call')return json({jsonrpc:'2.0',id:input.id,error:{code:-32601,message:'Method not found'}});
