@@ -910,3 +910,16 @@ test("excluded stop keeps its state visible and folds optional editing details",
     assert.equal(doc.querySelector('#reload-composer').hidden, true);
   } finally { dom.window.close(); }
 });
+
+test('denied creation readback hides detail while retaining the session-bound creation request',async()=>{
+  const store=domain(), normal=store.fetch;
+  store.fetch=async(path,options)=>path.startsWith('/api/tours/detail') ? response(null,403) : normal(path,options);
+  const {dom,doc}=await open(store);
+  try{
+    await create(doc);
+    assert.equal(doc.querySelector('#tour-panel').hidden,true);
+    assert.match(doc.querySelector('#create-tour-state').textContent,/outcome unknown/i);
+    const retained=JSON.parse(dom.window.sessionStorage.getItem('doctorcre-tour-pending-v1'));
+    assert.equal(retained.create.idempotency_key,store.calls.find(call=>call.path==='/api/tours/create').body.idempotency_key);
+  }finally{dom.window.close();}
+});

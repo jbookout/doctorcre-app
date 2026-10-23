@@ -740,7 +740,9 @@ import { cheatSheetText, factSummary, formatTourDate, tourDisplayName, tourMetaL
         state.rawShareToken = ""; state.projectionId = ""; state.shareGrants = [];
         $("#share-url").value = ""; $("#share-link").hidden = true;
         $("#cheat-content").value = ""; state.cheatDirty = false;
-        composer = null; createPending = null; restoredTourId = ""; persistPending();
+        // Unanswered writes stay bound to the original session for reconciliation.
+        if (!composer?.plan) composer = null;
+        persistPending();
       }
       status(denied ? "Sign in to reload this Tour." : "Tour detail unavailable. Reload this Tour to try again.");
       const recovery = $("#tour-recovery"); recovery.replaceChildren(); recovery.hidden = false;
