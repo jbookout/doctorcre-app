@@ -51,7 +51,7 @@ import { FEEDBACK_STATES, feedbackLabel } from './visual-system.js';
 import { escapeText } from './change-receipts.mjs';
 
 /** Codes that mean the server BROKE, not that it declined. */
-const SERVER_FAULT_CODES = new Set(['unhandled_verb_failure', 'internal_error']);
+const SERVER_FAULT_CODES = new Set(['unhandled_verb_failure', 'internal_error', 'carr_unavailable', 'wire_unavailable']);
 
 /** Refusals that are really "the version you read is not the version there is". */
 const BASE_VERSION_CODES = new Set(['missing_base_version', 'invalid_base_version']);
@@ -204,11 +204,19 @@ export function settleCommand(state, operationKey, outcome) {
  *              evidence. A fault must never be badged as a refusal: the write
  *              may well have committed.
  */
-export function classifyCommandOutcome({ response = null, error = null } = {}) {
+export function classifyCommandOutcome({ response = null, error = null, retry = false } = {}) {
   if (error) {
     const code = error?.payload?.error || null;
     const hint = error?.payload?.hint || null;
     const httpStatus = Number(error?.status ?? error?.http_status ?? 0) || null;
+    const authorization = DEFINITIVE_HTTP.has(httpStatus) ||
+      ['unauthorized', 'not_authenticated', 'forbidden', 'AUTHORIZATION_REFUSED', 'AUTHENTICATION_REQUIRED'].includes(code);
+    // A gateway cannot settle a business write. Likewise an expired session
+    // or offline retry says nothing about the earlier unanswered operation.
+    if (httpStatus >= 500 || httpStatus === 408 || httpStatus === 429 ||
+      (retry && (authorization || code === 'offline' || error.code === 'session_changed'))) {
+      return { status: 'unknown', reason: httpStatus ? 'server_error' : 'no_answer', code, hint: null, http_status: httpStatus };
+    }
     if (code === 'version_conflict') return { status: 'conflict', reason: 'version_conflict', code, hint, http_status: httpStatus };
     if (code === 'needs_confirm') return { status: 'conflict', reason: 'needs_confirm', code, hint, http_status: httpStatus };
     if (code && BASE_VERSION_CODES.has(code)) return { status: 'conflict', reason: 'base_version', code, hint, http_status: httpStatus };
@@ -353,7 +361,7 @@ export async function performCommand({ operationKey, args = {}, getState, setSta
   } finally {
     clearTimeout(timer);
   }
-  const classified = classifyCommandOutcome({ response, error });
+  const classified = classifyCommandOutcome({ response, error, retry: claim.retry });
   const outcome = (classified.status === 'ok' && typeof supersededBy === 'function')
     ? { ...classified, superseded: supersededBy(claim.request, classified) === true }
     : classified;

@@ -4,13 +4,13 @@ import { readWithDeadline } from './current-read.mjs';
 // the domain client, which knows the command and its versioned contract.
 export function createMcpRequests({ fetchImpl = globalThis.fetch, headers = {}, typedContent = true, clock = globalThis } = {}) {
   let id = 0;
-  return async (name, args = {}, { signal, timeoutMs } = {}) => {
+  return async (name, args = {}, { signal, timeoutMs, headers: operationHeaders = {} } = {}) => {
     const request = async signal => {
       let response;
       try {
         response = await fetchImpl('/mcp', {
           method: 'POST', credentials: 'same-origin',
-          headers: { 'content-type': 'application/json', ...headers },
+          headers: { 'content-type': 'application/json', ...headers, ...operationHeaders },
           ...(signal ? { signal } : {}),
           body: JSON.stringify({ jsonrpc: '2.0', id: ++id, method: 'tools/call', params: { name, arguments: args } }),
         });

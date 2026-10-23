@@ -512,11 +512,34 @@ async function runFollowUp(operationKey, step) {
   if (step.verb === 'set-next-step') operationKey = nextStepKey(step.args.deal);
   const send = FOLLOW_UP_SENDERS[step.verb];
   if (!send) return null;
-  if (!pendingCommand(commandState, operationKey)) operations.set(operationKey, { kind: 'command', verb: step.verb, args: step.args, send, summary: step.summary });
+  const pending = pendingCommand(commandState, operationKey);
+  let args = step.args;
+  if (step.verb === 'set-next-step') {
+    if (pending) args = { ...args, base_version: pending.request.base_version };
+    else {
+      operations.set(operationKey, { kind: 'follow-up-read', step, summary: step.summary });
+      let current;
+      try { current = (await state.client.getDeal(args.deal))?.deal; }
+      catch { /* A missing current version cannot authorize a replacement. */ }
+      if (current?.id !== args.deal || !Number.isSafeInteger(current.version) || current.version < 1) {
+        dock.record(operationKey, { summary: step.summary, status: 'failed', retry: true, undo: false,
+          reason: 'The move was recorded, but the next step was not sent. Retry reading the current record before saving it.' });
+        return null;
+      }
+      const reviewed = step.reviewed || state.deals.get(args.deal);
+      if (!reviewed || noteText(reviewed.next_step) !== noteText(current.next_step) || (reviewed.next_date || null) !== (current.next_date || null)) {
+        dock.record(operationKey, { summary: step.summary, status: 'conflict', retry: false, undo: false,
+          reason: `The next step changed. Current: ${noteText(current.next_step) || 'None'} (${current.next_date || 'no date'}). Review the current record before replacing it.` });
+        return null;
+      }
+      args = { ...args, base_version: current.version };
+    }
+  }
+  if (!pending) operations.set(operationKey, { kind: 'command', verb: step.verb, args, send, summary: step.summary });
   dock.record(operationKey, { summary: step.summary, status: 'sending', undo: false });
   const result = await performCommand({
     operationKey,
-    args: step.args,
+    args,
     getState: () => commandState,
     setState: (next) => { commandState = next; },
     newKey: uuidv4,
@@ -550,6 +573,10 @@ async function runMove(intent, form) {
   if (plan.errors.length) return { ok: false, errors: plan.errors };
 
   const [phaseStep, ...followUps] = plan.steps;
+  for (const step of followUps) if (step.verb === 'set-next-step') {
+    const reviewed = state.deals.get(intent.deal);
+    step.reviewed = { next_step: reviewed?.next_step, next_date: reviewed?.next_date };
+  }
   const cell = cellKey(intent.deal, 'phase');
   if (!pendingCommand(state.fieldWrites, cell)) {
     operations.set(cell, { kind: 'field', deal: intent.deal, value: phaseStep.args.value,
@@ -1324,12 +1351,14 @@ function mountDock() {
       const entry = operations.get(operationKey);
       if (entry?.kind === 'field') retryFieldWrite(operationKey);
       else if (entry?.kind === 'outcome-read') return runOutcomeWrite(operationKey, entry.step, entry.intent);
+      else if (entry?.kind === 'follow-up-read') return runFollowUp(operationKey, entry.step);
       else if (entry?.args) runFollowUp(operationKey, { verb: entry.verb, args: entry.args, summary: entry.summary });
     },
     onReconcile: (operationKey) => {
       const entry = operations.get(operationKey);
       if (entry?.kind === 'field') retryFieldWrite(operationKey);
       else if (entry?.kind === 'outcome-read') return runOutcomeWrite(operationKey, entry.step, entry.intent);
+      else if (entry?.kind === 'follow-up-read') return runFollowUp(operationKey, entry.step);
       else if (entry?.args && entry?.send) {
         runFollowUp(operationKey, { verb: entry.verb, args: entry.args, summary: entry.summary });
       }

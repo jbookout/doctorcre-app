@@ -979,3 +979,25 @@ for (const [name,aliases] of [
   await page.waitForFunction(() => document.querySelector('#workMetadata').textContent.includes('Demo work request'));
   assert.deepEqual(errors, []);
 });
+
+test('S2 room and queue composers lock unknown drafts and replay their original request keys',async t=>{
+ const {page,state,posts,errors}=await open(t,{path:'/control-room/progress/work?board=demo-project&view=tasks',width:390});
+ state.postFailure=true;
+ await page.locator('#composerInput').fill('Synthetic uncertain room turn');
+ await page.locator('#composerInput').press('Enter');
+ await page.waitForFunction(()=>document.querySelector('#composerSend').textContent==='Check outcome');
+ assert.equal(await page.locator('#composerInput').getAttribute('readonly'),'');
+ await page.clock.runFor(120_000);state.postFailure=false;
+ await page.locator('#composerSend').click();
+ await page.waitForFunction(()=>document.querySelector('#composerInput').value==='');
+ assert.deepEqual(posts[1].body,posts[0].body);assert.match(posts[0].body.idempotency_key,/^[0-9a-f-]{36}$/);
+ state.postFailure=true;
+ await page.locator('#enqueueTitle').fill('Synthetic uncertain enqueue');
+ await page.locator('#queueComposer button').click();
+ await page.waitForFunction(()=>document.querySelector('#queueComposer button').textContent==='Check outcome');
+ assert.equal(await page.locator('#enqueueTitle').isDisabled(),true);
+ state.postFailure=false;await page.locator('#queueComposer button').click();
+ await page.waitForFunction(()=>document.querySelector('#queueNotice').textContent.includes('submitted'));
+ assert.deepEqual(posts[3].body,posts[2].body);assert.notEqual(posts[2].body.idempotency_key,posts[0].body.idempotency_key);
+ assert.equal(await page.locator('#enqueueTitle').isDisabled(),false);assert.deepEqual(errors,[]);
+});

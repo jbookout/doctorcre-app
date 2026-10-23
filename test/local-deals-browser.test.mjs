@@ -836,7 +836,7 @@ test('desktop next steps wrap to two lines and retain the full recorded text',as
   assert.equal(box.text,'Confirm the next appointment');
   assert.equal(box.title,box.text);
   const full='Confirm the next appointment with the demo practice and review the complete recorded lease terms before the next joint review.';
-  await page.evaluate(async full=>{const {state}=await import('/js/pipeline.js');await state.client.setNextStep({deal:'d14',text:full,idempotency_key:'demo-full-next-step'});await state.boardSync.refreshBoard({reason:'test'});},full);
+  await page.evaluate(async full=>{const {state}=await import('/js/pipeline.js');await state.client.setNextStep({deal:'d14',base_version:(await state.client.getDeal('d14')).deal.version,text:full,idempotency_key:'demo-full-next-step'});await state.boardSync.refreshBoard({reason:'test'});},full);
   assert.equal(await line.textContent(),full);
   assert.equal(await line.getAttribute('title'),full);
   await page.evaluate(async()=>{

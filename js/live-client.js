@@ -48,14 +48,14 @@ export function createLiveClient(opts = {}) {
     if (selfActor && selfActor !== session.actor.slug) throw Object.assign(new Error('Session changed. Reopen the record before writing.'), { code: 'session_changed' });
     return `${session.actor.slug}:${session.csrf_token}`;
   } });
-  const sessionWrites = new Set(['set-market-agent', 'set-national-account-owner', 'create-national-account',
+  const sessionWrites = new Set(['set-next-step', 'set-market-agent', 'set-national-account-owner', 'create-national-account',
     'create-national-market-deal', 'start-deal-review', 'review-deal', 'end-deal-review',
     'resolve-candidate', 'resolve-post-call-candidate', 'answer-work-request-for-joe', 'add-industry-event', 'update-industry-event']);
 
   const rpc = (verb, args = {}, signal) => rawRpc(verb, args, signal, opts.readTimeoutMs || 10_000);
 
-  async function rawRpc(verb, args = {}, signal, timeoutMs) {
-    const outcome = await requestMcp(verb, args, { signal, timeoutMs });
+  async function rawRpc(verb, args = {}, signal, timeoutMs, headers) {
+    const outcome = await requestMcp(verb, args, { signal, timeoutMs, headers });
     if (outcome.kind === 'authorization' || outcome.reason === 'http') {
       const error = new Error(`live ${verb} -> HTTP ${outcome.status}`);
       error.status = outcome.status;
@@ -94,7 +94,8 @@ export function createLiveClient(opts = {}) {
       .filter(key => args[key] !== undefined).map(key => [key, args[key]]);
     const operationKey = JSON.stringify([verb, target]);
     const retained = sessionWrites.has(verb) ? sessionCommands : commands;
-    return retained.send(operationKey, args, request => rawRpc(verb, request, undefined, timeoutMs || opts.writeTimeoutMs || 10_000));
+    return retained.send(operationKey, args, (request, binding) => rawRpc(verb, request, undefined, timeoutMs || opts.writeTimeoutMs || 10_000,
+      sessionWrites.has(verb) ? { 'x-carr-csrf': binding.slice(binding.indexOf(':') + 1) } : undefined));
   }
 
   // The record layer speaks phase SLUGS (deal_phase table); the board speaks

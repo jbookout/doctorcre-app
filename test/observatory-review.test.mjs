@@ -7,7 +7,7 @@ const read = path => readFile(new URL(`../${path}`, import.meta.url), 'utf8');
 
 test('Observatory pins its read operations and exact producer', async () => {
   const contract = JSON.parse(await read('contracts/carr-interface.v1.json'));
-  assert.equal(contract.producer.source_commit, 'e2e484b1933bfd63c10cc9a1b3350132948f6f74');
+  assert.equal(contract.producer.source_commit, '450c3331f3de244e57e0b83710c75d3396ea581e');
   assert.ok(contract.mcp_operations.includes('read-room-latest'));
   assert.ok(contract.mcp_operations.includes('append-tour-selection-cart-version'));
 });

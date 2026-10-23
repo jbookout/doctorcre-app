@@ -978,6 +978,19 @@ function openForm({ context='Deal Room', title, submit='Save', body, onSubmit, o
   setTimeout(() => $('input,textarea,select', dialog)?.focus(), 0);
 }
 
+function reviewedReplacementVersion(reviewed, current, fields) {
+  const version = record => record?.base_version ?? record?.version ?? record?.client_version;
+  const expected = version(reviewed), fresh = version(current);
+  if (!Number.isSafeInteger(expected) || !Number.isSafeInteger(fresh) || expected < 1 || fresh < 1)
+    throw new Error('The current version is unavailable. Reopen this record before saving.');
+  if (fresh !== expected) {
+    const detail = fields.map(field => `${field.replaceAll('_', ' ')}: ${current[field] ?? 'Not recorded'}`).join('; ');
+    const message = `This record changed. Current ${detail}. Your draft is kept. Close this form and review the current record before saving.`;
+    throw Object.assign(new Error(message), { payload: { error: 'version_conflict', hint: message } });
+  }
+  return fresh;
+}
+
 function nextStepForm(dealId) {
   const deal = state.deals.get(dealId);
   const pending = state.nextStepRequests.get(dealId);
@@ -987,16 +1000,24 @@ function nextStepForm(dealId) {
     onSubmit:async (data) => {
       if (state.nextStepInFlight.has(dealId)) throw new Error('Next step is still being sent. Wait for the server to answer.');
       const checking = state.nextStepRequests.has(dealId);
-      const request = state.nextStepRequests.get(dealId) || { deal:dealId,
-        text:String(data.get('text') || '').trim(), next_date:data.get('next_date') || null,
-        idempotency_key:uuidv4() };
-      state.nextStepRequests.set(dealId, request);
+      let request = state.nextStepRequests.get(dealId);
       state.nextStepInFlight.add(dealId);
       try {
+        if (!request) {
+          const current = (await state.client.getDeal(dealId))?.deal;
+          if (current?.id !== dealId) throw new Error('The current record could not be verified. No write was sent.');
+          state.deals.set(dealId, { ...deal, ...current });
+          const base_version = reviewedReplacementVersion(deal, current, ['next_step', 'next_date']);
+          request = { deal:dealId, text:String(data.get('text') || '').trim(), next_date:data.get('next_date') || null,
+            base_version, idempotency_key:uuidv4() };
+          state.nextStepRequests.set(dealId, request);
+        }
         await state.client.setNextStep(request);
       } catch (error) {
+        if (!request) throw error;
         const outcome = classifyCommandOutcome({ error });
-        if (outcome.status === 'unknown' && outcome.reason !== 'offline') {
+        if (error.pendingRequest || error.code === 'session_changed' ||
+          (outcome.status === 'unknown' && (checking || outcome.reason !== 'offline')) || (checking && [401,403].includes(error.status))) {
           // The write may have landed. Keep its text, date and key intact until
           // CARR answers a deliberate replay of that same request.
           $('#stepText').value = request.text;
@@ -1052,8 +1073,16 @@ function marketAgentForm(dealId) {
     <div class="field"><label for="agentName">Assigned local agent</label><input id="agentName" name="agent_name" required value="${esc(deal.market_agent || '')}" placeholder="Agent’s full name"></div>
     <div class="field"><label for="agentMarket">Market</label><input id="agentMarket" name="market" value="${esc(deal.market || '')}" placeholder="City, state"></div>`,
     onSubmit:async (data) => {
-      await appWrite(operationKey, state.commands?.pending(operationKey) || { deal:dealId, agent_name:data.get('agent_name'),
-        ...(data.get('market') ? { market:data.get('market') } : {}), source:'partner stated in Deal Room' }, request => state.client.setMarketAgent(request));
+      let request = state.commands?.pending(operationKey);
+      if (!request) {
+        const current = (await state.client.getDeal(dealId))?.deal;
+        if (current?.id !== dealId) throw new Error('The current record could not be verified. No write was sent.');
+        state.deals.set(dealId, { ...deal, ...current });
+        request = { deal:dealId, agent_name:data.get('agent_name'),
+          ...(data.get('market') ? { market:data.get('market') } : {}), source:'partner stated in Deal Room',
+          base_version: reviewedReplacementVersion(deal, current, ['market_agent', 'market']) };
+      }
+      await appWrite(operationKey, request, args => state.client.setMarketAgent(args));
       await loadHome(); showToast(`Market agent confirmed on ${deal.name}`);
     } });
 }
@@ -1110,8 +1139,20 @@ function accountOwnerForm() {
   const operationKey = `national-owner:${selected.account_client_id}`;
   openForm({ operationKey, context:selected.account_name, title:'Change account owner', submit:'Save owner', body:`
     <div class="field"><label for="newAccountOwner">Accountable partner</label><select id="newAccountOwner" name="owner"><option value="joe"${selected.account_owner === 'joe' ? ' selected' : ''}>Joe</option><option value="dell"${selected.account_owner === 'dell' ? ' selected' : ''}>Dell</option></select><small>This changes portfolio accountability only. Individual market-deal owners stay untouched.</small></div>`,
-    onSubmit:async (data) => { await appWrite(operationKey, state.commands?.pending(operationKey) || { account_client_id:selected.account_client_id,
-      owner:data.get('owner') }, request => state.client.setNationalAccountOwner(request)); await loadHome(); showToast(`${selected.account_name} owner updated`); } });
+    onSubmit:async (data) => {
+      let request = state.commands?.pending(operationKey);
+      if (!request) {
+        const board = await state.client.getBoard({ workspace: 'national_account' });
+        if (board.actor !== state.selfActor) throw new Error('Session changed. Reopen this account before saving.');
+        const current = board.accounts?.find(row => row.account_client_id === selected.account_client_id);
+        if (!current) throw new Error('The current account could not be verified. No write was sent.');
+        state.accounts = board.accounts;
+        request = { account_client_id:selected.account_client_id, owner:data.get('owner'),
+          base_version: reviewedReplacementVersion(selected, current, ['account_owner']) };
+      }
+      await appWrite(operationKey, request, args => state.client.setNationalAccountOwner(args));
+      await loadHome(); showToast(`${selected.account_name} owner updated`);
+    } });
 }
 
 function showConflict(conflict) {
