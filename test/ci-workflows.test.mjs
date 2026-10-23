@@ -49,6 +49,28 @@ test('source CI keeps the full required suite and checks privacy before browser 
   assert.ok(privacy >= 0 && privacy < browser);
 });
 
+test('browser dependencies use official Ubuntu mirrors after privacy checks', async t => {
+  const steps = ci.split(/^      - /m).slice(1);
+  const mirror = steps.findIndex(step => /^name: Prefer Ubuntu archives for browser dependencies$/m.test(step));
+  const privacy = steps.findIndex(step => /^run: npm run privacy:check$/m.test(step));
+  const browser = steps.findIndex(step => /^run: npx playwright install --with-deps chromium webkit$/m.test(step));
+  assert.ok(privacy >= 0 && privacy < mirror && mirror < browser,
+    'configure apt mirrors after privacy checks and before installing browser dependencies');
+  const shell = steps[mirror].match(/        run: \|\n([\s\S]*)/)[1].replace(/^          /gm, '');
+  const directory = await mkdtemp(join(tmpdir(), 'doctorcre-apt-mirrors-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const path = join(directory, 'apt-mirrors.txt');
+  await writeFile(path, 'http://azure.archive.ubuntu.com/ubuntu/\tpriority:1\n');
+  const fixtureShell = shell.replaceAll('/etc/apt/apt-mirrors.txt', path).replace(/\bsudo /g, '');
+  assert.doesNotMatch(fixtureShell, /\/etc\//);
+  const expected = 'https://archive.ubuntu.com/ubuntu/\tpriority:1\nhttps://security.ubuntu.com/ubuntu/\tpriority:2\n';
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const result = spawnSync('bash', ['-e', '-o', 'pipefail', '-c', fixtureShell], { encoding: 'utf8' });
+    assert.equal(result.status, 0, result.stdout + result.stderr);
+    assert.equal(await readFile(path, 'utf8'), expected);
+  }
+});
+
 test("release build is read-only and publisher receives only this run's digest-bound artifact", () => {
   assert.match(release, /permissions:\n  contents: read/);
   const [build, publisher] = release.split(/^  publish:/m);
