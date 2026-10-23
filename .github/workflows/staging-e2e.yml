@@ -12,6 +12,8 @@ on:
       - '!**/*.md'
       - '!docs/**'
       - '!_to_delete/**'
+      - '!test/**'
+      - '!tests/**'
       - '!.github/**'
       - '.github/workflows/staging-e2e.yml'
       - 'playwright.config.ts'
