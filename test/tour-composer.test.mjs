@@ -923,3 +923,14 @@ test('denied creation readback hides detail while retaining the session-bound cr
     assert.equal(retained.create.idempotency_key,store.calls.find(call=>call.path==='/api/tours/create').body.idempotency_key);
   }finally{dom.window.close();}
 });
+
+test('a changed Tour read keeps the guarded unsaved composer visible',async()=>{
+ const store=domain(),{dom,doc}=await open(store);
+ try{
+  await create(doc);await addCart(doc);
+  const tour=[...store.tours.values()][0];tour.routes[0].id=uuid();
+  doc.querySelector('.tour-button').click();await settle();
+  assert.match(doc.querySelector('#status').textContent,/Save or reconcile the displayed draft/);
+  assert.equal(doc.querySelector('#tour-panel').hidden,false);
+ }finally{dom.window.close();}
+});

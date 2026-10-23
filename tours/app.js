@@ -718,7 +718,7 @@ import { cheatSheetText, factSummary, formatTourDate, tourDisplayName, tourMetaL
       if (requireComposerDetail || tour.routes?.length || createPending || restoredTourId) validateDetail(tour, tourId);
       if (seq !== tourLoadSeq) return;
       const changed = composer && composer.snapshot !== routeSnapshot(tour);
-      if (changed && (composer.dirty || composer.plan || composer.busy)) { status("Saved route changed. Save or reconcile the displayed draft before reloading."); return; }
+      if (changed && (composer.dirty || composer.plan || composer.busy)) { $("#tour-panel").hidden = false; status("Saved route changed. Save or reconcile the displayed draft before reloading."); return; }
       if (state.tour?.id !== tourId) { state.rawShareToken = ""; state.shareGrantId = ""; $("#share-url").value = ""; $("#share-link").hidden = true; ++state.hydrationSeq; state.cheatDirty = false; state.cheatDraftTourId = tourId; state.selectedIds = []; state.cart = null; state.selectionDirty = false; state.pendingSelection = null; state.undoSelectionIds = null; state.selectionTourId = tourId; }
       state.tour = tour;
       selectDocRecord("tour", tour.id);
