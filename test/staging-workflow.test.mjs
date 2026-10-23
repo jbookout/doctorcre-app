@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
-import { fixtureProducerCommit } from '../tests/staging/journey-fixture.mjs';
+import { fixtureProducerCommit, homeFixtureCommit } from '../tests/staging/journey-fixture.mjs';
 
 const workflow = () => JSON.parse(execFileSync('ruby', ['-ryaml', '-rjson', '-e',
   'puts JSON.generate(YAML.load(STDIN.read))'], {
@@ -45,6 +45,10 @@ test('staging journeys install their exact CARR producer and bind its provider c
   const run = steps.find(step => step.id === 'playwright');
   assert.equal(run.env.CARR_JOURNEY_FIXTURE_REPO, '${{ github.workspace }}/carr-fixture-producer');
   assert.equal(run.env.NEON_API_KEY, '${{ secrets.NEON_API_KEY }}');
+  const home = steps.find(step => step.with?.path === 'carr-home-fixture');
+  assert.equal(home?.with.repository, 'DoctorCRE/carr-system');
+  assert.equal(home.with.ref, homeFixtureCommit);
+  assert.equal(run.env.CARR_HOME_FIXTURE_REPO, '${{ github.workspace }}/carr-home-fixture');
 });
 
 test('staging deploys the tested commit before signed-in journeys and keeps the deploy secret out of build steps', () => {

@@ -5,6 +5,7 @@ import { join } from 'node:path';
 
 const execute = promisify(execFile);
 export const fixtureProducerCommit = '517ecc12c0480d859dd1f4cb270f2a283a853065';
+export const homeFixtureCommit = '0c60e262695795323d97b1b6499d97f1a8becefe';
 export const stagingOrigin = 'https://doctorcre-app-staging.joe-bookout-carr-us.workers.dev';
 
 export async function requireStagingAuthority(request) {
@@ -28,7 +29,7 @@ export async function requireStagingAuthority(request) {
   }
 }
 
-async function produce(action, run) {
+async function produce(action, run, home = false) {
   const repo = process.env.CARR_JOURNEY_FIXTURE_REPO;
   if (!repo) throw new Error('CARR_JOURNEY_FIXTURE_REPO must name the pinned CARR checkout containing tools/staging-journey-fixtures.py');
   if (!process.env.NEON_API_KEY) throw new Error('NEON_API_KEY must be bound for the staging fixture producer');
@@ -38,14 +39,27 @@ async function produce(action, run) {
   if (source.stdout.trim() !== fixtureProducerCommit || changed.stdout.trim()) {
     throw new Error(`CARR fixture producer requires clean commit ${fixtureProducerCommit}`);
   }
+  let script = join(repo, 'tools/staging-journey-fixtures.py');
+  if (home) {
+    const homeRepo = process.env.CARR_HOME_FIXTURE_REPO;
+    if (!homeRepo) throw new Error('CARR_HOME_FIXTURE_REPO must name the pinned CARR Home fixture checkout');
+    const head = await execute('git', ['-C', homeRepo, 'rev-parse', 'HEAD']);
+    const changed = await execute('git', ['-C', homeRepo, 'status', '--porcelain', '--', 'tools/staging-home-fixture.py']);
+    if (head.stdout.trim() !== homeFixtureCommit || changed.stdout.trim()) throw new Error(`Home fixture requires clean commit ${homeFixtureCommit}`);
+    script = join(homeRepo, 'tools/staging-home-fixture.py');
+  }
   const { stdout } = await execute(join(repo, '.venv/bin/python'),
-    [join(repo, 'tools/staging-journey-fixtures.py'), action, '--run', run],
+    [script, action, '--run', run],
     { timeout: 180000, maxBuffer: 1024 * 1024 });
   const value = JSON.parse(stdout);
   if (value.schema !== 'doctorcre-staging-journey-fixture.v1' || value.run !== run) {
     throw new Error('CARR fixture producer returned a mismatched run or contract');
   }
   return value;
+}
+
+export function withHomeFixture(body, producer = (action, run) => produce(action, run, true)) {
+  return withJourneyFixture(body, producer);
 }
 
 async function cleanupJourney(producer, run) {

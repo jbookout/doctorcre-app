@@ -65,6 +65,12 @@ jobs:
           ref: 517ecc12c0480d859dd1f4cb270f2a283a853065
           path: carr-fixture-producer
           persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: DoctorCRE/carr-system
+          ref: 0c60e262695795323d97b1b6499d97f1a8becefe
+          path: carr-home-fixture
+          persist-credentials: false
       - name: Install staging fixture producer
         run: |
           python3 -m venv carr-fixture-producer/.venv
@@ -76,6 +82,7 @@ jobs:
         env:
           E2E_SESSION_SECRET: ${{ secrets.E2E_SESSION_SECRET }}
           CARR_JOURNEY_FIXTURE_REPO: ${{ github.workspace }}/carr-fixture-producer
+          CARR_HOME_FIXTURE_REPO: ${{ github.workspace }}/carr-home-fixture
           NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
           PLAYWRIGHT_HTML_OPEN: never
           PLAYWRIGHT_HTML_OUTPUT_DIR: .e2e/playwright-report

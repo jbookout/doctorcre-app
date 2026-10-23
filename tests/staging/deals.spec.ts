@@ -28,8 +28,10 @@ test('Local Deals shows parked records and recent changes read-only', async ({ p
   await expect(page.locator('#parkedToggle')).toHaveAttribute('aria-pressed', 'true');
   await page.getByRole('button', { name: 'Parked', exact: true }).click();
   await expect(page.locator('#parkedToggle')).toHaveAttribute('aria-pressed', 'false');
-  await page.getByRole('button', { name: 'Today sidebar', exact: true }).click();
-  await page.getByRole('button', { name: 'Today sidebar', exact: true }).click();
+  const today = page.getByRole('button', { name: 'Today sidebar', exact: true });
+  if (await today.getAttribute('aria-expanded') === 'true') await today.click();
+  await expect(page.locator('#appToday')).toBeHidden();
+  await today.click();
   await expect(page.locator('#appToday')).toBeVisible();
 });
 

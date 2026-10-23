@@ -1,6 +1,15 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { requireStagingAuthority, withJourneyFixture } from '../tests/staging/journey-fixture.mjs';
+import { requireStagingAuthority, withJourneyFixture, withHomeFixture } from '../tests/staging/journey-fixture.mjs';
+
+test('Home uses the same run-owned cleanup after an assertion failure', async () => {
+  const actions = [];
+  await assert.rejects(withHomeFixture(() => { throw new Error('Home assertion'); }, async action => {
+    actions.push(action);
+    return action === 'prepare' ? {} : { remaining: 0 };
+  }), /Home assertion/);
+  assert.deepEqual(actions, ['prepare', 'cleanup']);
+});
 
 test('an unbound provider credential refuses before the producer can inspect local credentials', async () => {
   const beforeRepo = process.env.CARR_JOURNEY_FIXTURE_REPO;
