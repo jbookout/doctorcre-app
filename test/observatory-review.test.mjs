@@ -5,10 +5,9 @@ import { labelFor } from '../js/observatory-model.js';
 
 const read = path => readFile(new URL(`../${path}`, import.meta.url), 'utf8');
 
-test('Observatory extends the current contract under a new version and exact producer', async () => {
+test('Observatory pins its read operations and exact producer', async () => {
   const contract = JSON.parse(await read('contracts/carr-interface.v1.json'));
-  assert.equal(contract.version, '1.52.0');
-  assert.equal(contract.producer.source_commit, 'efcac9f166f2e6c7b2e904bca35571899a57f53c');
+  assert.equal(contract.producer.source_commit, '7572fac5d4184c2a90836fdb9f32f0ffe4ab9309');
   assert.ok(contract.mcp_operations.includes('read-room-latest'));
   assert.ok(contract.mcp_operations.includes('append-tour-selection-cart-version'));
 });

@@ -3,7 +3,7 @@
   "version": "1.52.0",
   "producer": {
     "repository": "jbookout/carr-system",
-    "source_commit": "efcac9f166f2e6c7b2e904bca35571899a57f53c"
+    "source_commit": "7572fac5d4184c2a90836fdb9f32f0ffe4ab9309"
   },
   "consumer": "jbookout/doctorcre-app",
   "transport": {
@@ -508,7 +508,7 @@
       "write": false,
       "producer": {
         "repository": "jbookout/carr-system",
-        "source_commit": "efcac9f166f2e6c7b2e904bca35571899a57f53c",
+        "source_commit": "7572fac5d4184c2a90836fdb9f32f0ffe4ab9309",
         "pull_request": "https://github.com/DoctorCRE/carr-system/pull/2120"
       },
       "response": {
@@ -646,7 +646,7 @@
     "get-deal-room": {
       "producer": {
         "repository": "jbookout/carr-system",
-        "source_commit": "efcac9f166f2e6c7b2e904bca35571899a57f53c",
+        "source_commit": "7572fac5d4184c2a90836fdb9f32f0ffe4ab9309",
         "pull_request": "https://github.com/DoctorCRE/carr-system/pull/2120"
       },
       "response": {
@@ -717,7 +717,10 @@
           "suggestion",
           "status"
         ],
-        "short_name": "Record-layer short deal name; fall back to the actual deal name when contact or market evidence is absent."
+        "short_name": "Record-layer short deal name; fall back to the actual deal name when contact or market evidence is absent.",
+        "next_actions": {
+          "hold_until": "YYYY-MM-DD or null. An open action is held while hold_until is later than the current calendar date. Held actions remain in this history read. Accepted post-call actions return null."
+        }
       },
       "critical_date_write": "add-critical-date",
       "never_derive": [
@@ -730,7 +733,7 @@
       "write": false,
       "producer": {
         "repository": "jbookout/carr-system",
-        "source_commit": "efcac9f166f2e6c7b2e904bca35571899a57f53c",
+        "source_commit": "7572fac5d4184c2a90836fdb9f32f0ffe4ab9309",
         "module": "mcp-server/src/feature-switches.js"
       },
       "inputSchema": {
@@ -983,7 +986,7 @@
       "write": true,
       "producer": {
         "repository": "jbookout/carr-system",
-        "source_commit": "efcac9f166f2e6c7b2e904bca35571899a57f53c"
+        "source_commit": "7572fac5d4184c2a90836fdb9f32f0ffe4ab9309"
       },
       "inputSchema": {
         "type": "object",
@@ -1018,7 +1021,7 @@
       "write": true,
       "producer": {
         "repository": "jbookout/carr-system",
-        "source_commit": "efcac9f166f2e6c7b2e904bca35571899a57f53c"
+        "source_commit": "7572fac5d4184c2a90836fdb9f32f0ffe4ab9309"
       },
       "inputSchema": {
         "type": "object",
@@ -1047,7 +1050,7 @@
       "write": true,
       "producer": {
         "repository": "jbookout/carr-system",
-        "source_commit": "efcac9f166f2e6c7b2e904bca35571899a57f53c"
+        "source_commit": "7572fac5d4184c2a90836fdb9f32f0ffe4ab9309"
       },
       "inputSchema": {
         "type": "object",
