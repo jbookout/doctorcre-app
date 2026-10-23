@@ -33,3 +33,32 @@ test('S2 a preference CAS conflict after the fresh read keeps the draft beside c
  assert.match(w.document.getElementById('prefSummary').textContent,/on/,'current saved preference is shown alongside the draft');
  assert.match(w.document.getElementById('prefMessage').textContent,/review|changed|not saved/i);
 });
+
+test('S2 a confirmed preference save reports its receipt while unrelated refresh reads are pending', async () => {
+ const dom=openDom(html,{url:'https://example.test/updates',runScripts:'outside-only'}),w=dom.window;
+ Object.assign(w,model,{performCommand,uuidv4,formatClock});
+ w.eval(source+'\nglobalThis.prefApi={savePreference,view,setClient:value=>client=value,setDraft:version=>{dirty=true;draftBaseVersion=version;}};');
+ const old={ok:true,exists:true,version:3,device_opt_in:false,quiet_hours_start:null,quiet_hours_end:null,timezone:'UTC'};
+ let releaseFeed, refreshStarted;
+ const feed=new Promise(resolve=>{releaseFeed=resolve;});
+ const refreshing=new Promise(resolve=>{refreshStarted=resolve;});
+ let reads=0,writes=0;
+ w.prefApi.view.preference={state:'read',payload:old};w.prefApi.setDraft(3);
+ w.prefApi.setClient({
+  notificationPreferences:async()=>++reads===1?old:{...old,version:4,timezone:'America/Chicago'},
+  setNotificationPreference:async()=>{writes++;return{ok:true};},
+  notificationFeed:()=>{refreshStarted();return feed;},
+  getChanges:async()=>({ok:true,events:[],cursor:'done'}),
+ });
+ const save=w.prefApi.savePreference({timezone:'America/Chicago'});
+ await refreshing;
+ try {
+  assert.equal(writes,1);
+  assert.match(w.document.getElementById('prefMessage').textContent,/saved/i,
+   'the confirmed receipt must not wait for the unrelated notification feed');
+ } finally {
+  releaseFeed({ok:true,notifications:[],unread_count:0});
+  await save;
+  dom.window.close();
+ }
+});

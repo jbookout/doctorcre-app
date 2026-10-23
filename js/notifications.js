@@ -430,8 +430,10 @@ async function savePreference(form) {
   if (result.status === "ok") {
     dirty = false;
     draftBaseVersion = null;
-    await load();
     sentence = sentence || "Saved";
+    message.textContent = sentence;
+    announce(sentence);
+    await load();
   }
   $("prefMessage").textContent = sentence || "";
   if (sentence) announce(sentence);
