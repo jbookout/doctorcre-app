@@ -821,11 +821,14 @@ test(`work flow labels remain readable at ${width}px in ${theme} theme`, async t
   await page.emulateMedia({reducedMotion:'reduce'});
   const labels = page.locator('.work-flow text, .work-flow li');
   assert.deepEqual(await labels.allTextContents(), ['Task','Sessions','Attempts','Review']);
-  const boxes = await labels.evaluateAll(labels => labels.map(label => {
+  // Metadata reads can replace the flow between protocol calls. Query and
+  // measure in one page task so detached labels cannot produce empty styles.
+  const boxes = await page.evaluate(() => [...document.querySelectorAll('.work-flow text, .work-flow li')].map(label => {
     const box = label.getBoundingClientRect();
     const scale = label instanceof SVGGraphicsElement ? label.getScreenCTM().a : 1;
     return {size:parseFloat(getComputedStyle(label).fontSize) * scale, x:box.x, y:box.y};
   }));
+  assert.equal(boxes.length, 4);
   for (const box of boxes) assert.ok(box.size >= 12, `Rendered label is ${box.size}px`);
   for (let i = 1; i < boxes.length; i++)
     assert.ok(width === 390 ? boxes[i].y > boxes[i-1].y : boxes[i].x > boxes[i-1].x);
