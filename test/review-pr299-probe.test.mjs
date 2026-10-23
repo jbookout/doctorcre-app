@@ -144,9 +144,12 @@ for (const width of [390, 1280]) for (const theme of ['dark', 'light']) {
     await capture(page, `failed-${width}-${theme}`);
     const retry = list.getByRole('button', { name: 'Retry attention' });
     assert.equal(await retry.isVisible(), true, 'the failure has a local recovery action');
-    const failure = await list.locator('[data-state="offline"]').boundingBox();
-    const action = await retry.boundingBox();
-    assert.ok(action.y >= failure.y && action.y + action.height <= failure.y + failure.height,
+    const geometry = await retry.evaluate(action => {
+      const failure = document.querySelector('#crAttentionList [data-state="offline"]');
+      const row = failure.getBoundingClientRect(), button = action.getBoundingClientRect();
+      return { rowTop:row.top, rowBottom:row.bottom, buttonTop:button.top, buttonBottom:button.bottom };
+    });
+    assert.ok(geometry.buttonTop >= geometry.rowTop && geometry.buttonBottom <= geometry.rowBottom,
       'retry is next to the failure it recovers');
     state.censusUnavailable = false;
     await retry.click();
