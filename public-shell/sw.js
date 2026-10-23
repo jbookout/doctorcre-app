@@ -1,4 +1,4 @@
-const SHELL_CACHE = "dealroom-shell-v4";
+const SHELL_CACHE = "dealroom-shell-v5";
 const SHELL = [
   "/offline.html",
   "/manifest.webmanifest",
@@ -8,7 +8,7 @@ const SHELL = [
 const DATA_PATHS = new Set(["/pipeline/changes", "/mcp", "/app-release"]);
 
 function isLiveData(pathname) {
-  return DATA_PATHS.has(pathname) || pathname.startsWith("/api/");
+  return DATA_PATHS.has(pathname) || pathname.startsWith("/api/") || pathname.startsWith("/auth/");
 }
 
 self.addEventListener("install", (event) => {
