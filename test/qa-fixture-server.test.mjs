@@ -5,6 +5,100 @@ import { createLiveClient } from '../js/live-client.js';
 import { createFixtureClient } from '../js/fixture-client.js';
 import { PHASES } from '../js/client.js';
 
+test('QA partners share deal writes, receipts and event cursors after both sessions have read', async () => {
+  const {dispatch} = await createQaServer();
+  const origin = 'http://localhost';
+  const session = async viewer => {
+    const seeded = await dispatch(new Request(`${origin}/api/test/seed`, {method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({namespace:'partner-writes',viewer})}));
+    const {cookie} = await seeded.json();
+    const headers = {cookie:`${cookie.name}=${cookie.value}`,'content-type':'application/json'};
+    return {
+      async call(name,args={}) {
+        const response = await dispatch(new Request(`${origin}/mcp`, {method:'POST',headers,body:JSON.stringify({jsonrpc:'2.0',id:1,method:'tools/call',params:{name,arguments:args}})}));
+        assert.equal(response.status,200);
+        const {result} = await response.json();
+        assert.notEqual(result.isError,true,result.content[0].text);
+        return JSON.parse(result.content[0].text);
+      },
+      async changes(cursor='') {
+        return (await dispatch(new Request(`${origin}/pipeline/changes?cursor=${encodeURIComponent(cursor)}`,{headers}))).json();
+      },
+    };
+  };
+  const joe = await session('joe');
+  const dell = await session('dell');
+  for (const partner of [joe,dell]) assert.equal((await partner.call('deal-room-board')).deals.length,16);
+  const request = {name:'Demo Shared Writes',phase:'research',idempotency_key:'partner-create'};
+  const created = await joe.call('new-deal',request);
+  assert.equal((await dell.call('new-deal',request)).deal_id,created.deal_id,'the receipt belongs to the shared store');
+  await joe.call('add-deal-note',{deal:created.deal_id,text:'Demo Joe note',idempotency_key:'joe-note'});
+  const before = await dell.changes();
+  const note = {deal:created.deal_id,text:'Demo Dell note',idempotency_key:'dell-note'};
+  await dell.call('add-deal-note',note);
+  await dell.call('set-next-step',{deal:created.deal_id,text:'Review demo terms',idempotency_key:'dell-step'});
+  const second = await dell.call('new-deal',{name:'Demo Dell Deal',idempotency_key:'dell-create'});
+  assert.notEqual(second.deal_id,created.deal_id);
+  const reloaded = await session('dell');
+  await reloaded.call('add-deal-note',note);
+  for (const partner of [joe,reloaded]) {
+    const board = await partner.call('deal-room-board');
+    assert.equal(board.deals.length,18);
+    assert.equal(board.deals.find(deal=>deal.id===created.deal_id).next_step,'Review demo terms');
+    const detail = await partner.call('get-deal-room',{deal:created.deal_id});
+    assert.deepEqual(detail.thread.map(entry=>[entry.actor,entry.text]),[['dell','Demo Dell note'],['joe','Demo Joe note']]);
+    assert.equal(new Set(detail.thread.map(entry=>entry.id)).size,2);
+    assert.ok(detail.thread.every(entry=>Number.isFinite(Date.parse(entry.recorded_at))));
+  }
+  const changes = await joe.changes();
+  assert.deepEqual(changes,await reloaded.changes());
+  assert.equal(changes.events.length,5);
+  assert.equal(new Set(changes.events.map(event=>event.id)).size,5);
+  const later = await joe.changes(before.cursor);
+  assert.deepEqual(later.events.map(event=>[event.actor,event.verb]),[['dell','add-deal-note'],['dell','set-next-step'],['dell','create-deal']]);
+});
+
+test('QA namespace reset replaces shared deals, actor clients and receipts without touching another namespace', async () => {
+  const {dispatch} = await createQaServer();
+  const origin = 'http://localhost';
+  const session = async (namespace,viewer,reset=false) => {
+    const response = await dispatch(new Request(`${origin}/api/test/seed`, {method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({namespace,viewer,reset})}));
+    const {cookie} = await response.json();
+    const fetchImpl = (path,init={}) => dispatch(new Request(new URL(path,origin),{...init,headers:{...init.headers,cookie:`${cookie.name}=${cookie.value}`}}));
+    return {client:createLiveClient({selfActor:viewer,fetchImpl}),fetchImpl};
+  };
+  const {client:joe} = await session('reset-deals','joe');
+  const {client:dell,fetchImpl} = await session('reset-deals','dell');
+  await dell.getBoard();
+  const request = {name:'Demo Before Reset',idempotency_key:'reset-create'};
+  const original = await joe.createDeal(request);
+  const {client:isolated} = await session('other-deals','joe');
+  assert.equal((await isolated.getBoard()).deals.length,16);
+  await isolated.createDeal({...request,name:'Demo Isolated Deal'});
+  await session('reset-deals','joe',true);
+  assert.equal((await joe.getBoard()).deals.length,16);
+  assert.equal((await dell.getBoard()).deals.length,16);
+  assert.deepEqual((await (await fetchImpl('/pipeline/changes')).json()).events,[]);
+  const replacement = await dell.createDeal({...request,name:'Demo After Reset'});
+  assert.equal(replacement.deal_id,original.deal_id,'reset also resets the synthetic identity sequence');
+  assert.equal((await joe.getDeal(replacement.deal_id)).deal.name,'Demo After Reset');
+  assert.equal((await isolated.getBoard()).deals.length,17);
+  assert.equal((await isolated.getDeal(original.deal_id)).deal.name,'Demo Isolated Deal');
+});
+
+test('QA refuses unauthenticated deal writes before they reach the synthetic store', async () => {
+  const {dispatch} = await createQaServer();
+  const origin = 'http://localhost';
+  const seeded = await dispatch(new Request(`${origin}/api/test/seed`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({namespace:'auth-boundary'})}));
+  const {cookie} = await seeded.json();
+  for (const headers of [{},{cookie:'doctorcre_qa=unknown'}]) {
+    const response = await dispatch(new Request(`${origin}/mcp`,{method:'POST',headers:{...headers,'content-type':'application/json'},body:JSON.stringify({jsonrpc:'2.0',id:1,method:'tools/call',params:{name:'new-deal',arguments:{name:'Demo Refused Deal',idempotency_key:'unauthenticated'}}})}));
+    assert.equal(response.status,401);
+    assert.deepEqual(await response.json(),{error:'not_authenticated'});
+  }
+  const response = await dispatch(new Request(`${origin}/pipeline/changes`,{headers:{cookie:`${cookie.name}=${cookie.value}`}}));
+  assert.deepEqual((await response.json()).events,[]);
+});
+
 test('signed-in live creation persists the selected owner and attributed initial note across partner reads', async () => {
   const {dispatch} = await createQaServer();
   const origin = 'http://localhost';
