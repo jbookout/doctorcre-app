@@ -59,6 +59,21 @@ for(const finish of ['dragend','drop'])test(`map readiness preserves the native 
   assert.equal(s.writes.length,0);
  }finally{s.close()}
 });
+for(const finish of ['pointerup','pointercancel','lostpointercapture'])test(`map readiness preserves the touch drag source until ${finish}`,async()=>{
+ let ready;const map={locate:()=>true,update(){},dispose(){}};
+ const s=await setup({},()=>new Promise(resolve=>{ready=()=>resolve(map)}));
+ try{
+  const card=s.d.querySelector('.lead-card'),handle=card.querySelector('[data-drag-handle]');
+  const pointer=type=>{const event=new s.w.Event(type,{bubbles:true});Object.assign(event,{pointerId:1,clientX:0,clientY:0});handle.dispatchEvent(event)};
+  pointer('pointerdown');ready();await tick();
+  assert.equal(handle.isConnected,true,'map readiness must not replace the captured pointer target');
+  assert.equal(s.d.getElementById('leadBoard').dataset.touchDragging,'true');
+  pointer(finish);
+  assert.equal(s.d.getElementById('leadBoard').dataset.touchDragging,undefined);
+  assert.equal(s.d.querySelector('.lead-location').textContent,'Market area only');
+  assert.equal(s.writes.length,0);
+ }finally{s.close()}
+});
 test('missing evidence asks one question; changed record refreshes the unsigned prompt without writing',async()=>{
  const s=await setup();try{await s.app.openReview(id(1),'qualified');assert.equal(s.d.querySelectorAll('#stageQuestions textarea').length,1);s.d.querySelector('textarea').value='Synthetic timing and space need confirmed';
  s.board.leads[0].base_version++;await s.app.refresh();assert.equal(s.d.getElementById('saveStage').disabled,false);assert.equal(s.app.state.proposal.lead.base_version,2);assert.equal(s.d.querySelector('textarea').value,'Synthetic timing and space need confirmed');assert.equal(s.writes.length,0);
@@ -215,12 +230,11 @@ test('late detail from card A cannot replace card B; private view clears after a
 });
 test('touch drop and keyboard move open review; cancelled touch never writes',async()=>{
  const s=await setup();try{
- const card=s.d.querySelector('.lead-card'),handle=card.querySelector('[data-drag-handle]');
- const pointer=(type,x,y)=>{const e=new s.w.Event(type,{bubbles:true});Object.assign(e,{pointerId:1,clientX:x,clientY:y});handle.dispatchEvent(e)};
+ const pointer=(type,x,y)=>{const e=new s.w.Event(type,{bubbles:true});Object.assign(e,{pointerId:1,clientX:x,clientY:y});s.d.querySelector('[data-drag-handle]').dispatchEvent(e)};
  s.d.elementFromPoint=()=>s.d.querySelector('[data-stage="engaged"]');
  pointer('pointerdown',0,0);pointer('pointermove',50,50);assert.ok(s.d.querySelector('[data-drop-active]'));pointer('pointercancel',50,50);pointer('pointerup',50,50);await tick();assert.equal(s.d.getElementById('stageDialog').open,false);assert.equal(s.writes.length,0);
  pointer('pointerdown',0,0);pointer('pointerup',50,50);await tick();assert.equal(s.d.getElementById('stageDialog').open,true);assert.equal(s.app.state.proposal.target,'engaged');assert.equal(s.writes.length,0);
- s.d.getElementById('stageDialog').close();card.dispatchEvent(new s.w.KeyboardEvent('keydown',{key:'ArrowRight',altKey:true,bubbles:true}));await tick();assert.equal(s.app.state.proposal.target,'qualified');assert.equal(s.writes.length,0);
+ s.d.getElementById('stageDialog').close();s.d.querySelector('.lead-card').dispatchEvent(new s.w.KeyboardEvent('keydown',{key:'ArrowRight',altKey:true,bubbles:true}));await tick();assert.equal(s.app.state.proposal.target,'qualified');assert.equal(s.writes.length,0);
  }finally{s.close()}
 });
 test('new correspondence preserves the expanded original by identity, not position',async()=>{
