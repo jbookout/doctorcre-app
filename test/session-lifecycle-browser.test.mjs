@@ -121,3 +121,16 @@ test('S1 browser: a history restore verifies its session before revealing the ol
  await app.page.waitForURL('**/public-shell/session-ended.html');
  await assertPurged(app.page);assert.deepEqual(app.errors,[]);
 });
+
+test('S1 browser: revocation clears a private tab title before asynchronous storage cleanup', async t => {
+ const app=await open(t);
+ const title=await app.page.evaluate(async()=>{
+  const {privateSession}=await import('/js/private-session.js');
+  document.title='Joe private conversation title';
+  privateSession().revoke();
+  return document.title;
+ });
+ assert.equal(title,'Session ended');
+ await app.page.waitForURL('**/public-shell/session-ended.html');
+ await assertPurged(app.page);assert.deepEqual(app.errors,[]);
+});

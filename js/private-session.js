@@ -101,6 +101,7 @@ export function privateSession() {
       const view = win.document.createElement('main');
       const title = win.document.createElement('h1'); title.textContent = reason === 'signed-out' ? 'Signed out' : 'Session ended';
       const link = win.document.createElement('a'); link.href = '/auth/login'; link.textContent = 'Sign in again';
+      win.document.title = 'Session ended';
       view.append(title,link); win.document.body.replaceChildren(view);
       // The new document releases controller closures, pending commands,
       // editor drafts, Doc context, media objects, and actor labels together.
