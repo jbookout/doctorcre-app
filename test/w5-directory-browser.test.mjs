@@ -144,8 +144,10 @@ test('W5 a read dispatched before a new save cannot reconcile that save',async t
  const {page}=await open(t);const writes=await holdWrites(page), reads=[];
  const reason='Synthetic repeated rating';
  await page.goto(origin+'/vendors?mode=live', {waitUntil:'domcontentloaded'});await page.locator('.record-row').first().click();await beginRating(page,reason);
- await page.route('**/api/v1/business/vendors/*',r=>reads.push(r));
- await page.locator('#trustForm button').click();await settles(()=>assert.equal(writes.length,1));await ack(writes[0]);
+ await page.locator('#trustForm button').click();await settles(()=>assert.equal(writes.length,1));
+ // Let each save's fresh preflight finish; hold only the first post-save read.
+ await page.route('**/api/v1/business/vendors/*',r=>reads.length===0?reads.push(r):r.fallback());
+ await ack(writes[0]);
  await page.waitForFunction(()=>!document.querySelector('#trustForm button').disabled);await settles(()=>assert.equal(reads.length,1));
  await page.locator('#trustForm button').click();await settles(()=>assert.equal(writes.length,2));
  const id='00000000-0000-4000-8000-000000000001';
