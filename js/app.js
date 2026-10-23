@@ -22,6 +22,7 @@ import { classifyCommandOutcome, commandMessage, pendingCommand } from './comman
 import { renderAccountCards } from './account-cards.js';
 import { updatedLabel } from './auto-refresh.mjs';
 import { mountVisibilityPoll } from './visibility-poll.mjs';
+import { createRetainedCommands } from './retained-commands.mjs';
 
 const POLL_MS = 1400;
 /**
@@ -923,13 +924,33 @@ async function patchOperatingState(dealId, value, options = {}) {
   return result;
 }
 
-function openForm({ context='Deal Room', title, submit='Save', body, onSubmit }) {
+function appWrite(operationKey, args, send) {
+  state.commands ||= createRetainedCommands({ scope: () => state.selfActor });
+  return state.commands.send(operationKey, args, send);
+}
+
+function openForm({ context='Deal Room', title, submit='Save', body, onSubmit, operationKey = null }) {
   const dialog = $('#formDialog');
   $('#dialogContext').textContent = context;
   $('#dialogTitle').textContent = title;
   $('#dialogSubmit').textContent = submit;
   $('#dialogBody').innerHTML = body;
   $('#formError').hidden = true;
+  const retained = () => operationKey && state.commands?.pending(operationKey);
+  const renderPending = () => {
+    const request = retained();
+    if (!request) {
+      if (operationKey) for (const control of $$('#dialogBody input, #dialogBody textarea, #dialogBody select')) control.disabled = false;
+      $('#dialogSubmit').textContent = submit;
+      return;
+    }
+    for (const control of $$('#dialogBody input, #dialogBody textarea, #dialogBody select')) {
+      if (control.name && Object.hasOwn(request, control.name)) control.value = request[control.name] ?? '';
+      control.disabled = true;
+    }
+    $('#dialogSubmit').textContent = 'Check outcome';
+  };
+  renderPending();
   $('#dialogForm').onsubmit = async (event) => {
     event.preventDefault();
     const button = $('#dialogSubmit');
@@ -939,9 +960,11 @@ function openForm({ context='Deal Room', title, submit='Save', body, onSubmit })
       await onSubmit(new FormData(event.currentTarget));
       dialog.close();
     } catch (error) {
-      const detail = error.payload?.hint || error.payload?.error || error.message;
+      const detail = retained() ? 'Outcome unknown. Check outcome replays the original request. Keep this tab open until it is confirmed.'
+        : error.payload?.hint || error.payload?.error || error.message;
       $('#formError').textContent = detail;
       $('#formError').hidden = false;
+      renderPending();
     } finally { button.disabled = false; }
   };
   // One dialog element serves every form, so a form raised FROM a form — the
@@ -1023,16 +1046,15 @@ function parkDealForm(dealId) {
 }
 
 function marketAgentForm(dealId) {
+  const operationKey = `market-agent:${dealId}`;
   const deal = state.deals.get(dealId);
-  openForm({ title:`Market assignment — ${deal.name}`, submit:'Save assignment', body:`
+  openForm({ operationKey, title:`Market assignment — ${deal.name}`, submit:'Save assignment', body:`
     <div class="field"><label for="agentName">Assigned local agent</label><input id="agentName" name="agent_name" required value="${esc(deal.market_agent || '')}" placeholder="Agent’s full name"></div>
     <div class="field"><label for="agentMarket">Market</label><input id="agentMarket" name="market" value="${esc(deal.market || '')}" placeholder="City, state"></div>`,
     onSubmit:async (data) => {
-      await state.client.setMarketAgent({ deal:dealId, agent_name:data.get('agent_name'), market:data.get('market') || null,
-        source:'partner stated in Deal Room', idempotency_key:uuidv4() });
-      const current = confirmLocalWrite(dealId, { market_agent:data.get('agent_name'),
-        ...(data.get('market') ? { market:data.get('market') } : {}) });
-      renderBoardOnly(); showToast(`Market agent saved on ${current?.name || deal.name}`);
+      await appWrite(operationKey, state.commands?.pending(operationKey) || { deal:dealId, agent_name:data.get('agent_name'),
+        ...(data.get('market') ? { market:data.get('market') } : {}), source:'partner stated in Deal Room' }, request => state.client.setMarketAgent(request));
+      await loadHome(); showToast(`Market agent confirmed on ${deal.name}`);
     } });
 }
 
@@ -1062,31 +1084,34 @@ function addTeamDealForm() {
 }
 
 function addAccountForm() {
-  openForm({ context:'National accounts', title:'Add national account', submit:'Create account', body:`
+  const operationKey = 'national-account:create';
+  openForm({ operationKey, context:'National accounts', title:'Add national account', submit:'Create account', body:`
     <div class="field"><label for="accountName">Brand / organization</label><input id="accountName" name="name" required><small>Creates one parent account. Market transactions will live under their own sub-clients.</small></div>
     <div class="field-row"><div class="field"><label for="accountOwner">Account owner</label><select id="accountOwner" name="owner"><option value="${esc(state.selfActor)}">${esc(actorName(state.selfActor))}</option><option value="${state.selfActor === 'joe' ? 'dell' : 'joe'}">${esc(actorName(state.selfActor === 'joe' ? 'dell' : 'joe'))}</option></select></div>
     <div class="field"><label for="accountVertical">Healthcare vertical</label><input id="accountVertical" name="vertical"></div></div>`,
-    onSubmit:async (data) => { await state.client.createNationalAccount({ ...Object.fromEntries(data.entries()), idempotency_key:uuidv4() }); await loadHome(); showToast('National account created'); } });
+    onSubmit:async (data) => { await appWrite(operationKey, state.commands?.pending(operationKey) || Object.fromEntries(data.entries()), request => state.client.createNationalAccount(request)); await loadHome(); showToast('National account created'); } });
 }
 
 function addMarketDealForm() {
   const selected = account();
-  openForm({ context:selected.account_name, title:'Add market transaction', submit:'Create market deal', body:`
+  const operationKey = `national-market:${selected.account_client_id}`;
+  openForm({ operationKey, context:selected.account_name, title:'Add market transaction', submit:'Create market deal', body:`
     <div class="field"><label for="marketClient">Franchisee / local client</label><input id="marketClient" name="client_name" required><small>Reuses the exact sub-client if it exists; otherwise creates one under ${esc(selected.account_name)}.</small></div>
     <div class="field"><label for="marketDealName">Deal name</label><input id="marketDealName" name="deal_name" required></div>
     <div class="field-row"><div class="field"><label for="marketCity">Market</label><input id="marketCity" name="market" required placeholder="City"></div><div class="field"><label for="marketState">State</label><input id="marketState" name="state" maxlength="2"></div></div>
     <div class="field-row"><div class="field"><label for="marketAgent">Assigned agent</label><input id="marketAgent" name="agent_name" placeholder="Leave blank if unknown"></div><div class="field"><label for="marketSegment">Healthcare vertical</label><input id="marketSegment" name="segment"></div></div>
     <input type="hidden" name="deal_type" value="startup"><input type="hidden" name="phase" value="pending">`,
-    onSubmit:async (data) => { await state.client.createNationalMarketDeal({ account_client_id:selected.account_client_id,
-      ...Object.fromEntries(data.entries()), idempotency_key:uuidv4() }); await loadHome(); showToast(`Market deal added to ${selected.account_name}`); } });
+    onSubmit:async (data) => { await appWrite(operationKey, state.commands?.pending(operationKey) || { account_client_id:selected.account_client_id,
+      ...Object.fromEntries(data.entries()) }, request => state.client.createNationalMarketDeal(request)); await loadHome(); showToast(`Market deal added to ${selected.account_name}`); } });
 }
 
 function accountOwnerForm() {
   const selected = account();
-  openForm({ context:selected.account_name, title:'Change account owner', submit:'Save owner', body:`
+  const operationKey = `national-owner:${selected.account_client_id}`;
+  openForm({ operationKey, context:selected.account_name, title:'Change account owner', submit:'Save owner', body:`
     <div class="field"><label for="newAccountOwner">Accountable partner</label><select id="newAccountOwner" name="owner"><option value="joe"${selected.account_owner === 'joe' ? ' selected' : ''}>Joe</option><option value="dell"${selected.account_owner === 'dell' ? ' selected' : ''}>Dell</option></select><small>This changes portfolio accountability only. Individual market-deal owners stay untouched.</small></div>`,
-    onSubmit:async (data) => { await state.client.setNationalAccountOwner({ account_client_id:selected.account_client_id,
-      owner:data.get('owner'), idempotency_key:uuidv4() }); await loadHome(); showToast(`${selected.account_name} owner updated`); } });
+    onSubmit:async (data) => { await appWrite(operationKey, state.commands?.pending(operationKey) || { account_client_id:selected.account_client_id,
+      owner:data.get('owner') }, request => state.client.setNationalAccountOwner(request)); await loadHome(); showToast(`${selected.account_name} owner updated`); } });
 }
 
 function showConflict(conflict) {
@@ -1134,8 +1159,9 @@ function agendaDeals() {
 async function startAgenda() {
   const deals = agendaDeals();
   if (!deals.length) return showToast('No active work in this agenda');
-  const result = await state.client.startReview({ workspace_kind:state.workspace,
-    ...(state.accountId ? { account_client_id:state.accountId } : {}), idempotency_key:uuidv4() });
+  const operationKey = `agenda:start:${state.workspace}:${state.accountId || ''}`;
+  const result = await appWrite(operationKey, { workspace_kind:state.workspace,
+    ...(state.accountId ? { account_client_id:state.accountId } : {}) }, request => state.client.startReview(request));
   state.review = { sessionId:result.session_id, deals, index:0, reviewed:0, skipped:0 };
   $('#agendaPanel').hidden = false;
   renderAgenda();
@@ -1172,7 +1198,7 @@ async function advanceAgenda(disposition) {
   if (!review || !deal || review.advancing) return;
   review.advancing = true;
   try {
-    await state.client.reviewDeal({ session_id:review.sessionId, deal:deal.id, disposition, idempotency_key:uuidv4() });
+    await appWrite(`agenda:review:${review.sessionId}:${deal.id}`, { session_id:review.sessionId, deal:deal.id, disposition }, request => state.client.reviewDeal(request));
     if (state.review !== review) return;
     review[disposition === 'reviewed' ? 'reviewed' : 'skipped'] += 1;
     review.index += 1;
@@ -1183,7 +1209,7 @@ async function advanceAgenda(disposition) {
 async function finishAgenda(status = 'completed') {
   if (!state.review) return;
   const review = state.review;
-  const result = await state.client.endReview({ session_id:review.sessionId, status, idempotency_key:uuidv4() });
+  const result = await appWrite(`agenda:end:${review.sessionId}`, { session_id:review.sessionId, status }, request => state.client.endReview(request));
   state.review = null;
   $('#agendaPanel').hidden = true;
   await loadHome();
@@ -1192,6 +1218,7 @@ async function finishAgenda(status = 'completed') {
 
 function wireEvents() {
   document.addEventListener('click', async (event) => {
+    try {
     const workspace = event.target.closest('[data-workspace]');
     if (workspace) {
       state.workspace = workspace.dataset.workspace;
@@ -1227,9 +1254,12 @@ function wireEvents() {
     const filter = event.target.closest('[data-filter]'); if (filter) { state.filter=filter.dataset.filter; state.deepLinkMine = false; $$('.filter').forEach((b)=>b.classList.toggle('on',b===filter)); renderBoardOnly(); return; }
     if (event.target.closest('[data-close-deal]')) { $('#dealDialog').close(); return; }
     const undoButton = event.target.closest('[data-undo]'); if (undoButton) { await runUndo(undoButton.dataset.undo, undoButton); return; }
-    const confirm = event.target.closest('[data-confirm]'); if (confirm) { const chip=confirm.closest('[data-proposal]'); const yes=confirm.dataset.confirm==='yes'; await state.client.resolveConfirm({proposal_id:chip.dataset.proposal,accept:yes,idempotency_key:uuidv4()}); state.confirms=state.confirms.filter((p)=>p.id!==chip.dataset.proposal); renderConfirms(); if(yes)await loadHome(); showToast(yes?'Suggestion confirmed':'Suggestion skipped'); return; }
+    const confirm = event.target.closest('[data-confirm]'); if (confirm) { const chip=confirm.closest('[data-proposal]'); const yes=confirm.dataset.confirm==='yes'; await appWrite(`candidate:${chip.dataset.proposal}`,{proposal_id:chip.dataset.proposal,accept:yes},request=>state.client.resolveConfirm(request)); state.confirms=state.confirms.filter((p)=>p.id!==chip.dataset.proposal); renderConfirms(); if(yes)await loadHome(); showToast(yes?'Suggestion confirmed':'Suggestion skipped'); return; }
     if (state.callModeUi && await state.callModeUi.handleClick(event.target)) return;
     if (event.target.closest('[data-dialog-cancel]')) { $('#formDialog').close(); return; }
+    } catch (error) {
+      showToast(error.pendingRequest ? 'Outcome unknown. Repeat the same action to check its original request.' : error.message);
+    }
   });
 
   document.addEventListener('change', async (event) => {
@@ -1249,14 +1279,16 @@ function wireEvents() {
   $('#stickyAddButton').onclick = openAddForm;
   $('#receiptsJump').onclick = goToReceipts;
   $('#ownerButton').onclick = accountOwnerForm;
-  $('#agendaButton').onclick = startAgenda;
+  const agendaAction = work => () => Promise.resolve().then(work).catch(error => showToast(
+    error.pendingRequest ? 'Outcome unknown. Repeat the same agenda action to check its original request.' : error.message));
+  $('#agendaButton').onclick = agendaAction(startAgenda);
   $('#callModeButton').onclick = () => state.callModeUi.open();
   $('#callModeStop').onclick = () => state.callModeUi.stop();
   $('#postCallRefresh').onclick = () => state.callModeUi.refreshPostCall();
-  $('#agendaReviewed').onclick = () => advanceAgenda('reviewed');
-  $('#agendaSkip').onclick = () => advanceAgenda('skipped');
-  $('#agendaEnd').onclick = () => finishAgenda('completed');
-  $('#agendaClose').onclick = () => finishAgenda('abandoned');
+  $('#agendaReviewed').onclick = agendaAction(() => advanceAgenda('reviewed'));
+  $('#agendaSkip').onclick = agendaAction(() => advanceAgenda('skipped'));
+  $('#agendaEnd').onclick = agendaAction(() => finishAgenda('completed'));
+  $('#agendaClose').onclick = agendaAction(() => finishAgenda('abandoned'));
 
   // Coming back is not the same as being current: BOTH reads start again from
   // scratch, and `force` supersedes whatever was left hanging when the

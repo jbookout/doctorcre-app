@@ -38,6 +38,7 @@ export function createRetainedCommands({ newKey = uuidv4, scope = () => null } =
         // when their body happens to contain an error code. A later auth
         // failure also cannot disprove the original uncertain write.
         if (error?.status >= 500 || error?.status === 408 || error?.status === 429 ||
+          ['carr_unavailable', 'wire_unavailable'].includes(error?.payload?.error) ||
           (claim.retry && [401, 403].includes(error?.status))) outcome = { status: 'unknown', reason: 'server_error' };
         commands = settleCommand(commands, operationKey, outcome);
         if (!commands[operationKey]) bindings.delete(operationKey);

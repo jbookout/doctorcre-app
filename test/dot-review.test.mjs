@@ -12,6 +12,8 @@ import { mountPrefs } from "../js/shell.js";
 import { statusHeadline } from "../js/status-model.js";
 import { classifyPriority } from "../js/visual-system.js";
 import { performCommand, classifyCommandOutcome } from "../js/command-feedback.mjs";
+import { createRetainedCommands } from '../js/retained-commands.mjs';
+import { answerBaseVersion, ANSWER_VERSION_CONFLICT_SENTENCE } from '../js/model-room-model.js';
 import { JSDOM } from "jsdom";
 
 const source = path => readFileSync(new URL("../" + path, import.meta.url), "utf8");
@@ -25,7 +27,7 @@ function handlers(path, start, end, globals = {}, expose = []) {
   assert.ok(offset >= 0, start);
   const finish = end ? text.indexOf(end, offset + start.length) : text.length;
   assert.ok(finish > offset, end);
-  const context = vm.createContext({observeDocRead,selectDocRecord,setDocFilters,pageDocContext:null,authGeneration,authReadable, console, Date, Map, Set, Promise, URL, URLSearchParams, setTimeout, clearTimeout, ...globals });
+  const context = vm.createContext({observeDocRead,selectDocRecord,setDocFilters,pageDocContext:null,authGeneration,authReadable,createRetainedCommands,answerBaseVersion,ANSWER_VERSION_CONFLICT_SENTENCE,classifyCommandOutcome,appWrite:(_key,args,send)=>send({...args,idempotency_key:"key"}), console, Date, Map, Set, Promise, URL, URLSearchParams, setTimeout, clearTimeout, ...globals });
   vm.runInContext(text.slice(offset, finish).replace(/export /g, "") + "\nObject.assign(globalThis, {" + expose.join(",") + "});", context);
   return context;
 }
@@ -338,19 +340,30 @@ test("PR111 #11: composer accepts the producer's decimal-string sequence receipt
   await h.submitComposer();assert.equal(view.composerSend.state,"sent");assert.equal(view.composer.text,"");
 });
 
+test('S2: uncertain Model Room answers retain their key, reviewed version and draft while conflicts permit a reviewed new submission', async () => {
+  const {answerWorkRequestRequest,answerDraftAfterAttempt,workRequestCardRequest,answerBaseVersion}=await import('../js/model-room-model.js');
+  const view={historyWorkItemId:'WR-1',answer:{answerText:'Reviewed answer',evidenceRef:'',scopeConfirmed:true},answerSend:{state:'idle'}};
+  const sent=[]; let keys=0, version=2;
+  const client={workRequestCard:async()=>({ok:true,human_ref:'WR-1',version}),answerWorkRequestForJoe:async args=>{sent.push({...args});if(sent.length===1)throw Error('reply lost');if(sent.length===2)throw Object.assign(Error('conflict'),{payload:{error:'version_conflict'}});return {ok:true,state:'triaged'};},currentWorkRequests:async()=>({})};
+  const h=handlers('js/model-room.js','async function submitAnswer(','function render()',{view,currentAnswerBaseVersion:()=>version,answerBaseVersion,answerWorkRequestRequest,answerDraftAfterAttempt,workRequestCardRequest,classifyCommandOutcome,client,uuidv4:()=>`key-${++keys}`,renderAnswer:noop,announce:noop,take:async()=>{},refuseWorkRequestCard:noop,validCurrentWorkRequestsPayload:()=>true},['submitAnswer']);
+  await h.submitAnswer(); assert.match(view.answerSend.message,/unknown/i);
+  version=3; await h.submitAnswer(); assert.equal(sent[1].base_version,2); assert.equal(sent[0].idempotency_key,sent[1].idempotency_key);
+  await h.submitAnswer(); assert.equal(sent[2].base_version,3); assert.notEqual(sent[1].idempotency_key,sent[2].idempotency_key);
+});
+
 test("Dot 18: a late answer cannot clear another Work Requests draft", async () => {
   const {answerWorkRequestRequest,answerDraftAfterAttempt,workRequestCardRequest}=await import("../js/model-room-model.js");const pending=deferred();const announcements=[];
   const view={historyWorkItemId:"WR-1",answer:{answerText:"First answer",evidenceRef:"safe:test",scopeConfirmed:true},answerSend:{state:"idle"}};
   const h=handlers("js/model-room.js","async function submitAnswer(","function render()",{view,currentAnswerBaseVersion:()=>2,answerWorkRequestRequest,answerDraftAfterAttempt,workRequestCardRequest,client:{answerWorkRequestForJoe:()=>pending.promise,workRequestCard:async()=>({}),currentWorkRequests:async()=>({})},uuidv4:()=>"key",renderAnswer:noop,announce:message=>announcements.push(message),take:async()=>{},refuseWorkRequestCard:noop,validCurrentWorkRequestsPayload:()=>true},["submitAnswer"]);
-  const sending=h.submitAnswer();view.historyWorkItemId="WR-2";view.answer={answerText:"Second draft",evidenceRef:"",scopeConfirmed:false};view.answerSend={state:"idle"};pending.resolve({state:"triaged"});await sending;
+  const sending=h.submitAnswer();view.historyWorkItemId="WR-2";view.answer={answerText:"Second draft",evidenceRef:"",scopeConfirmed:false};view.answerSend={state:"idle"};pending.resolve({ok:true,state:"triaged"});await sending;
   assert.equal(view.answer.answerText,"Second draft");assert.ok(!announcements.some(text=>text.includes("WR-2")));
 });
 
 test("PR111 #3: successful answer preserves newer edits in the same draft", async () => {
   const {answerWorkRequestRequest,answerDraftAfterAttempt,workRequestCardRequest}=await import("../js/model-room-model.js");const pending=deferred();
   const view={historyWorkItemId:"WR-1",answer:{answerText:"First answer",evidenceRef:"safe:first",scopeConfirmed:true},answerSend:{state:"idle"}};
-  const h=handlers("js/model-room.js","async function submitAnswer(","function render()",{view,currentAnswerBaseVersion:()=>2,answerWorkRequestRequest,answerDraftAfterAttempt,workRequestCardRequest,client:{answerWorkRequestForJoe:()=>pending.promise},uuidv4:()=>"key",renderAnswer:noop,announce:noop,take:async()=>{},refuseWorkRequestCard:noop,validCurrentWorkRequestsPayload:()=>true},["submitAnswer"]);
-  const sending=h.submitAnswer();view.answer.answerText="New answer";view.answer.evidenceRef="safe:new";pending.resolve({state:"triaged"});await sending;
+  const h=handlers("js/model-room.js","async function submitAnswer(","function render()",{view,currentAnswerBaseVersion:()=>2,answerWorkRequestRequest,answerDraftAfterAttempt,workRequestCardRequest,client:{workRequestCard:async()=>({ok:true,human_ref:"WR-1",version:2}),answerWorkRequestForJoe:()=>pending.promise},uuidv4:()=>"key",renderAnswer:noop,announce:noop,take:async()=>{},refuseWorkRequestCard:noop,validCurrentWorkRequestsPayload:()=>true},["submitAnswer"]);
+  const sending=h.submitAnswer();view.answer.answerText="New answer";view.answer.evidenceRef="safe:new";pending.resolve({ok:true,state:"triaged"});await sending;
   assert.equal(view.answer.answerText,"New answer");assert.equal(view.answer.evidenceRef,"safe:new");assert.equal(view.answerSend.state,"sent");
 });
 

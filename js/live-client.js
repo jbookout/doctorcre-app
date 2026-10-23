@@ -12,6 +12,7 @@ import { createMcpRequests, unknownMcpOutcome } from './mcp-requests.mjs';
 import { observeDocClient } from './doc-context.js';
 import { expandBoardRead } from './progress-board-model.js';
 import { createEngagementWriter } from './prospect-engagement.mjs';
+import { createRetainedCommands } from './retained-commands.mjs';
 
 // Verified pre-commit refusals from new-deal and its argument/subject checks
 // in CARR producer 0cc6fe2538a81521bf8c25b0df58aa4063ed614b. Internal and
@@ -37,6 +38,19 @@ export function createLiveClient(opts = {}) {
   const requestMcp = createMcpRequests({ fetchImpl, typedContent: false });
   const dealCreations = new Map();
   const fetchReadImpl = (path, init) => fetchRead(path, init, { fetchImpl, timeoutMs: opts.readTimeoutMs || 10_000 });
+  const commands = createRetainedCommands({ scope: () => selfActor });
+  const sessionCommands = createRetainedCommands({ scope: async () => {
+    const response = await fetchReadImpl('/auth/session', { credentials: 'same-origin', cache: 'no-store', headers: { accept: 'application/json' } });
+    if (!response.ok) throw Object.assign(new Error('Sign in again before checking this write.'), { status: response.status });
+    const session = await response.json();
+    if (typeof session?.actor?.slug !== 'string' || typeof session.csrf_token !== 'string' || !session.csrf_token)
+      throw new Error('The current session could not be verified. No write was sent.');
+    if (selfActor && selfActor !== session.actor.slug) throw Object.assign(new Error('Session changed. Reopen the record before writing.'), { code: 'session_changed' });
+    return `${session.actor.slug}:${session.csrf_token}`;
+  } });
+  const sessionWrites = new Set(['set-market-agent', 'set-national-account-owner', 'create-national-account',
+    'create-national-market-deal', 'start-deal-review', 'review-deal', 'end-deal-review',
+    'resolve-candidate', 'resolve-post-call-candidate', 'answer-work-request-for-joe', 'add-industry-event', 'update-industry-event']);
 
   const rpc = (verb, args = {}, signal) => rawRpc(verb, args, signal, opts.readTimeoutMs || 10_000);
 
@@ -54,7 +68,7 @@ export function createLiveClient(opts = {}) {
       throw unknownMcpOutcome(outcome.cause);
     }
     const { payload, isError } = outcome;
-    if (isError) {
+    if (isError || (payload?.error && payload.ok !== true)) {
       const err = new Error(`live ${verb} refused: ${payload?.error || 'tool_error'}`);
       err.payload = payload;
       err.writeRefusal = verb === 'new-deal' && CREATION_REFUSALS.has(payload?.error);
@@ -71,8 +85,16 @@ export function createLiveClient(opts = {}) {
       error.payload = { error: 'offline' };
       throw error;
     }
-    const request = { ...args, idempotency_key: args.idempotency_key || uuidv4() };
-    return rawRpc(verb, request, undefined, timeoutMs);
+    // Existing command/form callers already retain their reviewed request.
+    // Keep those domain receipt contracts intact; cover the unretained paths
+    // and the old fallback that minted a different key on every attempt.
+    if (args.idempotency_key && !sessionWrites.has(verb)) return rawRpc(verb, args, undefined, timeoutMs);
+    const target = ['deal', 'candidate_id', 'account_client_id', 'event_id', 'human_ref', 'session_id',
+      'loop_id', 'conversation_id', 'suggestion_id', 'commission_id', 'board_id', 'client_id', 'field', 'projection_id']
+      .filter(key => args[key] !== undefined).map(key => [key, args[key]]);
+    const operationKey = JSON.stringify([verb, target]);
+    const retained = sessionWrites.has(verb) ? sessionCommands : commands;
+    return retained.send(operationKey, args, request => rawRpc(verb, request, undefined, timeoutMs || opts.writeTimeoutMs || 10_000));
   }
 
   // The record layer speaks phase SLUGS (deal_phase table); the board speaks

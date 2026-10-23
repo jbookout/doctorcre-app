@@ -32,7 +32,7 @@
  * failed — it is supplied again then, and the companion processes the
  * transcript it already has.
  */
-import { uuidv4 } from './uuid.js';
+import { createRetainedCommands } from './retained-commands.mjs';
 import { escapeText as esc } from './change-receipts.mjs';
 import { mountVisibilityPoll } from './visibility-poll.mjs';
 
@@ -129,6 +129,7 @@ const idlePostCall = () => ({ status: 'idle', session: null, weekly: false, repo
  * @param {() => Promise<void>} [deps.onConfirmed] reload after a confirmed item
  */
 export function createCallMode(deps) {
+  const candidateCommands = createRetainedCommands({ scope: () => deps.client()?.selfActor || null });
   const root = deps.root;
   const $ = (selector) => root.querySelector(selector);
   const fetchImpl = deps.fetchImpl || ((...args) => fetch(...args));
@@ -493,16 +494,16 @@ export function createCallMode(deps) {
     try {
       const client = deps.client();
       if (button.dataset.candidateResolver === 'post_call') {
-        await client.resolvePostCallCandidate({ candidate_id: candidateId, accept, idempotency_key: uuidv4() });
+        await candidateCommands.send(`post-call:${candidateId}`, { candidate_id: candidateId, accept }, request => client.resolvePostCallCandidate(request));
       } else {
-        await client.resolveConfirm({ proposal_id: candidateId, accept, idempotency_key: uuidv4() });
+        await candidateCommands.send(`candidate:${candidateId}`, { proposal_id: candidateId, accept }, request => client.resolveConfirm(request));
       }
       await deps.postCallClient.syncStatus(state.postCall.session);
       toast(accept ? 'Post-call item confirmed.' : 'Post-call item skipped.');
       await refreshPostCall();
       if (accept && deps.onConfirmed) await deps.onConfirmed();
     } catch (error) {
-      toast(error.message);
+      toast(error.pendingRequest ? 'Outcome unknown. Repeat the same decision to check its original request.' : error.message);
     } finally { button.disabled = false; }
   }
 
@@ -518,7 +519,7 @@ export function createCallMode(deps) {
       // draft. Nothing is ever sent.
       if (!['confirmed', 'created', 'already_created', 'draft_created'].includes(status)) {
         if (!candidateId) throw new Error('This email draft still needs a matched metadata candidate.');
-        await deps.client().resolvePostCallCandidate({ candidate_id: candidateId, accept: true, idempotency_key: uuidv4() });
+        await candidateCommands.send(`post-call:${candidateId}`, { candidate_id: candidateId, accept: true }, request => deps.client().resolvePostCallCandidate(request));
       }
       await deps.postCallClient.syncStatus(state.postCall.session);
       const created = await deps.postCallClient.createOutlookDraft(
