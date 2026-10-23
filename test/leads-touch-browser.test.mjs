@@ -28,7 +28,8 @@ for (const width of [320, 390]) test(`Slice A market filters and drag handles ha
  const writes = [];
  await routeLeads(page, { onWrite: value => writes.push(value) });
  await page.goto('http://localhost/leads');
- await page.locator('.lead-card').first().waitFor();
+ await page.locator('.market-marker').first().waitFor({ state: 'attached' });
+ await pausedClock(page, new Date('2026-10-03T18:00:00Z'));
  for (const selector of ['#marketCounts button', '.lead-card [data-drag-handle]']) {
   const targets = page.locator(selector);
   for (const target of await targets.all()) {
