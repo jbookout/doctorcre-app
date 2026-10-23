@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { withJourneyFixture } from './journey-fixture.mjs';
+import { parkedDeals } from './journey-flows.mjs';
 
 test.describe.configure({ retries: 0 });
 
@@ -22,17 +23,7 @@ test('Local Deals switches board and list views and inspects a deal', async ({ p
 });
 
 test('Local Deals shows parked records and recent changes read-only', async ({ page }) => {
-  await page.goto('/deals');
-  await expect(page.locator('.card-open').first()).toBeVisible();
-  await page.getByRole('button', { name: 'Parked', exact: true }).click();
-  await expect(page.locator('#parkedToggle')).toHaveAttribute('aria-pressed', 'true');
-  await page.getByRole('button', { name: 'Parked', exact: true }).click();
-  await expect(page.locator('#parkedToggle')).toHaveAttribute('aria-pressed', 'false');
-  const today = page.getByRole('button', { name: 'Today sidebar', exact: true });
-  if (await today.getAttribute('aria-expanded') === 'true') await today.click();
-  await expect(page.locator('#appToday')).toBeHidden();
-  await today.click();
-  await expect(page.locator('#appToday')).toBeVisible();
+  await parkedDeals(page);
 });
 
 test('Deal detail expands update history and preserves it through refresh', async ({ page }) => {

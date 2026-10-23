@@ -22,4 +22,8 @@ test.beforeEach(async ({ page }) => {
 
 import '../staging/clients.spec.ts';
 import '../staging/invoices.spec.ts';
-import '../staging/deals.spec.ts';
+import { parkedDeals } from '../staging/journey-flows.mjs';
+
+test('Local Deals shows parked records and recent changes read-only', async ({ page }) => {
+  await parkedDeals(page);
+});
