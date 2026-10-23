@@ -18,11 +18,11 @@ export function createSessionBoundary({ fetchImpl, invalidate, epoch = () => '',
     if (startedEpoch !== epoch()) revoke('session-changed');
     if (revoked || ticket !== generation) throw failure();
   }
-  async function verify() {
+  async function verify({ fresh = false } = {}) {
     if (revoked) throw failure();
-    if (checking) return checking;
+    if (!fresh && checking) return checking;
     const ticket = generation, startedEpoch = epoch();
-    checking = (async () => {
+    const pending = (async () => {
       const response = await fetchImpl('/auth/session', { credentials: 'same-origin', cache: 'no-store', redirect: 'error', headers: { accept: 'application/json' }, signal: AbortSignal.timeout(10_000) });
       if ([401,403].includes(response.status)) { if (!(anonymousDiagnostics && !binding)) revoke(); throw failure(); }
       if (!response.ok) throw new Error('Session verification unavailable');
@@ -35,21 +35,27 @@ export function createSessionBoundary({ fetchImpl, invalidate, epoch = () => '',
       current(ticket, startedEpoch);
       binding = next;
       return session;
-    })().finally(() => { checking = null; });
-    return checking;
+    })().finally(() => { if (checking === pending) checking = null; });
+    checking = pending;
+    return pending;
   }
   return {
     revoke, verify,
     get revoked() { return revoked; },
     async fetch(path, init = {}) {
       const ticket = generation, startedEpoch = epoch();
-      await verify(); current(ticket, startedEpoch);
+      const session = await verify({ fresh: true }); current(ticket, startedEpoch);
       const controller = new AbortController(); active.add(controller);
       const cancel = () => controller.abort();
       init.signal?.addEventListener('abort', cancel, { once: true });
       if (init.signal?.aborted) cancel();
       try {
-        const response = await fetchImpl(path, { ...init, cache: 'no-store', redirect: 'error', signal: controller.signal });
+        const headers = new Headers(init.headers);
+        if (!['GET','HEAD'].includes((init.method || 'GET').toUpperCase())) {
+          if (headers.has('x-carr-csrf') && headers.get('x-carr-csrf') !== session.csrf_token) { revoke('session-changed'); throw failure(); }
+          headers.set('x-carr-csrf', session.csrf_token);
+        }
+        const response = await fetchImpl(path, { ...init, headers, cache: 'no-store', redirect: 'error', signal: controller.signal });
         // Even an older read's denial revokes the entire view.
         if ([401,403].includes(response.status)) { revoke(); throw failure(); }
         const bytes = await response.arrayBuffer();
@@ -63,7 +69,7 @@ export function createSessionBoundary({ fetchImpl, invalidate, epoch = () => '',
         current(ticket, startedEpoch);
         // Detect a cookie change while the request was in flight before any
         // private body reaches a controller (or a write receipt reaches a form).
-        await verify(); current(ticket, startedEpoch);
+        await verify({ fresh: true }); current(ticket, startedEpoch);
         return new Response([204,205,304].includes(response.status) ? null : bytes, {status:response.status,statusText:response.statusText,headers:response.headers});
       } finally { active.delete(controller); init.signal?.removeEventListener('abort', cancel); }
     },

@@ -44,7 +44,7 @@ async function open(t, tab = 'views', { width = 1280, theme = 'dark', pending = 
       }
       return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ result: { content: [{ text: JSON.stringify(payload) }] } }) });
     }
-    if (url.pathname === '/api/system-work/session') return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ actor: { slug: 'joe' }, csrf_token: 'synthetic-test-token' }) });
+    if (['/api/system-work/session', '/auth/session'].includes(url.pathname)) return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ actor: { slug: 'joe' }, csrf_token: 'synthetic-test-token' }) });
     if (url.pathname.startsWith('/api/')) return route.fulfill({ contentType: 'application/json', body: '{}' });
     return route.continue();
   });

@@ -58,3 +58,55 @@ test('public Status may start signed out, but loses the whole authenticated view
  signedIn=true;await boundary.verify();signedIn=false;
  await assert.rejects(boundary.verify(),{code:'authentication_required'});assert.equal(invalidated,true);
 });
+
+test('F01: Model Room mutation stays bound to the session verified before the cookie switches', async () => {
+ const { createLiveClient } = await import('../js/live-client.js');
+ const { composerRequest } = await import('../js/model-room-model.js');
+ let identity = session('joe');
+ const effects = [];
+ const boundary = createSessionBoundary({ invalidate() {}, fetchImpl: async (path, init) => {
+   if (path === '/auth/session') return Response.json(identity);
+   identity = session('dell');
+   if (new Headers(init.headers).has('x-carr-csrf') && new Headers(init.headers).get('x-carr-csrf') !== identity.csrf_token) return Response.json({error:'forbidden'}, {status:403});
+   effects.push(identity.actor.slug);
+   return Response.json({result:{content:[{type:'text',text:JSON.stringify({ok:true})}]}});
+ }});
+ const client = createLiveClient({fetchImpl:(...args) => boundary.fetch(...args)});
+ await assert.rejects(client.addRoomTurn(composerRequest({text:'Synthetic editor intent'})));
+ assert.deepEqual(effects, []);
+ assert.equal(boundary.revoked, true);
+});
+
+test('F01: a completed private read cannot join an identity check started before its response', async () => {
+ const oldRead = defer(), staleIdentity = defer(), started = defer();
+ let identity = session('joe'), checks = 0;
+ const boundary = createSessionBoundary({invalidate() {}, fetchImpl: async path => {
+   if (path === '/auth/session') {
+     checks++;
+     if (checks === 2) { started.resolve(); return staleIdentity.promise; }
+     return Response.json(identity);
+   }
+   return oldRead.promise;
+ }});
+ const first = assert.rejects(boundary.fetch('/private-title'), {code:'authentication_required'});
+ await new Promise(resolve => setTimeout(resolve, 0));
+ const overlapping = boundary.verify();
+ await started.promise;
+ identity = session('dell');
+ oldRead.resolve(Response.json({title:'Synthetic private title'}));
+ await new Promise(resolve => setTimeout(resolve, 0));
+ staleIdentity.resolve(Response.json(session('joe')));
+ await overlapping.catch(() => {});
+ await first;
+ assert.equal(boundary.revoked, true);
+});
+
+test('F01: a retained operation cannot replace its original session token with the current one', async () => {
+ let sent = 0;
+ const boundary = createSessionBoundary({invalidate() {}, fetchImpl:async path => {
+   if (path === '/auth/session') return Response.json(session('dell'));
+   sent++; return Response.json({ok:true});
+ }});
+ await assert.rejects(boundary.fetch('/mcp', {method:'POST', headers:{'x-carr-csrf':'synthetic-joe'}}), {code:'authentication_required'});
+ assert.equal(sent, 0);
+});

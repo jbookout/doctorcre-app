@@ -8,7 +8,7 @@ import { handleDoctorcreRequest } from "../src/worker.js";
 import { validSystemWork, groupSystemWork, recentLive } from "../js/system-work-board-model.js";
 
 const contract = JSON.parse(await readFile(new URL("../contracts/carr-interface.v1.json", import.meta.url), "utf8"));
-const pinnedProducer = "e2e484b1933bfd63c10cc9a1b3350132948f6f74";
+const pinnedProducer = "1df9b9936394164dd55e815f8a8bf69649508ccc";
 
 const producerModules = new Map();
 async function producerModuleUrl(path) {
@@ -83,7 +83,7 @@ test("the app consumes the merged producer's directory and selected-board interf
   const actor = { id: "10000000-0000-4000-8000-000000000001", slug: "codex", human: false,
     native_agent_verified: true, sponsoring_human_slug: "joe" };
   const row = { board_id: "carr-v5", version: 2, updated_at: "2026-10-01T12:00:00Z",
-    snapshot_json: { title: "Synthetic system board", tasks: { build: { status: "running", title: "Synthetic build" },
+    snapshot_json: { task_counts: JSON.parse('{"__proto__":1,"running":1}'), title: "Synthetic system board", tasks: { build: { status: "running", title: "Synthetic build" },
       malformed: [], prototype: { status: "__proto__" } } } };
   const calls = [];
   const client = { async query(sql, params) {
