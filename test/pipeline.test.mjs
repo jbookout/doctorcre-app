@@ -270,9 +270,9 @@ test("loadDealContext never guesses a party's contact record from its party_id",
   assert.equal(context.parties[0].name, "Dr. Example");
 });
 
-test("contextDrawerSections renders recorded context and hides unavailable sections", () => {
+test("contextDrawerSections renders recorded context and labels unavailable sections", () => {
   assert.deepEqual(contextDrawerSections({client:{status:'not_linked'},parties:[],criticalDates:[]}),[]);
-  assert.deepEqual(contextDrawerSections({client:{status:'unavailable'},parties:[],criticalDates:[]}),[]);
+  assert.equal(contextDrawerSections({client:{status:'unavailable'},parties:[],criticalDates:[]})[0].state,'unavailable');
   const ok = contextDrawerSections({
     client: { status: "ok", record: { name: "Demo Dental North", phone: "205-555-0142", email: "a@example.com", city: "Demo City", state: "DM" } },
     parties: [{ role: "client_contact", name: "Dr. Example" }],
@@ -611,7 +611,7 @@ test("a fetch failure reading the client record: the drawer says the read failed
   assert.equal(context.client.reason, "fetch_failed");
 
   const sections = contextDrawerSections(context, { dateLabel: (v) => v });
-  assert.equal(sections.some(s=>s.title === "Client"),false);
+  assert.equal(sections.find(s=>s.title === "Client").state,"unavailable");
 });
 
 test("the fixture accepts every one of the eight phases by its board value", async () => {

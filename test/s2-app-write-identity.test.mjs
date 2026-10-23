@@ -1,3 +1,4 @@
+import { performCommand, pendingCommand, commandMessage } from '../js/command-feedback.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
@@ -59,17 +60,22 @@ for (const live of [true,false]) test(`agenda start retains its exact request un
    return Response.json({result:{content:[{type:'text',text:JSON.stringify(receipt())}]}});
  }}) : {startReview:async request=>{requests.push(structuredClone(request));return receipt();}};
  const state = {selfActor:'joe',workspace:'team',accountId:null,client};
- const context = vm.createContext({state,createRetainedCommands,...reviewModel,
+ const screenActions = new Map();
+ const context = vm.createContext({state,createRetainedCommands,...reviewModel,performCommand,pendingCommand,commandMessage,
+   screenCommands:{},screenActions,renderScreenActions(){},uuidv4:randomUUID,
    agendaDeals:()=>[{id:'synthetic-deal'}],$:()=>({hidden:true}),showToast(){},renderAgenda(){renders++;}});
  vm.runInContext(source.slice(source.indexOf('function appWrite('),source.indexOf('function openForm(')) +
+   source.slice(source.indexOf('async function runScreenAction('),source.indexOf('async function loadConfirms(')) +
    source.slice(source.indexOf('async function startAgenda('),source.indexOf('function renderAgenda('))+'\nglobalThis.start = startAgenda;',context);
- await assert.rejects(context.start(), /receipt|unknown|confirm/i);
+ assert.equal(await context.start(),false);
  assert.equal(renders,0); assert.equal(state.review,undefined);
- assert.ok(state.commands.pending('agenda:start:team:'));
- await context.start();
+ assert.ok(state.commands.pending('agenda-start'));
+ assert.equal(await context.start(),false);
+ assert.equal(requests.length,1,'Start cannot replace an unresolved request');
+ await screenActions.get('agenda-start').run();
  assert.deepEqual(requests[1],requests[0]);
  assert.equal(state.review.sessionId,'synthetic-review-session'); assert.equal(renders,1);
- assert.equal(state.commands.pending('agenda:start:team:'),null);
+ assert.equal(state.commands.pending('agenda-start'),null);
 });
 
 test('the live agenda client itself retains the key after a malformed successful receipt', async () => {

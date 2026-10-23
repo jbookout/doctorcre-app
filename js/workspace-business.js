@@ -874,11 +874,12 @@ async function loadRecord(id, { focusOnOpen = false } = {}) {
     // Repainting recent activity must not restart this read or lose its state.
     dealroomClient().then(client => loadEvidence(client)).then(result => {
       if (view.evidence.sequence !== evidenceSequence || view.recordId !== id || view.signedOut) return;
+      if (result.threads?.state === 'refused') { expireNow(); return; }
       view.evidence.result = result;
       renderRecordPanel();
     }).catch(() => {
       if (view.evidence.sequence !== evidenceSequence || view.recordId !== id || view.signedOut) return;
-      view.evidence.result = {};
+      view.evidence.result = {threads:{state:'unavailable',items:[],count:null}};
       renderRecordPanel();
     });
     if (acceptsResponse(view.record.sequence, sequence) && view.recordId === id) loadActivity(id, payload.record);
@@ -1058,6 +1059,7 @@ function wireControls() {
 
   dom.panelClose?.addEventListener("click", () => closeRecord());
   dom.panelBody?.addEventListener("click", (event) => {
+    if (event.target.closest("[data-evidence-retry]") && view.recordId) loadRecord(view.recordId);
     if (event.target.closest("[data-retry='record']") && view.recordId) loadRecord(view.recordId);
   });
 

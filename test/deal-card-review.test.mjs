@@ -45,7 +45,8 @@ test('every deal snapshot opens with an empty Update above a concise overview an
   assert.equal(await page.locator('.deal-note').first().locator('time').getAttribute('datetime'),'2026-10-02T17:45:00Z');
   assert.equal(await page.locator('.timeline-chart').count(),0);
   assert.equal(await page.locator('[aria-label="Deal phases and timeline"]').count(),1);
-  assert.doesNotMatch(await page.locator('#recordPanel').textContent(),/threads unavailable|meeting evidence unavailable|not linked/i);
+  assert.match(await page.locator('#recordPanel').textContent(),/Threads unavailable/);
+  assert.equal(await page.locator('[data-evidence-retry]').count()>0,true);
   assert.equal(await page.locator('#recordPanel').evaluate(e=>e.scrollWidth<=e.clientWidth),true);
   await page.screenshot({path:new URL(`out/test-artifacts/deal-card-review/${width}-after.png`,root).pathname,animations:'disabled'});
   await page.locator('.deal-updates').scrollIntoViewIfNeeded();

@@ -253,7 +253,7 @@ export function createLiveClient(opts = {}) {
       const res = await fetchReadImpl(`/api/v1/business/${dataset}/${id}`, {
         headers: { accept: 'application/json' }, credentials: 'same-origin', cache: 'no-store',
       });
-      if (!res.ok) throw new Error(`live business ${dataset} record -> HTTP ${res.status}`);
+      if (!res.ok) throw Object.assign(new Error(`live business ${dataset} record -> HTTP ${res.status}`), {status:res.status});
       return res.json();
     },
 

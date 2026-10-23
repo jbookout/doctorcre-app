@@ -148,12 +148,13 @@ function renderState(phase) {
   else {
     const notes = truncationNotes(view.payload, view.catchUp);
     block.innerHTML = [
-      `<h3>${escapeHtml(copy.title)}</h3>`,
+      `<h3>${escapeHtml(view.catchUp?.state === "unavailable" ? "Search context unavailable" : copy.title)}</h3>`,
       `<p class="small">${escapeHtml(copy.copy)}</p>`,
+      phase === "refused" ? '<a href="/auth/login">Sign in</a>' : "",
       phase === "partial" ? notes.map((note) => `<p class="small">${escapeHtml(note)}</p>`).join("") : "",
       // Retry is offered by ONE state. A no-match has nothing to retry: the
       // record layer answered, and it answered with nothing.
-      copy.retry ? '<button class="btn" type="button" id="searchRetry" aria-label="Refresh" title="Refresh"><span aria-hidden="true">↻</span></button>' : "",
+      (copy.retry || view.catchUp?.state === "unavailable") ? '<button class="btn" type="button" id="searchRetry" aria-label="Refresh" title="Refresh"><span aria-hidden="true">↻</span></button>' : "",
     ].join("");
   }
   const live = $("searchLive");
@@ -212,9 +213,10 @@ async function read({ push = true, signal } = {}) {
     let catchUp = null;
     try {
       const answer = await step(client.findAndCatchUp(buildFindAndCatchUpArguments(query, FIND_CATCH_UP_LIMIT_DEFAULT), { signal }));
-      catchUp = validCatchUpPayload(answer) ? answer : null;
-    } catch {
-      // Context failure never turns a good find answer into an outage.
+      catchUp = validCatchUpPayload(answer) ? answer : {state:"unavailable"};
+    } catch (error) {
+      if ([401,403].includes(error?.status)) throw error;
+      catchUp = {state:"unavailable"};
     }
     return { status: "ready", payload, catchUp };
   }, {

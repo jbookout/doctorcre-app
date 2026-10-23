@@ -44,7 +44,7 @@ async function openApp(store, { refuseSave = false, conflictOnce = false, readFa
     if (path === "/api/tours/library") return response({ tours: [{ id: tourId, name: "Test Tour", status: "draft" }] });
     if (path.startsWith("/api/tours/detail")) {
       if (holdReload && calls.some(call => call.options.method === "POST")) await holdReload.promise;
-      return response({ id: tourId, name: "Test Tour", status: "draft", routes: [], ...detail });
+      return response({ id: tourId, name: "Test Tour", status: "draft", stops: [], routes: [], ...detail });
     }
     if (["/api/tours/route-version", "/api/tours/route-reorder", "/api/tours/route-accept", "/api/tours/cheat-sheet/autosave", "/api/tours/cheat-sheet/restore"].includes(path)) {
       if (holdSave) await holdSave.promise;
