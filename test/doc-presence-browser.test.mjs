@@ -386,17 +386,29 @@ test('R18 closed Deal detail cannot survive an empty board projection',async t=>
  const c=await readContext(page);assert.equal(c.ready,true);assert.deepEqual(c.records,[]);
 });
 test('R18 a held Search response cannot publish under a later query scope',async t=>{
- let release,started;const held=new Promise(r=>release=r),entered=new Promise(r=>started=r);t.after(()=>release());
+ let release;const held=new Promise(r=>release=r);t.after(()=>release());
  const {page}=await setup(t,{onRoute:async(route,{url})=>{
+  if(url.pathname==='/js/search-page.js'){
+   // Let the old read answer after cancellation so this exercises the epoch
+   // guard. The normal client aborts it before Doc can receive its response.
+   await route.fulfill({contentType:'text/javascript',body:`
+    import { createLiveClient } from './live-client.js';
+    import { mountSearch } from './search.js';
+    const client=createLiveClient(),find=client.find.bind(client);
+    client.find=args=>find(args);
+    mountSearch({client});
+   `});return true;
+  }
   if(url.pathname!=='/mcp'||route.request().postDataJSON().params.name!=='find')return false;
-  started();await held;await rpc(route,{parties:[{ref:'C-SAMPLE',kind:'client',name:'Old query sample',merged:false}],deals:[],connections:[],organizations:[],lead_client_links:[],deals_via_link:[],note:'Sample'});return true;
+  await held;await rpc(route,{parties:[{ref:'C-SAMPLE',kind:'client',name:'Old query sample',merged:false}],deals:[],connections:[],organizations:[],lead_client_links:[],deals_via_link:[],note:'Sample'});return true;
  }});
  await page.goto('https://app.doctorcre.com/search');
  await page.evaluate(async()=>{
   const c=(await import('/js/doc-context.js')).pageDocContext,finish=c.finish;
-  c.finish=(...args)=>{const result=finish(...args);window.finishedFind=result;return result;};
+  c.finish=(ticket,...args)=>{const result=finish(ticket,...args);if(ticket?.method==='find')window.finishedFind=result;return result;};
  });
- await page.locator('#searchQuery').fill('Old query');await page.locator('#searchForm').dispatchEvent('submit');await entered;
+ const requested=page.waitForRequest(request=>request.url().endsWith('/mcp')&&request.postDataJSON()?.params?.name==='find');
+ await page.locator('#searchQuery').fill('Old query');await page.locator('#searchForm').dispatchEvent('submit');await requested;
  await page.locator('#searchQuery').fill('');await page.locator('#searchForm').dispatchEvent('submit');
  release();await page.waitForFunction(()=>window.finishedFind!==undefined);
  assert.equal(await page.evaluate(()=>window.finishedFind),false);

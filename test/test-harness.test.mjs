@@ -18,7 +18,7 @@ test('WebKit skips macOS 27 and newer without disabling Linux CI or older Macs',
 test('launches share one Chromium while each test keeps its own storage', async () => {
   const [a, b] = await Promise.all([chromium.launch(), chromium.launch()]);
   const [pageA, pageB] = await Promise.all([a.newPage(), b.newPage()]);
-  await Promise.all([pageA, pageB].map(page => page.goto('data:text/html,<title>x</title>')));
+  await Promise.all([pageA, pageB].map(page => page.setContent('<title>x</title>')));
   assert.equal(pageA.context().browser(), pageB.context().browser());
   assert.notEqual(pageA.context(), pageB.context());
   await a.close();

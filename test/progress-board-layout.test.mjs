@@ -149,7 +149,8 @@ for (const width of [1440, 390]) test(`Live expansion keeps browser focus throug
   await page.route("**/*", async route => {
     const url = new URL(route.request().url());
     if (url.origin !== "http://board.test") return route.abort();
-    const path = url.pathname === "/" ? "control-room.html" : url.pathname.slice(1);
+    const path = url.pathname === "/" ? "control-room.html"
+      : url.pathname.startsWith("/icons/") ? `public-shell${url.pathname}` : url.pathname.slice(1);
     let body = await readFile(join(ROOT, path));
     if (path === "control-room.html") body = Buffer.from(String(body).replace(/<script\b[^>]*>[\s\S]*?<\/script>/g, ""));
     await route.fulfill({ body, contentType: TYPES[extname(path)] || "application/octet-stream" });
