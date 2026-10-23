@@ -352,7 +352,7 @@ test("a Save selection click while a save is in flight reuses it and the button 
 
 test("two immediate clicks on each versioned route or cheat-sheet write send one idempotency key", async () => {
   const detail = { route_version_id: versionId, route_version: 1, accepted_route_version: 0, route_acceptance_digest: `sha256:${"a".repeat(64)}`, stops: [],
-    cheat_sheet: { revision_number: 1, restore_revision_id: versionId } };
+    cheat_sheet: { revision_number: 1, content: {}, restore_revision_id: versionId } };
   for (const [button, path, completed] of [["#save-route", "/api/tours/route-version", "Route version confirmed."], ["#reorder-route", "/api/tours/route-reorder", "Route version confirmed."],
     ["#accept-route", "/api/tours/route-accept", "Route acceptance confirmed."], ["#save-sheet", "/api/tours/cheat-sheet/autosave", "Internal cheat sheet save confirmed."], ["#restore-sheet", "/api/tours/cheat-sheet/restore", "Sheet restoration confirmed."]]) {
     let releaseSave, releaseReload;

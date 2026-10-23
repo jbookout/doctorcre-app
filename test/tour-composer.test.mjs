@@ -71,7 +71,7 @@ function domain() {
       const latest = tour.routes[0], accepted = tour.routes.find(r => r.accepted);
       const reviewed = structuredClone(tour);
       for (const route of reviewed.routes) route.acceptance_digest = fixtureReviewDigest(route);
-      return response({ ...reviewed, route_version: accepted?.route_version || 1,
+      return response({ ...reviewed, cheat_sheet: Object.hasOwn(reviewed, "cheat_sheet") ? reviewed.cheat_sheet : {}, route_version: accepted?.route_version || 1,
         route_version_id: latest.id, route_version_state: latest.accepted ? "accepted" : "draft",
         accepted_route_version: accepted?.route_version || 0, stops: structuredClone(latest.stops) });
     }
@@ -697,6 +697,91 @@ test("S2 malformed successful sheet receipt remains unknown and replays its reta
   doc.querySelector("#save-sheet").click(); await settle();
   const writes = store.calls.filter(call => call.path === "/api/tours/cheat-sheet/autosave");
   assert.equal(writes.length, 2); assert.deepEqual(writes[1].body, writes[0].body); dom.window.close();
+});
+
+for (const status of [401, 403]) for (const kind of ["sheet", "projection"]) test(`S2 unknown ${kind} followed by POST ${status} keeps its original request until confirmation`, async () => {
+  const store = domain(), { dom, doc } = await open(store); await create(doc);
+  if (kind === "projection") { await addCart(doc); await saveAndAccept(doc); }
+  const path = kind === "sheet" ? "/api/tours/cheat-sheet/autosave" : "/api/tours/projection";
+  if (kind === "sheet") fill(doc, "#cheat-content", "Earlier save may already be committed");
+  const normal = store.fetch; let posts = 0;
+  dom.window.fetch = async (requestPath, options) => {
+    const attempt = requestPath === path ? ++posts : 0;
+    const reply = await normal(requestPath, options);
+    if (attempt === 2) return response(null, status);
+    return reply;
+  };
+  store.fail(path, "lost"); doc.querySelector(kind === "sheet" ? "#save-sheet" : "#generate-projection").click(); await settle();
+  const retry = doc.querySelector(kind === "sheet" ? "#save-sheet" : "#retry-tour-action");
+  retry.click(); await settle();
+  assert.ok(dom.window.sessionStorage.getItem("doctorcre-tour-other-writes-v1"));
+  assert.equal(doc.querySelector(kind === "sheet" ? "#cheat-content" : "#generate-projection").disabled, true);
+  assert.match(doc.querySelector(kind === "sheet" ? "#sheet-state" : "#tour-action-state").textContent, /unknown|sign in/i);
+  retry.click(); await settle();
+  const writes = store.calls.filter(call => call.path === path);
+  assert.equal(writes.length, 3);
+  assert.deepEqual(writes[1].body, writes[0].body); assert.deepEqual(writes[2].body, writes[0].body);
+  assert.equal(dom.window.sessionStorage.getItem("doctorcre-tour-other-writes-v1"), null); dom.window.close();
+});
+
+for (const sheet of [{ content: { notes: "Missing version" } }, { revision_number: "1", content: {} },
+  { revision_number: -1, content: {} }, { revision_number: null, content: {} }, { revision_number: 0, content: {} }]) {
+  test(`S2 malformed populated sheet revision ${JSON.stringify(sheet.revision_number)} never authorizes a write`, async () => {
+    const store = domain(), { dom, doc } = await open(store); await create(doc);
+    const tour = [...store.tours.values()][0]; tour.cheat_sheet = sheet;
+    fill(doc, "#cheat-content", "Draft survives malformed current sheet"); doc.querySelector("#save-sheet").click(); await settle();
+    assert.equal(store.calls.filter(call => call.path === "/api/tours/cheat-sheet/autosave").length, 0);
+    assert.equal(doc.querySelector("#cheat-content").value, "Draft survives malformed current sheet");
+    assert.equal(doc.querySelector("#sheet-conflict").hidden, true);
+    assert.match(doc.querySelector("#sheet-state").textContent, /could not be read|unavailable/i); dom.window.close();
+  });
+}
+
+test("S2 an explicitly empty sheet is the supported zero-revision create case", async () => {
+  const store = domain(), { dom, doc } = await open(store); await create(doc);
+  [...store.tours.values()][0].cheat_sheet = {};
+  fill(doc, "#cheat-content", "First saved notes"); doc.querySelector("#save-sheet").click(); await settle();
+  const writes = store.calls.filter(call => call.path === "/api/tours/cheat-sheet/autosave");
+  assert.equal(writes.length, 1); assert.equal(writes[0].body.expected_revision_number, 0); dom.window.close();
+});
+
+test("S2 a failed or malformed conflict read preserves the draft and blocks review until a valid read", async () => {
+  const store = domain(), { dom, doc } = await open(store); await create(doc);
+  const tour = [...store.tours.values()][0], normal = store.fetch; let posted = false, valid = false;
+  dom.window.fetch = async (path, options) => {
+    if (path === "/api/tours/cheat-sheet/autosave") { posted = true; store.fail(path, "stale"); }
+    if (posted && path.startsWith("/api/tours/detail")) {
+      if (!valid) return response({ ...tour, cheat_sheet: { content: { notes: "Missing revision in read" } } });
+      return response({ ...tour, cheat_sheet: { revision_number: 2, content: { notes: "Valid current revision" } } });
+    }
+    return normal(path, options);
+  };
+  fill(doc, "#cheat-content", "Do not discard this draft"); doc.querySelector("#save-sheet").click(); await settle();
+  assert.equal(doc.querySelector("#cheat-content").value, "Do not discard this draft");
+  assert.equal(doc.querySelector("#review-sheet").disabled, true);
+  assert.equal(doc.querySelector("#save-sheet").disabled, true);
+  valid = true; doc.querySelector("#refresh-sheet-conflict").click(); await settle();
+  assert.equal(doc.querySelector("#review-sheet").disabled, false);
+  assert.match(doc.querySelector("#sheet-current").textContent, /Valid current revision/);
+  assert.equal(doc.querySelector("#cheat-content").value, "Do not discard this draft"); dom.window.close();
+});
+
+for (const kind of ["sheet", "projection"]) test(`S2 confirmed ${kind} with a failed refresh still reports the confirmed save`, async () => {
+  const store = domain(), { dom, doc } = await open(store); await create(doc);
+  if (kind === "projection") { await addCart(doc); await saveAndAccept(doc); }
+  else fill(doc, "#cheat-content", "Confirmed notes");
+  const path = kind === "sheet" ? "/api/tours/cheat-sheet/autosave" : "/api/tours/projection", normal = store.fetch;
+  let committed = false;
+  dom.window.fetch = async (requestPath, options) => {
+    if (committed && requestPath.startsWith("/api/tours/detail")) return response(null, 503);
+    const reply = await normal(requestPath, options);
+    if (requestPath === path) committed = true;
+    return reply;
+  };
+  doc.querySelector(kind === "sheet" ? "#save-sheet" : "#generate-projection").click(); await settle();
+  assert.match(doc.querySelector("#status").textContent, /confirmed.*refresh/i);
+  assert.equal(dom.window.sessionStorage.getItem("doctorcre-tour-other-writes-v1"), null);
+  dom.window.close();
 });
 
 test("phone and iPad composers fit the viewport and reduced motion leaves every state legible", async () => {

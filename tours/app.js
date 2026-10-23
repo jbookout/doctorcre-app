@@ -82,6 +82,8 @@ import { cheatSheetText, factSummary, formatTourDate, tourDisplayName, tourMetaL
       const saved = JSON.parse(sessionStorage.getItem(otherWritesKey) || "null");
       if (saved?.sessionBinding !== sessionBinding) return;
       sheetPending = saved.sheet || null; tourAction = saved.action || null;
+      if (sheetPending) sheetPending.uncertain = true;
+      if (tourAction) tourAction.uncertain = true;
       if (sheetPending) sheetMessage = "Save outcome unknown after reload. Check outcome replays the retained request.";
     } catch { /* Invalid tab state cannot authorize a write. */ }
   }
@@ -102,13 +104,23 @@ import { cheatSheetText, factSummary, formatTourDate, tourDisplayName, tourMetaL
     sheetConflict = { tourId, current: null }; sheetMessage = "The sheet changed. Your draft is kept; read and review the current revision."; renderSheetRecovery();
     try {
       const current = await request(`/api/tours/detail?tour_id=${encodeURIComponent(tourId)}`);
-      if (current.id !== tourId || !Number.isInteger(current.cheat_sheet?.revision_number ?? 0)) throw new Error("read_invalid");
+      if (current.id !== tourId) throw new Error("read_invalid");
+      sheetRevision(current);
       if (sheetConflict?.tourId === tourId && state.tour?.id === tourId) sheetConflict.current = current;
     } catch (error) {
       if (error.message === "session_changed") return;
       sheetMessage = "The current sheet is unavailable. Your draft is kept; read it again before reviewing.";
     }
     renderSheetRecovery();
+  }
+  function sheetRevision(detail) {
+    const sheet = detail?.cheat_sheet;
+    if (!sheet || typeof sheet !== "object" || Array.isArray(sheet)) throw new Error("read_invalid");
+    // The producer returns exactly {} when this Tour has no sheet revision.
+    if (Object.keys(sheet).length === 0) return 0;
+    if (!Number.isSafeInteger(sheet.revision_number) || sheet.revision_number <= 0 || sheet.revision_number > 2147483647 ||
+      !sheet.content || typeof sheet.content !== "object" || Array.isArray(sheet.content)) throw new Error("read_invalid");
+    return sheet.revision_number;
   }
   function renderTourAction() {
     $("#retry-tour-action").hidden = !tourAction || tourAction.busy;
@@ -160,12 +172,13 @@ import { cheatSheetText, factSummary, formatTourDate, tourDisplayName, tourMetaL
       if (pending.path === "/api/tours/cheat-sheet/restore") { state.cheatDirty = false; sheetMessage = "Restored sheet confirmed."; }
       await loadTour(pending.tourId); status(`${pending.label} confirmed.`);
     } catch (error) {
+      if (confirmed) { status("The change was confirmed. The current Tour could not be refreshed; retry Refresh."); return; }
       if (tourAction !== pending) return;
-      if (error.writeRefusal && error.status !== 408 && error.status !== 429) {
+      const earlierUnknownDenied = pending.uncertain && [401, 403].includes(error.status);
+      if (error.writeRefusal && error.status !== 408 && error.status !== 429 && !earlierUnknownDenied) {
         tourAction = null; persistOtherWrites(); renderTourAction();
         status(error.status === 409 ? "The Tour changed. Reopen it and review before a new request." : "The Tour action was refused. Review the current record before saving.");
-      } else if (confirmed) status("The change was confirmed. The current Tour could not be refreshed; retry Refresh.");
-      else { pending.busy = false; persistOtherWrites(); renderTourAction(); }
+      } else { pending.busy = false; pending.uncertain = true; persistOtherWrites(); renderTourAction(); }
     } finally { if (tourAction === pending) pending.busy = false; renderTourAction(); }
   }
   const routeEndpoints = new Map();
@@ -848,6 +861,7 @@ import { cheatSheetText, factSummary, formatTourDate, tourDisplayName, tourMetaL
   async function saveSheet() {
     if (!state.tour || sheetBusy || sheetConflict) return;
     const tourId = state.tour.id, binding = sessionBinding;
+    let confirmed = false;
     sheetBusy = true; renderSheetRecovery();
     try {
       if (!sheetPending) {
@@ -859,11 +873,12 @@ import { cheatSheetText, factSummary, formatTourDate, tourDisplayName, tourMetaL
         }
         const latest = await request(`/api/tours/detail?tour_id=${encodeURIComponent(tourId)}`);
         if (latest.id !== tourId || binding !== sessionBinding) throw new Error("session_changed");
-        if (Number(latest.cheat_sheet?.revision_number || 0) !== Number(state.tour.cheat_sheet?.revision_number || 0)) {
+        const revision = sheetRevision(latest);
+        if (revision !== sheetRevision(state.tour)) {
           sheetConflict = { tourId, current: latest }; sheetMessage = "The sheet changed. Review the current revision; your draft is kept."; return;
         }
         sheetPending = { tourId, binding, draft, body: { tour_id: tourId, content,
-          expected_revision_number: Number(latest.cheat_sheet?.revision_number || 0), idempotency_key: uuid() } };
+          expected_revision_number: revision, idempotency_key: uuid() } };
         persistOtherWrites();
       } else {
         await request(`/api/tours/detail?tour_id=${encodeURIComponent(tourId)}`);
@@ -872,19 +887,27 @@ import { cheatSheetText, factSummary, formatTourDate, tourDisplayName, tourMetaL
       const pending = sheetPending;
       sheetMessage = "Saving…"; renderSheetRecovery();
       confirmedTourWrite("/api/tours/cheat-sheet/autosave", await post("/api/tours/cheat-sheet/autosave", pending.body, pending.binding));
+      confirmed = true;
       if (state.tour?.id !== tourId || sheetPending !== pending) return;
       sheetPending = null; persistOtherWrites(); state.cheatDirty = false;
       sheetMessage = "Internal cheat sheet save confirmed."; sheetBusy = false;
       await loadTour(tourId); status(sheetMessage);
     } catch (error) {
       if (error.message === "session_changed") return;
+      if (confirmed) { sheetMessage = "The save was confirmed. The current sheet could not be refreshed; retry Refresh."; status(sheetMessage); return; }
       if (error.status === 409) {
         sheetPending = null; persistOtherWrites(); await currentSheetConflict(tourId);
-      } else if (error.writeRefusal && error.status !== 408 && error.status !== 429) {
+      } else if (error.writeRefusal && error.status !== 408 && error.status !== 429 &&
+        !(sheetPending?.uncertain && [401, 403].includes(error.status))) {
         sheetPending = null; persistOtherWrites(); sheetMessage = "The save was refused. Your draft is kept; review the record before saving.";
-      } else sheetMessage = sheetPending
-        ? "Save outcome unknown. Check save outcome replays the retained draft, version and key."
-        : "The current sheet could not be read. Your draft is kept; try saving again.";
+      } else {
+        if (sheetPending) { sheetPending.uncertain = true; persistOtherWrites(); }
+        sheetMessage = sheetPending
+          ? [401, 403].includes(error.status)
+            ? "The earlier save outcome is still unknown. This retry was denied; restore access before checking the retained request."
+            : "Save outcome unknown. Check save outcome replays the retained draft, version and key."
+          : "The current sheet could not be read. Your draft is kept; try saving again.";
+      }
     } finally { sheetBusy = false; renderSheetRecovery(); }
   }
   async function issueShare(rotate = false) {
@@ -1042,8 +1065,8 @@ import { cheatSheetText, factSummary, formatTourDate, tourDisplayName, tourMetaL
     const tour = state.tour, revision = tour?.cheat_sheet?.restore_revision_id;
     if (!tour || !id(revision) || sheetPending || sheetConflict) return;
     await startTourAction("/api/tours/cheat-sheet/restore", { tour_id: tour.id, restore_revision_id: revision,
-      expected_revision_number: Number(tour.cheat_sheet?.revision_number || 0), idempotency_key: uuid() }, "Sheet restoration",
-    latest => Number(latest.cheat_sheet?.revision_number || 0) === Number(tour.cheat_sheet?.revision_number || 0));
+      expected_revision_number: sheetRevision(tour), idempotency_key: uuid() }, "Sheet restoration",
+    latest => sheetRevision(latest) === sheetRevision(tour));
   }));
   $("#generate-projection").addEventListener("click", () => void action(async () => {
     const tour = state.tour; if (!tour?.route_version_id || tour.route_version_state !== "accepted") return;
