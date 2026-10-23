@@ -346,6 +346,7 @@ for(const width of [1440,390])for(const theme of ['dark','light'])test(`C6 revie
  await section(page,'tabModelRoom');
  await page.waitForFunction(()=>document.querySelector('#modelRoomFreshness').dataset.state==='never');
  assert.equal(await page.locator('[data-section="model_room_context"]').isVisible(),false,'Empty Context does not displace room activity');
+ await waitForAsync(page,async()=> (await import('/js/model-room.js')).view.sessions.state==='ready');
  assert.equal(await page.locator('#modelRoomCounts').textContent(),'0 shown · 0 visible · 0 total');
  assert.ok((await page.locator('#modelRoomParticipantsTitle').boundingBox()).y<600,'Existing activity appears in the first work area');
  const inputs=await page.evaluate(()=>['modelRoomDispatchQuery','sessionsLookup'].map(id=>{const css=getComputedStyle(document.getElementById(id));return {background:css.backgroundColor,border:css.borderRadius};}));
