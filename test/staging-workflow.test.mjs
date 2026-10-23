@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
+import { fixtureProducerCommit, homeFixtureCommit } from '../tests/staging/journey-fixture.mjs';
 
 const workflow = () => JSON.parse(execFileSync('ruby', ['-ryaml', '-rjson', '-e',
   'puts JSON.generate(YAML.load(STDIN.read))'], {
@@ -30,6 +31,24 @@ test('signed-in staging runs nightly, manually and for its PR changes with the s
   assert.match(upload.with.path, /playwright-report/);
   assert.match(upload.with.path, /\.e2e\/playwright/);
   assert.doesNotMatch(upload.with.path, /\.auth/);
+});
+
+test('staging journeys install their exact CARR producer and bind its provider credential', () => {
+  const steps = workflow().jobs.staging.steps;
+  const checkout = steps.find(step => step.with?.path === 'carr-fixture-producer');
+  assert.equal(checkout?.with.repository, 'DoctorCRE/carr-system');
+  assert.equal(checkout.with.ref, fixtureProducerCommit);
+  assert.equal(checkout.with['persist-credentials'], false);
+  const install = steps.find(step => step.name === 'Install staging fixture producer');
+  assert.match(install?.run || '', /python3 -m venv carr-fixture-producer\/\.venv/);
+  assert.match(install.run, /npm ci --prefix carr-fixture-producer\/mcp-server/);
+  const run = steps.find(step => step.id === 'playwright');
+  assert.equal(run.env.CARR_JOURNEY_FIXTURE_REPO, '${{ github.workspace }}/carr-fixture-producer');
+  assert.equal(run.env.NEON_API_KEY, '${{ secrets.NEON_API_KEY }}');
+  const home = steps.find(step => step.with?.path === 'carr-home-fixture');
+  assert.equal(home?.with.repository, 'DoctorCRE/carr-system');
+  assert.equal(home.with.ref, homeFixtureCommit);
+  assert.equal(run.env.CARR_HOME_FIXTURE_REPO, '${{ github.workspace }}/carr-home-fixture');
 });
 
 test('staging deploys the tested commit before signed-in journeys and keeps the deploy secret out of build steps', () => {
