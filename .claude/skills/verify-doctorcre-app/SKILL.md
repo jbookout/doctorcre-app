@@ -49,6 +49,8 @@ npm run build
 npm run artifact:verify
 ```
 
+When browsers are unavailable, run the repo's existing `node .githooks/pre-push --test --fast` subset and report the full Node and Playwright suites as not run. Its dependency classifier deliberately excludes tests it cannot prove browser-free.
+
 The Node suite uses `test/browser-harness.mjs`; fixture Playwright specs supply their own synthetic HTTP adapters. Some tests deliberately exercise writes against disposable synthetic state. These runs do not prove staging authentication or remote persistence. Inspect the changed feature in the preview using its map; record which entry points were actually driven.
 
 ## Evidence
