@@ -409,7 +409,7 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
     if (!$("leadDetail").open && !$("stageDialog").open) {
       selectDocRecord("lead", null);
       pageDocContext?.release("getLeadDetail");
-      restoreFocus(state.trigger);
+      if (doc.activeElement === doc.body || $(id).contains(doc.activeElement)) restoreFocus(state.trigger);
     }
   });
   $("stageForm").addEventListener("submit", event => {
@@ -443,7 +443,7 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
   board.addEventListener("dragover", event => { const column = event.target.closest("[data-stage]"); if (column && state.drag) { event.preventDefault(); column.dataset.dropActive = "true"; } });
   board.addEventListener("dragleave", event => { const column = event.target.closest("[data-stage]"); if (column) delete column.dataset.dropActive; });
   board.addEventListener("drop", event => { event.preventDefault(); const column = event.target.closest("[data-stage]"); if (column && state.drag) openReview(state.drag, column.dataset.stage); state.drag = null; });
-  board.addEventListener("dragend", () => { state.drag = null; for (const node of board.querySelectorAll(".dragging")) node.classList.remove("dragging"); for (const node of board.querySelectorAll("[data-drop-active]")) delete node.dataset.dropActive; });
+  board.addEventListener("dragend", () => { state.drag = null; for (const node of board.querySelectorAll(".dragging")) node.classList.remove("dragging"); for (const node of board.querySelectorAll("[data-drop-active]")) delete node.dataset.dropActive; render(); });
   let touch = null, scrollFrame = null;
   function highlightDrop(x, y) {
     const column = doc.elementFromPoint?.(x, y)?.closest("[data-stage]");
@@ -458,6 +458,7 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
     scrollFrame = null;
     if (prior?.handle.hasPointerCapture?.(prior.pointer)) prior.handle.releasePointerCapture(prior.pointer);
     for (const node of board.querySelectorAll("[data-drop-active]")) delete node.dataset.dropActive;
+    if (prior) render();
   }
   function scrollTouch() {
     if (!touch) return;
@@ -486,7 +487,7 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
   board.addEventListener("pointercancel", stopTouch);
   board.addEventListener("lostpointercapture", stopTouch);
   render();
-  mapFactory($("territoryMap"), selectMarket, readDetail).then(map => { state.map = map; render(); }).catch(() => { $("territoryMap").innerHTML = '<p class="empty">Map unavailable</p>'; });
+  mapFactory($("territoryMap"), selectMarket, readDetail).then(map => { state.map = map; if (!state.drag && !touch) render(); }).catch(() => { $("territoryMap").innerHTML = '<p class="empty">Map unavailable</p>'; });
   function suspendPrivateView() {
     if (state.reviewTarget && $("stageDialog").open) state.resumeReview = captureReviewDraft();
     stopTouch(); ++state.epoch; ++state.detailEpoch; ++state.reviewEpoch;

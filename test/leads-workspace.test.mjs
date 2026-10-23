@@ -2,7 +2,7 @@ import test from 'node:test';import assert from 'node:assert/strict';import {rea
 import {mountLeadsWorkspace} from '../js/leads-workspace-app.js';import {workspace,detail,id} from './leads-workspace-fixture.mjs';
 import {createLeadBoardClient} from '../js/leads-client.js';
 const tick=()=>new Promise(r=>setTimeout(r,10));
-async function setup(overrides={}){
+async function setup(overrides={},mapFactory=async()=>({update(){},dispose(){}})){
  const dom=new JSDOM(await readFile(new URL('../leads.html',import.meta.url),'utf8'),{url:'https://example.test/leads',pretendToBeVisual:true});const w=dom.window,d=w.document;
  w.HTMLDialogElement.prototype.showModal=function(){this.open=true};w.HTMLDialogElement.prototype.close=function(){if(this.open){this.open=false;this.dispatchEvent(new w.Event('close'))}};
  let board=workspace(),actor='example-partner',writes=[];
@@ -10,7 +10,7 @@ async function setup(overrides={}){
  recordStage:async(l,stage,review,key)=>{writes.push({l,stage,review,key});let r=board.leads.find(x=>x.id===l.id);r.stage=stage;r.base_version++;r.last_stage_move={idempotency_key:key};return{ok:true}},
  linkClient:async(l,clientId,key)=>{writes.push({l,clientId,key});board.leads.find(x=>x.id===l.id).client_id=clientId;return{ok:true}},
  claimLead:async(l,key)=>{writes.push({l,key});board.leads.find(x=>x.id===l.id).owner=actor;return{ok:true}},...overrides};
- const app=mountLeadsWorkspace(d,client,{mapFactory:async()=>({update(){},dispose(){}})});await tick();
+ const app=mountLeadsWorkspace(d,client,{mapFactory});await tick();
  return{dom,w,d,app,client,board,writes,setActor:a=>{actor=a},close:()=>{app.dispose();w.close()}};
 }
 test('board renders six full columns, five hottest, quiet IDs/scores and timestamps; filter-only archive',async()=>{
@@ -39,6 +39,39 @@ test('drag opens short evidence prompt, does not write before confirmation, comm
  const s=await setup();try{const card=s.d.querySelector('.lead-card');const start=new s.w.Event('dragstart',{bubbles:true});start.dataTransfer={setData(){}};card.dispatchEvent(start);
  s.d.querySelector('[data-stage="engaged"]').dispatchEvent(new s.w.Event('drop',{bubbles:true,cancelable:true}));await tick();assert.equal(s.writes.length,0);assert.equal(s.d.getElementById('stageDialog').open,true);assert.equal(s.d.querySelector('#stageQuestions textarea'),null);
  s.d.getElementById('stageForm').dispatchEvent(new s.w.Event('submit',{bubbles:true,cancelable:true}));await tick();assert.equal(s.writes[0].stage,'engaged');assert.equal(s.writes[0].l.base_version,1);assert.deepEqual(s.writes[0].review.evidence_ids,[id(600),id(601)]);
+ }finally{s.close()}
+});
+for(const finish of ['dragend','drop'])test(`map readiness preserves the native drag source until ${finish}`,async()=>{
+ let ready;const map={locate:()=>true,update(){},dispose(){}};
+ const s=await setup({},()=>new Promise(resolve=>{ready=()=>resolve(map)}));
+ try{
+  const card=s.d.querySelector('.lead-card'),start=new s.w.Event('dragstart',{bubbles:true});
+  start.dataTransfer={setData(){}};card.dispatchEvent(start);
+  ready();await tick();
+  assert.equal(card.isConnected,true,'map readiness must not replace the browser drag source');
+  assert.equal(card.classList.contains('dragging'),true);
+  assert.equal(card.querySelector('.lead-location').textContent,'Checking location…');
+  const target=finish==='drop'?s.d.querySelector('[data-stage="engaged"]'):card;
+  target.dispatchEvent(new s.w.Event(finish,{bubbles:true,cancelable:true}));
+  if(finish==='drop')card.dispatchEvent(new s.w.Event('dragend',{bubbles:true}));
+  assert.equal(s.d.querySelector('.dragging'),null);
+  assert.equal(s.d.querySelector('.lead-location').textContent,'Market area only');
+  assert.equal(s.writes.length,0);
+ }finally{s.close()}
+});
+for(const finish of ['pointerup','pointercancel','lostpointercapture'])test(`map readiness preserves the touch drag source until ${finish}`,async()=>{
+ let ready;const map={locate:()=>true,update(){},dispose(){}};
+ const s=await setup({},()=>new Promise(resolve=>{ready=()=>resolve(map)}));
+ try{
+  const card=s.d.querySelector('.lead-card'),handle=card.querySelector('[data-drag-handle]');
+  const pointer=type=>{const event=new s.w.Event(type,{bubbles:true});Object.assign(event,{pointerId:1,clientX:0,clientY:0});handle.dispatchEvent(event)};
+  pointer('pointerdown');ready();await tick();
+  assert.equal(handle.isConnected,true,'map readiness must not replace the captured pointer target');
+  assert.equal(s.d.getElementById('leadBoard').dataset.touchDragging,'true');
+  pointer(finish);
+  assert.equal(s.d.getElementById('leadBoard').dataset.touchDragging,undefined);
+  assert.equal(s.d.querySelector('.lead-location').textContent,'Market area only');
+  assert.equal(s.writes.length,0);
  }finally{s.close()}
 });
 test('missing evidence asks one question; changed record refreshes the unsigned prompt without writing',async()=>{
@@ -197,12 +230,11 @@ test('late detail from card A cannot replace card B; private view clears after a
 });
 test('touch drop and keyboard move open review; cancelled touch never writes',async()=>{
  const s=await setup();try{
- const card=s.d.querySelector('.lead-card'),handle=card.querySelector('[data-drag-handle]');
- const pointer=(type,x,y)=>{const e=new s.w.Event(type,{bubbles:true});Object.assign(e,{pointerId:1,clientX:x,clientY:y});handle.dispatchEvent(e)};
+ const pointer=(type,x,y)=>{const e=new s.w.Event(type,{bubbles:true});Object.assign(e,{pointerId:1,clientX:x,clientY:y});s.d.querySelector('[data-drag-handle]').dispatchEvent(e)};
  s.d.elementFromPoint=()=>s.d.querySelector('[data-stage="engaged"]');
  pointer('pointerdown',0,0);pointer('pointermove',50,50);assert.ok(s.d.querySelector('[data-drop-active]'));pointer('pointercancel',50,50);pointer('pointerup',50,50);await tick();assert.equal(s.d.getElementById('stageDialog').open,false);assert.equal(s.writes.length,0);
  pointer('pointerdown',0,0);pointer('pointerup',50,50);await tick();assert.equal(s.d.getElementById('stageDialog').open,true);assert.equal(s.app.state.proposal.target,'engaged');assert.equal(s.writes.length,0);
- s.d.getElementById('stageDialog').close();card.dispatchEvent(new s.w.KeyboardEvent('keydown',{key:'ArrowRight',altKey:true,bubbles:true}));await tick();assert.equal(s.app.state.proposal.target,'qualified');assert.equal(s.writes.length,0);
+ s.d.getElementById('stageDialog').close();s.d.querySelector('.lead-card').dispatchEvent(new s.w.KeyboardEvent('keydown',{key:'ArrowRight',altKey:true,bubbles:true}));await tick();assert.equal(s.app.state.proposal.target,'qualified');assert.equal(s.writes.length,0);
  }finally{s.close()}
 });
 test('new correspondence preserves the expanded original by identity, not position',async()=>{

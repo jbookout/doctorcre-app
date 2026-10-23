@@ -1,6 +1,6 @@
 {
   "schema": "doctorcre-carr-interface.v1",
-  "version": "1.50.0",
+  "version": "1.52.0",
   "producer": {
     "repository": "jbookout/carr-system",
     "source_commit": "e2e484b1933bfd63c10cc9a1b3350132948f6f74"
@@ -620,8 +620,8 @@
     "get-deal-room": {
       "producer": {
         "repository": "jbookout/carr-system",
-        "source_commit": "3a57e47015916546fb2ffd11eaf880686c38e659",
-        "pull_request": "https://github.com/jbookout/carr-system/pull/2014"
+        "source_commit": "58af30ae50419c710a012cca4eff71b2ce981569",
+        "pull_request": "https://github.com/jbookout/carr-system/pull/2066"
       },
       "response": {
         "schema_version": "deal-timeline.v1",
@@ -670,6 +670,9 @@
           ],
           "role": "Specific service-role slug, displayed with underscores replaced by spaces.",
           "order": "Role, company name, contact name, vendor party id."
+        },
+        "next_actions": {
+          "hold_until": "YYYY-MM-DD or null. An open action is held while hold_until is later than the current calendar date. Held actions remain in this history read. Accepted post-call actions return null."
         }
       },
       "critical_date_write": "add-critical-date",
@@ -901,5 +904,34 @@
     "inactive_stage": "nurture_drip",
     "active_stage": "opportunity",
     "history": "Existing prospects and new prospects created over leads start active. Migration initialization is audited without changing board membership or client versions. Only an explicit partner engagement choice returns a prospect to Leads. Retain the existing client, lead links, deals and events. Suppression and archived stages remain protected."
+  },
+  "progress_orchestrator": {
+    "producer": {
+      "repository": "jbookout/carr-system",
+      "source_commit": "2d6f77b543255d27d61cc796a48aee4815493fee"
+    },
+    "schema": "doctorcre-orchestrator/v1",
+    "board_id": "orchestrator",
+    "read_verb": "read-progress-board",
+    "route": "/control-room/progress/board/orchestrator",
+    "states": [
+      "waiting",
+      "working",
+      "review",
+      "fixing",
+      "merging",
+      "merged",
+      "live",
+      "blocked"
+    ],
+    "freshness": "Queue events use the existing publisher. Scheduled GitHub and release refresh runs independently of a model. Page polling does not prove fresh upstream observations.",
+    "pagination": {
+      "first_page": 100,
+      "page_size": 100,
+      "pages": "Two reusable banks of stable page slots, CAS-written and verified before publishing the root manifest last. Local publishers share a host lock across checkouts.",
+      "counts": "total_cards and state_counts include every unresolved item. cards is newest changes first.",
+      "unavailable": "Version mismatches refuse mixed observations. Loaded older pages refresh together; page failure retains the complete displayed observation. Queue outage retains all previous queue pages.",
+      "legacy": "Queue acknowledgement verifies this feed only. Scheduled carr-v5 publication can fail independently."
+    }
   }
 }

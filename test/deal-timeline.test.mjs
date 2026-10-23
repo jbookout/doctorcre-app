@@ -141,3 +141,16 @@ test('a capped activity feed never claims to be full history',()=>{
  assert.match(root.querySelector('.updates-history > summary').textContent,/Recorded updates \(50\)/);
  assert.match(root.body.textContent,/latest 50 activities.*older activities may be omitted/i);
 });
+
+test('held task history names the hold date and retains the recorded action', () => {
+ const task = { id:'synthetic-held', owner:'joe', status:'open', description:'Review synthetic terms <draft>', due_on:'2026-10-01', hold_until:'2027-01-01', updated_at:'2026-10-01T12:00:00Z' };
+ const root = new JSDOM(renderDealUpdates({ thread:[], activities:[], next_actions:[task] }, now)).window.document;
+ const row = root.querySelector('[data-id="action:synthetic-held"]');
+ assert.ok(row, 'held tasks remain visible in deal history');
+ assert.match(row.textContent, /Held until Jan 1, 2027/);
+ assert.match(row.textContent, /Review synthetic terms <draft>/);
+ assert.equal(row.querySelector('draft'), null);
+ assert.equal(task.status, 'open');
+ const released = new JSDOM(renderDealUpdates({next_actions:[{...task,hold_until:'2026-10-04'}]}, now)).window.document;
+ assert.doesNotMatch(released.body.textContent, /Held until/);
+});
