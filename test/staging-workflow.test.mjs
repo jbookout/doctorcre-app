@@ -52,6 +52,7 @@ test('staging deploys the tested commit before signed-in journeys and keeps the 
   const events = document.on ?? document.true;
   assert.deepEqual(events.push.branches, ['main']);
   assert.ok(events.pull_request.paths.includes('**'));
+  for (const path of ['!test/**', '!tests/**', 'tests/staging/**']) assert.ok(events.pull_request.paths.includes(path));
   const job = document.jobs.staging;
   assert.match(job.if, /head\.repo\.full_name == github\.repository/);
   assert.equal(document.concurrency['cancel-in-progress'], false);
