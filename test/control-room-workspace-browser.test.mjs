@@ -345,6 +345,7 @@ for(const width of [1440,390])for(const theme of ['dark','light'])test(`C6 revie
  state.emptyAgents=true;state.emptySessions=true;state.partialSchedule=true;state.longAtlasLabels=true;await advanceRoom(page,16001);
  await section(page,'tabModelRoom');
  await page.waitForFunction(()=>document.querySelector('#modelRoomFreshness').dataset.state==='never');
+ await page.waitForFunction(()=>document.querySelector('#modelRoomCounts').dataset.state==='read');
  assert.equal(await page.locator('[data-section="model_room_context"]').isVisible(),false,'Empty Context does not displace room activity');
  await waitForAsync(page,async()=> (await import('/js/model-room.js')).view.sessions.state==='ready');
  assert.equal(await page.locator('#modelRoomCounts').textContent(),'0 shown · 0 visible · 0 total');
