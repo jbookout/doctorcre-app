@@ -18,8 +18,8 @@ test('W4 Local Deals board moves a deal and undoes only the move just made', asy
   await expect(browser.locator('#pageTitle')).toHaveText('Local Deals');
   await expect(browser.locator('.kanban-column')).toHaveCount(7);
   await browser.locator('#listView').tap();
-  const autoMove = browser.locator('.deal-row[data-id="d14"] .auto-move');
-  await expect(autoMove).toContainText('Moved automatically: LOI sent');
+  await expect(browser.locator('.deal-row[data-id="d14"] .deal-stage')).toHaveText('Negotiating');
+  await expect(browser.locator('.deal-row[data-id="d14"] .auto-move, .deal-row[data-id="d14"] [data-undo]')).toHaveCount(0);
   await browser.locator('#boardView').tap();
 
   await expect(browser.locator('[data-id="d14"] [data-undo]')).toHaveCount(0);
