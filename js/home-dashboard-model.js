@@ -97,7 +97,7 @@ export function controlSnapshot(reads) {
     issues, complete };
 }
 
-// A single agenda snapshot supplies flags, dates and tasks. Slow or failed optional
+// A single board snapshot supplies flags and agenda. Slow or failed optional
 // data never prevents the deals from arriving. Every read has a deadline.
 export async function readHomeDashboard(client, { onUpdate = () => {}, timeoutMs = 10_000, signal } = {}) {
   const result = { board: null, details: new Map(), leads: null, invoices: null, relationships: null, control: {}, unauthorized: false, updatedAt: null, loading: true,
@@ -109,24 +109,33 @@ export async function readHomeDashboard(client, { onUpdate = () => {}, timeoutMs
       const value = await readWithDeadline(read, { timeoutMs, signal });
       if (name === 'invoices' && !validInvoiceTracker(value)) throw Object.assign(new Error('Invoices unavailable'), {code:'invalid_payload'});
       if (name === 'relationships' && (!validNetwork(value) || Date.parse(value.valid_until) <= Date.now())) throw Object.assign(new Error('Relationships unavailable'), {code:'invalid_payload'});
-      if (target === result && ((name === 'board' && (!validDealBoard(value) || value.schema_version !== 'home-agenda.v1' || typeof value.actor !== 'string' || new Set(value.deals.map(deal => deal.id)).size !== value.deals.length)) || (name === 'leads' && !validHomeRows(value, 'leads')))) {
+      if (target === result && ((name === 'board' && !validDealBoard(value)) || (name === 'leads' && !validHomeRows(value, 'leads')))) {
         const error = new Error('Home board unavailable');
         error.code = 'malformed_response';
         throw error;
       }
-      target[name] = value;
+      if (target instanceof Map) target.set(name, value); else target[name] = value;
       result.reads[name] = { state: 'read' };
       if (name === 'board' && target === result) {
-        for (const deal of scopedDeals(value, 'team') || []) result.details.set(deal.id, deal);
+        for (const deal of scopedDeals(value, 'team') || []) result.reads[deal.id] = { state: 'loading' };
       }
       result.updatedAt = new Date().toISOString();
     }
-    catch (error) { target[name] = null;
+    catch (error) { if (target instanceof Map) target.set(name, null); else target[name] = null;
       result.reads[name] = { state: 'error', code: error?.code || 'unavailable' };
       if ([401, 403].includes(error?.status)) result.unauthorized = true; }
     publish();
   };
-  const board = take('board', signal => client.getHomeAgenda({ signal }));
+  const board = take('board', signal => client.getBoard({ workspace: 'all', signal })).then(async () => {
+    const deals = scopedDeals(result.board, 'team') || [];
+    let next = 0;
+    await Promise.all(Array.from({ length: Math.min(4, deals.length) }, async () => {
+      while (next < deals.length && !result.unauthorized && !signal?.aborted) {
+        const deal = deals[next++];
+        await take(deal.id, signal => client.getDeal(deal.id, { signal }), result.details);
+      }
+    }));
+  });
   await Promise.all([board, take('invoices', signal => client.getInvoiceTracker({ signal })), take('leads', signal => client.getLeadBoard({ signal })), take('relationships', signal => client.getRelationshipNetwork({ signal })),
     ...[['incidents', signal => client.incidentBoard({ state: 'open', limit: 1000 }, { signal })],
       ['work', signal => client.currentWorkItem({ signal })], ['requests', signal => client.currentWorkRequests({ signal })],

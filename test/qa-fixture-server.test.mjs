@@ -53,27 +53,3 @@ test('QA seed provides a populated namespace-isolated synthetic shared tour', as
   await seed('another-tour');
   assert.deepEqual((await (await read('report')).json()).data, report);
 });
-
-test('QA Home agenda reads the signed-in namespace through the current contract', async () => {
-  const {dispatch} = await createQaServer();
-  const seed = await dispatch(new Request('http://localhost/api/test/seed', {
-    method:'POST', headers:{'content-type':'application/json'},
-    body:JSON.stringify({namespace:'home-agenda',viewer:'dell',reset:true}),
-  }));
-  const {cookie} = await seed.json();
-  const response = await dispatch(new Request('http://localhost/mcp', {
-    method:'POST', headers:{cookie:`${cookie.name}=${cookie.value}`,'content-type':'application/json'},
-    body:JSON.stringify({jsonrpc:'2.0',id:1,method:'tools/call',params:{name:'read-home-agenda',arguments:{}}}),
-  }));
-  const {result} = await response.json();
-  assert.notEqual(result.isError, true);
-  const agenda = JSON.parse(result.content[0].text);
-  assert.equal(agenda.schema_version, 'home-agenda.v1');
-  assert.equal(agenda.actor, 'dell');
-  assert.equal(agenda.deals.length, 16);
-  assert.equal(agenda.deals[0].id, 'qa-deal-1');
-  assert.deepEqual(agenda.deals[0].critical_dates, []);
-  assert.equal(agenda.deals[0].next_actions[0].id, 'action-qa-deal-1');
-  assert.equal(agenda.deals[0].next_actions[0].hold_until, null);
-  assert.equal(agenda.deals[0].thread, undefined);
-});
