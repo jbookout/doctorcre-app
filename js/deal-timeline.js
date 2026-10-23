@@ -87,8 +87,11 @@ export function renderDealTimeline(detail, now = Date.now()) {
   const view = dealTimeline(detail,now);
   return `<section class="deal-timeline" data-detail-read="timeline" aria-label="Deal phases and timeline"><h3>Phase timeline</h3><ol class="phase-rail">${view.phases.map(p => `<li${p.current ? ' aria-current="step"' : ''}><span>${esc(p.label)}</span>${p.day ? `<time datetime="${esc(p.day)}">${esc(dateCaption(p.day))}</time>` : ''}</li>`).join('')}</ol></section>`;
 }
-export function renderDealUpdates(detail) {
-  const entries = [...noteEntries(detail)].sort((a,b) => (Date.parse(b.when) || 0)-(Date.parse(a.when) || 0) || String(b.id).localeCompare(String(a.id)));
+export function renderDealUpdates(detail, now = Date.now()) {
+  const held = (detail.next_actions || []).filter(task => task.status === 'open' && calendarDay(task.hold_until) > today(now))
+    .map(task => ({id:`action:${task.id}`,kind:`Held until ${dateCaption(calendarDay(task.hold_until))}`,
+      actor:task.owner,when:task.updated_at,summary:task.description,original:task.description}));
+  const entries = [...noteEntries(detail), ...held].sort((a,b) => (Date.parse(b.when) || 0)-(Date.parse(a.when) || 0) || String(b.id).localeCompare(String(a.id)));
   if (!entries.length) return '';
   const stamp = value => {
     const date = new Date(value);
