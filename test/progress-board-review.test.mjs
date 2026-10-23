@@ -169,6 +169,7 @@ test("a conflict whose reconciliation read fails says so and offers a reload, ne
     },
     answer: async args => {
       writes.push(args);
+      failReads = true; // The fresh pre-submit read succeeds; conflict reconciliation fails.
       const error = new Error("conflict");
       error.payload = { error: "board_version_conflict" };
       throw error;
@@ -176,7 +177,6 @@ test("a conflict whose reconciliation read fails says so and offers a reload, ne
   });
   await page.board.refresh(true);
   page.$("#free-q-open").value = "SYNTHETIC ANSWER";
-  failReads = true;
   page.$(".answer-form").dispatchEvent(new page.window.Event("submit", { cancelable: true }));
   await settle(); await settle(); await settle();
   assert.equal(writes.length, 1);
