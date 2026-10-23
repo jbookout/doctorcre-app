@@ -25,7 +25,6 @@ async function open(t,{width=390,path=taskPath,empty=false,stale=false,history=0
   const page=await browser.newPage({viewport:{width,height:900}}); await page.clock.install({time:NOW});
   await page.addInitScript(() => {
     const url = new URL(location.href);
-    if(['/api/system-work/session','/auth/session'].includes(url.pathname)) return route.fulfill({json:{actor:{slug:'joe'},csrf_token:'synthetic-session'}});
     url.searchParams.set('mode', 'live');
     history.replaceState({}, '', url);
   });
@@ -47,6 +46,7 @@ async function open(t,{width=390,path=taskPath,empty=false,stale=false,history=0
   }
   await page.route('**/*',async route=>{
     const url=new URL(route.request().url());if(url.origin!=='http://localhost')return route.abort();
+    if(['/api/system-work/session','/auth/session'].includes(url.pathname)) return route.fulfill({json:{actor:{slug:'joe'},csrf_token:'synthetic-session'}});
     if(url.pathname==='/mcp'){
       const rpc=route.request().postDataJSON().params;calls.push(rpc);
       if(state.authLost)return route.fulfill({status:401,body:'{}'});

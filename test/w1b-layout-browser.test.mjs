@@ -243,9 +243,10 @@ for (const transition of ['actor', 'scope', 'refusal']) test(`PR129 #2 recent mo
   return route.fallback();
  });
  await goto('/leads?mode=live');await page.waitForFunction(()=>document.querySelector('#appTodayMoves').textContent.includes('Synthetic private value'));
- changed=true;await page.clock.fastForward(31_000);await page.waitForFunction(()=>!document.querySelector('#appTodayNeeds [data-layout-deal]'));
+ changed=true;await page.clock.fastForward(31_000);
+ if(transition==='refusal'){await page.waitForURL('**/public-shell/session-ended.html');assert.doesNotMatch(await page.locator('body').textContent(),/Synthetic private value/);events.length=0;changed=false;await goto('/leads?mode=live');assert.doesNotMatch(await page.locator('#appTodayMoves').textContent(),/Synthetic private value/);return;}
+ await page.waitForFunction(()=>!document.querySelector('#appTodayNeeds [data-layout-deal]'));
  assert.doesNotMatch(await page.locator('#appTodayMoves').textContent(),/Synthetic private value|Demo Specialty Clinic/);
- if(transition==='refusal') { events.length=0;changed=false;await page.clock.fastForward(31_000);await page.waitForFunction(()=>document.querySelector('#appConnection').dataset.state==='healthy');assert.doesNotMatch(await page.locator('#appTodayMoves').textContent(),/Synthetic private value/); }
 });
 test('PR129 #4 parked and normalized Closed records stay out of both attention lists',async t=>{
  const {page,goto}=await open(t);
@@ -333,25 +334,15 @@ for (const status of [401,403,503]) test(`Deal detail refresh distinguishes HTTP
  await page.waitForFunction(()=>document.querySelector('#contextDrawerBody h3')?.textContent!=='Updating…');
  failure=true;
  await page.evaluate(async()=>{const{state}=await import('/js/pipeline.js');await state.boardSync.refreshBoard({reason:'authorization-regression'});});
+ if(status===401||status===403){await page.waitForURL('**/public-shell/session-ended.html');assert.equal(await page.locator('#recordPanel,#contextDrawer').count(),0);assert.doesNotMatch(await page.locator('body').textContent(),/Synthetic unsaved draft|Synthetic protected note/);assert.deepEqual(errors,[]);return;}
  await page.waitForFunction(()=>/unavailable/i.test(document.querySelector('#panelBody [role="status"]')?.textContent));
  assert.ok(failedReads>0,'the detail read returns the actual HTTP failure');
- if(status===503) {
   assert.equal(await page.locator('#recordPanel').evaluate(n=>n.open),true);
   assert.equal(await page.locator('#panelTitle').textContent(),title);
   assert.equal(await page.locator('#detailUpdateForm textarea').inputValue(),'Synthetic unsaved draft');
   assert.equal(await page.locator('#detailReadStatus').textContent(),'Updates temporarily unavailable');
   assert.equal(await page.evaluate(async()=>(await import('/js/pipeline.js')).state.panelDetail.deal.id),'d14');
- } else {
-  assert.equal(await page.locator('#panelTitle').textContent(),'Deal');
-  assert.match(await page.locator('#panelBody [role="status"]').textContent(),/Unavailable/);
-  assert.equal(await page.locator('#panelBody .deal-opening-snapshot').count(),0);
-  assert.equal(await page.locator('#panelBody input,#panelBody select,#panelBody textarea,#panelBody form').count(),0);
-  assert.equal(await page.evaluate(async()=>(await import('/js/pipeline.js')).state.panelDetail),null);
-  assert.equal(await page.locator('#panelContextOpenWrap').isVisible(),false);
-  assert.equal(await page.locator('#contextDrawer').evaluate(n=>n.open),false);
-  assert.equal(await page.locator('#contextDrawerBody').textContent(),'');
- }
- if(status===503) await page.locator('#contextDrawerClose').click();
+ await page.locator('#contextDrawerClose').click();
  assert.equal(await page.locator('[data-retry-detail]').count(),0);
  failure=false;await page.clock.fastForward(16000);
  await page.locator('#detailPhase').waitFor();

@@ -137,6 +137,7 @@ export function mountBoard(deps = {}) {
   // This clock only patches badge text. It never reads the network or rebuilds
   // controls, and wakes at publication-relative minute boundaries (including 24h).
   function refreshAges() {
+    if (disposed) return;
     orchestratorUI?.ages();
     clearTimer(ageTimer);
     let delay = Infinity;
@@ -426,6 +427,7 @@ export function mountBoard(deps = {}) {
   }
 
   function renderStages(view) {
+    if (disposed) return;
     const container = byId("board-stages");
     if (!view && boardState === "pending") {
       container.setAttribute("aria-busy", "true");
@@ -965,6 +967,7 @@ export function mountBoard(deps = {}) {
   // counts, blocked details) is derived again from the last read, so a card
   // that crosses a threshold changes without waiting for new data.
   function tick() {
+    if (disposed) return;
     if (lastRead) render(boardView(lastRead, currentNow()));
   }
 
@@ -1019,6 +1022,7 @@ export function mountBoard(deps = {}) {
   }
 
   function readFailure(cause, target) {
+    if (disposed) return;
     const status = cause?.status;
     const state = status === 401 ? "signed-out" : status === 403 ? "unauthorized"
       : cause?.code === "read_timeout" ? "timeout"
@@ -1139,8 +1143,22 @@ export function mountBoard(deps = {}) {
   wireFilters();
   renderSwitch();
 
+  function dispose() {
+    if (disposed) return;
+    disposed = true; readSeq++; boardReadController?.abort();
+    orchestratorUI?.dispose(); queueUI?.dispose(); hierarchyUI?.dispose(); poller?.dispose();
+    timers.forEach(id => win.clearInterval(id)); clearTimer(ageTimer);
+    doc.removeEventListener("visibilitychange", refreshAges);
+    win.removeEventListener?.('doctorcre-session-invalidated', dispose);
+    currentView = lastRead = governanceRead = null;
+    cardNodes.clear(); completedNodes.clear(); blockedNodes.clear(); questionCards.clear();
+    fingerprints.clear(); formState.clear(); pendingRequests.clear(); badgeTimes.clear();
+  }
+  win.addEventListener?.('doctorcre-session-invalidated', dispose);
+
   return { start, refresh, tick, toggleLive, filters,
     setGovernance(read, observation = {}) {
+      if (disposed) return;
       const tasks = governanceTasks(read);
       governanceState = tasks ? "read" : "unknown";
       if (tasks) governanceRead = read;
@@ -1150,7 +1168,7 @@ export function mountBoard(deps = {}) {
       status.textContent = governanceState === "read" ? "" : `Approvals unavailable${governanceRead ? " · last-known cards" : ""}`;
       renderStages(currentView);
     },
-    dispose() { disposed = true; readSeq++; boardReadController?.abort(); orchestratorUI?.dispose(); queueUI?.dispose(); hierarchyUI?.dispose(); poller?.dispose(); timers.forEach(id=>win.clearInterval(id)); clearTimer(ageTimer); doc.removeEventListener("visibilitychange",refreshAges); },
+    dispose,
     get view() { return currentView; }, get liveExpanded() { return liveExpanded; } };
 }
 

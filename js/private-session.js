@@ -96,6 +96,7 @@ export function privateSession() {
       // Clear before async cleanup/navigation so private text and controls
       // disappear immediately, including detached dialogs and account labels.
       win.dispatchEvent(new win.Event('doctorcre-session-invalidated'));
+      const retiredDocument = win.document;
       const cleanup = offlineTourSession(win).revoke();
       const view = win.document.createElement('main');
       const title = win.document.createElement('h1'); title.textContent = reason === 'signed-out' ? 'Signed out' : 'Session ended';
@@ -103,12 +104,15 @@ export function privateSession() {
       view.append(title,link); win.document.body.replaceChildren(view);
       // The new document releases controller closures, pending commands,
       // editor drafts, Doc context, media objects, and actor labels together.
-      void cleanup.finally(() => win.location.replace('/public-shell/session-ended.html'));
+      void cleanup.finally(() => {
+        if (win.document === retiredDocument) win.location.replace('/public-shell/session-ended.html');
+      });
     },
   });
   win.addEventListener('storage', event => { if (event.key === SESSION_EPOCH_KEY && sessionEpoch(win) !== initialEpoch) browserBoundary.revoke('session-changed'); });
   win.addEventListener('pageshow', event => {
     if (!event.persisted) return;
+    if (browserBoundary.revoked) { win.location.replace('/public-shell/session-ended.html'); return; }
     if (sessionEpoch(win) !== initialEpoch) { browserBoundary.revoke('session-changed'); return; }
     // A history restore must verify its binding before exposing cached DOM.
     win.document.documentElement.style.visibility = 'hidden';
