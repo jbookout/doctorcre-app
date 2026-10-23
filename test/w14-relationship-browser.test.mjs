@@ -55,6 +55,7 @@ async function open(t, width = 1440) {
       const verb = r.request().postDataJSON().params.name;
       verbs.push(verb);
       let payload = { ok: true };
+      if (verb === "read-home-agenda") payload = { schema_version: "home-agenda.v1", deals: [], actor: "joe" };
       if (verb === "deal-room-board") payload = { deals: [], actor: "joe" };
       if (verb === "today-triage") payload = { items: [] };
       if (verb === "deal-room-changes") payload = { events: [], cursor: null };

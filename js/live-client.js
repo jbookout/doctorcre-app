@@ -142,6 +142,12 @@ export function createLiveClient(opts = {}) {
     // rebuilding it would be inventing one.
     async getInvoiceTracker({ signal } = {}) { return rpc('read-invoice-tracker', {}, signal); },
     async markInvoicePaid(args) { return write('record-commission-receipt', args, opts.writeTimeoutMs || 10_000); },
+    async getHomeAgenda({ signal } = {}) {
+      const agenda = await rpc('read-home-agenda', {}, signal);
+      selfActor = agenda.actor || selfActor;
+      return { ...agenda, deals: Array.isArray(agenda.deals) ? agenda.deals.map(dealToUi) : agenda.deals };
+    },
+
     async getBoard(options = {}) {
       const board = await rpc('deal-room-board', {
         workspace: options.workspace || 'all',
@@ -193,6 +199,8 @@ export function createLiveClient(opts = {}) {
         critical_dates: critical_dates.map((cd) => ({ ...cd, label: cd.note || cd.kind, date: cd.due_on })),
         history,
         next_actions: page.next_actions || [],
+        items: page.items || [],
+        item_schema_version: page.item_schema_version,
         activities: page.activities || [],
         participants: page.participants || [],
         premises: page.premises || [],
@@ -342,6 +350,10 @@ export function createLiveClient(opts = {}) {
     async updateDeal(args) {
       return write('update-deal', args);
     },
+
+    async recordDealItem(args) { return write('record-deal-item', { ...args, source_ref: args.source_ref || `app:deal-item:${args.idempotency_key}` }); },
+    async instructDealItem(args) { return write('instruct-deal-item', args); },
+    async completeDealItem(args) { return write('complete-deal-item', args); },
 
     async addDealNote(args) {
       return write('add-deal-note', args);

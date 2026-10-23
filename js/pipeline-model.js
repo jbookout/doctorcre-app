@@ -247,10 +247,12 @@ export function completionPlan(intent, form = {}) {
   const nextStep = text(form.nextStep);
   const nextWhen = text(form.nextWhen);
   if (nextStep) {
-    steps.push({
-      verb: 'set-next-step',
-      args: { deal: intent.deal, text: nextStep, next_date: nextWhen || null },
-      summary: `Next step on ${intent.name}`,
+    const words = nextStep.split(/\s+/u).length;
+    if (words < 2 || words > 4 || nextStep.length > 100) errors.push('Use 2–4 words for the next item title.');
+    else steps.push({
+      verb: 'record-deal-item',
+      args: { deal: intent.deal, title: nextStep, due_on: nextWhen || null, bullets: [{ date: null, kind: 'promised', text: nextStep }] },
+      summary: `Next item on ${intent.name}`,
     });
   } else if (nextWhen) {
     errors.push('A date for what happens next needs the step itself; type what happens next, or clear the date.');

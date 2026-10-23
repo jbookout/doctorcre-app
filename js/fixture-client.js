@@ -1405,6 +1405,17 @@ export async function createFixtureClient(opts = {}) {
       };
     },
 
+    async getHomeAgenda() {
+      const board = await this.getBoard();
+      return { schema_version: 'home-agenda.v1', actor: board.actor, deals: board.deals.map(deal => ({
+        ...deal,
+        critical_dates: [...(deal.next_date ? [{ label: 'Next date', date: deal.next_date }] : []),
+          ...(criticalDates.get(deal.id) || []).map(row => ({ ...row }))],
+        next_actions: deal.next_step ? [{ id: `a-${deal.id}`, owner: deal.owner, description: deal.next_step,
+          due_on: deal.next_date, status: 'open', hold_until: null }] : [],
+      })) };
+    },
+
     async getDeal(dealId) {
       const deal = { ...getDealOrThrow(dealId) };
       const thread = (threads.get(dealId) || [])
@@ -1421,7 +1432,7 @@ export async function createFixtureClient(opts = {}) {
         });
       }
       for (const entry of criticalDates.get(dealId) || []) critical_dates.push({ ...entry });
-      return { deal: {...deal, phase_change: phaseChangeFor(dealId)}, thread, critical_dates, history: hist,
+      return { items: structuredClone(deal.items || []), item_schema_version: 'deal-items.v1', deal: {...deal, phase_change: phaseChangeFor(dealId)}, thread, critical_dates, history: hist,
         next_actions: deal.next_step ? [{ id: `a-${deal.id}`, owner: deal.owner,
           description: deal.next_step, due_on: deal.next_date, status: 'open' }] : [],
         activities: hist.slice(0, 4).map((h) => ({ id: h.id, actor: h.actor,
@@ -1591,6 +1602,33 @@ export async function createFixtureClient(opts = {}) {
         pushHistory(c.deal, actor, `resolved conflict on ${c.field}`, e.recorded_at);
         conflicts.delete(conflict_id);
         return { status: 'ok', event: e };
+      });
+    },
+
+    async recordDealItem({ deal, title, due_on, bullets, source_ref, idempotency_key }) {
+      return withIdem(idempotency_key, () => {
+        const d = getDealOrThrow(deal);
+        const source = source_ref || `app:deal-item:${idempotency_key}`;
+        const existing = d.items?.find(item => item.title === title && item.source_ref === source);
+        const item = existing || { id: uuidv4(), title, due_on: due_on || null, status: 'open', bullets: structuredClone(bullets), source_ref: source };
+        if (!existing) (d.items ||= []).push(item);
+        return { status: 'ok', ok: true, item: structuredClone(item), rows_changed: existing ? 0 : 1 };
+      });
+    },
+    async instructDealItem({ deal, item_id, text, idempotency_key }) {
+      return withIdem(idempotency_key, () => {
+        const item = getDealOrThrow(deal).items?.find(row => row.id === item_id);
+        if (!item || !text?.trim()) throw new Error('Item or instruction unavailable');
+        item.bullets.push({ date: nowIso().slice(0,10), kind: 'status', text: text.trim() });
+        return { ok: true, item: structuredClone(item) };
+      });
+    },
+    async completeDealItem({ deal, item_id, idempotency_key }) {
+      return withIdem(idempotency_key, () => {
+        const item = getDealOrThrow(deal).items?.find(row => row.id === item_id);
+        if (!item) throw new Error('Item unavailable');
+        item.status = 'done';
+        return { ok: true, item: structuredClone(item) };
       });
     },
 

@@ -1,3 +1,4 @@
+import { renderDealAlert } from './deal-items.js';
 import { scopedDeals } from './deal-review-model.js';
 import {onDialogClosed} from './dialog-lifecycle.js';
 import { pageDocContext, publishDocRead, selectDocRecord, setDocFilters } from './doc-context.js';
@@ -23,7 +24,7 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
   let relationshipDialog = null, pastWidget = null, secondaryRequested = false;
   let agendaExpanded = false;
   let scope = 'team', snapshot = null, sequence = 0, updatedAt = null, disposed = false, leadEntries = new Map(), selectedLead = null;
-  const docSources = [['board','getBoard'],['leads','getLeadBoard'],['work','currentWorkItem'],['requests','currentWorkRequests'],['incidents','incidentBoard']];
+  const docSources = [['board','getHomeAgenda'],['leads','getLeadBoard'],['work','currentWorkItem'],['requests','currentWorkRequests'],['incidents','incidentBoard']];
   const docPayload = (source, view) => source === 'board' ? {deals:scopedDeals(view?.board,scope)}
     : source === 'leads' ? (view?.leads ? {leads:topNewLeads(view.leads,{scope,actor:view.board?.actor,now:now()})} : null)
     : view?.control?.[source];
@@ -45,7 +46,7 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
     const summary = signedOut ? null : dealSnapshot(snapshot?.board, scope, now());
     $('dealAttention').setAttribute('aria-busy', String(snapshot?.loading ?? true));
     $('dealCounts').innerHTML = `<span>Active deals: <b>${count(summary?.active ?? null)}</b></span> <span>In market: <b>${count(summary?.inMarket ?? null)}</b></span> <span>National accounts: <b>${count(summary?.national ?? null)}</b></span> <span>Overdue local deals: <b>${count(summary?.flagged.length ?? null)}</b></span>`;
-    paint($('dealFlags'), summary ? (summary.flagged.length ? summary.flagged.map(deal => `<a class="home-flag" data-home-key="deal:${E(deal.id)}" href="${E(dealHref(deal.id))}"><span class="home-flag-light" aria-hidden="true"></span><div><strong>${E(deal.name)}</strong><span>${E(deal.next_step || deal.phase || 'Needs attention')}</span></div><span class="home-arrow" aria-hidden="true">↗</span></a>`).join('') : '<p class="home-empty">No overdue local next steps</p>') : `<p class="home-empty">${signedOut ? 'Sign in to view deals' : snapshot?.reads?.board?.state === 'error' ? 'Deals unavailable' : 'Updating…'}</p>`);
+    paint($('dealFlags'), summary ? (summary.flagged.length ? summary.flagged.map(deal => `<article class="home-flag deal-alert">${renderDealAlert(deal,{today:localToday(new Date(now()))})}</article>`).join('') : '<p class="home-empty">No overdue local next steps</p>') : `<p class="home-empty">${signedOut ? 'Sign in to view deals' : snapshot?.reads?.board?.state === 'error' ? 'Deals unavailable' : 'Updating…'}</p>`);
     const today = localToday(new Date(now()));
     if ($('homeInvoices')) {
       const invoices = signedOut ? null : projectInvoices(snapshot?.invoices, { scope, today: localToday(new Date(now())) });
@@ -85,7 +86,7 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
       const view = { ...result, control: { ...result.control }, details: new Map(result.details) };
       for (const key of ['board', 'leads', 'invoices', 'relationships']) if (result.reads[key].state === 'loading') view[key] = previous?.[key] ?? null;
       for (const key of ['incidents', 'work', 'requests', 'resources', 'schedule']) if (result.reads[key].state === 'loading') view.control[key] = previous?.control[key] ?? null;
-      for (const [id, detail] of previous?.details || []) if (result.reads.board.state === 'loading' || result.reads[id]?.state === 'loading') view.details.set(id, detail);
+      if (result.reads.board.state === 'loading') view.details = new Map(previous?.details || []);
       return view;
     };
     if (snapshot) snapshot = { ...snapshot, loading: true };

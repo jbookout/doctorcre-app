@@ -1,9 +1,9 @@
 {
   "schema": "doctorcre-carr-interface.v1",
-  "version": "1.52.0",
+  "version": "1.53.0",
   "producer": {
     "repository": "jbookout/carr-system",
-    "source_commit": "e2e484b1933bfd63c10cc9a1b3350132948f6f74"
+    "source_commit": "bda0b0afdf00f9a285c17aa81c6667d4eacb5696"
   },
   "consumer": "jbookout/doctorcre-app",
   "transport": {
@@ -34,6 +34,7 @@
     "claim-lead",
     "close-investigation",
     "close-loop",
+    "complete-deal-item",
     "confirm-slice-completions",
     "correspondence-readiness",
     "create-doc-conversation",
@@ -53,6 +54,7 @@
     "get-incident",
     "governance-queue",
     "incident-board",
+    "instruct-deal-item",
     "lead-board",
     "link-incident-work-request",
     "link-lead-client",
@@ -79,6 +81,7 @@
     "read-doc-activity",
     "read-doc-conversation",
     "read-doc-outcome-cards",
+    "read-home-agenda",
     "read-invoice-tracker",
     "read-loop",
     "read-notification-preferences",
@@ -91,6 +94,7 @@
     "read-session-identity",
     "read-tour-selection-cart",
     "record-commission-receipt",
+    "record-deal-item",
     "record-dispatch-link",
     "rename-doc-conversation",
     "resolve-candidate",
@@ -505,8 +509,8 @@
       "write": false,
       "producer": {
         "repository": "jbookout/carr-system",
-        "source_commit": "3a57e47015916546fb2ffd11eaf880686c38e659",
-        "pull_request": "https://github.com/jbookout/carr-system/pull/2014"
+        "source_commit": "bda0b0afdf00f9a285c17aa81c6667d4eacb5696",
+        "pull_request": "https://github.com/DoctorCRE/carr-system/pull/2120"
       },
       "response": {
         "schema_version": "local-deals-board.v1",
@@ -520,7 +524,9 @@
           "client_status",
           "client_version",
           "phase_started_on",
-          "vendors"
+          "vendors",
+          "short_name",
+          "items"
         ],
         "phase_change_keys": [
           "event_id",
@@ -614,14 +620,35 @@
           ],
           "role": "Specific service-role slug, displayed with underscores replaced by spaces.",
           "order": "Role, company name, contact name, vendor party id."
-        }
+        },
+        "item_schema_version": "deal-items.v1",
+        "item_keys": [
+          "id",
+          "title",
+          "due_on",
+          "status",
+          "bullets",
+          "source_ref"
+        ],
+        "bullet_keys": [
+          "date",
+          "kind",
+          "text"
+        ],
+        "bullet_kinds": [
+          "promised",
+          "call",
+          "suggestion",
+          "status"
+        ],
+        "short_name": "Record-layer short deal name; fall back to the actual deal name when contact or market evidence is absent."
       }
     },
     "get-deal-room": {
       "producer": {
         "repository": "jbookout/carr-system",
-        "source_commit": "58af30ae50419c710a012cca4eff71b2ce981569",
-        "pull_request": "https://github.com/jbookout/carr-system/pull/2066"
+        "source_commit": "bda0b0afdf00f9a285c17aa81c6667d4eacb5696",
+        "pull_request": "https://github.com/DoctorCRE/carr-system/pull/2120"
       },
       "response": {
         "schema_version": "deal-timeline.v1",
@@ -671,6 +698,27 @@
           "role": "Specific service-role slug, displayed with underscores replaced by spaces.",
           "order": "Role, company name, contact name, vendor party id."
         },
+        "item_schema_version": "deal-items.v1",
+        "item_keys": [
+          "id",
+          "title",
+          "due_on",
+          "status",
+          "bullets",
+          "source_ref"
+        ],
+        "bullet_keys": [
+          "date",
+          "kind",
+          "text"
+        ],
+        "bullet_kinds": [
+          "promised",
+          "call",
+          "suggestion",
+          "status"
+        ],
+        "short_name": "Record-layer short deal name; fall back to the actual deal name when contact or market evidence is absent.",
         "next_actions": {
           "hold_until": "YYYY-MM-DD or null. An open action is held while hold_until is later than the current calendar date. Held actions remain in this history read. Accepted post-call actions return null."
         }
@@ -686,7 +734,7 @@
       "write": false,
       "producer": {
         "repository": "jbookout/carr-system",
-        "source_commit": "e2e484b1933bfd63c10cc9a1b3350132948f6f74",
+        "source_commit": "bda0b0afdf00f9a285c17aa81c6667d4eacb5696",
         "module": "mcp-server/src/feature-switches.js"
       },
       "inputSchema": {
@@ -744,6 +792,91 @@
           "propose-doc-correction"
         ],
         "seed_default": false
+      }
+    },
+    "read-home-agenda": {
+      "write": false,
+      "producer": {
+        "repository": "jbookout/carr-system",
+        "source_commit": "bda0b0afdf00f9a285c17aa81c6667d4eacb5696",
+        "pull_request": "https://github.com/DoctorCRE/carr-system/pull/2148"
+      },
+      "response": {
+        "schema_version": "home-agenda.v1",
+        "keys": [
+          "schema_version",
+          "actor",
+          "deals"
+        ],
+        "deal_keys": [
+          "id",
+          "name",
+          "phase",
+          "owner",
+          "type",
+          "attention",
+          "next_step",
+          "next_date",
+          "last_touch",
+          "last_review_at",
+          "workspace_kind",
+          "account_client_id",
+          "operating_state",
+          "outcome",
+          "closed_on",
+          "invoiced_on",
+          "client_status",
+          "prospect_engagement_status",
+          "critical_dates",
+          "next_actions",
+          "short_name",
+          "item_schema_version",
+          "items"
+        ],
+        "critical_date_keys": [
+          "id",
+          "kind",
+          "due_on",
+          "note",
+          "status"
+        ],
+        "action_keys": [
+          "id",
+          "owner",
+          "description",
+          "due_on",
+          "status",
+          "hold_until"
+        ],
+        "membership": "Active deals without a closed phase, outcome, close date or invoice date. Includes both owners and national accounts. Open actions retain hold dates; Home applies viewer-local resume dates and owner scope.",
+        "limits": {
+          "deals": 1000,
+          "critical_dates": 10000,
+          "open_actions": 10000,
+          "checklist_items": 10000
+        },
+        "overflow": "agenda_limit_exceeded; no truncated or partial snapshot is returned.",
+        "item_schema_version": "deal-items.v1",
+        "item_keys": [
+          "id",
+          "title",
+          "due_on",
+          "status",
+          "bullets",
+          "source_ref"
+        ],
+        "bullet_keys": [
+          "date",
+          "kind",
+          "text"
+        ],
+        "bullet_kinds": [
+          "promised",
+          "call",
+          "suggestion",
+          "status"
+        ],
+        "short_name": "Record-layer short deal name; fall back to the actual deal name when contact or market evidence is absent."
       }
     }
   },
@@ -932,6 +1065,152 @@
       "counts": "total_cards and state_counts include every unresolved item. cards is newest changes first.",
       "unavailable": "Version mismatches refuse mixed observations. Loaded older pages refresh together; page failure retains the complete displayed observation. Queue outage retains all previous queue pages.",
       "legacy": "Queue acknowledgement verifies this feed only. Scheduled carr-v5 publication can fail independently."
+    }
+  },
+  "mcp_write_contracts": {
+    "instruct-deal-item": {
+      "write": true,
+      "producer": {
+        "repository": "jbookout/carr-system",
+        "source_commit": "bda0b0afdf00f9a285c17aa81c6667d4eacb5696"
+      },
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "idempotency_key": {
+            "type": "string"
+          },
+          "deal": {
+            "type": "string"
+          },
+          "item_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "text": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 240
+          }
+        },
+        "required": [
+          "idempotency_key",
+          "deal",
+          "item_id",
+          "text"
+        ]
+      },
+      "effect": "Record a partner instruction for exactly one open deal item. This records a request and never claims the requested work was executed."
+    },
+    "complete-deal-item": {
+      "write": true,
+      "producer": {
+        "repository": "jbookout/carr-system",
+        "source_commit": "bda0b0afdf00f9a285c17aa81c6667d4eacb5696"
+      },
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "idempotency_key": {
+            "type": "string"
+          },
+          "deal": {
+            "type": "string"
+          },
+          "item_id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "idempotency_key",
+          "deal",
+          "item_id"
+        ]
+      },
+      "effect": "Mark exactly one deal checklist item done. Other items, due dates, and the deal next_step stay unchanged."
+    },
+    "record-deal-item": {
+      "write": true,
+      "producer": {
+        "repository": "jbookout/carr-system",
+        "source_commit": "bda0b0afdf00f9a285c17aa81c6667d4eacb5696"
+      },
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "idempotency_key": {
+            "type": "string"
+          },
+          "deal": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "due_on": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date"
+          },
+          "bullets": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 60,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "date": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "format": "date"
+                },
+                "kind": {
+                  "type": "string",
+                  "enum": [
+                    "promised",
+                    "call",
+                    "suggestion",
+                    "status"
+                  ]
+                },
+                "text": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 240
+                }
+              },
+              "required": [
+                "kind",
+                "text"
+              ]
+            }
+          },
+          "source_ref": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500
+          }
+        },
+        "required": [
+          "idempotency_key",
+          "deal",
+          "title",
+          "bullets",
+          "source_ref"
+        ]
+      },
+      "effect": "Add one sourced deal checklist item. It never replaces sibling actions. Repeating source_ref and title returns the existing item."
     }
   }
 }

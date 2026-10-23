@@ -169,32 +169,16 @@ test('phone deal title stays clear of Doc through the full timeline scroll',asyn
 });
 
 
-test('desktop board shows the full longest next step within three lines',async t=>{
+test('desktop checklist titles fit without exposing the legacy next-step paragraph',async t=>{
  const {page}=await open(t,1280,{theme:'light',showDetail:false});
- await animationsSettled(page);
- const step=page.locator('.kanban-column [data-id="d20"] .next-line');
- assert.equal(await step.textContent(),longestNextStep);
- assert.equal(await step.getAttribute('title'),longestNextStep);
- for(const fontFamily of ['', 'Arial']){
-  await step.evaluate((n,fontFamily)=>n.style.fontFamily=fontFamily,fontFamily);
-  const layout=await step.evaluate(n=>{
-   const box=n.getBoundingClientRect(),range=document.createRange();range.selectNodeContents(n);
-   const lines=[...range.getClientRects()];
-   return {height:box.height,lineHeight:parseFloat(getComputedStyle(n).lineHeight),
-    clipped:lines.filter(line=>line.bottom>box.bottom+1||line.right>box.right+1).length};
-  });
-  assert.equal(layout.clipped,0,'the whole sentence fits inside the visible next step');
-  assert.ok(layout.height>layout.lineHeight*2,'fixture exercises the third line');
-  assert.ok(layout.height<=layout.lineHeight*3+1,'next step uses at most three lines');
-  assert.ok((await step.locator('..').boundingBox()).height<240,'card stays compact');
- }
- await step.evaluate(n=>n.style.fontFamily='');
- await mkdir(new URL('out/test-artifacts/dealroom-final/',root),{recursive:true});
- await page.screenshot({path:new URL('out/test-artifacts/dealroom-final/1280-light-board.png',root).pathname,animations:'disabled'});
+ const card=page.locator('.kanban-column [data-id="d14"]');
+ assert.deepEqual(await card.locator('ol button').allTextContents(),['Vendor Introductions','Prelim Market Study','ETL not completed']);
+ assert.equal(await card.locator('.next-line').count(),0);
+ assert.equal(await card.evaluate(n=>n.scrollWidth<=n.clientWidth),true);
+ assert.doesNotMatch(await card.textContent(),/Prior status that must not prefill/);
 });
 
-
-test('empty next steps leave cards and snapshots free of invented status text',async t=>{
+test('empty legacy next steps preserve existing structured items',async t=>{
  const {page}=await open(t,390,{showDetail:false,nextStep:' \t\n '});
  const card=page.locator('.kanban-column [data-id="d14"]');
  assert.equal(await card.locator('.next-line').count(),0);
@@ -202,7 +186,7 @@ test('empty next steps leave cards and snapshots free of invented status text',a
  await page.locator('#detailUpdateForm').waitFor();
  assert.equal(await page.getByLabel('Update',{exact:true}).inputValue(),'');
  assert.equal(await page.locator('.deal-current-action').count(),0);
- assert.equal(await page.locator('.deal-opening-snapshot time').count(),0,'a due date without an action stays omitted');
+ assert.equal(await page.locator('.deal-opening-snapshot ol li').count(),3,'the legacy text does not erase item records');
  assert.doesNotMatch(await page.locator('#recordPanel').textContent(),/Next step pending|Nothing needs you/i);
 });
 
@@ -229,7 +213,8 @@ test('deal card cleanup shows dates and one summary at 390/1280 in dark/light',a
  const dir=new URL('out/test-artifacts/deal-card-cleanup/',root);await mkdir(dir,{recursive:true});
  for(const width of [390,1280])for(const theme of ['dark','light'])await t.test(`${width}-${theme}`,async t=>{
   const {page,errors}=await open(t,width,{theme,nextStep:'Confirm the appointment and review the lease draft'});
-  assert.equal(await page.locator('.deal-current-action strong').textContent(),'Confirm the appointment and review the lease draft');
+  assert.equal(await page.locator('.deal-opening-snapshot ol button').first().textContent(),'Vendor Introductions');
+  assert.equal(await page.locator('.deal-current-action').count(),0);
   assert.equal(await page.locator('.updates-overview').count(),1);
   assert.equal(await page.locator('.deal-note:visible').count(),0);
   assert.match(await page.locator('.updates-overview').textContent(),/Newest demo update/);
