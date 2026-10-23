@@ -12,6 +12,31 @@ mountNavigation(document, location.pathname, { report: true });
   const feedbackStatus = document.querySelector("#feedback-status");
   let shareToken = typeof globalThis.__CARR_TOUR_TAKE_SHARE_TOKEN__ === "function"
     ? globalThis.__CARR_TOUR_TAKE_SHARE_TOKEN__() : "";
+  const validProjection = value => typeof value === 'string' && /^projection:public:[A-Za-z0-9_-]{16,128}$/.test(value);
+  let projection = !shareToken && validProjection(history.state?.doctorcreShare) ? history.state.doctorcreShare : null;
+  let invalidated = false;
+  const withShareLock = operation => {
+    if (!navigator.locks?.request) return Promise.reject(new Error('share_context_unavailable'));
+    return navigator.locks.request('doctorcre-public-share', () => {
+      if (invalidated) throw new Error('share_context_unavailable');
+      return operation();
+    });
+  };
+  function checkProjection(data, expected = projection) {
+    if (!validProjection(data?.projection_ref) || data.projection_ref !== expected) {
+      showUnavailable(); throw new Error('share_context_changed');
+    }
+    return data;
+  }
+  async function inContext(operation) {
+    return withShareLock(async () => {
+      if (!projection) throw new Error('share_context_missing');
+      checkProjection(await fetchFeedback());
+      const result = await operation();
+      checkProjection(await fetchFeedback());
+      return result;
+    });
+  }
   let reportProperties = new globalThis.Map();
   let mapInstance = null;
   let feedback = null;
@@ -25,6 +50,12 @@ mountNavigation(document, location.pathname, { report: true });
   function setStatus(message) { status.textContent = message; }
 
   function showUnavailable() {
+    invalidated = true; projection = null;
+    history.replaceState(null, '', location.pathname + location.search);
+    reportProperties.clear(); pending.clear(); feedback = null;
+    mapInstance?.remove(); mapInstance = null;
+    list.replaceChildren();
+    document.querySelector('#tour-map').replaceChildren();
     setStatus("This shared report is unavailable.");
     summary.textContent = "Access may have expired or been removed. Please ask your broker for an updated Tour.";
     list.setAttribute("aria-busy", "false");
@@ -36,10 +67,14 @@ mountNavigation(document, location.pathname, { report: true });
     try {
       return await Promise.race([
         (async () => {
-          const response = await fetch(path, { credentials: "same-origin", ...options, signal: controller.signal });
+          const response = await fetch(path, { credentials: "same-origin", cache: "no-store", ...options, signal: controller.signal });
           let data = null;
           try { data = await response.json(); } catch { /* errors remain generic */ }
-          if (!response.ok) throw new Error(data?.error || "request_failed");
+          if (!response.ok) {
+            if ([401,403,404].includes(response.status)) showUnavailable();
+            throw new Error(data?.error || "request_failed");
+          }
+          if (invalidated) throw new Error('share_context_changed');
           return data;
         })(),
         new Promise((_, reject) => { timer = setTimeout(() => {
@@ -80,8 +115,8 @@ mountNavigation(document, location.pathname, { report: true });
     pending.set(slot, { serialized, key: payload.idempotency_key });
     feedbackStatus.textContent = kind === "shortlist" ? "Saving your shortlist…" : "Saving your comment…";
     try {
-      await request(`/api/share/${kind}`, { method: "POST",
-        headers: { "content-type": "application/json" }, body: JSON.stringify(payload) });
+      await inContext(() => request(`/api/share/${kind}`, { method: "POST",
+        headers: { "content-type": "application/json" }, body: JSON.stringify(payload) }));
       pending.delete(slot);
       let itemFeedback = feedbackFor(item.property_ref);
       if (!itemFeedback) {
@@ -199,6 +234,7 @@ mountNavigation(document, location.pathname, { report: true });
     if (!points.length) return;
     const { LngLatBounds, Map: MapLibreMap, Marker, NavigationControl, Popup, setWorkerUrl } =
       await import("/vendor/maplibre-gl-6.4.1/maplibre-gl.mjs");
+    if (invalidated) return;
     setWorkerUrl("/vendor/maplibre-gl-6.4.1/maplibre-gl-worker.mjs");
     const mapSection = document.querySelector("#map-section");
     mapSection.hidden = false;
@@ -249,6 +285,7 @@ mountNavigation(document, location.pathname, { report: true });
   }
 
   function showFeedbackUnavailable() {
+    if (invalidated) return;
     feedbackStatus.textContent = "Feedback is unavailable. Retry to load shortlist and comment controls.";
     retryFeedbackButton.hidden = false;
     setStatus(`${contentStatus} Feedback unavailable.`);
@@ -258,7 +295,7 @@ mountNavigation(document, location.pathname, { report: true });
     retryFeedbackButton.disabled = true;
     feedbackStatus.textContent = "Loading feedback…";
     try {
-      feedback = await fetchFeedback();
+      feedback = await inContext(() => fetchFeedback());
       for (const row of list.querySelectorAll(".report-item")) {
         const item = reportProperties.get(row.dataset.propertyRef);
         if (item && !row.querySelector(".feedback-controls")) renderFeedbackControls(row, item);
@@ -273,30 +310,34 @@ mountNavigation(document, location.pathname, { report: true });
     }
   }
 
-  async function loadTour() {
-    try {
-      // Packet and map are independently scoped. Fetch both, then render in a
-      // stable order so a valid map-only or packet-only grant still opens.
-      const [reportResult, mapResult, feedbackResult] = await Promise.allSettled([fetchReport(), fetchMap(), fetchFeedback()]);
-      const reportLoaded = reportResult.status === "fulfilled";
-      const mapLoaded = mapResult.status === "fulfilled";
-      feedback = feedbackResult.status === "fulfilled" ? feedbackResult.value : null;
-      if (!reportLoaded && !mapLoaded) throw new Error("share_scope_unavailable");
-      if (reportLoaded) render(reportResult.value);
-      else {
-        document.querySelector("#report-title").textContent = "Shared tour map";
-        summary.textContent = "Verified access points included in this share.";
-        list.textContent = "This link includes the interactive map only.";
-        list.setAttribute("aria-busy", "false");
-      }
-      if (mapLoaded) await renderMap(mapResult.value);
-      else document.querySelector("#map-section").hidden = true;
-      contentStatus = reportLoaded && mapLoaded ? "Report and map loaded." : reportLoaded ? "Report loaded." : "Map loaded.";
-      if (feedbackResult.status === "rejected") showFeedbackUnavailable();
-      else setStatus(contentStatus);
-    } catch {
-      showUnavailable();
+  // The producer returns the opaque projection only on feedback, so bracket
+  // packet/map reads with that verified identity. All exchanges and reads in
+  // our tabs share one Web Lock because the producer cookie is host-wide.
+  async function loadTour({ opening = false } = {}) {
+    const before = await fetchFeedback();
+    const expected = opening ? before.projection_ref : projection;
+    checkProjection(before, expected);
+    const [reportResult, mapResult] = await Promise.allSettled([fetchReport(), fetchMap()]);
+    const after = await fetchFeedback();
+    checkProjection(after, expected);
+    const reportLoaded = reportResult.status === 'fulfilled';
+    const mapLoaded = mapResult.status === 'fulfilled';
+    if (!reportLoaded && !mapLoaded) throw new Error('share_scope_unavailable');
+    projection = expected;
+    history.replaceState({doctorcreShare:projection}, '', location.pathname + location.search);
+    feedback = after;
+    if (reportLoaded) render(reportResult.value);
+    else {
+      document.querySelector('#report-title').textContent = 'Shared tour map';
+      summary.textContent = 'Verified access points included in this share.';
+      list.textContent = 'This link includes the interactive map only.';
+      list.setAttribute('aria-busy','false');
     }
+    if (mapLoaded) await renderMap(mapResult.value);
+    else document.querySelector('#map-section').hidden = true;
+    if (invalidated) return;
+    contentStatus = reportLoaded && mapLoaded ? 'Report and map loaded.' : reportLoaded ? 'Report loaded.' : 'Map loaded.';
+    setStatus(contentStatus);
   }
 
   async function openTour() {
@@ -305,12 +346,14 @@ mountNavigation(document, location.pathname, { report: true });
     openButton.disabled = true;
     if (!token) return;
     try {
+      await withShareLock(async () => {
       await request("/api/share/exchange", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ token }),
       });
-      await loadTour();
+      await loadTour({opening:true});
+      });
     } catch {
       showUnavailable();
     }
@@ -320,7 +363,8 @@ mountNavigation(document, location.pathname, { report: true });
     if (!shareToken) {
       openButton.hidden = true;
       setStatus("Opening your shared report…");
-      void loadTour();
+      if (!projection) { showUnavailable(); return; }
+      void withShareLock(() => loadTour()).catch(showUnavailable);
       return;
     }
     openButton.disabled = false;

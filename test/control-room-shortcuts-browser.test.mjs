@@ -32,6 +32,7 @@ async function open(t, { width = 1440, theme = 'dark', touch = false } = {}) {
     await route.fulfill({ json: { result: { content: [{ type: 'text', text: JSON.stringify(payload) }] } } });
   });
   await page.route('**/api/**', route => route.fulfill({ json: {} }));
+  await page.route('**/api/system-work/session', route => route.fulfill({json:{actor:{slug:'joe'},csrf_token:'synthetic-session'}}));
   await page.goto(`${server.origin}/control-room?mode=live&tab=queue`);
   await page.waitForFunction(() => document.querySelectorAll('#crQueueList [role="option"]').length === 2);
   await page.evaluate(theme => { document.documentElement.dataset.theme = theme; }, theme);

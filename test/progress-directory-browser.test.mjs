@@ -25,6 +25,7 @@ async function open(t, { width = 390, path = "/control-room/progress?board=demo-
   page.on("pageerror", error => errors.push(error.message));
   await page.route("**/*", async route => {
     const url = new URL(route.request().url());
+    if(url.pathname === '/api/system-work/session') return route.fulfill({json:{actor:{slug:'joe'},csrf_token:'synthetic-session'}});
     if (url.origin !== "http://localhost") return route.abort();
     if (url.pathname === "/mcp") {
       const rpc = route.request().postDataJSON(); calls.push(rpc.params);

@@ -153,15 +153,15 @@ test("B05-5 saving, renaming and resetting a view never touches the workspace pr
     setItem: (key, value) => { written.push(key); map.set(key, value); },
     removeItem: (key) => map.delete(key),
   };
-  let views = writeSavedViews(storage, saveView([], { name: "Pensacola leads", query: "Pensacola", kinds: ["leads"] }));
+  let views = writeSavedViews(storage, saveView([], { name: "Pensacola leads", query: "Pensacola", kinds: ["leads"] }), "joe");
   assert.deepEqual(views.map((view) => view.name), ["Pensacola leads"]);
-  views = writeSavedViews(storage, renameView(views, "Pensacola leads", "Panhandle leads"));
+  views = writeSavedViews(storage, renameView(views, "Pensacola leads", "Panhandle leads"), "joe");
   assert.deepEqual(views.map((view) => view.name), ["Panhandle leads"]);
-  assert.deepEqual([...readSavedViews(storage)], [...views]);
-  views = writeSavedViews(storage, Object.freeze([]));
+  assert.deepEqual([...readSavedViews(storage, "joe")], [...views]);
+  views = writeSavedViews(storage, Object.freeze([]), "joe");
   assert.deepEqual([...views], []);
 
-  assert.deepEqual([...new Set(written)], [SAVED_VIEWS_KEY], "one key, and it is not the preference key");
+  assert.deepEqual([...new Set(written)], [`${SAVED_VIEWS_KEY}:joe`], "one key, and it is not the preference key");
   assert.equal(written.includes(PREFERENCES_KEY), false, "a saved view changes no partner preference");
   assert.equal(map.has(PREFERENCES_KEY), false);
   assert.notEqual(SAVED_VIEWS_KEY, PREFERENCES_KEY);

@@ -1,7 +1,8 @@
+import { sessionFetch } from '../js/private-session.js';
 import { readWithDeadline } from "../js/auto-refresh.mjs";
 import { validateTourDetail } from "./planner-client.js";
 
-export function createDayClient({ fetchImpl = globalThis.fetch } = {}) {
+export function createDayClient({ fetchImpl = sessionFetch } = {}) {
   let scope = null;
   async function read(path, options = {}) {
     return readWithDeadline(async signal => {

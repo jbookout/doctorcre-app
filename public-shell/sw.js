@@ -1,81 +1,37 @@
-const SHELL_CACHE = "dealroom-shell-v4";
-const SHELL = [
-  "/offline.html",
-  "/manifest.webmanifest",
-  "/icons/dealroom-192.png",
-  "/icons/dealroom-512.png",
-];
-const DATA_PATHS = new Set(["/pipeline/changes", "/mcp", "/app-release"]);
-
-function isLiveData(pathname) {
-  return DATA_PATHS.has(pathname) || pathname.startsWith("/api/");
-}
-
-self.addEventListener("install", (event) => {
-  event.waitUntil(caches.open(SHELL_CACHE).then((cache) => cache.addAll(SHELL)));
+const SHELL_CACHE = 'dealroom-shell-v5';
+const SHELL = ['/offline.html','/public-shell/session-ended.html','/public-shell/shell.css','/manifest.webmanifest','/icons/dealroom-192.png','/icons/dealroom-512.png'];
+const staticAsset = path => SHELL.includes(path) || /^\/(?:js|css)\/.+\.(?:m?js|css)$/.test(path);
+const cacheable = response => response.ok && !/\b(?:no-store|private)\b/i.test(response.headers.get('cache-control') || '');
+self.addEventListener('install', event => {
+  event.waitUntil(caches.open(SHELL_CACHE).then(cache => cache.addAll(SHELL)));
   self.skipWaiting();
 });
-
-self.addEventListener("activate", (event) => {
-  event.waitUntil(
-    caches.keys()
-      .then((keys) => Promise.all(keys.filter((key) => key !== SHELL_CACHE).map((key) => caches.delete(key))))
-      .then(() => self.clients.claim()),
-  );
+self.addEventListener('activate', event => event.waitUntil(caches.keys()
+  .then(names => Promise.all(names.filter(name => name.startsWith('dealroom-shell-') && name !== SHELL_CACHE).map(name => caches.delete(name))))
+  .then(() => self.clients.claim())));
+self.addEventListener('message', event => {
+  if (event.data?.type !== 'doctorcre-session-revoked') return;
+  event.waitUntil(caches.keys().then(names => Promise.all(names.map(name => caches.delete(name)))));
 });
-
-async function liveData(request) {
-  try {
-    return await fetch(request);
-  } catch {
-    return new Response(JSON.stringify({
-      error: "offline",
-      state: "reconnecting",
-      live: false,
-      message: "Deal data is unavailable until the connection returns.",
-    }), {
-      status: 503,
-      headers: { "content-type": "application/json", "cache-control": "no-store" },
-    });
-  }
+async function networkOnly(request) {
+  try { return await fetch(request); }
+  catch {
+    const path = new URL(request.url).pathname;
+    if (request.mode === 'navigate' && !/^\/(?:auth|api)\//.test(path) && path !== '/mcp') return await caches.match('/offline.html') || new Response('Offline',{status:503});
+    return new Response(JSON.stringify({error:'offline',state:'reconnecting',live:false}),{status:503,headers:{'content-type':'application/json','cache-control':'no-store'}}); }
 }
-
-async function navigation(request) {
+async function shell(request) {
   try {
     const response = await fetch(request);
-    if (response.ok) {
-      const cache = await caches.open(SHELL_CACHE);
-      await cache.put(request, response.clone());
-    }
+    if (cacheable(response)) await (await caches.open(SHELL_CACHE)).put(request,response.clone());
     return response;
-  } catch {
-    return (await caches.match(request)) || caches.match("/offline.html");
-  }
+  } catch { return await caches.match(request) || new Response('Offline',{status:503}); }
 }
-
-async function shellAsset(request) {
-  try {
-    const response = await fetch(request);
-    if (response.ok) {
-      const cache = await caches.open(SHELL_CACHE);
-      await cache.put(request, response.clone());
-    }
-    return response;
-  } catch {
-    return (await caches.match(request)) || new Response("Offline", { status: 503 });
-  }
-}
-
-self.addEventListener("fetch", (event) => {
+self.addEventListener('fetch', event => {
   const url = new URL(event.request.url);
   if (url.origin !== self.location.origin) return;
-  if (isLiveData(url.pathname)) {
-    event.respondWith(liveData(event.request));
-  } else if (event.request.method !== "GET") {
-    return;
-  } else if (event.request.mode === "navigate") {
-    event.respondWith(navigation(event.request));
-  } else {
-    event.respondWith(shellAsset(event.request));
-  }
+  // Auth, APIs, MCP and unknown paths never consult CacheStorage. Only the
+  // explicit static shell may be cached, regardless of HTTP success.
+  if (event.request.method !== 'GET' || !staticAsset(url.pathname)) event.respondWith(networkOnly(event.request));
+  else event.respondWith(shell(event.request));
 });

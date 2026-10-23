@@ -47,6 +47,7 @@ async function open(t, { width = 1440, actor = 'joe', live = false, minimal = fa
       await docSuggestionsRelease;
     }
     if (url.pathname.startsWith('/api/') || ['/mcp', '/app-release'].includes(url.pathname)) return route.fulfill({ contentType: 'application/json', body: '{}' });
+    if (url.pathname === '/public-shell/session-ended.html') return route.fulfill({contentType:'text/html',body:await readFile(new URL('public-shell/session-ended.html',root),'utf8')});
     if (minimal && !/\.(?:m?js|css|json)$/.test(url.pathname)) return route.fulfill({ contentType: 'text/html', body: '<!doctype html><html data-theme="dark"><head><link rel="stylesheet" href="/css/app-shell.css"></head><body><div id="appShell"></div><h1 id="viewerWorkspace">Workspace</h1><script type="module" src="/js/app-shell.js"></script></body></html>' });
     const file = contract.routes[url.pathname] || url.pathname.slice(1);
     try { return route.fulfill({ body: await readFile(new URL(file, root)), contentType: /\.m?js$/.test(file) ? 'text/javascript' : file.endsWith('.css') ? 'text/css' : file.endsWith('.json') ? 'application/json' : 'text/html' }); }
@@ -73,8 +74,8 @@ for (const actor of ['joe','dell']) test(`signed-in ${actor} gets workspace, acc
   await page.getByLabel('Close profile').click(); await page.locator('#selfAvatar').click(); await page.keyboard.press('Escape'); assert.equal(await page.locator('#accountMenu').isVisible(), false);
   assert.equal(calls.some(call => call.method === 'POST' && !['deal-room-board','morning-brief','today-triage','list-feature-switches','list-doc-suggestions'].includes(call.verb)), false, 'opening controls has no write effect');
   await page.locator('#selfAvatar').click(); await page.getByText('Sign out', {exact:true}).click();
-  await page.getByRole('heading', { name: 'Signed out' }).waitFor();
-  assert.equal(new URL(page.url()).pathname, '/');
+  await page.getByRole('heading', { name: 'Session ended' }).waitFor();
+  assert.equal(new URL(page.url()).pathname, '/public-shell/session-ended.html');
   assert.equal(await page.getByRole('link', { name: 'Sign in again' }).getAttribute('href'), '/auth/login');
   assert.equal(await page.locator('#viewerWorkspace, #selfAvatar').count(), 0);
   assert.equal(calls.filter(call => call.url === '/auth/session').length, 1);
@@ -87,24 +88,27 @@ test('sign-out disposes Doc before a pending refresh can write into replaced DOM
   await docSuggestionsStarted;
   await page.locator('#selfAvatar').click();
   await page.getByText('Sign out', { exact: true }).click();
-  await page.getByRole('heading', { name: 'Signed out' }).waitFor();
+  await page.getByRole('heading', { name: 'Session ended' }).waitFor();
   assert.equal(await page.locator('#docUpdated').count(), 0);
   releaseDocSuggestions();
-  const response = await page.waitForResponse(response => response.url().endsWith('/mcp') &&
-    response.request().postDataJSON()?.params?.name === 'list-doc-suggestions');
-  await response.finished();
   await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+  assert.equal(await page.locator('#docUpdated').count(),0);
   assert.equal(calls.filter(call => call.verb === 'list-doc-suggestions').length, 1);
   assert.deepEqual(pageErrors, []);
   assert.deepEqual(errors, []);
 });
 
-for (const signoutMode of ['refused', 'still-authenticated']) test(`sign-out ${signoutMode} never claims a signed-out view`, async t => {
+for (const signoutMode of ['refused','still-authenticated']) test(`sign-out ${signoutMode} never claims a signed-out view`, async t => {
   const { page, calls, errors } = await open(t, { live: true, minimal: true, signoutMode });
   await page.locator('#selfAvatar').click();
   await page.getByText('Sign out', { exact: true }).click();
+  if (signoutMode === 'refused') {
+    await page.waitForURL('**/public-shell/session-ended.html');
+    assert.equal(await page.locator('#selfAvatar').count(),0);
+    assert.deepEqual(errors,[]); return;
+  }
   await page.getByText('Sign-out unavailable', { exact: true }).waitFor();
-  assert.equal(await page.getByRole('heading', { name: 'Signed out' }).count(), 0);
+  assert.equal(await page.getByRole('heading', { name: 'Session ended' }).count(), 0);
   assert.equal(await page.locator('#selfAvatar').count(), 1);
   assert.equal(await page.locator('#accountSignOut').isEnabled(), true);
   assert.equal(calls.filter(call => call.url === '/auth/session').length, signoutMode === 'refused' ? 0 : 1);

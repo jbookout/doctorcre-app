@@ -17,3 +17,6 @@ self.addEventListener("fetch", event => {
     return await cache.match(url.pathname) || new Response("Offline", { status: 503 });
   }));
 });
+self.addEventListener('message', event => {
+  if (event.data?.type === 'doctorcre-session-revoked') event.waitUntil(caches.keys().then(names => Promise.all(names.map(name => caches.delete(name)))));
+});

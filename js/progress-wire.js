@@ -1,3 +1,4 @@
+import { sessionFetch } from './private-session.js';
 import { pageDocContext, publishDocRead, setDocFilters } from './doc-context.js';
 import { mountVisibilityPoll } from './visibility-poll.mjs';
 import { authGeneration, authReadable, invalidateAuth } from './progress-auth.js';
@@ -822,7 +823,7 @@ export function mountProgressWire({ scope = {}, onRead = () => {} } = {}) {
   /* ------------------------------------------------------------- transport */
 
   async function fetchTurns(afterSeq, limit = PAGE_SIZE) {
-    const response = await fetch(`/api/room/turns?after_seq=${afterSeq}&limit=${limit}`, {
+    const response = await sessionFetch(`/api/room/turns?after_seq=${afterSeq}&limit=${limit}`, {
       headers: { accept: "application/json" }, credentials: "same-origin",
     });
     if (response.status === 401 || response.status === 403) {
@@ -835,7 +836,7 @@ export function mountProgressWire({ scope = {}, onRead = () => {} } = {}) {
   }
 
   async function postTurn(payload) {
-    const response = await fetch("/api/room/turn", {
+    const response = await sessionFetch("/api/room/turn", {
       method: "POST", credentials: "same-origin",
       headers: { "content-type": "application/json", "x-carr-csrf": state.csrf || "" },
       body: JSON.stringify(payload),

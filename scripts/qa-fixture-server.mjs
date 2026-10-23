@@ -128,6 +128,7 @@ export async function createQaServer({ buildRoot=resolve(repository,'dist/site')
       const projection=censusResponse(url);projection.viewer=viewer;projection.source.correlation_id=`${namespace}-${projection.source.correlation_id}`;
       return json(projection);
     }
+    if(url.pathname==='/api/system-work/session')return json({actor:{slug:viewer},csrf_token:`synthetic-qa-${viewer}`});
     if(url.pathname==='/api/system-work/current')return request.method==='GET'?json({ok:true,data:await (await fallback(state,viewer)).currentWorkRequests()}):json({error:'fixture_method_unavailable'},405);
     const directory=directoryRead(url,state,viewer,namespace);
     if(directory)return request.method==='GET'?directory:json({error:'fixture_method_unavailable'},405);

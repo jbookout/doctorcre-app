@@ -52,7 +52,7 @@ async function open(t,{width=1440,reducedMotion='no-preference',undoFailure=fals
       }else { errors.push(`Unexpected MCP operation: ${params.name}`); return route.fulfill({status:500,body:''}); }
       return route.fulfill({contentType:'application/json',body:JSON.stringify({result:{content:[{text:JSON.stringify(result)}]}})});
     }
-    if(url.pathname==='/api/system-work/session')return route.fulfill({contentType:'application/json',body:JSON.stringify({actor:{slug:'joe'}})});
+    if(url.pathname==='/api/system-work/session')return route.fulfill({contentType:'application/json',body:JSON.stringify({csrf_token:'synthetic-session',actor:{slug:'joe'}})});
     if(url.pathname==='/pipeline/changes')return route.fulfill({json:{events:[],cursor:null}});
     const file=routes.routes[url.pathname]||url.pathname.slice(1);
     try{return route.fulfill({body:await readFile(new URL(file,site)),contentType:/\.m?js$/.test(file)?'text/javascript':file.endsWith('.css')?'text/css':file.endsWith('.json')?'application/json':'text/html'});}

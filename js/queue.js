@@ -1,3 +1,4 @@
+import { sessionFetch } from './private-session.js';
 import { pageDocContext, publishDocRead, setDocFilters } from './doc-context.js';
 import { authGeneration, authCurrent, establishAuth, invalidateAuth } from './progress-auth.js';
 import { mountVisibilityPoll } from './visibility-poll.mjs';
@@ -56,17 +57,17 @@ function setTargets(cards) {
   const select = $("queueTarget"), prior = select.value; select.replaceChildren(new Option("All targets", ""));
   for (const target of [...new Set(cards.map((card) => card.target))].sort()) select.append(new Option(target, target)); select.value = prior;
 }
-async function csrfToken() { const response = await fetch("/api/room/turns?limit=1", { cache: "no-store", credentials: "same-origin" }); const body = await response.json(); if (!response.ok || !body.csrf_token) throw new Error("Room sign-in is required to enqueue work."); return body.csrf_token; }
+async function csrfToken() { const response = await sessionFetch("/api/room/turns?limit=1", { cache: "no-store", credentials: "same-origin" }); const body = await response.json(); if (!response.ok || !body.csrf_token) throw new Error("Room sign-in is required to enqueue work."); return body.csrf_token; }
 async function enqueue(event) { event.preventDefault(); const title = $("enqueueTitle").value.trim(), body = $("enqueueBody").value.trim(); if (!title) return;
   const command = `@queue enqueue target=${$("enqueueTarget").value} cap=read :: ${title}${body ? `\n${body}` : ""}`;
-  try { const csrf = await csrfToken(); const response = await fetch("/api/room/turn", { method: "POST", credentials: "same-origin", cache: "no-store", headers: { "content-type": "application/json", "x-carr-csrf": csrf, origin: location.origin, "sec-fetch-site": "same-origin" }, body: JSON.stringify({ body: command }) }); if (!response.ok) throw new Error("The task was not accepted."); $("queueComposer").reset(); $("queueNotice").textContent = "Task submitted; waiting for the board to update."; }
+  try { const csrf = await csrfToken(); const response = await sessionFetch("/api/room/turn", { method: "POST", credentials: "same-origin", cache: "no-store", headers: { "content-type": "application/json", "x-carr-csrf": csrf, origin: location.origin, "sec-fetch-site": "same-origin" }, body: JSON.stringify({ body: command }) }); if (!response.ok) throw new Error("The task was not accepted."); $("queueComposer").reset(); $("queueNotice").textContent = "Task submitted; waiting for the board to update."; }
   catch (error) { $("queueNotice").textContent = error.message; }
 }
 async function readQueue() {
   const controller = new AbortController(); let timer;
   const deadline = new Promise((_,reject) => { timer = setTimeout(() => { reject(new Error('Queue read timed out')); controller.abort(); },10000); });
   const read = async () => {
-    const response = await fetch('/api/room/queue', {cache:'no-store',credentials:'same-origin',signal:controller.signal});
+    const response = await sessionFetch('/api/room/queue', {cache:'no-store',credentials:'same-origin',signal:controller.signal});
     if (!response.ok) throw Object.assign(new Error('Queue unavailable'), {status:response.status});
     return response.json();
   };

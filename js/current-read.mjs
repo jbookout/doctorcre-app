@@ -1,3 +1,4 @@
+import { sessionFetch } from './private-session.js';
 // One accepted answer per lifetime. Cancellation fences callbacks even when
 // a transport ignores abort; page-specific state belongs to success/failure.
 export function createCurrentRead({ timeoutMs = 30_000, clock = globalThis } = {}) {
@@ -55,7 +56,7 @@ export async function readWithDeadline(read, { timeoutMs = 10_000, signal, clock
   finally { clock.clearTimeout(timer); signal?.removeEventListener('abort', cancel); }
 }
 
-export function fetchRead(path, init = {}, { fetchImpl = globalThis.fetch, timeoutMs = 10_000 } = {}) {
+export function fetchRead(path, init = {}, { fetchImpl = sessionFetch, timeoutMs = 10_000 } = {}) {
   return readWithDeadline(async signal => {
     const response = await fetchImpl(path, { ...init, signal });
     const body = await response.arrayBuffer();

@@ -50,7 +50,7 @@ async function open(t, width = 1440) {
       return r.fulfill({ json: payload });
     }
     if (url.pathname === "/api/system-work/session")
-      return r.fulfill({ json: { actor: { slug: "joe" } } });
+      return r.fulfill({ json: { actor: { slug: "joe" }, csrf_token: "synthetic-session" } });
     if (url.pathname === "/mcp") {
       const verb = r.request().postDataJSON().params.name;
       verbs.push(verb);

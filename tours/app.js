@@ -1,3 +1,4 @@
+import { sessionFetch } from '../js/private-session.js';
 import { observeDocRead, selectDocRecord } from '../js/doc-context.js';
 import { mountAutoRefresh } from "../js/auto-refresh.mjs";
 import { mountAcceptedItinerary, acceptedRouteFromDetail } from "./itinerary-map.js";
@@ -22,7 +23,7 @@ import { cheatSheetText, factSummary, formatTourDate, tourDisplayName, tourMetaL
     try {
       result = await Promise.race([
         (async () => {
-          const response = await fetch(path, { credentials: "same-origin", ...options, signal: controller.signal });
+          const response = await sessionFetch(path, { credentials: "same-origin", ...options, signal: controller.signal });
           let payload = null; try { payload = await response.json(); } catch { if (response.ok) throw new Error("read_invalid"); }
           return { response, payload };
         })(),
