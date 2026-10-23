@@ -103,3 +103,30 @@ for (const width of [390, 768, 1280, 1440]) for (const theme of ['dark', 'light'
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
   });
 }
+
+for (const failure of ['network', 401, 403]) test(`Slice A initial Leads identity failure ${failure} gives the correct recovery`, async t => {
+ const browser = await chromium.launch(); t.after(() => browser.close());
+ const page = await browser.newPage({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true, reducedMotion: 'reduce' });
+ const writes = []; let failing = true;
+ await routeLeads(page, { onWrite: value => writes.push(value) });
+ await page.route('**/mcp', route => {
+  if (!failing || route.request().postDataJSON()?.params?.name !== 'deal-room-board') return route.fallback();
+  return failure === 'network' ? route.abort('internetdisconnected') : route.fulfill({ status: failure, json: {} });
+ });
+ await page.goto('http://localhost/leads');
+ const error = page.locator('#leadBoardError');
+ await error.waitFor();
+ if (failure === 'network') {
+  assert.match(await error.textContent(), /Connection/);
+  assert.equal(await error.getByRole('link', { name: 'Sign in', exact: true }).count(), 0);
+  assert.equal(await page.locator('#leadBoard .lead-card').count(), 0);
+  failing = false;
+  await error.getByRole('button', { name: 'Retry', exact: true }).click();
+  await page.locator('#leadBoard .lead-card').first().waitFor();
+  assert.equal(await error.isVisible(), false);
+ } else {
+  assert.equal(await error.getByRole('link', { name: 'Sign in', exact: true }).isVisible(), true);
+  assert.equal(await error.getByRole('button', { name: 'Retry', exact: true }).count(), 0);
+ }
+ assert.deepEqual(writes, []);
+});

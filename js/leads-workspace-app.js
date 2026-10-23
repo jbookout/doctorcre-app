@@ -132,6 +132,10 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
     box.hidden = !state.pending && !engagements.length && !state.commandFeedback && !state.connectionFeedback;
     box.innerHTML = [command, ...engagements, esc(state.connectionFeedback)].filter(Boolean).join(" · ");
     if (!state.actor && state.connectionFeedback === "Sign-in required") box.insertAdjacentHTML("beforeend", ` · <a href="/auth/login?return_to=${encodeURIComponent(win.location.pathname + win.location.search)}">Sign in</a>`);
+    if (state.readFailed && state.connectionFeedback && state.connectionFeedback !== "Sign-in required") {
+      box.insertAdjacentHTML("beforeend", ' <button type="button" id="retryLeadRead">Retry</button>');
+      $("retryLeadRead").addEventListener("click", () => auto.refresh());
+    }
     $("checkPending")?.addEventListener("click", executePending);
     for (const button of box.querySelectorAll("[data-check-engagement]")) button.addEventListener("click", () => executeEngagement(engagement.get(button.dataset.checkEngagement, state.actor)?.request));
     const form = $("activateProspect"), activation = engagement.get(state.detail?.prospect_client_id, state.actor);
@@ -222,7 +226,7 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
       ++state.detailEpoch; state.trigger = null;
       $("leadDetail").close(); $("detailTitle").textContent = ""; $("detailBody").replaceChildren();
       render();
-      state.connectionFeedback = state.actor ? "Connection interrupted · reconnecting…" : "Sign-in required";
+      state.connectionFeedback = "Connection interrupted · reconnecting…";
       paintCommandFeedback();
       return false;
     } finally {
