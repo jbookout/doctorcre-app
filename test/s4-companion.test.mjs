@@ -91,11 +91,11 @@ test('F12 malformed post-call report is unavailable rather than waiting for tran
   await assert.rejects(client.getStatus('demo-session'),/unavailable|invalid/i);
 });
 
-async function recoveryController({fetchImpl, getStatus}) {
+async function recoveryController({fetchImpl, getStatus, ...deps}) {
   const dom = new JSDOM(await readFile(new URL('../index.html',import.meta.url),'utf8'));
   const pending = new Map(); let next = 0;
   const ui = createCallMode({root:dom.window.document,requestTimeoutMs:10,fetchImpl,
-    postCallClient:{getStatus},client:()=>({}),
+    postCallClient:{getStatus},client:()=>({}),...deps,
     setTimeout:fn => {pending.set(++next,fn);return next;},clearTimeout:id => pending.delete(id),
     setInterval:()=>1,clearInterval:()=>{}});
   return {ui,dom,pending,async tick() {
@@ -127,6 +127,34 @@ test('a lost Stop reply resumes report polling after state reconciliation withou
   } finally {h.dispose();}
 });
 
+for (const lostReply of [false, true]) test(`a ${lostReply ? 'reconciled' : 'confirmed'} Stop recovers the report after weekly context fails`, async () => {
+  const requests=[]; let reads=0;
+  const h = await recoveryController({fetchImpl:async url => {
+    const action=url.split('/').at(-1); requests.push(action);
+    if(action==='stop' && lostReply) return new Promise(()=>{});
+    return {ok:true,json:async()=>({state:action==='start'?'recording':requests.includes('stop')?'transcribing':'idle',mode:'weekly_deal_call',session:'demo-session'})};
+  },getStatus:async()=>({status:++reads===1?'waiting_for_transcript':'review_ready',report:null}),
+  client:()=>({getCallContext:async()=>{throw Object.assign(new Error('Synthetic context unavailable'),{status:503});}}),
+  agendaDeals:()=>[{id:'demo-deal'}]});
+  try {
+    await h.ui.checkEligibility();
+    h.dom.window.document.querySelector('#callModeConsent').checked=true;
+    assert.equal(await h.ui.start('weekly_deal_call'),true);
+    assert.match(h.dom.window.document.querySelector('#postCallStatus').textContent,/Synthetic context unavailable/);
+    assert.ok(h.dom.window.document.querySelector('[data-retry-call-context]'));
+    await h.ui.stop();
+    if(lostReply) {assert.equal(h.ui.state.recorderUncertain,true);await h.ui.stop();}
+    await new Promise(setImmediate);
+    assert.equal(reads,1,'Stop must read the report even when context failed');
+    assert.ok(h.ui.state.pollTimer);
+    await h.tick();
+    assert.equal(h.ui.state.postCall.status,'review_ready');
+    assert.equal(h.ui.state.pollTimer,null);
+    assert.equal(h.pending.size,0);
+    assert.equal(requests.filter(action=>action==='stop').length,1);
+  } finally {h.dispose();}
+});
+
 test('a successful nonterminal report retry resumes polling until ready', async () => {
   let reads=0;
   const h = await recoveryController({getStatus:async()=>{
@@ -146,5 +174,41 @@ test('a successful nonterminal report retry resumes polling until ready', async 
     await h.tick(); assert.equal(h.ui.state.postCall.status,'extracting');
     await h.tick(); assert.equal(h.ui.state.postCall.status,'review_ready');
     assert.equal(reads,4);assert.equal(h.ui.state.pollTimer,null);assert.equal(h.pending.size,0);
+  } finally {h.dispose();}
+});
+
+for (const state of ['recording','transcribing']) test(`reopening a new other-call ${state} session clears the completed weekly call context`, async () => {
+  const publications=[]; let reads=0,contextReads=0;
+  let snapshot={state:'idle'};
+  const h = await recoveryController({fetchImpl:async url => {
+    if(url.endsWith('/start')) snapshot={state:'recording',mode:'weekly_deal_call',session:'weekly-session'};
+    if(url.endsWith('/stop')) snapshot={...snapshot,state:'transcribing'};
+    return {ok:true,json:async()=>snapshot};
+  },postCallClient:{
+    publishCallContext:async context=>{publications.push(context);},
+    getStatus:async()=>{reads++;return {status:'review_ready',report:{report:{summary:'Synthetic weekly summary'}}};},
+  },client:()=>({getCallContext:async()=>{contextReads++;return {deals:[{id:'demo-deal',name:'Demo deal',operating_state:'active',participants:[]}]};}}),
+  agendaDeals:()=>[{id:'demo-deal'}],scope:()=>({workspace_kind:'team'})});
+  try {
+    await h.ui.checkEligibility();
+    h.dom.window.document.querySelector('#callModeConsent').checked=true;
+    assert.equal(await h.ui.start('weekly_deal_call'),true);
+    await h.ui.stop(); await new Promise(setImmediate);
+    assert.equal(h.ui.state.postCall.status,'review_ready');
+    assert.equal(publications.length,1);
+    assert.equal(reads,1);
+    snapshot={state,mode:'other_call',session:'other-session'};
+    await h.ui.open(); await new Promise(setImmediate);
+    assert.equal(publications.length,1,'An unrelated call must not receive weekly context');
+    assert.equal(contextReads,1);
+    assert.equal(reads,1,'An unrelated call must not inherit weekly report polling');
+    assert.equal(h.ui.state.postCall.session,'other-session');
+    assert.equal(h.ui.state.postCall.weekly,false);
+    assert.equal(h.ui.state.postCall.contextReady,false);
+    assert.equal(h.ui.state.postCall.contextAttempted,false);
+    assert.equal(h.ui.state.postCall.report,null);
+    assert.equal(h.ui.state.pollTimer,null);
+    assert.equal(h.pending.size,0);
+    assert.doesNotMatch(h.dom.window.document.querySelector('#postCallReport').textContent,/Synthetic weekly summary/);
   } finally {h.dispose();}
 });

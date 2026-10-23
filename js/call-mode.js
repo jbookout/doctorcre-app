@@ -559,16 +559,20 @@ export function createCallMode(deps) {
       state.callMode = suppliedSnapshot || await api('state');
       const notice = $('#callModePermission');
       if (notice) notice.hidden = true;
-      render();
       const snapshot = state.callMode;
       const session = snapshot.session || state.postCall.session;
-      const weekly = snapshot.mode === 'weekly_deal_call' || state.postCall.weekly;
+      const changed = state.postCall.session !== session;
+      const weekly = snapshot.mode === 'weekly_deal_call' || (!changed && state.postCall.weekly);
+      if (changed) {
+        stopPolling();
+        state.postCall = {...idlePostCall(),session,weekly};
+      }
+      render();
       if (session && (weekly || state.postCall.contextReady)) {
-        const changed = state.postCall.session !== session;
-        if (changed) state.postCall = {...idlePostCall(),session,weekly};
         if (callModeActive(snapshot)) {
           if (changed && weekly) await publishOrRecord(session);
-        } else if (changed || ['idle','context_ready','context_loading'].includes(state.postCall.status)) {
+        } else if (changed || ['idle','context_ready','context_loading'].includes(state.postCall.status)
+          || (state.postCall.status === 'failed' && state.postCall.errorAction === 'context')) {
           state.postCall = {...state.postCall,status:'waiting_for_transcript',session,weekly,error:null,
             contextAttempted:state.postCall.contextReady};
           renderPostCall();
