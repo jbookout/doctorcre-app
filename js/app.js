@@ -18,7 +18,7 @@ import {
 import {
   cellKey, performFieldWrite, unresolvedFieldWrites, fieldWriteMessage, nextCellBase,
 } from './field-write-reconciliation.mjs';
-import { classifyCommandOutcome, commandMessage, pendingCommand } from './command-feedback.mjs';
+import { classifyCommandOutcome, commandMessage, pendingCommand, performCommand } from './command-feedback.mjs';
 import { renderAccountCards } from './account-cards.js';
 import { updatedLabel } from './auto-refresh.mjs';
 import { mountVisibilityPoll } from './visibility-poll.mjs';
@@ -222,6 +222,7 @@ async function loadHome() {
 }
 
 function applyBoardSnapshot(home) {
+  if (state.accessDenied) return;
   state.selfActor = home.actor || state.client.selfActor || state.selfActor;
   state.deals = new Map((home.deals || []).map((deal) => [deal.id, {
     workspace_kind: deal.account_client_id ? 'national_account' : 'team', ...deal,
@@ -247,6 +248,7 @@ function applyBoardSnapshot(home) {
 }
 
 async function pollOnce(initial = false, { force = false } = {}) {
+  if (state.accessDenied) return;
   const outcome = await state.boardSync.pollChanges({ force });
   // Skipped (a poll was already open) or superseded (the answer stopped being
   // current before it arrived). Neither is news and neither moves the cursor.
@@ -254,6 +256,7 @@ async function pollOnce(initial = false, { force = false } = {}) {
     if (outcome.reason === 'read_failed') console.warn('Deal Room poll failed', outcome.error);
     return;
   }
+  if (state.accessDenied) return;
   const result = outcome.changes;
   state.presence = result.presence || [];
   state.captureSessions = result.capture_sessions || [];
@@ -294,18 +297,7 @@ async function pollOnce(initial = false, { force = false } = {}) {
     actorLabel: actorName,
   });
   renderReceipts();
-  if (state.client.getPendingConfirms) {
-    // A separate read with a separate failure: a capture queue that will not
-    // answer says nothing about the board, so it leaves the last set of chips
-    // alone instead of claiming the connection is gone.
-    try {
-      const pending = await state.client.getPendingConfirms();
-      state.confirms = pending.proposals || [];
-      renderConfirms();
-    } catch (error) {
-      console.warn('Deal Room confirm queue read failed', error);
-    }
-  }
+  if (state.client.getPendingConfirms) await loadConfirms();
   if (!userIsEditing()) renderPreservingFocus(renderBoardOnly);
 }
 
@@ -589,10 +581,77 @@ function installCallMode() {
   return state.callModeUi;
 }
 
+let screenCommands = {};
+const screenActions = new Map();
+function screenStatusNode() {
+  let node = $('#screenActionStatus');
+  if (!node) { node = document.createElement('div'); node.id = 'screenActionStatus'; node.className = 'state-block'; }
+  const host = state.review ? $('#agendaPanel') : $('#main');
+  if (node.parentElement !== host) host.prepend(node);
+  return node;
+}
+function renderScreenActions() {
+  const node = screenStatusNode();
+  node.hidden = !screenActions.size;
+  node.innerHTML = [...screenActions.entries()].map(([key,entry]) => {
+    const pending = pendingCommand(screenCommands,key);
+    const busy = pending?.status === 'pending';
+    return `<div data-screen-outcome="${esc(key)}" role="status"><p>${esc(entry.label)}: ${busy ? 'Saving…' : esc(entry.message || 'Outcome unknown. Check the original request before changing it.')}</p>${entry.denied ? '<a href="/auth/login">Sign in</a>' : busy ? '' : `<button type="button" data-screen-retry="${esc(key)}">${pending ? 'Check outcome' : 'Retry'}</button>`}</div>`;
+  }).join('');
+  const busy = Object.values(screenCommands).some(command => command.status === 'pending');
+  for (const control of $$('#agendaButton,#agendaReviewed,#agendaSkip,#agendaEnd,#agendaClose,[data-confirm]')) control.disabled = Boolean(busy || state.accessDenied);
+}
+function refuseScreenAccess() {
+  state.accessDenied = true;
+  screenCommands = {};
+  state.review = null; state.confirms = []; state.deals.clear();
+  $('#agendaPanel').hidden = true; $('#confirmDock').hidden = true;
+  $('#rows').replaceChildren(); selectDocRecord(null,null);
+}
+async function runScreenAction(key,args,method,label,accepted) {
+  if (state.accessDenied) return false;
+  const held = screenActions.get(key);
+  if (pendingCommand(screenCommands,key) && held && held.args !== args) { renderScreenActions(); return false; }
+  const entry = pendingCommand(screenCommands,key) && held ? held : {args,label,run:() => runScreenAction(key,args,method,label,accepted)};
+  screenActions.set(key,entry);
+  const result = await performCommand({operationKey:key,args,newKey:uuidv4,
+    getState:() => screenCommands,setState:next => {screenCommands=next;renderScreenActions();},
+    call:async request => {
+      const response = await state.client[method](request);
+      if (response?.ok === false) throw Object.assign(new Error('Action refused'),{payload:response});
+      if (method === 'startReview' && typeof response?.session_id !== 'string') throw new Error('Invalid review response');
+      return response;
+    }});
+  if (state.accessDenied) return false;
+  if (result.status !== 'ok') {
+    entry.message = commandMessage(result,label).replace('on the command dock, or open the record to check','below');
+    entry.denied = [401,403].includes(result.http_status);
+    if (entry.denied) refuseScreenAccess();
+    renderScreenActions(); return false;
+  }
+  screenActions.delete(key); renderScreenActions();
+  try { await accepted(result.response); }
+  catch { entry.message = 'Change confirmed. The board refresh is unavailable.'; entry.run = async () => { try {await loadHome();screenActions.delete(key);renderScreenActions();} catch {renderScreenActions();} }; screenActions.set(key,entry);renderScreenActions(); }
+  return true;
+}
+async function loadConfirms() {
+  if (state.accessDenied) return;
+  try {
+    const pending = await state.client.getPendingConfirms();
+    if (state.accessDenied) return;
+    if (!Array.isArray(pending?.proposals)) throw new Error('Invalid capture queue');
+    state.confirms = pending.proposals;
+    state.confirmError = null;
+  } catch (error) {
+    state.confirmError = [401,403].includes(error?.status) ? 'denied' : 'unavailable';
+    if (state.confirmError === 'denied') refuseScreenAccess();
+  }
+  renderConfirms();
+}
 function renderConfirms() {
   const dock = $('#confirmDock');
-  dock.hidden = !state.confirms.length;
-  dock.innerHTML = state.confirms.map((proposal) => `<span class="confirm-chip" data-proposal="${esc(proposal.id)}">${esc(proposal.label)}
+  dock.hidden = !state.confirms.length && !state.confirmError;
+  dock.innerHTML = (state.confirmError ? `<span role="status">Suggestions unavailable. ${state.confirmError === 'denied' ? '<a href="/auth/login">Sign in</a>' : '<button type="button" data-confirms-retry>Retry suggestions</button>'}</span>` : '') + state.confirms.map((proposal) => `<span class="confirm-chip" data-proposal="${esc(proposal.id)}">${esc(proposal.label)}
     <button type="button" class="yes" data-confirm="yes">Confirm</button><button type="button" class="skip-confirm" data-confirm="no">Skip</button></span>`).join('');
 }
 
@@ -1132,13 +1191,15 @@ function agendaDeals() {
 }
 
 async function startAgenda() {
+  if (state.review) { $('#agendaPanel').hidden = false; return true; }
   const deals = agendaDeals();
   if (!deals.length) return showToast('No active work in this agenda');
-  const result = await state.client.startReview({ workspace_kind:state.workspace,
-    ...(state.accountId ? { account_client_id:state.accountId } : {}), idempotency_key:uuidv4() });
-  state.review = { sessionId:result.session_id, deals, index:0, reviewed:0, skipped:0 };
-  $('#agendaPanel').hidden = false;
-  renderAgenda();
+  const title = state.workspace === 'team' ? 'Deals' : account()?.account_name || 'National account';
+  return runScreenAction('agenda-start',{workspace_kind:state.workspace,
+    ...(state.accountId ? {account_client_id:state.accountId} : {})},'startReview','Start agenda',async result => {
+    state.review = {sessionId:result.session_id,deals,index:0,reviewed:0,skipped:0,title};
+    $('#agendaPanel').hidden = false; renderAgenda();
+  });
 }
 
 function renderAgenda() {
@@ -1151,7 +1212,7 @@ function renderAgenda() {
   // would show the partner the phase and next step as they were at the start.
   const captured = review.deals[review.index];
   const deal = resolveCurrentRow(captured, state.deals);
-  $('#agendaTitle').textContent = state.workspace === 'team' ? 'Deals' : account()?.account_name || 'National account';
+  $('#agendaTitle').textContent = review.title;
   $('#agendaProgress').textContent = `${Math.min(review.index + 1,review.deals.length)} of ${review.deals.length}`;
   $('#agendaMeter').max = review.deals.length;
   $('#agendaMeter').value = review.index;
@@ -1172,22 +1233,24 @@ async function advanceAgenda(disposition) {
   if (!review || !deal || review.advancing) return;
   review.advancing = true;
   try {
-    await state.client.reviewDeal({ session_id:review.sessionId, deal:deal.id, disposition, idempotency_key:uuidv4() });
+    return await runScreenAction(`agenda:${review.sessionId}`,{session_id:review.sessionId,deal:deal.id,disposition},'reviewDeal','Review record',async () => {
     if (state.review !== review) return;
     review[disposition === 'reviewed' ? 'reviewed' : 'skipped'] += 1;
     review.index += 1;
     renderAgenda();
+    });
   } finally { review.advancing = false; }
 }
 
 async function finishAgenda(status = 'completed') {
   if (!state.review) return;
   const review = state.review;
-  const result = await state.client.endReview({ session_id:review.sessionId, status, idempotency_key:uuidv4() });
+  return runScreenAction(`agenda:${review.sessionId}`,{session_id:review.sessionId,status},'endReview','Finish agenda',async result => {
   state.review = null;
   $('#agendaPanel').hidden = true;
   await loadHome();
   showToast(status === 'completed' ? `Agenda finished · ${result.reviewed ?? review.reviewed} records reviewed` : 'Agenda closed without changing the review clock');
+  });
 }
 
 function wireEvents() {
@@ -1227,7 +1290,15 @@ function wireEvents() {
     const filter = event.target.closest('[data-filter]'); if (filter) { state.filter=filter.dataset.filter; state.deepLinkMine = false; $$('.filter').forEach((b)=>b.classList.toggle('on',b===filter)); renderBoardOnly(); return; }
     if (event.target.closest('[data-close-deal]')) { $('#dealDialog').close(); return; }
     const undoButton = event.target.closest('[data-undo]'); if (undoButton) { await runUndo(undoButton.dataset.undo, undoButton); return; }
-    const confirm = event.target.closest('[data-confirm]'); if (confirm) { const chip=confirm.closest('[data-proposal]'); const yes=confirm.dataset.confirm==='yes'; await state.client.resolveConfirm({proposal_id:chip.dataset.proposal,accept:yes,idempotency_key:uuidv4()}); state.confirms=state.confirms.filter((p)=>p.id!==chip.dataset.proposal); renderConfirms(); if(yes)await loadHome(); showToast(yes?'Suggestion confirmed':'Suggestion skipped'); return; }
+    const retry = event.target.closest('[data-screen-retry]'); if (retry) { await screenActions.get(retry.dataset.screenRetry)?.run(); return; }
+    if (event.target.closest('[data-confirms-retry]')) { await loadConfirms(); return; }
+    const confirm = event.target.closest('[data-confirm]'); if (confirm) {
+      const proposal_id=confirm.closest('[data-proposal]').dataset.proposal, accept=confirm.dataset.confirm==='yes';
+      await runScreenAction(`confirm:${proposal_id}`,{proposal_id,accept},'resolveConfirm','Suggestion',async () => {
+        state.confirms=state.confirms.filter(p=>p.id!==proposal_id); renderConfirms();
+        if(accept) await loadHome(); showToast(accept?'Suggestion confirmed':'Suggestion skipped');
+      }); return;
+    }
     if (state.callModeUi && await state.callModeUi.handleClick(event.target)) return;
     if (event.target.closest('[data-dialog-cancel]')) { $('#formDialog').close(); return; }
   });

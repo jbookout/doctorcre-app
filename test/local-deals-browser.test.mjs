@@ -786,15 +786,16 @@ for (const width of [390,1280]) test(`move success fades after two seconds and U
   assert.deepEqual(errors,[]);
 });
 
-test('unreadable linked client with no context rows hides the context control',async t=>{
+test('unreadable linked client exposes a recoverable context error',async t=>{
   const {page,errors}=await open(t,{deal:'d02'});
   await page.locator('#detailUpdateForm').waitFor();
-  assert.equal(await page.locator('#panelContextOpenWrap').isVisible(),false);
-  assert.equal(await page.locator('#contextDrawer').evaluate(n=>n.open),false);
+  await page.locator('#panelContextOpen').click();
+  assert.match(await page.locator('#contextDrawerBody').textContent(),/Client details unavailable/);
+  assert.equal(await page.locator('[data-context-retry]').count()>0,true);
   assert.deepEqual(errors,[]);
 });
 
-test('context becoming unreadable on its fresh open closes the empty dialog and hides its control',async t=>{
+test('context becoming unreadable stays open with an error and retry recovers',async t=>{
   const {page,errors}=await open(t);
   await page.evaluate(async()=>{
     const {state}=await import('/js/pipeline.js');const read=state.client.getDeal.bind(state.client);
@@ -807,8 +808,12 @@ test('context becoming unreadable on its fresh open closes the empty dialog and 
   await page.evaluate(()=>{window.contextUnavailable=true;});
   await page.locator('#panelContextOpen').click();
   await waitForAsync(page,()=>!document.querySelector('#contextDrawerBody').textContent.includes('Updating'));
-  assert.equal(await page.locator('#contextDrawer').evaluate(n=>n.open),false);
-  assert.equal(await page.locator('#panelContextOpenWrap').isVisible(),false);
+  assert.equal(await page.locator('#contextDrawer').evaluate(n=>n.open),true);
+  assert.match(await page.locator('#contextDrawerBody').textContent(),/Client details unavailable/);
+  await page.evaluate(()=>{window.contextUnavailable=false;});
+  await page.locator('[data-context-retry]').click();
+  await page.waitForFunction(()=>document.querySelector('#contextDrawerBody').textContent.includes('Demo Context Client'));
+  assert.equal(await page.locator('#panelContextOpenWrap').isVisible(),true);
   assert.deepEqual(errors,[]);
 });
 
@@ -824,7 +829,8 @@ test('readable vendor context survives a failed linked client read',async t=>{
   await page.locator('#panelContextOpen').waitFor({state:'visible'});
   await page.locator('#panelContextOpen').click();
   await page.locator('#contextDrawer a[href="/vendors?record=demo-vendor"]').waitFor();
-  assert.equal(await page.locator('#contextDrawer .panel-section').count(),1);
+  assert.equal(await page.locator('#contextDrawer .panel-section').count(),2);
+  assert.match(await page.locator('#contextDrawer [data-state=unavailable]').textContent(),/Client details unavailable/);
   assert.deepEqual(errors,[]);
 });
 
