@@ -17,7 +17,7 @@ const screenshot = async (page, name) => {
   await page.screenshot({ path: join(process.env.W2_SCREENSHOT_DIR, `${name}.png`), fullPage: !name.includes('detail') });
 };
 
-async function open(t, { width = 1440, motion = 'reduce', leads = true, delayDetails = false, hangDetails = false, longLead = false, tasksOnly = false, malformedTasks = false, delayBoard = false, delayInitialFeed = false, origin = 'http://localhost', malformedBoard = false, firstOpen = false } = {}) {
+async function open(t, { width = 1440, motion = 'reduce', leads = true, delayDetails = false, hangDetails = false, longLead = false, tasksOnly = false, heldTasks = false, malformedTasks = false, delayBoard = false, delayInitialFeed = false, origin = 'http://localhost', malformedBoard = false, firstOpen = false } = {}) {
   const client = await createFixtureClient({ seedUrl: `data:application/json;base64,${Buffer.from(await readFile(new URL('../data/board-seed.json', import.meta.url))).toString('base64')}` });
   const browser = await chromium.launch();
   const page = await browser.newPage({ viewport: { width, height: 1000 }, timezoneId: 'UTC', reducedMotion: motion });
@@ -44,7 +44,7 @@ async function open(t, { width = 1440, motion = 'reduce', leads = true, delayDet
     'get-deal-room': async args => { if (detailFailure === '503') throw Error('Unavailable'); if (hangDetails || detailFailure === 'timeout') return new Promise(() => {}); if (delayDetails) await new Promise(resolve => setTimeout(resolve, 100)); const detail = await client.getDeal(args.deal); return { ...detail,
       ...detail.deal, deal_id: detail.deal.id, events: detail.history.map(event => ({ ...event, verb: event.verb || 'patch-deal-field' })),
       critical_dates: tasksOnly ? [] : [{ id: `demo-date-${args.deal}`, note: 'Demo tour', due_on: '2026-10-03', status: 'open' }],
-      next_actions: malformedTasks ? [null] : [{ id: `demo-task-${args.deal}`, description: 'Demo follow-up', due_on: '2026-10-01', status: 'open', owner: detail.deal.owner }] }; },
+      next_actions: malformedTasks ? [null] : [{ id: `demo-task-${args.deal}`, description: 'Demo follow-up', due_on: '2026-10-01', status: 'open', owner: detail.deal.owner, hold_until: heldTasks ? '2027-01-01' : null }] }; },
     'read-home-agenda': async () => {
       const board = await handlers['deal-room-board']();
       if (hangDetails) return new Promise(() => {});
@@ -490,4 +490,32 @@ test('R9 agenda focus survives independent responses while the shared board is s
   await page.evaluate(() => window.dispatchEvent(new Event('online')));
   await page.waitForFunction(() => document.querySelector('#refreshHome').getAttribute('aria-busy') === 'false');
   assert.equal(await task.evaluate(node => document.activeElement === node), true);
+});
+
+test('Home hides held tasks, ranks eligible arrivals, and links the full prospecting queue', async t => {
+  const { page, responses } = await open(t, { heldTasks: true });
+  await page.waitForFunction(() => document.querySelector('#refreshHome').getAttribute('aria-busy') === 'false');
+  assert.equal(await page.locator('#homeAgenda a').filter({ hasText: 'Demo follow-up' }).count(), 0);
+  responses.set('lead-board', { leads: [
+    { ...leadRows[0], id:'synthetic-suppressed', name:'Demo Suppressed', score:100, suppressed:true },
+    { ...leadRows[0], id:'synthetic-converted', name:'Demo Converted', score:99, stage:'closed_won' },
+    { ...leadRows[1], id:'synthetic-eligible', name:'Demo Eligible', score:10 },
+  ] });
+  const read = page.waitForResponse(response => response.url().endsWith('/mcp') && response.request().postDataJSON()?.params?.name === 'lead-board');
+  await page.locator('#refreshHome').click(); await read;
+  await page.waitForFunction(() => document.querySelector('#refreshHome').getAttribute('aria-busy') === 'false');
+  assert.equal(await page.locator('#homeLeads h2').textContent(), 'Recent arrivals');
+  assert.deepEqual(await page.locator('.home-lead strong').allTextContents(), ['Demo Eligible']);
+  assert.equal(await page.getByRole('link', { name:'Prospecting queue' }).getAttribute('href'), '/leads');
+});
+
+test('held deal actions remain visible in the deal history reached from Home', async t => {
+  const { page } = await open(t, { heldTasks: true });
+  await page.waitForFunction(() => document.querySelector('#refreshHome').getAttribute('aria-busy') === 'false');
+  const href = await page.locator('#dealFlags a').first().getAttribute('href');
+  await page.goto('http://localhost' + href + '&mode=live');
+  await page.locator('.updates-history').waitFor();
+  await page.locator('.updates-history').click();
+  assert.ok(await page.getByText('Held until Jan 1, 2027', {exact:true}).count());
+  assert.ok(await page.locator('.deal-note').filter({hasText:'Demo follow-up'}).count());
 });

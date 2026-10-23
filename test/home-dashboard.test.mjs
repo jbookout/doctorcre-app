@@ -22,15 +22,30 @@ test('Home overdue list matches local board scope; team headline counts retain n
   assert.equal(dealSnapshot({ deals: board.deals.map(row => ({ ...row, in_market: true })) }).inMarket, 2);
   assert.equal(dealHref('demo/a?x=1'), '/deals?deal=demo%2Fa%3Fx%3D1');
 });
-test('top leads is exactly the highest three finite scores added in seven days, includes low/suppressed rows, ties deterministic', () => {
-  const lead = (id, score, created_at = '2026-10-01T12:00:00Z', owner = 'joe') => ({ id, score, created_at, owner });
+test('recent arrivals rank eligible leads with finite scores added in seven days, ties deterministic', () => {
+  const lead = (id, score, created_at = '2026-10-01T12:00:00Z', owner = 'joe') => ({ id, score, created_at, owner, stage: 'new' });
   const payload = { leads: [lead('demo-1', 80), { ...lead('demo-2', 99), suppressed: true }, lead('demo-3', 90, undefined, 'dell'), lead('demo-4', 79),
     lead('old', 100, '2026-09-24T14:59:59Z'), lead('unknown', null), lead('bad', NaN), lead('future', 100, '2026-10-02T00:00:00Z')] };
-  assert.deepEqual(topNewLeads(payload, { now: NOW }).map(row => row.id), ['demo-2', 'demo-3', 'demo-1']);
-  assert.deepEqual(topNewLeads(payload, { now: NOW, scope: 'mine', actor: 'joe' }).map(row => row.id), ['demo-2', 'demo-1', 'demo-4']);
+  assert.deepEqual(topNewLeads(payload, { now: NOW }).map(row => row.id), ['demo-3', 'demo-1', 'demo-4']);
+  assert.deepEqual(topNewLeads(payload, { now: NOW, scope: 'mine', actor: 'joe' }).map(row => row.id), ['demo-1', 'demo-4']);
   assert.deepEqual(topNewLeads(payload, { now: NOW, scope: 'mine' }), []);
   assert.deepEqual(topNewLeads({ leads: [lead('boundary', 1, '2026-09-24T15:00:00Z')] }, { now: NOW }).map(row => row.id), ['boundary']);
   assert.deepEqual(topNewLeads({ leads: [lead('b', 2), lead('a', 2)] }, { now: NOW }).map(row => row.id), ['a', 'b']);
+});
+test('Home recent arrivals reuse Leads lifecycle eligibility without claiming to be the whole queue', () => {
+  const recent = { score: 99, created_at: '2026-10-01T12:00:00Z', owner: 'joe', stage: 'new' };
+  const excluded = ['suppressed', 'merged_into', 'deleted_at', 'client_id', 'linked_client', 'is_client', 'is_past_client', 'is_deal', 'deal_id']
+    .map(flag => ({ ...recent, id: flag, [flag]: true }));
+  const payload = { leads: [...excluded,
+    { ...recent, id: 'converted', stage: 'closed_won' },
+    { ...recent, id: 'active-deal', stage: 'active_deal' },
+    { ...recent, id: 'archived', stage: 'archived' },
+    { ...recent, id: 'dnc', do_not_contact: true },
+    { ...recent, id: 'eligible', score: 10 },
+    { ...recent, id: 'returned', score: 9, stage: 'nurture_drip', client_id: 'synthetic-client', prospect_client_id: 'synthetic-client', prospect_engagement_status: 'inactive' },
+    { ...recent, id: 'older-eligible', score: 100, created_at: '2026-09-01T12:00:00Z' },
+  ] };
+  assert.deepEqual(topNewLeads(payload, { now: NOW }).map(row => row.id), ['eligible', 'returned']);
 });
 test('agenda preserves open dates and tasks, owner scope, future dates, invalid dates and failed details stay distinct', () => {
   const details = new Map([['demo-a', { critical_dates: [{ id: 'date', due_on: '2026-10-03', kind: 'tour', status: 'open' }, { due_on: '2026-10-05', status: 'done' }, { due_on: 'invalid' }], next_actions: [
@@ -50,6 +65,23 @@ test('agenda preserves open dates and tasks, owner scope, future dates, invalid 
   assert.equal(mine.entries.length, 3);
   assert.deepEqual(mine.failed, []);
   assert.equal(agendaSnapshot(null, details), null);
+});
+test('held deal tasks stay out of every Home agenda until the hold date', () => {
+  const tasks = [
+    { id: 'held', status: 'open', due_on: '2026-09-30', hold_until: '2027-01-01', owner: 'joe' },
+    { id: 'released', status: 'open', due_on: '2026-09-30', hold_until: '2026-10-01', owner: 'joe' },
+    { id: 'expired', status: 'open', due_on: null, hold_until: '2026-09-30', owner: 'joe' },
+    { id: 'post-call', status: 'open', due_on: '2026-10-02', hold_until: null, owner: 'joe' },
+  ];
+  const details = new Map([['demo-a', { critical_dates: [], next_actions: tasks }]]);
+  for (const scope of ['team', 'mine']) {
+    const view = agendaSnapshot(board, details, { scope, today: '2026-10-01' });
+    assert.deepEqual(view.entries.map(row => row.key), ['task:released', 'task:expired', 'task:post-call']);
+    assert.ok(!view.week.flatMap(day => day.entries).some(row => row.key === 'task:held'));
+    assert.ok(!view.upcoming.some(row => row.key === 'task:held'));
+  }
+  assert.equal(details.get('demo-a').next_actions[0].hold_until, '2027-01-01');
+  assert.ok(agendaSnapshot(board, details, { today: '2027-01-01' }).entries.some(row => row.key === 'task:held'));
 });
 test('control room cannot report No issues with incomplete/absent evidence; positive issues remain visible', async () => {
   const client = await fixtureClient();

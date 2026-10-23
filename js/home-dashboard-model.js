@@ -1,3 +1,4 @@
+import { visibleLeads } from './leads-model.js';
 import { localDeals, needsAttention, scopedDeals, validDealBoard } from './deal-review-model.js';
 import { validInvoiceTracker } from './invoice-tracker-model.js';
 import { validNetwork } from './relationship-network-model.js';
@@ -37,8 +38,7 @@ export function dealHref(id) { return `/deals?deal=${encodeURIComponent(id)}`; }
 
 export function topNewLeads(payload, { scope = 'team', actor, now = Date.now() } = {}) {
   if (!Array.isArray(payload?.leads) || (scope === 'mine' && !actor)) return [];
-  return payload.leads.map(lead => lead && ({ ...lead, score: typeof lead.score === 'string' && /^-?\d+(?:\.\d+)?$/.test(lead.score) ? Number(lead.score) : lead.score })).filter(lead => typeof lead?.id === 'string'
-    && typeof lead.score === 'number' && Number.isFinite(lead.score)
+  return visibleLeads(payload.leads.filter(lead => lead && typeof lead.id === 'string')).map(lead => ({ ...lead, score: typeof lead.score === 'string' && /^-?\d+(?:\.\d+)?$/.test(lead.score) ? Number(lead.score) : lead.score })).filter(lead => typeof lead.score === 'number' && Number.isFinite(lead.score)
     && Number.isFinite(Date.parse(lead.created_at))
     && Date.parse(lead.created_at) >= now - 7 * 86_400_000 && Date.parse(lead.created_at) <= now
     && (scope !== 'mine' || lead.owner === actor))

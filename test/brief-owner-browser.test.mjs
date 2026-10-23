@@ -11,9 +11,10 @@ for (const width of [390,1280]) test(`partner brief controls work at ${width}px`
   await page.route('**/brief-owner-test',route=>route.fulfill({contentType:'text/html',body:`<!doctype html><html><head><link rel="stylesheet" href="/css/tokens.css"><link rel="stylesheet" href="/css/system.css"><link rel="stylesheet" href="/css/app-shell.css"><link rel="stylesheet" href="/css/morning-brief.css"></head><body><nav id="host"></nav><main><h1>Example</h1></main><button id="docOpen">Doc</button><button id="docMorning">Morning brief</button><script type="module">
     import {mountAppLayout} from '/js/app-layout.js';
     import {mountMorningBrief} from '/js/morning-brief.js';
-    const day=new Date().toISOString().slice(0,10);
+    import {localToday} from '/js/calendar-model.js';
+    const day=localToday();
     const deals=['joe','dell'].map(owner=>({id:owner,name:'Example '+owner,owner,attention:true,phase:'legal',operating_state:'active',next_step:'Example step',next_date:day}));
-    const items=deals.map(deal=>({id:'action-'+deal.id,item_kind:'next_action',subject_type:'deal',subject_id:deal.id,subject_name:deal.name,what:deal.next_step,due_on:day,owner_partner:deal.owner}));
+    const items=deals.map(deal=>({id:'action-'+deal.id,item_kind:'next_action',subject_type:'deal',subject_id:deal.id,subject_name:deal.name,what:deal.next_step,due_on:day+'T00:00:00.000Z',owner_partner:deal.owner}));
     const brief={sponsor:'joe',sections:{today:{state:'ready',items},deals:{state:'ready',items:deals},loops:{state:'empty',items:[]}}};
     window.exampleClient={getBoard:async()=>({actor:'joe',deals}),morningBrief:async()=>brief,getChanges:async()=>({events:[],cursor:'end'})};
     mountAppLayout(document,document.getElementById('host'),'/example');
