@@ -170,7 +170,7 @@ test('W7 automatic refresh updates PR, provider spend and open details without l
  await page.locator('#jobClose').click();await section(page,'tabConnections');await page.getByText('$18.50 · October 2026',{exact:true}).first().waitFor();
  assert.equal(await page.locator('[data-connection="grok"]').getAttribute('data-state'),'needs_reconnect');assert.equal(await page.locator('[data-device]').count(),2);
  await page.emulateMedia({reducedMotion:'no-preference'});await page.evaluate(()=>document.documentElement.dataset.motion='full');assert.equal(await page.locator('.connection-dot').first().evaluate(e=>getComputedStyle(e).animationName),'none');assert.equal(await page.locator('[data-connection="grok"] .connection-dot').evaluate(e=>getComputedStyle(e).borderRadius),'1px');await page.emulateMedia({reducedMotion:'reduce'});assert.equal(await page.locator('.connection-dot').first().evaluate(e=>getComputedStyle(e).animationName),'none');
- state.denied=true;await advanceRoom(page,15001);await page.waitForFunction(()=>document.querySelector('[data-connection="claude"]').dataset.state==='unknown');assert.equal(await page.locator('[data-device]').count(),0);assert.match(await page.locator('#devicesState').textContent(),/unavailable/);
+ state.denied=true;await page.clock.runFor(15001);await page.waitForURL('**/public-shell/session-ended.html');assert.equal(await page.locator('[data-device],#jobDialog').count(),0);
 });
 for(const width of [1440,390])test(`W7 calendar defaults and integrated automation list at ${width}px`,async t=>{
  const {page,errors}=await open(t,{width});await section(page,'tabAutomations');await page.waitForSelector('.calendar-day');assert.equal(await page.locator('.calendar-day').count(),31);
@@ -268,7 +268,9 @@ for(const failure of [503,403,'unpublished'])test(`PR132 #1: board ${failure} re
  const {page,state}=await open(t,{path:'/control-room?mode=live&tab=boards&board=demo-project',unboundBoard:true});
  const card=page.locator('#board-stages .board-card').first();await card.waitFor();await card.click();await page.waitForFunction(()=>document.querySelector('#jobDialog').open);
  assert.match(await page.locator('#jobBody .work-lineage dl > div').filter({hasText:'Work Request'}).textContent(),/Work Request.*Not linked/);
- if(failure==='unpublished')state.boardUnpublished=true;else state.boardFailure=failure;await page.locator('#board-retry').evaluate(button=>button.click());await page.waitForFunction(failure=>failure==='unpublished'?document.querySelector('#board-meta').dataset.readState==='unpublished':document.querySelector('#board-error').hidden===false,failure);
+ if(failure==='unpublished')state.boardUnpublished=true;else state.boardFailure=failure;await page.locator('#board-retry').evaluate(button=>button.click());
+ if(failure===403){await page.waitForURL('**/public-shell/session-ended.html');assert.equal(await page.locator('#jobDialog,.board-card').count(),0);return;}
+ await page.waitForFunction(failure=>failure==='unpublished'?document.querySelector('#board-meta').dataset.readState==='unpublished':document.querySelector('#board-error').hidden===false,failure);
  if(failure!==503){assert.equal(await page.locator('#jobDialog').evaluate(node=>node.open),false);assert.equal(await page.locator('#jobBody').textContent(),'');}
  else {assert.match(await page.locator('#jobBody').textContent(),/Source unavailable.*Last-known/);await page.locator('#jobClose').click();await card.click();assert.match(await page.locator('#jobBody').textContent(),/Source unavailable.*Last-known/);}
 });
@@ -294,6 +296,7 @@ test('PR132 #5: paused configured jobs have an unknown next time in both surface
 test('PR132 #7: healthy room seeds coverage-only Status fallback before an outage',async t=>{
  const {page,state}=await open(t);const snapshot=await page.evaluate(()=>JSON.parse(localStorage.getItem('doctorcre.status-snapshot.v1')));
  assert.ok(snapshot);assert.ok(snapshot.reads.some(row=>row.id==='incidents'&&row.state==='read'));assert.doesNotMatch(JSON.stringify(snapshot),/Demo|WR-|INC-/);
+ await page.route('**/mcp',route=>route.fulfill({status:503,body:'{}'}));
  state.denied=true;await page.goto('http://localhost/status?mode=live');await page.locator('#lastKnownBlock').waitFor();
  assert.match(await page.locator('#lastKnownChips').textContent(),/Incidents/);
 });

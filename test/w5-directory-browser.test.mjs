@@ -102,17 +102,15 @@ test('W5 Clients exposes every requested sort and owner without territory contro
 
 test('W5 session expiry erases a pending trust draft and recovery permits a fresh action without replay',async t=>{
  const h=await open(t),{page}=h;h.setWriteMode('uncertain');await page.goto(origin+'/vendors?mode=live');await page.locator('.record-row').first().click();await page.locator('[data-details-key="trust"] summary').click();await page.locator('[name="tier"]').selectOption('Trial');await page.locator('[name="reason"]').fill('Demo pending draft');await page.locator('#trustForm button').click();await page.waitForFunction(()=>document.querySelector('#trustStatus')?.textContent==='Rating not confirmed');
- await expireOpenRecord(h);assert.doesNotMatch(await page.locator('#recordBody').innerText(),/Demo pending draft/);
- h.setExpired(false);await page.evaluate(()=>window.dispatchEvent(new Event('online')));await page.waitForSelector('#trustForm',{state:'attached'});await page.locator('[data-details-key="trust"] summary').click();assert.equal(await page.locator('[name="reason"]').inputValue(),'');assert.equal(await page.locator('#trustForm button').isDisabled(),false);assert.equal(h.writes,1);assert.deepEqual(h.errors,[]);
+ await expireOpenRecord(h);assert.doesNotMatch(await page.locator('body').innerText(),/Demo pending draft/);
+ h.setExpired(false);await page.goto(origin+'/vendors?mode=live');await page.locator('.record-row').first().click();await page.waitForSelector('#trustForm',{state:'attached'});await page.locator('[data-details-key="trust"] summary').click();assert.equal(await page.locator('[name="reason"]').inputValue(),'');assert.equal(await page.locator('#trustForm button').isDisabled(),false);assert.equal(h.writes,1);assert.deepEqual(h.errors,[]);
 });
 
 // The refresh that discovers expiry reads the list, then the open record. Signal
 // recovery only once that record answer is in: a resume during a refresh joins it.
 async function expireOpenRecord(h) {
- const answered=h.page.waitForResponse(r=>/^\/api\/v1\/business\/vendors\/[^/]+$/.test(new URL(r.url()).pathname)&&r.status()===401);
  h.setExpired(true);await h.page.evaluate(()=>window.dispatchEvent(new Event('online')));
- await (await answered).finished();await h.page.clock.runFor(1);
- await h.page.waitForFunction(()=>document.querySelector('#recordTitle')?.textContent==='Your session has ended');
+ await h.page.waitForURL('**/public-shell/session-ended.html');
 }
 async function beginRating(page, reason='Synthetic pending rating') {
  await page.locator('[data-details-key="trust"] summary').click();
@@ -136,7 +134,7 @@ for (const status of [200,502]) test(`W5 pre-expiry save response ${status} cann
  const h=await open(t),{page}=h;const held=await holdWrites(page);
  await page.goto(origin+'/vendors?mode=live');await page.locator('.record-row').first().click();await beginRating(page);await page.locator('#trustForm button').click();await settles(()=>assert.equal(held.length,1));
  await expireOpenRecord(h);
- h.setExpired(false);await page.evaluate(()=>window.dispatchEvent(new Event('online')));await page.waitForSelector('#trustForm',{state:'attached'});await beginRating(page,'Synthetic second save');await page.locator('#trustForm button').click();await settles(()=>assert.equal(held.length,2));
+ h.setExpired(false);await page.goto(origin+'/vendors?mode=live');await page.locator('.record-row').first().click();await page.waitForSelector('#trustForm',{state:'attached'});await beginRating(page,'Synthetic second save');await page.locator('#trustForm button').click();await settles(()=>assert.equal(held.length,2));
  if (status===200) await ack(held[0]); else await held[0].fulfill({status,body:'Synthetic lost response'});
  await page.waitForTimeout(150);assert.equal(await page.locator('#trustForm button').isDisabled(),true);assert.equal(await page.locator('#trustStatus').textContent(),'Saving…');await ack(held[1]);
 });

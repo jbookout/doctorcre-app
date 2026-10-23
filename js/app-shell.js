@@ -142,7 +142,6 @@ function mountAccount(root, host, pathname, beforeSignOutReplace = () => {}) {
         redirect: "manual", headers: { accept: "application/json" } });
       if (after.status !== 401) throw new Error();
       session = null;
-      beforeSignOutReplace();
       boundary.revoke('signed-out');
     } catch { if (!boundary?.revoked) { panel.querySelector("#accountStatus").textContent = "Sign-out unavailable"; event.target.disabled = false; } }
   };

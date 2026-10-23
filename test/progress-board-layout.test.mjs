@@ -87,6 +87,9 @@ parent.document.body.setAttribute("data-measure", JSON.stringify({ cards: cards.
 function serve() {
   const server = createServer(async (request, response) => {
     const url = new URL(request.url, "http://127.0.0.1");
+    if (url.pathname === '/api/system-work/session') {
+      response.writeHead(200, {'content-type':'application/json'}); response.end(JSON.stringify({actor:{slug:'joe'},csrf_token:'synthetic-session'})); return;
+    }
     if (request.method === "POST" && url.pathname === "/mcp") {
       let body = "";
       for await (const chunk of request) body += chunk;

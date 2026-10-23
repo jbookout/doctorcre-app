@@ -103,11 +103,21 @@ test('S1 browser: simultaneous public links keep their own context and a refresh
  await Promise.all([a.goto(`${app.origin}/share#${tokens.A}`),b.goto(`${app.origin}/share#${tokens.B}`)]);
  assert.equal(new URL(a.url()).hash,'');assert.equal(new URL(b.url()).hash,'');
  await Promise.all([a.getByRole('button',{name:'Open tour',exact:true}).click(),b.getByRole('button',{name:'Open tour',exact:true}).click()]);
- await Promise.all([a.waitForFunction(()=>document.querySelector('#status').textContent==='Report and map loaded.'),b.waitForFunction(()=>document.querySelector('#status').textContent==='Report and map loaded.')]);
- assert.match(await a.locator('#report-list').textContent(),/Synthetic projection A/);
- assert.match(await b.locator('#report-list').textContent(),/Synthetic projection B/);
+ await Promise.all([a.waitForFunction(()=>/loaded|unavailable/.test(document.querySelector('#status').textContent)),b.waitForFunction(()=>/loaded|unavailable/.test(document.querySelector('#status').textContent))]);
+ const last=exchanges.at(-1)==='A'?a:b;
+ assert.match(await last.locator('#report-list').textContent(),new RegExp(`Synthetic projection ${exchanges.at(-1)}`));
  const first=exchanges[0]==='A'?a:b,other=exchanges[0]==='A'?'B':'A';
  await first.reload();await first.waitForFunction(()=>document.querySelector('#status').textContent.includes('unavailable'));
  assert.doesNotMatch(await first.locator('body').textContent(),new RegExp(`Synthetic projection ${other}`));
  assert.equal(await first.locator('.report-item').count(),0);assert.deepEqual(app.errors,[]);
+});
+test('S1 browser: a history restore verifies its session before revealing the old view',async t=>{
+ const app=await open(t);await seedPrivate(app.page);
+ await app.page.evaluate(()=>window.dispatchEvent(new PageTransitionEvent('pageshow',{persisted:true})));
+ await app.page.waitForFunction(()=>document.documentElement.style.visibility==='');
+ assert.match(await app.page.locator('#conversationList').textContent(),/Demo — Crestview/);
+ app.switchActor();
+ await app.page.evaluate(()=>window.dispatchEvent(new PageTransitionEvent('pageshow',{persisted:true})));
+ await app.page.waitForURL('**/public-shell/session-ended.html');
+ await assertPurged(app.page);assert.deepEqual(app.errors,[]);
 });

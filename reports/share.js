@@ -14,7 +14,17 @@ mountNavigation(document, location.pathname, { report: true });
     ? globalThis.__CARR_TOUR_TAKE_SHARE_TOKEN__() : "";
   const validProjection = value => typeof value === 'string' && /^projection:public:[A-Za-z0-9_-]{16,128}$/.test(value);
   let projection = !shareToken && validProjection(history.state?.doctorcreShare) ? history.state.doctorcreShare : null;
+  const contextKey = 'doctorcre-public-share-context-v1';
+  let linkContext = !shareToken && typeof history.state?.doctorcreShareContext === 'string' ? history.state.doctorcreShareContext : null;
   let invalidated = false;
+  function checkLinkContext() {
+    let active;
+    try { active = localStorage.getItem(contextKey); } catch { /* Refuse when this cookie cannot be bound to its exchange. */ }
+    if (!linkContext || active !== linkContext) { showUnavailable(); throw new Error('share_context_changed'); }
+  }
+  window.addEventListener('storage', event => {
+    if (event.key === contextKey && linkContext && event.newValue !== linkContext) showUnavailable();
+  });
   const withShareLock = operation => {
     if (!navigator.locks?.request) return Promise.reject(new Error('share_context_unavailable'));
     return navigator.locks.request('doctorcre-public-share', () => {
@@ -30,6 +40,7 @@ mountNavigation(document, location.pathname, { report: true });
   }
   async function inContext(operation) {
     return withShareLock(async () => {
+      checkLinkContext();
       if (!projection) throw new Error('share_context_missing');
       checkProjection(await fetchFeedback());
       const result = await operation();
@@ -42,10 +53,6 @@ mountNavigation(document, location.pathname, { report: true });
   let feedback = null;
   const pending = new globalThis.Map();
   let contentStatus = "";
-  const retryFeedbackButton = document.createElement("button");
-  retryFeedbackButton.type = "button"; retryFeedbackButton.textContent = "Retry feedback";
-  retryFeedbackButton.hidden = true;
-  feedbackStatus.after(retryFeedbackButton);
 
   function setStatus(message) { status.textContent = message; }
 
@@ -59,7 +66,7 @@ mountNavigation(document, location.pathname, { report: true });
     setStatus("This shared report is unavailable.");
     summary.textContent = "Access may have expired or been removed. Please ask your broker for an updated Tour.";
     list.setAttribute("aria-busy", "false");
-    for (const node of [openButton, document.querySelector(".tour-flow"), document.querySelector("#map-section"), list.closest("section"), feedbackStatus, retryFeedbackButton]) node.hidden = true;
+    for (const node of [openButton, document.querySelector(".tour-flow"), document.querySelector("#map-section"), list.closest("section"), feedbackStatus]) node.hidden = true;
   }
 
   async function request(path, options = {}) {
@@ -284,36 +291,11 @@ mountNavigation(document, location.pathname, { report: true });
     return payload.data;
   }
 
-  function showFeedbackUnavailable() {
-    if (invalidated) return;
-    feedbackStatus.textContent = "Feedback is unavailable. Retry to load shortlist and comment controls.";
-    retryFeedbackButton.hidden = false;
-    setStatus(`${contentStatus} Feedback unavailable.`);
-  }
-
-  async function retryFeedback() {
-    retryFeedbackButton.disabled = true;
-    feedbackStatus.textContent = "Loading feedback…";
-    try {
-      feedback = await inContext(() => fetchFeedback());
-      for (const row of list.querySelectorAll(".report-item")) {
-        const item = reportProperties.get(row.dataset.propertyRef);
-        if (item && !row.querySelector(".feedback-controls")) renderFeedbackControls(row, item);
-      }
-      feedbackStatus.textContent = "";
-      retryFeedbackButton.hidden = true;
-      setStatus(contentStatus);
-    } catch {
-      showFeedbackUnavailable();
-    } finally {
-      retryFeedbackButton.disabled = false;
-    }
-  }
-
   // The producer returns the opaque projection only on feedback, so bracket
   // packet/map reads with that verified identity. All exchanges and reads in
   // our tabs share one Web Lock because the producer cookie is host-wide.
   async function loadTour({ opening = false } = {}) {
+    checkLinkContext();
     const before = await fetchFeedback();
     const expected = opening ? before.projection_ref : projection;
     checkProjection(before, expected);
@@ -324,7 +306,7 @@ mountNavigation(document, location.pathname, { report: true });
     const mapLoaded = mapResult.status === 'fulfilled';
     if (!reportLoaded && !mapLoaded) throw new Error('share_scope_unavailable');
     projection = expected;
-    history.replaceState({doctorcreShare:projection}, '', location.pathname + location.search);
+    history.replaceState({doctorcreShare:projection,doctorcreShareContext:linkContext}, '', location.pathname + location.search);
     feedback = after;
     if (reportLoaded) render(reportResult.value);
     else {
@@ -352,6 +334,10 @@ mountNavigation(document, location.pathname, { report: true });
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ token }),
       });
+      // This nonce identifies our exchange, including distinct grants to the
+      // same projection. It carries no bearer or authorization material.
+      linkContext = crypto.randomUUID();
+      localStorage.setItem(contextKey,linkContext);
       await loadTour({opening:true});
       });
     } catch {
@@ -363,7 +349,7 @@ mountNavigation(document, location.pathname, { report: true });
     if (!shareToken) {
       openButton.hidden = true;
       setStatus("Opening your shared report…");
-      if (!projection) { showUnavailable(); return; }
+      if (!projection || !linkContext) { showUnavailable(); return; }
       void withShareLock(() => loadTour()).catch(showUnavailable);
       return;
     }
@@ -372,6 +358,5 @@ mountNavigation(document, location.pathname, { report: true });
   }
 
   openButton.addEventListener("click", () => { void openTour(); });
-  retryFeedbackButton.addEventListener("click", () => { void retryFeedback(); });
   bootstrap();
 })();

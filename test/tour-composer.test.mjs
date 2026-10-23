@@ -12,7 +12,7 @@ const html = await readFile(new URL("../tours/route-editor.html", import.meta.ur
 const format = (await readFile(new URL("../tours/tour-format.js", import.meta.url), "utf8")).replace(/^export /gm, "");
 const panel = (await readFile(new URL("../tours/property-panel.js", import.meta.url), "utf8")).replace(/^import [^\n]*\n/gm, "").replace(/^export /gm, "");
 const app = (await readFile(new URL("../tours/app.js", import.meta.url), "utf8")).replace(/^import [^\n]*\n/gm, "");
-const tourScript = `const sessionFetch = (...args) => fetch(...args);\n${mapScript}\n${format}\nconst mountPropertyPanel = (() => { ${panel}\nreturn mountPropertyPanel; })();\n${app}`;
+const tourScript = `${mapScript}\n${format}\nconst mountPropertyPanel = (() => { ${panel}\nreturn mountPropertyPanel; })();\n${app}`;
 const script = `${autoRefreshScript}\n${tourScript}`;
 const uuid = () => webcrypto.randomUUID();
 const propA = "44444444-4444-4444-8444-444444444444", propB = "55555555-5555-4555-8555-555555555555";

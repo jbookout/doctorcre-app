@@ -445,11 +445,10 @@ test('late Engineering success stays withheld after another protected read loses
   let release,started=false;const gate=new Promise(resolve=>release=resolve);
   const {page,state}=await open(t,{rpcReply:async(rpc,payload)=>{if(rpc.name==='engineering-passport'){started=true;await gate;}return payload;}});
   await assertEventually(()=>started);state.authLost=true;await page.clock.runFor(5100);
-  await page.waitForFunction(()=>document.querySelector('#queueLive').textContent==='Sign in');
+  await page.waitForURL('**/public-shell/session-ended.html');
   release();await new Promise(resolve=>setTimeout(resolve,100));
   assert.equal(await page.locator('.passport-card').count(),0);
-  for(const id of ['workCanonicalBody','workReviewList','workDotList'])assert.match(await page.locator('#'+id).textContent(),/Sign in/);
-  assert.equal(await page.locator('#workTitle').textContent(),'Work detail');
+  assert.doesNotMatch(await page.locator('body').textContent(),/Synthetic|Demo/);
 });
 
 test('latest session lookup wins and refresh retains its query',async t=>{
@@ -697,20 +696,9 @@ test('confirmed authentication loss clears protected queue and work evidence',as
   await page.waitForSelector('.queue-card',{state:'attached'});await page.waitForSelector('.passport-card');await page.waitForSelector('[data-session-id="session:fresh"]');
   await page.locator('[data-session-id="session:fresh"]').click();await page.waitForFunction(()=>!document.querySelector('#workDispatchMore').hidden);
   state.authLost=true;await page.clock.runFor(5100);
-  await page.waitForFunction(()=>document.querySelector('#queueLive').textContent==='Sign in');
-  assert.equal(await page.locator('.queue-card').count(),0);
-  for(const id of ['workSessionList','workDispatchHistory','workReviewList','workDotList'])assert.match(await page.locator('#'+id).textContent(),/Sign in/);
-  assert.equal(await page.locator('#workDispatchMore').isVisible(),false);
-  await page.clock.runFor(11000); // successful independent wire reads must remain withheld
-  assert.equal(await page.locator('.passport-card,.stage-node-worker,.desk-card,.assignment-row,.session-row').count(),0);
-  for(const id of ['wireFeed','jobPassportList','roomDesks','assignmentList','sessionList','stageTooltip'])assert.doesNotMatch(await page.locator('#'+id).textContent(),/Demo|Synthetic desk|Fix round/);
-  assert.doesNotMatch(await page.locator('#workTitle').textContent(),/Demo/);
-  assert.doesNotMatch(await page.locator('#workBreadcrumbs').textContent(),/demo-project|Demo/);
-  assert.doesNotMatch(await page.title(),/Demo/);
-  state.authLost=false;await page.clock.runFor(11000);
-  await page.waitForSelector('.passport-card');
-  await page.waitForFunction(()=>document.querySelector('#workTitle').textContent==='Demo work detail');
-  for(const id of ['roomStage','figCycle','figBridge','figDesks'])assert.equal(await page.locator('#'+id).evaluate(node=>node.hidden),false);
+  await page.waitForURL('**/public-shell/session-ended.html');
+  assert.equal(await page.locator('.queue-card,.passport-card,.stage-node-worker,.desk-card,.assignment-row,.session-row').count(),0);
+  assert.doesNotMatch(await page.locator('body').textContent(),/Demo|Synthetic desk|Fix round/);
   assert.deepEqual(errors,[]);
 });
 

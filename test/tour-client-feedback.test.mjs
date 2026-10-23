@@ -25,7 +25,7 @@ const tourIds = ["11111111-1111-4111-8111-111111111111", "22222222-2222-4222-822
 const projectionIds = ["33333333-3333-4333-8333-333333333333", "44444444-4444-4444-8444-444444444444"];
 const tourFormat = readFileSync(new URL("../tours/tour-format.js", import.meta.url), "utf8").replace(/^export /gm, "");
 const propertyPanel = readFileSync(new URL("../tours/property-panel.js", import.meta.url), "utf8").replace(/^export /gm, "");
-const tourScript = `const sessionFetch = (...args) => fetch(...args);\n${autoRefreshScript}\n${mapScript}\nconst mountPropertyPanel = (() => { ${propertyPanel}\nreturn mountPropertyPanel; })();\n${tourFormat}\n${tours.replace(/^import [^\n]*\n/gm, "")}`;
+const tourScript = `${autoRefreshScript}\n${mapScript}\nconst mountPropertyPanel = (() => { ${propertyPanel}\nreturn mountPropertyPanel; })();\n${tourFormat}\n${tours.replace(/^import [^\n]*\n/gm, "")}`;
 function deferred() { let resolve; const promise = new Promise(done => { resolve = done; }); return { promise, resolve }; }
 function feedbackResponse(label) {
   return { ok: true, json: async () => ({ data: { feedback: { items: [{ route_label: label, shortlisted: true, comments: [{ comment: `${label} comment` }] }] } } }) };
@@ -142,7 +142,8 @@ test("automatic refresh updates selected Tour details and preserves unsaved note
 
 async function openShare({ items = [], refuseOnce = false, properties = [{ property_ref: propertyRef, name: "Demo medical office" }], holdWrite = null, feedbackRead = null, permissionScopes = ["shortlist", "comment"], fastTimeout = false } = {}) {
   const dom = openDom(html, { url: "https://reports.doctorcre.com/share", runScripts: "outside-only" });
-  dom.window.history.replaceState({doctorcreShare:'projection:public:synthetic_projection'}, '', '/share');
+  dom.window.history.replaceState({doctorcreShare:'projection:public:synthetic_projection',doctorcreShareContext:'synthetic-exchange'}, '', '/share');
+  dom.window.localStorage.setItem('doctorcre-public-share-context-v1','synthetic-exchange');
   Object.defineProperty(dom.window.navigator,'locks',{value:{request:async(name,operation)=>operation()}});
   const writes = [];
   const reads = [];
@@ -320,7 +321,8 @@ test("client feedback appears only after an opened share and uses opaque refs", 
   assert.doesNotMatch(share, /saved\.data\?\.comment_ref/);
   assert.match(html, /id="feedback-status"/);
   assert.doesNotMatch(share + html, /broker_notes|source_evidence_id|property_id|share_grant_id/);
-  assert.doesNotMatch(share, /localStorage|sessionStorage|sendBeacon/);
+  assert.doesNotMatch(share, /sessionStorage|sendBeacon/);
+  assert.match(share, /localStorage.setItem\(contextKey,\s*linkContext\)/);
 });
 
 test("broker feedback is confined to the authenticated Tours view", () => {

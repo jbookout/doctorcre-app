@@ -51,3 +51,10 @@ test('F01: an explicit MCP permission refusal revokes every view even with HTTP 
  const boundary=createSessionBoundary({invalidate(){invalidated=true;},fetchImpl:async path=>path==='/api/system-work/session'?Response.json(session('joe')):Response.json({result:{isError:true,content:[{type:'text',text:JSON.stringify({error:'forbidden'})}]}})});
  await assert.rejects(boundary.fetch('/mcp'),{code:'authentication_required'});assert.equal(invalidated,true);
 });
+test('public Status may start signed out, but loses the whole authenticated view after a verified session is denied',async()=>{
+ let signedIn=false,invalidated=false;
+ const boundary=createSessionBoundary({anonymousDiagnostics:true,invalidate(){invalidated=true;},fetchImpl:async()=>signedIn?Response.json(session('joe')):new Response('{}',{status:401})});
+ await assert.rejects(boundary.verify(),{code:'authentication_required'});assert.equal(invalidated,false);
+ signedIn=true;await boundary.verify();signedIn=false;
+ await assert.rejects(boundary.verify(),{code:'authentication_required'});assert.equal(invalidated,true);
+});

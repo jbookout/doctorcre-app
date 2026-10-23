@@ -245,6 +245,14 @@ for (const { name, path, updated, retry, error } of [
     }, {before,outcome});
   };
   await page.goto(origin+path);
+  if ([401,403].includes(status)) {
+    await page.waitForURL('**/public-shell/session-ended.html');
+    assert.equal(await page.locator('#selfAvatar').count(),0);
+    refused=false; await page.goto(origin+path);
+    await page.waitForFunction(({updated})=>document.querySelector(updated)?.textContent.startsWith('Updated '),{updated});
+    assert.match(await page.locator(updated).textContent(),/^Updated /);
+    return;
+  }
   await page.waitForFunction(({error})=>/interrupted|sign.in|reconnecting|offline|error/i.test(document.querySelector(error)?.textContent||''),{error});
   assert.equal((await page.locator(updated).textContent()).trim(),'Unavailable');
   if (name === 'Deals') await waitForAsync(page, async () => {

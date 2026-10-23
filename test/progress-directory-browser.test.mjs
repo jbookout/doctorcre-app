@@ -356,6 +356,13 @@ for (const state of ["unpublished", "unauthorized", "signed-out"])
     await page.waitForFunction(() => document.querySelector(".board-card"));
     failure = true;
     await page.clock.runFor(15000);
+    if (state !== 'unpublished') {
+      await page.waitForURL('**/public-shell/session-ended.html');
+      assert.equal(await page.locator('.board-card, .answer-form').count(),0);
+      failure=false; await page.goto('http://localhost/control-room/progress?board=demo-project&mode=live');
+      await page.waitForFunction(()=>document.querySelector('.board-card'));
+      assert.deepEqual(errors,[]); return;
+    }
     await page.waitForFunction(state => document.querySelector("#board-meta").dataset.readState === state, state);
     assert.equal(await page.locator(".board-card").count(), 0);
     assert.equal(await page.locator(".answer-form").count(), 0);
@@ -454,8 +461,8 @@ test("summary and model cards retain routed detail on desktop and phone", async 
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
     unauthorized = true;
     await page.locator('#board-retry').evaluate(button => button.click());
-    await page.waitForFunction(() => document.querySelector('#board-completed').childElementCount === 0);
-    assert.equal(await page.locator('#completed-count').textContent(), '—');
+    await page.waitForURL('**/public-shell/session-ended.html');
+    assert.equal(await page.locator('#board-completed,.completed-card').count(),0);
     assert.deepEqual(errors, []);
   });
 });

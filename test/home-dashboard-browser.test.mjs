@@ -435,10 +435,9 @@ test('R11 live lead authorization refusals show Sign in and close prior detail',
     await page.locator('.home-lead').first().click();
     state.failLeads(status);
     await page.evaluate(() => window.dispatchEvent(new Event('online')));
-    await page.waitForFunction(() => document.querySelector('#refreshHome').getAttribute('aria-busy') === 'false');
-    assert.equal(await page.getByRole('link', { name: 'Sign in', exact: true }).isVisible(), true);
-    assert.equal(await page.locator('#homeDetail').evaluate(dialog => dialog.open), false);
-    assert.equal(await page.locator('#homeLeads').isVisible(), false);
+    await page.waitForURL('**/public-shell/session-ended.html');
+    assert.equal(await page.getByRole('link',{name:'Sign in again'}).isVisible(),true);
+    assert.equal(await page.locator('#homeDetail, #homeLeads').count(),0);
   });
 });
 

@@ -3,7 +3,7 @@
 import { resolveDealroomBoot } from './boot-mode.js';
 import { clearPrivateStorage, offlineTourSession, sessionEpoch, SESSION_EPOCH_KEY } from './offline-tour-session.js';
 
-export function createSessionBoundary({ fetchImpl, invalidate, epoch = () => '', acceptSession = async () => true }) {
+export function createSessionBoundary({ fetchImpl, invalidate, epoch = () => '', acceptSession = async () => true, anonymousDiagnostics = false }) {
   let binding = null, generation = 0, revoked = false, checking = null;
   const active = new Set();
   const failure = () => Object.assign(new Error('Sign in to continue'), { status: 401, code: 'authentication_required' });
@@ -24,7 +24,7 @@ export function createSessionBoundary({ fetchImpl, invalidate, epoch = () => '',
     const ticket = generation, startedEpoch = epoch();
     checking = (async () => {
       const response = await fetchImpl('/api/system-work/session', { credentials: 'same-origin', cache: 'no-store', redirect: 'error', headers: { accept: 'application/json' }, signal: AbortSignal.timeout(10_000) });
-      if ([401,403].includes(response.status)) { revoke(); throw failure(); }
+      if ([401,403].includes(response.status)) { if (!(anonymousDiagnostics && !binding)) revoke(); throw failure(); }
       if (!response.ok) throw new Error('Session verification unavailable');
       const session = await response.json();
       current(ticket, startedEpoch);
@@ -73,10 +73,12 @@ export function createSessionBoundary({ fetchImpl, invalidate, epoch = () => '',
 let browserBoundary;
 export function privateSession() {
   if (browserBoundary) return browserBoundary;
-  if (typeof window === 'undefined' || resolveDealroomBoot(window.location).mode !== 'live') return null;
+  if (typeof window === 'undefined' || globalThis !== window || resolveDealroomBoot(window.location).mode !== 'live') return null;
   const win = window;
   const initialEpoch = sessionEpoch(win);
-  browserBoundary = createSessionBoundary({ fetchImpl: (...args) => win.fetch(...args), epoch: () => sessionEpoch(win),
+  let anonymousDiagnostics = false;
+  try { anonymousDiagnostics = win.location.pathname === '/status' && !win.localStorage.getItem('doctorcre-session-binding-v1'); } catch {}
+  browserBoundary = createSessionBoundary({ anonymousDiagnostics, fetchImpl: (...args) => win.fetch(...args), epoch: () => sessionEpoch(win),
     async acceptSession(session) {
       const bytes = await win.crypto.subtle.digest('SHA-256', new TextEncoder().encode(JSON.stringify([session.actor.slug,session.csrf_token])));
       const digest = [...new Uint8Array(bytes)].map(byte => byte.toString(16).padStart(2,'0')).join('');
@@ -105,11 +107,22 @@ export function privateSession() {
     },
   });
   win.addEventListener('storage', event => { if (event.key === SESSION_EPOCH_KEY && sessionEpoch(win) !== initialEpoch) browserBoundary.revoke('session-changed'); });
-  win.addEventListener('pageshow', event => { if (event.persisted) browserBoundary.revoke('session-changed'); });
+  win.addEventListener('pageshow', event => {
+    if (!event.persisted) return;
+    if (sessionEpoch(win) !== initialEpoch) { browserBoundary.revoke('session-changed'); return; }
+    // A history restore must verify its binding before exposing cached DOM.
+    win.document.documentElement.style.visibility = 'hidden';
+    void browserBoundary.verify().catch(() => {}).finally(() => {
+      win.document.documentElement.style.visibility = '';
+    });
+  });
   return browserBoundary;
 }
 
 export async function sessionFetch(path, init) {
+  // Release identity is public diagnostic metadata, including on signed-out
+  // /status. It carries no actor or record data and needs no private lifetime.
+  if (typeof window !== 'undefined' && window.location?.href && new URL(path,window.location.href).pathname === '/app-release') return globalThis.fetch(path,init);
   const boundary = privateSession();
   if (!boundary) return globalThis.fetch(path,init);
   try { return await boundary.fetch(path,init); }

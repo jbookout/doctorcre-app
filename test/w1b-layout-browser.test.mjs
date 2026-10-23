@@ -181,10 +181,10 @@ for (const status of [401,403]) test(`R1 Lead detail is invalidated on ${status}
  const {page,goto}=await open(t,{clock:true});let denied=false;
  await page.route('**/mcp',route=>denied && route.request().postDataJSON().params.name==='lead-board' ? route.fulfill({status,body:'Denied'}) : route.fallback());
  await goto('/leads?mode=live');await page.locator('.lead-card').first().click();await page.locator('#detailStage').waitFor();
- denied=true;await page.clock.fastForward(31_000);await page.waitForFunction(()=>!document.querySelector('#leadBoardError').hidden);
- assert.equal(await page.locator('#leadDetail').evaluate(n=>n.open),false);
- assert.equal(await page.locator('#detailTitle').textContent(),'');assert.equal(await page.locator('#detailBody').textContent(),'');
- denied=false;await page.clock.fastForward(31_000);await page.locator('.lead-card').first().click();await page.locator('#detailStage').waitFor();assert.match(await page.locator('#detailBody').textContent(),/Original synthetic entry/);
+ denied=true;await page.clock.fastForward(31_000);await page.waitForURL('**/public-shell/session-ended.html');
+ assert.equal(await page.locator('#leadDetail').count(),0);
+ assert.doesNotMatch(await page.locator('body').textContent(),/Original synthetic entry/);
+ denied=false;await goto('/leads?mode=live');await page.locator('.lead-card').first().click();await page.locator('#detailStage').waitFor();assert.match(await page.locator('#detailBody').textContent(),/Original synthetic entry/);
 });
 test('R1 Lead detail clears immediately while resume revalidation is delayed',async t=>{
  const {page,goto}=await open(t);await goto('/leads');await page.locator('.lead-card').first().click();

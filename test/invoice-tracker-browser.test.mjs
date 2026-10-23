@@ -92,7 +92,7 @@ test('pending receipt confirmations remain attached to each invoice across popup
 test('deep link, reduced motion and authentication loss keep the screen contract', async t => {
   const h = await open(t, { width: 390, reducedMotion: 'reduce', query: '&invoice=00000000-0000-4000-8000-000000000002' }); await h.page.waitForFunction(() => document.querySelector('#invoiceDetail').open); assert.equal(await h.page.locator('#invoiceDetailTitle').innerText(), 'Demo Oak Purchase');
   await h.page.locator('#closeInvoiceDetail').click(); assert.equal(await h.page.locator('.invoice-row.overdue .invoice-state').first().evaluate(node => getComputedStyle(node, '::before').animationName), 'none');
-  await h.page.screenshot({ path: new URL('out/test-artifacts/w15/reduced-motion-390.png', root).pathname }); h.setDenied(true); await h.page.locator('#refreshInvoices').click(); await h.page.waitForFunction(() => document.querySelector('#invoiceNotice a')); assert.equal(await h.page.locator('[data-invoice]').count(), 0); assert.deepEqual(h.errors, []);
+  await h.page.screenshot({ path: new URL('out/test-artifacts/w15/reduced-motion-390.png', root).pathname }); h.setDenied(true); await h.page.locator('#refreshInvoices').click(); await h.page.waitForURL('**/public-shell/session-ended.html'); assert.equal(await h.page.locator('[data-invoice]').count(), 0); assert.deepEqual(h.errors, []);
 });
 for (const width of [1440, 390]) test(`Home invoice attention fits ${width}px`, async t => {
   const h = await open(t, { home: true, width });

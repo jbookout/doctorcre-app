@@ -8,10 +8,13 @@ const bundle=await build({entryPoints:[new URL('reports/share.js',root).pathname
 const html=await readFile(new URL('reports/share.html',root),'utf8');
 const flush=async()=>{for(let i=0;i<12;i++)await new Promise(r=>setTimeout(r,0));};
 let cookie='A';
+const sharedStorage=new Map();
 let lock=Promise.resolve();
-async function open(t,{token='',state=null,flip=false}={}) {
+async function open(t,{token='',state=null,flip=false,sameProjection=false}={}) {
  const dom=new JSDOM(html,{url:'https://reports.doctorcre.com/share',runScripts:'outside-only'});t.after(()=>dom.window.close());
- const win=dom.window;win.history.replaceState(state,'','/share');
+ const win=dom.window;
+ Object.defineProperty(win,'localStorage',{value:{getItem:key=>sharedStorage.get(key)||null,setItem:(key,value)=>sharedStorage.set(key,String(value)),removeItem:key=>sharedStorage.delete(key)}});
+ win.history.replaceState(state,'','/share');
  Object.defineProperty(win.navigator,'locks',{value:{request(name,fn){const next=lock.then(fn);lock=next.catch(()=>{});return next;}}});
  win.__CARR_TOUR_TAKE_SHARE_TOKEN__=()=>token;
  let reads=0;
@@ -19,7 +22,7 @@ async function open(t,{token='',state=null,flip=false}={}) {
    if(path==='/api/share/exchange'){cookie=JSON.parse(init.body).token;return {ok:true,json:async()=>({ok:true})};}
    const target=cookie;reads++;
    if(flip && path==='/api/share/map')cookie='B';
-   const data=path==='/api/share/report'?{stops:[{property_ref:`property:public:synthetic_property_${target}`,name:`Private projection ${target}`}]}:path==='/api/share/map'?{points:[]}:{projection_ref:`projection:public:synthetic_projection_${target}`,permission_scopes:[],items:[]};
+   const data=path==='/api/share/report'?{stops:[{property_ref:`property:public:synthetic_property_${target}`,name:`Private projection ${target}`}]}:path==='/api/share/map'?{points:[]}:{projection_ref:`projection:public:synthetic_projection_${sameProjection?'common':target}`,permission_scopes:[],items:[]};
    return {ok:true,json:async()=>({data})};
  };
  win.eval(bundle.outputFiles[0].text);
@@ -44,4 +47,14 @@ test('F11: an unbound token-less tab never adopts another link from a cookie',as
  cookie='B';const tab=await open(t);
  assert.equal(tab.reads,0);
  assert.doesNotMatch(tab.doc.body.textContent,/Private projection B/);
+});
+
+test('F11: two links to the same projection still retain their own link context',async t=>{
+ cookie='A';const a=await open(t,{token:'A',sameProjection:true});
+ assert.match(a.doc.querySelector('#report-list').textContent,/Private projection A/);
+ const state=a.win.history.state;
+ await open(t,{token:'B',sameProjection:true});
+ const refreshed=await open(t,{state,sameProjection:true});
+ assert.equal(refreshed.doc.querySelectorAll('.report-item').length,0);
+ assert.match(refreshed.doc.querySelector('#status').textContent,/unavailable/);
 });
