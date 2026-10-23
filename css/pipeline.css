@@ -92,13 +92,12 @@
 .parked-cards { display: grid; grid-template-columns: repeat(auto-fill,minmax(180px,1fr)); gap: var(--space-3); margin-top: var(--space-3); }
 .parked-card { height: auto; grid-template-rows: none; align-content: start; }
 .deal-list { display: grid; grid-column: 1/-1; gap: 0; border-block: var(--hairline-width) solid var(--hairline); }
-.deal-row { min-height: var(--touch); grid-template-rows: auto; grid-template-columns: minmax(160px,1.3fr) minmax(100px,.7fr) minmax(180px,2fr) 60px; align-items: center; gap: var(--space-2) var(--space-4); padding: var(--space-3) var(--space-2); border: 0; border-bottom: var(--hairline-width) solid var(--hairline); border-radius: 0; background: transparent; cursor: pointer; font-size: var(--font-size-1); font-variant-numeric: tabular-nums; }
+.deal-row { min-height: var(--touch); grid-template-rows: auto; grid-template-columns: minmax(160px,1.3fr) minmax(100px,.7fr) minmax(180px,2fr) 60px; align-items: center; gap: var(--space-2) var(--space-4); padding: var(--space-2); border: 0; border-bottom: var(--hairline-width) solid var(--hairline); border-radius: 0; background: transparent; cursor: pointer; font-size: var(--font-size-1); font-variant-numeric: tabular-nums; }
 .deal-row:last-child { border-bottom: 0; }
 .deal-row h4 { margin: 0; }
 .deal-row > span { color: var(--fg-muted); }
 .deal-row > .owner { text-align: right; }
 .deal-row[data-attention="true"] { border-top: 0; border-left: 2px solid var(--status-warn); }
-.deal-row .auto-move { grid-column: 3/-1; display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
 .deal-detail { max-width: none; width: min(1180px,calc(100vw - 28px)); }
 .detail-grid { display: grid; grid-template-columns: minmax(0,1.15fr) minmax(0,1fr); gap: var(--space-5); }
 .detail-grid section { min-width: 0; }
@@ -114,7 +113,7 @@
 .note-original { white-space: pre-wrap; overflow-wrap: anywhere; }
 .park-control { color: var(--status-danger-ink); background: transparent; border: 0; margin-top: var(--space-4); }
 @media(max-width:1440px) { .kanban { grid-template-columns: repeat(4,minmax(0,1fr)); } }
-@media(max-width:650px) { .kanban { grid-template-columns: repeat(2,minmax(0,1fr)); } .kanban-column:not(:has(.kanban-card)) { min-height: 0; } .detail-grid { grid-template-columns: 1fr; } .deal-row { grid-template-columns: minmax(0,1fr) auto; gap: var(--space-1) var(--space-2); } .deal-row h4 { grid-column: 1/-1; } .deal-row > .deal-stage { grid-column: 1; grid-row: 2; } .deal-row > .owner { grid-column: 2; grid-row: 2; } .deal-row .next-line, .deal-row .auto-move { grid-column: 1/-1; } .detail-controls { grid-template-columns: 1fr; } }
+@media(max-width:650px) { .kanban { grid-template-columns: repeat(2,minmax(0,1fr)); } .kanban-column:not(:has(.kanban-card)) { min-height: 0; } .detail-grid { grid-template-columns: 1fr; } .deal-row { grid-template-columns: minmax(0,1fr) auto; gap: var(--space-1) var(--space-2); } .deal-row h4 { grid-column: 1/-1; } .deal-row > .deal-stage { grid-column: 1; grid-row: 2; } .deal-row > .owner { grid-column: 2; grid-row: 2; } .deal-row .next-line { grid-column: 1/-1; } .detail-controls { grid-template-columns: 1fr; } }
 @media(max-width:360px) { .kanban { grid-template-columns: minmax(0,1fr); } }
 @media(prefers-reduced-motion:reduce) { .kanban-card, .kanban-card:hover, .kanban-card[data-lifted="true"] { transition: none; transform: none; } }
 :root[data-motion="reduced"] :is(.kanban-card, .kanban-card:hover, .kanban-card[data-lifted="true"]) { transition: none; transform: none; }
@@ -167,7 +166,6 @@
 .deal-vendors ul { list-style:none; padding:0; margin:0; display:grid; gap:var(--space-2); }
 .deal-vendor-company, .deal-vendor-contact { display:block; }
 .deal-vendor-contact { color:var(--fg-muted); }
-.deal-row .deal-vendors { grid-column:1/-1; }
 .deal-detail .detail-grid { grid-template-columns:minmax(0,1fr); }
 .deal-updates { margin-bottom:var(--space-4); }
 .deal-updates .deal-note p { line-height:var(--line-height-body); }
