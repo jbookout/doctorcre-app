@@ -565,11 +565,11 @@ for (const status of [401, 403]) test(`Slice A Calendar retry honors authorizati
  await page.keyboard.press('Escape');
  state.failDetails(status);
  await page.locator('#homeCalendar').getByRole('button', { name: 'Retry calendar and tasks', exact: true }).click();
- await page.waitForFunction(() => document.querySelector('#refreshHome').getAttribute('aria-busy') === 'false');
- assert.match(await page.locator('#homeCalendar').textContent(), /Sign in to view calendar and tasks/);
- assert.equal(await page.locator('#homeLeads').isVisible(), false);
- assert.equal(await page.locator('#homeDetail').evaluate(dialog => dialog.open), false);
- assert.equal(await page.locator('#homeCalendar button').count(), 0);
+ await page.waitForURL('**/public-shell/session-ended.html');
+ assert.equal(await page.locator('#homeCalendar,#homeLeads,#homeDetail').count(), 0);
+ assert.match(await page.locator('body').textContent(), /Session ended/);
+ assert.equal(await page.getByRole('link', {name:'Sign in again',exact:true}).getAttribute('href'), '/auth/login');
+ assert.deepEqual(state.errors, []);
 });
 
 test('Slice A Calendar retry clears unrelated private data when the board actor changes', async t => {
