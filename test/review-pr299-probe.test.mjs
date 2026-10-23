@@ -144,8 +144,9 @@ for (const width of [390, 1280]) for (const theme of ['dark', 'light']) {
     await capture(page, `failed-${width}-${theme}`);
     const retry = list.getByRole('button', { name: 'Retry attention' });
     assert.equal(await retry.isVisible(), true, 'the failure has a local recovery action');
-    const geometry = await retry.evaluate(action => {
-      const failure = document.querySelector('#crAttentionList [data-state="offline"]');
+    const geometry = await list.evaluate(list => {
+      const failure = list.querySelector('[data-state="offline"]');
+      const action = failure.querySelector('[data-attention-retry]');
       const row = failure.getBoundingClientRect(), button = action.getBoundingClientRect();
       return { rowTop:row.top, rowBottom:row.bottom, buttonTop:button.top, buttonBottom:button.bottom };
     });
