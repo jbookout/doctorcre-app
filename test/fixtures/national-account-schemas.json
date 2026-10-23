@@ -1,0 +1,180 @@
+{
+  "producer": {
+    "repository": "DoctorCRE/carr-system",
+    "source_commit": "804a3794fb120dcfec980e11b958d205d90f6130",
+    "path": "mcp-server/src/tools.js"
+  },
+  "schemas": {
+    "create-national-account": {
+      "type": "object",
+      "properties": {
+        "idempotency_key": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "owner": {
+          "type": "string",
+          "enum": [
+            "joe",
+            "dell"
+          ]
+        },
+        "vertical": {
+          "type": "string"
+        },
+        "force_new": {
+          "type": "boolean"
+        },
+        "research_evidence": {
+          "type": "object",
+          "required": [
+            "sources",
+            "field_evidence",
+            "discrepancies"
+          ],
+          "properties": {
+            "sources": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [
+                  "url",
+                  "observed_at"
+                ],
+                "properties": {
+                  "url": {
+                    "type": "string"
+                  },
+                  "observed_at": {
+                    "type": "string"
+                  }
+                }
+              }
+            },
+            "field_evidence": {
+              "type": "object"
+            },
+            "discrepancies": {
+              "type": "array"
+            }
+          }
+        }
+      },
+      "required": [
+        "idempotency_key",
+        "name",
+        "owner",
+        "research_evidence"
+      ]
+    },
+    "create-national-market-deal": {
+      "type": "object",
+      "properties": {
+        "idempotency_key": {
+          "type": "string"
+        },
+        "account_client_id": {
+          "type": "string"
+        },
+        "client_name": {
+          "type": "string"
+        },
+        "deal_name": {
+          "type": "string"
+        },
+        "market": {
+          "type": "string"
+        },
+        "state": {
+          "type": "string"
+        },
+        "segment": {
+          "type": "string"
+        },
+        "agent_name": {
+          "type": "string"
+        },
+        "deal_type": {
+          "type": "string",
+          "default": "startup"
+        },
+        "phase": {
+          "type": "string",
+          "default": "pending"
+        },
+        "research_evidence": {
+          "type": "object",
+          "required": [
+            "sources",
+            "field_evidence",
+            "discrepancies"
+          ],
+          "properties": {
+            "sources": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [
+                  "url",
+                  "observed_at"
+                ],
+                "properties": {
+                  "url": {
+                    "type": "string"
+                  },
+                  "observed_at": {
+                    "type": "string"
+                  }
+                }
+              }
+            },
+            "field_evidence": {
+              "type": "object"
+            },
+            "discrepancies": {
+              "type": "array"
+            }
+          }
+        }
+      },
+      "required": [
+        "idempotency_key",
+        "account_client_id",
+        "client_name",
+        "deal_name",
+        "market"
+      ]
+    },
+    "set-market-agent": {
+      "type": "object",
+      "properties": {
+        "idempotency_key": {
+          "type": "string"
+        },
+        "deal": {
+          "type": "string"
+        },
+        "agent_name": {
+          "type": "string"
+        },
+        "agent_party_id": {
+          "type": "string"
+        },
+        "market": {
+          "type": "string"
+        },
+        "source": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "idempotency_key",
+        "deal",
+        "agent_name",
+        "source"
+      ]
+    }
+  }
+}
