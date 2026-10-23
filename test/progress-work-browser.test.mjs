@@ -25,7 +25,7 @@ async function open(t,{width=390,path=taskPath,empty=false,stale=false,history=0
   const page=await browser.newPage({viewport:{width,height:900}}); await page.clock.install({time:NOW});
   await page.addInitScript(() => {
     const url = new URL(location.href);
-    if(url.pathname === '/api/system-work/session') return route.fulfill({json:{actor:{slug:'joe'},csrf_token:'synthetic-session'}});
+    if(['/api/system-work/session','/auth/session'].includes(url.pathname)) return route.fulfill({json:{actor:{slug:'joe'},csrf_token:'synthetic-session'}});
     url.searchParams.set('mode', 'live');
     history.replaceState({}, '', url);
   });

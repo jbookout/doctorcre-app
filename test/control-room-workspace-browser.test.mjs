@@ -69,7 +69,7 @@ async function open(t,{width=1440,height=width===1440?1000:844,path='/control-ro
     payload.coverage.find(row=>row.source_ref==='mcp-server/src/tools.js').node_count+=extra.length;
    }
    if(state.longAtlasLabels&&result.body.nodes?.[0])Object.assign(result.body.nodes[0],{key:'demo-accept-portfolio-revision',title:'Demo human-only review: accept one exact immutable portfolio revision and preserve its current approval history.'});return route.fulfill({status:result.status,contentType:'application/json',body:JSON.stringify(result.body)});}
-  if(url.pathname==='/api/system-work/session')return route.fulfill({contentType:'application/json',body:JSON.stringify({actor:{slug:'joe'},csrf_token:'synthetic-test-token'})});
+  if(['/api/system-work/session','/auth/session'].includes(url.pathname))return route.fulfill({contentType:'application/json',body:JSON.stringify({actor:{slug:'joe'},csrf_token:'synthetic-test-token'})});
   if(url.pathname==='/app-release'&&state.denied)return route.fulfill({status:503,body:'{}'});
   if(url.pathname.startsWith('/api/')||url.pathname==='/app-release')return route.fulfill({contentType:'application/json',body:'{}'});
   const file=routes.routes[boardIdFromPath(url.pathname)?BOARD_ROUTE:url.pathname]||url.pathname.slice(1);

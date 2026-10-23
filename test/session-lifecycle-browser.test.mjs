@@ -20,9 +20,9 @@ async function open(t) {
  let actor='joe',denied=false,writes=0;
  const fixture=await createFixtureClient({seedUrl:`data:application/json;base64,${Buffer.from(await readFile(new URL('data/board-seed.json',root))).toString('base64')}`});
  context.on('page',p=>p.on('pageerror',e=>errors.push(e.message)));page.on('pageerror',e=>errors.push(e.message));
- await context.route('**/api/system-work/session',route=>route.fulfill({status:actor?200:401,json:actor?{actor:{slug:actor},csrf_token:`synthetic-${actor}`}:{}}));
+ await context.route('**/{api/system-work/session,auth/session}',route=>route.fulfill({status:actor?200:401,json:actor?{actor:{slug:actor},csrf_token:`synthetic-${actor}`}:{}}));
  await context.route('**/auth/signout',route=>{actor=null;return route.fulfill({status:302,headers:{location:'/'}});});
- await context.route('**/auth/session',route=>route.fulfill({status:actor?200:401,json:{}}));
+ await context.route('**/auth/session',route=>route.fulfill({status:actor?200:401,json:actor?{actor:{slug:actor},csrf_token:`synthetic-${actor}`}:{}}));
  await context.route('**/mcp',async route=>{
    const {name,arguments:args}=route.request().postDataJSON().params;
    if(name==='list-doc-conversations' && denied)return route.fulfill({status:403,json:{error:'forbidden'}});

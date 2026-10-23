@@ -21,7 +21,7 @@ async function open(t,{width=1440,height=960,hasTouch=false,motion='no-preferenc
     // These tests exercise layout and commands. Real WebGL/map rendering has
     // its own Leads browser suite; keep this fixture at the existing map seam.
     if(url.pathname==='/js/leads-territory-map.js') return route.fulfill({contentType:'text/javascript',body:'export async function mountTerritoryMap(){return {update(){},dispose(){}}}'});
-    if(url.pathname==='/api/system-work/session') return route.fulfill({contentType:'application/json',body:JSON.stringify({csrf_token:'synthetic-session',actor:{slug:'joe'}})});
+    if(['/api/system-work/session','/auth/session'].includes(url.pathname)) return route.fulfill({contentType:'application/json',body:JSON.stringify({csrf_token:'synthetic-session',actor:{slug:'joe'}})});
     if(url.pathname==='/api/v1/command-center') return route.fulfill({contentType:'application/json',body:JSON.stringify(await fixture.commandCenter())});
     if(url.pathname==='/api/v1/atlas-graph'){const result=atlasFixtureResponse(url,'GET');return route.fulfill({status:result.status,contentType:'application/json',body:JSON.stringify(result.body)});}
     if(url.pathname==='/pipeline/changes') return route.fulfill({contentType:'application/json',body:JSON.stringify({events:events.slice(Number(url.searchParams.get('cursor')||0)),cursor:String(events.length),presence:[],capture_sessions:[]})});

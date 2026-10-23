@@ -22,7 +22,7 @@ async function open(t, { unfinished = true, path = '/control-room/progress', boa
   page.on('pageerror', e => errors.push(e.message));
   const env = {
     CARR: { fetch: async request => {
-      if (new URL(request.url).pathname === '/api/system-work/session') return Response.json({actor:{slug:'joe'},csrf_token:'synthetic-session'});
+      if (['/api/system-work/session','/auth/session'].includes(new URL(request.url).pathname)) return Response.json({actor:{slug:'joe'},csrf_token:'synthetic-session'});
       if (new URL(request.url).pathname !== '/mcp') return new Response('{}');
       const rpc = (await request.json()).params; calls.push(rpc);
       let payload = { ok: true }, isError = false;

@@ -23,7 +23,7 @@ export function createSessionBoundary({ fetchImpl, invalidate, epoch = () => '',
     if (checking) return checking;
     const ticket = generation, startedEpoch = epoch();
     checking = (async () => {
-      const response = await fetchImpl('/api/system-work/session', { credentials: 'same-origin', cache: 'no-store', redirect: 'error', headers: { accept: 'application/json' }, signal: AbortSignal.timeout(10_000) });
+      const response = await fetchImpl('/auth/session', { credentials: 'same-origin', cache: 'no-store', redirect: 'error', headers: { accept: 'application/json' }, signal: AbortSignal.timeout(10_000) });
       if ([401,403].includes(response.status)) { if (!(anonymousDiagnostics && !binding)) revoke(); throw failure(); }
       if (!response.ok) throw new Error('Session verification unavailable');
       const session = await response.json();

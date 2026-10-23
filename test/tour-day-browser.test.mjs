@@ -19,7 +19,7 @@ async function open(t, { width = 390, reducedMotion = "reduce", denied = false, 
     if (url.pathname.startsWith("/api/")) {
       response.setHeader("content-type", "application/json");
       if (refuse) { response.writeHead(401); response.end('{}'); return; }
-      response.end(JSON.stringify(url.pathname === "/api/system-work/session" ? { actor: { slug: actor }, csrf_token: `synthetic-${actor}` } : url.pathname === "/api/tours/detail" ? { data: current } : {})); return;
+      response.end(JSON.stringify(['/api/system-work/session','/auth/session'].includes(url.pathname) ? { actor: { slug: actor }, csrf_token: `synthetic-${actor}` } : url.pathname === "/api/tours/detail" ? { data: current } : {})); return;
     }
     try {
       const file = url.pathname === "/tours" ? "tours/index.html" : url.pathname.slice(1);

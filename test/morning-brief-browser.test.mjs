@@ -16,7 +16,7 @@ async function setup(t,{width=1440,motion='no-preference',brief=true}={}) {
  await context.route('**/*',async route=>{
   const url=new URL(route.request().url());if(url.origin!=='http://localhost')return route.abort();
   const rpc=value=>route.fulfill({json:{result:{content:[{type:'text',text:JSON.stringify(value)}]}}});
-  if(url.pathname==='/api/system-work/session')return route.fulfill({json:{csrf_token:`synthetic-${scope}`,actor:{slug:scope}}});
+  if(['/api/system-work/session','/auth/session'].includes(url.pathname))return route.fulfill({json:{csrf_token:`synthetic-${scope}`,actor:{slug:scope}}});
   if(url.pathname==='/pipeline/changes') {return route.fulfill({json:{events:url.searchParams.get('cursor')!=='demo-end' ? [{id:'demo-event',subject_type:'deal',subject_id:'d20',field:'next_step',new_value:'Review revised demo terms',recorded_at:new Date().toISOString()}]:[],cursor:'demo-end'}});}
   if(url.pathname==='/mcp') {
    const {name,arguments:args}=route.request().postDataJSON().params;calls.push({name,args});

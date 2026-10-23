@@ -13,7 +13,7 @@ test.beforeEach(async ({ page }) => {
   await page.route('**/api/v1/business/**', route => route.fulfill({
     json: directoryFixture(route.request().url()),
   }));
-  await page.route('**/api/system-work/session', route => route.fulfill({
+  await page.route('**/{api/system-work/session,auth/session}', route => route.fulfill({
     contentType: 'application/json',
     body: JSON.stringify({ actor: { slug: 'joe', display_name: 'Joe' }, csrf_token: 'synthetic-session' }),
   }));

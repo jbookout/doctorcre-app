@@ -19,7 +19,7 @@ async function setup(t,{width=1440,motion='no-preference',onRoute,engine=chromiu
  const calls=[],errors=[];page.on('pageerror',error=>errors.push(error.message));
  await page.route('**/*',async route=>{
   const request=route.request(),url=new URL(request.url());
-    if(url.pathname === '/api/system-work/session') return route.fulfill({json:{actor:{slug:'joe'},csrf_token:'synthetic-session'}});if(!['http://localhost','https://app.doctorcre.com'].includes(url.origin))return route.abort();
+    if(['/api/system-work/session','/auth/session'].includes(url.pathname)) return route.fulfill({json:{actor:{slug:'joe'},csrf_token:'synthetic-session'}});if(!['http://localhost','https://app.doctorcre.com'].includes(url.origin))return route.abort();
   if(onRoute && await onRoute(route,{url,fixture}))return;
   if(url.pathname==='/mcp'){
   const {name,arguments:args}=request.postDataJSON().params;calls.push({name,args});let value={ok:true};

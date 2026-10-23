@@ -49,7 +49,7 @@ async function open(t, width = 1440) {
       }
       return r.fulfill({ json: payload });
     }
-    if (url.pathname === "/api/system-work/session")
+    if (['/api/system-work/session','/auth/session'].includes(url.pathname))
       return r.fulfill({ json: { actor: { slug: "joe" }, csrf_token: "synthetic-session" } });
     if (url.pathname === "/mcp") {
       const verb = r.request().postDataJSON().params.name;

@@ -73,7 +73,7 @@ async function open(t, { width = 1440, motion = 'reduce', leads = true, delayDet
       if (delayInitialFeed && feedReads === 1) await initialFeed;
       return route.fulfill({ json: { events: [], cursor: null } });
     }
-    if (url.pathname === '/api/system-work/session') return route.fulfill({ json: { actor: { slug: 'joe', label: 'Demo partner' }, csrf_token: 'synthetic' } });
+    if (['/api/system-work/session','/auth/session'].includes(url.pathname)) return route.fulfill({ json: { actor: { slug: 'joe', label: 'Demo partner' }, csrf_token: 'synthetic' } });
     if (url.pathname.startsWith('/api/') || url.pathname === '/app-release') return route.fulfill({ status: 503, json: {} });
     if (tasksOnly && url.pathname === '/js/fixture-client.js') {
       let source = await readFile(new URL('../js/fixture-client.js', import.meta.url), 'utf8');

@@ -18,7 +18,7 @@ for (const status of [401,403]) test(`F01: denied Doc Chat pagination (${status}
   const fixture=await createFixtureClient({seedUrl:`data:application/json;base64,${Buffer.from(await readFile(new URL('data/board-seed.json',root))).toString('base64')}`});
   let deny=false, release, held=false;
   win.fetch=async (path,init={})=>{
-    if(path==='/api/system-work/session') return Response.json({actor:{slug:'joe'},csrf_token:'synthetic-session-A'});
+    if(path==='/auth/session') return Response.json({actor:{slug:'joe'},csrf_token:'synthetic-session-A'});
     if(path==='/mcp') {
       const {name,arguments:args}=JSON.parse(init.body).params;
       if(name==='list-doc-conversations') {

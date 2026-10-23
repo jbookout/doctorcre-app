@@ -16,7 +16,7 @@ async function open(t,width=1440){
   await page.clock.install({time:new Date('2026-10-01T18:00:00Z')});await page.route('https://**',r=>r.abort());
   let fail=false,expired=false,writes=0,writeMode='saved';
   await page.route('**/api/v1/business/**',r=>{calls.push(r.request().url());return expired?r.fulfill({status:401,json:{error:'AUTHENTICATION_REQUIRED'}}):fail?r.fulfill({status:503,json:{error:'DEPENDENCY_UNAVAILABLE'}}):r.fulfill({json:directoryFixture(r.request().url(),{overrides})});});
-  await page.route('**/api/system-work/session',r=>r.fulfill({json:{csrf_token:'synthetic-session',actor:{slug:'joe'}}}));
+  await page.route('**/{api/system-work/session,auth/session}',r=>r.fulfill({json:{csrf_token:'synthetic-session',actor:{slug:'joe'}}}));
   await page.route('**/mcp',r=>{
     const {name,arguments:args}=r.request().postDataJSON().params;let payload={ok:true};
     if(name==='update-vendor'){
