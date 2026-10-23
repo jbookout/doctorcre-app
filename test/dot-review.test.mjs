@@ -212,7 +212,7 @@ test("Dot 25: a task due today is not overdue at 8 AM Central", () => {
 
 function tourHarness() {
   const $=elements(); const replies=new Map(); const state={tour:{id:"A"},feedbackSeq:0,hydrationSeq:0,cheatDirty:false};
-  const h=handlers("tours/app.js","  async function loadTour(","  function moveStop(",{state,$,restoredTourId:"",navigationBusy:false,composer:null,createPending:null,tourLoadSeq:0,status:noop,renderComposer:noop,renderCreate:noop,validateDetail:noop,routeSnapshot:()=>"snapshot",initComposer:noop,renderTour:noop,renderSelection:noop,loadSelectionCart:async()=>{},loadProjectionPreview:async()=>{},loadFeedback:async()=>{},request:path=>replies.get(new URL(path,"https://example.test").searchParams.get("tour_id"))},["loadTour"]);
+  const h=handlers("tours/app.js","  async function loadTour(","  function moveStop(",{state,$,sheetPending:null,sheetConflict:null,sheetBusy:false,tourAction:null,restoredTourId:"",navigationBusy:false,composer:null,createPending:null,tourLoadSeq:0,status:noop,renderComposer:noop,renderCreate:noop,validateDetail:noop,routeSnapshot:()=>"snapshot",initComposer:noop,renderTour:noop,renderSelection:noop,loadSelectionCart:async()=>{},loadProjectionPreview:async()=>{},loadFeedback:async()=>{},request:path=>replies.get(new URL(path,"https://example.test").searchParams.get("tour_id"))},["loadTour"]);
   return {h,state,$,replies};
 }
 test("Dot 1: current main serializes Tour navigation instead of applying out-of-order loads", async () => {
@@ -225,12 +225,29 @@ test("Dot 2: switching Tours clears the prior confidential link", async () => {
   await h.loadTour("B");assert.equal($("#share-url").value,"");assert.equal($("#share-link").hidden,true);assert.equal(state.rawShareToken,"");
 });
 
-test("Dot 3: sheet save preserves typing made while saving", async () => {
+test("Dot 3: sheet save locks its draft while sending and unknown, then replays its retained key", async () => {
   const $=elements();$("#cheat-content").value="First edit";const saved=deferred();
-  const state={tour:{id:"A",cheat_sheet:{revision_number:1}},cheatDirty:true};
-  const h=handlers("tours/app.js","  async function saveSheet(","  async function issueShare(",{state,$,uuid:()=>"key",post:()=>saved.promise,status:noop,loadTour:async()=>{if(!state.cheatDirty)$("#cheat-content").value="First edit";}},["saveSheet"]);
-  const pending=h.saveSheet();$("#cheat-content").value="Newer unsaved edit";state.cheatDirty=true;saved.resolve({ok:true});await pending;
-  assert.equal($("#cheat-content").value,"Newer unsaved edit");assert.equal(state.cheatDirty,true);
+  const state={tour:{id:"A",cheat_sheet:{revision_number:1,content:{notes:"Saved notes"}}},cheatDirty:true};
+  const requests=[];let keys=0;
+  // Keep the real recovery renderer, revision parser and receipt validator in
+  // the same context as saveSheet so its retained state is observed directly.
+  const h=handlers("tours/app.js","  function renderSheetRecovery(","  const routeEndpoints",{
+    state,$,sheetPending:null,sheetConflict:null,sheetBusy:false,sheetMessage:"",sessionBinding:"synthetic-scope",
+    text:(value,fallback="")=>value||fallback,cheatSheetText:value=>value?.notes||"",
+    id:value=>typeof value==="string"&&/^[0-9a-f-]{36}$/.test(value),uuid:()=>`key-${++keys}`,
+    request:async()=>structuredClone(state.tour),persistOtherWrites:noop,status:noop,loadTour:async()=>{},
+    post:async(_path,body)=>{requests.push(structuredClone(body));return requests.length===1?saved.promise:{cheat_sheet_revision_id:"00000000-0000-4000-8000-000000000001"};},
+  });
+  const tourSource=source("tours/app.js");
+  vm.runInContext(tourSource.slice(tourSource.indexOf("  async function saveSheet("),tourSource.indexOf("  async function issueShare("))+"\nglobalThis.saveSheet=saveSheet;",h);
+  const pending=h.saveSheet();await tick();
+  assert.equal($("#cheat-content").disabled,true);assert.equal($("#save-sheet").disabled,true);
+  saved.reject(new Error("Committed save; reply lost"));await pending;
+  assert.equal($("#cheat-content").value,"First edit");assert.equal($("#cheat-content").disabled,true);
+  assert.equal(state.cheatDirty,true);assert.match($("#sheet-state").textContent,/unknown/i);
+  await h.saveSheet();
+  assert.deepEqual(requests[1],requests[0]);assert.equal(requests[0].expected_revision_number,1);assert.equal(keys,1);
+  assert.equal(h.sheetPending,null);assert.equal($("#cheat-content").disabled,false);
 });
 
 test("Dot 5: report retry after a lost response keeps one idempotency key", async () => {
@@ -513,12 +530,12 @@ for (const rotate of [false, true]) test(`PR111 #13: ${rotate ? "rotation" : "is
   $("#route-stops").replaceChildren=noop;
   const currentGrant="00000000-0000-4000-8000-000000000004";
   const reload=handlers("tours/app.js","  function renderTour()","  function moveStop(",{
-    state,$,restoredTourId:"",navigationBusy:false,composer:null,createPending:null,tourLoadSeq:0,
+    state,$,sheetPending:null,sheetConflict:null,sheetBusy:false,tourAction:null,restoredTourId:"",navigationBusy:false,composer:null,createPending:null,tourLoadSeq:0,
     request:async()=>({id:"A",projection_id:"projection-B",share_grant_id:currentGrant}),
     status:noop,text:(value,fallback="")=>typeof value==="string"&&value?value:fallback,
     id:()=>false,tourMetaLine:()=>"",tourDisplayName:(value,fallback="Untitled tour")=>value||fallback,renderFeedback:noop,renderShareGrants:noop,
     cheatSheetText:()=>"",stops:()=>[],mountPropertyPanel:noop,renderComposer:noop,renderAcceptedItinerary:noop,
-    renderCreate:noop,validateDetail:noop,routeSnapshot:()=>"",initComposer:noop,
+    renderCreate:noop,restoreOtherWrites:noop,renderSheetRecovery:noop,renderTourAction:noop,validateDetail:noop,routeSnapshot:()=>"",initComposer:noop,
     renderSelection:noop,loadSelectionCart:async()=>{},loadProjectionPreview:async()=>{},loadFeedback:async()=>{},
   },["loadTour"]);
   await reload.loadTour("A");assert.equal(state.projectionId,"projection-B");
