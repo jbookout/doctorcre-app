@@ -3,7 +3,7 @@
   "version": "1.53.0",
   "producer": {
     "repository": "jbookout/carr-system",
-    "source_commit": "df5e17516fdb666d4bfd31cb62f28f296f84d4cb"
+    "source_commit": "1df9b9936394164dd55e815f8a8bf69649508ccc"
   },
   "consumer": "jbookout/doctorcre-app",
   "transport": {
@@ -686,7 +686,7 @@
       "write": false,
       "producer": {
         "repository": "jbookout/carr-system",
-        "source_commit": "df5e17516fdb666d4bfd31cb62f28f296f84d4cb",
+        "source_commit": "1df9b9936394164dd55e815f8a8bf69649508ccc",
         "module": "mcp-server/src/feature-switches.js"
       },
       "inputSchema": {
@@ -939,7 +939,7 @@
     "sha256": "4478d4a3386714e9bcbf181af60ff3fae47ba14b09d20ee1758876f32528d634",
     "producer": {
       "repository": "DoctorCRE/carr-system",
-      "source_commit": "df5e17516fdb666d4bfd31cb62f28f296f84d4cb",
+      "source_commit": "1df9b9936394164dd55e815f8a8bf69649508ccc",
       "pull_request": "https://github.com/DoctorCRE/carr-system/pull/2192"
     }
   }
