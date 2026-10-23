@@ -94,7 +94,6 @@
  * @property {'fixture'|'live'} mode
  * @property {Actor} selfActor
  * @property {(args?:Object, options?:{signal?:AbortSignal}) => Promise<Object>} readDocActivity authenticated doc-activity.v1 projection
- * @property {(args?:{signal?:AbortSignal}) => Promise<Object>} getHomeAgenda bounded home-agenda.v1 snapshot with dates and open actions
  * @property {() => Promise<{deals:BoardDeal[], closed_deals?:Object[], as_of:string, last_call_at:string}>} getBoard
  * @property {(args:{client_id:string,base_version:number,status:'active'|'inactive',reason:string,expected_actor?:string,idempotency_key:string}) => Promise<Object>} setProspectEngagementStatus audited transition between Leads and the deal board
  * @property {(dealId:string) => Promise<DealDetail>} getDeal

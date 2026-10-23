@@ -5,7 +5,7 @@ const text = value => typeof value === 'string' && value.trim() ? value : null;
 const field = (label, value) => ({ label, value: ['string','boolean'].includes(typeof value) || typeof value === 'number' && Number.isFinite(value) ? value : null });
 export const DOC_CONTEXT_TTL_MS = 60_000;
 export const DOC_PAGES = Object.freeze({
-  home: { label: 'Home', reads: ['getHomeAgenda', 'getLeadBoard', 'currentWorkItem', 'currentWorkRequests', 'incidentBoard'] },
+  home: { label: 'Home', reads: ['getBoard', 'getDeal', 'getLeadBoard', 'currentWorkItem', 'currentWorkRequests', 'incidentBoard'] },
   deals: { label: 'Local Deals', reads: ['getBoard', 'getDeal'] },
   leads: { label: 'Leads', reads: ['getWorkspace', 'getLeadDetail'] },
   tours: { label: 'Tours', reads: ['tourLibrary', 'tourDetail', 'tourProperties'] },
@@ -82,7 +82,6 @@ export function normalizeDocRead(method, payload, args = []) {
   if (!payload || payload.ok === false || payload.error) return null;
   let rows, map;
   switch (method) {
-    case 'getHomeAgenda':
     case 'getBoard': rows = payload.deals; map = deal; break;
     case 'getDeal': {
       const row = deal(payload.deal || {});

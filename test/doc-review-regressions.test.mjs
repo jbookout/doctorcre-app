@@ -105,14 +105,14 @@ test('retained collection tickets cannot recover after failure, supersession, au
 });
 test('projecting one source does not restore another or turn a failed source into a successful read',()=>{
  const c=createDocContext({page:'home'});
- c.finish(c.begin('getHomeAgenda'),{deals:[{id:'sample',name:'Sample'}]});
+ c.finish(c.begin('getBoard'),{deals:[{id:'sample',name:'Sample'}]});
  c.fail(c.begin('getLeadBoard'),{status:503});
  c.filter({scope:'mine'});
- assert.equal(c.project('getHomeAgenda',{deals:[]}),true);
+ assert.equal(c.project('getBoard',{deals:[]}),true);
  assert.equal(c.project('getLeadBoard',{leads:[]}),false);
  assert.deepEqual(c.snapshot().records,[]);
- c.fail(c.begin('getHomeAgenda'),{status:503});c.filter({scope:'all'});
- assert.equal(c.project('getHomeAgenda',{deals:[]}),false);assert.equal(c.snapshot().ready,false);
+ c.fail(c.begin('getBoard'),{status:503});c.filter({scope:'all'});
+ assert.equal(c.project('getBoard',{deals:[]}),false);assert.equal(c.snapshot().ready,false);
 });
 test('R17 deleted mounting interface has no callers or fallback',async()=>{
  const {readdir}=await import('node:fs/promises');
