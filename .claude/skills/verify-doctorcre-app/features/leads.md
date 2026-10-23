@@ -1,31 +1,24 @@
 # Leads
 
-Leads lets a partner search the loaded board, filter by owner or stage and inspect a lead without claiming it or changing its stage.
+Leads lets a partner search the board, filter by owner, market or stage, and inspect a lead.
 
 ## Sub-features
 
-- `leads-search` narrows and clears the board.
-- `leads-filter` selects owner and stage filters.
-- `leads-detail` opens and closes the selected lead.
+`leads-search`, `leads-filter`, `leads-detail`.
 
 ## How to get to it (user POV)
 
-- Choose `Leads` in `Primary navigation`, or open `/leads`.
-- Use `Search leads`, the owner and stage filters, or a lead card.
+Choose Leads in Primary navigation or open `/leads`. Use Search leads, Owner, Market, Board stage, or a visible lead's detail control.
 
 ## Driving it with Playwright
 
-Preconditions:
+Existing coverage: `tests/fixtures/staging-leads.spec.mjs` runs the staging assertions through `test/leads-browser-fixture.mjs` and its synthetic HTTP adapter. The Node suite also runs `test/leads-workspace.test.mjs` and the Leads browser tests.
 
-- Doctor passes and `.lead-card` contains a visible lead. If plain local fixtures lack the board data, report the missing precondition; existing lead tests use the synthetic fixture in `test/leads-workspace-fixture.mjs` at the HTTP client seam.
-
-- **Entry.** Run `await page.goto(new URL('/leads', origin).href)` and require `page.locator('.lead-card').first()` visible. Repeat through the `Leads` link inside `Primary navigation` when navigation changed.
-- **Search.** Run `await page.getByRole('searchbox', { name: 'Search leads', exact: true }).fill('V2 no matching lead 35f9009c')`. Require zero `.lead-card` elements. Fill the searchbox with `''`, require a visible card and hidden `#leadBoardError`.
-- **Filters.** Run `await page.locator('#ownerFilter').selectOption('joe')`, require value `joe`, then clear with `selectOption('')`. Select the first nonempty `#stageFilter` option, require nonempty `#filterSummary`, then clear the filter and require visible cards.
-- **Details.** Capture the chosen `.lead-card` title, click that card, require visible `#leadDetail` and matching `#detailTitle`. Capture the dialog. Run `await page.getByRole('button', { name: 'Close lead details', exact: true }).click()` and require the dialog hidden.
+- Require visible `#leadBoard .lead-card` and hidden `#leadBoardError` before starting.
+- Search for a unique nonmatching string; require zero board cards. Clear Search leads and require the board restored. Scope assertions to `#leadBoard`; the Hottest leads section has separate cards.
+- Choose an owner present in `#ownerFilter`, then clear it with the empty option. Choose a populated Board stage in `#stageFilter`, require matching visible cards and `#filterSummary`, then clear it. Never assume staging has owner `joe`.
+- Use the selected card's `.lead-open` button. Compare `#detailTitle` to that lead's title and require visible `#leadDetail`. Use Close lead details and require it hidden.
 
 ## Gotchas
 
-- Live Leads may need a synthetic staging record. A loaded shell alone does not prove search or details.
-- Do not Claim, activate, or submit a stage change during this read-only recipe.
-- Empty owner or stage results are not a substitute for restoring the full board after clearing filters.
+The plain static preview does not supply the Leads workspace API. Use the existing routed fixture tests for populated local coverage. Claim and stage changes write records; the automated fixtures isolate those writes. Avoid those actions during manual read-only inspection.

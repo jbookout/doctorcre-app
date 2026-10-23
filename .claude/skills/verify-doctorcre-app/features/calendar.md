@@ -1,35 +1,24 @@
 # Calendar
 
-Calendar lets a partner move between periods, switch Week and Month and open a day's agenda without changing appointments.
+Calendar lets a partner change periods, switch Week and Month and open a day's critical dates.
 
 ## Sub-features
 
-- `calendar-period` moves forward and back.
-- `calendar-view` switches Week and Month.
-- `calendar-day` opens a grid day.
-- `calendar-agenda` opens a populated agenda entry.
-- `calendar-today` returns to today.
+`calendar-period`, `calendar-view`, `calendar-day`, `calendar-agenda`, `calendar-today`.
 
 ## How to get to it (user POV)
 
-- Open `/calendar` or follow the Calendar navigation link.
-- Choose next or previous period, Week, Month, a day, an agenda entry, or Today.
+Open `/calendar` or choose Calendar in navigation (under More when collapsed). Use previous/next period, Week, Month, a day, an agenda entry or Today.
 
 ## Driving it with Playwright
 
-Preconditions:
+Existing coverage: `test/calendar.test.mjs` checks date, URL and view rules; `test/calendar-loading-browser.test.mjs` opens populated date details while another read is pending and checks session expiry. Both run in the Node suite. The staging period/agenda specs require separate authenticated staging verification.
 
-- Doctor passes and `.cal-day-open` is visible. Agenda opening additionally needs at least one `.cal-agenda-item`; report missing entries as a failed precondition.
-
-- **Entry.** Run `await page.goto(new URL('/calendar', origin).href)` and require `page.locator('.cal-day-open').first()` visible. Also follow the `Calendar` link when navigation changed; open the navigation's More menu first if the link is collapsed.
-- **Periods.** Save `await page.locator('#calPeriod').innerText()`. Run `await page.locator('#calNext').click()` and require a different period. Run `await page.locator('#calPrev').click()` and require the original period.
-- **Views.** Run `await page.getByRole('button', { name: 'Week', exact: true }).click()` and require `#calGrid` with `data-view="week"`. Click `Month` and require `data-view="month"`.
-- **Day.** Run `await page.locator('.cal-day-open').first().click()` and require `#dayPanelTitle` different from `Choose a day`. Capture the selected day and panel together.
-- **Agenda.** Run `await page.locator('.cal-agenda-item').first().click()` and require `page.locator('#dayPanelBody .cal-day-entry').first()` visible. Capture the selected entry and resulting facts.
-- **Today.** Run `await page.locator('#calToday').click()` and require `[data-today="true"]` visible.
+- Require `.cal-day-open`, save `#calPeriod`, click `#calNext`, require a different period, then `#calPrev` and require the original.
+- Choose Week then Month; require `#calGrid[data-view="week"]` then `data-view="month"`.
+- Choose a `.cal-day-open`; require `#dayPanelTitle` changed from Choose a day. Choose a populated `.cal-agenda-item`; require its date's `#dayPanelBody .cal-day-entry` and selected facts.
+- Choose `#calToday`; require `[data-today="true"]` visible.
 
 ## Gotchas
 
-- The current period changes with time and timezone. Save and compare the rendered value instead of hard-coding a month.
-- An empty agenda still permits period navigation. Report `calendar-agenda` as unverified when no populated entry exists.
-- Do not create, move or cancel an appointment during this read-only recipe.
+Periods and agenda availability depend on date and timezone. Compare rendered values; do not hard-code the current month. An empty agenda cannot prove entry opening. Never create, move or cancel an appointment in this read-only inspection.
