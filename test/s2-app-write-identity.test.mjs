@@ -97,3 +97,17 @@ for (const live of [true,false]) test(`agenda start retains its exact request un
  assert.equal(state.review.sessionId,'synthetic-review-session'); assert.equal(renders,1);
  assert.equal(state.commands.pending('agenda:start:team:'),null);
 });
+
+test('the live agenda client itself retains the key after a malformed successful receipt', async () => {
+ const {createLiveClient} = await import('../js/live-client.js');
+ const requests = [];
+ const client = createLiveClient({fetchImpl:async(path,init)=>{
+   if(path==='/auth/session') return Response.json({actor:{slug:'joe'},csrf_token:'synthetic-session'});
+   requests.push(JSON.parse(init.body).params.arguments);
+   const payload = requests.length === 1 ? {ok:true} : {ok:true,session_id:'synthetic-review'};
+   return Response.json({result:{content:[{type:'text',text:JSON.stringify(payload)}]}});
+ }});
+ await assert.rejects(client.startReview({workspace_kind:'team'}),{code:'unknown_outcome'});
+ assert.equal((await client.startReview({workspace_kind:'team'})).session_id,'synthetic-review');
+ assert.deepEqual(requests[1],requests[0]);
+});
