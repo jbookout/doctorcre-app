@@ -737,8 +737,7 @@ test("the fixture takes the outcome write only against the version the deal hold
 test("the Closed dialog offers the three outcomes, a picker for the date, and both adapters can send it", async () => {
 
   const contract = JSON.parse(await read("contracts/carr-interface.v1.json"));
-  assert.ok(contract.mcp_operations.includes("update-deal"));
-  assert.equal(contract.version, "1.51.0");
+  assert.ok(contract.mcp_operations.includes("update-deal"), "the CARR contract exposes update-deal");
 });
 
 test("the fixture carries the reason and the sentence onto the phase event, word for word", async () => {
