@@ -138,7 +138,10 @@ function cardHtml(deal) {
   </article>`;
 }
 function rowHtml(deal) {
-  return `<article class="kanban-card deal-row" data-id="${esc(deal.id)}" tabindex="0" data-attention="${needsAttention(deal)}"><div class="deal-alert">${renderDealAlert(deal,{today:todayIso(),heading:'h4',buttons:true})}</div></article>`;
+  const nextStep = noteText(deal.next_step);
+  return `<article class="kanban-card deal-row" data-id="${esc(deal.id)}" tabindex="0" data-attention="${needsAttention(deal)}">
+    <h4>${esc(dealTitle(deal))}</h4><span class="deal-stage">${esc(columnLabel(deal.phase))}</span>
+    ${nextStep.trim() ? `<p class="next-line" title="${esc(nextStep)}">${esc(nextStep)}</p>` : ''}<span class="owner">${esc(actorName(deal.owner))}</span>${renderDealVendors(deal.vendors)}${autoHtml(deal)}</article>`;
 }
 function parkedHtml(deal) {
   return `<article class="kanban-card parked-card" data-id="${esc(deal.id)}" tabindex="0"><h4>${esc(dealTitle(deal))}</h4><p class="next-line">${esc(deal.parking_note || deal.parking_reason?.replaceAll('_',' ') || 'Parked')}</p>${renderDealVendors(deal.vendors)}<button class="btn btn-quiet" type="button" data-revive="${esc(deal.id)}">Revive</button></article>`;
