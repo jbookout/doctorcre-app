@@ -35,7 +35,7 @@ const view = {
   rows: [],
   sequence: 0,
   detailSequence: 0,
-  events: { status: "loading", rows: [], sequence: 0, draft: null, current: null, original: null, latest: null },
+  events: { status: "loading", rows: [], sequence: 0, draft: null, current: null, original: null, latest: null, pending: new Map(), saving: false },
 };
 
 let client = null;
@@ -277,7 +277,8 @@ function openEvent(id = null) {
   selectDocRecord(row ? 'event' : null, row?.id);
   view.events.current = row ? { id: row.id, version: row.version } : null;
   const key = id || "new";
-  const draft = view.events.draft?.key === key ? view.events.draft : null;
+  const pending = view.events.pending.get(key);
+  const draft = pending?.draft || (view.events.draft?.key === key ? view.events.draft : null);
   if (draft?.base) view.events.current = draft.base;
   view.events.original = draft?.original || row;
   view.events.latest = null;
@@ -285,11 +286,14 @@ function openEvent(id = null) {
     ...row, starts_at: eventLocalDateTime(row.starts_at), ends_at: eventLocalDateTime(row.ends_at),
   } : { owner_partner: ["joe", "dell"].includes(client?.selfActor) ? client.selfActor : "" };
   fillEventForm(values);
+  for (const input of $("eventForm").querySelectorAll("input,select,textarea")) input.disabled = Boolean(pending);
   $("eventDialogTitle").textContent = row ? `Edit ${row.title}` : "Add event";
   $("eventFormMessage").textContent = "";
   $("eventConflict").hidden = true;
   $("eventSave").disabled = false;
-  if (draft?.base && row && row.version !== draft.base.version) {
+  $("eventSave").textContent = pending ? "Check outcome" : "Save event";
+  if (pending) $("eventFormMessage").textContent = "Save outcome unknown. Check outcome replays your original request.";
+  if (!pending && draft?.base && row && row.version !== draft.base.version) {
     showEventConflict(row);
     $("eventSave").disabled = true;
     $("eventFormMessage").textContent = "The event changed. Your draft is kept; review the changes below.";
@@ -301,28 +305,45 @@ function openEvent(id = null) {
 
 function closeEvent({ discard = false } = {}) {
   selectDocRecord(null,null);
-  if (discard) view.events.draft = null;
+  if (discard && !view.events.pending.has(view.events.current?.id || "new")) view.events.draft = null;
   const dialog = $("eventDialog");
   if (dialog?.open) dialog.close();
 }
 
 async function saveEvent(event) {
   event.preventDefault();
+  if (view.events.saving) return;
   const form = $("eventForm");
-  if (!form?.reportValidity()) return;
-  const values = formValues();
-  const request = eventWriteRequest(values, view.events.current);
+  const key = view.events.current?.id || "new";
+  const retained = view.events.pending.get(key);
+  if (!retained && !form?.reportValidity()) return;
+  const values = retained?.draft.values || formValues();
+  const request = retained ? { ok: true, args: retained.args } : eventWriteRequest(values, view.events.current);
   const message = $("eventFormMessage");
   if (!request.ok) { message.textContent = request.error; return; }
-  const key = view.events.current?.id || "new";
-  view.events.draft = { key, values, base: view.events.current, original: view.events.original };
+  view.events.draft = retained?.draft || { key, values, base: view.events.current, original: view.events.original };
   const save = $("eventSave");
+  view.events.saving = true;
   save.disabled = true;
   message.textContent = "Saving…";
   try {
+    if (!retained && view.events.current) {
+      const read = eventReadState(await client.listIndustryEvents({ limit: EVENT_LIST_LIMIT }));
+      if (!["ready", "partial"].includes(read.status)) throw new Error("Current event unavailable");
+      const latest = read.rows.find(row => row.id === key);
+      if (!latest || latest.version !== request.args.base_version) {
+        showEventConflict(latest);
+        message.textContent = "This event changed. Your draft is kept; review the current record below before saving.";
+        return;
+      }
+    }
+    const operation = retained || { args: Object.freeze({ ...request.args, idempotency_key: crypto.randomUUID() }), draft: view.events.draft };
+    view.events.pending.set(key, operation);
+    for (const input of form.querySelectorAll("input,select,textarea")) input.disabled = true;
     const result = view.events.current
-      ? await client.updateIndustryEvent(request.args) : await client.addIndustryEvent(request.args);
+      ? await client.updateIndustryEvent(operation.args) : await client.addIndustryEvent(operation.args);
     if (result?.ok !== true || !result.event) throw new Error("Save outcome unavailable");
+    view.events.pending.delete(key);
     view.events.draft = null;
     closeEvent();
     await loadEvents();
@@ -335,19 +356,23 @@ async function saveEvent(event) {
     announce(`${result.event.title || "Event"} saved. Events refreshed from the record.`);
   } catch (error) {
     const outcome = eventWriteOutcome(error);
+    if (outcome !== "unknown") view.events.pending.delete(key);
     message.textContent = {
       conflict: "This event changed since you opened it. Your draft is kept; review the changes below.",
       refused: "The event was not saved. Review the fields; your draft is kept.",
       unauthorized: "Your session has ended. Sign in again; your draft is kept on this page.",
-      unknown: "The save outcome is unknown. Your draft is kept. Check the event list before trying again.",
+      unknown: "The save outcome is unknown. Your draft and request are kept. Check outcome to confirm the same save.",
     }[outcome];
     if (outcome === "conflict") {
       await loadEvents();
       showEventConflict(view.events.rows.find((row) => row.id === view.events.current?.id));
     }
-    save.disabled = outcome === "conflict" || outcome === "unknown" || outcome === "unauthorized";
+    const pending = view.events.pending.has(key);
+    for (const input of form.querySelectorAll("input,select,textarea")) input.disabled = pending;
+    save.textContent = pending ? "Check outcome" : "Save event";
+    save.disabled = outcome === "conflict" || outcome === "unauthorized";
     announce(message.textContent);
-  }
+  } finally { view.events.saving = false; }
 }
 
 /* ------------------------------------------------------------------- detail */
@@ -525,6 +550,7 @@ function wire() {
   }
   $("eventForm")?.addEventListener("submit", saveEvent);
   $("eventForm")?.addEventListener("input", () => {
+    if (view.events.pending.has(view.events.current?.id || "new")) return;
     view.events.draft = { key: view.events.current?.id || "new", values: formValues(),
       base: view.events.current, original: view.events.original };
   });

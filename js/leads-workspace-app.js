@@ -19,6 +19,7 @@ const options = (rows, selected, all) => `<option value="">${all}</option>${rows
 export function mountLeadsWorkspace(doc = document, client = createLeadBoardClient(), { mapFactory = mountTerritoryMap } = {}) {
   const $ = id => doc.getElementById(id), win = doc.defaultView || globalThis.window;
   const engagement = engagementWriterFor(client, engagementStorage(win));
+  const engagementChecks = new Set();
   const state = { board: null, readFailed: false, actor: null, epoch: 0, detailEpoch: 0, reviewEpoch: 0, filters: { search: "", owner: "", stage: "", market: "" },
     selectedId: null, detail: null, detailId: null, resumeReview: null, commandFeedback: null, connectionFeedback: null, proposal: null, reviewTarget: null, pending: null, writing: false, identityReady: false, trigger: null, drag: null, map: null };
   const leadById = id => state.board?.leads.find(lead => lead.id === id && eligibleLead(lead));
@@ -325,7 +326,30 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
     return executePending();
   }
   async function executeEngagement(args) {
-    if (!args || engagement.get(args.client_id, state.actor)?.sending) return;
+    if (!args || engagement.get(args.client_id, state.actor)?.sending || engagementChecks.has(args.client_id)) return;
+    if (!engagement.get(args.client_id, state.actor)) {
+      engagementChecks.add(args.client_id);
+      try {
+        const lead = state.board?.leads.find(lead => lead.prospect_client_id === args.client_id);
+        if (!lead) throw new Error("Prospect unavailable");
+        const current = (await client.getLeadDetail(lead)).detail;
+        validateLeadDetail(current, lead.id);
+        if (state.actor !== args.expected_actor) return;
+        if (current.prospect_client_id !== args.client_id || current.prospect_client_version !== args.base_version) {
+          await refresh();
+          const form = $("activateProspect");
+          if (form && state.detail?.prospect_client_id === args.client_id) form.elements.reason.value = args.reason;
+          state.commandFeedback = "This prospect changed. Review the current record and your kept reason before confirming again.";
+          paintCommandFeedback();
+          return;
+        }
+      } catch (error) {
+        if (authorizationFailure(error)) return;
+        state.commandFeedback = "Change not sent. The current prospect could not be verified.";
+        paintCommandFeedback();
+        return;
+      } finally { engagementChecks.delete(args.client_id); }
+    }
     const status = engagement.get(args.client_id, state.actor)?.request.status || args.status;
     state.commandFeedback = null;
     const operation = engagement(args, {
@@ -366,6 +390,23 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
       if (epoch !== state.epoch) return;
       if (!actor) { authorizationFailure({ code: "unauthorized" }); return; }
       if (actor !== pending.actor) { clearPrivateView(); state.actor = actor; await refresh(); return; }
+      // A review can remain open while a partner edits. Check the exact lead
+      // once before sending; an unanswered write keeps its reviewed request.
+      if (!pending.attempted) {
+        const current = (await client.getLeadDetail(pending.lead)).detail;
+        if (epoch !== state.epoch || state.pending !== pending) return;
+        validateLeadDetail(current, pending.lead.id);
+        if (current.base_version !== pending.lead.base_version) {
+          state.pending = null; state.writing = false;
+          await refresh();
+          const message = "This lead changed. Review the current record before confirming again.";
+          state.commandFeedback = message;
+          $("stageError").textContent = message; $("stageError").hidden = false;
+          paintCommandFeedback();
+          return;
+        }
+        pending.attempted = true;
+      }
       mutationAttempted = true;
       if (pending.kind === "link") await client.linkClient(pending.lead, pending.clientId, pending.key, pending.actor);
       else if (pending.kind === "claim") await client.claimLead(pending.lead, pending.key, pending.actor);

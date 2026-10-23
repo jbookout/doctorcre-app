@@ -183,10 +183,12 @@ function renderPreference() {
   }
   form.setAttribute("data-disabled", String(saving));
   form.setAttribute("data-quiet", model?.quietHoursSet ? "set" : "off");
+  const retained = commandState[PREFERENCE_OPERATION_KEY];
   for (const id of ["deviceOptIn", "quietStart", "quietEnd", "quietTimezone", "prefSave", "prefClear"]) {
     const field = $(id);
-    if (field) field.disabled = saving || !model;
+    if (field) field.disabled = saving || !model || (Boolean(retained) && id !== "prefSave");
   }
+  $("prefSave").textContent = retained ? "Check outcome" : "Save preferences";
   if (!model || dirty) return;
   $("deviceOptIn").checked = model.deviceOptIn;
   $("quietStart").value = preferenceTimeLabel(model.start);
@@ -349,8 +351,10 @@ function acknowledge(id) {
  * reads is true about the values now on screen.
  */
 async function savePreference(form) {
+  if (saving) return;
   const model = view.preference.state === "read" ? preferenceView(view.preference.payload) : null;
-  const built = setPreferenceArgs(form, preferenceSaveView(model, draftBaseVersion));
+  const retained = commandState[PREFERENCE_OPERATION_KEY];
+  const built = retained ? { ok: true, args: retained.request } : setPreferenceArgs(form, preferenceSaveView(model, draftBaseVersion));
   const message = $("prefMessage");
   if (!built.ok) {
     message.textContent = built.message;
@@ -360,6 +364,27 @@ async function savePreference(form) {
   saving = true;
   message.textContent = "";
   renderPreference();
+  if (!commandState[PREFERENCE_OPERATION_KEY]) {
+    try {
+      const payload = await client.notificationPreferences(), current = preferenceView(payload);
+      if (!current) throw new Error("Preferences unavailable");
+      view.preference = { state: "read", payload, observed_at: new Date().toISOString() };
+      if (current.version !== built.args.base_version) {
+        // Current saved values appear in the summary beside the held draft.
+        // The next deliberate save reviews this version and reads again.
+        dirty = true; draftBaseVersion = current.version; saving = false;
+        renderPreference();
+        message.textContent = "Preferences changed. Review the current saved preferences above and your kept draft before saving again.";
+        announce(message.textContent);
+        return;
+      }
+    } catch {
+      saving = false; renderPreference();
+      message.textContent = "Preferences not sent. Their current version could not be verified.";
+      announce(message.textContent);
+      return;
+    }
+  }
   const summary = form.clear_quiet_hours === true
     ? "Clear quiet hours"
     : "Save notification preferences";

@@ -697,3 +697,45 @@ test('Leads recovery reports the retained inactive target from pipeline',async()
   assert.deepEqual(s.writes[1],s.writes[0]);
  }finally{s.close()}
 });
+
+test('S2 submit rereads the reviewed lead and asks for review instead of overwriting a newer version',async()=>{
+ const s=await setup();try{
+  await s.app.openReview(id(1),'engaged');
+  const prior=s.app.state.proposal.lead.base_version;
+  s.board.leads[0].base_version++;
+  s.board.leads[0].notes='Newer partner context';
+  s.d.getElementById('stageForm').dispatchEvent(new s.w.Event('submit',{cancelable:true}));await tick();
+  assert.equal(s.writes.length,0);
+  assert.equal(s.app.state.pending,null);
+  assert.equal(s.app.state.proposal.lead.base_version,prior+1);
+  assert.match(s.d.getElementById('stageError').textContent,/changed.*review/i);
+  s.d.getElementById('stageForm').dispatchEvent(new s.w.Event('submit',{cancelable:true}));await tick();
+  assert.equal(s.writes.length,1);assert.equal(s.writes[0].l.base_version,prior+1);
+ }finally{s.close()}
+});
+
+test('S2 an unknown lead write retries the original version and key without refreshing its material',async()=>{
+ let reads=0,attempts=[];
+ const s=await setup({recordStage:async(l,stage,review,key)=>{attempts.push(structuredClone({l,stage,review,key}));if(attempts.length===1)throw Object.assign(new Error('lost reply'),{code:'unknown_outcome'});return{ok:true}}});
+ try{
+  const original=s.client.getLeadDetail;s.client.getLeadDetail=async lead=>{reads++;return original(lead)};
+  await s.app.openReview(id(1),'engaged');
+  s.d.getElementById('stageForm').dispatchEvent(new s.w.Event('submit',{cancelable:true}));await tick();
+  assert.equal(reads,2,'review read plus pre-submit read');
+  s.board.leads[0].base_version++;
+  const before=reads;s.d.getElementById('checkPending').click();await tick();
+  assert.equal(reads,before,'unknown replay does not fetch a replacement base version');
+  assert.deepEqual(attempts[1],attempts[0]);
+ }finally{s.close()}
+});
+
+test('S2 prospect activation checks the fresh client version before preparing an engagement request',async()=>{
+ const s=await setup();try{
+  const row=s.board.leads.find(l=>l.stage==='nurture_drip');Object.assign(row,{client_id:'synthetic-client',is_client:true,is_deal:true,prospect_client_id:'synthetic-client',prospect_client_version:7,prospect_engagement_status:'inactive'});
+  s.client.setProspectEngagementStatus=async args=>{s.writes.push(args);return{ok:true}};
+  await s.app.refresh();await s.app.readDetail(row.id);
+  const form=s.d.getElementById('activateProspect');form.elements.reason.value='Synthetic reviewed reason';row.prospect_client_version++;
+  form.dispatchEvent(new s.w.Event('submit',{bubbles:true,cancelable:true}));await tick();
+  assert.equal(s.writes.length,0);assert.match(s.d.getElementById('leadBoardError').textContent,/changed.*review/i);
+ }finally{s.close()}
+});
