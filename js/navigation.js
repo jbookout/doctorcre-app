@@ -71,6 +71,12 @@ export function appShellMarkup(pathname, base = "", search = "") {
 export function mountNavigation(root = document, pathname = root.defaultView?.location.pathname || "/", { report = false, location = root.defaultView?.location || globalThis.location } = {}) {
   const host = root.getElementById("appShell");
   if (!host) return;
+  const fontStylesheet = root.querySelector('link[data-font-stylesheet][rel="preload"][as="style"]');
+  if (fontStylesheet) {
+    const activate = () => { fontStylesheet.rel = "stylesheet"; };
+    if (root.readyState === "complete") activate();
+    else root.defaultView.addEventListener("load", activate, { once: true });
+  }
   const base = appOriginForReport(location?.origin || "");
   host.innerHTML = appShellMarkup(pathname, base, location?.search || "");
   if (report || base) {
