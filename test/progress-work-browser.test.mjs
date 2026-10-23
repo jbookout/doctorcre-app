@@ -661,10 +661,13 @@ test('wire history, pause, missed-count and Resume live work through the new pag
   assert.deepEqual(errors,[]);
 });
 
-test('composer failure offers draft restoration and preserves the 20k cap',async t=>{
+test('composer failure retains its draft until reconciliation and preserves the 20k cap',async t=>{
   const {page,state,errors}=await open(t);state.postFailure=true;
   await page.locator('#composerInput').fill('Synthetic failed draft');await page.locator('#composerInput').press('Enter');
   await page.locator('#roomToast button').click();assert.equal(await page.locator('#composerInput').inputValue(),'Synthetic failed draft');
+  assert.equal(await page.locator('#composerInput').getAttribute('readonly'),'');
+  state.postFailure=false;await page.locator('#composerSend').click();
+  await page.waitForFunction(()=>document.querySelector('#composerInput').value==='');
   await page.locator('#composerInput').fill('x'.repeat(20001));assert.equal(await page.locator('#composerSend').isDisabled(),true);assert.deepEqual(errors,[]);
 });
 
