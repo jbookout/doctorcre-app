@@ -1,3 +1,4 @@
+import { requireReviewReceipt } from './deal-review-model.js';
 /**
  * Live client: same interface as fixture, against the deployed Worker.
  * Verbs travel as MCP JSON-RPC tools/call over the cookie-authenticated /mcp
@@ -74,6 +75,7 @@ export function createLiveClient(opts = {}) {
       err.writeRefusal = verb === 'new-deal' && CREATION_REFUSALS.has(payload?.error);
       throw err;
     }
+    if (verb === 'start-deal-review') requireReviewReceipt(payload);
     return payload;
   }
 
