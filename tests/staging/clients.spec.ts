@@ -31,11 +31,12 @@ test('Clients open a complete record and return to results', async ({ page }) =>
 test('Clients apply owner and business filters, then return to all records', async ({ page }) => {
   await page.goto('/clients');
   await expect(page.locator('.record-row').first()).toBeVisible();
-  await page.getByRole('button', { name: 'Joe', exact: true }).click();
-  await expect(page.getByRole('button', { name: 'Joe', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  const scope = page.getByRole('group', { name: 'Record scope', exact: true });
+  await scope.getByRole('button', { name: 'Joe', exact: true }).click();
+  await expect(scope.getByRole('button', { name: 'Joe', exact: true })).toHaveAttribute('aria-pressed', 'true');
   if (await page.locator('#filterA option').count() > 1) await page.locator('#filterA').selectOption({ index: 1 });
   await page.locator('#applyFilters').click();
-  await page.getByRole('button', { name: 'All', exact: true }).click();
+  await scope.getByRole('button', { name: 'All', exact: true }).click();
   const today = page.getByRole('button', { name: 'Today sidebar', exact: true });
   if (await today.getAttribute('aria-expanded') === 'true') await today.click();
   await page.locator('#resetFilters').click();
