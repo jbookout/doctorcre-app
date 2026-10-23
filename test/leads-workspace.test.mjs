@@ -697,3 +697,28 @@ test('Leads recovery reports the retained inactive target from pipeline',async()
   assert.deepEqual(s.writes[1],s.writes[0]);
  }finally{s.close()}
 });
+
+for (const code of ['network_error', 'read_timeout']) test(`Slice A initial identity ${code} offers connection Retry without sign-in or writes`, async () => {
+ let failing = true, workspaceReads = 0;
+ const s = await setup({
+  getActor: async () => { if (failing) throw Object.assign(new Error('Synthetic connection failure'), { code }); return 'example-partner'; },
+  getWorkspace: async () => { workspaceReads++; return structuredClone(workspace()); },
+ });
+ try {
+  const box = s.d.getElementById('leadBoardError');
+  assert.match(box.textContent, /connection/i);
+  assert.doesNotMatch(box.textContent, /sign.in/i);
+  assert.equal(box.querySelector('a[href*="/auth/login"]'), null);
+  assert.equal(s.app.state.identityReady, false);
+  assert.equal(workspaceReads, 0);
+  assert.equal(s.d.querySelectorAll('.lead-card').length, 0);
+  failing = false;
+  const retry = [...box.querySelectorAll('button')].find(button => button.textContent === 'Retry');
+  assert.ok(retry, 'the failed read offers a local Retry action');
+  retry.click(); await tick();
+  assert.equal(s.app.state.identityReady, true);
+  assert.ok(s.d.querySelectorAll('.lead-card').length > 0);
+  assert.equal(box.hidden, true);
+  assert.equal(s.writes.length, 0);
+ } finally { s.close(); }
+});
