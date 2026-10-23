@@ -45,6 +45,14 @@ async function open(t, { width = 1440, motion = 'reduce', leads = true, delayDet
       ...detail.deal, deal_id: detail.deal.id, events: detail.history.map(event => ({ ...event, verb: event.verb || 'patch-deal-field' })),
       critical_dates: tasksOnly ? [] : [{ id: `demo-date-${args.deal}`, note: 'Demo tour', due_on: '2026-10-03', status: 'open' }],
       next_actions: malformedTasks ? [null] : [{ id: `demo-task-${args.deal}`, description: 'Demo follow-up', due_on: '2026-10-01', status: 'open', owner: detail.deal.owner, hold_until: heldTasks ? '2027-01-01' : null }] }; },
+    'read-home-agenda': async () => {
+      const board = await handlers['deal-room-board']();
+      if (hangDetails) return new Promise(() => {});
+      return { schema_version: 'home-agenda.v1', ...board, deals: await Promise.all(board.deals.map(async deal => {
+        const detail = await handlers['get-deal-room']({ deal: deal.id });
+        return { ...deal, critical_dates: detail.critical_dates, next_actions: detail.next_actions };
+      })) };
+    },
     'correspondence-readiness': args => client.correspondenceReadiness(args),
     'today-triage': () => client.todayTriage(),
     'list-feature-switches': () => client.listFeatureSwitches(),
@@ -139,7 +147,7 @@ test('PR123 finding 8: malformed and mixed live reads settle unavailable and rec
   };
   await settled();
   for (const [name, payloads] of [
-    ['deal-room-board', [{}, { deals: [{ name: 'Missing identity' }] }, { deals: [{ id: 'demo-valid', name: 'Demo valid' }, { name: 'Missing identity' }] }]],
+    ['read-home-agenda', [{}, { deals: [{ name: 'Missing identity' }] }, { deals: [{ id: 'demo-valid', name: 'Demo valid' }, { name: 'Missing identity' }] }]],
     ['lead-board', [{}, { leads: [{ score: 99, created_at: NOW.toISOString() }] }, { leads: [leadRows[0], null] }]],
   ]) for (const payload of payloads) await t.test(`${name}: ${JSON.stringify(payload)}`, async () => {
     if (name === 'lead-board') await page.locator('.home-lead').first().click();
@@ -149,7 +157,7 @@ test('PR123 finding 8: malformed and mixed live reads settle unavailable and rec
       assert.equal(await page.locator('#homeNotice').isVisible(), true);
       assert.match(await page.locator('#observedAt').textContent(), /unavailable|partial/i);
       assert.equal(await page.locator('#dealAttention').getAttribute('aria-busy'), 'false');
-      if (name === 'deal-room-board') {
+      if (name === 'read-home-agenda') {
         assert.match(await page.locator('#dealCounts').textContent(), /Active deals: —/);
         assert.match(await page.locator('#dealFlags').textContent(), /unavailable/i);
         assert.doesNotMatch(await page.locator('#dealFlags').textContent(), /Updating|No deal flags|No overdue local next steps/);
@@ -221,7 +229,7 @@ test('Home desktop and phone show flags, visual agenda, ranked leads and wide en
     assert.match(await page.locator('#observedAt').textContent(), /^Updated /);
     const text = await page.locator('main').textContent();
     assert.doesNotMatch(text, /source|records read|read again|retry|Doc at work|Changed in 7 days|Workspace structure/i);
-    assert.ok(calls.every(name => Object.keys({ 'morning-brief':1, 'read-invoice-tracker':1, 'today-triage':1,'list-feature-switches': 1, 'list-doc-suggestions': 1, 'deal-room-board': 1, 'get-deal-room': 1, 'lead-board': 1, 'incident-board': 1, 'current-work-item': 1, 'read-resource-dashboard': 1, 'schedule-board': 1, 'list-notifications': 1, 'notification-feed': 1 }).includes(name)), `no write verb runs: ${calls.join(', ')}`);
+    assert.ok(calls.every(name => Object.keys({ 'morning-brief':1, 'read-invoice-tracker':1, 'today-triage':1,'list-feature-switches': 1, 'list-doc-suggestions': 1, 'read-home-agenda': 1, 'deal-room-board': 1, 'get-deal-room': 1, 'lead-board': 1, 'incident-board': 1, 'current-work-item': 1, 'read-resource-dashboard': 1, 'schedule-board': 1, 'list-notifications': 1, 'notification-feed': 1 }).includes(name)), `no write verb runs: ${calls.join(', ')}`);
     await screenshot(page, width === 1440 ? 'desktop' : `phone-${width}`);
     const first = page.locator('.home-lead').first(); await first.click();
     assert.equal(await page.locator('#homeDetail').evaluate(dialog => dialog.open), true);
@@ -289,7 +297,7 @@ test('no eligible leads means hidden widget; polling, resume and online recover 
   await page.waitForFunction(() => /Active deals: \d/.test(document.querySelector('#dealCounts').textContent));
   await page.waitForFunction(() => document.querySelector('#refreshHome').getAttribute('aria-busy') === 'false');
   const before = state.boardReads;
-  const resumed = page.waitForResponse(response => response.url().endsWith('/mcp') && response.request().postDataJSON()?.params.name === 'deal-room-board');
+  const resumed = page.waitForResponse(response => response.url().endsWith('/mcp') && response.request().postDataJSON()?.params.name === 'read-home-agenda');
   await page.evaluate(() => window.dispatchEvent(new PageTransitionEvent('pageshow', { persisted: true })));
   await page.waitForFunction(() => /Active deals: \d/.test(document.querySelector('#dealCounts').textContent));
   await resumed; assert.ok(state.boardReads > before);
@@ -327,7 +335,7 @@ test('an open lead detail updates automatically while preserving expanded Detail
   assert.deepEqual(state.errors, []);
 });
 
-test('R5 whole refresh deadline preserves completed widgets across multiple hung detail waves', async t => {
+test('R5 agenda deadline preserves independent completed widgets', async t => {
   const { page, calls } = await open(t, { hangDetails: true });
   await page.locator('.home-lead').first().waitFor();
   await page.locator('#homeControl:not([hidden])').waitFor();
@@ -336,10 +344,11 @@ test('R5 whole refresh deadline preserves completed widgets across multiple hung
     await page.waitForTimeout(20);
   }
   await page.waitForFunction(() => document.querySelector('#refreshHome').getAttribute('aria-busy') === 'false');
-  assert.match(await page.locator('#dealCounts').textContent(), /Active deals: 12/);
+  assert.match(await page.locator('#dealFlags').textContent(), /unavailable/i);
   assert.equal(await page.locator('#homeLeads').isVisible(), true);
   assert.equal(await page.locator('#homeControl').isVisible(), true);
-  await settles(() => assert.equal(calls.filter(name => name === 'get-deal-room').length, 12));
+  assert.equal(calls.filter(name => name === 'get-deal-room').length, 0);
+  assert.equal(calls.filter(name => name === 'read-home-agenda').length, 1);
 });
 
 test('R6 settled board failure shows unavailable rather than Updating and automatic recovery clears it', async t => {
@@ -362,8 +371,6 @@ test('R6 settled board failure shows unavailable rather than Updating and automa
 test('R7 linked Deals detail refusal or timeout cannot prevent board and feed polling', async t => {
   for (const failure of ['503', 'timeout']) await t.test(failure, async t => {
     const state = await open(t, { delayInitialFeed: true }); const { page } = state;
-    // Finish Home's detail wave before observing the receiving Deals request.
-    // Otherwise a late Home request can advance the clock before Deals starts its deadline.
     await page.waitForFunction(() => document.querySelector('#refreshHome').getAttribute('aria-busy') === 'false');
     state.failDetails(failure);
     const firstFeed = page.waitForRequest('**/pipeline/changes');
