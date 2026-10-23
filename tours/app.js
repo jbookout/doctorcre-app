@@ -102,7 +102,7 @@ import { cheatSheetText, factSummary, formatTourDate, tourDisplayName, tourMetaL
       const data = await post("/api/tours/create", createPending);
       if (!id(data.tour_id)) throw new Error("outcome_unknown");
       routeEndpoints.set(data.tour_id, { start: createPending.start_point, end: createPending.end_point });
-      await loadLibrary(); await loadTour(data.tour_id);
+      await loadLibrary(); await loadTour(data.tour_id,{throwOnFailure:true});
       createPending = null; createPhase = "ready"; persistPending(); $("#create-tour-state").textContent = "Tour created. Add properties from the selection cart.";
       $("#create-tour-panel").open = false;
     } catch (error) {
@@ -701,7 +701,7 @@ import { cheatSheetText, factSummary, formatTourDate, tourDisplayName, tourMetaL
   }
   async function loadProjectionPreview() { const preview = $("#projection-preview"); state.candidateDigest = ""; preview.hidden = true; preview.textContent = ""; if (!id(state.projectionDraftId)) return; const data = await request(`/api/tours/projection/candidates?projection_id=${encodeURIComponent(state.projectionDraftId)}`); state.candidateDigest = text(data.candidate_digest); const rows = Array.isArray(data.preview) ? data.preview : []; preview.textContent = rows.map(row => { const facts = row?.facts && typeof row.facts === "object" ? row.facts : {}; return `${text(row.route_label, `Stop ${row.route_sequence || ""}`)} · ${text(facts["display.name"], "Unnamed property")}\n${text(facts["display.address"], "Address unavailable")}${factSummary(facts) ? `\n${factSummary(facts)}` : ""}`; }).join("\n\n"); preview.hidden = false; }
   let tourLoadSeq = 0;
-  async function loadTour(tourId, { requireComposerDetail = false } = {}) {
+  async function loadTour(tourId, { requireComposerDetail = false, throwOnFailure = false } = {}) {
     if (state.pendingShare && state.pendingShare.tourId !== tourId) { status("Check link outcome before switching Tours."); return; }
     if (state.shareBusy) return;
     if (restoredTourId && restoredTourId !== tourId) { status("Reconcile the retained Tour before switching Tours."); return; }
@@ -748,6 +748,7 @@ import { cheatSheetText, factSummary, formatTourDate, tourDisplayName, tourMetaL
       if (denied) { control.href = "/auth/login"; control.dataset.tourSignin = ""; control.textContent = "Sign in"; }
       else { control.type = "button"; control.dataset.tourRetry = ""; control.textContent = "Retry Tour detail"; control.onclick = () => void loadTour(tourId,{requireComposerDetail}); }
       recovery.append(control);
+      if (throwOnFailure) throw error;
       return false;
     } finally { navigationBusy = false; if (composer) renderComposer(); renderCreate(); }
   }

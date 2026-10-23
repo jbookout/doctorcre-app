@@ -37,7 +37,8 @@ for (const failure of ["503", "timeout", "malformed"]) test(`automatic itinerary
   const scope = `sha256:${createHash("sha256").update("synthetic-csrf").digest("hex")}`;
   const { dom, doc } = await open(store, { "doctorcre-itinerary-tour-v1": JSON.stringify({ scope, tour_id: tourId }) });
   assert.equal(reads, 1);
-  assert.match(doc.querySelector("#status").textContent, /Saved Tour temporarily unavailable/i);
+  assert.match(doc.querySelector("#status").textContent, /Tour detail unavailable/i);
+  assert.ok(doc.querySelector("[data-tour-retry]"));
   assert.equal(doc.querySelector("#create-tour").disabled, false);
   fail = false; doc.querySelector(".tour-button").click(); await settle();
   assert.equal(reads, 2); assert.match(doc.querySelector("#status").textContent, /Tour ready/);
