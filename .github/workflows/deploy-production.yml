@@ -35,9 +35,8 @@ jobs:
           SOURCE_COMMIT: ${{ github.event.workflow_run.head_sha }}
         run: |
           set -euo pipefail
-          ci_run=$(gh run list --workflow ci.yml --commit "$SOURCE_COMMIT" --event push --limit 1 --json databaseId --jq '.[0].databaseId // empty')
+          ci_run=$(gh run list --workflow ci.yml --commit "$SOURCE_COMMIT" --event push --branch main --limit 1 --json databaseId --jq '.[0].databaseId // empty')
           test -n "$ci_run" || { echo '::error::No main CI run exists for the staged source'; exit 1; }
-          sleep 2
           gh run watch "$ci_run" --exit-status --interval 10
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
@@ -49,6 +48,14 @@ jobs:
         env:
           DOCTORCRE_SOURCE_COMMIT: ${{ github.event.workflow_run.head_sha }}
       - run: npm run artifact:verify
+      - name: Require current main source
+        env:
+          SOURCE_COMMIT: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$SOURCE_COMMIT"
+          git fetch --no-tags origin refs/heads/main:refs/remotes/origin/main
+          test "$(git rev-parse origin/main)" = "$SOURCE_COMMIT"
       - name: Deploy production
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
