@@ -18,7 +18,7 @@ import {
 import {
   cellKey, performFieldWrite, unresolvedFieldWrites, fieldWriteMessage, nextCellBase,
 } from './field-write-reconciliation.mjs';
-import { classifyCommandOutcome, commandMessage, pendingCommand, performCommand } from './command-feedback.mjs';
+import { beginCommand, settleCommand, classifyCommandOutcome, commandMessage, pendingCommand, performCommand } from './command-feedback.mjs';
 import { renderAccountCards } from './account-cards.js';
 import { updatedLabel } from './auto-refresh.mjs';
 import { mountVisibilityPoll } from './visibility-poll.mjs';
@@ -63,6 +63,7 @@ const state = {
   // come from a snapshot. See field-write-reconciliation.mjs.
   fieldWrites: {},
   nextStepRequests: new Map(), nextStepInFlight: new Set(),
+  nationalCreations: {}, nationalConfirmations: {},
   presence: [], captureSessions: [],
   confirms: [], review: null,
   // Recent changes are session memory only: bounded, never stored, and never
@@ -995,8 +996,7 @@ function openForm({ context='Deal Room', title, submit='Save', body, onSubmit })
     button.disabled = true;
     $('#formError').hidden = true;
     try {
-      await onSubmit(new FormData(event.currentTarget));
-      dialog.close();
+      if (await onSubmit(new FormData(event.currentTarget)) !== false) dialog.close();
     } catch (error) {
       const detail = error.payload?.hint || error.payload?.error || error.message;
       $('#formError').textContent = detail;
@@ -1081,16 +1081,139 @@ function parkDealForm(dealId) {
     } });
 }
 
+function nationalResearchFields() {
+  return `<fieldset><legend>Research for the new organization or sub-client</legend>
+    <p>Review sources before creating this record. Link the source you checked for each field, including a source documenting unavailable information. A source may support several fields.</p>
+    ${[['name','Name'],['company','Company'],['phone','Phone'],['specialty','Specialty'],['market','Market']].map(([field,label]) => `<div class="field"><label for="research_${field}">${label} source (HTTPS URL)</label><input id="research_${field}" name="research_${field}" type="url" required></div>`).join('')}
+    <div class="field"><label for="researchObserved">When did you review these sources?</label><input id="researchObserved" name="research_observed_at" type="datetime-local" required><small>Enter the observation time in your local time zone.</small></div>
+    <div class="field"><label for="researchDiscrepancies">Discrepancies found (optional)</label><textarea id="researchDiscrepancies" name="research_discrepancies" placeholder="One discrepancy per line; leave blank if none."></textarea></div></fieldset>`;
+}
+
+// Producer tools.js@804a3794: typed HTTPS sources and non-future observations,
+// with source indexes for all five required fields. Never invent research.
+function nationalResearchEvidence(data) {
+  const observed = new Date(String(data.get('research_observed_at') || ''));
+  if (!Number.isFinite(observed.getTime()) || observed.getTime() > Date.now() + 300000)
+    throw new Error('Enter when you reviewed the research sources; the time cannot be in the future.');
+  const sources = [], field_evidence = {};
+  for (const field of ['name','company','phone','specialty','market']) {
+    let url;
+    try { url = new URL(String(data.get(`research_${field}`) || '').trim()); } catch { /* actionable error below */ }
+    if (url?.protocol !== 'https:') throw new Error(`Research evidence needs an HTTPS source for ${field}. Review and link that source before creating the record.`);
+    let index = sources.findIndex(source => source.url === url.href);
+    if (index < 0) { index = sources.length; sources.push({url:url.href, observed_at:observed.toISOString()}); }
+    field_evidence[field] = [index];
+  }
+  return {sources, field_evidence, discrepancies:String(data.get('research_discrepancies') || '').split('\n').map(line => line.trim()).filter(Boolean)};
+}
+
+function nationalCreationForm({operationKey, context, title, submit, body, request, send, receiptId, success, accountId}) {
+  const actor = state.selfActor;
+  const key = `${actor}:${operationKey}`;
+  const held = state.nationalCreations[key];
+  let confirmation = state.nationalConfirmations[key];
+  const review = () => `<div id="nationalCandidates"><p>${esc(confirmation.hint || 'An organization with this name already exists. Review it before creating a separate brand.')}</p>
+    <ul>${confirmation.candidates.map(candidate => `<li>${esc(candidate.name)} (${esc(candidate.id)})</li>`).join('')}</ul>
+    <p>Cancel to use the existing client. Continue only if this is a genuinely separate brand.</p>
+    <div class="field"><label><input type="checkbox" name="confirm_separate" required${state.nationalCreations[key]?.request.force_new ? ' checked disabled' : ''}> I reviewed these candidates and confirm this is a separate brand.</label></div>
+    <button type="button" id="nationalEditDetails"${state.nationalCreations[key] ? ' disabled' : ''}>Edit account details</button></div>`;
+  const wireReview = () => {
+    if (!$('#nationalEditDetails')) return;
+    $('#nationalEditDetails').onclick = () => {
+      delete state.nationalConfirmations[key];
+      confirmation = null;
+      $('#nationalCandidates').remove();
+      $('#nationalCreationFields').disabled = false;
+      $('#dialogSubmit').textContent = submit;
+      $('#formError').hidden = true;
+    };
+  };
+  openForm({context, title, submit:held ? 'Check creation outcome' : confirmation ? 'Create separate brand' : submit,
+    body:`${held ? `<p>Check creation outcome for ${esc(held.request.name || held.request.deal_name)} before starting another record.</p>` : ''}<fieldset id="nationalCreationFields"${held || confirmation ? ' disabled' : ''}>${body}</fieldset>${confirmation ? review() : ''}`,
+    onSubmit:async data => {
+      if (state.selfActor !== actor || accountId && account()?.account_client_id !== accountId)
+        throw new Error('The account or signed-in partner changed. Reopen this form in its original account and session.');
+      const pending = state.nationalCreations[key];
+      if (!pending && confirmation && data.get('confirm_separate') !== 'on')
+        throw new Error('Review the existing candidates and confirm a separate brand before creating it.');
+      const args = pending?.request || (confirmation ? {...confirmation.request,force_new:true} : request(data));
+      const started = beginCommand(state.nationalCreations, {operationKey:key,args,newKey:uuidv4});
+      if (!started.started) throw new Error('Creation is still being sent. Wait for the server to answer.');
+      state.nationalCreations = started.state;
+      $('#nationalCreationFields').disabled = true;
+      if ($('#nationalEditDetails')) $('#nationalEditDetails').disabled = true;
+      try {
+        const result = await send(started.request);
+        if (result?.needs_confirm === true && result.ok !== false && !result.error && !result.conflict && receiptId === 'account_client_id' && !started.request.force_new &&
+            Array.isArray(result.candidates) && result.candidates.length && result.candidates.every(candidate => typeof candidate.id === 'string' && typeof candidate.name === 'string')) {
+          state.nationalCreations = settleCommand(state.nationalCreations,key,{status:'conflict'});
+          confirmation = {request:started.request,candidates:result.candidates,hint:result.hint};
+          state.nationalConfirmations[key] = confirmation;
+          $('#nationalCandidates')?.remove();
+          $('#dialogBody').insertAdjacentHTML('beforeend',review());
+          wireReview();
+          $('#dialogSubmit').textContent = 'Create separate brand';
+          return false;
+        }
+        if (result?.ok !== true || result.needs_confirm || result.error || result.conflict ||
+            typeof result[receiptId] !== 'string' || !result[receiptId].trim() ||
+            accountId && result.account_client_id !== accountId) {
+          if (result?.ok === false || result?.error) throw Object.assign(new Error(result.hint || 'Creation was refused. Review the fields before trying again.'), {payload:{error:result.error || 'creation_refused',hint:result.hint}});
+          throw new Error('Creation could not be confirmed. Check creation outcome before starting another record.');
+        }
+      } catch (error) {
+        const classified = classifyCommandOutcome({error});
+        const outcome = classified.reason === 'offline' && pending ? pending : classified;
+        const unknown = outcome.status === 'unknown' && outcome.reason !== 'offline';
+        state.nationalCreations = settleCommand(state.nationalCreations,key,unknown ? outcome : {status:'refused'});
+        $('#nationalCreationFields').disabled = unknown || Boolean(confirmation);
+        if ($('#nationalEditDetails')) $('#nationalEditDetails').disabled = unknown;
+        const confirm = $('[name="confirm_separate"]');
+        if (confirm) {
+          confirm.disabled = unknown;
+          if (!unknown) confirm.checked = false;
+        }
+        $('#dialogSubmit').textContent = unknown ? 'Check creation outcome' : confirmation ? 'Create separate brand' : submit;
+        if (unknown) throw new Error(commandMessage(outcome,'Creation'));
+        if (error.payload?.error === 'research_evidence_required') throw new Error('Research evidence is required: the sub-client name did not match an existing client under this account. Choose New sub-client and provide reviewed sources.');
+        throw error;
+      }
+      state.nationalCreations = settleCommand(state.nationalCreations,key,{status:'ok'});
+      delete state.nationalConfirmations[key];
+      // Creation is confirmed independently of whether the subsequent read works.
+      showToast(success);
+      try { await loadHome(); } catch { showToast('Creation confirmed. The board could not refresh; reload to see the current records.'); }
+    }});
+  wireReview();
+  const retained = held?.request || confirmation?.request;
+  if (retained) {
+    const values = {...retained,client_mode:retained.research_evidence ? 'new' : 'existing'};
+    const evidence = retained.research_evidence;
+    if (evidence) {
+      for (const [field,indexes] of Object.entries(evidence.field_evidence)) values[`research_${field}`] = evidence.sources[indexes[0]].url;
+      const observed = new Date(evidence.sources[0].observed_at);
+      values.research_observed_at = new Date(observed.getTime() - observed.getTimezoneOffset()*60000).toISOString().slice(0,16);
+      values.research_discrepancies = evidence.discrepancies.join('\n');
+    }
+    for (const [name,value] of Object.entries(values)) {
+      const input = $(`#nationalCreationFields [name="${name}"]`);
+      if (input) input.value = value;
+    }
+  }
+}
+
 function marketAgentForm(dealId) {
   const deal = state.deals.get(dealId);
   openForm({ title:`Market assignment — ${deal.name}`, submit:'Save assignment', body:`
     <div class="field"><label for="agentName">Assigned local agent</label><input id="agentName" name="agent_name" required value="${esc(deal.market_agent || '')}" placeholder="Agent’s full name"></div>
     <div class="field"><label for="agentMarket">Market</label><input id="agentMarket" name="market" value="${esc(deal.market || '')}" placeholder="City, state"></div>`,
     onSubmit:async (data) => {
-      await state.client.setMarketAgent({ deal:dealId, agent_name:data.get('agent_name'), market:data.get('market') || null,
+      const market = String(data.get('market') || '').trim();
+      const result = await state.client.setMarketAgent({ deal:dealId, agent_name:data.get('agent_name'), ...(market ? {market} : {}),
         source:'partner stated in Deal Room', idempotency_key:uuidv4() });
+      if (result?.ok !== true || result.error || result.needs_confirm || result.deal_id !== dealId) throw new Error('Market assignment could not be confirmed. Refresh the record before trying again.');
       const current = confirmLocalWrite(dealId, { market_agent:data.get('agent_name'),
-        ...(data.get('market') ? { market:data.get('market') } : {}) });
+        ...(market ? {market} : {}) });
       renderBoardOnly(); showToast(`Market agent saved on ${current?.name || deal.name}`);
     } });
 }
@@ -1121,23 +1244,34 @@ function addTeamDealForm() {
 }
 
 function addAccountForm() {
-  openForm({ context:'National accounts', title:'Add national account', submit:'Create account', body:`
+  nationalCreationForm({ operationKey:'account', context:'National accounts', title:'Add national account', submit:'Create account', body:`
     <div class="field"><label for="accountName">Brand / organization</label><input id="accountName" name="name" required><small>Creates one parent account. Market transactions will live under their own sub-clients.</small></div>
     <div class="field-row"><div class="field"><label for="accountOwner">Account owner</label><select id="accountOwner" name="owner"><option value="${esc(state.selfActor)}">${esc(actorName(state.selfActor))}</option><option value="${state.selfActor === 'joe' ? 'dell' : 'joe'}">${esc(actorName(state.selfActor === 'joe' ? 'dell' : 'joe'))}</option></select></div>
-    <div class="field"><label for="accountVertical">Healthcare vertical</label><input id="accountVertical" name="vertical"></div></div>`,
-    onSubmit:async (data) => { await state.client.createNationalAccount({ ...Object.fromEntries(data.entries()), idempotency_key:uuidv4() }); await loadHome(); showToast('National account created'); } });
+    <div class="field"><label for="accountVertical">Healthcare vertical</label><input id="accountVertical" name="vertical"></div></div>${nationalResearchFields()}`,
+    request:data => ({name:String(data.get('name') || '').trim(),owner:String(data.get('owner')),vertical:String(data.get('vertical') || '').trim(),research_evidence:nationalResearchEvidence(data)}),
+    send:args => state.client.createNationalAccount(args), receiptId:'account_client_id', success:'National account created' });
 }
 
 function addMarketDealForm() {
   const selected = account();
-  openForm({ context:selected.account_name, title:'Add market transaction', submit:'Create market deal', body:`
-    <div class="field"><label for="marketClient">Franchisee / local client</label><input id="marketClient" name="client_name" required><small>Reuses the exact sub-client if it exists; otherwise creates one under ${esc(selected.account_name)}.</small></div>
+  nationalCreationForm({ operationKey:`market:${selected.account_client_id}`, accountId:selected.account_client_id, context:selected.account_name, title:'Add market transaction', submit:'Create market deal', body:`
+    <div class="field"><label for="marketClientMode">Sub-client</label><select id="marketClientMode" name="client_mode"><option value="new">New sub-client</option><option value="existing">Existing researched sub-client</option></select></div>
+    <div class="field"><label for="marketClient">Franchisee / local client</label><input id="marketClient" name="client_name" required><small>For an existing researched sub-client, enter its exact name under ${esc(selected.account_name)}. An unmatched name requires new research.</small></div>
     <div class="field"><label for="marketDealName">Deal name</label><input id="marketDealName" name="deal_name" required></div>
     <div class="field-row"><div class="field"><label for="marketCity">Market</label><input id="marketCity" name="market" required placeholder="City"></div><div class="field"><label for="marketState">State</label><input id="marketState" name="state" maxlength="2"></div></div>
     <div class="field-row"><div class="field"><label for="marketAgent">Assigned agent</label><input id="marketAgent" name="agent_name" placeholder="Leave blank if unknown"></div><div class="field"><label for="marketSegment">Healthcare vertical</label><input id="marketSegment" name="segment"></div></div>
-    <input type="hidden" name="deal_type" value="startup"><input type="hidden" name="phase" value="pending">`,
-    onSubmit:async (data) => { await state.client.createNationalMarketDeal({ account_client_id:selected.account_client_id,
-      ...Object.fromEntries(data.entries()), idempotency_key:uuidv4() }); await loadHome(); showToast(`Market deal added to ${selected.account_name}`); } });
+    <div id="marketResearch">${nationalResearchFields()}</div>`,
+    request:data => ({account_client_id:selected.account_client_id,
+      ...Object.fromEntries(['client_name','deal_name','market','state','agent_name','segment'].map(field => [field,String(data.get(field) || '').trim()])),
+      deal_type:'startup',phase:'pending',...(data.get('client_mode') === 'existing' ? {} : {research_evidence:nationalResearchEvidence(data)})}),
+    send:args => state.client.createNationalMarketDeal(args), receiptId:'deal_id', success:`Market deal added to ${selected.account_name}` });
+  const updateResearchFields = () => {
+    const existing = $('#marketClientMode').value === 'existing';
+    $('#marketResearch').hidden = existing;
+    $('#marketResearch fieldset').disabled = existing;
+  };
+  $('#marketClientMode').onchange = updateResearchFields;
+  updateResearchFields();
 }
 
 function accountOwnerForm() {
