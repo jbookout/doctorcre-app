@@ -17,7 +17,7 @@ const screenshot = async (page, name) => {
   await page.screenshot({ path: join(process.env.W2_SCREENSHOT_DIR, `${name}.png`), fullPage: !name.includes('detail') });
 };
 
-async function open(t, { width = 1440, motion = 'reduce', leads = true, delayDetails = false, hangDetails = false, longLead = false, tasksOnly = false, heldTasks = false, malformedTasks = false, delayBoard = false, delayInitialFeed = false, origin = 'http://localhost', malformedBoard = false, firstOpen = false } = {}) {
+async function open(t, { width = 1440, motion = 'reduce', leads = true, delayDetails = false, hangDetails = false, longLead = false, tasksOnly = false, heldTasks = false, malformedTasks = false, delayBoard = false, delayInitialFeed = false, origin = 'http://localhost', malformedBoard = false, firstOpen = false, emptyAgenda = false, initialDetailFailure = null } = {}) {
   const client = await createFixtureClient({ seedUrl: `data:application/json;base64,${Buffer.from(await readFile(new URL('../data/board-seed.json', import.meta.url))).toString('base64')}` });
   const browser = await chromium.launch();
   const page = await browser.newPage({ viewport: { width, height: 1000 }, timezoneId: 'UTC', reducedMotion: motion });
@@ -27,7 +27,7 @@ async function open(t, { width = 1440, motion = 'reduce', leads = true, delayDet
   if (!firstOpen) await page.addInitScript(() => {
     if (!localStorage.getItem('doctorcre:morning:joe')) localStorage.setItem('doctorcre:morning:joe', JSON.stringify({ day: '2026-10-01', lastShownAt: '2026-10-01T14:00:00Z', since: '2026-09-30T17:00:00Z' }));
   });
-  const errors = [], calls = [], liveLeads = structuredClone(leadRows); let boardReads = 0, feedReads = 0, failBoard = false, detailFailure = null, leadFailure = null;
+  const errors = [], calls = [], liveLeads = structuredClone(leadRows); let boardReads = 0, feedReads = 0, failBoard = false, detailFailure = initialDetailFailure, leadFailure = null;
   const responses = new Map();
   let boardMalformed = malformedBoard;
   let releaseInitialFeed;
@@ -41,10 +41,10 @@ async function open(t, { width = 1440, motion = 'reduce', leads = true, delayDet
   page.on('pageerror', error => errors.push(error.message));
   const handlers = {
     'deal-room-board': async () => { boardReads++; if (delayBoard) await new Promise(resolve => setTimeout(resolve, 100)); if (failBoard) throw Error('Unavailable'); const board = await client.getBoard(); if (boardMalformed) return { ...board, deals: [{ name: 'Demo missing record identity' }] }; return hangDetails ? { ...board, deals: Array.from({ length: 12 }, (_, i) => ({ ...board.deals[0], id: `demo-${i}`, operating_state: 'active' })) } : board; },
-    'get-deal-room': async args => { if (detailFailure === '503') throw Error('Unavailable'); if (hangDetails || detailFailure === 'timeout') return new Promise(() => {}); if (delayDetails) await new Promise(resolve => setTimeout(resolve, 100)); const detail = await client.getDeal(args.deal); return { ...detail,
+    'get-deal-room': async args => { if (detailFailure === '503' || (detailFailure === 'partial' && args.deal === 'd01')) throw Error('Unavailable'); if ([401, 403].includes(detailFailure)) throw Object.assign(Error('Refused'), { status: detailFailure }); if (hangDetails || detailFailure === 'timeout') return new Promise(() => {}); if (delayDetails) await new Promise(resolve => setTimeout(resolve, 100)); const detail = await client.getDeal(args.deal); return { ...detail,
       ...detail.deal, deal_id: detail.deal.id, events: detail.history.map(event => ({ ...event, verb: event.verb || 'patch-deal-field' })),
-      critical_dates: tasksOnly ? [] : [{ id: `demo-date-${args.deal}`, note: 'Demo tour', due_on: '2026-10-03', status: 'open' }],
-      next_actions: malformedTasks ? [null] : [{ id: `demo-task-${args.deal}`, description: 'Demo follow-up', due_on: '2026-10-01', status: 'open', owner: detail.deal.owner, hold_until: heldTasks ? '2027-01-01' : null }] }; },
+      critical_dates: tasksOnly || emptyAgenda ? [] : [{ id: `demo-date-${args.deal}`, note: 'Demo tour', due_on: '2026-10-03', status: 'open' }],
+      next_actions: emptyAgenda ? [] : malformedTasks ? [null] : [{ id: `demo-task-${args.deal}`, description: 'Demo follow-up', due_on: '2026-10-01', status: 'open', owner: detail.deal.owner, hold_until: heldTasks ? '2027-01-01' : null }] }; },
     'correspondence-readiness': args => client.correspondenceReadiness(args),
     'today-triage': () => client.todayTriage(),
     'list-feature-switches': () => client.listFeatureSwitches(),
@@ -272,7 +272,7 @@ test('Home has no ambient motion and hover never moves a row, without hiding dat
   await screenshot(page, 'desktop-reduced-motion');
 });
 
-test('no eligible leads means hidden widget; polling, resume and online recover failed Home without a retry prompt', async t => {
+test('no eligible leads means hidden widget; failed Home retains unavailable calendar and automatic recovery', async t => {
   const state = await open(t, { leads: false, delayDetails: true }); const { page } = state;
   // Counts render before detail reads settle. Polling is scheduled after the
   // whole refresh, so advancing its clock must wait for that refresh to finish.
@@ -282,8 +282,9 @@ test('no eligible leads means hidden widget; polling, resume and online recover 
   await page.clock.fastForward(31_000);
   // Recover only after the failing refresh ends: a resume during it joins that read.
   await page.waitForFunction(() => document.querySelector('#dealCounts').textContent.includes('Active deals: —') && document.querySelector('#refreshHome').getAttribute('aria-busy') === 'false');
-  assert.equal(await page.locator('#homeCalendar').isVisible(), false);
-  assert.doesNotMatch(await page.locator('main').textContent(), /retry|read again/i);
+  assert.equal(await page.locator('#homeCalendar').isVisible(), true);
+  assert.match(await page.locator('#homeCalendar').textContent(), /Calendar and tasks unavailable/);
+  assert.equal(await page.locator('#homeCalendar').getByRole('button', { name: 'Retry calendar and tasks', exact: true }).isVisible(), true);
   state.failBoard(false);
   await page.evaluate(() => window.dispatchEvent(new Event('online')));
   await page.waitForFunction(() => /Active deals: \d/.test(document.querySelector('#dealCounts').textContent));
@@ -512,4 +513,77 @@ test('held deal actions remain visible in the deal history reached from Home', a
   await page.locator('.updates-history').click();
   assert.ok(await page.getByText('Held until Jan 1, 2027', {exact:true}).count());
   assert.ok(await page.locator('.deal-note').filter({hasText:'Demo follow-up'}).count());
+});
+
+for (const failure of [null, '503']) test(`Slice A Calendar distinguishes confirmed empty from unavailable: ${failure}`, async t => {
+ const state = await open(t, { emptyAgenda: true, initialDetailFailure: failure });
+ const { page, calls } = state;
+ await page.waitForFunction(() => document.querySelector('#refreshHome').getAttribute('aria-busy') === 'false');
+ const calendar = page.locator('#homeCalendar');
+ assert.equal(await calendar.isVisible(), true);
+ assert.match(await calendar.textContent(), /Calendar & tasks/);
+ if (!failure) {
+  assert.match(await calendar.textContent(), /No .*dates.*tasks/i);
+  assert.doesNotMatch(await calendar.textContent(), /unavailable|updating/i);
+ } else {
+  assert.match(await calendar.textContent(), /unavailable/i);
+  assert.doesNotMatch(await calendar.textContent(), /No .*dates.*tasks/i);
+  state.failDetails(null);
+  const before = calls.length;
+  await calendar.getByRole('button', { name: 'Retry calendar and tasks', exact: true }).click();
+  await page.waitForFunction(() => /No .*dates.*tasks/i.test(document.querySelector('#homeCalendar').textContent));
+  const retried = calls.slice(before);
+  assert.ok(retried.includes('get-deal-room'));
+  assert.equal(retried.includes('lead-board'), false, 'agenda retry does not reload unrelated widgets');
+  assert.equal(retried.includes('read-invoice-tracker'), false);
+ }
+ assert.deepEqual(state.errors, []);
+});
+
+test('Slice A Calendar stays visible while all detail reads are pending', async t => {
+ const { page } = await open(t, { hangDetails: true });
+ assert.equal(await page.locator('#homeCalendar').isVisible(), true);
+ assert.match(await page.locator('#homeCalendar').textContent(), /updating|loading/i);
+ assert.doesNotMatch(await page.locator('#homeCalendar').textContent(), /No .*dates.*tasks/i);
+});
+
+
+test('Slice A Calendar with successful empty details and failed details stays partial', async t => {
+ const { page } = await open(t, { emptyAgenda: true, initialDetailFailure: 'partial' });
+ await page.waitForFunction(() => document.querySelector('#refreshHome').getAttribute('aria-busy') === 'false');
+ const calendar = page.locator('#homeCalendar');
+ assert.equal(await calendar.isVisible(), true);
+ assert.match(await calendar.textContent(), /Some dates unavailable or missing/);
+ assert.doesNotMatch(await calendar.textContent(), /No calendar dates or tasks|Calendar and tasks unavailable/);
+ assert.equal(await calendar.getByRole('button', { name: 'Retry calendar and tasks', exact: true }).isEnabled(), true);
+});
+
+for (const status of [401, 403]) test(`Slice A Calendar retry honors authorization refusal: ${status}`, async t => {
+ const state = await open(t, { initialDetailFailure: '503' });
+ const { page } = state;
+ await page.waitForFunction(() => document.querySelector('#refreshHome').getAttribute('aria-busy') === 'false');
+ await page.locator('.home-lead').first().click();
+ await page.keyboard.press('Escape');
+ state.failDetails(status);
+ await page.locator('#homeCalendar').getByRole('button', { name: 'Retry calendar and tasks', exact: true }).click();
+ await page.waitForFunction(() => document.querySelector('#refreshHome').getAttribute('aria-busy') === 'false');
+ assert.match(await page.locator('#homeCalendar').textContent(), /Sign in to view calendar and tasks/);
+ assert.equal(await page.locator('#homeLeads').isVisible(), false);
+ assert.equal(await page.locator('#homeDetail').evaluate(dialog => dialog.open), false);
+ assert.equal(await page.locator('#homeCalendar button').count(), 0);
+});
+
+test('Slice A Calendar retry clears unrelated private data when the board actor changes', async t => {
+ const state = await open(t, { initialDetailFailure: '503' });
+ const { page, responses } = state;
+ await page.waitForFunction(() => document.querySelector('#refreshHome').getAttribute('aria-busy') === 'false');
+ const board = await page.evaluate(async () => (await (await import('/js/home-boot.js')).homeClient).getBoard());
+ await page.locator('.home-lead').first().click();
+ await page.keyboard.press('Escape');
+ responses.set('deal-room-board', { ...board, actor: 'dell' });
+ state.failDetails(null);
+ await page.locator('#homeCalendar').getByRole('button', { name: 'Retry calendar and tasks', exact: true }).click();
+ await page.waitForFunction(() => document.querySelector('#refreshHome').getAttribute('aria-busy') === 'false');
+ assert.equal(await page.locator('#homeLeads').isVisible(), false);
+ assert.equal(await page.locator('#homeDetail').evaluate(dialog => dialog.open), false);
 });

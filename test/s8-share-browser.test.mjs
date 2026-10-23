@@ -102,3 +102,32 @@ test('QA confidential Share exchanges its scrubbed link before showing propertie
     await page.close();
   });
 });
+
+for (const fonts of ['held', 'available']) test(`Slice A built shared report paints and mounts navigation with ${fonts} font CSS`, async t => {
+  const outDir = await mkdtemp(join(tmpdir(), 'share-font-'));
+  t.after(() => rm(outDir, { recursive: true, force: true }));
+  await buildArtifact({ root, outDir, commit: '0'.repeat(40) });
+  const { server } = await createQaServer({ buildRoot: join(outDir, 'site') });
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  t.after(() => new Promise(resolve => server.close(resolve)));
+  const browser = await chromium.launch(); t.after(() => browser.close());
+  const page = await browser.newPage({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
+  let fontRequests = 0, fontCompleted = false;
+  await page.route('https://fonts.googleapis.com/**', route => {
+    fontRequests++;
+    if (fonts === 'available') {
+      fontCompleted = true;
+      return route.fulfill({ contentType: 'text/css', body: ':root { --synthetic-report-font-loaded: yes; }' });
+    }
+  });
+  await page.goto(`http://127.0.0.1:${server.address().port}/share`, { waitUntil: 'commit' });
+  await page.waitForFunction(() => performance.getEntriesByType('paint').some(entry => entry.name === 'first-contentful-paint'), null, { timeout: 3000 });
+  assert.ok(fontRequests > 0, 'the report font request really started');
+  assert.equal(fontCompleted, fonts === 'available', 'held CSS has not completed at first contentful paint');
+  await page.getByRole('heading', { name: 'Tour report', exact: true }).waitFor();
+  await page.locator('.app-shell-more-toggle').waitFor();
+  assert.equal(await page.locator('.app-shell-controls').count(), 0, 'public report has no account controls');
+  await page.waitForFunction(() => document.querySelector('link[data-font-stylesheet]').rel === 'stylesheet');
+  if (fonts === 'available') await page.waitForFunction(() => getComputedStyle(document.documentElement).getPropertyValue('--synthetic-report-font-loaded').trim() === 'yes');
+  assert.match(await page.locator('body').evaluate(node => getComputedStyle(node).fontFamily), /Arial|system-ui|sans-serif/);
+});
