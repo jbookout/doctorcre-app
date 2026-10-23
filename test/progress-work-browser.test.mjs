@@ -65,7 +65,7 @@ async function open(t,{width=390,path=taskPath,empty=false,stale=false,history=0
       state.turnReads++;if(state.offline)return route.fulfill({status:503,body:'{}'});
       const from=Number(url.searchParams.get('after_seq')||0),limit=Number(url.searchParams.get('limit')||200);
       const turns=state.turns.filter(turn=>turn.seq>from).slice(0,limit);
-      return route.fulfill({contentType:'application/json',body:JSON.stringify({ok:true,turns,latest_seq:turns.at(-1)?.seq||from,more:state.turns.some(turn=>turn.seq>(turns.at(-1)?.seq||from)),csrf_token:'synthetic-csrf',actor:{slug:'joe'}})});
+      return route.fulfill({contentType:'application/json',body:JSON.stringify({ok:true,turns,latest_seq:turns.at(-1)?.seq||from,more:state.turns.some(turn=>turn.seq>(turns.at(-1)?.seq||from)),csrf_token:'synthetic-session',actor:{slug:'joe'}})});
     }
     if(url.pathname==='/api/room/queue'){
       state.queueReads++;if(state.authLost)return route.fulfill({status:401,body:'{}'});if(state.offline)return route.fulfill({status:503,body:'{}'});
@@ -611,7 +611,7 @@ test('shared activity retains stage, desks, presence, wire filters, composers an
   await page.locator('#composerInput').fill('Synthetic room draft');await page.locator('#composerInput').press('Shift+Enter');await page.locator('#composerInput').press('Enter');
   await page.waitForFunction(()=>document.querySelector('#composerInput').value==='');
   await page.locator('#enqueueTitle').fill('Demo enqueue');await page.locator('#queueComposer button').click();await page.waitForFunction(()=>document.querySelector('#queueNotice').textContent.includes('submitted'));
-  assert.equal(posts.length,3);assert.ok(posts.every(post=>post.csrf==='synthetic-csrf'));assert.equal(posts[2].body.body,'@queue enqueue target=sol cap=read :: Demo enqueue');
+  assert.equal(posts.length,3);assert.ok(posts.every(post=>post.csrf==='synthetic-session'));assert.equal(posts[2].body.body,'@queue enqueue target=sol cap=read :: Demo enqueue');
   await page.clock.runFor(5100);await assertEventually(()=>state.queueReads>1 && state.turnReads>1);
   await page.locator('.queue-card').click();await page.waitForURL('**/control-room/progress/work?board=demo-project&task=**');assert.deepEqual(errors,[]);
 });
