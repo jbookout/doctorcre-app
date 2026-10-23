@@ -668,3 +668,38 @@ test('Leads recovery reports the retained inactive target from pipeline',async()
   assert.deepEqual(s.writes[1],s.writes[0]);
  }finally{s.close()}
 });
+
+test('authenticated session controls claim identity and clears owner scope across sessions', async () => {
+ let actor = 'example-partner';
+ const board = { ...workspace(), actor: 'untrusted-board-actor' }, calls = [];
+ const client = createLeadBoardClient({ docContext: false, fetchImpl: async (path, init) => {
+  if (path === '/api/system-work/session') return Response.json({ actor: { slug: actor } });
+  const request = JSON.parse(init.body).params;
+  calls.push(request);
+  assert.notEqual(request.name, 'deal-room-board');
+  if (request.name === 'claim-lead') {
+   board.leads.find(row => (row.registry_ref || row.id) === request.arguments.lead).owner = request.arguments.expected_actor;
+   return Response.json({ result: { content: [{ type: 'text', text: '{"ok":true}' }] } });
+  }
+  return Response.json({ result: { content: [{ type: 'text', text: JSON.stringify(board) }] } });
+ } });
+ const s = await setup(client);
+ try {
+  assert.equal(s.app.state.actor, actor);
+  const owner = s.d.getElementById('ownerFilter');
+  owner.value = actor; owner.dispatchEvent(new s.w.Event('change'));
+  assert.equal(s.d.querySelectorAll('.lead-card').length, 1);
+  assert.equal(s.d.querySelector('.lead-card').dataset.leadId, id(20));
+  actor = 'another-example-partner';
+  await s.app.refresh();
+  assert.equal(s.app.state.actor, actor);
+  assert.equal(s.app.state.filters.owner, '');
+  assert.equal(owner.value, '');
+  s.d.querySelector(`[data-claim="${id(1)}"]`).click();
+  await tick();
+  const writes = calls.filter(call => call.name === 'claim-lead');
+  assert.equal(writes.length, 1);
+  assert.equal(writes[0].arguments.expected_actor, actor);
+  assert.equal(board.leads.find(row => row.id === id(1)).owner, actor);
+ } finally { s.close(); }
+});
