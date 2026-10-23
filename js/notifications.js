@@ -406,20 +406,21 @@ async function savePreference(form) {
     // so both are rendered by the record layer's own name for them.
     const refusal = classifyPreferenceFailure(result);
     sentence = refusal.message;
-    // A conflict is not retried: the stored value moved, so the form is re-read
-    // and re-rendered at the FRESH version and the person decides again.
+    // A conflict is not retried. Show the current saved values beside the
+    // unsaved fields so the person can review both before another save.
     if (refusal.conflict) {
-      dirty = false;
-      draftBaseVersion = null;
+      dirty = true;
       await takePreference();
       // F3: the number the refusal named, SHOWN. It is preferred from the
       // refusal itself when the refusal carried it, and otherwise taken from
       // the re-read that just landed — the two are the same number, and the
       // re-read is the one the person is now looking at.
       const fresh = view.preference.state === "read" ? preferenceView(view.preference.payload) : null;
+      draftBaseVersion = fresh?.version ?? built.args.base_version;
       const current = refusal.currentVersion ?? fresh?.version ?? null;
       const line = versionConflictLine(current, built.args.base_version);
       if (line) sentence = `${sentence} ${line}`;
+      sentence = `${sentence} Your draft is kept. Review the current saved preferences above before saving again.`;
     }
   }
   dock.record(PREFERENCE_OPERATION_KEY, {
