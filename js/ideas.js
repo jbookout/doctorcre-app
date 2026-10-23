@@ -326,6 +326,7 @@ async function saveEvent(event) {
   view.events.saving = true;
   save.disabled = true;
   message.textContent = "Saving…";
+  let attempted = false;
   try {
     if (!retained && view.events.current) {
       const read = eventReadState(await client.listIndustryEvents({ limit: EVENT_LIST_LIMIT }));
@@ -340,6 +341,7 @@ async function saveEvent(event) {
     const operation = retained || { args: Object.freeze({ ...request.args, idempotency_key: crypto.randomUUID() }), draft: view.events.draft };
     view.events.pending.set(key, operation);
     for (const input of form.querySelectorAll("input,select,textarea")) input.disabled = true;
+    attempted = true;
     const result = view.events.current
       ? await client.updateIndustryEvent(operation.args) : await client.addIndustryEvent(operation.args);
     if (result?.ok !== true || !result.event) throw new Error("Save outcome unavailable");
@@ -355,7 +357,23 @@ async function saveEvent(event) {
     }
     announce(`${result.event.title || "Event"} saved. Events refreshed from the record.`);
   } catch (error) {
-    const outcome = eventWriteOutcome(error);
+    if (!attempted && !retained) {
+      message.textContent = "Event not sent. Its current record could not be verified. Your draft is kept; try saving again after the read recovers.";
+      for (const input of form.querySelectorAll("input,select,textarea")) input.disabled = false;
+      save.textContent = "Save event"; save.disabled = false;
+      announce(message.textContent);
+      return;
+    }
+    // A refusal of this replay's transport/session does not establish whether
+    // the original write committed. The client can also identify an exact
+    // retained request when its own outcome classifier remains uncertain.
+    const unresolved = error.pendingRequest || (retained &&
+      ([401, 403, 408, 429].includes(error.status) || error.status >= 500 || error.payload?.error === "offline"));
+    const outcome = unresolved ? "unknown" : eventWriteOutcome(error);
+    if (error.pendingRequest) {
+      const operation = view.events.pending.get(key) || retained;
+      view.events.pending.set(key, { args: Object.freeze({ ...error.pendingRequest }), draft: operation?.draft || view.events.draft });
+    }
     if (outcome !== "unknown") view.events.pending.delete(key);
     message.textContent = {
       conflict: "This event changed since you opened it. Your draft is kept; review the changes below.",

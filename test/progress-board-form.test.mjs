@@ -81,6 +81,7 @@ test("typing whitespace after a choice clears it and previews no answer", async 
   assert.equal(view.preview.textContent, "Will send: —");
   await view.submit();
   assert.equal(view.writes.length, 0);
+  assert.equal(view.current().querySelector("button[type=submit]").disabled, false, "an invalid draft remains editable and can be submitted after correction");
 });
 
 test("an unconfirmed send locks the shown answer until the identical retry", async () => {

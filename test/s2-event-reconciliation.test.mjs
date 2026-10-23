@@ -32,3 +32,24 @@ test('S2 uncertain event save survives closing and reopening with its exact orig
  assert.equal(s.doc.getElementById('eventTitle').value,'My draft');assert.equal(s.doc.getElementById('eventTitle').disabled,true);assert.equal(s.doc.getElementById('eventSave').disabled,false);
  const reads=s.reads;s.setFail(false);await s.submit();assert.deepEqual(s.writes[1],s.writes[0]);assert.equal(s.reads,reads+1,'only post-success refresh, no pre-replay rebase');
 });
+
+test('S2 an authorization failure after an unknown event write keeps its original request locked for reconciliation',async()=>{
+ const s=await setup();s.api.openEvent(s.current.id);s.doc.getElementById('eventTitle').value='My draft';s.setFail(true);await s.submit();
+ const original=structuredClone(s.writes[0]);
+ s.api.setClient({selfActor:'joe',updateIndustryEvent:async()=>{throw Object.assign(new Error('Denied retry'),{status:403,pendingRequest:original})}});
+ await s.submit();assert.deepEqual({...s.api.view.events.pending.get(s.current.id)?.args},original);
+ assert.equal(s.doc.getElementById('eventTitle').disabled,true);assert.equal(s.doc.getElementById('eventSave').disabled,false);assert.match(s.doc.getElementById('eventFormMessage').textContent,/unknown/i);
+ s.api.closeEvent({discard:true});s.api.openEvent(s.current.id);assert.equal(s.doc.getElementById('eventTitle').value,'My draft');assert.equal(s.doc.getElementById('eventSave').textContent,'Check outcome');
+});
+
+test('S2 failed session bootstrap on an unknown event replay cannot discard the original request',async()=>{
+ const s=await setup();s.api.openEvent(s.current.id);s.doc.getElementById('eventTitle').value='My draft';s.setFail(true);await s.submit();const original=structuredClone(s.writes[0]);
+ s.api.setClient({selfActor:'joe',updateIndustryEvent:async()=>{throw Object.assign(new Error('Session lookup denied'),{status:403})}});
+ await s.submit();assert.deepEqual({...s.api.view.events.pending.get(s.current.id)?.args},original);assert.equal(s.doc.getElementById('eventTitle').disabled,true);assert.equal(s.doc.getElementById('eventSave').disabled,false);
+});
+
+for(const kind of ['network','malformed'])test(`S2 ${kind} pre-submit event read sends nothing and leaves the draft available for another save`,async()=>{
+ const s=await setup();s.api.openEvent(s.current.id);s.doc.getElementById('eventTitle').value='My draft';
+ s.api.setClient({selfActor:'joe',listIndustryEvents:async()=>{if(kind==='network')throw new Error('Read interrupted');return{}},updateIndustryEvent:async()=>assert.fail('write must not be attempted')});
+ await s.submit();assert.equal(s.api.view.events.pending.size,0);assert.equal(s.doc.getElementById('eventSave').disabled,false);assert.equal(s.doc.getElementById('eventTitle').disabled,false);assert.equal(s.doc.getElementById('eventTitle').value,'My draft');assert.match(s.doc.getElementById('eventFormMessage').textContent,/not sent/i);
+});

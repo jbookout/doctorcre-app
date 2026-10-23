@@ -806,6 +806,9 @@ export function mountBoard(deps = {}) {
       const retained = pendingRequests.get(questionId);
       const value = retained?.answer_text || selectedAnswer();
       const key = retained?.idempotency_key || uuidv4();
+      let args;
+      try { args = retained || answerRequest(q, view.board_id, value, key); }
+      catch (cause) { setFormState(questionId, { busy: false, message: cause.message }); return; }
       if (!retained) {
         const generation = readSeq;
         setFormState(questionId, { busy: true, message: "Checking current question…" });
@@ -829,9 +832,6 @@ export function mountBoard(deps = {}) {
           return;
         }
       }
-      let args;
-      try { args = retained || answerRequest(q, view.board_id, value, key); }
-      catch (cause) { setFormState(questionId, { message: cause.message }); return; }
       pendingRequests.set(questionId, args);
       lockAnswer();
       showAnswer();
