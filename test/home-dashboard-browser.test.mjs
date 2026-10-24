@@ -87,7 +87,7 @@ async function open(t, { width = 1440, motion = 'reduce', leads = true, delayDet
   });
   await page.goto(`${origin}/?mode=live`);
   await page.waitForFunction(() => /Active deals: \d/.test(document.querySelector('#dealCounts')?.textContent || '') || /unavailable/i.test(document.querySelector('#observedAt')?.textContent || ''));
-  if (firstOpen) { await page.locator('#docOpen[data-brief-unseen]').waitFor(); await page.locator('#docOpen').click(); await page.locator('#docMorning').click(); await page.locator('#docMorningBrief[open]').waitFor(); await page.locator('#morningClose').click(); }
+  if (firstOpen) { await page.locator('#docOpen[data-brief-unseen]').waitFor(); await page.locator('#docOpen').click(); await page.locator('#docMorning').click(); await page.locator('#docMorningBrief[open]').waitFor(); await page.waitForFunction(() => document.getElementById('morningUpdated').hasAttribute('datetime')); await page.locator('#morningClose').click(); }
   return { page, errors, calls, releaseInitialFeed, responses, get boardReads() { return boardReads; }, get feedReads() { return feedReads; }, malformBoard(value) { boardMalformed = value; }, failLeads(value) { leadFailure = value; }, failDetails(value) { detailFailure = value; }, failBoard(value) { failBoard = value; }, updateLead(id, score) { liveLeads.find(row => row.id === id).score = score; } };
 }
 
@@ -103,7 +103,7 @@ test('PR123 R1: Home models the daily morning brief and rejects unknown operatio
   await page.waitForFunction(() => document.querySelector('#morningUpdated')?.hasAttribute('datetime'));
   assert.equal(await page.locator('#docMorningBrief').evaluate(dialog => dialog.open), false);
   await page.locator('#docOpen').click(); await page.locator('#docMorning').click();
-  await page.locator('#docMorningBrief[open]').waitFor();
+  await page.locator('#docMorningBrief[open]').waitFor(); await page.waitForFunction(() => document.getElementById('morningUpdated').hasAttribute('datetime'));
   await page.locator('#morningClose').click();
   await page.clock.setSystemTime(new Date('2026-10-02T15:00:00Z'));
   // A day without input is idle: coming back online reads nothing until the
@@ -119,7 +119,7 @@ test('PR123 R1: Home models the daily morning brief and rejects unknown operatio
   assert.equal(await page.locator('#docMorningBrief').evaluate(dialog => dialog.open), false);
   assert.equal((await preference()).day, '2026-10-01');
   await page.locator('#docOpen').click(); await page.locator('#docMorning').click();
-  await page.locator('#docMorningBrief[open]').waitFor();
+  await page.locator('#docMorningBrief[open]').waitFor(); await page.waitForFunction(() => document.getElementById('morningUpdated').hasAttribute('datetime'));
   assert.ok(calls.filter(name => name === 'morning-brief').length > briefReads);
   assert.equal((await preference()).day, '2026-10-02');
   assert.deepEqual(errors, []);
