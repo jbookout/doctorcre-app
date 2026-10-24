@@ -232,7 +232,8 @@ for (const failed of [false, true]) test(`answer refresh supersedes an older pol
   await reads.request("read-progress-board", 1);
   await page.locator(".answer-form textarea").fill("Ship it");
   await page.locator('.answer-form button[type="submit"]').click();
-  await reads.reply(page, "read-progress-board", 2, snapshot(2, "Sent"));
+  await reads.reply(page, "read-progress-board", 2, snapshot()); // Fresh question check before the write.
+  await reads.reply(page, "read-progress-board", 3, snapshot(2, "Sent"));
   await reads.reply(page, "list-progress-boards", 2, listing("New directory"));
   await page.waitForFunction(() => document.querySelector("#board-title").textContent === "System version 2");
   const old = failed ? { error: "old request failed" } : snapshot();

@@ -808,7 +808,30 @@ export function mountBoard(deps = {}) {
       const key = retained?.idempotency_key || uuidv4();
       let args;
       try { args = retained || answerRequest(q, view.board_id, value, key); }
-      catch (cause) { setFormState(questionId, { message: cause.message }); return; }
+      catch (cause) { setFormState(questionId, { busy: false, message: cause.message }); return; }
+      if (!retained) {
+        const generation = readSeq;
+        setFormState(questionId, { busy: true, message: "Checking current question…" });
+        try {
+          const latest = boardView(await client.readProgressBoard({ board_id: view.board_id }), currentNow());
+          if (disposed) return;
+          if (readSeq !== generation) {
+            setFormState(questionId, { busy: false, message: "The board refreshed. Review the current question before sending." });
+            return;
+          }
+          if (latest.error || latest.board_id !== view.board_id) throw new Error("Board unavailable");
+          const currentQuestion = latest.questions.find(question => question.question_id === questionId);
+          if (!currentQuestion || currentQuestion.status || currentQuestion.revision !== q.revision) {
+            await reloadQuestion(questionId, "This question changed. Loading its current version…");
+            setFormState(questionId, { busy: false, message: "This question changed. Review the current question and your kept draft before sending." });
+            return;
+          }
+        } catch (cause) {
+          if ([401, 403].includes(cause?.status)) readFailure(cause, "board");
+          else setFormState(questionId, { busy: false, message: "Answer not sent. The current question could not be verified." });
+          return;
+        }
+      }
       pendingRequests.set(questionId, args);
       lockAnswer();
       showAnswer();

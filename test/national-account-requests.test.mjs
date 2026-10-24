@@ -1,3 +1,4 @@
+import { createRetainedCommands } from '../js/retained-commands.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
@@ -14,7 +15,8 @@ const open = app.slice(app.indexOf('function openForm('), app.indexOf('function 
 // Validate the published schema, including extra top-level arguments rejected
 // by CARR's mutation dispatcher even where inputSchema omits that constraint.
 function validate(schema, value, path = 'arguments') {
-  assert.equal(Array.isArray(value) ? 'array' : typeof value, schema.type, path);
+  if (schema.type === 'integer') { assert.ok(Number.isSafeInteger(value), path); if (schema.minimum != null) assert.ok(value >= schema.minimum, path); }
+  else assert.equal(Array.isArray(value) ? 'array' : typeof value, schema.type, path);
   if (schema.enum) assert.ok(schema.enum.includes(value), path);
   if (schema.type === 'object') {
     assert.notEqual(value, null, path);
@@ -46,9 +48,11 @@ function harness(reply = () => ({ ok: true, account_client_id: 'demo-account', d
   dialog.showModal = () => { dialog.open = true; };
   dialog.close = () => { dialog.open = false; };
   const sent = [], toasts = [];
-  const state = { selfActor: 'joe', nationalCreations: {}, nationalConfirmations: {}, deals: new Map([['demo-deal', {name:'Demo deal'}]]) };
-  state.client = createLiveClient({docContext:false, online, fetchImpl:async (_, init) => {
+  const state = { selfActor: 'joe', nationalCreations: {}, nationalConfirmations: {}, deals: new Map([['demo-deal', {id:'demo-deal',name:'Demo deal',version:1}]]) };
+  state.client = createLiveClient({docContext:false, online, fetchImpl:async (path, init) => {
+    if (path === '/auth/session') return Response.json({actor:{slug:'joe'},csrf_token:'synthetic-session'});
     const {name, arguments:args} = JSON.parse(init.body).params;
+    if (name === 'get-deal-room') return Response.json({result:{content:[{type:'text',text:JSON.stringify({deal_id:args.deal,version:1})}]}});
     sent.push({name, args});
     try {
       validate(fixture.schemas[name], args);
@@ -61,7 +65,7 @@ function harness(reply = () => ({ ok: true, account_client_id: 'demo-account', d
     }
   }});
   let keys = 0;
-  const bindings = {state, document, FormData:dom.window.FormData, $, $$:selector => [...document.querySelectorAll(selector)],
+  const bindings = {state, document, appWrite:(key,args,send) => { state.commands ||= createRetainedCommands({scope:()=>state.selfActor}); return state.commands.send(key,args,send); }, FormData:dom.window.FormData, $, $$:selector => [...document.querySelectorAll(selector)],
     esc:value => String(value ?? '').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('"','&quot;'),
     actorName:String, uuidv4:() => `demo-key-${++keys}`, account:() => ({account_name:'Demo Account',account_client_id:'demo-account'}),
     loadHome:async () => {}, showToast:text => toasts.push(text), setTimeout:() => {},

@@ -4,11 +4,12 @@ import { readFile } from "node:fs/promises";
 import { posix } from "node:path";
 import { boardDirectory, boardView } from "../js/progress-board-model.js";
 import { execFileSync } from "node:child_process";
+import { createHash } from 'node:crypto';
 import { handleDoctorcreRequest } from "../src/worker.js";
 import { validSystemWork, groupSystemWork, recentLive } from "../js/system-work-board-model.js";
 
 const contract = JSON.parse(await readFile(new URL("../contracts/carr-interface.v1.json", import.meta.url), "utf8"));
-const pinnedProducer = "e2e484b1933bfd63c10cc9a1b3350132948f6f74";
+const pinnedProducer = "1df9b9936394164dd55e815f8a8bf69649508ccc";
 
 const producerModules = new Map();
 async function producerModuleUrl(path) {
@@ -24,8 +25,29 @@ async function producerModuleUrl(path) {
   return url;
 }
 
-test("the runtime pin integrates Doc activity with inherited Progress and system-work reads", () => {
+test("the runtime pin includes operation identity, session binding and versioned replacement writes", () => {
   assert.equal(contract.producer.source_commit, pinnedProducer);
+});
+
+test('S2 consumer contract binds the operation and concurrency contract to the advertised producer', async () => {
+  const seam = contract.write_reconciliation;
+  const bytes = await readFile(new URL(`../${seam.contract}`, import.meta.url));
+  assert.equal(createHash('sha256').update(bytes).digest('hex'), seam.sha256);
+  assert.equal(seam.producer.source_commit, contract.producer.source_commit);
+  const schema = JSON.parse(bytes);
+  assert.equal(schema.schema, 'doctorcre-app-write-reconciliation.v1');
+  assert.deepEqual(Object.keys(schema.replacements), ['set-next-step', 'set-market-agent', 'set-national-account-owner']);
+  for (const replacement of Object.values(schema.replacements)) assert.equal(replacement.expected, 'base_version');
+  assert.match(schema.mcp_session.binding, /x-carr-csrf/);
+});
+
+test('S2 contract bytes match the exact producer revision', {
+  skip: !process.env.CARR_PRODUCER_CHECKOUT && 'Set CARR_PRODUCER_CHECKOUT to verify write reconciliation',
+}, async () => {
+  const local = await readFile(new URL('../contracts/app-write-reconciliation.v1.json', import.meta.url), 'utf8');
+  const producer = execFileSync('git', ['-C', process.env.CARR_PRODUCER_CHECKOUT, 'show',
+    `${contract.producer.source_commit}:mcp-server/contracts/app-write-reconciliation.v1.json`], { encoding: 'utf8' });
+  assert.equal(local, producer);
 });
 
 // Opt-in cross-repository verification reads committed source, never a working
@@ -83,7 +105,7 @@ test("the app consumes the merged producer's directory and selected-board interf
   const actor = { id: "10000000-0000-4000-8000-000000000001", slug: "codex", human: false,
     native_agent_verified: true, sponsoring_human_slug: "joe" };
   const row = { board_id: "carr-v5", version: 2, updated_at: "2026-10-01T12:00:00Z",
-    snapshot_json: { title: "Synthetic system board", tasks: { build: { status: "running", title: "Synthetic build" },
+    snapshot_json: { task_counts: JSON.parse('{"__proto__":1,"running":1}'), title: "Synthetic system board", tasks: { build: { status: "running", title: "Synthetic build" },
       malformed: [], prototype: { status: "__proto__" } } } };
   const calls = [];
   const client = { async query(sql, params) {

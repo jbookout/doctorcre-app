@@ -3,6 +3,7 @@ import { mountVisibilityPoll } from './visibility-poll.mjs';
 import { authGeneration, authReadable, invalidateAuth } from './progress-auth.js';
 import { deriveJobPassports, jobPassportStatusLabel } from "./job-passport.js?v=job-passport-spatial-v1";
 import { scopedTurn } from './progress-work-model.js';
+import { createRoomTurnClient } from './room-turn-client.js';
 
 // MODEL ROOM OBSERVATORY — the panel Joe watches the model fleet from.
 //
@@ -22,7 +23,7 @@ import { scopedTurn } from './progress-work-model.js';
 // "which desks exist on that Mac and were they alive", the bridge publishes
 // INTO the wire as a throttled heartbeat receipt (tools/room-bridge/bridge.py).
 //
-// ATTRIBUTION IS SERVER-DERIVED. The composer posts a body and nothing else;
+// ATTRIBUTION IS SERVER-DERIVED. The composer posts a body and a retry key;
 // the seat is always "human" and the sponsor comes from the authenticated
 // session.  There is no seat selector on this page and there is no way to add
 // one from here. The authenticated CARR route derives both values.
@@ -716,6 +717,8 @@ export function mountProgressWire({ scope = {}, onRead = () => {} } = {}) {
     focusSeat: null,
     counted: new Map(),
   };
+  const roomWrites = createRoomTurnClient({ session: async () => state.csrf });
+  let composerSending = false;
 
   /* --------------------------------------------------------- small helpers */
 
@@ -834,16 +837,7 @@ export function mountProgressWire({ scope = {}, onRead = () => {} } = {}) {
     return response.json();
   }
 
-  async function postTurn(payload) {
-    const response = await fetch("/api/room/turn", {
-      method: "POST", credentials: "same-origin",
-      headers: { "content-type": "application/json", "x-carr-csrf": state.csrf || "" },
-      body: JSON.stringify(payload),
-    });
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok) throw Object.assign(new Error(data.error || `post_${response.status}`), { data });
-    return data;
-  }
+  const postTurn = (payload, operation = 'composer') => roomWrites.send(operation, payload);
 
   /* ------------------------------------------------------------ the stage */
 
@@ -1862,18 +1856,22 @@ export function mountProgressWire({ scope = {}, onRead = () => {} } = {}) {
       ? `${value.length} / ${BODY_MAX} — too long to post`
       : `${value.length} / ${BODY_MAX}`;
     counter.classList.toggle("is-over", over);
-    $("composerSend").disabled = over || !value.trim();
+    const retained = roomWrites.pending('composer');
+    $("composerInput").readOnly = Boolean(retained);
+    $("composerSend").disabled = composerSending || over || !value.trim();
+    if (!composerSending) $("composerSend").textContent = retained ? 'Check outcome' : 'Send';
     sizeComposer(value);
   }
 
   async function sendComposer() {
+    if (composerSending) return;
     const input = $("composerInput");
-    const body = input.value;
+    const body = roomWrites.pending('composer')?.body ?? input.value;
     if (!body.trim() || body.length > BODY_MAX) return;
-    const localId = `pending:${Date.now()}:${Math.random().toString(36).slice(2)}`;
+    const localId = 'pending:composer';
     state.pending.set(localId, { seq: Number.MAX_SAFE_INTEGER, at: new Date().toISOString(),
       seat: "human", sponsor: state.viewer, kind: "turn", body, msg_id: localId });
-    input.value = "";
+    composerSending = true;
     updateCounter();
     render();
     scrollToBottom(false);
@@ -1883,18 +1881,20 @@ export function mountProgressWire({ scope = {}, onRead = () => {} } = {}) {
     const spinner = el("span", "composer-spinner");
     send.prepend(spinner);
     try {
-      // The server mints the idempotency key AND the msg_id, so a retry after a
-      // network hiccup can never double-post the same turn.
       await postTurn({ body });
       state.pending.delete(localId);
+      input.value = '';
       await wirePoll.refresh();
     } catch (error) {
       state.pending.delete(localId);
       render();
-      toast(error?.data?.error === "body_too_long"
+      input.value = body;
+      toast(error?.payload?.error === "body_too_long"
         ? "That turn is over the room's 20,000-character cap."
-        : "The turn did not reach the wire.", () => { input.value = body; updateCounter(); input.focus(); });
+        : roomWrites.pending('composer') ? 'Turn outcome unknown. Check outcome before editing or posting another turn.' : 'The room refused this turn. Review it before sending again.',
+      () => { input.value = body; updateCounter(); input.focus(); });
     } finally {
+      composerSending = false;
       spinner.remove();
       updateCounter();
     }
@@ -1902,11 +1902,11 @@ export function mountProgressWire({ scope = {}, onRead = () => {} } = {}) {
 
   async function requestReconnect(deskName) {
     try {
-      await postTurn({ control: { action: "login", desk: deskName } });
+      await postTurn({ control: { action: "login", desk: deskName } }, `login:${deskName}`);
       banner(`Sign-in requested for ${deskName} — approve it in the browser window the desk opens.`, false);
       await wirePoll.refresh();
     } catch {
-      toast(`Could not request a sign-in for ${deskName}.`);
+      toast(`Sign-in request for ${deskName} is unconfirmed. Retry checks the original request.`, () => void requestReconnect(deskName));
     }
   }
 
