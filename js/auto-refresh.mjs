@@ -44,7 +44,7 @@ export function mountAutoRefresh({ document, window, refresh, onResume, onWake, 
     if (!invalidate || !running) return read();
     if (queuedResume) return queuedResume;
     reads.invalidate();
-    queuedResume = running.then(read).finally(() => { queuedResume = null; });
+    queuedResume = running.then(() => { queuedResume = null; return read(); });
     return queuedResume;
   };
   const visibility = () => { if (document.visibilityState === "hidden") window.clearTimeout?.(timer); };

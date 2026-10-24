@@ -348,3 +348,18 @@ test('F4 resume timeout leaves facts unavailable and keeps only sponsor preferen
  assert.equal(JSON.parse(state.win.localStorage.getItem('doctorcre:morning:joe')).speech,true);
  state.client.morningBrief=async()=>payload();await state.ui.refresh();assert.equal(state.root.querySelectorAll('[data-brief-record]').length,2);
 });
+
+test('F4 reopening during a queued resume read replaces that read with current facts', async t => {
+ const state=setup(t);await state.ui.refresh();
+ const releases=[],starts=[];
+ const started=Array.from({length:2},(_,index)=>new Promise(resolve=>starts[index]=resolve));
+ state.client.morningBrief=()=>new Promise(resolve=>{const index=releases.length;releases.push(resolve);starts[index]?.();});
+ const old=state.ui.refresh();await started[0];
+ state.win.dispatchEvent(new state.win.Event('online'));await started[1];
+ const fresh=payload();fresh.sections.today.items[0].what='Current demo commitment';
+ state.client.morningBrief=async()=>fresh;
+ const opening=state.ui.open();
+ assert.equal(state.root.getElementById('morningContent').textContent,'');
+ releases.forEach(release=>release(payload()));await old;await opening;
+ assert.match(state.root.getElementById('morningContent').textContent,/Current demo commitment/);
+});
