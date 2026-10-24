@@ -687,8 +687,13 @@ for(const width of [320,390,1440])test(`work detail has no horizontal scroll at 
 });
 
 test('empty, stale and offline states stay legible without inventing work',async t=>{
-  const {page,state,errors}=await open(t,{empty:true,stale:true,path:'/control-room/progress/work?board=demo-project&view=tasks'});
+  let releaseSessions;
+  const sessionsReady = new Promise(resolve => { releaseSessions = resolve; });
+  const {page,state,errors}=await open(t,{empty:true,stale:true,path:'/control-room/progress/work?board=demo-project&view=tasks',
+    rpcReply: async (rpc,payload) => { if (rpc.name === 'read-session-identity') await sessionsReady; return payload; }});
   await page.waitForFunction(()=>document.querySelector('#queueLive').textContent==='Stale');
+  releaseSessions();
+  await page.waitForFunction(()=>document.querySelector('#workSessionList').textContent.includes('No linked native session'));
   assert.match(await page.locator('#workSessionList').textContent(),/No linked native session/);assert.match(await page.locator('#jobPassportSummary').textContent(),/No validated Job Passport/);
   assert.match(await page.locator('#workReviewList').textContent(),/No linked review/);assert.match(await page.locator('#workReadState').textContent(),/Stale publication/);
   state.offline=true;await page.clock.runFor(5100);await page.waitForFunction(()=>document.querySelector('#queueLive').textContent==='Offline');assert.match(await page.locator('#roomBanner').textContent(),/last-known/);assert.deepEqual(errors,[]);
