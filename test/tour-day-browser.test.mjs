@@ -14,12 +14,12 @@ async function open(t, { width = 390, reducedMotion = "reduce", denied = false, 
   const server = createServer(async (request, response) => {
     const url = new URL(request.url, "http://localhost"); requests.push({ path: url.pathname, method: request.method });
     if (url.pathname === "/auth/signout") { refuse = true; response.writeHead(302, { location: '/' }); response.end(); return; }
-    if (url.pathname === "/auth/session") { response.setHeader('content-type', 'application/json'); response.writeHead(refuse ? 401 : 200); response.end('{}'); return; }
+    if (url.pathname === "/auth/session") { response.setHeader('content-type', 'application/json'); response.writeHead(refuse ? 401 : 200); response.end(JSON.stringify(refuse ? {} : {actor:{slug:actor},csrf_token:`synthetic-${actor}`})); return; }
     if (url.pathname === "/auth/login") { response.end('<title>Synthetic login</title>'); return; }
     if (url.pathname.startsWith("/api/")) {
       response.setHeader("content-type", "application/json");
       if (refuse) { response.writeHead(401); response.end('{}'); return; }
-      response.end(JSON.stringify(url.pathname === "/api/system-work/session" ? { actor: { slug: actor }, csrf_token: `synthetic-${actor}` } : url.pathname === "/api/tours/detail" ? { data: current } : {})); return;
+      response.end(JSON.stringify(['/api/system-work/session','/auth/session'].includes(url.pathname) ? { actor: { slug: actor }, csrf_token: `synthetic-${actor}` } : url.pathname === "/api/tours/detail" ? { data: current } : {})); return;
     }
     try {
       const file = url.pathname === "/tours" ? "tours/index.html" : url.pathname.slice(1);
@@ -174,10 +174,11 @@ test('R2: shared shell sign-out revokes the offline account binding', async t =>
   await page.evaluate(async () => { await navigator.serviceWorker.register('/tours/day-sw.js', { scope: '/tours/' }); await navigator.serviceWorker.ready; });
   await page.waitForFunction(() => navigator.serviceWorker.controller);
   await page.locator('#selfAvatar').click(); await page.locator('#accountSignOut').click();
-  await page.getByRole('heading', { name: 'Signed out' }).waitFor();
-  await context.setOffline(true); await page.goto(`${origin}/tours/day.html?tour=${tourId}`);
-  await page.waitForFunction(() => document.querySelector('#day-status')?.textContent === 'Tour unavailable');
-  assert.equal(await page.locator('.note-card').count(), 0); assert.equal(await page.locator('.day-stop').count(), 0); assert.equal(await page.locator('#day-record').isDisabled(), true);
+  await page.waitForURL('**/public-shell/session-ended.html');
+  assert.equal(await page.evaluate(()=>sessionStorage.getItem('doctorcre-tour-day-session-v1')),null);
+  await context.setOffline(true); await page.goto(`${origin}/tours/day.html?tour=${tourId}`).catch(()=>null);
+  assert.equal(await page.locator('.note-card,.day-stop,#day-record').count(),0);
+  assert.doesNotMatch(await page.locator('body').textContent(),/Synthetic tour/);
 });
 
 test('R6: another tab cannot finalize a live owner recording', async t => {

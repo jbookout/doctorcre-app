@@ -7,6 +7,7 @@ const deals = JSON.parse(readFileSync(new URL('../../test/fixtures/charts-synthe
 const noKey = !process.env.TYPESAFE_API_KEY;
 
 async function serveFixtures(browser: any) {
+  await browser.route('**/auth/session', (route: any) => route.fulfill({json:{actor:{slug:'dell'},csrf_token:'synthetic-e2e-token'}}));
   await browser.route('**/mcp', (route: any) => {
     const { name } = JSON.parse(route.request.postData ?? '{}').params;
     const body = name === 'deal-room-board' ? deals : name === 'lead-board' ? workspace() : { ok: true };

@@ -25,7 +25,7 @@ async function open(t, width) {
     if (url.pathname.startsWith("/api/")) {
       if (unavailable && url.pathname === "/api/tours/library") return route.fulfill({ status: 503, body: "{}", contentType: "application/json" });
       let data;
-      if (url.pathname === "/api/system-work/session") return route.fulfill({ contentType: "application/json", body: JSON.stringify({ actor: { slug: "joe" }, csrf_token: "synthetic-session" }) });
+      if (['/api/system-work/session','/auth/session'].includes(url.pathname)) return route.fulfill({ contentType: "application/json", body: JSON.stringify({ actor: { slug: "joe" }, csrf_token: "synthetic-session" }) });
       if (url.pathname === "/api/tours/library") data = { tours: Array.from({ length: 10 }, (_, i) => ({ id: i ? `33333333-3333-4333-8333-${String(i).padStart(12,"0")}` : tourId, name: `Demo ${i ? `Tour ${i + 1}` : "Gulf Coast Tour"}`, status: i > 4 ? "completed" : "draft" })) };
       else if (url.pathname === "/api/tours/detail") data = { ...tour, name: revision ? "Demo refreshed tour" : tour.name };
       else if (url.pathname === "/api/v1/business/clients") {

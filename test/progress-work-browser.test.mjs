@@ -46,6 +46,7 @@ async function open(t,{width=390,path=taskPath,empty=false,stale=false,history=0
   }
   await page.route('**/*',async route=>{
     const url=new URL(route.request().url());if(url.origin!=='http://localhost')return route.abort();
+    if(['/api/system-work/session','/auth/session'].includes(url.pathname)) return route.fulfill({json:{actor:{slug:'joe'},csrf_token:'synthetic-session'}});
     if(url.pathname==='/mcp'){
       const rpc=route.request().postDataJSON().params;calls.push(rpc);
       if(state.authLost)return route.fulfill({status:401,body:'{}'});
@@ -64,7 +65,7 @@ async function open(t,{width=390,path=taskPath,empty=false,stale=false,history=0
       state.turnReads++;if(state.offline)return route.fulfill({status:503,body:'{}'});
       const from=Number(url.searchParams.get('after_seq')||0),limit=Number(url.searchParams.get('limit')||200);
       const turns=state.turns.filter(turn=>turn.seq>from).slice(0,limit);
-      return route.fulfill({contentType:'application/json',body:JSON.stringify({ok:true,turns,latest_seq:turns.at(-1)?.seq||from,more:state.turns.some(turn=>turn.seq>(turns.at(-1)?.seq||from)),csrf_token:'synthetic-csrf',actor:{slug:'joe'}})});
+      return route.fulfill({contentType:'application/json',body:JSON.stringify({ok:true,turns,latest_seq:turns.at(-1)?.seq||from,more:state.turns.some(turn=>turn.seq>(turns.at(-1)?.seq||from)),csrf_token:'synthetic-session',actor:{slug:'joe'}})});
     }
     if(url.pathname==='/api/room/queue'){
       state.queueReads++;if(state.authLost)return route.fulfill({status:401,body:'{}'});if(state.offline)return route.fulfill({status:503,body:'{}'});
@@ -444,11 +445,10 @@ test('late Engineering success stays withheld after another protected read loses
   let release,started=false;const gate=new Promise(resolve=>release=resolve);
   const {page,state}=await open(t,{rpcReply:async(rpc,payload)=>{if(rpc.name==='engineering-passport'){started=true;await gate;}return payload;}});
   await assertEventually(()=>started);state.authLost=true;await page.clock.runFor(5100);
-  await page.waitForFunction(()=>document.querySelector('#queueLive').textContent==='Sign in');
+  await page.waitForURL('**/public-shell/session-ended.html');
   release();await new Promise(resolve=>setTimeout(resolve,100));
   assert.equal(await page.locator('.passport-card').count(),0);
-  for(const id of ['workCanonicalBody','workReviewList','workDotList'])assert.match(await page.locator('#'+id).textContent(),/Sign in/);
-  assert.equal(await page.locator('#workTitle').textContent(),'Work detail');
+  assert.doesNotMatch(await page.locator('body').textContent(),/Synthetic|Demo/);
 });
 
 test('latest session lookup wins and refresh retains its query',async t=>{
@@ -611,7 +611,7 @@ test('shared activity retains stage, desks, presence, wire filters, composers an
   await page.locator('#composerInput').fill('Synthetic room draft');await page.locator('#composerInput').press('Shift+Enter');await page.locator('#composerInput').press('Enter');
   await page.waitForFunction(()=>document.querySelector('#composerInput').value==='');
   await page.locator('#enqueueTitle').fill('Demo enqueue');await page.locator('#queueComposer button').click();await page.waitForFunction(()=>document.querySelector('#queueNotice').textContent.includes('submitted'));
-  assert.equal(posts.length,3);assert.ok(posts.every(post=>post.csrf==='synthetic-csrf'));assert.equal(posts[2].body.body,'@queue enqueue target=sol cap=read :: Demo enqueue');
+  assert.equal(posts.length,3);assert.ok(posts.every(post=>post.csrf==='synthetic-session'));assert.equal(posts[2].body.body,'@queue enqueue target=sol cap=read :: Demo enqueue');
   await page.clock.runFor(5100);await assertEventually(()=>state.queueReads>1 && state.turnReads>1);
   await page.locator('.queue-card').click();await page.waitForURL('**/control-room/progress/work?board=demo-project&task=**');assert.deepEqual(errors,[]);
 });
@@ -699,20 +699,9 @@ test('confirmed authentication loss clears protected queue and work evidence',as
   await page.waitForSelector('.queue-card',{state:'attached'});await page.waitForSelector('.passport-card');await page.waitForSelector('[data-session-id="session:fresh"]');
   await page.locator('[data-session-id="session:fresh"]').click();await page.waitForFunction(()=>!document.querySelector('#workDispatchMore').hidden);
   state.authLost=true;await page.clock.runFor(5100);
-  await page.waitForFunction(()=>document.querySelector('#queueLive').textContent==='Sign in');
-  assert.equal(await page.locator('.queue-card').count(),0);
-  for(const id of ['workSessionList','workDispatchHistory','workReviewList','workDotList'])assert.match(await page.locator('#'+id).textContent(),/Sign in/);
-  assert.equal(await page.locator('#workDispatchMore').isVisible(),false);
-  await page.clock.runFor(11000); // successful independent wire reads must remain withheld
-  assert.equal(await page.locator('.passport-card,.stage-node-worker,.desk-card,.assignment-row,.session-row').count(),0);
-  for(const id of ['wireFeed','jobPassportList','roomDesks','assignmentList','sessionList','stageTooltip'])assert.doesNotMatch(await page.locator('#'+id).textContent(),/Demo|Synthetic desk|Fix round/);
-  assert.doesNotMatch(await page.locator('#workTitle').textContent(),/Demo/);
-  assert.doesNotMatch(await page.locator('#workBreadcrumbs').textContent(),/demo-project|Demo/);
-  assert.doesNotMatch(await page.title(),/Demo/);
-  state.authLost=false;await page.clock.runFor(11000);
-  await page.waitForSelector('.passport-card');
-  await page.waitForFunction(()=>document.querySelector('#workTitle').textContent==='Demo work detail');
-  for(const id of ['roomStage','figCycle','figBridge','figDesks'])assert.equal(await page.locator('#'+id).evaluate(node=>node.hidden),false);
+  await page.waitForURL('**/public-shell/session-ended.html');
+  assert.equal(await page.locator('.queue-card,.passport-card,.stage-node-worker,.desk-card,.assignment-row,.session-row').count(),0);
+  assert.doesNotMatch(await page.locator('body').textContent(),/Demo|Synthetic desk|Fix round/);
   assert.deepEqual(errors,[]);
 });
 
@@ -835,11 +824,14 @@ test(`work flow labels remain readable at ${width}px in ${theme} theme`, async t
   await page.emulateMedia({reducedMotion:'reduce'});
   const labels = page.locator('.work-flow text, .work-flow li');
   assert.deepEqual(await labels.allTextContents(), ['Task','Sessions','Attempts','Review']);
-  const boxes = await labels.evaluateAll(labels => labels.map(label => {
+  // Metadata reads can replace the flow between protocol calls. Query and
+  // measure in one page task so detached labels cannot produce empty styles.
+  const boxes = await page.evaluate(() => [...document.querySelectorAll('.work-flow text, .work-flow li')].map(label => {
     const box = label.getBoundingClientRect();
     const scale = label instanceof SVGGraphicsElement ? label.getScreenCTM().a : 1;
     return {size:parseFloat(getComputedStyle(label).fontSize) * scale, x:box.x, y:box.y};
   }));
+  assert.equal(boxes.length, 4);
   for (const box of boxes) assert.ok(box.size >= 12, `Rendered label is ${box.size}px`);
   for (let i = 1; i < boxes.length; i++)
     assert.ok(width === 390 ? boxes[i].y > boxes[i-1].y : boxes[i].x > boxes[i-1].x);

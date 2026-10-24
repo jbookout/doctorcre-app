@@ -1,8 +1,9 @@
+import { sessionFetch } from './private-session.js';
 import { readWithDeadline } from './current-read.mjs';
 
 // Transport facts only. Success and authoritative business refusal belong to
 // the domain client, which knows the command and its versioned contract.
-export function createMcpRequests({ fetchImpl = globalThis.fetch, headers = {}, typedContent = true, clock = globalThis } = {}) {
+export function createMcpRequests({ fetchImpl = sessionFetch, headers = {}, typedContent = true, clock = globalThis } = {}) {
   let id = 0;
   return async (name, args = {}, { signal, timeoutMs, headers: operationHeaders = {} } = {}) => {
     const request = async signal => {

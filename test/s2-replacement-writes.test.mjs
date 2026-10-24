@@ -2,6 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import vm from 'node:vm';
+import {createLiveClient} from '../js/live-client.js';
+const reconciliation=JSON.parse(readFileSync(new URL('../contracts/app-write-reconciliation.v1.json',import.meta.url)));
+const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 import {createRetainedCommands} from '../js/retained-commands.mjs';
 import {classifyCommandOutcome,commandMessage,performCommand,pendingCommand} from '../js/command-feedback.mjs';
 const source=readFileSync(new URL('../js/app.js',import.meta.url),'utf8');
@@ -10,8 +13,18 @@ function forms({version=1,lost=false}={}){
  const deal={id:'synthetic-deal',name:'Demo replacement',version:1,next_step:'Prior step',next_date:null,market_agent:'Prior agent',market:'Demo city'};
  const account={account_client_id:'synthetic-account',account_name:'Demo account',base_version:1,account_owner:'joe'};
  const state={selfActor:'joe',deals:new Map([[deal.id,deal]]),accounts:[account],nextStepRequests:new Map(),nextStepInFlight:new Set(),boardSync:{requestRefresh(){}}};
- const send=async request=>{writes.push(structuredClone(request));if(lost){lost=false;throw new Error('timeout after commit');}return {ok:true,deal_id:deal.id};};
- state.client={getDeal:async()=>{reads++;return {deal:{...deal,version,market_agent:version===1?'Prior agent':'Partner agent'}};},getBoard:async()=>{reads++;return {actor:'joe',accounts:[{...account,base_version:version,account_owner:version===1?'joe':'dell'}]};},setNextStep:send,setMarketAgent:send,setNationalAccountOwner:send};
+ const live=createLiveClient({selfActor:'joe',docContext:false,fetchImpl:async(path,init)=>{
+  if(path==='/auth/session')return Response.json({actor:{slug:'joe'},csrf_token:'synthetic-session-a'});
+  assert.equal(path,'/mcp');assert.equal(new Headers(init.headers).get('x-carr-csrf'),'synthetic-session-a');
+  const {params}=JSON.parse(init.body),request=params.arguments;
+  const expected=reconciliation.replacements[params.name].expected;
+  assert.ok(Object.hasOwn(request,expected),`pinned producer requires ${expected}`);
+  assert.equal(request[expected],1);assert.match(request.idempotency_key,uuid);
+  writes.push(structuredClone(request));if(lost){lost=false;throw new Error('timeout after commit');}
+  return Response.json({result:{content:[{type:'text',text:JSON.stringify({ok:true,deal_id:deal.id})}]}});
+ }});
+ const send=method=>request=>live[method](request);
+ state.client={getDeal:async()=>{reads++;return {deal:{...deal,version,market_agent:version===1?'Prior agent':'Partner agent'}};},getBoard:async()=>{reads++;return {actor:'joe',accounts:[{...account,base_version:version,account_owner:version===1?'joe':'dell'}]};},setNextStep:send('setNextStep'),setMarketAgent:send('setMarketAgent'),setNationalAccountOwner:send('setNationalAccountOwner')};
  const $=key=>{if(!nodes.has(key))nodes.set(key,{value:'',disabled:false,textContent:''});return nodes.get(key);};
  const context=vm.createContext({state,$,esc:x=>x,openForm:value=>{options=value;},account:()=>state.accounts[0],createRetainedCommands,structuredClone,classifyCommandOutcome,commandMessage,uuidv4:()=>crypto.randomUUID(),loadHome:async()=>{},confirmLocalWrite:()=>deal,renderBoardOnly(){},showToast(){}});
  const helperStart=source.indexOf('function reviewedReplacementVersion(');

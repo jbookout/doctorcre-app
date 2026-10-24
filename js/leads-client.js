@@ -1,3 +1,4 @@
+import { sessionFetch } from './private-session.js';
 import { observeDocClient } from './doc-context.js';
 import { createMcpRequests, unknownMcpOutcome } from "./mcp-requests.mjs";
 import { createEngagementWriter } from './prospect-engagement.mjs';
@@ -6,7 +7,7 @@ import { createEngagementWriter } from './prospect-engagement.mjs';
  * Authentication remains the host's
  * same-origin cookie; there is no client-side identity or alternate endpoint. */
 export function createLeadBoardClient(options = {}) {
-  const fetchImpl = options.fetchImpl || ((path, init) => fetch(path, init));
+  const fetchImpl = options.fetchImpl || ((path, init) => sessionFetch(path, init));
   const requestMcp = createMcpRequests({ fetchImpl, headers: { accept: "application/json" } });
 
   function typedError(payload, fallback = "The lead board request was refused.", status) {

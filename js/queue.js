@@ -1,3 +1,4 @@
+import { sessionFetch } from './private-session.js';
 import { pageDocContext, publishDocRead, setDocFilters } from './doc-context.js';
 import { authGeneration, authCurrent, establishAuth, invalidateAuth } from './progress-auth.js';
 import { mountVisibilityPoll } from './visibility-poll.mjs';
@@ -87,7 +88,7 @@ async function readQueue() {
   const controller = new AbortController(); let timer;
   const deadline = new Promise((_,reject) => { timer = setTimeout(() => { reject(new Error('Queue read timed out')); controller.abort(); },10000); });
   const read = async () => {
-    const response = await fetch('/api/room/queue', {cache:'no-store',credentials:'same-origin',signal:controller.signal});
+    const response = await sessionFetch('/api/room/queue', {cache:'no-store',credentials:'same-origin',signal:controller.signal});
     if (!response.ok) throw Object.assign(new Error('Queue unavailable'), {status:response.status});
     return response.json();
   };

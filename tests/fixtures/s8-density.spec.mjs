@@ -25,7 +25,8 @@ for (const width of [1440, 390]) for (const theme of ['dark', 'light']) {
           network.nodes[3].name = 'Synthetic staging Healthcare Lending South Partners';
           return route.fulfill({ json: network });
         }
-        if (url.pathname === '/mcp') {
+        if (['/api/system-work/session','/auth/session'].includes(url.pathname)) return route.fulfill({json:{actor:{slug:'joe'},csrf_token:'synthetic-session'}});
+    if (url.pathname === '/mcp') {
           const name = route.request().postDataJSON().params.name;
           const payload = name === 'read-progress-board' ? { ok: true, ...board }
             : name === 'deal-room-board' ? { deals: [], actor: 'joe' } : { ok: true, items: [], events: [], cursor: null };

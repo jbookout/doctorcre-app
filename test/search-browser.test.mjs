@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdir } from 'node:fs/promises';
 import { chromium, fixtureServer } from './browser-harness.mjs';
 import { SAVED_VIEWS_KEY } from '../js/search-model.js';
+const scopedViewsKey = `${SAVED_VIEWS_KEY}:joe`;
 
 test('S2 saved search stays under the keyboard while its results update', async t => {
   const server = await fixtureServer();
@@ -21,7 +22,7 @@ test('S2 saved search stays under the keyboard while its results update', async 
       await page.addInitScript(({ theme, key, name }) => {
         localStorage.setItem('doctorcre.visual-preferences', JSON.stringify({ theme }));
         localStorage.setItem(key, JSON.stringify([{ name, query: 'Demo Dental', kinds: [] }]));
-      }, { theme, key: SAVED_VIEWS_KEY, name });
+      }, { theme, key: scopedViewsKey, name });
       await page.route('**/api/**', route => route.fulfill({ json: {} }));
       await page.goto(`${server.origin}/search?mode=fixture`);
       const saved = page.getByRole('link', { name, exact: true });
@@ -36,7 +37,7 @@ test('S2 saved search stays under the keyboard while its results update', async 
       await page.screenshot({ path: new URL(`search-${width}-${theme}-${label}.png`, artifacts).pathname });
       await page.locator('#resetViewsButton').click();
       assert.equal(await page.locator('[data-view]').count(), 0);
-      assert.equal(await page.evaluate(key => localStorage.getItem(key), SAVED_VIEWS_KEY), '[]');
+      assert.equal(await page.evaluate(key => localStorage.getItem(key), scopedViewsKey), '[]');
       await page.locator('#saveViewName').fill('Demo replacement');
       await page.locator('#saveViewButton').click();
       assert.equal(await page.getByRole('link', { name: 'Demo replacement', exact: true }).isVisible(), true);
@@ -60,7 +61,7 @@ for (const answer of ['Demo renamed', null]) {
     await page.addInitScript(key => localStorage.setItem(key, JSON.stringify([
       {name: 'Demo saved search', query: 'Demo Dental', kinds: []},
       {name: 'Other saved search', query: 'Demo', kinds: []},
-    ])), SAVED_VIEWS_KEY);
+    ])), scopedViewsKey);
     await page.route('**/api/**', route => route.fulfill({json: {}}));
     await page.goto(`${server.origin}/search?mode=fixture`);
     const rename = page.locator('[data-rename="Demo saved search"]');
@@ -82,7 +83,7 @@ test('Search Rename keeps duplicate names and queries consistent without replaci
   await page.addInitScript(key => localStorage.setItem(key, JSON.stringify([
     {name: 'First', query: 'First query', kinds: []},
     {name: 'Second', query: 'Second query', kinds: []},
-  ])), SAVED_VIEWS_KEY);
+  ])), scopedViewsKey);
   await page.route('**/api/**', route => route.fulfill({json: {}}));
   await page.goto(`${server.origin}/search?mode=fixture`);
   for (const name of ['Second', `Shared 'name' <&>`]) {

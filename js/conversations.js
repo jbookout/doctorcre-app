@@ -97,6 +97,16 @@ const readClient = (method, args, signal) => signal
   ? readWithDeadline(current => client[method](args, { signal: current }), { signal })
   : client[method](args);
 const loadedPages = { conversation: 1, list: 1, outcomes: 1 };
+function invalidateConversations() {
+  view.sequence++;
+  view.conversation = {state:'refused'};
+  view.list = {state:'unavailable',payload:null,rows:[],sentence:'Sign in to continue'};
+  view.outcomeCards = {state:'refused',payload:null,rows:[],checkpoints:[],sequence:view.outcomeCards.sequence+1,previousById:new Map()};
+  view.suggestions = {...view.suggestions,state:'refused',rows:[],coverage:null,sequence:view.suggestions.sequence+1,drafts:new Map(),workNumbers:new Map(),snoozeDates:new Map(),conflicts:new Map()};
+  render();
+}
+globalThis.addEventListener?.('doctorcre-session-invalidated', invalidateConversations);
+
 let backgroundReads = 0;
 function suggestionEditorActive() {
   const list = $("suggestionsList");
@@ -475,6 +485,7 @@ async function takeConversation({ after = null, background = false, signal } = {
       : payload;
     view.conversation = { state: "read", payload: merged, observed_at: new Date().toISOString() };
   } catch (error) {
+    if ([401,403].includes(error.status)) { invalidateConversations(); return; }
     if (view.sequence !== sequence) return;
     const failure = classifyReadFailure(error);
     view.conversation = { state: failure.state, sentence: failure.sentence };
@@ -507,6 +518,7 @@ async function takeList({ cursor = null, background = false, signal } = {}) {
     } else loadedPages.list = cursor ? loadedPages.list + 1 : 1;
     view.list = { state: "read", payload, rows: [...held, ...listRows(payload)] };
   } catch (error) {
+    if ([401,403].includes(error.status)) { invalidateConversations(); return; }
     if (view.sequence !== sequence) return;
     const failure = classifyReadFailure(error);
     view.list = { state: "unavailable", payload: null, rows: held, sentence: failure.sentence };

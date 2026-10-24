@@ -1,9 +1,10 @@
+import { sessionFetch } from './private-session.js';
 import { createRetainedCommands } from './retained-commands.mjs';
 import { readWithDeadline } from './current-read.mjs';
 
 /** Shared room composer/queue transport. An uncertain post is reconciled by
  * replaying its original session-bound request, never by minting another key. */
-export function createRoomTurnClient({ fetchImpl = (...args) => fetch(...args), session,
+export function createRoomTurnClient({ fetchImpl = sessionFetch, session,
   newKey, timeoutMs = 15_000 } = {}) {
   let csrf = null;
   const commands = createRetainedCommands({ newKey, scope: async () => {

@@ -18,7 +18,8 @@ async function setup(t,{width=1440,motion='no-preference',onRoute,engine=chromiu
  const fixture=await createFixtureClient({seedUrl:`data:application/json;base64,${Buffer.from(await readFile(new URL('data/board-seed.json',root))).toString('base64')}`});
  const calls=[],errors=[];page.on('pageerror',error=>errors.push(error.message));
  await page.route('**/*',async route=>{
-  const request=route.request(),url=new URL(request.url());if(!['http://localhost','https://app.doctorcre.com'].includes(url.origin))return route.abort();
+  const request=route.request(),url=new URL(request.url());
+    if(['/api/system-work/session','/auth/session'].includes(url.pathname)) return route.fulfill({json:{actor:{slug:'joe'},csrf_token:'synthetic-session'}});if(!['http://localhost','https://app.doctorcre.com'].includes(url.origin))return route.abort();
   if(onRoute && await onRoute(route,{url,fixture}))return;
   if(url.pathname==='/mcp'){
   const {name,arguments:args}=request.postDataJSON().params;calls.push({name,args});let value={ok:true};
@@ -172,6 +173,10 @@ for(const failure of [null,503,401])test(`R1/R2 Home healthy/partial/expired con
   if(env.url.pathname==='/mcp' && route.request().postDataJSON().params.name==='incident-board' && failure){await route.fulfill({status:failure,body:'{}'});return true;}
   return producerRoute(route,env);
  }});
+ if(failure===401){
+  await page.goto('http://localhost/?mode=live');await page.waitForURL('**/public-shell/session-ended.html');
+  assert.equal(await page.locator('#docPresence').count(),0);return;
+ }
  await goto('/?mode=live');await page.waitForFunction(()=>document.querySelector('#refreshHome').getAttribute('aria-busy')==='false');
  const before=await readContext(page);
  assert.equal(before.ready,failure===null,JSON.stringify(before));
@@ -336,8 +341,8 @@ for(const verb of ['loop-board','list-industry-events'])test(`R1/R16 Ideas tab c
  let denied=false,authLost=false;const {page}=await setup(t,{onRoute:async(route,env)=>{
   if(env.url.pathname==='/mcp'&&(authLost||(denied&&route.request().postDataJSON().params.name===verb))){authLost=true;await route.fulfill({status:401,json:{}});return true;}return producerRoute(route,env);
  }});await page.goto('https://app.doctorcre.com/ideas-events');await page.locator('.idea-tile').first().waitFor();await page.locator('#tabEvents').click();await page.waitForFunction(()=>document.querySelector('#docPresence').dataset.state==='ready');await page.locator('#tabIdeas').click();
- denied=true;await page.evaluate(()=>window.dispatchEvent(new Event('online')));await page.waitForTimeout(120);
- await page.locator('#tabEvents').click();assert.equal((await readContext(page)).ready,false);assert.equal((await readContext(page)).records.length,0);
+ denied=true;await page.evaluate(()=>window.dispatchEvent(new Event('online')));await page.waitForURL('**/public-shell/session-ended.html');
+ assert.equal(await page.locator('#tabEvents,#docPresence,.idea-tile').count(),0);
 });
 test('R11/R12 valid empty directory activity remains an authorized empty read',async t=>{
  const {page,goto}=await setup(t,{onRoute:async(route,{url})=>{

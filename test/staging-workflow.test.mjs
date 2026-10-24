@@ -75,3 +75,10 @@ test('staging deploys the tested commit before signed-in journeys and keeps the 
     if (index !== deploy) assert.equal(step.env?.CLOUDFLARE_API_TOKEN, undefined);
   }
 });
+
+// The opt-out must be in the event body when the PR is opened; adding a label
+// after creation could race the deployment job.
+test('a no-deploy PR cannot schedule the staging deployment job', () => {
+  const source = readFileSync(new URL('../.github/workflows/staging-e2e.yml', import.meta.url), 'utf8');
+  assert.match(source, /github\.event_name != 'pull_request' \|\| \(github\.event\.pull_request\.head\.repo\.full_name == github\.repository && !contains\(github\.event\.pull_request\.body, '<!-- doctorcre:no-deploy -->'\)\)/);
+});

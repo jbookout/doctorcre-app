@@ -1,3 +1,4 @@
+import { sessionFetch } from './private-session.js';
 import { observeDocRead } from './doc-context.js';
 import { uuidv4 } from "./uuid.js";
 import { validateHumanRef } from "./system-work-view.js";
@@ -5,7 +6,7 @@ import { readWithDeadline } from "./auto-refresh.mjs";
 import { createRetainedCommands } from './retained-commands.mjs';
 
 export function createSystemWorkClient(options = {}) {
-  const fetchImpl = options.fetchImpl || ((path, init) => fetch(path, init));
+  const fetchImpl = options.fetchImpl || ((path, init) => sessionFetch(path, init));
   const uuid = options.uuid || uuidv4;
   let session = null;
   let pendingReport = null;

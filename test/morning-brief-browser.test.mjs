@@ -16,7 +16,7 @@ async function setup(t,{width=1440,motion='no-preference',brief=true}={}) {
  await context.route('**/*',async route=>{
   const url=new URL(route.request().url());if(url.origin!=='http://localhost')return route.abort();
   const rpc=value=>route.fulfill({json:{result:{content:[{type:'text',text:JSON.stringify(value)}]}}});
-  if(url.pathname==='/api/system-work/session')return route.fulfill({json:{actor:{slug:scope}}});
+  if(['/api/system-work/session','/auth/session'].includes(url.pathname))return route.fulfill({json:{csrf_token:`synthetic-${scope}`,actor:{slug:scope}}});
   if(url.pathname==='/pipeline/changes') {return route.fulfill({json:{events:url.searchParams.get('cursor')!=='demo-end' ? [{id:'demo-event',subject_type:'deal',subject_id:'d20',field:'next_step',new_value:'Review revised demo terms',recorded_at:new Date().toISOString()}]:[],cursor:'demo-end'}});}
   if(url.pathname==='/mcp') {
    const {name,arguments:args}=route.request().postDataJSON().params;calls.push({name,args});
@@ -62,7 +62,7 @@ test('daily preference survives navigation; speech is opt-in, stops, persists, a
 test('unavailable brief recovers on background read, clears prior facts, partner changes never reuse content/preferences',async t=>{
  const state=await setup(t,{brief:false});const {page}=state;await state.goto();await page.locator('#docOpen').click();await page.locator('#docMorning').click();assert.match(await page.locator('#morningCoverage').innerText(),/unavailable/);
  state.ready=true;await page.evaluate(()=>window.dispatchEvent(new Event('online')));try { await page.locator('[data-brief-record]').first().waitFor(); } catch(error) { throw new Error(JSON.stringify({calls:state.calls.filter(call=>call.name==='morning-brief').length,text:await page.locator('#docMorningBrief').innerText(),errors:state.errors})+error.message); }state.fail=true;await page.evaluate(()=>window.dispatchEvent(new Event('online')));await page.waitForFunction(()=>document.getElementById('morningCoverage').textContent==='Brief unavailable');assert.equal(await page.locator('[data-brief-record]').count(),0);
- state.fail=false;state.scope='dell';await page.evaluate(()=>window.dispatchEvent(new Event('online')));await page.waitForFunction(()=>document.getElementById('morningTitle').textContent.includes('Dell'));assert.equal(await page.locator('#morningSpeech').getAttribute('aria-pressed'),'false');assert.deepEqual(state.errors,[]);
+ state.fail=false;state.scope='dell';await page.evaluate(()=>window.dispatchEvent(new Event('online')));await page.waitForURL('**/public-shell/session-ended.html');assert.equal(await page.locator('#docMorningBrief').count(),0);await state.goto();await page.locator('#docOpen').click();await page.locator('#docMorning').click();await page.waitForFunction(()=>document.getElementById('morningTitle').textContent.includes('Dell'));assert.equal(await page.locator('#morningSpeech').getAttribute('aria-pressed'),'false');assert.deepEqual(state.errors,[]);
 });
 test('V2 motion: hover is a state transition with no pulse; reduced motion is measured at desktop and phone widths',async t=>{
  for(const motion of ['no-preference','reduce'])for(const width of [1440,390]){

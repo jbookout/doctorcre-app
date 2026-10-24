@@ -12,7 +12,8 @@ async function open(t,width,{snapshot=true}={}){
  const browser=await chromium.launch();t.after(()=>browser.close());const page=await browser.newPage({viewport:{width,height:900}});const calls=[],errors=[];
  page.on('pageerror',e=>errors.push(e.message));
  await page.route('**/*',async route=>{
-  const url=new URL(route.request().url());if(url.origin!=='http://localhost')return route.abort();
+  const url=new URL(route.request().url());
+    if(['/api/system-work/session','/auth/session'].includes(url.pathname)) return route.fulfill({json:{actor:{slug:'joe'},csrf_token:'synthetic-session'}});if(url.origin!=='http://localhost')return route.abort();
   if(url.pathname==='/mcp'){
    const rpc=route.request().postDataJSON().params;calls.push(rpc);let payload={ok:true};
    if(rpc.name==='unfinished-work'){
