@@ -1,4 +1,4 @@
-const SHELL_CACHE = 'dealroom-shell-v5';
+const SHELL_CACHE = 'dealroom-shell-v6';
 const SHELL = ['/offline.html','/public-shell/session-ended.html','/public-shell/shell.css','/manifest.webmanifest','/icons/dealroom-192.png','/icons/dealroom-512.png'];
 const staticAsset = path => SHELL.includes(path) || /^\/(?:js|css)\/.+\.(?:m?js|css)$/.test(path);
 const cacheable = response => response.ok && !/\b(?:no-store|private)\b/i.test(response.headers.get('cache-control') || '');

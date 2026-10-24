@@ -215,7 +215,7 @@ test('PR129 transient detail failure keeps the authorized next-step draft',async
 
 test('append-only updates preserve a partner next step and start empty after refresh', async t => {
  const {page}=await open(t);await detail(page);
- await page.evaluate(async()=>{const {state}=await import('/js/pipeline.js');await state.client.setNextStep({deal:'d14',text:'Partner step',next_date:'2026-11-01',idempotency_key:'external-1'});});
+ await page.evaluate(async()=>{const {state}=await import('/js/pipeline.js');await state.client.setNextStep({deal:'d14',base_version:(await state.client.getDeal('d14')).deal.version,text:'Partner step',next_date:'2026-11-01',idempotency_key:'external-1'});});
  await readPanel(page);
  assert.equal(await page.locator('#detailUpdateForm textarea').inputValue(),'');
  await page.locator('#detailUpdateForm textarea').fill('My status update');

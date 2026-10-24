@@ -12,10 +12,11 @@ async function board(answers = []) {
   const dom = new JSDOM(PAGE, { url: "https://app.doctorcre.com/progress-board?board=project-one" });
   const { window } = dom;
   const writes = [];
+  let revision = 2, reads = 0;
   const client = {
-    readProgressBoard: async () => ({
+    readProgressBoard: async () => (reads++, {
       snapshot: { board_id: "project-one", version: 1, snapshot_json: { title: "Test board", tasks: {} } },
-      questions: [{ question_id: "color", revision: 2, prompt: "Choose a color",
+      questions: [{ question_id: "color", revision, prompt: "Choose a color",
         choices: ["Blue", "Green"], allow_free_text: true, status: null }],
     }),
     answerBoardQuestion: async args => {
@@ -42,6 +43,7 @@ async function board(answers = []) {
   const current = () => doc.querySelector("#board-questions form.answer-form");
   return {
     form, radios, textarea, preview, writes, select, type,
+    setRevision: value => { revision = value; }, get reads() { return reads; },
     submit: async () => {
       form.dispatchEvent(new window.Event("submit", { cancelable: true }));
       for (let i = 0; i < 5; i += 1) await tick();
@@ -79,6 +81,7 @@ test("typing whitespace after a choice clears it and previews no answer", async 
   assert.equal(view.preview.textContent, "Will send: —");
   await view.submit();
   assert.equal(view.writes.length, 0);
+  assert.equal(view.current().querySelector("button[type=submit]").disabled, false, "an invalid draft remains editable and can be submitted after correction");
 });
 
 test("an unconfirmed send locks the shown answer until the identical retry", async () => {
@@ -91,4 +94,12 @@ test("an unconfirmed send locks the shown answer until the identical retry", asy
   await view.submit();
   assert.equal(view.writes.length, 2);
   assert.deepEqual(view.writes[1], view.writes[0]);
+});
+
+
+test("S2 board answer checks the current question revision before sending", async () => {
+  const view = await board(); view.type("My answer"); view.setRevision(3);
+  await view.submit(); assert.equal(view.writes.length, 0); assert.ok(view.reads >= 2);
+  assert.match(view.current().textContent, /changed|review/i);
+  assert.equal(view.current().querySelector("textarea").value, "My answer");
 });

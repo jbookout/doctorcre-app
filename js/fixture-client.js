@@ -66,6 +66,7 @@ export async function createFixtureClient(opts = {}) {
   // one national-account portfolio, many market deals, no duplicate deal rows.
   const fixtureAccountId = 'demo-account-001';
   let fixtureAccountOwner = 'dell';
+  let fixtureAccountVersion = 1;
   [...deals.values()].slice(0, 5).forEach((d, index) => Object.assign(d, {
     workspace_kind: 'national_account',
     account_client_id: fixtureAccountId,
@@ -1394,7 +1395,7 @@ export async function createFixtureClient(opts = {}) {
         lost_deals: [...deals.values()].filter(d => d.outcome === 'lost').map(d => ({...d})),
         closed_deals: [...deals.values()].filter(d => (d.outcome === 'won' || !d.outcome && (d.closed_on || d.invoiced_on))).map(d => ({...d})),
         accounts: [{ account_client_id: fixtureAccountId, account_client_ref: 'DEMO-ACCOUNT-001',
-          account_name: 'Demo National Practice', account_owner: fixtureAccountOwner, open_deals: activeNational.length,
+          account_name: 'Demo National Practice', account_owner: fixtureAccountOwner, base_version: fixtureAccountVersion, client_version: fixtureAccountVersion, open_deals: activeNational.length,
           attention_deals: activeNational.filter((d) => d.attention).length,
           overdue_deals: activeNational.filter((d) => d.next_date && d.next_date < today).length,
           stale_deals: activeNational.filter((d) => !d.last_touch || d.last_touch <= addDays(today, -14)).length,
@@ -1647,9 +1648,10 @@ export async function createFixtureClient(opts = {}) {
       });
     },
 
-    async setNextStep({ deal, text, next_date, idempotency_key }) {
+    async setNextStep({ deal, text, next_date, base_version, idempotency_key }) {
       return withIdem(idempotency_key, () => {
         const d = getDealOrThrow(deal);
+        guardVersion(d, base_version);
         const t = String(text || '').trim();
         if (!t) throw new Error('empty next step');
         const old = d.next_step;
@@ -1666,6 +1668,7 @@ export async function createFixtureClient(opts = {}) {
         d.next_step = t;
         if (next_date !== undefined) d.next_date = next_date || null;
         d.last_touch = nowIso().slice(0, 10);
+        d.version += 1;
         const e = pushEvent({
           actor: selfActor,
           verb: 'set-next-step',
@@ -2936,16 +2939,19 @@ export async function createFixtureClient(opts = {}) {
       });
     },
 
-    async setMarketAgent({ deal, agent_name, market, idempotency_key }) {
+    async setMarketAgent({ deal, agent_name, market, base_version, idempotency_key }) {
       return withIdem(idempotency_key, () => {
-        const d = getDealOrThrow(deal); d.market_agent = agent_name; if (market) d.market = market;
+        const d = getDealOrThrow(deal); guardVersion(d, base_version);
+        d.market_agent = agent_name; if (market) d.market = market; d.version += 1;
         return { ok: true, deal_id: deal, market_agent: agent_name };
       });
     },
 
-    async setNationalAccountOwner({ account_client_id, owner, idempotency_key }) {
+    async setNationalAccountOwner({ account_client_id, owner, base_version, idempotency_key }) {
       return withIdem(idempotency_key, () => {
+        guardVersion({ version: fixtureAccountVersion }, base_version);
         fixtureAccountOwner = owner;
+        fixtureAccountVersion += 1;
         for (const d of deals.values()) if (d.account_client_id === account_client_id) d.account_owner = owner;
         return { ok: true, account_client_id, owner };
       });

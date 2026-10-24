@@ -1,3 +1,4 @@
+import { requireReviewReceipt } from './deal-review-model.js';
 import { showToast } from './toast.js';
 import {onDialogClosed} from './dialog-lifecycle.js';
 import { dealInsightLines } from './pipeline-model.js';
@@ -22,6 +23,7 @@ import { beginCommand, settleCommand, classifyCommandOutcome, commandMessage, pe
 import { renderAccountCards } from './account-cards.js';
 import { updatedLabel } from './auto-refresh.mjs';
 import { mountVisibilityPoll } from './visibility-poll.mjs';
+import { createRetainedCommands } from './retained-commands.mjs';
 
 const POLL_MS = 1400;
 /**
@@ -618,10 +620,12 @@ async function runScreenAction(key,args,method,label,accepted) {
   const result = await performCommand({operationKey:key,args,newKey:uuidv4,
     getState:() => screenCommands,setState:next => {screenCommands=next;renderScreenActions();},
     call:async request => {
-      const response = await state.client[method](request);
-      if (response?.ok === false) throw Object.assign(new Error('Action refused'),{payload:response});
-      if (method === 'startReview' && typeof response?.session_id !== 'string') throw new Error('Invalid review response');
-      return response;
+      return appWrite(key, request, async retained => {
+        const response = await state.client[method](retained);
+        if (response?.ok === false) throw Object.assign(new Error('Action refused'),{payload:response});
+        if (method === 'startReview') requireReviewReceipt(response);
+        return response;
+      });
     }});
   if (state.accessDenied) return false;
   if (result.status !== 'ok') {
@@ -983,24 +987,77 @@ async function patchOperatingState(dealId, value, options = {}) {
   return result;
 }
 
-function openForm({ context='Deal Room', title, submit='Save', body, onSubmit }) {
+function appWrite(operationKey, args, send) {
+  state.commands ||= createRetainedCommands({ scope: () => state.selfActor });
+  return state.commands.send(operationKey, args, send);
+}
+
+function openForm({ context='Deal Room', title, submit='Save', body, onSubmit, operationKey = null, draftKey = null }) {
   const dialog = $('#formDialog');
   $('#dialogContext').textContent = context;
   $('#dialogTitle').textContent = title;
   $('#dialogSubmit').textContent = submit;
   $('#dialogBody').innerHTML = body;
   $('#formError').hidden = true;
+  let draft = null;
+  if (draftKey) {
+    state.formDrafts ||= new Map();
+    draft = state.formDrafts.get(draftKey) || { values: {} };
+    state.formDrafts.set(draftKey, draft);
+    for (const control of $$('#dialogBody [name]')) {
+      if (Object.hasOwn(draft.values, control.name)) control.value = draft.values[control.name];
+      control.addEventListener('input', () => { draft.values[control.name] = control.value; });
+    }
+  }
+  const renderReview = () => {
+    $('#reviewCurrentValues')?.remove();
+    if (!draft?.conflict) return;
+    $('#formError').textContent = draft.conflict.message;
+    $('#formError').hidden = false;
+    const review = document.createElement('button');
+    review.id = 'reviewCurrentValues'; review.type = 'button'; review.textContent = 'Review current values';
+    review.onclick = () => {
+      draft.reviewed = draft.conflict.current;
+      delete draft.conflict;
+      review.remove(); $('#formError').hidden = true;
+    };
+    $('#formError').after(review);
+  };
+  renderReview();
+  const retained = () => operationKey && state.commands?.pending(operationKey);
+  const renderPending = () => {
+    const request = retained();
+    if (!request) {
+      if (operationKey) for (const control of $$('#dialogBody input, #dialogBody textarea, #dialogBody select')) control.disabled = false;
+      $('#dialogSubmit').textContent = submit;
+      return;
+    }
+    for (const control of $$('#dialogBody input, #dialogBody textarea, #dialogBody select')) {
+      if (control.name && Object.hasOwn(request, control.name)) control.value = request[control.name] ?? '';
+      control.disabled = true;
+    }
+    $('#dialogSubmit').textContent = 'Check outcome';
+  };
+  renderPending();
   $('#dialogForm').onsubmit = async (event) => {
     event.preventDefault();
+    if (draft?.conflict) { renderReview(); return; }
+    if (draft) draft.values = Object.fromEntries(new FormData(event.currentTarget).entries());
     const button = $('#dialogSubmit');
     button.disabled = true;
     $('#formError').hidden = true;
     try {
-      if (await onSubmit(new FormData(event.currentTarget)) !== false) dialog.close();
+      if (await onSubmit(new FormData(event.currentTarget)) !== false) {
+        if (draftKey) state.formDrafts.delete(draftKey);
+        dialog.close();
+      }
     } catch (error) {
-      const detail = error.payload?.hint || error.payload?.error || error.message;
+      const detail = retained() ? 'Outcome unknown. Check outcome replays the original request. Keep this tab open until it is confirmed.'
+        : error.payload?.hint || error.payload?.error || error.message;
       $('#formError').textContent = detail;
       $('#formError').hidden = false;
+      if (draft && error.replacementConflict) { draft.conflict = error.replacementConflict; renderReview(); }
+      renderPending();
     } finally { button.disabled = false; }
   };
   // One dialog element serves every form, so a form raised FROM a form — the
@@ -1014,25 +1071,47 @@ function openForm({ context='Deal Room', title, submit='Save', body, onSubmit })
   setTimeout(() => $('input,textarea,select', dialog)?.focus(), 0);
 }
 
+function reviewedReplacementVersion(reviewed, current, fields, draftKey) {
+  const version = record => record?.base_version ?? record?.version ?? record?.client_version;
+  const expected = version(state.formDrafts?.get(draftKey)?.reviewed || reviewed), fresh = version(current);
+  if (!Number.isSafeInteger(expected) || !Number.isSafeInteger(fresh) || expected < 1 || fresh < 1)
+    throw new Error('The current version is unavailable. Reopen this record before saving.');
+  if (fresh !== expected) {
+    const detail = fields.map(field => `${field.replaceAll('_', ' ')}: ${current[field] ?? 'Not recorded'}`).join('; ');
+    const message = `This record changed. Current ${detail}. Your draft is kept. Review current values before saving.`;
+    throw Object.assign(new Error(message), { payload: { error: 'version_conflict', hint: message }, replacementConflict: { current, message } });
+  }
+  return fresh;
+}
+
 function nextStepForm(dealId) {
   const deal = state.deals.get(dealId);
   const pending = state.nextStepRequests.get(dealId);
-  openForm({ title:`Next step — ${deal.name}`, submit:pending ? 'Check outcome' : 'Set next step', body:`
+  const draftKey = `next-step:${dealId}`;
+  openForm({ draftKey, title:`Next step — ${deal.name}`, submit:pending ? 'Check outcome' : 'Set next step', body:`
     <div class="field"><label for="stepText">What happens next?</label><textarea id="stepText" name="text" required${pending ? ' disabled' : ''}>${esc(pending?.text ?? deal.next_step ?? '')}</textarea><small>This becomes a real next action in today’s triage; the prior step stays in history.</small></div>
     <div class="field"><label for="stepDate">When?</label><input id="stepDate" name="next_date" type="date" value="${esc(pending?.next_date ?? deal.next_date ?? '')}"${pending ? ' disabled' : ''}></div>`,
     onSubmit:async (data) => {
       if (state.nextStepInFlight.has(dealId)) throw new Error('Next step is still being sent. Wait for the server to answer.');
       const checking = state.nextStepRequests.has(dealId);
-      const request = state.nextStepRequests.get(dealId) || { deal:dealId,
-        text:String(data.get('text') || '').trim(), next_date:data.get('next_date') || null,
-        idempotency_key:uuidv4() };
-      state.nextStepRequests.set(dealId, request);
+      let request = state.nextStepRequests.get(dealId);
       state.nextStepInFlight.add(dealId);
       try {
+        if (!request) {
+          const current = (await state.client.getDeal(dealId))?.deal;
+          if (current?.id !== dealId) throw new Error('The current record could not be verified. No write was sent.');
+          state.deals.set(dealId, { ...deal, ...current });
+          const base_version = reviewedReplacementVersion(deal, current, ['next_step', 'next_date'], draftKey);
+          request = { deal:dealId, text:String(data.get('text') || '').trim(), next_date:data.get('next_date') || null,
+            base_version, idempotency_key:uuidv4() };
+          state.nextStepRequests.set(dealId, request);
+        }
         await state.client.setNextStep(request);
       } catch (error) {
+        if (!request) throw error;
         const outcome = classifyCommandOutcome({ error });
-        if (outcome.status === 'unknown' && outcome.reason !== 'offline') {
+        if (error.pendingRequest || error.code === 'session_changed' ||
+          (outcome.status === 'unknown' && (checking || outcome.reason !== 'offline')) || (checking && [401,403].includes(error.status))) {
           // The write may have landed. Keep its text, date and key intact until
           // CARR answers a deliberate replay of that same request.
           $('#stepText').value = request.text;
@@ -1203,18 +1282,28 @@ function nationalCreationForm({operationKey, context, title, submit, body, reque
 }
 
 function marketAgentForm(dealId) {
+  const operationKey = `market-agent:${dealId}`;
   const deal = state.deals.get(dealId);
-  openForm({ title:`Market assignment — ${deal.name}`, submit:'Save assignment', body:`
+  openForm({ operationKey, draftKey:operationKey, title:`Market assignment — ${deal.name}`, submit:'Save assignment', body:`
     <div class="field"><label for="agentName">Assigned local agent</label><input id="agentName" name="agent_name" required value="${esc(deal.market_agent || '')}" placeholder="Agent’s full name"></div>
     <div class="field"><label for="agentMarket">Market</label><input id="agentMarket" name="market" value="${esc(deal.market || '')}" placeholder="City, state"></div>`,
     onSubmit:async (data) => {
-      const market = String(data.get('market') || '').trim();
-      const result = await state.client.setMarketAgent({ deal:dealId, agent_name:data.get('agent_name'), ...(market ? {market} : {}),
-        source:'partner stated in Deal Room', idempotency_key:uuidv4() });
-      if (result?.ok !== true || result.error || result.needs_confirm || result.deal_id !== dealId) throw new Error('Market assignment could not be confirmed. Refresh the record before trying again.');
-      const current = confirmLocalWrite(dealId, { market_agent:data.get('agent_name'),
-        ...(market ? {market} : {}) });
-      renderBoardOnly(); showToast(`Market agent saved on ${current?.name || deal.name}`);
+      let request = state.commands?.pending(operationKey);
+      if (!request) {
+        const current = (await state.client.getDeal(dealId))?.deal;
+        if (current?.id !== dealId) throw new Error('The current record could not be verified. No write was sent.');
+        state.deals.set(dealId, { ...deal, ...current });
+        request = { deal:dealId, agent_name:data.get('agent_name'),
+          ...(String(data.get('market') || '').trim() ? { market:String(data.get('market')).trim() } : {}), source:'partner stated in Deal Room',
+          base_version: reviewedReplacementVersion(deal, current, ['market_agent', 'market'], operationKey) };
+      }
+      await appWrite(operationKey, request, async args => {
+        const result = await state.client.setMarketAgent(args);
+        if (result?.ok !== true || result.error || result.needs_confirm || result.deal_id !== dealId)
+          throw Object.assign(new Error('Market assignment receipt is incomplete. Check outcome before changing it.'), { code:'unknown_outcome' });
+        return result;
+      });
+      await loadHome(); showToast(`Market agent confirmed on ${deal.name}`);
     } });
 }
 
@@ -1276,10 +1365,23 @@ function addMarketDealForm() {
 
 function accountOwnerForm() {
   const selected = account();
-  openForm({ context:selected.account_name, title:'Change account owner', submit:'Save owner', body:`
+  const operationKey = `national-owner:${selected.account_client_id}`;
+  openForm({ operationKey, draftKey:operationKey, context:selected.account_name, title:'Change account owner', submit:'Save owner', body:`
     <div class="field"><label for="newAccountOwner">Accountable partner</label><select id="newAccountOwner" name="owner"><option value="joe"${selected.account_owner === 'joe' ? ' selected' : ''}>Joe</option><option value="dell"${selected.account_owner === 'dell' ? ' selected' : ''}>Dell</option></select><small>This changes portfolio accountability only. Individual market-deal owners stay untouched.</small></div>`,
-    onSubmit:async (data) => { await state.client.setNationalAccountOwner({ account_client_id:selected.account_client_id,
-      owner:data.get('owner'), idempotency_key:uuidv4() }); await loadHome(); showToast(`${selected.account_name} owner updated`); } });
+    onSubmit:async (data) => {
+      let request = state.commands?.pending(operationKey);
+      if (!request) {
+        const board = await state.client.getBoard({ workspace: 'national_account' });
+        if (board.actor !== state.selfActor) throw new Error('Session changed. Reopen this account before saving.');
+        const current = board.accounts?.find(row => row.account_client_id === selected.account_client_id);
+        if (!current) throw new Error('The current account could not be verified. No write was sent.');
+        state.accounts = board.accounts;
+        request = { account_client_id:selected.account_client_id, owner:data.get('owner'),
+          base_version: reviewedReplacementVersion(selected, current, ['account_owner'], operationKey) };
+      }
+      await appWrite(operationKey, request, args => state.client.setNationalAccountOwner(args));
+      await loadHome(); showToast(`${selected.account_name} owner updated`);
+    } });
 }
 
 function showConflict(conflict) {
@@ -1389,6 +1491,7 @@ async function finishAgenda(status = 'completed') {
 
 function wireEvents() {
   document.addEventListener('click', async (event) => {
+    try {
     const workspace = event.target.closest('[data-workspace]');
     if (workspace) {
       state.workspace = workspace.dataset.workspace;
@@ -1435,6 +1538,9 @@ function wireEvents() {
     }
     if (state.callModeUi && await state.callModeUi.handleClick(event.target)) return;
     if (event.target.closest('[data-dialog-cancel]')) { $('#formDialog').close(); return; }
+    } catch (error) {
+      showToast(error.pendingRequest ? 'Outcome unknown. Repeat the same action to check its original request.' : error.message);
+    }
   });
 
   document.addEventListener('change', async (event) => {
@@ -1454,14 +1560,16 @@ function wireEvents() {
   $('#stickyAddButton').onclick = openAddForm;
   $('#receiptsJump').onclick = goToReceipts;
   $('#ownerButton').onclick = accountOwnerForm;
-  $('#agendaButton').onclick = startAgenda;
+  const agendaAction = work => () => Promise.resolve().then(work).catch(error => showToast(
+    error.pendingRequest ? 'Outcome unknown. Repeat the same agenda action to check its original request.' : error.message));
+  $('#agendaButton').onclick = agendaAction(startAgenda);
   $('#callModeButton').onclick = () => state.callModeUi.open();
   $('#callModeStop').onclick = () => state.callModeUi.stop();
   $('#postCallRefresh').onclick = () => state.callModeUi.refreshPostCall();
-  $('#agendaReviewed').onclick = () => advanceAgenda('reviewed');
-  $('#agendaSkip').onclick = () => advanceAgenda('skipped');
-  $('#agendaEnd').onclick = () => finishAgenda('completed');
-  $('#agendaClose').onclick = () => finishAgenda('abandoned');
+  $('#agendaReviewed').onclick = agendaAction(() => advanceAgenda('reviewed'));
+  $('#agendaSkip').onclick = agendaAction(() => advanceAgenda('skipped'));
+  $('#agendaEnd').onclick = agendaAction(() => finishAgenda('completed'));
+  $('#agendaClose').onclick = agendaAction(() => finishAgenda('abandoned'));
 
   // Coming back is not the same as being current: BOTH reads start again from
   // scratch, and `force` supersedes whatever was left hanging when the

@@ -134,3 +134,23 @@ test('S1 browser: revocation clears a private tab title before asynchronous stor
  await app.page.waitForURL('**/public-shell/session-ended.html');
  await assertPurged(app.page);assert.deepEqual(app.errors,[]);
 });
+
+test('S1/S2 browser: the shared Room writer succeeds in-session and retires an old-session retry', async t => {
+ const app = await open(t), payloads = [];
+ await app.context.route('**/api/room/turn', route => {
+   payloads.push(route.request().postDataJSON());
+   return route.fulfill({json:{ok:true,seq:payloads.length}});
+ });
+ const receipt = await app.page.evaluate(async () => {
+   const {createRoomTurnClient} = await import('/js/room-turn-client.js');
+   window.roomWriter = createRoomTurnClient({session:async () => 'synthetic-joe'});
+   return window.roomWriter.send('composer',{body:'Synthetic same-session turn'});
+ });
+ assert.equal(receipt.ok,true);
+ assert.match(payloads[0].idempotency_key,/^[0-9a-f-]{36}$/i);
+ app.switchActor();
+ await app.page.evaluate(() => { void window.roomWriter.send('composer',{body:'Synthetic old-session intent'}).catch(() => {}); });
+ await app.page.waitForURL('**/public-shell/session-ended.html');
+ assert.equal(payloads.length,1,'the retired editor cannot dispatch under the switched cookie');
+ assert.deepEqual(app.errors,[]);
+});

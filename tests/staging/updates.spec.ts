@@ -27,7 +27,7 @@ test('The staging test account timezone can be saved and restored', async ({ pag
   try {
     await page.locator('#quietTimezone').fill(modified);
     await page.locator('#prefSave').click();
-    await expect(page.locator('#prefMessage')).toContainText(/saved/i);
+    await expect(page.locator('#prefMessage')).toContainText(/^saved$/i, { timeout: 27000 });
     await page.reload();
     await expect(page.locator('#quietTimezone')).toHaveValue(modified, { timeout: 27000 });
   } finally {
@@ -36,7 +36,7 @@ test('The staging test account timezone can be saved and restored', async ({ pag
     if (await page.locator('#quietTimezone').inputValue() === modified) {
       await page.locator('#quietTimezone').fill(original);
       await page.locator('#prefSave').click();
-      await expect(page.locator('#prefMessage')).toContainText(/saved/i);
+      await expect(page.locator('#prefMessage')).toContainText(/^saved$/i, { timeout: 27000 });
     }
     await page.reload();
     await expect(page.locator('#quietTimezone')).toHaveValue(original, { timeout: 27000 });

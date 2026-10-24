@@ -444,7 +444,7 @@ test("a change to a field revert-deal-field cannot act on shows in Recent Change
   const client = await newClient();
   const row = await boardRow(client, "d02");
   const write = await client.setNextStep({
-    deal: "d02", text: "Confirm rent roll with landlord", idempotency_key: "key-next-step",
+    deal: "d02", text: "Confirm rent roll with landlord", base_version: row.version, idempotency_key: "key-next-step",
   });
   assert.ok(write.event?.id || write.event_id, "the fixture recorded the next-step event");
 
@@ -532,7 +532,7 @@ test("the follow-ups run after the phase is accepted, each on its own key, and a
   const send = {
     "patch-deal-field": (args) => client.patchDealField({ ...args, base_event_id: row.field_base?.phase?.id || null, idempotency_key: "k-phase" }),
     "add-deal-note": (args) => client.addDealNote({ ...args, idempotency_key: "k-note" }),
-    "set-next-step": (args) => client.setNextStep({ ...args, idempotency_key: "k-step" }),
+    "set-next-step": async (args) => client.setNextStep({ ...args, base_version: (await client.getDeal(args.deal)).deal.version, idempotency_key: "k-step" }),
     "add-critical-date": (args) => client.addCriticalDate({ ...args, idempotency_key: "k-date" }),
   };
   const [phaseStep, ...followUps] = plan.steps;

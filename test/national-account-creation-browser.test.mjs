@@ -21,6 +21,7 @@ test('national creation reviews duplicate candidates and existing sub-clients th
     };`}));
   const sent = [], errors = [];
   page.on('pageerror',error => errors.push(error.message));
+  await page.route('**/auth/session',route => route.fulfill({json:{actor:{slug:'joe'},csrf_token:'synthetic-session'}}));
   await page.route('**/api/**',route => route.fulfill({json:{}}));
   await page.route('**/mcp',async route => {
     const {name,arguments:args} = route.request().postDataJSON().params;

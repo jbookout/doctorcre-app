@@ -4,6 +4,7 @@ import { readFile } from "node:fs/promises";
 import { posix } from "node:path";
 import { boardDirectory, boardView } from "../js/progress-board-model.js";
 import { execFileSync } from "node:child_process";
+import { createHash } from 'node:crypto';
 import { handleDoctorcreRequest } from "../src/worker.js";
 import { validSystemWork, groupSystemWork, recentLive } from "../js/system-work-board-model.js";
 
@@ -24,8 +25,29 @@ async function producerModuleUrl(path) {
   return url;
 }
 
-test("the runtime pin integrates Doc activity with inherited Progress and system-work reads", () => {
+test("the runtime pin includes operation identity, session binding and versioned replacement writes", () => {
   assert.equal(contract.producer.source_commit, pinnedProducer);
+});
+
+test('S2 consumer contract binds the operation and concurrency contract to the advertised producer', async () => {
+  const seam = contract.write_reconciliation;
+  const bytes = await readFile(new URL(`../${seam.contract}`, import.meta.url));
+  assert.equal(createHash('sha256').update(bytes).digest('hex'), seam.sha256);
+  assert.equal(seam.producer.source_commit, contract.producer.source_commit);
+  const schema = JSON.parse(bytes);
+  assert.equal(schema.schema, 'doctorcre-app-write-reconciliation.v1');
+  assert.deepEqual(Object.keys(schema.replacements), ['set-next-step', 'set-market-agent', 'set-national-account-owner']);
+  for (const replacement of Object.values(schema.replacements)) assert.equal(replacement.expected, 'base_version');
+  assert.match(schema.mcp_session.binding, /x-carr-csrf/);
+});
+
+test('S2 contract bytes match the exact producer revision', {
+  skip: !process.env.CARR_PRODUCER_CHECKOUT && 'Set CARR_PRODUCER_CHECKOUT to verify write reconciliation',
+}, async () => {
+  const local = await readFile(new URL('../contracts/app-write-reconciliation.v1.json', import.meta.url), 'utf8');
+  const producer = execFileSync('git', ['-C', process.env.CARR_PRODUCER_CHECKOUT, 'show',
+    `${contract.producer.source_commit}:mcp-server/contracts/app-write-reconciliation.v1.json`], { encoding: 'utf8' });
+  assert.equal(local, producer);
 });
 
 // Opt-in cross-repository verification reads committed source, never a working
