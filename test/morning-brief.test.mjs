@@ -372,6 +372,21 @@ test('full sections retain producer-shaped notification reasons, decision links 
  data.sections.needs_joe.items[0].link='javascript:alert(1)';await state.ui.refresh();assert.equal(content.querySelector('a[href^="javascript:"]'),null);
 });
 
+test('P2 producer renewals retain candidate identity and decision details with or without a lease date',async t=>{
+ const state=setup(t),data=completeBrief();
+ data.sections.renewals=section([
+  {display_name:'Demo Doctor',org_name:'Demo Practice',vertical:'Dental',city:'Demo City',county:'Demo County',state:'AL',est_lease_event:'2027-03-01',tier_status:'qualified',flag_status:'review',has_channel:true,decision_count:3,source_observed_at:'2026-10-02T12:00:00Z',freshness_state:'fresh'},
+  {display_name:'Demo Undated Doctor',org_name:'Demo Undated Practice',vertical:'Medical',city:'Demo Other City',county:'Demo Other County',state:'FL',est_lease_event:null,tier_status:'unqualified',flag_status:'clear',has_channel:false,decision_count:0,source_observed_at:'2026-09-01T12:00:00Z',freshness_state:'stale'},
+ ]);
+ state.data=data;await state.ui.refresh();await state.ui.open();
+ const rows=state.root.querySelectorAll('[data-brief-section="renewals"] li');assert.equal(rows.length,2);
+ for(const [index,expected] of [
+  ['Name: Demo Doctor','Organization: Demo Practice','Practice: Dental','City: Demo City','County: Demo County','State: AL','Lease event: 2027-03-01','Tier: qualified','Flag: review','Contact available: true','Decisions: 3','Source observed: 2026-10-02T12:00:00Z','Freshness: fresh'],
+  ['Name: Demo Undated Doctor','Organization: Demo Undated Practice','Practice: Medical','City: Demo Other City','County: Demo Other County','State: FL','Tier: unqualified','Flag: clear','Contact available: false','Decisions: 0','Source observed: 2026-09-01T12:00:00Z','Freshness: stale'],
+ ].entries())for(const text of expected)assert.ok(rows[index].textContent.includes(text),`row ${index}: ${text}`);
+ assert.doesNotMatch(rows[1].textContent,/Lease event:|null|undefined/);
+});
+
 for (const missing of ['today','deals','loops','claim_card','renewals','assurance_cadence','costs']) test(`P2 missing ${missing} retains authenticated decisions and coverage`,async t=>{
  const state=setup(t),data=completeBrief();data.sections.needs_joe=section([{title:'Demo surviving decision'}]);delete data.sections[missing];state.data=data;
  await state.ui.refresh();await state.ui.open();
