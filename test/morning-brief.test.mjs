@@ -309,3 +309,48 @@ test('Overnight stays identical for All, Joe and Dell when their first prioritie
  assert.deepEqual(overnight[1],overnight[0]);
  assert.deepEqual(overnight[2],overnight[0]);
 });
+
+function completeBrief() {
+ const data=payload();
+ for(const key of ['needs_joe','claim_card','renewals','assurance_cadence','costs']) data.sections[key]=section([]);
+ data.coverage={schema:'morning-brief-coverage.v1',count_scope:'returned_rows_only',required_sections:Object.entries(data.sections).map(([key,value])=>({key,path:`/sections/${key}`,state:value.state,counts:{items:value.items.length},incomplete_sources:[]}))};
+ return data;
+}
+test('F1 full brief coverage makes Needs Joe, accounts and providers reachable without an all-clear',async t=>{
+ const state=setup(t),data=completeBrief();
+ data.sections.today=section([]);data.sections.deals={...section([]),accounts:[{account_name:'Demo account portfolio'}]};
+ data.sections.needs_joe=section([{key:'rule:demo',title:'Demo waiting decision',why:{text:'Needs a ruling'},action:'Approve the demo rule',blocks:{text:'Demo work blocked'}}]);
+ data.sections.costs={state:'ready',items:[],providers:[{provider:'demo',mtd_usd:12,projection_usd:24,budget_usd:30,daily:[{date:day,usd:2}]}]};
+ data.coverage.required_sections.forEach(entry=>{const value=data.sections[entry.key];entry.state=value.state;entry.counts=Object.fromEntries(['items','accounts','providers'].filter(key=>Array.isArray(value[key])).map(key=>[key,value[key].length]));});
+ state.data=data;await state.ui.refresh();state.ui.open();
+ const content=state.root.getElementById('morningContent').textContent;
+ assert.match(content,/Demo waiting decision/);assert.match(content,/Demo account portfolio/);assert.match(content,/12/);assert.doesNotMatch(content,/No to-dos/);
+ const view=morningBriefView(data,{...options,events:[]});assert.match(view.spoken,/Needs Joe/);assert.match(view.spoken,/returned/);
+ assert.equal(state.root.querySelector('[data-brief-section="needs_joe"] summary')?.tagName,'SUMMARY');
+});
+test('F2 every triage kind survives missing partner deal metadata in explicit full sections',async t=>{
+ const state=setup(t),data=completeBrief();data.sections.deals=section([]);
+ data.sections.today=section(['next_action','post_call_action','critical_date','ingest'].map((item_kind,index)=>({id:`demo-${index}`,item_kind,subject_type:'deal',subject_id:'private-demo-deal',subject_name:'Shared demo subject',owner_partner:'dell',what:`Demo ${item_kind}`,due_on:item_kind==='critical_date'?'2026-10-10':day})));
+ state.data=data;let privateReads=0;state.client.getDeal=async()=>{privateReads++;throw Error('Private deal');};await state.ui.refresh();state.ui.open();
+ for(const kind of ['next_action','post_call_action','critical_date','ingest']) assert.match(state.root.getElementById('morningContent').textContent,new RegExp(`Demo ${kind}`));
+ const view=morningBriefView(data,{...options,events:[]});assert.equal(view.groups[0]?.row.kind,'action');
+ state.root.querySelector('[data-brief-record]')?.click();await new Promise(resolve=>setTimeout(resolve,10));assert.ok(state.root.querySelector('.morning-record'));assert.equal(privateReads,0);
+});
+test('F6 partial and missing required sources are visible and spoken using safe category names',async t=>{
+ const state=setup(t),data=completeBrief();data.sections.needs_joe={state:'partial',items:[{title:'Demo surviving decision'}],sources:{work_requests:{state:'unavailable',error:'private-driver-demo'}}};
+ const coverage=data.coverage.required_sections.find(row=>row.key==='needs_joe');Object.assign(coverage,{state:'partial',counts:{items:1},incomplete_sources:[{key:'work_requests',state:'unavailable'}]});
+ state.data=data;await state.ui.refresh();
+ assert.match(state.root.getElementById('morningContent').textContent,/partial.*Work requests unavailable/s);
+ assert.match(morningBriefView(data,options).spoken,/Work requests unavailable/);assert.doesNotMatch(state.root.querySelector('dialog').textContent,/private-driver-demo/);
+ delete data.sections.renewals;await state.ui.refresh();assert.match(state.root.getElementById('morningContent').textContent,/Renewals.*unavailable/s);
+});
+test('F5 business day and initial overnight cutoff use Chicago under both DST offsets and transitions',async t=>{
+ for(const [instant,expectedDay,cutoff] of [
+ ['2026-10-24T01:00:00Z','2026-10-23','2026-10-22T22:00:00.000Z'],
+ ['2026-01-24T01:00:00Z','2026-01-23','2026-01-22T23:00:00.000Z'],
+ ['2026-03-08T13:00:00Z','2026-03-08','2026-03-07T23:00:00.000Z'],
+ ['2026-11-01T14:00:00Z','2026-11-01','2026-10-31T22:00:00.000Z']]) {
+ const state=setup(t);state.current=new Date(instant);const cutoffs=[];state.client.getChanges=async(_cursor,args)=>{cutoffs.push(args.since);return {events:[],cursor:'end'};};await state.ui.refresh();
+ assert.equal(localDay(state.current=new Date(instant)),expectedDay);assert.equal(cutoffs.at(-1),cutoff);
+ }
+});
