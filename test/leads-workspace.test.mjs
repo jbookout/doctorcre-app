@@ -774,3 +774,8 @@ test('Chicago timestamps retain the business day and date-only move evidence nev
   await s.app.readDetail(id(1));assert.match(s.d.querySelector('.correspondence time').textContent,/Jan 23, 7:00 PM/);
  }finally{s.close();}
 });
+
+test('midnight occurrence timestamps convert to Chicago while midnight DATE evidence retains its date',async()=>{
+ const s=await setup({getWorkspace:async()=>{const b=workspace();b.leads[0].last_stage_move={automatic:true,from:'new',to:b.leads[0].stage,event_id:'demo-midnight',occurred_at:'2026-10-24T00:00:00Z',reason:'demo midnight event'};b.leads[1].last_stage_move={automatic:true,from:'qualified',to:b.leads[1].stage,event_id:'demo-date',evidence_date:'2026-10-24T00:00:00.000Z',reason:'demo DATE evidence'};return b;}});
+ try{const moves=[...s.d.querySelectorAll('.auto-move')].map(node=>node.textContent);assert.ok(moves.some(text=>/demo midnight event 10\/23/.test(text)));assert.ok(moves.some(text=>/demo DATE evidence 10\/24/.test(text)));}finally{s.close();}
+});

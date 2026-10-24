@@ -10,7 +10,7 @@ import { BOARD_STAGES, FILTER_STAGES, stageLabel, normalizedStage, eligibleLead,
 import { mountTerritoryMap } from "./leads-territory-map.js";
 
 const esc = value => String(value ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-const shortDate = value => Number.isFinite(Date.parse(value)) ? new Date(toDay(value) ? `${toDay(value)}T12:00:00Z` : value).toLocaleDateString("en-US", { timeZone: BUSINESS_TIME_ZONE, month: "numeric", day: "numeric" }) : "Date pending";
+const shortDate = (value, calendarDate = false) => Number.isFinite(Date.parse(value)) ? new Date(calendarDate && toDay(value) ? `${toDay(value)}T12:00:00Z` : value).toLocaleDateString("en-US", { timeZone: BUSINESS_TIME_ZONE, month: "numeric", day: "numeric" }) : "Date pending";
 const stamp = value => Number.isFinite(Date.parse(value)) ? new Date(value).toLocaleString("en-US", { timeZone: BUSINESS_TIME_ZONE, month: "short", day: "numeric", hour: "numeric", minute: "2-digit", hour12: true }) : "—";
 const summary = value => String(value || "").split(/\n\s*\n/)[0].slice(0, 230);
 const score = lead => lead.score == null ? "—" : esc(Math.round(Number(lead.score)));
@@ -38,7 +38,7 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
     return `<article class="lead-card" data-lead-id="${esc(lead.id)}" data-selected="${lead.id === state.selectedId}" draggable="true">
       <span class="drag-handle" data-drag-handle aria-hidden="true">⠿</span><h3><button class="lead-open" data-open="${esc(lead.id)}" aria-pressed="${lead.id === state.selectedId}">${esc(leadTitle(lead))}</button></h3>
       <div class="card-foot"><span><span class="lead-market">${esc(marketKey(lead))}</span><small class="lead-location">${locationLabel(lead)}</small></span><div class="card-actions"><span class="score"><small>Score</small>${score(lead)}</span>${normalizedStage(lead) === "new" && !lead.owner ? `<button data-claim="${esc(lead.id)}">Claim</button>` : ""}</div></div>
-      ${move ? `<div class="auto-move">Moved by Doc: ${esc(move.reason || "stage updated")} ${shortDate(move.evidence_date || move.occurred_at)}${undo ? `<button data-undo="${esc(lead.id)}">Undo</button>` : ""}</div>` : ""}
+      ${move ? `<div class="auto-move">Moved by Doc: ${esc(move.reason || "stage updated")} ${shortDate(move.evidence_date || move.occurred_at, !!move.evidence_date)}${undo ? `<button data-undo="${esc(lead.id)}">Undo</button>` : ""}</div>` : ""}
       ${possible.map(match => `<div class="client-hint">possible client: ${esc(match.name)} <button data-link="${esc(lead.id)}" data-client-id="${esc(match.client_id)}" aria-label="Link ${esc(leadTitle(lead))} to ${esc(match.name)}">Link</button></div>`).join("")}
     </article>`;
   }
