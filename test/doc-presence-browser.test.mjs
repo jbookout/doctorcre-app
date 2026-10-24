@@ -633,3 +633,36 @@ test('Dr. CRE suggestion page: a feature_disabled refusal re-reads the switch an
  assert.equal(writes.length,1);
  assert.deepEqual(errors,[]);
 });
+
+for(const trigger of ['resume','identity-failure']) test(`F9 Leads ${trigger} clears Doc while identity is delayed and only fresh workspace restores it`,async t=>{
+ let hold=false,release;const held=new Promise(resolve=>release=resolve);t.after(()=>release());
+ const {page,goto,errors}=await setup(t,{onRoute:async(route,env)=>{
+  const params=env.url.pathname==='/mcp'?route.request().postDataJSON().params:null;
+  if(hold && params?.name==='deal-room-board'){await held;if(trigger==='identity-failure'){await route.fulfill({status:503,body:''});return true;}}
+  return producerRoute(route,env);
+ }});
+ await goto('/leads?mode=live');await page.locator('.lead-card').first().click();
+ await page.waitForFunction(()=>window.docContext?.snapshot().active);
+ hold=true;
+ const suspended=await page.evaluate(trigger=>{
+  if(trigger==='resume')window.dispatchEvent(new Event('online'));else document.getElementById('refreshBoard').click();
+  return {context:window.docContext.snapshot(),cards:document.querySelectorAll('.lead-card').length,detail:document.getElementById('leadDetail').open};
+ },trigger);
+ if(trigger==='resume'){assert.equal(suspended.cards,0);assert.equal(suspended.detail,false);}
+ assert.equal(suspended.context.ready,false);assert.deepEqual(suspended.context.records,[]);
+ await page.locator('#docOpen').click();
+ assert.doesNotMatch(await page.locator('#docDetail').innerText(),/Dr. Example/);
+ release();
+ if(trigger==='identity-failure'){await page.waitForFunction(()=>document.querySelectorAll('.lead-card').length===0);assert.deepEqual((await readContext(page)).records,[]);hold=false;await page.locator('#docClose').click();await page.locator('#refreshBoard').click();}
+ await page.waitForFunction(()=>window.docContext?.snapshot().ready);
+ assert.ok((await readContext(page)).records.length>0);assert.deepEqual(errors,[]);
+});
+
+test('F9 ordinary Leads refresh restores the open detail context after revalidation',async t=>{
+ const {page,goto}=await setup(t,{onRoute:producerRoute});await goto('/leads?mode=live');
+ await page.locator('.lead-card').first().click();await page.waitForFunction(()=>window.docContext?.snapshot().active);
+ await page.locator('#refreshBoard').evaluate(node=>node.click());
+ await page.waitForFunction(()=>document.getElementById('leadBoard').getAttribute('aria-busy')==='false');
+ const c=await readContext(page);assert.equal(c.ready,true);assert.equal(c.active?.title,'Dr. Example 1');
+ assert.deepEqual(c.selected,{kind:'lead',id:workspace().leads[0].id});
+});

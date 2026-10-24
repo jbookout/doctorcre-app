@@ -172,6 +172,7 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
   // Resolves false when the read failed for a reason other than sign-in, so
   // background refresh retries soon; a superseded read resolves undefined.
   async function refresh() {
+    pageDocContext?.clear();
     const epoch = ++state.epoch;
     state.identityReady = false;
     paintWriteControls();
@@ -271,6 +272,7 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
       if (epoch !== state.detailEpoch || actor !== state.actor) return;
       if (!leadById(id) || !response.detail || response.detail.id !== id || !eligibleLead(response.detail)) { $("leadDetail").close(); state.detail = null; return; }
       validateLeadDetail(response.detail, id);
+      selectDocRecord("lead", id);
       const unchanged = JSON.stringify(state.detail) === JSON.stringify(response.detail);
       state.detail = response.detail; if (!unchanged) paintDetail(response.detail);
     } catch (error) { if (epoch !== state.detailEpoch || authorizationFailure(error)) return; state.detail = null; $("detailBody").innerHTML = '<p class="empty">Connection interrupted · reconnecting…</p>'; }
@@ -534,6 +536,7 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
   render();
   mapFactory($("territoryMap"), selectMarket, readDetail).then(map => { state.map = map; if (!state.drag && !touch) render(); }).catch(() => { $("territoryMap").innerHTML = '<p class="empty">Map unavailable</p>'; });
   function suspendPrivateView() {
+    pageDocContext?.clear();
     if (state.reviewTarget && $("stageDialog").open) state.resumeReview = captureReviewDraft();
     stopTouch(); ++state.epoch; ++state.detailEpoch; ++state.reviewEpoch;
     state.identityReady = false; state.board = null; state.detail = null; state.detailId = null;
@@ -543,7 +546,7 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
     render();
   }
   const auto = mountAutoRefresh({ document: doc, window: win, refresh: async () => { if (await refresh() === false) throw new Error("Lead board read failed"); }, onResume: suspendPrivateView, shouldRefresh: () => !state.writing && !touch && !state.drag });
-  const resume = () => { if (doc.visibilityState === "hidden") { stopTouch(); state.identityReady = false; ++state.epoch; ++state.detailEpoch; ++state.reviewEpoch; } };
+  const resume = () => { if (doc.visibilityState === "hidden") { pageDocContext?.clear(); stopTouch(); state.identityReady = false; ++state.epoch; ++state.detailEpoch; ++state.reviewEpoch; } };
   doc.addEventListener("visibilitychange", resume);
   auto.refresh();
   return { state, refresh, openReview, readDetail, dispose() { stopTouch(); ++state.epoch; ++state.detailEpoch; ++state.reviewEpoch; auto.dispose(); state.map?.dispose(); doc.removeEventListener("visibilitychange", resume); } };

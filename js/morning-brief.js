@@ -12,7 +12,7 @@ export function mountMorningBrief({ document:root, window:win, getClient, interv
   dialog.innerHTML = '<header><div><span class="doc-orb" aria-hidden="true">◍</span><h2 id="morningTitle">Morning brief</h2></div><button id="morningClose" type="button" aria-label="Dismiss morning brief">×</button></header><div class="morning-toolbar"><button id="morningBack" type="button" hidden>← Morning brief</button><time id="morningUpdated">Updating…</time><button id="morningRefresh" type="button" aria-label="Refresh morning brief" title="Refresh morning brief">↻</button><button id="morningSpeech" type="button" aria-label="Brief speech" title="Brief speech" aria-pressed="false">◖))</button><button id="morningListen" type="button" aria-label="Listen to morning brief" title="Listen to morning brief" disabled>▶</button></div><div id="morningOwners"></div><div id="morningCoverage" role="status"></div><nav id="morningQueues" aria-label="Morning work queues"></nav><div id="morningContent"></div>';
   root.body.append(dialog);
   const $ = id => dialog.querySelector(`#${id}`) || root.getElementById(id), control = $('docMorning');
-  let facts = null, viewOptions;
+  let facts = null, viewOptions, readEpoch = 0;
   let client, view = null, sponsor = null, preferences, since, windowDay, events = [], cursor = null, disposed = false, selected = null, detailEpoch = 0, opener, speaking = false, speechEpoch = 0;
   let storage; try { storage = win.localStorage; } catch {}
   const speechAvailable = !!win.speechSynthesis && !!win.SpeechSynthesisUtterance;
@@ -56,20 +56,18 @@ export function mountMorningBrief({ document:root, window:win, getClient, interv
   };
   const remember = () => { if (preferences && view) preferences.save({ day:localDay(now()), lastShownAt:now().toISOString(), since }); cue(); };
   const close = () => { stop(); dialog.close(); };
-  const open = () => {
+  const open = async () => {
     opener = root.activeElement;
     const doc = $('docDetail'); if (doc?.open) doc.close();
-    selected = null; ++detailEpoch; queues.reset(); stop(); render();
+    const pending = auto.revalidate();
     if (!dialog.open) dialog.showModal();
-    if (sponsor && view) {
-      // Keep the current briefing window across page navigation. Only metadata
-      // survives; every page must re-read the facts before opening its brief.
-      remember();
-    }
+    await pending;
+    if (dialog.open && sponsor && view) remember();
   };
   const focusCard = key => ([...$('morningContent').querySelectorAll('[data-brief-key]')].find(node => node.dataset.briefKey === key) || $('morningClose')).focus();
   const back = () => { queues.reset(); const key = selected?.key; selected = null; ++detailEpoch; render(); focusCard(key); };
   const clear = () => { queues.reset(); stop(); ++detailEpoch; selected = null; view = null; facts = null; sponsor = null; preferences = null; since = null; events = []; cursor = null; render(); cue(); };
+  const suspend = () => { ++readEpoch; clear(); };
   const showRecord = async (row, { background = false } = {}) => {
     selected = row; const epoch = ++detailEpoch, owner = sponsor;
     stop(); controls(); $('morningBack').hidden = false; $('morningTitle').textContent = row.title;
@@ -98,10 +96,13 @@ export function mountMorningBrief({ document:root, window:win, getClient, interv
     }
   };
   const refresh = async ({signal} = {}) => {
+    const epoch = readEpoch;
+    const current = () => !disposed && !signal?.aborted && epoch === readEpoch;
     try {
       client ||= await getClient();
+      if (!current()) return;
       const payload = await readWithDeadline(() => client.morningBrief({signal}), {signal});
-      if (disposed || signal?.aborted) return;
+      if (!current()) return;
       if (!validBrief(payload)) throw new Error('Invalid brief');
       if (sponsor !== payload.sponsor || windowDay !== localDay(now())) {
         clear(); sponsor = payload.sponsor; preferences = briefPreferences(storage,sponsor); windowDay = localDay(now()); owners.setViewer(sponsor);
@@ -115,7 +116,7 @@ export function mountMorningBrief({ document:root, window:win, getClient, interv
         for (let page=0; page<4; page++) {
           const changes = await readWithDeadline(() => client.getChanges(cursor,{signal,since}),{signal});
           if (!Array.isArray(changes?.events)) throw new Error('Invalid changes');
-          if (disposed || signal?.aborted) return;
+          if (!current()) return;
           const ids = new Set(events.map(event => event.id));
           events = [...events,...changes.events.filter(event => !ids.has(event.id))].filter(event => Date.parse(event.recorded_at) >= Date.parse(since));
           cursor = changes.cursor ?? cursor;
@@ -126,7 +127,7 @@ export function mountMorningBrief({ document:root, window:win, getClient, interv
       } catch (error) {
         if ([401,403].includes(error.status)) throw error;
       }
-      if (disposed || signal?.aborted) return;
+      if (!current()) return;
       facts = payload; viewOptions = { now:now(),since,events,caughtUp };
       const next = morningBriefView(facts,{...viewOptions, owner:owners.current()});
       if (view?.spoken !== next.spoken) stop();
@@ -137,12 +138,12 @@ export function mountMorningBrief({ document:root, window:win, getClient, interv
         const admitted = source.state !== 'unavailable' && source.items.find(row => selected.kind === 'loop' ? String(row.number) === selected.id && row.kind === selected.loopKind : row.id === (selected.action?.id || selected.id) && (selected.kind !== 'action' || row.item_kind === 'next_action'));
         if (admitted) await showRecord(selected.action ? {...selected,action:admitted} : selected,{background:true}); else back();
       }
-    } catch { if (!disposed) clear(); }
+    } catch { if (current()) clear(); }
   };
   const queues = mountBriefQueues({menu:$('morningQueues'),content:$('morningContent'),getClient:()=>client,getSponsor:()=>sponsor,
     onOpen:title=>{stop();selected=null;++detailEpoch;$('morningTitle').textContent=title;$('morningBack').hidden=false;$('morningOwners').hidden=true;controls();},onBack:back,onInvalidate:clear,onChange:render});
-  const auto = mountAutoRefresh({ document:root,window:win,refresh,onResume:stop,intervalMs });
-  control.onclick = () => { open(); auto.refresh(); };
+  const auto = mountAutoRefresh({ document:root,window:win,refresh,onResume:suspend,onWake:suspend,intervalMs });
+  control.onclick = open;
   $('morningClose').onclick = close;
   // A modal that replaced the brief (Doc's command bar) already owns focus.
   onDialogClosed(dialog, () => { stop(); queues.reset(); ++detailEpoch; selected = null; if (root.querySelector('dialog[open]')) return; (opener?.isConnected && !opener.closest('dialog:not([open])') ? opener : $('docOpen'))?.focus(); });
@@ -159,7 +160,7 @@ export function mountMorningBrief({ document:root, window:win, getClient, interv
     speaking = true; $('morningListen').textContent = '■'; $('morningListen').setAttribute('aria-label','Stop morning brief');
     win.speechSynthesis.speak(utterance);
   };
-  const hidden = () => { if (root.visibilityState === 'hidden') {stop();queues.reset();++detailEpoch;render();} };
+  const hidden = () => { if (root.visibilityState === 'hidden') suspend(); };
   root.addEventListener('visibilitychange',hidden);
   auto.refresh();
   return { open, refresh:auto.refresh, dispose() { if (disposed) return; disposed = true; queues.reset(); stop(); ++detailEpoch; auto.dispose(); owners.dispose(); root.removeEventListener('visibilitychange',hidden); dialog.remove(); } };

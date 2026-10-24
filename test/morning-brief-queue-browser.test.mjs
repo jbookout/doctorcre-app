@@ -17,7 +17,7 @@ test('rendered brief queues show the 51st tied loop and retain readable narrow-s
    const client={morningBrief:async()=>({sponsor:'joe',sections:{today:empty(),deals:empty(),loops:empty(),needs_joe:empty(),assurance_cadence:empty()}}),getChanges:async()=>({events:[]}),
      morningBriefQueue:async(_queue,{cursor}={})=>{if(window.queueChanged)return {sponsor:'joe',items:[{number:'52',kind:'open_loop',title:'Synthetic new eligible loop'}],total:1,returned:1,has_more:false,next_cursor:null};const start=cursor?50:0,count=cursor?1:50;return {sponsor:'joe',items:Array.from({length:count},(_,i)=>({number:String(start+i+1),kind:'open_loop',title:`Synthetic loop ${start+i+1}`,due_on:'2026-01-01',owner_partner:'joe'})),total:51,returned:count,has_more:!cursor,next_cursor:cursor?null:'opaque'};}};
    window.brief=mountMorningBrief({document,window,getClient:async()=>client,intervalMs:100000});
-   await window.brief.refresh();window.brief.open();
+   await window.brief.refresh();await window.brief.open();
  });
  await page.getByRole('button',{name:/Open loops/}).click();
  await page.getByText('50 of 51',{exact:true}).waitFor();
