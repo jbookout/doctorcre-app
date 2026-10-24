@@ -368,3 +368,37 @@ test('full sections retain producer-shaped notification reasons, decision links 
  assert.equal(content.querySelector('a[href="/work/requests/WR-DEMO"]')?.textContent,'Open record');
  data.sections.needs_joe.items[0].link='javascript:alert(1)';await state.ui.refresh();assert.equal(content.querySelector('a[href^="javascript:"]'),null);
 });
+
+for (const missing of ['today','deals','loops','claim_card','renewals','assurance_cadence','costs']) test(`P2 missing ${missing} retains authenticated decisions and coverage`,async t=>{
+ const state=setup(t),data=completeBrief();data.sections.needs_joe=section([{title:'Demo surviving decision'}]);delete data.sections[missing];state.data=data;
+ await state.ui.refresh();state.ui.open();
+ assert.match(state.root.getElementById('morningContent').textContent,/Demo surviving decision/);
+ const view=morningBriefView(data,options),coverage=view.coverage.find(row=>row.key===missing);
+ assert.equal(coverage.state,'unavailable');assert.ok(view.spoken.includes(coverage.spoken));
+ assert.match(state.root.querySelector(`[data-brief-section="${missing}"]`).textContent,/unavailable/);
+ assert.equal(morningBriefView({...data,sponsor:'unknown'},options),null);
+});
+test('P2 missing Needs Joe is named unavailable while surviving work remains',async t=>{
+ const state=setup(t),data=completeBrief();delete data.sections.needs_joe;state.data=data;await state.ui.refresh();
+ assert.match(state.root.getElementById('morningContent').textContent,/Review demo lease comments/);
+ assert.match(morningBriefView(data,options).spoken,/Needs Joe.*unavailable/);
+});
+test('P2 full triage activates all producer kinds outside priority selection without private reads',async t=>{
+ const state=setup(t),data=completeBrief();
+ const rows=['next_action','post_call_action','critical_date','ingest'].map((item_kind,index)=>({id:`demo-full-${index}`,item_kind,subject_type:'deal',subject_id:'private-demo',subject_ref:'D-DEMO',subject_name:'Demo shared subject',owner_partner:'dell',what:`Demo full ${item_kind}`,due_on:item_kind==='critical_date'?'2099-01-01':day}));
+ data.sections.today.items.push(...rows);state.data=data;let reads=0;state.client.getDeal=state.client.readLoop=async()=>{reads++;throw Error('Private read');};await state.ui.refresh();state.ui.open();
+ assert.ok(!morningBriefView(data,options).groups.some(group=>rows.some(row=>row.id===group.row.id)));
+ for(const row of rows){
+  const item=[...state.root.querySelectorAll('[data-brief-section="today"] li')].find(node=>node.textContent.includes(row.what));
+  const summary=item?.querySelector('details summary');assert.ok(summary, row.item_kind);summary.click();
+  assert.equal(summary.parentElement.open,true);assert.match(summary.parentElement.textContent,new RegExp(row.id));assert.match(summary.parentElement.textContent,/D-DEMO/);
+ }
+ assert.equal(reads,0);
+});
+test('P2 producer account preserves work counts and opens its exact returned account',async t=>{
+ const state=setup(t),data=completeBrief();data.sections.deals.accounts=[{account_client_id:'demo-account',account_client_ref:'C-DEMO',account_name:'Demo portfolio',account_owner:'joe',open_deals:7,attention_deals:3,overdue_deals:2,stale_deals:1,parked_deals:4}];state.data=data;await state.ui.refresh();
+ const item=[...state.root.querySelectorAll('[data-brief-section="deals"] li')].find(node=>node.textContent.includes('Demo portfolio'));
+ for(const value of ['Open deals: 7','Attention deals: 3','Overdue deals: 2','Stale deals: 1','Parked deals: 4'])assert.ok(item.textContent.includes(value),value);
+ const summary=item.querySelector('details summary');assert.ok(summary);summary.click();assert.equal(summary.parentElement.open,true);
+ assert.match(summary.parentElement.textContent,/C-DEMO/);assert.match(summary.parentElement.textContent,/demo-account/);
+});

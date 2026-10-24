@@ -6,7 +6,7 @@ import {onDialogClosed} from './dialog-lifecycle.js';
 import { mountAutoRefresh, readWithDeadline, updatedLabel } from './auto-refresh.mjs';
 import { escapeText } from './change-receipts.mjs';
 import { entryDetailsHtml } from './entry-details.mjs';
-import { localDay, validBrief, morningBriefView } from './morning-brief-model.js';
+import { localDay, normalizeBrief, morningBriefView } from './morning-brief-model.js';
 
 export function mountMorningBrief({ document:root, window:win, getClient, intervalMs = 30_000, now = () => new Date() }) {
   const dialog = root.createElement('dialog'); dialog.id = 'docMorningBrief'; dialog.className = 'morning-brief'; dialog.setAttribute('aria-labelledby','morningTitle');
@@ -105,9 +105,9 @@ export function mountMorningBrief({ document:root, window:win, getClient, interv
   const refresh = async ({signal} = {}) => {
     try {
       client ||= await getClient();
-      const payload = await readWithDeadline(() => client.morningBrief({signal}), {signal});
+      const payload = normalizeBrief(await readWithDeadline(() => client.morningBrief({signal}), {signal}));
       if (disposed || signal?.aborted) return;
-      if (!validBrief(payload)) throw new Error('Invalid brief');
+      if (!payload) throw new Error('Invalid brief');
       if (sponsor !== payload.sponsor || windowDay !== localDay(now())) {
         clear(); sponsor = payload.sponsor; preferences = briefPreferences(storage,sponsor); windowDay = localDay(now()); owners.setViewer(sponsor);
         const currentDay = localDay(now());

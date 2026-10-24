@@ -19,8 +19,8 @@ async function setup(t,{width=1440,motion='no-preference',brief=true,coverage=fa
   value.sections.renewals={state:'unavailable',items:[]};
   value.sections.assurance_cadence={state:'empty',items:[]};
   value.sections.costs={state:'ready',items:[],providers:[{provider:'Demo provider',mtd_usd:12}]};
-  value.sections.deals.accounts=[{account_name:'Demo account portfolio'}];
-  value.sections.today.items.push(...['post_call_action','critical_date','ingest'].map((item_kind,index)=>({id:`demo-triage-${index}`,item_kind,subject_type:'deal',subject_id:'private-demo-deal',owner_partner:'dell',what:`Demo ${item_kind}`,due_on:item_kind==='critical_date'?'2099-01-01':day,subject_name:'Demo shared subject'})));
+  value.sections.deals.accounts=[{account_client_id:'demo-account',account_client_ref:'C-DEMO',account_name:'Demo account portfolio',account_owner:'joe',open_deals:7,attention_deals:3,overdue_deals:2}];
+  value.sections.today.items.push(...['next_action','post_call_action','critical_date','ingest'].map((item_kind,index)=>({id:`demo-triage-${index}`,item_kind,subject_type:'deal',subject_id:'private-demo-deal',owner_partner:'dell',what:`Demo ${item_kind}`,due_on:item_kind==='critical_date'?'2099-01-01':day,subject_name:'Demo shared subject'})));
   value.coverage={schema:'morning-brief-coverage.v1',count_scope:'returned_rows_only',required_sections:Object.entries(value.sections).map(([key,section])=>({key,path:`/sections/${key}`,state:section.state,counts:Object.fromEntries(['items','accounts','providers'].filter(name=>Array.isArray(section[name])).map(name=>[name,section.state==='unavailable'?null:section[name].length])),incomplete_sources:key==='needs_joe'?[{key:'work_requests',state:'unavailable'}]:[]}))};
   return value;
  };
@@ -134,9 +134,13 @@ test('full returned coverage is expandable and spoken on desktop and phone in a 
  const needs=page.locator('[data-brief-section="needs_joe"]');
  await needs.locator('summary').click();await needs.getByText(/Demo waiting coverage decision/).waitFor({state:'visible'});
  assert.match(await needs.innerText(),/partial.*Work requests unavailable/s);
- await page.locator('[data-brief-section="today"] summary').click();
- for(const kind of ['post_call_action','critical_date','ingest'])await page.locator('[data-brief-section="today"]').getByText(new RegExp(`Demo ${kind}`)).waitFor({state:'visible'});
- await page.locator('[data-brief-section="deals"] summary').click();await page.getByText(/Demo account portfolio/).waitFor({state:'visible'});
+ await page.locator('[data-brief-section="today"] > summary').click();
+ for(const kind of ['next_action','post_call_action','critical_date','ingest']) {
+  const summary=page.locator('[data-brief-section="today"] li summary').filter({hasText:`Demo ${kind}`});await summary.click();
+  assert.match(await summary.locator('..').innerText(),/private-demo-deal/);
+ }
+ await page.locator('[data-brief-section="deals"] > summary').click();await page.getByText(/Demo account portfolio/).waitFor({state:'visible'});
+ const account=page.locator('[data-brief-section="deals"] li details');await account.locator('summary').click();assert.match(await account.innerText(),/C-DEMO.*Attention deals: 3.*Overdue deals: 2/s);
  await page.locator('[data-brief-section="costs"] summary').click();await page.getByText(/Demo provider/).first().waitFor({state:'visible'});
  await page.locator('#morningSpeech').click();await page.locator('#morningListen').click();
  assert.match(await page.evaluate(()=>window.spoken.at(-1)),/Needs Joe.*partial.*Work requests unavailable.*Renewals.*unavailable/s);

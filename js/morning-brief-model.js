@@ -9,15 +9,23 @@ import { briefSections } from './morning-brief-sections.js';
 const text = value => typeof value === 'string' && value.trim();
 const section = value => value && ['ready','empty','partial','unavailable'].includes(value.state) && Array.isArray(value.items);
 export function validBrief(value) {
-  return ['joe','dell'].includes(value?.sponsor) && ['today','deals','loops'].every(key => section(value.sections?.[key]));
+  return ['joe','dell'].includes(value?.sponsor) && value.sections && typeof value.sections === 'object' && !Array.isArray(value.sections) && ['today','deals','loops'].every(key => value.sections[key] === undefined || section(value.sections[key]));
 }
 const short = (value, count) => {
   const words = String(value || '').trim().split(/\s+/);
   return words.length > count ? `${words.slice(0,count).join(' ')}…` : words.join(' ');
 };
 
-export function morningBriefView(payload, { now = new Date(), since, events = [], caughtUp = false, owner = 'all' } = {}) {
+export function normalizeBrief(payload) {
   if (!validBrief(payload)) return null;
+  const sections = {...payload.sections};
+  for (const key of ['today','deals','loops']) sections[key] ??= {state:'unavailable',items:[]};
+  return {...payload,sections};
+}
+
+export function morningBriefView(payload, { now = new Date(), since, events = [], caughtUp = false, owner = 'all' } = {}) {
+  payload = normalizeBrief(payload);
+  if (!payload) return null;
   const { sponsor, sections } = payload, day = localDay(now);
   const deals = new Map(sections.deals.state === 'unavailable' ? [] : sections.deals.items.map(row => [row.id,row]));
   const due = [];
