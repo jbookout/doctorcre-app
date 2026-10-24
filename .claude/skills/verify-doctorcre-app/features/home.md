@@ -4,7 +4,7 @@ Home shows current work and deal attention, with personal and team scopes and li
 
 ## Sub-features
 
-`home-scope`, `home-refresh`, `home-deal-open`.
+`home-scope`, `home-refresh`, `home-deal-open`, `brief-queues`.
 
 ## How to get to it (user POV)
 
@@ -18,6 +18,8 @@ Existing coverage: `test/home-dashboard-browser.test.mjs`, `test/deal-attention-
 - Switch Just me and Team view; require the selected button's `aria-pressed="true"` and compare the rendered deal entries.
 - Use Refresh Home; require settled attention and `#observedAt` without Unavailable or Sign in.
 - Read a `#dealFlags a.home-flag` link's `href` and its `strong` title, then click. Require the exact destination, visible `#recordPanel`, and matching `#panelTitle`. Also check the Home navigation link when routing changes.
+
+Morning brief queue coverage: `test/morning-brief-queue.test.mjs` and `test/morning-brief-queue-browser.test.mjs`. Open Morning brief, select a named queue, require the returned count, load more, and require the next row in server order. The queue view is independent of the priority owner filter. Needs Joe is Joe-only. Failed pages keep a visible retry and never imply completion.
 
 ## Gotchas
 

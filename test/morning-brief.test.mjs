@@ -271,7 +271,7 @@ test('empty partner filter explains the result and Show all restores to-dos', as
  state.data=data;await state.ui.refresh();state.ui.open();
  state.root.querySelector('#morningOwners [data-brief-owner="dell"]').click();
  const content=state.root.getElementById('morningContent');
- assert.match(content.textContent,/No to-dos for Dell/);
+ assert.match(content.textContent,/No selected priority cards for Dell/);
  const showAll=[...content.querySelectorAll('button')].find(node=>node.textContent==='Show all');assert.ok(showAll);
  showAll.focus();showAll.click();
  assert.equal(state.root.querySelector('#morningOwners [aria-pressed="true"]').textContent,'All');

@@ -65,3 +65,57 @@ test('live queue method selects only approved read verbs and carries opaque curs
  assert.deepEqual(calls,[{name:'morning-brief-queue',arguments:{queue:'today',cursor:'opaque'}},{name:'morning-assurance-queue',arguments:{}}]);
  await assert.rejects(client.morningBriefQueue('arbitrary-write'));
 });
+
+test('partner mismatch and authorization refusal clear queue facts instead of retaining stale rows',async t=>{
+ let next;
+ const state=setup(t,async(_queue,args)=>args.cursor?next():page([row(1)],{total:2}));
+ await state.ui.refresh();state.ui.open();state.root.querySelector('[data-brief-queue="loops"]').click();await tick();
+ next=async()=>page([row(2)],{total:2,next:null,sponsor:'dell'});
+ state.root.querySelector('[data-brief-queue-more]').click();await tick();
+ assert.equal(state.root.querySelectorAll('[data-queue-item]').length,0);
+ assert.equal(state.root.querySelectorAll('[data-brief-queue]').length,0);
+ await state.ui.refresh();state.ui.open();state.root.querySelector('[data-brief-queue="loops"]').click();await tick();
+ next=async()=>{throw Object.assign(Error('Refused'),{status:403});};
+ state.root.querySelector('[data-brief-queue-more]').click();await tick();
+ assert.equal(state.root.querySelectorAll('[data-queue-item]').length,0);
+});
+
+test('Needs Joe keeps different decisions sharing an older display key and labels partial source totals',async t=>{
+ const state=setup(t,async(_queue,args)=>({...page([{key:'loop:17',title:args.cursor?'Synthetic team decision':'Synthetic work decision',why:{text:'Human decision'},action:'Review',blocks:{text:'Blocks synthetic work'}}],{total:2,next:args.cursor?null:'next'}),state:'partial',total_scope:'available_sources'}));
+ await state.ui.refresh();state.ui.open();state.root.querySelector('[data-brief-queue="needs_joe"]').click();await tick();
+ state.root.querySelector('[data-brief-queue-more]').click();await tick();
+ assert.equal(state.root.querySelectorAll('[data-queue-item]').length,2);
+ assert.match(state.root.getElementById('morningContent').textContent,/2 of 2 from available sources/);
+ assert.match(state.root.getElementById('morningContent').textContent,/Some sources are unavailable/);
+});
+
+test('an unlabeled eligible loop remains reachable by its stable identity',async t=>{
+ const state=setup(t,async()=>page([{number:'17',kind:'open_loop',title:null,label:null}],{total:1,next:null}));
+ await state.ui.refresh();state.ui.open();state.root.querySelector('[data-brief-queue="loops"]').click();await tick();
+ assert.match(state.root.getElementById('morningContent').textContent,/Open loop 17/);
+ assert.equal(state.root.querySelectorAll('[data-queue-item]').length,1);
+});
+
+test('a premature terminal page retains the last verified page and offers retry',async t=>{
+ const state=setup(t,async(_queue,args)=>args.cursor?page([row(2)],{total:3,next:null}):page([row(1)],{total:3}));
+ await state.ui.refresh();state.ui.open();state.root.querySelector('[data-brief-queue="loops"]').click();await tick();
+ state.root.querySelector('[data-brief-queue-more]').click();await tick();
+ assert.equal(state.root.querySelectorAll('[data-queue-item]').length,1);
+ assert.match(state.root.getElementById('morningContent').textContent,/Queue update unavailable/);
+ assert.ok(state.root.querySelector('[data-brief-queue-more]'));
+});
+test('duplicate identities within one page cannot manufacture complete coverage',async t=>{
+ const state=setup(t,async()=>page([row(1),row(1)],{total:2,next:null}));
+ await state.ui.refresh();state.ui.open();state.root.querySelector('[data-brief-queue="loops"]').click();await tick();
+ assert.equal(state.root.querySelectorAll('[data-queue-item]').length,0);
+ assert.match(state.root.getElementById('morningContent').textContent,/Queue update unavailable/);
+ assert.ok(state.root.querySelector('[data-brief-queue-more]'));
+});
+
+test('an unchanged automatic brief refresh preserves queue control focus',async t=>{
+ const state=setup(t,async()=>page([],{total:0,next:null}));
+ await state.ui.refresh();state.ui.open();
+ const control=state.root.querySelector('[data-brief-queue="loops"]');control.focus();
+ await state.ui.refresh();
+ assert.equal(state.root.activeElement,control);
+});

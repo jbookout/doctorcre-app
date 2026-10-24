@@ -1768,7 +1768,21 @@ export async function createFixtureClient(opts = {}) {
       } };
     },
 
-    async todayTriage() {
+    async morningBriefQueue(queue, {cursor} = {}) {
+      if (!['today','loops','needs_joe','assurance_cadence'].includes(queue) || queue === 'needs_joe' && selfActor !== 'joe') throw Error('Unsupported morning queue.');
+      const source = queue === 'today' ? (await this.todayTriage({limit:Infinity})).items
+        : queue === 'loops' ? loops.filter(row=>row.kind === 'open_loop' && row.status === 'open' && ['joe','dell'].includes(row.owner)).map(row=>({...boardRow(row),owner_partner:row.owner})) : [];
+      const key = row => [row.due_on || '~',row.kind || row.item_kind,String(row.number || row.id)].join('|');
+      source.sort((a,b)=>key(a)<key(b)?-1:key(a)>key(b)?1:0);
+      const after = cursor ? JSON.parse(decodeURIComponent(atob(cursor))) : null;
+      if (after && (after.queue!==queue || after.sponsor!==selfActor)) throw Error('Invalid queue cursor.');
+      const available = after ? source.filter(row=>key(row)>after.key) : source;
+      const items=available.slice(0,50),has_more=available.length>50;
+      return {sponsor:selfActor,items,total:source.length,returned:items.length,remaining:available.length-items.length,has_more,
+        next_cursor:has_more?btoa(encodeURIComponent(JSON.stringify({queue,sponsor:selfActor,key:key(items.at(-1))}))):null};
+    },
+
+    async todayTriage({ limit = 50 } = {}) {
       const today = nowIso().slice(0, 10);
       const horizon = new Date(Date.parse(`${today}T00:00:00Z`) + 14 * 86_400_000).toISOString().slice(0, 10);
       const items = [];
@@ -1788,7 +1802,7 @@ export async function createFixtureClient(opts = {}) {
         }
       }
       items.sort((a, b) => a.due_on.localeCompare(b.due_on));
-      return { items: items.slice(0, 50) };
+      return { items: items.slice(0, limit) };
     },
 
     async readLoop({ loop_id, number, kind } = {}) {
