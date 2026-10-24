@@ -55,13 +55,9 @@ export function mountMorningBrief({ document:root, window:win, getClient, interv
   const open = () => {
     opener = root.activeElement;
     const doc = $('docDetail'); if (doc?.open) doc.close();
-    selected = null; ++detailEpoch; stop(); render();
+    const pending = auto.revalidate();
     if (!dialog.open) dialog.showModal();
-    if (sponsor && view) {
-      // Keep the current briefing window across page navigation. Only metadata
-      // survives; every page must re-read the facts before opening its brief.
-      remember();
-    }
+    return pending;
   };
   const focusCard = key => ([...$('morningContent').querySelectorAll('[data-brief-key]')].find(node => node.dataset.briefKey === key) || $('morningClose')).focus();
   const back = () => { const key = selected?.key; selected = null; ++detailEpoch; render(); focusCard(key); };
@@ -139,8 +135,8 @@ export function mountMorningBrief({ document:root, window:win, getClient, interv
       }
     } catch { if (current()) clear(); }
   };
-  const auto = mountAutoRefresh({ document:root,window:win,refresh,onResume:suspend,intervalMs });
-  control.onclick = () => { open(); auto.refresh(); };
+  const auto = mountAutoRefresh({ document:root,window:win,refresh,onResume:suspend,onWake:suspend,intervalMs });
+  control.onclick = open;
   $('morningClose').onclick = close;
   // A modal that replaced the brief (Doc's command bar) already owns focus.
   onDialogClosed(dialog, () => { stop(); ++detailEpoch; selected = null; if (root.querySelector('dialog[open]')) return; (opener?.isConnected && !opener.closest('dialog:not([open])') ? opener : $('docOpen'))?.focus(); });
