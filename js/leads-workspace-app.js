@@ -1,3 +1,5 @@
+import { BUSINESS_TIME_ZONE } from './business-date.js';
+import { toDay } from './calendar-model.js';
 import { engagementWriterFor, engagementStorage } from './prospect-engagement.mjs';
 import {onDialogClosed} from './dialog-lifecycle.js';
 import { pageDocContext, publishDocRead, selectDocRecord, setDocFilters } from './doc-context.js';
@@ -8,8 +10,8 @@ import { BOARD_STAGES, FILTER_STAGES, stageLabel, normalizedStage, eligibleLead,
 import { mountTerritoryMap } from "./leads-territory-map.js";
 
 const esc = value => String(value ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-const shortDate = value => Number.isFinite(Date.parse(value)) ? new Date(value).toLocaleDateString("en-US", { month: "numeric", day: "numeric" }) : "Date pending";
-const stamp = value => Number.isFinite(Date.parse(value)) ? new Date(value).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit", hour12: true }) : "—";
+const shortDate = value => Number.isFinite(Date.parse(value)) ? new Date(toDay(value) ? `${toDay(value)}T12:00:00Z` : value).toLocaleDateString("en-US", { timeZone: BUSINESS_TIME_ZONE, month: "numeric", day: "numeric" }) : "Date pending";
+const stamp = value => Number.isFinite(Date.parse(value)) ? new Date(value).toLocaleString("en-US", { timeZone: BUSINESS_TIME_ZONE, month: "short", day: "numeric", hour: "numeric", minute: "2-digit", hour12: true }) : "—";
 const summary = value => String(value || "").split(/\n\s*\n/)[0].slice(0, 230);
 const score = lead => lead.score == null ? "—" : esc(Math.round(Number(lead.score)));
 const ownerName = owner => owner.charAt(0).toUpperCase() + owner.slice(1);

@@ -19,14 +19,15 @@ test('a short evidence-linked first action, overnight change and today item; dup
  const data=payload();data.sections.today.items.push(due('a'));
  const view=morningBriefView(data,options);
  assert.deepEqual(view.groups.map(group=>[group.key,group.row.id]),[['first','a'],['overnight','c'],['today','b']]);
- assert.ok(view.spoken.split(/\s+/).length<=65);
+ assert.ok(view.groups.every(group => group.row.title.split(/\s+/).length <= 6 && group.row.summary.split(/\s+/).length <= 10));
+ assert.match(view.spoken,/Needs Joe.*unavailable/);
  assert.equal(view.unavailable.length,0);
  assert.deepEqual(morningBriefView(data,{...options,events:[event('d')]}).groups.map(group=>group.key),['first','today']);
 });
 test('empty sections omitted; unknown coverage never becomes all-clear or filler',()=>{
  const data=payload();for(const key of Object.keys(data.sections))data.sections[key]=section([]);
  assert.deepEqual(morningBriefView(data,{...options,events:[]}).groups,[]);
- assert.equal(morningBriefView(data,{...options,events:[]}).spoken,'');
+ assert.match(morningBriefView(data,{...options,events:[]}).spoken,/Needs Joe.*unavailable/);
  data.sections.today={state:'unavailable',items:[]};
  const view=morningBriefView(data,{...options,caughtUp:false});
  assert.equal(view.groups.length,0);assert.deepEqual(view.unavailable,['Today’s priorities unavailable','Overnight updates unavailable']);
@@ -271,7 +272,7 @@ test('empty partner filter explains the result and Show all restores to-dos', as
  state.data=data;await state.ui.refresh();state.ui.open();
  state.root.querySelector('#morningOwners [data-brief-owner="dell"]').click();
  const content=state.root.getElementById('morningContent');
- assert.match(content.textContent,/No to-dos for Dell/);
+ assert.match(content.textContent,/No selected priority cards for Dell/);
  const showAll=[...content.querySelectorAll('button')].find(node=>node.textContent==='Show all');assert.ok(showAll);
  showAll.focus();showAll.click();
  assert.equal(state.root.querySelector('#morningOwners [aria-pressed="true"]').textContent,'All');
@@ -351,6 +352,19 @@ test('F5 business day and initial overnight cutoff use Chicago under both DST of
  ['2026-03-08T13:00:00Z','2026-03-08','2026-03-07T23:00:00.000Z'],
  ['2026-11-01T14:00:00Z','2026-11-01','2026-10-31T22:00:00.000Z']]) {
  const state=setup(t);state.current=new Date(instant);const cutoffs=[];state.client.getChanges=async(_cursor,args)=>{cutoffs.push(args.since);return {events:[],cursor:'end'};};await state.ui.refresh();
- assert.equal(localDay(state.current=new Date(instant)),expectedDay);assert.equal(cutoffs.at(-1),cutoff);
+ assert.equal(localDay(new Date(instant)),expectedDay);assert.equal(cutoffs.at(-1),cutoff);
  }
+});
+
+test('full sections retain producer-shaped notification reasons, decision links and cost evidence',async t=>{
+ const state=setup(t),data=completeBrief();
+ data.sections.assurance_cadence=section([{notification_id:'demo-notice',reason:'Demo release needs review',severity:'warning',subject_ref:'WR-DEMO',deep_link:'/work/requests/WR-DEMO',created_at:'2026-10-03T10:00:00Z'}]);
+ data.sections.needs_joe=section([{title:'Demo decision',link:'https://github.com/example/demo/pull/1'}]);
+ data.sections.costs={state:'partial',items:[],providers:[{provider:'demo',state:'partial',plan:'Demo plan',mtd_usd:12,daily:[{day,usd:2,drivers:{demo_driver:2}}]}],months:[{month:'2026-10',usd:12,providers:{demo_provider:12}}],alerts:[{provider:'demo',driver:'demo_driver',kind:'budget',amount_usd:12,threshold_usd:10}]};
+ state.data=data;await state.ui.refresh();
+ const content=state.root.getElementById('morningContent');
+ for(const text of ['Demo release needs review','warning','Demo plan',day,'demo_driver','demo_provider','Threshold USD: 10'])assert.ok(content.textContent.includes(text),text);
+ assert.equal(content.querySelector('a[href="https://github.com/example/demo/pull/1"]')?.textContent,'Open record');
+ assert.equal(content.querySelector('a[href="/work/requests/WR-DEMO"]')?.textContent,'Open record');
+ data.sections.needs_joe.items[0].link='javascript:alert(1)';await state.ui.refresh();assert.equal(content.querySelector('a[href^="javascript:"]'),null);
 });
