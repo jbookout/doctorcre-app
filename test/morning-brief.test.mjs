@@ -322,7 +322,8 @@ for (const nextSponsor of ['joe','dell']) test(`F4 suspended brief clears detail
  assert.equal(state.root.getElementById('morningListen').disabled,true);
  assert.equal(state.root.getElementById('morningBack').hidden,true);
  detailDone({deal:deal(),thread:[{text:'Demo obsolete detail'}]});oldDone(payload());await oldRead;
- assert.doesNotMatch(state.root.querySelector('dialog').textContent,/Demo|Joe/);
+ assert.doesNotMatch(state.root.getElementById('morningContent').textContent,/Demo/);
+ assert.equal(state.root.getElementById('morningTitle').textContent,'Morning brief');
  let resumed;state.client.morningBrief=()=>new Promise(resolve=>resumed=resolve);
  Object.defineProperty(state.root,'visibilityState',{configurable:true,value:'visible'});
  state.root.dispatchEvent(new state.win.Event('visibilitychange'));
@@ -332,4 +333,15 @@ for (const nextSponsor of ['joe','dell']) test(`F4 suspended brief clears detail
  const next=payload();next.sponsor=nextSponsor;resumed(next);await state.ui.refresh();
  assert.match(state.root.getElementById('morningTitle').textContent,new RegExp(nextSponsor==='joe'?'Joe':'Dell'));
  assert.equal(state.root.querySelectorAll('[data-brief-record]').length,2);
+});
+
+test('F4 resume timeout leaves facts unavailable and keeps only sponsor preferences for recovery',async t=>{
+ const state=setup(t,{storage:[['doctorcre:morning:joe',JSON.stringify({speech:true})]]});await state.ui.refresh();state.ui.open();
+ let fail;state.client.morningBrief=()=>new Promise((resolve,reject)=>fail=reject);
+ state.win.dispatchEvent(new state.win.Event('online'));await Promise.resolve();await Promise.resolve();
+ assert.equal(state.root.querySelectorAll('[data-brief-record]').length,0);
+ fail(Object.assign(Error('Read timed out'),{code:'read_timeout'}));await state.ui.refresh();
+ assert.equal(state.root.querySelectorAll('[data-brief-record]').length,0);assert.equal(state.root.getElementById('morningListen').disabled,true);
+ assert.equal(JSON.parse(state.win.localStorage.getItem('doctorcre:morning:joe')).speech,true);
+ state.client.morningBrief=async()=>payload();await state.ui.refresh();assert.equal(state.root.querySelectorAll('[data-brief-record]').length,2);
 });
