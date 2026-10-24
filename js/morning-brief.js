@@ -23,8 +23,9 @@ export function mountMorningBrief({ document:root, window:win, getClient, interv
     $('morningListen').disabled = !speechAvailable || !enabled || !view?.spoken || selected !== null || queues.active;
   };
   const render = () => {
-    $('morningUpdated').textContent = updatedLabel(view?.observedAt);
-    if (view?.observedAt) $('morningUpdated').dateTime = view.observedAt; else $('morningUpdated').removeAttribute('datetime');
+    const updated = queues.active ? queues.updated : {observedAt:view?.observedAt};
+    $('morningUpdated').textContent = updated.error ? 'Queue update unavailable' : updatedLabel(updated.observedAt);
+    if (updated.observedAt) $('morningUpdated').dateTime = updated.observedAt; else $('morningUpdated').removeAttribute('datetime');
     $('morningCoverage').textContent = view ? view.unavailable.join(' · ') : 'Brief unavailable';
     controls();
     queues.menu(facts);
@@ -139,14 +140,14 @@ export function mountMorningBrief({ document:root, window:win, getClient, interv
     } catch { if (!disposed) clear(); }
   };
   const queues = mountBriefQueues({menu:$('morningQueues'),content:$('morningContent'),getClient:()=>client,getSponsor:()=>sponsor,
-    onOpen:title=>{stop();selected=null;++detailEpoch;$('morningTitle').textContent=title;$('morningBack').hidden=false;$('morningOwners').hidden=true;controls();},onBack:back,onInvalidate:clear});
+    onOpen:title=>{stop();selected=null;++detailEpoch;$('morningTitle').textContent=title;$('morningBack').hidden=false;$('morningOwners').hidden=true;controls();},onBack:back,onInvalidate:clear,onChange:render});
   const auto = mountAutoRefresh({ document:root,window:win,refresh,onResume:stop,intervalMs });
   control.onclick = () => { open(); auto.refresh(); };
   $('morningClose').onclick = close;
   // A modal that replaced the brief (Doc's command bar) already owns focus.
   onDialogClosed(dialog, () => { stop(); queues.reset(); ++detailEpoch; selected = null; if (root.querySelector('dialog[open]')) return; (opener?.isConnected && !opener.closest('dialog:not([open])') ? opener : $('docOpen'))?.focus(); });
   $('morningBack').onclick = back;
-  $('morningRefresh').onclick = () => auto.refresh();
+  $('morningRefresh').onclick = () => queues.active ? queues.refresh() : auto.refresh();
   $('morningContent').onclick = event => { if(queues.click(event))return; if (event.target.closest('[data-brief-show-all]')) { owners.setOwner('all'); $('morningOwners').querySelector('[data-brief-owner="all"]').focus(); return; } const link = event.target.closest('[data-brief-record]'); if (!link) return; event.preventDefault(); const row = view?.groups[Number(link.dataset.briefRecord)]?.row; if (row) showRecord(row); };
   $('morningSpeech').onclick = () => { preferences?.save({speech:preferences.value.speech !== true}); stop(); controls(); };
   $('morningListen').onclick = () => {

@@ -119,3 +119,55 @@ test('an unchanged automatic brief refresh preserves queue control focus',async 
  await state.ui.refresh();
  assert.equal(state.root.activeElement,control);
 });
+
+for (const status of ['partial','unavailable']) test(`queue summary discloses ${status} coverage before opening the list`,async t=>{
+ const state=setup(t,async()=>page([],{total:0,next:null}));
+ const data=brief();
+ data.sections.needs_joe={state:status,items:status==='partial'?[{key:'loop:17',title:'Synthetic decision'}]:[],total:status==='partial'?1:0,total_scope:'available_sources'};
+ state.data=data;
+ await state.ui.refresh();state.ui.open();
+ const summary=state.root.querySelector('[data-brief-queue="needs_joe"]').textContent;
+ assert.match(summary,/from available sources/);
+ assert.match(summary,status==='partial'?/Some sources are unavailable/:/Unavailable/);
+ assert.equal(state.root.querySelectorAll('[data-queue-item]').length,0);
+});
+
+test('explicit Refresh restarts a terminal queue and dates only the completed queue read',async t=>{
+ let calls=0,release;
+ const state=setup(t,async(_queue,args)=>{
+   assert.equal(args.cursor,undefined);
+   if (++calls===1) return page([row(1)],{total:1,next:null});
+   return new Promise(resolve=>release=resolve);
+ });
+ await state.ui.refresh();state.ui.open();state.root.querySelector('[data-brief-queue="loops"]').click();await tick();
+ const updated=state.root.getElementById('morningUpdated');
+ assert.ok(updated.dateTime);
+ state.root.getElementById('morningRefresh').click();await tick();
+ assert.equal(calls,2);
+ assert.equal(updated.hasAttribute('datetime'),false);
+ assert.equal(state.root.querySelectorAll('[data-queue-item]').length,0);
+ await state.ui.refresh();
+ assert.equal(updated.hasAttribute('datetime'),false,'composite brief must not date a pending queue');
+ release(page([row(2),row(3)],{total:2,next:null}));await tick();
+ assert.match(state.root.getElementById('morningContent').textContent,/2 of 2/);
+ assert.doesNotMatch(state.root.getElementById('morningContent').textContent,/Synthetic loop 1/);
+ assert.ok(updated.dateTime);
+});
+
+test('explicit Refresh invalidates an in-flight traversal and failed refresh has no fresh timestamp',async t=>{
+ let calls=0,release;
+ const state=setup(t,async()=>{
+   if (++calls===1) return page([row(1)],{total:2});
+   if (calls===2) return new Promise(resolve=>release=resolve);
+   throw Error('Synthetic queue unavailable');
+ });
+ await state.ui.refresh();state.ui.open();state.root.querySelector('[data-brief-queue="loops"]').click();await tick();
+ state.root.querySelector('[data-brief-queue-more]').click();await tick();
+ state.root.getElementById('morningRefresh').click();await tick();
+ assert.equal(calls,3);
+ release(page([row(2)],{total:2,next:null}));await tick();
+ assert.equal(state.root.querySelectorAll('[data-queue-item]').length,0);
+ assert.match(state.root.getElementById('morningUpdated').textContent,/Queue update unavailable/);
+ assert.equal(state.root.getElementById('morningUpdated').hasAttribute('datetime'),false);
+ assert.ok(state.root.querySelector('[data-brief-queue-more]'));
+});
