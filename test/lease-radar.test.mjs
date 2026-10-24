@@ -101,3 +101,10 @@ test('QA-022/023 lease filters and selection round-trip without discarding unrel
   assert.equal(leaseRadarAddress({},address),'/leases?mode=fixture#radar');
   assert.deepEqual(parseLeaseRadarAddress('?view=unknown&scope=other&quarter=2027-Q9'),{view:'timeline',scope:'team',search:'',quarter:null,lease:null});
 });
+
+test('radar projections use the shared Chicago day when no date is supplied',t=>{
+  t.mock.timers.enable({apis:['Date'],now:Date.parse('2026-10-02T02:00:00Z')});
+  const payload=leaseRadarFixture('2026-10-01');
+  assert.equal(projectLeaseRadar(payload).today,'2026-10-01');
+  assert.ok(Array.isArray(pastClientTouches(payload)));
+});

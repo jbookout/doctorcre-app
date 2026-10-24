@@ -2,7 +2,8 @@ export const BUSINESS_TIME_ZONE = 'America/Chicago';
 const dayFormat = new Intl.DateTimeFormat('en-CA', { timeZone: BUSINESS_TIME_ZONE, year:'numeric', month:'2-digit', day:'2-digit' });
 
 export function businessDay(now = new Date()) {
-  return dayFormat.format(now);
+  const parts = Object.fromEntries(dayFormat.formatToParts(now).map(({type,value}) => [type,value]));
+  return `${parts.year}-${parts.month}-${parts.day}`;
 }
 
 export function overnightCutoff(now = new Date()) {
