@@ -78,10 +78,13 @@ function setup(t,{storage,read}={}) {
 test('the brief never opens itself; an unseen cue shows once per day until opened, then returns the next day',async t=>{
  const state=setup(t);const dialog=()=>state.root.querySelector('dialog'),cue=()=>state.root.getElementById('docOpen').hasAttribute('data-brief-unseen');
  await state.ui.refresh();assert.equal(dialog().open,false);assert.equal(cue(),true);assert.match(state.root.getElementById('docMorning').textContent,/new today/);
- state.root.getElementById('docMorning').click();assert.equal(dialog().open,true);assert.equal(cue(),false);assert.equal(state.root.getElementById('docMorning').textContent,'Morning brief');
+ state.root.getElementById('docMorning').click();await state.ui.refresh();assert.equal(dialog().open,true);assert.equal(cue(),false);assert.equal(state.root.getElementById('docMorning').textContent,'Morning brief');
  state.root.getElementById('morningClose').click();await state.ui.refresh();assert.equal(dialog().open,false);assert.equal(cue(),false);
+ state.current=new Date(2026,9,3,8,1);await state.ui.open();
+ assert.equal(JSON.parse(state.win.localStorage.getItem('doctorcre:morning:joe')).lastShownAt,new Date(2026,9,3,8,1).toISOString());
+ state.root.getElementById('morningClose').click();
  state.current=new Date(2026,9,4,8);await state.ui.refresh();assert.equal(dialog().open,false);assert.equal(cue(),true);
- const other=payload();other.sponsor='dell';other.sections.today=section([due('d','dell')]);state.data=other;await state.ui.refresh();state.ui.open();assert.match(state.root.getElementById('morningTitle').textContent,/Dell/);
+ const other=payload();other.sponsor='dell';other.sections.today=section([due('d','dell')]);state.data=other;await state.ui.refresh();await state.ui.open();assert.match(state.root.getElementById('morningTitle').textContent,/Dell/);
  assert.doesNotMatch(state.win.localStorage.getItem('doctorcre:morning:joe'),/Demo|lease/);
 });
 test('failed and malformed reads do not consume daily opening, supported refresh recovers automatically',async t=>{
@@ -91,7 +94,7 @@ test('failed and malformed reads do not consume daily opening, supported refresh
  state.client.morningBrief=async()=>payload();await state.ui.refresh();assert.equal(state.root.querySelectorAll('[data-brief-record]').length,2);
 });
 test('exact record popup with original entry details and late-result guard',async t=>{
- const state=setup(t);await state.ui.refresh();state.ui.open();
+ const state=setup(t);await state.ui.refresh();await state.ui.open();
  state.root.querySelector('[data-brief-record]').click();await new Promise(resolve=>setTimeout(resolve,10));
  assert.match(state.root.getElementById('morningTitle').textContent,/Demo a/);assert.match(state.root.querySelector('details').textContent,/Original demo note/);
  state.root.getElementById('morningBack').click();assert.equal(state.root.querySelectorAll('[data-brief-record]').length,2);
@@ -100,7 +103,7 @@ test('exact record popup with original entry details and late-result guard',asyn
 test('speech is opt-in, user-triggered, same transcript, stops on dismiss/off/hidden, error permits replay',async t=>{
  const state=setup(t);const calls=[];state.win.SpeechSynthesisUtterance=class{constructor(text){this.text=text;}};state.win.speechSynthesis={speak:value=>calls.push(value),cancel:()=>calls.push('cancel')};
  // Capabilities are inspected when mounted, so mount this test after installing the adapter.
- state.ui.dispose();const ui=mountMorningBrief({document:state.root,window:state.win,getClient:async()=>state.client,now:()=>now});t.after(()=>ui.dispose());await ui.refresh();ui.open();
+ state.ui.dispose();const ui=mountMorningBrief({document:state.root,window:state.win,getClient:async()=>state.client,now:()=>now});t.after(()=>ui.dispose());await ui.refresh();await ui.open();
  assert.deepEqual(calls,[]);state.root.getElementById('morningSpeech').click();state.root.getElementById('morningListen').click();assert.equal(calls.length,1);assert.equal(calls[0].text,morningBriefView(payload(),{...options,events:[]}).spoken);
  state.root.getElementById('morningSpeech').click();assert.equal(calls.at(-1),'cancel');assert.equal(state.root.getElementById('morningListen').disabled,true);
  state.root.getElementById('morningSpeech').click();state.root.getElementById('morningListen').click();calls.at(-1).onerror();assert.equal(state.root.getElementById('morningListen').textContent,'▶');
@@ -130,8 +133,8 @@ test('background record refresh preserves expanded original and focused Details'
 });
 
 test('opening while loading consumes the day only when live facts arrive; dismiss stays dismissed',async t=>{
- let release;const state=setup(t,{read:()=>new Promise(resolve=>release=resolve)});state.ui.open();await Promise.resolve();await Promise.resolve();
- assert.equal(state.win.localStorage.length,0);release(payload());await state.ui.refresh();state.root.getElementById('morningClose').click();
+ let release,started;const reading=new Promise(resolve=>started=resolve);const state=setup(t,{read:()=>new Promise(resolve=>{release=resolve;started();})});const opening=state.ui.open();await reading;
+ assert.equal(state.win.localStorage.length,0);release(payload());await opening;state.root.getElementById('morningClose').click();
  state.client.morningBrief=async()=>payload();await state.ui.refresh();assert.equal(state.root.querySelector('dialog').open,false);
  assert.equal(JSON.parse(state.win.localStorage.getItem('doctorcre:morning:joe')).day,day);
 });
@@ -206,7 +209,7 @@ test('owner toggle filters before ranking, labels both partners, and retains uno
   {...due('d','dell','2026-10-02'),item_kind:'next_action',subject_name:'Demo Dell deal',owner_partner:'dell'},
   {...due('b'),owner_partner:null},
  ]);
- state.data=data;await state.ui.refresh();state.ui.open();
+ state.data=data;await state.ui.refresh();await state.ui.open();
  const labels=()=>[...state.root.querySelectorAll('.morning-owner')].map(node=>node.textContent);
  assert.deepEqual(labels(),['Joe','Dell']);
  const filter=state.root.querySelector('[aria-label="Brief owners"]');assert.ok(filter);
@@ -236,7 +239,7 @@ test('two partners retain separate to-dos on the same deal',()=>{
 
 test('owner selection survives reload and switches independently with the viewer', async t => {
  const state=setup(t);await state.ui.refresh();
- state.root.querySelector('#morningOwners [data-brief-owner="dell"]').click();state.ui.open();
+ state.root.querySelector('#morningOwners [data-brief-owner="dell"]').click();await state.ui.open();
  const saved=Array.from({length:state.win.localStorage.length},(_,i)=>{const key=state.win.localStorage.key(i);return [key,state.win.localStorage.getItem(key)];});
  const reloaded=setup(t,{storage:saved});await reloaded.ui.refresh();
  const selected=()=>reloaded.root.querySelector('#morningOwners [aria-pressed="true"]').textContent;
@@ -253,7 +256,7 @@ test('owner selection survives reload and switches independently with the viewer
 test('shared deal detail follows the selected action through refresh and removal', async t => {
  const state=setup(t),data=payload();
  data.sections.today=section(['joe','dell'].map(owner=>({...due('a'),id:`action-${owner}`,item_kind:'next_action',owner_partner:owner,what:`${owner} confirms access`})));
- state.data=data;await state.ui.refresh();state.ui.open();
+ state.data=data;await state.ui.refresh();await state.ui.open();
  state.root.querySelector('#morningOwners [data-brief-owner="dell"]').click();
  const view=morningBriefView(data,{...options,owner:'dell',events:[]});
  assert.equal(view.groups[0].row.action.id,'action-dell');
@@ -269,7 +272,7 @@ test('shared deal detail follows the selected action through refresh and removal
 test('empty partner filter explains the result and Show all restores to-dos', async t => {
  const state=setup(t),data=payload();
  for(const row of data.sections.today.items)row.owner_partner='joe';
- state.data=data;await state.ui.refresh();state.ui.open();
+ state.data=data;await state.ui.refresh();await state.ui.open();
  state.root.querySelector('#morningOwners [data-brief-owner="dell"]').click();
  const content=state.root.getElementById('morningContent');
  assert.match(content.textContent,/No selected priority cards for Dell/);
@@ -323,7 +326,7 @@ test('F1 full brief coverage makes Needs Joe, accounts and providers reachable w
  data.sections.needs_joe=section([{key:'rule:demo',title:'Demo waiting decision',why:{text:'Needs a ruling'},action:'Approve the demo rule',blocks:{text:'Demo work blocked'}}]);
  data.sections.costs={state:'ready',items:[],providers:[{provider:'demo',mtd_usd:12,projection_usd:24,budget_usd:30,daily:[{date:day,usd:2}]}]};
  data.coverage.required_sections.forEach(entry=>{const value=data.sections[entry.key];entry.state=value.state;entry.counts=Object.fromEntries(['items','accounts','providers'].filter(key=>Array.isArray(value[key])).map(key=>[key,value[key].length]));});
- state.data=data;await state.ui.refresh();state.ui.open();
+ state.data=data;await state.ui.refresh();await state.ui.open();
  const content=state.root.getElementById('morningContent').textContent;
  assert.match(content,/Demo waiting decision/);assert.match(content,/Demo account portfolio/);assert.match(content,/12/);assert.doesNotMatch(content,/No to-dos/);
  const view=morningBriefView(data,{...options,events:[]});assert.match(view.spoken,/Needs Joe/);assert.match(view.spoken,/returned/);
@@ -332,7 +335,7 @@ test('F1 full brief coverage makes Needs Joe, accounts and providers reachable w
 test('F2 every triage kind survives missing partner deal metadata in explicit full sections',async t=>{
  const state=setup(t),data=completeBrief();data.sections.deals=section([]);
  data.sections.today=section(['next_action','post_call_action','critical_date','ingest'].map((item_kind,index)=>({id:`demo-${index}`,item_kind,subject_type:'deal',subject_id:'private-demo-deal',subject_name:'Shared demo subject',owner_partner:'dell',what:`Demo ${item_kind}`,due_on:item_kind==='critical_date'?'2026-10-10':day})));
- state.data=data;let privateReads=0;state.client.getDeal=async()=>{privateReads++;throw Error('Private deal');};await state.ui.refresh();state.ui.open();
+ state.data=data;let privateReads=0;state.client.getDeal=async()=>{privateReads++;throw Error('Private deal');};await state.ui.refresh();await state.ui.open();
  for(const kind of ['next_action','post_call_action','critical_date','ingest']) assert.match(state.root.getElementById('morningContent').textContent,new RegExp(`Demo ${kind}`));
  const view=morningBriefView(data,{...options,events:[]});assert.equal(view.groups[0]?.row.kind,'action');
  state.root.querySelector('[data-brief-record]')?.click();await new Promise(resolve=>setTimeout(resolve,10));assert.ok(state.root.querySelector('.morning-record'));assert.equal(privateReads,0);
@@ -371,7 +374,7 @@ test('full sections retain producer-shaped notification reasons, decision links 
 
 for (const missing of ['today','deals','loops','claim_card','renewals','assurance_cadence','costs']) test(`P2 missing ${missing} retains authenticated decisions and coverage`,async t=>{
  const state=setup(t),data=completeBrief();data.sections.needs_joe=section([{title:'Demo surviving decision'}]);delete data.sections[missing];state.data=data;
- await state.ui.refresh();state.ui.open();
+ await state.ui.refresh();await state.ui.open();
  assert.match(state.root.getElementById('morningContent').textContent,/Demo surviving decision/);
  const view=morningBriefView(data,options),coverage=view.coverage.find(row=>row.key===missing);
  assert.equal(coverage.state,'unavailable');assert.ok(view.spoken.includes(coverage.spoken));
@@ -386,7 +389,7 @@ test('P2 missing Needs Joe is named unavailable while surviving work remains',as
 test('P2 full triage activates all producer kinds outside priority selection without private reads',async t=>{
  const state=setup(t),data=completeBrief();
  const rows=['next_action','post_call_action','critical_date','ingest'].map((item_kind,index)=>({id:`demo-full-${index}`,item_kind,subject_type:'deal',subject_id:'private-demo',subject_ref:'D-DEMO',subject_name:'Demo shared subject',owner_partner:'dell',what:`Demo full ${item_kind}`,due_on:item_kind==='critical_date'?'2099-01-01':day}));
- data.sections.today.items.push(...rows);state.data=data;let reads=0;state.client.getDeal=state.client.readLoop=async()=>{reads++;throw Error('Private read');};await state.ui.refresh();state.ui.open();
+ data.sections.today.items.push(...rows);state.data=data;let reads=0;state.client.getDeal=state.client.readLoop=async()=>{reads++;throw Error('Private read');};await state.ui.refresh();await state.ui.open();
  assert.ok(!morningBriefView(data,options).groups.some(group=>rows.some(row=>row.id===group.row.id)));
  for(const row of rows){
   const item=[...state.root.querySelectorAll('[data-brief-section="today"] li')].find(node=>node.textContent.includes(row.what));
@@ -401,4 +404,56 @@ test('P2 producer account preserves work counts and opens its exact returned acc
  for(const value of ['Open deals: 7','Attention deals: 3','Overdue deals: 2','Stale deals: 1','Parked deals: 4'])assert.ok(item.textContent.includes(value),value);
  const summary=item.querySelector('details summary');assert.ok(summary);summary.click();assert.equal(summary.parentElement.open,true);
  assert.match(summary.parentElement.textContent,/C-DEMO/);assert.match(summary.parentElement.textContent,/demo-account/);
+});
+
+for (const nextSponsor of ['joe','dell']) test(`F4 suspended brief clears detail and fences late reads before ${nextSponsor} recovery`, async t => {
+ const state=setup(t);await state.ui.refresh();await state.ui.open();
+ let detailDone;state.client.getDeal=()=>new Promise(resolve=>detailDone=resolve);
+ state.root.querySelector('[data-brief-record]').click();await Promise.resolve();
+ let oldDone;state.client.morningBrief=()=>new Promise(resolve=>oldDone=resolve);
+ const oldRead=state.ui.refresh();await Promise.resolve();await Promise.resolve();
+ Object.defineProperty(state.root,'visibilityState',{configurable:true,value:'hidden'});
+ state.root.dispatchEvent(new state.win.Event('visibilitychange'));
+ assert.equal(state.root.getElementById('morningContent').textContent,'');
+ assert.equal(state.root.getElementById('morningListen').disabled,true);
+ assert.equal(state.root.getElementById('morningBack').hidden,true);
+ detailDone({deal:deal(),thread:[{text:'Demo obsolete detail'}]});oldDone(payload());await oldRead;
+ assert.doesNotMatch(state.root.getElementById('morningContent').textContent,/Demo/);
+ assert.equal(state.root.getElementById('morningTitle').textContent,'Morning brief');
+ let resumed;state.client.morningBrief=()=>new Promise(resolve=>resumed=resolve);
+ Object.defineProperty(state.root,'visibilityState',{configurable:true,value:'visible'});
+ state.root.dispatchEvent(new state.win.Event('visibilitychange'));
+ await Promise.resolve();await Promise.resolve();
+ state.root.getElementById('morningClose').click();const reopened=state.ui.open();
+ assert.equal(state.root.querySelectorAll('[data-brief-record]').length,0);
+ const next=payload();next.sponsor=nextSponsor;state.client.morningBrief=async()=>next;resumed(next);await reopened;
+ assert.match(state.root.getElementById('morningTitle').textContent,new RegExp(nextSponsor==='joe'?'Joe':'Dell'));
+ assert.equal(state.root.querySelectorAll('[data-brief-record]').length,2);
+});
+
+test('F4 resume timeout leaves facts unavailable and keeps only sponsor preferences for recovery',async t=>{
+ const state=setup(t,{storage:[['doctorcre:morning:joe',JSON.stringify({speech:true})]]});await state.ui.refresh();await state.ui.open();
+ let fail;state.client.morningBrief=()=>new Promise((resolve,reject)=>fail=reject);
+ state.win.dispatchEvent(new state.win.Event('online'));await Promise.resolve();await Promise.resolve();
+ assert.equal(state.root.querySelectorAll('[data-brief-record]').length,0);
+ fail(Object.assign(Error('Read timed out'),{code:'read_timeout'}));await state.ui.refresh();
+ assert.equal(state.root.querySelectorAll('[data-brief-record]').length,0);assert.equal(state.root.getElementById('morningListen').disabled,true);
+ assert.equal(JSON.parse(state.win.localStorage.getItem('doctorcre:morning:joe')).speech,true);
+ state.client.morningBrief=async()=>payload();await state.ui.refresh();assert.equal(state.root.querySelectorAll('[data-brief-record]').length,2);
+});
+
+test('F4 reopening during a queued resume read replaces that read with current facts', async t => {
+ const state=setup(t);await state.ui.refresh();
+ const releases=[],starts=[];
+ const started=Array.from({length:2},(_,index)=>new Promise(resolve=>starts[index]=resolve));
+ state.client.morningBrief=()=>new Promise(resolve=>{const index=releases.length;releases.push(resolve);starts[index]?.();});
+ const old=state.ui.refresh();await started[0];
+ state.win.dispatchEvent(new state.win.Event('online'));await started[1];
+ const fresh=payload();fresh.sections.today.items[0].what='Current demo commitment';
+ state.client.morningBrief=async()=>fresh;
+ const opening=state.ui.open();
+ assert.equal(state.root.getElementById('morningContent').textContent,'');
+ releases.forEach(release=>release(payload()));await old;await opening;
+ assert.match(state.root.getElementById('morningContent').textContent,/Current demo commitment/);
+
 });
