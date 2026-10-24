@@ -633,3 +633,25 @@ test('Dr. CRE suggestion page: a feature_disabled refusal re-reads the switch an
  assert.equal(writes.length,1);
  assert.deepEqual(errors,[]);
 });
+
+test('F9 Leads suspension clears Doc while identity is delayed and only fresh workspace restores it',async t=>{
+ let hold=false,release;const held=new Promise(resolve=>release=resolve);t.after(()=>release());
+ const {page,goto,errors}=await setup(t,{onRoute:async(route,env)=>{
+  const params=env.url.pathname==='/mcp'?route.request().postDataJSON().params:null;
+  if(hold && params?.name==='deal-room-board'){await held;}
+  return producerRoute(route,env);
+ }});
+ await goto('/leads?mode=live');await page.locator('.lead-card').first().click();
+ await page.waitForFunction(()=>window.docContext?.snapshot().active);
+ hold=true;
+ const suspended=await page.evaluate(()=>{
+  window.dispatchEvent(new Event('online'));
+  return {context:window.docContext.snapshot(),cards:document.querySelectorAll('.lead-card').length,detail:document.getElementById('leadDetail').open};
+ });
+ assert.equal(suspended.cards,0);assert.equal(suspended.detail,false);
+ assert.equal(suspended.context.ready,false);assert.deepEqual(suspended.context.records,[]);
+ await page.locator('#docOpen').click();
+ assert.doesNotMatch(await page.locator('#docDetail').innerText(),/Dr. Example/);
+ release();await page.waitForFunction(()=>window.docContext?.snapshot().ready);
+ assert.ok((await readContext(page)).records.length>0);assert.deepEqual(errors,[]);
+});

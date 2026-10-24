@@ -309,3 +309,27 @@ test('Overnight stays identical for All, Joe and Dell when their first prioritie
  assert.deepEqual(overnight[1],overnight[0]);
  assert.deepEqual(overnight[2],overnight[0]);
 });
+
+for (const nextSponsor of ['joe','dell']) test(`F4 suspended brief clears detail and fences late reads before ${nextSponsor} recovery`, async t => {
+ const state=setup(t);await state.ui.refresh();state.ui.open();
+ let detailDone;state.client.getDeal=()=>new Promise(resolve=>detailDone=resolve);
+ state.root.querySelector('[data-brief-record]').click();await Promise.resolve();
+ let oldDone;state.client.morningBrief=()=>new Promise(resolve=>oldDone=resolve);
+ const oldRead=state.ui.refresh();await Promise.resolve();await Promise.resolve();
+ Object.defineProperty(state.root,'visibilityState',{configurable:true,value:'hidden'});
+ state.root.dispatchEvent(new state.win.Event('visibilitychange'));
+ assert.equal(state.root.getElementById('morningContent').textContent,'');
+ assert.equal(state.root.getElementById('morningListen').disabled,true);
+ assert.equal(state.root.getElementById('morningBack').hidden,true);
+ detailDone({deal:deal(),thread:[{text:'Demo obsolete detail'}]});oldDone(payload());await oldRead;
+ assert.doesNotMatch(state.root.querySelector('dialog').textContent,/Demo|Joe/);
+ let resumed;state.client.morningBrief=()=>new Promise(resolve=>resumed=resolve);
+ Object.defineProperty(state.root,'visibilityState',{configurable:true,value:'visible'});
+ state.root.dispatchEvent(new state.win.Event('visibilitychange'));
+ await Promise.resolve();await Promise.resolve();
+ state.root.getElementById('morningClose').click();state.root.getElementById('docMorning').click();
+ assert.equal(state.root.querySelectorAll('[data-brief-record]').length,0);
+ const next=payload();next.sponsor=nextSponsor;resumed(next);await state.ui.refresh();
+ assert.match(state.root.getElementById('morningTitle').textContent,new RegExp(nextSponsor==='joe'?'Joe':'Dell'));
+ assert.equal(state.root.querySelectorAll('[data-brief-record]').length,2);
+});
