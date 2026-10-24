@@ -52,12 +52,13 @@ export function mountMorningBrief({ document:root, window:win, getClient, interv
   };
   const remember = () => { if (preferences && view) preferences.save({ day:localDay(now()), lastShownAt:now().toISOString(), since }); cue(); };
   const close = () => { stop(); dialog.close(); };
-  const open = () => {
+  const open = async () => {
     opener = root.activeElement;
     const doc = $('docDetail'); if (doc?.open) doc.close();
     const pending = auto.revalidate();
     if (!dialog.open) dialog.showModal();
-    return pending;
+    await pending;
+    if (dialog.open && sponsor && view) remember();
   };
   const focusCard = key => ([...$('morningContent').querySelectorAll('[data-brief-key]')].find(node => node.dataset.briefKey === key) || $('morningClose')).focus();
   const back = () => { const key = selected?.key; selected = null; ++detailEpoch; render(); focusCard(key); };

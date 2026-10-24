@@ -79,6 +79,9 @@ test('the brief never opens itself; an unseen cue shows once per day until opene
  await state.ui.refresh();assert.equal(dialog().open,false);assert.equal(cue(),true);assert.match(state.root.getElementById('docMorning').textContent,/new today/);
  state.root.getElementById('docMorning').click();await state.ui.refresh();assert.equal(dialog().open,true);assert.equal(cue(),false);assert.equal(state.root.getElementById('docMorning').textContent,'Morning brief');
  state.root.getElementById('morningClose').click();await state.ui.refresh();assert.equal(dialog().open,false);assert.equal(cue(),false);
+ state.current=new Date(2026,9,3,8,1);await state.ui.open();
+ assert.equal(JSON.parse(state.win.localStorage.getItem('doctorcre:morning:joe')).lastShownAt,new Date(2026,9,3,8,1).toISOString());
+ state.root.getElementById('morningClose').click();
  state.current=new Date(2026,9,4,8);await state.ui.refresh();assert.equal(dialog().open,false);assert.equal(cue(),true);
  const other=payload();other.sponsor='dell';other.sections.today=section([due('d','dell')]);state.data=other;await state.ui.refresh();await state.ui.open();assert.match(state.root.getElementById('morningTitle').textContent,/Dell/);
  assert.doesNotMatch(state.win.localStorage.getItem('doctorcre:morning:joe'),/Demo|lease/);
