@@ -189,8 +189,8 @@ for (const status of [401,403]) test(`R1 Lead detail is invalidated on ${status}
 test('R1 Lead detail clears immediately while resume revalidation is delayed',async t=>{
  const {page,goto}=await open(t);await goto('/leads');await page.locator('.lead-card').first().click();
  let release;const pending=new Promise(resolve=>release=resolve);t.after(()=>release());
- const requested=page.waitForRequest(r=>r.url().endsWith('/mcp') && r.postDataJSON().params.name==='deal-room-board' && r.postDataJSON().params.arguments.workspace==='team');
- await page.route('**/mcp',async route=>{const {name,arguments:args}=route.request().postDataJSON().params;if(name!=='deal-room-board'||args.workspace!=='team')return route.fallback();await pending;await route.fulfill({json:{result:{content:[{type:'text',text:JSON.stringify({actor:'dell',deals:[]})}]}}});});
+ const requested=page.waitForRequest(r=>r.url().endsWith('/api/system-work/session'));
+ await page.route('**/api/system-work/session',async route=>{await pending;await route.fulfill({json:{actor:{slug:'dell'}}});});
  await page.evaluate(()=>window.dispatchEvent(new PageTransitionEvent('pageshow',{persisted:true})));
  await page.waitForFunction(()=>document.querySelectorAll('.lead-card').length===0);
  assert.equal(await page.locator('#leadDetail').evaluate(n=>n.open),false);assert.equal(await page.locator('#detailBody').textContent(),'');await requested;release();

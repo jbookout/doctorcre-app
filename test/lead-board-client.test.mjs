@@ -22,15 +22,24 @@ test("getLeadBoard uses same-origin cookie-authenticated MCP JSON-RPC", async ()
   });
 });
 
-test("getActor reads server-derived identity and refuses a missing actor", async () => {
+test("getActor reads a fresh authenticated session without loading deals", async () => {
   const calls = [];
-  const client = createLeadBoardClient({ fetchImpl: async (_path, init) => {
-    calls.push(JSON.parse(init.body).params);
-    return jsonResponse({ result: { content: [{ type: "text", text: JSON.stringify({ actor: "joe" }) }] } });
+  let slug = "joe";
+  const client = createLeadBoardClient({ fetchImpl: async (path, init) => {
+    calls.push({ path, init });
+    return jsonResponse({ actor: { slug } });
   } });
   assert.equal(await client.getActor(), "joe");
-  assert.deepEqual(calls, [{ name: "deal-room-board", arguments: { workspace: "team" } }]);
-  const missing = createLeadBoardClient({ fetchImpl: async () => jsonResponse({ result: { content: [{ type: "text", text: "{}" }] } }) });
+  slug = "dell";
+  assert.equal(await client.getActor(), "dell");
+  assert.equal(calls.length, 2);
+  for (const { path, init } of calls) {
+    assert.equal(path, "/api/system-work/session");
+    assert.equal(init.credentials, "same-origin");
+    assert.equal(init.cache, "no-store");
+    assert.equal(init.body, undefined);
+  }
+  const missing = createLeadBoardClient({ fetchImpl: async () => jsonResponse({}) });
   assert.equal(await missing.getActor(), null);
 });
 
@@ -135,4 +144,10 @@ test('Leads client owns the pending request when a caller supplies a replacement
  await assert.rejects(client.setProspectEngagementStatus(args),{code:'unknown_outcome'});
  await client.setProspectEngagementStatus({...args,idempotency_key:'replacement-key',reason:'Changed draft'});
  assert.deepEqual(sent,[args,args]);
+});
+
+for (const stalled of ['headers', 'body']) test(`session identity deadline covers stalled ${stalled}`, async () => {
+  const client = createLeadBoardClient({ timeoutMs: 15, fetchImpl: async () => stalled === 'headers'
+    ? new Promise(() => {}) : { ok: true, json: () => new Promise(() => {}) } });
+  await assert.rejects(client.getActor(), { code: 'read_timeout' });
 });

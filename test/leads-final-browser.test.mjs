@@ -109,8 +109,8 @@ for (const failure of ['network', 401, 403]) test(`Slice A initial Leads identit
  const page = await browser.newPage({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true, reducedMotion: 'reduce' });
  const writes = []; let failing = true;
  await routeLeads(page, { onWrite: value => writes.push(value) });
- await page.route('**/mcp', route => {
-  if (!failing || route.request().postDataJSON()?.params?.name !== 'deal-room-board') return route.fallback();
+ await page.route('**/api/system-work/session', route => {
+  if (!failing) return route.fallback();
   return failure === 'network' ? route.abort('internetdisconnected') : route.fulfill({ status: failure, json: {} });
  });
  await page.goto('http://localhost/leads');
