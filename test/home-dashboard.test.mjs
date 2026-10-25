@@ -212,27 +212,3 @@ test('Home rejects incompatible agenda versions, missing actors and duplicate de
     assert.equal(result.details.size, 0);
   }
 });
-
-test('Home prioritizes the agenda before invoices while independent feeds remain available', async t => {
-  for (const outcome of ['success', 'failure', 'deadline']) await t.test(outcome, async () => {
-    const client = await fixtureClient();
-    const invoices = await client.getInvoiceTracker();
-    let release, reject, invoiceReads = 0, independentReady;
-    const independent = new Promise(resolve => { independentReady = resolve; });
-    client.getLeadBoard = async () => ({ leads: [] });
-    client.getHomeAgenda = () => new Promise((resolve, refuse) => { release = resolve; reject = refuse; });
-    client.getInvoiceTracker = async () => { invoiceReads++; return invoices; };
-    const pending = readHomeDashboard(client, { timeoutMs: 20, onUpdate: result => {
-      if (result.reads.leads.state === 'read' && result.reads.work.state === 'read') independentReady();
-    } });
-    await independent;
-    assert.equal(invoiceReads, 0, 'optional invoices wait for the critical agenda read');
-    if (outcome === 'success') release(board);
-    if (outcome === 'failure') reject(Error('Synthetic agenda unavailable'));
-    const result = await pending;
-    assert.equal(result.reads.board.state, outcome === 'success' ? 'read' : 'error');
-    assert.equal(invoiceReads, 1, 'invoices still load after an unavailable agenda');
-    assert.equal(result.reads.invoices.state, 'read');
-    assert.equal(result.invoices, invoices);
-  });
-});

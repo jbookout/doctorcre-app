@@ -17,10 +17,10 @@ const screenshot = async (page, name) => {
   await page.screenshot({ path: join(process.env.W2_SCREENSHOT_DIR, `${name}.png`), fullPage: !name.includes('detail') });
 };
 
-async function open(t, { width = 1440, motion = 'reduce', leads = true, delayDetails = false, hangDetails = false, longLead = false, tasksOnly = false, heldTasks = false, malformedTasks = false, delayBoard = false, delayInitialFeed = false, origin = 'http://localhost', malformedBoard = false, firstOpen = false, emptyAgenda = false, initialDetailFailure = null } = {}) {
+async function open(t, { width = 1440, height = 1000, invoiceAttention = false, motion = 'reduce', leads = true, delayDetails = false, hangDetails = false, longLead = false, tasksOnly = false, heldTasks = false, malformedTasks = false, delayBoard = false, delayInitialFeed = false, origin = 'http://localhost', malformedBoard = false, firstOpen = false, emptyAgenda = false, initialDetailFailure = null } = {}) {
   const client = await createFixtureClient({ seedUrl: `data:application/json;base64,${Buffer.from(await readFile(new URL('../data/board-seed.json', import.meta.url))).toString('base64')}` });
   const browser = await chromium.launch();
-  const page = await browser.newPage({ viewport: { width, height: 1000 }, timezoneId: 'UTC', reducedMotion: motion });
+  const page = await browser.newPage({ viewport: { width, height }, timezoneId: 'UTC', reducedMotion: motion });
   // Virtual time pauses CSS transitions. Data journeys use reduced motion so
   // actionability cannot wait on a hover transition the clock never advances.
   await page.clock.install({ time: NOW });
@@ -57,7 +57,7 @@ async function open(t, { width = 1440, motion = 'reduce', leads = true, delayDet
     'list-feature-switches': () => client.listFeatureSwitches(),
     'list-doc-suggestions': args => client.listDocSuggestions(args),
     'morning-brief': () => client.morningBrief(),
-    'read-invoice-tracker': () => ({schema_version:'invoice-tracker.v1',actor:'joe',entries:[],observed_at:NOW.toISOString()}),
+    'read-invoice-tracker': () => ({schema_version:'invoice-tracker.v1',actor:'joe',entries:invoiceAttention ? [{ deal_id:'demo-overdue',name:'Demo overdue invoice',commission_id:'demo-invoice',status:'invoiced',owner:'joe',lane:'local',outcome:'won',gross_amount:'100',closed_on:'2026-08-01',invoiced_on:'2026-08-01',commission_invoiced_on:'2026-08-01',received_on:null,due_on:'2026-09-01',as_of:'2026-10-01',base_version:1 }] : [],observed_at:NOW.toISOString()}),
     'lead-board': async () => { if (leadFailure === 'timeout') return new Promise(() => {}); if (leadFailure) { const error = Error('Refused'); error.status = leadFailure; throw error; } return { leads: leads ? liveLeads : [] }; },
     'incident-board': () => client.incidentBoard(), 'current-work-item': () => client.currentWorkItem(),
     'read-resource-dashboard': () => client.readResourceDashboard(), 'schedule-board': () => client.scheduleBoard(),
@@ -331,6 +331,35 @@ test('an open lead detail updates automatically while preserving expanded Detail
   assert.equal(await page.locator('#homeDetail details').evaluate(node => node.open), true);
   assert.equal(await page.locator('#homeDetail summary').evaluate(node => document.activeElement === node), true);
   assert.deepEqual(state.errors, []);
+});
+
+for (const width of [320, 390]) test(`phone agenda keeps its loading space ahead of independently ready widgets at ${width}`, async t => {
+  const { page, responses, errors } = await open(t, { width, height: 844, hangDetails: true, invoiceAttention: true });
+  await page.locator('#homeInvoices .home-flag').waitFor();
+  await page.locator('#homeControl:not([hidden])').waitFor();
+  assert.match(await page.locator('#homeInvoices').textContent(), /Demo overdue invoice/);
+  const calendar = page.locator('#homeCalendar');
+  assert.equal(await calendar.getAttribute('aria-busy'), 'true');
+  assert.ok((await calendar.boundingBox()).height >= 400, 'reserve the phone agenda preview while its read is pending');
+  assert.ok(await calendar.evaluate(node => Boolean(node.compareDocumentPosition(document.querySelector('#homeInvoices')) & Node.DOCUMENT_POSITION_FOLLOWING)));
+  assert.ok((await page.locator('#homeInvoices h2').boundingBox()).y >= 844, 'optional content follows the critical loading region');
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth), width);
+  await screenshot(page, `phone-agenda-loading-${width}`);
+  for (const ms of [10_001, 10_001, 5_001]) { await page.clock.runFor(ms); await page.waitForTimeout(20); }
+  await page.waitForFunction(() => document.querySelector('#refreshHome').getAttribute('aria-busy') === 'false');
+  assert.equal(await calendar.getAttribute('aria-busy'), 'false');
+  assert.match(await calendar.textContent(), /Calendar and tasks unavailable/);
+  assert.ok((await calendar.boundingBox()).height < 400, 'an unavailable agenda releases its loading space');
+  assert.equal(await page.locator('#homeInvoices').isVisible(), true);
+  await screenshot(page, `phone-agenda-unavailable-${width}`);
+  responses.set('read-home-agenda', { schema_version: 'home-agenda.v1', actor: 'joe', deals: [] });
+  await page.evaluate(() => window.dispatchEvent(new Event('online')));
+  await page.waitForFunction(() => document.querySelector('#homeCalendar').textContent.includes('No calendar dates or tasks'));
+  assert.equal(await calendar.getAttribute('aria-busy'), 'false');
+  assert.ok((await calendar.boundingBox()).height < 400, 'a verified empty agenda stays compact');
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth), width);
+  await screenshot(page, `phone-agenda-empty-${width}`);
+  assert.deepEqual(errors, []);
 });
 
 test('R5 agenda deadline preserves independent completed widgets', async t => {

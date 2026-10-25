@@ -144,10 +144,7 @@ async function readHome(client, feeds, { onUpdate = () => {}, timeoutMs = 10_000
     publish();
   };
   const board = take('board', signal => client.getHomeAgenda({ signal }));
-  await Promise.all([board, ...feeds.map(async ([key, read, target]) => {
-    if (key === 'invoices') await board;
-    return take(key, read, target === 'control' ? result.control : result);
-  })]);
+  await Promise.all([board, ...feeds.map(([key, read, target]) => take(key, read, target === 'control' ? result.control : result))]);
   result.loading = false;
   publish();
   return result;
