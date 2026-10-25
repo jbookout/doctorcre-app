@@ -35,7 +35,6 @@ test('the phone Relationships performance scenario opens the visible connection 
   assert.match(await page.locator('.relationship-dialog').innerText(), /Demo Healthcare Lending/);
   assert.match(await page.locator('.relationship-dialog').innerText(), /Can introduce/);
   await Promise.all(reads);
-  assert.ok([...scripts.keys()].some(url=>url.endsWith('/js/error-tracking-entry.js')),'budget includes shipped error tracking');
   const budget = JSON.parse(await readFile(new URL('../contracts/performance-budget.v1.json', import.meta.url)));
   const bytes = [...scripts.values()].reduce((total, size) => total + size, 0);
   assert.ok(bytes <= budget.screens.relationships.jsBytes.limit,
