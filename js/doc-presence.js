@@ -129,7 +129,7 @@ export function mountDocPresence({ document: root = document, window: win = wind
     const scope = `${next.epoch}:${next.page}:${next.selected?.kind || ''}:${next.selected?.id || ''}`;
     const changed = lastScope && scope !== lastScope;
     if (changed) { ++readEpoch; suggestions = null; suggestionState = 'updating'; chosen = null; $('docApprovalStatus').textContent = ''; }
-    if ((changed && (next.ready || next.selected)) || (!previous.ready && next.ready)) win.queueMicrotask(async () => { await auto.refresh(); if (suggestionState === 'updating' && !disposed) auto.refresh(); });
+    if ((changed && (next.ready || next.selected)) || (!previous.ready && next.ready)) win.queueMicrotask(async () => { if (disposed || scope !== lastScope) return; await auto.refresh(); if (suggestionState === 'updating' && !disposed && scope === lastScope) auto.refresh(); });
     lastScope = scope; render();
   });
   const placement = new win.MutationObserver(placePresence);
