@@ -96,3 +96,38 @@ test('confirmed save clears a draft even when its room closed before the reply',
   await room(page);
   await settles(async () => assert.equal(await page.locator('#dealUpdate').inputValue(), ''));
 });
+
+test('an actor change clears the previous detail from Doc while its replacement is pending', async t => {
+  const page = await open(t);
+  await page.evaluate(async () => {
+    const { state } = await import('/js/pipeline.js');
+    const read = state.client.getDeal;
+    state.client.getDeal = async (...args) => {
+      const detail = await read(...args);
+      return { ...detail, deal: { ...detail.deal, next_step: 'Synthetic actor-only detail' } };
+    };
+  });
+  await room(page);
+  await page.locator('#dealUpdate').fill('Synthetic actor-only draft');
+  await page.evaluate(async () => {
+    const { state } = await import('/js/pipeline.js');
+    const read = state.client.getBoard;
+    state.client.getBoard = async (...args) => ({ ...await read(...args), actor: 'dell' });
+    state.client.getDeal = () => new Promise(() => {});
+    await state.boardSync.refreshBoard({ reason: 'synthetic-actor-change-with-held-detail' });
+  });
+  assert.equal(await page.locator('#detailUpdateForm').count(), 0);
+  const context = await page.evaluate(async () => (await import('/js/doc-context.js')).pageDocContext.snapshot());
+  assert.doesNotMatch(JSON.stringify(context), /Synthetic actor-only detail/);
+});
+
+test('phone Back closes the room and its open Context drawer together', async t => {
+  const page = await open(t); await room(page);
+  await page.locator('#panelContextOpen').click();
+  await page.locator('#contextDrawer[open]').waitFor();
+  await page.goBack();
+  await settles(async () => assert.equal(await page.locator('#recordPanel').isVisible(), false));
+  assert.equal(await page.locator('#contextDrawer').isVisible(), false);
+  assert.equal(await page.locator('#contextDrawerBody').textContent(), '');
+  assert.equal(new URL(page.url()).searchParams.has('deal'), false);
+});
