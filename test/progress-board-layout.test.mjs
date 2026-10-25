@@ -1,3 +1,4 @@
+import { CHROMIUM_SAFETY_ARGS } from '../scripts/chromium-safety-args.mjs';
 // Real layout, real browser: at phone (390px) and desktop widths no card
 // content may overflow its card, and the page never scrolls sideways. The
 // real page and code run against a local server whose /mcp answers with the
@@ -127,7 +128,7 @@ for (const width of [390, 1280]) {
     test(`cards and open Key have no clipping or overlap at ${width}px on ${board}`, async t => {
       const server = await serve();
       t.after(() => server.close());
-      const browser = await chromium.launch();
+      const browser = await chromium.launch({ args: [...CHROMIUM_SAFETY_ARGS] });
       t.after(() => browser.close());
       const page = await browser.newPage({ viewport: { width, height: 900 } });
       const { port } = server.address();
@@ -143,7 +144,7 @@ for (const width of [390, 1280]) {
 }
 
 for (const width of [1440, 390]) test(`Live expansion keeps browser focus through background updates at ${width}px`, async t => {
-  const browser = await chromium.launch();
+  const browser = await chromium.launch({ args: [...CHROMIUM_SAFETY_ARGS] });
   t.after(() => browser.close());
   const page = await browser.newPage({ viewport: { width, height: 960 } });
   const errors = [];

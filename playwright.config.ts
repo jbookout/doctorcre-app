@@ -1,3 +1,4 @@
+import { CHROMIUM_SAFETY_ARGS } from './scripts/chromium-safety-args.mjs';
 import { defineConfig, devices } from '@playwright/test';
 
 export default defineConfig({
@@ -5,6 +6,7 @@ export default defineConfig({
   outputDir: '.e2e/playwright',
   workers: 1,
   use: {
+    launchOptions: { args: [...CHROMIUM_SAFETY_ARGS] },
     baseURL: 'https://doctorcre-app-staging.joe-bookout-carr-us.workers.dev',
   },
   projects: [

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { chromium, settles } from './browser-harness.mjs';
 import { routeLeads } from './leads-browser-fixture.mjs';
-import { lead, workspace } from './leads-workspace-fixture.mjs';
+import { lead, workspace, detail, id } from './leads-workspace-fixture.mjs';
 
 async function capture(page, name, measurements) {
   if (!process.env.LEADS_FINAL_DIR) return;
@@ -128,4 +128,35 @@ for (const failure of ['network', 401, 403]) test(`Slice A initial Leads identit
   assert.equal(await error.getByRole('button', { name: 'Retry', exact: true }).count(), 0);
  }
  assert.deepEqual(writes, []);
+});
+
+
+test('Leads detail reaches the 101st captured correspondence and stage change', async t => {
+  const browser = await chromium.launch(); t.after(() => browser.close());
+  const page = await browser.newPage({ viewport: { width: 1280, height: 900 }, reducedMotion: 'reduce' });
+  const writes = [];
+  const rows = Array.from({ length: 101 }, (_, n) => ({ id: id(1000 + n), kind: 'email_in', occurred_at: '2026-10-01T10:00:00Z', summary: `Synthetic captured entry ${n + 1}` }));
+  const stages = Array.from({ length: 101 }, (_, n) => ({ event_id: id(2000 + n), mutation_order: String(101 - n), occurred_at: '2026-10-01T10:00:00Z', prior_stage: 'new', stage: 'engaged', reason: `Synthetic stage change ${n + 1}` }));
+  await routeLeads(page, { onWrite: value => writes.push(value), getDetail: (row, args) => ({
+    ...detail(row), correspondence: rows.slice(args.correspondence_cursor ? 100 : 0, args.correspondence_cursor ? 200 : 100),
+    stage_history: stages.slice(args.stage_history_cursor ? 100 : 0, args.stage_history_cursor ? 200 : 100),
+    correspondence_coverage: 'captured_entries_only',
+    correspondence_page: { total: 101, has_more: !args.correspondence_cursor, next_cursor: args.correspondence_cursor ? null : { occurred_at: rows[99].occurred_at, id: rows[99].id } },
+    stage_history_page: { total: 101, has_more: !args.stage_history_cursor, next_cursor: args.stage_history_cursor ? null : '2' },
+  }) });
+  await page.goto('http://localhost/leads');
+  await page.locator('#leadBoard .lead-open').first().click();
+  await page.getByRole('heading', { name: 'Captured correspondence', exact: true }).waitFor();
+  assert.match(await page.locator('#detailBody').textContent(), /Showing 100 of 101 captured entries/);
+  assert.match(await page.locator('#detailBody').textContent(), /Other communication may not have been captured/);
+  await page.getByRole('button', { name: 'Load older correspondence', exact: true }).click();
+  await settles(async () => assert.equal(await page.locator('.correspondence > li').count(), 101));
+  await page.getByRole('button', { name: 'Load older stage changes', exact: true }).click();
+  await settles(async () => assert.equal(await page.locator('.history > li').count(), 101));
+  assert.match(await page.locator('#detailBody').textContent(), /Showing 101 of 101 captured entries/);
+  assert.match(await page.locator('.correspondence > li').last().textContent(), /Synthetic captured entry 101/);
+  assert.match(await page.locator('.history > li').last().textContent(), /Synthetic stage change 101/);
+  await page.getByRole('heading', { name: 'Captured correspondence', exact: true }).scrollIntoViewIfNeeded();
+  await capture(page, 'f7-history-complete', { correspondence: 101, stage_history: 101 });
+  assert.deepEqual(writes, []);
 });

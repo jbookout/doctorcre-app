@@ -1,3 +1,4 @@
+import { CHROMIUM_SAFETY_ARGS } from './chromium-safety-args.mjs';
 import { chromium } from 'playwright';
 import { execFileSync } from 'node:child_process';
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
@@ -31,7 +32,7 @@ let server, browser;
 try {
   server = await startFixtureServer({ env: { DOCTORCRE_FIXTURE_ROOT: join(root, 'dist/site') } });
   const { url } = server;
-  browser = await chromium.launch();
+  browser = await chromium.launch({ args: [...CHROMIUM_SAFETY_ARGS] });
   const measured = {};
   for (const screen of screens) {
     const samples = [];
