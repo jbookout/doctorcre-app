@@ -36,6 +36,7 @@ test('W16 the territory map pins every lead market on the Gulf Coast', async ({ 
   test.skip(noKey, 'TYPESAFE_API_KEY is not set');
   await serveFixtures(browser);
   await app.open('/leads?mode=live');
+  await browser.locator('#showTerritory').tap();
   await expect(browser.locator('.market-marker')).toHaveCount(1);
   await browser.evaluate(() => document.querySelector('#territoryMap')?.scrollIntoView({ block: 'center' }));
   await agent.assert(

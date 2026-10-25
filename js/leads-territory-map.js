@@ -13,6 +13,10 @@ export function marketFeatures(groups) {
       geometry: { type: "Point", coordinates: place.position } }))) };
 }
 export async function mountTerritoryMap(root, selectMarket, selectLead) {
+  const stylesheet = root.ownerDocument.createElement("link");
+  stylesheet.rel = "stylesheet";
+  stylesheet.href = "/tours/vendor/maplibre-gl-6.4.1/maplibre-gl.css";
+  root.ownerDocument.head.append(stylesheet);
   const [gl, geometry, places] = await Promise.all([
     import("../tours/vendor/maplibre-gl-6.4.1/maplibre-gl.mjs"),
     fetch("/data/leads-territory.geojson").then(r => { if (!r.ok) throw new Error("Map unavailable"); return r.json(); }),
