@@ -1049,7 +1049,8 @@ test("the committed digest producer detail reaches composer acceptance unchanged
   skip: !process.env.CARR_PRODUCER_CHECKOUT && "Set CARR_PRODUCER_CHECKOUT to verify the pinned detail producer",
 }, async () => {
   const contract = JSON.parse(await readFile(new URL("../contracts/tour-composer.v1.json", import.meta.url), "utf8"));
-  const committed = path => execFileSync("git", ["-C", process.env.CARR_PRODUCER_CHECKOUT, "show", `${contract.producer.source_commit}:${path}`], { encoding: "utf8" });
+  const advertised = JSON.parse(await readFile(new URL("../contracts/carr-interface.v1.json", import.meta.url), "utf8")).producer;
+  const committed = path => execFileSync("git", ["-C", process.env.CARR_PRODUCER_CHECKOUT, "show", `${advertised.source_commit}:${path}`], { encoding: "utf8" });
   const migration = committed(contract.reviewed_route.producer.migration);
   assert.match(migration, /create or replace function ops\.read_tour_internal_detail\b/);
   assert.match(migration, /'acceptance_digest',ops\.tour_route_review_digest\(v\.organization_tenant_id,v\.id\)/);

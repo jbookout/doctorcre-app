@@ -38,9 +38,11 @@ test('W16 the territory map pins every lead market on the Gulf Coast', async ({ 
   await app.open('/leads?mode=live');
   await browser.locator('#showTerritory').tap();
   await expect(browser.locator('.market-marker')).toHaveCount(1);
+  await expect(browser.locator('.market-marker')).toHaveText('14');
+  await expect(browser.locator('.market-marker')).toHaveAttribute('title', /Pensacola, FL: 12/);
   await browser.evaluate(() => document.querySelector('#territoryMap')?.scrollIntoView({ block: 'center' }));
   await agent.assert(
-    'The Territory map of the Gulf states shows exactly one round count marker labelled 14, on the Florida Panhandle coast near Pensacola, and no other pin.',
+    'Inside the Territory map rectangle, exactly one round count marker labelled 14 is visible at the lower coastline of the land outline. There are no other map pins. The market-name pills and Stage filter outside this rectangle are not map pins.',
     { vision: 'only' },
   );
 });

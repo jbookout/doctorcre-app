@@ -45,26 +45,17 @@ export async function createFixtureClient(opts = {}) {
   const partnerActor = seed.actors?.partner || 'dell';
 
   /** @type {Map<string, any>} */
-  // `version` is the record layer's own optimistic-concurrency counter for the
-  // deal ROW (what `update-deal` demands as `base_version`), which is a
-  // different thing from `field_base`, the per-cell event identity that
-  // `patch-deal-field` guards with. Both exist because CARR has both.
   const deals = new Map(seed.deals.map((d) => [d.id, {
     operating_state: 'active', parking_reason: null, parking_note: null,
     parked_at: null, parked_by: null, version: 1,
     prospect_engagement_status: 'active', client_version: 1,
     outcome: null, closed_on: null, won_value: null, phase_started_on: {}, ...d,
   }]));
-  // Demonstrate that Salesforce-shaped records are not automatically active
-  // transactions. These are fixture-only examples; production is never
-  // changed from a name match.
   for (const id of ['d06', 'd07', 'd08']) {
     const deal = deals.get(id);
     if (deal) Object.assign(deal, { operating_state:'parked', parking_reason:'other',
       parking_note:'Reason not yet classified', parked_at:'2026-08-10T12:00:00Z', parked_by:'joe' });
   }
-  // Keep the local demo representative of the production information model:
-  // one national-account portfolio, many market deals, no duplicate deal rows.
   const fixtureAccountId = 'demo-account-001';
   let fixtureAccountOwner = 'dell';
   let fixtureAccountVersion = 1;
@@ -82,9 +73,6 @@ export async function createFixtureClient(opts = {}) {
     workspace_kind: 'team', account_client_id: null, account_name: null,
     client_ref: d.client_ref || null, client_name: d.client_name || d.name,
   }));
-  // d02 names a client id the business-record fixture below deliberately does
-  // not carry, so the V5-UX-B04 context drawer's fetch-failure state (test
-  // fixture client, not a live network fault) has a fixture deal to exercise.
   const brokenClientDeal = deals.get('d02');
   if (brokenClientDeal) brokenClientDeal.account_client_id = 'demo-account-002-unlisted';
   /** @type {Map<string, any[]>} */
@@ -109,9 +97,6 @@ export async function createFixtureClient(opts = {}) {
 
   /** @type {Map<string, any>} open conflicts */
   const conflicts = new Map();
-  // Critical dates recorded in this session, by deal. The seed carries none:
-  // the fixture derives one line from the deal's own next date, and anything
-  // else on the list was written here through add-critical-date.
   const criticalDates = new Map();
 
   // Only d01 has external-party participants, covering populated and empty drawers.
