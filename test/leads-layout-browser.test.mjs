@@ -119,6 +119,10 @@ for (const width of [1440, 390]) test(`Lead lanes start with five cards and expa
   await page.locator('#detailStage').waitFor();
   assert.equal(await page.locator('#detailTitle').innerText(), 'Synthetic practice 100');
   await page.locator('#closeDetail').click();
+  assert.equal(await collapse.evaluate(node => {
+    const r = node.getBoundingClientRect();
+    return document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2) === node;
+  }), true, 'Collapse remains reachable at the final lead');
   await collapse.click();
   assert.equal(await lane.locator('.lead-card').count(), 5);
   await page.locator('#leadSearch').fill('Synthetic practice 100');
