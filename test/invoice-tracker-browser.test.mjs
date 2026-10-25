@@ -134,7 +134,9 @@ test('payment uncertainty offers explicit immutable replay across close, polling
  assert.equal(h.writes,2);assert.deepEqual(h.attempts[1],h.attempts[0]);assert.deepEqual(h.errors,[]);
 });
 test('hung payment becomes recoverable after the write deadline without an automatic write',async t=>{
- const h=await open(t,{receipt:'hung'});await h.page.locator('[data-invoice]').first().click();await h.page.locator('#markInvoicePaid').click();
+ const h=await open(t,{receipt:'hung'});await h.page.locator('[data-invoice]').first().click();
+ const sent=h.page.waitForRequest(request=>request.url().endsWith('/mcp')&&request.postDataJSON()?.params?.name==='record-commission-receipt');
+ await h.page.locator('#markInvoicePaid').click();await sent;
  await h.page.clock.runFor(11000);await h.page.waitForFunction(()=>document.querySelector('#markInvoicePaid').textContent==='Retry payment');
  assert.equal(h.writes,1);assert.equal(await h.page.locator('#markInvoicePaid').isEnabled(),true);
 });

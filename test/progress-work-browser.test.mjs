@@ -576,6 +576,7 @@ test('task detail exposes sessions, reviews, Dot jobs, dispatch pages and every 
   await page.locator('#workDispatchMore').click();await page.waitForFunction(()=>document.querySelector('#workDispatchHistory').textContent.includes('acted'));
   await page.clock.runFor(5100);assert.match(await page.locator('#workDispatchHistory').textContent(),/acted/);
   assert.match(await page.locator('#workReviewList').textContent(),/slice:a|Fix round/);
+  await page.waitForFunction(()=>document.querySelector('#workDotList').textContent.includes('Demo research'));
   assert.match(await page.locator('#workDotList').textContent(),/Demo research/);
   assert.match(await page.locator('#workCanonicalBody').textContent(),/Closure: blocked/);
   assert.match(await page.locator('.passport-telemetry').textContent(),/actual.*unavailable.*estimate|actual.*estimate.*unavailable/);
