@@ -39,7 +39,7 @@ for (const width of [390, 1440]) for (const theme of ['light', 'dark']) test(`Ca
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 });
 
-for (const width of [390, 1440]) for (const theme of ['light', 'dark']) test(`Tours opens planning with readable territory choices at ${width} ${theme}`, async ({ page }) => {
+for (const width of [390, 1440]) for (const theme of ['light', 'dark']) test(`Tours keeps its entry and territory choices readable at ${width} ${theme}`, async ({ page }) => {
   await page.setViewportSize({ width, height: 1000 });
   await assets(page);
   await page.goto('http://localhost/tours');
@@ -50,7 +50,9 @@ for (const width of [390, 1440]) for (const theme of ['light', 'dark']) test(`To
   for (const choice of await choices.all()) await expect(choice).toBeVisible();
   if (width === 390) {
     await expect(page.locator('.territory-map')).toBeHidden();
-    expect((await page.locator('#plan-title').boundingBox()).y).toBeLessThan(450);
+    const entry = await page.getByRole('region', { name: 'Your tours', exact: true }).boundingBox();
+    expect(entry.y).toBeLessThan(200);
+    expect((await page.locator('#plan-title').boundingBox()).y).toBeGreaterThan(entry.y + entry.height);
   } else {
     const font = await page.locator('.map-market text').first().evaluate(node => parseFloat(getComputedStyle(node).fontSize) * node.getScreenCTM().a);
     expect(font).toBeGreaterThanOrEqual(13);

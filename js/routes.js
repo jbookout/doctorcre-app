@@ -67,20 +67,22 @@ export const navigationItems = [
     "href": "/leads"
   },
   {
-    "label": "Tours",
-    "href": "/tours"
-  },
-  {
     "label": "Local Deals",
     "href": "/deals"
   },
   {
+    "label": "Tours",
+    "href": "/tours"
+  },
+  {
     "label": "Vendors",
-    "href": "/vendors"
+    "href": "/vendors",
+    "group": "Workspace"
   },
   {
     "label": "Control Room",
-    "href": "/control-room"
+    "href": "/control-room",
+    "group": "Workspace"
   },
   {
     "label": "Relationships",

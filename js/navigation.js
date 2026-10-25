@@ -16,13 +16,13 @@ export function appOriginForReport(origin) {
 }
 
 function groupIcon(label) {
-  return { Home: "⌂", Leads: "◎", Tours: "◇", "Local Deals": "▦", Vendors: "♧", "Control Room": "◈" }[label] || "";
+  return { Home: "⌂", Leads: "◎", Tours: "◇", "Local Deals": "▦" }[label] || "";
 }
 
 function link({ label, href }, current, base) {
   const active = href === current;
   const badge = label === "Updates" ? '<span class="nav-badge" id="navUnreadBadge" hidden></span>' : "";
-  return `<a data-app-nav-item aria-label="${label}" title="${label}" href="${base}${href}"${active ? ' aria-current="page"' : ""}>${!groupIcon(label) ? label : `<span aria-hidden="true">${groupIcon(label)}</span><span class="app-shell-nav-label">${label}</span>`}${badge}</a>`;
+  return `<a data-app-nav-item aria-label="${label}" title="${label}" href="${base}${href}"${active ? ' aria-current="page"' : ""}>${!groupIcon(label) ? label : `<span aria-hidden="true">${groupIcon(label)}</span><span class="app-shell-nav-label">${label === "Local Deals" ? "Deals" : label}</span>`}${badge}</a>`;
 }
 
 export function appShellMarkup(pathname, base = "", search = "") {

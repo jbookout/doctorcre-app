@@ -130,3 +130,14 @@
   .planner-page .library-card, .planner-page .widget-actions, .planner-page .market-buttons { display: none; }
   .planner-grid { display: block; }
 }
+
+.tour-entry { display: none; }
+@media (max-width: 760px), (hover: none) and (pointer: coarse) and (max-width: 1023px) {
+  .planner-grid > .tour-entry { display: grid; grid-column: 1 / -1; gap: var(--space-2); }
+  .tour-entry h2 { font-size: var(--font-size-3); }
+  #tour-entry-current { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+  #tour-entry-current strong { flex: 1 1 140px; overflow-wrap: anywhere; }
+  #tour-entry-current a { display: inline-flex; align-items: center; min-height: 44px; padding: var(--space-2) var(--space-3); }
+  #tour-entry-state { margin: 0; color: var(--fg-muted); font-size: var(--font-size-1); }
+  #tour-entry-state:empty { display: none; }
+}

@@ -14,6 +14,12 @@
   <a class="skip-link" href="#plan-form">Skip to tour planning</a>
   <header class="planner-header tours-heading"><h1>Tours</h1><div data-layout-slot="status" class="freshness"><time id="planner-updated">Updating…</time><button data-layout-refresh id="planner-refresh" aria-label="Refresh tours" title="Refresh tours" type="button">↻</button></div></header>
   <main class="planner-grid">
+    <section class="card tour-entry" aria-labelledby="tour-entry-title">
+      <h2 id="tour-entry-title">Your tours</h2>
+      <div id="tour-entry-current"><strong id="tour-entry-name"></strong><a id="tour-entry-day" class="download-button" target="_blank" rel="noopener noreferrer" hidden>Tour day</a></div>
+      <p id="tour-entry-state" role="status">Loading tours…</p>
+      <button id="browse-tours" type="button">Browse your tours</button>
+    </section>
     <section class="card territory-card" aria-labelledby="territory-heading">
       <div class="territory-heading"><h2 id="territory-heading">Territory</h2><span class="territory-caption">Gulf Coast</span></div>
       <svg class="territory-map" viewBox="0 0 1100 230" role="img" aria-labelledby="map-title map-description">

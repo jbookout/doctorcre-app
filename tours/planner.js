@@ -16,7 +16,10 @@ export function mountPlanner({ document, window, api = createPlannerClient() }) 
   // Capture restoration input before an edit can persist a partial boot draft.
   let savedDraft = null;
   try { savedDraft = JSON.parse(window.sessionStorage.getItem(key)); } catch { /* Disabled or invalid storage. */ }
-  const message = (selector, text) => { $(selector).textContent = text; };
+  const message = (selector, text) => {
+    $(selector).textContent = text;
+    if (selector === "#tour-library-state") $("#tour-entry-state").textContent = text;
+  };
   const element = (tag, text, className) => { const el = document.createElement(tag); if (text !== undefined) el.textContent = text; if (className) el.className = className; return el; };
   const option = (text, value) => { const node = element("option", text); node.value = value; return node; };
   function save(target) {
@@ -110,6 +113,12 @@ export function mountPlanner({ document, window, api = createPlannerClient() }) 
     } catch (error) { if (epoch === (prefix === "plan" ? planEpoch : searchEpoch)) message(target, unavailable(error) || "Client details temporarily unavailable."); }
   }
   function renderLibrary() {
+    const tour = tourGroups(tours).upcoming[0];
+    message("#tour-entry-name", tour ? tourDisplayName(tour.name) : "No upcoming tours");
+    const day = $("#tour-entry-day");
+    day.hidden = !tour;
+    if (tour) day.href = `/tours/day.html?tour=${encodeURIComponent(tour.id)}`;
+    else day.removeAttribute("href");
     const focusedId = document.activeElement?.dataset?.tourId;
     const openerId = opener?.dataset?.tourId;
     const query = $("#tour-filter").value;
@@ -264,6 +273,7 @@ export function mountPlanner({ document, window, api = createPlannerClient() }) 
   $("#plan-client").addEventListener("change", event => void prefill("plan", event.target.value));
   $("#space-client").addEventListener("change", event => void prefill("space", event.target.value));
   $("#tour-filter").addEventListener("input", renderLibrary);
+  $("#browse-tours").addEventListener("click", () => $("#appSidebarToggle")?.click());
   $("#plan-form").addEventListener("submit", event => { event.preventDefault(); save("#plan-message"); reviewDraft($("#review-packet")); });
   $("#space-form").addEventListener("submit", event => { event.preventDefault(); const error = validateCriteria(search.values); if (error) message("#space-message", error); else if (save("#space-message")) message("#space-message", "Search draft saved."); });
   $("#packet-upload").addEventListener("change", event => acceptFiles([...event.target.files]));

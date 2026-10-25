@@ -283,6 +283,8 @@ body.has-app-layout:has(.toast) .receipt-dock { display: none; }
   .app-shell-brand { display: none; }
   .app-shell-menu { grid-column: 1; grid-row: 1; min-width: 0; flex: none !important; }
   .app-shell-navigation { flex-direction: row; justify-content: space-between; gap: 0; overflow-x: auto; }
+  .app-shell-navigation > a > [aria-hidden], .app-shell-more-toggle > [aria-hidden] { display: none; }
+  .app-shell-nav-label { position: static; width: auto; height: auto; overflow: visible; clip-path: none; font: var(--font-weight-strong) var(--font-size-1) var(--font-text); }
   .app-shell-navigation > a, .app-shell-more { flex: none; }
   .app-shell-navigation > a, .app-shell-more-toggle { width: var(--touch); height: var(--touch); min-height: var(--touch); font-size: var(--font-size-3); padding: var(--space-1) !important; }
   .app-shell-navigation > a[aria-current=page]::before, .app-shell-more-current::before { left: 10px; right: 10px; top: auto; bottom: -3px; width: auto; height: 2px; }
