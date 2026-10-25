@@ -9,7 +9,6 @@ import { mountPlanner } from "../tours/planner.js";
 const html = await readFile(new URL("../tours/index.html", import.meta.url), "utf8");
 const clientA = "11111111-1111-4111-8111-111111111111", clientB = "22222222-2222-4222-8222-222222222222";
 const record = id => ({ id, name: id === clientA ? "Demo Practice A" : "Demo Practice B", city: "Demo City", state: "FL", vertical: "Demo specialty", notes: "Synthetic original entry" });
-const clientPage = (rows, page = 1, pageCount = 1) => ({ rows, page, pageCount });
 const settle = () => new Promise(resolve => setTimeout(resolve, 0));
 test("R13: Tour day opens its whole surface in a separate tab", async () => {
   const { detail } = await import("./fixtures/tour-day.synthetic.mjs");
@@ -32,11 +31,11 @@ function harness(api = {}, beforeMount = () => {}) {
   const doc = dom.window.document;
   doc.querySelector("dialog").showModal = function() { this.open = true; };
   doc.querySelector("dialog").close = function() { this.open = false; };
-  const service = { scope: "synthetic-scope", library: async () => [{ id: clientA, name: "Demo upcoming", status: "draft" }, { id: clientB, name: "Demo past", status: "completed" }], clients: async () => clientPage([record(clientA), record(clientB)]), client: async id => record(id), tour: async id => ({ id, name: "Demo tour", stops: [], cheat_sheet: { content: { notes: "Synthetic original entry" } } }), ...api };
+  const service = { scope: "synthetic-scope", library: async () => [{ id: clientA, name: "Demo upcoming", status: "draft" }, { id: clientB, name: "Demo past", status: "completed" }], clients: async () => [record(clientA), record(clientB)], client: async id => record(id), tour: async id => ({ id, name: "Demo tour", stops: [], cheat_sheet: { content: { notes: "Synthetic original entry" } } }), ...api };
   if (Object.getOwnPropertyDescriptor(api, "scope")?.get) Object.defineProperty(service, "scope", { get: () => api.scope });
   beforeMount(dom.window);
   const view = mountPlanner({ document: doc, window: dom.window, api: service });
-  return { dom, doc, view, service, async loadClients() { doc.querySelector("#plan-load-clients").click(); await waitFor(() => !doc.querySelector("#plan-load-clients").disabled); }, change(selector, value) { const node = doc.querySelector(selector); node.value = value; node.dispatchEvent(new dom.window.Event(node.tagName === "SELECT" && selector.endsWith("client") ? "change" : "input", { bubbles: true })); }, close() { view.dispose(); dom.window.close(); } };
+  return { dom, doc, view, service, change(selector, value) { const node = doc.querySelector(selector); node.value = value; node.dispatchEvent(new dom.window.Event(node.tagName === "SELECT" && selector.endsWith("client") ? "change" : "input", { bubbles: true })); }, close() { view.dispose(); dom.window.close(); } };
 }
 
 test("each suggested field and typed override undo independently", () => {
@@ -77,15 +76,15 @@ test("client read uses the producer's exact pagination and verifies identity", a
   const calls = []; const api = createPlannerClient({ fetchImpl: async path => {
     calls.push(path); return { ok: true, json: async () => path.includes(clientA) ? { record: record(clientB) } : { page: Number(new URL(path, "https://example.test").searchParams.get("page")), page_count: 2, rows: [record(clientA)] } };
   } });
-  assert.deepEqual(await api.clients(), clientPage([record(clientA)], 1, 2)); assert.equal(calls.length, 1); assert.match(calls[0], /scope=team&sort=name&page=1/);
-  await assert.rejects(api.client(clientA), /Invalid client record/);
+  assert.equal((await api.clients()).length, 2); assert.match(calls[0], /scope=team&sort=name&page=1/); assert.match(calls[1], /page=2/);
+  await assert.rejects(api.client(clientA), /mismatch/);
   await assert.rejects(api.client("-".repeat(36)), /Invalid/);
   assert.deepEqual(api.capabilities, { compile: false, mls: false });
 });
 test("late client A prefill cannot contaminate client B; typing during read survives", async () => {
   let resolveA; const app = harness({ client: id => id === clientA ? new Promise(resolve => { resolveA = resolve; }) : Promise.resolve(record(id)) });
   try {
-    await app.view.ready; await app.loadClients(); app.change("#plan-client", clientA); app.change("#plan-client", clientB); app.change("#plan-area", "Typed B"); await settle();
+    await app.view.ready; app.change("#plan-client", clientA); app.change("#plan-client", clientB); app.change("#plan-area", "Typed B"); await settle();
     resolveA(record(clientA)); await settle();
     assert.match(app.doc.querySelector("#plan-name").value, /Demo Practice B/); assert.equal(app.doc.querySelector("#plan-area").value, "Typed B");
     app.doc.querySelector("#plan-undo").click(); assert.equal(app.doc.querySelector("#plan-notes").value, "");
@@ -94,7 +93,7 @@ test("late client A prefill cannot contaminate client B; typing during read surv
 test("background updates preserve draft, file bytes stay only in memory, scope changes clear both", async () => {
   const app = harness();
   try {
-    await app.view.ready; await app.loadClients(); app.change("#plan-client", clientA); await settle(); app.change("#plan-name", "Typed name");
+    await app.view.ready; app.change("#plan-client", clientA); await settle(); app.change("#plan-name", "Typed name");
     const file = new app.dom.window.File(["synthetic private bytes"], "synthetic-private.txt", { type: "text/plain" });
     Object.defineProperty(app.doc.querySelector("#packet-upload"), "files", { value: [file], configurable: true });
     app.doc.querySelector("#packet-upload").dispatchEvent(new app.dom.window.Event("change"));
@@ -130,11 +129,11 @@ test("research criteria persist per session, tour search filters, territory butt
     assert.equal(app.doc.querySelector("#space-client").value, "");
   } finally { app.close(); }
 });
-test("selected client outage clears on automatic recovery and form caret survives background refresh", async () => {
+test("client outage clears on automatic recovery and form caret survives background refresh", async () => {
   let unavailable = false;
-  const app = harness({ client: async id => { if (unavailable) throw new Error("Synthetic outage"); return record(id); } });
+  const app = harness({ clients: async () => { if (unavailable) throw new Error("Synthetic outage"); return [record(clientA)]; } });
   try {
-    await app.view.ready; await app.loadClients(); app.change("#plan-client", clientA); await settle();
+    await app.view.ready; app.change("#plan-client", clientA); await settle();
     app.change("#plan-name", "Typed tour name");
     const input = app.doc.querySelector("#plan-name"); input.focus(); input.setSelectionRange(4, 4);
     unavailable = true; await app.view.refresh();
@@ -173,7 +172,7 @@ function stageFile(app) {
 test("detail session transition clears private drafts, files and cached records before another edit", async () => {
   const app = sessionHarness();
   try {
-    await app.view.ready; await app.loadClients(); app.change("#plan-client", clientA); await settle(); app.change("#plan-name", "Private draft A"); stageFile(app);
+    await app.view.ready; app.change("#plan-client", clientA); await settle(); app.change("#plan-name", "Private draft A"); stageFile(app);
     app.session("synthetic-B"); app.doc.querySelector(".tour-button").click();
     await waitFor(() => app.doc.querySelector('#plan-name').value === '');
     assert.equal(app.doc.querySelector("#plan-name").value, ""); assert.equal(app.view.files.length, 0);
@@ -187,7 +186,7 @@ test("detail session transition clears private drafts, files and cached records 
 test("HTTP authentication refusal clears private state and requires sign-in instead of reporting an outage", async () => {
   const app = sessionHarness();
   try {
-    await app.view.ready; await app.loadClients(); app.change("#plan-client", clientA); await settle(); stageFile(app); app.refuse(); await app.view.refresh();
+    await app.view.ready; app.change("#plan-client", clientA); await settle(); stageFile(app); app.refuse(); await app.view.refresh();
     assert.equal(app.doc.querySelector("#plan-name").value, ""); assert.equal(app.view.files.length, 0);
     assert.equal(app.doc.querySelectorAll(".tour-button").length, 0); assert.equal(app.doc.querySelectorAll("#plan-client option").length, 1);
     assert.match(app.doc.querySelector("#tour-library-state").textContent, /sign in/i);
@@ -197,14 +196,15 @@ test("HTTP authentication refusal clears private state and requires sign-in inst
 });
 
 const deferred = () => { let resolve, reject; const promise = new Promise((yes, no) => { resolve = yes; reject = no; }); return { promise, resolve, reject }; };
-test("manual refresh supersedes delayed boot library", async () => {
-  const oldLibrary = deferred();
-  const app = harness({ library: () => oldLibrary.promise });
+test("manual refresh supersedes delayed boot library and client options", async () => {
+  const oldLibrary = deferred(), oldClients = deferred();
+  const app = harness({ library: () => oldLibrary.promise, clients: () => oldClients.promise });
   try {
-    app.service.library = async () => [{ id: clientB, name: "New library", status: "draft" }];
+    app.service.library = async () => [{ id: clientB, name: "New library", status: "draft" }]; app.service.clients = async () => [record(clientB)];
     app.doc.querySelector("#planner-refresh").click(); await settle();
-    oldLibrary.resolve([{ id: clientA, name: "Old library", status: "draft" }]); await app.view.ready;
+    oldLibrary.resolve([{ id: clientA, name: "Old library", status: "draft" }]); oldClients.resolve([record(clientA)]); await app.view.ready;
     assert.match(app.doc.querySelector("#upcoming-tours").textContent, /New library/); assert.doesNotMatch(app.doc.querySelector("#upcoming-tours").textContent, /Old library/);
+    assert.equal(app.doc.querySelectorAll('#plan-client option[value="' + clientA + '"]').length, 0);
   } finally { app.close(); }
 });
 test("new same-tour background detail supersedes delayed popup detail", async () => {
@@ -219,7 +219,7 @@ test("new same-tour background detail supersedes delayed popup detail", async ()
 for (const prefix of ["plan", "space"]) test(`new same-client background record settles ${prefix} status and supersedes delayed prefill`, async () => {
   const old = deferred(); const app = harness({ client: () => old.promise });
   try {
-    await app.view.ready; await app.loadClients(); app.change(`#${prefix}-client`, clientA);
+    await app.view.ready; app.change(`#${prefix}-client`, clientA);
     assert.equal(app.doc.querySelector(`#${prefix}-message`).textContent, "Updating…");
     app.service.client = async id => ({ ...record(id), notes: "Newest record notes" }); await app.view.refresh();
     assert.equal(app.doc.querySelector(`#${prefix}-message`).textContent, "");
@@ -238,7 +238,7 @@ for (const prefix of ["plan", "space"]) test(`new same-client background record 
 for (const prefix of ["plan", "space"]) test(`settled ${prefix} client refresh preserves an undo message`, async () => {
   const old = deferred(); const app = harness({ client: () => old.promise });
   try {
-    await app.view.ready; await app.loadClients(); app.change(`#${prefix}-client`, clientA);
+    await app.view.ready; app.change(`#${prefix}-client`, clientA);
     app.change(`#${prefix}-area`, "Typed area"); app.doc.querySelector(`#${prefix}-undo`).click();
     assert.equal(app.doc.querySelector(`#${prefix}-message`).textContent, "Change undone.");
     app.service.client = async id => record(id); await app.view.refresh();
@@ -283,11 +283,11 @@ for (const first of ["library", "clients"]) test(`initial ${first}-first reads p
     libraryResponse.resolve({ csrf_token: "synthetic-A", data: { tours: [] } });
     await library;
     clientsResponse.resolve({ page: 1, page_count: 1, rows: [stale] });
-    assert.deepEqual(await clients, clientPage([current]));
+    assert.deepEqual(await clients, [current]);
     assert.equal(clientReads, 2);
   } else {
     clientsResponse.resolve({ page: 1, page_count: 1, rows: [stale] });
-    assert.deepEqual(await clients, clientPage([stale]));
+    assert.deepEqual(await clients, [stale]);
     libraryResponse.resolve({ csrf_token: "synthetic-A", data: { tours: [] } });
     await library;
     assert.equal(clientReads, 1);
@@ -373,7 +373,7 @@ test("failed initial prefill recovers untouched suggestions in both forms and pr
   for (const prefix of ["plan", "space"]) {
     const recovery = deferred(); const app = harness({ client: async () => { throw new Error("Synthetic first-read outage"); } });
     try {
-      await app.view.ready; await app.loadClients(); app.change(`#${prefix}-client`, clientA); await settle();
+      await app.view.ready; app.change(`#${prefix}-client`, clientA); await settle();
       assert.match(app.doc.querySelector(prefix === "plan" ? "#plan-message" : "#space-message").textContent, /unavailable/);
       app.service.client = () => recovery.promise; const pending = app.view.refresh(); await settle();
       app.change(`#${prefix}-area`, "Typed during recovery"); app.change(`#${prefix}-use`, "");
@@ -511,228 +511,19 @@ test('QA-019 review guidance while clients load clears when the picker becomes r
     await settle();
     app.doc.querySelector('#review-packet').click();
     assert.match(app.doc.querySelector('#plan-message').textContent,/loading/);
-    clients.resolve(clientPage([record(clientA)])); await settle();
+    clients.resolve([record(clientA)]); await app.view.ready;
     assert.equal(app.doc.querySelector('#plan-client').options.length,2);
     assert.equal(app.doc.querySelector('#plan-message').textContent,'');
   } finally {app.close();}
 });
 
-test('D2 existing tours open and refresh without waiting for client choices', async () => {
-  let clientReads = 0;
-  const app = harness({ clients: () => { clientReads++; return new Promise(() => {}); } });
+test('saved tours open while the client directory is unresolved', async () => {
+  const pending = deferred(); const app = harness({ clients: () => pending.promise });
   try {
     await settle(); await settle();
-    assert.equal(app.doc.querySelectorAll('.tour-button').length, 2, 'library renders while the client directory is unresolved');
+    assert.equal(app.doc.querySelectorAll('.tour-button').length, 2);
     app.doc.querySelector('.tour-button').click(); await settle();
     assert.equal(app.doc.querySelector('#detail-title').textContent, 'Demo tour');
-    await app.view.ready; await app.view.refresh();
-    assert.equal(clientReads, 0, 'opening and refreshing existing tours never downloads client choices');
-  } finally { app.close(); }
-});
-
-test('D2 client choices fetch one requested page rather than walking the directory', async () => {
-  const calls = [];
-  const api = createPlannerClient({ fetchImpl: async path => {
-    calls.push(path);
-    const page = Number(new URL(path, 'https://example.test').searchParams.get('page'));
-    return { ok: true, json: async () => ({ page, page_count: 200, rows: [record(page === 1 ? clientA : clientB)] }) };
-  } });
-  assert.deepEqual(await api.clients({ page: 2 }), { rows: [record(clientB)], page: 2, pageCount: 200 });
-  assert.deepEqual(calls, ['/api/v1/business/clients?scope=team&sort=name&page=2']);
-});
-
-test('D2 planning loads bounded shared pages, retries locally and retains its cache on library refresh', async () => {
-  const calls = []; let fail = true;
-  const app = harness({ clients: async ({ page }) => {
-    calls.push(page);
-    if (page === 2 && fail) throw new Error('Synthetic page outage');
-    return clientPage([record(page === 1 ? clientA : clientB)], page, 2);
-  } });
-  try {
-    await app.view.ready; assert.deepEqual(calls, []);
-    await app.loadClients();
-    assert.deepEqual(calls, [1]);
-    assert.equal(app.doc.querySelector('#space-client').options.length, 2);
-    app.change('#plan-client', clientA); await settle();
-    app.change('#plan-name', 'Typed draft');
-    app.doc.querySelector('#space-load-clients').click(); await settle();
-    assert.match(app.doc.querySelector('#space-clients-state').textContent, /unavailable/);
-    assert.equal(app.doc.querySelector('#plan-client').value, clientA);
-    assert.equal(app.doc.querySelectorAll('.tour-button').length, 2);
-    fail = false; await app.loadClients();
-    assert.deepEqual(calls, [1, 2, 2]);
-    for (const prefix of ['plan', 'space']) {
-      assert.equal(app.doc.querySelector(`#${prefix}-client`).options.length, 3);
-      assert.equal(app.doc.querySelector(`#${prefix}-load-clients`).hidden, true);
-      assert.equal(app.doc.querySelector(`#${prefix}-clients-state`).textContent, '');
-    }
-    await app.view.refresh();
-    assert.deepEqual(calls, [1, 2, 2]);
-    assert.equal(app.doc.querySelector('#plan-name').value, 'Typed draft');
-  } finally { app.close(); }
-});
-
-test('D2 scope change drops cached pages and rejects an old pending page', async () => {
-  const late = deferred(), calls = [];
-  const app = harness({ clients: async ({ page }) => {
-    calls.push(page); return page === 1 ? clientPage([record(clientA)], 1, 2) : late.promise;
-  } });
-  try {
-    await app.view.ready; await app.loadClients();
-    app.doc.querySelector('#plan-load-clients').click();
-    app.doc.querySelector('#space-load-clients').click();
-    assert.deepEqual(calls, [1, 2], 'concurrent demand shares one pending request');
-    app.service.scope = 'new-synthetic-scope'; await app.view.refresh();
-    late.resolve(clientPage([record(clientB)], 2, 2)); await settle();
-    assert.equal(app.doc.querySelector('#plan-client').options.length, 1);
-    assert.equal(app.doc.querySelector('#space-client').options.length, 1);
-    assert.equal(app.doc.querySelector('#plan-load-clients').textContent, 'Load clients');
-    await app.loadClients(); assert.deepEqual(calls, [1, 2, 1]);
-    assert.equal(app.doc.querySelector('#plan-client').options.length, 2);
-  } finally { app.close(); }
-});
-
-test('D2 slow selected-client refresh cannot delay the open tour or library', async () => {
-  const late = deferred(); const app = harness();
-  try {
-    await app.view.ready; await app.loadClients();
-    app.change('#plan-client', clientA); await settle();
-    app.doc.querySelector('.tour-button').click(); await settle();
-    app.service.client = () => late.promise;
-    app.service.tour = async id => ({ id, name: 'Fresh tour', stops: [] });
-    app.service.library = async () => [{ id: clientA, name: 'Fresh library', status: 'draft' }];
-    const pending = app.view.refresh(); await settle();
-    assert.equal(app.doc.querySelector('#detail-title').textContent, 'Fresh tour');
-    assert.match(app.doc.querySelector('#upcoming-tours').textContent, /Fresh library/);
-    late.resolve(record(clientA)); await pending;
-  } finally { app.close(); }
-});
-
-
-test('D2 restored client uses its exact record without downloading directory pages', async () => {
-  let directoryReads = 0;
-  const app = harness({ clients: async () => { directoryReads++; return clientPage([]); } }, window => {
-    window.sessionStorage.setItem('doctorcre-tour-planning-drafts-v1', JSON.stringify({
-      scope: 'synthetic-scope', planClient: clientA, plan: { name: 'Saved draft' },
-    }));
-  });
-  try {
-    await app.view.ready;
-    assert.equal(directoryReads, 0);
-    assert.equal(app.doc.querySelector('#plan-client').selectedOptions[0].textContent, 'Demo Practice A');
-    assert.equal(app.doc.querySelector('#plan-name').value, 'Saved draft');
-    app.doc.querySelector('#review-packet').click();
     assert.equal(app.doc.querySelector('dialog').open, true);
-    assert.equal(directoryReads, 0);
-  } finally { app.close(); }
-});
-
-test('D2 session establishment clears early client-loading guidance', async () => {
-  const boot = deferred();
-  const app = harness({ scope: null, library: () => boot.promise });
-  try {
-    await app.loadClients();
-    assert.match(app.doc.querySelector('#plan-clients-state').textContent, /Refresh tours/);
-    app.service.scope = 'synthetic-scope'; boot.resolve([]); await app.view.ready;
-    assert.equal(app.doc.querySelector('#plan-clients-state').textContent, '');
-    assert.equal(app.doc.querySelector('#space-clients-state').textContent, '');
-  } finally { app.close(); }
-});
-
-for (const state of ['pending', 'failed']) test(`D2 review waits for the restored client's ${state} exact record without loading choices`, async () => {
-  const detail = deferred(); let directoryReads = 0;
-  const app = harness({ client: () => detail.promise, clients: async () => { directoryReads++; return clientPage([]); } }, window => {
-    window.sessionStorage.setItem('doctorcre-tour-planning-drafts-v1', JSON.stringify({ scope: 'synthetic-scope', planClient: clientA }));
-  });
-  try {
-    await settle();
-    if (state === 'failed') { detail.reject(new Error('Synthetic detail outage')); await app.view.ready; }
-    const message = app.doc.querySelector('#plan-message').textContent;
-    app.doc.querySelector('#review-packet').click();
-    assert.equal(directoryReads, 0, 'a selected client needs its exact record, not directory choices');
-    assert.equal(app.doc.querySelector('dialog').open, false, 'do not review an incomplete packet');
-    assert.equal(app.doc.querySelector('#plan-message').textContent, message);
-    if (state === 'pending') {
-      detail.resolve(record(clientA)); await app.view.ready;
-      app.doc.querySelector('#review-packet').click();
-      assert.equal(app.doc.querySelector('dialog').open, true);
-      assert.match(app.doc.querySelector('#detail-content details').textContent, /Synthetic original entry/);
-    }
-  } finally { app.close(); }
-});
-
-for (const status of [401, 403]) test(`D2 Load clients preserves sign-in recovery after ${status}`, async () => {
-  let refused = false, reads = 0;
-  const api = createPlannerClient({ fetchImpl: async path => {
-    reads++;
-    return { ok: !refused, status: refused ? status : 200, json: async () => ({ csrf_token: 'synthetic', data: path.includes('library') ? { tours: [] } : { rows: [], page: 1, page_count: 1 } }) };
-  } });
-  const app = harness(api);
-  try {
-    await app.view.ready; refused = true; await app.loadClients();
-    assert.equal(app.doc.querySelector('#plan-clients-state').textContent, 'Sign in to continue.');
-    const before = reads;
-    for (const prefix of ['plan', 'space']) {
-      app.doc.querySelector(`#${prefix}-load-clients`).click();
-      assert.equal(app.doc.querySelector(`#${prefix}-clients-state`).textContent, 'Sign in to continue.');
-    }
-    assert.equal(reads, before, 'sign in before making another directory request');
-  } finally { app.close(); }
-});
-
-test('D2 directory pages keep response order when selected details arrive first', async () => {
-  const zeta = { ...record(clientB), name: 'Demo Zeta' }, alpha = { ...record(clientA), name: 'Demo Alpha' };
-  const app = harness({ client: async () => zeta, clients: async ({ page }) => clientPage(page === 1 ? [alpha] : [zeta], page, 2) }, window => {
-    window.sessionStorage.setItem('doctorcre-tour-planning-drafts-v1', JSON.stringify({ scope: 'synthetic-scope', planClient: clientB }));
-  });
-  try {
-    await app.view.ready;
-    for (const page of [1, 2]) {
-      await app.loadClients();
-      for (const prefix of ['plan', 'space']) {
-        assert.deepEqual([...app.doc.querySelector(`#${prefix}-client`).options].slice(1).map(option => option.textContent), prefix === 'plan' || page === 2 ? ['Demo Alpha', 'Demo Zeta'] : ['Demo Alpha']);
-      }
-      assert.equal(app.doc.querySelector('#plan-client').value, clientB);
-    }
-    app.service.client = async () => ({ ...zeta, name: 'Demo Zeta refreshed' });
-    await app.view.refresh();
-    for (const prefix of ['plan', 'space']) assert.deepEqual([...app.doc.querySelector(`#${prefix}-client`).options].slice(1).map(option => option.textContent), ['Demo Alpha', 'Demo Zeta refreshed']);
-  } finally { app.close(); }
-});
-
-test('D2 a shrinking directory settles its empty tail without losing loaded choices', async () => {
-  const calls = [];
-  const api = createPlannerClient({ fetchImpl: async path => {
-    const page = Number(new URL(path, 'https://example.test').searchParams.get('page'));
-    const data = path.includes('library') ? { tours: [] } : { rows: page === 1 ? [record(clientA)] : [], page, page_count: page === 1 ? 2 : 1 };
-    if (!path.includes('library')) calls.push(page);
-    return { ok: true, json: async () => ({ csrf_token: 'synthetic', data }) };
-  } });
-  const app = harness(api);
-  try {
-    await app.view.ready; await app.loadClients(); await app.loadClients();
-    for (const prefix of ['plan', 'space']) {
-      assert.equal(app.doc.querySelector(`#${prefix}-clients-state`).textContent, '');
-      assert.equal(app.doc.querySelector(`#${prefix}-load-clients`).hidden, true);
-      assert.equal(app.doc.querySelector(`#${prefix}-client`).options[1].value, clientA);
-    }
-    app.doc.querySelector('#plan-load-clients').click();
-    assert.deepEqual(calls, [1, 2], 'the shorter directory has no more pages to request');
-  } finally { app.close(); }
-});
-
-test('D2 a later directory page preserves a refreshed exact client label', async () => {
-  const zeta = { ...record(clientB), name: 'Demo Zeta' };
-  const app = harness({ client: async () => zeta, clients: async ({ page }) => clientPage(page === 1 ? [record(clientA)] : [zeta], page, 2) }, window => {
-    window.sessionStorage.setItem('doctorcre-tour-planning-drafts-v1', JSON.stringify({ scope: 'synthetic-scope', planClient: clientB }));
-  });
-  try {
-    await app.view.ready; await app.loadClients();
-    app.service.client = async () => ({ ...zeta, name: 'Demo Zeta refreshed' });
-    await app.view.refresh(); await app.loadClients();
-    for (const prefix of ['plan', 'space']) {
-      assert.deepEqual([...app.doc.querySelector(`#${prefix}-client`).options].slice(1).map(option => option.textContent), ['Demo Practice A', 'Demo Zeta refreshed']);
-    }
-    assert.equal(app.doc.querySelector('#plan-client').value, clientB);
-  } finally { app.close(); }
+  } finally { pending.resolve([]); await app.view.ready; app.close(); }
 });

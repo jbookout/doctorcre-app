@@ -10,7 +10,7 @@ const original = "Synthetic call entry: prioritize ground-floor space, accessibl
 const client = { id: clientId, name: "Demo Harbor Practice", city: "Pensacola", state: "FL", vertical: "Medical office", notes: original };
 const tour = { id: tourId, name: "Demo Gulf Coast Tour", status: "draft", stops: [{ property_name: "Demo Bayside Office", property_address: "100 Example Way", stop_state: "active" }], cheat_sheet: { content: { notes: original } } };
 
-async function open(t, width, { planning = true } = {}) {
+async function open(t, width) {
   const browser = await chromium.launch({ args: [...CHROMIUM_SAFETY_ARGS] }); t.after(() => browser.close());
   const page = await browser.newPage({ viewport: { width, height: 1000 } });
   await page.clock.install({ time: new Date("2026-10-01T15:00:00Z") });
@@ -43,8 +43,7 @@ async function open(t, width, { planning = true } = {}) {
       return route.fulfill({ body: content, contentType: /\.m?js$/.test(file || "") ? "text/javascript" : file?.endsWith(".css") ? "text/css" : "text/html" });
     } catch { return route.fulfill({ status: 404 }); }
   });
-  await page.goto("http://localhost/tours");
-  if (planning) { await page.locator("#plan-load-clients").click(); await page.waitForFunction(() => document.querySelector("#plan-client").options.length === 2); }
+  await page.goto("http://localhost/tours"); await page.waitForFunction(() => document.querySelector("#plan-client").options.length === 2);
   return { page, calls, errors, outage(value) { unavailable = value; }, revise() { revision += 1; } };
 }
 
@@ -132,34 +131,4 @@ for (const status of [401,403]) test(`PR182 Tours ${status} settles freshness at
   assert.equal(await page.locator('#planner-updated').textContent(), 'Unavailable');
   assert.equal(await page.locator('.freshness').evaluate(n=>n.classList.contains('current')), false);
   assert.deepEqual(errors,[]);
-});
-
-
-test('D2 phone opens and refreshes an existing tour while client choices are held', async t => {
-  const { page, calls, errors } = await open(t, 390, { planning: false });
-  const clientReads = () => calls.filter(call => call.path === '/api/v1/business/clients').length;
-  assert.equal(clientReads(), 0);
-  let attempts = 0, release;
-  const held = new Promise(resolve => { release = resolve; });
-  await page.route('**/api/v1/business/clients?*', async route => {
-    attempts++; await held;
-    await route.fulfill({ json: { rows: [client], page: 1, page_count: 1 } });
-  });
-  try {
-    await page.locator('#plan-load-clients').click();
-    await page.getByText('Clients are loading…', { exact: true }).first().waitFor();
-    await page.locator('#appSidebarToggle').click();
-    await page.locator('#upcoming-tours .tour-button').first().click();
-    await page.waitForFunction(() => document.querySelector('#detail-title').textContent === 'Demo Gulf Coast Tour');
-    await page.keyboard.press('Escape');
-    await page.keyboard.press('Escape');
-    await Promise.all([
-      page.waitForResponse(response => new URL(response.url()).pathname === '/api/tours/library'),
-      page.locator('#planner-refresh').click(),
-    ]);
-    assert.equal(await page.locator('#plan-client').evaluate(node => node.options.length), 1);
-    assert.equal(attempts, 1, 'refresh does not issue another client-directory request');
-  } finally { release(); }
-  await page.waitForFunction(() => document.querySelector('#plan-client').options.length === 2);
-  assert.deepEqual(errors, []);
 });

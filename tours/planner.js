@@ -8,16 +8,14 @@ import { PLAN_FIELDS, SEARCH_FIELDS, createDraft, clientSuggestions, tourGroups,
 export function mountPlanner({ document, window, api = createPlannerClient() }) {
   const $ = selector => document.querySelector(selector);
   const plan = createDraft(PLAN_FIELDS), search = createDraft(SEARCH_FIELDS);
-  let loadingClients = false, clientsMessage = "", clients = new Map(), tours = [], files = [], planClient = "", searchClient = "", planEpoch = 0, searchEpoch = 0, dialogEpoch = 0, refreshEpoch = 0;
+  let clientsStatus = "pending", clientsMessage = "", clients = [], tours = [], files = [], planClient = "", searchClient = "", planEpoch = 0, searchEpoch = 0, dialogEpoch = 0, refreshEpoch = 0;
   let currentTour = null, selectedRecord = null, scope = null, scopeEstablished = false, disposed = false;
   const key = "doctorcre-tour-planning-drafts-v1";
-  let clientPage = 0, clientPageCount = 1, clientsEpoch = 0;
-  const directoryClients = new Set();
-  const clientsUnavailable = "Clients unavailable. Load clients to retry.";
-  const clientsLoading = "Clients are loading…";
-  const clientReadError = "Client details temporarily unavailable.";
+  const clientsUnavailable = "Clients temporarily unavailable. Refresh tours to try again.";
+  const clientsLoading = "Clients are loading. Wait, then review again.";
+  // Capture restoration input before an edit can persist a partial boot draft.
   let savedDraft = null;
-  try { savedDraft = JSON.parse(window.sessionStorage.getItem(key)); } catch { }
+  try { savedDraft = JSON.parse(window.sessionStorage.getItem(key)); } catch { /* Disabled or invalid storage. */ }
   const message = (selector, text) => { $(selector).textContent = text; };
   const element = (tag, text, className) => { const el = document.createElement(tag); if (text !== undefined) el.textContent = text; if (className) el.className = className; return el; };
   const option = (text, value) => { const node = element("option", text); node.value = value; return node; };
@@ -39,21 +37,21 @@ export function mountPlanner({ document, window, api = createPlannerClient() }) 
     if (!first) {
       pageDocContext?.clear();
       ++refreshEpoch; ++planEpoch; ++searchEpoch; ++dialogEpoch; planClient = ""; searchClient = ""; files = []; selectedRecord = null;
-      savedDraft = null; ++clientsEpoch; clientPage = 0; clientPageCount = 1; loadingClients = false; clientsMessage = scope ? "" : "Sign in to continue."; clients.clear(); directoryClients.clear(); tours = []; plan.reset(); search.reset(); closeDialog();
+      savedDraft = null; clientsStatus = scope ? "pending" : "unavailable"; clientsMessage = scope ? "" : "Sign in to continue."; clients = []; tours = []; plan.reset(); search.reset(); closeDialog();
       $("#detail-content").replaceChildren(); renderedTour = null; message("#detail-title", "Tour"); message("#detail-message", ""); $("#tour-filter").value = ""; fillClients(); renderLibrary(); renderFiles();
-      try { window.sessionStorage.removeItem(key); } catch { }
+      try { window.sessionStorage.removeItem(key); } catch { /* Storage may be disabled. */ }
       for (const target of ["#plan-message", "#space-message", "#tour-library-state"]) message(target, scope ? "Session changed. New draft started." : "Sign in to continue.");
       message("#planner-updated", "Unavailable");
       $(".freshness").classList.remove("current");
-    } else if (scope) { clientsMessage = "";
+    } else if (scope) {
       try {
         if (savedDraft?.scope === scope) {
           if (planEpoch === 0) { plan.restore(savedDraft.plan); planClient = savedDraft.planClient || ""; }
           if (searchEpoch === 0) { search.restore(savedDraft.search); searchClient = savedDraft.searchClient || ""; }
         }
-      } catch { }
+      } catch { /* An invalid draft never selects another client's record. */ }
     }
-    syncForm("plan", plan); syncForm("space", search); fillClients(); renderClientChoices();
+    syncForm("plan", plan); syncForm("space", search);
   }
   async function read(operation) {
     try { return await operation(); }
@@ -63,7 +61,7 @@ export function mountPlanner({ document, window, api = createPlannerClient() }) 
   const unavailable = error => error?.code === "authentication_required" ? "Sign in to continue." : null;
   function settleClientMessage(prefix) {
     const target = `#${prefix}-message`;
-    if (["Updating…", clientReadError].includes($(target).textContent)) message(target, "");
+    if (["Updating…", "Client details temporarily unavailable."].includes($(target).textContent)) message(target, "");
   }
   function syncForm(prefix, draft) {
     for (const [field, value] of Object.entries(draft.values)) {
@@ -77,79 +75,39 @@ export function mountPlanner({ document, window, api = createPlannerClient() }) 
     for (const field of Object.keys(draft.values)) $(`#${prefix}-${field}`).addEventListener("input", event => {
       const value = event.target.value;
       if (scope !== null) restoreOrClear();
-      draft.set(field, value); syncForm(prefix, draft); save(`#${prefix}-message`);
+      draft.set(field, value); syncForm(prefix, draft); save(prefix === "plan" ? "#plan-message" : "#space-message");
     });
     $(`#${prefix}-undo`).addEventListener("click", () => {
-      const field = draft.undo(); syncForm(prefix, draft); save(`#${prefix}-message`);
-      if (field) { $(`#${prefix}-${field}`).focus(); message(`#${prefix}-message`, "Change undone."); }
+      const field = draft.undo(); syncForm(prefix, draft); save(prefix === "plan" ? "#plan-message" : "#space-message");
+      if (field) { $(`#${prefix}-${field}`).focus(); message(prefix === "plan" ? "#plan-message" : "#space-message", "Change undone."); }
     });
   }
   function fillClients() {
     for (const [prefix, selected, research] of [["plan", planClient, false], ["space", searchClient, true]]) {
       const select = $(`#${prefix}-client`);
       select.replaceChildren(option(research ? "Research only" : "Choose a client", ""));
-      for (const id of directoryClients) select.append(option(clients.get(id).name || "Unnamed client", id));
-      if (selected && !directoryClients.has(selected)) select.append(option(clients.get(selected)?.name || "Selected client", selected));
+      for (const client of clients) select.append(option(client.name || "Unnamed client", client.id));
+      // Retain the exact draft binding while the picker is filtered or temporarily unavailable.
+      if (selected && !clients.some(client => client.id === selected)) select.append(option("Selected client unavailable", selected));
       select.value = selected;
     }
-  }
-  function cacheClients(rows) {
-    for (const row of rows) clients.set(row.id, row);
-    fillClients();
-  }
-  function renderClientChoices() {
-    for (const prefix of ["plan", "space"]) {
-      const button = $(`#${prefix}-load-clients`);
-      button.disabled = loadingClients;
-      button.hidden = clientPage >= clientPageCount;
-      button.textContent = clientPage ? "Load more clients" : "Load clients";
-      message(`#${prefix}-clients-state`, clientsMessage);
-    }
-  }
-  async function loadClients() {
-    restoreOrClear();
-    if (disposed || loadingClients || clientPage >= clientPageCount) return;
-    if (!scope) {
-      clientsMessage = scopeEstablished ? "Sign in to continue." : "Refresh tours before loading clients.";
-      renderClientChoices(); return;
-    }
-    const epoch = ++clientsEpoch;
-    loadingClients = true; clientsMessage = clientsLoading; renderClientChoices();
-    try {
-      const result = await read(() => api.clients({ page: clientPage + 1 }));
-      if (disposed || epoch !== clientsEpoch) return;
-      const rows = validateClientList(result.rows);
-      for (const row of rows) {
-        directoryClients.add(row.id);
-        if (!clients.has(row.id)) clients.set(row.id, row);
-      }
-      fillClients();
-      clientPage = result.page; clientPageCount = result.pageCount;
-      clientsMessage = "";
-    } catch (error) {
-      if (disposed || epoch !== clientsEpoch) return;
-      clientsMessage = unavailable(error) || clientsUnavailable;
-    }
-    loadingClients = false;
-    for (const target of ["#plan-message", "#space-message"]) if ([clientsLoading, clientsUnavailable].includes($(target).textContent)) message(target, clientsMessage);
-    renderClientChoices();
   }
   async function prefill(prefix, id) {
     const epoch = prefix === "plan" ? ++planEpoch : ++searchEpoch;
     const draft = prefix === "plan" ? plan : search;
     if (prefix === "plan") { planClient = id; selectedRecord = null; files = []; renderFiles(); } else searchClient = id;
-    draft.reset(); syncForm(prefix, draft); save(`#${prefix}-message`);
-    const target = `#${prefix}-message`;
+    // A new record starts an independent draft, so previous-client criteria never migrate.
+    draft.reset(); syncForm(prefix, draft); save(prefix === "plan" ? "#plan-message" : "#space-message");
+    const target = prefix === "plan" ? "#plan-message" : "#space-message";
     message(target, id ? "Updating…" : "");
     if (!id) return;
     try {
       const record = await read(async () => validateClientRecord(await api.client(id), id));
-      if (disposed || epoch !== (prefix === "plan" ? planEpoch : searchEpoch)) return;
-      cacheClients([record]);
+      if (disposed || epoch !== (prefix === "plan" ? planEpoch : searchEpoch) || record.id !== id) return;
       if (prefix === "plan") selectedRecord = record;
-      draft.suggest(clientSuggestions(record)); syncForm(prefix, draft); save(`#${prefix}-message`);
+      draft.suggest(clientSuggestions(record)); syncForm(prefix, draft); save(prefix === "plan" ? "#plan-message" : "#space-message");
       message(target, "");
-    } catch (error) { if (epoch === (prefix === "plan" ? planEpoch : searchEpoch)) message(target, unavailable(error) || clientReadError); }
+    } catch (error) { if (epoch === (prefix === "plan" ? planEpoch : searchEpoch)) message(target, unavailable(error) || "Client details temporarily unavailable."); }
   }
   function renderLibrary() {
     const focusedId = document.activeElement?.dataset?.tourId;
@@ -242,9 +200,8 @@ export function mountPlanner({ document, window, api = createPlannerClient() }) 
     $("#packet-upload").value = "";
   }
   function reviewDraft(trigger) {
-    if (!planClient && !clientPage && !clientsMessage) void loadClients();
-    if (!planClient) { message("#plan-message", clientsMessage || "Choose a client."); $("#plan-client").focus(); return; }
-    if (!selectedRecord) return;
+    if (clientsStatus !== "ready") { message("#plan-message", clientsStatus === "pending" ? clientsLoading : clientsMessage === clientsUnavailable ? `${clientsMessage} Your draft is retained.` : clientsMessage); return; }
+    if (!planClient) { message("#plan-message", "Choose a client."); $("#plan-client").focus(); return; }
     currentTour = null; ++dialogEpoch; showDialog(plan.values.name || "Packet draft", trigger); message("#detail-message", "");
     const body = $("#detail-content"); const facts = element("dl", undefined, "draft-facts");
     const labels = { date: "Date", time: "Start time", area: "Area", use: "Space type", start: "Start", end: "Finish", dwell: "Minutes per stop", buffer: "Travel buffer", notes: "Notes" };
@@ -258,55 +215,58 @@ export function mountPlanner({ document, window, api = createPlannerClient() }) 
     body.append(element("p", "Packet compilation unavailable", "capability-state"));
   }
   async function refresh({ signal } = {}) {
+    // Boot, manual and scheduled reads share one generation boundary.
     const docTicket = pageDocContext?.begin('tourLibrary');
     const revision = ++refreshEpoch;
     const active = () => !disposed && revision === refreshEpoch && !signal?.aborted;
-    let current = true;
     const libraryRead = read(async () => validateTourList(await api.library({ signal }))).then(rows => {
       if (!active()) return;
       tours = rows; pageDocContext?.finish(docTicket, { tours }); renderLibrary(); message("#tour-library-state", "");
-    }).catch(error => {
+    }, error => {
       if (!active()) return;
-      current = false; pageDocContext?.fail(docTicket, error); message("#tour-library-state", unavailable(error) || "Tours temporarily unavailable.");
+      pageDocContext?.fail(docTicket, error); message("#tour-library-state", unavailable(error) || "Tours temporarily unavailable.");
+      throw error;
     });
-    const selectedClientsRead = (async () => {
-      if (!scopeEstablished) await libraryRead;
-      if (!active()) return;
-      for (const id of new Set([planClient, searchClient].filter(Boolean))) {
-        const planRevision = planClient === id ? ++planEpoch : planEpoch, searchRevision = searchClient === id ? ++searchEpoch : searchEpoch;
-        try {
-          const record = await read(async () => validateClientRecord(await api.client(id, { signal }), id));
-          if (!active()) return;
-          if ([planClient, searchClient].includes(id)) {
-            cacheClients([record]);
-            if (planClient === id && planEpoch === planRevision) { selectedRecord = record; plan.refreshSuggestions(clientSuggestions(record)); syncForm("plan", plan); settleClientMessage("plan"); }
-            if (searchClient === id && searchEpoch === searchRevision) { search.refreshSuggestions(clientSuggestions(record)); syncForm("space", search); settleClientMessage("space"); }
-            save();
-          }
-        } catch {
-          if (!active()) return;
-          current = false;
-          if (planClient === id && planEpoch === planRevision) message("#plan-message", clientReadError);
-          if (searchClient === id && searchEpoch === searchRevision) message("#space-message", clientReadError);
+    const results = await Promise.allSettled([libraryRead, read(async () => validateClientList(await api.clients({ signal })))]);
+    if (!active()) return;
+    restoreOrClear();
+    if (!active()) return;
+    if (results[1].status === "fulfilled") {
+      clientsStatus = "ready"; clientsMessage = ""; clients = results[1].value; fillClients();
+      for (const target of ["#plan-message", "#space-message"]) if ($(target).textContent === clientsLoading || $(target).textContent.startsWith(clientsUnavailable)) message(target, "");
+    }
+    else { clientsStatus = "unavailable"; clientsMessage = unavailable(results[1].reason) || clientsUnavailable; for (const target of ["#plan-message", "#space-message"]) message(target, clientsMessage); }
+    let current = results.every(result => result.status === "fulfilled");
+    // Fresh source data remains separate from the user's edited draft.
+    for (const id of new Set([planClient, searchClient].filter(Boolean))) {
+      const planRevision = planClient === id ? ++planEpoch : planEpoch, searchRevision = searchClient === id ? ++searchEpoch : searchEpoch;
+      try {
+        const record = await read(async () => validateClientRecord(await api.client(id, { signal }), id));
+        if (!active()) return;
+        if (record.id === id && [planClient, searchClient].includes(id)) {
+          if (planClient === id && planEpoch === planRevision) { selectedRecord = record; plan.refreshSuggestions(clientSuggestions(record)); syncForm("plan", plan); settleClientMessage("plan"); }
+          if (searchClient === id && searchEpoch === searchRevision) { search.refreshSuggestions(clientSuggestions(record)); syncForm("space", search); settleClientMessage("space"); }
+          save();
         }
+      } catch {
+        if (!active()) return;
+        current = false;
+        if (planClient === id && planEpoch === planRevision) message("#plan-message", "Client details temporarily unavailable.");
+        if (searchClient === id && searchEpoch === searchRevision) message("#space-message", "Client details temporarily unavailable.");
       }
-    })();
-    const tourRead = (async () => {
-      if (!active()) return;
-      const id = currentTour, epoch = currentTour ? ++dialogEpoch : dialogEpoch;
-      if (id && $("#tour-dialog").open) {
-        const detailTicket=pageDocContext?.begin('tourDetail',[id]);
-        try { const detail = await read(async () => validateTourDetail(await api.tour(id, { signal }), id)); if (currentTour === id && epoch === dialogEpoch && active()) { pageDocContext?.finish(detailTicket,detail); renderTour(detail); message("#detail-message", ""); } }
-        catch (error) { pageDocContext?.fail(detailTicket,error); if (!active()) return; current = false; if (epoch === dialogEpoch) message("#detail-message", unavailable(error) || "Tour temporarily unavailable."); }
-      }
-    })();
-    await Promise.all([libraryRead, selectedClientsRead, tourRead]);
+    }
+    if (!active()) return;
+    const id = currentTour, epoch = currentTour ? ++dialogEpoch : dialogEpoch;
+    if (id && $("#tour-dialog").open) {
+      const detailTicket=pageDocContext?.begin('tourDetail',[id]);
+      try { const detail = await read(async () => validateTourDetail(await api.tour(id, { signal }), id)); if (currentTour === id && epoch === dialogEpoch && active()) { pageDocContext?.finish(detailTicket,detail); renderTour(detail); message("#detail-message", ""); } }
+      catch (error) { pageDocContext?.fail(detailTicket,error); if (!active()) return; current = false; if (epoch === dialogEpoch) message("#detail-message", unavailable(error) || "Tour temporarily unavailable."); }
+    }
     if (!active()) return;
     message("#planner-updated", current ? updatedLabel(new Date().toISOString()) : "Unavailable");
     $(".freshness").classList.toggle("current", current);
   }
   wireDraft("plan", plan); wireDraft("space", search);
-  for (const prefix of ["plan", "space"]) $(`#${prefix}-load-clients`).addEventListener("click", () => void loadClients());
   $("#plan-client").addEventListener("change", event => void prefill("plan", event.target.value));
   $("#space-client").addEventListener("change", event => void prefill("space", event.target.value));
   $("#tour-filter").addEventListener("input", renderLibrary);
@@ -327,7 +287,7 @@ export function mountPlanner({ document, window, api = createPlannerClient() }) 
   $("#planner-refresh").addEventListener("click", () => void auto.refresh());
   const unsubscribe = api.onScopeChange?.(restoreOrClear);
   const ready = refresh();
-  return { ready, refresh, get files() { return [...files]; }, dispose() { disposed = true; ++clientsEpoch; unsubscribe?.(); ++planEpoch; ++searchEpoch; ++dialogEpoch; auto.dispose(); } };
+  return { ready, refresh, get files() { return [...files]; }, dispose() { disposed = true; unsubscribe?.(); ++planEpoch; ++searchEpoch; ++dialogEpoch; auto.dispose(); } };
 }
 
 if (typeof document !== "undefined" && document.querySelector("#plan-form")) mountPlanner({ document, window });

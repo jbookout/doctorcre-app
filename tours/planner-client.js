@@ -62,23 +62,30 @@ export function createPlannerClient({ fetchImpl = sessionFetch, timeoutMs = 10_0
     get scope() { return scope; },
     onScopeChange(listener) { listeners.add(listener); return () => listeners.delete(listener); },
     async library(options) { const data = await read("/api/tours/library", options); return validateTourList(data.tours); },
-    async clients({ page = 1, signal } = {}) {
-      if (!Number.isInteger(page) || page < 1) throw new Error("Invalid client page");
-      const data = await read(`/api/v1/business/clients?scope=team&sort=name&page=${page}`, { signal });
-      if (!Number.isInteger(data.page_count) || data.page_count < 0 || data.page !== page) throw new Error("Invalid client list");
-      return { rows: validateClientList(data.rows), page, pageCount: data.page_count };
+    async clients(options) {
+      const rows = []; let page = 1;
+      do {
+        const data = await read(`/api/v1/business/clients?scope=team&sort=name&page=${page}`, options);
+        if (!Array.isArray(data.rows) || !Number.isInteger(data.page_count) || data.page !== page) throw new Error("Invalid client list");
+        rows.push(...validateClientList(data.rows));
+        if (page >= data.page_count) return rows;
+        page += 1;
+      } while (page <= 200);
+      throw new Error("Client list incomplete");
     },
     async client(id, options) {
       if (!recordId.test(id)) throw new Error("Invalid client");
       const data = await read(`/api/v1/business/clients/${encodeURIComponent(id)}`, options);
+      if (data.record?.id !== id) throw new Error("Client mismatch");
       return validateClientRecord(data.record, id);
     },
     async tour(id, options) {
       if (!recordId.test(id)) throw new Error("Invalid tour");
       const data = await read(`/api/tours/detail?tour_id=${encodeURIComponent(id)}`, options);
-      return validateTourDetail(data, id);
+      if (data.id !== id) throw new Error("Tour mismatch"); return validateTourDetail(data, id);
     },
-    // Compilation and MLS reads have no authorized CARR verb.
+    // The deployed registry has no authorized raw-file compiler or MLS query.
+    // The reviewed property register is deliberately not offered as an MLS feed.
     capabilities: Object.freeze({ compile: false, mls: false }),
   };
 }

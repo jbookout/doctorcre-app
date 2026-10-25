@@ -11,7 +11,8 @@ for (const viewport of [{ width: 1440, height: 960 }, { width: 390, height: 844 
   test(`QA-008 ${surface.name} freshness settles after ${status} retry${surface.name === 'Tours' ? '' : ' and recovers'} at ${viewport.width}px`, { tags: ['regression'], requires: ['browser'], retries: 0 }, async ({ app, browser }) => {
     await browser.setViewport(viewport);
     const refresh = viewport.width < 760 ? '#appSyncRefresh' : surface.refresh;
-    const failure = surface.failure;
+    // The phone shows planner feedback while its library lives in the sidebar.
+    const failure = viewport.width < 760 && surface.name === 'Tours' ? '#plan-message' : surface.failure;
     let refusedReads = 0, refusedClientReads = 0;
     let retryGate = null;
     const reject = async route => {
@@ -36,13 +37,7 @@ for (const viewport of [{ width: 1440, height: 960 }, { width: 390, height: 844 
       if (surface.name !== 'Tours') await expect(browser.locator(surface.freshness)).toContainText(/Updated/i);
       return;
     }
-    const expectFailure = async () => {
-      const phoneTours = viewport.width < 760 && surface.name === 'Tours';
-      if (phoneTours) await browser.locator('#appSidebarToggle').tap();
-      await expect(browser.locator(failure)).toContainText(surface.settled);
-      if (phoneTours) await browser.locator('[data-layout-close="sidebar"]').tap();
-    };
-    await expectFailure();
+    await expect(browser.locator(failure)).toContainText(surface.settled);
     await expect(browser.locator(surface.freshness)).toContainText(/unavailable/i);
     await expect(browser.locator('.app-layout-status')).not.toContainText('Updating…');
     const boardRead = () => browser.evaluate(async () => {
@@ -75,11 +70,11 @@ for (const viewport of [{ width: 1440, height: 960 }, { width: 390, height: 844 
     if (surface.name === 'Leads') await expect(browser.locator('#leadBoard')).toHaveAttribute('aria-busy', 'true');
     if (surface.name === 'Deals') await expect.poll(async () => (await boardRead()).board_read_in_flight).toBe(true);
     if (surface.name === 'Tours') {
-      expect(refusedClientReads).toBe(beforeClients);
-      expect(refusedClientReads).toBe(0);
+      await expect.poll(() => refusedClientReads).toBeGreaterThan(beforeClients);
       expect(await browser.evaluate(() => window.qa008TerminalPaints)).toBe(0);
       const responses = [
         browser.waitForResponse('**/api/tours/library'),
+        browser.waitForResponse('**/api/v1/business/clients?**'),
       ];
       releaseRetry();
       for (const response of await Promise.all(responses)) {
@@ -96,7 +91,7 @@ for (const viewport of [{ width: 1440, height: 960 }, { width: 390, height: 844 
       }).toBe(true);
     }
     retryGate = null;
-    await expectFailure();
+    await expect(browser.locator(failure)).toContainText(surface.settled);
     await expect(browser.locator(surface.freshness)).toContainText(/unavailable/i);
     // These local interactions repaint the settled failed read.
     if (surface.name === 'Leads') {
