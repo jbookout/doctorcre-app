@@ -1,3 +1,4 @@
+import { CHROMIUM_SAFETY_ARGS } from '../scripts/chromium-safety-args.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { chromium } from 'playwright';
@@ -6,7 +7,7 @@ import { startFixtureServer } from '../scripts/fixture-server.mjs';
 async function open(t, tab, width = 390, theme = 'dark') {
   const server = await startFixtureServer();
   t.after(() => server.stop());
-  const browser = await chromium.launch();
+  const browser = await chromium.launch({ args: [...CHROMIUM_SAFETY_ARGS] });
   t.after(() => browser.close());
   const page = await browser.newPage({ viewport: { width, height: width === 390 ? 844 : 1000 }, hasTouch: width === 390 });
   await page.route('**/*', route => new URL(route.request().url()).origin === server.url ? route.continue() : route.abort());

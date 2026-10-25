@@ -1,3 +1,4 @@
+import { CHROMIUM_SAFETY_ARGS } from '../scripts/chromium-safety-args.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
@@ -15,7 +16,7 @@ test('the phone Relationships performance scenario opens the visible connection 
   await buildArtifact({root:fileURLToPath(new URL('../',import.meta.url)),outDir});
   const server = await startFixtureServer({env:{DOCTORCRE_FIXTURE_ROOT:join(outDir,'site')}});
   t.after(() => server.stop());
-  const browser = await chromium.launch();
+  const browser = await chromium.launch({ args: [...CHROMIUM_SAFETY_ARGS] });
   t.after(() => browser.close());
   const page = await browser.newPage({ viewport: profile.viewport, isMobile: true, hasTouch: true });
   await page.route('**/*', route => new URL(route.request().url()).origin === server.url ? route.continue() : route.abort());
@@ -50,7 +51,7 @@ test('phone task guard exercises useful outcomes against the built fixture', asy
   await buildArtifact({ root: fileURLToPath(new URL('../', import.meta.url)), outDir });
   const server = await startFixtureServer({ env: { DOCTORCRE_FIXTURE_ROOT: join(outDir, 'site') } });
   t.after(() => server.stop());
-  const browser = await chromium.launch();
+  const browser = await chromium.launch({ args: [...CHROMIUM_SAFETY_ARGS] });
   t.after(() => browser.close());
   for (const task of scenarios.tasks) await t.test(task.id, async () => {
     const context = await browser.newContext({ viewport: profile.viewport, isMobile: true, hasTouch: true,

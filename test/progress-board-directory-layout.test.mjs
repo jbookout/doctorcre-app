@@ -1,3 +1,4 @@
+import { CHROMIUM_SAFETY_ARGS } from '../scripts/chromium-safety-args.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
@@ -7,7 +8,7 @@ const boards = Array.from({ length: 166 }, (_, i) => ({ board_id: `demo-${i}`, t
 for (const [width, height] of [[1440, 960], [390, 844]]) {
   for (const file of ['progress-board.html', 'control-room.html']) {
     test(`QA-004: 166 published boards stay bounded and keyboard reachable in ${file} at ${width}px`, async t => {
-      const browser = await chromium.launch(); t.after(() => browser.close());
+      const browser = await chromium.launch({ args: [...CHROMIUM_SAFETY_ARGS] }); t.after(() => browser.close());
       const page = await browser.newPage({ viewport: { width, height } });
       await page.route('**/*', async route => {
         const url = new URL(route.request().url());
