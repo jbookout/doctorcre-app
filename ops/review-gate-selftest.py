@@ -5,6 +5,7 @@ import unittest
 from unittest.mock import patch
 
 spec = importlib.util.spec_from_file_location("gate", pathlib.Path(__file__).with_name("review-gate.py"))
+assert spec is not None and spec.loader is not None
 gate = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(gate)
 
@@ -54,7 +55,6 @@ class ReviewGate(unittest.TestCase):
         with patch.object(gate.time, "sleep"), patch.object(gate.subprocess, "run", return_value=SimpleNamespace(stdout='[[{"body":"first"}],[{"body":"last"}]]')) as process:
             self.assertEqual(gate.api("repos/owner/repo/issues/4/comments"), [{"body": "first"}, {"body": "last"}])
             self.assertIn("--paginate", process.call_args.args[0])
-
 
 if __name__ == "__main__":
     unittest.main()
