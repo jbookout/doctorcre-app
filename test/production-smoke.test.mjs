@@ -1,3 +1,4 @@
+import { CHROMIUM_SAFETY_ARGS } from '../scripts/chromium-safety-args.mjs';
 import assert from "node:assert/strict";
 import { readFile, readdir } from "node:fs/promises";
 import test from "node:test";
@@ -47,7 +48,7 @@ test("every production journey is read-only and signed out", async () => {
 // journey also requires the release identity. Serve the real /status page with
 // valid and malformed releases and hold that check to both.
 async function statusIdentity(t, release) {
-  const browser = await chromium.launch(); t.after(() => browser.close());
+  const browser = await chromium.launch({ args: [...CHROMIUM_SAFETY_ARGS] }); t.after(() => browser.close());
   const page = await browser.newPage();
   await page.route("**/*", async (route) => {
     const url = new URL(route.request().url());

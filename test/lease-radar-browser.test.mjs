@@ -1,3 +1,4 @@
+import { CHROMIUM_SAFETY_ARGS } from '../scripts/chromium-safety-args.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile, mkdir } from 'node:fs/promises';
@@ -16,7 +17,7 @@ async function shot(page, name) {
 }
 async function open(t, { width = 1440, home = false, long = false, motion = 'reduce' } = {}) {
   const client = await createFixtureClient({ seedUrl: `data:application/json;base64,${Buffer.from(await readFile(new URL('../data/board-seed.json', import.meta.url))).toString('base64')}` });
-  const browser = await chromium.launch(); t.after(() => browser.close());
+  const browser = await chromium.launch({ args: [...CHROMIUM_SAFETY_ARGS] }); t.after(() => browser.close());
   const page = await browser.newPage({ viewport: { width, height: 1000 }, timezoneId: 'America/Chicago', reducedMotion: motion });
   await page.clock.install({ time: NOW });
   const payload = leaseRadarFixture('2026-10-01'), errors = [], calls = [];

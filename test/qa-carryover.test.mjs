@@ -1,3 +1,4 @@
+import { CHROMIUM_SAFETY_ARGS } from '../scripts/chromium-safety-args.mjs';
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
@@ -17,7 +18,7 @@ test("QA-002 Home takes text colour from the theme tokens, with no per-theme hex
 test("QA-002 light Home calendar tiles keep weekday and date text at 4.5:1", async () => {
   const sheets = [...(await read("workspace.html")).matchAll(/<link rel="stylesheet" href="\/(css\/[^"]+)">/g)].map((match) => match[1]);
   const css = (await Promise.all(sheets.map(read))).join("\n");
-  const browser = await chromium.launch();
+  const browser = await chromium.launch({ args: [...CHROMIUM_SAFETY_ARGS] });
   const page = await browser.newPage();
   await page.route('**/*', route => route.abort());
   try {

@@ -1,3 +1,4 @@
+import { CHROMIUM_SAFETY_ARGS } from '../scripts/chromium-safety-args.mjs';
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile, mkdir } from "node:fs/promises";
@@ -10,7 +11,7 @@ const client = { id: clientId, name: "Demo Harbor Practice", city: "Pensacola", 
 const tour = { id: tourId, name: "Demo Gulf Coast Tour", status: "draft", stops: [{ property_name: "Demo Bayside Office", property_address: "100 Example Way", stop_state: "active" }], cheat_sheet: { content: { notes: original } } };
 
 async function open(t, width, { planning = true } = {}) {
-  const browser = await chromium.launch(); t.after(() => browser.close());
+  const browser = await chromium.launch({ args: [...CHROMIUM_SAFETY_ARGS] }); t.after(() => browser.close());
   const page = await browser.newPage({ viewport: { width, height: 1000 } });
   await page.clock.install({ time: new Date("2026-10-01T15:00:00Z") });
   const calls = [], errors = []; let unavailable = false, revision = 0;
