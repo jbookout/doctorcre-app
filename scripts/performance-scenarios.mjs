@@ -90,7 +90,13 @@ export async function runTaskScenario({ page, context, origin, task }) {
     if (new URL(response.url()).origin === origin && response.ok()) bodies.push(response.body().then(body => body.length));
   });
   await context.route('**/*', route => new URL(route.request().url()).origin === origin ? route.continue() : route.abort());
-  await page.addInitScript(() => { window.__taskReads = []; });
+  await page.addInitScript(() => {
+    window.__taskReads = [];
+    window.__taskLcp = null;
+    new PerformanceObserver(list => {
+      window.__taskLcp = list.getEntries().at(-1).startTime;
+    }).observe({ type: 'largest-contentful-paint', buffered: true });
+  });
   if (task.fixture === 'agenda' || task.fixture === 'deals') {
     await page.route('**/js/fixture-client.js', async route => {
       const response = await route.fetch();
@@ -150,9 +156,12 @@ export async function runTaskScenario({ page, context, origin, task }) {
   await page.goto(origin + task.route, { waitUntil: 'domcontentloaded' });
   await page.locator(task.ready).first().waitFor({ state: 'visible' });
   const taskMs = await task.verify(page, context);
+  await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
   const usefulMs = taskMs ?? Math.ceil(performance.now() - started);
+  await page.waitForFunction(() => window.__taskLcp > 0);
+  const lcpMs = Math.ceil(await page.evaluate(() => window.__taskLcp));
   reads.push(...await page.evaluate(() => window.__taskReads || []));
   const criticalBytes = (await Promise.all(bodies)).reduce((total, bytes) => total + bytes, 0);
   if (errors.length) throw Error(`Task errors: ${errors.join('; ')}`);
-  return { usefulMs, requestCount: reads.length, criticalBytes, reads, errors, conditions: task.conditions };
+  return { lcpMs, usefulMs, requestCount: reads.length, criticalBytes, reads, errors, conditions: task.conditions };
 }

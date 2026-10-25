@@ -58,6 +58,7 @@ test('phone task guard exercises useful outcomes against the built fixture', asy
     try {
       const page = await context.newPage();
       const result = await scenarios.runTaskScenario({ page, context, origin: server.url, task });
+      assert.ok(result.lcpMs > 0, 'retain LCP alongside useful task readiness');
       assert.ok(result.usefulMs > 0);
       assert.ok(Number.isInteger(result.requestCount) && result.requestCount > 0);
       assert.ok(result.criticalBytes > 0);

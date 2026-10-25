@@ -129,11 +129,12 @@ try {
       }
     }
     measured[task.id] = {
+      lcpMs: samples.map(sample => sample.lcpMs).sort((a, b) => a - b)[samples.length >> 1],
       usefulMs: samples.map(sample => sample.usefulMs).sort((a, b) => a - b)[samples.length >> 1],
       requestCount: Math.max(...samples.map(sample => sample.requestCount)),
       criticalBytes: Math.max(...samples.map(sample => sample.criticalBytes)), samples,
     };
-    console.log(`${task.id}: useful=${measured[task.id].usefulMs}ms requests=${measured[task.id].requestCount} critical=${measured[task.id].criticalBytes}B`);
+    console.log(`${task.id}: LCP=${measured[task.id].lcpMs}ms useful=${measured[task.id].usefulMs}ms requests=${measured[task.id].requestCount} critical=${measured[task.id].criticalBytes}B`);
   }
   const report = { schema: 'doctorcre-performance-report.v1',
     taskMeasurement: {

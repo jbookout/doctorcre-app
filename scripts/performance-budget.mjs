@@ -3,7 +3,7 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 const metricNames = screen => screen === 'bundle' ? ['jsBytes']
-  : screen.startsWith('task-') ? ['criticalBytes', 'requestCount', 'usefulMs']
+  : screen.startsWith('task-') ? ['criticalBytes', 'lcpMs', 'requestCount', 'usefulMs']
   : ['interactionMs', 'jsBytes', 'lcpMs'];
 
 // Same contract as CARR's performance-budget-gate.py: measurements are supplied,
