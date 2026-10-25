@@ -122,11 +122,11 @@ export function mountPlanner({ document, window, api = createPlannerClient() }) 
       cacheClients(result.rows);
       clientPage = result.page; clientPageCount = result.pageCount;
       clientsStatus = "ready";
-      for (const target of ["#plan-message", "#space-message"]) if ($(target).textContent === clientsLoading) message(target, "");
     } catch (error) {
       if (disposed || epoch !== clientsEpoch) return;
       clientsStatus = "unavailable"; clientsMessage = unavailable(error) || clientsUnavailable;
     }
+    for (const target of ["#plan-message", "#space-message"]) if ([clientsLoading, clientsUnavailable].includes($(target).textContent)) message(target, clientsMessage);
     renderClientChoices();
   }
   async function prefill(prefix, id) {
@@ -239,7 +239,7 @@ export function mountPlanner({ document, window, api = createPlannerClient() }) 
   }
   function reviewDraft(trigger) {
     if (clientsStatus === "idle" && !selectedRecord) void loadClients();
-    if (clientsStatus !== "ready" && !selectedRecord) { message("#plan-message", clientsStatus === "pending" ? clientsLoading : clientsMessage === clientsUnavailable ? `${clientsMessage} Your draft is retained.` : clientsMessage); return; }
+    if (clientsStatus !== "ready" && !selectedRecord) { message("#plan-message", clientsStatus === "pending" ? clientsLoading : clientsMessage); return; }
     if (!planClient) { message("#plan-message", "Choose a client."); $("#plan-client").focus(); return; }
     currentTour = null; ++dialogEpoch; showDialog(plan.values.name || "Packet draft", trigger); message("#detail-message", "");
     const body = $("#detail-content"); const facts = element("dl", undefined, "draft-facts");
@@ -254,7 +254,6 @@ export function mountPlanner({ document, window, api = createPlannerClient() }) 
     body.append(element("p", "Packet compilation unavailable", "capability-state"));
   }
   async function refresh({ signal } = {}) {
-    // Boot, manual and scheduled reads share one generation boundary.
     const docTicket = pageDocContext?.begin('tourLibrary');
     const revision = ++refreshEpoch;
     const active = () => !disposed && revision === refreshEpoch && !signal?.aborted;
@@ -272,7 +271,6 @@ export function mountPlanner({ document, window, api = createPlannerClient() }) 
     const selectedClientsRead = (async () => {
       if (!scopeEstablished) await libraryRead;
       if (!active()) return;
-      // Fresh source data remains separate from the user's edited draft.
       for (const id of new Set([planClient, searchClient].filter(Boolean))) {
         const planRevision = planClient === id ? ++planEpoch : planEpoch, searchRevision = searchClient === id ? ++searchEpoch : searchEpoch;
         try {
