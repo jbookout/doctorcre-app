@@ -34,10 +34,10 @@ async function open(options = {}, storage = {}) {
 const rows = root => [...root.querySelectorAll('[data-itinerary-stop]')];
 const select = (root, stop) => root.querySelector(`[data-itinerary-stop="${stop}"] button`).click();
 
-test("exact pinned composer POST feeds its legal fixed appointment into the accepted consumer", {
+test("advertised runtime composer POST feeds its legal fixed appointment into the accepted consumer", {
   skip: !process.env.CARR_PRODUCER_CHECKOUT && "Set CARR_PRODUCER_CHECKOUT to verify the pinned composer boundary",
 }, async () => {
-  const contract = JSON.parse(await readFile(new URL("../contracts/tour-composer.v1.json", import.meta.url), "utf8"));
+  const contract = JSON.parse(await readFile(new URL("../contracts/carr-interface.v1.json", import.meta.url), "utf8"));
   const committed = path => execFileSync("git", ["-C", process.env.CARR_PRODUCER_CHECKOUT, "show", `${contract.producer.source_commit}:${path}`], { encoding: "utf8" });
   const timestampModule = `data:text/javascript;base64,${Buffer.from(committed("mcp-server/src/tour-route-timestamp.js")).toString("base64")}`;
   const source = committed("mcp-server/src/tour-internal-web.js").replace('"./tour-route-timestamp.js"', JSON.stringify(timestampModule));

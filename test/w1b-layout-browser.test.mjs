@@ -210,7 +210,9 @@ for (const section of ['board','triage']) test(`R4 malformed ${section} rows cle
  });
  await goto('/leads?mode=live');const before=await page.locator('#appSyncTime').getAttribute('datetime');
  malformed=true;await page.clock.fastForward(31_000);await page.waitForFunction(()=>document.querySelector('#appConnection').getAttribute('aria-label')==='Connection unavailable');
- const target=section==='board'?'#appTodayNeeds':'#appTodayNext';assert.equal(await page.locator(target).textContent(),'Unavailable');assert.equal(await page.locator(target+' [data-layout-deal]').count(),0);
+ const target=section==='board'?'#appTodayNeeds':'#appTodayNext';
+ await page.waitForFunction(selector=>document.querySelector(selector).textContent==='Unavailable',target);
+ assert.equal(await page.locator(target).textContent(),'Unavailable');assert.equal(await page.locator(target+' [data-layout-deal]').count(),0);
  assert.equal(await page.locator('#appSyncTime').getAttribute('datetime'),before);assert.deepEqual(errors,[]);
 });
 test('R8 page environment capture and freshness feedback stays visible in the status surface',async t=>{

@@ -20,6 +20,7 @@ const property = { property_id: propertyId, name: "Medical Plaza", address: "100
 
 test("Tour search and cart are bound to the merged CARR producer revision", () => {
   assert.equal(contract.producer.source_commit, "1df9b9936394164dd55e815f8a8bf69649508ccc");
+
   for (const operation of ["search-tour-properties", "read-tour-selection-cart", "append-tour-selection-cart-version"])
     assert.ok(contract.mcp_operations.includes(operation), `${operation} is missing from the interface`);
   for (const path of ["/api/tours/properties/search", "/api/tours/selection-cart"])
