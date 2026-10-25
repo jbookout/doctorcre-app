@@ -1,4 +1,4 @@
-import { isCallModeState } from './call-mode-availability.js';
+import { isCallModeState, renderCallModeCue } from './call-mode-availability.js';
 /**
  * Deal Room Call Mode: record Joe and Dell's pipeline call, then review it.
  *
@@ -251,14 +251,7 @@ export function createCallMode(deps) {
     const speakers = $('#callModeSpeakers');
     speakers.hidden = !labels.mic;
     speakers.textContent = labels.mic ? `${labels.mic} on microphone · ${labels.system || 'Other participant'} on system audio` : '';
-    const toolbarButton = $('#callModeButton');
-    if (toolbarButton) {
-      toolbarButton.classList.toggle('recording', recording);
-      toolbarButton.innerHTML = recording
-        ? `<span aria-hidden="true">●</span> ${elapsedTime(snapshot.started_at, now)}`
-        : '<span aria-hidden="true">☎</span>';
-      toolbarButton.setAttribute('aria-label', recording ? `Call Mode recording ${elapsedTime(snapshot.started_at, now)}` : 'Call mode');
-    }
+    renderCallModeCue(root, snapshot, recording ? elapsedTime(snapshot.started_at, now) : '');
     renderPostCall();
   }
 

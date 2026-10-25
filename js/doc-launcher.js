@@ -29,7 +29,7 @@ export function mountDocLauncher({ document: root, window: win }) {
     root.removeEventListener('keydown', shortcut, true);
   };
   const open = () => {
-    if (strip.closest('#accountWorkspaceControls')) {
+    if (strip.closest('#accountWorkspaceControls') && !root.getElementById('accountMenu')?.hidden) {
       const avatar = root.getElementById('selfAvatar'); avatar?.click(); avatar?.focus();
     }
     const opener = root.activeElement;

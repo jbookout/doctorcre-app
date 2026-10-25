@@ -86,6 +86,14 @@ test('first Doc open restores desktop keyboard focus after lazy initialization',
   assert.deepEqual(errors, []);
 });
 
+test('first phone Doc shortcut keeps the account menu closed', async t => {
+  const { page, errors } = await open(t, { width: 390, minimal: true });
+  await page.keyboard.press('Control+k');
+  await page.locator('#docDetail[open]').waitFor();
+  assert.equal(await page.locator('#accountMenu').evaluate(node => node.hidden), true);
+  assert.deepEqual(errors, []);
+});
+
 for (const actor of ['joe','dell']) test(`signed-in ${actor} gets workspace, account, persisted controls and sign-out`, async t => {
   const { page, errors, calls } = await open(t, { actor, live: true, minimal: true });
   const name = actor === 'joe' ? 'Joe' : 'Dell';
