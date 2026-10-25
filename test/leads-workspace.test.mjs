@@ -713,7 +713,8 @@ test('authenticated session controls claim identity and clears owner scope acros
    board.leads.find(row => (row.registry_ref || row.id) === request.arguments.lead).owner = request.arguments.expected_actor;
    return Response.json({ result: { content: [{ type: 'text', text: '{"ok":true}' }] } });
   }
-  return Response.json({ result: { content: [{ type: 'text', text: JSON.stringify(board) }] } });
+  const payload = { ...board, ...(request.arguments.lead_id ? { detail: detail(board.leads.find(row => row.id === request.arguments.lead_id)) } : {}) };
+  return Response.json({ result: { content: [{ type: 'text', text: JSON.stringify(payload) }] } });
  } });
  const s = await setup(client);
  try {
