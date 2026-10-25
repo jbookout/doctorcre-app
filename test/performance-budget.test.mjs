@@ -12,6 +12,34 @@ const budget = { schema: 'doctorcre-performance-budget.v1', profile: { cpuSlowdo
 const report = () => ({ schema: 'doctorcre-performance-report.v1', profile: { cpuSlowdown: 4 },
   screens: { home: { lcpMs: 1200, jsBytes: 11000, interactionMs: 100 } }, bundle: { jsBytes: 22000 } });
 
+test('task budgets reject slow useful content, extra reads, and critical bytes independently', () => {
+  const extended = structuredClone(budget), measured = report();
+  extended.screens['task-leads'] = {
+    usefulMs: { baseline: 1000, limit: 1750 },
+    requestCount: { baseline: 3, limit: 3 },
+    criticalBytes: { baseline: 10000, limit: 11000 },
+  };
+  measured.screens['task-leads'] = { usefulMs: 1750, requestCount: 3, criticalBytes: 11000 };
+  assert.equal(compareBudget(extended, measured).passed, true);
+  for (const [metric, value] of Object.entries({ usefulMs: 1751, requestCount: 4, criticalBytes: 11001 })) {
+    const breach = structuredClone(measured);
+    breach.screens['task-leads'][metric] = value;
+    const result = compareBudget(extended, breach);
+    assert.equal(result.passed, false);
+    assert.match(renderReport(result), new RegExp(`task-leads \\| ${metric} .* FAIL`));
+  }
+  for (const metric of ['usefulMs', 'requestCount', 'criticalBytes']) {
+    const missing = structuredClone(measured);
+    delete missing.screens['task-leads'][metric];
+    assert.throws(() => compareBudget(extended, missing), /invalid evidence/);
+  }
+  extended.screens['task-leads'].requestCount = { baseline: 0, limit: 0 };
+  measured.screens['task-leads'].requestCount = 0;
+  assert.equal(compareBudget(extended, measured).passed, true, 'offline tasks may issue no reads');
+  measured.screens['task-leads'].requestCount = 0.5;
+  assert.throws(() => compareBudget(extended, measured), /invalid evidence/);
+});
+
 test('the budget accepts measured values at the limits', () => {
   assert.deepEqual(compareBudget(budget, report()), { passed: true, rows: [
     { screen: 'home', metric: 'lcpMs', before: 800, after: 1200, limit: 1200, passed: true },
