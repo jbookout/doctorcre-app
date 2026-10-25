@@ -81,7 +81,7 @@ test('Leads drag and keyboard moves review evidence before using the same stage 
  await page.locator('#stageDialog[open] .stage-proposal').waitFor();assert.deepEqual(writes,[]);
  assert.equal(await page.locator('#stageTitle').textContent(),'Doc · Dr. Example 1');
  await page.locator('#saveStage').click();await page.locator(`#leadBoard [data-stage="engaged"] [data-lead-id="${id(1)}"]`).waitFor();
- await card().focus();await page.keyboard.press('Alt+ArrowRight');await page.locator('#stageDialog[open] .stage-proposal').waitFor();assert.deepEqual(writes,['update-lead']);
+ await card().focus();assert.equal(await card().evaluate(node=>node.contains(document.activeElement)),true,'keyboard move starts on the lead control');await page.keyboard.press('Alt+ArrowRight');await page.locator('#stageDialog[open] .stage-proposal').waitFor();assert.deepEqual(writes,['update-lead']);
  await page.locator('#stageQuestions textarea').fill('Synthetic preference for follow-up later');await page.locator('#saveStage').click();
  await page.locator(`#leadBoard [data-stage="nurture_drip"] [data-lead-id="${id(1)}"]`).waitFor();
  assert.deepEqual(writes,['update-lead','update-lead']);assert.deepEqual(errors,[]);
