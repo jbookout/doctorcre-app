@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { JSDOM } from 'jsdom';
 import { mountTourDay } from '../tours/day.js';
+import { createDayClient } from '../tours/day-client.js';
+import { offlineTourSession } from '../js/offline-tour-session.js';
 import * as drafts from '../tours/day-store.js';
 import { detail, tourId } from './fixtures/tour-day.synthetic.mjs';
 const html = await readFile(new URL('../tours/day.html', import.meta.url), 'utf8');
@@ -44,7 +46,8 @@ async function harness(t, options = {}) {
   const dialog = doc.querySelector('dialog'); dialog.showModal = function() { this.open = true; }; dialog.close = function() { this.open = false; };
   const recordings = media(window), store = options.store || storage(), current = structuredClone(detail);
   let scope = 'account-A';
-  const api = { capabilities: { voiceNotes: false }, session: async () => ({ scope, user_ref: scope }), tour: async () => structuredClone(current) };
+  if (options.binding) offlineTourSession(window).save(options.binding);
+  const api = options.api || { capabilities: { voiceNotes: false }, session: async () => ({ scope, user_ref: scope }), tour: async () => structuredClone(current) };
   const view = mountTourDay({ document: doc, window, api, store, prepareOffline: options.prepareOffline || (async () => {}), mapFactory: () => ({ dispatch() {}, update() {}, navigationLinks: () => [], destroy() {} }) });
   t.after(() => { view.dispose(); window.close(); }); await view.ready; await settle();
   return { window, doc, store, view, current, recordings, setScope(s) { scope = s; }, async start() { await doc.querySelector('#day-record').onclick(); }, async finish() { await doc.querySelector('#day-record').onclick(); await settle(); } };
@@ -159,4 +162,46 @@ test('draft Tour day uses a readable name and links directly to route recovery',
   await h.view.refresh();
   assert.equal(h.doc.querySelector('#day-map a'), null);
   assert.equal(h.doc.querySelectorAll('.day-stop').length, 2);
+});
+
+test('saved same-tab tour restores after a transport failure while the browser reports online', async t => {
+  const store = storage(); await store.putTour('account-A', detail);
+  const h = await harness(t, { store, binding: { scope: 'account-A', userRef: 'account-A', tourId },
+    api: { session: async () => { throw new TypeError('Failed to fetch'); } } });
+  assert.equal(h.window.navigator.onLine, true);
+  assert.equal(h.doc.querySelectorAll('.day-stop').length, 2);
+  assert.match(h.doc.querySelector('#day-status').textContent, /Offline/);
+  assert.match(h.doc.querySelector('#day-updated').textContent, /Saved/);
+});
+
+test('offline readiness waits for both durable itinerary and installed shell', async t => {
+  let finishShell;
+  const h = await harness(t, { prepareOffline: () => new Promise(resolve => { finishShell = resolve; }) });
+  assert.equal(h.doc.querySelector('#day-offline')?.textContent, 'Preparing offline');
+  finishShell(); await settle();
+  assert.equal(h.doc.querySelector('#day-offline').textContent, 'Available offline');
+  h.store.putTour = async () => { throw new Error('quota'); };
+  await h.view.refresh();
+  assert.equal(h.doc.querySelector('#day-offline').textContent, 'Offline itinerary unavailable');
+});
+
+test('saved same-tab itinerary survives a temporary session service failure', async t => {
+  const store = storage(); await store.putTour('account-A', detail);
+  const h = await harness(t, { store, binding: { scope: 'account-A', userRef: 'account-A', tourId },
+    api: createDayClient({ fetchImpl: async () => new Response('Unavailable', { status: 503 }) }) });
+  assert.equal(h.doc.querySelectorAll('.day-stop').length, 2);
+});
+
+test('saved tour waits at most three seconds for session transport and never restores after refusal or revocation', async t => {
+  const store = storage(); await store.putTour('account-A', detail);
+  for (const failure of ['timeout', 401, 403, 'invalid']) {
+    const api = failure === 'timeout' ? { session: () => new Promise(() => {}) } : createDayClient({ fetchImpl: async () => Response.json({}, { status: failure === 'invalid' ? 200 : failure }) });
+    const h = await harness(t, { store, binding: { scope: 'account-A', userRef: 'account-A', tourId }, api });
+    assert.equal(h.doc.querySelectorAll('.day-stop').length, failure === 'timeout' ? 2 : 0);
+    if (failure === 'timeout') {
+      await offlineTourSession(h.window).revoke();
+      assert.equal(h.doc.querySelectorAll('.day-stop').length, 0);
+    }
+    assert.equal(offlineTourSession(h.window).read(tourId), null);
+  }
 });
