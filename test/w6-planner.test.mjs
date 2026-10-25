@@ -54,6 +54,46 @@ test("phone Tour day entry requires an accepted route with an active stop", asyn
   });
 });
 
+test("filtering keeps the verified Tour day link without reading detail", async () => {
+  let reads = 0;
+  const app = harness({ tour: async id => {
+    ++reads;
+    return { id, stops: [], routes: [{ accepted: true, stops: [{ stop_state: "active" }] }] };
+  } });
+  try {
+    await app.view.ready; await settle();
+    const day = app.doc.querySelector("#tour-entry-day"), href = day.href;
+    assert.equal(day.hidden, false);
+    for (const query of ["D", "Demo", "no match", ""]) {
+      app.change("#tour-filter", query);
+      assert.equal(day.hidden, false);
+      assert.equal(day.href, href);
+    }
+    await settle();
+    assert.equal(reads, 1);
+  } finally { app.close(); }
+});
+
+test("refresh retains verified Tour day eligibility until new detail arrives", async () => {
+  const app = harness({ tour: async id => ({ id, stops: [], routes: [{ accepted: true, stops: [{ stop_state: "active" }] }] }) });
+  try {
+    await app.view.ready; await settle();
+    const day = app.doc.querySelector("#tour-entry-day"), href = day.href;
+    const pending = deferred();
+    app.service.tour = () => pending.promise;
+    await app.view.refresh();
+    assert.equal(day.hidden, false);
+    assert.equal(day.href, href);
+    pending.reject(new Error("Synthetic outage")); await settle();
+    assert.equal(day.hidden, false);
+    assert.equal(day.href, href);
+    app.service.tour = async id => ({ id, stops: [], routes: [] });
+    await app.view.refresh(); await settle();
+    assert.equal(day.hidden, true);
+    assert.equal(day.hasAttribute("href"), false);
+  } finally { app.close(); }
+});
+
 test("a superseded tour detail cannot restore the phone Tour day link", async () => {
   let release;
   const pending = new Promise(resolve => { release = resolve; });

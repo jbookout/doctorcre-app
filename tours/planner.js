@@ -41,7 +41,7 @@ export function mountPlanner({ document, window, api = createPlannerClient() }) 
       pageDocContext?.clear();
       ++refreshEpoch; ++planEpoch; ++searchEpoch; ++dialogEpoch; planClient = ""; searchClient = ""; files = []; selectedRecord = null;
       savedDraft = null; clientsStatus = scope ? "pending" : "unavailable"; clientsMessage = scope ? "" : "Sign in to continue."; clients = []; tours = []; plan.reset(); search.reset(); closeDialog();
-      $("#detail-content").replaceChildren(); renderedTour = null; message("#detail-title", "Tour"); message("#detail-message", ""); $("#tour-filter").value = ""; fillClients(); renderLibrary(); renderFiles();
+      $("#detail-content").replaceChildren(); renderedTour = null; message("#detail-title", "Tour"); message("#detail-message", ""); $("#tour-filter").value = ""; fillClients(); renderLibrary(); void renderEntry(); renderFiles();
       try { window.sessionStorage.removeItem(key); } catch { /* Storage may be disabled. */ }
       for (const target of ["#plan-message", "#space-message", "#tour-library-state"]) message(target, scope ? "Session changed. New draft started." : "Sign in to continue.");
       message("#planner-updated", "Unavailable");
@@ -112,13 +112,7 @@ export function mountPlanner({ document, window, api = createPlannerClient() }) 
       message(target, "");
     } catch (error) { if (epoch === (prefix === "plan" ? planEpoch : searchEpoch)) message(target, unavailable(error) || "Client details temporarily unavailable."); }
   }
-  async function renderLibrary() {
-    const epoch = ++entryEpoch;
-    const tour = tourGroups(tours).upcoming[0];
-    message("#tour-entry-name", tour ? tourDisplayName(tour.name) : "No upcoming tours");
-    const day = $("#tour-entry-day");
-    day.hidden = true;
-    day.removeAttribute("href");
+  function renderLibrary() {
     const focusedId = document.activeElement?.dataset?.tourId;
     const openerId = opener?.dataset?.tourId;
     const query = $("#tour-filter").value;
@@ -139,16 +133,29 @@ export function mountPlanner({ document, window, api = createPlannerClient() }) 
     const buttons = [...document.querySelectorAll(".tour-button")];
     if (openerId) opener = buttons.find(button => button.dataset.tourId === openerId) || $("#tour-filter");
     if (focusedId) (buttons.find(button => button.dataset.tourId === focusedId) || $("#tour-filter")).focus({ preventScroll: true });
+  }
+  async function renderEntry() {
+    const epoch = ++entryEpoch;
+    const tour = tourGroups(tours).upcoming[0];
+    message("#tour-entry-name", tour ? tourDisplayName(tour.name) : "No upcoming tours");
+    const day = $("#tour-entry-day");
+    const href = tour ? `/tours/day.html?tour=${encodeURIComponent(tour.id)}` : null;
+    if (!tour || day.getAttribute("href") !== href) {
+      day.hidden = true;
+      day.removeAttribute("href");
+    }
     if (!tour) return;
     try {
       const detail = await read(async () => validateTourDetail(await api.tour(tour.id), tour.id));
       if (disposed || epoch !== entryEpoch) return;
       if (detail.routes?.some(route => route.accepted === true && route.stops?.some(stop => stop.stop_state === "active"))) {
-        day.href = `/tours/day.html?tour=${encodeURIComponent(tour.id)}`;
+        day.href = href;
         day.hidden = false;
+      } else {
+        day.hidden = true;
+        day.removeAttribute("href");
       }
-    } catch { /* An unverified route cannot open Tour day. */ }
-
+    } catch { /* Retain previously verified eligibility during a transport outage. */ }
   }
   let opener = null, renderedTour = null;
   function showDialog(title, trigger) {
@@ -242,7 +249,7 @@ export function mountPlanner({ document, window, api = createPlannerClient() }) 
     if (!active()) return;
     restoreOrClear();
     if (!active()) return;
-    if (results[0].status === "fulfilled") { tours = results[0].value; pageDocContext?.finish(docTicket, { tours }); renderLibrary(); message("#tour-library-state", ""); }
+    if (results[0].status === "fulfilled") { tours = results[0].value; pageDocContext?.finish(docTicket, { tours }); renderLibrary(); void renderEntry(); message("#tour-library-state", ""); }
     else { pageDocContext?.fail(docTicket,results[0].reason); message("#tour-library-state", unavailable(results[0].reason) || "Tours temporarily unavailable."); }
     if (results[1].status === "fulfilled") {
       clientsStatus = "ready"; clientsMessage = ""; clients = results[1].value; fillClients();
