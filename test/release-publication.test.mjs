@@ -16,7 +16,7 @@ function fixture(t, { installation = 'locked', browser = false } = {}) {
   const root = join(parent, 'app');
   const git = args => execFileSync('git', args, { cwd: root, encoding: 'utf8', stdio: 'pipe' }).trim();
   execFileSync('git', ['clone', '--quiet', '--shared', '--no-hardlinks', ROOT, root], { stdio: 'pipe' });
-  const paths = ['scripts/prepare-release.mjs', 'scripts/release-production.mjs', 'scripts/release-staging.mjs', 'scripts/release-staging.py', 'scripts/release-command.mjs', 'scripts/release-environment.mjs', 'scripts/provider-release.mjs', 'test/morning-brief-browser.test.mjs'];
+  const paths = ['scripts/chromium-safety-args.mjs', 'scripts/prepare-release.mjs', 'scripts/release-production.mjs', 'scripts/release-staging.mjs', 'scripts/release-staging.py', 'scripts/release-command.mjs', 'scripts/release-environment.mjs', 'scripts/provider-release.mjs', 'test/morning-brief-browser.test.mjs'];
   for (const path of paths) if (existsSync(join(ROOT, path))) copyFileSync(join(ROOT, path), join(root, path));
   const pkg = JSON.parse(readFileSync(join(root, 'package.json')));
   // Keep real npm, Git, artifact build/verification and (when requested) an

@@ -1,3 +1,4 @@
+import { CHROMIUM_SAFETY_ARGS } from '../scripts/chromium-safety-args.mjs';
 // Charts in a real browser: what jsdom cannot judge — the phone layout, the
 // Details disclosure's motion and keyboard focus across a repaint.
 import test from 'node:test';
@@ -9,7 +10,7 @@ const root = new URL('../', import.meta.url);
 const capture = JSON.parse(await readFile(new URL('test/fixtures/charts-synthetic.json', root), 'utf8'));
 
 async function open(t, { width = 1280, motion = 'no-preference' } = {}) {
-  const browser = await chromium.launch(); t.after(() => browser.close());
+  const browser = await chromium.launch({ args: [...CHROMIUM_SAFETY_ARGS] }); t.after(() => browser.close());
   const page = await browser.newPage({ viewport: { width, height: 900 }, reducedMotion: motion });
   const errors = []; page.on('pageerror', error => errors.push(error.message));
   await page.route('**/*', async route => {

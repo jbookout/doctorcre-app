@@ -1,3 +1,4 @@
+import { CHROMIUM_SAFETY_ARGS } from '../scripts/chromium-safety-args.mjs';
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { copyFile, mkdir, mkdtemp, readFile, rename, rm, writeFile, symlink } from "node:fs/promises";
@@ -16,7 +17,7 @@ const trackedHtml = source => Buffer.from(source.toString("utf8").replace("<head
 test('finding 6: emitted public report shell reserves space beside the fixed rail', async t => {
   const outDir=await mkdtemp(join(tmpdir(),'doctorcre-report-layout-'));
   await buildArtifact({root:ROOT,outDir,commit:COMMIT});
-  const browser=await chromium.launch();t.after(()=>browser.close());
+  const browser=await chromium.launch({ args: [...CHROMIUM_SAFETY_ARGS] });t.after(()=>browser.close());
   const page=await browser.newPage({viewport:{width:820,height:900}});
   await page.route('**/*',async route=>{
     const url=new URL(route.request().url());
