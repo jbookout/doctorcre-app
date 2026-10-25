@@ -19,8 +19,9 @@ async function setup(t,{width=1440,motion='no-preference',onRoute,engine=chromiu
  const calls=[],errors=[];page.on('pageerror',error=>errors.push(error.message));
  await page.route('**/*',async route=>{
   const request=route.request(),url=new URL(request.url());
-    if(['/api/system-work/session','/auth/session'].includes(url.pathname)) return route.fulfill({json:{actor:{slug:'joe'},csrf_token:'synthetic-session'}});if(!['http://localhost','https://app.doctorcre.com'].includes(url.origin))return route.abort();
+  if(!['http://localhost','https://app.doctorcre.com'].includes(url.origin))return route.abort();
   if(onRoute && await onRoute(route,{url,fixture}))return;
+  if(['/api/system-work/session','/auth/session'].includes(url.pathname)) return route.fulfill({json:{actor:{slug:'joe'},csrf_token:'synthetic-session'}});
   if(url.pathname==='/mcp'){
   const {name,arguments:args}=request.postDataJSON().params;calls.push({name,args});let value={ok:true};
    if(name==='read-doc-outcome-cards')return rpc(route,await fixture.docOutcomeCards(args));
@@ -640,8 +641,7 @@ test('Dr. CRE suggestion page: a feature_disabled refusal re-reads the switch an
 for(const trigger of ['resume','identity-failure']) test(`F9 Leads ${trigger} clears Doc while identity is delayed and only fresh workspace restores it`,async t=>{
  let hold=false,release;const held=new Promise(resolve=>release=resolve);t.after(()=>release());
  const {page,goto,errors}=await setup(t,{onRoute:async(route,env)=>{
-  const params=env.url.pathname==='/mcp'?route.request().postDataJSON().params:null;
-  if(hold && params?.name==='deal-room-board'){await held;if(trigger==='identity-failure'){await route.fulfill({status:503,body:''});return true;}}
+  if(hold && env.url.pathname==='/api/system-work/session'){await held;if(trigger==='identity-failure'){await route.fulfill({status:503,body:''});return true;}}
   return producerRoute(route,env);
  }});
  await goto('/leads?mode=live');await page.locator('.lead-card').first().click();

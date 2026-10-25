@@ -48,6 +48,7 @@ test('Lead opening and actions are separate accessible keyboard controls', async
   const writes = [];
   await routeLeads(page, { onWrite: value => writes.push(value) });
   await page.goto('http://localhost/leads');
+  await page.getByRole('button', { name: 'Show territory', exact: true }).click();
   await page.locator('.market-marker').first().waitFor();
   await page.route('**/__axe.js', route => route.fulfill({ path: require.resolve('axe-core/axe.min.js'), contentType: 'text/javascript' }));
   await page.addScriptTag({ url: 'http://localhost/__axe.js' });
@@ -105,6 +106,7 @@ for (const action of ['Claim', 'Undo']) test(`Delayed native detail close preser
     await route.fallback();
   });
   await page.goto('http://localhost/leads');
+  await page.getByRole('button', { name: 'Show territory', exact: true }).click();
   await page.locator('.market-marker').first().waitFor();
   if (action === 'Undo') {
     await page.locator('.hot-row').first().getByRole('button', { name: 'Claim', exact: true }).focus();
@@ -162,6 +164,7 @@ test('Lead actions stay disabled until Claim refresh completes, then one Link cl
     await route.fallback();
   });
   await page.goto('http://localhost/leads');
+  await page.getByRole('button', { name: 'Show territory', exact: true }).click();
   await page.locator('.market-marker').first().waitFor();
   await page.locator('.hot-row').first().getByRole('button', { name: 'Claim', exact: true }).click();
   await held;
@@ -186,6 +189,7 @@ for (const width of [768, 1280, 1440]) for (const theme of ['light', 'dark']) {
     await page.addInitScript(theme => localStorage.setItem('doctorcre.visual-preferences', JSON.stringify({ theme })), theme);
     await routeLeads(page);
     await page.goto('http://localhost/leads');
+    await page.getByRole('button', { name: 'Show territory', exact: true }).click();
     await page.locator('.market-marker').first().waitFor();
     const layout = await page.evaluate(() => {
       const box = node => { const r = node.getBoundingClientRect(); return { x: r.x, y: r.y, width: r.width, bottom: r.bottom }; };

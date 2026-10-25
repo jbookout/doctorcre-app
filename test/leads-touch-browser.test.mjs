@@ -5,6 +5,7 @@ test('blocking 10: real phone touch drag scrolls to an offscreen stage and opens
  const browser=await chromium.launch({args:['--use-angle=swiftshader','--enable-unsafe-swiftshader']});t.after(()=>browser.close());
  const page=await browser.newPage({viewport:{width:390,height:960},hasTouch:true,isMobile:true,reducedMotion:'reduce'});
  const writes=[];await routeLeads(page,{onWrite:p=>writes.push(p)});await page.goto('http://localhost/leads');
+ await page.getByRole('button', { name: 'Show territory', exact: true }).click();
  await page.locator('.market-marker').first().waitFor({state:'attached'});
  await pausedClock(page,new Date('2026-10-03T18:00:00Z'));
  const handle=page.locator('.lead-card [data-drag-handle]').first();await handle.scrollIntoViewIfNeeded();
@@ -28,6 +29,7 @@ for (const width of [320, 390]) test(`Slice A market filters and drag handles ha
  const writes = [];
  await routeLeads(page, { onWrite: value => writes.push(value) });
  await page.goto('http://localhost/leads');
+ await page.getByRole('button', { name: 'Show territory', exact: true }).click();
  await page.locator('.market-marker').first().waitFor({ state: 'attached' });
  await pausedClock(page, new Date('2026-10-03T18:00:00Z'));
  for (const selector of ['#marketCounts button', '.lead-card [data-drag-handle]']) {

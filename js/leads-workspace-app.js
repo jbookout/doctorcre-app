@@ -31,7 +31,7 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
     if (draft && input) draft.answer = input.value;
     return draft;
   }
-  const locationLabel = lead => !state.map ? "Checking location…" : state.map.locate?.(lead) ? "Market area only" : "No location";
+  const locationLabel = lead => !state.map ? "Location not checked" : state.map.locate?.(lead) ? "Market area only" : "No location";
   function card(lead) {
     const move = automaticMove(lead), undo = undoReview(lead);
     const possible = lead.possible_clients || [];
@@ -78,7 +78,7 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
     $("marketCounts").innerHTML = groups.map(g => `<button data-market="${esc(g.key)}" aria-pressed="${g.key === state.filters.market}">${esc(g.key)}<b>${g.count}</b></button>`).join("") || '<p class="empty">No leads in these markets</p>';
     state.map?.update(groups, state.selectedId);
     const unlocated = state.map ? groups.reduce((count, group) => count + group.unlocatedIds.length, 0) : 0;
-    $("mapLeadMembers").querySelector("summary").textContent = `${shown.length} ${shown.length === 1 ? "lead" : "leads"} · ${unlocated} no location`;
+    $("mapLeadMembers").querySelector("summary").textContent = `${shown.length} ${shown.length === 1 ? "lead" : "leads"} · ${state.map ? `${unlocated} no location` : "locations not checked"}`;
     $("mapLeadMembers").querySelector("div").innerHTML = shown.map(lead => `<button data-lead-id="${esc(lead.id)}" aria-pressed="${lead.id === state.selectedId}">${esc(leadTitle(lead))}<small>${esc(marketKey(lead))} · ${locationLabel(lead)}</small></button>`).join("") || '<p class="empty">No matching leads</p>';
     const hot = hotLeadPanel(leads);
     $("hotTitle").textContent = hot.claimable || !hot.newTotal ? "Top new leads to claim" : "Top new leads";
@@ -536,7 +536,23 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
   board.addEventListener("pointercancel", stopTouch);
   board.addEventListener("lostpointercapture", stopTouch);
   render();
-  mapFactory($("territoryMap"), selectMarket, readDetail).then(map => { state.map = map; if (!state.drag && !touch) render(); }).catch(() => { $("territoryMap").innerHTML = '<p class="empty">Map unavailable</p>'; });
+  let disposed = false;
+  $("showTerritory").addEventListener("click", async () => {
+    if (disposed) return;
+    const button = $("showTerritory"), root = $("territoryMap");
+    button.disabled = true; button.textContent = "Loading territory…";
+    button.setAttribute("aria-expanded", "true"); root.hidden = false;
+    try {
+      const map = await mapFactory(root, selectMarket, readDetail);
+      if (disposed) { map.dispose(); return; }
+      state.map = map; button.textContent = "Territory shown";
+      if (!state.drag && !touch) render();
+    } catch {
+      if (disposed) return;
+      button.textContent = "Territory unavailable";
+      root.innerHTML = '<p class="empty" role="status">Map unavailable. Use the market filters and lead list.</p>';
+    }
+  }, { once: true });
   function suspendPrivateView() {
     pageDocContext?.clear();
     if (state.reviewTarget && $("stageDialog").open) state.resumeReview = captureReviewDraft();
@@ -551,6 +567,6 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
   const resume = () => { if (doc.visibilityState === "hidden") { pageDocContext?.clear(); stopTouch(); state.identityReady = false; ++state.epoch; ++state.detailEpoch; ++state.reviewEpoch; } };
   doc.addEventListener("visibilitychange", resume);
   auto.refresh();
-  return { state, refresh, openReview, readDetail, dispose() { stopTouch(); ++state.epoch; ++state.detailEpoch; ++state.reviewEpoch; auto.dispose(); state.map?.dispose(); doc.removeEventListener("visibilitychange", resume); } };
+  return { state, refresh, openReview, readDetail, dispose() { disposed = true; stopTouch(); ++state.epoch; ++state.detailEpoch; ++state.reviewEpoch; auto.dispose(); state.map?.dispose(); doc.removeEventListener("visibilitychange", resume); } };
 }
 if (typeof document !== "undefined" && document.getElementById("hotLeads")) mountLeadsWorkspace();

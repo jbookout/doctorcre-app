@@ -4,9 +4,8 @@ import { carrContractIdentity } from "./carr-contract.mjs";
 
 test('blocking 1: Leads map module, CSS and derived worker URLs pass through deployed asset routing',async()=>{
  const {readFile}=await import('node:fs/promises');
- const html=await readFile(new URL('../leads.html',import.meta.url),'utf8');
  const source=await readFile(new URL('../js/leads-territory-map.js',import.meta.url),'utf8');
- const css=html.match(/href="([^"]*maplibre-gl.css)"/)[1];
+ const css='/tours/vendor/maplibre-gl-6.4.1/maplibre-gl.css';
  const module=new URL(source.match(/import\("([^"]*maplibre-gl.mjs)"\)/)[1],'https://example.test/js/leads-territory-map.js');
  for(const path of [new URL(css,'https://example.test/').pathname,module.pathname,new URL('maplibre-gl-shared.mjs',module).pathname,new URL('maplibre-gl-worker.mjs',module).pathname]){
  let calls=0;const response=await handleDoctorcreRequest(request(path),environment({assets:{fetch:async()=>{calls++;return new Response('asset')}}}));
