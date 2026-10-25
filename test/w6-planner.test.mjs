@@ -638,3 +638,64 @@ test('D2 session establishment clears early client-loading guidance', async () =
     assert.equal(app.doc.querySelector('#space-clients-state').textContent, '');
   } finally { app.close(); }
 });
+
+for (const state of ['pending', 'failed']) test(`D2 review waits for the restored client's ${state} exact record without loading choices`, async () => {
+  const detail = deferred(); let directoryReads = 0;
+  const app = harness({ client: () => detail.promise, clients: async () => { directoryReads++; return clientPage([]); } }, window => {
+    window.sessionStorage.setItem('doctorcre-tour-planning-drafts-v1', JSON.stringify({ scope: 'synthetic-scope', planClient: clientA }));
+  });
+  try {
+    await settle();
+    if (state === 'failed') { detail.reject(new Error('Synthetic detail outage')); await app.view.ready; }
+    const message = app.doc.querySelector('#plan-message').textContent;
+    app.doc.querySelector('#review-packet').click();
+    assert.equal(directoryReads, 0, 'a selected client needs its exact record, not directory choices');
+    assert.equal(app.doc.querySelector('dialog').open, false, 'do not review an incomplete packet');
+    assert.equal(app.doc.querySelector('#plan-message').textContent, message);
+    if (state === 'pending') {
+      detail.resolve(record(clientA)); await app.view.ready;
+      app.doc.querySelector('#review-packet').click();
+      assert.equal(app.doc.querySelector('dialog').open, true);
+      assert.match(app.doc.querySelector('#detail-content details').textContent, /Synthetic original entry/);
+    }
+  } finally { app.close(); }
+});
+
+for (const status of [401, 403]) test(`D2 Load clients preserves sign-in recovery after ${status}`, async () => {
+  let refused = false, reads = 0;
+  const api = createPlannerClient({ fetchImpl: async path => {
+    reads++;
+    return { ok: !refused, status: refused ? status : 200, json: async () => ({ csrf_token: 'synthetic', data: path.includes('library') ? { tours: [] } : { rows: [], page: 1, page_count: 1 } }) };
+  } });
+  const app = harness(api);
+  try {
+    await app.view.ready; refused = true; await app.loadClients();
+    assert.equal(app.doc.querySelector('#plan-clients-state').textContent, 'Sign in to continue.');
+    const before = reads;
+    for (const prefix of ['plan', 'space']) {
+      app.doc.querySelector(`#${prefix}-load-clients`).click();
+      assert.equal(app.doc.querySelector(`#${prefix}-clients-state`).textContent, 'Sign in to continue.');
+    }
+    assert.equal(reads, before, 'sign in before making another directory request');
+  } finally { app.close(); }
+});
+
+test('D2 directory pages keep response order when selected details arrive first', async () => {
+  const zeta = { ...record(clientB), name: 'Demo Zeta' }, alpha = { ...record(clientA), name: 'Demo Alpha' };
+  const app = harness({ client: async () => zeta, clients: async ({ page }) => clientPage(page === 1 ? [alpha] : [zeta], page, 2) }, window => {
+    window.sessionStorage.setItem('doctorcre-tour-planning-drafts-v1', JSON.stringify({ scope: 'synthetic-scope', planClient: clientB }));
+  });
+  try {
+    await app.view.ready;
+    for (const page of [1, 2]) {
+      await app.loadClients();
+      for (const prefix of ['plan', 'space']) {
+        assert.deepEqual([...app.doc.querySelector(`#${prefix}-client`).options].slice(1).map(option => option.textContent), prefix === 'plan' || page === 2 ? ['Demo Alpha', 'Demo Zeta'] : ['Demo Alpha']);
+      }
+      assert.equal(app.doc.querySelector('#plan-client').value, clientB);
+    }
+    app.service.client = async () => ({ ...zeta, name: 'Demo Zeta refreshed' });
+    await app.view.refresh();
+    for (const prefix of ['plan', 'space']) assert.deepEqual([...app.doc.querySelector(`#${prefix}-client`).options].slice(1).map(option => option.textContent), ['Demo Alpha', 'Demo Zeta refreshed']);
+  } finally { app.close(); }
+});

@@ -12,6 +12,7 @@ export function mountPlanner({ document, window, api = createPlannerClient() }) 
   let currentTour = null, selectedRecord = null, scope = null, scopeEstablished = false, disposed = false;
   const key = "doctorcre-tour-planning-drafts-v1";
   let clientPage = 0, clientPageCount = 1, clientsEpoch = 0;
+  const directoryClients = new Set();
   const clientsUnavailable = "Clients unavailable. Load clients to retry.";
   const clientsLoading = "Clients are loading…";
   const clientReadError = "Client details temporarily unavailable.";
@@ -38,7 +39,7 @@ export function mountPlanner({ document, window, api = createPlannerClient() }) 
     if (!first) {
       pageDocContext?.clear();
       ++refreshEpoch; ++planEpoch; ++searchEpoch; ++dialogEpoch; planClient = ""; searchClient = ""; files = []; selectedRecord = null;
-      savedDraft = null; ++clientsEpoch; clientPage = 0; clientPageCount = 1; loadingClients = false; clientsMessage = scope ? "" : "Sign in to continue."; clients.clear(); tours = []; plan.reset(); search.reset(); closeDialog();
+      savedDraft = null; ++clientsEpoch; clientPage = 0; clientPageCount = 1; loadingClients = false; clientsMessage = scope ? "" : "Sign in to continue."; clients.clear(); directoryClients.clear(); tours = []; plan.reset(); search.reset(); closeDialog();
       $("#detail-content").replaceChildren(); renderedTour = null; message("#detail-title", "Tour"); message("#detail-message", ""); $("#tour-filter").value = ""; fillClients(); renderLibrary(); renderFiles();
       try { window.sessionStorage.removeItem(key); } catch { }
       for (const target of ["#plan-message", "#space-message", "#tour-library-state"]) message(target, scope ? "Session changed. New draft started." : "Sign in to continue.");
@@ -87,8 +88,8 @@ export function mountPlanner({ document, window, api = createPlannerClient() }) 
     for (const [prefix, selected, research] of [["plan", planClient, false], ["space", searchClient, true]]) {
       const select = $(`#${prefix}-client`);
       select.replaceChildren(option(research ? "Research only" : "Choose a client", ""));
-      for (const client of clients.values()) select.append(option(client.name || "Unnamed client", client.id));
-      if (selected && !clients.has(selected)) select.append(option("Selected client", selected));
+      for (const id of directoryClients) select.append(option(clients.get(id).name || "Unnamed client", id));
+      if (selected && !directoryClients.has(selected)) select.append(option(clients.get(selected)?.name || "Selected client", selected));
       select.value = selected;
     }
   }
@@ -109,7 +110,7 @@ export function mountPlanner({ document, window, api = createPlannerClient() }) 
     restoreOrClear();
     if (disposed || loadingClients || clientPage >= clientPageCount) return;
     if (!scope) {
-      clientsMessage = "Refresh tours before loading clients.";
+      clientsMessage = scopeEstablished ? "Sign in to continue." : "Refresh tours before loading clients.";
       renderClientChoices(); return;
     }
     const epoch = ++clientsEpoch;
@@ -117,7 +118,9 @@ export function mountPlanner({ document, window, api = createPlannerClient() }) 
     try {
       const result = await read(() => api.clients({ page: clientPage + 1 }));
       if (disposed || epoch !== clientsEpoch) return;
-      cacheClients(validateClientList(result.rows));
+      const rows = validateClientList(result.rows);
+      for (const row of rows) directoryClients.add(row.id);
+      cacheClients(rows);
       clientPage = result.page; clientPageCount = result.pageCount;
       clientsMessage = "";
     } catch (error) {
@@ -236,8 +239,9 @@ export function mountPlanner({ document, window, api = createPlannerClient() }) 
     $("#packet-upload").value = "";
   }
   function reviewDraft(trigger) {
-    if (!clientPage && !clientsMessage && !selectedRecord) void loadClients();
+    if (!planClient && !clientPage && !clientsMessage) void loadClients();
     if (!planClient) { message("#plan-message", clientsMessage || "Choose a client."); $("#plan-client").focus(); return; }
+    if (!selectedRecord) return;
     currentTour = null; ++dialogEpoch; showDialog(plan.values.name || "Packet draft", trigger); message("#detail-message", "");
     const body = $("#detail-content"); const facts = element("dl", undefined, "draft-facts");
     const labels = { date: "Date", time: "Start time", area: "Area", use: "Space type", start: "Start", end: "Finish", dwell: "Minutes per stop", buffer: "Travel buffer", notes: "Notes" };
