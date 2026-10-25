@@ -5,6 +5,7 @@ test('blocking 10: real phone touch drag scrolls to an offscreen stage and opens
  const browser=await chromium.launch({args:['--use-angle=swiftshader','--enable-unsafe-swiftshader']});t.after(()=>browser.close());
  const page=await browser.newPage({viewport:{width:390,height:960},hasTouch:true,isMobile:true,reducedMotion:'reduce'});
  const writes=[];await routeLeads(page,{onWrite:p=>writes.push(p)});await page.goto('http://localhost/leads');
+ await page.getByRole('button', { name: 'Show territory', exact: true }).click();
  await page.locator('.market-marker').first().waitFor({state:'attached'});
  await pausedClock(page,new Date('2026-10-03T18:00:00Z'));
  const handle=page.locator('.lead-card [data-drag-handle]').first();await handle.scrollIntoViewIfNeeded();
@@ -20,4 +21,35 @@ test('blocking 10: real phone touch drag scrolls to an offscreen stage and opens
  await page.waitForFunction(()=>document.querySelector('[data-stage="qualified"]').dataset.dropActive==='true');await touch('touchEnd');
  await page.locator('#stageDialog[open] .stage-proposal').waitFor();assert.match(await page.locator('.stage-proposal').innerText(),/New.*Qualified/s);assert.equal(writes.length,0);
  await page.locator('#closeStage').click();assert.equal(await page.locator('[data-drop-active]').count(),0);
+});
+
+for (const width of [320, 390]) test(`Slice A market filters and drag handles have separate 44px phone targets at ${width}`, async t => {
+ const browser = await chromium.launch(); t.after(() => browser.close());
+ const page = await browser.newPage({ viewport: { width, height: 844 }, hasTouch: true, isMobile: true, reducedMotion: 'reduce' });
+ const writes = [];
+ await routeLeads(page, { onWrite: value => writes.push(value) });
+ await page.goto('http://localhost/leads');
+ await page.getByRole('button', { name: 'Show territory', exact: true }).click();
+ await page.locator('.market-marker').first().waitFor({ state: 'attached' });
+ await pausedClock(page, new Date('2026-10-03T18:00:00Z'));
+ for (const selector of ['#marketCounts button', '.lead-card [data-drag-handle]']) {
+  const targets = page.locator(selector);
+  for (const target of await targets.all()) {
+   await target.scrollIntoViewIfNeeded();
+   const geometry = await target.evaluate(node => {
+    const r = node.getBoundingClientRect();
+    const peers = [...node.closest('.lead-card, #marketCounts').querySelectorAll('button, [data-drag-handle]')].filter(peer => peer !== node);
+    return { width: r.width, height: r.height, overlap: peers.some(peer => {
+     const p = peer.getBoundingClientRect();
+     return Math.min(r.right, p.right) > Math.max(r.left, p.left) && Math.min(r.bottom, p.bottom) > Math.max(r.top, p.top);
+    }), hit: node.contains(document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2)) };
+   });
+   assert.ok(geometry.width >= 44 && geometry.height >= 44, `${selector}: ${JSON.stringify(geometry)}`);
+   assert.equal(geometry.overlap, false, selector);
+   assert.equal(geometry.hit, true, selector);
+  }
+ }
+ assert.equal(await page.locator('#stageFilter').isVisible(), true, 'stage select remains available');
+ assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+ assert.deepEqual(writes, []);
 });

@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { chromium, pausedClock, settles } from "./browser-harness.mjs";
 import { boardFreshness, boardDirectory } from "../js/progress-board-model.js";
+import { routeContract } from "../js/routes.js";
 
 const NOW = new Date("2026-10-01T15:00:00Z");
 const boards = [
@@ -24,6 +25,7 @@ async function open(t, { width = 390, path = "/control-room/progress?board=demo-
   page.on("pageerror", error => errors.push(error.message));
   await page.route("**/*", async route => {
     const url = new URL(route.request().url());
+    if(['/api/system-work/session','/auth/session'].includes(url.pathname)) return route.fulfill({json:{actor:{slug:'joe'},csrf_token:'synthetic-session'}});
     if (url.origin !== "http://localhost") return route.abort();
     if (url.pathname === "/mcp") {
       const rpc = route.request().postDataJSON(); calls.push(rpc.params);
@@ -42,8 +44,8 @@ async function open(t, { width = 390, path = "/control-room/progress?board=demo-
       } }) });
     }
     if (url.pathname === "/app-release" || url.pathname.startsWith("/api/")) return route.fulfill({ contentType: "application/json", body: "{}" });
-    const path = url.pathname.startsWith("/control-room/progress/board/") || url.pathname === "/control-room/progress" || url.pathname === "/progress-board" ? "progress-board.html"
-      : url.pathname === "/control-room" ? "control-room.html" : url.pathname.slice(1);
+    const path = url.pathname.startsWith("/control-room/progress/board/") || url.pathname === "/progress-board" ? "progress-board.html"
+      : routeContract.routes[url.pathname] || url.pathname.slice(1);
     try {
       const body = await readFile(new URL("../" + path, import.meta.url));
       return route.fulfill({ body, contentType: /\.m?js$/.test(path) ? "text/javascript" : path.endsWith(".css") ? "text/css" : "text/html" });
@@ -231,7 +233,8 @@ for (const failed of [false, true]) test(`answer refresh supersedes an older pol
   await reads.request("read-progress-board", 1);
   await page.locator(".answer-form textarea").fill("Ship it");
   await page.locator('.answer-form button[type="submit"]').click();
-  await reads.reply(page, "read-progress-board", 2, snapshot(2, "Sent"));
+  await reads.reply(page, "read-progress-board", 2, snapshot()); // Fresh question check before the write.
+  await reads.reply(page, "read-progress-board", 3, snapshot(2, "Sent"));
   await reads.reply(page, "list-progress-boards", 2, listing("New directory"));
   await page.waitForFunction(() => document.querySelector("#board-title").textContent === "System version 2");
   const old = failed ? { error: "old request failed" } : snapshot();
@@ -354,6 +357,13 @@ for (const state of ["unpublished", "unauthorized", "signed-out"])
     await page.waitForFunction(() => document.querySelector(".board-card"));
     failure = true;
     await page.clock.runFor(15000);
+    if (state !== 'unpublished') {
+      await page.waitForURL('**/public-shell/session-ended.html');
+      assert.equal(await page.locator('.board-card, .answer-form').count(),0);
+      failure=false; await page.goto('http://localhost/control-room/progress?board=demo-project&mode=live');
+      await page.waitForFunction(()=>document.querySelector('.board-card'));
+      assert.deepEqual(errors,[]); return;
+    }
     await page.waitForFunction(state => document.querySelector("#board-meta").dataset.readState === state, state);
     assert.equal(await page.locator(".board-card").count(), 0);
     assert.equal(await page.locator(".answer-form").count(), 0);
@@ -452,8 +462,8 @@ test("summary and model cards retain routed detail on desktop and phone", async 
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
     unauthorized = true;
     await page.locator('#board-retry').evaluate(button => button.click());
-    await page.waitForFunction(() => document.querySelector('#board-completed').childElementCount === 0);
-    assert.equal(await page.locator('#completed-count').textContent(), '—');
+    await page.waitForURL('**/public-shell/session-ended.html');
+    assert.equal(await page.locator('#board-completed,.completed-card').count(),0);
     assert.deepEqual(errors, []);
   });
 });

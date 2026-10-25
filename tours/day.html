@@ -4,7 +4,6 @@
   <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Tour day · DoctorCRE</title>
   <link rel="stylesheet" href="/css/app-shell.css"><link rel="stylesheet" href="/tours/day.css">
-  <link rel="stylesheet" href="/tours/vendor/maplibre-gl-6.4.1/maplibre-gl.css">
   <script type="module" src="/tours/day.js"></script>
 </head>
 <body>
@@ -12,6 +11,7 @@
   <main id="tour-day" data-state="loading">
     <div class="day-title"><h1 id="day-title">Tour day</h1><div class="freshness"><time id="day-updated">Updating…</time><button id="day-refresh" type="button" aria-label="Refresh tour" title="Refresh tour">↻</button></div></div>
     <p id="day-status" role="status" aria-live="polite"></p>
+    <p id="day-offline" role="status" aria-live="polite"></p>
     <section id="day-empty" class="day-panel day-empty" aria-labelledby="day-empty-title"><h2 id="day-empty-title">No tour open</h2><p id="day-empty-copy"></p><a class="day-empty-link" href="/tours/route-editor.html">Open the itinerary</a></section>
     <div class="day-grid">
       <section class="day-panel route-panel" aria-label="Tour route"><h2>Route</h2><div id="day-map"></div><ol id="day-stops" aria-label="Tour stops"></ol></section>

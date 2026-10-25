@@ -13,7 +13,7 @@
   <script src="/js/theme-boot.js"></script>
   <link rel="modulepreload" href="/js/home-dashboard-model.js">
   <link rel="stylesheet" href="/css/tokens.css">
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600&display=swap">
+  <link rel="preload" as="style" data-font-stylesheet href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600&display=swap">
   <link rel="stylesheet" href="/css/workspace.css">
   <link rel="stylesheet" href="/css/home-dashboard.css">
   <link rel="stylesheet" href="/css/lease-radar.css">
@@ -44,7 +44,7 @@
     </section>
     <section id="homeInvoices" class="home-panel" aria-label="Invoice attention" hidden></section>
     <div class="home-grid">
-      <section id="homeCalendar" class="home-panel" aria-label="Calendar" hidden></section>
+      <section id="homeCalendar" class="home-panel" aria-label="Calendar" aria-busy="true"><header class="home-panel-head"><h2>Calendar &amp; tasks</h2></header><p class="home-empty" role="status">Updating calendar and tasks…</p></section>
       <section id="homeControl" class="home-panel" aria-label="Control room" hidden></section>
       <section id="homePastClients" class="home-panel" aria-label="Past clients" hidden></section>
       <section id="homeIntroductions" class="home-panel" aria-label="Suggested introductions" hidden></section>

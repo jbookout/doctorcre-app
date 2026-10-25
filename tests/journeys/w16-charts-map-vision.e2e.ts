@@ -7,6 +7,7 @@ const deals = JSON.parse(readFileSync(new URL('../../test/fixtures/charts-synthe
 const noKey = !process.env.TYPESAFE_API_KEY;
 
 async function serveFixtures(browser: any) {
+  await browser.route('**/auth/session', (route: any) => route.fulfill({json:{actor:{slug:'dell'},csrf_token:'synthetic-e2e-token'}}));
   await browser.route('**/mcp', (route: any) => {
     const { name } = JSON.parse(route.request.postData ?? '{}').params;
     const body = name === 'deal-room-board' ? deals : name === 'lead-board' ? workspace() : { ok: true };
@@ -35,6 +36,7 @@ test('W16 the territory map pins every lead market on the Gulf Coast', async ({ 
   test.skip(noKey, 'TYPESAFE_API_KEY is not set');
   await serveFixtures(browser);
   await app.open('/leads?mode=live');
+  await browser.locator('#showTerritory').tap();
   await expect(browser.locator('.market-marker')).toHaveCount(1);
   await browser.evaluate(() => document.querySelector('#territoryMap')?.scrollIntoView({ block: 'center' }));
   await agent.assert(

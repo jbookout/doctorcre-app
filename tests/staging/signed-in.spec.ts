@@ -18,7 +18,7 @@ for (const screen of screens) {
     });
     const account = page.getByRole('button', { name: 'Joe: account and settings', exact: true });
     const visit = async (navigate: () => Promise<unknown>) => {
-      const identity = page.waitForResponse('**/api/system-work/session');
+      const identity = page.waitForResponse('**/auth/session');
       await navigate();
       expect((await identity).status()).toBe(200);
       await expect(account).toBeVisible();
@@ -40,7 +40,7 @@ for (const screen of screens) {
     await expect(page).toHaveURL(screen.path);
     await expect(page).toHaveTitle(screen.title);
     await account.click();
-    await expect(page.getByText("Joe's Workspace", { exact: true })).toBeVisible();
+    await expect(page.locator("#accountMenu").getByText("Joe's Workspace", { exact: true })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Sign out', exact: true })).toBeVisible();
     await page.screenshot({ path: testInfo.outputPath('signed-in-route.png') });
   });

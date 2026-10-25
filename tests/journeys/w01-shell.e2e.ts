@@ -26,7 +26,7 @@ test('W1 a live session signs in as its partner and signs out with its token', a
     route.fulfill({ status: signedOut ? 401 : 200,
       json: signedOut ? {} : { actor: { slug: 'dell' }, csrf_token: 'synthetic-e2e-token' } }));
   await browser.route('**/auth/session', route => route.fulfill({ status: signedOut ? 401 : 200,
-    json: signedOut ? {} : { actor: { slug: 'dell' } } }));
+    json: signedOut ? {} : { actor: { slug: 'dell' }, csrf_token: 'synthetic-e2e-token' } }));
   await browser.route('**/auth/signout', route => {
     signOuts.push(route.request.headers['x-carr-csrf'] ?? '');
     signedOut = true;
@@ -39,7 +39,7 @@ test('W1 a live session signs in as its partner and signs out with its token', a
   await browser.locator('#selfAvatar').tap();
   await expect(browser.locator('#accountMenu')).toBeVisible();
   await screen.getByText('Sign out', { exact: true }).tap();
-  await expect(screen.getByRole('heading', 'Signed out')).toBeVisible();
+  await expect(screen.getByRole('heading', 'Session ended')).toBeVisible();
   await expect(screen.getByRole('link', 'Sign in again')).toHaveAttribute('href', '/auth/login');
   await expect(browser.locator('#selfAvatar')).toHaveCount(0);
   expect(signOuts).toEqual(['synthetic-e2e-token']);

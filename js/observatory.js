@@ -1,3 +1,4 @@
+import { sessionFetch } from './private-session.js';
 import { groupConversations, labelFor, modelFor, summarizeNow } from './observatory-model.js';
 import { mountVisibilityPoll } from './visibility-poll.mjs';
 
@@ -54,7 +55,7 @@ function renderUnavailable() {
 async function readLatest(mode = 'all', before = null) {
   const params = new URLSearchParams({ mode, limit: '200' });
   if (before) params.set('before_seq', String(before));
-  const response = await fetch(`/api/room/latest?${params}`, { credentials: 'same-origin', headers: { accept: 'application/json' } });
+  const response = await sessionFetch(`/api/room/latest?${params}`, { credentials: 'same-origin', headers: { accept: 'application/json' } });
   if (response.status === 401) { location.href = `/auth/login?return_to=${encodeURIComponent(location.pathname + location.search)}`; throw new Error('sign_in_required'); }
   if (!response.ok) throw new Error(`Room read failed (${response.status})`);
   return response.json();

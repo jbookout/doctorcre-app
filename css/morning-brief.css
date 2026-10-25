@@ -42,3 +42,8 @@
 :root[data-motion=reduced] :is(.morning-brief button, .morning-brief .morning-card) { transition: none; }
 
 .morning-owner { color: var(--fg-muted); font-size: var(--font-size-1); }
+.morning-sections { grid-column: 1 / -1; min-width: 0; overflow-wrap: anywhere; }
+.morning-sections > p { color: var(--fg-muted); font-size: var(--font-size-1); }
+.morning-sections > details { margin-top: var(--space-3); padding: var(--space-3) var(--space-4); border: var(--hairline-width) solid var(--hairline); border-radius: var(--radius-2); background: var(--surface-2); }
+.morning-sections summary { min-height: var(--touch); align-content: center; cursor: pointer; }
+.morning-sections li { margin-bottom: var(--space-3); }

@@ -12,10 +12,11 @@ for (const [width, height] of [[1440, 960], [390, 844]]) {
       await page.route('**/*', async route => {
         const url = new URL(route.request().url());
         if (url.origin !== 'http://board.test') return route.abort();
-        const path = url.pathname === '/' ? file : url.pathname.slice(1);
+        const path = url.pathname === '/' ? file
+          : url.pathname.startsWith('/icons/') ? `public-shell${url.pathname}` : url.pathname.slice(1);
         let body = await readFile(new URL('../' + path, import.meta.url));
         if (path === file) body = Buffer.from(String(body).replace(/<script\b[^>]*>[\s\S]*?<\/script>/g, ''));
-        await route.fulfill({ body, contentType: path.endsWith('.css') ? 'text/css' : /\.m?js$/.test(path) ? 'text/javascript' : 'text/html' });
+        await route.fulfill({ body, contentType: path.endsWith('.css') ? 'text/css' : /\.m?js$/.test(path) ? 'text/javascript' : path.endsWith('.svg') ? 'image/svg+xml' : 'text/html' });
       });
       await page.goto('http://board.test/');
       await page.evaluate(async boards => {

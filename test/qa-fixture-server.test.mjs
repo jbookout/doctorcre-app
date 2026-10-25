@@ -35,7 +35,7 @@ test('QA partners share deal writes, receipts and event cursors after both sessi
   const before = await dell.changes();
   const note = {deal:created.deal_id,text:'Demo Dell note',idempotency_key:'dell-note'};
   await dell.call('add-deal-note',note);
-  await dell.call('set-next-step',{deal:created.deal_id,text:'Review demo terms',idempotency_key:'dell-step'});
+  await dell.call('set-next-step',{deal:created.deal_id,text:'Review demo terms',base_version:(await dell.call('get-deal-room',{deal:created.deal_id})).version,idempotency_key:'dell-step'});
   const second = await dell.call('new-deal',{name:'Demo Dell Deal',idempotency_key:'dell-create'});
   assert.notEqual(second.deal_id,created.deal_id);
   const reloaded = await session('dell');
@@ -177,7 +177,7 @@ test('QA rejects an unknown creation phase without writes and permits a correcte
 
 for (const [name, arguments_, error] of [
   ['new-deal', {name:''}, 'empty name'],
-  ['set-next-step', {text:''}, 'empty next step'],
+  ['set-next-step', {text:'',base_version:1}, 'empty next step'],
   ['add-critical-date', {kind:'notice',due_on:'2026-10-12',source:''}, 'critical date source required'],
   ['update-deal', {base_version:1,fields:{outcome:'invalid'}}, 'deal_outcome_check'],
   ['patch-deal-field', {field:'phase',value:'invalid',base_event_id:null}, 'bad phase invalid'],
@@ -230,4 +230,17 @@ test('QA seed provides a populated namespace-isolated synthetic shared tour', as
   assert.equal((await dispatch(new Request(`${origin}/api/share/report`))).status, 401);
   await seed('another-tour');
   assert.deepEqual((await (await read('report')).json()).data, report);
+});
+
+for (const viewer of ['joe', 'dell']) test(`QA authenticated session identifies synthetic ${viewer}`, async () => {
+  const { dispatch } = await createQaServer();
+  const origin = 'http://localhost';
+  assert.equal((await dispatch(new Request(`${origin}/api/system-work/session`))).status, 401);
+  const response = await dispatch(new Request(`${origin}/api/test/seed`, { method: 'POST',
+    headers: { 'content-type': 'application/json' }, body: JSON.stringify({ namespace: `session-${viewer}`, viewer }) }));
+  const { cookie } = await response.json();
+  const session = await dispatch(new Request(`${origin}/api/system-work/session`, {
+    headers: { cookie: `${cookie.name}=${cookie.value}` } }));
+  assert.equal(session.status, 200);
+  assert.deepEqual(await session.json(), { actor: { slug: viewer } });
 });

@@ -4,6 +4,8 @@ import { createDocContext, docPage, DOC_PAGES } from './doc-context-model.js';
 // context and leave adapters untouched. It never persists business data.
 export const pageDocContext = typeof document === 'undefined' ? null : createDocContext({ page: docPage(globalThis.location) });
 
+globalThis.addEventListener?.('doctorcre-session-invalidated', () => pageDocContext?.clear());
+
 export function observeDocClient(client, context = pageDocContext) {
   if (!context) return client;
   const reads = new Set(Object.values(DOC_PAGES).flatMap(page => page.reads));

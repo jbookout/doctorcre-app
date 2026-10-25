@@ -447,7 +447,7 @@ export const SEARCH_STATES = Object.freeze([
  * never collapse into one, and this page keeps them apart.
  */
 export function classifySearchFailure(error) {
-  if (error && error.payload && nonEmptyString(error.payload.error)) return "refused";
+  if ([401,403].includes(error?.status) || (error && error.payload && nonEmptyString(error.payload.error))) return "refused";
   return "unavailable";
 }
 
@@ -476,6 +476,7 @@ export function searchPhase({ status, payload, catchUp = null, submitted = false
   if (status === "loading") return "loading";
   if (status === "unavailable" || status === "refused" || status === "unknown") return status;
   if (!submitted) return "empty";
+  if (catchUp?.state === "unavailable") return "partial";
   if (catchUp && catchUp.state === "needs_disambiguation") return "disambiguation";
   if (!payload) return "empty";
   if (truncationNotes(payload, catchUp).length > 0) return "partial";
@@ -521,10 +522,12 @@ function assertNotPreferences(key) {
   if (key === PREFERENCES_KEY) throw new Error("saved views never write the workspace preference key");
 }
 
-export function readSavedViews(storage) {
+export function readSavedViews(storage, actor) {
+  try { storage?.removeItem(SAVED_VIEWS_KEY); } catch {}
+  if (typeof actor !== "string" || !actor) return Object.freeze([]);
   if (!storage) return Object.freeze([]);
   let raw = null;
-  try { raw = storage.getItem(SAVED_VIEWS_KEY); } catch { return Object.freeze([]); }
+  try { raw = storage.getItem(`${SAVED_VIEWS_KEY}:${encodeURIComponent(actor)}`); } catch { return Object.freeze([]); }
   let parsed = null;
   try { parsed = JSON.parse(raw || "[]"); } catch { return Object.freeze([]); }
   if (!Array.isArray(parsed)) return Object.freeze([]);
@@ -538,7 +541,8 @@ export function readSavedViews(storage) {
     })));
 }
 
-export function writeSavedViews(storage, views) {
+export function writeSavedViews(storage, views, actor) {
+  if (typeof actor !== "string" || !actor) return Object.freeze([]);
   if (!storage) return Object.freeze([]);
   const next = Object.freeze((Array.isArray(views) ? views : []).slice(0, SAVED_VIEWS_MAX).map((view) => Object.freeze({
     name: view.name, query: view.query, kinds: Object.freeze([...(view.kinds || [])]),
@@ -546,7 +550,7 @@ export function writeSavedViews(storage, views) {
   assertNotPreferences(SAVED_VIEWS_KEY);
   // Storage is a convenience and never a requirement: a browser that refuses it
   // keeps the views for this page's lifetime and says nothing was stored.
-  try { storage.setItem(SAVED_VIEWS_KEY, JSON.stringify(next)); } catch { /* a convenience, never a requirement */ }
+  try { storage.setItem(`${SAVED_VIEWS_KEY}:${encodeURIComponent(actor)}`, JSON.stringify(next)); } catch { /* a convenience, never a requirement */ }
   return next;
 }
 

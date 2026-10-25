@@ -20,7 +20,7 @@ for (const width of [390, 1280]) for (const theme of ['dark', 'light']) {
       const path = new URL(r.request().url()).pathname;
       return r.fulfill({ json: path === '/api/tours/detail' ? { data: fixture }
         : path === '/api/tours/library' ? { data: { tours: [{ id: tourId, name: fixture.name, status: 'scheduled' }] } }
-        : path === '/api/system-work/session' ? { actor: { slug: 'joe' }, csrf_token: 'synthetic-only' } : {} });
+        : ['/api/system-work/session','/auth/session'].includes(path) ? { actor: { slug: 'joe' }, csrf_token: 'synthetic-only' } : {} });
     });
     const shot = async name => {
       if (!process.env.UI_SCREENSHOT_DIR) return;

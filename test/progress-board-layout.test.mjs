@@ -87,6 +87,9 @@ parent.document.body.setAttribute("data-measure", JSON.stringify({ cards: cards.
 function serve() {
   const server = createServer(async (request, response) => {
     const url = new URL(request.url, "http://127.0.0.1");
+    if (['/api/system-work/session','/auth/session'].includes(url.pathname)) {
+      response.writeHead(200, {'content-type':'application/json'}); response.end(JSON.stringify({actor:{slug:'joe'},csrf_token:'synthetic-session'})); return;
+    }
     if (request.method === "POST" && url.pathname === "/mcp") {
       let body = "";
       for await (const chunk of request) body += chunk;
@@ -149,7 +152,8 @@ for (const width of [1440, 390]) test(`Live expansion keeps browser focus throug
   await page.route("**/*", async route => {
     const url = new URL(route.request().url());
     if (url.origin !== "http://board.test") return route.abort();
-    const path = url.pathname === "/" ? "control-room.html" : url.pathname.slice(1);
+    const path = url.pathname === "/" ? "control-room.html"
+      : url.pathname.startsWith("/icons/") ? `public-shell${url.pathname}` : url.pathname.slice(1);
     let body = await readFile(join(ROOT, path));
     if (path === "control-room.html") body = Buffer.from(String(body).replace(/<script\b[^>]*>[\s\S]*?<\/script>/g, ""));
     await route.fulfill({ body, contentType: TYPES[extname(path)] || "application/octet-stream" });

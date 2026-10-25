@@ -153,15 +153,15 @@ test("B05-5 saving, renaming and resetting a view never touches the workspace pr
     setItem: (key, value) => { written.push(key); map.set(key, value); },
     removeItem: (key) => map.delete(key),
   };
-  let views = writeSavedViews(storage, saveView([], { name: "Pensacola leads", query: "Pensacola", kinds: ["leads"] }));
+  let views = writeSavedViews(storage, saveView([], { name: "Pensacola leads", query: "Pensacola", kinds: ["leads"] }), "joe");
   assert.deepEqual(views.map((view) => view.name), ["Pensacola leads"]);
-  views = writeSavedViews(storage, renameView(views, "Pensacola leads", "Panhandle leads"));
+  views = writeSavedViews(storage, renameView(views, "Pensacola leads", "Panhandle leads"), "joe");
   assert.deepEqual(views.map((view) => view.name), ["Panhandle leads"]);
-  assert.deepEqual([...readSavedViews(storage)], [...views]);
-  views = writeSavedViews(storage, Object.freeze([]));
+  assert.deepEqual([...readSavedViews(storage, "joe")], [...views]);
+  views = writeSavedViews(storage, Object.freeze([]), "joe");
   assert.deepEqual([...views], []);
 
-  assert.deepEqual([...new Set(written)], [SAVED_VIEWS_KEY], "one key, and it is not the preference key");
+  assert.deepEqual([...new Set(written)], [`${SAVED_VIEWS_KEY}:joe`], "one key, and it is not the preference key");
   assert.equal(written.includes(PREFERENCES_KEY), false, "a saved view changes no partner preference");
   assert.equal(map.has(PREFERENCES_KEY), false);
   assert.notEqual(SAVED_VIEWS_KEY, PREFERENCES_KEY);
@@ -355,7 +355,7 @@ test("B05-13 the fixture derives candidates the way findCatchUpCandidates does: 
 test("B05-14 the interface contract still pins both verbs alphabetically and no route moves", () => {
   assert.equal(routes.version, "1.21.0", "no new route: the Search tab lives on /business");
   assert.equal(routes.routes["/search"], "search.html");
-  assert.equal(contract.producer.source_commit, "e2e484b1933bfd63c10cc9a1b3350132948f6f74", "the producer pin includes the Codex checkpoint read");
+  assert.equal(contract.producer.source_commit, "1df9b9936394164dd55e815f8a8bf69649508ccc", "the producer pin includes the Codex checkpoint read");
   for (const verb of ["find", "find-and-catch-up"]) assert.ok(contract.mcp_operations.includes(verb), `${verb} is pinned`);
   assert.deepEqual(contract.mcp_operations, [...contract.mcp_operations].toSorted(), "mcp_operations stays sorted");
   const at = contract.mcp_operations.indexOf("find");

@@ -193,7 +193,7 @@ tr.parked .park-button { border-color: var(--hairline-strong); color: var(--fg);
 .agenda-fact { padding: var(--space-3) 0; border-top: var(--hairline-width) solid var(--hairline); }
 .agenda-fact label { display: block; color: var(--fg-muted); font-size: var(--font-size-1); }
 .agenda-fact p { margin: var(--space-1) 0 0; font-size: var(--font-size-1); }
-.agenda-panel footer { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-top: var(--space-4); }
+.app-layout-main .agenda-panel > footer { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-top: var(--space-4); }
 .agenda-panel footer .text-button { width: 100%; }
 
 /* ------------------------------------------------------------ confirmations, toast */

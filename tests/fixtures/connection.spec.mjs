@@ -11,6 +11,7 @@ test('going offline clears health during a pending refresh and reconnect reads a
     if (url.origin !== 'http://localhost') return route.abort();
     if (url.pathname === '/connection-fixture') return route.fulfill({ contentType: 'text/html', body:
       '<header id="shell"></header><main><h1>Connection fixture</h1></main><script type="module">import {mountAppLayout} from "/js/app-layout.js";mountAppLayout(document,document.querySelector("#shell"),"/search");</script>' });
+    if (['/api/system-work/session','/auth/session'].includes(url.pathname)) return route.fulfill({json:{actor:{slug:'joe'},csrf_token:'synthetic-session'}});
     if (url.pathname === '/mcp') {
       const name = route.request().postDataJSON().params.name;
       if (name === 'deal-room-board') boardReads++;

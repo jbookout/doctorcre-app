@@ -276,6 +276,10 @@ export function mountAcceptedItinerary(root, initial) {
     try {
       if (!initial.basemapStyle) return;
       if (win.navigator.onLine === false) { offline(); return; }
+      const stylesheet = new URL('./vendor/maplibre-gl-6.4.1/maplibre-gl.css', import.meta.url).pathname;
+      if (![...doc.querySelectorAll('link[rel="stylesheet"]')].some(link => new URL(link.href).pathname === stylesheet)) {
+        const link = doc.createElement('link'); link.rel = 'stylesheet'; link.href = stylesheet; doc.head.append(link);
+      }
       gl = await (initial.loadMapLibre || loadVendoredMapLibre)();
       if (destroyed || generation !== thisGeneration) return;
       gl.setWorkerUrl(new URL("./vendor/maplibre-gl-6.4.1/maplibre-gl-worker.mjs", import.meta.url).href);

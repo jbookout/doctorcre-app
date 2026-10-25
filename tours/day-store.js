@@ -1,5 +1,8 @@
+import { sessionEpoch } from '../js/offline-tour-session.js';
 // App-owned drafts only. Canonical notes and business filing belong to CARR.
 export function createDayStore(indexedDB, name = "doctorcre-tour-day-drafts-v1") {
+  const win = globalThis.window;
+  const epoch = win ? sessionEpoch(win) : null;
   const opened = new Promise((resolve, reject) => {
     if (!indexedDB) { reject(new Error("storage_unavailable")); return; }
     const request = indexedDB.open(name, 1);
@@ -12,6 +15,7 @@ export function createDayStore(indexedDB, name = "doctorcre-tour-day-drafts-v1")
   });
   async function transaction(table, operation, mode = "readwrite") {
     const db = await opened;
+    if (win && (epoch === null || epoch !== sessionEpoch(win))) throw new Error("session_revoked");
     return new Promise((resolve, reject) => {
       const tx = db.transaction(table, mode), store = tx.objectStore(table);
       let result;

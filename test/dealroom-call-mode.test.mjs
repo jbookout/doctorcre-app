@@ -110,7 +110,7 @@ function drawnButton(html, attribute, value) {
 
 // ------------------------------------------------------------ fakes
 
-function harness({ agenda = [], state = { state: "idle" }, statuses = [], contextDeals, withAgenda = true } = {}) {
+function harness({ agenda = [], state = { state: "idle" }, statuses = [], contextDeals, withAgenda = true, agendaResult } = {}) {
   const doc = callModeDocument();
   const requests = [];
   const timers = [];
@@ -149,7 +149,7 @@ function harness({ agenda = [], state = { state: "idle" }, statuses = [], contex
     agendaDeals: () => agenda,
     scope: () => ({ workspace_kind: "team" }),
     toast: (message) => calls.toasts.push(message),
-    ...(withAgenda ? { startAgenda: async () => { calls.startAgenda += 1; } } : {}),
+    ...(withAgenda ? { startAgenda: async () => { calls.startAgenda += 1; return agendaResult; } } : {}),
     setInterval: (fn, ms) => { timers.push({ fn, ms }); return timers.length; },
     clearInterval: (handle) => { if (timers[handle - 1]) timers[handle - 1].cleared = true; },
     setTimeout: (fn, ms) => { timers.push({ fn, ms }); return timers.length; },
@@ -394,6 +394,25 @@ test("confirming one item resolves that item only; skipping records a no", async
   assert.deepEqual(calls.createOutlookDraft, [], "approving a task creates no draft");
 });
 
+test('uncertain candidate approval replays one retained request and blocks a changed decision', async () => {
+  const { html, calls, controller, client } = await reviewReady();
+  const sent = []; let lost = true;
+  client.resolvePostCallCandidate = async args => {
+    sent.push(structuredClone(args));
+    if (lost) { lost = false; throw new Error('reply lost after commit'); }
+    return { ok: true, replayed: true };
+  };
+  try {
+    await controller.handleClick(drawnButton(html, 'data-post-call-confirm', 'cand-joe'));
+    await controller.handleClick(drawnButton(html, 'data-post-call-skip', 'cand-joe'));
+    assert.equal(sent.length, 1, 'an uncertain yes cannot become a new no');
+    await controller.handleClick(drawnButton(html, 'data-post-call-confirm', 'cand-joe'));
+    assert.equal(sent.length, 2);
+    assert.deepEqual(sent[0], sent[1]);
+    assert.match(calls.toasts[0], /unknown|confirmed|reply lost/i);
+  } finally { controller.dispose(); }
+});
+
 test("an Outlook draft is created only from its own approve button, and never sent", async () => {
   const { html, calls, controller } = await reviewReady();
   await controller.handleClick(drawnButton(html, "data-create-outlook-draft", "draft-1"));
@@ -548,4 +567,15 @@ test('shared weekly Call mode records with consent without claiming a page agend
  assert.equal(calls.publishCallContext.length,1);assert.equal(calls.startAgenda,0);
  assert.ok(calls.toasts.includes('Weekly deal call is recording.'));assert.ok(calls.toasts.every(text=>!text.includes('agenda is open')));
  assert.equal(controller.state.postCall.status,'context_ready');
+});
+
+
+test('a handled agenda failure does not claim that the agenda opened while recording',async()=>{
+ const h=harness({agenda:agendaOf(1),agendaResult:false});
+ h.doc.getElementById('callModeConsent').checked=true;
+ try{
+  await h.controller.start('weekly_deal_call');
+  assert.ok(h.calls.toasts.some(message=>message.includes('agenda could not open')));
+  assert.ok(h.calls.toasts.every(message=>!message.includes('agenda is open')));
+ }finally{h.controller.dispose();}
 });
