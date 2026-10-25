@@ -198,8 +198,8 @@
         "limit": 5822
       },
       "requestCount": {
-        "baseline": 18,
-        "limit": 18
+        "baseline": 19,
+        "limit": 19
       },
       "criticalBytes": {
         "baseline": 736330,
@@ -306,6 +306,14 @@
       }
     },
     "run": "https://github.com/jbookout/doctorcre-app/actions/runs/40207770313",
-    "reason": "Initial baselines for the six new tasks use the required Linux gate environment. The same application head passes the Mac guard; platform timing changes which shared-shell startup reads finish before the useful outcome. All preexisting budgets remain unchanged. No performance repair or speedup is claimed."
+    "reason": "Initial baselines for the six new tasks use the required Linux gate environment. The same application head passes the Mac guard; platform timing changes which shared-shell startup reads finish before the useful outcome. All preexisting budgets remain unchanged. No performance repair or speedup is claimed.",
+    "tourEntryRead": {
+      "screen": "task-tour-library",
+      "previousBaseline": 18,
+      "baseline": 19,
+      "prHeadCommit": "9538a04d790e43d259953ac337ab701dff43f356",
+      "run": "https://github.com/jbookout/doctorcre-app/actions/runs/40219015766",
+      "reason": "The phone Tour day entry now verifies accepted-route eligibility through tour detail. Opening the library dialog still reads fresh detail to detect account transitions. The hosted maximum cold sample records two detail reads instead of one, adding exactly one required read. Preserve session revalidation and every other task budget."
+    }
   }
 }
