@@ -39,12 +39,12 @@ export function mountPlanner({ document, window, api = createPlannerClient() }) 
       pageDocContext?.clear();
       ++refreshEpoch; ++planEpoch; ++searchEpoch; ++dialogEpoch; planClient = ""; searchClient = ""; files = []; selectedRecord = null;
       savedDraft = null; ++clientsEpoch; clientPage = 0; clientPageCount = 1; loadingClients = false; clientsMessage = scope ? "" : "Sign in to continue."; clients.clear(); tours = []; plan.reset(); search.reset(); closeDialog();
-      $("#detail-content").replaceChildren(); renderedTour = null; message("#detail-title", "Tour"); message("#detail-message", ""); $("#tour-filter").value = ""; fillClients(); renderClientChoices(); renderLibrary(); renderFiles();
+      $("#detail-content").replaceChildren(); renderedTour = null; message("#detail-title", "Tour"); message("#detail-message", ""); $("#tour-filter").value = ""; fillClients(); renderLibrary(); renderFiles();
       try { window.sessionStorage.removeItem(key); } catch { }
       for (const target of ["#plan-message", "#space-message", "#tour-library-state"]) message(target, scope ? "Session changed. New draft started." : "Sign in to continue.");
       message("#planner-updated", "Unavailable");
       $(".freshness").classList.remove("current");
-    } else if (scope) {
+    } else if (scope) { clientsMessage = "";
       try {
         if (savedDraft?.scope === scope) {
           if (planEpoch === 0) { plan.restore(savedDraft.plan); planClient = savedDraft.planClient || ""; }
@@ -52,7 +52,7 @@ export function mountPlanner({ document, window, api = createPlannerClient() }) 
         }
       } catch { }
     }
-    syncForm("plan", plan); syncForm("space", search); fillClients();
+    syncForm("plan", plan); syncForm("space", search); fillClients(); renderClientChoices();
   }
   async function read(operation) {
     try { return await operation(); }

@@ -626,3 +626,15 @@ test('D2 restored client uses its exact record without downloading directory pag
     assert.equal(directoryReads, 0);
   } finally { app.close(); }
 });
+
+test('D2 session establishment clears early client-loading guidance', async () => {
+  const boot = deferred();
+  const app = harness({ scope: null, library: () => boot.promise });
+  try {
+    await app.loadClients();
+    assert.match(app.doc.querySelector('#plan-clients-state').textContent, /Refresh tours/);
+    app.service.scope = 'synthetic-scope'; boot.resolve([]); await app.view.ready;
+    assert.equal(app.doc.querySelector('#plan-clients-state').textContent, '');
+    assert.equal(app.doc.querySelector('#space-clients-state').textContent, '');
+  } finally { app.close(); }
+});
