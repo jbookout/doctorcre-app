@@ -1,3 +1,4 @@
+import { CHROMIUM_SAFETY_ARGS } from '../scripts/chromium-safety-args.mjs';
 // The one way browser tests get Chromium or WebKit, a wait budget and a fake clock.
 //
 // Launching a fresh browser for every test and giving each file its own 1-7 s
@@ -43,7 +44,7 @@ function browserEngine(engine) {
   return {
     async launch(options = {}) {
       const key = JSON.stringify(options);
-      if (!launched.has(key)) launched.set(key, engine.launch(options));
+      if (!launched.has(key)) launched.set(key, engine.launch({ ...options, ...(engine === playwrightChromium ? { args: [...CHROMIUM_SAFETY_ARGS, ...(options.args || [])] } : {}) }));
       const browser = await launched.get(key);
       const contexts = new Set();
       return {
