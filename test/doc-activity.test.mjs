@@ -97,3 +97,19 @@ test('Doc activity registers its route, gate and deployed files alongside the ma
   assert.equal(contract.gatePaths['/doc-activity'], '/control-room');
   for (const route of ['/deals', '/leads', '/relationships', '/invoices', '/control-room/progress']) assert.ok(contract.routes[route], `main route survives: ${route}`);
 });
+
+test('Doc does not fetch suggestions for a queued context that was superseded before its read', async t => {
+  const dom = new JSDOM('<main id="appMainSlot"></main>');
+  let snapshot = { state:'updating', ready:false, page:'leads', epoch:0, label:'Leads', records:[], observedAt:null };
+  let listener, reads = 0;
+  const context = { snapshot:() => snapshot, subscribe(fn) { listener = fn; fn(snapshot); return () => {}; }, tick() {}, clear() {} };
+  const client = { listDocSuggestions:async() => { reads++; return {ok:true,suggestions:[]}; }, listFeatureSwitches:async() => ({}) };
+  const presence = mountDocPresence({document:dom.window.document,window:dom.window,context,client});
+  t.after(() => { presence.dispose(); dom.window.close(); });
+  await presence.refresh();
+  reads = 0;
+  snapshot = {...snapshot,ready:true,state:'ready'}; listener(snapshot);
+  snapshot = {...snapshot,epoch:1,ready:false,state:'updating'}; listener(snapshot);
+  await new Promise(resolve => setTimeout(resolve,20));
+  assert.equal(reads,0);
+});
