@@ -36,7 +36,15 @@ async function setup(t,{width=1440,motion='no-preference',onRoute,engine=chromiu
   const file=contract.routes[url.pathname]||url.pathname.slice(1);
   try{return route.fulfill({body:await readFile(new URL(file,root)),contentType:/\.m?js$/.test(file)?'text/javascript':file.endsWith('.css')?'text/css':file.endsWith('.json')?'application/json':'text/html'});}catch{return route.fulfill({status:404,body:''});}
  });
- const goto=async path=>{await page.goto('http://localhost'+path,{waitUntil:'domcontentloaded'});await page.locator('#docPresence').waitFor({state:'attached'});await page.evaluate(()=>document.dispatchEvent(new Event('doctorcre:open-doc')));await page.locator('#docDetail[open]').waitFor();await page.locator('#docClose').click();};
+ const goto=async path=>{
+  await page.goto('http://localhost'+path,{waitUntil:'domcontentloaded'});
+  await page.locator('#docPresence').waitFor({state:'attached'});
+  const target=new URL(path,'http://localhost');
+  if(target.pathname==='/deals' && target.searchParams.has('deal'))await page.locator('#recordPanel[open]').waitFor();
+  await page.evaluate(()=>document.dispatchEvent(new Event('doctorcre:open-doc')));
+  await page.locator('#docDetail[open]').waitFor();
+  await page.locator('#docClose').click();
+ };
  return{page,goto,calls,errors};
 }
 
