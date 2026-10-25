@@ -282,7 +282,7 @@ test('PR129 #11 light theme pairs popup and filter text with light surfaces',asy
  await goto('/deals?view=board');await page.evaluate(()=>document.documentElement.dataset.theme='light');await page.locator('.kanban-card[data-id="d14"]').click();await page.locator('#detailPhase').waitFor();
  const pair=await page.locator('#recordPanel').evaluate(n=>({background:getComputedStyle(n).backgroundColor,text:getComputedStyle(n.querySelector('h2')).color}));
  assert.ok((Math.max(luminance(pair.background),luminance(pair.text))+.05)/(Math.min(luminance(pair.background),luminance(pair.text))+.05)>=4.5,JSON.stringify(pair));
- assert.equal(await page.locator('#recordPanel textarea').evaluate(n=>getComputedStyle(n).colorScheme),'light');
+ for(const scheme of await page.locator('#recordPanel textarea').evaluateAll(ns=>ns.map(n=>getComputedStyle(n).colorScheme)))assert.equal(scheme,'light');
  const fields=await page.locator('#recordPanel input,#recordPanel select,#recordPanel textarea').evaluateAll(ns=>ns.map(n=>({background:getComputedStyle(n).backgroundColor,text:getComputedStyle(n).color})));
  for(const field of fields)assert.ok((Math.max(luminance(field.background),luminance(field.text))+.05)/(Math.min(luminance(field.background),luminance(field.text))+.05)>=4.5,JSON.stringify(field));
  const summaryColor=await page.locator('#recordPanel summary').first().evaluate(n=>getComputedStyle(n).color);assert.ok((luminance(pair.background)+.05)/(luminance(summaryColor)+.05)>=4.5,summaryColor);
