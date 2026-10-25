@@ -236,3 +236,88 @@ test('discard keeps its status when an earlier clipboard request completes', asy
   assert.equal(await page.locator('#requirementEmailStatus').textContent(), 'Email draft discarded.');
   assert.equal(await page.getByLabel('Email message').inputValue(), '');
 });
+
+
+test('Enter in requirement fields preserves the edited preview until Generate is clicked', async t => {
+  const page = await open(t); await room(page);
+  await page.getByText('Draft requirement email', { exact: true }).click();
+  await page.getByLabel('Use', { exact: true }).fill('Dental office');
+  await page.getByLabel('Location', { exact: true }).fill('Pensacola');
+  await page.getByRole('button', { name: 'Generate email preview', exact: true }).click();
+  await page.getByLabel('Email subject').fill('Edited subject');
+  await page.getByLabel('Email message').fill('Edited approved requirements');
+  for (const label of ['Email subject', 'Size']) {
+    await page.getByLabel(label, { exact: true }).press('Enter');
+    assert.equal(await page.getByLabel('Email subject').inputValue(), 'Edited subject');
+    assert.equal(await page.getByLabel('Email message').inputValue(), 'Edited approved requirements');
+  }
+  await page.getByRole('button', { name: 'Generate email preview', exact: true }).click();
+  assert.equal(await page.getByLabel('Email subject').inputValue(), 'Space requirement · Dental office · Pensacola');
+});
+
+
+test('long approved requirements generate a valid subject that can be edited and regenerated', async t => {
+  const page = await open(t); await room(page);
+  await page.getByText('Draft requirement email', { exact: true }).click();
+  await page.getByLabel('Use', { exact: true }).fill('Dental office '.repeat(50));
+  await page.getByLabel('Location', { exact: true }).fill('Pensacola '.repeat(50));
+  await page.getByRole('button', { name: 'Generate email preview', exact: true }).click();
+  assert.equal((await page.getByLabel('Email subject').inputValue()).length, 500);
+  await page.evaluate(() => Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: async text => { window.copiedRequirement = text; } } }));
+  await page.getByRole('button', { name: 'Copy email draft', exact: true }).click();
+  assert.equal((await page.evaluate(() => window.copiedRequirement)).split('\n')[0].length, 509);
+  await page.getByLabel('Email subject').press('End');
+  await page.getByLabel('Email subject').press('Backspace');
+  assert.equal(await page.locator('#requirementEmailForm').evaluate(form => form.checkValidity()), true);
+  await page.getByLabel('Use', { exact: true }).fill('Medical office');
+  await page.getByLabel('Location', { exact: true }).fill('Mobile');
+  await page.getByRole('button', { name: 'Generate email preview', exact: true }).click();
+  assert.equal(await page.getByLabel('Email subject').inputValue(), 'Space requirement · Medical office · Mobile');
+});
+
+
+for (const outcome of ['copied', 'denied']) {
+  test(`pending requirement copy reports ${outcome} after an ordinary edit`, async t => {
+    const page = await open(t); await room(page);
+    await page.getByText('Draft requirement email', { exact: true }).click();
+    await page.getByLabel('Email subject').fill('Original subject');
+    await page.getByLabel('Email message').fill('Original approved requirements');
+    await page.evaluate(() => Object.defineProperty(navigator, 'clipboard', { configurable: true, value: {
+      writeText: text => new Promise((resolve, reject) => {
+        window.copiedRequirement = text;
+        window.finishRequirementCopy = denied => denied ? reject(new Error('Synthetic denial')) : resolve();
+      }),
+    } }));
+    await page.getByRole('button', { name: 'Copy email draft', exact: true }).click();
+    await page.getByLabel('Email message').fill('Edited approved requirements');
+    await page.evaluate(denied => window.finishRequirementCopy(denied), outcome === 'denied');
+    assert.equal(await page.getByLabel('Email message').inputValue(), 'Edited approved requirements');
+    assert.equal(await page.evaluate(() => window.copiedRequirement), 'Subject: Original subject\n\nOriginal approved requirements');
+    if (outcome === 'copied') {
+      assert.equal(await page.locator('#requirementEmailStatus').textContent(), 'Email draft copied. Nothing sent.');
+    } else {
+      assert.match(await page.locator('#requirementEmailStatus').textContent(), /copy manually/i);
+      assert.equal(await page.getByLabel('Email message').evaluate(input => input.value.slice(input.selectionStart, input.selectionEnd)), 'Edited approved requirements');
+    }
+  });
+}
+
+
+test('requirement preview does not retain the old deal name after a room refresh', async t => {
+  const page = await open(t); await room(page);
+  const oldTitle = await page.locator('#panelTitle').textContent();
+  await page.getByText('Draft requirement email', { exact: true }).click();
+  await page.getByLabel('Email message').fill('Approved anonymous requirements');
+  await page.evaluate(async () => {
+    const { state } = await import('/js/pipeline.js');
+    const read = state.client.getDeal.bind(state.client);
+    state.client.getDeal = async (...args) => {
+      const detail = await read(...args);
+      return { ...detail, deal: { ...detail.deal, name: 'Renamed synthetic deal' } };
+    };
+  });
+  await page.locator('[data-refresh-detail]').click();
+  await settles(async () => assert.equal(await page.locator('#panelTitle').textContent(), 'Renamed synthetic deal'));
+  assert.ok(!(await page.locator('#requirementEmail').textContent()).includes(oldTitle));
+  assert.equal(await page.getByLabel('Email message').inputValue(), 'Approved anonymous requirements');
+});
