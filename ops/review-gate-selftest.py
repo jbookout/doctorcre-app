@@ -17,7 +17,7 @@ class ReviewGate(unittest.TestCase):
             with self.subTest(path=path, status=status):
                 files = [{"filename": path, "status": status}]
                 self.assertEqual(gate.approved(pr, files, []), expected)
-                self.assertTrue(gate.approved(pr, files, [{"body": "VERDICT: APPROVE\nReviewed-SHA: abc"}]))
+                self.assertTrue(gate.approved(pr, files, [{"body": "VERDICT: APPROVE\nReviewed-SHA: abc\nReviewer: grok"}]))
 
     def test_threshold(self):
         for net, expected in [(150, True), (151, False), (-20, True)]:
@@ -33,20 +33,29 @@ class ReviewGate(unittest.TestCase):
 
     def test_sha_bound_comment_format(self):
         pr = {"changed_files": 0, "additions": 151, "deletions": 0, "head": {"sha": "abc"}}
-        for body, expected in [("VERDICT: APPROVE\nReviewed-SHA: abc", True), ("VERDICT: APPROVE\r\nReviewed-SHA: abc", True), ("VERDICT: CHANGES\nReviewed-SHA: abc", False), ("VERDICT: APPROVE\nReviewed-SHA: old", False), ("prefix\nVERDICT: APPROVE\nReviewed-SHA: abc", False), ("VERDICT: APPROVE\nReviewed-SHA: abcd", False)]:
+        for body, expected in [("VERDICT: APPROVE\nReviewed-SHA: abc\nReviewer: grok", True), ("VERDICT: APPROVE\r\nReviewed-SHA: abc\r\nReviewer: grok", True), ("VERDICT: CHANGES\nReviewed-SHA: abc\nReviewer: grok", False), ("VERDICT: APPROVE\nReviewed-SHA: old\nReviewer: grok", False), ("prefix\nVERDICT: APPROVE\nReviewed-SHA: abc\nReviewer: grok", False), ("VERDICT: APPROVE\nReviewed-SHA: abcd\nReviewer: grok", False)]:
             with self.subTest(body=body):
                 self.assertEqual(gate.approved(pr, [], [{"body": body}]), expected)
+
+    def test_reviewer_third_line(self):
+        pr = {"changed_files": 0, "additions": 151, "deletions": 0, "head": {"sha": "abc"}}
+        for reviewer in ("grok", "Grok", "Grok 4.7", "the Dot", "orchestrator re-pin", "", "someone else", "grok impostor"):
+            with self.subTest(reviewer=reviewer):
+                body = f"VERDICT: APPROVE\nReviewed-SHA: abc\nReviewer: {reviewer}"
+                self.assertEqual(gate.approved(pr, [], [{"body": body}]), reviewer in ("grok", "Grok", "Grok 4.7", "the Dot", "orchestrator re-pin"))
+        for suffix in ("", "\n\nReviewer: grok", "\nOther: grok\nReviewer: grok"):
+            self.assertFalse(gate.approved(pr, [], [{"body": "VERDICT: APPROVE\nReviewed-SHA: abc" + suffix}]))
 
     def test_event_adapter(self):
         pr = {"base": {"ref": "main"}, "additions": 151, "deletions": 0, "head": {"sha": "abc"}, "changed_files": 1}
         for event in ({"number": 4}, {"issue": {"number": 4}}):
             for approved in (False, True):
-                comments = [{"body": "VERDICT: APPROVE\nReviewed-SHA: abc"}] if approved else []
+                comments = [{"body": "VERDICT: APPROVE\nReviewed-SHA: abc\nReviewer: grok"}] if approved else []
                 with patch.object(gate, "api", side_effect=[pr, {}, [{"filename": "safe"}], comments, pr, {}]) as api:
                     gate.run(event, "owner/repo")
                     self.assertEqual(api.call_args.args[1]["state"], "success" if approved else "failure")
         pr["additions"] = 0
-        for comments, expected in [([], "failure"), ([{"body": "VERDICT: APPROVE\nReviewed-SHA: abc"}], "success")]:
+        for comments, expected in [([], "failure"), ([{"body": "VERDICT: APPROVE\nReviewed-SHA: abc\nReviewer: grok"}], "success")]:
             with patch.object(gate, "api", side_effect=[pr, {}, [], comments, pr, {}]) as api:
                 gate.run({"number": 4}, "owner/repo")
                 self.assertEqual(api.call_args.args[1]["state"], expected)
