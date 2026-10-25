@@ -98,6 +98,7 @@ export async function createQaServer({ buildRoot=resolve(repository,'dist/site')
       const {deal,history,...detail}=await client.getDeal(args.deal);
       const changes=await client.getChanges(null);
       return {...deal,...detail,deal_id:deal.id,base_version:deal.version,
+        critical_dates:structuredClone(state.dealStore.criticalDates.get(deal.id) || []),
         events:changes.events.filter(event=>event.subject_id===deal.id)};
     }
     if(name==='new-deal') {
