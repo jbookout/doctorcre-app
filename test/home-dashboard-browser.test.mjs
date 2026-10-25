@@ -95,7 +95,8 @@ async function open(t, { width = 1440, motion = 'reduce', leads = true, delayDet
     catch { return route.fulfill({ status: 404, body: '' }); }
   });
   await page.goto(`${origin}/?mode=live`);
-  await page.waitForFunction(() => /Active deals: \d/.test(document.querySelector('#dealCounts')?.textContent || '') || /unavailable/i.test(document.querySelector('#observedAt')?.textContent || ''));
+  if (hangDetails) await page.waitForFunction(() => /updating|loading/i.test(document.querySelector('#homeCalendar')?.textContent || ''));
+  else await page.waitForFunction(() => /Active deals: \d/.test(document.querySelector('#dealCounts')?.textContent || '') || /unavailable/i.test(document.querySelector('#observedAt')?.textContent || ''));
   if (firstOpen) { await page.locator('#docOpen[data-brief-unseen]').waitFor(); await page.locator('#docOpen').click(); await page.locator('#docMorning').click(); await page.locator('#docMorningBrief[open]').waitFor(); await page.waitForFunction(() => document.getElementById('morningUpdated').hasAttribute('datetime')); await page.locator('#morningClose').click(); }
   return { page, errors, calls, releaseInitialFeed, responses, get boardReads() { return boardReads; }, get feedReads() { return feedReads; }, malformBoard(value) { boardMalformed = value; }, failLeads(value) { leadFailure = value; }, failDetails(value) { detailFailure = value; }, failBoard(value) { failBoard = value; }, updateLead(id, score) { liveLeads.find(row => row.id === id).score = score; } };
 }
@@ -541,7 +542,7 @@ for (const failure of [null, '503']) test(`Slice A Calendar distinguishes confir
   await calendar.getByRole('button', { name: 'Retry calendar and tasks', exact: true }).click();
   await page.waitForFunction(() => /No .*dates.*tasks/i.test(document.querySelector('#homeCalendar').textContent));
   const retried = calls.slice(before);
-  assert.ok(retried.includes('get-deal-room'));
+  assert.ok(retried.includes('read-home-agenda'));
   assert.equal(retried.includes('lead-board'), false, 'agenda retry does not reload unrelated widgets');
   assert.equal(retried.includes('read-invoice-tracker'), false);
  }
@@ -556,13 +557,13 @@ test('Slice A Calendar stays visible while all detail reads are pending', async 
 });
 
 
-test('Slice A Calendar with successful empty details and failed details stays partial', async t => {
+test('Slice A Calendar refuses a snapshot when an agenda source fails', async t => {
  const { page } = await open(t, { emptyAgenda: true, initialDetailFailure: 'partial' });
  await page.waitForFunction(() => document.querySelector('#refreshHome').getAttribute('aria-busy') === 'false');
  const calendar = page.locator('#homeCalendar');
  assert.equal(await calendar.isVisible(), true);
- assert.match(await calendar.textContent(), /Some dates unavailable or missing/);
- assert.doesNotMatch(await calendar.textContent(), /No calendar dates or tasks|Calendar and tasks unavailable/);
+ assert.match(await calendar.textContent(), /Calendar and tasks unavailable/);
+ assert.doesNotMatch(await calendar.textContent(), /No calendar dates or tasks/);
  assert.equal(await calendar.getByRole('button', { name: 'Retry calendar and tasks', exact: true }).isEnabled(), true);
 });
 
