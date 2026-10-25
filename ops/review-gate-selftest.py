@@ -39,10 +39,10 @@ class ReviewGate(unittest.TestCase):
 
     def test_reviewer_third_line(self):
         pr = {"changed_files": 0, "additions": 151, "deletions": 0, "head": {"sha": "abc"}}
-        for reviewer in ("grok", "Grok", "Grok 4.7", "the Dot", "orchestrator re-pin", "", "someone else", "grok impostor"):
+        for reviewer in ("grok", "Grok", "Grok 4.7", "Claude", "Claude Sonnet", "the Dot", "orchestrator re-pin", "", "someone else", "grok impostor"):
             with self.subTest(reviewer=reviewer):
                 body = f"VERDICT: APPROVE\nReviewed-SHA: abc\nReviewer: {reviewer}"
-                self.assertEqual(gate.approved(pr, [], [{"body": body}]), reviewer in ("grok", "Grok", "Grok 4.7", "the Dot", "orchestrator re-pin"))
+                self.assertEqual(gate.approved(pr, [], [{"body": body}]), reviewer in ("grok", "Grok", "Grok 4.7", "Claude", "Claude Sonnet", "the Dot", "orchestrator re-pin"))
         for suffix in ("", "\n\nReviewer: grok", "\nOther: grok\nReviewer: grok"):
             self.assertFalse(gate.approved(pr, [], [{"body": "VERDICT: APPROVE\nReviewed-SHA: abc" + suffix}]))
 
