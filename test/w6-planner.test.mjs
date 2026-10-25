@@ -518,12 +518,16 @@ test('QA-019 review guidance while clients load clears when the picker becomes r
 });
 
 test('saved tours open while the client directory is unresolved', async () => {
-  const pending = deferred(); const app = harness({ clients: () => pending.promise });
+  const pending = deferred(), detail = deferred(), reload = deferred();
+  let reads = 0;
+  const app = harness({ clients: () => pending.promise, tour: () => ++reads === 1 ? detail.promise : reload.promise });
   try {
     await settle(); await settle();
     assert.equal(app.doc.querySelectorAll('.tour-button').length, 2);
     app.doc.querySelector('.tour-button').click(); await settle();
+    pending.resolve([]); await settle(); await settle();
+    detail.resolve({ id: clientA, name: 'Demo tour', stops: [] }); await settle();
     assert.equal(app.doc.querySelector('#detail-title').textContent, 'Demo tour');
     assert.equal(app.doc.querySelector('dialog').open, true);
-  } finally { pending.resolve([]); await app.view.ready; app.close(); }
+  } finally { pending.resolve([]); detail.resolve({ id: clientA, name: 'Demo tour', stops: [] }); reload.resolve({ id: clientA, name: 'Demo reload', stops: [] }); await app.view.ready; app.close(); }
 });

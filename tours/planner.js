@@ -215,6 +215,7 @@ export function mountPlanner({ document, window, api = createPlannerClient() }) 
     body.append(element("p", "Packet compilation unavailable", "capability-state"));
   }
   async function refresh({ signal } = {}) {
+    const openTourId = currentTour;
     // Boot, manual and scheduled reads share one generation boundary.
     const docTicket = pageDocContext?.begin('tourLibrary');
     const revision = ++refreshEpoch;
@@ -256,8 +257,8 @@ export function mountPlanner({ document, window, api = createPlannerClient() }) 
       }
     }
     if (!active()) return;
-    const id = currentTour, epoch = currentTour ? ++dialogEpoch : dialogEpoch;
-    if (id && $("#tour-dialog").open) {
+    if (openTourId && currentTour === openTourId && $("#tour-dialog").open) {
+      const id = openTourId, epoch = ++dialogEpoch;
       const detailTicket=pageDocContext?.begin('tourDetail',[id]);
       try { const detail = await read(async () => validateTourDetail(await api.tour(id, { signal }), id)); if (currentTour === id && epoch === dialogEpoch && active()) { pageDocContext?.finish(detailTicket,detail); renderTour(detail); message("#detail-message", ""); } }
       catch (error) { pageDocContext?.fail(detailTicket,error); if (!active()) return; current = false; if (epoch === dialogEpoch) message("#detail-message", unavailable(error) || "Tour temporarily unavailable."); }
