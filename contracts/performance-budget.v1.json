@@ -26,7 +26,10 @@
     "lcpMs": "max(50% of baseline, 750ms)",
     "interactionMs": "max(100% of baseline, 150ms)",
     "jsBytes": "10%",
-    "note": "Lab regression guard, not field Core Web Vitals. Timing budgets retain current slow screens; no performance fix is claimed."
+    "note": "Lab regression guard, not field Core Web Vitals. Timing budgets retain current slow screens; no performance fix is claimed.",
+    "usefulMs": "max(50% of baseline, 750ms)",
+    "requestCount": "No increase above the maximum measured count",
+    "criticalBytes": "10%"
   },
   "screens": {
     "home": {
@@ -112,6 +115,114 @@
         "baseline": 80,
         "limit": 230
       }
+    },
+    "task-agenda": {
+      "lcpMs": {
+        "baseline": 1676,
+        "limit": 2514
+      },
+      "usefulMs": {
+        "baseline": 4861,
+        "limit": 7292
+      },
+      "requestCount": {
+        "baseline": 64,
+        "limit": 64
+      },
+      "criticalBytes": {
+        "baseline": 847303,
+        "limit": 932034
+      }
+    },
+    "task-leads": {
+      "lcpMs": {
+        "baseline": 1660,
+        "limit": 2490
+      },
+      "usefulMs": {
+        "baseline": 4493,
+        "limit": 6740
+      },
+      "requestCount": {
+        "baseline": 25,
+        "limit": 25
+      },
+      "criticalBytes": {
+        "baseline": 1298082,
+        "limit": 1427891
+      }
+    },
+    "task-deal-link": {
+      "lcpMs": {
+        "baseline": 5268,
+        "limit": 7902
+      },
+      "usefulMs": {
+        "baseline": 5328,
+        "limit": 7992
+      },
+      "requestCount": {
+        "baseline": 19,
+        "limit": 19
+      },
+      "criticalBytes": {
+        "baseline": 1034940,
+        "limit": 1138434
+      }
+    },
+    "task-deal-draft": {
+      "lcpMs": {
+        "baseline": 5188,
+        "limit": 7782
+      },
+      "usefulMs": {
+        "baseline": 5613,
+        "limit": 8420
+      },
+      "requestCount": {
+        "baseline": 24,
+        "limit": 24
+      },
+      "criticalBytes": {
+        "baseline": 1034940,
+        "limit": 1138434
+      }
+    },
+    "task-tour-library": {
+      "lcpMs": {
+        "baseline": 1612,
+        "limit": 2418
+      },
+      "usefulMs": {
+        "baseline": 3463,
+        "limit": 5195
+      },
+      "requestCount": {
+        "baseline": 3,
+        "limit": 3
+      },
+      "criticalBytes": {
+        "baseline": 662698,
+        "limit": 728968
+      }
+    },
+    "task-tour-offline": {
+      "lcpMs": {
+        "baseline": 160,
+        "limit": 910
+      },
+      "usefulMs": {
+        "baseline": 197,
+        "limit": 947
+      },
+      "requestCount": {
+        "baseline": 17,
+        "limit": 17
+      },
+      "criticalBytes": {
+        "baseline": 1519912,
+        "limit": 1671904
+      }
     }
   },
   "bundle": {
@@ -162,6 +273,28 @@
             "candidate": "button.card-open"
           }
         }
+      }
+    }
+  },
+  "taskBaseline": {
+    "measuredAt": "2026-10-25T15:23:27.957Z",
+    "sourceCommit": "0a867e44f5cca0c597bbd0b844aeeaae676c3c8e",
+    "buildDigest": "52963159522e71835aa0a61800e5101aa5569a48096632475a98adb0b3f22fa8",
+    "browserVersion": "153.0.8010.12",
+    "nodeVersion": "v26.12.1",
+    "platform": "darwin",
+    "measurement": {
+      "usefulMs": "Navigation start through verified useful task outcome, including scripted actions. Offline measures the same-tab reload after online preparation.",
+      "requestCount": "API, session, MCP and change-feed requests plus in-memory fixture public client calls through the useful outcome. Includes offline preparation. Maximum across cold samples.",
+      "criticalBytes": "Successful same-origin decoded response body bytes through the useful outcome, including offline shell preparation. Not compressed wire bytes. Maximum across cold samples.",
+      "policy": "Task scenarios block non-loopback resources and use synthetic adapters only. Each sample uses a cold context. Service workers are enabled only for saved-tour offline.",
+      "scenarios": {
+        "task-agenda": "40 active synthetic deals; detail reads delayed 75ms",
+        "task-leads": "375 synthetic leads; board and detail reads delayed 75ms; intercepted telephone link and persisted pageshow",
+        "task-deal-link": "exact fixture deal URL; detail reads delayed 75ms",
+        "task-deal-draft": "fixture deal; unsent draft across browser Back and reopen; detail reads delayed 75ms",
+        "task-tour-library": "40 synthetic saved tours; client directory delayed 250ms",
+        "task-tour-offline": "saved same-tab itinerary; service worker enabled; HTTP cache cleared; offline reload"
       }
     }
   }
