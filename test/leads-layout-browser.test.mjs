@@ -89,6 +89,10 @@ for (const width of [1440, 390]) test(`Lead lanes start with five cards and expa
   const lane = page.locator('.stage-column[data-stage="new"]');
   await lane.locator('.lead-card').first().waitFor();
   assert.equal(await lane.locator('.lead-card').count(), 5);
+  if (process.env.LEADS_SCREENSHOT_DIR) {
+    await mkdir(process.env.LEADS_SCREENSHOT_DIR, { recursive: true });
+    await lane.screenshot({ path: `${process.env.LEADS_SCREENSHOT_DIR}/bounded-${width}.png` });
+  }
   assert.equal(await page.locator('#filterSummary').innerText(), '200 matching leads');
   const expand = lane.getByRole('button', { name: 'Show all 100 New leads', exact: true });
   await expand.focus();
@@ -100,6 +104,7 @@ for (const width of [1440, 390]) test(`Lead lanes start with five cards and expa
   const headTop = await lane.locator('.stage-head').evaluate(node => node.getBoundingClientRect().top);
   await lane.locator('.lead-stack').evaluate(node => node.scrollTop = 900);
   assert.equal(await lane.locator('.stage-head').evaluate(node => node.getBoundingClientRect().top), headTop);
+  if (process.env.LEADS_SCREENSHOT_DIR) await lane.screenshot({ path: `${process.env.LEADS_SCREENSHOT_DIR}/expanded-${width}.png` });
   await page.locator('#refreshBoard').click();
   await page.waitForFunction(() => document.querySelector('#leadBoard').getAttribute('aria-busy') === 'false');
   assert.equal(await lane.locator('.lead-card').count(), 100);
