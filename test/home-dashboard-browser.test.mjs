@@ -82,12 +82,6 @@ async function open(t, { width = 1440, height = 1000, invoiceAttention = false, 
     }
     if (['/api/system-work/session','/auth/session'].includes(url.pathname)) return route.fulfill({ json: { actor: { slug: 'joe', label: 'Demo partner' }, csrf_token: 'synthetic' } });
     if (url.pathname.startsWith('/api/') || url.pathname === '/app-release') return route.fulfill({ status: 503, json: {} });
-    if (tasksOnly && url.pathname === '/js/fixture-client.js') {
-      let source = await readFile(new URL('../js/fixture-client.js', import.meta.url), 'utf8');
-      source = source.replace('export async function createFixtureClient', 'async function originalFixtureClient');
-      source += `\nexport async function createFixtureClient(options) { const client = await originalFixtureClient(options); const read = client.getHomeAgenda; client.getHomeAgenda = async () => { const result = await read(); return { ...result, deals: result.deals.map(deal => ({ ...deal, critical_dates: [], next_actions: [{ id: 'demo-task-' + deal.id, description: 'Demo follow-up', status: 'open', due_on: '2026-10-01', owner: 'joe' }] })) }; }; return client; }`;
-      return route.fulfill({ body: source, contentType: 'text/javascript' });
-    }
     const file = url.pathname === '/deals' && url.searchParams.get('view') === 'national' ? 'index.html' : routes[url.pathname] || url.pathname.slice(1);
     try { return route.fulfill({ body: await readFile(new URL(`../${file}`, import.meta.url)), contentType: /\.m?js$/.test(file) ? 'text/javascript' : file.endsWith('.css') ? 'text/css' : 'text/html' }); }
     catch { return route.fulfill({ status: 404, body: '' }); }
