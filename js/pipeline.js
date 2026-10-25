@@ -208,8 +208,6 @@ function renderBoardMessage(status = state.boardSync?.status()) {
 
 function renderBoard() {
   const board = $('kanban');
-  // Fresh snapshots still enter state; dragend or the press's release paints
-  // them, so a refresh never detaches a card under a press or drag.
   if (!board) return;
   board.hidden = ['closed','lost'].includes(state.view);
   $('boardLive').hidden = ['closed','lost'].includes(state.view);
@@ -318,8 +316,6 @@ function renderReceipts() {
 
 function noteCellBase(cell, event) {
   if (!event?.id) return;
-  // Identity and time only. A feed event carries values too, and none of them
-  // belong in this map: this is a base, not a value.
   const seen = { id: event.id, recorded_at: event.recorded_at ?? null };
   state.fieldBase.set(cell, nextCellBase(state.fieldBase.get(cell) || null, seen));
 }
@@ -345,9 +341,6 @@ function applyBoardSnapshot(board) {
   state.lostDeals = Array.isArray(board.lost_deals) ? board.lost_deals : null;
   state.closedDeals = Array.isArray(board.closed_deals) ? board.closed_deals : null;
   state.deals = new Map((board.deals || []).map((deal) => [deal.id, deal]));
-  // The base for each editable cell, from the same read as the values, through
-  // the forward-only rule — a read already open when a write was confirmed
-  // carries an OLDER base and must not walk this cell backwards.
   for (const deal of state.deals.values()) {
     for (const [field, seen] of Object.entries(deal.field_base || {})) {
       noteCellBase(cellKey(deal.id, field), seen);
@@ -391,8 +384,6 @@ async function pollOnce(initial = false) {
   const batch = result.events || [];
   state.feed = observeChangeBatch(state.feed, batch);
   for (const event of batch) {
-    // NO VALUE IS TAKEN FROM AN EVENT. What an event does here is name the base
-    // for the next write to that cell, and — below — ask for a fresh snapshot.
     if (event.field) noteCellBase(cellKey(event.subject_id, event.field), event);
     if (!initial && state.feed.caught_up && event.actor !== state.selfActor && event.field === 'phase') {
       const deal = state.deals.get(event.subject_id);
@@ -490,7 +481,6 @@ async function runOutcomeWrite(operationKey, step, intent) {
 async function runFollowUp(operationKey, step) {
   const isUpdate = step.verb === 'add-deal-note' && operationKey.startsWith('deal-update:');
   if (isUpdate && operationKey !== updateKey(step.args.deal)) return {status:'blocked'};
-  // Every next-step control shares one operation for the deal, including moves.
   if (step.verb === 'set-next-step') operationKey = nextStepKey(step.args.deal);
   const send = FOLLOW_UP_SENDERS[step.verb];
   if (!send) return null;
@@ -562,9 +552,6 @@ async function runMove(intent, form) {
   dock.record(cell, { summary: moveSummary(intent), status: 'sending', undo: false });
   renderBoard();
 
-  // Only the two optional partner fields travel as extras. `deal`, `field` and
-  // `value` are the kernel's own, and a retry replays the retained request, so
-  // these ride on the first attempt or on none.
   const phaseExtra = {};
   if (phaseStep.args.change_reason) phaseExtra.change_reason = phaseStep.args.change_reason;
   if (phaseStep.args.human_quote) phaseExtra.human_quote = phaseStep.args.human_quote;
@@ -588,9 +575,6 @@ async function runMove(intent, form) {
     return { ok: false, errors: [] };
   }
   if (result.superseded) {
-    // The server accepted it and this board has since learned something newer
-    // about the same cell. The value is NOT written to the row: the read
-    // decides what it holds.
     state.boardSync.requestRefresh('after-write');
     renderBoard();
     const message = fieldWriteMessage(result, `${fieldLabel('phase')} on ${intent.name}`);
@@ -673,9 +657,6 @@ function openCompletion(intent) {
   const outcomeField = $('completionOutcomeField');
   if (outcomeField) outcomeField.hidden = !isClosed;
   for (const radio of outcomeRadios()) radio.checked = false;
-  // Today, as the calendar picker's own value. There is no typed-date box: the
-  // ruling is a picker or nothing, and a default of today is what a person
-  // closing a record almost always means.
   const closedOn = $('completionClosedOn');
   if (closedOn) closedOn.value = isClosed ? todayIso() : '';
   const wonValue = $('completionWonValue');
@@ -919,7 +900,6 @@ async function readPanel(id) {
     pageDocContext?.finish(contextRead, detail);
     selectDocRecord('deal', id);
     updateDetailTimestamp();
-    // A poll preserves drafts, expanded entries and the dialog scroll position.
     if (!$('panelBody').querySelector('.deal-opening-snapshot')) paintPanel(detail);
     else {
       if ($('detailPhase') && document.activeElement !== $('detailPhase')) $('detailPhase').value = columnByValue(detail.deal.phase)?.slug || '';
@@ -1126,7 +1106,6 @@ function wireBoard() {
   const release = () => {
     if (board.dataset.pressed !== 'true') return;
     delete board.dataset.pressed;
-    // After the press's own click has been dispatched.
     if (state.paintDeferred) setTimeout(renderBoard);
   };
   addEventListener('pointerup', release, true);
@@ -1166,8 +1145,6 @@ function wireBoard() {
   board.addEventListener('keydown', (event) => {
     const card = event.target.closest('.kanban-card');
     if (!card) return;
-    // Buttons own their Enter/Space action; the card's lift keys apply only to
-    // the card itself, even while a keyboard move is already lifted.
     if (event.target.closest('button')) return;
     if (state.view === 'list' || card.classList.contains('parked-card')) { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); openPanel(card.dataset.id, card); } return; }
     const id = card.dataset.id;
@@ -1176,7 +1153,6 @@ function wireBoard() {
     const here = columnByValue(deal.phase);
 
     if ((event.key === 'Enter' || event.key === ' ') && state.lifted !== id) {
-      // The card body lifts; nested controls already handled their own keys.
       event.preventDefault();
       state.lifted = id;
       state.target = here ? here.slug : COLUMNS[0].slug;
@@ -1398,8 +1374,6 @@ async function boot() {
   state.boardSync = createBoardSync({
     readBoard: () => state.client.getBoard({ workspace: 'team' }),
     readChanges: (cursor) => state.client.getChanges(cursor),
-    // Only a snapshot that is still current reaches this callback, and it
-    // already carries any value a confirmed local write is holding.
     applyBoard: (board) => { applyBoardSnapshot(board); },
     onStatus: renderStatus,
   });
