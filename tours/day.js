@@ -5,7 +5,7 @@ import { createDayClient } from "./day-client.js";
 import { createDayStore, noteState } from "./day-store.js";
 import { createDayRecorder } from "./day-recorder.js";
 import { mountAutoRefresh, updatedLabel } from "../js/auto-refresh.mjs";
-import { offlineTourSession } from "../js/offline-tour-session.js";
+import { offlineTourSession, SESSION_EPOCH_KEY } from "../js/offline-tour-session.js";
 
 export async function prepareOfflineShell(window) {
   if (!window.navigator.serviceWorker || !window.isSecureContext) throw new Error("offline_app_unavailable");
@@ -289,10 +289,12 @@ export function mountTourDay({ document, window, api = createDayClient(), store 
   const hide = () => { if (document.visibilityState === "hidden") recorder.stop(); };
   const leave = () => recorder.stop();
   const revoked = () => { reset(); status("Sign in to continue"); };
+  const storageRevoked = event => { if (event.key === SESSION_EPOCH_KEY) revoked(); };
+  window.addEventListener("storage", storageRevoked);
   window.addEventListener("doctorcre-offline-session-revoked", revoked);
   document.addEventListener("visibilitychange", hide); window.addEventListener("pagehide", leave);
   const ready = updates.refresh();
-  return { ready, refresh, get notes() { return notes; }, get recorder() { return recorder; }, dispose() { disposed = true; ++epoch; updates.dispose(); recorder.dispose(); map?.destroy(); document.removeEventListener("visibilitychange", hide); window.removeEventListener("pagehide", leave); window.removeEventListener("doctorcre-offline-session-revoked", revoked); close(); } };
+  return { ready, refresh, get notes() { return notes; }, get recorder() { return recorder; }, dispose() { disposed = true; ++epoch; updates.dispose(); recorder.dispose(); map?.destroy(); document.removeEventListener("visibilitychange", hide); window.removeEventListener("pagehide", leave); window.removeEventListener("doctorcre-offline-session-revoked", revoked); window.removeEventListener("storage", storageRevoked); close(); } };
 }
 if (typeof document !== "undefined" && document.querySelector("#tour-day")) {
   mountTourDay({ document, window });

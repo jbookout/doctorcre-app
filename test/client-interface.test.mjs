@@ -25,6 +25,7 @@ test('live board, archived rows and detail preserve explicit vendor cards', asyn
 test("industry events use the authenticated read and versioned writes", async () => {
   const calls = [];
   const live = createLiveClient({ fetchImpl: async (path, init) => {
+    if (path === '/auth/session') return new Response(JSON.stringify({ actor: { slug: 'joe' }, csrf_token: 'synthetic-session' }));
     calls.push({ path, init });
     return new Response(JSON.stringify({ result: { content: [{ text: JSON.stringify({ ok: true, events: [], count: 0 }) }] } }), { status: 200 });
   } });

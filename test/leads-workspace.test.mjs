@@ -735,3 +735,84 @@ test('authenticated session controls claim identity and clears owner scope acros
   assert.equal(board.leads.find(row => row.id === id(1)).owner, actor);
  } finally { s.close(); }
 });
+test('S2 submit rereads the reviewed lead and asks for review instead of overwriting a newer version',async()=>{
+ const s=await setup();try{
+  await s.app.openReview(id(1),'engaged');
+  const prior=s.app.state.proposal.lead.base_version;
+  s.board.leads[0].base_version++;
+  s.board.leads[0].notes='Newer partner context';
+  s.d.getElementById('stageForm').dispatchEvent(new s.w.Event('submit',{cancelable:true}));await tick();
+  assert.equal(s.writes.length,0);
+  assert.equal(s.app.state.pending,null);
+  assert.equal(s.app.state.proposal.lead.base_version,prior+1);
+  assert.match(s.d.getElementById('stageError').textContent,/changed.*review/i);
+  s.d.getElementById('stageForm').dispatchEvent(new s.w.Event('submit',{cancelable:true}));await tick();
+  assert.equal(s.writes.length,1);assert.equal(s.writes[0].l.base_version,prior+1);
+ }finally{s.close()}
+});
+
+test('S2 an unknown lead write retries the original version and key without refreshing its material',async()=>{
+ let reads=0,attempts=[];
+ const s=await setup({recordStage:async(l,stage,review,key)=>{attempts.push(structuredClone({l,stage,review,key}));if(attempts.length===1)throw Object.assign(new Error('lost reply'),{code:'unknown_outcome'});return{ok:true}}});
+ try{
+  const original=s.client.getLeadDetail;s.client.getLeadDetail=async lead=>{reads++;return original(lead)};
+  await s.app.openReview(id(1),'engaged');
+  s.d.getElementById('stageForm').dispatchEvent(new s.w.Event('submit',{cancelable:true}));await tick();
+  assert.equal(reads,2,'review read plus pre-submit read');
+  s.board.leads[0].base_version++;
+  const before=reads;s.d.getElementById('checkPending').click();await tick();
+  assert.equal(reads,before,'unknown replay does not fetch a replacement base version');
+  assert.deepEqual(attempts[1],attempts[0]);
+ }finally{s.close()}
+});
+
+test('S2 prospect activation checks the fresh client version before preparing an engagement request',async()=>{
+ const s=await setup();try{
+  const row=s.board.leads.find(l=>l.stage==='nurture_drip');Object.assign(row,{client_id:'synthetic-client',is_client:true,is_deal:true,prospect_client_id:'synthetic-client',prospect_client_version:7,prospect_engagement_status:'inactive'});
+  s.client.setProspectEngagementStatus=async args=>{s.writes.push(args);return{ok:true}};
+  await s.app.refresh();await s.app.readDetail(row.id);
+  const form=s.d.getElementById('activateProspect');form.elements.reason.value='Synthetic reviewed reason';row.prospect_client_version++;
+  form.dispatchEvent(new s.w.Event('submit',{bubbles:true,cancelable:true}));await tick();
+  assert.equal(s.writes.length,0);assert.match(s.d.getElementById('leadBoardError').textContent,/changed.*review/i);
+ }finally{s.close()}
+});
+
+for (const code of ['network_error', 'read_timeout']) test(`Slice A initial identity ${code} offers connection Retry without sign-in or writes`, async () => {
+ let failing = true, workspaceReads = 0;
+ const s = await setup({
+  getActor: async () => { if (failing) throw Object.assign(new Error('Synthetic connection failure'), { code }); return 'example-partner'; },
+  getWorkspace: async () => { workspaceReads++; return structuredClone(workspace()); },
+ });
+ try {
+  const box = s.d.getElementById('leadBoardError');
+  assert.match(box.textContent, /connection/i);
+  assert.doesNotMatch(box.textContent, /sign.in/i);
+  assert.equal(box.querySelector('a[href*="/auth/login"]'), null);
+  assert.equal(s.app.state.identityReady, false);
+  assert.equal(workspaceReads, 0);
+  assert.equal(s.d.querySelectorAll('.lead-card').length, 0);
+  failing = false;
+  const retry = [...box.querySelectorAll('button')].find(button => button.textContent === 'Retry');
+  assert.ok(retry, 'the failed read offers a local Retry action');
+  retry.click(); await tick();
+  assert.equal(s.app.state.identityReady, true);
+  assert.ok(s.d.querySelectorAll('.lead-card').length > 0);
+  assert.equal(box.hidden, true);
+  assert.equal(s.writes.length, 0);
+ } finally { s.close(); }
+});
+
+test('Chicago timestamps retain the business day and date-only move evidence never shifts',async()=>{
+ const s=await setup({getWorkspace:async()=>{const b=workspace();b.last_search_at='2026-10-24T01:00:00Z';b.leads[0].last_stage_move={automatic:true,from:'new',to:b.leads[0].stage,event_id:'demo-move',evidence_date:'2026-10-24',reason:'demo evidence'};return b;}});
+ try{
+  assert.match(s.d.getElementById('searchUpdated').textContent,/Oct 23, 8:00 PM/);
+  assert.match(s.d.querySelector('.auto-move').textContent,/10\/24/);
+  s.client.getLeadDetail=async()=>({detail:{...detail(s.board.leads[0]),correspondence:[{id:'demo-evening',kind:'email_in',occurred_at:'2026-01-24T01:00:00Z',summary:'Demo winter correspondence'}]}});
+  await s.app.readDetail(id(1));assert.match(s.d.querySelector('.correspondence time').textContent,/Jan 23, 7:00 PM/);
+ }finally{s.close();}
+});
+
+test('midnight occurrence timestamps convert to Chicago while midnight DATE evidence retains its date',async()=>{
+ const s=await setup({getWorkspace:async()=>{const b=workspace();b.leads[0].last_stage_move={automatic:true,from:'new',to:b.leads[0].stage,event_id:'demo-midnight',occurred_at:'2026-10-24T00:00:00Z',reason:'demo midnight event'};b.leads[1].last_stage_move={automatic:true,from:'qualified',to:b.leads[1].stage,event_id:'demo-date',evidence_date:'2026-10-24T00:00:00.000Z',reason:'demo DATE evidence'};return b;}});
+ try{const moves=[...s.d.querySelectorAll('.auto-move')].map(node=>node.textContent);assert.ok(moves.some(text=>/demo midnight event 10\/23/.test(text)));assert.ok(moves.some(text=>/demo DATE evidence 10\/24/.test(text)));}finally{s.close();}
+});

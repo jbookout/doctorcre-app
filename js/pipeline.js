@@ -512,11 +512,34 @@ async function runFollowUp(operationKey, step) {
   if (step.verb === 'set-next-step') operationKey = nextStepKey(step.args.deal);
   const send = FOLLOW_UP_SENDERS[step.verb];
   if (!send) return null;
-  if (!pendingCommand(commandState, operationKey)) operations.set(operationKey, { kind: 'command', verb: step.verb, args: step.args, send, summary: step.summary });
+  const pending = pendingCommand(commandState, operationKey);
+  let args = step.args;
+  if (step.verb === 'set-next-step') {
+    if (pending) args = { ...args, base_version: pending.request.base_version };
+    else {
+      operations.set(operationKey, { kind: 'follow-up-read', step, summary: step.summary });
+      let current;
+      try { current = (await state.client.getDeal(args.deal))?.deal; }
+      catch { /* A missing current version cannot authorize a replacement. */ }
+      if (current?.id !== args.deal || !Number.isSafeInteger(current.version) || current.version < 1) {
+        dock.record(operationKey, { summary: step.summary, status: 'failed', retry: true, undo: false,
+          reason: 'The move was recorded, but the next step was not sent. Retry reading the current record before saving it.' });
+        return null;
+      }
+      const reviewed = step.reviewed || state.deals.get(args.deal);
+      if (!reviewed || noteText(reviewed.next_step) !== noteText(current.next_step) || (reviewed.next_date || null) !== (current.next_date || null)) {
+        dock.record(operationKey, { summary: step.summary, status: 'conflict', retry: false, undo: false,
+          reason: `The next step changed. Current: ${noteText(current.next_step) || 'None'} (${current.next_date || 'no date'}). Review the current record before replacing it.` });
+        return null;
+      }
+      args = { ...args, base_version: current.version };
+    }
+  }
+  if (!pending) operations.set(operationKey, { kind: 'command', verb: step.verb, args, send, summary: step.summary });
   dock.record(operationKey, { summary: step.summary, status: 'sending', undo: false });
   const result = await performCommand({
     operationKey,
-    args: step.args,
+    args,
     getState: () => commandState,
     setState: (next) => { commandState = next; },
     newKey: uuidv4,
@@ -550,6 +573,10 @@ async function runMove(intent, form) {
   if (plan.errors.length) return { ok: false, errors: plan.errors };
 
   const [phaseStep, ...followUps] = plan.steps;
+  for (const step of followUps) if (step.verb === 'set-next-step') {
+    const reviewed = state.deals.get(intent.deal);
+    step.reviewed = { next_step: reviewed?.next_step, next_date: reviewed?.next_date };
+  }
   const cell = cellKey(intent.deal, 'phase');
   if (!pendingCommand(state.fieldWrites, cell)) {
     operations.set(cell, { kind: 'field', deal: intent.deal, value: phaseStep.args.value,
@@ -806,7 +833,7 @@ function refusePanelDetail(error) {
   $('contextDrawer').close();
   $('contextDrawerBody').replaceChildren();
   $('panelTitle').textContent = 'Deal';
-  $('panelBody').innerHTML = '<p role="status">Unavailable. <button class="btn" type="button" data-refresh-detail>Retry</button></p>';
+  $('panelBody').innerHTML = '<p role="status">Unavailable. Sign in to reload this record. <a href="/auth/login">Sign in</a> <button class="btn" type="button" data-refresh-detail>Retry</button></p>';
   return true;
 }
 function syncUpdateForm() {
@@ -908,13 +935,14 @@ async function refreshPanel() {
       }
       const evidence = await loadEvidence(state.client, detail);
       if (state.panelDeal !== id || seq !== panelReadSequence) return;
+      if (evidence.threads.state === 'refused') { refusePanelDetail({status:evidence.threads.status}); return; }
       const root = $('panelEvidence');
       const html = renderEvidence(evidence);
       const evidenceTemplate = document.createElement('div'); evidenceTemplate.innerHTML = html;
       if (root.innerHTML !== evidenceTemplate.innerHTML) {
         const expanded = new Set([...root.querySelectorAll('details[open]')].map(n => n.querySelector('summary')?.textContent));
         disposeEvidence?.(); disposeEvidence = null;
-        root.innerHTML = html;
+        disposeEvidence = mountEvidence(root, {client:state.client,detail,onDenied:refusePanelDetail,initialView:evidence});
         root.querySelectorAll('details').forEach(n => { if (expanded.has(n.querySelector('summary')?.textContent)) n.open = true; });
       }
     }
@@ -943,7 +971,7 @@ function paintPanel(detail) {
   $('panelTitle').textContent = dealTitle(detail.deal);
   $('panelBody').innerHTML = detailHtml(detail);
   disposeEvidence?.();
-  disposeEvidence = mountEvidence($('panelEvidence'), {client:state.client,detail});
+  disposeEvidence = mountEvidence($('panelEvidence'), {client:state.client,detail,onDenied:refusePanelDetail});
   syncUpdateForm();
   updateDetailTimestamp();
 }
@@ -1045,7 +1073,9 @@ async function openContextDrawer() {
   $('contextDrawerBody').innerHTML = '<div class="state-block" data-state="loading"><h3>Updating…</h3></div>';
   if (typeof dialog.showModal === 'function' && !dialog.open) dialog.showModal();
   const dealId = state.panelDeal;
-  const context = await loadDealContext(state.client, detail);
+  let context;
+  try { context = await loadDealContext(state.client, detail); }
+  catch (error) { if (state.panelDeal === dealId && seq === contextReadSequence) refusePanelDetail(error); return; }
   // Same late-answer guard as the record panel: a slower client read must
   // never paint over a drawer the person has since moved on from.
   if (state.panelDeal !== dealId || seq !== contextReadSequence || !dialog.open) return;
@@ -1054,7 +1084,7 @@ async function openContextDrawer() {
   if (!sections.length) { dialog.close(); $('contextDrawerBody').replaceChildren(); return; }
   $('contextDrawerBody').innerHTML = sections
     .map((section) => `<div class="panel-section"${section.state ? ` data-state="${esc(section.state)}"` : ''}>
-      <h3>${esc(section.title)}</h3>${section.lines.map((line) => `<p>${esc(line)}</p>`).join('')}${(section.links || []).map(link=>`<p><a href="${esc(link.href)}">${esc(link.label)}</a></p>`).join('')}</div>`).join('');
+      <h3>${esc(section.title)}</h3>${section.state === 'unavailable' ? '<button type="button" data-context-retry>Retry</button>' : ''}${section.lines.map((line) => `<p>${esc(line)}</p>`).join('')}${(section.links || []).map(link=>`<p><a href="${esc(link.href)}">${esc(link.label)}</a></p>`).join('')}</div>`).join('');
 }
 
 /* -------------------------------------------------------- drag and keyboard */
@@ -1232,6 +1262,7 @@ function wire() {
   });
 
   $('panelContextOpen')?.addEventListener('click', () => { openContextDrawer(); });
+  $('contextDrawerBody')?.addEventListener('click', event => { if (event.target.closest('[data-context-retry]')) void openContextDrawer(); });
   $('contextDrawerClose')?.addEventListener('click', () => $('contextDrawer')?.close());
 
   $('completionCritical')?.addEventListener('change', renderCriticalState);
@@ -1324,12 +1355,14 @@ function mountDock() {
       const entry = operations.get(operationKey);
       if (entry?.kind === 'field') retryFieldWrite(operationKey);
       else if (entry?.kind === 'outcome-read') return runOutcomeWrite(operationKey, entry.step, entry.intent);
+      else if (entry?.kind === 'follow-up-read') return runFollowUp(operationKey, entry.step);
       else if (entry?.args) runFollowUp(operationKey, { verb: entry.verb, args: entry.args, summary: entry.summary });
     },
     onReconcile: (operationKey) => {
       const entry = operations.get(operationKey);
       if (entry?.kind === 'field') retryFieldWrite(operationKey);
       else if (entry?.kind === 'outcome-read') return runOutcomeWrite(operationKey, entry.step, entry.intent);
+      else if (entry?.kind === 'follow-up-read') return runFollowUp(operationKey, entry.step);
       else if (entry?.args && entry?.send) {
         runFollowUp(operationKey, { verb: entry.verb, args: entry.args, summary: entry.summary });
       }

@@ -375,7 +375,25 @@ async function saveTrust(event) {
   view.trustStatus = { id: record.id, text: 'Saving…' };
   form.querySelector('button').disabled = true;
   document.querySelector('#trustStatus').textContent = 'Saving…';
+  let attempted = false;
   try {
+    const response = await fetchRead(recordRequestUrl('vendors', record.id), { headers: { accept: 'application/json' }, cache: 'no-store' });
+    if (response.status === 401) return expireNow();
+    if (!response.ok) throw Object.assign(new Error('Current vendor unavailable'), { status: response.status });
+    const payload = await response.json();
+    if (!active()) return;
+    if (!validRecordPayload(payload, 'vendors', record.id)) throw new Error('Current vendor unavailable');
+    if (payload.viewer !== view.record.payload?.viewer) return expireNow();
+    if (payload.record.record_version !== operation.base_version) {
+      view.pendingTrust = null;
+      view.record.payload = payload;
+      view.trustStatus = { id: record.id, text: 'Vendor changed. Review the current saved rating and your kept draft before saving again.' };
+      renderRecordPanel();
+      // Rendering shows the current record; the proposed rating stays a draft.
+      const currentForm = document.querySelector('#trustForm');
+      if (currentForm) { currentForm.elements.tier.value = tier; currentForm.elements.reason.value = reason; }
+      return;
+    }
     const client = await dealroomClient();
     if (!active()) return;
     if (typeof client.updateVendorTrust !== 'function') {
@@ -385,6 +403,7 @@ async function saveTrust(event) {
       return;
     }
     let deadline;
+    attempted = true;
     try { const receipt = await Promise.race([client.updateVendorTrust(operation), new Promise((_, reject) => { deadline = setTimeout(() => reject(new Error('Unconfirmed')), 15000); })]); if (receipt?.ok !== true || !Array.isArray(receipt.updated) || !receipt.updated.includes('trust_override')) throw new Error('Unconfirmed'); }
     finally { clearTimeout(deadline); }
     if (!active()) return;
@@ -396,6 +415,14 @@ async function saveTrust(event) {
   } catch (error) {
     if (!active()) return;
     if (error.status === 401) return expireNow();
+    if (!attempted) {
+      view.pendingTrust = null;
+      view.trustStatus = { id: record.id, text: 'Rating not sent. The current vendor could not be verified.' };
+      renderRecordPanel();
+      const currentForm = document.querySelector('#trustForm');
+      if (currentForm) { currentForm.elements.tier.value = tier; currentForm.elements.reason.value = reason; }
+      return;
+    }
     const refused = ['offline','AUTHORIZATION_REFUSED','trust_override_invalid','version_conflict','key_reuse','not_a_vendor','no_updatable_fields'].includes(error.payload?.error);
     if (refused || error.status === 403) { view.pendingTrust = null; renderRecordPanel(); }
     // Reconcile the read before allowing any new write. Never replay a write
@@ -847,11 +874,12 @@ async function loadRecord(id, { focusOnOpen = false } = {}) {
     // Repainting recent activity must not restart this read or lose its state.
     dealroomClient().then(client => loadEvidence(client)).then(result => {
       if (view.evidence.sequence !== evidenceSequence || view.recordId !== id || view.signedOut) return;
+      if (result.threads?.state === 'refused') { expireNow(); return; }
       view.evidence.result = result;
       renderRecordPanel();
     }).catch(() => {
       if (view.evidence.sequence !== evidenceSequence || view.recordId !== id || view.signedOut) return;
-      view.evidence.result = {};
+      view.evidence.result = {threads:{state:'unavailable',items:[],count:null}};
       renderRecordPanel();
     });
     if (acceptsResponse(view.record.sequence, sequence) && view.recordId === id) loadActivity(id, payload.record);
@@ -1031,6 +1059,7 @@ function wireControls() {
 
   dom.panelClose?.addEventListener("click", () => closeRecord());
   dom.panelBody?.addEventListener("click", (event) => {
+    if (event.target.closest("[data-evidence-retry]") && view.recordId) loadRecord(view.recordId);
     if (event.target.closest("[data-retry='record']") && view.recordId) loadRecord(view.recordId);
   });
 

@@ -1,22 +1,16 @@
+import { privateSession } from './private-session.js';
 import { mountDocPresence } from "./doc-presence.js";
 import { mountAppLayout } from "./app-layout.js";
 import { TOUCH_LAYOUT } from "./touch-layout.js";
 import { mountPrefs } from "./shell.js";
 import { resolveDealroomBoot } from "./boot-mode.js";
 import { mountAutoRefresh } from "./auto-refresh.mjs";
-import { offlineTourSession } from "./offline-tour-session.js";
 import { mountNavigation, appOriginForReport } from "./navigation.js";
 
 export function mountAppShell(root = document, pathname = globalThis.location?.pathname || "/") {
   const location = globalThis.location;
   const host = mountNavigation(root, pathname, { location });
   if (!host) return;
-  const fontStylesheet = root.querySelector('link[data-font-stylesheet][rel="preload"][as="style"]');
-  if (fontStylesheet) {
-    const activate = () => { fontStylesheet.rel = "stylesheet"; };
-    if (root.readyState === "complete") activate();
-    else root.defaultView.addEventListener("load", activate, { once: true });
-  }
   const base = appOriginForReport(location?.origin || "");
   let disposeDocPresence = () => {};
   if (!base) mountAccount(root, host, pathname, () => disposeDocPresence());
@@ -102,16 +96,27 @@ function mountAccount(root, host, pathname, beforeSignOutReplace = () => {}) {
   try { applyAssist(localStorage.getItem("dealroom-color-assist") === "on"); } catch { applyAssist(false); }
   assist.onclick = () => { const enabled = root.documentElement.dataset.colorAssist !== "on"; applyAssist(enabled); try { localStorage.setItem("dealroom-color-assist", enabled ? "on" : "off"); } catch {} };
   const boot = resolveDealroomBoot(globalThis.location);
+  const boundary = privateSession();
+  globalThis.window?.addEventListener("doctorcre-session-invalidated", beforeSignOutReplace, {once:true});
+  let lastVerified = null;
+  const sessionStatus = root.createElement('p');
+  sessionStatus.setAttribute('role','status'); sessionStatus.hidden = true;
+  host.after(sessionStatus);
   const readIdentity = async () => {
     try {
       if (boot.mode === "fixture") session = { actor: { slug: boot.options.selfActor === "dell" ? "dell" : "joe" } };
       else {
-        const response = await fetch("/api/system-work/session", { credentials: "same-origin", cache: "no-store", headers: { accept: "application/json" } });
-        if (!response.ok) return;
-        session = await response.json();
+        session = await boundary.verify();
+        lastVerified = new Date().toLocaleTimeString(); sessionStatus.hidden = true;
+        panel.querySelector("#accountStatus").textContent = "";
       }
       showPartner(partnerIdentity(session));
-    } catch { /* retain the last authenticated identity during a connection loss */ }
+    } catch {
+      if (!boundary?.revoked) {
+        sessionStatus.textContent = lastVerified ? `Connection unavailable · Last verified ${lastVerified}` : 'Sign-in unavailable';
+        sessionStatus.hidden = false;
+      }
+    }
   };
   readIdentity();
   mountAutoRefresh({ document: root, window: globalThis.window, refresh: readIdentity, intervalMs: 60_000 });
@@ -122,29 +127,23 @@ function mountAccount(root, host, pathname, beforeSignOutReplace = () => {}) {
     try {
       // The auth service responds with a redirect to /. Fetch must not follow
       // that redirect into a fresh login flow before we check revocation.
+      await boundary.verify();
       const response = await fetch("/auth/signout", { method: "POST", credentials: "same-origin",
         redirect: "manual", headers: { "x-carr-csrf": session.csrf_token } });
+      if ([401,403].includes(response.status)) { boundary.revoke(); return; }
       if (response.type !== "opaqueredirect") throw new Error();
       const after = await fetch("/auth/session", { credentials: "same-origin", cache: "no-store",
         redirect: "manual", headers: { accept: "application/json" } });
       if (after.status !== 401) throw new Error();
-      offlineTourSession(globalThis.window).revoke();
       session = null;
-      const view = root.createElement("main");
-      view.className = "app-shell-signed-out";
-      const title = root.createElement("h1");
-      title.textContent = "Signed out";
-      const link = root.createElement("a");
-      link.href = "/auth/login";
-      link.textContent = "Sign in again";
-      view.append(title, link);
-      beforeSignOutReplace();
-      root.body.replaceChildren(view);
-    } catch { panel.querySelector("#accountStatus").textContent = "Sign-out unavailable"; event.target.disabled = false; }
+      boundary.revoke('signed-out');
+    } catch { if (!boundary?.revoked) { panel.querySelector("#accountStatus").textContent = "Sign-out unavailable"; event.target.disabled = false; } }
   };
   if (!root.getElementById("callModeDialog")) {
     import("./global-call-mode.js").then(async ({ mountGlobalCallMode }) => {
+      if (boundary?.revoked) return;
       const call = await mountGlobalCallMode(root);
+      if (boundary?.revoked) return;
       root.querySelector("#callModeButton").onclick = () => { close(); call.open(); };
       root.querySelector("#callModeRetry").onclick = (event) => call.handleClick(event.target);
     });

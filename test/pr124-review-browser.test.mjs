@@ -24,7 +24,7 @@ async function open(t, { width = 1440, reducedMotion = 'no-preference', many = f
     const url = new URL(route.request().url());
     if (url.origin !== 'http://localhost') return route.abort();
     if (url.pathname === '/data/board-seed.json') return route.fulfill({ contentType: 'application/json', body: JSON.stringify(seed) });
-    if (url.pathname === '/api/system-work/session') return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ actor: { slug: 'joe' }, csrf_token: 'synthetic-only' }) });
+    if (['/api/system-work/session','/auth/session'].includes(url.pathname)) return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ actor: { slug: 'joe' }, csrf_token: 'synthetic-only' }) });
     if (url.pathname.startsWith('/api/') || url.pathname === '/app-release') return route.fulfill({ contentType: 'application/json', body: '{}' });
     const file = url.pathname === '/deals' ? 'pipeline.html' : url.pathname.slice(1);
     try { return route.fulfill({ body: await readFile(new URL(file, root)), contentType: /\.m?js$/.test(file) ? 'text/javascript' : file.endsWith('.css') ? 'text/css' : file.endsWith('.json') ? 'application/json' : 'text/html' }); }
@@ -215,7 +215,7 @@ test('PR129 transient detail failure keeps the authorized next-step draft',async
 
 test('append-only updates preserve a partner next step and start empty after refresh', async t => {
  const {page}=await open(t);await detail(page);
- await page.evaluate(async()=>{const {state}=await import('/js/pipeline.js');await state.client.setNextStep({deal:'d14',text:'Partner step',next_date:'2026-11-01',idempotency_key:'external-1'});});
+ await page.evaluate(async()=>{const {state}=await import('/js/pipeline.js');await state.client.setNextStep({deal:'d14',base_version:(await state.client.getDeal('d14')).deal.version,text:'Partner step',next_date:'2026-11-01',idempotency_key:'external-1'});});
  await readPanel(page);
  assert.equal(await page.locator('#detailUpdateForm textarea').inputValue(),'');
  await page.locator('#detailUpdateForm textarea').fill('My status update');

@@ -484,3 +484,15 @@ test('review 5: command deadline retains unknown intent and ignores late transpo
  finish({ok:false});for(let i=0;i<8;i++)await Promise.resolve();
  assert.equal(pendingCommand(ui.state(),operation),null);
 });
+
+for(const error of [
+ Object.assign(new Error('denied'),{status:401}),Object.assign(new Error('denied'),{status:403}),
+ Object.assign(new Error('offline'),{payload:{error:'offline'}}),
+ Object.assign(new Error('unavailable'),{status:503,payload:{error:'proxy_error'}}),
+])test(`S2 command reconciliation retains an earlier unknown operation after ${error.status||'offline'}`,async()=>{
+ let state={},keys=0;const send=call=>performCommand({operationKey:'original',args:{base_version:1,text:'Original'},getState:()=>state,setState:value=>{state=value;},newKey:()=>`key-${++keys}`,call});
+ await send(async()=>{throw new Error('timeout after commit');});const original=state.original.request;
+ const outcome=await send(async()=>{throw error;});
+ assert.equal(outcome.status,'unknown');assert.deepEqual(state.original.request,original);assert.equal(keys,1);
+ assert.doesNotMatch(outcome.message,/was not saved|not sent/i);
+});

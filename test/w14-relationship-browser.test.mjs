@@ -49,8 +49,8 @@ async function open(t, width = 1440) {
       }
       return r.fulfill({ json: payload });
     }
-    if (url.pathname === "/api/system-work/session")
-      return r.fulfill({ json: { actor: { slug: "joe" } } });
+    if (['/api/system-work/session','/auth/session'].includes(url.pathname))
+      return r.fulfill({ json: { actor: { slug: "joe" }, csrf_token: "synthetic-session" } });
     if (url.pathname === "/mcp") {
       const verb = r.request().postDataJSON().params.name;
       verbs.push(verb);
@@ -274,7 +274,7 @@ test("W14 autonomous refresh retains filters and expanded evidence, recovers fai
   assert.equal(await page.locator("#networkSearch").inputValue(), "Lending");
   h.setMode("auth");
   await page.evaluate(() => window.dispatchEvent(new Event("online")));
-  await page.waitForSelector("#networkNotice a");
+  await page.waitForURL("**/public-shell/session-ended.html");
   assert.equal(await page.locator(".relationship-node").count(), 0);
   assert.deepEqual(h.errors, []);
 });
@@ -362,7 +362,9 @@ test('R2 relationship URL filters survive boot and intentional reset survives po
 });
 for(const failure of ['auth','expiry']) test(`R6 ${failure} invalidates relationship detail DOM facets counts and controls`,async t=>{
  const h=await open(t),{page}=h;await page.goto('http://localhost/relationships?mode=live');await page.waitForSelector('.relationship-node');await page.locator('.relationship-node').first().click();
- h.setMode(failure==='auth'?'auth':'fail');await page.clock.fastForward(failure==='auth'?31000:61000);await page.waitForFunction(()=>document.querySelector('#networkNotice').textContent.includes('Sign in')||document.querySelector('#networkNotice').textContent.includes('unavailable'));
+ h.setMode(failure==='auth'?'auth':'fail');await page.clock.fastForward(failure==='auth'?31000:61000);
+ if(failure==='auth'){await page.waitForURL('**/public-shell/session-ended.html');assert.equal(await page.locator('.relationship-dialog,#networkCanvas,#networkTerritory').count(),0);assert.deepEqual(h.errors,[]);return;}
+ await page.waitForFunction(()=>document.querySelector('#networkNotice').textContent.includes('Sign in')||document.querySelector('#networkNotice').textContent.includes('unavailable'));
  assert.equal(await page.locator('.relationship-dialog').textContent(),'');assert.equal(await page.locator('#networkTerritory option').count(),1);assert.equal(await page.locator('#networkVertical option').count(),1);
  assert.equal(await page.locator('#networkCount').textContent(),'');assert.equal(await page.locator('#networkMore').isVisible(),false);assert.equal(await page.locator('#networkZoomIn').isDisabled(),true);assert.deepEqual(h.errors,[]);
 });

@@ -114,7 +114,7 @@ export async function createQaServer({ buildRoot=resolve(repository,'dist/site')
     const url=new URL(request.url);const identity=identify(request);
     if(url.pathname==='/auth/logout')return new Response(null,{status:302,headers:{location:'/auth/login','set-cookie':`${cookieName}=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax`}});
     if(url.pathname==='/auth/login')return new Response('<!doctype html><title>Fixture sign in</title><h1>Fixture sign in required</h1><p>Synthetic identities are created by the QA setup fixture.</p>',{headers:{'content-type':'text/html'}});
-    if(!identity)return url.pathname==='/mcp'||url.pathname.startsWith('/api/')||url.pathname==='/pipeline/changes'?json({error:'not_authenticated'},401):new Response(null,{status:302,headers:{location:`/auth/login?return_to=${encodeURIComponent(url.pathname+url.search)}`}});
+    if(!identity)return url.pathname==='/mcp'||url.pathname==='/auth/session'||url.pathname.startsWith('/api/')||url.pathname==='/pipeline/changes'?json({error:'not_authenticated'},401):new Response(null,{status:302,headers:{location:`/auth/login?return_to=${encodeURIComponent(url.pathname+url.search)}`}});
     const {viewer,namespace}=identity;const state=stateFor(namespace);
     if(url.pathname==='/api/system-work/session')return request.method==='GET'?json({actor:{slug:viewer}}):json({error:'fixture_method_unavailable'},405);
     if(url.pathname==='/mcp') {
@@ -129,6 +129,7 @@ export async function createQaServer({ buildRoot=resolve(repository,'dist/site')
       const projection=censusResponse(url);projection.viewer=viewer;projection.source.correlation_id=`${namespace}-${projection.source.correlation_id}`;
       return json(projection);
     }
+    if(['/api/system-work/session','/auth/session'].includes(url.pathname))return json({actor:{slug:viewer},csrf_token:`synthetic-qa-${viewer}`});
     if(url.pathname==='/api/system-work/current')return request.method==='GET'?json({ok:true,data:await (await fallback(state,viewer)).currentWorkRequests()}):json({error:'fixture_method_unavailable'},405);
     const directory=directoryRead(url,state,viewer,namespace);
     if(directory)return request.method==='GET'?directory:json({error:'fixture_method_unavailable'},405);

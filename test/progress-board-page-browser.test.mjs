@@ -18,10 +18,11 @@ async function open(t, { unfinished = true, path = '/control-room/progress', boa
   const context = page.context();
   await page.clock.install();
   const calls = [], errors = []; let readState = boardRead;
-  context.on('page', p => { p.on('pageerror', e => errors.push(e.message)); });
-  page.on('pageerror', e => errors.push(e.message));
+  context.on('page', p => { p.on('pageerror', e => errors.push(e.stack)); });
+  page.on('pageerror', e => errors.push(e.stack));
   const env = {
     CARR: { fetch: async request => {
+      if (['/api/system-work/session','/auth/session'].includes(new URL(request.url).pathname)) return Response.json({actor:{slug:'joe'},csrf_token:'synthetic-session'});
       if (new URL(request.url).pathname !== '/mcp') return new Response('{}');
       const rpc = (await request.json()).params; calls.push(rpc);
       let payload = { ok: true }, isError = false;
@@ -217,7 +218,7 @@ for (const width of [390, 1280]) for (const theme of ['dark', 'light']) {
 
 async function mountTestCosts(t, width = 390) {
   const { page, errors } = await open(t, { path: systemPath, width });
-  await page.locator('#board-stages').waitFor();
+  await page.waitForFunction(()=>document.querySelector('#board-meta')?.dataset.readState === 'published');
   await page.evaluate(async fixture => {
     const { mountCostView } = await import('/js/progress-board-costs.js');
     const panel = document.querySelector('#board-costs'); panel.replaceChildren();
@@ -346,24 +347,19 @@ for (const denied of ['unfinished-work', 'read-progress-board']) {
     } });
     await page.locator('#board-stages [data-card-id="build"]').waitFor();
     await panelTasks(page, ['open']);
+    const original = page.url();
     active = true;
     const success = order === 'success-first'
       ? page.waitForResponse(response => response.url().endsWith('/mcp') && response.status() === 200) : null;
     await page.clock.runFor(15000);
-    if (order === 'denial-first') {
-      await page.locator(denied === 'unfinished-work' ? '#system-work-error' : '#board-error').waitFor();
-    } else {
-      await success;
-    }
+    if (order === 'success-first') await success;
+    else await page.waitForURL('**/public-shell/session-ended.html*');
     release();
-    await page.locator('#board-sign-in').waitFor();
-    await page.waitForFunction(() => document.querySelectorAll('#board-flow [data-task-id], #system-work-flow [data-task-id], .work-card').length === 0);
-    // Give the previously held successful response time to arrive and render.
-    await page.waitForLoadState('networkidle');
+    await page.waitForURL('**/public-shell/session-ended.html*');
     assert.equal(await page.locator('#board-stages [data-card-id], #board-completed .completed-card, #system-work-flow [data-task-id], .work-card').count(), 0);
-    assert.equal(await page.locator('#system-work-coverage').textContent(), '');
+    assert.doesNotMatch(await page.locator('body').textContent(), /Synthetic build/);
     active = false;
-    await page.locator('#board-retry').click();
+    await page.goto(original);
     await page.locator('#board-stages [data-card-id="build"]').waitFor();
     await panelTasks(page, ['open']);
     assert.equal(await page.locator('#board-sign-in').isVisible(), false);
@@ -624,17 +620,19 @@ for (const status of [401, 403]) test(`denied hierarchy read ${status} stays emp
     await route.fulfill({status, body:'{}'});
     return true;
   }});
+  const original = page.url();
   const cards = page.locator('#board-stages [data-hierarchy-id]');
   await page.locator('[data-hierarchy-id="WR14"] > button').click();
   assert.equal(await cards.count(), 2);
   denied = true;
   await page.clock.runFor(15000);
-  await page.locator('#board-error').waitFor({state:'visible'});
+  await page.waitForURL('**/public-shell/session-ended.html*');
   assert.equal(await cards.count(), 0);
   await page.goBack();
+  await page.waitForURL('**/public-shell/session-ended.html*');
   assert.equal(await cards.count(), 0);
   denied = false;
-  await page.locator('#board-retry').click();
+  await page.goto(original);
   await page.locator('[data-hierarchy-id="WR14"]').waitFor();
   assert.equal(await cards.count(), 1);
 
@@ -652,14 +650,16 @@ for (const status of [401, 403]) test(`denied queue read ${status} recovers the 
   await cards.first().waitFor({state:'attached'});
   const count = await cards.count();
   await page.evaluate(()=>history.pushState({},'',location.pathname+'?card=WR14.S1.J1'));
+  const original = page.url();
   denied = true;
   await page.clock.runFor(15000);
-  await page.locator('#board-error').waitFor({state:'visible'});
+  await page.waitForURL('**/public-shell/session-ended.html*');
   assert.equal(await cards.count(), 0);
   await page.goBack();
+  await page.waitForURL('**/public-shell/session-ended.html*');
   assert.equal(await cards.count(), 0);
   denied = false;
-  await page.locator('#board-retry').click();
+  await page.goto(original);
   await page.waitForLoadState('networkidle');
   assert.equal(await cards.count(), count);
   assert.deepEqual(errors, []);
@@ -851,3 +851,22 @@ for (const width of [390,1280]) for (const theme of ['light','dark'])
     await mkdir('test-artifacts/orchestrator',{recursive:true});
     await page.screenshot({path:`test-artifacts/orchestrator/${width}-${theme}.png`,fullPage:true});
   });
+
+
+test('session invalidation disposes board callbacks before its document is cleared', async t => {
+  const {page, errors} = await open(t, {path:systemPath, snapshotData:workQueue, autoMount:false});
+  const result = await page.evaluate(async fixture => {
+    const {mountBoard} = await import('/js/progress-board.js');
+    let reads = 0;
+    const client = {readProgressBoard:async()=>{reads++; return {snapshot:{version:1,snapshot_json:fixture}};}};
+    const board = mountBoard({window, client});
+    await board.refresh(true);
+    window.dispatchEvent(new Event('doctorcre-session-invalidated'));
+    document.body.replaceChildren();
+    await board.refresh(true);
+    board.tick();
+    return {reads, text:document.body.textContent};
+  }, workQueue);
+  assert.deepEqual(result, {reads:1, text:''});
+  assert.deepEqual(errors, []);
+});
