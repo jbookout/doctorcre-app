@@ -91,7 +91,6 @@
  * @property {(args:{source_system:string,native_id:string,native_id_epoch:number}) => Promise<Object>} readCorrespondenceThread read of one recorded native identity
  * @property {(args?:{signal?:AbortSignal}) => Promise<Object>} getInvoiceTracker invoice-tracker.v1 snapshot
  * @property {(args:{commission_id:string,base_version:number,received_on:string,idempotency_key:string}) => Promise<Object>} markInvoicePaid record one full commission receipt
- * @property {(queue:'today'|'loops'|'needs_joe'|'assurance_cadence',args?:{cursor?:string,signal?:AbortSignal}) => Promise<Object>} morningBriefQueue authenticated stable queue page, no audience argument
  * @property {'fixture'|'live'} mode
  * @property {Actor} selfActor
  * @property {(args?:Object, options?:{signal?:AbortSignal}) => Promise<Object>} readDocActivity authenticated doc-activity.v1 projection
