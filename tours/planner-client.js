@@ -65,8 +65,7 @@ export function createPlannerClient({ fetchImpl = sessionFetch, timeoutMs = 10_0
     async clients({ page = 1, signal } = {}) {
       if (!Number.isInteger(page) || page < 1) throw new Error("Invalid client page");
       const data = await read(`/api/v1/business/clients?scope=team&sort=name&page=${page}`, { signal });
-      if (!Number.isInteger(data.page_count) || data.page_count < 0 || data.page !== page ||
-          page > Math.max(1, data.page_count)) throw new Error("Invalid client list");
+      if (!Number.isInteger(data.page_count) || data.page_count < 0 || data.page !== page) throw new Error("Invalid client list");
       return { rows: validateClientList(data.rows), page, pageCount: data.page_count };
     },
     async client(id, options) {

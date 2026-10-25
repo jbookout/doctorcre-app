@@ -119,8 +119,11 @@ export function mountPlanner({ document, window, api = createPlannerClient() }) 
       const result = await read(() => api.clients({ page: clientPage + 1 }));
       if (disposed || epoch !== clientsEpoch) return;
       const rows = validateClientList(result.rows);
-      for (const row of rows) directoryClients.add(row.id);
-      cacheClients(rows);
+      for (const row of rows) {
+        directoryClients.add(row.id);
+        if (!clients.has(row.id)) clients.set(row.id, row);
+      }
+      fillClients();
       clientPage = result.page; clientPageCount = result.pageCount;
       clientsMessage = "";
     } catch (error) {

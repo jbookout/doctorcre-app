@@ -699,3 +699,40 @@ test('D2 directory pages keep response order when selected details arrive first'
     for (const prefix of ['plan', 'space']) assert.deepEqual([...app.doc.querySelector(`#${prefix}-client`).options].slice(1).map(option => option.textContent), ['Demo Alpha', 'Demo Zeta refreshed']);
   } finally { app.close(); }
 });
+
+test('D2 a shrinking directory settles its empty tail without losing loaded choices', async () => {
+  const calls = [];
+  const api = createPlannerClient({ fetchImpl: async path => {
+    const page = Number(new URL(path, 'https://example.test').searchParams.get('page'));
+    const data = path.includes('library') ? { tours: [] } : { rows: page === 1 ? [record(clientA)] : [], page, page_count: page === 1 ? 2 : 1 };
+    if (!path.includes('library')) calls.push(page);
+    return { ok: true, json: async () => ({ csrf_token: 'synthetic', data }) };
+  } });
+  const app = harness(api);
+  try {
+    await app.view.ready; await app.loadClients(); await app.loadClients();
+    for (const prefix of ['plan', 'space']) {
+      assert.equal(app.doc.querySelector(`#${prefix}-clients-state`).textContent, '');
+      assert.equal(app.doc.querySelector(`#${prefix}-load-clients`).hidden, true);
+      assert.equal(app.doc.querySelector(`#${prefix}-client`).options[1].value, clientA);
+    }
+    app.doc.querySelector('#plan-load-clients').click();
+    assert.deepEqual(calls, [1, 2], 'the shorter directory has no more pages to request');
+  } finally { app.close(); }
+});
+
+test('D2 a later directory page preserves a refreshed exact client label', async () => {
+  const zeta = { ...record(clientB), name: 'Demo Zeta' };
+  const app = harness({ client: async () => zeta, clients: async ({ page }) => clientPage(page === 1 ? [record(clientA)] : [zeta], page, 2) }, window => {
+    window.sessionStorage.setItem('doctorcre-tour-planning-drafts-v1', JSON.stringify({ scope: 'synthetic-scope', planClient: clientB }));
+  });
+  try {
+    await app.view.ready; await app.loadClients();
+    app.service.client = async () => ({ ...zeta, name: 'Demo Zeta refreshed' });
+    await app.view.refresh(); await app.loadClients();
+    for (const prefix of ['plan', 'space']) {
+      assert.deepEqual([...app.doc.querySelector(`#${prefix}-client`).options].slice(1).map(option => option.textContent), ['Demo Practice A', 'Demo Zeta refreshed']);
+    }
+    assert.equal(app.doc.querySelector('#plan-client').value, clientB);
+  } finally { app.close(); }
+});
