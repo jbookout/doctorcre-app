@@ -12,6 +12,7 @@ for (const width of [390, 800, 1280]) for (const theme of ['dark', 'light']) {
     await page.addInitScript(theme => localStorage.setItem('doctorcre.visual-preferences', JSON.stringify({ theme })), theme);
     await routeLeads(page);
     await page.goto('http://localhost/leads');
+    await page.getByRole('button', { name: 'Show territory', exact: true }).click();
     await page.locator('.market-marker').first().waitFor();
     if (process.env.UI_SCREENSHOT_DIR) {
       await mkdir(process.env.UI_SCREENSHOT_DIR, { recursive: true });

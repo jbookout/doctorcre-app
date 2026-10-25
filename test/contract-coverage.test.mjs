@@ -5,12 +5,13 @@ import { createHash } from 'node:crypto';
 
 const read = (path) => readFile(new URL(`../${path}`, import.meta.url), 'utf8');
 
-test('deal vendor reads bind the board and detail to the reviewed assignment producer', async () => {
+test('deal reads bind vendor assignments and held action history to their producer revisions', async () => {
   const contract = JSON.parse(await read('contracts/carr-interface.v1.json'));
   for (const verb of ['deal-room-board', 'get-deal-room']) {
     const operation = contract.mcp_read_contracts[verb];
     assert.equal(operation.producer.source_commit, verb === 'get-deal-room'
       ? contract.producer.source_commit : '3a57e47015916546fb2ffd11eaf880686c38e659');
+
     assert.deepEqual(operation.response.vendors.item_keys, ['party_id', 'role', 'company', 'contact', 'note', 'updated_at']);
   }
 });

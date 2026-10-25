@@ -9,24 +9,26 @@ import { STAGES } from '../js/progress-board-model.js';
 import costs from './fixtures/progress-board-costs.json' with { type: 'json' };
 import hierarchy from './fixtures/progress-board-hierarchy.json' with { type: 'json' };
 import workQueue from '../js/progress-work-queue-fixture.js';
+import orchestratorSequence from './fixtures/progress-orchestrator.json' with {type:'json'};
 
 const boards = [{ board_id: 'carr-v5', title: 'System delivery' }, { board_id: 'demo-project', title: 'Demo project' }];
-async function open(t, { unfinished = true, path = '/control-room/progress', boardRead = 'ready', rows = [], control, width = 390, height = 900, costData, snapshotData, autoMount = true, timezoneId, setupPage } = {}) {
+async function open(t, { unfinished = true, path = '/control-room/progress', boardRead = 'ready', rows = [], control, width = 390, height = 900, costData, snapshotData, assetRoot, autoMount = true, timezoneId, setupPage } = {}) {
   const browser = await chromium.launch(); t.after(() => browser.close());
   const page = await browser.newPage({ viewport: { width, height }, ...(timezoneId ? { timezoneId } : {}) });
   const context = page.context();
   await page.clock.install();
   const calls = [], errors = []; let readState = boardRead;
-  context.on('page', p => { p.on('pageerror', e => errors.push(e.message)); });
-  page.on('pageerror', e => errors.push(e.message));
+  context.on('page', p => { p.on('pageerror', e => errors.push(e.stack)); });
+  page.on('pageerror', e => errors.push(e.stack));
   const env = {
     CARR: { fetch: async request => {
+      if (['/api/system-work/session','/auth/session'].includes(new URL(request.url).pathname)) return Response.json({actor:{slug:'joe'},csrf_token:'synthetic-session'});
       if (new URL(request.url).pathname !== '/mcp') return new Response('{}');
       const rpc = (await request.json()).params; calls.push(rpc);
       let payload = { ok: true }, isError = false;
       if (rpc.name === 'list-progress-boards') payload = { schema: 'progress-board-directory.v1', boards };
       if (rpc.name === 'read-progress-board') {
-        const board = boards.find(b => b.board_id === rpc.arguments.board_id);
+        const board = boards.find(b => b.board_id === rpc.arguments.board_id) || (rpc.arguments.board_id === 'orchestrator' ? {board_id:'orchestrator',title:'Orchestrator'} : null);
         if (readState === 'failed') { payload = { error: 'board_read_failed' }; isError = true; }
         else payload = { snapshot: readState === 'missing' ? null : { board_id: board.board_id, version: 1,
           updated_at: '2026-10-02T08:00:00Z', snapshot_json: snapshotData || { title: board.title, costs: costData, tasks: {
@@ -46,7 +48,7 @@ async function open(t, { unfinished = true, path = '/control-room/progress', boa
     } },
     ASSETS: { fetch: async request => {
       const path = new URL(request.url).pathname;
-      try { return new Response(await readFile(new URL('..' + path, import.meta.url)), {
+      try { return new Response(await readFile(assetRoot ? new URL('.' + path, assetRoot) : new URL('..' + path, import.meta.url)), {
         headers: { 'content-type': /\.m?js$/.test(path) ? 'text/javascript' : path.endsWith('.css') ? 'text/css' : 'text/html' },
       }); } catch { return new Response('Not found', { status: 404 }); }
     } },
@@ -216,7 +218,7 @@ for (const width of [390, 1280]) for (const theme of ['dark', 'light']) {
 
 async function mountTestCosts(t, width = 390) {
   const { page, errors } = await open(t, { path: systemPath, width });
-  await page.locator('#board-stages').waitFor();
+  await page.waitForFunction(()=>document.querySelector('#board-meta')?.dataset.readState === 'published');
   await page.evaluate(async fixture => {
     const { mountCostView } = await import('/js/progress-board-costs.js');
     const panel = document.querySelector('#board-costs'); panel.replaceChildren();
@@ -345,24 +347,19 @@ for (const denied of ['unfinished-work', 'read-progress-board']) {
     } });
     await page.locator('#board-stages [data-card-id="build"]').waitFor();
     await panelTasks(page, ['open']);
+    const original = page.url();
     active = true;
     const success = order === 'success-first'
       ? page.waitForResponse(response => response.url().endsWith('/mcp') && response.status() === 200) : null;
     await page.clock.runFor(15000);
-    if (order === 'denial-first') {
-      await page.locator(denied === 'unfinished-work' ? '#system-work-error' : '#board-error').waitFor();
-    } else {
-      await success;
-    }
+    if (order === 'success-first') await success;
+    else await page.waitForURL('**/public-shell/session-ended.html*');
     release();
-    await page.locator('#board-sign-in').waitFor();
-    await page.waitForFunction(() => document.querySelectorAll('#board-flow [data-task-id], #system-work-flow [data-task-id], .work-card').length === 0);
-    // Give the previously held successful response time to arrive and render.
-    await page.waitForLoadState('networkidle');
+    await page.waitForURL('**/public-shell/session-ended.html*');
     assert.equal(await page.locator('#board-stages [data-card-id], #board-completed .completed-card, #system-work-flow [data-task-id], .work-card').count(), 0);
-    assert.equal(await page.locator('#system-work-coverage').textContent(), '');
+    assert.doesNotMatch(await page.locator('body').textContent(), /Synthetic build/);
     active = false;
-    await page.locator('#board-retry').click();
+    await page.goto(original);
     await page.locator('#board-stages [data-card-id="build"]').waitFor();
     await panelTasks(page, ['open']);
     assert.equal(await page.locator('#board-sign-in').isVisible(), false);
@@ -623,17 +620,19 @@ for (const status of [401, 403]) test(`denied hierarchy read ${status} stays emp
     await route.fulfill({status, body:'{}'});
     return true;
   }});
+  const original = page.url();
   const cards = page.locator('#board-stages [data-hierarchy-id]');
   await page.locator('[data-hierarchy-id="WR14"] > button').click();
   assert.equal(await cards.count(), 2);
   denied = true;
   await page.clock.runFor(15000);
-  await page.locator('#board-error').waitFor({state:'visible'});
+  await page.waitForURL('**/public-shell/session-ended.html*');
   assert.equal(await cards.count(), 0);
   await page.goBack();
+  await page.waitForURL('**/public-shell/session-ended.html*');
   assert.equal(await cards.count(), 0);
   denied = false;
-  await page.locator('#board-retry').click();
+  await page.goto(original);
   await page.locator('[data-hierarchy-id="WR14"]').waitFor();
   assert.equal(await cards.count(), 1);
 
@@ -651,14 +650,16 @@ for (const status of [401, 403]) test(`denied queue read ${status} recovers the 
   await cards.first().waitFor({state:'attached'});
   const count = await cards.count();
   await page.evaluate(()=>history.pushState({},'',location.pathname+'?card=WR14.S1.J1'));
+  const original = page.url();
   denied = true;
   await page.clock.runFor(15000);
-  await page.locator('#board-error').waitFor({state:'visible'});
+  await page.waitForURL('**/public-shell/session-ended.html*');
   assert.equal(await cards.count(), 0);
   await page.goBack();
+  await page.waitForURL('**/public-shell/session-ended.html*');
   assert.equal(await cards.count(), 0);
   denied = false;
-  await page.locator('#board-retry').click();
+  await page.goto(original);
   await page.waitForLoadState('networkidle');
   assert.equal(await cards.count(), count);
   assert.deepEqual(errors, []);
@@ -773,4 +774,99 @@ for (const width of [390, 1280]) test(`expanded queue detail leads with findings
   await page.screenshot({path:`test/evidence/work-queue/detail-${width}.png`});
   await job.locator('.queue-execution > summary').click();
   assert.equal(await job.getByText('gpt-6.1-sol', {exact:true}).isVisible(), true);
+});
+
+
+for (const width of [390,1280]) for (const theme of ['light','dark'])
+  test(`orchestrator published queue observations update in place at ${width}px ${theme}`, async t => {
+    const {page,errors,setSnapshot}=await open(t,{width,timezoneId:'America/Chicago',
+      path:'/control-room/progress/board/orchestrator',snapshotData:orchestratorSequence[0].snapshot.snapshot_json,
+      assetRoot:process.env.ORCHESTRATOR_BUILT_ROOT ? new URL(`file://${process.env.ORCHESTRATOR_BUILT_ROOT}/`) : undefined});
+    await page.evaluate(theme=>document.documentElement.dataset.theme=theme,theme);
+    const first=page.locator('[data-orchestrator-card]').first();await first.waitFor();
+    const box=await first.locator('.orchestrator-progress').boundingBox();
+    if(width===390) assert.ok(box && box.y+box.height<820,'first title, status and progress fit above phone navigation');
+    await mkdir('test-artifacts/orchestrator',{recursive:true});
+    await page.screenshot({path:`test-artifacts/orchestrator/initial-${width}-${theme}.png`});
+    const olderPage='orchestrator-page-'+'a'.repeat(64);
+    let pageUnavailable=true;
+    await page.route('**/mcp', async route => {
+      const rpc=route.request().postDataJSON().params;
+      if(rpc?.name!=='read-progress-board' || rpc.arguments.board_id!==olderPage) return route.fallback();
+      if(pageUnavailable) return route.fulfill({status:503,contentType:'application/json',body:'{}'});
+      return route.fulfill({contentType:'application/json',body:JSON.stringify({result:{content:[{text:JSON.stringify({snapshot:{version:1,snapshot_json:{cards:[{
+        id:'older-release',title:'Older unresolved release',state:'merged',owner:'cx-app2',prs:[],changed_at:'2026-01-01T00:00:00Z'
+      }]}}})}]}})});
+    });
+    await page.locator('[data-orchestrator-card="queue:search"]').waitFor();
+    await page.evaluate(()=>{
+      window.__orchestratorCard=document.querySelector('[data-orchestrator-card="queue:search"]');
+      window.__orchestratorLink=window.__orchestratorCard.querySelector('a');
+      window.__orchestratorLink.focus({preventScroll:true});
+      window.__orchestratorCard.querySelector('details').open=true;
+    });
+    for(const [index,state] of [[1,'working'],[2,'review'],[3,'fixing'],[4,'merging'],[5,'merged'],[6,'live']]) {
+      setSnapshot(orchestratorSequence[index].snapshot.snapshot_json);
+      await page.clock.runFor(2100);
+      await page.locator(`[data-orchestrator-stage="${state}"] [data-orchestrator-card="queue:search"]`).waitFor();
+      assert.equal(await page.evaluate(()=>document.querySelector('[data-orchestrator-card="queue:search"]')===window.__orchestratorCard),true);
+      assert.equal(await page.evaluate(()=>document.activeElement===window.__orchestratorLink),true);
+      assert.equal(await page.locator('[data-orchestrator-card="queue:search"] details').getAttribute('open'),'');
+    }
+    setSnapshot(orchestratorSequence[7].snapshot.snapshot_json);
+    await page.clock.runFor(2100);
+    await page.locator('[data-orchestrator-status]').filter({hasText:'Queue observation unavailable or stale'}).waitFor();
+    assert.equal(await page.locator('[data-orchestrator-stage="live"] [data-orchestrator-card="queue:search"]').count(),1);
+    assert.equal(await page.locator('[data-orchestrator-stage]').count(),8);
+    const paged=structuredClone(orchestratorSequence[7].snapshot.snapshot_json);
+    paged.orchestrator.total_cards=paged.orchestrator.cards.length+1;
+    paged.orchestrator.pages=[{board_id:olderPage,version:1,count:1}];
+    setSnapshot(paged);await page.clock.runFor(2100);
+    await page.locator('[data-orchestrator-more]').click();
+    await page.locator('[data-orchestrator-pagination]').filter({hasText:'unavailable'}).waitFor();
+    assert.equal(await page.locator('[data-orchestrator-card="queue:search"]').count(),1);
+    pageUnavailable=false;await page.locator('[data-orchestrator-more]').click();
+    await page.locator('[data-orchestrator-card="older-release"]').waitFor();
+    assert.match(await page.locator('[data-orchestrator-card="older-release"]').textContent(),/Merged \/ awaiting release/);
+    const older=page.locator('[data-orchestrator-card="older-release"]');
+    await older.locator('details').evaluate(el=>el.open=true);
+    await older.locator('summary').focus();
+    const scroll=await older.evaluate(el=>el.closest('.app-layout-center').scrollTop);
+    const changed=structuredClone(paged);changed.orchestrator.observed_at='2026-10-21T20:00:00Z';
+    changed.orchestrator.cards[0].state='fixing';setSnapshot(changed);await page.clock.runFor(2100);
+    assert.equal(await older.locator('details').getAttribute('open'),'');
+    assert.equal(await older.locator('summary').evaluate(el=>el===document.activeElement),true);
+    assert.equal(await older.evaluate(el=>el.closest('.app-layout-center').scrollTop),scroll);
+    setSnapshot({tasks:{}});await page.clock.runFor(2100);
+    setSnapshot(changed);await page.clock.runFor(6300);
+    assert.equal(await older.count(),1);
+
+
+    assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
+    const targets=await page.locator('.orchestrator-count,.orchestrator-links a,.orchestrator-detail summary').evaluateAll(nodes=>nodes.map(el=>el.getBoundingClientRect().height));
+    assert.ok(targets.every(height=>height>=44));
+    const violations=await page.evaluate(async source=>{eval(source);return (await axe.run(document.querySelector('#board-stages'))).violations;},axe.source);
+    assert.deepEqual(violations.map(v=>v.id),[]);
+    assert.deepEqual(errors,[]);
+    await mkdir('test-artifacts/orchestrator',{recursive:true});
+    await page.screenshot({path:`test-artifacts/orchestrator/${width}-${theme}.png`,fullPage:true});
+  });
+
+
+test('session invalidation disposes board callbacks before its document is cleared', async t => {
+  const {page, errors} = await open(t, {path:systemPath, snapshotData:workQueue, autoMount:false});
+  const result = await page.evaluate(async fixture => {
+    const {mountBoard} = await import('/js/progress-board.js');
+    let reads = 0;
+    const client = {readProgressBoard:async()=>{reads++; return {snapshot:{version:1,snapshot_json:fixture}};}};
+    const board = mountBoard({window, client});
+    await board.refresh(true);
+    window.dispatchEvent(new Event('doctorcre-session-invalidated'));
+    document.body.replaceChildren();
+    await board.refresh(true);
+    board.tick();
+    return {reads, text:document.body.textContent};
+  }, workQueue);
+  assert.deepEqual(result, {reads:1, text:''});
+  assert.deepEqual(errors, []);
 });

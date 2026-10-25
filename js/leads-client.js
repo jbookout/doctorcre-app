@@ -1,3 +1,5 @@
+import { readWithDeadline } from "./current-read.mjs";
+import { sessionFetch } from './private-session.js';
 import { observeDocClient } from './doc-context.js';
 import { createMcpRequests, unknownMcpOutcome } from "./mcp-requests.mjs";
 import { createEngagementWriter } from './prospect-engagement.mjs';
@@ -6,7 +8,7 @@ import { createEngagementWriter } from './prospect-engagement.mjs';
  * Authentication remains the host's
  * same-origin cookie; there is no client-side identity or alternate endpoint. */
 export function createLeadBoardClient(options = {}) {
-  const fetchImpl = options.fetchImpl || ((path, init) => fetch(path, init));
+  const fetchImpl = options.fetchImpl || ((path, init) => sessionFetch(path, init));
   const requestMcp = createMcpRequests({ fetchImpl, headers: { accept: "application/json" } });
 
   function typedError(payload, fallback = "The lead board request was refused.", status) {
@@ -45,10 +47,15 @@ export function createLeadBoardClient(options = {}) {
   }
 
   return observeDocClient({
-    async getActor() {
-      const board = await rpc("deal-room-board", { workspace: "team" });
-      return typeof board.actor === "string" && board.actor.trim() ? board.actor : null;
-    },
+    getActor: () => readWithDeadline(async signal => {
+      const response = await fetchImpl("/api/system-work/session", { signal,
+        credentials: "same-origin", cache: "no-store", headers: { accept: "application/json" } });
+      if (!response.ok) throw typedError({ error: response.status === 401 ? "not_authenticated" :
+        response.status === 403 ? "forbidden" : "session_unavailable" }, "Sign-in required", response.status);
+      const session = await response.json();
+      const actor = session?.actor?.slug;
+      return typeof actor === "string" && actor.trim() ? actor : null;
+    }, { timeoutMs: options.timeoutMs || 10_000 }),
     getLeadBoard: (options = {}) => rpc("lead-board", {}, false, options),
     getWorkspace: async () => validateLeadWorkspace(await rpc("lead-board", { workspace: "leads" })),
     getLeadDetail: async (lead) => {

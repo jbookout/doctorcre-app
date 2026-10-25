@@ -62,10 +62,9 @@ test("day arithmetic crosses month and year ends, and a month step clamps to the
   assert.equal(daysBetween("2026-09-24", "2026-09-20"), -4);
 });
 
-test("today is the viewer's LOCAL calendar day, not the UTC one", () => {
-  // 11 PM on Sep 24 somewhere west of Greenwich is already Sep 25 in UTC.
-  const lateEvening = { getFullYear: () => 2026, getMonth: () => 8, getDate: () => 24 };
-  assert.equal(localToday(lateEvening), "2026-09-24");
+test("today follows the Chicago business calendar across UTC midnight", () => {
+  assert.equal(localToday(new Date("2026-09-25T04:00:00Z")), "2026-09-24");
+  assert.equal(localToday(new Date("2026-09-25T05:00:00Z")), "2026-09-25");
 });
 
 test("the month grid is six Sunday-first weeks with the anchor's month marked", () => {

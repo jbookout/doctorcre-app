@@ -21,6 +21,7 @@ export default defineConfig({
       use: {
         ...devices['Desktop Chrome'],
         storageState: 'playwright/.auth/staging.json',
+        trace: 'retain-on-failure',
       },
       dependencies: ['setup'],
     },

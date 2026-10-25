@@ -1,4 +1,5 @@
 import { mountHierarchy } from './progress-hierarchy.js';
+import { mountOrchestrator } from './progress-orchestrator.js';
 import { mountWorkQueue } from './progress-work-queue.js';
 import { resolveDealroomBoot } from './boot-mode.js';
 import { boardIdFromPath, boardPageUrl } from './progress-board-route.js';
@@ -39,6 +40,7 @@ export function mountBoard(deps = {}) {
   const requestAnimationFrame = fn => (win.requestAnimationFrame ? win.requestAnimationFrame(fn) : win.setTimeout(fn, 0));
   const pathBoardId = boardIdFromPath(deps.location?.pathname ?? win.location?.pathname ?? "");
   const boardId = pathBoardId || boardFromSearch(deps.search ?? win.location?.search ?? "");
+  const orchestratorView = boardId === 'orchestrator';
   const byId = id => doc.getElementById(id);
   const costs = mountCostView(byId('board-costs'));
   const location = deps.location || win.location;
@@ -81,6 +83,8 @@ export function mountBoard(deps = {}) {
   let pipelineCards = [];
   let hierarchyUI = null;
   let queueUI = null;
+  let orchestratorUI = null;
+  let boardReadController = null;
 
   function el(tag, className, text, attributes = {}) {
     const node = doc.createElement(tag);
@@ -133,6 +137,8 @@ export function mountBoard(deps = {}) {
   // This clock only patches badge text. It never reads the network or rebuilds
   // controls, and wakes at publication-relative minute boundaries (including 24h).
   function refreshAges() {
+    if (disposed) return;
+    orchestratorUI?.ages();
     clearTimer(ageTimer);
     let delay = Infinity;
     const at = currentNow().getTime();
@@ -421,6 +427,7 @@ export function mountBoard(deps = {}) {
   }
 
   function renderStages(view) {
+    if (disposed) return;
     const container = byId("board-stages");
     if (!view && boardState === "pending") {
       container.setAttribute("aria-busy", "true");
@@ -436,6 +443,21 @@ export function mountBoard(deps = {}) {
       return;
     }
     container.removeAttribute("aria-busy");
+    if (orchestratorView) {
+      byId('pipeline-title').textContent = 'Orchestrator';
+      for (const id of ['board-rail', 'board-filters']) byId(id).setAttribute('hidden', '');
+      for (const id of ['board-completed','completed-list','board-blocked','system-work-panel','board-ledger'])
+        byId(id)?.closest('.panel')?.setAttribute('hidden', '');
+      if (!view?.orchestrator) {
+        if (orchestratorUI) { orchestratorUI.offline(); return; }
+        container.textContent = 'The orchestrator view has not been published yet. The last observation is unknown.';
+        return;
+      }
+      orchestratorUI ||= mountOrchestrator({container, window:win, now:currentNow, readPage: args => client.readProgressBoard(args)});
+      orchestratorUI.update(view.orchestrator);
+      byId('task-count').textContent = `${view.orchestrator.total_cards ?? view.orchestrator.cards.length} recorded ${(view.orchestrator.total_cards ?? view.orchestrator.cards.length) === 1 ? 'item' : 'items'}`;
+      return;
+    }
     if (view?.hierarchy && !view.work_queue) {
       pipelineCards = Object.entries(view.hierarchy.cards).map(([id, card]) => ({...card, id, title:card.card_title, summary:card.card_description}));
       if (!hierarchyUI) doc.querySelector("details.directory-panel")?.removeAttribute("open");
@@ -788,7 +810,30 @@ export function mountBoard(deps = {}) {
       const key = retained?.idempotency_key || uuidv4();
       let args;
       try { args = retained || answerRequest(q, view.board_id, value, key); }
-      catch (cause) { setFormState(questionId, { message: cause.message }); return; }
+      catch (cause) { setFormState(questionId, { busy: false, message: cause.message }); return; }
+      if (!retained) {
+        const generation = readSeq;
+        setFormState(questionId, { busy: true, message: "Checking current question…" });
+        try {
+          const latest = boardView(await client.readProgressBoard({ board_id: view.board_id }), currentNow());
+          if (disposed) return;
+          if (readSeq !== generation) {
+            setFormState(questionId, { busy: false, message: "The board refreshed. Review the current question before sending." });
+            return;
+          }
+          if (latest.error || latest.board_id !== view.board_id) throw new Error("Board unavailable");
+          const currentQuestion = latest.questions.find(question => question.question_id === questionId);
+          if (!currentQuestion || currentQuestion.status || currentQuestion.revision !== q.revision) {
+            await reloadQuestion(questionId, "This question changed. Loading its current version…");
+            setFormState(questionId, { busy: false, message: "This question changed. Review the current question and your kept draft before sending." });
+            return;
+          }
+        } catch (cause) {
+          if ([401, 403].includes(cause?.status)) readFailure(cause, "board");
+          else setFormState(questionId, { busy: false, message: "Answer not sent. The current question could not be verified." });
+          return;
+        }
+      }
       pendingRequests.set(questionId, args);
       lockAnswer();
       showAnswer();
@@ -883,8 +928,8 @@ export function mountBoard(deps = {}) {
   function renderSwitch() {
     const project = byId("switch-project");
     const all = byId("switch-all");
-    if (boardId && boardId !== ALL_REPOS_BOARD) project.setAttribute("href", boardPageUrl(boardId));
-    project.toggleAttribute("aria-current", Boolean(boardId) && boardId !== ALL_REPOS_BOARD);
+    if (!orchestratorView && boardId && boardId !== ALL_REPOS_BOARD) project.setAttribute("href", boardPageUrl(boardId));
+    project.toggleAttribute("aria-current", !orchestratorView && Boolean(boardId) && boardId !== ALL_REPOS_BOARD);
     all.toggleAttribute("aria-current", boardId === ALL_REPOS_BOARD);
   }
 
@@ -913,17 +958,21 @@ export function mountBoard(deps = {}) {
 
   function render(view) {
     currentView = view;
+    doc.body.classList.toggle("orchestrator-route", orchestratorView);
     costs.update(view.costs);
     byId("board-title").textContent = view.hierarchy ? "Work Requests" : deps.openTask ? "System Job Board" : view.title;
     byId("board-eyebrow").textContent = view.kind === ALL_REPOS_BOARD ? "All repositories" : "Progress board";
     doc.title = "Control Room · DoctorCRE";
-    byId("board-meta").textContent = `${view.board_id} · Published ${formatTime(view.updated_at)} · Version ${view.version}`;
+    byId("board-meta").textContent = orchestratorView ? `Published ${formatTime(view.updated_at)}` : `${view.board_id} · Published ${formatTime(view.updated_at)} · Version ${view.version}`;
+    byId("board-meta").hidden = orchestratorView;
+    byId("board-freshness").hidden = orchestratorView;
+    byId("orchestrator-link")?.toggleAttribute("aria-current", orchestratorView);
     renderSync(view);
     renderHeadline(view);
-    doc.querySelector(".headline").hidden = Boolean(view.hierarchy || view.work_queue);
-    byId("board-title").classList.toggle("sr-only", Boolean(view.hierarchy || view.work_queue) || Boolean(deps.openTask));
+    doc.querySelector(".headline").hidden = orchestratorView || Boolean(view.hierarchy || view.work_queue);
+    byId("board-title").classList.toggle("sr-only", orchestratorView || Boolean(view.hierarchy || view.work_queue) || Boolean(deps.openTask));
     const breadcrumb = doc.querySelector('nav[aria-label="Breadcrumb"]');
-    if (breadcrumb) breadcrumb.hidden = Boolean(view.hierarchy || view.work_queue) || Boolean(deps.openTask);
+    if (breadcrumb) breadcrumb.hidden = !orchestratorView && (Boolean(view.hierarchy || view.work_queue) || Boolean(deps.openTask));
     renderRepos(view);
     renderStages(view);
     renderBlocked(view);
@@ -934,13 +983,14 @@ export function mountBoard(deps = {}) {
     renderNotes(view);
     for (const [id, count] of [["board-questions", view.questions.length], ["board-deliverables", view.deliverables.length],
       ["board-decisions", view.decisions.length + view.questions.filter(q => q.status).length], ["board-notes", view.notes.length]])
-      byId(id).closest(".panel").hidden = Boolean(view.hierarchy || view.work_queue) && !count;
+      byId(id).closest(".panel").hidden = (orchestratorView || Boolean(view.hierarchy || view.work_queue)) && !count;
   }
 
   // Live time: every time-dependent mark (stage ages, stale, stuck, health,
   // counts, blocked details) is derived again from the last read, so a card
   // that crosses a threshold changes without waiting for new data.
   function tick() {
+    if (disposed) return;
     if (lastRead) render(boardView(lastRead, currentNow()));
   }
 
@@ -951,6 +1001,8 @@ export function mountBoard(deps = {}) {
 
   // A confirmed unpublished or denied read removes the protected board.
   function clearBoard(state) {
+    orchestratorUI?.dispose();
+    orchestratorUI = null;
     queueUI?.dispose();
     queueUI = null;
     hierarchyUI?.dispose();
@@ -993,6 +1045,7 @@ export function mountBoard(deps = {}) {
   }
 
   function readFailure(cause, target) {
+    if (disposed) return;
     const status = cause?.status;
     const state = status === 401 ? "signed-out" : status === 403 ? "unauthorized"
       : cause?.code === "read_timeout" ? "timeout"
@@ -1030,24 +1083,31 @@ export function mountBoard(deps = {}) {
   // answer, a reload or Retry reads at once (force). The directory is read
   // alongside and never holds up the board.
   async function refresh(force = false) {
+    if (disposed) return false;
     if (!force && byId("board-questions").contains(doc.activeElement)) return false;
     if (!boardId) {
       setError("Choose a board: Project or All repositories.");
       byId("board-meta").textContent = "No board selected";
       return false;
     }
+    boardReadController?.abort();
+    boardReadController = new AbortController();
+    const controller = boardReadController;
     const seq = ++readSeq;
     systemWork?.refresh(false, { force });
     loadDirectory(seq);
     const run = (async () => {
       let read;
-      try { read = await client.readProgressBoard({ board_id: boardId }); }
+      try { read = await client.readProgressBoard({ board_id: boardId }, {signal:controller.signal}); }
       catch (cause) {
+        if (disposed || controller.signal.aborted) return false;
         if (seq !== readSeq) return "superseded";
+        orchestratorUI?.offline();
         readFailure(cause, "board");
         if (force) throw cause;
         return false;
       }
+      if (disposed || controller.signal.aborted) return false;
       if (seq !== readSeq) return "superseded";
       const view = boardView(read, currentNow());
       if (view.error) { boardState="unknown"; deps.onTasks?.([], {state:"unknown"}); setError(view.error); return false; }
@@ -1088,12 +1148,12 @@ export function mountBoard(deps = {}) {
 
   function start() {
     renderStages(currentView);
-    if (boardId === SYSTEM_BOARD_ID && typeof client.unfinishedWork === "function" && byId("system-work-panel"))
+    if (!orchestratorView && boardId === SYSTEM_BOARD_ID && typeof client.unfinishedWork === "function" && byId("system-work-panel"))
       systemWork = mountSystemWorkBoard({ client, openTask:deps.openTask, onAccessDenied: cause => readFailure(cause, "board"), onPipeline: (pipeline, observation) => { if (pipeline) censusPipeline = pipeline; censusObservation = observation; renderStages(currentView); } });
     refresh().catch(() => setError("Progress temporarily unavailable.")).finally(() => {
       if (disposed) return;
       poller = mountVisibilityPoll({ document: doc, window: win, setTimeout: setTimer, clearTimeout: clearTimer,
-        intervalMs: () => currentView?.work_queue ? 2000 : REFRESH_MS,
+        intervalMs: () => orchestratorView || currentView?.work_queue ? 2000 : REFRESH_MS,
         poll: () => refresh().catch(() => setError("Progress temporarily unavailable.")) });
     });
     timers.push(schedule(tick, TICK_MS));
@@ -1106,8 +1166,22 @@ export function mountBoard(deps = {}) {
   wireFilters();
   renderSwitch();
 
+  function dispose() {
+    if (disposed) return;
+    disposed = true; readSeq++; boardReadController?.abort();
+    orchestratorUI?.dispose(); queueUI?.dispose(); hierarchyUI?.dispose(); poller?.dispose();
+    timers.forEach(id => win.clearInterval(id)); clearTimer(ageTimer);
+    doc.removeEventListener("visibilitychange", refreshAges);
+    win.removeEventListener?.('doctorcre-session-invalidated', dispose);
+    currentView = lastRead = governanceRead = null;
+    cardNodes.clear(); completedNodes.clear(); blockedNodes.clear(); questionCards.clear();
+    fingerprints.clear(); formState.clear(); pendingRequests.clear(); badgeTimes.clear();
+  }
+  win.addEventListener?.('doctorcre-session-invalidated', dispose);
+
   return { start, refresh, tick, toggleLive, filters,
     setGovernance(read, observation = {}) {
+      if (disposed) return;
       const tasks = governanceTasks(read);
       governanceState = tasks ? "read" : "unknown";
       if (tasks) governanceRead = read;
@@ -1117,7 +1191,7 @@ export function mountBoard(deps = {}) {
       status.textContent = governanceState === "read" ? "" : `Approvals unavailable${governanceRead ? " · last-known cards" : ""}`;
       renderStages(currentView);
     },
-    dispose() { disposed = true; queueUI?.dispose(); hierarchyUI?.dispose(); poller?.dispose(); timers.forEach(id=>win.clearInterval(id)); clearTimer(ageTimer); doc.removeEventListener("visibilitychange",refreshAges); },
+    dispose,
     get view() { return currentView; }, get liveExpanded() { return liveExpanded; } };
 }
 

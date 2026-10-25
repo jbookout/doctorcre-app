@@ -1,3 +1,4 @@
+import { requireReviewReceipt } from './deal-review-model.js';
 import { showToast } from './toast.js';
 import {onDialogClosed} from './dialog-lifecycle.js';
 import { dealInsightLines } from './pipeline-model.js';
@@ -18,10 +19,11 @@ import {
 import {
   cellKey, performFieldWrite, unresolvedFieldWrites, fieldWriteMessage, nextCellBase,
 } from './field-write-reconciliation.mjs';
-import { classifyCommandOutcome, commandMessage, pendingCommand } from './command-feedback.mjs';
+import { beginCommand, settleCommand, classifyCommandOutcome, commandMessage, pendingCommand, performCommand } from './command-feedback.mjs';
 import { renderAccountCards } from './account-cards.js';
 import { updatedLabel } from './auto-refresh.mjs';
 import { mountVisibilityPoll } from './visibility-poll.mjs';
+import { createRetainedCommands } from './retained-commands.mjs';
 
 const POLL_MS = 1400;
 /**
@@ -63,6 +65,7 @@ const state = {
   // come from a snapshot. See field-write-reconciliation.mjs.
   fieldWrites: {},
   nextStepRequests: new Map(), nextStepInFlight: new Set(),
+  nationalCreations: {}, nationalConfirmations: {},
   presence: [], captureSessions: [],
   confirms: [], review: null,
   // Recent changes are session memory only: bounded, never stored, and never
@@ -222,6 +225,7 @@ async function loadHome() {
 }
 
 function applyBoardSnapshot(home) {
+  if (state.accessDenied) return;
   state.selfActor = home.actor || state.client.selfActor || state.selfActor;
   state.deals = new Map((home.deals || []).map((deal) => [deal.id, {
     workspace_kind: deal.account_client_id ? 'national_account' : 'team', ...deal,
@@ -247,6 +251,7 @@ function applyBoardSnapshot(home) {
 }
 
 async function pollOnce(initial = false, { force = false } = {}) {
+  if (state.accessDenied) return;
   const outcome = await state.boardSync.pollChanges({ force });
   // Skipped (a poll was already open) or superseded (the answer stopped being
   // current before it arrived). Neither is news and neither moves the cursor.
@@ -254,6 +259,7 @@ async function pollOnce(initial = false, { force = false } = {}) {
     if (outcome.reason === 'read_failed') console.warn('Deal Room poll failed', outcome.error);
     return;
   }
+  if (state.accessDenied) return;
   const result = outcome.changes;
   state.presence = result.presence || [];
   state.captureSessions = result.capture_sessions || [];
@@ -294,18 +300,7 @@ async function pollOnce(initial = false, { force = false } = {}) {
     actorLabel: actorName,
   });
   renderReceipts();
-  if (state.client.getPendingConfirms) {
-    // A separate read with a separate failure: a capture queue that will not
-    // answer says nothing about the board, so it leaves the last set of chips
-    // alone instead of claiming the connection is gone.
-    try {
-      const pending = await state.client.getPendingConfirms();
-      state.confirms = pending.proposals || [];
-      renderConfirms();
-    } catch (error) {
-      console.warn('Deal Room confirm queue read failed', error);
-    }
-  }
+  if (state.client.getPendingConfirms) await loadConfirms();
   if (!userIsEditing()) renderPreservingFocus(renderBoardOnly);
 }
 
@@ -589,10 +584,79 @@ function installCallMode() {
   return state.callModeUi;
 }
 
+let screenCommands = {};
+const screenActions = new Map();
+function screenStatusNode() {
+  let node = $('#screenActionStatus');
+  if (!node) { node = document.createElement('div'); node.id = 'screenActionStatus'; node.className = 'state-block'; }
+  const host = state.review ? $('#agendaPanel') : $('#main');
+  if (node.parentElement !== host) host.prepend(node);
+  return node;
+}
+function renderScreenActions() {
+  const node = screenStatusNode();
+  node.hidden = !screenActions.size;
+  node.innerHTML = [...screenActions.entries()].map(([key,entry]) => {
+    const pending = pendingCommand(screenCommands,key);
+    const busy = pending?.status === 'pending';
+    return `<div data-screen-outcome="${esc(key)}" role="status"><p>${esc(entry.label)}: ${busy ? 'Saving…' : esc(entry.message || 'Outcome unknown. Check the original request before changing it.')}</p>${entry.denied ? '<a href="/auth/login">Sign in</a>' : busy ? '' : `<button type="button" data-screen-retry="${esc(key)}">${pending ? 'Check outcome' : 'Retry'}</button>`}</div>`;
+  }).join('');
+  const busy = Object.values(screenCommands).some(command => command.status === 'pending');
+  for (const control of $$('#agendaButton,#agendaReviewed,#agendaSkip,#agendaEnd,#agendaClose,[data-confirm]')) control.disabled = Boolean(busy || state.accessDenied);
+}
+function refuseScreenAccess() {
+  state.accessDenied = true;
+  screenCommands = {};
+  state.review = null; state.confirms = []; state.deals.clear();
+  $('#agendaPanel').hidden = true; $('#confirmDock').hidden = true;
+  $('#rows').replaceChildren(); selectDocRecord(null,null);
+}
+async function runScreenAction(key,args,method,label,accepted) {
+  if (state.accessDenied) return false;
+  const held = screenActions.get(key);
+  if (pendingCommand(screenCommands,key) && held && held.args !== args) { renderScreenActions(); return false; }
+  const entry = pendingCommand(screenCommands,key) && held ? held : {args,label,run:() => runScreenAction(key,args,method,label,accepted)};
+  screenActions.set(key,entry);
+  const result = await performCommand({operationKey:key,args,newKey:uuidv4,
+    getState:() => screenCommands,setState:next => {screenCommands=next;renderScreenActions();},
+    call:async request => {
+      return appWrite(key, request, async retained => {
+        const response = await state.client[method](retained);
+        if (response?.ok === false) throw Object.assign(new Error('Action refused'),{payload:response});
+        if (method === 'startReview') requireReviewReceipt(response);
+        return response;
+      });
+    }});
+  if (state.accessDenied) return false;
+  if (result.status !== 'ok') {
+    entry.message = commandMessage(result,label).replace('on the command dock, or open the record to check','below');
+    entry.denied = [401,403].includes(result.http_status);
+    if (entry.denied) refuseScreenAccess();
+    renderScreenActions(); return false;
+  }
+  screenActions.delete(key); renderScreenActions();
+  try { await accepted(result.response); }
+  catch { entry.message = 'Change confirmed. The board refresh is unavailable.'; entry.run = async () => { try {await loadHome();screenActions.delete(key);renderScreenActions();} catch {renderScreenActions();} }; screenActions.set(key,entry);renderScreenActions(); }
+  return true;
+}
+async function loadConfirms() {
+  if (state.accessDenied) return;
+  try {
+    const pending = await state.client.getPendingConfirms();
+    if (state.accessDenied) return;
+    if (!Array.isArray(pending?.proposals)) throw new Error('Invalid capture queue');
+    state.confirms = pending.proposals;
+    state.confirmError = null;
+  } catch (error) {
+    state.confirmError = [401,403].includes(error?.status) ? 'denied' : 'unavailable';
+    if (state.confirmError === 'denied') refuseScreenAccess();
+  }
+  renderConfirms();
+}
 function renderConfirms() {
   const dock = $('#confirmDock');
-  dock.hidden = !state.confirms.length;
-  dock.innerHTML = state.confirms.map((proposal) => `<span class="confirm-chip" data-proposal="${esc(proposal.id)}">${esc(proposal.label)}
+  dock.hidden = !state.confirms.length && !state.confirmError;
+  dock.innerHTML = (state.confirmError ? `<span role="status">Suggestions unavailable. ${state.confirmError === 'denied' ? '<a href="/auth/login">Sign in</a>' : '<button type="button" data-confirms-retry>Retry suggestions</button>'}</span>` : '') + state.confirms.map((proposal) => `<span class="confirm-chip" data-proposal="${esc(proposal.id)}">${esc(proposal.label)}
     <button type="button" class="yes" data-confirm="yes">Confirm</button><button type="button" class="skip-confirm" data-confirm="no">Skip</button></span>`).join('');
 }
 
@@ -923,25 +987,77 @@ async function patchOperatingState(dealId, value, options = {}) {
   return result;
 }
 
-function openForm({ context='Deal Room', title, submit='Save', body, onSubmit }) {
+function appWrite(operationKey, args, send) {
+  state.commands ||= createRetainedCommands({ scope: () => state.selfActor });
+  return state.commands.send(operationKey, args, send);
+}
+
+function openForm({ context='Deal Room', title, submit='Save', body, onSubmit, operationKey = null, draftKey = null }) {
   const dialog = $('#formDialog');
   $('#dialogContext').textContent = context;
   $('#dialogTitle').textContent = title;
   $('#dialogSubmit').textContent = submit;
   $('#dialogBody').innerHTML = body;
   $('#formError').hidden = true;
+  let draft = null;
+  if (draftKey) {
+    state.formDrafts ||= new Map();
+    draft = state.formDrafts.get(draftKey) || { values: {} };
+    state.formDrafts.set(draftKey, draft);
+    for (const control of $$('#dialogBody [name]')) {
+      if (Object.hasOwn(draft.values, control.name)) control.value = draft.values[control.name];
+      control.addEventListener('input', () => { draft.values[control.name] = control.value; });
+    }
+  }
+  const renderReview = () => {
+    $('#reviewCurrentValues')?.remove();
+    if (!draft?.conflict) return;
+    $('#formError').textContent = draft.conflict.message;
+    $('#formError').hidden = false;
+    const review = document.createElement('button');
+    review.id = 'reviewCurrentValues'; review.type = 'button'; review.textContent = 'Review current values';
+    review.onclick = () => {
+      draft.reviewed = draft.conflict.current;
+      delete draft.conflict;
+      review.remove(); $('#formError').hidden = true;
+    };
+    $('#formError').after(review);
+  };
+  renderReview();
+  const retained = () => operationKey && state.commands?.pending(operationKey);
+  const renderPending = () => {
+    const request = retained();
+    if (!request) {
+      if (operationKey) for (const control of $$('#dialogBody input, #dialogBody textarea, #dialogBody select')) control.disabled = false;
+      $('#dialogSubmit').textContent = submit;
+      return;
+    }
+    for (const control of $$('#dialogBody input, #dialogBody textarea, #dialogBody select')) {
+      if (control.name && Object.hasOwn(request, control.name)) control.value = request[control.name] ?? '';
+      control.disabled = true;
+    }
+    $('#dialogSubmit').textContent = 'Check outcome';
+  };
+  renderPending();
   $('#dialogForm').onsubmit = async (event) => {
     event.preventDefault();
+    if (draft?.conflict) { renderReview(); return; }
+    if (draft) draft.values = Object.fromEntries(new FormData(event.currentTarget).entries());
     const button = $('#dialogSubmit');
     button.disabled = true;
     $('#formError').hidden = true;
     try {
-      await onSubmit(new FormData(event.currentTarget));
-      dialog.close();
+      if (await onSubmit(new FormData(event.currentTarget)) !== false) {
+        if (draftKey) state.formDrafts.delete(draftKey);
+        dialog.close();
+      }
     } catch (error) {
-      const detail = error.payload?.hint || error.payload?.error || error.message;
+      const detail = retained() ? 'Outcome unknown. Check outcome replays the original request. Keep this tab open until it is confirmed.'
+        : error.payload?.hint || error.payload?.error || error.message;
       $('#formError').textContent = detail;
       $('#formError').hidden = false;
+      if (draft && error.replacementConflict) { draft.conflict = error.replacementConflict; renderReview(); }
+      renderPending();
     } finally { button.disabled = false; }
   };
   // One dialog element serves every form, so a form raised FROM a form — the
@@ -955,25 +1071,47 @@ function openForm({ context='Deal Room', title, submit='Save', body, onSubmit })
   setTimeout(() => $('input,textarea,select', dialog)?.focus(), 0);
 }
 
+function reviewedReplacementVersion(reviewed, current, fields, draftKey) {
+  const version = record => record?.base_version ?? record?.version ?? record?.client_version;
+  const expected = version(state.formDrafts?.get(draftKey)?.reviewed || reviewed), fresh = version(current);
+  if (!Number.isSafeInteger(expected) || !Number.isSafeInteger(fresh) || expected < 1 || fresh < 1)
+    throw new Error('The current version is unavailable. Reopen this record before saving.');
+  if (fresh !== expected) {
+    const detail = fields.map(field => `${field.replaceAll('_', ' ')}: ${current[field] ?? 'Not recorded'}`).join('; ');
+    const message = `This record changed. Current ${detail}. Your draft is kept. Review current values before saving.`;
+    throw Object.assign(new Error(message), { payload: { error: 'version_conflict', hint: message }, replacementConflict: { current, message } });
+  }
+  return fresh;
+}
+
 function nextStepForm(dealId) {
   const deal = state.deals.get(dealId);
   const pending = state.nextStepRequests.get(dealId);
-  openForm({ title:`Next step — ${deal.name}`, submit:pending ? 'Check outcome' : 'Set next step', body:`
+  const draftKey = `next-step:${dealId}`;
+  openForm({ draftKey, title:`Next step — ${deal.name}`, submit:pending ? 'Check outcome' : 'Set next step', body:`
     <div class="field"><label for="stepText">What happens next?</label><textarea id="stepText" name="text" required${pending ? ' disabled' : ''}>${esc(pending?.text ?? deal.next_step ?? '')}</textarea><small>This becomes a real next action in today’s triage; the prior step stays in history.</small></div>
     <div class="field"><label for="stepDate">When?</label><input id="stepDate" name="next_date" type="date" value="${esc(pending?.next_date ?? deal.next_date ?? '')}"${pending ? ' disabled' : ''}></div>`,
     onSubmit:async (data) => {
       if (state.nextStepInFlight.has(dealId)) throw new Error('Next step is still being sent. Wait for the server to answer.');
       const checking = state.nextStepRequests.has(dealId);
-      const request = state.nextStepRequests.get(dealId) || { deal:dealId,
-        text:String(data.get('text') || '').trim(), next_date:data.get('next_date') || null,
-        idempotency_key:uuidv4() };
-      state.nextStepRequests.set(dealId, request);
+      let request = state.nextStepRequests.get(dealId);
       state.nextStepInFlight.add(dealId);
       try {
+        if (!request) {
+          const current = (await state.client.getDeal(dealId))?.deal;
+          if (current?.id !== dealId) throw new Error('The current record could not be verified. No write was sent.');
+          state.deals.set(dealId, { ...deal, ...current });
+          const base_version = reviewedReplacementVersion(deal, current, ['next_step', 'next_date'], draftKey);
+          request = { deal:dealId, text:String(data.get('text') || '').trim(), next_date:data.get('next_date') || null,
+            base_version, idempotency_key:uuidv4() };
+          state.nextStepRequests.set(dealId, request);
+        }
         await state.client.setNextStep(request);
       } catch (error) {
+        if (!request) throw error;
         const outcome = classifyCommandOutcome({ error });
-        if (outcome.status === 'unknown' && outcome.reason !== 'offline') {
+        if (error.pendingRequest || error.code === 'session_changed' ||
+          (outcome.status === 'unknown' && (checking || outcome.reason !== 'offline')) || (checking && [401,403].includes(error.status))) {
           // The write may have landed. Keep its text, date and key intact until
           // CARR answers a deliberate replay of that same request.
           $('#stepText').value = request.text;
@@ -1022,17 +1160,150 @@ function parkDealForm(dealId) {
     } });
 }
 
+function nationalResearchFields() {
+  return `<fieldset><legend>Research for the new organization or sub-client</legend>
+    <p>Review sources before creating this record. Link the source you checked for each field, including a source documenting unavailable information. A source may support several fields.</p>
+    ${[['name','Name'],['company','Company'],['phone','Phone'],['specialty','Specialty'],['market','Market']].map(([field,label]) => `<div class="field"><label for="research_${field}">${label} source (HTTPS URL)</label><input id="research_${field}" name="research_${field}" type="url" required></div>`).join('')}
+    <div class="field"><label for="researchObserved">When did you review these sources?</label><input id="researchObserved" name="research_observed_at" type="datetime-local" required><small>Enter the observation time in your local time zone.</small></div>
+    <div class="field"><label for="researchDiscrepancies">Discrepancies found (optional)</label><textarea id="researchDiscrepancies" name="research_discrepancies" placeholder="One discrepancy per line; leave blank if none."></textarea></div></fieldset>`;
+}
+
+// Producer tools.js@804a3794: typed HTTPS sources and non-future observations,
+// with source indexes for all five required fields. Never invent research.
+function nationalResearchEvidence(data) {
+  const observed = new Date(String(data.get('research_observed_at') || ''));
+  if (!Number.isFinite(observed.getTime()) || observed.getTime() > Date.now() + 300000)
+    throw new Error('Enter when you reviewed the research sources; the time cannot be in the future.');
+  const sources = [], field_evidence = {};
+  for (const field of ['name','company','phone','specialty','market']) {
+    let url;
+    try { url = new URL(String(data.get(`research_${field}`) || '').trim()); } catch { /* actionable error below */ }
+    if (url?.protocol !== 'https:') throw new Error(`Research evidence needs an HTTPS source for ${field}. Review and link that source before creating the record.`);
+    let index = sources.findIndex(source => source.url === url.href);
+    if (index < 0) { index = sources.length; sources.push({url:url.href, observed_at:observed.toISOString()}); }
+    field_evidence[field] = [index];
+  }
+  return {sources, field_evidence, discrepancies:String(data.get('research_discrepancies') || '').split('\n').map(line => line.trim()).filter(Boolean)};
+}
+
+function nationalCreationForm({operationKey, context, title, submit, body, request, send, receiptId, success, accountId}) {
+  const actor = state.selfActor;
+  const key = `${actor}:${operationKey}`;
+  const held = state.nationalCreations[key];
+  let confirmation = state.nationalConfirmations[key];
+  const review = () => `<div id="nationalCandidates"><p>${esc(confirmation.hint || 'An organization with this name already exists. Review it before creating a separate brand.')}</p>
+    <ul>${confirmation.candidates.map(candidate => `<li>${esc(candidate.name)} (${esc(candidate.id)})</li>`).join('')}</ul>
+    <p>Cancel to use the existing client. Continue only if this is a genuinely separate brand.</p>
+    <div class="field"><label><input type="checkbox" name="confirm_separate" required${state.nationalCreations[key]?.request.force_new ? ' checked disabled' : ''}> I reviewed these candidates and confirm this is a separate brand.</label></div>
+    <button type="button" id="nationalEditDetails"${state.nationalCreations[key] ? ' disabled' : ''}>Edit account details</button></div>`;
+  const wireReview = () => {
+    if (!$('#nationalEditDetails')) return;
+    $('#nationalEditDetails').onclick = () => {
+      delete state.nationalConfirmations[key];
+      confirmation = null;
+      $('#nationalCandidates').remove();
+      $('#nationalCreationFields').disabled = false;
+      $('#dialogSubmit').textContent = submit;
+      $('#formError').hidden = true;
+    };
+  };
+  openForm({context, title, submit:held ? 'Check creation outcome' : confirmation ? 'Create separate brand' : submit,
+    body:`${held ? `<p>Check creation outcome for ${esc(held.request.name || held.request.deal_name)} before starting another record.</p>` : ''}<fieldset id="nationalCreationFields"${held || confirmation ? ' disabled' : ''}>${body}</fieldset>${confirmation ? review() : ''}`,
+    onSubmit:async data => {
+      if (state.selfActor !== actor || accountId && account()?.account_client_id !== accountId)
+        throw new Error('The account or signed-in partner changed. Reopen this form in its original account and session.');
+      const pending = state.nationalCreations[key];
+      if (!pending && confirmation && data.get('confirm_separate') !== 'on')
+        throw new Error('Review the existing candidates and confirm a separate brand before creating it.');
+      const args = pending?.request || (confirmation ? {...confirmation.request,force_new:true} : request(data));
+      const started = beginCommand(state.nationalCreations, {operationKey:key,args,newKey:uuidv4});
+      if (!started.started) throw new Error('Creation is still being sent. Wait for the server to answer.');
+      state.nationalCreations = started.state;
+      $('#nationalCreationFields').disabled = true;
+      if ($('#nationalEditDetails')) $('#nationalEditDetails').disabled = true;
+      try {
+        const result = await send(started.request);
+        if (result?.needs_confirm === true && result.ok !== false && !result.error && !result.conflict && receiptId === 'account_client_id' && !started.request.force_new &&
+            Array.isArray(result.candidates) && result.candidates.length && result.candidates.every(candidate => typeof candidate.id === 'string' && typeof candidate.name === 'string')) {
+          state.nationalCreations = settleCommand(state.nationalCreations,key,{status:'conflict'});
+          confirmation = {request:started.request,candidates:result.candidates,hint:result.hint};
+          state.nationalConfirmations[key] = confirmation;
+          $('#nationalCandidates')?.remove();
+          $('#dialogBody').insertAdjacentHTML('beforeend',review());
+          wireReview();
+          $('#dialogSubmit').textContent = 'Create separate brand';
+          return false;
+        }
+        if (result?.ok !== true || result.needs_confirm || result.error || result.conflict ||
+            typeof result[receiptId] !== 'string' || !result[receiptId].trim() ||
+            accountId && result.account_client_id !== accountId) {
+          if (result?.ok === false || result?.error) throw Object.assign(new Error(result.hint || 'Creation was refused. Review the fields before trying again.'), {payload:{error:result.error || 'creation_refused',hint:result.hint}});
+          throw new Error('Creation could not be confirmed. Check creation outcome before starting another record.');
+        }
+      } catch (error) {
+        const classified = classifyCommandOutcome({error});
+        const outcome = classified.reason === 'offline' && pending ? pending : classified;
+        const unknown = outcome.status === 'unknown' && outcome.reason !== 'offline';
+        state.nationalCreations = settleCommand(state.nationalCreations,key,unknown ? outcome : {status:'refused'});
+        $('#nationalCreationFields').disabled = unknown || Boolean(confirmation);
+        if ($('#nationalEditDetails')) $('#nationalEditDetails').disabled = unknown;
+        const confirm = $('[name="confirm_separate"]');
+        if (confirm) {
+          confirm.disabled = unknown;
+          if (!unknown) confirm.checked = false;
+        }
+        $('#dialogSubmit').textContent = unknown ? 'Check creation outcome' : confirmation ? 'Create separate brand' : submit;
+        if (unknown) throw new Error(commandMessage(outcome,'Creation'));
+        if (error.payload?.error === 'research_evidence_required') throw new Error('Research evidence is required: the sub-client name did not match an existing client under this account. Choose New sub-client and provide reviewed sources.');
+        throw error;
+      }
+      state.nationalCreations = settleCommand(state.nationalCreations,key,{status:'ok'});
+      delete state.nationalConfirmations[key];
+      // Creation is confirmed independently of whether the subsequent read works.
+      showToast(success);
+      try { await loadHome(); } catch { showToast('Creation confirmed. The board could not refresh; reload to see the current records.'); }
+    }});
+  wireReview();
+  const retained = held?.request || confirmation?.request;
+  if (retained) {
+    const values = {...retained,client_mode:retained.research_evidence ? 'new' : 'existing'};
+    const evidence = retained.research_evidence;
+    if (evidence) {
+      for (const [field,indexes] of Object.entries(evidence.field_evidence)) values[`research_${field}`] = evidence.sources[indexes[0]].url;
+      const observed = new Date(evidence.sources[0].observed_at);
+      values.research_observed_at = new Date(observed.getTime() - observed.getTimezoneOffset()*60000).toISOString().slice(0,16);
+      values.research_discrepancies = evidence.discrepancies.join('\n');
+    }
+    for (const [name,value] of Object.entries(values)) {
+      const input = $(`#nationalCreationFields [name="${name}"]`);
+      if (input) input.value = value;
+    }
+  }
+}
+
 function marketAgentForm(dealId) {
+  const operationKey = `market-agent:${dealId}`;
   const deal = state.deals.get(dealId);
-  openForm({ title:`Market assignment — ${deal.name}`, submit:'Save assignment', body:`
+  openForm({ operationKey, draftKey:operationKey, title:`Market assignment — ${deal.name}`, submit:'Save assignment', body:`
     <div class="field"><label for="agentName">Assigned local agent</label><input id="agentName" name="agent_name" required value="${esc(deal.market_agent || '')}" placeholder="Agent’s full name"></div>
     <div class="field"><label for="agentMarket">Market</label><input id="agentMarket" name="market" value="${esc(deal.market || '')}" placeholder="City, state"></div>`,
     onSubmit:async (data) => {
-      await state.client.setMarketAgent({ deal:dealId, agent_name:data.get('agent_name'), market:data.get('market') || null,
-        source:'partner stated in Deal Room', idempotency_key:uuidv4() });
-      const current = confirmLocalWrite(dealId, { market_agent:data.get('agent_name'),
-        ...(data.get('market') ? { market:data.get('market') } : {}) });
-      renderBoardOnly(); showToast(`Market agent saved on ${current?.name || deal.name}`);
+      let request = state.commands?.pending(operationKey);
+      if (!request) {
+        const current = (await state.client.getDeal(dealId))?.deal;
+        if (current?.id !== dealId) throw new Error('The current record could not be verified. No write was sent.');
+        state.deals.set(dealId, { ...deal, ...current });
+        request = { deal:dealId, agent_name:data.get('agent_name'),
+          ...(String(data.get('market') || '').trim() ? { market:String(data.get('market')).trim() } : {}), source:'partner stated in Deal Room',
+          base_version: reviewedReplacementVersion(deal, current, ['market_agent', 'market'], operationKey) };
+      }
+      await appWrite(operationKey, request, async args => {
+        const result = await state.client.setMarketAgent(args);
+        if (result?.ok !== true || result.error || result.needs_confirm || result.deal_id !== dealId)
+          throw Object.assign(new Error('Market assignment receipt is incomplete. Check outcome before changing it.'), { code:'unknown_outcome' });
+        return result;
+      });
+      await loadHome(); showToast(`Market agent confirmed on ${deal.name}`);
     } });
 }
 
@@ -1062,31 +1333,55 @@ function addTeamDealForm() {
 }
 
 function addAccountForm() {
-  openForm({ context:'National accounts', title:'Add national account', submit:'Create account', body:`
+  nationalCreationForm({ operationKey:'account', context:'National accounts', title:'Add national account', submit:'Create account', body:`
     <div class="field"><label for="accountName">Brand / organization</label><input id="accountName" name="name" required><small>Creates one parent account. Market transactions will live under their own sub-clients.</small></div>
     <div class="field-row"><div class="field"><label for="accountOwner">Account owner</label><select id="accountOwner" name="owner"><option value="${esc(state.selfActor)}">${esc(actorName(state.selfActor))}</option><option value="${state.selfActor === 'joe' ? 'dell' : 'joe'}">${esc(actorName(state.selfActor === 'joe' ? 'dell' : 'joe'))}</option></select></div>
-    <div class="field"><label for="accountVertical">Healthcare vertical</label><input id="accountVertical" name="vertical"></div></div>`,
-    onSubmit:async (data) => { await state.client.createNationalAccount({ ...Object.fromEntries(data.entries()), idempotency_key:uuidv4() }); await loadHome(); showToast('National account created'); } });
+    <div class="field"><label for="accountVertical">Healthcare vertical</label><input id="accountVertical" name="vertical"></div></div>${nationalResearchFields()}`,
+    request:data => ({name:String(data.get('name') || '').trim(),owner:String(data.get('owner')),vertical:String(data.get('vertical') || '').trim(),research_evidence:nationalResearchEvidence(data)}),
+    send:args => state.client.createNationalAccount(args), receiptId:'account_client_id', success:'National account created' });
 }
 
 function addMarketDealForm() {
   const selected = account();
-  openForm({ context:selected.account_name, title:'Add market transaction', submit:'Create market deal', body:`
-    <div class="field"><label for="marketClient">Franchisee / local client</label><input id="marketClient" name="client_name" required><small>Reuses the exact sub-client if it exists; otherwise creates one under ${esc(selected.account_name)}.</small></div>
+  nationalCreationForm({ operationKey:`market:${selected.account_client_id}`, accountId:selected.account_client_id, context:selected.account_name, title:'Add market transaction', submit:'Create market deal', body:`
+    <div class="field"><label for="marketClientMode">Sub-client</label><select id="marketClientMode" name="client_mode"><option value="new">New sub-client</option><option value="existing">Existing researched sub-client</option></select></div>
+    <div class="field"><label for="marketClient">Franchisee / local client</label><input id="marketClient" name="client_name" required><small>For an existing researched sub-client, enter its exact name under ${esc(selected.account_name)}. An unmatched name requires new research.</small></div>
     <div class="field"><label for="marketDealName">Deal name</label><input id="marketDealName" name="deal_name" required></div>
     <div class="field-row"><div class="field"><label for="marketCity">Market</label><input id="marketCity" name="market" required placeholder="City"></div><div class="field"><label for="marketState">State</label><input id="marketState" name="state" maxlength="2"></div></div>
     <div class="field-row"><div class="field"><label for="marketAgent">Assigned agent</label><input id="marketAgent" name="agent_name" placeholder="Leave blank if unknown"></div><div class="field"><label for="marketSegment">Healthcare vertical</label><input id="marketSegment" name="segment"></div></div>
-    <input type="hidden" name="deal_type" value="startup"><input type="hidden" name="phase" value="pending">`,
-    onSubmit:async (data) => { await state.client.createNationalMarketDeal({ account_client_id:selected.account_client_id,
-      ...Object.fromEntries(data.entries()), idempotency_key:uuidv4() }); await loadHome(); showToast(`Market deal added to ${selected.account_name}`); } });
+    <div id="marketResearch">${nationalResearchFields()}</div>`,
+    request:data => ({account_client_id:selected.account_client_id,
+      ...Object.fromEntries(['client_name','deal_name','market','state','agent_name','segment'].map(field => [field,String(data.get(field) || '').trim()])),
+      deal_type:'startup',phase:'pending',...(data.get('client_mode') === 'existing' ? {} : {research_evidence:nationalResearchEvidence(data)})}),
+    send:args => state.client.createNationalMarketDeal(args), receiptId:'deal_id', success:`Market deal added to ${selected.account_name}` });
+  const updateResearchFields = () => {
+    const existing = $('#marketClientMode').value === 'existing';
+    $('#marketResearch').hidden = existing;
+    $('#marketResearch fieldset').disabled = existing;
+  };
+  $('#marketClientMode').onchange = updateResearchFields;
+  updateResearchFields();
 }
 
 function accountOwnerForm() {
   const selected = account();
-  openForm({ context:selected.account_name, title:'Change account owner', submit:'Save owner', body:`
+  const operationKey = `national-owner:${selected.account_client_id}`;
+  openForm({ operationKey, draftKey:operationKey, context:selected.account_name, title:'Change account owner', submit:'Save owner', body:`
     <div class="field"><label for="newAccountOwner">Accountable partner</label><select id="newAccountOwner" name="owner"><option value="joe"${selected.account_owner === 'joe' ? ' selected' : ''}>Joe</option><option value="dell"${selected.account_owner === 'dell' ? ' selected' : ''}>Dell</option></select><small>This changes portfolio accountability only. Individual market-deal owners stay untouched.</small></div>`,
-    onSubmit:async (data) => { await state.client.setNationalAccountOwner({ account_client_id:selected.account_client_id,
-      owner:data.get('owner'), idempotency_key:uuidv4() }); await loadHome(); showToast(`${selected.account_name} owner updated`); } });
+    onSubmit:async (data) => {
+      let request = state.commands?.pending(operationKey);
+      if (!request) {
+        const board = await state.client.getBoard({ workspace: 'national_account' });
+        if (board.actor !== state.selfActor) throw new Error('Session changed. Reopen this account before saving.');
+        const current = board.accounts?.find(row => row.account_client_id === selected.account_client_id);
+        if (!current) throw new Error('The current account could not be verified. No write was sent.');
+        state.accounts = board.accounts;
+        request = { account_client_id:selected.account_client_id, owner:data.get('owner'),
+          base_version: reviewedReplacementVersion(selected, current, ['account_owner'], operationKey) };
+      }
+      await appWrite(operationKey, request, args => state.client.setNationalAccountOwner(args));
+      await loadHome(); showToast(`${selected.account_name} owner updated`);
+    } });
 }
 
 function showConflict(conflict) {
@@ -1132,13 +1427,15 @@ function agendaDeals() {
 }
 
 async function startAgenda() {
+  if (state.review) { $('#agendaPanel').hidden = false; return true; }
   const deals = agendaDeals();
   if (!deals.length) return showToast('No active work in this agenda');
-  const result = await state.client.startReview({ workspace_kind:state.workspace,
-    ...(state.accountId ? { account_client_id:state.accountId } : {}), idempotency_key:uuidv4() });
-  state.review = { sessionId:result.session_id, deals, index:0, reviewed:0, skipped:0 };
-  $('#agendaPanel').hidden = false;
-  renderAgenda();
+  const title = state.workspace === 'team' ? 'Deals' : account()?.account_name || 'National account';
+  return runScreenAction('agenda-start',{workspace_kind:state.workspace,
+    ...(state.accountId ? {account_client_id:state.accountId} : {})},'startReview','Start agenda',async result => {
+    state.review = {sessionId:result.session_id,deals,index:0,reviewed:0,skipped:0,title};
+    $('#agendaPanel').hidden = false; renderAgenda();
+  });
 }
 
 function renderAgenda() {
@@ -1151,7 +1448,7 @@ function renderAgenda() {
   // would show the partner the phase and next step as they were at the start.
   const captured = review.deals[review.index];
   const deal = resolveCurrentRow(captured, state.deals);
-  $('#agendaTitle').textContent = state.workspace === 'team' ? 'Deals' : account()?.account_name || 'National account';
+  $('#agendaTitle').textContent = review.title;
   $('#agendaProgress').textContent = `${Math.min(review.index + 1,review.deals.length)} of ${review.deals.length}`;
   $('#agendaMeter').max = review.deals.length;
   $('#agendaMeter').value = review.index;
@@ -1172,26 +1469,29 @@ async function advanceAgenda(disposition) {
   if (!review || !deal || review.advancing) return;
   review.advancing = true;
   try {
-    await state.client.reviewDeal({ session_id:review.sessionId, deal:deal.id, disposition, idempotency_key:uuidv4() });
+    return await runScreenAction(`agenda:${review.sessionId}`,{session_id:review.sessionId,deal:deal.id,disposition},'reviewDeal','Review record',async () => {
     if (state.review !== review) return;
     review[disposition === 'reviewed' ? 'reviewed' : 'skipped'] += 1;
     review.index += 1;
     renderAgenda();
+    });
   } finally { review.advancing = false; }
 }
 
 async function finishAgenda(status = 'completed') {
   if (!state.review) return;
   const review = state.review;
-  const result = await state.client.endReview({ session_id:review.sessionId, status, idempotency_key:uuidv4() });
+  return runScreenAction(`agenda:${review.sessionId}`,{session_id:review.sessionId,status},'endReview','Finish agenda',async result => {
   state.review = null;
   $('#agendaPanel').hidden = true;
   await loadHome();
   showToast(status === 'completed' ? `Agenda finished · ${result.reviewed ?? review.reviewed} records reviewed` : 'Agenda closed without changing the review clock');
+  });
 }
 
 function wireEvents() {
   document.addEventListener('click', async (event) => {
+    try {
     const workspace = event.target.closest('[data-workspace]');
     if (workspace) {
       state.workspace = workspace.dataset.workspace;
@@ -1227,9 +1527,20 @@ function wireEvents() {
     const filter = event.target.closest('[data-filter]'); if (filter) { state.filter=filter.dataset.filter; state.deepLinkMine = false; $$('.filter').forEach((b)=>b.classList.toggle('on',b===filter)); renderBoardOnly(); return; }
     if (event.target.closest('[data-close-deal]')) { $('#dealDialog').close(); return; }
     const undoButton = event.target.closest('[data-undo]'); if (undoButton) { await runUndo(undoButton.dataset.undo, undoButton); return; }
-    const confirm = event.target.closest('[data-confirm]'); if (confirm) { const chip=confirm.closest('[data-proposal]'); const yes=confirm.dataset.confirm==='yes'; await state.client.resolveConfirm({proposal_id:chip.dataset.proposal,accept:yes,idempotency_key:uuidv4()}); state.confirms=state.confirms.filter((p)=>p.id!==chip.dataset.proposal); renderConfirms(); if(yes)await loadHome(); showToast(yes?'Suggestion confirmed':'Suggestion skipped'); return; }
+    const retry = event.target.closest('[data-screen-retry]'); if (retry) { await screenActions.get(retry.dataset.screenRetry)?.run(); return; }
+    if (event.target.closest('[data-confirms-retry]')) { await loadConfirms(); return; }
+    const confirm = event.target.closest('[data-confirm]'); if (confirm) {
+      const proposal_id=confirm.closest('[data-proposal]').dataset.proposal, accept=confirm.dataset.confirm==='yes';
+      await runScreenAction(`confirm:${proposal_id}`,{proposal_id,accept},'resolveConfirm','Suggestion',async () => {
+        state.confirms=state.confirms.filter(p=>p.id!==proposal_id); renderConfirms();
+        if(accept) await loadHome(); showToast(accept?'Suggestion confirmed':'Suggestion skipped');
+      }); return;
+    }
     if (state.callModeUi && await state.callModeUi.handleClick(event.target)) return;
     if (event.target.closest('[data-dialog-cancel]')) { $('#formDialog').close(); return; }
+    } catch (error) {
+      showToast(error.pendingRequest ? 'Outcome unknown. Repeat the same action to check its original request.' : error.message);
+    }
   });
 
   document.addEventListener('change', async (event) => {
@@ -1249,14 +1560,16 @@ function wireEvents() {
   $('#stickyAddButton').onclick = openAddForm;
   $('#receiptsJump').onclick = goToReceipts;
   $('#ownerButton').onclick = accountOwnerForm;
-  $('#agendaButton').onclick = startAgenda;
+  const agendaAction = work => () => Promise.resolve().then(work).catch(error => showToast(
+    error.pendingRequest ? 'Outcome unknown. Repeat the same agenda action to check its original request.' : error.message));
+  $('#agendaButton').onclick = agendaAction(startAgenda);
   $('#callModeButton').onclick = () => state.callModeUi.open();
   $('#callModeStop').onclick = () => state.callModeUi.stop();
   $('#postCallRefresh').onclick = () => state.callModeUi.refreshPostCall();
-  $('#agendaReviewed').onclick = () => advanceAgenda('reviewed');
-  $('#agendaSkip').onclick = () => advanceAgenda('skipped');
-  $('#agendaEnd').onclick = () => finishAgenda('completed');
-  $('#agendaClose').onclick = () => finishAgenda('abandoned');
+  $('#agendaReviewed').onclick = agendaAction(() => advanceAgenda('reviewed'));
+  $('#agendaSkip').onclick = agendaAction(() => advanceAgenda('skipped'));
+  $('#agendaEnd').onclick = agendaAction(() => finishAgenda('completed'));
+  $('#agendaClose').onclick = agendaAction(() => finishAgenda('abandoned'));
 
   // Coming back is not the same as being current: BOTH reads start again from
   // scratch, and `force` supersedes whatever was left hanging when the

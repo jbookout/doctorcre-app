@@ -1,3 +1,4 @@
+import { privateSession } from './private-session.js';
 import { setDocFilters } from './doc-context.js';
 import { createCurrentRead } from "./current-read.mjs";
 import { mountAutoRefresh, updatedLabel } from "./auto-refresh.mjs";
@@ -39,6 +40,7 @@ const view = {
 };
 
 let client = null;
+let savedViewActor = null;
 let storage = null;
 let idleTimer = null;
 const searchReads = createCurrentRead();
@@ -148,12 +150,13 @@ function renderState(phase) {
   else {
     const notes = truncationNotes(view.payload, view.catchUp);
     block.innerHTML = [
-      `<h3>${escapeHtml(copy.title)}</h3>`,
+      `<h3>${escapeHtml(view.catchUp?.state === "unavailable" ? "Search context unavailable" : copy.title)}</h3>`,
       `<p class="small">${escapeHtml(copy.copy)}</p>`,
+      phase === "refused" ? '<a href="/auth/login">Sign in</a>' : "",
       phase === "partial" ? notes.map((note) => `<p class="small">${escapeHtml(note)}</p>`).join("") : "",
       // Retry is offered by ONE state. A no-match has nothing to retry: the
       // record layer answered, and it answered with nothing.
-      copy.retry ? '<button class="btn" type="button" id="searchRetry" aria-label="Refresh" title="Refresh"><span aria-hidden="true">↻</span></button>' : "",
+      (copy.retry || view.catchUp?.state === "unavailable") ? '<button class="btn" type="button" id="searchRetry" aria-label="Refresh" title="Refresh"><span aria-hidden="true">↻</span></button>' : "",
     ].join("");
   }
   const live = $("searchLive");
@@ -212,9 +215,10 @@ async function read({ push = true, signal } = {}) {
     let catchUp = null;
     try {
       const answer = await step(client.findAndCatchUp(buildFindAndCatchUpArguments(query, FIND_CATCH_UP_LIMIT_DEFAULT), { signal }));
-      catchUp = validCatchUpPayload(answer) ? answer : null;
-    } catch {
-      // Context failure never turns a good find answer into an outage.
+      catchUp = validCatchUpPayload(answer) ? answer : {state:"unavailable"};
+    } catch (error) {
+      if ([401,403].includes(error?.status)) throw error;
+      catchUp = {state:"unavailable"};
     }
     return { status: "ready", payload, catchUp };
   }, {
@@ -286,7 +290,7 @@ function wire() {
   $("saveViewButton")?.addEventListener("click", () => {
     const name = $("saveViewName")?.value ?? "";
     // No verb is sent. There is none to send.
-    view.views = writeSavedViews(storage, saveView(view.views, { name, query: view.query, kinds: view.kinds }));
+    view.views = writeSavedViews(storage, saveView(view.views, { name, query: view.query, kinds: view.kinds }), savedViewActor);
     const field = $("saveViewName");
     if (field) field.value = "";
     renderSavedViews();
@@ -297,7 +301,7 @@ function wire() {
     if (rename) {
       event.preventDefault();
       const next = globalThis.prompt?.("New name for this saved view", rename.dataset.rename);
-      if (typeof next === "string") view.views = writeSavedViews(storage, renameView(view.views, rename.dataset.rename, next));
+      if (typeof next === "string") view.views = writeSavedViews(storage, renameView(view.views, rename.dataset.rename, next), savedViewActor);
       [...$("savedViewList").children].forEach((row, index) => {
         const saved = view.views[index], link = row.querySelector("[data-view]");
         link.textContent = saved.name;
@@ -318,7 +322,7 @@ function wire() {
   });
 
   $("resetViewsButton")?.addEventListener("click", () => {
-    view.views = writeSavedViews(storage, Object.freeze([]));
+    view.views = writeSavedViews(storage, Object.freeze([]), savedViewActor);
     renderSavedViews();
   });
 
@@ -333,7 +337,20 @@ function wire() {
 export function mountSearch({ client: searchClient, storage: storageImpl } = {}) {
   client = searchClient;
   storage = storageImpl === undefined ? (globalThis.localStorage || null) : storageImpl;
-  view.views = readSavedViews(storage);
+  view.views = [];
+  const boundary = privateSession();
+  const identity = boundary ? boundary.verify() : Promise.resolve({actor:{slug:client.selfActor}});
+  void identity.then(session => {
+    if (boundary?.revoked) return;
+    savedViewActor = session.actor.slug;
+    view.views = readSavedViews(storage, savedViewActor);
+    renderSavedViews();
+  }).catch(() => {});
+  globalThis.addEventListener?.('doctorcre-session-invalidated', () => {
+    savedViewActor = null; view.views = []; view.query = ''; view.payload = null; view.catchUp = null; view.refusal = null;
+    searchReads.invalidate(); clearTimeout(idleTimer);
+    renderSavedViews();
+  }, {once:true});
   renderSavedViews();
   for (const [id, text] of [
     ["searchAuthorization", AUTHORIZATION_SENTENCE],

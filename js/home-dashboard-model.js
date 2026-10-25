@@ -1,3 +1,4 @@
+import { visibleLeads } from './leads-model.js';
 import { localDeals, needsAttention, scopedDeals, validDealBoard } from './deal-review-model.js';
 import { validInvoiceTracker } from './invoice-tracker-model.js';
 import { validNetwork } from './relationship-network-model.js';
@@ -37,8 +38,7 @@ export function dealHref(id) { return `/deals?deal=${encodeURIComponent(id)}`; }
 
 export function topNewLeads(payload, { scope = 'team', actor, now = Date.now() } = {}) {
   if (!Array.isArray(payload?.leads) || (scope === 'mine' && !actor)) return [];
-  return payload.leads.map(lead => lead && ({ ...lead, score: typeof lead.score === 'string' && /^-?\d+(?:\.\d+)?$/.test(lead.score) ? Number(lead.score) : lead.score })).filter(lead => typeof lead?.id === 'string'
-    && typeof lead.score === 'number' && Number.isFinite(lead.score)
+  return visibleLeads(payload.leads.filter(lead => lead && typeof lead.id === 'string')).map(lead => ({ ...lead, score: typeof lead.score === 'string' && /^-?\d+(?:\.\d+)?$/.test(lead.score) ? Number(lead.score) : lead.score })).filter(lead => typeof lead.score === 'number' && Number.isFinite(lead.score)
     && Number.isFinite(Date.parse(lead.created_at))
     && Date.parse(lead.created_at) >= now - 7 * 86_400_000 && Date.parse(lead.created_at) <= now
     && (scope !== 'mine' || lead.owner === actor))
@@ -62,7 +62,7 @@ export function agendaSnapshot(board, details, { scope = 'team', today = localTo
     entries.push(...dates.entries.filter(entry => !entry.settled).map(entry => ({ ...entry, type: 'date' })));
     for (const task of taskRows) {
       const day = toDay(task.due_on);
-      if (task.status !== 'open' || (scope === 'mine' && task.owner !== board.actor)) continue;
+      if (task.status !== 'open' || toDay(task.hold_until) > today || (scope === 'mine' && task.owner !== board.actor)) continue;
       entries.push({ key: `task:${task.id}`, deal_id: deal.id, deal_name: deal.name, day, owner: task.owner, label: task.description || 'Task', type: 'task' });
     }
   }
@@ -99,9 +99,26 @@ export function controlSnapshot(reads) {
 
 // A single board snapshot supplies flags and agenda. Slow or failed optional
 // data never prevents the deals from arriving. Every read has a deadline.
-export async function readHomeDashboard(client, { onUpdate = () => {}, timeoutMs = 10_000, signal } = {}) {
+export function readHomeDashboard(client, options) {
+  return readHome(client, [
+    ['invoices', signal => client.getInvoiceTracker({ signal })],
+    ['leads', signal => client.getLeadBoard({ signal })],
+    ['relationships', signal => client.getRelationshipNetwork({ signal })],
+    ['incidents', signal => client.incidentBoard({ state: 'open', limit: 1000 }, { signal }), 'control'],
+    ['work', signal => client.currentWorkItem({ signal }), 'control'],
+    ['requests', signal => client.currentWorkRequests({ signal }), 'control'],
+    ['resources', signal => client.readResourceDashboard({ signal }), 'control'],
+    ['schedule', signal => client.scheduleBoard({ signal }), 'control'],
+  ], options);
+}
+
+export function readHomeAgenda(client, options) {
+  return readHome(client, [], options);
+}
+
+async function readHome(client, feeds, { onUpdate = () => {}, timeoutMs = 10_000, signal } = {}) {
   const result = { board: null, details: new Map(), leads: null, invoices: null, relationships: null, control: {}, unauthorized: false, updatedAt: null, loading: true,
-    reads: Object.fromEntries(['board', 'leads', 'invoices', 'relationships', 'incidents', 'work', 'requests', 'resources', 'schedule'].map(key => [key, { state: 'loading' }])) };
+    reads: Object.fromEntries(['board', ...feeds.map(([key]) => key)].map(key => [key, { state: 'loading' }])) };
   const publish = () => onUpdate(result);
   const take = async (name, read, target = result) => {
     try {
@@ -136,11 +153,7 @@ export async function readHomeDashboard(client, { onUpdate = () => {}, timeoutMs
       }
     }));
   });
-  await Promise.all([board, take('invoices', signal => client.getInvoiceTracker({ signal })), take('leads', signal => client.getLeadBoard({ signal })), take('relationships', signal => client.getRelationshipNetwork({ signal })),
-    ...[['incidents', signal => client.incidentBoard({ state: 'open', limit: 1000 }, { signal })],
-      ['work', signal => client.currentWorkItem({ signal })], ['requests', signal => client.currentWorkRequests({ signal })],
-      ['resources', signal => client.readResourceDashboard({ signal })], ['schedule', signal => client.scheduleBoard({ signal })]]
-      .map(([key, read]) => take(key, read, result.control))]);
+  await Promise.all([board, ...feeds.map(([key, read, target]) => take(key, read, target === 'control' ? result.control : result))]);
   result.loading = false;
   publish();
   return result;

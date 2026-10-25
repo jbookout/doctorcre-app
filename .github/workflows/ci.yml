@@ -33,7 +33,7 @@ jobs:
       - run: npm run ci:fast
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: 22.23.2
+          node-version: 22.23.4
           cache: npm
           cache-dependency-path: doctorcre-app/package-lock.json
       - run: npm ci
@@ -48,7 +48,7 @@ jobs:
           path: carr-producer
           fetch-depth: 0
           persist-credentials: false
-      - run: node --test test/property-producer.test.mjs
+      - run: node --test test/property-producer.test.mjs test/room-write-contract.test.mjs
         name: Verify the exact CARR runtime interface
         env:
           CARR_PRODUCER_CHECKOUT: ${{ github.workspace }}/carr-producer
@@ -56,6 +56,9 @@ jobs:
         env:
           DOCTORCRE_PRIVACY_CORPUS_JSON: ${{ secrets.DOCTORCRE_PRIVACY_CORPUS_JSON }}
       - run: npm run check
+      - name: Prefer Ubuntu archives for browser dependencies
+        run: |
+          printf 'https://archive.ubuntu.com/ubuntu/\tpriority:1\nhttps://security.ubuntu.com/ubuntu/\tpriority:2\n' | sudo tee /etc/apt/apt-mirrors.txt > /dev/null
       - run: npx playwright install --with-deps chromium webkit
       # PRs test the merge candidate under the strict required `test` context.
       # Main retains build/input checks; tag releases still run the full suite.
@@ -98,7 +101,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: 22.23.2
+          node-version: 22.23.4
       - run: npm ci
       - run: npm run build
         env:

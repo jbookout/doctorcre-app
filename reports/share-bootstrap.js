@@ -14,7 +14,7 @@
   let token = /^[A-Za-z0-9_-]{43}$/.test(candidate || "") ? candidate : "";
 
   // Scrub the bearer before any optional renderer dependency is requested.
-  window.history.replaceState(null, document.title, `${window.location.pathname}${window.location.search}`);
+  window.history.replaceState(fragment ? null : window.history.state, document.title, `${window.location.pathname}${window.location.search}`);
   Object.defineProperty(globalThis, "__CARR_TOUR_TAKE_SHARE_TOKEN__", {
     configurable: true,
     value() {

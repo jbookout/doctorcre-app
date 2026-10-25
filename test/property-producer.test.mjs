@@ -4,11 +4,14 @@ import { readFile } from "node:fs/promises";
 import { posix } from "node:path";
 import { boardDirectory, boardView } from "../js/progress-board-model.js";
 import { execFileSync } from "node:child_process";
+import { createHash } from 'node:crypto';
 import { handleDoctorcreRequest } from "../src/worker.js";
 import { validSystemWork, groupSystemWork, recentLive } from "../js/system-work-board-model.js";
 import { renderDealChecklist } from "../js/deal-checklist.js";
 
 const contract = JSON.parse(await readFile(new URL("../contracts/carr-interface.v1.json", import.meta.url), "utf8"));
+const pinnedProducer = "1df9b9936394164dd55e815f8a8bf69649508ccc";
+
 
 const producerModules = new Map();
 async function producerModuleUrl(path) {
@@ -25,12 +28,10 @@ async function producerModuleUrl(path) {
 }
 
 test("the runtime pin binds the checklist and feature-switch reads to one producer", () => {
-  for (const producer of [contract.mcp_read_contracts["get-deal-room"].producer,
-    contract.mcp_read_contracts["get-deal-room"].checklist.producer,
-    contract.mcp_read_contracts["list-feature-switches"].producer]) {
-    assert.equal(producer.repository, contract.producer.repository);
-    assert.equal(producer.source_commit, contract.producer.source_commit);
-  }
+  const seam = contract.mcp_read_contracts["get-deal-room"].checklist;
+  assert.equal(seam.producer.source_commit, contract.producer.source_commit);
+  assert.equal(contract.mcp_read_contracts["get-deal-room"].producer.source_commit, contract.producer.source_commit);
+  assert.equal(contract.mcp_read_contracts["list-feature-switches"].producer.source_commit, contract.producer.source_commit);
 });
 
 test("the advertised runtime registers inherited conversation, notification, session and room contracts", {
@@ -72,6 +73,32 @@ test("the same advertised producer derives the versioned checklist consumed by t
   assert.ok(checklist.phases.flatMap(phase => phase.items).every(item => seam.statuses.includes(item.status)));
   assert.equal(checklist.due_items[0].status, "due");
   assert.match(renderDealChecklist(checklist), /data-checklist-item="critical-date:synthetic-review"/);
+
+});
+
+test("the runtime pin includes operation identity, session binding and versioned replacement writes", () => {
+  assert.equal(contract.producer.source_commit, pinnedProducer);
+});
+
+test('S2 consumer contract binds the operation and concurrency contract to the advertised producer', async () => {
+  const seam = contract.write_reconciliation;
+  const bytes = await readFile(new URL(`../${seam.contract}`, import.meta.url));
+  assert.equal(createHash('sha256').update(bytes).digest('hex'), seam.sha256);
+  assert.equal(seam.producer.source_commit, contract.producer.source_commit);
+  const schema = JSON.parse(bytes);
+  assert.equal(schema.schema, 'doctorcre-app-write-reconciliation.v1');
+  assert.deepEqual(Object.keys(schema.replacements), ['set-next-step', 'set-market-agent', 'set-national-account-owner']);
+  for (const replacement of Object.values(schema.replacements)) assert.equal(replacement.expected, 'base_version');
+  assert.match(schema.mcp_session.binding, /x-carr-csrf/);
+});
+
+test('S2 contract bytes match the exact producer revision', {
+  skip: !process.env.CARR_PRODUCER_CHECKOUT && 'Set CARR_PRODUCER_CHECKOUT to verify write reconciliation',
+}, async () => {
+  const local = await readFile(new URL('../contracts/app-write-reconciliation.v1.json', import.meta.url), 'utf8');
+  const producer = execFileSync('git', ['-C', process.env.CARR_PRODUCER_CHECKOUT, 'show',
+    `${contract.producer.source_commit}:mcp-server/contracts/app-write-reconciliation.v1.json`], { encoding: 'utf8' });
+  assert.equal(local, producer);
 });
 
 // Opt-in cross-repository verification reads committed source, never a working
@@ -132,6 +159,7 @@ test("the app consumes the merged producer's directory and selected-board interf
     // Publisher totals include cards omitted from the bounded task payload.
     snapshot_json: { title: "Synthetic system board", task_counts: JSON.parse('{"__proto__":1,"running":7}'),
       tasks: { build: { status: "running", title: "Synthetic build" },
+
       malformed: [], prototype: { status: "__proto__" } } } };
   const calls = [];
   const client = { async query(sql, params) {
@@ -344,4 +372,20 @@ test("runtime error wire contract and scrub rules match the exact pinned produce
     { type: "Alice", message: "aliceRecord is not defined", stack: "f@https://app/js/a.js:1:2", route: "no-slash" },
     {},
   ]) assert.deepEqual(scrubError(input), producer.scrubError(input));
+});
+
+
+test('the pinned producer publishes the orchestrator contract consumed by the existing board', {
+  skip: !process.env.CARR_PRODUCER_CHECKOUT && 'Set CARR_PRODUCER_CHECKOUT to verify the pinned producer',
+}, () => {
+  const { repository, source_commit: pin } = contract.progress_orchestrator.producer;
+  assert.equal(repository, 'jbookout/carr-system');
+  assert.match(pin, /^[a-f0-9]{40}$/);
+  const git = (...args) => execFileSync('git', ['-C', process.env.CARR_PRODUCER_CHECKOUT, ...args], { encoding: 'utf8' });
+  assert.equal(git('rev-parse', '--verify', `${pin}^{commit}`).trim(), pin);
+  const source = git('show', `${pin}:tools/progress_orchestrator.py`);
+  const projection=JSON.parse(execFileSync('python3',['-c',source+"\nimport json\nprint(json.dumps(project({'tasks':{}},None)))"],{encoding:'utf8'}));
+  assert.equal(projection.schema,contract.progress_orchestrator.schema);
+  assert.equal(boardView({snapshot:{version:1,snapshot_json:{tasks:{},orchestrator:projection}}}).error,null);
+  assert.equal(projection.sources.queue.state,'unavailable');
 });

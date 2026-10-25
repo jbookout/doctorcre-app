@@ -12,7 +12,9 @@ export function mountInvoiceTracker({ document, window, client, today=localToday
   const $=id=>document.getElementById(id);
   let rows=null,status='all',age=null,selected=null,opener=null,disposed=false,updatedAt=null;
   const payments=new Map();
+  const preparingPayments=new Set();
   let paymentStore=null;
+  let paymentActor=null;
   function loadPayments(actor) {
     const key=`doctorcre:invoice-payments:v1:${client.mode || 'live'}:${actor}`;
     if(paymentStore===key)return;
@@ -24,7 +26,7 @@ export function mountInvoiceTracker({ document, window, client, today=localToday
         || !isCalendarDay(args.received_on) || typeof args.idempotency_key!=='string' || !args.idempotency_key)throw new Error('Invalid payment recovery');
       restored.set(args.commission_id,{args:Object.freeze(args),state:'uncertain'});
     }
-    paymentStore=key;payments.clear();for(const [id,intent] of restored)payments.set(id,intent);
+    paymentStore=key;paymentActor=actor;payments.clear();for(const [id,intent] of restored)payments.set(id,intent);
   }
   function savePayments() {
     window.sessionStorage.setItem(paymentStore,JSON.stringify([...payments.values()].map(intent=>intent.args)));
@@ -120,12 +122,32 @@ export function mountInvoiceTracker({ document, window, client, today=localToday
   $('refreshInvoices').addEventListener('click',()=>auto.refresh());
   $('invoicePayment').addEventListener('submit',async event=>{
     event.preventDefault();const row=rows?.find(row=>row.key===selected);
-    if(!row?.canMarkPaid || disposed)return;
+    if(!row?.canMarkPaid || disposed || preparingPayments.has(row.key))return;
     let intent=payments.get(row.key);
     const replay=Boolean(intent);
     if(intent?.state==='sending' || (!intent&&!$('invoicePayment').reportValidity()))return;
     if(!intent){
-      intent={args:Object.freeze({commission_id:row.commission_id,base_version:row.base_version,received_on:$('invoicePaidDate').value,idempotency_key:uuidv4()}),state:'sending'};
+      const receivedOn=$('invoicePaidDate').value;
+      preparingPayments.add(row.key);$('markInvoicePaid').disabled=true;
+      let current;
+      try{
+        const next=await client.getInvoiceTracker(),projected=projectInvoices(next,{today:today()});
+        if(disposed)return;
+        if(!projected)throw new Error('Invalid invoice snapshot');
+        if(next.actor!==paymentActor){rows=null;closeDetail();render();throw new Error('Account changed');}
+        current=projected.find(item=>item.key===row.key);
+        rows=projected;updatedAt=next.observed_at;render();
+        if(selected!==row.key)return;
+        if(!current?.canMarkPaid || current.base_version!==row.base_version){
+          $('invoicePaymentNotice').hidden=false;
+          $('invoicePaymentNotice').textContent='Invoice changed. Review its current details before recording payment.';
+          return;
+        }
+      }catch{
+        if(!disposed){$('invoicePaymentNotice').hidden=false;$('invoicePaymentNotice').textContent='Payment not sent. Current invoice could not be verified.';}
+        return;
+      }finally{preparingPayments.delete(row.key);if(!disposed)$('markInvoicePaid').disabled=false;}
+      intent={args:Object.freeze({commission_id:current.commission_id,base_version:current.base_version,received_on:receivedOn,idempotency_key:uuidv4()}),state:'sending'};
       payments.set(row.key,intent);
       try{savePayments();}catch{
         payments.delete(row.key);renderDetail();$('invoicePaymentNotice').hidden=false;$('invoicePaymentNotice').textContent='Payment not recorded. Recovery storage unavailable.';return;

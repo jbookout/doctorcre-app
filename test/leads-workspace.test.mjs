@@ -2,7 +2,7 @@ import test from 'node:test';import assert from 'node:assert/strict';import {rea
 import {mountLeadsWorkspace} from '../js/leads-workspace-app.js';import {workspace,detail,id} from './leads-workspace-fixture.mjs';
 import {createLeadBoardClient} from '../js/leads-client.js';
 const tick=()=>new Promise(r=>setTimeout(r,10));
-async function setup(overrides={}){
+async function setup(overrides={},mapFactory=async()=>({update(){},dispose(){}})){
  const dom=new JSDOM(await readFile(new URL('../leads.html',import.meta.url),'utf8'),{url:'https://example.test/leads',pretendToBeVisual:true});const w=dom.window,d=w.document;
  w.HTMLDialogElement.prototype.showModal=function(){this.open=true};w.HTMLDialogElement.prototype.close=function(){if(this.open){this.open=false;this.dispatchEvent(new w.Event('close'))}};
  let board=workspace(),actor='example-partner',writes=[];
@@ -10,9 +10,50 @@ async function setup(overrides={}){
  recordStage:async(l,stage,review,key)=>{writes.push({l,stage,review,key});let r=board.leads.find(x=>x.id===l.id);r.stage=stage;r.base_version++;r.last_stage_move={idempotency_key:key};return{ok:true}},
  linkClient:async(l,clientId,key)=>{writes.push({l,clientId,key});board.leads.find(x=>x.id===l.id).client_id=clientId;return{ok:true}},
  claimLead:async(l,key)=>{writes.push({l,key});board.leads.find(x=>x.id===l.id).owner=actor;return{ok:true}},...overrides};
- const app=mountLeadsWorkspace(d,client,{mapFactory:async()=>({update(){},dispose(){}})});await tick();
+ const app=mountLeadsWorkspace(d,client,{mapFactory});await tick();
  return{dom,w,d,app,client,board,writes,setActor:a=>{actor=a},close:()=>{app.dispose();w.close()}};
 }
+test('territory reveal coalesces repeated activation while filters remain usable',async()=>{
+ let ready,calls=0;const updates=[];
+ const s=await setup({},()=>{calls++;return new Promise(resolve=>{ready=()=>resolve({update:groups=>updates.push(groups),dispose(){}})})});
+ try{
+  assert.equal(calls,0);
+  const button=s.d.getElementById('showTerritory');button.click();button.click();
+  assert.equal(calls,1);
+  const select=s.d.getElementById('marketFilter');select.value='Mobile, AL';select.dispatchEvent(new s.w.Event('change'));
+  const before=[...s.d.querySelectorAll('#leadBoard .lead-card')].map(node=>node.dataset.leadId);
+  ready();await tick();button.click();await s.app.refresh();
+  assert.equal(calls,1);assert.equal(select.value,'Mobile, AL');
+  assert.deepEqual([...s.d.querySelectorAll('#leadBoard .lead-card')].map(node=>node.dataset.leadId),before);
+  assert.ok(updates.length>0);assert.ok(updates.at(-1).every(group=>group.key==='Mobile, AL'));
+ }finally{s.close()}
+});
+test('failed territory reveal keeps the market filters and lead list usable',async()=>{
+ const s=await setup({},async()=>{throw new Error('Synthetic map failure')});
+ try{
+  s.d.getElementById('showTerritory').click();await tick();
+  assert.match(s.d.getElementById('territoryMap').textContent,/Map unavailable/);
+  const select=s.d.getElementById('marketFilter');select.value='Mobile, AL';select.dispatchEvent(new s.w.Event('change'));
+  assert.ok(s.d.querySelectorAll('#leadBoard .lead-card').length>0);
+  s.d.querySelector('#mapLeadMembers button').click();await tick();
+  assert.equal(s.d.getElementById('leadDetail').open,true);
+  assert.match(s.d.querySelector('.lead-location').textContent,/Location not checked/);
+ }finally{s.close()}
+});
+test('territory completion after workspace disposal releases the renderer',async()=>{
+ let ready,disposed=0;const s=await setup({},()=>new Promise(resolve=>{ready=()=>resolve({dispose(){disposed++},update(){throw new Error('disposed view updated')}})}));
+ try{s.d.getElementById('showTerritory').click();s.app.dispose();ready();await tick();assert.equal(disposed,1)}finally{s.close()}
+});
+test('a remounted workspace reveals territory without starting the disposed workspace map',async()=>{
+ let oldCalls=0,newCalls=0,remounted;
+ const s=await setup({},async()=>{oldCalls++;return{update(){},dispose(){}}});
+ try{
+  s.app.dispose();
+  remounted=mountLeadsWorkspace(s.d,s.client,{mapFactory:async()=>{newCalls++;return{update(){},dispose(){}}}});await tick();
+  s.d.getElementById('showTerritory').click();await tick();
+  assert.equal(oldCalls,0);assert.equal(newCalls,1);
+ }finally{remounted?.dispose();s.close()}
+});
 test('board renders six full columns, five hottest, quiet IDs/scores and timestamps; filter-only archive',async()=>{
  const s=await setup();try{assert.equal(s.d.querySelectorAll('[data-stage]').length,6);assert.equal(s.d.querySelectorAll('.hot-row').length,5);assert.equal(s.d.querySelectorAll('.lead-card').length,14);
  assert.match(s.d.getElementById('searchUpdated').textContent,/Oct 1/);assert.match(s.d.querySelector('.lead-card .lead-market').textContent,/Pensacola, FL/);assert.equal(s.d.querySelector('.lead-card .party-id'),null);assert.match(s.d.querySelector('.stage-column[data-stage="opportunity"]').textContent,/Opportunity/);assert.match(s.d.querySelector('.auto-move').textContent,/Moved by Doc: reply received 10\/1/);
@@ -35,10 +76,81 @@ test('card opens wide details with original entries; polling preserves expanded 
  const original=s.d.querySelector('#detailBody details');original.open=true;await s.app.refresh();assert.equal(s.d.querySelector('#detailBody details').open,true);
  }finally{s.close()}
 });
+for (const interruption of ['visibility', 'bfcache']) test(`Lead resumes the same eligible record and reading position after ${interruption}`,async()=>{
+ const s=await setup();let release,releaseDetail;try{
+  await s.app.readDetail(id(1));const expanded=s.d.querySelector('#detailBody details');expanded.open=true;
+  const key=expanded.dataset.entryKey;s.d.getElementById('leadDetail').scrollTop=173;
+  s.client.getActor=()=>new Promise(resolve=>release=resolve);
+  s.client.getLeadDetail=()=>new Promise(resolve=>releaseDetail=resolve);
+  if(interruption==='visibility'){
+   Object.defineProperty(s.d,'visibilityState',{value:'hidden',configurable:true});s.d.dispatchEvent(new s.w.Event('visibilitychange'));
+   Object.defineProperty(s.d,'visibilityState',{value:'visible',configurable:true});s.d.dispatchEvent(new s.w.Event('visibilitychange'));
+  }else{s.w.dispatchEvent(new s.w.PageTransitionEvent('pagehide',{persisted:true}));s.w.dispatchEvent(new s.w.PageTransitionEvent('pageshow',{persisted:true}));}
+  await tick();assert.equal(s.d.getElementById('leadDetail').open,false);assert.equal(s.d.getElementById('detailBody').textContent,'');
+  assert.equal(s.d.querySelectorAll('.lead-card').length,0);
+  release('example-partner');await tick();assert.equal(typeof releaseDetail,'function');
+  assert.doesNotMatch(s.d.getElementById('detailBody').textContent,/example@example.test/);
+  releaseDetail({detail:{...detail(s.board.leads[0]),phone:'+1-555-010-0099'}});await tick();
+  assert.equal(s.d.querySelector('#detailBody a[href="tel:+1-555-010-0099"]').textContent,'+1-555-010-0099');
+  assert.equal(s.d.getElementById('leadDetail').open,true);assert.match(s.d.getElementById('detailTitle').textContent,/Example 1/);
+  assert.equal(s.d.querySelector(`[data-entry-key="${key}"]`).open,true);assert.equal(s.d.getElementById('leadDetail').scrollTop,173);
+  assert.equal(s.d.querySelector('.lead-card[data-selected="true"]').dataset.leadId,id(1));assert.equal(s.writes.length,0);
+ }finally{release?.('example-partner');releaseDetail?.({detail:detail(s.board.leads[0])});s.close()}
+});
+for (const refusal of ['actor change','denied','vanished','ineligible']) test(`Lead resume forgets the record after ${refusal}`,async()=>{
+ const s=await setup();try{
+  await s.app.readDetail(id(1));
+  if(refusal==='actor change')s.setActor('another-example');
+  if(refusal==='denied')s.client.getActor=async()=>{throw Object.assign(new Error('denied'),{status:403})};
+  const lead=s.board.leads[0];
+  if(refusal==='vanished')s.board.leads.shift();
+  if(refusal==='ineligible')lead.client_id=id(888);
+  s.w.dispatchEvent(new s.w.PageTransitionEvent('pageshow',{persisted:true}));await tick();
+  assert.equal(s.d.getElementById('leadDetail').open,false);assert.equal(s.d.getElementById('detailBody').textContent,'');
+  s.setActor('example-partner');s.client.getActor=async()=> 'example-partner';
+  if(refusal==='vanished')s.board.leads.unshift(lead);delete lead.client_id;
+  await s.app.refresh();assert.equal(s.d.getElementById('leadDetail').open,false);assert.equal(s.writes.length,0);
+ }finally{s.close()}
+});
 test('drag opens short evidence prompt, does not write before confirmation, commits exact version and evidence IDs',async()=>{
  const s=await setup();try{const card=s.d.querySelector('.lead-card');const start=new s.w.Event('dragstart',{bubbles:true});start.dataTransfer={setData(){}};card.dispatchEvent(start);
  s.d.querySelector('[data-stage="engaged"]').dispatchEvent(new s.w.Event('drop',{bubbles:true,cancelable:true}));await tick();assert.equal(s.writes.length,0);assert.equal(s.d.getElementById('stageDialog').open,true);assert.equal(s.d.querySelector('#stageQuestions textarea'),null);
  s.d.getElementById('stageForm').dispatchEvent(new s.w.Event('submit',{bubbles:true,cancelable:true}));await tick();assert.equal(s.writes[0].stage,'engaged');assert.equal(s.writes[0].l.base_version,1);assert.deepEqual(s.writes[0].review.evidence_ids,[id(600),id(601)]);
+ }finally{s.close()}
+});
+for(const finish of ['dragend','drop'])test(`map readiness preserves the native drag source until ${finish}`,async()=>{
+ let ready;const map={locate:()=>true,update(){},dispose(){}};
+ const s=await setup({},()=>new Promise(resolve=>{ready=()=>resolve(map)}));
+ try{
+  s.d.getElementById('showTerritory').click();
+  const card=s.d.querySelector('.lead-card'),start=new s.w.Event('dragstart',{bubbles:true});
+  start.dataTransfer={setData(){}};card.dispatchEvent(start);
+  ready();await tick();
+  assert.equal(card.isConnected,true,'map readiness must not replace the browser drag source');
+  assert.equal(card.classList.contains('dragging'),true);
+  assert.equal(card.querySelector('.lead-location').textContent,'Location not checked');
+  const target=finish==='drop'?s.d.querySelector('[data-stage="engaged"]'):card;
+  target.dispatchEvent(new s.w.Event(finish,{bubbles:true,cancelable:true}));
+  if(finish==='drop')card.dispatchEvent(new s.w.Event('dragend',{bubbles:true}));
+  assert.equal(s.d.querySelector('.dragging'),null);
+  assert.equal(s.d.querySelector('.lead-location').textContent,'Market area only');
+  assert.equal(s.writes.length,0);
+ }finally{s.close()}
+});
+for(const finish of ['pointerup','pointercancel','lostpointercapture'])test(`map readiness preserves the touch drag source until ${finish}`,async()=>{
+ let ready;const map={locate:()=>true,update(){},dispose(){}};
+ const s=await setup({},()=>new Promise(resolve=>{ready=()=>resolve(map)}));
+ try{
+  s.d.getElementById('showTerritory').click();
+  const card=s.d.querySelector('.lead-card'),handle=card.querySelector('[data-drag-handle]');
+  const pointer=type=>{const event=new s.w.Event(type,{bubbles:true});Object.assign(event,{pointerId:1,clientX:0,clientY:0});handle.dispatchEvent(event)};
+  pointer('pointerdown');ready();await tick();
+  assert.equal(handle.isConnected,true,'map readiness must not replace the captured pointer target');
+  assert.equal(s.d.getElementById('leadBoard').dataset.touchDragging,'true');
+  pointer(finish);
+  assert.equal(s.d.getElementById('leadBoard').dataset.touchDragging,undefined);
+  assert.equal(s.d.querySelector('.lead-location').textContent,'Market area only');
+  assert.equal(s.writes.length,0);
  }finally{s.close()}
 });
 test('missing evidence asks one question; changed record refreshes the unsigned prompt without writing',async()=>{
@@ -197,12 +309,11 @@ test('late detail from card A cannot replace card B; private view clears after a
 });
 test('touch drop and keyboard move open review; cancelled touch never writes',async()=>{
  const s=await setup();try{
- const card=s.d.querySelector('.lead-card'),handle=card.querySelector('[data-drag-handle]');
- const pointer=(type,x,y)=>{const e=new s.w.Event(type,{bubbles:true});Object.assign(e,{pointerId:1,clientX:x,clientY:y});handle.dispatchEvent(e)};
+ const pointer=(type,x,y)=>{const e=new s.w.Event(type,{bubbles:true});Object.assign(e,{pointerId:1,clientX:x,clientY:y});s.d.querySelector('[data-drag-handle]').dispatchEvent(e)};
  s.d.elementFromPoint=()=>s.d.querySelector('[data-stage="engaged"]');
  pointer('pointerdown',0,0);pointer('pointermove',50,50);assert.ok(s.d.querySelector('[data-drop-active]'));pointer('pointercancel',50,50);pointer('pointerup',50,50);await tick();assert.equal(s.d.getElementById('stageDialog').open,false);assert.equal(s.writes.length,0);
  pointer('pointerdown',0,0);pointer('pointerup',50,50);await tick();assert.equal(s.d.getElementById('stageDialog').open,true);assert.equal(s.app.state.proposal.target,'engaged');assert.equal(s.writes.length,0);
- s.d.getElementById('stageDialog').close();card.dispatchEvent(new s.w.KeyboardEvent('keydown',{key:'ArrowRight',altKey:true,bubbles:true}));await tick();assert.equal(s.app.state.proposal.target,'qualified');assert.equal(s.writes.length,0);
+ s.d.getElementById('stageDialog').close();s.d.querySelector('.lead-card').dispatchEvent(new s.w.KeyboardEvent('keydown',{key:'ArrowRight',altKey:true,bubbles:true}));await tick();assert.equal(s.app.state.proposal.target,'qualified');assert.equal(s.writes.length,0);
  }finally{s.close()}
 });
 test('new correspondence preserves the expanded original by identity, not position',async()=>{
@@ -235,11 +346,13 @@ test('blocking 2: shared transport clears private workspace on authorization hea
  for (const status of [401, 403]) for (const surface of ['actor', 'workspace', 'detail', 'review', 'mutation']) {
   const board = workspace(); let deny = false, bodyReads = 0;
   const client = createLeadBoardClient({ timeoutMs: 20, fetchImpl: async (_path, init) => {
-   const { name, arguments: args } = JSON.parse(init.body).params;
-   const denied = deny && (surface === 'mutation' ? name === 'update-lead' : surface === 'actor' ? name === 'deal-room-board' :
+   const session = _path === '/api/system-work/session';
+   const { name, arguments: args } = session ? { name: 'session', arguments: {} } : JSON.parse(init.body).params;
+   const denied = deny && (surface === 'mutation' ? name === 'update-lead' : surface === 'actor' ? session :
     name === 'lead-board' && (surface === 'workspace' ? !args.lead_id : Boolean(args.lead_id)));
    if (denied) return { ok: false, status, json: () => { bodyReads++; return new Promise(() => {}); } };
-   const payload = name === 'deal-room-board' ? { actor: 'example-partner' } :
+   if (session) return { ok: true, status: 200, json: async () => ({ actor: { slug: 'example-partner' } }) };
+   const payload =
     { ...board, ...(args.lead_id ? { detail: detail(board.leads.find(l => l.id === args.lead_id)) } : {}) };
    return { ok: true, status: 200, json: async () => ({ result: { content: [{ type: 'text', text: JSON.stringify(payload) }] } }) };
   } });
@@ -581,13 +694,14 @@ for (const failure of ['internal_error','unclassified_error']) test(`Leads activ
  Object.assign(row,{client_id:'synthetic-client',is_client:true,is_deal:true,prospect_client_id:'synthetic-client',
   prospect_client_version:7,prospect_engagement_status:'inactive'});
  const client=createLeadBoardClient({docContext:false,fetchImpl:async(_path,init)=>{
+  if (_path === '/api/system-work/session') return Response.json({actor:{slug:'example-partner'}});
   const {name,arguments:args}=JSON.parse(init.body).params;
   let payload,isError=false;
   if(name==='set-prospect-engagement-status'){
    writes.push(args);
    if(writes.length===1){payload={ok:false,error:failure};isError=true}
    else{row.prospect_engagement_status='active';row.prospect_client_version++;payload={ok:true}}
-  }else payload=name==='deal-room-board'?{actor:'example-partner'}:{...board,...(args.lead_id?{detail:detail(row)}:{})};
+  }else payload={...board,...(args.lead_id?{detail:detail(row)}:{})};
   return new Response(JSON.stringify({result:{isError,content:[{type:'text',text:JSON.stringify(payload)}]}}));
  }});
  const s=await setup(client);try{
@@ -664,4 +778,121 @@ test('Leads recovery reports the retained inactive target from pipeline',async()
   assert.equal(s.d.getElementById('moveAnnouncement').textContent,'Prospect returned to Leads');
   assert.deepEqual(s.writes[1],s.writes[0]);
  }finally{s.close()}
+});
+
+test('authenticated session controls claim identity and clears owner scope across sessions', async () => {
+ let actor = 'example-partner';
+ const board = { ...workspace(), actor: 'untrusted-board-actor' }, calls = [];
+ const client = createLeadBoardClient({ docContext: false, fetchImpl: async (path, init) => {
+  if (path === '/api/system-work/session') return Response.json({ actor: { slug: actor } });
+  const request = JSON.parse(init.body).params;
+  calls.push(request);
+  assert.notEqual(request.name, 'deal-room-board');
+  if (request.name === 'claim-lead') {
+   board.leads.find(row => (row.registry_ref || row.id) === request.arguments.lead).owner = request.arguments.expected_actor;
+   return Response.json({ result: { content: [{ type: 'text', text: '{"ok":true}' }] } });
+  }
+  const payload = { ...board, ...(request.arguments.lead_id ? { detail: detail(board.leads.find(row => row.id === request.arguments.lead_id)) } : {}) };
+  return Response.json({ result: { content: [{ type: 'text', text: JSON.stringify(payload) }] } });
+ } });
+ const s = await setup(client);
+ try {
+  assert.equal(s.app.state.actor, actor);
+  const owner = s.d.getElementById('ownerFilter');
+  owner.value = actor; owner.dispatchEvent(new s.w.Event('change'));
+  assert.equal(s.d.querySelectorAll('.lead-card').length, 1);
+  assert.equal(s.d.querySelector('.lead-card').dataset.leadId, id(20));
+  actor = 'another-example-partner';
+  await s.app.refresh();
+  assert.equal(s.app.state.actor, actor);
+  assert.equal(s.app.state.filters.owner, '');
+  assert.equal(owner.value, '');
+  s.d.querySelector(`[data-claim="${id(1)}"]`).click();
+  await tick();
+  const writes = calls.filter(call => call.name === 'claim-lead');
+  assert.equal(writes.length, 1);
+  assert.equal(writes[0].arguments.expected_actor, actor);
+  assert.equal(board.leads.find(row => row.id === id(1)).owner, actor);
+ } finally { s.close(); }
+});
+test('S2 submit rereads the reviewed lead and asks for review instead of overwriting a newer version',async()=>{
+ const s=await setup();try{
+  await s.app.openReview(id(1),'engaged');
+  const prior=s.app.state.proposal.lead.base_version;
+  s.board.leads[0].base_version++;
+  s.board.leads[0].notes='Newer partner context';
+  s.d.getElementById('stageForm').dispatchEvent(new s.w.Event('submit',{cancelable:true}));await tick();
+  assert.equal(s.writes.length,0);
+  assert.equal(s.app.state.pending,null);
+  assert.equal(s.app.state.proposal.lead.base_version,prior+1);
+  assert.match(s.d.getElementById('stageError').textContent,/changed.*review/i);
+  s.d.getElementById('stageForm').dispatchEvent(new s.w.Event('submit',{cancelable:true}));await tick();
+  assert.equal(s.writes.length,1);assert.equal(s.writes[0].l.base_version,prior+1);
+ }finally{s.close()}
+});
+
+test('S2 an unknown lead write retries the original version and key without refreshing its material',async()=>{
+ let reads=0,attempts=[];
+ const s=await setup({recordStage:async(l,stage,review,key)=>{attempts.push(structuredClone({l,stage,review,key}));if(attempts.length===1)throw Object.assign(new Error('lost reply'),{code:'unknown_outcome'});return{ok:true}}});
+ try{
+  const original=s.client.getLeadDetail;s.client.getLeadDetail=async lead=>{reads++;return original(lead)};
+  await s.app.openReview(id(1),'engaged');
+  s.d.getElementById('stageForm').dispatchEvent(new s.w.Event('submit',{cancelable:true}));await tick();
+  assert.equal(reads,2,'review read plus pre-submit read');
+  s.board.leads[0].base_version++;
+  const before=reads;s.d.getElementById('checkPending').click();await tick();
+  assert.equal(reads,before,'unknown replay does not fetch a replacement base version');
+  assert.deepEqual(attempts[1],attempts[0]);
+ }finally{s.close()}
+});
+
+test('S2 prospect activation checks the fresh client version before preparing an engagement request',async()=>{
+ const s=await setup();try{
+  const row=s.board.leads.find(l=>l.stage==='nurture_drip');Object.assign(row,{client_id:'synthetic-client',is_client:true,is_deal:true,prospect_client_id:'synthetic-client',prospect_client_version:7,prospect_engagement_status:'inactive'});
+  s.client.setProspectEngagementStatus=async args=>{s.writes.push(args);return{ok:true}};
+  await s.app.refresh();await s.app.readDetail(row.id);
+  const form=s.d.getElementById('activateProspect');form.elements.reason.value='Synthetic reviewed reason';row.prospect_client_version++;
+  form.dispatchEvent(new s.w.Event('submit',{bubbles:true,cancelable:true}));await tick();
+  assert.equal(s.writes.length,0);assert.match(s.d.getElementById('leadBoardError').textContent,/changed.*review/i);
+ }finally{s.close()}
+});
+
+for (const code of ['network_error', 'read_timeout']) test(`Slice A initial identity ${code} offers connection Retry without sign-in or writes`, async () => {
+ let failing = true, workspaceReads = 0;
+ const s = await setup({
+  getActor: async () => { if (failing) throw Object.assign(new Error('Synthetic connection failure'), { code }); return 'example-partner'; },
+  getWorkspace: async () => { workspaceReads++; return structuredClone(workspace()); },
+ });
+ try {
+  const box = s.d.getElementById('leadBoardError');
+  assert.match(box.textContent, /connection/i);
+  assert.doesNotMatch(box.textContent, /sign.in/i);
+  assert.equal(box.querySelector('a[href*="/auth/login"]'), null);
+  assert.equal(s.app.state.identityReady, false);
+  assert.equal(workspaceReads, 0);
+  assert.equal(s.d.querySelectorAll('.lead-card').length, 0);
+  failing = false;
+  const retry = [...box.querySelectorAll('button')].find(button => button.textContent === 'Retry');
+  assert.ok(retry, 'the failed read offers a local Retry action');
+  retry.click(); await tick();
+  assert.equal(s.app.state.identityReady, true);
+  assert.ok(s.d.querySelectorAll('.lead-card').length > 0);
+  assert.equal(box.hidden, true);
+  assert.equal(s.writes.length, 0);
+ } finally { s.close(); }
+});
+
+test('Chicago timestamps retain the business day and date-only move evidence never shifts',async()=>{
+ const s=await setup({getWorkspace:async()=>{const b=workspace();b.last_search_at='2026-10-24T01:00:00Z';b.leads[0].last_stage_move={automatic:true,from:'new',to:b.leads[0].stage,event_id:'demo-move',evidence_date:'2026-10-24',reason:'demo evidence'};return b;}});
+ try{
+  assert.match(s.d.getElementById('searchUpdated').textContent,/Oct 23, 8:00 PM/);
+  assert.match(s.d.querySelector('.auto-move').textContent,/10\/24/);
+  s.client.getLeadDetail=async()=>({detail:{...detail(s.board.leads[0]),correspondence:[{id:'demo-evening',kind:'email_in',occurred_at:'2026-01-24T01:00:00Z',summary:'Demo winter correspondence'}]}});
+  await s.app.readDetail(id(1));assert.match(s.d.querySelector('.correspondence time').textContent,/Jan 23, 7:00 PM/);
+ }finally{s.close();}
+});
+
+test('midnight occurrence timestamps convert to Chicago while midnight DATE evidence retains its date',async()=>{
+ const s=await setup({getWorkspace:async()=>{const b=workspace();b.leads[0].last_stage_move={automatic:true,from:'new',to:b.leads[0].stage,event_id:'demo-midnight',occurred_at:'2026-10-24T00:00:00Z',reason:'demo midnight event'};b.leads[1].last_stage_move={automatic:true,from:'qualified',to:b.leads[1].stage,event_id:'demo-date',evidence_date:'2026-10-24T00:00:00.000Z',reason:'demo DATE evidence'};return b;}});
+ try{const moves=[...s.d.querySelectorAll('.auto-move')].map(node=>node.textContent);assert.ok(moves.some(text=>/demo midnight event 10\/23/.test(text)));assert.ok(moves.some(text=>/demo DATE evidence 10\/24/.test(text)));}finally{s.close();}
 });

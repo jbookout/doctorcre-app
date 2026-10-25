@@ -6,8 +6,8 @@
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <script src="/js/theme-boot.js"></script>
 <link rel="stylesheet" href="/css/tokens.css">
-<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/css/app-shell.css"><link rel="stylesheet" href="/css/leads.css"><link rel="stylesheet" href="/tours/vendor/maplibre-gl-6.4.1/maplibre-gl.css">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600&display=swap" rel="preload" as="style" data-font-stylesheet>
+<link rel="stylesheet" href="/css/app-shell.css"><link rel="stylesheet" href="/css/leads.css">
 </head>
 <body class="leads-body"><div id="appShell"></div><script type="module" src="/js/app-shell.js"></script>
 <a class="skip" href="#leadBoard">Skip to lead board</a>
@@ -22,7 +22,7 @@
 <p id="leadBoardError" role="alert" hidden></p><label class="stage-nav">Stage<select id="stageFilter" aria-label="Board stage"></select></label><div id="leadBoard" aria-busy="true"><span class="sr-only" role="status">Loading leads…</span></div>
 <section class="top-grid">
 <div class="hot-section glass"><div class="section-heading"><h2 id="hotTitle">Hottest leads to claim</h2><time id="searchUpdated" title="Last new-lead search">New-lead search —</time></div><p id="hotSummary" class="hot-summary"></p><div id="hotLeads" aria-busy="true"></div></div>
-<div class="territory glass"><div class="section-heading"><h2>Territory</h2><button id="clearMarket" hidden>All markets</button></div><div id="territoryMap" aria-label="Lead count by market" role="region"></div><details id="mapLeadMembers"><summary>Map leads</summary><div></div></details><div id="marketCounts" aria-label="Markets"></div><small class="map-credit">Market areas only · U.S. Census · 2025</small></div>
+<div class="territory glass"><div class="section-heading"><h2>Territory</h2><button id="clearMarket" hidden>All markets</button></div><button id="showTerritory" type="button" aria-controls="territoryMap" aria-expanded="false">Show territory</button><div id="territoryMap" aria-label="Lead count by market" role="region" hidden></div><details id="mapLeadMembers"><summary>Map leads</summary><div></div></details><div id="marketCounts" aria-label="Markets"></div><small class="map-credit">Market areas only · U.S. Census · 2025</small></div>
 </section>
 </main>
 <dialog id="leadDetail" class="detail-dialog" aria-labelledby="detailTitle"><div class="dialog-heading"><h2 id="detailTitle"></h2><button id="closeDetail" aria-label="Close lead details">×</button></div><div id="detailBody"></div></dialog>

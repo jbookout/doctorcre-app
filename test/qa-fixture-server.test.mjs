@@ -53,3 +53,16 @@ test('QA seed provides a populated namespace-isolated synthetic shared tour', as
   await seed('another-tour');
   assert.deepEqual((await (await read('report')).json()).data, report);
 });
+
+for (const viewer of ['joe', 'dell']) test(`QA authenticated session identifies synthetic ${viewer}`, async () => {
+  const { dispatch } = await createQaServer();
+  const origin = 'http://localhost';
+  assert.equal((await dispatch(new Request(`${origin}/api/system-work/session`))).status, 401);
+  const response = await dispatch(new Request(`${origin}/api/test/seed`, { method: 'POST',
+    headers: { 'content-type': 'application/json' }, body: JSON.stringify({ namespace: `session-${viewer}`, viewer }) }));
+  const { cookie } = await response.json();
+  const session = await dispatch(new Request(`${origin}/api/system-work/session`, {
+    headers: { cookie: `${cookie.name}=${cookie.value}` } }));
+  assert.equal(session.status, 200);
+  assert.deepEqual(await session.json(), { actor: { slug: viewer } });
+});

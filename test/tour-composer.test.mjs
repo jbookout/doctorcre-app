@@ -37,7 +37,8 @@ for (const failure of ["503", "timeout", "malformed"]) test(`automatic itinerary
   const scope = `sha256:${createHash("sha256").update("synthetic-csrf").digest("hex")}`;
   const { dom, doc } = await open(store, { "doctorcre-itinerary-tour-v1": JSON.stringify({ scope, tour_id: tourId }) });
   assert.equal(reads, 1);
-  assert.match(doc.querySelector("#status").textContent, /Saved Tour temporarily unavailable/i);
+  assert.match(doc.querySelector("#status").textContent, /Tour detail unavailable/i);
+  assert.ok(doc.querySelector("[data-tour-retry]"));
   assert.equal(doc.querySelector("#create-tour").disabled, false);
   fail = false; doc.querySelector(".tour-button").click(); await settle();
   assert.equal(reads, 2); assert.match(doc.querySelector("#status").textContent, /Tour ready/);
@@ -71,7 +72,7 @@ function domain() {
       const latest = tour.routes[0], accepted = tour.routes.find(r => r.accepted);
       const reviewed = structuredClone(tour);
       for (const route of reviewed.routes) route.acceptance_digest = fixtureReviewDigest(route);
-      return response({ ...reviewed, route_version: accepted?.route_version || 1,
+      return response({ ...reviewed, cheat_sheet: Object.hasOwn(reviewed, "cheat_sheet") ? reviewed.cheat_sheet : {}, route_version: accepted?.route_version || 1,
         route_version_id: latest.id, route_version_state: latest.accepted ? "accepted" : "draft",
         accepted_route_version: accepted?.route_version || 0, stops: structuredClone(latest.stops) });
     }
@@ -116,6 +117,15 @@ function domain() {
           ["locked_appointment", "appointment_start", "appointment_end", "dwell_minutes", "buffer_minutes"].every(field => s[field] === old[field]))));
       }
       r.accepted = true; result = { route_version_acceptance_id: uuid() };
+    } else if (path === "/api/tours/cheat-sheet/autosave") {
+      const t = tours.get(body.tour_id), revision = t.cheat_sheet?.revision_number || 0;
+      if (body.expected_revision_number !== revision) return response(null, 409);
+      assert.ok(body.content && typeof body.content === "object" && !Array.isArray(body.content));
+      t.cheat_sheet = { content: structuredClone(body.content), revision_number: revision + 1 };
+      result = { ok: true, cheat_sheet_revision_id: uuid(), revision_number: revision + 1 };
+    } else if (path === "/api/tours/projection") {
+      const t = tours.get(body.tour_id); t.projection_status = "draft";
+      result = { projection_id: uuid() };
     } else throw new Error(`Unexpected path: ${path}`);
     replay.set(body.idempotency_key, { body: JSON.stringify(body), result });
     if (fault?.path === path && fault.kind === "lost") { fault = null; throw new Error("response lost"); }
@@ -567,6 +577,214 @@ async function touchLayout(page) {
       }) }));
 }
 
+test("S2 sheet timeout replays the exact committed request and keeps its original revision", async () => {
+  const store = domain(), { dom, doc } = await open(store); await create(doc);
+  const tour = [...store.tours.values()][0], normal = store.fetch; let lose = true;
+  dom.window.fetch = async (path, options) => {
+    const reply = await normal(path, options);
+    if (path === "/api/tours/cheat-sheet/autosave" && lose) { lose = false; return new Promise(() => {}); }
+    return reply;
+  };
+  const timer = dom.window.setTimeout.bind(dom.window);
+  dom.window.setTimeout = (fn, ms, ...args) => timer(fn, ms === 15000 ? 1 : ms, ...args);
+  fill(doc, "#cheat-content", "Draft retained after timeout");
+  doc.querySelector("#save-sheet").click(); await settle();
+  assert.equal(tour.cheat_sheet.revision_number, 1);
+  assert.match(doc.querySelector("#sheet-state").textContent, /unknown/i);
+  assert.equal(doc.querySelector("#cheat-content").disabled, true);
+  tour.cheat_sheet = { revision_number: 2, content: { notes: "A later partner edit" } };
+  doc.querySelector("#save-sheet").click(); await settle();
+  const writes = store.calls.filter(call => call.path === "/api/tours/cheat-sheet/autosave");
+  assert.equal(writes.length, 2); assert.deepEqual(writes[1].body, writes[0].body);
+  assert.equal(writes[1].body.expected_revision_number, 0);
+  assert.equal(tour.cheat_sheet.revision_number, 2);
+  assert.equal(doc.querySelector("#cheat-content").value, "A later partner edit");
+  dom.window.close();
+});
+
+test("S2 concurrent sheet save preserves the draft and requires review before a new key/version", async () => {
+  const store = domain(), { dom, doc } = await open(store); await create(doc);
+  const tour = [...store.tours.values()][0], normal = store.fetch; let conflict = true;
+  dom.window.fetch = async (path, options) => {
+    if (path === "/api/tours/cheat-sheet/autosave" && conflict) {
+      conflict = false; tour.cheat_sheet = { revision_number: 1, content: { notes: "Partner saved this" } };
+    }
+    return normal(path, options);
+  };
+  fill(doc, "#cheat-content", "My unsaved notes"); doc.querySelector("#save-sheet").click(); await settle();
+  assert.equal(doc.querySelector("#cheat-content").value, "My unsaved notes");
+  assert.match(doc.querySelector("#sheet-current").textContent, /Partner saved this/);
+  assert.equal(doc.querySelector("#sheet-conflict").hidden, false);
+  assert.equal(doc.querySelector("#save-sheet").disabled, true);
+  doc.querySelector("#review-sheet").click(); await settle();
+  assert.equal(doc.querySelector("#save-sheet").disabled, false);
+  doc.querySelector("#save-sheet").click(); await settle();
+  const writes = store.calls.filter(call => call.path === "/api/tours/cheat-sheet/autosave");
+  assert.equal(writes.length, 2); assert.notEqual(writes[1].body.idempotency_key, writes[0].body.idempotency_key);
+  assert.equal(writes[1].body.expected_revision_number, 1);
+  assert.equal(tour.cheat_sheet.content.notes, "My unsaved notes"); dom.window.close();
+});
+
+test("S2 stale rendered sheet is read before save and waits for deliberate review", async () => {
+  const store = domain(), { dom, doc } = await open(store); await create(doc);
+  const tour = [...store.tours.values()][0];
+  fill(doc, "#cheat-content", "My draft");
+  tour.cheat_sheet = { revision_number: 4, content: { notes: "Fresh server content" } };
+  doc.querySelector("#save-sheet").click(); await settle();
+  assert.equal(store.calls.filter(call => call.path === "/api/tours/cheat-sheet/autosave").length, 0);
+  assert.equal(doc.querySelector("#cheat-content").value, "My draft");
+  assert.match(doc.querySelector("#sheet-current").textContent, /Fresh server content/);
+  assert.equal(doc.querySelector("#save-sheet").disabled, true); dom.window.close();
+});
+
+for (const value of ["[]", "null", "42", '"text"']) test(`S2 scalar/array sheet ${value} is rejected before send`, async () => {
+  const store = domain(), { dom, doc } = await open(store); await create(doc);
+  fill(doc, "#cheat-content", value); doc.querySelector("#save-sheet").click(); await settle();
+  assert.equal(store.calls.filter(call => call.path === "/api/tours/cheat-sheet/autosave").length, 0);
+  assert.match(doc.querySelector("#sheet-state").textContent, /JSON object|plain text/i); dom.window.close();
+});
+
+test("S2 projection retry reuses its key and as-of timestamp after a committed lost response", async () => {
+  const store = domain(), { dom, doc } = await open(store); await create(doc); await addCart(doc); await saveAndAccept(doc);
+  store.fail("/api/tours/projection", "lost"); doc.querySelector("#generate-projection").click(); await settle();
+  assert.match(doc.querySelector("#tour-action-state").textContent, /unknown/i);
+  assert.equal(doc.querySelector("#retry-tour-action").hidden, false);
+  doc.querySelector("#retry-tour-action").click(); await settle();
+  const writes = store.calls.filter(call => call.path === "/api/tours/projection");
+  assert.equal(writes.length, 2); assert.deepEqual(writes[1].body, writes[0].body); dom.window.close();
+});
+
+test("S2 sheet reload restores the same draft and request before receipt reconciliation", async () => {
+  const store = domain(), first = await open(store); await create(first.doc);
+  fill(first.doc, "#cheat-content", "Notes retained across reload"); store.fail("/api/tours/cheat-sheet/autosave", "lost");
+  first.doc.querySelector("#save-sheet").click(); await settle();
+  const storage = Object.fromEntries(Object.keys(first.dom.window.sessionStorage).map(key => [key, first.dom.window.sessionStorage.getItem(key)]));
+  first.dom.window.close();
+  const next = await open(store, storage);
+  assert.equal(next.doc.querySelector("#cheat-content").value, "Notes retained across reload");
+  assert.equal(next.doc.querySelector("#cheat-content").disabled, true);
+  next.doc.querySelector("#save-sheet").click(); await settle();
+  const writes = store.calls.filter(call => call.path === "/api/tours/cheat-sheet/autosave");
+  assert.equal(writes.length, 2); assert.deepEqual(writes[1].body, writes[0].body); next.dom.window.close();
+});
+
+for (const kind of ["sheet", "projection"]) test(`S2 pending ${kind} cannot replay into a changed authenticated session`, async () => {
+  const store = domain(), { dom, doc } = await open(store); await create(doc);
+  if (kind === "projection") { await addCart(doc); await saveAndAccept(doc); }
+  const path = kind === "sheet" ? "/api/tours/cheat-sheet/autosave" : "/api/tours/projection";
+  if (kind === "sheet") fill(doc, "#cheat-content", "Prior session notes");
+  store.fail(path, "lost"); doc.querySelector(kind === "sheet" ? "#save-sheet" : "#generate-projection").click(); await settle();
+  const normal = store.fetch;
+  dom.window.fetch = async (requestPath, options) => {
+    const reply = await normal(requestPath, options), json = await reply.json();
+    return { ...reply, json: async () => ({ ...json, csrf_token: "different-synthetic-session" }) };
+  };
+  doc.querySelector(kind === "sheet" ? "#save-sheet" : "#retry-tour-action").click(); await settle();
+  assert.equal(store.calls.filter(call => call.path === path).length, 1);
+  assert.equal(dom.window.sessionStorage.getItem("doctorcre-tour-other-writes-v1"), null);
+  assert.equal(doc.querySelector("#cheat-content").value, ""); dom.window.close();
+});
+
+test("S2 malformed successful sheet receipt remains unknown and replays its retained key", async () => {
+  const store = domain(), { dom, doc } = await open(store); await create(doc);
+  const normal = store.fetch; let malformed = true;
+  dom.window.fetch = async (path, options) => {
+    const reply = await normal(path, options);
+    if (path === "/api/tours/cheat-sheet/autosave" && malformed) { malformed = false; return response({}); }
+    return reply;
+  };
+  fill(doc, "#cheat-content", "Receipt must confirm this save"); doc.querySelector("#save-sheet").click(); await settle();
+  assert.match(doc.querySelector("#sheet-state").textContent, /unknown/i);
+  doc.querySelector("#save-sheet").click(); await settle();
+  const writes = store.calls.filter(call => call.path === "/api/tours/cheat-sheet/autosave");
+  assert.equal(writes.length, 2); assert.deepEqual(writes[1].body, writes[0].body); dom.window.close();
+});
+
+for (const status of [401, 403]) for (const kind of ["sheet", "projection"]) test(`S2 unknown ${kind} followed by POST ${status} keeps its original request until confirmation`, async () => {
+  const store = domain(), { dom, doc } = await open(store); await create(doc);
+  if (kind === "projection") { await addCart(doc); await saveAndAccept(doc); }
+  const path = kind === "sheet" ? "/api/tours/cheat-sheet/autosave" : "/api/tours/projection";
+  if (kind === "sheet") fill(doc, "#cheat-content", "Earlier save may already be committed");
+  const normal = store.fetch; let posts = 0;
+  dom.window.fetch = async (requestPath, options) => {
+    const attempt = requestPath === path ? ++posts : 0;
+    const reply = await normal(requestPath, options);
+    if (attempt === 2) return response(null, status);
+    return reply;
+  };
+  store.fail(path, "lost"); doc.querySelector(kind === "sheet" ? "#save-sheet" : "#generate-projection").click(); await settle();
+  const retry = doc.querySelector(kind === "sheet" ? "#save-sheet" : "#retry-tour-action");
+  retry.click(); await settle();
+  assert.ok(dom.window.sessionStorage.getItem("doctorcre-tour-other-writes-v1"));
+  assert.equal(doc.querySelector(kind === "sheet" ? "#cheat-content" : "#generate-projection").disabled, true);
+  assert.match(doc.querySelector(kind === "sheet" ? "#sheet-state" : "#tour-action-state").textContent, /unknown|sign in/i);
+  retry.click(); await settle();
+  const writes = store.calls.filter(call => call.path === path);
+  assert.equal(writes.length, 3);
+  assert.deepEqual(writes[1].body, writes[0].body); assert.deepEqual(writes[2].body, writes[0].body);
+  assert.equal(dom.window.sessionStorage.getItem("doctorcre-tour-other-writes-v1"), null); dom.window.close();
+});
+
+for (const sheet of [{ content: { notes: "Missing version" } }, { revision_number: "1", content: {} },
+  { revision_number: -1, content: {} }, { revision_number: null, content: {} }, { revision_number: 0, content: {} }]) {
+  test(`S2 malformed populated sheet revision ${JSON.stringify(sheet.revision_number)} never authorizes a write`, async () => {
+    const store = domain(), { dom, doc } = await open(store); await create(doc);
+    const tour = [...store.tours.values()][0]; tour.cheat_sheet = sheet;
+    fill(doc, "#cheat-content", "Draft survives malformed current sheet"); doc.querySelector("#save-sheet").click(); await settle();
+    assert.equal(store.calls.filter(call => call.path === "/api/tours/cheat-sheet/autosave").length, 0);
+    assert.equal(doc.querySelector("#cheat-content").value, "Draft survives malformed current sheet");
+    assert.equal(doc.querySelector("#sheet-conflict").hidden, true);
+    assert.match(doc.querySelector("#sheet-state").textContent, /could not be read|unavailable/i); dom.window.close();
+  });
+}
+
+test("S2 an explicitly empty sheet is the supported zero-revision create case", async () => {
+  const store = domain(), { dom, doc } = await open(store); await create(doc);
+  [...store.tours.values()][0].cheat_sheet = {};
+  fill(doc, "#cheat-content", "First saved notes"); doc.querySelector("#save-sheet").click(); await settle();
+  const writes = store.calls.filter(call => call.path === "/api/tours/cheat-sheet/autosave");
+  assert.equal(writes.length, 1); assert.equal(writes[0].body.expected_revision_number, 0); dom.window.close();
+});
+
+test("S2 a failed or malformed conflict read preserves the draft and blocks review until a valid read", async () => {
+  const store = domain(), { dom, doc } = await open(store); await create(doc);
+  const tour = [...store.tours.values()][0], normal = store.fetch; let posted = false, valid = false;
+  dom.window.fetch = async (path, options) => {
+    if (path === "/api/tours/cheat-sheet/autosave") { posted = true; store.fail(path, "stale"); }
+    if (posted && path.startsWith("/api/tours/detail")) {
+      if (!valid) return response({ ...tour, cheat_sheet: { content: { notes: "Missing revision in read" } } });
+      return response({ ...tour, cheat_sheet: { revision_number: 2, content: { notes: "Valid current revision" } } });
+    }
+    return normal(path, options);
+  };
+  fill(doc, "#cheat-content", "Do not discard this draft"); doc.querySelector("#save-sheet").click(); await settle();
+  assert.equal(doc.querySelector("#cheat-content").value, "Do not discard this draft");
+  assert.equal(doc.querySelector("#review-sheet").disabled, true);
+  assert.equal(doc.querySelector("#save-sheet").disabled, true);
+  valid = true; doc.querySelector("#refresh-sheet-conflict").click(); await settle();
+  assert.equal(doc.querySelector("#review-sheet").disabled, false);
+  assert.match(doc.querySelector("#sheet-current").textContent, /Valid current revision/);
+  assert.equal(doc.querySelector("#cheat-content").value, "Do not discard this draft"); dom.window.close();
+});
+
+for (const kind of ["sheet", "projection"]) test(`S2 confirmed ${kind} with a failed refresh still reports the confirmed save`, async () => {
+  const store = domain(), { dom, doc } = await open(store); await create(doc);
+  if (kind === "projection") { await addCart(doc); await saveAndAccept(doc); }
+  else fill(doc, "#cheat-content", "Confirmed notes");
+  const path = kind === "sheet" ? "/api/tours/cheat-sheet/autosave" : "/api/tours/projection", normal = store.fetch;
+  let committed = false;
+  dom.window.fetch = async (requestPath, options) => {
+    if (committed && requestPath.startsWith("/api/tours/detail")) return response(null, 503);
+    const reply = await normal(requestPath, options);
+    if (requestPath === path) committed = true;
+    return reply;
+  };
+  doc.querySelector(kind === "sheet" ? "#save-sheet" : "#generate-projection").click(); await settle();
+  assert.match(doc.querySelector("#status").textContent, /confirmed.*refresh/i);
+  assert.equal(dom.window.sessionStorage.getItem("doctorcre-tour-other-writes-v1"), null);
+  dom.window.close();
+});
+
 test("phone and iPad composers fit the viewport and reduced motion leaves every state legible", async () => {
   const browser = await chromium.launch({ headless: true });
   try {
@@ -909,4 +1127,28 @@ test("excluded stop keeps its state visible and folds optional editing details",
     assert.ok(details.querySelector('[data-field="dwell_minutes"]'));
     assert.equal(doc.querySelector('#reload-composer').hidden, true);
   } finally { dom.window.close(); }
+});
+
+test('denied creation readback hides detail while retaining the session-bound creation request',async()=>{
+  const store=domain(), normal=store.fetch;
+  store.fetch=async(path,options)=>path.startsWith('/api/tours/detail') ? response(null,403) : normal(path,options);
+  const {dom,doc}=await open(store);
+  try{
+    await create(doc);
+    assert.equal(doc.querySelector('#tour-panel').hidden,true);
+    assert.match(doc.querySelector('#create-tour-state').textContent,/outcome unknown/i);
+    const retained=JSON.parse(dom.window.sessionStorage.getItem('doctorcre-tour-pending-v1'));
+    assert.equal(retained.create.idempotency_key,store.calls.find(call=>call.path==='/api/tours/create').body.idempotency_key);
+  }finally{dom.window.close();}
+});
+
+test('a changed Tour read keeps the guarded unsaved composer visible',async()=>{
+ const store=domain(),{dom,doc}=await open(store);
+ try{
+  await create(doc);await addCart(doc);
+  const tour=[...store.tours.values()][0];tour.routes[0].id=uuid();
+  doc.querySelector('.tour-button').click();await settle();
+  assert.match(doc.querySelector('#status').textContent,/Save or reconcile the displayed draft/);
+  assert.equal(doc.querySelector('#tour-panel').hidden,false);
+ }finally{dom.window.close();}
 });

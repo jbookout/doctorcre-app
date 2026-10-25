@@ -4,15 +4,15 @@ import { readFile } from 'node:fs/promises';
 import { classifyCommandOutcome, commandMessage } from '../js/command-feedback.mjs';
 
 const app = await readFile(new URL('../js/app.js', import.meta.url), 'utf8');
-const source = app.slice(app.indexOf('function nextStepForm('), app.indexOf('function parkDealForm('));
+const source = app.slice(app.indexOf('function reviewedReplacementVersion('), app.indexOf('function parkDealForm('));
 
 function harness(setNextStep) {
   const fields = { '#stepText':{ value:'', disabled:false }, '#stepDate':{ value:'', disabled:false },
     '#dialogSubmit':{ textContent:'' } };
   const forms = [];
   const refreshes = [];
-  const state = { deals:new Map([['d1', { name:'Acme', next_step:'Old', next_date:null }]]),
-    nextStepRequests:new Map(), nextStepInFlight:new Set(), client:{ setNextStep },
+  const state = { deals:new Map([['d1', { id:'d1', name:'Demo record', version:1, next_step:'Old', next_date:null }]]),
+    nextStepRequests:new Map(), nextStepInFlight:new Set(), client:{ setNextStep, getDeal:async()=>({deal:{...state.deals.get('d1')}}) },
     boardSync:{ requestRefresh:(reason) => refreshes.push(reason) } };
   let keys = 0;
   const openForm = (form) => forms.push(form);
