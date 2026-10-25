@@ -132,18 +132,22 @@ export async function runTaskScenario({ page, context, origin, task, cdp }) {
     let source = (await response.text()).replace('export async function createFixtureClient', 'async function originalFixtureClient');
     source += `\nexport async function createFixtureClient(options) {
       const client = await originalFixtureClient(options);
-      for (const name of Object.keys(client)) {
-        if (typeof client[name] !== 'function') continue;
-        const read = client[name];
-        client[name] = async function(...args) {
+      const wrap = (name, read) => {
+        if (typeof read !== 'function') return read;
+        return async function(...args) {
           await window.__recordTaskCall(name);
           if (name === 'getDeal') await new Promise(resolve => setTimeout(resolve, 75));
           const result = await read.apply(this, args);
           ${task.fixture === 'agenda' ? "if (name === 'getDeal') return { ...result, critical_dates: [], next_actions: [{ id: 'synthetic-task-' + args[0], description: 'Synthetic follow-up', status: 'open', owner: 'joe', due_on: null }] };" : ''}
           return result;
         };
-      }
-      return client;
+      };
+      for (const name of Object.keys(client)) client[name] = wrap(name, client[name]);
+      return new Proxy(client, {
+        set(target, name, value) {
+          return Reflect.set(target, name, wrap(name, value));
+        },
+      });
     }`;
     await route.fulfill({ response, body: source });
   });
