@@ -44,7 +44,7 @@ async function open(t, tab = 'views', { width = 1280, theme = 'dark', pending = 
       }
       return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ result: { content: [{ text: JSON.stringify(payload) }] } }) });
     }
-    if (url.pathname === '/api/system-work/session') return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ actor: { slug: 'joe' }, csrf_token: 'synthetic-test-token' }) });
+    if (['/api/system-work/session','/auth/session'].includes(url.pathname)) return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ actor: { slug: 'joe' }, csrf_token: 'synthetic-test-token' }) });
     if (url.pathname.startsWith('/api/')) return route.fulfill({ contentType: 'application/json', body: '{}' });
     return route.continue();
   });
@@ -144,9 +144,13 @@ for (const width of [390, 1280]) for (const theme of ['dark', 'light']) {
     await capture(page, `failed-${width}-${theme}`);
     const retry = list.getByRole('button', { name: 'Retry attention' });
     assert.equal(await retry.isVisible(), true, 'the failure has a local recovery action');
-    const failure = await list.locator('[data-state="offline"]').boundingBox();
-    const action = await retry.boundingBox();
-    assert.ok(action.y >= failure.y && action.y + action.height <= failure.y + failure.height,
+    const geometry = await list.evaluate(list => {
+      const failure = list.querySelector('[data-state="offline"]');
+      const action = failure.querySelector('[data-attention-retry]');
+      const row = failure.getBoundingClientRect(), button = action.getBoundingClientRect();
+      return { rowTop:row.top, rowBottom:row.bottom, buttonTop:button.top, buttonBottom:button.bottom };
+    });
+    assert.ok(geometry.buttonTop >= geometry.rowTop && geometry.buttonBottom <= geometry.rowBottom,
       'retry is next to the failure it recovers');
     state.censusUnavailable = false;
     await retry.click();

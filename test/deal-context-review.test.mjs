@@ -10,9 +10,9 @@ test('uses the actual client and exact vendor association, never a participant p
  assert.equal(context.vendors[0].record_id,'demo-vendor');
  assert.equal(contextDrawerSections(context).find(s=>s.title==='Vendors').links[0].href,'/vendors?record=demo-vendor');
 });
-test('empty or failed context hides empty sections',async()=>{
+test('failed context shows unavailable sections',async()=>{
  const context=await loadDealContext({getPartyRecord:async()=>{throw Error('offline');}},{deal:{client_id:'demo-client'}});
- assert.deepEqual(contextDrawerSections(context),[]);
+ assert.equal(contextDrawerSections(context)[0].state,'unavailable');
 });
 test('lost deals never count as closed successes or appear on the board',()=>{
  const rows=[{id:'won',phase:'Closed',outcome:'won'},{id:'lost',phase:'On Deck',outcome:'lost'},{id:'unknown',phase:'Closed'},{id:'open',phase:'Legal'}];

@@ -48,7 +48,7 @@ jobs:
           path: carr-producer
           fetch-depth: 0
           persist-credentials: false
-      - run: node --test test/property-producer.test.mjs
+      - run: node --test test/property-producer.test.mjs test/room-write-contract.test.mjs
         name: Verify the exact CARR runtime interface
         env:
           CARR_PRODUCER_CHECKOUT: ${{ github.workspace }}/carr-producer

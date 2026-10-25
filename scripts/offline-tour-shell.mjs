@@ -15,11 +15,16 @@ export async function offlineTourShell(readSource) {
       ? [...source.matchAll(/<(?:script|link)\b[^>]*(?:src|href)=["']([^"']+)["']/g)].map(match => match[1])
       : /\.m?js$/.test(path)
         ? [...source.matchAll(/\b(?:from\s*|import\s*\(\s*|import\s+)["']([^"']+)["']|new URL\(\s*["']([^"']+)["']\s*,\s*import\.meta\.url/g)].map(match => match[1] || match[2])
-        : [];
+        : path.endsWith('.css')
+          ? [...source.matchAll(/@import\s+(?:url\(\s*)?["']([^"']+)["']/g)].map(match => match[1])
+          : [];
     for (const reference of references) {
       if (!reference.startsWith('.') && !reference.startsWith('/')) continue;
       const url = new URL(reference, `https://offline.invalid${path}`);
       if (url.origin !== 'https://offline.invalid') continue;
+      // Tour day supplies no basemap style. Its ordered itinerary works
+      // without the optional engine, worker and provider styling.
+      if (url.pathname.startsWith('/tours/vendor/maplibre-gl-')) continue;
       if (!/\.(?:html|css|m?js)$/.test(url.pathname)) continue;
       assert.ok(/^\/(?:js|css|tours)\/.+\.(?:html|css|m?js)$/.test(url.pathname), `unsupported offline code dependency: ${reference}`);
       await visit(url.pathname);

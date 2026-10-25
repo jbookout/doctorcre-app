@@ -112,7 +112,8 @@ for (const actionCount of [5, 30]) for (const width of [390, 1280]) for (const t
     assert.equal(detailReads.length, 0, 'Home never opens complete records');
     assert.equal(agendaReads, actionCount === 5 ? 1 : 2, 'one agenda read per refresh');
     await page.getByRole('button', { name: 'Just me', exact: true }).click();
-    assert.equal(await page.locator('#homeCalendar').isVisible(), viewer === 'joe');
+    assert.equal(await page.locator('#homeCalendar').isVisible(), true);
+    if (viewer !== 'joe') assert.match(await page.locator('#homeCalendar').textContent(), /No calendar dates or tasks/);
     if (viewer === 'joe') assert.equal(await rows.count(), actionCount === 5 ? 4 : 6, 'scope changes reset expansion');
     await page.getByRole('button', { name: 'Team view', exact: true }).click();
     assert.equal(await rows.count(), actionCount === 5 ? 5 : 6, 'returning to team starts with the preview');

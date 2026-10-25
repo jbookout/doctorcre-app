@@ -1,13 +1,14 @@
+import { sessionFetch } from '../js/private-session.js';
 import { readWithDeadline } from "../js/auto-refresh.mjs";
 import { validateTourDetail } from "./planner-client.js";
 
-export function createDayClient({ fetchImpl = globalThis.fetch } = {}) {
+export function createDayClient({ fetchImpl = sessionFetch } = {}) {
   let scope = null;
   async function read(path, options = {}) {
     return readWithDeadline(async signal => {
       const response = await fetchImpl(path, { credentials: "same-origin", cache: "no-store", signal });
       if ([401, 403].includes(response.status)) { scope = null; const e = new Error("sign_in_required"); e.authentication = true; throw e; }
-      if (!response.ok) throw new Error("unavailable");
+      if (!response.ok) throw Object.assign(new Error("unavailable"), { transport: response.status >= 500 });
       return response.json();
     }, options);
   }
@@ -18,7 +19,7 @@ export function createDayClient({ fetchImpl = globalThis.fetch } = {}) {
     capabilities: Object.freeze({ voiceNotes: false }),
     async session(options) {
       const session = await read("/api/system-work/session", options);
-      if (!session.csrf_token || !session.actor?.slug) throw new Error("session_invalid");
+      if (!session.csrf_token || !session.actor?.slug) { scope = null; throw Object.assign(new Error("session_invalid"), { authentication: true }); }
       const hash = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(session.csrf_token));
       scope = [...new Uint8Array(hash)].map(n => n.toString(16).padStart(2, "0")).join("");
       return { scope, user_ref: session.actor.slug };

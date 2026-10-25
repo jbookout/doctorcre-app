@@ -19,7 +19,7 @@ async function open(t, { viewport = viewports[0], reducedMotion = 'no-preference
   await page.clock.install({ time: new Date('2026-10-12T15:00:00Z') });
   const errors = []; page.on('pageerror', error => errors.push(error.message));
   await page.addInitScript(init);
-  await page.route('**/api/system-work/session', route => route.fulfill({ json: { actor: { slug: 'joe' }, csrf_token: 'synthetic' } }));
+  await page.route('**/{api/system-work/session,auth/session}', route => route.fulfill({ json: { actor: { slug: 'joe' }, csrf_token: 'synthetic' } }));
   await page.route('**/js/fixture-client.js', async route => {
     let source = await readFile(new URL('../js/fixture-client.js', import.meta.url), 'utf8');
     source = source.replace('export async function createFixtureClient', 'async function originalFixture');

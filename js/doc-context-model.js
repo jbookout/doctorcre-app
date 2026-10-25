@@ -227,7 +227,7 @@ export function createDocContext({ page = 'home', now = () => Date.now() } = {})
       observedAt: valid.length ? new Date(Math.min(...valid.map(read => read.at))).toISOString() : null,
       recentActivity: active?.activityComplete === false ? [] : active?.activity.slice(0, 5) || [], state: ready ? 'ready' : current.some(read => read.state === 'pending') ? 'updating' : 'unavailable' };
   }
-  const clear = () => { authorizationGeneration++; epoch++; selected = null; reads.clear(); tickets.clear(); emit(); };
+  const clear = () => { authorizationGeneration++; epoch++; selected = null; filters = {}; reads.clear(); tickets.clear(); emit(); };
   return {
     snapshot,
     subscribe(listener) { listeners.add(listener); listener(snapshot()); return () => listeners.delete(listener); },

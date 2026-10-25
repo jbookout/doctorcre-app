@@ -24,7 +24,6 @@ test('An unclaimed New lead can be claimed on the first screen of a 45-lead boar
   await routeLeads(page, { getBoard: () => board, onWrite: value => writes.push(value) });
   await page.goto('http://localhost/leads');
   await page.locator('.lead-card').first().waitFor();
-  await page.locator('.market-marker').first().waitFor();
   const claim = page.locator('#leadBoard').getByRole('button', { name: 'Claim', exact: true }).first();
   assert.ok(await claim.count(), 'the board exposes a labelled Claim action');
   const bounds = await claim.boundingBox();
@@ -52,7 +51,7 @@ for (const width of [390, 768, 1280, 1440]) for (const theme of ['dark', 'light'
     page.on('pageerror', error => errors.push(error.message));
     await routeLeads(page, { getBoard: () => board });
     await page.goto('http://localhost/leads');
-    await page.locator('.market-marker').first().waitFor();
+    await page.locator('.lead-card').first().waitFor();
     const claim = await page.locator('#leadBoard [data-claim]').first().boundingBox();
     assert.ok(claim.y >= 0 && claim.y + claim.height < 900, 'Claim is visible without scrolling');
     await capture(page, `${width}-${theme}-board`, { claim });
@@ -103,3 +102,30 @@ for (const width of [390, 768, 1280, 1440]) for (const theme of ['dark', 'light'
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
   });
 }
+
+for (const failure of ['network', 401, 403]) test(`Slice A initial Leads identity failure ${failure} gives the correct recovery`, async t => {
+ const browser = await chromium.launch(); t.after(() => browser.close());
+ const page = await browser.newPage({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true, reducedMotion: 'reduce' });
+ const writes = []; let failing = true;
+ await routeLeads(page, { onWrite: value => writes.push(value) });
+ await page.route('**/api/system-work/session', route => {
+  if (!failing) return route.fallback();
+  return failure === 'network' ? route.abort('internetdisconnected') : route.fulfill({ status: failure, json: {} });
+ });
+ await page.goto('http://localhost/leads');
+ const error = page.locator('#leadBoardError');
+ await error.waitFor();
+ if (failure === 'network') {
+  assert.match(await error.textContent(), /Connection/);
+  assert.equal(await error.getByRole('link', { name: 'Sign in', exact: true }).count(), 0);
+  assert.equal(await page.locator('#leadBoard .lead-card').count(), 0);
+  failing = false;
+  await error.getByRole('button', { name: 'Retry', exact: true }).click();
+  await page.locator('#leadBoard .lead-card').first().waitFor();
+  assert.equal(await error.isVisible(), false);
+ } else {
+  assert.equal(await error.getByRole('link', { name: 'Sign in', exact: true }).isVisible(), true);
+  assert.equal(await error.getByRole('button', { name: 'Retry', exact: true }).count(), 0);
+ }
+ assert.deepEqual(writes, []);
+});

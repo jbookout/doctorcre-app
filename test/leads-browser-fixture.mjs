@@ -12,10 +12,10 @@ export async function routeLeads(page,{getBoard=workspace,onRead=()=>{},onWrite=
    if(path==='/mcp'){
     const p=(await request.json()).params;let value={ok:true};
     if(p.name==='deal-room-board')value={actor:'example-partner',deals:[]};
-    else if(p.name==='lead-board'){onRead();const board=getBoard();value={...board,...(p.arguments.lead_id?{detail:detail(board.leads.find(l=>l.id===p.arguments.lead_id))}:{})}}else onWrite(p);
+    else if(p.name==='lead-board'){onRead();const board=await getBoard();value={...board,...(p.arguments.lead_id?{detail:detail(board.leads.find(l=>l.id===p.arguments.lead_id))}:{})}}else onWrite(p);
     return Response.json({jsonrpc:'2.0',id:1,result:{content:[{type:'text',text:JSON.stringify(value)}]}});
    }
-   if(path.startsWith('/api/'))return Response.json({actor:{slug:'example-partner'},csrf_token:'synthetic-test-token',items:[],counts:{}});
+   if(path === '/auth/session' || path.startsWith('/api/'))return Response.json({actor:{slug:'example-partner'},csrf_token:'synthetic-test-token',items:[],counts:{}});
    return new Response('synthetic auth gate');
   }},ASSETS:{fetch:async request=>{
    const path=new URL(request.url).pathname.slice(1);

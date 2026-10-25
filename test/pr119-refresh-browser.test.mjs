@@ -12,7 +12,7 @@ after(()=>server?.close());
 async function open(t,{smallChats=false,clientHooks=''}={}){
  const browser=await chromium.launch();t.after(()=>browser.close());const page=await browser.newPage();await page.clock.install({time:new Date('2026-10-01T15:00:00Z')});
  const errors=[];page.on('pageerror',e=>errors.push(e.message));
- await page.route('**/api/system-work/session',r=>r.fulfill({json:{actor:{slug:'joe'},csrf_token:'synthetic'}}));
+ await page.route('**/{api/system-work/session,auth/session}',r=>r.fulfill({json:{actor:{slug:'joe'},csrf_token:'synthetic'}}));
  await page.route('**/api/v1/atlas-graph**',r=>{const u=new URL(r.request().url());u.searchParams.set('limit','2');const a=atlasFixtureResponse(u,'GET');return r.fulfill({status:a.status,json:a.body});});
  if(smallChats || clientHooks)await page.route('**/js/fixture-client.js',async r=>{
   let src=await readFile(new URL('../js/fixture-client.js',import.meta.url),'utf8');src=src.replace('export async function createFixtureClient','async function originalFixture');

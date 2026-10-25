@@ -434,18 +434,20 @@ export async function loadDealContext(client, detail) {
   let record = null;
   const status = id ? 'unavailable' : 'not_linked';
   if (id && client?.getPartyRecord) {
-    try { record = (await client.getPartyRecord({dataset:'clients',id}))?.record || null; } catch { /* Optional context stays hidden when unreadable. */ }
+    try { record = (await client.getPartyRecord({dataset:'clients',id}))?.record || null; } catch (error) { if ([401,403].includes(error?.status)) throw error; }
   }
-  let vendors = [];
+  let vendors = [], vendorsStatus = 'unavailable';
   if (client?.getRelationshipNetwork && deal.id) {
     try {
       const network = await client.getRelationshipNetwork();
       const linked = new Set((network.edges || []).filter(e => e.to === `deal:${deal.id}` && e.kind !== 'client_deal').map(e => e.from));
-      vendors = (network.nodes || []).filter(n => n.kind === 'vendor' && linked.has(n.id));
-    } catch { /* The card remains usable without optional network context. */ }
+      if (!Array.isArray(network.nodes) || !Array.isArray(network.edges)) throw new Error('Invalid network');
+      vendors = network.nodes.filter(n => n.kind === 'vendor' && linked.has(n.id));
+      vendorsStatus = 'ready';
+    } catch (error) { if ([401,403].includes(error?.status)) throw error; }
   }
   if (record && !record.id) record = {...record,id};
-  return {client: record ? {status:'ok',record} : {status,reason:id ? 'fetch_failed' : undefined}, vendors,
+  return {client: record ? {status:'ok',record} : {status,reason:id ? 'fetch_failed' : undefined}, vendors, vendorsStatus,
     parties:attachedParties(detail?.participants || []),criticalDates:detail?.critical_dates || []};
 }
 export function contextDrawerSections(context, options = {}) {
@@ -454,6 +456,8 @@ export function contextDrawerSections(context, options = {}) {
   if (record) sections.push({title:'Client',links:record.id ? [{label:'Open client record',href:`/clients?record=${encodeURIComponent(record.id)}`}] : [],lines:[record.name,
     [record.title,record.phone,record.cell,record.email].filter(Boolean).join(' · '),
     [record.city,record.state].filter(Boolean).join(', ')].filter(Boolean)});
+  if (context?.client?.status === 'unavailable') sections.push({title:'Client',state:'unavailable',lines:['Client details unavailable. Retry to load this section.']});
+  if (context?.vendorsStatus === 'unavailable') sections.push({title:'Vendors',state:'unavailable',lines:['Vendor details unavailable. Retry to load this section.']});
   const parties = context?.parties || [];
   if (parties.length) sections.push({title:'Attached parties',lines:parties.map(p => `${partyRoleLabel(p.role)} · ${p.name}`)});
   if (context?.vendors?.length) sections.push({title:'Vendors',links:context.vendors.filter(v=>v.record_id).map(v=>({label:`Open ${v.name}`,href:`/vendors?record=${encodeURIComponent(v.record_id)}`})),lines:context.vendors.map(v => [v.name,v.territory,v.summary].filter(Boolean).join(' · '))});

@@ -142,6 +142,9 @@ test("automatic refresh updates selected Tour details and preserves unsaved note
 
 async function openShare({ items = [], refuseOnce = false, properties = [{ property_ref: propertyRef, name: "Demo medical office" }], holdWrite = null, feedbackRead = null, permissionScopes = ["shortlist", "comment"], fastTimeout = false } = {}) {
   const dom = openDom(html, { url: "https://reports.doctorcre.com/share", runScripts: "outside-only" });
+  dom.window.history.replaceState({doctorcreShare:'projection:public:synthetic_projection',doctorcreShareContext:'synthetic-exchange'}, '', '/share');
+  dom.window.localStorage.setItem('doctorcre-public-share-context-v1','synthetic-exchange');
+  Object.defineProperty(dom.window.navigator,'locks',{value:{request:async(name,operation)=>operation()}});
   const writes = [];
   const reads = [];
   dom.window.fetch = async (path, options = {}) => {
@@ -253,38 +256,12 @@ test("a refused shortlist save retains the unknown choice and retries the same l
   assert.equal(app.writes[0].idempotency_key, app.writes[1].idempotency_key);
 });
 
-test("a partial feedback outage is visible and retry restores scoped controls without reloading the report", async t => {
-  let attempts = 0;
-  const held = deferred();
-  const app = await openShare({ feedbackRead: () => ++attempts === 1
-    ? { ok: false, json: async () => ({ error: "unavailable" }) }
-    : attempts === 2 ? held.promise : null });
-  const row = app.doc.querySelector(".report-item");
-  assert.match(row.textContent, /Demo medical office/);
-  assert.match(app.doc.querySelector("#status").textContent, /Feedback unavailable/);
-  assert.match(app.doc.querySelector("#feedback-status").textContent, /unavailable/);
-  const retry = [...app.doc.querySelectorAll("button")].find(button => button.textContent === "Retry feedback");
-  assert.ok(retry && !retry.hidden && !retry.disabled);
-  retry.click(); await settle();
-  assert.equal(retry.disabled, true);
-  assert.match(app.doc.querySelector("#feedback-status").textContent, /Loading feedback/);
-  retry.click(); await settle();
-  assert.equal(attempts, 2);
-  held.resolve({ ok: false, json: async () => ({ error: "unavailable" }) }); await settle();
-  assert.match(app.doc.querySelector("#feedback-status").textContent, /unavailable/);
-  assert.equal(retry.disabled, false);
-  retry.click(); await settle();
-  assert.equal(retry.hidden, true);
-  assert.equal(app.doc.querySelector(".report-item"), row);
-  assert.equal(app.doc.querySelectorAll(".feedback-controls").length, 1);
-  assert.ok(shortlistAction(app.doc, "Remove from shortlist"));
-  assert.ok(row.querySelector("textarea"));
-  assert.equal(app.doc.querySelector("#status").textContent, "Report and map loaded.");
-  assert.doesNotMatch(app.doc.querySelector("#feedback-status").textContent, /unavailable/);
-  assert.equal(app.reads.filter(path => path === "/api/share/report").length, 1);
-  assert.equal(app.reads.filter(path => path === "/api/share/map").length, 1);
-  shortlistAction(app.doc).click(); await settle();
-  assert.equal(app.writes[0].shortlisted, true);
+test("an unavailable projection identity clears the whole share and requires reopening the link", async () => {
+  const app = await openShare({feedbackRead: () => ({ok:false,json:async()=>({error:'unavailable'})})});
+  assert.equal(app.doc.querySelectorAll('.report-item').length,0);
+  assert.equal(app.doc.querySelectorAll('.feedback-controls').length,0);
+  assert.match(app.doc.querySelector('#status').textContent,/unavailable/);
+  assert.equal(app.dom.window.history.state,null);
 });
 
 test("a successful grant without feedback scopes stays read-only without an outage or retry", async t => {
@@ -344,7 +321,8 @@ test("client feedback appears only after an opened share and uses opaque refs", 
   assert.doesNotMatch(share, /saved\.data\?\.comment_ref/);
   assert.match(html, /id="feedback-status"/);
   assert.doesNotMatch(share + html, /broker_notes|source_evidence_id|property_id|share_grant_id/);
-  assert.doesNotMatch(share, /localStorage|sessionStorage|sendBeacon/);
+  assert.doesNotMatch(share, /sessionStorage|sendBeacon/);
+  assert.match(share, /localStorage.setItem\(contextKey,\s*linkContext\)/);
 });
 
 test("broker feedback is confined to the authenticated Tours view", () => {
@@ -370,7 +348,7 @@ test("Dot Tour: broker Refresh renders CARR data.feedback comments and shortlist
 });
 
 
-for (const stalled of ["fetch", "body"]) test(`Dot Tour: stalled feedback ${stalled} times out without hiding the report and can retry`, async t => {
+for (const stalled of ["fetch", "body"]) test(`Dot Tour: stalled feedback ${stalled} times out and clears the unverified report`, async t => {
   const signals = []; let hang = true;
   const app = await openShare({ fastTimeout: true, feedbackRead: options => {
     signals.push(options.signal);
@@ -378,14 +356,8 @@ for (const stalled of ["fetch", "body"]) test(`Dot Tour: stalled feedback ${stal
     return stalled === "fetch" ? new Promise(() => {}) : { ok: true, json: () => new Promise(() => {}) };
   } });
   await new Promise(resolve => setTimeout(resolve, 20));
-  assert.equal(app.doc.querySelectorAll(".report-item").length, 1);
-  assert.match(app.doc.querySelector("#status").textContent, /Report and map loaded.*Feedback unavailable/);
+  assert.equal(app.doc.querySelectorAll(".report-item").length, 0);
+  assert.match(app.doc.querySelector("#status").textContent, /unavailable/);
   assert.equal(signals[0]?.aborted, true);
-  const retry = [...app.doc.querySelectorAll("button")].find(button => button.textContent === "Retry feedback");
-  assert.equal(retry.hidden, false);
-  retry.click(); await new Promise(resolve => setTimeout(resolve, 20));
-  assert.equal(retry.disabled, false); assert.equal(signals[1]?.aborted, true);
-  hang = false; retry.click(); await settle();
-  assert.equal(retry.hidden, true); assert.ok(shortlistAction(app.doc));
-  assert.equal(app.doc.querySelectorAll(".report-item").length, 1);
+  assert.equal(app.dom.window.history.state, null);
 });

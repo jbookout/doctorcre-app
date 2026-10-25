@@ -24,7 +24,7 @@ async function open(t, { width = 1440, reducedMotion = 'no-preference', many = f
     const url = new URL(route.request().url());
     if (url.origin !== 'http://localhost') return route.abort();
     if (url.pathname === '/data/board-seed.json') return route.fulfill({ contentType: 'application/json', body: JSON.stringify(seed) });
-    if (url.pathname === '/api/system-work/session') return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ actor: { slug: 'joe' }, csrf_token: 'synthetic-only' }) });
+    if (['/api/system-work/session','/auth/session'].includes(url.pathname)) return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ actor: { slug: 'joe' }, csrf_token: 'synthetic-only' }) });
     if (url.pathname.startsWith('/api/') || url.pathname === '/app-release') return route.fulfill({ contentType: 'application/json', body: '{}' });
     const file = url.pathname === '/deals' ? 'pipeline.html' : url.pathname.slice(1);
     try { return route.fulfill({ body: await readFile(new URL(file, root)), contentType: /\.m?js$/.test(file) ? 'text/javascript' : file.endsWith('.css') ? 'text/css' : file.endsWith('.json') ? 'application/json' : 'text/html' }); }
@@ -120,7 +120,7 @@ for (const status of [401,403]) for (const outcome of ['ok','refused']) test(`PR
    });
  });
  await page.locator('#detailUpdateForm textarea').fill('Pending synthetic next step');
- await page.locator('#detailUpdateForm button').click();
+ await page.locator('#detailUpdateForm button[type=submit]').click();
  await page.waitForFunction(()=>typeof finishNext==='function');
  reads.status=status;
  await page.clock.fastForward(15000);
@@ -143,7 +143,9 @@ test('PR129 R1 an older successful detail read cannot repopulate refused detail'
  const reads=await liveDetailRead(page);
  reads.delayNext=true;await readPanel(page);
  assert.equal(typeof reads.delayed,'function');
- reads.status=401;await readPanel(page);
+ await page.evaluate(async()=>{const {state}=await import('/js/pipeline.js');state.client.getPartyRecord=async()=>{throw Object.assign(new Error('Synthetic refused context'),{status:401});};});
+ await page.locator('#panelContextOpen').click();
+ await page.locator('#panelBody a[href="/auth/login"]').first().waitFor();
  assert.match(await page.locator('#panelBody').textContent(),/Unavailable/);
  const response=page.waitForResponse(r=>new URL(r.url()).pathname==='/mcp'&&r.status()===200);
  reads.delayed();await response;await page.waitForTimeout(30);
@@ -160,7 +162,7 @@ test('PR129 R1 refused next-step revalidation clears detail without sending the 
    const {state}=await import('/js/pipeline.js');window.nextSends=0;
    state.client.addDealNote=async()=>{window.nextSends++;throw Object.assign(Error('Forbidden'),{status:403});};
  });
- reads.status=403;await page.locator('#detailUpdateForm button').click();
+ reads.status=403;await page.locator('#detailUpdateForm button[type=submit]').click();
  await page.waitForFunction(()=>!document.querySelector('#panelBody .deal-opening-snapshot'));
  assert.equal(await page.evaluate(()=>window.nextSends),1);
  assert.equal(await page.evaluate(async()=>(await import('/js/pipeline.js')).state.panelDetail),null);
@@ -215,11 +217,11 @@ test('PR129 transient detail failure keeps the authorized next-step draft',async
 
 test('append-only updates preserve a partner next step and start empty after refresh', async t => {
  const {page}=await open(t);await detail(page);
- await page.evaluate(async()=>{const {state}=await import('/js/pipeline.js');await state.client.setNextStep({deal:'d14',text:'Partner step',next_date:'2026-11-01',idempotency_key:'external-1'});});
+ await page.evaluate(async()=>{const {state}=await import('/js/pipeline.js');await state.client.setNextStep({deal:'d14',base_version:(await state.client.getDeal('d14')).deal.version,text:'Partner step',next_date:'2026-11-01',idempotency_key:'external-1'});});
  await readPanel(page);
  assert.equal(await page.locator('#detailUpdateForm textarea').inputValue(),'');
  await page.locator('#detailUpdateForm textarea').fill('My status update');
- await page.locator('#detailUpdateForm button').click();
+ await page.locator('#detailUpdateForm button[type=submit]').click();
  await page.waitForFunction(()=>document.querySelector('.deal-updates').textContent.includes('My status update'));
  assert.equal(await page.evaluate(async()=>{const {state}=await import('/js/pipeline.js');return (await state.client.getDeal('d14')).deal.next_step;}),'Partner step');
  assert.equal(await page.locator('#detailUpdateForm textarea').inputValue(),'');
@@ -228,18 +230,18 @@ test('append-only updates preserve a partner next step and start empty after ref
 test('R2 unknown next step replays exact key and intent; reopened pending form remains guarded', async t=>{
  const {page}=await open(t);await detail(page);
  await page.evaluate(async()=>{const {state}=await import('/js/pipeline.js');const send=state.client.addDealNote.bind(state.client);window.calls=[];state.client.addDealNote=async r=>{calls.push(r);const result=await send(r);if(calls.length===1)throw Error('lost reply');return result;};});
- await page.locator('#detailUpdateForm textarea').fill('Retained step');await page.locator('#detailUpdateForm button').click();
+ await page.locator('#detailUpdateForm textarea').fill('Retained step');await page.locator('#detailUpdateForm button[type=submit]').click();
  await page.waitForTimeout(30);
- assert.match(await page.locator('#detailUpdateForm button').textContent(),/Check outcome/);
+ assert.match(await page.locator('#detailUpdateForm button[type=submit]').textContent(),/Check outcome/);
  await page.getByLabel('Close deal',{exact:true}).click();await detail(page);
  assert.equal(await page.locator('#detailUpdateForm textarea').isDisabled(),true);
- await page.locator('#detailUpdateForm button').click();await page.waitForTimeout(30);
+ await page.locator('#detailUpdateForm button[type=submit]').click();await page.waitForTimeout(30);
  assert.equal(await page.evaluate(()=>calls.length),2);
  assert.deepEqual(await page.evaluate(()=>calls[0]),await page.evaluate(()=>calls[1]));
  await page.evaluate(async()=>{const {state}=await import('/js/pipeline.js');state.client.addDealNote=r=>new Promise(resolve=>{calls.push(r);window.finishNext=()=>resolve({ok:true});});});
- await page.locator('#detailUpdateForm textarea').fill('Pending step');await page.locator('#detailUpdateForm button').click();
+ await page.locator('#detailUpdateForm textarea').fill('Pending step');await page.locator('#detailUpdateForm button[type=submit]').click();
  await page.getByLabel('Close deal',{exact:true}).click();await detail(page);
- assert.equal(await page.locator('#detailUpdateForm button').isDisabled(),true);
+ assert.equal(await page.locator('#detailUpdateForm button[type=submit]').isDisabled(),true);
  await page.evaluate(()=>finishNext());
 });
 
@@ -314,7 +316,7 @@ test('R10 Home flagged personal URL reaches only flagged records for current act
 test('R2 a move follow-up cannot replace an unanswered next-step intent or its receipt',async t=>{
  const {page}=await open(t);await detail(page);
  await page.evaluate(async()=>{const {state}=await import('/js/pipeline.js');window.calls=[];const send=state.client.addDealNote.bind(state.client);state.client.addDealNote=async r=>{calls.push(r);const result=await send(r);if(calls.length===1)throw Error('lost reply');return result;};});
- await page.locator('#detailUpdateForm textarea').fill('Original intent');await page.locator('#detailUpdateForm button').click();await page.waitForTimeout(30);
+ await page.locator('#detailUpdateForm textarea').fill('Original intent');await page.locator('#detailUpdateForm button[type=submit]').click();await page.waitForTimeout(30);
  await page.getByLabel('Close deal',{exact:true}).click();
  await page.locator('.kanban-column [data-id="d14"]').focus();
  await page.keyboard.press('Enter');await page.keyboard.press('ArrowRight');await page.keyboard.press('Enter');

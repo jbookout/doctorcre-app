@@ -59,7 +59,7 @@ export async function localFixture(browser) {
       }
     }
     if (url.pathname === '/api/v1/business/leases') return json(lease);
-    if (url.pathname === '/api/system-work/session') return json({ actor: { slug: 'joe' }, csrf_token: 'synthetic' });
+    if (['/api/system-work/session','/auth/session'].includes(url.pathname)) return json({ actor: { slug: 'joe' }, csrf_token: 'synthetic' });
     if (url.pathname === '/mcp') return json({ result: { content: [{ type: 'text', text: '{"ok":true,"deals":[],"items":[],"notifications":[],"state":"unavailable"}' }] } });
     if (url.pathname.startsWith('/api/') || url.pathname === '/app-release') return json({});
     const file = url.pathname === '/leases' ? 'lease-radar.html' : url.pathname === '/share' ? 'reports/share.html'

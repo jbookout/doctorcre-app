@@ -3,19 +3,21 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { JSDOM } from 'jsdom';
 import { autoRefreshScript } from './auto-refresh-script.mjs';
+import { createRetainedCommands } from '../js/retained-commands.mjs';
 const settle = async () => { for(let i=0;i<12;i++) await new Promise(r=>setImmediate(r)); };
 const deferred = () => { let resolve; const promise=new Promise(r=>resolve=r); return {promise,resolve}; };
 const base = {human_ref:'WR-000123',version:1,state:'captured',title:'Synthetic concern',desired_outcome:'Safe observation',acceptance_criteria:[{id:'criterion-1',text:'Synthetic evidence'}],source:{label:'Synthetic doctrine',freshness:'current',provenance:'shared doctrine'}};
-async function setup(t, card=base, read=()=>card, current=()=>({items:[]}), index=false) {
+async function setup(t, card=base, read=()=>card, current=()=>({items:[]}), index=false, write=null) {
  const dom=new JSDOM(readFileSync(new URL('../system-work.html',import.meta.url),'utf8'),{url:'http://localhost/work-requests'+(index?'':'?work_request=WR-000123'),runScripts:'outside-only'});
  t.after(()=>dom.window.close()); const w=dom.window,d=w.document,calls=[];
  w.structuredClone=structuredClone;
+ w.createRetainedCommands=createRetainedCommands;
  w.HTMLDialogElement.prototype.showModal=function(){this.open=true;};w.HTMLDialogElement.prototype.close=function(){this.open=false;};
  w.fetch=async(path,init={})=>{calls.push({path,init,body:init.body?JSON.parse(init.body):null});let data;
  if(path.endsWith('/session'))return new Response(JSON.stringify({actor:{display:'Synthetic partner'},csrf_token:'synthetic'}));
  if(path.endsWith('/current')) data=await current();
  else if(!init.method) data=await read(path);
- else data={human_ref:card.human_ref,challenge:'synthetic'};
+ else data=write?await write(path,JSON.parse(init.body)):{human_ref:card.human_ref,challenge:'synthetic'};
  if(data instanceof Response)return data;
  return new Response(JSON.stringify({ok:true,data}));};
  const files=['doc-context-model.js','doc-context.js','uuid.js','system-work-view.js','system-work-client.js','system-work-app.js'];
@@ -62,4 +64,32 @@ test('PR119 finding 4: the index rereads and recovers; late lists cannot overwri
 });
 test('PR119 finding 9: supported source shape gets a completed read clock',async t=>{
  const h=await setup(t);assert.match(h.d.querySelector('.as-of').textContent,/^Updated \d{1,2}:\d{2} (AM|PM)$/);assert.ok(h.d.querySelector('[data-system-action]'));
+});
+
+test('S2 submit rereads the exact Work Request before writing and keeps the draft on a new version',async t=>{
+ let version=1;
+ const h=await setup(t,base,()=>({...base,version}));
+ h.d.querySelector('[data-system-action="triage"]').click();
+ version=2;
+ await h.submit();
+ assert.equal(h.calls.filter(c=>c.init.method==='POST').length,0);
+ assert.match(h.d.querySelector('#systemWorkFormError').textContent,/changed|review/i);
+ assert.equal(h.d.querySelector('#systemWorkDialog').open,true);
+ assert.ok(h.calls.filter(c=>c.path.endsWith('/WR-000123')&&!c.init.method).length>=2);
+});
+
+test('S2 reopened Work Request form reconciles its original operation after a lost committed reply',async t=>{
+ let version=1,commits=0,lost=true;const receipts=new Map();
+ const h=await setup(t,base,()=>({...base,version}),()=>({items:[]}),false,(_path,body)=>{
+  if(!receipts.has(body.idempotency_key)){commits++;version++;receipts.set(body.idempotency_key,{ok:true,human_ref:base.human_ref});}
+  if(lost){lost=false;throw new Error('response lost after commit');}return receipts.get(body.idempotency_key);
+ });
+ h.d.querySelector('[data-system-action="triage"]').click();await h.submit();
+ assert.match(h.d.querySelector('#systemWorkFormError').textContent,/outcome|unknown|confirm|lost/i);
+ h.d.querySelector('[data-system-cancel]').click();
+ h.d.querySelector('[data-system-action="triage"]').click();
+ const reads=h.calls.filter(c=>!c.init.method).length;await h.submit();
+ const writes=h.calls.filter(c=>c.init.method==='POST');
+ assert.equal(writes.length,2);assert.deepEqual(writes[1].body,writes[0].body);assert.equal(commits,1);
+ assert.ok(h.calls.filter(c=>!c.init.method).length<=reads+1,'only post-receipt refresh may read a new version');
 });

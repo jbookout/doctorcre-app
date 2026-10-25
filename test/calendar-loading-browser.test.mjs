@@ -75,13 +75,12 @@ test('Calendar opens confirmed dates while another deal is pending and clears th
         await expect(page.locator('#calStatusLabel')).toHaveText('Current');
         await expect(page.locator('.cal-day-open[data-select-day="2026-10-20"]')).toBeFocused();
       } else {
-        await expect(page.locator('#calStatusLabel')).toHaveText('Session ended');
+        await page.waitForURL('**/public-shell/session-ended.html');
+        await expect(page.getByRole('heading',{name:'Session ended'})).toBeVisible();
         await expect(agenda).toHaveCount(0);
-        await expect(page.locator('#dayPanelBody')).not.toContainText('Synthetic fast date');
-        const lateResponse = page.waitForResponse(response => response.request().postDataJSON()?.params?.arguments?.deal === 'late');
         releaseLate();
-        await (await lateResponse).finished();
-        await expect(agenda).toHaveCount(0);
+        await expect(page.locator('body')).not.toContainText('Synthetic fast date');
+
       }
     } finally {
       release();

@@ -1,3 +1,4 @@
+import { businessDay } from './business-date.js';
 import { isClosedDeal } from './deal-review-model.js';
 import { addDays, localToday } from './calendar-model.js';
 import { createInvoiceFixture } from './invoice-tracker-fixture.js';
@@ -66,6 +67,7 @@ export async function createFixtureClient(opts = {}) {
   // one national-account portfolio, many market deals, no duplicate deal rows.
   const fixtureAccountId = 'demo-account-001';
   let fixtureAccountOwner = 'dell';
+  let fixtureAccountVersion = 1;
   [...deals.values()].slice(0, 5).forEach((d, index) => Object.assign(d, {
     workspace_kind: 'national_account',
     account_client_id: fixtureAccountId,
@@ -1394,7 +1396,7 @@ export async function createFixtureClient(opts = {}) {
         lost_deals: [...deals.values()].filter(d => d.outcome === 'lost').map(d => ({...d})),
         closed_deals: [...deals.values()].filter(d => (d.outcome === 'won' || !d.outcome && (d.closed_on || d.invoiced_on))).map(d => ({...d})),
         accounts: [{ account_client_id: fixtureAccountId, account_client_ref: 'DEMO-ACCOUNT-001',
-          account_name: 'Demo National Practice', account_owner: fixtureAccountOwner, open_deals: activeNational.length,
+          account_name: 'Demo National Practice', account_owner: fixtureAccountOwner, base_version: fixtureAccountVersion, client_version: fixtureAccountVersion, open_deals: activeNational.length,
           attention_deals: activeNational.filter((d) => d.attention).length,
           overdue_deals: activeNational.filter((d) => d.next_date && d.next_date < today).length,
           stale_deals: activeNational.filter((d) => !d.last_touch || d.last_touch <= addDays(today, -14)).length,
@@ -1685,9 +1687,10 @@ export async function createFixtureClient(opts = {}) {
       });
     },
 
-    async setNextStep({ deal, text, next_date, idempotency_key }) {
+    async setNextStep({ deal, text, next_date, base_version, idempotency_key }) {
       return withIdem(idempotency_key, () => {
         const d = getDealOrThrow(deal);
+        guardVersion(d, base_version);
         const t = String(text || '').trim();
         if (!t) throw new Error('empty next step');
         const old = d.next_step;
@@ -1704,6 +1707,7 @@ export async function createFixtureClient(opts = {}) {
         d.next_step = t;
         if (next_date !== undefined) d.next_date = next_date || null;
         d.last_touch = nowIso().slice(0, 10);
+        d.version += 1;
         const e = pushEvent({
           actor: selfActor,
           verb: 'set-next-step',
@@ -1796,15 +1800,23 @@ export async function createFixtureClient(opts = {}) {
     },
     async morningBrief() {
       const section = items => ({ state: items.length ? 'ready' : 'empty', items });
-      return { state: 'ready', sponsor: selfActor, sections: {
+      const board = await this.getBoard();
+      const sections = {
+        ...(selfActor === 'joe' ? { needs_joe: section([]) } : {}),
+        claim_card: section([]), renewals: section([]), assurance_cadence: section([]), costs: { ...section([]), providers: [] },
         today: section((await this.todayTriage()).items),
-        deals: section((await this.getBoard()).deals),
+        deals: { state:board.deals.length || board.accounts?.length ? 'ready' : 'empty', items:board.deals, accounts:board.accounts || [] },
         loops: section((await this.loopBoard()).loops),
+      };
+      return { state:'ready', sponsor:selfActor, sections, coverage: {
+        schema:'morning-brief-coverage.v1', count_scope:'returned_rows_only',
+        required_sections:Object.entries(sections).map(([key,value]) => ({key,path:`/sections/${key}`,state:value.state,
+          counts:Object.fromEntries(['items','accounts','providers'].filter(name => Array.isArray(value[name])).map(name => [name,value[name].length])), incomplete_sources:[]})),
       } };
     },
 
     async todayTriage() {
-      const today = nowIso().slice(0, 10);
+      const today = businessDay(new Date(nowIso()));
       const horizon = new Date(Date.parse(`${today}T00:00:00Z`) + 14 * 86_400_000).toISOString().slice(0, 10);
       const items = [];
       // v_today_triage does not filter on the deal's own state, so neither does this.
@@ -2974,16 +2986,19 @@ export async function createFixtureClient(opts = {}) {
       });
     },
 
-    async setMarketAgent({ deal, agent_name, market, idempotency_key }) {
+    async setMarketAgent({ deal, agent_name, market, base_version, idempotency_key }) {
       return withIdem(idempotency_key, () => {
-        const d = getDealOrThrow(deal); d.market_agent = agent_name; if (market) d.market = market;
+        const d = getDealOrThrow(deal); guardVersion(d, base_version);
+        d.market_agent = agent_name; if (market) d.market = market; d.version += 1;
         return { ok: true, deal_id: deal, market_agent: agent_name };
       });
     },
 
-    async setNationalAccountOwner({ account_client_id, owner, idempotency_key }) {
+    async setNationalAccountOwner({ account_client_id, owner, base_version, idempotency_key }) {
       return withIdem(idempotency_key, () => {
+        guardVersion({ version: fixtureAccountVersion }, base_version);
         fixtureAccountOwner = owner;
+        fixtureAccountVersion += 1;
         for (const d of deals.values()) if (d.account_client_id === account_client_id) d.account_owner = owner;
         return { ok: true, account_client_id, owner };
       });
@@ -2996,10 +3011,12 @@ export async function createFixtureClient(opts = {}) {
     },
 
     async createNationalMarketDeal(args) {
-      return client.createDeal({ name: args.deal_name, client: args.client_name,
+      const result = await client.createDeal({ name: args.deal_name, client: args.client_name,
         deal_type: args.deal_type || 'Startup', phase: args.phase || 'On Deck',
         segment: args.segment, market: args.market, lane: 'national',
         idempotency_key: args.idempotency_key });
+      return { ok:true, deal_id:result.deal.id, client_ref:result.deal.client_ref,
+        account_client_id:result.deal.account_client_id };
     },
 
     // Mirrors the record layer's revert-deal-field verb: the reverted event

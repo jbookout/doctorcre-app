@@ -77,3 +77,17 @@ test('QA Home agenda reads the signed-in namespace through the current contract'
   assert.equal(agenda.deals[0].next_actions[0].hold_until, null);
   assert.equal(agenda.deals[0].thread, undefined);
 });
+
+for (const viewer of ['joe', 'dell']) test(`QA authenticated session identifies synthetic ${viewer}`, async () => {
+  const { dispatch } = await createQaServer();
+  const origin = 'http://localhost';
+  assert.equal((await dispatch(new Request(`${origin}/api/system-work/session`))).status, 401);
+  const response = await dispatch(new Request(`${origin}/api/test/seed`, { method: 'POST',
+    headers: { 'content-type': 'application/json' }, body: JSON.stringify({ namespace: `session-${viewer}`, viewer }) }));
+  const { cookie } = await response.json();
+  const session = await dispatch(new Request(`${origin}/api/system-work/session`, {
+    headers: { cookie: `${cookie.name}=${cookie.value}` } }));
+  assert.equal(session.status, 200);
+  assert.deepEqual(await session.json(), { actor: { slug: viewer } });
+
+});

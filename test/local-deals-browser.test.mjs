@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile, mkdir } from 'node:fs/promises';
 import { chromium, waitForAsync } from './browser-harness.mjs';
+import { identity, found, readiness, meeting } from './fixtures/correspondence.mjs';
 const root = new URL('../', import.meta.url);
 const phases = ['On Deck', 'Research', 'Site selection', 'Negotiation', 'Legal', 'Diligence', 'Closing', 'Closed'];
 async function open(t, { width = 1440, height = 960, reducedMotion = 'no-preference', many = false, review = false, deal = null, prospect = false } = {}) {
@@ -24,7 +25,7 @@ async function open(t, { width = 1440, height = 960, reducedMotion = 'no-prefere
     const url = new URL(route.request().url());
     if (url.origin !== 'http://localhost') return route.abort();
     if (url.pathname === '/data/board-seed.json') return route.fulfill({ contentType: 'application/json', body: JSON.stringify(seed) });
-    if (url.pathname === '/api/system-work/session') return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ actor: { slug: 'joe' }, csrf_token: 'synthetic-only' }) });
+    if (['/api/system-work/session','/auth/session'].includes(url.pathname)) return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ actor: { slug: 'joe' }, csrf_token: 'synthetic-only' }) });
     if (url.pathname.startsWith('/api/') || url.pathname === '/app-release') return route.fulfill({ contentType: 'application/json', body: '{}' });
     const file = url.pathname === '/deals' ? 'pipeline.html' : url.pathname.slice(1);
     try { return route.fulfill({ body: await readFile(new URL(file, root)), contentType: /\.m?js$/.test(file) ? 'text/javascript' : file.endsWith('.css') ? 'text/css' : file.endsWith('.json') ? 'application/json' : 'text/html' }); }
@@ -300,7 +301,7 @@ test('W4 lost park response retries the original field exactly once; next-step e
   await waitForAsync(page, async () => (await import('/js/pipeline.js')).state.deals.get('d14').operating_state === 'active');
   await page.locator('[data-id="d14"] .card-open').click();
   for (const text of ['Demo first next step', 'Demo second next step']) {
-    await page.locator('#detailUpdateForm textarea').fill(text); await page.locator('#detailUpdateForm button').click();
+    await page.locator('#detailUpdateForm textarea').fill(text); await page.locator('#detailUpdateForm button[type=submit]').click();
     await page.waitForFunction(expected => document.querySelector('.deal-updates').textContent.includes(expected), text);
   }
   assert.deepEqual(errors, []);
@@ -351,7 +352,7 @@ test('detail reads recover without losing an update draft', async t => {
  await page.getByText('Updates temporarily unavailable',{exact:true}).waitFor();
  assert.equal(await page.locator('#detailUpdateForm textarea').inputValue(),'Unsaved demo update');
  await page.evaluate(()=>restoreRead());await page.clock.fastForward(16000);
- await page.locator('#detailUpdateForm button').click();
+ await page.locator('#detailUpdateForm button[type=submit]').click();
  await page.waitForFunction(()=>document.querySelector('.deal-updates').textContent.includes('Unsaved demo update'));
  assert.equal(await page.locator('#detailUpdateForm textarea').inputValue(),'');
  assert.deepEqual(errors,[]);
@@ -770,15 +771,16 @@ for (const width of [390,1280]) test(`move success fades after two seconds and U
   assert.deepEqual(errors,[]);
 });
 
-test('unreadable linked client with no context rows hides the context control',async t=>{
+test('unreadable linked client exposes a recoverable context error',async t=>{
   const {page,errors}=await open(t,{deal:'d02'});
   await page.locator('#detailUpdateForm').waitFor();
-  assert.equal(await page.locator('#panelContextOpenWrap').isVisible(),false);
-  assert.equal(await page.locator('#contextDrawer').evaluate(n=>n.open),false);
+  await page.locator('#panelContextOpen').click();
+  assert.match(await page.locator('#contextDrawerBody').textContent(),/Client details unavailable/);
+  assert.equal(await page.locator('[data-context-retry]').count()>0,true);
   assert.deepEqual(errors,[]);
 });
 
-test('context becoming unreadable on its fresh open closes the empty dialog and hides its control',async t=>{
+test('context becoming unreadable stays open with an error and retry recovers',async t=>{
   const {page,errors}=await open(t);
   await page.evaluate(async()=>{
     const {state}=await import('/js/pipeline.js');const read=state.client.getDeal.bind(state.client);
@@ -791,8 +793,12 @@ test('context becoming unreadable on its fresh open closes the empty dialog and 
   await page.evaluate(()=>{window.contextUnavailable=true;});
   await page.locator('#panelContextOpen').click();
   await waitForAsync(page,()=>!document.querySelector('#contextDrawerBody').textContent.includes('Updating'));
-  assert.equal(await page.locator('#contextDrawer').evaluate(n=>n.open),false);
-  assert.equal(await page.locator('#panelContextOpenWrap').isVisible(),false);
+  assert.equal(await page.locator('#contextDrawer').evaluate(n=>n.open),true);
+  assert.match(await page.locator('#contextDrawerBody').textContent(),/Client details unavailable/);
+  await page.evaluate(()=>{window.contextUnavailable=false;});
+  await page.locator('[data-context-retry]').click();
+  await page.waitForFunction(()=>document.querySelector('#contextDrawerBody').textContent.includes('Demo Context Client'));
+  assert.equal(await page.locator('#panelContextOpenWrap').isVisible(),true);
   assert.deepEqual(errors,[]);
 });
 
@@ -808,7 +814,8 @@ test('readable vendor context survives a failed linked client read',async t=>{
   await page.locator('#panelContextOpen').waitFor({state:'visible'});
   await page.locator('#panelContextOpen').click();
   await page.locator('#contextDrawer a[href="/vendors?record=demo-vendor"]').waitFor();
-  assert.equal(await page.locator('#contextDrawer .panel-section').count(),1);
+  assert.equal(await page.locator('#contextDrawer .panel-section').count(),2);
+  assert.match(await page.locator('#contextDrawer [data-state=unavailable]').textContent(),/Client details unavailable/);
   assert.deepEqual(errors,[]);
 });
 
@@ -816,32 +823,28 @@ test('legacy next-step writes do not replace structured checklist items',async t
   const {page,errors}=await open(t,{width:1280,review:true});
   const card=page.locator('.kanban-column [data-id="d14"]');
   const titles=await card.locator('ol button').allTextContents();
-  await page.evaluate(async()=>{const {state}=await import('/js/pipeline.js');await state.client.setNextStep({deal:'d14',text:'Counsel replied',idempotency_key:'demo-legacy-next-step'});await state.boardSync.refreshBoard({reason:'test'});});
+  await page.evaluate(async()=>{const {state}=await import('/js/pipeline.js');await state.client.setNextStep({deal:'d14',text:'Counsel replied',base_version:(await state.client.getDeal('d14')).deal.version,idempotency_key:'demo-legacy-next-step'});await state.boardSync.refreshBoard({reason:'test'});});
   assert.deepEqual(await card.locator('ol button').allTextContents(),titles);
   assert.equal(await card.locator('.next-line').count(),0);
+
   assert.deepEqual(errors,[]);
 });
 
-test('a delayed context availability probe cannot hide a newer readable drawer',async t=>{
+test('background detail refresh does not probe unopened context',async t=>{
  const {page,errors}=await open(t);
  await page.evaluate(async()=>{
   const {state}=await import('/js/pipeline.js');const read=state.client.getDeal.bind(state.client);
   state.client.getDeal=async id=>{const detail=await read(id);return {...detail,deal:{...detail.deal,client_id:'demo-client'},critical_dates:[],participants:[]};};
-  state.client.getPartyRecord=async()=>({record:{id:'demo-client',name:'Demo Current Client'}});
+  window.contextReads=0;
+  state.client.getPartyRecord=async()=>{window.contextReads++;return {record:{id:'demo-client',name:'Demo Current Client'}};};
  });
  await page.locator('.kanban-column [data-id="d14"] .card-open').click();
- await page.locator('#panelContextOpen').waitFor({state:'visible'});
- await page.evaluate(async()=>{
-  const {state}=await import('/js/pipeline.js');const read=state.client.getPartyRecord;let first=true;
-  state.client.getPartyRecord=args=>{if(first){first=false;return new Promise(resolve=>{window.finishAvailability=()=>resolve({record:null});});}return read(args);};
-  dispatchEvent(new Event('online'));
- });
- await waitForAsync(page,()=>typeof window.finishAvailability==='function');
+ await page.locator('#detailUpdateForm').waitFor();
+ await page.locator('[data-refresh-detail]').click();
+ assert.equal(await page.evaluate(()=>window.contextReads),0);
  await page.locator('#panelContextOpen').click();
  await page.getByText('Demo Current Client',{exact:true}).waitFor();
- await page.evaluate(()=>window.finishAvailability());
- await page.locator('#contextDrawerClose').click();
- assert.equal(await page.locator('#panelContextOpenWrap').isVisible(),true);
+ assert.equal(await page.evaluate(()=>window.contextReads),1);
  assert.deepEqual(errors,[]);
 });
 
@@ -1003,4 +1006,51 @@ test('pipeline recovery reports the original activation target from Leads',async
  assert.equal(await page.locator('#toast').textContent(),'Prospect returned to the deal board');
  const writes=await page.evaluate(()=>window.engagementWrites);
  assert.deepEqual(writes[1],writes[0]);
+});
+
+async function openWithCorrespondence(t) {
+  const view = await open(t);
+  await view.page.evaluate(async ({identity,found,readiness,meeting}) => {
+    const {state} = await import('/js/pipeline.js');
+    const getDeal = state.client.getDeal.bind(state.client);
+    state.client.getDeal = async (...args) => ({...await getDeal(...args), activities:[
+      {...meeting,kind:'correspondence',detail:{native_identity:identity}},meeting,
+    ]});
+    state.client.correspondenceReadiness = async () => readiness;
+    window.evidenceReads = 0;
+    state.client.readCorrespondenceThread = async () => {
+      window.evidenceReads++;
+      if (window.evidenceFailure) throw Object.assign(new Error('Synthetic read failure'),{status:window.evidenceFailure});
+      return found;
+    };
+  }, {identity,found,readiness,meeting});
+  await view.page.locator('.kanban-column [data-id="d14"]').click();
+  await view.page.locator('#panelEvidenceSection > summary').click();
+  await view.page.locator('#panelEvidence [data-kind=thread]').waitFor();
+  return view;
+}
+
+for (const status of [401,403]) test(`correspondence ${status} on detail refresh clears protected detail and its draft`, async t => {
+  const {page,errors} = await openWithCorrespondence(t);
+  await page.locator('#dealUpdate').fill('Synthetic unsaved update');
+  await page.evaluate(status => { window.evidenceFailure = status; },status);
+  await page.locator('[data-refresh-detail]').click();
+  await page.locator('#panelBody a[href="/auth/login"]').first().waitFor({timeout:2000});
+  assert.equal(await page.evaluate(async () => (await import('/js/pipeline.js')).state.panelDetail),null);
+  assert.equal(await page.locator('#detailUpdateForm').count(),0);
+  assert.doesNotMatch(await page.locator('#panelBody').textContent(),/Synthetic unsaved update/);
+  assert.deepEqual(errors,[]);
+});
+
+test('Retry evidence remains active after a background detail refresh replaces evidence', async t => {
+  const {page,errors} = await openWithCorrespondence(t);
+  await page.evaluate(() => { window.evidenceFailure = 503; });
+  await page.locator('[data-refresh-detail]').click();
+  await page.locator('#panelEvidence [data-evidence-retry]').waitFor();
+  const before = await page.evaluate(() => window.evidenceReads);
+  await page.evaluate(() => { window.evidenceFailure = null; });
+  await page.locator('#panelEvidence [data-evidence-retry]').click();
+  await page.locator('#panelEvidence [data-kind=thread]').waitFor({timeout:2000});
+  assert.ok(await page.evaluate(() => window.evidenceReads) > before);
+  assert.deepEqual(errors,[]);
 });

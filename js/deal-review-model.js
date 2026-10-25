@@ -30,3 +30,9 @@ export function needsAttention(deal, now = Date.now()) {
   const due = toDay(deal.next_date);
   return Boolean(typeof deal.next_step === 'string' && deal.next_step.trim() && due && due < radarToday(new Date(now)));
 }
+
+export function requireReviewReceipt(receipt) {
+  if (receipt?.ok !== true || typeof receipt.session_id !== 'string' || !receipt.session_id.trim())
+    throw Object.assign(new Error('Agenda receipt is incomplete. Check outcome to recover the original session.'), { code: 'unknown_outcome' });
+  return receipt;
+}
