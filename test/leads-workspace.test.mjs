@@ -13,6 +13,47 @@ async function setup(overrides={},mapFactory=async()=>({update(){},dispose(){}})
  const app=mountLeadsWorkspace(d,client,{mapFactory});await tick();
  return{dom,w,d,app,client,board,writes,setActor:a=>{actor=a},close:()=>{app.dispose();w.close()}};
 }
+test('territory reveal coalesces repeated activation while filters remain usable',async()=>{
+ let ready,calls=0;const updates=[];
+ const s=await setup({},()=>{calls++;return new Promise(resolve=>{ready=()=>resolve({update:groups=>updates.push(groups),dispose(){}})})});
+ try{
+  assert.equal(calls,0);
+  const button=s.d.getElementById('showTerritory');button.click();button.click();
+  assert.equal(calls,1);
+  const select=s.d.getElementById('marketFilter');select.value='Mobile, AL';select.dispatchEvent(new s.w.Event('change'));
+  const before=[...s.d.querySelectorAll('#leadBoard .lead-card')].map(node=>node.dataset.leadId);
+  ready();await tick();button.click();await s.app.refresh();
+  assert.equal(calls,1);assert.equal(select.value,'Mobile, AL');
+  assert.deepEqual([...s.d.querySelectorAll('#leadBoard .lead-card')].map(node=>node.dataset.leadId),before);
+  assert.ok(updates.length>0);assert.ok(updates.at(-1).every(group=>group.key==='Mobile, AL'));
+ }finally{s.close()}
+});
+test('failed territory reveal keeps the market filters and lead list usable',async()=>{
+ const s=await setup({},async()=>{throw new Error('Synthetic map failure')});
+ try{
+  s.d.getElementById('showTerritory').click();await tick();
+  assert.match(s.d.getElementById('territoryMap').textContent,/Map unavailable/);
+  const select=s.d.getElementById('marketFilter');select.value='Mobile, AL';select.dispatchEvent(new s.w.Event('change'));
+  assert.ok(s.d.querySelectorAll('#leadBoard .lead-card').length>0);
+  s.d.querySelector('#mapLeadMembers button').click();await tick();
+  assert.equal(s.d.getElementById('leadDetail').open,true);
+  assert.match(s.d.querySelector('.lead-location').textContent,/Location not checked/);
+ }finally{s.close()}
+});
+test('territory completion after workspace disposal releases the renderer',async()=>{
+ let ready,disposed=0;const s=await setup({},()=>new Promise(resolve=>{ready=()=>resolve({dispose(){disposed++},update(){throw new Error('disposed view updated')}})}));
+ try{s.d.getElementById('showTerritory').click();s.app.dispose();ready();await tick();assert.equal(disposed,1)}finally{s.close()}
+});
+test('a remounted workspace reveals territory without starting the disposed workspace map',async()=>{
+ let oldCalls=0,newCalls=0,remounted;
+ const s=await setup({},async()=>{oldCalls++;return{update(){},dispose(){}}});
+ try{
+  s.app.dispose();
+  remounted=mountLeadsWorkspace(s.d,s.client,{mapFactory:async()=>{newCalls++;return{update(){},dispose(){}}}});await tick();
+  s.d.getElementById('showTerritory').click();await tick();
+  assert.equal(oldCalls,0);assert.equal(newCalls,1);
+ }finally{remounted?.dispose();s.close()}
+});
 test('board renders six full columns, five hottest, quiet IDs/scores and timestamps; filter-only archive',async()=>{
  const s=await setup();try{assert.equal(s.d.querySelectorAll('[data-stage]').length,6);assert.equal(s.d.querySelectorAll('.hot-row').length,5);assert.equal(s.d.querySelectorAll('.lead-card').length,14);
  assert.match(s.d.getElementById('searchUpdated').textContent,/Oct 1/);assert.match(s.d.querySelector('.lead-card .lead-market').textContent,/Pensacola, FL/);assert.equal(s.d.querySelector('.lead-card .party-id'),null);assert.match(s.d.querySelector('.stage-column[data-stage="opportunity"]').textContent,/Opportunity/);assert.match(s.d.querySelector('.auto-move').textContent,/Moved by Doc: reply received 10\/1/);
@@ -45,12 +86,13 @@ for(const finish of ['dragend','drop'])test(`map readiness preserves the native 
  let ready;const map={locate:()=>true,update(){},dispose(){}};
  const s=await setup({},()=>new Promise(resolve=>{ready=()=>resolve(map)}));
  try{
+  s.d.getElementById('showTerritory').click();
   const card=s.d.querySelector('.lead-card'),start=new s.w.Event('dragstart',{bubbles:true});
   start.dataTransfer={setData(){}};card.dispatchEvent(start);
   ready();await tick();
   assert.equal(card.isConnected,true,'map readiness must not replace the browser drag source');
   assert.equal(card.classList.contains('dragging'),true);
-  assert.equal(card.querySelector('.lead-location').textContent,'Checking location…');
+  assert.equal(card.querySelector('.lead-location').textContent,'Location not checked');
   const target=finish==='drop'?s.d.querySelector('[data-stage="engaged"]'):card;
   target.dispatchEvent(new s.w.Event(finish,{bubbles:true,cancelable:true}));
   if(finish==='drop')card.dispatchEvent(new s.w.Event('dragend',{bubbles:true}));
@@ -63,6 +105,7 @@ for(const finish of ['pointerup','pointercancel','lostpointercapture'])test(`map
  let ready;const map={locate:()=>true,update(){},dispose(){}};
  const s=await setup({},()=>new Promise(resolve=>{ready=()=>resolve(map)}));
  try{
+  s.d.getElementById('showTerritory').click();
   const card=s.d.querySelector('.lead-card'),handle=card.querySelector('[data-drag-handle]');
   const pointer=type=>{const event=new s.w.Event(type,{bubbles:true});Object.assign(event,{pointerId:1,clientX:0,clientY:0});handle.dispatchEvent(event)};
   pointer('pointerdown');ready();await tick();

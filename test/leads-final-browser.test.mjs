@@ -24,7 +24,6 @@ test('An unclaimed New lead can be claimed on the first screen of a 45-lead boar
   await routeLeads(page, { getBoard: () => board, onWrite: value => writes.push(value) });
   await page.goto('http://localhost/leads');
   await page.locator('.lead-card').first().waitFor();
-  await page.locator('.market-marker').first().waitFor();
   const claim = page.locator('#leadBoard').getByRole('button', { name: 'Claim', exact: true }).first();
   assert.ok(await claim.count(), 'the board exposes a labelled Claim action');
   const bounds = await claim.boundingBox();
@@ -52,7 +51,7 @@ for (const width of [390, 768, 1280, 1440]) for (const theme of ['dark', 'light'
     page.on('pageerror', error => errors.push(error.message));
     await routeLeads(page, { getBoard: () => board });
     await page.goto('http://localhost/leads');
-    await page.locator('.market-marker').first().waitFor();
+    await page.locator('.lead-card').first().waitFor();
     const claim = await page.locator('#leadBoard [data-claim]').first().boundingBox();
     assert.ok(claim.y >= 0 && claim.y + claim.height < 900, 'Claim is visible without scrolling');
     await capture(page, `${width}-${theme}-board`, { claim });
