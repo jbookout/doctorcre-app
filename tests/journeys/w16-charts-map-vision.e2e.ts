@@ -41,6 +41,6 @@ test('W16 the territory map pins every lead market on the Gulf Coast', async ({ 
   await browser.evaluate(() => document.querySelector('#territoryMap')?.scrollIntoView({ block: 'center' }));
   await agent.assert(
     'The Territory map of the Gulf states shows exactly one round count marker labelled 14, on the Florida Panhandle coast near Pensacola, and no other pin.',
-    { vision: 'only' },
+    { vision: true },
   );
 });
