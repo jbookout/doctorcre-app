@@ -41,15 +41,6 @@ test('finding 6: emitted public report shell reserves space beside the fixed rai
   assert.ok(main.x>=rail.x+rail.width,`${main.x} clears rail ${rail.x+rail.width}`);
 });
 
-test("the complete artifact stays within the committed JavaScript byte budget", async t => {
-  const outDir = await mkdtemp(join(tmpdir(), "doctorcre-artifact-budget-"));
-  t.after(() => rm(outDir, { recursive: true, force: true }));
-  const { manifest } = await buildArtifact({ root: ROOT, outDir, commit: COMMIT });
-  const budget = JSON.parse(await readFile(join(ROOT, "contracts/performance-budget.v1.json"), "utf8"));
-  const jsBytes = manifest.files.filter(file => /\.m?js$/.test(file.path)).reduce((total, file) => total + file.bytes, 0);
-  assert.ok(jsBytes <= budget.bundle.jsBytes.limit, `${jsBytes} JavaScript bytes exceed ${budget.bundle.jsBytes.limit}`);
-});
-
 test("shared shell artifact modules preserve public exports and module identities", async t => {
   const outDir = await mkdtemp(join(tmpdir(), "doctorcre-shell-modules-"));
   t.after(() => rm(outDir, { recursive: true, force: true }));

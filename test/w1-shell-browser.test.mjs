@@ -105,14 +105,29 @@ test('first Doc open restores desktop keyboard focus after lazy initialization',
   assert.deepEqual(errors, []);
 });
 
-test('startup recording cue includes elapsed time before Call Mode opens', async t => {
+test('startup recording cue has no stale clock before Call Mode opens', async t => {
   const { page, errors } = await open(t, { minimal: true, simulatedClock: true,
     companion: { state: 'recording', started_at: '2026-10-01T14:57:55Z' } });
   await page.locator('#callModeButton.recording').waitFor({ state: 'attached' });
-  assert.equal(await page.locator('#callModeButton').getAttribute('aria-label'), 'Call Mode recording 2:05');
-  assert.match(await page.locator('#callModeButton').textContent(), /2:05/);
+  assert.equal(await page.locator('#callModeButton').getAttribute('aria-label'), 'Call Mode recording');
+  assert.doesNotMatch(await page.locator('#callModeButton').textContent(), /\d+:\d+/);
   assert.equal(await page.locator('#callModeDialog').count(), 0);
   assert.deepEqual(errors, []);
+});
+
+for (const failure of ['open', 'board', 'pending board']) test(`Call Mode remains available when ${failure} cannot complete`, async t => {
+  const { page } = await open(t, { minimal: true });
+  await page.route('**/js/global-call-mode.js', async route => {
+    const source = await readFile(new URL('js/global-call-mode.js', root), 'utf8');
+    const body = failure === 'open' ? source.replace('await call.open();', 'throw new Error("synthetic open failure");')
+      : source.replace('await client.getBoard({ workspace: "all" })', failure === 'board' ? 'await Promise.reject(new Error("synthetic board failure"))' : 'await new Promise(() => {})');
+    assert.notEqual(body, source);
+    await route.fulfill({ contentType: 'text/javascript', body });
+  });
+  await page.locator('#callModeButton:not([hidden])').click();
+  if (failure === 'open') await page.getByText('Call Mode unavailable. Try again.', { exact: true }).waitFor();
+  else await page.locator('#callModeDialog[open]').waitFor({ timeout: 2000 });
+  assert.equal(await page.locator('#callModeButton').isEnabled(), true);
 });
 
 test('first phone Doc shortcut keeps the account menu closed', async t => {

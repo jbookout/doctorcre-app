@@ -26,8 +26,8 @@ export async function mountGlobalCallMode(root = document) {
     try {
       if (!await call.checkEligibility()) return;
       client ||= await createClient(boot.mode, boot.options);
-      try { const board = await client.getBoard({ workspace: "all" }); if (!Array.isArray(board?.deals)) throw new Error("Invalid board"); deals = board.deals; contextError = null; } catch { deals = []; contextError = "Weekly call context unavailable. Reopen Call Mode to retry loading work records."; }
       await call.open();
+      try { const board = await client.getBoard({ workspace: "all" }); if (!Array.isArray(board?.deals)) throw new Error("Invalid board"); deals = board.deals; contextError = null; } catch { deals = []; contextError = "Weekly call context unavailable. Reopen Call Mode to retry loading work records."; }
       if (contextError) { const notice = root.getElementById("callModePermission"); notice.hidden = false; notice.textContent = contextError; }
     } finally { opening = false; }
   } };

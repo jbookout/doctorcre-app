@@ -146,7 +146,6 @@ function mountAccount(root, host, pathname, beforeSignOutReplace = () => {}) {
     const button = root.querySelector("#callModeButton");
     button.onclick = async () => {
       close();
-      button.disabled = true;
       try {
         const call = await (callReady ||= import("./global-call-mode.js").then(({ mountGlobalCallMode }) => {
           if (!boundary?.revoked) return mountGlobalCallMode(root);
@@ -159,7 +158,7 @@ function mountAccount(root, host, pathname, beforeSignOutReplace = () => {}) {
         panel.querySelector("#accountStatus").textContent = "Call Mode unavailable. Try again.";
         panel.hidden = false;
         avatar.setAttribute("aria-expanded", "true");
-      } finally { button.disabled = false; }
+      }
     };
   }
 }

@@ -1,4 +1,4 @@
-import { elapsedTime, isCallModeState, renderCallModeCue } from './call-mode-availability.js';
+import { isCallModeState, renderCallModeCue } from './call-mode-availability.js';
 /**
  * Deal Room Call Mode: record Joe and Dell's pipeline call, then review it.
  *
@@ -95,6 +95,12 @@ export async function readCallContextIndex(client, agenda) {
       throw new Error('The call-context index is missing exact deal or participant metadata.');
   }
   return shapeCallContextDeals(active);
+}
+
+function elapsedTime(startedAt, now) {
+  if (!startedAt) return '0:00';
+  const seconds = Math.max(0, Math.floor((now() - Date.parse(startedAt)) / 1000));
+  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
 }
 
 function reportText(value) {

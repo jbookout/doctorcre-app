@@ -2,12 +2,6 @@ import { requestCompanion } from './post-call-client.js';
 
 export const isCallModeState = value => ['idle', 'recording', 'transcribing', 'ready_to_extract', 'filed', 'state_unknown'].includes(value?.state);
 
-export function elapsedTime(startedAt, now = Date.now) {
-  if (!startedAt) return '0:00';
-  const seconds = Math.max(0, Math.floor((now() - Date.parse(startedAt)) / 1000));
-  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
-}
-
 export function renderCallModeCue(root, snapshot, elapsed = '') {
   const button = root.querySelector('#callModeButton');
   if (!button) return;
@@ -29,7 +23,7 @@ export function mountCallModeAvailability(root) {
     try {
       const value = await requestCompanion('http://127.0.0.1:4682/api/state', {}, { timeoutMs: 1200 });
       if (!isCallModeState(value)) throw new Error('Invalid companion state');
-      renderCallModeCue(root, value, value.state === 'recording' ? elapsedTime(value.started_at) : '');
+      renderCallModeCue(root, value);
       button.hidden = false; notice.hidden = true; retry.hidden = true;
       if (hadFocus) button.focus();
     } catch {
