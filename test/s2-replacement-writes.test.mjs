@@ -53,7 +53,7 @@ for(const changed of [false,true])test(`S2 move follow-up ${changed?'refuses a c
  const state={panelDeal:null,deals:new Map([['demo',{next_step:'Original step',next_date:null}]]),client:{getDeal:async()=>{reads++;return {deal:{id:'demo',version:3,next_step:changed?'Partner step':'Original step',next_date:null}};},setNextStep:async request=>{writes.push(structuredClone(request));if(lost){lost=false;throw new Error('timeout');}return {ok:true};}},boardSync:{requestRefresh(){}}};
  const operations=new Map(),records=[];
  const context=vm.createContext({state,operations,commandState:{},pendingCommand,performCommand,uuidv4:()=>crypto.randomUUID(),dock:{record:(...args)=>records.push(args)},nextStepKey:deal=>`next-step:${deal}`,FOLLOW_UP_SENDERS:{'set-next-step':args=>state.client.setNextStep(args)},noteText:value=>value||'',syncUpdateForm(){},settleConflictChoice:async()=>{}});
- vm.runInContext(raw.slice(raw.indexOf('async function runFollowUp('),raw.indexOf('/**\n * The whole Move'))+'\nObject.assign(globalThis,{runFollowUp});',context);
+ vm.runInContext(raw.slice(raw.indexOf('async function runFollowUp('),raw.indexOf('async function runMove('))+'\nObject.assign(globalThis,{runFollowUp});',context);
  const step={verb:'set-next-step',args:{deal:'demo',text:'My proposed step',next_date:null},summary:'Next step',reviewed:{next_step:'Original step',next_date:null}};
  await context.runFollowUp('step',step);
  if(changed){assert.equal(writes.length,0);assert.match(JSON.stringify(records),/changed|review/i);return;}
