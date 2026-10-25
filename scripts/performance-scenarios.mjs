@@ -23,7 +23,7 @@ export const screens = [
 ];
 
 export const tasks = [
-  { id: 'task-agenda', route: '/', fixture: 'agenda', conditions: '40 active synthetic deals; detail reads delayed 75ms',
+  { id: 'task-agenda', route: '/', fixture: 'agenda', conditions: '40 active synthetic deals; agenda snapshot delayed 75ms',
     ready: '#homeCalendar[aria-busy="false"] #homeAgenda a',
     async verify(page) {
       await page.locator('[data-agenda-show-all]').click();
@@ -136,9 +136,9 @@ export async function runTaskScenario({ page, context, origin, task, cdp }) {
         if (typeof read !== 'function') return read;
         return async function(...args) {
           await window.__recordTaskCall(name);
-          if (name === 'getDeal') await new Promise(resolve => setTimeout(resolve, 75));
+          if (name === 'getDeal' || name === 'getHomeAgenda') await new Promise(resolve => setTimeout(resolve, 75));
           const result = await read.apply(this, args);
-          ${task.fixture === 'agenda' ? "if (name === 'getDeal') return { ...result, critical_dates: [], next_actions: [{ id: 'synthetic-task-' + args[0], description: 'Synthetic follow-up', status: 'open', owner: 'joe', due_on: null }] };" : ''}
+          ${task.fixture === 'agenda' ? "if (name === 'getHomeAgenda') return { ...result, deals: result.deals.map(deal => ({ ...deal, critical_dates: [], next_actions: [{ id: 'synthetic-task-' + deal.id, description: 'Synthetic follow-up', status: 'open', owner: 'joe', due_on: null }] })) };" : ''}
           return result;
         };
       };

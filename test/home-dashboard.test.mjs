@@ -6,7 +6,7 @@ import { createLiveClient } from '../js/live-client.js';
 import { agendaSnapshot, controlSnapshot, dealHref, dealSnapshot, HIDDEN_HOME_WIDGETS, readHomeDashboard, topNewLeads } from '../js/home-dashboard-model.js';
 
 const NOW = Date.parse('2026-10-01T15:00:00Z');
-const board = { actor: 'joe', deals: [
+const board = { schema_version: 'home-agenda.v1', actor: 'joe', deals: [
   { id: 'demo-a', name: 'Demo A', owner: 'joe', attention: true, next_step:'Confirm synthetic step', next_date:'2026-09-30', phase: 'Research' },
   { id: 'demo-b', name: 'Demo B', owner: 'dell', attention: true, next_step:'Confirm synthetic step', next_date:'2026-09-30', account_client_id: 'demo-account', phase: 'Legal' },
   { id: 'demo-c', name: 'Demo C', owner: 'joe', attention: true, operating_state: 'parked' },
@@ -108,7 +108,7 @@ test('Home refuses malformed or mixed board and lead reads before publishing suc
     ['leads', [{}, { leads: {} }, { leads: [{ score: 90 }] }, { leads: [{ id: 'demo-lead' }, null] }, { leads: [{ id: ' ' }] }]],
   ]) for (const value of values) await t.test(`${name}: ${JSON.stringify(value)}`, async () => {
     const client = await fixtureClient();
-    client.getBoard = async () => name === 'board' ? value : board;
+    client.getHomeAgenda = async () => name === 'board' ? value : board;
     client.getLeadBoard = async () => name === 'leads' ? value : { leads: [] };
     const publications = [];
     const result = await readHomeDashboard(client, { onUpdate: result => publications.push(result.reads[name].state) });
@@ -123,7 +123,7 @@ test('Home refuses malformed or mixed board and lead reads before publishing suc
 
 test('Home accepts verified empty feeds without treating them as malformed', async () => {
   const client = await fixtureClient();
-  client.getBoard = async () => ({ actor: 'joe', deals: [] });
+  client.getHomeAgenda = async () => ({ schema_version: 'home-agenda.v1', actor: 'joe', deals: [] });
   client.getLeadBoard = async () => ({ leads: [] });
   const result = await readHomeDashboard(client);
   assert.equal(result.reads.board.state, 'read');
@@ -134,13 +134,13 @@ test('Home accepts verified empty feeds without treating them as malformed', asy
 
 test('PR124 R2 malformed Home boards never publish a successful read or authoritative counts', async () => {
   const client = await fixtureClient();
-  const valid = await client.getBoard();
+  const valid = await client.getHomeAgenda();
   let detailReads = 0;
   client.getDeal = async () => { detailReads++; return { critical_dates: [], next_actions: [] }; };
   for (const invalid of [null, {}, { deals: {} }, { deals: [null] }, { deals: [[]] },
     { deals: [{ name: 'Demo missing ID' }] }, { deals: [{ id: '' }] }, { deals: [{ id: '  ' }] },
     { ...valid, deals: [...valid.deals, { name: 'Demo missing ID' }] }]) {
-    client.getBoard = async () => invalid;
+    client.getHomeAgenda = async () => invalid;
     const published = [];
     const result = await readHomeDashboard(client, { onUpdate: result => published.push(result.reads.board.state) });
     assert.equal(result.reads.board.state, 'error', JSON.stringify(invalid));
@@ -150,7 +150,7 @@ test('PR124 R2 malformed Home boards never publish a successful read or authorit
     assert.ok(!published.includes('read'));
   }
   assert.equal(detailReads, 0, 'malformed identities cannot start detail reads');
-  client.getBoard = async () => ({ ...valid, deals: [] });
+  client.getHomeAgenda = async () => ({ ...valid, deals: [] });
   const empty = await readHomeDashboard(client);
   assert.equal(empty.reads.board.state, 'read');
   assert.equal(dealSnapshot(empty.board).active, 0, 'validated empty boards retain zero counts');
@@ -163,7 +163,7 @@ test('malformed board identity is unavailable, never a verified empty workload',
       const live = createLiveClient({ fetchImpl: async () => new Response(JSON.stringify({
         result: { content: [{ type: 'text', text: JSON.stringify(payload) }] },
       })) });
-      const client = { ...fixture, getBoard: options => live.getBoard(options), getLeadBoard: async () => ({ leads: [] }) };
+      const client = { ...fixture, getHomeAgenda: options => live.getHomeAgenda(options), getLeadBoard: async () => ({ leads: [] }) };
       const result = await readHomeDashboard(client);
       assert.equal(result.board, null);
       assert.equal(result.reads.board.state, 'error');
@@ -173,28 +173,42 @@ test('malformed board identity is unavailable, never a verified empty workload',
       assert.equal(result.reads.leads.state, 'read', 'independent reads remain available');
     });
   }
-  const empty = { actor: 'joe', deals: [] };
-  const result = await readHomeDashboard({ ...fixture, getBoard: async () => empty, getLeadBoard: async () => ({ leads: [] }) });
+  const empty = { schema_version: 'home-agenda.v1', actor: 'joe', deals: [] };
+  const result = await readHomeDashboard({ ...fixture, getHomeAgenda: async () => empty, getLeadBoard: async () => ({ leads: [] }) });
   assert.equal(result.reads.board.state, 'read');
   assert.deepEqual(dealSnapshot(result.board), { active: 0, inMarket: 0, national: 0, flagged: [] });
 });
-test('Home publishes independent ready data, shares one board, bounds detail concurrency and never invents failed data', async () => {
-  let boardReads = 0, inFlight = 0, peak = 0;
+test('Home publishes independent ready data with one agenda read and never invents failed data', async () => {
+  let boardReads = 0;
   const seen = [];
-  const client = { getBoard: async () => { boardReads++; return board; }, getLeadBoard: async () => ({ leads: [] }),
-    getDeal: async id => { inFlight++; peak = Math.max(peak, inFlight); await new Promise(resolve => setTimeout(resolve, 2)); inFlight--; if (id === 'demo-b') throw Error('Unavailable'); return { critical_dates: [], next_actions: [] }; },
+  const client = { getHomeAgenda: async () => { boardReads++; return board; }, getLeadBoard: async () => ({ leads: [] }),
+    getDeal: async () => assert.fail('no eager complete records'),
     incidentBoard: async () => ({ count: 0, incidents: [], by_severity: {}, ready_to_close: 0 }),
     currentWorkItem: async () => { throw Error('Unavailable'); }, currentWorkRequests: async () => null,
     readResourceDashboard: async () => null, scheduleBoard: async () => null };
   const result = await readHomeDashboard(client, { onUpdate: result => seen.push(Boolean(result.board)) });
-  assert.equal(boardReads, 1); assert.ok(peak <= 4); assert.ok(seen.includes(true));
-  assert.equal(result.details.get('demo-b'), null); assert.equal(result.control.work, null);
+  assert.equal(boardReads, 1); assert.ok(seen.includes(true));
+  assert.deepEqual(agendaSnapshot(result.board, result.details).failed, ['demo-a', 'demo-b']);
+  assert.equal(result.control.work, null);
   assert.equal(controlSnapshot(result.control).attention, true);
-  client.getBoard = async () => { const error = Error('Signed out'); error.status = 401; throw error; };
+  client.getHomeAgenda = async () => { const error = Error('Signed out'); error.status = 401; throw error; };
   assert.equal((await readHomeDashboard(client)).unauthorized, true);
-  client.getBoard = () => new Promise(() => {});
+  client.getHomeAgenda = () => new Promise(() => {});
   const started = Date.now();
   assert.equal((await readHomeDashboard(client, { timeoutMs: 10 })).board, null);
   assert.ok(Date.now() - started < 1000);
   assert.deepEqual(Object.keys(HIDDEN_HOME_WIDGETS), ['vendors', 'listings', 'capture']);
+});
+
+test('Home rejects incompatible agenda versions, missing actors and duplicate deal identities', async () => {
+  const client = await fixtureClient();
+  const valid = await client.getHomeAgenda();
+  for (const invalid of [{ ...valid, schema_version: 'home-agenda.v2' }, { ...valid, actor: null },
+    { ...valid, deals: [valid.deals[0], valid.deals[0]] }]) {
+    client.getHomeAgenda = async () => invalid;
+    const result = await readHomeDashboard(client);
+    assert.equal(result.reads.board.state, 'error');
+    assert.equal(result.board, null);
+    assert.equal(result.details.size, 0);
+  }
 });

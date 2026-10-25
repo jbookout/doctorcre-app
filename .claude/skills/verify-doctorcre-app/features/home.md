@@ -26,4 +26,6 @@ Run date checks under both `TZ=UTC` and `TZ=America/Chicago`. Business dates and
 
 ## Gotchas
 
+On phones, the loading Calendar & tasks region reserves preview space ahead of independently loaded invoices. Empty and failed reads release that space.
+
 Counts depend on date and scope. Existing tests own their clock and synthetic records. No alerts is a valid Home state but cannot prove deal opening. A failed or partial read must remain visible as such; a shell alone is not readiness.

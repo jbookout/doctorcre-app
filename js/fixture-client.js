@@ -1367,6 +1367,17 @@ export async function createFixtureClient(opts = {}) {
       };
     },
 
+    async getHomeAgenda() {
+      const board = await this.getBoard();
+      return { ...board, schema_version: 'home-agenda.v1', deals: board.deals.map(deal => ({
+        ...deal,
+        critical_dates: [...(deal.next_date ? [{ label: 'Next date', date: deal.next_date }] : []),
+          ...(criticalDates.get(deal.id) || []).map(row => ({ ...row }))],
+        next_actions: deal.next_step ? [{ id: `a-${deal.id}`, owner: deal.owner, description: deal.next_step,
+          due_on: deal.next_date, status: 'open', hold_until: null }] : [],
+      })) };
+    },
+
     async getDeal(dealId) {
       const deal = { ...getDealOrThrow(dealId) };
       const thread = (threads.get(dealId) || [])
