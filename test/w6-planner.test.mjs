@@ -516,3 +516,27 @@ test('QA-019 review guidance while clients load clears when the picker becomes r
     assert.equal(app.doc.querySelector('#plan-message').textContent,'');
   } finally {app.close();}
 });
+
+test('D2 existing tours open and refresh without waiting for client choices', async () => {
+  let clientReads = 0;
+  const app = harness({ clients: () => { clientReads++; return new Promise(() => {}); } });
+  try {
+    await settle(); await settle();
+    assert.equal(app.doc.querySelectorAll('.tour-button').length, 2, 'library renders while the client directory is unresolved');
+    app.doc.querySelector('.tour-button').click(); await settle();
+    assert.equal(app.doc.querySelector('#detail-title').textContent, 'Demo tour');
+    await app.view.ready; await app.view.refresh();
+    assert.equal(clientReads, 0, 'opening and refreshing existing tours never downloads client choices');
+  } finally { app.close(); }
+});
+
+test('D2 client choices fetch one requested page rather than walking the directory', async () => {
+  const calls = [];
+  const api = createPlannerClient({ fetchImpl: async path => {
+    calls.push(path);
+    const page = Number(new URL(path, 'https://example.test').searchParams.get('page'));
+    return { ok: true, json: async () => ({ page, page_count: 200, rows: [record(page === 1 ? clientA : clientB)] }) };
+  } });
+  assert.deepEqual(await api.clients({ page: 2 }), { rows: [record(clientB)], page: 2, pageCount: 200 });
+  assert.deepEqual(calls, ['/api/v1/business/clients?scope=team&sort=name&page=2']);
+});
