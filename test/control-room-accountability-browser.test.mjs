@@ -62,6 +62,7 @@ for (const theme of ['dark', 'light']) for (const width of [1440, 390]) test(`at
   const { page } = await open(t, width, 'views', theme);
   const failed = page.locator('[data-attention-id="work_request:WR-000901"]');
   await failed.waitFor({ timeout: 5000 });
+  await failed.getByText('claude', { exact: true }).waitFor({ timeout: 5000 });
   assert.equal(await failed.count(), 1);
   assert.match(await failed.innerText(), /Demo source did not answer/);
   assert.match(await failed.innerText(), /Demo validation finished; export has not started/);
