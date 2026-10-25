@@ -6,7 +6,7 @@ import { chromium } from 'playwright';
 import { createFixtureClient } from '../js/fixture-client.js';
 const root=new URL('../',import.meta.url);
 const routes=(await import("../js/routes.js")).routeContract;
-async function setup(t,{width=1440,motion='no-preference',brief=true,coverage=false,timezoneId='America/Chicago',onBrief}={}) {
+async function setup(t,{width=1440,motion='no-preference',brief=true,coverage=false,timezoneId='America/Chicago',onBrief,omitToday=false}={}) {
  const browser=await chromium.launch({ args: [...CHROMIUM_SAFETY_ARGS] });t.after(()=>browser.close());const page=await browser.newPage({viewport:{width,height:960},reducedMotion:motion,timezoneId});const context=page.context();
 
  const fixture=await createFixtureClient({seedUrl:`data:application/json;base64,${(await readFile(new URL('data/board-seed.json',root))).toString('base64')}`});
@@ -15,6 +15,7 @@ async function setup(t,{width=1440,motion='no-preference',brief=true,coverage=fa
  const priorityData=()=>({state:'ready',sponsor:scope,sections:{deals:{state:'ready',items:[{id:'d14',name:'Demo Lease Review',owner:scope},{id:'d05',name:'Demo Tour Planning',owner:scope},{id:'d20',name:'Demo Revised Terms',owner:scope}]},today:{state:'ready',items:[{subject_type:'deal',subject_id:'d14',owner:scope,due_on:'2026-01-01',what:revision ? 'Review updated demo lease comments' : 'Review demo lease comments'},{subject_type:'deal',subject_id:'d05',owner:scope,due_on:day,what:'Confirm demo tour access'}]},loops:{state:'empty',items:[]}}});
  const data=()=>{
   const value=priorityData();
+  if(omitToday)delete value.sections.today;
   if(!coverage)return value;
   value.sections.needs_joe={state:'partial',items:[{title:'Demo waiting coverage decision',action:'Approve the synthetic rule',why:{text:'Demo work needs a ruling'},blocks:{text:'Demo queue'}}]};
   value.sections.claim_card={state:'ready',items:[{display_name:'Demo claim candidate'}]};
@@ -50,6 +51,32 @@ async function setup(t,{width=1440,motion='no-preference',brief=true,coverage=fa
  return {page,goto,calls,errors,set scope(value){scope=value;},set ready(value){ready=value;},set fail(value){fail=value;},set thread(value){thread=value;},change(){revision++;}};
 }
 const snap=async(page,name)=>{await mkdir(new URL('out/test-artifacts/w12/',root),{recursive:true});await page.screenshot({path:new URL(`out/test-artifacts/w12/${name}.png`,root).pathname,animations:'disabled'});};
+
+test('valid brief without today retains its unseen cue', async t => {
+ const {page,errors} = await setup(t, {omitToday:true});
+ await page.goto('http://localhost/deals?mode=live');
+ await page.waitForLoadState('networkidle');
+ assert.equal(await page.locator('#docOpen').getAttribute('aria-description'), 'Morning brief ready');
+ assert.deepEqual(errors, []);
+});
+
+test('manual workspace refresh preserves the brief cue while its replacement is pending', async t => {
+ let hold = false, release;
+ const pending = new Promise(resolve => { release = resolve; });
+ t.after(() => release());
+ const {page} = await setup(t, {onBrief:async () => { if(hold)await pending; }});
+ await page.goto('http://localhost/deals?mode=live');
+ await page.waitForLoadState('networkidle');
+ await page.locator('#docOpen[data-brief-unseen]').waitFor();
+ const connection = await page.locator('#appConnection').getAttribute('aria-label');
+ const moves = await page.locator('#appTodayMoves').innerHTML();
+ hold = true;
+ await page.locator('#appSyncRefresh').click();
+ assert.equal(await page.locator('#docOpen').getAttribute('aria-description'), 'Morning brief ready');
+ assert.equal(await page.locator('#appConnection').getAttribute('aria-label'), connection);
+ assert.equal(await page.locator('#appTodayMoves').innerHTML(), moves);
+ release();
+});
 
 test('unseen brief cue survives Doc mounting and shell recovery after a failed dialog read', async t => {
  let reads = 0, release;

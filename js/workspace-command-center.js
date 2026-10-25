@@ -189,7 +189,7 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
       auto.poll();
     }
   }, 1000);
-  $('refreshHome').addEventListener('click', auto.revalidate);
+  $('refreshHome').addEventListener('click', auto.refresh);
   function loadSecondary() {
     if (secondaryRequested) return;
     secondaryRequested = true;

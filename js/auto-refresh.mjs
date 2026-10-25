@@ -4,8 +4,6 @@
 import { createCurrentRead } from "./current-read.mjs";
 export { readWithDeadline, fetchRead } from "./current-read.mjs";
 import { watchPresence } from "./visibility-poll.mjs";
-import { separatePageReads } from "./shared-page-read.mjs";
-import { sessionFetch } from "./private-session.js";
 
 // A failed read retries on a short backoff (1s, 2s, 4s... capped at the
 // interval), so "reconnecting" holds within seconds rather than a full poll.
@@ -41,10 +39,9 @@ export function mountAutoRefresh({ document, window, refresh, onResume, onWake, 
   // after the idle cutoff, exactly as before the idle pause. poll() is for a
   // page's own clock and waits while hidden or idle, like the interval itself.
   const manualRead = () => { presence.touch(); return read(); };
-  const resumeRead = (invalidate, replace = !!invalidate) => {
+  const resumeRead = invalidate => {
     invalidate?.();
-    separatePageReads(sessionFetch);
-    if (!replace || !running) return read();
+    if (!invalidate || !running) return read();
     if (queuedResume) return queuedResume;
     reads.invalidate();
     queuedResume = running.then(() => { queuedResume = null; return read(); });
@@ -56,7 +53,7 @@ export function mountAutoRefresh({ document, window, refresh, onResume, onWake, 
   const online = () => { if (presence.active()) resumeRead(onResume); };
   window.addEventListener("online", online);
   schedule();
-  return { refresh: manualRead, revalidate: () => { presence.touch(); return resumeRead(onResume, true); }, poll: read, dispose() { disposed = true; reads.dispose(); window.clearTimeout?.(timer); document.removeEventListener("visibilitychange", visibility); window.removeEventListener("online", online); presence.dispose(); } };
+  return { refresh: manualRead, revalidate: () => { presence.touch(); return resumeRead(onResume); }, poll: read, dispose() { disposed = true; reads.dispose(); window.clearTimeout?.(timer); document.removeEventListener("visibilitychange", visibility); window.removeEventListener("online", online); presence.dispose(); } };
 }
 
 export function updatedLabel(value) {

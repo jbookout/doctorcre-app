@@ -1,6 +1,6 @@
 import { briefPreferences } from './brief-preferences.js';
 import { briefOwnerLabel, filterBriefOwners, mountBriefOwnerFilter } from './brief-owner-filter.js';
-import { localDay, validBrief } from './morning-brief-model.js';
+import { localDay, normalizeBrief } from './morning-brief-model.js';
 import { TOUCH_LAYOUT } from './touch-layout.js';
 import { needsAttention, scopedDeals } from './deal-review-model.js';
 import { createClient } from './client.js';
@@ -199,9 +199,9 @@ export function mountAppLayout(root, host, pathname) {
     const [board, triage] = await Promise.allSettled([
       readWithDeadline(currentSignal => client.getBoard({ workspace:'all', signal:currentSignal }), { signal }),
       readWithDeadline(async currentSignal => {
-        const brief = await client.morningBrief({ signal:currentSignal });
-        if (!currentSignal.aborted) briefCue(validBrief(brief) ? brief : null);
-        if (validBrief(brief)) { owners.setViewer(brief.sponsor); return brief.sections.today.state === 'unavailable' ? null : {items:brief.sections.today.items}; }
+        const brief = normalizeBrief(await client.morningBrief({ signal:currentSignal }));
+        if (!currentSignal.aborted) briefCue(brief);
+        if (brief) { owners.setViewer(brief.sponsor); return brief.sections.today.state === 'unavailable' ? null : {items:brief.sections.today.items}; }
         return client.todayTriage();
       }, { signal }),
     ]);
@@ -261,7 +261,7 @@ export function mountAppLayout(root, host, pathname) {
   });
   win.addEventListener('offline', unavailableRead);
   const auto = mountAutoRefresh({ document:root, window:win, refresh, onResume:unavailableRead, intervalMs:30_000 });
-  status.querySelector('#appSyncRefresh').onclick = () => { auto.revalidate(); root.querySelectorAll('[data-layout-refresh]').forEach(button => button.click()); };
+  status.querySelector('#appSyncRefresh').onclick = () => { auto.refresh(); root.querySelectorAll('[data-layout-refresh]').forEach(button => button.click()); };
   auto.refresh();
   win.addEventListener('pagehide', event => {
     if (!event.persisted) { auto.dispose(); owners.dispose(); win.removeEventListener('offline', unavailableRead); }
