@@ -78,7 +78,7 @@ test("client read uses the producer's exact pagination and verifies identity", a
     calls.push(path); return { ok: true, json: async () => path.includes(clientA) ? { record: record(clientB) } : { page: Number(new URL(path, "https://example.test").searchParams.get("page")), page_count: 2, rows: [record(clientA)] } };
   } });
   assert.deepEqual(await api.clients(), clientPage([record(clientA)], 1, 2)); assert.equal(calls.length, 1); assert.match(calls[0], /scope=team&sort=name&page=1/);
-  await assert.rejects(api.client(clientA), /mismatch/);
+  await assert.rejects(api.client(clientA), /Invalid client record/);
   await assert.rejects(api.client("-".repeat(36)), /Invalid/);
   assert.deepEqual(api.capabilities, { compile: false, mls: false });
 });

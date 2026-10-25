@@ -72,16 +72,14 @@ export function createPlannerClient({ fetchImpl = sessionFetch, timeoutMs = 10_0
     async client(id, options) {
       if (!recordId.test(id)) throw new Error("Invalid client");
       const data = await read(`/api/v1/business/clients/${encodeURIComponent(id)}`, options);
-      if (data.record?.id !== id) throw new Error("Client mismatch");
       return validateClientRecord(data.record, id);
     },
     async tour(id, options) {
       if (!recordId.test(id)) throw new Error("Invalid tour");
       const data = await read(`/api/tours/detail?tour_id=${encodeURIComponent(id)}`, options);
-      if (data.id !== id) throw new Error("Tour mismatch"); return validateTourDetail(data, id);
+      return validateTourDetail(data, id);
     },
-    // The deployed registry has no authorized raw-file compiler or MLS query.
-    // The reviewed property register is deliberately not offered as an MLS feed.
+    // Compilation and MLS reads have no authorized CARR verb.
     capabilities: Object.freeze({ compile: false, mls: false }),
   };
 }
