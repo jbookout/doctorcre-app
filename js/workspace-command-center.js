@@ -23,7 +23,7 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
   let relationshipDialog = null, pastWidget = null, secondaryRequested = false;
   let agendaExpanded = false, nextRead = readHomeDashboard;
   let scope = 'team', snapshot = null, sequence = 0, updatedAt = null, disposed = false, leadEntries = new Map(), selectedLead = null;
-  const docSources = [['board','getBoard'],['leads','getLeadBoard'],['work','currentWorkItem'],['requests','currentWorkRequests'],['incidents','incidentBoard']];
+  const docSources = [['board','getHomeAgenda'],['leads','getLeadBoard'],['work','currentWorkItem'],['requests','currentWorkRequests'],['incidents','incidentBoard']];
   const docPayload = (source, view) => source === 'board' ? {deals:scopedDeals(view?.board,scope)}
     : source === 'leads' ? (view?.leads ? {leads:topNewLeads(view.leads,{scope,actor:view.board?.actor,now:now()})} : null)
     : view?.control?.[source];
@@ -57,8 +57,7 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
     try { if (!signedOut) agenda = agendaSnapshot(snapshot?.board, snapshot?.details || new Map(), { scope, today }); }
     catch { $('homeNotice').hidden = false; if (!signedOut) $('homeNotice').textContent = 'Calendar and tasks unavailable.'; }
     const agendaDeals = scopedDeals(snapshot?.board, scope);
-    const agendaLoading = !signedOut && (!snapshot || snapshot.reads.board?.state === 'loading'
-      || agendaDeals?.some(deal => snapshot.reads[deal.id]?.state === 'loading'));
+    const agendaLoading = !signedOut && (!snapshot || snapshot.reads.board?.state === 'loading');
     const agendaUnavailable = !agenda || (!agenda.entries.length && agenda.failed.length === agendaDeals?.length && agenda.failed.length > 0);
     const agendaPartial = agenda && (agenda.failed.length > 0 || agenda.undated.length > 0);
     const agendaMessage = signedOut ? 'Sign in to view calendar and tasks'
@@ -104,7 +103,6 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
         const { board, details, reads, unauthorized, updatedAt, loading } = view;
         const preservedReads = { ...previous?.reads };
         delete preservedReads.board;
-        for (const deal of previous?.board?.deals || []) delete preservedReads[deal.id];
         Object.assign(view, previous, { board, details, reads: { ...preservedReads, ...reads }, unauthorized, updatedAt, loading });
       }
       if (agendaOnly) view.unauthorized ||= previous?.unauthorized;
@@ -119,7 +117,7 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
       }
       for (const key of ['board', 'leads', 'invoices', 'relationships']) if (result.reads[key]?.state === 'loading') view[key] = previous?.[key] ?? null;
       for (const key of ['incidents', 'work', 'requests', 'resources', 'schedule']) if (result.reads[key]?.state === 'loading') view.control[key] = previous?.control[key] ?? null;
-      for (const [id, detail] of actorChanged ? [] : previous?.details || []) if (result.reads.board.state === 'loading' || result.reads[id]?.state === 'loading') view.details.set(id, detail);
+      if (!actorChanged && result.reads.board.state === 'loading') view.details = new Map(previous?.details || []);
       return view;
     };
     if (snapshot) snapshot = { ...snapshot, loading: true, reads: { ...snapshot.reads, board: { state: 'loading' } } };

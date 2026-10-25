@@ -26,6 +26,7 @@ async function open(t, { width = 1440, home = false, long = false, motion = 'red
   page.on('pageerror', error => errors.push(error.message));
   const handlers = {
     'morning-brief': async () => ({ state:'unavailable' }),
+    'read-home-agenda': () => client.getHomeAgenda(),
     'deal-room-board': () => client.getBoard(), 'get-deal-room': args => client.getDeal(args.deal),
     'lead-board': async () => ({ leads: [] }), 'incident-board': () => client.incidentBoard(),
     'current-work-item': () => client.currentWorkItem(), 'read-resource-dashboard': () => client.readResourceDashboard(),

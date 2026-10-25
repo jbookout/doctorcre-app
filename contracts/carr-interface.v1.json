@@ -1,6 +1,6 @@
 {
   "schema": "doctorcre-carr-interface.v1",
-  "version": "1.57.0",
+  "version": "1.58.0",
   "producer": {
     "repository": "jbookout/carr-system",
     "source_commit": "1df9b9936394164dd55e815f8a8bf69649508ccc"
@@ -81,6 +81,7 @@
     "read-doc-activity",
     "read-doc-conversation",
     "read-doc-outcome-cards",
+    "read-home-agenda",
     "read-invoice-tracker",
     "read-loop",
     "read-notification-preferences",
@@ -745,6 +746,77 @@
           "propose-doc-correction"
         ],
         "seed_default": false
+      }
+    },
+    "read-home-agenda": {
+      "write": false,
+      "producer": {
+        "repository": "jbookout/carr-system",
+        "source_commit": "b6210ca0a93e4a913b7e69b9669b74fdc9aa6337"
+      },
+      "response": {
+        "schema_version": "home-agenda.v1",
+        "keys": [
+          "schema_version",
+          "actor",
+          "deals"
+        ],
+        "deal_keys": [
+          "id",
+          "name",
+          "phase",
+          "owner",
+          "type",
+          "attention",
+          "next_step",
+          "next_date",
+          "last_touch",
+          "last_review_at",
+          "workspace_kind",
+          "account_client_id",
+          "operating_state",
+          "outcome",
+          "closed_on",
+          "invoiced_on",
+          "client_status",
+          "prospect_engagement_status",
+          "critical_dates",
+          "next_actions",
+          "short_name",
+          "item_schema_version",
+          "items"
+        ],
+        "critical_date_keys": [
+          "id",
+          "kind",
+          "due_on",
+          "note",
+          "status"
+        ],
+        "action_keys": [
+          "id",
+          "owner",
+          "description",
+          "due_on",
+          "status",
+          "hold_until"
+        ],
+        "membership": "Active deals without a closed phase, outcome, close date or invoice date. Includes both owners and national accounts. Open actions retain hold dates; Home applies Chicago business dates and owner scope.",
+        "limits": {
+          "deals": 1000,
+          "critical_dates": 10000,
+          "open_actions": 10000,
+          "checklist_items": 10000
+        },
+        "overflow": "agenda_limit_exceeded; no truncated or partial snapshot is returned.",
+        "item_keys": [
+          "id",
+          "title",
+          "due_on",
+          "status",
+          "bullets",
+          "source_ref"
+        ]
       }
     }
   },
