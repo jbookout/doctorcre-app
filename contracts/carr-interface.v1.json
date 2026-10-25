@@ -1,6 +1,6 @@
 {
   "schema": "doctorcre-carr-interface.v1",
-  "version": "1.54.0",
+  "version": "1.56.0",
   "producer": {
     "repository": "jbookout/carr-system",
     "source_commit": "1df9b9936394164dd55e815f8a8bf69649508ccc"
@@ -64,7 +64,9 @@
     "list-progress-boards",
     "loop-board",
     "loop-headers",
+    "morning-assurance-queue",
     "morning-brief",
+    "morning-brief-queue",
     "new-client",
     "new-deal",
     "new-lead",
@@ -888,6 +890,24 @@
     ],
     "overnight_read": "GET /pipeline/changes; initial base64url JSON keyset cursor {recorded_at: ISO cutoff, id: zero UUID}; subsequent opaque cursors are server-issued; only brief-authorized deal IDs render",
     "content_storage": "memory only",
+    "queue_reads": {
+      "version": "1.0.0",
+      "queues": [
+        "today",
+        "loops",
+        "needs_joe",
+        "assurance_cadence"
+      ],
+      "read": "morning-brief-queue",
+      "assurance_read": "morning-assurance-queue",
+      "arguments": "queue and opaque cursor only; authenticated sponsor",
+      "coverage": "total, returned, remaining when supplied, has_more, next_cursor; partial totals cover available sources only",
+      "consistency": "live urgency keyset; restart after changed rows; not a snapshot",
+      "producer": {
+        "repository": "DoctorCRE/carr-system",
+        "source_commit": "7d34758dd6450d1098c6c467be23d39292a25e0c"
+      }
+    },
     "coverage": {
       "schema": "morning-brief-coverage.v1",
       "count_scope": "returned_rows_only",
