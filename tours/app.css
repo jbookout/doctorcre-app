@@ -321,8 +321,13 @@ button.primary:hover:not(:disabled) { border-color: var(--accent-hover); backgro
 #cheat-print { display: none; }
 @media print {
   :root { color-scheme: light; }
-  body { background: white !important; color: black !important; margin: 0; padding: 0 !important; }
-  body > :not(#cheat-print) { display: none !important; }
+  body { background: Canvas; color: CanvasText; }
+  .skip-link, .library, .tours-heading button { display: none !important; }
+  .layout { display: block; }
+  .workspace { max-width: none; margin: 0; padding: 0; }
+  .card, .empty { border-color: CanvasText; background: Canvas; break-inside: avoid; }
+  body:has(#cheat-print) { background: white !important; color: black !important; margin: 0; padding: 0 !important; }
+  body:has(#cheat-print) > :not(#cheat-print) { display: none !important; }
   #cheat-print { display: block; font: 12pt/1.5 sans-serif; }
   #cheat-print:empty { display: none; }
   #cheat-print, #cheat-print * { color: black; background: white; }

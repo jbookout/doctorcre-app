@@ -4,6 +4,16 @@ import { mkdir } from 'node:fs/promises';
 import { chromium, fixtureServer } from './browser-harness.mjs';
 import { detail, tourId } from './fixtures/tour-day.synthetic.mjs';
 
+test('the shared stylesheet keeps the Tour planner printable', async t => {
+  const server = await fixtureServer(); t.after(() => server.close());
+  const browser = await chromium.launch(); t.after(() => browser.close());
+  const page = await browser.newPage();
+  await page.goto(`${server.origin}/tours/index.html`);
+  await page.getByRole('heading', { name: 'Plan a tour', exact: true }).waitFor();
+  await page.emulateMedia({ media: 'print' });
+  assert.equal(await page.getByRole('heading', { name: 'Plan a tour', exact: true }).isVisible(), true);
+});
+
 test('broker can print complete saved notes and the current draft without changing the tour', async t => {
   const server = await fixtureServer(); t.after(() => server.close());
   const browser = await chromium.launch(); t.after(() => browser.close());
