@@ -23,7 +23,7 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
   const engagement = engagementWriterFor(client, engagementStorage(win));
   const engagementChecks = new Set();
   const state = { board: null, readFailed: false, actor: null, epoch: 0, detailEpoch: 0, reviewEpoch: 0, filters: { search: "", owner: "", stage: "", market: "" },
-    selectedId: null, detail: null, detailId: null, resumeReview: null, commandFeedback: null, connectionFeedback: null, proposal: null, reviewTarget: null, pending: null, writing: false, identityReady: false, trigger: null, drag: null, map: null };
+    historyRequest: null, historyError: null, selectedId: null, detail: null, detailId: null, resumeReview: null, commandFeedback: null, connectionFeedback: null, proposal: null, reviewTarget: null, pending: null, writing: false, identityReady: false, trigger: null, drag: null, map: null };
   const leadById = id => state.board?.leads.find(lead => lead.id === id && eligibleLead(lead));
   const reviewComplete = (lead, target, undoEventId) => (undoEventId ? lead.stage : normalizedStage(lead)) === target;
   function captureReviewDraft() {
@@ -155,6 +155,7 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
   }
   function clearPrivateView() {
     pageDocContext?.clear();
+    state.historyRequest = null; state.historyError = null;
     state.commandFeedback = null; state.connectionFeedback = null; state.board = null; state.detailId = null; state.detail = null; state.proposal = null; state.reviewTarget = null; state.resumeReview = null; state.pending = null;
     state.filters = { search: "", owner: "", stage: "", market: "" }; state.trigger = null; state.drag = null;
     $("leadSearch").value = ""; $("detailTitle").textContent = ""; $("stageTitle").textContent = "";
@@ -238,6 +239,14 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
       paintWriteControls();
     }
   }
+  function historySummary(detail, kind) {
+    const page = detail[`${kind}_page`];
+    if (!page) return '<p>History counts unavailable</p>';
+    const count = detail[kind].length;
+    return `<p>Showing ${count} of ${page.total} ${kind === "correspondence" ? "captured entries" : "stage changes"}${page.has_more ? ". Newest entries first." : "."}</p>
+      ${state.historyError?.kind === kind ? '<p role="status">Older entries unavailable. Try again.</p>' : ""}
+      ${page.has_more ? `<button type="button" id="load-${kind}" data-load-history="${kind}"${state.historyRequest ? " disabled" : ""}>${state.historyRequest?.kind === kind ? "Loading…" : kind === "correspondence" ? "Load older correspondence" : "Load older stage changes"}</button>` : ""}`;
+  }
   function paintDetail(detail) {
     const active = doc.activeElement;
     const focusedEntry = active?.matches("summary") ? active.closest("#detailBody details")?.dataset.entryKey : null;
@@ -251,7 +260,8 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
       <section class="detail-panel"><h3>Plans</h3><p>${esc(summary(detail.plans || detail.notes) || "—")}</p>${detail.notes ? `<details data-entry-key="plans"><summary>Details</summary><div class="original-entry">${esc(detail.notes)}</div></details>` : ""}<dl class="plan-window"><dt>Lease window</dt><dd>${esc(detail.est_lease_event || "—")}</dd></dl></section>
       </div>
       ${detail.prospect_client_id && detail.prospect_engagement_status === "inactive" ? `<form id="activateProspect"><p>Mark active to return this prospect to the deal board.</p><label>Reason<input name="reason" maxlength="1000" required></label><button type="submit">Mark active</button></form>` : ""}
-      <div class="detail-columns"><section class="detail-panel"><h3>Correspondence</h3><ol class="correspondence">${(detail.correspondence || []).map(entry => `<li><time>${stamp(entry.occurred_at)}</time><p>${esc(summary(entry.summary))}</p><details data-entry-key="${esc(entry.id)}"><summary>Details</summary><div class="original-entry">${esc(entry.detail || entry.summary)}</div></details></li>`).join("") || '<li class="empty">No correspondence yet</li>'}</ol></section><section class="detail-panel"><h3>Stage history</h3><ol class="history">${(detail.stage_history || []).map(entry => `<li><time>${stamp(entry.occurred_at)}</time>${esc(stageLabel(entry.prior_stage))} → ${esc(stageLabel(entry.stage))}${entry.reason ? `<br><small>${esc(summary(entry.reason))}</small>` : ""}</li>`).join("") || '<li class="empty">No stage changes</li>'}</ol></section></div>`;
+      <div class="detail-columns"><section class="detail-panel"><h3>Captured correspondence</h3><p>Other communication may not have been captured.</p>${historySummary(detail, "correspondence")}<ol class="correspondence">${(detail.correspondence || []).map(entry => `<li><time>${stamp(entry.occurred_at)}</time><p>${esc(summary(entry.summary))}</p><details data-entry-key="${esc(entry.id)}"><summary>Details</summary><div class="original-entry">${esc(entry.detail || entry.summary)}</div></details></li>`).join("") || '<li class="empty">No captured correspondence</li>'}</ol></section><section class="detail-panel"><h3>Stage history</h3>${historySummary(detail, "stage_history")}<ol class="history">${(detail.stage_history || []).map(entry => `<li><time>${stamp(entry.occurred_at)}</time>${esc(stageLabel(entry.prior_stage))} → ${esc(stageLabel(entry.stage))}${entry.reason ? `<br><small>${esc(summary(entry.reason))}</small>` : ""}</li>`).join("") || '<li class="empty">No stage changes</li>'}</ol></section></div>`;
+    for (const button of $("detailBody").querySelectorAll("[data-load-history]")) button.addEventListener("click", () => loadHistory(button.dataset.loadHistory));
     $("detailStage").addEventListener("change", event => openReview(detail.id, event.target.value));
     $("activateProspect")?.addEventListener("submit", event => {
       event.preventDefault();
@@ -265,8 +275,44 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
     $("leadDetail").scrollTop = scroll;
     paintCommandFeedback();
   }
+  function appendHistory(detail, nextDetail, kind) {
+    const page = detail[`${kind}_page`], next = nextDetail[`${kind}_page`];
+    if (!next || (next.has_more && JSON.stringify(next.next_cursor) === JSON.stringify(page.next_cursor))) throw new Error("History did not advance");
+    const key = kind === "correspondence" ? "id" : "event_id";
+    const entries = new Map(detail[kind].map(entry => [entry[key], entry]));
+    for (const entry of nextDetail[kind]) entries.set(entry[key], entry);
+    if (entries.size === detail[kind].length && next.has_more) throw new Error("History did not advance");
+    return { ...detail, [kind]: [...entries.values()], [`${kind}_page`]: next };
+  }
+  async function loadHistory(kind) {
+    const detail = state.detail, page = detail?.[`${kind}_page`];
+    if (!state.identityReady || !detail || !page?.has_more || !page.next_cursor || state.historyRequest) return;
+    const request = { kind, epoch: state.detailEpoch, actor: state.actor, detail };
+    state.historyRequest = request; state.historyError = null;
+    paintDetail(detail);
+    const current = () => request.epoch === state.detailEpoch && request.actor === state.actor &&
+      state.detail === detail && state.detailId === detail.id && $("leadDetail").open;
+    try {
+      const response = await client.getLeadDetail(detail, { [`${kind}_cursor`]: page.next_cursor });
+      if (!current()) return;
+      if (!response.detail || !leadById(detail.id) || !eligibleLead(response.detail)) {
+        state.detail = null; $("leadDetail").close(); return;
+      }
+      validateLeadDetail(response.detail, detail.id);
+      state.detail = appendHistory(detail, response.detail, kind);
+    } catch (error) {
+      if (!current() || authorizationFailure(error)) return;
+      state.historyError = { kind };
+    } finally {
+      if (state.historyRequest === request) {
+        state.historyRequest = null;
+        if (request.epoch === state.detailEpoch && request.actor === state.actor && state.detail && $("leadDetail").open) paintDetail(state.detail);
+      }
+    }
+  }
   async function readDetail(id, open = true) {
     const lead = leadById(id), epoch = ++state.detailEpoch, actor = state.actor;
+    state.historyRequest = null; state.historyError = null;
     if (!lead || !state.identityReady) return;
     if (open) { state.selectedId = id; render(); selectDocRecord("lead", id); state.detailId = id; state.detail = null; state.trigger = focusIdentity(doc.activeElement); $("detailTitle").textContent = leadTitle(lead); $("detailBody").innerHTML = '<p class="empty">Updating…</p>'; $("leadDetail").showModal(); }
     try {
@@ -275,6 +321,16 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
       if (!leadById(id) || !response.detail || response.detail.id !== id || !eligibleLead(response.detail)) { $("leadDetail").close(); state.detail = null; return; }
       validateLeadDetail(response.detail, id);
       selectDocRecord("lead", id);
+      for (const kind of ["correspondence", "stage_history"]) {
+        const retainedCount = open ? 0 : state.detail?.[kind]?.length || 0;
+        while (response.detail[kind].length < retainedCount && response.detail[`${kind}_page`]?.has_more) {
+          const older = await client.getLeadDetail(lead, { [`${kind}_cursor`]: response.detail[`${kind}_page`].next_cursor });
+          if (epoch !== state.detailEpoch || actor !== state.actor) return;
+          if (!older.detail || !eligibleLead(older.detail)) { $("leadDetail").close(); state.detail = null; return; }
+          validateLeadDetail(older.detail, id);
+          response.detail = appendHistory(response.detail, older.detail, kind);
+        }
+      }
       const unchanged = JSON.stringify(state.detail) === JSON.stringify(response.detail);
       state.detail = response.detail; if (!unchanged) paintDetail(response.detail);
     } catch (error) { if (epoch !== state.detailEpoch || authorizationFailure(error)) return; state.detail = null; $("detailBody").innerHTML = '<p class="empty">Connection interrupted · reconnecting…</p>'; }
