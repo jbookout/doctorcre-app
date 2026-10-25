@@ -12,10 +12,10 @@ const contract = (await import("../js/routes.js")).routeContract;
 const primary = navigationItems.filter(item => !item.group).map(item => item.label);
 const secondary = navigationItems.filter(item => item.group).map(item => item.label);
 
-async function open(t, { width = 1440, actor = 'joe', live = false, minimal = false, simulatedClock = false,
+async function open(t, { width = 1440, height = 960, actor = 'joe', live = false, minimal = false, simulatedClock = false,
   reducedMotion = 'no-preference', signoutMode = 'success', holdDocSuggestions = false } = {}) {
   const browser = await chromium.launch(); t.after(() => browser.close());
-  const page = await browser.newPage({ viewport: { width, height: 960 }, reducedMotion });
+  const page = await browser.newPage({ viewport: { width, height }, reducedMotion });
   if (simulatedClock) await page.clock.install({ time: new Date('2026-10-01T15:00:00Z') });
   const fixture = await createFixtureClient({ selfActor: actor, seedUrl: `data:application/json;base64,${Buffer.from(await readFile(new URL('data/board-seed.json', root))).toString('base64')}` });
   const errors = [], pageErrors = [], calls = []; let signedOut = false, docSuggestionsHeld = false;
@@ -270,4 +270,110 @@ for (const { name, path, updated, retry, error } of [
   await retryAndSettle('board_failed');
   await page.waitForFunction(({error})=>/interrupted|sign.in|reconnecting|offline|error/i.test(document.querySelector(error)?.textContent||''),{error});
   assert.doesNotMatch(await page.locator(updated).textContent(),/Updating/);
+});
+
+for (const [width, height] of [[390, 960], [1280, 960], [390, 600], [390, 700]]) test(`help walkthrough explains real controls and can be skipped at ${width}x${height}`, async t => {
+  const { page, errors } = await open(t, { width, height });
+  const entry = page.getByRole('button', { name: 'How DoctorCRE works', exact: true });
+  const guide = page.getByRole('dialog', { name: 'How DoctorCRE works', exact: true });
+  await page.locator('#selfAvatar').click();
+  await entry.click();
+  await guide.waitFor();
+  assert.equal(await guide.getByRole('button', { name: 'Back', exact: true }).isDisabled(), true);
+  const steps = [
+    '[data-app-nav-item][href="/"]', '[data-app-nav-item][href="/deals"]',
+    '[data-app-nav-item][href="/leads"]', '[data-app-nav-item][href="/tours"]', '#docOpen',
+  ];
+  for (const [index, selector] of steps.entries()) {
+    const title = index === 4 ? 'Doc' : await page.locator(selector).getAttribute('aria-label');
+    await guide.getByRole('heading', { name: title, exact: true }).waitFor();
+    assert.match(await guide.textContent(), new RegExp(`${index + 1} of 5`));
+    const geometry = await page.evaluate(({ selector }) => {
+      const target = document.querySelector(selector), guide = document.querySelector('[data-walkthrough]');
+      const a = target.getBoundingClientRect(), b = guide.getBoundingClientRect();
+      return {
+        highlighted: target.classList.contains('app-walkthrough-target'), visible: a.width > 0 && a.height > 0,
+        targetFits: a.x >= 0 && a.y >= 0 && a.right <= innerWidth && a.bottom <= innerHeight,
+        guideFits: b.x >= 0 && b.y >= 0 && b.right <= innerWidth && b.bottom <= innerHeight,
+        overlap: a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top,
+      };
+    }, { selector });
+    assert.deepEqual(geometry, { highlighted: true, visible: true, targetFits: true, guideFits: true, overlap: false }, title);
+    await mkdir(new URL('out/test-artifacts/walkthrough/', root), { recursive: true });
+    await page.locator(selector).evaluate(async node => { await Promise.all(node.getAnimations().map(animation => animation.finished)); });
+    assert.equal(await page.locator(selector).evaluate(node => getComputedStyle(node).outlineStyle), 'solid');
+    if (index === 0 || index === 4) await page.screenshot({ path: fileURLToPath(new URL(`out/test-artifacts/walkthrough/${width}-${height}-${index}.png`, root)) });
+    if (index === 1) {
+      await guide.getByRole('button', { name: 'Back', exact: true }).click();
+      await guide.getByRole('heading', { name: 'Home', exact: true }).waitFor();
+      await guide.getByRole('button', { name: 'Next', exact: true }).click();
+    }
+    await guide.getByRole('button', { name: index === 4 ? 'Done' : 'Next', exact: true }).click();
+  }
+  assert.equal(await guide.count(), 0);
+  assert.equal(await page.locator('.app-walkthrough-target').count(), 0);
+  assert.equal(await page.locator('#selfAvatar').evaluate(node => node === document.activeElement), true);
+  for (const close of ['Skip walkthrough', 'Escape']) {
+    await page.locator('#selfAvatar').click(); await entry.click();
+    await guide.getByRole('heading', { name: 'Home', exact: true }).waitFor();
+    if (close === 'Escape') await page.keyboard.press('Escape');
+    else await guide.getByRole('button', { name: close }).click();
+    assert.equal(await guide.count(), 0);
+    assert.equal(await page.locator('.app-walkthrough-target').count(), 0);
+    assert.equal(await page.locator('#selfAvatar').evaluate(node => node === document.activeElement), true);
+  }
+  assert.equal(new URL(page.url()).pathname, '/');
+  assert.deepEqual(errors, []);
+});
+
+test('walkthrough stays static with reduced motion and follows Doc across phone resize', async t => {
+  const { page } = await open(t, { width: 1280, reducedMotion: 'reduce' });
+  const guide = page.getByRole('dialog', { name: 'How DoctorCRE works', exact: true });
+  assert.equal(await guide.count(), 0, 'walkthrough starts only from help');
+  await page.locator('#selfAvatar').click();
+  await page.getByRole('button', { name: 'How DoctorCRE works', exact: true }).click();
+  assert.equal(await page.locator('.app-walkthrough-target').evaluate(node => getComputedStyle(node).animationName), 'none');
+  for (let index = 0; index < 4; index++) await guide.getByRole('button', { name: 'Next', exact: true }).click();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.waitForFunction(() => {
+    const target = document.getElementById('docOpen'), a = target.getBoundingClientRect();
+    return a.width > 0 && a.left >= 0 && a.right <= innerWidth && a.top >= 0 && a.bottom <= innerHeight;
+  });
+  assert.equal(await page.locator('#docOpen').evaluate(node => getComputedStyle(node).animationName), 'none');
+  await page.evaluate(() => window.dispatchEvent(new Event('doctorcre-session-invalidated')));
+  assert.equal(await guide.count(), 0);
+  assert.equal(await page.locator('.app-walkthrough-target').count(), 0);
+});
+
+test('opening the highlighted Doc ends the walkthrough and closes the phone account menu', async t => {
+  const { page } = await open(t, { width: 390 });
+  const guide = page.getByRole('dialog', { name: 'How DoctorCRE works', exact: true });
+  await page.locator('#selfAvatar').click();
+  await page.getByRole('button', { name: 'How DoctorCRE works', exact: true }).click();
+  for (let index = 0; index < 4; index++) await guide.getByRole('button', { name: 'Next', exact: true }).click();
+  await page.getByRole('button', { name: 'Open Doc', exact: true }).click();
+  await page.locator('#docDetail[open]').waitFor();
+  assert.equal(await guide.count(), 0);
+  assert.equal(await page.locator('#accountMenu').isVisible(), false);
+});
+
+test('background controls and Doc shortcuts retire the walkthrough without intercepting Doc Escape', async t => {
+  const { page } = await open(t, { width: 390 });
+  const guide = page.getByRole('dialog', { name: 'How DoctorCRE works', exact: true });
+  const start = async () => {
+    await page.locator('#selfAvatar').click();
+    await page.getByRole('button', { name: 'How DoctorCRE works', exact: true }).click();
+    for (let index = 0; index < 4; index++) await guide.getByRole('button', { name: 'Next', exact: true }).click();
+  };
+  await start();
+  await page.locator('#selfAvatar').click();
+  assert.equal(await guide.count(), 0);
+  assert.equal(await page.locator('#accountMenu').isVisible(), false);
+  await start();
+  await page.keyboard.press('Control+k');
+  await page.locator('#docDetail[open]').waitFor();
+  assert.equal(await guide.count(), 0);
+  await page.keyboard.press('Escape');
+  await page.waitForFunction(() => !document.getElementById('docDetail').open);
+  assert.equal(await page.locator('#selfAvatar').evaluate(node => node === document.activeElement), true);
 });
