@@ -1,6 +1,6 @@
 {
   "schema": "doctorcre-carr-interface.v1",
-  "version": "1.53.0",
+  "version": "1.56.0",
   "producer": {
     "repository": "jbookout/carr-system",
     "source_commit": "1df9b9936394164dd55e815f8a8bf69649508ccc"
@@ -832,8 +832,8 @@
   },
   "lead_workspace": {
     "producer": {
-      "repository": "jbookout/carr-system",
-      "source_commit": "65a9947c917e5a5a97ac2d67baa34f081b0da026"
+      "repository": "DoctorCRE/carr-system",
+      "source_commit": "da28912eea3370c4e2e5953290288475daf7e647"
     },
     "schema_version": "lead-workspace.v1",
     "board": {
@@ -847,6 +847,13 @@
       "arguments": {
         "workspace": "leads",
         "lead_id": "exact UUID"
+      },
+      "pagination": {
+        "page_size": 100,
+        "correspondence_cursor": "Optional exact next_cursor object with occurred_at and id from correspondence_page",
+        "stage_history_cursor": "Optional exact next_cursor mutation_order string from stage_history_page",
+        "response": "Independent correspondence_page and stage_history_page each contain total, has_more, and next_cursor. Append only the requested history array.",
+        "ordering": "Correspondence by occurred_at then id descending. Stage history by mutation_order descending."
       }
     },
     "writes": {
@@ -857,7 +864,7 @@
       "engagement": "set-prospect-engagement-status (client_id, client base_version, active or inactive, reason, expected_actor, same idempotency key on retry)"
     },
     "coverage": {
-      "correspondence": "captured_entries_only; Details exposes stored original entry",
+      "correspondence": "captured_entries_only; zero captures do not imply zero communication; Details exposes stored original entry",
       "search_run": "last_search_at null until CARR has an authoritative new-lead search completion field",
       "scores": "existing record score; null shown as missing"
     },

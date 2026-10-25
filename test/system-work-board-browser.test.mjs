@@ -1,3 +1,4 @@
+import { CHROMIUM_SAFETY_ARGS } from '../scripts/chromium-safety-args.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile,mkdir} from 'node:fs/promises';
@@ -9,7 +10,7 @@ const items=kinds.map((kind,index)=>({id:`synthetic-${index}`,source:`synthetic.
 const live=Array.from({length:12},(_,i)=>({...items[2],id:`live-${i}`,title:i===0?'Synthetic older completed concept':`Synthetic Live ${i}`,
  completed:true,state:'done',available_triage_actions:[],last_activity_at:`2026-09-${String(i+1).padStart(2,'0')}T12:00:00Z`})).reverse();
 async function open(t,width,{snapshot=true}={}){
- const browser=await chromium.launch();t.after(()=>browser.close());const page=await browser.newPage({viewport:{width,height:900}});const calls=[],errors=[];
+ const browser=await chromium.launch({ args: [...CHROMIUM_SAFETY_ARGS] });t.after(()=>browser.close());const page=await browser.newPage({viewport:{width,height:900}});const calls=[],errors=[];
  page.on('pageerror',e=>errors.push(e.message));
  await page.route('**/*',async route=>{
   const url=new URL(route.request().url());
