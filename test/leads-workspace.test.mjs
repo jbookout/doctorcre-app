@@ -72,7 +72,7 @@ test('empty stage columns say so in words',async()=>{
  try{assert.equal(s.d.querySelector('.stage-column[data-stage="engaged"] .stage-empty').textContent,'No leads in Engaged');}finally{s.close()}
 });
 test('card opens wide details with original entries; polling preserves expanded details',async()=>{
- const s=await setup();try{s.d.querySelector('.lead-card').click();await tick();assert.equal(s.d.getElementById('leadDetail').open,true);assert.match(s.d.getElementById('detailBody').textContent,/Contact.*Market.*Vertical.*Plans.*Correspondence.*Stage history/s);
+ const s=await setup();try{s.d.querySelector('.lead-card').click();await tick();assert.equal(s.d.getElementById('leadDetail').open,true);assert.match(s.d.getElementById('detailBody').textContent,/Contact.*Market.*Vertical.*Plans.*Captured correspondence.*Stage history/s);
  const original=s.d.querySelector('#detailBody details');original.open=true;await s.app.refresh();assert.equal(s.d.querySelector('#detailBody details').open,true);
  }finally{s.close()}
 });
@@ -895,4 +895,89 @@ test('Chicago timestamps retain the business day and date-only move evidence nev
 test('midnight occurrence timestamps convert to Chicago while midnight DATE evidence retains its date',async()=>{
  const s=await setup({getWorkspace:async()=>{const b=workspace();b.leads[0].last_stage_move={automatic:true,from:'new',to:b.leads[0].stage,event_id:'demo-midnight',occurred_at:'2026-10-24T00:00:00Z',reason:'demo midnight event'};b.leads[1].last_stage_move={automatic:true,from:'qualified',to:b.leads[1].stage,event_id:'demo-date',evidence_date:'2026-10-24T00:00:00.000Z',reason:'demo DATE evidence'};return b;}});
  try{const moves=[...s.d.querySelectorAll('.auto-move')].map(node=>node.textContent);assert.ok(moves.some(text=>/demo midnight event 10\/23/.test(text)));assert.ok(moves.some(text=>/demo DATE evidence 10\/24/.test(text)));}finally{s.close();}
+});
+
+test('captured correspondence names its limited coverage even when no entries are captured',async()=>{
+ const s=await setup({getLeadDetail:async l=>({detail:{...detail(workspace().leads.find(row=>row.id===l.id)),correspondence:[],stage_history:[],correspondence_coverage:'captured_entries_only',correspondence_page:{total:0,has_more:false,next_cursor:null},stage_history_page:{total:0,has_more:false,next_cursor:null}}})});
+ try{s.d.querySelector('.lead-card').click();await tick();
+  const body=s.d.getElementById('detailBody').textContent;
+  assert.match(body,/Captured correspondence/);
+  assert.match(body,/No captured correspondence/);
+  assert.match(body,/Other communication may not have been captured/);
+  assert.match(body,/Showing 0 of 0 captured entries/);
+  assert.match(body,/Showing 0 of 0 stage changes/);
+  assert.doesNotMatch(body,/No correspondence yet/);
+ }finally{s.close()}
+});
+
+for(const total of [100,101])test(`captured correspondence and stage history expose all ${total} entries with counts`,async()=>{
+ const rows=Array.from({length:total},(_,n)=>({id:id(1000+n),kind:'email_in',occurred_at:'2026-10-01T10:00:00Z',summary:`Synthetic captured entry ${n+1}`}));
+ const stages=Array.from({length:total},(_,n)=>({event_id:id(2000+n),mutation_order:String(total-n),occurred_at:'2026-10-01T10:00:00Z',prior_stage:'new',stage:'engaged',reason:`Synthetic stage change ${n+1}`}));
+ const cursor={occurred_at:rows[99].occurred_at,id:rows[99].id};const requests=[];
+ const s=await setup({getLeadDetail:async(l,args={})=>{
+  requests.push(args);const correspondence=rows.slice(args.correspondence_cursor?100:0,args.correspondence_cursor?200:100),stage_history=stages.slice(args.stage_history_cursor?100:0,args.stage_history_cursor?200:100);
+  return{detail:{...detail(workspace().leads.find(row=>row.id===l.id)),correspondence,stage_history,
+   correspondence_page:{total,has_more:total>100&&!args.correspondence_cursor,next_cursor:total>100&&!args.correspondence_cursor?cursor:null},
+   stage_history_page:{total,has_more:total>100&&!args.stage_history_cursor,next_cursor:total>100&&!args.stage_history_cursor?'2':null}}};
+ }});
+ try{s.d.querySelector('.lead-card').click();await tick();
+  assert.match(s.d.getElementById('detailBody').textContent,new RegExp(`Showing 100 of ${total} captured entries`));
+  assert.match(s.d.getElementById('detailBody').textContent,new RegExp(`Showing 100 of ${total} stage changes`));
+  if(total===100){assert.equal(s.d.querySelector('[data-load-history]'),null);return;}
+  s.d.querySelector('[data-load-history="correspondence"]').click();await tick();
+  assert.deepEqual(requests[1],{correspondence_cursor:cursor});
+  assert.equal(s.d.querySelectorAll('.correspondence > li').length,101);
+  assert.match(s.d.querySelector('.correspondence').textContent,/Synthetic captured entry 101/);
+  assert.match(s.d.getElementById('detailBody').textContent,/Showing 101 of 101 captured entries/);
+  s.d.querySelector('[data-load-history="stage_history"]').click();await tick();
+  assert.deepEqual(requests[2],{stage_history_cursor:'2'});
+  assert.equal(s.d.querySelectorAll('.history > li').length,101);
+  assert.match(s.d.querySelector('.history').textContent,/Synthetic stage change 101/);
+  assert.equal(s.d.querySelector('[data-load-history]'),null);
+  await s.app.refresh();
+  assert.equal(s.d.querySelectorAll('.correspondence > li').length,101);
+  assert.equal(s.d.querySelectorAll('.history > li').length,101);
+  const older=s.d.querySelector('.correspondence > li:last-child details');older.open=true;
+  s.w.dispatchEvent(new s.w.PageTransitionEvent('pagehide',{persisted:true}));
+  s.w.dispatchEvent(new s.w.PageTransitionEvent('pageshow',{persisted:true}));await tick();
+  assert.equal(s.d.querySelectorAll('.correspondence > li').length,101);
+  assert.equal(s.d.querySelectorAll('.history > li').length,101);
+  assert.equal(s.d.querySelector('.correspondence > li:last-child details').open,true);
+ }finally{s.close()}
+});
+
+test('history request forwards cursors through the authenticated lead-board contract and rejects malformed pages',async()=>{
+ const board=workspace(),row=board.leads[0],cursor={occurred_at:'2026-10-01T10:00:00Z',id:id(600)},sent=[];
+ let page={total:101,has_more:true,next_cursor:cursor};
+ const client=createLeadBoardClient({docContext:false,fetchImpl:async(_path,init)=>{
+  sent.push(JSON.parse(init.body).params);
+  return Response.json({result:{content:[{type:'text',text:JSON.stringify({...board,detail:{...detail(row),correspondence_page:page}})}]}});
+ }});
+ await client.getLeadDetail(row,{correspondence_cursor:cursor});
+ assert.deepEqual(sent[0],{name:'lead-board',arguments:{workspace:'leads',lead_id:row.id,correspondence_cursor:cursor}});
+ for(const malformed of [{total:-1,has_more:false,next_cursor:null},{total:101,has_more:true,next_cursor:null},{total:101,has_more:false,next_cursor:cursor}]){
+  page=malformed;await assert.rejects(()=>client.getLeadDetail(row),e=>e.code==='invalid_projection');
+ }
+});
+
+test('older history preserves captured entries on failure and ignores late responses after an actor switch',async()=>{
+ const initial={...detail(workspace().leads[0]),correspondence_page:{total:3,has_more:true,next_cursor:{occurred_at:'2026-09-30T12:00:00Z',id:id(601)}}};
+ let attempts=0,release;
+ const s=await setup({getLeadDetail:async(l,args={})=>{
+  if(!args.correspondence_cursor)return{detail:{...initial,id:l.id}};
+  attempts++;
+  if(attempts===1)throw new Error('Synthetic lost connection');
+  return new Promise(resolve=>{release=resolve});
+ }});
+ try{s.d.querySelector('.lead-card').click();await tick();
+  s.d.querySelector('[data-load-history="correspondence"]').click();await tick();
+  assert.equal(s.d.querySelectorAll('.correspondence > li').length,2);
+  assert.match(s.d.getElementById('detailBody').textContent,/Older entries unavailable. Try again./);
+  s.d.querySelector('[data-load-history="correspondence"]').click();await tick();
+  assert.equal(s.d.querySelector('[data-load-history="correspondence"]').disabled,true);
+  s.setActor('other-example-partner');await s.app.refresh();
+  release({detail:{...initial,correspondence:[{id:id(602),kind:'email_in',occurred_at:'2026-09-29T12:00:00Z',summary:'Synthetic old actor private entry'}],correspondence_page:{total:3,has_more:false,next_cursor:null}}});await tick();
+  assert.equal(s.d.getElementById('leadDetail').open,false);
+  assert.doesNotMatch(s.d.getElementById('detailBody').textContent,/old actor private entry/);
+ }finally{s.close()}
 });
