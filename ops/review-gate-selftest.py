@@ -11,6 +11,14 @@ spec.loader.exec_module(gate)
 
 
 class ReviewGate(unittest.TestCase):
+    def test_added_machinery_requires_approval(self):
+        pr = {"changed_files": 1, "additions": 1, "deletions": 0, "head": {"sha": "abc"}}
+        for path, status, expected in [("scripts/foo.mjs", "added", False), (".github/workflows/check.yml", "added", False), ("scripts/foo.mjs", "modified", True), (".github/workflows/check.yml", "modified", True), ("docs/foo.md", "added", True)]:
+            with self.subTest(path=path, status=status):
+                files = [{"filename": path, "status": status}]
+                self.assertEqual(gate.approved(pr, files, []), expected)
+                self.assertTrue(gate.approved(pr, files, [{"body": "VERDICT: APPROVE\nReviewed-SHA: abc"}]))
+
     def test_threshold(self):
         for net, expected in [(150, True), (151, False), (-20, True)]:
             with self.subTest(net=net):

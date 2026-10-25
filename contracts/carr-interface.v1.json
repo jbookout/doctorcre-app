@@ -140,8 +140,7 @@
     "/api/tours/selection-cart",
     "/api/tours/feedback",
     "/api/tours/property-evidence/v1",
-    "/api/tours/*",
-    "/api/v1/runtime-errors"
+    "/api/tours/*"
   ],
   "invariants": [
     "The browser never receives database credentials.",
@@ -916,14 +915,6 @@
     },
     "business_timezone": "America/Chicago",
     "overnight_cutoff": "Previous Chicago calendar day at 17:00 when no saved briefing window exists; date-only fields retain their calendar date."
-  },
-  "runtime_errors": {
-    "contract": "contracts/runtime-errors.v1.json",
-    "edge_binding": "CARR_ERRORS",
-    "producer": {
-      "repository": "jbookout/carr-system",
-      "source_commit": "a3a6913f7af0d721ab538090b1347976befcf421"
-    }
   },
   "progress_board_snapshot": {
     "producer": {

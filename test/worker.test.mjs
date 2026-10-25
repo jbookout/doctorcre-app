@@ -284,3 +284,13 @@ test('retired automation pages redirect to the Control Room tab without source r
     assert.equal(destination.searchParams.get('mode'), 'live');
   }
 });
+
+test("app failures retain the generic response without invoking an unsupported sink", async () => {
+  let captures = 0;
+  const env = environment({ assets: { fetch: async () => { throw new Error("synthetic private detail"); } } });
+  env.CARR_ERRORS = { capture: async () => { captures++; } };
+  const response = await handleDoctorcreRequest(request("/js/app.js"), env);
+  assert.equal(response.status, 500);
+  assert.deepEqual(await response.json(), { error: "internal_error" });
+  assert.equal(captures, 0);
+});
