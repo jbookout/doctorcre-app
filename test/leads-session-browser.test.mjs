@@ -39,9 +39,10 @@ test('Leads uses authenticated sessions and clears the previous actor before loa
   await search.fill('Example 1');
   actor = 'another-example-partner';
   let release;
+  const held = new Promise(resolve => release = resolve);
   await page.route('http://localhost/mcp', async route => {
     if (route.request().postDataJSON().params.name !== 'lead-board') return route.fallback();
-    await new Promise(resolve => release = resolve);
+    await held;
     return route.fallback();
   });
   await page.locator('#refreshBoard').click();
