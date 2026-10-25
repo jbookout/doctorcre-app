@@ -118,12 +118,12 @@
     },
     "task-agenda": {
       "lcpMs": {
-        "baseline": 1676,
-        "limit": 2514
+        "baseline": 1632,
+        "limit": 2448
       },
       "usefulMs": {
-        "baseline": 4861,
-        "limit": 7292
+        "baseline": 5742,
+        "limit": 8613
       },
       "requestCount": {
         "baseline": 64,
@@ -136,30 +136,30 @@
     },
     "task-leads": {
       "lcpMs": {
-        "baseline": 1660,
-        "limit": 2490
+        "baseline": 1624,
+        "limit": 2436
       },
       "usefulMs": {
-        "baseline": 4493,
-        "limit": 6740
+        "baseline": 7556,
+        "limit": 11334
       },
       "requestCount": {
-        "baseline": 25,
-        "limit": 25
+        "baseline": 39,
+        "limit": 39
       },
       "criticalBytes": {
-        "baseline": 1298082,
-        "limit": 1427891
+        "baseline": 1295580,
+        "limit": 1425138
       }
     },
     "task-deal-link": {
       "lcpMs": {
-        "baseline": 5268,
-        "limit": 7902
+        "baseline": 5352,
+        "limit": 8028
       },
       "usefulMs": {
-        "baseline": 5328,
-        "limit": 7992
+        "baseline": 5457,
+        "limit": 8186
       },
       "requestCount": {
         "baseline": 19,
@@ -172,12 +172,12 @@
     },
     "task-deal-draft": {
       "lcpMs": {
-        "baseline": 5188,
-        "limit": 7782
+        "baseline": 5268,
+        "limit": 7902
       },
       "usefulMs": {
-        "baseline": 5613,
-        "limit": 8420
+        "baseline": 6018,
+        "limit": 9027
       },
       "requestCount": {
         "baseline": 24,
@@ -190,30 +190,30 @@
     },
     "task-tour-library": {
       "lcpMs": {
-        "baseline": 1612,
-        "limit": 2418
+        "baseline": 1580,
+        "limit": 2370
       },
       "usefulMs": {
-        "baseline": 3463,
-        "limit": 5195
+        "baseline": 3881,
+        "limit": 5822
       },
       "requestCount": {
-        "baseline": 3,
-        "limit": 3
+        "baseline": 18,
+        "limit": 18
       },
       "criticalBytes": {
-        "baseline": 662698,
-        "limit": 728968
+        "baseline": 736330,
+        "limit": 809964
       }
     },
     "task-tour-offline": {
       "lcpMs": {
-        "baseline": 160,
-        "limit": 910
+        "baseline": 492,
+        "limit": 1242
       },
       "usefulMs": {
-        "baseline": 197,
-        "limit": 947
+        "baseline": 593,
+        "limit": 1343
       },
       "requestCount": {
         "baseline": 17,
@@ -277,12 +277,13 @@
     }
   },
   "taskBaseline": {
-    "measuredAt": "2026-10-25T15:23:27.957Z",
-    "sourceCommit": "0a867e44f5cca0c597bbd0b844aeeaae676c3c8e",
-    "buildDigest": "52963159522e71835aa0a61800e5101aa5569a48096632475a98adb0b3f22fa8",
+    "measuredAt": "2026-10-25T15:57:35.646Z",
+    "sourceCommit": "cb741517b409675a7dedcd69c3a2947dbab8e2e1",
+    "prHeadCommit": "329f6db6c36de7f33af7b5330351311aae6b4038",
+    "buildDigest": "889e886e6d042385a29a46f175e83466f516e47cd2c4f93e56d1274b28c93415",
     "browserVersion": "153.0.8010.12",
-    "nodeVersion": "v26.12.1",
-    "platform": "darwin",
+    "nodeVersion": "v22.23.4",
+    "platform": "linux",
     "measurement": {
       "usefulMs": "Navigation start through verified useful task outcome, including scripted actions. Offline measures the same-tab reload after online preparation.",
       "requestCount": "API, session, MCP and change-feed requests plus in-memory fixture public client calls through the useful outcome. Includes offline preparation. Maximum across cold samples.",
@@ -296,6 +297,8 @@
         "task-tour-library": "40 synthetic saved tours; client directory delayed 250ms",
         "task-tour-offline": "saved same-tab itinerary; service worker enabled; HTTP cache cleared; offline reload"
       }
-    }
+    },
+    "run": "https://github.com/jbookout/doctorcre-app/actions/runs/40207770313",
+    "reason": "Initial baselines for the six new tasks use the required Linux gate environment. The same application head passes the Mac guard; platform timing changes which shared-shell startup reads finish before the useful outcome. All preexisting budgets remain unchanged. No performance repair or speedup is claimed."
   }
 }
