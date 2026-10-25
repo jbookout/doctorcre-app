@@ -1,5 +1,6 @@
+import { mountCallModeAvailability } from './call-mode-availability.js';
 import { privateSession } from './private-session.js';
-import { mountDocPresence } from "./doc-presence.js";
+import { mountDocLauncher } from "./doc-launcher.js";
 import { mountAppLayout } from "./app-layout.js";
 import { TOUCH_LAYOUT } from "./touch-layout.js";
 import { mountPrefs } from "./shell.js";
@@ -40,7 +41,7 @@ export function mountAppShell(root = document, pathname = globalThis.location?.p
     };
     phone.addEventListener("change", arrangeControls);
     arrangeControls();
-    const docPresence = mountDocPresence({ document:root, window:root.defaultView });
+    const docPresence = mountDocLauncher({ document:root, window:root.defaultView });
     disposeDocPresence = () => docPresence?.dispose();
   }
 }
@@ -140,13 +141,26 @@ function mountAccount(root, host, pathname, beforeSignOutReplace = () => {}) {
     } catch { if (!boundary?.revoked) { panel.querySelector("#accountStatus").textContent = "Sign-out unavailable"; event.target.disabled = false; } }
   };
   if (!root.getElementById("callModeDialog")) {
-    import("./global-call-mode.js").then(async ({ mountGlobalCallMode }) => {
-      if (boundary?.revoked) return;
-      const call = await mountGlobalCallMode(root);
-      if (boundary?.revoked) return;
-      root.querySelector("#callModeButton").onclick = () => { close(); call.open(); };
-      root.querySelector("#callModeRetry").onclick = (event) => call.handleClick(event.target);
-    });
+    mountCallModeAvailability(root);
+    let callReady = null;
+    const button = root.querySelector("#callModeButton");
+    button.onclick = async () => {
+      close();
+      button.disabled = true;
+      try {
+        const call = await (callReady ||= import("./global-call-mode.js").then(({ mountGlobalCallMode }) => {
+          if (!boundary?.revoked) return mountGlobalCallMode(root);
+        }));
+        if (boundary?.revoked) return;
+        root.querySelector("#callModeRetry").onclick = event => call.handleClick(event.target);
+        await call.open();
+      } catch {
+        callReady = null;
+        panel.querySelector("#accountStatus").textContent = "Call Mode unavailable. Try again.";
+        panel.hidden = false;
+        avatar.setAttribute("aria-expanded", "true");
+      } finally { button.disabled = false; }
+    };
   }
 }
 

@@ -57,6 +57,35 @@ async function open(t, { width = 1440, actor = 'joe', live = false, minimal = fa
   await page.waitForFunction(() => ['J','D'].includes(document.querySelector('#selfAvatar')?.textContent));
   return { page, errors, pageErrors, calls, docSuggestionsStarted, releaseDocSuggestions };
 }
+test('Home defers Doc and Call Mode until first use', async t => {
+  const { page, errors, calls } = await open(t, { width: 390 });
+  await page.waitForLoadState('networkidle');
+  const scripts = await page.evaluate(() => performance.getEntriesByType('resource')
+    .filter(row => /\.m?js(?:\?|$)/.test(row.name))
+    .map(row => ({ path: new URL(row.name).pathname, bytes: row.encodedBodySize })));
+  t.diagnostic(JSON.stringify({ scripts: scripts.length, bytes: scripts.reduce((n, row) => n + row.bytes, 0) }));
+  assert.equal(scripts.some(row => ['/js/doc-presence.js', '/js/global-call-mode.js', '/js/morning-brief.js'].includes(row.path)), false);
+  assert.equal(calls.some(call => ['list-doc-suggestions', 'list-feature-switches'].includes(call.verb)), false);
+  await page.locator('#selfAvatar').click();
+  await page.getByRole('button', { name: 'Open Doc', exact: true }).click();
+  await page.locator('#docDetail[open]').waitFor();
+  await page.keyboard.press('Escape');
+  await page.locator('#selfAvatar').click();
+  await page.getByLabel('Call mode', { exact: true }).click();
+  await page.locator('#callModeDialog[open]').waitFor();
+  assert.equal(await page.locator('#callModeConsent').isChecked(), false);
+  assert.deepEqual(errors, []);
+});
+
+test('first Doc open restores desktop keyboard focus after lazy initialization', async t => {
+  const { page, errors } = await open(t, { minimal: true });
+  await page.locator('#docOpen').click();
+  await page.locator('#docDetail[open]').waitFor();
+  await page.locator('#docClose').click();
+  await settles(async () => assert.equal(await page.evaluate(() => document.activeElement.id), 'docOpen'));
+  assert.deepEqual(errors, []);
+});
+
 for (const actor of ['joe','dell']) test(`signed-in ${actor} gets workspace, account, persisted controls and sign-out`, async t => {
   const { page, errors, calls } = await open(t, { actor, live: true, minimal: true });
   const name = actor === 'joe' ? 'Joe' : 'Dell';
@@ -85,6 +114,9 @@ for (const actor of ['joe','dell']) test(`signed-in ${actor} gets workspace, acc
 test('sign-out disposes Doc before a pending refresh can write into replaced DOM', async t => {
   const { page, errors, pageErrors, calls, docSuggestionsStarted, releaseDocSuggestions } = await open(t,
     { actor: 'dell', live: true, minimal: true, holdDocSuggestions: true });
+  await page.evaluate(() => document.dispatchEvent(new Event('doctorcre:open-doc')));
+  await page.locator('#docDetail[open]').waitFor();
+  await page.keyboard.press('Escape');
   await docSuggestionsStarted;
   await page.locator('#selfAvatar').click();
   await page.getByText('Sign out', { exact: true }).click();

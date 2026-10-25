@@ -73,6 +73,8 @@ test('PR123 R1: Activity models the daily morning brief and rejects unknown oper
   assert.equal(await page.locator('#morningCoverage').textContent(), '');
   const loaded = page.waitForResponse(response => response.url().endsWith('/mcp') && response.request().postDataJSON()?.params?.name === 'morning-brief');
   await page.reload(); await loaded;
+  await page.evaluate(() => document.dispatchEvent(new Event('doctorcre:open-doc')));
+  await page.locator('#docDetail[open]').waitFor(); await page.locator('#docClose').click();
   await page.waitForFunction(() => document.querySelector('#morningUpdated')?.hasAttribute('datetime'));
   assert.equal(await page.locator('#docMorningBrief').evaluate(dialog => dialog.open), false);
   await page.locator('#docOpen').click(); await page.locator('#docMorning').click();

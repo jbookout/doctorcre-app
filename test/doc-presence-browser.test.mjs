@@ -36,7 +36,7 @@ async function setup(t,{width=1440,motion='no-preference',onRoute,engine=chromiu
   const file=contract.routes[url.pathname]||url.pathname.slice(1);
   try{return route.fulfill({body:await readFile(new URL(file,root)),contentType:/\.m?js$/.test(file)?'text/javascript':file.endsWith('.css')?'text/css':file.endsWith('.json')?'application/json':'text/html'});}catch{return route.fulfill({status:404,body:''});}
  });
- const goto=async path=>{await page.goto('http://localhost'+path,{waitUntil:'domcontentloaded'});await page.locator('#docPresence').waitFor({state:'attached'});};
+ const goto=async path=>{await page.goto('http://localhost'+path,{waitUntil:'domcontentloaded'});await page.locator('#docPresence').waitFor({state:'attached'});await page.evaluate(()=>document.dispatchEvent(new Event('doctorcre:open-doc')));await page.locator('#docDetail[open]').waitFor();await page.locator('#docClose').click();};
  return{page,goto,calls,errors};
 }
 
@@ -240,7 +240,7 @@ test('close readiness waits until queued context cleanup finishes',async t=>{
  assert.equal((await readContext(page)).selected,null);
 });
 test('R14/R15/R16 Ideas searches, Escape and tab return keep correctly scoped observations',async t=>{
- const {page,goto}=await setup(t,{onRoute:producerRoute});await page.goto('https://app.doctorcre.com/ideas-events',{waitUntil:'domcontentloaded'});await page.waitForFunction(()=>document.querySelector('#ideaList')?.textContent.includes('Sample idea'));
+ const {page,goto}=await setup(t,{onRoute:producerRoute});await page.goto('https://app.doctorcre.com/ideas-events',{waitUntil:'domcontentloaded'});await page.waitForFunction(()=>document.querySelector('#ideaList')?.textContent.includes('Sample idea'));await page.evaluate(()=>document.dispatchEvent(new Event('doctorcre:open-doc')));await page.locator('#docDetail[open]').waitFor();await page.locator('#docClose').click();
  await page.locator('.idea-tile').first().click();await page.waitForFunction(()=>document.querySelector('#ideaDialogBody .idea-rows'));assert.equal((await readContext(page)).selected?.id,'sample-idea');
  await escapeRecord(page,'#ideaDialog');assert.equal((await readContext(page)).selected,null);
  const before=await readContext(page);await page.locator('#ideaSearch').fill('no match');await page.waitForFunction(()=>document.querySelectorAll('.idea-tile').length===0);
@@ -341,7 +341,7 @@ test('R15/R16 browser Back restores the Ideas tab scope and pagehide clears sele
 for(const verb of ['loop-board','list-industry-events'])test(`R1/R16 Ideas tab cache cannot recover after ${verb} authorization loss`,async t=>{
  let denied=false,authLost=false;const {page}=await setup(t,{onRoute:async(route,env)=>{
   if(env.url.pathname==='/mcp'&&(authLost||(denied&&route.request().postDataJSON().params.name===verb))){authLost=true;await route.fulfill({status:401,json:{}});return true;}return producerRoute(route,env);
- }});await page.goto('https://app.doctorcre.com/ideas-events');await page.locator('.idea-tile').first().waitFor();await page.locator('#tabEvents').click();await page.waitForFunction(()=>document.querySelector('#docPresence').dataset.state==='ready');await page.locator('#tabIdeas').click();
+ }});await page.goto('https://app.doctorcre.com/ideas-events');await page.locator('.idea-tile').first().waitFor();await page.evaluate(()=>document.dispatchEvent(new Event('doctorcre:open-doc')));await page.locator('#docDetail[open]').waitFor();await page.locator('#docClose').click();await page.locator('#tabEvents').click();await page.waitForFunction(()=>document.querySelector('#docPresence').dataset.state==='ready');await page.locator('#tabIdeas').click();
  denied=true;await page.evaluate(()=>window.dispatchEvent(new Event('online')));await page.waitForURL('**/public-shell/session-ended.html');
  assert.equal(await page.locator('#tabEvents,#docPresence,.idea-tile').count(),0);
 });

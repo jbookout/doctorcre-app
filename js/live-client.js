@@ -1,4 +1,5 @@
 import { sessionFetch } from './private-session.js';
+import { separatePageReads, sharedPageRead } from './shared-page-read.mjs';
 import { requireReviewReceipt } from './deal-review-model.js';
 /**
  * Live client: same interface as fixture, against the deployed Worker.
@@ -55,6 +56,9 @@ export function createLiveClient(opts = {}) {
     'resolve-candidate', 'resolve-post-call-candidate', 'answer-work-request-for-joe', 'add-industry-event', 'update-industry-event']);
 
   const rpc = (verb, args = {}, signal) => rawRpc(verb, args, signal, opts.readTimeoutMs || 10_000);
+  const sharedRead = (verb, args, signal) => sharedPageRead(opts.fetchImpl || sessionFetch,
+    JSON.stringify([baseUrl, selfActor, opts.readTimeoutMs || 10_000, verb, args]),
+    currentSignal => rpc(verb, args, currentSignal), signal);
 
   async function rawRpc(verb, args = {}, signal, timeoutMs, headers) {
     const outcome = await requestMcp(verb, args, { signal, timeoutMs, headers });
@@ -88,17 +92,21 @@ export function createLiveClient(opts = {}) {
       error.payload = { error: 'offline' };
       throw error;
     }
-    // Existing command/form callers already retain their reviewed request.
-    // Keep those domain receipt contracts intact; cover the unretained paths
-    // and the old fallback that minted a different key on every attempt.
-    if (args.idempotency_key && !sessionWrites.has(verb)) return rawRpc(verb, args, undefined, timeoutMs);
-    const target = ['deal', 'candidate_id', 'account_client_id', 'event_id', 'human_ref', 'session_id',
-      'loop_id', 'conversation_id', 'suggestion_id', 'commission_id', 'board_id', 'client_id', 'field', 'projection_id']
-      .filter(key => args[key] !== undefined).map(key => [key, args[key]]);
-    const operationKey = JSON.stringify([verb, target]);
-    const retained = sessionWrites.has(verb) ? sessionCommands : commands;
-    return retained.send(operationKey, args, (request, binding) => rawRpc(verb, request, undefined, timeoutMs || opts.writeTimeoutMs || 10_000,
-      sessionWrites.has(verb) ? { 'x-carr-csrf': binding.slice(binding.indexOf(':') + 1) } : undefined));
+    const transport = opts.fetchImpl || sessionFetch;
+    separatePageReads(transport);
+    try {
+      // Existing command/form callers already retain their reviewed request.
+      // Keep those domain receipt contracts intact; cover the unretained paths
+      // and the old fallback that minted a different key on every attempt.
+      if (args.idempotency_key && !sessionWrites.has(verb)) return await rawRpc(verb, args, undefined, timeoutMs);
+      const target = ['deal', 'candidate_id', 'account_client_id', 'event_id', 'human_ref', 'session_id',
+        'loop_id', 'conversation_id', 'suggestion_id', 'commission_id', 'board_id', 'client_id', 'field', 'projection_id']
+        .filter(key => args[key] !== undefined).map(key => [key, args[key]]);
+      const operationKey = JSON.stringify([verb, target]);
+      const retained = sessionWrites.has(verb) ? sessionCommands : commands;
+      return await retained.send(operationKey, args, (request, binding) => rawRpc(verb, request, undefined, timeoutMs || opts.writeTimeoutMs || 10_000,
+        sessionWrites.has(verb) ? { 'x-carr-csrf': binding.slice(binding.indexOf(':') + 1) } : undefined));
+    } finally { separatePageReads(transport); }
   }
 
   // The record layer speaks phase SLUGS (deal_phase table); the board speaks
@@ -169,7 +177,7 @@ export function createLiveClient(opts = {}) {
     async getInvoiceTracker({ signal } = {}) { return rpc('read-invoice-tracker', {}, signal); },
     async markInvoicePaid(args) { return write('record-commission-receipt', args, opts.writeTimeoutMs || 10_000); },
     async getBoard(options = {}) {
-      const board = await rpc('deal-room-board', {
+      const board = await sharedRead('deal-room-board', {
         workspace: options.workspace || 'all',
         ...(options.account_client_id ? { account_client_id: options.account_client_id } : {}),
       }, options.signal);
@@ -471,7 +479,7 @@ export function createLiveClient(opts = {}) {
 
     // Authenticated sponsor is resolved by CARR; callers cannot select a partner.
     async listFeatureSwitches({ signal } = {}) { return rpc('list-feature-switches', {}, signal); },
-    async morningBrief({ signal } = {}) { return rpc('morning-brief', {}, signal); },
+    async morningBrief({ signal } = {}) { return sharedRead('morning-brief', {}, signal); },
 
     // ------------------------------------------------------------- triage
     // V5-UX-B01 — Home's This week. The verb takes no arguments, so none are

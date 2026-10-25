@@ -209,6 +209,7 @@ test('honest controls fit 320px, 390px and iPad in both motion settings with 44p
       const docTarget = await touchTargetBox(page.locator('#docOpen'));
       assert.ok(docTarget.width >= 44 && docTarget.height >= 44);
       await page.locator('#docOpen').click();
+      await page.locator('#docDetail[open]').waitFor();
       assert.equal(await page.locator('#docDetail form:not(#docCommandForm), #docMic, #docInput').count(), 0);
       assert.equal(await page.locator('#docCommandForm').count(), 1);
       assert.match(await page.locator('#docSuggestions').textContent(), /Unavailable|Updating/);

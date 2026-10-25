@@ -1,3 +1,4 @@
+import { createDocLauncher, placeDocPresence } from './doc-launcher.js';
 import { createPlannerClient } from '../tours/planner-client.js';
 import { mountDocCommandBar } from './doc-command-bar.js';
 import { navigationItems } from './navigation.js';
@@ -20,8 +21,7 @@ export function mountDocPresence({ document: root = document, window: win = wind
   if (!main || !context || root.getElementById('docPresence')) return null;
   const style = root.createElement('link'); style.rel = 'stylesheet'; style.href = '/css/doc-presence.css'; root.head.append(style);
   const briefStyle = root.createElement('link'); briefStyle.rel = 'stylesheet'; briefStyle.href = '/css/morning-brief.css'; root.head.append(briefStyle);
-  const strip = root.createElement('section'); strip.id = 'docPresence'; strip.className = 'doc-presence'; strip.setAttribute('aria-label', 'Doc');
-  strip.innerHTML = '<button id="docOpen" class="doc-identity" type="button" aria-label="Open Doc" title="Doc · ⌘D / Ctrl+D · ⌘K / Ctrl+K" aria-keyshortcuts="Meta+D Control+D Meta+K Control+K" aria-haspopup="dialog" aria-controls="docDetail"><span class="doc-orb" aria-hidden="true">◍</span></button>';
+  const strip = createDocLauncher(root);
   root.body.append(strip);
   const dialog = root.createElement('dialog'); dialog.id = 'docDetail'; dialog.className = 'doc-detail'; dialog.setAttribute('aria-labelledby','docTitle');
   dialog.innerHTML = '<header><div><span class="doc-orb" aria-hidden="true">◍</span><h2 id="docTitle">Doc</h2></div><button id="docClose" type="button" aria-label="Close Doc">×</button></header><div class="doc-detail-grid"><section><label for="docRecord">Record<select id="docRecord"></select></label><div id="docFacts"></div><div id="docActivity"></div></section><section><h3>Suggestions</h3><div id="docActionList"></div><p id="docApprovalStatus" role="status"></p><button id="docMorning" type="button">Morning brief</button><a href="/doc-chats" class="doc-chats-link">Doc Chats ↗</a><a href="/doc-activity" class="doc-chats-link" data-doc-activity-link>Doc Activity ↗</a></section></div>';
@@ -40,18 +40,7 @@ export function mountDocPresence({ document: root = document, window: win = wind
     for (const node of target.querySelectorAll('details')) if (expanded.includes(node.dataset.entry)) node.open = true;
     if (focus) ([...target.querySelectorAll('[data-doc-key]')].find(node => node.dataset.docKey === focus) || $('docClose')).focus();
   };
-  // Keep the same presence reachable in a native record popup. DOM state
-  // controls placement only; record identity still comes from the page read.
-  function placePresence() {
-    const hosts = [...root.querySelectorAll('dialog[open]:not(#docDetail):not(#docMorningBrief), aside#recordPanel:not([hidden])')];
-    const workspace = root.getElementById('accountWorkspaceControls');
-    const popup = hosts.at(-1);
-    const host = popup?.querySelector('[data-doc-presence-slot]') || popup || (workspace && !workspace.hidden ? workspace : root.body);
-    if (strip.parentElement !== host) {
-      if (host === workspace) host.querySelector('h3').after(strip);
-      else host.prepend(strip);
-    }
-  }
+  const placePresence = () => placeDocPresence(root, strip);
   const render = () => {
     placePresence();
     strip.dataset.state = snapshot.state;

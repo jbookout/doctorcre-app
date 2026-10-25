@@ -1,3 +1,4 @@
+import { isCallModeState } from './call-mode-availability.js';
 /**
  * Deal Room Call Mode: record Joe and Dell's pipeline call, then review it.
  *
@@ -181,7 +182,7 @@ export function createCallMode(deps) {
       body: JSON.stringify(body), targetAddressSpace: 'loopback',
     } : { method: 'GET', targetAddressSpace: 'loopback' };
     const payload = await requestCompanion(`${CALL_MODE_URL}/api/${path}`,options,{fetchImpl,timeoutMs});
-    if (!['idle','recording','transcribing','ready_to_extract','filed','state_unknown'].includes(payload.state)) {
+    if (!isCallModeState(payload)) {
       throw Object.assign(new Error('Local Call Mode response unavailable. Check local state before retrying.'),{outcomeUnknown:Boolean(body)});
     }
     return payload;

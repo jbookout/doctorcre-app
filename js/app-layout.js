@@ -1,5 +1,6 @@
+import { briefPreferences } from './brief-preferences.js';
 import { briefOwnerLabel, filterBriefOwners, mountBriefOwnerFilter } from './brief-owner-filter.js';
-import { validBrief } from './morning-brief-model.js';
+import { localDay, validBrief } from './morning-brief-model.js';
 import { TOUCH_LAYOUT } from './touch-layout.js';
 import { needsAttention, scopedDeals } from './deal-review-model.js';
 import { createClient } from './client.js';
@@ -176,7 +177,16 @@ export function mountAppLayout(root, host, pathname) {
     const dot = root.getElementById('appConnection'); dot.dataset.state = connected ? 'healthy' : 'unknown';
     dot.setAttribute('aria-label', connected ? 'Connection available' : 'Connection unavailable'); dot.title = dot.getAttribute('aria-label');
   };
+  const briefCue = brief => {
+    if (root.getElementById('docDetail')) return;
+    let storage; try { storage = win.localStorage; } catch {}
+    const unseen = !!brief && briefPreferences(storage, brief.sponsor).value.day !== localDay(new Date());
+    const doc = root.getElementById('docOpen');
+    doc?.toggleAttribute('data-brief-unseen', unseen);
+    if (unseen) doc?.setAttribute('aria-description', 'Morning brief ready'); else doc?.removeAttribute('aria-description');
+  };
   const unavailableRead = () => {
+    briefCue(null);
     todayItems = null; todayNeeds = null;
     resetFeed(); connection(false);
     renderToday(); render('#appWorkingList', unavailable);
@@ -187,14 +197,16 @@ export function mountAppLayout(root, host, pathname) {
     try { client ||= await createClient(boot.mode, { ...boot.options, docContext:false }); }
     catch { unavailableRead(); return; }
     const [board, triage] = await Promise.allSettled([
-      readWithDeadline(() => client.getBoard({ workspace:'all' }), { signal }),
-      readWithDeadline(async () => {
-        const brief = await client.morningBrief();
+      readWithDeadline(currentSignal => client.getBoard({ workspace:'all', signal:currentSignal }), { signal }),
+      readWithDeadline(async currentSignal => {
+        const brief = await client.morningBrief({ signal:currentSignal });
+        if (!currentSignal.aborted) briefCue(validBrief(brief) ? brief : null);
         if (validBrief(brief)) { owners.setViewer(brief.sponsor); return brief.sections.today.state === 'unavailable' ? null : {items:brief.sections.today.items}; }
         return client.todayTriage();
       }, { signal }),
     ]);
     if (signal?.aborted || win.navigator.onLine === false) return;
+    if (triage.status === 'rejected') briefCue(null);
     const connected = board.status === 'fulfilled' && validBoard(board.value);
     const triageValid = triage.status === 'fulfilled' && validTriage(triage.value);
     connection(connected && triageValid);
