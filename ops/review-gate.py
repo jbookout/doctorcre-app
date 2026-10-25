@@ -12,7 +12,8 @@ RISKY = ("*launchagents*", "*.plist", "install-*.sh", "*/install-*.sh",
 
 
 def approved(pr, files, comments):
-    risky = any(fnmatch.fnmatchcase(f.get(key, "").lower(), pattern)
+    risky = any(f.get("status") == "added" and f.get("filename", "").startswith(("scripts/", ".github/workflows/")) for f in files)
+    risky = risky or any(fnmatch.fnmatchcase(f.get(key, "").lower(), pattern)
                 for f in files for key in ("filename", "previous_filename") for pattern in RISKY)
     if len(files) == pr["changed_files"] and pr["additions"] - pr["deletions"] <= 150 and not risky:
         return True
