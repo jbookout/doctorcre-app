@@ -622,8 +622,8 @@
     "get-deal-room": {
       "producer": {
         "repository": "jbookout/carr-system",
-        "source_commit": "58af30ae50419c710a012cca4eff71b2ce981569",
-        "pull_request": "https://github.com/jbookout/carr-system/pull/2066"
+        "source_commit": "1df9b9936394164dd55e815f8a8bf69649508ccc",
+        "pull_request": "https://github.com/DoctorCRE/carr-system/pull/2192"
       },
       "response": {
         "schema_version": "deal-timeline.v1",
@@ -681,7 +681,39 @@
       "never_derive": [
         "rent_start",
         "option_window"
-      ]
+      ],
+      "checklist": {
+        "schema_version": "deal-checklist.v1",
+        "producer": {
+          "repository": "jbookout/carr-system",
+          "source_commit": "1df9b9936394164dd55e815f8a8bf69649508ccc"
+        },
+        "template_states": [
+          "current",
+          "source_changed",
+          "deal_type_unknown",
+          "unavailable"
+        ],
+        "statuses": [
+          "not_recorded",
+          "complete",
+          "due",
+          "overdue",
+          "upcoming"
+        ],
+        "phase_keys": [
+          "research",
+          "site_selection",
+          "negotiation",
+          "legal",
+          "closing",
+          "invoice"
+        ],
+        "source_of_truth": "CARR doctrine sections, with runtime content-hash validation; the app renders producer items and statuses.",
+        "due_basis": "Only open, sourced critical_date records. No legal or payment deadline is inferred.",
+        "first_slice": "Current lease, expiration, invoice and full commission receipt derive completion. Unlinked documents and lifecycle LOI records remain not_recorded.",
+        "unavailable": "Missing checklist storage returns no phases or due items; retain deal detail and its update form. Retry storage on each read."
+      }
     },
     "list-feature-switches": {
       "version": "1.0.0",
