@@ -101,6 +101,11 @@ for (const width of [1440, 390]) test(`Lead lanes start with five cards and expa
   assert.equal(await lane.locator('.lead-card').count(), 100);
   assert.equal(await page.locator('.stage-column[data-stage="qualified"] .lead-card').count(), 5);
   assert.equal(await collapse.evaluate(node => node === document.activeElement), true);
+  await lane.evaluate(node => scrollTo(0, node.getBoundingClientRect().top + scrollY));
+  assert.equal(await collapse.evaluate(node => {
+    const r = node.getBoundingClientRect();
+    return document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2) === node;
+  }), true, 'the heading control stays reachable below fixed navigation');
   const headTop = await lane.locator('.stage-head').evaluate(node => node.getBoundingClientRect().top);
   await lane.locator('.lead-stack').evaluate(node => node.scrollTop = 900);
   assert.equal(await lane.locator('.stage-head').evaluate(node => node.getBoundingClientRect().top), headTop);
