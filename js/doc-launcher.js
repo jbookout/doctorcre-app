@@ -36,7 +36,7 @@ export function mountDocLauncher({ document: root, window: win }) {
     const returnToDoc = strip.contains(opener);
     pending ||= import('./doc-presence.js').then(({ mountDocPresence }) => {
       if (disposed) return;
-      unbind(); strip.remove(); style.remove();
+      unbind(); strip.remove();
       presence = mountDocPresence({ document: root, window: win });
       for (const name of ['data-brief-unseen', 'aria-description']) {
         const value = strip.querySelector('#docOpen').getAttribute(name);

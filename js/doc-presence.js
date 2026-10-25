@@ -19,7 +19,9 @@ const display = value => value === null ? 'Unknown' : typeof value === 'boolean'
 export function mountDocPresence({ document: root = document, window: win = window, context = pageDocContext, client: supplied, intervalMs = 30_000 } = {}) {
   const main = root.getElementById('appMainSlot');
   if (!main || !context || root.getElementById('docPresence')) return null;
-  const style = root.createElement('link'); style.rel = 'stylesheet'; style.href = '/css/doc-presence.css'; root.head.append(style);
+  if (!root.querySelector('link[href="/css/doc-presence.css"]')) {
+    const style = root.createElement('link'); style.rel = 'stylesheet'; style.href = '/css/doc-presence.css'; root.head.append(style);
+  }
   const briefStyle = root.createElement('link'); briefStyle.rel = 'stylesheet'; briefStyle.href = '/css/morning-brief.css'; root.head.append(briefStyle);
   const strip = createDocLauncher(root);
   root.body.append(strip);

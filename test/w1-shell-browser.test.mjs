@@ -77,6 +77,25 @@ test('Home defers Doc and Call Mode until first use', async t => {
   assert.deepEqual(errors, []);
 });
 
+test('first Doc open retains the loaded stylesheet and touch targets', async t => {
+  const { page } = await open(t, { width: 320, minimal: true });
+  await page.waitForLoadState('networkidle');
+  let release;
+  const held = new Promise(resolve => { release = resolve; });
+  const source = await readFile(new URL('js/doc-presence.js', root), 'utf8');
+  const cold = source.replace("style.href = '/css/doc-presence.css'", "style.href = '/css/doc-presence.css?cold'");
+  assert.notEqual(cold, source, 'the cold stylesheet fixture must bypass the parsed-style cache');
+  await page.route('**/js/doc-presence.js', route => route.fulfill({ contentType: 'text/javascript', body: cold }));
+  await page.route('**/css/doc-presence.css?cold', async route => { await held; await route.fallback(); });
+  try {
+    await page.locator('#selfAvatar').click();
+    await page.locator('#docOpen').click();
+    await page.locator('#docDetail[open]').waitFor();
+    const targets = await page.locator('.doc-chats-link').first().evaluate(node => [...node.getClientRects()].map(rect => ({ width: rect.width, height: rect.height })));
+    assert.ok(targets.every(box => box.width >= 44 && box.height >= 44), `Doc Chats touch targets ${JSON.stringify(targets)}`);
+  } finally { release(); }
+});
+
 test('first Doc open restores desktop keyboard focus after lazy initialization', async t => {
   const { page, errors } = await open(t, { minimal: true });
   await page.locator('#docOpen').click();
