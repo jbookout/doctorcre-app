@@ -5,7 +5,7 @@ import { createHash } from 'node:crypto';
 import { gzipSync } from 'node:zlib';
 import { fileURLToPath } from 'node:url';
 import { join } from 'node:path';
-import { profile, screens, tasks, runTaskScenario } from './performance-scenarios.mjs';
+import { profile, screens, tasks, runTaskScenario, applyPhoneProfile } from './performance-scenarios.mjs';
 import { startFixtureServer } from './fixture-server.mjs';
 import { directoryFixture } from '../test/fixtures/vendor-directory.synthetic.mjs';
 
@@ -45,12 +45,7 @@ try {
       // Reuse the directory journey's populated fixture; no CARR endpoint is used.
       if (screen.id === 'vendors') await page.route('**/api/v1/business/**', route =>
         route.fulfill({ json: directoryFixture(route.request().url()) }));
-      const cdp = await context.newCDPSession(page);
-      await cdp.send('Emulation.setCPUThrottlingRate', { rate: profile.cpuSlowdown });
-      await cdp.send('Network.enable');
-      await cdp.send('Network.setCacheDisabled', { cacheDisabled: true });
-      await cdp.send('Network.emulateNetworkConditions', { offline: false, latency: profile.latencyMs,
-        downloadThroughput: profile.downloadBytesPerSecond, uploadThroughput: profile.uploadBytesPerSecond });
+      await applyPhoneProfile(context, page);
       const js = new Map();
       const reads = [];
       const failures = [];
@@ -116,13 +111,8 @@ try {
       try {
         const page = await context.newPage();
         page.setDefaultTimeout(30000);
-        const cdp = await context.newCDPSession(page);
-        await cdp.send('Emulation.setCPUThrottlingRate', { rate: profile.cpuSlowdown });
-        await cdp.send('Network.enable');
-        await cdp.send('Network.setCacheDisabled', { cacheDisabled: true });
-        await cdp.send('Network.emulateNetworkConditions', { offline: false, latency: profile.latencyMs,
-          downloadThroughput: profile.downloadBytesPerSecond, uploadThroughput: profile.uploadBytesPerSecond });
-        samples.push({ ...await runTaskScenario({ page, context, origin: url, task }), trace });
+        const cdp = await applyPhoneProfile(context, page);
+        samples.push({ ...await runTaskScenario({ page, context, origin: url, task, cdp }), trace });
       } finally {
         await context.tracing.stop({ path: join(output, trace) });
         await context.close();

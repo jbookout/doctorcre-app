@@ -57,7 +57,14 @@ test('phone task guard exercises useful outcomes against the built fixture', asy
       serviceWorkers: task.id === 'task-tour-offline' ? 'allow' : 'block' });
     try {
       const page = await context.newPage();
-      const result = await scenarios.runTaskScenario({ page, context, origin: server.url, task });
+      const cdp = task.id === 'task-tour-offline' ? await scenarios.applyPhoneProfile(context, page) : undefined;
+      const result = await scenarios.runTaskScenario({ page, context, origin: server.url, task, cdp }).catch(async error => {
+        if (task.id === 'task-tour-offline') t.diagnostic(JSON.stringify(await page.evaluate(() => ({
+          online: navigator.onLine, status: document.querySelector('#day-status')?.textContent,
+          stops: document.querySelectorAll('.day-stop').length,
+        }))));
+        throw error;
+      });
       assert.ok(result.lcpMs > 0, 'retain LCP alongside useful task readiness');
       assert.ok(result.usefulMs > 0);
       assert.ok(Number.isInteger(result.requestCount) && result.requestCount > 0);
@@ -67,6 +74,8 @@ test('phone task guard exercises useful outcomes against the built fixture', asy
         assert.equal(result.reads.filter(name => name === 'getDeal').length, 40);
         assert.ok(result.reads.includes('notificationFeed'), 'count the shared shell reads as well as agenda reads');
       }
+      if (task.id === 'task-leads') assert.equal(result.reads.filter(name => name === 'lead-board').length, 4);
+      if (task.id === 'task-tour-offline') assert.ok(result.resources.some(resource => resource.serviceWorker && resource.bytes > 0), 'include worker-owned shell preparation bytes');
       assert.deepEqual(result.errors, []);
     } finally { await context.close(); }
   });

@@ -2,6 +2,17 @@
 export const profile = Object.freeze({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 1,
   cpuSlowdown: 4, latencyMs: 150, downloadBytesPerSecond: 200000, uploadBytesPerSecond: 93750,
   samples: 3, aggregation: 'median', interaction: 'pointerdown timestamp to verified state plus two animation frames' });
+
+export async function applyPhoneProfile(context, page) {
+  const cdp = await context.newCDPSession(page);
+  await cdp.send('Emulation.setCPUThrottlingRate', { rate: profile.cpuSlowdown });
+  await cdp.send('Network.enable');
+  await cdp.send('Network.setCacheDisabled', { cacheDisabled: true });
+  await cdp.send('Network.emulateNetworkConditions', { offline: false, latency: profile.latencyMs,
+    downloadThroughput: profile.downloadBytesPerSecond, uploadThroughput: profile.uploadBytesPerSecond });
+  return cdp;
+}
+
 export const screens = [
   { id: 'home', route: '/', ready: '#dealFlags .home-flag', tap: '[data-scope="mine"]', complete: () => document.querySelectorAll('#dealFlags .home-flag').length === 2 },
   { id: 'deals', route: '/deals', ready: '.kanban-card[data-id="d23"]', tap: '.kanban-card[data-id="d23"]', complete: () => document.querySelector('#detailUpdateForm')?.getClientRects().length > 0 },
@@ -60,14 +71,17 @@ export const tasks = [
     } },
   { id: 'task-tour-offline', route: '/tours/day.html?tour=11111111-1111-4111-8111-111111111111', fixture: 'tours', conditions: 'saved same-tab itinerary; service worker enabled; HTTP cache cleared; offline reload',
     ready: '#day-current .property-open',
-    async verify(page, context) {
+    async verify(page, context, cdp) {
       await page.waitForFunction(() => document.querySelector('#day-offline').textContent === 'Available offline' && navigator.serviceWorker.controller);
-      const cdp = await context.newCDPSession(page);
+      await page.waitForLoadState('networkidle');
       await cdp.send('Network.clearBrowserCache');
       await page.unroute('**/api/**');
       await page.unroute('**/auth/session');
       await page.unroute('**/mcp');
       await context.setOffline(true);
+      await cdp.send('Network.enable');
+      await cdp.send('Network.emulateNetworkConditions', { offline: true, latency: 0,
+        downloadThroughput: 0, uploadThroughput: 0 });
       const started = performance.now();
       await page.reload({ waitUntil: 'domcontentloaded' });
       await page.waitForFunction(() => document.querySelector('#day-status')?.textContent.includes('Offline') && document.querySelectorAll('.day-stop').length === 2);
@@ -77,54 +91,68 @@ export const tasks = [
     } },
 ];
 
-export async function runTaskScenario({ page, context, origin, task }) {
-  const reads = [], bodies = [], errors = [];
+export async function runTaskScenario({ page, context, origin, task, cdp }) {
+  const reads = [], bodies = [], resources = [], errors = [];
   page.on('pageerror', error => errors.push(error.message));
-  page.on('request', request => {
+  const onRequest = request => {
     const url = new URL(request.url());
     if (url.origin === origin && (url.pathname.startsWith('/api/') || ['/mcp', '/auth/session', '/pipeline/changes'].includes(url.pathname))) {
       reads.push(url.pathname === '/mcp' ? request.postDataJSON()?.params?.name || '/mcp' : url.pathname);
     }
-  });
-  page.on('response', response => {
-    if (new URL(response.url()).origin === origin && response.ok()) bodies.push(response.body().then(body => body.length));
-  });
+  };
+  const onResponse = response => {
+    if (new URL(response.url()).origin !== origin) return;
+    if (!response.ok()) {
+      if (['document', 'script', 'stylesheet', 'font', 'fetch', 'xhr'].includes(response.request().resourceType())) {
+        errors.push(`Failed resource ${new URL(response.url()).pathname}: ${response.status()}`);
+      }
+      return;
+    }
+    bodies.push(response.body().then(body => {
+      resources.push({ path: new URL(response.url()).pathname, bytes: body.length,
+        serviceWorker: response.request().serviceWorker() !== null });
+      return body.length;
+    }, error => {
+      errors.push(`Cannot measure ${new URL(response.url()).pathname}: ${error.message}`);
+      return 0;
+    }));
+  };
+  page.on('request', onRequest);
+  context.on('response', onResponse);
   await context.route('**/*', route => new URL(route.request().url()).origin === origin ? route.continue() : route.abort());
   await page.addInitScript(() => {
-    window.__taskReads = [];
     window.__taskLcp = null;
     new PerformanceObserver(list => {
       window.__taskLcp = list.getEntries().at(-1).startTime;
     }).observe({ type: 'largest-contentful-paint', buffered: true });
   });
-  if (task.fixture === 'agenda' || task.fixture === 'deals') {
-    await page.route('**/js/fixture-client.js', async route => {
-      const response = await route.fetch();
-      let source = (await response.text()).replace('export async function createFixtureClient', 'async function originalFixtureClient');
-      source += `\nexport async function createFixtureClient(options) {
-        const client = await originalFixtureClient(options);
-        for (const name of Object.keys(client)) {
-          if (typeof client[name] !== 'function') continue;
-          const read = client[name];
-          client[name] = async function(...args) {
-            window.__taskReads.push(name);
-            if (name === 'getDeal') await new Promise(resolve => setTimeout(resolve, 75));
-            const result = await read.apply(this, args);
-            ${task.fixture === 'agenda' ? "if (name === 'getDeal') return { ...result, critical_dates: [], next_actions: [{ id: 'synthetic-task-' + args[0], description: 'Synthetic follow-up', status: 'open', owner: 'joe', due_on: null }] };" : ''}
-            return result;
-          };
-        }
-        return client;
-      }`;
-      await route.fulfill({ response, body: source });
-    });
-    if (task.fixture === 'agenda') await page.route('**/data/board-seed.json', async route => {
-      const response = await route.fetch(), seed = await response.json();
-      const base = seed.deals.find(deal => deal.id === 'd23');
-      seed.deals = Array.from({ length: 40 }, (_, index) => ({ ...base, id: `synthetic-deal-${index}`, name: `Synthetic practice ${index + 1}`, owner: 'joe', operating_state: 'active' }));
-      await route.fulfill({ response, json: seed });
-    });
-  }
+  await page.exposeFunction('__recordTaskCall', name => reads.push(name));
+  await page.route('**/js/fixture-client.js', async route => {
+    const response = await route.fetch();
+    let source = (await response.text()).replace('export async function createFixtureClient', 'async function originalFixtureClient');
+    source += `\nexport async function createFixtureClient(options) {
+      const client = await originalFixtureClient(options);
+      for (const name of Object.keys(client)) {
+        if (typeof client[name] !== 'function') continue;
+        const read = client[name];
+        client[name] = async function(...args) {
+          await window.__recordTaskCall(name);
+          if (name === 'getDeal') await new Promise(resolve => setTimeout(resolve, 75));
+          const result = await read.apply(this, args);
+          ${task.fixture === 'agenda' ? "if (name === 'getDeal') return { ...result, critical_dates: [], next_actions: [{ id: 'synthetic-task-' + args[0], description: 'Synthetic follow-up', status: 'open', owner: 'joe', due_on: null }] };" : ''}
+          return result;
+        };
+      }
+      return client;
+    }`;
+    await route.fulfill({ response, body: source });
+  });
+  if (task.fixture === 'agenda') await page.route('**/data/board-seed.json', async route => {
+    const response = await route.fetch(), seed = await response.json();
+    const base = seed.deals.find(deal => deal.id === 'd23');
+    seed.deals = Array.from({ length: 40 }, (_, index) => ({ ...base, id: `synthetic-deal-${index}`, name: `Synthetic practice ${index + 1}`, owner: 'joe', operating_state: 'active' }));
+    await route.fulfill({ response, json: seed });
+  });
   if (task.fixture === 'leads' || task.fixture === 'tours') {
     const [{ workspace, lead, detail: leadDetail }, { detail: tourDetail }] = await Promise.all([
       import('../test/leads-workspace-fixture.mjs'), import('../test/fixtures/tour-day.synthetic.mjs'),
@@ -155,13 +183,16 @@ export async function runTaskScenario({ page, context, origin, task }) {
   const started = performance.now();
   await page.goto(origin + task.route, { waitUntil: 'domcontentloaded' });
   await page.locator(task.ready).first().waitFor({ state: 'visible' });
-  const taskMs = await task.verify(page, context);
+  const taskMs = await task.verify(page, context, cdp);
   await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
   const usefulMs = taskMs ?? Math.ceil(performance.now() - started);
   await page.waitForFunction(() => window.__taskLcp > 0);
   const lcpMs = Math.ceil(await page.evaluate(() => window.__taskLcp));
-  reads.push(...await page.evaluate(() => window.__taskReads || []));
+  page.off('request', onRequest);
+  context.off('response', onResponse);
+  const completedReads = reads.slice();
   const criticalBytes = (await Promise.all(bodies)).reduce((total, bytes) => total + bytes, 0);
   if (errors.length) throw Error(`Task errors: ${errors.join('; ')}`);
-  return { lcpMs, usefulMs, requestCount: reads.length, criticalBytes, reads, errors, conditions: task.conditions };
+  return { lcpMs, usefulMs, requestCount: completedReads.length, criticalBytes, reads: completedReads,
+    resources, errors, conditions: task.conditions };
 }
