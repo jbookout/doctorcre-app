@@ -1024,7 +1024,7 @@ async function openWithCorrespondence(t) {
       return found;
     };
   }, {identity,found,readiness,meeting});
-  await view.page.locator('.kanban-column [data-id="d14"]').click();
+  await view.page.locator('.kanban-column [data-id="d14"] .card-open').click();
   await view.page.locator('#panelEvidenceSection > summary').click();
   await view.page.locator('#panelEvidence [data-kind=thread]').waitFor();
   return view;
