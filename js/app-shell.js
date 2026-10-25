@@ -89,6 +89,12 @@ function mountAccount(root, host, pathname, beforeSignOutReplace = () => {}) {
     }
   });
   panel.querySelector("#accountTheme").onclick = () => root.querySelector('[data-pref="theme"]').click();
+  const help = panel.querySelector("#accountHelp");
+  if (help) help.onclick = async () => {
+    close();
+    const { openWalkthrough } = await import("./app-walkthrough.js");
+    if (!boundary?.revoked) openWalkthrough(root);
+  };
   root.addEventListener("click", (event) => { if (!panel.contains(event.target) && !avatar.contains(event.target)) close(); });
   root.addEventListener("keydown", (event) => { if (event.key === "Escape" && !panel.hidden) { close(); avatar.focus(); } });
   const assist = host.querySelector("#colorAssistButton");
