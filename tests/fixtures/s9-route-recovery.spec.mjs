@@ -51,9 +51,11 @@ for (const theme of ['light', 'dark']) test(`Leads mobile keeps stage context an
   const stage = page.getByRole('combobox', { name: 'Board stage' });
   await expect(stage).toBeVisible();
   await expect(stage).toHaveValue('');
-  await expect(page.locator('.lead-card:visible')).toHaveCount(48);
+  await expect(page.locator('.lead-card:visible')).toHaveCount(10);
+  await expect(page.locator('#filterSummary')).toHaveText('48 matching leads');
   await expect(page.locator('#mapLeadMembers [data-lead-id]')).toHaveCount(48);
   await stage.selectOption('new');
+  await page.getByRole('button', { name: 'Show all 43 New leads', exact: true }).click();
   await expect(page.locator('.lead-card:visible')).toHaveCount(43);
   await expect(page.locator('#mapLeadMembers [data-lead-id]')).toHaveCount(43);
   await expect(page.locator('.stage-column:visible')).toHaveCount(1);
