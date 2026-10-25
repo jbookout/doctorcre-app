@@ -1,3 +1,4 @@
+import { CHROMIUM_SAFETY_ARGS } from '../scripts/chromium-safety-args.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
@@ -6,7 +7,7 @@ import { scope, NOW, projection } from './fixtures/assurance-health.mjs';
 import { writeSnapshot } from '../js/status-model.js';
 
 async function openStatus(t, { width = 390, answer = projection(), refused = false, query = true, timezoneId = 'UTC' } = {}) {
-  const browser = await chromium.launch(); t.after(() => browser.close());
+  const browser = await chromium.launch({ args: [...CHROMIUM_SAFETY_ARGS] }); t.after(() => browser.close());
   const page = await browser.newPage({ viewport: { width, height: 1024 }, timezoneId });
   const calls = []; const errors = []; page.on('pageerror', error => errors.push(error.message));
   await page.clock.install({ time: NOW });

@@ -1,8 +1,9 @@
+import { CHROMIUM_SAFETY_ARGS } from '../scripts/chromium-safety-args.mjs';
 import test from 'node:test';import assert from 'node:assert/strict';import {mkdir} from 'node:fs/promises';import { chromium } from 'playwright';
 import {workspace,id} from './leads-workspace-fixture.mjs';
 import {routeLeads} from './leads-browser-fixture.mjs';
 for(const width of [1440,390]) test(`Leads rendered board, map and wide popup fit ${width}px with automatic freshness`,async t=>{
- const browser=await chromium.launch({args:['--use-angle=swiftshader','--enable-unsafe-swiftshader']});t.after(()=>browser.close());const page=await browser.newPage({viewport:{width,height:960},reducedMotion:'reduce'});
+ const browser=await chromium.launch({args:[...CHROMIUM_SAFETY_ARGS, '--use-angle=swiftshader','--enable-unsafe-swiftshader']});t.after(()=>browser.close());const page=await browser.newPage({viewport:{width,height:960},reducedMotion:'reduce'});
  await page.clock.install({time:new Date('2026-10-01T16:00:00Z')});const errors=[],writes=[];let board=workspace(),reads=0;page.on('pageerror',e=>errors.push(e.message));
  await routeLeads(page,{getBoard:()=>board,onRead:()=>reads++,onWrite:p=>writes.push(p)});
  await page.goto('http://localhost/leads');await page.locator('.lead-card').first().waitFor({state:'attached'}).catch(async e=>{console.log(await page.locator('#leadBoardError').textContent().catch(()=>'page unresponsive'),reads,errors);throw e});await page.getByRole('button', { name: 'Show territory', exact: true }).click();await page.locator('.market-marker').first().waitFor({state:'attached'});
