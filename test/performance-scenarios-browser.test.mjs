@@ -74,6 +74,8 @@ test('phone task guard exercises useful outcomes against the built fixture', asy
       if (task.id === 'task-agenda') {
         assert.equal(result.reads.filter(name => name === 'getDeal').length, 40);
         assert.ok(result.reads.includes('notificationFeed'), 'count the shared shell reads as well as agenda reads');
+        assert.ok(result.reads.includes('getLeadBoard'), 'count the lead board read assigned during home boot');
+        assert.ok(result.reads.includes('readLeaseRadar'), 'count the lease radar read assigned during home boot');
       }
       if (task.id === 'task-leads') assert.equal(result.reads.filter(name => name === 'lead-board').length, 4);
       if (task.id === 'task-tour-offline') assert.ok(result.resources.some(resource => resource.serviceWorker && resource.bytes > 0), 'include worker-owned shell preparation bytes');
