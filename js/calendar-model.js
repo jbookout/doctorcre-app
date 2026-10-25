@@ -1,3 +1,4 @@
+import { businessDay } from './business-date.js';
 // V5-UX-B04 — the critical-dates Calendar: every decision, no DOM.
 //
 // WHERE THE DATES COME FROM. A critical_date is a deal's own row (LOI expiry,
@@ -16,8 +17,7 @@
 //   - A 401/403 on any read ends the whole read with nothing shown.
 //
 // CALENDAR ARITHMETIC IS DONE ON YYYY-MM-DD STRINGS, through UTC, so a date can
-// never slide across midnight on a viewer's clock. Only "today" is local: it is
-// the viewer's own calendar day.
+// never slide across midnight on a viewer's clock. "Today" uses America/Chicago.
 
 export const CALENDAR_VIEWS = Object.freeze(["month", "week"]);
 export const READ_CONCURRENCY = 4;
@@ -71,11 +71,7 @@ export function isCalendarDay(value) {
   return typeof value === "string" && DAY_PATTERN.test(value) && toDay(value) === value;
 }
 
-/** The viewer's own calendar day. */
-export function localToday(now = new Date()) {
-  const pad = (value) => String(value).padStart(2, "0");
-  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
-}
+export const localToday = businessDay;
 
 export function addDays(day, count) {
   const date = asUtc(day);
