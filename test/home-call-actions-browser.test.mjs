@@ -35,27 +35,30 @@ for (const actionCount of [5, 30]) for (const width of [390, 1280]) for (const t
     const identity = await page.request.get(`${origin}/api/test/identity`);
     assert.equal((await identity.json()).viewer, viewer);
     const errors = [], detailReads = [];
-    let undatedOnly = false, refreshed = false;
+    let undatedOnly = false, refreshed = false, agendaReads = 0;
     const requests = [];
     page.on('request', request => requests.push(request.url()));
     page.on('pageerror', error => errors.push(error.message));
     await page.route('**/mcp', async route => {
       const rpc = route.request().postDataJSON();
-      if (rpc.params.name !== 'get-deal-room') return route.continue();
-      detailReads.push(rpc.params.arguments.deal);
+      if (rpc.params.name === 'get-deal-room') detailReads.push(rpc.params.arguments.deal);
+      if (rpc.params.name !== 'read-home-agenda') return route.continue();
+      agendaReads++;
       const response = await route.fetch();
       const envelope = await response.json();
-      const detail = JSON.parse(envelope.result.content[0].text);
+      const agenda = JSON.parse(envelope.result.content[0].text);
       const action = (id, due_on, owner = 'joe') => ({ id, description: `Demo call ${id}`, owner, due_on, status: 'open' });
-      detail.next_actions = detail.deal_id === 'qa-deal-1' ? [
-        action('undated', null, 'dell'), action('future', '2026-10-02'),
-        action('today', '2026-10-01'), action('overdue', '2026-09-30'),
-        action('also-undated', null), { ...action('done', null), status: 'done' },
-      ] : [];
-      if (actionCount === 30 && detail.deal_id === 'qa-deal-1') detail.next_actions.push(...Array.from({ length: 25 }, (_, i) => action(`extra-${String(i + 1).padStart(2, '0')}`, '2026-10-03')));
-      if (refreshed && actionCount === 30 && detail.deal_id === 'qa-deal-1') detail.next_actions.at(-1).description = 'Demo updated call';
-      if (undatedOnly) detail.next_actions = detail.next_actions.filter(row => row.due_on === null);
-      envelope.result.content[0].text = JSON.stringify(detail);
+      for (const detail of agenda.deals) {
+        detail.next_actions = detail.id === 'qa-deal-1' ? [
+          action('undated', null, 'dell'), action('future', '2026-10-02'),
+          action('today', '2026-10-01'), action('overdue', '2026-09-30'),
+          action('also-undated', null), { ...action('done', null), status: 'done' },
+        ] : [];
+        if (actionCount === 30 && detail.id === 'qa-deal-1') detail.next_actions.push(...Array.from({ length: 25 }, (_, i) => action(`extra-${String(i + 1).padStart(2, '0')}`, '2026-10-03')));
+        if (refreshed && actionCount === 30 && detail.id === 'qa-deal-1') detail.next_actions.at(-1).description = 'Demo updated call';
+        if (undatedOnly) detail.next_actions = detail.next_actions.filter(row => row.due_on === null);
+      }
+      envelope.result.content[0].text = JSON.stringify(agenda);
       await route.fulfill({ response, json: envelope });
     });
     await page.goto(`${origin}/?mode=live`);
@@ -106,8 +109,8 @@ for (const actionCount of [5, 30]) for (const width of [390, 1280]) for (const t
     assert.doesNotMatch(await page.locator('body').innerText(), /Nothing needs you|Invalid Date|Demo call done/i);
     assert.equal(await page.locator('html').getAttribute('data-theme'), theme);
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
-    assert.equal(detailReads.length, actionCount === 5 ? 16 : 32);
-    assert.equal(new Set(detailReads).size, 16, 'reuse each existing deal read once');
+    assert.equal(detailReads.length, 0, 'Home never opens complete records');
+    assert.equal(agendaReads, actionCount === 5 ? 1 : 2, 'one agenda read per refresh');
     await page.getByRole('button', { name: 'Just me', exact: true }).click();
     assert.equal(await page.locator('#homeCalendar').isVisible(), true);
     if (viewer !== 'joe') assert.match(await page.locator('#homeCalendar').textContent(), /No calendar dates or tasks/);
