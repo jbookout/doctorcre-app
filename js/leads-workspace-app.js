@@ -23,7 +23,7 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
   const engagement = engagementWriterFor(client, engagementStorage(win));
   const engagementChecks = new Set();
   const state = { board: null, readFailed: false, actor: null, epoch: 0, detailEpoch: 0, reviewEpoch: 0, filters: { search: "", owner: "", stage: "", market: "" },
-    historyRequest: null, historyError: null, selectedId: null, detail: null, detailId: null, resumeReview: null, commandFeedback: null, connectionFeedback: null, proposal: null, reviewTarget: null, pending: null, writing: false, identityReady: false, trigger: null, drag: null, map: null };
+    historyRequest: null, historyError: null, selectedId: null, detail: null, detailId: null, resumeDetail: null, resumeReview: null, commandFeedback: null, connectionFeedback: null, proposal: null, reviewTarget: null, pending: null, writing: false, identityReady: false, trigger: null, drag: null, map: null };
   const leadById = id => state.board?.leads.find(lead => lead.id === id && eligibleLead(lead));
   const reviewComplete = (lead, target, undoEventId) => (undoEventId ? lead.stage : normalizedStage(lead)) === target;
   function captureReviewDraft() {
@@ -156,7 +156,7 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
   function clearPrivateView() {
     pageDocContext?.clear();
     state.historyRequest = null; state.historyError = null;
-    state.commandFeedback = null; state.connectionFeedback = null; state.board = null; state.detailId = null; state.detail = null; state.proposal = null; state.reviewTarget = null; state.resumeReview = null; state.pending = null;
+    state.commandFeedback = null; state.connectionFeedback = null; state.board = null; state.detailId = null; state.detail = null; state.proposal = null; state.reviewTarget = null; state.resumeReview = null; state.resumeDetail = null; state.pending = null;
     state.filters = { search: "", owner: "", stage: "", market: "" }; state.trigger = null; state.drag = null;
     $("leadSearch").value = ""; $("detailTitle").textContent = ""; $("stageTitle").textContent = "";
     $("stageError").textContent = ""; $("moveAnnouncement").textContent = ""; $("saveStage").disabled = true;
@@ -215,7 +215,10 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
         if (!current || reviewComplete(current, target, undoEventId)) $("stageDialog").close();
         else await openReview(id, target, { updating: true, undoEventId });
       }
-      if (state.detailId && $("leadDetail").open) {
+      const resumeDetail = state.resumeDetail;
+      if (resumeDetail && (resumeDetail.actor !== state.actor || !leadById(resumeDetail.id))) state.resumeDetail = null;
+      if (state.resumeDetail) await readDetail(resumeDetail.id, true, resumeDetail);
+      else if (state.detailId && $("leadDetail").open) {
         if (leadById(state.detailId)) await readDetail(state.detailId, false);
         else if (next.leads.some(lead => lead.id === state.detailId)) { state.detail = null; $("leadDetail").close(); }
         else { state.detail = null; ++state.detailEpoch; $("detailTitle").textContent = "Lead unavailable"; $("detailBody").innerHTML = '<p class="empty">Unavailable</p>'; }
@@ -247,12 +250,12 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
       ${state.historyError?.kind === kind ? '<p role="status">Older entries unavailable. Try again.</p>' : ""}
       ${page.has_more ? `<button type="button" id="load-${kind}" data-load-history="${kind}"${state.historyRequest ? " disabled" : ""}>${state.historyRequest?.kind === kind ? "Loading…" : kind === "correspondence" ? "Load older correspondence" : "Load older stage changes"}</button>` : ""}`;
   }
-  function paintDetail(detail) {
+  function paintDetail(detail, intent = null) {
     const active = doc.activeElement;
     const focusedEntry = active?.matches("summary") ? active.closest("#detailBody details")?.dataset.entryKey : null;
     const focusedId = $("detailBody").contains(active) ? active.id : null;
-    const expanded = new Set([...$("detailBody").querySelectorAll("details[open]")].map(node => node.dataset.entryKey));
-    const scroll = $("leadDetail").scrollTop;
+    const expanded = new Set(intent?.expanded ?? [...$("detailBody").querySelectorAll("details[open]")].map(node => node.dataset.entryKey));
+    const scroll = intent?.scroll ?? $("leadDetail").scrollTop;
     $("detailTitle").textContent = leadTitle(detail);
     const contact = (kind, value) => value ? `<a href="${kind === "Email" ? "mailto:" : "tel:"}${esc(value)}">${esc(value)}</a>` : "—";
     $("detailBody").innerHTML = `<section class="detail-summary"><div><h3>Lead score</h3><div class="detail-score">${score(detail)}<span>/ 100</span></div></div><label>Stage<select id="detailStage">${FILTER_STAGES.filter(([key]) => key !== "do_not_contact").map(([key,text]) => `<option value="${key}"${normalizedStage(detail) === key ? " selected" : ""}>${text}</option>`).join("")}</select></label></section>
@@ -310,19 +313,19 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
       }
     }
   }
-  async function readDetail(id, open = true) {
+  async function readDetail(id, open = true, intent = null) {
     const lead = leadById(id), epoch = ++state.detailEpoch, actor = state.actor;
     state.historyRequest = null; state.historyError = null;
     if (!lead || !state.identityReady) return;
-    if (open) { state.selectedId = id; render(); selectDocRecord("lead", id); state.detailId = id; state.detail = null; state.trigger = focusIdentity(doc.activeElement); $("detailTitle").textContent = leadTitle(lead); $("detailBody").innerHTML = '<p class="empty">Updating…</p>'; $("leadDetail").showModal(); }
+    if (open) { state.resumeDetail = intent; state.selectedId = id; render(); selectDocRecord("lead", id); state.detailId = id; state.detail = null; state.trigger = focusIdentity(doc.activeElement); $("detailTitle").textContent = leadTitle(lead); $("detailBody").innerHTML = '<p class="empty">Updating…</p>'; $("leadDetail").showModal(); }
     try {
       const response = await client.getLeadDetail(lead);
       if (epoch !== state.detailEpoch || actor !== state.actor) return;
-      if (!leadById(id) || !response.detail || response.detail.id !== id || !eligibleLead(response.detail)) { $("leadDetail").close(); state.detail = null; return; }
+      if (!leadById(id) || !response.detail || response.detail.id !== id || !eligibleLead(response.detail)) { state.resumeDetail = null; $("leadDetail").close(); state.detail = null; return; }
       validateLeadDetail(response.detail, id);
       selectDocRecord("lead", id);
       for (const kind of ["correspondence", "stage_history"]) {
-        const retainedCount = open ? 0 : state.detail?.[kind]?.length || 0;
+        const retainedCount = intent?.historyCounts?.[kind] ?? (open ? 0 : state.detail?.[kind]?.length || 0);
         while (response.detail[kind].length < retainedCount && response.detail[`${kind}_page`]?.has_more) {
           const older = await client.getLeadDetail(lead, { [`${kind}_cursor`]: response.detail[`${kind}_page`].next_cursor });
           if (epoch !== state.detailEpoch || actor !== state.actor) return;
@@ -332,7 +335,8 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
         }
       }
       const unchanged = JSON.stringify(state.detail) === JSON.stringify(response.detail);
-      state.detail = response.detail; if (!unchanged) paintDetail(response.detail);
+      state.detail = response.detail; if (!unchanged) paintDetail(response.detail, intent);
+      state.resumeDetail = null;
     } catch (error) { if (epoch !== state.detailEpoch || authorizationFailure(error)) return; state.detail = null; $("detailBody").innerHTML = '<p class="empty">Connection interrupted · reconnecting…</p>'; }
   }
   async function openReview(id, target, { updating = false, undoEventId = null, draft = null } = {}) {
@@ -509,7 +513,7 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
   $("closeStage").addEventListener("click", () => $("stageDialog").close());
   for (const id of ["leadDetail", "stageDialog"]) onDialogClosed($(id), () => {
     if (id === "stageDialog") { ++state.reviewEpoch; state.reviewTarget = null; state.proposal = null; }
-    else { ++state.detailEpoch; state.detailId = null; state.detail = null; }
+    else { ++state.detailEpoch; state.detailId = null; state.detail = null; if (state.identityReady) state.resumeDetail = null; }
     paintCommandFeedback();
     if (!$("leadDetail").open && !$("stageDialog").open) {
       selectDocRecord("lead", null);
@@ -612,6 +616,11 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
   function suspendPrivateView() {
     pageDocContext?.clear();
     if (state.reviewTarget && $("stageDialog").open) state.resumeReview = captureReviewDraft();
+    if (state.detailId && $("leadDetail").open && !state.resumeDetail) state.resumeDetail = {
+      historyCounts: Object.fromEntries(["correspondence", "stage_history"].map(kind => [kind, state.detail?.[kind]?.length || 0])),
+      actor: state.actor, id: state.detailId, scroll: $("leadDetail").scrollTop,
+      expanded: [...$("detailBody").querySelectorAll("details[open]")].map(node => node.dataset.entryKey),
+    };
     stopTouch(); ++state.epoch; ++state.detailEpoch; ++state.reviewEpoch;
     state.identityReady = false; state.board = null; state.detail = null; state.detailId = null;
     state.proposal = null; state.reviewTarget = null; state.trigger = null; state.drag = null;

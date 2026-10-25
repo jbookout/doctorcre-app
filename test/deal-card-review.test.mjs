@@ -45,6 +45,8 @@ test('every deal snapshot opens with an empty Update above a concise overview an
   assert.equal(await page.locator('.deal-note').first().locator('time').getAttribute('datetime'),'2026-10-02T17:45:00Z');
   assert.equal(await page.locator('.timeline-chart').count(),0);
   assert.equal(await page.locator('[aria-label="Deal phases and timeline"]').count(),1);
+  await page.locator('#panelEvidenceSection > summary').click();
+  await page.locator('[data-evidence-retry]').first().waitFor();
   assert.match(await page.locator('#recordPanel').textContent(),/Threads unavailable/);
   assert.equal(await page.locator('[data-evidence-retry]').count()>0,true);
   assert.equal(await page.locator('#recordPanel').evaluate(e=>e.scrollWidth<=e.clientWidth),true);
@@ -113,7 +115,7 @@ test('deal review prioritizes cards, page tabs and Add deal in both themes and w
   const rails=await page.locator('.phase-rail li').evaluateAll(nodes=>nodes.map(n=>Math.round(n.getBoundingClientRect().top)));
   assert.equal(new Set(rails).size,width===390?2:1,'phase dates fit without horizontal scrolling');
   assert.ok((await page.locator('.deal-timeline').boundingBox()).height<(width===390?330:200),'phase timeline stays compact');
-  assert.equal(await page.locator('#panelContextOpen').isVisible(),false,'a name without a relationship does not advertise context');
+  assert.equal(await page.locator('#panelContextOpen').isVisible(),true,'linked context loads only when opened');
   assert.equal(await page.locator('#recordPanel').evaluate(n=>n.scrollWidth<=n.clientWidth),true);
   assert.deepEqual(errors,[]);
   await evidence('detail');
@@ -121,14 +123,17 @@ test('deal review prioritizes cards, page tabs and Add deal in both themes and w
 });
 
 
-test('phone timeline has one rail and unlinked snapshots hide context',async t=>{
+test('phone timeline has one rail and unlinked context opens an explicit empty state',async t=>{
  const {page}=await open(t,390);
 
  await t.test('compact rail',async()=>{
   const tops=await page.locator('.phase-rail li').evaluateAll(nodes=>nodes.map(n=>Math.round(n.getBoundingClientRect().top)));
   assert.equal(new Set(tops).size,2);
  });
- await t.test('no empty context',async()=>assert.equal(await page.locator('#panelContextOpen').isVisible(),false));
+ await t.test('explicit empty context',async()=>{
+  await page.locator('#panelContextOpen').click();
+  await page.getByText('No linked context recorded.',{exact:true}).waitFor();
+ });
 });
 
 
