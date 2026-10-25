@@ -108,6 +108,7 @@ test("W16 desktop and phone renders: reachable capture, wide Details, full width
     if (width <= 760) {
       await page.locator('#selfAvatar').click();
       await page.locator('#docOpen').click();
+      await page.locator('#docDetail[open]').waitFor();
       assert.equal(await page.locator('#docDetail').isVisible(), true);
       await page.keyboard.press('Escape');
       assert.equal(await page.locator('#selfAvatar').evaluate(button => document.activeElement === button), true);
