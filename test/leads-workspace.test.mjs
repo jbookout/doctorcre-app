@@ -764,3 +764,18 @@ for (const code of ['network_error', 'read_timeout']) test(`Slice A initial iden
   assert.equal(s.writes.length, 0);
  } finally { s.close(); }
 });
+
+test('Chicago timestamps retain the business day and date-only move evidence never shifts',async()=>{
+ const s=await setup({getWorkspace:async()=>{const b=workspace();b.last_search_at='2026-10-24T01:00:00Z';b.leads[0].last_stage_move={automatic:true,from:'new',to:b.leads[0].stage,event_id:'demo-move',evidence_date:'2026-10-24',reason:'demo evidence'};return b;}});
+ try{
+  assert.match(s.d.getElementById('searchUpdated').textContent,/Oct 23, 8:00 PM/);
+  assert.match(s.d.querySelector('.auto-move').textContent,/10\/24/);
+  s.client.getLeadDetail=async()=>({detail:{...detail(s.board.leads[0]),correspondence:[{id:'demo-evening',kind:'email_in',occurred_at:'2026-01-24T01:00:00Z',summary:'Demo winter correspondence'}]}});
+  await s.app.readDetail(id(1));assert.match(s.d.querySelector('.correspondence time').textContent,/Jan 23, 7:00 PM/);
+ }finally{s.close();}
+});
+
+test('midnight occurrence timestamps convert to Chicago while midnight DATE evidence retains its date',async()=>{
+ const s=await setup({getWorkspace:async()=>{const b=workspace();b.leads[0].last_stage_move={automatic:true,from:'new',to:b.leads[0].stage,event_id:'demo-midnight',occurred_at:'2026-10-24T00:00:00Z',reason:'demo midnight event'};b.leads[1].last_stage_move={automatic:true,from:'qualified',to:b.leads[1].stage,event_id:'demo-date',evidence_date:'2026-10-24T00:00:00.000Z',reason:'demo DATE evidence'};return b;}});
+ try{const moves=[...s.d.querySelectorAll('.auto-move')].map(node=>node.textContent);assert.ok(moves.some(text=>/demo midnight event 10\/23/.test(text)));assert.ok(moves.some(text=>/demo DATE evidence 10\/24/.test(text)));}finally{s.close();}
+});

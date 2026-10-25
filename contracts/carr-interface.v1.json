@@ -1,6 +1,6 @@
 {
   "schema": "doctorcre-carr-interface.v1",
-  "version": "1.54.0",
+  "version": "1.55.0",
   "producer": {
     "repository": "jbookout/carr-system",
     "source_commit": "1df9b9936394164dd55e815f8a8bf69649508ccc"
@@ -857,22 +857,28 @@
     ]
   },
   "morning_brief": {
-    "version": "1.0.0",
+    "version": "1.1.0",
     "producer": {
       "repository": "jbookout/carr-system",
-      "source_commit": "6c346181d75fd54cef4f1d29e1341b8536fbaf5f"
+      "source_commit": "de206d43ff03f1a5cef9584164755c24832b725c"
     },
     "read": "morning-brief",
     "arguments": {},
     "audience": "authenticated sponsor; no caller-selected audience",
     "sections_consumed": [
+      "needs_joe",
       "today",
+      "claim_card",
       "deals",
-      "loops"
+      "loops",
+      "renewals",
+      "assurance_cadence",
+      "costs"
     ],
     "section_states": [
       "ready",
       "empty",
+      "partial",
       "unavailable"
     ],
     "overnight_read": "GET /pipeline/changes; initial base64url JSON keyset cursor {recorded_at: ISO cutoff, id: zero UUID}; subsequent opaque cursors are server-issued; only brief-authorized deal IDs render",
@@ -894,7 +900,15 @@
         "repository": "DoctorCRE/carr-system",
         "source_commit": "7d34758dd6450d1098c6c467be23d39292a25e0c"
       }
-    }
+    },
+    "coverage": {
+      "schema": "morning-brief-coverage.v1",
+      "count_scope": "returned_rows_only",
+      "required_sections": "Needs Joe for Joe only; all other sections for both sponsors. Missing sections are unavailable. Expandable sections retain all returned items, accounts and providers.",
+      "incomplete_sources": "Safe category and state only; no driver diagnostics."
+    },
+    "business_timezone": "America/Chicago",
+    "overnight_cutoff": "Previous Chicago calendar day at 17:00 when no saved briefing window exists; date-only fields retain their calendar date."
   },
   "runtime_errors": {
     "contract": "contracts/runtime-errors.v1.json",

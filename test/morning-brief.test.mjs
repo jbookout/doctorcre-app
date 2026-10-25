@@ -19,14 +19,15 @@ test('a short evidence-linked first action, overnight change and today item; dup
  const data=payload();data.sections.today.items.push(due('a'));
  const view=morningBriefView(data,options);
  assert.deepEqual(view.groups.map(group=>[group.key,group.row.id]),[['first','a'],['overnight','c'],['today','b']]);
- assert.ok(view.spoken.split(/\s+/).length<=65);
+ assert.ok(view.groups.every(group => group.row.title.split(/\s+/).length <= 6 && group.row.summary.split(/\s+/).length <= 10));
+ assert.match(view.spoken,/Needs Joe.*unavailable/);
  assert.equal(view.unavailable.length,0);
  assert.deepEqual(morningBriefView(data,{...options,events:[event('d')]}).groups.map(group=>group.key),['first','today']);
 });
 test('empty sections omitted; unknown coverage never becomes all-clear or filler',()=>{
  const data=payload();for(const key of Object.keys(data.sections))data.sections[key]=section([]);
  assert.deepEqual(morningBriefView(data,{...options,events:[]}).groups,[]);
- assert.equal(morningBriefView(data,{...options,events:[]}).spoken,'');
+ assert.match(morningBriefView(data,{...options,events:[]}).spoken,/Needs Joe.*unavailable/);
  data.sections.today={state:'unavailable',items:[]};
  const view=morningBriefView(data,{...options,caughtUp:false});
  assert.equal(view.groups.length,0);assert.deepEqual(view.unavailable,['Today’s priorities unavailable','Overnight updates unavailable']);
@@ -313,6 +314,113 @@ test('Overnight stays identical for All, Joe and Dell when their first prioritie
  assert.deepEqual(overnight[2],overnight[0]);
 });
 
+function completeBrief() {
+ const data=payload();
+ for(const key of ['needs_joe','claim_card','renewals','assurance_cadence','costs']) data.sections[key]=section([]);
+ data.coverage={schema:'morning-brief-coverage.v1',count_scope:'returned_rows_only',required_sections:Object.entries(data.sections).map(([key,value])=>({key,path:`/sections/${key}`,state:value.state,counts:{items:value.items.length},incomplete_sources:[]}))};
+ return data;
+}
+test('F1 full brief coverage makes Needs Joe, accounts and providers reachable without an all-clear',async t=>{
+ const state=setup(t),data=completeBrief();
+ data.sections.today=section([]);data.sections.deals={...section([]),accounts:[{account_name:'Demo account portfolio'}]};
+ data.sections.needs_joe=section([{key:'rule:demo',title:'Demo waiting decision',why:{text:'Needs a ruling'},action:'Approve the demo rule',blocks:{text:'Demo work blocked'}}]);
+ data.sections.costs={state:'ready',items:[],providers:[{provider:'demo',mtd_usd:12,projection_usd:24,budget_usd:30,daily:[{date:day,usd:2}]}]};
+ data.coverage.required_sections.forEach(entry=>{const value=data.sections[entry.key];entry.state=value.state;entry.counts=Object.fromEntries(['items','accounts','providers'].filter(key=>Array.isArray(value[key])).map(key=>[key,value[key].length]));});
+ state.data=data;await state.ui.refresh();await state.ui.open();
+ const content=state.root.getElementById('morningContent').textContent;
+ assert.match(content,/Demo waiting decision/);assert.match(content,/Demo account portfolio/);assert.match(content,/12/);assert.doesNotMatch(content,/No to-dos/);
+ const view=morningBriefView(data,{...options,events:[]});assert.match(view.spoken,/Needs Joe/);assert.match(view.spoken,/returned/);
+ assert.equal(state.root.querySelector('[data-brief-section="needs_joe"] summary')?.tagName,'SUMMARY');
+});
+test('F2 every triage kind survives missing partner deal metadata in explicit full sections',async t=>{
+ const state=setup(t),data=completeBrief();data.sections.deals=section([]);
+ data.sections.today=section(['next_action','post_call_action','critical_date','ingest'].map((item_kind,index)=>({id:`demo-${index}`,item_kind,subject_type:'deal',subject_id:'private-demo-deal',subject_name:'Shared demo subject',owner_partner:'dell',what:`Demo ${item_kind}`,due_on:item_kind==='critical_date'?'2026-10-10':day})));
+ state.data=data;let privateReads=0;state.client.getDeal=async()=>{privateReads++;throw Error('Private deal');};await state.ui.refresh();await state.ui.open();
+ for(const kind of ['next_action','post_call_action','critical_date','ingest']) assert.match(state.root.getElementById('morningContent').textContent,new RegExp(`Demo ${kind}`));
+ const view=morningBriefView(data,{...options,events:[]});assert.equal(view.groups[0]?.row.kind,'action');
+ state.root.querySelector('[data-brief-record]')?.click();await new Promise(resolve=>setTimeout(resolve,10));assert.ok(state.root.querySelector('.morning-record'));assert.equal(privateReads,0);
+});
+test('F6 partial and missing required sources are visible and spoken using safe category names',async t=>{
+ const state=setup(t),data=completeBrief();data.sections.needs_joe={state:'partial',items:[{title:'Demo surviving decision'}],sources:{work_requests:{state:'unavailable',error:'private-driver-demo'}}};
+ const coverage=data.coverage.required_sections.find(row=>row.key==='needs_joe');Object.assign(coverage,{state:'partial',counts:{items:1},incomplete_sources:[{key:'work_requests',state:'unavailable'}]});
+ state.data=data;await state.ui.refresh();
+ assert.match(state.root.getElementById('morningContent').textContent,/partial.*Work requests unavailable/s);
+ assert.match(morningBriefView(data,options).spoken,/Work requests unavailable/);assert.doesNotMatch(state.root.querySelector('dialog').textContent,/private-driver-demo/);
+ delete data.sections.renewals;await state.ui.refresh();assert.match(state.root.getElementById('morningContent').textContent,/Renewals.*unavailable/s);
+});
+test('F5 business day and initial overnight cutoff use Chicago under both DST offsets and transitions',async t=>{
+ for(const [instant,expectedDay,cutoff] of [
+ ['2026-10-24T01:00:00Z','2026-10-23','2026-10-22T22:00:00.000Z'],
+ ['2026-01-24T01:00:00Z','2026-01-23','2026-01-22T23:00:00.000Z'],
+ ['2026-03-08T13:00:00Z','2026-03-08','2026-03-07T23:00:00.000Z'],
+ ['2026-11-01T14:00:00Z','2026-11-01','2026-10-31T22:00:00.000Z']]) {
+ const state=setup(t);state.current=new Date(instant);const cutoffs=[];state.client.getChanges=async(_cursor,args)=>{cutoffs.push(args.since);return {events:[],cursor:'end'};};await state.ui.refresh();
+ assert.equal(localDay(new Date(instant)),expectedDay);assert.equal(cutoffs.at(-1),cutoff);
+ }
+});
+
+test('full sections retain producer-shaped notification reasons, decision links and cost evidence',async t=>{
+ const state=setup(t),data=completeBrief();
+ data.sections.assurance_cadence=section([{notification_id:'demo-notice',reason:'Demo release needs review',severity:'warning',subject_ref:'WR-DEMO',deep_link:'/work/requests/WR-DEMO',created_at:'2026-10-03T10:00:00Z'}]);
+ data.sections.needs_joe=section([{title:'Demo decision',link:'https://github.com/example/demo/pull/1'}]);
+ data.sections.costs={state:'partial',items:[],providers:[{provider:'demo',state:'partial',plan:'Demo plan',mtd_usd:12,daily:[{day,usd:2,drivers:{demo_driver:2}}]}],months:[{month:'2026-10',usd:12,providers:{demo_provider:12}}],alerts:[{provider:'demo',driver:'demo_driver',kind:'budget',amount_usd:12,threshold_usd:10}]};
+ state.data=data;await state.ui.refresh();
+ const content=state.root.getElementById('morningContent');
+ for(const text of ['Demo release needs review','warning','Demo plan',day,'demo_driver','demo_provider','Threshold USD: 10'])assert.ok(content.textContent.includes(text),text);
+ assert.equal(content.querySelector('a[href="https://github.com/example/demo/pull/1"]')?.textContent,'Open record');
+ assert.equal(content.querySelector('a[href="/work/requests/WR-DEMO"]')?.textContent,'Open record');
+ data.sections.needs_joe.items[0].link='javascript:alert(1)';await state.ui.refresh();assert.equal(content.querySelector('a[href^="javascript:"]'),null);
+});
+
+test('P2 producer renewals retain candidate identity and decision details with or without a lease date',async t=>{
+ const state=setup(t),data=completeBrief();
+ data.sections.renewals=section([
+  {display_name:'Demo Doctor',org_name:'Demo Practice',vertical:'Dental',city:'Demo City',county:'Demo County',state:'AL',est_lease_event:'2027-03-01',tier_status:'qualified',flag_status:'review',has_channel:true,decision_count:3,source_observed_at:'2026-10-02T12:00:00Z',freshness_state:'fresh'},
+  {display_name:'Demo Undated Doctor',org_name:'Demo Undated Practice',vertical:'Medical',city:'Demo Other City',county:'Demo Other County',state:'FL',est_lease_event:null,tier_status:'unqualified',flag_status:'clear',has_channel:false,decision_count:0,source_observed_at:'2026-09-01T12:00:00Z',freshness_state:'stale'},
+ ]);
+ state.data=data;await state.ui.refresh();await state.ui.open();
+ const rows=state.root.querySelectorAll('[data-brief-section="renewals"] li');assert.equal(rows.length,2);
+ for(const [index,expected] of [
+  ['Name: Demo Doctor','Organization: Demo Practice','Practice: Dental','City: Demo City','County: Demo County','State: AL','Lease event: 2027-03-01','Tier: qualified','Flag: review','Contact available: true','Decisions: 3','Source observed: 2026-10-02T12:00:00Z','Freshness: fresh'],
+  ['Name: Demo Undated Doctor','Organization: Demo Undated Practice','Practice: Medical','City: Demo Other City','County: Demo Other County','State: FL','Tier: unqualified','Flag: clear','Contact available: false','Decisions: 0','Source observed: 2026-09-01T12:00:00Z','Freshness: stale'],
+ ].entries())for(const text of expected)assert.ok(rows[index].textContent.includes(text),`row ${index}: ${text}`);
+ assert.doesNotMatch(rows[1].textContent,/Lease event:|null|undefined/);
+});
+
+for (const missing of ['today','deals','loops','claim_card','renewals','assurance_cadence','costs']) test(`P2 missing ${missing} retains authenticated decisions and coverage`,async t=>{
+ const state=setup(t),data=completeBrief();data.sections.needs_joe=section([{title:'Demo surviving decision'}]);delete data.sections[missing];state.data=data;
+ await state.ui.refresh();await state.ui.open();
+ assert.match(state.root.getElementById('morningContent').textContent,/Demo surviving decision/);
+ const view=morningBriefView(data,options),coverage=view.coverage.find(row=>row.key===missing);
+ assert.equal(coverage.state,'unavailable');assert.ok(view.spoken.includes(coverage.spoken));
+ assert.match(state.root.querySelector(`[data-brief-section="${missing}"]`).textContent,/unavailable/);
+ assert.equal(morningBriefView({...data,sponsor:'unknown'},options),null);
+});
+test('P2 missing Needs Joe is named unavailable while surviving work remains',async t=>{
+ const state=setup(t),data=completeBrief();delete data.sections.needs_joe;state.data=data;await state.ui.refresh();
+ assert.match(state.root.getElementById('morningContent').textContent,/Review demo lease comments/);
+ assert.match(morningBriefView(data,options).spoken,/Needs Joe.*unavailable/);
+});
+test('P2 full triage activates all producer kinds outside priority selection without private reads',async t=>{
+ const state=setup(t),data=completeBrief();
+ const rows=['next_action','post_call_action','critical_date','ingest'].map((item_kind,index)=>({id:`demo-full-${index}`,item_kind,subject_type:'deal',subject_id:'private-demo',subject_ref:'D-DEMO',subject_name:'Demo shared subject',owner_partner:'dell',what:`Demo full ${item_kind}`,due_on:item_kind==='critical_date'?'2099-01-01':day}));
+ data.sections.today.items.push(...rows);state.data=data;let reads=0;state.client.getDeal=state.client.readLoop=async()=>{reads++;throw Error('Private read');};await state.ui.refresh();await state.ui.open();
+ assert.ok(!morningBriefView(data,options).groups.some(group=>rows.some(row=>row.id===group.row.id)));
+ for(const row of rows){
+  const item=[...state.root.querySelectorAll('[data-brief-section="today"] li')].find(node=>node.textContent.includes(row.what));
+  const summary=item?.querySelector('details summary');assert.ok(summary, row.item_kind);summary.click();
+  assert.equal(summary.parentElement.open,true);assert.match(summary.parentElement.textContent,new RegExp(row.id));assert.match(summary.parentElement.textContent,/D-DEMO/);
+ }
+ assert.equal(reads,0);
+});
+test('P2 producer account preserves work counts and opens its exact returned account',async t=>{
+ const state=setup(t),data=completeBrief();data.sections.deals.accounts=[{account_client_id:'demo-account',account_client_ref:'C-DEMO',account_name:'Demo portfolio',account_owner:'joe',open_deals:7,attention_deals:3,overdue_deals:2,stale_deals:1,parked_deals:4}];state.data=data;await state.ui.refresh();
+ const item=[...state.root.querySelectorAll('[data-brief-section="deals"] li')].find(node=>node.textContent.includes('Demo portfolio'));
+ for(const value of ['Open deals: 7','Attention deals: 3','Overdue deals: 2','Stale deals: 1','Parked deals: 4'])assert.ok(item.textContent.includes(value),value);
+ const summary=item.querySelector('details summary');assert.ok(summary);summary.click();assert.equal(summary.parentElement.open,true);
+ assert.match(summary.parentElement.textContent,/C-DEMO/);assert.match(summary.parentElement.textContent,/demo-account/);
+});
+
 for (const nextSponsor of ['joe','dell']) test(`F4 suspended brief clears detail and fences late reads before ${nextSponsor} recovery`, async t => {
  const state=setup(t);await state.ui.refresh();await state.ui.open();
  let detailDone;state.client.getDeal=()=>new Promise(resolve=>detailDone=resolve);
@@ -362,4 +470,5 @@ test('F4 reopening during a queued resume read replaces that read with current f
  assert.equal(state.root.getElementById('morningContent').textContent,'');
  releases.forEach(release=>release(payload()));await old;await opening;
  assert.match(state.root.getElementById('morningContent').textContent,/Current demo commitment/);
+
 });

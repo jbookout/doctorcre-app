@@ -5,12 +5,26 @@ import { chromium } from 'playwright';
 import { createFixtureClient } from '../js/fixture-client.js';
 const root=new URL('../',import.meta.url);
 const routes=(await import("../js/routes.js")).routeContract;
-async function setup(t,{width=1440,motion='no-preference',brief=true,onBrief}={}) {
- const browser=await chromium.launch();t.after(()=>browser.close());const page=await browser.newPage({viewport:{width,height:960},reducedMotion:motion});const context=page.context();
+async function setup(t,{width=1440,motion='no-preference',brief=true,coverage=false,timezoneId='America/Chicago',onBrief}={}) {
+ const browser=await chromium.launch();t.after(()=>browser.close());const page=await browser.newPage({viewport:{width,height:960},reducedMotion:motion,timezoneId});const context=page.context();
+
  const fixture=await createFixtureClient({seedUrl:`data:application/json;base64,${(await readFile(new URL('data/board-seed.json',root))).toString('base64')}`});
  let scope='joe',fail=false,ready=brief,revision=0,thread=[{id:'demo-note',kind:'note',text:'Demo short summary. Original synthetic entry with additional details.',recorded_at:new Date().toISOString()}];const calls=[],errors=[];
- const day=new Date().toLocaleDateString('en-CA');
- const data=()=>({state:'ready',sponsor:scope,sections:{deals:{state:'ready',items:[{id:'d14',name:'Demo Lease Review',owner:scope},{id:'d05',name:'Demo Tour Planning',owner:scope},{id:'d20',name:'Demo Revised Terms',owner:scope}]},today:{state:'ready',items:[{subject_type:'deal',subject_id:'d14',owner:scope,due_on:'2026-01-01',what:revision ? 'Review updated demo lease comments' : 'Review demo lease comments'},{subject_type:'deal',subject_id:'d05',owner:scope,due_on:day,what:'Confirm demo tour access'}]},loops:{state:'empty',items:[]}}});
+ const day=new Date().toLocaleDateString('en-CA',{timeZone:'America/Chicago'});
+ const priorityData=()=>({state:'ready',sponsor:scope,sections:{deals:{state:'ready',items:[{id:'d14',name:'Demo Lease Review',owner:scope},{id:'d05',name:'Demo Tour Planning',owner:scope},{id:'d20',name:'Demo Revised Terms',owner:scope}]},today:{state:'ready',items:[{subject_type:'deal',subject_id:'d14',owner:scope,due_on:'2026-01-01',what:revision ? 'Review updated demo lease comments' : 'Review demo lease comments'},{subject_type:'deal',subject_id:'d05',owner:scope,due_on:day,what:'Confirm demo tour access'}]},loops:{state:'empty',items:[]}}});
+ const data=()=>{
+  const value=priorityData();
+  if(!coverage)return value;
+  value.sections.needs_joe={state:'partial',items:[{title:'Demo waiting coverage decision',action:'Approve the synthetic rule',why:{text:'Demo work needs a ruling'},blocks:{text:'Demo queue'}}]};
+  value.sections.claim_card={state:'ready',items:[{display_name:'Demo claim candidate'}]};
+  value.sections.renewals={state:'unavailable',items:[]};
+  value.sections.assurance_cadence={state:'empty',items:[]};
+  value.sections.costs={state:'ready',items:[],providers:[{provider:'Demo provider',mtd_usd:12}]};
+  value.sections.deals.accounts=[{account_client_id:'demo-account',account_client_ref:'C-DEMO',account_name:'Demo account portfolio',account_owner:'joe',open_deals:7,attention_deals:3,overdue_deals:2}];
+  value.sections.today.items.push(...['next_action','post_call_action','critical_date','ingest'].map((item_kind,index)=>({id:`demo-triage-${index}`,item_kind,subject_type:'deal',subject_id:'private-demo-deal',owner_partner:'dell',what:`Demo ${item_kind}`,due_on:item_kind==='critical_date'?'2099-01-01':day,subject_name:'Demo shared subject'})));
+  value.coverage={schema:'morning-brief-coverage.v1',count_scope:'returned_rows_only',required_sections:Object.entries(value.sections).map(([key,section])=>({key,path:`/sections/${key}`,state:section.state,counts:Object.fromEntries(['items','accounts','providers'].filter(name=>Array.isArray(section[name])).map(name=>[name,section.state==='unavailable'?null:section[name].length])),incomplete_sources:key==='needs_joe'?[{key:'work_requests',state:'unavailable'}]:[]}))};
+  return value;
+ };
  await page.addInitScript(()=>{window.spoken=[];window.speechStops=0;window.SpeechSynthesisUtterance=class{constructor(text){this.text=text;}};Object.defineProperty(window,'speechSynthesis',{value:{speak:utterance=>{window.spoken.push(utterance.text);window.lastUtterance=utterance;},cancel:()=>window.speechStops++}});});
  page.on('pageerror',error=>errors.push(error.message));
  await context.route('**/*',async route=>{
@@ -39,7 +53,8 @@ const snap=async(page,name)=>{await mkdir(new URL('out/test-artifacts/w12/',root
 test('live brief opens on request and wide record detail; desktop/phone renders, focus, original entry, no horizontal overflow',async t=>{
  const state=await setup(t);const {page}=state;await state.goto();await page.locator('#docOpen[data-brief-unseen]').waitFor();assert.equal(await page.locator('#docMorningBrief').evaluate(node=>node.open),false);await page.locator('#docOpen').click();await page.locator('#docMorning').click();await page.locator('#docMorningBrief[open]').waitFor();
  await page.locator('[data-brief-record]').first().waitFor();assert.equal(await page.locator('[data-brief-record]').count(),3);assert.deepEqual(await page.locator('#docMorningBrief h3').allTextContents(),['Do first','Overnight','Today']);
- assert.doesNotMatch(await page.locator('#docMorningBrief').innerText(),/read from|source|records read|retry|Read again/);
+ assert.doesNotMatch(await page.locator('#docMorningBrief').innerText(),/read from|records read|retry|Read again/);
+
  await snap(page,'brief-desktop');
  assert.ok(await page.locator('#docMorningBrief').evaluate(node=>node.getBoundingClientRect().width)>1000);
  await page.locator('[data-brief-record="0"]').click();await page.locator('.morning-record').waitFor();await page.locator('#morningContent summary').click();assert.match(await page.locator('#morningContent details[open]').innerText(),/Original synthetic entry/);await snap(page,'record-desktop');
@@ -54,7 +69,7 @@ test('live brief opens on request and wide record detail; desktop/phone renders,
 });
 test('daily preference survives navigation; speech is opt-in, stops, persists, and resumes refresh with no duplicate autoplay',async t=>{
  const state=await setup(t);const {page}=state;await state.goto();await page.locator('#docOpen[data-brief-unseen]').waitFor();assert.equal(await page.locator('#docMorningBrief').evaluate(node=>node.open),false);await page.locator('#docOpen').click();await page.locator('#docMorning').click();await page.locator('#docMorningBrief[open]').waitFor();assert.equal(await page.evaluate(()=>spoken.length),0);
- await page.locator('#morningSpeech').click();await page.locator('#morningListen').click();assert.equal(await page.evaluate(()=>spoken.length),1);assert.ok(await page.evaluate(()=>spoken[0].split(/\s+/).length<=65));
+ await page.locator('#morningSpeech').click();await page.locator('#morningListen').click();assert.equal(await page.evaluate(()=>spoken.length),1);assert.match(await page.evaluate(()=>spoken[0]),/Needs Joe.*unavailable/);
  await page.locator('#morningClose').click();assert.ok(await page.evaluate(()=>speechStops)>0);const loaded=page.waitForResponse(res=>res.url().endsWith('/mcp')&&res.request().postDataJSON()?.params?.name==='morning-brief');await page.reload();await loaded;await page.locator('#docPresence').waitFor({state:'attached'});
  assert.equal(await page.locator('#docMorningBrief').evaluate(node=>node.open),false);await page.locator('#docOpen').click();await page.locator('#docMorning').click();await page.locator('[data-brief-record]').first().waitFor();assert.equal(await page.locator('#morningSpeech').getAttribute('aria-pressed'),'true');assert.equal(await page.evaluate(()=>spoken.length),0);
  state.change();await page.evaluate(()=>window.dispatchEvent(new Event('online')));try { await page.waitForFunction(()=>document.getElementById('morningContent').textContent.includes('updated demo')); } catch(error) { throw new Error(JSON.stringify({calls:state.calls.filter(call=>call.name==='morning-brief').length,text:await page.locator('#docMorningBrief').innerText(),errors:state.errors})+error.message); }
@@ -115,6 +130,28 @@ for (const key of ['d', 'k']) test(`Doc Control+${key} switches from a speaking 
  assert.equal(await page.locator('#docMorningBrief').evaluate(node => node.open), true);
 });
 
+
+test('full returned coverage is expandable and spoken on desktop and phone in a UTC browser',async t=>{
+ const state=await setup(t,{coverage:true,timezoneId:'UTC'}),{page}=state;
+ await state.goto();await page.locator('#docOpen[data-brief-unseen]').waitFor();await page.locator('#docOpen').click();await page.locator('#docMorning').click();
+ const needs=page.locator('[data-brief-section="needs_joe"]');
+ await needs.locator('summary').click();await needs.getByText(/Demo waiting coverage decision/).waitFor({state:'visible'});
+ assert.match(await needs.innerText(),/partial.*Work requests unavailable/s);
+ await page.locator('[data-brief-section="today"] > summary').click();
+ for(const kind of ['next_action','post_call_action','critical_date','ingest']) {
+  const summary=page.locator('[data-brief-section="today"] li summary').filter({hasText:`Demo ${kind}`});await summary.click();
+  assert.match(await summary.locator('..').innerText(),/private-demo-deal/);
+ }
+ await page.locator('[data-brief-section="deals"] > summary').click();await page.getByText(/Demo account portfolio/).waitFor({state:'visible'});
+ const account=page.locator('[data-brief-section="deals"] li details');await account.locator('summary').click();assert.match(await account.innerText(),/C-DEMO.*Attention deals: 3.*Overdue deals: 2/s);
+ await page.locator('[data-brief-section="costs"] summary').click();await page.getByText(/Demo provider/).first().waitFor({state:'visible'});
+ await page.locator('#morningSpeech').click();await page.locator('#morningListen').click();
+ assert.match(await page.evaluate(()=>window.spoken.at(-1)),/Needs Joe.*partial.*Work requests unavailable.*Renewals.*unavailable/s);
+ await needs.scrollIntoViewIfNeeded();await snap(page,'coverage-desktop');await page.setViewportSize({width:390,height:844});await needs.scrollIntoViewIfNeeded();await snap(page,'coverage-phone');
+ assert.ok(await page.locator('#docMorningBrief').evaluate(node=>node.scrollWidth<=node.clientWidth));
+ assert.deepEqual(state.errors,[]);
+});
+
 for(const selected of [false,true]) test(`F4 resumed brief removes ${selected?'selected detail':'speaking facts'} until the current authenticated read`,async t=>{
  let hold=false,release;const held=new Promise(resolve=>release=resolve);t.after(()=>release());
  const {page,goto,errors}=await setup(t,{onBrief:()=>hold?held:undefined});await goto();
@@ -162,5 +199,6 @@ for (const trigger of ['reopen', 'idle wake']) test(`F4 ${trigger} clears cached
  assert.equal(await page.locator('[data-brief-record]').count(),0);
  releaseFresh(); await page.locator('[data-brief-record]').first().waitFor();
  assert.equal(await page.locator('#morningListen').isDisabled(),false);
+
  assert.deepEqual(state.errors,[]);
 });

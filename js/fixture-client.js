@@ -1,3 +1,4 @@
+import { businessDay } from './business-date.js';
 import { isClosedDeal } from './deal-review-model.js';
 import { addDays, localToday } from './calendar-model.js';
 import { createInvoiceFixture } from './invoice-tracker-fixture.js';
@@ -1761,10 +1762,18 @@ export async function createFixtureClient(opts = {}) {
     },
     async morningBrief() {
       const section = items => ({ state: items.length ? 'ready' : 'empty', items });
-      return { state: 'ready', sponsor: selfActor, sections: {
+      const board = await this.getBoard();
+      const sections = {
+        ...(selfActor === 'joe' ? { needs_joe: section([]) } : {}),
+        claim_card: section([]), renewals: section([]), assurance_cadence: section([]), costs: { ...section([]), providers: [] },
         today: section((await this.todayTriage()).items),
-        deals: section((await this.getBoard()).deals),
+        deals: { state:board.deals.length || board.accounts?.length ? 'ready' : 'empty', items:board.deals, accounts:board.accounts || [] },
         loops: section((await this.loopBoard()).loops),
+      };
+      return { state:'ready', sponsor:selfActor, sections, coverage: {
+        schema:'morning-brief-coverage.v1', count_scope:'returned_rows_only',
+        required_sections:Object.entries(sections).map(([key,value]) => ({key,path:`/sections/${key}`,state:value.state,
+          counts:Object.fromEntries(['items','accounts','providers'].filter(name => Array.isArray(value[name])).map(name => [name,value[name].length])), incomplete_sources:[]})),
       } };
     },
 
@@ -1783,7 +1792,7 @@ export async function createFixtureClient(opts = {}) {
     },
 
     async todayTriage({ limit = 50 } = {}) {
-      const today = nowIso().slice(0, 10);
+      const today = businessDay(new Date(nowIso()));
       const horizon = new Date(Date.parse(`${today}T00:00:00Z`) + 14 * 86_400_000).toISOString().slice(0, 10);
       const items = [];
       // v_today_triage does not filter on the deal's own state, so neither does this.
