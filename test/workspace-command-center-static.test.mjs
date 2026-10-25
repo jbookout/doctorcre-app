@@ -25,12 +25,12 @@ test("all authenticated surfaces mount the approved shared navigation", async ()
     assert.equal((nav.match(/data-app-nav-item/g) || []).length, navigationItems.length, `${route}: same destinations`);
   }
   assert.deepEqual(navigationItems.filter(item => !item.group).map(({ label }) => label),
-    ["Home", "Leads", "Tours", "Local Deals", "Vendors", "Control Room"]);
+    ["Home", "Leads", "Local Deals", "Tours"]);
 });
 
 test("People offers both directories in the shared shell", () => {
   assert.match(appShellMarkup("/clients"), /href="\/clients" aria-current="page">Clients<\/a>/);
-  assert.match(appShellMarkup("/vendors"), /href="\/vendors" aria-current="page">.*?Vendors<\/span><\/a>/);
+  assert.match(appShellMarkup("/vendors"), /href="\/vendors" aria-current="page">Vendors<\/a>/);
 });
 
 test("More keeps Updates, Operations and Reference in stable groups", () => {

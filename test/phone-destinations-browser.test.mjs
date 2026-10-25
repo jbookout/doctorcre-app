@@ -4,14 +4,14 @@ import { mkdir } from 'node:fs/promises';
 import { chromium, fixtureServer } from './browser-harness.mjs';
 import { detail, tourId } from './fixtures/tour-day.synthetic.mjs';
 
-async function open(t, width, tours = [{ id: tourId, name: 'Synthetic morning tour', status: 'scheduled' }]) {
+async function open(t, width, tours = [{ id: tourId, name: 'Synthetic morning tour', status: 'scheduled' }], tourDetail = detail) {
   const server = await fixtureServer(); t.after(() => server.close());
   const browser = await chromium.launch(); t.after(() => browser.close());
   const page = await browser.newPage({ viewport: { width, height: 844 }, isMobile: true, hasTouch: true });
   await page.route('**/api/**', route => {
     const path = new URL(route.request().url()).pathname;
     return route.fulfill({ json: path === '/api/tours/library' ? { data: { tours } }
-      : path === '/api/tours/detail' ? { data: detail }
+      : path === '/api/tours/detail' ? { data: tourDetail }
       : path === '/api/v1/business/clients' ? { data: { rows: [], page: 1, page_count: 1 } }
       : ['/api/system-work/session', '/auth/session'].includes(path) ? { actor: { slug: 'joe' }, csrf_token: 'synthetic-only' } : {} });
   });
@@ -70,6 +70,7 @@ test('phone main view opens an existing Tour day and the full library by name', 
   assert.equal(await entry.count(), 1, 'Your tours is a named main-view entry');
   await entry.getByText('Synthetic morning tour', { exact: true }).waitFor();
   const day = entry.getByRole('link', { name: 'Tour day', exact: true });
+  await day.waitFor();
   const box = await day.boundingBox();
   assert.ok(box && box.y >= 0 && box.y + box.height < 650, 'Tour day is on the first phone screen');
   assert.ok(box.width >= 44 && box.height >= 44);
@@ -84,6 +85,19 @@ test('phone main view opens an existing Tour day and the full library by name', 
   assert.equal(await library.getByRole('button', { name: /Synthetic morning tour/ }).isVisible(), true);
 });
 
+test('phone draft tour stays browsable without offering Tour day', async t => {
+  const page = await open(t, 390, [{ id: tourId, name: 'Synthetic draft tour', status: 'draft' }],
+    { id: tourId, name: 'Synthetic draft tour', status: 'draft', stops: [], routes: [] });
+  const entry = page.getByRole('region', { name: 'Your tours', exact: true });
+  await entry.getByText('Synthetic draft tour', { exact: true }).waitFor();
+  await entry.getByRole('button', { name: 'Browse your tours', exact: true }).click();
+  await page.getByRole('button', { name: /Synthetic draft tour/ }).click();
+  await page.locator('#detail-title').getByText('Synthetic draft tour', { exact: true }).waitFor();
+  await page.keyboard.press('Escape');
+  await page.keyboard.press('Escape');
+  assert.equal(await entry.getByRole('link', { name: 'Tour day', exact: true }).isVisible(), false);
+});
+
 test('phone tour entry does not offer Tour day without an upcoming tour', async t => {
   const page = await open(t, 390, []);
   const entry = page.getByRole('region', { name: 'Your tours', exact: true });
@@ -92,16 +106,16 @@ test('phone tour entry does not offer Tour day without an upcoming tour', async 
   assert.equal(await entry.getByRole('button', { name: 'Browse your tours', exact: true }).isVisible(), true);
 });
 
-test('phone destinations remain readable at 200 percent zoom', async t => {
+test('phone destinations reflow at the CSS viewport for 200 percent zoom', async t => {
   const page = await open(t, 780);
-  await page.evaluate(() => { document.body.style.zoom = '2'; });
+  await page.setViewportSize({ width: 390, height: 422 });
   const nav = page.getByRole('navigation', { name: 'Primary navigation' });
   for (const label of ['Home', 'Leads', 'Deals', 'Tours', 'More']) {
     const box = await nav.getByText(label, { exact: true }).boundingBox();
-    assert.ok(box.height >= 20 && box.x >= 0 && box.x + box.width <= 780, `${label} is readable at double size`);
+    assert.ok(box.height > 10 && box.x >= 0 && box.x + box.width <= 390, `${label} is readable after reflow`);
   }
   const entry = page.getByRole('region', { name: 'Your tours', exact: true });
   await entry.getByText('Synthetic morning tour', { exact: true }).waitFor();
-  assert.equal(await entry.getByRole('link', { name: 'Tour day', exact: true }).isVisible(), true);
+  await entry.getByRole('link', { name: 'Tour day', exact: true }).waitFor();
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
 });

@@ -8,7 +8,7 @@ import { PLAN_FIELDS, SEARCH_FIELDS, createDraft, clientSuggestions, tourGroups,
 export function mountPlanner({ document, window, api = createPlannerClient() }) {
   const $ = selector => document.querySelector(selector);
   const plan = createDraft(PLAN_FIELDS), search = createDraft(SEARCH_FIELDS);
-  let clientsStatus = "pending", clientsMessage = "", clients = [], tours = [], files = [], planClient = "", searchClient = "", planEpoch = 0, searchEpoch = 0, dialogEpoch = 0, refreshEpoch = 0;
+  let clientsStatus = "pending", clientsMessage = "", clients = [], tours = [], files = [], planClient = "", searchClient = "", planEpoch = 0, searchEpoch = 0, dialogEpoch = 0, refreshEpoch = 0, entryEpoch = 0;
   let currentTour = null, selectedRecord = null, scope = null, scopeEstablished = false, disposed = false;
   const key = "doctorcre-tour-planning-drafts-v1";
   const clientsUnavailable = "Clients temporarily unavailable. Refresh tours to try again.";
@@ -112,13 +112,13 @@ export function mountPlanner({ document, window, api = createPlannerClient() }) 
       message(target, "");
     } catch (error) { if (epoch === (prefix === "plan" ? planEpoch : searchEpoch)) message(target, unavailable(error) || "Client details temporarily unavailable."); }
   }
-  function renderLibrary() {
+  async function renderLibrary() {
+    const epoch = ++entryEpoch;
     const tour = tourGroups(tours).upcoming[0];
     message("#tour-entry-name", tour ? tourDisplayName(tour.name) : "No upcoming tours");
     const day = $("#tour-entry-day");
-    day.hidden = !tour;
-    if (tour) day.href = `/tours/day.html?tour=${encodeURIComponent(tour.id)}`;
-    else day.removeAttribute("href");
+    day.hidden = true;
+    day.removeAttribute("href");
     const focusedId = document.activeElement?.dataset?.tourId;
     const openerId = opener?.dataset?.tourId;
     const query = $("#tour-filter").value;
@@ -139,6 +139,16 @@ export function mountPlanner({ document, window, api = createPlannerClient() }) 
     const buttons = [...document.querySelectorAll(".tour-button")];
     if (openerId) opener = buttons.find(button => button.dataset.tourId === openerId) || $("#tour-filter");
     if (focusedId) (buttons.find(button => button.dataset.tourId === focusedId) || $("#tour-filter")).focus({ preventScroll: true });
+    if (!tour) return;
+    try {
+      const detail = await read(async () => validateTourDetail(await api.tour(tour.id), tour.id));
+      if (disposed || epoch !== entryEpoch) return;
+      if (detail.routes?.some(route => route.accepted === true && route.stops?.some(stop => stop.stop_state === "active"))) {
+        day.href = `/tours/day.html?tour=${encodeURIComponent(tour.id)}`;
+        day.hidden = false;
+      }
+    } catch { /* An unverified route cannot open Tour day. */ }
+
   }
   let opener = null, renderedTour = null;
   function showDialog(title, trigger) {

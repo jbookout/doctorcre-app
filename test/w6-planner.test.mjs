@@ -38,6 +38,38 @@ function harness(api = {}, beforeMount = () => {}) {
   return { dom, doc, view, service, change(selector, value) { const node = doc.querySelector(selector); node.value = value; node.dispatchEvent(new dom.window.Event(node.tagName === "SELECT" && selector.endsWith("client") ? "change" : "input", { bubbles: true })); }, close() { view.dispose(); dom.window.close(); } };
 }
 
+test("phone Tour day entry requires an accepted route with an active stop", async t => {
+  for (const [name, routes, available] of [
+    ["draft", [], false],
+    ["unaccepted route", [{ accepted: false, stops: [{ stop_state: "active" }] }], false],
+    ["excluded stops", [{ accepted: true, stops: [{ stop_state: "excluded" }] }], false],
+    ["accepted active route", [{ accepted: true, stops: [{ stop_state: "active" }] }], true],
+  ]) await t.test(name, async () => {
+    const app = harness({ tour: async id => ({ id, stops: [], routes }) });
+    try {
+      await app.view.ready; await settle();
+      assert.equal(app.doc.querySelector("#tour-entry-day").hidden, !available);
+      if (available) assert.match(app.doc.querySelector("#tour-entry-day").href, new RegExp(clientA));
+    } finally { app.close(); }
+  });
+});
+
+test("a superseded tour detail cannot restore the phone Tour day link", async () => {
+  let release;
+  const pending = new Promise(resolve => { release = resolve; });
+  const app = harness({ tour: () => pending });
+  try {
+    await app.view.ready;
+    app.service.library = async () => [];
+    await app.view.refresh();
+    release({ id: clientA, stops: [], routes: [{ accepted: true, stops: [{ stop_state: "active" }] }] });
+    await settle();
+    assert.equal(app.doc.querySelector("#tour-entry-name").textContent, "No upcoming tours");
+    assert.equal(app.doc.querySelector("#tour-entry-day").hidden, true);
+    assert.equal(app.doc.querySelector("#tour-entry-day").hasAttribute("href"), false);
+  } finally { app.close(); }
+});
+
 test("each suggested field and typed override undo independently", () => {
   const draft = createDraft(PLAN_FIELDS); draft.suggest(clientSuggestions(record(clientA)));
   draft.set("area", "Typed area"); assert.equal(draft.undo(), "area"); assert.equal(draft.values.area, "Demo City, FL");
