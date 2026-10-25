@@ -2,7 +2,7 @@ import { offlineTourShell } from "./offline-tour-shell.mjs";
 import tarStream from "tar-stream";
 import { Readable } from "node:stream";
 import { UI_OUTPUT, UI_SOURCE, uiBundle } from "./ui-bundle.mjs";
-import { build } from "esbuild";
+import { build, transform } from "esbuild";
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { lstat, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
@@ -112,6 +112,12 @@ async function assembleArtifact(commit, paths, readSource) {
   const files = new Map();
   for (const path of paths) {
     let content = await trackErrors(path, await readSource(path), readSource, commit);
+    if (path === "js/app-shell.js" || path === "js/app-layout.js") {
+      const result = await transform(content.toString("utf8"), {
+        format: "esm", target: "es2022", legalComments: "none", minify: true,
+      });
+      content = Buffer.from(result.code);
+    }
     if (path === "reports/share.js") {
       // Compile the report's explicit module graph from the same admitted bytes
       // used by assembly and committed-source verification, never the live disk.
