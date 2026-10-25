@@ -5,7 +5,7 @@ import { createHash } from 'node:crypto';
 import { gzipSync } from 'node:zlib';
 import { fileURLToPath } from 'node:url';
 import { join } from 'node:path';
-import { profile, screens } from './performance-scenarios.mjs';
+import { profile, screens, tasks, runTaskScenario } from './performance-scenarios.mjs';
 import { startFixtureServer } from './fixture-server.mjs';
 import { directoryFixture } from '../test/fixtures/vendor-directory.synthetic.mjs';
 
@@ -106,7 +106,43 @@ try {
     measured[screen.id] = { lcpMs: median('lcpMs'), jsBytes: Math.max(...samples.map(sample => sample.jsBytes)), interactionMs: median('interactionMs'), samples };
     console.log(`${screen.id}: LCP=${measured[screen.id].lcpMs}ms JS=${measured[screen.id].jsBytes}B interaction=${measured[screen.id].interactionMs}ms`);
   }
+  for (const task of tasks) {
+    const samples = [];
+    for (let index = 0; index < profile.samples; index++) {
+      const context = await browser.newContext({ viewport: profile.viewport, deviceScaleFactor: profile.deviceScaleFactor,
+        isMobile: true, hasTouch: true, serviceWorkers: task.id === 'task-tour-offline' ? 'allow' : 'block' });
+      const trace = `${task.id}-${index + 1}.zip`;
+      await context.tracing.start({ screenshots: true, snapshots: true });
+      try {
+        const page = await context.newPage();
+        page.setDefaultTimeout(30000);
+        const cdp = await context.newCDPSession(page);
+        await cdp.send('Emulation.setCPUThrottlingRate', { rate: profile.cpuSlowdown });
+        await cdp.send('Network.enable');
+        await cdp.send('Network.setCacheDisabled', { cacheDisabled: true });
+        await cdp.send('Network.emulateNetworkConditions', { offline: false, latency: profile.latencyMs,
+          downloadThroughput: profile.downloadBytesPerSecond, uploadThroughput: profile.uploadBytesPerSecond });
+        samples.push({ ...await runTaskScenario({ page, context, origin: url, task }), trace });
+      } finally {
+        await context.tracing.stop({ path: join(output, trace) });
+        await context.close();
+      }
+    }
+    measured[task.id] = {
+      usefulMs: samples.map(sample => sample.usefulMs).sort((a, b) => a - b)[samples.length >> 1],
+      requestCount: Math.max(...samples.map(sample => sample.requestCount)),
+      criticalBytes: Math.max(...samples.map(sample => sample.criticalBytes)), samples,
+    };
+    console.log(`${task.id}: useful=${measured[task.id].usefulMs}ms requests=${measured[task.id].requestCount} critical=${measured[task.id].criticalBytes}B`);
+  }
   const report = { schema: 'doctorcre-performance-report.v1',
+    taskMeasurement: {
+      usefulMs: 'Navigation start through verified useful task outcome, including scripted actions. Offline measures the same-tab reload after online preparation.',
+      requestCount: 'API, session, MCP and change-feed requests plus in-memory fixture public client calls through the useful outcome. Includes offline preparation. Maximum across cold samples.',
+      criticalBytes: 'Successful same-origin decoded response body bytes through the useful outcome, including offline shell preparation. Not compressed wire bytes. Maximum across cold samples.',
+      policy: 'Task scenarios block non-loopback resources and use synthetic adapters only. Each sample uses a cold context. Service workers are enabled only for saved-tour offline.',
+      scenarios: Object.fromEntries(tasks.map(task => [task.id, task.conditions])),
+    },
     measuredAt: new Date().toISOString(), sourceCommit, prHeadCommit: process.env.PERFORMANCE_PR_HEAD_SHA || sourceCommit,
     buildDigest: digest, browserVersion: browser.version(),
     nodeVersion: process.version, platform: process.platform, profile, screens: measured, bundle };
