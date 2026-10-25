@@ -1,3 +1,4 @@
+import { CHROMIUM_SAFETY_ARGS } from '../scripts/chromium-safety-args.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
@@ -9,7 +10,7 @@ import { identity, found, readiness, meeting } from './fixtures/correspondence.m
 const readyView = { threads: correspondenceState(found, identity), meetings: meetingEvidence([meeting]) };
 
 test('390px and iPad fixture evidence stays readable, sourced, read-only and touch-sized', async t => {
-  const browser = await chromium.launch(); t.after(() => browser.close());
+  const browser = await chromium.launch({ args: [...CHROMIUM_SAFETY_ARGS] }); t.after(() => browser.close());
   const page = await browser.newPage();
   const css = await readFile(new URL('../css/correspondence.css', import.meta.url), 'utf8');
   const system = (await readFile(new URL('../css/tokens.css', import.meta.url), 'utf8')) + (await readFile(new URL('../css/system.css', import.meta.url), 'utf8'));
@@ -118,7 +119,7 @@ test('a disposed mount cannot paint a previous deal after its read resolves', as
 });
 
 test('meeting disclosure and keyboard focus survive delayed read settlement and timeout', async t => {
-  const browser = await chromium.launch(); t.after(() => browser.close());
+  const browser = await chromium.launch({ args: [...CHROMIUM_SAFETY_ARGS] }); t.after(() => browser.close());
   const modules = Object.fromEntries(await Promise.all(['correspondence.js', 'correspondence-model.js'].map(async name =>
     [`/js/${name}`, await readFile(new URL(`../js/${name}`, import.meta.url), 'utf8')])));
   for (const phase of ['readiness', 'thread']) {

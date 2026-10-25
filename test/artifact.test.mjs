@@ -1,3 +1,4 @@
+import { CHROMIUM_SAFETY_ARGS } from '../scripts/chromium-safety-args.mjs';
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { copyFile, mkdir, mkdtemp, readFile, rename, rm, writeFile, symlink } from "node:fs/promises";
@@ -17,7 +18,7 @@ const trackedHtml = source => Buffer.from(source.toString("utf8").replace("<head
 test('finding 6: emitted public report shell reserves space beside the fixed rail', async t => {
   const outDir=await mkdtemp(join(tmpdir(),'doctorcre-report-layout-'));
   await buildArtifact({root:ROOT,outDir,commit:COMMIT});
-  const browser=await chromium.launch();t.after(()=>browser.close());
+  const browser=await chromium.launch({ args: [...CHROMIUM_SAFETY_ARGS] });t.after(()=>browser.close());
   const page=await browser.newPage({viewport:{width:820,height:900}});
   await page.route('**/*',async route=>{
     const url=new URL(route.request().url());
@@ -76,6 +77,10 @@ test("the static artifact rebuild is byte-for-byte reproducible", async () => {
   const b = await buildArtifact({ root: ROOT, outDir: second, commit: COMMIT });
   assert.equal(a.archiveSha256, b.archiveSha256);
   assert.deepEqual(a.archive, b.archive);
+  const budget = JSON.parse(await readFile(join(ROOT, "contracts/performance-budget.v1.json"), "utf8"));
+  const scripts = a.manifest.files.filter(file => /\.(m?js)$/.test(file.path));
+  const bytes = scripts.reduce((total, file) => total + file.bytes, 0);
+  assert.ok(bytes <= budget.bundle.jsBytes.limit, `Artifact JavaScript ${bytes} exceeds ${budget.bundle.jsBytes.limit}`);
   assert.equal(a.manifest.files.some((file) => file.path === "js/board-focus.mjs"), true);
   assert.equal(a.manifest.files.some((file) => file.path.startsWith("test/")), false);
   assert.equal(a.manifest.files.some((file) => file.path === "data/board-seed.json"), true);

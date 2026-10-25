@@ -469,7 +469,7 @@ test("Dot 9: phase reconciliation resumes the originally requested follow-up wri
 test("Closing outcome recovery after Dot 21 replays update-deal through the dock sender", async () => {
   const {pendingCommand}=await import('../js/command-feedback.mjs');
   const writes=[];const state={client:{updateDeal:async args=>{writes.push(args);if(writes.length===1)throw new Error("lost response");return {ok:true};}}};
-  const h=handlers("js/pipeline.js","const FOLLOW_UP_SENDERS", "/**\n * The whole Move",{state,operations:new Map(),dock:{record:noop},commandState:{},performCommand,pendingCommand,uuidv4:()=>"00000000-0000-4000-8000-000000000001"},["runFollowUp"]);
+  const h=handlers("js/pipeline.js","const FOLLOW_UP_SENDERS", "async function runMove(",{state,operations:new Map(),dock:{record:noop},commandState:{},performCommand,pendingCommand,uuidv4:()=>"00000000-0000-4000-8000-000000000001"},["runFollowUp"]);
   const step={verb:"update-deal",summary:"Outcome",args:{deal:"demo",base_version:7,outcome:"won"}};
   await h.runFollowUp("outcome",step);await h.runFollowUp("outcome",step);
   assert.equal(writes.length,2);assert.equal(writes[0].idempotency_key,writes[1].idempotency_key);
@@ -478,11 +478,11 @@ test("Closing outcome recovery after Dot 21 replays update-deal through the dock
 test("PR111 #5: outcome read failure remains retryable from the receipt dock", async () => {
   const writes=[],receipts=[],operations=new Map();let reads=0;let dockOptions;
   const globals={state:{client:{getDeal:async()=>{if(++reads===1)throw new Error("read failed");return {deal:{version:7}};},updateDeal:async args=>{writes.push(args);return {ok:true};}},boardSync:{requestRefresh:noop}},dock:{record:(_key,value)=>receipts.push(value)},operations,commandState:{},performCommand,uuidv4:()=>"00000000-0000-4000-8000-000000000001",$:()=>({}),createCommandDock:options=>{dockOptions=options;return {mount:noop,record:globals.dock.record};}};
-  const h=handlers("js/pipeline.js","const FOLLOW_UP_SENDERS","/**\n * The whole Move",globals,["runOutcomeWrite","runFollowUp"]);
+  const h=handlers("js/pipeline.js","const FOLLOW_UP_SENDERS","async function runMove(",globals,["runOutcomeWrite","runFollowUp"]);
   const step={verb:"update-deal",summary:"Outcome",args:{deal:"demo",outcome:"won",closed_on:"2026-09-30"}};
   await h.runOutcomeWrite("close",step,{deal:"demo",name:"Demo"});
   assert.equal(receipts.at(-1).retry,true);assert.ok(operations.has("close"));assert.equal(writes.length,0);
-  const mount=handlers("js/pipeline.js","function mountDock()","/* ------------------------------------------------------------------------ boot",{...globals,runOutcomeWrite:h.runOutcomeWrite,runFollowUp:h.runFollowUp},["mountDock"]);mount.mountDock();
+  const mount=handlers("js/pipeline.js","function mountDock()","async function boot(",{...globals,runOutcomeWrite:h.runOutcomeWrite,runFollowUp:h.runFollowUp},["mountDock"]);mount.mountDock();
   await dockOptions.onDispatch("close");await tick();assert.equal(writes.length,1);assert.equal(writes[0].base_version,7);assert.equal(writes[0].outcome,"won");
 });
 

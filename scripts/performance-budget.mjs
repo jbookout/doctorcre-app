@@ -2,6 +2,10 @@ import { isDeepStrictEqual } from 'node:util';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
+const metricNames = screen => screen === 'bundle' ? ['jsBytes']
+  : screen.startsWith('task-') ? ['criticalBytes', 'lcpMs', 'requestCount', 'usefulMs']
+  : ['interactionMs', 'jsBytes', 'lcpMs'];
+
 // Same contract as CARR's performance-budget-gate.py: measurements are supplied,
 // validated, and compared; this module never invents successful evidence.
 export function compareBudget(budget, report) {
@@ -11,12 +15,14 @@ export function compareBudget(budget, report) {
   const rows = [];
   for (const [screen, metrics] of [...Object.entries(budget.screens), ['bundle', budget.bundle]]) {
     if (!/^[a-z][a-z0-9-]{0,40}$/.test(screen)) throw Error('invalid screen name');
-    const expected = screen === 'bundle' ? ['jsBytes'] : ['interactionMs', 'jsBytes', 'lcpMs'];
+    const expected = metricNames(screen);
     if (!isDeepStrictEqual(Object.keys(metrics || {}).sort(), expected)) throw Error(`invalid metric coverage: ${screen}`);
     const measured = screen === 'bundle' ? report.bundle : report.screens?.[screen];
     for (const [metric, { baseline: before, limit }] of Object.entries(metrics)) {
       const after = measured?.[metric];
-      if (![before, limit, after].every(value => Number.isFinite(value) && value > 0) || limit < before) {
+      const valid = value => metric === 'requestCount' ? Number.isSafeInteger(value) && value >= 0
+        : Number.isFinite(value) && value > 0;
+      if (![before, limit, after].every(valid) || limit < before) {
         throw Error(`invalid evidence or budget: ${screen} ${metric}`);
       }
       rows.push({ screen, metric, before, after, limit, passed: after <= limit });
@@ -27,8 +33,9 @@ export function compareBudget(budget, report) {
 
 // The one headroom rule. contracts/performance-budget.v1.json describes it in
 // prose; a test keeps every committed limit equal to this applied to its baseline.
-export const limitFor = (metric, baseline) => metric === 'jsBytes' ? Math.ceil(baseline * 1.1)
-  : metric === 'lcpMs' ? baseline + Math.max(Math.ceil(baseline / 2), 750)
+export const limitFor = (metric, baseline) => metric === 'requestCount' ? baseline
+  : ['jsBytes', 'criticalBytes'].includes(metric) ? Math.ceil(baseline * 1.1)
+  : ['lcpMs', 'usefulMs'].includes(metric) ? baseline + Math.max(Math.ceil(baseline / 2), 750)
   : baseline + Math.max(baseline, 150);
 
 // Re-measures the baseline from a complete report under the same profile. The
@@ -36,11 +43,14 @@ export const limitFor = (metric, baseline) => metric === 'jsBytes' ? Math.ceil(b
 export function rebaseline(budget, report) {
   const metrics = values => Object.fromEntries(Object.keys(values).map(metric =>
     [metric, { baseline: values[metric], limit: limitFor(metric, values[metric]) }]));
+  const provenance = { measuredAt: report.measuredAt, sourceCommit: report.sourceCommit, buildDigest: report.buildDigest,
+    browserVersion: report.browserVersion, nodeVersion: report.nodeVersion, platform: report.platform };
   const draft = { ...budget,
-    baseline: { measuredAt: report.measuredAt, sourceCommit: report.sourceCommit, buildDigest: report.buildDigest,
-      browserVersion: report.browserVersion, nodeVersion: report.nodeVersion, platform: report.platform },
-    screens: Object.fromEntries(Object.keys(budget.screens).map(id => [id, metrics({ lcpMs: report.screens?.[id]?.lcpMs,
-      jsBytes: report.screens?.[id]?.jsBytes, interactionMs: report.screens?.[id]?.interactionMs })])),
+    baseline: provenance,
+    ...(Object.keys(budget.screens).some(id => id.startsWith('task-'))
+      ? { taskBaseline: { ...provenance, measurement: report.taskMeasurement } } : {}),
+    screens: Object.fromEntries(Object.keys(budget.screens).map(id => [id,
+      metrics(Object.fromEntries(metricNames(id).map(metric => [metric, report.screens?.[id]?.[metric]])))])),
     bundle: metrics({ jsBytes: report.bundle?.jsBytes }) };
   if (!compareBudget(draft, report).passed) throw Error('rebaseline did not reproduce its own report');
   return draft;

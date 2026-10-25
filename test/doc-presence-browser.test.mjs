@@ -208,7 +208,7 @@ test('initial Queue read uses the mounted Wire filter scope and publishes its fi
 test('versioned Leads details bind popup identity and native close clears it',async t=>{
  const {page,goto}=await setup(t,{onRoute:producerRoute});await goto('/leads?mode=live');
  await page.locator('.lead-card').first().click();
- await page.waitForFunction(()=>document.querySelector('#detailBody')?.textContent.includes('Correspondence'));let c=await readContext(page);
+ await page.waitForFunction(()=>document.querySelector('#detailBody')?.textContent.includes('Captured correspondence'));let c=await readContext(page);
  assert.equal(c.ready,true,JSON.stringify(c));assert.deepEqual(c.selected,{kind:'lead',id:workspace().leads[0].id});assert.equal(c.active.title,'Dr. Example 1');
  await escapeRecord(page,'#leadDetail');assert.equal((await readContext(page)).selected,null);
 });
@@ -230,7 +230,7 @@ test('held Leads collection recovers in the current local filter before opening 
  assert.equal(filtered.ready,true,JSON.stringify(filtered));assert.deepEqual(filtered.records,[]);
  assert.equal(filtered.filters.search,'no matches');assert.ok(filtered.observedAt);
  await page.locator('#hotLeads [data-lead-id]').first().click();
- await page.waitForFunction(()=>document.querySelector('#detailBody')?.textContent.includes('Correspondence'));
+ await page.waitForFunction(()=>document.querySelector('#detailBody')?.textContent.includes('Captured correspondence'));
  const opened=await readContext(page);assert.equal(opened.ready,true);assert.equal(opened.active.title,'Dr. Example 1');
  await escapeRecord(page,'#leadDetail');
  await page.locator('#leadSearch').fill('');

@@ -1,3 +1,4 @@
+import { CHROMIUM_SAFETY_ARGS } from '../scripts/chromium-safety-args.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdir, readFile } from 'node:fs/promises';
@@ -10,7 +11,7 @@ const root = new URL('../', import.meta.url);
 async function open(t, width, tab = 'views', theme = 'dark') {
   const server = await startFixtureServer({ env: process.env.ACCOUNTABILITY_BUILT ? { DOCTORCRE_FIXTURE_ROOT: new URL('../dist/site/', import.meta.url).pathname } : {} });
   t.after(() => server.stop());
-  const browser = await chromium.launch();
+  const browser = await chromium.launch({ args: [...CHROMIUM_SAFETY_ARGS] });
   t.after(() => browser.close());
   const page = await browser.newPage({ viewport: { width, height: width === 390 ? 844 : 1000 } });
   await page.clock.install();

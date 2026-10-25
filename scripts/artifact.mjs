@@ -123,7 +123,7 @@ async function assembleArtifact(commit, paths, readSource) {
       // used by assembly and committed-source verification, never the live disk.
       const result = await build({
         entryPoints: [path], bundle: true, write: false, format: "iife",
-        platform: "browser", target: "es2022", legalComments: "none",
+        platform: "browser", target: "es2022", legalComments: "none", minifyWhitespace: true,
         plugins: [{ name: "artifact-source", setup(builder) {
           builder.onResolve({ filter: /.*/ }, (args) => {
             // The report adapter already serves lazy map assets at /vendor/.

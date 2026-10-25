@@ -1,3 +1,4 @@
+import { CHROMIUM_SAFETY_ARGS } from '../scripts/chromium-safety-args.mjs';
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile, mkdir } from "node:fs/promises";
@@ -41,7 +42,7 @@ async function open(t, { width = 390, reducedMotion = "reduce", denied = false, 
   });
   await new Promise(r => server.listen(0, "127.0.0.1", r));
   const origin = `http://localhost:${server.address().port}`;
-  const browser = await chromium.launch({ args: ["--use-angle=swiftshader", "--enable-unsafe-swiftshader"] });
+  const browser = await chromium.launch({ args: [...CHROMIUM_SAFETY_ARGS, "--use-angle=swiftshader", "--enable-unsafe-swiftshader"] });
   const context = await browser.newContext({ viewport: { width, height: 844 }, reducedMotion });
   const page = await context.newPage(); page.on("pageerror", e => errors.push(e.message));
   await context.route("**/*", route => new URL(route.request().url()).origin === origin ? route.continue() : route.abort());

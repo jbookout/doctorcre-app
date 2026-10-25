@@ -300,7 +300,7 @@ test('W4 lost park response retries the original field exactly once; next-step e
   await waitForAsync(page, async () => (await import('/js/pipeline.js')).state.deals.get('d14').operating_state === 'active');
   await page.locator('[data-id="d14"] .card-open').click();
   for (const text of ['Demo first next step', 'Demo second next step']) {
-    await page.locator('#detailUpdateForm textarea').fill(text); await page.locator('#detailUpdateForm button').click();
+    await page.locator('#detailUpdateForm textarea').fill(text); await page.locator('#detailUpdateForm button[type=submit]').click();
     await page.waitForFunction(expected => document.querySelector('.deal-updates').textContent.includes(expected), text);
   }
   assert.deepEqual(errors, []);
@@ -368,7 +368,7 @@ test('detail reads recover without losing an update draft', async t => {
  await page.getByText('Updates temporarily unavailable',{exact:true}).waitFor();
  assert.equal(await page.locator('#detailUpdateForm textarea').inputValue(),'Unsaved demo update');
  await page.evaluate(()=>restoreRead());await page.clock.fastForward(16000);
- await page.locator('#detailUpdateForm button').click();
+ await page.locator('#detailUpdateForm button[type=submit]').click();
  await page.waitForFunction(()=>document.querySelector('.deal-updates').textContent.includes('Unsaved demo update'));
  assert.equal(await page.locator('#detailUpdateForm textarea').inputValue(),'');
  assert.deepEqual(errors,[]);
@@ -855,26 +855,21 @@ test('desktop next steps wrap to two lines and retain the full recorded text',as
   assert.deepEqual(errors,[]);
 });
 
-test('a delayed context availability probe cannot hide a newer readable drawer',async t=>{
+test('background detail refresh does not probe unopened context',async t=>{
  const {page,errors}=await open(t);
  await page.evaluate(async()=>{
   const {state}=await import('/js/pipeline.js');const read=state.client.getDeal.bind(state.client);
   state.client.getDeal=async id=>{const detail=await read(id);return {...detail,deal:{...detail.deal,client_id:'demo-client'},critical_dates:[],participants:[]};};
-  state.client.getPartyRecord=async()=>({record:{id:'demo-client',name:'Demo Current Client'}});
+  window.contextReads=0;
+  state.client.getPartyRecord=async()=>{window.contextReads++;return {record:{id:'demo-client',name:'Demo Current Client'}};};
  });
  await page.locator('.kanban-column [data-id="d14"] .card-open').click();
- await page.locator('#panelContextOpen').waitFor({state:'visible'});
- await page.evaluate(async()=>{
-  const {state}=await import('/js/pipeline.js');const read=state.client.getPartyRecord;let first=true;
-  state.client.getPartyRecord=args=>{if(first){first=false;return new Promise(resolve=>{window.finishAvailability=()=>resolve({record:null});});}return read(args);};
-  dispatchEvent(new Event('online'));
- });
- await waitForAsync(page,()=>typeof window.finishAvailability==='function');
+ await page.locator('#detailUpdateForm').waitFor();
+ await page.locator('[data-refresh-detail]').click();
+ assert.equal(await page.evaluate(()=>window.contextReads),0);
  await page.locator('#panelContextOpen').click();
  await page.getByText('Demo Current Client',{exact:true}).waitFor();
- await page.evaluate(()=>window.finishAvailability());
- await page.locator('#contextDrawerClose').click();
- assert.equal(await page.locator('#panelContextOpenWrap').isVisible(),true);
+ assert.equal(await page.evaluate(()=>window.contextReads),1);
  assert.deepEqual(errors,[]);
 });
 
@@ -1055,6 +1050,7 @@ async function openWithCorrespondence(t) {
     };
   }, {identity,found,readiness,meeting});
   await view.page.locator('.kanban-column [data-id="d14"]').click();
+  await view.page.locator('#panelEvidenceSection > summary').click();
   await view.page.locator('#panelEvidence [data-kind=thread]').waitFor();
   return view;
 }
