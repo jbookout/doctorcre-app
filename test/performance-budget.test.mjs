@@ -40,6 +40,24 @@ test('task budgets reject slow useful content, extra reads, and critical bytes i
   assert.throws(() => compareBudget(extended, measured), /invalid evidence/);
 });
 
+test('task rebaselines retain their metrics and bind provenance to the new run', () => {
+  const extended = structuredClone(budget), measured = report();
+  extended.screens['task-tour-offline'] = {
+    usefulMs: { baseline: 1000, limit: 1750 }, requestCount: { baseline: 2, limit: 2 },
+    criticalBytes: { baseline: 10000, limit: 11000 },
+  };
+  measured.screens['task-tour-offline'] = { usefulMs: 1200, requestCount: 0, criticalBytes: 9000 };
+  measured.sourceCommit = 'c'.repeat(40);
+  measured.taskMeasurement = { policy: 'synthetic offline reload' };
+  const next = rebaseline(extended, measured);
+  assert.deepEqual(next.screens['task-tour-offline'], {
+    criticalBytes: { baseline: 9000, limit: 9900 }, requestCount: { baseline: 0, limit: 0 },
+    usefulMs: { baseline: 1200, limit: 1950 },
+  });
+  assert.equal(next.taskBaseline.sourceCommit, measured.sourceCommit);
+  assert.deepEqual(next.taskBaseline.measurement, measured.taskMeasurement);
+});
+
 test('the budget accepts measured values at the limits', () => {
   assert.deepEqual(compareBudget(budget, report()), { passed: true, rows: [
     { screen: 'home', metric: 'lcpMs', before: 800, after: 1200, limit: 1200, passed: true },

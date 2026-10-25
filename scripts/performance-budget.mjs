@@ -43,9 +43,12 @@ export const limitFor = (metric, baseline) => metric === 'requestCount' ? baseli
 export function rebaseline(budget, report) {
   const metrics = values => Object.fromEntries(Object.keys(values).map(metric =>
     [metric, { baseline: values[metric], limit: limitFor(metric, values[metric]) }]));
+  const provenance = { measuredAt: report.measuredAt, sourceCommit: report.sourceCommit, buildDigest: report.buildDigest,
+    browserVersion: report.browserVersion, nodeVersion: report.nodeVersion, platform: report.platform };
   const draft = { ...budget,
-    baseline: { measuredAt: report.measuredAt, sourceCommit: report.sourceCommit, buildDigest: report.buildDigest,
-      browserVersion: report.browserVersion, nodeVersion: report.nodeVersion, platform: report.platform },
+    baseline: provenance,
+    ...(Object.keys(budget.screens).some(id => id.startsWith('task-'))
+      ? { taskBaseline: { ...provenance, measurement: report.taskMeasurement } } : {}),
     screens: Object.fromEntries(Object.keys(budget.screens).map(id => [id,
       metrics(Object.fromEntries(metricNames(id).map(metric => [metric, report.screens?.[id]?.[metric]])))])),
     bundle: metrics({ jsBytes: report.bundle?.jsBytes }) };
