@@ -781,13 +781,14 @@ test('midnight occurrence timestamps convert to Chicago while midnight DATE evid
 });
 
 test('captured correspondence names its limited coverage even when no entries are captured',async()=>{
- const s=await setup({getLeadDetail:async l=>({detail:{...detail(workspace().leads.find(row=>row.id===l.id)),correspondence:[],correspondence_coverage:'captured_entries_only',correspondence_page:{total:0,has_more:false,next_cursor:null},stage_history_page:{total:1,has_more:false,next_cursor:null}}})});
+ const s=await setup({getLeadDetail:async l=>({detail:{...detail(workspace().leads.find(row=>row.id===l.id)),correspondence:[],stage_history:[],correspondence_coverage:'captured_entries_only',correspondence_page:{total:0,has_more:false,next_cursor:null},stage_history_page:{total:0,has_more:false,next_cursor:null}}})});
  try{s.d.querySelector('.lead-card').click();await tick();
   const body=s.d.getElementById('detailBody').textContent;
   assert.match(body,/Captured correspondence/);
   assert.match(body,/No captured correspondence/);
   assert.match(body,/Other communication may not have been captured/);
   assert.match(body,/Showing 0 of 0 captured entries/);
+  assert.match(body,/Showing 0 of 0 stage changes/);
   assert.doesNotMatch(body,/No correspondence yet/);
  }finally{s.close()}
 });
