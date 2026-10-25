@@ -38,6 +38,10 @@ export function mountDocLauncher({ document: root, window: win }) {
       if (disposed) return;
       unbind(); strip.remove(); style.remove();
       presence = mountDocPresence({ document: root, window: win });
+      for (const name of ['data-brief-unseen', 'aria-description']) {
+        const value = strip.querySelector('#docOpen').getAttribute(name);
+        if (value !== null) root.getElementById('docOpen')?.setAttribute(name, value);
+      }
       (returnToDoc ? root.getElementById('docOpen') : opener)?.focus();
       presence?.open();
     }).catch(() => {

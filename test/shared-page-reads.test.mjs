@@ -59,6 +59,24 @@ test('one cancelled consumer does not cancel another, and the last cancellation 
   assert.equal((await next).sponsor, 'joe');
 });
 
+for (const method of ['getBoard', 'morningBrief']) test(`replacement ${method} gets fresh data while another consumer keeps the old read`, async () => {
+  const { calls, fetchImpl } = transport();
+  const a = createLiveClient({ fetchImpl }), b = createLiveClient({ fetchImpl });
+  const controller = new AbortController();
+  const cancelled = assert.rejects(a[method]({ signal: controller.signal }), { code: 'read_timeout' });
+  const kept = b[method]();
+  assert.equal(calls.length, 1, 'initial reads share');
+  controller.abort();
+  await cancelled;
+  const replacement = a[method]();
+  const requests = calls.length;
+  calls[0].finish({ sponsor: 'obsolete', actor: 'joe', deals: [] });
+  calls[1]?.finish({ sponsor: 'fresh', actor: 'joe', deals: [] });
+  assert.equal((await kept).sponsor, 'obsolete');
+  assert.equal((await replacement).sponsor, 'fresh');
+  assert.equal(requests, 2);
+});
+
 test('failed shared reads are retried, and distinct actor and board scopes never share', async () => {
   const { calls, fetchImpl } = transport();
   const a = createLiveClient({ fetchImpl, selfActor: 'joe' }), b = createLiveClient({ fetchImpl, selfActor: 'joe' });

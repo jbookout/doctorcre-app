@@ -53,6 +53,7 @@ export function mountMorningBrief({ document:root, window:win, getClient, interv
     render();
   });
   const cue = () => {
+    dialog.toggleAttribute('data-brief-ready', !!view);
     const unseen = !!(view && preferences && preferences.value.day !== localDay(now()));
     const doc = $('docOpen');
     doc?.toggleAttribute('data-brief-unseen', unseen);

@@ -43,6 +43,7 @@ export function sharedPageRead(transport, key, operation, signal) {
       callback(value);
     };
     const abort = () => {
+      if (pending.get(key) === entry) pending.delete(key);
       finish(reject, cancelled());
       if (!entry.subscribers.size) entry.cancel();
     };

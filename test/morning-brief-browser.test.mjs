@@ -51,6 +51,37 @@ async function setup(t,{width=1440,motion='no-preference',brief=true,coverage=fa
 }
 const snap=async(page,name)=>{await mkdir(new URL('out/test-artifacts/w12/',root),{recursive:true});await page.screenshot({path:new URL(`out/test-artifacts/w12/${name}.png`,root).pathname,animations:'disabled'});};
 
+test('unseen brief cue survives Doc mounting and shell recovery after a failed dialog read', async t => {
+ let reads = 0, release;
+ const held = new Promise(resolve => { release = resolve; });
+ t.after(() => release());
+ const state = await setup(t, { onBrief: async () => { if (++reads === 2) await held; } });
+ const { page } = state;
+ await page.goto('http://localhost/deals?mode=live');
+ await page.locator('#docOpen[data-brief-unseen]').waitFor();
+ await page.locator('#docOpen').click();
+ await page.locator('#docDetail[open]').waitFor();
+ assert.equal(await page.locator('#docOpen').getAttribute('aria-description'), 'Morning brief ready');
+ assert.equal(await page.locator('#docOpen').evaluate(node => node.hasAttribute('data-brief-unseen')), true);
+ state.fail = true; release();
+ await page.waitForFunction(() => document.getElementById('morningCoverage')?.textContent === 'Brief unavailable');
+ await page.locator('#docClose').click();
+ state.fail = false;
+ await page.locator('#appSyncRefresh').click();
+ await page.locator('#docOpen[data-brief-unseen]').waitFor();
+ assert.equal(await page.locator('#docOpen').getAttribute('aria-description'), 'Morning brief ready');
+ await page.locator('#docOpen').click();
+ await page.locator('#docMorning').click();
+ await page.locator('#morningUpdated[datetime]').waitFor();
+ await page.waitForFunction(() => !document.getElementById('docOpen').hasAttribute('data-brief-unseen'));
+ await page.locator('#morningClose').click();
+ const refreshed = page.waitForResponse(response => response.url().endsWith('/mcp') && response.request().postDataJSON()?.params?.name === 'morning-brief');
+ await page.locator('#appSyncRefresh').click();
+ await (await refreshed).finished();
+ assert.equal(await page.locator('#docOpen').getAttribute('aria-description'), null);
+ assert.deepEqual(state.errors, []);
+});
+
 test('live brief opens on request and wide record detail; desktop/phone renders, focus, original entry, no horizontal overflow',async t=>{
  const state=await setup(t);const {page}=state;await state.goto();await page.locator('#docOpen[data-brief-unseen]').waitFor();assert.equal(await page.locator('#docMorningBrief').evaluate(node=>node.open),false);await page.locator('#docOpen').click();await page.locator('#docMorning').click();await page.locator('#docMorningBrief[open]').waitFor();
  await page.locator('[data-brief-record]').first().waitFor();assert.equal(await page.locator('[data-brief-record]').count(),3);assert.deepEqual(await page.locator('#docMorningBrief h3').allTextContents(),['Do first','Overnight','Today']);

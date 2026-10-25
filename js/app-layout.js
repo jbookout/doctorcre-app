@@ -178,7 +178,7 @@ export function mountAppLayout(root, host, pathname) {
     dot.setAttribute('aria-label', connected ? 'Connection available' : 'Connection unavailable'); dot.title = dot.getAttribute('aria-label');
   };
   const briefCue = brief => {
-    if (root.getElementById('docDetail')) return;
+    if (root.querySelector('#docMorningBrief[data-brief-ready]')) return;
     let storage; try { storage = win.localStorage; } catch {}
     const unseen = !!brief && briefPreferences(storage, brief.sponsor).value.day !== localDay(new Date());
     const doc = root.getElementById('docOpen');
@@ -261,7 +261,7 @@ export function mountAppLayout(root, host, pathname) {
   });
   win.addEventListener('offline', unavailableRead);
   const auto = mountAutoRefresh({ document:root, window:win, refresh, onResume:unavailableRead, intervalMs:30_000 });
-  status.querySelector('#appSyncRefresh').onclick = () => { auto.refresh(); root.querySelectorAll('[data-layout-refresh]').forEach(button => button.click()); };
+  status.querySelector('#appSyncRefresh').onclick = () => { auto.revalidate(); root.querySelectorAll('[data-layout-refresh]').forEach(button => button.click()); };
   auto.refresh();
   win.addEventListener('pagehide', event => {
     if (!event.persisted) { auto.dispose(); owners.dispose(); win.removeEventListener('offline', unavailableRead); }

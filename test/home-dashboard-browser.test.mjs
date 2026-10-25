@@ -17,7 +17,7 @@ const screenshot = async (page, name) => {
   await page.screenshot({ path: join(process.env.W2_SCREENSHOT_DIR, `${name}.png`), fullPage: !name.includes('detail') });
 };
 
-async function open(t, { width = 1440, motion = 'reduce', leads = true, delayDetails = false, hangDetails = false, longLead = false, tasksOnly = false, heldTasks = false, malformedTasks = false, delayBoard = false, delayInitialFeed = false, origin = 'http://localhost', malformedBoard = false, firstOpen = false, emptyAgenda = false, initialDetailFailure = null } = {}) {
+async function open(t, { width = 1440, motion = 'reduce', leads = true, delayDetails = false, hangDetails = false, longLead = false, tasksOnly = false, heldTasks = false, malformedTasks = false, delayBoard = false, holdInitialBoard = false, delayInitialFeed = false, origin = 'http://localhost', malformedBoard = false, firstOpen = false, emptyAgenda = false, initialDetailFailure = null } = {}) {
   const client = await createFixtureClient({ seedUrl: `data:application/json;base64,${Buffer.from(await readFile(new URL('../data/board-seed.json', import.meta.url))).toString('base64')}` });
   const browser = await chromium.launch();
   const page = await browser.newPage({ viewport: { width, height: 1000 }, timezoneId: 'UTC', reducedMotion: motion });
@@ -30,9 +30,14 @@ async function open(t, { width = 1440, motion = 'reduce', leads = true, delayDet
   const errors = [], calls = [], liveLeads = structuredClone(leadRows); let boardReads = 0, feedReads = 0, failBoard = false, detailFailure = initialDetailFailure, leadFailure = null;
   const responses = new Map();
   let boardMalformed = malformedBoard;
+  let markInitialBoard;
+  const initialBoardStarted = new Promise(resolve => { markInitialBoard = resolve; });
+  let releaseInitialBoard;
+  const initialBoard = new Promise(resolve => { releaseInitialBoard = resolve; });
   let releaseInitialFeed;
   const initialFeed = new Promise(resolve => { releaseInitialFeed = resolve; });
   t.after(async () => {
+    releaseInitialBoard();
     releaseInitialFeed();
     await page.unrouteAll({ behavior: 'ignoreErrors' });
     await browser.close();
@@ -40,7 +45,7 @@ async function open(t, { width = 1440, motion = 'reduce', leads = true, delayDet
   if (longLead) Object.assign(liveLeads[0], { name: `Demo${'Practice'.repeat(16)}`, specialty: 'DemoSpecialtyName', city: `Demo${'City'.repeat(20)}`, owner_label: `Demo${'Partner'.repeat(16)}`, stage_label: `Demo${'Stage'.repeat(20)}` });
   page.on('pageerror', error => errors.push(error.message));
   const handlers = {
-    'deal-room-board': async () => { boardReads++; if (delayBoard) await new Promise(resolve => setTimeout(resolve, 100)); if (failBoard) throw Error('Unavailable'); const board = await client.getBoard(); if (boardMalformed) return { ...board, deals: [{ name: 'Demo missing record identity' }] }; return hangDetails ? { ...board, deals: Array.from({ length: 12 }, (_, i) => ({ ...board.deals[0], id: `demo-${i}`, operating_state: 'active' })) } : board; },
+    'deal-room-board': async () => { boardReads++; if (holdInitialBoard && boardReads === 1) { markInitialBoard(); await initialBoard; return { ...await client.getBoard(), deals: [] }; } if (delayBoard) await new Promise(resolve => setTimeout(resolve, 100)); if (failBoard) throw Error('Unavailable'); const board = await client.getBoard(); if (boardMalformed) return { ...board, deals: [{ name: 'Demo missing record identity' }] }; return hangDetails ? { ...board, deals: Array.from({ length: 12 }, (_, i) => ({ ...board.deals[0], id: `demo-${i}`, operating_state: 'active' })) } : board; },
     'get-deal-room': async args => { if (detailFailure === '503' || (detailFailure === 'partial' && args.deal === 'd01')) throw Error('Unavailable'); if ([401, 403].includes(detailFailure)) throw Object.assign(Error('Refused'), { status: detailFailure }); if (hangDetails || detailFailure === 'timeout') return new Promise(() => {}); if (delayDetails) await new Promise(resolve => setTimeout(resolve, 100)); const detail = await client.getDeal(args.deal); return { ...detail,
       ...detail.deal, deal_id: detail.deal.id, events: detail.history.map(event => ({ ...event, verb: event.verb || 'patch-deal-field' })),
       critical_dates: tasksOnly || emptyAgenda ? [] : [{ id: `demo-date-${args.deal}`, note: 'Demo tour', due_on: '2026-10-03', status: 'open' }],
@@ -86,10 +91,54 @@ async function open(t, { width = 1440, motion = 'reduce', leads = true, delayDet
     catch { return route.fulfill({ status: 404, body: '' }); }
   });
   await page.goto(`${origin}/?mode=live`);
-  await page.waitForFunction(() => /Active deals: \d/.test(document.querySelector('#dealCounts')?.textContent || '') || /unavailable/i.test(document.querySelector('#observedAt')?.textContent || ''));
+  if (holdInitialBoard) { await initialBoardStarted; await page.waitForFunction(() => document.querySelector('#refreshHome')?.getAttribute('aria-busy') === 'true'); }
+  else await page.waitForFunction(() => /Active deals: \d/.test(document.querySelector('#dealCounts')?.textContent || '') || /unavailable/i.test(document.querySelector('#observedAt')?.textContent || ''));
   if (firstOpen) { await page.locator('#docOpen[data-brief-unseen]').waitFor(); await page.locator('#docOpen').click(); await page.locator('#docMorning').click(); await page.locator('#docMorningBrief[open]').waitFor(); await page.waitForFunction(() => document.getElementById('morningUpdated').hasAttribute('datetime')); await page.locator('#morningClose').click(); }
-  return { page, errors, calls, releaseInitialFeed, responses, get boardReads() { return boardReads; }, get feedReads() { return feedReads; }, malformBoard(value) { boardMalformed = value; }, failLeads(value) { leadFailure = value; }, failDetails(value) { detailFailure = value; }, failBoard(value) { failBoard = value; }, updateLead(id, score) { liveLeads.find(row => row.id === id).score = score; } };
+  return { page, errors, calls, releaseInitialBoard, releaseInitialFeed, responses, get boardReads() { return boardReads; }, get feedReads() { return feedReads; }, malformBoard(value) { boardMalformed = value; }, failLeads(value) { leadFailure = value; }, failDetails(value) { detailFailure = value; }, failBoard(value) { failBoard = value; }, updateLead(id, score) { liveLeads.find(row => row.id === id).score = score; } };
 }
+
+for (const button of ['refreshHome', 'appSyncRefresh']) test(`${button} replaces a pending shared board read`, async t => {
+  const state = await open(t, { holdInitialBoard: true });
+  const { page } = state;
+  assert.equal(state.boardReads, 1, 'shell and Home share the initial board read');
+  const fresh = page.waitForRequest(request => request.url().endsWith('/mcp') && request.postDataJSON()?.params?.name === 'deal-room-board', { timeout: 3000 });
+  await page.locator(`#${button}`).click();
+  await fresh;
+  await page.waitForFunction(() => /Active deals: [1-9]/.test(document.getElementById('dealCounts').textContent));
+  const obsolete = button === 'refreshHome' ? page.waitForResponse(response => response.url().endsWith('/mcp') && response.request().postDataJSON()?.params?.name === 'deal-room-board') : null;
+  state.releaseInitialBoard();
+  if (obsolete) await (await obsolete).finished();
+  assert.match(await page.locator('#dealCounts').textContent(), /Active deals: [1-9]/);
+  assert.deepEqual(state.errors, []);
+});
+
+test('Refresh Home starts a fresh board read when only another consumer has a pending poll', async t => {
+  const { page, errors } = await open(t);
+  let release, started;
+  const held = new Promise(resolve => { release = resolve; });
+  const pending = new Promise(resolve => { started = resolve; });
+  t.after(() => release());
+  let first = true;
+  await page.route('**/mcp', async route => {
+    if (first && route.request().postDataJSON()?.params?.name === 'deal-room-board') {
+      first = false; started(); await held;
+      return route.fulfill({ json: { result: { content: [{ text: JSON.stringify({ actor: 'joe', deals: [] }) }] } } });
+    }
+    return route.fallback();
+  });
+  await page.evaluate(() => {
+    window.olderBoard = import('/js/live-client.js').then(({ createLiveClient }) => createLiveClient({ docContext: false, selfActor: 'joe' }).getBoard());
+  });
+  await pending;
+  const fresh = page.waitForRequest(request => request.url().endsWith('/mcp') && request.postDataJSON()?.params?.name === 'deal-room-board', { timeout: 3000 });
+  await page.locator('#refreshHome').click();
+  await fresh;
+  await page.waitForFunction(() => document.querySelector('#refreshHome').getAttribute('aria-busy') === 'false');
+  release();
+  assert.deepEqual(await page.evaluate(async () => (await window.olderBoard).deals), []);
+  assert.match(await page.locator('#dealCounts').textContent(), /Active deals: [1-9]/);
+  assert.deepEqual(errors, []);
+});
 
 test('PR123 R1: Home models the daily morning brief and rejects unknown operations', async t => {
   const { page, calls, errors } = await open(t, { firstOpen: true });

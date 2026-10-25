@@ -13,7 +13,7 @@ const primary = navigationItems.filter(item => !item.group).map(item => item.lab
 const secondary = navigationItems.filter(item => item.group).map(item => item.label);
 
 async function open(t, { width = 1440, actor = 'joe', live = false, minimal = false, simulatedClock = false,
-  reducedMotion = 'no-preference', signoutMode = 'success', holdDocSuggestions = false } = {}) {
+  reducedMotion = 'no-preference', signoutMode = 'success', holdDocSuggestions = false, companion = { state: 'idle' } } = {}) {
   const browser = await chromium.launch(); t.after(() => browser.close());
   const page = await browser.newPage({ viewport: { width, height: 960 }, reducedMotion });
   if (simulatedClock) await page.clock.install({ time: new Date('2026-10-01T15:00:00Z') });
@@ -26,7 +26,7 @@ async function open(t, { width = 1440, actor = 'joe', live = false, minimal = fa
   page.on('pageerror', error => pageErrors.push({ message: error.message, stack: error.stack }));
   await page.route('**/*', async route => {
     const request = route.request(), url = new URL(request.url()); calls.push({ url: url.pathname, method: request.method(), verb: request.postDataJSON?.()?.params?.name });
-    if (url.origin === 'http://127.0.0.1:4682') return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ state: 'idle' }) });
+    if (url.origin === 'http://127.0.0.1:4682') return route.fulfill({ contentType: 'application/json', body: JSON.stringify(companion) });
     if (url.origin !== 'http://localhost') return route.abort();
     if (['/api/system-work/session','/auth/session'].includes(url.pathname)) return route.fulfill({ status: signedOut ? 401 : 200,
       contentType: 'application/json', body: JSON.stringify(signedOut ? {} : { actor: { slug: actor }, csrf_token: 'synthetic-test-token' }) });
@@ -83,6 +83,16 @@ test('first Doc open restores desktop keyboard focus after lazy initialization',
   await page.locator('#docDetail[open]').waitFor();
   await page.locator('#docClose').click();
   await settles(async () => assert.equal(await page.evaluate(() => document.activeElement.id), 'docOpen'));
+  assert.deepEqual(errors, []);
+});
+
+test('startup recording cue includes elapsed time before Call Mode opens', async t => {
+  const { page, errors } = await open(t, { minimal: true, simulatedClock: true,
+    companion: { state: 'recording', started_at: '2026-10-01T14:57:55Z' } });
+  await page.locator('#callModeButton.recording').waitFor({ state: 'attached' });
+  assert.equal(await page.locator('#callModeButton').getAttribute('aria-label'), 'Call Mode recording 2:05');
+  assert.match(await page.locator('#callModeButton').textContent(), /2:05/);
+  assert.equal(await page.locator('#callModeDialog').count(), 0);
   assert.deepEqual(errors, []);
 });
 
