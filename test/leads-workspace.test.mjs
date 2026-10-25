@@ -35,6 +35,42 @@ test('card opens wide details with original entries; polling preserves expanded 
  const original=s.d.querySelector('#detailBody details');original.open=true;await s.app.refresh();assert.equal(s.d.querySelector('#detailBody details').open,true);
  }finally{s.close()}
 });
+for (const interruption of ['visibility', 'bfcache']) test(`Lead resumes the same eligible record and reading position after ${interruption}`,async()=>{
+ const s=await setup();let release,releaseDetail;try{
+  await s.app.readDetail(id(1));const expanded=s.d.querySelector('#detailBody details');expanded.open=true;
+  const key=expanded.dataset.entryKey;s.d.getElementById('leadDetail').scrollTop=173;
+  s.client.getActor=()=>new Promise(resolve=>release=resolve);
+  s.client.getLeadDetail=()=>new Promise(resolve=>releaseDetail=resolve);
+  if(interruption==='visibility'){
+   Object.defineProperty(s.d,'visibilityState',{value:'hidden',configurable:true});s.d.dispatchEvent(new s.w.Event('visibilitychange'));
+   Object.defineProperty(s.d,'visibilityState',{value:'visible',configurable:true});s.d.dispatchEvent(new s.w.Event('visibilitychange'));
+  }else{s.w.dispatchEvent(new s.w.PageTransitionEvent('pagehide',{persisted:true}));s.w.dispatchEvent(new s.w.PageTransitionEvent('pageshow',{persisted:true}));}
+  await tick();assert.equal(s.d.getElementById('leadDetail').open,false);assert.equal(s.d.getElementById('detailBody').textContent,'');
+  assert.equal(s.d.querySelectorAll('.lead-card').length,0);
+  release('example-partner');await tick();assert.equal(typeof releaseDetail,'function');
+  assert.doesNotMatch(s.d.getElementById('detailBody').textContent,/example@example.test/);
+  releaseDetail({detail:{...detail(s.board.leads[0]),phone:'+1-555-010-0099'}});await tick();
+  assert.equal(s.d.querySelector('#detailBody a[href="tel:+1-555-010-0099"]').textContent,'+1-555-010-0099');
+  assert.equal(s.d.getElementById('leadDetail').open,true);assert.match(s.d.getElementById('detailTitle').textContent,/Example 1/);
+  assert.equal(s.d.querySelector(`[data-entry-key="${key}"]`).open,true);assert.equal(s.d.getElementById('leadDetail').scrollTop,173);
+  assert.equal(s.d.querySelector('.lead-card[data-selected="true"]').dataset.leadId,id(1));assert.equal(s.writes.length,0);
+ }finally{release?.('example-partner');releaseDetail?.({detail:detail(s.board.leads[0])});s.close()}
+});
+for (const refusal of ['actor change','denied','vanished','ineligible']) test(`Lead resume forgets the record after ${refusal}`,async()=>{
+ const s=await setup();try{
+  await s.app.readDetail(id(1));
+  if(refusal==='actor change')s.setActor('another-example');
+  if(refusal==='denied')s.client.getActor=async()=>{throw Object.assign(new Error('denied'),{status:403})};
+  const lead=s.board.leads[0];
+  if(refusal==='vanished')s.board.leads.shift();
+  if(refusal==='ineligible')lead.client_id=id(888);
+  s.w.dispatchEvent(new s.w.PageTransitionEvent('pageshow',{persisted:true}));await tick();
+  assert.equal(s.d.getElementById('leadDetail').open,false);assert.equal(s.d.getElementById('detailBody').textContent,'');
+  s.setActor('example-partner');s.client.getActor=async()=> 'example-partner';
+  if(refusal==='vanished')s.board.leads.unshift(lead);delete lead.client_id;
+  await s.app.refresh();assert.equal(s.d.getElementById('leadDetail').open,false);assert.equal(s.writes.length,0);
+ }finally{s.close()}
+});
 test('drag opens short evidence prompt, does not write before confirmation, commits exact version and evidence IDs',async()=>{
  const s=await setup();try{const card=s.d.querySelector('.lead-card');const start=new s.w.Event('dragstart',{bubbles:true});start.dataTransfer={setData(){}};card.dispatchEvent(start);
  s.d.querySelector('[data-stage="engaged"]').dispatchEvent(new s.w.Event('drop',{bubbles:true,cancelable:true}));await tick();assert.equal(s.writes.length,0);assert.equal(s.d.getElementById('stageDialog').open,true);assert.equal(s.d.querySelector('#stageQuestions textarea'),null);
