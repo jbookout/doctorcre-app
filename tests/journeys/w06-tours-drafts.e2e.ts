@@ -32,6 +32,7 @@ test('W6 Tours drafts prefill from a client, undo an edit and survive a reload',
   expect(title.top).toBeGreaterThanOrEqual(0);
   expect(title.top).toBeLessThan(160);
 
+  await browser.locator('#plan-load-clients').tap();
   await browser.locator('#plan-client').selectOption('Demo Harbor Practice');
   await expect(browser.locator('#plan-name')).toHaveValue(/Demo Harbor/);
   await expect(browser.locator('#plan-area')).toHaveValue('Pensacola, FL');

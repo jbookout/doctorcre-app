@@ -55,6 +55,7 @@ test('Tour planner refreshes then reviews a private packet and removes its attac
   await page.goto('/tours');
   await expect(page.locator('#planner-updated')).not.toHaveText('Updating…', { timeout: 27000 });
   await page.getByRole('button', { name: 'Refresh tours', exact: true }).click();
+  await page.locator('#plan-load-clients').click();
   await expect(page.locator('#plan-client option')).not.toHaveCount(1, { timeout: 27000 });
   await page.locator('#plan-client').selectOption({ index: 1 });
   await page.locator('#plan-name').fill('V2 private packet review');

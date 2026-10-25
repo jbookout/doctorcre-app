@@ -3,9 +3,12 @@ import { reproTest, refuseReads } from './support.mjs';
 
 const test = reproTest();
 test('QA-019 reviewing Tours retains unavailable-client recovery', { tags: ['regression'], requires: ['browser'], retries: 0 }, async ({ app, browser, screen }) => {
-  await refuseReads(browser);
+  await browser.route('**/api/tours/library', route => route.fulfill({ json: { csrf_token: 'synthetic-tour-scope', data: { tours: [] } } }));
+  await browser.route('**/api/v1/business/clients?*', route => route.fulfill({ status: 503, json: {} }));
   await app.open('/tours?mode=live');
-  await expect(browser.locator('#plan-message')).toContainText(/unavailable/i);
+  await expect(browser.locator('#planner-updated')).toContainText('Updated');
+  await browser.locator('#plan-load-clients').tap();
+  await expect(browser.locator('#plan-clients-state')).toContainText(/unavailable/i);
   await expect(browser.locator('#plan-client option')).toHaveCount(1);
   await screen.getByRole('textbox', 'Tour name').fill('Demo review packet');
   await screen.getByRole('textbox', 'Tour notes').fill('Synthetic fixture tour notes');
