@@ -1,8 +1,7 @@
 import { test } from '@e2e-dev/web';
 import { expect } from 'e2e';
-import { businessDay } from '../../js/business-date.js';
 
-const today = businessDay();
+const today = new Date().toLocaleDateString('en-CA');
 
 test('W15 invoice tracker filters by age and status and records a payment', async ({ app, browser }) => {
   await app.open('/invoices');

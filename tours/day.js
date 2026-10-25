@@ -4,22 +4,33 @@ import { acceptedRouteFromDetail, buildAcceptedRouteState, mountAcceptedItinerar
 import { createDayClient } from "./day-client.js";
 import { createDayStore, noteState } from "./day-store.js";
 import { createDayRecorder } from "./day-recorder.js";
-import { mountAutoRefresh, updatedLabel } from "../js/auto-refresh.mjs";
+import { mountAutoRefresh, updatedLabel, readWithDeadline } from "../js/auto-refresh.mjs";
 import { offlineTourSession, SESSION_EPOCH_KEY } from "../js/offline-tour-session.js";
 
-export async function prepareOfflineShell(window) {
+export async function prepareOfflineShell(window, { signal } = {}) {
   if (!window.navigator.serviceWorker || !window.isSecureContext) throw new Error("offline_app_unavailable");
   const registration = await window.navigator.serviceWorker.register("/tours/day-sw.js", { scope: "/tours/" });
-  const worker = registration.active || registration.installing || registration.waiting;
+  const worker = registration.installing || registration.waiting || registration.active;
   if (!worker) throw new Error("offline_app_unavailable");
-  if (worker.state === "activated") return;
-  await new Promise((resolve, reject) => {
+  if (worker.state !== "activated") await new Promise((resolve, reject) => {
     const check = () => {
       if (!["activated", "redundant"].includes(worker.state)) return;
       worker.removeEventListener("statechange", check);
       if (worker.state === "activated") resolve(); else reject(new Error("offline_app_unavailable"));
     };
     worker.addEventListener("statechange", check); check();
+  });
+  await new Promise((resolve, reject) => {
+    const channel = new window.MessageChannel();
+    const finish = ready => {
+      channel.port1.close(); signal?.removeEventListener('abort', cancel);
+      if (ready) resolve(); else reject(new Error('offline_app_unavailable'));
+    };
+    const cancel = () => finish(false);
+    channel.port1.onmessage = event => finish(event.data?.ready === true);
+    signal?.addEventListener('abort', cancel, { once: true });
+    if (signal?.aborted) { cancel(); return; }
+    worker.postMessage({ type: 'doctorcre-prepare-tour-shell' }, [channel.port2]);
   });
 }
 
@@ -58,6 +69,7 @@ export function mountTourDay({ document, window, api = createDayClient(), store 
   const offlineSession = offlineTourSession(window);
   let scope = null, userRef = null, tour = null, selected = null, map = null, notes = [], disposed = false, epoch = 0, opener = null, urls = [], dialogNoteId = null, dialogSignature = null;
   let volatileNote = null, recordingMessage = "", offline = false, itineraryError = "", shellError = "", shellReady = false, preparingShell = null;
+  let itineraryReady = false, shellGeneration = 0;
   const status = text => { $("#day-status").textContent = text; };
   // The page shows a tour or says why it cannot: the route, stop panel and
   // capture dock appear only once a tour is in hand.
@@ -67,7 +79,10 @@ export function mountTourDay({ document, window, api = createDayClient(), store 
     signedOut: "Sign in, then reopen this tour from the itinerary.",
   };
   const showState = (state, copy = "") => { $("#tour-day").dataset.state = state; $("#day-empty-copy").textContent = copy; };
-  const renderStatus = () => { if (tour) status([recordingMessage, itineraryError, shellError].filter(Boolean).join(" · ") || (offline ? "Offline · Notes saved on phone" : "Voice notes stay on this phone")); };
+  const renderStatus = () => {
+    $("#day-offline").textContent = tour ? itineraryError || shellError || (itineraryReady && shellReady ? "Available offline" : "Preparing offline") : "";
+    if (tour) status([recordingMessage, itineraryError, shellError].filter(Boolean).join(" · ") || (offline ? "Offline · Notes saved on phone" : "Voice notes stay on this phone"));
+  };
   const rememberFocus = () => document.activeElement?.dataset.focusKey;
   const focusControl = key => [...document.querySelectorAll("[data-focus-key]")].find(node => node.dataset.focusKey === key)?.focus({ preventScroll: true });
   function currentNotes() {
@@ -215,6 +230,7 @@ export function mountTourDay({ document, window, api = createDayClient(), store 
   function reset() {
     ++epoch; recorder.invalidate(); close(); map?.destroy(); map = null;
     scope = userRef = tour = selected = null; notes = []; volatileNote = null; recordingMessage = itineraryError = "";
+    itineraryReady = shellReady = false; shellError = ""; preparingShell = null; ++shellGeneration;
     $("#day-current").replaceChildren(); $("#day-stops").replaceChildren(); $("#day-notes").replaceChildren(); $("#day-title").textContent = "Tour day";
     try { offlineSession.clear(); } catch {}
     showState("unavailable", EMPTY_COPY.signedOut); $("#day-updated").textContent = "Not loaded";
@@ -224,15 +240,16 @@ export function mountTourDay({ document, window, api = createDayClient(), store 
     const seq = ++epoch;
     if (!tourId) { showState("unavailable", EMPTY_COPY.none); $("#day-updated").textContent = "No tour chosen"; status("Tour unavailable"); renderControls(); return; }
     try {
-      const session = await api.session({ signal });
+      const session = await readWithDeadline(signal => api.session({ signal }), { signal, timeoutMs: 3_000 });
       if (disposed || seq !== epoch) return;
       if (scope && session.scope !== scope) { reset(); status("Session changed"); return; }
       scope = session.scope; userRef = session.user_ref;
       offlineSession.save({ scope, userRef, tourId });
-      const detail = await api.tour(tourId, { signal });
+      const detail = await readWithDeadline(signal => api.tour(tourId, { signal }), { signal, timeoutMs: 3_000 });
       if (disposed || seq !== epoch) return;
       tour = detail; offline = false;
-      try { await store.putTour(scope, tour); if (disposed || seq !== epoch) return; itineraryError = ""; }
+      itineraryReady = false;
+      try { await store.putTour(scope, tour); if (disposed || seq !== epoch) return; itineraryReady = true; itineraryError = ""; }
       catch { if (disposed || seq !== epoch) return; itineraryError = "Offline itinerary unavailable"; }
       void ensureOfflineShell();
       showState("ready"); await present(); $("#day-updated").textContent = updatedLabel(new Date());
@@ -241,13 +258,13 @@ export function mountTourDay({ document, window, api = createDayClient(), store 
       if (disposed || seq !== epoch) return;
       if (error.authentication) { reset(); status("Sign in to continue"); return; }
       offline = true;
-      if (!scope && window.navigator.onLine === false) {
+      if (!scope && (error instanceof TypeError || error.code === "read_timeout" || error.transport)) {
         const saved = offlineSession.read(tourId); if (saved) { scope = saved.scope; userRef = saved.userRef; }
       }
       if (!tour && scope) {
         const saved = await store.getTour(scope, tourId).catch(() => null);
         if (disposed || seq !== epoch) return;
-        if (saved) { tour = saved.tour; showState("ready"); $("#day-updated").textContent = updatedLabel(saved.updated_at); await present(); }
+        if (saved) { tour = saved.tour; itineraryReady = true; void ensureOfflineShell(); showState("ready"); $("#day-updated").textContent = `Saved ${new Date(saved.updated_at).toLocaleString()}`; await present(); }
       }
       renderControls();
       if (!tour) { showState("unavailable", EMPTY_COPY.failed); $("#day-updated").textContent = "Not loaded"; status("Tour unavailable"); }
@@ -282,7 +299,14 @@ export function mountTourDay({ document, window, api = createDayClient(), store 
   const updates = mountAutoRefresh({ document, window, refresh });
   function ensureOfflineShell() {
     if (shellReady || preparingShell) return preparingShell;
-    preparingShell = prepareOffline(window).then(() => { shellReady = true; shellError = ""; }, () => { shellError = "Offline app unavailable"; }).finally(() => { preparingShell = null; if (!disposed) renderStatus(); });
+    const generation = shellGeneration;
+    preparingShell = readWithDeadline(signal => prepareOffline(window, { signal }), { timeoutMs: 5_000, clock: window }).then(() => {
+      if (!disposed && generation === shellGeneration) { shellReady = true; shellError = ""; }
+    }, () => {
+      if (!disposed && generation === shellGeneration) shellError = "Offline app unavailable";
+    }).finally(() => {
+      if (generation === shellGeneration) { preparingShell = null; if (!disposed) renderStatus(); }
+    });
     return preparingShell;
   }
   $("#day-refresh").onclick = () => updates.refresh();

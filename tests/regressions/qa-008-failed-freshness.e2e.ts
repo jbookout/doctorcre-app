@@ -18,6 +18,7 @@ for (const viewport of [{ width: 1440, height: 960 }, { width: 390, height: 844 
     const reject = async route => {
       if (route.request.url.includes('/api/v1/business/clients?')) refusedClientReads += 1;
       if (surface.name === 'Tours' ? route.request.url.includes('/api/tours/library')
+        : surface.name === 'Leads' ? route.request.url.includes('/api/system-work/session')
         : JSON.parse(route.request.postData || '{}').params?.name === 'deal-room-board') refusedReads += 1;
       if (retryGate) await retryGate;
       return route.fulfill({ status, json: { ok: false, error: status === 401 ? 'unauthorized' : 'temporarily_unavailable', code: status === 401 ? 'unauthorized' : 'temporarily_unavailable' } });

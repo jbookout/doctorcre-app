@@ -10,7 +10,7 @@ const root = new URL("../", import.meta.url);
 
 async function open(t, { width = 390, reducedMotion = "reduce", denied = false, workerHeaders = false, fixture = detail, basemap = false } = {}) {
   const requests = [], errors = [], current = structuredClone(fixture);
-  let actor = "joe", refuse = false;
+  let actor = "joe", refuse = false, sessionFailure = null, shellFailure = false;
   const server = createServer(async (request, response) => {
     const url = new URL(request.url, "http://localhost"); requests.push({ path: url.pathname, method: request.method });
     if (url.pathname === "/auth/signout") { refuse = true; response.writeHead(302, { location: '/' }); response.end(); return; }
@@ -19,9 +19,14 @@ async function open(t, { width = 390, reducedMotion = "reduce", denied = false, 
     if (url.pathname.startsWith("/api/")) {
       response.setHeader("content-type", "application/json");
       if (refuse) { response.writeHead(401); response.end('{}'); return; }
+      if (url.pathname === '/api/system-work/session' && sessionFailure) {
+        if (sessionFailure === 'hang') return;
+        response.writeHead(sessionFailure); response.end('{}'); return;
+      }
       response.end(JSON.stringify(['/api/system-work/session','/auth/session'].includes(url.pathname) ? { actor: { slug: actor }, csrf_token: `synthetic-${actor}` } : url.pathname === "/api/tours/detail" ? { data: current } : {})); return;
     }
     try {
+      if (shellFailure && !url.pathname.endsWith('day-sw.js') && !url.pathname.endsWith('day-shell.generated.js')) { response.writeHead(503); response.end('Unavailable'); return; }
       const file = url.pathname === "/tours" ? "tours/index.html" : url.pathname.slice(1);
       if (file.includes("..")) throw new Error("invalid path");
       response.setHeader("content-type", file.endsWith(".css") ? "text/css" : /\.m?js$/.test(file) ? "text/javascript" : "text/html");
@@ -68,7 +73,7 @@ async function open(t, { width = 390, reducedMotion = "reduce", denied = false, 
   await page.goto(`${origin}/tours/day.html?tour=${tourId}`);
   await page.waitForFunction(() => document.querySelector("#day-title").textContent === "Synthetic tour").catch(async error => { throw new Error(JSON.stringify({ errors, text: await page.locator("body").textContent(), requests }) + error.message); });
   await page.waitForFunction(() => !document.querySelector("#day-record").disabled);
-  return { page, context, requests, errors, current, origin, setActor(value) { actor = value; }, refuse() { refuse = true; } };
+  return { page, context, requests, errors, current, origin, setActor(value) { actor = value; }, refuse() { refuse = true; }, failConnection(session, shell) { sessionFailure = session; shellFailure = shell; } };
 }
 const record = async page => {
   await page.locator("#day-record").click();
@@ -250,6 +255,47 @@ test("static offline shell reload resumes tour and audio in the same tab, then r
   await context.setOffline(false);
   await page.waitForFunction(() => document.querySelector("#day-status").textContent === "Voice notes stay on this phone");
   assert.equal(await page.locator(".note-card").count(), 1); assert.deepEqual(errors, []);
+});
+
+test('saved tour survives HTTP-cache eviction, failed shell responses and an online session timeout', async t => {
+  const { page, context, failConnection, refuse } = await open(t);
+  await page.waitForFunction(() => document.querySelector('#day-offline').textContent === 'Available offline');
+  await page.waitForFunction(() => navigator.serviceWorker.controller);
+  const devtools = await context.newCDPSession(page);
+  await devtools.send('Network.clearBrowserCache');
+  for (const failure of [503, 'hang']) {
+    failConnection(failure, true);
+    await page.reload();
+    await page.waitForFunction(() => document.querySelector('#day-status')?.textContent.includes('Offline'), null, { timeout: 5_000 });
+    assert.equal(await page.evaluate(() => navigator.onLine), true);
+    assert.equal(await page.locator('.day-stop').count(), 2);
+    assert.match(await page.locator('#day-updated').textContent(), /Saved/);
+    assert.equal(await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--surface-1').trim().length > 0), true);
+  }
+  failConnection(null, false); refuse();
+  await page.locator('#day-refresh').click();
+  await page.waitForFunction(() => document.querySelector('#day-status').textContent === 'Sign in to continue');
+  assert.equal(await page.locator('.day-stop').count(), 0);
+  assert.equal(await page.evaluate(() => sessionStorage.getItem('doctorcre-tour-day-session-v1')), null);
+});
+
+test('revoked shell cache can reopen online and becomes ready only after its files are restored', async t => {
+  const { page, origin } = await open(t);
+  await page.waitForFunction(() => document.querySelector('#day-offline').textContent === 'Available offline');
+  await page.waitForFunction(() => navigator.serviceWorker.controller);
+  await page.evaluate(async () => {
+    const { offlineTourSession } = await import('/js/offline-tour-session.js');
+    await offlineTourSession(window).revoke();
+  });
+  await page.goto(`${origin}/tours/day.html?tour=${tourId}`);
+  await page.waitForFunction(() => document.querySelector('#day-offline')?.textContent === 'Available offline', null, { timeout: 8_000 });
+  const missing = await page.evaluate(async () => {
+    const names = (await caches.keys()).filter(name => name.startsWith('doctorcre-tour-day-shell-'));
+    const cached = await caches.open(names[0]);
+    return !await cached.match('/css/tokens.css');
+  });
+  assert.equal(missing, false);
+  assert.equal(await page.locator('.day-stop').count(), 2);
 });
 
 test("open property and note popups update automatically without closing Details", async t => {

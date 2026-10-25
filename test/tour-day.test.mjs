@@ -63,13 +63,35 @@ test("day map selection uses canonical IDs, short copy, navigation receipts and 
   view.destroy(); dom.window.close();
 });
 
-test("offline tour shell caches every local module dependency", async () => {
+test('Tour day defers basemap code and styling until a basemap is requested', async () => {
+  const html = await readFile(new URL('../tours/day.html', import.meta.url), 'utf8');
+  const dom = new JSDOM(html, { url: 'https://synthetic.test/tours/day.html' });
+  const doc = dom.window.document;
+  const stylesheet = () => doc.querySelectorAll('link[href*="maplibre-gl"]').length;
+  assert.equal(stylesheet(), 0, 'the ordinary Tour day page has no basemap stylesheet request');
+  let loads = 0;
+  class Map { on() {} resize() {} remove() {} jumpTo() {} flyTo() {} }
+  class Marker { setLngLat() { return this; } addTo() { return this; } remove() {} }
+  const options = { route, scope: 'synthetic', user_ref: 'synthetic-user', loadMapLibre: async () => { loads++; return { Map, Marker, setWorkerUrl() {} }; } };
+  const root = doc.querySelector('#day-map');
+  const plain = mountAcceptedItinerary(root, options);
+  await plain.ready;
+  assert.equal(loads, 0); assert.equal(stylesheet(), 0);
+  plain.destroy();
+  const mapped = mountAcceptedItinerary(root, { ...options, basemapStyle: { version: 8, sources: {}, layers: [] } });
+  await mapped.ready;
+  assert.equal(loads, 1); assert.equal(stylesheet(), 1);
+  mapped.destroy(); dom.window.close();
+});
+
+test("offline tour shell caches required local modules without the optional basemap engine", async () => {
   const root = new URL('../', import.meta.url);
   const source = await readFile(new URL('tours/day-sw.js', root), 'utf8');
   const manifest = await readFile(new URL('tours/day-shell.generated.js', root), 'utf8');
   const sandbox = { self: { addEventListener() {} }, importScripts() { runInNewContext(manifest, sandbox); } };
   runInNewContext(source + '\nthis.files = FILES;', sandbox);
   const files = new Set(sandbox.files), checked = new Set();
+  assert.equal([...files].some(path => path.includes('/maplibre-gl-')), false, 'Tour day has no basemap style and must not install its engine');
   async function check(path) {
     if (checked.has(path) || !/\.m?js$/.test(path)) return;
     checked.add(path);
@@ -78,6 +100,7 @@ test("offline tour shell caches every local module dependency", async () => {
       const relative = match[1];
       if (!relative.startsWith('.') && !relative.startsWith('/')) continue;
       const dependency = new URL(relative, 'https://synthetic.test' + path).pathname;
+      if (dependency.startsWith('/tours/vendor/maplibre-gl-')) continue;
       assert.ok(files.has(dependency), `${path} needs ${dependency} on offline reload`);
       await check(dependency);
     }
