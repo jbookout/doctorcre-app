@@ -99,7 +99,6 @@ export async function createFixtureClient(opts = {}) {
   const conflicts = new Map();
   const criticalDates = new Map();
 
-  // Only d01 has external-party participants, covering populated and empty drawers.
   const extraParticipants = new Map([
     ['d01', [
       { role: 'client_contact', name: 'Dr. Dana Ortiz', party_id: 'demo-party-101' },
@@ -164,7 +163,6 @@ export async function createFixtureClient(opts = {}) {
   });
   const partnerLabel = (owner) => (owner === 'joe' ? 'Joe' : owner === 'dell' ? 'Dell' : String(owner));
 
-  /** The record layer's own version guard, refused the way the server refuses it. */
   function guardVersion(row, baseVersion) {
     if (baseVersion === undefined || baseVersion === null) {
       const error = new Error('fixture update-loop refused: missing_base_version');
@@ -323,9 +321,6 @@ export async function createFixtureClient(opts = {}) {
     return d;
   }
 
-  /**
-   * Apply a field write. If base_event_id mismatches last known, open conflict.
-   */
   function applyFieldWrite({ deal, field, value, base_event_id, actor, verb, change_reason, human_quote }) {
     const d = getDealOrThrow(deal);
     const key = `${deal}|${field}`;
@@ -334,7 +329,6 @@ export async function createFixtureClient(opts = {}) {
     // Optimistic concurrency: client's base must match last event for (deal, field).
     // null means "no event seen"; mismatches (including null vs an id) are conflicts.
     if (last !== base) {
-      // conflict: a = server (current), b = incoming
       const conflict_id = `c-${conflictSeq++}`;
       const payload = {
         conflict_id,
@@ -388,12 +382,6 @@ export async function createFixtureClient(opts = {}) {
     return { status: 'ok', event: e, event_id: e.id, event_recorded_at: e.recorded_at };
   }
 
-  // ------------------------------------------------- delivery evidence (C11)
-  // Five synthetic Work Requests, chosen so that every NON-operational state the
-  // Delivery stages table has to be able to show is reachable without a server:
-  // built-unmerged, merged-unactivated, active-unproven, a captured record that
-  // can actually be withdrawn, and a record whose plan is stale. Nothing here is
-  // production state and every ref is visibly a demo one.
   const evidenceRef = (ref) => ({ ref, content_digest: 'd'.repeat(64), redaction_class: 'metadata_only' });
   const facet = (state, ref, note) => ({ state, evidence_refs: ref ? [evidenceRef(ref)] : [], note });
   function passport({ work_request, slices, closure_state, closure, stale = false }) {
@@ -456,20 +444,13 @@ export async function createFixtureClient(opts = {}) {
     }
   }
 
-  /* ------------------------------------------------- Control Room fixtures (C01)
-   * Three severities, one row ready to close, one recurring row; three held
-   * work items with distinct silences and one blocker; two shared requests.
-   * Every name starts with "Demo " so nothing here can be mistaken for a record.
-   */
 
-  // Synthetic session pages preserve the three independent counts and lineage cases.
   const SESSION_LIVE_ROWS = EXAMPLE_SESSION_ROWS;
 
   const SESSION_SYNTHETIC_ROWS = BRANCH_SESSION_ROWS;
 
   const SESSION_ROWS = [...SESSION_LIVE_ROWS, ...SESSION_SYNTHETIC_ROWS];
 
-  /** The one synthetic session that carries dispatch events to render. */
   const SESSION_WITH_DISPATCH = "55555555-5555-4555-8555-555555555555";
 
   const DISPATCH_WITH_EVENTS = {
@@ -583,7 +564,6 @@ export async function createFixtureClient(opts = {}) {
     events: [],
   });
 
-  /* --------------------------------------------- Doc outcome cards (B09) */
   // Cover resumable, unbound, lost-host and failed outcomes. No card may auto-launch.
   const OUTCOME_CARD_ROWS = [
     {
@@ -748,7 +728,6 @@ export async function createFixtureClient(opts = {}) {
   const notifications = (seed.notifications || []).map((row) => ({
     ...row, delivery: (row.delivery || []).map((entry) => ({ ...entry })),
   }));
-  /** The feed function's own clamp: 1..200, applied before anything is read. */
   const clampLimit = (value) => {
     if (!Number.isInteger(value)) return 50;
     return Math.min(200, Math.max(1, value));
@@ -888,7 +867,6 @@ export async function createFixtureClient(opts = {}) {
    * Every title starts with "Demo " so nothing here can be mistaken for a record.
    */
   const DOC_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-  /** The active actor slugs `share-doc-conversation` can resolve. */
   const DOC_ACTORS = [seed.actors?.self || 'joe', partnerActor];
   const docTurn = (sequence, role, body, at) => ({
     sequence, role, body, msg_id: `demo-msg-${String(sequence).padStart(2, '0')}`,
@@ -1033,7 +1011,6 @@ export async function createFixtureClient(opts = {}) {
   const sharedRequests = [
     { human_ref: 'WR-000904', title: 'Demo bounded request: decide the demo retention window', state: 'needs_joe', source: { label: 'Demo council minute', freshness: 'fresh' }, next_human_action: 'Name the demo retention window' },
     { human_ref: 'WR-000905', title: 'Demo bounded request: accept the demo ready plan', state: 'needs_joe', source: { label: 'Demo ready plan', freshness: 'stale' }, next_human_action: 'Accept or decline the demo ready plan' },
-    // WR-000906 has enriched fields; WR-000907 omits optional fields. Earlier cards keep their sparse shape.
     { human_ref: 'WR-000906', title: 'Demo bounded request: reconcile the demo vendor names', state: 'needs_joe', source: { label: 'Demo vendor merge review', freshness: 'fresh' }, next_human_action: 'Confirm the demo vendor merge' },
     { human_ref: 'WR-000907', title: 'Demo bounded request: publish the demo rate card', state: 'needs_joe', source: { label: 'Demo rate card review', freshness: 'stale' }, next_human_action: 'Approve or hold the demo rate card' },
     // WR-000908 is named here but carries NO card below and NO passport entry:
@@ -1217,7 +1194,6 @@ export async function createFixtureClient(opts = {}) {
     { from_ref: null, from_name: 'Demo Pensacola Referring Physician', kind: 'works_with', to_ref: 'C-900', to_name: 'Demo Pensacola Orthopedic Partners', note: null },
   ];
 
-  /** Each of the three `link_basis` values the producer can report. */
   const searchLeadClientLinks = [
     { lead_ref: 'L-901', lead_name: 'Demo Pensacola Family Dentistry', client_ref: 'C-900', client_name: 'Demo Pensacola Orthopedic Partners', link_basis: 'conversion' },
     { lead_ref: 'C-901', lead_name: 'Demo Example Organization 093', client_ref: 'C-900', client_name: 'Demo Pensacola Orthopedic Partners', link_basis: 'same_party' },
@@ -1612,7 +1588,6 @@ export async function createFixtureClient(opts = {}) {
         const t = String(text || '').trim();
         if (!t) throw new Error('empty next step');
         const old = d.next_step;
-        // archive old step into the thread with attribution
         if (old && old.trim()) {
           ensureThread(deal).unshift({
             id: `n-${noteSeq++}`,
@@ -1852,7 +1827,6 @@ export async function createFixtureClient(opts = {}) {
           throw error;
         }
         for (const field of allowed) if (fields[field] !== undefined) found[field] = fields[field];
-        // Like update-loop, leaving the dated marker clears the saved day.
         if (found.marker !== 'dated') found.due_on = null;
         if (fields.blocker !== undefined) {
           found.blocker_class = fields.blocker;
@@ -1912,9 +1886,6 @@ export async function createFixtureClient(opts = {}) {
     },
 
     async workRequestCard({ work_request } = {}) {
-      // V5-UX-C13a's enriched cards are checked FIRST and are a strict
-      // addition: WR-000901..905 below are untouched and keep answering the
-      // sparse shape V5-UX-B10a already tests.
       const enriched = sharedRequestCards.get(String(work_request));
       if (enriched) return structuredClone(enriched);
       const row = workRequestOrRefuse('work-request-card', work_request);
@@ -2114,7 +2085,6 @@ export async function createFixtureClient(opts = {}) {
         return { ok: true, permission_filtered: true, total_seen: 4, total_returned: 0, sessions: [] };
       }
       if (matched.length === 0) {
-        // The captured GENUINELY-EMPTY answer: nothing matched at all.
         return { ok: true, permission_filtered: false, total_seen: 0, total_returned: 0, sessions: [] };
       }
       const capped = Number.isInteger(limit) && limit >= 1 && limit <= 50 ? limit : 25;
@@ -2321,7 +2291,6 @@ export async function createFixtureClient(opts = {}) {
      */
     async listDocConversations({ cursor = null, limit = null, include_archived = null } = {}) {
       refuseIfOutage('conversations', 'list-doc-conversations');
-      // The store's own clamp: 1..100, defaulting when unnamed.
       const capped = Math.min(100, Math.max(1, Number.isInteger(limit) ? limit : 25));
       const visible = [...docConversations.values()].filter((row) => docVisibleTo(row, selfActor));
       const eligible = include_archived === true ? visible : visible.filter((row) => !row.archived_at);
@@ -2928,7 +2897,6 @@ export async function createFixtureClient(opts = {}) {
             }),
           };
         }
-        // apply proposal via same write path (nothing auto-writes)
         if (p.verb === 'patch-deal-field') {
           return applyFieldWrite({
             deal: p.args.deal,
@@ -2974,16 +2942,11 @@ export async function createFixtureClient(opts = {}) {
       });
     },
 
-    /**
-     * Fixture-only: partner presence + partner write + call distill proposals.
-     * Wired through the same event log and presence map the UI polls.
-     */
     async simulatePartnerCall() {
       const steps = [];
       const closingDemo = getDealOrThrow('d05');
       const diligenceDemo = getDealOrThrow('d20');
 
-      // partner joins
       steps.push({
         at: 400,
         run: () => {
@@ -2997,7 +2960,6 @@ export async function createFixtureClient(opts = {}) {
         },
       });
 
-      // Partner holds the synthetic closing deal's next_step.
       steps.push({
         at: 1500,
         run: () => {
@@ -3011,7 +2973,6 @@ export async function createFixtureClient(opts = {}) {
         },
       });
 
-      // Partner writes the synthetic closing deal (live write, not confirm).
       steps.push({
         at: 3300,
         run: () => {
@@ -3049,7 +3010,6 @@ export async function createFixtureClient(opts = {}) {
         },
       });
 
-      // Partner presence on the synthetic diligence deal.
       steps.push({
         at: 5000,
         run: () => {

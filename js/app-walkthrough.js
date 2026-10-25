@@ -23,7 +23,7 @@ export function openWalkthrough(root) {
   const next = guide.querySelector('[data-next]');
   const back = guide.querySelector('[data-back]');
   const place = () => {
-    if (!target) return;
+    if (!target || !guide.isConnected) return;
     const inAccount = Boolean(target.closest('#accountMenu'));
     account.hidden = !inAccount;
     avatar.setAttribute('aria-expanded', String(inAccount));
@@ -40,6 +40,7 @@ export function openWalkthrough(root) {
       }
     }
   };
+  const resize = () => win.requestAnimationFrame(place);
   const paint = () => {
     target?.classList.remove('app-walkthrough-target');
     const step = steps[index];
@@ -61,7 +62,7 @@ export function openWalkthrough(root) {
     }
     guide.remove();
     win.removeEventListener('keydown', keydown, true);
-    win.removeEventListener('resize', place);
+    win.removeEventListener('resize', resize);
     win.removeEventListener('doctorcre-session-invalidated', retire);
     root.removeEventListener('click', leave, true);
     if (reason === 'dismiss') avatar.focus();
@@ -87,7 +88,7 @@ export function openWalkthrough(root) {
   });
   win.addEventListener('keydown', keydown, true);
   root.addEventListener('click', leave, true);
-  win.addEventListener('resize', place);
+  win.addEventListener('resize', resize);
   win.addEventListener('doctorcre-session-invalidated', retire, { once: true });
   paint(); next.focus();
 }
