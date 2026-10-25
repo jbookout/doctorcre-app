@@ -1,3 +1,4 @@
+import { CHROMIUM_SAFETY_ARGS } from '../scripts/chromium-safety-args.mjs';
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
@@ -37,7 +38,7 @@ test("rendered composer uses compact fallback, keeps exact stop after reload, an
   });
   await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
   const base = `http://127.0.0.1:${server.address().port}`;
-  const browser = await chromium.launch({ headless: true, args: ["--use-angle=swiftshader", "--enable-unsafe-swiftshader"] });
+  const browser = await chromium.launch({ headless: true, args: [...CHROMIUM_SAFETY_ARGS, "--use-angle=swiftshader", "--enable-unsafe-swiftshader"] });
   try {
     for (const [name, width, height] of [["phone", 390, 844], ["ipad", 820, 1180], ["desktop", 1440, 1000]]) {
       const page = await browser.newPage({ viewport: { width, height }, reducedMotion: "reduce" });
