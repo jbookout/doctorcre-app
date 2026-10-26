@@ -1,3 +1,5 @@
+import { PHASE_BY_SLUG } from './client.js';
+import { createEmailProposalsFixture } from './email-proposals-fixture.js';
 import { compareInstants } from './change-receipts.mjs';
 import { businessDay } from './business-date.js';
 import { isClosedDeal } from './deal-review-model.js';
@@ -1337,8 +1339,8 @@ export async function createFixtureClient(opts = {}) {
         ...deal,
         critical_dates: [...(deal.next_date ? [{ label: 'Next date', date: deal.next_date }] : []),
           ...(criticalDates.get(deal.id) || []).map(row => ({ ...row }))],
-        next_actions: deal.next_step ? [{ id: `a-${deal.id}`, owner: deal.owner, description: deal.next_step,
-          due_on: deal.next_date, status: 'open', hold_until: null }] : [],
+        next_actions: [...(deal.email_actions || []), ...(deal.next_step ? [{ id: `a-${deal.id}`, owner: deal.owner, description: deal.next_step,
+          due_on: deal.next_date, status: 'open', hold_until: null }] : [])],
       })) };
     },
 
@@ -1359,8 +1361,8 @@ export async function createFixtureClient(opts = {}) {
       }
       for (const entry of criticalDates.get(dealId) || []) critical_dates.push({ ...entry });
       return { deal: {...deal, phase_change: phaseChangeFor(dealId)}, thread, critical_dates, history: hist,
-        next_actions: deal.next_step ? [{ id: `a-${deal.id}`, owner: deal.owner,
-          description: deal.next_step, due_on: deal.next_date, status: 'open' }] : [],
+        next_actions: [...(deal.email_actions || []), ...(deal.next_step ? [{ id: `a-${deal.id}`, owner: deal.owner,
+          description: deal.next_step, due_on: deal.next_date, status: 'open' }] : [])],
         activities: hist.slice(0, 4).map((h) => ({ id: h.id, actor: h.actor,
           occurred_at: h.recorded_at, kind: 'note', summary: h.summary })),
         participants: [{ role: 'lead', name: actorLabel(deal.owner), actor: deal.owner },
@@ -3088,5 +3090,20 @@ export async function createFixtureClient(opts = {}) {
 
   };
 
+  Object.assign(client, createEmailProposalsFixture({ deals, actor: selfActor, apply: async (row, shown, key) => {
+    if (row.kind === 'next_step') {
+      if (shown.owner === 'joe') await client.setNextStep({ deal: row.deal, text: shown.text, next_date: shown.next_date, base_version: shown.base_version, idempotency_key: key });
+      else {
+        const deal = getDealOrThrow(row.deal);
+        deal.email_actions = [{ id: row.id, description: shown.text, due_on: shown.next_date, owner: 'dell', status: 'open', hold_until: null }];
+        deal.next_date = shown.next_date; deal.version++;
+        pushEvent({ actor: selfActor, verb: 'confirm-email-next-step', subject_id: row.deal, field: 'next_date', new_value: shown.next_date });
+      }
+    } else {
+      const deal = getDealOrThrow(row.deal);
+      const before = deal.phase; deal.phase = PHASE_BY_SLUG[shown.to_phase]; deal.version++;
+      pushEvent({ actor: selfActor, verb: 'confirm-email-deal-progress', subject_id: row.deal, field: 'phase', old_value: before, new_value: deal.phase });
+    }
+  } }));
   return opts.docContext === false ? client : observeDocClient(client);
 }
