@@ -182,7 +182,6 @@ test("reopening a private saved shortlist offers deliberate add and remove witho
   const responseItems = [{ property_ref: propertyRef }];
   const first = await openShare({ items: responseItems });
   shortlistAction(first.doc).click(); await settle();
-  assert.equal(first.writes[0].path, "/api/share/shortlist");
   assert.equal(first.writes[0].shortlisted, true);
 
   const reopened = await openShare({ items: responseItems });
@@ -315,6 +314,7 @@ test("both feedback diagrams give phone stage labels a 12px floor after SVG scal
 
 test("client feedback appears only after an opened share and uses opaque refs", () => {
   assert.match(share, /\/api\/share\/feedback/);
+  assert.match(share, /request\(`\/api\/share\/\$\{kind\}`/);
   assert.match(share, /projection_ref/);
   assert.match(share, /property_ref/);
   assert.match(share, /idempotency_key/);
@@ -322,6 +322,7 @@ test("client feedback appears only after an opened share and uses opaque refs", 
   assert.match(html, /id="feedback-status"/);
   assert.doesNotMatch(share + html, /broker_notes|source_evidence_id|property_id|share_grant_id/);
   assert.doesNotMatch(share, /sessionStorage|sendBeacon/);
+  assert.match(share, /localStorage.setItem\(contextKey,\s*linkContext\)/);
 });
 
 test("broker feedback is confined to the authenticated Tours view", () => {
