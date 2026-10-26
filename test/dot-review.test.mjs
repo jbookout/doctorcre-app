@@ -231,7 +231,7 @@ test("Dot 3: sheet save allows typing while sending and locks only an unknown ou
   const requests=[];let keys=0;
   // Keep the real recovery renderer, revision parser and receipt validator in
   // the same context as saveSheet so its retained state is observed directly.
-  const h=handlers("tours/app.js","  function renderSheetRecovery(","  const routeEndpoints",{
+  const h=handlers("tours/app.js","  function canRegenerateSheet(","  const routeEndpoints",{
     state,$,sheetPending:null,sheetConflict:null,sheetBusy:false,sheetMessage:"",sessionBinding:"synthetic-scope",
     text:(value,fallback="")=>value||fallback,cheatSheetText:value=>value?.notes||"",
     id:value=>typeof value==="string"&&/^[0-9a-f-]{36}$/.test(value),uuid:()=>`key-${++keys}`,

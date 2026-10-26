@@ -131,6 +131,32 @@ test('task instructions stay readable without open-status noise on desktop and p
   assert.deepEqual(errors,[]);
  }
 });
+test('task title repeats stay omitted in sections and detail while refreshed instructions remain visible',async t=>{
+ const title='Review the <synthetic> lease terms with the practice owner before signing';
+ for(const width of [1440,390]){
+  const task={number:'7',kind:'open_loop',owner:'joe',title,status:'open',due_on:'2026-01-01',blocker_detail:`  ${title.replaceAll(' ','  ')}\n`,body:`${title}. Compare the <synthetic> revisions before responding.`};
+  const {page,goto,calls,errors}=await setup(t,{width,loopTask:task});await goto();
+  if(width===390)await page.locator('#selfAvatar').click();
+  await page.locator('#docOpen[data-brief-unseen]').waitFor();await page.locator('#docOpen').click();await page.locator('#docMorning').click();
+  const section=page.locator('[data-brief-section="loops"]');await section.locator('summary').click();
+  assert.doesNotMatch(await section.innerText(),/Your task:/);assert.ok((await section.innerText()).includes(title));
+  const card=page.locator('[data-brief-key="loop:open_loop:7"]');await card.focus();await page.keyboard.press('Enter');await page.locator('.morning-record').waitFor();
+  assert.deepEqual(calls.filter(call=>call.name==='read-loop').at(-1).args,{number:'7',kind:'open_loop'});
+  assert.equal(await page.locator('#morningTitle').innerText(),title);assert.deepEqual(await page.locator('.morning-record dt').allTextContents(),['Due']);
+  await page.locator('.morning-record summary').click();assert.equal(await page.locator('.morning-record .entry-original').innerText(),task.body);
+  assert.equal(await page.locator('#docMorningBrief synthetic').count(),0);
+  assert.equal(await page.locator('#docMorningBrief').evaluate(node=>node.scrollWidth<=node.clientWidth),true);
+  await snap(page,`task-single-instruction-${width}`);
+  task.blocker_detail=`${title} and send the <synthetic> response.`;await page.locator('#morningRefresh').click();
+  await page.waitForFunction(()=>[...document.querySelectorAll('.morning-record dt')].some(node=>node.textContent==='Your task'));
+  assert.equal(await page.locator('.morning-record dd').last().innerText(),task.blocker_detail);
+  assert.equal(await page.locator('.morning-record details').evaluate(node=>node.open),true);
+  await page.locator('#morningBack').click();assert.equal(await card.evaluate(node=>node===document.activeElement),true);
+  await section.locator('summary').click();
+  assert.ok((await section.innerText()).includes(`Your task: ${task.blocker_detail}`));
+  assert.deepEqual(errors,[]);
+ }
+});
 test('daily preference survives navigation and refresh without narration, including legacy speech opt-in',async t=>{
  const state=await setup(t);const {page}=state;
  await page.addInitScript(()=>localStorage.setItem('doctorcre:morning:joe',JSON.stringify({...JSON.parse(localStorage.getItem('doctorcre:morning:joe')||'{}'),speech:true})));

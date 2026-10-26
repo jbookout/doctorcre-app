@@ -1,6 +1,6 @@
 {
   "schema": "doctorcre-carr-interface.v1",
-  "version": "1.58.0",
+  "version": "1.59.0",
   "producer": {
     "repository": "jbookout/carr-system",
     "source_commit": "1df9b9936394164dd55e815f8a8bf69649508ccc"
@@ -75,6 +75,7 @@
     "presence-lease",
     "propose-doc-correction",
     "read-assurance-health",
+    "read-client-portal",
     "read-correspondence-thread",
     "read-deal-reconciliation",
     "read-dispatch-history",
@@ -850,6 +851,23 @@
           "source_ref"
         ]
       }
+    },
+    "read-client-portal": {
+      "write": true,
+      "schema_version": "client-portal.v1",
+      "producer": {
+        "repository": "jbookout/carr-system",
+        "source_commit": "274bb5cc6bcc06c93edd2e4c4162b60554fda165",
+        "pull_request": "https://github.com/jbookout/carr-system/pull/2321"
+      },
+      "arguments": [
+        "slug",
+        "password"
+      ],
+      "denial": { "ok": false, "error": "portal_access_denied" },
+      "projection": "One password-bound portal, canonical roadmap and explicitly shared text material only.",
+      "password_lifetime": "Form and request memory only. Never URL, storage, diagnostic output or Doc context.",
+      "deployment_order": "Server must be live before the app consumer merges or deploys. Public client hosting remains separate."
     }
   },
   "vendor_directory": {
@@ -1069,6 +1087,17 @@
       "unavailable": "Version mismatches refuse mixed observations. Loaded older pages refresh together; page failure retains the complete displayed observation. Queue outage retains all previous queue pages.",
       "legacy": "Queue acknowledgement verifies this feed only. Scheduled carr-v5 publication can fail independently."
     }
+  },
+  "post_call_next_step_review": {
+    "producer": {
+      "repository": "DoctorCRE/carr-system",
+      "source_commit": "3183aa765dfc29f2ee7cb7e2fb97fbcfef668294",
+      "pull_request": "https://github.com/DoctorCRE/carr-system/pull/2297"
+    },
+    "schema_version": 1,
+    "read": "Loopback companion GET /api/post-call returns report.deal_updates[].next_step as null, omitted or an object with text, next_date, optional candidate_id and candidate_status.",
+    "write": "Existing resolve-candidate through resolveConfirm. The nested candidate uses its own proposal_id and retained idempotency key. Confirming or skipping it never disposes the parent note.",
+    "review": "Display the replacement text, exact date and disposition. A null next_date clears the current date. Only a pending proposal with a candidate_id offers Confirm next step and Skip next step."
   },
   "write_reconciliation": {
     "contract": "contracts/app-write-reconciliation.v1.json",
