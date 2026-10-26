@@ -44,10 +44,10 @@ test('the host moves the original node: same object, listener, draft and id', as
   assert.equal(clicks, 2);
 });
 
-async function openIdeas(t, search) {
+async function openIdeas(t, search, width = 1280) {
   const server = await fixtureServer(); t.after(() => server.close());
   const browser = await chromium.launch(); t.after(() => browser.close());
-  const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+  const page = await browser.newPage({ viewport: { width, height: 900 } });
   const bundleRequests = [];
   page.on('request', request => { if (new URL(request.url()).pathname === UI_BUNDLE) bundleRequests.push(request.url()); });
   await page.goto(`${server.origin}/ideas-events${search}`);
@@ -64,6 +64,51 @@ test('with ?ui=react the Ideas page hosts its original panel in React and its li
   // ideas.js wired #ideaSearch before the move; its listener writes the address.
   await page.fill('#ideaSearch', 'zz-no-such-idea');
   await page.waitForURL(/q=zz-no-such-idea/);
+});
+
+test('with ?ui=react a partner can use the stage workspace without losing the page or phone layout', async t => {
+  const { page, bundleRequests } = await openIdeas(t, '?ui=react');
+  await page.locator('#appLayout .workspace-shell').waitFor();
+  await page.locator('#ideaSearch').waitFor({ state: 'visible' });
+  assert.equal(bundleRequests.length, 1);
+  assert.equal(await page.locator('#appLayout .workspace-group').count(), 3);
+  assert.equal(await page.locator('#appLayout #ideasPanel').count(), 1);
+  await page.evaluate(() => {
+    window.workspacePageNodes = ['#appSidebar', '.app-layout-center', '#appToday', '#ideasPanel']
+      .map(selector => [selector, document.querySelector(selector)]);
+  });
+
+  await page.getByRole('button', { name: 'Close workspace', exact: true }).click();
+  await page.waitForFunction(() => document.querySelector('#appSidebar').hidden);
+  assert.equal(await page.locator('#appLayout .workspace-group').count(), 2);
+  await page.getByRole('button', { name: 'Workspace sidebar', exact: true }).click();
+  await page.waitForFunction(() => !document.querySelector('#appSidebar').hidden);
+  assert.equal(await page.locator('#appLayout .workspace-group').count(), 3);
+  assert.equal(await page.evaluate(() => window.workspacePageNodes
+    .every(([selector, node]) => node === document.querySelector(selector))), true);
+  assert.ok(await page.locator('#ideaSearch').isVisible());
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.locator('#appLayout .workspace-shell').waitFor({ state: 'detached' });
+  assert.equal(await page.locator('#appLayout').evaluate(node => [...node.children].some(child => child.id === 'appSidebar')), true);
+  assert.equal(await page.locator('#appLayout .app-layout-center #ideasPanel').count(), 1);
+
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.locator('#appLayout .workspace-shell').waitFor();
+  assert.equal(await page.locator('#appLayout .workspace-group').count(), 3);
+});
+
+test('the React workspace flag does not load for an unrecognized fixture actor', async t => {
+  const { page, bundleRequests } = await openIdeas(t, '?actor=guest&ui=react');
+  assert.equal(await page.locator('.workspace-shell, [data-node-host]').count(), 0);
+  assert.deepEqual(bundleRequests, []);
+});
+
+test('the React workspace keeps the touch layout on a phone', async t => {
+  const { page } = await openIdeas(t, '?ui=react', 390);
+  assert.equal(await page.locator('#appLayout .workspace-shell').count(), 0);
+  assert.equal(await page.locator('#appLayout .app-layout-center #ideasPanel').count(), 1);
+  assert.ok(await page.locator('#appShell').isVisible());
 });
 
 test('without the flag the Ideas page never loads React and keeps its panel in place', async t => {

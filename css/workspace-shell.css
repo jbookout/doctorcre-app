@@ -40,3 +40,15 @@
 .workspace-panel-slot > [hidden] {
   display: none;
 }
+.app-layout.is-react-workspace {
+  display: block;
+  height: calc(100dvh - var(--layout-bottom));
+  min-height: 0;
+}
+.is-react-workspace > [data-app-workspace],
+.is-react-workspace .workspace-shell {
+  height: 100%;
+}
+.is-react-workspace .workspace-tabs:has(> button:only-child) {
+  display: none;
+}

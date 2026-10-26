@@ -4,9 +4,7 @@ import { expect } from 'e2e';
 test('W14 Relationships opens a party with its evidence and filters by territory', async ({ app, browser }) => {
   await app.open('/relationships');
 
-  const lender = browser.locator(await browser.locator('.relationship-graph-panel').isHidden()
-    ? '#networkNodes [data-node="party:demo-lender"]'
-    : '.relationship-node[data-node="party:demo-lender"]');
+  const lender = browser.locator('#networkNodes [data-node="party:demo-lender"]');
   await expect(lender).toBeVisible();
   await lender.tap();
   const dialog = browser.locator('.relationship-dialog');
