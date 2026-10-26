@@ -10,7 +10,7 @@
  *
  * Morning brief: CARR derives sponsor from the authenticated session. Each
  * section independently reports ready/empty/unavailable. Browser preferences
- * contain only day/cutoff/speech; brief contents are never cached on disk.
+ * contain only opening dates, cutoff and owner filter; brief contents are never cached on disk.
  * @typedef {{state:string,sponsor:string,sections:Object}} MorningBriefResponse
  *
  * @typedef {Object} PipelineEvent
@@ -95,6 +95,7 @@
  * @property {'fixture'|'live'} mode
  * @property {Actor} selfActor
  * @property {(args?:Object, options?:{signal?:AbortSignal}) => Promise<Object>} readDocActivity authenticated doc-activity.v1 projection
+ * @property {(args?:{signal?:AbortSignal}) => Promise<Object>} getHomeAgenda bounded home-agenda.v1 snapshot with dates and open actions
  * @property {() => Promise<{deals:BoardDeal[], closed_deals?:Object[], as_of:string, last_call_at:string}>} getBoard
  * @property {(args:{client_id:string,base_version:number,status:'active'|'inactive',reason:string,expected_actor?:string,idempotency_key:string}) => Promise<Object>} setProspectEngagementStatus audited transition between Leads and the deal board
  * @property {(dealId:string) => Promise<DealDetail>} getDeal
@@ -109,6 +110,9 @@
  * @property {(args:{deal_ids:string[]}) => Promise<{deals:Object[]}>} [getCallContext] exact active agenda records and participants
  * @property {(args:{proposal_id:string, accept:boolean, idempotency_key:string}) => Promise<WriteResult>} [resolveConfirm]
  * @property {(args:{candidate_id:string, accept:boolean, idempotency_key:string}) => Promise<WriteResult>} [resolvePostCallCandidate]
+ * @property {() => Promise<{calls:Object[]}>} [readCallOutcomes] unreviewed pipeline-call outcomes: applied changes with evidence and open cards
+ * @property {(args:{candidate_id:string, base_version:number}) => Promise<Object>} [undoCallChange] revert one automatically applied change
+ * @property {(args:{session_id:string}) => Promise<Object>} [reviewCallOutcome] take one call's outcome off Home
  * @property {() => Promise<void>} [simulatePartnerCall] fixture-only demo of presence + distill
  * @property {(args:{dataset:'clients'|'vendors', id:string}) => Promise<{record:Object}>} [getPartyRecord] the pinned `/api/v1/business/{dataset}/<id>` single-record read (V5-UX-B04); `id` is that record's own uuid, never a participant's party_id
  * @property {(args:{query?:string, limit?:number, include_closed?:boolean}) => Promise<SessionIdentityResponse>} sessionIdentity
@@ -338,6 +342,14 @@ export const PHASES = [
   'Closing',
   'Closed',
 ];
+
+// The record layer's phase slug for each board phase above: one map, read by
+// the live client and by every screen that names a phase from a CARR payload.
+export const PHASE_BY_SLUG = Object.freeze({
+  pending: 'On Deck', research: 'Research', site_selection: 'Site selection',
+  negotiation: 'Negotiation', legal: 'Legal', due_diligence: 'Diligence',
+  closing: 'Closing', closed: 'Closed',
+});
 
 // The display word for each wire phase. The wire words above are what the
 // record layer, the fixture validation and the change feed all speak, so they

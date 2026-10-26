@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <title>Your client portal · DoctorCRE</title>
+  <link rel="stylesheet" href="/css/tokens.css">
+  <link rel="stylesheet" href="/css/client-portal.css">
+  <script type="module" src="/js/client-portal.js"></script>
+</head>
+<body>
+  <main>
+    <header><p class="eyebrow">DoctorCRE · CARR</p><h1>Your client portal</h1><p>A clear view of your transaction and the material shared with you.</p></header>
+    <p id="portalFixture" hidden>Local fixture only. Use portal name demo-practice and password demo-portal.</p>
+    <p id="portalStatus" role="status" aria-live="polite">Enter your portal name and password to continue.</p>
+    <form id="portalForm" method="post" autocomplete="off">
+      <label for="portalSlug">Portal name</label>
+      <input id="portalSlug" name="slug" required pattern="[a-z0-9][a-z0-9-]{0,62}" maxlength="63" autocapitalize="none" spellcheck="false">
+      <label for="portalPassword">Portal password</label>
+      <input id="portalPassword" name="password" type="password" required maxlength="1024" autocomplete="off">
+      <button type="submit">Open portal</button>
+    </form>
+    <button id="portalLock" type="button" hidden>Lock portal</button>
+    <div id="portalContent"></div>
+  </main>
+</body>
+</html>

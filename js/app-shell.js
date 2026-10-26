@@ -7,13 +7,17 @@ import { resolveDealroomBoot } from "./boot-mode.js";
 import { mountAutoRefresh } from "./auto-refresh.mjs";
 import { mountNavigation, appOriginForReport } from "./navigation.js";
 
+// Keep this variable import out of the offline Tour dependency walk; its bundle is generated later.
+const REACT_UI_MODULE = "./ui.generated.js";
+
 export function mountAppShell(root = document, pathname = globalThis.location?.pathname || "/") {
   const location = globalThis.location;
   const host = mountNavigation(root, pathname, { location });
   if (!host) return;
   const base = appOriginForReport(location?.origin || "");
   let disposeDocPresence = () => {};
-  if (!base) mountAccount(root, host, pathname, () => disposeDocPresence());
+  const reactWorkspace = new URLSearchParams(location?.search || "").get("ui") === "react";
+  if (!base) mountAccount(root, host, pathname, () => disposeDocPresence(), reactWorkspace);
   if (!base && pathname !== "/share") {
     mountAppLayout(root, host, pathname);
     const status = root.querySelector(".app-layout-status");
@@ -50,8 +54,72 @@ export function partnerIdentity(session) {
   return slug === "joe" || slug === "dell" ? { slug, name: slug === "joe" ? "Joe" : "Dell", initial: slug === "joe" ? "J" : "D" } : null;
 }
 
-function mountAccount(root, host, pathname, beforeSignOutReplace = () => {}) {
-  mountPrefs();
+function mountFlaggedWorkspace(root, pathname, sessionIsValid) {
+  const win = root.defaultView;
+  const phone = win.matchMedia(pathname === "/leads" ? "(max-width:1023px)" : TOUCH_LAYOUT);
+  let identity = null, workspace = null, container = null, layout = null, observer = null, loading = false, disposed = false;
+  let sidebarWidth = 236, todayWidth = 260;
+  const tabs = id => ({ kind: "tabs", id: `${id}-group`, panels: [id], active: id });
+  const stageLayout = () => {
+    const sidebar = layout.dataset.sidebar === "open", today = layout.dataset.today === "open";
+    const width = Math.max(1, layout.clientWidth);
+    const mainWidth = Math.max(1, width - (sidebar ? sidebarWidth : 0) - (today ? todayWidth : 0));
+    let stage = tabs("main");
+    if (today) stage = { kind: "split", id: "main-today", axis: "horizontal", ratio: mainWidth / (mainWidth + todayWidth), first: stage, second: tabs("today") };
+    if (sidebar) stage = { kind: "split", id: "sidebar-main", axis: "horizontal", ratio: sidebarWidth / (sidebarWidth + mainWidth + (today ? todayWidth : 0)), first: tabs("sidebar"), second: stage };
+    return { version: 1, stage };
+  };
+  const restore = () => {
+    observer?.disconnect(); observer = null;
+    workspace?.unmount(); workspace = null;
+    container?.remove(); container = null;
+    layout?.classList.remove("is-react-workspace");
+  };
+  const reconcile = async () => {
+    if (disposed || !identity || phone.matches || !sessionIsValid()) { restore(); return; }
+    if (workspace) { workspace.update(stageLayout()); return; }
+    if (loading) return;
+    loading = true;
+    try {
+      const { mountWorkspace } = await import(REACT_UI_MODULE);
+      if (disposed || !identity || phone.matches || !sessionIsValid()) return;
+      layout = root.getElementById("appLayout");
+      if (!layout) return;
+      const sidebar = layout.querySelector("#appSidebar"), main = layout.querySelector(".app-layout-center"), today = layout.querySelector("#appToday");
+      if (!sidebar || !main || !today) return;
+      sidebarWidth = sidebar.getBoundingClientRect().width || sidebarWidth;
+      todayWidth = today.getBoundingClientRect().width || todayWidth;
+      const panels = [{ id: "sidebar", title: "Workspace", node: sidebar }, { id: "main", title: "Page", node: main }, { id: "today", title: "Today", node: today }];
+      const initial = stageLayout();
+      container = root.createElement("div");
+      container.dataset.appWorkspace = "";
+      layout.append(container);
+      workspace = mountWorkspace({ container, panels, layout: initial });
+      layout.classList.add("is-react-workspace");
+      observer = new win.MutationObserver(() => { void reconcile(); });
+      observer.observe(layout, { attributes: true, attributeFilter: ["data-sidebar", "data-today"] });
+    } catch { restore(); }
+    finally { loading = false; }
+  };
+  phone.addEventListener("change", reconcile);
+  win.addEventListener("resize", reconcile);
+  return {
+    setIdentity(next) {
+      if (identity?.slug === next?.slug) return;
+      restore();
+      identity = next;
+      void reconcile();
+    },
+    dispose() {
+      disposed = true; identity = null; restore();
+      phone.removeEventListener("change", reconcile);
+      win.removeEventListener("resize", reconcile);
+    },
+  };
+}
+
+function mountAccount(root, host, pathname, beforeSignOutReplace = () => {}, reactWorkspaceRequested = false) {
+  const preferences = mountPrefs();
   const avatar = host.querySelector("#selfAvatar");
   const panel = host.querySelector("#accountMenu");
   root.body.append(panel);
@@ -89,6 +157,12 @@ function mountAccount(root, host, pathname, beforeSignOutReplace = () => {}) {
     }
   });
   panel.querySelector("#accountTheme").onclick = () => root.querySelector('[data-pref="theme"]').click();
+  const help = panel.querySelector("#accountHelp");
+  if (help) help.onclick = async () => {
+    close();
+    const { openWalkthrough } = await import("./app-walkthrough.js");
+    if (!boundary?.revoked) openWalkthrough(root);
+  };
   root.addEventListener("click", (event) => { if (!panel.contains(event.target) && !avatar.contains(event.target)) close(); });
   root.addEventListener("keydown", (event) => { if (event.key === "Escape" && !panel.hidden) { close(); avatar.focus(); } });
   const assist = host.querySelector("#colorAssistButton");
@@ -97,20 +171,30 @@ function mountAccount(root, host, pathname, beforeSignOutReplace = () => {}) {
   assist.onclick = () => { const enabled = root.documentElement.dataset.colorAssist !== "on"; applyAssist(enabled); try { localStorage.setItem("dealroom-color-assist", enabled ? "on" : "off"); } catch {} };
   const boot = resolveDealroomBoot(globalThis.location);
   const boundary = privateSession();
-  globalThis.window?.addEventListener("doctorcre-session-invalidated", beforeSignOutReplace, {once:true});
+  const workspace = reactWorkspaceRequested && pathname !== "/share" ? mountFlaggedWorkspace(root, pathname, () => !boundary?.revoked) : null;
+  globalThis.window?.addEventListener("doctorcre-session-invalidated", () => { workspace?.dispose(); beforeSignOutReplace(); }, {once:true});
   let lastVerified = null;
   const sessionStatus = root.createElement('p');
   sessionStatus.setAttribute('role','status'); sessionStatus.hidden = true;
   host.after(sessionStatus);
   const readIdentity = async () => {
     try {
-      if (boot.mode === "fixture") session = { actor: { slug: boot.options.selfActor === "dell" ? "dell" : "joe" } };
+      if (boot.mode === "fixture") session = { actor: { slug: boot.options.selfActor || "joe" } };
       else {
         session = await boundary.verify();
         lastVerified = new Date().toLocaleTimeString(); sessionStatus.hidden = true;
         panel.querySelector("#accountStatus").textContent = "";
       }
-      showPartner(partnerIdentity(session));
+      const identity = partnerIdentity(session);
+      showPartner(identity);
+      workspace?.setIdentity(identity);
+      if (boot.mode === "live" && pathname === "/" && identity && help && !preferences.hasSeenWalkthrough(identity.slug)) {
+        void import("./app-walkthrough.js").then(({ openWalkthrough }) => {
+          if (boundary.revoked || root.querySelector('dialog:modal') || !root.getElementById('docOpen') || preferences.hasSeenWalkthrough(identity.slug)) return;
+          openWalkthrough(root);
+          preferences.rememberWalkthrough(identity.slug);
+        }).catch(() => {});
+      }
     } catch {
       if (!boundary?.revoked) {
         sessionStatus.textContent = lastVerified ? `Connection unavailable · Last verified ${lastVerified}` : 'Sign-in unavailable';

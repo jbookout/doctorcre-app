@@ -33,15 +33,18 @@ test('Leads uses authenticated sessions and clears the previous actor before loa
   const { page, reads } = await sessionPage(browser, { actor: () => actor });
   await page.goto('http://localhost/leads');
   await page.locator('#leadBoard[aria-busy="false"]').waitFor();
-  assert.equal(await page.locator('.lead-card').count(), 375);
+  assert.equal(await page.locator('.lead-card').count(), 5);
   assert.equal(reads.board, 0);
+  await page.getByRole('button', { name: 'Show all 375 New leads', exact: true }).click();
+  assert.equal(await page.locator('.lead-card').count(), 375);
   const search = page.locator('#leadSearch');
   await search.fill('Example 1');
   actor = 'another-example-partner';
   let release;
+  const held = new Promise(resolve => release = resolve);
   await page.route('http://localhost/mcp', async route => {
     if (route.request().postDataJSON().params.name !== 'lead-board') return route.fallback();
-    await new Promise(resolve => release = resolve);
+    await held;
     return route.fallback();
   });
   await page.locator('#refreshBoard').click();
@@ -49,7 +52,7 @@ test('Leads uses authenticated sessions and clears the previous actor before loa
   release();
   await page.locator('#leadBoard[aria-busy="false"]').waitFor();
   assert.equal(await search.inputValue(), '');
-  assert.equal(await page.locator('.lead-card').count(), 375);
+  assert.equal(await page.locator('.lead-card').count(), 5);
   assert.equal(reads.board, 0);
 });
 
@@ -71,7 +74,8 @@ test('measure five alternating synthetic browser loads per revision', { skip: !p
     await page.goto('http://localhost/leads');
     await page.locator('#leadBoard[aria-busy="false"]').waitFor();
     runs[side].push(performance.now() - start);
-    assert.equal(await page.locator('.lead-card').count(), returned ? 367 : 375);
+    assert.equal(await page.locator('.lead-card').count(), 5);
+    assert.equal(await page.locator('#filterSummary').innerText(), `${returned ? 367 : 375} matching leads`);
     assert.equal(reads.workspace, 1);
     assert.equal(reads.board, side === 'before' ? 1 : 0);
     counts[side].push(reads);

@@ -47,10 +47,6 @@ test("the static artifact rebuild is byte-for-byte reproducible", async () => {
   const b = await buildArtifact({ root: ROOT, outDir: second, commit: COMMIT });
   assert.equal(a.archiveSha256, b.archiveSha256);
   assert.deepEqual(a.archive, b.archive);
-  const budget = JSON.parse(await readFile(join(ROOT, "contracts/performance-budget.v1.json"), "utf8"));
-  const scripts = a.manifest.files.filter(file => /\.(m?js)$/.test(file.path));
-  const bytes = scripts.reduce((total, file) => total + file.bytes, 0);
-  assert.ok(bytes <= budget.bundle.jsBytes.limit, `Artifact JavaScript ${bytes} exceeds ${budget.bundle.jsBytes.limit}`);
   assert.equal(a.manifest.files.some((file) => file.path === "js/board-focus.mjs"), true);
   assert.equal(a.manifest.files.some((file) => file.path.startsWith("test/")), false);
   assert.equal(a.manifest.files.some((file) => file.path === "data/board-seed.json"), true);

@@ -5,11 +5,21 @@ import { createPlannerClient, validateTourList, validateClientList, validateClie
 import { cheatSheetText, tourDisplayName } from "./tour-format.js";
 import { PLAN_FIELDS, SEARCH_FIELDS, createDraft, clientSuggestions, tourGroups, validateCriteria, addPrivateFiles } from "./planner-model.js";
 
+// Each area button's market as a Census place point. Fort Walton / Destin uses the
+// Fort Walton Beach place point. The map fits these five points.
+const territoryAreas = [
+  { key: "Mobile, AL", label: "Mobile", city: "Mobile", state: "AL" },
+  { key: "Pensacola, FL", label: "Pensacola", city: "Pensacola", state: "FL" },
+  { key: "Fort Walton Beach / Destin, FL", label: "Fort Walton / Destin", city: "Fort Walton Beach", state: "FL" },
+  { key: "Panama City, FL", label: "Panama City", city: "Panama City", state: "FL" },
+  { key: "Tallahassee, FL", label: "Tallahassee", city: "Tallahassee", state: "FL" },
+];
+
 export function mountPlanner({ document, window, api = createPlannerClient() }) {
   const $ = selector => document.querySelector(selector);
   const plan = createDraft(PLAN_FIELDS), search = createDraft(SEARCH_FIELDS);
   let clientsStatus = "pending", clientsMessage = "", clients = [], tours = [], files = [], planClient = "", searchClient = "", planEpoch = 0, searchEpoch = 0, dialogEpoch = 0, refreshEpoch = 0;
-  let currentTour = null, selectedRecord = null, scope = null, scopeEstablished = false, disposed = false;
+  let currentTour = null, selectedRecord = null, scope = null, scopeEstablished = false, disposed = false, territory = null, territoryLoading = false;
   const key = "doctorcre-tour-planning-drafts-v1";
   const clientsUnavailable = "Clients temporarily unavailable. Refresh tours to try again.";
   const clientsLoading = "Clients are loading. Wait, then review again.";
@@ -68,7 +78,10 @@ export function mountPlanner({ document, window, api = createPlannerClient() }) 
       const control = $(`#${prefix}-${field}`);
       if (control.value !== value) control.value = value;
     }
-    if (prefix === "space") for (const button of document.querySelectorAll("[data-market]")) button.setAttribute("aria-pressed", String(button.dataset.market === draft.values.area));
+    if (prefix === "space") {
+      for (const button of document.querySelectorAll(".market-buttons [data-market]")) button.setAttribute("aria-pressed", String(button.dataset.market === draft.values.area));
+      territory?.select(draft.values.area);
+    }
     $(`#${prefix}-undo`).disabled = !draft.canUndo;
   }
   function wireDraft(prefix, draft) {
@@ -281,14 +294,32 @@ export function mountPlanner({ document, window, api = createPlannerClient() }) 
   $("#detail-close").addEventListener("click", closeDialog);
   onDialogClosed($("#tour-dialog"), () => { selectDocRecord(null,null); pageDocContext?.release('tourDetail'); ++dialogEpoch; currentTour=null; });
   $("#tour-dialog").addEventListener("cancel", event => { event.preventDefault(); closeDialog(); });
-  for (const button of document.querySelectorAll("[data-market]")) button.addEventListener("click", () => {
-    search.set("area", button.dataset.market); syncForm("space", search); save("#space-message");
+  const chooseMarket = market => { search.set("area", market); syncForm("space", search); save("#space-message"); };
+  for (const button of document.querySelectorAll(".market-buttons [data-market]")) button.addEventListener("click", () => chooseMarket(button.dataset.market));
+  const territoryAbort = new AbortController();
+  $("#show-territory").addEventListener("click", async event => {
+    const button = event.currentTarget, root = $("#planner-territory");
+    root.hidden = !root.hidden; button.setAttribute("aria-expanded", String(!root.hidden));
+    $("#territory-status").hidden = root.hidden;
+    button.textContent = root.hidden ? "Show territory" : "Hide territory";
+    if (root.hidden || territoryLoading) return;
+    if (territory) { territory.resize(); return; }
+    territoryLoading = true; delete root.dataset.state;
+    try {
+      const { mountTerritoryMap } = await import("../js/leads-territory-map.js");
+      if (disposed) return;
+      territory = await mountTerritoryMap(root, chooseMarket, () => {}, { signal: territoryAbort.signal, areas: territoryAreas,
+        padding: root.clientWidth < 520 ? { top: 44, bottom: 44, left: 16, right: 16 } : { top: 56, bottom: 56, left: 96, right: 96 }, markets: territoryAreas });
+      if (disposed) territory?.dispose();
+      else { territory?.select(search.values.area); message("#territory-status", "Market context only. US Census 2025 geography; no property or navigation pins."); }
+    } catch { if (!disposed) { root.dataset.state = "failed"; message("#territory-status", "Territory unavailable. Choose an area above; hide and show territory to retry."); } }
+    finally { territoryLoading = false; }
   });
   const auto = mountAutoRefresh({ document, window, refresh });
   $("#planner-refresh").addEventListener("click", () => void auto.refresh());
   const unsubscribe = api.onScopeChange?.(restoreOrClear);
   const ready = refresh();
-  return { ready, refresh, get files() { return [...files]; }, dispose() { disposed = true; unsubscribe?.(); ++planEpoch; ++searchEpoch; ++dialogEpoch; auto.dispose(); } };
+  return { ready, refresh, get files() { return [...files]; }, dispose() { disposed = true; territoryAbort.abort(); territory?.dispose(); unsubscribe?.(); ++planEpoch; ++searchEpoch; ++dialogEpoch; auto.dispose(); } };
 }
 
 if (typeof document !== "undefined" && document.querySelector("#plan-form")) mountPlanner({ document, window });

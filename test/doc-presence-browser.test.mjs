@@ -25,7 +25,7 @@ async function setup(t,{width=1440,motion='no-preference',onRoute,engine=chromiu
   if(url.pathname==='/mcp'){
   const {name,arguments:args}=request.postDataJSON().params;calls.push({name,args});let value={ok:true};
    if(name==='read-doc-outcome-cards')return rpc(route,await fixture.docOutcomeCards(args));
-   const methods={'list-feature-switches':'listFeatureSwitches','deal-room-board':'getBoard','get-deal-room':'getDeal','deal-room-changes':'getChanges','today-triage':'todayTriage','list-doc-suggestions':'listDocSuggestions','decide-doc-suggestion':'decideDocSuggestion','list-doc-conversations':'listDocConversations','read-doc-conversation':'readDocConversation','loop-board':'loopBoard','read-loop':'readLoop','incident-board':'incidentBoard','current-work-item':'currentWorkItem','current-work-requests':'currentWorkRequests','notification-feed':'notificationFeed','list-industry-events':'listIndustryEvents','find':'find','find-and-catch-up':'findAndCatchUp'};
+   const methods={'read-home-agenda':'getHomeAgenda','list-feature-switches':'listFeatureSwitches','deal-room-board':'getBoard','get-deal-room':'getDeal','deal-room-changes':'getChanges','today-triage':'todayTriage','list-doc-suggestions':'listDocSuggestions','decide-doc-suggestion':'decideDocSuggestion','list-doc-conversations':'listDocConversations','read-doc-conversation':'readDocConversation','loop-board':'loopBoard','read-loop':'readLoop','incident-board':'incidentBoard','current-work-item':'currentWorkItem','current-work-requests':'currentWorkRequests','notification-feed':'notificationFeed','list-industry-events':'listIndustryEvents','find':'find','find-and-catch-up':'findAndCatchUp'};
    if(name==='lead-board') value={leads:[],stages:[],as_of:new Date().toISOString()};
    else if(name==='claim-card') value={claimable:0,candidates:[],needs_contact_count:0};
    else if(methods[name]) { value=await fixture[methods[name]](name==='get-deal-room'?args.deal||args.deal_id:name==='deal-room-changes'?args.cursor:args); if(name==='get-deal-room') value={...value.deal,deal_id:value.deal.id,thread:value.thread,critical_dates:value.critical_dates.map(row=>({...row,due_on:row.date})),next_actions:value.next_actions,activities:value.activities,events:[]}; }
@@ -171,7 +171,7 @@ async function producerRoute(route,{url,fixture}) {
 }
 for(const failure of [null,503,401])test(`R1/R2 Home healthy/partial/expired context survives scope correctly (${failure})`,async t=>{
  const {page,goto}=await setup(t,{onRoute:async(route,env)=>{
-  if(env.url.pathname==='/mcp' && route.request().postDataJSON().params.name==='incident-board' && failure){await route.fulfill({status:failure,body:'{}'});return true;}
+  if(env.url.pathname==='/mcp' && route.request().postDataJSON().params.name==='read-home-agenda' && failure){await route.fulfill({status:failure,body:'{}'});return true;}
   return producerRoute(route,env);
  }});
  if(failure===401){
@@ -181,10 +181,12 @@ for(const failure of [null,503,401])test(`R1/R2 Home healthy/partial/expired con
  await goto('/?mode=live');await page.waitForFunction(()=>document.querySelector('#refreshHome').getAttribute('aria-busy')==='false');
  const before=await readContext(page);
  assert.equal(before.ready,failure===null,JSON.stringify(before));
- if(!failure){assert.ok(before.records.some(r=>r.kind==='deal'));assert.ok(before.records.some(r=>r.kind==='work'));}
+ if(!failure) assert.ok(before.records.some(r=>r.kind==='deal'));
+ assert.equal(before.records.some(r=>r.kind==='work'||r.kind==='incident'),false);
  await page.locator('[data-scope="mine"]').click();const after=await readContext(page);
  assert.equal(after.ready,failure===null);if(failure===401)assert.equal(after.records.length,0);
- if(!failure)assert.ok(after.records.some(r=>r.kind==='work'));
+ if(!failure)assert.ok(after.records.some(r=>r.kind==='deal'));
+ assert.equal(after.records.some(r=>r.kind==='work'||r.kind==='incident'),false);
 });
 test('initial Queue read uses the mounted Wire filter scope and publishes its first response',async t=>{
  let release,started;const held=new Promise(r=>release=r),entered=new Promise(r=>started=r);t.after(()=>release());

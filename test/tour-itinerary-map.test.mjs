@@ -12,6 +12,7 @@ function provider() {
   class Map {
     constructor() { maps.push(this); this.events = {}; this.flights = []; this.jumps = []; }
     on(name, fn) { this.events[name] = fn; }
+    off(name, fn) { if (this.events[name] === fn) delete this.events[name]; }
     getBounds() { return { toArray: () => [[-89, 30], [-87, 32]] }; }
     resize() {} remove() { this.removed = true; }
     flyTo(plan) { this.flights.push(plan); } jumpTo(plan) { this.jumps.push(plan); }
@@ -34,10 +35,10 @@ async function open(options = {}, storage = {}) {
 const rows = root => [...root.querySelectorAll('[data-itinerary-stop]')];
 const select = (root, stop) => root.querySelector(`[data-itinerary-stop="${stop}"] button`).click();
 
-test("exact pinned composer POST feeds its legal fixed appointment into the accepted consumer", {
+test("advertised runtime composer POST feeds its legal fixed appointment into the accepted consumer", {
   skip: !process.env.CARR_PRODUCER_CHECKOUT && "Set CARR_PRODUCER_CHECKOUT to verify the pinned composer boundary",
 }, async () => {
-  const contract = JSON.parse(await readFile(new URL("../contracts/tour-composer.v1.json", import.meta.url), "utf8"));
+  const contract = JSON.parse(await readFile(new URL("../contracts/carr-interface.v1.json", import.meta.url), "utf8"));
   const committed = path => execFileSync("git", ["-C", process.env.CARR_PRODUCER_CHECKOUT, "show", `${contract.producer.source_commit}:${path}`], { encoding: "utf8" });
   const timestampModule = `data:text/javascript;base64,${Buffer.from(committed("mcp-server/src/tour-route-timestamp.js")).toString("base64")}`;
   const source = committed("mcp-server/src/tour-internal-web.js").replace('"./tour-route-timestamp.js"', JSON.stringify(timestampModule));
@@ -254,4 +255,33 @@ test("detail adapter uses accepted version even while a newer draft is being com
   ] };
   const adapted = acceptedRouteFromDetail(detail); assert.equal(adapted.route_version, 3); assert.equal(adapted.stops.length, 1);
   assert.equal(adapted.stops[0].position, null); assert.equal(adapted.stops[0].property_id, "property-a");
+});
+
+test("twenty map mode, filter and selection changes retain one renderer and release its listeners", async () => {
+  const { view, gl } = await open();
+  for (let i = 0; i < 20; i++) {
+    view.dispatch({ type: "mode_change", mode: i % 2 ? "tour" : "search" });
+    view.dispatch({ type: "filter_state", filters: { query: String(i) } });
+    view.dispatch({ type: "selected_record", property_id: "property-b" });
+  }
+  assert.equal(gl.maps.length, 1);
+  assert.equal(view.projection.card.property_id, "property-b");
+  view.destroy();
+  assert.equal(gl.maps[0].removed, true);
+  assert.deepEqual(gl.maps[0].events, {});
+  assert.ok(gl.markers.every(marker => marker.removed));
+});
+
+test("unmount during provider initialization never adds markers to a removed renderer", async () => {
+  const dom = new JSDOM('<section></section>', { url: "https://example.test/tours" });
+  const root = dom.window.document.querySelector("section"), gl = provider();
+  let view;
+  gl.setWorkerUrl = () => queueMicrotask(() => view.destroy());
+  view = mountAcceptedItinerary(root, { route: structuredClone(route), scope: "synthetic-session",
+    basemapStyle: { version: 8, sources: {}, layers: [] }, loadMapLibre: async () => gl });
+  await view.ready;
+  assert.equal(gl.maps[0].removed, true);
+  assert.equal(gl.markers.length, 0);
+  assert.equal(root.children.length, 0);
+  dom.window.close();
 });
