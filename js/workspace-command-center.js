@@ -104,7 +104,7 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
     let latest = null, clearedActor = false;
     const project = result => {
       const view = { ...result, details: new Map(result.details) };
-      const actorChanged = result.board && result.board.actor !== previous?.board?.actor;
+      const actorChanged = agendaOnly && result.board && result.board.actor !== previous?.board?.actor;
       if (agendaOnly && !actorChanged) {
         const { board, details, reads, unauthorized, updatedAt, loading } = view;
         const preservedReads = { ...previous?.reads };
