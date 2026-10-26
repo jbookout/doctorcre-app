@@ -271,3 +271,76 @@ test("missing and unrecognized coverage reasons stay explicit without rendering 
   assert.match(detail, /Reason not recorded/);
   assert.doesNotMatch(detail, /<img|onerror/);
 });
+
+
+test("an optional UTC time selects intraday evidence and clearing it restores date-only history", async () => {
+  const calls = [];
+  const panel = openPanel(async path => {
+    const url = new URL(path, "https://app.example.invalid"); calls.push(url);
+    const morning = url.searchParams.get("as_of") === "2026-01-15T09:30:45.000Z";
+    return { ...evidence, facts: { county: reviewed(morning ? "Bay" : "Walton") } };
+  });
+  panel.mount(); await settle();
+  panel.change("#property-evidence-date", "2026-01-15"); await settle();
+  assert.match(panel.root.textContent, /Walton/);
+  panel.change("#property-evidence-time", "09:30:45"); await settle();
+  assert.equal(calls.at(-1).searchParams.get("as_of"), "2026-01-15T09:30:45.000Z");
+  assert.match(panel.root.textContent, /Bay/);
+  assert.doesNotMatch(panel.root.textContent, /Walton/);
+  panel.change("#property-evidence-time", ""); await settle();
+  assert.equal(calls.at(-1).searchParams.get("as_of"), "2026-01-15T23:59:59.999Z");
+  assert.match(panel.root.textContent, /Walton/);
+});
+
+
+test("fact details preserve exact UTC evidence and effective timestamps", () => {
+  const item = propertyPanelView({ ...evidence, facts: { county: reviewed("Bay", {
+    as_of: "2026-01-15T09:30:45.123Z", effective_from: "2026-01-15T09:00:00Z",
+    effective_to: "2026-01-15T13:00:00Z", source: { ...source, retrieved_at: "2026-01-15T09:30:40Z" },
+  }) } })[0];
+  const html = propertyFactDetail(item);
+  assert.match(html, /2026-01-15T09:30:45.123Z/);
+  assert.match(html, /2026-01-15T09:00:00.000Z/);
+  assert.match(html, /2026-01-15T13:00:00.000Z/);
+  assert.match(html, /2026-01-15T09:30:40.000Z/);
+});
+
+
+test("intraday selection survives remount and rejects evidence from an earlier time", async () => {
+  let resolveOld;
+  const calls = [];
+  const panel = openPanel(path => {
+    const url = new URL(path, "https://app.example.invalid"); calls.push(url);
+    if (url.searchParams.get("as_of") === "2026-01-15T09:00:00.000Z") return new Promise(resolve => { resolveOld = resolve; });
+    return Promise.resolve({ ...evidence, facts: { county: reviewed("Bay") } });
+  });
+  panel.mount(); await settle();
+  panel.change("#property-evidence-date", "2026-01-15"); await settle();
+  panel.change("#property-evidence-time", "09:00");
+  panel.change("#property-evidence-time", "13:00"); await settle();
+  resolveOld({ ...evidence, facts: { county: reviewed("Walton") } }); await settle();
+  assert.match(panel.root.textContent, /Bay/);
+  assert.doesNotMatch(panel.root.textContent, /Walton/);
+  const count = calls.length;
+  panel.mount({ stops: [...tour.stops].reverse() }); await settle();
+  assert.equal(panel.root.querySelector("#property-evidence-time").value, "13:00");
+  assert.equal(calls.length, count);
+  panel.change("#property-evidence-select", otherProperty); await settle();
+  assert.equal(calls.at(-1).searchParams.get("as_of"), "2026-01-15T13:00:00.000Z");
+  panel.change("#property-evidence-date", "");
+  panel.change("#property-evidence-time", "14:00"); await settle();
+  assert.equal(calls.length, count + 1);
+  assert.match(panel.root.textContent, /Choose an as-of date/);
+});
+
+for (const timezone of ["America/Chicago", "Asia/Tokyo"]) test(`explicit intraday reads use UTC in ${timezone}`, async t => {
+  const oldTimezone = process.env.TZ;
+  process.env.TZ = timezone;
+  t.after(() => { if (oldTimezone === undefined) delete process.env.TZ; else process.env.TZ = oldTimezone; });
+  const calls = [];
+  const panel = openPanel(async path => { calls.push(new URL(path, "https://app.example.invalid")); return evidence; });
+  panel.mount(); await settle();
+  panel.change("#property-evidence-date", "2026-01-15"); await settle();
+  panel.change("#property-evidence-time", "00:00"); await settle();
+  assert.equal(calls.at(-1).searchParams.get("as_of"), "2026-01-15T00:00:00.000Z");
+});

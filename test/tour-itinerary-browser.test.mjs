@@ -21,14 +21,18 @@ test("rendered composer uses compact fallback, keeps exact stop after reload, an
   const asset = await handleDoctorcreRequest(new Request("https://example.test/tours/vendor/maplibre-gl-6.4.1/maplibre-gl.mjs"), { ASSETS: { fetch: async () => new Response("fixture") } });
   assert.equal(asset.status, 200);
   const csp = asset.headers.get("content-security-policy");
+  const evidenceRequests = [];
   const server = createServer(async (req, res) => {
     const url = new URL(req.url, "http://127.0.0.1");
     try {
       if (url.pathname.startsWith("/api/")) {
+        if (url.pathname === "/api/tours/property-evidence/v1") evidenceRequests.push(url.searchParams.get("as_of"));
         const data = url.pathname === "/api/tours/library" ? { tours: [{ id: tourId, name: "Synthetic itinerary" }] }
           : url.pathname === "/api/tours/detail" ? detail
           : url.pathname === "/api/tours/property-evidence/v1" ? { schema: "tour-property-evidence.v1", facts: {
-            county: { status: "unknown", reason: "no_authorized_evidence" },
+            county: url.searchParams.get("as_of") === "2026-01-15T09:30:45.000Z"
+              ? { status: "reviewed", value: "Bay", as_of: "2026-01-15T09:30:45.000Z", effective_from: "2026-01-15T09:00:00Z" }
+              : { status: "unknown", reason: "no_authorized_evidence" },
             municipality: { status: "unavailable", reason: "authoritative_coverage_missing" },
           } } : {};
         res.writeHead(200, { "content-type": "application/json" }); res.end(JSON.stringify({ data, csrf_token: "synthetic-session-csrf" })); return;
@@ -64,6 +68,23 @@ test("rendered composer uses compact fallback, keeps exact stop after reload, an
         await mkdir(process.env.TOUR_MAP_SCREENSHOTS, { recursive: true });
         await page.locator('#property-evidence-panel').screenshot({ path: `${process.env.TOUR_MAP_SCREENSHOTS}/coverage-${name}.png` });
       }
+      await page.locator('#property-evidence-date').fill('2026-01-15');
+      await page.locator('#property-evidence-time').fill('09:30:45');
+      await page.locator('#property-evidence-time').blur();
+      await page.waitForFunction(() => document.querySelector('#property-evidence-content')?.textContent.includes('Bay'));
+      assert.ok(evidenceRequests.includes('2026-01-15T09:30:45.000Z'));
+      const timeInput = page.getByLabel('Time (UTC, optional)', { exact: true });
+      assert.equal(await timeInput.inputValue(), '09:30:45');
+      assert.ok(await timeInput.evaluate(node => node.getBoundingClientRect().right <= innerWidth), `${name}: time input fits`);
+      await page.locator('[data-evidence-field="county"]').click();
+      const evidenceDialog = page.locator('#property-evidence-dialog');
+      assert.match(await evidenceDialog.innerText(), /2026-01-15T09:30:45.000Z/);
+      assert.match(await evidenceDialog.innerText(), /2026-01-15T09:00:00.000Z/);
+      if (process.env.TOUR_MAP_SCREENSHOTS) {
+        await evidenceDialog.screenshot({ path: `${process.env.TOUR_MAP_SCREENSHOTS}/intraday-${name}.png` });
+      }
+      await page.keyboard.press('Escape');
+      await evidenceDialog.waitFor({ state: 'hidden' });
       assert.equal(await root.locator("canvas").count(), 0);
       assert.match(await root.locator("[data-map-status]").innerText(), /Street map unavailable/);
       assert.equal(await root.locator("[data-itinerary-stop]").count(), 2);

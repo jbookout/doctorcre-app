@@ -17,6 +17,10 @@ function shortDate(value) {
   const date = Date.parse(value);
   return Number.isFinite(date) ? new Date(date).toISOString().slice(0, 10) : "Unknown";
 }
+function timestamp(value) {
+  const date = Date.parse(value);
+  return Number.isFinite(date) ? new Date(date).toISOString() : "Unknown";
+}
 function localDate(date) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }
@@ -61,9 +65,9 @@ function provenance(item) {
   return `<dl class="property-provenance">
     <div><dt>Reference</dt><dd>${sourceLink(item.source?.locator)}</dd></div>
     <div><dt>Evidence class</dt><dd>${escape(humanToken(item.source?.evidence_class))}</dd></div>
-    <div><dt>Retrieved</dt><dd>${escape(shortDate(item.source?.retrieved_at))}</dd></div>
-    <div><dt>As of</dt><dd>${escape(shortDate(item.as_of))}</dd></div>
-    <div><dt>Effective</dt><dd>${escape(shortDate(item.effective_from))}${item.effective_to ? ` to ${escape(shortDate(item.effective_to))}` : " onward"}</dd></div>
+    <div><dt>Retrieved</dt><dd>${escape(timestamp(item.source?.retrieved_at))}</dd></div>
+    <div><dt>As of</dt><dd>${escape(timestamp(item.as_of))}</dd></div>
+    <div><dt>Effective</dt><dd>${escape(timestamp(item.effective_from))}${item.effective_to ? ` to ${escape(timestamp(item.effective_to))}` : " onward"}</dd></div>
     <div><dt>Geometry precision</dt><dd>${escape(humanToken(item.geometry_precision))}</dd></div>
     <div><dt>Geometry method</dt><dd>${escape(humanToken(item.geometry_method))}</dd></div>
     <div><dt>Coordinate system</dt><dd>${escape(item.source_crs || "Unknown")}</dd></div>
@@ -118,11 +122,14 @@ export function mountPropertyPanel({ tour, request }) {
     .map(stop => [stop.property_id, stop])).values()];
   const prior = root.querySelector("#property-evidence-select")?.value;
   const priorDate = root.querySelector("#property-evidence-date")?.value;
+  const priorTime = root.querySelector("#property-evidence-time")?.value;
   const selected = properties.find(stop => stop.property_id === prior) || properties[0];
   root.innerHTML = `<div class="property-panel-head"><div><p class="eyebrow">Site intelligence</p><h3>Property evidence</h3></div>
     <label for="property-evidence-select">Property <select id="property-evidence-select">${properties.map(stop =>
       `<option value="${escape(stop.property_id)}">${escape(stop.name || stop.address || stop.property_id)}</option>`).join("")}</select></label>
-    <label for="property-evidence-date">As of <input id="property-evidence-date" type="date" value="${escape(priorDate ?? localDate(new Date()))}"></label></div>
+    <label for="property-evidence-date">As of <input id="property-evidence-date" type="date" aria-describedby="property-evidence-time-help" value="${escape(priorDate ?? localDate(new Date()))}"></label>
+    <label for="property-evidence-time">Time (UTC, optional) <input id="property-evidence-time" type="time" step="1" aria-describedby="property-evidence-time-help" value="${escape(priorTime ?? "")}"></label></div>
+    <p id="property-evidence-time-help" class="hint">A time uses the selected date in UTC. Leave time blank for now on today's date or the end of another date in UTC.</p>
     <div id="property-evidence-content" aria-live="polite">${properties.length ? "Loading evidence…" : "No property is selected."}</div>
     <dialog id="property-evidence-dialog" class="property-evidence-dialog"><button type="button" class="property-dialog-close" aria-label="Close">×</button><div class="property-dialog-content"></div></dialog>`;
   if (!selected) { state.key = null; state.current = null; state.loading = false; return; }
@@ -136,6 +143,7 @@ export function mountPropertyPanel({ tour, request }) {
   async function load() {
     const propertyId = select.value;
     const selectedDate = root.querySelector("#property-evidence-date").value;
+    const selectedTime = root.querySelector("#property-evidence-time").value;
     if (!selectedDate) {
       state.token = null;
       state.key = null;
@@ -144,7 +152,7 @@ export function mountPropertyPanel({ tour, request }) {
       root.querySelector("#property-evidence-content").textContent = "Choose an as-of date to view property evidence.";
       return;
     }
-    const key = `${propertyId}:${selectedDate}`;
+    const key = `${propertyId}:${selectedDate}:${selectedTime}`;
     if (state.key === key && (state.current || state.loading)) { renderCurrent(); return; }
     const token = {};
     state.token = token;
@@ -152,8 +160,8 @@ export function mountPropertyPanel({ tour, request }) {
     state.current = null;
     state.loading = true;
     const now = new Date();
-    const asOf = selectedDate === localDate(now)
-      ? now.toISOString() : new Date(`${selectedDate}T23:59:59.999Z`).toISOString();
+    const asOf = selectedTime ? new Date(`${selectedDate}T${selectedTime}Z`).toISOString()
+      : selectedDate === localDate(now) ? now.toISOString() : new Date(`${selectedDate}T23:59:59.999Z`).toISOString();
     renderCurrent();
     try {
       const data = await request(`/api/tours/property-evidence/v1?property_id=${encodeURIComponent(propertyId)}&as_of=${encodeURIComponent(asOf)}`);
@@ -167,6 +175,7 @@ export function mountPropertyPanel({ tour, request }) {
   }
   select.addEventListener("change", () => void load());
   root.querySelector("#property-evidence-date").addEventListener("change", () => void load());
+  root.querySelector("#property-evidence-time").addEventListener("change", () => void load());
   root.onclick = event => {
     if (event.target.closest(".property-dialog-close")) { root.querySelector("dialog").close(); return; }
     const button = event.target.closest("[data-evidence-field]");
