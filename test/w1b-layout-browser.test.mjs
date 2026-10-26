@@ -31,6 +31,7 @@ async function open(t,{width=1440,height=960,hasTouch=false,motion='no-preferenc
       if(name==='lead-board') body={...liveBoard,...(args.lead_id?{detail:detail(liveBoard.leads.find(l=>l.id===args.lead_id))}:{})};
       else if(name==='update-lead') {writes.push(name);const lead=liveBoard.leads.find(l=>l.registry_ref===args.lead);Object.assign(lead,args.fields,{base_version:lead.base_version+1});body={ok:true};}
       else if(name==='deal-room-board') body=await fixture.getBoard();
+      else if(name==='read-home-agenda') body=await fixture.getHomeAgenda();
       else if(name==='today-triage') body=await fixture.todayTriage();
       else if(name==='get-deal-room') body=await fixture.getDeal(args.deal || args.deal_id);
       else if(name==='deal-room-changes') body=await fixture.getChanges(args.cursor);
@@ -157,6 +158,7 @@ for (const width of [1440,390]) for (const theme of ['light','dark']) test(`Toda
  });
  await page.route('**/pipeline/changes*',route=>failed==='feed'?route.fulfill({status:503,body:'Unavailable'}):route.fallback());
  await goto('/?mode=live');
+ await page.getByRole('button',{name:'Skip walkthrough',exact:true}).click();
  await page.evaluate(theme=>document.documentElement.dataset.theme=theme,theme);
  if(width===390)await page.locator('#appTodayToggle').click();
  await page.waitForFunction(()=>document.querySelector('#appTodayMoves')?.textContent.includes('Review synthetic terms'));
@@ -173,17 +175,77 @@ for (const width of [1440,390]) for (const theme of ['light','dark']) test(`Toda
   assert.equal(await page.locator('#appSyncTime').getAttribute('datetime'),before);
   assert.equal(await page.locator('#appConnection').getAttribute('aria-label'),'Connection unavailable');
   assert.match(await page.locator('#appToday').textContent(),/Showing last update/);
+  const retryBox=await retry.boundingBox();assert.ok(retryBox.width>=44 && retryBox.height>=44);
   if(source==='deal-room-board'){
    await mkdir(new URL('out/test-artifacts/today-retry/',root),{recursive:true});
    await page.screenshot({animations:'disabled',path:new URL(`out/test-artifacts/today-retry/home-${width}-${theme}.png`,root).pathname});
   }
-  failed=null;await retry.click();
-  await retry.waitFor({state:'hidden'});
+  failed=null;await retry.click({timeout:5000});
+  await retry.waitFor({state:'hidden',timeout:5000});
   assert.deepEqual(await rows(),good);
   assert.notEqual(await page.locator('#appSyncTime').getAttribute('datetime'),before);
   assert.equal(await page.locator('#appConnection').getAttribute('aria-label'),'Connection available');
+  assert.equal(await page.locator('#appTodayReadStatus').isVisible(),false);
  }
  assert.deepEqual(writes,[]);assert.deepEqual(errors,[]);
+});
+
+for(const today of [undefined,{state:'unavailable',items:[]}]) test(`Today retains priorities when the brief Today section is ${today?'unavailable':'omitted'}`,async t=>{
+ const {page,goto,errors}=await open(t,{clock:true});let unavailable=false;
+ await page.route('**/mcp',route=>unavailable && route.request().postDataJSON().params.name==='morning-brief'
+  ?route.fulfill({json:{result:{content:[{type:'text',text:JSON.stringify({sponsor:'joe',sections:{today}})}]}}}):route.fallback());
+ await goto('/?mode=live');
+ const before=await page.locator('#appTodayNext [data-layout-deal]').allTextContents();assert.ok(before.length);
+ unavailable=true;await page.clock.fastForward(31_000);
+ await page.waitForFunction(()=>document.querySelector('#appConnection').getAttribute('aria-label')==='Connection unavailable');
+ assert.deepEqual(await page.locator('#appTodayNext [data-layout-deal]').allTextContents(),before);
+ await page.getByRole('button',{name:'Retry Today',exact:true}).waitFor();
+ assert.deepEqual(errors,[]);
+});
+
+for(const actor of ['joe','dell']) test(`Today discards retained priorities when ${actor} has a narrowed board and triage fails`,async t=>{
+ const {page,goto}=await open(t,{clock:true});let narrowed=false;
+ await page.route('**/mcp',route=>{
+  if(!narrowed)return route.fallback();
+  const name=route.request().postDataJSON().params.name;
+  if(name==='deal-room-board')return route.fulfill({json:{result:{content:[{type:'text',text:JSON.stringify({actor,deals:[]})}]}}});
+  if(['morning-brief','today-triage'].includes(name))return route.fulfill({status:503,body:'Unavailable'});
+  return route.fallback();
+ });
+ await goto('/?mode=live');assert.ok(await page.locator('#appTodayNext [data-layout-deal]').count());
+ narrowed=true;await page.clock.fastForward(31_000);
+ await page.waitForFunction(()=>document.querySelector('#appConnection').getAttribute('aria-label')==='Connection unavailable');
+ assert.equal(await page.locator('#appTodayNext [data-layout-deal],#appTodayNeeds [data-layout-deal]').count(),0);
+});
+
+test('Today offers retry after its first read fails without claiming an empty result',async t=>{
+ const {page,errors}=await open(t,{clock:true});let failed=true;
+ await page.route('**/mcp',route=>failed && ['deal-room-board','morning-brief','today-triage'].includes(route.request().postDataJSON().params.name)
+  ?route.fulfill({status:503,body:'Unavailable'}):route.fallback());
+ await page.goto('http://localhost/?mode=live');
+ const retry=page.getByRole('button',{name:'Retry Today',exact:true});await retry.waitFor({timeout:5000});
+ await page.getByRole('button',{name:'Skip walkthrough',exact:true}).click();
+ assert.equal(await page.locator('#appTodayNext [data-layout-deal],#appTodayNeeds [data-layout-deal]').count(),0);
+ assert.match(await page.locator('#appTodayNext').textContent(),/Unavailable/);
+ assert.doesNotMatch(await page.locator('#appToday').textContent(),/Showing last update/);
+ failed=false;await retry.click();await retry.waitFor({state:'hidden',timeout:5000});
+ assert.ok(await page.locator('#appTodayNext [data-layout-deal]').count());assert.deepEqual(errors,[]);
+});
+
+test('Today retains offline rows but clears them before resume revalidation',async t=>{
+ const events=[{id:'offline-private',subject_type:'deal',subject_id:'d23',field:'next_step',actor:'doc',new_value:'Synthetic offline move',recorded_at:'2026-10-01T15:00:00Z'}];
+ const {page,goto}=await open(t,{clock:true,events});let hold=false,release;
+ const pending=new Promise(resolve=>release=resolve);t.after(()=>release());
+ await page.route('**/mcp',async route=>{if(hold && ['deal-room-board','morning-brief'].includes(route.request().postDataJSON().params.name))await pending;return route.fallback();});
+ await goto('/leads?mode=live');await page.waitForFunction(()=>document.querySelector('#appTodayMoves').textContent.includes('Synthetic offline move'));
+ const before=await page.locator('#appToday [data-layout-deal]').allTextContents();assert.ok(before.length);
+ await page.context().setOffline(true);
+ await page.waitForFunction(()=>document.querySelector('#appConnection').getAttribute('aria-label')==='Connection unavailable');
+ assert.deepEqual(await page.locator('#appToday [data-layout-deal]').allTextContents(),before);
+ hold=true;await page.context().setOffline(false);
+ await page.waitForFunction(()=>!document.querySelector('#appToday [data-layout-deal]'));
+ assert.doesNotMatch(await page.locator('#appToday').textContent(),/Synthetic offline move|Showing last update/);
+ release();await page.waitForFunction(()=>document.querySelector('#appTodayNext [data-layout-deal]'));
 });
 
 test('Home, Leads and Local Deals fit desktop and phone; capture the six review renders',async t=>{
