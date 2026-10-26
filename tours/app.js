@@ -1084,6 +1084,28 @@ import { cheatSheetText, factSummary, formatTourDate, tourDisplayName, tourMetaL
       idempotency_key: uuid() }, "Route acceptance", latest => latest.route_version_id === tour.route_version_id && latest.accepted_route_version === tour.accepted_route_version);
   }));
   $("#cheat-content").addEventListener("input", () => { if (sheetPending || sheetBusy) return; state.cheatDirty = true; state.cheatDraftTourId = state.tour?.id || ""; sheetMessage = ""; renderSheetRecovery(); });
+  function prepareSheetPrint() {
+    const output = $("#cheat-print"); if (!output) return false;
+    output.replaceChildren(); document.body.append(output);
+    const tour = state.tour;
+    if (!tour || !$("#tour-panel") || $("#tour-panel").hidden || state.cheatDraftTourId !== tour.id) return false;
+    const draft = state.cheatDirty || sheetPending || sheetConflict;
+    const revision = tour.cheat_sheet?.revision_number;
+    for (const [tag, value] of [
+      ["p", "Internal only. Not for client distribution."],
+      ["h1", tourDisplayName(tour.name)],
+      ["p", tourMetaLine(tour)],
+      ["p", draft ? "Unsaved draft" : Number.isSafeInteger(revision) && revision > 0 ? `Saved revision ${revision}` : "Not saved"],
+      ["pre", $("#cheat-content").value || "No internal notes recorded."],
+    ]) { const node = document.createElement(tag); node.textContent = value; output.append(node); }
+    return true;
+  }
+  $("#print-sheet").addEventListener("click", () => { if (prepareSheetPrint()) window.print(); });
+  window.addEventListener("beforeprint", prepareSheetPrint);
+  window.addEventListener("afterprint", () => $("#cheat-print")?.replaceChildren());
+  window.addEventListener("doctorcre-session-invalidated", () => {
+    state.cheatDraftTourId = ""; $("#cheat-print")?.replaceChildren();
+  });
   $("#save-sheet").addEventListener("click", exclusive("sheet", saveSheet));
   $("#review-sheet").addEventListener("click", () => {
     if (!sheetConflict?.current || sheetBusy || state.tour?.id !== sheetConflict.tourId) return;

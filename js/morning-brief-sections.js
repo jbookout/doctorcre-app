@@ -60,8 +60,7 @@ export function briefSections(payload) {
       if (other.length) kinds.push({label:'Other triage',rows:other});
     }
     const metadata = metadataText(key,state === 'unavailable' ? {action:value?.action} : value);
-    const spoken = [description,...kinds.map(kind => `${kind.label}. ${state === 'unavailable' ? 'count unknown' : `${Number.isInteger(kind.count) ? kind.count : kind.rows.length} returned`}`)].join('. ');
-    return { key, label, state, description, spoken, collections, kinds, metadata };
+    return { key, label, state, description, collections, kinds, metadata };
   });
 }
 

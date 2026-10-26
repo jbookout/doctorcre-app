@@ -61,6 +61,5 @@ export function morningBriefView(payload, { now = new Date(), since, events = []
   if (sections.today.state === 'unavailable' || sections.loops.state === 'unavailable' || sections.deals.state === 'unavailable') unavailable.push('Today’s priorities unavailable');
   if (!caughtUp || sections.deals.state === 'unavailable') unavailable.push('Overnight updates unavailable');
   const coverage = briefSections(payload);
-  const spoken = [...unavailable,...coverage.map(section => section.spoken),...groups.map(group => `${group.label}. ${group.row.title}. ${group.row.summary}`)].join('. ');
-  return { sponsor, day, groups, unavailable, coverage, spoken, observedAt:now.toISOString() };
+  return { sponsor, day, groups, unavailable, coverage, observedAt:now.toISOString() };
 }

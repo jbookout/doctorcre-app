@@ -124,6 +124,10 @@ async function assembleArtifact(commit, paths, readSource) {
       const inlinedShell = Buffer.from(shell.toString("utf8").replace('@import url("/css/tokens.css");\n', ""));
       content = Buffer.concat([tokens, Buffer.from("\n"), content, Buffer.from("\n"), inlinedShell]);
     }
+    if (path === "tours/app.js") {
+      const result = await transform(content.toString("utf8"), { loader: "js", format: "esm", target: "es2022", minifyWhitespace: true, legalComments: "none" });
+      content = Buffer.from(result.code);
+    }
     files.set(path, content);
     payload.push({ path, bytes: content.length, sha256: digest(content) });
   }
