@@ -46,6 +46,14 @@ class ReviewGate(unittest.TestCase):
         for suffix in ("", "\n\nReviewer: grok", "\nOther: grok\nReviewer: grok"):
             self.assertFalse(gate.approved(pr, [], [{"body": "VERDICT: APPROVE\nReviewed-SHA: abc" + suffix}]))
 
+    def test_changes_veto_is_bound_to_current_head(self):
+        pr = {"changed_files": 0, "additions": 151, "deletions": 0, "head": {"sha": "abc"}}
+        for sha, expected in [("abc", False), ("old", True)]:
+            with self.subTest(changes_sha=sha):
+                comments = [{"body": f"VERDICT: CHANGES\nReviewed-SHA: {sha}"},
+                            {"body": "VERDICT: APPROVE\nReviewed-SHA: abc\nReviewer: grok"}]
+                self.assertEqual(gate.approved(pr, [], comments), expected)
+
     def test_event_adapter(self):
         pr = {"base": {"ref": "main"}, "additions": 151, "deletions": 0, "head": {"sha": "abc"}, "changed_files": 1}
         for event in ({"number": 4}, {"issue": {"number": 4}}):

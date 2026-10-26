@@ -779,11 +779,14 @@ let contextReadSequence = 0;
 let panelRead = null;
 let updateDraft = null;
 const updateDrafts = new Map();
+const requirementDrafts = new Map();
+const requirementFields = [['use','Use'],['size','Size'],['location','Location'],['timing','Timing'],['budget','Budget'],['requirements','Approved requirements']];
 let draftActor = null;
 function bindDraftActor(actor) {
   if (draftActor === actor) return;
   draftActor = actor;
   updateDrafts.clear();
+  requirementDrafts.clear();
   updateDraft = null;
   for (const key of Object.keys(commandState)) {
     if (key.startsWith('deal-update:')) dock.forget(key);
@@ -813,6 +816,8 @@ function syncUpdateForm() {
   if (!form || !state.panelDeal) return;
   const pending = pendingCommand(commandState, updateKey(state.panelDeal));
   bindDraftActor(state.selfActor);
+  const requirementFieldset = $('requirementEmailForm')?.querySelector('fieldset');
+  if (requirementFieldset) requirementFieldset.disabled = !state.selfActor;
   if (!updateDraft || updateDraft.id !== state.panelDeal) {
     updateDraft = updateDrafts.get(state.panelDeal) || {id:state.panelDeal,text:''};
     updateDrafts.set(state.panelDeal, updateDraft);
@@ -853,6 +858,40 @@ async function saveUpdate(id) {
     $('detailUpdateStatus').textContent = result.status === 'ok' ? 'Update added' : result.message || 'Update not confirmed';
   }
 }
+function requirementEmailHtml(deal) {
+  const draft = requirementDrafts.get(deal.id) || {};
+  return `<details id="requirementEmail"><summary>Draft requirement email</summary>
+    <p>Unsent draft · kept while this page is open.</p>
+    <p>Enter only requirements approved for sharing. Client details are never added automatically.</p>
+    <form id="requirementEmailForm" class="deal-update-form"><fieldset class="add-deal-fields"${state.selfActor ? '' : ' disabled'}>
+      ${requirementFields.map(([name,label]) => `<div class="field"><label for="requirement-${name}">${label}</label>${name === 'requirements' ? `<textarea id="requirement-${name}" name="${name}" rows="3" maxlength="2000">${esc(draft[name] || '')}</textarea>` : `<input id="requirement-${name}" name="${name}" maxlength="2000" value="${esc(draft[name] || '')}"${['use','location'].includes(name) ? ' required' : ''}>`}</div>`).join('')}
+      <button class="btn" type="button" data-generate-requirement>Generate email preview</button>
+      <div class="field"><label for="requirementSubject">Email subject</label><input id="requirementSubject" name="subject" maxlength="500" value="${esc(draft.subject || '')}"></div>
+      <div class="field"><label for="requirementMessage">Email message</label><textarea id="requirementMessage" name="message" rows="10" maxlength="15000">${esc(draft.message || '')}</textarea></div>
+      <button class="btn" type="button" data-copy-requirement>Copy email draft</button>
+      <button class="btn btn-quiet" type="button" data-discard-requirement>Discard email draft</button>
+      <p id="requirementEmailStatus" role="status">Preview and copy only. Nothing is sent.</p>
+    </fieldset></form></details>`;
+}
+async function copyRequirementDraft() {
+  const form = $('requirementEmailForm');
+  const status = $('requirementEmailStatus');
+  const actor = state.selfActor;
+  const id = state.panelDeal;
+  const draft = requirementDrafts.get(id);
+  if (!form || !actor || draftActor !== actor) return;
+  const subject = form.elements.subject.value.trim();
+  const message = form.elements.message.value.trim();
+  if (!subject || !message) { status.textContent = 'Generate or enter a subject and message first.'; return; }
+  try {
+    await navigator.clipboard.writeText(`Subject: ${subject}\n\n${message}`);
+    if (form.isConnected && state.selfActor === actor && draftActor === actor && requirementDrafts.get(id) === draft) status.textContent = 'Email draft copied. Nothing sent.';
+  } catch {
+    if (!form.isConnected || state.selfActor !== actor || draftActor !== actor || requirementDrafts.get(id) !== draft) return;
+    status.textContent = 'Copy unavailable. Select the subject and message to copy manually.';
+    form.elements.message.focus(); form.elements.message.select();
+  }
+}
 function detailHtml(detail) {
   const d = detail.deal;
   const prospect = state.deals.get(d.id);
@@ -867,7 +906,7 @@ function detailHtml(detail) {
     </section>
     <div data-detail-read="checklist">${renderDealChecklist(detail.checklist)}</div>
     <form id="detailUpdateForm" class="deal-update-form"><label for="dealUpdate">Update</label><textarea id="dealUpdate" name="text" rows="2" maxlength="10000" required></textarea><button class="btn btn-primary" type="submit">Add update</button><button class="btn btn-quiet" type="button" data-discard-update>Discard draft</button><p id="detailUpdateStatus" role="status"></p></form>
-
+    ${requirementEmailHtml(d)}
     <div data-detail-read="vendors">${renderDealVendors(d.vendors)}</div>
     <div data-detail-read="board-controls" data-available="${controlsAvailable}">${controlsAvailable ? `<div class="detail-actions"><div class="detail-controls"><label>Phase<select id="detailPhase">${COLUMNS.map(c => `<option value="${esc(c.slug)}"${c.value === d.phase ? ' selected' : ''}>${esc(c.label)}</option>`).join('')}</select></label><label>Owner<select id="detailOwner"><option value="">Unassigned</option>${['joe','dell'].map(owner => `<option value="${owner}"${owner === d.owner ? ' selected' : ''}>${actorName(owner)}</option>`).join('')}</select></label></div><div data-detail-read="parking" data-parked="${parked}">${parked ? `<p>${esc(concise(d.parking_note) || 'Parked')}</p><button type="button" class="btn" data-revive="${esc(d.id)}">Revive</button>` : `<details class="park-options"><summary class="park-control">Park</summary><form id="detailParkForm"><label>Park reason<input name="reason" maxlength="500" required></label><button class="btn park-control" type="submit">Park deal</button></form></details>`}</div></div>` : ''}</div>
     <div data-detail-read="prospect">${controlsAvailable && prospect?.client_status === 'prospect' ? `<form id="detailInactiveForm"><p>Inactive prospects return to Leads.</p><label>Reason<input name="reason" maxlength="1000" required value="${esc(pendingProspect?.request.reason || '')}"${pendingProspect ? ' readonly' : ''}></label><button class="btn" type="submit">${pendingProspect ? 'Check outcome' : 'Mark inactive'}</button><p role="status" data-prospect-status>${pendingProspect ? 'Confirmation pending for this prospect. Check outcome to retry the same request.' : ''}</p></form>` : ''}</div>
@@ -1304,9 +1343,32 @@ function wire() {
   $('panelBody').addEventListener('click', e => {
     if (e.target.closest('[data-discard-update]') && !pendingCommand(commandState, updateKey(state.panelDeal))) { discardUpdate(state.panelDeal); syncUpdateForm(); }
     if (e.target.closest('[data-refresh-detail]')) refreshPanel();
+    if (e.target.closest('[data-generate-requirement]') && state.selfActor && draftActor === state.selfActor) {
+      const form = $('requirementEmailForm');
+      if (!form.reportValidity()) return;
+      const id = state.panelDeal;
+      const draft = Object.assign(requirementDrafts.get(id) || {}, Object.fromEntries(new FormData(form)));
+      const subject = `Space requirement · ${draft.use.trim()} · ${draft.location.trim()}`.slice(0, form.elements.subject.maxLength);
+      const message = `Hello,\n\nWe are looking for space with the following requirements:\n\n${requirementFields.map(([name,label]) => `${label}: ${draft[name].trim() || 'Not specified'}`).join('\n')}\n\nPlease share matching spaces and availability. Thank you.`;
+      Object.assign(draft, {subject,message}); requirementDrafts.set(id,draft);
+      form.elements.subject.value = subject;
+      form.elements.message.value = message;
+      $('requirementEmailStatus').textContent = 'Email preview generated. Review and edit before copying.';
+    }
+    if (e.target.closest('[data-copy-requirement]')) void copyRequirementDraft();
+    if (e.target.closest('[data-discard-requirement]')) {
+      requirementDrafts.delete(state.panelDeal);
+      for (const input of $('requirementEmailForm').querySelectorAll('input,textarea')) input.value = '';
+      $('requirementEmailStatus').textContent = 'Email draft discarded.';
+    }
 
   });
   $('panelBody').addEventListener('input', e => {
+    if (e.target.closest('#requirementEmailForm') && state.selfActor && draftActor === state.selfActor) {
+      const draft = requirementDrafts.get(state.panelDeal) || {};
+      Object.assign(draft, Object.fromEntries(new FormData($('requirementEmailForm'))));
+      requirementDrafts.set(state.panelDeal, draft);
+    }
     if (e.target.id === 'dealUpdate' && updateDraft) { updateDraft.text = e.target.value; syncUpdateForm(); }
   });
   $('panelBody').addEventListener('change', async e => {
