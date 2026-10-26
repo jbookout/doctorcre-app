@@ -5,6 +5,7 @@ import { projectInvoices, invoiceHref, invoiceMoney, invoiceDate } from './invoi
 import { introductionSuggestions } from './relationship-network-model.js';
 import { mountAutoRefresh, readWithDeadline, updatedLabel } from './auto-refresh.mjs';
 import { homeClient } from './home-boot.js';
+import { mountCallOutcomes } from './call-outcomes.js';
 import { localToday } from './calendar-model.js';
 import { agendaSnapshot, dealHref, dealSnapshot, HOME_SCOPES, readHomeAgenda, readHomeDashboard, topNewLeads } from './home-dashboard-model.js';
 import { mountNotificationBadge } from './shell.js';
@@ -227,4 +228,8 @@ if (typeof document !== 'undefined' && document.getElementById('dealAttention'))
   const client = await homeClient;
   mountHomeDashboard({ document, window, client });
   mountNotificationBadge(client);
+  const outcomes = document.getElementById('homeCallOutcomes');
+  if (outcomes && client.readCallOutcomes) mountCallOutcomes({ container: outcomes, client: () => client,
+    toast: message => { const notice = document.getElementById('homeNotice'); notice.hidden = false; notice.textContent = message; },
+  }).refresh();
 }

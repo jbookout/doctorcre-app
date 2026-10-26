@@ -366,7 +366,7 @@ test("the review pack is shown deal by deal with each partner's actions and draf
   for (const heading of ["Deal by deal", "Joe this week", "Dell this week", "Questions to resolve", "What clients and vendors need to know"]) {
     assert.match(html, new RegExp(heading), `${heading} section`);
   }
-  assert.match(doc.getElementById("postCallStatus").innerHTML, /Nothing is saved until Joe or Dell approves each item/);
+  assert.match(doc.getElementById("postCallStatus").innerHTML, /anything unsettled waits for Joe or Dell/);
   // One Confirm and one Skip per pending item, and nothing resolved on arrival.
   for (const id of ["cand-joe", "cand-dell", "cand-update"]) {
     assert.equal(html.split(`data-post-call-confirm="${id}"`).length - 1, 1, `${id} has exactly one Confirm`);

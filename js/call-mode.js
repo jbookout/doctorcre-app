@@ -33,6 +33,7 @@
  * transcript it already has.
  */
 import { createRetainedCommands } from './retained-commands.mjs';
+import { mountCallOutcomes } from './call-outcomes.js';
 import { requestCompanion } from './post-call-client.js';
 import { escapeText as esc } from './change-receipts.mjs';
 import { mountVisibilityPoll } from './visibility-poll.mjs';
@@ -301,15 +302,16 @@ export function createCallMode(deps) {
     const summary = item.update || item.summary || item.text || item.action || 'Deal update needs review';
     const resolver = ['assigned_action','email_draft'].includes(item.candidate_kind || item.kind) || item.candidate_table === 'capture_post_call_candidate' ? 'post_call' : 'legacy';
     const step = item.next_step;
-    const stepStatus = step ? postCallItemStatus(step) : null;
+    const stepStatus = step ? (step.applied_automatically ? 'applied' : postCallItemStatus(step)) : null;
     return `<article class="post-call-card" data-post-call-item="${esc(item.candidate_id || '')}">
     <div class="post-call-card-head"><b>${esc(postCallDealName(item))}</b><span class="post-call-badge ${esc(status)}">${esc(status.replaceAll('_',' '))}</span></div>
     <p>${esc(reportText(summary))}</p>
     ${checksNote(item)}
     ${pending ? `<div class="post-call-card-actions"><button type="button" class="primary" data-post-call-confirm="${esc(item.candidate_id)}" data-candidate-resolver="${resolver}">Confirm update</button><button type="button" class="secondary" data-post-call-skip="${esc(item.candidate_id)}" data-candidate-resolver="${resolver}">Skip</button></div>` : ''}
     ${step ? `<section aria-label="Proposed next step">
-      <div class="post-call-card-head"><b>Proposed next step</b><span class="post-call-badge ${esc(stepStatus)}">${esc(stepStatus.replaceAll('_', ' '))}</span></div>
+      <div class="post-call-card-head"><b>${stepStatus === 'applied' ? 'Next step applied from the call' : 'Proposed next step'}</b><span class="post-call-badge ${esc(stepStatus)}">${esc(stepStatus.replaceAll('_', ' '))}</span></div>
       <p>${esc(reportText(step.text))}</p><small>${step.next_date ? `Next date: ${esc(step.next_date)}` : 'No next date. Confirming clears the current date.'}</small>
+      ${step.review_reason && stepStatus === 'pending' ? `<p class="post-call-checks">${esc(reportText(step.review_reason))}</p>` : ''}
       ${stepStatus === 'pending' && step.candidate_id ? `<div class="post-call-card-actions"><button type="button" class="primary" data-post-call-confirm="${esc(step.candidate_id)}" data-candidate-resolver="legacy">Confirm next step</button><button type="button" class="secondary" data-post-call-skip="${esc(step.candidate_id)}" data-candidate-resolver="legacy">Skip next step</button></div>` : ''}
     </section>` : ''}
   </article>`;
@@ -342,6 +344,27 @@ export function createCallMode(deps) {
     return `<section class="post-call-group"><h4>${esc(title)}</h4>${items.length ? `<div class="post-call-cards">${items.map(renderItem).join('')}</div>` : `<p class="post-call-empty">${esc(empty)}</p>`}</section>`;
   }
 
+  // Applied-from-the-call summary (read-call-outcomes) above the report.
+  let outcomes = null;
+  function reportCandidateIds() {
+    const updates = state.postCall.report?.deal_updates;
+    return (Array.isArray(updates) ? updates : []).flatMap(update => ['next_step', 'phase_move']
+      .map(field => update?.[field]?.candidate_id).filter(Boolean));
+  }
+  function callOutcomes() {
+    const report = $('#postCallReport');
+    if (!report || !deps.client()?.readCallOutcomes) return null;
+    let node = $('#postCallOutcomes');
+    if (!node) {
+      node = root.createElement('div');
+      node.id = 'postCallOutcomes'; node.className = 'call-outcomes'; node.hidden = true;
+      report.before(node);
+    }
+    outcomes ||= mountCallOutcomes({ container: node, client: deps.client, toast, filter: reportCandidateIds,
+      onChange: () => refreshPostCall({ quiet: true }) });
+    return outcomes;
+  }
+
   function renderPostCall() {
     if (state.eligibility !== 'available') {
       if ($('#postCallPanel')) $('#postCallPanel').hidden = true;
@@ -358,7 +381,7 @@ export function createCallMode(deps) {
       awaiting_context: 'Preparing the weekly deal context…',
       waiting_for_transcript: 'Recording stopped. Quill is transcribing locally…',
       distilling: 'Quill is distilling the weekly updates and next actions…',
-      review_ready: 'Review pack ready. Nothing is saved until Joe or Dell approves each item.',
+      review_ready: 'Call processed. Changes stated plainly are applied and listed with Undo; anything unsettled waits for Joe or Dell.',
       filed: 'Post-call report filed. Outlook drafts still require a person to send them.',
       failed: 'The post-call report needs attention.',
     };
@@ -450,6 +473,7 @@ export function createCallMode(deps) {
         error: reason ? `Local processing stopped: ${reason}` : null };
       if (['review_ready', 'filed', 'failed'].includes(status)) stopPolling();
       else if (!state.pollTimer) startPolling(session, {immediate:false});
+      if (['review_ready', 'filed'].includes(status) && reportCandidateIds().length) callOutcomes()?.refresh();
       renderPostCall();
       // The stall this closes: a weekly recording whose companion never got
       // the context index. Supply it now, once per session unless a partner

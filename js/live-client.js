@@ -52,7 +52,8 @@ export function createLiveClient(opts = {}) {
   } });
   const sessionWrites = new Set(['set-next-step', 'set-market-agent', 'set-national-account-owner', 'create-national-account',
     'create-national-market-deal', 'start-deal-review', 'review-deal', 'end-deal-review',
-    'resolve-candidate', 'resolve-post-call-candidate', 'answer-work-request-for-joe', 'add-industry-event', 'update-industry-event']);
+    'resolve-candidate', 'resolve-post-call-candidate', 'answer-work-request-for-joe', 'add-industry-event', 'update-industry-event',
+    'undo-call-change', 'review-call-outcome']);
 
   const rpc = (verb, args = {}, signal) => rawRpc(verb, args, signal, opts.readTimeoutMs || 10_000);
 
@@ -295,6 +296,18 @@ export function createLiveClient(opts = {}) {
 
     async resolvePostCallCandidate({ candidate_id, accept, idempotency_key }) {
       return write('resolve-post-call-candidate', { candidate_id, accept, idempotency_key });
+    },
+
+    async readCallOutcomes() {
+      return rpc('read-call-outcomes', {});
+    },
+
+    async undoCallChange({ candidate_id, base_version }) {
+      return write('undo-call-change', { candidate_id, base_version });
+    },
+
+    async reviewCallOutcome({ session_id }) {
+      return write('review-call-outcome', { session_id });
     },
 
     async getChanges(cursor, { signal, since } = {}) {
