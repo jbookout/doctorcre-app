@@ -3,7 +3,7 @@ import { observeDocRead, selectDocRecord } from '../js/doc-context.js';
 import { mountAutoRefresh } from "../js/auto-refresh.mjs";
 import { mountAcceptedItinerary, acceptedRouteFromDetail } from "./itinerary-map.js";
 import { mountPropertyPanel } from "./property-panel.js";
-import { cheatSheetText, factSummary, formatTourDate, tourDisplayName, tourMetaLine } from "./tour-format.js";
+import { cheatSheetText, itinerarySheetText, factSummary, formatTourDate, tourDisplayName, tourMetaLine } from "./tour-format.js";
 
 (() => {
   "use strict";
@@ -91,6 +91,11 @@ import { cheatSheetText, factSummary, formatTourDate, tourDisplayName, tourMetaL
       if (sheetPending) sheetMessage = "Save outcome unknown after reload. Check outcome replays the retained request.";
     } catch { /* Invalid tab state cannot authorize a write. */ }
   }
+  function canRegenerateSheet() {
+    return Boolean(state.tour && state.cheatDraftTourId === state.tour.id && sessionBinding &&
+      !sheetBusy && !sheetPending && !sheetConflict && !sheetComposing && !tourAction && !tourActionPreparing &&
+      itinerarySheetText(state.tour));
+  }
   function renderSheetRecovery() {
     $("#sheet-conflict").hidden = !sheetConflict;
     $("#sheet-current").textContent = sheetConflict?.current
@@ -101,6 +106,7 @@ import { cheatSheetText, factSummary, formatTourDate, tourDisplayName, tourMetaL
     $("#cheat-content").disabled = Boolean(sheetPending?.uncertain);
     $("#save-sheet").disabled = sheetBusy || Boolean(sheetConflict);
     $("#save-sheet").textContent = sheetPending ? "Check save outcome" : "Save now";
+    $("#regenerate-sheet").disabled = !canRegenerateSheet();
     $("#restore-sheet").disabled = sheetBusy || Boolean(sheetPending) || Boolean(sheetConflict);
     $("#sheet-state").textContent = sheetMessage || (state.cheatDirty ? "Unsaved changes. Saves after a pause." : text(state.tour?.cheat_sheet?.revision_label, "Not saved"));
   }
@@ -130,6 +136,7 @@ import { cheatSheetText, factSummary, formatTourDate, tourDisplayName, tourMetaL
     $("#retry-tour-action").hidden = !tourAction || tourAction.busy;
     $("#tour-action-state").textContent = tourAction
       ? `${tourAction.label}: ${tourAction.busy ? "sending…" : "outcome unknown. Check outcome replays the retained request."}` : "";
+    $("#regenerate-sheet").disabled = !canRegenerateSheet();
     for (const selector of ["#generate-projection", "#seal-projection", "#render-pdf", "#review-pdf", "#revoke-share", "#save-route", "#reorder-route", "#receipt-digest"]) $(selector).disabled = Boolean(tourAction) || tourActionPreparing;
   }
   function confirmedTourWrite(path, data) {
@@ -1101,8 +1108,17 @@ import { cheatSheetText, factSummary, formatTourDate, tourDisplayName, tourMetaL
       expected_prior_route_version: Number(tour.accepted_route_version || 0), acceptance_digest: tour.route_acceptance_digest,
       idempotency_key: uuid() }, "Route acceptance", latest => latest.route_version_id === tour.route_version_id && latest.accepted_route_version === tour.accepted_route_version);
   }));
+  $("#regenerate-sheet").addEventListener("click", () => {
+    if (!canRegenerateSheet()) return;
+    const editor = $("#cheat-content"), generated = itinerarySheetText(state.tour);
+    if (new TextEncoder().encode(JSON.stringify({ notes: generated })).length > 32768) {
+      sheetMessage = "The itinerary is too long for one sheet. Your notes are kept."; renderSheetRecovery(); return;
+    }
+    if (editor.value && !window.confirm("Replace your internal notes with the accepted itinerary? This will autosave a new revision. Existing saved revisions remain unchanged.")) return;
+    editor.value = generated; editor.dispatchEvent(new Event("input")); editor.focus();
+  });
   const saveSheetExclusively = exclusive("sheet", saveSheet);
-  $("#cheat-content").addEventListener("compositionstart", () => { sheetComposing = true; cancelSheetAutosave(); });
+  $("#cheat-content").addEventListener("compositionstart", () => { sheetComposing = true; cancelSheetAutosave(); renderSheetRecovery(); });
   $("#cheat-content").addEventListener("compositionend", () => { sheetComposing = false; $("#cheat-content").dispatchEvent(new Event("input")); });
   $("#cheat-content").addEventListener("input", (event) => {
     if (sheetPending?.uncertain) return;
@@ -1154,6 +1170,7 @@ import { cheatSheetText, factSummary, formatTourDate, tourDisplayName, tourMetaL
   window.addEventListener("doctorcre-session-invalidated", () => {
     cancelSheetAutosave(); sheetComposing = false;
     state.cheatDraftTourId = ""; state.cheatDraftRevision = null; $("#cheat-print")?.replaceChildren();
+    $("#regenerate-sheet").disabled = !canRegenerateSheet();
   });
   $("#save-sheet").addEventListener("click", saveSheetExclusively);
   $("#review-sheet").addEventListener("click", () => {
