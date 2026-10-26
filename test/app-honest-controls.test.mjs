@@ -120,6 +120,24 @@ test('a reachable recording companion retains Stop and elapsed recording control
   });
 });
 
+for (const finished of ['ready_to_extract', 'filed']) {
+  test(`a finished call (${finished}) leaves Start available for the next call`, async () => {
+    await callSurface(async () => ({ ok: true, json: async () => ({ state: finished, session: '2026.10.26-1031' }) }), async (ui, doc) => {
+      assert.equal(await ui.checkEligibility(), true);
+      assert.equal(doc.querySelector('#callModeStarts').hidden, false);
+      assert.equal(doc.querySelector('#callModeConsentRow').hidden, false);
+      assert.equal(doc.querySelector('#callModeStop').hidden, true);
+    });
+  });
+}
+
+test('a call Quill is still transcribing keeps Start hidden', async () => {
+  await callSurface(async () => ({ ok: true, json: async () => ({ state: 'transcribing', session: '2026.10.26-1031' }) }), async (ui, doc) => {
+    assert.equal(await ui.checkEligibility(), true);
+    assert.equal(doc.querySelector('#callModeStarts').hidden, true);
+  });
+});
+
 for (const failure of ['rejection', 'late response', 'hung JSON']) {
   test(`the visible recorder recheck recovers from a startup ${failure} without reloading`, async () => {
     let requests = 0, resolveLate;
