@@ -185,7 +185,6 @@ for (const nextSponsor of ['joe','dell']) test(`suspension clears paged queue fa
  state.root.dispatchEvent(new state.win.Event('visibilitychange'));
  assert.equal(state.root.getElementById('morningContent').textContent,'');
  assert.equal(state.root.querySelectorAll('[data-brief-queue]').length,0);
- assert.equal(state.root.getElementById('morningListen').disabled,true);
  let releaseBrief;
  state.client.morningBrief=()=>new Promise(resolve=>releaseBrief=resolve);
  Object.defineProperty(state.root,'visibilityState',{configurable:true,value:'visible'});

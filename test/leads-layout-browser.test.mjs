@@ -74,3 +74,59 @@ for (const width of [1440, 390]) for (const theme of ['dark', 'light']) {
     assert.deepEqual(errors, []);
   });
 }
+
+for (const width of [1440, 390]) test(`Lead lanes start with five cards and expand without losing their controls at ${width}px`, async t => {
+  const browser = await chromium.launch();
+  t.after(() => browser.close());
+  const page = await browser.newPage({ viewport: { width, height: 900 }, reducedMotion: 'reduce' });
+  const board = workspace();
+  board.leads = Array.from({ length: 200 }, (_, n) => lead(n + 1, {
+    doctor_name: `Synthetic practice ${n + 1}`, stage: n < 100 ? 'new' : 'qualified',
+  }));
+  const writes = [];
+  await routeLeads(page, { getBoard: () => board, onWrite: value => writes.push(value) });
+  await page.goto('http://localhost/leads');
+  const lane = page.locator('.stage-column[data-stage="new"]');
+  await lane.locator('.lead-card').first().waitFor();
+  assert.equal(await lane.locator('.lead-card').count(), 5);
+  if (process.env.LEADS_SCREENSHOT_DIR) {
+    await mkdir(process.env.LEADS_SCREENSHOT_DIR, { recursive: true });
+    await lane.screenshot({ path: `${process.env.LEADS_SCREENSHOT_DIR}/bounded-${width}.png` });
+  }
+  assert.equal(await page.locator('#filterSummary').innerText(), '200 matching leads');
+  const expand = lane.getByRole('button', { name: 'Show all 100 New leads', exact: true });
+  await expand.focus();
+  await page.keyboard.press('Enter');
+  const collapse = lane.getByRole('button', { name: 'Collapse New to 5 leads', exact: true });
+  assert.equal(await lane.locator('.lead-card').count(), 100);
+  assert.equal(await page.locator('.stage-column[data-stage="qualified"] .lead-card').count(), 5);
+  assert.equal(await collapse.evaluate(node => node === document.activeElement), true);
+  await lane.evaluate(node => scrollTo(0, node.getBoundingClientRect().top + scrollY));
+  const control = await collapse.evaluate(node => {
+    const r = node.getBoundingClientRect(), hit = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2);
+    return { reachable: hit === node, top: r.top, hit: hit?.outerHTML.slice(0,200), navBottom: document.querySelector('.stage-nav').getBoundingClientRect().bottom, header: getComputedStyle(node.parentElement).top };
+  });
+  assert.equal(control.reachable, true, JSON.stringify(control));
+  const headTop = await lane.locator('.stage-head').evaluate(node => node.getBoundingClientRect().top);
+  await lane.locator('.lead-stack').evaluate(node => node.scrollTop = 900);
+  assert.equal(await lane.locator('.stage-head').evaluate(node => node.getBoundingClientRect().top), headTop);
+  if (process.env.LEADS_SCREENSHOT_DIR) await lane.screenshot({ path: `${process.env.LEADS_SCREENSHOT_DIR}/expanded-${width}.png` });
+  await page.locator('#refreshBoard').click();
+  await page.waitForFunction(() => document.querySelector('#leadBoard').getAttribute('aria-busy') === 'false');
+  assert.equal(await lane.locator('.lead-card').count(), 100);
+  assert.equal(await lane.locator('.lead-stack').evaluate(node => node.scrollTop), 900);
+  await lane.locator('.lead-card').last().getByRole('button', { name: 'Synthetic practice 100', exact: true }).click();
+  await page.locator('#detailStage').waitFor();
+  assert.equal(await page.locator('#detailTitle').innerText(), 'Synthetic practice 100');
+  await page.locator('#closeDetail').click();
+  assert.equal(await collapse.evaluate(node => {
+    const r = node.getBoundingClientRect();
+    return document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2) === node;
+  }), true, 'Collapse remains reachable at the final lead');
+  await collapse.click();
+  assert.equal(await lane.locator('.lead-card').count(), 5);
+  await page.locator('#leadSearch').fill('Synthetic practice 100');
+  assert.equal(await lane.locator('.lead-card').count(), 1, 'search reaches leads outside the initial five');
+  assert.equal(await lane.locator('.lead-open').innerText(), 'Synthetic practice 100');
+  assert.deepEqual(writes, []);
+});

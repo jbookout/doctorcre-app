@@ -22,6 +22,7 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
   const $ = id => doc.getElementById(id), win = doc.defaultView || globalThis.window;
   const engagement = engagementWriterFor(client, engagementStorage(win));
   const engagementChecks = new Set();
+  const expandedStages = new Set();
   const state = { board: null, readFailed: false, actor: null, epoch: 0, detailEpoch: 0, reviewEpoch: 0, filters: { search: "", owner: "", stage: "", market: "" },
     historyRequest: null, historyError: null, selectedId: null, detail: null, detailId: null, resumeDetail: null, resumeReview: null, commandFeedback: null, connectionFeedback: null, proposal: null, reviewTarget: null, pending: null, writing: false, identityReady: false, trigger: null, drag: null, map: null };
   const leadById = id => state.board?.leads.find(lead => lead.id === id && eligibleLead(lead));
@@ -45,7 +46,7 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
   function focusIdentity(node) {
     const container = node?.closest?.("#leadBoard, #hotLeads, #marketCounts, #mapLeadMembers");
     if (container) {
-      for (const attr of ["data-claim", "data-undo", "data-link", "data-open", "data-lead-id", "data-market"]) {
+      for (const attr of ["data-claim", "data-undo", "data-link", "data-open", "data-lead-id", "data-market", "data-expand-stage"]) {
         if (node.hasAttribute(attr)) return { container: container.id, attr, value: node.getAttribute(attr), client: node.dataset.clientId };
       }
     }
@@ -59,6 +60,7 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
   }
   function render() {
     const focused = focusIdentity(doc.activeElement);
+    const laneScroll = new Map([...$("leadBoard").querySelectorAll("[data-stage]")].map(node => [node.dataset.stage, node.querySelector(".lead-stack").scrollTop]));
     const leads = state.board?.leads || [];
     const owners = [...new Set(leads.filter(eligibleLead).map(l => l.owner).filter(Boolean))].sort();
     const markets = [...new Set(leads.filter(eligibleLead).map(marketKey))].sort();
@@ -109,8 +111,8 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
       $("leadBoard").innerHTML = `<div class="filtered-list" aria-label="${stageLabel(state.filters.stage)}">${shown.map(card).join("") || '<p class="empty">No matching leads</p>'}</div>`;
     } else {
       $("leadBoard").innerHTML = `<div class="stage-columns">${BOARD_STAGES.map(([key, text]) => {
-        const rows = shown.filter(lead => normalizedStage(lead) === key);
-        return `<section class="stage-column" data-mobile-current="${!currentStage || key === currentStage}" data-stage="${key}" aria-label="${text}"><h2 class="stage-head">${text}<span>${rows.length}</span></h2><div class="lead-stack">${rows.map(card).join("") || `<p class="stage-empty">No leads in ${text}</p>`}</div></section>`;
+        const rows = shown.filter(lead => normalizedStage(lead) === key), expanded = expandedStages.has(key);
+        return `<section class="stage-column" data-expanded="${expanded}" data-mobile-current="${!currentStage || key === currentStage}" data-stage="${key}" aria-label="${text}"><h2 class="stage-head">${text}<span>${rows.length}</span>${rows.length > 5 ? `<button type="button" data-expand-stage="${key}" aria-expanded="${expanded}" aria-controls="leads-${key}" aria-label="${expanded ? `Collapse ${text} to 5 leads` : `Show all ${rows.length} ${text} leads`}">${expanded ? "Collapse" : "Show all"}</button>` : ""}</h2><div class="lead-stack" id="leads-${key}">${(expanded ? rows : rows.slice(0, 5)).map(card).join("") || `<p class="stage-empty">No leads in ${text}</p>`}</div></section>`;
       }).join("")}</div>`;
     }
 
@@ -121,6 +123,7 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
     $("boardUpdated").dateTime = state.board?.generated_at || "";
     $("searchUpdated").textContent = `New-lead search ${state.board?.last_search_at ? stamp(state.board.last_search_at) : "—"}`;
     paintWriteControls();
+    for (const node of $("leadBoard").querySelectorAll('[data-expanded="true"]')) node.querySelector(".lead-stack").scrollTop = laneScroll.get(node.dataset.stage) || 0;
     if (focused?.container) restoreFocus(focused);
   }
   function paintWriteControls() {
@@ -154,6 +157,7 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
     }
   }
   function clearPrivateView() {
+    expandedStages.clear();
     pageDocContext?.clear();
     state.historyRequest = null; state.historyError = null;
     state.commandFeedback = null; state.connectionFeedback = null; state.board = null; state.detailId = null; state.detail = null; state.proposal = null; state.reviewTarget = null; state.resumeReview = null; state.resumeDetail = null; state.pending = null;
@@ -530,6 +534,8 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
       evidence_ids: p.review.evidence.map(entry => entry.id), ...(answer ? { human_quote: answer } : {}) } });
   });
   function clickLead(event) {
+    const expand = event.target.closest("[data-expand-stage]");
+    if (expand) { const key = expand.dataset.expandStage; if (expandedStages.has(key)) expandedStages.delete(key); else expandedStages.add(key); render(); return; }
     const undo = event.target.closest("[data-undo]"); if (undo) { const lead = leadById(undo.dataset.undo), review = lead && undoReview(lead); if (review) openReview(lead.id, review.stage, { undoEventId: review.stage_review.undo_event_id }); return; }
     const link = event.target.closest("[data-link]"); if (link) { const lead = leadById(link.dataset.link); if (lead) command({ kind: "link", lead, clientId: link.dataset.clientId }); return; }
     const claim = event.target.closest("[data-claim]"); if (claim) { const lead = leadById(claim.dataset.claim); if (lead) command({ kind: "claim", lead }); return; }

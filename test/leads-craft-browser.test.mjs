@@ -50,6 +50,7 @@ test('Lead opening and actions are separate accessible keyboard controls', async
   await page.goto('http://localhost/leads');
   await page.getByRole('button', { name: 'Show territory', exact: true }).click();
   await page.locator('.market-marker').first().waitFor();
+  await page.locator('[data-expand-stage="new"]').click();
   await page.route('**/__axe.js', route => route.fulfill({ path: require.resolve('axe-core/axe.min.js'), contentType: 'text/javascript' }));
   await page.addScriptTag({ url: 'http://localhost/__axe.js' });
   const violations = await page.evaluate(async () => (await axe.run('.leads-workspace', { runOnly: ['nested-interactive'] })).violations);
@@ -108,6 +109,7 @@ for (const action of ['Claim', 'Undo']) test(`Delayed native detail close preser
   await page.goto('http://localhost/leads');
   await page.getByRole('button', { name: 'Show territory', exact: true }).click();
   await page.locator('.market-marker').first().waitFor();
+  await page.locator('[data-expand-stage="new"]').click();
   if (action === 'Undo') {
     await page.locator('.hot-row').first().getByRole('button', { name: 'Claim', exact: true }).focus();
     await page.keyboard.press('Space');
@@ -166,6 +168,7 @@ test('Lead actions stay disabled until Claim refresh completes, then one Link cl
   await page.goto('http://localhost/leads');
   await page.getByRole('button', { name: 'Show territory', exact: true }).click();
   await page.locator('.market-marker').first().waitFor();
+  await page.locator('[data-expand-stage="new"]').click();
   await page.locator('.hot-row').first().getByRole('button', { name: 'Claim', exact: true }).click();
   await held;
   await page.waitForFunction(() => document.querySelector('#moveAnnouncement').textContent === 'Lead claimed');
@@ -191,6 +194,7 @@ for (const width of [768, 1280, 1440]) for (const theme of ['light', 'dark']) {
     await page.goto('http://localhost/leads');
     await page.getByRole('button', { name: 'Show territory', exact: true }).click();
     await page.locator('.market-marker').first().waitFor();
+    await page.locator('[data-expand-stage="new"]').click();
     const layout = await page.evaluate(() => {
       const box = node => { const r = node.getBoundingClientRect(); return { x: r.x, y: r.y, width: r.width, bottom: r.bottom }; };
       return {
@@ -237,7 +241,7 @@ test('Filtered-empty Leads explains the result and resets every filter without a
   assert.match(await page.locator('#leadBoard').innerText(), /No leads match these filters\./);
   await page.getByRole('button', { name: 'Reset filters', exact: true }).click();
   for (const selector of ['#leadSearch', '#stageFilter', '#ownerFilter', '#marketFilter']) assert.equal(await page.locator(selector).inputValue(), '');
-  assert.equal(await page.locator('.lead-card:visible').count(), 14);
+  assert.equal(await page.locator('.lead-card:visible').count(), 10);
   assert.deepEqual(writes, []);
 });
 

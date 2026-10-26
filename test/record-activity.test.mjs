@@ -90,3 +90,19 @@ test("the Vendors and Clients panel reads activity through the pinned verb and n
   assert.doesNotMatch(css, /@keyframes\s+(receipt-in|activity-rail)/, "no decorative entrance or rail keyframes");
   assert.doesNotMatch(css, /\.activity-row[^{]*\{[^}]*(animation|transform)\s*:/, "rows neither animate in nor move");
 });
+
+for (const [kind, ref] of [['client', 'C-901'], ['vendor', 'V-901']]) test(`${kind} recent activity shows newest first and undated entries last`, () => {
+  const timeline = [
+    row({ summary: 'Undated update', occurred_at: null }),
+    row({ summary: 'Earlier update', occurred_at: '2026-10-01T12:00:00.123001Z' }),
+    row({ summary: 'Latest update', occurred_at: '2026-10-01T07:00:00.123002-05:00' }),
+    row({ summary: 'Historic update', occurred_at: '1969-12-31T12:00:00Z' }),
+    row({ summary: 'Invalid date update', occurred_at: 'unknown' }),
+  ];
+  const answer = completed(ref, timeline);
+  answer.match.kind = kind;
+  const result = activityState({ ...vendor, ref }, answer);
+  assert.equal(result.state, 'ready');
+  assert.deepEqual(result.rows.map(item => item.what), ['Latest update', 'Earlier update', 'Historic update', 'Undated update', 'Invalid date update']);
+  assert.equal(answer.catch_up.timeline[0].summary, 'Undated update');
+});

@@ -1,3 +1,4 @@
+import { compareInstants } from './change-receipts.mjs';
 import { businessDay } from './business-date.js';
 import { isClosedDeal } from './deal-review-model.js';
 import { addDays, localToday } from './calendar-model.js';
@@ -45,26 +46,17 @@ export async function createFixtureClient(opts = {}) {
   const partnerActor = seed.actors?.partner || 'dell';
 
   /** @type {Map<string, any>} */
-  // `version` is the record layer's own optimistic-concurrency counter for the
-  // deal ROW (what `update-deal` demands as `base_version`), which is a
-  // different thing from `field_base`, the per-cell event identity that
-  // `patch-deal-field` guards with. Both exist because CARR has both.
   const deals = new Map(seed.deals.map((d) => [d.id, {
     operating_state: 'active', parking_reason: null, parking_note: null,
     parked_at: null, parked_by: null, version: 1,
     prospect_engagement_status: 'active', client_version: 1,
     outcome: null, closed_on: null, won_value: null, phase_started_on: {}, ...d,
   }]));
-  // Demonstrate that Salesforce-shaped records are not automatically active
-  // transactions. These are fixture-only examples; production is never
-  // changed from a name match.
   for (const id of ['d06', 'd07', 'd08']) {
     const deal = deals.get(id);
     if (deal) Object.assign(deal, { operating_state:'parked', parking_reason:'other',
       parking_note:'Reason not yet classified', parked_at:'2026-08-10T12:00:00Z', parked_by:'joe' });
   }
-  // Keep the local demo representative of the production information model:
-  // one national-account portfolio, many market deals, no duplicate deal rows.
   const fixtureAccountId = 'demo-account-001';
   let fixtureAccountOwner = 'dell';
   let fixtureAccountVersion = 1;
@@ -82,9 +74,6 @@ export async function createFixtureClient(opts = {}) {
     workspace_kind: 'team', account_client_id: null, account_name: null,
     client_ref: d.client_ref || null, client_name: d.client_name || d.name,
   }));
-  // d02 names a client id the business-record fixture below deliberately does
-  // not carry, so the V5-UX-B04 context drawer's fetch-failure state (test
-  // fixture client, not a live network fault) has a fixture deal to exercise.
   const brokenClientDeal = deals.get('d02');
   if (brokenClientDeal) brokenClientDeal.account_client_id = 'demo-account-002-unlisted';
   /** @type {Map<string, any[]>} */
@@ -109,12 +98,8 @@ export async function createFixtureClient(opts = {}) {
 
   /** @type {Map<string, any>} open conflicts */
   const conflicts = new Map();
-  // Critical dates recorded in this session, by deal. The seed carries none:
-  // the fixture derives one line from the deal's own next date, and anything
-  // else on the list was written here through add-critical-date.
   const criticalDates = new Map();
 
-  // Only d01 has external-party participants, covering populated and empty drawers.
   const extraParticipants = new Map([
     ['d01', [
       { role: 'client_contact', name: 'Dr. Dana Ortiz', party_id: 'demo-party-101' },
@@ -179,7 +164,6 @@ export async function createFixtureClient(opts = {}) {
   });
   const partnerLabel = (owner) => (owner === 'joe' ? 'Joe' : owner === 'dell' ? 'Dell' : String(owner));
 
-  /** The record layer's own version guard, refused the way the server refuses it. */
   function guardVersion(row, baseVersion) {
     if (baseVersion === undefined || baseVersion === null) {
       const error = new Error('fixture update-loop refused: missing_base_version');
@@ -203,6 +187,8 @@ export async function createFixtureClient(opts = {}) {
 
   /** @type {any[]} confirm proposals from call distill */
   let pendingConfirms = [];
+  /** @type {any[]} synthetic read-call-outcomes rows; empty unless a test supplies them */
+  const callOutcomes = structuredClone(opts.callOutcomes || []);
 
   /** field event index: deal|field -> last event id */
   const lastFieldEvent = new Map();
@@ -338,9 +324,6 @@ export async function createFixtureClient(opts = {}) {
     return d;
   }
 
-  /**
-   * Apply a field write. If base_event_id mismatches last known, open conflict.
-   */
   function applyFieldWrite({ deal, field, value, base_event_id, actor, verb, change_reason, human_quote }) {
     const d = getDealOrThrow(deal);
     const key = `${deal}|${field}`;
@@ -349,7 +332,6 @@ export async function createFixtureClient(opts = {}) {
     // Optimistic concurrency: client's base must match last event for (deal, field).
     // null means "no event seen"; mismatches (including null vs an id) are conflicts.
     if (last !== base) {
-      // conflict: a = server (current), b = incoming
       const conflict_id = `c-${conflictSeq++}`;
       const payload = {
         conflict_id,
@@ -403,12 +385,6 @@ export async function createFixtureClient(opts = {}) {
     return { status: 'ok', event: e, event_id: e.id, event_recorded_at: e.recorded_at };
   }
 
-  // ------------------------------------------------- delivery evidence (C11)
-  // Five synthetic Work Requests, chosen so that every NON-operational state the
-  // Delivery stages table has to be able to show is reachable without a server:
-  // built-unmerged, merged-unactivated, active-unproven, a captured record that
-  // can actually be withdrawn, and a record whose plan is stale. Nothing here is
-  // production state and every ref is visibly a demo one.
   const evidenceRef = (ref) => ({ ref, content_digest: 'd'.repeat(64), redaction_class: 'metadata_only' });
   const facet = (state, ref, note) => ({ state, evidence_refs: ref ? [evidenceRef(ref)] : [], note });
   function passport({ work_request, slices, closure_state, closure, stale = false }) {
@@ -471,20 +447,13 @@ export async function createFixtureClient(opts = {}) {
     }
   }
 
-  /* ------------------------------------------------- Control Room fixtures (C01)
-   * Three severities, one row ready to close, one recurring row; three held
-   * work items with distinct silences and one blocker; two shared requests.
-   * Every name starts with "Demo " so nothing here can be mistaken for a record.
-   */
 
-  // Synthetic session pages preserve the three independent counts and lineage cases.
   const SESSION_LIVE_ROWS = EXAMPLE_SESSION_ROWS;
 
   const SESSION_SYNTHETIC_ROWS = BRANCH_SESSION_ROWS;
 
   const SESSION_ROWS = [...SESSION_LIVE_ROWS, ...SESSION_SYNTHETIC_ROWS];
 
-  /** The one synthetic session that carries dispatch events to render. */
   const SESSION_WITH_DISPATCH = "55555555-5555-4555-8555-555555555555";
 
   const DISPATCH_WITH_EVENTS = {
@@ -598,7 +567,6 @@ export async function createFixtureClient(opts = {}) {
     events: [],
   });
 
-  /* --------------------------------------------- Doc outcome cards (B09) */
   // Cover resumable, unbound, lost-host and failed outcomes. No card may auto-launch.
   const OUTCOME_CARD_ROWS = [
     {
@@ -763,7 +731,6 @@ export async function createFixtureClient(opts = {}) {
   const notifications = (seed.notifications || []).map((row) => ({
     ...row, delivery: (row.delivery || []).map((entry) => ({ ...entry })),
   }));
-  /** The feed function's own clamp: 1..200, applied before anything is read. */
   const clampLimit = (value) => {
     if (!Number.isInteger(value)) return 50;
     return Math.min(200, Math.max(1, value));
@@ -903,7 +870,6 @@ export async function createFixtureClient(opts = {}) {
    * Every title starts with "Demo " so nothing here can be mistaken for a record.
    */
   const DOC_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-  /** The active actor slugs `share-doc-conversation` can resolve. */
   const DOC_ACTORS = [seed.actors?.self || 'joe', partnerActor];
   const docTurn = (sequence, role, body, at) => ({
     sequence, role, body, msg_id: `demo-msg-${String(sequence).padStart(2, '0')}`,
@@ -1048,7 +1014,6 @@ export async function createFixtureClient(opts = {}) {
   const sharedRequests = [
     { human_ref: 'WR-000904', title: 'Demo bounded request: decide the demo retention window', state: 'needs_joe', source: { label: 'Demo council minute', freshness: 'fresh' }, next_human_action: 'Name the demo retention window' },
     { human_ref: 'WR-000905', title: 'Demo bounded request: accept the demo ready plan', state: 'needs_joe', source: { label: 'Demo ready plan', freshness: 'stale' }, next_human_action: 'Accept or decline the demo ready plan' },
-    // WR-000906 has enriched fields; WR-000907 omits optional fields. Earlier cards keep their sparse shape.
     { human_ref: 'WR-000906', title: 'Demo bounded request: reconcile the demo vendor names', state: 'needs_joe', source: { label: 'Demo vendor merge review', freshness: 'fresh' }, next_human_action: 'Confirm the demo vendor merge' },
     { human_ref: 'WR-000907', title: 'Demo bounded request: publish the demo rate card', state: 'needs_joe', source: { label: 'Demo rate card review', freshness: 'stale' }, next_human_action: 'Approve or hold the demo rate card' },
     // WR-000908 is named here but carries NO card below and NO passport entry:
@@ -1232,7 +1197,6 @@ export async function createFixtureClient(opts = {}) {
     { from_ref: null, from_name: 'Demo Pensacola Referring Physician', kind: 'works_with', to_ref: 'C-900', to_name: 'Demo Pensacola Orthopedic Partners', note: null },
   ];
 
-  /** Each of the three `link_basis` values the producer can report. */
   const searchLeadClientLinks = [
     { lead_ref: 'L-901', lead_name: 'Demo Pensacola Family Dentistry', client_ref: 'C-900', client_name: 'Demo Pensacola Orthopedic Partners', link_basis: 'conversion' },
     { lead_ref: 'C-901', lead_name: 'Demo Example Organization 093', client_ref: 'C-900', client_name: 'Demo Pensacola Orthopedic Partners', link_basis: 'same_party' },
@@ -1367,11 +1331,22 @@ export async function createFixtureClient(opts = {}) {
       };
     },
 
+    async getHomeAgenda() {
+      const board = await this.getBoard();
+      return { ...board, schema_version: 'home-agenda.v1', deals: board.deals.map(deal => ({
+        ...deal,
+        critical_dates: [...(deal.next_date ? [{ label: 'Next date', date: deal.next_date }] : []),
+          ...(criticalDates.get(deal.id) || []).map(row => ({ ...row }))],
+        next_actions: deal.next_step ? [{ id: `a-${deal.id}`, owner: deal.owner, description: deal.next_step,
+          due_on: deal.next_date, status: 'open', hold_until: null }] : [],
+      })) };
+    },
+
     async getDeal(dealId) {
       const deal = { ...getDealOrThrow(dealId) };
       const thread = (threads.get(dealId) || [])
         .slice()
-        .sort((a, b) => b.recorded_at.localeCompare(a.recorded_at));
+        .sort((a, b) => compareInstants(a.at || a.created_at || a.recorded_at, b.at || b.created_at || b.recorded_at));
       const hist = (history.get(dealId) || [])
         .slice()
         .sort((a, b) => b.recorded_at.localeCompare(a.recorded_at));
@@ -1616,7 +1591,6 @@ export async function createFixtureClient(opts = {}) {
         const t = String(text || '').trim();
         if (!t) throw new Error('empty next step');
         const old = d.next_step;
-        // archive old step into the thread with attribution
         if (old && old.trim()) {
           ensureThread(deal).unshift({
             id: `n-${noteSeq++}`,
@@ -1856,7 +1830,6 @@ export async function createFixtureClient(opts = {}) {
           throw error;
         }
         for (const field of allowed) if (fields[field] !== undefined) found[field] = fields[field];
-        // Like update-loop, leaving the dated marker clears the saved day.
         if (found.marker !== 'dated') found.due_on = null;
         if (fields.blocker !== undefined) {
           found.blocker_class = fields.blocker;
@@ -1916,9 +1889,6 @@ export async function createFixtureClient(opts = {}) {
     },
 
     async workRequestCard({ work_request } = {}) {
-      // V5-UX-C13a's enriched cards are checked FIRST and are a strict
-      // addition: WR-000901..905 below are untouched and keep answering the
-      // sparse shape V5-UX-B10a already tests.
       const enriched = sharedRequestCards.get(String(work_request));
       if (enriched) return structuredClone(enriched);
       const row = workRequestOrRefuse('work-request-card', work_request);
@@ -2118,7 +2088,6 @@ export async function createFixtureClient(opts = {}) {
         return { ok: true, permission_filtered: true, total_seen: 4, total_returned: 0, sessions: [] };
       }
       if (matched.length === 0) {
-        // The captured GENUINELY-EMPTY answer: nothing matched at all.
         return { ok: true, permission_filtered: false, total_seen: 0, total_returned: 0, sessions: [] };
       }
       const capped = Number.isInteger(limit) && limit >= 1 && limit <= 50 ? limit : 25;
@@ -2325,7 +2294,6 @@ export async function createFixtureClient(opts = {}) {
      */
     async listDocConversations({ cursor = null, limit = null, include_archived = null } = {}) {
       refuseIfOutage('conversations', 'list-doc-conversations');
-      // The store's own clamp: 1..100, defaulting when unnamed.
       const capped = Math.min(100, Math.max(1, Number.isInteger(limit) ? limit : 25));
       const visible = [...docConversations.values()].filter((row) => docVisibleTo(row, selfActor));
       const eligible = include_archived === true ? visible : visible.filter((row) => !row.archived_at);
@@ -2735,7 +2703,6 @@ export async function createFixtureClient(opts = {}) {
         sources: [
           { owner: 'launchd', state: 'read', count: 1 },
           { owner: 'claude-code', state: 'read', count: 1 },
-          { owner: 'control-plane', state: 'unknown', count: null },
           { owner: 'cron', state: 'unknown', count: null },
         ], jobs };
     },
@@ -2913,6 +2880,24 @@ export async function createFixtureClient(opts = {}) {
       return client.resolveConfirm({ proposal_id:candidate_id, accept, idempotency_key });
     },
 
+    async readCallOutcomes() {
+      return { schema_version: 'call-outcomes.v1', send: false,
+        calls: callOutcomes.filter(call => !call.reviewed).map(call => structuredClone(call)) };
+    },
+
+    async undoCallChange({ candidate_id }) {
+      const change = callOutcomes.flatMap(call => call.applied).find(item => item.candidate_id === candidate_id);
+      if (!change) throw Object.assign(new Error('Unknown call change.'), { payload: { error: 'not_found' } });
+      change.undone_at ||= new Date().toISOString();
+      return { ok: true, candidate_id, undone: true };
+    },
+
+    async reviewCallOutcome({ session_id }) {
+      const call = callOutcomes.find(item => item.session_id === session_id);
+      if (call) call.reviewed = true;
+      return { ok: true, session_id, reviewed: true };
+    },
+
     async resolveConfirm({ proposal_id, accept, idempotency_key }) {
       return withIdem(idempotency_key, () => {
         const idx = pendingConfirms.findIndex((p) => p.id === proposal_id);
@@ -2932,7 +2917,6 @@ export async function createFixtureClient(opts = {}) {
             }),
           };
         }
-        // apply proposal via same write path (nothing auto-writes)
         if (p.verb === 'patch-deal-field') {
           return applyFieldWrite({
             deal: p.args.deal,
@@ -2978,16 +2962,11 @@ export async function createFixtureClient(opts = {}) {
       });
     },
 
-    /**
-     * Fixture-only: partner presence + partner write + call distill proposals.
-     * Wired through the same event log and presence map the UI polls.
-     */
     async simulatePartnerCall() {
       const steps = [];
       const closingDemo = getDealOrThrow('d05');
       const diligenceDemo = getDealOrThrow('d20');
 
-      // partner joins
       steps.push({
         at: 400,
         run: () => {
@@ -3001,7 +2980,6 @@ export async function createFixtureClient(opts = {}) {
         },
       });
 
-      // Partner holds the synthetic closing deal's next_step.
       steps.push({
         at: 1500,
         run: () => {
@@ -3015,7 +2993,6 @@ export async function createFixtureClient(opts = {}) {
         },
       });
 
-      // Partner writes the synthetic closing deal (live write, not confirm).
       steps.push({
         at: 3300,
         run: () => {
@@ -3053,7 +3030,6 @@ export async function createFixtureClient(opts = {}) {
         },
       });
 
-      // Partner presence on the synthetic diligence deal.
       steps.push({
         at: 5000,
         run: () => {

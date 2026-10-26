@@ -10,7 +10,8 @@ test('deal reads bind vendor assignments and held action history to their produc
   for (const verb of ['deal-room-board', 'get-deal-room']) {
     const operation = contract.mcp_read_contracts[verb];
     assert.equal(operation.producer.source_commit, verb === 'get-deal-room'
-      ? '58af30ae50419c710a012cca4eff71b2ce981569' : '3a57e47015916546fb2ffd11eaf880686c38e659');
+      ? contract.producer.source_commit : '3a57e47015916546fb2ffd11eaf880686c38e659');
+
     assert.deepEqual(operation.response.vendors.item_keys, ['party_id', 'role', 'company', 'contact', 'note', 'updated_at']);
   }
 });

@@ -52,6 +52,7 @@ export function appShellMarkup(pathname, base = "", search = "") {
           <div class="app-shell-account-group" role="group" aria-label="Account"><h3>Account</h3>
           <button type="button" id="accountProfile">Profile</button>
           <button type="button" id="accountTheme">Theme</button>
+          ${pathname === "/share" ? "" : '<button type="button" id="accountHelp" aria-haspopup="dialog">How DoctorCRE works</button>'}
           <a href="${base}/updates#prefForm">Notification preferences</a>
           <a href="${base}/doc-activity"${pathname === "/doc-activity" ? ' aria-current="page"' : ""}>Doc Activity</a>
           </div>

@@ -7,7 +7,7 @@ const party = { id: 'demo-party-a', name: 'Demo Practice A', owner_label:'Demo p
 const event = { id: 'demo-event-a', name: 'Demo Event', starts_at: '2026-10-07T12:00:00Z', location: 'Demo City', version: 4 };
 const conversation = { id: 'demo-chat-a', title: 'Demo Discussion', visibility: 'private', version: 4 };
 const rows = [
-  ['home', 'getBoard', { deals: [deal] }, [], 'deal', deal.id, 'Next step', 'Compare sample options', 'What is the next step for Demo Practice A?'],
+  ['home', 'getHomeAgenda', { deals: [deal] }, [], 'deal', deal.id, 'Next step', 'Compare sample options', 'What is the next step for Demo Practice A?'],
   ['deals', 'getDeal', { deal, activities: [{ summary: 'Sample options compared', occurred_at: '2026-10-01T12:00:00Z' }] }, [deal.id], 'deal', deal.id, 'Owner', 'demo-partner', 'Who owns Demo Practice A?'],
   ['leads', 'getWorkspace', { leads: [{ ...deal, stage: 'new', score: 72 }] }, [], 'lead', deal.id, 'Score', 72, 'What is the score of Demo Practice A?'],
   ['tours', 'tourDetail', { id: 'demo-tour-a', name: 'Demo Tour', status: 'draft', scheduled_at: '2026-10-07T12:00:00Z', version: 4, stops: [] }, ['demo-tour-a'], 'tour', 'demo-tour-a', 'Date', '2026-10-07T12:00:00Z', 'When is Demo Tour scheduled?'],
