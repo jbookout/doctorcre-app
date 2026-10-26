@@ -161,15 +161,15 @@ test("same-identity refresh replaces facts and receipt bindings while retaining 
   }
 });
 
-test("route module stays byte-bound to CARR PR 1443 and GL reuses the pinned app distribution", async () => {
+test("route module stays byte-bound to CARR PR 1443 and MapLibre uses its pinned report distribution", async () => {
   const read = path => readFile(new URL(`../${path}`, import.meta.url));
   const contract = JSON.parse(await read("contracts/tour-map.v1.json"));
   assert.equal(contract.version, "1.2.0");
   assert.equal(contract.producer.source_commit, "edf9c2d74a7e64070f8c2dc5189ea8b6181af435");
   assert.equal(createHash("sha256").update(await read(contract.consumer_module)).digest("hex"), contract.producer.sha256);
-  for (const file of ["maplibre-gl.mjs", "maplibre-gl-shared.mjs", "maplibre-gl-worker.mjs", "maplibre-gl.css", "LICENSE.txt"]) {
-    assert.deepEqual(await read(`tours/vendor/maplibre-gl-6.4.1/${file}`), await read(`reports/vendor/maplibre-gl-6.4.1/${file}`));
-  }
+  assert.equal(contract.maplibre.version, "6.4.1");
+  assert.equal(contract.maplibre.source, "existing reports/vendor/maplibre-gl-6.4.1 vendored distribution");
+  await read("reports/vendor/maplibre-gl-6.4.1/maplibre-gl.mjs");
 });
 
 test("one route version supplies marker/list/card/offline order and identity", async () => {

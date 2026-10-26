@@ -8,8 +8,9 @@ test('blocking 1: Leads map module, CSS and derived worker URLs pass through dep
  const css='/tours/vendor/maplibre-gl-6.4.1/maplibre-gl.css';
  const module=new URL(source.match(/import\("([^"]*maplibre-gl.mjs)"\)/)[1],'https://example.test/js/leads-territory-map.js');
  for(const path of [new URL(css,'https://example.test/').pathname,module.pathname,new URL('maplibre-gl-shared.mjs',module).pathname,new URL('maplibre-gl-worker.mjs',module).pathname]){
- let calls=0;const response=await handleDoctorcreRequest(request(path),environment({assets:{fetch:async()=>{calls++;return new Response('asset')}}}));
+ let calls=0;let assetPath;const response=await handleDoctorcreRequest(request(path),environment({assets:{fetch:async value=>{calls++;assetPath=new URL(value.url).pathname;return new Response('asset')}}}));
  assert.equal(response.status,200,path);assert.equal(calls,1,path);
+ assert.equal(assetPath,path.replace('/tours/vendor/','/reports/vendor/'),path);
  }
 });
 

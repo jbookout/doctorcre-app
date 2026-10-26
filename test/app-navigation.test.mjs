@@ -40,6 +40,9 @@ test("built report uses only report-adapter asset routes and includes the shared
     const html = await readFile(join(outDir, "site/reports/share.html"), "utf8");
     const script = await readFile(join(outDir, "site/reports/share.js"), "utf8");
     const style = await readFile(join(outDir, "site/reports/share.css"), "utf8");
+    const manifest = JSON.parse(await readFile(join(outDir, "doctorcre-app.manifest.json"), "utf8"));
+    assert.ok(manifest.files.some(file => file.path === "reports/vendor/maplibre-gl-6.4.1/maplibre-gl.mjs"), "the pinned MapLibre distribution stays in the artifact");
+    assert.ok(!manifest.files.some(file => file.path.startsWith("tours/vendor/maplibre-gl-6.4.1/")), "the duplicate tour distribution is omitted from the artifact");
     const requested = [...html.matchAll(/(?:src|href)="(\/[^"]+\.(?:js|css))"/g)].map((match) => match[1]);
     const routed = new Set(["/share-bootstrap.js", "/share.js", "/share.css", "/vendor/maplibre-gl-6.4.1/maplibre-gl.css"]);
     assert.deepEqual(requested.filter((path) => !routed.has(path)), [], "every report asset request has an adapter route");

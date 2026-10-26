@@ -28,7 +28,10 @@ async function open(t, { width = 390, reducedMotion = "reduce", denied = false, 
     }
     try {
       if (shellFailure && !url.pathname.endsWith('day-sw.js') && !url.pathname.endsWith('day-shell.generated.js')) { response.writeHead(503); response.end('Unavailable'); return; }
-      const file = url.pathname === "/tours" ? "tours/index.html" : url.pathname.slice(1);
+      const file = url.pathname === "/tours" ? "tours/index.html"
+        : url.pathname.startsWith("/tours/vendor/maplibre-gl-6.4.1/")
+          ? url.pathname.replace("/tours/vendor/", "/reports/vendor/").slice(1)
+          : url.pathname.slice(1);
       if (file.includes("..")) throw new Error("invalid path");
       response.setHeader("content-type", file.endsWith(".css") ? "text/css" : /\.m?js$/.test(file) ? "text/javascript" : "text/html");
       if (workerHeaders) {

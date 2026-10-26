@@ -37,7 +37,10 @@ test("rendered composer uses compact fallback, keeps exact stop after reload, an
           } } : {};
         res.writeHead(200, { "content-type": "application/json" }); res.end(JSON.stringify({ data, csrf_token: "synthetic-session-csrf" })); return;
       }
-      const path = url.pathname === "/tours" ? "tours/route-editor.html" : url.pathname.slice(1);
+      const path = url.pathname === "/tours" ? "tours/route-editor.html"
+        : url.pathname.startsWith("/tours/vendor/maplibre-gl-6.4.1/")
+          ? url.pathname.replace("/tours/vendor/", "/reports/vendor/").slice(1)
+          : url.pathname.slice(1);
       if (path.includes("..")) throw new Error("invalid path");
       const content = await readFile(new URL(`../${path}`, import.meta.url));
       res.writeHead(200, { "content-type": type[extname(path)] || "application/octet-stream", "content-security-policy": csp }); res.end(content);

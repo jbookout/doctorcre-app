@@ -83,6 +83,7 @@ function secure(response, path) {
 
 function assetPath(pathname) {
   if (STATIC_EXACT.has(pathname)) return STATIC_EXACT.get(pathname);
+  if (pathname.startsWith("/tours/vendor/maplibre-gl-6.4.1/")) return pathname.replace("/tours/vendor/", "/reports/vendor/");
   if (pathname.startsWith("/icons/")) return `/public-shell${pathname}`;
   return STATIC_PREFIXES.some((prefix) => pathname.startsWith(prefix)) ? pathname : null;
 }
