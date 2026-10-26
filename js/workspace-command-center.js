@@ -21,7 +21,7 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
   // The relationship dialog and the past-client widget are secondary: they load
   // after the first data paint so they never compete with the deal flags.
   let relationshipDialog = null, pastWidget = null, secondaryRequested = false;
-  let agendaExpanded = false, nextRead = readHomeDashboard;
+  let agendaExpanded = false, agendaView = 'all', nextRead = readHomeDashboard;
   let scope = 'team', snapshot = null, sequence = 0, updatedAt = null, disposed = false, leadEntries = new Map(), selectedLead = null;
   const docSources = [['board','getHomeAgenda'],['leads','getLeadBoard']];
   const docPayload = (source, view) => source === 'board' ? {deals:scopedDeals(view?.board,scope)}
@@ -59,16 +59,17 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
     const agendaLoading = !signedOut && (!snapshot || snapshot.reads.board?.state === 'loading');
     const agendaUnavailable = !agenda || (!agenda.entries.length && agenda.failed.length === agendaDeals?.length && agenda.failed.length > 0);
     const agendaPartial = agenda && (agenda.failed.length > 0 || agenda.undated.length > 0);
+    const agendaItems = (agendaView === 'today' ? agenda?.dueToday : agenda?.upcoming) || [];
     const agendaMessage = signedOut ? 'Sign in to view calendar and tasks'
       : agendaLoading ? 'Updating calendar and tasks…'
       : agendaUnavailable ? 'Calendar and tasks unavailable'
       : agendaPartial ? 'Some dates unavailable or missing'
-      : !agenda.entries.length ? 'No calendar dates or tasks' : '';
+      : !agendaItems.length ? (agendaView === 'today' ? 'No dates or tasks due today' : 'No calendar dates or tasks') : '';
     const agendaRetry = !signedOut && !agendaLoading && (agendaUnavailable || agenda?.failed.length);
     $('homeCalendar').setAttribute('aria-busy', String(Boolean(agendaLoading)));
-    const calendarContent = agenda?.entries.length ? `<a class="home-calendar-link" data-home-key="week" href="/calendar"><span class="sr-only">Open calendar</span><div class="home-week">${agenda.week.map(({ day, entries }) => `<div class="home-day${day === today ? ' today' : ''}"><span>${new Date(`${day}T12:00:00`).toLocaleDateString(undefined, { weekday: 'short' })}</span><strong>${Number(day.slice(-2))}</strong><div class="home-day-marks">${entries.slice(0, 4).map(entry => `<i class="${entry.type}" aria-hidden="true"></i>`).join('')}</div><span class="sr-only">${entries.length} deal dates and tasks</span></div>`).join('')}</div></a><div id="homeAgenda" class="home-agenda">${(agendaExpanded ? agenda.upcoming : agenda.upcoming.slice(0, AGENDA_PREVIEW)).map(entry => `<a href="${E(entry.type === 'task' ? dealHref(entry.deal_id) : `/calendar?day=${entry.day}&d=${entry.day}`)}" data-home-key="agenda:${E(entry.key)}">${entry.day ? `<time datetime="${entry.day}">${dateLabel(entry.day)}</time>` : '<span class="home-agenda-date">No date</span>'}<div><strong>${E(entry.label)}</strong><span>${E(entry.deal_name)}</span>${entry.owner ? `<span>${E(({joe: 'Joe', dell: 'Dell'})[entry.owner] || entry.owner)}</span>` : ''}</div><span class="home-item-type">${entry.type === 'task' ? 'Task' : 'Date'}</span></a>`).join('')}</div>${!agendaExpanded && agenda.upcoming.length > AGENDA_PREVIEW ? `<button type="button" class="home-outline home-agenda-more" data-home-key="agenda:show-all" data-agenda-show-all aria-controls="homeAgenda">Show all ${agenda.upcoming.length}</button>` : ''}` : '';
+    const calendarContent = agenda?.entries.length ? `<a class="home-calendar-link" data-home-key="week" href="/calendar"><span class="sr-only">Open calendar</span><div class="home-week">${agenda.week.map(({ day, entries }) => `<div class="home-day${day === today ? ' today' : ''}"><span>${new Date(`${day}T12:00:00`).toLocaleDateString(undefined, { weekday: 'short' })}</span><strong>${Number(day.slice(-2))}</strong><div class="home-day-marks">${entries.slice(0, 4).map(entry => `<i class="${entry.type}" aria-hidden="true"></i>`).join('')}</div><span class="sr-only">${entries.length} deal dates and tasks</span></div>`).join('')}</div></a><div id="homeAgenda" class="home-agenda">${(agendaExpanded ? agendaItems : agendaItems.slice(0, AGENDA_PREVIEW)).map(entry => `<a href="${E(entry.type === 'task' ? dealHref(entry.deal_id) : `/calendar?day=${entry.day}&d=${entry.day}`)}" data-home-key="agenda:${E(entry.key)}">${entry.day ? `<time datetime="${entry.day}">${dateLabel(entry.day)}</time>` : '<span class="home-agenda-date">No date</span>'}<div><strong>${E(entry.label)}</strong><span>${E(entry.deal_name)}</span>${entry.owner ? `<span>${E(({joe: 'Joe', dell: 'Dell'})[entry.owner] || entry.owner)}</span>` : ''}</div><span class="home-item-type">${entry.type === 'task' ? 'Task' : 'Date'}</span></a>`).join('')}</div>${!agendaExpanded && agendaItems.length > AGENDA_PREVIEW ? `<button type="button" class="home-outline home-agenda-more" data-home-key="agenda:show-all" data-agenda-show-all aria-controls="homeAgenda">Show all ${agendaItems.length}</button>` : ''}` : '';
 
-    widget('homeCalendar', `<header class="home-panel-head"><h2>Calendar & tasks</h2><a data-home-key="calendar" class="home-icon-link" href="/calendar" aria-label="Open Calendar">↗</a></header>${calendarContent}${agendaMessage ? `<p class="home-empty" role="status">${agendaMessage}</p>` : ''}${agendaRetry ? `<button type="button" class="home-outline" data-home-key="agenda:retry" data-agenda-retry${snapshot?.loading ? ' disabled' : ''}>Retry calendar and tasks</button>` : ''}`);
+    widget('homeCalendar', `<header class="home-panel-head"><h2>Calendar & tasks</h2><a data-home-key="calendar" class="home-icon-link" href="/calendar" aria-label="Open Calendar">↗</a></header>${agenda && !signedOut ? `<div class="scope-switch" role="group" aria-label="Agenda view">${[['all', 'All dates & tasks'], ['today', 'Today']].map(([value, label]) => `<button type="button" class="scope-option${agendaView === value ? ' on' : ''}" data-home-key="agenda:view:${value}" data-agenda-view="${value}" aria-pressed="${agendaView === value}">${label}</button>`).join('')}</div>` : ''}${calendarContent}${agendaMessage ? `<p class="home-empty" role="status">${agendaMessage}</p>` : ''}${agendaRetry ? `<button type="button" class="home-outline" data-home-key="agenda:retry" data-agenda-retry${snapshot?.loading ? ' disabled' : ''}>Retry calendar and tasks</button>` : ''}`);
     const leads = signedOut ? [] : topNewLeads(snapshot?.leads, { scope, actor: snapshot?.board?.actor, now: now() });
     leadEntries = new Map(leads.map(lead => [lead.id, lead]));
     widget('homeLeads', leads.length ? `<header class="home-panel-head"><h2>Recent arrivals</h2><span class="home-period">7 days</span><a class="home-outline" href="/leads">Prospecting queue</a></header><svg class="home-lead-scores" viewBox="0 0 600 42" role="img" aria-label="Relative scores of recent arrivals">${leads.map((lead, i) => `<rect class="score-track" x="${i * 200}" y="10" width="186" height="12" rx="6"/><rect x="${i * 200}" y="10" width="${Math.max(0, lead.score) / Math.max(1, ...leads.map(row => row.score)) * 186}" height="12" rx="6"/>`).join('')}</svg><div class="home-lead-list">${leads.map((lead, i) => `<button type="button" data-lead="${E(lead.id)}" data-home-key="lead:${E(lead.id)}" class="home-lead"><span class="home-lead-rank">${i + 1}</span><div><strong>${E(lead.name)}</strong><span>${E([lead.specialty, lead.city].filter(Boolean).join(' · '))}</span></div><span class="home-score"><b>${E(lead.score)}</b><small>Score</small></span></button>`).join('')}</div>` : null);
@@ -162,6 +163,13 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
     $('homeDetail').querySelector('[data-close-detail]').onclick = () => $('homeDetail').close();
   });
   $('homeCalendar').addEventListener('click', event => {
+    const view = event.target.closest('[data-agenda-view]');
+    if (view) {
+      agendaView = view.dataset.agendaView;
+      agendaExpanded = false;
+      render();
+      return;
+    }
     if (event.target.closest('[data-agenda-retry]')) {
       if (snapshot?.loading || snapshot?.unauthorized) return;
       nextRead = readHomeAgenda;
