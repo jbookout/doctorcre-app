@@ -6,7 +6,7 @@ import { chromium } from 'playwright';
 import { createFixtureClient } from '../js/fixture-client.js';
 const root=new URL('../',import.meta.url);
 const routes=(await import("../js/routes.js")).routeContract;
-async function setup(t,{width=1440,motion='no-preference',brief=true,coverage=false,timezoneId='America/Chicago',onBrief,dealTitle='Demo Lease Review'}={}) {
+async function setup(t,{width=1440,motion='no-preference',brief=true,coverage=false,timezoneId='America/Chicago',onBrief,dealTitle='Demo Lease Review',loopTask}={}) {
  const browser=await chromium.launch({ args: [...CHROMIUM_SAFETY_ARGS] });t.after(()=>browser.close());const page=await browser.newPage({viewport:{width,height:960},reducedMotion:motion,timezoneId});const context=page.context();
 
  const fixture=await createFixtureClient({seedUrl:`data:application/json;base64,${(await readFile(new URL('data/board-seed.json',root))).toString('base64')}`});
@@ -15,6 +15,7 @@ async function setup(t,{width=1440,motion='no-preference',brief=true,coverage=fa
  const priorityData=()=>({state:'ready',sponsor:scope,sections:{deals:{state:'ready',items:[{id:'d14',name:dealTitle,owner:scope},{id:'d05',name:'Demo Tour Planning',owner:scope},{id:'d20',name:'Demo Revised Terms',owner:scope}]},today:{state:'ready',items:[{subject_type:'deal',subject_id:'d14',owner:scope,due_on:'2026-01-01',what:revision ? 'Review updated demo lease comments' : 'Review demo lease comments'},{subject_type:'deal',subject_id:'d05',owner:scope,due_on:day,what:'Confirm demo tour access'}]},loops:{state:'empty',items:[]}}});
  const data=()=>{
   const value=priorityData();
+  if(loopTask){value.sections.today={state:'empty',items:[]};value.sections.loops={state:'ready',items:[loopTask]};}
   if(!coverage)return value;
   value.sections.needs_joe={state:'partial',items:[{title:'Demo waiting coverage decision',action:'Approve the synthetic rule',why:{text:'Demo work needs a ruling'},blocks:{text:'Demo queue'}}]};
   value.sections.claim_card={state:'ready',items:[{display_name:'Demo claim candidate'}]};
@@ -40,6 +41,7 @@ async function setup(t,{width=1440,motion='no-preference',brief=true,coverage=fa
    const methods={'deal-room-board':'getBoard','today-triage':'todayTriage','list-feature-switches':'listFeatureSwitches','list-doc-suggestions':'listDocSuggestions','list-doc-conversations':'listDocConversations','notification-feed':'notificationFeed','loop-board':'loopBoard','list-industry-events':'listIndustryEvents'};
    if(name==='get-deal-room') {const value=await fixture.getDeal(args.deal);return rpc({...value.deal,...(args.deal==='d14'?{name:dealTitle}:{}),deal_id:value.deal.id,thread,critical_dates:[],events:[]});}
    if(methods[name])return rpc(await fixture[methods[name]](args));
+   if(name==='read-loop'&&loopTask)return rpc({loop:loopTask});
    if(name==='lead-board')return rpc({leads:[],stages:[],as_of:new Date().toISOString()});
    return rpc({ok:true});
   }
@@ -83,6 +85,26 @@ test('complete priority titles wrap and open the matching record on desktop and 
   assert.equal(await page.locator('#morningTitle').innerText(),title);
   await page.locator('#morningBack').click();assert.equal(await page.locator('[data-brief-record]').first().locator('strong').innerText(),title);
   await snap(page,`full-title-${width}`);assert.deepEqual(errors,[]);
+ }
+});
+test('task instructions stay readable without open-status noise on desktop and phone',async t=>{
+ const task={number:'7',kind:'open_loop',owner:'joe',title:'Review the synthetic lease terms',status:'open',due_on:'2026-01-01',blocker_detail:'Open <demo> and review the proposed lease terms.',body:'Compare the synthetic revisions before responding.'};
+ for(const width of [1440,390]){
+  const {page,goto,calls,errors}=await setup(t,{width,loopTask:task});await goto();
+  if(width===390)await page.locator('#selfAvatar').click();
+  await page.locator('#docOpen[data-brief-unseen]').waitFor();await page.locator('#docOpen').click();await page.locator('#docMorning').click();
+  const section=page.locator('[data-brief-section="loops"]');await section.locator('summary').click();
+  assert.match(await section.innerText(),/Your task: Open <demo> and review the proposed lease terms\./);
+  assert.doesNotMatch(await section.innerText(),/Status: open|Blocker:/);
+  const card=page.locator('[data-brief-key="loop:open_loop:7"]');await card.focus();await page.keyboard.press('Enter');await page.locator('.morning-record').waitFor();
+  assert.deepEqual(calls.filter(call=>call.name==='read-loop').at(-1).args,{number:'7',kind:'open_loop'});
+  assert.deepEqual(await page.locator('.morning-record dt').allTextContents(),['Due','Your task']);
+  assert.equal(await page.locator('.morning-record dd').last().innerText(),task.blocker_detail);
+  assert.match(await page.locator('.morning-record').innerText(),/Compare the synthetic revisions before responding/);
+  assert.equal(await page.locator('#docMorningBrief').evaluate(node=>node.scrollWidth<=node.clientWidth),true);
+  await snap(page,`task-instructions-${width}`);
+  await page.locator('#morningBack').click();assert.equal(await card.evaluate(node=>node===document.activeElement),true);
+  assert.deepEqual(errors,[]);
  }
 });
 test('daily preference survives navigation and refresh without narration, including legacy speech opt-in',async t=>{
