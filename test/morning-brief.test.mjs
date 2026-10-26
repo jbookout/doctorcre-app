@@ -39,6 +39,25 @@ test('priority titles preserve the complete business instruction for deals, task
  data.sections.today=section([{id:'demo-action',item_kind:'post_call_action',what:title,due_on:day}]);
  assert.equal(morningBriefView(data,{...options,events:[]}).groups[0].row.title,title);
 });
+test('priority summaries omit repeated titles before shortening and retain distinct instructions',()=>{
+ const title='Review the synthetic lease renewal terms with the practice owner before signing';
+ for(const [name,summary,expected] of [
+  ['Confirm access','Confirm access',''],
+  [title,title,''],
+  ['  Confirm   access  ','Confirm\naccess',''],
+  [title,'Review the synthetic lease renewal terms with the practice owner after signing','Review the synthetic lease renewal terms with the practice owner…'],
+  ['Confirm access',undefined,''],
+ ]){
+  const data=payload();data.sections.today=section([]);data.sections.loops=section([{number:'1',kind:'open_loop',title:name,status:'open',due_on:day,blocker_detail:summary}]);
+  const original=structuredClone(data);
+  const row=morningBriefView(data,{...options,events:[]}).groups[0].row;
+  assert.equal(row.summary,expected);assert.deepEqual(data,original);
+ }
+ const data=payload();data.sections.today=section([{id:'demo-action',item_kind:'post_call_action',what:title,due_on:day}]);
+ assert.equal(morningBriefView(data,{...options,events:[]}).groups[0].row.summary,'');
+ data.sections.deals.items[0].name='Review demo lease comments';data.sections.today=section([due()]);
+ assert.equal(morningBriefView(data,{...options,events:[]}).groups[0].row.summary,'');
+});
 test('empty sections omitted; unknown coverage never becomes all-clear or filler',()=>{
  const data=payload();for(const key of Object.keys(data.sections))data.sections[key]=section([]);
  assert.deepEqual(morningBriefView(data,{...options,events:[]}).groups,[]);
