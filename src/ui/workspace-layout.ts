@@ -164,7 +164,15 @@ export function movePanel(layout: Layout, panel: string, destination: Destinatio
       return current;
     }
   }
-  return place(removePanel(current, panel), panel, destination);
+  const remaining = removePanel(current, panel);
+  if (destination.kind === "split" && !findNode(remaining.stage, destination.target)) {
+    const target = findNode(current.stage, destination.target);
+    if (target?.kind === "split") {
+      const survivor = findNode(remaining.stage, target.first.id) ?? findNode(remaining.stage, target.second.id);
+      if (survivor) return place(remaining, panel, { ...destination, target: survivor.id });
+    }
+  }
+  return place(remaining, panel, destination);
 }
 
 export function resizeSplit(layout: Layout, id: string, size: number): Layout {

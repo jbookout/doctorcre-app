@@ -110,3 +110,25 @@ test('nest splits around whole groups, then move a sole sibling tab and collapse
   assert.deepEqual(moved.stage.second, tabs('main', ['deals', 'today', 'leads'], 'today'));
   assert.deepEqual(validateLayout(JSON.parse(JSON.stringify(moved))), moved);
 });
+
+test('move a sole panel around its collapsing split target', () => {
+  for (const panel of ['a', 'b']) {
+    for (const side of ['before', 'after']) {
+      for (const nested of [false, true]) {
+        const split = { kind: 'split', id: 'S', axis: 'horizontal', ratio: 0.5,
+          first: tabs('G1', ['a']), second: tabs('G2', ['b']) };
+        const source = freeze({ ...empty(), stage: nested
+          ? { kind: 'split', id: 'outer', axis: 'vertical', ratio: 0.3, first: tabs('other', ['c']), second: split }
+          : split });
+        const sibling = panel === 'a' ? split.second : split.first;
+        const moved = movePanel(source, panel, { kind: 'split', target: 'S', id: 'new-split', group: 'new-group', axis: 'vertical', side, ratio: 0.4 });
+        const group = tabs('new-group', [panel]);
+        const expected = { kind: 'split', id: 'new-split', axis: 'vertical', ratio: 0.4,
+          first: side === 'before' ? group : sibling, second: side === 'before' ? sibling : group };
+        assert.deepEqual(moved.stage, nested ? { ...source.stage, second: expected } : expected);
+        assert.deepEqual(validateLayout(moved), moved);
+        assert.deepEqual(nested ? source.stage.second : source.stage, split);
+      }
+    }
+  }
+});
