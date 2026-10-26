@@ -410,12 +410,12 @@ test("Call Mode waits for the automatic apply before it claims or lists anything
   try {
     h.controller.startPolling("2026.09.23-1500", { weekly: true });
     await new Promise((resolve) => setImmediate(resolve));
-    const status = () => h.doc.getElementById("postCallStatus").innerHTML.replace(/<[^>]*>/g, "");
+    const status = () => h.doc.getElementById("postCallStatus").innerHTML;
     assert.match(status(), /Applying the changes stated plainly/);
     assert.ok(h.controller.state.pollTimer, "still reading until the apply finishes");
     assert.equal(reads.length, 0, "no outcome read before candidates exist");
     await h.controller.refreshPostCall({ quiet: true });
-    assert.equal(status(), "Call processed. 1 change applied and listed with Undo; 1 held change waits for Joe or Dell below.");
+    assert.match(status(), /<b>Call processed\. 1 change applied and listed with Undo; 1 held change waits for Joe or Dell below\.<\/b>/);
     assert.equal(h.controller.state.pollTimer, null);
     for (let i = 0; i < 50 && !reads.length; i++) await new Promise((resolve) => setTimeout(resolve, 5));
     await new Promise((resolve) => setTimeout(resolve, 5));
