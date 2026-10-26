@@ -17,10 +17,11 @@ const screenshot = async (page, name) => {
   await page.screenshot({ path: join(process.env.W2_SCREENSHOT_DIR, `${name}.png`), fullPage: !name.includes('detail') });
 };
 
-async function open(t, { calendar, delayHome = false, width = 1440, height = 1000, invoiceAttention = false, motion = 'reduce', leads = true, delayDetails = false, hangDetails = false, longLead = false, tasksOnly = false, heldTasks = false, malformedTasks = false, delayBoard = false, delayInitialFeed = false, origin = 'http://localhost', malformedBoard = false, firstOpen = false, emptyAgenda = false, initialDetailFailure = null } = {}) {
+async function open(t, { calendar, initialBriefFailure = false, theme = 'dark', delayHome = false, width = 1440, height = 1000, invoiceAttention = false, motion = 'reduce', leads = true, delayDetails = false, hangDetails = false, longLead = false, tasksOnly = false, heldTasks = false, malformedTasks = false, delayBoard = false, delayInitialFeed = false, origin = 'http://localhost', malformedBoard = false, firstOpen = false, emptyAgenda = false, initialDetailFailure = null } = {}) {
   const client = await createFixtureClient({ seedUrl: `data:application/json;base64,${Buffer.from(await readFile(new URL('../data/board-seed.json', import.meta.url))).toString('base64')}` });
   const browser = await chromium.launch();
   const page = await browser.newPage({ viewport: { width, height }, timezoneId: 'UTC', reducedMotion: motion });
+  await page.addInitScript(theme => localStorage.setItem('doctorcre.visual-preferences', JSON.stringify({ theme, walkthroughSeen: { joe: true, dell: true } })), theme);
   // Virtual time pauses CSS transitions. Data journeys use reduced motion so
   // actionability cannot wait on a hover transition the clock never advances.
   await page.clock.install({ time: NOW });
@@ -29,7 +30,7 @@ async function open(t, { calendar, delayHome = false, width = 1440, height = 100
   });
   const errors = [], calls = [], liveLeads = structuredClone(leadRows); let boardReads = 0, feedReads = 0, failBoard = false, detailFailure = initialDetailFailure, leadFailure = null;
   const responses = new Map();
-  let boardMalformed = malformedBoard;
+  let boardMalformed = malformedBoard, briefFailure = initialBriefFailure;
   let releaseInitialFeed;
   const initialFeed = new Promise(resolve => { releaseInitialFeed = resolve; });
   t.after(async () => {
@@ -56,7 +57,7 @@ async function open(t, { calendar, delayHome = false, width = 1440, height = 100
     'today-triage': () => client.todayTriage(),
     'list-feature-switches': () => client.listFeatureSwitches(),
     'list-doc-suggestions': args => client.listDocSuggestions(args),
-    'morning-brief': async () => { const brief = await client.morningBrief(); return calendar === undefined ? brief : { ...brief, sections: { ...brief.sections, calendar } }; },
+    'morning-brief': async () => { if (briefFailure) throw Error('Unavailable'); const brief = await client.morningBrief(); return calendar === undefined ? brief : { ...brief, sections: { ...brief.sections, calendar } }; },
     'read-invoice-tracker': () => ({schema_version:'invoice-tracker.v1',actor:'joe',entries:invoiceAttention ? [{ deal_id:'demo-overdue',name:'Demo overdue invoice',commission_id:'demo-invoice',status:'invoiced',owner:'joe',lane:'local',outcome:'won',gross_amount:'100',closed_on:'2026-08-01',invoiced_on:'2026-08-01',commission_invoiced_on:'2026-08-01',received_on:null,due_on:'2026-09-01',as_of:'2026-10-01',base_version:1 }] : [],observed_at:NOW.toISOString()}),
     'lead-board': async () => { if (leadFailure === 'timeout') return new Promise(() => {}); if (leadFailure) { const error = Error('Refused'); error.status = leadFailure; throw error; } return { leads: leads ? liveLeads : [] }; },
     'incident-board': () => client.incidentBoard(), 'current-work-item': () => client.currentWorkItem(),
@@ -70,7 +71,7 @@ async function open(t, { calendar, delayHome = false, width = 1440, height = 100
     if (url.pathname === '/mcp') {
       const rpc = route.request().postDataJSON(); calls.push(rpc.params.name);
       if (!handlers[rpc.params.name]) { errors.push(`Unexpected MCP operation: ${rpc.params.name}`); return route.fulfill({ status: 500, json: { error: 'unexpected_operation' } }); }
-      try { return route.fulfill({ json: { result: { content: [{ type: 'text', text: JSON.stringify(responses.has(rpc.params.name) ? responses.get(rpc.params.name) : await handlers[rpc.params.name](rpc.params.arguments)) }] } } }); }
+      try { return route.fulfill({ json: { result: { content: [{ type: 'text', text: JSON.stringify(responses.has(rpc.params.name) ? await responses.get(rpc.params.name) : await handlers[rpc.params.name](rpc.params.arguments)) }] } } }); }
       catch (error) { return route.fulfill({ status: error.status || 503, json: { error: 'Unavailable' } }); }
     }
     if (url.pathname === '/api/v1/business/relationships') return route.fulfill({ json: relationshipNetworkFixture(NOW.toISOString()) });
@@ -90,7 +91,7 @@ async function open(t, { calendar, delayHome = false, width = 1440, height = 100
   await page.goto(`${origin}/?mode=live`);
   if (!hangDetails) await page.waitForFunction(() => /Active deals: \d/.test(document.querySelector('#dealCounts')?.textContent || '') || /unavailable/i.test(document.querySelector('#observedAt')?.textContent || ''));
   if (firstOpen) { await page.locator('#docOpen[data-brief-unseen]').waitFor(); await page.locator('#docOpen').click(); await page.locator('#docMorning').click(); await page.locator('#docMorningBrief[open]').waitFor(); await page.waitForFunction(() => document.getElementById('morningUpdated').hasAttribute('datetime')); await page.locator('#morningClose').click(); }
-  return { page, errors, calls, releaseInitialFeed, responses, get boardReads() { return boardReads; }, get feedReads() { return feedReads; }, malformBoard(value) { boardMalformed = value; }, failLeads(value) { leadFailure = value; }, failDetails(value) { detailFailure = value; }, failBoard(value) { failBoard = value; }, updateLead(id, score) { liveLeads.find(row => row.id === id).score = score; } };
+  return { page, errors, calls, releaseInitialFeed, responses, failBrief(value) { briefFailure = value; }, get boardReads() { return boardReads; }, get feedReads() { return feedReads; }, malformBoard(value) { boardMalformed = value; }, failLeads(value) { leadFailure = value; }, failDetails(value) { detailFailure = value; }, failBoard(value) { failBoard = value; }, updateLead(id, score) { liveLeads.find(row => row.id === id).score = score; } };
 }
 
 test('PR123 R1: Home models the daily morning brief and rejects unknown operations', async t => {
@@ -742,37 +743,105 @@ test('Home distinguishes empty, warning and unavailable meeting states and refre
   const { page, responses, errors } = await open(t, { width: 390, calendar: { state: 'empty', items: [], notes: [] } });
   const card = page.getByRole('region', { name: 'Upcoming meetings', exact: true });
   await card.waitFor();
-  assert.match(await card.innerText(), /No upcoming meetings in the next 7 days/);
-  const refresh = async calendar => {
+  assert.match(await card.innerText(), /No upcoming meetings/);
+  const refresh = async (calendar, expected) => {
     responses.set('morning-brief', { sponsor: 'joe', sections: { calendar } });
-    const loaded = page.waitForResponse(response => response.url().endsWith('/mcp') && response.request().postDataJSON()?.params?.name === 'morning-brief');
     await page.getByRole('button', { name: 'Refresh Home', exact: true }).click();
-    await loaded;
-    await page.locator('#refreshHome[aria-busy="false"]').waitFor();
+    await settles(async () => {
+      if (expected) assert.ok((await card.innerText()).includes(expected));
+      else assert.equal(await card.isVisible(), false);
+    });
   };
   await refresh({ state: 'partial', items: [], notes: [
     'May include meetings you declined or that were cancelled or deleted. Check Outlook.',
     'Invites sent only to a group you belong to are not shown.',
-  ] });
+  ] }, 'May include meetings you declined');
   assert.match(await card.innerText(), /May include meetings you declined or that were cancelled or deleted. Check Outlook./);
   assert.match(await card.innerText(), /Invites sent only to a group you belong to are not shown./);
   assert.match(await card.innerText(), /No meetings returned/);
   await screenshot(page, 'home-meetings-warning-phone');
   await refresh({ state: 'ready', notes: [], items: [
     { start: '2026-10-02T05:00:00Z', end: '2026-10-03T05:00:00Z', title: 'Demo all-day visit <script>', location: null, attendee_count: 0, all_day: true },
-  ] });
+  ] }, 'Demo all-day visit');
   assert.match(await card.innerText(), /Oct 2.*All day/);
   assert.match(await card.innerText(), /Place not provided/);
   assert.match(await card.innerText(), /0 attendees/);
   assert.equal(await card.locator('script').count(), 0);
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
-  await refresh({ state: 'unavailable', items: [] });
+  await refresh({ state: 'unavailable', items: [] }, 'Meetings unavailable');
   assert.match(await card.innerText(), /Meetings unavailable/);
   assert.doesNotMatch(await card.innerText(), /No upcoming meetings|Demo all-day/);
-  await refresh({ state: 'ready', items: [{ title: 'Demo invalid date', start: 'invalid', attendee_count: 1 }], notes: [] });
+  await refresh({ state: 'empty', items: [], notes: [] }, 'No upcoming meetings');
+  await refresh({ state: 'ready', items: [{ title: 'Demo invalid date', start: 'invalid', attendee_count: 1 }], notes: [] }, 'Meetings unavailable');
   assert.match(await card.innerText(), /Meetings unavailable/);
   assert.doesNotMatch(await card.innerText(), /Invalid Date|Demo invalid date/);
   await refresh(undefined);
   assert.equal(await card.isVisible(), false);
+  assert.deepEqual(errors, []);
+});
+
+
+test('Home shows a failed first meeting read with retry and recovers', async t => {
+  const { page, failBrief, errors } = await open(t, { initialBriefFailure: true, calendar: { state: 'empty', items: [], notes: [] } });
+  const card = page.getByRole('region', { name: 'Upcoming meetings', exact: true });
+  await settles(async () => assert.match(await page.locator('#homeMeetings').textContent(), /Couldn't load meetings/), 2000);
+  assert.equal(await card.isVisible(), true);
+  assert.doesNotMatch(await card.innerText(), /No upcoming meetings/);
+  failBrief(false);
+  await card.getByRole('button', { name: 'Retry meetings', exact: true }).click();
+  await settles(async () => assert.match(await card.innerText(), /No upcoming meetings/));
+  assert.deepEqual(errors, []);
+});
+
+for (const wake of ['visibility', 'online']) test(`Home retains meetings during ${wake} refresh and replaces them when ready`, async t => {
+  const { page, responses, errors } = await open(t, { calendar: { state: 'ready', items: [
+    { start: '2026-10-01T16:00:00Z', title: 'Demo retained meeting', location: 'Demo office', attendee_count: 3, all_day: false },
+  ] } });
+  const card = page.getByRole('region', { name: 'Upcoming meetings', exact: true });
+  await settles(async () => assert.match(await card.innerText(), /Demo retained meeting/));
+  let release;
+  responses.set('morning-brief', new Promise(resolve => { release = resolve; }));
+  t.after(() => release({ sponsor: 'joe', sections: {} }));
+  const pending = page.waitForRequest(request => request.url().endsWith('/mcp') && request.postDataJSON()?.params?.name === 'morning-brief');
+  await page.evaluate(wake => {
+    if (wake === 'online') { window.dispatchEvent(new Event('online')); return; }
+    Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'hidden' });
+    document.dispatchEvent(new Event('visibilitychange'));
+  }, wake);
+  assert.match(await card.innerText(), /Demo retained meeting/);
+  assert.doesNotMatch(await card.innerText(), /unavailable|Couldn't load/);
+  if (wake === 'visibility') await page.evaluate(() => {
+    Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'visible' });
+    document.dispatchEvent(new Event('visibilitychange'));
+  });
+  await pending;
+  assert.match(await card.innerText(), /Demo retained meeting/);
+  assert.doesNotMatch(await card.innerText(), /unavailable|Couldn't load/);
+  release({ sponsor: 'joe', sections: { calendar: { state: 'empty', items: [], notes: [] } } });
+  await settles(async () => assert.match(await card.innerText(), /No upcoming meetings/));
+  assert.doesNotMatch(await card.innerText(), /Demo retained meeting/);
+  assert.deepEqual(errors, []);
+});
+
+for (const width of [1440, 390]) for (const theme of ['light', 'dark']) test(`Upcoming meetings is compact and above the fold at ${width}px ${theme}`, async t => {
+  const { page, errors } = await open(t, { width, height: width === 390 ? 844 : 900, theme, calendar: {
+    state: 'partial', notes: ['Check Outlook for attendance and cancellations.'], items: [
+      { start: '2026-10-01T16:00:00Z', title: 'Demo practice meeting', location: 'Demo office', attendee_count: 3, all_day: false },
+      { start: '2026-10-02T05:00:00Z', title: 'Demo site visit', location: 'Demo suite', attendee_count: 1, all_day: true },
+    ],
+  } });
+  const card = page.getByRole('region', { name: 'Upcoming meetings', exact: true });
+  await settles(async () => assert.match(await card.innerText(), /Demo practice meeting/));
+  assert.equal(await page.evaluate(() => document.documentElement.dataset.theme || 'dark'), theme);
+  assert.match(await card.innerText(), /2 meetings/);
+  assert.doesNotMatch(await card.innerText(), /7 days/);
+  assert.equal(await card.locator('a, .home-flag').count(), 0);
+  const bounds = await card.boundingBox();
+  assert.ok(bounds.y + bounds.height < (width === 390 ? 844 : 900), 'meetings card fits in the first viewport');
+  await screenshot(page, `home-meetings-${width}-${theme}`);
+  for (const row of await card.locator('.home-meeting').all()) { const { height } = await row.boundingBox(); assert.ok(height <= 64, `meeting row uses two compact lines, measured ${height}px`); }
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+  const warning = card.getByText('Check Outlook for attendance and cancellations.', { exact: true });
+  assert.notEqual(await warning.evaluate(node => getComputedStyle(node).color), await card.locator('.home-meeting').first().evaluate(node => getComputedStyle(node).color));
   assert.deepEqual(errors, []);
 });

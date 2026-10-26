@@ -14,7 +14,7 @@ export function mountMorningBrief({ document:root, window:win, getClient, interv
   dialog.innerHTML = '<header><h2 id="morningTitle">Morning brief</h2><button id="morningClose" type="button" aria-label="Dismiss morning brief">×</button></header><div class="morning-toolbar"><button id="morningBack" type="button" hidden>← Morning brief</button><time id="morningUpdated">Updating…</time><button id="morningRefresh" type="button" aria-label="Refresh morning brief" title="Refresh morning brief">↻</button></div><div id="morningOwners"></div><div id="morningCoverage" role="status"></div><nav id="morningQueues" aria-label="Morning work queues"></nav><div id="morningContent"></div>';
   root.body.append(dialog);
   const $ = id => dialog.querySelector(`#${id}`) || root.getElementById(id), control = $('docMorning');
-  let facts = null, viewOptions, readEpoch = 0;
+  let facts = null, calendar, viewOptions, readEpoch = 0;
   let client, view = null, sponsor = null, preferences, since, windowDay, events = [], cursor = null, disposed = false, selected = null, detailEpoch = 0, opener;
   let storage; try { storage = win.localStorage; } catch {}
   const render = () => {
@@ -67,9 +67,10 @@ export function mountMorningBrief({ document:root, window:win, getClient, interv
   };
   const focusCard = key => ([...$('morningContent').querySelectorAll('[data-brief-key]')].find(node => node.dataset.briefKey === key) || $('morningClose')).focus();
   const back = () => { queues.reset(); const key = selected?.key; selected = null; ++detailEpoch; render(); focusCard(key); };
-  const publishCalendar = calendar => root.dispatchEvent(new win.CustomEvent('doctorcre:brief-calendar', { detail: calendar }));
-  const clear = () => { if (facts?.sections.calendar) publishCalendar({ state: 'unavailable', items: [] }); queues.reset(); ++detailEpoch; selected = null; view = null; facts = null; sponsor = null; preferences = null; since = null; events = []; cursor = null; render(); cue(); };
+  const publishCalendar = value => { calendar = value; root.dispatchEvent(new win.CustomEvent('doctorcre:brief-calendar', { detail: value })); };
+  const clear = () => { queues.reset(); ++detailEpoch; selected = null; view = null; facts = null; sponsor = null; preferences = null; since = null; events = []; cursor = null; render(); cue(); };
   const suspend = () => { ++readEpoch; clear(); };
+  const invalidate = () => { suspend(); publishCalendar(null); };
   const showRecord = async (row, { background = false } = {}) => {
     selected = row; const epoch = ++detailEpoch, owner = sponsor;
     $('morningBack').hidden = false; $('morningTitle').textContent = row.title;
@@ -93,7 +94,7 @@ export function mountMorningBrief({ document:root, window:win, getClient, interv
       }
     } catch (error) {
       if (disposed || epoch !== detailEpoch || owner !== sponsor) return;
-      if ([401,403].includes(error.status)) clear();
+      if ([401,403].includes(error.status)) invalidate();
       if (epoch === detailEpoch && !disposed) $('morningContent').innerHTML = '<span role="status">Record unavailable</span>';
     }
   };
@@ -140,16 +141,16 @@ export function mountMorningBrief({ document:root, window:win, getClient, interv
         const admitted = source.state !== 'unavailable' && source.items.find(row => selected.kind === 'loop' ? String(row.number) === selected.id && row.kind === selected.loopKind : row.id === (selected.action?.id || selected.id) && (selected.kind !== 'action' || ['next_action','post_call_action','critical_date'].includes(row.item_kind)));
         if (admitted) await showRecord(selected.action ? {...selected,action:admitted} : selected,{background:true}); else back();
       }
-    } catch { if (current()) clear(); }
+    } catch (error) { if (current()) { if ([401,403].includes(error.status)) invalidate(); else { clear(); publishCalendar({ state: 'failed', items: [] }); } } }
   };
   const queues = mountBriefQueues({menu:$('morningQueues'),content:$('morningContent'),getClient:()=>client,getSponsor:()=>sponsor,
-    onOpen:title=>{selected=null;++detailEpoch;$('morningTitle').textContent=title;$('morningBack').hidden=false;$('morningOwners').hidden=true;},onBack:back,onInvalidate:clear,onChange:render});
+    onOpen:title=>{selected=null;++detailEpoch;$('morningTitle').textContent=title;$('morningBack').hidden=false;$('morningOwners').hidden=true;},onBack:back,onInvalidate:invalidate,onChange:render});
   const auto = mountAutoRefresh({ document:root,window:win,refresh,onResume:suspend,onWake:suspend,intervalMs });
   const refreshCalendar = () => auto.refresh();
-  const currentCalendar = () => { if (facts) publishCalendar(facts.sections.calendar); };
+  const currentCalendar = () => publishCalendar(calendar);
   root.addEventListener('doctorcre:request-brief-calendar', currentCalendar);
   root.addEventListener('doctorcre:refresh-brief-calendar', refreshCalendar);
-  win.addEventListener('doctorcre-session-invalidated', suspend);
+  win.addEventListener('doctorcre-session-invalidated', invalidate);
   control.onclick = open;
   $('morningClose').onclick = close;
   // A modal that replaced the brief (Doc's command bar) already owns focus.
@@ -160,5 +161,5 @@ export function mountMorningBrief({ document:root, window:win, getClient, interv
   const hidden = () => { if (root.visibilityState === 'hidden') suspend(); };
   root.addEventListener('visibilitychange',hidden);
   auto.refresh();
-  return { open, refresh:auto.refresh, dispose() { if (disposed) return; disposed = true; queues.reset(); ++detailEpoch; auto.dispose(); owners.dispose(); root.removeEventListener('doctorcre:refresh-brief-calendar', refreshCalendar); root.removeEventListener('doctorcre:request-brief-calendar', currentCalendar); win.removeEventListener('doctorcre-session-invalidated', suspend); root.removeEventListener('visibilitychange',hidden); dialog.remove(); } };
+  return { open, refresh:auto.refresh, dispose() { if (disposed) return; disposed = true; queues.reset(); ++detailEpoch; auto.dispose(); owners.dispose(); root.removeEventListener('doctorcre:refresh-brief-calendar', refreshCalendar); root.removeEventListener('doctorcre:request-brief-calendar', currentCalendar); win.removeEventListener('doctorcre-session-invalidated', invalidate); root.removeEventListener('visibilitychange',hidden); dialog.remove(); } };
 }

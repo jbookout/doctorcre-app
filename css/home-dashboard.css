@@ -52,7 +52,13 @@
 .home-flag strong, .home-agenda strong, .home-lead strong { display: block; font-size: var(--font-size-2); font-weight: var(--font-weight-strong); line-height: 1.35; overflow-wrap: anywhere; }
 .home-flag div > span, .home-agenda div > span, .home-lead div > span { display: block; color: var(--fg-muted); font-size: var(--font-size-1); line-height: var(--line-height-body); overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
 .home-arrow { flex: none; color: var(--fg-quiet); }
-.home-meeting > div { display: grid; gap: var(--space-1); }
+.home-meetings { display: grid; grid-template-columns: max-content minmax(0, 1fr); column-gap: var(--space-3); }
+.home-meeting { display: grid; grid-template-columns: subgrid; grid-column: 1 / -1; gap: var(--space-1) var(--space-3); padding: var(--space-2) 0; border-top: var(--hairline-width) solid var(--hairline); }
+.home-meeting time { color: var(--fg-muted); font-size: var(--font-size-1); font-variant-numeric: tabular-nums; }
+.home-meeting strong { min-width: 0; font-size: var(--font-size-2); font-weight: var(--font-weight-strong); line-height: 1.35; overflow-wrap: anywhere; }
+.home-meeting > span { grid-column: 2; color: var(--fg-muted); font-size: var(--font-size-1); overflow-wrap: anywhere; }
+.home-meeting-warning { margin: 0 0 var(--space-2); padding: var(--space-2) var(--space-3); border-left: 3px solid var(--status-warn); background: color-mix(in srgb, var(--status-warn) 10%, transparent); color: var(--status-warn-ink); font-size: var(--font-size-1); }
+.home-meeting-failure { margin: 0; padding: var(--space-3) 0; color: var(--status-danger-ink); font-size: var(--font-size-1); }
 .home-empty { margin: 0; padding: var(--space-3) 0; color: var(--fg-muted); font-size: var(--font-size-1); }
 
 /* The secondary grid. */

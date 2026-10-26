@@ -38,11 +38,21 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
   };
   const widget = (id, html) => { const target = $(id); if (!html && target.contains(document.activeElement)) $('homePrimaryAction').focus(); target.hidden = !html; if (html) paint(target, html); };
   const renderMeetings = signedOut => {
-    if ($('homeMeetings')) {
-      const meetings = signedOut ? null : calendar;
-      if (!meetings) $('homeMeetings').replaceChildren();
-      widget('homeMeetings', meetings ? `<header class="home-panel-head"><h2>Upcoming meetings</h2><span class="home-period">7 days</span></header>${(meetings.notes || []).map(note => `<p class="home-empty">${E(note)}</p>`).join('')}${meetings.state === 'unavailable' ? '<p class="home-empty" role="status">Meetings unavailable</p>' : meetings.items.length ? `<div class="home-flags">${meetings.items.map(meeting => `<div class="home-flag home-meeting"><div><strong>${E(meeting.title)}</strong><span><time datetime="${E(meeting.start)}">${E(new Date(meeting.start).toLocaleString('en-US', { timeZone: BUSINESS_TIME_ZONE, month: 'short', day: 'numeric', ...(meeting.all_day ? {} : { hour: 'numeric', minute: '2-digit', timeZoneName: 'short' }) }))}${meeting.all_day ? ' · All day' : ''}</time></span><span>${E(meeting.location || 'Place not provided')}</span><span>${E(meeting.attendee_count)} ${meeting.attendee_count === 1 ? 'attendee' : 'attendees'}</span></div></div>`).join('')}</div>` : `<p class="home-empty">${meetings.state === 'empty' ? 'No upcoming meetings in the next 7 days' : 'No meetings returned'}</p>`}` : null);
-    }
+    if (!$('homeMeetings')) return;
+    const meetings = signedOut ? null : calendar;
+    if (!meetings) { $('homeMeetings').replaceChildren(); widget('homeMeetings', null); return; }
+    const failed = meetings.state === 'failed' || meetings.state === 'unavailable';
+    const count = meetings.items.length;
+    const header = `<header class="home-panel-head"><h2>Upcoming meetings</h2>${failed ? '<button type="button" class="home-refresh" data-retry-meetings aria-label="Retry meetings" title="Retry meetings">↻</button>' : `<span class="home-period">${count} ${count === 1 ? 'meeting' : 'meetings'}</span>`}</header>`;
+    const warnings = (meetings.notes || []).map(note => `<p class="home-meeting-warning">${E(note)}</p>`).join('');
+    const rows = meetings.items.map(meeting => {
+      const time = new Date(meeting.start).toLocaleString(undefined, { timeZone: BUSINESS_TIME_ZONE, month: 'short', day: 'numeric', ...(meeting.all_day ? {} : { hour: 'numeric', minute: '2-digit', timeZoneName: 'short' }) });
+      const detail = `${meeting.location || 'Place not provided'} · ${meeting.attendee_count} ${meeting.attendee_count === 1 ? 'attendee' : 'attendees'}`;
+      return `<div class="home-meeting"><time datetime="${E(meeting.start)}">${E(time)}${meeting.all_day ? ' · All day' : ''}</time><strong>${E(meeting.title)}</strong><span>${E(detail)}</span></div>`;
+    }).join('');
+    const content = failed ? `<p class="home-meeting-failure" role="status">${meetings.state === 'failed' ? 'Couldn&#39;t load meetings' : 'Meetings unavailable'}</p>`
+      : count ? `<div class="home-meetings">${rows}</div>` : `<p class="home-empty">${meetings.state === 'empty' ? 'No upcoming meetings' : 'No meetings returned'}</p>`;
+    widget('homeMeetings', header + warnings + content);
   };
   const render = () => {
     const signedOut = snapshot?.unauthorized;
@@ -202,13 +212,14 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
   }, 1000);
   const updateCalendar = event => {
     const value = event.detail;
-    const valid = value && ['ready', 'empty', 'partial', 'unavailable'].includes(value.state)
+    const valid = value && ['ready', 'empty', 'partial', 'unavailable', 'failed'].includes(value.state)
       && Array.isArray(value.items) && (value.notes == null || Array.isArray(value.notes) && value.notes.every(note => typeof note === 'string'))
       && value.items.every(row => row && typeof row.title === 'string' && typeof row.start === 'string' && Number.isFinite(Date.parse(row.start))
         && (row.location == null || typeof row.location === 'string') && Number.isSafeInteger(row.attendee_count) && row.attendee_count >= 0);
     calendar = value == null ? null : valid ? value : { state: 'unavailable', items: [] };
     renderMeetings(snapshot?.unauthorized);
   };
+  $('homeMeetings')?.addEventListener('click', event => { if (event.target.closest('[data-retry-meetings]')) document.dispatchEvent(new window.Event('doctorcre:refresh-brief-calendar')); });
   const clearCalendar = () => { calendar = null; renderMeetings(true); };
   document.addEventListener('doctorcre:brief-calendar', updateCalendar);
   document.dispatchEvent(new window.Event('doctorcre:request-brief-calendar'));
