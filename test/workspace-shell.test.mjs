@@ -121,6 +121,8 @@ test('selecting a tab preserves the untouched group scroll and fires no input bl
         first: tabs('main', ['deals', 'leads']), second: tabs('aside', ['today']) } } }) };
   });
   await page.waitForFunction(() => [...document.styleSheets].some(sheet => sheet.href?.endsWith('/css/workspace-shell.css')));
+  assert.equal(await page.getByRole('region', { name: 'Workspace panel group main', exact: true }).count(), 1);
+  assert.equal(await page.getByRole('region', { name: 'Workspace panel group aside', exact: true }).count(), 1);
   await page.getByRole('textbox', { name: 'Untouched draft' }).fill('Keep typing');
   await page.getByRole('textbox', { name: 'Untouched draft' }).evaluate(input => {
     window.workspaceBlurs = 0;

@@ -19,17 +19,23 @@ function Workspace({ layout, panels, focused, onSelect }: {
       if (node.kind === "split") { place(node.first); place(node.second); return; }
       const slot = slots.current.get(node.id);
       if (!slot) return;
+      let index = 0;
       for (const id of node.panels) {
         const panel = panels.get(id);
         if (!panel) continue;
         panel.node.hidden = id !== node.active;
-        slot.append(panel.node);
+        const current = slot.children.item(index);
+        if (current !== panel.node) slot.insertBefore(panel.node, current);
+        index++;
         shown.add(id);
       }
     }
     if (layout.stage) place(layout.stage);
     for (const panel of panels.values()) {
-      if (!shown.has(panel.id)) { panel.node.hidden = true; parking.current?.append(panel.node); }
+      if (!shown.has(panel.id)) {
+        panel.node.hidden = true;
+        if (panel.node.parentElement !== parking.current) parking.current?.append(panel.node);
+      }
     }
     const view = workspace.current?.ownerDocument.defaultView;
     if (view && focused instanceof view.HTMLElement && workspace.current?.contains(focused)) {
@@ -42,7 +48,7 @@ function Workspace({ layout, panels, focused, onSelect }: {
       <div className="workspace-branch" ref={element => { if (element) element.style.flex = `${node.ratio} 1 0`; }}>{render(node.first)}</div>
       <div className="workspace-branch" ref={element => { if (element) element.style.flex = `${1 - node.ratio} 1 0`; }}>{render(node.second)}</div>
     </div>;
-    return <section key={node.id} className="workspace-group" aria-label="Workspace panel group">
+    return <section key={node.id} className="workspace-group" aria-label={`Workspace panel group ${node.id}`}>
       <div className="workspace-tabs" role="group" aria-label="Choose a panel">
         {node.panels.map(id => <button key={id} type="button" className="btn btn-quiet" aria-pressed={id === node.active} onClick={() => onSelect(id)}>{panels.get(id)?.title}</button>)}
       </div>
