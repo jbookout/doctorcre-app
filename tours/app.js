@@ -70,7 +70,7 @@ import { cheatSheetText, factSummary, formatTourDate, tourDisplayName, tourMetaL
   async function composerDetail(tourId) { return validateDetail(await request(`/api/tours/detail?tour_id=${encodeURIComponent(tourId)}`), tourId); }
   let createPending = null, createBusy = false, createPhase = "ready", sessionBinding = "", navigationBusy = false, restoredTourId = "", libraryReady = false;
   let sheetPending = null, sheetConflict = null, sheetBusy = false, sheetMessage = "", tourAction = null, tourActionPreparing = false;
-  let sheetAutosaveTimer = null;
+  let sheetAutosaveTimer = null, sheetComposing = false;
   function cancelSheetAutosave() { clearTimeout(sheetAutosaveTimer); sheetAutosaveTimer = null; }
   const otherWritesKey = "doctorcre-tour-other-writes-v1";
   function persistOtherWrites() {
@@ -98,7 +98,7 @@ import { cheatSheetText, factSummary, formatTourDate, tourDisplayName, tourMetaL
       : "The current sheet could not be read. Read it again before reviewing.";
     $("#review-sheet").disabled = sheetBusy || !sheetConflict?.current;
     $("#refresh-sheet-conflict").disabled = sheetBusy;
-    $("#cheat-content").disabled = sheetBusy || Boolean(sheetPending);
+    $("#cheat-content").disabled = Boolean(sheetPending?.uncertain);
     $("#save-sheet").disabled = sheetBusy || Boolean(sheetConflict);
     $("#save-sheet").textContent = sheetPending ? "Check save outcome" : "Save now";
     $("#restore-sheet").disabled = sheetBusy || Boolean(sheetPending) || Boolean(sheetConflict);
@@ -769,7 +769,7 @@ import { cheatSheetText, factSummary, formatTourDate, tourDisplayName, tourMetaL
       $("#cheat-content").value = cheatSheetText(tour.cheat_sheet?.content);
       state.cheatDirty = false; state.cheatDraftTourId = tour.id; state.cheatDraftRevision = null;
     }
-    if (sheetPending?.tourId === tour.id) {
+    if (sheetPending?.tourId === tour.id && (!state.cheatDirty || state.cheatDraftTourId !== tour.id)) {
       $("#cheat-content").value = sheetPending.draft;
       state.cheatDirty = true; state.cheatDraftTourId = tour.id; state.cheatDraftRevision = sheetPending.body.expected_revision_number;
     }
@@ -882,7 +882,10 @@ import { cheatSheetText, factSummary, formatTourDate, tourDisplayName, tourMetaL
       recovery.append(control);
       if (throwOnFailure) throw error;
       return false;
-    } finally { navigationBusy = false; if (composer) renderComposer(); renderCreate(); }
+    } finally {
+      navigationBusy = false; if (composer) renderComposer(); renderCreate();
+      if (!sheetBusy && state.cheatDirty && state.tour?.id === tourId) $("#cheat-content").dispatchEvent(new Event("input"));
+    }
   }
   function moveStop(stopId, delta) { const list = stops(); const index = list.findIndex((stop) => stop.id === stopId); const destination = index + delta; if (index < 0 || destination < 0 || destination >= list.length) return; [list[index], list[destination]] = [list[destination], list[index]]; renderTour(); }
   async function saveRoute(reorder = false) {
@@ -901,7 +904,7 @@ import { cheatSheetText, factSummary, formatTourDate, tourDisplayName, tourMetaL
     sheetBusy = true; renderSheetRecovery();
     try {
       if (!sheetPending) {
-        const draft = $("#cheat-content").value;
+        const draft = $("#cheat-content").value, baseRevision = state.cheatDirty ? state.cheatDraftRevision : sheetRevision(state.tour);
         let content;
         try { content = JSON.parse(draft || "{}"); } catch { content = { notes: draft }; }
         if (!content || typeof content !== "object" || Array.isArray(content)) {
@@ -909,7 +912,7 @@ import { cheatSheetText, factSummary, formatTourDate, tourDisplayName, tourMetaL
         }
         const latest = await request(`/api/tours/detail?tour_id=${encodeURIComponent(tourId)}`);
         if (latest.id !== tourId || binding !== sessionBinding) throw new Error("session_changed");
-        const revision = sheetRevision(latest), baseRevision = state.cheatDirty ? state.cheatDraftRevision : sheetRevision(state.tour);
+        const revision = sheetRevision(latest);
         if (revision !== baseRevision) {
           sheetConflict = { tourId, current: latest }; sheetMessage = "The sheet changed. Review the current revision; your draft is kept."; return;
         }
@@ -925,7 +928,11 @@ import { cheatSheetText, factSummary, formatTourDate, tourDisplayName, tourMetaL
       confirmedTourWrite("/api/tours/cheat-sheet/autosave", await post("/api/tours/cheat-sheet/autosave", pending.body, pending.binding));
       confirmed = true;
       if (state.tour?.id !== tourId || sheetPending !== pending) return;
-      sheetPending = null; persistOtherWrites(); state.cheatDirty = false; state.cheatDraftRevision = null;
+      sheetPending = null; persistOtherWrites();
+      const revision = pending.body.expected_revision_number + 1;
+      state.tour = { ...state.tour, cheat_sheet: { content: pending.body.content, revision_number: revision } };
+      state.cheatDirty = $("#cheat-content").value !== pending.draft;
+      state.cheatDraftRevision = state.cheatDirty ? revision : null;
       sheetMessage = "Internal cheat sheet save confirmed."; sheetBusy = false;
       await loadTour(tourId, { throwOnFailure:true }); status(sheetMessage);
     } catch (error) {
@@ -944,7 +951,12 @@ import { cheatSheetText, factSummary, formatTourDate, tourDisplayName, tourMetaL
             : "Save outcome unknown. Check save outcome replays the retained draft, version and key."
           : "The current sheet could not be read. Your draft is kept; try saving again.";
       }
-    } finally { sheetBusy = false; renderSheetRecovery(); }
+    } finally {
+      sheetBusy = false; renderSheetRecovery();
+      if (confirmed && state.cheatDirty && state.tour?.id === tourId && binding === sessionBinding) {
+        $("#cheat-content").dispatchEvent(new Event("input"));
+      }
+    }
   }
   async function issueShare(rotate = false) {
     if (state.shareBusy) return;
@@ -1089,21 +1101,21 @@ import { cheatSheetText, factSummary, formatTourDate, tourDisplayName, tourMetaL
       idempotency_key: uuid() }, "Route acceptance", latest => latest.route_version_id === tour.route_version_id && latest.accepted_route_version === tour.accepted_route_version);
   }));
   const saveSheetExclusively = exclusive("sheet", saveSheet);
-  $("#cheat-content").addEventListener("compositionstart", cancelSheetAutosave);
-  $("#cheat-content").addEventListener("compositionend", () => $("#cheat-content").dispatchEvent(new Event("input")));
+  $("#cheat-content").addEventListener("compositionstart", () => { sheetComposing = true; cancelSheetAutosave(); });
+  $("#cheat-content").addEventListener("compositionend", () => { sheetComposing = false; $("#cheat-content").dispatchEvent(new Event("input")); });
   $("#cheat-content").addEventListener("input", (event) => {
-    if (sheetPending || sheetBusy) return;
+    if (sheetPending?.uncertain) return;
     cancelSheetAutosave();
     if (!state.cheatDirty) {
       try { state.cheatDraftRevision = sheetRevision(state.tour); } catch { state.cheatDraftRevision = null; }
     }
     state.cheatDirty = true; state.cheatDraftTourId = state.tour?.id || ""; sheetMessage = ""; renderSheetRecovery();
     const tourId = state.tour?.id, binding = sessionBinding;
-    if (!id(tourId) || !binding || sheetConflict || event.isComposing) return;
+    if (!id(tourId) || !binding || sheetConflict || sheetComposing || event.isComposing) return;
     const autosave = async () => {
       sheetAutosaveTimer = null;
       if (state.cheatDraftTourId !== tourId || sessionBinding !== binding || !state.cheatDirty || sheetPending || sheetConflict || sheetBusy) return;
-      if (navigationBusy || !state.tour) { sheetAutosaveTimer = setTimeout(autosave, 1000); return; }
+      if (navigationBusy || !state.tour) return;
       if (state.tour.id !== tourId) return;
       const editor = $("#cheat-content"), selection = document.activeElement === editor
         ? { start: editor.selectionStart, end: editor.selectionEnd, direction: editor.selectionDirection, scroll: editor.scrollTop } : null;
@@ -1139,7 +1151,7 @@ import { cheatSheetText, factSummary, formatTourDate, tourDisplayName, tourMetaL
   window.addEventListener("beforeprint", prepareSheetPrint);
   window.addEventListener("afterprint", () => $("#cheat-print")?.replaceChildren());
   window.addEventListener("doctorcre-session-invalidated", () => {
-    cancelSheetAutosave();
+    cancelSheetAutosave(); sheetComposing = false;
     state.cheatDraftTourId = ""; state.cheatDraftRevision = null; $("#cheat-print")?.replaceChildren();
   });
   $("#save-sheet").addEventListener("click", saveSheetExclusively);

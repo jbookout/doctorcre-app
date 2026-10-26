@@ -577,6 +577,78 @@ async function touchLayout(page) {
       }) }));
 }
 
+for (const phase of ["preflight", "write", "refresh"]) test(`autosave preserves typing during ${phase} and saves it against the confirmed revision`, async t => {
+  const store = domain(), { dom, doc } = await open(store); t.after(() => dom.window.close()); await create(doc);
+  dom.window.fetch = (...args) => store.fetch(...args);
+  const normal = store.fetch; let release, details = 0;
+  store.fetch = async (path, options) => {
+    const detail = path.startsWith("/api/tours/detail");
+    if (detail) ++details;
+    const hold = phase === "preflight" && detail && details === 1 || phase === "write" && path === "/api/tours/cheat-sheet/autosave" || phase === "refresh" && detail && details === 2;
+    if (hold && !release) await new Promise(resolve => { release = resolve; });
+    return normal(path, options);
+  };
+  fill(doc, "#cheat-content", "Submitted draft");
+  await new Promise(resolve => setTimeout(resolve, 1100)); await settle();
+  assert.equal(typeof release, "function");
+  const editor = doc.querySelector("#cheat-content");
+  assert.equal(editor.disabled, false, "typing stays enabled while a save is in flight");
+  fill(doc, "#cheat-content", "Newer typing");
+  release(); await settle();
+  assert.equal(editor.value, "Newer typing", "refresh preserves unsaved typing");
+  await new Promise(resolve => setTimeout(resolve, 1100)); await settle();
+  const writes = store.calls.filter(call => call.path === "/api/tours/cheat-sheet/autosave");
+  assert.equal(writes.length, 2);
+  assert.deepEqual(writes.map(call => call.body.content), [{ notes: "Submitted draft" }, { notes: "Newer typing" }]);
+  assert.deepEqual(writes.map(call => call.body.expected_revision_number), [0, 1]);
+});
+
+for (const outcome of ["confirmed composition", "unknown refresh"]) test(`autosave retains newer typing through ${outcome}`, async t => {
+  const store = domain(), { dom, doc } = await open(store); t.after(() => dom.window.close()); await create(doc);
+  dom.window.fetch = (...args) => store.fetch(...args);
+  const normal = store.fetch; let release;
+  store.fetch = async (path, options) => {
+    if (path === "/api/tours/cheat-sheet/autosave" && !release) {
+      await new Promise(resolve => { release = resolve; });
+      if (outcome === "unknown refresh") throw new Error("response lost");
+    }
+    return normal(path, options);
+  };
+  fill(doc, "#cheat-content", "Submitted notes");
+  await new Promise(resolve => setTimeout(resolve, 1100)); await settle();
+  const editor = doc.querySelector("#cheat-content");
+  if (outcome === "confirmed composition") editor.dispatchEvent(new dom.window.CompositionEvent("compositionstart"));
+  editor.value = "Newer typing";
+  editor.dispatchEvent(new dom.window.InputEvent("input", { bubbles: true, isComposing: outcome === "confirmed composition" }));
+  release(); await settle();
+  if (outcome === "unknown refresh") {
+    assert.equal(editor.disabled, true);
+    doc.querySelector(".tour-button").click(); await settle();
+  }
+  assert.equal(editor.value, "Newer typing");
+  if (outcome === "confirmed composition") {
+    await new Promise(resolve => setTimeout(resolve, 1100)); await settle();
+    assert.equal(store.calls.filter(call => call.path === "/api/tours/cheat-sheet/autosave").length, 1);
+    editor.dispatchEvent(new dom.window.CompositionEvent("compositionend"));
+    await new Promise(resolve => setTimeout(resolve, 1100)); await settle();
+    assert.deepEqual([...store.tours.values()][0].cheat_sheet.content, { notes: "Newer typing" });
+  }
+});
+
+test("autosave does not poll while Tour navigation is busy", async t => {
+  const store = domain(), { dom, doc } = await open(store); t.after(() => dom.window.close()); await create(doc);
+  dom.window.fetch = (...args) => store.fetch(...args);
+  const timeout = dom.window.setTimeout.bind(dom.window); let debounceTimers = 0;
+  dom.window.setTimeout = (fn, delay, ...args) => { if (delay === 1000) ++debounceTimers; return timeout(fn, delay, ...args); };
+  fill(doc, "#cheat-content", "Draft during navigation");
+  const release = deferDetail(store);
+  doc.querySelector(".tour-button").click(); await settle();
+  await new Promise(resolve => setTimeout(resolve, 1100)); await settle();
+  assert.equal(debounceTimers, 1, "busy navigation does not schedule another timer");
+  release(); await settle();
+  assert.equal(doc.querySelector("#cheat-content").value, "Draft during navigation");
+});
+
 test("autosave keeps a dirty sheet through a failed same-Tour read and retry", async () => {
   const store = domain(), { dom, doc } = await open(store); await create(doc);
   fill(doc, "#cheat-content", "Notes waiting for autosave");

@@ -165,17 +165,29 @@ test('broker notes autosave one revision after a pause and preserve drafts acros
     const sending = new Promise(resolve => { saveStarted = resolve; });
     await editor.fill(`Notes while choosing to ${target}`); await page.clock.runFor(1000);
     await sending;
+    assert.equal(await editor.isEnabled(), true);
+    if (target === 'print') {
+      await editor.press('End');
+      await page.keyboard.type(' with newer typing');
+      assert.equal(await editor.inputValue(), 'Notes while choosing to print with newer typing');
+    }
     const control = target === 'print' ? page.getByRole('button', { name: 'Print internal sheet', exact: true }) : page.locator('#internal-cheat-sheet > summary');
     if (target === 'print') await control.focus(); else await control.click();
     releaseSave();
-    await page.locator('#sheet-state').filter({ hasText: /save confirmed/i }).waitFor({ state: 'attached' });
     await page.locator('#status').filter({ hasText: /save confirmed/i }).waitFor();
     assert.equal(await control.evaluate(node => document.activeElement === node), true, 'autosave respects deliberately moved focus');
     assert.equal(await page.locator('#internal-cheat-sheet').evaluate(node => node.open), target === 'print');
+    if (target === 'print') {
+      assert.equal(await editor.inputValue(), 'Notes while choosing to print with newer typing');
+      await page.clock.runFor(1000);
+      await page.locator('#sheet-state').filter({ hasText: /save confirmed/i }).waitFor();
+      assert.deepEqual(writes.at(-1).content, { notes: 'Notes while choosing to print with newer typing' });
+      assert.equal(writes.at(-1).expected_revision_number, 6);
+    }
   }
   await page.locator('#internal-cheat-sheet > summary').click();
   await editor.fill('Cancelled by revocation');
   await page.evaluate(() => window.dispatchEvent(new Event('doctorcre-session-invalidated')));
   await page.clock.runFor(2000);
-  assert.equal(writes.length, 4);
+  assert.equal(writes.length, 5);
 });

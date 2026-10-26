@@ -225,7 +225,7 @@ test("Dot 2: switching Tours clears the prior confidential link", async () => {
   await h.loadTour("B");assert.equal($("#share-url").value,"");assert.equal($("#share-link").hidden,true);assert.equal(state.rawShareToken,"");
 });
 
-test("Dot 3: sheet save locks its draft while sending and unknown, then replays its retained key", async () => {
+test("Dot 3: sheet save allows typing while sending and locks only an unknown outcome, then replays its retained key", async () => {
   const $=elements();$("#cheat-content").value="First edit";const saved=deferred();
   const state={tour:{id:"A",cheat_sheet:{revision_number:1,content:{notes:"Saved notes"}}},cheatDirty:true,cheatDraftRevision:1};
   const requests=[];let keys=0;
@@ -242,7 +242,7 @@ test("Dot 3: sheet save locks its draft while sending and unknown, then replays 
   vm.runInContext(tourSource.slice(tourSource.indexOf("  let sheetAutosaveTimer"),tourSource.indexOf("  const otherWritesKey")),h);
   vm.runInContext(tourSource.slice(tourSource.indexOf("  async function saveSheet("),tourSource.indexOf("  async function issueShare("))+"\nglobalThis.saveSheet=saveSheet;",h);
   const pending=h.saveSheet();await tick();
-  assert.equal($("#cheat-content").disabled,true);assert.equal($("#save-sheet").disabled,true);
+  assert.equal($("#cheat-content").disabled,false);assert.equal($("#save-sheet").disabled,true);
   saved.reject(new Error("Committed save; reply lost"));await pending;
   assert.equal($("#cheat-content").value,"First edit");assert.equal($("#cheat-content").disabled,true);
   assert.equal(state.cheatDirty,true);assert.match($("#sheet-state").textContent,/unknown/i);
