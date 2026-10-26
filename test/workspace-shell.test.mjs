@@ -113,7 +113,7 @@ test('selecting a tab preserves the untouched group scroll and fires no input bl
   await page.goto(`${server.origin}/ideas-events`);
   await page.evaluate(async () => {
     const { mountWorkspace } = await import('/js/ui.generated.js');
-    document.body.innerHTML = '<main><section id="deals">Deals</section><section id="leads">Leads</section><section id="today"><input aria-label="Untouched draft"><div style="height:1800px">Today</div></section><div id="workspace" style="display:flex;height:400px"></div></main>';
+    document.body.innerHTML = '<main><section id="deals">Deals</section><section id="leads">Leads</section><section id="today"><input aria-label="Untouched draft"><div id="today-scroll" style="height:60px;overflow:auto"><div style="height:2000px">Today</div></div></section><div id="workspace" style="display:flex;height:400px"></div></main>';
     const panels = ['deals', 'leads', 'today'].map(id => ({ id, title: id, node: document.getElementById(id) }));
     const tabs = (id, panels) => ({ kind: 'tabs', id, panels, active: panels[0] });
     window.workspaceFixture = { shell: mountWorkspace({ container: document.getElementById('workspace'), panels,
@@ -127,14 +127,14 @@ test('selecting a tab preserves the untouched group scroll and fires no input bl
   await page.getByRole('textbox', { name: 'Untouched draft' }).evaluate(input => {
     window.workspaceBlurs = 0;
     input.addEventListener('blur', () => window.workspaceBlurs++);
-    input.parentElement.parentElement.scrollTop = 120;
+    document.getElementById('today-scroll').scrollTop = 500;
   });
   const state = () => page.getByRole('textbox', { name: 'Untouched draft' }).evaluate(input => ({
-    scrollTop: input.parentElement.parentElement.scrollTop, blurs: window.workspaceBlurs,
+    scrollTop: document.getElementById('today-scroll').scrollTop, blurs: window.workspaceBlurs,
     focused: document.activeElement === input, draft: input.value,
   }));
   const before = await state();
-  assert.deepEqual(before, { scrollTop: 120, blurs: 0, focused: true, draft: 'Keep typing' });
+  assert.deepEqual(before, { scrollTop: 500, blurs: 0, focused: true, draft: 'Keep typing' });
   // DOM activation isolates render-induced blur from a pointer's normal focus transfer.
   await page.getByRole('button', { name: 'leads', exact: true }).evaluate(button => button.click());
   assert.equal(await page.locator('#leads').isVisible(), true);
