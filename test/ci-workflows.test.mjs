@@ -12,6 +12,39 @@ const ci = await readFile(new URL("../.github/workflows/ci.yml", import.meta.url
 const release = await readFile(new URL("../.github/workflows/release.yml", import.meta.url), "utf8");
 const root = fileURLToPath(new URL("../", import.meta.url));
 
+test("PR jobs build the merge candidate when the branch predates a required npm script", async t => {
+  const directory = await mkdtemp(join(tmpdir(), "doctorcre-old-pr-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const git = (...args) => execFileSync("git", args, { cwd: directory, encoding: "utf8", stdio: "pipe" }).trim();
+  const commit = () => {
+    git("add", ".");
+    git("-c", "user.name=Synthetic", "-c", "user.email=synthetic@example.invalid", "commit", "-qm", "fixture");
+    return git("rev-parse", "HEAD");
+  };
+  git("init", "-q");
+  await writeFile(join(directory, "package.json"), JSON.stringify({ private: true, scripts: {} }));
+  const head = commit();
+  await writeFile(join(directory, "package.json"), JSON.stringify({ private: true, scripts: { build: 'node -e "console.log(\'MERGE-BUILD-PASSED\')"' } }));
+  const merge = commit();
+  const contexts = { "github.sha": merge, "github.event.pull_request.head.sha": head };
+  const workflows = [ci, await readFile(new URL("../.github/workflows/e2e.yml", import.meta.url), "utf8")];
+  for (const workflow of workflows) {
+    for (const [, name, job] of workflow.matchAll(/^  (\w+):\n([\s\S]*?)(?=^  \w+:|$(?![\s\S]))/gm)) {
+      const checkout = job.split(/^      - /m).find(step => /^uses: actions\/checkout@/m.test(step));
+      if (!checkout) continue;
+      const ref = checkout.match(/ref: \$\{\{ (.*?) \}\}/)?.[1] ?? "github.sha";
+      git("checkout", "--detach", contexts[ref]);
+      const result = spawnSync("npm", ["run", "build"], { cwd: directory, encoding: "utf8" });
+      assert.equal(result.status, 0, `${name} must build the merge candidate: ${result.stdout}${result.stderr}`);
+      assert.match(result.stdout, /MERGE-BUILD-PASSED/);
+      assert.equal(git("rev-parse", "HEAD"), merge);
+    }
+  }
+  const preview = ci.split(/^  preview:/m)[1];
+  assert.match(preview, /DOCTORCRE_SOURCE_COMMIT: \$\{\{ github.sha \}\}/);
+  assert.match(preview, /name: pr-preview-\$\{\{ github.event.pull_request.number \}\}-\$\{\{ github.event.pull_request.head.sha \}\}/);
+});
+
 test("the CI checkout layout keeps producer-owned content out of app repository checks", async (t) => {
   const workspace = await mkdtemp(join(tmpdir(), "doctorcre-checkout-layout-"));
   t.after(() => rm(workspace, { recursive: true, force: true }));

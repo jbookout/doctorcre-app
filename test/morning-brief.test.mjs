@@ -108,6 +108,31 @@ function setup(t,{storage,read}={}) {
  const ui=mountMorningBrief({document:root,window:win,getClient:async()=>client,intervalMs:100000,now:()=>current});t.after(()=>ui.dispose());
  return {ui,root,win,client,get count(){return count;},set data(value){data=value;},set current(value){current=value;},set fail(value){fail=value;}};
 }
+test('brief due dates show the recorded weekday and year on priorities and record sheets',async t=>{
+ for(const [kind,date,label]of [['deal','2026-10-02','Friday, Oct 2, 2026'],['action','2026-03-08T00:00:00.000Z','Sunday, Mar 8, 2026'],['loop','2025-12-31','Wednesday, Dec 31, 2025']])await t.test(kind,async t=>{
+  const state=setup(t),data=payload();data.sections.today=section([]);data.sections.loops=section([]);
+  if(kind==='loop'){
+   data.sections.loops=section([{number:'1',kind:'open_loop',owner:'joe',title:'Demo dated task',status:'open',due_on:date}]);
+   state.client.readLoop=async()=>({loop:{number:'1',kind:'open_loop',title:'Demo dated task',due_on:date}});
+  }else data.sections.today=section([{...due('a','joe',date),...(kind==='action'?{item_kind:'next_action',subject_type:'person',subject_name:'Demo person'}:{})}]);
+  state.data=data;await state.ui.open();
+  const card=state.root.querySelector('[data-brief-record]'),time=card.querySelector('time');
+  assert.equal(time.textContent,`Due ${label}`);assert.equal(time.getAttribute('datetime'),date.slice(0,10));assert.equal(card.dataset.urgency,'overdue');
+  card.click();await new Promise(resolve=>setTimeout(resolve,10));
+  assert.equal([...state.root.querySelectorAll('.morning-record dt')].find(node=>node.textContent==='Due').nextElementSibling.textContent,label);
+  state.root.getElementById('morningBack').click();assert.equal(state.root.activeElement.dataset.briefKey,card.dataset.briefKey);
+ });
+});
+test('record sheets preserve unknown due text and omit an absent date',async t=>{
+ const state=setup(t),data=payload();delete data.sections.today.items[0].id;state.data=data;
+ for(const date of ['2026-02-30',null]){
+  state.client.getDeal=async id=>({deal:{...deal(id),next_date:date},thread:[]});
+  await state.ui.open();state.root.querySelector('[data-brief-key="deal:a"]').click();await new Promise(resolve=>setTimeout(resolve,10));
+  const due=[...state.root.querySelectorAll('.morning-record dt')].find(node=>node.textContent==='Due');
+  if(date)assert.equal(due.nextElementSibling.textContent,date);else assert.equal(due,undefined);
+  state.root.getElementById('morningBack').click();
+ }
+});
 test('the brief never opens itself; an unseen cue shows once per day until opened, then returns the next day',async t=>{
  const state=setup(t);const dialog=()=>state.root.querySelector('dialog'),cue=()=>state.root.getElementById('docOpen').hasAttribute('data-brief-unseen');
  await state.ui.refresh();assert.equal(dialog().open,false);assert.equal(cue(),true);assert.match(state.root.getElementById('docMorning').textContent,/new today/);
@@ -197,18 +222,19 @@ test('task card opens the exact live record directly without a retired route',as
  assert.equal(state.root.querySelector('.entry-original').textContent,'Demo original task entry. <script>demo</script>');assert.equal(state.root.querySelector('#morningContent script'),null);
 });
 
+const dueText=value=>new Intl.DateTimeFormat('en-US',{timeZone:'UTC',weekday:'long',month:'short',day:'numeric',year:'numeric'}).format(new Date(`${value}T00:00:00Z`));
 test('task sheets show instructions as Your task and omit only the redundant open status',async t=>{
  const state=setup(t),data=payload();data.sections.today=section([]);
  const task={number:'7',kind:'open_loop',owner:'joe',title:'Demo due task',status:'open',due_on:day,blocker_detail:'Open <demo> and review the terms.',body:'Demo original task entry.'};
  data.sections.loops=section([{...task}]);state.data=data;state.client.readLoop=async()=>({loop:{...task}});
  await state.ui.refresh();state.root.querySelector('[data-brief-record]').click();await new Promise(resolve=>setTimeout(resolve,10));
  const facts=()=>[...state.root.querySelectorAll('.morning-record dl > div')].map(node=>[node.querySelector('dt').textContent,node.querySelector('dd').textContent]);
- assert.deepEqual(facts(),[['Due',day],['Your task','Open <demo> and review the terms.']]);
+ assert.deepEqual(facts(),[['Due',dueText(day)],['Your task','Open <demo> and review the terms.']]);
  assert.equal(state.root.querySelector('.morning-record demo'),null);
  assert.match(state.root.querySelector('.morning-record').textContent,/Demo original task entry/);
  for(const status of ['closed','unknown',null]){
   task.status=status;await state.ui.refresh();
-  assert.deepEqual(facts(),[['Due',day],...(status?[['Status',status]]:[]),['Your task','Open <demo> and review the terms.']]);
+  assert.deepEqual(facts(),[['Due',dueText(day)],...(status?[['Status',status]]:[]),['Your task','Open <demo> and review the terms.']]);
  }
  state.root.getElementById('morningBack').click();assert.equal(state.root.activeElement.dataset.briefKey,'loop:open_loop:7');
 });

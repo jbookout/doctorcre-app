@@ -113,3 +113,17 @@ test('Doc does not fetch suggestions for a queued context that was superseded be
   await new Promise(resolve => setTimeout(resolve,20));
   assert.equal(reads,0);
 });
+
+test('activity feed orders precise instants before using descending IDs and preserves source rows', async () => {
+  const answer = await createDocActivityFixture().read();
+  const row = answer.entries[0];
+  const entries = [
+    { ...row, id: 'z-old', at: '2026-10-26T12:00:00.000001Z' },
+    { ...row, id: 'a-new', at: '2026-10-26T12:00:00.000002Z' },
+    { ...row, id: 'b-new', at: '2026-10-26T07:00:00.000002-05:00' },
+  ];
+  const original = structuredClone(entries);
+  assert.deepEqual(activityRows({ ...answer, entries }).map(item => item.id), ['b-new', 'a-new', 'z-old']);
+  assert.deepEqual(entries, original);
+  assert.throws(() => activityRows({ ...answer, entries: [{ ...row, at: null }] }), /activity_unavailable/);
+});

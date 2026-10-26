@@ -628,12 +628,7 @@ export async function createFixtureClient(opts = {}) {
     },
   ];
 
-  /* ------------------------------------------- Model Room fixtures (C12)
-   * The four captured queue events and five captured room turns, in the
-   * producer's shape. One card carries `source_seq: null` and one body is a
-   * JSON STATUS envelope, because both are true of the live answer and both
-   * are branches the tab must render without inventing anything.
-   */
+  // C12 mirrors four queue events and five room turns, including null source_seq and JSON STATUS bodies.
   const QUEUE_EVENTS = [
     { v: 1, board: 'carr-build', event_id: 1302, event: 'created', task_id: 't_185f2c38',
       card: { title: 'Fresh independent review of PR 832 exact corrected head', target: 'deepseek',
@@ -701,13 +696,7 @@ export async function createFixtureClient(opts = {}) {
     incident({ ref: 'INC-20260916-02', title: 'Demo search read is answering slowly under the demo load', severity: 'SEV-2', state: 'mitigating', owner_actor: 'dell', next_action: 'Hold the demo cache warm until the read settles', business_impact: 'Demo search answers late', fingerprint: 'demo-worker|production|search-read|slow_response', detected_at: '2026-09-15T11:25:00.000Z', age_days: 2, occurrences: 28, ready_to_close: false, blocked_by: 'no recovery evidence — supply one, or adjudicate it as a duplicate' }),
     incident({ ref: 'INC-20260916-03', title: 'Demo staging deploy retried once and then succeeded', severity: 'SEV-3', state: 'monitoring', owner_actor: 'joe', next_action: 'Close it once the demo monitoring window has elapsed', business_impact: 'None observed after the retry', fingerprint: 'demo-worker|staging|deploy|transient_error', detected_at: '2026-09-16T09:40:00.000Z', age_days: 1, occurrences: 1, ready_to_close: true, blocked_by: null }),
   ];
-  /* -------------------------------------------- notification fixtures (B12a)
-   * The synthetic twin of `ops.notification`, in the producer's OWN shape: a
-   * closed two-value severity set with no informational member, a per-channel
-   * delivery list, and a relative deep link with no scheme, host or query.
-   * `read_at` is the ONLY thing an acknowledgement is allowed to move, which is
-   * why the rows carry nothing else an acknowledgement could plausibly touch.
-   */
+  // B12a mirrors producer severity, delivery and relative-link fields; acknowledgement changes only read_at.
   const notifications = (seed.notifications || []).map((row) => ({
     ...row, delivery: (row.delivery || []).map((entry) => ({ ...entry })),
   }));
@@ -716,19 +705,7 @@ export async function createFixtureClient(opts = {}) {
     return Math.min(200, Math.max(1, value));
   };
 
-  /* ------------------------------ notification preferences (B12, WR-000116)
-   * The synthetic twin of `ops.notification_preference`. It starts with NO ROW
-   * unless the seed names one, because "no row yet" is a state the page prints
-   * and a fixture that started saved would never show it: `exists` is false,
-   * `version` is 1, the window is null and the timezone is UTC — migration
-   * 0527's documented defaults, not this file's invention.
-   *
-   * `quiet_now` is computed here the way 0527 computes it, INCLUDING the
-   * wrap-around window (23:00-07:00 is a window that crosses midnight, and a
-   * fixture that only handled start<=end would certify a page against half the
-   * real behaviour). The timezone list is the browser's own IANA list, so an
-   * unknown zone is refused here for the same reason the store refuses it.
-   */
+  // 0527 defaults preserve the unsaved state. Quiet hours wrap midnight; unknown IANA zones are refused.
   const preference = {
     exists: seed.notification_preference?.exists === true,
     device_opt_in: seed.notification_preference?.device_opt_in === true,
@@ -769,13 +746,7 @@ export async function createFixtureClient(opts = {}) {
     version: preference.version,
   });
 
-  /* --------------------------------------------- incident detail fixtures (C14)
-   * The synthetic twin of `get-incident`, in the verb's OWN shape: the row,
-   * then FOUR separate lists. Facts and hypotheses are separate arrays here for
-   * the same reason they are separate regions on the page — a hypothesis drawn
-   * as a fact is the failure that surface exists to prevent — and every fact
-   * carries its own source and its own clock.
-   */
+  // C14 keeps facts with source/time separate from hypotheses and the other get-incident lists.
   const incidentDetails = new Map([
     ['INC-20260915-01', {
       facts: [
@@ -829,23 +800,8 @@ export async function createFixtureClient(opts = {}) {
     }],
   ]);
 
-  /* -------------------------------------- Doc conversation fixtures (V5-UX-B07)
-   * The synthetic twin of `ops.doc_conversation`, in the producer's OWN shape.
-   * Three things about this fixture are the point of it, and a friendlier one
-   * would let the page pass its tests while shipping a disclosure:
-   *
-   *  1. ABSENT and NOT-YOURS are ONE answer. `doc_conversation_not_found` is
-   *     returned for an id that does not exist, for one this actor cannot see,
-   *     and for an id that is not a uuid — byte-identical in all three cases.
-   *  2. `doc_conversation_creator_only` is NOT collapsed into that. A grantee
-   *     already knows the conversation exists, so a distinct refusal discloses
-   *     nothing and is the honest answer a share toggle needs.
-   *  3. `visible_conversation_count` is computed the way the definer computes
-   *     it — over conversations this ACTING actor created or holds an unrevoked
-   *     grant on — so `?actor=dell` demonstrably changes the number.
-   *
-   * Every title starts with "Demo " so nothing here can be mistaken for a record.
-   */
+  // V5-UX-B07 hides absent, invalid and unauthorized ids behind the same not-found answer.
+  // Creator-only refusal stays distinct. Visibility counts actor-owned and unrevoked grants; titles are synthetic.
   const DOC_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
   const DOC_ACTORS = [seed.actors?.self || 'joe', partnerActor];
   const docTurn = (sequence, role, body, at) => ({
