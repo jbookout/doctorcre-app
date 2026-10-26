@@ -77,3 +77,21 @@ test('synthetic phase preview refuses tour evidence after the phase has advanced
   const stale = (await fresh.listEmailProposals()).proposals.find(item => item.id === row.id);
   assert.equal(stale.preview, null); assert.ok(stale.preview_error);
 });
+
+test('an unknown confirmation does not adopt or block a different source email on the same deal', async () => {
+  const requests = [];
+  const live = createLiveClient({ fetchImpl: async (path, init) => {
+    if (path === '/auth/session') return Response.json({ actor: { slug: 'joe' }, csrf_token: 'synthetic-session' });
+    const args = JSON.parse(init.body).params.arguments; requests.push(args);
+    if (requests.length === 1) throw Error('lost response');
+    return Response.json({ result: { content: [{ text: JSON.stringify({ ...args, source: { activity_id: args.activity_id }, contract: 'email-next-step.v1', status: 'confirmed', requires_confirmation: false }) }] } });
+  } });
+  const first = { deal: '20000000-0000-4000-8000-000000000001', activity_id: '30000000-0000-4000-8000-000000000001',
+    evidence_quote: 'Please send the revised plan by November 3.', text: 'Send the revised plan', next_date: '2026-11-03', owner: 'joe',
+    proposal_digest: `sha256:${'a'.repeat(64)}`, idempotency_key: 'first-email' };
+  await assert.rejects(live.confirmEmailNextStep(first));
+  const second = { ...first, activity_id: '30000000-0000-4000-8000-000000000002', idempotency_key: 'second-email' };
+  assert.equal((await live.confirmEmailNextStep(second)).status, 'confirmed');
+  assert.equal((await live.confirmEmailNextStep(first)).status, 'confirmed');
+  assert.deepEqual(requests, [first, second, first]);
+});

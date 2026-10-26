@@ -101,7 +101,7 @@ export function createLiveClient(opts = {}) {
     // Keep those domain receipt contracts intact; cover the unretained paths
     // and the old fallback that minted a different key on every attempt.
     if (args.idempotency_key && !sessionWrites.has(verb)) return rawRpc(verb, args, undefined, timeoutMs);
-    const target = ['proposal_id', 'deal', 'candidate_id', 'account_client_id', 'event_id', 'human_ref', 'session_id',
+    const target = ['proposal_id', 'activity_id', 'deal', 'candidate_id', 'account_client_id', 'event_id', 'human_ref', 'session_id',
       'loop_id', 'conversation_id', 'suggestion_id', 'commission_id', 'board_id', 'client_id', 'field', 'projection_id']
       .filter(key => args[key] !== undefined).map(key => [key, args[key]]);
     const operationKey = JSON.stringify([verb, target]);
