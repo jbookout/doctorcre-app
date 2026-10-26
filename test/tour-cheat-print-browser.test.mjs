@@ -272,7 +272,13 @@ test('broker regenerates an editable internal sheet from the accepted itinerary 
   assert.match(generated, /Dwell: 30 minutes/);
   assert.match(generated, /Buffer: 10 minutes/);
   assert.match(generated, /Appointment start: Not recorded/);
-  assert.match(generated, /Not on the active itinerary\n\nDemo excluded office\nStatus: Excluded\nAddress: 400 Example Way\n\nDemo held office\nStatus: Held\nAddress: 300 Example Way$/);
+  const omittedSchedule = [
+    'Not on the active itinerary', '', 'Demo excluded office', 'Status: Excluded', 'Address: 400 Example Way',
+    'Appointment start: Not recorded', 'Appointment end: Not recorded', 'Dwell: 20 minutes', 'Buffer: 10 minutes',
+    '', 'Demo held office', 'Status: Held', 'Address: 300 Example Way', 'Appointment start: Not recorded',
+    'Appointment end: Not recorded', 'Dwell: 20 minutes', 'Buffer: 10 minutes',
+  ].join('\n');
+  assert.ok(generated.includes(omittedSchedule));
   assert.ok(generated.indexOf('B · Demo garden suites') < generated.indexOf('Not on the active itinerary'));
   assert.doesNotMatch(generated, /Contact:|Phone:|Access:|Demo listing contact|West entrance/);
   assert.doesNotMatch(generated, /Unaccepted replacement/);
