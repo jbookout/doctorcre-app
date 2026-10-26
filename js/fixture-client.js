@@ -187,6 +187,8 @@ export async function createFixtureClient(opts = {}) {
 
   /** @type {any[]} confirm proposals from call distill */
   let pendingConfirms = [];
+  /** @type {any[]} synthetic read-call-outcomes rows; empty unless a test supplies them */
+  const callOutcomes = structuredClone(opts.callOutcomes || []);
 
   /** field event index: deal|field -> last event id */
   const lastFieldEvent = new Map();
@@ -2876,6 +2878,24 @@ export async function createFixtureClient(opts = {}) {
 
     async resolvePostCallCandidate({ candidate_id, accept, idempotency_key }) {
       return client.resolveConfirm({ proposal_id:candidate_id, accept, idempotency_key });
+    },
+
+    async readCallOutcomes() {
+      return { schema_version: 'call-outcomes.v1', send: false,
+        calls: callOutcomes.filter(call => !call.reviewed).map(call => structuredClone(call)) };
+    },
+
+    async undoCallChange({ candidate_id }) {
+      const change = callOutcomes.flatMap(call => call.applied).find(item => item.candidate_id === candidate_id);
+      if (!change) throw Object.assign(new Error('Unknown call change.'), { payload: { error: 'not_found' } });
+      change.undone_at ||= new Date().toISOString();
+      return { ok: true, candidate_id, undone: true };
+    },
+
+    async reviewCallOutcome({ session_id }) {
+      const call = callOutcomes.find(item => item.session_id === session_id);
+      if (call) call.reviewed = true;
+      return { ok: true, session_id, reviewed: true };
     },
 
     async resolveConfirm({ proposal_id, accept, idempotency_key }) {
