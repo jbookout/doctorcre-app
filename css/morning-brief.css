@@ -14,7 +14,6 @@
 @media (hover: hover) { .morning-brief button:not(:disabled):hover { background: var(--surface-3); border-color: var(--hairline-strong); } }
 .morning-toolbar { flex-wrap: wrap; margin: var(--space-5) 0; }
 #morningUpdated { margin-right: auto; color: var(--fg-muted); font-size: var(--font-size-1); font-variant-numeric: tabular-nums; }
-#morningSpeech[aria-pressed=true] { border-color: var(--fg); background: var(--surface-3); box-shadow: inset 0 0 0 1px var(--fg); }
 .morning-brief button:disabled { opacity: .45; cursor: default; }
 #morningCoverage { color: var(--status-warn-ink); font-size: var(--font-size-1); }
 #morningContent { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-3) var(--space-5); }

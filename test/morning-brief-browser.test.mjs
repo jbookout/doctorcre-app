@@ -68,18 +68,21 @@ test('live brief opens on request and wide record detail; desktop/phone renders,
  await page.keyboard.press('Escape');assert.equal(await page.locator('#selfAvatar').evaluate(node=>document.activeElement===node),true);
  assert.deepEqual(state.errors,[]);assert.ok(state.calls.filter(call=>call.name==='morning-brief').every(call=>Object.keys(call.args).length===0));
 });
-test('daily preference survives navigation; speech is opt-in, stops, persists, and resumes refresh with no duplicate autoplay',async t=>{
- const state=await setup(t);const {page}=state;await state.goto();await page.locator('#docOpen[data-brief-unseen]').waitFor();assert.equal(await page.locator('#docMorningBrief').evaluate(node=>node.open),false);await page.locator('#docOpen').click();await page.locator('#docMorning').click();await page.locator('#docMorningBrief[open]').waitFor();assert.equal(await page.evaluate(()=>spoken.length),0);
- await page.locator('#morningSpeech').click();await page.locator('#morningListen').click();assert.equal(await page.evaluate(()=>spoken.length),1);assert.match(await page.evaluate(()=>spoken[0]),/Needs Joe.*unavailable/);
- await page.locator('#morningClose').click();assert.ok(await page.evaluate(()=>speechStops)>0);const loaded=page.waitForResponse(res=>res.url().endsWith('/mcp')&&res.request().postDataJSON()?.params?.name==='morning-brief');await page.reload();await loaded;await page.locator('#docPresence').waitFor({state:'attached'});
- assert.equal(await page.locator('#docMorningBrief').evaluate(node=>node.open),false);await page.locator('#docOpen').click();await page.locator('#docMorning').click();await page.locator('[data-brief-record]').first().waitFor();assert.equal(await page.locator('#morningSpeech').getAttribute('aria-pressed'),'true');assert.equal(await page.evaluate(()=>spoken.length),0);
+test('daily preference survives navigation and refresh without narration, including legacy speech opt-in',async t=>{
+ const state=await setup(t);const {page}=state;
+ await page.addInitScript(()=>localStorage.setItem('doctorcre:morning:joe',JSON.stringify({...JSON.parse(localStorage.getItem('doctorcre:morning:joe')||'{}'),speech:true})));
+ await state.goto();await page.locator('#docOpen[data-brief-unseen]').waitFor();assert.equal(await page.locator('#docMorningBrief').evaluate(node=>node.open),false);await page.locator('#docOpen').click();await page.locator('#docMorning').click();await page.locator('#docMorningBrief[open]').waitFor();
+ assert.equal(await page.getByRole('button',{name:/Brief speech|Listen to morning brief|Stop morning brief/}).count(),0);assert.equal(await page.evaluate(()=>spoken.length),0);
+ await page.locator('#morningClose').click();const loaded=page.waitForResponse(res=>res.url().endsWith('/mcp')&&res.request().postDataJSON()?.params?.name==='morning-brief');await page.reload();await loaded;await page.locator('#docPresence').waitFor({state:'attached'});
+ assert.equal(await page.locator('#docMorningBrief').evaluate(node=>node.open),false);await page.locator('#docOpen').click();await page.locator('#docMorning').click();await page.locator('[data-brief-record]').first().waitFor();
+ assert.equal(await page.getByRole('button',{name:/Brief speech|Listen to morning brief|Stop morning brief/}).count(),0);assert.equal(await page.evaluate(()=>spoken.length),0);
  state.change();await page.evaluate(()=>window.dispatchEvent(new Event('online')));try { await page.waitForFunction(()=>document.getElementById('morningContent').textContent.includes('updated demo')); } catch(error) { throw new Error(JSON.stringify({calls:state.calls.filter(call=>call.name==='morning-brief').length,text:await page.locator('#docMorningBrief').innerText(),errors:state.errors})+error.message); }
  assert.deepEqual(state.errors,[]);
 });
 test('unavailable brief recovers on background read, clears prior facts, partner changes never reuse content/preferences',async t=>{
  const state=await setup(t,{brief:false});const {page}=state;await state.goto();await page.locator('#docOpen').click();await page.locator('#docMorning').click();assert.match(await page.locator('#morningCoverage').innerText(),/unavailable/);
  state.ready=true;await page.evaluate(()=>window.dispatchEvent(new Event('online')));try { await page.locator('[data-brief-record]').first().waitFor(); } catch(error) { throw new Error(JSON.stringify({calls:state.calls.filter(call=>call.name==='morning-brief').length,text:await page.locator('#docMorningBrief').innerText(),errors:state.errors})+error.message); }state.fail=true;await page.evaluate(()=>window.dispatchEvent(new Event('online')));await page.waitForFunction(()=>document.getElementById('morningCoverage').textContent==='Brief unavailable');assert.equal(await page.locator('[data-brief-record]').count(),0);
- state.fail=false;state.scope='dell';await page.evaluate(()=>window.dispatchEvent(new Event('online')));await page.waitForURL('**/public-shell/session-ended.html');assert.equal(await page.locator('#docMorningBrief').count(),0);await state.goto();await page.locator('#docOpen').click();await page.locator('#docMorning').click();await page.waitForFunction(()=>document.getElementById('morningTitle').textContent.includes('Dell'));assert.equal(await page.locator('#morningSpeech').getAttribute('aria-pressed'),'false');assert.deepEqual(state.errors,[]);
+ state.fail=false;state.scope='dell';await page.evaluate(()=>window.dispatchEvent(new Event('online')));await page.waitForURL('**/public-shell/session-ended.html');assert.equal(await page.locator('#docMorningBrief').count(),0);await state.goto();await page.locator('#docOpen').click();await page.locator('#docMorning').click();await page.waitForFunction(()=>document.getElementById('morningTitle').textContent.includes('Dell'));assert.deepEqual(state.errors,[]);
 });
 test('V2 motion: hover is a state transition with no pulse; reduced motion is measured at desktop and phone widths',async t=>{
  for(const motion of ['no-preference','reduce'])for(const width of [1440,390]){
@@ -111,17 +114,15 @@ test('refresh retains Details on stable note identity and uses Back when it leav
  assert.equal(await page.evaluate(()=>document.activeElement.id),'morningBack');assert.equal(await page.locator('#morningContent details[open]').count(),0);
 });
 
-for (const key of ['d', 'k']) test(`Doc Control+${key} switches from a speaking brief to the command bar with one modal`, async t => {
+for (const key of ['d', 'k']) test(`Doc Control+${key} switches from the brief to the command bar with one modal`, async t => {
  const { page, goto } = await setup(t);
  await goto(); await page.locator('#docOpen[data-brief-unseen]').waitFor();await page.locator('#docOpen').click();await page.locator('#docMorning').click();await page.locator('#docMorningBrief[open]').waitFor();
- await page.locator('#morningSpeech').click(); await page.locator('#morningListen').click();
  await page.keyboard.press(`Control+${key}`);
  await page.locator('#docDetail[open]').waitFor();
  assert.equal(await page.locator('dialog[open]').count(), 1);
  // The brief's close event lands a task later; focus must still be on the command bar after it.
  await page.evaluate(() => new Promise(resolve => setTimeout(resolve, 50)));
  assert.equal(await page.locator('#docCommandInput').evaluate(node => document.activeElement === node), true);
- await page.waitForFunction(() => window.speechStops > 0);
  await page.keyboard.press('Escape');
  await page.waitForFunction(() => document.activeElement?.id === 'docOpen');
  assert.equal(await page.locator('dialog[open]').count(), 0);
@@ -132,7 +133,7 @@ for (const key of ['d', 'k']) test(`Doc Control+${key} switches from a speaking 
 });
 
 
-test('full returned coverage is expandable and spoken on desktop and phone in a UTC browser',async t=>{
+test('full returned coverage is expandable on desktop and phone in a UTC browser',async t=>{
  const state=await setup(t,{coverage:true,timezoneId:'UTC'}),{page}=state;
  await state.goto();await page.locator('#docOpen[data-brief-unseen]').waitFor();await page.locator('#docOpen').click();await page.locator('#docMorning').click();
  const needs=page.locator('[data-brief-section="needs_joe"]');
@@ -146,27 +147,23 @@ test('full returned coverage is expandable and spoken on desktop and phone in a 
  await page.locator('[data-brief-section="deals"] > summary').click();await page.getByText(/Demo account portfolio/).waitFor({state:'visible'});
  const account=page.locator('[data-brief-section="deals"] li details');await account.locator('summary').click();assert.match(await account.innerText(),/C-DEMO.*Attention deals: 3.*Overdue deals: 2/s);
  await page.locator('[data-brief-section="costs"] summary').click();await page.getByText(/Demo provider/).first().waitFor({state:'visible'});
- await page.locator('#morningSpeech').click();await page.locator('#morningListen').click();
- assert.match(await page.evaluate(()=>window.spoken.at(-1)),/Needs Joe.*partial.*Work requests unavailable.*Renewals.*unavailable/s);
  await needs.scrollIntoViewIfNeeded();await snap(page,'coverage-desktop');await page.setViewportSize({width:390,height:844});await needs.scrollIntoViewIfNeeded();await snap(page,'coverage-phone');
  assert.ok(await page.locator('#docMorningBrief').evaluate(node=>node.scrollWidth<=node.clientWidth));
  assert.deepEqual(state.errors,[]);
 });
 
-for(const selected of [false,true]) test(`F4 resumed brief removes ${selected?'selected detail':'speaking facts'} until the current authenticated read`,async t=>{
+for(const selected of [false,true]) test(`F4 resumed brief removes ${selected?'selected detail':'priority facts'} until the current authenticated read`,async t=>{
  let hold=false,release;const held=new Promise(resolve=>release=resolve);t.after(()=>release());
  const {page,goto,errors}=await setup(t,{onBrief:()=>hold?held:undefined});await goto();
  await page.locator('#docOpen[data-brief-unseen]').waitFor();await page.locator('#docOpen').click();await page.locator('#docMorning').click();
- await page.locator('[data-brief-record]').first().waitFor();await page.locator('#morningSpeech').click();
+ await page.locator('[data-brief-record]').first().waitFor();
  if(selected){await page.locator('[data-brief-record]').first().click();await page.locator('.morning-record').waitFor();}
- else await page.locator('#morningListen').click();
  hold=true;
- const suspended=await page.evaluate(()=>{window.dispatchEvent(new Event('online'));return {content:document.getElementById('morningContent').textContent,title:document.getElementById('morningTitle').textContent,disabled:document.getElementById('morningListen').disabled,stops:speechStops};});
- assert.equal(suspended.content,'');assert.equal(suspended.title,'Morning brief');assert.equal(suspended.disabled,true);
- if(!selected)assert.ok(suspended.stops>0);
- await snap(page,`suspended-${selected?'detail':'speech'}`);
+ const suspended=await page.evaluate(()=>{window.dispatchEvent(new Event('online'));return {content:document.getElementById('morningContent').textContent,title:document.getElementById('morningTitle').textContent};});
+ assert.equal(suspended.content,'');assert.equal(suspended.title,'Morning brief');
+ await snap(page,`suspended-${selected?'detail':'priorities'}`);
  release();await page.locator('[data-brief-record]').first().waitFor();assert.equal(await page.locator('.morning-record').count(),0);
- assert.equal(await page.evaluate(()=>spoken.length),selected?0:1);assert.deepEqual(errors,[]);
+ assert.equal(await page.evaluate(()=>spoken.length),0);assert.deepEqual(errors,[]);
 });
 
 for (const trigger of ['reopen', 'idle wake']) test(`F4 ${trigger} clears cached facts and replaces an outstanding read`, {timeout:15_000}, async t => {
@@ -184,22 +181,20 @@ for (const trigger of ['reopen', 'idle wake']) test(`F4 ${trigger} clears cached
  await page.locator('#docOpen[data-brief-unseen]').waitFor();
  await page.locator('#docOpen').click(); await page.locator('#docMorning').click();
  await page.locator('[data-brief-record]').first().waitFor();
- await page.locator('#morningSpeech').click();
  if(trigger==='reopen')await page.locator('#morningClose').click();
- else await page.locator('#morningListen').click();
  hold=true;
  await page.locator('#morningRefresh').evaluate(node=>node.click());
  await reading;
  const pending=await page.evaluate(trigger=>{
   if(trigger==='reopen')document.getElementById('docMorning').click();
   else {const original=Date.now;Date.now=()=>original()+31*60_000;document.dispatchEvent(new Event('pointerdown'));Date.now=original;}
-  return {content:document.getElementById('morningContent').textContent,title:document.getElementById('morningTitle').textContent,disabled:document.getElementById('morningListen').disabled};
+  return {content:document.getElementById('morningContent').textContent,title:document.getElementById('morningTitle').textContent};
  },trigger);
- assert.deepEqual(pending,{content:'',title:'Morning brief',disabled:true});
+ assert.deepEqual(pending,{content:'',title:'Morning brief'});
  releaseOld();
  assert.equal(await page.locator('[data-brief-record]').count(),0);
  releaseFresh(); await page.locator('[data-brief-record]').first().waitFor();
- assert.equal(await page.locator('#morningListen').isDisabled(),false);
+ assert.equal(await page.locator('[data-brief-record]').count(),3);
 
  assert.deepEqual(state.errors,[]);
 });

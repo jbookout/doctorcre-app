@@ -10,7 +10,7 @@
  *
  * Morning brief: CARR derives sponsor from the authenticated session. Each
  * section independently reports ready/empty/unavailable. Browser preferences
- * contain only day/cutoff/speech; brief contents are never cached on disk.
+ * contain only opening dates, cutoff and owner filter; brief contents are never cached on disk.
  * @typedef {{state:string,sponsor:string,sections:Object}} MorningBriefResponse
  *
  * @typedef {Object} PipelineEvent
