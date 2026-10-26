@@ -6,14 +6,13 @@ import { cheatSheetText, tourDisplayName } from "./tour-format.js";
 import { PLAN_FIELDS, SEARCH_FIELDS, createDraft, clientSuggestions, tourGroups, validateCriteria, addPrivateFiles } from "./planner-model.js";
 
 // Each area button's market as a Census place point. Fort Walton / Destin uses the
-// Fort Walton Beach place point. Labels alternate above and below the coast so
-// the close Panhandle markets stay readable.
+// Fort Walton Beach place point. The map fits these five points.
 const territoryAreas = [
-  { key: "Mobile, AL", label: "Mobile", city: "Mobile", state: "AL", placement: "bottom" },
-  { key: "Pensacola, FL", label: "Pensacola", city: "Pensacola", state: "FL", placement: "top" },
-  { key: "Fort Walton Beach / Destin, FL", label: "Fort Walton / Destin", city: "Fort Walton Beach", state: "FL", placement: "bottom" },
-  { key: "Panama City, FL", label: "Panama City", city: "Panama City", state: "FL", placement: "top" },
-  { key: "Tallahassee, FL", label: "Tallahassee", city: "Tallahassee", state: "FL", placement: "bottom" },
+  { key: "Mobile, AL", label: "Mobile", city: "Mobile", state: "AL" },
+  { key: "Pensacola, FL", label: "Pensacola", city: "Pensacola", state: "FL" },
+  { key: "Fort Walton Beach / Destin, FL", label: "Fort Walton / Destin", city: "Fort Walton Beach", state: "FL" },
+  { key: "Panama City, FL", label: "Panama City", city: "Panama City", state: "FL" },
+  { key: "Tallahassee, FL", label: "Tallahassee", city: "Tallahassee", state: "FL" },
 ];
 
 export function mountPlanner({ document, window, api = createPlannerClient() }) {
@@ -298,16 +297,15 @@ export function mountPlanner({ document, window, api = createPlannerClient() }) 
     button.textContent = root.hidden ? "Show territory" : "Hide territory";
     if (root.hidden || territoryLoading) return;
     if (territory) { territory.resize(); return; }
-    territoryLoading = true;
+    territoryLoading = true; delete root.dataset.state;
     try {
       const { mountTerritoryMap } = await import("../js/leads-territory-map.js");
       if (disposed) return;
       territory = await mountTerritoryMap(root, chooseMarket, () => {}, { signal: territoryAbort.signal, areas: territoryAreas,
-        padding: root.clientWidth < 520 ? { top: 32, bottom: 32, left: 40, right: 40 } : { top: 40, bottom: 40, left: 64, right: 64 },
-        markets: [{ city: "Mobile", state: "AL" }, { city: "Tallahassee", state: "FL" }, { city: "Dothan", state: "AL" }, { city: "Panama City", state: "FL" }] });
+        padding: root.clientWidth < 520 ? { top: 44, bottom: 44, left: 16, right: 16 } : { top: 56, bottom: 56, left: 96, right: 96 }, markets: territoryAreas });
       if (disposed) territory?.dispose();
       else { territory?.select(search.values.area); message("#territory-status", "Market context only. US Census 2025 geography; no property or navigation pins."); }
-    } catch { if (!disposed) message("#territory-status", "Territory unavailable. Choose an area below; hide and show territory to retry."); }
+    } catch { if (!disposed) { root.dataset.state = "failed"; message("#territory-status", "Territory unavailable. Choose an area above; hide and show territory to retry."); } }
     finally { territoryLoading = false; }
   });
   const auto = mountAutoRefresh({ document, window, refresh });

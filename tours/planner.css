@@ -66,13 +66,22 @@
 .territory-heading h2 { font-size: var(--font-size-3); }
 .territory-caption { margin-right: auto; color: var(--fg-muted); font-size: var(--font-size-1); }
 .territory-map { display: block; width: 100%; aspect-ratio: 3 / 1; max-height: 420px; margin: var(--space-4) 0 0; overflow: hidden; border: var(--hairline-width) solid var(--hairline); border-radius: var(--radius-2); }
-.territory-map[hidden] { display: none; }
+.territory-map[hidden], .territory-map[data-state="failed"] { display: none; }
 #planner-territory .area-marker { min-width: 0; min-height: 0; width: 14px; height: 14px; padding: 0; border: 2px solid var(--surface-1); border-radius: 50%; background: var(--data-1); }
 /* The visible dot stays small; an invisible ring keeps a 44px touch target. */
 .area-marker::after { content: ""; position: absolute; inset: -15px; border-radius: 50%; }
 .area-marker span { position: absolute; left: 50%; padding: 1px var(--space-2); border: var(--hairline-width) solid var(--hairline); border-radius: var(--radius-round); background: var(--surface-1); color: var(--fg); font-size: var(--font-size-1); font-weight: var(--font-weight-regular); white-space: nowrap; transform: translateX(-50%); }
+/* js/leads-territory-map.js picks each label's side so it stays inside the map. */
 .area-marker[data-placement="top"] span { bottom: calc(100% + var(--space-1)); }
 .area-marker[data-placement="bottom"] span { top: calc(100% + var(--space-1)); }
+.area-marker[data-placement="right"] span, .area-marker[data-placement="left"] span { top: 50%; transform: translateY(-50%); }
+.area-marker[data-placement="right"] span { left: calc(100% + var(--space-1)); }
+.area-marker[data-placement="left"] span { right: calc(100% + var(--space-1)); left: auto; }
+.area-marker[data-placement*="-"] span { transform: none; }
+.area-marker[data-placement^="top-"] span { bottom: calc(100% - 2px); }
+.area-marker[data-placement^="bottom-"] span { top: calc(100% - 2px); }
+.area-marker[data-placement$="-right"] span { left: calc(100% - 2px); }
+.area-marker[data-placement$="-left"] span { right: calc(100% - 2px); left: auto; }
 .area-marker:hover span { border-color: var(--hairline-strong); }
 #planner-territory .area-marker[aria-pressed="true"] { width: 18px; height: 18px; background: var(--fg); box-shadow: 0 0 0 2px var(--fg); }
 .area-marker[aria-pressed="true"] span { border-color: var(--fg); font-weight: var(--font-weight-strong); }
@@ -124,6 +133,8 @@
   .planner-grid > .card { padding: var(--space-4); }
   .drop-heading { flex-wrap: wrap; }
   .territory-map { aspect-ratio: 2 / 1; }
+  /* Phone: tighter pills, and a long market name may wrap to two lines. */
+  .area-marker span { width: max-content; max-width: 6.5em; padding: 0 var(--space-1); line-height: 1.2; white-space: normal; text-align: center; }
   .market-buttons button { flex: 1 1 42%; }
   .tour-dialog { width: calc(100vw - 20px); max-height: calc(100dvh - 20px); padding: var(--space-4); }
   .detail-stops { grid-template-columns: minmax(0, 1fr); }

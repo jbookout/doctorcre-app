@@ -24,11 +24,14 @@ export async function mountTerritoryMap(root, selectMarket, selectLead, { signal
   // stylesheet it paints nothing rather than inventing a colour.
   const doc = root.ownerDocument, view = doc.defaultView;
   const token = (name) => view?.getComputedStyle(doc.documentElement).getPropertyValue(name).trim() || "transparent";
-  const paint = [["ground", "background-color", "--map-water"], ["land", "fill-color", "--map-land"], ["borders", "line-color", "--hairline-strong"]];
+  // Only the background is water. Territory states are land; neighbouring states
+  // are muted context land, so nothing outside the Gulf and Atlantic reads as sea.
+  const paint = [["ground", "background-color", "--map-water"], ["context", "fill-color", "--map-context"], ["land", "fill-color", "--map-land"], ["borders", "line-color", "--hairline-strong"]];
   const shell = mountMarketMap(root, { interactive: false, signal, loadMapLibre,
     center: [-86.5, 31.9], zoom: 5.5, style: { version: 8, sources: { territory: { type: "geojson", data: geometry } },
       layers: [{ id: "ground", type: "background", paint: { "background-color": token("--map-water") } },
-        { id: "land", type: "fill", source: "territory", paint: { "fill-color": token("--map-land") } },
+        { id: "context", type: "fill", source: "territory", filter: ["==", ["get", "role"], "context"], paint: { "fill-color": token("--map-context") } },
+        { id: "land", type: "fill", source: "territory", filter: ["==", ["get", "role"], "territory"], paint: { "fill-color": token("--map-land") } },
         { id: "borders", type: "line", source: "territory", paint: { "line-color": token("--hairline-strong"), "line-opacity": .9, "line-width": 1 } }] } });
   const mounted = await shell.ready;
   if (!mounted) return null;
@@ -45,12 +48,40 @@ export async function mountTerritoryMap(root, selectMarket, selectLead, { signal
   themes?.observe(doc.documentElement, { attributes: true, attributeFilter: ["data-theme", "data-color-assist"] });
   const areaMarkers = areas.map((area, index) => {
     const button = doc.createElement("button"), label = doc.createElement("span");
-    button.type = "button"; button.className = "area-marker"; button.dataset.market = area.key; button.dataset.placement = area.placement || "top";
+    button.type = "button"; button.className = "area-marker"; button.dataset.market = area.key;
     button.setAttribute("aria-pressed", "false"); button.setAttribute("aria-label", `Choose ${area.label} on the map`);
     label.textContent = area.label; button.append(label);
     button.addEventListener("click", () => selectMarket(area.key));
-    return { button, marker: new gl.Marker({ element: button }).setLngLat(areaPlaces[index].position).addTo(map) };
+    return { button, label, marker: new gl.Marker({ element: button }).setLngLat(areaPlaces[index].position).addTo(map) };
   });
+  // Labels go beside their own dot. Every combination of sides is scored (a few
+  // markets, eight sides each, pruned) and the one that keeps every label inside the map,
+  // clear of other labels and away from other dots, wins; ties prefer the earlier side.
+  const SIDES = ["right", "left", "top", "bottom", "top-right", "bottom-right", "top-left", "bottom-left"];
+  function placeLabels() {
+    const frame = root.getBoundingClientRect(), gap = 2;
+    const dots = areaMarkers.map(({ button }) => button.getBoundingClientRect());
+    const rects = areaMarkers.map(({ button, label }) => SIDES.map(side => { button.dataset.placement = side; return label.getBoundingClientRect(); }));
+    const inside = r => r.left >= frame.left + gap && r.right <= frame.right - gap && r.top >= frame.top + gap && r.bottom <= frame.bottom - gap;
+    const hits = (a, b, room = gap) => a.left < b.right + room && b.left < a.right + room && a.top < b.bottom + room && b.top < a.bottom + room;
+    // A label that brushes another market's dot reads as that market's name.
+    const near = (a, b) => hits(a, b, 14);
+    const own = rects.map((sides, index) => sides.map((rect, side) => (inside(rect) ? 0 : 100) + side / 10
+      + dots.filter((dot, other) => other !== index && hits(rect, dot)).length * 10
+      + dots.filter((dot, other) => other !== index && near(rect, dot)).length * 3));
+    let best = { cost: Infinity, choice: [] };
+    (function search(index, choice, cost) {
+      if (cost >= best.cost) return;
+      if (index === rects.length) { best = { cost, choice: [...choice] }; return; }
+      for (let side = 0; side < SIDES.length; side++) {
+        const rect = rects[index][side];
+        const clash = choice.filter((other, previous) => hits(rect, rects[previous][other])).length * 10;
+        choice.push(side); search(index + 1, choice, cost + own[index][side] + clash); choice.pop();
+      }
+    })(0, [], 0);
+    areaMarkers.forEach(({ button }, index) => { button.dataset.placement = SIDES[best.choice[index]]; });
+  }
+  if (areaMarkers.length) { placeLabels(); map.on("resize", placeLabels); }
   function draw() {
     const clusters = [];
     for (const feature of marketFeatures(latest).features.sort((a,b) => b.properties.count-a.properties.count)) {
@@ -99,9 +130,9 @@ export async function mountTerritoryMap(root, selectMarket, selectLead, { signal
       map.on("idle", ready); map.on("error", failed); signal?.addEventListener("abort", aborted, { once: true });
       if (signal?.aborted) aborted();
     });
-  } catch (error) { map.off("moveend", draw); themes?.disconnect(); for (const { marker } of areaMarkers) marker.remove(); shell.destroy(); throw error; }
+  } catch (error) { map.off("moveend", draw); map.off("resize", placeLabels); themes?.disconnect(); for (const { marker } of areaMarkers) marker.remove(); shell.destroy(); throw error; }
   return { resize() { map.resize(); }, locate(lead) { return marketLocation(lead, places); },
     update(groups, leadId) { latest=groups;selected=leadId;draw(); },
-    select(key) { for (const { button } of areaMarkers) button.setAttribute("aria-pressed", String(button.dataset.market === key)); },
-    dispose() {map.off("moveend",draw);themes?.disconnect();for(const item of [...markers.values(), ...areaMarkers])item.marker.remove();shell.destroy();} };
+    select(key) { for (const { button } of areaMarkers) button.setAttribute("aria-pressed", String(button.dataset.market === key)); placeLabels(); },
+    dispose() {map.off("moveend",draw);map.off("resize",placeLabels);themes?.disconnect();for(const item of [...markers.values(), ...areaMarkers])item.marker.remove();shell.destroy();} };
 }

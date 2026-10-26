@@ -144,7 +144,8 @@ test('planner reveals reviewed territory on demand and keeps editable market con
   await page.route('**/data/leads-territory.geojson', route => route.fulfill({ status: 503 }));
   const reveal = page.getByRole('button', { name: 'Show territory', exact: true });
   await reveal.focus(); await page.keyboard.press('Enter');
-  await page.getByRole('status').filter({ hasText: 'Territory unavailable' }).waitFor();
+  await page.getByRole('status').filter({ hasText: 'Territory unavailable. Choose an area above' }).waitFor();
+  assert.equal(await page.locator('#planner-territory').isVisible(), false, 'a failed map leaves no empty box');
   await page.locator('[data-market="Pensacola, FL"]').click();
   assert.equal(await page.locator('#space-area').inputValue(), 'Pensacola, FL');
   await page.getByLabel('Undo search edit', { exact: true }).click();
@@ -170,7 +171,8 @@ for (const width of [1440, 390]) test(`planner renders Census geography after re
   await page.locator('#planner-territory canvas').waitFor();
   await page.waitForFunction(() => globalThis.plannerRenderer?.loaded());
   assert.ok(await page.evaluate(() => plannerRenderer.queryRenderedFeatures({ layers: ['land'] }).length) > 0);
-  assert.deepEqual(await page.evaluate(() => plannerBounds), [[-88.107853, 30.239496], [-84.252272, 31.233698]]);
+  // The extent is the five area points, so the markets fill the map.
+  assert.deepEqual(await page.evaluate(() => plannerBounds), [[-88.107853, 30.239496], [-84.252272, 30.668246]]);
   const canvas = await page.locator('#planner-territory canvas').elementHandle();
   await page.getByRole('button', { name: 'Hide territory', exact: true }).click();
   assert.equal(await page.locator('#planner-territory').isVisible(), false);
@@ -195,8 +197,25 @@ for (const width of [1440, 390]) test(`planner renders Census geography after re
   assert.equal(await canvas.evaluate(node => node.isConnected), true);
   assert.equal(calls.filter(call => call.path.endsWith('leads-territory.geojson')).length, 1);
   // Water and land stay distinct in the painted theme.
-  assert.notEqual(await page.evaluate(() => plannerRenderer.getPaintProperty('ground', 'background-color')),
-    await page.evaluate(() => plannerRenderer.getPaintProperty('land', 'fill-color')));
+  const paints = () => page.evaluate(() => Object.fromEntries([['ground', 'background-color'], ['context', 'fill-color'], ['land', 'fill-color']]
+    .map(([layer, property]) => [layer, String(plannerRenderer.getPaintProperty(layer, property))])));
+  const before = await paints();
+  assert.equal(new Set(Object.values(before)).size, 3, 'water, context land and territory land are distinct');
+  // Every label stays inside the map and clear of every other label and dot.
+  const layout = await page.evaluate(() => {
+    const frame = document.querySelector('#planner-territory').getBoundingClientRect();
+    const labels = [...document.querySelectorAll('#planner-territory .area-marker span')].map(node => node.getBoundingClientRect());
+    const dots = [...document.querySelectorAll('#planner-territory .area-marker')].map(node => node.getBoundingClientRect());
+    const hits = (a, b) => a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
+    return { inside: labels.every(r => r.left >= frame.left && r.right <= frame.right && r.top >= frame.top && r.bottom <= frame.bottom),
+      overlaps: labels.flatMap((a, i) => [...labels.map((b, j) => j > i && hits(a, b)), ...dots.map((b, j) => j !== i && hits(a, b))]).filter(Boolean).length };
+  });
+  assert.deepEqual(layout, { inside: true, overlaps: 0 });
+  // A theme switch repaints the open map in place.
+  await page.evaluate(() => { document.documentElement.dataset.theme = document.documentElement.dataset.theme === 'light' ? 'dark' : 'light'; });
+  await page.waitForFunction(previous => String(plannerRenderer.getPaintProperty('ground', 'background-color')) !== previous, before.ground);
+  const after = await paints();
+  assert.notEqual(after.land, before.land); assert.notEqual(after.context, before.context);
   await mkdir(new URL('out/test-artifacts/w6/', root), { recursive: true });
   await page.screenshot({ path: new URL(`out/test-artifacts/w6/territory-${width}.png`, root).pathname, fullPage: true, animations: 'disabled' });
   assert.deepEqual(errors, []);
