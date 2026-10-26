@@ -66,7 +66,7 @@ export function agendaSnapshot(board, details, { scope = 'team', today = localTo
   const priority = entry => !entry.day ? 1 : entry.day <= today ? 0 : 2;
   entries.sort((a, b) => priority(a) - priority(b) || (a.day || '').localeCompare(b.day || '') || a.key.localeCompare(b.key));
   const week = Array.from({ length: 7 }, (_, i) => ({ day: addDays(today, i), entries: entries.filter(entry => entry.day === addDays(today, i)) }));
-  return { entries, week, failed, undated, upcoming: entries, dueToday: entries.filter(entry => entry.day === today) };
+  return { entries, week, failed, undated, upcoming: entries, dueToday: entries.filter(entry => entry.day === today), overdue: entries.filter(entry => entry.day && entry.day < today) };
 }
 
 // A single bounded snapshot supplies flags, dates and tasks. Slow or failed optional
