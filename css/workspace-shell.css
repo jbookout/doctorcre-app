@@ -1,0 +1,42 @@
+.workspace-shell,
+.workspace-split,
+.workspace-branch,
+.workspace-group {
+  min-width: 0;
+  min-height: 0;
+}
+.workspace-shell,
+.workspace-split,
+.workspace-branch {
+  display: flex;
+  flex: 1;
+}
+.workspace-shell,
+.workspace-branch,
+.workspace-split[data-axis="vertical"],
+.workspace-group {
+  flex-direction: column;
+}
+.workspace-shell {
+  width: 100%;
+}
+.workspace-split {
+  gap: var(--space-2);
+}
+.workspace-group {
+  display: flex;
+  flex: 1;
+}
+.workspace-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+.workspace-panel-slot {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+.workspace-panel-slot > [hidden] {
+  display: none;
+}

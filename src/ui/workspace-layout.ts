@@ -184,3 +184,13 @@ export function resizeSplit(layout: Layout, id: string, size: number): Layout {
     return { ...node, ratio: nextRatio };
   }) });
 }
+
+export function selectPanel(layout: Layout, panel: string): Layout {
+  const current = validateLayout(layout);
+  if (!hasPanel(current, panel)) throw new Error("Unknown panel");
+  function select(node: LayoutNode): LayoutNode {
+    if (node.kind === "tabs") return node.panels.includes(panel) ? { ...node, active: panel } : node;
+    return { ...node, first: select(node.first), second: select(node.second) };
+  }
+  return { ...current, stage: current.stage && select(current.stage) };
+}
