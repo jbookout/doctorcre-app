@@ -6,13 +6,13 @@ import { chromium } from 'playwright';
 import { createFixtureClient } from '../js/fixture-client.js';
 const root=new URL('../',import.meta.url);
 const routes=(await import("../js/routes.js")).routeContract;
-async function setup(t,{width=1440,motion='no-preference',brief=true,coverage=false,timezoneId='America/Chicago',onBrief}={}) {
+async function setup(t,{width=1440,motion='no-preference',brief=true,coverage=false,timezoneId='America/Chicago',dueDate,onBrief}={}) {
  const browser=await chromium.launch({ args: [...CHROMIUM_SAFETY_ARGS] });t.after(()=>browser.close());const page=await browser.newPage({viewport:{width,height:960},reducedMotion:motion,timezoneId});const context=page.context();
 
  const fixture=await createFixtureClient({seedUrl:`data:application/json;base64,${(await readFile(new URL('data/board-seed.json',root))).toString('base64')}`});
  let scope='joe',fail=false,ready=brief,revision=0,thread=[{id:'demo-note',kind:'note',text:'Demo short summary. Original synthetic entry with additional details.',recorded_at:new Date().toISOString()}];const calls=[],errors=[];
  const day=new Date().toLocaleDateString('en-CA',{timeZone:'America/Chicago'});
- const priorityData=()=>({state:'ready',sponsor:scope,sections:{deals:{state:'ready',items:[{id:'d14',name:'Demo Lease Review',owner:scope},{id:'d05',name:'Demo Tour Planning',owner:scope},{id:'d20',name:'Demo Revised Terms',owner:scope}]},today:{state:'ready',items:[{subject_type:'deal',subject_id:'d14',owner:scope,due_on:'2026-01-01',what:revision ? 'Review updated demo lease comments' : 'Review demo lease comments'},{subject_type:'deal',subject_id:'d05',owner:scope,due_on:day,what:'Confirm demo tour access'}]},loops:{state:'empty',items:[]}}});
+ const priorityData=()=>({state:'ready',sponsor:scope,sections:{deals:{state:'ready',items:[{id:'d14',name:'Demo Lease Review',owner:scope},{id:'d05',name:'Demo Tour Planning',owner:scope},{id:'d20',name:'Demo Revised Terms',owner:scope}]},today:{state:'ready',items:[{subject_type:'deal',subject_id:'d14',owner:scope,due_on:dueDate||'2026-01-01',what:revision ? 'Review updated demo lease comments' : 'Review demo lease comments'},{subject_type:'deal',subject_id:'d05',owner:scope,due_on:day,what:'Confirm demo tour access'}]},loops:{state:'empty',items:[]}}});
  const data=()=>{
   const value=priorityData();
   if(!coverage)return value;
@@ -38,7 +38,7 @@ async function setup(t,{width=1440,motion='no-preference',brief=true,coverage=fa
    if(name==='morning-brief' && onBrief)await onBrief();
    if(name==='morning-brief')return fail ? route.fulfill({status:503,body:''}) : rpc(ready ? data() : {ok:true});
    const methods={'deal-room-board':'getBoard','today-triage':'todayTriage','list-feature-switches':'listFeatureSwitches','list-doc-suggestions':'listDocSuggestions','list-doc-conversations':'listDocConversations','notification-feed':'notificationFeed','loop-board':'loopBoard','list-industry-events':'listIndustryEvents'};
-   if(name==='get-deal-room') {const value=await fixture.getDeal(args.deal);return rpc({...value.deal,deal_id:value.deal.id,thread,critical_dates:[],events:[]});}
+   if(name==='get-deal-room') {const value=await fixture.getDeal(args.deal);return rpc({...value.deal,...(dueDate&&args.deal==='d14'?{next_date:dueDate}:{}),deal_id:value.deal.id,thread,critical_dates:[],events:[]});}
    if(methods[name])return rpc(await fixture[methods[name]](args));
    if(name==='lead-board')return rpc({leads:[],stages:[],as_of:new Date().toISOString()});
    return rpc({ok:true});
@@ -67,6 +67,23 @@ test('live brief opens on request and wide record detail; desktop/phone renders,
  await page.locator('#morningClose').click();await page.locator('#selfAvatar').click();await page.locator('#docOpen').click();await page.locator('#docMorning').click();await page.locator('#docMorningBrief[open]').waitFor();assert.equal(await page.locator('dialog[open]').count(),1);
  await page.keyboard.press('Escape');assert.equal(await page.locator('#selfAvatar').evaluate(node=>document.activeElement===node),true);
  assert.deepEqual(state.errors,[]);assert.ok(state.calls.filter(call=>call.name==='morning-brief').every(call=>Object.keys(call.args).length===0));
+});
+test('brief dates keep their weekday across viewer timezones with keyboard detail and Back',async t=>{
+ for(const [width,timezoneId]of [[1440,'America/Los_Angeles'],[390,'Asia/Tokyo']])await t.test(`${width} ${timezoneId}`,async t=>{
+  const state=await setup(t,{width,timezoneId,dueDate:'2026-03-08T00:00:00.000Z'}),{page}=state;await state.goto();
+  if(width===390)await page.locator('#selfAvatar').click();
+  await page.locator('#docOpen[data-brief-unseen]').waitFor();await page.locator('#docOpen').click();await page.locator('#docMorning').click();
+  const card=page.locator('[data-brief-record="0"]');await card.waitFor();
+  assert.equal(await card.locator('time').innerText(),'Due Sunday, Mar 8, 2026');assert.equal(await card.locator('time').getAttribute('datetime'),'2026-03-08');
+  assert.equal(await card.getAttribute('data-urgency'),'overdue');await snap(page,`due-date-${width}`);
+  await card.focus();await page.keyboard.press('Enter');await page.locator('.morning-record').waitFor();
+  assert.equal(await page.locator('.morning-record dt').filter({hasText:/^Due$/}).locator('..').locator('dd').innerText(),'Sunday, Mar 8, 2026');
+  assert.equal(state.calls.filter(call=>call.name==='get-deal-room').at(-1).args.deal,'d14');
+  await snap(page,`due-record-${width}`);await page.locator('#morningBack').press('Enter');
+  assert.equal(await card.evaluate(node=>document.activeElement===node),true);
+  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
+  assert.equal(await page.locator('#docMorningBrief').evaluate(node=>node.scrollWidth<=node.clientWidth),true);assert.deepEqual(state.errors,[]);
+ });
 });
 test('daily preference survives navigation and refresh without narration, including legacy speech opt-in',async t=>{
  const state=await setup(t);const {page}=state;
