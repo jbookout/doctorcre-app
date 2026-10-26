@@ -1108,7 +1108,7 @@
   "call_outcomes": {
     "producer": {
       "repository": "DoctorCRE/carr-system",
-      "source_commit": "dd2719b8aef703a45649e9c423f1bd1fb5ca9405",
+      "source_commit": "2ffc87b617b59553a84b54b3146a5c96f46beff6",
       "pull_request": "https://github.com/DoctorCRE/carr-system/pull/2362"
     },
     "schema_version": "call-outcomes.v1",
