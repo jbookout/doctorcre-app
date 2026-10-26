@@ -5,11 +5,22 @@ import { createPlannerClient, validateTourList, validateClientList, validateClie
 import { cheatSheetText, tourDisplayName } from "./tour-format.js";
 import { PLAN_FIELDS, SEARCH_FIELDS, createDraft, clientSuggestions, tourGroups, validateCriteria, addPrivateFiles } from "./planner-model.js";
 
+// Each area button's market as a Census place point. Fort Walton / Destin uses the
+// Fort Walton Beach place point. Labels alternate above and below the coast so
+// the close Panhandle markets stay readable.
+const territoryAreas = [
+  { key: "Mobile, AL", label: "Mobile", city: "Mobile", state: "AL", placement: "bottom" },
+  { key: "Pensacola, FL", label: "Pensacola", city: "Pensacola", state: "FL", placement: "top" },
+  { key: "Fort Walton Beach / Destin, FL", label: "Fort Walton / Destin", city: "Fort Walton Beach", state: "FL", placement: "bottom" },
+  { key: "Panama City, FL", label: "Panama City", city: "Panama City", state: "FL", placement: "top" },
+  { key: "Tallahassee, FL", label: "Tallahassee", city: "Tallahassee", state: "FL", placement: "bottom" },
+];
+
 export function mountPlanner({ document, window, api = createPlannerClient() }) {
   const $ = selector => document.querySelector(selector);
   const plan = createDraft(PLAN_FIELDS), search = createDraft(SEARCH_FIELDS);
   let clientsStatus = "pending", clientsMessage = "", clients = [], tours = [], files = [], planClient = "", searchClient = "", planEpoch = 0, searchEpoch = 0, dialogEpoch = 0, refreshEpoch = 0;
-  let currentTour = null, selectedRecord = null, scope = null, scopeEstablished = false, disposed = false;
+  let currentTour = null, selectedRecord = null, scope = null, scopeEstablished = false, disposed = false, territory = null, territoryLoading = false;
   const key = "doctorcre-tour-planning-drafts-v1";
   const clientsUnavailable = "Clients temporarily unavailable. Refresh tours to try again.";
   const clientsLoading = "Clients are loading. Wait, then review again.";
@@ -68,7 +79,10 @@ export function mountPlanner({ document, window, api = createPlannerClient() }) 
       const control = $(`#${prefix}-${field}`);
       if (control.value !== value) control.value = value;
     }
-    if (prefix === "space") for (const button of document.querySelectorAll("[data-market]")) button.setAttribute("aria-pressed", String(button.dataset.market === draft.values.area));
+    if (prefix === "space") {
+      for (const button of document.querySelectorAll(".market-buttons [data-market]")) button.setAttribute("aria-pressed", String(button.dataset.market === draft.values.area));
+      territory?.select(draft.values.area);
+    }
     $(`#${prefix}-undo`).disabled = !draft.canUndo;
   }
   function wireDraft(prefix, draft) {
@@ -274,10 +288,8 @@ export function mountPlanner({ document, window, api = createPlannerClient() }) 
   $("#detail-close").addEventListener("click", closeDialog);
   onDialogClosed($("#tour-dialog"), () => { selectDocRecord(null,null); pageDocContext?.release('tourDetail'); ++dialogEpoch; currentTour=null; });
   $("#tour-dialog").addEventListener("cancel", event => { event.preventDefault(); closeDialog(); });
-  for (const button of document.querySelectorAll("[data-market]")) button.addEventListener("click", () => {
-    search.set("area", button.dataset.market); syncForm("space", search); save("#space-message");
-  });
-  let territory = null, territoryLoading = false;
+  const chooseMarket = market => { search.set("area", market); syncForm("space", search); save("#space-message"); };
+  for (const button of document.querySelectorAll(".market-buttons [data-market]")) button.addEventListener("click", () => chooseMarket(button.dataset.market));
   const territoryAbort = new AbortController();
   $("#show-territory").addEventListener("click", async event => {
     const button = event.currentTarget, root = $("#planner-territory");
@@ -290,10 +302,11 @@ export function mountPlanner({ document, window, api = createPlannerClient() }) 
     try {
       const { mountTerritoryMap } = await import("../js/leads-territory-map.js");
       if (disposed) return;
-      territory = await mountTerritoryMap(root, () => {}, () => {}, { signal: territoryAbort.signal,
+      territory = await mountTerritoryMap(root, chooseMarket, () => {}, { signal: territoryAbort.signal, areas: territoryAreas,
+        padding: root.clientWidth < 520 ? { top: 32, bottom: 32, left: 40, right: 40 } : { top: 40, bottom: 40, left: 64, right: 64 },
         markets: [{ city: "Mobile", state: "AL" }, { city: "Tallahassee", state: "FL" }, { city: "Dothan", state: "AL" }, { city: "Panama City", state: "FL" }] });
       if (disposed) territory?.dispose();
-      else message("#territory-status", "Market context only. US Census 2025 geography; no property or navigation pins.");
+      else { territory?.select(search.values.area); message("#territory-status", "Market context only. US Census 2025 geography; no property or navigation pins."); }
     } catch { if (!disposed) message("#territory-status", "Territory unavailable. Choose an area below; hide and show territory to retry."); }
     finally { territoryLoading = false; }
   });

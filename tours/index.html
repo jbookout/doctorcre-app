@@ -15,11 +15,10 @@
   <header class="planner-header tours-heading"><h1>Tours</h1><div data-layout-slot="status" class="freshness"><time id="planner-updated">Updating…</time><button data-layout-refresh id="planner-refresh" aria-label="Refresh tours" title="Refresh tours" type="button">↻</button></div></header>
   <main class="planner-grid">
     <section class="card territory-card" aria-labelledby="territory-heading">
-      <div class="territory-heading"><h2 id="territory-heading">Territory</h2><span class="territory-caption">Gulf Coast</span></div>
-      <button id="show-territory" type="button" aria-expanded="false" aria-controls="planner-territory">Show territory</button>
+      <div class="territory-heading"><h2 id="territory-heading">Territory</h2><span class="territory-caption">Gulf Coast</span><button id="show-territory" type="button" aria-expanded="false" aria-controls="planner-territory">Show territory</button></div>
+      <div class="market-buttons" aria-label="Choose search area"><button type="button" data-market="Mobile, AL" aria-pressed="false">Mobile</button><button type="button" data-market="Pensacola, FL" aria-pressed="false">Pensacola</button><button type="button" data-market="Fort Walton Beach / Destin, FL" aria-pressed="false">Fort Walton / Destin</button><button type="button" data-market="Panama City, FL" aria-pressed="false">Panama City</button><button type="button" data-market="Tallahassee, FL" aria-pressed="false">Tallahassee</button></div>
       <div id="planner-territory" class="territory-map" role="region" aria-label="Census territory context" hidden></div>
       <p id="territory-status" class="capability-note" role="status" hidden>Market context only. US Census 2025 geography; no property or navigation pins.</p>
-      <div class="market-buttons" aria-label="Choose search area"><button type="button" data-market="Mobile, AL" aria-pressed="false">Mobile</button><button type="button" data-market="Pensacola, FL" aria-pressed="false">Pensacola</button><button type="button" data-market="Fort Walton Beach / Destin, FL" aria-pressed="false">Fort Walton / Destin</button><button type="button" data-market="Panama City, FL" aria-pressed="false">Panama City</button><button type="button" data-market="Tallahassee, FL" aria-pressed="false">Tallahassee</button></div>
     </section>
     <section class="card plan-card" aria-labelledby="plan-title">
       <div class="widget-heading"><h2 id="plan-title">Plan a tour</h2><button id="plan-undo" aria-label="Undo tour edit" title="Undo tour edit" disabled type="button">↶</button></div>

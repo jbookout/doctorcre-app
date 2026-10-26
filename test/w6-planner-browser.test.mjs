@@ -165,6 +165,7 @@ for (const width of [1440, 390]) test(`planner renders Census geography after re
       fitBounds(bounds, options) { globalThis.plannerBounds = bounds.toArray(); return super.fitBounds(bounds, options); }
     }
   ` }));
+  const buttonsTop = await page.locator('.market-buttons').evaluate(node => node.getBoundingClientRect().top);
   await page.getByRole('button', { name: 'Show territory', exact: true }).click();
   await page.locator('#planner-territory canvas').waitFor();
   await page.waitForFunction(() => globalThis.plannerRenderer?.loaded());
@@ -174,12 +175,28 @@ for (const width of [1440, 390]) test(`planner renders Census geography after re
   await page.getByRole('button', { name: 'Hide territory', exact: true }).click();
   assert.equal(await page.locator('#planner-territory').isVisible(), false);
   await page.getByRole('button', { name: 'Show territory', exact: true }).click();
-  await page.locator('[data-market="Pensacola, FL"]').click();
+  // Every area button has one labelled Census market point; there are no lead or property pins.
+  const points = page.locator('#planner-territory .area-marker');
+  assert.deepEqual(await points.allTextContents(), ['Mobile', 'Pensacola', 'Fort Walton / Destin', 'Panama City', 'Tallahassee']);
+  assert.deepEqual(await points.evaluateAll(nodes => nodes.map(node => node.dataset.market)),
+    await page.locator('.market-buttons [data-market]').evaluateAll(nodes => nodes.map(node => node.dataset.market)));
+  assert.equal(await page.locator('#planner-territory .market-marker').count(), 0);
+  const pressed = () => page.evaluate(() => ({ button: document.querySelector('.market-buttons [aria-pressed="true"]')?.dataset.market ?? null,
+    point: document.querySelector('#planner-territory .area-marker[aria-pressed="true"]')?.dataset.market ?? null }));
+  await page.locator('.market-buttons [data-market="Pensacola, FL"]').click();
+  assert.deepEqual(await pressed(), { button: 'Pensacola, FL', point: 'Pensacola, FL' });
+  await page.getByRole('button', { name: 'Choose Tallahassee on the map', exact: true }).click();
+  assert.deepEqual(await pressed(), { button: 'Tallahassee, FL', point: 'Tallahassee, FL' });
+  assert.equal(await page.locator('#space-area').inputValue(), 'Tallahassee, FL');
+  await page.locator('.market-buttons [data-market="Pensacola, FL"]').click();
+  assert.equal(await page.locator('.market-buttons').evaluate(node => node.getBoundingClientRect().top), buttonsTop, 'the status line and map never move the area buttons');
   await page.getByRole('button', { name: 'Refresh tours', exact: true }).click();
   assert.equal(await page.locator('#space-area').inputValue(), 'Pensacola, FL');
   assert.equal(await canvas.evaluate(node => node.isConnected), true);
   assert.equal(calls.filter(call => call.path.endsWith('leads-territory.geojson')).length, 1);
-  assert.equal(await page.locator('#planner-territory .market-marker').count(), 0);
+  // Water and land stay distinct in the painted theme.
+  assert.notEqual(await page.evaluate(() => plannerRenderer.getPaintProperty('ground', 'background-color')),
+    await page.evaluate(() => plannerRenderer.getPaintProperty('land', 'fill-color')));
   await mkdir(new URL('out/test-artifacts/w6/', root), { recursive: true });
   await page.screenshot({ path: new URL(`out/test-artifacts/w6/territory-${width}.png`, root).pathname, fullPage: true, animations: 'disabled' });
   assert.deepEqual(errors, []);

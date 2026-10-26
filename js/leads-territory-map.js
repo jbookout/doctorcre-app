@@ -13,19 +13,22 @@ export function marketFeatures(groups) {
     ({ type: "Feature", id: place.id, properties: { key: group.key, count: leadIds.length, leadIds },
       geometry: { type: "Point", coordinates: place.position } }))) };
 }
-export async function mountTerritoryMap(root, selectMarket, selectLead, { signal, markets = [], loadMapLibre, fetchImpl = fetch } = {}) {
+// `areas` adds labelled, selectable market-area points (Census place points, never
+// a property); clicking one reports its key through selectMarket.
+export async function mountTerritoryMap(root, selectMarket, selectLead, { signal, markets = [], areas = [], padding = 24, loadMapLibre, fetchImpl = fetch } = {}) {
   const [geometry, places] = await Promise.all([
     fetchImpl("/data/leads-territory.geojson", { signal }).then(r => { if (!r.ok) throw new Error("Map unavailable"); return r.json(); }),
     fetchImpl("/data/leads-market-locations.json", { signal }).then(r => { if (!r.ok) throw new Error("Map unavailable"); return r.json(); }),
   ]);
   // The map paints from the page's colour tokens so it follows the theme; with no
   // stylesheet it paints nothing rather than inventing a colour.
-  const style = root.ownerDocument.defaultView?.getComputedStyle(root.ownerDocument.documentElement);
-  const token = (name) => style?.getPropertyValue(name).trim() || "transparent";
+  const doc = root.ownerDocument, view = doc.defaultView;
+  const token = (name) => view?.getComputedStyle(doc.documentElement).getPropertyValue(name).trim() || "transparent";
+  const paint = [["ground", "background-color", "--map-water"], ["land", "fill-color", "--map-land"], ["borders", "line-color", "--hairline-strong"]];
   const shell = mountMarketMap(root, { interactive: false, signal, loadMapLibre,
     center: [-86.5, 31.9], zoom: 5.5, style: { version: 8, sources: { territory: { type: "geojson", data: geometry } },
-      layers: [{ id: "ground", type: "background", paint: { "background-color": token("--surface-2") } },
-        { id: "land", type: "fill", source: "territory", paint: { "fill-color": token("--surface-3"), "fill-opacity": .9 } },
+      layers: [{ id: "ground", type: "background", paint: { "background-color": token("--map-water") } },
+        { id: "land", type: "fill", source: "territory", paint: { "fill-color": token("--map-land") } },
         { id: "borders", type: "line", source: "territory", paint: { "line-color": token("--hairline-strong"), "line-opacity": .9, "line-width": 1 } }] } });
   const mounted = await shell.ready;
   if (!mounted) return null;
@@ -33,9 +36,21 @@ export async function mountTerritoryMap(root, selectMarket, selectLead, { signal
   const markers = new Map();
   let latest = [], selected = "";
   const locations = markets.map(market => marketLocation(market, places));
-  if (markets.length && locations.some(place => !place)) { shell.destroy(); throw new Error("Market location unavailable"); }
+  const areaPlaces = areas.map(area => marketLocation(area, places));
+  if ([...locations, ...areaPlaces].some(place => !place)) { shell.destroy(); throw new Error("Market location unavailable"); }
   const bounds = locations.length ? locations.reduce((bounds, place) => bounds.extend(place.position), new gl.LngLatBounds()) : [[-89.2, 29.9], [-83.2, 34.95]];
-  map.fitBounds(bounds, { padding: 24, duration: 0 });
+  map.fitBounds(bounds, { padding, duration: 0 });
+  // The paint reads theme tokens once; a theme switch repaints in place.
+  const themes = view && new view.MutationObserver(() => { for (const [layer, property, name] of paint) map.setPaintProperty(layer, property, token(name)); });
+  themes?.observe(doc.documentElement, { attributes: true, attributeFilter: ["data-theme", "data-color-assist"] });
+  const areaMarkers = areas.map((area, index) => {
+    const button = doc.createElement("button"), label = doc.createElement("span");
+    button.type = "button"; button.className = "area-marker"; button.dataset.market = area.key; button.dataset.placement = area.placement || "top";
+    button.setAttribute("aria-pressed", "false"); button.setAttribute("aria-label", `Choose ${area.label} on the map`);
+    label.textContent = area.label; button.append(label);
+    button.addEventListener("click", () => selectMarket(area.key));
+    return { button, marker: new gl.Marker({ element: button }).setLngLat(areaPlaces[index].position).addTo(map) };
+  });
   function draw() {
     const clusters = [];
     for (const feature of marketFeatures(latest).features.sort((a,b) => b.properties.count-a.properties.count)) {
@@ -84,8 +99,9 @@ export async function mountTerritoryMap(root, selectMarket, selectLead, { signal
       map.on("idle", ready); map.on("error", failed); signal?.addEventListener("abort", aborted, { once: true });
       if (signal?.aborted) aborted();
     });
-  } catch (error) { map.off("moveend", draw); shell.destroy(); throw error; }
+  } catch (error) { map.off("moveend", draw); themes?.disconnect(); for (const { marker } of areaMarkers) marker.remove(); shell.destroy(); throw error; }
   return { resize() { map.resize(); }, locate(lead) { return marketLocation(lead, places); },
     update(groups, leadId) { latest=groups;selected=leadId;draw(); },
-    dispose() {map.off("moveend",draw);for(const item of markers.values())item.marker.remove();shell.destroy();} };
+    select(key) { for (const { button } of areaMarkers) button.setAttribute("aria-pressed", String(button.dataset.market === key)); },
+    dispose() {map.off("moveend",draw);themes?.disconnect();for(const item of [...markers.values(), ...areaMarkers])item.marker.remove();shell.destroy();} };
 }
