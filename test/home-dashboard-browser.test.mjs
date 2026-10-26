@@ -214,7 +214,9 @@ test('Home desktop and phone show flags, visual agenda, ranked leads and wide en
     await page.locator('#homeLeads:not([hidden])').waitFor();
     await page.waitForFunction(() => document.querySelector('#refreshHome').getAttribute('aria-busy') === 'false');
     assert.equal(await page.locator('#homeControl, .home-radar').count(), 0);
-    assert.equal(await page.getByRole('link', { name: 'Control Room', exact: true }).count(), 1);
+    await page.getByRole('button', { name: 'More', exact: true }).click();
+    assert.equal(await page.getByRole('link', { name: 'Control Room', exact: true }).isVisible(), true);
+    await page.keyboard.press('Escape');
     assert.equal(await page.locator('.home-week .home-day').count(), 7);
     // The week link names its destination before the day tiles it wraps.
     assert.equal(await page.getByRole('link', { name: /^Open calendar\b.*deal dates and tasks/ }).getAttribute('data-home-key'), 'week');
