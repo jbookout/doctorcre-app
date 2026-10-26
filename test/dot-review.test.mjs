@@ -227,7 +227,7 @@ test("Dot 2: switching Tours clears the prior confidential link", async () => {
 
 test("Dot 3: sheet save locks its draft while sending and unknown, then replays its retained key", async () => {
   const $=elements();$("#cheat-content").value="First edit";const saved=deferred();
-  const state={tour:{id:"A",cheat_sheet:{revision_number:1,content:{notes:"Saved notes"}}},cheatDirty:true};
+  const state={tour:{id:"A",cheat_sheet:{revision_number:1,content:{notes:"Saved notes"}}},cheatDirty:true,cheatDraftRevision:1};
   const requests=[];let keys=0;
   // Keep the real recovery renderer, revision parser and receipt validator in
   // the same context as saveSheet so its retained state is observed directly.
@@ -239,6 +239,7 @@ test("Dot 3: sheet save locks its draft while sending and unknown, then replays 
     post:async(_path,body)=>{requests.push(structuredClone(body));return requests.length===1?saved.promise:{cheat_sheet_revision_id:"00000000-0000-4000-8000-000000000001"};},
   });
   const tourSource=source("tours/app.js");
+  vm.runInContext(tourSource.slice(tourSource.indexOf("  let sheetAutosaveTimer"),tourSource.indexOf("  const otherWritesKey")),h);
   vm.runInContext(tourSource.slice(tourSource.indexOf("  async function saveSheet("),tourSource.indexOf("  async function issueShare("))+"\nglobalThis.saveSheet=saveSheet;",h);
   const pending=h.saveSheet();await tick();
   assert.equal($("#cheat-content").disabled,true);assert.equal($("#save-sheet").disabled,true);
