@@ -24,6 +24,21 @@ test('a short evidence-linked first action, overnight change and today item; dup
  assert.equal(view.unavailable.length,0);
  assert.deepEqual(morningBriefView(data,{...options,events:[event('d')]}).groups.map(group=>group.key),['first','today']);
 });
+test('priority titles preserve the complete business instruction for deals, tasks and actions',()=>{
+ const title='Review the synthetic lease renewal terms with the practice owner before signing';
+ const data=payload();
+ data.sections.deals.items.forEach(row=>{row.name=title;});
+ data.sections.today.items[0].what='Review the synthetic lease renewal comments and send the proposed revisions to the practice owner';
+ let view=morningBriefView(data,options);
+ assert.deepEqual(view.groups.map(group=>group.row.title),[title,title,title]);
+ assert.equal(view.groups[0].row.summary,'Review the synthetic lease renewal comments and send the proposed…');
+ data.sections.today=section([]);
+ data.sections.loops=section([{number:'1',kind:'open_loop',title,status:'open',due_on:day}]);
+ assert.equal(morningBriefView(data,{...options,events:[]}).groups[0].row.title,title);
+ data.sections.loops=section([]);
+ data.sections.today=section([{id:'demo-action',item_kind:'post_call_action',what:title,due_on:day}]);
+ assert.equal(morningBriefView(data,{...options,events:[]}).groups[0].row.title,title);
+});
 test('empty sections omitted; unknown coverage never becomes all-clear or filler',()=>{
  const data=payload();for(const key of Object.keys(data.sections))data.sections[key]=section([]);
  assert.deepEqual(morningBriefView(data,{...options,events:[]}).groups,[]);
