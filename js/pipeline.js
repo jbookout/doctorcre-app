@@ -95,6 +95,10 @@ function say(text) {
 const dateWords = (value) => (value ? formatCalendarDate(value) || value : 'no date recorded');
 
 
+function autoHtml(deal) {
+  const move = automaticMove(deal);
+  return move ? `<div class="auto-move"><span>${esc(move.text.slice(0, move.text.lastIndexOf(' ')))}</span> <time>${esc(move.text.slice(move.text.lastIndexOf(' ') + 1))}</time></div>` : '';
+}
 const dealTitle = (deal) => dealName(deal.name);
 function cardHtml(deal) {
   const attention = needsAttention(deal);
