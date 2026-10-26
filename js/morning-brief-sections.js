@@ -1,5 +1,10 @@
 import { escapeText } from './change-receipts.mjs';
 
+export function briefInstruction(title, value) {
+  const normalized = text => String(text || '').trim().replace(/\s+/g,' ');
+  return normalized(title) === normalized(value) ? '' : value;
+}
+
 const SECTIONS = {
   needs_joe:'Needs Joe', today:'Today and upcoming', claim_card:'Claim card', deals:'Deals and accounts',
   loops:'Open loops', renewals:'Renewals', assurance_cadence:'Assurance cadence', costs:'Costs',
