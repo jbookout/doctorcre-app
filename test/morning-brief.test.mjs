@@ -224,6 +224,18 @@ test('task sheets omit title repeats while preserving distinct instructions and 
  task.title=task.blocker_detail;await state.ui.refresh();assert.deepEqual(facts(),['Due']);
  state.root.getElementById('morningBack').click();assert.equal(state.root.activeElement.dataset.briefKey,'loop:open_loop:7');
 });
+test('full-section tasks omit repeated instructions and retain distinct source text after refresh',async t=>{
+ const state=setup(t),data=payload();data.sections.today=section([]);
+ const title='Review the <demo> lease terms with the practice owner before signing';
+ const task={number:'7',kind:'open_loop',owner:'joe',title:null,label:title,status:'open',due_on:day,blocker_detail:`  ${title.replaceAll(' ','  ')}\n`,body:'Demo original task entry.'};
+ data.sections.loops=section([task]);state.data=data;await state.ui.refresh();
+ const row=()=>state.root.querySelector('[data-brief-section="loops"] li');
+ assert.match(row().textContent,/Label: Review the <demo> lease terms/);assert.doesNotMatch(row().textContent,/Your task:/);
+ assert.match(row().textContent,/Details: Demo original task entry\./);
+ task.blocker_detail=`${title} and send the <demo> response.`;await state.ui.refresh();
+ assert.ok(row().textContent.includes(`Your task: ${task.blocker_detail}`));assert.equal(row().querySelector('demo'),null);
+ task.title=task.blocker_detail;await state.ui.refresh();assert.doesNotMatch(row().textContent,/Your task:/);
+});
 test('producer-admitted uppercase owners stay visible and selected across refresh',async t=>{
  const state=setup(t);const data=payload();data.sections.today=section([due('a','JOE')]);data.sections.deals=section([deal('a','JOE')]);data.sections.loops=section([{number:'7',kind:'open_loop',status:'open',owner:'JOE',title:'Demo admitted task',due_on:day}]);
  assert.deepEqual(morningBriefView(data,{...options,events:[]}).groups.map(group=>group.row.id),['a','7']);state.data=data;
