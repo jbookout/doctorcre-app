@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { build } from 'esbuild';
 
 const bundle = await build({ entryPoints: ['src/ui/workspace-layout.ts'], bundle: true, write: false, platform: 'node', format: 'esm' });
-const { validateLayout, insertPanel, movePanel, removePanel, resizeSplit } =
+const { validateLayout, insertPanel, movePanel, removePanel, resizeSplit, selectPanel } =
   await import(`data:text/javascript;base64,${Buffer.from(bundle.outputFiles[0].text).toString('base64')}`);
 const tabs = (id, panels, active = panels[0]) => ({ kind: 'tabs', id, panels, active });
 const empty = () => ({ version: 1, stage: null });
@@ -20,6 +20,15 @@ test('insert a panel into an empty stage, then insert an ordered active tab with
   assert.deepEqual(insertPanel(freeze(one), 'leads', { kind: 'tabs', group: 'main', index: 0 }),
     { ...empty(), stage: tabs('main', ['leads', 'deals'], 'leads') });
   assert.deepEqual(source, empty());
+});
+
+test('select a panel without changing its group, order or source layout', () => {
+  const source = freeze(initial());
+  assert.deepEqual(selectPanel(source, 'leads'), { ...empty(), stage: tabs('main', ['deals', 'leads'], 'leads') });
+  const split = insertPanel(source, 'today', { kind: 'split', target: 'main', id: 'columns', group: 'aside', axis: 'horizontal', side: 'after', ratio: 0.7 });
+  assert.deepEqual(selectPanel(freeze(split), 'leads').stage, { ...split.stage, first: tabs('main', ['deals', 'leads'], 'leads') });
+  assert.deepEqual(source, initial());
+  assert.throws(() => selectPanel(source, 'missing'));
 });
 
 test('split a group and move a tab between groups', () => {
