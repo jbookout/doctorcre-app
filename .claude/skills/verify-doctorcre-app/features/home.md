@@ -14,6 +14,7 @@ Open `/` or choose Home in Primary navigation. Use Just me, Team view, Refresh H
 
 Existing coverage: `test/home-dashboard-browser.test.mjs`, `test/deal-attention-browser.test.mjs` and `test/home-deployed-contract.test.mjs`, all run by the skill's Node suite.
 
+- Require no Control Room panel or radar in Home. System queues stay in Control Room, reachable from Primary navigation. Initial load and Refresh Home make no incident, work, request, resource or schedule reads.
 - Require the Home heading and a settled `#dealAttention[aria-busy="false"]`.
 - Switch Just me and Team view; require the selected button's `aria-pressed="true"` and compare the rendered deal entries.
 - Use Refresh Home; require settled attention and `#observedAt` without Unavailable or Sign in.
