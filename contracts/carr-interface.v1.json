@@ -1,6 +1,6 @@
 {
   "schema": "doctorcre-carr-interface.v1",
-  "version": "1.59.0",
+  "version": "1.59.1",
   "producer": {
     "repository": "jbookout/carr-system",
     "source_commit": "1df9b9936394164dd55e815f8a8bf69649508ccc"
@@ -155,6 +155,20 @@
     "Property evidence v1 is a read-only, tenant-bound response; every fact carries its own source and temporal review state, and absent authoritative coverage remains unknown or unavailable."
   ],
   "mcp_read_contracts": {
+    "schedule-board": {
+      "write": false,
+      "producer_module": "mcp-server/src/schedule-board.js",
+      "producer": {
+        "repository": "DoctorCRE/carr-system",
+        "source_commit": "63b4a0d87a142412bb49eca63896891fdb88c15b",
+        "pull_request": "https://github.com/DoctorCRE/carr-system/pull/2100"
+      },
+      "response": {
+        "schema_version": "schedule-board/v1",
+        "owners": ["launchd", "claude-code", "cron"],
+        "coverage": "Each current owner has one source. Missing scheduler observations remain unknown; the retired control-plane owner is absent."
+      }
+    },
     "find": {
       "write": false,
       "producer": {

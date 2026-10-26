@@ -2701,7 +2701,6 @@ export async function createFixtureClient(opts = {}) {
         sources: [
           { owner: 'launchd', state: 'read', count: 1 },
           { owner: 'claude-code', state: 'read', count: 1 },
-          { owner: 'control-plane', state: 'unknown', count: null },
           { owner: 'cron', state: 'unknown', count: null },
         ], jobs };
     },
