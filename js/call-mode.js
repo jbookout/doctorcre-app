@@ -309,12 +309,19 @@ export function createCallMode(deps) {
     const pending = status === 'pending';
     const summary = item.update || item.summary || item.text || item.action || 'Deal update needs review';
     const resolver = ['assigned_action','email_draft'].includes(item.candidate_kind || item.kind) || item.candidate_table === 'capture_post_call_candidate' ? 'post_call' : 'legacy';
+    const step = item.next_step;
+    const stepStatus = step ? postCallItemStatus(step) : null;
     return `<article class="post-call-card" data-post-call-item="${esc(item.candidate_id || '')}">
     <div class="post-call-card-head"><b>${esc(postCallDealName(item))}</b><span class="post-call-badge ${esc(status)}">${esc(status.replaceAll('_',' '))}</span></div>
     <p>${esc(reportText(summary))}</p>
     ${checksNote(item)}
     ${pending ? `<div class="post-call-card-actions"><button type="button" class="primary" data-post-call-confirm="${esc(item.candidate_id)}" data-candidate-resolver="${resolver}">Confirm update</button><button type="button" class="secondary" data-post-call-skip="${esc(item.candidate_id)}" data-candidate-resolver="${resolver}">Skip</button></div>` : ''}
     ${phaseProposal(item)}
+    ${step ? `<section aria-label="Proposed next step">
+      <div class="post-call-card-head"><b>Proposed next step</b><span class="post-call-badge ${esc(stepStatus)}">${esc(stepStatus.replaceAll('_', ' '))}</span></div>
+      <p>${esc(reportText(step.text))}</p><small>${step.next_date ? `Next date: ${esc(step.next_date)}` : 'No next date. Confirming clears the current date.'}</small>
+      ${stepStatus === 'pending' && step.candidate_id ? `<div class="post-call-card-actions"><button type="button" class="primary" data-post-call-confirm="${esc(step.candidate_id)}" data-candidate-resolver="legacy">Confirm next step</button><button type="button" class="secondary" data-post-call-skip="${esc(step.candidate_id)}" data-candidate-resolver="legacy">Skip next step</button></div>` : ''}
+    </section>` : ''}
   </article>`;
   }
 

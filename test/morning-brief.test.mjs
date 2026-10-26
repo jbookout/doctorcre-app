@@ -39,6 +39,25 @@ test('priority titles preserve the complete business instruction for deals, task
  data.sections.today=section([{id:'demo-action',item_kind:'post_call_action',what:title,due_on:day}]);
  assert.equal(morningBriefView(data,{...options,events:[]}).groups[0].row.title,title);
 });
+test('priority summaries omit repeated titles before shortening and retain distinct instructions',()=>{
+ const title='Review the synthetic lease renewal terms with the practice owner before signing';
+ for(const [name,summary,expected] of [
+  ['Confirm access','Confirm access',''],
+  [title,title,''],
+  ['  Confirm   access  ','Confirm\naccess',''],
+  [title,'Review the synthetic lease renewal terms with the practice owner after signing','Review the synthetic lease renewal terms with the practice owner…'],
+  ['Confirm access',undefined,''],
+ ]){
+  const data=payload();data.sections.today=section([]);data.sections.loops=section([{number:'1',kind:'open_loop',title:name,status:'open',due_on:day,blocker_detail:summary}]);
+  const original=structuredClone(data);
+  const row=morningBriefView(data,{...options,events:[]}).groups[0].row;
+  assert.equal(row.summary,expected);assert.deepEqual(data,original);
+ }
+ const data=payload();data.sections.today=section([{id:'demo-action',item_kind:'post_call_action',what:title,due_on:day}]);
+ assert.equal(morningBriefView(data,{...options,events:[]}).groups[0].row.summary,'');
+ data.sections.deals.items[0].name='Review demo lease comments';data.sections.today=section([due()]);
+ assert.equal(morningBriefView(data,{...options,events:[]}).groups[0].row.summary,'');
+});
 test('empty sections omitted; unknown coverage never becomes all-clear or filler',()=>{
  const data=payload();for(const key of Object.keys(data.sections))data.sections[key]=section([]);
  assert.deepEqual(morningBriefView(data,{...options,events:[]}).groups,[]);
@@ -169,9 +188,53 @@ test('task card opens the exact live record directly without a retired route',as
  assert.equal(state.root.querySelector('.entry-original').textContent,'Demo original task entry. <script>demo</script>');assert.equal(state.root.querySelector('#morningContent script'),null);
 });
 
+test('task sheets show instructions as Your task and omit only the redundant open status',async t=>{
+ const state=setup(t),data=payload();data.sections.today=section([]);
+ const task={number:'7',kind:'open_loop',owner:'joe',title:'Demo due task',status:'open',due_on:day,blocker_detail:'Open <demo> and review the terms.',body:'Demo original task entry.'};
+ data.sections.loops=section([{...task}]);state.data=data;state.client.readLoop=async()=>({loop:{...task}});
+ await state.ui.refresh();state.root.querySelector('[data-brief-record]').click();await new Promise(resolve=>setTimeout(resolve,10));
+ const facts=()=>[...state.root.querySelectorAll('.morning-record dl > div')].map(node=>[node.querySelector('dt').textContent,node.querySelector('dd').textContent]);
+ assert.deepEqual(facts(),[['Due',day],['Your task','Open <demo> and review the terms.']]);
+ assert.equal(state.root.querySelector('.morning-record demo'),null);
+ assert.match(state.root.querySelector('.morning-record').textContent,/Demo original task entry/);
+ for(const status of ['closed','unknown',null]){
+  task.status=status;await state.ui.refresh();
+  assert.deepEqual(facts(),[['Due',day],...(status?[['Status',status]]:[]),['Your task','Open <demo> and review the terms.']]);
+ }
+ state.root.getElementById('morningBack').click();assert.equal(state.root.activeElement.dataset.briefKey,'loop:open_loop:7');
+});
+
 test('producer label identifies due tasks with a null title',()=>{
  const data=payload();data.sections.today=section([]);data.sections.loops=section([{number:'7',kind:'open_loop',status:'open',owner:'joe',title:null,label:'Demo labelled task',due_on:day}]);
  assert.equal(morningBriefView(data,{...options,events:[]}).groups[0]?.row.title,'Demo labelled task');
+});
+test('task sheets omit title repeats while preserving distinct instructions and original entries',async t=>{
+ const state=setup(t),data=payload();data.sections.today=section([]);
+ const title='Review the <demo> lease terms with the practice owner before signing';
+ const task={number:'7',kind:'open_loop',owner:'joe',title:null,label:title,status:'open',due_on:day,blocker_detail:`  ${title.replaceAll(' ','  ')}\n`,body:`${title}. <script>demo</script>`};
+ data.sections.loops=section([task]);state.data=data;state.client.readLoop=async()=>({loop:{...task}});
+ await state.ui.refresh();state.root.querySelector('[data-brief-record]').click();await new Promise(resolve=>setTimeout(resolve,10));
+ const facts=()=>[...state.root.querySelectorAll('.morning-record dt')].map(node=>node.textContent);
+ assert.equal(state.root.getElementById('morningTitle').textContent,title);
+ assert.deepEqual(facts(),['Due']);
+ assert.equal(state.root.querySelector('.entry-original').textContent,task.body);assert.equal(state.root.querySelector('.morning-record script'),null);
+ task.blocker_detail=`${title} and send the <demo> response.`;await state.ui.refresh();
+ assert.deepEqual(facts(),['Due','Your task']);
+ assert.equal([...state.root.querySelectorAll('.morning-record dd')].at(-1).textContent,task.blocker_detail);
+ task.title=task.blocker_detail;await state.ui.refresh();assert.deepEqual(facts(),['Due']);
+ state.root.getElementById('morningBack').click();assert.equal(state.root.activeElement.dataset.briefKey,'loop:open_loop:7');
+});
+test('full-section tasks omit repeated instructions and retain distinct source text after refresh',async t=>{
+ const state=setup(t),data=payload();data.sections.today=section([]);
+ const title='Review the <demo> lease terms with the practice owner before signing';
+ const task={number:'7',kind:'open_loop',owner:'joe',title:null,label:title,status:'open',due_on:day,blocker_detail:`  ${title.replaceAll(' ','  ')}\n`,body:'Demo original task entry.'};
+ data.sections.loops=section([task]);state.data=data;await state.ui.refresh();
+ const row=()=>state.root.querySelector('[data-brief-section="loops"] li');
+ assert.match(row().textContent,/Label: Review the <demo> lease terms/);assert.doesNotMatch(row().textContent,/Your task:/);
+ assert.match(row().textContent,/Details: Demo original task entry\./);
+ task.blocker_detail=`${title} and send the <demo> response.`;await state.ui.refresh();
+ assert.ok(row().textContent.includes(`Your task: ${task.blocker_detail}`));assert.equal(row().querySelector('demo'),null);
+ task.title=task.blocker_detail;await state.ui.refresh();assert.doesNotMatch(row().textContent,/Your task:/);
 });
 test('producer-admitted uppercase owners stay visible and selected across refresh',async t=>{
  const state=setup(t);const data=payload();data.sections.today=section([due('a','JOE')]);data.sections.deals=section([deal('a','JOE')]);data.sections.loops=section([{number:'7',kind:'open_loop',status:'open',owner:'JOE',title:'Demo admitted task',due_on:day}]);
@@ -347,6 +410,22 @@ test('F1 full brief coverage makes Needs Joe, accounts and providers reachable w
  assert.match(state.root.querySelector('[data-brief-section="needs_joe"] summary').textContent,/Needs Joe.*returned/);
  assert.equal(state.root.querySelector('[data-brief-section="needs_joe"] summary')?.tagName,'SUMMARY');
 });
+test('full brief task rows keep instructions and non-open statuses without redundant open labels',async t=>{
+ const state=setup(t),data=completeBrief();
+ data.sections.loops=section(['open','closed','unknown',null].map((status,index)=>({number:String(index+1),kind:'open_loop',status,title:'Demo task',blocker_detail:'Review <demo> terms.',body:'Demo task details.'})));
+ state.data=data;await state.ui.open();
+ const rows=[...state.root.querySelectorAll('[data-brief-section="loops"] li')];
+ assert.equal(rows.length,4);
+ rows.forEach((row,index)=>{
+  assert.match(row.textContent,/Your task: Review <demo> terms\..*Details: Demo task details\./);
+  assert.doesNotMatch(row.textContent,/Blocker:|Status: open/);
+  if(index===1)assert.match(row.textContent,/Status: closed/);
+  if(index===2)assert.match(row.textContent,/Status: unknown/);
+  if(index===0||index===3)assert.doesNotMatch(row.textContent,/Status:/);
+ });
+ assert.equal(state.root.querySelector('[data-brief-section="loops"] demo'),null);
+});
+
 test('F2 every triage kind survives missing partner deal metadata in explicit full sections',async t=>{
  const state=setup(t),data=completeBrief();data.sections.deals=section([]);
  data.sections.today=section(['next_action','post_call_action','critical_date','ingest'].map((item_kind,index)=>({id:`demo-${index}`,item_kind,subject_type:'deal',subject_id:'private-demo-deal',subject_name:'Shared demo subject',owner_partner:'dell',what:`Demo ${item_kind}`,due_on:item_kind==='critical_date'?'2026-10-10':day})));

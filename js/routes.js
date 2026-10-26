@@ -7,6 +7,7 @@ export const routeEntries = [
   ["/deals","pipeline.html","/deals"],
   ["/leads","leads.html","/leads"],
   ["/clients","business.html","/clients"],
+  ["/client-portal","client-portal.html","/business"],
   ["/vendors","business.html","/vendors"],
   ["/calendar","calendar.html","/business"],
   ["/ideas-events","ideas.html","/control-room"],
@@ -29,7 +30,7 @@ export const routeEntries = [
 ];
 export const routeContract = {
   schema: "doctorcre-app-routes.v1",
-  version: "1.21.0",
+  version: "1.22.0",
   routes: Object.fromEntries(routeEntries.map(([path, asset]) => [path, asset])),
   redirects: {
   "/control-room/automations": "/control-room?tab=automations",

@@ -16,3 +16,4 @@ Follow [Launch, Doctor and Drive](../SKILL.md) first. This map describes current
 - [Deal alerts](deal-alerts.md): current overdue flags and deal links.
 - [Leads](leads.md): search, filters and details through the existing adapter.
 - [Calendar](calendar.md): periods, views, selected days and agenda.
+- [Client portal](client-portal.md): password entry, canonical roadmap, shared text and locking.

@@ -24,6 +24,8 @@ Existing coverage: `test/local-deals-browser.test.mjs`, `test/dealroom-acceptanc
 
 - Call mode reviews a discussed deal's phase proposal separately from its note. A pending nested proposal with a candidate ID offers Confirm phase change and Skip phase change. Confirming the note does not decide the phase. Settled or unmatched proposals keep their visible phase and status without decision controls. `test/dealroom-call-mode.test.mjs` drives phone confirmation and desktop skipping with the real dialog, plus stale-phase refusal and retained-request recovery through the existing client interface. Synthetic pending captures are retained under `out/test-artifacts/call-phase/`.
 
+- Call mode reviews a discussed deal's next step separately from its note. A pending matched proposal offers Confirm next step and Skip next step. A missing date warns that confirmation clears the current date. Settled or unmatched proposals stay visible without decision controls. `test/dealroom-call-mode.test.mjs` drives phone confirmation and desktop skipping with the real dialog, plus stale refusal and retained-request recovery. Synthetic captures remain under `out/test-artifacts/call-next-step/`.
+
 ## Gotchas
 
 Use actual synthetic staging IDs when verifying staging. Deep-link close changes the URL, so check URL and dialog independently. Manual read-only inspection must not submit Update, change Phase or Owner, Park, or Mark inactive.
