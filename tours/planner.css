@@ -58,19 +58,33 @@
 .tour-button span::first-letter { text-transform: uppercase; }
 .empty-library { padding: var(--space-3) 0; color: var(--fg-muted); font-size: var(--font-size-1); }
 
-/* Territory: a schematic picker. Land and coast use surface and hairline;
-   market dots are data marks; the chosen market is a pressed button below. */
+/* Territory: area buttons first, then an on-demand Census map whose labelled
+   market points mirror them. Revealing the map or its status never moves the
+   buttons. Points are data marks; the chosen market is pressed in both places. */
 .planner-grid .territory-card { grid-column: 1 / -1; }
-.territory-heading { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); }
+.territory-heading { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-3); margin-bottom: var(--space-3); }
 .territory-heading h2 { font-size: var(--font-size-3); }
-.territory-caption { color: var(--fg-muted); font-size: var(--font-size-1); }
-.territory-map { display: block; width: 100%; height: clamp(120px, 14vw, 190px); margin: var(--space-2) auto; }
-.territory-land { fill: var(--surface-2); stroke: var(--hairline); stroke-width: 1; }
-.territory-state-line { fill: none; stroke: var(--hairline-strong); stroke-dasharray: 3 6; }
-.territory-map .territory-coast { fill: none; stroke: var(--hairline-strong); stroke-width: 1.5; stroke-dasharray: none; }
-.map-market circle { fill: var(--data-1); stroke: var(--surface-1); stroke-width: 2; }
-.map-market text { fill: var(--fg); font: var(--font-size-3) var(--font-text); }
-.map-state, .map-water { fill: var(--fg-muted); font: var(--font-size-2) var(--font-text); }
+.territory-caption { margin-right: auto; color: var(--fg-muted); font-size: var(--font-size-1); }
+.territory-map { display: block; width: 100%; aspect-ratio: 3 / 1; max-height: 420px; margin: var(--space-4) 0 0; overflow: hidden; border: var(--hairline-width) solid var(--hairline); border-radius: var(--radius-2); }
+.territory-map[hidden], .territory-map[data-state="failed"] { display: none; }
+#planner-territory .area-marker { min-width: 0; min-height: 0; width: 14px; height: 14px; padding: 0; border: 2px solid var(--surface-1); border-radius: 50%; background: var(--data-1); }
+/* The visible dot stays small; an invisible ring keeps a 44px touch target. */
+.area-marker::after { content: ""; position: absolute; inset: -15px; border-radius: 50%; }
+.area-marker span { position: absolute; left: 50%; padding: 1px var(--space-2); border: var(--hairline-width) solid var(--hairline); border-radius: var(--radius-round); background: var(--surface-1); color: var(--fg); font-size: var(--font-size-1); font-weight: var(--font-weight-regular); white-space: nowrap; transform: translateX(-50%); }
+/* js/leads-territory-map.js picks each label's side so it stays inside the map. */
+.area-marker[data-placement="top"] span { bottom: calc(100% + var(--space-1)); }
+.area-marker[data-placement="bottom"] span { top: calc(100% + var(--space-1)); }
+.area-marker[data-placement="right"] span, .area-marker[data-placement="left"] span { top: 50%; transform: translateY(-50%); }
+.area-marker[data-placement="right"] span { left: calc(100% + var(--space-1)); }
+.area-marker[data-placement="left"] span { right: calc(100% + var(--space-1)); left: auto; }
+.area-marker[data-placement*="-"] span { transform: none; }
+.area-marker[data-placement^="top-"] span { bottom: calc(100% - 2px); }
+.area-marker[data-placement^="bottom-"] span { top: calc(100% - 2px); }
+.area-marker[data-placement$="-right"] span { left: calc(100% - 2px); }
+.area-marker[data-placement$="-left"] span { right: calc(100% - 2px); left: auto; }
+.area-marker:hover span { border-color: var(--hairline-strong); }
+#planner-territory .area-marker[aria-pressed="true"] { width: 18px; height: 18px; background: var(--fg); box-shadow: 0 0 0 2px var(--fg); }
+.area-marker[aria-pressed="true"] span { border-color: var(--fg); font-weight: var(--font-weight-strong); }
 .market-buttons { display: flex; flex-wrap: wrap; justify-content: center; gap: var(--space-2); }
 .market-buttons button { font-weight: var(--font-weight-regular); }
 .market-buttons button[aria-pressed="true"] { border-color: var(--fg); background: var(--surface-3); font-weight: var(--font-weight-strong); }
@@ -118,8 +132,9 @@
   .planner-grid { grid-template-columns: minmax(0, 1fr); padding: 0 var(--space-4) var(--space-6); }
   .planner-grid > .card { padding: var(--space-4); }
   .drop-heading { flex-wrap: wrap; }
-  .territory-map { display: none; }
-  .territory-heading { margin-bottom: var(--space-2); }
+  .territory-map { aspect-ratio: 2 / 1; }
+  /* Phone: tighter pills, and a long market name may wrap to two lines. */
+  .area-marker span { width: max-content; max-width: 6.5em; padding: 0 var(--space-1); line-height: 1.2; white-space: normal; text-align: center; }
   .market-buttons button { flex: 1 1 42%; }
   .tour-dialog { width: calc(100vw - 20px); max-height: calc(100dvh - 20px); padding: var(--space-4); }
   .detail-stops { grid-template-columns: minmax(0, 1fr); }

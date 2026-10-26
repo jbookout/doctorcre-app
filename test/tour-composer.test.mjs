@@ -80,7 +80,7 @@ function domain() {
     if (path === "/api/tours/properties/search") return response({ search: { items: properties, has_more: false } });
     if (path.startsWith("/api/tours/property-evidence")) return response({ schema: "tour-property-evidence.v1", facts: {} });
     if (fault?.path === path && fault.kind === "stale") { fault = null; return response(null, 409); }
-    if (fault?.path === path && fault.kind === "refused") { fault = null; return response(null, 403); }
+    if (fault?.path === path && fault.kind === "refused") { fault = null; return response(null, 422); }
     if (replay.has(body?.idempotency_key)) {
       const previous = replay.get(body.idempotency_key);
       return JSON.stringify(body) === previous.body ? response(previous.result) : response(null, 409);
@@ -151,6 +151,51 @@ test("itinerary detail link opens only a listed Tour and takes precedence over a
   } finally { app.dom.window.close(); }
   const next = await open(store, {}, `?tour=${uuid()}`);
   try { assert.equal(next.doc.querySelector("#tour-panel").hidden, true); } finally { next.dom.window.close(); }
+});
+test("session invalidation clears the visible Tour and blocks an in-flight detail read", async () => {
+  const store = domain(), { dom, doc } = await open({ fetch: (...args) => store.fetch(...args) });
+  await create(doc);
+  assert.equal(doc.querySelector("#tour-name").textContent, "Synthetic Tour");
+  fill(doc, "#cheat-content", "Private synthetic tour notes");
+  const release = deferDetail(store);
+  doc.querySelector("#reload-composer").click(); await settle();
+  dom.window.dispatchEvent(new dom.window.Event("doctorcre-session-invalidated"));
+  assert.equal(doc.querySelector("#tour-panel").hidden, false);
+  assert.equal(doc.querySelector("#tour-name").textContent, "");
+  assert.equal(doc.querySelectorAll(".tour-button").length, 0);
+  assert.equal(doc.querySelector("#reload-composer").disabled, true);
+  assert.equal(doc.querySelector("#property-query").value, "");
+  assert.equal(doc.querySelector("#property-query").disabled, true);
+  assert.match(doc.querySelector("#tour-recovery").textContent, /Sign in/i);
+  release(); await settle();
+  assert.equal(doc.querySelector("#tour-panel").hidden, false);
+  assert.equal(doc.querySelector("#tour-name").textContent, "");
+  assert.equal(doc.querySelectorAll(".tour-button").length, 0);
+  dom.window.close();
+});
+test("a denied library refresh clears previously loaded Tour names and offers sign-in", async () => {
+  const store = domain(); let denied = false;
+  const { dom, doc } = await open({ fetch: (path, options) => denied && path === "/api/tours/library" ? response(null, 401) : store.fetch(path, options) });
+  await create(doc);
+  assert.equal(doc.querySelectorAll(".tour-button").length, 1);
+  denied = true; doc.querySelector("#refresh").click(); await settle();
+  assert.equal(doc.querySelectorAll(".tour-button").length, 0);
+  assert.equal(doc.querySelector("#tour-panel").hidden, false);
+  assert.match(doc.querySelector("#tour-recovery").textContent, /Sign in/i);
+  dom.window.close();
+});
+test("session invalidation retains an uncertain Tour write under its original session binding", async () => {
+  const store = domain(); let denyDetail = false;
+  const { dom, doc } = await open({ fetch: (path, options) => denyDetail && path.startsWith("/api/tours/detail") ? response(null, 401) : store.fetch(path, options) });
+  await create(doc); fill(doc, "#cheat-content", "Private synthetic tour notes");
+  store.fail("/api/tours/cheat-sheet/autosave", "lost"); doc.querySelector("#save-sheet").click(); await settle();
+  const retained = dom.window.sessionStorage.getItem("doctorcre-tour-other-writes-v1");
+  assert.ok(retained);
+  denyDetail = true; doc.querySelector("#save-sheet").click(); await settle();
+  assert.equal(dom.window.sessionStorage.getItem("doctorcre-tour-other-writes-v1"), retained);
+  assert.match(retained, /idempotency_key/);
+  assert.match(doc.querySelector("#tour-recovery").textContent, /Sign in/i);
+  dom.window.close();
 });
 function fill(doc, selector, value) { const node = doc.querySelector(selector); assert.ok(node, selector); node.value = value; node.dispatchEvent(new doc.defaultView.Event(node.tagName === "SELECT" ? "change" : "input", { bubbles: true })); }
 function deferDetail(store) {
@@ -266,12 +311,13 @@ for (const kind of ["create", "composer"]) test(`review 2: ${kind} intent cannot
   } });
   if (kind === "create") { store.fail("/api/tours/create", "lost"); await create(doc); }
   else { await create(doc); await addCart(doc); store.fail("/api/tours/route-stop", "lost"); doc.querySelector("#save-composer").click(); await settle(); }
-  const posts = store.calls.filter(c => c.body).length; changed = true;
+  const posts = store.calls.filter(c => c.body).length;
+  const retained = dom.window.sessionStorage.getItem("doctorcre-tour-pending-v1"); changed = true;
   doc.querySelector(kind === "create" ? "#reconcile-create" : "#reconcile-composer").click(); await settle();
   if (kind === "create") assert.equal(doc.querySelector("#create-tour").textContent.includes("Retry"), false);
   else assert.equal(doc.querySelector("#retry-composer").hidden, true);
   assert.equal(store.calls.filter(c => c.body).length, posts);
-  assert.equal(dom.window.sessionStorage.getItem("doctorcre-tour-pending-v1"), null);
+  assert.equal(dom.window.sessionStorage.getItem("doctorcre-tour-pending-v1"), retained);
   dom.window.close();
 });
 test("review 3: boot surfaces a pending composer before another Tour can erase its journal", async () => {
@@ -861,12 +907,13 @@ test("S2 sheet reload restores the same draft and request before receipt reconci
   assert.equal(writes.length, 2); assert.deepEqual(writes[1].body, writes[0].body); next.dom.window.close();
 });
 
-for (const kind of ["sheet", "projection"]) test(`S2 pending ${kind} cannot replay into a changed authenticated session`, async () => {
+for (const kind of ["sheet", "projection"]) test(`S2 pending ${kind} stays bound to its original session after identity changes`, async () => {
   const store = domain(), { dom, doc } = await open(store); await create(doc);
   if (kind === "projection") { await addCart(doc); await saveAndAccept(doc); }
   const path = kind === "sheet" ? "/api/tours/cheat-sheet/autosave" : "/api/tours/projection";
   if (kind === "sheet") fill(doc, "#cheat-content", "Prior session notes");
   store.fail(path, "lost"); doc.querySelector(kind === "sheet" ? "#save-sheet" : "#generate-projection").click(); await settle();
+  const retained = dom.window.sessionStorage.getItem("doctorcre-tour-other-writes-v1");
   const normal = store.fetch;
   dom.window.fetch = async (requestPath, options) => {
     const reply = await normal(requestPath, options), json = await reply.json();
@@ -874,7 +921,9 @@ for (const kind of ["sheet", "projection"]) test(`S2 pending ${kind} cannot repl
   };
   doc.querySelector(kind === "sheet" ? "#save-sheet" : "#retry-tour-action").click(); await settle();
   assert.equal(store.calls.filter(call => call.path === path).length, 1);
-  assert.equal(dom.window.sessionStorage.getItem("doctorcre-tour-other-writes-v1"), null);
+  assert.equal(dom.window.sessionStorage.getItem("doctorcre-tour-other-writes-v1"), retained);
+  assert.equal(doc.querySelector("#tour-panel").hidden, false);
+  assert.match(doc.querySelector("#tour-recovery").textContent, /Sign in/i);
   assert.equal(doc.querySelector("#cheat-content").value, ""); dom.window.close();
 });
 
@@ -893,7 +942,7 @@ test("S2 malformed successful sheet receipt remains unknown and replays its reta
   assert.equal(writes.length, 2); assert.deepEqual(writes[1].body, writes[0].body); dom.window.close();
 });
 
-for (const status of [401, 403]) for (const kind of ["sheet", "projection"]) test(`S2 unknown ${kind} followed by POST ${status} keeps its original request until confirmation`, async () => {
+for (const status of [401, 403]) for (const kind of ["sheet", "projection"]) test(`S2 POST ${status} clears the ${kind} view without losing its retained request`, async () => {
   const store = domain(), { dom, doc } = await open(store); await create(doc);
   if (kind === "projection") { await addCart(doc); await saveAndAccept(doc); }
   const path = kind === "sheet" ? "/api/tours/cheat-sheet/autosave" : "/api/tours/projection";
@@ -906,16 +955,17 @@ for (const status of [401, 403]) for (const kind of ["sheet", "projection"]) tes
     return reply;
   };
   store.fail(path, "lost"); doc.querySelector(kind === "sheet" ? "#save-sheet" : "#generate-projection").click(); await settle();
+  const retained = dom.window.sessionStorage.getItem("doctorcre-tour-other-writes-v1");
   const retry = doc.querySelector(kind === "sheet" ? "#save-sheet" : "#retry-tour-action");
   retry.click(); await settle();
   assert.ok(dom.window.sessionStorage.getItem("doctorcre-tour-other-writes-v1"));
-  assert.equal(doc.querySelector(kind === "sheet" ? "#cheat-content" : "#generate-projection").disabled, true);
-  assert.match(doc.querySelector(kind === "sheet" ? "#sheet-state" : "#tour-action-state").textContent, /unknown|sign in/i);
+  assert.equal(doc.querySelector("#tour-panel").hidden, false);
+  assert.match(doc.querySelector("#tour-recovery").textContent, /Sign in/i);
   retry.click(); await settle();
   const writes = store.calls.filter(call => call.path === path);
-  assert.equal(writes.length, 3);
-  assert.deepEqual(writes[1].body, writes[0].body); assert.deepEqual(writes[2].body, writes[0].body);
-  assert.equal(dom.window.sessionStorage.getItem("doctorcre-tour-other-writes-v1"), null); dom.window.close();
+  assert.equal(writes.length, 2);
+  assert.deepEqual(writes[1].body, writes[0].body);
+  assert.equal(dom.window.sessionStorage.getItem("doctorcre-tour-other-writes-v1"), retained); dom.window.close();
 });
 
 for (const sheet of [{ content: { notes: "Missing version" } }, { revision_number: "1", content: {} },
@@ -1329,7 +1379,7 @@ test('denied creation readback hides detail while retaining the session-bound cr
   try{
     await create(doc);
     assert.equal(doc.querySelector('#tour-panel').hidden,true);
-    assert.match(doc.querySelector('#create-tour-state').textContent,/outcome unknown/i);
+    assert.match(doc.querySelector('#tour-recovery').textContent,/Sign in/i);
     const retained=JSON.parse(dom.window.sessionStorage.getItem('doctorcre-tour-pending-v1'));
     assert.equal(retained.create.idempotency_key,store.calls.find(call=>call.path==='/api/tours/create').body.idempotency_key);
   }finally{dom.window.close();}
