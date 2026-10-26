@@ -33,6 +33,8 @@ The shared walkthrough runs in `test/w1-shell-browser.test.mjs`. Open the accoun
 
 ## Gotchas
 
+Home's Deals section shows pending assigned call tasks in `Call tasks to review`. Check the exact deal, assignee, text, date and expandable call evidence. Add Joe task or Add Dell task records that task; Skip dismisses only its proposal. Confirm the new action through the refreshed Calendar & tasks read. Email proposals remain in local Call Mode. `test/home-call-tasks-browser.test.mjs` drives phone and desktop synthetic flows, with captures under `out/test-artifacts/home-call-tasks/`; `test/home-call-tasks.test.mjs` covers retained decisions, invalid receipts, refresh and session retirement.
+
 On phones, the loading Calendar & tasks region reserves preview space ahead of independently loaded invoices. Empty and failed reads release that space.
 
 Counts depend on date and scope. Existing tests own their clock and synthetic records. No alerts is a valid Home state but cannot prove deal opening. A failed or partial read must remain visible as such; a shell alone is not readiness.

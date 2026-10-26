@@ -173,6 +173,7 @@ export function createLiveClient(opts = {}) {
       selfActor = agenda.actor || selfActor;
       return { ...agenda, deals: Array.isArray(agenda.deals) ? agenda.deals.map(dealToUi) : agenda.deals };
     },
+    async getPostCallFollowups({ signal } = {}) { return rpc('read-post-call-followups', {}, signal); },
 
     async getBoard(options = {}) {
       const board = await rpc('deal-room-board', {

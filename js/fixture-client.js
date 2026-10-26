@@ -1328,6 +1328,8 @@ export async function createFixtureClient(opts = {}) {
       };
     },
 
+    async getPostCallFollowups() { return { schema_version: 'post-call-followups.v1', candidates: [], send: false }; },
+
     async getHomeAgenda() {
       const board = await this.getBoard();
       return { ...board, schema_version: 'home-agenda.v1', deals: board.deals.map(deal => ({

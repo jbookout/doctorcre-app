@@ -93,6 +93,7 @@ export async function createQaServer({ buildRoot=resolve(repository,'dist/site')
   async function call(state, viewer, name, args) {
     if(name==='deal-room-board') return {schema_version:'local-deals-board.v1',actor:viewer,deals:structuredClone(state.deals),closed_deals:[],lost_deals:[],accounts:[],open_session:null,as_of:now(),last_call_at:null};
     if(name==='read-home-agenda') return {schema_version:'home-agenda.v1',actor:viewer,deals:structuredClone(state.deals).map(deal=>({...deal,critical_dates:[],next_actions:[{id:`action-${deal.id}`,owner:deal.owner,description:deal.next_step,due_on:deal.next_date,status:'open',hold_until:null}]}))};
+    if(name==='read-post-call-followups') return {schema_version:'post-call-followups.v1',candidates:[],send:false};
     if(name==='get-deal-room') {
       const deal=state.deals.find(row=>row.id===args.deal);if(!deal)refusal('deal_not_found');
       return { ...structuredClone(deal),deal_id:deal.id,schema_version:'deal-timeline.v1',thread:[],critical_dates:[],events:[], next_actions:[{id:`action-${deal.id}`,owner:deal.owner,description:deal.next_step,due_on:deal.next_date,status:'open'}],activities:[],participants:[{role:'lead',name:deal.owner==='joe'?'Joe':'Dell',actor:deal.owner}],premises:[],negotiation_rounds:[],documents:[],lease:null };
