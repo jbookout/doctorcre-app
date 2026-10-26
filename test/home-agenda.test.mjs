@@ -63,3 +63,22 @@ test('Home agenda remains available to Doc through the same authorized read', as
   assert.equal(context.finish(context.begin('getHomeAgenda'), payload), true);
   assert.equal(context.snapshot().records.some(row => row.id === payload.deals[0].id), true);
 });
+
+test('Today isolates dated work for the current day while All retains overdue, undated and future work', () => {
+  const board = { actor: 'joe', deals: [{ id: 'demo', name: 'Demo clinic', owner: 'joe' }] };
+  const task = (id, due_on, extra = {}) => ({ id, due_on, status: 'open', owner: 'joe', ...extra });
+  const details = new Map([['demo', { critical_dates: [
+    { id: 'date-today', due_on: '2026-10-01', status: 'open' },
+    { id: 'date-future', due_on: '2026-10-02', status: 'open' },
+  ], next_actions: [
+    task('overdue', '2026-09-30'), task('today', '2026-10-01'),
+    task('future', '2026-10-02'), task('undated', null),
+    task('held', '2026-09-29', { hold_until: '2026-10-02' }),
+    task('done', '2026-09-28', { status: 'done' }),
+    task('partner', '2026-10-01', { owner: 'dell' }),
+  ] }]]);
+  const team = agendaSnapshot(board, details, { today: '2026-10-01' });
+  assert.deepEqual(team.dueToday.map(row => row.key), ['date-today', 'task:partner', 'task:today']);
+  assert.deepEqual(team.upcoming.map(row => row.key), ['task:overdue', 'date-today', 'task:partner', 'task:today', 'task:undated', 'date-future', 'task:future']);
+  assert.deepEqual(agendaSnapshot(board, details, { scope: 'mine', today: '2026-10-01' }).dueToday.map(row => row.key), ['date-today', 'task:today']);
+});

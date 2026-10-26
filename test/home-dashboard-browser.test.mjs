@@ -614,3 +614,56 @@ test('Slice A Calendar retry clears unrelated private data when the board actor 
  assert.equal(await page.locator('#homeLeads').isVisible(), false);
  assert.equal(await page.locator('#homeDetail').evaluate(dialog => dialog.open), false);
 });
+
+for (const width of [1440, 390]) test(`Home Today filters and expands daily work without losing the complete agenda at ${width}`, async t => {
+  const { page, responses, errors } = await open(t, { width });
+  const board = await page.evaluate(async () => (await (await import('/js/home-boot.js')).homeClient).getBoard());
+  const due = Array.from({ length: 8 }, (_, i) => ({ id: `demo-due-${i}`, description: `Demo due ${i}`, status: 'open', owner: 'joe', due_on: '2026-10-01' }));
+  const deal = { ...board.deals.find(row => row.id === 'd01'), owner: 'joe',
+    critical_dates: [{ id: 'demo-future-date', due_on: '2026-10-03', status: 'open', note: 'Demo future date' }],
+    next_actions: [...Array.from({ length: 7 }, (_, i) => ({ ...due[0], id: `demo-old-${i}`, description: `Demo overdue ${i}`, due_on: '2026-09-30' })), ...due, { ...due[0], id: 'demo-undated', description: 'Demo undated', due_on: null }, { ...due[0], id: 'demo-future', description: 'Demo future', due_on: '2026-10-02' }] };
+  responses.set('read-home-agenda', { ...board, schema_version: 'home-agenda.v1', deals: [deal] });
+  await page.locator('#refreshHome').click();
+  await page.waitForFunction(() => document.querySelector('#refreshHome').getAttribute('aria-busy') === 'false');
+  const calendar = page.locator('#homeCalendar');
+  const all = calendar.getByRole('button', { name: 'All dates & tasks', exact: true });
+  const today = calendar.getByRole('button', { name: 'Today', exact: true });
+  assert.equal(await all.count(), 1);
+  assert.equal(await all.getAttribute('aria-pressed'), 'true');
+  assert.deepEqual(await page.locator('#homeAgenda strong').allTextContents(), ['Demo overdue 0', 'Demo overdue 1', 'Demo overdue 2', 'Demo overdue 3', 'Demo overdue 4', 'Demo overdue 5']);
+  await calendar.getByRole('button', { name: 'Show all 18', exact: true }).click();
+  assert.equal(await page.locator('#homeAgenda a').count(), 18);
+  await today.click();
+  assert.equal(await today.getAttribute('aria-pressed'), 'true');
+  assert.deepEqual(await page.locator('#homeAgenda strong').allTextContents(), ['Demo due 0', 'Demo due 1', 'Demo due 2', 'Demo due 3', 'Demo due 4', 'Demo due 5']);
+  assert.equal(await page.locator('#homeAgenda a').first().getAttribute('href'), '/deals?deal=d01');
+  const week = await page.locator('.home-week').textContent();
+  await calendar.getByRole('button', { name: 'Show all 8', exact: true }).click();
+  assert.equal(await page.locator('#homeAgenda a').count(), 8);
+  assert.equal(await page.locator('#homeAgenda a').nth(6).evaluate(node => document.activeElement === node), true);
+  await today.focus();
+  await page.evaluate(() => window.dispatchEvent(new Event('online')));
+  await page.waitForFunction(() => document.querySelector('#refreshHome').getAttribute('aria-busy') === 'false');
+  assert.equal(await today.evaluate(node => document.activeElement === node), true);
+  assert.equal(await page.locator('#homeAgenda a').count(), 8);
+  await all.click();
+  assert.equal(await page.locator('#homeAgenda a').count(), 6);
+  await calendar.getByRole('button', { name: 'Show all 18', exact: true }).click();
+  assert.ok((await page.locator('#homeAgenda strong').allTextContents()).includes('Demo undated'));
+  assert.equal(await page.locator('.home-week').textContent(), week);
+  await today.click();
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+  await screenshot(page, `today-${width}`);
+  responses.set('read-home-agenda', { ...board, schema_version: 'home-agenda.v1', deals: [{ ...deal, next_actions: deal.next_actions.filter(row => row.due_on === null) }] });
+  await page.locator('#refreshHome').click();
+  await page.waitForFunction(() => document.querySelector('#refreshHome').getAttribute('aria-busy') === 'false');
+  assert.equal(await page.locator('#homeAgenda a').count(), 0);
+  assert.match(await calendar.textContent(), /No dates or tasks due today/);
+  assert.equal(await calendar.getByRole('button', { name: /Show all/ }).count(), 0);
+  responses.set('read-home-agenda', { ...board, schema_version: 'home-agenda.v1', deals: [{ ...deal, critical_dates: [], next_actions: null }] });
+  await page.locator('#refreshHome').click();
+  await page.waitForFunction(() => document.querySelector('#refreshHome').getAttribute('aria-busy') === 'false');
+  assert.match(await calendar.textContent(), /unavailable/);
+  assert.doesNotMatch(await calendar.textContent(), /No dates or tasks due today/);
+  assert.deepEqual(errors, []);
+});
