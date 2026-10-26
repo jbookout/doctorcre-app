@@ -236,8 +236,10 @@ export function createCallMode(deps) {
     if (!stage) return;
     stage.classList.toggle('recording', recording);
     stage.classList.toggle('processing', processing);
-    $('#callModeStarts').hidden = recording || processing;
-    $('#callModeConsentRow').hidden = recording || processing;
+    // A finished call (transcript ready or filed) must not block the next one.
+    const busy = recording || snapshot.state === 'transcribing';
+    $('#callModeStarts').hidden = busy;
+    $('#callModeConsentRow').hidden = busy;
     $('#callModeStop').hidden = !recording;
     $('#callModeTimer').textContent = recording ? elapsedTime(snapshot.started_at, now) : ({
       idle: 'Ready', transcribing: 'Processing', ready_to_extract: 'Transcript ready', filed: 'Summary saved', state_unknown: 'Check Quill',
