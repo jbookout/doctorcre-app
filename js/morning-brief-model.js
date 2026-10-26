@@ -4,7 +4,7 @@ import { toDay } from './calendar-model.js';
 
 export { businessDay as localDay } from './business-date.js';
 import { businessDay as localDay } from './business-date.js';
-import { briefSections } from './morning-brief-sections.js';
+import { briefInstruction, briefSections } from './morning-brief-sections.js';
 
 const text = value => typeof value === 'string' && value.trim();
 const section = value => value && ['ready','empty','partial','unavailable'].includes(value.state) && Array.isArray(value.items);
@@ -59,7 +59,7 @@ export function morningBriefView(payload, { now = new Date(), since, events = []
     .filter(([, ,row]) => row).map(([key,label,row]) => {
       const title = String(row.title || '').trim().replace(/\s+/g,' ');
       const summary = String(row.summary || '').trim().replace(/\s+/g,' ');
-      return {key,label,row:{ ...row, title, summary:summary === title ? '' : short(summary,10) }};
+      return {key,label,row:{ ...row, title, summary:short(briefInstruction(title,summary),10) }};
     });
   const unavailable = [];
   if (sections.today.state === 'unavailable' || sections.loops.state === 'unavailable' || sections.deals.state === 'unavailable') unavailable.push('Today’s priorities unavailable');
