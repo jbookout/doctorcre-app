@@ -10,26 +10,11 @@
  * model could not settle stay in their own review lists; here they are only
  * counted so nothing waiting is invisible.
  */
-import { PHASE_BY_SLUG } from './client.js';
+import { callChangeText, dayLabel } from './call-change-words.js';
+
+export { callChangeText, dayLabel };
 
 const esc = value => String(value ?? '').replace(/[&<>"']/gu, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[ch]);
-
-/** A calendar day in the app's own short style ("Nov 3"); the raw value when it is not a date. */
-export function dayLabel(value) {
-  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}/u.test(value)) return String(value ?? '');
-  const at = new Date(`${value.slice(0, 10)}T12:00:00`);
-  return Number.isNaN(at.getTime()) ? value : at.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-}
-
-export function callChangeText(change) {
-  const payload = change?.payload || {};
-  if (change?.kind === 'phase_move') {
-    const phase = PHASE_BY_SLUG[payload.value] || payload.value || 'a new phase';
-    return `Phase moved to ${phase}${payload.started_on ? `, started ${dayLabel(payload.started_on)}` : ''}`;
-  }
-  if (change?.kind === 'next_step') return `Next step: ${payload.text || ''}${payload.next_date ? ` · due ${dayLabel(payload.next_date)}` : ''}`;
-  return 'Change applied from the call';
-}
 
 // Refusals are answers for a partner, never developer text, and never retried.
 const UNDO_REFUSALS = {

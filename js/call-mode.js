@@ -33,7 +33,7 @@
  * transcript it already has.
  */
 import { createRetainedCommands } from './retained-commands.mjs';
-import { mountCallOutcomes, callChangeText, dayLabel } from './call-outcomes.js';
+import { callChangeText, dayLabel } from './call-change-words.js';
 import { requestCompanion } from './post-call-client.js';
 import { escapeText as esc } from './change-receipts.mjs';
 import { mountVisibilityPoll } from './visibility-poll.mjs';
@@ -361,16 +361,22 @@ export function createCallMode(deps) {
     return `<section class="post-call-group"><h4>${esc(title)}</h4>${items.length ? `<div class="post-call-cards">${items.map(renderItem).join('')}</div>` : `<p class="post-call-empty">${esc(empty)}</p>`}</section>`;
   }
 
-  // Applied-from-the-call summary (read-call-outcomes) above the report.
+  // Applied-from-the-call summary (read-call-outcomes) above the report. Its
+  // module loads only once a call has candidates to list, so the Deals page
+  // does not carry it on every visit.
   let outcomes = null;
+  let outcomesLoading = null;
   function reportCandidateIds() {
     const updates = state.postCall.report?.deal_updates;
     return (Array.isArray(updates) ? updates : []).flatMap(update => ['next_step', 'phase_move']
       .map(field => update?.[field]?.candidate_id).filter(Boolean));
   }
-  function callOutcomes() {
+  async function callOutcomes() {
     const node = $('#postCallOutcomes');
     if (!node || !deps.client()?.readCallOutcomes) return null;
+    if (outcomes) return outcomes;
+    outcomesLoading ||= import('./call-outcomes.js');
+    const { mountCallOutcomes } = await outcomesLoading;
     outcomes ||= mountCallOutcomes({ container: node, client: deps.client, toast, filter: reportCandidateIds, listen: false,
       onChange: () => refreshPostCall({ quiet: true }) });
     return outcomes;
@@ -508,7 +514,7 @@ export function createCallMode(deps) {
         error: reason ? `Local processing stopped: ${reason}` : null };
       if (['filed', 'failed'].includes(status) || (status === 'review_ready' && (!applying || applyTimedOut))) stopPolling();
       else if (!state.pollTimer) startPolling(session, {immediate:false});
-      if (['review_ready', 'filed'].includes(status) && !applying && reportCandidateIds().length) callOutcomes()?.refresh();
+      if (['review_ready', 'filed'].includes(status) && !applying && reportCandidateIds().length) callOutcomes().then(view => view?.refresh());
       renderPostCall();
       // The stall this closes: a weekly recording whose companion never got
       // the context index. Supply it now, once per session unless a partner

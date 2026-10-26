@@ -417,7 +417,8 @@ test("Call Mode waits for the automatic apply before it claims or lists anything
     await h.controller.refreshPostCall({ quiet: true });
     assert.equal(status(), "Call processed. 1 change applied and listed with Undo; 1 held change waits for Joe or Dell below.");
     assert.equal(h.controller.state.pollTimer, null);
-    await new Promise((resolve) => setImmediate(resolve));
+    for (let i = 0; i < 50 && !reads.length; i++) await new Promise((resolve) => setTimeout(resolve, 5));
+    await new Promise((resolve) => setTimeout(resolve, 5));
     assert.equal(reads.length, 1);
     const outcomes = h.doc.getElementById("postCallOutcomes");
     assert.equal(outcomes.hidden, false);
