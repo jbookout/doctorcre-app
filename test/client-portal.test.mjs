@@ -25,3 +25,19 @@ test('portal reader sends only the selected portal and password over authenticat
     name: 'read-client-portal', arguments: { slug: 'demo-practice', password: 'synthetic-password' },
   });
 });
+
+test('portal reader refuses another portal, unsupported versions and incomplete roadmap or material', async () => {
+  const valid = { ok: true, schema_version: 'client-portal.v1', portal };
+  for (const payload of [
+    { ...valid, schema_version: 'client-portal.v2' },
+    { ...valid, portal: { ...portal, slug: 'another-practice' } },
+    { ...valid, portal: { ...portal, roadmap: { ...portal.roadmap, current_phase: 'missing' } } },
+    { ...valid, portal: { ...portal, roadmap: { ...portal.roadmap, phases: [] } } },
+    { ...valid, portal: { ...portal, materials: [{ kind: 'note', title: 'Internal', content: 'Do not share' }] } },
+    { ...valid, portal: { ...portal, materials: [{ kind: 'report', title: 'Incomplete' }] } },
+    { ok: false, error: 'portal_access_denied' },
+  ]) {
+    const client = createClientPortalClient({ fetchImpl: async () => response(payload) });
+    await assert.rejects(client.read({ slug: 'demo-practice', password: 'synthetic-password' }), /Portal unavailable/);
+  }
+});
