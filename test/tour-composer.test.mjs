@@ -577,6 +577,199 @@ async function touchLayout(page) {
       }) }));
 }
 
+for (const phase of ["preflight", "write", "refresh"]) test(`autosave preserves typing during ${phase} and saves it against the confirmed revision`, async t => {
+  const store = domain(), { dom, doc } = await open(store); t.after(() => dom.window.close()); await create(doc);
+  dom.window.fetch = (...args) => store.fetch(...args);
+  const normal = store.fetch; let release, details = 0;
+  store.fetch = async (path, options) => {
+    const detail = path.startsWith("/api/tours/detail");
+    if (detail) ++details;
+    const hold = phase === "preflight" && detail && details === 1 || phase === "write" && path === "/api/tours/cheat-sheet/autosave" || phase === "refresh" && detail && details === 2;
+    if (hold && !release) await new Promise(resolve => { release = resolve; });
+    return normal(path, options);
+  };
+  fill(doc, "#cheat-content", "Submitted draft");
+  await new Promise(resolve => setTimeout(resolve, 1100)); await settle();
+  assert.equal(typeof release, "function");
+  const editor = doc.querySelector("#cheat-content");
+  assert.equal(editor.disabled, false, "typing stays enabled while a save is in flight");
+  fill(doc, "#cheat-content", "Newer typing");
+  release(); await settle();
+  assert.equal(editor.value, "Newer typing", "refresh preserves unsaved typing");
+  await new Promise(resolve => setTimeout(resolve, 1100)); await settle();
+  const writes = store.calls.filter(call => call.path === "/api/tours/cheat-sheet/autosave");
+  assert.equal(writes.length, 2);
+  assert.deepEqual(writes.map(call => call.body.content), [{ notes: "Submitted draft" }, { notes: "Newer typing" }]);
+  assert.deepEqual(writes.map(call => call.body.expected_revision_number), [0, 1]);
+});
+
+for (const outcome of ["confirmed composition", "unknown refresh"]) test(`autosave retains newer typing through ${outcome}`, async t => {
+  const store = domain(), { dom, doc } = await open(store); t.after(() => dom.window.close()); await create(doc);
+  dom.window.fetch = (...args) => store.fetch(...args);
+  const normal = store.fetch; let release;
+  store.fetch = async (path, options) => {
+    if (path === "/api/tours/cheat-sheet/autosave" && !release) {
+      await new Promise(resolve => { release = resolve; });
+      if (outcome === "unknown refresh") throw new Error("response lost");
+    }
+    return normal(path, options);
+  };
+  fill(doc, "#cheat-content", "Submitted notes");
+  await new Promise(resolve => setTimeout(resolve, 1100)); await settle();
+  const editor = doc.querySelector("#cheat-content");
+  if (outcome === "confirmed composition") editor.dispatchEvent(new dom.window.CompositionEvent("compositionstart"));
+  editor.value = "Newer typing";
+  editor.dispatchEvent(new dom.window.InputEvent("input", { bubbles: true, isComposing: outcome === "confirmed composition" }));
+  release(); await settle();
+  if (outcome === "unknown refresh") {
+    assert.equal(editor.disabled, true);
+    doc.querySelector(".tour-button").click(); await settle();
+  }
+  assert.equal(editor.value, "Newer typing");
+  if (outcome === "confirmed composition") {
+    await new Promise(resolve => setTimeout(resolve, 1100)); await settle();
+    assert.equal(store.calls.filter(call => call.path === "/api/tours/cheat-sheet/autosave").length, 1);
+    editor.dispatchEvent(new dom.window.CompositionEvent("compositionend"));
+    await new Promise(resolve => setTimeout(resolve, 1100)); await settle();
+    assert.deepEqual([...store.tours.values()][0].cheat_sheet.content, { notes: "Newer typing" });
+  }
+});
+
+test("autosave does not poll while Tour navigation is busy", async t => {
+  const store = domain(), { dom, doc } = await open(store); t.after(() => dom.window.close()); await create(doc);
+  dom.window.fetch = (...args) => store.fetch(...args);
+  const timeout = dom.window.setTimeout.bind(dom.window); let debounceTimers = 0;
+  dom.window.setTimeout = (fn, delay, ...args) => { if (delay === 1000) ++debounceTimers; return timeout(fn, delay, ...args); };
+  fill(doc, "#cheat-content", "Draft during navigation");
+  const release = deferDetail(store);
+  doc.querySelector(".tour-button").click(); await settle();
+  await new Promise(resolve => setTimeout(resolve, 1100)); await settle();
+  assert.equal(debounceTimers, 1, "busy navigation does not schedule another timer");
+  release(); await settle();
+  assert.equal(doc.querySelector("#cheat-content").value, "Draft during navigation");
+});
+
+test("autosave keeps a dirty sheet through a failed same-Tour read and retry", async () => {
+  const store = domain(), { dom, doc } = await open(store); await create(doc);
+  fill(doc, "#cheat-content", "Notes waiting for autosave");
+  store.fail("/api/tours/detail", "unavailable");
+  doc.querySelector(".tour-button").click(); await settle();
+  assert.match(doc.querySelector("#status").textContent, /Tour detail unavailable/i);
+  await new Promise(resolve => setTimeout(resolve, 1200)); await settle();
+  assert.equal(store.calls.filter(call => call.path === "/api/tours/cheat-sheet/autosave").length, 0);
+  doc.querySelector("[data-tour-retry]").click(); await settle();
+  assert.equal(doc.querySelector("#tour-panel").hidden, false);
+  assert.equal(doc.querySelector("#cheat-content").value, "Notes waiting for autosave");
+  await new Promise(resolve => setTimeout(resolve, 1200)); await settle();
+  const writes = store.calls.filter(call => call.path === "/api/tours/cheat-sheet/autosave");
+  assert.equal(writes.length, 1);
+  assert.deepEqual(writes[0].body.content, { notes: "Notes waiting for autosave" });
+  dom.window.close();
+});
+
+for (const recovery of ["same-Tour refresh", "delayed failed-read retry"]) test(`autosave keeps the draft's original revision across ${recovery}`, async () => {
+  const store = domain(), { dom, doc } = await open(store); await create(doc);
+  const tour = [...store.tours.values()][0];
+  tour.cheat_sheet = { revision_number: 3, content: { notes: "Original notes" } };
+  doc.querySelector(".tour-button").click(); await settle();
+  fill(doc, "#cheat-content", "My revision-three draft");
+  tour.cheat_sheet = { revision_number: 4, content: { notes: "Partner's newer notes" } };
+  if (recovery === "delayed failed-read retry") store.fail("/api/tours/detail", "unavailable");
+  doc.querySelector(".tour-button").click(); await settle();
+  if (recovery === "delayed failed-read retry") {
+    await new Promise(resolve => setTimeout(resolve, 1200)); await settle();
+    doc.querySelector("[data-tour-retry]").click(); await settle();
+  }
+  await new Promise(resolve => setTimeout(resolve, 1200)); await settle();
+  assert.equal(store.calls.filter(call => call.path === "/api/tours/cheat-sheet/autosave").length, 0);
+  assert.equal(doc.querySelector("#cheat-content").value, "My revision-three draft");
+  assert.equal(doc.querySelector("#sheet-conflict").hidden, false);
+  assert.match(doc.querySelector("#sheet-current").textContent, /Partner's newer notes/);
+  doc.querySelector("#review-sheet").click(); await settle();
+  doc.querySelector("#save-sheet").click(); await settle();
+  const writes = store.calls.filter(call => call.path === "/api/tours/cheat-sheet/autosave");
+  assert.equal(writes.length, 1);
+  assert.equal(writes[0].body.expected_revision_number, 4);
+  assert.deepEqual(writes[0].body.content, { notes: "My revision-three draft" });
+  dom.window.close();
+});
+
+test("a draft with an unreadable original revision requires review of a valid current sheet", async () => {
+  const store = domain(), { dom, doc } = await open(store); await create(doc);
+  const tour = [...store.tours.values()][0];
+  tour.cheat_sheet = { content: { notes: "Notes without a revision" } };
+  doc.querySelector(".tour-button").click(); await settle();
+  fill(doc, "#cheat-content", "My retained draft");
+  tour.cheat_sheet = { revision_number: 4, content: { notes: "Valid current notes" } };
+  doc.querySelector("#save-sheet").click(); await settle();
+  assert.equal(store.calls.filter(call => call.path === "/api/tours/cheat-sheet/autosave").length, 0);
+  assert.equal(doc.querySelector("#sheet-conflict").hidden, false);
+  assert.equal(doc.querySelector("#cheat-content").value, "My retained draft");
+  doc.querySelector("#review-sheet").click(); await settle();
+  doc.querySelector("#save-sheet").click(); await settle();
+  const writes = store.calls.filter(call => call.path === "/api/tours/cheat-sheet/autosave");
+  assert.equal(writes.length, 1);
+  assert.equal(writes[0].body.expected_revision_number, 4);
+  assert.deepEqual(writes[0].body.content, { notes: "My retained draft" });
+  dom.window.close();
+});
+
+test("autosave waits until IME composition ends before saving the complete notes", async () => {
+  const store = domain(), { dom, doc } = await open(store); await create(doc);
+  fill(doc, "#cheat-content", "Before composition");
+  const editor = doc.querySelector("#cheat-content");
+  editor.dispatchEvent(new dom.window.CompositionEvent("compositionstart"));
+  editor.value = "途中";
+  editor.dispatchEvent(new dom.window.InputEvent("input", { bubbles: true, isComposing: true }));
+  await new Promise(resolve => setTimeout(resolve, 1200)); await settle();
+  assert.equal(editor.disabled, false);
+  assert.equal(store.calls.filter(call => call.path === "/api/tours/cheat-sheet/autosave").length, 0);
+  editor.value = "完成したメモ";
+  editor.dispatchEvent(new dom.window.CompositionEvent("compositionend"));
+  await new Promise(resolve => setTimeout(resolve, 1200)); await settle();
+  const writes = store.calls.filter(call => call.path === "/api/tours/cheat-sheet/autosave");
+  assert.equal(writes.length, 1);
+  assert.deepEqual(writes[0].body.content, { notes: "完成したメモ" });
+  dom.window.close();
+});
+
+test("autosave waits for deliberate reconciliation after an unknown save outcome", async () => {
+  const store = domain(), { dom, doc } = await open(store); await create(doc);
+  store.fail("/api/tours/cheat-sheet/autosave", "lost");
+  fill(doc, "#cheat-content", "Autosaved notes with a lost response");
+  await new Promise(resolve => setTimeout(resolve, 1200)); await settle();
+  assert.match(doc.querySelector("#sheet-state").textContent, /unknown/i);
+  await new Promise(resolve => setTimeout(resolve, 1200)); await settle();
+  assert.equal(store.calls.filter(call => call.path === "/api/tours/cheat-sheet/autosave").length, 1);
+  doc.querySelector("#save-sheet").click(); await settle();
+  const writes = store.calls.filter(call => call.path === "/api/tours/cheat-sheet/autosave");
+  assert.equal(writes.length, 2);
+  assert.deepEqual(writes[1].body, writes[0].body);
+  assert.match(doc.querySelector("#sheet-state").textContent, /save confirmed/i);
+  dom.window.close();
+});
+
+test("autosave preserves conflicting notes until the broker reviews and explicitly saves", async () => {
+  const store = domain(), { dom, doc } = await open(store); await create(doc);
+  fill(doc, "#cheat-content", "My pending notes");
+  [...store.tours.values()][0].cheat_sheet = { revision_number: 1, content: { notes: "Partner's revision" } };
+  await new Promise(resolve => setTimeout(resolve, 1200)); await settle();
+  assert.equal(doc.querySelector("#sheet-conflict").hidden, false);
+  assert.equal(doc.querySelector("#cheat-content").value, "My pending notes");
+  fill(doc, "#cheat-content", "My revised draft");
+  await new Promise(resolve => setTimeout(resolve, 1200)); await settle();
+  assert.equal(store.calls.filter(call => call.path === "/api/tours/cheat-sheet/autosave").length, 0);
+  doc.querySelector("#review-sheet").click(); await settle();
+  await new Promise(resolve => setTimeout(resolve, 1200)); await settle();
+  assert.equal(store.calls.filter(call => call.path === "/api/tours/cheat-sheet/autosave").length, 0);
+  doc.querySelector("#save-sheet").click(); await settle();
+  const writes = store.calls.filter(call => call.path === "/api/tours/cheat-sheet/autosave");
+  assert.equal(writes.length, 1);
+  assert.equal(writes[0].body.expected_revision_number, 1);
+  assert.deepEqual(writes[0].body.content, { notes: "My revised draft" });
+  dom.window.close();
+});
+
 test("S2 sheet timeout replays the exact committed request and keeps its original revision", async () => {
   const store = domain(), { dom, doc } = await open(store); await create(doc);
   const tour = [...store.tours.values()][0], normal = store.fetch; let lose = true;

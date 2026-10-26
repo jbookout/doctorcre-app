@@ -27,7 +27,10 @@ test("rendered composer uses compact fallback, keeps exact stop after reload, an
       if (url.pathname.startsWith("/api/")) {
         const data = url.pathname === "/api/tours/library" ? { tours: [{ id: tourId, name: "Synthetic itinerary" }] }
           : url.pathname === "/api/tours/detail" ? detail
-          : url.pathname === "/api/tours/property-evidence" ? { schema: "tour-property-evidence.v1", facts: {} } : {};
+          : url.pathname === "/api/tours/property-evidence/v1" ? { schema: "tour-property-evidence.v1", facts: {
+            county: { status: "unknown", reason: "no_authorized_evidence" },
+            municipality: { status: "unavailable", reason: "authoritative_coverage_missing" },
+          } } : {};
         res.writeHead(200, { "content-type": "application/json" }); res.end(JSON.stringify({ data, csrf_token: "synthetic-session-csrf" })); return;
       }
       const path = url.pathname === "/tours" ? "tours/route-editor.html" : url.pathname.slice(1);
@@ -46,6 +49,21 @@ test("rendered composer uses compact fallback, keeps exact stop after reload, an
       const errors = []; page.on("pageerror", e => errors.push(e.message));
       await page.goto(`${base}/tours`); await page.locator("#appSidebarToggle").click(); await page.locator(".tour-button").click(); if (width <= 760) await page.keyboard.press("Escape");
       const root = page.locator("#accepted-itinerary"); await root.waitFor({ state: "visible" });
+      await page.locator('#property-evidence-panel > summary').click();
+      const coverage = page.locator('#property-evidence details').filter({ hasText: 'Field coverage' });
+      await coverage.locator('summary').focus();
+      await coverage.locator('summary').press('Enter');
+      await page.waitForFunction(() => document.querySelector('#property-evidence details')?.open);
+      assert.equal(await coverage.evaluate(node => node.open), true);
+      assert.match(await coverage.innerText(), /County.*Unknown.*No authorized evidence/s);
+      assert.match(await coverage.innerText(), /Municipality.*Coverage unavailable.*Authoritative coverage missing/s);
+      assert.match(await coverage.innerText(), /Building.*Unknown.*Reason not recorded/s);
+      assert.equal(await coverage.locator('a').count(), 0);
+      assert.ok(await coverage.evaluate(node => node.getBoundingClientRect().right <= innerWidth), `${name}: coverage fits`);
+      if (process.env.TOUR_MAP_SCREENSHOTS) {
+        await mkdir(process.env.TOUR_MAP_SCREENSHOTS, { recursive: true });
+        await page.locator('#property-evidence-panel').screenshot({ path: `${process.env.TOUR_MAP_SCREENSHOTS}/coverage-${name}.png` });
+      }
       assert.equal(await root.locator("canvas").count(), 0);
       assert.match(await root.locator("[data-map-status]").innerText(), /Street map unavailable/);
       assert.equal(await root.locator("[data-itinerary-stop]").count(), 2);
