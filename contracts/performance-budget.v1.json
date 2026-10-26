@@ -227,29 +227,11 @@
   },
   "bundle": {
     "jsBytes": {
-      "baseline": 5084924,
-      "limit": 5593417
+      "baseline": 4623471,
+      "limit": 5085819
     }
   },
   "metricBaselines": {
-    "bundle.jsBytes": {
-      "measuredAt": "2026-10-26T10:47:10Z",
-      "sourceCommit": "43d5a2865088e3446672513049f32e1bfddde02e",
-      "buildDigest": "7b4b591dd2c21cb7caeb61dd0964614ce11e0c7c3e2defb0a3d41161408a91bc",
-      "nodeVersion": "v26.12.1",
-      "platform": "darwin",
-      "reason": "Main advanced during this task, so refresh only the artifact-wide JavaScript baseline against the latest main. Two deterministic builds of exact main commit 43d5a286 each contain 5,084,924 JavaScript bytes and share this digest. The prior baseline from 2026-10-19 left 895 bytes below its cap. This slice adds 9,003 JavaScript bytes to the artifact. Preserve every per-screen and task limit, and keep the existing 10% headroom from current main. Static artifact size does not depend on a browser, and no timing improvement is claimed.",
-      "comparison": {
-        "beforeCommit": "43d5a2865088e3446672513049f32e1bfddde02e",
-        "beforeJsBytes": 5084924,
-        "beforeBuildDigest": "7b4b591dd2c21cb7caeb61dd0964614ce11e0c7c3e2defb0a3d41161408a91bc",
-        "afterCommit": "ca657afd132cff2d450b265e09dbe1981ff1e9ae",
-        "afterJsBytes": 5093927,
-        "addedJsBytes": 9003,
-        "repeatBuilds": 2,
-        "repeatDigestsMatch": true
-      }
-    },
     "deals.lcpMs": {
       "measuredAt": "2026-10-19T20:47:22.069Z",
       "sourceCommit": "b90863aeb2e05ba3e8f8a11f0f31653c086932fa",

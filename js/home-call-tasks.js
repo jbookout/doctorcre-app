@@ -33,7 +33,7 @@ export async function readHomeCallTasks(client, { signal } = {}) {
 }
 
 export function mountHomeCallTasks({ document, client, host, onChanged }) {
-  let view = {}, actor = null, generation = 0, disposed = false, notice = '';
+  let view = {}, actor = null, generation = 0, disposed = false, notice = '', noticeFresh = false;
   const decisions = new Map();
   const commands = createRetainedCommands({ scope: () => actor });
   const admitted = () => !disposed && !view.signedOut && !view.busy && view.read?.state === 'read' && text(actor);
@@ -54,18 +54,18 @@ export function mountHomeCallTasks({ document, client, host, onChanged }) {
       const disabled = !admitted() || ['submitting', 'resolved'].includes(decision?.state);
       const uncertain = decision?.state === 'uncertain';
       const date = task.dueOn ? new Date(`${task.dueOn}T12:00:00`).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : 'No date';
-      return `<article class="home-call-task" data-call-task="${E(task.candidateId)}"><div><a href="/deals?deal=${encodeURIComponent(task.dealId)}">${E(task.dealName)}</a><p>${E(task.description)}</p><span>${E(ownerLabel(task.owner))} · ${task.dueOn ? `<time datetime="${E(task.dueOn)}">${E(date)}</time>` : date}</span>${task.evidence ? `<details><summary>Call evidence</summary><p>${E(task.evidence)}</p></details>` : ''}${uncertain ? '<p class="home-call-task-error" role="alert">Task outcome is unconfirmed. Check the original decision before changing it.</p>' : ''}</div><div class="home-call-task-controls"><button type="button" class="home-outline" data-call-task-id="${E(task.candidateId)}" data-call-task-accept="true" data-call-task-key="${E(task.candidateId)}:true"${disabled || uncertain && !decision.accept ? ' disabled' : ''}>${uncertain && decision.accept ? 'Check task outcome' : `Add ${ownerLabel(task.owner)} task`}</button><button type="button" class="home-outline" data-call-task-id="${E(task.candidateId)}" data-call-task-accept="false" data-call-task-key="${E(task.candidateId)}:false"${disabled || uncertain && decision.accept ? ' disabled' : ''}>${uncertain && !decision.accept ? 'Check task outcome' : 'Skip'}</button></div></article>`;
+      return `<article class="home-call-task" data-call-task="${E(task.candidateId)}"><div><a href="/deals?deal=${encodeURIComponent(task.dealId)}">${E(task.dealName)}</a><p>${E(task.description)}</p><span>${E(ownerLabel(task.owner))} · ${task.dueOn ? `<time datetime="${E(task.dueOn)}">${E(date)}</time>` : date}</span>${task.evidence ? `<details><summary>Call evidence</summary><p>${E(task.evidence)}</p></details>` : ''}${uncertain ? '<p class="home-call-task-error" role="alert">Task outcome is unconfirmed. Check the original decision before changing it.</p>' : ''}</div><div class="home-call-task-controls"><button type="button" class="home-outline" data-call-task-id="${E(task.candidateId)}" data-call-task-accept="true" data-call-task-key="${E(task.candidateId)}:true"${disabled || uncertain && !decision.accept ? ' aria-disabled="true"' : ''}>${uncertain && decision.accept ? 'Check task outcome' : `Add ${ownerLabel(task.owner)} task`}</button><button type="button" class="home-outline" data-call-task-id="${E(task.candidateId)}" data-call-task-accept="false" data-call-task-key="${E(task.candidateId)}:false"${disabled || uncertain && decision.accept ? ' aria-disabled="true"' : ''}>${uncertain && !decision.accept ? 'Check task outcome' : 'Skip'}</button></div></article>`;
     }).join('')}`;
     if (focused) ([...host.querySelectorAll('[data-call-task-key]')].find(node => node.dataset.callTaskKey === focused) || document.getElementById('homePrimaryAction'))?.focus();
   };
   const decide = async event => {
     const button = event.target.closest('[data-call-task-id]');
-    if (!button || button.disabled || !admitted()) return;
+    if (!button || button.getAttribute('aria-disabled') === 'true' || !admitted()) return;
     const id = button.dataset.callTaskId, accept = button.dataset.callTaskAccept === 'true';
     const prior = decisions.get(id), task = visible().find(row => row.candidateId === id);
     if (!task || prior?.state === 'submitting' || prior?.state === 'resolved' || prior?.state === 'uncertain' && prior.accept !== accept) return;
     const ticket = generation, binding = actor;
-    decisions.set(id, { state: 'submitting', accept, task }); notice = ''; render();
+    decisions.set(id, { state: 'submitting', accept, task }); notice = ''; noticeFresh = false; render();
     try {
       const result = await commands.send(id, { candidate_id: id, accept }, async request => {
         const receipt = await client.resolvePostCallCandidate(request);
@@ -80,8 +80,9 @@ export function mountHomeCallTasks({ document, client, host, onChanged }) {
       if (disposed || ticket !== generation || actor !== binding) return;
       decisions.set(id, { state: 'resolved', accept, task });
       notice = result.already ? 'This proposal was already resolved. Refreshing Home.' : accept ? 'Task added' : 'Task skipped';
+      noticeFresh = true;
       render();
-      await onChanged();
+      try { await onChanged(); } finally { noticeFresh = false; }
     } catch {
       if (disposed || ticket !== generation || actor !== binding) return;
       decisions.set(id, { state: 'uncertain', accept, task });
@@ -97,6 +98,7 @@ export function mountHomeCallTasks({ document, client, host, onChanged }) {
       if (disposed) return;
       if (next.signedOut || actor && text(next.actor) && actor !== next.actor) { retire(); return; }
       actor = next.actor || actor; view = next;
+      if (view.read?.state === 'read' && !visible().length) { if (!noticeFresh) notice = ''; }
       render();
     },
     dispose() { retire(); host.removeEventListener('click', decide); document.defaultView?.removeEventListener('doctorcre-session-invalidated', retire); },

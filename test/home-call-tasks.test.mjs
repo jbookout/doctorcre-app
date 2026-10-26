@@ -57,7 +57,7 @@ test('an uncertain task decision keeps its key and blocks the opposite decision 
   await settle();
   h.controller.update({ ...ready, tasks: [] });
   assert.match(h.host.textContent, /Task outcome is unconfirmed/);
-  assert.equal(h.host.querySelector('[data-call-task-accept="false"]').disabled, true);
+  assert.equal(h.host.querySelector('[data-call-task-accept="false"]').getAttribute('aria-disabled'), 'true');
   h.host.querySelector('[data-call-task-accept="true"]').click();
   await settle();
   assert.equal(writes.length, 2);
@@ -95,7 +95,7 @@ test('malformed receipts retain an unconfirmed decision instead of a success cla
 test('loading and session invalidation disable stale Home task controls', async () => {
   const writes = [], h = mount(async args => { writes.push(args); return receipt; });
   h.controller.update({ ...ready, busy: true, read: { state: 'loading' } });
-  assert.equal(h.host.querySelector('button').disabled, true);
+  assert.equal(h.host.querySelector('button').getAttribute('aria-disabled'), 'true');
   h.host.querySelector('button').click();
   h.controller.update(ready);
   const stale = h.host.querySelector('button');
@@ -103,6 +103,53 @@ test('loading and session invalidation disable stale Home task controls', async 
   stale.click();
   await settle();
   assert.deepEqual(writes, []);
+  assert.equal(h.host.hidden, true);
+  h.close();
+});
+
+test('focus stays on the task button during a Home refresh', async () => {
+  const h = mount();
+  const key = h.host.querySelector('[data-call-task-accept="true"]').dataset.callTaskKey;
+  h.host.querySelector('[data-call-task-accept="true"]').focus();
+  h.controller.update({ ...ready, busy: true, read: { state: 'loading' } });
+  const during = h.host.querySelector(`[data-call-task-key="${key}"]`);
+  assert.equal(h.dom.window.document.activeElement, during);
+  assert.equal(during.getAttribute('aria-disabled'), 'true');
+  assert.equal(during.hasAttribute('disabled'), false);
+  h.controller.update(ready);
+  const after = h.host.querySelector(`[data-call-task-key="${key}"]`);
+  assert.equal(h.dom.window.document.activeElement, after);
+  assert.notEqual(after.getAttribute('aria-disabled'), 'true');
+  h.close();
+});
+
+test('focus stays on the task button while a decision submits and after it resolves', async () => {
+  let release;
+  const writes = [];
+  const h = mount(async args => { writes.push(args); await new Promise(resolve => { release = resolve; }); return receipt; });
+  const doc = h.dom.window.document;
+  h.host.querySelector('[data-call-task-accept="true"]').focus();
+  h.host.querySelector('[data-call-task-accept="true"]').click();
+  await settle();
+  const submitting = h.host.querySelector('[data-call-task-accept="true"]');
+  assert.equal(doc.activeElement, submitting);
+  assert.equal(submitting.getAttribute('aria-disabled'), 'true');
+  submitting.click();
+  await settle();
+  assert.equal(writes.length, 1);
+  release();
+  await settle();
+  assert.equal(doc.activeElement, h.host.querySelector('[data-call-task-accept="true"]'));
+  h.close();
+});
+
+test('the notice clears once the last proposal has resolved', async () => {
+  const h = mount();
+  h.host.querySelector('button').click();
+  await settle();
+  assert.match(h.host.textContent, /Task added/);
+  h.controller.update({ ...ready, tasks: [] });
+  assert.doesNotMatch(h.host.textContent, /Task added/);
   assert.equal(h.host.hidden, true);
   h.close();
 });

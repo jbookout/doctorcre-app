@@ -63,7 +63,7 @@
 .home-call-task span, .home-call-task details, .home-call-task-notice { color: var(--fg-muted); font-size: var(--font-size-1); }
 .home-call-task-controls { display: flex; align-items: flex-start; gap: var(--space-2); flex: none; }
 .home-call-task button { background: transparent; cursor: pointer; }
-.home-call-task button:disabled { opacity: .5; cursor: default; }
+.home-call-task button:disabled, .home-call-task button[aria-disabled="true"] { opacity: .5; cursor: default; }
 .home-call-task-error { color: var(--status-warn-ink); }
 
 /* The secondary grid. */
