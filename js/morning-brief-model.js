@@ -56,7 +56,11 @@ export function morningBriefView(payload, { now = new Date(), since, events = []
   const overnight = change ? { key:`deal:${change.deal_id}`, kind:'deal', id:change.deal_id, title:change.deal_name, summary:change.kind === 'note' ? 'New note' : `${change.action}${change.after ? `: ${change.after}` : ''}`, due:null } : null;
   const remaining = unique.find(row => row.key !== first?.key && !(row.kind === 'deal' && row.id === overnight?.id)) || null;
   const groups = [ ['first','Do first',first], ['overnight','Overnight',overnight], ['today','Today',remaining] ]
-    .filter(([, ,row]) => row).map(([key,label,row]) => ({key,label,row:{ ...row, title:String(row.title || '').trim().replace(/\s+/g,' '), summary:short(row.summary,10) }}));
+    .filter(([, ,row]) => row).map(([key,label,row]) => {
+      const title = String(row.title || '').trim().replace(/\s+/g,' ');
+      const summary = String(row.summary || '').trim().replace(/\s+/g,' ');
+      return {key,label,row:{ ...row, title, summary:summary === title ? '' : short(summary,10) }};
+    });
   const unavailable = [];
   if (sections.today.state === 'unavailable' || sections.loops.state === 'unavailable' || sections.deals.state === 'unavailable') unavailable.push('Today’s priorities unavailable');
   if (!caughtUp || sections.deals.state === 'unavailable') unavailable.push('Overnight updates unavailable');
