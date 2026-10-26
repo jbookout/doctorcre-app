@@ -41,3 +41,32 @@ test('portal reader refuses another portal, unsupported versions and incomplete 
     await assert.rejects(client.read({ slug: 'demo-practice', password: 'synthetic-password' }), /Portal unavailable/);
   }
 });
+
+test('portal projection never exposes additional internal fields from a response', async () => {
+  const client = createClientPortalClient({ fetchImpl: async () => response({ ok: true, schema_version: 'client-portal.v1', portal: {
+    ...portal, internal_note: 'Synthetic internal note',
+    materials: [{ ...portal.materials[0], internal_note: 'Not shared' }],
+  } }) });
+  assert.deepEqual(await client.read({ slug: 'demo-practice', password: 'synthetic-password' }), portal);
+});
+
+test('portal read pins the exact isolated server contract without widening other consumers', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const contract = JSON.parse(await readFile(new URL('../contracts/carr-interface.v1.json', import.meta.url), 'utf8'));
+  assert.ok(contract.mcp_operations.includes('read-client-portal'));
+  assert.equal(contract.mcp_read_contracts['read-client-portal'].schema_version, 'client-portal.v1');
+  assert.equal(contract.mcp_read_contracts['read-client-portal'].producer.source_commit, '4ae013de482731e8169e4acd38181077b86c84be');
+  assert.deepEqual(contract.mcp_read_contracts['read-client-portal'].arguments, ['slug', 'password']);
+});
+
+test('portal transport never returns material after refusal, HTTP outage or an expired read', async () => {
+  for (const options of [
+    { fetchImpl: async () => new Response('', { status: 401 }) },
+    { fetchImpl: async () => new Response('', { status: 503 }) },
+    { fetchImpl: async () => new Response(JSON.stringify({ result: { isError: true, content: [{ type: 'text', text: '{"error":"portal_access_denied"}' }] } })) },
+    { timeoutMs: 5, fetchImpl: () => new Promise(() => {}) },
+  ]) {
+    const client = createClientPortalClient(options);
+    await assert.rejects(client.read({ slug: 'demo-practice', password: 'synthetic-password' }), /Portal unavailable/);
+  }
+});
