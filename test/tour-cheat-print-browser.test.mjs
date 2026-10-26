@@ -216,6 +216,12 @@ test('broker regenerates an editable internal sheet from the accepted itinerary 
   accepted.stops.forEach(stop => { stop.locked_appointment = false; });
   accepted.stops[0].property_name = '<img src=x onerror=alert(1)> Waterfront';
   accepted.stops.reverse();
+  accepted.stops.unshift(
+    { ...accepted.stops[0], id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', property_id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+      route_sequence: null, route_label: null, stop_state: 'excluded', property_name: 'Demo excluded office', property_address: '400 Example Way' },
+    { ...accepted.stops[0], id: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc', property_id: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd',
+      route_sequence: null, route_label: null, stop_state: 'held', property_name: 'Demo held office', property_address: '300 Example Way' },
+  );
   const draft = structuredClone(accepted);
   draft.id = '99999999-9999-4999-8999-999999999999'; draft.route_version = 2; draft.accepted = false;
   draft.stops.forEach(stop => { stop.property_name = 'Unaccepted replacement'; });
@@ -267,6 +273,8 @@ test('broker regenerates an editable internal sheet from the accepted itinerary 
   assert.match(generated, /Dwell: 30 minutes/);
   assert.match(generated, /Buffer: 10 minutes/);
   assert.match(generated, /Appointment start: Not recorded/);
+  assert.match(generated, /Not on the active itinerary\n\nDemo excluded office\nStatus: Excluded\nAddress: 400 Example Way\n\nDemo held office\nStatus: Held\nAddress: 300 Example Way$/);
+  assert.ok(generated.indexOf('B · Demo garden suites') < generated.indexOf('Not on the active itinerary'));
   assert.doesNotMatch(generated, /Contact:|Phone:|Access:|Demo listing contact|West entrance/);
   assert.doesNotMatch(generated, /Unaccepted replacement/);
   assert.equal(await page.locator('#internal-cheat-sheet img').count(), 0);
@@ -281,6 +289,10 @@ test('broker regenerates an editable internal sheet from the accepted itinerary 
   await page.evaluate(() => window.dispatchEvent(new Event('beforeprint')));
   assert.equal(await page.locator('#cheat-print pre').textContent(), generated);
   assert.equal(await page.locator('#cheat-print img').count(), 0);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.emulateMedia({ media: 'print' });
+  await page.screenshot({ path: 'test-artifacts/tour-cheat-dispositions-390.png', fullPage: true });
+  await page.emulateMedia({ media: 'screen' });
   await page.evaluate(() => window.dispatchEvent(new Event('afterprint')));
   await page.locator('#internal-cheat-sheet > summary').click();
   await editor.fill('Preparation after regeneration');
