@@ -1,5 +1,3 @@
-import { PHASE_BY_SLUG } from './client.js';
-import { createEmailProposalsFixture } from './email-proposals-fixture.js';
 import { compareInstants } from './change-receipts.mjs';
 import { businessDay } from './business-date.js';
 import { isClosedDeal } from './deal-review-model.js';
@@ -1289,6 +1287,7 @@ export async function createFixtureClient(opts = {}) {
   }
 
   const invoices = createInvoiceFixture({ actor: selfActor, entries: opts.invoiceEntries, today: opts.today });
+  const emailSeedDeals = [...deals.values()].map(({ id, phase }) => ({ id, phase }));
   const client = {
     ...invoices,
     async getRelationshipNetwork() { return relationshipNetworkFixture(); },
@@ -3090,20 +3089,15 @@ export async function createFixtureClient(opts = {}) {
 
   };
 
-  Object.assign(client, createEmailProposalsFixture({ deals, actor: selfActor, apply: async (row, shown, key) => {
-    if (row.kind === 'next_step') {
-      if (shown.owner === 'joe') await client.setNextStep({ deal: row.deal, text: shown.text, next_date: shown.next_date, base_version: shown.base_version, idempotency_key: key });
-      else {
-        const deal = getDealOrThrow(row.deal);
-        deal.email_actions = [{ id: row.id, description: shown.text, due_on: shown.next_date, owner: 'dell', status: 'open', hold_until: null }];
-        deal.next_date = shown.next_date; deal.version++;
-        pushEvent({ actor: selfActor, verb: 'confirm-email-next-step', subject_id: row.deal, field: 'next_date', new_value: shown.next_date });
-      }
-    } else {
-      const deal = getDealOrThrow(row.deal);
-      const before = deal.phase; deal.phase = PHASE_BY_SLUG[shown.to_phase]; deal.version++;
-      pushEvent({ actor: selfActor, verb: 'confirm-email-deal-progress', subject_id: row.deal, field: 'phase', old_value: before, new_value: deal.phase });
-    }
-  } }));
+  let emailFixture;
+  const emails = () => emailFixture ||= import('./email-proposals-fixture.js').then(({ createEmailProposalsFixture }) => createEmailProposalsFixture({ deals, seedDeals: emailSeedDeals, actor: selfActor, client, pushEvent }));
+  Object.assign(client, {
+    async listEmailProposals() { return (await emails()).listEmailProposals(); },
+    async previewEmailNextStep(args) { return (await emails()).previewEmailNextStep(args); },
+    async previewEmailDealProgress(args) { return (await emails()).previewEmailDealProgress(args); },
+    async confirmEmailNextStep(args) { return (await emails()).confirmEmailNextStep(args); },
+    async confirmEmailDealProgress(args) { return (await emails()).confirmEmailDealProgress(args); },
+    async dismissEmailProposal(args) { return (await emails()).dismissEmailProposal(args); },
+  });
   return opts.docContext === false ? client : observeDocClient(client);
 }

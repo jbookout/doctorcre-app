@@ -1,11 +1,11 @@
 import { PHASE_BY_SLUG } from './client.js';
 
-export function createEmailProposalsFixture({ deals, actor, apply }) {
+export function createEmailProposalsFixture({ deals, seedDeals, actor, client, pushEvent }) {
   const digest = async value => `sha256:${[...new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(JSON.stringify(value))))].map(byte => byte.toString(16).padStart(2, '0')).join('')}`;
   const fail = error => { throw Object.assign(Error(error), { payload: { error } }); };
-  const phaseDeal = [...deals.values()].find(deal => deal.phase === 'Research') || [...deals.values()][1];
-  const stepDeal = [...deals.values()].find(deal => deal.id !== phaseDeal?.id);
-  const rows = [stepDeal, phaseDeal].filter(Boolean).map((deal, index) => ({
+  const phaseDeal = seedDeals.find(deal => deal.phase === 'Research') || seedDeals[1];
+  const stepDeal = seedDeals.find(deal => deal.id !== phaseDeal?.id);
+  const rows = [stepDeal, phaseDeal].filter(Boolean).map(seed => deals.get(seed.id)).map((deal, index) => ({
     id: `10000000-0000-4000-8000-00000000000${index + 1}`, version: 1, kind: index ? 'phase_move' : 'next_step',
     deal: deal.id, deal_name: deal.name, confidence: 0.9, suspected_instruction: null, status: 'pending',
     source: { activity_id: `30000000-0000-4000-8000-00000000000${index + 1}`, sender: 'demo-correspondent@example.test',
@@ -35,7 +35,19 @@ export function createEmailProposalsFixture({ deals, actor, apply }) {
     if (shown.proposal_digest !== args.proposal_digest) fail(kind === 'next_step' ? 'email_next_step_proposal_stale' : 'email_deal_proposal_stale');
     const row = rows.find(item => item.deal === args.deal && item.kind === kind && item.source.activity_id === args.activity_id);
     if (row.status === 'confirmed') fail('email_proposal_not_pending');
-    await apply(row, shown, args.idempotency_key);
+    if (row.kind === 'next_step') {
+      if (shown.owner === 'joe') await client.setNextStep({ deal: row.deal, text: shown.text, next_date: shown.next_date, base_version: shown.base_version, idempotency_key: args.idempotency_key });
+      else {
+        const deal = deals.get(row.deal);
+        deal.email_actions = [{ id: row.id, description: shown.text, due_on: shown.next_date, owner: 'dell', status: 'open', hold_until: null }];
+        deal.next_date = shown.next_date; deal.version++;
+        pushEvent({ actor, verb: 'confirm-email-next-step', subject_id: row.deal, field: 'next_date', new_value: shown.next_date });
+      }
+    } else {
+      const deal = deals.get(row.deal);
+      const before = deal.phase; deal.phase = PHASE_BY_SLUG[shown.to_phase]; deal.version++;
+      pushEvent({ actor, verb: 'confirm-email-deal-progress', subject_id: row.deal, field: 'phase', old_value: before, new_value: deal.phase });
+    }
     row.status = 'confirmed'; row.version++;
     const receipt = { ...shown, status: 'confirmed', requires_confirmation: false, email_proposal_id: row.id };
     receipts.set(args.idempotency_key, receipt); return structuredClone(receipt);
