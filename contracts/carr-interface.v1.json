@@ -1001,7 +1001,8 @@
       "loops",
       "renewals",
       "assurance_cadence",
-      "costs"
+      "costs",
+      "calendar"
     ],
     "section_states": [
       "ready",
@@ -1011,6 +1012,16 @@
     ],
     "overnight_read": "GET /pipeline/changes; initial base64url JSON keyset cursor {recorded_at: ISO cutoff, id: zero UUID}; subsequent opaque cursors are server-issued; only brief-authorized deal IDs render",
     "content_storage": "memory only",
+    "calendar": {
+      "version": "1.0.0",
+      "producer": {
+        "repository": "DoctorCRE/carr-system",
+        "source_commit": "89068720b406b26541cc25f2ba0f17b0ad02d229"
+      },
+      "optional": true,
+      "rows": "items with start, title, location, attendee_count and all_day; server order retained",
+      "warnings": "Render notes plainly, including partial responses with no rows. An omitted section is not an empty calendar."
+    },
     "queue_reads": {
       "version": "1.0.0",
       "queues": [

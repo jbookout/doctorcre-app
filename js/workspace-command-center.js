@@ -5,6 +5,7 @@ import { projectInvoices, invoiceHref, invoiceMoney, invoiceDate } from './invoi
 import { introductionSuggestions } from './relationship-network-model.js';
 import { mountAutoRefresh, readWithDeadline, updatedLabel } from './auto-refresh.mjs';
 import { homeClient } from './home-boot.js';
+import { BUSINESS_TIME_ZONE } from './business-date.js';
 import { localToday } from './calendar-model.js';
 import { agendaSnapshot, dealHref, dealSnapshot, HOME_SCOPES, readHomeAgenda, readHomeDashboard, topNewLeads } from './home-dashboard-model.js';
 import { mountNotificationBadge } from './shell.js';
@@ -17,7 +18,7 @@ const dateLabel = day => new Date(`${day}T12:00:00`).toLocaleDateString(undefine
 
 export function mountHomeDashboard({ document, window, client, now = () => Date.now(), intervalMs = 30_000 }) {
   const $ = id => document.getElementById(id);
-  let snapshotDocObservedAt = null;
+  let snapshotDocObservedAt = null, calendar = null;
   // The relationship dialog and the past-client widget are secondary: they load
   // after the first data paint so they never compete with the deal flags.
   let relationshipDialog = null, pastWidget = null, secondaryRequested = false;
@@ -36,6 +37,13 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
     }
   };
   const widget = (id, html) => { const target = $(id); if (!html && target.contains(document.activeElement)) $('homePrimaryAction').focus(); target.hidden = !html; if (html) paint(target, html); };
+  const renderMeetings = signedOut => {
+    if ($('homeMeetings')) {
+      const meetings = signedOut ? null : calendar;
+      if (!meetings) $('homeMeetings').replaceChildren();
+      widget('homeMeetings', meetings ? `<header class="home-panel-head"><h2>Upcoming meetings</h2><span class="home-period">7 days</span></header>${(meetings.notes || []).map(note => `<p class="home-empty">${E(note)}</p>`).join('')}${meetings.state === 'unavailable' ? '<p class="home-empty" role="status">Meetings unavailable</p>' : meetings.items.length ? `<div class="home-flags">${meetings.items.map(meeting => `<div class="home-flag home-meeting"><div><strong>${E(meeting.title)}</strong><span><time datetime="${E(meeting.start)}">${E(new Date(meeting.start).toLocaleString('en-US', { timeZone: BUSINESS_TIME_ZONE, month: 'short', day: 'numeric', ...(meeting.all_day ? {} : { hour: 'numeric', minute: '2-digit', timeZoneName: 'short' }) }))}${meeting.all_day ? ' · All day' : ''}</time></span><span>${E(meeting.location || 'Place not provided')}</span><span>${E(meeting.attendee_count)} ${meeting.attendee_count === 1 ? 'attendee' : 'attendees'}</span></div></div>`).join('')}</div>` : `<p class="home-empty">${meetings.state === 'empty' ? 'No upcoming meetings in the next 7 days' : 'No meetings returned'}</p>`}` : null);
+    }
+  };
   const render = () => {
     const signedOut = snapshot?.unauthorized;
     const unavailable = Object.values(snapshot?.reads || {}).some(read => read.state === 'error');
@@ -46,6 +54,7 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
     $('dealCounts').innerHTML = `<span>Active deals: <b>${count(summary?.active ?? null)}</b></span> <span>In market: <b>${count(summary?.inMarket ?? null)}</b></span> <span>National accounts: <b>${count(summary?.national ?? null)}</b></span> <span>Overdue local deals: <b>${count(summary?.flagged.length ?? null)}</b></span>`;
     paint($('dealFlags'), summary ? (summary.flagged.length ? summary.flagged.map(deal => `<a class="home-flag" data-home-key="deal:${E(deal.id)}" href="${E(dealHref(deal.id))}"><span class="home-flag-light" aria-hidden="true"></span><div><strong>${E(deal.name)}</strong><span>${E(deal.next_step || deal.phase || 'Needs attention')}</span></div><span class="home-arrow" aria-hidden="true">↗</span></a>`).join('') : '<p class="home-empty">No overdue local next steps</p>') : `<p class="home-empty">${signedOut ? 'Sign in to view deals' : snapshot?.reads?.board?.state === 'error' ? 'Deals unavailable' : 'Updating…'}</p>`);
     const today = localToday(new Date(now()));
+    renderMeetings(signedOut);
     if ($('homeInvoices')) {
       const invoices = signedOut ? null : projectInvoices(snapshot?.invoices, { scope, today: localToday(new Date(now())) });
       const overdue = invoices?.filter(row => row.overdue) || [];
@@ -191,7 +200,20 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
       auto.poll();
     }
   }, 1000);
-  $('refreshHome').addEventListener('click', auto.refresh);
+  const updateCalendar = event => {
+    const value = event.detail;
+    const valid = value && ['ready', 'empty', 'partial', 'unavailable'].includes(value.state)
+      && Array.isArray(value.items) && (value.notes == null || Array.isArray(value.notes) && value.notes.every(note => typeof note === 'string'))
+      && value.items.every(row => row && typeof row.title === 'string' && typeof row.start === 'string' && Number.isFinite(Date.parse(row.start))
+        && (row.location == null || typeof row.location === 'string') && Number.isSafeInteger(row.attendee_count) && row.attendee_count >= 0);
+    calendar = value == null ? null : valid ? value : { state: 'unavailable', items: [] };
+    renderMeetings(snapshot?.unauthorized);
+  };
+  const clearCalendar = () => { calendar = null; renderMeetings(true); };
+  document.addEventListener('doctorcre:brief-calendar', updateCalendar);
+  document.dispatchEvent(new window.Event('doctorcre:request-brief-calendar'));
+  window.addEventListener('doctorcre-session-invalidated', clearCalendar);
+  $('refreshHome').addEventListener('click', () => { auto.refresh(); document.dispatchEvent(new window.Event('doctorcre:refresh-brief-calendar')); });
   function loadSecondary() {
     if (secondaryRequested) return;
     secondaryRequested = true;
@@ -220,7 +242,7 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
     button.addEventListener('keydown', event => { if (!['ArrowLeft', 'ArrowRight'].includes(event.key)) return; event.preventDefault(); const other = HOME_SCOPES[1 - HOME_SCOPES.indexOf(scope)]; select(other); buttons.find(node => node.dataset.scope === other).focus(); });
   });
   auto.refresh();
-  return { refresh: auto.refresh, dispose() { disposed = true; sequence++; window.clearInterval(expiry); auto.dispose(); relationshipDialog?.dispose(); pastWidget?.dispose(); } };
+  return { refresh: auto.refresh, dispose() { disposed = true; sequence++; window.clearInterval(expiry); auto.dispose(); document.removeEventListener('doctorcre:brief-calendar', updateCalendar); window.removeEventListener('doctorcre-session-invalidated', clearCalendar); relationshipDialog?.dispose(); pastWidget?.dispose(); } };
 }
 
 if (typeof document !== 'undefined' && document.getElementById('dealAttention')) {

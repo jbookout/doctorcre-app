@@ -67,7 +67,8 @@ export function mountMorningBrief({ document:root, window:win, getClient, interv
   };
   const focusCard = key => ([...$('morningContent').querySelectorAll('[data-brief-key]')].find(node => node.dataset.briefKey === key) || $('morningClose')).focus();
   const back = () => { queues.reset(); const key = selected?.key; selected = null; ++detailEpoch; render(); focusCard(key); };
-  const clear = () => { queues.reset(); ++detailEpoch; selected = null; view = null; facts = null; sponsor = null; preferences = null; since = null; events = []; cursor = null; render(); cue(); };
+  const publishCalendar = calendar => root.dispatchEvent(new win.CustomEvent('doctorcre:brief-calendar', { detail: calendar }));
+  const clear = () => { if (facts?.sections.calendar) publishCalendar({ state: 'unavailable', items: [] }); queues.reset(); ++detailEpoch; selected = null; view = null; facts = null; sponsor = null; preferences = null; since = null; events = []; cursor = null; render(); cue(); };
   const suspend = () => { ++readEpoch; clear(); };
   const showRecord = async (row, { background = false } = {}) => {
     selected = row; const epoch = ++detailEpoch, owner = sponsor;
@@ -129,6 +130,7 @@ export function mountMorningBrief({ document:root, window:win, getClient, interv
         if ([401,403].includes(error.status)) throw error;
       }
       if (!current()) return;
+      publishCalendar(payload.sections.calendar);
       facts = payload; viewOptions = { now:now(),since,events,caughtUp };
       const next = morningBriefView(facts,{...viewOptions, owner:owners.current()});
       view = next; render();
@@ -143,6 +145,11 @@ export function mountMorningBrief({ document:root, window:win, getClient, interv
   const queues = mountBriefQueues({menu:$('morningQueues'),content:$('morningContent'),getClient:()=>client,getSponsor:()=>sponsor,
     onOpen:title=>{selected=null;++detailEpoch;$('morningTitle').textContent=title;$('morningBack').hidden=false;$('morningOwners').hidden=true;},onBack:back,onInvalidate:clear,onChange:render});
   const auto = mountAutoRefresh({ document:root,window:win,refresh,onResume:suspend,onWake:suspend,intervalMs });
+  const refreshCalendar = () => auto.refresh();
+  const currentCalendar = () => { if (facts) publishCalendar(facts.sections.calendar); };
+  root.addEventListener('doctorcre:request-brief-calendar', currentCalendar);
+  root.addEventListener('doctorcre:refresh-brief-calendar', refreshCalendar);
+  win.addEventListener('doctorcre-session-invalidated', suspend);
   control.onclick = open;
   $('morningClose').onclick = close;
   // A modal that replaced the brief (Doc's command bar) already owns focus.
@@ -153,5 +160,5 @@ export function mountMorningBrief({ document:root, window:win, getClient, interv
   const hidden = () => { if (root.visibilityState === 'hidden') suspend(); };
   root.addEventListener('visibilitychange',hidden);
   auto.refresh();
-  return { open, refresh:auto.refresh, dispose() { if (disposed) return; disposed = true; queues.reset(); ++detailEpoch; auto.dispose(); owners.dispose(); root.removeEventListener('visibilitychange',hidden); dialog.remove(); } };
+  return { open, refresh:auto.refresh, dispose() { if (disposed) return; disposed = true; queues.reset(); ++detailEpoch; auto.dispose(); owners.dispose(); root.removeEventListener('doctorcre:refresh-brief-calendar', refreshCalendar); root.removeEventListener('doctorcre:request-brief-calendar', currentCalendar); win.removeEventListener('doctorcre-session-invalidated', suspend); root.removeEventListener('visibilitychange',hidden); dialog.remove(); } };
 }

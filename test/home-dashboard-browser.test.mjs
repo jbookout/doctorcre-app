@@ -17,7 +17,7 @@ const screenshot = async (page, name) => {
   await page.screenshot({ path: join(process.env.W2_SCREENSHOT_DIR, `${name}.png`), fullPage: !name.includes('detail') });
 };
 
-async function open(t, { width = 1440, height = 1000, invoiceAttention = false, motion = 'reduce', leads = true, delayDetails = false, hangDetails = false, longLead = false, tasksOnly = false, heldTasks = false, malformedTasks = false, delayBoard = false, delayInitialFeed = false, origin = 'http://localhost', malformedBoard = false, firstOpen = false, emptyAgenda = false, initialDetailFailure = null } = {}) {
+async function open(t, { calendar, delayHome = false, width = 1440, height = 1000, invoiceAttention = false, motion = 'reduce', leads = true, delayDetails = false, hangDetails = false, longLead = false, tasksOnly = false, heldTasks = false, malformedTasks = false, delayBoard = false, delayInitialFeed = false, origin = 'http://localhost', malformedBoard = false, firstOpen = false, emptyAgenda = false, initialDetailFailure = null } = {}) {
   const client = await createFixtureClient({ seedUrl: `data:application/json;base64,${Buffer.from(await readFile(new URL('../data/board-seed.json', import.meta.url))).toString('base64')}` });
   const browser = await chromium.launch();
   const page = await browser.newPage({ viewport: { width, height }, timezoneId: 'UTC', reducedMotion: motion });
@@ -56,7 +56,7 @@ async function open(t, { width = 1440, height = 1000, invoiceAttention = false, 
     'today-triage': () => client.todayTriage(),
     'list-feature-switches': () => client.listFeatureSwitches(),
     'list-doc-suggestions': args => client.listDocSuggestions(args),
-    'morning-brief': () => client.morningBrief(),
+    'morning-brief': async () => { const brief = await client.morningBrief(); return calendar === undefined ? brief : { ...brief, sections: { ...brief.sections, calendar } }; },
     'read-invoice-tracker': () => ({schema_version:'invoice-tracker.v1',actor:'joe',entries:invoiceAttention ? [{ deal_id:'demo-overdue',name:'Demo overdue invoice',commission_id:'demo-invoice',status:'invoiced',owner:'joe',lane:'local',outcome:'won',gross_amount:'100',closed_on:'2026-08-01',invoiced_on:'2026-08-01',commission_invoiced_on:'2026-08-01',received_on:null,due_on:'2026-09-01',as_of:'2026-10-01',base_version:1 }] : [],observed_at:NOW.toISOString()}),
     'lead-board': async () => { if (leadFailure === 'timeout') return new Promise(() => {}); if (leadFailure) { const error = Error('Refused'); error.status = leadFailure; throw error; } return { leads: leads ? liveLeads : [] }; },
     'incident-board': () => client.incidentBoard(), 'current-work-item': () => client.currentWorkItem(),
@@ -83,6 +83,7 @@ async function open(t, { width = 1440, height = 1000, invoiceAttention = false, 
     if (['/api/system-work/session','/auth/session'].includes(url.pathname)) return route.fulfill({ json: { actor: { slug: 'joe', label: 'Demo partner' }, csrf_token: 'synthetic' } });
     if (url.pathname.startsWith('/api/') || url.pathname === '/app-release') return route.fulfill({ status: 503, json: {} });
     const file = url.pathname === '/deals' && url.searchParams.get('view') === 'national' ? 'index.html' : routes[url.pathname] || url.pathname.slice(1);
+    if (delayHome && file === 'js/workspace-command-center.js') await page.waitForFunction(() => document.querySelector('#morningUpdated')?.hasAttribute('datetime'));
     try { return route.fulfill({ body: await readFile(new URL(`../${file}`, import.meta.url)), contentType: /\.m?js$/.test(file) ? 'text/javascript' : file.endsWith('.css') ? 'text/css' : 'text/html' }); }
     catch { return route.fulfill({ status: 404, body: '' }); }
   });
@@ -715,5 +716,63 @@ for (const width of [1440, 390]) test(`Home Overdue isolates missed work and ret
   await refresh();
   assert.match(await calendar.textContent(), /unavailable/);
   assert.doesNotMatch(await calendar.textContent(), /No overdue dates or tasks/);
+  assert.deepEqual(errors, []);
+});
+
+
+test('Home shows upcoming meeting time, title, place and attendee count', async t => {
+  const { page, errors } = await open(t, { delayHome: true, calendar: { state: 'ready', notes: [], items: [
+    { start: '2026-10-01T16:00:00Z', end: '2026-10-01T17:00:00Z', title: 'Demo practice meeting', location: 'Demo office', attendee_count: 3, all_day: false },
+  ] } });
+  const card = page.getByRole('region', { name: 'Upcoming meetings', exact: true });
+  await card.waitFor();
+  assert.match(await card.innerText(), /Demo practice meeting/);
+  assert.match(await card.innerText(), /Oct 1.*11:00 AM.*CDT/);
+  assert.match(await card.innerText(), /Demo office/);
+  assert.match(await card.innerText(), /3 attendees/);
+  assert.deepEqual(errors, []);
+  await screenshot(page, 'home-meetings-desktop');
+  await page.evaluate(() => window.dispatchEvent(new Event('doctorcre-session-invalidated')));
+  assert.equal(await card.isVisible(), false);
+  assert.equal(await page.locator('#homeMeetings').textContent(), '');
+});
+
+
+test('Home distinguishes empty, warning and unavailable meeting states and refreshes them', async t => {
+  const { page, responses, errors } = await open(t, { width: 390, calendar: { state: 'empty', items: [], notes: [] } });
+  const card = page.getByRole('region', { name: 'Upcoming meetings', exact: true });
+  await card.waitFor();
+  assert.match(await card.innerText(), /No upcoming meetings in the next 7 days/);
+  const refresh = async calendar => {
+    responses.set('morning-brief', { sponsor: 'joe', sections: { calendar } });
+    const loaded = page.waitForResponse(response => response.url().endsWith('/mcp') && response.request().postDataJSON()?.params?.name === 'morning-brief');
+    await page.getByRole('button', { name: 'Refresh Home', exact: true }).click();
+    await loaded;
+    await page.locator('#refreshHome[aria-busy="false"]').waitFor();
+  };
+  await refresh({ state: 'partial', items: [], notes: [
+    'May include meetings you declined or that were cancelled or deleted. Check Outlook.',
+    'Invites sent only to a group you belong to are not shown.',
+  ] });
+  assert.match(await card.innerText(), /May include meetings you declined or that were cancelled or deleted. Check Outlook./);
+  assert.match(await card.innerText(), /Invites sent only to a group you belong to are not shown./);
+  assert.match(await card.innerText(), /No meetings returned/);
+  await screenshot(page, 'home-meetings-warning-phone');
+  await refresh({ state: 'ready', notes: [], items: [
+    { start: '2026-10-02T05:00:00Z', end: '2026-10-03T05:00:00Z', title: 'Demo all-day visit <script>', location: null, attendee_count: 0, all_day: true },
+  ] });
+  assert.match(await card.innerText(), /Oct 2.*All day/);
+  assert.match(await card.innerText(), /Place not provided/);
+  assert.match(await card.innerText(), /0 attendees/);
+  assert.equal(await card.locator('script').count(), 0);
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+  await refresh({ state: 'unavailable', items: [] });
+  assert.match(await card.innerText(), /Meetings unavailable/);
+  assert.doesNotMatch(await card.innerText(), /No upcoming meetings|Demo all-day/);
+  await refresh({ state: 'ready', items: [{ title: 'Demo invalid date', start: 'invalid', attendee_count: 1 }], notes: [] });
+  assert.match(await card.innerText(), /Meetings unavailable/);
+  assert.doesNotMatch(await card.innerText(), /Invalid Date|Demo invalid date/);
+  await refresh(undefined);
+  assert.equal(await card.isVisible(), false);
   assert.deepEqual(errors, []);
 });
