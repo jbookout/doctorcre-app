@@ -37,6 +37,14 @@ class ReviewGate(unittest.TestCase):
             with self.subTest(body=body):
                 self.assertEqual(gate.approved(pr, [], [{"body": body}]), expected)
 
+    def test_skip_ci_title_fails_even_when_small_or_approved(self):
+        comments = [{"body": "VERDICT: APPROVE\nReviewed-SHA: abc"}]
+        for title, expected in [("feat: x [skip ci]", False), ("[CI SKIP] x", False), ("x [no ci]", False),
+                                ("x [skip actions]", False), ("x [actions skip]", False), ("skip ci mention", True), ("feat: x", True)]:
+            with self.subTest(title=title):
+                pr = {"title": title, "changed_files": 0, "additions": 1, "deletions": 0, "head": {"sha": "abc"}}
+                self.assertEqual(gate.approved(pr, [], comments), expected)
+
     def test_changes_veto_is_bound_to_current_head(self):
         pr = {"changed_files": 0, "additions": 151, "deletions": 0, "head": {"sha": "abc"}}
         for sha, expected in [("abc", False), ("old", True)]:

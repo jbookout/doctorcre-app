@@ -5,7 +5,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
-import { cheatSheetText, factLabel, factSummary, formatTourDate, tourMetaLine, tourDisplayName } from "../tours/tour-format.js";
+import { cheatSheetText, factLabel, factSummary, formatTourDate, tourMetaLine, tourDisplayName, itinerarySheetText } from "../tours/tour-format.js";
 
 const read = (path) => readFile(new URL(`../${path}`, import.meta.url), "utf8");
 const appJs = await read("tours/app.js");
@@ -40,6 +40,33 @@ test("plain notes read as plain text, structured notes stay editable JSON", () =
   assert.equal(cheatSheetText("Park behind the clinic"), "Park behind the clinic");
   assert.equal(cheatSheetText({ notes: "Park behind the clinic" }), "Park behind the clinic");
   assert.equal(cheatSheetText({ parking: "rear", gate: "4411" }), JSON.stringify({ parking: "rear", gate: "4411" }, null, 2));
+});
+
+test("the internal itinerary keeps held and excluded stops separate from active visits", () => {
+  const tour = { name: "Demo tour", routes: [
+    { accepted: false, route_version: 2, stops: [{ stop_state: "held", property_name: "Unaccepted replacement" }] },
+    { accepted: true, route_version: 1, stops: [
+      { route_sequence: null, route_label: null, stop_state: "excluded", property_name: "Demo excluded office", property_address: "400 Example Way", appointment_start: "2026-10-26T16:00:00Z", appointment_end: "2026-10-26T16:30:00Z", dwell_minutes: 99, buffer_minutes: 15 },
+      { route_sequence: 2, route_label: "B", stop_state: "active", property_name: "Demo active office", property_address: "200 Example Way", dwell_minutes: 30, buffer_minutes: 10 },
+      { route_sequence: null, route_label: null, stop_state: "held", property_name: "Demo held office", property_address: "100 Example Way", access_notes: "Private access note", appointment_end: "2026-10-26T18:00:00Z" },
+      { route_sequence: null, route_label: null, stop_state: "held" },
+    ] },
+  ] };
+  const original = structuredClone(tour);
+  assert.equal(itinerarySheetText(tour), [
+    "Internal only. Not for client distribution.", "Demo tour", "Accepted route version 1",
+    "B · Demo active office\nAddress: 200 Example Way\nAppointment start: Not recorded\nAppointment end: Not recorded\nDwell: 30 minutes\nBuffer: 10 minutes",
+    "Not on the active itinerary",
+    "Demo excluded office\nStatus: Excluded\nAddress: 400 Example Way\nAppointment start: 2026-10-26T16:00:00Z\nAppointment end: 2026-10-26T16:30:00Z\nDwell: 99 minutes\nBuffer: 15 minutes",
+    "Demo held office\nStatus: Held\nAddress: 100 Example Way\nAppointment start: Not recorded\nAppointment end: 2026-10-26T18:00:00Z\nDwell: Not recorded\nBuffer: Not recorded",
+    "Not recorded\nStatus: Held\nAddress: Not recorded\nAppointment start: Not recorded\nAppointment end: Not recorded\nDwell: Not recorded\nBuffer: Not recorded",
+  ].join("\n\n"));
+  assert.deepEqual(tour, original);
+  const route = tour.routes[1];
+  route.stops = route.stops.filter(stop => stop.stop_state === "active");
+  assert.doesNotMatch(itinerarySheetText(tour), /Not on the active itinerary/);
+  route.stops = original.routes[1].stops.filter(stop => stop.stop_state !== "active");
+  assert.equal(itinerarySheetText(tour), "");
 });
 
 test("client-projection keys read as plain property-fact labels", () => {

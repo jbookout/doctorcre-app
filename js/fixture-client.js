@@ -1,3 +1,4 @@
+import { compareInstants } from './change-receipts.mjs';
 import { businessDay } from './business-date.js';
 import { isClosedDeal } from './deal-review-model.js';
 import { addDays, localToday } from './calendar-model.js';
@@ -186,6 +187,8 @@ export async function createFixtureClient(opts = {}) {
 
   /** @type {any[]} confirm proposals from call distill */
   let pendingConfirms = [];
+  /** @type {any[]} synthetic read-call-outcomes rows; empty unless a test supplies them */
+  const callOutcomes = structuredClone(opts.callOutcomes || []);
 
   /** field event index: deal|field -> last event id */
   const lastFieldEvent = new Map();
@@ -1343,7 +1346,7 @@ export async function createFixtureClient(opts = {}) {
       const deal = { ...getDealOrThrow(dealId) };
       const thread = (threads.get(dealId) || [])
         .slice()
-        .sort((a, b) => b.recorded_at.localeCompare(a.recorded_at));
+        .sort((a, b) => compareInstants(a.at || a.created_at || a.recorded_at, b.at || b.created_at || b.recorded_at));
       const hist = (history.get(dealId) || [])
         .slice()
         .sort((a, b) => b.recorded_at.localeCompare(a.recorded_at));
@@ -2700,7 +2703,6 @@ export async function createFixtureClient(opts = {}) {
         sources: [
           { owner: 'launchd', state: 'read', count: 1 },
           { owner: 'claude-code', state: 'read', count: 1 },
-          { owner: 'control-plane', state: 'unknown', count: null },
           { owner: 'cron', state: 'unknown', count: null },
         ], jobs };
     },
@@ -2876,6 +2878,24 @@ export async function createFixtureClient(opts = {}) {
 
     async resolvePostCallCandidate({ candidate_id, accept, idempotency_key }) {
       return client.resolveConfirm({ proposal_id:candidate_id, accept, idempotency_key });
+    },
+
+    async readCallOutcomes() {
+      return { schema_version: 'call-outcomes.v1', send: false,
+        calls: callOutcomes.filter(call => !call.reviewed).map(call => structuredClone(call)) };
+    },
+
+    async undoCallChange({ candidate_id }) {
+      const change = callOutcomes.flatMap(call => call.applied).find(item => item.candidate_id === candidate_id);
+      if (!change) throw Object.assign(new Error('Unknown call change.'), { payload: { error: 'not_found' } });
+      change.undone_at ||= new Date().toISOString();
+      return { ok: true, candidate_id, undone: true };
+    },
+
+    async reviewCallOutcome({ session_id }) {
+      const call = callOutcomes.find(item => item.session_id === session_id);
+      if (call) call.reviewed = true;
+      return { ok: true, session_id, reviewed: true };
     },
 
     async resolveConfirm({ proposal_id, accept, idempotency_key }) {

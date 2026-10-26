@@ -209,3 +209,163 @@ test("an evidence response without useful facts uses one unavailable summary", (
   assert.match(html, /Property evidence is unavailable/);
   assert.doesNotMatch(html, /property-fact-grid|property-layer-diagram|data-evidence-field/);
 });
+
+
+test("missing property evidence keeps its summary and explains coverage for every field", async () => {
+  const panel = openPanel(async () => ({ schema: "tour-property-evidence.v1", facts: {
+    county: { ...unknown, status: "unknown", reason: "no_authorized_evidence" },
+    municipality: unknown, special_authority: unknown,
+  } }));
+  panel.mount(); await settle();
+  const content = panel.root.querySelector("#property-evidence-content");
+  assert.match(content.textContent, /Property evidence is unavailable/);
+  const disclosure = content.querySelector("details");
+  assert.ok(disclosure, "field coverage remains available when no facts are reviewed");
+  assert.equal(disclosure.querySelector("summary").textContent, "Field coverage");
+  assert.equal(disclosure.open, false);
+  const rows = [...disclosure.querySelectorAll("li")].map(row => row.textContent);
+  assert.deepEqual(rows, [
+    "County · Unknown · No authorized evidence",
+    "Municipality · Coverage unavailable · Authoritative coverage missing",
+    "Special authority · Coverage unavailable · Authoritative coverage missing",
+    "Parcel · Unknown · Reason not recorded",
+    "Site address · Unknown · Reason not recorded",
+    "Building · Unknown · Reason not recorded",
+  ]);
+  assert.equal(content.querySelectorAll(".property-fact-grid, svg").length, 0);
+});
+
+
+test("fact details explain unavailable and conflicted evidence without replacing reviewed provenance", async () => {
+  const panel = openPanel(async () => ({ ...evidence, facts: { ...evidence.facts,
+    county: { ...unknown, status: "conflicted", reason: "evidence_conflict", conflicts: [reviewed("Bay"), reviewed("Walton")] },
+  } }));
+  panel.mount(); await settle();
+  const dialog = panel.root.querySelector("dialog");
+  dialog.showModal = function() { this.open = true; };
+  panel.root.querySelector('[data-evidence-field="municipality"]').click();
+  assert.match(dialog.textContent, /Authoritative coverage missing/);
+  panel.root.querySelector('[data-evidence-field="county"]').click();
+  assert.match(dialog.textContent, /Evidence conflicts require review/);
+  assert.match(dialog.textContent, /Bay/);
+  assert.match(dialog.textContent, /Walton/);
+  panel.root.querySelector('[data-evidence-field="building"]').click();
+  assert.match(dialog.textContent, /Clinic Plaza/);
+  assert.match(dialog.textContent, /EPSG:4326/);
+  assert.doesNotMatch(dialog.textContent, /Reason not recorded/);
+});
+
+
+test("missing and unrecognized coverage reasons stay explicit without rendering raw provider text", async () => {
+  const reasons = [undefined, null, "future_reason", "__proto__", "constructor", '<img src=x onerror=alert(1)>'];
+  const fields = ["county", "municipality", "special_authority", "parcel", "site_address", "building"];
+  const facts = Object.fromEntries(fields.map((field, index) => [field, { ...unknown, reason: reasons[index] }]));
+  const panel = openPanel(async () => ({ ...evidence, facts }));
+  panel.mount(); await settle();
+  const disclosure = panel.root.querySelector("#property-evidence-content details");
+  assert.equal(disclosure.querySelectorAll("li").length, 6);
+  for (const row of disclosure.querySelectorAll("li")) assert.match(row.textContent, /Reason not recorded$/);
+  assert.doesNotMatch(disclosure.textContent, /future_reason|__proto__|constructor|onerror|function|Object/);
+  assert.equal(disclosure.querySelectorAll("img, script").length, 0);
+  const detail = propertyFactDetail(propertyPanelView({ ...evidence, facts: { ...evidence.facts, municipality: facts.building } })[1]);
+  assert.match(detail, /Reason not recorded/);
+  assert.doesNotMatch(detail, /<img|onerror/);
+});
+
+
+test("an optional UTC time selects intraday evidence and clearing it restores date-only history", async () => {
+  const calls = [];
+  const panel = openPanel(async path => {
+    const url = new URL(path, "https://app.example.invalid"); calls.push(url);
+    const morning = url.searchParams.get("as_of") === "2026-01-15T09:30:45.000Z";
+    return { ...evidence, facts: { county: reviewed(morning ? "Bay" : "Walton") } };
+  });
+  panel.mount(); await settle();
+  panel.change("#property-evidence-date", "2026-01-15"); await settle();
+  assert.match(panel.root.textContent, /Walton/);
+  panel.change("#property-evidence-time", "09:30:45"); await settle();
+  assert.equal(calls.at(-1).searchParams.get("as_of"), "2026-01-15T09:30:45.000Z");
+  assert.match(panel.root.textContent, /Bay/);
+  assert.doesNotMatch(panel.root.textContent, /Walton/);
+  panel.change("#property-evidence-time", ""); await settle();
+  assert.equal(calls.at(-1).searchParams.get("as_of"), "2026-01-15T23:59:59.999Z");
+  assert.match(panel.root.textContent, /Walton/);
+});
+
+
+test("fact details preserve exact UTC evidence and effective timestamps", () => {
+  const item = propertyPanelView({ ...evidence, facts: { county: reviewed("Bay", {
+    as_of: "2026-01-15T09:30:45.123Z", effective_from: "2026-01-15T09:00:00Z",
+    effective_to: "2026-01-15T13:00:00Z", source: { ...source, retrieved_at: "2026-01-15T09:30:40Z" },
+  }) } })[0];
+  const html = propertyFactDetail(item);
+  assert.match(html, /2026-01-15T09:30:45.123Z/);
+  assert.match(html, /2026-01-15T09:00:00.000Z/);
+  assert.match(html, /2026-01-15T13:00:00.000Z/);
+  assert.match(html, /2026-01-15T09:30:40.000Z/);
+});
+
+test("property evidence offers a working retry after a failed read", async () => {
+  const calls = [];
+  const panel = openPanel(async path => {
+    calls.push(path);
+    if (calls.length < 3) throw new Error("synthetic service unavailable");
+    return evidence;
+  });
+  panel.mount(); await settle();
+  panel.change("#property-evidence-date", "2026-01-15"); await settle();
+
+  const retry = panel.root.querySelector("#property-evidence-content [data-property-retry]");
+  assert.equal(retry?.textContent, "Retry");
+  assert.match(panel.root.querySelector("#property-evidence-content").textContent, /temporarily unavailable/i);
+  retry.click(); await settle();
+
+  assert.equal(calls.length, 3);
+  const failedRead = new URL(calls[1], "https://app.example.invalid");
+  const retriedRead = new URL(calls[2], "https://app.example.invalid");
+  assert.equal(failedRead.searchParams.get("property_id"), evidence.property_id);
+  assert.equal(failedRead.searchParams.get("as_of"), "2026-01-15T23:59:59.999Z");
+  assert.equal(retriedRead.href, failedRead.href, "retry preserves the selected property and as-of instant");
+  assert.match(panel.root.querySelector("#property-evidence-content").textContent, /Escambia/);
+  assert.equal(panel.root.querySelector("#property-evidence-content [data-property-retry]"), null);
+});
+
+
+test("intraday selection survives remount and rejects evidence from an earlier time", async () => {
+  let resolveOld;
+  const calls = [];
+  const panel = openPanel(path => {
+    const url = new URL(path, "https://app.example.invalid"); calls.push(url);
+    if (url.searchParams.get("as_of") === "2026-01-15T09:00:00.000Z") return new Promise(resolve => { resolveOld = resolve; });
+    return Promise.resolve({ ...evidence, facts: { county: reviewed("Bay") } });
+  });
+  panel.mount(); await settle();
+  panel.change("#property-evidence-date", "2026-01-15"); await settle();
+  panel.change("#property-evidence-time", "09:00");
+  panel.change("#property-evidence-time", "13:00"); await settle();
+  resolveOld({ ...evidence, facts: { county: reviewed("Walton") } }); await settle();
+  assert.match(panel.root.textContent, /Bay/);
+  assert.doesNotMatch(panel.root.textContent, /Walton/);
+  const count = calls.length;
+  panel.mount({ stops: [...tour.stops].reverse() }); await settle();
+  assert.equal(panel.root.querySelector("#property-evidence-time").value, "13:00");
+  assert.equal(calls.length, count);
+  panel.change("#property-evidence-select", otherProperty); await settle();
+  assert.equal(calls.at(-1).searchParams.get("as_of"), "2026-01-15T13:00:00.000Z");
+  panel.change("#property-evidence-date", "");
+  panel.change("#property-evidence-time", "14:00"); await settle();
+  assert.equal(calls.length, count + 1);
+  assert.match(panel.root.textContent, /Choose an as-of date/);
+});
+
+for (const timezone of ["America/Chicago", "Asia/Tokyo"]) test(`explicit intraday reads use UTC in ${timezone}`, async t => {
+  const oldTimezone = process.env.TZ;
+  process.env.TZ = timezone;
+  t.after(() => { if (oldTimezone === undefined) delete process.env.TZ; else process.env.TZ = oldTimezone; });
+  const calls = [];
+  const panel = openPanel(async path => { calls.push(new URL(path, "https://app.example.invalid")); return evidence; });
+  panel.mount(); await settle();
+  panel.change("#property-evidence-date", "2026-01-15"); await settle();
+  panel.change("#property-evidence-time", "00:00"); await settle();
+  assert.equal(calls.at(-1).searchParams.get("as_of"), "2026-01-15T00:00:00.000Z");
+});
