@@ -1,7 +1,11 @@
 import { CHROMIUM_SAFETY_ARGS } from '../scripts/chromium-safety-args.mjs';
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFile, mkdir } from "node:fs/promises";
+import { readFile, mkdir, mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
+import { buildArtifact } from "../scripts/artifact.mjs";
 import { chromium } from "playwright";
 
 const root = new URL("../", import.meta.url);
@@ -10,7 +14,7 @@ const original = "Synthetic call entry: prioritize ground-floor space, accessibl
 const client = { id: clientId, name: "Demo Harbor Practice", city: "Pensacola", state: "FL", vertical: "Medical office", notes: original };
 const tour = { id: tourId, name: "Demo Gulf Coast Tour", status: "draft", stops: [{ property_name: "Demo Bayside Office", property_address: "100 Example Way", stop_state: "active" }], cheat_sheet: { content: { notes: original } } };
 
-async function open(t, width) {
+async function open(t, width, site = root) {
   const browser = await chromium.launch({ args: [...CHROMIUM_SAFETY_ARGS] }); t.after(() => browser.close());
   const page = await browser.newPage({ viewport: { width, height: 1000 } });
   await page.clock.install({ time: new Date("2026-10-01T15:00:00Z") });
@@ -39,7 +43,7 @@ async function open(t, width) {
     }
     const file = url.pathname === "/tours" ? "tours/index.html" : url.pathname.slice(1);
     try {
-      const content = await readFile(new URL(file, root));
+      const content = await readFile(new URL(file, site));
       return route.fulfill({ body: content, contentType: /\.m?js$/.test(file || "") ? "text/javascript" : file?.endsWith(".css") ? "text/css" : "text/html" });
     } catch { return route.fulfill({ status: 404 }); }
   });
@@ -131,4 +135,52 @@ for (const status of [401,403]) test(`PR182 Tours ${status} settles freshness at
   assert.equal(await page.locator('#planner-updated').textContent(), 'Unavailable');
   assert.equal(await page.locator('.freshness').evaluate(n=>n.classList.contains('current')), false);
   assert.deepEqual(errors,[]);
+});
+
+test('planner reveals reviewed territory on demand and keeps editable market controls when geometry fails', async t => {
+  const { page, calls, errors } = await open(t, 390);
+  assert.equal(await page.locator('svg.territory-map').count(), 0);
+  assert.equal(calls.some(call => /maplibre|leads-territory|leads-market-locations/.test(call.path)), false);
+  await page.route('**/data/leads-territory.geojson', route => route.fulfill({ status: 503 }));
+  const reveal = page.getByRole('button', { name: 'Show territory', exact: true });
+  await reveal.focus(); await page.keyboard.press('Enter');
+  await page.getByRole('status').filter({ hasText: 'Territory unavailable' }).waitFor();
+  await page.locator('[data-market="Pensacola, FL"]').click();
+  assert.equal(await page.locator('#space-area').inputValue(), 'Pensacola, FL');
+  await page.getByLabel('Undo search edit', { exact: true }).click();
+  assert.equal(await page.locator('#space-area').inputValue(), '');
+  assert.deepEqual(errors, []);
+});
+
+for (const width of [1440, 390]) test(`planner renders Census geography after reveal and reuses its canvas at ${width}px`, async t => {
+  const outDir = await mkdtemp(join(tmpdir(), 'm01-planner-'));
+  t.after(() => rm(outDir, { recursive: true, force: true }));
+  await buildArtifact({ root: fileURLToPath(root), outDir, commit: '1'.repeat(40) });
+  const { page, calls, errors } = await open(t, width, pathToFileURL(`${outDir}/site/`));
+  await page.route('**/maplibre-gl.mjs', route => route.fulfill({ contentType: 'text/javascript', body: `
+    export * from './maplibre-gl.mjs?provider';
+    import { Map as ProviderMap } from './maplibre-gl.mjs?provider';
+    export class Map extends ProviderMap {
+      constructor(options) { super(options); globalThis.plannerRenderer = this; }
+      fitBounds(bounds, options) { globalThis.plannerBounds = bounds.toArray(); return super.fitBounds(bounds, options); }
+    }
+  ` }));
+  await page.getByRole('button', { name: 'Show territory', exact: true }).click();
+  await page.locator('#planner-territory canvas').waitFor();
+  await page.waitForFunction(() => globalThis.plannerRenderer?.loaded());
+  assert.ok(await page.evaluate(() => plannerRenderer.queryRenderedFeatures({ layers: ['land'] }).length) > 0);
+  assert.deepEqual(await page.evaluate(() => plannerBounds), [[-88.107853, 30.239496], [-84.252272, 31.233698]]);
+  const canvas = await page.locator('#planner-territory canvas').elementHandle();
+  await page.getByRole('button', { name: 'Hide territory', exact: true }).click();
+  assert.equal(await page.locator('#planner-territory').isVisible(), false);
+  await page.getByRole('button', { name: 'Show territory', exact: true }).click();
+  await page.locator('[data-market="Pensacola, FL"]').click();
+  await page.getByRole('button', { name: 'Refresh tours', exact: true }).click();
+  assert.equal(await page.locator('#space-area').inputValue(), 'Pensacola, FL');
+  assert.equal(await canvas.evaluate(node => node.isConnected), true);
+  assert.equal(calls.filter(call => call.path.endsWith('leads-territory.geojson')).length, 1);
+  assert.equal(await page.locator('#planner-territory .market-marker').count(), 0);
+  await mkdir(new URL('out/test-artifacts/w6/', root), { recursive: true });
+  await page.screenshot({ path: new URL(`out/test-artifacts/w6/territory-${width}.png`, root).pathname, fullPage: true, animations: 'disabled' });
+  assert.deepEqual(errors, []);
 });
