@@ -16,21 +16,22 @@ export function appOriginForReport(origin) {
 }
 
 function groupIcon(label) {
-  return { Home: "⌂", Leads: "◎", Tours: "◇", "Local Deals": "▦" }[label] || "";
+  return { Home: "⌂", Leads: "◎", Tours: "◇", "Local Deals": "▦", Vendors: "♧", "Control Room": "◈" }[label] || "";
 }
 
-function link({ label, href }, current, base) {
+function link({ label, href, phoneGroup }, current, base, phoneCopy = false) {
   const active = href === current;
   const badge = label === "Updates" ? '<span class="nav-badge" id="navUnreadBadge" hidden></span>' : "";
-  return `<a data-app-nav-item aria-label="${label}" title="${label}" href="${base}${href}"${active ? ' aria-current="page"' : ""}>${!groupIcon(label) ? label : `<span aria-hidden="true">${groupIcon(label)}</span><span class="app-shell-nav-label">${label === "Local Deals" ? "Deals" : label}</span>`}${badge}</a>`;
+  return `<a ${phoneCopy ? "data-phone-more" : `data-app-nav-item${phoneGroup ? " data-phone-moved" : ""}`} aria-label="${label}" title="${label}" href="${base}${href}"${active ? ' aria-current="page"' : ""}>${phoneCopy || !groupIcon(label) ? label : `<span aria-hidden="true">${groupIcon(label)}</span><span class="app-shell-nav-label">${label === "Local Deals" ? "Deals" : label}</span>`}${badge}</a>`;
 }
 
 export function appShellMarkup(pathname, base = "", search = "") {
   const current = pathname === "/ideas-events" ? `/ideas-events?tab=${new URLSearchParams(search).get("tab") === "events" ? "events" : "ideas"}` : activeDestination(pathname);
   const primary = navigationItems.filter(item => !item.group).map((item) => link(item, current, base)).join("");
   const more = NAVIGATION_GROUPS.map((group) =>
-    `<div class="app-shell-more-section"><span class="app-shell-more-group">${group}</span>${navigationItems.filter((item) => item.group === group).map((item) => link(item, current, base)).join("")}</div>`).join("");
+    `<div class="app-shell-more-section"><span class="app-shell-more-group">${group}</span>${navigationItems.filter((item) => item.group === group).map((item) => link(item, current, base)).join("")}${navigationItems.filter((item) => item.phoneGroup === group).map((item) => link(item, current, base, true)).join("")}</div>`).join("");
   const moreActive = navigationItems.filter(item => item.group).some((item) => item.href === current);
+  const phoneMoreActive = navigationItems.filter(item => item.phoneGroup).some((item) => item.href === current);
   return `<header class="app-shell-header" aria-label="Workspace rail">
     <a class="app-shell-brand" href="${base}/" aria-label="DoctorCRE Home">
       <svg viewBox="0 0 42 42" role="img" aria-label="Work flows from leads through deals to delivery">
@@ -39,7 +40,7 @@ export function appShellMarkup(pathname, base = "", search = "") {
       </svg><span class="app-shell-brand-name">Doctor<span class="app-shell-brand-accent">CRE</span></span>
     </a>
     <div class="app-shell-menu">
-      <nav class="app-shell-navigation" aria-label="Primary navigation">${primary}<div class="app-shell-more"><button type="button" class="app-shell-more-toggle${moreActive ? " app-shell-more-current" : ""}" aria-expanded="false" aria-label="More" title="More"><span aria-hidden="true">•••</span><span class="app-shell-nav-label">More</span></button><div class="app-shell-more-list" hidden>${more}</div></div></nav>
+      <nav class="app-shell-navigation" aria-label="Primary navigation">${primary}<div class="app-shell-more"><button type="button" class="app-shell-more-toggle${moreActive ? " app-shell-more-current" : phoneMoreActive ? " app-shell-more-phone-current" : ""}" aria-expanded="false" aria-label="More" title="More"><span aria-hidden="true">•••</span><span class="app-shell-nav-label">More</span></button><div class="app-shell-more-list" hidden>${more}</div></div></nav>
     </div>
     <a class="app-shell-search" href="${base}/search" aria-label="Search" title="Search"${pathname === "/search" ? ' aria-current="page"' : ""}><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m15.5 15.5 5 5"/></svg></a>
     <div class="app-shell-controls" aria-label="Workspace controls">

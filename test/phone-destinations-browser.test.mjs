@@ -23,13 +23,13 @@ async function open(t, width, tours = [{ id: tourId, name: 'Synthetic morning to
 for (const width of [320, 390]) test(`phone destinations have readable labels and keyboard access at ${width}px`, async t => {
   const page = await open(t, width);
   const nav = page.getByRole('navigation', { name: 'Primary navigation' });
-  for (const label of ['Home', 'Leads', 'Deals', 'Tours', 'More']) {
+  for (const label of ['Home', 'Leads', 'Tours', 'Deals', 'More']) {
     const text = nav.getByText(label, { exact: true });
     assert.equal(await text.count(), 1, `${label} is present`);
     const box = await text.boundingBox();
     assert.ok(box && box.width > 10 && box.height > 10, `${label} is visually readable`);
   }
-  const controls = nav.locator(':scope > a, .app-shell-more-toggle');
+  const controls = nav.locator(':scope > a:visible, .app-shell-more-toggle');
   assert.equal(await controls.count(), 5);
   for (const control of await controls.all()) {
     const box = await control.boundingBox();
@@ -37,7 +37,7 @@ for (const width of [320, 390]) test(`phone destinations have readable labels an
     assert.ok(box.x >= 0 && box.x + box.width <= width, 'navigation stays within the phone');
   }
   await nav.getByRole('link', { name: 'Home', exact: true }).focus();
-  for (const name of ['Leads', 'Local Deals', 'Tours', 'More']) {
+  for (const name of ['Leads', 'Tours', 'Local Deals', 'More']) {
     await page.keyboard.press('Tab');
     assert.equal(await page.evaluate(() => document.activeElement.getAttribute('aria-label')), name);
   }
@@ -110,7 +110,7 @@ test('phone destinations reflow at the CSS viewport for 200 percent zoom', async
   const page = await open(t, 780);
   await page.setViewportSize({ width: 390, height: 422 });
   const nav = page.getByRole('navigation', { name: 'Primary navigation' });
-  for (const label of ['Home', 'Leads', 'Deals', 'Tours', 'More']) {
+  for (const label of ['Home', 'Leads', 'Tours', 'Deals', 'More']) {
     const box = await nav.getByText(label, { exact: true }).boundingBox();
     assert.ok(box.height > 10 && box.x >= 0 && box.x + box.width <= 390, `${label} is readable after reflow`);
   }
@@ -118,4 +118,17 @@ test('phone destinations reflow at the CSS viewport for 200 percent zoom', async
   await entry.getByText('Synthetic morning tour', { exact: true }).waitFor();
   await entry.getByRole('link', { name: 'Tour day', exact: true }).waitFor();
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
+});
+
+test('desktop rail keeps Vendors and Control Room out of More', async t => {
+  const server = await fixtureServer(); t.after(() => server.close());
+  const browser = await chromium.launch(); t.after(() => browser.close());
+  const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+  await page.goto(`${server.origin}/tours`);
+  await page.locator('body.has-app-layout').waitFor();
+  const nav = page.getByRole('navigation', { name: 'Primary navigation' });
+  assert.deepEqual(await nav.locator(':scope > a').evaluateAll(nodes => nodes.map(n => n.title)), ['Home', 'Leads', 'Tours', 'Local Deals', 'Vendors', 'Control Room']);
+  await nav.getByRole('button', { name: 'More', exact: true }).click();
+  assert.equal(await nav.locator('.app-shell-more-list').getByRole('link', { name: 'Vendors', exact: true }).count(), 0);
+  assert.equal(await nav.locator('.app-shell-more-list').getByRole('link', { name: 'Control Room', exact: true }).count(), 0);
 });

@@ -11,6 +11,8 @@ const root = new URL('../', import.meta.url);
 const contract = (await import("../js/routes.js")).routeContract;
 const primary = navigationItems.filter(item => !item.group).map(item => item.label);
 const secondary = navigationItems.filter(item => item.group).map(item => item.label);
+const phoneMoved = navigationItems.filter(item => item.phoneGroup).map(item => item.label);
+const phoneSecondary = [...secondary.slice(0, secondary.indexOf('Events') + 1), ...phoneMoved, ...secondary.slice(secondary.indexOf('Events') + 1)];
 
 async function open(t, { width = 1440, height = 960, actor = 'joe', live = false, minimal = false, simulatedClock = false,
   reducedMotion = 'no-preference', firstSignIn = false, signoutMode = 'success', holdDocSuggestions = false } = {}) {
@@ -122,8 +124,9 @@ test('desktop and phone navigation, account and Call mode work with reduced moti
   await mkdir(new URL('out/test-artifacts/w1b/regression/', root), { recursive: true });
   for (const width of [1440, 390, 320]) await t.test(String(width), async t => {
     const { page, errors, calls } = await open(t, { width, minimal: true, reducedMotion: 'reduce' });
-    assert.deepEqual(await page.locator('.app-shell-navigation > a').evaluateAll(nodes => nodes.map(n => n.getAttribute('aria-label'))), primary);
-    await page.getByLabel('More', {exact:true}).click(); assert.deepEqual(await page.locator('.app-shell-more-list a').allTextContents(), secondary);
+    const phone = width <= 760;
+    assert.deepEqual(await page.locator('.app-shell-navigation > a:visible').evaluateAll(nodes => nodes.map(n => n.getAttribute('aria-label'))), phone ? primary.filter(l => !phoneMoved.includes(l)) : primary);
+    await page.getByLabel('More', {exact:true}).click(); assert.deepEqual(await page.locator('.app-shell-more-list a:visible').allTextContents(), phone ? phoneSecondary : secondary);
     assert.equal(await page.locator('[data-app-nav-item]').count(), primary.length + secondary.length);
     assert.equal(await page.locator('[data-app-nav-item][href="/calendar"], [data-app-nav-item][href="/tasks"]').count(), 0);
     const controls = await page.locator('.app-shell-controls').evaluate(el => [...el.querySelectorAll('button')].filter(e => e.offsetParent).map(e => ({ width: e.getBoundingClientRect().width, height: e.getBoundingClientRect().height, transition: getComputedStyle(e).transitionDuration })));

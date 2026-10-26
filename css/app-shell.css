@@ -104,6 +104,7 @@ body.has-app-layout { padding: 0 0 var(--layout-bottom) var(--layout-rail) !impo
 .app-shell-more { margin: 0; position: relative; }
 .app-shell-more-list { position: fixed !important; left: calc(var(--layout-rail) + 8px); top: var(--space-4); right: auto !important; bottom: auto; min-width: 0 !important; width: min(570px, calc(100vw - 96px)); max-height: calc(100dvh - 75px); grid-template-columns: repeat(3, minmax(0, 1fr)) !important; overflow: auto; background: var(--surface-2); box-shadow: var(--shadow-overlay); z-index: 1200; }
 .app-shell-more-list[hidden] { display: none !important; }
+.app-shell-more-list a[data-phone-more] { display: none; }
 .app-shell-more-list a { width: auto; min-height: var(--touch); color: var(--fg); font-size: var(--font-size-1); font-weight: var(--font-weight-regular); white-space: normal; }
 .app-shell-more-list .app-shell-nav-label { position: static; width: auto; height: auto; clip-path: none; }
 .app-shell-search { order: 0 !important; margin: 0 !important; width: var(--touch); height: var(--touch); }
@@ -284,6 +285,10 @@ body.has-app-layout:has(.toast) .receipt-dock { display: none; }
   .app-shell-menu { grid-column: 1; grid-row: 1; min-width: 0; flex: none !important; }
   .app-shell-navigation { flex-direction: row; justify-content: space-between; gap: 0; overflow-x: auto; }
   .app-shell-navigation > a > [aria-hidden], .app-shell-more-toggle > [aria-hidden] { display: none; }
+  .app-shell-navigation > a[data-phone-moved] { display: none; }
+  .app-shell-more-list a[data-phone-more] { display: flex; }
+  .app-shell-more-phone-current { background: var(--surface-3); color: var(--fg); }
+  .app-shell-more-phone-current::before { content: ""; position: absolute; left: 10px; right: 10px; bottom: -3px; height: 2px; border-radius: 2px; background: var(--fg); }
   .app-shell-nav-label { position: static; width: auto; height: auto; overflow: visible; clip-path: none; font: var(--font-weight-strong) var(--font-size-1) var(--font-text); }
   .app-shell-navigation > a, .app-shell-more { flex: none; }
   .app-shell-navigation > a, .app-shell-more-toggle { width: var(--touch); height: var(--touch); min-height: var(--touch); font-size: var(--font-size-3); padding: var(--space-1) !important; }

@@ -61,7 +61,7 @@ test("the shared navigation has one stable set of destinations, including every 
     assert.deepEqual(labels, expected, `${route}: same order and items`);
     assert.match(html, />Project activity<\/a>/);
     assert.doesNotMatch(html, />Agent (?:Room|Queue)<\/a>/);
-    assert.equal((html.match(/aria-current="page"/g) || []).length, ["/calendar", "/client-portal"].includes(route) ? 0 : 1, `${route}: one active destination or utility when included in navigation`);
+    assert.equal((html.replace(/<a data-phone-more[^>]*>/g, "").match(/aria-current="page"/g) || []).length, ["/calendar", "/client-portal"].includes(route) ? 0 : 1, `${route}: one active destination or utility when included in navigation`);
   }
 });
 

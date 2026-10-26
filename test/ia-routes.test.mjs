@@ -78,14 +78,14 @@ test("the approved map accounts for every original path with a permanent home", 
   }
 });
 
-test("the shell has four primary destinations and grouped secondary destinations", () => {
+test("the shell has seven top sections and grouped secondary destinations", () => {
   assert.deepEqual(navigationItems.filter(item => !item.group).map((item) => item.label),
-    ["Home", "Leads", "Local Deals", "Tours"]);
+    ["Home", "Leads", "Tours", "Local Deals", "Vendors", "Control Room"]);
   const shell = appShellMarkup("/tasks");
   for (const group of ["Updates", "Operations", "Reference"]) {
     assert.match(shell, new RegExp(`app-shell-more-group[^>]*>${group}`));
   }
-  for (const name of ["Vendors", "Control Room", "Updates", "Doc Chats", "Work Requests", "All Work", "Incidents", "Project activity", "Design Lab", "Status"]) {
+  for (const name of ["Updates", "Doc Chats", "Work Requests", "All Work", "Incidents", "Project activity", "Design Lab", "Status"]) {
     assert.match(shell, new RegExp(`aria-label="${name}"[^>]*href="[^"]+">${name}`));
   }
 });
