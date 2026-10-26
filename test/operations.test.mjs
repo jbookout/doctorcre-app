@@ -12,7 +12,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {readFile} from "node:fs/promises";
 
-import {GOVERNANCE_LANES, formatScheduleDateTime, validGovernanceQueuePayload} from "../js/operations-model.js";
+import {GOVERNANCE_LANES, formatScheduleDateTime, validGovernanceQueuePayload, validScheduleBoardPayload} from "../js/operations-model.js";
 import {createFixtureClient} from "../js/fixture-client.js";
 import {createLiveClient} from "../js/live-client.js";
 
