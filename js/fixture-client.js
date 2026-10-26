@@ -557,7 +557,6 @@ export async function createFixtureClient(opts = {}) {
     events: [],
   });
 
-  // Cover resumable, unbound, lost-host and failed outcomes. No card may auto-launch.
   const OUTCOME_CARD_ROWS = [
     {
       card_id: "card:doc-outcome:1", requested_outcome: "Confirm the LOI redline is ready for Joe's review",
@@ -687,8 +686,6 @@ export async function createFixtureClient(opts = {}) {
     error.status = 503;
     throw error;
   };
-  // Match incidentFingerprint: service|environment|operation|failure_class.
-  // Service keys match scripts/atlas-fixture.mjs for the atlas join.
   const incident = (row) => ({
     ref: row.ref, title: row.title, severity: row.severity, state: row.state,
     environment: 'staging', owner_actor: row.owner_actor, next_action: row.next_action,
@@ -793,7 +790,6 @@ export async function createFixtureClient(opts = {}) {
         { observed_at: '2026-09-16T04:11:00.000Z', note: 'Demo failure repeated on the nightly run' },
       ],
       links: [{ kind: 'work_request', ref: 'WR-000901', label: 'Demo bounded request: reconcile the demo vendor rows' }],
-      // Match get-incident services and trace arrays from the recorded service join and trace rows.
       services: [{ key: 'demo-exporter', name: 'Demo exporter', criticality: 'high' }],
       trace: [
         { correlation_id: 'demo-correlation-01', kind: 'deployment', ref: 'DEP-demo-901', state: 'succeeded', environment: 'production', service_key: 'demo-exporter', failure_class: null, detail: 'Demo deploy that shipped the export writer', source_kind: 'deployment', source_ref: 'ops.deployment', freshness_state: 'fresh', occurred_at: '2026-09-12T22:00:00.000Z' },
@@ -1646,8 +1642,6 @@ export async function createFixtureClient(opts = {}) {
       return { count: rows.length, loops: rows };
     },
 
-    // Derive triage from fixture next steps and critical dates using the current clock.
-    // This subset cannot prove production eligibility for after-call actions, holds, notes, statuses or inbox.
     async listFeatureSwitches() {
       return {ok:true,schema:'feature-switches.v1',switches:[{name:'doc-suggestion-actions',available:true}]};
     },
@@ -1945,8 +1939,6 @@ export async function createFixtureClient(opts = {}) {
       });
     },
 
-    // Match producer fields occurrences, age_days, next_action and hours_since_last_change.
-    // Fixture-only outage rejects one read so only its areas become unknown.
     async incidentBoard({ state = 'open', severity = null } = {}) {
       refuseIfOutage('incidents', 'incident-board');
       const rows = incidents
@@ -1982,9 +1974,6 @@ export async function createFixtureClient(opts = {}) {
       };
     },
 
-    // The one write the incident page offers. It validates exactly the two
-    // patterns the verb declares, refuses a link that already exists, and
-    // replays under a reused key like every other fixture write.
     async linkIncidentWorkRequest({ idempotency_key, incident_ref, work_request }) {
       return withIdem(idempotency_key, () => {
         if (!/^INC-[0-9]{8}-[0-9]{2}$/.test(String(incident_ref))) refuse('link-incident-work-request', 'invalid_incident_ref', { incident_ref });
@@ -2021,10 +2010,6 @@ export async function createFixtureClient(opts = {}) {
       };
     },
 
-    // The preference read. It takes NO arguments, and it is spelled with no
-    // parameter list at all so an argument cannot be added here by accident:
-    // the verb declares zero properties under additionalProperties:false.
-    // ------------------------------------ session identity and dispatch (S02)
     // Both are READS and neither takes an actor, exactly as the verbs declare.
     // `total_seen` and `total_returned` are synthetic scenario totals and do NOT
     // move with `limit` — that is what makes the three-number counts line
