@@ -51,7 +51,7 @@ export function partnerIdentity(session) {
 }
 
 function mountAccount(root, host, pathname, beforeSignOutReplace = () => {}) {
-  mountPrefs();
+  const preferences = mountPrefs();
   const avatar = host.querySelector("#selfAvatar");
   const panel = host.querySelector("#accountMenu");
   root.body.append(panel);
@@ -116,7 +116,15 @@ function mountAccount(root, host, pathname, beforeSignOutReplace = () => {}) {
         lastVerified = new Date().toLocaleTimeString(); sessionStatus.hidden = true;
         panel.querySelector("#accountStatus").textContent = "";
       }
-      showPartner(partnerIdentity(session));
+      const identity = partnerIdentity(session);
+      showPartner(identity);
+      if (boot.mode === "live" && pathname === "/" && identity && help && !preferences.hasSeenWalkthrough(identity.slug)) {
+        void import("./app-walkthrough.js").then(({ openWalkthrough }) => {
+          if (boundary.revoked || root.querySelector('dialog:modal') || !root.getElementById('docOpen') || preferences.hasSeenWalkthrough(identity.slug)) return;
+          openWalkthrough(root);
+          preferences.rememberWalkthrough(identity.slug);
+        }).catch(() => {});
+      }
     } catch {
       if (!boundary?.revoked) {
         sessionStatus.textContent = lastVerified ? `Connection unavailable · Last verified ${lastVerified}` : 'Sign-in unavailable';
