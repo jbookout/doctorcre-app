@@ -830,53 +830,55 @@ test('legacy next-step writes do not replace structured checklist items',async t
   assert.deepEqual(errors,[]);
 });
 
-for (const width of [390, 1440]) test(`missing next steps stay visible across deal views and refresh at ${width}px`, async t => {
+for (const width of [390, 1440]) test(`missing action items stay visible across deal views and refresh at ${width}px`, async t => {
   const { page, errors } = await open(t, { width });
   await page.evaluate(async () => {
     const { state } = await import('/js/pipeline.js');
     const board = state.client.getBoard.bind(state.client);
     const detail = state.client.getDeal.bind(state.client);
     window.demoNextStep = null;
+    window.demoItems = [];
     state.client.getBoard = async (...args) => {
       const result = await board(...args);
-      result.deals.find(deal => deal.id === 'd14').next_step = window.demoNextStep;
+      Object.assign(result.deals.find(deal => deal.id === 'd14'), { next_step: window.demoNextStep, items: structuredClone(window.demoItems) });
       return result;
     };
     state.client.getDeal = async id => {
       const result = await detail(id);
       result.deal.next_step = window.demoNextStep;
+      result.items = result.deal.items = structuredClone(window.demoItems);
       if (id === 'd14' && window.demoParked) result.deal.operating_state = 'parked';
       return result;
     };
   });
   for (const value of [null, '  ', { text: '' }]) {
-    await page.evaluate(value => { window.demoNextStep = value; }, value);
+    await page.evaluate(value => { window.demoNextStep = value; window.demoItems = []; }, value);
     await refresh(page);
     const card = page.locator('.kanban-column [data-id="d14"]');
-    assert.equal(await card.getByText('Next step missing', { exact: true }).isVisible(), true);
+    assert.equal(await card.getByText('No action items recorded', { exact: true }).isVisible(), true);
     await page.locator('#listView').click();
     const row = page.locator('.deal-row[data-id="d14"]');
     assert.equal(await row.getByText('Next step missing', { exact: true }).isVisible(), true);
     await row.click();
     const snapshot = page.locator('.deal-opening-snapshot');
     await snapshot.waitFor();
-    assert.equal(await snapshot.getByText('Next step missing', { exact: true }).isVisible(), true);
+    assert.equal(await snapshot.getByText('No action items recorded', { exact: true }).isVisible(), true);
     for (const known of ['Call the demo lender', { text: 'Review the demo lease' }]) {
-      await page.evaluate(value => { window.demoNextStep = value; }, known);
+      await page.evaluate(value => { window.demoNextStep = value; window.demoItems = [{ id: 'demo-gap-item', title: typeof value === 'string' ? value : value.text, status: 'open', due_on: null, bullets: [] }]; }, known);
       await page.getByRole('button', { name: 'Refresh deal', exact: true }).click();
       const text = typeof known === 'string' ? known : known.text;
       await snapshot.getByText(text, { exact: true }).waitFor();
-      assert.equal(await snapshot.getByText('Next step missing', { exact: true }).count(), 0);
+      assert.equal(await snapshot.getByText('No action items recorded', { exact: true }).count(), 0);
     }
-    await page.evaluate(value => { window.demoNextStep = value; }, value);
+    await page.evaluate(value => { window.demoNextStep = value; window.demoItems = []; }, value);
     await page.getByRole('button', { name: 'Refresh deal', exact: true }).click();
-    await snapshot.getByText('Next step missing', { exact: true }).waitFor();
+    await snapshot.getByText('No action items recorded', { exact: true }).waitFor();
     await mkdir(new URL('out/test-artifacts/next-step-gap/', root), { recursive: true });
     if (value === null) await page.screenshot({ path: new URL(`out/test-artifacts/next-step-gap/${width}-detail.png`, root).pathname });
     await page.getByLabel('Close deal', { exact: true }).click();
     await page.locator('#boardView').click();
   }
-  await page.evaluate(() => { window.demoNextStep = { text: 'Confirm the demo appointment' }; });
+  await page.evaluate(() => { window.demoNextStep = { text: 'Confirm the demo appointment' }; window.demoItems = [{ id: 'demo-gap-item', title: window.demoNextStep.text, status: 'open', due_on: null, bullets: [] }]; });
   await refresh(page);
   assert.equal(await page.locator('.kanban-column [data-id="d14"]').getByText('Confirm the demo appointment', { exact: true }).isVisible(), true);
   await page.locator('#listView').click();
