@@ -33,7 +33,7 @@
  * transcript it already has.
  */
 import { createRetainedCommands } from './retained-commands.mjs';
-import { mountCallOutcomes, callChangeText } from './call-outcomes.js';
+import { mountCallOutcomes, callChangeText, dayLabel } from './call-outcomes.js';
 import { requestCompanion } from './post-call-client.js';
 import { escapeText as esc } from './change-receipts.mjs';
 import { mountVisibilityPoll } from './visibility-poll.mjs';
@@ -138,7 +138,7 @@ export function createCallMode(deps) {
   const now = deps.now || (() => Date.now());
   const toast = deps.toast || (() => {});
   const dealName = deps.dealName || (() => undefined);
-  const dateLabel = deps.dateLabel || ((value) => String(value));
+  const dateLabel = deps.dateLabel || dayLabel;
   const timers = { setInterval: deps.setInterval || ((...a) => setInterval(...a)),
     clearInterval: deps.clearInterval || ((h) => clearInterval(h)),
     setTimeout: deps.setTimeout || ((...a) => setTimeout(...a)),
@@ -296,10 +296,19 @@ export function createCallMode(deps) {
   </article>`;
   }
 
+  // The companion appends each change to the summary as raw lines
+  // ("Phase moved to: due_diligence (started 2026-10-20)", "Next date:
+  // 2026-11-03"; carr-system post_call.report_for_deal_room). The card shows
+  // those changes formatted in their own sections, so drop the raw copies.
+  const RAW_CHANGE_LINE = /^(Phase moved to|Move phase to|Next step set to|Replace next step with|Next date):/u;
+  function cardSummary(text) {
+    return String(text).split('\n').filter(line => !RAW_CHANGE_LINE.test(line.trim())).join('\n').trim();
+  }
+
   function dealUpdateCard(item) {
     const status = postCallItemStatus(item);
     const pending = status === 'pending';
-    const summary = item.update || item.summary || item.text || item.action || 'Deal update needs review';
+    const summary = cardSummary(item.update || item.summary || item.text || item.action || '') || 'Deal update needs review';
     const resolver = ['assigned_action','email_draft'].includes(item.candidate_kind || item.kind) || item.candidate_table === 'capture_post_call_candidate' ? 'post_call' : 'legacy';
     const step = item.next_step?.applied_automatically ? null : item.next_step;
     const stepStatus = step ? postCallItemStatus(step) : null;
@@ -737,7 +746,7 @@ export function createCallMode(deps) {
         $('#callModeButton')?.focus();
       return true;
     }
-    if (outcomes && hit('[data-call-undo], [data-call-reviewed], [data-call-recheck]')) { await outcomes.click({ target }); return true; }
+    if (outcomes && ['[data-call-undo]', '[data-call-reviewed]', '[data-call-recheck]', '[data-call-open-cards]'].some(hit)) { await outcomes.click({ target }); return true; }
     const confirm = hit('[data-post-call-confirm]');
     if (confirm) { await resolveCandidate(confirm.dataset.postCallConfirm, true, confirm); return true; }
     const skip = hit('[data-post-call-skip]');

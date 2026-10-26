@@ -429,6 +429,34 @@ test("Call Mode waits for the automatic apply before it claims or lists anything
     assert.match(report, /Move to Legal/);
     assert.match(report, /Joe said legal and Dell said keep it\./);
     assert.match(report, /data-post-call-confirm="phase-a"/);
+    // Undo inside Call Mode goes through its own click routing with the deal version.
+    const undone = [];
+    h.client.undoCallChange = async (args) => { undone.push(args); };
+    await h.controller.handleClick(drawnButton(outcomes.innerHTML, "data-call-undo", "step-a"));
+    assert.deepEqual(undone, [{ candidate_id: "step-a", base_version: 4 }]);
+    assert.ok(h.calls.toasts.includes("Change undone."));
+  } finally { h.controller.dispose(); }
+});
+
+test("deal cards drop the companion's raw change lines and show each change once, formatted", async () => {
+  // The exact summary carr-system's report_for_deal_room sends: the change is
+  // appended to the summary as raw lines.
+  const held = { status: { state: "ready_review" }, report: { report: { summary: "Pipeline review." },
+    automatic: { finished_at: "2026-09-23T15:01:30Z", applied: 0, kept_for_review: 2 },
+    deal_updates: [{ deal_id: "deal-a", deal_name: "Demo Bayside", candidate_id: "note-a", candidate_status: "confirmed",
+      summary: "LOI signed.\nMove phase to: due_diligence (started 2026-10-20)\nReplace next step with: Send the lease draft\nNext date: 2026-11-03",
+      phase_move: { value: "due_diligence", started_on: "2026-10-20", candidate_id: "phase-a", candidate_status: "pending", apply: "review", review_reason: "Dell did not agree." },
+      next_step: { text: "Send the lease draft", next_date: "2026-11-03", candidate_id: "step-a", candidate_status: "pending", apply: "review", review_reason: "Dell did not agree." } }] } };
+  const h = harness({ statuses: [held] });
+  try {
+    h.controller.startPolling("2026.09.23-1500", { weekly: true });
+    await new Promise((resolve) => setImmediate(resolve));
+    const report = h.doc.getElementById("postCallReport").innerHTML;
+    assert.doesNotMatch(report, /due_diligence|2026-10-20|2026-11-03|Move phase to:|Replace next step with:/);
+    assert.match(report, /<p>LOI signed\.<\/p>/);
+    assert.match(report, /Move to Diligence, started Sep 20|Move to Diligence, started Oct 20/);
+    assert.match(report, /Next date: Nov 3/);
+    assert.equal(report.split("Send the lease draft").length - 1, 1, "the step appears once");
   } finally { h.controller.dispose(); }
 });
 
@@ -489,7 +517,7 @@ test('a call next step has its own decision after the note is confirmed', async 
     await new Promise(setImmediate);
     const html = h.doc.getElementById('postCallReport').innerHTML;
     assert.match(html, /Call Vendor A/);
-    assert.match(html, /2028-02-29/);
+    assert.match(html, /Next date: Feb 29/);
     assert.doesNotMatch(html, /data-post-call-confirm="note-candidate"/);
     assert.deepEqual(h.calls.resolveConfirm, []);
     await h.controller.handleClick(drawnButton(html, 'data-post-call-confirm', 'step-candidate'));

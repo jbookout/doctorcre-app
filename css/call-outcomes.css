@@ -16,6 +16,11 @@
 .call-outcome-action:hover { border-color: var(--fg-quiet); background: var(--surface-2); }
 .call-outcome-action.primary-action { border-color: var(--accent); background: var(--accent); color: var(--on-accent); }
 .call-outcome-action.primary-action:hover { border-color: var(--accent-hover); background: var(--accent-hover); }
+/* Call Mode's dialog restyles every button (#callModeDialog button); the
+   accent action keeps its color there too. */
+#callModeDialog .call-outcome-action.primary-action, #callModeDialog .call-outcome-action.primary-action:hover { border-color: var(--accent); background: var(--accent); color: var(--on-accent); }
+.call-outcome-link { padding: 0; border: 0; background: none; color: var(--fg); font: inherit; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; min-height: var(--touch); }
+.call-outcome-link:focus-visible { outline: var(--focus-width) solid var(--focus-ring); outline-offset: 2px; }
 .call-outcome-action:disabled { opacity: .55; cursor: progress; }
 .call-outcome-action:focus-visible { outline: var(--focus-width) solid var(--focus-ring); outline-offset: 2px; }
 .call-outcome-badge { flex: 0 0 auto; padding: 0 var(--space-2); border: var(--hairline-width) solid var(--hairline); border-radius: var(--radius-round); color: var(--fg-muted); font-size: var(--font-size-1); white-space: nowrap; }

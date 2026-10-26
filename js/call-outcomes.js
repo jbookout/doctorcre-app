@@ -51,7 +51,7 @@ export function callsFor(calls, candidateIds = null) {
   return list.filter(call => [...(call.applied || []), ...(call.open_cards || [])].some(item => ids.has(item.candidate_id)));
 }
 
-export function callOutcomesHtml(calls, { busy = new Set() } = {}) {
+export function callOutcomesHtml(calls, { busy = new Set(), openCards = false } = {}) {
   return calls.map(call => {
     const applied = Array.isArray(call.applied) ? call.applied : [];
     const open = Array.isArray(call.open_cards) ? call.open_cards.length : 0;
@@ -69,7 +69,9 @@ export function callOutcomesHtml(calls, { busy = new Set() } = {}) {
       <header><h4>${esc(title)}</h4>
       <button type="button" class="call-outcome-action primary-action" data-call-reviewed="${esc(call.session_id)}"${busy.has(call.session_id) ? ' disabled' : ''}>Looks right</button></header>
       ${rows ? `<ul>${rows}</ul>` : '<p class="call-outcome-note">Nothing was applied automatically.</p>'}
-      ${open ? `<p class="call-outcome-note">${open} item${open === 1 ? '' : 's'} from this call still need${open === 1 ? 's' : ''} Joe or Dell to decide.</p>` : ''}
+      ${open ? `<p class="call-outcome-note">${openCards
+        ? `<button type="button" class="call-outcome-link" data-call-open-cards>${open} item${open === 1 ? '' : 's'} from this call still need${open === 1 ? 's' : ''} Joe or Dell to decide</button>`
+        : `${open} item${open === 1 ? '' : 's'} from this call still need${open === 1 ? 's' : ''} Joe or Dell to decide.`}</p>` : ''}
     </section>`;
   }).join('');
 }
@@ -83,14 +85,14 @@ const UNCHECKED = `<p class="call-outcome-note" role="status">Couldn't check for
  * A failed read says so instead of looking like "nothing to review"; a
  * signed-out read stays quiet because the page already asks for sign-in.
  */
-export function mountCallOutcomes({ container, client, toast = () => {}, filter = () => null, onChange = () => {}, listen = true }) {
+export function mountCallOutcomes({ container, client, toast = () => {}, filter = () => null, onChange = () => {}, listen = true, openCards = null }) {
   const busy = new Set();
   let calls = [];
   let unchecked = false;
   const paint = () => {
     if (unchecked) { container.innerHTML = UNCHECKED; container.hidden = false; return; }
     const shown = callsFor(calls, filter());
-    container.innerHTML = callOutcomesHtml(shown, { busy });
+    container.innerHTML = callOutcomesHtml(shown, { busy, openCards: Boolean(openCards) });
     container.hidden = shown.length === 0;
   };
   async function refresh() {
@@ -111,17 +113,20 @@ export function mountCallOutcomes({ container, client, toast = () => {}, filter 
     catch (error) { toast(refused(error)); }
     finally { busy.delete(key); await refresh(); onChange(); }
   }
+  // A host that delegates its clicks (listen: false) has already scoped them.
+  const inside = node => Boolean(node) && (!listen || container.contains(node));
   async function click(event) {
     const target = event.target;
-    if (target.closest?.('[data-call-recheck]') && container.contains(target)) return refresh();
+    if (inside(target.closest?.('[data-call-recheck]'))) return refresh();
+    if (inside(target.closest?.('[data-call-open-cards]'))) return openCards?.();
     const undo = target.closest?.('[data-call-undo]');
-    if (undo && container.contains(undo)) {
+    if (inside(undo)) {
       const candidate_id = undo.dataset.callUndo;
       return act(candidate_id, () => client().undoCallChange({ candidate_id, base_version: Number(undo.dataset.baseVersion) }),
         'Change undone.', undoRefusal);
     }
     const reviewed = target.closest?.('[data-call-reviewed]');
-    if (reviewed && container.contains(reviewed)) {
+    if (inside(reviewed)) {
       const session_id = reviewed.dataset.callReviewed;
       return act(session_id, () => client().reviewCallOutcome({ session_id }), 'Marked reviewed.',
         () => 'Could not mark the call reviewed. Try again.');

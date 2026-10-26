@@ -236,5 +236,11 @@ if (typeof document !== 'undefined' && document.getElementById('dealAttention'))
     notice.hidden = false; notice.textContent = message;
     setTimeout(() => { if (notice.textContent === message) { notice.textContent = ''; notice.hidden = true; } }, 6000);
   };
-  if (outcomes && client.readCallOutcomes) mountCallOutcomes({ container: outcomes, client: () => client, toast }).refresh();
+  // The cards still waiting are decided in Call Mode's post-call report.
+  const openCards = () => {
+    const button = document.getElementById('callModeButton');
+    if (button && !button.hidden) button.click();
+    else toast('Open Call Mode on the Mac that recorded the call to decide them.');
+  };
+  if (outcomes && client.readCallOutcomes) mountCallOutcomes({ container: outcomes, client: () => client, toast, openCards }).refresh();
 }

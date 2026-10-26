@@ -92,6 +92,20 @@ test('every Undo refusal reads as a plain sentence, never developer text', async
   }
 });
 
+test("Home's count of undecided items opens the cards", async () => {
+  const dom = new JSDOM('<section id="outcomes"></section>');
+  const container = dom.window.document.getElementById('outcomes');
+  let opened = 0;
+  const view = mountCallOutcomes({ container, openCards: () => { opened += 1; },
+    client: () => ({ readCallOutcomes: async () => ({ calls: synthetic() }) }) });
+  await view.refresh();
+  const link = container.querySelector('[data-call-open-cards]');
+  assert.equal(link.tagName, 'BUTTON');
+  assert.equal(link.textContent, '1 item from this call still needs Joe or Dell to decide');
+  await view.click({ target: link });
+  assert.equal(opened, 1);
+});
+
 test('a failed read says it could not check; a signed-out read stays quiet', async () => {
   const dom = new JSDOM('<section id="outcomes" hidden></section>');
   const container = dom.window.document.getElementById('outcomes');
