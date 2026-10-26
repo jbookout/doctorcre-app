@@ -54,8 +54,9 @@ test('portal read pins the exact isolated server contract without widening other
   const { readFile } = await import('node:fs/promises');
   const contract = JSON.parse(await readFile(new URL('../contracts/carr-interface.v1.json', import.meta.url), 'utf8'));
   assert.ok(contract.mcp_operations.includes('read-client-portal'));
+  assert.equal(contract.mcp_read_contracts['read-client-portal'].write, true);
   assert.equal(contract.mcp_read_contracts['read-client-portal'].schema_version, 'client-portal.v1');
-  assert.equal(contract.mcp_read_contracts['read-client-portal'].producer.source_commit, '4ae013de482731e8169e4acd38181077b86c84be');
+  assert.equal(contract.mcp_read_contracts['read-client-portal'].producer.source_commit, '274bb5cc6bcc06c93edd2e4c4162b60554fda165');
   assert.deepEqual(contract.mcp_read_contracts['read-client-portal'].arguments, ['slug', 'password']);
 });
 

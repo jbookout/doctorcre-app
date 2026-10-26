@@ -48,8 +48,9 @@ test('live portal transport renders shared text safely and clears material befor
     const portal = { slug: 'demo-practice', roadmap: { current_phase: 'research', phases: [
       { slug: 'research', label: 'Research' }, { slug: 'closed', label: 'Closed' },
     ] }, materials: [{ kind: 'document', title: '<img src=x onerror="window.injected=true">', content: '<script>window.injected=true</script>\nShared text.' }], internal_note: 'Synthetic private note' };
-    return route.fulfill({ json: { result: { ...(request.arguments.slug === 'demo-practice' ? {} : { isError: true }), content: [{ type: 'text', text: JSON.stringify(request.arguments.slug === 'demo-practice'
-      ? { ok: true, schema_version: 'client-portal.v1', portal } : { error: 'portal_access_denied' }) }] } } });
+    const denied = request.arguments.slug !== 'demo-practice' || request.arguments.password !== 'synthetic-password';
+    return route.fulfill({ json: { result: { content: [{ type: 'text', text: JSON.stringify(denied
+      ? { ok: false, error: 'portal_access_denied' } : { ok: true, schema_version: 'client-portal.v1', portal }) }] } } });
   });
   await page.goto(page.url() + '?mode=live');
   await page.getByLabel('Portal name').fill('demo-practice');
@@ -63,15 +64,29 @@ test('live portal transport renders shared text safely and clears material befor
   assert.doesNotMatch(page.url(), /synthetic-password/);
   assert.equal(await page.evaluate(() => JSON.stringify([localStorage, sessionStorage]).includes('synthetic-password')), false);
   await page.getByRole('button', { name: 'Lock portal' }).click();
-  await page.getByLabel('Portal name').fill('another-practice');
+  for (const { slug, password } of [
+    { slug: 'demo-practice', password: 'wrong-password' },
+    { slug: 'demo-practice', password: 'locked-password' },
+    { slug: 'another-practice', password: 'synthetic-password' },
+  ]) {
+    await page.getByLabel('Portal name').fill(slug);
+    await page.getByLabel('Portal password').fill(password);
+    await page.getByRole('button', { name: 'Open portal', exact: true }).click();
+    await page.getByText('Portal unavailable. Check the portal name and password, then try again.', { exact: true }).waitFor();
+    assert.equal(await page.locator('#portalContent').innerText(), '');
+    assert.equal(await page.getByLabel('Portal password').inputValue(), '');
+    assert.equal(await page.getByLabel('Portal password').evaluate(element => element === document.activeElement), true);
+  }
+  await page.getByLabel('Portal name').fill('demo-practice');
   await page.getByLabel('Portal password').fill('synthetic-password');
   await page.getByRole('button', { name: 'Open portal', exact: true }).click();
-  await page.getByText('Portal unavailable. Check the portal name and password, then try again.', { exact: true }).waitFor();
-  assert.equal(await page.locator('#portalContent').innerText(), '');
-  assert.equal(await page.getByLabel('Portal password').inputValue(), '');
+  await page.getByRole('heading', { name: 'Your transaction roadmap' }).waitFor();
   assert.deepEqual(requests, [
     { name: 'read-client-portal', arguments: { slug: 'demo-practice', password: 'synthetic-password' } },
+    { name: 'read-client-portal', arguments: { slug: 'demo-practice', password: 'wrong-password' } },
+    { name: 'read-client-portal', arguments: { slug: 'demo-practice', password: 'locked-password' } },
     { name: 'read-client-portal', arguments: { slug: 'another-practice', password: 'synthetic-password' } },
+    { name: 'read-client-portal', arguments: { slug: 'demo-practice', password: 'synthetic-password' } },
   ]);
 });
 

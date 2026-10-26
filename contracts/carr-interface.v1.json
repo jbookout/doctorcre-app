@@ -853,17 +853,18 @@
       }
     },
     "read-client-portal": {
-      "write": false,
+      "write": true,
       "schema_version": "client-portal.v1",
       "producer": {
         "repository": "jbookout/carr-system",
-        "source_commit": "4ae013de482731e8169e4acd38181077b86c84be",
-        "pull_request": "https://github.com/DoctorCRE/carr-system/pull/2291"
+        "source_commit": "274bb5cc6bcc06c93edd2e4c4162b60554fda165",
+        "pull_request": "https://github.com/jbookout/carr-system/pull/2321"
       },
       "arguments": [
         "slug",
         "password"
       ],
+      "denial": { "ok": false, "error": "portal_access_denied" },
       "projection": "One password-bound portal, canonical roadmap and explicitly shared text material only.",
       "password_lifetime": "Form and request memory only. Never URL, storage, diagnostic output or Doc context.",
       "deployment_order": "Server must be live before the app consumer merges or deploys. Public client hosting remains separate."
