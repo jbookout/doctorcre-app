@@ -5,7 +5,7 @@ const text = value => typeof value === 'string' && value.trim() ? value : null;
 const field = (label, value) => ({ label, value: ['string','boolean'].includes(typeof value) || typeof value === 'number' && Number.isFinite(value) ? value : null });
 export const DOC_CONTEXT_TTL_MS = 60_000;
 export const DOC_PAGES = Object.freeze({
-  home: { label: 'Home', reads: ['getHomeAgenda', 'getLeadBoard', 'currentWorkItem', 'currentWorkRequests', 'incidentBoard'] },
+  home: { label: 'Home', reads: ['getHomeAgenda', 'getLeadBoard'] },
   deals: { label: 'Local Deals', reads: ['getBoard', 'getDeal'] },
   leads: { label: 'Leads', reads: ['getWorkspace', 'getLeadDetail'] },
   tours: { label: 'Tours', reads: ['tourLibrary', 'tourDetail', 'tourProperties'] },
