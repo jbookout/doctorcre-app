@@ -27,7 +27,7 @@ const card = {
 
 test("System work accepts only opaque human Work Request references", () => {
   assert.equal(validateHumanRef("WR-000123"), "WR-000123");
-  for (const value of ["", "wr-1", "WR-abc", "550e8400-e29b-41d4-a716-446655440000", "WR-1/../../x"])
+  for (const value of ["", "wr-", "WR-1234567890123", "WR-abc", "550e8400-e29b-41d4-a716-446655440000", "WR-1/../../x"])
     assert.throws(() => validateHumanRef(value), /work request reference/i);
 });
 
