@@ -82,3 +82,24 @@ test('Today isolates dated work for the current day while All retains overdue, u
   assert.deepEqual(team.upcoming.map(row => row.key), ['task:overdue', 'date-today', 'task:partner', 'task:today', 'task:undated', 'date-future', 'task:future']);
   assert.deepEqual(agendaSnapshot(board, details, { scope: 'mine', today: '2026-10-01' }).dueToday.map(row => row.key), ['date-today', 'task:today']);
 });
+
+test('Overdue isolates missed dates and tasks while preserving holds, completion and ownership', () => {
+  const board = { actor: 'joe', deals: [{ id: 'demo', name: 'Demo clinic', owner: 'joe' }] };
+  const task = (id, due_on, extra = {}) => ({ id, due_on, status: 'open', owner: 'joe', ...extra });
+  const details = new Map([['demo', { critical_dates: [
+    { id: 'date-overdue', due_on: '2026-09-29', status: 'open' },
+    { id: 'date-settled', due_on: '2026-09-28', status: 'done' },
+    { id: 'date-today', due_on: '2026-10-01', status: 'open' },
+  ], next_actions: [
+    task('overdue', '2026-09-30'), task('today', '2026-10-01'),
+    task('future', '2026-10-02'), task('undated', null),
+    task('held', '2026-09-27', { hold_until: '2026-10-02' }),
+    task('resumed', '2026-09-30', { hold_until: '2026-10-01' }),
+    task('done', '2026-09-26', { status: 'done' }),
+    task('partner', '2026-09-30', { owner: 'dell' }),
+  ] }]]);
+  const team = agendaSnapshot(board, details, { today: '2026-10-01' });
+  assert.deepEqual(team.overdue.map(row => row.key), ['date-overdue', 'task:overdue', 'task:partner', 'task:resumed']);
+  assert.deepEqual(agendaSnapshot(board, details, { scope: 'mine', today: '2026-10-01' }).overdue.map(row => row.key), ['date-overdue', 'task:overdue', 'task:resumed']);
+  assert.deepEqual(agendaSnapshot(board, details, { today: '2026-09-29' }).overdue, []);
+});

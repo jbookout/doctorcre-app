@@ -664,3 +664,56 @@ for (const width of [1440, 390]) test(`Home Today filters and expands daily work
   assert.doesNotMatch(await calendar.textContent(), /No dates or tasks due today/);
   assert.deepEqual(errors, []);
 });
+
+for (const width of [1440, 390]) test(`Home Overdue isolates missed work and retains scope, refresh and recovery at ${width}`, async t => {
+  const { page, responses, errors } = await open(t, { width });
+  const board = await page.evaluate(async () => (await (await import('/js/home-boot.js')).homeClient).getBoard());
+  const task = (id, due_on, extra = {}) => ({ id, due_on, description: `Demo ${id}`, status: 'open', owner: 'joe', ...extra });
+  const deal = { ...board.deals.find(row => row.id === 'd01'), owner: 'joe',
+    critical_dates: [{ id: 'demo-old-date', due_on: '2026-09-29', status: 'open', note: 'Demo missed date' }],
+    next_actions: [
+      ...Array.from({ length: 8 }, (_, i) => task(`overdue-${i}`, '2026-09-30', { owner: i === 7 ? 'dell' : 'joe' })),
+      task('today', '2026-10-01'), task('future', '2026-10-02'), task('undated', null),
+      task('held', '2026-09-28', { hold_until: '2026-10-02' }), task('done', '2026-09-28', { status: 'done' }),
+    ] };
+  const refresh = async () => {
+    await page.locator('#refreshHome').click();
+    await page.waitForFunction(() => document.querySelector('#refreshHome').getAttribute('aria-busy') === 'false');
+  };
+  responses.set('read-home-agenda', { ...board, schema_version: 'home-agenda.v1', deals: [deal] });
+  await refresh();
+  const calendar = page.locator('#homeCalendar');
+  const overdue = calendar.getByRole('button', { name: 'Overdue', exact: true });
+  assert.equal(await overdue.count(), 1);
+  assert.equal(await calendar.getByRole('button', { name: 'All dates & tasks', exact: true }).getAttribute('aria-pressed'), 'true');
+  const week = await page.locator('.home-week').textContent();
+  await overdue.click();
+  assert.equal(await overdue.getAttribute('aria-pressed'), 'true');
+  assert.deepEqual(await page.locator('#homeAgenda strong').allTextContents(), ['Demo missed date', 'Demo overdue-0', 'Demo overdue-1', 'Demo overdue-2', 'Demo overdue-3', 'Demo overdue-4']);
+  assert.equal(await page.locator('#homeAgenda a').first().getAttribute('href'), '/calendar?day=2026-09-29&d=2026-09-29');
+  assert.equal(await page.locator('#homeAgenda a').nth(1).getAttribute('href'), '/deals?deal=d01');
+  await calendar.getByRole('button', { name: 'Show all 9', exact: true }).click();
+  assert.equal(await page.locator('#homeAgenda a').count(), 9);
+  assert.equal(await page.locator('#homeAgenda a').nth(6).evaluate(node => document.activeElement === node), true);
+  await overdue.focus();
+  await page.evaluate(() => window.dispatchEvent(new Event('online')));
+  await page.waitForFunction(() => document.querySelector('#refreshHome').getAttribute('aria-busy') === 'false');
+  assert.equal(await overdue.evaluate(node => document.activeElement === node), true);
+  assert.equal(await page.locator('#homeAgenda a').count(), 9);
+  await page.getByRole('button', { name: 'Just me', exact: true }).click();
+  await calendar.getByRole('button', { name: 'Show all 8', exact: true }).click();
+  assert.equal(await page.locator('#homeAgenda a').count(), 8);
+  assert.ok(!(await page.locator('#homeAgenda strong').allTextContents()).includes('Demo overdue-7'));
+  assert.equal(await page.locator('.home-week').textContent(), week);
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+  await screenshot(page, `overdue-${width}`);
+  responses.set('read-home-agenda', { ...board, schema_version: 'home-agenda.v1', deals: [{ ...deal, critical_dates: [], next_actions: [task('today', '2026-10-01')] }] });
+  await refresh();
+  assert.equal(await page.locator('#homeAgenda a').count(), 0);
+  assert.match(await calendar.textContent(), /No overdue dates or tasks/);
+  responses.set('read-home-agenda', { ...board, schema_version: 'home-agenda.v1', deals: [{ ...deal, critical_dates: [], next_actions: null }] });
+  await refresh();
+  assert.match(await calendar.textContent(), /unavailable/);
+  assert.doesNotMatch(await calendar.textContent(), /No overdue dates or tasks/);
+  assert.deepEqual(errors, []);
+});
