@@ -193,3 +193,47 @@ test('W5 vendor business facts remain visible in the modal',async t=>{
 test('W5 fixture adapter withholds unsupported rating action',async t=>{
  const h=await open(t),{page}=h;await page.goto(origin+'/vendors', {waitUntil:'domcontentloaded'});await page.locator('.record-row').first().click();await page.waitForFunction(()=>document.querySelector('#recordTitle').textContent==='Demo Partner 01');assert.equal(await page.locator('#trustForm').count(),0);assert.equal(h.writes,0);
 });
+
+for(const width of [1440,390]) test(`vendor Conversations show newest notes first at ${width}px`,async t=>{
+ const h=await open(t,width),{page}=h;
+ await page.route('**/api/v1/business/vendors/*',r=>{
+  const payload=directoryFixture(r.request().url());
+  payload.record.relationship.recent_entries=[
+   {id:'undated',kind:'note',when:null,summary:'Synthetic undated conversation',detail:'Synthetic undated original'},
+   {id:'earlier',kind:'note',when:'2026-10-01T12:00:00.000001Z',summary:'Synthetic earlier conversation',detail:'Synthetic earlier original'},
+   {id:'latest',kind:'note',when:'2026-10-01T07:00:00.000002-05:00',summary:'Synthetic latest conversation',detail:'Synthetic latest original'},
+  ];
+  return r.fulfill({json:payload});
+ });
+ await page.goto(origin+'/vendors?mode=live');
+ await page.locator('.record-row').first().click();
+ const conversations=page.locator('.record-section').filter({has:page.getByRole('heading',{name:'Conversations',exact:true})});
+ await conversations.waitFor();
+ assert.deepEqual(await conversations.locator('.note-summary').allTextContents(),['Synthetic latest conversation','Synthetic earlier conversation','Synthetic undated conversation']);
+ await conversations.locator('[data-details-key="entry-latest"] summary').click();
+ assert.equal(await conversations.locator('.entry-detail').first().textContent(),'Synthetic latest original');
+ assert.equal(await conversations.locator('li').last().locator('time').textContent(),'an unknown time');
+ assert.equal(h.writes,0);
+ assert.deepEqual(h.errors,[]);
+});
+
+for(const kind of ['introduced','can_introduce']) test(`vendor ${kind} notes show dated introductions newest first`,async t=>{
+ const h=await open(t),{page}=h;
+ await page.route('**/api/v1/business/vendors/*',r=>{
+  const payload=directoryFixture(r.request().url());
+  payload.record.relationship.introductions=[
+   {id:'undated',occurred_at:null,note:'Synthetic undated introduction'},
+   {id:'earlier',occurred_at:'2026-09-20',note:'Synthetic earlier introduction'},
+   {id:'latest',occurred_at:'2026-09-29',note:'Synthetic latest introduction'},
+  ].map(item=>({...item,kind,from_name:'Demo Partner',to_name:'Demo Practice',via_party:null}));
+  return r.fulfill({json:payload});
+ });
+ await page.goto(origin+'/vendors?mode=live');
+ await page.locator('.record-row').first().click();
+ const network=page.locator('.network-grid');
+ await network.waitFor();
+ assert.deepEqual(await network.locator('.note-summary').allTextContents(),['Synthetic latest introduction','Synthetic earlier introduction','Synthetic undated introduction']);
+ assert.equal(await network.locator('[data-details-key="intro-latest"] .entry-detail').textContent(),'Synthetic latest introduction');
+ assert.equal(h.writes,0);
+ assert.deepEqual(h.errors,[]);
+});

@@ -211,3 +211,16 @@ test('Home Doc context accepts business records and excludes system queues', () 
  assert.equal(c.snapshot().ready,true);
  assert.deepEqual(c.snapshot().records.map(row=>row.kind),['deal']);
 });
+
+test('Doc previews the newest deal update across note timestamp formats and keeps undated entries last', () => {
+ const c=context();
+ const payload={deal:deal(),thread:[
+  {text:'Undated note'},
+  {text:'Earlier note',at:'2026-10-01T12:00:00.123001Z'},
+  {text:'Latest note',created_at:'2026-10-01T07:00:00.123002-05:00'},
+  {text:'Historic note',recorded_at:'1969-12-31T12:00:00Z'},
+ ],activities:[{summary:'Previous activity',occurred_at:'2026-09-30T12:00:00Z'}]};
+ assert.equal(c.finish(c.begin('getDeal',['demo-a']),payload),true);
+ assert.equal(docAnswer(c.snapshot(),{recordId:'demo-a',question:'Recent activity'}).value,'Latest note');
+ assert.deepEqual(normalizeDocRead('getDeal',payload,['demo-a'])[0].activity.map(item=>item.text),['Latest note','Earlier note','Previous activity','Historic note','Undated note']);
+});

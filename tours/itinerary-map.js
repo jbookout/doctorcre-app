@@ -1,3 +1,4 @@
+import { mountMarketMap } from "../js/market-map-shell.js";
 import { buildRouteVersionState, projectRoute, reduceMapEvent, buildNativeNavLink, buildReturnState, resolveReturn } from "./vendor/tour-map-route-state.js";
 
 // Presentation adapter only: the accepted record owns order and identity.
@@ -20,10 +21,6 @@ export function acceptedRouteFromDetail(detail) {
       position: stop.position ?? null, source_ref: stop.source_ref ?? null,
     })),
   };
-}
-
-async function loadVendoredMapLibre() {
-  return import("./vendor/maplibre-gl-6.4.1/maplibre-gl.mjs");
 }
 
 // Provider bounds may span world copies; canonical bounds use EPSG:4326.
@@ -56,7 +53,7 @@ export function buildAcceptedRouteState(route, options) {
 export function mountAcceptedItinerary(root, initial) {
   const doc = root.ownerDocument, win = doc.defaultView;
   const make = (tag, text, className) => { const el = doc.createElement(tag); if (text) el.textContent = text; if (className) el.className = className; return el; };
-  let options, state, projection, routeInput, map = null, gl = null, destroyed = false, generation = 0, mapFailure = "", returnNotice = "", storageNotice = "";
+  let options, state, projection, routeInput, map = null, gl = null, destroyed = false, shell = null, mapFailure = "", returnNotice = "", storageNotice = "";
   const markers = new Map();
   const motion = win.matchMedia?.("(prefers-reduced-motion: reduce)");
   let reducedMotion = initial.prefersReducedMotion ?? motion?.matches ?? false;
@@ -269,24 +266,20 @@ export function mountAcceptedItinerary(root, initial) {
   const onMotion = event => { reducedMotion = event.matches; render(); };
   win.addEventListener("offline", offline); motion?.addEventListener("change", onMotion);
   update(initial);
-  ++generation;
   let initializing = null;
   const initialize = () => initializing ||= (async () => {
-    const thisGeneration = generation;
     try {
       if (!initial.basemapStyle) return;
       if (win.navigator.onLine === false) { offline(); return; }
-      const stylesheet = new URL('./vendor/maplibre-gl-6.4.1/maplibre-gl.css', import.meta.url).pathname;
-      if (![...doc.querySelectorAll('link[rel="stylesheet"]')].some(link => new URL(link.href).pathname === stylesheet)) {
-        const link = doc.createElement('link'); link.rel = 'stylesheet'; link.href = stylesheet; doc.head.append(link);
-      }
-      gl = await (initial.loadMapLibre || loadVendoredMapLibre)();
-      if (destroyed || generation !== thisGeneration) return;
-      gl.setWorkerUrl(new URL("./vendor/maplibre-gl-6.4.1/maplibre-gl-worker.mjs", import.meta.url).href);
-      map = new gl.Map({ container: canvas, style: structuredClone(initial.basemapStyle), center: [-87.3, 30.5], zoom: 8, attributionControl: false });
-      map.on("error", () => fallback("Map could not load."));
-      map.on("moveend", () => { if (!state || destroyed) return; dispatch({ type: "bounds_change", bounds: normalizedProviderBounds(map.getBounds().toArray()) }); });
-      map.on("load", () => { if (!stage.hidden && !destroyed) { renderMarkers(); focus(); } });
+      shell = mountMarketMap(canvas, { style: structuredClone(initial.basemapStyle), loadMapLibre: initial.loadMapLibre,
+        events: {
+          error: () => fallback("Map could not load."),
+          moveend: () => { if (state && !destroyed) dispatch({ type: "bounds_change", bounds: normalizedProviderBounds(map.getBounds().toArray()) }); },
+          load: () => { if (!stage.hidden && !destroyed) { renderMarkers(); focus(); } },
+        } });
+      const mounted = await shell.ready;
+      if (!mounted || destroyed) return;
+      ({ map, gl } = mounted);
       renderMarkers(); renderStatus(); focus();
     } catch { fallback("Map could not load."); }
   })().finally(() => { initializing = null; });
@@ -299,6 +292,6 @@ export function mountAcceptedItinerary(root, initial) {
   return {
     ready, update, dispatch, get projection() { return projection; },
     navigationLinks() { return [...card.querySelectorAll(".itinerary-navigation a")]; },
-    destroy() { destroyed = true; ++generation; win.removeEventListener("offline", offline); win.removeEventListener("online", online); motion?.removeEventListener("change", onMotion); for (const marker of markers.values()) marker.remove(); map?.remove(); root.replaceChildren(); },
+    destroy() { destroyed = true; win.removeEventListener("offline", offline); win.removeEventListener("online", online); motion?.removeEventListener("change", onMotion); for (const marker of markers.values()) marker.remove(); shell?.destroy(); root.replaceChildren(); },
   };
 }

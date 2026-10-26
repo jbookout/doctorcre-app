@@ -1,3 +1,4 @@
+import { compareInstants } from './change-receipts.mjs';
 import { validCatchUpPayload } from './search-model.js';
 // App-owned, ephemeral context. Values come from the same authorized responses
 // as the page; names and screen text never resolve an identity or authorize work.
@@ -88,7 +89,7 @@ export function normalizeDocRead(method, payload, args = []) {
       const row = deal(payload.deal || {});
       if (!row || row.id !== String(args[0])) return null;
       row.activity = [...(payload.activities || []), ...(payload.thread || []), ...(payload.history || [])]
-        .map(item => ({ text: item.summary || item.text || item.description, at: item.occurred_at || item.recorded_at }))
+        .map(item => ({ text: item.summary || item.text || item.description, at: item.occurred_at || item.at || item.created_at || item.recorded_at }))
         .filter(item => text(item.text));
       sortActivity(row);
       return [row];
@@ -187,7 +188,7 @@ export function normalizeDocRead(method, payload, args = []) {
   return normalized;
 }
 
-function sortActivity(row) { row.activity.sort((a,b) => (Date.parse(b.at) || 0) - (Date.parse(a.at) || 0)); }
+function sortActivity(row) { row.activity.sort((a,b) => compareInstants(a.at, b.at)); }
 function compareRevision(a,b) {
   if (a === b) return 0;
   if (a == null || b == null) return a == null ? -1 : 1;

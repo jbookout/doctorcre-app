@@ -5,11 +5,12 @@
   "mode": "search",
   "renderer": "MapLibre GL JS 6.4.1 (existing vendored distribution)",
   "geometry": {
-    "url": "https://www2.census.gov/geo/tiger/GENZ2025/kml/cb_2025_us_state_5m.zip",
-    "download_sha256": "076aabf7b7e3adaf170f8dc014a8936032a4c1e5cee3ec1f0a5aa2bab538d856",
+    "url": "https://www2.census.gov/geo/tiger/GENZ2025/shp/cb_2025_us_state_500k.zip",
+    "download_sha256": "9cbfe171dad1555e11770c981d8f4db9e687a65c86f5bdae684eeb487e2e9b80",
     "as_of": "2025",
     "crs": "EPSG:4326",
-    "precision": "1:5,000,000 cartographic outline",
+    "precision": "1:500,000 cartographic outline, clipped to lon -94..-77 and lat 23.5..37.5, simplified 0.0015 degrees for territory states and 0.01 for context states, coordinates rounded to 4 decimals, polygons under 0.00002 square degrees dropped",
+    "roles": "territory: Alabama, Florida, Georgia, Mississippi painted as land. context: neighbouring states painted as muted land. The background is water, so only the Gulf and Atlantic read as sea.",
     "rights": "US Census public data; attribution displayed",
     "purpose": "context only, no navigation"
   },
