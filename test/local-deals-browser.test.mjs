@@ -870,6 +870,7 @@ for (const width of [390, 1440]) test(`missing next steps stay visible across de
     state.client.getDeal = async id => {
       const result = await detail(id);
       result.deal.next_step = window.demoNextStep;
+      if (id === 'd14' && window.demoParked) result.deal.operating_state = 'parked';
       return result;
     };
   });
@@ -900,6 +901,18 @@ for (const width of [390, 1440]) test(`missing next steps stay visible across de
     await page.getByLabel('Close deal', { exact: true }).click();
     await page.locator('#boardView').click();
   }
+  await page.evaluate(() => { window.demoNextStep = { text: 'Confirm the demo appointment' }; });
+  await refresh(page);
+  assert.equal(await page.locator('.kanban-column [data-id="d14"]').getByText('Confirm the demo appointment', { exact: true }).isVisible(), true);
+  await page.locator('#listView').click();
+  const row = page.locator('.deal-row[data-id="d14"]');
+  assert.equal(await row.getByText('Confirm the demo appointment', { exact: true }).isVisible(), true);
+  assert.equal(await row.getByText('Next step missing', { exact: true }).count(), 0);
+  await page.evaluate(() => { window.demoNextStep = null; window.demoParked = true; });
+  await row.click();
+  await page.locator('.deal-opening-snapshot').waitFor();
+  assert.equal(await page.locator('#recordPanel').getByText('Next step missing', { exact: true }).count(), 0);
+  await page.getByLabel('Close deal', { exact: true }).click();
   await page.getByRole('button', { name: 'Closed deals', exact: true }).click();
   await page.locator('.closed-deal[data-id="d20"] .card-open').click();
   await page.locator('.deal-opening-snapshot').waitFor();
