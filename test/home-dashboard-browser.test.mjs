@@ -211,13 +211,13 @@ test('Home desktop and phone show flags, visual agenda, ranked leads and wide en
     const { page, errors, calls } = await open(t, { width });
     await page.locator('#homeCalendar:not([hidden])').waitFor();
     await page.locator('#homeLeads:not([hidden])').waitFor();
-    await page.locator('#homeControl:not([hidden])').waitFor();
+    assert.equal(await page.locator('#homeControl, .home-radar').count(), 0);
     assert.equal(await page.locator('.home-week .home-day').count(), 7);
     // The week link names its destination before the day tiles it wraps.
     assert.equal(await page.getByRole('link', { name: /^Open calendar\b.*deal dates and tasks/ }).getAttribute('data-home-key'), 'week');
     assert.equal(await page.locator('.home-lead').count(), 3);
     assert.equal(await page.locator('.home-flags .home-flag').count(), 3);
-    assert.match(await page.locator('#homeControl').textContent(), /Needs attention/);
+    assert.equal(calls.some(name => ['incident-board', 'current-work-item', 'read-resource-dashboard', 'schedule-board'].includes(name)), false);
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
     assert.match(await page.locator('#observedAt').textContent(), /^Updated /);
     const text = await page.locator('main').textContent();

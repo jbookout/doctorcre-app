@@ -212,3 +212,16 @@ test('Home rejects incompatible agenda versions, missing actors and duplicate de
     assert.equal(result.details.size, 0);
   }
 });
+
+
+test('Home reads business feeds without reading Control Room queues', async () => {
+  const client = await fixtureClient();
+  const systemReads = [];
+  for (const method of ['incidentBoard', 'currentWorkItem', 'currentWorkRequests', 'readResourceDashboard', 'scheduleBoard']) {
+    client[method] = async () => { systemReads.push(method); throw Error('System data unavailable'); };
+  }
+  const result = await readHomeDashboard(client);
+  assert.deepEqual(systemReads, []);
+  for (const key of ['board', 'leads', 'invoices', 'relationships']) assert.equal(result.reads[key].state, 'read', key);
+  assert.equal(result.unauthorized, false);
+});
