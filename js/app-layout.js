@@ -1,5 +1,5 @@
 import { briefOwnerLabel, filterBriefOwners, mountBriefOwnerFilter } from './brief-owner-filter.js';
-import { validBrief } from './morning-brief-model.js';
+import { normalizeBrief } from './morning-brief-model.js';
 import { TOUCH_LAYOUT } from './touch-layout.js';
 import { needsAttention, scopedDeals } from './deal-review-model.js';
 import { createClient } from './client.js';
@@ -16,7 +16,7 @@ export function createAppLayout(root, title = '') {
   layout.className = 'app-layout';
   layout.innerHTML = `<aside id="appSidebar" class="app-layout-sidebar" aria-label="${escape(title)} workspace"><div class="app-layout-sidebar-head"><h2>${escape(title)}</h2><button type="button" data-layout-close="sidebar" aria-label="Close workspace">‹</button></div><div id="appSidebarSlot"></div><section class="app-layout-working"><h3>Overdue</h3><div id="appWorkingList">Updating…</div></section></aside>
     <div class="app-layout-center"><div class="app-layout-tabbar"><button type="button" id="appSidebarToggle" aria-label="Workspace sidebar" aria-controls="appSidebar" aria-expanded="false" title="Workspace sidebar">☷</button><div id="appTabsSlot" class="app-layout-tabs" role="group" aria-label="${escape(title)} views"></div><button type="button" id="appTodayToggle" aria-label="Today sidebar" aria-controls="appToday" aria-expanded="true" title="Today">◷</button></div><div id="appMainSlot" class="app-layout-main"></div></div>
-    <aside id="appToday" class="app-layout-today" aria-labelledby="appTodayTitle"><div class="app-layout-sidebar-head"><h2 id="appTodayTitle">Today</h2><button type="button" data-layout-close="today" aria-label="Close Today">›</button></div><div id="appTodayOwners"></div><section><h3>Overdue</h3><div id="appTodayNeeds">Updating…</div></section><section><h3>Next up</h3><div id="appTodayNext">Updating…</div><button type="button" id="appTodayShowAll" class="app-layout-item app-layout-show-all" aria-controls="appTodayNext" hidden>Show all</button></section><section><h3>Recent moves</h3><div id="appTodayMoves"><span class="app-layout-empty">—</span></div></section></aside>
+    <aside id="appToday" class="app-layout-today" aria-labelledby="appTodayTitle"><div class="app-layout-sidebar-head"><h2 id="appTodayTitle">Today</h2><button type="button" data-layout-close="today" aria-label="Close Today">›</button></div><div id="appTodayOwners"></div><p id="appTodayReadStatus" class="app-layout-empty" role="status" hidden></p><button type="button" id="appTodayRetry" class="app-layout-item" hidden>Retry Today</button><section><h3>Overdue</h3><div id="appTodayNeeds">Updating…</div></section><section><h3>Next up</h3><div id="appTodayNext">Updating…</div><button type="button" id="appTodayShowAll" class="app-layout-item app-layout-show-all" aria-controls="appTodayNext" hidden>Show all</button></section><section><h3>Recent moves</h3><div id="appTodayMoves"><span class="app-layout-empty">—</span></div></section></aside>
     <button class="app-layout-scrim" id="appDrawerScrim" type="button" aria-label="Close sidebar" hidden></button>`;
   const status = root.createElement('footer');
   status.className = 'app-layout-status';
@@ -139,7 +139,7 @@ export function mountAppLayout(root, host, pathname) {
   const boot = resolveDealroomBoot(globalThis.location);
   let client, feedActor = null, cursor = null, feed = createFeedProgress(), receipts = [];
   const resetFeed = () => { feedActor = null; cursor = null; feed = createFeedProgress(); receipts = []; if (!pageOwnsMoves) renderMoves(); };
-  let todayItems = null, todayNeeds = null, nextExpanded = false;
+  let todayItems = null, todayNeeds = null, nextExpanded = false, failedReads = [];
   const row = (item, extra = '') => `<button type="button" class="app-layout-item" data-layout-deal="${escape(item.subject_id || item.id)}"><strong>${escape(item.subject_name || item.name)}</strong>${briefOwnerLabel(item) ? `<small class="morning-owner">${briefOwnerLabel(item)}</small>` : ''}${extra ? `<span>${escape(extra)}</span>` : ''}</button>`;
   const render = (target, html) => { const node = layout.querySelector(target); if (node.innerHTML !== html) { const id = node.contains(root.activeElement) ? root.activeElement.dataset.layoutDeal : null; node.innerHTML = html; if (id) [...node.querySelectorAll('button')].find(b => b.dataset.layoutDeal === id)?.focus(); } };
   const unavailable = '<span class="app-layout-empty">Unavailable</span>';
@@ -176,49 +176,63 @@ export function mountAppLayout(root, host, pathname) {
     const dot = root.getElementById('appConnection'); dot.dataset.state = connected ? 'healthy' : 'unknown';
     dot.setAttribute('aria-label', connected ? 'Connection available' : 'Connection unavailable'); dot.title = dot.getAttribute('aria-label');
   };
+  const renderReadStatus = () => {
+    const notice = layout.querySelector('#appTodayReadStatus');
+    notice.hidden = !failedReads.length;
+    notice.textContent = failedReads.length ? `${todayItems || todayNeeds || feed.caught_up ? 'Showing last update. ' : ''}${failedReads.join(', ')} unavailable. Retry to update.` : '';
+    layout.querySelector('#appTodayRetry').hidden = !failedReads.length;
+    connection(!failedReads.length);
+  };
+  const failedRead = () => {
+    failedReads = ['Overdue', 'Next up'];
+    if (!pageOwnsMoves) failedReads.push('Recent moves');
+    renderToday();
+    if (!pageOwnsMoves && !feed.caught_up) render('#appTodayMoves', unavailable);
+    renderReadStatus();
+  };
   const unavailableRead = () => {
     todayItems = null; todayNeeds = null;
-    resetFeed(); connection(false);
-    renderToday(); render('#appWorkingList', unavailable);
-    if (!pageOwnsMoves) render('#appTodayMoves', unavailable);
+    resetFeed();
+    render('#appWorkingList', unavailable);
+    failedRead();
   };
   const refresh = async ({ signal } = {}) => {
-    if (win.navigator.onLine === false) { unavailableRead(); return; }
+    if (win.navigator.onLine === false) { failedRead(); return; }
     try { client ||= await createClient(boot.mode, { ...boot.options, docContext:false }); }
-    catch { unavailableRead(); return; }
+    catch { failedRead(); return; }
     const [board, triage] = await Promise.allSettled([
       readWithDeadline(() => client.getBoard({ workspace:'all' }), { signal }),
       readWithDeadline(async () => {
-        const brief = await client.morningBrief();
-        if (validBrief(brief)) { owners.setViewer(brief.sponsor); return brief.sections.today.state === 'unavailable' ? null : {items:brief.sections.today.items}; }
+        const brief = normalizeBrief(await client.morningBrief());
+        if (brief) { owners.setViewer(brief.sponsor); return brief.sections.today.state === 'unavailable' ? null : {items:brief.sections.today.items}; }
         return client.todayTriage();
       }, { signal }),
     ]);
     if (signal?.aborted || win.navigator.onLine === false) return;
     const connected = board.status === 'fulfilled' && validBoard(board.value);
     const triageValid = triage.status === 'fulfilled' && validTriage(triage.value);
-    connection(connected && triageValid);
-    const items = triageValid ? triage.value.items : null;
-    todayItems = items;
+    connection(connected && triageValid && !failedReads.length);
+    failedReads = [];
+    if (!connected || !triageValid) failedReads.push('Overdue');
+    if (!triageValid) failedReads.push('Next up');
     if (connected) {
       const value = board.value;
-      if (feedActor !== value.actor) resetFeed();
+      if (feedActor !== value.actor) {
+        todayItems = null; todayNeeds = null;
+        resetFeed();
+      }
       feedActor = value.actor;
-      // Retained receipts have the same authorization scope as newly read ones.
       const authorized = new Map(value.deals.map(deal => [deal.id, deal.name]));
+      todayItems = (triageValid ? triage.value.items : todayItems)?.filter(item => item.subject_type !== 'deal' || authorized.has(item.subject_id)) ?? null;
       receipts = receipts.filter(receipt => authorized.has(receipt.deal_id))
         .map(receipt => ({ ...receipt, deal_name: authorized.get(receipt.deal_id) }));
       if (!pageOwnsMoves) renderMoves();
-      if (triageValid) {
-        const observed = new Date().toISOString();
-        status.querySelector('#appSyncTime').textContent = time(observed);
-        status.querySelector('#appSyncTime').dateTime = observed;
-      }
       const active = scopedDeals(value, 'team');
-      todayNeeds = active.flatMap(deal => {
-        const actions = items?.filter(item => item.subject_type === 'deal' && item.subject_id === deal.id) || [];
+      if (triageValid || !todayNeeds) todayNeeds = active.flatMap(deal => {
+        const actions = todayItems?.filter(item => item.subject_type === 'deal' && item.subject_id === deal.id) || [];
         return actions.length ? actions.map(action => ({...deal, ...action, next_step:action.what, next_date:action.due_on})) : [deal];
       }).filter(d => needsAttention(d));
+      else todayNeeds = todayNeeds.filter(deal => active.some(current => current.id === (deal.subject_id || deal.id)));
       render('#appWorkingList', active.filter(d => needsAttention(d)).slice(0,8).map(d => row(d,d.next_step)).join('') || empty);
       renderToday();
       if (!pageOwnsMoves) {
@@ -231,14 +245,33 @@ export function mountAppLayout(root, host, pathname) {
             if (!Array.isArray(changes?.events)) throw new Error('Invalid change response');
             const batch = changes.events;
             feed = observeChangeBatch(feed, batch);
-            receipts = ingestChangeEvents(receipts, batch, { dealName:id => value.deals.find(d => d.id === id)?.name });
+            receipts = ingestChangeEvents(receipts, batch, { dealName:id => authorized.get(id) })
+              .filter(receipt => authorized.has(receipt.deal_id));
             cursor = changes.cursor ?? cursor;
             if (feed.caught_up) break;
           }
           renderMoves();
-        } catch { render('#appTodayMoves', unavailable); }
+        } catch {
+          if (signal?.aborted) return;
+          failedReads.push('Recent moves');
+          if (!feed.caught_up) render('#appTodayMoves', unavailable);
+        }
       }
-    } else { todayNeeds = null; resetFeed(); render('#appTodayNeeds', unavailable); render('#appWorkingList', unavailable); if (!pageOwnsMoves) render('#appTodayMoves', unavailable); renderToday(); }
+    } else {
+      if (triageValid) todayItems = triage.value.items;
+      if (!todayNeeds) render('#appWorkingList', unavailable);
+      if (!pageOwnsMoves) {
+        failedReads.push('Recent moves');
+        if (!feed.caught_up) render('#appTodayMoves', unavailable);
+      }
+      renderToday();
+    }
+    renderReadStatus();
+    if (!failedReads.length) {
+      const observed = new Date().toISOString();
+      status.querySelector('#appSyncTime').textContent = time(observed);
+      status.querySelector('#appSyncTime').dateTime = observed;
+    }
   };
   layout.addEventListener('click', event => {
     const item = event.target.closest('[data-layout-deal]'); if (!item) return;
@@ -247,11 +280,12 @@ export function mountAppLayout(root, host, pathname) {
     if (existing) { closeDrawer(); existing.click(); }
     else globalThis.location.assign(`/deals?deal=${encodeURIComponent(id)}`);
   });
-  win.addEventListener('offline', unavailableRead);
+  win.addEventListener('offline', failedRead);
   const auto = mountAutoRefresh({ document:root, window:win, refresh, onResume:unavailableRead, intervalMs:30_000 });
+  layout.querySelector('#appTodayRetry').onclick = () => auto.refresh();
   status.querySelector('#appSyncRefresh').onclick = () => { auto.refresh(); root.querySelectorAll('[data-layout-refresh]').forEach(button => button.click()); };
   auto.refresh();
   win.addEventListener('pagehide', event => {
-    if (!event.persisted) { auto.dispose(); owners.dispose(); win.removeEventListener('offline', unavailableRead); }
+    if (!event.persisted) { auto.dispose(); owners.dispose(); win.removeEventListener('offline', failedRead); }
   });
 }
