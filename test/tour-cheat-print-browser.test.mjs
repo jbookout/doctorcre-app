@@ -107,7 +107,7 @@ test('broker notes autosave one revision after a pause and preserve drafts acros
   const browser = await chromium.launch(); t.after(() => browser.close());
   const page = await browser.newPage();
   const fixture = structuredClone(detail), writes = [];
-  let heldSave = null, saveStarted = null;
+  let heldSave = null, saveStarted = null, heldRefresh = null, refreshStarted = null;
   fixture.routes[0].stops.forEach(stop => { stop.locked_appointment = false; });
   fixture.route_version_id = fixture.routes[0].id;
   fixture.route_version_state = 'accepted'; fixture.accepted_route_version = 1;
@@ -122,7 +122,11 @@ test('broker notes autosave one revision after a pause and preserve drafts acros
       if (heldSave) await heldSave;
       fixture.cheat_sheet = { revision_number: body.expected_revision_number + 1, content: body.content };
       data = { ok: true, cheat_sheet_revision_id: '88888888-8888-4888-8888-888888888888' };
-    } else if (url.pathname === '/api/tours/detail') data = url.searchParams.get('tour_id') === tourId ? fixture : other;
+    } else if (url.pathname === '/api/tours/detail') {
+      refreshStarted?.();
+      if (heldRefresh) await heldRefresh;
+      data = url.searchParams.get('tour_id') === tourId ? fixture : other;
+    }
     else if (url.pathname === '/api/tours/library') data = { tours: [fixture, other].map(({ id, name }) => ({ id, name })) };
     await route.fulfill({ json: { data, csrf_token: 'synthetic-only' } });
   });
@@ -173,15 +177,25 @@ test('broker notes autosave one revision after a pause and preserve drafts acros
     }
     const control = target === 'print' ? page.getByRole('button', { name: 'Print internal sheet', exact: true }) : page.locator('#internal-cheat-sheet > summary');
     if (target === 'print') await control.focus(); else await control.click();
+    let releaseRefresh;
+    const refreshing = target === 'print' ? new Promise(resolve => { refreshStarted = resolve; }) : null;
+    if (refreshing) heldRefresh = new Promise(resolve => { releaseRefresh = resolve; });
     releaseSave();
+    if (refreshing) {
+      await refreshing;
+      assert.equal(await editor.isVisible(), true, 'typing remains available during the confirmation refresh');
+      await editor.focus(); await page.keyboard.type(' during refresh');
+      await control.focus();
+      releaseRefresh(); heldRefresh = null; refreshStarted = null;
+    }
     await page.locator('#status').filter({ hasText: /save confirmed/i }).waitFor();
     assert.equal(await control.evaluate(node => document.activeElement === node), true, 'autosave respects deliberately moved focus');
     assert.equal(await page.locator('#internal-cheat-sheet').evaluate(node => node.open), target === 'print');
     if (target === 'print') {
-      assert.equal(await editor.inputValue(), 'Notes while choosing to print with newer typing');
+      assert.equal(await editor.inputValue(), 'Notes while choosing to print with newer typing during refresh');
       await page.clock.runFor(1000);
       await page.locator('#sheet-state').filter({ hasText: /save confirmed/i }).waitFor();
-      assert.deepEqual(writes.at(-1).content, { notes: 'Notes while choosing to print with newer typing' });
+      assert.deepEqual(writes.at(-1).content, { notes: 'Notes while choosing to print with newer typing during refresh' });
       assert.equal(writes.at(-1).expected_revision_number, 6);
     }
   }

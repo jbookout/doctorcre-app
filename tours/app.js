@@ -828,10 +828,10 @@ import { cheatSheetText, factSummary, formatTourDate, tourDisplayName, tourMetaL
   }
   async function loadProjectionPreview() { const preview = $("#projection-preview"); state.candidateDigest = ""; preview.hidden = true; preview.textContent = ""; if (!id(state.projectionDraftId)) return; const data = await request(`/api/tours/projection/candidates?projection_id=${encodeURIComponent(state.projectionDraftId)}`); state.candidateDigest = text(data.candidate_digest); const rows = Array.isArray(data.preview) ? data.preview : []; preview.textContent = rows.map(row => { const facts = row?.facts && typeof row.facts === "object" ? row.facts : {}; return `${text(row.route_label, `Stop ${row.route_sequence || ""}`)} · ${text(facts["display.name"], "Unnamed property")}\n${text(facts["display.address"], "Address unavailable")}${factSummary(facts) ? `\n${factSummary(facts)}` : ""}`; }).join("\n\n"); preview.hidden = false; }
   let tourLoadSeq = 0;
-  async function loadTour(tourId, { requireComposerDetail = false, throwOnFailure = false } = {}) {
+  async function loadTour(tourId, { requireComposerDetail = false, throwOnFailure = false, keepEditorVisible = false } = {}) {
     if (state.cheatDirty && state.cheatDraftTourId !== tourId) { status("Save the current sheet before switching Tours."); return; }
     if ((sheetPending || sheetConflict || tourAction) && state.tour?.id !== tourId && (sheetPending?.tourId || sheetConflict?.tourId || tourAction?.tourId) !== tourId) { status("Reconcile the current Tour request before switching Tours."); return; }
-    if (sheetBusy || tourAction?.busy) return;
+    if ((sheetBusy && !keepEditorVisible) || tourAction?.busy) return;
     if (state.pendingShare && state.pendingShare.tourId !== tourId) { status("Check link outcome before switching Tours."); return; }
     if (state.shareBusy) return;
     if (restoredTourId && restoredTourId !== tourId) { status("Reconcile the retained Tour before switching Tours."); return; }
@@ -841,7 +841,7 @@ import { cheatSheetText, factSummary, formatTourDate, tourDisplayName, tourMetaL
     try {
       const seq = ++tourLoadSeq; ++state.feedbackSeq; status("Loading tour…");
       $("#tour-recovery").hidden = true;
-      $("#tour-panel").hidden = true;
+      if (!keepEditorVisible) $("#tour-panel").hidden = true;
       $("#empty-state").hidden = true;
       const tour = await observeDocRead("tourDetail", [tourId], () => request(`/api/tours/detail?tour_id=${encodeURIComponent(tourId)}`));
       if (tour?.id !== tourId || !Array.isArray(tour.stops)) throw new Error("read_invalid");
@@ -933,8 +933,9 @@ import { cheatSheetText, factSummary, formatTourDate, tourDisplayName, tourMetaL
       state.tour = { ...state.tour, cheat_sheet: { content: pending.body.content, revision_number: revision } };
       state.cheatDirty = $("#cheat-content").value !== pending.draft;
       state.cheatDraftRevision = state.cheatDirty ? revision : null;
-      sheetMessage = "Internal cheat sheet save confirmed."; sheetBusy = false;
-      await loadTour(tourId, { throwOnFailure:true }); status(sheetMessage);
+      sheetMessage = "Internal cheat sheet save confirmed.";
+      await loadTour(tourId, { throwOnFailure:true, keepEditorVisible:true });
+      sheetMessage = "Internal cheat sheet save confirmed."; status(sheetMessage);
     } catch (error) {
       if (error.message === "session_changed") return;
       if (confirmed) { sheetMessage = "The save was confirmed. The current sheet could not be refreshed; retry Refresh."; status(sheetMessage); return; }
