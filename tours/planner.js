@@ -277,11 +277,31 @@ export function mountPlanner({ document, window, api = createPlannerClient() }) 
   for (const button of document.querySelectorAll("[data-market]")) button.addEventListener("click", () => {
     search.set("area", button.dataset.market); syncForm("space", search); save("#space-message");
   });
+  let territory = null, territoryLoading = false;
+  const territoryAbort = new AbortController();
+  $("#show-territory").addEventListener("click", async event => {
+    const button = event.currentTarget, root = $("#planner-territory");
+    root.hidden = !root.hidden; button.setAttribute("aria-expanded", String(!root.hidden));
+    $("#territory-status").hidden = root.hidden;
+    button.textContent = root.hidden ? "Show territory" : "Hide territory";
+    if (root.hidden || territoryLoading) return;
+    if (territory) { territory.resize(); return; }
+    territoryLoading = true;
+    try {
+      const { mountTerritoryMap } = await import("../js/leads-territory-map.js");
+      if (disposed) return;
+      territory = await mountTerritoryMap(root, () => {}, () => {}, { signal: territoryAbort.signal,
+        markets: [{ city: "Mobile", state: "AL" }, { city: "Tallahassee", state: "FL" }, { city: "Dothan", state: "AL" }, { city: "Panama City", state: "FL" }] });
+      if (disposed) territory?.dispose();
+      else message("#territory-status", "Market context only. US Census 2025 geography; no property or navigation pins.");
+    } catch { if (!disposed) message("#territory-status", "Territory unavailable. Choose an area below; hide and show territory to retry."); }
+    finally { territoryLoading = false; }
+  });
   const auto = mountAutoRefresh({ document, window, refresh });
   $("#planner-refresh").addEventListener("click", () => void auto.refresh());
   const unsubscribe = api.onScopeChange?.(restoreOrClear);
   const ready = refresh();
-  return { ready, refresh, get files() { return [...files]; }, dispose() { disposed = true; unsubscribe?.(); ++planEpoch; ++searchEpoch; ++dialogEpoch; auto.dispose(); } };
+  return { ready, refresh, get files() { return [...files]; }, dispose() { disposed = true; territoryAbort.abort(); territory?.dispose(); unsubscribe?.(); ++planEpoch; ++searchEpoch; ++dialogEpoch; auto.dispose(); } };
 }
 
 if (typeof document !== "undefined" && document.querySelector("#plan-form")) mountPlanner({ document, window });
