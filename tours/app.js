@@ -8,7 +8,7 @@ import { cheatSheetText, itinerarySheetText, factSummary, formatTourDate, tourDi
 (() => {
   "use strict";
   const $ = (selector) => document.querySelector(selector);
-  const state = { csrf: "", tours: [], tour: null, feedback: null, feedbackSeq: 0, feedbackStatus: "missing", rawShareToken: "", shareGrantId: "", shareStatus: "missing", shareGrants: [], projectionId: "", projectionDraftId: "", candidateDigest: "", renderJobId: "", pdfQcRunDigest: "", cheatDirty: false, cheatDraftTourId: "", cheatDraftRevision: null,
+  const state = { csrf: "", sessionGeneration: 0, sessionInvalidated: false, tours: [], tour: null, feedback: null, feedbackSeq: 0, feedbackStatus: "missing", rawShareToken: "", shareGrantId: "", shareStatus: "missing", shareGrants: [], projectionId: "", projectionDraftId: "", candidateDigest: "", renderJobId: "", pdfQcRunDigest: "", cheatDirty: false, cheatDraftTourId: "", cheatDraftRevision: null,
     searchItems: [], knownProperties: new Map(), searchCursor: null, searchKey: null, searchCompleted: false, searchSeq: 0, hydrationSeq: 0, cart: null, selectedIds: [], selectionDirty: false, selectionTourId: "", pendingSelection: null, selectionSave: null, undoSelectionIds: null };
   const uuid = () => crypto.randomUUID();
   const status = (message) => { $("#status").textContent = message; };
@@ -19,6 +19,8 @@ import { cheatSheetText, itinerarySheetText, factSummary, formatTourDate, tourDi
   async function sha256(value) { const bytes = new TextEncoder().encode(value); const hash = new Uint8Array(await crypto.subtle.digest("SHA-256", bytes)); return `sha256:${[...hash].map((byte) => byte.toString(16).padStart(2, "0")).join("")}`; }
   function newShareToken() { const bytes = new Uint8Array(32); crypto.getRandomValues(bytes); return base64url(bytes); }
   async function request(path, options = {}) {
+    if (state.sessionInvalidated) throw new Error("session_changed");
+    const generation = state.sessionGeneration;
     const controller = new AbortController(); let timer, result;
     try {
       result = await Promise.race([
@@ -31,21 +33,17 @@ import { cheatSheetText, itinerarySheetText, factSummary, formatTourDate, tourDi
       ]);
     } finally { clearTimeout(timer); }
     const { response, payload } = result;
-    if (!response.ok) { const error = new Error(payload?.error || "request_failed"); error.status = response.status; error.payload = payload; throw error; }
+    if (state.sessionInvalidated || generation !== state.sessionGeneration) throw new Error("session_changed");
+    if (!response.ok) {
+      const error = new Error(payload?.error || "request_failed"); error.status = response.status; error.payload = payload;
+      if ([401, 403].includes(response.status)) invalidateTourSession();
+      throw error;
+    }
     if (typeof payload?.csrf_token === "string") {
-      const binding = await sha256(payload.csrf_token), changed = sessionBinding && sessionBinding !== binding;
+      const binding = await sha256(payload.csrf_token);
+      if (state.sessionInvalidated || generation !== state.sessionGeneration) throw new Error("session_changed");
+      if (sessionBinding && sessionBinding !== binding) { invalidateTourSession(); throw new Error("session_changed"); }
       state.csrf = payload.csrf_token; sessionBinding = binding;
-      if (changed) {
-        cancelSheetAutosave();
-        createPending = null; restoredTourId = ""; createPhase = "ready"; routeEndpoints.clear();
-        sheetPending = null; sheetConflict = null; tourAction = null; sheetMessage = "Session changed. Reopen the Tour before saving.";
-        state.cheatDirty = false; state.cheatDraftTourId = ""; state.cheatDraftRevision = null; $("#cheat-content").value = "";
-        persistOtherWrites(); renderSheetRecovery(); renderTourAction();
-        itineraryView?.destroy(); itineraryView = null; $("#accepted-itinerary").hidden = true;
-        if (composer) { composer.plan = null; composer.phase = "session-changed"; composer.saved = false; composer.dirty = false; composer.undo = null; composer.message = "Session changed. Previous requests cannot be retried here. Reload the route for this session."; }
-        persistPending(); renderCreate(); renderComposerSummary();
-        throw new Error("session_changed");
-      }
     }
     return payload?.data || {};
   }
@@ -194,6 +192,43 @@ import { cheatSheetText, itinerarySheetText, factSummary, formatTourDate, tourDi
   }
   const routeEndpoints = new Map();
   const pendingKey = "doctorcre-tour-pending-v1";
+  function invalidateTourSession() {
+    if (state.sessionInvalidated) return;
+    state.sessionInvalidated = true; state.sessionGeneration++; sessionBinding = ""; state.csrf = "";
+    ++tourLoadSeq; ++state.feedbackSeq; ++state.hydrationSeq; ++state.searchSeq;
+    cancelSheetAutosave(); sheetComposing = false; createPending = null; createPhase = "ready"; restoredTourId = "";
+    composer = null; sheetPending = null; sheetConflict = null; tourAction = null; tourActionPreparing = false;
+    state.tours = []; state.tour = null; state.feedback = null; state.feedbackStatus = "missing";
+    state.rawShareToken = ""; state.shareGrantId = ""; state.shareStatus = "missing"; state.shareGrants = [];
+    state.projectionId = ""; state.projectionDraftId = ""; state.candidateDigest = ""; state.renderJobId = ""; state.pdfQcRunDigest = "";
+    state.cheatDirty = false; state.cheatDraftTourId = ""; state.cheatDraftRevision = null;
+    state.searchItems = []; state.knownProperties.clear(); state.searchCursor = null; state.searchKey = null; state.searchCompleted = false;
+    state.cart = null; state.selectedIds = []; state.selectionDirty = false; state.selectionTourId = "";
+    state.pendingSelection = null; state.selectionSave = null; state.undoSelectionIds = null; state.pendingShare = null; state.shareBusy = false;
+    routeEndpoints.clear(); itineraryView?.destroy(); itineraryView = null;
+    $("#tour-list").replaceChildren(); $("#empty-tours").replaceChildren();
+    const workspace = $("#tour-detail");
+    for (const selector of ["#accepted-itinerary", "#route-stops", "#route-changes", "#property-evidence", "#selection-list", "#property-results", "#share-grants", "#feedback-list", "#sheet-current"]) $(selector).replaceChildren();
+    for (const selector of ["#tour-state", "#tour-name", "#tour-meta", "#route-version", "#composer-badge", "#composer-state", "#projection-state", "#share-state", "#projection-note", "#projection-preview", "#selection-tour", "#selection-version", "#selection-state", "#search-count", "#search-state", "#sheet-state", "#tour-action-state", "#pdf-state", "#create-tour-state"]) $(selector).textContent = "";
+    $("#projection-preview").hidden = true; $("#feedback-empty").hidden = true; $("#sheet-conflict").hidden = true;
+    for (const form of workspace.querySelectorAll("form")) form.reset();
+    workspace.querySelectorAll("input, textarea, select").forEach(control => {
+      if (control.type === "checkbox" || control.type === "radio") control.checked = false;
+      else control.value = "";
+      control.disabled = true;
+    });
+    workspace.querySelectorAll("button").forEach(control => { control.disabled = true; });
+    $("#refresh").disabled = true;
+    for (const selector of ["#preview-pdf", "#download-pdf", "#tour-day-link"]) { const link = $(selector); link.hidden = true; link.removeAttribute("href"); }
+    $(".discovery").hidden = true; $("#empty-state").hidden = false; $("#empty-copy").textContent = "Your session ended. Sign in to reopen Tours.";
+    $("#retry-library").hidden = true; $("#tour-name").textContent = ""; $("#tour-meta").textContent = "";
+    $("#cheat-content").value = ""; $("#share-url").value = ""; $("#share-link").hidden = true;
+    $("#create-tour-form").reset(); $("#create-tour-panel").open = false;
+    const recovery = $("#tour-recovery"), signIn = document.createElement("a");
+    signIn.href = "/auth/login"; signIn.dataset.tourSignin = ""; signIn.textContent = "Sign in to continue"; recovery.replaceChildren(signIn); recovery.hidden = false;
+    status("Sign in to reopen this Tour.");
+    document.querySelector("#tour-list").setAttribute("aria-busy", "false");
+  }
   function readPending() {
     try { const saved = JSON.parse(sessionStorage.getItem(pendingKey) || "null"); return saved?.sessionBinding === sessionBinding ? saved : null; } catch { return null; }
   }
@@ -230,10 +265,14 @@ import { cheatSheetText, itinerarySheetText, factSummary, formatTourDate, tourDi
       const data = await post("/api/tours/create", createPending);
       if (!id(data.tour_id)) throw new Error("outcome_unknown");
       routeEndpoints.set(data.tour_id, { start: createPending.start_point, end: createPending.end_point });
-      await loadLibrary(); await loadTour(data.tour_id,{throwOnFailure:true});
+      await loadLibrary();
+      if (state.sessionInvalidated) throw new Error("session_changed");
+      await loadTour(data.tour_id,{throwOnFailure:true});
+      if (state.sessionInvalidated) throw new Error("session_changed");
       createPending = null; createPhase = "ready"; persistPending(); $("#create-tour-state").textContent = "Tour created. Add properties from the selection cart.";
       $("#create-tour-panel").open = false;
     } catch (error) {
+      if (state.sessionInvalidated) return;
       if (error.message === "session_changed") $("#create-tour-state").textContent = "Session changed. The previous creation request cannot be retried here.";
       else if (error.message === "point_invalid") $("#create-tour-state").textContent = "Enter valid start and end coordinates and location source references.";
       else if (error.writeRefusal) { createPending = null; createPhase = "ready"; persistPending(); $("#create-tour-state").textContent = "Tour creation refused. Review the subject and route details."; }
@@ -798,12 +837,14 @@ import { cheatSheetText, itinerarySheetText, factSummary, formatTourDate, tourDi
     renderAcceptedItinerary();
   }
   async function loadLibrary() {
+    if (state.sessionInvalidated) return;
     status("Loading tours…");
     let data;
     try {
       data = await observeDocRead("tourLibrary", [], () => request("/api/tours/library"));
       if (!Array.isArray(data.tours) || !data.tours.every(tour => id(tour?.id))) throw new Error("read_invalid");
     } catch (error) {
+      if (state.sessionInvalidated) throw error;
       if (!libraryReady) $("#empty-copy").textContent = "The tour library did not load. Try again.";
       $("#retry-library").hidden = false;
       throw error;
@@ -836,6 +877,7 @@ import { cheatSheetText, itinerarySheetText, factSummary, formatTourDate, tourDi
   async function loadProjectionPreview() { const preview = $("#projection-preview"); state.candidateDigest = ""; preview.hidden = true; preview.textContent = ""; if (!id(state.projectionDraftId)) return; const data = await request(`/api/tours/projection/candidates?projection_id=${encodeURIComponent(state.projectionDraftId)}`); state.candidateDigest = text(data.candidate_digest); const rows = Array.isArray(data.preview) ? data.preview : []; preview.textContent = rows.map(row => { const facts = row?.facts && typeof row.facts === "object" ? row.facts : {}; return `${text(row.route_label, `Stop ${row.route_sequence || ""}`)} · ${text(facts["display.name"], "Unnamed property")}\n${text(facts["display.address"], "Address unavailable")}${factSummary(facts) ? `\n${factSummary(facts)}` : ""}`; }).join("\n\n"); preview.hidden = false; }
   let tourLoadSeq = 0;
   async function loadTour(tourId, { requireComposerDetail = false, throwOnFailure = false, keepEditorVisible = false } = {}) {
+    if (state.sessionInvalidated) return false;
     if (state.cheatDirty && state.cheatDraftTourId !== tourId) { status("Save the current sheet before switching Tours."); return; }
     if ((sheetPending || sheetConflict || tourAction) && state.tour?.id !== tourId && (sheetPending?.tourId || sheetConflict?.tourId || tourAction?.tourId) !== tourId) { status("Reconcile the current Tour request before switching Tours."); return; }
     if ((sheetBusy && !keepEditorVisible) || tourAction?.busy) return;
@@ -864,6 +906,7 @@ import { cheatSheetText, itinerarySheetText, factSummary, formatTourDate, tourDi
       renderTour(); renderSelection(); await loadSelectionCart(tourId); await Promise.all([loadProjectionPreview(), loadFeedback()]);
       if (state.tour?.id === tourId) status(state.feedbackStatus === "unavailable" ? "Tour loaded. Client responses are unavailable." : "Tour ready.");
     } catch (error) {
+      if (state.sessionInvalidated) return false;
       const denied = [401,403].includes(error.status) || error.message === "session_changed";
       state.tour = null;
       selectDocRecord(null,null);
@@ -944,6 +987,7 @@ import { cheatSheetText, itinerarySheetText, factSummary, formatTourDate, tourDi
       await loadTour(tourId, { throwOnFailure:true, keepEditorVisible:true });
       sheetMessage = "Internal cheat sheet save confirmed."; status(sheetMessage);
     } catch (error) {
+      if (state.sessionInvalidated) return;
       if (error.message === "session_changed") return;
       if (confirmed) { sheetMessage = "The save was confirmed. The current sheet could not be refreshed; retry Refresh."; status(sheetMessage); return; }
       if (error.status === 409) {
@@ -960,7 +1004,7 @@ import { cheatSheetText, itinerarySheetText, factSummary, formatTourDate, tourDi
           : "The current sheet could not be read. Your draft is kept; try saving again.";
       }
     } finally {
-      sheetBusy = false; renderSheetRecovery();
+      sheetBusy = false; if (!state.sessionInvalidated) renderSheetRecovery();
       if (confirmed && state.cheatDirty && state.tour?.id === tourId && binding === sessionBinding) {
         $("#cheat-content").dispatchEvent(new Event("input"));
       }
@@ -1025,7 +1069,7 @@ import { cheatSheetText, itinerarySheetText, factSummary, formatTourDate, tourDi
     await startTourAction("/api/tours/share/revoke", { share_grant_id: grantId, reason: "Internal operator revoked link",
       revoked_at: new Date().toISOString(), receipt_digest: receipt, idempotency_key: uuid() }, "Share link revocation");
   }
-  async function action(work) { try { await work(); } catch { status("The request could not be completed."); } }
+  async function action(work) { try { await work(); } catch { if (!state.sessionInvalidated) status("The request could not be completed."); } }
   // Versioned route and cheat-sheet writes ignore a second click while a write to the same record is in flight.
   const writesInFlight = new Set();
   const exclusive = (record, work) => () => { if (writesInFlight.has(record)) return; writesInFlight.add(record); return action(work).finally(() => writesInFlight.delete(record)); };
@@ -1167,11 +1211,7 @@ import { cheatSheetText, itinerarySheetText, factSummary, formatTourDate, tourDi
   $("#print-sheet").addEventListener("click", () => { if (prepareSheetPrint()) window.print(); });
   window.addEventListener("beforeprint", prepareSheetPrint);
   window.addEventListener("afterprint", () => $("#cheat-print")?.replaceChildren());
-  window.addEventListener("doctorcre-session-invalidated", () => {
-    cancelSheetAutosave(); sheetComposing = false;
-    state.cheatDraftTourId = ""; state.cheatDraftRevision = null; $("#cheat-print")?.replaceChildren();
-    $("#regenerate-sheet").disabled = !canRegenerateSheet();
-  });
+  window.addEventListener("doctorcre-session-invalidated", invalidateTourSession);
   $("#save-sheet").addEventListener("click", saveSheetExclusively);
   $("#review-sheet").addEventListener("click", () => {
     if (!sheetConflict?.current || sheetBusy || state.tour?.id !== sheetConflict.tourId) return;
