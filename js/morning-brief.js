@@ -79,7 +79,7 @@ export function mountMorningBrief({ document:root, window:win, getClient, interv
       const record = row.kind === 'action' ? value?.action : row.kind === 'deal' ? value?.deal : value?.loop;
       if (!record || (row.kind === 'loop' ? String(record.number) !== row.id || record.kind !== row.loopKind : record.id !== row.id)) throw new Error('Invalid record');
       $('morningTitle').textContent = record.name || record.title || record.subject_name || row.title;
-      const facts = row.kind === 'deal' ? [['Next step',row.action ? row.action.what : record.next_step],['Due',row.action ? row.action.due_on : record.next_date],['Phase',record.phase]] : row.kind === 'action' ? [['For',record.subject_name],['Reference',record.subject_ref],['Due',record.due_on],['Owner',record.owner]] : [['Due',record.due_on],['Status',record.status],['Blocker',record.blocker_detail]];
+      const facts = row.kind === 'deal' ? [['Next step',row.action ? row.action.what : record.next_step],['Due',row.action ? row.action.due_on : record.next_date],['Phase',record.phase]] : row.kind === 'action' ? [['For',record.subject_name],['Reference',record.subject_ref],['Due',record.due_on],['Owner',record.owner]] : [['Due',record.due_on],['Status',record.status === 'open' ? null : record.status],['Your task',record.blocker_detail]];
       const entries = row.kind === 'deal' ? value.thread || [] : [{ id:row.key, text:row.kind === 'action' ? record.what : record.body }];
       const expanded = [...$('morningContent').querySelectorAll('details[open]')].map(node => node.dataset.entry);
       const focusedEntry = root.activeElement?.closest('details')?.dataset.entry;
