@@ -7,10 +7,9 @@ import { join } from 'node:path';
 import { compareBudget, limitFor, rebaseline, renderReport } from '../scripts/performance-budget.mjs';
 
 const budget = { schema: 'doctorcre-performance-budget.v1', profile: { cpuSlowdown: 4 },
-  screens: { home: { lcpMs: { baseline: 800, limit: 1200 }, jsBytes: { baseline: 10000, limit: 11000 }, interactionMs: { baseline: 40, limit: 100 } } },
-  bundle: { jsBytes: { baseline: 20000, limit: 22000 } } };
+  screens: { home: { lcpMs: { baseline: 800, limit: 1200 }, jsBytes: { baseline: 10000, limit: 11000 }, interactionMs: { baseline: 40, limit: 100 } } } };
 const report = () => ({ schema: 'doctorcre-performance-report.v1', profile: { cpuSlowdown: 4 },
-  screens: { home: { lcpMs: 1200, jsBytes: 11000, interactionMs: 100 } }, bundle: { jsBytes: 22000 } });
+  screens: { home: { lcpMs: 1200, jsBytes: 11000, interactionMs: 100 } } });
 
 test('task budgets reject slow useful content, extra reads, and critical bytes independently', () => {
   const extended = structuredClone(budget), measured = report();
@@ -66,7 +65,6 @@ test('the budget accepts measured values at the limits', () => {
     { screen: 'home', metric: 'lcpMs', before: 800, after: 1200, limit: 1200, passed: true },
     { screen: 'home', metric: 'jsBytes', before: 10000, after: 11000, limit: 11000, passed: true },
     { screen: 'home', metric: 'interactionMs', before: 40, after: 100, limit: 100, passed: true },
-    { screen: 'bundle', metric: 'jsBytes', before: 20000, after: 22000, limit: 22000, passed: true },
   ] });
 });
 
@@ -75,11 +73,11 @@ test('CLI exits 1 on a breach and 2 on incomplete evidence', () => {
   const budgetPath = join(dir, 'budget.json'), reportPath = join(dir, 'report.json');
   writeFileSync(budgetPath, JSON.stringify(budget));
   const measured = report();
-  measured.bundle.jsBytes = 22001;
+  measured.screens.home.jsBytes = 11001;
   writeFileSync(reportPath, JSON.stringify(measured));
   let run = spawnSync(process.execPath, ['scripts/performance-budget.mjs', budgetPath, reportPath], { encoding: 'utf8' });
   assert.equal(run.status, 1);
-  assert.match(run.stdout, /bundle \| jsBytes \| 20000 \| 22001 \| 22000 \| FAIL/);
+  assert.match(run.stdout, /home \| jsBytes \| 10000 \| 11001 \| 11000 \| FAIL/);
   delete measured.screens.home;
   writeFileSync(reportPath, JSON.stringify(measured));
   run = spawnSync(process.execPath, ['scripts/performance-budget.mjs', budgetPath, reportPath], { encoding: 'utf8' });
@@ -119,8 +117,8 @@ test('removing a metric or setting a budget below its baseline cannot weaken the
   delete missing.screens.home.jsBytes;
   assert.throws(() => compareBudget(missing, report()), /metric coverage/);
   const inverted = structuredClone(budget);
-  inverted.bundle.jsBytes.limit = 19999;
-  assert.throws(() => compareBudget(inverted, report()), /invalid.*bundle.*jsBytes/);
+  inverted.screens.home.jsBytes.limit = 9999;
+  assert.throws(() => compareBudget(inverted, report()), /invalid.*home.*jsBytes/);
 });
 
 test('screen names in comment data must be bounded plain identifiers', () => {
@@ -134,7 +132,7 @@ const contract = () => JSON.parse(readFileSync(new URL('../contracts/performance
 
 test('every committed limit is the headroom rule applied to its measured baseline', () => {
   const committed = contract();
-  for (const [screen, metrics] of [...Object.entries(committed.screens), ['bundle', committed.bundle]])
+  for (const [screen, metrics] of Object.entries(committed.screens))
     for (const [metric, { baseline, limit }] of Object.entries(metrics))
       assert.equal(limit, limitFor(metric, baseline), `${screen} ${metric}`);
   assert.deepEqual([limitFor('jsBytes', 1000), limitFor('lcpMs', 1000), limitFor('lcpMs', 2000),
@@ -161,7 +159,7 @@ test('rebaselining from a hosted job-log line rewrites the baseline and keeps th
   assert.equal(next.baseline.platform, 'linux');
   assert.deepEqual(next.screens.home, { lcpMs: { baseline: 1000, limit: 1750 }, jsBytes: { baseline: 600000, limit: 660000 },
     interactionMs: { baseline: 90, limit: 240 } });
-  assert.deepEqual(next.bundle, { jsBytes: { baseline: 4600000, limit: 5060000 } });
+  assert.equal(next.bundle, undefined);
   assert.equal(compareBudget(next, measured).passed, true);
   delete measured.screens.home.interactionMs;
   assert.throws(() => rebaseline(committed, measured), /invalid evidence or budget: home interactionMs/);
