@@ -2,6 +2,11 @@ const FIELD_LABELS = Object.freeze([
   ["county", "County"], ["municipality", "Municipality"], ["special_authority", "Special authority"],
   ["parcel", "Parcel"], ["site_address", "Site address"], ["building", "Building"],
 ]);
+const COVERAGE_REASONS = Object.freeze({
+  no_authorized_evidence: "No authorized evidence",
+  authoritative_coverage_missing: "Authoritative coverage missing",
+  evidence_conflict: "Evidence conflicts require review",
+});
 const ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const panelStates = new WeakMap();
 
@@ -29,6 +34,9 @@ function stateLabel(status) {
   if (status === "unavailable") return "Coverage unavailable";
   return "Unknown";
 }
+function coverageReason(reason) {
+  return typeof reason === "string" && Object.hasOwn(COVERAGE_REASONS, reason) ? COVERAGE_REASONS[reason] : "Reason not recorded";
+}
 function diagramValue(value) {
   return value.length > 25 ? `${value.slice(0, 24)}…` : value;
 }
@@ -40,7 +48,7 @@ export function propertyPanelView(evidence) {
   return FIELD_LABELS.map(([field, label]) => {
     const raw = facts[field] && typeof facts[field] === "object" ? facts[field] : {};
     const status = ["reviewed", "conflicted", "unavailable", "unknown"].includes(raw.status) ? raw.status : "unknown";
-    return { field, label, status, state_label: stateLabel(status),
+    return { field, label, status, state_label: stateLabel(status), reason: typeof raw.reason === "string" ? raw.reason : null,
       value: status === "reviewed" && typeof raw.value === "string" && raw.value.trim() ? raw.value : "Unknown",
       as_of: raw.as_of || null, effective_from: raw.effective_from || null, effective_to: raw.effective_to || null,
       geometry_precision: raw.geometry_precision || "unknown", geometry_method: raw.geometry_method || null,
@@ -66,7 +74,7 @@ function provenance(item) {
 export function propertyFactDetail(item) {
   const conflict = item.conflicts.length ? `<div class="property-conflicts"><b>Conflicting details</b>${item.conflicts.map(candidate =>
     `<section><h4>${escape(candidate.value || "Unknown")}</h4>${provenance(candidate)}</section>`).join("")}</div>` : "";
-  return `${provenance(item)}${conflict}`;
+  return `${item.status !== "reviewed" ? `<p>${escape(coverageReason(item.reason))}</p>` : ""}${provenance(item)}${conflict}`;
 }
 function diagram(items) {
   const x = [20, 275, 530, 20, 275, 530];
@@ -84,7 +92,9 @@ function diagram(items) {
 }
 export function renderPropertyPanel(evidence) {
   const items = propertyPanelView(evidence);
-  if (!items.some(item => item.status === "reviewed" || item.status === "conflicted")) return '<p class="hint">Property evidence is unavailable. No reviewed jurisdiction or site facts are recorded for this property and date.</p>';
+  if (!items.some(item => item.status === "reviewed" || item.status === "conflicted")) return `<p class="hint">Property evidence is unavailable. No reviewed jurisdiction or site facts are recorded for this property and date.</p>
+    <details><summary>Field coverage</summary><ul>${items.map(item =>
+      `<li>${escape(item.label)} · ${escape(item.state_label)} · ${escape(coverageReason(item.reason))}</li>`).join("")}</ul></details>`;
   return `<div class="property-panel-body">
     ${diagram(items)}
     <div class="property-fact-grid">${items.map(item => `<button type="button" class="property-fact ${escape(item.status)}" data-evidence-field="${escape(item.field)}" aria-haspopup="dialog">

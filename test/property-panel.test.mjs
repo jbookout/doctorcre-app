@@ -209,3 +209,65 @@ test("an evidence response without useful facts uses one unavailable summary", (
   assert.match(html, /Property evidence is unavailable/);
   assert.doesNotMatch(html, /property-fact-grid|property-layer-diagram|data-evidence-field/);
 });
+
+
+test("missing property evidence keeps its summary and explains coverage for every field", async () => {
+  const panel = openPanel(async () => ({ schema: "tour-property-evidence.v1", facts: {
+    county: { ...unknown, status: "unknown", reason: "no_authorized_evidence" },
+    municipality: unknown, special_authority: unknown,
+  } }));
+  panel.mount(); await settle();
+  const content = panel.root.querySelector("#property-evidence-content");
+  assert.match(content.textContent, /Property evidence is unavailable/);
+  const disclosure = content.querySelector("details");
+  assert.ok(disclosure, "field coverage remains available when no facts are reviewed");
+  assert.equal(disclosure.querySelector("summary").textContent, "Field coverage");
+  assert.equal(disclosure.open, false);
+  const rows = [...disclosure.querySelectorAll("li")].map(row => row.textContent);
+  assert.deepEqual(rows, [
+    "County · Unknown · No authorized evidence",
+    "Municipality · Coverage unavailable · Authoritative coverage missing",
+    "Special authority · Coverage unavailable · Authoritative coverage missing",
+    "Parcel · Unknown · Reason not recorded",
+    "Site address · Unknown · Reason not recorded",
+    "Building · Unknown · Reason not recorded",
+  ]);
+  assert.equal(content.querySelectorAll(".property-fact-grid, svg").length, 0);
+});
+
+
+test("fact details explain unavailable and conflicted evidence without replacing reviewed provenance", async () => {
+  const panel = openPanel(async () => ({ ...evidence, facts: { ...evidence.facts,
+    county: { ...unknown, status: "conflicted", reason: "evidence_conflict", conflicts: [reviewed("Bay"), reviewed("Walton")] },
+  } }));
+  panel.mount(); await settle();
+  const dialog = panel.root.querySelector("dialog");
+  dialog.showModal = function() { this.open = true; };
+  panel.root.querySelector('[data-evidence-field="municipality"]').click();
+  assert.match(dialog.textContent, /Authoritative coverage missing/);
+  panel.root.querySelector('[data-evidence-field="county"]').click();
+  assert.match(dialog.textContent, /Evidence conflicts require review/);
+  assert.match(dialog.textContent, /Bay/);
+  assert.match(dialog.textContent, /Walton/);
+  panel.root.querySelector('[data-evidence-field="building"]').click();
+  assert.match(dialog.textContent, /Clinic Plaza/);
+  assert.match(dialog.textContent, /EPSG:4326/);
+  assert.doesNotMatch(dialog.textContent, /Reason not recorded/);
+});
+
+
+test("missing and unrecognized coverage reasons stay explicit without rendering raw provider text", async () => {
+  const reasons = [undefined, null, "future_reason", "__proto__", "constructor", '<img src=x onerror=alert(1)>'];
+  const fields = ["county", "municipality", "special_authority", "parcel", "site_address", "building"];
+  const facts = Object.fromEntries(fields.map((field, index) => [field, { ...unknown, reason: reasons[index] }]));
+  const panel = openPanel(async () => ({ ...evidence, facts }));
+  panel.mount(); await settle();
+  const disclosure = panel.root.querySelector("#property-evidence-content details");
+  assert.equal(disclosure.querySelectorAll("li").length, 6);
+  for (const row of disclosure.querySelectorAll("li")) assert.match(row.textContent, /Reason not recorded$/);
+  assert.doesNotMatch(disclosure.textContent, /future_reason|__proto__|constructor|onerror|function|Object/);
+  assert.equal(disclosure.querySelectorAll("img, script").length, 0);
+  const detail = propertyFactDetail(propertyPanelView({ ...evidence, facts: { ...evidence.facts, municipality: facts.building } })[1]);
+  assert.match(detail, /Reason not recorded/);
+  assert.doesNotMatch(detail, /<img|onerror/);
+});
