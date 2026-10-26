@@ -88,7 +88,9 @@ for (const actor of ['joe','dell']) test(`signed-in ${actor} gets workspace, acc
 test('sign-out disposes Doc before a pending refresh can write into replaced DOM', async t => {
   const { page, errors, pageErrors, calls, docSuggestionsStarted, releaseDocSuggestions } = await open(t,
     { actor: 'dell', live: true, minimal: true, holdDocSuggestions: true });
+  await page.locator('#docOpen').click();
   await docSuggestionsStarted;
+  await page.keyboard.press('Escape');
   await page.locator('#selfAvatar').click();
   await page.getByText('Sign out', { exact: true }).click();
   await page.getByRole('heading', { name: 'Session ended' }).waitFor();
