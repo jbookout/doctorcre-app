@@ -10,10 +10,10 @@ test('Home reads deal attention and agenda through the deployed CARR contracts',
   const supported = {
     'read-post-call-followups': { schema_version: 'post-call-followups.v1', candidates: [], send: false },
     'read-home-agenda': { schema_version: 'home-agenda.v1', actor: 'synthetic-agent', deals: [{ ...deal, critical_dates: [], next_actions: [
-      { id: 'synthetic-home-task', description: 'Confirm synthetic task', owner: deal.owner, status: 'open', due_on: '2026-10-01' },
+      { id: 'synthetic-home-task', description: 'Confirm synthetic task', owner: deal.owner, status: 'open', due_on: '2026-09-30' },
     ] }] },
     'get-deal-room': { ...deal, deal_id: deal.id, critical_dates: [], next_actions: [
-      { id: 'synthetic-home-task', description: 'Confirm synthetic task', owner: deal.owner, status: 'open', due_on: '2026-10-01' },
+      { id: 'synthetic-home-task', description: 'Confirm synthetic task', owner: deal.owner, status: 'open', due_on: '2026-09-30' },
     ] },
   };
   const client = createLiveClient({ docContext: false, fetchImpl: async (path, init) => {
@@ -34,7 +34,7 @@ test('Home reads deal attention and agenda through the deployed CARR contracts',
   assert.equal(result.reads.callTasks.state, 'read');
   assert.deepEqual(result.callTasks, []);
   assert.equal(result.unauthorized, false);
-  assert.deepEqual(dealSnapshot(result.board, 'mine', Date.parse('2026-10-01T15:00:00Z')).flagged.map(row => row.id), [deal.id]);
+  assert.deepEqual(dealSnapshot(result.board, 'mine', agendaSnapshot(result.board, result.details, { scope: 'mine', today: '2026-10-01' })).flagged.map(row => row.id), [deal.id]);
   assert.deepEqual(agendaSnapshot(result.board, result.details, { scope: 'mine', today: '2026-10-01' }).entries.map(row => row.key), ['task:synthetic-home-task']);
   assert.equal(result.loading, false);
   assert.equal(requests.filter(row => row.name === 'read-home-agenda').length, 1);

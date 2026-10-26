@@ -37,7 +37,7 @@ const elements = () => { const rows = new Map(); return key => { if(!rows.has(ke
 for (const terminal of ["review_ready", "failed"]) test(`PR111 #1: overlapping slow status reads apply ${terminal}`, async () => {
   const reply=deferred(); let reads=0, stops=0;
   const state={postCall:{session:"A",status:"waiting_for_transcript"}};
-  const h=handlers("js/call-mode.js","  async function refreshPostCall(","  function startPolling(",{state,deps:{postCallClient:{getStatus:()=>{reads++;return reply.promise;}}},stopPolling:()=>stops++,renderPostCall:noop,publishOrRecord:async()=>{},toast:noop},["refreshPostCall"]);
+  const h=handlers("js/call-mode.js","  async function refreshPostCall(","  function startPolling(",{state,deps:{postCallClient:{getStatus:()=>{reads++;return reply.promise;}}},stopPolling:()=>stops++,renderPostCall:noop,publishOrRecord:async()=>{},toast:noop,reportCandidateIds:()=>[],now:()=>0,APPLY_WAIT_MS:180000,automaticSettled:report=>!report||Boolean(report.automatic?.finished_at)},["refreshPostCall"]);
   const first=h.refreshPostCall(),second=h.refreshPostCall();
   reply.resolve({status:terminal});await Promise.all([first,second]);
   assert.equal(state.postCall.status,terminal);assert.equal(reads,1);assert.equal(stops,1);
@@ -324,7 +324,7 @@ test("Dot 14: Updates follows the event cursor to current activity", async () =>
 
 test("Dot 15: an old call status cannot replace the new session review pack", async () => {
   const old=deferred();const state={postCall:{session:"A"}};let stops=0;
-  const h=handlers("js/call-mode.js","  async function refreshPostCall(","  function startPolling(",{state,deps:{postCallClient:{getStatus:()=>old.promise}},stopPolling:()=>stops++,renderPostCall:noop,publishOrRecord:async()=>{},toast:noop},["refreshPostCall"]);
+  const h=handlers("js/call-mode.js","  async function refreshPostCall(","  function startPolling(",{state,deps:{postCallClient:{getStatus:()=>old.promise}},stopPolling:()=>stops++,renderPostCall:noop,publishOrRecord:async()=>{},toast:noop,reportCandidateIds:()=>[],now:()=>0,APPLY_WAIT_MS:180000,automaticSettled:report=>!report||Boolean(report.automatic?.finished_at)},["refreshPostCall"]);
   const pending=h.refreshPostCall();state.postCall={session:"B",status:"waiting",report:null};old.resolve({status:"review_ready",report:{session:"A"}});await pending;
   assert.equal(state.postCall.session,"B");assert.equal(state.postCall.report,null);assert.equal(stops,0);
 });

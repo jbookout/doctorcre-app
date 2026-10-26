@@ -1,5 +1,5 @@
 import { visibleLeads } from './leads-model.js';
-import { localDeals, needsAttention, scopedDeals, validDealBoard } from './deal-review-model.js';
+import { localDeals, scopedDeals, validDealBoard } from './deal-review-model.js';
 import { validInvoiceTracker } from './invoice-tracker-model.js';
 import { validNetwork } from './relationship-network-model.js';
 import { addDays, criticalDateEntries, localToday, toDay } from './calendar-model.js';
@@ -20,16 +20,19 @@ const validHomeRows = (payload, key) => payload && typeof payload === 'object' &
   && Array.isArray(payload[key]) && payload[key].every(row => row && typeof row === 'object' && !Array.isArray(row)
     && typeof row.id === 'string' && row.id.trim().length > 0);
 
-export function dealSnapshot(board, scope = 'team', now = Date.now()) {
+export function dealSnapshot(board, scope = 'team', agenda) {
   const deals = scopedDeals(board, scope);
   if (!deals) return null;
+  const local = localDeals(deals);
+  const overdue = new Set(agenda?.overdue.map(entry => entry.deal_id));
+  const complete = agenda && !local.some(deal => agenda.failed.includes(deal.id));
   return { active: deals.length,
     // No current contract supplies in-market membership. Neither city nor
     // pipeline stage is evidence of it; the UI retains an unknown value.
     inMarket: deals.every(deal => typeof deal.in_market === 'boolean')
       ? deals.filter(deal => deal.in_market).length : null,
     national: deals.filter(deal => deal.workspace_kind === 'national_account' || deal.account_client_id).length,
-    flagged: localDeals(deals).filter(deal => needsAttention(deal, now)) };
+    flagged: complete ? local.filter(deal => overdue.has(deal.id)) : local.length ? null : [] };
 }
 
 export function dealHref(id) { return `/deals?deal=${encodeURIComponent(id)}`; }
