@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import {createFixtureClient} from '../js/fixture-client.js';
 import {createLiveClient} from '../js/live-client.js';
-import {agendaSnapshot, readHomeDashboard} from '../js/home-dashboard-model.js';
+import {agendaSnapshot, dealSnapshot, readHomeDashboard} from '../js/home-dashboard-model.js';
 
 const fixture = async () => createFixtureClient({seedUrl: `data:application/json;base64,${Buffer.from(await readFile(new URL('../data/board-seed.json', import.meta.url))).toString('base64')}`});
 
@@ -102,4 +102,31 @@ test('Overdue isolates missed dates and tasks while preserving holds, completion
   assert.deepEqual(team.overdue.map(row => row.key), ['date-overdue', 'task:overdue', 'task:partner', 'task:resumed']);
   assert.deepEqual(agendaSnapshot(board, details, { scope: 'mine', today: '2026-10-01' }).overdue.map(row => row.key), ['date-overdue', 'task:overdue', 'task:resumed']);
   assert.deepEqual(agendaSnapshot(board, details, { today: '2026-09-29' }).overdue, []);
+});
+
+
+test('Home counts unique local deals using the agenda overdue membership and marks incomplete local reads unknown', () => {
+  const task = (id, due_on, extra = {}) => ({ id, due_on, status: 'open', owner: 'joe', ...extra });
+  const deals = [
+    { id: 'local', name: 'Demo overdue local', owner: 'joe', next_date: '2026-10-02' },
+    { id: 'partner', name: 'Demo partner', owner: 'dell' },
+    { id: 'national', owner: 'joe', account_client_id: 'demo-account' },
+    { id: 'held', owner: 'joe' },
+    { id: 'parked', owner: 'joe', operating_state: 'parked' },
+    { id: 'closed', owner: 'joe', phase: 'Closed' },
+  ];
+  const board = { actor: 'joe', deals };
+  const details = new Map(deals.map(deal => [deal.id, { critical_dates: [], next_actions: [task(`${deal.id}-old`, '2026-08-20')] }]));
+  details.get('local').next_actions.push(task('another-old', '2026-09-16'), task('done', '2026-08-01', { status: 'done' }));
+  details.get('held').next_actions = [task('held-old', '2026-08-01', { hold_until: '2026-10-02' }), task('today', '2026-10-01'), task('undated', null)];
+  const summary = scope => dealSnapshot(board, scope, agendaSnapshot(board, details, { scope, today: '2026-10-01' }));
+  assert.deepEqual(summary('team').flagged.map(row => row.id), ['local', 'partner']);
+  assert.deepEqual(summary('mine').flagged.map(row => row.id), ['local']);
+  details.get('local').next_actions = [task('other-owner', '2026-08-20', { owner: 'dell' })];
+  assert.deepEqual(summary('mine').flagged, []);
+  details.delete('national');
+  assert.deepEqual(summary('team').flagged.map(row => row.id), ['local', 'partner']);
+  details.delete('local');
+  assert.equal(summary('team').flagged, null);
+  assert.equal(summary('team').active, 4);
 });

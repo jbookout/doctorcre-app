@@ -669,7 +669,7 @@ for (const width of [1440, 390]) test(`Home Overdue isolates missed work and ret
   const { page, responses, errors } = await open(t, { width });
   const board = await page.evaluate(async () => (await (await import('/js/home-boot.js')).homeClient).getBoard());
   const task = (id, due_on, extra = {}) => ({ id, due_on, description: `Demo ${id}`, status: 'open', owner: 'joe', ...extra });
-  const deal = { ...board.deals.find(row => row.id === 'd01'), owner: 'joe',
+  const deal = { ...board.deals.find(row => row.id === 'd01'), owner: 'joe', workspace_kind: 'local', account_client_id: null, next_date: '2026-10-02',
     critical_dates: [{ id: 'demo-old-date', due_on: '2026-09-29', status: 'open', note: 'Demo missed date' }],
     next_actions: [
       ...Array.from({ length: 8 }, (_, i) => task(`overdue-${i}`, '2026-09-30', { owner: i === 7 ? 'dell' : 'joe' })),
@@ -684,6 +684,8 @@ for (const width of [1440, 390]) test(`Home Overdue isolates missed work and ret
   await refresh();
   const calendar = page.locator('#homeCalendar');
   const overdue = calendar.getByRole('button', { name: 'Overdue', exact: true });
+  assert.match(await page.locator('#dealCounts').textContent(), /Overdue local deals: 1/);
+  assert.equal(await page.locator('#dealFlags a.home-flag').count(), 1);
   assert.equal(await overdue.count(), 1);
   assert.equal(await calendar.getByRole('button', { name: 'All dates & tasks', exact: true }).getAttribute('aria-pressed'), 'true');
   const week = await page.locator('.home-week').textContent();
@@ -706,13 +708,18 @@ for (const width of [1440, 390]) test(`Home Overdue isolates missed work and ret
   assert.ok(!(await page.locator('#homeAgenda strong').allTextContents()).includes('Demo overdue-7'));
   assert.equal(await page.locator('.home-week').textContent(), week);
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
-  await screenshot(page, `overdue-${width}`);
+  for (const theme of ['light', 'dark']) {
+    await page.evaluate(value => document.documentElement.dataset.theme = value, theme);
+    await screenshot(page, `overdue-${width}-${theme}`);
+  }
   responses.set('read-home-agenda', { ...board, schema_version: 'home-agenda.v1', deals: [{ ...deal, critical_dates: [], next_actions: [task('today', '2026-10-01')] }] });
   await refresh();
   assert.equal(await page.locator('#homeAgenda a').count(), 0);
   assert.match(await calendar.textContent(), /No overdue dates or tasks/);
   responses.set('read-home-agenda', { ...board, schema_version: 'home-agenda.v1', deals: [{ ...deal, critical_dates: [], next_actions: null }] });
   await refresh();
+  assert.match(await page.locator('#dealCounts').textContent(), /Overdue local deals: —/);
+  assert.match(await page.locator('#dealFlags').textContent(), /Overdue local deals unavailable/);
   assert.match(await calendar.textContent(), /unavailable/);
   assert.doesNotMatch(await calendar.textContent(), /No overdue dates or tasks/);
   assert.deepEqual(errors, []);
