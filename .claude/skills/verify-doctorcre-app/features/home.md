@@ -35,4 +35,6 @@ The shared walkthrough runs in `test/w1-shell-browser.test.mjs`. Open the accoun
 
 On phones, the loading Calendar & tasks region reserves preview space ahead of independently loaded invoices. Empty and failed reads release that space.
 
+The Deals card counts each eligible local deal once when Calendar & tasks has overdue work for it. Both use the agenda’s dated open work, task holds, Chicago day and selected scope. National work stays in the agenda but does not enter the local count. A stale next-step date alone does not flag a deal. Failed local agenda details show an unknown count and an unavailable message rather than zero; unrelated national detail failures do not hide known local counts. The Home model and browser tests cover these cases, with light/dark captures at 1440 and 390 when `W2_SCREENSHOT_DIR` is set.
+
 Counts depend on date and scope. Existing tests own their clock and synthetic records. No alerts is a valid Home state but cannot prove deal opening. A failed or partial read must remain visible as such; a shell alone is not readiness.

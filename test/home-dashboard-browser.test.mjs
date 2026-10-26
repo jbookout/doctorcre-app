@@ -44,7 +44,7 @@ async function open(t, { width = 1440, height = 1000, invoiceAttention = false, 
     'get-deal-room': async args => { if (detailFailure === '503' || (detailFailure === 'partial' && args.deal === 'd01')) throw Error('Unavailable'); if ([401, 403].includes(detailFailure)) throw Object.assign(Error('Refused'), { status: detailFailure }); if (hangDetails || detailFailure === 'timeout') return new Promise(() => {}); if (delayDetails) await new Promise(resolve => setTimeout(resolve, 100)); const detail = await client.getDeal(args.deal); return { ...detail,
       ...detail.deal, deal_id: detail.deal.id, events: detail.history.map(event => ({ ...event, verb: event.verb || 'patch-deal-field' })),
       critical_dates: tasksOnly || emptyAgenda ? [] : [{ id: `demo-date-${args.deal}`, note: 'Demo tour', due_on: '2026-10-03', status: 'open' }],
-      next_actions: emptyAgenda ? [] : malformedTasks ? [null] : [{ id: `demo-task-${args.deal}`, description: 'Demo follow-up', due_on: '2026-10-01', status: 'open', owner: detail.deal.owner, hold_until: heldTasks ? '2027-01-01' : null }] }; },
+      next_actions: emptyAgenda ? [] : malformedTasks ? [null] : [{ id: `demo-task-${args.deal}`, description: 'Demo follow-up', due_on: ['d14', 'd20', 'd23'].includes(args.deal) ? '2026-09-30' : '2026-10-01', status: 'open', owner: detail.deal.owner, hold_until: heldTasks ? '2027-01-01' : null }] }; },
     'read-home-agenda': async () => {
       const board = await handlers['deal-room-board']();
       if (hangDetails) return new Promise(() => {});
@@ -494,6 +494,8 @@ test('R12 malformed tasks retain independent widgets and settled agenda reports 
   const { page, errors } = await open(t, { malformedTasks: true });
   await page.waitForFunction(() => document.querySelector('#refreshHome').getAttribute('aria-busy') === 'false');
   assert.match(await page.locator('#dealCounts').textContent(), /Active deals: \d/);
+  assert.match(await page.locator('#dealCounts').textContent(), /Overdue local deals: —/);
+  assert.match(await page.locator('#dealFlags').textContent(), /Overdue local deals unavailable/);
   assert.equal(await page.locator('#homeLeads').isVisible(), true);
   assert.match(await page.locator('#homeCalendar').textContent(), /unavailable|missing/i);
   assert.doesNotMatch(await page.locator('#homeCalendar').textContent(), /updating/i);
@@ -530,8 +532,10 @@ test('Home hides held tasks, ranks eligible arrivals, and links the full prospec
 test('held deal actions remain visible in the deal history reached from Home', async t => {
   const { page } = await open(t, { heldTasks: true });
   await page.waitForFunction(() => document.querySelector('#refreshHome').getAttribute('aria-busy') === 'false');
-  const href = await page.locator('#dealFlags a').first().getAttribute('href');
-  await page.goto('http://localhost' + href + '&mode=live');
+  assert.equal(await page.locator('#dealFlags a').count(), 0);
+  const href = await page.locator('#homePrimaryAction').getAttribute('href');
+  await page.goto('http://localhost' + href + '?mode=live');
+  await page.locator('.kanban-column [data-id="d14"] .card-open').click();
   await page.locator('.updates-history').waitFor();
   await page.locator('.updates-history').click();
   assert.ok(await page.getByText('Held until Jan 1, 2027', {exact:true}).count());
@@ -708,6 +712,7 @@ for (const width of [1440, 390]) test(`Home Overdue isolates missed work and ret
   assert.ok(!(await page.locator('#homeAgenda strong').allTextContents()).includes('Demo overdue-7'));
   assert.equal(await page.locator('.home-week').textContent(), week);
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+  await page.evaluate(() => { document.activeElement?.blur(); window.scrollTo(0, 0); });
   for (const theme of ['light', 'dark']) {
     await page.evaluate(value => document.documentElement.dataset.theme = value, theme);
     await screenshot(page, `overdue-${width}-${theme}`);

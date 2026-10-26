@@ -111,19 +111,19 @@ test('Home counts unique local deals using the agenda overdue membership and mar
     { id: 'local', name: 'Demo overdue local', owner: 'joe', next_date: '2026-10-02' },
     { id: 'partner', name: 'Demo partner', owner: 'dell' },
     { id: 'national', owner: 'joe', account_client_id: 'demo-account' },
-    { id: 'held', owner: 'joe' },
+    { id: 'held', owner: 'joe', next_step: 'Stale next step', next_date: '2026-08-01' },
     { id: 'parked', owner: 'joe', operating_state: 'parked' },
     { id: 'closed', owner: 'joe', phase: 'Closed' },
   ];
   const board = { actor: 'joe', deals };
   const details = new Map(deals.map(deal => [deal.id, { critical_dates: [], next_actions: [task(`${deal.id}-old`, '2026-08-20')] }]));
   details.get('local').next_actions.push(task('another-old', '2026-09-16'), task('done', '2026-08-01', { status: 'done' }));
-  details.get('held').next_actions = [task('held-old', '2026-08-01', { hold_until: '2026-10-02' }), task('today', '2026-10-01'), task('undated', null)];
+  details.get('held').next_actions = [task('held-old', '2026-08-01', { hold_until: '2026-10-02' }), task('today', '2026-10-01'), task('done-old', '2026-08-01', { status: 'done' }), task('undated', null)];
   const summary = scope => dealSnapshot(board, scope, agendaSnapshot(board, details, { scope, today: '2026-10-01' }));
   assert.deepEqual(summary('team').flagged.map(row => row.id), ['local', 'partner']);
   assert.deepEqual(summary('mine').flagged.map(row => row.id), ['local']);
   details.get('local').next_actions = [task('other-owner', '2026-08-20', { owner: 'dell' })];
-  assert.deepEqual(summary('mine').flagged, []);
+  assert.deepEqual(summary('mine').flagged, [], 'stale overdue next_date does not override completed, held, undated or today agenda work');
   details.delete('national');
   assert.deepEqual(summary('team').flagged.map(row => row.id), ['local', 'partner']);
   details.delete('local');
