@@ -2,7 +2,7 @@ import { offlineTourShell } from "./offline-tour-shell.mjs";
 import tarStream from "tar-stream";
 import { Readable } from "node:stream";
 import { UI_OUTPUT, UI_SOURCE, uiBundle } from "./ui-bundle.mjs";
-import { build } from "esbuild";
+import { build, transform } from "esbuild";
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { lstat, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
@@ -117,6 +117,10 @@ async function assembleArtifact(commit, paths, readSource) {
       const [tokens, shell] = await Promise.all([readSource("css/tokens.css"), readSource("css/app-shell.css")]);
       const inlinedShell = Buffer.from(shell.toString("utf8").replace('@import url("/css/tokens.css");\n', ""));
       content = Buffer.concat([tokens, Buffer.from("\n"), content, Buffer.from("\n"), inlinedShell]);
+    }
+    if (path === "tours/app.js") {
+      const result = await transform(content.toString("utf8"), { loader: "js", format: "esm", target: "es2022", minifyWhitespace: true, legalComments: "none" });
+      content = Buffer.from(result.code);
     }
     files.set(path, content);
     payload.push({ path, bytes: content.length, sha256: digest(content) });

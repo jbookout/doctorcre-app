@@ -1,11 +1,19 @@
-import test from 'node:test';
+import test, { before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdir } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { chromium, fixtureServer } from './browser-harness.mjs';
 import { detail, tourId } from './fixtures/tour-day.synthetic.mjs';
+import { buildArtifact } from '../scripts/artifact.mjs';
+
+const artifactDir = await mkdtemp(join(tmpdir(), 'doctorcre-print-'));
+before(() => buildArtifact({ root: fileURLToPath(new URL('../', import.meta.url)), outDir: artifactDir }));
+after(() => rm(artifactDir, { recursive: true, force: true }));
 
 test('the shared stylesheet keeps the Tour planner printable', async t => {
-  const server = await fixtureServer(); t.after(() => server.close());
+  const server = await fixtureServer({ root: join(artifactDir, 'site') }); t.after(() => server.close());
   const browser = await chromium.launch(); t.after(() => browser.close());
   const page = await browser.newPage();
   await page.goto(`${server.origin}/tours/index.html`);
@@ -15,7 +23,7 @@ test('the shared stylesheet keeps the Tour planner printable', async t => {
 });
 
 test('broker can print complete saved notes and the current draft without changing the tour', async t => {
-  const server = await fixtureServer(); t.after(() => server.close());
+  const server = await fixtureServer({ root: join(artifactDir, 'site') }); t.after(() => server.close());
   const browser = await chromium.launch(); t.after(() => browser.close());
   const page = await browser.newPage({ viewport: { width: 900, height: 900 } });
   const fixture = structuredClone(detail), posts = [], errors = [];
