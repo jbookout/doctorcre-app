@@ -6,7 +6,7 @@ import {dealHref} from '../js/home-dashboard-model.js';
 const root=new URL('../',import.meta.url);
 // A touch tablet: the iPad Mini portrait profile.
 const ipad={viewport:{width:768,height:1024},deviceScaleFactor:2,isMobile:true,hasTouch:true};
-async function open(t,{width=1440,device,link=false,reducedMotion='no-preference',fixtureDelayMs=0}={}) {
+async function open(t,{width=1440,device,link=false,reducedMotion='no-preference',fixtureDelayMs=0,noteOrder=false}={}) {
  const browser=await chromium.launch();t.after(()=>browser.close());
  const page=await browser.newPage({...(device?ipad:{viewport:{width,height:960}}),reducedMotion});
  const errors=[];page.on('pageerror',e=>errors.push(e.message));
@@ -21,12 +21,17 @@ async function open(t,{width=1440,device,link=false,reducedMotion='no-preference
  });
  await page.goto('http://localhost/deals');
  await waitForAsync(page, async()=> (await import('/js/pipeline.js')).state.deals.size>0);
- await page.evaluate(async()=>{
+ await page.evaluate(async noteOrder=>{
   const {state}=await import('/js/pipeline.js');const get=state.client.getDeal;
   window.timelineProbe={reads:0,fail:false,changed:false};
   state.client.getDeal=async (...args)=>{
    window.timelineProbe.reads++;if(window.timelineProbe.fail)throw new Error('Synthetic unavailable');
    const detail=await get(...args);if(args[0]!=='d14')return detail;
+   if(noteOrder) return {...detail,activities:[],thread:[
+    {id:'undated',kind:'note',actor:'joe',text:'Synthetic undated update'},
+    {id:'earlier',kind:'note',actor:'dell',at:'2026-10-01T12:00:00.000001Z',text:'Synthetic earlier update'},
+    {id:'latest',kind:'note',actor:'joe',at:'2026-10-01T07:00:00.000002-05:00',text:'Synthetic latest update. Landlord accepted the revised terms.'},
+   ]};
    return {...detail,deal:{...detail.deal,phase:'Legal',phase_started_on:{research:'2026-09-20',legal:'2026-10-03'}},lease:{id:'demo-lease',status:'current',commencement_on:'2026-11-01',expiration_on:'2031-10-31',source:'Demo abstract',evidence_ref:'Demo clause 3'},
     history:[{id:'p1',field:'phase',new_value:'research',recorded_at:'2026-09-20T12:00:00Z'},{id:'p2',field:'phase',new_value:'legal',recorded_at:'2026-10-03T12:00:00Z'}],
     critical_dates:[...detail.critical_dates.filter(d=>d.kind),{id:'loi',kind:'loi_expiry',due_on:window.timelineProbe.changed?'2026-10-09':'2026-10-05',source:'Demo contract',note:'Demo LOI clause 2'}],
@@ -36,7 +41,7 @@ async function open(t,{width=1440,device,link=false,reducedMotion='no-preference
      {id:'old',kind:'note',summary:'Demo historic entry',detail:'Original old entry',occurred_at:'2020-01-01T12:00:00Z'}],
     documents:[{id:'doc',prepared_at:'2026-10-03T12:00:00Z',note:'Demo revised lease entry. '+ 'Original document entry. '.repeat(20)}]};
   };
- });
+ },noteOrder);
  if(link) {
   // Follow the same exact href the Home flags and shared sidebar use.
   await page.evaluate(href=>{const a=document.createElement('a');a.href=href;a.id='homeDealFlag';a.textContent='Demo deal';document.body.append(a);},dealHref('d14'));
@@ -106,5 +111,20 @@ for (const theme of ['light','dark']) test(`phone phase labels are legible along
  assert.ok(labels.every(p=>p.labels.length>0),JSON.stringify(labels));
  assert.equal(new Set(labels.map(p=>p.top)).size,2,'dates stay visible in two rows');
  assert.equal(await page.locator('#recordPanel').evaluate(n=>n.scrollWidth<=n.clientWidth),true);
+ assert.deepEqual(errors,[]);
+});
+
+for(const width of [1440,390]) for(const theme of ['light','dark']) test(`newest update preview and recorded history at ${width} ${theme}`, async t=>{
+ const {page,errors}=await open(t,{width,noteOrder:true,reducedMotion:'reduce'});
+ await page.evaluate(theme=>document.documentElement.dataset.theme=theme,theme);
+ assert.equal(await page.getByLabel('Latest recorded update').textContent(),'Synthetic latest update. Landlord accepted the revised terms.');
+ await mkdir('out/test-artifacts/newest-updates',{recursive:true});
+ await page.locator('.deal-updates').scrollIntoViewIfNeeded();
+ await page.screenshot({path:`out/test-artifacts/newest-updates/preview-${width}-${theme}.png`});
+ await page.locator('.updates-history > summary').click();
+ assert.deepEqual(await page.locator('.deal-note').evaluateAll(rows=>rows.map(row=>row.dataset.id)),['latest','earlier','undated']);
+ assert.equal(await page.locator('.deal-note').last().locator('time').textContent(),'Date not recorded');
+ assert.equal(await page.locator('#recordPanel').evaluate(node=>node.scrollWidth<=node.clientWidth),true);
+ await page.locator('.deal-updates').screenshot({path:`out/test-artifacts/newest-updates/history-${width}-${theme}.png`});
  assert.deepEqual(errors,[]);
 });

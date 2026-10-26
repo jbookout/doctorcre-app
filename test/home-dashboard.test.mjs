@@ -13,9 +13,10 @@ const board = { schema_version: 'home-agenda.v1', actor: 'joe', deals: [
   { id: 'demo-d', name: 'Demo D', owner: 'joe', attention: true, phase: 'Closed' },
 ] };
 test('Home overdue list matches local board scope; team headline counts retain national accounts', () => {
-  const team = dealSnapshot(board, 'team', NOW);
+  const details = new Map(board.deals.map(deal => [deal.id, { critical_dates: [], next_actions: [{ id: `old-${deal.id}`, status: 'open', owner: deal.owner, due_on: '2026-09-30' }] }]));
+  const team = dealSnapshot(board, 'team', agendaSnapshot(board, details, { today: '2026-10-01' }));
   assert.deepEqual([team.active, team.national, team.inMarket, team.flagged.map(row => row.id)], [2, 1, null, ['demo-a']]);
-  const mine = dealSnapshot(board, 'mine', NOW);
+  const mine = dealSnapshot(board, 'mine', agendaSnapshot(board, details, { scope: 'mine', today: '2026-10-01' }));
   assert.deepEqual([mine.active, mine.national, mine.flagged.map(row => row.id)], [1, 0, ['demo-a']]);
   assert.equal(dealSnapshot({ ...board, actor: null }, 'mine'), null);
   assert.equal(dealSnapshot(null), null);

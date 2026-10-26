@@ -231,6 +231,18 @@ export function receiptInstant(recordedAt) {
   return Number.isFinite(ms) ? { ms, sub: nanos % 1e6 } : null;
 }
 
+export function compareInstants(a, b) {
+  const at = receiptInstant(a);
+  const bt = receiptInstant(b);
+  if (at && bt) {
+    if (at.ms !== bt.ms) return bt.ms - at.ms;
+    if (at.sub !== bt.sub) return bt.sub - at.sub;
+  } else if (at || bt) {
+    return at ? -1 : 1;
+  }
+  return 0;
+}
+
 /**
  * Newest first, on the same (recorded_at, id) key the server orders and
  * paginates by: instant, then the precision below a millisecond, then the
@@ -238,14 +250,8 @@ export function receiptInstant(recordedAt) {
  * placed sorts last rather than being guessed at.
  */
 export function compareReceipts(a, b) {
-  const at = receiptInstant(a?.recorded_at);
-  const bt = receiptInstant(b?.recorded_at);
-  if (at && bt) {
-    if (at.ms !== bt.ms) return bt.ms - at.ms;
-    if (at.sub !== bt.sub) return bt.sub - at.sub;
-  } else if (at || bt) {
-    return at ? -1 : 1;
-  }
+  const order = compareInstants(a?.recorded_at, b?.recorded_at);
+  if (order) return order;
   const ai = String(a?.event_id || '');
   const bi = String(b?.event_id || '');
   return ai < bi ? 1 : ai > bi ? -1 : 0;

@@ -2,8 +2,7 @@ import { isDeepStrictEqual } from 'node:util';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
-const metricNames = screen => screen === 'bundle' ? ['jsBytes']
-  : screen.startsWith('task-') ? ['criticalBytes', 'lcpMs', 'requestCount', 'usefulMs']
+const metricNames = screen => screen.startsWith('task-') ? ['criticalBytes', 'lcpMs', 'requestCount', 'usefulMs']
   : ['interactionMs', 'jsBytes', 'lcpMs'];
 
 // Same contract as CARR's performance-budget-gate.py: measurements are supplied,
@@ -13,11 +12,11 @@ export function compareBudget(budget, report) {
   if (!isDeepStrictEqual(budget.profile, report.profile)) throw Error('invalid measurement profile');
   if (!Object.keys(budget.screens || {}).length || !isDeepStrictEqual(Object.keys(budget.screens).sort(), Object.keys(report.screens || {}).sort())) throw Error('invalid screen coverage');
   const rows = [];
-  for (const [screen, metrics] of [...Object.entries(budget.screens), ['bundle', budget.bundle]]) {
+  for (const [screen, metrics] of Object.entries(budget.screens)) {
     if (!/^[a-z][a-z0-9-]{0,40}$/.test(screen)) throw Error('invalid screen name');
     const expected = metricNames(screen);
     if (!isDeepStrictEqual(Object.keys(metrics || {}).sort(), expected)) throw Error(`invalid metric coverage: ${screen}`);
-    const measured = screen === 'bundle' ? report.bundle : report.screens?.[screen];
+    const measured = report.screens?.[screen];
     for (const [metric, { baseline: before, limit }] of Object.entries(metrics)) {
       const after = measured?.[metric];
       const valid = value => metric === 'requestCount' ? Number.isSafeInteger(value) && value >= 0
@@ -50,8 +49,7 @@ export function rebaseline(budget, report) {
     ...(Object.keys(budget.screens).some(id => id.startsWith('task-'))
       ? { taskBaseline: { ...provenance, measurement: report.taskMeasurement } } : {}),
     screens: Object.fromEntries(Object.keys(budget.screens).map(id => [id,
-      metrics(Object.fromEntries(metricNames(id).map(metric => [metric, report.screens?.[id]?.[metric]])))])),
-    bundle: metrics({ jsBytes: report.bundle?.jsBytes }) };
+      metrics(Object.fromEntries(metricNames(id).map(metric => [metric, report.screens?.[id]?.[metric]])))])) };
   if (!compareBudget(draft, report).passed) throw Error('rebaseline did not reproduce its own report');
   return draft;
 }

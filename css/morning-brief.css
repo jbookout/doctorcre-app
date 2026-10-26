@@ -4,9 +4,8 @@
 .morning-brief { box-sizing: border-box; width: min(1100px, calc(100vw - 32px)); max-width: 1100px; max-height: calc(100dvh - 32px); padding: var(--space-6); border: var(--hairline-width) solid var(--hairline); border-radius: var(--panel-radius); background: var(--surface-1); color: var(--fg); box-shadow: var(--shadow-overlay); font: var(--font-size-2) / var(--line-height-body) var(--font-text); }
 .morning-brief[open] { animation: none; }
 .morning-brief::backdrop { background: var(--scrim); }
-.morning-brief header, .morning-brief header > div, .morning-toolbar { display: flex; align-items: center; gap: var(--space-3); }
+.morning-brief header, .morning-toolbar { display: flex; align-items: center; gap: var(--space-3); }
 .morning-brief header { justify-content: space-between; }
-.morning-brief header .doc-orb { display: inline-grid; place-items: center; width: var(--touch); height: var(--touch); border: var(--hairline-width) solid var(--hairline); border-radius: var(--radius-round); background: var(--surface-2); color: var(--accent-ink); font-size: var(--font-size-3); }
 .morning-brief h2, .morning-brief h3 { margin: 0; font-family: var(--font-text); font-weight: var(--font-weight-strong); line-height: var(--line-height-heading); }
 .morning-brief h2 { font-size: var(--font-size-4); }
 .morning-brief h3 { margin: var(--space-3) 0; color: var(--fg-muted); font-size: var(--font-size-1); }

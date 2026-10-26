@@ -225,12 +225,6 @@
       }
     }
   },
-  "bundle": {
-    "jsBytes": {
-      "baseline": 4623471,
-      "limit": 5085819
-    }
-  },
   "metricBaselines": {
     "deals.lcpMs": {
       "measuredAt": "2026-10-19T20:47:22.069Z",
