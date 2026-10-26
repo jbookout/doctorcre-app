@@ -12,7 +12,7 @@ after(()=>server?.close());
 async function open(t,width=1440){
   const browser=await chromium.launch();t.after(()=>browser.close());
   const page=await browser.newPage({viewport:{width,height:width===390?844:1000}}), errors=[], overrides=new Map(), calls=[];
-  page.on('pageerror',e=>errors.push(e.message));
+  page.on('pageerror',e=>errors.push(e.stack || e.message));
   await page.clock.install({time:new Date('2026-10-01T18:00:00Z')});await page.route('https://**',r=>r.abort());
   let fail=false,expired=false,writes=0,writeMode='saved';
   await page.route('**/api/v1/business/**',r=>{calls.push(r.request().url());return expired?r.fulfill({status:401,json:{error:'AUTHENTICATION_REQUIRED'}}):fail?r.fulfill({status:503,json:{error:'DEPENDENCY_UNAVAILABLE'}}):r.fulfill({json:directoryFixture(r.request().url(),{overrides})});});
