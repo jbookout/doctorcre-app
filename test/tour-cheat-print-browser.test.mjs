@@ -4,7 +4,7 @@ import { mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { chromium, fixtureServer } from './browser-harness.mjs';
+import { chromium, fixtureServer, pausedClock } from './browser-harness.mjs';
 import { detail, tourId } from './fixtures/tour-day.synthetic.mjs';
 import { buildArtifact } from '../scripts/artifact.mjs';
 
@@ -211,6 +211,7 @@ test('broker regenerates an editable internal sheet from the accepted itinerary 
   const server = await fixtureServer({ root: join(artifactDir, 'site') }); t.after(() => server.close());
   const browser = await chromium.launch(); t.after(() => browser.close());
   const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
+  await pausedClock(page, new Date('2026-10-26T13:00:00Z'));
   const fixture = structuredClone(detail), writes = [];
   const accepted = fixture.routes[0];
   accepted.stops.forEach(stop => { stop.locked_appointment = false; });
@@ -238,8 +239,6 @@ test('broker regenerates an editable internal sheet from the accepted itinerary 
   });
   await page.goto(`${server.origin}/tours/route-editor.html?tour=${tourId}`);
   await page.locator('#tour-panel').waitFor({ state: 'visible' });
-  await page.clock.install({ time: new Date('2026-10-26T12:00:00Z') });
-  await page.clock.pauseAt(new Date('2026-10-26T13:00:00Z'));
   await page.locator('#internal-cheat-sheet > summary').click();
   const editor = page.locator('#cheat-content');
   const regenerate = page.getByRole('button', { name: 'Regenerate from accepted itinerary', exact: true });
