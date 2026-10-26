@@ -42,6 +42,7 @@ export function itinerarySheetText(tour) {
   const route = tour?.routes?.find(row => row.accepted === true);
   const stops = route?.stops?.filter(stop => stop.stop_state === "active");
   if (!Number.isSafeInteger(route?.route_version) || !stops?.length) return "";
+  const omitted = route.stops.filter(stop => stop.stop_state === "held" || stop.stop_state === "excluded");
   const recorded = value => typeof value === "string" && value.trim() ? value : "Not recorded";
   const minutes = value => Number.isInteger(value) && value >= 0 ? `${value} minutes` : "Not recorded";
   return ["Internal only. Not for client distribution.", tourDisplayName(tour.name), `Accepted route version ${route.route_version}`,
@@ -53,6 +54,11 @@ export function itinerarySheetText(tour) {
       `Dwell: ${minutes(stop.dwell_minutes)}`,
       `Buffer: ${minutes(stop.buffer_minutes)}`,
     ].join("\n")),
+    ...(omitted.length ? ["Not on the active itinerary", ...omitted.map(stop => [
+      recorded(stop.property_name || stop.name),
+      `Status: ${stop.stop_state === "held" ? "Held" : "Excluded"}`,
+      `Address: ${recorded(stop.property_address || stop.address)}`,
+    ].join("\n"))] : []),
   ].join("\n\n");
 }
 
