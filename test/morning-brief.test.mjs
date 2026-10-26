@@ -133,6 +133,15 @@ test('exact record popup with original entry details and late-result guard',asyn
  state.root.getElementById('morningBack').click();assert.equal(state.root.querySelectorAll('[data-brief-record]').length,2);
  let release;state.client.getDeal=()=>new Promise(resolve=>release=resolve);state.root.querySelector('[data-brief-record]').click();state.root.getElementById('morningBack').click();release({deal:deal(),thread:[]});await new Promise(resolve=>setTimeout(resolve,10));assert.equal(state.root.querySelectorAll('[data-brief-record]').length,2);
 });
+test('brief header has no inert Doc emblem and keeps its heading and dismiss control',async t=>{
+ const state=setup(t);await state.ui.refresh();state.root.getElementById('docMorning').focus();await state.ui.open();
+ const dialog=state.root.querySelector('dialog');
+ assert.doesNotMatch(dialog.querySelector('header').textContent,/◍/);
+ assert.equal(state.root.getElementById('morningTitle').textContent,'Morning brief · Joe');
+ state.root.getElementById('morningClose').click();assert.equal(dialog.open,false);
+ assert.equal(state.root.activeElement,state.root.getElementById('docMorning'));
+ state.root.getElementById('docMorning').click();await state.ui.refresh();assert.equal(dialog.open,true);
+});
 test('brief stays readable without narration controls or speech calls, including a saved speech preference',async t=>{
  const state=setup(t,{storage:[['doctorcre:morning:joe',JSON.stringify({speech:true})]]});state.ui.dispose();const calls=[];
  state.win.SpeechSynthesisUtterance=class{constructor(text){this.text=text;}};state.win.speechSynthesis={speak:value=>calls.push(value),cancel:()=>calls.push('cancel')};

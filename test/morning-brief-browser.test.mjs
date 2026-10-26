@@ -57,11 +57,14 @@ test('live brief opens on request and wide record detail; desktop/phone renders,
  const state=await setup(t);const {page}=state;await state.goto();await page.locator('#docOpen[data-brief-unseen]').waitFor();assert.equal(await page.locator('#docMorningBrief').evaluate(node=>node.open),false);await page.locator('#docOpen').click();await page.locator('#docMorning').click();await page.locator('#docMorningBrief[open]').waitFor();
  await page.locator('[data-brief-record]').first().waitFor();assert.equal(await page.locator('[data-brief-record]').count(),3);assert.deepEqual(await page.locator('#docMorningBrief h3').allTextContents(),['Do first','Overnight','Today']);
  assert.doesNotMatch(await page.locator('#docMorningBrief').innerText(),/read from|records read|retry|Read again/);
+ assert.doesNotMatch(await page.locator('#docMorningBrief header').innerText(),/◍/);
+ assert.equal(await page.getByRole('heading',{name:'Morning brief · Joe',exact:true}).isVisible(),true);
 
  await snap(page,'brief-desktop');
  assert.ok(await page.locator('#docMorningBrief').evaluate(node=>node.getBoundingClientRect().width)>1000);
  await page.locator('[data-brief-record="0"]').click();await page.locator('.morning-record').waitFor();await page.locator('#morningContent summary').click();assert.match(await page.locator('#morningContent details[open]').innerText(),/Original synthetic entry/);await snap(page,'record-desktop');
  await page.locator('#morningBack').click();await page.setViewportSize({width:390,height:844});await snap(page,'brief-phone');
+ assert.doesNotMatch(await page.locator('#docMorningBrief header').innerText(),/◍/);
  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
  assert.equal(await page.locator('#docMorningBrief').evaluate(node=>node.scrollWidth<=node.clientWidth),true);
  await page.locator('[data-brief-record="0"]').click();await page.locator('.morning-record').waitFor();await snap(page,'record-phone');
