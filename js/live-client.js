@@ -1,3 +1,6 @@
+import { sessionFetch } from './private-session.js';
+import { PHASE_BY_SLUG } from './client.js';
+import { requireReviewReceipt } from './deal-review-model.js';
 /**
  * Live client: same interface as fixture, against the deployed Worker.
  * Verbs travel as MCP JSON-RPC tools/call over the cookie-authenticated /mcp
@@ -12,6 +15,7 @@ import { createMcpRequests, unknownMcpOutcome } from './mcp-requests.mjs';
 import { observeDocClient } from './doc-context.js';
 import { expandBoardRead } from './progress-board-model.js';
 import { createEngagementWriter } from './prospect-engagement.mjs';
+import { createRetainedCommands } from './retained-commands.mjs';
 
 // Verified pre-commit refusals from new-deal and its argument/subject checks
 // in CARR producer 0cc6fe2538a81521bf8c25b0df58aa4063ed614b. Internal and
@@ -32,16 +36,30 @@ const CREATION_REFUSALS = new Set([
 export function createLiveClient(opts = {}) {
   const baseUrl = (opts.baseUrl || '').replace(/\/$/, '');
   let selfActor = opts.selfActor || null;
-  const fetchImpl = opts.fetchImpl || ((path, init) => fetch(`${baseUrl}${path}`, init));
+  const fetchImpl = opts.fetchImpl || ((path, init) => sessionFetch(`${baseUrl}${path}`, init));
   const online = opts.online || (() => globalThis.navigator?.onLine !== false);
   const requestMcp = createMcpRequests({ fetchImpl, typedContent: false });
   const dealCreations = new Map();
   const fetchReadImpl = (path, init) => fetchRead(path, init, { fetchImpl, timeoutMs: opts.readTimeoutMs || 10_000 });
+  const commands = createRetainedCommands({ scope: () => selfActor });
+  const sessionCommands = createRetainedCommands({ scope: async () => {
+    const response = await fetchReadImpl('/auth/session', { credentials: 'same-origin', cache: 'no-store', headers: { accept: 'application/json' } });
+    if (!response.ok) throw Object.assign(new Error('Sign in again before checking this write.'), { status: response.status });
+    const session = await response.json();
+    if (typeof session?.actor?.slug !== 'string' || typeof session.csrf_token !== 'string' || !session.csrf_token)
+      throw new Error('The current session could not be verified. No write was sent.');
+    if (selfActor && selfActor !== session.actor.slug) throw Object.assign(new Error('Session changed. Reopen the record before writing.'), { code: 'session_changed' });
+    return `${session.actor.slug}:${session.csrf_token}`;
+  } });
+  const sessionWrites = new Set(['set-next-step', 'set-market-agent', 'set-national-account-owner', 'create-national-account',
+    'create-national-market-deal', 'start-deal-review', 'review-deal', 'end-deal-review',
+    'resolve-candidate', 'resolve-post-call-candidate', 'answer-work-request-for-joe', 'add-industry-event', 'update-industry-event',
+    'undo-call-change', 'review-call-outcome']);
 
   const rpc = (verb, args = {}, signal) => rawRpc(verb, args, signal, opts.readTimeoutMs || 10_000);
 
-  async function rawRpc(verb, args = {}, signal, timeoutMs) {
-    const outcome = await requestMcp(verb, args, { signal, timeoutMs });
+  async function rawRpc(verb, args = {}, signal, timeoutMs, headers) {
+    const outcome = await requestMcp(verb, args, { signal, timeoutMs, headers });
     if (outcome.kind === 'authorization' || outcome.reason === 'http') {
       const error = new Error(`live ${verb} -> HTTP ${outcome.status}`);
       error.status = outcome.status;
@@ -54,12 +72,13 @@ export function createLiveClient(opts = {}) {
       throw unknownMcpOutcome(outcome.cause);
     }
     const { payload, isError } = outcome;
-    if (isError) {
+    if (isError || (payload?.error && payload.ok !== true)) {
       const err = new Error(`live ${verb} refused: ${payload?.error || 'tool_error'}`);
       err.payload = payload;
       err.writeRefusal = verb === 'new-deal' && CREATION_REFUSALS.has(payload?.error);
       throw err;
     }
+    if (verb === 'start-deal-review') requireReviewReceipt(payload);
     return payload;
   }
 
@@ -71,8 +90,17 @@ export function createLiveClient(opts = {}) {
       error.payload = { error: 'offline' };
       throw error;
     }
-    const request = { ...args, idempotency_key: args.idempotency_key || uuidv4() };
-    return rawRpc(verb, request, undefined, timeoutMs);
+    // Existing command/form callers already retain their reviewed request.
+    // Keep those domain receipt contracts intact; cover the unretained paths
+    // and the old fallback that minted a different key on every attempt.
+    if (args.idempotency_key && !sessionWrites.has(verb)) return rawRpc(verb, args, undefined, timeoutMs);
+    const target = ['deal', 'candidate_id', 'account_client_id', 'event_id', 'human_ref', 'session_id',
+      'loop_id', 'conversation_id', 'suggestion_id', 'commission_id', 'board_id', 'client_id', 'field', 'projection_id']
+      .filter(key => args[key] !== undefined).map(key => [key, args[key]]);
+    const operationKey = JSON.stringify([verb, target]);
+    const retained = sessionWrites.has(verb) ? sessionCommands : commands;
+    return retained.send(operationKey, args, (request, binding) => rawRpc(verb, request, undefined, timeoutMs || opts.writeTimeoutMs || 10_000,
+      sessionWrites.has(verb) ? { 'x-carr-csrf': binding.slice(binding.indexOf(':') + 1) } : undefined));
   }
 
   // The record layer speaks phase SLUGS (deal_phase table); the board speaks
@@ -86,11 +114,7 @@ export function createLiveClient(opts = {}) {
   // record to a phase nobody chose (defect 5e355b84). Every slug now has its own
   // label and every label its own slug, so a round trip returns what it started
   // with.
-  const PHASE_TO_UI = {
-    pending: 'On Deck', research: 'Research', site_selection: 'Site selection',
-    negotiation: 'Negotiation', legal: 'Legal', due_diligence: 'Diligence',
-    closing: 'Closing', closed: 'Closed',
-  };
+  const PHASE_TO_UI = PHASE_BY_SLUG;
   const UI_TO_PHASE = {
     'On Deck': 'pending', 'Research': 'research', 'Site selection': 'site_selection',
     'Negotiation': 'negotiation', 'Legal': 'legal', 'Diligence': 'due_diligence',
@@ -142,6 +166,12 @@ export function createLiveClient(opts = {}) {
     // rebuilding it would be inventing one.
     async getInvoiceTracker({ signal } = {}) { return rpc('read-invoice-tracker', {}, signal); },
     async markInvoicePaid(args) { return write('record-commission-receipt', args, opts.writeTimeoutMs || 10_000); },
+    async getHomeAgenda({ signal } = {}) {
+      const agenda = await rpc('read-home-agenda', {}, signal);
+      selfActor = agenda.actor || selfActor;
+      return { ...agenda, deals: Array.isArray(agenda.deals) ? agenda.deals.map(dealToUi) : agenda.deals };
+    },
+
     async getBoard(options = {}) {
       const board = await rpc('deal-room-board', {
         workspace: options.workspace || 'all',
@@ -199,6 +229,7 @@ export function createLiveClient(opts = {}) {
         negotiation_rounds: page.negotiation_rounds || [],
         documents: page.documents || [],
         lease: page.lease ?? null,
+        checklist: page.checklist ?? null,
         schema_version: page.schema_version,
       };
     },
@@ -228,7 +259,7 @@ export function createLiveClient(opts = {}) {
       const res = await fetchReadImpl(`/api/v1/business/${dataset}/${id}`, {
         headers: { accept: 'application/json' }, credentials: 'same-origin', cache: 'no-store',
       });
-      if (!res.ok) throw new Error(`live business ${dataset} record -> HTTP ${res.status}`);
+      if (!res.ok) throw Object.assign(new Error(`live business ${dataset} record -> HTTP ${res.status}`), {status:res.status});
       return res.json();
     },
 
@@ -262,6 +293,18 @@ export function createLiveClient(opts = {}) {
 
     async resolvePostCallCandidate({ candidate_id, accept, idempotency_key }) {
       return write('resolve-post-call-candidate', { candidate_id, accept, idempotency_key });
+    },
+
+    async readCallOutcomes() {
+      return rpc('read-call-outcomes', {});
+    },
+
+    async undoCallChange({ candidate_id, base_version }) {
+      return write('undo-call-change', { candidate_id, base_version });
+    },
+
+    async reviewCallOutcome({ session_id }) {
+      return write('review-call-outcome', { session_id });
     },
 
     async getChanges(cursor, { signal, since } = {}) {
@@ -446,6 +489,11 @@ export function createLiveClient(opts = {}) {
     // Authenticated sponsor is resolved by CARR; callers cannot select a partner.
     async listFeatureSwitches({ signal } = {}) { return rpc('list-feature-switches', {}, signal); },
     async morningBrief({ signal } = {}) { return rpc('morning-brief', {}, signal); },
+    async morningBriefQueue(queue, {cursor,signal} = {}) {
+      if (!['today','loops','needs_joe','assurance_cadence'].includes(queue)) throw new Error('Unsupported morning queue.');
+      return rpc(queue === 'assurance_cadence' ? 'morning-assurance-queue' : 'morning-brief-queue',
+        {...(queue === 'assurance_cadence' ? {} : {queue}),...(cursor === undefined ? {} : {cursor})},signal);
+    },
 
     // ------------------------------------------------------------- triage
     // V5-UX-B01 — Home's This week. The verb takes no arguments, so none are

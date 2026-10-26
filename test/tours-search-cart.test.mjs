@@ -19,7 +19,8 @@ const property = { property_id: propertyId, name: "Medical Plaza", address: "100
   fact_as_of: "2026-09-01T00:00:00Z", entrance_verified: true, caveat: "Reviewed register entry." };
 
 test("Tour search and cart are bound to the merged CARR producer revision", () => {
-  assert.equal(contract.producer.source_commit, "e2e484b1933bfd63c10cc9a1b3350132948f6f74");
+  assert.equal(contract.producer.source_commit, "1df9b9936394164dd55e815f8a8bf69649508ccc");
+
   for (const operation of ["search-tour-properties", "read-tour-selection-cart", "append-tour-selection-cart-version"])
     assert.ok(contract.mcp_operations.includes(operation), `${operation} is missing from the interface`);
   for (const path of ["/api/tours/properties/search", "/api/tours/selection-cart"])
@@ -44,11 +45,11 @@ async function openApp(store, { refuseSave = false, conflictOnce = false, readFa
     if (path === "/api/tours/library") return response({ tours: [{ id: tourId, name: "Test Tour", status: "draft" }] });
     if (path.startsWith("/api/tours/detail")) {
       if (holdReload && calls.some(call => call.options.method === "POST")) await holdReload.promise;
-      return response({ id: tourId, name: "Test Tour", status: "draft", routes: [], ...detail });
+      return response({ id: tourId, name: "Test Tour", status: "draft", stops: [], routes: [], ...detail });
     }
     if (["/api/tours/route-version", "/api/tours/route-reorder", "/api/tours/route-accept", "/api/tours/cheat-sheet/autosave", "/api/tours/cheat-sheet/restore"].includes(path)) {
       if (holdSave) await holdSave.promise;
-      return response({});
+      return response({ ok: true, route_version_id: versionId, route_version_acceptance_id: versionId, cheat_sheet_revision_id: versionId });
     }
     if (path.startsWith("/api/tours/selection-cart?") && readFailsAfterSave && store.version) return response(null, 503);
     if (path.startsWith("/api/tours/selection-cart?")) return store.version ? response({ cart: { tour_id: tourId, selection_version_id: versionId,
@@ -352,9 +353,9 @@ test("a Save selection click while a save is in flight reuses it and the button 
 
 test("two immediate clicks on each versioned route or cheat-sheet write send one idempotency key", async () => {
   const detail = { route_version_id: versionId, route_version: 1, accepted_route_version: 0, route_acceptance_digest: `sha256:${"a".repeat(64)}`, stops: [],
-    cheat_sheet: { revision_number: 1, restore_revision_id: versionId } };
-  for (const [button, path, completed] of [["#save-route", "/api/tours/route-version", "Route version saved."], ["#reorder-route", "/api/tours/route-reorder", "Route version saved."],
-    ["#accept-route", "/api/tours/route-accept", "Route version accepted."], ["#save-sheet", "/api/tours/cheat-sheet/autosave", "Internal cheat sheet saved."], ["#restore-sheet", "/api/tours/cheat-sheet/restore", "Tour ready."]]) {
+    cheat_sheet: { revision_number: 1, content: {}, restore_revision_id: versionId } };
+  for (const [button, path, completed] of [["#save-route", "/api/tours/route-version", "Route version confirmed."], ["#reorder-route", "/api/tours/route-reorder", "Route version confirmed."],
+    ["#accept-route", "/api/tours/route-accept", "Route acceptance confirmed."], ["#save-sheet", "/api/tours/cheat-sheet/autosave", "Internal cheat sheet save confirmed."], ["#restore-sheet", "/api/tours/cheat-sheet/restore", "Sheet restoration confirmed."]]) {
     let releaseSave, releaseReload;
     const holdSave = { promise: new Promise(resolve => { releaseSave = resolve; }) };
     const holdReload = { promise: new Promise(resolve => { releaseReload = resolve; }) };
@@ -368,10 +369,10 @@ test("two immediate clicks on each versioned route or cheat-sheet write send one
     target.dispatchEvent(new app.window.MouseEvent("click", { bubbles: true }));
     await settle();
     assert.equal(writes().length, 1, `${button} sent more than one POST while saving`);
-    assert.equal(reloads().length, 1, `${button} reloaded before its POST completed`);
+    assert.equal(reloads().length, 2, `${button} must fresh-read once before its POST`);
     assert.equal(status.textContent, "Waiting for versioned write");
     releaseSave();
-    await waitFor(() => reloads().length === 2, `${button} did not reload after its POST`);
+    await waitFor(() => reloads().length === 3, `${button} did not reload after its POST`);
     target.dispatchEvent(new app.window.MouseEvent("click", { bubbles: true }));
     await settle();
     assert.equal(writes().length, 1, `${button} sent another POST while reloading`);
@@ -381,7 +382,7 @@ test("two immediate clicks on each versioned route or cheat-sheet write send one
     // open until the handler reports that both responses have been consumed.
     await waitFor(() => status.textContent === completed, `${button} did not finish its reload`);
     assert.equal(writes().length, 1, `${button} sent more than one POST`);
-    assert.equal(reloads().length, 2, `${button} did not finish exactly one reload`);
+    assert.equal(reloads().length, 3, `${button} did not finish exactly one fresh-read and one reload`);
     const keys = new Set(writes().map(call => JSON.parse(call.options.body).idempotency_key));
     assert.equal(keys.size, 1, `${button} sent ${keys.size} idempotency keys`);
   }

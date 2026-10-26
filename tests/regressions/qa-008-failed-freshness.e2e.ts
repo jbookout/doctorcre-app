@@ -18,6 +18,7 @@ for (const viewport of [{ width: 1440, height: 960 }, { width: 390, height: 844 
     const reject = async route => {
       if (route.request.url.includes('/api/v1/business/clients?')) refusedClientReads += 1;
       if (surface.name === 'Tours' ? route.request.url.includes('/api/tours/library')
+        : surface.name === 'Leads' ? route.request.url.includes('/api/system-work/session')
         : JSON.parse(route.request.postData || '{}').params?.name === 'deal-room-board') refusedReads += 1;
       if (retryGate) await retryGate;
       return route.fulfill({ status, json: { ok: false, error: status === 401 ? 'unauthorized' : 'temporarily_unavailable', code: status === 401 ? 'unauthorized' : 'temporarily_unavailable' } });
@@ -25,6 +26,17 @@ for (const viewport of [{ width: 1440, height: 960 }, { width: 390, height: 844 
     await browser.route('**/api/**', reject);
     await browser.route('**/mcp', reject);
     await app.open(surface.path);
+    if (status === 401 || status === 403) {
+      await expect(browser.locator('.app-shell-signed-out, #selfAvatar')).toHaveCount(0);
+      await expect(browser.locator('h1')).toHaveText('Session ended');
+      await expect(browser).toHaveURL('/public-shell/session-ended.html');
+      await expect(browser.locator('#leadBoard,.kanban-card,.tour-button')).toHaveCount(0);
+      await browser.unroute('**/api/**'); await browser.unroute('**/mcp');
+      await app.open(surface.path);
+      await expect(browser.locator('#selfAvatar')).toHaveText('J');
+      if (surface.name !== 'Tours') await expect(browser.locator(surface.freshness)).toContainText(/Updated/i);
+      return;
+    }
     await expect(browser.locator(failure)).toContainText(surface.settled);
     await expect(browser.locator(surface.freshness)).toContainText(/unavailable/i);
     await expect(browser.locator('.app-layout-status')).not.toContainText('Updating…');

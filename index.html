@@ -8,8 +8,9 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="/css/tokens.css">
-  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600&display=swap" rel="preload" as="style" data-font-stylesheet>
   <link rel="stylesheet" href="css/app.css">
+  <link rel="stylesheet" href="css/call-outcomes.css">
   <link rel="stylesheet" href="/css/correspondence.css">
   <link rel="icon" href="/icons/dealroom.svg" type="image/svg+xml">
   <link rel="manifest" href="manifest.webmanifest">
@@ -159,7 +160,7 @@
           <button type="button" class="secondary" data-call-mode-start="other_call">Start another call</button>
         </div>
         <button type="button" class="danger" id="callModeStop" hidden>Stop and process</button>
-        <p class="call-mode-note">Recording and transcription stay on this Mac. Short excerpts are checked by Jev to confirm the deal, the speaker, and the details. Nothing is written to a deal and no email draft is created until Joe or Dell approves that item.</p>
+        <p class="call-mode-note">Recording and transcription stay on this Mac. Short excerpts are checked by Jev to confirm the deal, the speaker, and the details. Next steps and phase moves stated plainly on a weekly pipeline call are applied to the deal and listed with Undo; anything unsettled waits for Joe or Dell. No email draft is created until Joe or Dell approves it.</p>
       </div>
       <p class="call-mode-permission" id="callModePermission" hidden></p>
       <section class="post-call" id="postCallPanel" aria-labelledby="postCallTitle" hidden>
@@ -168,7 +169,7 @@
           <button type="button" class="text-button post-call-refresh" id="postCallRefresh" aria-label="Refresh" title="Refresh"><span aria-hidden="true">↻</span></button>
         </header>
         <div class="post-call-status" id="postCallStatus" role="status" aria-live="polite"></div>
-        <div class="post-call-report" id="postCallReport"></div>
+        <div class="call-outcomes" id="postCallOutcomes" hidden></div><div class="post-call-report" id="postCallReport"></div>
       </section>
       <footer class="call-mode-footer"><a href="http://127.0.0.1:4682/" target="_blank" rel="noopener" id="callModeStandalone" hidden>Open standalone local controller</a></footer>
     </article>

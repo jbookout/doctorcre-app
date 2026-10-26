@@ -15,15 +15,10 @@
   <header class="planner-header tours-heading"><h1>Tours</h1><div data-layout-slot="status" class="freshness"><time id="planner-updated">Updating…</time><button data-layout-refresh id="planner-refresh" aria-label="Refresh tours" title="Refresh tours" type="button">↻</button></div></header>
   <main class="planner-grid">
     <section class="card territory-card" aria-labelledby="territory-heading">
-      <div class="territory-heading"><h2 id="territory-heading">Territory</h2><span class="territory-caption">Gulf Coast</span></div>
-      <svg class="territory-map" viewBox="0 0 1100 230" role="img" aria-labelledby="map-title map-description">
-        <title id="map-title">Alabama and Florida Panhandle territory</title><desc id="map-description">Schematic coastline with market positions. Use the market buttons to choose an area. This overview has no property or navigation pins.</desc>
-        <path class="territory-land" d="M40 0H1060V132L1010 135 971 146 947 137 920 120 869 127 832 155 802 163 776 154 758 130 732 124 707 131 680 120 633 123 602 134 572 131 545 120 500 127 475 144 462 143 466 112 450 103 435 108 439 144 417 156 391 151 365 144 347 128 308 130 282 140 258 149 231 143 203 153 176 147 163 128 151 101 139 108 148 140 140 167 103 174 89 157 73 135 40 138Z"/>
-        <path class="territory-state-line" d="M310 0V113H560"/><path class="territory-coast" d="M40 138L73 135 103 174 140 167 148 140 176 147 203 153 258 149 308 130 365 144 417 156 439 144 475 144 500 127 545 120 602 134 633 123 680 120 732 124 758 130 802 163 832 155 869 127 920 120 947 137 971 146 1010 135 1060 132"/>
-        <g class="map-market"><circle cx="121" cy="93" r="5"/><text x="103" y="78">Mobile</text><circle cx="310" cy="121" r="5"/><text x="273" y="103">Pensacola</text><circle cx="544" cy="106" r="5"/><text x="498" y="86">Fort Walton / Destin</text><circle cx="795" cy="144" r="5"/><text x="761" y="121">Panama City</text><circle cx="970" cy="84" r="5"/><text x="932" y="65">Tallahassee</text></g>
-        <text class="map-water" x="470" y="205">Gulf of Mexico</text><text class="map-state" x="126" y="28">Alabama</text><text class="map-state" x="690" y="33">Florida</text>
-      </svg>
+      <div class="territory-heading"><h2 id="territory-heading">Territory</h2><span class="territory-caption">Gulf Coast</span><button id="show-territory" type="button" aria-expanded="false" aria-controls="planner-territory">Show territory</button></div>
       <div class="market-buttons" aria-label="Choose search area"><button type="button" data-market="Mobile, AL" aria-pressed="false">Mobile</button><button type="button" data-market="Pensacola, FL" aria-pressed="false">Pensacola</button><button type="button" data-market="Fort Walton Beach / Destin, FL" aria-pressed="false">Fort Walton / Destin</button><button type="button" data-market="Panama City, FL" aria-pressed="false">Panama City</button><button type="button" data-market="Tallahassee, FL" aria-pressed="false">Tallahassee</button></div>
+      <div id="planner-territory" class="territory-map" role="region" aria-label="Census territory context" hidden></div>
+      <p id="territory-status" class="capability-note" role="status" hidden>Market context only. US Census 2025 geography; no property or navigation pins.</p>
     </section>
     <section class="card plan-card" aria-labelledby="plan-title">
       <div class="widget-heading"><h2 id="plan-title">Plan a tour</h2><button id="plan-undo" aria-label="Undo tour edit" title="Undo tour edit" disabled type="button">↶</button></div>

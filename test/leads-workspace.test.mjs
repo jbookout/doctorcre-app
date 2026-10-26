@@ -13,8 +13,49 @@ async function setup(overrides={},mapFactory=async()=>({update(){},dispose(){}})
  const app=mountLeadsWorkspace(d,client,{mapFactory});await tick();
  return{dom,w,d,app,client,board,writes,setActor:a=>{actor=a},close:()=>{app.dispose();w.close()}};
 }
-test('board renders six full columns, five hottest, quiet IDs/scores and timestamps; filter-only archive',async()=>{
- const s=await setup();try{assert.equal(s.d.querySelectorAll('[data-stage]').length,6);assert.equal(s.d.querySelectorAll('.hot-row').length,5);assert.equal(s.d.querySelectorAll('.lead-card').length,14);
+test('territory reveal coalesces repeated activation while filters remain usable',async()=>{
+ let ready,calls=0;const updates=[];
+ const s=await setup({},()=>{calls++;return new Promise(resolve=>{ready=()=>resolve({update:groups=>updates.push(groups),dispose(){}})})});
+ try{
+  assert.equal(calls,0);
+  const button=s.d.getElementById('showTerritory');button.click();button.click();
+  assert.equal(calls,1);
+  const select=s.d.getElementById('marketFilter');select.value='Mobile, AL';select.dispatchEvent(new s.w.Event('change'));
+  const before=[...s.d.querySelectorAll('#leadBoard .lead-card')].map(node=>node.dataset.leadId);
+  ready();await tick();button.click();await s.app.refresh();
+  assert.equal(calls,1);assert.equal(select.value,'Mobile, AL');
+  assert.deepEqual([...s.d.querySelectorAll('#leadBoard .lead-card')].map(node=>node.dataset.leadId),before);
+  assert.ok(updates.length>0);assert.ok(updates.at(-1).every(group=>group.key==='Mobile, AL'));
+ }finally{s.close()}
+});
+test('failed territory reveal keeps the market filters and lead list usable',async()=>{
+ const s=await setup({},async()=>{throw new Error('Synthetic map failure')});
+ try{
+  s.d.getElementById('showTerritory').click();await tick();
+  assert.match(s.d.getElementById('territoryMap').textContent,/Map unavailable/);
+  const select=s.d.getElementById('marketFilter');select.value='Mobile, AL';select.dispatchEvent(new s.w.Event('change'));
+  assert.ok(s.d.querySelectorAll('#leadBoard .lead-card').length>0);
+  s.d.querySelector('#mapLeadMembers button').click();await tick();
+  assert.equal(s.d.getElementById('leadDetail').open,true);
+  assert.match(s.d.querySelector('.lead-location').textContent,/Location not checked/);
+ }finally{s.close()}
+});
+test('territory completion after workspace disposal releases the renderer',async()=>{
+ let ready,disposed=0;const s=await setup({},()=>new Promise(resolve=>{ready=()=>resolve({dispose(){disposed++},update(){throw new Error('disposed view updated')}})}));
+ try{s.d.getElementById('showTerritory').click();s.app.dispose();ready();await tick();assert.equal(disposed,1)}finally{s.close()}
+});
+test('a remounted workspace reveals territory without starting the disposed workspace map',async()=>{
+ let oldCalls=0,newCalls=0,remounted;
+ const s=await setup({},async()=>{oldCalls++;return{update(){},dispose(){}}});
+ try{
+  s.app.dispose();
+  remounted=mountLeadsWorkspace(s.d,s.client,{mapFactory:async()=>{newCalls++;return{update(){},dispose(){}}}});await tick();
+  s.d.getElementById('showTerritory').click();await tick();
+  assert.equal(oldCalls,0);assert.equal(newCalls,1);
+ }finally{remounted?.dispose();s.close()}
+});
+test('board renders six bounded columns, five hottest, quiet IDs/scores and timestamps; filter-only archive',async()=>{
+ const s=await setup();try{assert.equal(s.d.querySelectorAll('[data-stage]').length,6);assert.equal(s.d.querySelectorAll('.hot-row').length,5);assert.equal(s.d.querySelectorAll('.lead-card').length,10);
  assert.match(s.d.getElementById('searchUpdated').textContent,/Oct 1/);assert.match(s.d.querySelector('.lead-card .lead-market').textContent,/Pensacola, FL/);assert.equal(s.d.querySelector('.lead-card .party-id'),null);assert.match(s.d.querySelector('.stage-column[data-stage="opportunity"]').textContent,/Opportunity/);assert.match(s.d.querySelector('.auto-move').textContent,/Moved by Doc: reply received 10\/1/);
  const select=s.d.getElementById('stageFilter');select.value='archived';select.dispatchEvent(new s.w.Event('change'));assert.equal(s.d.querySelectorAll('[data-stage]').length,0);assert.equal(s.d.querySelectorAll('.lead-card').length,1);
  }finally{s.close()}
@@ -31,8 +72,44 @@ test('empty stage columns say so in words',async()=>{
  try{assert.equal(s.d.querySelector('.stage-column[data-stage="engaged"] .stage-empty').textContent,'No leads in Engaged');}finally{s.close()}
 });
 test('card opens wide details with original entries; polling preserves expanded details',async()=>{
- const s=await setup();try{s.d.querySelector('.lead-card').click();await tick();assert.equal(s.d.getElementById('leadDetail').open,true);assert.match(s.d.getElementById('detailBody').textContent,/Contact.*Market.*Vertical.*Plans.*Correspondence.*Stage history/s);
+ const s=await setup();try{s.d.querySelector('.lead-card').click();await tick();assert.equal(s.d.getElementById('leadDetail').open,true);assert.match(s.d.getElementById('detailBody').textContent,/Contact.*Market.*Vertical.*Plans.*Captured correspondence.*Stage history/s);
  const original=s.d.querySelector('#detailBody details');original.open=true;await s.app.refresh();assert.equal(s.d.querySelector('#detailBody details').open,true);
+ }finally{s.close()}
+});
+for (const interruption of ['visibility', 'bfcache']) test(`Lead resumes the same eligible record and reading position after ${interruption}`,async()=>{
+ const s=await setup();let release,releaseDetail;try{
+  await s.app.readDetail(id(1));const expanded=s.d.querySelector('#detailBody details');expanded.open=true;
+  const key=expanded.dataset.entryKey;s.d.getElementById('leadDetail').scrollTop=173;
+  s.client.getActor=()=>new Promise(resolve=>release=resolve);
+  s.client.getLeadDetail=()=>new Promise(resolve=>releaseDetail=resolve);
+  if(interruption==='visibility'){
+   Object.defineProperty(s.d,'visibilityState',{value:'hidden',configurable:true});s.d.dispatchEvent(new s.w.Event('visibilitychange'));
+   Object.defineProperty(s.d,'visibilityState',{value:'visible',configurable:true});s.d.dispatchEvent(new s.w.Event('visibilitychange'));
+  }else{s.w.dispatchEvent(new s.w.PageTransitionEvent('pagehide',{persisted:true}));s.w.dispatchEvent(new s.w.PageTransitionEvent('pageshow',{persisted:true}));}
+  await tick();assert.equal(s.d.getElementById('leadDetail').open,false);assert.equal(s.d.getElementById('detailBody').textContent,'');
+  assert.equal(s.d.querySelectorAll('.lead-card').length,0);
+  release('example-partner');await tick();assert.equal(typeof releaseDetail,'function');
+  assert.doesNotMatch(s.d.getElementById('detailBody').textContent,/example@example.test/);
+  releaseDetail({detail:{...detail(s.board.leads[0]),phone:'+1-555-010-0099'}});await tick();
+  assert.equal(s.d.querySelector('#detailBody a[href="tel:+1-555-010-0099"]').textContent,'+1-555-010-0099');
+  assert.equal(s.d.getElementById('leadDetail').open,true);assert.match(s.d.getElementById('detailTitle').textContent,/Example 1/);
+  assert.equal(s.d.querySelector(`[data-entry-key="${key}"]`).open,true);assert.equal(s.d.getElementById('leadDetail').scrollTop,173);
+  assert.equal(s.d.querySelector('.lead-card[data-selected="true"]').dataset.leadId,id(1));assert.equal(s.writes.length,0);
+ }finally{release?.('example-partner');releaseDetail?.({detail:detail(s.board.leads[0])});s.close()}
+});
+for (const refusal of ['actor change','denied','vanished','ineligible']) test(`Lead resume forgets the record after ${refusal}`,async()=>{
+ const s=await setup();try{
+  await s.app.readDetail(id(1));
+  if(refusal==='actor change')s.setActor('another-example');
+  if(refusal==='denied')s.client.getActor=async()=>{throw Object.assign(new Error('denied'),{status:403})};
+  const lead=s.board.leads[0];
+  if(refusal==='vanished')s.board.leads.shift();
+  if(refusal==='ineligible')lead.client_id=id(888);
+  s.w.dispatchEvent(new s.w.PageTransitionEvent('pageshow',{persisted:true}));await tick();
+  assert.equal(s.d.getElementById('leadDetail').open,false);assert.equal(s.d.getElementById('detailBody').textContent,'');
+  s.setActor('example-partner');s.client.getActor=async()=> 'example-partner';
+  if(refusal==='vanished')s.board.leads.unshift(lead);delete lead.client_id;
+  await s.app.refresh();assert.equal(s.d.getElementById('leadDetail').open,false);assert.equal(s.writes.length,0);
  }finally{s.close()}
 });
 test('drag opens short evidence prompt, does not write before confirmation, commits exact version and evidence IDs',async()=>{
@@ -45,12 +122,13 @@ for(const finish of ['dragend','drop'])test(`map readiness preserves the native 
  let ready;const map={locate:()=>true,update(){},dispose(){}};
  const s=await setup({},()=>new Promise(resolve=>{ready=()=>resolve(map)}));
  try{
+  s.d.getElementById('showTerritory').click();
   const card=s.d.querySelector('.lead-card'),start=new s.w.Event('dragstart',{bubbles:true});
   start.dataTransfer={setData(){}};card.dispatchEvent(start);
   ready();await tick();
   assert.equal(card.isConnected,true,'map readiness must not replace the browser drag source');
   assert.equal(card.classList.contains('dragging'),true);
-  assert.equal(card.querySelector('.lead-location').textContent,'Checking location…');
+  assert.equal(card.querySelector('.lead-location').textContent,'Location not checked');
   const target=finish==='drop'?s.d.querySelector('[data-stage="engaged"]'):card;
   target.dispatchEvent(new s.w.Event(finish,{bubbles:true,cancelable:true}));
   if(finish==='drop')card.dispatchEvent(new s.w.Event('dragend',{bubbles:true}));
@@ -63,6 +141,7 @@ for(const finish of ['pointerup','pointercancel','lostpointercapture'])test(`map
  let ready;const map={locate:()=>true,update(){},dispose(){}};
  const s=await setup({},()=>new Promise(resolve=>{ready=()=>resolve(map)}));
  try{
+  s.d.getElementById('showTerritory').click();
   const card=s.d.querySelector('.lead-card'),handle=card.querySelector('[data-drag-handle]');
   const pointer=type=>{const event=new s.w.Event(type,{bubbles:true});Object.assign(event,{pointerId:1,clientX:0,clientY:0});handle.dispatchEvent(event)};
   pointer('pointerdown');ready();await tick();
@@ -89,7 +168,7 @@ test('Undo collects a human quote; Link removes card and Claim preserves New sta
  s.d.querySelector('#stageQuestions textarea').value='Synthetic reply was attributed to the wrong lead';
  await s.app.refresh();assert.equal(s.d.querySelector('#stageQuestions textarea').value,'Synthetic reply was attributed to the wrong lead');
  submit();await tick();assert.equal(s.writes[0].stage,'outreach_active');assert.equal(s.writes[0].l.base_version,1);assert.deepEqual(s.writes[0].review,{reason:'Undo automatic stage move',evidence_ids:[],undo_event_id:id(500),human_quote:'Synthetic reply was attributed to the wrong lead'});
- s.d.querySelector('[data-link]').click();await tick();assert.equal(s.d.querySelector(`#leadBoard [data-lead-id="${id(19)}"]`),null);
+ s.d.querySelector('[data-expand-stage="new"]').click();s.d.querySelector('[data-link]').click();await tick();assert.equal(s.d.querySelector(`#leadBoard [data-lead-id="${id(19)}"]`),null);
  s.d.querySelector('[data-claim]').click();await tick();assert.equal(s.board.leads[0].stage,'new');assert.equal(s.board.leads[0].owner,'example-partner');assert.equal(s.d.querySelector(`#hotLeads [data-lead-id="${id(1)}"]`),null);
  }finally{s.close()}
 });
@@ -267,11 +346,13 @@ test('blocking 2: shared transport clears private workspace on authorization hea
  for (const status of [401, 403]) for (const surface of ['actor', 'workspace', 'detail', 'review', 'mutation']) {
   const board = workspace(); let deny = false, bodyReads = 0;
   const client = createLeadBoardClient({ timeoutMs: 20, fetchImpl: async (_path, init) => {
-   const { name, arguments: args } = JSON.parse(init.body).params;
-   const denied = deny && (surface === 'mutation' ? name === 'update-lead' : surface === 'actor' ? name === 'deal-room-board' :
+   const session = _path === '/api/system-work/session';
+   const { name, arguments: args } = session ? { name: 'session', arguments: {} } : JSON.parse(init.body).params;
+   const denied = deny && (surface === 'mutation' ? name === 'update-lead' : surface === 'actor' ? session :
     name === 'lead-board' && (surface === 'workspace' ? !args.lead_id : Boolean(args.lead_id)));
    if (denied) return { ok: false, status, json: () => { bodyReads++; return new Promise(() => {}); } };
-   const payload = name === 'deal-room-board' ? { actor: 'example-partner' } :
+   if (session) return { ok: true, status: 200, json: async () => ({ actor: { slug: 'example-partner' } }) };
+   const payload =
     { ...board, ...(args.lead_id ? { detail: detail(board.leads.find(l => l.id === args.lead_id)) } : {}) };
    return { ok: true, status: 200, json: async () => ({ result: { content: [{ type: 'text', text: JSON.stringify(payload) }] } }) };
   } });
@@ -279,7 +360,7 @@ test('blocking 2: shared transport clears private workspace on authorization hea
   try {
    await s.app.readDetail(id(1));
    assert.match(s.d.getElementById('detailBody').textContent, /Contact/);
-   assert.equal(s.d.querySelectorAll('.lead-card').length, 14);
+   assert.equal(s.d.querySelectorAll('.lead-card').length, 10);
    if (surface === 'mutation') await s.app.openReview(id(1), 'engaged');
    deny = true;
    if (surface === 'mutation') {
@@ -414,7 +495,7 @@ test('blocking 11: removed owner and market selections normalize before filterin
  const s=await setup();try{
  const select=s.d.getElementById(filter);select.value=value;select.dispatchEvent(new s.w.Event('change'));assert.equal(s.d.querySelectorAll('.lead-card').length,1);
  if(key==='owner')s.board.leads.find(l=>l.owner===value).owner=null;else{const l=s.board.leads.find(l=>l.city==='Mobile');l.city='Pensacola';l.state='FL'}
- await s.app.refresh();assert.equal(select.value,'');assert.equal(s.app.state.filters[key],'');assert.equal(s.d.querySelectorAll('.lead-card').length,14);
+ await s.app.refresh();assert.equal(select.value,'');assert.equal(s.app.state.filters[key],'');assert.equal(s.d.querySelectorAll('.lead-card').length,10);
  }finally{s.close()}
  }
 });
@@ -476,7 +557,7 @@ test('detail polling keeps keyboard focus on the same expanded original entry',a
 test('a failed first read reconnects within seconds without waiting a full poll',async()=>{
  let reads=0;const s=await setup({getWorkspace:async()=>{if(++reads===1)throw Object.assign(new Error('offline'),{code:'network_error'});return structuredClone(workspace())}});
  try{assert.equal(s.d.querySelectorAll('.lead-card').length,0);assert.match(s.d.getElementById('leadBoardError').textContent,/Connection interrupted/);
-  await new Promise(r=>setTimeout(r,1_200));assert.equal(reads,2);assert.equal(s.d.querySelectorAll('.lead-card').length,14);assert.equal(s.d.getElementById('leadBoardError').hidden,true);assert.equal(s.writes.length,0);
+  await new Promise(r=>setTimeout(r,1_200));assert.equal(reads,2);assert.equal(s.d.querySelectorAll('.lead-card').length,10);assert.equal(s.d.getElementById('leadBoardError').hidden,true);assert.equal(s.writes.length,0);
  }finally{s.close()}
 });
 
@@ -508,13 +589,13 @@ for (const phase of ['identity', 'workspace']) test(`PR136 #1 resume during pend
   // The client ignores abort: a held transport must not delay replacement.
   assert.equal(actorReads, 2);
   assert.equal(workspaceReads, phase === 'identity' ? 1 : 2);
-  assert.equal(s.d.querySelectorAll('.lead-card').length, 14);
+  assert.equal(s.d.querySelectorAll('.lead-card').length, 10);
   assert.equal(s.d.getElementById('leadBoard').getAttribute('aria-busy'), 'false');
   assert.equal(s.d.getElementById('leadBoardError').hidden, true);
   release(phase === 'identity' ? 'stale-example-partner' : { leads: [] });
   await tick();
   assert.equal(s.app.state.actor, 'example-partner');
-  assert.equal(s.d.querySelectorAll('.lead-card').length, 14);
+  assert.equal(s.d.querySelectorAll('.lead-card').length, 10);
   assert.equal(s.writes.length, 0);
  } finally { release(phase === 'identity' ? 'example-partner' : workspace()); s.close(); }
 });
@@ -613,13 +694,14 @@ for (const failure of ['internal_error','unclassified_error']) test(`Leads activ
  Object.assign(row,{client_id:'synthetic-client',is_client:true,is_deal:true,prospect_client_id:'synthetic-client',
   prospect_client_version:7,prospect_engagement_status:'inactive'});
  const client=createLeadBoardClient({docContext:false,fetchImpl:async(_path,init)=>{
+  if (_path === '/api/system-work/session') return Response.json({actor:{slug:'example-partner'}});
   const {name,arguments:args}=JSON.parse(init.body).params;
   let payload,isError=false;
   if(name==='set-prospect-engagement-status'){
    writes.push(args);
    if(writes.length===1){payload={ok:false,error:failure};isError=true}
    else{row.prospect_engagement_status='active';row.prospect_client_version++;payload={ok:true}}
-  }else payload=name==='deal-room-board'?{actor:'example-partner'}:{...board,...(args.lead_id?{detail:detail(row)}:{})};
+  }else payload={...board,...(args.lead_id?{detail:detail(row)}:{})};
   return new Response(JSON.stringify({result:{isError,content:[{type:'text',text:JSON.stringify(payload)}]}}));
  }});
  const s=await setup(client);try{
@@ -695,5 +777,207 @@ test('Leads recovery reports the retained inactive target from pipeline',async()
   const form=s.d.getElementById('activateProspect');form.dispatchEvent(new s.w.Event('submit',{bubbles:true,cancelable:true}));await tick();
   assert.equal(s.d.getElementById('moveAnnouncement').textContent,'Prospect returned to Leads');
   assert.deepEqual(s.writes[1],s.writes[0]);
+ }finally{s.close()}
+});
+
+test('authenticated session controls claim identity and clears owner scope across sessions', async () => {
+ let actor = 'example-partner';
+ const board = { ...workspace(), actor: 'untrusted-board-actor' }, calls = [];
+ const client = createLeadBoardClient({ docContext: false, fetchImpl: async (path, init) => {
+  if (path === '/api/system-work/session') return Response.json({ actor: { slug: actor } });
+  const request = JSON.parse(init.body).params;
+  calls.push(request);
+  assert.notEqual(request.name, 'deal-room-board');
+  if (request.name === 'claim-lead') {
+   board.leads.find(row => (row.registry_ref || row.id) === request.arguments.lead).owner = request.arguments.expected_actor;
+   return Response.json({ result: { content: [{ type: 'text', text: '{"ok":true}' }] } });
+  }
+  const payload = { ...board, ...(request.arguments.lead_id ? { detail: detail(board.leads.find(row => row.id === request.arguments.lead_id)) } : {}) };
+  return Response.json({ result: { content: [{ type: 'text', text: JSON.stringify(payload) }] } });
+ } });
+ const s = await setup(client);
+ try {
+  assert.equal(s.app.state.actor, actor);
+  const owner = s.d.getElementById('ownerFilter');
+  owner.value = actor; owner.dispatchEvent(new s.w.Event('change'));
+  assert.equal(s.d.querySelectorAll('.lead-card').length, 1);
+  assert.equal(s.d.querySelector('.lead-card').dataset.leadId, id(20));
+  actor = 'another-example-partner';
+  await s.app.refresh();
+  assert.equal(s.app.state.actor, actor);
+  assert.equal(s.app.state.filters.owner, '');
+  assert.equal(owner.value, '');
+  s.d.querySelector(`[data-claim="${id(1)}"]`).click();
+  await tick();
+  const writes = calls.filter(call => call.name === 'claim-lead');
+  assert.equal(writes.length, 1);
+  assert.equal(writes[0].arguments.expected_actor, actor);
+  assert.equal(board.leads.find(row => row.id === id(1)).owner, actor);
+ } finally { s.close(); }
+});
+test('S2 submit rereads the reviewed lead and asks for review instead of overwriting a newer version',async()=>{
+ const s=await setup();try{
+  await s.app.openReview(id(1),'engaged');
+  const prior=s.app.state.proposal.lead.base_version;
+  s.board.leads[0].base_version++;
+  s.board.leads[0].notes='Newer partner context';
+  s.d.getElementById('stageForm').dispatchEvent(new s.w.Event('submit',{cancelable:true}));await tick();
+  assert.equal(s.writes.length,0);
+  assert.equal(s.app.state.pending,null);
+  assert.equal(s.app.state.proposal.lead.base_version,prior+1);
+  assert.match(s.d.getElementById('stageError').textContent,/changed.*review/i);
+  s.d.getElementById('stageForm').dispatchEvent(new s.w.Event('submit',{cancelable:true}));await tick();
+  assert.equal(s.writes.length,1);assert.equal(s.writes[0].l.base_version,prior+1);
+ }finally{s.close()}
+});
+
+test('S2 an unknown lead write retries the original version and key without refreshing its material',async()=>{
+ let reads=0,attempts=[];
+ const s=await setup({recordStage:async(l,stage,review,key)=>{attempts.push(structuredClone({l,stage,review,key}));if(attempts.length===1)throw Object.assign(new Error('lost reply'),{code:'unknown_outcome'});return{ok:true}}});
+ try{
+  const original=s.client.getLeadDetail;s.client.getLeadDetail=async lead=>{reads++;return original(lead)};
+  await s.app.openReview(id(1),'engaged');
+  s.d.getElementById('stageForm').dispatchEvent(new s.w.Event('submit',{cancelable:true}));await tick();
+  assert.equal(reads,2,'review read plus pre-submit read');
+  s.board.leads[0].base_version++;
+  const before=reads;s.d.getElementById('checkPending').click();await tick();
+  assert.equal(reads,before,'unknown replay does not fetch a replacement base version');
+  assert.deepEqual(attempts[1],attempts[0]);
+ }finally{s.close()}
+});
+
+test('S2 prospect activation checks the fresh client version before preparing an engagement request',async()=>{
+ const s=await setup();try{
+  const row=s.board.leads.find(l=>l.stage==='nurture_drip');Object.assign(row,{client_id:'synthetic-client',is_client:true,is_deal:true,prospect_client_id:'synthetic-client',prospect_client_version:7,prospect_engagement_status:'inactive'});
+  s.client.setProspectEngagementStatus=async args=>{s.writes.push(args);return{ok:true}};
+  await s.app.refresh();await s.app.readDetail(row.id);
+  const form=s.d.getElementById('activateProspect');form.elements.reason.value='Synthetic reviewed reason';row.prospect_client_version++;
+  form.dispatchEvent(new s.w.Event('submit',{bubbles:true,cancelable:true}));await tick();
+  assert.equal(s.writes.length,0);assert.match(s.d.getElementById('leadBoardError').textContent,/changed.*review/i);
+ }finally{s.close()}
+});
+
+for (const code of ['network_error', 'read_timeout']) test(`Slice A initial identity ${code} offers connection Retry without sign-in or writes`, async () => {
+ let failing = true, workspaceReads = 0;
+ const s = await setup({
+  getActor: async () => { if (failing) throw Object.assign(new Error('Synthetic connection failure'), { code }); return 'example-partner'; },
+  getWorkspace: async () => { workspaceReads++; return structuredClone(workspace()); },
+ });
+ try {
+  const box = s.d.getElementById('leadBoardError');
+  assert.match(box.textContent, /connection/i);
+  assert.doesNotMatch(box.textContent, /sign.in/i);
+  assert.equal(box.querySelector('a[href*="/auth/login"]'), null);
+  assert.equal(s.app.state.identityReady, false);
+  assert.equal(workspaceReads, 0);
+  assert.equal(s.d.querySelectorAll('.lead-card').length, 0);
+  failing = false;
+  const retry = [...box.querySelectorAll('button')].find(button => button.textContent === 'Retry');
+  assert.ok(retry, 'the failed read offers a local Retry action');
+  retry.click(); await tick();
+  assert.equal(s.app.state.identityReady, true);
+  assert.ok(s.d.querySelectorAll('.lead-card').length > 0);
+  assert.equal(box.hidden, true);
+  assert.equal(s.writes.length, 0);
+ } finally { s.close(); }
+});
+
+test('Chicago timestamps retain the business day and date-only move evidence never shifts',async()=>{
+ const s=await setup({getWorkspace:async()=>{const b=workspace();b.last_search_at='2026-10-24T01:00:00Z';b.leads[0].last_stage_move={automatic:true,from:'new',to:b.leads[0].stage,event_id:'demo-move',evidence_date:'2026-10-24',reason:'demo evidence'};return b;}});
+ try{
+  assert.match(s.d.getElementById('searchUpdated').textContent,/Oct 23, 8:00 PM/);
+  assert.match(s.d.querySelector('.auto-move').textContent,/10\/24/);
+  s.client.getLeadDetail=async()=>({detail:{...detail(s.board.leads[0]),correspondence:[{id:'demo-evening',kind:'email_in',occurred_at:'2026-01-24T01:00:00Z',summary:'Demo winter correspondence'}]}});
+  await s.app.readDetail(id(1));assert.match(s.d.querySelector('.correspondence time').textContent,/Jan 23, 7:00 PM/);
+ }finally{s.close();}
+});
+
+test('midnight occurrence timestamps convert to Chicago while midnight DATE evidence retains its date',async()=>{
+ const s=await setup({getWorkspace:async()=>{const b=workspace();b.leads[0].last_stage_move={automatic:true,from:'new',to:b.leads[0].stage,event_id:'demo-midnight',occurred_at:'2026-10-24T00:00:00Z',reason:'demo midnight event'};b.leads[1].last_stage_move={automatic:true,from:'qualified',to:b.leads[1].stage,event_id:'demo-date',evidence_date:'2026-10-24T00:00:00.000Z',reason:'demo DATE evidence'};return b;}});
+ try{const moves=[...s.d.querySelectorAll('.auto-move')].map(node=>node.textContent);assert.ok(moves.some(text=>/demo midnight event 10\/23/.test(text)));assert.ok(moves.some(text=>/demo DATE evidence 10\/24/.test(text)));}finally{s.close();}
+});
+
+test('captured correspondence names its limited coverage even when no entries are captured',async()=>{
+ const s=await setup({getLeadDetail:async l=>({detail:{...detail(workspace().leads.find(row=>row.id===l.id)),correspondence:[],stage_history:[],correspondence_coverage:'captured_entries_only',correspondence_page:{total:0,has_more:false,next_cursor:null},stage_history_page:{total:0,has_more:false,next_cursor:null}}})});
+ try{s.d.querySelector('.lead-card').click();await tick();
+  const body=s.d.getElementById('detailBody').textContent;
+  assert.match(body,/Captured correspondence/);
+  assert.match(body,/No captured correspondence/);
+  assert.match(body,/Other communication may not have been captured/);
+  assert.match(body,/Showing 0 of 0 captured entries/);
+  assert.match(body,/Showing 0 of 0 stage changes/);
+  assert.doesNotMatch(body,/No correspondence yet/);
+ }finally{s.close()}
+});
+
+for(const total of [100,101])test(`captured correspondence and stage history expose all ${total} entries with counts`,async()=>{
+ const rows=Array.from({length:total},(_,n)=>({id:id(1000+n),kind:'email_in',occurred_at:'2026-10-01T10:00:00Z',summary:`Synthetic captured entry ${n+1}`}));
+ const stages=Array.from({length:total},(_,n)=>({event_id:id(2000+n),mutation_order:String(total-n),occurred_at:'2026-10-01T10:00:00Z',prior_stage:'new',stage:'engaged',reason:`Synthetic stage change ${n+1}`}));
+ const cursor={occurred_at:rows[99].occurred_at,id:rows[99].id};const requests=[];
+ const s=await setup({getLeadDetail:async(l,args={})=>{
+  requests.push(args);const correspondence=rows.slice(args.correspondence_cursor?100:0,args.correspondence_cursor?200:100),stage_history=stages.slice(args.stage_history_cursor?100:0,args.stage_history_cursor?200:100);
+  return{detail:{...detail(workspace().leads.find(row=>row.id===l.id)),correspondence,stage_history,
+   correspondence_page:{total,has_more:total>100&&!args.correspondence_cursor,next_cursor:total>100&&!args.correspondence_cursor?cursor:null},
+   stage_history_page:{total,has_more:total>100&&!args.stage_history_cursor,next_cursor:total>100&&!args.stage_history_cursor?'2':null}}};
+ }});
+ try{s.d.querySelector('.lead-card').click();await tick();
+  assert.match(s.d.getElementById('detailBody').textContent,new RegExp(`Showing 100 of ${total} captured entries`));
+  assert.match(s.d.getElementById('detailBody').textContent,new RegExp(`Showing 100 of ${total} stage changes`));
+  if(total===100){assert.equal(s.d.querySelector('[data-load-history]'),null);return;}
+  s.d.querySelector('[data-load-history="correspondence"]').click();await tick();
+  assert.deepEqual(requests[1],{correspondence_cursor:cursor});
+  assert.equal(s.d.querySelectorAll('.correspondence > li').length,101);
+  assert.match(s.d.querySelector('.correspondence').textContent,/Synthetic captured entry 101/);
+  assert.match(s.d.getElementById('detailBody').textContent,/Showing 101 of 101 captured entries/);
+  s.d.querySelector('[data-load-history="stage_history"]').click();await tick();
+  assert.deepEqual(requests[2],{stage_history_cursor:'2'});
+  assert.equal(s.d.querySelectorAll('.history > li').length,101);
+  assert.match(s.d.querySelector('.history').textContent,/Synthetic stage change 101/);
+  assert.equal(s.d.querySelector('[data-load-history]'),null);
+  await s.app.refresh();
+  assert.equal(s.d.querySelectorAll('.correspondence > li').length,101);
+  assert.equal(s.d.querySelectorAll('.history > li').length,101);
+  const older=s.d.querySelector('.correspondence > li:last-child details');older.open=true;
+  s.w.dispatchEvent(new s.w.PageTransitionEvent('pagehide',{persisted:true}));
+  s.w.dispatchEvent(new s.w.PageTransitionEvent('pageshow',{persisted:true}));await tick();
+  assert.equal(s.d.querySelectorAll('.correspondence > li').length,101);
+  assert.equal(s.d.querySelectorAll('.history > li').length,101);
+  assert.equal(s.d.querySelector('.correspondence > li:last-child details').open,true);
+ }finally{s.close()}
+});
+
+test('history request forwards cursors through the authenticated lead-board contract and rejects malformed pages',async()=>{
+ const board=workspace(),row=board.leads[0],cursor={occurred_at:'2026-10-01T10:00:00Z',id:id(600)},sent=[];
+ let page={total:101,has_more:true,next_cursor:cursor};
+ const client=createLeadBoardClient({docContext:false,fetchImpl:async(_path,init)=>{
+  sent.push(JSON.parse(init.body).params);
+  return Response.json({result:{content:[{type:'text',text:JSON.stringify({...board,detail:{...detail(row),correspondence_page:page}})}]}});
+ }});
+ await client.getLeadDetail(row,{correspondence_cursor:cursor});
+ assert.deepEqual(sent[0],{name:'lead-board',arguments:{workspace:'leads',lead_id:row.id,correspondence_cursor:cursor}});
+ for(const malformed of [{total:-1,has_more:false,next_cursor:null},{total:101,has_more:true,next_cursor:null},{total:101,has_more:false,next_cursor:cursor}]){
+  page=malformed;await assert.rejects(()=>client.getLeadDetail(row),e=>e.code==='invalid_projection');
+ }
+});
+
+test('older history preserves captured entries on failure and ignores late responses after an actor switch',async()=>{
+ const initial={...detail(workspace().leads[0]),correspondence_page:{total:3,has_more:true,next_cursor:{occurred_at:'2026-09-30T12:00:00Z',id:id(601)}}};
+ let attempts=0,release;
+ const s=await setup({getLeadDetail:async(l,args={})=>{
+  if(!args.correspondence_cursor)return{detail:{...initial,id:l.id}};
+  attempts++;
+  if(attempts===1)throw new Error('Synthetic lost connection');
+  return new Promise(resolve=>{release=resolve});
+ }});
+ try{s.d.querySelector('.lead-card').click();await tick();
+  s.d.querySelector('[data-load-history="correspondence"]').click();await tick();
+  assert.equal(s.d.querySelectorAll('.correspondence > li').length,2);
+  assert.match(s.d.getElementById('detailBody').textContent,/Older entries unavailable. Try again./);
+  s.d.querySelector('[data-load-history="correspondence"]').click();await tick();
+  assert.equal(s.d.querySelector('[data-load-history="correspondence"]').disabled,true);
+  s.setActor('other-example-partner');await s.app.refresh();
+  release({detail:{...initial,correspondence:[{id:id(602),kind:'email_in',occurred_at:'2026-09-29T12:00:00Z',summary:'Synthetic old actor private entry'}],correspondence_page:{total:3,has_more:false,next_cursor:null}}});await tick();
+  assert.equal(s.d.getElementById('leadDetail').open,false);
+  assert.doesNotMatch(s.d.getElementById('detailBody').textContent,/old actor private entry/);
  }finally{s.close()}
 });

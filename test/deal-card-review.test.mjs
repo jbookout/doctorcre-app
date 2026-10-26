@@ -45,7 +45,10 @@ test('every deal snapshot opens with an empty Update above a concise overview an
   assert.equal(await page.locator('.deal-note').first().locator('time').getAttribute('datetime'),'2026-10-02T17:45:00Z');
   assert.equal(await page.locator('.timeline-chart').count(),0);
   assert.equal(await page.locator('[aria-label="Deal phases and timeline"]').count(),1);
-  assert.doesNotMatch(await page.locator('#recordPanel').textContent(),/threads unavailable|meeting evidence unavailable|not linked/i);
+  await page.locator('#panelEvidenceSection > summary').click();
+  await page.locator('[data-evidence-retry]').first().waitFor();
+  assert.match(await page.locator('#recordPanel').textContent(),/Threads unavailable/);
+  assert.equal(await page.locator('[data-evidence-retry]').count()>0,true);
   assert.equal(await page.locator('#recordPanel').evaluate(e=>e.scrollWidth<=e.clientWidth),true);
   await page.screenshot({path:new URL(`out/test-artifacts/deal-card-review/${width}-after.png`,root).pathname,animations:'disabled'});
   await page.locator('.deal-updates').scrollIntoViewIfNeeded();
@@ -112,7 +115,7 @@ test('deal review prioritizes cards, page tabs and Add deal in both themes and w
   const rails=await page.locator('.phase-rail li').evaluateAll(nodes=>nodes.map(n=>Math.round(n.getBoundingClientRect().top)));
   assert.equal(new Set(rails).size,width===390?2:1,'phase dates fit without horizontal scrolling');
   assert.ok((await page.locator('.deal-timeline').boundingBox()).height<(width===390?330:200),'phase timeline stays compact');
-  assert.equal(await page.locator('#panelContextOpen').isVisible(),false,'a name without a relationship does not advertise context');
+  assert.equal(await page.locator('#panelContextOpen').isVisible(),true,'linked context loads only when opened');
   assert.equal(await page.locator('#recordPanel').evaluate(n=>n.scrollWidth<=n.clientWidth),true);
   assert.deepEqual(errors,[]);
   await evidence('detail');
@@ -120,14 +123,17 @@ test('deal review prioritizes cards, page tabs and Add deal in both themes and w
 });
 
 
-test('phone timeline has one rail and unlinked snapshots hide context',async t=>{
+test('phone timeline has one rail and unlinked context opens an explicit empty state',async t=>{
  const {page}=await open(t,390);
 
  await t.test('compact rail',async()=>{
   const tops=await page.locator('.phase-rail li').evaluateAll(nodes=>nodes.map(n=>Math.round(n.getBoundingClientRect().top)));
   assert.equal(new Set(tops).size,2);
  });
- await t.test('no empty context',async()=>assert.equal(await page.locator('#panelContextOpen').isVisible(),false));
+ await t.test('explicit empty context',async()=>{
+  await page.locator('#panelContextOpen').click();
+  await page.getByText('No linked context recorded.',{exact:true}).waitFor();
+ });
 });
 
 
@@ -194,14 +200,15 @@ test('desktop board shows the full longest next step within three lines',async t
 });
 
 
-test('empty next steps leave cards and snapshots free of invented status text',async t=>{
+test('empty next steps flag the gap without inventing an action or due date',async t=>{
  const {page}=await open(t,390,{showDetail:false,nextStep:' \t\n '});
  const card=page.locator('.kanban-column [data-id="d14"]');
- assert.equal(await card.locator('.next-line').count(),0);
+ assert.equal(await card.getByText('Next step missing',{exact:true}).isVisible(),true);
  await card.locator('.card-open').click();
  await page.locator('#detailUpdateForm').waitFor();
  assert.equal(await page.getByLabel('Update',{exact:true}).inputValue(),'');
  assert.equal(await page.locator('.deal-current-action').count(),0);
+ assert.equal(await page.locator('.deal-opening-snapshot').getByText('Next step missing',{exact:true}).isVisible(),true);
  assert.equal(await page.locator('.deal-opening-snapshot time').count(),0,'a due date without an action stays omitted');
  assert.doesNotMatch(await page.locator('#recordPanel').textContent(),/Next step pending|Nothing needs you/i);
 });

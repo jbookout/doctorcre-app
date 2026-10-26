@@ -1,13 +1,17 @@
+import { sessionFetch } from './private-session.js';
 import { observeDocRead } from './doc-context.js';
 import { uuidv4 } from "./uuid.js";
 import { validateHumanRef } from "./system-work-view.js";
 import { readWithDeadline } from "./auto-refresh.mjs";
+import { createRetainedCommands } from './retained-commands.mjs';
 
 export function createSystemWorkClient(options = {}) {
-  const fetchImpl = options.fetchImpl || ((path, init) => fetch(path, init));
+  const fetchImpl = options.fetchImpl || ((path, init) => sessionFetch(path, init));
   const uuid = options.uuid || uuidv4;
   let session = null;
   let pendingReport = null;
+  const actions = createRetainedCommands({ newKey: uuid,
+    scope: () => session ? `${session.actor?.slug}:${session.csrf_token}` : null });
 
   async function decode(response) {
     const body = await response.json().catch(() => ({}));
@@ -36,10 +40,17 @@ export function createSystemWorkClient(options = {}) {
   }
 
   async function post(path, body, challenge) {
-    const response = await fetchImpl(path, { method: "POST", credentials: "same-origin",
-      headers: headers(challenge), body: JSON.stringify(body) });
-    const envelope = await decode(response);
-    return envelope.data ?? envelope;
+    return readWithDeadline(async signal => {
+      const response = await fetchImpl(path, { method: "POST", signal, credentials: "same-origin",
+        headers: headers(challenge), body: JSON.stringify(body) });
+      const envelope = await decode(response);
+      const data = envelope?.data ?? envelope;
+      const confirmed = envelope?.ok === true || data?.ok === true ||
+        (path.endsWith('/challenge') && typeof data?.challenge === 'string' && data.challenge) ||
+        (path.endsWith('/report') && typeof data?.human_ref === 'string' && /^WR-\d+$/.test(data.human_ref));
+      if (!confirmed) throw new Error('Write outcome unknown. The server did not return a valid receipt.');
+      return data;
+    }, { timeoutMs: options.writeTimeoutMs || 15_000 });
   }
 
   async function challenge(action, material) {
@@ -48,9 +59,41 @@ export function createSystemWorkClient(options = {}) {
 
   const withKey = (body) => ({ ...body, idempotency_key: body.idempotency_key || uuid() });
 
+  const actionPaths = { triage: 'triage', preparePlan: 'plan', acceptPlan: 'plan/accept',
+    proposeOutcome: 'outcomes', acceptOutcome: 'outcomes/accept' };
+  async function mutate(method, humanRef, body) {
+    const ref = validateHumanRef(humanRef);
+    return actions.send(ref, { ...body, action: method }, async retained => {
+      const { action, ...requestBody } = retained;
+      let confirmation;
+      if (action === 'acceptPlan' || action === 'acceptOutcome') {
+        const hash = action === 'acceptPlan' ? 'plan_hash' : 'feedback_hash';
+        const receipt = await challenge(action === 'acceptPlan' ? 'accept-ready-plan' : 'accept-outcome-feedback', {
+          human_ref: ref, base_version: requestBody.base_version,
+          [hash]: requestBody[hash], idempotency_key: requestBody.idempotency_key,
+        });
+        confirmation = receipt.challenge;
+      }
+      const result = await post(`/api/system-work/${ref}/${actionPaths[action]}`, requestBody, confirmation);
+      if (result?.ok === false || result?.error) throw Object.assign(new Error(result.message || 'Request refused'), { payload: result });
+      return { ok: true, data: result };
+    }).then(result => result.data);
+  }
+
   return {
     get session() { return session; },
     get pendingReport() { return pendingReport ? JSON.parse(JSON.stringify(pendingReport.request)) : null; },
+    pendingAction(humanRef) {
+      const retained = actions.pending(validateHumanRef(humanRef));
+      if (!retained) return null;
+      const { action, ...request } = retained;
+      return { method: action, request };
+    },
+    reconcileAction(humanRef) {
+      const pending = this.pendingAction(humanRef);
+      if (!pending) throw new Error('No unresolved action for this Work Request.');
+      return mutate(pending.method, humanRef, pending.request);
+    },
     bootstrap,
     async current() {
       return observeDocRead('systemCurrent', [], () => readWithDeadline(async signal => {
@@ -78,35 +121,22 @@ export function createSystemWorkClient(options = {}) {
       const signature = JSON.stringify(intent);
       if (pendingReport && pendingReport.signature !== signature)
         throw new Error("Reconcile the previous report before submitting a different concern.");
-      pendingReport ||= { signature, request: withKey(body) };
+      const binding = `${session?.actor?.slug}:${session?.csrf_token}`;
+      if (pendingReport && pendingReport.binding !== binding) throw new Error('Session changed. Reconcile this report in its original session.');
+      pendingReport ||= { signature, binding, request: structuredClone(withKey(body)), uncertain: false };
       try { return await post("/api/system-work/report", pendingReport.request); }
       catch (error) {
-        if (error.status >= 400 && error.status < 500 && error.status !== 408 && typeof error.payload?.error === "string" && error.payload.error) pendingReport = null;
+        if (error.status >= 400 && error.status < 500 && ![408,429].includes(error.status) &&
+          !(pendingReport.uncertain && [401,403].includes(error.status)) && typeof error.payload?.error === "string" && error.payload.error) pendingReport = null;
+        else pendingReport.uncertain = true;
         throw error;
       }
     },
     finishReport() { pendingReport = null; },
-    triage: (humanRef, body) => post(`/api/system-work/${validateHumanRef(humanRef)}/triage`, withKey(body)),
-    preparePlan: (humanRef, body) => post(`/api/system-work/${validateHumanRef(humanRef)}/plan`, withKey(body)),
-    async acceptPlan(humanRef, body) {
-      const ref = validateHumanRef(humanRef);
-      const requestBody = withKey(body);
-      const material = { action: "accept-ready-plan", human_ref: ref,
-        base_version: requestBody.base_version, plan_hash: requestBody.plan_hash,
-        idempotency_key: requestBody.idempotency_key };
-      const receipt = await challenge(material.action, { human_ref: ref,
-        base_version: requestBody.base_version, plan_hash: requestBody.plan_hash,
-        idempotency_key: requestBody.idempotency_key });
-      return post(`/api/system-work/${ref}/plan/accept`, requestBody, receipt.challenge);
-    },
-    proposeOutcome: (humanRef, body) => post(`/api/system-work/${validateHumanRef(humanRef)}/outcomes`, withKey(body)),
-    async acceptOutcome(humanRef, body) {
-      const ref = validateHumanRef(humanRef);
-      const requestBody = withKey(body);
-      const receipt = await challenge("accept-outcome-feedback", { human_ref: ref,
-        base_version: requestBody.base_version, feedback_hash: requestBody.feedback_hash,
-        idempotency_key: requestBody.idempotency_key });
-      return post(`/api/system-work/${ref}/outcomes/accept`, requestBody, receipt.challenge);
-    },
+    triage: (humanRef, body) => mutate('triage', humanRef, body),
+    preparePlan: (humanRef, body) => mutate('preparePlan', humanRef, body),
+    acceptPlan: (humanRef, body) => mutate('acceptPlan', humanRef, body),
+    proposeOutcome: (humanRef, body) => mutate('proposeOutcome', humanRef, body),
+    acceptOutcome: (humanRef, body) => mutate('acceptOutcome', humanRef, body),
   };
 }

@@ -1,3 +1,4 @@
+import { CHROMIUM_SAFETY_ARGS } from '../scripts/chromium-safety-args.mjs';
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { copyFile, mkdir, mkdtemp, readFile, rename, rm, writeFile, symlink } from "node:fs/promises";
@@ -11,12 +12,11 @@ import { buildArtifact, runCli, verifyArtifact } from "../scripts/artifact.mjs";
 
 const ROOT = fileURLToPath(new URL("../", import.meta.url));
 const COMMIT = "1".repeat(40);
-const trackedHtml = source => Buffer.from(source.toString("utf8").replace("<head>", '<head><script type="module" src="/js/error-tracking-entry.js"></script>'));
 
 test('finding 6: emitted public report shell reserves space beside the fixed rail', async t => {
   const outDir=await mkdtemp(join(tmpdir(),'doctorcre-report-layout-'));
   await buildArtifact({root:ROOT,outDir,commit:COMMIT});
-  const browser=await chromium.launch();t.after(()=>browser.close());
+  const browser=await chromium.launch({ args: [...CHROMIUM_SAFETY_ARGS] });t.after(()=>browser.close());
   const page=await browser.newPage({viewport:{width:820,height:900}});
   await page.route('**/*',async route=>{
     const url=new URL(route.request().url());
@@ -50,8 +50,8 @@ test("the static artifact rebuild is byte-for-byte reproducible", async () => {
   assert.equal(a.manifest.files.some((file) => file.path === "js/board-focus.mjs"), true);
   assert.equal(a.manifest.files.some((file) => file.path.startsWith("test/")), false);
   assert.equal(a.manifest.files.some((file) => file.path === "data/board-seed.json"), true);
-  assert.deepEqual(await readFile(join(first, "site", "workspace.html")), trackedHtml(await readFile(join(ROOT, "workspace.html"))));
-  assert.deepEqual(await readFile(join(first, "site", "control-room.html")), trackedHtml(await readFile(join(ROOT, "control-room.html"))));
+  assert.deepEqual(await readFile(join(first, "site", "workspace.html")), await readFile(join(ROOT, "workspace.html")));
+  assert.deepEqual(await readFile(join(first, "site", "control-room.html")), await readFile(join(ROOT, "control-room.html")));
   assert.equal(a.manifest.files.some((file) => file.path === "control-room.html"), true);
   assert.equal((await verifyArtifact(a.archive, a.archiveSha256)).manifest.files.some((file) => file.path === "control-room.html"), true);
   assert.deepEqual(await readFile(join(first, "site", "contracts", "lease-radar.v1.json")), await readFile(join(ROOT, "contracts", "lease-radar.v1.json")));
@@ -90,7 +90,7 @@ test("every contracted page including Doc activity is present in the deployment 
   for (const path of new Set(Object.values(routes.routes))) {
     assert.ok(verified.manifest.files.some(file => file.path === path), `missing deployed route: ${path}`);
     const source = await readFile(join(ROOT, path));
-    assert.deepEqual(await readFile(join(outDir, "site", path)), path.startsWith('reports/') ? source : trackedHtml(source));
+    assert.deepEqual(await readFile(join(outDir, "site", path)), source);
   }
 });
 
@@ -208,7 +208,7 @@ test('provider preparation replaces poisoned cache output with verified committe
   await writeFile(join(outDir,'site','workspace.html'), 'synthetic cache poison');
   await runCli(root,['prepare-deployment']);
   await assert.rejects(readFile(join(outDir,'site','marker.sh')), /ENOENT/);
-  assert.deepEqual(await readFile(join(outDir,'site','workspace.html')), trackedHtml(await readFile(join(root,'workspace.html'))));
+  assert.deepEqual(await readFile(join(outDir,'site','workspace.html')), await readFile(join(root,'workspace.html')));
 });
 
 test('provider preparation refuses missing, empty, fork and changed artifacts', async t => {
@@ -224,20 +224,14 @@ test('provider preparation refuses missing, empty, fork and changed artifacts', 
   await assert.rejects(runCli(root,['prepare-deployment']), /ENOENT/);
 });
 
-test("the shipped error bootstrap is self-contained and first on every signed-in page", async (t) => {
-  const outDir = await mkdtemp(join(tmpdir(), "doctorcre-error-bootstrap-"));
+test("the static artifact ships no unsupported diagnostic sender", async (t) => {
+  const outDir = await mkdtemp(join(tmpdir(), "doctorcre-no-diagnostics-"));
   t.after(() => rm(outDir, { recursive: true, force: true }));
   const built = await buildArtifact({ root: ROOT, outDir, commit: COMMIT });
-  const tracking = await readFile(join(outDir, "site", "js", "error-tracking.js"), "utf8");
-  assert.doesNotMatch(tracking, /\.json'|with \{ type/, "the browser never imports a contract the edge does not serve");
-  assert.ok(tracking.includes(`const contract = ${JSON.stringify(JSON.parse(await readFile(join(ROOT, "contracts", "runtime-errors.v1.json"), "utf8")))};`));
-  assert.match(await readFile(join(outDir, "site", "js", "error-tracking-entry.js"), "utf8"), new RegExp(`'${COMMIT}'`));
-  assert.deepEqual(built.manifest.runtime_errors.path, "contracts/runtime-errors.v1.json");
-  const bootstrap = '<script type="module" src="/js/error-tracking-entry.js"></script>';
+  assert.equal(built.manifest.runtime_errors, undefined);
+  assert.equal(built.manifest.files.some(file => /error-tracking/.test(file.path)), false);
   for (const file of built.manifest.files.filter(file => file.path.endsWith(".html"))) {
-    const html = await readFile(join(outDir, "site", file.path), "utf8");
-    if (file.path.startsWith("reports/")) assert.equal(html.includes(bootstrap), false, `${file.path} stays outside signed-in ingress`);
-    else assert.equal(html.indexOf("<script"), html.indexOf(bootstrap), `${file.path} must load the bootstrap before any other script`);
+    assert.doesNotMatch(await readFile(join(outDir, "site", file.path), "utf8"), /error-tracking/);
   }
 });
 

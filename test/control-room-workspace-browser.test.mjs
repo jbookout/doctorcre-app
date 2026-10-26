@@ -10,7 +10,7 @@ import { routeContract as routes } from "../js/routes.js";
 import { BOARD_ROUTE, boardIdFromPath } from '../js/progress-board-route.js';
 const root=new URL('../',import.meta.url);
 const reads={'list-feature-switches':'listFeatureSwitches','list-doc-suggestions':'listDocSuggestions','read-progress-board':'readProgressBoard','list-progress-boards':'listProgressBoards','unfinished-work':'unfinishedWork','incident-board':'incidentBoard','governance-queue':'governanceQueue','schedule-board':'scheduleBoard','work-request-card':'workRequestCard','deal-room-board':'getBoard','today-triage':'todayTriage','notification-feed':'notificationFeed','read-room-queue':'roomQueue','read-room':'roomTurns','read-session-identity':'sessionIdentity','list-my-codex-sessions':'codexSessions','current-work-item':'currentWorkItem','list-notifications':'listNotifications'};
-async function open(t,{width=1440,height=width===1440?1000:844,path='/control-room?mode=live&tab=boards',connectionsBad=false,countIncidentClicks=false,unboundBoard=false,boardUnpublished=false,emptyIncidents=false,extraBoard=false,theme='dark',snapshotData}={}){
+async function open(t,{width=1440,height=width===1440?1000:844,path='/control-room?mode=live&tab=boards',connectionsBad=false,countIncidentClicks=false,unboundBoard=false,boardUnpublished=false,emptyIncidents=false,extraBoard=false,theme='dark',snapshotData,unobservedSchedule=false}={}){
  const browser=await chromium.launch();t.after(()=>browser.close());
  const page=await browser.newPage({viewport:{width,height},timezoneId:'UTC',reducedMotion:'reduce'});
  await page.addInitScript(theme=>localStorage.setItem('doctorcre.visual-preferences',JSON.stringify({theme})),theme);
@@ -30,7 +30,7 @@ async function open(t,{width=1440,height=width===1440?1000:844,path='/control-ro
  });
  await page.clock.install({time:new Date('2026-10-02T12:00:00Z')});
  const fixture=await createFixtureClient({seedUrl:`data:application/json;base64,${Buffer.from(await readFile(new URL('data/board-seed.json',root))).toString('base64')}`});
- const errors=[],calls=[];const state={pr:17,title:'Demo dashboard refresh',spend:12.34,denied:false,approvalFailure:null,incidentState:'investigating',removeJobs:false,connectionsBad,dealStates:false,liveItems:[],boardFailure:null,scheduleFailure:false,scheduleUnknown:false,partialSchedule:false,duplicateJobs:false,bindingOnly:false,boardUnpublished,emptyAgents:false,emptySessions:false};page.on('pageerror',e=>errors.push(e.message));
+ const errors=[],calls=[];const state={pr:17,title:'Demo dashboard refresh',spend:12.34,denied:false,approvalFailure:null,incidentState:'investigating',removeJobs:false,connectionsBad,dealStates:false,liveItems:[],boardFailure:null,scheduleFailure:false,scheduleUnknown:false,partialSchedule:false,duplicateJobs:false,unobservedSchedule,bindingOnly:false,boardUnpublished,emptyAgents:false,emptySessions:false};page.on('pageerror',e=>errors.push(e.message));
  await page.route('**/*',async route=>{
   const request=route.request(),url=new URL(request.url());if(url.origin!=='http://localhost')return route.abort();
   if(url.pathname==='/mcp'){
@@ -48,6 +48,7 @@ async function open(t,{width=1440,height=width===1440?1000:844,path='/control-ro
    if(rpc.name==='list-progress-boards'&&extraBoard)payload.boards.push({...payload.boards[0],board_id:'demo-project',title:'Demo project board'});
    if(rpc.name==='read-progress-board'&&state.boardUnpublished)payload.snapshot=null;
    if(rpc.name==='incident-board'){if(emptyIncidents)Object.assign(payload,{incidents:[],count:0,by_severity:{},ready_to_close:0});else payload.incidents[0].state=state.incidentState;}
+   if(rpc.name==='schedule-board'&&state.unobservedSchedule)payload={...payload,overall_state:'unknown',sources:[{owner:'launchd',state:'read',count:1},{owner:'claude-code',state:'unknown',count:null},{owner:'cron',state:'unknown',count:null}],jobs:[{...payload.jobs[0],name:'Demo unobserved automation',state:'unknown',freshness:'unknown',last_run:null,next_due_at:null,next_due_basis:null}]};
    if(rpc.name==='schedule-board'&&state.scheduleUnknown){payload.overall_state='unknown';payload.jobs=[];payload.sources=payload.sources.map(row=>({...row,state:'unknown',count:null}));}
    if(rpc.name==='schedule-board'&&state.partialSchedule){payload.jobs=payload.jobs.filter(job=>job.owner===payload.sources[0].owner);payload.sources=payload.sources.map((source,i)=>i===0?source:{...source,state:'unknown',count:null});}
    if(rpc.name==='schedule-board'&&state.duplicateJobs){payload.jobs=payload.jobs.map((job,i)=>({...job,key:'same',next_due_at:payload.jobs[0].next_due_at,next_due_basis:payload.jobs[0].next_due_basis}));}
@@ -69,7 +70,7 @@ async function open(t,{width=1440,height=width===1440?1000:844,path='/control-ro
     payload.coverage.find(row=>row.source_ref==='mcp-server/src/tools.js').node_count+=extra.length;
    }
    if(state.longAtlasLabels&&result.body.nodes?.[0])Object.assign(result.body.nodes[0],{key:'demo-accept-portfolio-revision',title:'Demo human-only review: accept one exact immutable portfolio revision and preserve its current approval history.'});return route.fulfill({status:result.status,contentType:'application/json',body:JSON.stringify(result.body)});}
-  if(url.pathname==='/api/system-work/session')return route.fulfill({contentType:'application/json',body:JSON.stringify({actor:{slug:'joe'},csrf_token:'synthetic-test-token'})});
+  if(['/api/system-work/session','/auth/session'].includes(url.pathname))return route.fulfill({contentType:'application/json',body:JSON.stringify({actor:{slug:'joe'},csrf_token:'synthetic-test-token'})});
   if(url.pathname==='/app-release'&&state.denied)return route.fulfill({status:503,body:'{}'});
   if(url.pathname.startsWith('/api/')||url.pathname==='/app-release')return route.fulfill({contentType:'application/json',body:'{}'});
   const file=routes.routes[boardIdFromPath(url.pathname)?BOARD_ROUTE:url.pathname]||url.pathname.slice(1);
@@ -170,7 +171,7 @@ test('W7 automatic refresh updates PR, provider spend and open details without l
  await page.locator('#jobClose').click();await section(page,'tabConnections');await page.getByText('$18.50 · October 2026',{exact:true}).first().waitFor();
  assert.equal(await page.locator('[data-connection="grok"]').getAttribute('data-state'),'needs_reconnect');assert.equal(await page.locator('[data-device]').count(),2);
  await page.emulateMedia({reducedMotion:'no-preference'});await page.evaluate(()=>document.documentElement.dataset.motion='full');assert.equal(await page.locator('.connection-dot').first().evaluate(e=>getComputedStyle(e).animationName),'none');assert.equal(await page.locator('[data-connection="grok"] .connection-dot').evaluate(e=>getComputedStyle(e).borderRadius),'1px');await page.emulateMedia({reducedMotion:'reduce'});assert.equal(await page.locator('.connection-dot').first().evaluate(e=>getComputedStyle(e).animationName),'none');
- state.denied=true;await advanceRoom(page,15001);await page.waitForFunction(()=>document.querySelector('[data-connection="claude"]').dataset.state==='unknown');assert.equal(await page.locator('[data-device]').count(),0);assert.match(await page.locator('#devicesState').textContent(),/unavailable/);
+ state.denied=true;await page.clock.runFor(15001);await page.waitForURL('**/public-shell/session-ended.html');assert.equal(await page.locator('[data-device],#jobDialog').count(),0);
 });
 for(const width of [1440,390])test(`W7 calendar defaults and integrated automation list at ${width}px`,async t=>{
  const {page,errors}=await open(t,{width});await section(page,'tabAutomations');await page.waitForSelector('.calendar-day');assert.equal(await page.locator('.calendar-day').count(),31);
@@ -268,9 +269,25 @@ for(const failure of [503,403,'unpublished'])test(`PR132 #1: board ${failure} re
  const {page,state}=await open(t,{path:'/control-room?mode=live&tab=boards&board=demo-project',unboundBoard:true});
  const card=page.locator('#board-stages .board-card').first();await card.waitFor();await card.click();await page.waitForFunction(()=>document.querySelector('#jobDialog').open);
  assert.match(await page.locator('#jobBody .work-lineage dl > div').filter({hasText:'Work Request'}).textContent(),/Work Request.*Not linked/);
- if(failure==='unpublished')state.boardUnpublished=true;else state.boardFailure=failure;await page.locator('#board-retry').evaluate(button=>button.click());await page.waitForFunction(failure=>failure==='unpublished'?document.querySelector('#board-meta').dataset.readState==='unpublished':document.querySelector('#board-error').hidden===false,failure);
+ if(failure==='unpublished')state.boardUnpublished=true;else state.boardFailure=failure;await page.locator('#board-retry').evaluate(button=>button.click());
+ if(failure===403){await page.waitForURL('**/public-shell/session-ended.html');assert.equal(await page.locator('#jobDialog,.board-card').count(),0);return;}
+ await page.waitForFunction(failure=>failure==='unpublished'?document.querySelector('#board-meta').dataset.readState==='unpublished':document.querySelector('#board-error').hidden===false,failure);
  if(failure!==503){assert.equal(await page.locator('#jobDialog').evaluate(node=>node.open),false);assert.equal(await page.locator('#jobBody').textContent(),'');}
  else {assert.match(await page.locator('#jobBody').textContent(),/Source unavailable.*Last-known/);await page.locator('#jobClose').click();await card.click();assert.match(await page.locator('#jobBody').textContent(),/Source unavailable.*Last-known/);}
+});
+for(const width of [1440,390])test(`current schedule owners open unknown job details at ${width}px`,async t=>{
+ const {page,errors}=await open(t,{width,path:'/control-room?tab=automations',unobservedSchedule:true});
+ const job=page.locator('#automationUndated').getByRole('button',{name:'Demo unobserved automation',exact:true});
+ await job.waitFor({timeout:5000});
+ assert.match(await job.textContent(),/Next time unavailable/);
+ assert.match(await page.locator('#automationState').textContent(),/unavailable/i);
+ await job.click();await page.waitForFunction(()=>document.querySelector('#jobDialog').open);
+ assert.equal(await page.locator('#jobTitle').textContent(),'Demo unobserved automation');
+ const out=new URL('out/test-artifacts/staging-automations/',root);await mkdir(out,{recursive:true});
+ await page.screenshot({path:new URL(`unknown-job-${width}.png`,out).pathname});
+ await page.getByRole('button',{name:'Close job details',exact:true}).click();
+ assert.equal(await page.locator('#jobDialog').evaluate(node=>node.open),false);
+ assert.deepEqual(errors,[]);
 });
 for(const partial of [false,true])test(`PR132 #4: ${partial?'partial':'unknown'} schedule observations remain visible in calendar and List`,async t=>{
  const {page,state}=await open(t);state[partial?'partialSchedule':'scheduleUnknown']=true;await advanceRoom(page,16001);await section(page,'tabAutomations');
@@ -294,6 +311,7 @@ test('PR132 #5: paused configured jobs have an unknown next time in both surface
 test('PR132 #7: healthy room seeds coverage-only Status fallback before an outage',async t=>{
  const {page,state}=await open(t);const snapshot=await page.evaluate(()=>JSON.parse(localStorage.getItem('doctorcre.status-snapshot.v1')));
  assert.ok(snapshot);assert.ok(snapshot.reads.some(row=>row.id==='incidents'&&row.state==='read'));assert.doesNotMatch(JSON.stringify(snapshot),/Demo|WR-|INC-/);
+ await page.route('**/mcp',route=>route.fulfill({status:503,body:'{}'}));
  state.denied=true;await page.goto('http://localhost/status?mode=live');await page.locator('#lastKnownBlock').waitFor();
  assert.match(await page.locator('#lastKnownChips').textContent(),/Incidents/);
 });
@@ -342,7 +360,9 @@ for(const width of [1440,390])for(const theme of ['dark','light'])test(`C6 revie
  state.emptyAgents=true;state.emptySessions=true;state.partialSchedule=true;state.longAtlasLabels=true;await advanceRoom(page,16001);
  await section(page,'tabModelRoom');
  await page.waitForFunction(()=>document.querySelector('#modelRoomFreshness').dataset.state==='never');
+ await page.waitForFunction(()=>document.querySelector('#modelRoomCounts').dataset.state==='read');
  assert.equal(await page.locator('[data-section="model_room_context"]').isVisible(),false,'Empty Context does not displace room activity');
+ await waitForAsync(page,async()=> (await import('/js/model-room.js')).view.sessions.state==='ready');
  assert.equal(await page.locator('#modelRoomCounts').textContent(),'0 shown · 0 visible · 0 total');
  assert.ok((await page.locator('#modelRoomParticipantsTitle').boundingBox()).y<600,'Existing activity appears in the first work area');
  const inputs=await page.evaluate(()=>['modelRoomDispatchQuery','sessionsLookup'].map(id=>{const css=getComputedStyle(document.getElementById(id));return {background:css.backgroundColor,border:css.borderRadius};}));

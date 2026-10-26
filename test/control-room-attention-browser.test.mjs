@@ -1,3 +1,4 @@
+import { CHROMIUM_SAFETY_ARGS } from '../scripts/chromium-safety-args.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { chromium } from 'playwright';
@@ -6,7 +7,7 @@ import { startFixtureServer } from '../scripts/fixture-server.mjs';
 async function open(t, tab, width = 390, theme = 'dark') {
   const server = await startFixtureServer();
   t.after(() => server.stop());
-  const browser = await chromium.launch();
+  const browser = await chromium.launch({ args: [...CHROMIUM_SAFETY_ARGS] });
   t.after(() => browser.close());
   const page = await browser.newPage({ viewport: { width, height: width === 390 ? 844 : 1000 }, hasTouch: width === 390 });
   await page.route('**/*', route => new URL(route.request().url()).origin === server.url ? route.continue() : route.abort());
@@ -67,6 +68,12 @@ for (const width of [390, 1440]) test(`Inbox opens the selected item detail and 
   if(width === 390) await first.tap(); else await first.click();
   const dialog = page.getByRole('dialog', { name: 'Inbox item', exact: true });
   await dialog.waitFor({ timeout: 2500 });
+  await page.waitForFunction(({ reason, clock }) => {
+    const dialog = document.querySelector('#crInboxDialog');
+    const body = document.querySelector('#crInboxBody');
+    const text = body?.innerText || '';
+    return dialog?.open && text.includes(reason) && text.includes(clock) && text.includes('Record unavailable in this app');
+  }, { reason, clock });
   assert.ok((await dialog.innerText()).includes(reason));
   assert.ok((await dialog.innerText()).includes(clock));
   assert.ok((await dialog.innerText()).includes('Record unavailable in this app'));

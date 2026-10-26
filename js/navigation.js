@@ -52,6 +52,7 @@ export function appShellMarkup(pathname, base = "", search = "") {
           <div class="app-shell-account-group" role="group" aria-label="Account"><h3>Account</h3>
           <button type="button" id="accountProfile">Profile</button>
           <button type="button" id="accountTheme">Theme</button>
+          ${pathname === "/share" ? "" : '<button type="button" id="accountHelp" aria-haspopup="dialog">How DoctorCRE works</button>'}
           <a href="${base}/updates#prefForm">Notification preferences</a>
           <a href="${base}/doc-activity"${pathname === "/doc-activity" ? ' aria-current="page"' : ""}>Doc Activity</a>
           </div>
@@ -71,6 +72,12 @@ export function appShellMarkup(pathname, base = "", search = "") {
 export function mountNavigation(root = document, pathname = root.defaultView?.location.pathname || "/", { report = false, location = root.defaultView?.location || globalThis.location } = {}) {
   const host = root.getElementById("appShell");
   if (!host) return;
+  const fontStylesheet = root.querySelector('link[data-font-stylesheet][rel="preload"][as="style"]');
+  if (fontStylesheet) {
+    const activate = () => { fontStylesheet.rel = "stylesheet"; };
+    if (root.readyState === "complete") activate();
+    else root.defaultView.addEventListener("load", activate, { once: true });
+  }
   const base = appOriginForReport(location?.origin || "");
   host.innerHTML = appShellMarkup(pathname, base, location?.search || "");
   if (report || base) {

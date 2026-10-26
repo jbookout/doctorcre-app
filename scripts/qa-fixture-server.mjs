@@ -92,6 +92,7 @@ export async function createQaServer({ buildRoot=resolve(repository,'dist/site')
   }
   async function call(state, viewer, name, args) {
     if(name==='deal-room-board') return {schema_version:'local-deals-board.v1',actor:viewer,deals:structuredClone(state.deals),closed_deals:[],lost_deals:[],accounts:[],open_session:null,as_of:now(),last_call_at:null};
+    if(name==='read-home-agenda') return {schema_version:'home-agenda.v1',actor:viewer,deals:structuredClone(state.deals).map(deal=>({...deal,critical_dates:[],next_actions:[{id:`action-${deal.id}`,owner:deal.owner,description:deal.next_step,due_on:deal.next_date,status:'open',hold_until:null}]}))};
     if(name==='get-deal-room') {
       const deal=state.deals.find(row=>row.id===args.deal);if(!deal)refusal('deal_not_found');
       return { ...structuredClone(deal),deal_id:deal.id,schema_version:'deal-timeline.v1',thread:[],critical_dates:[],events:[], next_actions:[{id:`action-${deal.id}`,owner:deal.owner,description:deal.next_step,due_on:deal.next_date,status:'open'}],activities:[],participants:[{role:'lead',name:deal.owner==='joe'?'Joe':'Dell',actor:deal.owner}],premises:[],negotiation_rounds:[],documents:[],lease:null };
@@ -114,8 +115,9 @@ export async function createQaServer({ buildRoot=resolve(repository,'dist/site')
     const url=new URL(request.url);const identity=identify(request);
     if(url.pathname==='/auth/logout')return new Response(null,{status:302,headers:{location:'/auth/login','set-cookie':`${cookieName}=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax`}});
     if(url.pathname==='/auth/login')return new Response('<!doctype html><title>Fixture sign in</title><h1>Fixture sign in required</h1><p>Synthetic identities are created by the QA setup fixture.</p>',{headers:{'content-type':'text/html'}});
-    if(!identity)return url.pathname==='/mcp'||url.pathname.startsWith('/api/')||url.pathname==='/pipeline/changes'?json({error:'not_authenticated'},401):new Response(null,{status:302,headers:{location:`/auth/login?return_to=${encodeURIComponent(url.pathname+url.search)}`}});
+    if(!identity)return url.pathname==='/mcp'||url.pathname==='/auth/session'||url.pathname.startsWith('/api/')||url.pathname==='/pipeline/changes'?json({error:'not_authenticated'},401):new Response(null,{status:302,headers:{location:`/auth/login?return_to=${encodeURIComponent(url.pathname+url.search)}`}});
     const {viewer,namespace}=identity;const state=stateFor(namespace);
+    if(url.pathname==='/api/system-work/session')return request.method==='GET'?json({actor:{slug:viewer}}):json({error:'fixture_method_unavailable'},405);
     if(url.pathname==='/mcp') {
       let input;try{input=await request.json();}catch{return json({error:'invalid_json'},400);}
       if(input.method!=='tools/call')return json({jsonrpc:'2.0',id:input.id,error:{code:-32601,message:'Method not found'}});
@@ -128,6 +130,7 @@ export async function createQaServer({ buildRoot=resolve(repository,'dist/site')
       const projection=censusResponse(url);projection.viewer=viewer;projection.source.correlation_id=`${namespace}-${projection.source.correlation_id}`;
       return json(projection);
     }
+    if(['/api/system-work/session','/auth/session'].includes(url.pathname))return json({actor:{slug:viewer},csrf_token:`synthetic-qa-${viewer}`});
     if(url.pathname==='/api/system-work/current')return request.method==='GET'?json({ok:true,data:await (await fallback(state,viewer)).currentWorkRequests()}):json({error:'fixture_method_unavailable'},405);
     const directory=directoryRead(url,state,viewer,namespace);
     if(directory)return request.method==='GET'?directory:json({error:'fixture_method_unavailable'},405);

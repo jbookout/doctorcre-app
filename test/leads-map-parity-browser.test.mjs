@@ -5,6 +5,40 @@ import { chromium } from './browser-harness.mjs';
 import { routeLeads } from './leads-browser-fixture.mjs';
 import { workspace, lead, id } from './leads-workspace-fixture.mjs';
 
+test('lead tasks defer map assets until keyboard reveal and retain filters', async t => {
+  const browser = await chromium.launch({ args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
+  t.after(() => browser.close());
+  const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
+  const requests = [];
+  page.on('request', request => {
+    const path = new URL(request.url()).pathname;
+    if (/maplibre|leads-territory\.geojson|leads-market-locations\.json/.test(path)) requests.push(path);
+  });
+  await routeLeads(page);
+  await page.goto('http://localhost/leads');
+  await page.locator('.lead-card').first().waitFor();
+  await page.locator('#marketFilter').selectOption('Mobile, AL');
+  const ids = () => page.locator('#leadBoard .lead-card').evaluateAll(nodes => nodes.map(node => node.dataset.leadId));
+  const before = await ids();
+  assert.deepEqual(requests, [], 'opening and filtering leads must not request map assets');
+  await page.locator('#mapLeadMembers summary').click();
+  assert.ok(await page.locator('#mapLeadMembers button').count() > 0);
+  await page.getByRole('button', { name: 'Show territory', exact: true }).focus();
+  await page.keyboard.press('Enter');
+  await page.locator('.market-marker').first().waitFor();
+  assert.equal(await page.locator('#marketFilter').inputValue(), 'Mobile, AL');
+  assert.deepEqual(await ids(), before);
+  assert.equal(requests.filter(path => path.endsWith('leads-territory.geojson')).length, 1);
+  assert.equal(requests.filter(path => path.endsWith('leads-market-locations.json')).length, 1);
+  assert.ok(requests.some(path => path.endsWith('maplibre-gl.mjs')));
+  const canvas = await page.locator('#territoryMap canvas').elementHandle();
+  await page.locator('#marketFilter').selectOption('');
+  await page.locator('#refreshBoard').click();
+  await page.locator('#leadBoard[aria-busy="false"]').waitFor();
+  assert.equal(await canvas.evaluate(node => node.isConnected), true);
+  assert.equal(requests.filter(path => path.endsWith('leads-territory.geojson')).length, 1);
+});
+
 test('phone territory markers appear only after the Census map is painted', async t => {
   const browser = await chromium.launch({ args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
   t.after(() => browser.close());
@@ -15,6 +49,7 @@ test('phone territory markers appear only after the Census map is painted', asyn
   await page.route('**/js/leads-territory-map.js', route => route.fulfill({ contentType: 'text/javascript',
     body: source.replace('const markers = new Map();', 'globalThis.territoryRenderer = map; const markers = new Map();') }));
   await page.goto('http://localhost/leads');
+  await page.getByRole('button', { name: 'Show territory', exact: true }).click();
   await page.locator('.market-marker').first().waitFor({ state: 'attached' });
   const painted = await page.evaluate(() => ({ loaded: territoryRenderer.loaded(),
     land: territoryRenderer.queryRenderedFeatures({ layers: ['land'] }).length }));
@@ -33,6 +68,7 @@ test(`shared market location membership is order independent at ${width}px (reve
   if (reversed) board.leads.reverse();
   await routeLeads(page, { getBoard: () => board });
   await page.goto('http://localhost/leads');
+  await page.getByRole('button', { name: 'Show territory', exact: true }).click();
   await page.locator('.lead-location').filter({ hasText: 'Market area only' }).waitFor();
   const located = await page.locator('.market-marker').evaluateAll(nodes => nodes.flatMap(node => JSON.parse(node.dataset.leadIds)));
   const unlocated = await page.locator('#mapLeadMembers [data-lead-id]').evaluateAll(nodes =>
@@ -67,6 +103,7 @@ for (const width of [1440, 390]) test(`map members and board select the same lea
   board.leads = [lead(1), lead(2, { city: 'Synthetic Unlocated' })];
   await routeLeads(page, { getBoard: () => board });
   await page.goto('http://localhost/leads');
+  await page.getByRole('button', { name: 'Show territory', exact: true }).click();
   await page.locator('.market-marker').first().waitFor();
   assert.equal(await page.locator('#mapLeadMembers [data-lead-id]').count(), 2);
   await page.locator('#mapLeadMembers summary').click();
@@ -95,6 +132,7 @@ for (const width of [1440, 390]) test(`all stage view has identical visible map 
   board.leads = [lead(1), lead(2, { stage: 'qualified', city: 'Mobile', state: 'AL' })];
   await routeLeads(page, { getBoard: () => board });
   await page.goto('http://localhost/leads');
+  await page.getByRole('button', { name: 'Show territory', exact: true }).click();
   await page.locator('.market-marker').first().waitFor();
   assert.equal(await page.locator('.lead-card:visible').count(), 2);
 });
@@ -133,6 +171,7 @@ for (const width of [1440, 390]) test(`map/list IDs, count and highlight match a
   page.on('pageerror', error => errors.push(error.message));
   await routeLeads(page, { getBoard: matrixBoard, onWrite: value => writes.push(value) });
   await page.goto('http://localhost/leads');
+  await page.getByRole('button', { name: 'Show territory', exact: true }).click();
   await page.locator('.market-marker').first().waitFor();
   const canvas = await page.locator('#territoryMap canvas').elementHandle();
   const results = await page.evaluate(cases => {
@@ -186,6 +225,7 @@ for (const width of [1440,390]) test(`marker selection survives matching filters
   const board = matrixBoard();
   await routeLeads(page, { getBoard: () => board });
   await page.goto('http://localhost/leads');
+  await page.getByRole('button', { name: 'Show territory', exact: true }).click();
   await page.locator('.market-marker').first().waitFor();
   await page.locator('#stageFilter').selectOption('qualified', { force: true });
   await page.getByRole('button', { name: 'Mobile, AL: 1 leads', exact: true }).click();

@@ -1,3 +1,4 @@
+import { sessionFetch } from '../js/private-session.js';
 import { readWithDeadline } from "../js/auto-refresh.mjs";
 const recordId = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -23,7 +24,7 @@ export function validateTourDetail(tour, id = tour?.id) {
   return tour;
 }
 
-export function createPlannerClient({ fetchImpl = globalThis.fetch, timeoutMs = 10_000 } = {}) {
+export function createPlannerClient({ fetchImpl = sessionFetch, timeoutMs = 10_000 } = {}) {
   let scope = null, scopeRevision = 0;
   const listeners = new Set();
   function setScope(next) {

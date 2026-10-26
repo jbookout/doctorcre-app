@@ -1,3 +1,5 @@
+import { compareInstants } from './change-receipts.mjs';
+import { businessDay } from './business-date.js';
 import { isClosedDeal } from './deal-review-model.js';
 import { addDays, localToday } from './calendar-model.js';
 import { createInvoiceFixture } from './invoice-tracker-fixture.js';
@@ -44,28 +46,20 @@ export async function createFixtureClient(opts = {}) {
   const partnerActor = seed.actors?.partner || 'dell';
 
   /** @type {Map<string, any>} */
-  // `version` is the record layer's own optimistic-concurrency counter for the
-  // deal ROW (what `update-deal` demands as `base_version`), which is a
-  // different thing from `field_base`, the per-cell event identity that
-  // `patch-deal-field` guards with. Both exist because CARR has both.
   const deals = new Map(seed.deals.map((d) => [d.id, {
     operating_state: 'active', parking_reason: null, parking_note: null,
     parked_at: null, parked_by: null, version: 1,
     prospect_engagement_status: 'active', client_version: 1,
     outcome: null, closed_on: null, won_value: null, phase_started_on: {}, ...d,
   }]));
-  // Demonstrate that Salesforce-shaped records are not automatically active
-  // transactions. These are fixture-only examples; production is never
-  // changed from a name match.
   for (const id of ['d06', 'd07', 'd08']) {
     const deal = deals.get(id);
     if (deal) Object.assign(deal, { operating_state:'parked', parking_reason:'other',
       parking_note:'Reason not yet classified', parked_at:'2026-08-10T12:00:00Z', parked_by:'joe' });
   }
-  // Keep the local demo representative of the production information model:
-  // one national-account portfolio, many market deals, no duplicate deal rows.
   const fixtureAccountId = 'demo-account-001';
   let fixtureAccountOwner = 'dell';
+  let fixtureAccountVersion = 1;
   [...deals.values()].slice(0, 5).forEach((d, index) => Object.assign(d, {
     workspace_kind: 'national_account',
     account_client_id: fixtureAccountId,
@@ -80,9 +74,6 @@ export async function createFixtureClient(opts = {}) {
     workspace_kind: 'team', account_client_id: null, account_name: null,
     client_ref: d.client_ref || null, client_name: d.client_name || d.name,
   }));
-  // d02 names a client id the business-record fixture below deliberately does
-  // not carry, so the V5-UX-B04 context drawer's fetch-failure state (test
-  // fixture client, not a live network fault) has a fixture deal to exercise.
   const brokenClientDeal = deals.get('d02');
   if (brokenClientDeal) brokenClientDeal.account_client_id = 'demo-account-002-unlisted';
   /** @type {Map<string, any[]>} */
@@ -107,16 +98,8 @@ export async function createFixtureClient(opts = {}) {
 
   /** @type {Map<string, any>} open conflicts */
   const conflicts = new Map();
-  // Critical dates recorded in this session, by deal. The seed carries none:
-  // the fixture derives one line from the deal's own next date, and anything
-  // else on the list was written here through add-critical-date.
   const criticalDates = new Map();
 
-  // V5-UX-B04: attached parties/vendors beyond the standing 'lead' row —
-  // client_contact, referring_agent and listing_side are the deal_participant
-  // roles that carry an external party_id rather than an internal actor. Only
-  // d01 carries any, which is exactly what makes it the "populated" fixture
-  // deal and every other deal the "no parties" one.
   const extraParticipants = new Map([
     ['d01', [
       { role: 'client_contact', name: 'Dr. Dana Ortiz', party_id: 'demo-party-101' },
@@ -125,12 +108,7 @@ export async function createFixtureClient(opts = {}) {
     ]],
   ]);
 
-  // V5-UX-B04: the fixture stand-in for the pinned `/api/v1/business/{clients,
-  // vendors}/<id>` single-record read, keyed by that record's own id — never
-  // by a party_id, matching the live shape (client.id/vendor.id, joined
-  // through party_id, are never the same value as a deal participant's
-  // party_id). d02's account_client_id is deliberately absent from this map;
-  // see the note where it is set.
+  // Business records use their own IDs, never participant party_id. d02 is deliberately absent.
   const businessRecords = new Map([
     [fixtureAccountId, {
       id: fixtureAccountId, ref: 'DEMO-CLIENT-001', name: 'Demo Dental North', party_kind: 'org',
@@ -186,7 +164,6 @@ export async function createFixtureClient(opts = {}) {
   });
   const partnerLabel = (owner) => (owner === 'joe' ? 'Joe' : owner === 'dell' ? 'Dell' : String(owner));
 
-  /** The record layer's own version guard, refused the way the server refuses it. */
   function guardVersion(row, baseVersion) {
     if (baseVersion === undefined || baseVersion === null) {
       const error = new Error('fixture update-loop refused: missing_base_version');
@@ -210,6 +187,8 @@ export async function createFixtureClient(opts = {}) {
 
   /** @type {any[]} confirm proposals from call distill */
   let pendingConfirms = [];
+  /** @type {any[]} synthetic read-call-outcomes rows; empty unless a test supplies them */
+  const callOutcomes = structuredClone(opts.callOutcomes || []);
 
   /** field event index: deal|field -> last event id */
   const lastFieldEvent = new Map();
@@ -345,9 +324,6 @@ export async function createFixtureClient(opts = {}) {
     return d;
   }
 
-  /**
-   * Apply a field write. If base_event_id mismatches last known, open conflict.
-   */
   function applyFieldWrite({ deal, field, value, base_event_id, actor, verb, change_reason, human_quote }) {
     const d = getDealOrThrow(deal);
     const key = `${deal}|${field}`;
@@ -356,7 +332,6 @@ export async function createFixtureClient(opts = {}) {
     // Optimistic concurrency: client's base must match last event for (deal, field).
     // null means "no event seen"; mismatches (including null vs an id) are conflicts.
     if (last !== base) {
-      // conflict: a = server (current), b = incoming
       const conflict_id = `c-${conflictSeq++}`;
       const payload = {
         conflict_id,
@@ -410,12 +385,6 @@ export async function createFixtureClient(opts = {}) {
     return { status: 'ok', event: e, event_id: e.id, event_recorded_at: e.recorded_at };
   }
 
-  // ------------------------------------------------- delivery evidence (C11)
-  // Five synthetic Work Requests, chosen so that every NON-operational state the
-  // Delivery stages table has to be able to show is reachable without a server:
-  // built-unmerged, merged-unactivated, active-unproven, a captured record that
-  // can actually be withdrawn, and a record whose plan is stale. Nothing here is
-  // production state and every ref is visibly a demo one.
   const evidenceRef = (ref) => ({ ref, content_digest: 'd'.repeat(64), redaction_class: 'metadata_only' });
   const facet = (state, ref, note) => ({ state, evidence_refs: ref ? [evidenceRef(ref)] : [], note });
   function passport({ work_request, slices, closure_state, closure, stale = false }) {
@@ -478,20 +447,13 @@ export async function createFixtureClient(opts = {}) {
     }
   }
 
-  /* ------------------------------------------------- Control Room fixtures (C01)
-   * Three severities, one row ready to close, one recurring row; three held
-   * work items with distinct silences and one blocker; two shared requests.
-   * Every name starts with "Demo " so nothing here can be mistaken for a record.
-   */
 
-  // Synthetic session pages preserve the three independent counts and lineage cases.
   const SESSION_LIVE_ROWS = EXAMPLE_SESSION_ROWS;
 
   const SESSION_SYNTHETIC_ROWS = BRANCH_SESSION_ROWS;
 
   const SESSION_ROWS = [...SESSION_LIVE_ROWS, ...SESSION_SYNTHETIC_ROWS];
 
-  /** The one synthetic session that carries dispatch events to render. */
   const SESSION_WITH_DISPATCH = "55555555-5555-4555-8555-555555555555";
 
   const DISPATCH_WITH_EVENTS = {
@@ -605,15 +567,7 @@ export async function createFixtureClient(opts = {}) {
     events: [],
   });
 
-  /* --------------------------------------------- Doc outcome cards (B09) */
-  // Four synthetic cards, each exercising a distinct branch of migration
-  // 0546's projection rather than one happy-path shape repeated: one
-  // recommendation with a live, resumable host; one submission actively
-  // routing with no bound session yet; one verified submission whose host is
-  // gone (the "local host loss" checkable_done branch, with the SAME session
-  // ref offered as the fallback); and one failed recommendation with nothing
-  // proved at all. None carries `auto_launch: true` — the server itself
-  // would refuse to answer if one did.
+  // Cover resumable, unbound, lost-host and failed outcomes. No card may auto-launch.
   const OUTCOME_CARD_ROWS = [
     {
       card_id: "card:doc-outcome:1", requested_outcome: "Confirm the LOI redline is ready for Joe's review",
@@ -750,13 +704,8 @@ export async function createFixtureClient(opts = {}) {
     error.status = 503;
     throw error;
   };
-  // V5-UX-C09: `fingerprint` follows the REAL server shape, documented in
-  // mcp-server/src/incident.js (`incidentFingerprint`):
-  // service|environment|operation|failure_class. The service key names the
-  // SAME `demo-worker` / `demo-exporter` service nodes scripts/atlas-fixture.mjs
-  // already emits, so the fixture can demonstrate the real, non-fabricated
-  // atlas-incident join (js/atlas-model.js serviceKeyFromIncidentFingerprint)
-  // end to end rather than only in a unit test.
+  // Match incidentFingerprint: service|environment|operation|failure_class.
+  // Service keys match scripts/atlas-fixture.mjs for the atlas join.
   const incident = (row) => ({
     ref: row.ref, title: row.title, severity: row.severity, state: row.state,
     environment: 'staging', owner_actor: row.owner_actor, next_action: row.next_action,
@@ -782,7 +731,6 @@ export async function createFixtureClient(opts = {}) {
   const notifications = (seed.notifications || []).map((row) => ({
     ...row, delivery: (row.delivery || []).map((entry) => ({ ...entry })),
   }));
-  /** The feed function's own clamp: 1..200, applied before anything is read. */
   const clampLimit = (value) => {
     if (!Number.isInteger(value)) return 50;
     return Math.min(200, Math.max(1, value));
@@ -864,10 +812,7 @@ export async function createFixtureClient(opts = {}) {
         { observed_at: '2026-09-16T04:11:00.000Z', note: 'Demo failure repeated on the nightly run' },
       ],
       links: [{ kind: 'work_request', ref: 'WR-000901', label: 'Demo bounded request: reconcile the demo vendor rows' }],
-      // V5-UX-C09: the synthetic twin of `get-incident`'s REAL `services` and
-      // `trace` arrays (mcp-server/src/incident.js — an `ops.incident_service`
-      // join and the correlated `ops.v_trace` rows). Neither is fabricated
-      // shape: both are named fields the real verb already returns.
+      // Match get-incident services and trace arrays from the recorded service join and trace rows.
       services: [{ key: 'demo-exporter', name: 'Demo exporter', criticality: 'high' }],
       trace: [
         { correlation_id: 'demo-correlation-01', kind: 'deployment', ref: 'DEP-demo-901', state: 'succeeded', environment: 'production', service_key: 'demo-exporter', failure_class: null, detail: 'Demo deploy that shipped the export writer', source_kind: 'deployment', source_ref: 'ops.deployment', freshness_state: 'fresh', occurred_at: '2026-09-12T22:00:00.000Z' },
@@ -925,7 +870,6 @@ export async function createFixtureClient(opts = {}) {
    * Every title starts with "Demo " so nothing here can be mistaken for a record.
    */
   const DOC_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-  /** The active actor slugs `share-doc-conversation` can resolve. */
   const DOC_ACTORS = [seed.actors?.self || 'joe', partnerActor];
   const docTurn = (sequence, role, body, at) => ({
     sequence, role, body, msg_id: `demo-msg-${String(sequence).padStart(2, '0')}`,
@@ -934,14 +878,7 @@ export async function createFixtureClient(opts = {}) {
   const docConversation = (row) => ({
     id: row.id, title: row.title, pinned_at: row.pinned_at || null,
     archived_at: row.archived_at || null, version: row.version, created_by: row.created_by,
-    // A STORED column, not a derivation. `ops.doc_conversation.visibility` is
-    // set at create (0523:75-78), overwritten to 'shared' by a grant
-    // (0523:181-183) and recomputed from the REMAINING unrevoked grants by a
-    // revoke (0523:196-201). The read door returns that column verbatim
-    // (0520:218). Deriving it from the grant list agrees with the store for
-    // share and revoke and DISAGREES for create, where the store reaches
-    // "visibility shared, zero grants" — a real state that a derived field
-    // cannot represent, and therefore that no test could ever cover.
+    // Visibility is stored independently of grants. Shared creation has zero grants (0523:75-78).
     visibility: row.visibility === 'shared' ? 'shared' : 'private',
     turns: row.turns, grants: row.grants || [],
   });
@@ -991,12 +928,7 @@ export async function createFixtureClient(opts = {}) {
       // Revoked, never deleted: the row stays and carries its `revoked_at`.
       grants: [{ grantee_actor: partnerActor, granted_at: '2026-09-12T15:20:00.000Z', granted_by_actor: 'joe', revoked_at: '2026-09-12T16:58:00.000Z' }],
     })],
-    // The state EVERY shared create reaches in production, and the one a fixture
-    // that derived visibility from the grant list could not represent at all:
-    // the header column says `shared` (0523:75-78 writes it) and the grant table
-    // is empty (that function inserts no grant). The read door gates on
-    // creator-or-unrevoked-grant (0520:186-189), so the partner is refused —
-    // a header that says shared is not a grant.
+    // Shared creation inserts no grants; creator-or-unrevoked-grant still gates reads (0520:186-189).
     [DOC_SHARED_NO_GRANT, docConversation({
       id: DOC_SHARED_NO_GRANT, title: 'Demo — Navarre imaging suite, shared at birth', version: 1, created_by: 'joe',
       visibility: 'shared',
@@ -1082,11 +1014,6 @@ export async function createFixtureClient(opts = {}) {
   const sharedRequests = [
     { human_ref: 'WR-000904', title: 'Demo bounded request: decide the demo retention window', state: 'needs_joe', source: { label: 'Demo council minute', freshness: 'fresh' }, next_human_action: 'Name the demo retention window' },
     { human_ref: 'WR-000905', title: 'Demo bounded request: accept the demo ready plan', state: 'needs_joe', source: { label: 'Demo ready plan', freshness: 'stale' }, next_human_action: 'Accept or decline the demo ready plan' },
-    // V5-UX-C13a: two more shared requests, distinct from WR-000901..905 above
-    // (those keep the sparse engineering-passport card shape B10a already
-    // tests). WR-000906 exercises the enriched card with every honest field
-    // PRESENT; WR-000907 exercises the same shape with the optional ones
-    // explicitly ABSENT, which is the honesty case this slice exists to prove.
     { human_ref: 'WR-000906', title: 'Demo bounded request: reconcile the demo vendor names', state: 'needs_joe', source: { label: 'Demo vendor merge review', freshness: 'fresh' }, next_human_action: 'Confirm the demo vendor merge' },
     { human_ref: 'WR-000907', title: 'Demo bounded request: publish the demo rate card', state: 'needs_joe', source: { label: 'Demo rate card review', freshness: 'stale' }, next_human_action: 'Approve or hold the demo rate card' },
     // WR-000908 is named here but carries NO card below and NO passport entry:
@@ -1270,7 +1197,6 @@ export async function createFixtureClient(opts = {}) {
     { from_ref: null, from_name: 'Demo Pensacola Referring Physician', kind: 'works_with', to_ref: 'C-900', to_name: 'Demo Pensacola Orthopedic Partners', note: null },
   ];
 
-  /** Each of the three `link_basis` values the producer can report. */
   const searchLeadClientLinks = [
     { lead_ref: 'L-901', lead_name: 'Demo Pensacola Family Dentistry', client_ref: 'C-900', client_name: 'Demo Pensacola Orthopedic Partners', link_basis: 'conversion' },
     { lead_ref: 'C-901', lead_name: 'Demo Example Organization 093', client_ref: 'C-900', client_name: 'Demo Pensacola Orthopedic Partners', link_basis: 'same_party' },
@@ -1394,7 +1320,7 @@ export async function createFixtureClient(opts = {}) {
         lost_deals: [...deals.values()].filter(d => d.outcome === 'lost').map(d => ({...d})),
         closed_deals: [...deals.values()].filter(d => (d.outcome === 'won' || !d.outcome && (d.closed_on || d.invoiced_on))).map(d => ({...d})),
         accounts: [{ account_client_id: fixtureAccountId, account_client_ref: 'DEMO-ACCOUNT-001',
-          account_name: 'Demo National Practice', account_owner: fixtureAccountOwner, open_deals: activeNational.length,
+          account_name: 'Demo National Practice', account_owner: fixtureAccountOwner, base_version: fixtureAccountVersion, client_version: fixtureAccountVersion, open_deals: activeNational.length,
           attention_deals: activeNational.filter((d) => d.attention).length,
           overdue_deals: activeNational.filter((d) => d.next_date && d.next_date < today).length,
           stale_deals: activeNational.filter((d) => !d.last_touch || d.last_touch <= addDays(today, -14)).length,
@@ -1405,11 +1331,22 @@ export async function createFixtureClient(opts = {}) {
       };
     },
 
+    async getHomeAgenda() {
+      const board = await this.getBoard();
+      return { ...board, schema_version: 'home-agenda.v1', deals: board.deals.map(deal => ({
+        ...deal,
+        critical_dates: [...(deal.next_date ? [{ label: 'Next date', date: deal.next_date }] : []),
+          ...(criticalDates.get(deal.id) || []).map(row => ({ ...row }))],
+        next_actions: deal.next_step ? [{ id: `a-${deal.id}`, owner: deal.owner, description: deal.next_step,
+          due_on: deal.next_date, status: 'open', hold_until: null }] : [],
+      })) };
+    },
+
     async getDeal(dealId) {
       const deal = { ...getDealOrThrow(dealId) };
       const thread = (threads.get(dealId) || [])
         .slice()
-        .sort((a, b) => b.recorded_at.localeCompare(a.recorded_at));
+        .sort((a, b) => compareInstants(a.at || a.created_at || a.recorded_at, b.at || b.created_at || b.recorded_at));
       const hist = (history.get(dealId) || [])
         .slice()
         .sort((a, b) => b.recorded_at.localeCompare(a.recorded_at));
@@ -1647,13 +1584,13 @@ export async function createFixtureClient(opts = {}) {
       });
     },
 
-    async setNextStep({ deal, text, next_date, idempotency_key }) {
+    async setNextStep({ deal, text, next_date, base_version, idempotency_key }) {
       return withIdem(idempotency_key, () => {
         const d = getDealOrThrow(deal);
+        guardVersion(d, base_version);
         const t = String(text || '').trim();
         if (!t) throw new Error('empty next step');
         const old = d.next_step;
-        // archive old step into the thread with attribution
         if (old && old.trim()) {
           ensureThread(deal).unshift({
             id: `n-${noteSeq++}`,
@@ -1666,6 +1603,7 @@ export async function createFixtureClient(opts = {}) {
         d.next_step = t;
         if (next_date !== undefined) d.next_date = next_date || null;
         d.last_touch = nowIso().slice(0, 10);
+        d.version += 1;
         const e = pushEvent({
           actor: selfActor,
           verb: 'set-next-step',
@@ -1727,12 +1665,7 @@ export async function createFixtureClient(opts = {}) {
       });
     },
 
-    // ---------------------------------------------------------------- loops
-    // The same six verbs the live client serves, against the synthetic loops
-    // above. The answer shapes are the record layer's own, including the one
-    // that matters most on this surface: `read-loop` returns a miss IN the
-    // payload rather than throwing, and only a real refusal throws with a
-    // payload the command kernel can classify.
+    // read-loop returns a miss in its payload; only refusals throw a classifiable payload.
     async loopBoard({ kind = 'open_loop', status = 'open', domain, blocker, owner, search, limit = 300 } = {}) {
       const rows = loops.filter((row) => row.kind === kind
         && (!status || row.status === status)
@@ -1745,28 +1678,44 @@ export async function createFixtureClient(opts = {}) {
       return { count: rows.length, loops: rows };
     },
 
-    // V5-UX-B01 — fixture mode only: a `today-triage` answer in the verb's row
-    // shape, built from this client's own records — a deal's next step due
-    // today or earlier, and critical dates due within fourteen days — so Home's
-    // This week and the deal panel can never disagree. It is NOT the record
-    // layer's rule set: this client holds no after-call actions, holds, notes,
-    // statuses or inbox, so it never answers those rows, and no test may treat
-    // it as evidence of what production returns. Dates are minted against the
-    // current clock, since a frozen "today" would make every run look overdue.
+    // Derive triage from fixture next steps and critical dates using the current clock.
+    // This subset cannot prove production eligibility for after-call actions, holds, notes, statuses or inbox.
     async listFeatureSwitches() {
       return {ok:true,schema:'feature-switches.v1',switches:[{name:'doc-suggestion-actions',available:true}]};
     },
     async morningBrief() {
       const section = items => ({ state: items.length ? 'ready' : 'empty', items });
-      return { state: 'ready', sponsor: selfActor, sections: {
+      const board = await this.getBoard();
+      const sections = {
+        ...(selfActor === 'joe' ? { needs_joe: section([]) } : {}),
+        claim_card: section([]), renewals: section([]), assurance_cadence: section([]), costs: { ...section([]), providers: [] },
         today: section((await this.todayTriage()).items),
-        deals: section((await this.getBoard()).deals),
+        deals: { state:board.deals.length || board.accounts?.length ? 'ready' : 'empty', items:board.deals, accounts:board.accounts || [] },
         loops: section((await this.loopBoard()).loops),
+      };
+      return { state:'ready', sponsor:selfActor, sections, coverage: {
+        schema:'morning-brief-coverage.v1', count_scope:'returned_rows_only',
+        required_sections:Object.entries(sections).map(([key,value]) => ({key,path:`/sections/${key}`,state:value.state,
+          counts:Object.fromEntries(['items','accounts','providers'].filter(name => Array.isArray(value[name])).map(name => [name,value[name].length])), incomplete_sources:[]})),
       } };
     },
 
-    async todayTriage() {
-      const today = nowIso().slice(0, 10);
+    async morningBriefQueue(queue, {cursor} = {}) {
+      if (!['today','loops','needs_joe','assurance_cadence'].includes(queue) || queue === 'needs_joe' && selfActor !== 'joe') throw Error('Unsupported morning queue.');
+      const source = queue === 'today' ? (await this.todayTriage({limit:Infinity})).items
+        : queue === 'loops' ? loops.filter(row=>row.kind === 'open_loop' && row.status === 'open' && ['joe','dell'].includes(row.owner)).map(row=>({...boardRow(row),owner_partner:row.owner})) : [];
+      const key = row => [row.due_on || '~',row.kind || row.item_kind,String(row.number || row.id)].join('|');
+      source.sort((a,b)=>key(a)<key(b)?-1:key(a)>key(b)?1:0);
+      const after = cursor ? JSON.parse(decodeURIComponent(atob(cursor))) : null;
+      if (after && (after.queue!==queue || after.sponsor!==selfActor)) throw Error('Invalid queue cursor.');
+      const available = after ? source.filter(row=>key(row)>after.key) : source;
+      const items=available.slice(0,50),has_more=available.length>50;
+      return {sponsor:selfActor,items,total:source.length,returned:items.length,remaining:available.length-items.length,has_more,
+        next_cursor:has_more?btoa(encodeURIComponent(JSON.stringify({queue,sponsor:selfActor,key:key(items.at(-1))}))):null};
+    },
+
+    async todayTriage({ limit = 50 } = {}) {
+      const today = businessDay(new Date(nowIso()));
       const horizon = new Date(Date.parse(`${today}T00:00:00Z`) + 14 * 86_400_000).toISOString().slice(0, 10);
       const items = [];
       // v_today_triage does not filter on the deal's own state, so neither does this.
@@ -1785,7 +1734,7 @@ export async function createFixtureClient(opts = {}) {
         }
       }
       items.sort((a, b) => a.due_on.localeCompare(b.due_on));
-      return { items: items.slice(0, 50) };
+      return { items: items.slice(0, limit) };
     },
 
     async readLoop({ loop_id, number, kind } = {}) {
@@ -1881,7 +1830,6 @@ export async function createFixtureClient(opts = {}) {
           throw error;
         }
         for (const field of allowed) if (fields[field] !== undefined) found[field] = fields[field];
-        // Like update-loop, leaving the dated marker clears the saved day.
         if (found.marker !== 'dated') found.due_on = null;
         if (fields.blocker !== undefined) {
           found.blocker_class = fields.blocker;
@@ -1941,9 +1889,6 @@ export async function createFixtureClient(opts = {}) {
     },
 
     async workRequestCard({ work_request } = {}) {
-      // V5-UX-C13a's enriched cards are checked FIRST and are a strict
-      // addition: WR-000901..905 below are untouched and keep answering the
-      // sparse shape V5-UX-B10a already tests.
       const enriched = sharedRequestCards.get(String(work_request));
       if (enriched) return structuredClone(enriched);
       const row = workRequestOrRefuse('work-request-card', work_request);
@@ -1957,11 +1902,7 @@ export async function createFixtureClient(opts = {}) {
       };
     },
 
-    // V5-UX-C13c: the sole needs_joe -> triaged write. WR-000906/907/908 live
-    // only in `sharedRequestCards` (the enriched card read) and `sharedRequests`
-    // (the queue list) — never in the `workRequests` Map that backs
-    // decline/supersede — so this mutates both of those, keeping the two
-    // fixture surfaces in agreement the same way production's single row does.
+    // Triage updates sharedRequestCards and sharedRequests together; these rows are absent from workRequests.
     async answerWorkRequestForJoe({ idempotency_key, human_ref, base_version, answer_text, scope_confirmed, evidence_ref } = {}) {
       return withIdem(idempotency_key, () => {
         const ref = String(human_ref ?? '');
@@ -2045,17 +1986,8 @@ export async function createFixtureClient(opts = {}) {
       });
     },
 
-    // ------------------------------------------------------ Control Room (C01)
-    // The synthetic twins of the three Control Room reads, in the record
-    // layer's OWN row vocabulary: an incident's recurrence count is
-    // `occurrences`, its age is `age_days`, its recommended next step is
-    // `next_action`, and held work carries `hours_since_last_change` with a
-    // blocker object or an explicit null. A fixture that invented friendlier
-    // names would let the page work here and fail against CARR.
-    //
-    // `outage` is the switch that makes CR-AC-02 demonstrable in a browser:
-    // exactly one read throws, and the page must then make only that read's
-    // areas unknown. It is fixture-only and cannot exist on a reviewed host.
+    // Match producer fields occurrences, age_days, next_action and hours_since_last_change.
+    // Fixture-only outage rejects one read so only its areas become unknown.
     async incidentBoard({ state = 'open', severity = null } = {}) {
       refuseIfOutage('incidents', 'incident-board');
       const rows = incidents
@@ -2072,10 +2004,7 @@ export async function createFixtureClient(opts = {}) {
       };
     },
 
-    // ------------------------------------------------- incident detail (C14)
-    // `get-incident` keeps facts and hypotheses apart, so this does too. An
-    // unknown reference is `incident_not_found`, the ledger's own code, rather
-    // than an empty detail that would look like an incident with nothing in it.
+    // Keep incident facts separate from hypotheses; unknown refs refuse with incident_not_found.
     async getIncident({ ref, fact_limit = 50 } = {}) {
       refuseIfOutage('incidents', 'get-incident');
       const row = incidents.find((candidate) => candidate.ref === String(ref));
@@ -2088,11 +2017,7 @@ export async function createFixtureClient(opts = {}) {
         hypotheses: detail.hypotheses.map((hypothesis) => ({ ...hypothesis })),
         occurrences: detail.occurrences.map((occurrence) => ({ ...occurrence })),
         links: detail.links.map((link) => ({ ...link })),
-        // V5-UX-C09: `services` (the real `ops.incident_service` join) and
-        // `trace` (the real `ops.v_trace` correlated rows) — see the fixture
-        // seed above. Absent from a fixture entry that predates this slice
-        // would mean "no service and no trace recorded", which is itself an
-        // honest state atlas.js already handles.
+        // Older incident fixtures may lack services and trace; absence means no recorded evidence.
         services: (detail.services || []).map((service) => ({ ...service })),
         trace: (detail.trace || []).map((step) => ({ ...step })),
       };
@@ -2115,13 +2040,7 @@ export async function createFixtureClient(opts = {}) {
       });
     },
 
-    // ----------------------------------------------- notifications (B12a)
-    // `notification-feed` takes NO recipient: the feed function resolves the
-    // caller itself, so a recipient argument is unreachable here exactly as it
-    // is unreachable through the verb's closed schema. `unread_count` is
-    // counted over EVERY row the recipient holds, while the list is capped at
-    // `limit` — a fixture that counted the visible rows instead would let a
-    // page recompute the number and still pass.
+    // The authenticated caller selects the feed. unread_count covers all rows, not the limited page.
     async notificationFeed({ after = null, limit = 50 } = {}) {
       refuseIfOutage('notifications', 'notification-feed');
       const capped = clampLimit(limit);
@@ -2129,11 +2048,7 @@ export async function createFixtureClient(opts = {}) {
         .filter((row) => (after ? String(row.created_at) > String(after) : true))
         .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))
         .slice(0, capped);
-      // `quiet_now` and `quiet_suppressed` are OUTPUT-ONLY, exactly as the
-      // producer emits them, and `quiet_suppressed` is the same DISJUNCTION:
-      // quiet hours across now, OR a push the store already recorded as
-      // suppressed. A fixture that used only the second term would let a page
-      // pass while ignoring the live window.
+      // quiet_now and quiet_suppressed are output-only; suppression includes quiet hours OR a recorded push.
       const quiet = quietNow();
       return {
         ok: true,
@@ -2173,7 +2088,6 @@ export async function createFixtureClient(opts = {}) {
         return { ok: true, permission_filtered: true, total_seen: 4, total_returned: 0, sessions: [] };
       }
       if (matched.length === 0) {
-        // The captured GENUINELY-EMPTY answer: nothing matched at all.
         return { ok: true, permission_filtered: false, total_seen: 0, total_returned: 0, sessions: [] };
       }
       const capped = Number.isInteger(limit) && limit >= 1 && limit <= 50 ? limit : 25;
@@ -2209,13 +2123,7 @@ export async function createFixtureClient(opts = {}) {
       return dispatchNoSpine(String(session_id));
     },
 
-    // ------------------------------- Model Room assignments and turns (C12)
-    // Synthetic twins of the two captured answers, in the PRODUCER'S OWN shape.
-    // `live` is false and `projected_at` is old, because that is what the real
-    // queue answers: a fixture that made the projection fresh would let a page
-    // pass while the stale branch — the ordinary one — was never drawn. The
-    // room argument is honoured exactly as the producer honours it, so reading
-    // the queue from `model-room` here answers empty, as it does in production.
+    // Preserve stale projected_at and live:false. model-room has no projection, matching the producer.
     async roomQueue({ room = 'partner-line' } = {}) {
       refuseIfOutage('model_room', 'read-room-queue');
       if (room !== 'partner-line') {
@@ -2249,11 +2157,7 @@ export async function createFixtureClient(opts = {}) {
       };
     },
 
-    // V5-UX-C13b: the Model Room composer's one write, refusing what
-    // `add-room-turn`'s real handler refuses (mcp-server/src/partner-room.js)
-    // and deriving sponsor/origin the same way: NEVER from a caller-supplied
-    // field. `seat` is the one caller-supplied value, exactly as production
-    // allows, and this fixture does not pretend a bad one is accepted.
+    // Match add-room-turn refusals. Only seat is caller-selected; sponsor and origin are derived.
     async addRoomTurn({ idempotency_key, body, seat, room, kind = 'turn', msg_id } = {}) {
       refuseIfOutage('model_room', 'add-room-turn');
       return withIdem(idempotency_key, () => {
@@ -2289,10 +2193,7 @@ export async function createFixtureClient(opts = {}) {
       return { ...preferencePayload(), quiet_now: quietNow() };
     },
 
-    // The preference write, refusing what the record layer refuses, IN ORDER
-    // and every refusal before any change — 0527's four ordered refusals, then
-    // the compare-and-swap. `version_conflict` carries `current_version`, which
-    // is what lets the page re-read and say what happened instead of retrying.
+    // Apply 0527 refusals in order before mutation, then compare-and-swap with current_version on conflict.
     async setNotificationPreference({
       idempotency_key, base_version, device_opt_in,
       quiet_hours_start, quiet_hours_end, timezone, clear_quiet_hours,
@@ -2338,12 +2239,7 @@ export async function createFixtureClient(opts = {}) {
       });
     },
 
-    // The one write this page offers, refusing what the record layer refuses.
-    // A malformed id and an id addressed to somebody else are the SAME code,
-    // `notification_not_found`, because the feed function answers both the same
-    // way and a friendlier fixture would teach the page a distinction that does
-    // not exist. A second acknowledgement is not a refusal: it returns
-    // `deduplicated: true` carrying the FIRST `read_at`, and moves nothing.
+    // Malformed and foreign IDs both refuse notification_not_found. Repeated ack retains the first read_at.
     async acknowledgeNotification({ idempotency_key, notification_id }) {
       return withIdem(idempotency_key, () => {
         const id = String(notification_id || '');
@@ -2357,23 +2253,13 @@ export async function createFixtureClient(opts = {}) {
       });
     },
 
-    // ------------------------------------------ Doc conversations (V5-UX-B07)
-    // One read and three writes, refusing what the record layer refuses. The
-    // read's THREE not-found cases return the same code deliberately; the
-    // rename's creator-only refusal is raised BEFORE the compare-and-swap, so a
-    // refused rename leaves the row's version exactly where it was; and
-    // `create`'s idempotency key BECOMES the conversation id, so a second key
-    // would be a second conversation rather than a retry.
+    // Read misses share one refusal. Rename checks creator before version. Create uses the idempotency key as ID.
     async readDocConversation({ conversation_id, after_sequence = null, limit = 50 } = {}) {
       refuseIfOutage('conversations', 'read-doc-conversation');
       const id = String(conversation_id || '');
       const row = DOC_UUID.test(id) ? docConversations.get(id) : null;
       if (!row || !docVisibleTo(row, selfActor)) refuse('read-doc-conversation', 'doc_conversation_not_found');
-      // The store's own clamps and its own predicate, copied rather than
-      // approximated: `least(greatest(coalesce(p_limit,200),1),200)` (0520:181),
-      // `greatest(coalesce(p_after_sequence,0),0)` (0520:182), and the page
-      // selection `where sequence >= v_after` (0520:198) — INCLUSIVE. A fixture
-      // that paged exclusively would certify a client that duplicates a turn.
+      // Match 0520:181-198 clamps and inclusive sequence >= after_sequence paging.
       const capped = Math.min(200, Math.max(1, Number.isInteger(limit) ? limit : 200));
       const after = Math.max(0, Number.isInteger(after_sequence) ? after_sequence : 0);
       const eligible = row.turns.filter((turn) => turn.sequence >= after);
@@ -2408,7 +2294,6 @@ export async function createFixtureClient(opts = {}) {
      */
     async listDocConversations({ cursor = null, limit = null, include_archived = null } = {}) {
       refuseIfOutage('conversations', 'list-doc-conversations');
-      // The store's own clamp: 1..100, defaulting when unnamed.
       const capped = Math.min(100, Math.max(1, Number.isInteger(limit) ? limit : 25));
       const visible = [...docConversations.values()].filter((row) => docVisibleTo(row, selfActor));
       const eligible = include_archived === true ? visible : visible.filter((row) => !row.archived_at);
@@ -2513,15 +2398,8 @@ export async function createFixtureClient(opts = {}) {
       return result;
     },
 
-    // -------------------------------------------------- Doc outcome cards (B09)
-    // ONE READ, refusing exactly as the live verb refuses (503 on a forced
-    // outage). It names no actor: `read-doc-outcome-cards` declares only
-    // `cursor`/`limit` under additionalProperties:false, and the acting actor
-    // and tenant are derived server-side, same as every other read on this
-    // page. The cursor is OPAQUE here too — the id of the row the next page
-    // starts at, base64-encoded — so a caller that tried to read or build one
-    // would be reading a shape it was never given. Every row already carries
-    // `session_entry.auto_launch: false`; nothing here ever flips it.
+    // Read-only, server-scoped cards. Outage returns 503; opaque cursors encode the next row ID.
+    // session_entry.auto_launch always remains false.
     async docOutcomeCards({ cursor = null, limit = null } = {}) {
       refuseIfOutage('doc_outcome_cards', 'read-doc-outcome-cards');
       const capped = Math.min(50, Math.max(1, Number.isInteger(limit) ? limit : 25));
@@ -2546,12 +2424,7 @@ export async function createFixtureClient(opts = {}) {
       };
     },
 
-    // ------------------------------------------------ global search (V5-UX-B05)
-    // Two READS, refusing exactly what the live verbs refuse. Neither names an
-    // actor, a tenant or a kind: `find` declares ONE property and
-    // `find-and-catch-up` declares two under additionalProperties:false, and a
-    // third key is refused by the gateway before either handler runs. A no-match
-    // is a 200 with six empty arrays and the note — never an error.
+    // Match closed find/find-and-catch-up schemas. No matches return 200 with six empty arrays and a note.
     async find(args = {}) {
       refuseIfOutage('search', 'find');
       const keys = Object.keys(args || {});
@@ -2623,17 +2496,8 @@ export async function createFixtureClient(opts = {}) {
           refuse('create-doc-conversation', 'doc_conversation_visibility_invalid', { visibility });
         }
         const shared = visibility === 'shared';
-        // ONE HEADER ROW AND NO GRANT. `ops.create_doc_conversation` is a single
-        // insert into `ops.doc_conversation` (0523:75-78) and touches
-        // `ops.doc_conversation_grant` nowhere. A conversation created `shared`
-        // is a header that SAYS shared with an EMPTY grant list, and the read
-        // door gates on creator-or-unrevoked-grant (0520:186-189), so the
-        // partner is refused until somebody explicitly shares it with him.
-        // Minting a grant here would show a partner, in demo mode, holding a
-        // read that production refuses him.
-        //
-        // The key IS the id. That is the store's own rule, and it is what makes
-        // a replay of the retained request a retry instead of a second row.
+        // Shared creation inserts only a header (0523:75-78), never a grant.
+        // Reads still require creator-or-unrevoked-grant (0520:186-189). The idempotency key is the row ID.
         docConversations.set(key, docConversation({
           id: key, title: name, version: 1, created_by: selfActor, turns: [],
           visibility: shared ? 'shared' : 'private', grants: [],
@@ -2752,12 +2616,8 @@ export async function createFixtureClient(opts = {}) {
       return { ok: true, items: sharedRequests.map((row) => ({ ...row, source: { ...row.source } })) };
     },
 
-    // V5-UX-C14: the synthetic twin of `governance-queue`, in the producer's own
-    // lane and field names (ops.read_governance_queue, migration 0345). Every
-    // row is visibly fictional and every id is a made-up uuid; no real rule,
-    // batch or proposal is copied here. The timestamps are relative to the
-    // current clock so the approvals card's ambient waiting clock exercises all
-    // three tempos (under a day, a day or more, past the 48-hour cadence).
+    // Synthetic governance-queue rows follow ops.read_governance_queue (0345).
+    // Clock-relative timestamps cover under a day, over a day and past the 48-hour cadence.
     async readConnections() {
       const checked_at=nowIso();
       return {ok:true,schema:'doctorcre-connections.v1',generated_at:checked_at,providers:Object.entries(CONNECTION_NAMES).map(([id,name])=>({id,name,status:id==='grok'?'needs_reconnect':'connected',checked_at,manage_url:'/control-room?tab=connections',spend:{amount:12.34,currency:'USD',kind:id==='jev'?'estimate':'charge',period:'October 2026',as_of:checked_at}})),devices:{state:'read',observed_at:checked_at,items:[{id:'demo-laptop',name:'Demo laptop',connected:true},{id:'demo-workstation',name:'Demo workstation',connected:false}]}};
@@ -2843,21 +2703,12 @@ export async function createFixtureClient(opts = {}) {
         sources: [
           { owner: 'launchd', state: 'read', count: 1 },
           { owner: 'claude-code', state: 'read', count: 1 },
-          { owner: 'control-plane', state: 'unknown', count: null },
           { owner: 'cron', state: 'unknown', count: null },
         ], jobs };
     },
 
-    // ---------------------------------------------------------- command centre
-    // The synthetic twin of the aggregate Home read. It is BUILT FROM THE SAME
-    // fixture board the rest of this client serves, so the counts a person sees
-    // on Home are the counts they see on the board — a hand-written constant
-    // here would let the two surfaces disagree and teach a reader to distrust
-    // whichever one they checked second.
-    //
-    // Every stamp is minted against the current clock with the contract's own
-    // 60-second window, because a fixture with a frozen `valid_until` would show
-    // the expired path on every run and never exercise the fresh one.
+    // Derive Home counts from the same fixture board. Mint timestamps with the contract
+    // 60-second window so ordinary runs exercise fresh data.
     async commandCenter() {
       const now = Date.now();
       const observed_at = new Date(now).toISOString();
@@ -2936,16 +2787,19 @@ export async function createFixtureClient(opts = {}) {
       });
     },
 
-    async setMarketAgent({ deal, agent_name, market, idempotency_key }) {
+    async setMarketAgent({ deal, agent_name, market, base_version, idempotency_key }) {
       return withIdem(idempotency_key, () => {
-        const d = getDealOrThrow(deal); d.market_agent = agent_name; if (market) d.market = market;
+        const d = getDealOrThrow(deal); guardVersion(d, base_version);
+        d.market_agent = agent_name; if (market) d.market = market; d.version += 1;
         return { ok: true, deal_id: deal, market_agent: agent_name };
       });
     },
 
-    async setNationalAccountOwner({ account_client_id, owner, idempotency_key }) {
+    async setNationalAccountOwner({ account_client_id, owner, base_version, idempotency_key }) {
       return withIdem(idempotency_key, () => {
+        guardVersion({ version: fixtureAccountVersion }, base_version);
         fixtureAccountOwner = owner;
+        fixtureAccountVersion += 1;
         for (const d of deals.values()) if (d.account_client_id === account_client_id) d.account_owner = owner;
         return { ok: true, account_client_id, owner };
       });
@@ -2958,21 +2812,16 @@ export async function createFixtureClient(opts = {}) {
     },
 
     async createNationalMarketDeal(args) {
-      return client.createDeal({ name: args.deal_name, client: args.client_name,
+      const result = await client.createDeal({ name: args.deal_name, client: args.client_name,
         deal_type: args.deal_type || 'Startup', phase: args.phase || 'On Deck',
         segment: args.segment, market: args.market, lane: 'national',
         idempotency_key: args.idempotency_key });
+      return { ok:true, deal_id:result.deal.id, client_ref:result.deal.client_ref,
+        account_client_id:result.deal.account_client_id };
     },
 
-    // Mirrors the record layer's revert-deal-field verb: the reverted event
-    // IS the base (no separate base_event_id argument), a missing event or a
-    // field outside BASED_FIELDS is `event_not_revertible`, and — the check
-    // that matters for an undo — it refuses `newer_change_exists` unless the
-    // event being reverted is still the LATEST event on that deal+field. A
-    // successful revert is a canonical correction: it pushes a new event
-    // (verb `revert-deal-field`) rather than rewriting history in place, so
-    // it appears on the change feed and advances lastFieldEvent exactly as a
-    // live revert would.
+    // Revert requires the latest event for a BASED_FIELDS cell; otherwise refuse event_not_revertible
+    // or newer_change_exists. Append a correction event and advance lastFieldEvent, preserving history.
     async revertDealField({ event_id, idempotency_key }) {
       if (activityFixture.owns(event_id)) return activityFixture.undo({ event_id, idempotency_key });
       return withIdem(idempotency_key, () => {
@@ -3031,6 +2880,24 @@ export async function createFixtureClient(opts = {}) {
       return client.resolveConfirm({ proposal_id:candidate_id, accept, idempotency_key });
     },
 
+    async readCallOutcomes() {
+      return { schema_version: 'call-outcomes.v1', send: false,
+        calls: callOutcomes.filter(call => !call.reviewed).map(call => structuredClone(call)) };
+    },
+
+    async undoCallChange({ candidate_id }) {
+      const change = callOutcomes.flatMap(call => call.applied).find(item => item.candidate_id === candidate_id);
+      if (!change) throw Object.assign(new Error('Unknown call change.'), { payload: { error: 'not_found' } });
+      change.undone_at ||= new Date().toISOString();
+      return { ok: true, candidate_id, undone: true };
+    },
+
+    async reviewCallOutcome({ session_id }) {
+      const call = callOutcomes.find(item => item.session_id === session_id);
+      if (call) call.reviewed = true;
+      return { ok: true, session_id, reviewed: true };
+    },
+
     async resolveConfirm({ proposal_id, accept, idempotency_key }) {
       return withIdem(idempotency_key, () => {
         const idx = pendingConfirms.findIndex((p) => p.id === proposal_id);
@@ -3050,7 +2917,6 @@ export async function createFixtureClient(opts = {}) {
             }),
           };
         }
-        // apply proposal via same write path (nothing auto-writes)
         if (p.verb === 'patch-deal-field') {
           return applyFieldWrite({
             deal: p.args.deal,
@@ -3096,16 +2962,11 @@ export async function createFixtureClient(opts = {}) {
       });
     },
 
-    /**
-     * Fixture-only: partner presence + partner write + call distill proposals.
-     * Wired through the same event log and presence map the UI polls.
-     */
     async simulatePartnerCall() {
       const steps = [];
       const closingDemo = getDealOrThrow('d05');
       const diligenceDemo = getDealOrThrow('d20');
 
-      // partner joins
       steps.push({
         at: 400,
         run: () => {
@@ -3119,7 +2980,6 @@ export async function createFixtureClient(opts = {}) {
         },
       });
 
-      // Partner holds the synthetic closing deal's next_step.
       steps.push({
         at: 1500,
         run: () => {
@@ -3133,7 +2993,6 @@ export async function createFixtureClient(opts = {}) {
         },
       });
 
-      // Partner writes the synthetic closing deal (live write, not confirm).
       steps.push({
         at: 3300,
         run: () => {
@@ -3171,7 +3030,6 @@ export async function createFixtureClient(opts = {}) {
         },
       });
 
-      // Partner presence on the synthetic diligence deal.
       steps.push({
         at: 5000,
         run: () => {

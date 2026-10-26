@@ -183,10 +183,12 @@ function renderPreference() {
   }
   form.setAttribute("data-disabled", String(saving));
   form.setAttribute("data-quiet", model?.quietHoursSet ? "set" : "off");
+  const retained = commandState[PREFERENCE_OPERATION_KEY];
   for (const id of ["deviceOptIn", "quietStart", "quietEnd", "quietTimezone", "prefSave", "prefClear"]) {
     const field = $(id);
-    if (field) field.disabled = saving || !model;
+    if (field) field.disabled = saving || !model || (Boolean(retained) && id !== "prefSave");
   }
+  $("prefSave").textContent = retained ? "Check outcome" : "Save preferences";
   if (!model || dirty) return;
   $("deviceOptIn").checked = model.deviceOptIn;
   $("quietStart").value = preferenceTimeLabel(model.start);
@@ -349,8 +351,10 @@ function acknowledge(id) {
  * reads is true about the values now on screen.
  */
 async function savePreference(form) {
+  if (saving) return;
   const model = view.preference.state === "read" ? preferenceView(view.preference.payload) : null;
-  const built = setPreferenceArgs(form, preferenceSaveView(model, draftBaseVersion));
+  const retained = commandState[PREFERENCE_OPERATION_KEY];
+  const built = retained ? { ok: true, args: retained.request } : setPreferenceArgs(form, preferenceSaveView(model, draftBaseVersion));
   const message = $("prefMessage");
   if (!built.ok) {
     message.textContent = built.message;
@@ -360,6 +364,27 @@ async function savePreference(form) {
   saving = true;
   message.textContent = "";
   renderPreference();
+  if (!commandState[PREFERENCE_OPERATION_KEY]) {
+    try {
+      const payload = await client.notificationPreferences(), current = preferenceView(payload);
+      if (!current) throw new Error("Preferences unavailable");
+      view.preference = { state: "read", payload, observed_at: new Date().toISOString() };
+      if (current.version !== built.args.base_version) {
+        // Current saved values appear in the summary beside the held draft.
+        // The next deliberate save reviews this version and reads again.
+        dirty = true; draftBaseVersion = current.version; saving = false;
+        renderPreference();
+        message.textContent = "Preferences changed. Review the current saved preferences above and your kept draft before saving again.";
+        announce(message.textContent);
+        return;
+      }
+    } catch {
+      saving = false; renderPreference();
+      message.textContent = "Preferences not sent. Their current version could not be verified.";
+      announce(message.textContent);
+      return;
+    }
+  }
   const summary = form.clear_quiet_hours === true
     ? "Clear quiet hours"
     : "Save notification preferences";
@@ -381,20 +406,21 @@ async function savePreference(form) {
     // so both are rendered by the record layer's own name for them.
     const refusal = classifyPreferenceFailure(result);
     sentence = refusal.message;
-    // A conflict is not retried: the stored value moved, so the form is re-read
-    // and re-rendered at the FRESH version and the person decides again.
+    // A conflict is not retried. Show the current saved values beside the
+    // unsaved fields so the person can review both before another save.
     if (refusal.conflict) {
-      dirty = false;
-      draftBaseVersion = null;
+      dirty = true;
       await takePreference();
       // F3: the number the refusal named, SHOWN. It is preferred from the
       // refusal itself when the refusal carried it, and otherwise taken from
       // the re-read that just landed — the two are the same number, and the
       // re-read is the one the person is now looking at.
       const fresh = view.preference.state === "read" ? preferenceView(view.preference.payload) : null;
+      draftBaseVersion = fresh?.version ?? built.args.base_version;
       const current = refusal.currentVersion ?? fresh?.version ?? null;
       const line = versionConflictLine(current, built.args.base_version);
       if (line) sentence = `${sentence} ${line}`;
+      sentence = `${sentence} Your draft is kept. Review the current saved preferences above before saving again.`;
     }
   }
   dock.record(PREFERENCE_OPERATION_KEY, {
@@ -404,8 +430,10 @@ async function savePreference(form) {
   if (result.status === "ok") {
     dirty = false;
     draftBaseVersion = null;
-    await load();
     sentence = sentence || "Saved";
+    message.textContent = sentence;
+    announce(sentence);
+    await load();
   }
   $("prefMessage").textContent = sentence || "";
   if (sentence) announce(sentence);

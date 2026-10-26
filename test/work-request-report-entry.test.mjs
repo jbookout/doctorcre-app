@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import { readFileSync } from 'node:fs';
 import { JSDOM } from 'jsdom';
 import { autoRefreshScript } from './auto-refresh-script.mjs';
+import { createRetainedCommands } from '../js/retained-commands.mjs';
 import test from "node:test";
 
 const page = await readFile(new URL("../system-work.html", import.meta.url), "utf8");
@@ -81,6 +82,7 @@ async function setup(t, { session, read = () => card, current = () => ({ items: 
   t.after(() => dom.window.close());
   const w = dom.window, d = w.document, calls = [];
   w.structuredClone = structuredClone;
+  w.createRetainedCommands = createRetainedCommands;
   w.HTMLDialogElement.prototype.showModal = function () { this.open = true; };
   w.HTMLDialogElement.prototype.close = function () { this.open = false; };
   w.fetch = async (path, init = {}) => {

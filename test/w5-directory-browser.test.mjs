@@ -16,7 +16,7 @@ async function open(t,width=1440){
   await page.clock.install({time:new Date('2026-10-01T18:00:00Z')});await page.route('https://**',r=>r.abort());
   let fail=false,expired=false,writes=0,writeMode='saved';
   await page.route('**/api/v1/business/**',r=>{calls.push(r.request().url());return expired?r.fulfill({status:401,json:{error:'AUTHENTICATION_REQUIRED'}}):fail?r.fulfill({status:503,json:{error:'DEPENDENCY_UNAVAILABLE'}}):r.fulfill({json:directoryFixture(r.request().url(),{overrides})});});
-  await page.route('**/api/system-work/session',r=>r.fulfill({json:{actor:{slug:'joe'}}}));
+  await page.route('**/{api/system-work/session,auth/session}',r=>r.fulfill({json:{csrf_token:'synthetic-session',actor:{slug:'joe'}}}));
   await page.route('**/mcp',r=>{
     const {name,arguments:args}=r.request().postDataJSON().params;let payload={ok:true};
     if(name==='update-vendor'){
@@ -88,6 +88,7 @@ test('W5 reduced motion stops hover travel and pulse while keeping content visib
 
 for(const mode of ['lost','rejected','uncertain','unknown200','unknownAck','unknownTool'])test(`W5 ${mode} override response is reconciled without replay`,async t=>{
   const h=await open(t);h.setWriteMode(mode);const {page}=h;await page.goto(origin+'/vendors?mode=live', {waitUntil:'domcontentloaded'});await page.locator('.record-row').first().click();await page.waitForSelector('#trustForm',{state:'attached'});await page.locator('[data-details-key="trust"] summary').click();await page.locator('[name="tier"]').selectOption('Trial');await page.locator('[name="reason"]').fill('Demo exception');await page.locator('#trustForm button').click();
+  if(mode==='rejected'){await page.waitForURL('**/public-shell/session-ended.html');assert.equal(h.writes,1);assert.equal(await page.locator('#trustForm').count(),0);assert.deepEqual(h.errors,[]);return;}
   await page.waitForFunction(()=>['Rating confirmed','Rating not confirmed'].includes(document.querySelector('#trustStatus')?.textContent));assert.equal(h.writes,1);
   if(mode==='lost'){assert.match(await page.locator('.relationship-section').innerText(),/Computed: Proven/);assert.equal(await page.locator('#trustStatus').textContent(),'Rating confirmed');assert.equal(await page.locator('#trustForm button').isDisabled(),false);}
   else assert.equal(await page.locator('#trustForm button').isDisabled(),['uncertain','unknown200','unknownAck','unknownTool'].includes(mode));
@@ -102,17 +103,15 @@ test('W5 Clients exposes every requested sort and owner without territory contro
 
 test('W5 session expiry erases a pending trust draft and recovery permits a fresh action without replay',async t=>{
  const h=await open(t),{page}=h;h.setWriteMode('uncertain');await page.goto(origin+'/vendors?mode=live');await page.locator('.record-row').first().click();await page.locator('[data-details-key="trust"] summary').click();await page.locator('[name="tier"]').selectOption('Trial');await page.locator('[name="reason"]').fill('Demo pending draft');await page.locator('#trustForm button').click();await page.waitForFunction(()=>document.querySelector('#trustStatus')?.textContent==='Rating not confirmed');
- await expireOpenRecord(h);assert.doesNotMatch(await page.locator('#recordBody').innerText(),/Demo pending draft/);
- h.setExpired(false);await page.evaluate(()=>window.dispatchEvent(new Event('online')));await page.waitForSelector('#trustForm',{state:'attached'});await page.locator('[data-details-key="trust"] summary').click();assert.equal(await page.locator('[name="reason"]').inputValue(),'');assert.equal(await page.locator('#trustForm button').isDisabled(),false);assert.equal(h.writes,1);assert.deepEqual(h.errors,[]);
+ await expireOpenRecord(h);assert.doesNotMatch(await page.locator('body').innerText(),/Demo pending draft/);
+ h.setExpired(false);await page.goto(origin+'/vendors?mode=live');await page.locator('.record-row').first().click();await page.waitForSelector('#trustForm',{state:'attached'});await page.locator('[data-details-key="trust"] summary').click();assert.equal(await page.locator('[name="reason"]').inputValue(),'');assert.equal(await page.locator('#trustForm button').isDisabled(),false);assert.equal(h.writes,1);assert.deepEqual(h.errors,[]);
 });
 
 // The refresh that discovers expiry reads the list, then the open record. Signal
 // recovery only once that record answer is in: a resume during a refresh joins it.
 async function expireOpenRecord(h) {
- const answered=h.page.waitForResponse(r=>/^\/api\/v1\/business\/vendors\/[^/]+$/.test(new URL(r.url()).pathname)&&r.status()===401);
  h.setExpired(true);await h.page.evaluate(()=>window.dispatchEvent(new Event('online')));
- await (await answered).finished();await h.page.clock.runFor(1);
- await h.page.waitForFunction(()=>document.querySelector('#recordTitle')?.textContent==='Your session has ended');
+ await h.page.waitForURL('**/public-shell/session-ended.html');
 }
 async function beginRating(page, reason='Synthetic pending rating') {
  await page.locator('[data-details-key="trust"] summary').click();
@@ -136,7 +135,7 @@ for (const status of [200,502]) test(`W5 pre-expiry save response ${status} cann
  const h=await open(t),{page}=h;const held=await holdWrites(page);
  await page.goto(origin+'/vendors?mode=live');await page.locator('.record-row').first().click();await beginRating(page);await page.locator('#trustForm button').click();await settles(()=>assert.equal(held.length,1));
  await expireOpenRecord(h);
- h.setExpired(false);await page.evaluate(()=>window.dispatchEvent(new Event('online')));await page.waitForSelector('#trustForm',{state:'attached'});await beginRating(page,'Synthetic second save');await page.locator('#trustForm button').click();await settles(()=>assert.equal(held.length,2));
+ h.setExpired(false);await page.goto(origin+'/vendors?mode=live');await page.locator('.record-row').first().click();await page.waitForSelector('#trustForm',{state:'attached'});await beginRating(page,'Synthetic second save');await page.locator('#trustForm button').click();await settles(()=>assert.equal(held.length,2));
  if (status===200) await ack(held[0]); else await held[0].fulfill({status,body:'Synthetic lost response'});
  await page.waitForTimeout(150);assert.equal(await page.locator('#trustForm button').isDisabled(),true);assert.equal(await page.locator('#trustStatus').textContent(),'Saving…');await ack(held[1]);
 });
@@ -144,8 +143,10 @@ test('W5 a read dispatched before a new save cannot reconcile that save',async t
  const {page}=await open(t);const writes=await holdWrites(page), reads=[];
  const reason='Synthetic repeated rating';
  await page.goto(origin+'/vendors?mode=live', {waitUntil:'domcontentloaded'});await page.locator('.record-row').first().click();await beginRating(page,reason);
- await page.route('**/api/v1/business/vendors/*',r=>reads.push(r));
- await page.locator('#trustForm button').click();await settles(()=>assert.equal(writes.length,1));await ack(writes[0]);
+ await page.locator('#trustForm button').click();await settles(()=>assert.equal(writes.length,1));
+ // Let each save's fresh preflight finish; hold only the first post-save read.
+ await page.route('**/api/v1/business/vendors/*',r=>reads.length===0?reads.push(r):r.fallback());
+ await ack(writes[0]);
  await page.waitForFunction(()=>!document.querySelector('#trustForm button').disabled);await settles(()=>assert.equal(reads.length,1));
  await page.locator('#trustForm button').click();await settles(()=>assert.equal(writes.length,2));
  const id='00000000-0000-4000-8000-000000000001';
@@ -191,4 +192,48 @@ test('W5 vendor business facts remain visible in the modal',async t=>{
 });
 test('W5 fixture adapter withholds unsupported rating action',async t=>{
  const h=await open(t),{page}=h;await page.goto(origin+'/vendors', {waitUntil:'domcontentloaded'});await page.locator('.record-row').first().click();await page.waitForFunction(()=>document.querySelector('#recordTitle').textContent==='Demo Partner 01');assert.equal(await page.locator('#trustForm').count(),0);assert.equal(h.writes,0);
+});
+
+for(const width of [1440,390]) test(`vendor Conversations show newest notes first at ${width}px`,async t=>{
+ const h=await open(t,width),{page}=h;
+ await page.route('**/api/v1/business/vendors/*',r=>{
+  const payload=directoryFixture(r.request().url());
+  payload.record.relationship.recent_entries=[
+   {id:'undated',kind:'note',when:null,summary:'Synthetic undated conversation',detail:'Synthetic undated original'},
+   {id:'earlier',kind:'note',when:'2026-10-01T12:00:00.000001Z',summary:'Synthetic earlier conversation',detail:'Synthetic earlier original'},
+   {id:'latest',kind:'note',when:'2026-10-01T07:00:00.000002-05:00',summary:'Synthetic latest conversation',detail:'Synthetic latest original'},
+  ];
+  return r.fulfill({json:payload});
+ });
+ await page.goto(origin+'/vendors?mode=live');
+ await page.locator('.record-row').first().click();
+ const conversations=page.locator('.record-section').filter({has:page.getByRole('heading',{name:'Conversations',exact:true})});
+ await conversations.waitFor();
+ assert.deepEqual(await conversations.locator('.note-summary').allTextContents(),['Synthetic latest conversation','Synthetic earlier conversation','Synthetic undated conversation']);
+ await conversations.locator('[data-details-key="entry-latest"] summary').click();
+ assert.equal(await conversations.locator('.entry-detail').first().textContent(),'Synthetic latest original');
+ assert.equal(await conversations.locator('li').last().locator('time').textContent(),'an unknown time');
+ assert.equal(h.writes,0);
+ assert.deepEqual(h.errors,[]);
+});
+
+for(const kind of ['introduced','can_introduce']) test(`vendor ${kind} notes show dated introductions newest first`,async t=>{
+ const h=await open(t),{page}=h;
+ await page.route('**/api/v1/business/vendors/*',r=>{
+  const payload=directoryFixture(r.request().url());
+  payload.record.relationship.introductions=[
+   {id:'undated',occurred_at:null,note:'Synthetic undated introduction'},
+   {id:'earlier',occurred_at:'2026-09-20',note:'Synthetic earlier introduction'},
+   {id:'latest',occurred_at:'2026-09-29',note:'Synthetic latest introduction'},
+  ].map(item=>({...item,kind,from_name:'Demo Partner',to_name:'Demo Practice',via_party:null}));
+  return r.fulfill({json:payload});
+ });
+ await page.goto(origin+'/vendors?mode=live');
+ await page.locator('.record-row').first().click();
+ const network=page.locator('.network-grid');
+ await network.waitFor();
+ assert.deepEqual(await network.locator('.note-summary').allTextContents(),['Synthetic latest introduction','Synthetic earlier introduction','Synthetic undated introduction']);
+ assert.equal(await network.locator('[data-details-key="intro-latest"] .entry-detail').textContent(),'Synthetic latest introduction');
+ assert.equal(h.writes,0);
+ assert.deepEqual(h.errors,[]);
 });

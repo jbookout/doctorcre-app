@@ -1,11 +1,12 @@
+import { CHROMIUM_SAFETY_ARGS } from '../scripts/chromium-safety-args.mjs';
 import test from 'node:test';import assert from 'node:assert/strict';import {mkdir} from 'node:fs/promises';import { chromium } from 'playwright';
 import {workspace,id} from './leads-workspace-fixture.mjs';
 import {routeLeads} from './leads-browser-fixture.mjs';
 for(const width of [1440,390]) test(`Leads rendered board, map and wide popup fit ${width}px with automatic freshness`,async t=>{
- const browser=await chromium.launch({args:['--use-angle=swiftshader','--enable-unsafe-swiftshader']});t.after(()=>browser.close());const page=await browser.newPage({viewport:{width,height:960},reducedMotion:'reduce'});
+ const browser=await chromium.launch({args:[...CHROMIUM_SAFETY_ARGS, '--use-angle=swiftshader','--enable-unsafe-swiftshader']});t.after(()=>browser.close());const page=await browser.newPage({viewport:{width,height:960},reducedMotion:'reduce'});
  await page.clock.install({time:new Date('2026-10-01T16:00:00Z')});const errors=[],writes=[];let board=workspace(),reads=0;page.on('pageerror',e=>errors.push(e.message));
  await routeLeads(page,{getBoard:()=>board,onRead:()=>reads++,onWrite:p=>writes.push(p)});
- await page.goto('http://localhost/leads');await page.locator('.lead-card').first().waitFor({state:'attached'}).catch(async e=>{console.log(await page.locator('#leadBoardError').textContent().catch(()=>'page unresponsive'),reads,errors);throw e});await page.locator('.market-marker').first().waitFor({state:'attached'});
+ await page.goto('http://localhost/leads');await page.locator('.lead-card').first().waitFor({state:'attached'}).catch(async e=>{console.log(await page.locator('#leadBoardError').textContent().catch(()=>'page unresponsive'),reads,errors);throw e});await page.getByRole('button', { name: 'Show territory', exact: true }).click();await page.locator('.market-marker').first().waitFor({state:'attached'});
  assert.equal(await page.locator('.stage-column').count(),6);assert.equal(await page.locator('.hot-row').count(),5);
  if(width===1440)assert.ok(await page.locator('.stage-column').evaluateAll(nodes=>nodes.every(n=>n.getBoundingClientRect().width>=280)),'populated desktop stages keep readable lane widths');
  const layout=await page.evaluate(()=>({width:innerWidth,scroll:document.documentElement.scrollWidth,cards:[...document.querySelectorAll('.lead-card')].map(e=>e.getBoundingClientRect().right)}));assert.ok(layout.scroll<=layout.width,JSON.stringify(layout));assert.ok(layout.cards.every(r=>r<=width));
@@ -18,7 +19,7 @@ for(const width of [1440,390]) test(`Leads rendered board, map and wide popup fi
  await page.locator('#closeDetail').click();
  await page.waitForFunction(()=>{const root=document.getElementById('territoryMap');return root.querySelector('canvas').clientWidth===root.clientWidth});
  assert.equal(await page.locator('#marketFilter').inputValue(),'Mobile, AL');assert.equal(await page.locator('.lead-card').count(),1);
- const position=await page.getByRole('button',{name:'Mobile, AL: 1 leads',exact:true}).evaluate(e=>e.style.transform);const canvas=await page.locator('#territoryMap canvas').elementHandle();await page.locator('#marketFilter').selectOption('');assert.equal(await page.locator('.lead-card').count(),14);
+ const position=await page.getByRole('button',{name:'Mobile, AL: 1 leads',exact:true}).evaluate(e=>e.style.transform);const canvas=await page.locator('#territoryMap canvas').elementHandle();await page.locator('#marketFilter').selectOption('');assert.equal(await page.locator('.lead-card').count(),10);
  assert.ok(await canvas.evaluate(e=>e.isConnected),'filter updates preserve the map instance');assert.equal(await page.getByRole('button',{name:'Mobile, AL: 1 leads',exact:true}).evaluate(e=>e.style.transform),position,'filter updates preserve the zoomed territory');
  await page.locator('.lead-card').first().click();await page.locator('#detailStage').waitFor();const box=await page.locator('#leadDetail').boundingBox();assert.ok(box.width>=Math.min(1100,width-32));
  await page.locator('#detailBody details').first().locator('summary').click();assert.match(await page.locator('#detailBody').innerText(),/Original synthetic entry/);

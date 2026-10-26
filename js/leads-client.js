@@ -1,3 +1,5 @@
+import { readWithDeadline } from "./current-read.mjs";
+import { sessionFetch } from './private-session.js';
 import { observeDocClient } from './doc-context.js';
 import { createMcpRequests, unknownMcpOutcome } from "./mcp-requests.mjs";
 import { createEngagementWriter } from './prospect-engagement.mjs';
@@ -6,7 +8,7 @@ import { createEngagementWriter } from './prospect-engagement.mjs';
  * Authentication remains the host's
  * same-origin cookie; there is no client-side identity or alternate endpoint. */
 export function createLeadBoardClient(options = {}) {
-  const fetchImpl = options.fetchImpl || ((path, init) => fetch(path, init));
+  const fetchImpl = options.fetchImpl || ((path, init) => sessionFetch(path, init));
   const requestMcp = createMcpRequests({ fetchImpl, headers: { accept: "application/json" } });
 
   function typedError(payload, fallback = "The lead board request was refused.", status) {
@@ -45,14 +47,19 @@ export function createLeadBoardClient(options = {}) {
   }
 
   return observeDocClient({
-    async getActor() {
-      const board = await rpc("deal-room-board", { workspace: "team" });
-      return typeof board.actor === "string" && board.actor.trim() ? board.actor : null;
-    },
+    getActor: () => readWithDeadline(async signal => {
+      const response = await fetchImpl("/api/system-work/session", { signal,
+        credentials: "same-origin", cache: "no-store", headers: { accept: "application/json" } });
+      if (!response.ok) throw typedError({ error: response.status === 401 ? "not_authenticated" :
+        response.status === 403 ? "forbidden" : "session_unavailable" }, "Sign-in required", response.status);
+      const session = await response.json();
+      const actor = session?.actor?.slug;
+      return typeof actor === "string" && actor.trim() ? actor : null;
+    }, { timeoutMs: options.timeoutMs || 10_000 }),
     getLeadBoard: (options = {}) => rpc("lead-board", {}, false, options),
     getWorkspace: async () => validateLeadWorkspace(await rpc("lead-board", { workspace: "leads" })),
-    getLeadDetail: async (lead) => {
-      const payload = validateLeadWorkspace(await rpc("lead-board", { workspace: "leads", lead_id: lead.id }));
+    getLeadDetail: async (lead, { correspondence_cursor, stage_history_cursor } = {}) => {
+      const payload = validateLeadWorkspace(await rpc("lead-board", { workspace: "leads", lead_id: lead.id, ...(correspondence_cursor ? { correspondence_cursor } : {}), ...(stage_history_cursor ? { stage_history_cursor } : {}) }));
       if (payload.detail !== null) validateLeadDetail(payload.detail, lead.id);
       return payload;
     },
@@ -98,5 +105,13 @@ export function validateLeadDetail(detail, id) {
   for (const key of ["phone", "email", "notes", "plans", "est_lease_event"]) projection(optionalText(detail[key]));
   projection(Array.isArray(detail.correspondence) && detail.correspondence.every(entry => object(entry) && text(entry.id) && text(entry.kind) && Number.isFinite(Date.parse(entry.occurred_at)) && optionalText(entry.summary) && optionalText(entry.detail)));
   projection(Array.isArray(detail.stage_history) && detail.stage_history.every(entry => object(entry) && text(entry.event_id) && Number.isFinite(Date.parse(entry.occurred_at)) && optionalText(entry.prior_stage) && optionalText(entry.stage) && optionalText(entry.reason)));
+  for (const kind of ["correspondence", "stage_history"]) {
+    const page = detail[`${kind}_page`];
+    if (page === undefined) continue;
+    projection(object(page) && Number.isSafeInteger(page.total) && page.total >= detail[kind].length && typeof page.has_more === "boolean");
+    if (!page.has_more) projection(page.next_cursor === null);
+    else if (kind === "correspondence") projection(object(page.next_cursor) && text(page.next_cursor.id) && Number.isFinite(Date.parse(page.next_cursor.occurred_at)));
+    else projection(typeof page.next_cursor === "string" && /^[0-9]+$/.test(page.next_cursor));
+  }
   return detail;
 }

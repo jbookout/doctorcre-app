@@ -1,3 +1,4 @@
+import { CHROMIUM_SAFETY_ARGS } from '../scripts/chromium-safety-args.mjs';
 // Real layout, real browser: at phone (390px) and desktop widths no card
 // content may overflow its card, and the page never scrolls sideways. The
 // real page and code run against a local server whose /mcp answers with the
@@ -87,6 +88,9 @@ parent.document.body.setAttribute("data-measure", JSON.stringify({ cards: cards.
 function serve() {
   const server = createServer(async (request, response) => {
     const url = new URL(request.url, "http://127.0.0.1");
+    if (['/api/system-work/session','/auth/session'].includes(url.pathname)) {
+      response.writeHead(200, {'content-type':'application/json'}); response.end(JSON.stringify({actor:{slug:'joe'},csrf_token:'synthetic-session'})); return;
+    }
     if (request.method === "POST" && url.pathname === "/mcp") {
       let body = "";
       for await (const chunk of request) body += chunk;
@@ -124,7 +128,7 @@ for (const width of [390, 1280]) {
     test(`cards and open Key have no clipping or overlap at ${width}px on ${board}`, async t => {
       const server = await serve();
       t.after(() => server.close());
-      const browser = await chromium.launch();
+      const browser = await chromium.launch({ args: [...CHROMIUM_SAFETY_ARGS] });
       t.after(() => browser.close());
       const page = await browser.newPage({ viewport: { width, height: 900 } });
       const { port } = server.address();
@@ -140,7 +144,7 @@ for (const width of [390, 1280]) {
 }
 
 for (const width of [1440, 390]) test(`Live expansion keeps browser focus through background updates at ${width}px`, async t => {
-  const browser = await chromium.launch();
+  const browser = await chromium.launch({ args: [...CHROMIUM_SAFETY_ARGS] });
   t.after(() => browser.close());
   const page = await browser.newPage({ viewport: { width, height: 960 } });
   const errors = [];
@@ -149,7 +153,8 @@ for (const width of [1440, 390]) test(`Live expansion keeps browser focus throug
   await page.route("**/*", async route => {
     const url = new URL(route.request().url());
     if (url.origin !== "http://board.test") return route.abort();
-    const path = url.pathname === "/" ? "control-room.html" : url.pathname.slice(1);
+    const path = url.pathname === "/" ? "control-room.html"
+      : url.pathname.startsWith("/icons/") ? `public-shell${url.pathname}` : url.pathname.slice(1);
     let body = await readFile(join(ROOT, path));
     if (path === "control-room.html") body = Buffer.from(String(body).replace(/<script\b[^>]*>[\s\S]*?<\/script>/g, ""));
     await route.fulfill({ body, contentType: TYPES[extname(path)] || "application/octet-stream" });

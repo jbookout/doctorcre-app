@@ -18,12 +18,14 @@ async function setup(t,{width=1440,motion='no-preference',onRoute,engine=chromiu
  const fixture=await createFixtureClient({seedUrl:`data:application/json;base64,${Buffer.from(await readFile(new URL('data/board-seed.json',root))).toString('base64')}`});
  const calls=[],errors=[];page.on('pageerror',error=>errors.push(error.message));
  await page.route('**/*',async route=>{
-  const request=route.request(),url=new URL(request.url());if(!['http://localhost','https://app.doctorcre.com'].includes(url.origin))return route.abort();
+  const request=route.request(),url=new URL(request.url());
+  if(!['http://localhost','https://app.doctorcre.com'].includes(url.origin))return route.abort();
   if(onRoute && await onRoute(route,{url,fixture}))return;
+  if(['/api/system-work/session','/auth/session'].includes(url.pathname)) return route.fulfill({json:{actor:{slug:'joe'},csrf_token:'synthetic-session'}});
   if(url.pathname==='/mcp'){
   const {name,arguments:args}=request.postDataJSON().params;calls.push({name,args});let value={ok:true};
    if(name==='read-doc-outcome-cards')return rpc(route,await fixture.docOutcomeCards(args));
-   const methods={'list-feature-switches':'listFeatureSwitches','deal-room-board':'getBoard','get-deal-room':'getDeal','deal-room-changes':'getChanges','today-triage':'todayTriage','list-doc-suggestions':'listDocSuggestions','decide-doc-suggestion':'decideDocSuggestion','list-doc-conversations':'listDocConversations','read-doc-conversation':'readDocConversation','loop-board':'loopBoard','read-loop':'readLoop','incident-board':'incidentBoard','current-work-item':'currentWorkItem','current-work-requests':'currentWorkRequests','notification-feed':'notificationFeed','list-industry-events':'listIndustryEvents','find':'find','find-and-catch-up':'findAndCatchUp'};
+   const methods={'read-home-agenda':'getHomeAgenda','list-feature-switches':'listFeatureSwitches','deal-room-board':'getBoard','get-deal-room':'getDeal','deal-room-changes':'getChanges','today-triage':'todayTriage','list-doc-suggestions':'listDocSuggestions','decide-doc-suggestion':'decideDocSuggestion','list-doc-conversations':'listDocConversations','read-doc-conversation':'readDocConversation','loop-board':'loopBoard','read-loop':'readLoop','incident-board':'incidentBoard','current-work-item':'currentWorkItem','current-work-requests':'currentWorkRequests','notification-feed':'notificationFeed','list-industry-events':'listIndustryEvents','find':'find','find-and-catch-up':'findAndCatchUp'};
    if(name==='lead-board') value={leads:[],stages:[],as_of:new Date().toISOString()};
    else if(name==='claim-card') value={claimable:0,candidates:[],needs_contact_count:0};
    else if(methods[name]) { value=await fixture[methods[name]](name==='get-deal-room'?args.deal||args.deal_id:name==='deal-room-changes'?args.cursor:args); if(name==='get-deal-room') value={...value.deal,deal_id:value.deal.id,thread:value.thread,critical_dates:value.critical_dates.map(row=>({...row,due_on:row.date})),next_actions:value.next_actions,activities:value.activities,events:[]}; }
@@ -169,16 +171,22 @@ async function producerRoute(route,{url,fixture}) {
 }
 for(const failure of [null,503,401])test(`R1/R2 Home healthy/partial/expired context survives scope correctly (${failure})`,async t=>{
  const {page,goto}=await setup(t,{onRoute:async(route,env)=>{
-  if(env.url.pathname==='/mcp' && route.request().postDataJSON().params.name==='incident-board' && failure){await route.fulfill({status:failure,body:'{}'});return true;}
+  if(env.url.pathname==='/mcp' && route.request().postDataJSON().params.name==='read-home-agenda' && failure){await route.fulfill({status:failure,body:'{}'});return true;}
   return producerRoute(route,env);
  }});
+ if(failure===401){
+  await page.goto('http://localhost/?mode=live');await page.waitForURL('**/public-shell/session-ended.html');
+  assert.equal(await page.locator('#docPresence').count(),0);return;
+ }
  await goto('/?mode=live');await page.waitForFunction(()=>document.querySelector('#refreshHome').getAttribute('aria-busy')==='false');
  const before=await readContext(page);
  assert.equal(before.ready,failure===null,JSON.stringify(before));
- if(!failure){assert.ok(before.records.some(r=>r.kind==='deal'));assert.ok(before.records.some(r=>r.kind==='work'));}
+ if(!failure) assert.ok(before.records.some(r=>r.kind==='deal'));
+ assert.equal(before.records.some(r=>r.kind==='work'||r.kind==='incident'),false);
  await page.locator('[data-scope="mine"]').click();const after=await readContext(page);
  assert.equal(after.ready,failure===null);if(failure===401)assert.equal(after.records.length,0);
- if(!failure)assert.ok(after.records.some(r=>r.kind==='work'));
+ if(!failure)assert.ok(after.records.some(r=>r.kind==='deal'));
+ assert.equal(after.records.some(r=>r.kind==='work'||r.kind==='incident'),false);
 });
 test('initial Queue read uses the mounted Wire filter scope and publishes its first response',async t=>{
  let release,started;const held=new Promise(r=>release=r),entered=new Promise(r=>started=r);t.after(()=>release());
@@ -194,7 +202,7 @@ test('initial Queue read uses the mounted Wire filter scope and publishes its fi
 test('versioned Leads details bind popup identity and native close clears it',async t=>{
  const {page,goto}=await setup(t,{onRoute:producerRoute});await goto('/leads?mode=live');
  await page.locator('.lead-card').first().click();
- await page.waitForFunction(()=>document.querySelector('#detailBody')?.textContent.includes('Correspondence'));let c=await readContext(page);
+ await page.waitForFunction(()=>document.querySelector('#detailBody')?.textContent.includes('Captured correspondence'));let c=await readContext(page);
  assert.equal(c.ready,true,JSON.stringify(c));assert.deepEqual(c.selected,{kind:'lead',id:workspace().leads[0].id});assert.equal(c.active.title,'Dr. Example 1');
  await escapeRecord(page,'#leadDetail');assert.equal((await readContext(page)).selected,null);
 });
@@ -216,7 +224,7 @@ test('held Leads collection recovers in the current local filter before opening 
  assert.equal(filtered.ready,true,JSON.stringify(filtered));assert.deepEqual(filtered.records,[]);
  assert.equal(filtered.filters.search,'no matches');assert.ok(filtered.observedAt);
  await page.locator('#hotLeads [data-lead-id]').first().click();
- await page.waitForFunction(()=>document.querySelector('#detailBody')?.textContent.includes('Correspondence'));
+ await page.waitForFunction(()=>document.querySelector('#detailBody')?.textContent.includes('Captured correspondence'));
  const opened=await readContext(page);assert.equal(opened.ready,true);assert.equal(opened.active.title,'Dr. Example 1');
  await escapeRecord(page,'#leadDetail');
  await page.locator('#leadSearch').fill('');
@@ -336,8 +344,8 @@ for(const verb of ['loop-board','list-industry-events'])test(`R1/R16 Ideas tab c
  let denied=false,authLost=false;const {page}=await setup(t,{onRoute:async(route,env)=>{
   if(env.url.pathname==='/mcp'&&(authLost||(denied&&route.request().postDataJSON().params.name===verb))){authLost=true;await route.fulfill({status:401,json:{}});return true;}return producerRoute(route,env);
  }});await page.goto('https://app.doctorcre.com/ideas-events');await page.locator('.idea-tile').first().waitFor();await page.locator('#tabEvents').click();await page.waitForFunction(()=>document.querySelector('#docPresence').dataset.state==='ready');await page.locator('#tabIdeas').click();
- denied=true;await page.evaluate(()=>window.dispatchEvent(new Event('online')));await page.waitForTimeout(120);
- await page.locator('#tabEvents').click();assert.equal((await readContext(page)).ready,false);assert.equal((await readContext(page)).records.length,0);
+ denied=true;await page.evaluate(()=>window.dispatchEvent(new Event('online')));await page.waitForURL('**/public-shell/session-ended.html');
+ assert.equal(await page.locator('#tabEvents,#docPresence,.idea-tile').count(),0);
 });
 test('R11/R12 valid empty directory activity remains an authorized empty read',async t=>{
  const {page,goto}=await setup(t,{onRoute:async(route,{url})=>{
@@ -386,17 +394,29 @@ test('R18 closed Deal detail cannot survive an empty board projection',async t=>
  const c=await readContext(page);assert.equal(c.ready,true);assert.deepEqual(c.records,[]);
 });
 test('R18 a held Search response cannot publish under a later query scope',async t=>{
- let release,started;const held=new Promise(r=>release=r),entered=new Promise(r=>started=r);t.after(()=>release());
+ let release;const held=new Promise(r=>release=r);t.after(()=>release());
  const {page}=await setup(t,{onRoute:async(route,{url})=>{
+  if(url.pathname==='/js/search-page.js'){
+   // Let the old read answer after cancellation so this exercises the epoch
+   // guard. The normal client aborts it before Doc can receive its response.
+   await route.fulfill({contentType:'text/javascript',body:`
+    import { createLiveClient } from './live-client.js';
+    import { mountSearch } from './search.js';
+    const client=createLiveClient(),find=client.find.bind(client);
+    client.find=args=>find(args);
+    mountSearch({client});
+   `});return true;
+  }
   if(url.pathname!=='/mcp'||route.request().postDataJSON().params.name!=='find')return false;
-  started();await held;await rpc(route,{parties:[{ref:'C-SAMPLE',kind:'client',name:'Old query sample',merged:false}],deals:[],connections:[],organizations:[],lead_client_links:[],deals_via_link:[],note:'Sample'});return true;
+  await held;await rpc(route,{parties:[{ref:'C-SAMPLE',kind:'client',name:'Old query sample',merged:false}],deals:[],connections:[],organizations:[],lead_client_links:[],deals_via_link:[],note:'Sample'});return true;
  }});
  await page.goto('https://app.doctorcre.com/search');
  await page.evaluate(async()=>{
   const c=(await import('/js/doc-context.js')).pageDocContext,finish=c.finish;
-  c.finish=(...args)=>{const result=finish(...args);window.finishedFind=result;return result;};
+  c.finish=(ticket,...args)=>{const result=finish(ticket,...args);if(ticket?.method==='find')window.finishedFind=result;return result;};
  });
- await page.locator('#searchQuery').fill('Old query');await page.locator('#searchForm').dispatchEvent('submit');await entered;
+ const requested=page.waitForRequest(request=>request.url().endsWith('/mcp')&&request.postDataJSON()?.params?.name==='find');
+ await page.locator('#searchQuery').fill('Old query');await page.locator('#searchForm').dispatchEvent('submit');await requested;
  await page.locator('#searchQuery').fill('');await page.locator('#searchForm').dispatchEvent('submit');
  release();await page.waitForFunction(()=>window.finishedFind!==undefined);
  assert.equal(await page.evaluate(()=>window.finishedFind),false);
@@ -615,4 +635,36 @@ test('Dr. CRE suggestion page: a feature_disabled refusal re-reads the switch an
  await card.locator('.suggestion-decisions').waitFor({state:'hidden'});
  assert.equal(writes.length,1);
  assert.deepEqual(errors,[]);
+});
+
+for(const trigger of ['resume','identity-failure']) test(`F9 Leads ${trigger} clears Doc while identity is delayed and only fresh workspace restores it`,async t=>{
+ let hold=false,release;const held=new Promise(resolve=>release=resolve);t.after(()=>release());
+ const {page,goto,errors}=await setup(t,{onRoute:async(route,env)=>{
+  if(hold && env.url.pathname==='/api/system-work/session'){await held;if(trigger==='identity-failure'){await route.fulfill({status:503,body:''});return true;}}
+  return producerRoute(route,env);
+ }});
+ await goto('/leads?mode=live');await page.locator('.lead-card').first().click();
+ await page.waitForFunction(()=>window.docContext?.snapshot().active);
+ hold=true;
+ const suspended=await page.evaluate(trigger=>{
+  if(trigger==='resume')window.dispatchEvent(new Event('online'));else document.getElementById('refreshBoard').click();
+  return {context:window.docContext.snapshot(),cards:document.querySelectorAll('.lead-card').length,detail:document.getElementById('leadDetail').open};
+ },trigger);
+ if(trigger==='resume'){assert.equal(suspended.cards,0);assert.equal(suspended.detail,false);}
+ assert.equal(suspended.context.ready,false);assert.deepEqual(suspended.context.records,[]);
+ await page.locator('#docOpen').click();
+ assert.doesNotMatch(await page.locator('#docDetail').innerText(),/Dr. Example/);
+ release();
+ if(trigger==='identity-failure'){await page.waitForFunction(()=>document.querySelectorAll('.lead-card').length===0);assert.deepEqual((await readContext(page)).records,[]);hold=false;await page.locator('#docClose').click();await page.locator('#refreshBoard').click();}
+ await page.waitForFunction(()=>window.docContext?.snapshot().ready);
+ assert.ok((await readContext(page)).records.length>0);assert.deepEqual(errors,[]);
+});
+
+test('F9 ordinary Leads refresh restores the open detail context after revalidation',async t=>{
+ const {page,goto}=await setup(t,{onRoute:producerRoute});await goto('/leads?mode=live');
+ await page.locator('.lead-card').first().click();await page.waitForFunction(()=>window.docContext?.snapshot().active);
+ await page.locator('#refreshBoard').evaluate(node=>node.click());
+ await page.waitForFunction(()=>document.getElementById('leadBoard').getAttribute('aria-busy')==='false');
+ const c=await readContext(page);assert.equal(c.ready,true);assert.equal(c.active?.title,'Dr. Example 1');
+ assert.deepEqual(c.selected,{kind:'lead',id:workspace().leads[0].id});
 });

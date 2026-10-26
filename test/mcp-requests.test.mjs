@@ -123,3 +123,18 @@ test('Live read methods carry the caller signal to transport and leave MCP argum
     await assert.rejects(pending, error => error.code === 'read_timeout');
   }
 });
+
+test('S2 MCP writes transmit the verified session token with the retained operation',async()=>{
+ let binding='synthetic-session-a',lost=true;const sent=[];
+ const client=createLiveClient({docContext:false,fetchImpl:async(path,init)=>{
+  if(path==='/auth/session')return Response.json({actor:{slug:'joe'},csrf_token:binding});
+  sent.push({args:JSON.parse(init.body).params.arguments,csrf:init.headers['x-carr-csrf']});
+  if(lost){lost=false;throw new Error('timeout after commit');}
+  return Response.json({result:{content:[{type:'text',text:JSON.stringify({ok:true,replayed:true})}]}});
+ }});
+ const args={deal:'demo',text:'Original step',base_version:1,idempotency_key:'original-operation'};
+ await assert.rejects(client.setNextStep(args));
+ assert.equal(sent[0].csrf,'synthetic-session-a');
+ binding='synthetic-session-b';await assert.rejects(client.setNextStep(args),/session/i);assert.equal(sent.length,1);
+ binding='synthetic-session-a';await client.setNextStep(args);assert.deepEqual(sent[1],sent[0]);
+});

@@ -711,7 +711,7 @@ export const ANSWER_EVIDENCE_MAX = 500;
  * base_version, answer_text (1-500), scope_confirmed (must be the literal
  * true), and an optional evidence_ref (1-500). `null` means "do not send
  * it," in the same vocabulary as every other request-builder in this file.
- * No idempotency_key here — the caller mints a fresh one per attempt.
+ * The command operation adds one idempotency key and retains it on retries.
  */
 export function answerWorkRequestRequest({ humanRef, baseVersion, answerText, scopeConfirmed, evidenceRef } = {}) {
   const ref = String(humanRef ?? "").trim();

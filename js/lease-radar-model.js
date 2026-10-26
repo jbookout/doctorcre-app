@@ -1,12 +1,8 @@
 import { toDay, addMonths } from './calendar-model.js';
 export { addMonths } from './calendar-model.js';
 
-const businessDayFormat = new Intl.DateTimeFormat('en-CA',{timeZone:'America/Chicago',year:'numeric',month:'2-digit',day:'2-digit'});
-export function radarToday(date = new Date()) {
-  const parts = businessDayFormat.formatToParts(date);
-  const part = type => parts.find(p => p.type === type).value;
-  return `${part('year')}-${part('month')}-${part('day')}`;
-}
+import { businessDay as radarToday } from './business-date.js';
+export { radarToday };
 export const LEASE_RADAR_SCHEMA = 'lease-radar.v1';
 const quarterKey = day => `${day.slice(0, 4)}-Q${Math.ceil(Number(day.slice(5, 7)) / 3)}`;
 function leaseUrgency(day, today) {

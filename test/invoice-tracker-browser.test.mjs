@@ -1,3 +1,4 @@
+import { CHROMIUM_SAFETY_ARGS } from '../scripts/chromium-safety-args.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile, mkdir } from 'node:fs/promises';
@@ -5,7 +6,7 @@ import { chromium } from 'playwright';
 import { invoiceTrackerFixture } from '../js/invoice-tracker-fixture.js';
 const root = new URL('../', import.meta.url), today = '2026-10-02';
 async function open(t, { width = 1440, reducedMotion = 'no-preference', query = '', home = false, receipt = 'ok' } = {}) {
-  const browser = await chromium.launch(); t.after(() => browser.close());
+  const browser = await chromium.launch({ args: [...CHROMIUM_SAFETY_ARGS] }); t.after(() => browser.close());
   const page = await browser.newPage({ viewport: { width, height: 960 }, timezoneId: 'UTC', reducedMotion });
   await page.clock.install({ time: new Date(today + 'T17:00:00Z') });
   const errors = []; page.on('pageerror', error => errors.push(error.message));
@@ -14,7 +15,7 @@ async function open(t, { width = 1440, reducedMotion = 'no-preference', query = 
   await page.route('**/*', async route => {
     const url = new URL(route.request().url());
     if (url.origin !== 'http://localhost') return route.abort();
-    if (url.pathname === '/api/system-work/session') return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ actor: { slug: 'joe', display_name: 'Demo Partner' } }) });
+    if (['/api/system-work/session','/auth/session'].includes(url.pathname)) return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ csrf_token:'synthetic-session', actor: { slug: 'joe', display_name: 'Demo Partner' } }) });
     if (url.pathname === '/mcp') {
       const req = route.request().postDataJSON().params; let response = {};
       if (req.name === 'read-invoice-tracker') {
@@ -92,7 +93,7 @@ test('pending receipt confirmations remain attached to each invoice across popup
 test('deep link, reduced motion and authentication loss keep the screen contract', async t => {
   const h = await open(t, { width: 390, reducedMotion: 'reduce', query: '&invoice=00000000-0000-4000-8000-000000000002' }); await h.page.waitForFunction(() => document.querySelector('#invoiceDetail').open); assert.equal(await h.page.locator('#invoiceDetailTitle').innerText(), 'Demo Oak Purchase');
   await h.page.locator('#closeInvoiceDetail').click(); assert.equal(await h.page.locator('.invoice-row.overdue .invoice-state').first().evaluate(node => getComputedStyle(node, '::before').animationName), 'none');
-  await h.page.screenshot({ path: new URL('out/test-artifacts/w15/reduced-motion-390.png', root).pathname }); h.setDenied(true); await h.page.locator('#refreshInvoices').click(); await h.page.waitForFunction(() => document.querySelector('#invoiceNotice a')); assert.equal(await h.page.locator('[data-invoice]').count(), 0); assert.deepEqual(h.errors, []);
+  await h.page.screenshot({ path: new URL('out/test-artifacts/w15/reduced-motion-390.png', root).pathname }); h.setDenied(true); await h.page.locator('#refreshInvoices').click(); await h.page.waitForURL('**/public-shell/session-ended.html'); assert.equal(await h.page.locator('[data-invoice]').count(), 0); assert.deepEqual(h.errors, []);
 });
 for (const width of [1440, 390]) test(`Home invoice attention fits ${width}px`, async t => {
   const h = await open(t, { home: true, width });

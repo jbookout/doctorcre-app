@@ -1,3 +1,4 @@
+import { CHROMIUM_SAFETY_ARGS } from '../scripts/chromium-safety-args.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
@@ -7,15 +8,16 @@ const boards = Array.from({ length: 166 }, (_, i) => ({ board_id: `demo-${i}`, t
 for (const [width, height] of [[1440, 960], [390, 844]]) {
   for (const file of ['progress-board.html', 'control-room.html']) {
     test(`QA-004: 166 published boards stay bounded and keyboard reachable in ${file} at ${width}px`, async t => {
-      const browser = await chromium.launch(); t.after(() => browser.close());
+      const browser = await chromium.launch({ args: [...CHROMIUM_SAFETY_ARGS] }); t.after(() => browser.close());
       const page = await browser.newPage({ viewport: { width, height } });
       await page.route('**/*', async route => {
         const url = new URL(route.request().url());
         if (url.origin !== 'http://board.test') return route.abort();
-        const path = url.pathname === '/' ? file : url.pathname.slice(1);
+        const path = url.pathname === '/' ? file
+          : url.pathname.startsWith('/icons/') ? `public-shell${url.pathname}` : url.pathname.slice(1);
         let body = await readFile(new URL('../' + path, import.meta.url));
         if (path === file) body = Buffer.from(String(body).replace(/<script\b[^>]*>[\s\S]*?<\/script>/g, ''));
-        await route.fulfill({ body, contentType: path.endsWith('.css') ? 'text/css' : /\.m?js$/.test(path) ? 'text/javascript' : 'text/html' });
+        await route.fulfill({ body, contentType: path.endsWith('.css') ? 'text/css' : /\.m?js$/.test(path) ? 'text/javascript' : path.endsWith('.svg') ? 'image/svg+xml' : 'text/html' });
       });
       await page.goto('http://board.test/');
       await page.evaluate(async boards => {

@@ -1,5 +1,6 @@
 import { mountAutoRefresh, updatedLabel } from "./auto-refresh.mjs";
 import { classifyCommandOutcome } from "./command-feedback.mjs";
+import { createRetainedCommands } from './retained-commands.mjs';
 // V5-UX-C12 plus V5-UX-C13 clause 3 plus V5-UX-C13b — the Model Room tab: DOM
 // wiring only.
 //
@@ -619,7 +620,7 @@ function renderAnswer() {
   const result = $("modelRoomAnswerResult");
   if (!unavailable || !form) return;
   const baseVersion = currentAnswerBaseVersion();
-  const offered = Boolean(view.historyWorkItemId) && baseVersion !== null;
+  const offered = Boolean(view.historyWorkItemId) && (baseVersion !== null || Boolean(view.answerOperations?.pending(view.historyWorkItemId)));
   unavailable.hidden = !view.historyWorkItemId || offered;
   unavailable.textContent = view.historyWorkItemId && !offered ? ANSWER_VERSION_UNAVAILABLE_SENTENCE : "";
   form.hidden = !offered;
@@ -629,6 +630,8 @@ function renderAnswer() {
     const scopeInput = $("modelRoomAnswerScopeConfirmed");
     const counter = $("modelRoomAnswerCounter");
     const submit = $("modelRoomAnswerSubmit");
+    const retained = view.answerOperations?.pending(view.historyWorkItemId);
+    for (const control of [textInput, evidenceInput, scopeInput]) if (control) control.disabled = Boolean(retained) || view.answerSend.state === 'sending';
     if (textInput && textInput.value !== view.answer.answerText) textInput.value = view.answer.answerText;
     if (evidenceInput && evidenceInput.value !== view.answer.evidenceRef) evidenceInput.value = view.answer.evidenceRef;
     if (scopeInput && scopeInput.checked !== view.answer.scopeConfirmed) scopeInput.checked = view.answer.scopeConfirmed;
@@ -643,6 +646,7 @@ function renderAnswer() {
     const ready = view.answer.scopeConfirmed && view.answer.answerText.trim().length > 0
       && view.answerSend.state !== "sending";
     if (submit) {
+      submit.textContent = retained ? 'Check outcome' : 'Send answer';
       // Animate in only the disabled->enabled transition, never every
       // keystroke while it is already enabled or already disabled.
       const wasReady = !submit.hasAttribute("disabled");
@@ -673,7 +677,9 @@ async function submitAnswer() {
   const draft = view.answer;
   const submitted = { ...draft };
   const baseVersion = currentAnswerBaseVersion();
-  const request = answerWorkRequestRequest({
+  const operations = view.answerOperations ||= createRetainedCommands({ scope: () => client.selfActor || null });
+  const pending = operations.pending(humanRef);
+  const request = pending || answerWorkRequestRequest({
     humanRef: view.historyWorkItemId,
     baseVersion,
     answerText: view.answer.answerText,
@@ -689,10 +695,16 @@ async function submitAnswer() {
   view.answerSend = { state: "sending", message: "Sending…" };
   renderAnswer();
   try {
-    // A fresh idempotency key per attempt, minted here for the same reason as
-    // the composer's: fixture-client.js requires one, and this is the one
-    // real write this form makes.
-    const result = await client.answerWorkRequestForJoe({ ...request, idempotency_key: uuidv4() });
+    if (!pending) {
+      const latest = await client.workRequestCard(workRequestCardRequest(humanRef));
+      if (view.historyWorkItemId !== humanRef || view.answer !== draft) return;
+      if (answerBaseVersion(latest) !== baseVersion) {
+        view.historyCard = { state: 'ready', payload: latest, refusal: refuseWorkRequestCard(latest) };
+        view.answerSend = { state: 'conflict', message: `${ANSWER_VERSION_CONFLICT_SENTENCE} Current state: ${latest?.state || 'unavailable'}. Review the refreshed record before submitting again.` };
+        renderHistory(); renderAnswer(); return;
+      }
+    }
+    const result = await operations.send(humanRef, request, request => client.answerWorkRequestForJoe(request));
     if (view.historyWorkItemId !== humanRef || view.answer !== draft) return;
     if (Object.keys(submitted).every(key => view.answer[key] === submitted[key])) {
       view.answer = { answerText: "", evidenceRef: "", scopeConfirmed: false };
@@ -708,10 +720,12 @@ async function submitAnswer() {
   } catch (error) {
     if (view.historyWorkItemId !== humanRef || view.answer !== draft) return;
     const code = String(error?.payload?.error || error?.message || "the write did not answer");
+    const outcome = classifyCommandOutcome({ error });
     view.answer = answerDraftAfterAttempt(view.answer);
     view.answerSend = {
-      state: "failed",
-      message: code === "version_conflict" ? ANSWER_VERSION_CONFLICT_SENTENCE : `Not sent: ${code}.`,
+      state: outcome.status === 'unknown' ? 'unknown' : 'failed',
+      message: outcome.status === 'unknown' ? 'Outcome unknown. Check outcome replays the original answer, version and safety key.'
+        : code === "version_conflict" ? ANSWER_VERSION_CONFLICT_SENTENCE : `Not sent: ${code}.`,
     };
   }
   renderAnswer();
@@ -784,8 +798,10 @@ async function selectHistoryWorkItem(humanRef) {
   // base_version: the answer draft and send state from the last one would be
   // stale evidence for this one, so both are cleared exactly like the
   // composer clears on a successful send.
-  view.answer = { answerText: "", evidenceRef: "", scopeConfirmed: false };
-  view.answerSend = { state: "idle", message: null };
+  const pending = view.answerOperations?.pending(view.historyWorkItemId);
+  view.answer = pending ? { answerText: pending.answer_text, evidenceRef: pending.evidence_ref || "", scopeConfirmed: pending.scope_confirmed === true }
+    : { answerText: "", evidenceRef: "", scopeConfirmed: false };
+  view.answerSend = pending ? { state: "unknown", message: "Outcome unknown. Check outcome replays this retained answer." } : { state: "idle", message: null };
   if (!view.historyWorkItemId) {
     view.historyCard = { state: "idle", payload: null, refusal: null };
     render();

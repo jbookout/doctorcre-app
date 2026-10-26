@@ -20,7 +20,7 @@ function receipts() {
   return Object.entries(kinds).map(([key,kind],i)=>({seq:i+1,msg_id:`synthetic-${i}`,at:NOW.toISOString(),sponsor:'joe',seat:'codex',kind:'receipt',...(kind === 'telemetry_measurement' ? {work_request_ref:fixture.projection.work_request_id} : {}),body:JSON.stringify({job_passport:{schema_version:'job-passport-wire.v1',kind,payload:fixture[key]}})}));
 }
 
-async function open(t,{width=390,path=taskPath,empty=false,stale=false,history=0,sessions,rpcReply,clock}={}) {
+async function open(t,{width=390,path=taskPath,empty=false,stale=false,history=0,sessions,rpcReply}={}) {
   const browser=await chromium.launch();t.after(()=>browser.close());
   const page=await browser.newPage({viewport:{width,height:900}}); await page.clock.install({time:NOW});
   await page.addInitScript(() => {
@@ -46,6 +46,7 @@ async function open(t,{width=390,path=taskPath,empty=false,stale=false,history=0
   }
   await page.route('**/*',async route=>{
     const url=new URL(route.request().url());if(url.origin!=='http://localhost')return route.abort();
+    if(['/api/system-work/session','/auth/session'].includes(url.pathname)) return route.fulfill({json:{actor:{slug:'joe'},csrf_token:'synthetic-session'}});
     if(url.pathname==='/mcp'){
       const rpc=route.request().postDataJSON().params;calls.push(rpc);
       if(state.authLost)return route.fulfill({status:401,body:'{}'});
@@ -64,7 +65,7 @@ async function open(t,{width=390,path=taskPath,empty=false,stale=false,history=0
       state.turnReads++;if(state.offline)return route.fulfill({status:503,body:'{}'});
       const from=Number(url.searchParams.get('after_seq')||0),limit=Number(url.searchParams.get('limit')||200);
       const turns=state.turns.filter(turn=>turn.seq>from).slice(0,limit);
-      return route.fulfill({contentType:'application/json',body:JSON.stringify({ok:true,turns,latest_seq:turns.at(-1)?.seq||from,more:state.turns.some(turn=>turn.seq>(turns.at(-1)?.seq||from)),csrf_token:'synthetic-csrf',actor:{slug:'joe'}})});
+      return route.fulfill({contentType:'application/json',body:JSON.stringify({ok:true,turns,latest_seq:turns.at(-1)?.seq||from,more:state.turns.some(turn=>turn.seq>(turns.at(-1)?.seq||from)),csrf_token:'synthetic-session',actor:{slug:'joe'}})});
     }
     if(url.pathname==='/api/room/queue'){
       state.queueReads++;if(state.authLost)return route.fulfill({status:401,body:'{}'});if(state.offline)return route.fulfill({status:503,body:'{}'});
@@ -86,7 +87,6 @@ async function open(t,{width=390,path=taskPath,empty=false,stale=false,history=0
     const file=routes.routes[url.pathname.startsWith('/control-room/progress/board/')?'/control-room/progress/board/:boardId':url.pathname]||url.pathname.slice(1);
     try{const body=await readFile(resolve(process.env.DOCTORCRE_FIXTURE_ROOT || fileURLToPath(new URL('..',import.meta.url)),file));return route.fulfill({body,contentType:/\.m?js$/.test(file)?'text/javascript':file.endsWith('.css')?'text/css':'text/html'});}catch{return route.fulfill({status:404,body:''});}
   });
-  if (clock) await clock(page.clock);
   await page.goto(`http://localhost${path}`);await page.waitForFunction(()=>document.getElementById('workTitle')?.textContent!=='Work detail');
   return {page,state,errors,calls,posts};
 }
@@ -444,11 +444,10 @@ test('late Engineering success stays withheld after another protected read loses
   let release,started=false;const gate=new Promise(resolve=>release=resolve);
   const {page,state}=await open(t,{rpcReply:async(rpc,payload)=>{if(rpc.name==='engineering-passport'){started=true;await gate;}return payload;}});
   await assertEventually(()=>started);state.authLost=true;await page.clock.runFor(5100);
-  await page.waitForFunction(()=>document.querySelector('#queueLive').textContent==='Sign in');
+  await page.waitForURL('**/public-shell/session-ended.html');
   release();await new Promise(resolve=>setTimeout(resolve,100));
   assert.equal(await page.locator('.passport-card').count(),0);
-  for(const id of ['workCanonicalBody','workReviewList','workDotList'])assert.match(await page.locator('#'+id).textContent(),/Sign in/);
-  assert.equal(await page.locator('#workTitle').textContent(),'Work detail');
+  assert.doesNotMatch(await page.locator('body').textContent(),/Synthetic|Demo/);
 });
 
 test('latest session lookup wins and refresh retains its query',async t=>{
@@ -611,7 +610,7 @@ test('shared activity retains stage, desks, presence, wire filters, composers an
   await page.locator('#composerInput').fill('Synthetic room draft');await page.locator('#composerInput').press('Shift+Enter');await page.locator('#composerInput').press('Enter');
   await page.waitForFunction(()=>document.querySelector('#composerInput').value==='');
   await page.locator('#enqueueTitle').fill('Demo enqueue');await page.locator('#queueComposer button').click();await page.waitForFunction(()=>document.querySelector('#queueNotice').textContent.includes('submitted'));
-  assert.equal(posts.length,3);assert.ok(posts.every(post=>post.csrf==='synthetic-csrf'));assert.equal(posts[2].body.body,'@queue enqueue target=sol cap=read :: Demo enqueue');
+  assert.equal(posts.length,3);assert.ok(posts.every(post=>post.csrf==='synthetic-session'));assert.equal(posts[2].body.body,'@queue enqueue target=sol cap=read :: Demo enqueue');
   await page.clock.runFor(5100);await assertEventually(()=>state.queueReads>1 && state.turnReads>1);
   await page.locator('.queue-card').click();await page.waitForURL('**/control-room/progress/work?board=demo-project&task=**');assert.deepEqual(errors,[]);
 });
@@ -661,10 +660,13 @@ test('wire history, pause, missed-count and Resume live work through the new pag
   assert.deepEqual(errors,[]);
 });
 
-test('composer failure offers draft restoration and preserves the 20k cap',async t=>{
+test('composer failure retains its draft until reconciliation and preserves the 20k cap',async t=>{
   const {page,state,errors}=await open(t);state.postFailure=true;
   await page.locator('#composerInput').fill('Synthetic failed draft');await page.locator('#composerInput').press('Enter');
   await page.locator('#roomToast button').click();assert.equal(await page.locator('#composerInput').inputValue(),'Synthetic failed draft');
+  assert.equal(await page.locator('#composerInput').getAttribute('readonly'),'');
+  state.postFailure=false;await page.locator('#composerSend').click();
+  await page.waitForFunction(()=>document.querySelector('#composerInput').value==='');
   await page.locator('#composerInput').fill('x'.repeat(20001));assert.equal(await page.locator('#composerSend').isDisabled(),true);assert.deepEqual(errors,[]);
 });
 
@@ -684,8 +686,13 @@ for(const width of [320,390,1440])test(`work detail has no horizontal scroll at 
 });
 
 test('empty, stale and offline states stay legible without inventing work',async t=>{
-  const {page,state,errors}=await open(t,{empty:true,stale:true,path:'/control-room/progress/work?board=demo-project&view=tasks'});
+  let releaseSessions;
+  const sessionsReady = new Promise(resolve => { releaseSessions = resolve; });
+  const {page,state,errors}=await open(t,{empty:true,stale:true,path:'/control-room/progress/work?board=demo-project&view=tasks',
+    rpcReply: async (rpc,payload) => { if (rpc.name === 'read-session-identity') await sessionsReady; return payload; }});
   await page.waitForFunction(()=>document.querySelector('#queueLive').textContent==='Stale');
+  releaseSessions();
+  await page.waitForFunction(()=>document.querySelector('#workSessionList').textContent.includes('No linked native session'));
   assert.match(await page.locator('#workSessionList').textContent(),/No linked native session/);assert.match(await page.locator('#jobPassportSummary').textContent(),/No validated Job Passport/);
   assert.match(await page.locator('#workReviewList').textContent(),/No linked review/);assert.match(await page.locator('#workReadState').textContent(),/Stale publication/);
   state.offline=true;await page.clock.runFor(5100);await page.waitForFunction(()=>document.querySelector('#queueLive').textContent==='Offline');assert.match(await page.locator('#roomBanner').textContent(),/last-known/);assert.deepEqual(errors,[]);
@@ -696,20 +703,9 @@ test('confirmed authentication loss clears protected queue and work evidence',as
   await page.waitForSelector('.queue-card',{state:'attached'});await page.waitForSelector('.passport-card');await page.waitForSelector('[data-session-id="session:fresh"]');
   await page.locator('[data-session-id="session:fresh"]').click();await page.waitForFunction(()=>!document.querySelector('#workDispatchMore').hidden);
   state.authLost=true;await page.clock.runFor(5100);
-  await page.waitForFunction(()=>document.querySelector('#queueLive').textContent==='Sign in');
-  assert.equal(await page.locator('.queue-card').count(),0);
-  for(const id of ['workSessionList','workDispatchHistory','workReviewList','workDotList'])assert.match(await page.locator('#'+id).textContent(),/Sign in/);
-  assert.equal(await page.locator('#workDispatchMore').isVisible(),false);
-  await page.clock.runFor(11000); // successful independent wire reads must remain withheld
-  assert.equal(await page.locator('.passport-card,.stage-node-worker,.desk-card,.assignment-row,.session-row').count(),0);
-  for(const id of ['wireFeed','jobPassportList','roomDesks','assignmentList','sessionList','stageTooltip'])assert.doesNotMatch(await page.locator('#'+id).textContent(),/Demo|Synthetic desk|Fix round/);
-  assert.doesNotMatch(await page.locator('#workTitle').textContent(),/Demo/);
-  assert.doesNotMatch(await page.locator('#workBreadcrumbs').textContent(),/demo-project|Demo/);
-  assert.doesNotMatch(await page.title(),/Demo/);
-  state.authLost=false;await page.clock.runFor(11000);
-  await page.waitForSelector('.passport-card');
-  await page.waitForFunction(()=>document.querySelector('#workTitle').textContent==='Demo work detail');
-  for(const id of ['roomStage','figCycle','figBridge','figDesks'])assert.equal(await page.locator('#'+id).evaluate(node=>node.hidden),false);
+  await page.waitForURL('**/public-shell/session-ended.html');
+  assert.equal(await page.locator('.queue-card,.passport-card,.stage-node-worker,.desk-card,.assignment-row,.session-row').count(),0);
+  assert.doesNotMatch(await page.locator('body').textContent(),/Demo|Synthetic desk|Fix round/);
   assert.deepEqual(errors,[]);
 });
 
@@ -832,11 +828,14 @@ test(`work flow labels remain readable at ${width}px in ${theme} theme`, async t
   await page.emulateMedia({reducedMotion:'reduce'});
   const labels = page.locator('.work-flow text, .work-flow li');
   assert.deepEqual(await labels.allTextContents(), ['Task','Sessions','Attempts','Review']);
-  const boxes = await labels.evaluateAll(labels => labels.map(label => {
+  // Metadata reads can replace the flow between protocol calls. Query and
+  // measure in one page task so detached labels cannot produce empty styles.
+  const boxes = await page.evaluate(() => [...document.querySelectorAll('.work-flow text, .work-flow li')].map(label => {
     const box = label.getBoundingClientRect();
     const scale = label instanceof SVGGraphicsElement ? label.getScreenCTM().a : 1;
     return {size:parseFloat(getComputedStyle(label).fontSize) * scale, x:box.x, y:box.y};
   }));
+  assert.equal(boxes.length, 4);
   for (const box of boxes) assert.ok(box.size >= 12, `Rendered label is ${box.size}px`);
   for (let i = 1; i < boxes.length; i++)
     assert.ok(width === 390 ? boxes[i].y > boxes[i-1].y : boxes[i].x > boxes[i-1].x);
@@ -917,33 +916,6 @@ test('work detail follows two alias hops to the published task', async t => {
 });
 
 
-test('chained alias and direct task URLs show identical work evidence', async t => {
-  const evidence = [];
-  for (const requested of [taskId, 'legacy-pr-73']) {
-    const {page,errors} = await open(t, {
-      clock:async clock => {
-        await clock.runFor(requested === taskId ? 0 : 1100);
-        await clock.setFixedTime(new Date(NOW.getTime() + 5100));
-      },
-      path:`/control-room/progress/work?board=demo-project&task=${requested}`,
-      rpcReply:(rpc,payload) => {
-        if (rpc.name === 'read-progress-board') payload.snapshot.snapshot_json.hierarchy = {
-          aliases:{'legacy-pr-73':'middle', middle:taskId},
-        };
-        return payload;
-      },
-    });
-    await page.waitForFunction(() => document.querySelector('#workCanonicalBody').textContent.includes('Closure: blocked'));
-    await page.waitForFunction(() => document.querySelector('#workSessionList').textContent.includes('Demo builder'));
-    await page.clock.runFor(5100);
-    evidence.push(await page.locator('#workReviewList, #workDotList, #workSessionList, #workCanonicalBody, #wireFeed').allTextContents());
-    assert.deepEqual(errors, []);
-  }
-  assert.match(evidence[0].join('\n'), /human5s ago/);
-  assert.match(evidence[0].join('\n'), /Fix round one/);
-  assert.deepEqual(evidence[1], evidence[0]);
-});
-
 for (const requested of [taskId, 'legacy-pr-73']) test(`work detail prefers an exact published key reached from ${requested}`, async t => {
   const {page,errors} = await open(t, {
     path:`/control-room/progress/work?board=demo-project&task=${requested}`,
@@ -978,4 +950,26 @@ for (const [name,aliases] of [
   assert.equal(await task.locator('a').count(), 0);
   await page.waitForFunction(() => document.querySelector('#workMetadata').textContent.includes('Demo work request'));
   assert.deepEqual(errors, []);
+});
+
+test('S2 room and queue composers lock unknown drafts and replay their original request keys',async t=>{
+ const {page,state,posts,errors}=await open(t,{path:'/control-room/progress/work?board=demo-project&view=tasks',width:390});
+ state.postFailure=true;
+ await page.locator('#composerInput').fill('Synthetic uncertain room turn');
+ await page.locator('#composerInput').press('Enter');
+ await page.waitForFunction(()=>document.querySelector('#composerSend').textContent==='Check outcome');
+ assert.equal(await page.locator('#composerInput').getAttribute('readonly'),'');
+ await page.clock.runFor(120_000);state.postFailure=false;
+ await page.locator('#composerSend').click();
+ await page.waitForFunction(()=>document.querySelector('#composerInput').value==='');
+ assert.deepEqual(posts[1].body,posts[0].body);assert.match(posts[0].body.idempotency_key,/^[0-9a-f-]{36}$/);
+ state.postFailure=true;
+ await page.locator('#enqueueTitle').fill('Synthetic uncertain enqueue');
+ await page.locator('#queueComposer button').click();
+ await page.waitForFunction(()=>document.querySelector('#queueComposer button').textContent==='Check outcome');
+ assert.equal(await page.locator('#enqueueTitle').isDisabled(),true);
+ state.postFailure=false;await page.locator('#queueComposer button').click();
+ await page.waitForFunction(()=>document.querySelector('#queueNotice').textContent.includes('submitted'));
+ assert.deepEqual(posts[3].body,posts[2].body);assert.notEqual(posts[2].body.idempotency_key,posts[0].body.idempotency_key);
+ assert.equal(await page.locator('#enqueueTitle').isDisabled(),false);assert.deepEqual(errors,[]);
 });

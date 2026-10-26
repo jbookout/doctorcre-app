@@ -85,14 +85,29 @@ function openForm({ eyebrow, title, submit, body, onSubmit, reviewed = null }) {
     const button = $("#systemWorkSubmit");
     button.disabled = true;
     try {
-      if (reviewed && !state.readReady) throw new Error("Current evidence is unavailable. Read this request again before confirming.");
-      if (reviewed && JSON.stringify(state.card) !== JSON.stringify(reviewed))
-        throw new Error("This request changed. Close this form and review the current card before confirming.");
-      await onSubmit(new FormData(form)); dialog.close(); alert("");
+      if (reviewed && !client.pendingAction(reviewed.human_ref)) {
+        if (!state.readReady) throw new Error("Current evidence is unavailable. Read this request again before confirming.");
+        const current = await client.read(reviewed.human_ref);
+        if (!Number.isSafeInteger(current?.version) || current.version !== reviewed.version) {
+          if (state.selectedRef === reviewed.human_ref) {
+            state.card = current; state.readAt = new Date().toISOString(); render();
+          }
+          throw Object.assign(new Error("This request changed. Close this form and review the current card before confirming. Your draft is kept."), { code: 'version_conflict' });
+        }
+      }
+      if (reviewed && client.pendingAction(reviewed.human_ref)) {
+        await client.reconcileAction(reviewed.human_ref); await refresh(reviewed.human_ref);
+      } else await onSubmit(new FormData(form));
+      dialog.close(); alert("");
     }
     catch (error) {
       $("#systemWorkFormError").textContent = refusal(error);
       $("#systemWorkFormError").hidden = false;
+      if (reviewed && client.pendingAction(reviewed.human_ref)) {
+        $("#systemWorkFormError").textContent = 'Outcome unknown. Check original outcome before changing these fields.';
+        for (const control of form.querySelectorAll('input,textarea,select')) control.disabled = true;
+        button.textContent = 'Check original outcome';
+      }
       if (error.code === "reauth_required" && client.session?.reauth_url) {
         const link = document.createElement("a");
         link.href = `/auth/reauth?return_to=${encodeURIComponent(location.pathname + location.search)}`;
@@ -132,6 +147,16 @@ function triageForm() {
     body: field("Classification", `<select name="classification" required><option value="operational">Routine operations</option><option value="needs_judgment">Needs partner judgment</option><option value="safety_review">Safety review</option></select>`, "This classifies the concern. It does not assign or execute it."),
     onSubmit: async (data) => { await client.triage(card.human_ref,
       { base_version: card.version, classification: data.get("classification") }); await refresh(); } });
+}
+
+function reconcileForm(humanRef) {
+  const pending = client.pendingAction(humanRef);
+  if (!pending) return;
+  openForm({ eyebrow: humanRef, title: 'Check the original action', submit: 'Check original outcome',
+    body: '<p>This action may already be recorded. Check outcome replays its original fields, version and safety key.</p>' +
+      `<dl>${Object.entries(pending.request).filter(([name]) => name !== 'idempotency_key').map(([name, value]) =>
+        `<dt>${esc(name.replaceAll('_', ' '))}</dt><dd>${esc(typeof value === 'object' ? JSON.stringify(value) : value)}</dd>`).join('')}</dl>`,
+    onSubmit: async () => { await client.reconcileAction(humanRef); await refresh(humanRef); } });
 }
 
 function planForm() {
@@ -227,7 +252,10 @@ function bindControls() {
     const open = event.target.closest("[data-open-work-request]");
     if (open) { refresh(open.dataset.openWorkRequest).catch((error) => alert(refusal(error))); return; }
     const button = event.target.closest("[data-system-action]");
-    if (button && state.readReady) actionForms[button.dataset.systemAction]?.();
+    if (button && state.readReady) {
+      if (state.card?.human_ref && client.pendingAction(state.card.human_ref)) reconcileForm(state.card.human_ref);
+      else actionForms[button.dataset.systemAction]?.();
+    }
   };
   document.querySelectorAll("[data-system-cancel]").forEach((button) => { button.onclick = () => $("#systemWorkDialog").close(); });
 }

@@ -1,13 +1,14 @@
+import { sessionFetch } from '../js/private-session.js';
 import { observeDocRead, selectDocRecord } from '../js/doc-context.js';
 import { mountAutoRefresh } from "../js/auto-refresh.mjs";
 import { mountAcceptedItinerary, acceptedRouteFromDetail } from "./itinerary-map.js";
 import { mountPropertyPanel } from "./property-panel.js";
-import { cheatSheetText, factSummary, formatTourDate, tourDisplayName, tourMetaLine } from "./tour-format.js";
+import { cheatSheetText, itinerarySheetText, factSummary, formatTourDate, tourDisplayName, tourMetaLine } from "./tour-format.js";
 
 (() => {
   "use strict";
   const $ = (selector) => document.querySelector(selector);
-  const state = { csrf: "", tours: [], tour: null, feedback: null, feedbackSeq: 0, feedbackStatus: "missing", rawShareToken: "", shareGrantId: "", shareStatus: "missing", shareGrants: [], projectionId: "", projectionDraftId: "", candidateDigest: "", renderJobId: "", pdfQcRunDigest: "", cheatDirty: false, cheatDraftTourId: "",
+  const state = { csrf: "", sessionGeneration: 0, sessionInvalidated: false, tours: [], tour: null, feedback: null, feedbackSeq: 0, feedbackStatus: "missing", rawShareToken: "", shareGrantId: "", shareStatus: "missing", shareGrants: [], projectionId: "", projectionDraftId: "", candidateDigest: "", renderJobId: "", pdfQcRunDigest: "", cheatDirty: false, cheatDraftTourId: "", cheatDraftRevision: null,
     searchItems: [], knownProperties: new Map(), searchCursor: null, searchKey: null, searchCompleted: false, searchSeq: 0, hydrationSeq: 0, cart: null, selectedIds: [], selectionDirty: false, selectionTourId: "", pendingSelection: null, selectionSave: null, undoSelectionIds: null };
   const uuid = () => crypto.randomUUID();
   const status = (message) => { $("#status").textContent = message; };
@@ -18,11 +19,13 @@ import { cheatSheetText, factSummary, formatTourDate, tourDisplayName, tourMetaL
   async function sha256(value) { const bytes = new TextEncoder().encode(value); const hash = new Uint8Array(await crypto.subtle.digest("SHA-256", bytes)); return `sha256:${[...hash].map((byte) => byte.toString(16).padStart(2, "0")).join("")}`; }
   function newShareToken() { const bytes = new Uint8Array(32); crypto.getRandomValues(bytes); return base64url(bytes); }
   async function request(path, options = {}) {
+    if (state.sessionInvalidated) throw new Error("session_changed");
+    const generation = state.sessionGeneration;
     const controller = new AbortController(); let timer, result;
     try {
       result = await Promise.race([
         (async () => {
-          const response = await fetch(path, { credentials: "same-origin", ...options, signal: controller.signal });
+          const response = await sessionFetch(path, { credentials: "same-origin", cache: "no-store", ...options, signal: controller.signal });
           let payload = null; try { payload = await response.json(); } catch { if (response.ok) throw new Error("read_invalid"); }
           return { response, payload };
         })(),
@@ -30,17 +33,17 @@ import { cheatSheetText, factSummary, formatTourDate, tourDisplayName, tourMetaL
       ]);
     } finally { clearTimeout(timer); }
     const { response, payload } = result;
-    if (!response.ok) { const error = new Error(payload?.error || "request_failed"); error.status = response.status; error.payload = payload; throw error; }
+    if (state.sessionInvalidated || generation !== state.sessionGeneration) throw new Error("session_changed");
+    if (!response.ok) {
+      const error = new Error(payload?.error || "request_failed"); error.status = response.status; error.payload = payload;
+      if ([401, 403].includes(response.status)) invalidateTourSession();
+      throw error;
+    }
     if (typeof payload?.csrf_token === "string") {
-      const binding = await sha256(payload.csrf_token), changed = sessionBinding && sessionBinding !== binding;
+      const binding = await sha256(payload.csrf_token);
+      if (state.sessionInvalidated || generation !== state.sessionGeneration) throw new Error("session_changed");
+      if (sessionBinding && sessionBinding !== binding) { invalidateTourSession(); throw new Error("session_changed"); }
       state.csrf = payload.csrf_token; sessionBinding = binding;
-      if (changed) {
-        createPending = null; restoredTourId = ""; createPhase = "ready"; routeEndpoints.clear();
-        itineraryView?.destroy(); itineraryView = null; $("#accepted-itinerary").hidden = true;
-        if (composer) { composer.plan = null; composer.phase = "session-changed"; composer.saved = false; composer.dirty = false; composer.undo = null; composer.message = "Session changed. Previous requests cannot be retried here. Reload the route for this session."; }
-        persistPending(); renderCreate(); renderComposerSummary();
-        throw new Error("session_changed");
-      }
     }
     return payload?.data || {};
   }
@@ -64,8 +67,168 @@ import { cheatSheetText, factSummary, formatTourDate, tourDisplayName, tourMetaL
   }
   async function composerDetail(tourId) { return validateDetail(await request(`/api/tours/detail?tour_id=${encodeURIComponent(tourId)}`), tourId); }
   let createPending = null, createBusy = false, createPhase = "ready", sessionBinding = "", navigationBusy = false, restoredTourId = "", libraryReady = false;
+  let sheetPending = null, sheetConflict = null, sheetBusy = false, sheetMessage = "", tourAction = null, tourActionPreparing = false;
+  let sheetAutosaveTimer = null, sheetComposing = false;
+  function cancelSheetAutosave() { clearTimeout(sheetAutosaveTimer); sheetAutosaveTimer = null; }
+  const otherWritesKey = "doctorcre-tour-other-writes-v1";
+  function persistOtherWrites() {
+    try {
+      if (sheetPending || tourAction) sessionStorage.setItem(otherWritesKey, JSON.stringify({ sessionBinding,
+        sheet: sheetPending, action: tourAction && { ...tourAction, busy: false } }));
+      else sessionStorage.removeItem(otherWritesKey);
+    } catch { status("Pending request stays in this tab's memory. Keep this tab open until its outcome is confirmed."); }
+  }
+  function restoreOtherWrites() {
+    if (sheetPending || tourAction) return;
+    try {
+      const saved = JSON.parse(sessionStorage.getItem(otherWritesKey) || "null");
+      if (saved?.sessionBinding !== sessionBinding) return;
+      sheetPending = saved.sheet || null; tourAction = saved.action || null;
+      if (sheetPending) sheetPending.uncertain = true;
+      if (tourAction) tourAction.uncertain = true;
+      if (sheetPending) sheetMessage = "Save outcome unknown after reload. Check outcome replays the retained request.";
+    } catch { /* Invalid tab state cannot authorize a write. */ }
+  }
+  function canRegenerateSheet() {
+    return Boolean(state.tour && state.cheatDraftTourId === state.tour.id && sessionBinding &&
+      !sheetBusy && !sheetPending && !sheetConflict && !sheetComposing && !tourAction && !tourActionPreparing &&
+      itinerarySheetText(state.tour));
+  }
+  function renderSheetRecovery() {
+    $("#sheet-conflict").hidden = !sheetConflict;
+    $("#sheet-current").textContent = sheetConflict?.current
+      ? `Current revision ${Number(sheetConflict.current.cheat_sheet?.revision_number || 0)}\n${cheatSheetText(sheetConflict.current.cheat_sheet?.content) || "(empty sheet)"}`
+      : "The current sheet could not be read. Read it again before reviewing.";
+    $("#review-sheet").disabled = sheetBusy || !sheetConflict?.current;
+    $("#refresh-sheet-conflict").disabled = sheetBusy;
+    $("#cheat-content").disabled = Boolean(sheetPending?.uncertain);
+    $("#save-sheet").disabled = sheetBusy || Boolean(sheetConflict);
+    $("#save-sheet").textContent = sheetPending ? "Check save outcome" : "Save now";
+    $("#regenerate-sheet").disabled = !canRegenerateSheet();
+    $("#restore-sheet").disabled = sheetBusy || Boolean(sheetPending) || Boolean(sheetConflict);
+    $("#sheet-state").textContent = sheetMessage || (state.cheatDirty ? "Unsaved changes. Saves after a pause." : text(state.tour?.cheat_sheet?.revision_label, "Not saved"));
+  }
+  async function currentSheetConflict(tourId) {
+    sheetConflict = { tourId, current: null }; sheetMessage = "The sheet changed. Your draft is kept; read and review the current revision."; renderSheetRecovery();
+    try {
+      const current = await request(`/api/tours/detail?tour_id=${encodeURIComponent(tourId)}`);
+      if (current.id !== tourId) throw new Error("read_invalid");
+      sheetRevision(current);
+      if (sheetConflict?.tourId === tourId && state.tour?.id === tourId) sheetConflict.current = current;
+    } catch (error) {
+      if (error.message === "session_changed") return;
+      sheetMessage = "The current sheet is unavailable. Your draft is kept; read it again before reviewing.";
+    }
+    renderSheetRecovery();
+  }
+  function sheetRevision(detail) {
+    const sheet = detail?.cheat_sheet;
+    if (!sheet || typeof sheet !== "object" || Array.isArray(sheet)) throw new Error("read_invalid");
+    // The producer returns exactly {} when this Tour has no sheet revision.
+    if (Object.keys(sheet).length === 0) return 0;
+    if (!Number.isSafeInteger(sheet.revision_number) || sheet.revision_number <= 0 || sheet.revision_number > 2147483647 ||
+      !sheet.content || typeof sheet.content !== "object" || Array.isArray(sheet.content)) throw new Error("read_invalid");
+    return sheet.revision_number;
+  }
+  function renderTourAction() {
+    $("#retry-tour-action").hidden = !tourAction || tourAction.busy;
+    $("#tour-action-state").textContent = tourAction
+      ? `${tourAction.label}: ${tourAction.busy ? "sending…" : "outcome unknown. Check outcome replays the retained request."}` : "";
+    $("#regenerate-sheet").disabled = !canRegenerateSheet();
+    for (const selector of ["#generate-projection", "#seal-projection", "#render-pdf", "#review-pdf", "#revoke-share", "#save-route", "#reorder-route", "#receipt-digest"]) $(selector).disabled = Boolean(tourAction) || tourActionPreparing;
+  }
+  function confirmedTourWrite(path, data) {
+    const receipt = {
+      "/api/tours/route-version": "route_version_id", "/api/tours/route-reorder": "route_version_id",
+      "/api/tours/route-accept": "route_version_acceptance_id",
+      "/api/tours/cheat-sheet/autosave": "cheat_sheet_revision_id", "/api/tours/cheat-sheet/restore": "cheat_sheet_revision_id",
+      "/api/tours/projection": "projection_id", "/api/tours/projection/seal": "projection_id",
+      "/api/tours/share/revoke": "share_grant_id", "/api/tours/pdf/render": "render_job_id",
+      "/api/tours/pdf/review": "review_receipt_id",
+    }[path];
+    if (data?.ok === false || !receipt || !id(data?.[receipt])) throw new Error("write_receipt_unavailable");
+    return data;
+  }
+  // One reviewed auxiliary Tour action at a time. The retained serialized body
+  // includes timestamps and digests; a receipt check never reconstructs it.
+  async function startTourAction(path, body, label, unchanged = () => true) {
+    if (tourAction) { status("Check the retained Tour action before making another change."); return; }
+    if (tourActionPreparing || navigationBusy || sheetBusy) return;
+    const tourId = state.tour?.id, binding = sessionBinding;
+    if (!id(tourId)) return;
+    tourActionPreparing = true; renderTourAction();
+    try {
+      const latest = await request(`/api/tours/detail?tour_id=${encodeURIComponent(tourId)}`);
+      if (latest.id !== tourId || binding !== sessionBinding) throw new Error("session_changed");
+      if (!unchanged(latest)) { status("The Tour changed. Reopen it and review the current record before saving."); return; }
+      tourAction = { path, body: JSON.parse(JSON.stringify(body)), label, tourId, binding, busy: false };
+      persistOtherWrites(); await sendTourAction(false);
+    } finally { tourActionPreparing = false; renderTourAction(); }
+  }
+  async function sendTourAction(verifySession = true) {
+    const pending = tourAction;
+    if (!pending || pending.busy) return;
+    pending.busy = true; renderTourAction();
+    let confirmed = false;
+    try {
+      // A current authenticated read verifies the session, while the write's
+      // original expected versions and material stay untouched.
+      if (verifySession) await request(`/api/tours/detail?tour_id=${encodeURIComponent(pending.tourId)}`);
+      if (tourAction !== pending || pending.binding !== sessionBinding) throw new Error("session_changed");
+      confirmedTourWrite(pending.path, await post(pending.path, pending.body, pending.binding)); confirmed = true;
+      tourAction = null; persistOtherWrites(); renderTourAction();
+      if (pending.path === "/api/tours/share/revoke") { state.rawShareToken = ""; $("#share-link").hidden = true; }
+      if (pending.path === "/api/tours/cheat-sheet/restore") { state.cheatDirty = false; sheetMessage = "Restored sheet confirmed."; }
+      await loadTour(pending.tourId, { throwOnFailure:true }); status(`${pending.label} confirmed.`);
+    } catch (error) {
+      if (confirmed) { status("The change was confirmed. The current Tour could not be refreshed; retry Refresh."); return; }
+      if (tourAction !== pending) return;
+      const earlierUnknownDenied = pending.uncertain && [401, 403].includes(error.status);
+      if (error.writeRefusal && error.status !== 408 && error.status !== 429 && !earlierUnknownDenied) {
+        tourAction = null; persistOtherWrites(); renderTourAction();
+        status(error.status === 409 ? "The Tour changed. Reopen it and review before a new request." : "The Tour action was refused. Review the current record before saving.");
+      } else { pending.busy = false; pending.uncertain = true; persistOtherWrites(); renderTourAction(); }
+    } finally { if (tourAction === pending) pending.busy = false; renderTourAction(); }
+  }
   const routeEndpoints = new Map();
   const pendingKey = "doctorcre-tour-pending-v1";
+  function invalidateTourSession() {
+    if (state.sessionInvalidated) return;
+    state.sessionInvalidated = true; state.sessionGeneration++; sessionBinding = ""; state.csrf = "";
+    ++tourLoadSeq; ++state.feedbackSeq; ++state.hydrationSeq; ++state.searchSeq;
+    cancelSheetAutosave(); sheetComposing = false; createPending = null; createPhase = "ready"; restoredTourId = "";
+    composer = null; sheetPending = null; sheetConflict = null; tourAction = null; tourActionPreparing = false;
+    state.tours = []; state.tour = null; state.feedback = null; state.feedbackStatus = "missing";
+    state.rawShareToken = ""; state.shareGrantId = ""; state.shareStatus = "missing"; state.shareGrants = [];
+    state.projectionId = ""; state.projectionDraftId = ""; state.candidateDigest = ""; state.renderJobId = ""; state.pdfQcRunDigest = "";
+    state.cheatDirty = false; state.cheatDraftTourId = ""; state.cheatDraftRevision = null;
+    state.searchItems = []; state.knownProperties.clear(); state.searchCursor = null; state.searchKey = null; state.searchCompleted = false;
+    state.cart = null; state.selectedIds = []; state.selectionDirty = false; state.selectionTourId = "";
+    state.pendingSelection = null; state.selectionSave = null; state.undoSelectionIds = null; state.pendingShare = null; state.shareBusy = false;
+    routeEndpoints.clear(); itineraryView?.destroy(); itineraryView = null;
+    $("#tour-list").replaceChildren(); $("#empty-tours").replaceChildren();
+    const workspace = $("#tour-detail");
+    for (const selector of ["#accepted-itinerary", "#route-stops", "#route-changes", "#property-evidence", "#selection-list", "#property-results", "#share-grants", "#feedback-list", "#sheet-current"]) $(selector).replaceChildren();
+    for (const selector of ["#tour-state", "#tour-name", "#tour-meta", "#route-version", "#composer-badge", "#composer-state", "#projection-state", "#share-state", "#projection-note", "#projection-preview", "#selection-tour", "#selection-version", "#selection-state", "#search-count", "#search-state", "#sheet-state", "#tour-action-state", "#pdf-state", "#create-tour-state"]) $(selector).textContent = "";
+    $("#projection-preview").hidden = true; $("#feedback-empty").hidden = true; $("#sheet-conflict").hidden = true;
+    for (const form of workspace.querySelectorAll("form")) form.reset();
+    workspace.querySelectorAll("input, textarea, select").forEach(control => {
+      if (control.type === "checkbox" || control.type === "radio") control.checked = false;
+      else control.value = "";
+      control.disabled = true;
+    });
+    workspace.querySelectorAll("button").forEach(control => { control.disabled = true; });
+    $("#refresh").disabled = true;
+    for (const selector of ["#preview-pdf", "#download-pdf", "#tour-day-link"]) { const link = $(selector); link.hidden = true; link.removeAttribute("href"); }
+    $(".discovery").hidden = true; $("#empty-state").hidden = false; $("#empty-copy").textContent = "Your session ended. Sign in to reopen Tours.";
+    $("#retry-library").hidden = true; $("#tour-name").textContent = ""; $("#tour-meta").textContent = "";
+    $("#cheat-content").value = ""; $("#share-url").value = ""; $("#share-link").hidden = true;
+    $("#create-tour-form").reset(); $("#create-tour-panel").open = false;
+    const recovery = $("#tour-recovery"), signIn = document.createElement("a");
+    signIn.href = "/auth/login"; signIn.dataset.tourSignin = ""; signIn.textContent = "Sign in to continue"; recovery.replaceChildren(signIn); recovery.hidden = false;
+    status("Sign in to reopen this Tour.");
+    document.querySelector("#tour-list").setAttribute("aria-busy", "false");
+  }
   function readPending() {
     try { const saved = JSON.parse(sessionStorage.getItem(pendingKey) || "null"); return saved?.sessionBinding === sessionBinding ? saved : null; } catch { return null; }
   }
@@ -102,10 +265,14 @@ import { cheatSheetText, factSummary, formatTourDate, tourDisplayName, tourMetaL
       const data = await post("/api/tours/create", createPending);
       if (!id(data.tour_id)) throw new Error("outcome_unknown");
       routeEndpoints.set(data.tour_id, { start: createPending.start_point, end: createPending.end_point });
-      await loadLibrary(); await loadTour(data.tour_id);
+      await loadLibrary();
+      if (state.sessionInvalidated) throw new Error("session_changed");
+      await loadTour(data.tour_id,{throwOnFailure:true});
+      if (state.sessionInvalidated) throw new Error("session_changed");
       createPending = null; createPhase = "ready"; persistPending(); $("#create-tour-state").textContent = "Tour created. Add properties from the selection cart.";
       $("#create-tour-panel").open = false;
     } catch (error) {
+      if (state.sessionInvalidated) return;
       if (error.message === "session_changed") $("#create-tour-state").textContent = "Session changed. The previous creation request cannot be retried here.";
       else if (error.message === "point_invalid") $("#create-tour-state").textContent = "Enter valid start and end coordinates and location source references.";
       else if (error.writeRefusal) { createPending = null; createPhase = "ready"; persistPending(); $("#create-tour-state").textContent = "Tour creation refused. Review the subject and route details."; }
@@ -646,9 +813,13 @@ import { cheatSheetText, factSummary, formatTourDate, tourDisplayName, tourMetaL
     $("#projection-note").textContent = state.projectionId ? "The approved projection is ready for a deliberately scoped, expiring share." : tour.projection_status === "draft" ? "A projection draft exists but cannot be shared until a human authority seals it." : "A projection is required before an external link can be issued.";
     if (!state.cheatDirty || state.cheatDraftTourId !== tour.id) {
       $("#cheat-content").value = cheatSheetText(tour.cheat_sheet?.content);
-      state.cheatDirty = false; state.cheatDraftTourId = tour.id;
+      state.cheatDirty = false; state.cheatDraftTourId = tour.id; state.cheatDraftRevision = null;
     }
-    $("#sheet-state").textContent = state.cheatDirty ? "Unsaved changes" : text(tour.cheat_sheet?.revision_label, "Not saved");
+    if (sheetPending?.tourId === tour.id && (!state.cheatDirty || state.cheatDraftTourId !== tour.id)) {
+      $("#cheat-content").value = sheetPending.draft;
+      state.cheatDirty = true; state.cheatDraftTourId = tour.id; state.cheatDraftRevision = sheetPending.body.expected_revision_number;
+    }
+    renderSheetRecovery(); renderTourAction();
     const list = $("#route-stops"); list.replaceChildren();
     for (const stop of stops()) { const row = document.createElement("li"); row.className = "stop"; row.dataset.stopId = text(stop.id); const label = document.createElement("span"); label.textContent = text(stop.label, text(stop.name, "Tour stop")); const controls = document.createElement("span"); for (const [word, delta] of [["Up", -1], ["Down", 1]]) { const button = document.createElement("button"); button.type = "button"; button.textContent = word; button.addEventListener("click", () => moveStop(stop.id, delta)); controls.append(button); } row.append(label, controls); list.append(row); }
     if (!stops().length) list.textContent = "No stops in this route cart.";
@@ -666,25 +837,29 @@ import { cheatSheetText, factSummary, formatTourDate, tourDisplayName, tourMetaL
     renderAcceptedItinerary();
   }
   async function loadLibrary() {
+    if (state.sessionInvalidated) return;
     status("Loading tours…");
     let data;
     try {
       data = await observeDocRead("tourLibrary", [], () => request("/api/tours/library"));
       if (!Array.isArray(data.tours) || !data.tours.every(tour => id(tour?.id))) throw new Error("read_invalid");
     } catch (error) {
+      if (state.sessionInvalidated) throw error;
       if (!libraryReady) $("#empty-copy").textContent = "The tour library did not load. Try again.";
       $("#retry-library").hidden = false;
       throw error;
     }
     libraryReady = true;
+    restoreOtherWrites(); renderTourAction();
     $("#retry-library").hidden = true;
     if (!createPending && readPending()?.create) { createPending = readPending().create; createPhase = "unknown"; $("#create-tour-panel").open = true; $("#create-tour-state").textContent = "Creation outcome unknown after reload. Reconcile before retrying the retained request."; renderCreate(); }
-    state.tours = Array.isArray(data.tours) ? data.tours.filter((tour) => id(tour?.id)) : []; renderLibrary(); status("Tour library ready.");
+    state.tours = Array.isArray(data.tours) ? data.tours.filter((tour) => id(tour?.id)) : []; renderLibrary(); if ($("#tour-recovery").hidden) status("Tour library ready.");
     const retained = readPending()?.composer;
     if (!composer && retained?.plan && id(retained.tourId)) {
       restoredTourId = retained.tourId; renderCreate(); status("An unresolved route request must be reconciled before another Tour can be edited.");
       await loadTour(restoredTourId);
     }
+    if (!state.tour && !retained?.plan && !createPending && (sheetPending || tourAction)) await loadTour(sheetPending?.tourId || tourAction.tourId);
     if (!state.tour && !retained?.plan && !createPending) {
       const requestedTour = new URLSearchParams(window.location.search).get("tour");
       if (id(requestedTour) && state.tours.some(tour => tour.id === requestedTour)) await loadTour(requestedTour, { requireComposerDetail: true });
@@ -701,7 +876,11 @@ import { cheatSheetText, factSummary, formatTourDate, tourDisplayName, tourMetaL
   }
   async function loadProjectionPreview() { const preview = $("#projection-preview"); state.candidateDigest = ""; preview.hidden = true; preview.textContent = ""; if (!id(state.projectionDraftId)) return; const data = await request(`/api/tours/projection/candidates?projection_id=${encodeURIComponent(state.projectionDraftId)}`); state.candidateDigest = text(data.candidate_digest); const rows = Array.isArray(data.preview) ? data.preview : []; preview.textContent = rows.map(row => { const facts = row?.facts && typeof row.facts === "object" ? row.facts : {}; return `${text(row.route_label, `Stop ${row.route_sequence || ""}`)} · ${text(facts["display.name"], "Unnamed property")}\n${text(facts["display.address"], "Address unavailable")}${factSummary(facts) ? `\n${factSummary(facts)}` : ""}`; }).join("\n\n"); preview.hidden = false; }
   let tourLoadSeq = 0;
-  async function loadTour(tourId, { requireComposerDetail = false } = {}) {
+  async function loadTour(tourId, { requireComposerDetail = false, throwOnFailure = false, keepEditorVisible = false } = {}) {
+    if (state.sessionInvalidated) return false;
+    if (state.cheatDirty && state.cheatDraftTourId !== tourId) { status("Save the current sheet before switching Tours."); return; }
+    if ((sheetPending || sheetConflict || tourAction) && state.tour?.id !== tourId && (sheetPending?.tourId || sheetConflict?.tourId || tourAction?.tourId) !== tourId) { status("Reconcile the current Tour request before switching Tours."); return; }
+    if ((sheetBusy && !keepEditorVisible) || tourAction?.busy) return;
     if (state.pendingShare && state.pendingShare.tourId !== tourId) { status("Check link outcome before switching Tours."); return; }
     if (state.shareBusy) return;
     if (restoredTourId && restoredTourId !== tourId) { status("Reconcile the retained Tour before switching Tours."); return; }
@@ -710,33 +889,126 @@ import { cheatSheetText, factSummary, formatTourDate, tourDisplayName, tourMetaL
     navigationBusy = true; if (composer) renderComposer(); renderCreate();
     try {
       const seq = ++tourLoadSeq; ++state.feedbackSeq; status("Loading tour…");
+      $("#tour-recovery").hidden = true;
+      if (!keepEditorVisible) $("#tour-panel").hidden = true;
+      $("#empty-state").hidden = true;
       const tour = await observeDocRead("tourDetail", [tourId], () => request(`/api/tours/detail?tour_id=${encodeURIComponent(tourId)}`));
+      if (tour?.id !== tourId || !Array.isArray(tour.stops)) throw new Error("read_invalid");
       if (requireComposerDetail || tour.routes?.length || createPending || restoredTourId) validateDetail(tour, tourId);
       if (seq !== tourLoadSeq) return;
       const changed = composer && composer.snapshot !== routeSnapshot(tour);
-      if (changed && (composer.dirty || composer.plan || composer.busy)) { status("Saved route changed. Save or reconcile the displayed draft before reloading."); return; }
-      if (state.tour?.id !== tourId) { state.rawShareToken = ""; state.shareGrantId = ""; $("#share-url").value = ""; $("#share-link").hidden = true; ++state.hydrationSeq; state.cheatDirty = false; state.cheatDraftTourId = tourId; state.selectedIds = []; state.cart = null; state.selectionDirty = false; state.pendingSelection = null; state.undoSelectionIds = null; state.selectionTourId = tourId; }
+      if (changed && (composer.dirty || composer.plan || composer.busy)) { $("#tour-panel").hidden = false; status("Saved route changed. Save or reconcile the displayed draft before reloading."); return; }
+      if (state.tour?.id !== tourId) { state.rawShareToken = ""; state.shareGrantId = ""; $("#share-url").value = ""; $("#share-link").hidden = true; ++state.hydrationSeq; if (state.cheatDraftTourId !== tourId) state.cheatDirty = false; state.cheatDraftTourId = tourId; state.selectedIds = []; state.cart = null; state.selectionDirty = false; state.pendingSelection = null; state.undoSelectionIds = null; state.selectionTourId = tourId; }
       state.tour = tour;
       selectDocRecord("tour", tour.id);
       if (!composer || composer.tourId !== tourId || changed) initComposer(tour);
       restoredTourId = "";
       renderTour(); renderSelection(); await loadSelectionCart(tourId); await Promise.all([loadProjectionPreview(), loadFeedback()]);
       if (state.tour?.id === tourId) status(state.feedbackStatus === "unavailable" ? "Tour loaded. Client responses are unavailable." : "Tour ready.");
-    } finally { navigationBusy = false; if (composer) renderComposer(); renderCreate(); }
+    } catch (error) {
+      if (state.sessionInvalidated) return false;
+      const denied = [401,403].includes(error.status) || error.message === "session_changed";
+      state.tour = null;
+      selectDocRecord(null,null);
+      $("#tour-panel").hidden = true;
+      $("#empty-state").hidden = true;
+      itineraryView?.destroy(); itineraryView = null;
+      $("#accepted-itinerary").hidden = true;
+      if (denied) {
+        ++state.feedbackSeq; ++state.hydrationSeq;
+        state.feedback = null; state.cart = null; state.selectedIds = [];
+        state.rawShareToken = ""; state.projectionId = ""; state.shareGrants = [];
+        $("#share-url").value = ""; $("#share-link").hidden = true;
+        $("#cheat-content").value = ""; state.cheatDirty = false;
+        // Unanswered writes stay bound to the original session for reconciliation.
+        if (!composer?.plan) composer = null;
+        persistPending();
+      }
+      status(denied ? "Sign in to reload this Tour." : "Tour detail unavailable. Reload this Tour to try again.");
+      const recovery = $("#tour-recovery"); recovery.replaceChildren(); recovery.hidden = false;
+      const control = document.createElement(denied ? "a" : "button");
+      if (denied) { control.href = "/auth/login"; control.dataset.tourSignin = ""; control.textContent = "Sign in"; }
+      else { control.type = "button"; control.dataset.tourRetry = ""; control.textContent = "Retry Tour detail"; control.onclick = () => void loadTour(tourId,{requireComposerDetail}); }
+      recovery.append(control);
+      if (throwOnFailure) throw error;
+      return false;
+    } finally {
+      navigationBusy = false; if (composer) renderComposer(); renderCreate();
+      if (!sheetBusy && state.cheatDirty && state.tour?.id === tourId) $("#cheat-content").dispatchEvent(new Event("input"));
+    }
   }
   function moveStop(stopId, delta) { const list = stops(); const index = list.findIndex((stop) => stop.id === stopId); const destination = index + delta; if (index < 0 || destination < 0 || destination >= list.length) return; [list[index], list[destination]] = [list[destination], list[index]]; renderTour(); }
-  async function saveRoute(reorder = false) { if (!state.tour) return; const stopIds = stops().filter((stop) => stop.stop_state === "active").map((stop) => stop.id).filter(id); const path = reorder ? "/api/tours/route-reorder" : "/api/tours/route-version"; const payload = reorder ? { tour_id: state.tour.id, route_version_id: state.tour.route_version_id, expected_route_version: Number(state.tour.route_version || 0), stop_ids: stopIds, idempotency_key: uuid() } : { tour_id: state.tour.id, expected_route_version: Number(state.tour.route_version || 0), stop_ids: stopIds, idempotency_key: uuid() }; await post(path, payload); await loadTour(state.tour.id); status("Route version saved."); }
-  async function saveSheet() {
+  async function saveRoute(reorder = false) {
     if (!state.tour) return;
-    const tourId = state.tour.id, draft = $("#cheat-content").value;
-    let content;
-    try { content = JSON.parse(draft || "{}"); } catch { content = { notes: draft }; }
-    await post("/api/tours/cheat-sheet/autosave", { tour_id: tourId, content,
-      expected_revision_number: Number(state.tour.cheat_sheet?.revision_number || 0), idempotency_key: uuid() });
-    if (state.tour?.id !== tourId) return;
-    if ($("#cheat-content").value === draft) state.cheatDirty = false;
-    await loadTour(tourId);
-    status(state.cheatDirty ? "Internal cheat sheet saved. Newer changes remain unsaved." : "Internal cheat sheet saved.");
+    const tour = state.tour, stopIds = stops().filter(stop => stop.stop_state === "active").map(stop => stop.id).filter(id);
+    await startTourAction(reorder ? "/api/tours/route-reorder" : "/api/tours/route-version", {
+      tour_id: tour.id, ...(reorder ? { route_version_id: tour.route_version_id } : {}),
+      expected_route_version: Number(tour.route_version || 0), stop_ids: stopIds, idempotency_key: uuid(),
+    }, "Route version", latest => latest.route_version === tour.route_version && latest.route_version_id === tour.route_version_id);
+  }
+  async function saveSheet() {
+    cancelSheetAutosave();
+    if (!state.tour || sheetBusy || sheetConflict) return;
+    const tourId = state.tour.id, binding = sessionBinding;
+    let confirmed = false;
+    sheetBusy = true; renderSheetRecovery();
+    try {
+      if (!sheetPending) {
+        const draft = $("#cheat-content").value, baseRevision = state.cheatDirty ? state.cheatDraftRevision : sheetRevision(state.tour);
+        let content;
+        try { content = JSON.parse(draft || "{}"); } catch { content = { notes: draft }; }
+        if (!content || typeof content !== "object" || Array.isArray(content)) {
+          sheetMessage = "Enter a JSON object or plain text notes. JSON arrays and scalar values cannot be saved."; return;
+        }
+        const latest = await request(`/api/tours/detail?tour_id=${encodeURIComponent(tourId)}`);
+        if (latest.id !== tourId || binding !== sessionBinding) throw new Error("session_changed");
+        const revision = sheetRevision(latest);
+        if (revision !== baseRevision) {
+          sheetConflict = { tourId, current: latest }; sheetMessage = "The sheet changed. Review the current revision; your draft is kept."; return;
+        }
+        sheetPending = { tourId, binding, draft, body: { tour_id: tourId, content,
+          expected_revision_number: revision, idempotency_key: uuid() } };
+        persistOtherWrites();
+      } else {
+        await request(`/api/tours/detail?tour_id=${encodeURIComponent(tourId)}`);
+        if (sheetPending?.binding !== sessionBinding || binding !== sessionBinding) throw new Error("session_changed");
+      }
+      const pending = sheetPending;
+      sheetMessage = "Saving…"; renderSheetRecovery();
+      confirmedTourWrite("/api/tours/cheat-sheet/autosave", await post("/api/tours/cheat-sheet/autosave", pending.body, pending.binding));
+      confirmed = true;
+      if (state.tour?.id !== tourId || sheetPending !== pending) return;
+      sheetPending = null; persistOtherWrites();
+      const revision = pending.body.expected_revision_number + 1;
+      state.tour = { ...state.tour, cheat_sheet: { content: pending.body.content, revision_number: revision } };
+      state.cheatDirty = $("#cheat-content").value !== pending.draft;
+      state.cheatDraftRevision = state.cheatDirty ? revision : null;
+      sheetMessage = "Internal cheat sheet save confirmed.";
+      await loadTour(tourId, { throwOnFailure:true, keepEditorVisible:true });
+      sheetMessage = "Internal cheat sheet save confirmed."; status(sheetMessage);
+    } catch (error) {
+      if (state.sessionInvalidated) return;
+      if (error.message === "session_changed") return;
+      if (confirmed) { sheetMessage = "The save was confirmed. The current sheet could not be refreshed; retry Refresh."; status(sheetMessage); return; }
+      if (error.status === 409) {
+        sheetPending = null; persistOtherWrites(); await currentSheetConflict(tourId);
+      } else if (error.writeRefusal && error.status !== 408 && error.status !== 429 &&
+        !(sheetPending?.uncertain && [401, 403].includes(error.status))) {
+        sheetPending = null; persistOtherWrites(); sheetMessage = "The save was refused. Your draft is kept; review the record before saving.";
+      } else {
+        if (sheetPending) { sheetPending.uncertain = true; persistOtherWrites(); }
+        sheetMessage = sheetPending
+          ? [401, 403].includes(error.status)
+            ? "The earlier save outcome is still unknown. This retry was denied; restore access before checking the retained request."
+            : "Save outcome unknown. Check save outcome replays the retained draft, version and key."
+          : "The current sheet could not be read. Your draft is kept; try saving again.";
+      }
+    } finally {
+      sheetBusy = false; if (!state.sessionInvalidated) renderSheetRecovery();
+      if (confirmed && state.cheatDirty && state.tour?.id === tourId && binding === sessionBinding) {
+        $("#cheat-content").dispatchEvent(new Event("input"));
+      }
+    }
   }
   async function issueShare(rotate = false) {
     if (state.shareBusy) return;
@@ -791,11 +1063,16 @@ import { cheatSheetText, factSummary, formatTourDate, tourDisplayName, tourMetaL
       throw error;
     } finally { state.shareBusy = false; }
   }
-  async function revokeShare(grantId) { if (!id(grantId)) return; const receipt = $("#receipt-digest").value.trim(); if (!digest(receipt)) throw new Error("receipt_digest_required"); await post("/api/tours/share/revoke", { share_grant_id: grantId, reason: "Internal operator revoked link", revoked_at: new Date().toISOString(), receipt_digest: receipt, idempotency_key: uuid() }); state.rawShareToken = ""; $("#share-link").hidden = true; await loadTour(state.tour.id); status("Share link revoked."); }
-  async function action(work) { try { await work(); } catch { status("The request could not be completed."); } }
+  async function revokeShare(grantId) {
+    if (!id(grantId)) return;
+    const receipt = $("#receipt-digest").value.trim(); if (!digest(receipt)) throw new Error("receipt_digest_required");
+    await startTourAction("/api/tours/share/revoke", { share_grant_id: grantId, reason: "Internal operator revoked link",
+      revoked_at: new Date().toISOString(), receipt_digest: receipt, idempotency_key: uuid() }, "Share link revocation");
+  }
+  async function action(work) { try { await work(); } catch { if (!state.sessionInvalidated) status("The request could not be completed."); } }
   // Versioned route and cheat-sheet writes ignore a second click while a write to the same record is in flight.
   const writesInFlight = new Set();
-  const exclusive = (record, work) => () => { if (writesInFlight.has(record)) return; writesInFlight.add(record); void action(work).finally(() => writesInFlight.delete(record)); };
+  const exclusive = (record, work) => () => { if (writesInFlight.has(record)) return; writesInFlight.add(record); return action(work).finally(() => writesInFlight.delete(record)); };
   $("#create-tour-form").addEventListener("submit", event => { event.preventDefault(); void createTour(); });
   $("#reconcile-create").addEventListener("click", () => void action(async () => {
     if (!createPending || createBusy || createPhase !== "unknown") return;
@@ -867,22 +1144,126 @@ import { cheatSheetText, factSummary, formatTourDate, tourDisplayName, tourMetaL
     node.addEventListener("mouseleave", () => { for (const item of document.querySelectorAll("#property-results .property-result")) item.classList.remove("county-highlight"); });
   }
   $("#refresh").addEventListener("click", () => void action(loadLibrary)); $("#save-route").addEventListener("click", exclusive("route", () => saveRoute(false))); $("#reorder-route").addEventListener("click", exclusive("route", () => saveRoute(true)));
-  $("#accept-route").addEventListener("click", exclusive("route", async () => { if (state.tour?.routes?.length) return acceptComposer(); if (!state.tour?.route_version_id || !digest(state.tour.route_acceptance_digest)) return; const prior = Number(state.tour.accepted_route_version || 0); await post("/api/tours/route-accept", { route_version_id: state.tour.route_version_id, expected_prior_route_version: prior, acceptance_digest: state.tour.route_acceptance_digest, idempotency_key: uuid() }); await loadTour(state.tour.id); status("Route version accepted."); }));
-  $("#cheat-content").addEventListener("input", () => { state.cheatDirty = true; state.cheatDraftTourId = state.tour?.id || ""; $("#sheet-state").textContent = "Unsaved changes"; });
-  $("#save-sheet").addEventListener("click", exclusive("sheet", saveSheet)); $("#restore-sheet").addEventListener("click", exclusive("sheet", async () => { const revision = state.tour?.cheat_sheet?.restore_revision_id; if (!state.tour || !id(revision)) return; await post("/api/tours/cheat-sheet/restore", { tour_id: state.tour.id, restore_revision_id: revision, expected_revision_number: Number(state.tour.cheat_sheet?.revision_number || 0), idempotency_key: uuid() }); state.cheatDirty = false; await loadTour(state.tour.id); }));
-  $("#generate-projection").addEventListener("click", () => void action(async () => { if (!state.tour?.route_version_id || state.tour.route_version_state !== "accepted") return; await post("/api/tours/projection", { tour_id: state.tour.id, route_version_id: state.tour.route_version_id, as_of: new Date().toISOString(), idempotency_key: uuid() }); await loadTour(state.tour.id); status("Client projection draft created. Human approval is required before sharing."); }));
-  $("#seal-projection").addEventListener("click", () => void action(async () => { const receipt = $("#receipt-digest").value.trim(); if (!id(state.projectionDraftId) || !digest(state.candidateDigest) || !digest(receipt)) throw new Error("projection_review_required"); await post("/api/tours/projection/seal", { projection_id: state.projectionDraftId, candidate_digest: state.candidateDigest, receipt_digest: receipt, idempotency_key: uuid() }); await loadTour(state.tour.id); status("Reviewed facts-only projection approved. It can now be shared or rendered."); }));
+  $("#accept-route").addEventListener("click", exclusive("route", async () => {
+    if (state.tour?.routes?.length) return acceptComposer();
+    const tour = state.tour;
+    if (!tour?.route_version_id || !digest(tour.route_acceptance_digest)) return;
+    await startTourAction("/api/tours/route-accept", { route_version_id: tour.route_version_id,
+      expected_prior_route_version: Number(tour.accepted_route_version || 0), acceptance_digest: tour.route_acceptance_digest,
+      idempotency_key: uuid() }, "Route acceptance", latest => latest.route_version_id === tour.route_version_id && latest.accepted_route_version === tour.accepted_route_version);
+  }));
+  $("#regenerate-sheet").addEventListener("click", () => {
+    if (!canRegenerateSheet()) return;
+    const editor = $("#cheat-content"), generated = itinerarySheetText(state.tour);
+    if (new TextEncoder().encode(JSON.stringify({ notes: generated })).length > 32768) {
+      sheetMessage = "The itinerary is too long for one sheet. Your notes are kept."; renderSheetRecovery(); return;
+    }
+    if (editor.value && !window.confirm("Replace your internal notes with the accepted itinerary? This will autosave a new revision. Existing saved revisions remain unchanged.")) return;
+    editor.value = generated; editor.dispatchEvent(new Event("input")); editor.focus();
+  });
+  const saveSheetExclusively = exclusive("sheet", saveSheet);
+  $("#cheat-content").addEventListener("compositionstart", () => { sheetComposing = true; cancelSheetAutosave(); renderSheetRecovery(); });
+  $("#cheat-content").addEventListener("compositionend", () => { sheetComposing = false; $("#cheat-content").dispatchEvent(new Event("input")); });
+  $("#cheat-content").addEventListener("input", (event) => {
+    if (sheetPending?.uncertain) return;
+    cancelSheetAutosave();
+    if (!state.cheatDirty) {
+      try { state.cheatDraftRevision = sheetRevision(state.tour); } catch { state.cheatDraftRevision = null; }
+    }
+    state.cheatDirty = true; state.cheatDraftTourId = state.tour?.id || ""; sheetMessage = ""; renderSheetRecovery();
+    const tourId = state.tour?.id, binding = sessionBinding;
+    if (!id(tourId) || !binding || sheetConflict || sheetComposing || event.isComposing) return;
+    const autosave = async () => {
+      sheetAutosaveTimer = null;
+      if (state.cheatDraftTourId !== tourId || sessionBinding !== binding || !state.cheatDirty || sheetPending || sheetConflict || sheetBusy) return;
+      if (navigationBusy || !state.tour) return;
+      if (state.tour.id !== tourId) return;
+      const editor = $("#cheat-content"), selection = document.activeElement === editor
+        ? { start: editor.selectionStart, end: editor.selectionEnd, direction: editor.selectionDirection, scroll: editor.scrollTop } : null;
+      let focused = document.activeElement === document.body ? null : document.activeElement;
+      const rememberFocus = event => { focused = event.target === document.body ? null : event.target; };
+      document.addEventListener("focusin", rememberFocus);
+      try { await saveSheetExclusively(); } finally { document.removeEventListener("focusin", rememberFocus); }
+      if (sessionBinding === binding && state.cheatDraftTourId === tourId && document.activeElement === document.body &&
+        focused instanceof HTMLElement && focused.isConnected && !focused.matches(":disabled") && focused.getClientRects().length) {
+        focused.focus({ preventScroll: true });
+        if (focused === editor && selection) { editor.setSelectionRange(selection.start, selection.end, selection.direction); editor.scrollTop = selection.scroll; }
+      }
+    };
+    sheetAutosaveTimer = setTimeout(autosave, 1000);
+  });
+  function prepareSheetPrint() {
+    const output = $("#cheat-print"); if (!output) return false;
+    output.replaceChildren(); document.body.append(output);
+    const tour = state.tour;
+    if (!tour || !$("#tour-panel") || $("#tour-panel").hidden || state.cheatDraftTourId !== tour.id) return false;
+    const draft = state.cheatDirty || sheetPending || sheetConflict;
+    const revision = tour.cheat_sheet?.revision_number;
+    for (const [tag, value] of [
+      ["p", "Internal only. Not for client distribution."],
+      ["h1", tourDisplayName(tour.name)],
+      ["p", tourMetaLine(tour)],
+      ["p", draft ? "Unsaved draft" : Number.isSafeInteger(revision) && revision > 0 ? `Saved revision ${revision}` : "Not saved"],
+      ["pre", $("#cheat-content").value || "No internal notes recorded."],
+    ]) { const node = document.createElement(tag); node.textContent = value; output.append(node); }
+    return true;
+  }
+  $("#print-sheet").addEventListener("click", () => { if (prepareSheetPrint()) window.print(); });
+  window.addEventListener("beforeprint", prepareSheetPrint);
+  window.addEventListener("afterprint", () => $("#cheat-print")?.replaceChildren());
+  window.addEventListener("doctorcre-session-invalidated", invalidateTourSession);
+  $("#save-sheet").addEventListener("click", saveSheetExclusively);
+  $("#review-sheet").addEventListener("click", () => {
+    if (!sheetConflict?.current || sheetBusy || state.tour?.id !== sheetConflict.tourId) return;
+    state.cheatDraftRevision = sheetRevision(sheetConflict.current);
+    state.tour = { ...state.tour, cheat_sheet: sheetConflict.current.cheat_sheet };
+    sheetConflict = null; sheetMessage = "Current sheet reviewed. Your draft is ready to save as a new revision."; renderSheetRecovery();
+  });
+  $("#refresh-sheet-conflict").addEventListener("click", () => void action(() => currentSheetConflict(state.tour.id)));
+  $("#retry-tour-action").addEventListener("click", () => void sendTourAction());
+  $("#restore-sheet").addEventListener("click", exclusive("sheet", async () => {
+    const tour = state.tour, revision = tour?.cheat_sheet?.restore_revision_id;
+    if (!tour || !id(revision) || sheetPending || sheetConflict) return;
+    await startTourAction("/api/tours/cheat-sheet/restore", { tour_id: tour.id, restore_revision_id: revision,
+      expected_revision_number: sheetRevision(tour), idempotency_key: uuid() }, "Sheet restoration",
+    latest => sheetRevision(latest) === sheetRevision(tour));
+  }));
+  $("#generate-projection").addEventListener("click", () => void action(async () => {
+    const tour = state.tour; if (!tour?.route_version_id || tour.route_version_state !== "accepted") return;
+    await startTourAction("/api/tours/projection", { tour_id: tour.id, route_version_id: tour.route_version_id,
+      as_of: new Date().toISOString(), idempotency_key: uuid() }, "Client projection draft",
+    latest => latest.route_version_id === tour.route_version_id && latest.route_version_state === "accepted");
+  }));
+  $("#seal-projection").addEventListener("click", () => void action(async () => {
+    const receipt = $("#receipt-digest").value.trim(), projection = state.projectionDraftId;
+    if (!id(projection) || !digest(state.candidateDigest) || !digest(receipt)) throw new Error("projection_review_required");
+    await startTourAction("/api/tours/projection/seal", { projection_id: projection,
+      candidate_digest: state.candidateDigest, receipt_digest: receipt, idempotency_key: uuid() }, "Reviewed facts approval",
+    latest => latest.projection_draft_id === projection);
+  }));
   $("#share-form").addEventListener("submit", (event) => { event.preventDefault(); void action(() => issueShare(id(state.shareGrantId))); }); $("#rotate-share").addEventListener("click", () => void action(() => issueShare(true)));
   $("#revoke-share").addEventListener("click", () => void action(() => revokeShare(state.shareGrantId)));
   $("#share-grants").addEventListener("click", (event) => { const grantId = event.target?.dataset?.shareGrantId; if (id(grantId)) void action(() => revokeShare(grantId)); });
   $("#refresh-feedback").addEventListener("click", () => void action(loadFeedback));
   $("#copy-share").addEventListener("click", () => void action(async () => { await navigator.clipboard.writeText($("#share-url").value); status("Confidential link copied."); }));
-  $("#render-pdf").addEventListener("click", () => void action(async () => { if (!id(state.projectionId)) throw new Error("projection_required"); const data = await post("/api/tours/pdf/render", { projection_id: state.projectionId, idempotency_key: uuid() }); state.renderJobId = text(data.render_job_id); state.pdfQcRunDigest = text(data.qc_run_digest); await loadTour(state.tour.id); status("PDF rendered and QC checked. Human review is required before download."); }));
-  $("#review-pdf").addEventListener("click", () => void action(async () => { if (!id(state.renderJobId) || !digest(state.pdfQcRunDigest)) throw new Error("pdf_review_required"); const reviewedAt = new Date().toISOString(); await post("/api/tours/pdf/review", { render_job_id: state.renderJobId, qc_run_digest: state.pdfQcRunDigest, decision: "accept", reviewed_at: reviewedAt, review_receipt_digest: await sha256(`tour-pdf-human-review:${state.renderJobId}:${state.pdfQcRunDigest}:${reviewedAt}`), reason: "Internal operator visually reviewed the deterministic property pages", idempotency_key: uuid() }); await loadTour(state.tour.id); status("PDF review receipt recorded. Internal download is available."); }));
+  $("#render-pdf").addEventListener("click", () => void action(async () => {
+    const projection = state.projectionId; if (!id(projection)) throw new Error("projection_required");
+    await startTourAction("/api/tours/pdf/render", { projection_id: projection, idempotency_key: uuid() }, "PDF render",
+    latest => latest.projection_id === projection);
+  }));
+  $("#review-pdf").addEventListener("click", () => void action(async () => {
+    const job = state.renderJobId, qc = state.pdfQcRunDigest;
+    if (!id(job) || !digest(qc)) throw new Error("pdf_review_required");
+    const reviewedAt = new Date().toISOString();
+    await startTourAction("/api/tours/pdf/review", { render_job_id: job, qc_run_digest: qc, decision: "accept", reviewed_at: reviewedAt,
+      review_receipt_digest: await sha256(`tour-pdf-human-review:${job}:${qc}:${reviewedAt}`),
+      reason: "Internal operator visually reviewed the deterministic property pages", idempotency_key: uuid() }, "PDF review",
+    latest => latest.pdf_render_job_id === job && latest.pdf_qc_run_digest === qc);
+  }));
   $("#share-expiry").value = new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 16); renderCreate(); void action(loadLibrary);
   mountAutoRefresh({ document, window, refresh: async () => {
     await loadLibrary();
-    const draftOpen = state.selectionDirty || state.pendingSelection || state.selectionSave || state.cheatDirty || composer?.dirty || composer?.plan || composer?.busy || state.shareBusy || navigationBusy;
+    const draftOpen = state.selectionDirty || state.pendingSelection || state.selectionSave || state.cheatDirty || sheetPending || sheetConflict || sheetBusy || tourAction || composer?.dirty || composer?.plan || composer?.busy || state.shareBusy || navigationBusy;
     if (id(state.tour?.id) && !draftOpen) await loadTour(state.tour.id);
     else if (id(state.projectionId)) await loadFeedback();
   } });

@@ -25,6 +25,7 @@ for (const width of [1440, 390]) for (const theme of ['dark', 'light']) {
     await page.route('**/*', async route => {
       const url = new URL(route.request().url());
       if (url.origin !== 'http://localhost') return route.abort();
+      if (['/api/system-work/session','/auth/session'].includes(url.pathname)) return route.fulfill({json:{actor:{slug:'joe'},csrf_token:'synthetic-session'}});
       if (url.pathname === '/mcp') {
         const { name, arguments: args } = route.request().postDataJSON().params;
         if (name === 'incident-board') await pending;

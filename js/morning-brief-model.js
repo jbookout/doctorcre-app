@@ -2,21 +2,30 @@ import { filterBriefOwners } from './brief-owner-filter.js';
 import { normalizeChangeEvent, compareReceipts } from './change-receipts.mjs';
 import { toDay } from './calendar-model.js';
 
-export function localDay(date = new Date()) {
-  return `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`;
-}
+export { businessDay as localDay } from './business-date.js';
+import { businessDay as localDay } from './business-date.js';
+import { briefInstruction, briefSections } from './morning-brief-sections.js';
+
 const text = value => typeof value === 'string' && value.trim();
-const section = value => value && ['ready','empty','unavailable'].includes(value.state) && Array.isArray(value.items);
+const section = value => value && ['ready','empty','partial','unavailable'].includes(value.state) && Array.isArray(value.items);
 export function validBrief(value) {
-  return ['joe','dell'].includes(value?.sponsor) && ['today','deals','loops'].every(key => section(value.sections?.[key]));
+  return ['joe','dell'].includes(value?.sponsor) && value.sections && typeof value.sections === 'object' && !Array.isArray(value.sections) && ['today','deals','loops'].every(key => value.sections[key] === undefined || section(value.sections[key]));
 }
 const short = (value, count) => {
   const words = String(value || '').trim().split(/\s+/);
   return words.length > count ? `${words.slice(0,count).join(' ')}…` : words.join(' ');
 };
 
-export function morningBriefView(payload, { now = new Date(), since, events = [], caughtUp = false, owner = 'all' } = {}) {
+export function normalizeBrief(payload) {
   if (!validBrief(payload)) return null;
+  const sections = {...payload.sections};
+  for (const key of ['today','deals','loops']) sections[key] ??= {state:'unavailable',items:[]};
+  return {...payload,sections};
+}
+
+export function morningBriefView(payload, { now = new Date(), since, events = [], caughtUp = false, owner = 'all' } = {}) {
+  payload = normalizeBrief(payload);
+  if (!payload) return null;
   const { sponsor, sections } = payload, day = localDay(now);
   const deals = new Map(sections.deals.state === 'unavailable' ? [] : sections.deals.items.map(row => [row.id,row]));
   const due = [];
@@ -27,7 +36,7 @@ export function morningBriefView(payload, { now = new Date(), since, events = []
     if (row.subject_type === 'deal' && deal) {
       if (deal.operating_state === 'parked' || /^closed$/i.test(deal.phase || '')) continue;
       due.push({ key:row.id ? `action:${row.id}` : `deal:${row.subject_id}`, kind:'deal', id:row.subject_id, action:row.id ? row : null, title:deal.name, summary:row.what, due:dueOn, owner_partner:row.owner_partner });
-    } else if (row.item_kind === 'next_action' && text(row.id)) {
+    } else if (['next_action','post_call_action','critical_date'].includes(row.item_kind) && text(row.id)) {
       due.push({ key:`action:${row.id}`, kind:'action', id:row.id, action:row, title:row.subject_name || row.what, summary:row.what, due:dueOn, owner_partner:row.owner_partner });
     }
   }
@@ -47,10 +56,14 @@ export function morningBriefView(payload, { now = new Date(), since, events = []
   const overnight = change ? { key:`deal:${change.deal_id}`, kind:'deal', id:change.deal_id, title:change.deal_name, summary:change.kind === 'note' ? 'New note' : `${change.action}${change.after ? `: ${change.after}` : ''}`, due:null } : null;
   const remaining = unique.find(row => row.key !== first?.key && !(row.kind === 'deal' && row.id === overnight?.id)) || null;
   const groups = [ ['first','Do first',first], ['overnight','Overnight',overnight], ['today','Today',remaining] ]
-    .filter(([, ,row]) => row).map(([key,label,row]) => ({key,label,row:{ ...row, title:short(row.title,6), summary:short(row.summary,10) }}));
+    .filter(([, ,row]) => row).map(([key,label,row]) => {
+      const title = String(row.title || '').trim().replace(/\s+/g,' ');
+      const summary = String(row.summary || '').trim().replace(/\s+/g,' ');
+      return {key,label,row:{ ...row, title, summary:short(briefInstruction(title,summary),10) }};
+    });
   const unavailable = [];
   if (sections.today.state === 'unavailable' || sections.loops.state === 'unavailable' || sections.deals.state === 'unavailable') unavailable.push('Today’s priorities unavailable');
   if (!caughtUp || sections.deals.state === 'unavailable') unavailable.push('Overnight updates unavailable');
-  const spoken = [...unavailable,...groups.map(group => `${group.label}. ${group.row.title}. ${group.row.summary}`)].join('. ');
-  return { sponsor, day, groups, unavailable, spoken, observedAt:now.toISOString() };
+  const coverage = briefSections(payload);
+  return { sponsor, day, groups, unavailable, coverage, observedAt:now.toISOString() };
 }

@@ -2,7 +2,7 @@ import { offlineTourShell } from "./offline-tour-shell.mjs";
 import tarStream from "tar-stream";
 import { Readable } from "node:stream";
 import { UI_OUTPUT, UI_SOURCE, uiBundle } from "./ui-bundle.mjs";
-import { build } from "esbuild";
+import { build, transform } from "esbuild";
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { lstat, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
@@ -15,7 +15,6 @@ const ROOT_DIRECTORIES = ["css", "data", "js", "public-shell", "reports", "tours
 const CONTRACT_INPUTS = {
   carr_interface: "contracts/carr-interface.v1.json",
   route_contract: "js/routes.js",
-  runtime_errors: 'contracts/runtime-errors.v1.json',
 };
 const SHA = /^[0-9a-f]{64}$/;
 
@@ -79,45 +78,24 @@ async function generatedShell(readSource) {
   return Buffer.from(`self.TOUR_DAY_SHELL = ${JSON.stringify(shell)};\n`);
 }
 
-const ERROR_CONTRACT_IMPORT = "import contract from '../contracts/runtime-errors.v1.json' with { type: 'json' };";
-const ERROR_BOOTSTRAP = '<script type="module" src="/js/error-tracking-entry.js"></script>';
-
-// Every signed-in application page loads the error bootstrap as its first
-// module, and the shipped bootstrap carries the release SHA and the pinned wire
-// contract inline. Token-authenticated public reports stay outside this ingress.
-async function trackErrors(path, content, readSource, commit) {
-  const replaceOnce = (pattern, replacement) => {
-    const source = content.toString("utf8");
-    if (typeof pattern === "string" ? !source.includes(pattern) : !pattern.test(source)) throw new Error(`error tracking cannot be installed in ${path}`);
-    return Buffer.from(source.replace(pattern, replacement));
-  };
-  if (path === "js/error-tracking.js") {
-    const contract = JSON.parse((await readSource(CONTRACT_INPUTS.runtime_errors)).toString("utf8"));
-    return replaceOnce(ERROR_CONTRACT_IMPORT, () => `const contract = ${JSON.stringify(contract)};`);
-  }
-  if (path === "js/error-tracking-entry.js") return replaceOnce("'__DOCTORCRE_RELEASE_SHA__'", () => `'${commit}'`);
-  if (path.endsWith(".html") && !path.startsWith("reports/")) {
-    // Before any other script: after <head>, or where the parser opens an implied head.
-    const source = content.toString("utf8");
-    const anchor = /<head(\s[^>]*)?>/i.exec(source) || /^(\uFEFF?\s*<!doctype[^>]*>)?/i.exec(source);
-    const at = anchor.index + anchor[0].length;
-    return Buffer.from(source.slice(0, at) + ERROR_BOOTSTRAP + source.slice(at));
-  }
-  return content;
-}
-
 async function assembleArtifact(commit, paths, readSource) {
   if (!/^[0-9a-f]{40}$/.test(commit)) throw new Error("source commit must be a full Git SHA");
   const payload = [];
   const files = new Map();
   for (const path of paths) {
-    let content = await trackErrors(path, await readSource(path), readSource, commit);
+    let content = await readSource(path);
+    if (path === "js/pipeline.js") {
+      const result = await transform(content.toString("utf8"), {
+        format: "esm", target: "es2022", legalComments: "none", minifyWhitespace: true,
+      });
+      content = Buffer.from(result.code);
+    }
     if (path === "reports/share.js") {
       // Compile the report's explicit module graph from the same admitted bytes
       // used by assembly and committed-source verification, never the live disk.
       const result = await build({
         entryPoints: [path], bundle: true, write: false, format: "iife",
-        platform: "browser", target: "es2022", legalComments: "none",
+        platform: "browser", target: "es2022", legalComments: "none", minifyWhitespace: true,
         plugins: [{ name: "artifact-source", setup(builder) {
           builder.onResolve({ filter: /.*/ }, (args) => {
             // The report adapter already serves lazy map assets at /vendor/.
@@ -145,6 +123,10 @@ async function assembleArtifact(commit, paths, readSource) {
       const [tokens, shell] = await Promise.all([readSource("css/tokens.css"), readSource("css/app-shell.css")]);
       const inlinedShell = Buffer.from(shell.toString("utf8").replace('@import url("/css/tokens.css");\n', ""));
       content = Buffer.concat([tokens, Buffer.from("\n"), content, Buffer.from("\n"), inlinedShell]);
+    }
+    if (["tours/app.js", "tours/planner.js"].includes(path)) {
+      const result = await transform(content.toString("utf8"), { loader: "js", format: "esm", target: "es2022", minifyWhitespace: true, legalComments: "none" });
+      content = Buffer.from(result.code);
     }
     files.set(path, content);
     payload.push({ path, bytes: content.length, sha256: digest(content) });

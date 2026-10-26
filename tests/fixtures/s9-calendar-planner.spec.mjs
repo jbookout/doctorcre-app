@@ -9,6 +9,7 @@ async function assets(page) {
   await page.route('**/*', async route => {
     const url = new URL(route.request().url());
     if (!['http://localhost', 'https://app.doctorcre.com'].includes(url.origin)) return route.abort();
+    if (url.pathname === '/auth/session') return route.fulfill({json:{actor:{slug:'joe'},csrf_token:'synthetic-fixture'}});
     if (url.pathname === '/mcp') {
       const name = route.request().postDataJSON().params.name;
       const data = name === 'deal-room-board' ? { actor: 'joe', deals: [{ id: 'synthetic-deal', name: 'Synthetic dental office' }] }
@@ -46,14 +47,19 @@ for (const width of [390, 1440]) for (const theme of ['light', 'dark']) test(`To
   await expect(page.locator('body')).toHaveClass(/has-app-layout/);
   const choices = page.locator('.market-buttons button');
   await expect(choices).toHaveCount(5);
-  for (const choice of await choices.all()) await expect(choice).toBeVisible();
+  for (const choice of await choices.all()) {
+    await expect(choice).toBeVisible();
+    expect(await choice.evaluate(node => parseFloat(getComputedStyle(node).fontSize))).toBeGreaterThanOrEqual(13);
+  }
+  await expect(page.locator('.territory-map')).toBeHidden();
+  await expect(page.locator('#territory-status')).toBeHidden();
   if (width === 390) {
-    await expect(page.locator('.territory-map')).toBeHidden();
     expect((await page.locator('#plan-title').boundingBox()).y).toBeLessThan(450);
-  } else {
-    const font = await page.locator('.map-market text').first().evaluate(node => parseFloat(getComputedStyle(node).fontSize) * node.getScreenCTM().a);
-    expect(font).toBeGreaterThanOrEqual(13);
   }
   await choices.filter({ hasText: 'Pensacola' }).click();
   await expect(page.locator('#space-area')).toHaveValue('Pensacola, FL');
+  await page.getByRole('button', { name: 'Show territory', exact: true }).click();
+  await expect(page.locator('#territory-status')).toBeVisible();
+  await page.getByRole('button', { name: 'Hide territory', exact: true }).click();
+  await expect(page.locator('#territory-status')).toBeHidden();
 });

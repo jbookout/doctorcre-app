@@ -3,33 +3,6 @@ import { engagementWriterFor } from './prospect-engagement.mjs';
 import { showToast } from './toast.js';
 import { renderDealVendors } from './deal-vendors.js';
 import { pageDocContext, selectDocRecord, setDocFilters, publishDocRead } from './doc-context.js';
-// V5-UX-B03 — Deals: the Kanban board's DOM wiring, and nothing else.
-//
-// Every decision about columns, payloads and words lives in
-// ./pipeline-model.js. Every decision about what a write DID lives in the
-// shared kernels: ./field-write-reconciliation.mjs for the one cell this board
-// edits, ./command-feedback.mjs for the optional follow-ups, ./board-sync.mjs
-// for what may be shown, ./change-receipts.mjs for what was seen and what can
-// be undone. This file reads the board, paints it, and turns a drag into one
-// move.
-//
-// Three rules govern it, and they are why it is shaped this way:
-//
-//   1. THE BOARD IS READ IN ONE PLACE. Every displayed value comes from an
-//      authoritative snapshot the coordinator applied. The changes feed drives
-//      presence, receipts and one coalesced re-read — it never supplies a
-//      value, because the cursor walks the whole log from the beginning and an
-//      early page carries values that are months old.
-//   2. IDENTITY IS THE id. A snapshot replaces every row object, so nothing
-//      here holds a row across an await: a lifted card, an open panel and an
-//      unfinished move all hold ids and resolve them at the moment of use.
-//   3. THE MOVE IS THE MOVE. The phase patch goes first and alone; the note,
-//      the next step and the critical date are separate operations with
-//      separate keys that run only after the server accepted the phase. A
-//      follow-up that fails leaves the card where the server put it and says so
-//      on its own receipt. Nothing here is a gate, because the record layer has
-//      none to report.
-
 import { createCommandDock } from './command-dock.js';
 import { readWithDeadline } from './auto-refresh.mjs';
 import { preserveBoardFocus } from './board-focus.mjs';
@@ -54,16 +27,16 @@ import {
 import {
   CLOSED_SLUG, COLUMNS, OPEN_COLUMNS, COMPLETION_CAPTIONS, closedColumnCaption, columnBySlug, columnByValue,
   columnLabel, completionPlan, contextDrawerSections, groupByColumn, keyboardTarget,
-  loadDealContext, moveIntent, moveSummary, moveTitle, noteText, dealName, presenceChip,
+  loadDealContext, moveIntent, moveSummary, moveTitle, noteText, dealName,
 } from './pipeline-model.js';
 import { isClosedDeal, localDeals, needsAttention } from './deal-review-model.js';
 import { lostDeals, closedDeals, urgencyOrder, concise, automaticMove, PHASE_TRIGGERS } from './local-deals-model.js';
 import { renderDealTimeline, renderDealUpdates } from './deal-timeline.js';
+import { renderDealChecklist } from './deal-checklist.js';
 import { uuidv4 } from './uuid.js';
 import { mountVisibilityPoll } from './visibility-poll.mjs';
 
 const POLL_MS = 1400;
-/** The ceiling on how long this board goes without ASKING again. Not a freshness claim. */
 const BOARD_REFRESH_MS = 15000;
 
 const $ = (id) => document.getElementById(id);
@@ -71,7 +44,6 @@ const esc = escapeText;
 const actorName = (slug) => ACTOR_LABEL[slug] || slug || 'Unassigned';
 const incomingScope = new URLSearchParams(globalThis.location?.search);
 
-/** One place holds what this page believes; nothing else keeps a copy. */
 const state = {
   client: null,
   selfActor: null,
@@ -106,7 +78,6 @@ const state = {
 
 let commandState = {};
 let dock = { record: () => {}, mount: () => {}, render: () => {}, forget: () => {} };
-/** What each open operation would send again: the dock's two buttons need it. */
 const operations = new Map();
 
 function announce(text) {
@@ -121,7 +92,6 @@ function say(text) {
 
 const dateWords = (value) => (value ? formatCalendarDate(value) || value : 'no date recorded');
 
-/* ------------------------------------------------------------------ painting */
 
 function autoHtml(deal) {
   const move = automaticMove(deal);
@@ -130,7 +100,7 @@ function autoHtml(deal) {
 const dealTitle = (deal) => dealName(deal.name);
 function nextStepHtml(deal) {
   const text = noteText(deal.next_step);
-  if (!text.trim()) return '';
+  if (!text.trim()) return '<p class="next-line">Next step missing</p>';
   return `<p class="next-line" title="${esc(text)}">${esc(text)}</p>`;
 }
 function cardHtml(deal) {
@@ -238,8 +208,6 @@ function renderBoardMessage(status = state.boardSync?.status()) {
 
 function renderBoard() {
   const board = $('kanban');
-  // Fresh snapshots still enter state; dragend or the press's release paints
-  // them, so a refresh never detaches a card under a press or drag.
   if (!board) return;
   board.hidden = ['closed','lost'].includes(state.view);
   $('boardLive').hidden = ['closed','lost'].includes(state.view);
@@ -250,6 +218,10 @@ function renderBoard() {
   state.paintDeferred = false;
   const rows = visibleBoardDeals();
   setDocFilters({ owner: state.personalScope ? state.selfActor : state.filter, filter: state.scopeFilter });
+  if (state.panelDeal) {
+    if (state.panelDetail) publishDocRead('getDeal', state.panelDetail, [state.panelDeal]);
+    selectDocRecord('deal', state.panelDeal);
+  }
   publishDocRead('getBoard', { deals: rows });
   const active = rows.filter(d => d.operating_state !== 'parked');
   const prospects = rows.filter(d => columnByValue(d.phase)?.slug === 'pending');
@@ -341,25 +313,34 @@ function renderReceipts() {
     : '<li class="receipt"><p class="receipt-line">Nothing has changed in this session yet.</p></li>';
 }
 
-/* ------------------------------------------------------------------- reading */
 
 function noteCellBase(cell, event) {
   if (!event?.id) return;
-  // Identity and time only. A feed event carries values too, and none of them
-  // belong in this map: this is a base, not a value.
   const seen = { id: event.id, recorded_at: event.recorded_at ?? null };
   state.fieldBase.set(cell, nextCellBase(state.fieldBase.get(cell) || null, seen));
 }
 
 function applyBoardSnapshot(board) {
+  const previousPanelRow = state.deals.get(state.panelDeal);
+  const previousActor = state.selfActor;
   state.selfActor = board.actor || state.client.selfActor || state.selfActor;
+  const actorChanged = previousActor && previousActor !== state.selfActor;
+  bindDraftActor(state.selfActor);
+  if (actorChanged) {
+    pageDocContext?.clear();
+    const contextRead = pageDocContext?.begin('getBoard');
+    pageDocContext?.finish(contextRead, board);
+    ++panelReadSequence; ++contextReadSequence;
+    state.panelDetail = null;
+    disposeEvidence?.(); disposeEvidence = null;
+    $('contextDrawer').close(); $('contextDrawerBody').replaceChildren();
+    $('panelTitle').textContent = 'Deal';
+    $('panelBody').innerHTML = '<p>Updating…</p>';
+  }
   if (state.personalScope && ['joe','dell'].includes(state.selfActor)) state.filter = state.selfActor;
   state.lostDeals = Array.isArray(board.lost_deals) ? board.lost_deals : null;
   state.closedDeals = Array.isArray(board.closed_deals) ? board.closed_deals : null;
   state.deals = new Map((board.deals || []).map((deal) => [deal.id, deal]));
-  // The base for each editable cell, from the same read as the values, through
-  // the forward-only rule — a read already open when a write was confirmed
-  // carries an OLDER base and must not walk this cell backwards.
   for (const deal of state.deals.values()) {
     for (const [field, seen] of Object.entries(deal.field_base || {})) {
       noteCellBase(cellKey(deal.id, field), seen);
@@ -367,7 +348,20 @@ function applyBoardSnapshot(board) {
   }
   renderChips();
   renderBoard();
-  if (state.panelDeal && $('recordPanel')?.open) refreshPanel();
+  if (actorChanged && state.panelDeal) {
+    void refreshPanel();
+    return;
+  }
+  syncUpdateForm();
+  if (!previousPanelRow && state.panelDetail && state.deals.has(state.panelDeal)) {
+    const template = document.createElement('div'); template.innerHTML = detailHtml(state.panelDetail);
+    for (const section of ['board-controls', 'prospect']) {
+      const selector = `[data-detail-read="${section}"]`;
+      $('panelBody').querySelector(selector)?.replaceWith(template.querySelector(selector));
+    }
+  }
+  if (state.panelDeal && $('recordPanel')?.open && previousPanelRow
+    && JSON.stringify(previousPanelRow) !== JSON.stringify(state.deals.get(state.panelDeal))) void refreshPanel({changed:true});
 }
 
 async function loadBoard() {
@@ -390,8 +384,6 @@ async function pollOnce(initial = false) {
   const batch = result.events || [];
   state.feed = observeChangeBatch(state.feed, batch);
   for (const event of batch) {
-    // NO VALUE IS TAKEN FROM AN EVENT. What an event does here is name the base
-    // for the next write to that cell, and — below — ask for a fresh snapshot.
     if (event.field) noteCellBase(cellKey(event.subject_id, event.field), event);
     if (!initial && state.feed.caught_up && event.actor !== state.selfActor && event.field === 'phase') {
       const deal = state.deals.get(event.subject_id);
@@ -399,6 +391,7 @@ async function pollOnce(initial = false) {
     }
   }
   if (state.feed.caught_up && batchTouchesBoard(batch)) state.boardSync.requestRefresh('change-feed');
+  if (!initial && state.feed.caught_up && batch.some(event => event.subject_id === state.panelDeal)) void refreshPanel({changed:true});
   state.receipts = ingestChangeEvents(state.receipts, batch, {
     dealName: (dealId) => (state.deals.has(dealId) ? dealTitle(state.deals.get(dealId)) : null),
     actorLabel: actorName,
@@ -407,9 +400,7 @@ async function pollOnce(initial = false) {
   if (!document.querySelector('dialog[open]')) renderBoard();
 }
 
-/* ------------------------------------------------------------------- writing */
 
-/** A write the server confirmed, put on screen and HELD against an open read. */
 function confirmLocalWrite(dealId, patch) {
   const deal = state.deals.get(dealId) || null;
   if (deal) Object.assign(deal, patch);
@@ -418,14 +409,6 @@ function confirmLocalWrite(dealId, patch) {
   return deal;
 }
 
-/**
- * Send one phase change — or put the one that was never answered back out.
- *
- * The key is minted per intended action, not per attempt, and the retained
- * request is re-sent unchanged: same value, same base, same key. That is what
- * makes a retry a replay at the server rather than a second write colliding
- * with the first.
- */
 async function sendPhaseWrite(dealId, value, extra = null) { return sendFieldWrite(dealId, 'phase', value, extra); }
 async function sendFieldWrite(dealId, field, value, extra = null) {
   const cell = cellKey(dealId, field);
@@ -456,18 +439,6 @@ const FOLLOW_UP_SENDERS = {
 };
 const nextStepKey = deal => `next-step:${deal}`;
 
-/**
- * The outcome write, and the fresh read it is built on.
- *
- * Three things make this NOT an ordinary follow-up. It carries a
- * `base_version`, which only a read taken AFTER the phase patch can supply —
- * a version captured when the dialog opened would name a row the move itself
- * has since changed. Its refusals are the concurrency ones: a version_conflict
- * goes to the crossed-edits path and a key_reuse is the kernel replaying an
- * answer, and neither is ever re-sent blind. And it is last, so a refusal here
- * leaves the card exactly where the server put it, and says so on its own
- * receipt rather than pretending the move failed.
- */
 async function runOutcomeWrite(operationKey, step, intent) {
   operations.set(operationKey, { kind: 'outcome-read', step, intent, summary: step.summary });
   dock.record(operationKey, { summary: step.summary, status: 'sending', undo: false });
@@ -508,29 +479,55 @@ async function runOutcomeWrite(operationKey, step, intent) {
 
 /** One follow-up, its own key, its own receipt. A failure never un-moves a card. */
 async function runFollowUp(operationKey, step) {
-  // Every next-step control shares one operation for the deal, including moves.
+  const isUpdate = step.verb === 'add-deal-note' && operationKey.startsWith('deal-update:');
+  if (isUpdate && operationKey !== updateKey(step.args.deal)) return {status:'blocked'};
   if (step.verb === 'set-next-step') operationKey = nextStepKey(step.args.deal);
   const send = FOLLOW_UP_SENDERS[step.verb];
   if (!send) return null;
-  if (!pendingCommand(commandState, operationKey)) operations.set(operationKey, { kind: 'command', verb: step.verb, args: step.args, send, summary: step.summary });
+  const pending = pendingCommand(commandState, operationKey);
+  let args = step.args;
+  if (step.verb === 'set-next-step') {
+    if (pending) args = { ...args, base_version: pending.request.base_version };
+    else {
+      operations.set(operationKey, { kind: 'follow-up-read', step, summary: step.summary });
+      let current;
+      try { current = (await state.client.getDeal(args.deal))?.deal; }
+      catch { /* A missing current version cannot authorize a replacement. */ }
+      if (current?.id !== args.deal || !Number.isSafeInteger(current.version) || current.version < 1) {
+        dock.record(operationKey, { summary: step.summary, status: 'failed', retry: true, undo: false,
+          reason: 'The move was recorded, but the next step was not sent. Retry reading the current record before saving it.' });
+        return null;
+      }
+      const reviewed = step.reviewed || state.deals.get(args.deal);
+      if (!reviewed || noteText(reviewed.next_step) !== noteText(current.next_step) || (reviewed.next_date || null) !== (current.next_date || null)) {
+        dock.record(operationKey, { summary: step.summary, status: 'conflict', retry: false, undo: false,
+          reason: `The next step changed. Current: ${noteText(current.next_step) || 'None'} (${current.next_date || 'no date'}). Review the current record before replacing it.` });
+        return null;
+      }
+      args = { ...args, base_version: current.version };
+    }
+  }
+  if (!pending) operations.set(operationKey, { kind: 'command', verb: step.verb, args, send, summary: step.summary });
   dock.record(operationKey, { summary: step.summary, status: 'sending', undo: false });
+  const updateActor = isUpdate ? state.selfActor : null;
   const result = await performCommand({
     operationKey,
-    args: step.args,
+    args,
     getState: () => commandState,
     setState: (next) => { commandState = next; },
     newKey: uuidv4,
     call: (request) => send(request),
   });
+  if (updateActor !== null && updateActor !== state.selfActor) return result;
   dock.record(operationKey, {
     summary: operations.get(operationKey).summary,
     status: result.status === 'blocked' ? 'unknown' : result.status,
     reason: result.message || null,
     retry: result.status === 'blocked' || result.retry, undo: false, request: result.request,
   });
-  if (step.verb === 'add-deal-note' && operationKey === `deal-update:${state.panelDeal}` && state.panelDetail) {
+  if (isUpdate && result.status === 'ok') discardUpdate(args.deal);
+  if (step.verb === 'add-deal-note' && operationKey === updateKey(state.panelDeal) && state.panelDetail) {
     if ([401,403].includes(result.http_status)) { refusePanelDetail({status:result.http_status}); return result; }
-    if (result.status === 'ok') updateDraft = null;
     syncUpdateForm();
     if (result.status === 'ok') await refreshPanel();
   }
@@ -538,18 +535,15 @@ async function runFollowUp(operationKey, step) {
   return result;
 }
 
-/**
- * The whole Move, in the order the record layer's own contract implies.
- *
- * The phase patch first and alone, because it is what the person did. Only an
- * accepted answer opens the follow-ups: a refused or unanswered move must not
- * leave a note claiming a phase change that never happened.
- */
 async function runMove(intent, form) {
   const plan = completionPlan(intent, form);
   if (plan.errors.length) return { ok: false, errors: plan.errors };
 
   const [phaseStep, ...followUps] = plan.steps;
+  for (const step of followUps) if (step.verb === 'set-next-step') {
+    const reviewed = state.deals.get(intent.deal);
+    step.reviewed = { next_step: reviewed?.next_step, next_date: reviewed?.next_date };
+  }
   const cell = cellKey(intent.deal, 'phase');
   if (!pendingCommand(state.fieldWrites, cell)) {
     operations.set(cell, { kind: 'field', deal: intent.deal, value: phaseStep.args.value,
@@ -558,9 +552,6 @@ async function runMove(intent, form) {
   dock.record(cell, { summary: moveSummary(intent), status: 'sending', undo: false });
   renderBoard();
 
-  // Only the two optional partner fields travel as extras. `deal`, `field` and
-  // `value` are the kernel's own, and a retry replays the retained request, so
-  // these ride on the first attempt or on none.
   const phaseExtra = {};
   if (phaseStep.args.change_reason) phaseExtra.change_reason = phaseStep.args.change_reason;
   if (phaseStep.args.human_quote) phaseExtra.human_quote = phaseStep.args.human_quote;
@@ -584,9 +575,6 @@ async function runMove(intent, form) {
     return { ok: false, errors: [] };
   }
   if (result.superseded) {
-    // The server accepted it and this board has since learned something newer
-    // about the same cell. The value is NOT written to the row: the read
-    // decides what it holds.
     state.boardSync.requestRefresh('after-write');
     renderBoard();
     const message = fieldWriteMessage(result, `${fieldLabel('phase')} on ${intent.name}`);
@@ -653,7 +641,6 @@ async function runUndo(eventId) {
   showToast(result.outcome.message, {error:true});
 }
 
-/* ----------------------------------------------------------- the two dialogs */
 
 function openCompletion(intent) {
   state.intent = intent;
@@ -670,9 +657,6 @@ function openCompletion(intent) {
   const outcomeField = $('completionOutcomeField');
   if (outcomeField) outcomeField.hidden = !isClosed;
   for (const radio of outcomeRadios()) radio.checked = false;
-  // Today, as the calendar picker's own value. There is no typed-date box: the
-  // ruling is a picker or nothing, and a default of today is what a person
-  // closing a record almost always means.
   const closedOn = $('completionClosedOn');
   if (closedOn) closedOn.value = isClosed ? todayIso() : '';
   const wonValue = $('completionWonValue');
@@ -704,7 +688,6 @@ function todayIso() {
   return local.toISOString().slice(0, 10);
 }
 
-/** Won value belongs to a won record and to nothing else, so it appears there. */
 function renderOutcomeState() {
   const field = $('completionWonValueField');
   if (field) field.hidden = chosenOutcome() !== 'won';
@@ -789,36 +772,63 @@ async function settleConflictChoice(conflictId, result) {
   } else $('conflictStatus').textContent = result.message || 'Resolution not confirmed';
 }
 
-/* ------------------------------------------------------------- record panel */
 
 let disposeEvidence = null;
 let panelReadSequence = 0;
 let contextReadSequence = 0;
+let panelRead = null;
 let updateDraft = null;
+const updateDrafts = new Map();
+const requirementDrafts = new Map();
+const requirementFields = [['use','Use'],['size','Size'],['location','Location'],['timing','Timing'],['budget','Budget'],['requirements','Approved requirements']];
+let draftActor = null;
+function bindDraftActor(actor) {
+  if (draftActor === actor) return;
+  draftActor = actor;
+  updateDrafts.clear();
+  requirementDrafts.clear();
+  updateDraft = null;
+  for (const key of Object.keys(commandState)) {
+    if (key.startsWith('deal-update:')) dock.forget(key);
+  }
+}
+function updateKey(id) { return `deal-update:${state.selfActor}:${id}`; }
+function discardUpdate(id) {
+  updateDrafts.delete(id);
+  if (updateDraft?.id === id) updateDraft = null;
+}
 function refusePanelDetail(error) {
   if (![401,403].includes(error?.status) && !['unauthorized','not_authenticated','forbidden'].includes(error?.payload?.error)) return false;
   ++panelReadSequence;
   ++contextReadSequence;
   state.panelDetail = null;
-  updateDraft = null;
+  bindDraftActor(null);
   disposeEvidence?.(); disposeEvidence = null;
   setContextOpenVisible(false);
   $('contextDrawer').close();
   $('contextDrawerBody').replaceChildren();
   $('panelTitle').textContent = 'Deal';
-  $('panelBody').innerHTML = '<p role="status">Unavailable. <button class="btn" type="button" data-refresh-detail>Retry</button></p>';
+  $('panelBody').innerHTML = '<p role="status">Unavailable. Sign in to reload this record. <a href="/auth/login">Sign in</a> <button class="btn" type="button" data-refresh-detail>Retry</button></p>';
   return true;
 }
 function syncUpdateForm() {
   const form = $('detailUpdateForm');
   if (!form || !state.panelDeal) return;
-  const pending = pendingCommand(commandState, `deal-update:${state.panelDeal}`);
-  if (!updateDraft || updateDraft.id !== state.panelDeal) updateDraft = {id:state.panelDeal,text:''};
+  const pending = pendingCommand(commandState, updateKey(state.panelDeal));
+  bindDraftActor(state.selfActor);
+  const requirementFieldset = $('requirementEmailForm')?.querySelector('fieldset');
+  if (requirementFieldset) requirementFieldset.disabled = !state.selfActor;
+  if (!updateDraft || updateDraft.id !== state.panelDeal) {
+    updateDraft = updateDrafts.get(state.panelDeal) || {id:state.panelDeal,text:''};
+    updateDrafts.set(state.panelDeal, updateDraft);
+  }
   form.elements.text.value = pending ? pending.request.text : updateDraft.text;
-  form.elements.text.disabled = Boolean(pending);
+  form.elements.text.disabled = Boolean(pending) || !state.selfActor;
   const button = form.querySelector('button[type="submit"]');
-  button.disabled = pending?.status === 'pending';
+  button.disabled = pending?.status === 'pending' || !state.selfActor;
   button.textContent = pending ? 'Check outcome' : 'Add update';
+  form.querySelector('[data-discard-update]').disabled = Boolean(pending) || !updateDraft.text;
+  if (!pending) $('detailUpdateStatus').textContent = updateDraft.text ? 'Unsent draft · kept while this page is open' : '';
   if (pending) $('detailUpdateStatus').textContent = pending.message || 'Saving update…';
 }
 function validateDetail(detail, id) {
@@ -832,9 +842,9 @@ function readDealDetail(id) {
   return readWithDeadline(signal => state.client.getDeal(id, { signal })).then(detail => validateDetail(detail, id));
 }
 async function saveUpdate(id) {
-  const key = `deal-update:${id}`;
+  const key = updateKey(id);
   const pending = pendingCommand(commandState, key);
-  if (pending?.status === 'pending') return;
+  if (pending?.status === 'pending' || !state.selfActor || draftActor !== state.selfActor) return;
   const form = $('detailUpdateForm');
   const text = form?.elements.text.value.trim();
   if (!pending && !text) { $('detailUpdateStatus').textContent = 'Enter an update'; return; }
@@ -848,6 +858,40 @@ async function saveUpdate(id) {
     $('detailUpdateStatus').textContent = result.status === 'ok' ? 'Update added' : result.message || 'Update not confirmed';
   }
 }
+function requirementEmailHtml(deal) {
+  const draft = requirementDrafts.get(deal.id) || {};
+  return `<details id="requirementEmail"><summary>Draft requirement email</summary>
+    <p>Unsent draft · kept while this page is open.</p>
+    <p>Enter only requirements approved for sharing. Client details are never added automatically.</p>
+    <form id="requirementEmailForm" class="deal-update-form"><fieldset class="add-deal-fields"${state.selfActor ? '' : ' disabled'}>
+      ${requirementFields.map(([name,label]) => `<div class="field"><label for="requirement-${name}">${label}</label>${name === 'requirements' ? `<textarea id="requirement-${name}" name="${name}" rows="3" maxlength="2000">${esc(draft[name] || '')}</textarea>` : `<input id="requirement-${name}" name="${name}" maxlength="2000" value="${esc(draft[name] || '')}"${['use','location'].includes(name) ? ' required' : ''}>`}</div>`).join('')}
+      <button class="btn" type="button" data-generate-requirement>Generate email preview</button>
+      <div class="field"><label for="requirementSubject">Email subject</label><input id="requirementSubject" name="subject" maxlength="500" value="${esc(draft.subject || '')}"></div>
+      <div class="field"><label for="requirementMessage">Email message</label><textarea id="requirementMessage" name="message" rows="10" maxlength="15000">${esc(draft.message || '')}</textarea></div>
+      <button class="btn" type="button" data-copy-requirement>Copy email draft</button>
+      <button class="btn btn-quiet" type="button" data-discard-requirement>Discard email draft</button>
+      <p id="requirementEmailStatus" role="status">Preview and copy only. Nothing is sent.</p>
+    </fieldset></form></details>`;
+}
+async function copyRequirementDraft() {
+  const form = $('requirementEmailForm');
+  const status = $('requirementEmailStatus');
+  const actor = state.selfActor;
+  const id = state.panelDeal;
+  const draft = requirementDrafts.get(id);
+  if (!form || !actor || draftActor !== actor) return;
+  const subject = form.elements.subject.value.trim();
+  const message = form.elements.message.value.trim();
+  if (!subject || !message) { status.textContent = 'Generate or enter a subject and message first.'; return; }
+  try {
+    await navigator.clipboard.writeText(`Subject: ${subject}\n\n${message}`);
+    if (form.isConnected && state.selfActor === actor && draftActor === actor && requirementDrafts.get(id) === draft) status.textContent = 'Email draft copied. Nothing sent.';
+  } catch {
+    if (!form.isConnected || state.selfActor !== actor || draftActor !== actor || requirementDrafts.get(id) !== draft) return;
+    status.textContent = 'Copy unavailable. Select the subject and message to copy manually.';
+    form.elements.message.focus(); form.elements.message.select();
+  }
+}
 function detailHtml(detail) {
   const d = detail.deal;
   const prospect = state.deals.get(d.id);
@@ -857,26 +901,44 @@ function detailHtml(detail) {
   const controlsAvailable = state.deals.has(d.id) && !isClosedDeal(d);
   return `<div class="deal-freshness"><time id="detailUpdated" title="Last updated"></time><button class="btn icon-btn" type="button" data-refresh-detail aria-label="Refresh deal" title="Refresh">↻</button></div><p id="detailReadStatus" role="status"></p>
     <section class="deal-opening-snapshot" data-detail-read="snapshot" aria-label="Deal snapshot">
-      ${nextStep ? `<p class="deal-current-action"><span>${d.next_date && d.next_date < todayIso() ? 'Overdue action' : 'Next action'}</span><strong>${esc(nextStep)}</strong>${d.next_date ? `<span>Due <time datetime="${esc(d.next_date)}">${esc(dateWords(d.next_date))}</time></span>` : ''}</p>` : ''}
+      ${nextStep ? `<p class="deal-current-action"><span>${d.next_date && d.next_date < todayIso() ? 'Overdue action' : 'Next action'}</span><strong>${esc(nextStep)}</strong>${d.next_date ? `<span>Due <time datetime="${esc(d.next_date)}">${esc(dateWords(d.next_date))}</time></span>` : ''}</p>` : !parked && !isClosedDeal(d) ? nextStepHtml(d) : ''}
       <dl class="deal-snapshot-facts">${d.workspace_kind === 'national_account' || d.account_client_id ? `<div><dt>Market agent</dt><dd>${esc(d.market_agent || 'Unassigned')}</dd></div>` : ''}${d.client_name ? `<div><dt>Client</dt><dd>${esc(d.client_name)}</dd></div>` : ''}${d.type ? `<div><dt>Type</dt><dd>${esc(d.type)}</dd></div>` : ''}${d.outcome ? `<div><dt>Outcome</dt><dd>${esc(d.outcome[0].toUpperCase()+d.outcome.slice(1))}</dd></div>` : ''}</dl>
     </section>
-    <form id="detailUpdateForm" class="deal-update-form"><label for="dealUpdate">Update</label><textarea id="dealUpdate" name="text" rows="2" maxlength="10000" required></textarea><button class="btn btn-primary" type="submit">Add update</button><p id="detailUpdateStatus" role="status"></p></form>
+    <div data-detail-read="checklist">${renderDealChecklist(detail.checklist)}</div>
+    <form id="detailUpdateForm" class="deal-update-form"><label for="dealUpdate">Update</label><textarea id="dealUpdate" name="text" rows="2" maxlength="10000" required></textarea><button class="btn btn-primary" type="submit">Add update</button><button class="btn btn-quiet" type="button" data-discard-update>Discard draft</button><p id="detailUpdateStatus" role="status"></p></form>
+    ${requirementEmailHtml(d)}
     <div data-detail-read="vendors">${renderDealVendors(d.vendors)}</div>
     <div data-detail-read="board-controls" data-available="${controlsAvailable}">${controlsAvailable ? `<div class="detail-actions"><div class="detail-controls"><label>Phase<select id="detailPhase">${COLUMNS.map(c => `<option value="${esc(c.slug)}"${c.value === d.phase ? ' selected' : ''}>${esc(c.label)}</option>`).join('')}</select></label><label>Owner<select id="detailOwner"><option value="">Unassigned</option>${['joe','dell'].map(owner => `<option value="${owner}"${owner === d.owner ? ' selected' : ''}>${actorName(owner)}</option>`).join('')}</select></label></div><div data-detail-read="parking" data-parked="${parked}">${parked ? `<p>${esc(concise(d.parking_note) || 'Parked')}</p><button type="button" class="btn" data-revive="${esc(d.id)}">Revive</button>` : `<details class="park-options"><summary class="park-control">Park</summary><form id="detailParkForm"><label>Park reason<input name="reason" maxlength="500" required></label><button class="btn park-control" type="submit">Park deal</button></form></details>`}</div></div>` : ''}</div>
     <div data-detail-read="prospect">${controlsAvailable && prospect?.client_status === 'prospect' ? `<form id="detailInactiveForm"><p>Inactive prospects return to Leads.</p><label>Reason<input name="reason" maxlength="1000" required value="${esc(pendingProspect?.request.reason || '')}"${pendingProspect ? ' readonly' : ''}></label><button class="btn" type="submit">${pendingProspect ? 'Check outcome' : 'Mark inactive'}</button><p role="status" data-prospect-status>${pendingProspect ? 'Confirmation pending for this prospect. Check outcome to retry the same request.' : ''}</p></form>` : ''}</div>
     ${renderDealTimeline(detail)}<div data-detail-read="updates">${renderDealUpdates(detail)}</div>
-    <div id="panelEvidence"></div>`;
+    <details id="panelEvidenceSection"><summary>Evidence</summary><div id="panelEvidence"></div></details>`;
 }
-async function refreshPanel() {
+function refreshPanel({ changed = false } = {}) {
   const id = state.panelDeal;
-  if (!id) return;
+  if (!id) return Promise.resolve();
+  if (panelRead?.id === id && panelRead.sequence === panelReadSequence) {
+    if (changed) panelRead.again = true;
+    return panelRead.promise;
+  }
+  const reading = readPanel(id);
+  const current = { id, sequence: panelReadSequence, again: false, promise: null };
+  panelRead = current;
+  current.promise = reading.then(() => {
+    if (panelRead === current) panelRead = null;
+    if (current.again && state.panelDeal === id && current.sequence === panelReadSequence) return refreshPanel();
+  });
+  return current.promise;
+}
+async function readPanel(id) {
   const seq = ++panelReadSequence;
   try {
     const detail = await readDealDetail(id);
-    if (state.panelDeal !== id || seq !== panelReadSequence) return;
+    if (state.panelDeal !== id || seq !== panelReadSequence || panelRead?.again) return;
     state.panelDetail = detail;
+    const contextRead = pageDocContext?.begin('getDeal', [id]);
+    pageDocContext?.finish(contextRead, detail);
+    selectDocRecord('deal', id);
     updateDetailTimestamp();
-    // A poll preserves drafts, expanded entries and the dialog scroll position.
     if (!$('panelBody').querySelector('.deal-opening-snapshot')) paintPanel(detail);
     else {
       if ($('detailPhase') && document.activeElement !== $('detailPhase')) $('detailPhase').value = columnByValue(detail.deal.phase)?.slug || '';
@@ -894,35 +956,26 @@ async function refreshPanel() {
           const expanded = new Set([...current.querySelectorAll('.deal-note details[open]')].map(n => n.closest('.deal-note').dataset.id));
           const focused = current.contains(document.activeElement) ? document.activeElement : null;
           const focusIdentity = focused?.dataset.detailFocus;
-          const wasOpen = current.open;
+          const wasOpen = current.open || current.querySelector('.deal-checklist')?.open;
+          const checklistOpens = new Set([...current.querySelectorAll('[data-checklist-item] details[open]')].map(n => n.closest('[data-checklist-item]').dataset.checklistItem));
           const historyOpen = current.querySelector('.updates-history')?.open;
           const oldScroll = current.scrollLeft;
           current.replaceWith(fresh);
           fresh.scrollLeft = oldScroll;
-          if (wasOpen) fresh.open = true;
+          if (wasOpen) {
+            const disclosure = fresh.querySelector('.deal-checklist') || fresh;
+            disclosure.open = true;
+          }
+          fresh.querySelectorAll('[data-checklist-item]').forEach(n => { if (checklistOpens.has(n.dataset.checklistItem)) n.querySelector('details').open = true; });
           if (historyOpen && fresh.querySelector('.updates-history')) fresh.querySelector('.updates-history').open = true;
           fresh.querySelectorAll('.deal-note').forEach(n => { if (expanded.has(n.dataset.id)) n.querySelector('details').open = true; });
           if (focusIdentity) [...fresh.querySelectorAll('[data-detail-focus]')].find(n => n.dataset.detailFocus === focusIdentity)?.focus({preventScroll:true});
           else if (focused?.id) document.getElementById(focused.id)?.focus({preventScroll:true});
         }
       }
-      const evidence = await loadEvidence(state.client, detail);
-      if (state.panelDeal !== id || seq !== panelReadSequence) return;
-      const root = $('panelEvidence');
-      const html = renderEvidence(evidence);
-      const evidenceTemplate = document.createElement('div'); evidenceTemplate.innerHTML = html;
-      if (root.innerHTML !== evidenceTemplate.innerHTML) {
-        const expanded = new Set([...root.querySelectorAll('details[open]')].map(n => n.querySelector('summary')?.textContent));
-        disposeEvidence?.(); disposeEvidence = null;
-        root.innerHTML = html;
-        root.querySelectorAll('details').forEach(n => { if (expanded.has(n.querySelector('summary')?.textContent)) n.open = true; });
-      }
+      if ($('panelEvidenceSection')?.open) await refreshEvidence(detail, id, seq);
     }
-    if (!$('contextDrawer').open) {
-      const contextSeq = contextReadSequence;
-      const context = await loadDealContext(state.client, detail);
-      if (state.panelDeal === id && seq === panelReadSequence && contextSeq === contextReadSequence) setContextOpenVisible(contextDrawerSections(context).length > 0);
-    }
+    if (state.panelDeal === id && seq === panelReadSequence) setContextOpenVisible(true);
   } catch (error) {
     if (state.panelDeal !== id || seq !== panelReadSequence) return;
     if (refusePanelDetail(error)) return;
@@ -939,34 +992,52 @@ function updateDetailTimestamp() {
   const time = $('detailUpdated');
   if (time) { time.dateTime = at; time.textContent = new Date(at).toLocaleTimeString([], {hour:'numeric',minute:'2-digit',hour12:true}); }
 }
+async function refreshEvidence(detail, id, seq) {
+  const evidence = await loadEvidence(state.client, detail);
+  if (state.panelDeal !== id || seq !== panelReadSequence) return;
+  if (evidence.threads.state === 'refused') { refusePanelDetail({status:evidence.threads.status}); return; }
+  if (!$('panelEvidenceSection')?.open) return;
+  const root = $('panelEvidence');
+  const template = document.createElement('div'); template.innerHTML = renderEvidence(evidence);
+  if (disposeEvidence && root.innerHTML === template.innerHTML) return;
+  const expanded = new Set([...root.querySelectorAll('details[open]')].map(n => n.querySelector('summary')?.textContent));
+  disposeEvidence?.();
+  disposeEvidence = mountEvidence(root, {client:state.client,detail,onDenied:refusePanelDetail,initialView:evidence});
+  root.querySelectorAll('details').forEach(n => { if (expanded.has(n.querySelector('summary')?.textContent)) n.open = true; });
+}
 function paintPanel(detail) {
   $('panelTitle').textContent = dealTitle(detail.deal);
   $('panelBody').innerHTML = detailHtml(detail);
-  disposeEvidence?.();
-  disposeEvidence = mountEvidence($('panelEvidence'), {client:state.client,detail});
+  disposeEvidence?.(); disposeEvidence = null;
   syncUpdateForm();
   updateDetailTimestamp();
 }
-async function openPanel(dealId, trigger) {
+async function openPanel(dealId, trigger, { fromHistory = false } = {}) {
   selectDocRecord('deal', dealId);
   const panel = $('recordPanel');
   disposeEvidence?.(); disposeEvidence = null;
   setContextOpenVisible(false);
   state.panelDeal = dealId; state.panelDetail = null; updateDraft = null;
-  const url = new URL(location.href); url.searchParams.set('deal',dealId); history.replaceState({},'',url);
+  const url = new URL(location.href);
+  if (!fromHistory && url.searchParams.get('deal') !== dealId) {
+    url.searchParams.set('deal',dealId);
+    history.pushState({doctorcreDealPanel:true},'',url);
+  }
   state.panelReturnTo = trigger?.closest('.kanban-card')?.dataset.id || dealId;
   $('panelTitle').textContent = state.deals.get(dealId)?.name || 'Deal';
   $('panelBody').innerHTML = '<p>Updating…</p>';
   if (!panel.open) panel.showModal();
   await refreshPanel();
 }
-function closePanel() {
+function closePanel({ fromHistory = false } = {}) {
+  if (!fromHistory && history.state?.doctorcreDealPanel) { history.back(); return; }
   selectDocRecord('deal', null);
   pageDocContext?.release('getDeal');
-  ++panelReadSequence;
+  ++panelReadSequence; ++contextReadSequence;
+  $('contextDrawer').close(); $('contextDrawerBody').replaceChildren();
   const id = state.panelReturnTo;
   disposeEvidence?.(); disposeEvidence=null;
-  const url = new URL(location.href); url.searchParams.delete('deal'); history.replaceState({},'',url);
+  if (!fromHistory) { const url = new URL(location.href); url.searchParams.delete('deal'); history.replaceState({},'',url); }
   $('recordPanel').close(); state.panelDeal = null; state.panelDetail = null;
   state.panelReturnTo = null;
   setContextOpenVisible(false);
@@ -1027,16 +1098,7 @@ function setContextOpenVisible(visible) {
   if (wrap) wrap.hidden = !visible;
 }
 
-/* ------------------------------------------------- V5-UX-B04: context drawer */
 
-/**
- * Read-only client/vendor/calendar context for whichever deal the record
- * panel currently holds. It never re-reads the deal itself — `state.panelDetail`
- * is the same `get-deal-room` answer the panel already painted — and its one
- * further read (the linked client's contact record) is made fresh every open,
- * because a fixed drawer that is opened, closed, and reopened without a page
- * reload must not go on showing a read that has since gone stale.
- */
 async function openContextDrawer() {
   const dialog = $('contextDrawer');
   const detail = state.panelDetail;
@@ -1045,25 +1107,18 @@ async function openContextDrawer() {
   $('contextDrawerBody').innerHTML = '<div class="state-block" data-state="loading"><h3>Updating…</h3></div>';
   if (typeof dialog.showModal === 'function' && !dialog.open) dialog.showModal();
   const dealId = state.panelDeal;
-  const context = await loadDealContext(state.client, detail);
-  // Same late-answer guard as the record panel: a slower client read must
-  // never paint over a drawer the person has since moved on from.
+  let context;
+  try { context = await loadDealContext(state.client, detail); }
+  catch (error) { if (state.panelDeal === dealId && seq === contextReadSequence) refusePanelDetail(error); return; }
   if (state.panelDeal !== dealId || seq !== contextReadSequence || !dialog.open) return;
   const sections = contextDrawerSections(context, { dateLabel: dateWords });
-  setContextOpenVisible(sections.length > 0);
-  if (!sections.length) { dialog.close(); $('contextDrawerBody').replaceChildren(); return; }
+  if (!sections.length) { $('contextDrawerBody').innerHTML = '<p>No linked context recorded.</p>'; return; }
   $('contextDrawerBody').innerHTML = sections
     .map((section) => `<div class="panel-section"${section.state ? ` data-state="${esc(section.state)}"` : ''}>
-      <h3>${esc(section.title)}</h3>${section.lines.map((line) => `<p>${esc(line)}</p>`).join('')}${(section.links || []).map(link=>`<p><a href="${esc(link.href)}">${esc(link.label)}</a></p>`).join('')}</div>`).join('');
+      <h3>${esc(section.title)}</h3>${section.state === 'unavailable' ? '<button type="button" data-context-retry>Retry</button>' : ''}${section.lines.map((line) => `<p>${esc(line)}</p>`).join('')}${(section.links || []).map(link=>`<p><a href="${esc(link.href)}">${esc(link.label)}</a></p>`).join('')}</div>`).join('');
 }
 
-/* -------------------------------------------------------- drag and keyboard */
 
-/**
- * A lift takes a presence lease on this record's phase, exactly as a partner's
- * cursor in a cell does, so the other board can say "is editing" while a move is
- * being chosen. It is a courtesy signal and never a lock: nothing waits on it.
- */
 function leasePhase(dealId) {
   state.client.presenceLease({ deal: dealId, field: 'phase', idempotency_key: uuidv4() })
     .catch(() => { /* a courtesy, never a requirement */ });
@@ -1084,21 +1139,12 @@ function wireBoard() {
   const board = $('kanban');
   if (!board) return;
 
-  board.addEventListener('click', (event) => {
-    if (event.target.closest('button,input,select,a')) return;
-    const card = event.target.closest('.kanban-card');
-    if (card && card.dataset.dragging !== 'true') openPanel(card.dataset.id, card);
-  });
-
-  // A press may become a tap or a drag; either would be lost if a refresh
-  // replaced its card before it completed.
   board.addEventListener('pointerdown', (event) => {
     if (event.target.closest('.kanban-card')) board.dataset.pressed = 'true';
   });
   const release = () => {
     if (board.dataset.pressed !== 'true') return;
     delete board.dataset.pressed;
-    // After the press's own click has been dispatched.
     if (state.paintDeferred) setTimeout(renderBoard);
   };
   addEventListener('pointerup', release, true);
@@ -1138,8 +1184,6 @@ function wireBoard() {
   board.addEventListener('keydown', (event) => {
     const card = event.target.closest('.kanban-card');
     if (!card) return;
-    // Buttons own their Enter/Space action; the card's lift keys apply only to
-    // the card itself, even while a keyboard move is already lifted.
     if (event.target.closest('button')) return;
     if (state.view === 'list' || card.classList.contains('parked-card')) { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); openPanel(card.dataset.id, card); } return; }
     const id = card.dataset.id;
@@ -1148,7 +1192,6 @@ function wireBoard() {
     const here = columnByValue(deal.phase);
 
     if ((event.key === 'Enter' || event.key === ' ') && state.lifted !== id) {
-      // The card body lifts; nested controls already handled their own keys.
       event.preventDefault();
       state.lifted = id;
       state.target = here ? here.slug : COLUMNS[0].slug;
@@ -1184,7 +1227,6 @@ function wireBoard() {
   });
 }
 
-/* -------------------------------------------------------------------- wiring */
 
 function wire() {
   wireBoard();
@@ -1211,7 +1253,7 @@ function wire() {
     if (undo) { runUndo(undo.dataset.undo); return; }
     const openDeal = event.target.closest('button[data-open-deal]');
     const card = event.target.closest('.kanban-card');
-    if (card && !event.target.closest('button')) { openPanel(card.dataset.id, card); return; }
+    if (card && card.dataset.dragging !== 'true' && !event.target.closest('button,input,select,a')) { openPanel(card.dataset.id, card); return; }
     if (openDeal) {
       openPanel(openDeal.dataset.openDeal, null);
     }
@@ -1224,6 +1266,11 @@ function wire() {
   $('addDealDialog').addEventListener('cancel', event => { if (creatingDeal) event.preventDefault(); });
   $('addDealDialog').addEventListener('close', () => $('addDealOpen').focus());
 
+  addEventListener('popstate', () => {
+    const deal = new URL(location.href).searchParams.get('deal');
+    if (deal) void openPanel(deal, null, {fromHistory:true});
+    else closePanel({fromHistory:true});
+  });
   $('recordPanel')?.addEventListener('cancel', (event) => { event.preventDefault(); closePanel(); });
   $('panelClose')?.addEventListener('click', closePanel);
   $('receiptsOpen')?.addEventListener('click', () => {
@@ -1232,6 +1279,7 @@ function wire() {
   });
 
   $('panelContextOpen')?.addEventListener('click', () => { openContextDrawer(); });
+  $('contextDrawerBody')?.addEventListener('click', event => { if (event.target.closest('[data-context-retry]')) void openContextDrawer(); });
   $('contextDrawerClose')?.addEventListener('click', () => $('contextDrawer')?.close());
 
   $('completionCritical')?.addEventListener('change', renderCriticalState);
@@ -1287,12 +1335,41 @@ function wire() {
   $('listView').addEventListener('click', () => changeView('list'));
   $('parkedToggle').addEventListener('click', () => { state.parkedOpen = !state.parkedOpen; $('parkedToggle').setAttribute('aria-pressed',String(state.parkedOpen)); renderBoard(); });
   $('kanban').addEventListener('toggle', e => { if(e.target.classList.contains('parked-lane')) { state.parkedOpen=e.target.open; $('parkedToggle').setAttribute('aria-pressed',String(state.parkedOpen)); } },true);
+  $('panelBody').addEventListener('toggle', event => {
+    if (event.target.id !== 'panelEvidenceSection') return;
+    if (!event.target.open) { disposeEvidence?.(); disposeEvidence = null; return; }
+    if (state.panelDetail) void refreshEvidence(state.panelDetail, state.panelDeal, panelReadSequence);
+  }, true);
   $('panelBody').addEventListener('click', e => {
+    if (e.target.closest('[data-discard-update]') && !pendingCommand(commandState, updateKey(state.panelDeal))) { discardUpdate(state.panelDeal); syncUpdateForm(); }
     if (e.target.closest('[data-refresh-detail]')) refreshPanel();
+    if (e.target.closest('[data-generate-requirement]') && state.selfActor && draftActor === state.selfActor) {
+      const form = $('requirementEmailForm');
+      if (!form.reportValidity()) return;
+      const id = state.panelDeal;
+      const draft = Object.assign(requirementDrafts.get(id) || {}, Object.fromEntries(new FormData(form)));
+      const subject = `Space requirement · ${draft.use.trim()} · ${draft.location.trim()}`.slice(0, form.elements.subject.maxLength);
+      const message = `Hello,\n\nWe are looking for space with the following requirements:\n\n${requirementFields.map(([name,label]) => `${label}: ${draft[name].trim() || 'Not specified'}`).join('\n')}\n\nPlease share matching spaces and availability. Thank you.`;
+      Object.assign(draft, {subject,message}); requirementDrafts.set(id,draft);
+      form.elements.subject.value = subject;
+      form.elements.message.value = message;
+      $('requirementEmailStatus').textContent = 'Email preview generated. Review and edit before copying.';
+    }
+    if (e.target.closest('[data-copy-requirement]')) void copyRequirementDraft();
+    if (e.target.closest('[data-discard-requirement]')) {
+      requirementDrafts.delete(state.panelDeal);
+      for (const input of $('requirementEmailForm').querySelectorAll('input,textarea')) input.value = '';
+      $('requirementEmailStatus').textContent = 'Email draft discarded.';
+    }
 
   });
   $('panelBody').addEventListener('input', e => {
-    if (e.target.closest('#detailUpdateForm') && updateDraft) updateDraft.text = e.target.value;
+    if (e.target.closest('#requirementEmailForm') && state.selfActor && draftActor === state.selfActor) {
+      const draft = requirementDrafts.get(state.panelDeal) || {};
+      Object.assign(draft, Object.fromEntries(new FormData($('requirementEmailForm'))));
+      requirementDrafts.set(state.panelDeal, draft);
+    }
+    if (e.target.id === 'dealUpdate' && updateDraft) { updateDraft.text = e.target.value; syncUpdateForm(); }
   });
   $('panelBody').addEventListener('change', async e => {
     const id = state.panelDeal;
@@ -1324,12 +1401,14 @@ function mountDock() {
       const entry = operations.get(operationKey);
       if (entry?.kind === 'field') retryFieldWrite(operationKey);
       else if (entry?.kind === 'outcome-read') return runOutcomeWrite(operationKey, entry.step, entry.intent);
+      else if (entry?.kind === 'follow-up-read') return runFollowUp(operationKey, entry.step);
       else if (entry?.args) runFollowUp(operationKey, { verb: entry.verb, args: entry.args, summary: entry.summary });
     },
     onReconcile: (operationKey) => {
       const entry = operations.get(operationKey);
       if (entry?.kind === 'field') retryFieldWrite(operationKey);
       else if (entry?.kind === 'outcome-read') return runOutcomeWrite(operationKey, entry.step, entry.intent);
+      else if (entry?.kind === 'follow-up-read') return runFollowUp(operationKey, entry.step);
       else if (entry?.args && entry?.send) {
         runFollowUp(operationKey, { verb: entry.verb, args: entry.args, summary: entry.summary });
       }
@@ -1339,7 +1418,6 @@ function mountDock() {
   dock.mount();
 }
 
-/* ------------------------------------------------------------------------ boot */
 
 async function boot() {
   mountPrefs();
@@ -1358,8 +1436,6 @@ async function boot() {
   state.boardSync = createBoardSync({
     readBoard: () => state.client.getBoard({ workspace: 'team' }),
     readChanges: (cursor) => state.client.getChanges(cursor),
-    // Only a snapshot that is still current reaches this callback, and it
-    // already carries any value a confirmed local write is holding.
     applyBoard: (board) => { applyBoardSnapshot(board); },
     onStatus: renderStatus,
   });
@@ -1367,15 +1443,13 @@ async function boot() {
   $('listView').setAttribute('aria-pressed',String(state.view === 'list'));
   $('lostView').setAttribute('aria-pressed',String(state.view === 'lost'));
   $('closedView').setAttribute('aria-pressed',String(state.view === 'closed'));
-  await loadBoard();
-  mountVisibilityPoll({ intervalMs: BOARD_REFRESH_MS, poll: () => { refreshPanel(); } });
+  const linkedDeal = incomingScope.get('deal');
+  if (linkedDeal) void openPanel(linkedDeal);
+  void loadBoard();
+  mountVisibilityPoll({ intervalMs: BOARD_REFRESH_MS, poll: refreshPanel });
   mountVisibilityPoll({ intervalMs: POLL_MS, poll: () => { pollOnce().catch(() => { /* the badge already says the feed failed */ }); } });
   mountVisibilityPoll({ intervalMs: BOARD_REFRESH_MS, poll: () => { state.boardSync.requestRefresh('periodic'); } });
-  // Home record links address a deal directly, including records outside the
-  // current board scope. The existing detail read enforces identity and shows
-  // failures; its outcome must not hold up board/feed polling.
-  const linkedDeal = incomingScope.get('deal');
-  if (linkedDeal) openPanel(linkedDeal);
+
 }
 
 if (globalThis.document) boot();

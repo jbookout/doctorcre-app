@@ -1,3 +1,4 @@
+import { CHROMIUM_SAFETY_ARGS } from '../scripts/chromium-safety-args.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile, mkdir } from 'node:fs/promises';
@@ -16,7 +17,7 @@ async function shot(page, name) {
 }
 async function open(t, { width = 1440, home = false, long = false, motion = 'reduce' } = {}) {
   const client = await createFixtureClient({ seedUrl: `data:application/json;base64,${Buffer.from(await readFile(new URL('../data/board-seed.json', import.meta.url))).toString('base64')}` });
-  const browser = await chromium.launch(); t.after(() => browser.close());
+  const browser = await chromium.launch({ args: [...CHROMIUM_SAFETY_ARGS] }); t.after(() => browser.close());
   const page = await browser.newPage({ viewport: { width, height: 1000 }, timezoneId: 'America/Chicago', reducedMotion: motion });
   await page.clock.install({ time: NOW });
   const payload = leaseRadarFixture('2026-10-01'), errors = [], calls = [];
@@ -25,11 +26,12 @@ async function open(t, { width = 1440, home = false, long = false, motion = 'red
   page.on('pageerror', error => errors.push(error.message));
   const handlers = {
     'morning-brief': async () => ({ state:'unavailable' }),
+    'read-home-agenda': () => client.getHomeAgenda(),
     'deal-room-board': () => client.getBoard(), 'get-deal-room': args => client.getDeal(args.deal),
     'lead-board': async () => ({ leads: [] }), 'incident-board': () => client.incidentBoard(),
     'current-work-item': () => client.currentWorkItem(), 'read-resource-dashboard': () => client.readResourceDashboard(),
     'schedule-board': () => client.scheduleBoard(), 'list-notifications': async () => ({ unread_count: 0, notifications: [] }),
-    'notification-feed': async () => ({ unread_count: 0, notifications: [] }), 'today-triage': async () => ({ items: [] }),
+    'notification-feed': async () => ({ unread_count: 0, notifications: [] }), 'read-call-outcomes': async () => ({ schema_version: 'call-outcomes.v1', calls: [], send: false }), 'today-triage': async () => ({ items: [] }),
     'read-invoice-tracker': async () => invoiceTrackerFixture('2026-10-01'),
     'list-feature-switches': () => client.listFeatureSwitches(),
     'list-doc-suggestions': args => client.listDocSuggestions(args),
@@ -50,7 +52,7 @@ async function open(t, { width = 1440, home = false, long = false, motion = 'red
     }
     if (url.pathname === '/api/system-work/current') return route.fulfill({ json: { ok: true, data: await client.currentWorkRequests() } });
     if (url.pathname === '/pipeline/changes') return route.fulfill({ json: { changes: [], cursor: null } });
-    if (url.pathname === '/api/system-work/session') return route.fulfill({ json: { actor: { slug: 'joe', label: 'Demo partner' }, csrf_token: 'synthetic' } });
+    if (['/api/system-work/session','/auth/session'].includes(url.pathname)) return route.fulfill({ json: { actor: { slug: 'joe', label: 'Demo partner' }, csrf_token: 'synthetic' } });
     if (url.pathname.startsWith('/api/') || url.pathname === '/app-release') return route.fulfill({ status: 503, json: {} });
     const file = url.pathname === '/' ? 'workspace.html' : url.pathname === '/leases' ? 'lease-radar.html' : url.pathname.slice(1);
     try { return route.fulfill({ body: await readFile(new URL(`../${file}`, import.meta.url)), contentType: /\.m?js$/.test(file) ? 'text/javascript' : file.endsWith('.css') ? 'text/css' : 'text/html' }); }
@@ -148,8 +150,8 @@ test('polling updates an open detail and preserves focus, while refusals clear s
   assert.equal(await page.locator('#leaseDetail').evaluate(n => n.open), false);
   state.fail(null); await page.clock.runFor(31_000); await settled(page);
   assert.equal(await page.locator('#leaseRadar .lease-card').count(), 9);
-  state.fail(403); await online(page); await settled(page);
-  assert.equal(await page.getByRole('link', { name: 'Sign in', exact: true }).isVisible(), true);
+  state.fail(403); await online(page); await page.waitForURL('**/public-shell/session-ended.html');
+  assert.equal(await page.getByRole('link', { name: 'Sign in again', exact: true }).isVisible(), true);
   assert.deepEqual(state.errors, []);
 });
 test('timeout clears stale details and automatically recovers', async t => {

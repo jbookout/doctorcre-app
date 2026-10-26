@@ -5,8 +5,9 @@ import { projectInvoices, invoiceHref, invoiceMoney, invoiceDate } from './invoi
 import { introductionSuggestions } from './relationship-network-model.js';
 import { mountAutoRefresh, readWithDeadline, updatedLabel } from './auto-refresh.mjs';
 import { homeClient } from './home-boot.js';
+import { mountCallOutcomes } from './call-outcomes.js';
 import { localToday } from './calendar-model.js';
-import { agendaSnapshot, controlSnapshot, dealHref, dealSnapshot, HOME_SCOPES, readHomeDashboard, topNewLeads } from './home-dashboard-model.js';
+import { agendaSnapshot, dealHref, dealSnapshot, HOME_SCOPES, readHomeAgenda, readHomeDashboard, topNewLeads } from './home-dashboard-model.js';
 import { mountNotificationBadge } from './shell.js';
 
 const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
@@ -21,12 +22,11 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
   // The relationship dialog and the past-client widget are secondary: they load
   // after the first data paint so they never compete with the deal flags.
   let relationshipDialog = null, pastWidget = null, secondaryRequested = false;
-  let agendaExpanded = false;
+  let agendaExpanded = false, agendaView = 'all', nextRead = readHomeDashboard;
   let scope = 'team', snapshot = null, sequence = 0, updatedAt = null, disposed = false, leadEntries = new Map(), selectedLead = null;
-  const docSources = [['board','getBoard'],['leads','getLeadBoard'],['work','currentWorkItem'],['requests','currentWorkRequests'],['incidents','incidentBoard']];
+  const docSources = [['board','getHomeAgenda'],['leads','getLeadBoard']];
   const docPayload = (source, view) => source === 'board' ? {deals:scopedDeals(view?.board,scope)}
-    : source === 'leads' ? (view?.leads ? {leads:topNewLeads(view.leads,{scope,actor:view.board?.actor,now:now()})} : null)
-    : view?.control?.[source];
+    : (view?.leads ? {leads:topNewLeads(view.leads,{scope,actor:view.board?.actor,now:now()})} : null);
   const paint = (target, html) => {
     if (target.innerHTML === html) return;
     const key = target.contains(document.activeElement) ? document.activeElement?.dataset.homeKey : null;
@@ -42,24 +42,35 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
     const unavailable = Object.values(snapshot?.reads || {}).some(read => read.state === 'error');
     $('homeNotice').hidden = !signedOut && !unavailable;
     $('homeNotice').innerHTML = signedOut ? '<a href="/auth/login?return_to=%2F">Sign in</a>' : unavailable ? 'Some Home data is unavailable.' : '';
-    const summary = signedOut ? null : dealSnapshot(snapshot?.board, scope, now());
-    $('dealAttention').setAttribute('aria-busy', String(snapshot?.loading ?? true));
-    $('dealCounts').innerHTML = `<span>Active deals: <b>${count(summary?.active ?? null)}</b></span> <span>In market: <b>${count(summary?.inMarket ?? null)}</b></span> <span>National accounts: <b>${count(summary?.national ?? null)}</b></span> <span>Overdue local deals: <b>${count(summary?.flagged.length ?? null)}</b></span>`;
-    paint($('dealFlags'), summary ? (summary.flagged.length ? summary.flagged.map(deal => `<a class="home-flag" data-home-key="deal:${E(deal.id)}" href="${E(dealHref(deal.id))}"><span class="home-flag-light" aria-hidden="true"></span><div><strong>${E(deal.name)}</strong><span>${E(deal.next_step || deal.phase || 'Needs attention')}</span></div><span class="home-arrow" aria-hidden="true">↗</span></a>`).join('') : '<p class="home-empty">No overdue local next steps</p>') : `<p class="home-empty">${signedOut ? 'Sign in to view deals' : snapshot?.reads?.board?.state === 'error' ? 'Deals unavailable' : 'Updating…'}</p>`);
     const today = localToday(new Date(now()));
+    let agenda = null;
+    try { if (!signedOut) agenda = agendaSnapshot(snapshot?.board, snapshot?.details || new Map(), { scope, today }); }
+    catch { $('homeNotice').hidden = false; if (!signedOut) $('homeNotice').textContent = 'Calendar and tasks unavailable.'; }
+    const summary = signedOut ? null : dealSnapshot(snapshot?.board, scope, agenda);
+    $('dealAttention').setAttribute('aria-busy', String(snapshot?.loading ?? true));
+    $('dealCounts').innerHTML = `<span>Active deals: <b>${count(summary?.active ?? null)}</b></span> <span>In market: <b>${count(summary?.inMarket ?? null)}</b></span> <span>National accounts: <b>${count(summary?.national ?? null)}</b></span> <span>Overdue local deals: <b>${count(summary?.flagged?.length ?? null)}</b></span>`;
+    paint($('dealFlags'), summary?.flagged ? (summary.flagged.length ? summary.flagged.map(deal => `<a class="home-flag" data-home-key="deal:${E(deal.id)}" href="${E(dealHref(deal.id))}"><span class="home-flag-light" aria-hidden="true"></span><div><strong>${E(deal.name)}</strong><span>${E(deal.next_step || deal.phase || 'Needs attention')}</span></div><span class="home-arrow" aria-hidden="true">↗</span></a>`).join('') : '<p class="home-empty">No overdue local next steps</p>') : `<p class="home-empty">${signedOut ? 'Sign in to view deals' : snapshot?.reads?.board?.state === 'error' ? 'Deals unavailable' : summary ? 'Overdue local deals unavailable' : 'Updating…'}</p>`);
     if ($('homeInvoices')) {
       const invoices = signedOut ? null : projectInvoices(snapshot?.invoices, { scope, today: localToday(new Date(now())) });
       const overdue = invoices?.filter(row => row.overdue) || [];
       const invoiceUnavailable = snapshot?.reads?.invoices?.state === 'error';
       widget('homeInvoices', overdue.length ? `<header class="home-panel-head"><h2>Invoice attention · ${overdue.length}</h2><a class="home-outline" href="/invoices">Invoices <span aria-hidden="true">↗</span></a></header><div class="home-flags">${overdue.map(row => `<a class="home-flag" data-home-key="invoice:${E(row.key)}" href="${E(invoiceHref(row.key))}"><span class="home-flag-light" aria-hidden="true"></span><div><strong>${E(row.name)}</strong><span>${E(invoiceMoney(row.amount))} · overdue since ${E(invoiceDate(row.due_on))}</span></div><span class="home-arrow" aria-hidden="true">↗</span></a>`).join('')}</div>` : invoiceUnavailable && !signedOut ? '<header class="home-panel-head"><h2>Invoice attention</h2></header><p class="home-empty">Invoices unavailable</p>' : null);
     }
-    let agenda = null;
-    try { if (!signedOut) agenda = agendaSnapshot(snapshot?.board, snapshot?.details || new Map(), { scope, today }); }
-    catch { $('homeNotice').hidden = false; if (!signedOut) $('homeNotice').textContent = 'Calendar and tasks unavailable.'; }
-    const calendar = agenda?.entries.length ? `<header class="home-panel-head"><h2>Calendar & tasks</h2><a data-home-key="calendar" class="home-icon-link" href="/calendar" aria-label="Open Calendar">↗</a></header><a class="home-calendar-link" data-home-key="week" href="/calendar"><span class="sr-only">Open calendar</span><div class="home-week">${agenda.week.map(({ day, entries }) => `<div class="home-day${day === today ? ' today' : ''}"><span>${new Date(`${day}T12:00:00`).toLocaleDateString(undefined, { weekday: 'short' })}</span><strong>${Number(day.slice(-2))}</strong><div class="home-day-marks">${entries.slice(0, 4).map(entry => `<i class="${entry.type}" aria-hidden="true"></i>`).join('')}</div><span class="sr-only">${entries.length} deal dates and tasks</span></div>`).join('')}</div></a><div id="homeAgenda" class="home-agenda">${(agendaExpanded ? agenda.upcoming : agenda.upcoming.slice(0, AGENDA_PREVIEW)).map(entry => `<a href="${E(entry.type === 'task' ? dealHref(entry.deal_id) : `/calendar?day=${entry.day}&d=${entry.day}`)}" data-home-key="agenda:${E(entry.key)}">${entry.day ? `<time datetime="${entry.day}">${dateLabel(entry.day)}</time>` : '<span class="home-agenda-date">No date</span>'}<div><strong>${E(entry.label)}</strong><span>${E(entry.deal_name)}</span>${entry.owner ? `<span>${E(({joe: 'Joe', dell: 'Dell'})[entry.owner] || entry.owner)}</span>` : ''}</div><span class="home-item-type">${entry.type === 'task' ? 'Task' : 'Date'}</span></a>`).join('')}</div>${!agendaExpanded && agenda.upcoming.length > AGENDA_PREVIEW ? `<button type="button" class="home-outline home-agenda-more" data-home-key="agenda:show-all" data-agenda-show-all aria-controls="homeAgenda">Show all ${agenda.upcoming.length}</button>` : ''}${(agenda.failed.length || agenda.undated.length) ? `<span class="home-partial">${snapshot?.loading ? 'Some dates are updating…' : 'Some dates unavailable or missing'}</span>` : ''}` : null;
-    widget('homeCalendar', calendar);
-    const control = signedOut ? null : controlSnapshot(snapshot?.control || {});
-    widget('homeControl', control ? `<a class="home-control-link" data-home-key="control" href="/control-room"><header class="home-panel-head"><h2>Control room</h2><span aria-hidden="true">↗</span></header><div class="home-control-status ${control.attention ? 'attention' : 'clear'}"><svg class="home-radar" viewBox="0 0 140 140" aria-hidden="true"><circle cx="70" cy="70" r="56"/><circle cx="70" cy="70" r="36"/><path d="M70 14V126M14 70H126"/><circle class="radar-wave" cx="70" cy="70" r="48"/><circle class="radar-dot" cx="70" cy="70" r="8"/></svg><div><h3>${control.attention ? 'Needs attention' : 'No issues'}</h3><p>${E(control.line)}</p></div></div></a>` : null);
+    const agendaDeals = scopedDeals(snapshot?.board, scope);
+    const agendaLoading = !signedOut && (!snapshot || snapshot.reads.board?.state === 'loading');
+    const agendaUnavailable = !agenda || (!agenda.entries.length && agenda.failed.length === agendaDeals?.length && agenda.failed.length > 0);
+    const agendaPartial = agenda && (agenda.failed.length > 0 || agenda.undated.length > 0);
+    const agendaItems = ({ all: agenda?.upcoming, today: agenda?.dueToday, overdue: agenda?.overdue })[agendaView] || [];
+    const agendaMessage = signedOut ? 'Sign in to view calendar and tasks'
+      : agendaLoading ? 'Updating calendar and tasks…'
+      : agendaUnavailable ? 'Calendar and tasks unavailable'
+      : agendaPartial ? 'Some dates unavailable or missing'
+      : !agendaItems.length ? ({ all: 'No calendar dates or tasks', today: 'No dates or tasks due today', overdue: 'No overdue dates or tasks' })[agendaView] : '';
+    const agendaRetry = !signedOut && !agendaLoading && (agendaUnavailable || agenda?.failed.length);
+    $('homeCalendar').setAttribute('aria-busy', String(Boolean(agendaLoading)));
+    const calendarContent = agenda?.entries.length ? `<a class="home-calendar-link" data-home-key="week" href="/calendar"><span class="sr-only">Open calendar</span><div class="home-week">${agenda.week.map(({ day, entries }) => `<div class="home-day${day === today ? ' today' : ''}"><span>${new Date(`${day}T12:00:00`).toLocaleDateString(undefined, { weekday: 'short' })}</span><strong>${Number(day.slice(-2))}</strong><div class="home-day-marks">${entries.slice(0, 4).map(entry => `<i class="${entry.type}" aria-hidden="true"></i>`).join('')}</div><span class="sr-only">${entries.length} deal dates and tasks</span></div>`).join('')}</div></a><div id="homeAgenda" class="home-agenda">${(agendaExpanded ? agendaItems : agendaItems.slice(0, AGENDA_PREVIEW)).map(entry => `<a href="${E(entry.type === 'task' ? dealHref(entry.deal_id) : `/calendar?day=${entry.day}&d=${entry.day}`)}" data-home-key="agenda:${E(entry.key)}">${entry.day ? `<time datetime="${entry.day}">${dateLabel(entry.day)}</time>` : '<span class="home-agenda-date">No date</span>'}<div><strong>${E(entry.label)}</strong><span>${E(entry.deal_name)}</span>${entry.owner ? `<span>${E(({joe: 'Joe', dell: 'Dell'})[entry.owner] || entry.owner)}</span>` : ''}</div><span class="home-item-type">${entry.type === 'task' ? 'Task' : 'Date'}</span></a>`).join('')}</div>${!agendaExpanded && agendaItems.length > AGENDA_PREVIEW ? `<button type="button" class="home-outline home-agenda-more" data-home-key="agenda:show-all" data-agenda-show-all aria-controls="homeAgenda">Show all ${agendaItems.length}</button>` : ''}` : '';
+
+    widget('homeCalendar', `<header class="home-panel-head"><h2>Calendar & tasks</h2><a data-home-key="calendar" class="home-icon-link" href="/calendar" aria-label="Open Calendar">↗</a></header>${agenda && !signedOut ? `<div class="scope-switch" role="group" aria-label="Agenda view">${[['all', 'All dates & tasks'], ['today', 'Today'], ['overdue', 'Overdue']].map(([value, label]) => `<button type="button" class="scope-option${agendaView === value ? ' on' : ''}" data-home-key="agenda:view:${value}" data-agenda-view="${value}" aria-pressed="${agendaView === value}">${label}</button>`).join('')}</div>` : ''}${calendarContent}${agendaMessage ? `<p class="home-empty" role="status">${agendaMessage}</p>` : ''}${agendaRetry ? `<button type="button" class="home-outline" data-home-key="agenda:retry" data-agenda-retry${snapshot?.loading ? ' disabled' : ''}>Retry calendar and tasks</button>` : ''}`);
     const leads = signedOut ? [] : topNewLeads(snapshot?.leads, { scope, actor: snapshot?.board?.actor, now: now() });
     leadEntries = new Map(leads.map(lead => [lead.id, lead]));
     widget('homeLeads', leads.length ? `<header class="home-panel-head"><h2>Recent arrivals</h2><span class="home-period">7 days</span><a class="home-outline" href="/leads">Prospecting queue</a></header><svg class="home-lead-scores" viewBox="0 0 600 42" role="img" aria-label="Relative scores of recent arrivals">${leads.map((lead, i) => `<rect class="score-track" x="${i * 200}" y="10" width="186" height="12" rx="6"/><rect x="${i * 200}" y="10" width="${Math.max(0, lead.score) / Math.max(1, ...leads.map(row => row.score)) * 186}" height="12" rx="6"/>`).join('')}</svg><div class="home-lead-list">${leads.map((lead, i) => `<button type="button" data-lead="${E(lead.id)}" data-home-key="lead:${E(lead.id)}" class="home-lead"><span class="home-lead-rank">${i + 1}</span><div><strong>${E(lead.name)}</strong><span>${E([lead.specialty, lead.city].filter(Boolean).join(' · '))}</span></div><span class="home-score"><b>${E(lead.score)}</b><small>Score</small></span></button>`).join('')}</div>` : null);
@@ -77,22 +88,41 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
     }
   };
   const refresh = async ({ signal } = {}) => {
-    const docTickets = new Map(docSources.map(([key,method]) => [key,pageDocContext?.begin(method)]));
+    const read = nextRead; nextRead = readHomeDashboard;
+    const agendaOnly = read === readHomeAgenda;
+    const currentDocSources = agendaOnly ? docSources.slice(0, 1) : docSources;
+    const docTickets = new Map(currentDocSources.map(([key,method]) => [key,pageDocContext?.begin(method)]));
     const epoch = ++sequence;
     const previous = snapshot;
-    let latest = null;
+    let latest = null, clearedActor = false;
     const project = result => {
-      const view = { ...result, control: { ...result.control }, details: new Map(result.details) };
-      for (const key of ['board', 'leads', 'invoices', 'relationships']) if (result.reads[key].state === 'loading') view[key] = previous?.[key] ?? null;
-      for (const key of ['incidents', 'work', 'requests', 'resources', 'schedule']) if (result.reads[key].state === 'loading') view.control[key] = previous?.control[key] ?? null;
-      for (const [id, detail] of previous?.details || []) if (result.reads.board.state === 'loading' || result.reads[id]?.state === 'loading') view.details.set(id, detail);
+      const view = { ...result, details: new Map(result.details) };
+      const actorChanged = agendaOnly && result.board && result.board.actor !== previous?.board?.actor;
+      if (agendaOnly && !actorChanged) {
+        const { board, details, reads, unauthorized, updatedAt, loading } = view;
+        const preservedReads = { ...previous?.reads };
+        delete preservedReads.board;
+        Object.assign(view, previous, { board, details, reads: { ...preservedReads, ...reads }, unauthorized, updatedAt, loading });
+      }
+      if (agendaOnly) view.unauthorized ||= previous?.unauthorized;
+      if (actorChanged && !clearedActor) {
+        clearedActor = true;
+        snapshotDocObservedAt = null;
+        pageDocContext?.clear();
+        relationshipDialog?.clear();
+        selectedLead = null;
+        $('homeDetail').close();
+        $('homeDetailBody').replaceChildren();
+      }
+      for (const key of ['board', 'leads', 'invoices', 'relationships']) if (result.reads[key]?.state === 'loading') view[key] = previous?.[key] ?? null;
+      if (!actorChanged && result.reads.board.state === 'loading') view.details = new Map(previous?.details || []);
       return view;
     };
-    if (snapshot) snapshot = { ...snapshot, loading: true };
+    if (snapshot) snapshot = { ...snapshot, loading: true, reads: { ...snapshot.reads, board: { state: 'loading' } } };
     render();
     $('refreshHome').setAttribute('aria-busy', 'true');
     try {
-      await readWithDeadline(innerSignal => readHomeDashboard(client, { signal: innerSignal, onUpdate: result => {
+      await readWithDeadline(innerSignal => read(client, { signal: innerSignal, onUpdate: result => {
         if (disposed || epoch !== sequence || innerSignal.aborted) return;
         latest = result; snapshot = project(result); updatedAt = snapshot.board && !result.unauthorized ? result.updatedAt : null; render();
         if (snapshot.board) loadSecondary();
@@ -106,7 +136,7 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
       if (latest?.unauthorized) { snapshotDocObservedAt=null; pageDocContext?.clear(); }
       else {
         snapshotDocObservedAt = latest?.updatedAt ? Date.parse(latest.updatedAt) : null;
-        for (const [key] of docSources) {
+        for (const [key] of currentDocSources) {
           const payload = docPayload(key,latest);
           if (latest?.reads?.[key]?.state === 'read') pageDocContext?.finish(docTickets.get(key),payload,{at:snapshotDocObservedAt});
           else pageDocContext?.fail(docTickets.get(key));
@@ -134,6 +164,19 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
     $('homeDetail').querySelector('[data-close-detail]').onclick = () => $('homeDetail').close();
   });
   $('homeCalendar').addEventListener('click', event => {
+    const view = event.target.closest('[data-agenda-view]');
+    if (view) {
+      agendaView = view.dataset.agendaView;
+      agendaExpanded = false;
+      render();
+      return;
+    }
+    if (event.target.closest('[data-agenda-retry]')) {
+      if (snapshot?.loading || snapshot?.unauthorized) return;
+      nextRead = readHomeAgenda;
+      auto.refresh();
+      return;
+    }
     if (!event.target.closest('[data-agenda-show-all]')) return;
     agendaExpanded = true;
     render();
@@ -185,4 +228,19 @@ if (typeof document !== 'undefined' && document.getElementById('dealAttention'))
   const client = await homeClient;
   mountHomeDashboard({ document, window, client });
   mountNotificationBadge(client);
+  const outcomes = document.getElementById('homeCallOutcomes');
+  // The answer to an Undo or "Looks right" is shown briefly, then cleared,
+  // unless something else has written to the notice since.
+  const notice = document.getElementById('homeNotice');
+  const toast = message => {
+    notice.hidden = false; notice.textContent = message;
+    setTimeout(() => { if (notice.textContent === message) { notice.textContent = ''; notice.hidden = true; } }, 6000);
+  };
+  // The cards still waiting are decided in Call Mode's post-call report.
+  const openCards = () => {
+    const button = document.getElementById('callModeButton');
+    if (button && !button.hidden) button.click();
+    else toast('Open Call Mode on the Mac that recorded the call to decide them.');
+  };
+  if (outcomes && client.readCallOutcomes) mountCallOutcomes({ container: outcomes, client: () => client, toast, openCards }).refresh();
 }

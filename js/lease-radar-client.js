@@ -1,6 +1,7 @@
+import { sessionFetch } from './private-session.js';
 import { fetchRead } from './auto-refresh.mjs';
 import { validLeaseRadar } from './lease-radar-model.js';
-export function createLeaseRadarClient({ fetchImpl = globalThis.fetch } = {}) {
+export function createLeaseRadarClient({ fetchImpl = sessionFetch } = {}) {
   return { async readLeaseRadar({signal} = {}) {
     const response = await fetchRead('/api/v1/business/leases', {credentials:'same-origin',cache:'no-store',signal,headers:{accept:'application/json'}}, {fetchImpl});
     if (!response.ok) { const error = new Error('Lease radar unavailable'); error.status=response.status; throw error; }

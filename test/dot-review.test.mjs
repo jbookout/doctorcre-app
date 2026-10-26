@@ -12,6 +12,8 @@ import { mountPrefs } from "../js/shell.js";
 import { statusHeadline } from "../js/status-model.js";
 import { classifyPriority } from "../js/visual-system.js";
 import { performCommand, classifyCommandOutcome } from "../js/command-feedback.mjs";
+import { createRetainedCommands } from '../js/retained-commands.mjs';
+import { answerBaseVersion, ANSWER_VERSION_CONFLICT_SENTENCE } from '../js/model-room-model.js';
 import { JSDOM } from "jsdom";
 
 const source = path => readFileSync(new URL("../" + path, import.meta.url), "utf8");
@@ -25,7 +27,7 @@ function handlers(path, start, end, globals = {}, expose = []) {
   assert.ok(offset >= 0, start);
   const finish = end ? text.indexOf(end, offset + start.length) : text.length;
   assert.ok(finish > offset, end);
-  const context = vm.createContext({observeDocRead,selectDocRecord,setDocFilters,pageDocContext:null,authGeneration,authReadable, console, Date, Map, Set, Promise, URL, URLSearchParams, setTimeout, clearTimeout, ...globals });
+  const context = vm.createContext({sessionFetch:(...args)=>globals.fetch(...args),observeDocRead,selectDocRecord,setDocFilters,pageDocContext:null,authGeneration,authReadable,createRetainedCommands,answerBaseVersion,ANSWER_VERSION_CONFLICT_SENTENCE,classifyCommandOutcome,appWrite:(_key,args,send)=>send({...args,idempotency_key:"key"}), console, Date, Map, Set, Promise, URL, URLSearchParams, setTimeout, clearTimeout, ...globals });
   vm.runInContext(text.slice(offset, finish).replace(/export /g, "") + "\nObject.assign(globalThis, {" + expose.join(",") + "});", context);
   return context;
 }
@@ -35,7 +37,7 @@ const elements = () => { const rows = new Map(); return key => { if(!rows.has(ke
 for (const terminal of ["review_ready", "failed"]) test(`PR111 #1: overlapping slow status reads apply ${terminal}`, async () => {
   const reply=deferred(); let reads=0, stops=0;
   const state={postCall:{session:"A",status:"waiting_for_transcript"}};
-  const h=handlers("js/call-mode.js","  async function refreshPostCall(","  function startPolling(",{state,deps:{postCallClient:{getStatus:()=>{reads++;return reply.promise;}}},stopPolling:()=>stops++,renderPostCall:noop,publishOrRecord:async()=>{},toast:noop},["refreshPostCall"]);
+  const h=handlers("js/call-mode.js","  async function refreshPostCall(","  function startPolling(",{state,deps:{postCallClient:{getStatus:()=>{reads++;return reply.promise;}}},stopPolling:()=>stops++,renderPostCall:noop,publishOrRecord:async()=>{},toast:noop,reportCandidateIds:()=>[],now:()=>0,APPLY_WAIT_MS:180000,automaticSettled:report=>!report||Boolean(report.automatic?.finished_at)},["refreshPostCall"]);
   const first=h.refreshPostCall(),second=h.refreshPostCall();
   reply.resolve({status:terminal});await Promise.all([first,second]);
   assert.equal(state.postCall.status,terminal);assert.equal(reads,1);assert.equal(stops,1);
@@ -68,7 +70,7 @@ test("Dot 6: deal dates use calendar-day offsets", () => {
 test("Dot 7: double Reviewed advances only one agenda item", async () => {
   const pending=deferred(); const calls=[];
   const review={deals:[{id:"A"},{id:"B"},{id:"C"}],index:0,reviewed:0,skipped:0,sessionId:"review"};
-  const h=handlers("js/app.js","async function advanceAgenda(","async function finishAgenda(",{state:{review,client:{reviewDeal:args=>{calls.push(args);return pending.promise;}}},uuidv4:()=>"key",renderAgenda:noop},["advanceAgenda"]);
+  const h=handlers("js/app.js","async function advanceAgenda(","async function finishAgenda(",{state:{review},runScreenAction:async (_key,args,_method,_label,accepted)=>{calls.push(args);return accepted(await pending.promise);},uuidv4:()=>"key",renderAgenda:noop},["advanceAgenda"]);
   const first=h.advanceAgenda("reviewed"),second=h.advanceAgenda("reviewed"); pending.resolve({ok:true}); await Promise.all([first,second]);
   assert.equal(calls.length,1); assert.equal(review.index,1); assert.equal(review.reviewed,1);
 });
@@ -210,25 +212,43 @@ test("Dot 25: a task due today is not overdue at 8 AM Central", () => {
 
 function tourHarness() {
   const $=elements(); const replies=new Map(); const state={tour:{id:"A"},feedbackSeq:0,hydrationSeq:0,cheatDirty:false};
-  const h=handlers("tours/app.js","  async function loadTour(","  function moveStop(",{state,$,restoredTourId:"",navigationBusy:false,composer:null,createPending:null,tourLoadSeq:0,status:noop,renderComposer:noop,renderCreate:noop,validateDetail:noop,routeSnapshot:()=>"snapshot",initComposer:noop,renderTour:noop,renderSelection:noop,loadSelectionCart:async()=>{},loadProjectionPreview:async()=>{},loadFeedback:async()=>{},request:path=>replies.get(new URL(path,"https://example.test").searchParams.get("tour_id"))},["loadTour"]);
+  const h=handlers("tours/app.js","  async function loadTour(","  function moveStop(",{state,$,sheetPending:null,sheetConflict:null,sheetBusy:false,tourAction:null,restoredTourId:"",navigationBusy:false,composer:null,createPending:null,tourLoadSeq:0,status:noop,renderComposer:noop,renderCreate:noop,validateDetail:noop,routeSnapshot:()=>"snapshot",initComposer:noop,renderTour:noop,renderSelection:noop,loadSelectionCart:async()=>{},loadProjectionPreview:async()=>{},loadFeedback:async()=>{},request:path=>replies.get(new URL(path,"https://example.test").searchParams.get("tour_id"))},["loadTour"]);
   return {h,state,$,replies};
 }
 test("Dot 1: current main serializes Tour navigation instead of applying out-of-order loads", async () => {
   const {h,state,replies}=tourHarness();const a=deferred(),b=deferred(); replies.set("A",a.promise);replies.set("B",b.promise);
-  const first=h.loadTour("A"),second=h.loadTour("B");b.resolve({id:"B"});a.resolve({id:"A"});await Promise.all([first,second]);
+  const first=h.loadTour("A"),second=h.loadTour("B");b.resolve({id:"B",stops:[]});a.resolve({id:"A",stops:[]});await Promise.all([first,second]);
   assert.equal(h.tourLoadSeq,1,"PR109 blocks a second navigation while loading");assert.equal(state.tour.id,"A");
 });
 test("Dot 2: switching Tours clears the prior confidential link", async () => {
-  const {h,state,$,replies}=tourHarness();state.rawShareToken="secret-synthetic";state.shareGrantId="grant-A";$("#share-url").value="https://example.test/share#token=synthetic";$("#share-link").hidden=false;replies.set("B",Promise.resolve({id:"B"}));
+  const {h,state,$,replies}=tourHarness();state.rawShareToken="secret-synthetic";state.shareGrantId="grant-A";$("#share-url").value="https://example.test/share#token=synthetic";$("#share-link").hidden=false;replies.set("B",Promise.resolve({id:"B",stops:[]}));
   await h.loadTour("B");assert.equal($("#share-url").value,"");assert.equal($("#share-link").hidden,true);assert.equal(state.rawShareToken,"");
 });
 
-test("Dot 3: sheet save preserves typing made while saving", async () => {
+test("Dot 3: sheet save allows typing while sending and locks only an unknown outcome, then replays its retained key", async () => {
   const $=elements();$("#cheat-content").value="First edit";const saved=deferred();
-  const state={tour:{id:"A",cheat_sheet:{revision_number:1}},cheatDirty:true};
-  const h=handlers("tours/app.js","  async function saveSheet(","  async function issueShare(",{state,$,uuid:()=>"key",post:()=>saved.promise,status:noop,loadTour:async()=>{if(!state.cheatDirty)$("#cheat-content").value="First edit";}},["saveSheet"]);
-  const pending=h.saveSheet();$("#cheat-content").value="Newer unsaved edit";state.cheatDirty=true;saved.resolve({ok:true});await pending;
-  assert.equal($("#cheat-content").value,"Newer unsaved edit");assert.equal(state.cheatDirty,true);
+  const state={tour:{id:"A",cheat_sheet:{revision_number:1,content:{notes:"Saved notes"}}},cheatDirty:true,cheatDraftRevision:1};
+  const requests=[];let keys=0;
+  // Keep the real recovery renderer, revision parser and receipt validator in
+  // the same context as saveSheet so its retained state is observed directly.
+  const h=handlers("tours/app.js","  function canRegenerateSheet(","  const routeEndpoints",{
+    state,$,sheetPending:null,sheetConflict:null,sheetBusy:false,sheetMessage:"",sessionBinding:"synthetic-scope",
+    text:(value,fallback="")=>value||fallback,cheatSheetText:value=>value?.notes||"",
+    id:value=>typeof value==="string"&&/^[0-9a-f-]{36}$/.test(value),uuid:()=>`key-${++keys}`,
+    request:async()=>structuredClone(state.tour),persistOtherWrites:noop,status:noop,loadTour:async()=>{},
+    post:async(_path,body)=>{requests.push(structuredClone(body));return requests.length===1?saved.promise:{cheat_sheet_revision_id:"00000000-0000-4000-8000-000000000001"};},
+  });
+  const tourSource=source("tours/app.js");
+  vm.runInContext(tourSource.slice(tourSource.indexOf("  let sheetAutosaveTimer"),tourSource.indexOf("  const otherWritesKey")),h);
+  vm.runInContext(tourSource.slice(tourSource.indexOf("  async function saveSheet("),tourSource.indexOf("  async function issueShare("))+"\nglobalThis.saveSheet=saveSheet;",h);
+  const pending=h.saveSheet();await tick();
+  assert.equal($("#cheat-content").disabled,false);assert.equal($("#save-sheet").disabled,true);
+  saved.reject(new Error("Committed save; reply lost"));await pending;
+  assert.equal($("#cheat-content").value,"First edit");assert.equal($("#cheat-content").disabled,true);
+  assert.equal(state.cheatDirty,true);assert.match($("#sheet-state").textContent,/unknown/i);
+  await h.saveSheet();
+  assert.deepEqual(requests[1],requests[0]);assert.equal(requests[0].expected_revision_number,1);assert.equal(keys,1);
+  assert.equal(h.sheetPending,null);assert.equal($("#cheat-content").disabled,false);
 });
 
 test("Dot 5: report retry after a lost response keeps one idempotency key", async () => {
@@ -304,7 +324,7 @@ test("Dot 14: Updates follows the event cursor to current activity", async () =>
 
 test("Dot 15: an old call status cannot replace the new session review pack", async () => {
   const old=deferred();const state={postCall:{session:"A"}};let stops=0;
-  const h=handlers("js/call-mode.js","  async function refreshPostCall(","  function startPolling(",{state,deps:{postCallClient:{getStatus:()=>old.promise}},stopPolling:()=>stops++,renderPostCall:noop,publishOrRecord:async()=>{},toast:noop},["refreshPostCall"]);
+  const h=handlers("js/call-mode.js","  async function refreshPostCall(","  function startPolling(",{state,deps:{postCallClient:{getStatus:()=>old.promise}},stopPolling:()=>stops++,renderPostCall:noop,publishOrRecord:async()=>{},toast:noop,reportCandidateIds:()=>[],now:()=>0,APPLY_WAIT_MS:180000,automaticSettled:report=>!report||Boolean(report.automatic?.finished_at)},["refreshPostCall"]);
   const pending=h.refreshPostCall();state.postCall={session:"B",status:"waiting",report:null};old.resolve({status:"review_ready",report:{session:"A"}});await pending;
   assert.equal(state.postCall.session,"B");assert.equal(state.postCall.report,null);assert.equal(stops,0);
 });
@@ -338,19 +358,30 @@ test("PR111 #11: composer accepts the producer's decimal-string sequence receipt
   await h.submitComposer();assert.equal(view.composerSend.state,"sent");assert.equal(view.composer.text,"");
 });
 
+test('S2: uncertain Model Room answers retain their key, reviewed version and draft while conflicts permit a reviewed new submission', async () => {
+  const {answerWorkRequestRequest,answerDraftAfterAttempt,workRequestCardRequest,answerBaseVersion}=await import('../js/model-room-model.js');
+  const view={historyWorkItemId:'WR-1',answer:{answerText:'Reviewed answer',evidenceRef:'',scopeConfirmed:true},answerSend:{state:'idle'}};
+  const sent=[]; let keys=0, version=2;
+  const client={workRequestCard:async()=>({ok:true,human_ref:'WR-1',version}),answerWorkRequestForJoe:async args=>{sent.push({...args});if(sent.length===1)throw Error('reply lost');if(sent.length===2)throw Object.assign(Error('conflict'),{payload:{error:'version_conflict'}});return {ok:true,state:'triaged'};},currentWorkRequests:async()=>({})};
+  const h=handlers('js/model-room.js','async function submitAnswer(','function render()',{view,currentAnswerBaseVersion:()=>version,answerBaseVersion,answerWorkRequestRequest,answerDraftAfterAttempt,workRequestCardRequest,classifyCommandOutcome,client,uuidv4:()=>`key-${++keys}`,renderAnswer:noop,announce:noop,take:async()=>{},refuseWorkRequestCard:noop,validCurrentWorkRequestsPayload:()=>true},['submitAnswer']);
+  await h.submitAnswer(); assert.match(view.answerSend.message,/unknown/i);
+  version=3; await h.submitAnswer(); assert.equal(sent[1].base_version,2); assert.equal(sent[0].idempotency_key,sent[1].idempotency_key);
+  await h.submitAnswer(); assert.equal(sent[2].base_version,3); assert.notEqual(sent[1].idempotency_key,sent[2].idempotency_key);
+});
+
 test("Dot 18: a late answer cannot clear another Work Requests draft", async () => {
   const {answerWorkRequestRequest,answerDraftAfterAttempt,workRequestCardRequest}=await import("../js/model-room-model.js");const pending=deferred();const announcements=[];
   const view={historyWorkItemId:"WR-1",answer:{answerText:"First answer",evidenceRef:"safe:test",scopeConfirmed:true},answerSend:{state:"idle"}};
   const h=handlers("js/model-room.js","async function submitAnswer(","function render()",{view,currentAnswerBaseVersion:()=>2,answerWorkRequestRequest,answerDraftAfterAttempt,workRequestCardRequest,client:{answerWorkRequestForJoe:()=>pending.promise,workRequestCard:async()=>({}),currentWorkRequests:async()=>({})},uuidv4:()=>"key",renderAnswer:noop,announce:message=>announcements.push(message),take:async()=>{},refuseWorkRequestCard:noop,validCurrentWorkRequestsPayload:()=>true},["submitAnswer"]);
-  const sending=h.submitAnswer();view.historyWorkItemId="WR-2";view.answer={answerText:"Second draft",evidenceRef:"",scopeConfirmed:false};view.answerSend={state:"idle"};pending.resolve({state:"triaged"});await sending;
+  const sending=h.submitAnswer();view.historyWorkItemId="WR-2";view.answer={answerText:"Second draft",evidenceRef:"",scopeConfirmed:false};view.answerSend={state:"idle"};pending.resolve({ok:true,state:"triaged"});await sending;
   assert.equal(view.answer.answerText,"Second draft");assert.ok(!announcements.some(text=>text.includes("WR-2")));
 });
 
 test("PR111 #3: successful answer preserves newer edits in the same draft", async () => {
   const {answerWorkRequestRequest,answerDraftAfterAttempt,workRequestCardRequest}=await import("../js/model-room-model.js");const pending=deferred();
   const view={historyWorkItemId:"WR-1",answer:{answerText:"First answer",evidenceRef:"safe:first",scopeConfirmed:true},answerSend:{state:"idle"}};
-  const h=handlers("js/model-room.js","async function submitAnswer(","function render()",{view,currentAnswerBaseVersion:()=>2,answerWorkRequestRequest,answerDraftAfterAttempt,workRequestCardRequest,client:{answerWorkRequestForJoe:()=>pending.promise},uuidv4:()=>"key",renderAnswer:noop,announce:noop,take:async()=>{},refuseWorkRequestCard:noop,validCurrentWorkRequestsPayload:()=>true},["submitAnswer"]);
-  const sending=h.submitAnswer();view.answer.answerText="New answer";view.answer.evidenceRef="safe:new";pending.resolve({state:"triaged"});await sending;
+  const h=handlers("js/model-room.js","async function submitAnswer(","function render()",{view,currentAnswerBaseVersion:()=>2,answerWorkRequestRequest,answerDraftAfterAttempt,workRequestCardRequest,client:{workRequestCard:async()=>({ok:true,human_ref:"WR-1",version:2}),answerWorkRequestForJoe:()=>pending.promise},uuidv4:()=>"key",renderAnswer:noop,announce:noop,take:async()=>{},refuseWorkRequestCard:noop,validCurrentWorkRequestsPayload:()=>true},["submitAnswer"]);
+  const sending=h.submitAnswer();view.answer.answerText="New answer";view.answer.evidenceRef="safe:new";pending.resolve({ok:true,state:"triaged"});await sending;
   assert.equal(view.answer.answerText,"New answer");assert.equal(view.answer.evidenceRef,"safe:new");assert.equal(view.answerSend.state,"sent");
 });
 
@@ -439,7 +470,7 @@ test("Dot 9: phase reconciliation resumes the originally requested follow-up wri
 test("Closing outcome recovery after Dot 21 replays update-deal through the dock sender", async () => {
   const {pendingCommand}=await import('../js/command-feedback.mjs');
   const writes=[];const state={client:{updateDeal:async args=>{writes.push(args);if(writes.length===1)throw new Error("lost response");return {ok:true};}}};
-  const h=handlers("js/pipeline.js","const FOLLOW_UP_SENDERS", "/**\n * The whole Move",{state,operations:new Map(),dock:{record:noop},commandState:{},performCommand,pendingCommand,uuidv4:()=>"00000000-0000-4000-8000-000000000001"},["runFollowUp"]);
+  const h=handlers("js/pipeline.js","const FOLLOW_UP_SENDERS", "async function runMove(",{state,operations:new Map(),dock:{record:noop},commandState:{},performCommand,pendingCommand,uuidv4:()=>"00000000-0000-4000-8000-000000000001"},["runFollowUp"]);
   const step={verb:"update-deal",summary:"Outcome",args:{deal:"demo",base_version:7,outcome:"won"}};
   await h.runFollowUp("outcome",step);await h.runFollowUp("outcome",step);
   assert.equal(writes.length,2);assert.equal(writes[0].idempotency_key,writes[1].idempotency_key);
@@ -448,11 +479,11 @@ test("Closing outcome recovery after Dot 21 replays update-deal through the dock
 test("PR111 #5: outcome read failure remains retryable from the receipt dock", async () => {
   const writes=[],receipts=[],operations=new Map();let reads=0;let dockOptions;
   const globals={state:{client:{getDeal:async()=>{if(++reads===1)throw new Error("read failed");return {deal:{version:7}};},updateDeal:async args=>{writes.push(args);return {ok:true};}},boardSync:{requestRefresh:noop}},dock:{record:(_key,value)=>receipts.push(value)},operations,commandState:{},performCommand,uuidv4:()=>"00000000-0000-4000-8000-000000000001",$:()=>({}),createCommandDock:options=>{dockOptions=options;return {mount:noop,record:globals.dock.record};}};
-  const h=handlers("js/pipeline.js","const FOLLOW_UP_SENDERS","/**\n * The whole Move",globals,["runOutcomeWrite","runFollowUp"]);
+  const h=handlers("js/pipeline.js","const FOLLOW_UP_SENDERS","async function runMove(",globals,["runOutcomeWrite","runFollowUp"]);
   const step={verb:"update-deal",summary:"Outcome",args:{deal:"demo",outcome:"won",closed_on:"2026-09-30"}};
   await h.runOutcomeWrite("close",step,{deal:"demo",name:"Demo"});
   assert.equal(receipts.at(-1).retry,true);assert.ok(operations.has("close"));assert.equal(writes.length,0);
-  const mount=handlers("js/pipeline.js","function mountDock()","/* ------------------------------------------------------------------------ boot",{...globals,runOutcomeWrite:h.runOutcomeWrite,runFollowUp:h.runFollowUp},["mountDock"]);mount.mountDock();
+  const mount=handlers("js/pipeline.js","function mountDock()","async function boot(",{...globals,runOutcomeWrite:h.runOutcomeWrite,runFollowUp:h.runFollowUp},["mountDock"]);mount.mountDock();
   await dockOptions.onDispatch("close");await tick();assert.equal(writes.length,1);assert.equal(writes[0].base_version,7);assert.equal(writes[0].outcome,"won");
 });
 
@@ -488,7 +519,7 @@ for(const rotate of [false,true]) test(`PR111 #13: lost ${rotate?"rotation":"iss
 });
 
 test("PR111 #13: retained share recovery stays reachable on its original Tour",async()=>{
-  const {h,state,replies}=tourHarness();state.pendingShare={tourId:"A",projectionId:"projection-A"};replies.set("B",Promise.resolve({id:"B"}));
+  const {h,state,replies}=tourHarness();state.pendingShare={tourId:"A",projectionId:"projection-A"};replies.set("B",Promise.resolve({id:"B",stops:[]}));
   await h.loadTour("B");assert.equal(state.tour.id,"A");assert.equal(state.pendingShare.tourId,"A");
 });
 
@@ -500,12 +531,12 @@ for (const rotate of [false, true]) test(`PR111 #13: ${rotate ? "rotation" : "is
   $("#route-stops").replaceChildren=noop;
   const currentGrant="00000000-0000-4000-8000-000000000004";
   const reload=handlers("tours/app.js","  function renderTour()","  function moveStop(",{
-    state,$,restoredTourId:"",navigationBusy:false,composer:null,createPending:null,tourLoadSeq:0,
-    request:async()=>({id:"A",projection_id:"projection-B",share_grant_id:currentGrant}),
+    state,$,sheetPending:null,sheetConflict:null,sheetBusy:false,tourAction:null,restoredTourId:"",navigationBusy:false,composer:null,createPending:null,tourLoadSeq:0,
+    request:async()=>({id:"A",stops:[],projection_id:"projection-B",share_grant_id:currentGrant}),
     status:noop,text:(value,fallback="")=>typeof value==="string"&&value?value:fallback,
     id:()=>false,tourMetaLine:()=>"",tourDisplayName:(value,fallback="Untitled tour")=>value||fallback,renderFeedback:noop,renderShareGrants:noop,
     cheatSheetText:()=>"",stops:()=>[],mountPropertyPanel:noop,renderComposer:noop,renderAcceptedItinerary:noop,
-    renderCreate:noop,validateDetail:noop,routeSnapshot:()=>"",initComposer:noop,
+    renderCreate:noop,restoreOtherWrites:noop,renderSheetRecovery:noop,renderTourAction:noop,validateDetail:noop,routeSnapshot:()=>"",initComposer:noop,
     renderSelection:noop,loadSelectionCart:async()=>{},loadProjectionPreview:async()=>{},loadFeedback:async()=>{},
   },["loadTour"]);
   await reload.loadTour("A");assert.equal(state.projectionId,"projection-B");

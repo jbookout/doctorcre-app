@@ -270,9 +270,9 @@ test("loadDealContext never guesses a party's contact record from its party_id",
   assert.equal(context.parties[0].name, "Dr. Example");
 });
 
-test("contextDrawerSections renders recorded context and hides unavailable sections", () => {
+test("contextDrawerSections renders recorded context and labels unavailable sections", () => {
   assert.deepEqual(contextDrawerSections({client:{status:'not_linked'},parties:[],criticalDates:[]}),[]);
-  assert.deepEqual(contextDrawerSections({client:{status:'unavailable'},parties:[],criticalDates:[]}),[]);
+  assert.equal(contextDrawerSections({client:{status:'unavailable'},parties:[],criticalDates:[]})[0].state,'unavailable');
   const ok = contextDrawerSections({
     client: { status: "ok", record: { name: "Demo Dental North", phone: "205-555-0142", email: "a@example.com", city: "Demo City", state: "DM" } },
     parties: [{ role: "client_contact", name: "Dr. Example" }],
@@ -444,7 +444,7 @@ test("a change to a field revert-deal-field cannot act on shows in Recent Change
   const client = await newClient();
   const row = await boardRow(client, "d02");
   const write = await client.setNextStep({
-    deal: "d02", text: "Confirm rent roll with landlord", idempotency_key: "key-next-step",
+    deal: "d02", text: "Confirm rent roll with landlord", base_version: row.version, idempotency_key: "key-next-step",
   });
   assert.ok(write.event?.id || write.event_id, "the fixture recorded the next-step event");
 
@@ -532,7 +532,7 @@ test("the follow-ups run after the phase is accepted, each on its own key, and a
   const send = {
     "patch-deal-field": (args) => client.patchDealField({ ...args, base_event_id: row.field_base?.phase?.id || null, idempotency_key: "k-phase" }),
     "add-deal-note": (args) => client.addDealNote({ ...args, idempotency_key: "k-note" }),
-    "set-next-step": (args) => client.setNextStep({ ...args, idempotency_key: "k-step" }),
+    "set-next-step": async (args) => client.setNextStep({ ...args, base_version: (await client.getDeal(args.deal)).deal.version, idempotency_key: "k-step" }),
     "add-critical-date": (args) => client.addCriticalDate({ ...args, idempotency_key: "k-date" }),
   };
   const [phaseStep, ...followUps] = plan.steps;
@@ -611,7 +611,7 @@ test("a fetch failure reading the client record: the drawer says the read failed
   assert.equal(context.client.reason, "fetch_failed");
 
   const sections = contextDrawerSections(context, { dateLabel: (v) => v });
-  assert.equal(sections.some(s=>s.title === "Client"),false);
+  assert.equal(sections.find(s=>s.title === "Client").state,"unavailable");
 });
 
 test("the fixture accepts every one of the eight phases by its board value", async () => {
@@ -812,4 +812,26 @@ for (const status of [503, 401, 403]) test(`QA008 Deals freshness settles after 
     await sync.requestRefresh('recovery');
     assert.match(freshness(), /^Updated .* (AM|PM)$/);
   } finally { dom.window.close(); }
+});
+
+test('fixture deal reads preserve every note and put undated entries after dated updates', async () => {
+  const seed = JSON.parse(seedText);
+  seed.threads.d14 = [
+    {id:'undated',kind:'note',text:'Synthetic undated note'},
+    {id:'old',kind:'note',at:'2026-10-01T12:00:00Z',text:'Synthetic older note'},
+    {id:'latest',kind:'note',created_at:'2026-10-26T12:00:00Z',text:'Synthetic latest note'},
+  ];
+  const client = await createFixtureClient({seedUrl:`data:application/json;base64,${Buffer.from(JSON.stringify(seed)).toString('base64')}`});
+  assert.deepEqual((await client.getDeal('d14')).thread.map(row=>row.id),['latest','old','undated']);
+});
+
+test('Home Recent moves retains precise newest-first receipt order with undated entries last', () => {
+ const events = [
+  {id:'undated',recorded_at:null},
+  {id:'older',recorded_at:'2026-10-26T12:00:00.000001Z'},
+  {id:'newer',recorded_at:'2026-10-26T07:00:00.000002-05:00'},
+  {id:'historic',recorded_at:'1969-12-31T12:00:00Z'},
+ ].map(event=>({...event,subject_type:'deal',subject_id:'d14',actor:'joe',field:'next_step',new_value:'Synthetic updated step'}));
+ const receipts = ingestChangeEvents([],events,{dealName:()=> 'Synthetic Practice'});
+ assert.deepEqual(receiptViews(receipts).map(row=>row.event_id),['newer','older','historic','undated']);
 });

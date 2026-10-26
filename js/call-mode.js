@@ -32,8 +32,10 @@
  * failed — it is supplied again then, and the companion processes the
  * transcript it already has.
  */
-import { uuidv4 } from './uuid.js';
-import { escapeText as esc } from './change-receipts.mjs';
+import { createRetainedCommands } from './retained-commands.mjs';
+import { callChangeText, dayLabel } from './call-change-words.js';
+import { requestCompanion } from './post-call-client.js';
+import { escapeText as esc, compareInstants } from './change-receipts.mjs';
 import { mountVisibilityPoll } from './visibility-poll.mjs';
 
 export const CALL_MODE_URL = 'http://127.0.0.1:4682';
@@ -129,13 +131,14 @@ const idlePostCall = () => ({ status: 'idle', session: null, weekly: false, repo
  * @param {() => Promise<void>} [deps.onConfirmed] reload after a confirmed item
  */
 export function createCallMode(deps) {
+  const candidateCommands = createRetainedCommands({ scope: () => deps.client()?.selfActor || null });
   const root = deps.root;
   const $ = (selector) => root.querySelector(selector);
   const fetchImpl = deps.fetchImpl || ((...args) => fetch(...args));
   const now = deps.now || (() => Date.now());
   const toast = deps.toast || (() => {});
   const dealName = deps.dealName || (() => undefined);
-  const dateLabel = deps.dateLabel || ((value) => String(value));
+  const dateLabel = deps.dateLabel || dayLabel;
   const timers = { setInterval: deps.setInterval || ((...a) => setInterval(...a)),
     clearInterval: deps.clearInterval || ((h) => clearInterval(h)),
     setTimeout: deps.setTimeout || ((...a) => setTimeout(...a)),
@@ -149,25 +152,9 @@ export function createCallMode(deps) {
     if (state.eligibilityInFlight) return state.eligibilityInFlight;
     state.eligibility = 'checking';
     render();
-    const controller = new AbortController();
-    let timeout;
     const probe = (async () => {
       try {
-        const snapshot = await Promise.race([
-          (async () => {
-            const response = await fetchImpl(`${CALL_MODE_URL}/api/state`, {
-              method: 'GET', targetAddressSpace: 'loopback', signal: controller.signal,
-            });
-            if (!response.ok) throw new Error('Companion unavailable');
-            const result = await response.json();
-            if (!['idle', 'recording', 'transcribing', 'ready_to_extract', 'filed', 'state_unknown'].includes(result?.state))
-              throw new Error('Invalid companion state');
-            return result;
-          })(),
-          new Promise((_, reject) => {
-            timeout = setTimeout(() => { controller.abort(); reject(new Error('Companion probe timed out')); }, deps.eligibilityTimeoutMs ?? 1200);
-          }),
-        ]);
+        const snapshot = await api('state',null,deps.eligibilityTimeoutMs ?? 1200);
         state.callMode = snapshot;
         state.eligibility = 'available';
         return true;
@@ -178,7 +165,6 @@ export function createCallMode(deps) {
         state.tickTimer = null;
         return false;
       } finally {
-        clearTimeout(timeout);
         state.eligibilityInFlight = null;
         render();
       }
@@ -190,28 +176,31 @@ export function createCallMode(deps) {
   const callModeActive = (snapshot = state.callMode) => snapshot?.state === 'recording';
   const postCallDealName = (item) => item.deal_name || dealName(item.deal_id) || 'Work record';
 
-  function showPermission() {
-    const notice = $('#callModePermission');
-    if (!notice) return;
-    notice.textContent = 'Chrome needs one-time Local Network Access permission to reach Quill on this Mac. Allow the prompt, then retry here. The standalone controller remains available if the local bridge itself needs checking.';
-    notice.hidden = false;
-  }
-
-  async function api(path, body = null) {
+  async function api(path, body = null, timeoutMs = deps.requestTimeoutMs) {
     const options = body ? {
       method: 'POST', headers: { 'content-type': 'application/json', ...CALL_MODE_HEADER },
       body: JSON.stringify(body), targetAddressSpace: 'loopback',
     } : { method: 'GET', targetAddressSpace: 'loopback' };
-    let response;
-    try {
-      response = await fetchImpl(`${CALL_MODE_URL}/api/${path}`, options);
-    } catch {
-      showPermission();
-      throw new Error('Call Mode could not reach Quill locally.');
+    const payload = await requestCompanion(`${CALL_MODE_URL}/api/${path}`,options,{fetchImpl,timeoutMs});
+    if (!['idle','recording','transcribing','ready_to_extract','filed','state_unknown'].includes(payload.state)) {
+      throw Object.assign(new Error('Local Call Mode response unavailable. Check local state before retrying.'),{outcomeUnknown:Boolean(body)});
     }
-    const payload = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(payload.error || 'Call Mode could not complete that action.');
     return payload;
+  }
+  function showFailure(error) {
+    const notice = $('#callModePermission');
+    if (notice) { notice.textContent = error.message; notice.hidden = false; }
+    toast(error.message);
+  }
+  async function reconcileRecorder() {
+    if (!state.recorderUncertain) return false;
+    const snapshot = await api('state');
+    if (snapshot.state === 'state_unknown') throw new Error('Recorder outcome unknown. Check Quill before another action.');
+    state.recorderUncertain = false;
+    const notice = $('#callModePermission'); if (notice) notice.hidden = true;
+    await refresh({snapshot});
+    toast('Local recorder state refreshed. Review it before another recording action.');
+    return true;
   }
 
   function render() {
@@ -248,8 +237,10 @@ export function createCallMode(deps) {
     if (!stage) return;
     stage.classList.toggle('recording', recording);
     stage.classList.toggle('processing', processing);
-    $('#callModeStarts').hidden = recording || processing;
-    $('#callModeConsentRow').hidden = recording || processing;
+    // A finished call (transcript ready or filed) must not block the next one.
+    const busy = recording || snapshot.state === 'transcribing';
+    $('#callModeStarts').hidden = busy;
+    $('#callModeConsentRow').hidden = busy;
     $('#callModeStop').hidden = !recording;
     $('#callModeTimer').textContent = recording ? elapsedTime(snapshot.started_at, now) : ({
       idle: 'Ready', transcribing: 'Processing', ready_to_extract: 'Transcript ready', filed: 'Summary saved', state_unknown: 'Check Quill',
@@ -307,16 +298,41 @@ export function createCallMode(deps) {
   </article>`;
   }
 
+  // The companion appends each change to the summary as raw lines
+  // ("Phase moved to: due_diligence (started 2026-10-20)", "Next date:
+  // 2026-11-03"; carr-system post_call.report_for_deal_room). The card shows
+  // those changes formatted in their own sections, so drop the raw copies.
+  const RAW_CHANGE_LINE = /^(Phase moved to|Move phase to|Next step set to|Replace next step with|Next date):/u;
+  function cardSummary(text) {
+    return String(text).split('\n').filter(line => !RAW_CHANGE_LINE.test(line.trim())).join('\n').trim();
+  }
+
   function dealUpdateCard(item) {
     const status = postCallItemStatus(item);
     const pending = status === 'pending';
-    const summary = item.update || item.summary || item.text || item.action || 'Deal update needs review';
+    const summary = cardSummary(item.update || item.summary || item.text || item.action || '') || 'Deal update needs review';
     const resolver = ['assigned_action','email_draft'].includes(item.candidate_kind || item.kind) || item.candidate_table === 'capture_post_call_candidate' ? 'post_call' : 'legacy';
+    const step = item.next_step?.applied_automatically ? null : item.next_step;
+    const stepStatus = step ? postCallItemStatus(step) : null;
+    const phase = item.phase_move?.applied_automatically ? null : item.phase_move;
+    const phaseStatus = phase ? postCallItemStatus(phase) : null;
     return `<article class="post-call-card" data-post-call-item="${esc(item.candidate_id || '')}">
     <div class="post-call-card-head"><b>${esc(postCallDealName(item))}</b><span class="post-call-badge ${esc(status)}">${esc(status.replaceAll('_',' '))}</span></div>
     <p>${esc(reportText(summary))}</p>
     ${checksNote(item)}
     ${pending ? `<div class="post-call-card-actions"><button type="button" class="primary" data-post-call-confirm="${esc(item.candidate_id)}" data-candidate-resolver="${resolver}">Confirm update</button><button type="button" class="secondary" data-post-call-skip="${esc(item.candidate_id)}" data-candidate-resolver="${resolver}">Skip</button></div>` : ''}
+    ${phase ? `<section aria-label="Proposed phase">
+      <div class="post-call-card-head"><b>Proposed phase</b><span class="post-call-badge ${esc(phaseStatus)}">${esc(phaseStatus.replaceAll('_', ' '))}</span></div>
+      <p>${esc(callChangeText({ kind: 'phase_move', payload: phase }).replace('Phase moved to', 'Move to'))}</p>
+      ${phase.review_reason && phaseStatus === 'pending' ? `<p class="post-call-checks">${esc(reportText(phase.review_reason))}</p>` : ''}
+      ${phaseStatus === 'pending' && phase.candidate_id ? `<div class="post-call-card-actions"><button type="button" class="primary" data-post-call-confirm="${esc(phase.candidate_id)}" data-candidate-resolver="legacy">Confirm phase</button><button type="button" class="secondary" data-post-call-skip="${esc(phase.candidate_id)}" data-candidate-resolver="legacy">Skip phase</button></div>` : ''}
+    </section>` : ''}
+    ${step ? `<section aria-label="Proposed next step">
+      <div class="post-call-card-head"><b>Proposed next step</b><span class="post-call-badge ${esc(stepStatus)}">${esc(stepStatus.replaceAll('_', ' '))}</span></div>
+      <p>${esc(reportText(step.text))}</p><small>${step.next_date ? `Next date: ${esc(dateLabel(step.next_date))}` : 'No next date. Confirming clears the current date.'}</small>
+      ${step.review_reason && stepStatus === 'pending' ? `<p class="post-call-checks">${esc(reportText(step.review_reason))}</p>` : ''}
+      ${stepStatus === 'pending' && step.candidate_id ? `<div class="post-call-card-actions"><button type="button" class="primary" data-post-call-confirm="${esc(step.candidate_id)}" data-candidate-resolver="legacy">Confirm next step</button><button type="button" class="secondary" data-post-call-skip="${esc(step.candidate_id)}" data-candidate-resolver="legacy">Skip next step</button></div>` : ''}
+    </section>` : ''}
   </article>`;
   }
 
@@ -337,14 +353,53 @@ export function createCallMode(deps) {
     <div class="post-call-card-head"><div><b>${esc(postCallDealName(draft))}</b><small>${esc(recipient)}${draft.recipient_email ? ` · ${esc(draft.recipient_email)}` : ''}</small></div><span class="post-call-badge ${esc(status)}">${esc(status.replaceAll('_',' '))}</span></div>
     <h5>${esc(reportText(draft.subject || 'Deal update'))}</h5><p class="draft-body">${esc(reportText(draft.body || ''))}</p>
     ${checksNote(draft)}
-    ${busyError ? `<p class="post-call-inline-error" role="alert">${esc(busyError)} You can retry safely.</p>` : ''}
-    <div class="post-call-card-actions"><button type="button" class="primary create-draft" data-create-outlook-draft="${esc(draft.draft_id)}" data-draft-candidate="${esc(draft.candidate_id || '')}" data-draft-status="${esc(status)}" data-content-hash="${esc(draft.content_hash || '')}"${created || skipped || awaitingReceipt ? ' disabled' : ''}>${created ? 'Created in Outlook' : skipped ? 'Skipped' : awaitingReceipt ? 'Preparing draft…' : busyError ? 'Retry Outlook draft' : 'Approve and create Outlook draft'}</button>${status === 'pending' && draft.candidate_id ? `<button type="button" class="secondary" data-post-call-skip="${esc(draft.candidate_id)}" data-candidate-resolver="post_call">Skip</button>` : ''}</div>
+    ${busyError ? `<p class="post-call-inline-error" role="alert">${esc(busyError)} Check the report before retrying.</p>` : ''}
+    <div class="post-call-card-actions"><button type="button" class="primary create-draft" data-create-outlook-draft="${esc(draft.draft_id)}" data-draft-candidate="${esc(draft.candidate_id || '')}" data-draft-status="${esc(status)}" data-content-hash="${esc(draft.content_hash || '')}"${created || skipped || awaitingReceipt ? ' disabled' : ''}>${created ? 'Created in Outlook' : skipped ? 'Skipped' : awaitingReceipt ? 'Preparing draft…' : state.uncertainDrafts?.has(draft.draft_id) ? 'Check draft outcome' : busyError ? 'Retry Outlook draft' : 'Approve and create Outlook draft'}</button>${status === 'pending' && draft.candidate_id ? `<button type="button" class="secondary" data-post-call-skip="${esc(draft.candidate_id)}" data-candidate-resolver="post_call">Skip</button>` : ''}</div>
     <small class="human-gate">Creates a draft only. Joe or Dell reviews and sends it in Outlook.</small>
   </article>`;
   }
 
   function reportSection(title, items, renderItem, empty) {
     return `<section class="post-call-group"><h4>${esc(title)}</h4>${items.length ? `<div class="post-call-cards">${items.map(renderItem).join('')}</div>` : `<p class="post-call-empty">${esc(empty)}</p>`}</section>`;
+  }
+
+  // Applied-from-the-call summary (read-call-outcomes) above the report. Its
+  // module loads only once a call has candidates to list, so the Deals page
+  // does not carry it on every visit.
+  let outcomes = null;
+  let outcomesLoading = null;
+  function reportCandidateIds() {
+    const updates = state.postCall.report?.deal_updates;
+    return (Array.isArray(updates) ? updates : []).flatMap(update => ['next_step', 'phase_move']
+      .map(field => update?.[field]?.candidate_id).filter(Boolean));
+  }
+  async function callOutcomes() {
+    const node = $('#postCallOutcomes');
+    if (!node || !deps.client()?.readCallOutcomes) return null;
+    if (outcomes) return outcomes;
+    outcomesLoading ||= import('./call-outcomes.js');
+    const { mountCallOutcomes } = await outcomesLoading;
+    outcomes ||= mountCallOutcomes({ container: node, client: deps.client, toast, filter: reportCandidateIds, listen: false,
+      onChange: () => refreshPostCall({ quiet: true }) });
+    return outcomes;
+  }
+
+  // The companion writes report.automatic only after the call's plainly
+  // stated changes have been applied (or refused) through the record layer.
+  // Until then nothing is claimed as applied.
+  const APPLY_WAIT_MS = 3 * 60 * 1000;
+  const automaticSettled = report => !report || Boolean(report.automatic?.finished_at);
+  function reviewReadyLabel(post) {
+    const automatic = post.report?.automatic;
+    if (!automaticSettled(post.report)) {
+      return post.applyTimedOut
+        ? 'Call processed, but the plainly stated changes have not been confirmed as applied yet. Press ↻ to check again.'
+        : 'Call processed. Applying the changes stated plainly…';
+    }
+    const applied = Number(automatic?.applied) || 0;
+    const held = Number(automatic?.kept_for_review) || 0;
+    const appliedText = applied ? `${applied} change${applied === 1 ? '' : 's'} applied and listed with Undo` : 'Nothing was applied automatically';
+    return `Call processed. ${appliedText}${held ? `; ${held} held change${held === 1 ? ' waits' : 's wait'} for Joe or Dell below` : ''}.`;
   }
 
   function renderPostCall() {
@@ -363,17 +418,18 @@ export function createCallMode(deps) {
       awaiting_context: 'Preparing the weekly deal context…',
       waiting_for_transcript: 'Recording stopped. Quill is transcribing locally…',
       distilling: 'Quill is distilling the weekly updates and next actions…',
-      review_ready: 'Review pack ready. Nothing is saved until Joe or Dell approves each item.',
+      review_ready: reviewReadyLabel(post),
       filed: 'Post-call report filed. Outlook drafts still require a person to send them.',
       failed: 'The post-call report needs attention.',
     };
-    $('#postCallStatus').innerHTML = `<span class="post-call-spinner" aria-hidden="true"></span><b>${esc(labels[post.status] || 'Post-call workflow ready.')}</b>${post.error ? `<small role="alert">${esc(post.error)}</small><button type="button" class="secondary" data-retry-call-context>Retry deal context</button>` : ''}`;
+    $('#postCallStatus').innerHTML = `<span class="post-call-spinner" aria-hidden="true"></span><b>${esc(labels[post.status] || 'Post-call workflow ready.')}</b>${post.error ? `<small role="alert">${esc(post.error)}</small>${post.errorAction === 'report' ? '<button type="button" class="secondary" data-refresh-post-call>Retry report</button>' : '<button type="button" class="secondary" data-retry-call-context>Retry deal context</button>'}` : ''}`;
     $('#postCallStatus').classList.toggle('failed', Boolean(post.error) || post.status === 'failed');
     const envelope = post.report || {};
     const core = envelope.report || {};
     const joe = Array.isArray(envelope.joe_tasks) ? envelope.joe_tasks : [];
     const dell = Array.isArray(envelope.dell_tasks) ? envelope.dell_tasks : [];
-    const updates = Array.isArray(envelope.deal_updates) ? envelope.deal_updates : (Array.isArray(envelope.deals) ? envelope.deals : []);
+    const updates = [...(Array.isArray(envelope.deal_updates) ? envelope.deal_updates : (Array.isArray(envelope.deals) ? envelope.deals : []))]
+      .sort((a, b) => compareInstants(a.occurred_at || a.at || a.created_at || a.recorded_at, b.occurred_at || b.at || b.created_at || b.recorded_at));
     const questions = [...(Array.isArray(envelope.review_questions) ? envelope.review_questions : []),
       ...(Array.isArray(core.open_questions) ? core.open_questions : []),
       ...(Array.isArray(envelope.questions) ? envelope.questions : [])];
@@ -425,7 +481,7 @@ export function createCallMode(deps) {
       // Stop polling so the reason stays on screen: the next poll would read
       // awaiting_context again and quietly replace it. Retry resumes.
       stopPolling();
-      state.postCall = { ...state.postCall, status: 'failed', session, weekly: true, error: error.message };
+      state.postCall = { ...state.postCall, status: 'failed', session, weekly: true, error: error.message, errorAction:'context' };
       renderPostCall();
       return false;
     }
@@ -451,9 +507,17 @@ export function createCallMode(deps) {
       const rawStatus = (typeof payload.status === 'object' ? payload.status.state : payload.status) || payload.state || 'waiting_for_transcript';
       const status = ({ ready_review: 'review_ready', blocked: 'failed' })[rawStatus] || rawStatus;
       const reason = typeof payload.status === 'object' && rawStatus === 'blocked' ? payload.status.reason : null;
-      state.postCall = { ...state.postCall, status, report: payload.report || null,
+      const report = payload.report || null;
+      // review_ready arrives before the companion has filed and applied the
+      // call; keep reading until report.automatic says the apply finished.
+      const readyAt = status === 'review_ready' ? (state.postCall.readyAt ?? now()) : null;
+      const applying = status === 'review_ready' && !automaticSettled(report);
+      const applyTimedOut = applying && now() - readyAt >= APPLY_WAIT_MS;
+      state.postCall = { ...state.postCall, status, report, readyAt, applyTimedOut,
         error: reason ? `Local processing stopped: ${reason}` : null };
-      if (['review_ready', 'filed', 'failed'].includes(status)) stopPolling();
+      if (['filed', 'failed'].includes(status) || (status === 'review_ready' && (!applying || applyTimedOut))) stopPolling();
+      else if (!state.pollTimer) startPolling(session, {immediate:false});
+      if (['review_ready', 'filed'].includes(status) && !applying && reportCandidateIds().length) callOutcomes().then(view => view?.refresh());
       renderPostCall();
       // The stall this closes: a weekly recording whose companion never got
       // the context index. Supply it now, once per session unless a partner
@@ -463,7 +527,8 @@ export function createCallMode(deps) {
       }
     } catch (error) {
       if (state.postCall.session !== session || state.statusSequence !== sequence) return;
-      state.postCall = { ...state.postCall, error: error.message };
+      stopPolling();
+      state.postCall = { ...state.postCall, status:state.postCall.report ? state.postCall.status : 'failed', error: error.message, errorAction:'report' };
       renderPostCall();
       if (!quiet) toast(error.message);
     } finally {
@@ -471,10 +536,12 @@ export function createCallMode(deps) {
     }
   }
 
-  function startPolling(session, { weekly = false } = {}) {
+  function startPolling(session, { weekly = false, immediate = true } = {}) {
     stopPolling();
-    if (state.postCall.session !== session) state.callGeneration = (state.callGeneration || 0) + 1;
-    state.postCall = { ...state.postCall, session, weekly: weekly || state.postCall.weekly };
+    const newCall = state.postCall.session !== session;
+    if (newCall) state.callGeneration = (state.callGeneration || 0) + 1;
+    state.postCall = { ...state.postCall, session, weekly: weekly || state.postCall.weekly,
+      ...(newCall ? { readyAt: null, applyTimedOut: false } : {}) };
     // The one poll allowed to run while the tab is hidden or idle: it exists
     // only from Stop until the call's report settles (stopPolling), and a
     // partner on that call is talking, not typing. It reads the local
@@ -482,7 +549,7 @@ export function createCallMode(deps) {
     state.pollTimer = mountVisibilityPoll({ document: root, window: root.defaultView, keepAlive: () => true,
       setTimeout: timers.setTimeout, clearTimeout: timers.clearTimeout,
       intervalMs: 1600, poll: () => refreshPostCall({ quiet: true }) });
-    state.pollTimer.refresh();
+    if (immediate) state.pollTimer.refresh();
   }
 
   // ------------------------------------------------------ per-item approval
@@ -493,37 +560,55 @@ export function createCallMode(deps) {
     try {
       const client = deps.client();
       if (button.dataset.candidateResolver === 'post_call') {
-        await client.resolvePostCallCandidate({ candidate_id: candidateId, accept, idempotency_key: uuidv4() });
+        await candidateCommands.send(`post-call:${candidateId}`, { candidate_id: candidateId, accept }, request => client.resolvePostCallCandidate(request));
       } else {
-        await client.resolveConfirm({ proposal_id: candidateId, accept, idempotency_key: uuidv4() });
+        await candidateCommands.send(`candidate:${candidateId}`, { proposal_id: candidateId, accept }, request => client.resolveConfirm(request));
       }
       await deps.postCallClient.syncStatus(state.postCall.session);
       toast(accept ? 'Post-call item confirmed.' : 'Post-call item skipped.');
       await refreshPostCall();
       if (accept && deps.onConfirmed) await deps.onConfirmed();
     } catch (error) {
-      toast(error.message);
+      toast(error.pendingRequest ? 'Outcome unknown. Repeat the same decision to check its original request.' : error.message);
     } finally { button.disabled = false; }
   }
 
   async function createDraft(button) {
     const draftId = button.dataset.createOutlookDraft;
     const candidateId = button.dataset.draftCandidate;
+    const session = state.postCall.session, contentHash = button.dataset.contentHash;
     const status = button.dataset.draftStatus;
     button.disabled = true;
+    const uncertain = state.uncertainDrafts?.get(draftId);
     state.postCall.draftErrors.delete(draftId);
     try {
+      if (uncertain) {
+        if (uncertain.session !== session) throw new Error('Check the original call report before retrying this draft.');
+        const payload = await deps.postCallClient.getStatus(uncertain.session);
+        const drafts = payload.report?.draft_proposals || payload.report?.drafts;
+        if (!Array.isArray(drafts)) throw new Error('Draft outcome unknown. Refresh the report before retrying.');
+        const draft = drafts.find(item => item.draft_id === draftId);
+        if (!draft) throw new Error('Draft outcome unknown. Keep this report open and check again.');
+        if (['created','already_created','draft_created'].includes(draft.status)) {
+          state.uncertainDrafts.delete(draftId); await refreshPostCall(); return;
+        }
+        if (button.dataset.contentHash !== uncertain.hash) throw new Error('Draft changed. Check the original draft outcome before approving new content.');
+      }
       // Pressing this button IS the partner's approval of this one draft: the
       // candidate is confirmed first, then the companion creates an Outlook
       // draft. Nothing is ever sent.
-      if (!['confirmed', 'created', 'already_created', 'draft_created'].includes(status)) {
+      if (!uncertain && !['confirmed', 'created', 'already_created', 'draft_created'].includes(status)) {
         if (!candidateId) throw new Error('This email draft still needs a matched metadata candidate.');
-        await deps.client().resolvePostCallCandidate({ candidate_id: candidateId, accept: true, idempotency_key: uuidv4() });
+        await candidateCommands.send(`post-call:${candidateId}`, { candidate_id: candidateId, accept: true }, request => deps.client().resolvePostCallCandidate(request));
       }
-      await deps.postCallClient.syncStatus(state.postCall.session);
+      if (state.postCall.session !== session) return;
+      await deps.postCallClient.syncStatus(session);
+      if (state.postCall.session !== session) return;
       const created = await deps.postCallClient.createOutlookDraft(
-        state.postCall.session, draftId, button.dataset.contentHash,
+        session, draftId, contentHash,
       );
+      if (state.postCall.session !== session) return;
+      state.uncertainDrafts?.delete(draftId);
       await refreshPostCall();
       const report = state.postCall.report;
       for (const draft of report?.draft_proposals || report?.drafts || []) {
@@ -535,6 +620,11 @@ export function createCallMode(deps) {
       renderPostCall();
       toast('Outlook draft created. Nothing was sent.');
     } catch (error) {
+      if (state.postCall.session !== session) return;
+      if (error.outcomeUnknown) {
+        state.uncertainDrafts ||= new Map();
+        state.uncertainDrafts.set(draftId,{session,hash:contentHash});
+      }
       state.postCall.draftErrors.set(draftId, error.message);
       renderPostCall();
     } finally { button.disabled = false; }
@@ -547,19 +637,28 @@ export function createCallMode(deps) {
       state.callMode = suppliedSnapshot || await api('state');
       const notice = $('#callModePermission');
       if (notice) notice.hidden = true;
-      render();
       const snapshot = state.callMode;
-      if (snapshot.mode === 'weekly_deal_call' && snapshot.session) {
-        if (callModeActive(snapshot) && state.postCall.session !== snapshot.session) {
-          state.postCall = { ...idlePostCall(), session: snapshot.session, weekly: true };
-          await publishOrRecord(snapshot.session);
-        } else if (!callModeActive(snapshot) && state.postCall.session !== snapshot.session) {
-          state.postCall = { ...idlePostCall(), session: snapshot.session, weekly: true };
-          startPolling(snapshot.session, { weekly: true });
+      const session = snapshot.session || state.postCall.session;
+      const changed = state.postCall.session !== session;
+      const weekly = snapshot.mode === 'weekly_deal_call' || (!changed && state.postCall.weekly);
+      if (changed) {
+        stopPolling();
+        state.postCall = {...idlePostCall(),session,weekly};
+      }
+      render();
+      if (session && (weekly || state.postCall.contextReady)) {
+        if (callModeActive(snapshot)) {
+          if (changed && weekly) await publishOrRecord(session);
+        } else if (changed || ['idle','context_ready','context_loading'].includes(state.postCall.status)
+          || (state.postCall.status === 'failed' && state.postCall.errorAction === 'context')) {
+          state.postCall = {...state.postCall,status:'waiting_for_transcript',session,weekly,error:null,
+            contextAttempted:state.postCall.contextReady};
+          renderPostCall();
+          startPolling(session,{weekly});
         }
       }
     } catch (error) {
-      if (!quiet) toast(error.message);
+      showFailure(error);
     }
   }
 
@@ -590,10 +689,12 @@ export function createCallMode(deps) {
       return false;
     }
     if (state.eligibility === 'unavailable') return false;
+    if (state.callMode.state === 'state_unknown') state.recorderUncertain = true;
     if (state.eligibility !== 'available' && !await checkEligibility()) return false;
     const button = root.querySelector(`[data-call-mode-start="${mode}"]`);
     if (button) button.disabled = true;
     try {
+      if (await reconcileRecorder()) return false;
       state.callMode = await api('start', { mode, consent_confirmed: true });
       stopPolling();
       state.postCall = idlePostCall();
@@ -604,7 +705,7 @@ export function createCallMode(deps) {
         if (!ok) toast(`Recording started, but the weekly deal context needs attention: ${state.postCall.error}`);
         try {
           if (deps.startAgenda) {
-            await deps.startAgenda();
+            if (await deps.startAgenda() === false) throw new Error('Agenda unavailable');
             toast('Weekly deal call is recording. The agenda is open.');
           } else toast('Weekly deal call is recording.');
         } catch (error) {
@@ -616,7 +717,8 @@ export function createCallMode(deps) {
       }
       return true;
     } catch (error) {
-      toast(error.message);
+      if (error.outcomeUnknown) state.recorderUncertain = true;
+      showFailure(error);
       return false;
     } finally {
       if (button) button.disabled = false;
@@ -630,21 +732,12 @@ export function createCallMode(deps) {
     const button = $('#callModeStop');
     if (button) button.disabled = true;
     try {
-      state.callMode = await api('stop', {});
-      render();
-      const session = state.callMode.session || state.postCall.session;
-      const weekly = state.callMode.mode === 'weekly_deal_call' || state.postCall.weekly;
-      if (session && (weekly || state.postCall.contextReady)) {
-        // If the index never reached the companion, the first poll that sees
-        // awaiting_context gets one more automatic attempt.
-        state.postCall = { ...state.postCall, status: 'waiting_for_transcript', session, weekly, error: null,
-          contextAttempted: state.postCall.contextReady };
-        renderPostCall();
-        startPolling(session, { weekly });
-      }
+      if (await reconcileRecorder()) return;
+      await refresh({snapshot:await api('stop', {})});
       toast('Recording stopped. Quill is processing the call.');
     } catch (error) {
-      toast(error.message);
+      if (error.outcomeUnknown) state.recorderUncertain = true;
+      showFailure(error);
     } finally { if (button) button.disabled = false; }
   }
 
@@ -662,12 +755,14 @@ export function createCallMode(deps) {
         $('#callModeButton')?.focus();
       return true;
     }
+    if (outcomes && ['[data-call-undo]', '[data-call-reviewed]', '[data-call-recheck]', '[data-call-open-cards]'].some(hit)) { await outcomes.click({ target }); return true; }
     const confirm = hit('[data-post-call-confirm]');
     if (confirm) { await resolveCandidate(confirm.dataset.postCallConfirm, true, confirm); return true; }
     const skip = hit('[data-post-call-skip]');
     if (skip) { await resolveCandidate(skip.dataset.postCallSkip, false, skip); return true; }
     const draft = hit('[data-create-outlook-draft]');
     if (draft) { await createDraft(draft); return true; }
+    if (hit('[data-refresh-post-call]')) { await refreshPostCall(); return true; }
     const retry = hit('[data-retry-call-context]');
     if (retry) {
       retry.disabled = true;

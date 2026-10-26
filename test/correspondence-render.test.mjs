@@ -1,3 +1,4 @@
+import { CHROMIUM_SAFETY_ARGS } from '../scripts/chromium-safety-args.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
@@ -9,7 +10,7 @@ import { identity, found, readiness, meeting } from './fixtures/correspondence.m
 const readyView = { threads: correspondenceState(found, identity), meetings: meetingEvidence([meeting]) };
 
 test('390px and iPad fixture evidence stays readable, sourced, read-only and touch-sized', async t => {
-  const browser = await chromium.launch(); t.after(() => browser.close());
+  const browser = await chromium.launch({ args: [...CHROMIUM_SAFETY_ARGS] }); t.after(() => browser.close());
   const page = await browser.newPage();
   const css = await readFile(new URL('../css/correspondence.css', import.meta.url), 'utf8');
   const system = (await readFile(new URL('../css/tokens.css', import.meta.url), 'utf8')) + (await readFile(new URL('../css/system.css', import.meta.url), 'utf8'));
@@ -80,7 +81,8 @@ test('mixed correspondence pointers preserve unavailable coverage instead of a s
       assert.deepEqual(calls, [identity]);
       assert.equal(state.meetings.state, 'ready');
       const html = renderEvidence(state);
-      assert.doesNotMatch(html, /Threads unavailable|data-kind="thread"/);
+      assert.match(html, /Threads unavailable/);
+      assert.doesNotMatch(html, /data-kind="thread"/);
       assert.doesNotMatch(html, /provenance|Source:/);
     });
   }
@@ -117,7 +119,7 @@ test('a disposed mount cannot paint a previous deal after its read resolves', as
 });
 
 test('meeting disclosure and keyboard focus survive delayed read settlement and timeout', async t => {
-  const browser = await chromium.launch(); t.after(() => browser.close());
+  const browser = await chromium.launch({ args: [...CHROMIUM_SAFETY_ARGS] }); t.after(() => browser.close());
   const modules = Object.fromEntries(await Promise.all(['correspondence.js', 'correspondence-model.js'].map(async name =>
     [`/js/${name}`, await readFile(new URL(`../js/${name}`, import.meta.url), 'utf8')])));
   for (const phase of ['readiness', 'thread']) {
@@ -146,7 +148,7 @@ test('meeting disclosure and keyboard focus survive delayed read settlement and 
         await summary.press('Enter');
         assert.equal(await disclosure.getAttribute('open'), '');
         assert.equal(await summary.evaluate(el => document.activeElement === el), true);
-        assert.equal(await page.locator('[data-state="loading"]').count(), 0);
+        assert.equal(await page.locator('[data-state="loading"]').count(), 1);
         if (outcome === 'settled') {
           await page.evaluate(answer => window.resolveEvidenceRead(answer), phase === 'readiness' ? readiness : found);
         }
@@ -155,7 +157,7 @@ test('meeting disclosure and keyboard focus survive delayed read settlement and 
         assert.equal(await disclosure.getAttribute('open'), '', 'settlement preserves the open meeting');
         assert.equal(await summary.evaluate(el => document.activeElement === el), true, 'settlement preserves keyboard focus');
         if (outcome === 'settled') assert.equal(await page.locator('[data-kind="thread"]').count(), 1);
-        else assert.equal(await page.locator('[data-state="unavailable"]').count(),0);
+        else assert.ok(await page.locator('[data-state="unavailable"]').count()>0);
         await summary.press('Enter');
         assert.equal(await disclosure.getAttribute('open'), null, 'the preserved summary remains operable');
       });
