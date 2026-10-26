@@ -1,4 +1,5 @@
 import { sessionFetch } from './private-session.js';
+import { PHASE_BY_SLUG } from './client.js';
 import { requireReviewReceipt } from './deal-review-model.js';
 /**
  * Live client: same interface as fixture, against the deployed Worker.
@@ -113,11 +114,7 @@ export function createLiveClient(opts = {}) {
   // record to a phase nobody chose (defect 5e355b84). Every slug now has its own
   // label and every label its own slug, so a round trip returns what it started
   // with.
-  const PHASE_TO_UI = {
-    pending: 'On Deck', research: 'Research', site_selection: 'Site selection',
-    negotiation: 'Negotiation', legal: 'Legal', due_diligence: 'Diligence',
-    closing: 'Closing', closed: 'Closed',
-  };
+  const PHASE_TO_UI = PHASE_BY_SLUG;
   const UI_TO_PHASE = {
     'On Deck': 'pending', 'Research': 'research', 'Site selection': 'site_selection',
     'Negotiation': 'negotiation', 'Legal': 'legal', 'Diligence': 'due_diligence',

@@ -229,7 +229,12 @@ if (typeof document !== 'undefined' && document.getElementById('dealAttention'))
   mountHomeDashboard({ document, window, client });
   mountNotificationBadge(client);
   const outcomes = document.getElementById('homeCallOutcomes');
-  if (outcomes && client.readCallOutcomes) mountCallOutcomes({ container: outcomes, client: () => client,
-    toast: message => { const notice = document.getElementById('homeNotice'); notice.hidden = false; notice.textContent = message; },
-  }).refresh();
+  // The answer to an Undo or "Looks right" is shown briefly, then cleared,
+  // unless something else has written to the notice since.
+  const notice = document.getElementById('homeNotice');
+  const toast = message => {
+    notice.hidden = false; notice.textContent = message;
+    setTimeout(() => { if (notice.textContent === message) { notice.textContent = ''; notice.hidden = true; } }, 6000);
+  };
+  if (outcomes && client.readCallOutcomes) mountCallOutcomes({ container: outcomes, client: () => client, toast }).refresh();
 }

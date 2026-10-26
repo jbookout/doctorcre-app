@@ -88,7 +88,7 @@ class StubDocument extends EventTarget {
 function callModeDocument() {
   const ids = ["callModeButton", "callModeDialog", "callModeClose", "callModeStage", "callModeState", "callModeTimer",
     "callModeDetail", "callModeSpeakers", "callModeConsentRow", "callModeConsent", "callModeStarts", "callModeStop",
-    "callModePermission", "postCallPanel", "postCallRefresh", "postCallStatus", "postCallReport"];
+    "callModePermission", "postCallPanel", "postCallRefresh", "postCallStatus", "postCallOutcomes", "postCallReport"];
   const nodes = ids.map((id) => new StubElement(id === "callModeConsent" ? "input" : "div", { id }));
   nodes.push(new StubElement("button", { "data-call-mode-start": "weekly_deal_call" }));
   nodes.push(new StubElement("button", { "data-call-mode-start": "other_call" }));
@@ -111,7 +111,7 @@ function drawnButton(html, attribute, value) {
 
 // ------------------------------------------------------------ fakes
 
-function harness({ agenda = [], state = { state: "idle" }, statuses = [], contextDeals, withAgenda = true, agendaResult } = {}) {
+function harness({ agenda = [], state = { state: "idle" }, statuses = [], contextDeals, withAgenda = true, agendaResult, now = () => Date.parse("2026-09-23T15:01:05Z") } = {}) {
   const doc = callModeDocument();
   const requests = [];
   const timers = [];
@@ -155,7 +155,7 @@ function harness({ agenda = [], state = { state: "idle" }, statuses = [], contex
     clearInterval: (handle) => { if (timers[handle - 1]) timers[handle - 1].cleared = true; },
     setTimeout: (fn, ms) => { timers.push({ fn, ms }); return timers.length; },
     clearTimeout: (handle) => { if (timers[handle - 1]) timers[handle - 1].cleared = true; },
-    now: () => Date.parse("2026-09-23T15:01:05Z"),
+    now,
   });
   // These baseline recorder/review tests run against a reachable companion.
   // Unknown, failed and pending eligibility are exercised in app-honest-controls.
@@ -366,7 +366,9 @@ test("the review pack is shown deal by deal with each partner's actions and draf
   for (const heading of ["Deal by deal", "Joe this week", "Dell this week", "Questions to resolve", "What clients and vendors need to know"]) {
     assert.match(html, new RegExp(heading), `${heading} section`);
   }
-  assert.match(doc.getElementById("postCallStatus").innerHTML, /anything unsettled waits for Joe or Dell/);
+  // The companion has not reported the automatic apply yet, so nothing is claimed as applied.
+  assert.match(doc.getElementById("postCallStatus").innerHTML, /Call processed\. Applying the changes stated plainly/);
+  assert.doesNotMatch(doc.getElementById("postCallStatus").innerHTML, /applied and listed/);
   // One Confirm and one Skip per pending item, and nothing resolved on arrival.
   for (const id of ["cand-joe", "cand-dell", "cand-update"]) {
     assert.equal(html.split(`data-post-call-confirm="${id}"`).length - 1, 1, `${id} has exactly one Confirm`);
@@ -381,6 +383,67 @@ test("the review pack is shown deal by deal with each partner's actions and draf
   assert.equal(drawnButton(html, "data-create-outlook-draft", "draft-1").disabled, false);
   assert.match(html, /Creates a draft only\. Joe or Dell reviews and sends it in Outlook\./);
   assert.doesNotMatch(html, /data-send|>Send</, "there is no send control");
+});
+
+// The real sequence: the companion says ready_review first, then files the
+// candidates and applies the plain ones; report.automatic marks the end.
+function applyingThenApplied() {
+  const update = { deal_id: "deal-a", deal_name: "Demo Bayside", summary: "LOI signed.", candidate_id: "note-a", candidate_status: "pending",
+    next_step: { text: "Send the lease draft", next_date: "2026-11-06", candidate_id: null },
+    phase_move: { value: "legal", started_on: null, needs_review: "Joe said legal and Dell said keep it.", candidate_id: null } };
+  const first = { status: { state: "ready_review" }, report: { report: { summary: "Pipeline review." }, deal_updates: [update] } };
+  const applied = structuredClone(first);
+  Object.assign(applied.report.deal_updates[0].next_step, { candidate_id: "step-a", candidate_status: "confirmed", applied_automatically: true, apply: "automatic" });
+  Object.assign(applied.report.deal_updates[0].phase_move, { candidate_id: "phase-a", candidate_status: "pending", apply: "review",
+    review_reason: "Joe said legal and Dell said keep it." });
+  applied.report.automatic = { finished_at: "2026-09-23T15:01:30Z", applied: 1, kept_for_review: 1 };
+  return [first, applied];
+}
+
+test("Call Mode waits for the automatic apply before it claims or lists anything as applied", async () => {
+  const h = harness({ statuses: applyingThenApplied() });
+  const reads = [];
+  h.client.readCallOutcomes = async () => { reads.push(1); return { calls: [{ session_id: "2026.09.23-1500", call_date: "2026-09-23",
+    applied: [{ candidate_id: "step-a", kind: "next_step", deal_id: "deal-a", deal_name: "Demo Bayside", deal_version: 4,
+      payload: { text: "Send the lease draft", next_date: "2026-11-06" }, evidence_quote: "send the lease draft by November 6", undone_at: null }],
+    open_cards: [{ candidate_id: "phase-a", kind: "phase_move", deal_id: "deal-a" }] }] }; };
+  try {
+    h.controller.startPolling("2026.09.23-1500", { weekly: true });
+    await new Promise((resolve) => setImmediate(resolve));
+    const status = () => h.doc.getElementById("postCallStatus").innerHTML.replace(/<[^>]*>/g, "");
+    assert.match(status(), /Applying the changes stated plainly/);
+    assert.ok(h.controller.state.pollTimer, "still reading until the apply finishes");
+    assert.equal(reads.length, 0, "no outcome read before candidates exist");
+    await h.controller.refreshPostCall({ quiet: true });
+    assert.equal(status(), "Call processed. 1 change applied and listed with Undo; 1 held change waits for Joe or Dell below.");
+    assert.equal(h.controller.state.pollTimer, null);
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(reads.length, 1);
+    const outcomes = h.doc.getElementById("postCallOutcomes");
+    assert.equal(outcomes.hidden, false);
+    assert.match(outcomes.innerHTML, /Applied from the Sep 23 pipeline call/);
+    assert.match(outcomes.innerHTML, /due Nov 6/);
+    const report = h.doc.getElementById("postCallReport").innerHTML;
+    assert.doesNotMatch(report, /Send the lease draft/, "the applied step is listed once, in the applied section");
+    assert.match(report, /Proposed phase/, "the held phase move is shown with its reason");
+    assert.match(report, /Move to Legal/);
+    assert.match(report, /Joe said legal and Dell said keep it\./);
+    assert.match(report, /data-post-call-confirm="phase-a"/);
+  } finally { h.controller.dispose(); }
+});
+
+test("Call Mode stops waiting after three minutes and still claims nothing", async () => {
+  let at = Date.parse("2026-09-23T15:01:05Z");
+  const [first] = applyingThenApplied();
+  const h = harness({ statuses: [first], now: () => at });
+  try {
+    h.controller.startPolling("2026.09.23-1500", { weekly: true });
+    await new Promise((resolve) => setImmediate(resolve));
+    at += 3 * 60 * 1000;
+    await h.controller.refreshPostCall({ quiet: true });
+    assert.equal(h.controller.state.pollTimer, null);
+    assert.match(h.doc.getElementById("postCallStatus").innerHTML, /not been confirmed as applied yet\. Press ↻ to check again\./);
+  } finally { h.controller.dispose(); }
 });
 
 test("confirming one item resolves that item only; skipping records a no", async () => {
@@ -606,7 +669,7 @@ test("the shipped Deal Room carries Call Mode: button, consent, both call kinds,
   assert.match(html, /data-call-mode-start="other_call">Start another call</);
   assert.match(html, /id="callModeStop" hidden>Stop and process</);
   assert.match(html, /<section class="post-call" id="postCallPanel"[^>]*hidden>/);
-  assert.match(html, /Nothing is written to a deal and no email draft is created until Joe or Dell approves that item\./);
+  assert.match(html, /stated plainly on a weekly pipeline call are applied to the deal and listed with Undo; anything unsettled waits for Joe or Dell\. No email draft is created until Joe or Dell approves it\./);
   assert.doesNotMatch(html, /id="callsButton"|not part of this release/, "the inert Calls notice is gone");
   assert.match(html, /<tbody id="rows">/, "the sentinel the shell boots on");
   assert.equal((html.match(/<script/g) || []).length, 3, "theme boot, app, and shared shell scripts are self-hosted");

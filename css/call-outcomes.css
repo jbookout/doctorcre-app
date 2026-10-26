@@ -1,11 +1,22 @@
-/* Applied-from-the-call summary: Call Mode post-call panel and Home. */
+/* Applied-from-the-call summary: Call Mode post-call panel and Home.
+   Self-contained on purpose: Home (workspace.html) does not load app.css,
+   so the section styles its own buttons and badge from the shared tokens. */
 .call-outcome { display: grid; gap: var(--space-2); }
-.call-outcome header { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); }
-.call-outcome h4 { margin: 0; }
-.call-outcome ul { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-2); }
-.call-outcome-change { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-2); padding: var(--space-2) 0; border-top: var(--hairline-width) solid var(--hairline); }
-.call-outcome-change div { display: grid; gap: var(--space-1); min-width: 0; }
-.call-outcome-change q { color: var(--fg-muted); font-size: var(--font-size-1); }
-.call-outcome-change.undone span:not(.post-call-badge) { text-decoration: line-through; color: var(--fg-muted); }
-.call-outcome-open { margin: 0; color: var(--fg-muted); font-size: var(--font-size-1); }
+.call-outcome header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-2); }
+.call-outcome h4 { margin: 0; min-width: 0; font-size: var(--font-size-2); font-weight: var(--font-weight-strong); }
+.call-outcome ul { list-style: none; margin: 0; padding: 0; display: grid; }
+.call-outcome-change { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-3); padding: var(--space-3) 0; border-top: var(--hairline-width) solid var(--hairline); }
+.call-outcome-change div { display: grid; gap: var(--space-1); min-width: 0; flex: 1 1 auto; font-size: var(--font-size-2); }
+.call-outcome-change div > span { color: var(--fg); }
+.call-outcome-change q { color: var(--fg-muted); font-size: var(--font-size-1); overflow-wrap: anywhere; }
+.call-outcome-change.undone div > b, .call-outcome-change.undone div > span { color: var(--fg-muted); text-decoration: line-through; }
+.call-outcome-note { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); margin: 0; color: var(--fg-muted); font-size: var(--font-size-1); }
+
+.call-outcome-action { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; min-height: var(--touch); padding: 0 var(--space-4); border: var(--hairline-width) solid var(--hairline-strong); border-radius: var(--radius-2); background: transparent; color: var(--fg); font: inherit; font-size: var(--font-size-1); font-weight: var(--font-weight-strong); white-space: nowrap; cursor: pointer; transition: border-color var(--duration-hover) var(--ease-out), background-color var(--duration-hover) var(--ease-out); }
+.call-outcome-action:hover { border-color: var(--fg-quiet); background: var(--surface-2); }
+.call-outcome-action.primary-action { border-color: var(--accent); background: var(--accent); color: var(--on-accent); }
+.call-outcome-action.primary-action:hover { border-color: var(--accent-hover); background: var(--accent-hover); }
+.call-outcome-action:disabled { opacity: .55; cursor: progress; }
+.call-outcome-action:focus-visible { outline: var(--focus-width) solid var(--focus-ring); outline-offset: 2px; }
+.call-outcome-badge { flex: 0 0 auto; padding: 0 var(--space-2); border: var(--hairline-width) solid var(--hairline); border-radius: var(--radius-round); color: var(--fg-muted); font-size: var(--font-size-1); white-space: nowrap; }
 .post-call-badge.applied { border-color: var(--status-ok); color: var(--status-ok-ink); }

@@ -343,6 +343,14 @@ export const PHASES = [
   'Closed',
 ];
 
+// The record layer's phase slug for each board phase above: one map, read by
+// the live client and by every screen that names a phase from a CARR payload.
+export const PHASE_BY_SLUG = Object.freeze({
+  pending: 'On Deck', research: 'Research', site_selection: 'Site selection',
+  negotiation: 'Negotiation', legal: 'Legal', due_diligence: 'Diligence',
+  closing: 'Closing', closed: 'Closed',
+});
+
 // The display word for each wire phase. The wire words above are what the
 // record layer, the fixture validation and the change feed all speak, so they
 // never move; this map owns the words a human reads.
