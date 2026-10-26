@@ -147,24 +147,42 @@ test('blocked localStorage, automatic Today refresh, and wide item details stay 
  await page.keyboard.press('Escape');assert.equal(await page.locator('#leadDetail').evaluate(n=>n.open),false);assert.deepEqual(errors,[]);
 });
 
-test('Today clears unavailable data and recovers automatically after a failed refresh',async t=>{
- const{page,goto,writes,errors}=await open(t,{clock:true});let unavailable=false;
+for (const width of [1440,390]) for (const theme of ['light','dark']) test(`Today keeps last good rows with retry after failed reads at ${width}px in ${theme}`,async t=>{
+ const events=[{id:'demo-retry-move',subject_type:'deal',subject_id:'d23',field:'next_step',actor:'doc',new_value:'Review synthetic terms',recorded_at:'2026-10-01T15:00:00Z'}];
+ const {page,goto,writes,errors}=await open(t,{width,clock:true,events});let failed=null;
  await page.route('**/mcp',route=>{
   const name=route.request().postDataJSON().params.name;
-  if(unavailable && ['deal-room-board','today-triage'].includes(name))return route.fulfill({status:503,body:'Unavailable'});
+  if(failed===name)return route.fulfill({status:503,body:'Unavailable'});
   return route.fallback();
  });
- await goto('/leads?mode=live');const before=await page.locator('#appSyncTime').getAttribute('datetime');
- assert.ok(await page.locator('#appTodayNeeds [data-layout-deal]').count());
- unavailable=true;await page.clock.fastForward(31_000);
- await page.waitForFunction(()=>document.querySelector('#appTodayNeeds')?.textContent==='Unavailable');
- assert.equal(await page.locator('#appTodayNeeds [data-layout-deal]').count(),0);
- assert.equal(await page.locator('#appSyncTime').getAttribute('datetime'),before);
- assert.equal(await page.locator('#appConnection').getAttribute('aria-label'),'Connection unavailable');
- unavailable=false;await page.clock.fastForward(31_000);
- await page.waitForFunction(()=>document.querySelector('#appTodayNeeds [data-layout-deal]'));
- assert.notEqual(await page.locator('#appSyncTime').getAttribute('datetime'),before);
- assert.equal(await page.locator('#appConnection').getAttribute('aria-label'),'Connection available');
+ await page.route('**/pipeline/changes*',route=>failed==='feed'?route.fulfill({status:503,body:'Unavailable'}):route.fallback());
+ await goto('/?mode=live');
+ await page.evaluate(theme=>document.documentElement.dataset.theme=theme,theme);
+ if(width===390)await page.locator('#appTodayToggle').click();
+ await page.waitForFunction(()=>document.querySelector('#appTodayMoves')?.textContent.includes('Review synthetic terms'));
+ const sections=['#appTodayNeeds','#appTodayNext','#appTodayMoves'];
+ const rows=async()=>Promise.all(sections.map(selector=>page.locator(selector+' [data-layout-deal]').allTextContents()));
+ const good=await rows();assert.ok(good.every(items=>items.length));
+ const retry=page.getByRole('button',{name:'Retry Today',exact:true});
+ for(const source of ['deal-room-board','today-triage','morning-brief','feed']){
+  const before=await page.locator('#appSyncTime').getAttribute('datetime');
+  failed=source;await page.clock.fastForward(31_000);
+  await page.waitForFunction(()=>document.querySelector('#appConnection').getAttribute('aria-label')==='Connection unavailable');
+  assert.deepEqual(await rows(),good,source+' must retain successful rows');
+  await retry.waitFor({timeout:5000});
+  assert.equal(await page.locator('#appSyncTime').getAttribute('datetime'),before);
+  assert.equal(await page.locator('#appConnection').getAttribute('aria-label'),'Connection unavailable');
+  assert.match(await page.locator('#appToday').textContent(),/Showing last update/);
+  if(source==='deal-room-board'){
+   await mkdir(new URL('out/test-artifacts/today-retry/',root),{recursive:true});
+   await page.screenshot({animations:'disabled',path:new URL(`out/test-artifacts/today-retry/home-${width}-${theme}.png`,root).pathname});
+  }
+  failed=null;await retry.click();
+  await retry.waitFor({state:'hidden'});
+  assert.deepEqual(await rows(),good);
+  assert.notEqual(await page.locator('#appSyncTime').getAttribute('datetime'),before);
+  assert.equal(await page.locator('#appConnection').getAttribute('aria-label'),'Connection available');
+ }
  assert.deepEqual(writes,[]);assert.deepEqual(errors,[]);
 });
 
@@ -201,7 +219,7 @@ for(const timezoneId of ['America/Chicago','Europe/Paris']) test(`R3 Today exclu
  await goto('/leads?mode=live');assert.deepEqual(await page.locator('#appTodayNeeds [data-layout-deal]').evaluateAll(ns=>ns.map(n=>n.dataset.layoutDeal)),['overdue']);
  assert.equal(await page.locator('#appWorkingList [data-layout-deal]').count(),1);assert.deepEqual(errors,[]);
 });
-for (const section of ['board','triage']) test(`R4 malformed ${section} rows clear stale records and report unavailable`,async t=>{
+for (const section of ['board','triage']) test(`R4 malformed ${section} rows retain the last good records and offer retry`,async t=>{
  const {page,goto,errors}=await open(t,{clock:true});let malformed=false;
  await page.route('**/mcp',route=>{
   const name=route.request().postDataJSON().params.name;
@@ -209,10 +227,11 @@ for (const section of ['board','triage']) test(`R4 malformed ${section} rows cle
   return route.fallback();
  });
  await goto('/leads?mode=live');const before=await page.locator('#appSyncTime').getAttribute('datetime');
+ const beforeRows=await page.locator((section==='board'?'#appTodayNeeds':'#appTodayNext')+' [data-layout-deal]').allTextContents();
  malformed=true;await page.clock.fastForward(31_000);await page.waitForFunction(()=>document.querySelector('#appConnection').getAttribute('aria-label')==='Connection unavailable');
  const target=section==='board'?'#appTodayNeeds':'#appTodayNext';
- await page.waitForFunction(selector=>document.querySelector(selector).textContent==='Unavailable',target);
- assert.equal(await page.locator(target).textContent(),'Unavailable');assert.equal(await page.locator(target+' [data-layout-deal]').count(),0);
+ await page.getByRole('button',{name:'Retry Today',exact:true}).waitFor();
+ assert.deepEqual(await page.locator(target+' [data-layout-deal]').allTextContents(),beforeRows);
  assert.equal(await page.locator('#appSyncTime').getAttribute('datetime'),before);assert.deepEqual(errors,[]);
 });
 test('R8 page environment capture and freshness feedback stays visible in the status surface',async t=>{
