@@ -34,7 +34,7 @@
  */
 import { createRetainedCommands } from './retained-commands.mjs';
 import { requestCompanion } from './post-call-client.js';
-import { escapeText as esc } from './change-receipts.mjs';
+import { escapeText as esc, compareInstants } from './change-receipts.mjs';
 import { mountVisibilityPoll } from './visibility-poll.mjs';
 
 export const CALL_MODE_URL = 'http://127.0.0.1:4682';
@@ -370,7 +370,8 @@ export function createCallMode(deps) {
     const core = envelope.report || {};
     const joe = Array.isArray(envelope.joe_tasks) ? envelope.joe_tasks : [];
     const dell = Array.isArray(envelope.dell_tasks) ? envelope.dell_tasks : [];
-    const updates = Array.isArray(envelope.deal_updates) ? envelope.deal_updates : (Array.isArray(envelope.deals) ? envelope.deals : []);
+    const updates = [...(Array.isArray(envelope.deal_updates) ? envelope.deal_updates : (Array.isArray(envelope.deals) ? envelope.deals : []))]
+      .sort((a, b) => compareInstants(a.occurred_at || a.at || a.created_at || a.recorded_at, b.occurred_at || b.at || b.created_at || b.recorded_at));
     const questions = [...(Array.isArray(envelope.review_questions) ? envelope.review_questions : []),
       ...(Array.isArray(core.open_questions) ? core.open_questions : []),
       ...(Array.isArray(envelope.questions) ? envelope.questions : [])];

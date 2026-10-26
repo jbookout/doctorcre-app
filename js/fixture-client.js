@@ -1,3 +1,4 @@
+import { compareInstants } from './change-receipts.mjs';
 import { businessDay } from './business-date.js';
 import { isClosedDeal } from './deal-review-model.js';
 import { addDays, localToday } from './calendar-model.js';
@@ -1343,7 +1344,7 @@ export async function createFixtureClient(opts = {}) {
       const deal = { ...getDealOrThrow(dealId) };
       const thread = (threads.get(dealId) || [])
         .slice()
-        .sort((a, b) => b.recorded_at.localeCompare(a.recorded_at));
+        .sort((a, b) => compareInstants(a.at || a.created_at || a.recorded_at, b.at || b.created_at || b.recorded_at));
       const hist = (history.get(dealId) || [])
         .slice()
         .sort((a, b) => b.recorded_at.localeCompare(a.recorded_at));
