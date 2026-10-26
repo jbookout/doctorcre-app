@@ -29,7 +29,7 @@ for (const actionCount of [5, 30]) for (const width of [390, 1280]) for (const t
     const page = await browser.newPage({ viewport: { width, height: 960 }, timezoneId: 'America/Chicago', reducedMotion: 'reduce' });
     t.after(() => page.close());
     await page.clock.install({ time: new Date('2026-10-01T15:00:00Z') });
-    await page.addInitScript(theme => localStorage.setItem('doctorcre.visual-preferences', JSON.stringify({ theme })), theme);
+    await page.addInitScript(theme => localStorage.setItem('doctorcre.visual-preferences', JSON.stringify({ theme, walkthroughSeen: { joe: true, dell: true } })), theme);
     const viewer = theme === 'light' ? 'joe' : 'dell';
     assert.equal((await page.request.post(`${origin}/api/test/seed`, { data: { namespace: `home-${actionCount}-${width}-${theme}`, viewer, reset: true } })).status(), 200);
     const identity = await page.request.get(`${origin}/api/test/identity`);

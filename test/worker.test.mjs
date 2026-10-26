@@ -240,7 +240,7 @@ test("share links remain on the isolated reports host and release identity is ex
     provider_version_id: "version-one", provider_version_tag: "staging-one",
     provider_version_created_at: "2026-09-14T00:00:00Z",
     carr_contract: carrContractIdentity,
-    route_contract: { schema: "doctorcre-app-routes.v1", version: "1.21.0" },
+    route_contract: { schema: "doctorcre-app-routes.v1", version: "1.22.0" },
   });
 });
 
@@ -293,4 +293,22 @@ test("app failures retain the generic response without invoking an unsupported s
   assert.equal(response.status, 500);
   assert.deepEqual(await response.json(), { error: "internal_error" });
   assert.equal(captures, 0);
+});
+
+test('client portal uses the existing authenticated business gate and restores its own sign-in return', async () => {
+  for (const status of [200, 302, 403]) {
+    let forwarded, assets = 0;
+    const response = await handleDoctorcreRequest(request('/client-portal'), environment({
+      carr: { fetch: async value => {
+        forwarded = value;
+        return new Response(null, { status, headers: status === 302 ? { location: request('/auth/login?return_to=%2Fbusiness').url } : {} });
+      } },
+      assets: { fetch: async value => { assets++; return new Response(new URL(value.url).pathname); } },
+    }));
+    assert.equal(new URL(forwarded.url).pathname, '/business');
+    assert.equal(response.status, status);
+    assert.equal(assets, status === 200 ? 1 : 0);
+    if (status === 200) assert.equal(await response.text(), '/client-portal.html');
+    if (status === 302) assert.equal(new URL(response.headers.get('location')).searchParams.get('return_to'), '/client-portal');
+  }
 });

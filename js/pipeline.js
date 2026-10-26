@@ -100,7 +100,7 @@ function autoHtml(deal) {
 const dealTitle = (deal) => dealName(deal.name);
 function nextStepHtml(deal) {
   const text = noteText(deal.next_step);
-  if (!text.trim()) return '';
+  if (!text.trim()) return '<p class="next-line">Next step missing</p>';
   return `<p class="next-line" title="${esc(text)}">${esc(text)}</p>`;
 }
 function cardHtml(deal) {
@@ -901,7 +901,7 @@ function detailHtml(detail) {
   const controlsAvailable = state.deals.has(d.id) && !isClosedDeal(d);
   return `<div class="deal-freshness"><time id="detailUpdated" title="Last updated"></time><button class="btn icon-btn" type="button" data-refresh-detail aria-label="Refresh deal" title="Refresh">↻</button></div><p id="detailReadStatus" role="status"></p>
     <section class="deal-opening-snapshot" data-detail-read="snapshot" aria-label="Deal snapshot">
-      ${nextStep ? `<p class="deal-current-action"><span>${d.next_date && d.next_date < todayIso() ? 'Overdue action' : 'Next action'}</span><strong>${esc(nextStep)}</strong>${d.next_date ? `<span>Due <time datetime="${esc(d.next_date)}">${esc(dateWords(d.next_date))}</time></span>` : ''}</p>` : ''}
+      ${nextStep ? `<p class="deal-current-action"><span>${d.next_date && d.next_date < todayIso() ? 'Overdue action' : 'Next action'}</span><strong>${esc(nextStep)}</strong>${d.next_date ? `<span>Due <time datetime="${esc(d.next_date)}">${esc(dateWords(d.next_date))}</time></span>` : ''}</p>` : !parked && !isClosedDeal(d) ? nextStepHtml(d) : ''}
       <dl class="deal-snapshot-facts">${d.workspace_kind === 'national_account' || d.account_client_id ? `<div><dt>Market agent</dt><dd>${esc(d.market_agent || 'Unassigned')}</dd></div>` : ''}${d.client_name ? `<div><dt>Client</dt><dd>${esc(d.client_name)}</dd></div>` : ''}${d.type ? `<div><dt>Type</dt><dd>${esc(d.type)}</dd></div>` : ''}${d.outcome ? `<div><dt>Outcome</dt><dd>${esc(d.outcome[0].toUpperCase()+d.outcome.slice(1))}</dd></div>` : ''}</dl>
     </section>
     <div data-detail-read="checklist">${renderDealChecklist(detail.checklist)}</div>
