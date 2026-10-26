@@ -38,7 +38,7 @@ async function setup(t,{width=1440,motion='no-preference',brief=true,coverage=fa
    if(name==='morning-brief' && onBrief)await onBrief();
    if(name==='morning-brief')return fail ? route.fulfill({status:503,body:''}) : rpc(ready ? data() : {ok:true});
    const methods={'deal-room-board':'getBoard','today-triage':'todayTriage','list-feature-switches':'listFeatureSwitches','list-doc-suggestions':'listDocSuggestions','list-doc-conversations':'listDocConversations','notification-feed':'notificationFeed','loop-board':'loopBoard','list-industry-events':'listIndustryEvents'};
-   if(name==='get-deal-room') {const value=await fixture.getDeal(args.deal);return rpc({...value.deal,deal_id:value.deal.id,thread,critical_dates:[],events:[]});}
+   if(name==='get-deal-room') {const value=await fixture.getDeal(args.deal);return rpc({...value.deal,...(args.deal==='d14'?{name:dealTitle}:{}),deal_id:value.deal.id,thread,critical_dates:[],events:[]});}
    if(methods[name])return rpc(await fixture[methods[name]](args));
    if(name==='lead-board')return rpc({leads:[],stages:[],as_of:new Date().toISOString()});
    return rpc({ok:true});
@@ -71,7 +71,7 @@ test('live brief opens on request and wide record detail; desktop/phone renders,
 test('complete priority titles wrap and open the matching record on desktop and phone',async t=>{
  const title='Review the synthetic lease renewal terms with the practice owner before signing';
  for(const width of [1440,390]){
-  const {page,goto,errors}=await setup(t,{width,dealTitle:title});await goto();
+  const {page,goto,errors,calls}=await setup(t,{width,dealTitle:title});await goto();
   if(width===390)await page.locator('#selfAvatar').click();
   await page.locator('#docOpen[data-brief-unseen]').waitFor();await page.locator('#docOpen').click();await page.locator('#docMorning').click();
   const card=page.locator('[data-brief-record]').first();await card.waitFor();
@@ -79,6 +79,7 @@ test('complete priority titles wrap and open the matching record on desktop and 
   assert.equal(await card.locator('strong').evaluate(node=>node.scrollWidth<=node.clientWidth&&node.scrollHeight<=node.clientHeight),true);
   assert.equal(await page.locator('#docMorningBrief').evaluate(node=>node.scrollWidth<=node.clientWidth),true);
   await card.focus();await page.keyboard.press('Enter');await page.locator('.morning-record').waitFor();
+  assert.equal(calls.filter(call=>call.name==='get-deal-room').at(-1).args.deal,'d14');
   assert.equal(await page.locator('#morningTitle').innerText(),title);
   await page.locator('#morningBack').click();assert.equal(await page.locator('[data-brief-record]').first().locator('strong').innerText(),title);
   await snap(page,`full-title-${width}`);assert.deepEqual(errors,[]);

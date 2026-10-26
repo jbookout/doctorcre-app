@@ -19,7 +19,7 @@ test('a short evidence-linked first action, overnight change and today item; dup
  const data=payload();data.sections.today.items.push(due('a'));
  const view=morningBriefView(data,options);
  assert.deepEqual(view.groups.map(group=>[group.key,group.row.id]),[['first','a'],['overnight','c'],['today','b']]);
- assert.ok(view.groups.every(group => group.row.title.split(/\s+/).length <= 6 && group.row.summary.split(/\s+/).length <= 10));
+ assert.ok(view.groups.every(group => group.row.summary.split(/\s+/).length <= 10));
  assert.match(view.coverage.find(row=>row.key==='needs_joe').description,/Needs Joe.*unavailable/);
  assert.equal(view.unavailable.length,0);
  assert.deepEqual(morningBriefView(data,{...options,events:[event('d')]}).groups.map(group=>group.key),['first','today']);
