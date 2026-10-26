@@ -20,18 +20,17 @@ test('a short evidence-linked first action, overnight change and today item; dup
  const view=morningBriefView(data,options);
  assert.deepEqual(view.groups.map(group=>[group.key,group.row.id]),[['first','a'],['overnight','c'],['today','b']]);
  assert.ok(view.groups.every(group => group.row.title.split(/\s+/).length <= 6 && group.row.summary.split(/\s+/).length <= 10));
- assert.match(view.spoken,/Needs Joe.*unavailable/);
+ assert.match(view.coverage.find(row=>row.key==='needs_joe').description,/Needs Joe.*unavailable/);
  assert.equal(view.unavailable.length,0);
  assert.deepEqual(morningBriefView(data,{...options,events:[event('d')]}).groups.map(group=>group.key),['first','today']);
 });
 test('empty sections omitted; unknown coverage never becomes all-clear or filler',()=>{
  const data=payload();for(const key of Object.keys(data.sections))data.sections[key]=section([]);
  assert.deepEqual(morningBriefView(data,{...options,events:[]}).groups,[]);
- assert.match(morningBriefView(data,{...options,events:[]}).spoken,/Needs Joe.*unavailable/);
+ assert.match(morningBriefView(data,{...options,events:[]}).coverage.find(row=>row.key==='needs_joe').description,/Needs Joe.*unavailable/);
  data.sections.today={state:'unavailable',items:[]};
  const view=morningBriefView(data,{...options,caughtUp:false});
  assert.equal(view.groups.length,0);assert.deepEqual(view.unavailable,['Today’s priorities unavailable','Overnight updates unavailable']);
- assert.match(view.spoken,/unavailable/);
 });
 test('date window, priority ordering, upcoming, closed and paused exclusions, dedupe',()=>{
  const data=payload();data.sections.today.items=[due('b','joe','2026-10-01'),due(),due('c','joe','2026-10-04')];
@@ -49,8 +48,8 @@ test('due partner tasks carry exact kind/number identity; undated backlog never 
 });
 test('preferences isolated per partner, storage failures tolerated, no brief content persisted',()=>{
  const data=new Map();const storage={getItem:key=>data.get(key),setItem:(key,value)=>data.set(key,value)};
- const joe=briefPreferences(storage,'joe');joe.save({day,speech:true,since});
- assert.equal(briefPreferences(storage,'dell').value.speech,undefined);assert.equal(briefPreferences(storage,'joe').value.day,day);
+ const joe=briefPreferences(storage,'joe');joe.save({day,since});
+ assert.equal(briefPreferences(storage,'dell').value.day,undefined);assert.equal(briefPreferences(storage,'joe').value.day,day);
  assert.doesNotThrow(()=>briefPreferences({getItem(){throw Error();},setItem(){throw Error();}},'joe').save({day}));
  assert.doesNotMatch([...data.values()].join(''),/Demo|lease/);
 });
@@ -90,7 +89,7 @@ test('the brief never opens itself; an unseen cue shows once per day until opene
 test('failed and malformed reads do not consume daily opening, supported refresh recovers automatically',async t=>{
  const state=setup(t,{read:()=>({ok:true})});await state.ui.refresh();assert.equal(state.root.getElementById('docOpen').hasAttribute('data-brief-unseen'),false);assert.equal(state.win.localStorage.length,0);
  state.client.morningBrief=async()=>payload();await state.ui.refresh();assert.equal(state.root.getElementById('docOpen').hasAttribute('data-brief-unseen'),true);
- state.client.morningBrief=async()=>{throw Error();};await state.ui.refresh();assert.equal(state.root.querySelectorAll('[data-brief-record]').length,0);assert.equal(state.root.getElementById('morningListen').disabled,true);
+ state.client.morningBrief=async()=>{throw Error();};await state.ui.refresh();assert.equal(state.root.querySelectorAll('[data-brief-record]').length,0);
  state.client.morningBrief=async()=>payload();await state.ui.refresh();assert.equal(state.root.querySelectorAll('[data-brief-record]').length,2);
 });
 test('exact record popup with original entry details and late-result guard',async t=>{
@@ -191,12 +190,12 @@ for(const status of [401,403]) {
   let bodyRead=false;const response=new Response('Demo diagnostic',{status});const arrayBuffer=response.arrayBuffer.bind(response);response.arrayBuffer=()=>{bodyRead=true;return arrayBuffer();};response.json=()=>{bodyRead=true;return new Promise(()=>{});};const client=createLiveClient({fetchImpl:async()=>response});
   await assert.rejects(client.getChanges(null),error=>error.status===status);assert.equal(bodyRead,false);
  });
- test(`changes HTTP ${status} clears facts and speech and does not consume a daily opening`,async t=>{
-  const state=setup(t,{storage:[['doctorcre:morning:joe',JSON.stringify({speech:true})]]});state.ui.dispose();const calls=[];state.win.SpeechSynthesisUtterance=class{constructor(text){this.text=text;}};state.win.speechSynthesis={speak:value=>calls.push(value),cancel:()=>calls.push('cancel')};
-  state.client.getChanges=async()=>{throw Object.assign(Error('Denied'),{status});};const ui=mountMorningBrief({document:state.root,window:state.win,getClient:async()=>state.client,now:()=>now});t.after(()=>ui.dispose());await ui.refresh();
-  assert.equal(state.root.querySelectorAll('[data-brief-record]').length,0);assert.equal(state.root.getElementById('morningListen').disabled,true);assert.equal(JSON.parse(state.win.localStorage.getItem('doctorcre:morning:joe')).day,undefined);
-  state.client.getChanges=async()=>({events:[],cursor:'end'});await ui.refresh();state.root.getElementById('morningListen').click();assert.equal(calls.length,1);
-  state.client.getChanges=async()=>{throw Object.assign(Error('Denied'),{status});};await ui.refresh();assert.equal(calls.at(-1),'cancel');assert.equal(state.root.querySelectorAll('[data-brief-record]').length,0);assert.equal(state.root.getElementById('morningListen').disabled,true);assert.doesNotMatch(state.root.querySelector('dialog').textContent,/Demo/);
+ test(`changes HTTP ${status} clears facts and does not consume a daily opening`,async t=>{
+  const state=setup(t);await state.ui.refresh();
+  state.client.getChanges=async()=>{throw Object.assign(Error('Denied'),{status});};await state.ui.refresh();
+  assert.equal(state.root.querySelectorAll('[data-brief-record]').length,0);assert.equal(state.win.localStorage.getItem('doctorcre:morning:joe'),null);
+  state.client.getChanges=async()=>({events:[],cursor:'end'});await state.ui.refresh();assert.equal(state.root.querySelectorAll('[data-brief-record]').length,2);
+  state.client.getChanges=async()=>{throw Object.assign(Error('Denied'),{status});};await state.ui.refresh();assert.equal(state.root.querySelectorAll('[data-brief-record]').length,0);assert.doesNotMatch(state.root.querySelector('dialog').textContent,/Demo/);
  });
 }
 test('ordinary changes network failure retains supported priorities with unavailable overnight coverage',async t=>{
@@ -330,7 +329,7 @@ test('F1 full brief coverage makes Needs Joe, accounts and providers reachable w
  state.data=data;await state.ui.refresh();await state.ui.open();
  const content=state.root.getElementById('morningContent').textContent;
  assert.match(content,/Demo waiting decision/);assert.match(content,/Demo account portfolio/);assert.match(content,/12/);assert.doesNotMatch(content,/No to-dos/);
- const view=morningBriefView(data,{...options,events:[]});assert.match(view.spoken,/Needs Joe/);assert.match(view.spoken,/returned/);
+ assert.match(state.root.querySelector('[data-brief-section="needs_joe"] summary').textContent,/Needs Joe.*returned/);
  assert.equal(state.root.querySelector('[data-brief-section="needs_joe"] summary')?.tagName,'SUMMARY');
 });
 test('F2 every triage kind survives missing partner deal metadata in explicit full sections',async t=>{
@@ -341,12 +340,12 @@ test('F2 every triage kind survives missing partner deal metadata in explicit fu
  const view=morningBriefView(data,{...options,events:[]});assert.equal(view.groups[0]?.row.kind,'action');
  state.root.querySelector('[data-brief-record]')?.click();await new Promise(resolve=>setTimeout(resolve,10));assert.ok(state.root.querySelector('.morning-record'));assert.equal(privateReads,0);
 });
-test('F6 partial and missing required sources are visible and spoken using safe category names',async t=>{
+test('F6 partial and missing required sources are visible using safe category names',async t=>{
  const state=setup(t),data=completeBrief();data.sections.needs_joe={state:'partial',items:[{title:'Demo surviving decision'}],sources:{work_requests:{state:'unavailable',error:'private-driver-demo'}}};
  const coverage=data.coverage.required_sections.find(row=>row.key==='needs_joe');Object.assign(coverage,{state:'partial',counts:{items:1},incomplete_sources:[{key:'work_requests',state:'unavailable'}]});
  state.data=data;await state.ui.refresh();
  assert.match(state.root.getElementById('morningContent').textContent,/partial.*Work requests unavailable/s);
- assert.match(morningBriefView(data,options).spoken,/Work requests unavailable/);assert.doesNotMatch(state.root.querySelector('dialog').textContent,/private-driver-demo/);
+ assert.doesNotMatch(state.root.querySelector('dialog').textContent,/private-driver-demo/);
  delete data.sections.renewals;await state.ui.refresh();assert.match(state.root.getElementById('morningContent').textContent,/Renewals.*unavailable/s);
 });
 test('F5 business day and initial overnight cutoff use Chicago under both DST offsets and transitions',async t=>{
@@ -393,14 +392,14 @@ for (const missing of ['today','deals','loops','claim_card','renewals','assuranc
  await state.ui.refresh();await state.ui.open();
  assert.match(state.root.getElementById('morningContent').textContent,/Demo surviving decision/);
  const view=morningBriefView(data,options),coverage=view.coverage.find(row=>row.key===missing);
- assert.equal(coverage.state,'unavailable');assert.ok(view.spoken.includes(coverage.spoken));
+ assert.equal(coverage.state,'unavailable');
  assert.match(state.root.querySelector(`[data-brief-section="${missing}"]`).textContent,/unavailable/);
  assert.equal(morningBriefView({...data,sponsor:'unknown'},options),null);
 });
 test('P2 missing Needs Joe is named unavailable while surviving work remains',async t=>{
  const state=setup(t),data=completeBrief();delete data.sections.needs_joe;state.data=data;await state.ui.refresh();
  assert.match(state.root.getElementById('morningContent').textContent,/Review demo lease comments/);
- assert.match(morningBriefView(data,options).spoken,/Needs Joe.*unavailable/);
+ assert.match(state.root.querySelector('[data-brief-section="needs_joe"]').textContent,/Needs Joe.*unavailable/);
 });
 test('P2 full triage activates all producer kinds outside priority selection without private reads',async t=>{
  const state=setup(t),data=completeBrief();
@@ -431,7 +430,6 @@ for (const nextSponsor of ['joe','dell']) test(`F4 suspended brief clears detail
  Object.defineProperty(state.root,'visibilityState',{configurable:true,value:'hidden'});
  state.root.dispatchEvent(new state.win.Event('visibilitychange'));
  assert.equal(state.root.getElementById('morningContent').textContent,'');
- assert.equal(state.root.getElementById('morningListen').disabled,true);
  assert.equal(state.root.getElementById('morningBack').hidden,true);
  detailDone({deal:deal(),thread:[{text:'Demo obsolete detail'}]});oldDone(payload());await oldRead;
  assert.doesNotMatch(state.root.getElementById('morningContent').textContent,/Demo/);
@@ -448,13 +446,13 @@ for (const nextSponsor of ['joe','dell']) test(`F4 suspended brief clears detail
 });
 
 test('F4 resume timeout leaves facts unavailable and keeps only sponsor preferences for recovery',async t=>{
- const state=setup(t,{storage:[['doctorcre:morning:joe',JSON.stringify({speech:true})]]});await state.ui.refresh();await state.ui.open();
+ const state=setup(t,{storage:[['doctorcre:morning:joe',JSON.stringify({owner:'all'})]]});await state.ui.refresh();await state.ui.open();
  let fail;state.client.morningBrief=()=>new Promise((resolve,reject)=>fail=reject);
  state.win.dispatchEvent(new state.win.Event('online'));await Promise.resolve();await Promise.resolve();
  assert.equal(state.root.querySelectorAll('[data-brief-record]').length,0);
  fail(Object.assign(Error('Read timed out'),{code:'read_timeout'}));await state.ui.refresh();
- assert.equal(state.root.querySelectorAll('[data-brief-record]').length,0);assert.equal(state.root.getElementById('morningListen').disabled,true);
- assert.equal(JSON.parse(state.win.localStorage.getItem('doctorcre:morning:joe')).speech,true);
+ assert.equal(state.root.querySelectorAll('[data-brief-record]').length,0);
+ assert.equal(JSON.parse(state.win.localStorage.getItem('doctorcre:morning:joe')).owner,'all');
  state.client.morningBrief=async()=>payload();await state.ui.refresh();assert.equal(state.root.querySelectorAll('[data-brief-record]').length,2);
 });
 
