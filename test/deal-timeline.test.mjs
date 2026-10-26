@@ -154,3 +154,30 @@ test('held task history names the hold date and retains the recorded action', ()
  const released = new JSDOM(renderDealUpdates({next_actions:[{...task,hold_until:'2026-10-04'}]}, now)).window.document;
  assert.doesNotMatch(released.body.textContent, /Held until/);
 });
+
+test('Updates preview and Recorded updates use precise newest-first instants with undated notes last', () => {
+ const value = {thread:[
+  {id:'undated',text:'Synthetic undated update'},
+  {id:'older',at:'2026-10-26T12:00:00.000001Z',text:'Synthetic older update'},
+  {id:'newer',at:'2026-10-26T07:00:00.000002-05:00',text:'Synthetic latest update'},
+  {id:'invalid',at:'unknown',text:'Synthetic invalid date'},
+  {id:'historic',at:'1969-12-31T12:00:00Z',text:'Synthetic historic update'},
+ ]};
+ const root = new JSDOM(renderDealUpdates(value)).window.document;
+ assert.equal(root.querySelector('[aria-label="Latest recorded update"]').textContent,'Synthetic latest update');
+ assert.deepEqual([...root.querySelectorAll('.deal-note')].map(row=>row.dataset.id),['newer','older','historic','undated','invalid']);
+ assert.deepEqual(value.thread.map(row=>row.id),['undated','older','newer','invalid','historic']);
+});
+
+test('deal room activity includes documents in newest-first order without guessing undated positions', () => {
+ const value = {...detail,thread:[{id:'undated',text:'Synthetic undated note'}],activities:[
+  {id:'morning',summary:'Synthetic morning call',occurred_at:'2026-10-26T08:00:00-05:00'},
+  {id:'afternoon',summary:'Synthetic afternoon email',occurred_at:'2026-10-26T20:00:00Z'},
+ ],documents:[{id:'lease',note:'Synthetic revised lease',prepared_at:'2026-10-26T21:00:00Z'}]};
+ assert.deepEqual(dealTimeline(value).entries.map(row=>row.id),['document-lease','afternoon','morning','undated']);
+});
+
+test('a null update timestamp stays explicitly unrecorded instead of showing the epoch', () => {
+ const root=new JSDOM(renderDealUpdates({thread:[{id:'null-date',text:'Synthetic undated update',recorded_at:null}]})).window.document;
+ assert.equal(root.querySelector('.deal-note time').textContent,'Date not recorded');
+});
