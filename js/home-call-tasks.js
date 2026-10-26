@@ -33,7 +33,7 @@ export async function readHomeCallTasks(client, { signal } = {}) {
 }
 
 export function mountHomeCallTasks({ document, client, host, onChanged }) {
-  let view = {}, actor = null, generation = 0, disposed = false, notice = '', noticeFresh = false;
+  let view = {}, actor = null, generation = 0, disposed = false, notice = '', noticeFresh = false, painted = '';
   const decisions = new Map();
   const commands = createRetainedCommands({ scope: () => actor });
   const admitted = () => !disposed && !view.signedOut && !view.busy && view.read?.state === 'read' && text(actor);
@@ -45,17 +45,21 @@ export function mountHomeCallTasks({ document, client, host, onChanged }) {
   const render = () => {
     if (disposed) return;
     const focused = host.contains(document.activeElement) ? document.activeElement?.dataset.callTaskKey : null;
-    const tasks = view.signedOut ? [] : visible();
+    const tasks = view.signedOut ? [] : visible(), flags = [];
     const unavailable = view.read?.state === 'error' || view.scope === 'mine' && !actor;
     host.hidden = !tasks.length && !unavailable && !notice;
     host.setAttribute('aria-busy', String(Boolean(view.busy)));
-    host.innerHTML = `<h3>Call tasks to review</h3>${notice ? `<p class="home-call-task-notice" role="status">${E(notice)}</p>` : ''}${unavailable ? '<p class="home-empty" role="status">Call tasks unavailable. Refresh Home to try again.</p>' : ''}${tasks.map(task => {
+    const markup = `<h3>Call tasks to review</h3>${notice ? `<p class="home-call-task-notice" role="status">${E(notice)}</p>` : ''}${unavailable ? '<p class="home-empty" role="status">Call tasks unavailable. Refresh Home to try again.</p>' : ''}${tasks.map(task => {
       const decision = decisions.get(task.candidateId);
       const disabled = !admitted() || ['submitting', 'resolved'].includes(decision?.state);
       const uncertain = decision?.state === 'uncertain';
       const date = task.dueOn ? new Date(`${task.dueOn}T12:00:00`).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : 'No date';
-      return `<article class="home-call-task" data-call-task="${E(task.candidateId)}"><div><a href="/deals?deal=${encodeURIComponent(task.dealId)}">${E(task.dealName)}</a><p>${E(task.description)}</p><span>${E(ownerLabel(task.owner))} · ${task.dueOn ? `<time datetime="${E(task.dueOn)}">${E(date)}</time>` : date}</span>${task.evidence ? `<details><summary>Call evidence</summary><p>${E(task.evidence)}</p></details>` : ''}${uncertain ? '<p class="home-call-task-error" role="alert">Task outcome is unconfirmed. Check the original decision before changing it.</p>' : ''}</div><div class="home-call-task-controls"><button type="button" class="home-outline" data-call-task-id="${E(task.candidateId)}" data-call-task-accept="true" data-call-task-key="${E(task.candidateId)}:true"${disabled || uncertain && !decision.accept ? ' aria-disabled="true"' : ''}>${uncertain && decision.accept ? 'Check task outcome' : `Add ${ownerLabel(task.owner)} task`}</button><button type="button" class="home-outline" data-call-task-id="${E(task.candidateId)}" data-call-task-accept="false" data-call-task-key="${E(task.candidateId)}:false"${disabled || uncertain && decision.accept ? ' aria-disabled="true"' : ''}>${uncertain && !decision.accept ? 'Check task outcome' : 'Skip'}</button></div></article>`;
+      return `<article class="home-call-task" data-call-task="${E(task.candidateId)}"><div><a href="/deals?deal=${encodeURIComponent(task.dealId)}">${E(task.dealName)}</a><p>${E(task.description)}</p><span>${E(ownerLabel(task.owner))} · ${task.dueOn ? `<time datetime="${E(task.dueOn)}">${E(date)}</time>` : date}</span>${task.evidence ? `<details><summary>Call evidence</summary><p>${E(task.evidence)}</p></details>` : ''}${uncertain ? '<p class="home-call-task-error" role="alert">Task outcome is unconfirmed. Check the original decision before changing it.</p>' : ''}</div><div class="home-call-task-controls"><button type="button" class="home-outline" data-call-task-id="${E(task.candidateId)}" data-call-task-accept="true" data-call-task-key="${E(task.candidateId)}:true"${(flags.push(disabled || uncertain && !decision.accept), '')}>${uncertain && decision.accept ? 'Check task outcome' : `Add ${ownerLabel(task.owner)} task`}</button><button type="button" class="home-outline" data-call-task-id="${E(task.candidateId)}" data-call-task-accept="false" data-call-task-key="${E(task.candidateId)}:false"${(flags.push(disabled || uncertain && decision.accept), '')}>${uncertain && !decision.accept ? 'Check task outcome' : 'Skip'}</button></div></article>`;
     }).join('')}`;
+    if (markup !== painted) { host.innerHTML = markup; painted = markup; }
+    host.querySelectorAll('[data-call-task-key]').forEach((node, index) => {
+      if (flags[index]) node.setAttribute('aria-disabled', 'true'); else node.removeAttribute('aria-disabled');
+    });
     if (focused) ([...host.querySelectorAll('[data-call-task-key]')].find(node => node.dataset.callTaskKey === focused) || document.getElementById('homePrimaryAction'))?.focus();
   };
   const decide = async event => {
@@ -90,7 +94,7 @@ export function mountHomeCallTasks({ document, client, host, onChanged }) {
       await onChanged();
     }
   };
-  const retire = () => { disposed = true; generation++; decisions.clear(); host.replaceChildren(); host.hidden = true; };
+  const retire = () => { disposed = true; generation++; decisions.clear(); host.replaceChildren(); painted = ''; host.hidden = true; };
   host.addEventListener('click', decide);
   document.defaultView?.addEventListener('doctorcre-session-invalidated', retire);
   return {
@@ -98,7 +102,7 @@ export function mountHomeCallTasks({ document, client, host, onChanged }) {
       if (disposed) return;
       if (next.signedOut || actor && text(next.actor) && actor !== next.actor) { retire(); return; }
       actor = next.actor || actor; view = next;
-      if (view.read?.state === 'read' && !visible().length) { if (!noticeFresh) notice = ''; }
+      if (view.read?.state === 'read' && !noticeFresh) notice = '';
       render();
     },
     dispose() { retire(); host.removeEventListener('click', decide); document.defaultView?.removeEventListener('doctorcre-session-invalidated', retire); },

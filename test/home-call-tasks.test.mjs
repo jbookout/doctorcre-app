@@ -153,3 +153,30 @@ test('the notice clears once the last proposal has resolved', async () => {
   assert.equal(h.host.hidden, true);
   h.close();
 });
+
+test('the notice clears on the first completed read even while other proposals remain', async () => {
+  const h = mount();
+  const sibling = { ...task, candidateId: 'demo-sibling' };
+  h.controller.update({ ...ready, tasks: [task, sibling] });
+  h.host.querySelector('button').click();
+  await settle();
+  assert.match(h.host.textContent, /Task added/);
+  h.controller.update({ ...ready, tasks: [sibling] });
+  assert.doesNotMatch(h.host.textContent, /Task added/);
+  assert.equal(h.host.querySelectorAll('[data-call-task]').length, 1);
+  h.close();
+});
+
+test('repeated updates keep the unconfirmed alert and notice nodes stable', async () => {
+  const h = mount(async () => { throw new TypeError('Synthetic response loss'); });
+  h.host.querySelector('button').click();
+  await settle();
+  const alert = h.host.querySelector('[role="alert"]');
+  assert.ok(alert);
+  for (const next of [{ ...ready, busy: true, read: { state: 'loading' } }, { ...ready, busy: true, read: { state: 'loading' } }, ready, ready, { ...ready, tasks: [] }]) {
+    h.controller.update(next);
+    assert.equal(h.host.querySelector('[role="alert"]'), alert);
+  }
+  assert.equal(alert.isConnected, true);
+  h.close();
+});

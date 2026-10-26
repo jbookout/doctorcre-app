@@ -36,7 +36,7 @@ async function open(t, { width = 1280, candidates = [task('proposal-joe')] } = {
   await page.clock.install({ time: new Date('2026-10-01T15:00:00Z') });
   await page.addInitScript(() => localStorage.setItem('doctorcre.visual-preferences', JSON.stringify({ walkthroughSeen: { joe: true, dell: true } })));
   assert.equal((await page.request.post(`${origin}/api/test/seed`, { data: { namespace: `call-tasks-${width}`, viewer: 'joe', reset: true } })).status(), 200);
-  const pending = structuredClone(candidates), actions = [], writes = [], reads = [], errors = [];
+  const pending = structuredClone(candidates), actions = [], writes = [], reads = [], errors = [], gate = { hold: null };
   page.on('pageerror', error => errors.push(error.message));
   await page.route('**/mcp', async route => {
     const rpc = route.request().postDataJSON();
@@ -44,6 +44,7 @@ async function open(t, { width = 1280, candidates = [task('proposal-joe')] } = {
     const reply = payload => route.fulfill({ json: { jsonrpc: '2.0', id: rpc.id, result: { content: [{ type: 'text', text: JSON.stringify(payload) }] } } });
     if (name === 'read-post-call-followups') {
       reads.push(name);
+      await gate.hold;
       return reply({ schema_version: 'post-call-followups.v1', candidates: pending, send: false });
     }
     if (name === 'resolve-post-call-candidate') {
@@ -71,7 +72,7 @@ async function open(t, { width = 1280, candidates = [task('proposal-joe')] } = {
   });
   await page.goto(`${origin}/?mode=live`);
   await page.locator('#refreshHome[aria-busy="false"]').waitFor();
-  return { page, pending, actions, writes, reads, errors };
+  return { page, pending, actions, writes, reads, errors, gate };
 }
 
 test('Home adds a reviewed call task and reads its exact owner, date and text through the agenda', async t => {
@@ -113,5 +114,23 @@ test('phone Home scopes by proposed assignee and skipping a sibling creates no t
   assert.deepEqual(actions, []);
   assert.deepEqual(writes.map(({ candidate_id, accept }) => ({ candidate_id, accept })), [{ candidate_id: 'proposal-dell', accept: false }]);
   assert.equal(await page.locator('#homeAgenda').getByText('Demo proposal-dell lender follow-up', { exact: true }).count(), 0);
+  assert.deepEqual(errors, []);
+});
+
+test('a slow Home refresh keeps the call task section and keyboard focus in place', async t => {
+  const { page, gate, errors } = await open(t, { candidates: [task('proposal-joe'), task('proposal-dell', 'dell', null)] });
+  const skip = '[data-call-task-key="proposal-joe:false"]';
+  await page.locator(skip).focus();
+  let release;
+  gate.hold = new Promise(resolve => { release = resolve; });
+  await page.evaluate(() => document.getElementById('refreshHome').click());
+  await page.locator('#refreshHome[aria-busy="true"]').waitFor();
+  await page.locator(`${skip}[aria-disabled="true"]`).waitFor();
+  assert.equal(await page.evaluate(() => document.activeElement?.dataset.callTaskKey), 'proposal-joe:false');
+  assert.equal(await page.locator('#homeCallTasks').isVisible(), true);
+  release();
+  await page.locator('#refreshHome[aria-busy="false"]').waitFor();
+  await page.locator(`${skip}:not([aria-disabled="true"])`).waitFor();
+  assert.equal(await page.evaluate(() => document.activeElement?.dataset.callTaskKey), 'proposal-joe:false');
   assert.deepEqual(errors, []);
 });

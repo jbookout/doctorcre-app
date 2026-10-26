@@ -121,7 +121,7 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
         $('homeDetail').close();
         $('homeDetailBody').replaceChildren();
       }
-      for (const key of ['board', 'leads', 'invoices', 'relationships']) if (result.reads[key]?.state === 'loading') view[key] = previous?.[key] ?? null;
+      for (const key of ['board', 'leads', 'invoices', 'relationships', 'callTasks']) if (result.reads[key]?.state === 'loading') view[key] = previous?.[key] ?? null;
       if (!actorChanged && result.reads.board.state === 'loading') view.details = new Map(previous?.details || []);
       return view;
     };
