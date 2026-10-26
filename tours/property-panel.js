@@ -138,7 +138,12 @@ export function mountPropertyPanel({ tour, request }) {
   function renderCurrent() {
     const content = root.querySelector("#property-evidence-content");
     if (state.current) content.innerHTML = renderPropertyPanel(state.current);
-    else content.textContent = state.loading ? "Loading evidence…" : "Property evidence is unavailable. Try again.";
+    else if (state.loading) content.textContent = "Loading evidence…";
+    else {
+      const message = root.ownerDocument.createElement("p"); message.textContent = "Property evidence is temporarily unavailable.";
+      const retry = root.ownerDocument.createElement("button"); retry.type = "button"; retry.dataset.propertyRetry = ""; retry.textContent = "Retry";
+      content.replaceChildren(message, retry);
+    }
   }
   async function load() {
     const propertyId = select.value;
@@ -177,6 +182,7 @@ export function mountPropertyPanel({ tour, request }) {
   root.querySelector("#property-evidence-date").addEventListener("change", () => void load());
   root.querySelector("#property-evidence-time").addEventListener("change", () => void load());
   root.onclick = event => {
+    if (event.target.closest("[data-property-retry]")) { void load(); return; }
     if (event.target.closest(".property-dialog-close")) { root.querySelector("dialog").close(); return; }
     const button = event.target.closest("[data-evidence-field]");
     if (!button || !state.current) return;

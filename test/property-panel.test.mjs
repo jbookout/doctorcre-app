@@ -305,6 +305,31 @@ test("fact details preserve exact UTC evidence and effective timestamps", () => 
   assert.match(html, /2026-01-15T09:30:40.000Z/);
 });
 
+test("property evidence offers a working retry after a failed read", async () => {
+  const calls = [];
+  const panel = openPanel(async path => {
+    calls.push(path);
+    if (calls.length < 3) throw new Error("synthetic service unavailable");
+    return evidence;
+  });
+  panel.mount(); await settle();
+  panel.change("#property-evidence-date", "2026-01-15"); await settle();
+
+  const retry = panel.root.querySelector("#property-evidence-content [data-property-retry]");
+  assert.equal(retry?.textContent, "Retry");
+  assert.match(panel.root.querySelector("#property-evidence-content").textContent, /temporarily unavailable/i);
+  retry.click(); await settle();
+
+  assert.equal(calls.length, 3);
+  const failedRead = new URL(calls[1], "https://app.example.invalid");
+  const retriedRead = new URL(calls[2], "https://app.example.invalid");
+  assert.equal(failedRead.searchParams.get("property_id"), evidence.property_id);
+  assert.equal(failedRead.searchParams.get("as_of"), "2026-01-15T23:59:59.999Z");
+  assert.equal(retriedRead.href, failedRead.href, "retry preserves the selected property and as-of instant");
+  assert.match(panel.root.querySelector("#property-evidence-content").textContent, /Escambia/);
+  assert.equal(panel.root.querySelector("#property-evidence-content [data-property-retry]"), null);
+});
+
 
 test("intraday selection survives remount and rejects evidence from an earlier time", async () => {
   let resolveOld;
