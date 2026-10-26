@@ -1,3 +1,4 @@
+import { compareInstants } from './change-receipts.mjs';
 export const ACTIVITY_SCHEMA = 'doc-activity.v1';
 const text = value => typeof value === 'string' && value.trim().length > 0;
 const optionalText = value => value === null || value === undefined || typeof value === 'string';
@@ -34,7 +35,7 @@ export function activityRows(answer) {
   return answer.entries.filter(row => {
     if (ids.has(row.id)) return false;
     ids.add(row.id); return true;
-  }).sort((a,b) => Date.parse(b.at) - Date.parse(a.at) || b.id.localeCompare(a.id));
+  }).sort((a,b) => compareInstants(a.at, b.at) || b.id.localeCompare(a.id));
 }
 export function undoArgs(row, key) {
   if (row?.undo?.state !== 'available' || row.undo.verb !== 'revert-deal-field' || row.undo.event_id !== row.id) return null;

@@ -120,7 +120,7 @@ test('a disposed mount cannot paint a previous deal after its read resolves', as
 
 test('meeting disclosure and keyboard focus survive delayed read settlement and timeout', async t => {
   const browser = await chromium.launch({ args: [...CHROMIUM_SAFETY_ARGS] }); t.after(() => browser.close());
-  const modules = Object.fromEntries(await Promise.all(['correspondence.js', 'correspondence-model.js'].map(async name =>
+  const modules = Object.fromEntries(await Promise.all(['correspondence.js', 'correspondence-model.js', 'change-receipts.mjs'].map(async name =>
     [`/js/${name}`, await readFile(new URL(`../js/${name}`, import.meta.url), 'utf8')])));
   for (const phase of ['readiness', 'thread']) {
     for (const outcome of ['settled', 'timeout']) {
@@ -178,4 +178,22 @@ test('both record panel controllers wire Evidence using the shared renderer', as
   assert.match(business, /loadEvidence\(/);
   assert.match(business, /renderEvidence\(/);
   assert.match(deals, /location.assign\(`\/deals\?deal=/, 'legacy cards use the shared snapshot route');
+});
+
+test('Evidence groups show newest instants first and undated items last without changing inputs', () => {
+  const items = [
+    { title: 'Undated', when: null },
+    { title: 'Older', when: '2026-10-26T12:00:00.000001Z' },
+    { title: 'Newest', when: '2026-10-26T12:00:00.000002Z' },
+  ];
+  const view = Object.fromEntries(['threads', 'meetings'].map(group => [group, {
+    state: 'ready', items: items.map(item => ({ ...item, kind: group === 'threads' ? 'thread' : 'meeting' })),
+  }]));
+  const original = structuredClone(view);
+  const dom = new JSDOM(renderEvidence(view));
+  for (const group of dom.window.document.querySelectorAll('.evidence-group')) {
+    assert.deepEqual([...group.querySelectorAll('summary span')].map(node => node.textContent), ['Newest', 'Older', 'Undated']);
+  }
+  assert.deepEqual(view, original);
+  dom.window.close();
 });
