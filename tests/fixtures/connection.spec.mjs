@@ -34,7 +34,9 @@ test('going offline clears health during a pending refresh and reconnect reads a
     await context.setOffline(true);
     await page.getByRole('button', { name: 'Refresh workspace' }).click();
     await expect(connection).toHaveAttribute('aria-label', 'Connection unavailable');
-    await expect(page.locator('#appTodayNeeds')).toHaveText('Unavailable');
+    await expect(page.locator('#appTodayNeeds')).toHaveText('—');
+    await expect(page.getByRole('button', { name: 'Retry Today', exact: true })).toBeVisible();
+    await expect(page.locator('#appTodayReadStatus')).toContainText('Showing last update');
     expect(boardReads).toBe(1);
     const feedResponse = page.waitForResponse(response => new URL(response.url()).pathname === '/pipeline/changes');
     releaseFeed();
