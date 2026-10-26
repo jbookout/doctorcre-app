@@ -6,7 +6,7 @@ import { introductionSuggestions } from './relationship-network-model.js';
 import { mountAutoRefresh, readWithDeadline, updatedLabel } from './auto-refresh.mjs';
 import { homeClient } from './home-boot.js';
 import { localToday } from './calendar-model.js';
-import { agendaSnapshot, controlSnapshot, dealHref, dealSnapshot, HOME_SCOPES, readHomeAgenda, readHomeDashboard, topNewLeads } from './home-dashboard-model.js';
+import { agendaSnapshot, dealHref, dealSnapshot, HOME_SCOPES, readHomeAgenda, readHomeDashboard, topNewLeads } from './home-dashboard-model.js';
 import { mountNotificationBadge } from './shell.js';
 
 const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
@@ -23,10 +23,9 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
   let relationshipDialog = null, pastWidget = null, secondaryRequested = false;
   let agendaExpanded = false, agendaView = 'all', nextRead = readHomeDashboard;
   let scope = 'team', snapshot = null, sequence = 0, updatedAt = null, disposed = false, leadEntries = new Map(), selectedLead = null;
-  const docSources = [['board','getHomeAgenda'],['leads','getLeadBoard'],['work','currentWorkItem'],['requests','currentWorkRequests'],['incidents','incidentBoard']];
+  const docSources = [['board','getHomeAgenda'],['leads','getLeadBoard']];
   const docPayload = (source, view) => source === 'board' ? {deals:scopedDeals(view?.board,scope)}
-    : source === 'leads' ? (view?.leads ? {leads:topNewLeads(view.leads,{scope,actor:view.board?.actor,now:now()})} : null)
-    : view?.control?.[source];
+    : (view?.leads ? {leads:topNewLeads(view.leads,{scope,actor:view.board?.actor,now:now()})} : null);
   const paint = (target, html) => {
     if (target.innerHTML === html) return;
     const key = target.contains(document.activeElement) ? document.activeElement?.dataset.homeKey : null;
@@ -71,8 +70,6 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
     const calendarContent = agenda?.entries.length ? `<a class="home-calendar-link" data-home-key="week" href="/calendar"><span class="sr-only">Open calendar</span><div class="home-week">${agenda.week.map(({ day, entries }) => `<div class="home-day${day === today ? ' today' : ''}"><span>${new Date(`${day}T12:00:00`).toLocaleDateString(undefined, { weekday: 'short' })}</span><strong>${Number(day.slice(-2))}</strong><div class="home-day-marks">${entries.slice(0, 4).map(entry => `<i class="${entry.type}" aria-hidden="true"></i>`).join('')}</div><span class="sr-only">${entries.length} deal dates and tasks</span></div>`).join('')}</div></a><div id="homeAgenda" class="home-agenda">${(agendaExpanded ? agendaItems : agendaItems.slice(0, AGENDA_PREVIEW)).map(entry => `<a href="${E(entry.type === 'task' ? dealHref(entry.deal_id) : `/calendar?day=${entry.day}&d=${entry.day}`)}" data-home-key="agenda:${E(entry.key)}">${entry.day ? `<time datetime="${entry.day}">${dateLabel(entry.day)}</time>` : '<span class="home-agenda-date">No date</span>'}<div><strong>${E(entry.label)}</strong><span>${E(entry.deal_name)}</span>${entry.owner ? `<span>${E(({joe: 'Joe', dell: 'Dell'})[entry.owner] || entry.owner)}</span>` : ''}</div><span class="home-item-type">${entry.type === 'task' ? 'Task' : 'Date'}</span></a>`).join('')}</div>${!agendaExpanded && agendaItems.length > AGENDA_PREVIEW ? `<button type="button" class="home-outline home-agenda-more" data-home-key="agenda:show-all" data-agenda-show-all aria-controls="homeAgenda">Show all ${agendaItems.length}</button>` : ''}` : '';
 
     widget('homeCalendar', `<header class="home-panel-head"><h2>Calendar & tasks</h2><a data-home-key="calendar" class="home-icon-link" href="/calendar" aria-label="Open Calendar">↗</a></header>${agenda && !signedOut ? `<div class="scope-switch" role="group" aria-label="Agenda view">${[['all', 'All dates & tasks'], ['today', 'Today']].map(([value, label]) => `<button type="button" class="scope-option${agendaView === value ? ' on' : ''}" data-home-key="agenda:view:${value}" data-agenda-view="${value}" aria-pressed="${agendaView === value}">${label}</button>`).join('')}</div>` : ''}${calendarContent}${agendaMessage ? `<p class="home-empty" role="status">${agendaMessage}</p>` : ''}${agendaRetry ? `<button type="button" class="home-outline" data-home-key="agenda:retry" data-agenda-retry${snapshot?.loading ? ' disabled' : ''}>Retry calendar and tasks</button>` : ''}`);
-    const control = signedOut ? null : controlSnapshot(snapshot?.control || {});
-    widget('homeControl', control ? `<a class="home-control-link" data-home-key="control" href="/control-room"><header class="home-panel-head"><h2>Control room</h2><span aria-hidden="true">↗</span></header><div class="home-control-status ${control.attention ? 'attention' : 'clear'}"><svg class="home-radar" viewBox="0 0 140 140" aria-hidden="true"><circle cx="70" cy="70" r="56"/><circle cx="70" cy="70" r="36"/><path d="M70 14V126M14 70H126"/><circle class="radar-wave" cx="70" cy="70" r="48"/><circle class="radar-dot" cx="70" cy="70" r="8"/></svg><div><h3>${control.attention ? 'Needs attention' : 'No issues'}</h3><p>${E(control.line)}</p></div></div></a>` : null);
     const leads = signedOut ? [] : topNewLeads(snapshot?.leads, { scope, actor: snapshot?.board?.actor, now: now() });
     leadEntries = new Map(leads.map(lead => [lead.id, lead]));
     widget('homeLeads', leads.length ? `<header class="home-panel-head"><h2>Recent arrivals</h2><span class="home-period">7 days</span><a class="home-outline" href="/leads">Prospecting queue</a></header><svg class="home-lead-scores" viewBox="0 0 600 42" role="img" aria-label="Relative scores of recent arrivals">${leads.map((lead, i) => `<rect class="score-track" x="${i * 200}" y="10" width="186" height="12" rx="6"/><rect x="${i * 200}" y="10" width="${Math.max(0, lead.score) / Math.max(1, ...leads.map(row => row.score)) * 186}" height="12" rx="6"/>`).join('')}</svg><div class="home-lead-list">${leads.map((lead, i) => `<button type="button" data-lead="${E(lead.id)}" data-home-key="lead:${E(lead.id)}" class="home-lead"><span class="home-lead-rank">${i + 1}</span><div><strong>${E(lead.name)}</strong><span>${E([lead.specialty, lead.city].filter(Boolean).join(' · '))}</span></div><span class="home-score"><b>${E(lead.score)}</b><small>Score</small></span></button>`).join('')}</div>` : null);
@@ -98,7 +95,7 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
     const previous = snapshot;
     let latest = null, clearedActor = false;
     const project = result => {
-      const view = { ...result, control: { ...result.control }, details: new Map(result.details) };
+      const view = { ...result, details: new Map(result.details) };
       const actorChanged = agendaOnly && result.board && result.board.actor !== previous?.board?.actor;
       if (agendaOnly && !actorChanged) {
         const { board, details, reads, unauthorized, updatedAt, loading } = view;
@@ -117,7 +114,6 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
         $('homeDetailBody').replaceChildren();
       }
       for (const key of ['board', 'leads', 'invoices', 'relationships']) if (result.reads[key]?.state === 'loading') view[key] = previous?.[key] ?? null;
-      for (const key of ['incidents', 'work', 'requests', 'resources', 'schedule']) if (result.reads[key]?.state === 'loading') view.control[key] = previous?.control[key] ?? null;
       if (!actorChanged && result.reads.board.state === 'loading') view.details = new Map(previous?.details || []);
       return view;
     };

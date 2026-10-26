@@ -202,3 +202,12 @@ test('an ambiguous network loss stays unknown and is still never replayed, unlik
  assert.equal((await a.approve(row(),{ok:true,suggestions:[row()]})).state,'unknown');
  assert.equal((await a.approve(row(),{ok:true,suggestions:[row()]})).state,'unknown');assert.equal(writes,1);
 });
+
+test('Home Doc context accepts business records and excludes system queues', () => {
+ const c=createDocContext({page:'home'});
+ assert.equal(c.finish(c.begin('getHomeAgenda'),{deals:[deal()]}),true);
+ assert.equal(c.finish(c.begin('getLeadBoard'),{leads:[]}),true);
+ for(const method of ['incidentBoard','currentWorkItem','currentWorkRequests']) assert.equal(c.begin(method),null,method);
+ assert.equal(c.snapshot().ready,true);
+ assert.deepEqual(c.snapshot().records.map(row=>row.kind),['deal']);
+});
