@@ -62,8 +62,8 @@ test('broker can print complete saved notes and the current draft without changi
   await page.evaluate(() => window.dispatchEvent(new Event('afterprint')));
   assert.equal(await sheet.textContent(), '');
   await page.emulateMedia({ media: 'screen' });
-  await page.clock.install();
-  await page.clock.pauseAt(new Date());
+  await page.clock.install({ time: new Date('2026-10-25T12:00:00Z') });
+  await page.clock.pauseAt(new Date('2026-10-25T13:00:00Z'));
   const notes = `${Array.from({ length: 120 }, (_, i) => `Broker line ${i + 1}`).join('\n')}\n<img src=x onerror=alert(1)>\nLAST BROKER LINE`;
   await page.locator('#cheat-content').fill(notes);
   await page.evaluate(() => window.dispatchEvent(new Event('beforeprint')));
@@ -133,7 +133,8 @@ test('broker notes autosave one revision after a pause and preserve drafts acros
   await page.goto(`${server.origin}/tours/route-editor.html?tour=${tourId}`);
   await page.locator('#tour-panel').waitFor({ state: 'visible' });
   await page.locator('#internal-cheat-sheet > summary').click();
-  await page.clock.install(); await page.clock.pauseAt(new Date());
+  await page.clock.install({ time: new Date('2026-10-25T12:00:00Z') });
+  await page.clock.pauseAt(new Date('2026-10-25T13:00:00Z'));
   const editor = page.locator('#cheat-content');
   await editor.fill('First draft'); await page.clock.runFor(600);
   await editor.fill('Final draft'); await page.clock.runFor(600);
