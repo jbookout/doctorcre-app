@@ -691,3 +691,25 @@ for (const width of [390, 1280]) test(`next-step decisions in the rendered call 
   assert.equal(await page.getByText('Landlord follow-up agreed.', { exact: true }).isVisible(), true);
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
 });
+
+for (const list of ['deal_updates', 'deals']) test(`post-call ${list} cards show newest updates first and undated cards last`, async () => {
+ const report=structuredClone(REPORT);
+ delete report.report.deal_updates;
+ report.report[list]=[
+  {candidate_id:'undated-first',summary:'Undated first update',deal_name:'Demo Practice'},
+  {candidate_id:'older',summary:'Earlier update',deal_name:'Demo Practice',occurred_at:'2026-10-01T12:00:00.123001Z'},
+  {candidate_id:'newest',summary:'Latest update',deal_name:'Demo Practice',at:'2026-10-01T07:00:00.123002-05:00'},
+  {candidate_id:'historic',summary:'Historic update',deal_name:'Demo Practice',created_at:'1969-12-31T12:00:00Z'},
+  {candidate_id:'undated-last',summary:'Undated last update',deal_name:'Demo Practice',recorded_at:'unknown'},
+ ];
+ const h=harness({statuses:[report]});
+ h.controller.startPolling('synthetic-order-call',{weekly:true});
+ await new Promise(resolve=>setImmediate(resolve));
+ const html=h.doc.getElementById('postCallReport').innerHTML;
+ const ids=[...html.matchAll(/data-post-call-item="([^"]*)"/g)].map(match=>match[1]).filter(id=>!['cand-joe','cand-dell'].includes(id));
+ assert.deepEqual(ids,['newest','older','historic','undated-first','undated-last']);
+ assert.equal(report.report[list][0].candidate_id,'undated-first');
+ assert.equal(h.calls.resolveConfirm.length,0);
+ assert.equal(h.calls.resolvePostCallCandidate.length,0);
+ h.controller.stopPolling();
+});
