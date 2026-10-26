@@ -100,15 +100,16 @@ test('exact record popup with original entry details and late-result guard',asyn
  state.root.getElementById('morningBack').click();assert.equal(state.root.querySelectorAll('[data-brief-record]').length,2);
  let release;state.client.getDeal=()=>new Promise(resolve=>release=resolve);state.root.querySelector('[data-brief-record]').click();state.root.getElementById('morningBack').click();release({deal:deal(),thread:[]});await new Promise(resolve=>setTimeout(resolve,10));assert.equal(state.root.querySelectorAll('[data-brief-record]').length,2);
 });
-test('speech is opt-in, user-triggered, same transcript, stops on dismiss/off/hidden, error permits replay',async t=>{
- const state=setup(t);const calls=[];state.win.SpeechSynthesisUtterance=class{constructor(text){this.text=text;}};state.win.speechSynthesis={speak:value=>calls.push(value),cancel:()=>calls.push('cancel')};
- // Capabilities are inspected when mounted, so mount this test after installing the adapter.
- state.ui.dispose();const ui=mountMorningBrief({document:state.root,window:state.win,getClient:async()=>state.client,now:()=>now});t.after(()=>ui.dispose());await ui.refresh();await ui.open();
- assert.deepEqual(calls,[]);state.root.getElementById('morningSpeech').click();state.root.getElementById('morningListen').click();assert.equal(calls.length,1);assert.equal(calls[0].text,morningBriefView(payload(),{...options,events:[]}).spoken);
- state.root.getElementById('morningSpeech').click();assert.equal(calls.at(-1),'cancel');assert.equal(state.root.getElementById('morningListen').disabled,true);
- state.root.getElementById('morningSpeech').click();state.root.getElementById('morningListen').click();calls.at(-1).onerror();assert.equal(state.root.getElementById('morningListen').textContent,'▶');
- const old=calls[0];state.root.getElementById('morningListen').click();old.onend();assert.equal(state.root.getElementById('morningListen').textContent,'■');
- state.root.getElementById('morningClose').click();assert.equal(calls.at(-1),'cancel');
+test('brief stays readable without narration controls or speech calls, including a saved speech preference',async t=>{
+ const state=setup(t,{storage:[['doctorcre:morning:joe',JSON.stringify({speech:true})]]});state.ui.dispose();const calls=[];
+ state.win.SpeechSynthesisUtterance=class{constructor(text){this.text=text;}};state.win.speechSynthesis={speak:value=>calls.push(value),cancel:()=>calls.push('cancel')};
+ const ui=mountMorningBrief({document:state.root,window:state.win,getClient:async()=>state.client,now:()=>now});t.after(()=>ui.dispose());
+ await ui.refresh();await ui.open();
+ assert.equal(state.root.querySelector('[aria-label="Brief speech"], [aria-label="Listen to morning brief"]'),null);
+ assert.equal(state.root.querySelectorAll('[data-brief-record]').length,2);
+ state.root.querySelector('[data-brief-record]').click();await new Promise(resolve=>setTimeout(resolve,10));assert.ok(state.root.querySelector('.morning-record'));
+ state.root.getElementById('morningBack').click();await ui.refresh();assert.equal(state.root.querySelectorAll('[data-brief-record]').length,2);
+ state.root.getElementById('morningClose').click();assert.equal(state.root.querySelector('dialog').open,false);assert.deepEqual(calls,[]);
 });
 
 test('overnight transport starts at cutoff and preserves server cursors without replaying historical pages',async()=>{
