@@ -44,6 +44,9 @@ test('QA partners share deal writes, receipts and event cursors after both sessi
     const board = await partner.call('deal-room-board');
     assert.equal(board.deals.length,18);
     assert.equal(board.deals.find(deal=>deal.id===created.deal_id).next_step,'Review demo terms');
+    const agenda = await partner.call('read-home-agenda');
+    assert.equal(agenda.deals.length,18);
+    assert.equal(agenda.deals.find(deal=>deal.id===created.deal_id).next_actions[0].description,'Review demo terms');
     const detail = await partner.call('get-deal-room',{deal:created.deal_id});
     assert.deepEqual(detail.thread.map(entry=>[entry.actor,entry.text]),[['dell','Demo Dell note'],['joe','Demo Joe note']]);
     assert.equal(new Set(detail.thread.map(entry=>entry.id)).size,2);
@@ -243,4 +246,28 @@ for (const viewer of ['joe', 'dell']) test(`QA authenticated session identifies 
     headers: { cookie: `${cookie.name}=${cookie.value}` } }));
   assert.equal(session.status, 200);
   assert.deepEqual(await session.json(), { actor: { slug: viewer } });
+});
+
+test('QA Home agenda reads the signed-in namespace through the current contract', async () => {
+  const {dispatch} = await createQaServer();
+  const seed = await dispatch(new Request('http://localhost/api/test/seed', {
+    method:'POST', headers:{'content-type':'application/json'},
+    body:JSON.stringify({namespace:'home-agenda',viewer:'dell',reset:true}),
+  }));
+  const {cookie} = await seed.json();
+  const response = await dispatch(new Request('http://localhost/mcp', {
+    method:'POST', headers:{cookie:`${cookie.name}=${cookie.value}`,'content-type':'application/json'},
+    body:JSON.stringify({jsonrpc:'2.0',id:1,method:'tools/call',params:{name:'read-home-agenda',arguments:{}}}),
+  }));
+  const {result} = await response.json();
+  assert.notEqual(result.isError, true);
+  const agenda = JSON.parse(result.content[0].text);
+  assert.equal(agenda.schema_version, 'home-agenda.v1');
+  assert.equal(agenda.actor, 'dell');
+  assert.equal(agenda.deals.length, 16);
+  assert.equal(agenda.deals[0].id, 'qa-deal-1');
+  assert.deepEqual(agenda.deals[0].critical_dates, []);
+  assert.equal(agenda.deals[0].next_actions[0].id, 'action-qa-deal-1');
+  assert.equal(agenda.deals[0].next_actions[0].hold_until, null);
+  assert.equal(agenda.deals[0].thread, undefined);
 });

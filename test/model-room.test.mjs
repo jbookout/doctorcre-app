@@ -620,6 +620,7 @@ test("C13-04 the contract pins the merged producer, its two dispatch writes, and
   assert.equal(contract.mcp_operations[answerAt + 1], "append-tour-selection-cart-version");
   assert.ok(contract.mcp_operations.indexOf("capture-queue") > answerAt);
   assert.equal(contract.producer.source_commit, "1df9b9936394164dd55e815f8a8bf69649508ccc");
+
   // The on-demand Jev Deal Room read adds one HTTP surface. Keep the complete
   // set pinned here. It is a static pin, not a diff against
   // origin/main: once this branch IS origin/main a diff against it passes for
@@ -631,8 +632,6 @@ test("C13-04 the contract pins the merged producer, its two dispatch writes, and
     "/api/v1/work-inventory", "/api/v1/jev-deal-reading", "/api/room/*", "/api/system-work/*", "/api/share/*",
     "/api/share/feedback", "/api/share/shortlist", "/api/share/comment",
     "/api/tours/properties/search", "/api/tours/selection-cart", "/api/tours/feedback", "/api/tours/property-evidence/v1", "/api/tours/*",
-    // Browser runtime errors, pinned to their own producer revision (runtime_errors).
-    "/api/v1/runtime-errors",
   ], "http_surfaces includes the versioned Tour search and cart routes");
 });
 

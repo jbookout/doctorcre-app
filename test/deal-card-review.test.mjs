@@ -200,14 +200,15 @@ test('desktop board shows the full longest next step within three lines',async t
 });
 
 
-test('empty next steps leave cards and snapshots free of invented status text',async t=>{
+test('empty next steps flag the gap without inventing an action or due date',async t=>{
  const {page}=await open(t,390,{showDetail:false,nextStep:' \t\n '});
  const card=page.locator('.kanban-column [data-id="d14"]');
- assert.equal(await card.locator('.next-line').count(),0);
+ assert.equal(await card.getByText('Next step missing',{exact:true}).isVisible(),true);
  await card.locator('.card-open').click();
  await page.locator('#detailUpdateForm').waitFor();
  assert.equal(await page.getByLabel('Update',{exact:true}).inputValue(),'');
  assert.equal(await page.locator('.deal-current-action').count(),0);
+ assert.equal(await page.locator('.deal-opening-snapshot').getByText('Next step missing',{exact:true}).isVisible(),true);
  assert.equal(await page.locator('.deal-opening-snapshot time').count(),0,'a due date without an action stays omitted');
  assert.doesNotMatch(await page.locator('#recordPanel').textContent(),/Next step pending|Nothing needs you/i);
 });

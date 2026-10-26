@@ -54,8 +54,8 @@ test('a remounted workspace reveals territory without starting the disposed work
   assert.equal(oldCalls,0);assert.equal(newCalls,1);
  }finally{remounted?.dispose();s.close()}
 });
-test('board renders six full columns, five hottest, quiet IDs/scores and timestamps; filter-only archive',async()=>{
- const s=await setup();try{assert.equal(s.d.querySelectorAll('[data-stage]').length,6);assert.equal(s.d.querySelectorAll('.hot-row').length,5);assert.equal(s.d.querySelectorAll('.lead-card').length,14);
+test('board renders six bounded columns, five hottest, quiet IDs/scores and timestamps; filter-only archive',async()=>{
+ const s=await setup();try{assert.equal(s.d.querySelectorAll('[data-stage]').length,6);assert.equal(s.d.querySelectorAll('.hot-row').length,5);assert.equal(s.d.querySelectorAll('.lead-card').length,10);
  assert.match(s.d.getElementById('searchUpdated').textContent,/Oct 1/);assert.match(s.d.querySelector('.lead-card .lead-market').textContent,/Pensacola, FL/);assert.equal(s.d.querySelector('.lead-card .party-id'),null);assert.match(s.d.querySelector('.stage-column[data-stage="opportunity"]').textContent,/Opportunity/);assert.match(s.d.querySelector('.auto-move').textContent,/Moved by Doc: reply received 10\/1/);
  const select=s.d.getElementById('stageFilter');select.value='archived';select.dispatchEvent(new s.w.Event('change'));assert.equal(s.d.querySelectorAll('[data-stage]').length,0);assert.equal(s.d.querySelectorAll('.lead-card').length,1);
  }finally{s.close()}
@@ -168,7 +168,7 @@ test('Undo collects a human quote; Link removes card and Claim preserves New sta
  s.d.querySelector('#stageQuestions textarea').value='Synthetic reply was attributed to the wrong lead';
  await s.app.refresh();assert.equal(s.d.querySelector('#stageQuestions textarea').value,'Synthetic reply was attributed to the wrong lead');
  submit();await tick();assert.equal(s.writes[0].stage,'outreach_active');assert.equal(s.writes[0].l.base_version,1);assert.deepEqual(s.writes[0].review,{reason:'Undo automatic stage move',evidence_ids:[],undo_event_id:id(500),human_quote:'Synthetic reply was attributed to the wrong lead'});
- s.d.querySelector('[data-link]').click();await tick();assert.equal(s.d.querySelector(`#leadBoard [data-lead-id="${id(19)}"]`),null);
+ s.d.querySelector('[data-expand-stage="new"]').click();s.d.querySelector('[data-link]').click();await tick();assert.equal(s.d.querySelector(`#leadBoard [data-lead-id="${id(19)}"]`),null);
  s.d.querySelector('[data-claim]').click();await tick();assert.equal(s.board.leads[0].stage,'new');assert.equal(s.board.leads[0].owner,'example-partner');assert.equal(s.d.querySelector(`#hotLeads [data-lead-id="${id(1)}"]`),null);
  }finally{s.close()}
 });
@@ -360,7 +360,7 @@ test('blocking 2: shared transport clears private workspace on authorization hea
   try {
    await s.app.readDetail(id(1));
    assert.match(s.d.getElementById('detailBody').textContent, /Contact/);
-   assert.equal(s.d.querySelectorAll('.lead-card').length, 14);
+   assert.equal(s.d.querySelectorAll('.lead-card').length, 10);
    if (surface === 'mutation') await s.app.openReview(id(1), 'engaged');
    deny = true;
    if (surface === 'mutation') {
@@ -495,7 +495,7 @@ test('blocking 11: removed owner and market selections normalize before filterin
  const s=await setup();try{
  const select=s.d.getElementById(filter);select.value=value;select.dispatchEvent(new s.w.Event('change'));assert.equal(s.d.querySelectorAll('.lead-card').length,1);
  if(key==='owner')s.board.leads.find(l=>l.owner===value).owner=null;else{const l=s.board.leads.find(l=>l.city==='Mobile');l.city='Pensacola';l.state='FL'}
- await s.app.refresh();assert.equal(select.value,'');assert.equal(s.app.state.filters[key],'');assert.equal(s.d.querySelectorAll('.lead-card').length,14);
+ await s.app.refresh();assert.equal(select.value,'');assert.equal(s.app.state.filters[key],'');assert.equal(s.d.querySelectorAll('.lead-card').length,10);
  }finally{s.close()}
  }
 });
@@ -557,7 +557,7 @@ test('detail polling keeps keyboard focus on the same expanded original entry',a
 test('a failed first read reconnects within seconds without waiting a full poll',async()=>{
  let reads=0;const s=await setup({getWorkspace:async()=>{if(++reads===1)throw Object.assign(new Error('offline'),{code:'network_error'});return structuredClone(workspace())}});
  try{assert.equal(s.d.querySelectorAll('.lead-card').length,0);assert.match(s.d.getElementById('leadBoardError').textContent,/Connection interrupted/);
-  await new Promise(r=>setTimeout(r,1_200));assert.equal(reads,2);assert.equal(s.d.querySelectorAll('.lead-card').length,14);assert.equal(s.d.getElementById('leadBoardError').hidden,true);assert.equal(s.writes.length,0);
+  await new Promise(r=>setTimeout(r,1_200));assert.equal(reads,2);assert.equal(s.d.querySelectorAll('.lead-card').length,10);assert.equal(s.d.getElementById('leadBoardError').hidden,true);assert.equal(s.writes.length,0);
  }finally{s.close()}
 });
 
@@ -589,13 +589,13 @@ for (const phase of ['identity', 'workspace']) test(`PR136 #1 resume during pend
   // The client ignores abort: a held transport must not delay replacement.
   assert.equal(actorReads, 2);
   assert.equal(workspaceReads, phase === 'identity' ? 1 : 2);
-  assert.equal(s.d.querySelectorAll('.lead-card').length, 14);
+  assert.equal(s.d.querySelectorAll('.lead-card').length, 10);
   assert.equal(s.d.getElementById('leadBoard').getAttribute('aria-busy'), 'false');
   assert.equal(s.d.getElementById('leadBoardError').hidden, true);
   release(phase === 'identity' ? 'stale-example-partner' : { leads: [] });
   await tick();
   assert.equal(s.app.state.actor, 'example-partner');
-  assert.equal(s.d.querySelectorAll('.lead-card').length, 14);
+  assert.equal(s.d.querySelectorAll('.lead-card').length, 10);
   assert.equal(s.writes.length, 0);
  } finally { release(phase === 'identity' ? 'example-partner' : workspace()); s.close(); }
 });

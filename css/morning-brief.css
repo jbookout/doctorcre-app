@@ -4,9 +4,8 @@
 .morning-brief { box-sizing: border-box; width: min(1100px, calc(100vw - 32px)); max-width: 1100px; max-height: calc(100dvh - 32px); padding: var(--space-6); border: var(--hairline-width) solid var(--hairline); border-radius: var(--panel-radius); background: var(--surface-1); color: var(--fg); box-shadow: var(--shadow-overlay); font: var(--font-size-2) / var(--line-height-body) var(--font-text); }
 .morning-brief[open] { animation: none; }
 .morning-brief::backdrop { background: var(--scrim); }
-.morning-brief header, .morning-brief header > div, .morning-toolbar { display: flex; align-items: center; gap: var(--space-3); }
+.morning-brief header, .morning-toolbar { display: flex; align-items: center; gap: var(--space-3); }
 .morning-brief header { justify-content: space-between; }
-.morning-brief header .doc-orb { display: inline-grid; place-items: center; width: var(--touch); height: var(--touch); border: var(--hairline-width) solid var(--hairline); border-radius: var(--radius-round); background: var(--surface-2); color: var(--accent-ink); font-size: var(--font-size-3); }
 .morning-brief h2, .morning-brief h3 { margin: 0; font-family: var(--font-text); font-weight: var(--font-weight-strong); line-height: var(--line-height-heading); }
 .morning-brief h2 { font-size: var(--font-size-4); }
 .morning-brief h3 { margin: var(--space-3) 0; color: var(--fg-muted); font-size: var(--font-size-1); }
@@ -14,7 +13,6 @@
 @media (hover: hover) { .morning-brief button:not(:disabled):hover { background: var(--surface-3); border-color: var(--hairline-strong); } }
 .morning-toolbar { flex-wrap: wrap; margin: var(--space-5) 0; }
 #morningUpdated { margin-right: auto; color: var(--fg-muted); font-size: var(--font-size-1); font-variant-numeric: tabular-nums; }
-#morningSpeech[aria-pressed=true] { border-color: var(--fg); background: var(--surface-3); box-shadow: inset 0 0 0 1px var(--fg); }
 .morning-brief button:disabled { opacity: .45; cursor: default; }
 #morningCoverage { color: var(--status-warn-ink); font-size: var(--font-size-1); }
 #morningContent { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-3) var(--space-5); }
@@ -42,6 +40,16 @@
 :root[data-motion=reduced] :is(.morning-brief button, .morning-brief .morning-card) { transition: none; }
 
 .morning-owner { color: var(--fg-muted); font-size: var(--font-size-1); }
+
+#morningQueues { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-block: var(--space-4); }
+#morningQueues p { flex-basis: 100%; margin: 0; color: var(--fg-muted); }
+.morning-queue { grid-column: 1 / -1; }
+.morning-queue ol { padding-left: var(--space-5); }
+.morning-queue li { padding: var(--space-3); border-bottom: var(--hairline-width) solid var(--hairline); overflow-wrap: anywhere; }
+.morning-queue summary { cursor: pointer; min-height: var(--touch); align-content: center; }
+.morning-queue dl { margin: var(--space-2) 0; }
+.morning-queue dt { color: var(--fg-muted); }
+.morning-queue dd { margin: 0 0 var(--space-2); }
 .morning-sections { grid-column: 1 / -1; min-width: 0; overflow-wrap: anywhere; }
 .morning-sections > p { color: var(--fg-muted); font-size: var(--font-size-1); }
 .morning-sections > details { margin-top: var(--space-3); padding: var(--space-3) var(--space-4); border: var(--hairline-width) solid var(--hairline); border-radius: var(--radius-2); background: var(--surface-2); }

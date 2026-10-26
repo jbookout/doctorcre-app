@@ -50,7 +50,7 @@ test("day map selection uses canonical IDs, short copy, navigation receipts and 
   const dom = new JSDOM('<section id="map"></section>', { url: "https://synthetic.test/tours/day.html" });
   let online = false, maps = 0, selected = null, allow = true;
   Object.defineProperty(dom.window.navigator, "onLine", { get: () => online });
-  class Map { constructor() { maps++; } on() {} resize() {} remove() {} jumpTo() {} flyTo() {} }
+  class Map { constructor() { maps++; } on() {} off() {} resize() {} remove() {} jumpTo() {} flyTo() {} }
   class Marker { constructor({ element }) { this.element = element; } setLngLat() { return this; } addTo() { dom.window.document.body.append(this.element); return this; } remove() { this.element.remove(); } }
   const view = mountAcceptedItinerary(dom.window.document.querySelector("section"), { route, promotion_receipt: mapReceipt, scope: "synthetic", user_ref: "synthetic-user", presentation: "day", basemapStyle: { version: 8, sources: {}, layers: [] }, canSelect: () => allow, onSelect: id => { selected = id; }, loadMapLibre: async () => ({ Map, Marker, setWorkerUrl() {} }) });
   await view.ready; assert.equal(maps, 0); assert.match(dom.window.document.querySelector("section").textContent, /map unavailable/i);
@@ -70,7 +70,7 @@ test('Tour day defers basemap code and styling until a basemap is requested', as
   const stylesheet = () => doc.querySelectorAll('link[href*="maplibre-gl"]').length;
   assert.equal(stylesheet(), 0, 'the ordinary Tour day page has no basemap stylesheet request');
   let loads = 0;
-  class Map { on() {} resize() {} remove() {} jumpTo() {} flyTo() {} }
+  class Map { on() {} off() {} resize() {} remove() {} jumpTo() {} flyTo() {} }
   class Marker { setLngLat() { return this; } addTo() { return this; } remove() {} }
   const options = { route, scope: 'synthetic', user_ref: 'synthetic-user', loadMapLibre: async () => { loads++; return { Map, Marker, setWorkerUrl() {} }; } };
   const root = doc.querySelector('#day-map');

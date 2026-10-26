@@ -7,16 +7,18 @@ import { execFileSync } from "node:child_process";
 import { createHash } from 'node:crypto';
 import { handleDoctorcreRequest } from "../src/worker.js";
 import { validSystemWork, groupSystemWork, recentLive } from "../js/system-work-board-model.js";
+import { renderDealChecklist } from "../js/deal-checklist.js";
 
 const contract = JSON.parse(await readFile(new URL("../contracts/carr-interface.v1.json", import.meta.url), "utf8"));
 const pinnedProducer = "1df9b9936394164dd55e815f8a8bf69649508ccc";
+
 
 const producerModules = new Map();
 async function producerModuleUrl(path) {
   if (producerModules.has(path)) return producerModules.get(path);
   let source = execFileSync("git", ["-C", process.env.CARR_PRODUCER_CHECKOUT,
     "show", `${contract.producer.source_commit}:${path}`], { encoding: "utf8" });
-  for (const match of [...source.matchAll(/from\s+(["'])(\.\/[^"'\n]+)\1/g)]) {
+  for (const match of [...source.matchAll(/from\s+(["'])(\.\.?\/[^"'\n]+)\1/g)]) {
     const dependency = await producerModuleUrl(posix.join(posix.dirname(path), match[2]));
     source = source.replace(match[1] + match[2] + match[1], JSON.stringify(dependency));
   }
@@ -24,6 +26,55 @@ async function producerModuleUrl(path) {
   producerModules.set(path, url);
   return url;
 }
+
+test("the runtime pin binds the checklist and feature-switch reads to one producer", () => {
+  const seam = contract.mcp_read_contracts["get-deal-room"].checklist;
+  assert.equal(seam.producer.source_commit, contract.producer.source_commit);
+  assert.equal(contract.mcp_read_contracts["get-deal-room"].producer.source_commit, contract.producer.source_commit);
+  assert.equal(contract.mcp_read_contracts["list-feature-switches"].producer.source_commit, contract.producer.source_commit);
+});
+
+test("the advertised runtime registers inherited conversation, notification, session and room contracts", {
+  skip: !process.env.CARR_PRODUCER_CHECKOUT && "Set CARR_PRODUCER_CHECKOUT to verify inherited registrations",
+}, async () => {
+  const registry = execFileSync("git", ["-C", process.env.CARR_PRODUCER_CHECKOUT,
+    "show", `${contract.producer.source_commit}:mcp-server/src/tools.js`], { encoding: "utf8" });
+  for (const [module, factory, verbs] of [
+    ["doc-conversation.js", "docConversationTools", ["read-doc-conversation", "list-doc-conversations", "create-doc-conversation", "rename-doc-conversation", "share-doc-conversation"]],
+    ["notifications.js", "notificationTools", ["notification-feed", "acknowledge-notification", "read-notification-preferences", "set-notification-preference"]],
+    ["codex-continuity.js", "codexContinuityTools", ["list-my-codex-sessions"]],
+    ["session-identity.js", "sessionIdentityTools", ["read-session-identity", "read-dispatch-history"]],
+    ["partner-room.js", "partnerRoomTools", ["read-room", "read-room-latest", "read-room-queue", "add-room-turn"]],
+    ["dispatch-spine.js", "dispatchSpineTools", ["record-dispatch-link", "acknowledge-dispatch"]],
+    ["tour-property-search.js", "tourPropertySearchTools", ["search-tour-properties", "read-tour-selection-cart", "append-tour-selection-cart-version"]],
+  ]) {
+    assert.match(registry, new RegExp(`registerTools\\(${factory}\\(`), `${factory} must be registered`);
+    const producer = await import(await producerModuleUrl(`mcp-server/src/${module}`));
+    const tools = producer[factory]({});
+    for (const verb of verbs) {
+      assert.ok(contract.mcp_operations.includes(verb), `${verb} must remain in the app interface`);
+      assert.equal(typeof tools[verb]?.handler, "function", `${verb} must exist at the advertised runtime`);
+      assert.equal(tools[verb].inputSchema.type, "object");
+    }
+  }
+});
+
+test("the same advertised producer derives the versioned checklist consumed by the app", {
+  skip: !process.env.CARR_PRODUCER_CHECKOUT && "Set CARR_PRODUCER_CHECKOUT to verify checklist derivation",
+}, async () => {
+  const { deriveDealChecklist, CHECKLIST_SOURCES } = await import(await producerModuleUrl("mcp-server/src/deal-checklist.js"));
+  const seam = contract.mcp_read_contracts["get-deal-room"].checklist;
+  const checklist = deriveDealChecklist({ type: "renewal", critical_dates: [
+    { id: "synthetic-review", kind: "attorney_review", due_on: "2026-10-20", source: "fixture:review", status: "open" },
+  ] }, CHECKLIST_SOURCES.map(source => ({ id: source.section_id, body_hash: source.content_hash, status: "active" })), "2026-10-20");
+  assert.equal(checklist.schema_version, seam.schema_version);
+  assert.equal(checklist.template_state, "current");
+  assert.deepEqual(checklist.phases.map(phase => phase.id), seam.phase_keys);
+  assert.ok(checklist.phases.flatMap(phase => phase.items).every(item => seam.statuses.includes(item.status)));
+  assert.equal(checklist.due_items[0].status, "due");
+  assert.match(renderDealChecklist(checklist), /data-checklist-item="critical-date:synthetic-review"/);
+
+});
 
 test("the runtime pin includes operation identity, session binding and versioned replacement writes", () => {
   assert.equal(contract.producer.source_commit, pinnedProducer);
@@ -105,7 +156,10 @@ test("the app consumes the merged producer's directory and selected-board interf
   const actor = { id: "10000000-0000-4000-8000-000000000001", slug: "codex", human: false,
     native_agent_verified: true, sponsoring_human_slug: "joe" };
   const row = { board_id: "carr-v5", version: 2, updated_at: "2026-10-01T12:00:00Z",
-    snapshot_json: { task_counts: JSON.parse('{"__proto__":1,"running":1}'), title: "Synthetic system board", tasks: { build: { status: "running", title: "Synthetic build" },
+    // Publisher totals include cards omitted from the bounded task payload.
+    snapshot_json: { title: "Synthetic system board", task_counts: JSON.parse('{"__proto__":1,"running":7}'),
+      tasks: { build: { status: "running", title: "Synthetic build" },
+
       malformed: [], prototype: { status: "__proto__" } } } };
   const calls = [];
   const client = { async query(sql, params) {
@@ -116,7 +170,7 @@ test("the app consumes the merged producer's directory and selected-board interf
   } };
   const directory = boardDirectory(await tools["list-progress-boards"].handler(client, actor, {}));
   assert.equal(directory[0].updated_at, row.updated_at);
-  assert.deepEqual(directory[0].task_counts, JSON.parse('{"__proto__":1,"running":1}'));
+  assert.deepEqual(directory[0].task_counts, JSON.parse('{"__proto__":1,"running":7}'));
   assert.equal("snapshot_json" in directory[0], false);
   const view = boardView(await tools["read-progress-board"].handler(client, actor, { board_id: "carr-v5" }));
   assert.equal(view.version, 2);
@@ -295,31 +349,10 @@ test("the advertised runtime producer serves the feature-switch read and gates b
   }
 });
 
-test("runtime error capture is pinned to its own exact producer revision", async () => {
-  const runtimeErrors = JSON.parse(await readFile(new URL(`../${contract.runtime_errors.contract}`, import.meta.url), "utf8"));
-  assert.deepEqual(contract.runtime_errors.producer, { repository: "jbookout/carr-system", source_commit: "a3a6913f7af0d721ab538090b1347976befcf421" });
-  assert.ok(contract.http_surfaces.includes(runtimeErrors.browser_endpoint));
+test("the consumer contract does not advertise the removed runtime error ingress", () => {
+  assert.equal(contract.runtime_errors, undefined);
+  assert.equal(contract.http_surfaces.includes("/api/v1/runtime-errors"), false);
 });
-
-test("runtime error wire contract and scrub rules match the exact pinned producer", {
-  skip: !process.env.CARR_PRODUCER_CHECKOUT && "Set CARR_PRODUCER_CHECKOUT to verify runtime error ingress",
-}, async () => {
-  const pin = contract.runtime_errors.producer.source_commit;
-  const show = path => execFileSync("git", ["-C", process.env.CARR_PRODUCER_CHECKOUT, "show", `${pin}:${path}`], { encoding: "utf8" });
-  const producerContract = JSON.parse(show("mcp-server/src/runtime-errors.v1.json"));
-  assert.deepEqual(JSON.parse(await readFile(new URL(`../${contract.runtime_errors.contract}`, import.meta.url), "utf8")), producerContract);
-  const source = show("mcp-server/src/runtime-errors.js").replace("import contract from './runtime-errors.v1.json' with { type: 'json' };",
-    `const contract = ${JSON.stringify(producerContract)};`);
-  const producer = await import(`data:text/javascript;base64,${Buffer.from(source).toString("base64")}`);
-  const { scrubError } = await import("../js/error-tracking.js");
-  for (const input of [
-    { type: "TypeError", message: "Cannot read properties of Alice", stack: "TypeError: Alice\n at f (https://app/js/a.js?email=a@example.test:12:3)", route: "/clients/Alice?x=1", release_sha: "a".repeat(40) },
-    { type: "HTTP5xx", message: "Alice", route: "/deals/1/leads", release_sha: "nope" },
-    { type: "Alice", message: "aliceRecord is not defined", stack: "f@https://app/js/a.js:1:2", route: "no-slash" },
-    {},
-  ]) assert.deepEqual(scrubError(input), producer.scrubError(input));
-});
-
 
 test('the pinned producer publishes the orchestrator contract consumed by the existing board', {
   skip: !process.env.CARR_PRODUCER_CHECKOUT && 'Set CARR_PRODUCER_CHECKOUT to verify the pinned producer',
