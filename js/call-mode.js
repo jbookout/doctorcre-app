@@ -295,6 +295,15 @@ export function createCallMode(deps) {
   </article>`;
   }
 
+  function phaseProposal(item) {
+    const phase = item.phase_move;
+    if (!phase) return '';
+    const status = postCallItemStatus(phase);
+    return `<section aria-label="Proposed phase change"><p>Proposed phase: ${esc(reportText(phase.value))}</p>
+    <span class="post-call-badge ${esc(status)}">${esc(status.replaceAll('_', ' '))}</span>
+    ${phase.candidate_id && status === 'pending' ? `<div class="post-call-card-actions"><button type="button" class="primary" data-post-call-confirm="${esc(phase.candidate_id)}" data-candidate-resolver="legacy">Confirm phase change</button><button type="button" class="secondary" data-post-call-skip="${esc(phase.candidate_id)}" data-candidate-resolver="legacy">Skip phase change</button></div>` : ''}</section>`;
+  }
+
   function dealUpdateCard(item) {
     const status = postCallItemStatus(item);
     const pending = status === 'pending';
@@ -305,6 +314,7 @@ export function createCallMode(deps) {
     <p>${esc(reportText(summary))}</p>
     ${checksNote(item)}
     ${pending ? `<div class="post-call-card-actions"><button type="button" class="primary" data-post-call-confirm="${esc(item.candidate_id)}" data-candidate-resolver="${resolver}">Confirm update</button><button type="button" class="secondary" data-post-call-skip="${esc(item.candidate_id)}" data-candidate-resolver="${resolver}">Skip</button></div>` : ''}
+    ${phaseProposal(item)}
   </article>`;
   }
 

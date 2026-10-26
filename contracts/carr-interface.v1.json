@@ -1070,6 +1070,17 @@
       "legacy": "Queue acknowledgement verifies this feed only. Scheduled carr-v5 publication can fail independently."
     }
   },
+  "post_call_phase_review": {
+    "producer": {
+      "repository": "DoctorCRE/carr-system",
+      "source_commit": "9ddd7435caadc709d70ca01d63c7f8d6621db194",
+      "pull_request": "https://github.com/DoctorCRE/carr-system/pull/2322"
+    },
+    "read": "Loopback companion GET /api/post-call returns report.deal_updates[].phase_move as null, omitted or an object with value, optional candidate_id and candidate_status.",
+    "write": "Existing resolve-candidate through resolveConfirm. The nested candidate uses its own proposal_id and retained idempotency key. Confirming or skipping it never disposes the parent note.",
+    "review": "Display the proposed phase and disposition. Only a pending proposal with a candidate_id offers Confirm phase change and Skip phase change. A stale phase is refused by the producer.",
+    "deployment_order": "Keep app auto-merge off until the pinned server change is live in production."
+  },
   "write_reconciliation": {
     "contract": "contracts/app-write-reconciliation.v1.json",
     "sha256": "4478d4a3386714e9bcbf181af60ff3fae47ba14b09d20ee1758876f32528d634",

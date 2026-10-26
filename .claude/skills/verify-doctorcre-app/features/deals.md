@@ -22,6 +22,8 @@ Existing coverage: `test/local-deals-browser.test.mjs`, `test/dealroom-acceptanc
 
 - Open Draft requirement email in a deal. Enter approved requirements, generate and edit the subject and message, then copy the draft. `test/pipeline-interruption-browser.test.mjs` covers anonymous generation, copy failure, discard, record isolation and identity revocation. Drafts remain only while the page is open.
 
+- Call mode reviews a discussed deal's phase proposal separately from its note. A pending nested proposal with a candidate ID offers Confirm phase change and Skip phase change. Confirming the note does not decide the phase. Settled or unmatched proposals keep their visible phase and status without decision controls. `test/dealroom-call-mode.test.mjs` drives phone confirmation and desktop skipping with the real dialog, plus stale-phase refusal and retained-request recovery through the existing client interface. Synthetic pending captures are retained under `out/test-artifacts/call-phase/`.
+
 ## Gotchas
 
 Use actual synthetic staging IDs when verifying staging. Deep-link close changes the URL, so check URL and dialog independently. Manual read-only inspection must not submit Update, change Phase or Owner, Park, or Mark inactive.

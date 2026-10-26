@@ -23,7 +23,8 @@
  */
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import { readFile, mkdir } from "node:fs/promises";
+import { chromium, fixtureServer } from "./browser-harness.mjs";
 import { fileURLToPath } from "node:url";
 import {
   createCallMode, shapeCallContextDeals, readCallContextIndex, CALL_CONTEXT_BATCH,
@@ -394,6 +395,62 @@ test("confirming one item resolves that item only; skipping records a no", async
   assert.deepEqual(calls.createOutlookDraft, [], "approving a task creates no draft");
 });
 
+test('phase proposals have their own decision and leave the call note independent', async () => {
+  const report = structuredClone(REPORT);
+  const update = report.report.deal_updates[0];
+  update.candidate_kind = 'activity';
+  update.phase_move = { value: 'legal', candidate_id: 'cand-phase', candidate_status: 'pending' };
+  const h = harness({ statuses: [report] });
+  try {
+    h.controller.startPolling('synthetic-call', { weekly: true });
+    await new Promise(resolve => setImmediate(resolve));
+    let html = h.doc.getElementById('postCallReport').innerHTML;
+    assert.match(html, /Proposed phase: legal/);
+    assert.match(html, /Confirm phase change/);
+    assert.deepEqual(h.calls.resolveConfirm, []);
+    await h.controller.handleClick(drawnButton(html, 'data-post-call-confirm', 'cand-phase'));
+    assert.deepEqual(h.calls.resolveConfirm.map(c => [c.proposal_id, c.accept]), [['cand-phase', true]]);
+    assert.deepEqual(h.calls.resolvePostCallCandidate, []);
+    assert.equal(update.candidate_status, undefined);
+    update.phase_move.candidate_status = 'confirmed';
+    await h.controller.refreshPostCall();
+    html = h.doc.getElementById('postCallReport').innerHTML;
+    assert.doesNotMatch(html, /data-post-call-confirm="cand-phase"/);
+    assert.match(html, /data-post-call-confirm="cand-update"/);
+    update.phase_move = { value: 'closing' };
+    await h.controller.refreshPostCall();
+    assert.doesNotMatch(h.doc.getElementById('postCallReport').innerHTML, /Confirm phase change/);
+  } finally { h.controller.dispose(); }
+});
+
+test('a phase conflict stays pending and an uncertain phase decision retains its safety key', async () => {
+  const report = structuredClone(REPORT);
+  report.report.deal_updates[0].phase_move = { value: 'legal', candidate_id: 'cand-phase' };
+  const h = harness({ statuses: [report] });
+  try {
+    h.controller.startPolling('synthetic-call', { weekly: true });
+    await new Promise(resolve => setImmediate(resolve));
+    const html = h.doc.getElementById('postCallReport').innerHTML;
+    h.client.resolveConfirm = async () => { throw Object.assign(new Error('Phase changed. Review the current deal.'), { payload: { error: 'field_conflict' } }); };
+    await h.controller.handleClick(drawnButton(html, 'data-post-call-confirm', 'cand-phase'));
+    assert.match(h.calls.toasts.at(-1), /Phase changed/);
+    assert.deepEqual(h.calls.syncStatus, []);
+    assert.match(h.doc.getElementById('postCallReport').innerHTML, /data-post-call-confirm="cand-phase"/);
+    const requests = [];
+    h.client.resolveConfirm = async request => {
+      requests.push(request);
+      if (requests.length === 1) throw new Error('reply lost');
+      return { status: 'ok' };
+    };
+    await h.controller.handleClick(drawnButton(html, 'data-post-call-confirm', 'cand-phase'));
+    await h.controller.handleClick(drawnButton(html, 'data-post-call-skip', 'cand-phase'));
+    assert.equal(requests.length, 1);
+    await h.controller.handleClick(drawnButton(html, 'data-post-call-confirm', 'cand-phase'));
+    assert.equal(requests.length, 2);
+    assert.deepEqual(requests[0], requests[1]);
+  } finally { h.controller.dispose(); }
+});
+
 test('uncertain candidate approval replays one retained request and blocks a changed decision', async () => {
   const { html, calls, controller, client } = await reviewReady();
   const sent = []; let lost = true;
@@ -578,4 +635,47 @@ test('a handled agenda failure does not claim that the agenda opened while recor
   assert.ok(h.calls.toasts.some(message=>message.includes('agenda could not open')));
   assert.ok(h.calls.toasts.every(message=>!message.includes('agenda is open')));
  }finally{h.controller.dispose();}
+});
+
+for (const width of [390, 1280]) test(`phase decisions in the rendered call report at ${width}px`, async t => {
+  const server = await fixtureServer(); t.after(() => server.close());
+  const browser = await chromium.launch(); t.after(() => browser.close());
+  const page = await browser.newPage({ viewport: { width, height: 960 }, reducedMotion: 'reduce' });
+  const dialog = (await file('index.html')).match(/<dialog id="callModeDialog"[\s\S]*?<\/dialog>/)[0];
+  await page.route(`${server.origin}/phase-review`, route => route.fulfill({ contentType: 'text/html',
+    body: `<html data-theme="light"><head><meta charset="utf-8"><link rel="stylesheet" href="/css/app.css"><link rel="stylesheet" href="/css/app-shell.css"></head><body>${dialog}</body></html>` }));
+  await page.goto(`${server.origin}/phase-review`);
+  await page.evaluate(async () => {
+    const { createCallMode } = await import('/js/call-mode.js');
+    const update = { deal_name: 'Demo Surgical Practice', summary: 'Lease terms agreed.',
+      candidate_id: 'note-candidate', candidate_status: 'confirmed',
+      phase_move: { value: 'legal', candidate_id: 'phase-candidate', candidate_status: 'pending' } };
+    window.phaseDecisions = [];
+    const ui = createCallMode({ root: document,
+      client: () => ({ selfActor: 'joe', resolveConfirm: async request => {
+        window.phaseDecisions.push(request);
+        update.phase_move.candidate_status = request.accept ? 'confirmed' : 'skipped';
+        return { status: 'ok' };
+      } }),
+      postCallClient: { getStatus: async () => ({ status: 'ready_review', report: { deal_updates: [update] } }), syncStatus: async () => {} },
+      toast: message => { window.phaseNotice = message; } });
+    ui.state.eligibility = 'available'; ui.state.postCall.session = 'synthetic-call';
+    await ui.refreshPostCall();
+    document.querySelector('#callModeDialog').showModal();
+    document.addEventListener('click', event => ui.handleClick(event.target));
+  });
+  const proposal = page.getByRole('region', { name: 'Proposed phase change' });
+  await proposal.getByRole('button', { name: 'Confirm phase change', exact: true }).waitFor();
+  assert.equal(await proposal.getByText('Proposed phase: legal', { exact: true }).isVisible(), true);
+  assert.deepEqual(await page.evaluate(() => window.phaseDecisions), []);
+  await mkdir('out/test-artifacts/call-phase', { recursive: true });
+  await proposal.locator('..').screenshot({ path: `out/test-artifacts/call-phase/${width}-pending.png` });
+  const button = width === 390 ? 'Confirm phase change' : 'Skip phase change';
+  await proposal.getByRole('button', { name: button, exact: true }).click();
+  await proposal.getByText(width === 390 ? 'confirmed' : 'skipped', { exact: true }).waitFor();
+  const decisions = await page.evaluate(() => window.phaseDecisions);
+  assert.deepEqual(decisions.map(c => [c.proposal_id, c.accept]), [['phase-candidate', width === 390]]);
+  assert.equal(await proposal.getByRole('button').count(), 0);
+  assert.equal(await page.getByText('Lease terms agreed.', { exact: true }).isVisible(), true);
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
 });
