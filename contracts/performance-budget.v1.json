@@ -26,7 +26,10 @@
     "lcpMs": "max(50% of baseline, 750ms)",
     "interactionMs": "max(100% of baseline, 150ms)",
     "jsBytes": "10%",
-    "note": "Lab regression guard, not field Core Web Vitals. Timing budgets retain current slow screens; no performance fix is claimed."
+    "note": "Lab regression guard, not field Core Web Vitals. Timing budgets retain current slow screens; no performance fix is claimed.",
+    "usefulMs": "max(50% of baseline, 750ms)",
+    "requestCount": "No increase above the maximum measured count",
+    "criticalBytes": "10%"
   },
   "screens": {
     "home": {
@@ -112,12 +115,114 @@
         "baseline": 80,
         "limit": 230
       }
-    }
-  },
-  "bundle": {
-    "jsBytes": {
-      "baseline": 4623471,
-      "limit": 5085819
+    },
+    "task-agenda": {
+      "lcpMs": {
+        "baseline": 1632,
+        "limit": 2448
+      },
+      "usefulMs": {
+        "baseline": 5742,
+        "limit": 8613
+      },
+      "requestCount": {
+        "baseline": 66,
+        "limit": 66
+      },
+      "criticalBytes": {
+        "baseline": 847303,
+        "limit": 932034
+      }
+    },
+    "task-leads": {
+      "lcpMs": {
+        "baseline": 1624,
+        "limit": 2436
+      },
+      "usefulMs": {
+        "baseline": 7556,
+        "limit": 11334
+      },
+      "requestCount": {
+        "baseline": 39,
+        "limit": 39
+      },
+      "criticalBytes": {
+        "baseline": 1295580,
+        "limit": 1425138
+      }
+    },
+    "task-deal-link": {
+      "lcpMs": {
+        "baseline": 5352,
+        "limit": 8028
+      },
+      "usefulMs": {
+        "baseline": 5457,
+        "limit": 8186
+      },
+      "requestCount": {
+        "baseline": 19,
+        "limit": 19
+      },
+      "criticalBytes": {
+        "baseline": 1034940,
+        "limit": 1138434
+      }
+    },
+    "task-deal-draft": {
+      "lcpMs": {
+        "baseline": 5268,
+        "limit": 7902
+      },
+      "usefulMs": {
+        "baseline": 6018,
+        "limit": 9027
+      },
+      "requestCount": {
+        "baseline": 24,
+        "limit": 24
+      },
+      "criticalBytes": {
+        "baseline": 1034940,
+        "limit": 1138434
+      }
+    },
+    "task-tour-library": {
+      "lcpMs": {
+        "baseline": 1580,
+        "limit": 2370
+      },
+      "usefulMs": {
+        "baseline": 3881,
+        "limit": 5822
+      },
+      "requestCount": {
+        "baseline": 18,
+        "limit": 18
+      },
+      "criticalBytes": {
+        "baseline": 736330,
+        "limit": 809964
+      }
+    },
+    "task-tour-offline": {
+      "lcpMs": {
+        "baseline": 492,
+        "limit": 1242
+      },
+      "usefulMs": {
+        "baseline": 593,
+        "limit": 1343
+      },
+      "requestCount": {
+        "baseline": 17,
+        "limit": 17
+      },
+      "criticalBytes": {
+        "baseline": 1519912,
+        "limit": 1671904
+      }
     }
   },
   "metricBaselines": {
@@ -164,5 +269,37 @@
         }
       }
     }
+  },
+  "taskBaseline": {
+    "requestCountCorrection": {
+      "screen": "task-agenda",
+      "previousBaseline": 64,
+      "baseline": 66,
+      "recorderCommit": "0367bfd1a4bcc6c246ef8177ad7800563caed829",
+      "reason": "The original recorder omitted getLeadBoard and readLeaseRadar assigned during home boot. Correct the existing baseline by these two reads. Three cold phone-profile samples each recorded 66 reads, including one call to each omitted method. No application work or other budget changed."
+    },
+    "measuredAt": "2026-10-25T15:57:35.646Z",
+    "sourceCommit": "cb741517b409675a7dedcd69c3a2947dbab8e2e1",
+    "prHeadCommit": "329f6db6c36de7f33af7b5330351311aae6b4038",
+    "buildDigest": "889e886e6d042385a29a46f175e83466f516e47cd2c4f93e56d1274b28c93415",
+    "browserVersion": "153.0.8010.12",
+    "nodeVersion": "v22.23.4",
+    "platform": "linux",
+    "measurement": {
+      "usefulMs": "Navigation start through verified useful task outcome, including scripted actions. Offline measures the same-tab reload after online preparation.",
+      "requestCount": "API, session, MCP and change-feed requests plus in-memory fixture public client calls through the useful outcome. Includes offline preparation. Maximum across cold samples.",
+      "criticalBytes": "Successful same-origin decoded response body bytes through the useful outcome, including offline shell preparation. Not compressed wire bytes. Maximum across cold samples.",
+      "policy": "Task scenarios block non-loopback resources and use synthetic adapters only. Each sample uses a cold context. Service workers are enabled only for saved-tour offline.",
+      "scenarios": {
+        "task-agenda": "40 active synthetic deals; detail reads delayed 75ms",
+        "task-leads": "375 synthetic leads; board and detail reads delayed 75ms; intercepted telephone link and persisted pageshow",
+        "task-deal-link": "exact fixture deal URL; detail reads delayed 75ms",
+        "task-deal-draft": "fixture deal; unsent draft across browser Back and reopen; detail reads delayed 75ms",
+        "task-tour-library": "40 synthetic saved tours; client directory delayed 250ms",
+        "task-tour-offline": "saved same-tab itinerary; service worker enabled; HTTP cache cleared; offline reload"
+      }
+    },
+    "run": "https://github.com/jbookout/doctorcre-app/actions/runs/40207770313",
+    "reason": "Initial baselines for the six new tasks use the required Linux gate environment. The same application head passes the Mac guard; platform timing changes which shared-shell startup reads finish before the useful outcome. All preexisting budgets remain unchanged. No performance repair or speedup is claimed."
   }
 }

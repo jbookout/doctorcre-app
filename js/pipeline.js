@@ -29,11 +29,12 @@ import {
 import {
   CLOSED_SLUG, COLUMNS, OPEN_COLUMNS, COMPLETION_CAPTIONS, closedColumnCaption, columnBySlug, columnByValue,
   columnLabel, completionPlan, contextDrawerSections, groupByColumn, keyboardTarget,
-  loadDealContext, moveIntent, moveSummary, moveTitle, noteText, dealName, presenceChip,
+  loadDealContext, moveIntent, moveSummary, moveTitle, noteText, dealName,
 } from './pipeline-model.js';
 import { isClosedDeal, localDeals, needsAttention } from './deal-review-model.js';
 import { lostDeals, closedDeals, urgencyOrder, concise, automaticMove, PHASE_TRIGGERS } from './local-deals-model.js';
 import { renderDealTimeline, renderDealUpdates } from './deal-timeline.js';
+import { renderDealChecklist } from './deal-checklist.js';
 import { uuidv4 } from './uuid.js';
 import { mountVisibilityPoll } from './visibility-poll.mjs';
 
@@ -94,10 +95,6 @@ function say(text) {
 const dateWords = (value) => (value ? formatCalendarDate(value) || value : 'no date recorded');
 
 
-function autoHtml(deal) {
-  const move = automaticMove(deal);
-  return move ? `<div class="auto-move"><span>${esc(move.text.slice(0, move.text.lastIndexOf(' ')))}</span> <time>${esc(move.text.slice(move.text.lastIndexOf(' ') + 1))}</time></div>` : '';
-}
 const dealTitle = (deal) => dealName(deal.name);
 function cardHtml(deal) {
   const attention = needsAttention(deal);
@@ -110,7 +107,7 @@ function rowHtml(deal) {
   const nextStep = noteText(deal.next_step);
   return `<article class="kanban-card deal-row" data-id="${esc(deal.id)}" tabindex="0" data-attention="${needsAttention(deal)}">
     <h4><button class="card-open" type="button" data-open="${esc(deal.id)}">${esc(dealTitle(deal))}</button></h4><span class="deal-stage">${esc(columnLabel(deal.phase))}</span>
-    ${nextStep.trim() ? `<p class="next-line" title="${esc(nextStep)}">${esc(nextStep)}</p>` : ''}<span class="owner">${esc(actorName(deal.owner))}</span></article>`;
+    ${nextStep.trim() ? `<p class="next-line" title="${esc(nextStep)}">${esc(nextStep)}</p>` : '<p class="next-line">Next step missing</p>'}<span class="owner">${esc(actorName(deal.owner))}</span></article>`;
 }
 function parkedHtml(deal) {
   return `<article class="kanban-card parked-card" data-id="${esc(deal.id)}" tabindex="0"><h4>${esc(dealTitle(deal))}</h4><p class="next-line">${esc(deal.parking_note || deal.parking_reason?.replaceAll('_',' ') || 'Parked')}</p>${renderDealVendors(deal.vendors)}<button class="btn btn-quiet" type="button" data-revive="${esc(deal.id)}">Revive</button></article>`;
@@ -201,8 +198,6 @@ function renderBoardMessage(status = state.boardSync?.status()) {
 
 function renderBoard() {
   const board = $('kanban');
-  // Fresh snapshots still enter state; dragend or the press's release paints
-  // them, so a refresh never detaches a card under a press or drag.
   if (!board) return;
   board.hidden = ['closed','lost'].includes(state.view);
   $('boardLive').hidden = ['closed','lost'].includes(state.view);
@@ -311,8 +306,6 @@ function renderReceipts() {
 
 function noteCellBase(cell, event) {
   if (!event?.id) return;
-  // Identity and time only. A feed event carries values too, and none of them
-  // belong in this map: this is a base, not a value.
   const seen = { id: event.id, recorded_at: event.recorded_at ?? null };
   state.fieldBase.set(cell, nextCellBase(state.fieldBase.get(cell) || null, seen));
 }
@@ -338,9 +331,6 @@ function applyBoardSnapshot(board) {
   state.lostDeals = Array.isArray(board.lost_deals) ? board.lost_deals : null;
   state.closedDeals = Array.isArray(board.closed_deals) ? board.closed_deals : null;
   state.deals = new Map((board.deals || []).map((deal) => [deal.id, deal]));
-  // The base for each editable cell, from the same read as the values, through
-  // the forward-only rule — a read already open when a write was confirmed
-  // carries an OLDER base and must not walk this cell backwards.
   for (const deal of state.deals.values()) {
     for (const [field, seen] of Object.entries(deal.field_base || {})) {
       noteCellBase(cellKey(deal.id, field), seen);
@@ -384,8 +374,6 @@ async function pollOnce(initial = false) {
   const batch = result.events || [];
   state.feed = observeChangeBatch(state.feed, batch);
   for (const event of batch) {
-    // NO VALUE IS TAKEN FROM AN EVENT. What an event does here is name the base
-    // for the next write to that cell, and — below — ask for a fresh snapshot.
     if (event.field) noteCellBase(cellKey(event.subject_id, event.field), event);
     if (!initial && state.feed.caught_up && event.actor !== state.selfActor && event.field === 'phase') {
       const deal = state.deals.get(event.subject_id);
@@ -441,7 +429,6 @@ const FOLLOW_UP_SENDERS = {
   'add-critical-date': (request) => state.client.addCriticalDate(request),
   'update-deal': (request) => state.client.updateDeal(request),
 };
-const nextStepKey = deal => `next-step:${deal}`;
 const newItemKey = deal => `new-item:${deal}`;
 
 async function runOutcomeWrite(operationKey, step, intent) {
@@ -488,34 +475,11 @@ async function runFollowUp(operationKey, step) {
   if (step.verb === 'record-deal-item') operationKey = newItemKey(step.args.deal);
   const isUpdate = step.verb === 'add-deal-note' && operationKey.startsWith('deal-update:');
   if (isUpdate && operationKey !== updateKey(step.args.deal)) return {status:'blocked'};
-  // Every next-step control shares one operation for the deal, including moves.
-  if (step.verb === 'set-next-step') operationKey = nextStepKey(step.args.deal);
 
   const send = FOLLOW_UP_SENDERS[step.verb];
   if (!send) return null;
   const pending = pendingCommand(commandState, operationKey);
-  let args = step.args;
-  if (step.verb === 'set-next-step') {
-    if (pending) args = { ...args, base_version: pending.request.base_version };
-    else {
-      operations.set(operationKey, { kind: 'follow-up-read', step, summary: step.summary });
-      let current;
-      try { current = (await state.client.getDeal(args.deal))?.deal; }
-      catch { /* A missing current version cannot authorize a replacement. */ }
-      if (current?.id !== args.deal || !Number.isSafeInteger(current.version) || current.version < 1) {
-        dock.record(operationKey, { summary: step.summary, status: 'failed', retry: true, undo: false,
-          reason: 'The move was recorded, but the next step was not sent. Retry reading the current record before saving it.' });
-        return null;
-      }
-      const reviewed = step.reviewed || state.deals.get(args.deal);
-      if (!reviewed || noteText(reviewed.next_step) !== noteText(current.next_step) || (reviewed.next_date || null) !== (current.next_date || null)) {
-        dock.record(operationKey, { summary: step.summary, status: 'conflict', retry: false, undo: false,
-          reason: `The next step changed. Current: ${noteText(current.next_step) || 'None'} (${current.next_date || 'no date'}). Review the current record before replacing it.` });
-        return null;
-      }
-      args = { ...args, base_version: current.version };
-    }
-  }
+  const args = step.args;
   if (!pending) operations.set(operationKey, { kind: 'command', verb: step.verb, args, send, summary: step.summary });
   dock.record(operationKey, { summary: step.summary, status: 'sending', undo: false });
   const updateActor = isUpdate ? state.selfActor : null;
@@ -549,10 +513,6 @@ async function runMove(intent, form) {
   if (plan.errors.length) return { ok: false, errors: plan.errors };
 
   const [phaseStep, ...followUps] = plan.steps;
-  for (const step of followUps) if (step.verb === 'set-next-step') {
-    const reviewed = state.deals.get(intent.deal);
-    step.reviewed = { next_step: reviewed?.next_step, next_date: reviewed?.next_date };
-  }
   const cell = cellKey(intent.deal, 'phase');
   if (!pendingCommand(state.fieldWrites, cell)) {
     operations.set(cell, { kind: 'field', deal: intent.deal, value: phaseStep.args.value,
@@ -561,9 +521,6 @@ async function runMove(intent, form) {
   dock.record(cell, { summary: moveSummary(intent), status: 'sending', undo: false });
   renderBoard();
 
-  // Only the two optional partner fields travel as extras. `deal`, `field` and
-  // `value` are the kernel's own, and a retry replays the retained request, so
-  // these ride on the first attempt or on none.
   const phaseExtra = {};
   if (phaseStep.args.change_reason) phaseExtra.change_reason = phaseStep.args.change_reason;
   if (phaseStep.args.human_quote) phaseExtra.human_quote = phaseStep.args.human_quote;
@@ -587,9 +544,6 @@ async function runMove(intent, form) {
     return { ok: false, errors: [] };
   }
   if (result.superseded) {
-    // The server accepted it and this board has since learned something newer
-    // about the same cell. The value is NOT written to the row: the read
-    // decides what it holds.
     state.boardSync.requestRefresh('after-write');
     renderBoard();
     const message = fieldWriteMessage(result, `${fieldLabel('phase')} on ${intent.name}`);
@@ -672,9 +626,6 @@ function openCompletion(intent) {
   const outcomeField = $('completionOutcomeField');
   if (outcomeField) outcomeField.hidden = !isClosed;
   for (const radio of outcomeRadios()) radio.checked = false;
-  // Today, as the calendar picker's own value. There is no typed-date box: the
-  // ruling is a picker or nothing, and a default of today is what a person
-  // closing a record almost always means.
   const closedOn = $('completionClosedOn');
   if (closedOn) closedOn.value = isClosed ? todayIso() : '';
   const wonValue = $('completionWonValue');
@@ -797,11 +748,14 @@ let contextReadSequence = 0;
 let panelRead = null;
 let updateDraft = null;
 const updateDrafts = new Map();
+const requirementDrafts = new Map();
+const requirementFields = [['use','Use'],['size','Size'],['location','Location'],['timing','Timing'],['budget','Budget'],['requirements','Approved requirements']];
 let draftActor = null;
 function bindDraftActor(actor) {
   if (draftActor === actor) return;
   draftActor = actor;
   updateDrafts.clear();
+  requirementDrafts.clear();
   updateDraft = null;
   for (const key of Object.keys(commandState)) {
     if (key.startsWith('deal-update:')) dock.forget(key);
@@ -831,6 +785,8 @@ function syncUpdateForm() {
   if (!form || !state.panelDeal) return;
   const pending = pendingCommand(commandState, updateKey(state.panelDeal));
   bindDraftActor(state.selfActor);
+  const requirementFieldset = $('requirementEmailForm')?.querySelector('fieldset');
+  if (requirementFieldset) requirementFieldset.disabled = !state.selfActor;
   if (!updateDraft || updateDraft.id !== state.panelDeal) {
     updateDraft = updateDrafts.get(state.panelDeal) || {id:state.panelDeal,text:''};
     updateDrafts.set(state.panelDeal, updateDraft);
@@ -871,6 +827,40 @@ async function saveUpdate(id) {
     $('detailUpdateStatus').textContent = result.status === 'ok' ? 'Update added' : result.message || 'Update not confirmed';
   }
 }
+function requirementEmailHtml(deal) {
+  const draft = requirementDrafts.get(deal.id) || {};
+  return `<details id="requirementEmail"><summary>Draft requirement email</summary>
+    <p>Unsent draft · kept while this page is open.</p>
+    <p>Enter only requirements approved for sharing. Client details are never added automatically.</p>
+    <form id="requirementEmailForm" class="deal-update-form"><fieldset class="add-deal-fields"${state.selfActor ? '' : ' disabled'}>
+      ${requirementFields.map(([name,label]) => `<div class="field"><label for="requirement-${name}">${label}</label>${name === 'requirements' ? `<textarea id="requirement-${name}" name="${name}" rows="3" maxlength="2000">${esc(draft[name] || '')}</textarea>` : `<input id="requirement-${name}" name="${name}" maxlength="2000" value="${esc(draft[name] || '')}"${['use','location'].includes(name) ? ' required' : ''}>`}</div>`).join('')}
+      <button class="btn" type="button" data-generate-requirement>Generate email preview</button>
+      <div class="field"><label for="requirementSubject">Email subject</label><input id="requirementSubject" name="subject" maxlength="500" value="${esc(draft.subject || '')}"></div>
+      <div class="field"><label for="requirementMessage">Email message</label><textarea id="requirementMessage" name="message" rows="10" maxlength="15000">${esc(draft.message || '')}</textarea></div>
+      <button class="btn" type="button" data-copy-requirement>Copy email draft</button>
+      <button class="btn btn-quiet" type="button" data-discard-requirement>Discard email draft</button>
+      <p id="requirementEmailStatus" role="status">Preview and copy only. Nothing is sent.</p>
+    </fieldset></form></details>`;
+}
+async function copyRequirementDraft() {
+  const form = $('requirementEmailForm');
+  const status = $('requirementEmailStatus');
+  const actor = state.selfActor;
+  const id = state.panelDeal;
+  const draft = requirementDrafts.get(id);
+  if (!form || !actor || draftActor !== actor) return;
+  const subject = form.elements.subject.value.trim();
+  const message = form.elements.message.value.trim();
+  if (!subject || !message) { status.textContent = 'Generate or enter a subject and message first.'; return; }
+  try {
+    await navigator.clipboard.writeText(`Subject: ${subject}\n\n${message}`);
+    if (form.isConnected && state.selfActor === actor && draftActor === actor && requirementDrafts.get(id) === draft) status.textContent = 'Email draft copied. Nothing sent.';
+  } catch {
+    if (!form.isConnected || state.selfActor !== actor || draftActor !== actor || requirementDrafts.get(id) !== draft) return;
+    status.textContent = 'Copy unavailable. Select the subject and message to copy manually.';
+    form.elements.message.focus(); form.elements.message.select();
+  }
+}
 function detailHtml(detail) {
   const d = detail.deal;
   const prospect = state.deals.get(d.id);
@@ -882,7 +872,9 @@ function detailHtml(detail) {
       <div class="deal-alert">${renderDealItems({...d,items:detail.items || d.items},{today:todayIso(),buttons:true})}</div>
       <dl class="deal-snapshot-facts">${d.workspace_kind === 'national_account' || d.account_client_id ? `<div><dt>Market agent</dt><dd>${esc(d.market_agent || 'Unassigned')}</dd></div>` : ''}${d.client_name ? `<div><dt>Client</dt><dd>${esc(d.client_name)}</dd></div>` : ''}${d.type ? `<div><dt>Type</dt><dd>${esc(d.type)}</dd></div>` : ''}${d.outcome ? `<div><dt>Outcome</dt><dd>${esc(d.outcome[0].toUpperCase()+d.outcome.slice(1))}</dd></div>` : ''}</dl>
     </section>
+    <div data-detail-read="checklist">${renderDealChecklist(detail.checklist)}</div>
     <form id="detailUpdateForm" class="deal-update-form"><label for="dealUpdate">Update</label><textarea id="dealUpdate" name="text" rows="2" maxlength="10000" required></textarea><button class="btn btn-primary" type="submit">Add update</button><button class="btn btn-quiet" type="button" data-discard-update>Discard draft</button><p id="detailUpdateStatus" role="status"></p></form>
+    ${requirementEmailHtml(d)}
     <div data-detail-read="vendors">${renderDealVendors(d.vendors)}</div>
     <div data-detail-read="board-controls" data-available="${controlsAvailable}">${controlsAvailable ? `<div class="detail-actions"><div class="detail-controls"><label>Phase<select id="detailPhase">${COLUMNS.map(c => `<option value="${esc(c.slug)}"${c.value === d.phase ? ' selected' : ''}>${esc(c.label)}</option>`).join('')}</select></label><label>Owner<select id="detailOwner"><option value="">Unassigned</option>${['joe','dell'].map(owner => `<option value="${owner}"${owner === d.owner ? ' selected' : ''}>${actorName(owner)}</option>`).join('')}</select></label></div><div data-detail-read="parking" data-parked="${parked}">${parked ? `<p>${esc(concise(d.parking_note) || 'Parked')}</p><button type="button" class="btn" data-revive="${esc(d.id)}">Revive</button>` : `<details class="park-options"><summary class="park-control">Park</summary><form id="detailParkForm"><label>Park reason<input name="reason" maxlength="500" required></label><button class="btn park-control" type="submit">Park deal</button></form></details>`}</div></div>` : ''}</div>
     <div data-detail-read="prospect">${controlsAvailable && prospect?.client_status === 'prospect' ? `<form id="detailInactiveForm"><p>Inactive prospects return to Leads.</p><label>Reason<input name="reason" maxlength="1000" required value="${esc(pendingProspect?.request.reason || '')}"${pendingProspect ? ' readonly' : ''}></label><button class="btn" type="submit">${pendingProspect ? 'Check outcome' : 'Mark inactive'}</button><p role="status" data-prospect-status>${pendingProspect ? 'Confirmation pending for this prospect. Check outcome to retry the same request.' : ''}</p></form>` : ''}</div>
@@ -915,7 +907,6 @@ async function readPanel(id) {
     pageDocContext?.finish(contextRead, detail);
     selectDocRecord('deal', id);
     updateDetailTimestamp();
-    // A poll preserves drafts, expanded entries and the dialog scroll position.
     if (!$('panelBody').querySelector('.deal-opening-snapshot')) paintPanel(detail);
     else {
       if ($('detailPhase') && document.activeElement !== $('detailPhase')) $('detailPhase').value = columnByValue(detail.deal.phase)?.slug || '';
@@ -933,12 +924,17 @@ async function readPanel(id) {
           const expanded = new Set([...current.querySelectorAll('.deal-note details[open]')].map(n => n.closest('.deal-note').dataset.id));
           const focused = current.contains(document.activeElement) ? document.activeElement : null;
           const focusIdentity = focused?.dataset.detailFocus;
-          const wasOpen = current.open;
+          const wasOpen = current.open || current.querySelector('.deal-checklist')?.open;
+          const checklistOpens = new Set([...current.querySelectorAll('[data-checklist-item] details[open]')].map(n => n.closest('[data-checklist-item]').dataset.checklistItem));
           const historyOpen = current.querySelector('.updates-history')?.open;
           const oldScroll = current.scrollLeft;
           current.replaceWith(fresh);
           fresh.scrollLeft = oldScroll;
-          if (wasOpen) fresh.open = true;
+          if (wasOpen) {
+            const disclosure = fresh.querySelector('.deal-checklist') || fresh;
+            disclosure.open = true;
+          }
+          fresh.querySelectorAll('[data-checklist-item]').forEach(n => { if (checklistOpens.has(n.dataset.checklistItem)) n.querySelector('details').open = true; });
           if (historyOpen && fresh.querySelector('.updates-history')) fresh.querySelector('.updates-history').open = true;
           fresh.querySelectorAll('.deal-note').forEach(n => { if (expanded.has(n.dataset.id)) n.querySelector('details').open = true; });
           if (focusIdentity) [...fresh.querySelectorAll('[data-detail-focus]')].find(n => n.dataset.detailFocus === focusIdentity)?.focus({preventScroll:true});
@@ -1117,7 +1113,6 @@ function wireBoard() {
   const release = () => {
     if (board.dataset.pressed !== 'true') return;
     delete board.dataset.pressed;
-    // After the press's own click has been dispatched.
     if (state.paintDeferred) setTimeout(renderBoard);
   };
   addEventListener('pointerup', release, true);
@@ -1157,8 +1152,6 @@ function wireBoard() {
   board.addEventListener('keydown', (event) => {
     const card = event.target.closest('.kanban-card');
     if (!card) return;
-    // Buttons own their Enter/Space action; the card's lift keys apply only to
-    // the card itself, even while a keyboard move is already lifted.
     if (event.target.closest('button')) return;
     if (state.view === 'list' || card.classList.contains('parked-card')) { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); openPanel(card.dataset.id, card); } return; }
     const id = card.dataset.id;
@@ -1167,7 +1160,6 @@ function wireBoard() {
     const here = columnByValue(deal.phase);
 
     if ((event.key === 'Enter' || event.key === ' ') && state.lifted !== id) {
-      // The card body lifts; nested controls already handled their own keys.
       event.preventDefault();
       state.lifted = id;
       state.target = here ? here.slug : COLUMNS[0].slug;
@@ -1321,9 +1313,32 @@ function wire() {
   $('panelBody').addEventListener('click', e => {
     if (e.target.closest('[data-discard-update]') && !pendingCommand(commandState, updateKey(state.panelDeal))) { discardUpdate(state.panelDeal); syncUpdateForm(); }
     if (e.target.closest('[data-refresh-detail]')) refreshPanel();
+    if (e.target.closest('[data-generate-requirement]') && state.selfActor && draftActor === state.selfActor) {
+      const form = $('requirementEmailForm');
+      if (!form.reportValidity()) return;
+      const id = state.panelDeal;
+      const draft = Object.assign(requirementDrafts.get(id) || {}, Object.fromEntries(new FormData(form)));
+      const subject = `Space requirement · ${draft.use.trim()} · ${draft.location.trim()}`.slice(0, form.elements.subject.maxLength);
+      const message = `Hello,\n\nWe are looking for space with the following requirements:\n\n${requirementFields.map(([name,label]) => `${label}: ${draft[name].trim() || 'Not specified'}`).join('\n')}\n\nPlease share matching spaces and availability. Thank you.`;
+      Object.assign(draft, {subject,message}); requirementDrafts.set(id,draft);
+      form.elements.subject.value = subject;
+      form.elements.message.value = message;
+      $('requirementEmailStatus').textContent = 'Email preview generated. Review and edit before copying.';
+    }
+    if (e.target.closest('[data-copy-requirement]')) void copyRequirementDraft();
+    if (e.target.closest('[data-discard-requirement]')) {
+      requirementDrafts.delete(state.panelDeal);
+      for (const input of $('requirementEmailForm').querySelectorAll('input,textarea')) input.value = '';
+      $('requirementEmailStatus').textContent = 'Email draft discarded.';
+    }
 
   });
   $('panelBody').addEventListener('input', e => {
+    if (e.target.closest('#requirementEmailForm') && state.selfActor && draftActor === state.selfActor) {
+      const draft = requirementDrafts.get(state.panelDeal) || {};
+      Object.assign(draft, Object.fromEntries(new FormData($('requirementEmailForm'))));
+      requirementDrafts.set(state.panelDeal, draft);
+    }
     if (e.target.id === 'dealUpdate' && updateDraft) { updateDraft.text = e.target.value; syncUpdateForm(); }
   });
   $('panelBody').addEventListener('change', async e => {
@@ -1393,8 +1408,6 @@ async function boot() {
   state.boardSync = createBoardSync({
     readBoard: () => state.client.getBoard({ workspace: 'team' }),
     readChanges: (cursor) => state.client.getChanges(cursor),
-    // Only a snapshot that is still current reaches this callback, and it
-    // already carries any value a confirmed local write is holding.
     applyBoard: (board) => { applyBoardSnapshot(board); },
     onStatus: renderStatus,
   });

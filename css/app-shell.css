@@ -419,3 +419,19 @@ body.has-app-layout:has(#callModeAvailability:not([hidden])) { --layout-bottom: 
 }
 :root[data-motion="reduced"] { scroll-behavior: auto; }
 :root[data-motion="reduced"] *, :root[data-motion="reduced"] *::before, :root[data-motion="reduced"] *::after { animation: none !important; transition: none !important; }
+
+.app-walkthrough { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; position: fixed; z-index: 1300; right: var(--space-4); width: min(360px, calc(100vw - 32px)); max-height: calc(100dvh - 160px); overflow-y: auto; box-sizing: border-box; padding: var(--space-4); border: var(--hairline-width) solid var(--hairline-strong); border-radius: var(--radius-3); background: var(--surface-2); color: var(--fg); box-shadow: var(--shadow-overlay); font-family: var(--font-text); }
+.app-walkthrough[data-position=top] { top: var(--space-4); bottom: auto; }
+.app-walkthrough[data-compact] { max-height: min(200px, calc(100dvh - 160px)); }
+.app-walkthrough[data-position=bottom] { top: auto; bottom: calc(var(--layout-bottom) + var(--space-4)); }
+.app-walkthrough > div { min-height: 0; overflow-y: auto; }
+.app-walkthrough header, .app-walkthrough footer { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); }
+.app-walkthrough h2 { font-size: var(--font-size-2); margin: 0; }
+.app-walkthrough h3 { font-size: var(--font-size-3); margin: var(--space-2) 0; }
+.app-walkthrough p { line-height: 1.5; }
+.app-walkthrough [data-progress] { color: var(--fg-muted); font-size: var(--font-size-1); margin-bottom: 0; }
+.app-walkthrough button { min-width: 44px; min-height: 44px; padding: var(--space-2) var(--space-3); border: var(--hairline-width) solid var(--hairline-strong); border-radius: var(--radius-2); color: var(--fg); background: var(--surface-3); cursor: pointer; font: inherit; }
+.app-walkthrough button:disabled { opacity: .5; cursor: default; }
+.app-walkthrough button:focus-visible { outline: var(--focus-width) solid var(--focus-ring); outline-offset: 2px; }
+.app-walkthrough-target, #docOpen.app-walkthrough-target { box-sizing: border-box; outline: 3px solid var(--focus-ring); outline-offset: -3px; animation: walkthrough-highlight 450ms ease-out; }
+@keyframes walkthrough-highlight { from { outline-color: transparent; } }

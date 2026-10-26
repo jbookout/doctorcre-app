@@ -10,7 +10,7 @@ export function renderDealAlert(deal, { today = '', heading = 'h3', buttons = fa
 }
 export function renderDealItems(deal, { today = '', buttons = false } = {}) {
   const items = openDealItems(deal);
-  return items.length ? `<p class="deal-items-label">Still needed:</p><ol class="deal-items">${items.map(item => `<li data-overdue="${Boolean(item.due_on && item.due_on < today)}">${buttons ? `<button type="button" data-deal-item="${esc(item.id)}" data-item-deal="${esc(deal.id)}">${esc(item.title)}</button>` : `<a data-home-key="deal:${esc(deal.id)}:${esc(item.id)}" href="${esc(dealItemHref(deal.id, item.id))}">${esc(item.title)}</a>`}${item.due_on ? `<time class="deal-item-due" datetime="${esc(item.due_on)}">${esc(item.due_on)}</time>` : ''}</li>`).join('')}</ol>` : '';
+  return items.length ? `<p class="deal-items-label">Still needed:</p><ol class="deal-items">${items.map(item => `<li data-overdue="${Boolean(item.due_on && item.due_on < today)}">${buttons ? `<button type="button" data-deal-item="${esc(item.id)}" data-item-deal="${esc(deal.id)}">${esc(item.title)}</button>` : `<a data-home-key="deal:${esc(deal.id)}:${esc(item.id)}" href="${esc(dealItemHref(deal.id, item.id))}">${esc(item.title)}</a>`}${item.due_on ? `<time class="deal-item-due" datetime="${esc(item.due_on)}">${esc(item.due_on)}</time>` : ''}</li>`).join('')}</ol>` : '<p class="deal-items-empty">No action items recorded</p>';
 }
 
 export function renderDealItemDetail(item, { today = '' } = {}) {

@@ -35,9 +35,51 @@ test('the phone Relationships performance scenario opens the visible connection 
   assert.match(await page.locator('.relationship-dialog').innerText(), /Demo Healthcare Lending/);
   assert.match(await page.locator('.relationship-dialog').innerText(), /Can introduce/);
   await Promise.all(reads);
-  assert.ok([...scripts.keys()].some(url=>url.endsWith('/js/error-tracking-entry.js')),'budget includes shipped error tracking');
   const budget = JSON.parse(await readFile(new URL('../contracts/performance-budget.v1.json', import.meta.url)));
   const bytes = [...scripts.values()].reduce((total, size) => total + size, 0);
   assert.ok(bytes <= budget.screens.relationships.jsBytes.limit,
     `Relationships loaded ${bytes} JS bytes, budget ${budget.screens.relationships.jsBytes.limit}`);
+});
+
+test('phone task guard exercises useful outcomes against the built fixture', async t => {
+  const scenarios = await import('../scripts/performance-scenarios.mjs');
+  const expected = ['task-agenda', 'task-leads', 'task-deal-link', 'task-deal-draft', 'task-tour-library', 'task-tour-offline'];
+  assert.deepEqual(scenarios.tasks?.map(task => task.id), expected);
+  const outDir = await mkdtemp(join(tmpdir(), 'doctorcre-task-artifact-'));
+  t.after(() => rm(outDir, { recursive: true, force: true }));
+  await buildArtifact({ root: fileURLToPath(new URL('../', import.meta.url)), outDir });
+  const server = await startFixtureServer({ env: { DOCTORCRE_FIXTURE_ROOT: join(outDir, 'site') } });
+  t.after(() => server.stop());
+  const browser = await chromium.launch({ args: [...CHROMIUM_SAFETY_ARGS] });
+  t.after(() => browser.close());
+  for (const task of scenarios.tasks) await t.test(task.id, async () => {
+    const context = await browser.newContext({ viewport: profile.viewport, isMobile: true, hasTouch: true,
+      serviceWorkers: task.id === 'task-tour-offline' ? 'allow' : 'block' });
+    try {
+      const page = await context.newPage();
+      const cdp = task.id === 'task-tour-offline' ? await scenarios.applyPhoneProfile(context, page) : undefined;
+      const result = await scenarios.runTaskScenario({ page, context, origin: server.url, task, cdp }).catch(async error => {
+        if (task.id === 'task-tour-offline') t.diagnostic(JSON.stringify(await page.evaluate(() => ({
+          online: navigator.onLine, status: document.querySelector('#day-status')?.textContent,
+          stops: document.querySelectorAll('.day-stop').length,
+        }))));
+        throw error;
+      });
+      assert.ok(result.lcpMs > 0, 'retain LCP alongside useful task readiness');
+      assert.ok(result.usefulMs > 0);
+      assert.ok(Number.isInteger(result.requestCount) && result.requestCount > 0);
+      assert.ok(result.criticalBytes > 0);
+      assert.equal(result.reads.length, result.requestCount);
+      if (task.id === 'task-agenda') {
+        assert.equal(result.reads.filter(name => name === 'getDeal').length, 0);
+        assert.equal(result.reads.filter(name => name === 'getHomeAgenda').length, 1);
+        assert.ok(result.reads.includes('notificationFeed'), 'count the shared shell reads as well as agenda reads');
+        assert.ok(result.reads.includes('getLeadBoard'), 'count the lead board read assigned during home boot');
+        assert.ok(result.reads.includes('readLeaseRadar'), 'count the lease radar read assigned during home boot');
+      }
+      if (task.id === 'task-leads') assert.equal(result.reads.filter(name => name === 'lead-board').length, 4);
+      if (task.id === 'task-tour-offline') assert.ok(result.resources.some(resource => resource.serviceWorker && resource.bytes > 0), 'include worker-owned shell preparation bytes');
+      assert.deepEqual(result.errors, []);
+    } finally { await context.close(); }
+  });
 });

@@ -18,6 +18,7 @@
 
   <link rel="stylesheet" href="/css/workspace.css">
   <link rel="stylesheet" href="/css/home-dashboard.css">
+  <link rel="stylesheet" href="/css/call-outcomes.css">
   <link rel="stylesheet" href="/css/lease-radar.css">
   <link rel="stylesheet" href="/css/app-shell.css">
   <link rel="stylesheet" href="/css/relationship-network.css">
@@ -40,14 +41,14 @@
       </div>
     </section>
     <p id="homeNotice" class="home-notice" role="status" hidden></p>
+    <section id="homeCallOutcomes" class="home-panel call-outcomes" aria-label="Applied from the pipeline call" hidden></section>
     <section id="dealAttention" class="home-panel home-deals" aria-labelledby="dealAttentionTitle" aria-live="polite" aria-busy="true">
       <header class="home-panel-head"><div><h2 id="dealAttentionTitle">Deals</h2><p id="dealCounts" class="home-counts"><span>Active deals: <b>—</b></span> <span>In market: <b>—</b></span> <span>National accounts: <b>—</b></span></p></div><a id="homePrimaryAction" class="home-outline" href="/deals">Open deal room <span aria-hidden="true">↗</span></a></header>
       <div id="dealFlags" class="home-flags"><p class="home-empty">Updating…</p></div>
     </section>
-    <section id="homeInvoices" class="home-panel" aria-label="Invoice attention" hidden></section>
     <div class="home-grid">
       <section id="homeCalendar" class="home-panel" aria-label="Calendar" aria-busy="true"><header class="home-panel-head"><h2>Calendar &amp; tasks</h2></header><p class="home-empty" role="status">Updating calendar and tasks…</p></section>
-      <section id="homeControl" class="home-panel" aria-label="Control room" hidden></section>
+      <section id="homeInvoices" class="home-panel" aria-label="Invoice attention" hidden></section>
       <section id="homePastClients" class="home-panel" aria-label="Past clients" hidden></section>
       <section id="homeIntroductions" class="home-panel" aria-label="Suggested introductions" hidden></section>
       <section id="homeLeads" class="home-panel" aria-label="New leads" hidden></section>

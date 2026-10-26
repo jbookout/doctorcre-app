@@ -6,7 +6,7 @@ import { chromium } from './browser-harness.mjs';
 const root = new URL('../', import.meta.url);
 const now = new Date('2026-10-01T15:00:00Z');
 
-test('Home overdue count equals the local board badges for team and personal review', async t => {
+test('Home counts overdue agenda dates while board badges retain next-step attention', async t => {
   const browser = await chromium.launch(); t.after(() => browser.close());
   const page = await browser.newPage({ timezoneId: 'America/Chicago', reducedMotion: 'reduce' });
   await page.clock.install({ time: now });
@@ -44,8 +44,8 @@ test('Home overdue count equals the local board badges for team and personal rev
   const badges = await page.locator('.kanban-column .kanban-card:has([data-overdue="true"])').count();
   await page.getByRole('button', { name: 'Joe', exact: true }).click();
   const myBadges = await page.locator('.kanban-column .kanban-card:has([data-overdue="true"])').count();
-  assert.deepEqual({ home, badges, mine, myBadges }, { home: 2, badges: 2, mine: 1, myBadges: 1 });
-  assert.match(homeCounts, /Overdue local deals: 2/);
+  assert.deepEqual({ home, badges, mine, myBadges }, { home: 3, badges: 2, mine: 1, myBadges: 1 });
+  assert.match(homeCounts, /Overdue local deals: 3/);
   assert.equal(await page.locator('.kanban-column [data-overdue="true"] time').count(), 1);
   seed.deals.forEach(deal => { deal.next_date = '2026-10-20'; deal.items.forEach(item => {item.due_on = '2026-10-20';}); });
   await page.goto('http://localhost/');

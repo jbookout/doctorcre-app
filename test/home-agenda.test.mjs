@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import {createFixtureClient} from '../js/fixture-client.js';
 import {createLiveClient} from '../js/live-client.js';
-import {agendaSnapshot, readHomeDashboard} from '../js/home-dashboard-model.js';
+import {agendaSnapshot, dealSnapshot, readHomeDashboard} from '../js/home-dashboard-model.js';
 
 const fixture = async () => createFixtureClient({seedUrl: `data:application/json;base64,${Buffer.from(await readFile(new URL('../data/board-seed.json', import.meta.url))).toString('base64')}`});
 
@@ -64,6 +64,72 @@ test('Home agenda remains available to Doc through the same authorized read', as
   assert.equal(context.snapshot().records.some(row => row.id === payload.deals[0].id), true);
 });
 
+test('Today isolates dated work for the current day while All retains overdue, undated and future work', () => {
+  const board = { actor: 'joe', deals: [{ id: 'demo', name: 'Demo clinic', owner: 'joe' }] };
+  const task = (id, due_on, extra = {}) => ({ id, due_on, status: 'open', owner: 'joe', ...extra });
+  const details = new Map([['demo', { critical_dates: [
+    { id: 'date-today', due_on: '2026-10-01', status: 'open' },
+    { id: 'date-future', due_on: '2026-10-02', status: 'open' },
+  ], next_actions: [
+    task('overdue', '2026-09-30'), task('today', '2026-10-01'),
+    task('future', '2026-10-02'), task('undated', null),
+    task('held', '2026-09-29', { hold_until: '2026-10-02' }),
+    task('done', '2026-09-28', { status: 'done' }),
+    task('partner', '2026-10-01', { owner: 'dell' }),
+  ] }]]);
+  const team = agendaSnapshot(board, details, { today: '2026-10-01' });
+  assert.deepEqual(team.dueToday.map(row => row.key), ['date-today', 'task:partner', 'task:today']);
+  assert.deepEqual(team.upcoming.map(row => row.key), ['task:overdue', 'date-today', 'task:partner', 'task:today', 'task:undated', 'date-future', 'task:future']);
+  assert.deepEqual(agendaSnapshot(board, details, { scope: 'mine', today: '2026-10-01' }).dueToday.map(row => row.key), ['date-today', 'task:today']);
+});
+
+test('Overdue isolates missed dates and tasks while preserving holds, completion and ownership', () => {
+  const board = { actor: 'joe', deals: [{ id: 'demo', name: 'Demo clinic', owner: 'joe' }] };
+  const task = (id, due_on, extra = {}) => ({ id, due_on, status: 'open', owner: 'joe', ...extra });
+  const details = new Map([['demo', { critical_dates: [
+    { id: 'date-overdue', due_on: '2026-09-29', status: 'open' },
+    { id: 'date-settled', due_on: '2026-09-28', status: 'done' },
+    { id: 'date-today', due_on: '2026-10-01', status: 'open' },
+  ], next_actions: [
+    task('overdue', '2026-09-30'), task('today', '2026-10-01'),
+    task('future', '2026-10-02'), task('undated', null),
+    task('held', '2026-09-27', { hold_until: '2026-10-02' }),
+    task('resumed', '2026-09-30', { hold_until: '2026-10-01' }),
+    task('done', '2026-09-26', { status: 'done' }),
+    task('partner', '2026-09-30', { owner: 'dell' }),
+  ] }]]);
+  const team = agendaSnapshot(board, details, { today: '2026-10-01' });
+  assert.deepEqual(team.overdue.map(row => row.key), ['date-overdue', 'task:overdue', 'task:partner', 'task:resumed']);
+  assert.deepEqual(agendaSnapshot(board, details, { scope: 'mine', today: '2026-10-01' }).overdue.map(row => row.key), ['date-overdue', 'task:overdue', 'task:resumed']);
+  assert.deepEqual(agendaSnapshot(board, details, { today: '2026-09-29' }).overdue, []);
+});
+
+
+test('Home counts unique local deals using the agenda overdue membership and marks incomplete local reads unknown', () => {
+  const task = (id, due_on, extra = {}) => ({ id, due_on, status: 'open', owner: 'joe', ...extra });
+  const deals = [
+    { id: 'local', name: 'Demo overdue local', owner: 'joe', next_date: '2026-10-02' },
+    { id: 'partner', name: 'Demo partner', owner: 'dell' },
+    { id: 'national', owner: 'joe', account_client_id: 'demo-account' },
+    { id: 'held', owner: 'joe', next_step: 'Stale next step', next_date: '2026-08-01' },
+    { id: 'parked', owner: 'joe', operating_state: 'parked' },
+    { id: 'closed', owner: 'joe', phase: 'Closed' },
+  ];
+  const board = { actor: 'joe', deals };
+  const details = new Map(deals.map(deal => [deal.id, { critical_dates: [], next_actions: [task(`${deal.id}-old`, '2026-08-20')] }]));
+  details.get('local').next_actions.push(task('another-old', '2026-09-16'), task('done', '2026-08-01', { status: 'done' }));
+  details.get('held').next_actions = [task('held-old', '2026-08-01', { hold_until: '2026-10-02' }), task('today', '2026-10-01'), task('done-old', '2026-08-01', { status: 'done' }), task('undated', null)];
+  const summary = scope => dealSnapshot(board, scope, agendaSnapshot(board, details, { scope, today: '2026-10-01' }));
+  assert.deepEqual(summary('team').flagged.map(row => row.id), ['local', 'partner']);
+  assert.deepEqual(summary('mine').flagged.map(row => row.id), ['local']);
+  details.get('local').next_actions = [task('other-owner', '2026-08-20', { owner: 'dell' })];
+  assert.deepEqual(summary('mine').flagged, [], 'stale overdue next_date does not override completed, held, undated or today agenda work');
+  details.delete('national');
+  assert.deepEqual(summary('team').flagged.map(row => row.id), ['local', 'partner']);
+  details.delete('local');
+  assert.equal(summary('team').flagged, null);
+  assert.equal(summary('team').active, 4);
+});
 
 test('the Home contract carries the stored checklist shape used by deal alerts', async () => {
   const contract = JSON.parse(await readFile(new URL('../contracts/carr-interface.v1.json', import.meta.url), 'utf8'));
@@ -74,5 +140,5 @@ test('the Home contract carries the stored checklist shape used by deal alerts',
   assert.deepEqual(home.response.item_keys, items.item_keys);
   assert.deepEqual(home.response.bullet_keys, items.bullet_keys);
   assert.deepEqual(home.response.bullet_kinds, items.bullet_kinds);
-  assert.equal(home.producer.source_commit, contract.producer.source_commit);
+  assert.equal(home.producer.source_commit, 'b6210ca0a93e4a913b7e69b9669b74fdc9aa6337');
 });

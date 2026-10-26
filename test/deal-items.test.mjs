@@ -62,3 +62,9 @@ test('the instruction input accepts only the length supported by the record verb
   const doc = new JSDOM(renderDealItemDetail(deal.items[0])).window.document;
   assert.equal(doc.querySelector('textarea').maxLength, contract.mcp_write_contracts['instruct-deal-item'].inputSchema.properties.text.maxLength);
 });
+
+test('an empty structured item list states the gap without restoring legacy prose', () => {
+  const doc = new JSDOM(renderDealAlert({ ...deal, items: [] })).window.document;
+  assert.match(doc.body.textContent, /No action items recorded/);
+  assert.doesNotMatch(doc.body.textContent, /legacy paragraph/);
+});

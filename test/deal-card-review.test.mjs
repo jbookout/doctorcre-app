@@ -187,7 +187,7 @@ test('desktop checklist titles fit without exposing the legacy next-step paragra
 test('empty legacy next steps preserve existing structured items',async t=>{
  const {page}=await open(t,390,{showDetail:false,nextStep:' \t\n '});
  const card=page.locator('.kanban-column [data-id="d14"]');
- assert.equal(await card.locator('.next-line').count(),0);
+ assert.equal(await card.getByText('Next step missing',{exact:true}).count(),0);
  await card.locator('.card-open').click();
  await page.locator('#detailUpdateForm').waitFor();
  assert.equal(await page.getByLabel('Update',{exact:true}).inputValue(),'');

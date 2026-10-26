@@ -187,3 +187,8 @@
  .dealroom-heading { gap:var(--space-2); }
  .app-section-tabs { gap:var(--space-3); }
 }
+
+
+#requirementEmail > summary { cursor:pointer; min-height:var(--touch); }
+#requirementEmailForm fieldset { display:grid; gap:var(--space-3); }
+#requirementEmailForm input { width:100%; box-sizing:border-box; }
