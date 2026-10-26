@@ -1008,7 +1008,7 @@ import { cheatSheetText, factSummary, formatTourDate, tourDisplayName, tourMetaL
   async function action(work) { try { await work(); } catch { status("The request could not be completed."); } }
   // Versioned route and cheat-sheet writes ignore a second click while a write to the same record is in flight.
   const writesInFlight = new Set();
-  const exclusive = (record, work) => () => { if (writesInFlight.has(record)) return; writesInFlight.add(record); void action(work).finally(() => writesInFlight.delete(record)); };
+  const exclusive = (record, work) => () => { if (writesInFlight.has(record)) return; writesInFlight.add(record); return action(work).finally(() => writesInFlight.delete(record)); };
   $("#create-tour-form").addEventListener("submit", event => { event.preventDefault(); void createTour(); });
   $("#reconcile-create").addEventListener("click", () => void action(async () => {
     if (!createPending || createBusy || createPhase !== "unknown") return;
@@ -1100,12 +1100,22 @@ import { cheatSheetText, factSummary, formatTourDate, tourDisplayName, tourMetaL
     state.cheatDirty = true; state.cheatDraftTourId = state.tour?.id || ""; sheetMessage = ""; renderSheetRecovery();
     const tourId = state.tour?.id, binding = sessionBinding;
     if (!id(tourId) || !binding || sheetConflict || event.isComposing) return;
-    const autosave = () => {
+    const autosave = async () => {
       sheetAutosaveTimer = null;
       if (state.cheatDraftTourId !== tourId || sessionBinding !== binding || !state.cheatDirty || sheetPending || sheetConflict || sheetBusy) return;
       if (navigationBusy || !state.tour) { sheetAutosaveTimer = setTimeout(autosave, 1000); return; }
       if (state.tour.id !== tourId) return;
-      saveSheetExclusively();
+      const editor = $("#cheat-content"), selection = document.activeElement === editor
+        ? { start: editor.selectionStart, end: editor.selectionEnd, direction: editor.selectionDirection, scroll: editor.scrollTop } : null;
+      let focused = document.activeElement === document.body ? null : document.activeElement;
+      const rememberFocus = event => { focused = event.target === document.body ? null : event.target; };
+      document.addEventListener("focusin", rememberFocus);
+      try { await saveSheetExclusively(); } finally { document.removeEventListener("focusin", rememberFocus); }
+      if (sessionBinding === binding && state.cheatDraftTourId === tourId && document.activeElement === document.body &&
+        focused instanceof HTMLElement && focused.isConnected && !focused.matches(":disabled") && focused.getClientRects().length) {
+        focused.focus({ preventScroll: true });
+        if (focused === editor && selection) { editor.setSelectionRange(selection.start, selection.end, selection.direction); editor.scrollTop = selection.scroll; }
+      }
     };
     sheetAutosaveTimer = setTimeout(autosave, 1000);
   });
