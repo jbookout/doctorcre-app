@@ -236,10 +236,10 @@ test('broker regenerates an editable internal sheet from the accepted itinerary 
     else if (path === '/api/tours/library') data = { tours: [{ id: tourId, name: fixture.name }] };
     await route.fulfill({ json: { data, csrf_token: 'synthetic-only' } });
   });
+  await page.clock.install({ time: new Date('2026-10-26T13:00:00Z') });
+  await page.clock.pauseAt(new Date('2026-10-26T13:00:00Z'));
   await page.goto(`${server.origin}/tours/route-editor.html?tour=${tourId}`);
   await page.locator('#tour-panel').waitFor({ state: 'visible' });
-  await page.clock.install({ time: new Date('2026-10-26T12:00:00Z') });
-  await page.clock.pauseAt(new Date('2026-10-26T13:00:00Z'));
   await page.locator('#internal-cheat-sheet > summary').click();
   const editor = page.locator('#cheat-content');
   const regenerate = page.getByRole('button', { name: 'Regenerate from accepted itinerary', exact: true });

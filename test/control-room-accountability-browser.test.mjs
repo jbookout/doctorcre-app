@@ -8,7 +8,7 @@ import { createFixtureClient } from '../js/fixture-client.js';
 
 const root = new URL('../', import.meta.url);
 
-async function open(t, width, tab = 'views', theme = 'dark') {
+async function open(t, width, tab = 'views', theme = 'dark', holdCurrentWork = false) {
   const server = await startFixtureServer({ env: process.env.ACCOUNTABILITY_BUILT ? { DOCTORCRE_FIXTURE_ROOT: new URL('../dist/site/', import.meta.url).pathname } : {} });
   t.after(() => server.stop());
   const browser = await chromium.launch({ args: [...CHROMIUM_SAFETY_ARGS] });
@@ -19,12 +19,16 @@ async function open(t, width, tab = 'views', theme = 'dark') {
   const seedUrl = `data:application/json;base64,${Buffer.from(await readFile(new URL('data/board-seed.json', root))).toString('base64')}`;
   const fixture = await createFixtureClient({ seedUrl });
   const state = { progress: 'Demo validation finished; export has not started', unavailable: false, duplicate: false, agentsUnavailable: false };
+  let releaseCurrentWork;
+  const currentWorkReady = new Promise(resolve => { releaseCurrentWork = resolve; });
+  t.after(() => releaseCurrentWork());
   const methods = { 'governance-queue': 'governanceQueue', 'schedule-board': 'scheduleBoard', 'read-resource-dashboard': 'readResourceDashboard', 'read-room-queue': 'roomQueue', 'read-room': 'roomTurns', 'read-session-identity': 'sessionIdentity', 'read-dispatch-history': 'dispatchHistory' };
   await page.route('**/*', async route => {
     const url = new URL(route.request().url());
     if (url.origin !== server.url) return route.abort();
     if (url.pathname === '/mcp') {
       const rpc = route.request().postDataJSON().params;
+      if (holdCurrentWork && rpc.name === 'current-work-item') await currentWorkReady;
       if ((state.unavailable && rpc.name === 'unfinished-work') || (state.agentsUnavailable && rpc.name === 'read-room-queue')) return route.fulfill({ status: 503, body: '{}' });
       const method = methods[rpc.name] || rpc.name.replace(/-([a-z])/g, (_, letter) => letter.toUpperCase());
       let payload = typeof fixture[method] === 'function' ? await fixture[method](rpc.arguments || {}) : { ok: true };
@@ -55,16 +59,19 @@ async function open(t, width, tab = 'views', theme = 'dark') {
     return route.continue();
   });
   await page.goto(`${server.url}/control-room?mode=live&tab=${tab}`);
-  return { page, state };
+  return { page, state, releaseCurrentWork };
 }
 
 for (const theme of ['dark', 'light']) for (const width of [1440, 390]) test(`attention keeps a failed job once and opens that exact item at ${width} ${theme}`, async t => {
-  const { page } = await open(t, width, 'views', theme);
+  const { page, releaseCurrentWork } = await open(t, width, 'views', theme, true);
   const failed = page.locator('[data-attention-id="work_request:WR-000901"]');
   await failed.waitFor({ timeout: 5000 });
   assert.equal(await failed.count(), 1);
   assert.match(await failed.innerText(), /Demo source did not answer/);
   assert.match(await failed.innerText(), /Demo validation finished; export has not started/);
+  assert.match(await failed.innerText(), /Agent\s+unknown/);
+  releaseCurrentWork();
+  await failed.getByText('claude', { exact: true }).waitFor();
   assert.match(await failed.innerText(), /Agent\s+claude/, 'the held-work executor wins over the census owner');
   assert.match(await failed.innerText(), /Owner\s+cx-app/);
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
