@@ -1,5 +1,3 @@
-export type Bounds = Readonly<{ x: number; y: number; width: number; height: number }>;
-export type FloatingPanel = Bounds & Readonly<{ panel: string }>;
 export type LayoutNode = Readonly<{
   kind: "tabs"; id: string; panels: readonly [string, ...string[]]; active: string;
 }> | Readonly<{
@@ -8,14 +6,11 @@ export type LayoutNode = Readonly<{
 }>;
 export type Layout = Readonly<{
   version: 1; stage: LayoutNode | null;
-  floating: readonly FloatingPanel[]; hidden: readonly string[];
 }>;
 export type Destination = Readonly<
   { kind: "stage"; group: string } |
   { kind: "tabs"; group: string; index?: number } |
-  { kind: "split"; target: string; id: string; group: string; axis: "horizontal" | "vertical"; side: "before" | "after"; ratio: number } |
-  ({ kind: "floating" } & Bounds) |
-  { kind: "hidden" }
+  { kind: "split"; target: string; id: string; group: string; axis: "horizontal" | "vertical"; side: "before" | "after"; ratio: number }
 >;
 
 function record(value: unknown): Record<string, unknown> {
@@ -37,13 +32,6 @@ function finite(value: unknown): number {
   return value;
 }
 
-function bounds(value: unknown): Bounds {
-  const item = record(value);
-  const result = { x: finite(item.x), y: finite(item.y), width: finite(item.width), height: finite(item.height) };
-  if (result.width <= 0 || result.height <= 0) throw new Error("Floating dimensions must be positive");
-  return result;
-}
-
 function ratio(value: unknown): number {
   const result = finite(value);
   if (result <= 0 || result >= 1) throw new Error("Split ratio must be between zero and one");
@@ -55,7 +43,6 @@ export function validateLayout(value: unknown): Layout {
   if (layout.version !== 1) throw new Error("Unsupported layout version");
   const panelIds = new Set<string>();
   const nodeIds = new Set<string>();
-  const objects = new Set<object>();
   function panel(value: unknown): string {
     const id = identifier(value);
     if (panelIds.has(id)) throw new Error("Duplicate panel identifier");
@@ -64,8 +51,7 @@ export function validateLayout(value: unknown): Layout {
   }
   function node(value: unknown, depth = 0): LayoutNode {
     const item = record(value);
-    if (depth > 128 || objects.has(item)) throw new Error("Cyclic or excessively deep layout");
-    objects.add(item);
+    if (depth > 128) throw new Error("Excessively deep layout");
     const id = identifier(item.id);
     if (nodeIds.has(id)) throw new Error("Duplicate node identifier");
     nodeIds.add(id);
@@ -81,13 +67,7 @@ export function validateLayout(value: unknown): Layout {
     return { kind: "tabs", id, panels: [first, ...rest], active };
   }
   const stage = layout.stage === null ? null : node(layout.stage);
-  if (!Array.isArray(layout.floating)) throw new Error("Expected floating panels");
-  const floating = Array.from(layout.floating, value => {
-    const item = record(value);
-    return { panel: panel(item.panel), ...bounds(item) };
-  });
-  if (!Array.isArray(layout.hidden)) throw new Error("Expected hidden panels");
-  return { version: 1, stage, floating, hidden: Array.from(layout.hidden, panel) };
+  return { version: 1, stage };
 }
 
 function findNode(node: LayoutNode | null, id: string): LayoutNode | undefined {
@@ -100,7 +80,7 @@ function hasPanel(layout: Layout, panel: string): boolean {
   function contains(node: LayoutNode | null): boolean {
     return node !== null && (node.kind === "tabs" ? node.panels.includes(panel) : contains(node.first) || contains(node.second));
   }
-  return contains(layout.stage) || layout.hidden.includes(panel) || layout.floating.some(item => item.panel === panel);
+  return contains(layout.stage);
 }
 
 function mapNode(node: LayoutNode, id: string, change: (node: LayoutNode) => LayoutNode): LayoutNode {
@@ -121,9 +101,7 @@ function checkDestination(layout: Layout, destination: Destination): void {
     if (!findNode(layout.stage, destination.target)) throw new Error("Unknown split target");
     if (destination.side !== "before" && destination.side !== "after") throw new Error("Invalid split side");
     if (findNode(layout.stage, destination.id) || findNode(layout.stage, destination.group) || destination.id === destination.group) throw new Error("Duplicate node identifier");
-  } else if (destination.kind === "floating") {
-    bounds(destination);
-  } else if (destination.kind !== "hidden") {
+  } else {
     const exhaustive: never = destination;
     throw new Error(`Unknown placement ${String(exhaustive)}`);
   }
@@ -133,8 +111,6 @@ function place(layout: Layout, panel: string, destination: Destination): Layout 
   checkDestination(layout, destination);
   switch (destination.kind) {
     case "stage": return validateLayout({ ...layout, stage: { kind: "tabs", id: destination.group, panels: [panel], active: panel } });
-    case "hidden": return validateLayout({ ...layout, hidden: [...layout.hidden, panel] });
-    case "floating": return validateLayout({ ...layout, floating: [...layout.floating, { panel, ...bounds(destination) }] });
     case "tabs": return validateLayout({ ...layout, stage: layout.stage && mapNode(layout.stage, destination.group, node => {
       if (node.kind !== "tabs") throw new Error("Unknown tab group");
       const panels: [string, ...string[]] = [...node.panels];
@@ -174,7 +150,7 @@ export function removePanel(layout: Layout, panel: string): Layout {
     if (first === undefined) return null;
     return { ...node, panels: [first, ...rest], active: node.active === panel ? panels[index] ?? panels[index - 1] ?? first : node.active };
   }
-  return validateLayout({ ...current, stage: remove(current.stage), floating: current.floating.filter(item => item.panel !== panel), hidden: current.hidden.filter(id => id !== panel) });
+  return validateLayout({ ...current, stage: remove(current.stage) });
 }
 
 export function movePanel(layout: Layout, panel: string, destination: Destination): Layout {
@@ -199,22 +175,4 @@ export function resizeSplit(layout: Layout, id: string, size: number): Layout {
     if (node.kind !== "split") throw new Error("Unknown split");
     return { ...node, ratio: nextRatio };
   }) });
-}
-
-export function resizeFloating(layout: Layout, panel: string, size: Bounds): Layout {
-  const current = validateLayout(layout);
-  if (!current.floating.some(item => item.panel === panel)) throw new Error("Unknown floating panel");
-  const nextBounds = bounds(size);
-  return validateLayout({ ...current, floating: current.floating.map(item => item.panel === panel ? { panel, ...nextBounds } : item) });
-}
-
-// Version 0 is the pre-release format without hidden panels, defined with v1.
-// No previously deployed workspace format is assumed.
-export function migrateLayout(value: unknown): Layout {
-  const layout = record(value);
-  if (layout.version === 0) {
-    if ("hidden" in layout) throw new Error("Version 0 cannot contain hidden panels");
-    return validateLayout({ ...layout, version: 1, hidden: [] });
-  }
-  return validateLayout(layout);
 }
