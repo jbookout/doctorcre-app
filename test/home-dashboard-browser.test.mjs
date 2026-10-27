@@ -64,7 +64,7 @@ async function open(t, { width = 1440, height = 1000, invoiceAttention = false, 
     'read-resource-dashboard': () => client.readResourceDashboard(), 'schedule-board': () => client.scheduleBoard(),
     'list-notifications': async () => ({ unread_count: 0, notifications: [] }),
     'notification-feed': async () => ({ unread_count: 0, notifications: [] }),
-    'list-email-proposals': async () => ({ schema_version: 'email-proposals.v1', proposals: [], send: false }),
+    'list-email-proposals': async () => ({ schema_version: 'email-proposals.v1', proposals: [], send: false, more: false, next_cursor: null }),
     'read-call-outcomes': async () => ({ schema_version: 'call-outcomes.v1', calls: [], send: false }),
   };
   await page.route('**/*', async route => {
