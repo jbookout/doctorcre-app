@@ -31,7 +31,7 @@ const refusal = error => {
 
 export function mountEmailFollowups({ container, client, onChange = () => {} }) {
   const win = container.ownerDocument.defaultView;
-  let rows = [], loaded = false, loadState = 'loading', epoch = 0, disposed = false, cursor = null, retryCursor = null;
+  let rows = [], loaded = false, loadState = 'loading', epoch = 0, disposed = false, cursor = null, retryCursor = null, pages = 1;
   const decisions = new Map();
   function render() {
     if (disposed) return;
@@ -68,7 +68,7 @@ export function mountEmailFollowups({ container, client, onChange = () => {} }) 
     }
   }
   function retire() {
-    epoch++; rows = []; cursor = null; retryCursor = null; decisions.clear(); loaded = false; loadState = 'denied'; render();
+    epoch++; rows = []; cursor = null; retryCursor = null; pages = 1; decisions.clear(); loaded = false; loadState = 'denied'; render();
   }
   async function refresh(pageCursor = null) {
     if (disposed || loadState === 'denied') return;
@@ -76,15 +76,21 @@ export function mountEmailFollowups({ container, client, onChange = () => {} }) 
     retryCursor = pageCursor;
     loadState = 'loading'; render();
     try {
-      const result = await readWithDeadline(() => client.listEmailProposals({ limit: 50, ...(pageCursor ? { cursor: pageCursor } : {}) }), { timeoutMs: 10_000 });
-      if (disposed || ticket !== epoch) return;
-      if (result?.schema_version !== 'email-proposals.v1' || result.send !== false || !Array.isArray(result.proposals)
-        || typeof result.more !== 'boolean' || (result.more ? !result.next_cursor || result.next_cursor === pageCursor || result.next_cursor !== result.proposals.at(-1)?.id : result.next_cursor !== null)
-        || result.proposals.some(row => !row?.id || !Number.isInteger(row.version) || row.version < 1 || !KINDS[row.kind]
-          || row.confirm_verb !== KINDS[row.kind].verb || !row.deal || !row.deal_name || !row.source?.activity_id || typeof row.source.evidence_quote !== 'string'
-          || (row.preview !== null && !validPreview(row, row.preview)))) throw Error('Invalid email proposals');
-      const next = pageCursor ? [...rows, ...result.proposals.filter(item => !rows.some(row => row.id === item.id))] : result.proposals;
-      cursor = result.next_cursor;
+      let next = pageCursor ? [...rows] : [], currentCursor = pageCursor, result;
+      const pageCount = pageCursor ? 1 : pages;
+      for (let i = 0; i < pageCount; i++) {
+        result = await readWithDeadline(() => client.listEmailProposals({ limit: 50, ...(currentCursor ? { cursor: currentCursor } : {}) }), { timeoutMs: 10_000 });
+        if (disposed || ticket !== epoch) return;
+        if (result?.schema_version !== 'email-proposals.v1' || result.send !== false || !Array.isArray(result.proposals)
+          || typeof result.more !== 'boolean' || (result.more ? !result.next_cursor || result.next_cursor === currentCursor || result.next_cursor !== result.proposals.at(-1)?.id : result.next_cursor !== null)
+          || result.proposals.some(row => !row?.id || !Number.isInteger(row.version) || row.version < 1 || !KINDS[row.kind]
+            || row.confirm_verb !== KINDS[row.kind].verb || !row.deal || !row.deal_name || !row.source?.activity_id || typeof row.source.evidence_quote !== 'string'
+            || (row.preview !== null && !validPreview(row, row.preview)))) throw Error('Invalid email proposals');
+        next.push(...result.proposals.filter(item => !next.some(row => row.id === item.id)));
+        currentCursor = result.next_cursor;
+        if (!currentCursor) break;
+      }
+      cursor = currentCursor;
       for (const row of rows) if (!next.some(item => item.id === row.id) && ['submitting', 'unknown'].includes(decisions.get(row.id)?.status)) next.push(row);
       rows = next; loaded = true; loadState = 'ready';
     } catch (error) {
@@ -116,7 +122,7 @@ export function mountEmailFollowups({ container, client, onChange = () => {} }) 
     if (!button || button.disabled || !container.contains(button) || disposed || loadState === 'denied') return;
     const action = button.dataset.emailAction;
     if (action === 'retry') return refresh(retryCursor);
-    if (action === 'more' && cursor) return refresh(cursor);
+    if (action === 'more' && cursor) { pages++; return refresh(cursor); }
     const row = rows.find(item => item.id === button.closest('[data-email-id]')?.dataset.emailId);
     if (!row) return;
     const state = decisions.get(row.id) || { status: 'pending' };

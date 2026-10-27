@@ -211,3 +211,29 @@ test('Home pages pending proposals and keeps the first page when loading more fa
   assert.deepEqual(calls.at(-1), { limit: 50, cursor: first.id });
   assert.doesNotMatch(container.textContent, /Load more email follow-ups/);
 });
+
+test('Home refresh retains loaded pages and an in-flight load more', async () => {
+  const first = proposal(), second = { ...proposal(), id: '10000000-0000-4000-8000-000000000002', deal_name: 'Demo second deal' };
+  let release;
+  let hold = false;
+  const { container, view, action } = setup({ listEmailProposals: async args => {
+    if (args.cursor && hold) await new Promise(resolve => { release = resolve; });
+    return args.cursor ? response([second]) : { ...response([first]), more: true, next_cursor: first.id };
+  } });
+  await view.refresh();
+  await action('Load more email follow-ups');
+  await view.refresh();
+  assert.match(container.textContent, /Demo second deal/);
+  const other = setup({ listEmailProposals: async args => {
+    if (args.cursor && hold) { hold = false; await new Promise(resolve => { release = resolve; }); }
+    return args.cursor ? response([second]) : { ...response([first]), more: true, next_cursor: first.id };
+  } });
+  await other.view.refresh();
+  hold = true;
+  const loading = other.action('Load more email follow-ups');
+  await Promise.resolve();
+  await other.view.refresh();
+  release();
+  await loading;
+  assert.match(other.container.textContent, /Demo second deal/);
+});
