@@ -125,6 +125,7 @@
     "set-work-shape-disposition",
     "share-doc-conversation",
     "start-deal-review",
+    "submit-email-draft",
     "supersede-work-request",
     "today-triage",
     "triage-incident",
@@ -1213,7 +1214,7 @@
       "evidence_quote",
       "occurred_at"
     ],
-    "review": "Display evidence as untrusted text and suspected_instruction as a warning. Sender role is not supplied; never display raw addresses or infer a role. Null preview remains dismissible.",
+    "review": "Display evidence as untrusted text and suspected_instruction as a warning. Sender role is not supplied; phase and next-step cards never display raw addresses or infer a role. Null preview remains dismissible. Reply drafts display the exact server-provided To/CC addresses before submission and retain them in the submission request.",
     "next_step_arguments": [
       "deal",
       "activity_id",
@@ -1235,7 +1236,26 @@
       "idempotency_key"
     ],
     "dismissal": "Joe or Dell, exact observed version and a nonempty reason of at most 500 characters. Version conflicts require a fresh review.",
-    "deployment_order": "Server verbs are live before this app consumer. No send or router write is consumed."
+    "deployment_order": "Existing proposal verbs are live. Reply submission waits for the pinned producer PR #2522 to be live. No intake, router, outbox or sender write is consumed.",
+    "reply_drafts": {
+      "producer": {
+        "repository": "DoctorCRE/carr-system",
+        "source_commit": "247a4125dd1a16fc90bba4eaa9806bee14ad2b0b",
+        "pull_request": "https://github.com/DoctorCRE/carr-system/pull/2522"
+      },
+      "read": "carr-email-reply-draft.v1 at the pinned producer revision in PR #2522, not yet live. Pending reply_draft items carry reply_draft {subject,body,owner,to,cc}, status, null preview and confirm_verb submit-email-draft. to and cc each contain one exact routable address. Review displays those addresses before Submit. Missing source or copy addresses omit both arrays, set preview_error to email_draft_source_missing or email_draft_copy_address_missing and set confirm_verb:null. Keep that row readable and dismissible with reply review disabled.",
+      "submit_arguments": [
+        "proposal_id",
+        "base_version",
+        "subject",
+        "body",
+        "to",
+        "cc",
+        "idempotency_key"
+      ],
+      "submission": "Only the owning authenticated human partner can submit. Preserve exact text, displayed to/cc arrays, reviewed version and original idempotency key on uncertain retries. The server compares displayed recipients with the current captured sender and other partner actor.email and refuses email_draft_recipients_mismatch if they differ. That refusal and version_conflict require explicit fresh review, never automatic resubmission. A successful receipt has ok:true, proposal_id, status:approved_to_send, version, subject, body, sha256, to and cc matching the reviewed request. It queues sending on the partner Mac and does not confirm delivery.",
+      "deployment_order": "Hold deployment and auto-merge until server PR #2522 at the pinned revision is merged and live."
+    }
   },
   "email_proposal_quality": {
     "producer": {

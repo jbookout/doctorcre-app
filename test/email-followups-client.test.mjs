@@ -133,3 +133,45 @@ test('synthetic deal filtering happens before pagination and rejects a cross-dea
   assert.deepEqual((await client.listEmailProposals({ deal: 'unknown-deal', limit: 1 })).proposals, []);
   assert.deepEqual((await client.listEmailProposals()).proposals.map(row => row.id), [first.id]);
 });
+
+test('live reply submission sends the owned draft version and exact text with session binding and retained retry', async () => {
+  const calls = []; let lose = true;
+  const live = createLiveClient({ fetchImpl: async (path, init) => {
+    if (path === '/auth/session') return Response.json({ actor: { slug: 'joe' }, csrf_token: 'synthetic-session' });
+    const rpc = JSON.parse(init.body); calls.push({ ...rpc.params, headers: init.headers });
+    if (lose) { lose = false; throw Error('lost'); }
+    const args = rpc.params.arguments;
+    return Response.json({ result: { content: [{ text: JSON.stringify({ ok: true, proposal_id: args.proposal_id, version: 2,
+      status: 'approved_to_send', subject: args.subject, body: args.body, sha256: 'a'.repeat(64),
+      to: ['sender@example.test'], cc: ['partner@example.test'] }) }] } });
+  } });
+  const args = { proposal_id: '10000000-0000-4000-8000-000000000003', base_version: 1,
+    subject: 'Re: Demo reply', body: 'My edited message.\nThank you.', to: ['sender@example.test'], cc: ['partner@example.test'], idempotency_key: 'reply-once' };
+  await assert.rejects(live.submitEmailDraft(args));
+  assert.equal((await live.submitEmailDraft(args)).status, 'approved_to_send');
+  assert.deepEqual(calls[0], calls[1]);
+  assert.equal(calls[0].name, 'submit-email-draft');
+  assert.deepEqual(calls[0].arguments, args);
+  assert.equal(calls[0].headers['x-carr-csrf'], 'synthetic-session');
+});
+
+test('synthetic reply submissions are owned, versioned, exact and idempotent without sending', async () => {
+  const client = await createFixtureClient({ seedUrl, emailReplyDrafts: true });
+  const draft = (await client.listEmailProposals()).proposals.find(row => row.kind === 'reply_draft');
+  assert.ok(draft, 'fixture supplies a reply draft');
+  assert.equal(draft.reply_draft.owner, 'joe');
+  const args = { proposal_id: draft.id, base_version: draft.version, subject: 'Re: Demo revised',
+    body: '  This is the exact edited message.  ', to: draft.reply_draft.to, cc: draft.reply_draft.cc, idempotency_key: 'fixture-reply' };
+  await assert.rejects(client.submitEmailDraft({ ...args, base_version: 99, idempotency_key: 'stale-draft' }), error => error.payload?.error === 'version_conflict');
+  assert.deepEqual(draft.reply_draft.to, ['demo-correspondent@example.test']);
+  assert.deepEqual(draft.reply_draft.cc, ['demo-dell@example.test']);
+  await assert.rejects(client.submitEmailDraft({ ...args, cc: ['changed@example.test'], idempotency_key: 'changed-recipients' }), error => error.payload?.error === 'email_draft_recipients_mismatch');
+  const result = await client.submitEmailDraft(args);
+  assert.equal(result.status, 'approved_to_send');
+  assert.equal(result.subject, 'Re: Demo revised');
+  assert.equal(result.body, '  This is the exact edited message.  ');
+  assert.deepEqual(result.to, ['demo-correspondent@example.test']);
+  assert.deepEqual(result.cc, ['demo-dell@example.test']);
+  assert.deepEqual(await client.submitEmailDraft(args), result);
+  assert.equal((await client.listEmailProposals()).proposals.some(row => row.id === draft.id), false);
+});
