@@ -1,4 +1,5 @@
 import { sessionFetch } from './private-session.js';
+import { PHASE_BY_SLUG } from './client.js';
 import { requireReviewReceipt } from './deal-review-model.js';
 /**
  * Live client: same interface as fixture, against the deployed Worker.
@@ -52,7 +53,8 @@ export function createLiveClient(opts = {}) {
   } });
   const sessionWrites = new Set(['set-next-step', 'set-market-agent', 'set-national-account-owner', 'create-national-account',
     'create-national-market-deal', 'start-deal-review', 'review-deal', 'end-deal-review',
-    'resolve-candidate', 'resolve-post-call-candidate', 'answer-work-request-for-joe', 'add-industry-event', 'update-industry-event']);
+    'resolve-candidate', 'resolve-post-call-candidate', 'answer-work-request-for-joe', 'add-industry-event', 'update-industry-event',
+    'undo-call-change', 'review-call-outcome', 'confirm-email-next-step', 'confirm-email-deal-progress', 'dismiss-email-proposal']);
 
   const rpc = (verb, args = {}, signal) => rawRpc(verb, args, signal, opts.readTimeoutMs || 10_000);
 
@@ -77,6 +79,13 @@ export function createLiveClient(opts = {}) {
       throw err;
     }
     if (verb === 'start-deal-review') requireReviewReceipt(payload);
+    if (['confirm-email-next-step', 'confirm-email-deal-progress'].includes(verb)) {
+      const contract = verb === 'confirm-email-next-step' ? 'email-next-step.v1' : 'email-deal-progress.v1';
+      if (payload?.contract !== contract || payload.status !== 'confirmed' || payload.requires_confirmation !== false
+        || payload.deal !== args.deal || payload.source?.activity_id !== args.activity_id || payload.proposal_digest !== args.proposal_digest)
+        throw unknownMcpOutcome(new Error('Email confirmation receipt unavailable'));
+      return { ...payload, ok: true };
+    }
     return payload;
   }
 
@@ -92,7 +101,7 @@ export function createLiveClient(opts = {}) {
     // Keep those domain receipt contracts intact; cover the unretained paths
     // and the old fallback that minted a different key on every attempt.
     if (args.idempotency_key && !sessionWrites.has(verb)) return rawRpc(verb, args, undefined, timeoutMs);
-    const target = ['deal', 'candidate_id', 'account_client_id', 'event_id', 'human_ref', 'session_id',
+    const target = ['proposal_id', 'activity_id', 'deal', 'candidate_id', 'account_client_id', 'event_id', 'human_ref', 'session_id',
       'loop_id', 'conversation_id', 'suggestion_id', 'commission_id', 'board_id', 'client_id', 'field', 'projection_id']
       .filter(key => args[key] !== undefined).map(key => [key, args[key]]);
     const operationKey = JSON.stringify([verb, target]);
@@ -112,11 +121,7 @@ export function createLiveClient(opts = {}) {
   // record to a phase nobody chose (defect 5e355b84). Every slug now has its own
   // label and every label its own slug, so a round trip returns what it started
   // with.
-  const PHASE_TO_UI = {
-    pending: 'On Deck', research: 'Research', site_selection: 'Site selection',
-    negotiation: 'Negotiation', legal: 'Legal', due_diligence: 'Diligence',
-    closing: 'Closing', closed: 'Closed',
-  };
+  const PHASE_TO_UI = PHASE_BY_SLUG;
   const UI_TO_PHASE = {
     'On Deck': 'pending', 'Research': 'research', 'Site selection': 'site_selection',
     'Negotiation': 'negotiation', 'Legal': 'legal', 'Diligence': 'due_diligence',
@@ -295,6 +300,25 @@ export function createLiveClient(opts = {}) {
 
     async resolvePostCallCandidate({ candidate_id, accept, idempotency_key }) {
       return write('resolve-post-call-candidate', { candidate_id, accept, idempotency_key });
+    },
+
+    async listEmailProposals() { return rpc('list-email-proposals', {}); },
+    async previewEmailNextStep(args) { return rpc('preview-email-next-step', args); },
+    async previewEmailDealProgress(args) { return rpc('preview-email-deal-progress', args); },
+    async confirmEmailNextStep(args) { return write('confirm-email-next-step', args); },
+    async confirmEmailDealProgress(args) { return write('confirm-email-deal-progress', args); },
+    async dismissEmailProposal(args) { return write('dismiss-email-proposal', args); },
+
+    async readCallOutcomes() {
+      return rpc('read-call-outcomes', {});
+    },
+
+    async undoCallChange({ candidate_id, base_version }) {
+      return write('undo-call-change', { candidate_id, base_version });
+    },
+
+    async reviewCallOutcome({ session_id }) {
+      return write('review-call-outcome', { session_id });
     },
 
     async getChanges(cursor, { signal, since } = {}) {

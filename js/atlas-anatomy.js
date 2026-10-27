@@ -20,7 +20,7 @@
 //     DECLARES, the middle is what is INSTALLED, the front is what has been
 //     OBSERVED running. Nothing is placed forward for being interesting.
 
-import { ATLAS_LAYERS, NODE_CLASS_LABEL, NODE_CLASS_ORDER } from "./atlas-model.js";
+import { NODE_CLASS_LABEL } from "./atlas-model.js";
 
 /* ------------------------------------------------------------------ the organs */
 
@@ -282,11 +282,6 @@ export function nodeSpeech(entry) {
 
 /* ------------------------------------------------------------ views and motion */
 
-export const VIEWS = Object.freeze([
-  Object.freeze({ key: "assembled", label: "Assembled", hint: "The whole body, organs interlocked." }),
-  Object.freeze({ key: "exploded", label: "Exploded", hint: "The same body pulled apart along its evidence planes. Nothing moves to a new organ." }),
-  Object.freeze({ key: "flat", label: "Flat list", hint: "Every component as text, with no scene at all." }),
-]);
 
 export const MOTION_PAUSED_SENTENCE =
   "Motion is paused. Nothing on this page is moving, and every state above is readable from its shape, its outline and its words alone.";

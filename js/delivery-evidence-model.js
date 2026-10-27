@@ -23,8 +23,6 @@ export const STAGE_LABEL = Object.freeze({
   consumer_proven: "Live delivery",
 });
 
-/** The three tokens a cell may carry. `complete` is the only operational one. */
-export const STAGE_TOKENS = Object.freeze(["complete", "not reached", "unknown"]);
 
 export const STALE_REASON = "plan is stale against the accepted source";
 export const NO_PASSPORT_REASON = "no passport has been read for this record";

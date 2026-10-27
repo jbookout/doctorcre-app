@@ -12,9 +12,14 @@ const routes = (await import("../js/routes.js")).routeContract.routes;
 const pages = [...new Set(Object.values(routes))];
 const expected = navigationItems.map(item => item.label);
 
-test("every app route mounts the same navigation before page content", () => {
+test("workspace routes share navigation while the client portal stays outside the broker shell", () => {
   for (const page of pages) {
     const html = readFileSync(new URL(page, root), "utf8");
+    if (page === "client-portal.html") {
+      assert.doesNotMatch(html, /appShell|app-shell|navigation\.js|doc-context|doc-panel/, "client portal has no broker workspace shell");
+      assert.match(html, /src="\/js\/client-portal\.js"/, "client portal mounts its dedicated reader");
+      continue;
+    }
     if (page === "reports/share.html") {
       assert.match(html, /<link rel="stylesheet" href="\/share\.css">/, `${page}: report stylesheet`);
       assert.match(html, /<div id="appShell"><\/div>/, `${page}: shared shell mount`);
@@ -56,7 +61,7 @@ test("the shared navigation has one stable set of destinations, including every 
     assert.deepEqual(labels, expected, `${route}: same order and items`);
     assert.match(html, />Project activity<\/a>/);
     assert.doesNotMatch(html, />Agent (?:Room|Queue)<\/a>/);
-    assert.equal((html.match(/aria-current="page"/g) || []).length, route === "/calendar" ? 0 : 1, `${route}: one active destination or utility`);
+    assert.equal((html.match(/aria-current="page"/g) || []).length, ["/calendar", "/client-portal"].includes(route) ? 0 : 1, `${route}: one active destination or utility when included in navigation`);
   }
 });
 

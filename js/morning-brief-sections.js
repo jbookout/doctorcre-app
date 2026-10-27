@@ -1,5 +1,10 @@
 import { escapeText } from './change-receipts.mjs';
 
+export function briefInstruction(title, value) {
+  const normalized = text => String(text || '').trim().replace(/\s+/g,' ');
+  return normalized(title) === normalized(value) ? '' : value;
+}
+
 const SECTIONS = {
   needs_joe:'Needs Joe', today:'Today and upcoming', claim_card:'Claim card', deals:'Deals and accounts',
   loops:'Open loops', renewals:'Renewals', assurance_cadence:'Assurance cadence', costs:'Costs',
@@ -27,7 +32,7 @@ const sectionText = {
   today: row => fields(row,[['what','Action'],['id','Reference'],['item_kind','Kind'],...context]),
   claim_card: row => fields(row,[['display_name','Name'],['entity_name','Name'],['practice_name','Practice'],['doctor_name','Doctor'],['org_name','Organization'],['vertical','Practice'],['specialty','Specialty'],['city','City'],['county','County'],['state','State'],['est_lease_event','Lease event'],['tier_status','Tier'],['flag_status','Flag'],['has_channel','Contact available'],['decision_count','Decisions'],['score','Score'],['pool_id','Pool reference'],['base_version','Version'],['lane','Lane'],['segment','Segment'],['segment_play','Approach'],['score_basis','Score basis'],['est_basis','Lease event basis'],['days_to_window','Days to window'],['needs_contact','Needs contact'],['dup_tier','Duplicate tier'],['dup_ref','Duplicate reference'],['dup_basis','Duplicate evidence']]),
   deals: row => fields(row,[['name','Name'],['client_name','Client'],['owner','Owner'],['phase','Phase'],['next_step','Next step'],['next_date','Next date'],['operating_state','Operating state'],['blocker_detail','Blocker']]),
-  loops: row => fields(row,[['title','Title'],['label','Label'],['number','Number'],['kind','Kind'],['status','Status'],...context,['blocker_detail','Blocker'],['body','Details']]),
+  loops: row => fields({...row,blocker_detail:briefInstruction(row.title || row.label,row.blocker_detail)},[['title','Title'],['label','Label'],['number','Number'],['kind','Kind'],...(row.status === 'open' ? [] : [['status','Status']]),...context,['blocker_detail','Your task'],['body','Details']]),
   renewals: row => fields(row,[['display_name','Name'],['org_name','Organization'],['vertical','Practice'],['city','City'],['county','County'],['state','State'],['tier_status','Tier'],['flag_status','Flag'],['has_channel','Contact available'],['decision_count','Decisions'],['source_observed_at','Source observed'],['freshness_state','Freshness'],['name','Name'],['entity_name','Name'],['practice_name','Practice'],['client_name','Client'],['window_label','Window'],['est_lease_event','Lease event'],['next_date','Next date'],['owner','Owner'],['action','Next action']]),
   assurance_cadence: row => fields(row,[['notification_id','Notification'],['reason','Reason'],['severity','Severity'],['title','Title'],['subject_ref','Reference'],['created_at','Created'],['message','Message']]),
   costs,
@@ -60,8 +65,7 @@ export function briefSections(payload) {
       if (other.length) kinds.push({label:'Other triage',rows:other});
     }
     const metadata = metadataText(key,state === 'unavailable' ? {action:value?.action} : value);
-    const spoken = [description,...kinds.map(kind => `${kind.label}. ${state === 'unavailable' ? 'count unknown' : `${Number.isInteger(kind.count) ? kind.count : kind.rows.length} returned`}`)].join('. ');
-    return { key, label, state, description, spoken, collections, kinds, metadata };
+    return { key, label, state, description, collections, kinds, metadata };
   });
 }
 

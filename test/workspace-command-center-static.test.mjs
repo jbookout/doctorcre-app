@@ -6,20 +6,17 @@ import { appShellMarkup, navigationItems } from "../js/navigation.js";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 
-/**
- * What a reader can actually see, for the copy checks below. A comment
- * promising not to make a claim is not the claim, and asserting against
- * comments is how a truthful file fails a truthfulness test.
- */
-const withoutComments = (source) => source
-  .replace(/\/\*[\s\S]*?\*\//g, " ")
-  .replace(/(^|\s)\/\/.*$/gm, "$1");
 
-test("all authenticated surfaces mount the approved shared navigation", async () => {
+test("workspace surfaces share navigation while the client portal mounts its dedicated reader", async () => {
   const routes = (await import("../js/routes.js")).routeContract;
   for (const [route, file] of Object.entries(routes.routes)) {
     if (file === "reports/share.html") continue;
     const html = await readFile(`${ROOT}/${file}`, "utf8");
+    if (route === "/client-portal") {
+      assert.match(html, /id="portalForm"/);
+      assert.doesNotMatch(html, /appShell|app-shell|aria-label="Primary navigation"/);
+      continue;
+    }
     assert.match(html, /id="appShell"/, `${route}: shared shell mount`);
     const nav = appShellMarkup(route);
     assert.equal((nav.match(/data-app-nav-item/g) || []).length, navigationItems.length, `${route}: same destinations`);

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { createFixtureClient } from '../js/fixture-client.js';
 import { createLiveClient } from '../js/live-client.js';
-import { agendaSnapshot, controlSnapshot, dealHref, dealSnapshot, HIDDEN_HOME_WIDGETS, readHomeDashboard, topNewLeads } from '../js/home-dashboard-model.js';
+import { agendaSnapshot, dealHref, dealSnapshot, HIDDEN_HOME_WIDGETS, readHomeDashboard, topNewLeads } from '../js/home-dashboard-model.js';
 
 const NOW = Date.parse('2026-10-01T15:00:00Z');
 const board = { schema_version: 'home-agenda.v1', actor: 'joe', deals: [
@@ -13,9 +13,10 @@ const board = { schema_version: 'home-agenda.v1', actor: 'joe', deals: [
   { id: 'demo-d', name: 'Demo D', owner: 'joe', attention: true, phase: 'Closed' },
 ] };
 test('Home overdue list matches local board scope; team headline counts retain national accounts', () => {
-  const team = dealSnapshot(board, 'team', NOW);
+  const details = new Map(board.deals.map(deal => [deal.id, { critical_dates: [], next_actions: [{ id: `old-${deal.id}`, status: 'open', owner: deal.owner, due_on: '2026-09-30' }] }]));
+  const team = dealSnapshot(board, 'team', agendaSnapshot(board, details, { today: '2026-10-01' }));
   assert.deepEqual([team.active, team.national, team.inMarket, team.flagged.map(row => row.id)], [2, 1, null, ['demo-a']]);
-  const mine = dealSnapshot(board, 'mine', NOW);
+  const mine = dealSnapshot(board, 'mine', agendaSnapshot(board, details, { scope: 'mine', today: '2026-10-01' }));
   assert.deepEqual([mine.active, mine.national, mine.flagged.map(row => row.id)], [1, 0, ['demo-a']]);
   assert.equal(dealSnapshot({ ...board, actor: null }, 'mine'), null);
   assert.equal(dealSnapshot(null), null);
@@ -82,22 +83,6 @@ test('held deal tasks stay out of every Home agenda until the hold date', () => 
   }
   assert.equal(details.get('demo-a').next_actions[0].hold_until, '2027-01-01');
   assert.ok(agendaSnapshot(board, details, { today: '2027-01-01' }).entries.some(row => row.key === 'task:held'));
-});
-test('control room cannot report No issues with incomplete/absent evidence; positive issues remain visible', async () => {
-  const client = await fixtureClient();
-  const reads = { incidents: await client.incidentBoard(), work: await client.currentWorkItem(), requests: await client.currentWorkRequests(), resources: await client.readResourceDashboard(), schedule: await client.scheduleBoard() };
-  assert.equal(controlSnapshot(reads).attention, true);
-  reads.incidents = { count: 0, incidents: [], by_severity: {}, ready_to_close: 0 };
-  reads.work = { ok: true, count: 0, current: [], wip: { limit_system_wide: 1, in_flight: 0 } };
-  reads.requests = { ok: true, items: [] };
-  assert.equal(controlSnapshot({ ...reads, resources: null }).attention, true);
-  assert.equal(controlSnapshot({ ...reads, incidents: null }).complete, false);
-  for (const owner of ['control-plane', 'cron']) reads.schedule.jobs.push({ ...reads.schedule.jobs[0], key: `demo-${owner}`, owner });
-  reads.schedule = { ...reads.schedule, overall_state: 'read', sources: reads.schedule.sources.map(row => ({ ...row, state: 'read', count: 1 })), jobs: reads.schedule.jobs.map(job => ({ ...job, freshness: 'fresh', state: 'healthy' })) };
-  reads.resources = { ...reads.resources, providers: reads.resources.providers.map(row => ({ ...row, state: 'ok', observed_at: '2026-10-01T15:00:00Z' })) };
-  assert.equal(controlSnapshot(reads).attention, false);
-  reads.schedule.jobs[0].state = 'unknown';
-  assert.equal(controlSnapshot(reads).attention, true);
 });
 async function fixtureClient() {
   return createFixtureClient({ seedUrl: `data:application/json;base64,${Buffer.from(await readFile(new URL('../data/board-seed.json', import.meta.url))).toString('base64')}` });
@@ -182,15 +167,10 @@ test('Home publishes independent ready data with one agenda read and never inven
   let boardReads = 0;
   const seen = [];
   const client = { getHomeAgenda: async () => { boardReads++; return board; }, getLeadBoard: async () => ({ leads: [] }),
-    getDeal: async () => assert.fail('no eager complete records'),
-    incidentBoard: async () => ({ count: 0, incidents: [], by_severity: {}, ready_to_close: 0 }),
-    currentWorkItem: async () => { throw Error('Unavailable'); }, currentWorkRequests: async () => null,
-    readResourceDashboard: async () => null, scheduleBoard: async () => null };
+    getDeal: async () => assert.fail('no eager complete records') };
   const result = await readHomeDashboard(client, { onUpdate: result => seen.push(Boolean(result.board)) });
   assert.equal(boardReads, 1); assert.ok(seen.includes(true));
   assert.deepEqual(agendaSnapshot(result.board, result.details).failed, ['demo-a', 'demo-b']);
-  assert.equal(result.control.work, null);
-  assert.equal(controlSnapshot(result.control).attention, true);
   client.getHomeAgenda = async () => { const error = Error('Signed out'); error.status = 401; throw error; };
   assert.equal((await readHomeDashboard(client)).unauthorized, true);
   client.getHomeAgenda = () => new Promise(() => {});
@@ -211,4 +191,18 @@ test('Home rejects incompatible agenda versions, missing actors and duplicate de
     assert.equal(result.board, null);
     assert.equal(result.details.size, 0);
   }
+});
+
+
+test('Home reads business feeds without reading Control Room queues', async () => {
+  const client = await fixtureClient();
+  client.getLeadBoard = async () => ({ leads: [] });
+  const systemReads = [];
+  for (const method of ['incidentBoard', 'currentWorkItem', 'currentWorkRequests', 'readResourceDashboard', 'scheduleBoard']) {
+    client[method] = async () => { systemReads.push(method); throw Error('System data unavailable'); };
+  }
+  const result = await readHomeDashboard(client);
+  assert.deepEqual(systemReads, []);
+  for (const key of ['board', 'leads', 'invoices', 'relationships']) assert.equal(result.reads[key].state, 'read', key);
+  assert.equal(result.unauthorized, false);
 });

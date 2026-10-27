@@ -6,15 +6,16 @@ import { chromium } from 'playwright';
 import { createFixtureClient } from '../js/fixture-client.js';
 const root=new URL('../',import.meta.url);
 const routes=(await import("../js/routes.js")).routeContract;
-async function setup(t,{width=1440,motion='no-preference',brief=true,coverage=false,timezoneId='America/Chicago',onBrief}={}) {
+async function setup(t,{width=1440,motion='no-preference',brief=true,coverage=false,timezoneId='America/Chicago',dueDate,onBrief,dealTitle='Demo Lease Review',dealAction='Review demo lease comments',loopTask}={}) {
  const browser=await chromium.launch({ args: [...CHROMIUM_SAFETY_ARGS] });t.after(()=>browser.close());const page=await browser.newPage({viewport:{width,height:960},reducedMotion:motion,timezoneId});const context=page.context();
 
  const fixture=await createFixtureClient({seedUrl:`data:application/json;base64,${(await readFile(new URL('data/board-seed.json',root))).toString('base64')}`});
  let scope='joe',fail=false,ready=brief,revision=0,thread=[{id:'demo-note',kind:'note',text:'Demo short summary. Original synthetic entry with additional details.',recorded_at:new Date().toISOString()}];const calls=[],errors=[];
  const day=new Date().toLocaleDateString('en-CA',{timeZone:'America/Chicago'});
- const priorityData=()=>({state:'ready',sponsor:scope,sections:{deals:{state:'ready',items:[{id:'d14',name:'Demo Lease Review',owner:scope},{id:'d05',name:'Demo Tour Planning',owner:scope},{id:'d20',name:'Demo Revised Terms',owner:scope}]},today:{state:'ready',items:[{subject_type:'deal',subject_id:'d14',owner:scope,due_on:'2026-01-01',what:revision ? 'Review updated demo lease comments' : 'Review demo lease comments'},{subject_type:'deal',subject_id:'d05',owner:scope,due_on:day,what:'Confirm demo tour access'}]},loops:{state:'empty',items:[]}}});
+ const priorityData=()=>({state:'ready',sponsor:scope,sections:{deals:{state:'ready',items:[{id:'d14',name:dealTitle,owner:scope},{id:'d05',name:'Demo Tour Planning',owner:scope},{id:'d20',name:'Demo Revised Terms',owner:scope}]},today:{state:'ready',items:[{subject_type:'deal',subject_id:'d14',owner:scope,due_on:dueDate||'2026-01-01',what:revision ? 'Review updated demo lease comments' : dealAction},{subject_type:'deal',subject_id:'d05',owner:scope,due_on:day,what:'Confirm demo tour access'}]},loops:{state:'empty',items:[]}}});
  const data=()=>{
   const value=priorityData();
+  if(loopTask){value.sections.today={state:'empty',items:[]};value.sections.loops={state:'ready',items:[loopTask]};}
   if(!coverage)return value;
   value.sections.needs_joe={state:'partial',items:[{title:'Demo waiting coverage decision',action:'Approve the synthetic rule',why:{text:'Demo work needs a ruling'},blocks:{text:'Demo queue'}}]};
   value.sections.claim_card={state:'ready',items:[{display_name:'Demo claim candidate'}]};
@@ -38,8 +39,9 @@ async function setup(t,{width=1440,motion='no-preference',brief=true,coverage=fa
    if(name==='morning-brief' && onBrief)await onBrief();
    if(name==='morning-brief')return fail ? route.fulfill({status:503,body:''}) : rpc(ready ? data() : {ok:true});
    const methods={'deal-room-board':'getBoard','today-triage':'todayTriage','list-feature-switches':'listFeatureSwitches','list-doc-suggestions':'listDocSuggestions','list-doc-conversations':'listDocConversations','notification-feed':'notificationFeed','loop-board':'loopBoard','list-industry-events':'listIndustryEvents'};
-   if(name==='get-deal-room') {const value=await fixture.getDeal(args.deal);return rpc({...value.deal,deal_id:value.deal.id,thread,critical_dates:[],events:[]});}
+   if(name==='get-deal-room') {const value=await fixture.getDeal(args.deal);return rpc({...value.deal,...(args.deal==='d14'?{name:dealTitle}:{}),...(dueDate&&args.deal==='d14'?{next_date:dueDate}:{}),deal_id:value.deal.id,thread,critical_dates:[],events:[]});}
    if(methods[name])return rpc(await fixture[methods[name]](args));
+   if(name==='read-loop'&&loopTask)return rpc({loop:loopTask});
    if(name==='lead-board')return rpc({leads:[],stages:[],as_of:new Date().toISOString()});
    return rpc({ok:true});
   }
@@ -55,11 +57,14 @@ test('live brief opens on request and wide record detail; desktop/phone renders,
  const state=await setup(t);const {page}=state;await state.goto();await page.locator('#docOpen[data-brief-unseen]').waitFor();assert.equal(await page.locator('#docMorningBrief').evaluate(node=>node.open),false);await page.locator('#docOpen').click();await page.locator('#docMorning').click();await page.locator('#docMorningBrief[open]').waitFor();
  await page.locator('[data-brief-record]').first().waitFor();assert.equal(await page.locator('[data-brief-record]').count(),3);assert.deepEqual(await page.locator('#docMorningBrief h3').allTextContents(),['Do first','Overnight','Today']);
  assert.doesNotMatch(await page.locator('#docMorningBrief').innerText(),/read from|records read|retry|Read again/);
+ assert.doesNotMatch(await page.locator('#docMorningBrief header').innerText(),/◍/);
+ assert.equal(await page.getByRole('heading',{name:'Morning brief · Joe',exact:true}).isVisible(),true);
 
  await snap(page,'brief-desktop');
  assert.ok(await page.locator('#docMorningBrief').evaluate(node=>node.getBoundingClientRect().width)>1000);
  await page.locator('[data-brief-record="0"]').click();await page.locator('.morning-record').waitFor();await page.locator('#morningContent summary').click();assert.match(await page.locator('#morningContent details[open]').innerText(),/Original synthetic entry/);await snap(page,'record-desktop');
  await page.locator('#morningBack').click();await page.setViewportSize({width:390,height:844});await snap(page,'brief-phone');
+ assert.doesNotMatch(await page.locator('#docMorningBrief header').innerText(),/◍/);
  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
  assert.equal(await page.locator('#docMorningBrief').evaluate(node=>node.scrollWidth<=node.clientWidth),true);
  await page.locator('[data-brief-record="0"]').click();await page.locator('.morning-record').waitFor();await snap(page,'record-phone');
@@ -68,18 +73,122 @@ test('live brief opens on request and wide record detail; desktop/phone renders,
  await page.keyboard.press('Escape');assert.equal(await page.locator('#selfAvatar').evaluate(node=>document.activeElement===node),true);
  assert.deepEqual(state.errors,[]);assert.ok(state.calls.filter(call=>call.name==='morning-brief').every(call=>Object.keys(call.args).length===0));
 });
-test('daily preference survives navigation; speech is opt-in, stops, persists, and resumes refresh with no duplicate autoplay',async t=>{
- const state=await setup(t);const {page}=state;await state.goto();await page.locator('#docOpen[data-brief-unseen]').waitFor();assert.equal(await page.locator('#docMorningBrief').evaluate(node=>node.open),false);await page.locator('#docOpen').click();await page.locator('#docMorning').click();await page.locator('#docMorningBrief[open]').waitFor();assert.equal(await page.evaluate(()=>spoken.length),0);
- await page.locator('#morningSpeech').click();await page.locator('#morningListen').click();assert.equal(await page.evaluate(()=>spoken.length),1);assert.match(await page.evaluate(()=>spoken[0]),/Needs Joe.*unavailable/);
- await page.locator('#morningClose').click();assert.ok(await page.evaluate(()=>speechStops)>0);const loaded=page.waitForResponse(res=>res.url().endsWith('/mcp')&&res.request().postDataJSON()?.params?.name==='morning-brief');await page.reload();await loaded;await page.locator('#docPresence').waitFor({state:'attached'});
- assert.equal(await page.locator('#docMorningBrief').evaluate(node=>node.open),false);await page.locator('#docOpen').click();await page.locator('#docMorning').click();await page.locator('[data-brief-record]').first().waitFor();assert.equal(await page.locator('#morningSpeech').getAttribute('aria-pressed'),'true');assert.equal(await page.evaluate(()=>spoken.length),0);
+test('brief dates keep their weekday across viewer timezones with keyboard detail and Back',async t=>{
+ for(const [width,timezoneId]of [[1440,'America/Los_Angeles'],[390,'Asia/Tokyo']])await t.test(`${width} ${timezoneId}`,async t=>{
+  const state=await setup(t,{width,timezoneId,dueDate:'2026-03-08T00:00:00.000Z'}),{page}=state;await state.goto();
+  if(width===390)await page.locator('#selfAvatar').click();
+  await page.locator('#docOpen[data-brief-unseen]').waitFor();await page.locator('#docOpen').click();await page.locator('#docMorning').click();
+  const card=page.locator('[data-brief-record="0"]');await card.waitFor();
+  assert.equal(await card.locator('time').innerText(),'Due Sunday, Mar 8, 2026');assert.equal(await card.locator('time').getAttribute('datetime'),'2026-03-08');
+  assert.equal(await card.getAttribute('data-urgency'),'overdue');await snap(page,`due-date-${width}`);
+  await card.focus();await page.keyboard.press('Enter');await page.locator('.morning-record').waitFor();
+  assert.equal(await page.locator('.morning-record dt').filter({hasText:/^Due$/}).locator('..').locator('dd').innerText(),'Sunday, Mar 8, 2026');
+  assert.equal(state.calls.filter(call=>call.name==='get-deal-room').at(-1).args.deal,'d14');
+  await snap(page,`due-record-${width}`);await page.locator('#morningBack').press('Enter');
+  assert.equal(await card.evaluate(node=>document.activeElement===node),true);
+  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
+  assert.equal(await page.locator('#docMorningBrief').evaluate(node=>node.scrollWidth<=node.clientWidth),true);assert.deepEqual(state.errors,[]);
+ });
+});
+test('complete priority titles wrap and open the matching record on desktop and phone',async t=>{
+ const title='Review the synthetic lease renewal terms with the practice owner before signing';
+ for(const width of [1440,390]){
+  const {page,goto,errors,calls}=await setup(t,{width,dealTitle:title});await goto();
+  if(width===390)await page.locator('#selfAvatar').click();
+  await page.locator('#docOpen[data-brief-unseen]').waitFor();await page.locator('#docOpen').click();await page.locator('#docMorning').click();
+  const card=page.locator('[data-brief-record]').first();await card.waitFor();
+  assert.equal(await card.locator('strong').innerText(),title);
+  assert.equal(await card.locator('strong').evaluate(node=>node.scrollWidth<=node.clientWidth&&node.scrollHeight<=node.clientHeight),true);
+  assert.equal(await page.locator('#docMorningBrief').evaluate(node=>node.scrollWidth<=node.clientWidth),true);
+  await card.focus();await page.keyboard.press('Enter');await page.locator('.morning-record').waitFor();
+  assert.equal(calls.filter(call=>call.name==='get-deal-room').at(-1).args.deal,'d14');
+  assert.equal(await page.locator('#morningTitle').innerText(),title);
+  await page.locator('#morningBack').click();assert.equal(await page.locator('[data-brief-record]').first().locator('strong').innerText(),title);
+  await snap(page,`full-title-${width}`);assert.deepEqual(errors,[]);
+ }
+});
+test('priority cards show repeated instructions once and retain distinct refreshed instructions',async t=>{
+ const title='Review the <synthetic> lease renewal terms with the practice owner before signing';
+ for(const width of [1440,390]){
+  const state=await setup(t,{width,dealTitle:title,dealAction:title});const {page}=state;await state.goto();
+  if(width===390)await page.locator('#selfAvatar').click();
+  await page.locator('#docOpen[data-brief-unseen]').waitFor();await page.locator('#docOpen').click();await page.locator('#docMorning').click();
+  const card=page.locator('[data-brief-record]').first();await card.waitFor();
+  assert.equal(await card.locator('strong').innerText(),title);
+  assert.equal(await card.locator('div > span').count(),0);
+  assert.equal(await card.locator('synthetic').count(),0);
+  assert.equal(await page.locator('[data-brief-record]').last().locator('div > span').innerText(),'Confirm demo tour access');
+  assert.equal(await page.locator('#docMorningBrief').evaluate(node=>node.scrollWidth<=node.clientWidth),true);
+  await card.focus();await page.keyboard.press('Enter');await page.locator('.morning-record').waitFor();
+  assert.equal(state.calls.filter(call=>call.name==='get-deal-room').at(-1).args.deal,'d14');
+  await page.locator('#morningBack').click();assert.equal(await card.evaluate(node=>node===document.activeElement),true);
+  assert.equal(await card.locator('div > span').count(),0);await snap(page,`single-instruction-${width}`);
+  state.change();await page.locator('#morningRefresh').click();
+  await page.waitForFunction(()=>document.querySelector('[data-brief-record] div > span')?.textContent==='Review updated demo lease comments');
+  assert.equal(await card.locator('strong').innerText(),title);assert.deepEqual(state.errors,[]);
+ }
+});
+test('task instructions stay readable without open-status noise on desktop and phone',async t=>{
+ const task={number:'7',kind:'open_loop',owner:'joe',title:'Review the synthetic lease terms',status:'open',due_on:'2026-01-01',blocker_detail:'Open <demo> and review the proposed lease terms.',body:'Compare the synthetic revisions before responding.'};
+ for(const width of [1440,390]){
+  const {page,goto,calls,errors}=await setup(t,{width,loopTask:task});await goto();
+  if(width===390)await page.locator('#selfAvatar').click();
+  await page.locator('#docOpen[data-brief-unseen]').waitFor();await page.locator('#docOpen').click();await page.locator('#docMorning').click();
+  const section=page.locator('[data-brief-section="loops"]');await section.locator('summary').click();
+  assert.match(await section.innerText(),/Your task: Open <demo> and review the proposed lease terms\./);
+  assert.doesNotMatch(await section.innerText(),/Status: open|Blocker:/);
+  const card=page.locator('[data-brief-key="loop:open_loop:7"]');await card.focus();await page.keyboard.press('Enter');await page.locator('.morning-record').waitFor();
+  assert.deepEqual(calls.filter(call=>call.name==='read-loop').at(-1).args,{number:'7',kind:'open_loop'});
+  assert.deepEqual(await page.locator('.morning-record dt').allTextContents(),['Due','Your task']);
+  assert.equal(await page.locator('.morning-record dd').last().innerText(),task.blocker_detail);
+  assert.match(await page.locator('.morning-record').innerText(),/Compare the synthetic revisions before responding/);
+  assert.equal(await page.locator('#docMorningBrief').evaluate(node=>node.scrollWidth<=node.clientWidth),true);
+  await snap(page,`task-instructions-${width}`);
+  await page.locator('#morningBack').click();assert.equal(await card.evaluate(node=>node===document.activeElement),true);
+  assert.deepEqual(errors,[]);
+ }
+});
+test('task title repeats stay omitted in sections and detail while refreshed instructions remain visible',async t=>{
+ const title='Review the <synthetic> lease terms with the practice owner before signing';
+ for(const width of [1440,390]){
+  const task={number:'7',kind:'open_loop',owner:'joe',title,status:'open',due_on:'2026-01-01',blocker_detail:`  ${title.replaceAll(' ','  ')}\n`,body:`${title}. Compare the <synthetic> revisions before responding.`};
+  const {page,goto,calls,errors}=await setup(t,{width,loopTask:task});await goto();
+  if(width===390)await page.locator('#selfAvatar').click();
+  await page.locator('#docOpen[data-brief-unseen]').waitFor();await page.locator('#docOpen').click();await page.locator('#docMorning').click();
+  const section=page.locator('[data-brief-section="loops"]');await section.locator('summary').click();
+  assert.doesNotMatch(await section.innerText(),/Your task:/);assert.ok((await section.innerText()).includes(title));
+  const card=page.locator('[data-brief-key="loop:open_loop:7"]');await card.focus();await page.keyboard.press('Enter');await page.locator('.morning-record').waitFor();
+  assert.deepEqual(calls.filter(call=>call.name==='read-loop').at(-1).args,{number:'7',kind:'open_loop'});
+  assert.equal(await page.locator('#morningTitle').innerText(),title);assert.deepEqual(await page.locator('.morning-record dt').allTextContents(),['Due']);
+  await page.locator('.morning-record summary').click();assert.equal(await page.locator('.morning-record .entry-original').innerText(),task.body);
+  assert.equal(await page.locator('#docMorningBrief synthetic').count(),0);
+  assert.equal(await page.locator('#docMorningBrief').evaluate(node=>node.scrollWidth<=node.clientWidth),true);
+  await snap(page,`task-single-instruction-${width}`);
+  task.blocker_detail=`${title} and send the <synthetic> response.`;await page.locator('#morningRefresh').click();
+  await page.waitForFunction(()=>[...document.querySelectorAll('.morning-record dt')].some(node=>node.textContent==='Your task'));
+  assert.equal(await page.locator('.morning-record dd').last().innerText(),task.blocker_detail);
+  assert.equal(await page.locator('.morning-record details').evaluate(node=>node.open),true);
+  await page.locator('#morningBack').click();assert.equal(await card.evaluate(node=>node===document.activeElement),true);
+  await section.locator('summary').click();
+  assert.ok((await section.innerText()).includes(`Your task: ${task.blocker_detail}`));
+  assert.deepEqual(errors,[]);
+ }
+});
+test('daily preference survives navigation and refresh without narration, including legacy speech opt-in',async t=>{
+ const state=await setup(t);const {page}=state;
+ await page.addInitScript(()=>localStorage.setItem('doctorcre:morning:joe',JSON.stringify({...JSON.parse(localStorage.getItem('doctorcre:morning:joe')||'{}'),speech:true})));
+ await state.goto();await page.locator('#docOpen[data-brief-unseen]').waitFor();assert.equal(await page.locator('#docMorningBrief').evaluate(node=>node.open),false);await page.locator('#docOpen').click();await page.locator('#docMorning').click();await page.locator('#docMorningBrief[open]').waitFor();
+ assert.equal(await page.getByRole('button',{name:/Brief speech|Listen to morning brief|Stop morning brief/}).count(),0);assert.equal(await page.evaluate(()=>spoken.length),0);
+ await page.locator('#morningClose').click();const loaded=page.waitForResponse(res=>res.url().endsWith('/mcp')&&res.request().postDataJSON()?.params?.name==='morning-brief');await page.reload();await loaded;await page.locator('#docPresence').waitFor({state:'attached'});
+ assert.equal(await page.locator('#docMorningBrief').evaluate(node=>node.open),false);await page.locator('#docOpen').click();await page.locator('#docMorning').click();await page.locator('[data-brief-record]').first().waitFor();
+ assert.equal(await page.getByRole('button',{name:/Brief speech|Listen to morning brief|Stop morning brief/}).count(),0);assert.equal(await page.evaluate(()=>spoken.length),0);
  state.change();await page.evaluate(()=>window.dispatchEvent(new Event('online')));try { await page.waitForFunction(()=>document.getElementById('morningContent').textContent.includes('updated demo')); } catch(error) { throw new Error(JSON.stringify({calls:state.calls.filter(call=>call.name==='morning-brief').length,text:await page.locator('#docMorningBrief').innerText(),errors:state.errors})+error.message); }
  assert.deepEqual(state.errors,[]);
 });
 test('unavailable brief recovers on background read, clears prior facts, partner changes never reuse content/preferences',async t=>{
  const state=await setup(t,{brief:false});const {page}=state;await state.goto();await page.locator('#docOpen').click();await page.locator('#docMorning').click();assert.match(await page.locator('#morningCoverage').innerText(),/unavailable/);
  state.ready=true;await page.evaluate(()=>window.dispatchEvent(new Event('online')));try { await page.locator('[data-brief-record]').first().waitFor(); } catch(error) { throw new Error(JSON.stringify({calls:state.calls.filter(call=>call.name==='morning-brief').length,text:await page.locator('#docMorningBrief').innerText(),errors:state.errors})+error.message); }state.fail=true;await page.evaluate(()=>window.dispatchEvent(new Event('online')));await page.waitForFunction(()=>document.getElementById('morningCoverage').textContent==='Brief unavailable');assert.equal(await page.locator('[data-brief-record]').count(),0);
- state.fail=false;state.scope='dell';await page.evaluate(()=>window.dispatchEvent(new Event('online')));await page.waitForURL('**/public-shell/session-ended.html');assert.equal(await page.locator('#docMorningBrief').count(),0);await state.goto();await page.locator('#docOpen').click();await page.locator('#docMorning').click();await page.waitForFunction(()=>document.getElementById('morningTitle').textContent.includes('Dell'));assert.equal(await page.locator('#morningSpeech').getAttribute('aria-pressed'),'false');assert.deepEqual(state.errors,[]);
+ state.fail=false;state.scope='dell';await page.evaluate(()=>window.dispatchEvent(new Event('online')));await page.waitForURL('**/public-shell/session-ended.html');assert.equal(await page.locator('#docMorningBrief').count(),0);await state.goto();await page.locator('#docOpen').click();await page.locator('#docMorning').click();await page.waitForFunction(()=>document.getElementById('morningTitle').textContent.includes('Dell'));assert.deepEqual(state.errors,[]);
 });
 test('V2 motion: hover is a state transition with no pulse; reduced motion is measured at desktop and phone widths',async t=>{
  for(const motion of ['no-preference','reduce'])for(const width of [1440,390]){
@@ -111,17 +220,15 @@ test('refresh retains Details on stable note identity and uses Back when it leav
  assert.equal(await page.evaluate(()=>document.activeElement.id),'morningBack');assert.equal(await page.locator('#morningContent details[open]').count(),0);
 });
 
-for (const key of ['d', 'k']) test(`Doc Control+${key} switches from a speaking brief to the command bar with one modal`, async t => {
+for (const key of ['d', 'k']) test(`Doc Control+${key} switches from the brief to the command bar with one modal`, async t => {
  const { page, goto } = await setup(t);
  await goto(); await page.locator('#docOpen[data-brief-unseen]').waitFor();await page.locator('#docOpen').click();await page.locator('#docMorning').click();await page.locator('#docMorningBrief[open]').waitFor();
- await page.locator('#morningSpeech').click(); await page.locator('#morningListen').click();
  await page.keyboard.press(`Control+${key}`);
  await page.locator('#docDetail[open]').waitFor();
  assert.equal(await page.locator('dialog[open]').count(), 1);
  // The brief's close event lands a task later; focus must still be on the command bar after it.
  await page.evaluate(() => new Promise(resolve => setTimeout(resolve, 50)));
  assert.equal(await page.locator('#docCommandInput').evaluate(node => document.activeElement === node), true);
- await page.waitForFunction(() => window.speechStops > 0);
  await page.keyboard.press('Escape');
  await page.waitForFunction(() => document.activeElement?.id === 'docOpen');
  assert.equal(await page.locator('dialog[open]').count(), 0);
@@ -132,7 +239,7 @@ for (const key of ['d', 'k']) test(`Doc Control+${key} switches from a speaking 
 });
 
 
-test('full returned coverage is expandable and spoken on desktop and phone in a UTC browser',async t=>{
+test('full returned coverage is expandable on desktop and phone in a UTC browser',async t=>{
  const state=await setup(t,{coverage:true,timezoneId:'UTC'}),{page}=state;
  await state.goto();await page.locator('#docOpen[data-brief-unseen]').waitFor();await page.locator('#docOpen').click();await page.locator('#docMorning').click();
  const needs=page.locator('[data-brief-section="needs_joe"]');
@@ -146,27 +253,23 @@ test('full returned coverage is expandable and spoken on desktop and phone in a 
  await page.locator('[data-brief-section="deals"] > summary').click();await page.getByText(/Demo account portfolio/).waitFor({state:'visible'});
  const account=page.locator('[data-brief-section="deals"] li details');await account.locator('summary').click();assert.match(await account.innerText(),/C-DEMO.*Attention deals: 3.*Overdue deals: 2/s);
  await page.locator('[data-brief-section="costs"] summary').click();await page.getByText(/Demo provider/).first().waitFor({state:'visible'});
- await page.locator('#morningSpeech').click();await page.locator('#morningListen').click();
- assert.match(await page.evaluate(()=>window.spoken.at(-1)),/Needs Joe.*partial.*Work requests unavailable.*Renewals.*unavailable/s);
  await needs.scrollIntoViewIfNeeded();await snap(page,'coverage-desktop');await page.setViewportSize({width:390,height:844});await needs.scrollIntoViewIfNeeded();await snap(page,'coverage-phone');
  assert.ok(await page.locator('#docMorningBrief').evaluate(node=>node.scrollWidth<=node.clientWidth));
  assert.deepEqual(state.errors,[]);
 });
 
-for(const selected of [false,true]) test(`F4 resumed brief removes ${selected?'selected detail':'speaking facts'} until the current authenticated read`,async t=>{
+for(const selected of [false,true]) test(`F4 resumed brief removes ${selected?'selected detail':'priority facts'} until the current authenticated read`,async t=>{
  let hold=false,release;const held=new Promise(resolve=>release=resolve);t.after(()=>release());
  const {page,goto,errors}=await setup(t,{onBrief:()=>hold?held:undefined});await goto();
  await page.locator('#docOpen[data-brief-unseen]').waitFor();await page.locator('#docOpen').click();await page.locator('#docMorning').click();
- await page.locator('[data-brief-record]').first().waitFor();await page.locator('#morningSpeech').click();
+ await page.locator('[data-brief-record]').first().waitFor();
  if(selected){await page.locator('[data-brief-record]').first().click();await page.locator('.morning-record').waitFor();}
- else await page.locator('#morningListen').click();
  hold=true;
- const suspended=await page.evaluate(()=>{window.dispatchEvent(new Event('online'));return {content:document.getElementById('morningContent').textContent,title:document.getElementById('morningTitle').textContent,disabled:document.getElementById('morningListen').disabled,stops:speechStops};});
- assert.equal(suspended.content,'');assert.equal(suspended.title,'Morning brief');assert.equal(suspended.disabled,true);
- if(!selected)assert.ok(suspended.stops>0);
- await snap(page,`suspended-${selected?'detail':'speech'}`);
+ const suspended=await page.evaluate(()=>{window.dispatchEvent(new Event('online'));return {content:document.getElementById('morningContent').textContent,title:document.getElementById('morningTitle').textContent};});
+ assert.equal(suspended.content,'');assert.equal(suspended.title,'Morning brief');
+ await snap(page,`suspended-${selected?'detail':'priorities'}`);
  release();await page.locator('[data-brief-record]').first().waitFor();assert.equal(await page.locator('.morning-record').count(),0);
- assert.equal(await page.evaluate(()=>spoken.length),selected?0:1);assert.deepEqual(errors,[]);
+ assert.equal(await page.evaluate(()=>spoken.length),0);assert.deepEqual(errors,[]);
 });
 
 for (const trigger of ['reopen', 'idle wake']) test(`F4 ${trigger} clears cached facts and replaces an outstanding read`, {timeout:15_000}, async t => {
@@ -184,22 +287,20 @@ for (const trigger of ['reopen', 'idle wake']) test(`F4 ${trigger} clears cached
  await page.locator('#docOpen[data-brief-unseen]').waitFor();
  await page.locator('#docOpen').click(); await page.locator('#docMorning').click();
  await page.locator('[data-brief-record]').first().waitFor();
- await page.locator('#morningSpeech').click();
  if(trigger==='reopen')await page.locator('#morningClose').click();
- else await page.locator('#morningListen').click();
  hold=true;
  await page.locator('#morningRefresh').evaluate(node=>node.click());
  await reading;
  const pending=await page.evaluate(trigger=>{
   if(trigger==='reopen')document.getElementById('docMorning').click();
   else {const original=Date.now;Date.now=()=>original()+31*60_000;document.dispatchEvent(new Event('pointerdown'));Date.now=original;}
-  return {content:document.getElementById('morningContent').textContent,title:document.getElementById('morningTitle').textContent,disabled:document.getElementById('morningListen').disabled};
+  return {content:document.getElementById('morningContent').textContent,title:document.getElementById('morningTitle').textContent};
  },trigger);
- assert.deepEqual(pending,{content:'',title:'Morning brief',disabled:true});
+ assert.deepEqual(pending,{content:'',title:'Morning brief'});
  releaseOld();
  assert.equal(await page.locator('[data-brief-record]').count(),0);
  releaseFresh(); await page.locator('[data-brief-record]').first().waitFor();
- assert.equal(await page.locator('#morningListen').isDisabled(),false);
+ assert.equal(await page.locator('[data-brief-record]').count(),3);
 
  assert.deepEqual(state.errors,[]);
 });

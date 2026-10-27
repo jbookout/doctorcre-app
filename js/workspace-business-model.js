@@ -15,7 +15,6 @@ export const DATASET_ROUTE = { clients: "/clients", vendors: "/vendors" };
 export const DATASET_LABEL = { clients: "Clients", vendors: "Vendors" };
 export const DATASET_SINGULAR = { clients: "Client", vendors: "Vendor" };
 export const SOURCE_LABEL = { clients: "Client records", vendors: "Vendor records" };
-export const HOME_DESTINATION = "/";
 export const API_PREFIX = "/api/v1/business/";
 export const SCOPES = ["team", "mine"];
 export const DEFAULT_SCOPE = "team";

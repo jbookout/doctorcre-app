@@ -13,15 +13,12 @@ import assert from "node:assert/strict";
 import {readFile} from "node:fs/promises";
 
 import {GOVERNANCE_LANES, formatScheduleDateTime, validGovernanceQueuePayload, validScheduleBoardPayload} from "../js/operations-model.js";
-import {STUCK_SILENCE_HOURS} from "../js/control-room-model.js";
 import {createFixtureClient} from "../js/fixture-client.js";
 import {createLiveClient} from "../js/live-client.js";
 
 const root = new URL("..", import.meta.url);
 const read = (file) => readFile(new URL(file, root), "utf8");
 const html = await read("control-room.html");
-const css = await read("css/control-room.css");
-const systemCss = await read("css/system.css");
 const pageJs = await read("js/control-room.js");
 const contract = JSON.parse(await read("contracts/carr-interface.v1.json"));
 
@@ -76,7 +73,6 @@ const QUEUE = {
   },
 };
 
-const NOW = Date.parse("2026-09-24T12:00:00.000Z");
 
 /* ------------------------------------------------------------ the payload */
 
@@ -122,7 +118,6 @@ const SCHEDULE = {
   sources: [
     { owner: "launchd", state: "read", count: 1 },
     { owner: "claude-code", state: "read", count: 1 },
-    { owner: "control-plane", state: "unknown", count: null },
     { owner: "cron", state: "unknown", count: null },
   ],
   jobs: [
@@ -142,6 +137,34 @@ const SCHEDULE = {
     },
   ],
 };
+
+
+test("current schedule owners preserve unknown jobs and reject incomplete coverage", () => {
+  const schedule = {
+    ...SCHEDULE,
+    overall_state: "unknown",
+    sources: [
+      { owner: "launchd", state: "read", count: 1 },
+      { owner: "claude-code", state: "unknown", count: null },
+      { owner: "cron", state: "unknown", count: null },
+    ],
+    jobs: [{
+      ...SCHEDULE.jobs[0], state: "unknown", freshness: "unknown",
+      last_run: null, next_due_at: null, next_due_basis: null,
+    }],
+  };
+  assert.equal(validScheduleBoardPayload(schedule), true);
+  for (const sources of [
+    schedule.sources.slice(0, 2),
+    [...schedule.sources, { owner: "control-plane", state: "unknown", count: null }],
+    [schedule.sources[0], schedule.sources[0], schedule.sources[2]],
+    [schedule.sources[0], schedule.sources[1], { owner: "other", state: "unknown", count: null }],
+    schedule.sources.map(source => ({ ...source, count: null })),
+  ]) assert.equal(validScheduleBoardPayload({ ...schedule, sources }), false);
+  assert.equal(validScheduleBoardPayload({
+    ...schedule, jobs: [{ ...schedule.jobs[0], owner: "control-plane" }],
+  }), false);
+});
 
 
 

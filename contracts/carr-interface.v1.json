@@ -1,6 +1,6 @@
 {
   "schema": "doctorcre-carr-interface.v1",
-  "version": "1.58.0",
+  "version": "1.60.0",
   "producer": {
     "repository": "jbookout/carr-system",
     "source_commit": "1df9b9936394164dd55e815f8a8bf69649508ccc"
@@ -34,6 +34,8 @@
     "claim-lead",
     "close-investigation",
     "close-loop",
+    "confirm-email-deal-progress",
+    "confirm-email-next-step",
     "confirm-slice-completions",
     "correspondence-readiness",
     "create-doc-conversation",
@@ -44,6 +46,7 @@
     "deal-room-board",
     "decide-doc-suggestion",
     "decline-work-request",
+    "dismiss-email-proposal",
     "end-deal-review",
     "engineering-passport",
     "find",
@@ -58,6 +61,7 @@
     "link-lead-client",
     "list-doc-conversations",
     "list-doc-suggestions",
+    "list-email-proposals",
     "list-feature-switches",
     "list-industry-events",
     "list-my-codex-sessions",
@@ -73,8 +77,12 @@
     "notification-feed",
     "patch-deal-field",
     "presence-lease",
+    "preview-email-deal-progress",
+    "preview-email-next-step",
     "propose-doc-correction",
     "read-assurance-health",
+    "read-call-outcomes",
+    "read-client-portal",
     "read-correspondence-thread",
     "read-deal-reconciliation",
     "read-dispatch-history",
@@ -101,6 +109,7 @@
     "resolve-post-call-candidate",
     "revert-deal-field",
     "review-and-triage",
+    "review-call-outcome",
     "review-deal",
     "schedule-board",
     "search-tour-properties",
@@ -116,6 +125,7 @@
     "supersede-work-request",
     "today-triage",
     "triage-incident",
+    "undo-call-change",
     "unfinished-work",
     "update-deal",
     "update-industry-event",
@@ -154,6 +164,24 @@
     "Property evidence v1 is a read-only, tenant-bound response; every fact carries its own source and temporal review state, and absent authoritative coverage remains unknown or unavailable."
   ],
   "mcp_read_contracts": {
+    "schedule-board": {
+      "write": false,
+      "producer_module": "mcp-server/src/schedule-board.js",
+      "producer": {
+        "repository": "DoctorCRE/carr-system",
+        "source_commit": "63b4a0d87a142412bb49eca63896891fdb88c15b",
+        "pull_request": "https://github.com/DoctorCRE/carr-system/pull/2100"
+      },
+      "response": {
+        "schema_version": "schedule-board/v1",
+        "owners": [
+          "launchd",
+          "claude-code",
+          "cron"
+        ],
+        "coverage": "Each current owner has one source. Missing scheduler observations remain unknown; the retired control-plane owner is absent."
+      }
+    },
     "find": {
       "write": false,
       "producer": {
@@ -850,6 +878,26 @@
           "source_ref"
         ]
       }
+    },
+    "read-client-portal": {
+      "write": true,
+      "schema_version": "client-portal.v1",
+      "producer": {
+        "repository": "jbookout/carr-system",
+        "source_commit": "274bb5cc6bcc06c93edd2e4c4162b60554fda165",
+        "pull_request": "https://github.com/jbookout/carr-system/pull/2321"
+      },
+      "arguments": [
+        "slug",
+        "password"
+      ],
+      "denial": {
+        "ok": false,
+        "error": "portal_access_denied"
+      },
+      "projection": "One password-bound portal, canonical roadmap and explicitly shared text material only.",
+      "password_lifetime": "Form and request memory only. Never URL, storage, diagnostic output or Doc context.",
+      "deployment_order": "Server must be live before the app consumer merges or deploys. Public client hosting remains separate."
     }
   },
   "vendor_directory": {
@@ -1070,6 +1118,28 @@
       "legacy": "Queue acknowledgement verifies this feed only. Scheduled carr-v5 publication can fail independently."
     }
   },
+  "post_call_next_step_review": {
+    "producer": {
+      "repository": "DoctorCRE/carr-system",
+      "source_commit": "3183aa765dfc29f2ee7cb7e2fb97fbcfef668294",
+      "pull_request": "https://github.com/DoctorCRE/carr-system/pull/2297"
+    },
+    "schema_version": 1,
+    "read": "Loopback companion GET /api/post-call returns report.deal_updates[].next_step as null, omitted or an object with text, next_date, optional candidate_id and candidate_status.",
+    "write": "Existing resolve-candidate through resolveConfirm. The nested candidate uses its own proposal_id and retained idempotency key. Confirming or skipping it never disposes the parent note.",
+    "review": "Display the replacement text, exact date and disposition. A null next_date clears the current date. Only a pending proposal with a candidate_id offers Confirm next step and Skip next step."
+  },
+  "call_outcomes": {
+    "producer": {
+      "repository": "DoctorCRE/carr-system",
+      "source_commit": "2ffc87b617b59553a84b54b3146a5c96f46beff6",
+      "pull_request": "https://github.com/DoctorCRE/carr-system/pull/2362"
+    },
+    "schema_version": "call-outcomes.v1",
+    "read": "read-call-outcomes {} returns calls[] not yet reviewed: session_id, call_date, recorder, applied[] (candidate_id, kind next_step|phase_move, deal_id, deal_name, deal_version, payload, evidence_quote, applied_at, undone_at) and open_cards[] (candidate_id, resolver, kind, deal_id, deal_name, payload, evidence_quote). send is always false.",
+    "write": "undo-call-change {candidate_id, base_version} reverts one applied change; newer_change_exists and version conflicts are refusals to show, never retried. review-call-outcome {session_id} takes one call off Home.",
+    "review": "Show each applied change with what changed, its transcript quote and one Undo. Count open cards; they are decided in their own review lists."
+  },
   "write_reconciliation": {
     "contract": "contracts/app-write-reconciliation.v1.json",
     "sha256": "4478d4a3386714e9bcbf181af60ff3fae47ba14b09d20ee1758876f32528d634",
@@ -1078,5 +1148,44 @@
       "source_commit": "1df9b9936394164dd55e815f8a8bf69649508ccc",
       "pull_request": "https://github.com/DoctorCRE/carr-system/pull/2192"
     }
+  },
+  "email_proposals": {
+    "producer": {
+      "repository": "DoctorCRE/carr-system",
+      "source_commit": "fdff8d243116dbe0bff1f6f301ae2b2757fac4c0",
+      "pull_request": "https://github.com/DoctorCRE/carr-system/pull/2361"
+    },
+    "schema_version": "email-proposals.v1",
+    "read": "list-email-proposals {} returns proposals oldest first, send:false. Each proposal has id, version, kind, deal, deal_name, confidence, suspected_instruction, source, confirm_verb, preview and preview_error.",
+    "source_fields": [
+      "activity_id",
+      "sender",
+      "subject",
+      "evidence_quote",
+      "occurred_at"
+    ],
+    "review": "Display evidence as untrusted text and suspected_instruction as a warning. Sender role is not supplied; never display raw addresses or infer a role. Null preview remains dismissible.",
+    "next_step_arguments": [
+      "deal",
+      "activity_id",
+      "evidence_quote",
+      "text",
+      "next_date",
+      "owner"
+    ],
+    "phase_arguments": [
+      "deal",
+      "activity_id",
+      "evidence_quote"
+    ],
+    "confirmation": "Joe only. Fetch and display a fresh matching preview before confirming the same fields plus its proposal_digest and a retained idempotency_key. Do not infer a digest or move a phase locally.",
+    "dismiss_arguments": [
+      "proposal_id",
+      "base_version",
+      "reason",
+      "idempotency_key"
+    ],
+    "dismissal": "Joe or Dell, exact observed version and a nonempty reason of at most 500 characters. Version conflicts require a fresh review.",
+    "deployment_order": "Server verbs are live before this app consumer. No send or router write is consumed."
   }
 }

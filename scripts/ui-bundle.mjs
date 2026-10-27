@@ -13,7 +13,12 @@ export const UI_OUTPUT = "js/ui.generated.js";
 const INSTALL = fileURLToPath(new URL("../", import.meta.url));
 
 export async function uiBundle(readSource) {
-  const read = async (path) => { try { return String(await readSource(path)); } catch { return null; } };
+  const read = async (path) => {
+    try {
+      const source = await readSource(path);
+      return source == null ? null : String(source);
+    } catch { return null; }
+  };
   const result = await build({
     entryPoints: [UI_ENTRY], absWorkingDir: INSTALL, bundle: true, write: false, format: "esm",
     platform: "browser", target: "es2022", minify: true, legalComments: "eof", jsx: "automatic",

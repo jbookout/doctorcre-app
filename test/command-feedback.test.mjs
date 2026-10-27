@@ -8,7 +8,6 @@
 // sequences with real return values rather than descriptions of them.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
 import { JSDOM } from "jsdom";
 
 import {
@@ -19,8 +18,6 @@ import {
 import { DOCK_ENTRY_CAP, createCommandDock } from "../js/command-dock.js";
 import { FEEDBACK_STATES } from "../js/visual-system.js";
 
-const root = new URL("..", import.meta.url);
-const read = (file) => readFile(new URL(file, root), "utf8");
 
 function useDocument(t) {
   const dom = new JSDOM("<!doctype html><body><div id=\"dock\"></div></body>");
@@ -66,7 +63,6 @@ const refusal = (payload) => () => {
   error.payload = payload;
   throw error;
 };
-const httpFailure = (status) => () => { throw Object.assign(new Error(String(status)), { status }); };
 
 // --------------------------------------------------------------- 1. the states
 

@@ -1,3 +1,5 @@
+import { compareInstants } from './change-receipts.mjs';
+
 // V5-UX-B04 — "Recent activity" on a Vendors or Clients record: every
 // decision, no DOM.
 //
@@ -56,7 +58,7 @@ export function activityState(record, answer) {
   if (!target || target.toUpperCase() !== ref.toUpperCase()) return { state: "mismatch" };
   const timeline = answer.catch_up?.timeline;
   if (!Array.isArray(timeline)) return { state: "unavailable" };
-  const rows = timeline.map(timelineRow);
+  const rows = timeline.map(timelineRow).sort((a, b) => compareInstants(a.when, b.when));
   return rows.length ? { state: "ready", rows } : { state: "empty", rows: [] };
 }
 

@@ -36,9 +36,9 @@ test("Work Requests lets a partner record a concern and open its returned reques
       requests.push({ path, init });
       const data = path === "/api/system-work/session"
         ? { actor: { slug: "joe" }, csrf_token: "csrf" }
-        : path === "/api/system-work/current" ? { items: [] }
+        : path === "/api/system-work/current" ? { ok: true, data: { items: [] } }
           : path === "/api/system-work/report" ? { data: { human_ref: "WR-000123" } }
-            : { data: { human_ref: "WR-000123", title: "Recovery concern", state: "captured", version: 1,
+            : { ok: true, data: { human_ref: "WR-000123", title: "Recovery concern", state: "captured", version: 1,
               source: { freshness: "current" }, acceptance_criteria: [] } };
       return new Response(JSON.stringify(data), { status: 200 });
     };
@@ -90,7 +90,7 @@ async function setup(t, { session, read = () => card, current = () => ({ items: 
     const result = path.endsWith('/session') ? await session()
       : path.endsWith('/current') ? await current() : await read(path);
     if (result instanceof Response) return result;
-    return new Response(JSON.stringify(result));
+    return new Response(JSON.stringify(path.endsWith('/session') ? result : { ok: true, data: result }));
   };
   const files = ['doc-context-model.js', 'doc-context.js', 'uuid.js', 'system-work-view.js', 'system-work-client.js', 'system-work-app.js'];
   w.eval(autoRefreshScript + '\n' + files.map(name => {
