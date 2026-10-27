@@ -1519,3 +1519,5 @@ async function boot() {
 if (globalThis.document) boot();
 
 export { state };
+/** Read-only view of the command dock's entries, for tests that prove what it retains. */
+export const dockEntries = () => dock.entries ?? new Map();

@@ -114,3 +114,21 @@ test('an unanswered registration can be checked with its original request',async
  await page.getByRole('button',{name:'Check outcome'}).click({timeout:2000});
  await page.locator('.kanban-card[data-id="d14"] .client-portal-link').waitFor({timeout:2000});
 });
+
+test('the command dock keeps no portal password once a registration settles',async t=>{
+ const {page}=await open(t);
+ const retained=()=>page.evaluate(async()=>{const {dockEntries}=await import('/js/pipeline.js');return JSON.stringify([...dockEntries().values()].map(entry=>entry.request||null)).includes('secret-pw-1');});
+ await page.evaluate(async()=>{const {state}=await import('/js/pipeline.js');await state.client.registerClientPortal({deal:'d20',slug:'taken',password:'other',idempotency_key:'seed-taken'});});
+ await page.locator('.kanban-card[data-id="d14"] [data-open]').click();
+ await page.locator('.client-portal-register summary').click();
+ await page.getByLabel('Portal name').fill('taken');
+ await page.locator('#clientPortalPassword').fill('secret-pw-1');
+ await page.getByRole('button',{name:'Register portal'}).click();
+ await page.waitForFunction(()=>/already taken/.test(document.getElementById('detailClientPortalStatus')?.textContent||''));
+ assert.equal(await retained(),false,'a refused registration leaves no password in the dock');
+ await page.getByLabel('Portal name').fill('demo-practice');
+ await page.locator('#clientPortalPassword').fill('secret-pw-1');
+ await page.getByRole('button',{name:'Register portal'}).click();
+ await page.locator('.kanban-card[data-id="d14"] .client-portal-link').waitFor();
+ assert.equal(await retained(),false,'a confirmed registration leaves no password in the dock');
+});
