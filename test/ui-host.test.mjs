@@ -78,6 +78,17 @@ test('with ?ui=react a partner can use the stage workspace without losing the pa
       .map(selector => [selector, document.querySelector(selector)]);
   });
 
+  const divider = page.getByRole('separator', { name: 'Resize panels', exact: true }).first();
+  const sidebarWidth = () => page.locator('#appSidebar').evaluate(node => node.getBoundingClientRect().width);
+  const beforeResize = await sidebarWidth();
+  await page.locator('#ideaSearch').fill('synthetic workspace draft');
+  await divider.focus();
+  await page.keyboard.press('ArrowRight');
+  assert.ok(await sidebarWidth() > beforeResize + 20);
+  assert.equal(await page.locator('#ideaSearch').inputValue(), 'synthetic workspace draft');
+  assert.equal(await page.evaluate(() => window.workspacePageNodes
+    .every(([selector, node]) => node === document.querySelector(selector))), true);
+
   await page.getByRole('button', { name: 'Close workspace', exact: true }).click();
   await page.waitForFunction(() => document.querySelector('#appSidebar').hidden);
   assert.equal(await page.locator('#appLayout .workspace-group').count(), 2);

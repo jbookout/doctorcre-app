@@ -20,8 +20,21 @@
 .workspace-shell {
   width: 100%;
 }
-.workspace-split {
-  gap: var(--space-2);
+.workspace-divider {
+  flex: 0 0 var(--space-2);
+  background: var(--hairline);
+  cursor: col-resize;
+  touch-action: none;
+  user-select: none;
+}
+.workspace-split[data-axis="vertical"] > .workspace-divider {
+  cursor: row-resize;
+}
+.workspace-divider:hover,
+.workspace-divider:focus-visible {
+  background: var(--fg-muted);
+  outline: var(--hairline-width) solid var(--fg);
+  outline-offset: -1px;
 }
 .workspace-group {
   display: flex;
