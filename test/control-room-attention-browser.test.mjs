@@ -83,7 +83,9 @@ for (const width of [390, 1440]) test(`Inbox opens the selected item detail and 
   assert.equal(await first.evaluate(node => node === document.activeElement), true);
   await page.keyboard.press('Enter');
   await dialog.waitFor({ timeout: 2500 });
+  const inboxClosed = dialog.evaluate(node => new Promise(resolve => node.addEventListener('close', () => resolve(), {once:true})));
   await dialog.getByRole('button', { name: 'Close inbox item', exact: true }).click();
+  await inboxClosed;
   assert.equal(await first.evaluate(node => node === document.activeElement), true);
   const second = page.locator('#crInboxList .cr-row').nth(1);
   const secondReason = await second.locator('.cr-row-title').textContent();

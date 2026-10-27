@@ -34,6 +34,8 @@
     "claim-lead",
     "close-investigation",
     "close-loop",
+    "confirm-email-deal-progress",
+    "confirm-email-next-step",
     "confirm-slice-completions",
     "correspondence-readiness",
     "create-doc-conversation",
@@ -44,6 +46,7 @@
     "deal-room-board",
     "decide-doc-suggestion",
     "decline-work-request",
+    "dismiss-email-proposal",
     "end-deal-review",
     "engineering-passport",
     "find",
@@ -58,6 +61,7 @@
     "link-lead-client",
     "list-doc-conversations",
     "list-doc-suggestions",
+    "list-email-proposals",
     "list-feature-switches",
     "list-industry-events",
     "list-my-codex-sessions",
@@ -73,6 +77,8 @@
     "notification-feed",
     "patch-deal-field",
     "presence-lease",
+    "preview-email-deal-progress",
+    "preview-email-next-step",
     "propose-doc-correction",
     "read-assurance-health",
     "read-call-outcomes",
@@ -169,7 +175,11 @@
       },
       "response": {
         "schema_version": "schedule-board/v1",
-        "owners": ["launchd", "claude-code", "cron"],
+        "owners": [
+          "launchd",
+          "claude-code",
+          "cron"
+        ],
         "coverage": "Each current owner has one source. Missing scheduler observations remain unknown; the retired control-plane owner is absent."
       }
     },
@@ -1159,5 +1169,44 @@
       "source_commit": "1df9b9936394164dd55e815f8a8bf69649508ccc",
       "pull_request": "https://github.com/DoctorCRE/carr-system/pull/2192"
     }
+  },
+  "email_proposals": {
+    "producer": {
+      "repository": "DoctorCRE/carr-system",
+      "source_commit": "fdff8d243116dbe0bff1f6f301ae2b2757fac4c0",
+      "pull_request": "https://github.com/DoctorCRE/carr-system/pull/2361"
+    },
+    "schema_version": "email-proposals.v1",
+    "read": "list-email-proposals {} returns proposals oldest first, send:false. Each proposal has id, version, kind, deal, deal_name, confidence, suspected_instruction, source, confirm_verb, preview and preview_error.",
+    "source_fields": [
+      "activity_id",
+      "sender",
+      "subject",
+      "evidence_quote",
+      "occurred_at"
+    ],
+    "review": "Display evidence as untrusted text and suspected_instruction as a warning. Sender role is not supplied; never display raw addresses or infer a role. Null preview remains dismissible.",
+    "next_step_arguments": [
+      "deal",
+      "activity_id",
+      "evidence_quote",
+      "text",
+      "next_date",
+      "owner"
+    ],
+    "phase_arguments": [
+      "deal",
+      "activity_id",
+      "evidence_quote"
+    ],
+    "confirmation": "Joe only. Fetch and display a fresh matching preview before confirming the same fields plus its proposal_digest and a retained idempotency_key. Do not infer a digest or move a phase locally.",
+    "dismiss_arguments": [
+      "proposal_id",
+      "base_version",
+      "reason",
+      "idempotency_key"
+    ],
+    "dismissal": "Joe or Dell, exact observed version and a nonempty reason of at most 500 characters. Version conflicts require a fresh review.",
+    "deployment_order": "Server verbs are live before this app consumer. No send or router write is consumed."
   }
 }
