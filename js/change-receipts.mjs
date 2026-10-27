@@ -1,10 +1,6 @@
 /**
  * Recent change receipts for the Deal Room board.
  *
- * Pure model: no DOM, no network, no storage, no timers. app.js feeds this the
- * events its existing change poll already returns and renders the strings this
- * module returns, so the panel adds no transport and no second read path.
- *
  * What this list is, exactly:
  *   - the newest RECEIPT_LIMIT changes THIS SESSION HAS SEEN on the feed. Not
  *     "changes made since you opened the page", and not a window over the
@@ -26,11 +22,6 @@
  * live-client.js and inventing a second copy here would let the two drift.
  */
 
-/**
- * The fields `revert-deal-field` will act on. This is the client-side home for
- * that list — app.js imports it back rather than keeping its own copy — and it
- * mirrors the CARR `revert-deal-field` contract, which is the authority.
- */
 export const REVERTIBLE_FIELDS = Object.freeze(['phase', 'owner', 'attention', 'next_date', 'operating_state']);
 
 /** How many receipts the session keeps. Oldest fall off first. */
