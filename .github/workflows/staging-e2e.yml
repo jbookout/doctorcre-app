@@ -69,7 +69,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: DoctorCRE/carr-system
-          ref: 0c60e262695795323d97b1b6499d97f1a8becefe
+          ref: c53b791f15d07b4e2c64dfd4aac10f3b03277161
           path: carr-home-fixture
           persist-credentials: false
       - name: Install staging fixture producer
