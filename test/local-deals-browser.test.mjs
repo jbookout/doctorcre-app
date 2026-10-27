@@ -554,7 +554,7 @@ test('add deal validates input, retains an uncertain request and immediately sho
  const requests=await page.evaluate(()=>window.createRequests);assert.deepEqual(requests[0],requests[1]);
  assert.equal(requests[0].owner,'dell');assert.equal(requests[0].notes,'Demo initial review note');
  const cards=page.locator('.kanban-column .kanban-card').filter({hasText:'Demo Partner Review'});assert.equal(await cards.count(),1);
- assert.doesNotMatch(await cards.textContent(),/Dell/,'the checklist card omits owner prose');
+ assert.equal(await cards.locator('.owner').textContent(), 'Dell');
  assert.equal(await page.evaluate(()=>new URL(location.href).searchParams.get('owner')),'dell');
  await cards.getByRole('button',{name:'Demo Partner Review'}).click();
  await page.waitForSelector('#detailPhase');assert.match(await page.locator('#panelBody').textContent(),/Demo initial review note/);
