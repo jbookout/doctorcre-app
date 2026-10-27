@@ -325,3 +325,15 @@ test('shared Call Mode builds its dialog on first open, not at page load', async
     assert.equal(doc.querySelectorAll('#callModeDialog').length, 1, 'later opens reuse it');
   } finally { call?.dispose(); globalThis.fetch = previousFetch; dom.window.close(); }
 });
+
+test('shared Call Mode builds at load only when a call is already recording', async () => {
+  const dom = new JSDOM(`<div id="appShell">${appShellMarkup('/leads')}</div>`);
+  const doc = dom.window.document, previousFetch = globalThis.fetch;
+  globalThis.fetch = async () => ({ ok: true, json: async () => ({ state: 'recording', started_at: new Date().toISOString() }) });
+  let call;
+  try {
+    call = await mountGlobalCallMode(doc);
+    assert.equal(doc.querySelectorAll('#callModeDialog').length, 1);
+    assert.ok(doc.getElementById('callModeButton').classList.contains('recording'));
+  } finally { call?.dispose(); globalThis.fetch = previousFetch; dom.window.close(); }
+});

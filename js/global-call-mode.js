@@ -26,6 +26,8 @@ export async function mountGlobalCallMode(root = document) {
       const payload = await requestCompanion(`${CALL_MODE_URL}/api/state`, { method: "GET", targetAddressSpace: "loopback" }, { timeoutMs: 1200 });
       if (!CALL_MODE_STATES.includes(payload.state)) throw new Error("Unrecognised recorder state");
       show("available");
+      // A call in progress needs the toolbar timer, so only then is the controller built early.
+      if (payload.state === "recording") { await build(); return await call.checkEligibility(); }
       return true;
     } catch { show("unavailable"); return false; }
     finally { probing = null; }
