@@ -5,7 +5,7 @@ import { join } from 'node:path';
 
 const execute = promisify(execFile);
 export const fixtureProducerCommit = '517ecc12c0480d859dd1f4cb270f2a283a853065';
-export const homeFixtureCommit = '0c60e262695795323d97b1b6499d97f1a8becefe';
+export const homeFixtureCommit = 'c53b791f15d07b4e2c64dfd4aac10f3b03277161';
 export const stagingOrigin = 'https://doctorcre-app-staging.joe-bookout-carr-us.workers.dev';
 
 export async function requireStagingAuthority(request) {
