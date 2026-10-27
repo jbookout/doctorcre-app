@@ -1,6 +1,6 @@
 import { PHASE_BY_SLUG } from './client.js';
 
-export function createEmailProposalsFixture({ deals, seedDeals, actor, client, pushEvent }) {
+export function createEmailProposalsFixture({ deals, seedDeals, actor, client, pushEvent, replyDrafts = false }) {
   const digest = async value => `sha256:${[...new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(JSON.stringify(value))))].map(byte => byte.toString(16).padStart(2, '0')).join('')}`;
   const fail = error => { throw Object.assign(Error(error), { payload: { error } }); };
   const phaseDeal = seedDeals.find(deal => deal.phase === 'Research') || seedDeals[1];
@@ -13,6 +13,8 @@ export function createEmailProposalsFixture({ deals, seedDeals, actor, client, p
       evidence_quote: index ? 'The tour is confirmed for November 3.' : 'Please send the revised plan by November 3.' },
     confirm_verb: index ? 'confirm-email-deal-progress' : 'confirm-email-next-step', preview_error: null,
   }));
+  if (replyDrafts && stepDeal) rows.push({ ...structuredClone(rows[0]), id: '10000000-0000-4000-8000-000000000003', kind: 'reply_draft',
+    confirm_verb: 'submit-email-draft', preview: null, reply_draft: { subject: 'Re: Demo floor plan', body: 'Thank you for the plan.', owner: actor } });
   const receipts = new Map();
   async function preview(args, kind) {
     const row = rows.find(item => item.deal === args.deal && item.source.activity_id === args.activity_id && item.kind === kind);
@@ -54,7 +56,7 @@ export function createEmailProposalsFixture({ deals, seedDeals, actor, client, p
   }
   return {
     async getEmailProposalQuality() {
-      const kinds = ['phase_move', 'next_step'].map(kind => {
+      const kinds = ['phase_move', 'next_step', ...(replyDrafts ? ['reply_draft'] : [])].map(kind => {
         const cohort = rows.filter(row => row.kind === kind);
         const confirmed = cohort.filter(row => row.status === 'confirmed');
         const dismissed = cohort.filter(row => row.status === 'dismissed');
@@ -77,6 +79,7 @@ export function createEmailProposalsFixture({ deals, seedDeals, actor, client, p
       const pending = rows.slice(start).filter(item => item.status === 'pending' && (!deal || item.deal === deal));
       for (const row of pending.slice(0, limit || pending.length)) {
         const { status, ...item } = row;
+        if (row.kind === 'reply_draft') { proposals.push(structuredClone(item)); continue; }
         try { item.preview = await preview({ deal: row.deal, activity_id: row.source.activity_id, evidence_quote: row.source.evidence_quote,
           text: 'Send the revised plan', next_date: '2026-11-03', owner: 'joe' }, row.kind); }
         catch (error) { item.preview = null; item.preview_error = error.payload?.error || 'preview_failed'; }
@@ -89,6 +92,21 @@ export function createEmailProposalsFixture({ deals, seedDeals, actor, client, p
     previewEmailDealProgress: args => preview(args, 'phase_move'),
     confirmEmailNextStep: args => confirm(args, 'next_step'),
     confirmEmailDealProgress: args => confirm(args, 'phase_move'),
+    async submitEmailDraft(args) {
+      if (receipts.has(args.idempotency_key)) return structuredClone(receipts.get(args.idempotency_key));
+      const row = rows.find(item => item.id === args.proposal_id && item.kind === 'reply_draft');
+      if (!row) fail('email_draft_not_found');
+      if (row.reply_draft.owner !== actor) fail('email_draft_not_owner');
+      if (row.status !== 'pending') fail('email_draft_already_submitted');
+      if (row.version !== args.base_version) fail('version_conflict');
+      if (!args.body?.trim() || args.body.length > 20000) fail('email_draft_empty_body');
+      if (!args.subject?.trim() || /[\r\n]/.test(args.subject) || args.subject.length > 998) fail('email_draft_subject_invalid');
+      row.status = 'approved_to_send'; row.version++;
+      const receipt = { ok: true, proposal_id: row.id, status: row.status, version: row.version, subject: args.subject, body: args.body,
+        sha256: (await digest({ subject: args.subject, body: args.body })).slice(7), to: ['demo-correspondent@example.test'],
+        cc: [actor === 'joe' ? 'demo-dell@example.test' : 'demo-joe@example.test'] };
+      receipts.set(args.idempotency_key, receipt); return structuredClone(receipt);
+    },
     async dismissEmailProposal(args) {
       if (!['joe', 'dell'].includes(actor)) fail('partner_dismissal_required');
       if (receipts.has(args.idempotency_key)) return structuredClone(receipts.get(args.idempotency_key));

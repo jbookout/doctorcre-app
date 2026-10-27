@@ -445,8 +445,8 @@ body.has-app-layout:has(#callModeAvailability:not([hidden])) { --layout-bottom: 
 .email-change { font-weight: var(--font-weight-strong); }
 .email-controls, .email-review { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
 .email-review p, .email-controls label { flex-basis: 100%; }
-.email-controls textarea { display: block; box-sizing: border-box; width: 100%; margin-top: var(--space-2); padding: var(--space-2); border: var(--hairline-width) solid var(--hairline-strong); border-radius: var(--radius-2); background: var(--surface-2); color: var(--fg); font: inherit; }
+.email-controls textarea, .email-controls input { display: block; box-sizing: border-box; width: 100%; margin-top: var(--space-2); padding: var(--space-2); border: var(--hairline-width) solid var(--hairline-strong); border-radius: var(--radius-2); background: var(--surface-2); color: var(--fg); font: inherit; }
 .email-controls button { background: transparent; font-family: inherit; cursor: pointer; }
 .email-controls button:disabled { opacity: .55; cursor: default; }
-.email-controls [data-email-action="confirm"] { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+.email-controls [data-email-action="confirm"], .email-controls [data-email-action="submit-draft"] { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
 .email-warning { color: var(--status-warn-ink); }

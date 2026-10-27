@@ -1,15 +1,16 @@
 import { readWithDeadline } from './current-read.mjs';
 
-const LABELS = { phase_move: 'Phase changes', next_step: 'Next steps' };
+const LABELS = { phase_move: 'Phase changes', next_step: 'Next steps', reply_draft: 'Reply drafts' };
 const E = value => String(value).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
 const percent = value => value === null ? 'No resolved proposals' : `${Number((value * 100).toFixed(1))}%`;
 const confidence = value => value === null ? 'Unavailable' : percent(value);
 const ratio = value => value === null || (Number.isFinite(value) && value >= 0 && value <= 1);
 function validReport(value) {
   return value?.schema_version === 'email-proposal-quality.v1' && value.days === 7 && value.send === false
-    && Array.isArray(value.kinds) && value.kinds.length === 2 && new Set(value.kinds.map(row => row?.kind)).size === 2
+    && Array.isArray(value.kinds) && [2, 3].includes(value.kinds.length) && new Set(value.kinds.map(row => row?.kind)).size === value.kinds.length
+    && ['phase_move', 'next_step'].every(kind => value.kinds.some(row => row?.kind === kind))
     && value.kinds.every(row => Object.hasOwn(LABELS, row?.kind) && ['proposed', 'pending', 'confirmed', 'dismissed'].every(key => Number.isInteger(row[key]) && row[key] >= 0)
-      && row.proposed === row.pending + row.confirmed + row.dismissed
+      && (row.kind === 'reply_draft' ? row.proposed >= row.pending + row.confirmed + row.dismissed : row.proposed === row.pending + row.confirmed + row.dismissed)
       && ((row.confirmed + row.dismissed === 0) === (row.dismiss_rate === null))
       && ratio(row.dismiss_rate) && ratio(row.confirmed_confidence) && ratio(row.dismissed_confidence) && typeof row.over_threshold === 'boolean')
     && Array.isArray(value.corrections) && value.corrections.length <= 20

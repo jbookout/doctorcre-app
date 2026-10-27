@@ -112,3 +112,14 @@ test('session invalidation clears data and fences a late successful read', async
   assert.match(container.textContent, /Sign in/);
   assert.doesNotMatch(container.textContent, /Demo Harbor|Already handled/);
 });
+
+test('reply draft quality remains readable when submitted and delivery states leave the pending cohort', async t => {
+  const value = report();
+  value.kinds.push(kind('reply_draft', { proposed: 4, pending: 1, dismissed: 1, dismiss_rate: 1, dismissed_confidence: 0.8 }));
+  const { container, view } = setup(t, { getEmailProposalQuality: async () => value });
+  await view.refresh();
+  const draft = container.querySelector('[data-quality-kind="reply_draft"]');
+  assert.ok(draft);
+  assert.match(draft.textContent, /Reply drafts/);
+  assert.match(draft.textContent, /Proposed: 4.*Pending: 1.*Dismissed: 1/);
+});

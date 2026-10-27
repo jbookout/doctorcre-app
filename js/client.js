@@ -111,6 +111,7 @@
  * @property {(args:{deal_ids:string[]}) => Promise<{deals:Object[]}>} [getCallContext] exact active agenda records and participants
  * @property {(args:{proposal_id:string, accept:boolean, idempotency_key:string}) => Promise<WriteResult>} [resolveConfirm]
  * @property {(args:{candidate_id:string, accept:boolean, idempotency_key:string}) => Promise<WriteResult>} [resolvePostCallCandidate]
+ * @property {(args:{proposal_id:string,base_version:number,subject:string,body:string,idempotency_key:string}) => Promise<Object>} submitEmailDraft queues exact partner-reviewed reply text for sending
  * @property {() => Promise<Object>} getEmailProposalQuality read-only seven-day email-proposal-quality.v1 report
  * @property {(args?:{deal?:string,limit?:number,cursor?:string}) => Promise<{schema_version:'email-proposals.v1', proposals:Object[], send:false, more?:boolean, next_cursor?:string|null}>} listEmailProposals pending email proposals, oldest first
  * @property {(args:{deal:string,activity_id:string,evidence_quote:string,text:string,next_date:string,owner?:'joe'|'dell'}) => Promise<Object>} previewEmailNextStep fresh digest and affected plan/actions
