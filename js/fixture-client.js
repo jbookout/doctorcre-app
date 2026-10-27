@@ -49,6 +49,7 @@ export function createFixtureDealStore(seed) {
 /**
  * @param {Object} [opts]
  * @param {string} [opts.seedUrl]
+ * @param {boolean} [opts.emailReplyDrafts] include a synthetic owned reply draft
  * @param {string} [opts.selfActor]
  * @param {ReturnType<typeof createFixtureDealStore>} [opts.dealStore]
  */
@@ -3103,10 +3104,10 @@ export async function createFixtureClient(opts = {}) {
   };
 
   let emailFixture;
-  const emails = () => emailFixture ||= import('./email-proposals-fixture.js').then(({ createEmailProposalsFixture }) => createEmailProposalsFixture({ deals, seedDeals: emailSeedDeals, actor: selfActor, client, pushEvent }));
+  const emails = () => emailFixture ||= import('./email-proposals-fixture.js').then(({ createEmailProposalsFixture }) => createEmailProposalsFixture({ deals, seedDeals: emailSeedDeals, actor: selfActor, client, pushEvent, replyDrafts: opts.emailReplyDrafts === true }));
   Object.assign(client, Object.fromEntries([
     'getEmailProposalQuality', 'listEmailProposals', 'previewEmailNextStep', 'previewEmailDealProgress',
-    'confirmEmailNextStep', 'confirmEmailDealProgress', 'dismissEmailProposal',
+    'confirmEmailNextStep', 'confirmEmailDealProgress', 'dismissEmailProposal', 'submitEmailDraft',
   ].map(method => [method, async args => (await emails())[method](args)])));
   return opts.docContext === false ? client : observeDocClient(client);
 }
