@@ -527,11 +527,16 @@ async function runFollowUp(operationKey, step) {
     if (entry?.args?.password) delete entry.args.password;
   }
   if (updateActor !== null && updateActor !== state.selfActor) return result;
+  let dockRequest = result.request;
+  if (step.verb === 'register-client-portal' && dockRequest) {
+    dockRequest = { ...dockRequest };
+    delete dockRequest.password;
+  }
   dock.record(operationKey, {
     summary: operations.get(operationKey).summary,
     status: result.status === 'blocked' ? 'unknown' : result.status,
     reason: result.message || null,
-    retry: result.status === 'blocked' || result.retry, undo: false, request: result.request,
+    retry: result.status === 'blocked' || result.retry, undo: false, request: dockRequest,
   });
   if (step.verb === 'register-client-portal' && result.status === 'ok') state.boardSync.requestRefresh('client-portal');
   if (isUpdate && result.status === 'ok') discardUpdate(args.deal);
