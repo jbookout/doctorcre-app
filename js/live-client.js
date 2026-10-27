@@ -108,6 +108,7 @@ export function createLiveClient(opts = {}) {
     if (isError || (payload?.error && payload.ok !== true)) {
       const err = new Error(`live ${verb} refused: ${payload?.error || 'tool_error'}`);
       err.payload = payload;
+      if (verb === 'new-deal') err.creationStage = 'new-deal';
       err.writeRefusal = verb === 'new-deal' && CREATION_REFUSALS.has(payload?.error);
       throw err;
     }
@@ -464,7 +465,6 @@ export function createLiveClient(opts = {}) {
         if (!res) {
           try { res = await write('new-deal', operation.request); }
           catch (error) {
-            error.creationStage = 'new-deal';
             // Only a verified first creation refusal proves no deal was made.
             // A refusal after an uncertain attempt cannot retire that intent.
             if (error.writeRefusal && !operation.creationUncertain) {
