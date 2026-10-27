@@ -67,14 +67,25 @@ export function createLiveClient(opts = {}) {
     const transport = opts.fetchImpl || sessionFetch;
     if (!sharedReads.has(transport)) sharedReads.set(transport, new Map());
     const reads = sharedReads.get(transport), key = JSON.stringify([baseUrl, verb, args]);
-    let read = reads.get(key);
-    if (!read) {
-      read = rawRpc(verb, args, undefined, readTimeoutMs).finally(() => reads.delete(key));
-      read.catch(() => {});
-      reads.set(key, read);
+    let entry = reads.get(key);
+    if (!entry) {
+      const controller = new AbortController();
+      entry = { controller, waiters: 0, read: rawRpc(verb, args, controller.signal, readTimeoutMs).finally(() => reads.delete(key)) };
+      entry.read.catch(() => {});
+      reads.set(key, entry);
     }
-    // Each caller keeps its own cancellation and its own copy of the answer.
-    return readWithDeadline(() => read.then(structuredClone), { signal, timeoutMs: readTimeoutMs });
+    // Each caller keeps its own cancellation and copy of the answer; the transport aborts when none is left waiting.
+    const shared = entry;
+    shared.waiters++;
+    let released = false;
+    const release = () => {
+      if (released) return;
+      released = true;
+      signal?.removeEventListener('abort', release);
+      if (--shared.waiters === 0 && reads.get(key) === shared) { reads.delete(key); shared.controller.abort(); }
+    };
+    signal?.addEventListener('abort', release, { once: true });
+    return readWithDeadline(() => shared.read.then(structuredClone), { signal, timeoutMs: readTimeoutMs }).finally(release);
   };
 
   async function rawRpc(verb, args = {}, signal, timeoutMs, headers) {
