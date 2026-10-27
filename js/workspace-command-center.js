@@ -5,7 +5,6 @@ import { projectInvoices, invoiceHref, invoiceMoney, invoiceDate } from './invoi
 import { introductionSuggestions } from './relationship-network-model.js';
 import { mountAutoRefresh, readWithDeadline, updatedLabel } from './auto-refresh.mjs';
 import { homeClient } from './home-boot.js';
-import { mountEmailFollowups } from './email-followups.js';
 import { mountCallOutcomes } from './call-outcomes.js';
 import { localToday } from './calendar-model.js';
 import { agendaSnapshot, dealHref, dealSnapshot, HOME_SCOPES, readHomeAgenda, readHomeDashboard, topNewLeads } from './home-dashboard-model.js';
@@ -20,16 +19,17 @@ const dateLabel = day => new Date(`${day}T12:00:00`).toLocaleDateString(undefine
 
 export function mountHomeDashboard({ document, window, client, now = () => Date.now(), intervalMs = 30_000 }) {
   const $ = id => document.getElementById(id);
-  let emailQuality = null, qualityRetired = false, qualityFrame = null;
-  const retirePendingQuality = () => {
-    qualityRetired = true;
-    if (!emailQuality && $('homeEmailQuality')) {
-      $('homeEmailQuality').setAttribute('aria-busy', 'false');
-      $('homeEmailQuality').innerHTML = '<header class="home-panel-head"><h2>Email proposal quality</h2></header><p role="status">Sign in to view email proposal quality.</p>';
+  let emailQuality = null, emailReview = null, emailRetired = false, emailObserver = null;
+  const retirePendingEmail = () => {
+    emailRetired = true;
+    emailObserver?.disconnect();
+    for (const [id, title, view] of [['homeEmailQuality', 'Email proposal quality', emailQuality], ['homeEmailFollowups', 'Email follow-ups', emailReview]]) {
+      if (view || !$(id)) continue;
+      $(id).setAttribute('aria-busy', 'false');
+      $(id).innerHTML = `<header class="home-panel-head"><h2>${title}</h2></header><p role="status">Sign in to view ${title.toLowerCase()}.</p>`;
     }
   };
-  window.addEventListener('doctorcre-session-invalidated', retirePendingQuality);
-  const emailReview = $('homeEmailFollowups') && client.listEmailProposals ? mountEmailFollowups({ container: $('homeEmailFollowups'), client, onChange: () => { void emailQuality?.refresh(); nextRead = readHomeAgenda; auto.refresh(); } }) : null;
+  window.addEventListener('doctorcre-session-invalidated', retirePendingEmail);
   let snapshotDocObservedAt = null;
   // The relationship dialog and the past-client widget are secondary: they load
   // after the first data paint so they never compete with the deal flags.
@@ -216,19 +216,27 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
   function loadSecondary() {
     if (secondaryRequested) return;
     secondaryRequested = true;
-    if ($('homeEmailQuality') && client.getEmailProposalQuality) {
-      qualityFrame = window.requestAnimationFrame(() => {
-        qualityFrame = window.requestAnimationFrame(() => {
-          if (disposed || qualityRetired) return;
-          import('./email-quality.js').then(({ mountEmailQuality }) => {
-            if (disposed || qualityRetired) return;
-            emailQuality = mountEmailQuality({ container: $('homeEmailQuality'), client });
-            window.removeEventListener('doctorcre-session-invalidated', retirePendingQuality);
-            void emailQuality.refresh();
-          });
+    emailObserver = new window.IntersectionObserver(entries => {
+      for (const entry of entries) {
+        if (!entry.isIntersecting) continue;
+        emailObserver.unobserve(entry.target);
+        if (disposed || emailRetired) continue;
+        if (entry.target.id === 'homeEmailQuality') import('./email-quality.js').then(({ mountEmailQuality }) => {
+          if (disposed || emailRetired) return;
+          emailQuality = mountEmailQuality({ container: entry.target, client });
+          void emailQuality.refresh();
         });
-      });
-    }
+        else import('./email-followups.js').then(({ mountEmailFollowups }) => {
+          if (disposed || emailRetired) return;
+          emailReview = mountEmailFollowups({ container: entry.target, client, onChange: () => {
+            void emailQuality?.refresh(); nextRead = readHomeAgenda; auto.refresh();
+          } });
+          void emailReview.refresh();
+        });
+      }
+    });
+    if ($('homeEmailQuality') && client.getEmailProposalQuality) emailObserver.observe($('homeEmailQuality'));
+    if ($('homeEmailFollowups') && client.listEmailProposals) emailObserver.observe($('homeEmailFollowups'));
     if ($('homeIntroductions')) import('./relationship-dialog.js').then(({ mountRelationshipDialog }) => {
       if (disposed) return;
       relationshipDialog = mountRelationshipDialog({document});
@@ -254,7 +262,7 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
     button.addEventListener('keydown', event => { if (!['ArrowLeft', 'ArrowRight'].includes(event.key)) return; event.preventDefault(); const other = HOME_SCOPES[1 - HOME_SCOPES.indexOf(scope)]; select(other); buttons.find(node => node.dataset.scope === other).focus(); });
   });
   auto.refresh();
-  return { refresh: auto.refresh, dispose() { disposed = true; sequence++; window.cancelAnimationFrame(qualityFrame); window.removeEventListener('doctorcre-session-invalidated', retirePendingQuality); window.clearInterval(expiry); auto.dispose(); relationshipDialog?.dispose(); pastWidget?.dispose(); callTasks?.dispose(); emailReview?.dispose(); emailQuality?.dispose(); } };
+  return { refresh: auto.refresh, dispose() { disposed = true; sequence++; emailObserver?.disconnect(); window.removeEventListener('doctorcre-session-invalidated', retirePendingEmail); window.clearInterval(expiry); auto.dispose(); relationshipDialog?.dispose(); pastWidget?.dispose(); callTasks?.dispose(); emailReview?.dispose(); emailQuality?.dispose(); } };
 }
 
 if (typeof document !== 'undefined' && document.getElementById('dealAttention')) {
