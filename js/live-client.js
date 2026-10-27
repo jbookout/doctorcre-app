@@ -518,7 +518,7 @@ export function createLiveClient(opts = {}) {
 
     // Authenticated sponsor is resolved by CARR; callers cannot select a partner.
     async listFeatureSwitches({ signal } = {}) { return rpc('list-feature-switches', {}, signal); },
-    async morningBrief({ signal } = {}) { return rpc('morning-brief', {}, signal); },
+    async morningBrief({ signal, fresh } = {}) { return fresh ? rawRpc('morning-brief', {}, signal, readTimeoutMs) : rpc('morning-brief', {}, signal); },
     async morningBriefQueue(queue, {cursor,signal} = {}) {
       if (!['today','loops','needs_joe','assurance_cadence'].includes(queue)) throw new Error('Unsupported morning queue.');
       return rpc(queue === 'assurance_cadence' ? 'morning-assurance-queue' : 'morning-brief-queue',

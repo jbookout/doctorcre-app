@@ -319,3 +319,17 @@ test('a cancelled read cannot remove its replacement from sharing', async () => 
   assert.deepEqual(await replacement, { ok: true });
   assert.deepEqual(await joined, { ok: true });
 });
+
+test('a fresh morning brief does not join an older pending read', async () => {
+  let requests = 0, release;
+  const fetchImpl = async () => {
+    const number = ++requests;
+    if (number === 1) await new Promise(resolve => { release = resolve; });
+    return Response.json({ result: { content: [{ text: JSON.stringify({ number }) }] } });
+  };
+  const client = createLiveClient({ fetchImpl });
+  const older = client.morningBrief();
+  assert.deepEqual(await client.morningBrief({ fresh: true }), { number: 2 });
+  release();
+  assert.deepEqual(await older, { number: 1 });
+});
