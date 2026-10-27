@@ -6,7 +6,7 @@ for (const width of [390, 1440]) test(`shared pause notice and trusted manual re
   const server = await fixtureServer(); t.after(() => server.close());
   const browser = await chromium.launch(); t.after(() => browser.close());
   const page = await browser.newPage({ viewport: { width, height: 900 } });
-  await page.route('**/poll-safety-fixture', route => route.fulfill({ contentType: 'text/html', body: '<!doctype html><html><body><button id="refresh">Refresh</button></body></html>' }));
+  await page.route('**/poll-safety-fixture', route => route.fulfill({ contentType: 'text/html', body: '<!doctype html><html><head><link rel="stylesheet" href="/css/tokens.css"><link rel="stylesheet" href="/css/system.css"></head><body><button id="refresh">Refresh</button></body></html>' }));
   await page.clock.install({ time: new Date('2026-10-27T12:00:00Z') });
   await page.goto(`${server.origin}/poll-safety-fixture`);
   await page.evaluate(async () => {
@@ -23,6 +23,7 @@ for (const width of [390, 1440]) test(`shared pause notice and trusted manual re
   });
   const notice = page.locator('[data-poll-safety]');
   assert.equal(await notice.isVisible(), true);
+  assert.ok((await page.getByRole('button', { name: 'Resume updates' }).boundingBox()).height >= 44);
   assert.match(await notice.innerText(), /paused.*request limit/i);
   await page.screenshot({ path: `out/test-artifacts/poll-safety/paused-${width}.png` });
   await page.clock.fastForward(5_000);

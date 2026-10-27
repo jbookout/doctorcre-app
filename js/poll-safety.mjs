@@ -61,9 +61,9 @@ export function createPollSafety({ window, document = window?.document, now = ()
     if (!notice) {
       notice = document.createElement('section'); notice.dataset.pollSafety = '';
       notice.setAttribute('role', 'status'); notice.setAttribute('aria-live', 'polite');
-      notice.style.cssText = 'position:fixed;bottom:1rem;left:1rem;right:1rem;z-index:2147483647;padding:1rem;background:var(--surface, Canvas);color:var(--text, CanvasText);border:2px solid currentColor;border-radius:8px';
+      notice.style.cssText = 'position:fixed;bottom:1rem;left:1rem;right:1rem;z-index:2147483647;padding:1rem;background:var(--surface-1, Canvas);color:var(--fg, CanvasText);border:2px solid currentColor;border-radius:8px';
       label = document.createElement('span');
-      const button = document.createElement('button'); button.type = 'button'; button.textContent = 'Resume updates';
+      const button = document.createElement('button'); button.type = 'button'; button.className = 'btn'; button.textContent = 'Resume updates';
       button.addEventListener('click', event => { if (event.isTrusted) api.resume(); });
       notice.append(label, button); document.body.append(notice);
     }
