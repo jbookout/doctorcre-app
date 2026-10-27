@@ -29,7 +29,7 @@ const refusal = error => {
   return 'This proposal could not be applied. Refresh and review the deal before trying again.';
 };
 
-export function mountEmailFollowups({ container, client, onChange = () => {} }) {
+export function mountEmailFollowups({ container, client, deal, onChange = () => {} }) {
   const win = container.ownerDocument.defaultView;
   let rows = [], loaded = false, loadState = 'loading', epoch = 0, disposed = false, cursor = null, retryCursor = null, pages = 1;
   const decisions = new Map();
@@ -39,7 +39,7 @@ export function mountEmailFollowups({ container, client, onChange = () => {} }) 
     const selection = active?.matches('textarea') ? [active.selectionStart, active.selectionEnd] : null;
     const focusId = active?.closest('[data-email-id]')?.dataset.emailId, focusAction = active?.dataset.emailAction;
     container.setAttribute('aria-busy', String(loadState === 'loading'));
-    const button = (action, label, disabled = false) => `<button type="button" class="home-outline" data-email-action="${action}"${disabled ? ' disabled' : ''}>${label}</button>`;
+    const button = (action, label, disabled = false) => `<button type="button" class="btn home-outline" data-email-action="${action}"${disabled ? ' disabled' : ''}>${label}</button>`;
     const notice = loadState === 'denied' ? '<p role="status">Sign in to review email follow-ups.</p>'
       : loadState === 'error' ? `<p role="status">Could not load email follow-ups.${loaded && rows.length ? ' Showing the last successful read.' : ''}</p>${button('retry', 'Retry email follow-ups')}`
         : loadState === 'loading' ? '<p role="status">Updating email follow-ups…</p>' : '';
@@ -79,12 +79,12 @@ export function mountEmailFollowups({ container, client, onChange = () => {} }) 
       let next = pageCursor ? [...rows] : [], currentCursor = pageCursor, result;
       const pageCount = pageCursor ? 1 : pages;
       for (let i = 0; i < pageCount; i++) {
-        result = await readWithDeadline(() => client.listEmailProposals({ limit: 50, ...(currentCursor ? { cursor: currentCursor } : {}) }), { timeoutMs: 10_000 });
+        result = await readWithDeadline(() => client.listEmailProposals({ limit: 50, ...(deal ? { deal } : {}), ...(currentCursor ? { cursor: currentCursor } : {}) }), { timeoutMs: 10_000 });
         if (disposed || ticket !== epoch) return;
         if (result?.schema_version !== 'email-proposals.v1' || result.send !== false || !Array.isArray(result.proposals)
           || typeof result.more !== 'boolean' || (result.more ? !result.next_cursor || result.next_cursor === currentCursor || result.next_cursor !== result.proposals.at(-1)?.id : result.next_cursor !== null)
           || result.proposals.some(row => !row?.id || !Number.isInteger(row.version) || row.version < 1 || !KINDS[row.kind]
-            || row.confirm_verb !== KINDS[row.kind].verb || !row.deal || !row.deal_name || !row.source?.activity_id || typeof row.source.evidence_quote !== 'string'
+            || (deal && row.deal !== deal) || row.confirm_verb !== KINDS[row.kind].verb || !row.deal || !row.deal_name || !row.source?.activity_id || typeof row.source.evidence_quote !== 'string'
             || (row.preview !== null && !validPreview(row, row.preview)))) throw Error('Invalid email proposals');
         next.push(...result.proposals.filter(item => !next.some(row => row.id === item.id)));
         currentCursor = result.next_cursor;
@@ -113,7 +113,7 @@ export function mountEmailFollowups({ container, client, onChange = () => {} }) 
       if (disposed || loadState === 'denied') return;
       if (denied(error)) return retire();
       if (error.payload?.error && !error.pendingRequest) decisions.set(row.id, { status: 'refused', message: refusal(error) });
-      else decisions.set(row.id, { ...state, status: 'unknown', message: 'Outcome unknown. Check outcome to recover the original request.' });
+      else decisions.set(row.id, { ...state, request: error.pendingRequest || state.request, status: 'unknown', message: 'Outcome unknown. Check outcome to recover the original request.' });
     }
     render();
   }

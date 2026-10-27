@@ -4,7 +4,7 @@ Local Deals lets a partner review Board or List, open a deal room and return to 
 
 ## Sub-features
 
-`deals-board-open`, `deals-views`, `deals-list-open`, `deals-deep-link`, `deals-home-open`, `deals-reopen`, `deals-requirement-preview`.
+`deals-board-open`, `deals-views`, `deals-list-open`, `deals-deep-link`, `deals-home-open`, `deals-reopen`, `deals-requirement-preview`, `deals-email-followups`.
 
 ## How to get to it (user POV)
 
@@ -25,6 +25,8 @@ Existing coverage: `test/local-deals-browser.test.mjs`, `test/dealroom-acceptanc
 - Open Draft requirement email in a deal. Enter approved requirements, generate and edit the subject and message, then copy the draft. `test/pipeline-interruption-browser.test.mjs` covers anonymous generation, copy failure, discard, record isolation and identity revocation. Drafts remain only while the page is open.
 
 - Call mode reviews a discussed deal's next step separately from its note. A pending matched proposal offers Confirm next step and Skip next step. A missing date warns that confirmation clears the current date. Settled or unmatched proposals stay visible without decision controls. `test/dealroom-call-mode.test.mjs` drives phone confirmation and desktop skipping with the real dialog, plus stale refusal and retained-request recovery. Synthetic captures remain under `out/test-artifacts/call-next-step/`.
+
+- Email follow-ups appears inside each deal room. Review the quoted evidence, choose Confirm, inspect the fresh replacement preview, then Confirm change. Dismiss requires a reason. Refresh deal reloads the pending list. `test/email-followups-browser.test.mjs` covers the scoped deal flow, unavailable reads and empty states at phone and desktop widths. The shared module tests cover pagination, stale preview refusal and uncertain-write recovery.
 
 ## Gotchas
 

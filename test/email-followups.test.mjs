@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { JSDOM } from 'jsdom';
 import { mountEmailFollowups } from '../js/email-followups.js';
+import { createLiveClient } from '../js/live-client.js';
 
 const digest = `sha256:${'a'.repeat(64)}`;
 const proposal = () => ({ id: '10000000-0000-4000-8000-000000000001', version: 3, kind: 'next_step',
@@ -14,10 +15,10 @@ const proposal = () => ({ id: '10000000-0000-4000-8000-000000000001', version: 3
     current_next_date: '2026-11-01', proposal_digest: digest, requires_confirmation: true,
     source: { activity_id: '30000000-0000-4000-8000-000000000001' }, evidence_quote: 'Please send the revised plan by November 3.' } });
 const response = proposals => ({ schema_version: 'email-proposals.v1', proposals, send: false, more: false, next_cursor: null });
-function setup(client) {
+function setup(client, options = {}) {
   const dom = new JSDOM('<section id="review"></section>');
   const container = dom.window.document.querySelector('section');
-  const view = mountEmailFollowups({ container, client, onChange: () => {} });
+  const view = mountEmailFollowups({ container, client, onChange: () => {}, ...options });
   return { dom, container, view, action: name => view.click({ target: [...container.querySelectorAll('button')].find(button => button.textContent === name) }) };
 }
 
@@ -236,4 +237,71 @@ test('Home refresh retains loaded pages and an in-flight load more', async () =>
   release();
   await loading;
   assert.match(other.container.textContent, /Demo second deal/);
+});
+
+
+test('deal review scopes every page and retry to the selected deal', async () => {
+  const first = proposal(), second = { ...proposal(), id: '10000000-0000-4000-8000-000000000002' };
+  let fail = true;
+  const calls = [];
+  const { container, view, action } = setup({ listEmailProposals: async args => {
+    calls.push(args);
+    if (args.cursor && fail) throw Error('offline');
+    return args.cursor ? response([second]) : { ...response([first]), more: true, next_cursor: first.id };
+  } }, { deal: first.deal });
+  await view.refresh();
+  assert.deepEqual(calls[0], { limit: 50, deal: first.deal });
+  await action('Load more email follow-ups');
+  assert.match(container.textContent, /Could not load/);
+  fail = false; await action('Retry email follow-ups');
+  assert.deepEqual(calls.at(-1), { limit: 50, deal: first.deal, cursor: first.id });
+  assert.equal(container.querySelectorAll('article').length, 2);
+});
+
+test('deal review refuses cross-deal rows instead of showing or acting on another deal', async () => {
+  const { container, view } = setup({ listEmailProposals: async () => response([proposal()]) },
+    { deal: '20000000-0000-4000-8000-000000000002' });
+  await view.refresh();
+  assert.match(container.textContent, /Could not load/);
+  assert.equal(container.querySelectorAll('article').length, 0);
+  assert.doesNotMatch(container.textContent, /No pending/);
+});
+
+for (const decision of ['dismiss', 'confirm']) test(`reopening a deal recovers the original uncertain ${decision} request`, async () => {
+  const row = proposal(), writes = [];
+  const client = createLiveClient({ fetchImpl: async (path, init) => {
+    if (path === '/auth/session') return Response.json({ actor: { slug: 'joe' }, csrf_token: 'synthetic-session' });
+    const { name, arguments: args } = JSON.parse(init.body).params;
+    let result;
+    if (name === 'list-email-proposals') result = response([row]);
+    else if (name === 'preview-email-next-step') result = row.preview;
+    else {
+      writes.push(args);
+      if (writes.length === 1) throw Error('lost response');
+      result = name === 'dismiss-email-proposal' ? { ok: true, status: 'dismissed', proposal_id: row.id }
+        : { ...row.preview, proposal_digest: args.proposal_digest, status: 'confirmed', requires_confirmation: false };
+    }
+    return Response.json({ result: { content: [{ text: JSON.stringify(result) }] } });
+  } });
+  async function decide(view, reason) {
+    if (decision === 'dismiss') {
+      await view.action('Dismiss');
+      view.container.querySelector('textarea').value = reason;
+      await view.action('Dismiss proposal');
+    } else {
+      await view.action('Confirm');
+      await view.action('Confirm change');
+    }
+  }
+  const first = setup(client, { deal: row.deal });
+  await first.view.refresh(); await decide(first, 'Original synthetic reason');
+  assert.match(first.container.textContent, /Outcome unknown/);
+  first.view.dispose();
+  row.preview.proposal_digest = `sha256:${'b'.repeat(64)}`;
+  const reopened = setup(client, { deal: row.deal });
+  await reopened.view.refresh(); await decide(reopened, 'Changed synthetic reason');
+  await reopened.action('Check outcome');
+  assert.equal(writes.length, 2);
+  assert.deepEqual(writes[1], writes[0]);
+  assert.match(reopened.container.textContent, decision === 'dismiss' ? /Dismissed\./ : /Confirmed\./);
 });

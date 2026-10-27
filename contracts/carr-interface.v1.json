@@ -1177,7 +1177,7 @@
       "pull_request": "https://github.com/DoctorCRE/carr-system/pull/2361"
     },
     "schema_version": "email-proposals.v1",
-    "read": "list-email-proposals {limit,cursor?} returns proposals oldest first, send:false, more and next_cursor. Paging producer: DoctorCRE/carr-system@81099219dff8270cee6be8150cfd00d7888437d3. Each proposal has id, version, kind, deal, deal_name, confidence, suspected_instruction, source, confirm_verb, preview and preview_error.",
+    "read": "list-email-proposals {deal?,limit,cursor?} filters pending proposals by the optional deal UUID before paging. Deal cursors must belong to that deal and remain valid after resolution. Deal filter producer: DoctorCRE/carr-system@5069155258335a44686086fcfa74ee8b7871c01a (#2477). It returns proposals oldest first, send:false, more and next_cursor. Paging producer: DoctorCRE/carr-system@81099219dff8270cee6be8150cfd00d7888437d3. Each proposal has id, version, kind, deal, deal_name, confidence, suspected_instruction, source, confirm_verb, preview and preview_error.",
     "source_fields": [
       "activity_id",
       "sender",

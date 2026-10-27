@@ -435,3 +435,18 @@ body.has-app-layout:has(#callModeAvailability:not([hidden])) { --layout-bottom: 
 .app-walkthrough button:focus-visible { outline: var(--focus-width) solid var(--focus-ring); outline-offset: 2px; }
 .app-walkthrough-target, #docOpen.app-walkthrough-target { box-sizing: border-box; outline: 3px solid var(--focus-ring); outline-offset: -3px; animation: walkthrough-highlight 450ms ease-out; }
 @keyframes walkthrough-highlight { from { outline-color: transparent; } }
+
+.email-proposal { padding: var(--space-4) 0; border-top: var(--hairline-width) solid var(--hairline); }
+.email-proposal h3 { margin: 0; font-size: var(--font-size-2); }
+.email-proposal h3 a { display: inline-flex; align-items: center; min-height: var(--touch); color: var(--fg); }
+.email-proposal p { margin: var(--space-2) 0; }
+.email-source, .email-proposal q { color: var(--fg-muted); font-size: var(--font-size-1); }
+.email-proposal q { display: block; max-width: 80ch; }
+.email-change { font-weight: var(--font-weight-strong); }
+.email-controls, .email-review { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+.email-review p, .email-controls label { flex-basis: 100%; }
+.email-controls textarea { display: block; box-sizing: border-box; width: 100%; margin-top: var(--space-2); padding: var(--space-2); border: var(--hairline-width) solid var(--hairline-strong); border-radius: var(--radius-2); background: var(--surface-2); color: var(--fg); font: inherit; }
+.email-controls button { background: transparent; font-family: inherit; cursor: pointer; }
+.email-controls button:disabled { opacity: .55; cursor: default; }
+.email-controls [data-email-action="confirm"] { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+.email-warning { color: var(--status-warn-ink); }

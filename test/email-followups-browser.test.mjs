@@ -35,6 +35,9 @@ for (const width of [1440, 390]) for (const theme of ['light', 'dark']) {
     const card = page.locator('#homeEmailFollowups');
     await card.locator('article').first().waitFor({ timeout: 5000 }).catch(async error => { assert.fail(`${error.message}\n${await page.locator('body').innerText()}\n${errors.join('\n')}`); });
     assert.equal(await card.locator('article').count(), 2);
+    const confirmBox = await card.locator('article').first().getByRole('button', { name: 'Confirm', exact: true }).boundingBox();
+    const dismissBox = await card.locator('article').first().getByRole('button', { name: 'Dismiss', exact: true }).boundingBox();
+    assert.ok(dismissBox.x - confirmBox.x - confirmBox.width >= 8, 'decision controls have visible space between them');
     assert.doesNotMatch(await card.innerText(), /example.test|@/);
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
     await mkdir('out/test-artifacts/email-followups', { recursive: true });
@@ -88,4 +91,70 @@ test('signed-in synthetic Home distinguishes load failure, keeps last good rows,
   const confirm = calls.find(call => call.name === 'confirm-email-next-step');
   assert.ok(preview && confirm);
   assert.deepEqual(Object.fromEntries(Object.entries(confirm.arguments).filter(([key]) => !['proposal_digest', 'idempotency_key'].includes(key))), preview.arguments);
+});
+
+for (const width of [1440, 390]) {
+  test(`deal email review scopes proposals, confirms and dismisses at ${width}px`, async t => {
+    const page = await browser.newPage({ viewport: { width, height: 1000 }, reducedMotion: 'reduce' });
+    t.after(() => page.close());
+    await page.addInitScript(() => localStorage.setItem('doctorcre.visual-preferences', JSON.stringify({ walkthroughSeen: { joe: true, dell: true } })));
+    await page.request.post(`${origin}/api/test/seed`, { data: { namespace: `deal-email-${width}`, viewer: 'joe', reset: true } });
+    const calls = [], errors = [];
+    page.on('pageerror', error => errors.push(error.message));
+    await page.route('**/mcp', route => { calls.push(route.request().postDataJSON().params); return route.continue(); });
+    await page.goto(`${origin}/deals?mode=live&deal=qa-deal-1`);
+    const panel = page.locator('#recordPanel'), review = page.locator('#panelEmailFollowups');
+    await review.getByText('Please send the revised plan by November 3.', { exact: true }).waitFor({ timeout: 5000 });
+    assert.equal(await review.locator('article').count(), 1);
+    assert.doesNotMatch(await review.innerText(), /The tour is confirmed/);
+    assert.ok(calls.some(call => call.name === 'list-email-proposals' && call.arguments.deal === 'qa-deal-1'));
+    await mkdir('out/test-artifacts/deal-email-followups', { recursive: true });
+    await review.screenshot({ path: `out/test-artifacts/deal-email-followups/${width}-pending.png` });
+    await review.getByRole('button', { name: 'Confirm', exact: true }).click();
+    await review.getByRole('button', { name: 'Confirm change', exact: true }).waitFor();
+    await review.screenshot({ path: `out/test-artifacts/deal-email-followups/${width}-preview.png` });
+    await review.getByRole('button', { name: 'Confirm change', exact: true }).click();
+    await panel.locator('.deal-current-action strong').filter({ hasText: 'Send the revised plan' }).waitFor();
+    const preview = calls.find(call => call.name === 'preview-email-next-step');
+    const confirm = calls.find(call => call.name === 'confirm-email-next-step');
+    assert.deepEqual(Object.fromEntries(Object.entries(confirm.arguments).filter(([key]) => !['proposal_digest', 'idempotency_key'].includes(key))), preview.arguments);
+    await page.getByRole('button', { name: 'Close deal', exact: true }).click();
+    await page.waitForFunction(() => !document.querySelector('#recordPanel').open);
+    await page.locator('.kanban-column [data-id="qa-deal-2"] .card-open').click();
+    await review.getByText('The tour is confirmed for November 3.', { exact: true }).waitFor();
+    assert.doesNotMatch(await review.innerText(), /Please send the revised plan/);
+    await review.getByRole('button', { name: 'Dismiss', exact: true }).click();
+    await review.getByRole('textbox', { name: 'Reason for dismissal' }).fill('Synthetic tour already handled');
+    await review.getByRole('button', { name: 'Dismiss proposal', exact: true }).click();
+    await review.getByText('Dismissed.', { exact: true }).waitFor();
+    await panel.getByRole('button', { name: 'Refresh deal', exact: true }).click();
+    await review.getByText('No pending email follow-ups.', { exact: true }).waitFor();
+    assert.equal(calls.find(call => call.name === 'dismiss-email-proposal').arguments.reason, 'Synthetic tour already handled');
+    assert.equal(await panel.evaluate(node => node.scrollWidth <= node.clientWidth), true);
+    assert.deepEqual(errors, []);
+  });
+}
+
+test('deal email review distinguishes unavailable from empty and clears proposals after session loss', async t => {
+  const page = await browser.newPage();
+  t.after(() => page.close());
+  await page.addInitScript(() => localStorage.setItem('doctorcre.visual-preferences', JSON.stringify({ walkthroughSeen: { joe: true, dell: true } })));
+  await page.request.post(`${origin}/api/test/seed`, { data: { namespace: 'deal-email-recovery', viewer: 'joe', reset: true } });
+  let fail = true;
+  await page.route('**/mcp', route => {
+    if (fail && route.request().postDataJSON().params.name === 'list-email-proposals') return route.fulfill({ status: 503, json: { error: 'synthetic_outage' } });
+    return route.continue();
+  });
+  await page.goto(`${origin}/deals?mode=live&deal=qa-deal-3`);
+  const review = page.locator('#panelEmailFollowups');
+  await review.getByText('Could not load email follow-ups.', { exact: true }).waitFor({ timeout: 5000 });
+  assert.equal(await review.getByText('No pending email follow-ups.', { exact: true }).count(), 0);
+  fail = false;
+  await review.getByRole('button', { name: 'Retry email follow-ups' }).click();
+  await review.getByText('No pending email follow-ups.', { exact: true }).waitFor();
+  await page.goto(`${origin}/deals?mode=live&deal=qa-deal-1`);
+  await review.locator('article').waitFor();
+  await page.evaluate(() => window.dispatchEvent(new CustomEvent('doctorcre-session-invalidated')));
+  await page.waitForFunction(() => !document.querySelector('#panelEmailFollowups article'));
+  assert.equal(await page.locator('#recordPanel').getByText('Please send the revised plan by November 3.', { exact: true }).count(), 0);
 });
