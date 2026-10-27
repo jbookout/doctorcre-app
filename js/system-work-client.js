@@ -1,9 +1,15 @@
 import { sessionFetch } from './private-session.js';
 import { observeDocRead } from './doc-context.js';
 import { uuidv4 } from "./uuid.js";
-import { validateHumanRef } from "./system-work-view.js";
+import { isHumanRef, validateHumanRef } from "./system-work-view.js";
 import { readWithDeadline } from "./auto-refresh.mjs";
 import { createRetainedCommands } from './retained-commands.mjs';
+
+const isRecord = (value) => Boolean(value) && typeof value === "object" && !Array.isArray(value);
+const isCollection = (data) => isRecord(data) && Array.isArray(data.items) && data.items.every(item =>
+  isRecord(item) && isHumanRef(item.human_ref) && typeof item.title === "string" && typeof item.state === "string");
+const isCard = (data, ref) => isRecord(data) && data.human_ref === ref && typeof data.title === "string" &&
+  typeof data.state === "string" && Number.isSafeInteger(data.version) && data.version >= 1;
 
 export function createSystemWorkClient(options = {}) {
   const fetchImpl = options.fetchImpl || ((path, init) => sessionFetch(path, init));
@@ -23,6 +29,16 @@ export function createSystemWorkClient(options = {}) {
       throw error;
     }
     return body;
+  }
+
+  // A 200 counts only when its envelope is the one CARR sends; anything else is
+  // an unavailable read, never an empty queue or a current card.
+  async function decodeRead(response, valid) {
+    if (!response.ok) return decode(response);
+    const envelope = await response.json().catch(() => null);
+    if (envelope?.ok !== true || !valid(envelope.data))
+      throw Object.assign(new Error("Work Requests sent an unreadable response."), { code: "malformed_response" });
+    return envelope.data;
   }
 
   async function bootstrap() {
@@ -47,7 +63,7 @@ export function createSystemWorkClient(options = {}) {
       const data = envelope?.data ?? envelope;
       const confirmed = envelope?.ok === true || data?.ok === true ||
         (path.endsWith('/challenge') && typeof data?.challenge === 'string' && data.challenge) ||
-        (path.endsWith('/report') && typeof data?.human_ref === 'string' && /^WR-\d+$/.test(data.human_ref));
+        (path.endsWith('/report') && isHumanRef(data?.human_ref));
       if (!confirmed) throw new Error('Write outcome unknown. The server did not return a valid receipt.');
       return data;
     }, { timeoutMs: options.writeTimeoutMs || 15_000 });
@@ -101,8 +117,7 @@ export function createSystemWorkClient(options = {}) {
           signal,
           credentials: "same-origin", headers: { accept: "application/json" },
         });
-        const envelope = await decode(response);
-        return envelope.data ?? envelope;
+        return decodeRead(response, isCollection);
       }, { timeoutMs: options.readTimeoutMs || 10_000 }));
     },
     async read(humanRef) {
@@ -112,8 +127,7 @@ export function createSystemWorkClient(options = {}) {
           signal,
           credentials: "same-origin", headers: { accept: "application/json" },
         });
-        const envelope = await decode(response);
-        return envelope.data ?? envelope;
+        return decodeRead(response, card => isCard(card, ref));
       }, { timeoutMs: options.readTimeoutMs || 10_000 }));
     },
     async report(body) {
