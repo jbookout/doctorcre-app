@@ -30,7 +30,7 @@ const task = (id, owner = 'joe', due_on = '2026-10-02') => ({
   evidence_quote: 'Joe will call the demo lender.', created_at: '2026-10-01T14:00:00Z',
 });
 
-async function open(t, { width = 1280, candidates = [task('proposal-joe')] } = {}) {
+async function open(t, { width = 1280, candidates = [task('proposal-joe')], holdCommands = false } = {}) {
   const page = await browser.newPage({ viewport: { width, height: 960 }, timezoneId: 'America/Chicago', reducedMotion: 'reduce' });
   t.after(() => page.close());
   await page.clock.install({ time: new Date('2026-10-01T15:00:00Z') });
@@ -70,9 +70,27 @@ async function open(t, { width = 1280, candidates = [task('proposal-joe')] } = {
     }
     return route.continue();
   });
-  await page.goto(`${origin}/?mode=live`);
-  await page.locator('#refreshHome[aria-busy="false"]').waitFor();
-  return { page, pending, actions, writes, reads, errors, gate };
+  let releaseCommands;
+  if (holdCommands) {
+    const commands = new Promise(resolve => { releaseCommands = resolve; });
+    t.after(() => releaseCommands());
+    await page.route('**/js/retained-commands.mjs', async route => { await commands; await route.continue().catch(() => {}); });
+    await page.exposeFunction('__resolveCallTask', args => {
+      writes.push(args);
+      return { ok: true, candidate_id: args.candidate_id, status: args.accept ? 'confirmed' : 'skipped', ref: 'demo-action', assignee: 'joe' };
+    });
+    await page.route(url => url.pathname === '/js/home-boot.js' && !url.search, route => route.fulfill({
+      contentType: 'text/javascript', body: `import { homeClient as original } from './home-boot.js?fixture';
+        export const homeClient = original.then(client => {
+          client.getPostCallFollowups = async () => ({ schema_version: 'post-call-followups.v1', candidates: ${JSON.stringify(candidates)}, send: false });
+          client.resolvePostCallCandidate = window.__resolveCallTask;
+          return client;
+        });`,
+    }));
+  }
+  await page.goto(`${origin}/${holdCommands ? '' : '?mode=live'}`, { waitUntil: holdCommands ? 'commit' : 'load' });
+  await page.locator('#refreshHome[aria-busy="false"]').waitFor({ timeout: holdCommands ? 3000 : 30000 });
+  return { page, pending, actions, writes, reads, errors, gate, releaseCommands };
 }
 
 test('Home adds a reviewed call task and reads its exact owner, date and text through the agenda', async t => {
@@ -132,5 +150,31 @@ test('a slow Home refresh keeps the call task section and keyboard focus in plac
   await page.locator('#refreshHome[aria-busy="false"]').waitFor();
   await page.locator(`${skip}:not([aria-disabled="true"])`).waitFor();
   assert.equal(await page.evaluate(() => document.activeElement?.dataset.callTaskKey), 'proposal-joe:false');
+  assert.deepEqual(errors, []);
+});
+
+test('Home renders useful task review before loading its decision writer', async t => {
+  const { page, writes, errors, releaseCommands } = await open(t, { holdCommands: true });
+  const add = page.getByRole('button', { name: 'Add Joe task', exact: true });
+  await add.waitFor();
+  assert.equal(await page.locator('#homeAgenda').isVisible(), true);
+  await add.click();
+  assert.equal(await add.getAttribute('aria-disabled'), 'true');
+  await add.evaluate(button => button.click());
+  assert.deepEqual(writes, []);
+  releaseCommands();
+  await page.getByText('Task added', { exact: true }).waitFor();
+  assert.equal(writes.length, 1);
+  assert.deepEqual(errors, []);
+});
+
+test('session invalidation cancels a task decision waiting for its writer', async t => {
+  const { page, writes, errors, releaseCommands } = await open(t, { holdCommands: true });
+  await page.getByRole('button', { name: 'Add Joe task', exact: true }).click();
+  await page.evaluate(() => window.dispatchEvent(new Event('doctorcre-session-invalidated')));
+  releaseCommands();
+  await page.waitForLoadState('networkidle');
+  assert.deepEqual(writes, []);
+  assert.equal(await page.locator('#homeCallTasks').isVisible(), false);
   assert.deepEqual(errors, []);
 });

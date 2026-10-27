@@ -304,3 +304,20 @@ for (const trigger of ['reopen', 'idle wake']) test(`F4 ${trigger} clears cached
 
  assert.deepEqual(state.errors,[]);
 });
+
+test('recovery reads a fresh brief while an older read is pending', async t => {
+ let release, calls = 0;
+ const held = new Promise(resolve => { release = resolve; });
+ t.after(() => release());
+ const state = await setup(t, { onBrief: async () => { if (++calls === 1) await held; } });
+ const { page } = state;
+ await state.goto();
+ await page.waitForFunction(() => document.querySelector('#docPresence'));
+ await page.locator('#docOpen').click();
+ await page.locator('#docMorning').click();
+ await page.waitForFunction(() => document.getElementById('morningCoverage').textContent.includes('unavailable'));
+ await page.evaluate(() => window.dispatchEvent(new Event('online')));
+ await page.locator('[data-brief-record]').first().waitFor();
+ assert.ok(calls >= 2);
+ release();
+});

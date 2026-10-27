@@ -1,7 +1,7 @@
 /**
  * Deal Room client interface (WO-1 contract).
  *
- * `morningBrief({signal})` returns MorningBriefResponse without audience arguments.
+ * `morningBrief({signal, fresh})` returns MorningBriefResponse without audience arguments; fresh bypasses pending shared reads.
  * Both FixtureClient and LiveClient implement this shape. The fixture adapter
  * is in-memory; the live adapter uses authenticated same-origin CARR routes.
  *

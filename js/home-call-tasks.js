@@ -1,4 +1,3 @@
-import { createRetainedCommands } from './retained-commands.mjs';
 import { toDay } from './calendar-model.js';
 
 const text = value => typeof value === 'string' && value.trim().length > 0;
@@ -35,7 +34,7 @@ export async function readHomeCallTasks(client, { signal } = {}) {
 export function mountHomeCallTasks({ document, client, host, onChanged }) {
   let view = {}, actor = null, generation = 0, disposed = false, notice = '', noticeFresh = false, painted = '';
   const decisions = new Map();
-  const commands = createRetainedCommands({ scope: () => actor });
+  let commands;
   const admitted = () => !disposed && !view.signedOut && !view.busy && view.read?.state === 'read' && text(actor);
   const visible = () => {
     const tasks = new Map((view.tasks || []).map(task => [task.candidateId, task]));
@@ -71,6 +70,11 @@ export function mountHomeCallTasks({ document, client, host, onChanged }) {
     const ticket = generation, binding = actor;
     decisions.set(id, { state: 'submitting', accept, task }); notice = ''; noticeFresh = false; render();
     try {
+      if (!commands) {
+        const { createRetainedCommands } = await import('./retained-commands.mjs');
+        if (disposed || ticket !== generation || actor !== binding) return;
+        commands ||= createRetainedCommands({ scope: () => actor });
+      }
       const result = await commands.send(id, { candidate_id: id, accept }, async request => {
         const receipt = await client.resolvePostCallCandidate(request);
         const already = ['confirmed', 'skipped'].includes(receipt?.already);
