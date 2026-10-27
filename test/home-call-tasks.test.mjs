@@ -1,9 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { JSDOM } from 'jsdom';
-import { mountHomeCallTasks, readHomeCallTasks } from '../js/home-call-tasks.js';
+import { mountHomeCallTasks, readHomeCallFollowups } from '../js/home-call-tasks.js';
 
-const task = { candidateId: 'demo-candidate', sessionId: 'demo-session', dealId: 'demo-deal', dealName: 'Demo deal',
+const task = { kind: 'assigned_action', candidateId: 'demo-candidate', sessionId: 'demo-session', dealId: 'demo-deal', dealName: 'Demo deal',
   owner: 'joe', description: 'Call the demo lender', dueOn: null, evidence: 'Joe will call the demo lender.' };
 const wire = { id: task.candidateId, session_id: task.sessionId, kind: 'assigned_action', deal_id: task.dealId,
   deal_name: task.dealName, payload: { deal_id: task.dealId, assignee: task.owner, action: task.description, due_on: null },
@@ -35,10 +35,10 @@ test('a changed Home actor retires the previous task review lifetime', async () 
   h.close();
 });
 
-test('task reads preserve explicit facts and leave local email proposals untouched', async () => {
+test('follow-up reads preserve tasks and pending email metadata', async () => {
   const email = { ...wire, id: 'demo-email', kind: 'email_draft', payload: { deal_id: task.dealId,
     recipient_party_id: 'demo-recipient', recipient_ref: 'DEMO-P-01', subject: 'Demo email', body_sha256: 'a'.repeat(64) } };
-  assert.deepEqual(await readHomeCallTasks({ getPostCallFollowups: async () => envelope([wire, email]) }), [task]);
+  assert.deepEqual(await readHomeCallFollowups({ getPostCallFollowups: async () => envelope([wire, email]) }), [task, { kind: 'email_draft', candidateId: 'demo-email', sessionId: task.sessionId, dealId: task.dealId, dealName: task.dealName, subject: 'Demo email', recipientRef: 'DEMO-P-01', evidence: task.evidence }]);
   for (const payload of [
     { ...envelope([wire]), schema_version: 'post-call-followups.v2' },
     { ...envelope([wire]), send: true }, envelope([wire, wire]),
@@ -47,7 +47,7 @@ test('task reads preserve explicit facts and leave local email proposals untouch
     envelope([{ ...wire, payload: { ...wire.payload, assignee: 'unknown' } }]),
     envelope([{ ...wire, payload: { ...wire.payload, assignee: 'toString' } }]),
     envelope([{ ...email, payload: null }]),
-  ]) await assert.rejects(readHomeCallTasks({ getPostCallFollowups: async () => payload }), { code: 'malformed_response' });
+  ]) await assert.rejects(readHomeCallFollowups({ getPostCallFollowups: async () => payload }), { code: 'malformed_response' });
 });
 
 test('an uncertain task decision keeps its key and blocks the opposite decision after a fresh pending read', async () => {
@@ -179,4 +179,51 @@ test('repeated updates keep the unconfirmed alert and notice nodes stable', asyn
   }
   assert.equal(alert.isConnected, true);
   h.close();
+});
+
+
+test('Home offers the exact email call report without making a decision', async () => {
+  const writes = [], opened = [];
+  const dom = new JSDOM('<section id="tasks"></section>');
+  const host = dom.window.document.getElementById('tasks');
+  const controller = mountHomeCallTasks({ document: dom.window.document, host,
+    client: { resolvePostCallCandidate: async args => { writes.push(args); } },
+    openReport: async session => { opened.push(session); return true; }, onChanged: async () => {} });
+  const draft = { kind: 'email_draft', candidateId: 'demo-email', sessionId: 'older-demo-call', dealId: task.dealId,
+    dealName: task.dealName, subject: 'Demo <lender> follow-up', recipientRef: 'DEMO-P-01', evidence: 'Ask the demo lender.' };
+  controller.update({ ...ready, tasks: [task, draft] });
+  assert.match(host.textContent, /Demo <lender> follow-up.*DEMO-P-01.*Draft only/s);
+  assert.equal(host.querySelector('lender'), null);
+  host.querySelector('[data-call-draft-id]').click();
+  await settle();
+  assert.deepEqual(opened, ['older-demo-call']);
+  assert.deepEqual(writes, []);
+  controller.update({ ...ready, tasks: [task, draft], scope: 'mine' });
+  assert.equal(host.querySelector('[data-call-draft-id]'), null);
+  controller.update({ ...ready, tasks: [draft], busy: true });
+  host.querySelector('[data-call-draft-id]').click();
+  await settle();
+  assert.equal(opened.length, 1);
+  controller.update({ ...ready, tasks: [draft] });
+  const stale = host.querySelector('[data-call-draft-id]');
+  dom.window.dispatchEvent(new dom.window.Event('doctorcre-session-invalidated'));
+  stale.click();
+  await settle();
+  assert.equal(opened.length, 1);
+  assert.equal(host.hidden, true);
+  controller.dispose(); dom.window.close();
+});
+
+test('an unavailable draft report explains where to review it', async () => {
+  const dom = new JSDOM('<section id="tasks"></section>');
+  const host = dom.window.document.getElementById('tasks');
+  const controller = mountHomeCallTasks({ document: dom.window.document, host, client: {},
+    openReport: async () => false, onChanged: async () => {} });
+  controller.update({ ...ready, tasks: [{ kind: 'email_draft', candidateId: 'demo-email', sessionId: 'demo-call',
+    dealId: 'demo-deal', dealName: 'Demo deal', subject: 'Demo email', recipientRef: 'DEMO-P-01', evidence: '' }] });
+  host.querySelector('[data-call-draft-id]').click();
+  await settle();
+  assert.match(host.textContent, /Open Call Mode on the Mac that recorded this call/);
+  assert.equal(host.querySelector('[data-call-draft-id]').getAttribute('aria-disabled'), null);
+  controller.dispose(); dom.window.close();
 });

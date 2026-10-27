@@ -70,11 +70,11 @@ export function createEmailProposalsFixture({ deals, seedDeals, actor, client, p
         corrections: rows.filter(row => row.status === 'dismissed').sort((a, b) => b.resolved_at.localeCompare(a.resolved_at) || a.id.localeCompare(b.id)).slice(0, 20)
           .map(row => ({ id: row.id, kind: row.kind, deal_name: row.deal_name, reason: row.resolution_reason, resolved_at: row.resolved_at })), send: false };
     },
-    async listEmailProposals({ limit, cursor } = {}) {
+    async listEmailProposals({ deal, limit, cursor } = {}) {
       const proposals = [];
       const start = cursor ? rows.findIndex(item => item.id === cursor) + 1 : 0;
-      if (cursor && !start) fail('email_proposals_cursor_invalid');
-      const pending = rows.slice(start).filter(item => item.status === 'pending');
+      if (cursor && (!start || (deal && rows[start - 1].deal !== deal))) fail('email_proposals_cursor_invalid');
+      const pending = rows.slice(start).filter(item => item.status === 'pending' && (!deal || item.deal === deal));
       for (const row of pending.slice(0, limit || pending.length)) {
         const { status, ...item } = row;
         try { item.preview = await preview({ deal: row.deal, activity_id: row.source.activity_id, evidence_quote: row.source.evidence_quote,

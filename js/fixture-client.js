@@ -120,15 +120,7 @@ export async function createFixtureClient(opts = {}) {
     }],
   ]);
 
-  /**
-   * Synthetic loop records — the task surface's fixture.
-   *
-   * These exercise the shapes the page has to survive: both partners as owners,
-   * a record owned by the system, a jointly owned one, a dated marker, a bell,
-   * a counterparty the partnership is waiting on, a team record, and two
-   * records that share a number (which is exactly why the number is not an
-   * identity and a read by number alone can be ambiguous).
-   */
+  // Shared loop display numbers are ambiguous; only record ids identify a loop.
   let loopSeq = 0;
   const loop = (row) => ({
     loop_id: `loop-${String(++loopSeq).padStart(3, '0')}`,
@@ -630,12 +622,7 @@ export async function createFixtureClient(opts = {}) {
     },
   ];
 
-  /* ------------------------------------------- Model Room fixtures (C12)
-   * The four captured queue events and five captured room turns, in the
-   * producer's shape. One card carries `source_seq: null` and one body is a
-   * JSON STATUS envelope, because both are true of the live answer and both
-   * are branches the tab must render without inventing anything.
-   */
+  // Preserve nullable source_seq and STATUS text envelopes from the producer.
   const QUEUE_EVENTS = [
     { v: 1, board: 'carr-build', event_id: 1302, event: 'created', task_id: 't_185f2c38',
       card: { title: 'Fresh independent review of PR 832 exact corrected head', target: 'deepseek',
@@ -780,13 +767,7 @@ export async function createFixtureClient(opts = {}) {
     version: preference.version,
   });
 
-  /* --------------------------------------------- incident detail fixtures (C14)
-   * The synthetic twin of `get-incident`, in the verb's OWN shape: the row,
-   * then FOUR separate lists. Facts and hypotheses are separate arrays here for
-   * the same reason they are separate regions on the page — a hypothesis drawn
-   * as a fact is the failure that surface exists to prevent — and every fact
-   * carries its own source and its own clock.
-   */
+  // Keep producer facts and hypotheses separate, with each fact's source and clock.
   const incidentDetails = new Map([
     ['INC-20260915-01', {
       facts: [
@@ -1010,16 +991,8 @@ export async function createFixtureClient(opts = {}) {
     // fetch-failure case for the enriched "Waiting for Joe" detail.
     { human_ref: 'WR-000908', title: 'Demo bounded request: retire the demo legacy export', state: 'needs_joe', source: { label: 'Demo retirement note', freshness: 'fresh' }, next_human_action: 'Confirm the demo legacy export is retired' },
   ];
-  /**
-   * V5-UX-C13a: the enriched `work-request-card` shape for WR-000906 and
-   * WR-000907, in the PRODUCER'S OWN field names (ops.work_request_card,
-   * migration 0493): `desired_outcome`, `acting_identity` (ordered by
-   * `acted_at`, ascending — never re-sorted here or in the browser),
-   * `outcome_feedback_history` (ordered oldest-first) and `incident_evidence`.
-   * Neither row carries `recommended_answer` or `business_impact`, because no
-   * pinned verb returns either field today — that absence is production's own
-   * shape, not an omission of this fixture.
-   */
+  // Producer 0493 orders acting_identity by acted_at and feedback oldest first.
+  // recommended_answer and business_impact are absent from the pinned interface.
   const sharedRequestCards = new Map([
     // V2 C2: the Queue's own Work Requests, so its detail pane reads a real
     // card shape with a recorded-acts history (and one consecutive repeat to group).

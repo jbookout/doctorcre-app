@@ -4,7 +4,7 @@ import { validInvoiceTracker } from './invoice-tracker-model.js';
 import { validNetwork } from './relationship-network-model.js';
 import { addDays, criticalDateEntries, localToday, toDay } from './calendar-model.js';
 import { readWithDeadline } from './auto-refresh.mjs';
-import { readHomeCallTasks } from './home-call-tasks.js';
+import { readHomeCallFollowups } from './home-call-tasks.js';
 
 export const HOME_SCOPES = ['team', 'mine'];
 export const HIDDEN_HOME_WIDGETS = Object.freeze({
@@ -80,7 +80,7 @@ export function readHomeDashboard(client, options) {
     ['invoices', signal => client.getInvoiceTracker({ signal })],
     ['leads', signal => client.getLeadBoard({ signal })],
     ['relationships', signal => client.getRelationshipNetwork({ signal })],
-    ['callTasks', signal => readHomeCallTasks(client, { signal })],
+    ['callTasks', signal => readHomeCallFollowups(client, { signal })],
   ], options);
 }
 
