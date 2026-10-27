@@ -494,8 +494,10 @@ for (const [name,engine] of [['chromium',chromium],['webkit',webkit]]) test(`W11
 
 test('R1 Doc search consumes and validates the live wrapped tour library',async t=>{
  const {page,goto}=await setup(t,{onRoute:async(route,{url})=>{if(url.pathname==='/api/tours/library'){await route.fulfill({json:{data:{tours:[{id:tourId,name:'Library Sample'}]}}});return true;}return false;}});
- await goto('/deals?mode=live');await page.locator('#docOpen').click();await page.locator('#docCommandInput').fill('Library Sample');
- await page.getByRole('option',{name:/Library Sample/}).waitFor();await page.getByRole('option',{name:/Library Sample/}).click();
+ const scripts=[];page.on('request',request=>{if(request.resourceType()==='script')scripts.push(new URL(request.url()).pathname);});
+ await goto('/deals?mode=live');assert.equal(scripts.includes('/tours/planner-client.js'),false);
+ await page.locator('#docOpen').click();await page.locator('#docCommandInput').fill('Library Sample');
+ await page.getByRole('option',{name:/Library Sample/}).waitFor();assert.equal(scripts.includes('/tours/planner-client.js'),true);await page.getByRole('option',{name:/Library Sample/}).click();
  assert.equal(await page.locator('#docCommandDetail a').getAttribute('href'),`/tours?tour=${tourId}`);
 });
 for(const [name,engine] of [['chromium',chromium],['webkit',webkit]])test(`R8 ${name} long detail title fits inside the 320px Doc dialog`,{skip:engine.skip},async t=>{
