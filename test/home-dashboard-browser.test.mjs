@@ -489,7 +489,7 @@ test('R13 phone lead detail wraps specialty, maximum-length names and metadata w
   });
 });
 
-test('R14 a task with no critical dates opens its exact deal without legacy prose', async t => {
+test('R14 a task with no critical dates opens its exact deal with its next action', async t => {
   const { page } = await open(t, { tasksOnly: true });
   const task = page.locator('[data-home-key="agenda:task:demo-task-d01"]');
   await task.waitFor();
@@ -498,7 +498,7 @@ test('R14 a task with no critical dates opens its exact deal without legacy pros
   await page.waitForFunction(() => document.querySelector('#recordPanel')?.open && document.querySelector('#detailUpdateForm'));
   assert.equal(await page.evaluate(async () => (await import('/js/pipeline.js')).state.panelDeal), 'd01');
   assert.equal(await page.locator('.deal-opening-snapshot').count(), 1);
-  assert.equal(await page.locator('.deal-current-action').count(), 0);
+  assert.equal(await page.locator('.deal-current-action strong').count(), 1);
 });
 
 test('R12 malformed tasks retain independent widgets and settled agenda reports partial data', async t => {
