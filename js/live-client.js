@@ -76,6 +76,7 @@ export function createLiveClient(opts = {}) {
       entry.read = rawRpc(verb, args, controller.signal, readTimeoutMs).finally(() => {
         if (reads.get(key) === current) reads.delete(key);
       });
+      entry.read.catch(() => {});
       reads.set(key, entry);
     }
     const shared = entry;
