@@ -3,7 +3,7 @@ import { pageDocContext, publishDocRead, selectDocRecord, setDocFilters } from '
 import { mountAutoRefresh, updatedLabel } from "../js/auto-refresh.mjs";
 import { createPlannerClient, validateTourList, validateClientList, validateClientRecord, validateTourDetail } from "./planner-client.js";
 import { cheatSheetText, tourDisplayName } from "./tour-format.js";
-import { PLAN_FIELDS, SEARCH_FIELDS, createDraft, clientSuggestions, tourGroups, validateCriteria, addPrivateFiles } from "./planner-model.js";
+import { PLAN_FIELDS, SEARCH_FIELDS, createDraft, clientSuggestions, tourGroups, hasDayRoute, validateCriteria, addPrivateFiles } from "./planner-model.js";
 
 // Each area button's market as a Census place point. Fort Walton / Destin uses the
 // Fort Walton Beach place point. The map fits these five points.
@@ -177,7 +177,7 @@ export function mountPlanner({ document, window, api = createPlannerClient() }) 
     }
     const link = element("a", "Edit itinerary", "download-button");
     link.href = `/tours/route-editor.html?tour=${encodeURIComponent(tour.id)}`; link.target = "_blank"; link.rel = "noopener"; body.append(link);
-    if (tour.routes?.some(route => route.accepted === true && route.stops?.some(stop => stop.stop_state === "active"))) {
+    if (hasDayRoute(tour)) {
       const day = element("a", "Tour day", "download-button");
       day.href = `/tours/day.html?tour=${encodeURIComponent(tour.id)}`; day.target = "_blank"; day.rel = "noopener noreferrer"; body.append(day);
     }
@@ -227,6 +227,19 @@ export function mountPlanner({ document, window, api = createPlannerClient() }) 
     for (const file of files) attachments.append(element("li", file.name)); body.append(attachments);
     body.append(element("p", "Packet compilation unavailable", "capability-state"));
   }
+  // The first upcoming tours, in library order, that Tour day can open.
+  async function showNextTour(revision, signal) {
+    const link = $("#next-tour");
+    for (const { id } of tourGroups(tours).upcoming.slice(0, 3)) {
+      let detail;
+      try { detail = validateTourDetail(await api.tour(id, { signal }), id); } catch { continue; }
+      if (disposed || revision !== refreshEpoch || signal?.aborted) return;
+      if (!hasDayRoute(detail)) continue;
+      link.textContent = `Next tour · ${tourDisplayName(detail.name)}`; link.href = `/tours/day.html?tour=${encodeURIComponent(id)}`; link.hidden = false;
+      return;
+    }
+    if (!disposed && revision === refreshEpoch) link.hidden = true;
+  }
   async function refresh({ signal } = {}) {
     const openTourId = currentTour;
     // Boot, manual and scheduled reads share one generation boundary.
@@ -236,6 +249,7 @@ export function mountPlanner({ document, window, api = createPlannerClient() }) 
     const libraryRead = read(async () => validateTourList(await api.library({ signal }))).then(rows => {
       if (!active()) return;
       tours = rows; pageDocContext?.finish(docTicket, { tours }); renderLibrary(); message("#tour-library-state", "");
+      void showNextTour(revision, signal);
     }, error => {
       if (!active()) return;
       pageDocContext?.fail(docTicket, error); message("#tour-library-state", unavailable(error) || "Tours temporarily unavailable.");

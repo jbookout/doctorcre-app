@@ -11,6 +11,7 @@ const root = new URL('../', import.meta.url);
 const contract = (await import("../js/routes.js")).routeContract;
 const primary = navigationItems.filter(item => !item.group).map(item => item.label);
 const secondary = navigationItems.filter(item => item.group).map(item => item.label);
+const phoneMore = ['Vendors', 'Control Room'];
 
 async function open(t, { width = 1440, height = 960, actor = 'joe', live = false, minimal = false, simulatedClock = false,
   reducedMotion = 'no-preference', firstSignIn = false, signoutMode = 'success', holdDocSuggestions = false } = {}) {
@@ -122,8 +123,10 @@ test('desktop and phone navigation, account and Call mode work with reduced moti
   await mkdir(new URL('out/test-artifacts/w1b/regression/', root), { recursive: true });
   for (const width of [1440, 390, 320]) await t.test(String(width), async t => {
     const { page, errors, calls } = await open(t, { width, minimal: true, reducedMotion: 'reduce' });
-    assert.deepEqual(await page.locator('.app-shell-navigation > a').evaluateAll(nodes => nodes.map(n => n.getAttribute('aria-label'))), primary);
-    await page.getByLabel('More', {exact:true}).click(); assert.deepEqual(await page.locator('.app-shell-more-list a').allTextContents(), secondary);
+    const onPhone = width <= 760;
+    assert.deepEqual(await page.locator('.app-shell-navigation > a').evaluateAll(nodes => nodes.map(n => n.getAttribute('aria-label'))), onPhone ? primary.filter(label => !phoneMore.includes(label)) : primary);
+    await page.getByLabel('More', {exact:true}).click();
+    assert.deepEqual(await page.locator('.app-shell-more-list a').evaluateAll(nodes => nodes.map(n => n.getAttribute('aria-label'))), onPhone ? [...phoneMore, ...secondary] : secondary);
     assert.equal(await page.locator('[data-app-nav-item]').count(), primary.length + secondary.length);
     assert.equal(await page.locator('[data-app-nav-item][href="/calendar"], [data-app-nav-item][href="/tasks"]').count(), 0);
     const controls = await page.locator('.app-shell-controls').evaluate(el => [...el.querySelectorAll('button')].filter(e => e.offsetParent).map(e => ({ width: e.getBoundingClientRect().width, height: e.getBoundingClientRect().height, transition: getComputedStyle(e).transitionDuration })));
@@ -146,6 +149,26 @@ test('desktop and phone navigation, account and Call mode work with reduced moti
 
     assert.deepEqual(errors, []);
   });
+});
+
+for (const width of [320, 390]) test(`phone destinations are named, separate 44px targets clear of the safe area at ${width}`, async t => {
+  const { page } = await open(t, { width, minimal: true });
+  const bar = await page.locator('.app-shell-navigation > a, .app-shell-more-toggle').evaluateAll(nodes => nodes.map(node => {
+    const label = node.querySelector('.app-shell-nav-label'), box = node.getBoundingClientRect(), text = label.getBoundingClientRect();
+    return { name: node.getAttribute('aria-label'), shown: label.innerText.trim(), labelVisible: text.width > 8 && text.height > 8 && getComputedStyle(label).clipPath === 'none', left: box.left, right: box.right, width: box.width, height: box.height, bottom: box.bottom };
+  }));
+  assert.deepEqual(bar.map(item => item.shown), ['Home', 'Leads', 'Tours', 'Deals', 'More']);
+  assert.ok(bar.every(item => item.labelVisible), 'every phone destination shows its name');
+  assert.ok(bar.every(item => item.width >= 44 && item.height >= 44), 'each target is at least 44px');
+  for (const [i, item] of bar.entries()) if (i) assert.ok(item.left >= bar[i - 1].right, `${item.name} does not overlap ${bar[i - 1].name}`);
+  const avatar = await page.locator('#selfAvatar').boundingBox();
+  assert.ok(bar.at(-1).right <= avatar.x, 'destinations stop before the account control');
+  assert.ok(bar.every(item => item.bottom <= 960), 'targets stay inside the viewport');
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+  await page.locator('.app-shell-navigation > a').first().focus();
+  const order = [await page.evaluate(() => document.activeElement.getAttribute('aria-label'))];
+  for (let i = 0; i < 4; i++) { await page.keyboard.press('Tab'); order.push(await page.evaluate(() => document.activeElement.getAttribute('aria-label'))); }
+  assert.deepEqual(order, ['Home', 'Leads', 'Tours', 'Local Deals', 'More'], 'keyboard order follows the visible order');
 });
 
 test('workspace pages have global controls and the standalone portal fits desktop and phone', async t => {

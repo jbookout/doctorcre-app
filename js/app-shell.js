@@ -31,6 +31,18 @@ export function mountAppShell(root = document, pathname = globalThis.location?.p
     const refresh = status.querySelector("#appSyncRefresh");
     const freshness = refresh.parentElement;
     const phone = root.defaultView.matchMedia(TOUCH_LAYOUT);
+    // Four named destinations and More fill the phone bar; the rest move into More.
+    const moreToggle = host.querySelector(".app-shell-more-toggle"), moreList = host.querySelector(".app-shell-more-list");
+    const overflow = ["/vendors", "/control-room"].map(href => host.querySelector(`[data-app-nav-item][href$="${href}"]`)).filter(Boolean);
+    const overflowSection = root.createElement("div");
+    overflowSection.className = "app-shell-more-section";
+    overflowSection.innerHTML = '<span class="app-shell-more-group">Pages</span>';
+    const moreCurrent = moreToggle.classList.contains("app-shell-more-current");
+    const arrangeNavigation = () => {
+      if (phone.matches) { overflowSection.append(...overflow); moreList.prepend(overflowSection); }
+      else { moreToggle.parentElement.before(...overflow); overflowSection.remove(); }
+      moreToggle.classList.toggle("app-shell-more-current", moreCurrent || phone.matches && overflow.some(link => link.hasAttribute("aria-current")));
+    };
     const arrangeControls = () => {
       workspace.hidden = !phone.matches;
       if (phone.matches) workspace.append(search, ...settings, refresh, availability, connection);
@@ -43,7 +55,9 @@ export function mountAppShell(root = document, pathname = globalThis.location?.p
       }
     };
     phone.addEventListener("change", arrangeControls);
+    phone.addEventListener("change", arrangeNavigation);
     arrangeControls();
+    arrangeNavigation();
     const docPresence = mountDocPresence({ document:root, window:root.defaultView });
     disposeDocPresence = () => docPresence?.dispose();
   }

@@ -66,3 +66,6 @@ export function addPrivateFiles(current, incoming) {
   }
   return next;
 }
+
+// Tour day needs an accepted route with at least one active stop.
+export const hasDayRoute = tour => Boolean(tour?.routes?.some(route => route.accepted === true && route.stops?.some(stop => stop.stop_state === "active")));
