@@ -867,6 +867,8 @@ for (const width of [1440, 390]) for (const theme of ['light', 'dark']) test(`Up
 });
 
 
+const prepCalendar = { state: 'ready', items: [{ title: 'Demo preparation entry', start: '2026-10-01T16:00:00Z', attendee_count: 2 }] };
+
 for (const width of [390, 1440]) for (const theme of ['light', 'dark']) test(`Meeting preparation opens possible deal context on demand at ${width}px ${theme}`, async t => {
   const { page, calls, errors, responses } = await open(t, { width, theme, calendar: { state: 'ready', items: [
     { start: '2026-10-01T16:00:00Z', title: 'Demo practice meeting', location: 'Demo office', attendee_count: 3, all_day: false },
@@ -900,7 +902,7 @@ for (const width of [390, 1440]) for (const theme of ['light', 'dark']) test(`Me
 
 
 test('Meeting preparation distinguishes unavailable, malformed, partial and verified empty reads and retries', async t => {
-  const { page, responses, errors } = await open(t);
+  const { page, responses, errors } = await open(t, { calendar: prepCalendar });
   responses.set('calendar-meeting-prep', { then(_resolve, reject) { reject(Error('Synthetic outage')); } });
   await page.getByRole('button', { name: 'Prepare meetings', exact: true }).click();
   const dialog = page.getByRole('dialog', { name: 'Meeting preparation', exact: true });
@@ -921,7 +923,7 @@ test('Meeting preparation distinguishes unavailable, malformed, partial and veri
 });
 
 for (const retire of ['close', 'session']) test(`Meeting preparation fences late results after ${retire}`, async t => {
-  const { page, responses, errors } = await open(t);
+  const { page, responses, errors } = await open(t, { calendar: prepCalendar });
   let release;
   responses.set('calendar-meeting-prep', new Promise(resolve => { release = resolve; }));
   t.after(() => release({ state: 'empty', items: [] }));
@@ -946,7 +948,7 @@ for (const retire of ['close', 'session']) test(`Meeting preparation fences late
 
 
 test('Meeting preparation clears protected content after an authorization refusal', async t => {
-  const { page, responses, errors } = await open(t);
+  const { page, responses, errors } = await open(t, { calendar: prepCalendar });
   await page.getByRole('button', { name: 'Prepare meetings', exact: true }).click();
   const dialog = page.getByRole('dialog', { name: 'Meeting preparation', exact: true });
   await settles(async () => assert.match(await dialog.innerText(), /Demo practice planning/));
@@ -959,7 +961,7 @@ test('Meeting preparation clears protected content after an authorization refusa
 
 
 for (const calendar of [{ state: 'empty', items: [] }, null]) test(`Meeting preparation restores current Home entry focus after calendar ${calendar ? 'repaint' : 'removal'}`, async t => {
-  const { page, errors } = await open(t);
+  const { page, errors } = await open(t, { calendar: prepCalendar });
   await page.getByRole('button', { name: 'Prepare meetings', exact: true }).click();
   const dialog = page.getByRole('dialog', { name: 'Meeting preparation', exact: true });
   await settles(async () => assert.match(await dialog.innerText(), /Demo practice planning/));

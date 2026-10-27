@@ -20,13 +20,12 @@ test('meeting preparation uses the authenticated no-argument read and forwards c
   await assert.rejects(client.calendarMeetingPrep({ signal: controller.signal }));
 });
 
-test("synthetic Home provides a calendar entry and preparation uses only the authenticated partner's open deals", async () => {
+test("synthetic preparation uses owned open deals without changing the default Home calendar", async () => {
   for (const selfActor of ['joe', 'dell']) {
     const client = await createFixtureClient({ seedUrl, selfActor });
     const board = await client.getBoard();
     const prep = await client.calendarMeetingPrep();
-    const calendar = (await client.morningBrief()).sections.calendar;
-    assert.equal(calendar.items[0].title, 'Demo practice planning');
+    assert.equal((await client.morningBrief()).sections.calendar, undefined);
     assert.equal(prep.items[0].title, 'Demo practice planning');
     assert.ok(Date.parse(prep.items[0].end) > Date.parse(prep.items[0].start));
     for (const match of prep.items[0].possible_deals) {
