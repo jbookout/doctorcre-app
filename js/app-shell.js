@@ -95,7 +95,7 @@ function mountFlaggedWorkspace(root, pathname, sessionIsValid) {
     if (loading) return;
     loading = true;
     try {
-      const { mountWorkspace } = await import(REACT_UI_MODULE);
+      const { mountZoomableWorkspace } = await import(REACT_UI_MODULE);
       if (disposed || !identity || phone.matches || !sessionIsValid()) return;
       layout = root.getElementById("appLayout");
       if (!layout) return;
@@ -108,7 +108,7 @@ function mountFlaggedWorkspace(root, pathname, sessionIsValid) {
       container = root.createElement("div");
       container.dataset.appWorkspace = "";
       layout.append(container);
-      workspace = mountWorkspace({ container, panels, layout: initial });
+      workspace = mountZoomableWorkspace({ container, panels, layout: initial });
       layout.classList.add("is-react-workspace");
       observer = new win.MutationObserver(() => { void reconcile(); });
       observer.observe(layout, { attributes: true, attributeFilter: ["data-sidebar", "data-today"] });

@@ -1,0 +1,32 @@
+.workspace-zoom {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.workspace-zoom-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  padding-bottom: var(--space-2);
+}
+.workspace-zoom-stage {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+}
+.workspace-zoom .workspace-tabs:has(> button:only-child) {
+  display: flex;
+}
+.workspace-is-zoomed .workspace-shell {
+  position: relative;
+}
+.workspace-is-zoomed [role="separator"],
+.workspace-is-zoomed .workspace-group:not(.workspace-zoomed-group) {
+  visibility: hidden;
+}
+.workspace-is-zoomed .workspace-zoomed-group {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+}

@@ -11,6 +11,7 @@ Follow [Launch, Doctor and Drive](../SKILL.md) first. This map describes current
 
 ## Features
 
+- [Workspace](workspace.md): flagged desktop group zoom and phone restoration.
 - [Home](home.md): scopes, refresh and deal entry.
 - [Deals](deals.md): Board, List, room, direct links and closing.
 - [Deal alerts](deal-alerts.md): current overdue flags and deal links.
