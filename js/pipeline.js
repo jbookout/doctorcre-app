@@ -105,6 +105,7 @@ function cardHtml(deal) {
   const pending = pendingCommand(state.fieldWrites, cellKey(deal.id, 'phase'));
   return `<article class="kanban-card" data-id="${esc(deal.id)}" data-attention="${attention}" data-phase="${esc(deal.phase)}" draggable="true" tabindex="0"${pending ? ' data-pending="true"' : ''}${state.lifted === deal.id ? ' data-lifted="true"' : ''} aria-label="${esc(dealTitle(deal))}, ${esc(columnLabel(deal.phase))}">
     <div class="deal-alert">${renderDealAlert(deal,{today:todayIso(),heading:'h4',buttons:true})}</div>
+    <span class="owner">${esc(actorName(deal.owner))}</span>
   </article>`;
 }
 function rowHtml(deal) {
