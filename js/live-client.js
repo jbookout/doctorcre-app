@@ -325,6 +325,7 @@ export function createLiveClient(opts = {}) {
     async listEmailProposals(args = {}) { return rpc('list-email-proposals', args); },
     async previewEmailNextStep(args) { return rpc('preview-email-next-step', args); },
     async previewEmailDealProgress(args) { return rpc('preview-email-deal-progress', args); },
+    async confirmEmailFiling(args) { return write('confirm-email-filing', args); },
     async confirmEmailNextStep(args) { return write('confirm-email-next-step', args); },
     async confirmEmailDealProgress(args) { return write('confirm-email-deal-progress', args); },
     async submitEmailDraft(args) { return write('submit-email-draft', args); },

@@ -311,3 +311,40 @@ for (const width of [1440, 390]) test(`Home reply card edits and submits exact t
   await card.getByText('CC: demo-dell@example.test', { exact: true }).waitFor();
   await card.screenshot({ path: `out/test-artifacts/email-followups/reply-${width}-submitted.png`, animations: 'disabled' });
 });
+
+test('Home creates a new deal and files its email through the live client at phone width', async t => {
+  const page = await browser.newPage({ viewport: { width: 390, height: 1000 }, reducedMotion: 'reduce' });
+  t.after(() => page.close());
+  await page.request.post(`${origin}/api/test/seed`, { data: { namespace: 'filing-new-deal', viewer: 'joe', reset: true } });
+  await page.addInitScript(() => localStorage.setItem('doctorcre.visual-preferences', JSON.stringify({ walkthroughSeen: { joe: true, dell: true } })));
+  const id = '10000000-0000-4000-8000-000000000031', activity = '30000000-0000-4000-8000-000000000031';
+  const digest = `sha256:${'a'.repeat(64)}`, calls = [];
+  const row = { id, version: 1, kind: 'possible_new_deal', deal: null, deal_name: null, proposed_matter: 'Possible new demo practice',
+    source: { activity_id: activity, evidence_quote: 'Please discuss a new office.' }, confirm_verb: 'confirm-email-filing',
+    preview: { contract: 'email-filing.v1', proposal_id: id, kind: 'possible_new_deal', deal: null, activity_id: activity,
+      evidence_quote: 'Please discuss a new office.', sender_role: 'client', sender: { name: 'Demo Client' }, new_people: [], requires_confirmation: true, proposal_digest: digest } };
+  await page.route('**/mcp', async route => {
+    const { name, arguments: args } = route.request().postDataJSON().params; let result;
+    if (name === 'list-email-proposals') result = { schema_version: 'email-proposals.v1', proposals: [row], send: false, more: false, next_cursor: null };
+    else if (name === 'new-deal') { calls.push({ name, args }); result = { deal_id: 'demo-created' }; }
+    else if (name === 'get-deal-room' && args.deal === 'demo-created') result = { base_version: 1 };
+    else if (name === 'set-lead' && args.deal === 'demo-created') result = { ok: true };
+    else if (name === 'confirm-email-filing') { calls.push({ name, args }); result = { ok: true, status: 'confirmed', deal: args.deal, activity_id: activity }; }
+    else return route.continue();
+    return route.fulfill({ json: { result: { content: [{ type: 'text', text: JSON.stringify(result) }] } } });
+  });
+  await page.goto(`${origin}/?mode=live`);
+  const card = page.locator('#homeEmailFollowups');
+  await card.getByText('Possible new demo practice').waitFor();
+  await card.getByRole('button', { name: 'Review filing' }).click();
+  await card.getByRole('textbox', { name: 'Deal name' }).fill('Demo office');
+  await card.getByRole('textbox', { name: 'Existing client (reference or exact name)' }).fill('Demo Client');
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+  await mkdir('out/test-artifacts/email-followups', { recursive: true });
+  await card.screenshot({ path: 'out/test-artifacts/email-followups/filing-new-deal.png', animations: 'disabled' });
+  await card.getByRole('button', { name: 'Create deal and confirm filing' }).click();
+  await card.getByText('Confirmed.', { exact: true }).waitFor();
+  assert.equal(calls[0].name, 'new-deal'); assert.equal(calls[0].args.client, 'Demo Client');
+  assert.equal(calls[1].name, 'confirm-email-filing'); assert.equal(calls[1].args.deal, 'demo-created');
+  assert.equal(calls[1].args.proposal_digest, digest);
+});

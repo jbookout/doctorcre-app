@@ -1,6 +1,6 @@
 import { PHASE_BY_SLUG } from './client.js';
 
-export function createEmailProposalsFixture({ deals, seedDeals, actor, client, pushEvent, replyDrafts = false }) {
+export function createEmailProposalsFixture({ deals, seedDeals, actor, client, pushEvent, replyDrafts = false, filingProposals = false }) {
   const digest = async value => `sha256:${[...new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(JSON.stringify(value))))].map(byte => byte.toString(16).padStart(2, '0')).join('')}`;
   const fail = error => { throw Object.assign(Error(error), { payload: { error } }); };
   const phaseDeal = seedDeals.find(deal => deal.phase === 'Research') || seedDeals[1];
@@ -15,10 +15,21 @@ export function createEmailProposalsFixture({ deals, seedDeals, actor, client, p
   }));
   if (replyDrafts && stepDeal) rows.push({ ...structuredClone(rows[0]), id: '10000000-0000-4000-8000-000000000003', kind: 'reply_draft',
     confirm_verb: 'submit-email-draft', preview: null, reply_draft: { subject: 'Re: Demo floor plan', body: 'Thank you for the plan.', owner: actor, to: ['demo-correspondent@example.test'], cc: [actor === 'joe' ? 'demo-dell@example.test' : 'demo-joe@example.test'] } });
+  if (filingProposals && stepDeal) for (const [index, kind] of ['file_to_deal', 'possible_new_deal'].entries()) {
+    rows.push({ ...structuredClone(rows[0]), id: `10000000-0000-4000-8000-00000000001${index}`, kind,
+      deal: index ? null : stepDeal.id, deal_name: index ? null : stepDeal.name, proposed_matter: index ? 'Possible new demo practice' : null,
+      sender_role: 'client', confirm_verb: 'confirm-email-filing' });
+  }
   const receipts = new Map();
   async function preview(args, kind) {
     const row = rows.find(item => item.deal === args.deal && item.source.activity_id === args.activity_id && item.kind === kind);
     if (!row || row.source.evidence_quote !== args.evidence_quote) fail('email_evidence_not_found');
+    if (['file_to_deal', 'possible_new_deal'].includes(kind)) {
+      const value = { contract: 'email-filing.v1', proposal_id: row.id, kind, deal: row.deal, activity_id: row.source.activity_id,
+        evidence_quote: row.source.evidence_quote, sender_role: row.sender_role, sender: { name: 'Demo client', party_id: 'demo-contact' },
+        new_people: [], text: row.proposed_matter, requires_confirmation: true };
+      return { ...value, proposal_digest: await digest(value) };
+    }
     const deal = deals.get(row.deal);
     if (kind === 'phase_move' && deal.phase !== 'Research') fail('email_deal_quote_invalid');
     const value = { contract: kind === 'next_step' ? 'email-next-step.v1' : 'email-deal-progress.v1', status: 'proposed',
@@ -56,7 +67,7 @@ export function createEmailProposalsFixture({ deals, seedDeals, actor, client, p
   }
   return {
     async getEmailProposalQuality() {
-      const kinds = ['phase_move', 'next_step', ...(replyDrafts ? ['reply_draft'] : [])].map(kind => {
+      const kinds = [...(filingProposals ? ['file_to_deal', 'possible_new_deal'] : []), 'phase_move', 'next_step', ...(replyDrafts ? ['reply_draft'] : [])].map(kind => {
         const cohort = rows.filter(row => row.kind === kind);
         const confirmed = cohort.filter(row => row.status === 'confirmed');
         const dismissed = cohort.filter(row => row.status === 'dismissed');
@@ -90,6 +101,19 @@ export function createEmailProposalsFixture({ deals, seedDeals, actor, client, p
     },
     previewEmailNextStep: args => preview(args, 'next_step'),
     previewEmailDealProgress: args => preview(args, 'phase_move'),
+    async confirmEmailFiling(args) {
+      if (receipts.has(args.idempotency_key)) return structuredClone(receipts.get(args.idempotency_key));
+      const row = rows.find(item => item.id === args.proposal_id && ['file_to_deal', 'possible_new_deal'].includes(item.kind));
+      if (!row || row.status !== 'pending') fail('email_proposal_not_pending');
+      if (row.version !== args.base_version) fail('version_conflict');
+      const shown = await preview({ deal: row.deal, activity_id: row.source.activity_id, evidence_quote: row.source.evidence_quote }, row.kind);
+      if (shown.proposal_digest !== args.proposal_digest) fail('email_proposal_stale');
+      const deal = row.kind === 'possible_new_deal' ? args.deal : row.deal;
+      if (!deals.has(deal)) fail('email_new_deal_not_found');
+      row.status = 'confirmed'; row.version++;
+      const receipt = { ok: true, status: 'confirmed', deal, activity_id: row.source.activity_id };
+      receipts.set(args.idempotency_key, receipt); return structuredClone(receipt);
+    },
     confirmEmailNextStep: args => confirm(args, 'next_step'),
     confirmEmailDealProgress: args => confirm(args, 'phase_move'),
     async submitEmailDraft(args) {
