@@ -1184,7 +1184,7 @@ function wireBoard() {
   board.addEventListener('keydown', (event) => {
     const card = event.target.closest('.kanban-card');
     if (!card) return;
-    if (event.target.closest('button')) return;
+    if (event.target.closest('button,input,select,a,.deal-vendor-details')) return;
     if (state.view === 'list' || card.classList.contains('parked-card')) { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); openPanel(card.dataset.id, card); } return; }
     const id = card.dataset.id;
     const deal = state.deals.get(id);
@@ -1253,7 +1253,7 @@ function wire() {
     if (undo) { runUndo(undo.dataset.undo); return; }
     const openDeal = event.target.closest('button[data-open-deal]');
     const card = event.target.closest('.kanban-card');
-    if (card && card.dataset.dragging !== 'true' && !event.target.closest('button,input,select,a')) { openPanel(card.dataset.id, card); return; }
+    if (card && card.dataset.dragging !== 'true' && !event.target.closest('button,input,select,a,.deal-vendor-details')) { openPanel(card.dataset.id, card); return; }
     if (openDeal) {
       openPanel(openDeal.dataset.openDeal, null);
     }

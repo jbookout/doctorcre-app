@@ -22,6 +22,8 @@ Existing coverage: `test/local-deals-browser.test.mjs`, `test/dealroom-acceptanc
 
 - Updates previews the newest recorded entry. Expand Recorded updates to verify descending instants with undated entries last. `test/deal-timeline-browser.test.mjs` checks 390px and 1440px in both themes and writes synthetic captures under `out/test-artifacts/newest-updates/`. `test/deal-timeline.test.mjs` covers offsets, sub-millisecond timestamps, documents and missing dates.
 
+- Vendor assignments retain role, company and contact name. Expand Contact details to read the recorded email and phone without opening the deal or changing its phase. A contact without either channel has no disclosure. `test/deal-vendors-browser.test.mjs` checks click and keyboard operation, escaped channels, Board, List, parked and archived cards, and the deal room at phone and desktop widths. Synthetic captures remain under `out/test-artifacts/deal-vendors/`.
+
 - Open Draft requirement email in a deal. Enter approved requirements, generate and edit the subject and message, then copy the draft. `test/pipeline-interruption-browser.test.mjs` covers anonymous generation, copy failure, discard, record isolation and identity revocation. Drafts remain only while the page is open.
 
 - Call mode reviews a discussed deal's next step separately from its note. A pending matched proposal offers Confirm next step and Skip next step. A missing date warns that confirmation clears the current date. Settled or unmatched proposals stay visible without decision controls. `test/dealroom-call-mode.test.mjs` drives phone confirmation and desktop skipping with the real dialog, plus stale refusal and retained-request recovery. Synthetic captures remain under `out/test-artifacts/call-next-step/`.
