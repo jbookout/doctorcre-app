@@ -8,6 +8,7 @@ import { observeDocRead, selectDocRecord, setDocFilters } from "../js/doc-contex
 import { createDocContext } from "../js/doc-context-model.js";
 import { createLiveClient } from "../js/live-client.js";
 import { createSystemWorkClient } from "../js/system-work-client.js";
+import { isHumanRef } from "../js/system-work-view.js";
 import { mountPrefs } from "../js/shell.js";
 import { statusHeadline } from "../js/status-model.js";
 import { classifyPriority } from "../js/visual-system.js";
@@ -278,7 +279,7 @@ test("PR111 #7: cancel/reopen offers the retained report for same-request recove
     if(path.endsWith("session"))return new Response(JSON.stringify({csrf_token:"synthetic"}));
     requests.push(JSON.parse(init.body));if(requests.length===1)throw new Error("lost response");return new Response(JSON.stringify({data:{human_ref:"WR-1"}}));
   }});
-  await client.bootstrap();const h=handlers("js/system-work-app.js","function reportForm()","function triageForm()",{client,openForm:value=>{options=value;},field:(_label,body)=>body,esc:value=>String(value).replaceAll('"','&quot;'),refresh:async()=>{}},["reportForm"]);
+  await client.bootstrap();const h=handlers("js/system-work-app.js","function reportForm()","function triageForm()",{client,isHumanRef,openForm:value=>{options=value;},field:(_label,body)=>body,esc:value=>String(value).replaceAll('"','&quot;'),refresh:async()=>{}},["reportForm"]);
   h.reportForm();const data=new Map([["situation","Demo concern"],["title","Demo title"],["desired_outcome","Demo result"],["criteria","One measure"]]);await assert.rejects(options.onSubmit(data));
   h.reportForm();assert.equal(options.submit,"Check report outcome");assert.match(options.body,/Demo concern/);assert.match(options.body,/Demo title/);
   await options.onSubmit(new Map());assert.deepEqual(requests[1],requests[0]);assert.equal(client.pendingReport,null);

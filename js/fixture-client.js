@@ -29,10 +29,27 @@ const CORRESPONDENCE_CEILING = {
 /** The cells patch-deal-field bases on; mirrors the record layer's DEAL_ROOM_FIELDS. */
 const BASED_FIELDS = ['phase', 'owner', 'attention', 'next_date', 'operating_state'];
 
+export function createFixtureDealStore(seed) {
+  const events = structuredClone(seed.seed_events || []).sort((a, b) => a.recorded_at.localeCompare(b.recorded_at));
+  return {
+    deals: new Map(seed.deals.map(d => [d.id, {
+      operating_state:'active', parking_reason:null, parking_note:null, parked_at:null, parked_by:null,
+      version:1, prospect_engagement_status:'active', client_version:1,
+      outcome:null, closed_on:null, won_value:null, phase_started_on:{}, ...structuredClone(d),
+    }])),
+    threads: new Map(Object.entries(structuredClone(seed.threads || {}))),
+    history: new Map(Object.entries(structuredClone(seed.history || {}))),
+    events, leases:new Map(), idem:new Map(), conflicts:new Map(), criticalDates:new Map(),
+    lastFieldEvent:new Map(events.filter(e => e.field).map(e => [`${e.subject_id}|${e.field}`, e.id])),
+    seq:events.length + 1, conflictSeq:1, noteSeq:1, criticalDateSeq:1, histSeq:1,
+  };
+}
+
 /**
  * @param {Object} [opts]
  * @param {string} [opts.seedUrl]
  * @param {string} [opts.selfActor]
+ * @param {ReturnType<typeof createFixtureDealStore>} [opts.dealStore]
  */
 export async function createFixtureClient(opts = {}) {
   const activityFixture = (await import('./doc-activity-fixture.js')).createDocActivityFixture();
@@ -45,60 +62,43 @@ export async function createFixtureClient(opts = {}) {
   const selfActor = opts.selfActor || seed.actors?.self || 'joe';
   const partnerActor = seed.actors?.partner || 'dell';
 
-  /** @type {Map<string, any>} */
-  const deals = new Map(seed.deals.map((d) => [d.id, {
-    operating_state: 'active', parking_reason: null, parking_note: null,
-    parked_at: null, parked_by: null, version: 1,
-    prospect_engagement_status: 'active', client_version: 1,
-    outcome: null, closed_on: null, won_value: null, phase_started_on: {}, ...d,
-  }]));
-  for (const id of ['d06', 'd07', 'd08']) {
-    const deal = deals.get(id);
-    if (deal) Object.assign(deal, { operating_state:'parked', parking_reason:'other',
-      parking_note:'Reason not yet classified', parked_at:'2026-08-10T12:00:00Z', parked_by:'joe' });
-  }
+  const dealStore = opts.dealStore || createFixtureDealStore(seed);
+  const { deals, threads, history, events, leases, idem, conflicts, criticalDates, lastFieldEvent } = dealStore;
   const fixtureAccountId = 'demo-account-001';
   let fixtureAccountOwner = 'dell';
   let fixtureAccountVersion = 1;
-  [...deals.values()].slice(0, 5).forEach((d, index) => Object.assign(d, {
-    workspace_kind: 'national_account',
-    account_client_id: fixtureAccountId,
-    account_client_ref: 'DEMO-ACCOUNT-001',
-    account_name: 'Demo National Practice',
-    account_owner: fixtureAccountOwner,
-    client_ref: `DEMO-CLIENT-${String(index + 1).padStart(3, '0')}`,
-    client_name: d.name,
-    market_agent: index < 3 ? ['Alex Morgan','Taylor Reed','Jordan Lee'][index] : null,
-  }));
-  [...deals.values()].slice(5).forEach((d) => Object.assign(d, {
-    workspace_kind: 'team', account_client_id: null, account_name: null,
-    client_ref: d.client_ref || null, client_name: d.client_name || d.name,
-  }));
-  const brokenClientDeal = deals.get('d02');
-  if (brokenClientDeal) brokenClientDeal.account_client_id = 'demo-account-002-unlisted';
-  /** @type {Map<string, any[]>} */
-  const threads = new Map(
-    Object.entries(seed.threads || {}).map(([k, v]) => [k, v.map((x) => ({ ...x }))]),
-  );
-  /** @type {Map<string, any[]>} */
-  const history = new Map(
-    Object.entries(seed.history || {}).map(([k, v]) => [k, v.map((x) => ({ ...x }))]),
-  );
+  if (!opts.dealStore) {
+    // Demonstrate that Salesforce-shaped records are not automatically active
+    // transactions. These are fixture-only examples; production is never
+    // changed from a name match.
+    for (const id of ['d06', 'd07', 'd08']) {
+      const deal = deals.get(id);
+      if (deal) Object.assign(deal, { operating_state:'parked', parking_reason:'other',
+        parking_note:'Reason not yet classified', parked_at:'2026-08-10T12:00:00Z', parked_by:'joe' });
+    }
+    // Keep the local demo representative of the production information model:
+    // one national-account portfolio, many market deals, no duplicate deal rows.
+    [...deals.values()].slice(0, 5).forEach((d, index) => Object.assign(d, {
+      workspace_kind: 'national_account',
+      account_client_id: fixtureAccountId,
+      account_client_ref: 'DEMO-ACCOUNT-001',
+      account_name: 'Demo National Practice',
+      account_owner: fixtureAccountOwner,
+      client_ref: `DEMO-CLIENT-${String(index + 1).padStart(3, '0')}`,
+      client_name: d.name,
+      market_agent: index < 3 ? ['Alex Morgan','Taylor Reed','Jordan Lee'][index] : null,
+    }));
+    [...deals.values()].slice(5).forEach((d) => Object.assign(d, {
+      workspace_kind: 'team', account_client_id: null, account_name: null,
+      client_ref: d.client_ref || null, client_name: d.client_name || d.name,
+    }));
+    // d02 names a client id the business-record fixture below deliberately does
+    // not carry, so the V5-UX-B04 context drawer's fetch-failure state (test
+    // fixture client, not a live network fault) has a fixture deal to exercise.
+    const brokenClientDeal = deals.get('d02');
+    if (brokenClientDeal) brokenClientDeal.account_client_id = 'demo-account-002-unlisted';
+  }
 
-  /** @type {any[]} events newest-last (append order); cursor is last id */
-  const events = [...(seed.seed_events || [])].map((e) => ({ ...e }));
-  events.sort((a, b) => a.recorded_at.localeCompare(b.recorded_at));
-
-  /** @type {Map<string, {actor:string, deal_id:string, field:string, expires_at:string}>} */
-  const leases = new Map(); // key: actor|deal|field
-
-  /** @type {Map<string, any>} idempotency_key -> result */
-  const idem = new Map();
-  const industryEvents = new Map(); // Demo-only records added through this fixture client.
-
-  /** @type {Map<string, any>} open conflicts */
-  const conflicts = new Map();
-  const criticalDates = new Map();
 
   const extraParticipants = new Map([
     ['d01', [
@@ -190,19 +190,8 @@ export async function createFixtureClient(opts = {}) {
   /** @type {any[]} synthetic read-call-outcomes rows; empty unless a test supplies them */
   const callOutcomes = structuredClone(opts.callOutcomes || []);
 
-  /** field event index: deal|field -> last event id */
-  const lastFieldEvent = new Map();
-  for (const e of events) {
-    if (e.field) lastFieldEvent.set(`${e.subject_id}|${e.field}`, e.id);
-  }
-
   let lastCallAt = seed.last_call_at || '2026-08-07T16:00:00Z';
   let asOf = seed.as_of || '2026-08-08';
-  let seq = events.length + 1;
-  let conflictSeq = 1;
-  let noteSeq = 1;
-  let criticalDateSeq = 1;
-  let histSeq = 1;
   let confirmSeq = 1;
   let reviewSeq = 1;
   const reviewSessions = new Map();
@@ -212,7 +201,7 @@ export async function createFixtureClient(opts = {}) {
   }
 
   function nextEventId() {
-    return `e-${String(seq++).padStart(4, '0')}`;
+    return `e-${String(dealStore.seq++).padStart(4, '0')}`;
   }
 
   function actorLabel(a) {
@@ -233,7 +222,7 @@ export async function createFixtureClient(opts = {}) {
 
   function pushHistory(dealId, actor, summary, at) {
     const h = {
-      id: `h-${histSeq++}`,
+      id: `h-${dealStore.histSeq++}`,
       actor,
       summary,
       recorded_at: at || nowIso(),
@@ -325,7 +314,7 @@ export async function createFixtureClient(opts = {}) {
     const last = lastFieldEvent.get(key) || null;
     const base = base_event_id === undefined ? null : base_event_id;
     if (last !== base) {
-      const conflict_id = `c-${conflictSeq++}`;
+      const conflict_id = `c-${dealStore.conflictSeq++}`;
       const payload = {
         conflict_id,
         deal,
@@ -1193,7 +1182,9 @@ export async function createFixtureClient(opts = {}) {
     };
   }
 
+  const industryEvents = new Map();
   const invoices = createInvoiceFixture({ actor: selfActor, entries: opts.invoiceEntries, today: opts.today });
+  const emailSeedDeals = [...deals.values()].map(({ id, phase }) => ({ id, phase }));
   const client = {
     ...invoices,
     async getRelationshipNetwork() { return relationshipNetworkFixture(); },
@@ -1235,14 +1226,16 @@ export async function createFixtureClient(opts = {}) {
       };
     },
 
+    async getPostCallFollowups() { return { schema_version: 'post-call-followups.v1', candidates: [], send: false }; },
+
     async getHomeAgenda() {
       const board = await this.getBoard();
       return { ...board, schema_version: 'home-agenda.v1', deals: board.deals.map(deal => ({
         ...deal,
         critical_dates: [...(deal.next_date ? [{ label: 'Next date', date: deal.next_date }] : []),
           ...(criticalDates.get(deal.id) || []).map(row => ({ ...row }))],
-        next_actions: deal.next_step ? [{ id: `a-${deal.id}`, owner: deal.owner, description: deal.next_step,
-          due_on: deal.next_date, status: 'open', hold_until: null }] : [],
+        next_actions: [...(deal.email_actions || []), ...(deal.next_step ? [{ id: `a-${deal.id}`, owner: deal.owner, description: deal.next_step,
+          due_on: deal.next_date, status: 'open', hold_until: null }] : [])],
       })) };
     },
 
@@ -1263,8 +1256,8 @@ export async function createFixtureClient(opts = {}) {
       }
       for (const entry of criticalDates.get(dealId) || []) critical_dates.push({ ...entry });
       return { items: structuredClone(deal.items || []), item_schema_version: 'deal-items.v1', deal: {...deal, phase_change: phaseChangeFor(dealId)}, thread, critical_dates, history: hist,
-        next_actions: deal.next_step ? [{ id: `a-${deal.id}`, owner: deal.owner,
-          description: deal.next_step, due_on: deal.next_date, status: 'open' }] : [],
+        next_actions: [...(deal.email_actions || []), ...(deal.next_step ? [{ id: `a-${deal.id}`, owner: deal.owner,
+          description: deal.next_step, due_on: deal.next_date, status: 'open' }] : [])],
         activities: hist.slice(0, 4).map((h) => ({ id: h.id, actor: h.actor,
           occurred_at: h.recorded_at, kind: 'note', summary: h.summary })),
         participants: [{ role: 'lead', name: actorLabel(deal.owner), actor: deal.owner },
@@ -1394,6 +1387,18 @@ export async function createFixtureClient(opts = {}) {
       });
     },
 
+    async setLead({ deal, new_lead, base_version, idempotency_key }) {
+      return withIdem(idempotency_key, () => {
+        const row = getDealOrThrow(deal);
+        guardVersion(row, base_version);
+        if (!['joe', 'dell'].includes(new_lead)) refuse('set-lead', 'unknown_actor');
+        const result = applyFieldWrite({ deal, field:'owner', value:new_lead,
+          base_event_id:lastFieldEvent.get(`${deal}|owner`) || null, actor:selfActor, verb:'set-lead' });
+        row.version += 1;
+        return { ...result, ok:true, version:row.version };
+      });
+    },
+
     async resolveConflict({ conflict_id, winner, idempotency_key }) {
       return withIdem(idempotency_key, () => {
         const c = conflicts.get(conflict_id);
@@ -1460,7 +1465,7 @@ export async function createFixtureClient(opts = {}) {
         const t = String(text || '').trim();
         if (!t) throw new Error('empty note');
         const entry = {
-          id: `n-${noteSeq++}`,
+          id: `n-${dealStore.noteSeq++}`,
           kind: 'note',
           actor: selfActor,
           text: t,
@@ -1489,7 +1494,7 @@ export async function createFixtureClient(opts = {}) {
         if (!k) throw new Error('critical date kind required');
         if (!day) throw new Error('critical date due_on required');
         if (!from) throw new Error('critical date source required');
-        const entry = { id: `cd-${criticalDateSeq++}`, kind: k, label: k, due_on: day, date: day, source: from };
+        const entry = { id: `cd-${dealStore.criticalDateSeq++}`, kind: k, label: k, due_on: day, date: day, source: from };
         criticalDates.set(deal, [...(criticalDates.get(deal) || []), entry]);
         const e = pushEvent({
           actor: selfActor,
@@ -1513,7 +1518,7 @@ export async function createFixtureClient(opts = {}) {
         const old = d.next_step;
         if (old && old.trim()) {
           ensureThread(deal).unshift({
-            id: `n-${noteSeq++}`,
+            id: `n-${dealStore.noteSeq++}`,
             kind: 'archived_step',
             actor: selfActor,
             text: old,
@@ -1551,12 +1556,16 @@ export async function createFixtureClient(opts = {}) {
       return withIdem(idempotency_key, () => {
         const n = String(name || '').trim();
         if (!n) throw new Error('empty name');
-        const id = `d-new-${seq++}`;
+        const initialPhase = phase || 'On Deck';
+        if (!PHASES.includes(initialPhase)) refuse('new-deal', 'unknown_phase');
+        const id = `d-new-${dealStore.seq++}`;
         const d = {
           id,
+          version: 1,
+          operating_state: 'active',
           name: n,
           type: deal_type || 'Other',
-          phase: phase || 'On Deck',
+          phase: initialPhase,
           owner: owner || selfActor,
           attention: false,
           last_touch: nowIso().slice(0, 10),
@@ -1571,7 +1580,7 @@ export async function createFixtureClient(opts = {}) {
           account_name: lane === 'national' ? 'Demo National Practice' : null,
         };
         deals.set(id, d);
-        if (notes) threads.set(id, [{ id: `note-${seq++}`, kind: 'note', actor: selfActor, text: notes, at: nowIso() }]);
+        if (notes) threads.set(id, [{ id: `note-${dealStore.seq++}`, kind: 'note', actor: selfActor, text: notes, at: nowIso() }]);
         const e = pushEvent({
           actor: selfActor,
           verb: 'create-deal',
@@ -2832,7 +2841,7 @@ export async function createFixtureClient(opts = {}) {
           const old = d.next_step;
           if (old && old.trim()) {
             ensureThread(p.args.deal).unshift({
-              id: `n-${noteSeq++}`,
+              id: `n-${dealStore.noteSeq++}`,
               kind: 'archived_step',
               actor: selfActor,
               text: old,
@@ -2899,7 +2908,7 @@ export async function createFixtureClient(opts = {}) {
           const old = closingDemo.next_step;
           if (old && old.trim()) {
             ensureThread('d05').unshift({
-              id: `n-${noteSeq++}`,
+              id: `n-${dealStore.noteSeq++}`,
               kind: 'archived_step',
               actor: partnerActor,
               text: old,
@@ -2988,5 +2997,15 @@ export async function createFixtureClient(opts = {}) {
 
   };
 
+  let emailFixture;
+  const emails = () => emailFixture ||= import('./email-proposals-fixture.js').then(({ createEmailProposalsFixture }) => createEmailProposalsFixture({ deals, seedDeals: emailSeedDeals, actor: selfActor, client, pushEvent }));
+  Object.assign(client, {
+    async listEmailProposals(args = {}) { return (await emails()).listEmailProposals(args); },
+    async previewEmailNextStep(args) { return (await emails()).previewEmailNextStep(args); },
+    async previewEmailDealProgress(args) { return (await emails()).previewEmailDealProgress(args); },
+    async confirmEmailNextStep(args) { return (await emails()).confirmEmailNextStep(args); },
+    async confirmEmailDealProgress(args) { return (await emails()).confirmEmailDealProgress(args); },
+    async dismissEmailProposal(args) { return (await emails()).dismissEmailProposal(args); },
+  });
   return opts.docContext === false ? client : observeDocClient(client);
 }

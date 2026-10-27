@@ -33,6 +33,11 @@ const CREATION_REFUSALS = new Set([
  * @param {(path:string, init?:RequestInit)=>Promise<Response>} [opts.fetchImpl]
  * @param {()=>boolean} [opts.online] connection signal; injectable in tests
  */
+// Concurrent identical page reads (Home's layout, Doc and the morning brief all ask
+// for the same board) share one request. Nothing is cached once it settles.
+const sharedReads = new WeakMap();
+const SHARED_READ_VERBS = new Set(['deal-room-board', 'morning-brief', 'list-feature-switches']);
+
 export function createLiveClient(opts = {}) {
   const baseUrl = (opts.baseUrl || '').replace(/\/$/, '');
   let selfActor = opts.selfActor || null;
@@ -54,9 +59,36 @@ export function createLiveClient(opts = {}) {
   const sessionWrites = new Set(['set-next-step', 'set-market-agent', 'set-national-account-owner', 'create-national-account',
     'create-national-market-deal', 'start-deal-review', 'review-deal', 'end-deal-review',
     'resolve-candidate', 'resolve-post-call-candidate', 'answer-work-request-for-joe', 'add-industry-event', 'update-industry-event',
-    'undo-call-change', 'review-call-outcome']);
+    'undo-call-change', 'review-call-outcome', 'confirm-email-next-step', 'confirm-email-deal-progress', 'dismiss-email-proposal']);
 
-  const rpc = (verb, args = {}, signal) => rawRpc(verb, args, signal, opts.readTimeoutMs || 10_000);
+  const readTimeoutMs = opts.readTimeoutMs || 10_000;
+  const rpc = (verb, args = {}, signal) => {
+    if (!SHARED_READ_VERBS.has(verb)) return rawRpc(verb, args, signal, readTimeoutMs);
+    if (signal?.aborted) return readWithDeadline(() => null, { signal, timeoutMs: readTimeoutMs });
+    const transport = opts.fetchImpl || sessionFetch;
+    if (!sharedReads.has(transport)) sharedReads.set(transport, new Map());
+    const reads = sharedReads.get(transport), key = JSON.stringify([baseUrl, verb, args, readTimeoutMs]);
+    let entry = reads.get(key);
+    if (!entry) {
+      const controller = new AbortController();
+      entry = { controller, waiters: 0 };
+      const current = entry;
+      entry.read = rawRpc(verb, args, controller.signal, readTimeoutMs).finally(() => {
+        if (reads.get(key) === current) reads.delete(key);
+      });
+      entry.read.catch(() => {});
+      reads.set(key, entry);
+    }
+    const shared = entry;
+    shared.waiters++;
+    const release = () => {
+      signal?.removeEventListener('abort', release);
+      if (--shared.waiters === 0 && reads.get(key) === shared) { reads.delete(key); shared.controller.abort(); }
+    };
+    signal?.addEventListener('abort', release, { once: true });
+    return readWithDeadline(() => shared.read.then(structuredClone), { signal, timeoutMs: readTimeoutMs })
+      .finally(() => { if (!signal?.aborted) release(); });
+  };
 
   async function rawRpc(verb, args = {}, signal, timeoutMs, headers) {
     const outcome = await requestMcp(verb, args, { signal, timeoutMs, headers });
@@ -79,6 +111,13 @@ export function createLiveClient(opts = {}) {
       throw err;
     }
     if (verb === 'start-deal-review') requireReviewReceipt(payload);
+    if (['confirm-email-next-step', 'confirm-email-deal-progress'].includes(verb)) {
+      const contract = verb === 'confirm-email-next-step' ? 'email-next-step.v1' : 'email-deal-progress.v1';
+      if (payload?.contract !== contract || payload.status !== 'confirmed' || payload.requires_confirmation !== false
+        || payload.deal !== args.deal || payload.source?.activity_id !== args.activity_id || payload.proposal_digest !== args.proposal_digest)
+        throw unknownMcpOutcome(new Error('Email confirmation receipt unavailable'));
+      return { ...payload, ok: true };
+    }
     return payload;
   }
 
@@ -94,7 +133,7 @@ export function createLiveClient(opts = {}) {
     // Keep those domain receipt contracts intact; cover the unretained paths
     // and the old fallback that minted a different key on every attempt.
     if (args.idempotency_key && !sessionWrites.has(verb)) return rawRpc(verb, args, undefined, timeoutMs);
-    const target = ['deal', 'candidate_id', 'account_client_id', 'event_id', 'human_ref', 'session_id',
+    const target = ['proposal_id', 'activity_id', 'deal', 'candidate_id', 'account_client_id', 'event_id', 'human_ref', 'session_id',
       'loop_id', 'conversation_id', 'suggestion_id', 'commission_id', 'board_id', 'client_id', 'field', 'projection_id']
       .filter(key => args[key] !== undefined).map(key => [key, args[key]]);
     const operationKey = JSON.stringify([verb, target]);
@@ -103,17 +142,7 @@ export function createLiveClient(opts = {}) {
       sessionWrites.has(verb) ? { 'x-carr-csrf': binding.slice(binding.indexOf(':') + 1) } : undefined));
   }
 
-  // The record layer speaks phase SLUGS (deal_phase table); the board speaks
-  // the display names the mockup ruled. Translate at the client boundary in
-  // both directions so neither side ever sees the other's vocabulary.
-  //
-  // The map is ONE-TO-ONE, and that is the repair in V5-UX-B03. It used to send
-  // both `research` and `site_selection` to "Research" while UI_TO_PHASE had no
-  // entry for site selection at all, so a board that read a site-selection deal
-  // showed it as Research and wrote `research` back — silently relocating the
-  // record to a phase nobody chose (defect 5e355b84). Every slug now has its own
-  // label and every label its own slug, so a round trip returns what it started
-  // with.
+  // CARR phase slugs and board labels map one-to-one in both directions.
   const PHASE_TO_UI = PHASE_BY_SLUG;
   const UI_TO_PHASE = {
     'On Deck': 'pending', 'Research': 'research', 'Site selection': 'site_selection',
@@ -171,6 +200,7 @@ export function createLiveClient(opts = {}) {
       selfActor = agenda.actor || selfActor;
       return { ...agenda, deals: Array.isArray(agenda.deals) ? agenda.deals.map(dealToUi) : agenda.deals };
     },
+    async getPostCallFollowups({ signal } = {}) { return rpc('read-post-call-followups', {}, signal); },
 
     async getBoard(options = {}) {
       const board = await rpc('deal-room-board', {
@@ -248,15 +278,8 @@ export function createLiveClient(opts = {}) {
       return res.json();
     },
 
-    // V5-UX-B04: the same pinned `/api/v1/business/{clients,vendors}/<id>`
-    // single-record read the Clients and Vendors pages already use, called
-    // here for one id at a time so the deal record panel's context drawer can
-    // show the linked client's contact detail. `id` must be that record's own
-    // uuid (client.id / vendor.id) — a participant's party_id is a different
-    // id space and is never passed here; see loadDealContext in
-    // pipeline-model.js for why. A non-ok response throws, same as every
-    // other live read, so the caller's catch is the one honest place that
-    // decides "unavailable".
+    // Use the client or vendor UUID, not a participant's party_id.
+    // A failed read leaves the context drawer unavailable.
     async getPartyRecord({ dataset, id }) {
       const res = await fetchReadImpl(`/api/v1/business/${dataset}/${id}`, {
         headers: { accept: 'application/json' }, credentials: 'same-origin', cache: 'no-store',
@@ -296,6 +319,13 @@ export function createLiveClient(opts = {}) {
     async resolvePostCallCandidate({ candidate_id, accept, idempotency_key }) {
       return write('resolve-post-call-candidate', { candidate_id, accept, idempotency_key });
     },
+
+    async listEmailProposals(args = {}) { return rpc('list-email-proposals', args); },
+    async previewEmailNextStep(args) { return rpc('preview-email-next-step', args); },
+    async previewEmailDealProgress(args) { return rpc('preview-email-deal-progress', args); },
+    async confirmEmailNextStep(args) { return write('confirm-email-next-step', args); },
+    async confirmEmailDealProgress(args) { return write('confirm-email-deal-progress', args); },
+    async dismissEmailProposal(args) { return write('dismiss-email-proposal', args); },
 
     async readCallOutcomes() {
       return rpc('read-call-outcomes', {});
@@ -494,7 +524,7 @@ export function createLiveClient(opts = {}) {
 
     // Authenticated sponsor is resolved by CARR; callers cannot select a partner.
     async listFeatureSwitches({ signal } = {}) { return rpc('list-feature-switches', {}, signal); },
-    async morningBrief({ signal } = {}) { return rpc('morning-brief', {}, signal); },
+    async morningBrief({ signal, fresh } = {}) { return fresh ? rawRpc('morning-brief', {}, signal, readTimeoutMs) : rpc('morning-brief', {}, signal); },
     async morningBriefQueue(queue, {cursor,signal} = {}) {
       if (!['today','loops','needs_joe','assurance_cadence'].includes(queue)) throw new Error('Unsupported morning queue.');
       return rpc(queue === 'assurance_cadence' ? 'morning-assurance-queue' : 'morning-brief-queue',
@@ -626,15 +656,8 @@ export function createLiveClient(opts = {}) {
     async dispatchHistory(args, { signal } = {}) { return rpc('read-dispatch-history', args, signal); },
 
     // ------------------------------- Model Room assignments and turns (C12)
-    // TWO READS, passed through untouched, and neither names an actor either:
-    // both verbs derive the acting actor server-side. `roomQueue` is the
-    // projected assignment board and `roomTurns` is the room's own turns,
-    // returned exactly as written. Moving an assignment card (the Kanban
-    // drag) has no admitted write at all — see model-room-model.js's
-    // ASSIGNMENT_MOVE_UNSUPPORTED_SENTENCE — and acknowledging a dispatch was
-    // tried and removed for the same file's ACK_UNAVAILABLE_SENTENCE reason:
-    // that evidence is first-hand, from the acting agent seat, never from
-    // whoever is browsing this page.
+    // These reads derive the actor server-side. Assignment moves and dispatch
+    // acknowledgements have no supported write from this page.
     async roomQueue(args = {}) { return rpc('read-room-queue', args); },
     async roomTurns(args = {}) { return rpc('read-room', args); },
     // V5-UX-C13b: the Model Room composer's one write. `add-room-turn`

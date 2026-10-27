@@ -25,7 +25,7 @@ async function setup(t,{width=1440,motion='no-preference',onRoute,engine=chromiu
   if(url.pathname==='/mcp'){
   const {name,arguments:args}=request.postDataJSON().params;calls.push({name,args});let value={ok:true};
    if(name==='read-doc-outcome-cards')return rpc(route,await fixture.docOutcomeCards(args));
-   const methods={'read-home-agenda':'getHomeAgenda','list-feature-switches':'listFeatureSwitches','deal-room-board':'getBoard','get-deal-room':'getDeal','deal-room-changes':'getChanges','today-triage':'todayTriage','list-doc-suggestions':'listDocSuggestions','decide-doc-suggestion':'decideDocSuggestion','list-doc-conversations':'listDocConversations','read-doc-conversation':'readDocConversation','loop-board':'loopBoard','read-loop':'readLoop','incident-board':'incidentBoard','current-work-item':'currentWorkItem','current-work-requests':'currentWorkRequests','notification-feed':'notificationFeed','list-industry-events':'listIndustryEvents','find':'find','find-and-catch-up':'findAndCatchUp'};
+   const methods={'read-home-agenda':'getHomeAgenda','read-post-call-followups':'getPostCallFollowups','list-feature-switches':'listFeatureSwitches','deal-room-board':'getBoard','get-deal-room':'getDeal','deal-room-changes':'getChanges','today-triage':'todayTriage','list-doc-suggestions':'listDocSuggestions','decide-doc-suggestion':'decideDocSuggestion','list-doc-conversations':'listDocConversations','read-doc-conversation':'readDocConversation','loop-board':'loopBoard','read-loop':'readLoop','incident-board':'incidentBoard','current-work-item':'currentWorkItem','current-work-requests':'currentWorkRequests','notification-feed':'notificationFeed','list-industry-events':'listIndustryEvents','find':'find','find-and-catch-up':'findAndCatchUp'};
    if(name==='lead-board') value={leads:[],stages:[],as_of:new Date().toISOString()};
    else if(name==='claim-card') value={claimable:0,candidates:[],needs_contact_count:0};
    else if(methods[name]) { value=await fixture[methods[name]](name==='get-deal-room'?args.deal||args.deal_id:name==='deal-room-changes'?args.cursor:args); if(name==='get-deal-room') value={...value.deal,deal_id:value.deal.id,thread:value.thread,critical_dates:value.critical_dates.map(row=>({...row,due_on:row.date})),next_actions:value.next_actions,activities:value.activities,events:[]}; }
@@ -39,6 +39,39 @@ async function setup(t,{width=1440,motion='no-preference',onRoute,engine=chromiu
  const goto=async path=>{await page.goto('http://localhost'+path,{waitUntil:'domcontentloaded'});await page.locator('#docPresence').waitFor({state:'attached'});};
  return{page,goto,calls,errors};
 }
+
+test('closed Doc skips suggestion reads and opens with fresh suggestions after context changes', async t => {
+ let approvalLoads=0;
+ const {page,goto,calls,errors}=await setup(t,{onRoute:async(route,{url})=>{
+  if(url.pathname==='/js/doc-approval.js')approvalLoads++;
+  return false;
+ }});
+ await page.clock.install();
+ await goto('/deals?mode=live');
+ await page.waitForFunction(()=>window.docContext?.snapshot().ready);
+ await page.waitForLoadState('networkidle');
+ assert.equal(calls.filter(call=>call.name==='list-doc-suggestions').length,0);
+ assert.equal(calls.filter(call=>call.name==='list-feature-switches').length,0);
+ assert.equal(approvalLoads,0);
+ await page.locator('#docOpen').click();
+ await page.locator('[data-doc-suggestion]').first().waitFor();
+ assert.ok(calls.some(call=>call.name==='list-doc-suggestions'));
+ assert.equal(approvalLoads,1);
+ await page.keyboard.press('Escape');
+ await page.waitForFunction(()=>!document.querySelector('#docDetail').open);
+ const closedReads=calls.filter(call=>call.name==='list-doc-suggestions').length;
+ const closedPermissions=calls.filter(call=>call.name==='list-feature-switches').length;
+ await page.evaluate(()=>window.docContext.select('deal','d14'));
+ await page.clock.fastForward(31_000);
+ await page.waitForLoadState('networkidle');
+ assert.equal(calls.filter(call=>call.name==='list-doc-suggestions').length,closedReads);
+ assert.equal(calls.filter(call=>call.name==='list-feature-switches').length,closedPermissions);
+ const reread=page.waitForResponse(response=>response.url().endsWith('/mcp')&&response.request().postDataJSON()?.params?.name==='list-doc-suggestions');
+ await page.locator('#docOpen').click();
+ await reread;
+ assert.ok(calls.filter(call=>call.name==='list-doc-suggestions').length>closedReads);
+ assert.deepEqual(errors,[]);
+});
 
 test('shared Doc presence appears on every authenticated route; narrow drawers never hide it',async t=>{
  const{page,goto,errors,calls}=await setup(t);
@@ -91,8 +124,9 @@ test('page facts and exact selection, existing suggestions, one-tap approval, in
  await page.keyboard.press('Escape');
  await page.locator('#panelClose').click();
  await page.locator('body > #docPresence').waitFor();
+ await page.locator('#docOpen').click();
  await page.waitForFunction(()=>document.querySelector('#docSuggestions')?.textContent.includes('Confirm the survey'));
- await page.locator('#docOpen').click();await page.locator('#docRecord').selectOption('deal:d14');
+ await page.locator('#docRecord').selectOption('deal:d14');
  assert.match(await page.locator('#docFacts').innerText(),/Confirm fictional commencement/);
  await mkdir(new URL('out/test-artifacts/w8/',root),{recursive:true});
  await page.screenshot({path:new URL('out/test-artifacts/w8/staged-desktop.png',root).pathname,fullPage:page.viewportSize().width>760,animations:'disabled'});
@@ -123,6 +157,7 @@ test('page facts and exact selection, existing suggestions, one-tap approval, in
 test('selection/filter changes cancel context, auto-refresh recovers and no write happens without a click',async t=>{
  const{page,goto,calls}=await setup(t);await page.clock.install();
  await goto('/deals?mode=live');
+ await page.locator('#docOpen').click();
  await page.waitForFunction(()=>document.querySelector('#docSuggestions')?.textContent.includes('Confirm the survey'));
  const result=await page.evaluate(async()=>{
   const {pageDocContext}=await import('/js/doc-context.js');
@@ -263,7 +298,7 @@ for(const path of ['/api/tours/library','/api/v1/business/clients','/api/tours/d
  let denied=false;const {page,goto}=await setup(t,{onRoute:async(route,env)=>{
   if(denied && env.url.pathname===path){await route.fulfill({status:401,json:{}});return true;}return producerRoute(route,env);
  }});await goto('/tours');await page.locator('.tour-button').first().click();await page.waitForFunction(()=>document.querySelector('#detail-title').textContent==='Sample Tour');
- denied=true;await page.evaluate(()=>window.dispatchEvent(new Event('online')));await page.waitForFunction(()=>document.querySelector('#tour-library-state').textContent.includes('Sign in'));
+ denied=true;if(path==='/api/v1/business/clients'){await escapeRecord(page,'#tour-dialog');assert.equal((await readContext(page)).ready,true);await page.locator('#plan-client-find').click();}else await page.evaluate(()=>window.dispatchEvent(new Event('online')));await page.waitForFunction(()=>document.querySelector('#tour-library-state').textContent.includes('Sign in'));
  const c=await readContext(page);assert.equal(c.ready,false);assert.equal(c.records.length,0);
 });
 test('R8 delayed approval receipt cannot appear under a different record',async t=>{
@@ -271,7 +306,7 @@ test('R8 delayed approval receipt cannot appear under a different record',async 
  const {page,goto,calls}=await setup(t,{onRoute:async(route,{url})=>{
   if(url.pathname==='/mcp'&&route.request().postDataJSON().params.name==='decide-doc-suggestion'){started();await wait;const args=route.request().postDataJSON().params.arguments;await rpc(route,{ok:true,suggestion_id:args.suggestion_id,choice:'discuss',version:args.base_version+1});return true;}
   return false;
- }});await goto('/deals?mode=live');await page.waitForFunction(()=>document.querySelector('[data-doc-suggestion]'));await page.locator('#docOpen').click();await page.locator('[data-doc-approve]').click();await entered;
+ }});await goto('/deals?mode=live');await page.locator('#docOpen').click();await page.waitForFunction(()=>document.querySelector('[data-doc-suggestion]'));await page.locator('[data-doc-approve]').click();await entered;
  await page.keyboard.press('Escape');await page.evaluate(async()=>{const c=(await import('/js/doc-context.js')).pageDocContext;c.select('deal','d1');});await page.locator('#docOpen').click();release();
  await page.waitForTimeout(100);assert.equal(await page.locator('#docApprovalStatus').textContent(),'');
 });

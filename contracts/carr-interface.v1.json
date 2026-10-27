@@ -1,6 +1,6 @@
 {
   "schema": "doctorcre-carr-interface.v1",
-  "version": "1.59.1",
+  "version": "1.60.0",
   "producer": {
     "repository": "jbookout/carr-system",
     "source_commit": "1df9b9936394164dd55e815f8a8bf69649508ccc"
@@ -35,6 +35,8 @@
     "close-investigation",
     "close-loop",
     "complete-deal-item",
+    "confirm-email-deal-progress",
+    "confirm-email-next-step",
     "confirm-slice-completions",
     "correspondence-readiness",
     "create-doc-conversation",
@@ -45,6 +47,7 @@
     "deal-room-board",
     "decide-doc-suggestion",
     "decline-work-request",
+    "dismiss-email-proposal",
     "end-deal-review",
     "engineering-passport",
     "find",
@@ -60,6 +63,7 @@
     "link-lead-client",
     "list-doc-conversations",
     "list-doc-suggestions",
+    "list-email-proposals",
     "list-feature-switches",
     "list-industry-events",
     "list-my-codex-sessions",
@@ -75,6 +79,8 @@
     "notification-feed",
     "patch-deal-field",
     "presence-lease",
+    "preview-email-deal-progress",
+    "preview-email-next-step",
     "propose-doc-correction",
     "read-assurance-health",
     "read-call-outcomes",
@@ -90,6 +96,7 @@
     "read-loop",
     "read-notification-preferences",
     "read-portfolio",
+    "read-post-call-followups",
     "read-progress-board",
     "read-resource-dashboard",
     "read-room",
@@ -933,6 +940,26 @@
         "short_name": "Record-layer short deal name; fall back to the actual deal name when contact or market evidence is absent."
       }
     },
+    "read-post-call-followups": {
+      "write": false,
+      "producer": {
+        "repository": "DoctorCRE/carr-system",
+        "source_commit": "cd3d22427e38a799ebdd95828e16396f9ec8c06e",
+        "pull_request": "https://github.com/DoctorCRE/carr-system/pull/2336"
+      },
+      "response": {
+        "schema_version": "post-call-followups.v1",
+        "send": false,
+        "candidate_keys": ["id", "session_id", "kind", "deal_id", "deal_name", "payload", "evidence_quote", "created_at"],
+        "task_payload_keys": ["deal_id", "assignee", "action", "due_on"],
+        "email_payload_keys": ["deal_id", "recipient_party_id", "recipient_ref", "subject", "body_sha256"],
+        "membership": "Pending proposals in unexpired distilling post-call sessions for active board deals. Ordered by created_at, then id.",
+        "limit": 1000,
+        "overflow": "post_call_followups_limit_exceeded; no partial snapshot is returned."
+      },
+      "home_slice": "Assigned task proposals only. The app preserves the explicit assignee, action and date and leaves email proposals unresolved in local Call Mode.",
+      "resolution": "Existing resolve-post-call-candidate records an assigned action or skips one proposal. It does not perform the described action. Email resolution confirms only metadata and a local body hash; it creates no email or Outlook draft."
+    },
     "read-client-portal": {
       "write": true,
       "schema_version": "client-portal.v1",
@@ -1348,5 +1375,44 @@
       },
       "effect": "Add one sourced deal checklist item. It never replaces sibling actions. Repeating source_ref and title returns the existing item."
     }
+  },
+  "email_proposals": {
+    "producer": {
+      "repository": "DoctorCRE/carr-system",
+      "source_commit": "fdff8d243116dbe0bff1f6f301ae2b2757fac4c0",
+      "pull_request": "https://github.com/DoctorCRE/carr-system/pull/2361"
+    },
+    "schema_version": "email-proposals.v1",
+    "read": "list-email-proposals {limit,cursor?} returns proposals oldest first, send:false, more and next_cursor. Paging producer: DoctorCRE/carr-system@81099219dff8270cee6be8150cfd00d7888437d3. Each proposal has id, version, kind, deal, deal_name, confidence, suspected_instruction, source, confirm_verb, preview and preview_error.",
+    "source_fields": [
+      "activity_id",
+      "sender",
+      "subject",
+      "evidence_quote",
+      "occurred_at"
+    ],
+    "review": "Display evidence as untrusted text and suspected_instruction as a warning. Sender role is not supplied; never display raw addresses or infer a role. Null preview remains dismissible.",
+    "next_step_arguments": [
+      "deal",
+      "activity_id",
+      "evidence_quote",
+      "text",
+      "next_date",
+      "owner"
+    ],
+    "phase_arguments": [
+      "deal",
+      "activity_id",
+      "evidence_quote"
+    ],
+    "confirmation": "Joe only. Fetch and display a fresh matching preview before confirming the same fields plus its proposal_digest and a retained idempotency_key. Do not infer a digest or move a phase locally.",
+    "dismiss_arguments": [
+      "proposal_id",
+      "base_version",
+      "reason",
+      "idempotency_key"
+    ],
+    "dismissal": "Joe or Dell, exact observed version and a nonempty reason of at most 500 characters. Version conflicts require a fresh review.",
+    "deployment_order": "Server verbs are live before this app consumer. No send or router write is consumed."
   }
 }

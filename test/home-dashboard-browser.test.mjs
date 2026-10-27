@@ -53,6 +53,7 @@ async function open(t, { width = 1440, height = 1000, invoiceAttention = false, 
       }))) };
     },
     'correspondence-readiness': args => client.correspondenceReadiness(args),
+    'read-post-call-followups': () => client.getPostCallFollowups(),
     'today-triage': () => client.todayTriage(),
     'list-feature-switches': () => client.listFeatureSwitches(),
     'list-doc-suggestions': args => client.listDocSuggestions(args),
@@ -63,6 +64,7 @@ async function open(t, { width = 1440, height = 1000, invoiceAttention = false, 
     'read-resource-dashboard': () => client.readResourceDashboard(), 'schedule-board': () => client.scheduleBoard(),
     'list-notifications': async () => ({ unread_count: 0, notifications: [] }),
     'notification-feed': async () => ({ unread_count: 0, notifications: [] }),
+    'list-email-proposals': async () => ({ schema_version: 'email-proposals.v1', proposals: [], send: false, more: false, next_cursor: null }),
     'read-call-outcomes': async () => ({ schema_version: 'call-outcomes.v1', calls: [], send: false }),
   };
   await page.route('**/*', async route => {
@@ -214,7 +216,10 @@ test('Home desktop and phone show flags, visual agenda, ranked leads and wide en
     await page.locator('#homeLeads:not([hidden])').waitFor();
     await page.waitForFunction(() => document.querySelector('#refreshHome').getAttribute('aria-busy') === 'false');
     assert.equal(await page.locator('#homeControl, .home-radar').count(), 0);
+    // On a phone Control Room waits in More; the bar keeps Home, Leads, Tours and Deals.
+    if (width <= 760) await page.getByLabel('More', { exact: true }).click();
     assert.equal(await page.getByRole('link', { name: 'Control Room', exact: true }).count(), 1);
+    if (width <= 760) await page.keyboard.press('Escape');
     assert.equal(await page.locator('.home-week .home-day').count(), 7);
     // The week link names its destination before the day tiles it wraps.
     assert.equal(await page.getByRole('link', { name: /^Open calendar\b.*deal dates and tasks/ }).getAttribute('data-home-key'), 'week');
@@ -227,7 +232,7 @@ test('Home desktop and phone show flags, visual agenda, ranked leads and wide en
     assert.match(await page.locator('#observedAt').textContent(), /^Updated /);
     const text = await page.locator('main').textContent();
     assert.doesNotMatch(text, /source|records read|read again|retry|Doc at work|Changed in 7 days|Workspace structure/i);
-    assert.ok(calls.every(name => Object.keys({ 'morning-brief':1, 'read-invoice-tracker':1, 'today-triage':1,'list-feature-switches': 1, 'list-doc-suggestions': 1, 'read-home-agenda': 1, 'deal-room-board': 1, 'get-deal-room': 1, 'lead-board': 1, 'list-notifications': 1, 'notification-feed': 1, 'read-call-outcomes': 1 }).includes(name)), `no write verb runs: ${calls.join(', ')}`);
+    assert.ok(calls.every(name => Object.keys({ 'morning-brief':1, 'read-invoice-tracker':1, 'today-triage':1,'list-feature-switches': 1, 'list-doc-suggestions': 1, 'read-home-agenda': 1, 'read-post-call-followups': 1, 'deal-room-board': 1, 'get-deal-room': 1, 'lead-board': 1, 'list-notifications': 1, 'notification-feed': 1, 'read-call-outcomes': 1, 'list-email-proposals': 1 }).includes(name)), `no write verb runs: ${calls.join(', ')}`);
     await screenshot(page, width === 1440 ? 'desktop' : `phone-${width}`);
     const first = page.locator('.home-lead').first(); await first.click();
     assert.equal(await page.locator('#homeDetail').evaluate(dialog => dialog.open), true);

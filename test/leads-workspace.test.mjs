@@ -13,6 +13,45 @@ async function setup(overrides={},mapFactory=async()=>({update(){},dispose(){}})
  const app=mountLeadsWorkspace(d,client,{mapFactory});await tick();
  return{dom,w,d,app,client,board,writes,setActor:a=>{actor=a},close:()=>{app.dispose();w.close()}};
 }
+test('specialty filters board, territory membership and counts together without narrowing hottest leads',async()=>{
+ const b=workspace();b.leads=b.leads.filter(l=>[id(1),id(2),id(3),id(8)].includes(l.id));
+ b.leads[0].specialty='Dental';b.leads[1].specialty='Veterinary';b.leads[2].specialty='Dental';b.leads[2].owner='other-partner';b.leads[3].specialty='Dental';
+ const updates=[];let mapLoads=0;
+ const s=await setup({getWorkspace:async()=>structuredClone(b)},async()=>{mapLoads++;return{update:groups=>updates.push(groups),dispose(){}}});
+ try{
+  const select=s.d.getElementById('specialtyFilter');assert.ok(select,'Specialty control is available');
+  select.focus();select.value='Dental';select.dispatchEvent(new s.w.Event('change'));
+  assert.equal(s.d.activeElement,select);assert.equal(select.value,'Dental');
+  assert.deepEqual([...s.d.querySelectorAll('#leadBoard .lead-card')].map(n=>n.dataset.leadId),[id(1),id(3),id(8)]);
+  assert.equal(s.d.getElementById('filterSummary').textContent,'3 matching leads');
+  assert.equal(s.d.querySelectorAll('#hotLeads .hot-row').length,2,'hottest leads remain global');
+  s.d.getElementById('showTerritory').click();await tick();
+  assert.deepEqual(updates.at(-1).flatMap(g=>g.unlocatedIds).sort(),[id(1),id(3),id(8)]);
+  const owner=s.d.getElementById('ownerFilter');owner.value='other-partner';owner.dispatchEvent(new s.w.Event('change'));
+  assert.deepEqual([...s.d.querySelectorAll('#leadBoard .lead-card')].map(n=>n.dataset.leadId),[id(3)]);
+  assert.deepEqual(updates.at(-1).flatMap(g=>g.unlocatedIds),[id(3)]);
+  select.value='Veterinary';select.dispatchEvent(new s.w.Event('change'));
+  assert.equal(s.d.getElementById('filterSummary').textContent,'0 matching leads');
+  s.d.getElementById('resetFilters').click();assert.equal(select.value,'');
+  assert.equal(s.d.querySelectorAll('#leadBoard .lead-card').length,4);assert.equal(mapLoads,1);
+ }finally{s.close()}
+});
+test('specialty survives refresh and zero matches until the partner explicitly clears it',async()=>{
+ const b=workspace();b.leads=b.leads.filter(l=>[id(1),id(2)].includes(l.id));b.leads[1].specialty='Veterinary';
+ const s=await setup({getWorkspace:async()=>structuredClone(b)});
+ try{
+  const select=s.d.getElementById('specialtyFilter');select.value='Dental';select.dispatchEvent(new s.w.Event('change'));
+  await s.app.readDetail(id(1));await s.app.refresh();
+  assert.equal(s.d.getElementById('leadDetail').open,true);assert.equal(s.d.querySelector('#leadBoard [data-open]').getAttribute('aria-pressed'),'true');
+  s.d.getElementById('closeDetail').click();
+  b.leads=b.leads.filter(l=>l.id!==id(1));select.focus();await s.app.refresh();
+  assert.equal(select.value,'Dental');assert.equal(s.d.activeElement,select);
+  assert.equal(s.d.getElementById('filterSummary').textContent,'0 matching leads');
+  assert.equal(s.d.querySelectorAll('#leadBoard .lead-card').length,0);
+  select.value='';select.dispatchEvent(new s.w.Event('change'));
+  assert.deepEqual([...s.d.querySelectorAll('#leadBoard .lead-card')].map(n=>n.dataset.leadId),[id(2)]);
+ }finally{s.close()}
+});
 test('territory reveal coalesces repeated activation while filters remain usable',async()=>{
  let ready,calls=0;const updates=[];
  const s=await setup({},()=>{calls++;return new Promise(resolve=>{ready=()=>resolve({update:groups=>updates.push(groups),dispose(){}})})});
@@ -504,7 +543,8 @@ test('blocking 12: account transitions clear private queries, filters and closed
  const s=await setup();try{
  await s.app.readDetail(id(1));s.d.getElementById('leadDetail').close();await s.app.openReview(id(1),'qualified');s.d.getElementById('stageDialog').close();
  const search=s.d.getElementById('leadSearch');search.value='Distinctive synthetic private query';search.dispatchEvent(new s.w.Event('input'));
- s.setActor('new-example-actor');await s.app.refresh();assert.equal(search.value,'');assert.deepEqual(s.app.state.filters,{search:'',owner:'',stage:'',market:''});
+ const specialty=s.d.getElementById('specialtyFilter');specialty.value='Dental';specialty.dispatchEvent(new s.w.Event('change'));
+ s.setActor('new-example-actor');await s.app.refresh();assert.equal(specialty.value,'');assert.equal(search.value,'');assert.deepEqual(s.app.state.filters,{search:'',owner:'',stage:'',market:'',specialty:''});
  assert.equal(s.d.getElementById('detailTitle').textContent,'');assert.equal(s.d.getElementById('stageTitle').textContent,'');assert.equal(s.app.state.trigger,null);
  }finally{s.close()}
 });

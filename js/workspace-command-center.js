@@ -6,10 +6,12 @@ import { projectInvoices, invoiceHref, invoiceMoney, invoiceDate } from './invoi
 import { introductionSuggestions } from './relationship-network-model.js';
 import { mountAutoRefresh, readWithDeadline, updatedLabel } from './auto-refresh.mjs';
 import { homeClient } from './home-boot.js';
+import { mountEmailFollowups } from './email-followups.js';
 import { mountCallOutcomes } from './call-outcomes.js';
 import { localToday } from './calendar-model.js';
 import { agendaSnapshot, dealHref, dealSnapshot, HOME_SCOPES, readHomeAgenda, readHomeDashboard, topNewLeads } from './home-dashboard-model.js';
 import { mountNotificationBadge } from './shell.js';
+import { mountHomeCallTasks } from './home-call-tasks.js';
 
 const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
 const E = escapeHtml;
@@ -19,12 +21,18 @@ const dateLabel = day => new Date(`${day}T12:00:00`).toLocaleDateString(undefine
 
 export function mountHomeDashboard({ document, window, client, now = () => Date.now(), intervalMs = 30_000 }) {
   const $ = id => document.getElementById(id);
+  const emailReview = $('homeEmailFollowups') && client.listEmailProposals ? mountEmailFollowups({ container: $('homeEmailFollowups'), client, onChange: () => { nextRead = readHomeAgenda; auto.refresh(); } }) : null;
   let snapshotDocObservedAt = null;
   // The relationship dialog and the past-client widget are secondary: they load
   // after the first data paint so they never compete with the deal flags.
   let relationshipDialog = null, pastWidget = null, secondaryRequested = false;
   let agendaExpanded = false, agendaView = 'all', nextRead = readHomeDashboard;
   let scope = 'team', snapshot = null, sequence = 0, updatedAt = null, disposed = false, leadEntries = new Map(), selectedLead = null;
+  const callTasks = $('homeCallTasks') ? mountHomeCallTasks({ document, client, host: $('homeCallTasks'), onChanged: async () => {
+    const before = sequence;
+    await auto.refresh();
+    if (!disposed && before === sequence) await auto.refresh();
+  } }) : null;
   const docSources = [['board','getHomeAgenda'],['leads','getLeadBoard']];
   const docPayload = (source, view) => source === 'board' ? {deals:scopedDeals(view?.board,scope)}
     : (view?.leads ? {leads:topNewLeads(view.leads,{scope,actor:view.board?.actor,now:now()})} : null);
@@ -40,6 +48,8 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
   const widget = (id, html) => { const target = $(id); if (!html && target.contains(document.activeElement)) $('homePrimaryAction').focus(); target.hidden = !html; if (html) paint(target, html); };
   const render = () => {
     const signedOut = snapshot?.unauthorized;
+    callTasks?.update({ read: snapshot?.reads?.callTasks, tasks: snapshot?.callTasks, actor: snapshot?.board?.actor,
+      scope, signedOut, busy: !snapshot || snapshot.loading || snapshot.reads.board?.state !== 'read' });
     const unavailable = Object.values(snapshot?.reads || {}).some(read => read.state === 'error');
     $('homeNotice').hidden = !signedOut && !unavailable;
     $('homeNotice').innerHTML = signedOut ? '<a href="/auth/login?return_to=%2F">Sign in</a>' : unavailable ? 'Some Home data is unavailable.' : '';
@@ -91,6 +101,7 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
   const refresh = async ({ signal } = {}) => {
     const read = nextRead; nextRead = readHomeDashboard;
     const agendaOnly = read === readHomeAgenda;
+    if (!agendaOnly) void emailReview?.refresh();
     const currentDocSources = agendaOnly ? docSources.slice(0, 1) : docSources;
     const docTickets = new Map(currentDocSources.map(([key,method]) => [key,pageDocContext?.begin(method)]));
     const epoch = ++sequence;
@@ -115,11 +126,11 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
         $('homeDetail').close();
         $('homeDetailBody').replaceChildren();
       }
-      for (const key of ['board', 'leads', 'invoices', 'relationships']) if (result.reads[key]?.state === 'loading') view[key] = previous?.[key] ?? null;
+      for (const key of ['board', 'leads', 'invoices', 'relationships', 'callTasks']) if (result.reads[key]?.state === 'loading') view[key] = previous?.[key] ?? null;
       if (!actorChanged && result.reads.board.state === 'loading') view.details = new Map(previous?.details || []);
       return view;
     };
-    if (snapshot) snapshot = { ...snapshot, loading: true, reads: { ...snapshot.reads, board: { state: 'loading' } } };
+    if (snapshot) snapshot = { ...snapshot, loading: true, reads: { ...snapshot.reads, board: { state: 'loading' }, ...(!agendaOnly ? { callTasks: { state: 'loading' } } : {}) } };
     render();
     $('refreshHome').setAttribute('aria-busy', 'true');
     try {
@@ -222,7 +233,7 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
     button.addEventListener('keydown', event => { if (!['ArrowLeft', 'ArrowRight'].includes(event.key)) return; event.preventDefault(); const other = HOME_SCOPES[1 - HOME_SCOPES.indexOf(scope)]; select(other); buttons.find(node => node.dataset.scope === other).focus(); });
   });
   auto.refresh();
-  return { refresh: auto.refresh, dispose() { disposed = true; sequence++; window.clearInterval(expiry); auto.dispose(); relationshipDialog?.dispose(); pastWidget?.dispose(); } };
+  return { refresh: auto.refresh, dispose() { disposed = true; sequence++; window.clearInterval(expiry); auto.dispose(); relationshipDialog?.dispose(); pastWidget?.dispose(); callTasks?.dispose(); emailReview?.dispose(); } };
 }
 
 if (typeof document !== 'undefined' && document.getElementById('dealAttention')) {

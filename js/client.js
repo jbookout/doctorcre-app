@@ -1,7 +1,7 @@
 /**
  * Deal Room client interface (WO-1 contract).
  *
- * `morningBrief({signal})` returns MorningBriefResponse without audience arguments.
+ * `morningBrief({signal, fresh})` returns MorningBriefResponse without audience arguments; fresh bypasses pending shared reads.
  * Both FixtureClient and LiveClient implement this shape. The fixture adapter
  * is in-memory; the live adapter uses authenticated same-origin CARR routes.
  *
@@ -96,6 +96,7 @@
  * @property {Actor} selfActor
  * @property {(args?:Object, options?:{signal?:AbortSignal}) => Promise<Object>} readDocActivity authenticated doc-activity.v1 projection
  * @property {(args?:{signal?:AbortSignal}) => Promise<Object>} getHomeAgenda bounded home-agenda.v1 snapshot with dates and open actions
+ * @property {(args?:{signal?:AbortSignal}) => Promise<Object>} getPostCallFollowups pending post-call-followups.v1 metadata; email bodies remain local
  * @property {() => Promise<{deals:BoardDeal[], closed_deals?:Object[], as_of:string, last_call_at:string}>} getBoard
  * @property {(args:{client_id:string,base_version:number,status:'active'|'inactive',reason:string,expected_actor?:string,idempotency_key:string}) => Promise<Object>} setProspectEngagementStatus audited transition between Leads and the deal board
  * @property {(dealId:string) => Promise<DealDetail>} getDeal
@@ -110,6 +111,12 @@
  * @property {(args:{deal_ids:string[]}) => Promise<{deals:Object[]}>} [getCallContext] exact active agenda records and participants
  * @property {(args:{proposal_id:string, accept:boolean, idempotency_key:string}) => Promise<WriteResult>} [resolveConfirm]
  * @property {(args:{candidate_id:string, accept:boolean, idempotency_key:string}) => Promise<WriteResult>} [resolvePostCallCandidate]
+ * @property {(args?:{limit?:number,cursor?:string}) => Promise<{schema_version:'email-proposals.v1', proposals:Object[], send:false, more?:boolean, next_cursor?:string|null}>} listEmailProposals pending email proposals, oldest first
+ * @property {(args:{deal:string,activity_id:string,evidence_quote:string,text:string,next_date:string,owner?:'joe'|'dell'}) => Promise<Object>} previewEmailNextStep fresh digest and affected plan/actions
+ * @property {(args:{deal:string,activity_id:string,evidence_quote:string,text:string,next_date:string,owner?:'joe'|'dell',proposal_digest:string,idempotency_key:string}) => Promise<Object>} confirmEmailNextStep Joe-only, exact displayed preview
+ * @property {(args:{deal:string,activity_id:string,evidence_quote:string}) => Promise<Object>} previewEmailDealProgress fresh phase move and digest
+ * @property {(args:{deal:string,activity_id:string,evidence_quote:string,proposal_digest:string,idempotency_key:string}) => Promise<Object>} confirmEmailDealProgress Joe-only, exact displayed preview
+ * @property {(args:{proposal_id:string,base_version:number,reason:string,idempotency_key:string}) => Promise<Object>} dismissEmailProposal Joe or Dell, observed version and reason
  * @property {() => Promise<{calls:Object[]}>} [readCallOutcomes] unreviewed pipeline-call outcomes: applied changes with evidence and open cards
  * @property {(args:{candidate_id:string, base_version:number}) => Promise<Object>} [undoCallChange] revert one automatically applied change
  * @property {(args:{session_id:string}) => Promise<Object>} [reviewCallOutcome] take one call's outcome off Home

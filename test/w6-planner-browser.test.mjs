@@ -18,7 +18,7 @@ async function open(t, width, site = root) {
   const browser = await chromium.launch({ args: [...CHROMIUM_SAFETY_ARGS] }); t.after(() => browser.close());
   const page = await browser.newPage({ viewport: { width, height: 1000 } });
   await page.clock.install({ time: new Date("2026-10-01T15:00:00Z") });
-  const calls = [], errors = []; let unavailable = false, revision = 0;
+  const calls = [], errors = []; let unavailable = false, revision = 0, accepted = false;
   page.on("pageerror", error => errors.push(error.message));
   await page.route("**/*", async route => {
     const request = route.request(), url = new URL(request.url()); calls.push({ path: url.pathname, method: request.method(), body: request.postData() });
@@ -32,7 +32,7 @@ async function open(t, width, site = root) {
       let data;
       if (['/api/system-work/session','/auth/session'].includes(url.pathname)) return route.fulfill({ contentType: "application/json", body: JSON.stringify({ actor: { slug: "joe" }, csrf_token: "synthetic-session" }) });
       if (url.pathname === "/api/tours/library") data = { tours: Array.from({ length: 10 }, (_, i) => ({ id: i ? `33333333-3333-4333-8333-${String(i).padStart(12,"0")}` : tourId, name: `Demo ${i ? `Tour ${i + 1}` : "Gulf Coast Tour"}`, status: i > 4 ? "completed" : "draft" })) };
-      else if (url.pathname === "/api/tours/detail") data = { ...tour, name: revision ? "Demo refreshed tour" : tour.name };
+      else if (url.pathname === "/api/tours/detail") data = { ...tour, name: revision ? "Demo refreshed tour" : tour.name, ...(accepted ? { routes: [{ accepted: true, stops: [{ id: "stop-a", stop_state: "active", route_sequence: 1 }] }] } : {}) };
       else if (url.pathname === "/api/v1/business/clients") {
         if (url.searchParams.get("scope") !== "team" || url.searchParams.get("sort") !== "name") return route.fulfill({ status: 400, contentType: "application/json", body: "{}" });
         data = { rows: [client], page: 1, page_count: 1 };
@@ -48,8 +48,23 @@ async function open(t, width, site = root) {
     } catch { return route.fulfill({ status: 404 }); }
   });
   await page.goto("http://localhost/tours"); await page.waitForFunction(() => document.querySelector("#plan-client").options.length === 2);
-  return { page, calls, errors, outage(value) { unavailable = value; }, revise() { revision += 1; } };
+  return { page, calls, errors, outage(value) { unavailable = value; }, revise() { revision += 1; }, accept() { accepted = true; } };
 }
+
+test("Next tour opens an eligible Tour day from the Tours page without the library drawer", async t => {
+  for (const width of [320, 390]) await t.test(String(width), async t => {
+    const app = await open(t, width), { page } = app, link = page.getByRole("link", { name: /^Next tour/ });
+    assert.equal(await page.locator("#next-tour").isVisible(), false, "a tour without an accepted route offers no Tour day");
+    app.accept(); await page.locator("#planner-refresh").click();
+    await link.waitFor();
+    assert.match(await link.textContent(), /Demo Gulf Coast Tour/);
+    assert.equal(await link.getAttribute("href"), "/tours/day.html?tour=22222222-2222-4222-8222-222222222222");
+    assert.equal(await link.evaluate(node => !node.closest("[data-layout-slot=sidebar], .library-card, #appSidebar")), true, "the entry is in the page, not the sidebar drawer");
+    const box = await link.boundingBox(); assert.ok(box.height >= 44 && box.x >= 0 && box.x + box.width <= width);
+    await page.keyboard.press("Tab"); await link.focus(); assert.equal(await link.evaluate(node => node === document.activeElement), true);
+    assert.deepEqual(app.errors, []);
+  });
+});
 
 test("W6 desktop and phone render, client prefill/undo, private files, wide popup and measured reduced motion", async t => {
   await mkdir(new URL("out/test-artifacts/w6/", root), { recursive: true });
@@ -218,5 +233,31 @@ for (const width of [1440, 390]) test(`planner renders Census geography after re
   assert.notEqual(after.land, before.land); assert.notEqual(after.context, before.context);
   await mkdir(new URL('out/test-artifacts/w6/', root), { recursive: true });
   await page.screenshot({ path: new URL(`out/test-artifacts/w6/territory-${width}.png`, root).pathname, fullPage: true, animations: 'disabled' });
+  assert.deepEqual(errors, []);
+});
+
+test("client lookup finds a later directory client without walking pages or reloading choices on refresh", async t => {
+  const { page, errors } = await open(t, 390);
+  const id = "44444444-4444-4444-8444-444444444444";
+  const laterClient = { ...client, id, name: "Demo Later Practice" };
+  const lookups = [];
+  await page.route("**/api/v1/business/clients?*", route => {
+    const query = new URL(route.request().url()); lookups.push(query);
+    return route.fulfill({ json: { page: 1, page_count: 200, rows: [laterClient] } });
+  });
+  await page.route(`**/api/v1/business/clients/${id}`, route => route.fulfill({ json: { record: laterClient } }));
+  await page.getByLabel("Find clients", { exact: true }).first().fill("Later & Practice");
+  await page.locator("#plan-client-find").click();
+  await page.locator(`#plan-client option[value="${id}"]`).waitFor({ state: "attached" });
+  assert.equal(lookups.length, 1); assert.equal(lookups[0].searchParams.get("q"), "Later & Practice");
+  assert.equal(lookups[0].searchParams.get("page"), "1");
+  await page.locator("#plan-client").selectOption(id);
+  await page.waitForFunction(() => document.querySelector("#plan-name").value === "Demo Later Practice · Tour");
+  await page.locator("#plan-name").fill("Typed later tour");
+  await page.locator("#planner-refresh").click();
+  await page.waitForFunction(() => document.querySelector("#planner-updated").textContent.startsWith("Updated"));
+  assert.equal(lookups.length, 1);
+  assert.equal(await page.locator("#plan-client").inputValue(), id);
+  assert.equal(await page.locator("#plan-name").inputValue(), "Typed later tour");
   assert.deepEqual(errors, []);
 });

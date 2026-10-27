@@ -612,15 +612,6 @@ export const DOC_TOUR_END =
 
 export const DOC_TOUR_EMPTY = "Doc has nothing to point out on this page yet.";
 
-/**
- * C15 / CR-AC-07's split, stated once and up front rather than only implied by
- * the per-node labels below it. The atlas graph already carries the split
- * structurally: `declared`/`installed` are how this system is wired to work,
- * and `observed` (the run block on every node's own selection) is what has
- * actually been seen running. Nothing new is read for this; it names what
- * C07/C08 already return.
- */
-export const HOW_THIS_WORKS_VS_RUN_SENTENCE = "";
 
 /**
  * Pure and deterministic: same payload and incident index always produce the
