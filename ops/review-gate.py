@@ -17,7 +17,9 @@ SKIP_CI = re.compile(r"\[(skip ci|ci skip|no ci|skip actions|actions skip)\]", r
 
 
 def approved(pr, files, comments):
-    if SKIP_CI.search(pr.get("title") or ""):
+    auto_merge = pr.get("auto_merge") or {}
+    if any(SKIP_CI.search(value or "") for value in
+           (pr.get("title"), auto_merge.get("commit_title"), auto_merge.get("commit_message"))):
         return False
     if any(c["body"].splitlines()[:1] == ["VERDICT: CHANGES"]
            and f'Reviewed-SHA: {pr["head"]["sha"]}' in c["body"].splitlines() for c in comments):
@@ -48,7 +50,7 @@ def run(event, repo):
     root = f"repos/{repo}"
     def status(sha, state):
         api(f"{root}/statuses/{sha}", {"context": "review-gate", "state": state,
-            "description": "No [skip ci] title; small safe diff or current-head approval required"})
+            "description": "No skip marker; small safe diff or current-head approval required"})
     if "merge_group" in event:
         status(event["merge_group"]["head_sha"], "success")
         return
