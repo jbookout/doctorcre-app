@@ -165,7 +165,7 @@ test('synthetic reply submissions are owned, versioned, exact and idempotent wit
   await assert.rejects(client.submitEmailDraft({ ...args, base_version: 99, idempotency_key: 'stale-draft' }), error => error.payload?.error === 'version_conflict');
   assert.deepEqual(draft.reply_draft.to, ['demo-correspondent@example.test']);
   assert.deepEqual(draft.reply_draft.cc, ['demo-dell@example.test']);
-  await assert.rejects(client.submitEmailDraft({ ...args, cc: ['changed@example.test'], idempotency_key: 'changed-recipients' }), error => error.payload?.error === 'email_draft_recipients_changed');
+  await assert.rejects(client.submitEmailDraft({ ...args, cc: ['changed@example.test'], idempotency_key: 'changed-recipients' }), error => error.payload?.error === 'email_draft_recipients_mismatch');
   const result = await client.submitEmailDraft(args);
   assert.equal(result.status, 'approved_to_send');
   assert.equal(result.subject, 'Re: Demo revised');

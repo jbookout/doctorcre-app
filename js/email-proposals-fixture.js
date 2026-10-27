@@ -99,7 +99,7 @@ export function createEmailProposalsFixture({ deals, seedDeals, actor, client, p
       if (row.reply_draft.owner !== actor) fail('email_draft_not_owner');
       if (row.status !== 'pending') fail('email_draft_already_submitted');
       if (row.version !== args.base_version) fail('version_conflict');
-      if (JSON.stringify(args.to) !== JSON.stringify(row.reply_draft.to) || JSON.stringify(args.cc) !== JSON.stringify(row.reply_draft.cc)) fail('email_draft_recipients_changed');
+      if (JSON.stringify(args.to) !== JSON.stringify(row.reply_draft.to) || JSON.stringify(args.cc) !== JSON.stringify(row.reply_draft.cc)) fail('email_draft_recipients_mismatch');
       if (!args.body?.trim() || args.body.length > 20000) fail('email_draft_empty_body');
       if (!args.subject?.trim() || /[\r\n]/.test(args.subject) || args.subject.length > 998) fail('email_draft_subject_invalid');
       row.status = 'approved_to_send'; row.version++;

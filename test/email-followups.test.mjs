@@ -451,7 +451,7 @@ for (const actor of ['joe', 'dell', null]) test(`reply review is offered only to
 test('recipient changes preserve reviewed addresses across refresh and require explicit fresh review after refusal', async () => {
   const row = replyDraft(), calls = []; let changed = true;
   const { container, view, action } = setup({ listEmailProposals: async () => response([row]),
-    submitEmailDraft: async args => { calls.push(args); if (changed) throw Object.assign(Error('changed'), { payload: { error: 'email_draft_recipients_changed' } }); return { ...draftReceipt(args), to: args.to, cc: args.cc }; } });
+    submitEmailDraft: async args => { calls.push(args); if (changed) throw Object.assign(Error('changed'), { payload: { error: 'email_draft_recipients_mismatch' } }); return { ...draftReceipt(args), to: args.to, cc: args.cc }; } });
   await view.refresh(); await action('Review reply');
   row.reply_draft.to[0] = 'updated-sender@example.test';
   row.reply_draft.cc = ['updated-partner@example.test'];
@@ -490,4 +490,16 @@ test('reply ownership updates when authenticated identity arrives after the inde
   client.selfActor = 'joe';
   view.update();
   assert.ok(container.querySelector('[data-email-action="edit-draft"]'));
+});
+
+for (const code of ['email_draft_copy_address_missing', 'email_draft_source_missing']) test(`a reply without resolved recipients stays readable and dismissible beside other proposals ${code}`, async () => {
+  const row = replyDraft(); delete row.reply_draft.to; delete row.reply_draft.cc;
+  row.confirm_verb = null; row.preview_error = code;
+  const { container, view } = setup({ listEmailProposals: async () => response([row, { ...proposal(), id: 'another-proposal' }]) });
+  await view.refresh();
+  assert.equal(container.querySelectorAll('article').length, 2);
+  assert.match(container.textContent, /Recipient addresses are unavailable/);
+  assert.equal(container.querySelector('[data-email-action="edit-draft"]'), null);
+  assert.equal(container.querySelectorAll('[data-email-action="dismiss"]').length, 2);
+  assert.doesNotMatch(container.textContent, /Could not load/);
 });
