@@ -59,7 +59,7 @@ export function createLiveClient(opts = {}) {
   const sessionWrites = new Set(['set-next-step', 'set-market-agent', 'set-national-account-owner', 'create-national-account',
     'create-national-market-deal', 'start-deal-review', 'review-deal', 'end-deal-review',
     'resolve-candidate', 'resolve-post-call-candidate', 'answer-work-request-for-joe', 'add-industry-event', 'update-industry-event',
-    'undo-call-change', 'review-call-outcome', 'confirm-email-next-step', 'confirm-email-deal-progress', 'dismiss-email-proposal']);
+    'undo-call-change', 'review-call-outcome', 'confirm-email-next-step', 'confirm-email-deal-progress', 'dismiss-email-proposal', 'register-client-portal']);
 
   const readTimeoutMs = opts.readTimeoutMs || 10_000;
   const rpc = (verb, args = {}, signal) => {
