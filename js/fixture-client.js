@@ -1287,6 +1287,7 @@ export async function createFixtureClient(opts = {}) {
   }
 
   const invoices = createInvoiceFixture({ actor: selfActor, entries: opts.invoiceEntries, today: opts.today });
+  const emailSeedDeals = [...deals.values()].map(({ id, phase }) => ({ id, phase }));
   const client = {
     ...invoices,
     async getRelationshipNetwork() { return relationshipNetworkFixture(); },
@@ -1337,8 +1338,8 @@ export async function createFixtureClient(opts = {}) {
         ...deal,
         critical_dates: [...(deal.next_date ? [{ label: 'Next date', date: deal.next_date }] : []),
           ...(criticalDates.get(deal.id) || []).map(row => ({ ...row }))],
-        next_actions: deal.next_step ? [{ id: `a-${deal.id}`, owner: deal.owner, description: deal.next_step,
-          due_on: deal.next_date, status: 'open', hold_until: null }] : [],
+        next_actions: [...(deal.email_actions || []), ...(deal.next_step ? [{ id: `a-${deal.id}`, owner: deal.owner, description: deal.next_step,
+          due_on: deal.next_date, status: 'open', hold_until: null }] : [])],
       })) };
     },
 
@@ -1359,8 +1360,8 @@ export async function createFixtureClient(opts = {}) {
       }
       for (const entry of criticalDates.get(dealId) || []) critical_dates.push({ ...entry });
       return { deal: {...deal, phase_change: phaseChangeFor(dealId)}, thread, critical_dates, history: hist,
-        next_actions: deal.next_step ? [{ id: `a-${deal.id}`, owner: deal.owner,
-          description: deal.next_step, due_on: deal.next_date, status: 'open' }] : [],
+        next_actions: [...(deal.email_actions || []), ...(deal.next_step ? [{ id: `a-${deal.id}`, owner: deal.owner,
+          description: deal.next_step, due_on: deal.next_date, status: 'open' }] : [])],
         activities: hist.slice(0, 4).map((h) => ({ id: h.id, actor: h.actor,
           occurred_at: h.recorded_at, kind: 'note', summary: h.summary })),
         participants: [{ role: 'lead', name: actorLabel(deal.owner), actor: deal.owner },
@@ -3088,5 +3089,15 @@ export async function createFixtureClient(opts = {}) {
 
   };
 
+  let emailFixture;
+  const emails = () => emailFixture ||= import('./email-proposals-fixture.js').then(({ createEmailProposalsFixture }) => createEmailProposalsFixture({ deals, seedDeals: emailSeedDeals, actor: selfActor, client, pushEvent }));
+  Object.assign(client, {
+    async listEmailProposals() { return (await emails()).listEmailProposals(); },
+    async previewEmailNextStep(args) { return (await emails()).previewEmailNextStep(args); },
+    async previewEmailDealProgress(args) { return (await emails()).previewEmailDealProgress(args); },
+    async confirmEmailNextStep(args) { return (await emails()).confirmEmailNextStep(args); },
+    async confirmEmailDealProgress(args) { return (await emails()).confirmEmailDealProgress(args); },
+    async dismissEmailProposal(args) { return (await emails()).dismissEmailProposal(args); },
+  });
   return opts.docContext === false ? client : observeDocClient(client);
 }
