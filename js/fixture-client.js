@@ -48,6 +48,7 @@ export function createFixtureDealStore(seed) {
 /**
  * @param {Object} [opts]
  * @param {string} [opts.seedUrl]
+ * @param {boolean} [opts.emailReplyDrafts] include a synthetic owned reply draft
  * @param {string} [opts.selfActor]
  * @param {ReturnType<typeof createFixtureDealStore>} [opts.dealStore]
  */
@@ -120,15 +121,7 @@ export async function createFixtureClient(opts = {}) {
     }],
   ]);
 
-  /**
-   * Synthetic loop records — the task surface's fixture.
-   *
-   * These exercise the shapes the page has to survive: both partners as owners,
-   * a record owned by the system, a jointly owned one, a dated marker, a bell,
-   * a counterparty the partnership is waiting on, a team record, and two
-   * records that share a number (which is exactly why the number is not an
-   * identity and a read by number alone can be ambiguous).
-   */
+  // Shared loop display numbers are ambiguous; only record ids identify a loop.
   let loopSeq = 0;
   const loop = (row) => ({
     loop_id: `loop-${String(++loopSeq).padStart(3, '0')}`,
@@ -936,16 +929,8 @@ export async function createFixtureClient(opts = {}) {
     { human_ref: 'WR-000907', title: 'Demo bounded request: publish the demo rate card', state: 'needs_joe', source: { label: 'Demo rate card review', freshness: 'stale' }, next_human_action: 'Approve or hold the demo rate card' },
     { human_ref: 'WR-000908', title: 'Demo bounded request: retire the demo legacy export', state: 'needs_joe', source: { label: 'Demo retirement note', freshness: 'fresh' }, next_human_action: 'Confirm the demo legacy export is retired' },
   ];
-  /**
-   * V5-UX-C13a: the enriched `work-request-card` shape for WR-000906 and
-   * WR-000907, in the PRODUCER'S OWN field names (ops.work_request_card,
-   * migration 0493): `desired_outcome`, `acting_identity` (ordered by
-   * `acted_at`, ascending — never re-sorted here or in the browser),
-   * `outcome_feedback_history` (ordered oldest-first) and `incident_evidence`.
-   * Neither row carries `recommended_answer` or `business_impact`, because no
-   * pinned verb returns either field today — that absence is production's own
-   * shape, not an omission of this fixture.
-   */
+  // Producer 0493 orders acting_identity by acted_at and feedback oldest first.
+  // recommended_answer and business_impact are absent from the pinned interface.
   const sharedRequestCards = new Map([
     ['WR-000910', {
       ok: true, human_ref: 'WR-000910', title: 'Demo lease abstract importer', desired_outcome: 'Demo lease abstracts import without retyping.',
@@ -1179,6 +1164,18 @@ export async function createFixtureClient(opts = {}) {
     return {
       parties, deals, connections, organizations, lead_client_links, deals_via_link,
       note: searchNote(organizations, parties),
+    };
+  }
+
+  function fixtureCalendar() {
+    const deal = [...deals.values()].find(row => row.owner === selfActor && !isClosedDeal(row));
+    const start = new Date(Date.parse(nowIso()) + 3_600_000).toISOString();
+    return { state: 'partial', observed_at: nowIso(), notes: ['Synthetic calendar. Check Outlook for attendance and cancellations.'],
+      sources: { outlook_calendar: { state: 'partial' }, deal_suggestions: { state: 'ready' }, meeting_prep: { state: 'ready' } },
+      match_basis: 'attendee_email_possible_match', items: [{ title: 'Demo practice planning', start,
+        end: new Date(Date.parse(start) + 3_600_000).toISOString(), location: 'Demo office', attendee_count: 2,
+        all_day: false, schedule_conflict: false, time_changed: false, possible_deals: deal ? [{ id: deal.id, name: deal.name, client_ref: deal.client_ref,
+          prep: { state: 'ready', phase: deal.phase ?? null, next_step: deal.next_step ?? null, next_date: deal.next_date ?? null, last_touch: deal.last_touch ?? null, market: deal.market ?? null } }] : [] }],
     };
   }
 
@@ -1610,6 +1607,7 @@ export async function createFixtureClient(opts = {}) {
     async listFeatureSwitches() {
       return {ok:true,schema:'feature-switches.v1',switches:[{name:'doc-suggestion-actions',available:true}]};
     },
+    async calendarMeetingPrep() { return fixtureCalendar(); },
     async morningBrief() {
       const section = items => ({ state: items.length ? 'ready' : 'empty', items });
       const board = await this.getBoard();
@@ -2984,14 +2982,10 @@ export async function createFixtureClient(opts = {}) {
   };
 
   let emailFixture;
-  const emails = () => emailFixture ||= import('./email-proposals-fixture.js').then(({ createEmailProposalsFixture }) => createEmailProposalsFixture({ deals, seedDeals: emailSeedDeals, actor: selfActor, client, pushEvent }));
-  Object.assign(client, {
-    async listEmailProposals(args = {}) { return (await emails()).listEmailProposals(args); },
-    async previewEmailNextStep(args) { return (await emails()).previewEmailNextStep(args); },
-    async previewEmailDealProgress(args) { return (await emails()).previewEmailDealProgress(args); },
-    async confirmEmailNextStep(args) { return (await emails()).confirmEmailNextStep(args); },
-    async confirmEmailDealProgress(args) { return (await emails()).confirmEmailDealProgress(args); },
-    async dismissEmailProposal(args) { return (await emails()).dismissEmailProposal(args); },
-  });
+  const emails = () => emailFixture ||= import('./email-proposals-fixture.js').then(({ createEmailProposalsFixture }) => createEmailProposalsFixture({ deals, seedDeals: emailSeedDeals, actor: selfActor, client, pushEvent, replyDrafts: opts.emailReplyDrafts === true }));
+  Object.assign(client, Object.fromEntries([
+    'getEmailProposalQuality', 'listEmailProposals', 'previewEmailNextStep', 'previewEmailDealProgress',
+    'confirmEmailNextStep', 'confirmEmailDealProgress', 'dismissEmailProposal', 'submitEmailDraft',
+  ].map(method => [method, async args => (await emails())[method](args)])));
   return opts.docContext === false ? client : observeDocClient(client);
 }

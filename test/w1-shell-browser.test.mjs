@@ -173,6 +173,20 @@ for (const width of [320, 390]) test(`phone destinations are named, separate 44p
   assert.deepEqual(order, ['Home', 'Leads', 'Tours', 'Local Deals', 'More'], 'keyboard order follows the visible order');
 });
 
+// 200% browser zoom on a 1280x960 window is a 640x480 CSS-pixel viewport.
+test('at 200% zoom exactly the active destination is current and the bar stays usable', async t => {
+  const { page } = await open(t, { width: 640, height: 480, minimal: true });
+  const current = () => page.locator('[data-app-nav-item][aria-current], [data-app-nav-item][aria-selected]').evaluateAll(nodes => nodes.map(n => n.getAttribute('aria-label')));
+  assert.deepEqual(await current(), ['Home'], 'only Home is current on the home route');
+  const bar = await page.locator('.app-shell-navigation > a, .app-shell-more-toggle').evaluateAll(nodes => nodes.map(n => { const b = n.getBoundingClientRect(); return { name: n.getAttribute('aria-label'), width: b.width, height: b.height, left: b.left, right: b.right, visible: !!n.offsetParent }; }));
+  assert.ok(bar.every(item => item.visible && item.width >= 44 && item.height >= 44), 'every destination stays visible at 44px');
+  for (const [i, item] of bar.entries()) if (i) assert.ok(item.left >= bar[i - 1].right, `${item.name} does not overlap ${bar[i - 1].name}`);
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, 'no horizontal scroll at 200% zoom');
+  await page.getByLabel('Tours', { exact: true }).first().click();
+  await page.waitForURL(/\/tours/);
+  assert.deepEqual(await current(), ['Tours'], 'only Tours is current after navigating');
+});
+
 test('workspace pages have global controls and the standalone portal fits desktop and phone', async t => {
   const { page, errors } = await open(t, { reducedMotion: "reduce" });
   for (const width of [1440,390]) {

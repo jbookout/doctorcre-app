@@ -1,45 +1,10 @@
-/**
- * Deal Room Call Mode: record Joe and Dell's pipeline call, then review it.
- *
- * Restored from the working Deal Room shell that carr-system 13411964 (#963)
- * made inert for the first workspace release, and reinstated by decision
- * 7dc47eea (Joe, 2026-09-23): "a button on the deal room page that started
- * recording our conversation, transcribed, and fed back to the system for
- * context and updates." It is not a way to hold a meeting with a client or a
- * vendor; that stays a Teams meeting.
- *
- * The recorder is Quill on the partner's own Mac. This page reaches it only
- * through the loopback companion at http://127.0.0.1:4682 (carr-system
- * tools/dictation-rig/bin/call-mode.py), and only because a partner pressed a
- * control (apart from the bounded read-only eligibility probe):
- *
- *   - creating the controller sends nothing and starts no timer;
- *   - opening the dialog reads the recorder's state, nothing more;
- *   - a recording starts only from a Start button AND the consent box ticked
- *     ("I have told everyone on this call that it will be recorded"), and the
- *     companion refuses a start without consent_confirmed as well;
- *   - the post-call review pack is only ever displayed. Every task, deal update
- *     and email draft in it waits for a partner to Confirm or Skip that item;
- *     nothing is written to the record and no Outlook draft is created before
- *     that. There is no send path at all.
- *
- * The weekly call needs a short-lived deal context index so the local
- * distiller can attach what was said to exact deals and people. It is read
- * from get-call-context (at most 50 deals a request, so the agenda is read in
- * batches), shaped to the companion's exact contract, and handed to the
- * companion at start. If the recording's report is still `awaiting_context`
- * when this page next looks at it — the page was closed at start, or the index
- * failed — it is supplied again then, and the companion processes the
- * transcript it already has.
- */
 import { createRetainedCommands } from './retained-commands.mjs';
 import { callChangeText, dayLabel } from './call-change-words.js';
-import { requestCompanion } from './post-call-client.js';
+import { requestCompanion, CALL_MODE_URL, CALL_MODE_HEADER, CALL_MODE_STATES } from './post-call-client.js';
 import { escapeText as esc, compareInstants } from './change-receipts.mjs';
 import { mountVisibilityPoll } from './visibility-poll.mjs';
 
-export const CALL_MODE_URL = 'http://127.0.0.1:4682';
-export const CALL_MODE_HEADER = Object.freeze({ 'X-CARR-Call-Mode': 'deal-room-v1' });
+export { CALL_MODE_URL, CALL_MODE_HEADER };
 /** get-call-context refuses more than this many deal ids in one request. */
 export const CALL_CONTEXT_BATCH = 50;
 export const CALL_MODES = Object.freeze(['weekly_deal_call', 'other_call']);
@@ -182,7 +147,7 @@ export function createCallMode(deps) {
       body: JSON.stringify(body), targetAddressSpace: 'loopback',
     } : { method: 'GET', targetAddressSpace: 'loopback' };
     const payload = await requestCompanion(`${CALL_MODE_URL}/api/${path}`,options,{fetchImpl,timeoutMs});
-    if (!['idle','recording','transcribing','ready_to_extract','filed','state_unknown'].includes(payload.state)) {
+    if (!CALL_MODE_STATES.includes(payload.state)) {
       throw Object.assign(new Error('Local Call Mode response unavailable. Check local state before retrying.'),{outcomeUnknown:Boolean(body)});
     }
     return payload;
@@ -368,6 +333,12 @@ export function createCallMode(deps) {
   // does not carry it on every visit.
   let outcomes = null;
   let outcomesLoading = null;
+  function retireOutcomes() {
+    outcomes?.dispose();
+    outcomes = null;
+    const node = $('#postCallOutcomes');
+    if (node) { node.innerHTML = ''; node.hidden = true; }
+  }
   function reportCandidateIds() {
     const updates = state.postCall.report?.deal_updates;
     return (Array.isArray(updates) ? updates : []).flatMap(update => ['next_step', 'phase_move']
@@ -377,8 +348,10 @@ export function createCallMode(deps) {
     const node = $('#postCallOutcomes');
     if (!node || !deps.client()?.readCallOutcomes) return null;
     if (outcomes) return outcomes;
+    const generation = state.callGeneration || 0, session = state.postCall.session;
     outcomesLoading ||= import('./call-outcomes.js');
     const { mountCallOutcomes } = await outcomesLoading;
+    if (state.postCall.session !== session || (state.callGeneration || 0) !== generation) return null;
     outcomes ||= mountCallOutcomes({ container: node, client: deps.client, toast, filter: reportCandidateIds, listen: false,
       onChange: () => refreshPostCall({ quiet: true }) });
     return outcomes;
@@ -539,7 +512,10 @@ export function createCallMode(deps) {
   function startPolling(session, { weekly = false, immediate = true } = {}) {
     stopPolling();
     const newCall = state.postCall.session !== session;
-    if (newCall) state.callGeneration = (state.callGeneration || 0) + 1;
+    if (newCall) {
+      retireOutcomes();
+      state.callGeneration = (state.callGeneration || 0) + 1;
+    }
     state.postCall = { ...state.postCall, session, weekly: weekly || state.postCall.weekly,
       ...(newCall ? { readyAt: null, applyTimedOut: false } : {}) };
     // The one poll allowed to run while the tab is hidden or idle: it exists
@@ -643,6 +619,8 @@ export function createCallMode(deps) {
       const weekly = snapshot.mode === 'weekly_deal_call' || (!changed && state.postCall.weekly);
       if (changed) {
         stopPolling();
+        retireOutcomes();
+        state.callGeneration = (state.callGeneration || 0) + 1;
         state.postCall = {...idlePostCall(),session,weekly};
       }
       render();
@@ -667,12 +645,36 @@ export function createCallMode(deps) {
     state.tickTimer = timers.setInterval(() => { if (callModeActive()) render(); }, 250);
   }
 
-  async function open() {
+  async function open({ session = null, signal } = {}) {
+    if (signal?.aborted) return false;
     const dialog = $('#callModeDialog');
     if (dialog && typeof dialog.showModal === 'function' && !dialog.open) dialog.showModal();
-    if (!await checkEligibility()) return;
+    if (!await checkEligibility()) return false;
+    if (signal?.aborted) { close(); return false; }
     startTicker();
+    if (session) {
+      stopPolling();
+      retireOutcomes();
+      state.callGeneration = (state.callGeneration || 0) + 1;
+      state.postCall = { ...idlePostCall(), session, status: 'waiting_for_transcript' };
+      const generation = state.callGeneration;
+      signal?.addEventListener('abort', () => {
+        if (state.postCall.session !== session || state.callGeneration !== generation) return;
+        state.statusSequence = (state.statusSequence || 0) + 1;
+        stopPolling();
+        state.postCall = idlePostCall();
+        retireOutcomes();
+        $('#postCallReport').innerHTML = '';
+        $('#postCallStatus').innerHTML = '';
+        renderPostCall();
+        close();
+      }, { once: true });
+      renderPostCall();
+      await refreshPostCall();
+      return !signal?.aborted;
+    }
     await refresh({ quiet: true, snapshot: state.callMode });
+    return true;
   }
 
   function close() {

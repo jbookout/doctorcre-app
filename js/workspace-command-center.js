@@ -6,7 +6,7 @@ import { projectInvoices, invoiceHref, invoiceMoney, invoiceDate } from './invoi
 import { introductionSuggestions } from './relationship-network-model.js';
 import { mountAutoRefresh, readWithDeadline, updatedLabel } from './auto-refresh.mjs';
 import { homeClient } from './home-boot.js';
-import { mountEmailFollowups } from './email-followups.js';
+import { BUSINESS_TIME_ZONE } from './business-date.js';
 import { mountCallOutcomes } from './call-outcomes.js';
 import { localToday } from './calendar-model.js';
 import { agendaSnapshot, dealHref, dealSnapshot, HOME_SCOPES, readHomeAgenda, readHomeDashboard, topNewLeads } from './home-dashboard-model.js';
@@ -21,14 +21,31 @@ const dateLabel = day => new Date(`${day}T12:00:00`).toLocaleDateString(undefine
 
 export function mountHomeDashboard({ document, window, client, now = () => Date.now(), intervalMs = 30_000 }) {
   const $ = id => document.getElementById(id);
-  const emailReview = $('homeEmailFollowups') && client.listEmailProposals ? mountEmailFollowups({ container: $('homeEmailFollowups'), client, onChange: () => { nextRead = readHomeAgenda; auto.refresh(); } }) : null;
-  let snapshotDocObservedAt = null;
+  let emailQuality = null, emailReview = null, emailRetired = false, emailObserver = null;
+  const retirePendingEmail = () => {
+    emailRetired = true;
+    emailObserver?.disconnect();
+    for (const [id, title, view] of [['homeEmailQuality', 'Email proposal quality', emailQuality], ['homeEmailFollowups', 'Email follow-ups', emailReview]]) {
+      if (view || !$(id)) continue;
+      $(id).setAttribute('aria-busy', 'false');
+      $(id).innerHTML = `<header class="home-panel-head"><h2>${title}</h2></header><p role="status">Sign in to view ${title.toLowerCase()}.</p>`;
+    }
+  };
+  window.addEventListener('doctorcre-session-invalidated', retirePendingEmail);
+  let snapshotDocObservedAt = null, calendar = null, meetingPrep = null, prepEpoch = 0;
   // The relationship dialog and the past-client widget are secondary: they load
   // after the first data paint so they never compete with the deal flags.
   let relationshipDialog = null, pastWidget = null, secondaryRequested = false;
   let agendaExpanded = false, agendaView = 'all', nextRead = readHomeDashboard;
   let scope = 'team', snapshot = null, sequence = 0, updatedAt = null, disposed = false, leadEntries = new Map(), selectedLead = null;
-  const callTasks = $('homeCallTasks') ? mountHomeCallTasks({ document, client, host: $('homeCallTasks'), onChanged: async () => {
+  const callTasks = $('homeCallTasks') ? mountHomeCallTasks({ document, client, host: $('homeCallTasks'),
+    openReport: async (session, { signal }) => {
+      const { mountGlobalCallMode } = await import('./global-call-mode.js');
+      if (signal.aborted) return false;
+      const call = await mountGlobalCallMode(document);
+      if (signal.aborted) return false;
+      return call.open({ session, signal });
+    }, onChanged: async () => {
     const before = sequence;
     await auto.refresh();
     if (!disposed && before === sequence) await auto.refresh();
@@ -46,7 +63,25 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
     }
   };
   const widget = (id, html) => { const target = $(id); if (!html && target.contains(document.activeElement)) $('homePrimaryAction').focus(); target.hidden = !html; if (html) paint(target, html); };
+  const renderMeetings = signedOut => {
+    if (!$('homeMeetings')) return;
+    const meetings = signedOut ? null : calendar;
+    if (!meetings) { $('homeMeetings').replaceChildren(); widget('homeMeetings', null); return; }
+    const failed = meetings.state === 'unavailable';
+    const count = meetings.items.length;
+    const header = `<header class="home-panel-head"><h2>Upcoming meetings</h2>${client.calendarMeetingPrep ? '<button type="button" class="home-outline" data-prepare-meetings data-home-key="prepare-meetings">Prepare meetings</button>' : ''}${failed ? '<button type="button" class="home-refresh" data-retry-meetings aria-label="Retry meetings" title="Retry meetings">↻</button>' : `<span class="home-period">${count} ${count === 1 ? 'meeting' : 'meetings'}</span>`}</header>`;
+    const warnings = (meetings.notes || []).map(note => `<p class="home-meeting-warning">${E(note)}</p>`).join('');
+    const rows = meetings.items.map(meeting => {
+      const time = new Date(meeting.start).toLocaleString(undefined, { timeZone: BUSINESS_TIME_ZONE, month: 'short', day: 'numeric', ...(meeting.all_day ? {} : { hour: 'numeric', minute: '2-digit', timeZoneName: 'short' }) });
+      const detail = `${meeting.location || 'Place not provided'} · ${meeting.attendee_count} ${meeting.attendee_count === 1 ? 'attendee' : 'attendees'}`;
+      return `<div class="home-meeting"><time datetime="${E(meeting.start)}">${E(time)}${meeting.all_day ? ' · All day' : ''}</time><strong>${E(meeting.title)}</strong><span>${E(detail)}</span></div>`;
+    }).join('');
+    const content = failed ? `<p class="home-meeting-failure" role="status">Meetings unavailable</p>`
+      : count ? `<div class="home-meetings">${rows}</div>` : `<p class="home-empty">${meetings.state === 'empty' ? 'No upcoming meetings' : 'No meetings returned'}</p>`;
+    widget('homeMeetings', header + warnings + content);
+  };
   const render = () => {
+    emailReview?.update();
     const signedOut = snapshot?.unauthorized;
     callTasks?.update({ read: snapshot?.reads?.callTasks, tasks: snapshot?.callTasks, actor: snapshot?.board?.actor,
       scope, signedOut, busy: !snapshot || snapshot.loading || snapshot.reads.board?.state !== 'read' });
@@ -54,6 +89,7 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
     $('homeNotice').hidden = !signedOut && !unavailable;
     $('homeNotice').innerHTML = signedOut ? '<a href="/auth/login?return_to=%2F">Sign in</a>' : unavailable ? 'Some Home data is unavailable.' : '';
     const today = localToday(new Date(now()));
+    renderMeetings(signedOut);
     let agenda = null;
     try { if (!signedOut) agenda = agendaSnapshot(snapshot?.board, snapshot?.details || new Map(), { scope, today }); }
     catch { $('homeNotice').hidden = false; if (!signedOut) $('homeNotice').textContent = 'Calendar and tasks unavailable.'; }
@@ -101,7 +137,7 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
   const refresh = async ({ signal } = {}) => {
     const read = nextRead; nextRead = readHomeDashboard;
     const agendaOnly = read === readHomeAgenda;
-    if (!agendaOnly) void emailReview?.refresh();
+    if (!agendaOnly) { void emailReview?.refresh(); void emailQuality?.refresh(); }
     const currentDocSources = agendaOnly ? docSources.slice(0, 1) : docSources;
     const docTickets = new Map(currentDocSources.map(([key,method]) => [key,pageDocContext?.begin(method)]));
     const epoch = ++sequence;
@@ -204,7 +240,32 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
       auto.poll();
     }
   }, 1000);
-  $('refreshHome').addEventListener('click', auto.refresh);
+  const updateCalendar = event => {
+    const value = event.detail;
+    const valid = value && ['ready', 'empty', 'partial', 'unavailable'].includes(value.state)
+      && Array.isArray(value.items) && (value.notes == null || Array.isArray(value.notes) && value.notes.every(note => typeof note === 'string'))
+      && value.items.every(row => row && typeof row.title === 'string' && typeof row.start === 'string' && Number.isFinite(Date.parse(row.start))
+        && (row.location == null || typeof row.location === 'string') && Number.isSafeInteger(row.attendee_count) && row.attendee_count >= 0);
+    calendar = value == null ? null : valid ? value : { state: 'unavailable', items: [] };
+    renderMeetings(snapshot?.unauthorized);
+  };
+  $('homeMeetings')?.addEventListener('click', async event => {
+    if (event.target.closest('[data-retry-meetings]')) document.dispatchEvent(new window.Event('doctorcre:refresh-brief-calendar'));
+    const button = event.target.closest('[data-prepare-meetings]');
+    if (!button || snapshot?.unauthorized || disposed) return;
+    const epoch = prepEpoch;
+    try {
+      const { mountMeetingPreparation } = await import('./meeting-preparation.js');
+      if (disposed || epoch !== prepEpoch) return;
+      meetingPrep ||= mountMeetingPreparation({ document, window, client });
+      meetingPrep.open(button);
+    } catch { if (!disposed && epoch === prepEpoch) { $('homeNotice').hidden = false; $('homeNotice').textContent = 'Meeting preparation unavailable. Try Prepare meetings again.'; } }
+  });
+  const clearCalendar = () => { prepEpoch++; meetingPrep?.clear(); calendar = null; renderMeetings(true); };
+  document.addEventListener('doctorcre:brief-calendar', updateCalendar);
+  document.dispatchEvent(new window.Event('doctorcre:request-brief-calendar'));
+  window.addEventListener('doctorcre-session-invalidated', clearCalendar);
+  $('refreshHome').addEventListener('click', () => { auto.refresh(); document.dispatchEvent(new window.Event('doctorcre:refresh-brief-calendar')); });
   function loadSecondary() {
     if (secondaryRequested) return;
     secondaryRequested = true;
@@ -232,8 +293,29 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
     button.addEventListener('click', () => select(button.dataset.scope));
     button.addEventListener('keydown', event => { if (!['ArrowLeft', 'ArrowRight'].includes(event.key)) return; event.preventDefault(); const other = HOME_SCOPES[1 - HOME_SCOPES.indexOf(scope)]; select(other); buttons.find(node => node.dataset.scope === other).focus(); });
   });
+  emailObserver = new window.IntersectionObserver(entries => {
+    for (const entry of entries) {
+      if (!entry.isIntersecting) continue;
+      emailObserver.unobserve(entry.target);
+      if (disposed || emailRetired) continue;
+      if (entry.target.id === 'homeEmailQuality') import('./email-quality.js').then(({ mountEmailQuality }) => {
+        if (disposed || emailRetired) return;
+        emailQuality = mountEmailQuality({ container: entry.target, client });
+        void emailQuality.refresh();
+      });
+      else import('./email-followups.js').then(({ mountEmailFollowups }) => {
+        if (disposed || emailRetired) return;
+        emailReview = mountEmailFollowups({ container: entry.target, client, onChange: () => {
+          void emailQuality?.refresh(); nextRead = readHomeAgenda; auto.refresh();
+        } });
+        void emailReview.refresh();
+      });
+    }
+  });
+  if ($('homeEmailQuality') && client.getEmailProposalQuality) emailObserver.observe($('homeEmailQuality'));
+  if ($('homeEmailFollowups') && client.listEmailProposals) emailObserver.observe($('homeEmailFollowups'));
   auto.refresh();
-  return { refresh: auto.refresh, dispose() { disposed = true; sequence++; window.clearInterval(expiry); auto.dispose(); relationshipDialog?.dispose(); pastWidget?.dispose(); callTasks?.dispose(); emailReview?.dispose(); } };
+  return { refresh: auto.refresh, dispose() { disposed = true; sequence++; prepEpoch++; meetingPrep?.dispose(); emailObserver?.disconnect(); window.removeEventListener('doctorcre-session-invalidated', retirePendingEmail); window.clearInterval(expiry); auto.dispose(); document.removeEventListener('doctorcre:brief-calendar', updateCalendar); window.removeEventListener('doctorcre-session-invalidated', clearCalendar); relationshipDialog?.dispose(); pastWidget?.dispose(); callTasks?.dispose(); emailReview?.dispose(); emailQuality?.dispose(); } };
 }
 
 if (typeof document !== 'undefined' && document.getElementById('dealAttention')) {

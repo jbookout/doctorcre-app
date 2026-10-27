@@ -292,8 +292,9 @@ test('touch targets are measured after their entry animation settles', async () 
   } finally { await browser.close(); }
 });
 
-test('shared Call Mode offers eligibility and a working retry without backend reads', async () => {
+test('shared Call Mode builds its dialog on first open, not at page load', async () => {
   const dom = new JSDOM(`<div id="appShell">${appShellMarkup('/leads')}</div>`);
+  const doc = dom.window.document;
   const previousFetch = globalThis.fetch;
   const requests = [];
   let reachable = false;
@@ -305,14 +306,34 @@ test('shared Call Mode offers eligibility and a working retry without backend re
   };
   let call;
   try {
-    call = await mountGlobalCallMode(dom.window.document);
-    unavailable(dom.window.document);
-    const retry = dom.window.document.getElementById('callModeRetry');
+    call = await mountGlobalCallMode(doc);
+    assert.equal(doc.getElementById('callModeDialog'), null, 'no dialog markup at page load');
+    assert.equal(doc.getElementById('callModeButton').hidden, true);
+    assert.match(doc.getElementById('callModeAvailability').textContent, /Call recording runs on the Mac with Quill/);
+    const retry = doc.getElementById('callModeRetry');
     assert.ok(retry && !retry.hidden);
     reachable = true;
     assert.equal(await call.handleClick(retry), true);
-    assert.equal(dom.window.document.getElementById('callModeButton').hidden, false);
+    assert.equal(doc.getElementById('callModeButton').hidden, false);
     assert.equal(retry.hidden, true);
+    assert.equal(doc.getElementById('callModeDialog'), null, 'a recheck does not build the dialog');
     assert.deepEqual(requests, [`${CALL_MODE_URL}/api/state`, `${CALL_MODE_URL}/api/state`]);
+    doc.defaultView.HTMLDialogElement.prototype.showModal = function () { this.open = true; };
+    await call.open({ session: '2026.10.26-1031' }).catch(() => {});
+    assert.equal(doc.querySelectorAll('#callModeDialog').length, 1, 'first open builds the dialog once');
+    await call.open({ session: '2026.10.26-1031' }).catch(() => {});
+    assert.equal(doc.querySelectorAll('#callModeDialog').length, 1, 'later opens reuse it');
+  } finally { call?.dispose(); globalThis.fetch = previousFetch; dom.window.close(); }
+});
+
+test('shared Call Mode builds at load only when a call is already recording', async () => {
+  const dom = new JSDOM(`<div id="appShell">${appShellMarkup('/leads')}</div>`);
+  const doc = dom.window.document, previousFetch = globalThis.fetch;
+  globalThis.fetch = async () => ({ ok: true, json: async () => ({ state: 'recording', started_at: new Date().toISOString() }) });
+  let call;
+  try {
+    call = await mountGlobalCallMode(doc);
+    assert.equal(doc.querySelectorAll('#callModeDialog').length, 1);
+    assert.ok(doc.getElementById('callModeButton').classList.contains('recording'));
   } finally { call?.dispose(); globalThis.fetch = previousFetch; dom.window.close(); }
 });

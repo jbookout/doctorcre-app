@@ -1,15 +1,17 @@
 import { useLayoutEffect, useRef } from "react";
 import { createRoot } from "react-dom/client";
 import { flushSync } from "react-dom";
-import { selectPanel, validateLayout, type Layout, type LayoutNode } from "./workspace-layout";
+import { resizeSplit, selectPanel, validateLayout, type Layout, type LayoutNode } from "./workspace-layout";
 
 type Panel = Readonly<{ id: string; title: string; node: HTMLElement }>;
 type HostedPanel = Panel & Readonly<{ home: Comment; hidden: HTMLElement["hidden"] }>;
 
-function Workspace({ layout, panels, focused, onSelect }: {
+function Workspace({ layout, panels, focused, onSelect, onResize }: {
   layout: Layout; panels: ReadonlyMap<string, HostedPanel>; focused: Element | null;
-  onSelect: (panel: string) => void;
+  onSelect: (panel: string) => void; onResize: (id: string, ratio: number) => void;
 }) {
+  const drag = useRef<{ pointer: number; start: number; extent: number; ratio: number } | null>(null);
+  const clamp = (ratio: number) => Math.max(0.01, Math.min(0.99, ratio));
   const slots = useRef(new Map<string, HTMLDivElement>());
   const parking = useRef<HTMLDivElement>(null);
   const workspace = useRef<HTMLDivElement>(null);
@@ -46,6 +48,44 @@ function Workspace({ layout, panels, focused, onSelect }: {
   function render(node: LayoutNode) {
     if (node.kind === "split") return <div key={node.id} className="workspace-split" data-axis={node.axis}>
       <div className="workspace-branch" ref={element => { if (element) element.style.flex = `${node.ratio} 1 0`; }}>{render(node.first)}</div>
+      <div className="workspace-divider" role="separator" tabIndex={0} aria-label="Resize panels"
+        aria-orientation={node.axis === "horizontal" ? "vertical" : "horizontal"}
+        aria-valuemin={1} aria-valuemax={99} aria-valuenow={Math.round(node.ratio * 100)}
+        onKeyDown={event => {
+          const previous = node.axis === "horizontal" ? "ArrowLeft" : "ArrowUp";
+          const next = node.axis === "horizontal" ? "ArrowRight" : "ArrowDown";
+          if (![previous, next, "Home", "End"].includes(event.key)) return;
+          event.preventDefault();
+          onResize(node.id, event.key === "Home" ? 0.01 : event.key === "End" ? 0.99
+            : clamp(node.ratio + (event.key === next ? 0.05 : -0.05)));
+        }}
+        onPointerDown={event => {
+          if (event.button !== 0 || !event.isPrimary) return;
+          const branches = event.currentTarget.parentElement?.querySelectorAll(":scope > .workspace-branch");
+          if (!branches || branches.length !== 2) return;
+          const extent = Array.from(branches).reduce((sum, branch) => {
+            const box = branch.getBoundingClientRect();
+            return sum + (node.axis === "horizontal" ? box.width : box.height);
+          }, 0);
+          if (!extent) return;
+          event.preventDefault();
+          event.currentTarget.focus();
+          event.currentTarget.setPointerCapture(event.pointerId);
+          drag.current = { pointer: event.pointerId, start: node.axis === "horizontal" ? event.clientX : event.clientY, extent, ratio: node.ratio };
+        }}
+        onPointerMove={event => {
+          const active = drag.current;
+          if (!active || active.pointer !== event.pointerId) return;
+          const position = node.axis === "horizontal" ? event.clientX : event.clientY;
+          onResize(node.id, clamp(active.ratio + (position - active.start) / active.extent));
+        }}
+        onPointerUp={event => {
+          if (drag.current?.pointer !== event.pointerId) return;
+          drag.current = null;
+          event.currentTarget.releasePointerCapture(event.pointerId);
+        }}
+        onLostPointerCapture={() => { drag.current = null; }}
+        onPointerCancel={() => { drag.current = null; }} />
       <div className="workspace-branch" ref={element => { if (element) element.style.flex = `${1 - node.ratio} 1 0`; }}>{render(node.second)}</div>
     </div>;
     return <section key={node.id} className="workspace-group" aria-label={`Workspace panel group ${node.id}`}>
@@ -95,7 +135,7 @@ export function mountWorkspace({ container, panels, layout }: {
     if (disposed) throw new Error("Workspace is unmounted");
     current = checked(next);
     const focused = document.activeElement;
-    flushSync(() => root.render(<Workspace layout={current} panels={registry} focused={focused} onSelect={id => update(selectPanel(current, id))} />));
+    flushSync(() => root.render(<Workspace layout={current} panels={registry} focused={focused} onSelect={id => update(selectPanel(current, id))} onResize={(id, ratio) => update(resizeSplit(current, id, ratio))} />));
   }
   update(current);
   return { update, unmount() {

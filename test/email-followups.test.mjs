@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { JSDOM } from 'jsdom';
 import { mountEmailFollowups } from '../js/email-followups.js';
+import { createLiveClient } from '../js/live-client.js';
 
 const digest = `sha256:${'a'.repeat(64)}`;
 const proposal = () => ({ id: '10000000-0000-4000-8000-000000000001', version: 3, kind: 'next_step',
@@ -14,10 +15,10 @@ const proposal = () => ({ id: '10000000-0000-4000-8000-000000000001', version: 3
     current_next_date: '2026-11-01', proposal_digest: digest, requires_confirmation: true,
     source: { activity_id: '30000000-0000-4000-8000-000000000001' }, evidence_quote: 'Please send the revised plan by November 3.' } });
 const response = proposals => ({ schema_version: 'email-proposals.v1', proposals, send: false, more: false, next_cursor: null });
-function setup(client) {
+function setup(client, options = {}) {
   const dom = new JSDOM('<section id="review"></section>');
   const container = dom.window.document.querySelector('section');
-  const view = mountEmailFollowups({ container, client, onChange: () => {} });
+  const view = mountEmailFollowups({ container, client: { selfActor: 'joe', ...client }, onChange: () => {}, ...options });
   return { dom, container, view, action: name => view.click({ target: [...container.querySelectorAll('button')].find(button => button.textContent === name) }) };
 }
 
@@ -236,4 +237,269 @@ test('Home refresh retains loaded pages and an in-flight load more', async () =>
   release();
   await loading;
   assert.match(other.container.textContent, /Demo second deal/);
+});
+
+
+test('deal review scopes every page and retry to the selected deal', async () => {
+  const first = proposal(), second = { ...proposal(), id: '10000000-0000-4000-8000-000000000002' };
+  let fail = true;
+  const calls = [];
+  const { container, view, action } = setup({ listEmailProposals: async args => {
+    calls.push(args);
+    if (args.cursor && fail) throw Error('offline');
+    return args.cursor ? response([second]) : { ...response([first]), more: true, next_cursor: first.id };
+  } }, { deal: first.deal });
+  await view.refresh();
+  assert.deepEqual(calls[0], { limit: 50, deal: first.deal });
+  await action('Load more email follow-ups');
+  assert.match(container.textContent, /Could not load/);
+  fail = false; await action('Retry email follow-ups');
+  assert.deepEqual(calls.at(-1), { limit: 50, deal: first.deal, cursor: first.id });
+  assert.equal(container.querySelectorAll('article').length, 2);
+});
+
+test('deal review refuses cross-deal rows instead of showing or acting on another deal', async () => {
+  const { container, view } = setup({ listEmailProposals: async () => response([proposal()]) },
+    { deal: '20000000-0000-4000-8000-000000000002' });
+  await view.refresh();
+  assert.match(container.textContent, /Could not load/);
+  assert.equal(container.querySelectorAll('article').length, 0);
+  assert.doesNotMatch(container.textContent, /No pending/);
+});
+
+for (const decision of ['dismiss', 'confirm']) test(`reopening a deal recovers the original uncertain ${decision} request`, async () => {
+  const row = proposal(), writes = [];
+  const client = createLiveClient({ fetchImpl: async (path, init) => {
+    if (path === '/auth/session') return Response.json({ actor: { slug: 'joe' }, csrf_token: 'synthetic-session' });
+    const { name, arguments: args } = JSON.parse(init.body).params;
+    let result;
+    if (name === 'list-email-proposals') result = response([row]);
+    else if (name === 'preview-email-next-step') result = row.preview;
+    else {
+      writes.push(args);
+      if (writes.length === 1) throw Error('lost response');
+      result = name === 'dismiss-email-proposal' ? { ok: true, status: 'dismissed', proposal_id: row.id }
+        : { ...row.preview, proposal_digest: args.proposal_digest, status: 'confirmed', requires_confirmation: false };
+    }
+    return Response.json({ result: { content: [{ text: JSON.stringify(result) }] } });
+  } });
+  async function decide(view, reason) {
+    if (decision === 'dismiss') {
+      await view.action('Dismiss');
+      view.container.querySelector('textarea').value = reason;
+      await view.action('Dismiss proposal');
+    } else {
+      await view.action('Confirm');
+      await view.action('Confirm change');
+    }
+  }
+  const first = setup(client, { deal: row.deal });
+  await first.view.refresh(); await decide(first, 'Original synthetic reason');
+  assert.match(first.container.textContent, /Outcome unknown/);
+  first.view.dispose();
+  row.preview.proposal_digest = `sha256:${'b'.repeat(64)}`;
+  const reopened = setup(client, { deal: row.deal });
+  await reopened.view.refresh(); await decide(reopened, 'Changed synthetic reason');
+  await reopened.action('Check outcome');
+  assert.equal(writes.length, 2);
+  assert.deepEqual(writes[1], writes[0]);
+  assert.match(reopened.container.textContent, decision === 'dismiss' ? /Dismissed\./ : /Confirmed\./);
+});
+
+const replyDraft = () => ({ ...proposal(), kind: 'reply_draft', confirm_verb: 'submit-email-draft', preview: null,
+  reply_draft: { subject: 'Re: Demo floor plan', body: 'Thank you for the plan.', owner: 'joe', to: ['demo-correspondent@example.test'], cc: ['demo-partner@example.test'] } });
+const draftReceipt = args => ({ ok: true, proposal_id: args.proposal_id, version: args.base_version + 1,
+  status: 'approved_to_send', subject: args.subject, body: args.body, sha256: 'a'.repeat(64),
+  to: ['demo-correspondent@example.test'], cc: ['demo-partner@example.test'] });
+function editDraft(dom, container, field, value) {
+  const input = container.querySelector(`[data-email-${field}]`);
+  assert.ok(input, `${field} editor is visible`);
+  input.value = value; input.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
+}
+
+test('Home opens a reply draft for editing and Submit queues the exact reviewed text and version', async () => {
+  const row = replyDraft(), calls = [];
+  const { dom, container, view, action } = setup({ listEmailProposals: async () => response([row]),
+    submitEmailDraft: async args => { calls.push(args); return draftReceipt(args); } });
+  await view.refresh();
+  assert.match(container.textContent, /Reply draft/);
+  await action('Review reply');
+  assert.match(container.textContent, /To: demo-correspondent@example.test/);
+  assert.match(container.textContent, /CC: demo-partner@example.test/);
+  assert.equal(calls.length, 0, 'opening a review never submits');
+  editDraft(dom, container, 'subject', 'Re: Demo plan reviewed');
+  editDraft(dom, container, 'body', '  I reviewed the plan.\nPlease send the dimensions.  ');
+  await action('Submit');
+  const { idempotency_key, ...sent } = calls[0];
+  assert.ok(idempotency_key);
+  assert.deepEqual(sent, { proposal_id: row.id, base_version: 3, subject: 'Re: Demo plan reviewed',
+    body: '  I reviewed the plan.\nPlease send the dimensions.  ', to: ['demo-correspondent@example.test'], cc: ['demo-partner@example.test'] });
+  assert.match(container.textContent, /Submitted for sending/);
+  assert.match(container.textContent, /To: demo-correspondent@example.test/);
+  assert.match(container.textContent, /CC: demo-partner@example.test/);
+  assert.equal(container.querySelector('[data-email-action="submit-draft"]'), null);
+});
+
+test('reply edits survive refresh and version refusal without adopting a newer version', async () => {
+  const row = replyDraft(), calls = [];
+  const { dom, container, view, action } = setup({ listEmailProposals: async () => response([row]),
+    submitEmailDraft: async args => { calls.push(args); throw Object.assign(Error('stale'), { payload: { error: 'version_conflict' } }); } });
+  await view.refresh(); await action('Review reply');
+  editDraft(dom, container, 'body', 'My unsent reply.');
+  row.version = 4; row.reply_draft.body = 'A newer stored draft.';
+  await view.refresh();
+  assert.equal(container.querySelector('[data-email-body]').value, 'My unsent reply.');
+  await action('Submit');
+  assert.equal(calls[0].base_version, 3);
+  assert.equal(container.querySelector('[data-email-body]').value, 'My unsent reply.');
+  assert.match(container.textContent, /changed.*Refresh and review/);
+});
+
+test('reply submission loss locks editing and Check outcome replays the exact request after removal from the list', async () => {
+  const row = replyDraft(), calls = []; let listed = [row];
+  const { dom, container, view, action } = setup({ listEmailProposals: async () => response(listed),
+    submitEmailDraft: async args => { calls.push(args); if (calls.length === 1) { listed = []; throw Error('lost response'); } return draftReceipt(args); } });
+  await view.refresh(); await action('Review reply');
+  editDraft(dom, container, 'body', 'Only send this once.');
+  await action('Submit'); await view.refresh();
+  assert.match(container.textContent, /Outcome unknown/);
+  assert.equal(container.querySelector('[data-email-body]'), null);
+  await action('Check outcome');
+  assert.equal(calls.length, 2);
+  assert.deepEqual(calls[0], calls[1]);
+  assert.match(container.textContent, /Submitted for sending/);
+});
+
+test('reply review cancels without writing, rejects empty text and clears private edits on identity loss', async () => {
+  let writes = 0;
+  const { dom, container, view, action } = setup({ listEmailProposals: async () => response([replyDraft()]),
+    submitEmailDraft: async () => { writes++; } });
+  await view.refresh(); await action('Review reply');
+  editDraft(dom, container, 'body', '   ');
+  await action('Submit');
+  assert.equal(writes, 0);
+  assert.match(container.textContent, /Enter a subject/);
+  await action('Cancel');
+  assert.equal(container.querySelector('[data-email-body]'), null);
+  await action('Review reply'); editDraft(dom, container, 'body', 'Private synthetic edit.');
+  dom.window.dispatchEvent(new dom.window.Event('doctorcre-session-invalidated'));
+  assert.doesNotMatch(container.textContent, /Private synthetic|floor plan/);
+  assert.match(container.textContent, /Sign in/);
+  assert.equal(writes, 0);
+});
+
+test('a reply receipt for different text is uncertain rather than claiming success', async () => {
+  const { container, view, action } = setup({ listEmailProposals: async () => response([replyDraft()]),
+    submitEmailDraft: async args => ({ ...draftReceipt(args), body: 'Wrong text' }) });
+  await view.refresh(); await action('Review reply'); await action('Submit');
+  assert.match(container.textContent, /Outcome unknown/);
+  assert.doesNotMatch(container.textContent, /Submitted for sending/);
+});
+
+for (const malformed of [
+  { to: ['different@example.test'] }, { cc: ['different@example.test'] }, { cc: [] }, { to: ['missing-at.example.test'] }, { cc: ['bad address@example.test'] },
+  { version: 99 }, { proposal_id: 'different-proposal' }, { sha256: 'invalid' },
+]) test(`reply submission never claims success for a malformed ${Object.keys(malformed)[0]} receipt`, async () => {
+  const { container, view, action } = setup({ listEmailProposals: async () => response([replyDraft()]),
+    submitEmailDraft: async args => ({ ...draftReceipt(args), ...malformed }) });
+  await view.refresh(); await action('Review reply'); await action('Submit');
+  assert.match(container.textContent, /Outcome unknown/);
+  assert.doesNotMatch(container.textContent, /Submitted for sending/);
+});
+
+test('reply CC-address refusal keeps the edited text available for the owning partner', async () => {
+  const { dom, container, view, action } = setup({ listEmailProposals: async () => response([replyDraft()]),
+    submitEmailDraft: async () => { throw Object.assign(Error('missing copy'), { payload: { error: 'email_draft_copy_address_missing' } }); } });
+  await view.refresh(); await action('Review reply');
+  editDraft(dom, container, 'body', 'Preserve my exact edits.');
+  await action('Submit');
+  assert.equal(container.querySelector('[data-email-body]').value, 'Preserve my exact edits.');
+  assert.match(container.textContent, /other partner needs an email address/);
+  assert.doesNotMatch(container.textContent, /Submitted for sending/);
+});
+
+test('a reply version conflict requires explicit fresh review while preserving partner edits', async () => {
+  const row = replyDraft(), calls = []; let conflict = true;
+  const { dom, container, view, action } = setup({ listEmailProposals: async () => response([row]),
+    submitEmailDraft: async args => { calls.push(args); if (conflict) throw Object.assign(Error('conflict'), { payload: { error: 'version_conflict' } }); return draftReceipt(args); } });
+  await view.refresh(); await action('Review reply');
+  editDraft(dom, container, 'body', 'My revised reply must survive.');
+  row.version = 4; row.reply_draft.body = 'Updated saved original.';
+  await action('Submit');
+  assert.ok([...container.querySelectorAll('button')].some(button => button.textContent === 'Review updated draft'));
+  await view.refresh();
+  assert.equal(calls.length, 1, 'background refresh never resubmits');
+  assert.equal(container.querySelector('[data-email-body]').value, 'My revised reply must survive.');
+  await action('Review updated draft');
+  assert.match(container.textContent, /Updated saved original\./);
+  assert.equal(calls.length, 1, 'fresh review never submits');
+  conflict = false;
+  await action('Submit');
+  assert.equal(calls[1].base_version, 4);
+  assert.equal(calls[1].body, 'My revised reply must survive.');
+  assert.notEqual(calls[0].idempotency_key, calls[1].idempotency_key);
+  assert.match(container.textContent, /Submitted for sending/);
+});
+
+for (const actor of ['joe', 'dell', null]) test(`reply review is offered only to its owner when signed in as ${actor}`, async () => {
+  const { container, view } = setup({ selfActor: actor, listEmailProposals: async () => response([replyDraft()]) });
+  await view.refresh();
+  assert.equal(Boolean(container.querySelector('[data-email-action="edit-draft"]')), actor === 'joe');
+  assert.ok(container.querySelector('[data-email-action="dismiss"]'));
+});
+
+test('recipient changes preserve reviewed addresses across refresh and require explicit fresh review after refusal', async () => {
+  const row = replyDraft(), calls = []; let changed = true;
+  const { container, view, action } = setup({ listEmailProposals: async () => response([row]),
+    submitEmailDraft: async args => { calls.push(args); if (changed) throw Object.assign(Error('changed'), { payload: { error: 'email_draft_recipients_mismatch' } }); return { ...draftReceipt(args), to: args.to, cc: args.cc }; } });
+  await view.refresh(); await action('Review reply');
+  row.reply_draft.to[0] = 'updated-sender@example.test';
+  row.reply_draft.cc = ['updated-partner@example.test'];
+  await view.refresh();
+  assert.match(container.textContent, /To: demo-correspondent@example.test/);
+  assert.doesNotMatch(container.textContent, /updated-sender/);
+  await action('Submit');
+  assert.deepEqual(calls[0].to, ['demo-correspondent@example.test']);
+  assert.deepEqual(calls[0].cc, ['demo-partner@example.test']);
+  assert.match(container.textContent, /Recipients changed/);
+  assert.equal(container.querySelector('[data-email-action="submit-draft"]'), null);
+  await action('Review updated draft');
+  assert.match(container.textContent, /To: updated-sender@example.test/);
+  assert.match(container.textContent, /CC: updated-partner@example.test/);
+  assert.equal(calls.length, 1);
+  changed = false;
+  await action('Submit');
+  assert.deepEqual(calls[1].to, ['updated-sender@example.test']);
+  assert.deepEqual(calls[1].cc, ['updated-partner@example.test']);
+  assert.match(container.textContent, /Submitted for sending/);
+});
+
+for (const recipients of [{ to: [] }, { cc: [] }, { to: ['bad address'] }]) test(`invalid reply recipients prevent review ${JSON.stringify(recipients)}`, async () => {
+  const row = replyDraft(); Object.assign(row.reply_draft, recipients);
+  const { container, view } = setup({ listEmailProposals: async () => response([row]) });
+  await view.refresh();
+  assert.match(container.textContent, /Could not load/);
+  assert.equal(container.querySelector('[data-email-action="edit-draft"]'), null);
+});
+
+test('reply ownership updates when authenticated identity arrives after the independent email read', async () => {
+  const client = { selfActor: null, listEmailProposals: async () => response([replyDraft()]) };
+  const { container, view } = setup(client, { client });
+  await view.refresh();
+  assert.equal(container.querySelector('[data-email-action="edit-draft"]'), null);
+  client.selfActor = 'joe';
+  view.update();
+  assert.ok(container.querySelector('[data-email-action="edit-draft"]'));
+});
+
+for (const code of ['email_draft_copy_address_missing', 'email_draft_source_missing']) test(`a reply without resolved recipients stays readable and dismissible beside other proposals ${code}`, async () => {
+  const row = replyDraft(); delete row.reply_draft.to; delete row.reply_draft.cc;
+  row.confirm_verb = null; row.preview_error = code;
+  const { container, view } = setup({ listEmailProposals: async () => response([row, { ...proposal(), id: 'another-proposal' }]) });
+  await view.refresh();
+  assert.equal(container.querySelectorAll('article').length, 2);
+  assert.match(container.textContent, /Recipient addresses are unavailable/);
+  assert.equal(container.querySelector('[data-email-action="edit-draft"]'), null);
+  assert.equal(container.querySelectorAll('[data-email-action="dismiss"]').length, 2);
+  assert.doesNotMatch(container.textContent, /Could not load/);
 });

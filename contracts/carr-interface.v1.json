@@ -1,6 +1,6 @@
 {
   "schema": "doctorcre-carr-interface.v1",
-  "version": "1.60.0",
+  "version": "1.62.0",
   "producer": {
     "repository": "jbookout/carr-system",
     "source_commit": "1df9b9936394164dd55e815f8a8bf69649508ccc"
@@ -28,6 +28,7 @@
     "answer-work-request-for-joe",
     "append-tour-selection-cart-version",
     "approve-retrieval-proposals",
+    "calendar-meeting-prep",
     "cancel-capability-session",
     "cancel-workflow-cutover-plan",
     "capture-queue",
@@ -48,6 +49,7 @@
     "decide-doc-suggestion",
     "decline-work-request",
     "dismiss-email-proposal",
+    "email-proposal-quality",
     "end-deal-review",
     "engineering-passport",
     "find",
@@ -126,6 +128,7 @@
     "set-work-shape-disposition",
     "share-doc-conversation",
     "start-deal-review",
+    "submit-email-draft",
     "supersede-work-request",
     "today-triage",
     "triage-incident",
@@ -957,7 +960,7 @@
         "limit": 1000,
         "overflow": "post_call_followups_limit_exceeded; no partial snapshot is returned."
       },
-      "home_slice": "Assigned task proposals only. The app preserves the explicit assignee, action and date and leaves email proposals unresolved in local Call Mode.",
+      "home_slice": "Home preserves assigned task controls and shows pending email subject, recipient reference and deal in Team view. Review draft opens the exact call session in local Call Mode; email approval and draft creation remain there.",
       "resolution": "Existing resolve-post-call-candidate records an assigned action or skips one proposal. It does not perform the described action. Email resolution confirms only metadata and a local body hash; it creates no email or Outlook draft."
     },
     "read-client-portal": {
@@ -979,6 +982,21 @@
       "projection": "One password-bound portal, canonical roadmap and explicitly shared text material only.",
       "password_lifetime": "Form and request memory only. Never URL, storage, diagnostic output or Doc context.",
       "deployment_order": "Server must be live before the app consumer merges or deploys. Public client hosting remains separate."
+    },
+    "calendar-meeting-prep": {
+      "version": "1.0.0",
+      "producer": {
+        "repository": "DoctorCRE/carr-system",
+        "source_commit": "e36b9de61f998414b68239dcc3f97140f738bc17",
+        "pull_request": "https://github.com/DoctorCRE/carr-system/pull/2478"
+      },
+      "arguments": {},
+      "audience": "Authenticated partner only; no caller-selected sponsor or tenant.",
+      "response": "Calendar section with state ready, empty, partial or unavailable; items, notes, observed_at and sources. Each item has start, end, title, location, all_day, schedule_conflict, time_changed and possible_deals. Each possible deal has id, name, client_ref and prep.",
+      "preparation": "prep.state is ready or unavailable. Ready preparation supplies nullable phase, next_step, next_date, last_touch and market. Missing preparation never hides the meeting or its possible deal link.",
+      "match_basis": "Exact attendee email is a possible match, never a confirmed meeting-to-deal relationship. Display suggestions as unconfirmed. Failed deal_suggestions is unavailable, never proof of no related deal.",
+      "presentation": "On-demand Home dialog. Render calendar notes including zero-row partial responses, source freshness, unavailable states and retry. No startup read or writes. Clear content and reject late results on close, disposal or session invalidation.",
+      "content_storage": "Memory only."
     }
   },
   "vendor_directory": {
@@ -1112,7 +1130,8 @@
       "loops",
       "renewals",
       "assurance_cadence",
-      "costs"
+      "costs",
+      "calendar"
     ],
     "section_states": [
       "ready",
@@ -1122,6 +1141,16 @@
     ],
     "overnight_read": "GET /pipeline/changes; initial base64url JSON keyset cursor {recorded_at: ISO cutoff, id: zero UUID}; subsequent opaque cursors are server-issued; only brief-authorized deal IDs render",
     "content_storage": "memory only",
+    "calendar": {
+      "version": "1.0.0",
+      "producer": {
+        "repository": "DoctorCRE/carr-system",
+        "source_commit": "89068720b406b26541cc25f2ba0f17b0ad02d229"
+      },
+      "optional": true,
+      "rows": "items with start, title, location, attendee_count and all_day; server order retained",
+      "warnings": "Render notes plainly, including partial responses with no rows. An omitted section is not an empty calendar."
+    },
     "queue_reads": {
       "version": "1.0.0",
       "queues": [
@@ -1383,7 +1412,7 @@
       "pull_request": "https://github.com/DoctorCRE/carr-system/pull/2361"
     },
     "schema_version": "email-proposals.v1",
-    "read": "list-email-proposals {limit,cursor?} returns proposals oldest first, send:false, more and next_cursor. Paging producer: DoctorCRE/carr-system@81099219dff8270cee6be8150cfd00d7888437d3. Each proposal has id, version, kind, deal, deal_name, confidence, suspected_instruction, source, confirm_verb, preview and preview_error.",
+    "read": "list-email-proposals {deal?,limit,cursor?} filters pending proposals by the optional deal UUID before paging. Deal cursors must belong to that deal and remain valid after resolution. Deal filter producer: DoctorCRE/carr-system@5069155258335a44686086fcfa74ee8b7871c01a (#2477). It returns proposals oldest first, send:false, more and next_cursor. Paging producer: DoctorCRE/carr-system@81099219dff8270cee6be8150cfd00d7888437d3. Each proposal has id, version, kind, deal, deal_name, confidence, suspected_instruction, source, confirm_verb, preview and preview_error.",
     "source_fields": [
       "activity_id",
       "sender",
@@ -1391,7 +1420,7 @@
       "evidence_quote",
       "occurred_at"
     ],
-    "review": "Display evidence as untrusted text and suspected_instruction as a warning. Sender role is not supplied; never display raw addresses or infer a role. Null preview remains dismissible.",
+    "review": "Display evidence as untrusted text and suspected_instruction as a warning. Sender role is not supplied; phase and next-step cards never display raw addresses or infer a role. Null preview remains dismissible. Reply drafts display the exact server-provided To/CC addresses before submission and retain them in the submission request.",
     "next_step_arguments": [
       "deal",
       "activity_id",
@@ -1413,6 +1442,35 @@
       "idempotency_key"
     ],
     "dismissal": "Joe or Dell, exact observed version and a nonempty reason of at most 500 characters. Version conflicts require a fresh review.",
-    "deployment_order": "Server verbs are live before this app consumer. No send or router write is consumed."
+    "deployment_order": "Existing proposal verbs are live. Reply submission waits for the pinned producer PR #2522 to be live. No intake, router, outbox or sender write is consumed.",
+    "reply_drafts": {
+      "producer": {
+        "repository": "DoctorCRE/carr-system",
+        "source_commit": "247a4125dd1a16fc90bba4eaa9806bee14ad2b0b",
+        "pull_request": "https://github.com/DoctorCRE/carr-system/pull/2522"
+      },
+      "read": "carr-email-reply-draft.v1 at the pinned producer revision in PR #2522, not yet live. Pending reply_draft items carry reply_draft {subject,body,owner,to,cc}, status, null preview and confirm_verb submit-email-draft. to and cc each contain one exact routable address. Review displays those addresses before Submit. Missing source or copy addresses omit both arrays, set preview_error to email_draft_source_missing or email_draft_copy_address_missing and set confirm_verb:null. Keep that row readable and dismissible with reply review disabled.",
+      "submit_arguments": [
+        "proposal_id",
+        "base_version",
+        "subject",
+        "body",
+        "to",
+        "cc",
+        "idempotency_key"
+      ],
+      "submission": "Only the owning authenticated human partner can submit. Preserve exact text, displayed to/cc arrays, reviewed version and original idempotency key on uncertain retries. The server compares displayed recipients with the current captured sender and other partner actor.email and refuses email_draft_recipients_mismatch if they differ. That refusal and version_conflict require explicit fresh review, never automatic resubmission. A successful receipt has ok:true, proposal_id, status:approved_to_send, version, subject, body, sha256, to and cc matching the reviewed request. It queues sending on the partner Mac and does not confirm delivery.",
+      "deployment_order": "Hold deployment and auto-merge until server PR #2522 at the pinned revision is merged and live."
+    }
+  },
+  "email_proposal_quality": {
+    "producer": {
+      "repository": "DoctorCRE/carr-system",
+      "source_commit": "470cbb3494a04c63f8d01569a0373d61922b33b1",
+      "pull_request": "https://github.com/DoctorCRE/carr-system/pull/2450"
+    },
+    "schema_version": "email-proposal-quality.v1",
+    "read": "email-proposal-quality {} returns days:7, kinds[], corrections[] and send:false. Kinds contain kind, proposed, pending, confirmed, dismissed, dismiss_rate, confirmed_confidence, dismissed_confidence and over_threshold. Corrections contain id, kind, deal_name, reason and resolved_at.",
+    "review": "Counts are a created-at cohort. Dismissal is the correction signal, not an undo rate. Null rates and confidences mean no resolved sample. over_threshold is advisory, not enforcement. Corrections are limited to 20. No writes or sends."
   }
 }

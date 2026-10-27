@@ -91,6 +91,7 @@
  * @property {(args:{source_system:string,native_id:string,native_id_epoch:number}) => Promise<Object>} readCorrespondenceThread read of one recorded native identity
  * @property {(args?:{signal?:AbortSignal}) => Promise<Object>} getInvoiceTracker invoice-tracker.v1 snapshot
  * @property {(args:{commission_id:string,base_version:number,received_on:string,idempotency_key:string}) => Promise<Object>} markInvoicePaid record one full commission receipt
+ * @property {(args?:{signal?:AbortSignal}) => Promise<Object>} calendarMeetingPrep authenticated upcoming meetings with possible owned deals and preparation, no audience argument
  * @property {(queue:'today'|'loops'|'needs_joe'|'assurance_cadence',args?:{cursor?:string,signal?:AbortSignal}) => Promise<Object>} morningBriefQueue authenticated stable queue page, no audience argument
  * @property {'fixture'|'live'} mode
  * @property {Actor} selfActor
@@ -111,7 +112,9 @@
  * @property {(args:{deal_ids:string[]}) => Promise<{deals:Object[]}>} [getCallContext] exact active agenda records and participants
  * @property {(args:{proposal_id:string, accept:boolean, idempotency_key:string}) => Promise<WriteResult>} [resolveConfirm]
  * @property {(args:{candidate_id:string, accept:boolean, idempotency_key:string}) => Promise<WriteResult>} [resolvePostCallCandidate]
- * @property {(args?:{limit?:number,cursor?:string}) => Promise<{schema_version:'email-proposals.v1', proposals:Object[], send:false, more?:boolean, next_cursor?:string|null}>} listEmailProposals pending email proposals, oldest first
+ * @property {(args:{proposal_id:string,base_version:number,subject:string,body:string,to:string[],cc:string[],idempotency_key:string}) => Promise<Object>} submitEmailDraft queues exact partner-reviewed reply text for sending
+ * @property {() => Promise<Object>} getEmailProposalQuality read-only seven-day email-proposal-quality.v1 report
+ * @property {(args?:{deal?:string,limit?:number,cursor?:string}) => Promise<{schema_version:'email-proposals.v1', proposals:Object[], send:false, more?:boolean, next_cursor?:string|null}>} listEmailProposals pending email proposals, oldest first
  * @property {(args:{deal:string,activity_id:string,evidence_quote:string,text:string,next_date:string,owner?:'joe'|'dell'}) => Promise<Object>} previewEmailNextStep fresh digest and affected plan/actions
  * @property {(args:{deal:string,activity_id:string,evidence_quote:string,text:string,next_date:string,owner?:'joe'|'dell',proposal_digest:string,idempotency_key:string}) => Promise<Object>} confirmEmailNextStep Joe-only, exact displayed preview
  * @property {(args:{deal:string,activity_id:string,evidence_quote:string}) => Promise<Object>} previewEmailDealProgress fresh phase move and digest

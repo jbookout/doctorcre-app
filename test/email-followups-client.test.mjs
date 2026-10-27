@@ -5,7 +5,7 @@ import { createLiveClient } from '../js/live-client.js';
 import { createFixtureClient } from '../js/fixture-client.js';
 
 const methods = {
-  listEmailProposals: 'list-email-proposals', previewEmailNextStep: 'preview-email-next-step',
+  getEmailProposalQuality: 'email-proposal-quality', listEmailProposals: 'list-email-proposals', previewEmailNextStep: 'preview-email-next-step',
   confirmEmailNextStep: 'confirm-email-next-step', previewEmailDealProgress: 'preview-email-deal-progress',
   confirmEmailDealProgress: 'confirm-email-deal-progress', dismissEmailProposal: 'dismiss-email-proposal',
 };
@@ -21,7 +21,7 @@ test('both adapters expose the deployed email review verbs and live forwards exa
   const fixture = await createFixtureClient({ seedUrl });
   for (const [method, verb] of Object.entries(methods)) {
     assert.equal(typeof fixture[method], 'function', method);
-    const args = method === 'listEmailProposals' ? {} : { proposal_id: '10000000-0000-4000-8000-000000000001', idempotency_key: method };
+    const args = ['listEmailProposals', 'getEmailProposalQuality'].includes(method) ? {} : { proposal_id: '10000000-0000-4000-8000-000000000001', idempotency_key: method };
     await live[method](args);
     assert.deepEqual(calls.at(-1), { name: verb, arguments: args });
   }
@@ -94,4 +94,84 @@ test('an unknown confirmation does not adopt or block a different source email o
   assert.equal((await live.confirmEmailNextStep(second)).status, 'confirmed');
   assert.equal((await live.confirmEmailNextStep(first)).status, 'confirmed');
   assert.deepEqual(requests, [first, second, first]);
+});
+
+
+test('synthetic quality report reflects confirmations and reasoned dismissals without sending mail', async () => {
+  const client = await createFixtureClient({ seedUrl });
+  const before = await client.getEmailProposalQuality();
+  assert.equal(before.schema_version, 'email-proposal-quality.v1');
+  assert.equal(before.days, 7);
+  assert.equal(before.send, false);
+  assert.deepEqual(before.kinds.map(row => [row.kind, row.proposed, row.pending, row.dismiss_rate]),
+    [['phase_move', 1, 1, null], ['next_step', 1, 1, null]]);
+  const proposal = (await client.listEmailProposals()).proposals.find(row => row.kind === 'next_step');
+  await client.dismissEmailProposal({ proposal_id: proposal.id, base_version: proposal.version, reason: 'Already handled in the demo', idempotency_key: 'quality-dismiss' });
+  const phase = (await client.listEmailProposals()).proposals.find(row => row.kind === 'phase_move');
+  await client.confirmEmailDealProgress({ deal: phase.deal, activity_id: phase.source.activity_id,
+    evidence_quote: phase.source.evidence_quote, proposal_digest: phase.preview.proposal_digest, idempotency_key: 'quality-confirm' });
+  const after = await client.getEmailProposalQuality();
+  const move = after.kinds.find(row => row.kind === 'phase_move');
+  assert.deepEqual([move.pending, move.confirmed, move.dismiss_rate, move.confirmed_confidence], [0, 1, 0, 0.9]);
+  const step = after.kinds.find(row => row.kind === 'next_step');
+  assert.deepEqual([step.pending, step.dismissed, step.dismiss_rate, step.dismissed_confidence, step.over_threshold], [0, 1, 1, 0.9, false]);
+  assert.equal(after.corrections[0].reason, 'Already handled in the demo');
+  assert.equal(after.corrections[0].deal_name, proposal.deal_name);
+});
+
+test('synthetic deal filtering happens before pagination and rejects a cross-deal cursor', async () => {
+  const client = await createFixtureClient({ seedUrl });
+  const [first, second] = (await client.listEmailProposals()).proposals;
+  const selected = await client.listEmailProposals({ deal: second.deal, limit: 1 });
+  assert.deepEqual(selected.proposals.map(row => row.id), [second.id]);
+  assert.equal(selected.more, false);
+  assert.equal(selected.next_cursor, null);
+  await assert.rejects(client.listEmailProposals({ deal: second.deal, limit: 1, cursor: first.id }),
+    error => error.payload?.error === 'email_proposals_cursor_invalid');
+  await client.dismissEmailProposal({ proposal_id: second.id, base_version: second.version, reason: 'Synthetic review complete', idempotency_key: 'scope-dismiss' });
+  assert.deepEqual((await client.listEmailProposals({ deal: second.deal, limit: 1, cursor: second.id })).proposals, []);
+  assert.deepEqual((await client.listEmailProposals({ deal: 'unknown-deal', limit: 1 })).proposals, []);
+  assert.deepEqual((await client.listEmailProposals()).proposals.map(row => row.id), [first.id]);
+});
+
+test('live reply submission sends the owned draft version and exact text with session binding and retained retry', async () => {
+  const calls = []; let lose = true;
+  const live = createLiveClient({ fetchImpl: async (path, init) => {
+    if (path === '/auth/session') return Response.json({ actor: { slug: 'joe' }, csrf_token: 'synthetic-session' });
+    const rpc = JSON.parse(init.body); calls.push({ ...rpc.params, headers: init.headers });
+    if (lose) { lose = false; throw Error('lost'); }
+    const args = rpc.params.arguments;
+    return Response.json({ result: { content: [{ text: JSON.stringify({ ok: true, proposal_id: args.proposal_id, version: 2,
+      status: 'approved_to_send', subject: args.subject, body: args.body, sha256: 'a'.repeat(64),
+      to: ['sender@example.test'], cc: ['partner@example.test'] }) }] } });
+  } });
+  const args = { proposal_id: '10000000-0000-4000-8000-000000000003', base_version: 1,
+    subject: 'Re: Demo reply', body: 'My edited message.\nThank you.', to: ['sender@example.test'], cc: ['partner@example.test'], idempotency_key: 'reply-once' };
+  await assert.rejects(live.submitEmailDraft(args));
+  assert.equal((await live.submitEmailDraft(args)).status, 'approved_to_send');
+  assert.deepEqual(calls[0], calls[1]);
+  assert.equal(calls[0].name, 'submit-email-draft');
+  assert.deepEqual(calls[0].arguments, args);
+  assert.equal(calls[0].headers['x-carr-csrf'], 'synthetic-session');
+});
+
+test('synthetic reply submissions are owned, versioned, exact and idempotent without sending', async () => {
+  const client = await createFixtureClient({ seedUrl, emailReplyDrafts: true });
+  const draft = (await client.listEmailProposals()).proposals.find(row => row.kind === 'reply_draft');
+  assert.ok(draft, 'fixture supplies a reply draft');
+  assert.equal(draft.reply_draft.owner, 'joe');
+  const args = { proposal_id: draft.id, base_version: draft.version, subject: 'Re: Demo revised',
+    body: '  This is the exact edited message.  ', to: draft.reply_draft.to, cc: draft.reply_draft.cc, idempotency_key: 'fixture-reply' };
+  await assert.rejects(client.submitEmailDraft({ ...args, base_version: 99, idempotency_key: 'stale-draft' }), error => error.payload?.error === 'version_conflict');
+  assert.deepEqual(draft.reply_draft.to, ['demo-correspondent@example.test']);
+  assert.deepEqual(draft.reply_draft.cc, ['demo-dell@example.test']);
+  await assert.rejects(client.submitEmailDraft({ ...args, cc: ['changed@example.test'], idempotency_key: 'changed-recipients' }), error => error.payload?.error === 'email_draft_recipients_mismatch');
+  const result = await client.submitEmailDraft(args);
+  assert.equal(result.status, 'approved_to_send');
+  assert.equal(result.subject, 'Re: Demo revised');
+  assert.equal(result.body, '  This is the exact edited message.  ');
+  assert.deepEqual(result.to, ['demo-correspondent@example.test']);
+  assert.deepEqual(result.cc, ['demo-dell@example.test']);
+  assert.deepEqual(await client.submitEmailDraft(args), result);
+  assert.equal((await client.listEmailProposals()).proposals.some(row => row.id === draft.id), false);
 });

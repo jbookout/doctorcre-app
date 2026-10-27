@@ -1,3 +1,4 @@
+import { validEmailDraftReceipt } from './email-draft.js';
 import { sessionFetch } from './private-session.js';
 import { PHASE_BY_SLUG } from './client.js';
 import { requireReviewReceipt } from './deal-review-model.js';
@@ -59,7 +60,7 @@ export function createLiveClient(opts = {}) {
   const sessionWrites = new Set(['set-next-step', 'set-market-agent', 'set-national-account-owner', 'create-national-account',
     'create-national-market-deal', 'start-deal-review', 'review-deal', 'end-deal-review',
     'resolve-candidate', 'resolve-post-call-candidate', 'answer-work-request-for-joe', 'add-industry-event', 'update-industry-event',
-    'undo-call-change', 'review-call-outcome', 'confirm-email-next-step', 'confirm-email-deal-progress', 'dismiss-email-proposal']);
+    'undo-call-change', 'review-call-outcome', 'confirm-email-next-step', 'confirm-email-deal-progress', 'dismiss-email-proposal', 'submit-email-draft']);
 
   const readTimeoutMs = opts.readTimeoutMs || 10_000;
   const rpc = (verb, args = {}, signal) => {
@@ -67,7 +68,7 @@ export function createLiveClient(opts = {}) {
     if (signal?.aborted) return readWithDeadline(() => null, { signal, timeoutMs: readTimeoutMs });
     const transport = opts.fetchImpl || sessionFetch;
     if (!sharedReads.has(transport)) sharedReads.set(transport, new Map());
-    const reads = sharedReads.get(transport), key = JSON.stringify([baseUrl, verb, args, readTimeoutMs]);
+    const reads = sharedReads.get(transport), key = JSON.stringify([baseUrl, selfActor, verb, args, readTimeoutMs]);
     let entry = reads.get(key);
     if (!entry) {
       const controller = new AbortController();
@@ -118,6 +119,8 @@ export function createLiveClient(opts = {}) {
         throw unknownMcpOutcome(new Error('Email confirmation receipt unavailable'));
       return { ...payload, ok: true };
     }
+    if (verb === 'submit-email-draft' && !validEmailDraftReceipt(payload, args))
+      throw unknownMcpOutcome(new Error('Reply submission receipt unavailable'));
     return payload;
   }
 
@@ -320,11 +323,13 @@ export function createLiveClient(opts = {}) {
       return write('resolve-post-call-candidate', { candidate_id, accept, idempotency_key });
     },
 
+    async getEmailProposalQuality() { return rpc('email-proposal-quality', {}); },
     async listEmailProposals(args = {}) { return rpc('list-email-proposals', args); },
     async previewEmailNextStep(args) { return rpc('preview-email-next-step', args); },
     async previewEmailDealProgress(args) { return rpc('preview-email-deal-progress', args); },
     async confirmEmailNextStep(args) { return write('confirm-email-next-step', args); },
     async confirmEmailDealProgress(args) { return write('confirm-email-deal-progress', args); },
+    async submitEmailDraft(args) { return write('submit-email-draft', args); },
     async dismissEmailProposal(args) { return write('dismiss-email-proposal', args); },
 
     async readCallOutcomes() {
@@ -524,6 +529,7 @@ export function createLiveClient(opts = {}) {
 
     // Authenticated sponsor is resolved by CARR; callers cannot select a partner.
     async listFeatureSwitches({ signal } = {}) { return rpc('list-feature-switches', {}, signal); },
+    async calendarMeetingPrep({ signal } = {}) { return rpc('calendar-meeting-prep', {}, signal); },
     async morningBrief({ signal, fresh } = {}) { return fresh ? rawRpc('morning-brief', {}, signal, readTimeoutMs) : rpc('morning-brief', {}, signal); },
     async morningBriefQueue(queue, {cursor,signal} = {}) {
       if (!['today','loops','needs_joe','assurance_cadence'].includes(queue)) throw new Error('Unsupported morning queue.');

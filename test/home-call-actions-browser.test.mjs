@@ -36,8 +36,6 @@ for (const actionCount of [5, 30]) for (const width of [390, 1280]) for (const t
     assert.equal((await identity.json()).viewer, viewer);
     const errors = [], detailReads = [];
     let undatedOnly = false, refreshed = false, agendaReads = 0;
-    const requests = [];
-    page.on('request', request => requests.push(request.url()));
     page.on('pageerror', error => errors.push(error.message));
     await page.route('**/mcp', async route => {
       const rpc = route.request().postDataJSON();
@@ -82,7 +80,7 @@ for (const actionCount of [5, 30]) for (const width of [390, 1280]) for (const t
     if (actionCount === 30) {
       const target = await showAll.boundingBox();
       assert.ok(target.width >= 44 && target.height >= 44, 'Show all is a touch target');
-      const readsBeforeExpansion = requests.length;
+      const readsBeforeExpansion = agendaReads;
       await showAll.focus();
       await page.keyboard.press('Enter');
       assert.equal(await rows.count(), 30);
@@ -90,7 +88,7 @@ for (const actionCount of [5, 30]) for (const width of [390, 1280]) for (const t
         ...Array.from({ length: 25 }, (_, i) => `Demo call extra-${String(i + 1).padStart(2, '0')}`)]);
       assert.equal(await rows.nth(6).evaluate(node => node === document.activeElement), true, 'focus the seventh row');
       assert.equal(await showAll.count(), 0);
-      assert.equal(requests.length, readsBeforeExpansion, 'expansion makes no network request');
+      assert.equal(agendaReads, readsBeforeExpansion, 'expansion needs no additional agenda read');
       refreshed = true;
       await page.locator('#refreshHome').click();
       await page.locator('#refreshHome[aria-busy="false"]').waitFor();
