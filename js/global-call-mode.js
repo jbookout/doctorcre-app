@@ -20,15 +20,16 @@ export async function mountGlobalCallMode(root = document) {
   root.getElementById("callModeStop").onclick = () => call.stop();
   root.getElementById("postCallRefresh").onclick = () => call.refreshPostCall();
   let opening = false;
-  const mountedCall = { ...call, async open() {
-    if (opening) return;
+  const mountedCall = { ...call, async open(options = {}) {
+    if (opening || options.signal?.aborted) return false;
     opening = true;
     try {
-      if (!await call.checkEligibility()) return;
+      if (!await call.checkEligibility() || options.signal?.aborted) return false;
       client ||= await createClient(boot.mode, boot.options);
-      try { const board = await client.getBoard({ workspace: "all" }); if (!Array.isArray(board?.deals)) throw new Error("Invalid board"); deals = board.deals; contextError = null; } catch { deals = []; contextError = "Weekly call context unavailable. Reopen Call Mode to retry loading work records."; }
-      await call.open();
-      if (contextError) { const notice = root.getElementById("callModePermission"); notice.hidden = false; notice.textContent = contextError; }
+      if (!options.session) try { const board = await client.getBoard({ workspace: "all" }); if (!Array.isArray(board?.deals)) throw new Error("Invalid board"); deals = board.deals; contextError = null; } catch { deals = []; contextError = "Weekly call context unavailable. Reopen Call Mode to retry loading work records."; }
+      const opened = await call.open(options);
+      if (!options.session && contextError) { const notice = root.getElementById("callModePermission"); notice.hidden = false; notice.textContent = contextError; }
+      return opened;
     } finally { opening = false; }
   } };
   mounted.set(root, mountedCall);

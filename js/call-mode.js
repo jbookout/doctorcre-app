@@ -368,6 +368,12 @@ export function createCallMode(deps) {
   // does not carry it on every visit.
   let outcomes = null;
   let outcomesLoading = null;
+  function retireOutcomes() {
+    outcomes?.dispose();
+    outcomes = null;
+    const node = $('#postCallOutcomes');
+    if (node) { node.innerHTML = ''; node.hidden = true; }
+  }
   function reportCandidateIds() {
     const updates = state.postCall.report?.deal_updates;
     return (Array.isArray(updates) ? updates : []).flatMap(update => ['next_step', 'phase_move']
@@ -377,8 +383,10 @@ export function createCallMode(deps) {
     const node = $('#postCallOutcomes');
     if (!node || !deps.client()?.readCallOutcomes) return null;
     if (outcomes) return outcomes;
+    const generation = state.callGeneration || 0, session = state.postCall.session;
     outcomesLoading ||= import('./call-outcomes.js');
     const { mountCallOutcomes } = await outcomesLoading;
+    if (state.postCall.session !== session || (state.callGeneration || 0) !== generation) return null;
     outcomes ||= mountCallOutcomes({ container: node, client: deps.client, toast, filter: reportCandidateIds, listen: false,
       onChange: () => refreshPostCall({ quiet: true }) });
     return outcomes;
@@ -539,7 +547,10 @@ export function createCallMode(deps) {
   function startPolling(session, { weekly = false, immediate = true } = {}) {
     stopPolling();
     const newCall = state.postCall.session !== session;
-    if (newCall) state.callGeneration = (state.callGeneration || 0) + 1;
+    if (newCall) {
+      retireOutcomes();
+      state.callGeneration = (state.callGeneration || 0) + 1;
+    }
     state.postCall = { ...state.postCall, session, weekly: weekly || state.postCall.weekly,
       ...(newCall ? { readyAt: null, applyTimedOut: false } : {}) };
     // The one poll allowed to run while the tab is hidden or idle: it exists
@@ -643,6 +654,8 @@ export function createCallMode(deps) {
       const weekly = snapshot.mode === 'weekly_deal_call' || (!changed && state.postCall.weekly);
       if (changed) {
         stopPolling();
+        retireOutcomes();
+        state.callGeneration = (state.callGeneration || 0) + 1;
         state.postCall = {...idlePostCall(),session,weekly};
       }
       render();
@@ -667,12 +680,36 @@ export function createCallMode(deps) {
     state.tickTimer = timers.setInterval(() => { if (callModeActive()) render(); }, 250);
   }
 
-  async function open() {
+  async function open({ session = null, signal } = {}) {
+    if (signal?.aborted) return false;
     const dialog = $('#callModeDialog');
     if (dialog && typeof dialog.showModal === 'function' && !dialog.open) dialog.showModal();
-    if (!await checkEligibility()) return;
+    if (!await checkEligibility()) return false;
+    if (signal?.aborted) { close(); return false; }
     startTicker();
+    if (session) {
+      stopPolling();
+      retireOutcomes();
+      state.callGeneration = (state.callGeneration || 0) + 1;
+      state.postCall = { ...idlePostCall(), session, status: 'waiting_for_transcript' };
+      const generation = state.callGeneration;
+      signal?.addEventListener('abort', () => {
+        if (state.postCall.session !== session || state.callGeneration !== generation) return;
+        state.statusSequence = (state.statusSequence || 0) + 1;
+        stopPolling();
+        state.postCall = idlePostCall();
+        retireOutcomes();
+        $('#postCallReport').innerHTML = '';
+        $('#postCallStatus').innerHTML = '';
+        renderPostCall();
+        close();
+      }, { once: true });
+      renderPostCall();
+      await refreshPostCall();
+      return !signal?.aborted;
+    }
     await refresh({ quiet: true, snapshot: state.callMode });
+    return true;
   }
 
   function close() {

@@ -805,3 +805,89 @@ for (const list of ['deal_updates', 'deals']) test(`post-call ${list} cards show
  assert.equal(h.calls.resolvePostCallCandidate.length,0);
  h.controller.stopPolling();
 });
+
+test('opening a saved call report reads that session and preserves the active recorder', async () => {
+  const h = harness({ state: { state: 'recording', mode: 'weekly_deal_call', session: 'demo-new-recording' },
+    statuses: [{ status: { state: 'filed' }, report: { draft_proposals: [{ draft_id: 'demo-draft',
+      candidate_id: 'demo-candidate', subject: 'Demo saved draft', body: 'Demo message', status: 'pending' }] } }] });
+  try {
+    assert.equal(await h.controller.open({ session: 'demo-older-call' }), true);
+    assert.deepEqual(h.calls.getStatus, ['demo-older-call']);
+    assert.equal(h.controller.state.callMode.session, 'demo-new-recording');
+    assert.match(h.doc.getElementById('postCallReport').innerHTML, /Demo saved draft/);
+    assert.deepEqual(h.calls.publishCallContext, []);
+    assert.deepEqual(h.calls.resolvePostCallCandidate, []);
+    assert.deepEqual(h.calls.createOutlookDraft, []);
+    assert.equal(h.requests.some(row => row.method === 'POST'), false);
+  } finally { h.controller.dispose(); }
+});
+
+
+test('revoking the saved-report lifetime clears an in-flight report and cannot clear a newer one', async () => {
+  const h = harness(), lifetime = new AbortController();
+  let release;
+  h.postCallClient.getStatus = async () => new Promise(resolve => { release = resolve; });
+  const opening = h.controller.open({ session: 'demo-revoked-call', signal: lifetime.signal });
+  while (!release) await Promise.resolve();
+  lifetime.abort();
+  release({ status: { state: 'filed' }, report: { draft_proposals: [{ subject: 'Revoked demo draft' }] } });
+  assert.equal(await opening, false);
+  assert.doesNotMatch(h.doc.getElementById('postCallReport').innerHTML, /Revoked demo draft/);
+  assert.equal(h.doc.getElementById('callModeDialog').open, false);
+  const loaded = new AbortController();
+  h.postCallClient.getStatus = async () => ({ status: { state: 'filed' }, report: { report: { summary: 'Demo loaded report' } } });
+  await h.controller.open({ session: 'demo-loaded-call', signal: loaded.signal });
+  assert.match(h.doc.getElementById('postCallReport').innerHTML, /Demo loaded report/);
+  loaded.abort();
+  assert.equal(h.doc.getElementById('postCallReport').innerHTML, '');
+  const older = new AbortController();
+  await h.controller.open({ session: 'demo-first-call', signal: older.signal });
+  await h.controller.open({ session: 'demo-second-call' });
+  older.abort();
+  assert.equal(h.controller.state.postCall.session, 'demo-second-call');
+  assert.equal(h.doc.getElementById('callModeDialog').open, true);
+  h.controller.dispose();
+});
+
+for (const latest of [false, true]) test(`selecting ${latest ? 'the latest' : 'a saved'} email-only report retires the previous call summary and its controls`, async () => {
+  const h = harness({ state: { state: 'filed', mode: 'weekly_deal_call', session: 'demo-call-b' }, statuses: [applyingThenApplied()[1], { status: { state: 'filed' }, report: {
+    draft_proposals: [{ subject: 'Demo older email', body: 'Demo older message' }] } }] });
+  let reads = 0;
+  h.client.readCallOutcomes = async () => { reads++; return { calls: [{ session_id: 'demo-call-a', call_date: '2026-09-23',
+    applied: [{ candidate_id: 'step-a', kind: 'next_step', deal_id: 'deal-a', deal_name: 'Demo Bayside', deal_version: 4,
+      payload: { text: 'Send the lease draft', next_date: '2026-11-06' }, undone_at: null }], open_cards: [] }] }; };
+  try {
+    await h.controller.open({ session: 'demo-call-a' });
+    for (let i = 0; i < 50 && !reads; i++) await new Promise(resolve => setTimeout(resolve, 5));
+    await new Promise(resolve => setImmediate(resolve));
+    const outcomes = h.doc.getElementById('postCallOutcomes');
+    assert.match(outcomes.innerHTML, /data-call-undo="step-a"/);
+    await h.controller.open(latest ? {} : { session: 'demo-call-b' });
+    if (latest) {
+      for (let i = 0; i < 50 && !h.doc.getElementById('postCallReport').innerHTML.includes('Demo older email'); i++) await new Promise(resolve => setTimeout(resolve, 5));
+    }
+    assert.match(h.doc.getElementById('postCallReport').innerHTML, /Demo older email/);
+    assert.equal(outcomes.innerHTML, '');
+    assert.equal(outcomes.hidden, true);
+  } finally { h.controller.dispose(); }
+});
+
+for (const failed of [false, true]) test(`revoking a selected call ignores a late ${failed ? 'failed' : 'successful'} outcome read`, async () => {
+  const h = harness({ statuses: [applyingThenApplied()[1]] }), lifetime = new AbortController();
+  let finish;
+  h.client.readCallOutcomes = () => new Promise((resolve, reject) => {
+    finish = () => failed ? reject(new Error('Demo unavailable')) : resolve({ calls: [] });
+  });
+  try {
+    await h.controller.open({ session: 'demo-call-a', signal: lifetime.signal });
+    for (let i = 0; i < 50 && !finish; i++) await new Promise(resolve => setTimeout(resolve, 5));
+    assert.equal(typeof finish, 'function');
+    lifetime.abort();
+    finish();
+    await new Promise(resolve => setImmediate(resolve));
+    const outcomes = h.doc.getElementById('postCallOutcomes');
+    assert.equal(outcomes.innerHTML, '');
+    assert.equal(outcomes.hidden, true);
+    assert.equal(h.doc.getElementById('callModeDialog').open, false);
+  } finally { h.controller.dispose(); }
+});

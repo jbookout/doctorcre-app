@@ -30,7 +30,7 @@ const task = (id, owner = 'joe', due_on = '2026-10-02') => ({
   evidence_quote: 'Joe will call the demo lender.', created_at: '2026-10-01T14:00:00Z',
 });
 
-async function open(t, { width = 1280, candidates = [task('proposal-joe')] } = {}) {
+async function open(t, { width = 1280, candidates = [task('proposal-joe')], companion = null } = {}) {
   const page = await browser.newPage({ viewport: { width, height: 960 }, timezoneId: 'America/Chicago', reducedMotion: 'reduce' });
   t.after(() => page.close());
   await page.clock.install({ time: new Date('2026-10-01T15:00:00Z') });
@@ -70,9 +70,20 @@ async function open(t, { width = 1280, candidates = [task('proposal-joe')] } = {
     }
     return route.continue();
   });
+  const companionRequests = [];
+  if (companion) await page.route('http://127.0.0.1:4682/**', async route => {
+    const url = new URL(route.request().url());
+    companionRequests.push({ path: url.pathname, session: url.searchParams.get('session'), method: route.request().method() });
+    if (companion.unavailable || companion.reportUnavailable && url.pathname === '/api/post-call') return route.abort();
+    return route.fulfill({ json: url.pathname === '/api/state'
+      ? { state: 'filed', mode: 'weekly_deal_call', session: 'demo-latest-call' }
+      : { status: { state: 'filed' }, report: { draft_proposals: [{ draft_id: 'demo-draft', candidate_id: 'proposal-email',
+        deal_id: 'qa-deal-1', deal_name: 'Demo coastal purchase', recipient_name: 'Demo lender', subject: 'Demo saved email',
+        body: 'Demo lender follow-up from the older call.', content_hash: 'a'.repeat(64), status: 'pending' }] } } });
+  });
   await page.goto(`${origin}/?mode=live`);
   await page.locator('#refreshHome[aria-busy="false"]').waitFor();
-  return { page, pending, actions, writes, reads, errors, gate };
+  return { page, pending, actions, writes, reads, errors, gate, companionRequests };
 }
 
 test('Home adds a reviewed call task and reads its exact owner, date and text through the agenda', async t => {
@@ -133,4 +144,53 @@ test('a slow Home refresh keeps the call task section and keyboard focus in plac
   await page.locator(`${skip}:not([aria-disabled="true"])`).waitFor();
   assert.equal(await page.evaluate(() => document.activeElement?.dataset.callTaskKey), 'proposal-joe:false');
   assert.deepEqual(errors, []);
+});
+
+
+for (const width of [390, 1280]) test(`Home opens the exact saved email report at ${width}px without creating a draft`, async t => {
+  const email = { ...task('proposal-email'), session_id: 'demo-older-call', kind: 'email_draft', payload: {
+    deal_id: 'qa-deal-1', recipient_party_id: 'demo-recipient', recipient_ref: 'DEMO-P-01', subject: 'Demo saved email', body_sha256: 'a'.repeat(64) } };
+  const { page, writes, companionRequests, errors } = await open(t, { width, candidates: [email], companion: {} });
+  const proposal = page.locator('[data-call-draft="proposal-email"]');
+  await proposal.waitFor();
+  assert.match(await proposal.innerText(), /Demo coastal purchase.*Demo saved email.*DEMO-P-01.*Draft only/s);
+  assert.equal(await proposal.getByRole('link').getAttribute('href'), '/deals?deal=qa-deal-1');
+  assert.equal(await proposal.getByRole('button').count(), 1);
+  await mkdir(join(root, 'out/test-artifacts/home-call-drafts'), { recursive: true });
+  await proposal.screenshot({ path: join(root, `out/test-artifacts/home-call-drafts/${width}-offer.png`) });
+  await proposal.getByRole('button', { name: 'Review draft', exact: true }).click();
+  await page.locator('#callModeDialog[open] .draft-body').waitFor();
+  assert.match(await page.locator('#postCallReport').innerText(), /Demo lender follow-up from the older call/);
+  assert.deepEqual(companionRequests.filter(row => row.path === '/api/post-call').map(row => row.session), ['demo-older-call']);
+  assert.equal(companionRequests.some(row => row.method !== 'GET'), false);
+  assert.deepEqual(writes, []);
+  await mkdir(join(root, 'out/test-artifacts/home-call-drafts'), { recursive: true });
+  await page.locator('.vendor-draft').scrollIntoViewIfNeeded();
+  await page.screenshot({ path: join(root, `out/test-artifacts/home-call-drafts/${width}-report.png`) });
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+  assert.deepEqual(errors, []);
+});
+
+test('Home keeps a draft offer when the local companion is unavailable', async t => {
+  const email = { ...task('proposal-email'), session_id: 'demo-older-call', kind: 'email_draft', payload: {
+    deal_id: 'qa-deal-1', recipient_party_id: 'demo-recipient', recipient_ref: 'DEMO-P-01', subject: 'Demo saved email', body_sha256: 'a'.repeat(64) } };
+  const { page, writes, companionRequests } = await open(t, { candidates: [email], companion: { unavailable: true } });
+  await page.getByRole('button', { name: 'Review draft', exact: true }).click();
+  await page.getByText('Open Call Mode on the Mac that recorded this call to review this draft.', { exact: true }).waitFor();
+  assert.equal(await page.getByRole('button', { name: 'Review draft', exact: true }).isVisible(), true);
+  assert.equal(companionRequests.some(row => row.path === '/api/post-call'), false);
+  assert.deepEqual(writes, []);
+});
+
+
+test('an unavailable saved report never falls back to the latest call', async t => {
+  const email = { ...task('proposal-email'), session_id: 'demo-missing-call', kind: 'email_draft', payload: {
+    deal_id: 'qa-deal-1', recipient_party_id: 'demo-recipient', recipient_ref: 'DEMO-P-01', subject: 'Demo saved email', body_sha256: 'a'.repeat(64) } };
+  const { page, writes, companionRequests } = await open(t, { candidates: [email], companion: { reportUnavailable: true } });
+  await page.getByRole('button', { name: 'Review draft', exact: true }).click();
+  await page.locator('#callModeDialog[open]').waitFor();
+  await page.locator('#postCallStatus').getByText(/could not read the companion response/).waitFor();
+  assert.deepEqual(companionRequests.filter(row => row.path === '/api/post-call').map(row => row.session), ['demo-missing-call']);
+  assert.equal(await page.locator('.vendor-draft').count(), 0);
+  assert.deepEqual(writes, []);
 });

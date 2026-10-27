@@ -6,9 +6,9 @@ const record = value => value && typeof value === 'object' && !Array.isArray(val
 const E = value => String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
 const owners = new Map([['joe', 'Joe'], ['dell', 'Dell']]);
 const ownerLabel = owner => owners.get(owner);
-const malformed = () => Object.assign(new Error('Call tasks unavailable'), { code: 'malformed_response' });
+const malformed = () => Object.assign(new Error('Call follow-ups unavailable'), { code: 'malformed_response' });
 
-export async function readHomeCallTasks(client, { signal } = {}) {
+export async function readHomeCallFollowups(client, { signal } = {}) {
   const payload = await client.getPostCallFollowups({ signal });
   if (!record(payload) || payload.schema_version !== 'post-call-followups.v1' || payload.send !== false
     || !Array.isArray(payload.candidates) || payload.candidates.length > 1000) throw malformed();
@@ -22,19 +22,22 @@ export async function readHomeCallTasks(client, { signal } = {}) {
     const p = row.payload;
     if (row.kind === 'email_draft') {
       if (!text(p.recipient_party_id) || !text(p.recipient_ref) || !text(p.subject) || !/^[a-f0-9]{64}$/.test(p.body_sha256)) throw malformed();
+      tasks.push({ kind: 'email_draft', candidateId: row.id, sessionId: row.session_id, dealId: row.deal_id,
+        dealName: row.deal_name, subject: p.subject, recipientRef: p.recipient_ref, evidence: row.evidence_quote || '' });
       continue;
     }
     if (!ownerLabel(p.assignee) || !text(p.action)
       || !(p.due_on === null || typeof p.due_on === 'string' && toDay(p.due_on) === p.due_on)) throw malformed();
-    tasks.push({ candidateId: row.id, sessionId: row.session_id, dealId: row.deal_id, dealName: row.deal_name,
+    tasks.push({ kind: 'assigned_action', candidateId: row.id, sessionId: row.session_id, dealId: row.deal_id, dealName: row.deal_name,
       owner: p.assignee, description: p.action, dueOn: p.due_on, evidence: row.evidence_quote || '' });
   }
   return tasks;
 }
 
-export function mountHomeCallTasks({ document, client, host, onChanged }) {
-  let view = {}, actor = null, generation = 0, disposed = false, notice = '', noticeFresh = false, painted = '';
+export function mountHomeCallTasks({ document, client, host, onChanged, openReport }) {
+  let view = {}, actor = null, generation = 0, disposed = false, notice = '', noticeFresh = false, painted = '', openingDraft = null;
   const decisions = new Map();
+  const lifetime = new AbortController();
   const commands = createRetainedCommands({ scope: () => actor });
   const admitted = () => !disposed && !view.signedOut && !view.busy && view.read?.state === 'read' && text(actor);
   const visible = () => {
@@ -49,7 +52,11 @@ export function mountHomeCallTasks({ document, client, host, onChanged }) {
     const unavailable = view.read?.state === 'error' || view.scope === 'mine' && !actor;
     host.hidden = !tasks.length && !unavailable && !notice;
     host.setAttribute('aria-busy', String(Boolean(view.busy)));
-    const markup = `<h3>Call tasks to review</h3>${notice ? `<p class="home-call-task-notice" role="status">${E(notice)}</p>` : ''}${unavailable ? '<p class="home-empty" role="status">Call tasks unavailable. Refresh Home to try again.</p>' : ''}${tasks.map(task => {
+    const markup = `<h3>Call follow-ups to review</h3>${notice ? `<p class="home-call-task-notice" role="status">${E(notice)}</p>` : ''}${unavailable ? '<p class="home-empty" role="status">Call follow-ups unavailable. Refresh Home to try again.</p>' : ''}${tasks.map(task => {
+      if (task.kind === 'email_draft') {
+        const disabled = !admitted() || openingDraft !== null;
+        return `<article class="home-call-task" data-call-draft="${E(task.candidateId)}"><div><a href="/deals?deal=${encodeURIComponent(task.dealId)}">${E(task.dealName)}</a><p>${E(task.subject)}</p><span>To ${E(task.recipientRef)}</span><p>Draft only. Review and send in Outlook.</p>${task.evidence ? `<details><summary>Call evidence</summary><p>${E(task.evidence)}</p></details>` : ''}</div><div class="home-call-task-controls"><button type="button" class="home-outline" data-call-draft-id="${E(task.candidateId)}" data-call-task-key="${E(task.candidateId)}:review"${(flags.push(disabled), '')}>Review draft</button></div></article>`;
+      }
       const decision = decisions.get(task.candidateId);
       const disabled = !admitted() || ['submitting', 'resolved'].includes(decision?.state);
       const uncertain = decision?.state === 'uncertain';
@@ -63,6 +70,22 @@ export function mountHomeCallTasks({ document, client, host, onChanged }) {
     if (focused) ([...host.querySelectorAll('[data-call-task-key]')].find(node => node.dataset.callTaskKey === focused) || document.getElementById('homePrimaryAction'))?.focus();
   };
   const decide = async event => {
+    const draftButton = event.target.closest('[data-call-draft-id]');
+    if (draftButton) {
+      if (draftButton.getAttribute('aria-disabled') === 'true' || !admitted() || openingDraft !== null) return;
+      const draft = visible().find(row => row.kind === 'email_draft' && row.candidateId === draftButton.dataset.callDraftId);
+      if (!draft) return;
+      const ticket = generation;
+      openingDraft = draft.candidateId; notice = ''; render();
+      try {
+        if (!await openReport(draft.sessionId, { signal: lifetime.signal }) && !disposed && ticket === generation) notice = 'Open Call Mode on the Mac that recorded this call to review this draft.';
+      } catch {
+        if (!disposed && ticket === generation) notice = 'The call report could not open. Try again on the Mac that recorded this call.';
+      } finally {
+        if (!disposed && ticket === generation) { openingDraft = null; render(); }
+      }
+      return;
+    }
     const button = event.target.closest('[data-call-task-id]');
     if (!button || button.getAttribute('aria-disabled') === 'true' || !admitted()) return;
     const id = button.dataset.callTaskId, accept = button.dataset.callTaskAccept === 'true';
@@ -94,7 +117,7 @@ export function mountHomeCallTasks({ document, client, host, onChanged }) {
       await onChanged();
     }
   };
-  const retire = () => { disposed = true; generation++; decisions.clear(); host.replaceChildren(); painted = ''; host.hidden = true; };
+  const retire = () => { lifetime.abort(); disposed = true; generation++; decisions.clear(); host.replaceChildren(); painted = ''; host.hidden = true; };
   host.addEventListener('click', decide);
   document.defaultView?.addEventListener('doctorcre-session-invalidated', retire);
   return {
