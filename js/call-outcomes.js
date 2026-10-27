@@ -73,34 +73,42 @@ const UNCHECKED = `<p class="call-outcome-note" role="status">Couldn't check for
 export function mountCallOutcomes({ container, client, toast = () => {}, filter = () => null, onChange = () => {}, listen = true, openCards = null }) {
   const busy = new Set();
   let calls = [];
-  let unchecked = false;
+  let unchecked = false, disposed = false;
   const paint = () => {
+    if (disposed) return;
     if (unchecked) { container.innerHTML = UNCHECKED; container.hidden = false; return; }
     const shown = callsFor(calls, filter());
     container.innerHTML = callOutcomesHtml(shown, { busy, openCards: Boolean(openCards) });
     container.hidden = shown.length === 0;
   };
   async function refresh() {
+    if (disposed) return;
     try {
       const answer = await client().readCallOutcomes();
+      if (disposed) return;
       calls = Array.isArray(answer?.calls) ? answer.calls : [];
       unchecked = false;
     } catch (error) {
+      if (disposed) return;
       calls = [];
       unchecked = ![401, 403].includes(error?.status);
     }
     paint();
   }
   async function act(key, run, done, refused) {
-    if (busy.has(key)) return;
+    if (disposed || busy.has(key)) return;
     busy.add(key); paint();
-    try { await run(); toast(done); }
-    catch (error) { toast(refused(error)); }
-    finally { busy.delete(key); await refresh(); onChange(); }
+    try { await run(); if (!disposed) toast(done); }
+    catch (error) { if (!disposed) toast(refused(error)); }
+    finally {
+      busy.delete(key);
+      if (!disposed) { await refresh(); if (!disposed) onChange(); }
+    }
   }
   // A host that delegates its clicks (listen: false) has already scoped them.
   const inside = node => Boolean(node) && (!listen || container.contains(node));
   async function click(event) {
+    if (disposed) return;
     const target = event.target;
     if (inside(target.closest?.('[data-call-recheck]'))) return refresh();
     if (inside(target.closest?.('[data-call-open-cards]'))) return openCards?.();
@@ -120,5 +128,8 @@ export function mountCallOutcomes({ container, client, toast = () => {}, filter 
   }
   // A host that already delegates its clicks (Call Mode) passes listen: false and forwards them.
   if (listen) container.addEventListener('click', click);
-  return { refresh, click, dispose() { if (listen) container.removeEventListener('click', click); } };
+  return { refresh, click, dispose() {
+    disposed = true; calls = []; busy.clear(); container.innerHTML = ''; container.hidden = true;
+    if (listen) container.removeEventListener('click', click);
+  } };
 }

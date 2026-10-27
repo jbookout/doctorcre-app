@@ -123,3 +123,28 @@ test('a failed read says it could not check; a signed-out read stays quiet', asy
   await view.refresh();
   assert.equal(container.hidden, true);
 });
+
+test('retiring an outcome list clears its controls and ignores late reads and detached clicks', async () => {
+  const dom = new JSDOM('<section id="outcomes"></section>');
+  const container = dom.window.document.getElementById('outcomes');
+  let release, writes = 0;
+  const client = {
+    readCallOutcomes: async () => ({ calls: synthetic() }),
+    undoCallChange: async () => { writes++; },
+  };
+  const view = mountCallOutcomes({ container, listen: false, client: () => client });
+  await view.refresh();
+  const stale = container.querySelector('[data-call-undo]');
+  assert.ok(stale);
+  client.readCallOutcomes = () => new Promise(resolve => { release = resolve; });
+  const pending = view.refresh();
+  view.dispose();
+  assert.equal(container.innerHTML, '');
+  assert.equal(container.hidden, true);
+  release({ calls: synthetic() });
+  await pending;
+  await view.click({ target: stale });
+  assert.equal(container.innerHTML, '');
+  assert.equal(writes, 0);
+  dom.window.close();
+});

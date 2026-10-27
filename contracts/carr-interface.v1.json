@@ -897,7 +897,7 @@
         "limit": 1000,
         "overflow": "post_call_followups_limit_exceeded; no partial snapshot is returned."
       },
-      "home_slice": "Assigned task proposals only. The app preserves the explicit assignee, action and date and leaves email proposals unresolved in local Call Mode.",
+      "home_slice": "Home preserves assigned task controls and shows pending email subject, recipient reference and deal in Team view. Review draft opens the exact call session in local Call Mode; email approval and draft creation remain there.",
       "resolution": "Existing resolve-post-call-candidate records an assigned action or skips one proposal. It does not perform the described action. Email resolution confirms only metadata and a local body hash; it creates no email or Outlook draft."
     },
     "read-client-portal": {

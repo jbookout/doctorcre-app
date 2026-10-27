@@ -83,3 +83,23 @@ test('phone task guard exercises useful outcomes against the built fixture', asy
     } finally { await context.close(); }
   });
 });
+
+
+test('Home discovers its boot mode while the client bootstrap is downloading', async t => {
+  const outDir = await mkdtemp(join(tmpdir(), 'doctorcre-home-boot-'));
+  t.after(() => rm(outDir, { recursive: true, force: true }));
+  await buildArtifact({ root: fileURLToPath(new URL('../', import.meta.url)), outDir });
+  const server = await startFixtureServer({ env: { DOCTORCRE_FIXTURE_ROOT: join(outDir, 'site') } });
+  t.after(() => server.stop());
+  const browser = await chromium.launch({ args: [...CHROMIUM_SAFETY_ARGS] });
+  t.after(() => browser.close());
+  const page = await browser.newPage({ viewport: profile.viewport, isMobile: true, hasTouch: true });
+  let release;
+  const bootstrap = new Promise(resolve => { release = resolve; });
+  await page.route(/\/js\/(?:home-boot|app-shell|workspace-command-center)\.js$/, async route => { await bootstrap; await route.continue(); });
+  const mode = page.waitForRequest('**/js/boot-mode.js', { timeout: 3000 });
+  await page.goto(server.url + '/', { waitUntil: 'commit' });
+  try { await mode; } finally { release(); }
+  await page.locator('#dealFlags .home-flag').first().waitFor();
+  assert.ok(await page.locator('#dealFlags .home-flag').count() > 0);
+});
