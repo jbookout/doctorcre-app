@@ -532,6 +532,8 @@ async function runFollowUp(operationKey, step) {
     status: result.status === 'blocked' ? 'unknown' : result.status,
     reason: result.message || null,
     retry: result.status === 'blocked' || result.retry, undo: false, request: result.request,
+    // The portal password must not outlive a settled write; only an unknown outcome keeps the request for replay.
+    clearRequest: step.verb === 'register-client-portal' && ['ok', 'refused', 'conflict'].includes(result.status),
   });
   if (step.verb === 'register-client-portal' && result.status === 'ok') state.boardSync.requestRefresh('client-portal');
   if (isUpdate && result.status === 'ok') discardUpdate(args.deal);
@@ -1514,3 +1516,5 @@ async function boot() {
 if (globalThis.document) boot();
 
 export { state };
+/** Read-only view of the command dock's entries, for tests that prove what it retains. */
+export const dockEntries = () => dock.entries ?? new Map();

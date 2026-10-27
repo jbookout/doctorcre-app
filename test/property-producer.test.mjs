@@ -5,6 +5,7 @@ import { posix } from "node:path";
 import { boardDirectory, boardView } from "../js/progress-board-model.js";
 import { execFileSync } from "node:child_process";
 import { createHash } from 'node:crypto';
+import { stripTypeScriptTypes } from "node:module";
 import { handleDoctorcreRequest } from "../src/worker.js";
 import { validSystemWork, groupSystemWork, recentLive } from "../js/system-work-board-model.js";
 import { renderDealChecklist } from "../js/deal-checklist.js";
@@ -14,10 +15,21 @@ const pinnedProducer = "700173808625061adff581cfab415ce8e83e24f6";
 
 
 const producerModules = new Map();
+const producerShow = path => execFileSync("git", ["-C", process.env.CARR_PRODUCER_CHECKOUT,
+  "show", `${contract.producer.source_commit}:${path}`], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+// A producer module may be committed as .js or, after its TypeScript move, as .ts under the same name.
+// TypeScript is reduced to JavaScript by Node's own type stripping; nothing is compiled or written.
+function producerSource(path) {
+  try { return { path, source: producerShow(path) }; } catch (error) {
+    const typed = path.replace(/\.js$/, ".ts");
+    if (typed === path) throw error;
+    return { path: typed, source: producerShow(typed) };
+  }
+}
 async function producerModuleUrl(path) {
   if (producerModules.has(path)) return producerModules.get(path);
-  let source = execFileSync("git", ["-C", process.env.CARR_PRODUCER_CHECKOUT,
-    "show", `${contract.producer.source_commit}:${path}`], { encoding: "utf8" });
+  const found = producerSource(path);
+  let source = found.path.endsWith(".ts") ? stripTypeScriptTypes(found.source, { mode: "strip" }) : found.source;
   for (const match of [...source.matchAll(/from\s+(["'])(\.\.?\/[^"'\n]+)\1/g)]) {
     const dependency = await producerModuleUrl(posix.join(posix.dirname(path), match[2]));
     source = source.replace(match[1] + match[2] + match[1], JSON.stringify(dependency));
@@ -108,11 +120,7 @@ test("the exact pinned producer serves property evidence alongside the existing 
 }, async () => {
   const git = (...args) => execFileSync("git", ["-C", process.env.CARR_PRODUCER_CHECKOUT, ...args], { encoding: "utf8" });
   const pin = contract.producer.source_commit;
-  const timestampSource = git("show", `${pin}:mcp-server/src/tour-route-timestamp.js`);
-  const timestampModule = `data:text/javascript;base64,${Buffer.from(timestampSource).toString("base64")}`;
-  const source = git("show", `${pin}:mcp-server/src/tour-internal-web.js`)
-    .replace('"./tour-route-timestamp.js"', JSON.stringify(timestampModule));
-  const { createTourInternalWebHandler, isTourInternalRequest } = await import(`data:text/javascript;base64,${Buffer.from(source).toString("base64")}`);
+  const { createTourInternalWebHandler, isTourInternalRequest } = await import(await producerModuleUrl("mcp-server/src/tour-internal-web.js"));
   const propertyId = "10000000-0000-4000-8000-000000000001";
   const asOf = "2026-09-29T12:00:00.000Z";
   const data = { schema: "tour-property-evidence.v1", property_id: propertyId, as_of: asOf, facts: {} };
@@ -136,8 +144,10 @@ test("the exact pinned producer serves property evidence alongside the existing 
   for (const path of ["/api/tours/library", `/api/tours/selection-cart?tour_id=${propertyId}`]) {
     assert.equal((await handler.fetch(new Request(`https://app.doctorcre.com${path}`), env, {}, actor, session)).status, 200);
   }
-  git("merge-base", "--is-ancestor", "c4f1ad45273175c26c074336c0fecbf789718348", pin);
-  git("merge-base", "--is-ancestor", "0cc6fe2538a81521bf8c25b0df58aa4063ed614b", pin);
+  // The producer's history was squashed after #1396 (property search) and #1400 (property evidence), so
+  // ancestry can no longer show they are included. The modules those changes introduced must exist at the pin.
+  for (const file of ["mcp-server/src/tour-property-search.js", "mcp-server/src/tour-property-evidence.ts"])
+    git("cat-file", "-e", `${pin}:${file}`);
 });
 
 

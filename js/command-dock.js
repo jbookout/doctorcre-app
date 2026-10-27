@@ -69,14 +69,15 @@ export function createCommandDock({ root, onDispatch = null, onReconcile = null,
    * What the dock shows for one operation. `status` is a kernel status and
    * `state` a feedback state; a caller may pass either, and the kernel decides.
    */
-  function record(operationKey, { summary = '', status = null, state = null, reason = null, retry = false, undo = false, request = null } = {}) {
+  function record(operationKey, { summary = '', status = null, state = null, reason = null, retry = false, undo = false, request = null, clearRequest = false } = {}) {
     const previous = entries.get(operationKey) || {};
     const previousState = previous.operationKey ? commandReceiptView(previous).state : null;
     const next = {
       ...previous, operationKey,
       summary: summary || previous.summary || '',
       status, state, reason, retry, undo,
-      request: request || previous.request || null,
+      // A settled command holding a secret asks to be forgotten; otherwise the last request is kept for replay.
+      request: clearRequest ? null : request || previous.request || null,
       dismissed: false,
     };
     const nextState = commandReceiptView(next).state;
