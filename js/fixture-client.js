@@ -1322,6 +1322,8 @@ export async function createFixtureClient(opts = {}) {
       };
     },
 
+    async getPostCallFollowups() { return { schema_version: 'post-call-followups.v1', candidates: [], send: false }; },
+
     async getHomeAgenda() {
       const board = await this.getBoard();
       return { ...board, schema_version: 'home-agenda.v1', deals: board.deals.map(deal => ({
@@ -3098,7 +3100,7 @@ export async function createFixtureClient(opts = {}) {
   let emailFixture;
   const emails = () => emailFixture ||= import('./email-proposals-fixture.js').then(({ createEmailProposalsFixture }) => createEmailProposalsFixture({ deals, seedDeals: emailSeedDeals, actor: selfActor, client, pushEvent }));
   Object.assign(client, {
-    async listEmailProposals() { return (await emails()).listEmailProposals(); },
+    async listEmailProposals(args = {}) { return (await emails()).listEmailProposals(args); },
     async previewEmailNextStep(args) { return (await emails()).previewEmailNextStep(args); },
     async previewEmailDealProgress(args) { return (await emails()).previewEmailDealProgress(args); },
     async confirmEmailNextStep(args) { return (await emails()).confirmEmailNextStep(args); },

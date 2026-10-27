@@ -25,7 +25,7 @@ async function setup(t,{width=1440,motion='no-preference',onRoute,engine=chromiu
   if(url.pathname==='/mcp'){
   const {name,arguments:args}=request.postDataJSON().params;calls.push({name,args});let value={ok:true};
    if(name==='read-doc-outcome-cards')return rpc(route,await fixture.docOutcomeCards(args));
-   const methods={'read-home-agenda':'getHomeAgenda','list-feature-switches':'listFeatureSwitches','deal-room-board':'getBoard','get-deal-room':'getDeal','deal-room-changes':'getChanges','today-triage':'todayTriage','list-doc-suggestions':'listDocSuggestions','decide-doc-suggestion':'decideDocSuggestion','list-doc-conversations':'listDocConversations','read-doc-conversation':'readDocConversation','loop-board':'loopBoard','read-loop':'readLoop','incident-board':'incidentBoard','current-work-item':'currentWorkItem','current-work-requests':'currentWorkRequests','notification-feed':'notificationFeed','list-industry-events':'listIndustryEvents','find':'find','find-and-catch-up':'findAndCatchUp'};
+   const methods={'read-home-agenda':'getHomeAgenda','read-post-call-followups':'getPostCallFollowups','list-feature-switches':'listFeatureSwitches','deal-room-board':'getBoard','get-deal-room':'getDeal','deal-room-changes':'getChanges','today-triage':'todayTriage','list-doc-suggestions':'listDocSuggestions','decide-doc-suggestion':'decideDocSuggestion','list-doc-conversations':'listDocConversations','read-doc-conversation':'readDocConversation','loop-board':'loopBoard','read-loop':'readLoop','incident-board':'incidentBoard','current-work-item':'currentWorkItem','current-work-requests':'currentWorkRequests','notification-feed':'notificationFeed','list-industry-events':'listIndustryEvents','find':'find','find-and-catch-up':'findAndCatchUp'};
    if(name==='lead-board') value={leads:[],stages:[],as_of:new Date().toISOString()};
    else if(name==='claim-card') value={claimable:0,candidates:[],needs_contact_count:0};
    else if(methods[name]) { value=await fixture[methods[name]](name==='get-deal-room'?args.deal||args.deal_id:name==='deal-room-changes'?args.cursor:args); if(name==='get-deal-room') value={...value.deal,deal_id:value.deal.id,thread:value.thread,critical_dates:value.critical_dates.map(row=>({...row,due_on:row.date})),next_actions:value.next_actions,activities:value.activities,events:[]}; }
@@ -298,7 +298,7 @@ for(const path of ['/api/tours/library','/api/v1/business/clients','/api/tours/d
  let denied=false;const {page,goto}=await setup(t,{onRoute:async(route,env)=>{
   if(denied && env.url.pathname===path){await route.fulfill({status:401,json:{}});return true;}return producerRoute(route,env);
  }});await goto('/tours');await page.locator('.tour-button').first().click();await page.waitForFunction(()=>document.querySelector('#detail-title').textContent==='Sample Tour');
- denied=true;await page.evaluate(()=>window.dispatchEvent(new Event('online')));await page.waitForFunction(()=>document.querySelector('#tour-library-state').textContent.includes('Sign in'));
+ denied=true;if(path==='/api/v1/business/clients'){await escapeRecord(page,'#tour-dialog');assert.equal((await readContext(page)).ready,true);await page.locator('#plan-client-find').click();}else await page.evaluate(()=>window.dispatchEvent(new Event('online')));await page.waitForFunction(()=>document.querySelector('#tour-library-state').textContent.includes('Sign in'));
  const c=await readContext(page);assert.equal(c.ready,false);assert.equal(c.records.length,0);
 });
 test('R8 delayed approval receipt cannot appear under a different record',async t=>{

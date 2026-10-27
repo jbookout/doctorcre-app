@@ -178,6 +178,7 @@ export function createLiveClient(opts = {}) {
       selfActor = agenda.actor || selfActor;
       return { ...agenda, deals: Array.isArray(agenda.deals) ? agenda.deals.map(dealToUi) : agenda.deals };
     },
+    async getPostCallFollowups({ signal } = {}) { return rpc('read-post-call-followups', {}, signal); },
 
     async getBoard(options = {}) {
       const board = await rpc('deal-room-board', {
@@ -302,7 +303,7 @@ export function createLiveClient(opts = {}) {
       return write('resolve-post-call-candidate', { candidate_id, accept, idempotency_key });
     },
 
-    async listEmailProposals() { return rpc('list-email-proposals', {}); },
+    async listEmailProposals(args = {}) { return rpc('list-email-proposals', args); },
     async previewEmailNextStep(args) { return rpc('preview-email-next-step', args); },
     async previewEmailDealProgress(args) { return rpc('preview-email-deal-progress', args); },
     async confirmEmailNextStep(args) { return write('confirm-email-next-step', args); },

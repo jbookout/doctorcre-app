@@ -107,3 +107,11 @@ test('returned inactive prospects appear in Leads despite retained client and de
  assert.deepEqual(visibleLeads([{...returned,prospect_engagement_status:'active'}]),[]);
  assert.deepEqual(visibleLeads([{...returned,suppressed:true}]),[]);
 });
+
+test('specialty uses the source vertical when needed and keeps unknown specialties explicit',()=>{
+ const rows=[lead(1,{specialty:' Dental '}),lead(2,{specialty:' ',vertical:'Veterinary'}),lead(3,{specialty:null}),lead(4,{specialty:'Dental',suppressed:true})];
+ assert.deepEqual(visibleLeads(rows,{specialty:'Dental'}).map(l=>l.id),[lead(1).id]);
+ assert.deepEqual(visibleLeads(rows,{specialty:'Veterinary'}).map(l=>l.id),[lead(2).id]);
+ assert.deepEqual(visibleLeads(rows,{specialty:'Specialty pending'}).map(l=>l.id),[lead(3).id]);
+ assert.deepEqual(marketCounts(rows,{specialty:'Veterinary'}).map(g=>[g.key,g.count]),[['Pensacola, FL',1]]);
+});

@@ -11,6 +11,7 @@ import { mountCallOutcomes } from './call-outcomes.js';
 import { localToday } from './calendar-model.js';
 import { agendaSnapshot, dealHref, dealSnapshot, HOME_SCOPES, readHomeAgenda, readHomeDashboard, topNewLeads } from './home-dashboard-model.js';
 import { mountNotificationBadge } from './shell.js';
+import { mountHomeCallTasks } from './home-call-tasks.js';
 
 const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
 const E = escapeHtml;
@@ -27,6 +28,11 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
   let relationshipDialog = null, pastWidget = null, secondaryRequested = false;
   let agendaExpanded = false, agendaView = 'all', nextRead = readHomeDashboard;
   let scope = 'team', snapshot = null, sequence = 0, updatedAt = null, disposed = false, leadEntries = new Map(), selectedLead = null;
+  const callTasks = $('homeCallTasks') ? mountHomeCallTasks({ document, client, host: $('homeCallTasks'), onChanged: async () => {
+    const before = sequence;
+    await auto.refresh();
+    if (!disposed && before === sequence) await auto.refresh();
+  } }) : null;
   const docSources = [['board','getHomeAgenda'],['leads','getLeadBoard']];
   const docPayload = (source, view) => source === 'board' ? {deals:scopedDeals(view?.board,scope)}
     : (view?.leads ? {leads:topNewLeads(view.leads,{scope,actor:view.board?.actor,now:now()})} : null);
@@ -59,6 +65,8 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
   };
   const render = () => {
     const signedOut = snapshot?.unauthorized;
+    callTasks?.update({ read: snapshot?.reads?.callTasks, tasks: snapshot?.callTasks, actor: snapshot?.board?.actor,
+      scope, signedOut, busy: !snapshot || snapshot.loading || snapshot.reads.board?.state !== 'read' });
     const unavailable = Object.values(snapshot?.reads || {}).some(read => read.state === 'error');
     $('homeNotice').hidden = !signedOut && !unavailable;
     $('homeNotice').innerHTML = signedOut ? '<a href="/auth/login?return_to=%2F">Sign in</a>' : unavailable ? 'Some Home data is unavailable.' : '';
@@ -136,11 +144,11 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
         $('homeDetail').close();
         $('homeDetailBody').replaceChildren();
       }
-      for (const key of ['board', 'leads', 'invoices', 'relationships']) if (result.reads[key]?.state === 'loading') view[key] = previous?.[key] ?? null;
+      for (const key of ['board', 'leads', 'invoices', 'relationships', 'callTasks']) if (result.reads[key]?.state === 'loading') view[key] = previous?.[key] ?? null;
       if (!actorChanged && result.reads.board.state === 'loading') view.details = new Map(previous?.details || []);
       return view;
     };
-    if (snapshot) snapshot = { ...snapshot, loading: true, reads: { ...snapshot.reads, board: { state: 'loading' } } };
+    if (snapshot) snapshot = { ...snapshot, loading: true, reads: { ...snapshot.reads, board: { state: 'loading' }, ...(!agendaOnly ? { callTasks: { state: 'loading' } } : {}) } };
     render();
     $('refreshHome').setAttribute('aria-busy', 'true');
     try {
@@ -257,7 +265,7 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
     button.addEventListener('keydown', event => { if (!['ArrowLeft', 'ArrowRight'].includes(event.key)) return; event.preventDefault(); const other = HOME_SCOPES[1 - HOME_SCOPES.indexOf(scope)]; select(other); buttons.find(node => node.dataset.scope === other).focus(); });
   });
   auto.refresh();
-  return { refresh: auto.refresh, dispose() { disposed = true; sequence++; window.clearInterval(expiry); auto.dispose(); document.removeEventListener('doctorcre:brief-calendar', updateCalendar); window.removeEventListener('doctorcre-session-invalidated', clearCalendar); relationshipDialog?.dispose(); pastWidget?.dispose(); emailReview?.dispose(); } };
+  return { refresh: auto.refresh, dispose() { disposed = true; sequence++; window.clearInterval(expiry); auto.dispose(); document.removeEventListener('doctorcre:brief-calendar', updateCalendar); window.removeEventListener('doctorcre-session-invalidated', clearCalendar); relationshipDialog?.dispose(); pastWidget?.dispose(); callTasks?.dispose(); emailReview?.dispose(); } };
 }
 
 if (typeof document !== 'undefined' && document.getElementById('dealAttention')) {

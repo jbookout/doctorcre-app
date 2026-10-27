@@ -62,16 +62,11 @@ export function createPlannerClient({ fetchImpl = sessionFetch, timeoutMs = 10_0
     get scope() { return scope; },
     onScopeChange(listener) { listeners.add(listener); return () => listeners.delete(listener); },
     async library(options) { const data = await read("/api/tours/library", options); return validateTourList(data.tours); },
-    async clients(options) {
-      const rows = []; let page = 1;
-      do {
-        const data = await read(`/api/v1/business/clients?scope=team&sort=name&page=${page}`, options);
-        if (!Array.isArray(data.rows) || !Number.isInteger(data.page_count) || data.page !== page) throw new Error("Invalid client list");
-        rows.push(...validateClientList(data.rows));
-        if (page >= data.page_count) return rows;
-        page += 1;
-      } while (page <= 200);
-      throw new Error("Client list incomplete");
+    async clients({ query = "", signal } = {}) {
+      const params = new URLSearchParams({ scope: "team", sort: "name", page: "1", q: query });
+      const data = await read(`/api/v1/business/clients?${params}`, { signal });
+      if (!Array.isArray(data.rows) || data.rows.length > 25 || !Number.isInteger(data.page_count) || data.page_count < 0 || data.page !== 1) throw new Error("Invalid client list");
+      return validateClientList(data.rows);
     },
     async client(id, options) {
       if (!recordId.test(id)) throw new Error("Invalid client");
