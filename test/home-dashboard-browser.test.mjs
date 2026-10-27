@@ -498,7 +498,7 @@ test('R14 a task with no critical dates opens its exact deal with its next actio
   await page.waitForFunction(() => document.querySelector('#recordPanel')?.open && document.querySelector('#detailUpdateForm'));
   assert.equal(await page.evaluate(async () => (await import('/js/pipeline.js')).state.panelDeal), 'd01');
   assert.equal(await page.locator('.deal-opening-snapshot').count(), 1);
-  assert.equal(await page.locator('.deal-current-action strong').count(), 1);
+  assert.equal(await page.locator('.deal-current-action strong').textContent(), 'Confirm fictional requirements');
 });
 
 test('R12 malformed tasks retain independent widgets and settled agenda reports partial data', async t => {
