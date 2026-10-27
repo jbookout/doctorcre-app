@@ -177,6 +177,29 @@ for (const width of [390, 1280]) test(`stage layout keeps live panels through se
     return axis === 'horizontal' ? first.width / (first.width + second.width) : first.height / (first.height + second.height);
   }, axis);
   assert.ok(Math.abs(await ratio('horizontal') - 0.7) < 0.01);
+  const divider = page.getByRole('separator', { name: 'Resize panels', exact: true });
+  await divider.waitFor({ timeout: 1500 });
+  assert.equal(await divider.getAttribute('aria-orientation'), 'vertical');
+  await divider.focus();
+  await page.keyboard.press('ArrowRight');
+  assert.ok(Math.abs(await ratio('horizontal') - 0.75) < 0.01);
+  assert.equal(await divider.evaluate(node => node === document.activeElement), true);
+  await page.keyboard.press('ArrowUp');
+  assert.ok(Math.abs(await ratio('horizontal') - 0.75) < 0.01);
+  await page.keyboard.press('Home');
+  assert.ok(Math.abs(await ratio('horizontal') - 0.01) < 0.01);
+  await page.keyboard.press('End');
+  assert.ok(Math.abs(await ratio('horizontal') - 0.99) < 0.01);
+  await page.keyboard.press('ArrowRight');
+  assert.equal(await divider.getAttribute('aria-valuenow'), '99');
+  await page.keyboard.press('ArrowLeft');
+  const box = await divider.boundingBox();
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box.x - 50, box.y + box.height / 2, { steps: 4 });
+  await page.mouse.up();
+  assert.ok(await ratio('horizontal') < 0.94);
+
   await page.getByRole('button', { name: 'Leads', exact: true }).focus();
   await page.keyboard.press('Enter');
   assert.equal(await page.locator('#deals').isVisible(), false);
@@ -190,6 +213,18 @@ for (const width of [390, 1280]) test(`stage layout keeps live panels through se
       first: tabs('main', ['leads']), second: tabs('aside', ['today', 'deals'], 'deals') } });
   });
   assert.ok(Math.abs(await ratio('vertical') - 0.25) < 0.01);
+  assert.equal(await divider.getAttribute('aria-orientation'), 'horizontal');
+  await divider.focus();
+  await page.keyboard.press('ArrowDown');
+  assert.ok(Math.abs(await ratio('vertical') - 0.3) < 0.01);
+  const rowBox = await divider.boundingBox();
+  await page.mouse.move(rowBox.x + rowBox.width / 2, rowBox.y + rowBox.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(rowBox.x + rowBox.width / 2, rowBox.y + 60, { steps: 4 });
+  await page.mouse.up();
+  assert.ok(await ratio('vertical') > 0.35);
+  await page.locator('#draft').focus();
+
   assert.equal(await page.locator('#draft').evaluate(node => node === document.activeElement), true);
   assert.equal(await page.locator('#draft').inputValue(), 'A synthetic unsaved draft');
   assert.equal(await page.locator('#deals').evaluate(node => node === window.workspaceFixture.deals), true);
