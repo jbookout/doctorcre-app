@@ -30,6 +30,8 @@ async function open(t, { width = 390, path = "/control-room/progress?board=demo-
     if (url.pathname === "/mcp") {
       const rpc = route.request().postDataJSON(); calls.push(rpc.params);
       if (onRpc && await onRpc(route, rpc.params)) return;
+      if (rpc.params.name === 'work-queue') return route.fulfill({ contentType:'application/json',body:JSON.stringify({result:{content:[{text:JSON.stringify({ok:true,stale_after_hours:24,github:[],jobs:[
+        {card_id:'WR14.S1.J1',work_request:'WR-000014',work_request_title:'Synthetic queue',stage:'build',stale:false,prs:[],card_title:'Synthetic build',executor:'codex',model:'synthetic',effort:'medium'}]})}]}})});
       if (rpc.params.name === 'unfinished-work') return route.fulfill({ contentType:'application/json',body:JSON.stringify({result:{content:[{text:JSON.stringify({schema:'unfinished-work.v1',items:[],coverage:[],census_complete:true})}]}})});
       const listing = rpc.params.name === "list-progress-boards";
       const id = rpc.params.arguments.board_id;
@@ -72,7 +74,7 @@ test("desktop and phone navigation reach Progress through More", async t => {
     assert.equal(await page.locator(selector).isVisible(), true);
     await page.locator(selector).click();
     await page.waitForURL("**/control-room/progress?mode=live");
-    await page.waitForFunction(() => document.querySelector("#board-title")?.textContent === "System progress");
+    await page.waitForFunction(() => document.querySelector("#board-title")?.textContent === "System Job Board");
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
     assert.deepEqual(errors, []);
   });
@@ -80,7 +82,7 @@ test("desktop and phone navigation reach Progress through More", async t => {
 
 test("no-param load shows system board, counts, timestamps and stale project; selection opens it", async t => {
   const { page, calls, errors } = await open(t, { path: "/control-room/progress" });
-  await page.waitForFunction(() => document.querySelector("#board-title")?.textContent === "System progress");
+  await page.waitForFunction(() => document.querySelector("#board-title")?.textContent === "System Job Board");
   assert.equal(await page.locator(".board-link").first().getAttribute("data-board-id"), "carr-v5");
   const project = page.locator('[data-board-id="demo-project"]');
   assert.match(await project.textContent(), /1 running · 1 blocked/);
@@ -88,7 +90,9 @@ test("no-param load shows system board, counts, timestamps and stale project; se
   assert.match(await project.locator('[data-freshness="stale"]').textContent(), /2d 1h ago.*Stale.*24h/);
   assert.equal(calls.find(c => c.name === "read-progress-board").arguments.board_id, "carr-v5");
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
-  assert.deepEqual(await page.locator("#board-stages .column").evaluateAll(columns => columns.map(column => column.dataset.stage)), ["build"], "only the populated Building stage renders");
+  await page.locator('#board-stages [data-card-id="WR14.S1.J1"]').waitFor();
+  assert.deepEqual(await page.locator("#board-stages .column").evaluateAll(columns => columns.map(column => column.dataset.stage)),
+    ["queued", "build", "review", "merged", "closed"], "the system board renders every queue stage");
   await project.evaluate(node => node.removeAttribute("target"));
   await page.locator('.directory-summary').click();
   await project.click();

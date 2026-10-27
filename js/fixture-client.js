@@ -2619,7 +2619,16 @@ export async function createFixtureClient(opts = {}) {
       return {ok:true,schema:'doctorcre-connections.v1',generated_at:checked_at,providers:Object.entries(CONNECTION_NAMES).map(([id,name])=>({id,name,status:id==='grok'?'needs_reconnect':'connected',checked_at,manage_url:'/control-room?tab=connections',spend:{amount:12.34,currency:'USD',kind:id==='jev'?'estimate':'charge',period:'October 2026',as_of:checked_at}})),devices:{state:'read',observed_at:checked_at,items:[{id:'demo-laptop',name:'Demo laptop',connected:true},{id:'demo-workstation',name:'Demo workstation',connected:false}]}};
     },
     async listProgressBoards(){return {schema:'progress-board-directory.v1',boards:[{board_id:'carr-v5',title:'System Job Board',updated_at:nowIso(),task_counts:{running:1}}]};},
-    async readProgressBoard({board_id}={}){const {default:queueFixture}=await import('./progress-work-queue-fixture.js');return {ok:true,snapshot:{board_id,version:1,updated_at:nowIso(),snapshot_json:structuredClone(queueFixture)},questions:[]};},
+    async readProgressBoard({board_id}={}){return {ok:true,snapshot:{board_id,version:1,updated_at:nowIso(),snapshot_json:{title:'System Job Board',tasks:{}}},questions:[]};},
+    // Synthetic work-queue rows: one demo job per derived stage, shaped like the work-queue verb.
+    async workQueue(){
+      const job=(slice,j,stage,title,prs=[],extra={})=>({card_id:`WR901.S${slice}.J${j}`,work_request:'WR-000901',work_request_title:'Demo dashboard refresh',slice_ordinal:slice,j_number:j,priority:slice*10+j,executor:'codex',model:'demo-model',effort:'medium',card_title:title,description:`Demo ${title.toLowerCase()} work.`,created_at:nowIso(),stage,stale:false,prs,...extra});
+      const pr=(n,state,draft=false)=>({repo:'jbookout/doctorcre-app',number:n,url:`https://github.com/jbookout/doctorcre-app/pull/${n}`,title:`Demo PR ${n}`,draft,state,updated_at:nowIso(),card_id:`WR901.S1.J${n-100}.app#${n}`});
+      return {ok:true,stale_after_hours:24,github:[{repo:'jbookout/doctorcre-app',state:'ok',observed_at:nowIso(),truncated:false}],jobs:[
+        job(1,1,'review','Demo chart fix',[pr(101,'open')]),job(1,2,'build','Demo table work',[pr(102,'open',true)]),
+        job(1,3,'merged','Demo copy update',[pr(103,'merged')]),job(1,4,'closed','Demo retired idea',[pr(104,'closed')]),
+        job(2,1,'queued','Demo export check',[],{stale:true})]};
+    },
     // V2 C1: one demo row per unfinished-work kind the live census returns,
     // plus a captured Work Request and a detected incident for Triage. Shapes
     // follow unfinished-work.v1 (mcp-server/src/system-work-census.v5.js);

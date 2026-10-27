@@ -1,6 +1,6 @@
 {
   "schema": "doctorcre-carr-interface.v1",
-  "version": "1.62.0",
+  "version": "1.63.0",
   "producer": {
     "repository": "jbookout/carr-system",
     "source_commit": "1df9b9936394164dd55e815f8a8bf69649508ccc"
@@ -136,6 +136,7 @@
     "update-lead",
     "update-loop",
     "update-vendor",
+    "work-queue",
     "work-request-card"
   ],
   "http_surfaces": [
@@ -1266,5 +1267,16 @@
     "schema_version": "email-proposal-quality.v1",
     "read": "email-proposal-quality {} returns days:7, kinds[], corrections[] and send:false. Kinds contain kind, proposed, pending, confirmed, dismissed, dismiss_rate, confirmed_confidence, dismissed_confidence and over_threshold. Corrections contain id, kind, deal_name, reason and resolved_at.",
     "review": "Counts are a created-at cohort. Dismissal is the correction signal, not an undo rate. Null rates and confidences mean no resolved sample. over_threshold is advisory, not enforcement. Corrections are limited to 20. No writes or sends."
+  },
+  "work_queue": {
+    "producer": {
+      "repository": "DoctorCRE/carr-system",
+      "source_commit": "23d948fafa169247bbb77179231f947532ceca5e",
+      "pull_request": "https://github.com/DoctorCRE/carr-system/pull/2547"
+    },
+    "read": "work-queue {} returns ok, stale_after_hours, github[] {repo,state,reason?,observed_at?,truncated?} and jobs[] in priority order. Each job has card_id WRn.Sm.Jk, work_request, work_request_title, slice_ordinal, j_number, priority, executor, model, effort, card_title, description, created_at, stage (queued|build|review|merged|closed), stale and prs[] {repo,number,url,title,draft,state,updated_at,card_id WRn.Sm.Jk.repo#pr}.",
+    "review": "Stage, PR links and staleness are derived by the server from Card lines on GitHub PRs; the page never recomputes them. A github source that is not ok means its PR stages may be behind and the page says so.",
+    "refresh": "One work-queue call per 30-second refresh through mountAutoRefresh, none while hidden, none after 5 idle minutes. The published carr-v5 snapshot is read once for costs and never polled.",
+    "deployment_order": "Hold auto-merge until server PR #2547 is merged and the work-queue verb is live in production."
   }
 }

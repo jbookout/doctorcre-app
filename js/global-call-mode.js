@@ -13,6 +13,8 @@ export async function mountGlobalCallMode(root = document) {
   const $ = (id) => root.getElementById(id);
   let built, call, client, probing;
   const show = (state) => {
+    // A revoked session removes the toolbar before a late probe settles.
+    if (!$("callModeButton")) return;
     const eligible = state === "available";
     $("callModeButton").hidden = !eligible;
     $("callModeAvailability").hidden = eligible;

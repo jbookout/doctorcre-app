@@ -124,7 +124,7 @@ function serve() {
 }
 
 for (const width of [390, 1280]) {
-  for (const board of ["carr-v5", "all-repos"]) {
+  for (const board of ["demo-project", "all-repos"]) {
     test(`cards and open Key have no clipping or overlap at ${width}px on ${board}`, async t => {
       const server = await serve();
       t.after(() => server.close());

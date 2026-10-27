@@ -406,47 +406,20 @@ body:has(#board-stages[aria-busy="true"]) #board-directory { display: none; }
 }
 
 .queue-board { display: block; padding-top: 12px; overflow-anchor: none; }
-.queue-root { display: grid; gap: 12px; }
-.queue-status { color: var(--fg-muted); margin-block: 0 12px; font-size: var(--font-size-1); }
-.queue-card { min-width: 0; color: var(--fg); overflow-wrap: anywhere; }
-.queue-request { border: 1px solid var(--hairline-strong); border-radius: var(--radius-3); background: var(--surface-1); padding: 8px 12px 12px; }
-.queue-row { display: flex; align-items: center; gap: 12px; min-height: 32px; }
-.queue-identity { display: flex; align-items: baseline; gap: 8px; flex: 1; min-width: 0; }
-.queue-title { margin: 0; font-size: var(--font-size-2); font-weight: var(--font-weight-strong); }
-.queue-meta { color: var(--fg-muted); font-size: var(--font-size-1); }
-.queue-request > .queue-row .queue-title, .queue-slice > .queue-row .queue-title { font-size: var(--font-size-1); }
-.queue-request > .queue-row .queue-state, .queue-slice > .queue-row .queue-state { color: var(--fg-muted); font-size: var(--font-size-1); }
-.queue-children { display: grid; gap: 4px; margin-left: 8px; padding-left: 12px; border-left: 1px solid var(--hairline-strong); }
-.queue-job { border-bottom: 1px solid var(--hairline); }
-.queue-job:last-child { border-bottom: 0; }
-.queue-job > summary { min-height: 44px; display: flex; padding: 10px 0; cursor: pointer; list-style: none; }
-.queue-job > summary::-webkit-details-marker { display: none; }
-.queue-job > summary::before { content: '›'; color: var(--fg-muted); font-size: 20px; width: 10px; flex: 0 0 10px; }
-.queue-job[open] > summary::before { transform: rotate(90deg); }
-.queue-job > summary:hover .queue-title { text-decoration: underline; text-underline-offset: .2em; }
-.queue-job .queue-identity { display: grid; gap: 3px; }
-.queue-job .queue-state { flex: 0 0 auto; border: 1px solid var(--hairline-strong); border-radius: var(--radius-round); padding: 3px 9px; font-size: var(--font-size-1); text-transform: capitalize; }
-.queue-state[data-stage="review"] { color: var(--status-warn-ink); background: var(--surface-2); }
-.queue-card > summary:focus-visible, .queue-detail-body summary:focus-visible, .queue-links a:focus-visible { outline: var(--focus-width) solid var(--focus-ring); outline-offset: 3px; border-radius: var(--radius-2); }
-.queue-detail-body { padding: 0 0 16px 22px; }
-.queue-detail-body h3 { margin-block: 20px 8px; font-size: var(--font-size-2); }
-.queue-detail-body p, .queue-detail-body li { line-height: 1.6; }
-.queue-facts { display: grid; grid-template-columns: minmax(7rem, 1fr) minmax(0, 2fr); gap: 10px 20px; margin: 16px 0; font-size: var(--font-size-1); }
-.queue-facts dt { color: var(--fg-muted); }
-.queue-facts dd { margin: 0; font-variant-numeric: tabular-nums; }
-.queue-links { display: flex; flex-wrap: wrap; gap: 4px 20px; margin-block: 4px 12px; }
-.queue-links a { color: var(--fg); min-height: 44px; align-content: center; text-decoration: underline; text-underline-offset: .2em; }
-.queue-log, .queue-execution { border-top: 1px solid var(--hairline); padding-top: 8px; margin-top: 12px; }
-.queue-detail-body summary { min-height: 44px; align-content: center; cursor: pointer; }
-.queue-log li { margin-bottom: 12px; }
-@media (max-width: 600px) {
-  .queue-request { padding: 4px 10px 8px; }
-  .queue-children { margin-left: 3px; padding-left: 9px; }
-  .queue-row { gap: 8px; }
-  .queue-identity { gap: 6px; flex-wrap: wrap; }
-  .queue-detail-body { padding-left: 0; }
-  .queue-facts { grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr); gap: 10px; }
-}
+.queue-board-status { color: var(--fg-muted); margin: 0 0 10px; font-size: var(--font-size-1); }
+.queue-board-notices { margin: 0 0 10px; padding-left: 18px; color: var(--status-warn-ink); font-size: var(--font-size-1); }
+.queue-board-notices:empty { display: none; }
+.queue-board-columns { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 200px), 1fr)); gap: 10px; }
+/* Every card stays reachable: a long column scrolls inside itself instead of stretching the page. */
+.queue-board .column-body { max-height: 70vh; overflow-y: auto; overscroll-behavior: contain; }
+.queue-board .empty { margin: 0; color: var(--fg-muted); font-size: var(--font-size-1); }
+.queue-group { margin: 6px 2px 0; color: var(--fg-muted); font-size: var(--font-size-1); font-weight: var(--font-weight-strong); overflow-wrap: anywhere; }
+.queue-job .card-top { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; }
+.queue-job .card-id { font-size: var(--font-size-1); font-variant-numeric: tabular-nums; }
+.queue-job .card-title { flex: 1 1 120px; }
+.queue-job .card-meta { display: flex; flex-wrap: wrap; gap: 4px 10px; white-space: normal; }
+.queue-job .card-meta a { color: var(--fg); text-decoration: underline; text-underline-offset: .2em; overflow-wrap: anywhere; }
+.queue-job .card-meta a:focus-visible { outline: var(--focus-width) solid var(--focus-ring); outline-offset: 2px; border-radius: var(--radius-2); }
 
 .orchestrator-board { display: block; overflow-anchor: none; }
 .orchestrator-status, .orchestrator-explanation { line-height: 1.6; color: var(--fg-muted); }

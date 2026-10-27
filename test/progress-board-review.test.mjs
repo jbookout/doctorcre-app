@@ -13,11 +13,11 @@ import { mountBoard } from "../js/progress-board.js";
 const PAGE = await readFile(new URL("../control-room.html", import.meta.url), "utf8");
 
 function snapshotRead(snapshot_json, { version = 1, questions = [] } = {}) {
-  return { snapshot: { board_id: "carr-v5", version, updated_at: "2026-09-30T12:00:00Z", snapshot_json }, questions };
+  return { snapshot: { board_id: "demo-project", version, updated_at: "2026-09-30T12:00:00Z", snapshot_json }, questions };
 }
 
 function v2(extra = {}) {
-  return { schema: "carr-progress-board.v2", kind: "project", project: "carr-v5", title: "Synthetic board",
+  return { schema: "carr-progress-board.v2", kind: "project", project: "demo-project", title: "Synthetic board",
     tasks: {}, deliverables: [], notes: [], decisions: [], ledger: [], ...extra };
 }
 
@@ -31,7 +31,7 @@ function deferred() {
 }
 
 function mount({ now = "2026-09-30T12:00:00Z", reads, answer } = {}) {
-  const dom = new JSDOM(PAGE, { url: "https://app.doctorcre.com/progress-board?board=carr-v5" });
+  const dom = new JSDOM(PAGE, { url: "https://app.doctorcre.com/progress-board?board=demo-project" });
   const { window } = dom;
   window.HTMLDialogElement.prototype.showModal = function () { this.setAttribute("open", ""); };
   let clock = new Date(now);
@@ -39,7 +39,7 @@ function mount({ now = "2026-09-30T12:00:00Z", reads, answer } = {}) {
     readProgressBoard: () => reads(),
     answerBoardQuestion: args => answer(args),
   };
-  const board = mountBoard({ window, document: window.document, client, storage: null, search: "?board=carr-v5",
+  const board = mountBoard({ window, document: window.document, client, storage: null, search: "?board=demo-project",
     now: () => clock, setInterval: () => 0, setTimeout: () => 0, clearTimeout: () => {} });
   const doc = window.document;
   return { board, window, doc, setNow: value => { clock = new Date(value); },
@@ -67,7 +67,7 @@ test("an answered question published as a snapshot decision is shown and counted
 });
 
 test("a legacy inline task question shows in the work detail", async () => {
-  const read = snapshotRead({ project: "carr-v5", title: "Legacy", tasks: {
+  const read = snapshotRead({ project: "demo-project", title: "Legacy", tasks: {
     ask: { title: "Synthetic task", status: "running", updated_at: "2026-09-30T11:55:00", question: "SYNTHETIC INLINE QUESTION" } } });
   const page = mount({ reads: async () => structuredClone(read) });
   await page.board.refresh(true);
