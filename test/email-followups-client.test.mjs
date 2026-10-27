@@ -95,3 +95,19 @@ test('an unknown confirmation does not adopt or block a different source email o
   assert.equal((await live.confirmEmailNextStep(first)).status, 'confirmed');
   assert.deepEqual(requests, [first, second, first]);
 });
+
+
+test('synthetic deal filtering happens before pagination and rejects a cross-deal cursor', async () => {
+  const client = await createFixtureClient({ seedUrl });
+  const [first, second] = (await client.listEmailProposals()).proposals;
+  const selected = await client.listEmailProposals({ deal: second.deal, limit: 1 });
+  assert.deepEqual(selected.proposals.map(row => row.id), [second.id]);
+  assert.equal(selected.more, false);
+  assert.equal(selected.next_cursor, null);
+  await assert.rejects(client.listEmailProposals({ deal: second.deal, limit: 1, cursor: first.id }),
+    error => error.payload?.error === 'email_proposals_cursor_invalid');
+  await client.dismissEmailProposal({ proposal_id: second.id, base_version: second.version, reason: 'Synthetic review complete', idempotency_key: 'scope-dismiss' });
+  assert.deepEqual((await client.listEmailProposals({ deal: second.deal, limit: 1, cursor: second.id })).proposals, []);
+  assert.deepEqual((await client.listEmailProposals({ deal: 'unknown-deal', limit: 1 })).proposals, []);
+  assert.deepEqual((await client.listEmailProposals()).proposals.map(row => row.id), [first.id]);
+});
