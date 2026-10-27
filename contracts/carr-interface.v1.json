@@ -1,6 +1,6 @@
 {
   "schema": "doctorcre-carr-interface.v1",
-  "version": "1.62.0",
+  "version": "1.63.0",
   "producer": {
     "repository": "jbookout/carr-system",
     "source_commit": "700173808625061adff581cfab415ce8e83e24f6"
@@ -36,6 +36,7 @@
     "close-investigation",
     "close-loop",
     "confirm-email-deal-progress",
+    "confirm-email-filing",
     "confirm-email-next-step",
     "confirm-slice-completions",
     "correspondence-readiness",
@@ -1258,6 +1259,16 @@
       ],
       "submission": "Only the owning authenticated human partner can submit. Preserve exact text, displayed to/cc arrays, reviewed version and original idempotency key on uncertain retries. The server compares displayed recipients with the current captured sender and other partner actor.email and refuses email_draft_recipients_mismatch if they differ. That refusal and version_conflict require explicit fresh review, never automatic resubmission. A successful receipt has ok:true, proposal_id, status:approved_to_send, version, subject, body, sha256, to and cc matching the reviewed request. It queues sending on the partner Mac and does not confirm delivery.",
       "deployment_order": "Hold deployment and auto-merge until server PR #2522 at the pinned revision is merged and live."
+    },
+    "filing": {
+      "producer": {
+        "repository": "DoctorCRE/carr-system",
+        "source_commit": "63a27918b5fdaae4b51ec257940a9049d93c51f1",
+        "pull_request": "https://github.com/DoctorCRE/carr-system/pull/2503"
+      },
+      "read": "file_to_deal and possible_new_deal carry email-filing.v1 previews with proposal_id, kind, deal, activity_id, evidence_quote, sender, sender_role, new_people, text and proposal_digest. A possible new deal has a null deal. Unknown kinds are ignored.",
+      "confirmation": "Joe or Dell confirms with confirm-email-filing {proposal_id,base_version,proposal_digest,idempotency_key,deal?}. A possible new deal supplies the ID returned by new-deal. Show public refusal hints.",
+      "deployment_order": "Deploy this consumer before producer PR #2503. Current producer responses remain supported."
     }
   },
   "email_proposal_quality": {
