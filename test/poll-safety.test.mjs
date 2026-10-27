@@ -308,3 +308,38 @@ test('another poller trigger gap does not reject a page initial session read', a
   assert.equal(requests, 3);
   safety.dispose();
 });
+
+test('a fast poller cannot starve another page poller of its refresh turn', async () => {
+  const c = fakeClock(); let fast = 0, slow = 0;
+  const { mountVisibilityPoll } = await import('../js/visibility-poll.mjs');
+  const a = mountVisibilityPoll({ ...c, intervalMs: 1_400, poll() { fast++; } });
+  const b = mountAutoRefresh({ ...c, intervalMs: 15_000, refresh() { slow++; } });
+  await c.advance(120_000);
+  assert.ok(fast > 0);
+  assert.ok(slow >= 4, 'each waiting poller must get a bounded turn while the tab is active');
+  a.dispose(); b.dispose();
+});
+
+test('a queued background cooldown cannot block an eligible human refresh', async () => {
+  const { createPollSafety } = await import('../js/poll-safety.mjs');
+  const c = fakeClock(), safety = createPollSafety(c); let requests = 0;
+  await safety.run(() => { throw Error('outage'); });
+  const transport = async () => { requests++; return new Response('{}'); };
+  const background = safety.run(() => safety.fetch(transport, '/read'), { source: {} });
+  const manual = safety.run(() => safety.fetch(transport, '/read'), { source: {}, manual: true });
+  await c.settle();
+  assert.equal(requests, 1, 'the manual allowance remains usable during automatic backoff');
+  safety.dispose(); await background; await manual;
+});
+
+test('human refresh promotes its own queued background turn without waiting for backoff', async () => {
+  const c = fakeClock(); let reads = 0;
+  const auto = mountAutoRefresh({ ...c, refresh() { if (++reads === 1) throw Error('outage'); } });
+  await auto.refresh(); await c.advance(1_000);
+  c.window.dispatchEvent(new Event('online')); await c.settle();
+  await c.advance(9_000);
+  c.window.navigator = { userActivation: { isActive: true } };
+  const manual = auto.refresh(); await c.settle();
+  assert.equal(reads, 2);
+  await manual; auto.dispose();
+});

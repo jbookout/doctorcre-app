@@ -47,6 +47,7 @@ export function mountVisibilityPoll({
   setTimeout = (fn, ms) => window.setTimeout(fn, ms), clearTimeout = id => window.clearTimeout(id),
 }) {
   const safety = pollSafety(window, { document, now });
+  const source = {};
   const clockNow = now || (() => Date.now());
   let timer = null;
   let generation = 0;
@@ -64,7 +65,7 @@ export function mountVisibilityPoll({
     return safety.run(() => {
       if (disposed || (!presence.active() && !keepAlive())) return;
       initialized = true; return poll();
-    }, { intervalMs: delay(), keepAlive: keepAlive(), manual, initial }).catch(() => {
+    }, { intervalMs: delay(), keepAlive: keepAlive(), manual, initial, source }).catch(() => {
       // The page's poll renders its own failure; the cadence carries on.
     }).finally(() => { if (mine === generation && !disposed) arm(); });
   };
@@ -77,7 +78,7 @@ export function mountVisibilityPoll({
   if (presence.active() || keepAlive()) arm();
   return {
     refresh,
-    dispose() { disposed = true; unsubscribe(); stop(); presence.dispose(); document.removeEventListener?.("visibilitychange", visibility); },
+    dispose() { disposed = true; unsubscribe(); safety.cancel(source); stop(); presence.dispose(); document.removeEventListener?.("visibilitychange", visibility); },
   };
 }
 

@@ -9,6 +9,7 @@ import { watchPresence } from "./visibility-poll.mjs";
 export function mountAutoRefresh({ document, window, refresh, onResume, onWake, intervalMs = 30_000, timeoutMs = 30_000, shouldRefresh = () => true, idleMs, now }) {
   if (!window?.addEventListener || !document?.addEventListener) return { refresh: () => {}, revalidate: () => {}, poll: () => {}, dispose: () => {} };
   const safety = pollSafety(window, { document, now });
+  const source = {};
   let timer = null;
   let running = null;
   let queuedResume = null;
@@ -26,7 +27,7 @@ export function mountAutoRefresh({ document, window, refresh, onResume, onWake, 
     // Idle stops the clock here; the first input re-reads through the resume.
     if (disposed || !presence.active()) return Promise.resolve();
     if (!shouldRefresh()) { schedule(); return Promise.resolve(); }
-    if (running) return running;
+    if (running) { if (manual) safety.promote(source); return running; }
     window.clearTimeout?.(timer);
     // A read replaced by a resume settles neither way; the queued read decides.
     let accepted = false;
@@ -34,7 +35,7 @@ export function mountAutoRefresh({ document, window, refresh, onResume, onWake, 
       if (disposed || !presence.active() || !shouldRefresh()) return;
       accepted = true; initialized = true;
       return reads.run(({ signal }) => operation({ signal }), { failure: error => { throw error; } });
-    }, { intervalMs, manual, initial }).finally(() => { running = null; schedule(!accepted); });
+    }, { intervalMs, manual, initial, source }).finally(() => { running = null; schedule(!accepted); });
     return running;
   };
   const read = () => run(refresh);
@@ -57,7 +58,7 @@ export function mountAutoRefresh({ document, window, refresh, onResume, onWake, 
   window.addEventListener("online", online);
   const unsubscribe = safety.subscribe(() => schedule());
   schedule();
-  return { refresh: manualRead, revalidate: event => { presence.touch(); return resumeRead(onResume, Boolean(event?.isTrusted || window.navigator?.userActivation?.isActive)); }, poll: read, dispose() { disposed = true; unsubscribe(); reads.dispose(); window.clearTimeout?.(timer); document.removeEventListener("visibilitychange", visibility); window.removeEventListener("online", online); presence.dispose(); } };
+  return { refresh: manualRead, revalidate: event => { presence.touch(); return resumeRead(onResume, Boolean(event?.isTrusted || window.navigator?.userActivation?.isActive)); }, poll: read, dispose() { disposed = true; unsubscribe(); safety.cancel(source); reads.dispose(); window.clearTimeout?.(timer); document.removeEventListener("visibilitychange", visibility); window.removeEventListener("online", online); presence.dispose(); } };
 }
 
 export function updatedLabel(value) {
