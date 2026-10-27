@@ -27,6 +27,8 @@ test('shared Doc shows unavailable reads, keeps Chats reachable and offers no un
     ui = mountDocPresence({ document:dom.window.document, window:dom.window, context,
       client:{ listDocSuggestions:async () => { throw new Error('unavailable'); } } });
     const doc = dom.window.document;
+    doc.querySelector('#docDetail').showModal = function () { this.open = true; };
+    ui.open();
     await settles(() => assert.match(doc.querySelector('#docSuggestions').textContent, /Unavailable/));
     // The read-only search bar is Doc's one supported input; nothing else may accept input.
     assert.equal(doc.querySelector('#docDetail form:not(#docCommandForm), #docMic, #docInput'), null);

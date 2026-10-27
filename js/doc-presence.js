@@ -1,3 +1,5 @@
+import { createPlannerClient } from '../tours/planner-client.js';
+import { onDialogClosed } from './dialog-lifecycle.js';
 import { mountDocCommandBar } from './doc-command-bar.js';
 import { navigationItems } from './navigation.js';
 import { createClient } from './client.js';
@@ -5,7 +7,6 @@ import { resolveDealroomBoot } from './boot-mode.js';
 import { pageDocContext } from './doc-context.js';
 import { contextualSuggestions, docAnswer, DOC_PAGES } from './doc-context-model.js';
 import { DOC_EVALUATED_PAGES } from './doc-accuracy.js';
-import { createDocApproval } from './doc-approval.js';
 import { mountAutoRefresh, readWithDeadline, updatedLabel } from './auto-refresh.mjs';
 import { entryDetailsHtml } from './entry-details.mjs';
 import { uuidv4 } from './uuid.js';
@@ -29,7 +30,7 @@ export function mountDocPresence({ document: root = document, window: win = wind
   dialog.querySelector('header').after(suggestionsHost);
   root.body.append(dialog);
   const $ = id => root.getElementById(id);
-  let actionsEnabled=false;
+  let actionsEnabled=false, actionGate=null;
   let snapshot = context.snapshot(), suggestions = null, suggestionState = 'updating', client = supplied, approval, shown = [], chosen = null, disposed = false, readEpoch = 0, lastScope = '';
   const keep = (target, html) => {
     if (target.innerHTML === html) return;
@@ -77,40 +78,46 @@ export function mountDocPresence({ document: root = document, window: win = wind
   let clientReady = null;
   const ensureClient = () => clientReady ||= (client ? Promise.resolve(client) : createClient(resolveDealroomBoot(win.location).mode, { ...resolveDealroomBoot(win.location).options, docContext:false }))
     .then(value => client = value, error => { clientReady = null; throw error; });
-  const actionGate=mountFeatureGate({document:root,window:win,name:'doc-suggestion-actions',
-    read:async signal=>(await ensureClient()).listFeatureSwitches({signal}),
-    onChange:enabled=>{actionsEnabled=enabled;render();},
-  });
   const refresh = async ({ signal } = {}) => {
+    if (!dialog.open || disposed) return;
     const epoch = ++readEpoch, captured = context.snapshot();
     const scope = `${captured.epoch}:${captured.page}:${captured.selected?.kind || ''}:${captured.selected?.id || ''}`;
     suggestionState = 'updating'; suggestions = null; render();
     try {
       await ensureClient();
-      approval ||= createDocApproval({ client, context, evaluatedPages:DOC_EVALUATED_PAGES, uuid:uuidv4, available:() => actionsEnabled });
+      const { createDocApproval } = await import('./doc-approval.js');
+      if (disposed || !dialog.open || epoch !== readEpoch) return;
+      approval ||= createDocApproval({ client, context, evaluatedPages:DOC_EVALUATED_PAGES, uuid:uuidv4, available:() => actionsEnabled && dialog.open });
       const args = captured.page === 'chats' && captured.selected?.kind === 'conversation' ? { conversation_id:captured.selected.id } : {};
       const payload = await readWithDeadline(() => client.listDocSuggestions(args), { signal });
       const current = context.snapshot();
-      if (disposed || signal?.aborted || epoch !== readEpoch || scope !== `${current.epoch}:${current.page}:${current.selected?.kind || ''}:${current.selected?.id || ''}`) return;
+      if (disposed || !dialog.open || signal?.aborted || epoch !== readEpoch || scope !== `${current.epoch}:${current.page}:${current.selected?.kind || ''}:${current.selected?.id || ''}`) return;
       if (payload?.ok !== true || !Array.isArray(payload.suggestions)) throw new Error('Unavailable');
       suggestions = payload; suggestionState = 'ready'; approval.reconcile(payload);
     } catch (error) { if ([401,403].includes(error.status)) context.clear(); if (epoch === readEpoch) { suggestions = null; suggestionState = 'unavailable'; } }
     finally { if (epoch === readEpoch && !disposed) render(); }
   };
-  const auto = mountAutoRefresh({ document:root, window:win, refresh, intervalMs });
+  const auto = mountAutoRefresh({ document:root, window:win, refresh, intervalMs, shouldRefresh:() => dialog.open, onResume:() => { ++readEpoch; } });
   const command = mountDocCommandBar({ dialog, window:win, context,
     pages: navigationItems, onOpen:() => {
       const brief = root.getElementById('docMorningBrief');
       if (brief?.open) brief.close();
+      actionGate ||= mountFeatureGate({document:root,window:win,name:'doc-suggestion-actions',
+        read:async signal=>(await ensureClient()).listFeatureSwitches({signal}),
+        onChange:enabled=>{actionsEnabled=enabled;render();},
+      });
+      void actionGate.refresh();
+      void auto.revalidate();
       render();
     },
     client: ensureClient,
     tours: async () => {
       if (resolveDealroomBoot(win.location).mode !== 'live') return [];
-      return (await import('../tours/planner-client.js')).createPlannerClient().library();
+      return createPlannerClient().library();
     }, intervalMs,
   });
   const open = command.open;
+  const stopClosed = onDialogClosed(dialog, () => { ++readEpoch; actionGate?.dispose(); actionGate = null; actionsEnabled = false; suggestions = null; suggestionState = 'updating'; render(); });
   $('docOpen').onclick = () => {
     if (strip.closest('#accountWorkspaceControls')) {
       const avatar = $('selfAvatar'); avatar?.click(); avatar?.focus();
@@ -128,7 +135,7 @@ export function mountDocPresence({ document: root = document, window: win = wind
     if (disposed || originScope !== lastScope || originRecord !== chosen) return;
     $('docApprovalStatus').textContent = result.state === 'approved' ? 'Discussion approved' : result.state === 'changed' ? 'Suggestion changed'
       : result.state === 'disabled' ? SUGGESTION_ACTIONS_OFF : 'Confirmation unavailable';
-    if (result.state === 'disabled') actionGate.refused();
+    if (result.state === 'disabled') actionGate?.refused();
     await auto.refresh(); render();
   });
   $('docSuggestions').addEventListener('click', event => { if (event.target.closest('[data-doc-suggestion]')) open(); });
@@ -147,9 +154,8 @@ export function mountDocPresence({ document: root = document, window: win = wind
   placePresence();
   const tick = globalThis.setInterval(() => context.tick(), 1_000); tick?.unref?.();
   root.addEventListener('doctorcre:open-doc', open);
-  auto.refresh();
   const brief = mountMorningBrief({ document:root, window:win, getClient:ensureClient, intervalMs });
-  const dispose = () => { disposed = true; ++readEpoch; approval?.dispose(); actionGate.dispose(); auto.dispose(); brief.dispose(); command.dispose(); placement.disconnect(); unsubscribe(); globalThis.clearInterval(tick); root.removeEventListener('doctorcre:open-doc',open); };
+  const dispose = () => { disposed = true; ++readEpoch; approval?.dispose(); actionGate?.dispose(); auto.dispose(); brief.dispose(); command.dispose(); stopClosed(); placement.disconnect(); unsubscribe(); globalThis.clearInterval(tick); root.removeEventListener('doctorcre:open-doc',open); };
   win.addEventListener('pagehide', event => { if (!event.persisted) dispose(); });
   return { open, refresh:auto.refresh, dispose };
 }

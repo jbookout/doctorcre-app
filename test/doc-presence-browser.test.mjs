@@ -40,6 +40,39 @@ async function setup(t,{width=1440,motion='no-preference',onRoute,engine=chromiu
  return{page,goto,calls,errors};
 }
 
+test('closed Doc skips suggestion reads and opens with fresh suggestions after context changes', async t => {
+ let approvalLoads=0;
+ const {page,goto,calls,errors}=await setup(t,{onRoute:async(route,{url})=>{
+  if(url.pathname==='/js/doc-approval.js')approvalLoads++;
+  return false;
+ }});
+ await page.clock.install();
+ await goto('/deals?mode=live');
+ await page.waitForFunction(()=>window.docContext?.snapshot().ready);
+ await page.waitForLoadState('networkidle');
+ assert.equal(calls.filter(call=>call.name==='list-doc-suggestions').length,0);
+ assert.equal(calls.filter(call=>call.name==='list-feature-switches').length,0);
+ assert.equal(approvalLoads,0);
+ await page.locator('#docOpen').click();
+ await page.locator('[data-doc-suggestion]').first().waitFor();
+ assert.ok(calls.some(call=>call.name==='list-doc-suggestions'));
+ assert.equal(approvalLoads,1);
+ await page.keyboard.press('Escape');
+ await page.waitForFunction(()=>!document.querySelector('#docDetail').open);
+ const closedReads=calls.filter(call=>call.name==='list-doc-suggestions').length;
+ const closedPermissions=calls.filter(call=>call.name==='list-feature-switches').length;
+ await page.evaluate(()=>window.docContext.select('deal','d14'));
+ await page.clock.fastForward(31_000);
+ await page.waitForLoadState('networkidle');
+ assert.equal(calls.filter(call=>call.name==='list-doc-suggestions').length,closedReads);
+ assert.equal(calls.filter(call=>call.name==='list-feature-switches').length,closedPermissions);
+ const reread=page.waitForResponse(response=>response.url().endsWith('/mcp')&&response.request().postDataJSON()?.params?.name==='list-doc-suggestions');
+ await page.locator('#docOpen').click();
+ await reread;
+ assert.ok(calls.filter(call=>call.name==='list-doc-suggestions').length>closedReads);
+ assert.deepEqual(errors,[]);
+});
+
 test('shared Doc presence appears on every authenticated route; narrow drawers never hide it',async t=>{
  const{page,goto,errors,calls}=await setup(t);
  for(const width of [1440,390]) { await page.setViewportSize({width,height:960});
@@ -91,8 +124,9 @@ test('page facts and exact selection, existing suggestions, one-tap approval, in
  await page.keyboard.press('Escape');
  await page.locator('#panelClose').click();
  await page.locator('body > #docPresence').waitFor();
+ await page.locator('#docOpen').click();
  await page.waitForFunction(()=>document.querySelector('#docSuggestions')?.textContent.includes('Confirm the survey'));
- await page.locator('#docOpen').click();await page.locator('#docRecord').selectOption('deal:d14');
+ await page.locator('#docRecord').selectOption('deal:d14');
  assert.match(await page.locator('#docFacts').innerText(),/Confirm fictional commencement/);
  await mkdir(new URL('out/test-artifacts/w8/',root),{recursive:true});
  await page.screenshot({path:new URL('out/test-artifacts/w8/staged-desktop.png',root).pathname,fullPage:page.viewportSize().width>760,animations:'disabled'});
@@ -123,6 +157,7 @@ test('page facts and exact selection, existing suggestions, one-tap approval, in
 test('selection/filter changes cancel context, auto-refresh recovers and no write happens without a click',async t=>{
  const{page,goto,calls}=await setup(t);await page.clock.install();
  await goto('/deals?mode=live');
+ await page.locator('#docOpen').click();
  await page.waitForFunction(()=>document.querySelector('#docSuggestions')?.textContent.includes('Confirm the survey'));
  const result=await page.evaluate(async()=>{
   const {pageDocContext}=await import('/js/doc-context.js');
@@ -271,7 +306,7 @@ test('R8 delayed approval receipt cannot appear under a different record',async 
  const {page,goto,calls}=await setup(t,{onRoute:async(route,{url})=>{
   if(url.pathname==='/mcp'&&route.request().postDataJSON().params.name==='decide-doc-suggestion'){started();await wait;const args=route.request().postDataJSON().params.arguments;await rpc(route,{ok:true,suggestion_id:args.suggestion_id,choice:'discuss',version:args.base_version+1});return true;}
   return false;
- }});await goto('/deals?mode=live');await page.waitForFunction(()=>document.querySelector('[data-doc-suggestion]'));await page.locator('#docOpen').click();await page.locator('[data-doc-approve]').click();await entered;
+ }});await goto('/deals?mode=live');await page.locator('#docOpen').click();await page.waitForFunction(()=>document.querySelector('[data-doc-suggestion]'));await page.locator('[data-doc-approve]').click();await entered;
  await page.keyboard.press('Escape');await page.evaluate(async()=>{const c=(await import('/js/doc-context.js')).pageDocContext;c.select('deal','d1');});await page.locator('#docOpen').click();release();
  await page.waitForTimeout(100);assert.equal(await page.locator('#docApprovalStatus').textContent(),'');
 });
