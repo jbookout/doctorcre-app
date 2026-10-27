@@ -31,7 +31,7 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
     }
   };
   window.addEventListener('doctorcre-session-invalidated', retirePendingEmail);
-  let snapshotDocObservedAt = null, calendar = null;
+  let snapshotDocObservedAt = null, calendar = null, meetingPrep = null, prepEpoch = 0;
   // The relationship dialog and the past-client widget are secondary: they load
   // after the first data paint so they never compete with the deal flags.
   let relationshipDialog = null, pastWidget = null, secondaryRequested = false;
@@ -68,7 +68,7 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
     if (!meetings) { $('homeMeetings').replaceChildren(); widget('homeMeetings', null); return; }
     const failed = meetings.state === 'unavailable';
     const count = meetings.items.length;
-    const header = `<header class="home-panel-head"><h2>Upcoming meetings</h2>${failed ? '<button type="button" class="home-refresh" data-retry-meetings aria-label="Retry meetings" title="Retry meetings">↻</button>' : `<span class="home-period">${count} ${count === 1 ? 'meeting' : 'meetings'}</span>`}</header>`;
+    const header = `<header class="home-panel-head"><h2>Upcoming meetings</h2>${client.calendarMeetingPrep ? '<button type="button" class="home-outline" data-prepare-meetings data-home-key="prepare-meetings">Prepare meetings</button>' : ''}${failed ? '<button type="button" class="home-refresh" data-retry-meetings aria-label="Retry meetings" title="Retry meetings">↻</button>' : `<span class="home-period">${count} ${count === 1 ? 'meeting' : 'meetings'}</span>`}</header>`;
     const warnings = (meetings.notes || []).map(note => `<p class="home-meeting-warning">${E(note)}</p>`).join('');
     const rows = meetings.items.map(meeting => {
       const time = new Date(meeting.start).toLocaleString(undefined, { timeZone: BUSINESS_TIME_ZONE, month: 'short', day: 'numeric', ...(meeting.all_day ? {} : { hour: 'numeric', minute: '2-digit', timeZoneName: 'short' }) });
@@ -247,8 +247,19 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
     calendar = value == null ? null : valid ? value : { state: 'unavailable', items: [] };
     renderMeetings(snapshot?.unauthorized);
   };
-  $('homeMeetings')?.addEventListener('click', event => { if (event.target.closest('[data-retry-meetings]')) document.dispatchEvent(new window.Event('doctorcre:refresh-brief-calendar')); });
-  const clearCalendar = () => { calendar = null; renderMeetings(true); };
+  $('homeMeetings')?.addEventListener('click', async event => {
+    if (event.target.closest('[data-retry-meetings]')) document.dispatchEvent(new window.Event('doctorcre:refresh-brief-calendar'));
+    const button = event.target.closest('[data-prepare-meetings]');
+    if (!button || snapshot?.unauthorized || disposed) return;
+    const epoch = prepEpoch;
+    try {
+      const { mountMeetingPreparation } = await import('./meeting-preparation.js');
+      if (disposed || epoch !== prepEpoch) return;
+      meetingPrep ||= mountMeetingPreparation({ document, window, client });
+      meetingPrep.open(button);
+    } catch { if (!disposed && epoch === prepEpoch) { $('homeNotice').hidden = false; $('homeNotice').textContent = 'Meeting preparation unavailable. Try Prepare meetings again.'; } }
+  });
+  const clearCalendar = () => { prepEpoch++; meetingPrep?.clear(); calendar = null; renderMeetings(true); };
   document.addEventListener('doctorcre:brief-calendar', updateCalendar);
   document.dispatchEvent(new window.Event('doctorcre:request-brief-calendar'));
   window.addEventListener('doctorcre-session-invalidated', clearCalendar);
@@ -302,7 +313,7 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
   if ($('homeEmailQuality') && client.getEmailProposalQuality) emailObserver.observe($('homeEmailQuality'));
   if ($('homeEmailFollowups') && client.listEmailProposals) emailObserver.observe($('homeEmailFollowups'));
   auto.refresh();
-  return { refresh: auto.refresh, dispose() { disposed = true; sequence++; emailObserver?.disconnect(); window.removeEventListener('doctorcre-session-invalidated', retirePendingEmail); window.clearInterval(expiry); auto.dispose(); document.removeEventListener('doctorcre:brief-calendar', updateCalendar); window.removeEventListener('doctorcre-session-invalidated', clearCalendar); relationshipDialog?.dispose(); pastWidget?.dispose(); callTasks?.dispose(); emailReview?.dispose(); emailQuality?.dispose(); } };
+  return { refresh: auto.refresh, dispose() { disposed = true; sequence++; prepEpoch++; meetingPrep?.dispose(); emailObserver?.disconnect(); window.removeEventListener('doctorcre-session-invalidated', retirePendingEmail); window.clearInterval(expiry); auto.dispose(); document.removeEventListener('doctorcre:brief-calendar', updateCalendar); window.removeEventListener('doctorcre-session-invalidated', clearCalendar); relationshipDialog?.dispose(); pastWidget?.dispose(); callTasks?.dispose(); emailReview?.dispose(); emailQuality?.dispose(); } };
 }
 
 if (typeof document !== 'undefined' && document.getElementById('dealAttention')) {
