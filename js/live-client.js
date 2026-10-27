@@ -464,6 +464,7 @@ export function createLiveClient(opts = {}) {
         if (!res) {
           try { res = await write('new-deal', operation.request); }
           catch (error) {
+            error.creationStage = 'new-deal';
             // Only a verified first creation refusal proves no deal was made.
             // A refusal after an uncertain attempt cannot retire that intent.
             if (error.writeRefusal && !operation.creationUncertain) {

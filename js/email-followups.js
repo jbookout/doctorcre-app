@@ -53,6 +53,7 @@ export function mountEmailFollowups({ container, client, deal, onChange = () => 
   const win = container.ownerDocument.defaultView;
   let rows = [], loaded = false, loadState = 'loading', epoch = 0, disposed = false, cursor = null, retryCursor = null, pages = 1;
   const decisions = new Map();
+  const refusedCreations = new Map();
   function render() {
     if (disposed) return;
     const active = container.contains(container.ownerDocument.activeElement) ? container.ownerDocument.activeElement : null;
@@ -70,7 +71,7 @@ export function mountEmailFollowups({ container, client, deal, onChange = () => 
       if (state.status === 'editing') {
         controls = `<div class="email-review"><p>To: ${E(state.to.join(', '))}</p><p>CC: ${E(state.cc.join(', '))}</p><p>Submit authorizes sending this exact reply to these recipients.</p><label>Subject<input type="text" maxlength="998" data-email-subject value="${E(state.subject)}"></label><label>Message<textarea rows="8" maxlength="20000" data-email-body>${E(state.body)}</textarea></label>${state.updatedDraft ? `<details><summary>Updated saved draft</summary><p>${E(state.updatedDraft.subject)}</p><p>${E(state.updatedDraft.body)}</p></details>` : ''}${state.conflict ? button('review-updated', 'Review updated draft', loadState !== 'ready') : button('submit-draft', 'Submit', loadState !== 'ready' || row.confirm_verb !== 'submit-email-draft')}${button('cancel', 'Cancel')}</div>`;
       } else if (state.status === 'filing') {
-        controls = `<div class="email-review">${createdLinks(state.createdDeals)}${preview.new_people.map(person => `<p>Person: ${E(person.name || person.email || 'Unknown')}</p>`).join('')}${row.kind === 'possible_new_deal' && !state.deal ? `<label>Deal name<input data-email-deal-name value="${E(state.name || '')}"></label><label>Existing client (reference or exact name)<input data-email-deal-client value="${E(state.client || '')}"></label>${button('create-filing', 'Create deal and confirm filing', loadState !== 'ready')}` : `${state.deal ? `<p>Created deal: <a href="/deals?deal=${encodeURIComponent(state.deal)}">Open created deal</a></p>` : ''}${button('confirm-filing', 'Confirm filing', loadState !== 'ready')}`}${state.deal ? '' : button('cancel', 'Cancel')}</div>`;
+        controls = `<div class="email-review">${createdLinks(state.createdDeals)}${preview.new_people.map(person => `<p>Person: ${E(person.name || person.email || 'Unknown')}</p>`).join('')}${row.kind === 'possible_new_deal' && !state.deal ? !preview.sender.party_id ? '<p>Add the sender as a contact first. Refresh the proposal after adding the contact.</p>' : `<label>Deal name<input data-email-deal-name value="${E(state.name || '')}"></label><label>Existing client (reference or exact name)<input data-email-deal-client value="${E(state.client || '')}"></label>${button('create-filing', 'Create deal and confirm filing', loadState !== 'ready')}` : `${state.deal ? `<p>Created deal: <a href="/deals?deal=${encodeURIComponent(state.deal)}">Open created deal</a></p>` : ''}${button('confirm-filing', 'Confirm filing', loadState !== 'ready')}`}${state.deal ? '' : button('cancel', 'Cancel')}</div>`;
       } else if (state.status === 'reviewing') {
         const replaces = row.kind === 'phase_move' ? `Moves from ${phase(preview.from_phase)} to ${phase(preview.to_phase)}.`
           : preview.owner === 'dell' ? `Replaces Dell's open actions: ${(preview.current_owner_actions || []).map(item => `${item.description} · ${day(item.due_date)}`).join('; ') || 'None'}.`
@@ -78,7 +79,8 @@ export function mountEmailFollowups({ container, client, deal, onChange = () => 
         controls = `<div class="email-review"><p>${E(replaces)}</p><p>Joe confirms this change to the deal.</p>${button('confirm', 'Confirm change', loadState !== 'ready')}${button('cancel', 'Cancel')}</div>`;
       } else if (state.status === 'dismissing') {
         controls = `<label>Reason for dismissal<textarea maxlength="500" rows="2" data-email-reason>${E(state.reason || '')}</textarea></label>${button('submit-dismiss', 'Dismiss proposal', loadState !== 'ready')}${button('cancel', 'Cancel')}`;
-      } else if (state.status === 'filing-refused') controls = `<p>Deal created: <a href="/deals?deal=${encodeURIComponent(state.deal)}">Open created deal</a>. Refresh the proposal before filing it.</p>${button('refresh-filing', 'Refresh filing')}${state.correctable ? button('correct-filing', 'Create a corrected deal') : ''}`;
+      } else if (state.status === 'creation-refused') controls = `${button('edit-filing', 'Edit deal details')}${button('cancel', 'Cancel')}`;
+      else if (state.status === 'filing-refused') controls = `<p>Deal created: <a href="/deals?deal=${encodeURIComponent(state.deal)}">Open created deal</a>. Refresh the proposal before filing it.</p>${button('refresh-filing', 'Refresh filing')}${state.correctable ? button('correct-filing', 'Create a corrected deal') : ''}`;
       else if (state.status === 'submitting') controls = button('confirm', 'Saving…', true);
       else if (state.status === 'previewing') controls = button('preview', 'Checking preview…', true);
       else if (state.status === 'unknown') controls = button('replay', 'Check outcome');
@@ -94,7 +96,7 @@ export function mountEmailFollowups({ container, client, deal, onChange = () => 
     }
   }
   function retire() {
-    epoch++; rows = []; cursor = null; retryCursor = null; pages = 1; decisions.clear(); loaded = false; loadState = 'denied'; render();
+    epoch++; rows = []; cursor = null; retryCursor = null; pages = 1; decisions.clear(); refusedCreations.clear(); loaded = false; loadState = 'denied'; render();
   }
   async function refresh(pageCursor = null) {
     if (disposed || loadState === 'denied') return;
@@ -153,7 +155,14 @@ export function mountEmailFollowups({ container, client, deal, onChange = () => 
     } catch (error) {
       if (disposed || loadState === 'denied') return;
       if (denied(error)) return retire();
-      if (error.creationRefused) decisions.set(row.id, { ...state, createRequest: null, status: 'filing', message: refusal(error) });
+      if (error.creationRefused || (error.creationStage === 'new-deal' && error.payload?.error)) {
+        const refused = refusedCreations.get(row.id) || [];
+        refused.push({ name: state.createRequest.name, client: state.createRequest.client });
+        refusedCreations.set(row.id, refused);
+        decisions.set(row.id, { ...state, status: 'creation-refused', message: error.creationRefused
+          ? 'Deal creation was refused. Edit the deal name or existing client before trying again.'
+          : 'Deal creation was not confirmed. Check the Deals list before editing the details to avoid creating a duplicate.' });
+      }
       else decisions.set(row.id, { ...state, status: 'unknown', message: 'Deal creation outcome unknown. Check outcome to recover the original request.' });
       render();
     }
@@ -177,6 +186,9 @@ export function mountEmailFollowups({ container, client, deal, onChange = () => 
     }
     if (action === 'replay' && state.status === 'unknown') return state.createRequest ? createFiling(row, state) : submit(row, state);
     if (state.status === 'unknown') return;
+    if (action === 'edit-filing' && state.status === 'creation-refused') {
+      decisions.set(row.id, { ...state, status: 'filing', createRequest: null }); render(); return;
+    }
     if (action === 'cancel') { decisions.delete(row.id); render(); return; }
     if (loadState !== 'ready') return;
     if (action === 'edit-draft' && row.kind === 'reply_draft' && row.confirm_verb === 'submit-email-draft' && row.reply_draft.owner === client.selfActor) {
@@ -204,8 +216,11 @@ export function mountEmailFollowups({ container, client, deal, onChange = () => 
     }
     if (action === 'review-filing' && filing(row) && validPreview(row, row.preview)) { decisions.set(row.id, { status: 'filing', preview: row.preview, baseVersion: row.version }); render(); return; }
     if (action === 'confirm-filing' && state.status === 'filing' && (row.kind === 'file_to_deal' || state.deal)) return submit(row, { method: 'confirmEmailFiling', request: { proposal_id: row.id, base_version: state.baseVersion, proposal_digest: state.preview.proposal_digest, ...(state.deal ? { deal: state.deal } : {}), idempotency_key: uuidv4() }, createdDeals: state.createdDeals });
-    if (action === 'create-filing' && state.status === 'filing' && row.kind === 'possible_new_deal') {
+    if (action === 'create-filing' && state.status === 'filing' && row.kind === 'possible_new_deal' && state.preview.sender.party_id) {
       if (!state.name?.trim() || !state.client?.trim()) { state.message = 'Enter a deal name and client.'; render(); return; }
+      if (refusedCreations.get(row.id)?.some(request => request.name === state.name.trim() && request.client === state.client.trim())) {
+        state.message = 'These details were already refused. Change the deal name or existing client before trying again.'; render(); return;
+      }
       return createFiling(row, { ...state, createRequest: { name: state.name.trim(), client: state.client.trim(), idempotency_key: uuidv4() } });
     }
     if (action === 'preview' && validPreview(row, row.preview)) {
