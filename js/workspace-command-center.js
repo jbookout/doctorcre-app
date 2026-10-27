@@ -5,7 +5,6 @@ import { projectInvoices, invoiceHref, invoiceMoney, invoiceDate } from './invoi
 import { introductionSuggestions } from './relationship-network-model.js';
 import { mountAutoRefresh, readWithDeadline, updatedLabel } from './auto-refresh.mjs';
 import { homeClient } from './home-boot.js';
-import { mountEmailQuality } from './email-quality.js';
 import { mountEmailFollowups } from './email-followups.js';
 import { mountCallOutcomes } from './call-outcomes.js';
 import { localToday } from './calendar-model.js';
@@ -21,7 +20,15 @@ const dateLabel = day => new Date(`${day}T12:00:00`).toLocaleDateString(undefine
 
 export function mountHomeDashboard({ document, window, client, now = () => Date.now(), intervalMs = 30_000 }) {
   const $ = id => document.getElementById(id);
-  const emailQuality = $('homeEmailQuality') && client.getEmailProposalQuality ? mountEmailQuality({ container: $('homeEmailQuality'), client }) : null;
+  let emailQuality = null, qualityRetired = false, qualityFrame = null;
+  const retirePendingQuality = () => {
+    qualityRetired = true;
+    if (!emailQuality && $('homeEmailQuality')) {
+      $('homeEmailQuality').setAttribute('aria-busy', 'false');
+      $('homeEmailQuality').innerHTML = '<header class="home-panel-head"><h2>Email proposal quality</h2></header><p role="status">Sign in to view email proposal quality.</p>';
+    }
+  };
+  window.addEventListener('doctorcre-session-invalidated', retirePendingQuality);
   const emailReview = $('homeEmailFollowups') && client.listEmailProposals ? mountEmailFollowups({ container: $('homeEmailFollowups'), client, onChange: () => { void emailQuality?.refresh(); nextRead = readHomeAgenda; auto.refresh(); } }) : null;
   let snapshotDocObservedAt = null;
   // The relationship dialog and the past-client widget are secondary: they load
@@ -154,7 +161,7 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
           if (latest?.reads?.[key]?.state === 'read') pageDocContext?.finish(docTickets.get(key),payload,{at:snapshotDocObservedAt});
           else pageDocContext?.fail(docTickets.get(key));
         }
-      } if (latest) { latest.loading = false; snapshot = project(latest); } render(); $('refreshHome').setAttribute('aria-busy', 'false'); } }
+      } if (latest) { latest.loading = false; snapshot = project(latest); } render(); loadSecondary(); $('refreshHome').setAttribute('aria-busy', 'false'); } }
   };
   const paintLeadDetail = lead => {
     const expanded = $('homeDetail').querySelector('details')?.open;
@@ -209,6 +216,19 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
   function loadSecondary() {
     if (secondaryRequested) return;
     secondaryRequested = true;
+    if ($('homeEmailQuality') && client.getEmailProposalQuality) {
+      qualityFrame = window.requestAnimationFrame(() => {
+        qualityFrame = window.requestAnimationFrame(() => {
+          if (disposed || qualityRetired) return;
+          import('./email-quality.js').then(({ mountEmailQuality }) => {
+            if (disposed || qualityRetired) return;
+            emailQuality = mountEmailQuality({ container: $('homeEmailQuality'), client });
+            window.removeEventListener('doctorcre-session-invalidated', retirePendingQuality);
+            void emailQuality.refresh();
+          });
+        });
+      });
+    }
     if ($('homeIntroductions')) import('./relationship-dialog.js').then(({ mountRelationshipDialog }) => {
       if (disposed) return;
       relationshipDialog = mountRelationshipDialog({document});
@@ -234,7 +254,7 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
     button.addEventListener('keydown', event => { if (!['ArrowLeft', 'ArrowRight'].includes(event.key)) return; event.preventDefault(); const other = HOME_SCOPES[1 - HOME_SCOPES.indexOf(scope)]; select(other); buttons.find(node => node.dataset.scope === other).focus(); });
   });
   auto.refresh();
-  return { refresh: auto.refresh, dispose() { disposed = true; sequence++; window.clearInterval(expiry); auto.dispose(); relationshipDialog?.dispose(); pastWidget?.dispose(); callTasks?.dispose(); emailReview?.dispose(); emailQuality?.dispose(); } };
+  return { refresh: auto.refresh, dispose() { disposed = true; sequence++; window.cancelAnimationFrame(qualityFrame); window.removeEventListener('doctorcre-session-invalidated', retirePendingQuality); window.clearInterval(expiry); auto.dispose(); relationshipDialog?.dispose(); pastWidget?.dispose(); callTasks?.dispose(); emailReview?.dispose(); emailQuality?.dispose(); } };
 }
 
 if (typeof document !== 'undefined' && document.getElementById('dealAttention')) {

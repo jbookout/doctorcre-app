@@ -126,3 +126,51 @@ test('Home email quality loads separately, retries a failed report, and refreshe
   await quality.getByText(/Sign in/).waitFor();
   assert.doesNotMatch(await quality.innerText(), /Already handled|Demo/);
 });
+
+
+test('Home paints deal attention before loading email quality', async t => {
+  const page = await browser.newPage({ viewport: { width: 390, height: 1000 }, reducedMotion: 'reduce' });
+  t.after(() => page.close());
+  await page.request.post(`${origin}/api/test/seed`, { data: { namespace: 'quality-after-paint', viewer: 'joe', reset: true } });
+  await page.addInitScript(() => localStorage.setItem('doctorcre.visual-preferences', JSON.stringify({ walkthroughSeen: { joe: true, dell: true } })));
+  let attentionPainted = false;
+  await page.route('**/js/email-quality.js', async route => {
+    attentionPainted = await page.locator('#dealFlags .home-flag').count() > 0;
+    await route.continue();
+  });
+  await page.goto(origin);
+  await page.locator('#homeEmailQuality [data-quality-kind]').first().waitFor();
+  assert.equal(attentionPainted, true, 'quality code waits for the primary Home data');
+});
+
+test('Home session loss during the quality download prevents a late report read', async t => {
+  const page = await browser.newPage({ viewport: { width: 390, height: 1000 }, reducedMotion: 'reduce' });
+  t.after(() => page.close());
+  await page.request.post(`${origin}/api/test/seed`, { data: { namespace: 'quality-lazy-session', viewer: 'joe', reset: true } });
+  await page.addInitScript(() => localStorage.setItem('doctorcre.visual-preferences', JSON.stringify({ walkthroughSeen: { joe: true, dell: true } })));
+  let reads = 0;
+  await page.route('**/mcp', route => {
+    if (route.request().postDataJSON().params.name === 'email-proposal-quality') reads++;
+    return route.continue();
+  });
+  await page.route('**/js/email-quality.js', async route => {
+    await page.evaluate(() => dispatchEvent(new Event('doctorcre-session-invalidated')));
+    await route.continue();
+  });
+  await page.goto(`${origin}/?mode=live`);
+  await page.locator('#homeEmailQuality').getByText('Sign in to view email proposal quality.', { exact: true }).waitFor({ timeout: 5000 });
+  assert.equal(reads, 0);
+});
+
+
+test('Home still loads email quality when the agenda read fails', async t => {
+  const page = await browser.newPage({ viewport: { width: 390, height: 1000 }, reducedMotion: 'reduce' });
+  t.after(() => page.close());
+  await page.request.post(`${origin}/api/test/seed`, { data: { namespace: 'quality-without-agenda', viewer: 'joe', reset: true } });
+  await page.addInitScript(() => localStorage.setItem('doctorcre.visual-preferences', JSON.stringify({ walkthroughSeen: { joe: true, dell: true } })));
+  await page.route('**/mcp', route => route.request().postDataJSON().params.name === 'read-home-agenda'
+    ? route.fulfill({ status: 503, json: { error: 'synthetic_outage' } }) : route.continue());
+  await page.goto(`${origin}/?mode=live`);
+  await page.locator('#dealFlags').getByText('Deals unavailable', { exact: true }).waitFor();
+  await page.locator('#homeEmailQuality [data-quality-kind]').first().waitFor({ timeout: 5000 });
+});

@@ -3099,14 +3099,9 @@ export async function createFixtureClient(opts = {}) {
 
   let emailFixture;
   const emails = () => emailFixture ||= import('./email-proposals-fixture.js').then(({ createEmailProposalsFixture }) => createEmailProposalsFixture({ deals, seedDeals: emailSeedDeals, actor: selfActor, client, pushEvent }));
-  Object.assign(client, {
-    async getEmailProposalQuality() { return (await emails()).getEmailProposalQuality(); },
-    async listEmailProposals(args = {}) { return (await emails()).listEmailProposals(args); },
-    async previewEmailNextStep(args) { return (await emails()).previewEmailNextStep(args); },
-    async previewEmailDealProgress(args) { return (await emails()).previewEmailDealProgress(args); },
-    async confirmEmailNextStep(args) { return (await emails()).confirmEmailNextStep(args); },
-    async confirmEmailDealProgress(args) { return (await emails()).confirmEmailDealProgress(args); },
-    async dismissEmailProposal(args) { return (await emails()).dismissEmailProposal(args); },
-  });
+  Object.assign(client, Object.fromEntries([
+    'getEmailProposalQuality', 'listEmailProposals', 'previewEmailNextStep', 'previewEmailDealProgress',
+    'confirmEmailNextStep', 'confirmEmailDealProgress', 'dismissEmailProposal',
+  ].map(method => [method, async args => (await emails())[method](args)])));
   return opts.docContext === false ? client : observeDocClient(client);
 }
