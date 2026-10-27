@@ -68,6 +68,7 @@ async function open(t, { calendar, initialBriefFailure = false, theme = 'dark', 
     'email-proposal-quality': () => client.getEmailProposalQuality(),
     'list-email-proposals': async () => ({ schema_version: 'email-proposals.v1', proposals: [], send: false, more: false, next_cursor: null }),
     'read-call-outcomes': async () => ({ schema_version: 'call-outcomes.v1', calls: [], send: false }),
+    'calendar-meeting-prep': () => client.calendarMeetingPrep(),
   };
   await page.route('**/*', async route => {
     const url = new URL(route.request().url());
@@ -862,5 +863,111 @@ for (const width of [1440, 390]) for (const theme of ['light', 'dark']) test(`Up
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
   const warning = card.getByText('Check Outlook for attendance and cancellations.', { exact: true });
   assert.notEqual(await warning.evaluate(node => getComputedStyle(node).color), await card.locator('.home-meeting').first().evaluate(node => getComputedStyle(node).color));
+  assert.deepEqual(errors, []);
+});
+
+
+const prepCalendar = { state: 'ready', items: [{ title: 'Demo preparation entry', start: '2026-10-01T16:00:00Z', attendee_count: 2 }] };
+
+for (const width of [390, 1440]) for (const theme of ['light', 'dark']) test(`Meeting preparation opens possible deal context on demand at ${width}px ${theme}`, async t => {
+  const { page, calls, errors, responses } = await open(t, { width, theme, calendar: { state: 'ready', items: [
+    { start: '2026-10-01T16:00:00Z', title: 'Demo practice meeting', location: 'Demo office', attendee_count: 3, all_day: false },
+  ] } });
+  assert.equal(calls.includes('calendar-meeting-prep'), false, 'Home does not fetch preparation before it is requested');
+  responses.set('calendar-meeting-prep', {
+    state: 'partial', observed_at: '2026-10-01T14:00:00Z', notes: ['Check Outlook for cancellations.'],
+    sources: { outlook_calendar: { state: 'stale' }, deal_suggestions: { state: 'ready' }, meeting_prep: { state: 'ready' } },
+    items: [{ title: 'Demo lease review <script>', start: '2026-10-01T16:00:00Z', end: '2026-10-01T17:00:00Z', location: 'Demo office', all_day: false,
+      schedule_conflict: true, time_changed: true, possible_deals: [
+        { id: 'demo/deal?one', name: 'Demo lease <img>', prep: { state: 'ready', phase: 'Negotiation', next_step: 'Review counteroffer', next_date: '2026-11-02', last_touch: '2026-09-30', market: 'Demo City' } },
+        { id: 'demo-other', name: 'Demo alternative', prep: { state: 'unavailable' } },
+        { id: 'demo-missing', name: 'Demo missing facts', prep: { state: 'ready', phase: null, next_step: null, next_date: null, last_touch: null, market: null } },
+      ] }],
+  });
+  await page.getByRole('button', { name: 'Prepare meetings', exact: true }).click({ timeout: 2000 });
+  const dialog = page.getByRole('dialog', { name: 'Meeting preparation', exact: true });
+  await settles(async () => assert.match(await dialog.innerText(), /Review counteroffer/));
+  const text = await dialog.innerText();
+  for (const value of ['Possible deals', 'not confirmed', 'Demo lease review <script>', 'Demo lease <img>', 'Negotiation', '2026-11-02', '2026-09-30', 'Demo City', 'Preparation unavailable', 'Check Outlook for cancellations.', 'stale', 'Overlapping meetings', 'Time changed']) assert.ok(text.includes(value), value);
+  assert.equal(await dialog.getByRole('link', { name: 'Demo lease <img>', exact: true }).getAttribute('href'), '/deals?deal=demo%2Fdeal%3Fone');
+  assert.equal(await dialog.locator('script,img').count(), 0);
+  assert.equal(await dialog.getByText('Not recorded', { exact: true }).count(), 5);
+  assert.equal(await dialog.evaluate(node => node.scrollWidth <= node.clientWidth + 1), true);
+  await screenshot(page, `meeting-preparation-detail-${width}-${theme}`);
+  await dialog.getByRole('button', { name: 'Close meeting preparation', exact: true }).click();
+  await settles(async () => assert.equal(await dialog.isVisible(), false));
+  assert.equal(await page.getByRole('button', { name: 'Prepare meetings', exact: true }).evaluate(node => node === document.activeElement), true);
+  assert.deepEqual(errors, []);
+});
+
+
+test('Meeting preparation distinguishes unavailable, malformed, partial and verified empty reads and retries', async t => {
+  const { page, responses, errors } = await open(t, { calendar: prepCalendar });
+  responses.set('calendar-meeting-prep', { then(_resolve, reject) { reject(Error('Synthetic outage')); } });
+  await page.getByRole('button', { name: 'Prepare meetings', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: 'Meeting preparation', exact: true });
+  await settles(async () => assert.match(await dialog.innerText(), /Meeting preparation unavailable/));
+  for (const [value, expected] of [
+    [{ state: 'empty', items: [null] }, /Meeting preparation unavailable/],
+    [{ state: 'unavailable', items: [], notes: ['Demo calendar source unavailable.'] }, /Demo calendar source unavailable/],
+    [{ state: 'partial', items: [], notes: ['Some stored meetings could not be shown.'] }, /No meetings returned/],
+    [{ state: 'partial', notes: [], sources: { deal_suggestions: { state: 'unavailable' } }, items: [{ title: 'Demo unmatched meeting', start: '2026-10-01T16:00:00Z', end: '2026-10-01T17:00:00Z', possible_deals: [] }] }, /Possible deals unavailable/],
+    [{ state: 'empty', items: [], notes: [] }, /No upcoming meetings/],
+  ]) {
+    responses.set('calendar-meeting-prep', value);
+    await dialog.getByRole('button', { name: 'Refresh preparation', exact: true }).click();
+    await settles(async () => assert.match(await dialog.innerText(), expected));
+    if (value.state !== 'empty' || value.items.length) assert.doesNotMatch(await dialog.innerText(), /No upcoming meetings/);
+  }
+  assert.deepEqual(errors, []);
+});
+
+for (const retire of ['close', 'session']) test(`Meeting preparation fences late results after ${retire}`, async t => {
+  const { page, responses, errors } = await open(t, { calendar: prepCalendar });
+  let release;
+  responses.set('calendar-meeting-prep', new Promise(resolve => { release = resolve; }));
+  t.after(() => release({ state: 'empty', items: [] }));
+  await page.getByRole('button', { name: 'Prepare meetings', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: 'Meeting preparation', exact: true });
+  await settles(async () => assert.match(await dialog.innerText(), /Loading meeting preparation/));
+  if (retire === 'close') await page.keyboard.press('Escape');
+  else await page.evaluate(() => dispatchEvent(new Event('doctorcre-session-invalidated')));
+  await settles(async () => assert.equal(await dialog.isVisible(), false));
+  const oldResult = { state: 'partial', items: [], notes: ['Demo retired private preparation'] };
+  release(oldResult);
+  await page.waitForTimeout(50);
+  assert.doesNotMatch(await page.locator('body').textContent(), /Demo retired private preparation/);
+  if (retire === 'close') {
+    responses.set('calendar-meeting-prep', { state: 'empty', items: [] });
+    await page.getByRole('button', { name: 'Prepare meetings', exact: true }).click();
+    await settles(async () => assert.match(await dialog.innerText(), /No upcoming meetings/));
+    assert.doesNotMatch(await dialog.innerText(), /Demo retired private preparation/);
+  } else assert.equal(await page.locator('#homeMeetings').textContent(), '');
+  assert.deepEqual(errors, []);
+});
+
+
+test('Meeting preparation clears protected content after an authorization refusal', async t => {
+  const { page, responses, errors } = await open(t, { calendar: prepCalendar });
+  await page.getByRole('button', { name: 'Prepare meetings', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: 'Meeting preparation', exact: true });
+  await settles(async () => assert.match(await dialog.innerText(), /Demo practice planning/));
+  responses.set('calendar-meeting-prep', { then(_resolve, reject) { reject(Object.assign(Error('Synthetic refusal'), { status: 403 })); } });
+  await dialog.getByRole('button', { name: 'Refresh preparation', exact: true }).click();
+  await settles(async () => assert.equal(await dialog.isVisible(), false));
+  assert.doesNotMatch(await page.locator('body').textContent(), /Demo practice planning/);
+  assert.deepEqual(errors, []);
+});
+
+
+for (const calendar of [{ state: 'empty', items: [] }, null]) test(`Meeting preparation restores current Home entry focus after calendar ${calendar ? 'repaint' : 'removal'}`, async t => {
+  const { page, errors } = await open(t, { calendar: prepCalendar });
+  await page.getByRole('button', { name: 'Prepare meetings', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: 'Meeting preparation', exact: true });
+  await settles(async () => assert.match(await dialog.innerText(), /Demo practice planning/));
+  await page.evaluate(calendar => document.dispatchEvent(new CustomEvent('doctorcre:brief-calendar', { detail: calendar })), calendar);
+  await dialog.getByRole('button', { name: 'Close meeting preparation', exact: true }).click();
+  const target = calendar ? page.getByRole('button', { name: 'Prepare meetings', exact: true }) : page.locator('#homePrimaryAction');
+  await settles(async () => assert.equal(await target.evaluate(button => button === document.activeElement), true));
   assert.deepEqual(errors, []);
 });

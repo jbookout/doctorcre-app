@@ -1,6 +1,6 @@
 {
   "schema": "doctorcre-carr-interface.v1",
-  "version": "1.61.0",
+  "version": "1.62.0",
   "producer": {
     "repository": "jbookout/carr-system",
     "source_commit": "1df9b9936394164dd55e815f8a8bf69649508ccc"
@@ -28,6 +28,7 @@
     "answer-work-request-for-joe",
     "append-tour-selection-cart-version",
     "approve-retrieval-proposals",
+    "calendar-meeting-prep",
     "cancel-capability-session",
     "cancel-workflow-cutover-plan",
     "capture-queue",
@@ -920,6 +921,21 @@
       "projection": "One password-bound portal, canonical roadmap and explicitly shared text material only.",
       "password_lifetime": "Form and request memory only. Never URL, storage, diagnostic output or Doc context.",
       "deployment_order": "Server must be live before the app consumer merges or deploys. Public client hosting remains separate."
+    },
+    "calendar-meeting-prep": {
+      "version": "1.0.0",
+      "producer": {
+        "repository": "DoctorCRE/carr-system",
+        "source_commit": "e36b9de61f998414b68239dcc3f97140f738bc17",
+        "pull_request": "https://github.com/DoctorCRE/carr-system/pull/2478"
+      },
+      "arguments": {},
+      "audience": "Authenticated partner only; no caller-selected sponsor or tenant.",
+      "response": "Calendar section with state ready, empty, partial or unavailable; items, notes, observed_at and sources. Each item has start, end, title, location, all_day, schedule_conflict, time_changed and possible_deals. Each possible deal has id, name, client_ref and prep.",
+      "preparation": "prep.state is ready or unavailable. Ready preparation supplies nullable phase, next_step, next_date, last_touch and market. Missing preparation never hides the meeting or its possible deal link.",
+      "match_basis": "Exact attendee email is a possible match, never a confirmed meeting-to-deal relationship. Display suggestions as unconfirmed. Failed deal_suggestions is unavailable, never proof of no related deal.",
+      "presentation": "On-demand Home dialog. Render calendar notes including zero-row partial responses, source freshness, unavailable states and retry. No startup read or writes. Clear content and reject late results on close, disposal or session invalidation.",
+      "content_storage": "Memory only."
     }
   },
   "vendor_directory": {

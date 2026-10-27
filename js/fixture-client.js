@@ -1248,6 +1248,18 @@ export async function createFixtureClient(opts = {}) {
     };
   }
 
+  function fixtureCalendar() {
+    const deal = [...deals.values()].find(row => row.owner === selfActor && !isClosedDeal(row));
+    const start = new Date(Date.parse(nowIso()) + 3_600_000).toISOString();
+    return { state: 'partial', observed_at: nowIso(), notes: ['Synthetic calendar. Check Outlook for attendance and cancellations.'],
+      sources: { outlook_calendar: { state: 'partial' }, deal_suggestions: { state: 'ready' }, meeting_prep: { state: 'ready' } },
+      match_basis: 'attendee_email_possible_match', items: [{ title: 'Demo practice planning', start,
+        end: new Date(Date.parse(start) + 3_600_000).toISOString(), location: 'Demo office', attendee_count: 2,
+        all_day: false, schedule_conflict: false, time_changed: false, possible_deals: deal ? [{ id: deal.id, name: deal.name, client_ref: deal.client_ref,
+          prep: { state: 'ready', phase: deal.phase ?? null, next_step: deal.next_step ?? null, next_date: deal.next_date ?? null, last_touch: deal.last_touch ?? null, market: deal.market ?? null } }] : [] }],
+    };
+  }
+
   const industryEvents = new Map();
   const invoices = createInvoiceFixture({ actor: selfActor, entries: opts.invoiceEntries, today: opts.today });
   const emailSeedDeals = [...deals.values()].map(({ id, phase }) => ({ id, phase }));
@@ -1665,6 +1677,7 @@ export async function createFixtureClient(opts = {}) {
     async listFeatureSwitches() {
       return {ok:true,schema:'feature-switches.v1',switches:[{name:'doc-suggestion-actions',available:true}]};
     },
+    async calendarMeetingPrep() { return fixtureCalendar(); },
     async morningBrief() {
       const section = items => ({ state: items.length ? 'ready' : 'empty', items });
       const board = await this.getBoard();

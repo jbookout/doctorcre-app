@@ -164,3 +164,11 @@
 }
 
 #homeEmailFollowups, #homeEmailQuality { grid-column: 1 / -1; overflow-wrap: anywhere; }
+
+#homeMeetings .home-panel-head { flex-wrap: wrap; }
+#homeMeetings [data-prepare-meetings] { margin-left: auto; background: transparent; cursor: pointer; }
+.meeting-preparation .meeting-prep-meeting { border-top: var(--hairline-width) solid var(--hairline); margin-top: var(--space-4); padding-top: var(--space-4); }
+.meeting-preparation h4 { margin: var(--space-3) 0 var(--space-2); font-size: var(--font-size-2); }
+.meeting-preparation a { color: var(--fg); overflow-wrap: anywhere; }
+.meeting-preparation [data-prep-content] { margin-top: var(--space-3); }
+.meeting-preparation .meeting-prep-deal { padding-left: var(--space-3); border-left: var(--hairline-width) solid var(--hairline-strong); }
