@@ -94,6 +94,7 @@
     "read-loop",
     "read-notification-preferences",
     "read-portfolio",
+    "read-post-call-followups",
     "read-progress-board",
     "read-resource-dashboard",
     "read-room",
@@ -878,6 +879,26 @@
           "source_ref"
         ]
       }
+    },
+    "read-post-call-followups": {
+      "write": false,
+      "producer": {
+        "repository": "DoctorCRE/carr-system",
+        "source_commit": "cd3d22427e38a799ebdd95828e16396f9ec8c06e",
+        "pull_request": "https://github.com/DoctorCRE/carr-system/pull/2336"
+      },
+      "response": {
+        "schema_version": "post-call-followups.v1",
+        "send": false,
+        "candidate_keys": ["id", "session_id", "kind", "deal_id", "deal_name", "payload", "evidence_quote", "created_at"],
+        "task_payload_keys": ["deal_id", "assignee", "action", "due_on"],
+        "email_payload_keys": ["deal_id", "recipient_party_id", "recipient_ref", "subject", "body_sha256"],
+        "membership": "Pending proposals in unexpired distilling post-call sessions for active board deals. Ordered by created_at, then id.",
+        "limit": 1000,
+        "overflow": "post_call_followups_limit_exceeded; no partial snapshot is returned."
+      },
+      "home_slice": "Assigned task proposals only. The app preserves the explicit assignee, action and date and leaves email proposals unresolved in local Call Mode.",
+      "resolution": "Existing resolve-post-call-candidate records an assigned action or skips one proposal. It does not perform the described action. Email resolution confirms only metadata and a local body hash; it creates no email or Outlook draft."
     },
     "read-client-portal": {
       "write": true,

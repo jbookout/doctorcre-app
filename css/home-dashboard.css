@@ -53,6 +53,18 @@
 .home-flag div > span, .home-agenda div > span, .home-lead div > span { display: block; color: var(--fg-muted); font-size: var(--font-size-1); line-height: var(--line-height-body); overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
 .home-arrow { flex: none; color: var(--fg-quiet); }
 .home-empty { margin: 0; padding: var(--space-3) 0; color: var(--fg-muted); font-size: var(--font-size-1); }
+.home-call-tasks { margin-top: var(--space-4); padding-top: var(--space-4); border-top: var(--hairline-width) solid var(--hairline); }
+.home-call-tasks[hidden] { display: none; }
+.home-call-tasks h3 { margin: 0 0 var(--space-3); font-size: var(--font-size-2); }
+.home-call-task { display: flex; gap: var(--space-4); justify-content: space-between; padding: var(--space-3) 0; }
+.home-call-task > div { min-width: 0; }
+.home-call-task a { color: var(--fg); font-weight: var(--font-weight-strong); overflow-wrap: anywhere; }
+.home-call-task p { margin: var(--space-2) 0; overflow-wrap: anywhere; }
+.home-call-task span, .home-call-task details, .home-call-task-notice { color: var(--fg-muted); font-size: var(--font-size-1); }
+.home-call-task-controls { display: flex; align-items: flex-start; gap: var(--space-2); flex: none; }
+.home-call-task button { background: transparent; cursor: pointer; }
+.home-call-task button:disabled, .home-call-task button[aria-disabled="true"] { opacity: .5; cursor: default; }
+.home-call-task-error { color: var(--status-warn-ink); }
 
 /* The secondary grid. */
 .home-grid { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: var(--space-4); align-items: start; }
@@ -135,6 +147,8 @@
   .home-deals .home-panel-head { flex-direction: column; align-items: stretch; gap: var(--space-3); }
   #homePrimaryAction { width: 100%; }
   .home-grid { grid-template-columns: minmax(0, 1fr); }
+  .home-call-task { flex-direction: column; gap: var(--space-2); }
+  .home-call-task-controls { flex-wrap: wrap; }
   .home-flags, .home-agenda { margin-inline: calc(var(--space-2) * -1); }
   .home-flag, .home-agenda a { padding-inline: var(--space-2); }
   .home-detail { padding: var(--space-4); }

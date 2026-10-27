@@ -5,6 +5,41 @@ import { chromium } from './browser-harness.mjs';
 import { routeLeads } from './leads-browser-fixture.mjs';
 import { lead, workspace } from './leads-workspace-fixture.mjs';
 
+for (const width of [390, 1440]) test(`Specialty filters the board and territory together at ${width}px`, async t => {
+  const browser = await chromium.launch({ args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
+  t.after(() => browser.close());
+  const page = await browser.newPage({ viewport: { width, height: 1000 }, reducedMotion: 'reduce' });
+  const board = workspace();
+  board.leads = [lead(1), lead(2, { specialty: 'Veterinary' }), lead(3, { specialty: 'Dental', city: 'Mobile', state: 'AL' })];
+  const writes = [];
+  await routeLeads(page, { getBoard: () => board, onWrite: value => writes.push(value) });
+  await page.goto('http://localhost/leads');
+  await page.locator('#leadBoard .lead-card').first().waitFor();
+  await page.getByRole('button', { name: 'Show territory', exact: true }).click();
+  await page.locator('.market-marker').first().waitFor();
+  const canvas = await page.locator('.maplibregl-canvas').elementHandle();
+  const specialty = page.locator('#specialtyFilter');
+  await specialty.focus();
+  await specialty.selectOption('Dental');
+  assert.equal(await specialty.evaluate(node => node === document.activeElement), true);
+  assert.deepEqual(await page.locator('#leadBoard .lead-card').evaluateAll(nodes => nodes.map(node => node.dataset.leadId)), [lead(1).id, lead(3).id]);
+  assert.equal(await page.locator('#filterSummary').textContent(), '2 matching leads');
+  await page.waitForFunction(() => [...document.querySelectorAll('.market-marker')].flatMap(node => JSON.parse(node.dataset.leadIds)).length === 2);
+  assert.deepEqual(await page.locator('.market-marker').evaluateAll(nodes => nodes.flatMap(node => JSON.parse(node.dataset.leadIds)).sort()), [lead(1).id, lead(3).id]);
+  assert.equal(await canvas.evaluate(node => node === document.querySelector('.maplibregl-canvas')), true);
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
+  await mkdir('test-artifacts/wr221-specialty', { recursive: true });
+  await page.screenshot({ path: `test-artifacts/wr221-specialty/leads-${width}.png`, fullPage: true });
+  await page.locator('#marketFilter').selectOption('Mobile, AL');
+  assert.deepEqual(await page.locator('#leadBoard .lead-card').evaluateAll(nodes => nodes.map(node => node.dataset.leadId)), [lead(3).id]);
+  await specialty.selectOption('Veterinary');
+  assert.equal(await page.getByText('No leads match these filters.', { exact: true }).isVisible(), true);
+  await page.getByRole('button', { name: 'Reset filters', exact: true }).click();
+  assert.equal(await specialty.inputValue(), '');
+  assert.equal(await page.locator('#leadBoard .lead-card').count(), 3);
+  assert.deepEqual(writes, []);
+});
+
 for (const width of [1440, 390]) for (const theme of ['dark', 'light']) {
   test(`Leads uneven board stays readable and stage navigation stays usable at ${width}px ${theme}`, async t => {
     const browser = await chromium.launch();

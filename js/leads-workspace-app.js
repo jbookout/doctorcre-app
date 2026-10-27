@@ -5,7 +5,7 @@ import {onDialogClosed} from './dialog-lifecycle.js';
 import { pageDocContext, publishDocRead, selectDocRecord, setDocFilters } from './doc-context.js';
 import { createLeadBoardClient, validateLeadWorkspace, validateLeadDetail } from "./leads-client.js";
 import { mountAutoRefresh, updatedLabel } from "./auto-refresh.mjs";
-import { BOARD_STAGES, FILTER_STAGES, stageLabel, normalizedStage, eligibleLead, leadTitle, marketKey,
+import { BOARD_STAGES, FILTER_STAGES, stageLabel, normalizedStage, eligibleLead, leadTitle, marketKey, specialtyKey,
   visibleLeads, hotLeadPanel, marketCounts, stageReview, automaticMove, undoReview } from "./leads-model.js";
 import { mountTerritoryMap } from "./leads-territory-map.js";
 
@@ -23,7 +23,7 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
   const engagement = engagementWriterFor(client, engagementStorage(win));
   const engagementChecks = new Set();
   const expandedStages = new Set();
-  const state = { board: null, readFailed: false, actor: null, epoch: 0, detailEpoch: 0, reviewEpoch: 0, filters: { search: "", owner: "", stage: "", market: "" },
+  const state = { board: null, readFailed: false, actor: null, epoch: 0, detailEpoch: 0, reviewEpoch: 0, filters: { search: "", owner: "", stage: "", market: "", specialty: "" },
     historyRequest: null, historyError: null, selectedId: null, detail: null, detailId: null, resumeDetail: null, resumeReview: null, commandFeedback: null, connectionFeedback: null, proposal: null, reviewTarget: null, pending: null, writing: false, identityReady: false, trigger: null, drag: null, map: null };
   const leadById = id => state.board?.leads.find(lead => lead.id === id && eligibleLead(lead));
   const reviewComplete = (lead, target, undoEventId) => (undoEventId ? lead.stage : normalizedStage(lead)) === target;
@@ -64,6 +64,7 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
     const leads = state.board?.leads || [];
     const owners = [...new Set(leads.filter(eligibleLead).map(l => l.owner).filter(Boolean))].sort();
     const markets = [...new Set(leads.filter(eligibleLead).map(marketKey))].sort();
+    const specialties = [...new Set([...leads.filter(eligibleLead).map(specialtyKey), state.filters.specialty].filter(Boolean))].sort();
     if (state.board && !owners.includes(state.filters.owner)) state.filters.owner = "";
     if (state.board && !markets.includes(state.filters.market)) state.filters.market = "";
     const shown = visibleLeads(leads, state.filters);
@@ -76,6 +77,7 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
     $("ownerFilter").innerHTML = options(owners.map(k => [k, ownerName(k)]), state.filters.owner, "All owners");
     const groups = marketCounts(leads, state.filters, state.map?.locate);
     $("marketFilter").innerHTML = options(markets.map(k => [k, k]), state.filters.market, "All markets");
+    $("specialtyFilter").innerHTML = options(specialties.map(k => [k, k]), state.filters.specialty, "All specialties");
     $("clearMarket").hidden = !state.filters.market;
     $("marketCounts").innerHTML = groups.map(g => `<button data-market="${esc(g.key)}" aria-pressed="${g.key === state.filters.market}">${esc(g.key)}<b>${g.count}</b></button>`).join("") || '<p class="empty">No leads in these markets</p>';
     state.map?.update(groups, state.selectedId);
@@ -99,7 +101,7 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
     } else if (state.board && !shown.length && Object.values(state.filters).some(Boolean)) {
       $("leadBoard").innerHTML = '<div class="filtered-empty"><p>No leads match these filters.</p><button id="resetFilters">Reset filters</button></div>';
       $("resetFilters").addEventListener("click", () => {
-        state.filters = { search: "", owner: "", stage: "", market: "" };
+        state.filters = { search: "", owner: "", stage: "", market: "", specialty: "" };
         $("leadSearch").value = "";
         render();
         $("leadSearch").focus({ preventScroll: true });
@@ -161,7 +163,7 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
     pageDocContext?.clear();
     state.historyRequest = null; state.historyError = null;
     state.commandFeedback = null; state.connectionFeedback = null; state.board = null; state.detailId = null; state.detail = null; state.proposal = null; state.reviewTarget = null; state.resumeReview = null; state.resumeDetail = null; state.pending = null;
-    state.filters = { search: "", owner: "", stage: "", market: "" }; state.trigger = null; state.drag = null;
+    state.filters = { search: "", owner: "", stage: "", market: "", specialty: "" }; state.trigger = null; state.drag = null;
     $("leadSearch").value = ""; $("detailTitle").textContent = ""; $("stageTitle").textContent = "";
     $("stageError").textContent = ""; $("moveAnnouncement").textContent = ""; $("saveStage").disabled = true;
     ++state.detailEpoch; ++state.reviewEpoch; $("leadDetail").close(); $("stageDialog").close();
@@ -502,7 +504,7 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
     } finally { state.writing = false; paintCommandFeedback(); }
   }
   function selectMarket(key) { state.filters.market = state.filters.market === key ? "" : key; $("mapLeadMembers").open = true; render(); }
-  for (const [id, key] of [["leadSearch", "search"], ["ownerFilter", "owner"], ["marketFilter", "market"]]) {
+  for (const [id, key] of [["leadSearch", "search"], ["ownerFilter", "owner"], ["marketFilter", "market"], ["specialtyFilter", "specialty"]]) {
     $(id).addEventListener(id === "leadSearch" ? "input" : "change", event => { state.filters[key] = event.target.value; render(); });
   }
   $("stageFilter").addEventListener("change", event => {

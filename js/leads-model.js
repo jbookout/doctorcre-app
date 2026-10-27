@@ -23,12 +23,14 @@ export function leadTitle(lead) {
   return named || `${lead.specialty || lead.vertical || "Practice"} ${lead.plan_type || "startup"}${lead.city ? ` in ${lead.city}` : ""}`;
 }
 export const marketKey = lead => lead.market || [lead.city, lead.state].filter(Boolean).join(", ") || "Market pending";
+export const specialtyKey = lead => lead.specialty?.trim() || lead.vertical?.trim() || "Specialty pending";
 export function visibleLeads(leads, filters = {}) {
   const search = (filters.search || "").trim().toLowerCase();
   return leads.filter(eligibleLead).filter(lead => {
     const stage = normalizedStage(lead);
     return (filters.stage ? stage === filters.stage : BOARD_STAGES.some(([key]) => key === stage)) &&
       (!filters.owner || lead.owner === filters.owner) && (!filters.market || marketKey(lead) === filters.market) &&
+      (!filters.specialty || specialtyKey(lead) === filters.specialty) &&
       (!search || [leadTitle(lead), lead.specialty, marketKey(lead), lead.party_id].join(" ").toLowerCase().includes(search));
   });
 }
