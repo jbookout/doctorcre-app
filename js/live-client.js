@@ -68,10 +68,25 @@ export function createLiveClient(opts = {}) {
     const transport = opts.fetchImpl || sessionFetch;
     if (!sharedReads.has(transport)) sharedReads.set(transport, new Map());
     const reads = sharedReads.get(transport), key = JSON.stringify([baseUrl, verb, args, readTimeoutMs]);
-    if (!reads.has(key)) {
-      reads.set(key, rawRpc(verb, args, undefined, readTimeoutMs).finally(() => reads.delete(key)));
+    let entry = reads.get(key);
+    if (!entry) {
+      const controller = new AbortController();
+      entry = { controller, waiters: 0 };
+      const current = entry;
+      entry.read = rawRpc(verb, args, controller.signal, readTimeoutMs).finally(() => {
+        if (reads.get(key) === current) reads.delete(key);
+      });
+      reads.set(key, entry);
     }
-    return readWithDeadline(() => reads.get(key).then(structuredClone), { signal, timeoutMs: readTimeoutMs });
+    const shared = entry;
+    shared.waiters++;
+    const release = () => {
+      signal?.removeEventListener('abort', release);
+      if (--shared.waiters === 0 && reads.get(key) === shared) { reads.delete(key); shared.controller.abort(); }
+    };
+    signal?.addEventListener('abort', release, { once: true });
+    return readWithDeadline(() => shared.read.then(structuredClone), { signal, timeoutMs: readTimeoutMs })
+      .finally(() => { if (!signal?.aborted) release(); });
   };
 
   async function rawRpc(verb, args = {}, signal, timeoutMs, headers) {
@@ -634,15 +649,8 @@ export function createLiveClient(opts = {}) {
     async dispatchHistory(args, { signal } = {}) { return rpc('read-dispatch-history', args, signal); },
 
     // ------------------------------- Model Room assignments and turns (C12)
-    // TWO READS, passed through untouched, and neither names an actor either:
-    // both verbs derive the acting actor server-side. `roomQueue` is the
-    // projected assignment board and `roomTurns` is the room's own turns,
-    // returned exactly as written. Moving an assignment card (the Kanban
-    // drag) has no admitted write at all — see model-room-model.js's
-    // ASSIGNMENT_MOVE_UNSUPPORTED_SENTENCE — and acknowledging a dispatch was
-    // tried and removed for the same file's ACK_UNAVAILABLE_SENTENCE reason:
-    // that evidence is first-hand, from the acting agent seat, never from
-    // whoever is browsing this page.
+    // These reads derive the actor server-side. Assignment moves and dispatch
+    // acknowledgements have no supported write from this page.
     async roomQueue(args = {}) { return rpc('read-room-queue', args); },
     async roomTurns(args = {}) { return rpc('read-room', args); },
     // V5-UX-C13b: the Model Room composer's one write. `add-room-turn`

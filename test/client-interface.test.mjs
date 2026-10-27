@@ -298,3 +298,24 @@ test('an already cancelled shared read does not start a request', async () => {
   await assert.rejects(client.morningBrief({ signal: controller.signal }));
   assert.equal(requests, 0);
 });
+
+test('a cancelled read cannot remove its replacement from sharing', async () => {
+  let requests = 0, finish;
+  const fetchImpl = async () => {
+    requests++;
+    await new Promise(resolve => { finish = resolve; });
+    return Response.json({ result: { content: [{ text: '{"ok":true}' }] } });
+  };
+  const client = createLiveClient({ fetchImpl });
+  const controller = new AbortController();
+  const cancelled = client.morningBrief({ signal: controller.signal });
+  controller.abort();
+  const replacement = client.morningBrief();
+  await assert.rejects(cancelled);
+  await new Promise(resolve => setImmediate(resolve));
+  const joined = client.morningBrief();
+  assert.equal(requests, 2);
+  finish();
+  assert.deepEqual(await replacement, { ok: true });
+  assert.deepEqual(await joined, { ok: true });
+});
