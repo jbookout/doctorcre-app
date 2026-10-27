@@ -743,3 +743,28 @@ for (const failedVerb of ['get-deal-room', 'set-lead']) test(`failure in ${faile
   assert.equal(creates, 1); assert.match(container.textContent, /Confirmed\./);
   view.dispose(); dom.window.close();
 });
+
+test('offline new-deal creation keeps the original request available after reconnect', async () => {
+  const row = proposal(); Object.assign(row, { kind: 'possible_new_deal', deal: null, deal_name: null, confirm_verb: 'confirm-email-filing' });
+  row.preview = { contract: 'email-filing.v1', proposal_id: row.id, kind: row.kind, deal: null,
+    activity_id: row.source.activity_id, evidence_quote: row.source.evidence_quote,
+    sender: { party_id: 'demo-contact' }, new_people: [], requires_confirmation: true, proposal_digest: digest };
+  let online = false, creates = 0;
+  const client = createLiveClient({ selfActor: 'joe', online: () => online, fetchImpl: async (path, init) => {
+    const { name, arguments: args } = JSON.parse(init.body).params;
+    const result = name === 'list-email-proposals' ? response([row]) : name === 'new-deal' ? (creates++, { deal_id: 'created-once' })
+      : name === 'get-deal-room' ? { base_version: 1 } : name === 'set-lead' ? { ok: true }
+        : { ok: true, status: 'confirmed', deal: args.deal, activity_id: row.source.activity_id };
+    return Response.json({ result: { content: [{ text: JSON.stringify(result) }] } });
+  } });
+  const { container, view, action, dom } = setup(client);
+  await view.refresh(); await action('Review filing');
+  for (const [key, value] of [['deal-name', 'Demo office'], ['deal-client', 'Demo Client']]) {
+    const input = container.querySelector(`[data-email-${key}]`); input.value = value; input.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
+  }
+  await action('Create deal and confirm filing');
+  assert.equal(creates, 0); assert.ok(container.querySelector('[data-email-action="replay"]'));
+  online = true; await action('Check outcome');
+  assert.equal(creates, 1); assert.match(container.textContent, /Confirmed\./);
+  view.dispose(); dom.window.close();
+});
