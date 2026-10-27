@@ -12,7 +12,7 @@
 <body class="planner-page">
   <div id="appShell"></div><script type="module" src="/js/app-shell.js"></script>
   <a class="skip-link" href="#plan-form">Skip to tour planning</a>
-  <header class="planner-header tours-heading"><h1>Tours</h1><div data-layout-slot="status" class="freshness"><time id="planner-updated">Updating…</time><button data-layout-refresh id="planner-refresh" aria-label="Refresh tours" title="Refresh tours" type="button">↻</button></div></header>
+  <header class="planner-header tours-heading"><h1>Tours</h1><a id="next-tour" class="download-button" hidden>Next tour</a><div data-layout-slot="status" class="freshness"><time id="planner-updated">Updating…</time><button data-layout-refresh id="planner-refresh" aria-label="Refresh tours" title="Refresh tours" type="button">↻</button></div></header>
   <main class="planner-grid">
     <section class="card territory-card" aria-labelledby="territory-heading">
       <div class="territory-heading"><h2 id="territory-heading">Territory</h2><span class="territory-caption">Gulf Coast</span><button id="show-territory" type="button" aria-expanded="false" aria-controls="planner-territory">Show territory</button></div>

@@ -71,6 +71,8 @@ test('disposing Doc cancels a pending refresh before its owner replaces the body
   const client = { listDocSuggestions:() => { startedResolve(); return answer; }, listFeatureSwitches:async() => ({}) };
   const presence = mountDocPresence({ document:dom.window.document, window:dom.window, context, client });
   t.after(() => { presence.dispose(); dom.window.close(); });
+  dom.window.document.querySelector('#docDetail').showModal = function () { this.open = true; };
+  presence.open();
   await started;
   presence.dispose();
   dom.window.document.body.replaceChildren(dom.window.document.createElement('main'));
@@ -106,6 +108,8 @@ test('Doc does not fetch suggestions for a queued context that was superseded be
   const client = { listDocSuggestions:async() => { reads++; return {ok:true,suggestions:[]}; }, listFeatureSwitches:async() => ({}) };
   const presence = mountDocPresence({document:dom.window.document,window:dom.window,context,client});
   t.after(() => { presence.dispose(); dom.window.close(); });
+  dom.window.document.querySelector('#docDetail').showModal = function () { this.open = true; };
+  presence.open();
   await presence.refresh();
   reads = 0;
   snapshot = {...snapshot,ready:true,state:'ready'}; listener(snapshot);
