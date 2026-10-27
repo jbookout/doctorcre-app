@@ -4,6 +4,7 @@ import { validInvoiceTracker } from './invoice-tracker-model.js';
 import { validNetwork } from './relationship-network-model.js';
 import { addDays, criticalDateEntries, localToday, toDay } from './calendar-model.js';
 import { readWithDeadline } from './auto-refresh.mjs';
+import { readHomeCallTasks } from './home-call-tasks.js';
 
 export const HOME_SCOPES = ['team', 'mine'];
 export const HIDDEN_HOME_WIDGETS = Object.freeze({
@@ -79,6 +80,7 @@ export function readHomeDashboard(client, options) {
     ['invoices', signal => client.getInvoiceTracker({ signal })],
     ['leads', signal => client.getLeadBoard({ signal })],
     ['relationships', signal => client.getRelationshipNetwork({ signal })],
+    ['callTasks', signal => readHomeCallTasks(client, { signal })],
   ], options);
 }
 
@@ -87,7 +89,7 @@ export function readHomeAgenda(client, options) {
 }
 
 async function readHome(client, feeds, { onUpdate = () => {}, timeoutMs = 10_000, signal } = {}) {
-  const result = { board: null, details: new Map(), leads: null, invoices: null, relationships: null, unauthorized: false, updatedAt: null, loading: true,
+  const result = { board: null, details: new Map(), leads: null, invoices: null, relationships: null, callTasks: null, unauthorized: false, updatedAt: null, loading: true,
     reads: Object.fromEntries(['board', ...feeds.map(([key]) => key)].map(key => [key, { state: 'loading' }])) };
   const publish = () => onUpdate(result);
   const take = async (name, read) => {

@@ -95,6 +95,8 @@ export async function createQaServer({ buildRoot=resolve(repository,'dist/site')
     const client=await fallback(state,viewer);
     if(name==='deal-room-board') return {...await client.getBoard(),schema_version:'local-deals-board.v1',accounts:[],as_of:now()};
     if(name==='read-home-agenda') return {schema_version:'home-agenda.v1',actor:viewer,deals:structuredClone([...state.dealStore.deals.values()]).map(deal=>({...deal,critical_dates:structuredClone(state.dealStore.criticalDates.get(deal.id) || []),next_actions:[{id:`action-${deal.id}`,owner:deal.owner,description:deal.next_step,due_on:deal.next_date,status:'open',hold_until:null}]}))};
+    if(name==='read-post-call-followups') return {schema_version:'post-call-followups.v1',candidates:[],send:false};
+
     if(name==='get-deal-room') {
       const {deal,history,...detail}=await client.getDeal(args.deal);
       const changes=await client.getChanges(null);
