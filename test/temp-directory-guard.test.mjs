@@ -1,6 +1,6 @@
 import { temporaryDirectory } from '../scripts/temp-directory.mjs';
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readdir, readFile } from 'node:fs/promises';
@@ -40,7 +40,6 @@ test('temporary directories are removed when a script succeeds or fails', async 
 
 test('guard rejects mkdir and mkdirSync under the temporary root', t => {
   const root = temporaryDirectory('doctorcre-guard-fixture-', t);
-  t.after(() => rmSync(root, { recursive: true, force: true }));
   mkdirSync(join(root, 'test'));
   mkdirSync(join(root, 'scripts'));
   const guard = new URL('./temp-directory-guard.test.mjs', import.meta.url).pathname;

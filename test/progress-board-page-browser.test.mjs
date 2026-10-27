@@ -599,9 +599,9 @@ for (const width of [320, 390, 1280]) for (const theme of ['light', 'dark'])
     await mkdir('test-artifacts/work-queue', { recursive: true });
     await page.screenshot({ path: `test-artifacts/work-queue/${width}-${theme}.png`, fullPage: true });
     if (width === 390 && theme === 'light') {
-      await mkdir('test/evidence/work-queue', { recursive: true });
+      await mkdir('test-artifacts/work-queue', { recursive: true });
       await job.locator('.queue-log').evaluate(el => { el.open = true; });
-      await page.screenshot({ path: 'test/evidence/work-queue/followup-390.png', fullPage: true });
+      await page.screenshot({ path: 'test-artifacts/work-queue/followup-390.png', fullPage: true });
     }
   });
 
@@ -717,9 +717,9 @@ for (const width of [390, 1280]) test(`queue polling retains the open event log 
   assert.equal(await log.getAttribute('open'), '', 'manual event-log disclosure survives polling');
   assert.equal(await log.locator('summary').evaluate(el => document.activeElement === el), true, 'focus remains on the event-log summary');
   assert.deepEqual(errors, []);
-  await mkdir('test/evidence/work-queue', {recursive:true});
+  await mkdir('test-artifacts/work-queue', {recursive:true});
   await log.locator('summary').scrollIntoViewIfNeeded();
-  await page.screenshot({path:`test/evidence/work-queue/poll-${width}.png`});
+  await page.screenshot({path:`test-artifacts/work-queue/poll-${width}.png`});
   await job.locator('.queue-execution > summary').click();
   for (const control of [job.locator('.queue-execution > summary'), job.locator('[data-pr]')]) {
     await control.focus();
@@ -752,8 +752,8 @@ for (const width of [390, 1280]) test(`queue first view shows producer-ordered j
   }
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
   assert.deepEqual(errors, []);
-  await mkdir('test/evidence/work-queue', {recursive:true});
-  await page.screenshot({path:`test/evidence/work-queue/queue-${width}.png`});
+  await mkdir('test-artifacts/work-queue', {recursive:true});
+  await page.screenshot({path:`test-artifacts/work-queue/queue-${width}.png`});
 });
 
 for (const width of [390, 1280]) test(`expanded queue detail leads with findings and PR/log actions at ${width}px`, async t => {
@@ -770,8 +770,8 @@ for (const width of [390, 1280]) test(`expanded queue detail leads with findings
   assert.doesNotMatch(await job.locator('.queue-findings').textContent(), /Preserve keyboard focus/);
   assert.equal(await job.getByText('gpt-6.1-sol', {exact:true}).isVisible(), false, 'execution metadata starts collapsed');
   assert.deepEqual(errors, []);
-  await mkdir('test/evidence/work-queue', {recursive:true});
-  await page.screenshot({path:`test/evidence/work-queue/detail-${width}.png`});
+  await mkdir('test-artifacts/work-queue', {recursive:true});
+  await page.screenshot({path:`test-artifacts/work-queue/detail-${width}.png`});
   await job.locator('.queue-execution > summary').click();
   assert.equal(await job.getByText('gpt-6.1-sol', {exact:true}).isVisible(), true);
 });

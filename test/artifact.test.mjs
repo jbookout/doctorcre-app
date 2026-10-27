@@ -96,7 +96,6 @@ test("every contracted page including Doc activity is present in the deployment 
 
 async function committedFixture(t) {
   const root = await temporaryDirectory("doctorcre-source-fixture-", t);
-  t.after(() => rm(root, { recursive: true, force: true }));
   const git = (args) => execFileSync("git", args, { cwd: root, encoding: "utf8", stdio: "pipe" }).trim();
   git(["clone", "--quiet", "--shared", "--no-hardlinks", ROOT, "."]);
   await symlink(join(ROOT, 'node_modules'), join(root, 'node_modules'), 'dir');
@@ -117,7 +116,6 @@ test("CLI verification accepts the exact committed artifact", async (t) => {
 
 test("one contract path declaration drives both assembly and committed-source verification", async (t) => {
   const root = await temporaryDirectory("doctorcre-contract-membership-", t);
-  t.after(() => rm(root, { recursive: true, force: true }));
   const git = (args) => execFileSync("git", args, { cwd: root, encoding: "utf8", stdio: "pipe" }).trim();
   git(["clone", "--quiet", "--shared", "--no-hardlinks", ROOT, "."]);
   await symlink(join(ROOT, 'node_modules'), join(root, 'node_modules'), 'dir');
@@ -226,7 +224,6 @@ test('provider preparation refuses missing, empty, fork and changed artifacts', 
 
 test("the static artifact ships no unsupported diagnostic sender", async (t) => {
   const outDir = await temporaryDirectory("doctorcre-no-diagnostics-", t);
-  t.after(() => rm(outDir, { recursive: true, force: true }));
   const built = await buildArtifact({ root: ROOT, outDir, commit: COMMIT });
   assert.equal(built.manifest.runtime_errors, undefined);
   assert.equal(built.manifest.files.some(file => /error-tracking/.test(file.path)), false);
