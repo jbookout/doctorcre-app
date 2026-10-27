@@ -15,7 +15,7 @@ test("R13: Tour day opens its whole surface in a separate tab", async () => {
   const app = harness({ tour: async () => detail });
   try {
     await app.view.ready; app.doc.querySelector("[data-tour-id]").click(); await settle();
-    const link = app.doc.querySelector('a[href^="/tours/day.html"]');
+    const link = app.doc.querySelector('#detail-content a[href^="/tours/day.html"]');
     assert.ok(link); assert.equal(link.target, "_blank"); assert.match(link.rel, /noopener/);
   } finally { app.close(); }
 });
@@ -519,12 +519,13 @@ test('QA-019 review guidance while clients load clears when the picker becomes r
 
 test('saved tours open while the client directory is unresolved', async () => {
   const pending = deferred(), detail = deferred(), reload = deferred();
-  let reads = 0;
-  const app = harness({ clients: () => pending.promise, tour: () => ++reads === 1 ? detail.promise : reload.promise });
+  let reads = 0, opened = false;
+  // Before the tour is opened the only detail reads are the Next tour eligibility probes.
+  const app = harness({ clients: () => pending.promise, tour: () => !opened ? Promise.reject(new Error('probe')) : ++reads === 1 ? detail.promise : reload.promise });
   try {
     await settle(); await settle();
     assert.equal(app.doc.querySelectorAll('.tour-button').length, 2);
-    app.doc.querySelector('.tour-button').click(); await settle();
+    opened = true; app.doc.querySelector('.tour-button').click(); await settle();
     pending.resolve([]); await settle(); await settle();
     detail.resolve({ id: clientA, name: 'Demo tour', stops: [] }); await settle();
     assert.equal(app.doc.querySelector('#detail-title').textContent, 'Demo tour');
