@@ -136,10 +136,8 @@ test("the exact pinned producer serves property evidence alongside the existing 
   for (const path of ["/api/tours/library", `/api/tours/selection-cart?tour_id=${propertyId}`]) {
     assert.equal((await handler.fetch(new Request(`https://app.doctorcre.com${path}`), env, {}, actor, session)).status, 200);
   }
-  // The producer's history was squashed after #1396 (property search) and #1400 (property evidence), so
-  // ancestry can no longer show they are included. The modules those changes introduced must exist at the pin.
-  for (const file of ["mcp-server/src/tour-property-search.js", "mcp-server/src/tour-property-evidence.ts"])
-    git("cat-file", "-e", `${pin}:${file}`);
+  git("merge-base", "--is-ancestor", "c4f1ad45273175c26c074336c0fecbf789718348", pin);
+  git("merge-base", "--is-ancestor", "0cc6fe2538a81521bf8c25b0df58aa4063ed614b", pin);
 });
 
 
