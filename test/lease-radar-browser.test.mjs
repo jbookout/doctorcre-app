@@ -3,7 +3,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile, mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
-import { chromium } from 'playwright';
+import { chromium } from './browser-harness.mjs';
 import { createFixtureClient } from '../js/fixture-client.js';
 import { leaseRadarFixture } from '../js/lease-radar-fixture.js';
 import { invoiceTrackerFixture } from '../js/invoice-tracker-fixture.js';

@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { JSDOM } from "jsdom";
 import { mountLeadsWorkspace } from "../js/leads-workspace-app.js";
-import { chromium } from "playwright";
+import { chromium } from "./browser-harness.mjs";
 
 const read = (path) => readFile(new URL(`../${path}`, import.meta.url), "utf8");
 

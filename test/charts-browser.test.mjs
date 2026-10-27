@@ -4,7 +4,7 @@ import { CHROMIUM_SAFETY_ARGS } from '../scripts/chromium-safety-args.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { chromium } from 'playwright';
+import { chromium } from './browser-harness.mjs';
 
 const root = new URL('../', import.meta.url);
 const capture = JSON.parse(await readFile(new URL('test/fixtures/charts-synthetic.json', root), 'utf8'));

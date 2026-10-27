@@ -1,3 +1,6 @@
+import { temporaryDirectory } from '../scripts/temp-directory.mjs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { CHROMIUM_SAFETY_ARGS } from '../scripts/chromium-safety-args.mjs';
 // The one way browser tests get Chromium or WebKit, a wait budget and a fake clock.
 //
@@ -22,6 +25,10 @@ const throttle = Number(process.env.BROWSER_CPU_THROTTLE || 1);
 const jitter = Number(process.env.BROWSER_ROUTE_JITTER_MS || 0);
 const LOOPBACK = new Set(['localhost', '127.0.0.1', '[::1]']);
 const pools = [];
+const browserTemp = temporaryDirectory(join(tmpdir(), 'doctorcre-browser-'));
+process.env.TMPDIR = browserTemp;
+process.env.TEMP = browserTemp;
+process.env.TMP = browserTemp;
 
 export function webkitSkipReason(platform = process.platform, macOSVersion = platform === 'darwin'
   ? execFileSync('/usr/bin/sw_vers', ['-productVersion'], { encoding: 'utf8' }).trim() : '') {
@@ -47,8 +54,7 @@ function browserEngine(engine) {
       if (!launched.has(key)) launched.set(key, engine.launch({ ...options, ...(engine === playwrightChromium ? { args: [...CHROMIUM_SAFETY_ARGS, ...(options.args || [])] } : {}) }));
       const browser = await launched.get(key);
       const contexts = new Set();
-      return {
-        async newPage(options = {}) {
+      async function newContext(options = {}) {
           const context = await browser.newContext(options);
           contexts.add(context);
           context.setDefaultTimeout(WAIT_MS);
@@ -66,6 +72,12 @@ function browserEngine(engine) {
               throw new DOMException('Browser tests never capture from host devices', 'NotAllowedError');
             };
           });
+          return context;
+      }
+      return {
+        newContext,
+        async newPage(options = {}) {
+          const context = await newContext(options);
           const page = await context.newPage();
           if (throttle > 1 && engine === playwrightChromium) await (await context.newCDPSession(page)).send('Emulation.setCPUThrottlingRate', { rate: throttle });
           if (jitter > 0) {

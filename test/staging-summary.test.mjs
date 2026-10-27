@@ -1,6 +1,7 @@
+import { temporaryDirectory } from '../scripts/temp-directory.mjs';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
@@ -8,7 +9,7 @@ import test from 'node:test';
 const script = new URL('../scripts/staging-summary.mjs', import.meta.url);
 
 test('staging summary counts outcomes and names flakes and first failure errors across nested suites', async t => {
-  const directory = await mkdtemp(join(tmpdir(), 'staging-summary-'));
+  const directory = await temporaryDirectory(join(tmpdir(), 'staging-summary-'));
   t.after(() => rm(directory, { recursive: true, force: true }));
   const report = join(directory, 'results.json');
   await writeFile(report, JSON.stringify({

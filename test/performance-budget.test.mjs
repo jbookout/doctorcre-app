@@ -1,7 +1,8 @@
+import { temporaryDirectory } from '../scripts/temp-directory.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { compareBudget, limitFor, rebaseline, renderReport } from '../scripts/performance-budget.mjs';
@@ -69,7 +70,7 @@ test('the budget accepts measured values at the limits', () => {
 });
 
 test('CLI exits 1 on a breach and 2 on incomplete evidence', () => {
-  const dir = mkdtempSync(join(tmpdir(), 'doctorcre-budget-'));
+  const dir = temporaryDirectory(join(tmpdir(), 'doctorcre-budget-'));
   const budgetPath = join(dir, 'budget.json'), reportPath = join(dir, 'report.json');
   writeFileSync(budgetPath, JSON.stringify(budget));
   const measured = report();
@@ -147,7 +148,7 @@ test('rebaselining from a hosted job-log line rewrites the baseline and keeps th
       ? { lcpMs: 1000, usefulMs: 1500, requestCount: 5, criticalBytes: 700000 }
       : { lcpMs: 1000, jsBytes: 600000, interactionMs: 90 }])),
     bundle: { jsBytes: 4600000, gzipBytes: 1300000 } };
-  const dir = mkdtempSync(join(tmpdir(), 'doctorcre-rebaseline-'));
+  const dir = temporaryDirectory(join(tmpdir(), 'doctorcre-rebaseline-'));
   const budgetPath = join(dir, 'budget.json'), logPath = join(dir, 'job.log');
   writeFileSync(budgetPath, JSON.stringify(committed));
   writeFileSync(logPath, `2026-10-12T00:00:00.0000000Z home: LCP=1000ms\n2026-10-12T00:00:00.0000000Z performance-report ${Buffer.from(JSON.stringify(measured)).toString('base64url')}\n`);

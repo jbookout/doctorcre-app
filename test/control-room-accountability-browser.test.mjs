@@ -2,7 +2,7 @@ import { CHROMIUM_SAFETY_ARGS } from '../scripts/chromium-safety-args.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdir, readFile } from 'node:fs/promises';
-import { chromium } from 'playwright';
+import { chromium } from './browser-harness.mjs';
 import { startFixtureServer } from '../scripts/fixture-server.mjs';
 import { createFixtureClient } from '../js/fixture-client.js';
 

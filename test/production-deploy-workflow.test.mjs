@@ -1,8 +1,9 @@
+import { temporaryDirectory } from '../scripts/temp-directory.mjs';
 import assert from 'node:assert/strict';
 import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import { once } from 'node:events';
 import { createServer } from 'node:http';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
@@ -93,7 +94,7 @@ test('production refreshes main before publication and refuses a staged source a
   const verify = steps.findIndex(step => step.run === 'npm run artifact:verify');
   assert.ok(gate > verify && gate + 1 === deploy, 'refresh main immediately before publication');
   assert.equal(steps[gate].env.SOURCE_COMMIT, '${{ github.event.workflow_run.head_sha }}');
-  const root = mkdtempSync(join(tmpdir(), 'production-main-'));
+  const root = temporaryDirectory(join(tmpdir(), 'production-main-'));
   t.after(() => rmSync(root, { recursive: true, force: true }));
   const origin = join(root, 'origin');
   const checkout = join(root, 'checkout');

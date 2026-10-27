@@ -3,7 +3,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile, mkdir } from "node:fs/promises";
 import { createServer } from "node:http";
-import { chromium } from "playwright";
+import { chromium } from "./browser-harness.mjs";
 import { detail, tourId } from "./fixtures/tour-day.synthetic.mjs";
 import { receipt as mapReceipt } from "./fixtures/tour-map.synthetic.mjs";
 import { handleDoctorcreRequest } from "../src/worker.js";

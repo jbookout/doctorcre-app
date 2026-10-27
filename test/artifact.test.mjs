@@ -1,12 +1,13 @@
+import { temporaryDirectory } from '../scripts/temp-directory.mjs';
 import { CHROMIUM_SAFETY_ARGS } from '../scripts/chromium-safety-args.mjs';
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { copyFile, mkdir, mkdtemp, readFile, rename, rm, writeFile, symlink } from "node:fs/promises";
+import { copyFile, mkdir, readFile, rename, rm, writeFile, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
-import { chromium } from 'playwright';
+import { chromium } from './browser-harness.mjs';
 
 import { buildArtifact, runCli, verifyArtifact } from "../scripts/artifact.mjs";
 
@@ -14,7 +15,7 @@ const ROOT = fileURLToPath(new URL("../", import.meta.url));
 const COMMIT = "1".repeat(40);
 
 test('finding 6: emitted public report shell reserves space beside the fixed rail', async t => {
-  const outDir=await mkdtemp(join(tmpdir(),'doctorcre-report-layout-'));
+  const outDir=await temporaryDirectory(join(tmpdir(),'doctorcre-report-layout-'));
   await buildArtifact({root:ROOT,outDir,commit:COMMIT});
   const browser=await chromium.launch({ args: [...CHROMIUM_SAFETY_ARGS] });t.after(()=>browser.close());
   const page=await browser.newPage({viewport:{width:820,height:900}});
@@ -41,8 +42,8 @@ test('finding 6: emitted public report shell reserves space beside the fixed rai
 });
 
 test("the static artifact rebuild is byte-for-byte reproducible", async () => {
-  const first = await mkdtemp(join(tmpdir(), "doctorcre-artifact-a-"));
-  const second = await mkdtemp(join(tmpdir(), "doctorcre-artifact-b-"));
+  const first = await temporaryDirectory(join(tmpdir(), "doctorcre-artifact-a-"));
+  const second = await temporaryDirectory(join(tmpdir(), "doctorcre-artifact-b-"));
   const a = await buildArtifact({ root: ROOT, outDir: first, commit: COMMIT });
   const b = await buildArtifact({ root: ROOT, outDir: second, commit: COMMIT });
   assert.equal(a.archiveSha256, b.archiveSha256);
@@ -58,7 +59,7 @@ test("the static artifact rebuild is byte-for-byte reproducible", async () => {
 });
 
 test("the deployment directory is rebuilt without stale files", async () => {
-  const outDir = await mkdtemp(join(tmpdir(), "doctorcre-site-clean-"));
+  const outDir = await temporaryDirectory(join(tmpdir(), "doctorcre-site-clean-"));
   await buildArtifact({ root: ROOT, outDir, commit: COMMIT });
   await writeFile(join(outDir, "site", "stale-secret.txt"), "must disappear");
   await buildArtifact({ root: ROOT, outDir, commit: COMMIT });
@@ -66,7 +67,7 @@ test("the deployment directory is rebuilt without stale files", async () => {
 });
 
 test("verification binds every payload file and rejects changed bytes", async () => {
-  const outDir = await mkdtemp(join(tmpdir(), "doctorcre-artifact-verify-"));
+  const outDir = await temporaryDirectory(join(tmpdir(), "doctorcre-artifact-verify-"));
   const built = await buildArtifact({ root: ROOT, outDir, commit: COMMIT });
   const verified = await verifyArtifact(built.archive, built.archiveSha256);
   assert.equal(verified.fileCount, built.manifest.files.length);
@@ -84,7 +85,7 @@ test("verification binds every payload file and rejects changed bytes", async ()
 
 test("every contracted page including Doc activity is present in the deployment and archive", async () => {
   const routes = (await import("../js/routes.js")).routeContract;
-  const outDir = await mkdtemp(join(tmpdir(), "doctorcre-route-artifact-"));
+  const outDir = await temporaryDirectory(join(tmpdir(), "doctorcre-route-artifact-"));
   const built = await buildArtifact({ root: ROOT, outDir, commit: COMMIT });
   const verified = await verifyArtifact(built.archive, built.archiveSha256);
   for (const path of new Set(Object.values(routes.routes))) {
@@ -95,7 +96,7 @@ test("every contracted page including Doc activity is present in the deployment 
 });
 
 async function committedFixture(t) {
-  const root = await mkdtemp(join(tmpdir(), "doctorcre-source-fixture-"));
+  const root = await temporaryDirectory(join(tmpdir(), "doctorcre-source-fixture-"));
   t.after(() => rm(root, { recursive: true, force: true }));
   const git = (args) => execFileSync("git", args, { cwd: root, encoding: "utf8", stdio: "pipe" }).trim();
   git(["clone", "--quiet", "--shared", "--no-hardlinks", ROOT, "."]);
@@ -116,7 +117,7 @@ test("CLI verification accepts the exact committed artifact", async (t) => {
 });
 
 test("one contract path declaration drives both assembly and committed-source verification", async (t) => {
-  const root = await mkdtemp(join(tmpdir(), "doctorcre-contract-membership-"));
+  const root = await temporaryDirectory(join(tmpdir(), "doctorcre-contract-membership-"));
   t.after(() => rm(root, { recursive: true, force: true }));
   const git = (args) => execFileSync("git", args, { cwd: root, encoding: "utf8", stdio: "pipe" }).trim();
   git(["clone", "--quiet", "--shared", "--no-hardlinks", ROOT, "."]);
@@ -225,7 +226,7 @@ test('provider preparation refuses missing, empty, fork and changed artifacts', 
 });
 
 test("the static artifact ships no unsupported diagnostic sender", async (t) => {
-  const outDir = await mkdtemp(join(tmpdir(), "doctorcre-no-diagnostics-"));
+  const outDir = await temporaryDirectory(join(tmpdir(), "doctorcre-no-diagnostics-"));
   t.after(() => rm(outDir, { recursive: true, force: true }));
   const built = await buildArtifact({ root: ROOT, outDir, commit: COMMIT });
   assert.equal(built.manifest.runtime_errors, undefined);
@@ -244,7 +245,7 @@ test('report assembly is independent of app-shell implementation spelling', asyn
 });
 
 test('Home and Tasks retain their routes while retired Home implementation leaves the artifact', async () => {
-  const outDir = await mkdtemp(join(tmpdir(), 'doctorcre-home-retirement-'));
+  const outDir = await temporaryDirectory(join(tmpdir(), 'doctorcre-home-retirement-'));
   const built = await buildArtifact({root:ROOT,outDir,commit:COMMIT});
   const routes = (await import("../js/routes.js")).routeContract;
   assert.equal(routes.routes['/'], 'workspace.html');

@@ -1,7 +1,8 @@
+import { temporaryDirectory } from '../scripts/temp-directory.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync, chmodSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync, chmodSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -11,7 +12,7 @@ const canary = 'synthetic-publication-canary';
 const versionId = '0f1e2d3c-4b5a-4968-8776-655443322110';
 
 function fixture(t, { installation = 'locked', browser = false } = {}) {
-  const parent = mkdtempSync(join(tmpdir(), 'release-publication-'));
+  const parent = temporaryDirectory(join(tmpdir(), 'release-publication-'));
   t.after(() => rmSync(parent, { recursive: true, force: true }));
   const root = join(parent, 'app');
   const git = args => execFileSync('git', args, { cwd: root, encoding: 'utf8', stdio: 'pipe' }).trim();

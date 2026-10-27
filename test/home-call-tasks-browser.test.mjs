@@ -1,6 +1,7 @@
+import { temporaryDirectory } from '../scripts/temp-directory.mjs';
 import test, { before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, rm } from 'node:fs/promises';
+import { mkdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -11,7 +12,7 @@ import { chromium } from './browser-harness.mjs';
 const root = fileURLToPath(new URL('../', import.meta.url));
 let outDir, server, browser, origin;
 before(async () => {
-  outDir = await mkdtemp(join(tmpdir(), 'home-call-tasks-'));
+  outDir = await temporaryDirectory(join(tmpdir(), 'home-call-tasks-'));
   await buildArtifact({ root, outDir });
   ({ server } = await createQaServer({ buildRoot: join(outDir, 'site') }));
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));

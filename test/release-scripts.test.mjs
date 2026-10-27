@@ -1,3 +1,4 @@
+import { temporaryDirectory } from '../scripts/temp-directory.mjs';
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -44,7 +45,7 @@ test("provider scripts never install, build or run tests with a deployment crede
 // Exercise the real entrypoints with harmless executable shims. Their persisted
 // trace records environment *presence*, never canary values.
 import { execFileSync, spawnSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, copyFileSync, writeFileSync, chmodSync, rmSync } from 'node:fs';
+import { mkdirSync, copyFileSync, writeFileSync, chmodSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { credentialFreeEnv } from '../scripts/release-environment.mjs';
@@ -55,7 +56,7 @@ test('credential-free environment stays closed when an unrelated secret is added
 });
 
 function releaseFixture(t, { mainCommit = '1'.repeat(40), dirty = '', failure = null, uploadOutput = 'Worker Version ID: 0f1e2d3c-4b5a-4968-8776-655443322110' } = {}) {
-  const root = mkdtempSync(join(tmpdir(), 'release-env-'));
+  const root = temporaryDirectory(join(tmpdir(), 'release-env-'));
   t.after(() => rmSync(root, { recursive: true, force: true }));
   mkdirSync(join(root, 'scripts')); mkdirSync(join(root, 'bin'));
   writeFileSync(join(root, 'bin/package.json'), '{"type":"commonjs"}');
@@ -150,7 +151,7 @@ test('failed preparation/verification and missing provider credentials never upl
 });
 
 test('release source gate accepts canonical ancestry and refuses fork-only commit', t => {
-  const root = mkdtempSync(join(tmpdir(), 'release-source-'));
+  const root = temporaryDirectory(join(tmpdir(), 'release-source-'));
   t.after(() => rmSync(root, {recursive:true, force:true}));
   mkdirSync(join(root, 'scripts'));
   copyFileSync(new URL('../scripts/check-release-source.mjs', import.meta.url), join(root,'scripts/check-release-source.mjs'));

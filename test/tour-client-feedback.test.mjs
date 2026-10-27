@@ -1,3 +1,4 @@
+import { temporaryDirectory } from '../scripts/temp-directory.mjs';
 import { autoRefreshScript } from "./auto-refresh-script.mjs";
 import { mapScript } from "./tours-map-script.mjs";
 import assert from "node:assert/strict";
@@ -7,10 +8,10 @@ import { JSDOM } from "jsdom";
 import { openDom } from "./jsdom-harness.mjs";
 
 import { buildArtifact } from '../scripts/artifact.mjs';
-import { mkdtemp, readFile } from 'node:fs/promises';
+import { readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-const outDir = await mkdtemp(join(tmpdir(), 'doctorcre-feedback-report-'));
+const outDir = await temporaryDirectory(join(tmpdir(), 'doctorcre-feedback-report-'));
 await buildArtifact({root:new URL('../',import.meta.url).pathname,outDir,commit:'1'.repeat(40)});
 const share = await readFile(join(outDir,'site/reports/share.js'),'utf8');
 const html = readFileSync(new URL("../reports/share.html", import.meta.url), "utf8");

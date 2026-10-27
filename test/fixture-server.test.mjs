@@ -1,7 +1,8 @@
+import { temporaryDirectory } from '../scripts/temp-directory.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync, spawn } from 'node:child_process';
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
@@ -85,7 +86,7 @@ const probe = `
 
 for (const mode of ['default', 'ambient', 'explicit', 'empty']) {
   test(`fixture adapter preserves ${mode} root and awaits repeatable shutdown`, async t => {
-    const directory = await mkdtemp(join(tmpdir(), 'doctorcre-fixture-adapter-'));
+    const directory = await temporaryDirectory(join(tmpdir(), 'doctorcre-fixture-adapter-'));
     t.after(() => rm(directory, { recursive: true, force: true }));
     const ambient = join(directory, 'ambient');
     const explicit = join(directory, 'explicit');

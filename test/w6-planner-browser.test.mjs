@@ -1,12 +1,13 @@
+import { temporaryDirectory } from '../scripts/temp-directory.mjs';
 import { CHROMIUM_SAFETY_ARGS } from '../scripts/chromium-safety-args.mjs';
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFile, mkdir, mkdtemp, rm } from "node:fs/promises";
+import { readFile, mkdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { buildArtifact } from "../scripts/artifact.mjs";
-import { chromium } from "playwright";
+import { chromium } from "./browser-harness.mjs";
 
 const root = new URL("../", import.meta.url);
 const clientId = "11111111-1111-4111-8111-111111111111", tourId = "22222222-2222-4222-8222-222222222222";
@@ -169,7 +170,7 @@ test('planner reveals reviewed territory on demand and keeps editable market con
 });
 
 for (const width of [1440, 390]) test(`planner renders Census geography after reveal and reuses its canvas at ${width}px`, async t => {
-  const outDir = await mkdtemp(join(tmpdir(), 'm01-planner-'));
+  const outDir = await temporaryDirectory(join(tmpdir(), 'm01-planner-'));
   t.after(() => rm(outDir, { recursive: true, force: true }));
   await buildArtifact({ root: fileURLToPath(root), outDir, commit: '1'.repeat(40) });
   const { page, calls, errors } = await open(t, width, pathToFileURL(`${outDir}/site/`));

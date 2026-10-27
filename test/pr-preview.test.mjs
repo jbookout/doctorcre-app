@@ -1,8 +1,9 @@
+import { temporaryDirectory } from '../scripts/temp-directory.mjs';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { mkdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { downloadPreview, checkedSiteFiles, cleanTargets, liveComment, parseArgs, previewConfig, prNumber, workerName } from '../scripts/pr-preview.mjs';
@@ -57,7 +58,7 @@ test('cleanup covers closed and merged PRs and never an open one', () => {
 });
 
 test('build output must be plain regular files inside dist/site', t => {
-  const dir = mkdtempSync(join(tmpdir(), 'site-'));
+  const dir = temporaryDirectory(join(tmpdir(), 'site-'));
   t.after(() => rmSync(dir, { recursive: true, force: true }));
   const site = join(dir, 'site');
   mkdirSync(join(site, 'css'), { recursive: true });
