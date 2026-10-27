@@ -298,7 +298,7 @@ for(const path of ['/api/tours/library','/api/v1/business/clients','/api/tours/d
  let denied=false;const {page,goto}=await setup(t,{onRoute:async(route,env)=>{
   if(denied && env.url.pathname===path){await route.fulfill({status:401,json:{}});return true;}return producerRoute(route,env);
  }});await goto('/tours');await page.locator('.tour-button').first().click();await page.waitForFunction(()=>document.querySelector('#detail-title').textContent==='Sample Tour');
- denied=true;await page.evaluate(()=>window.dispatchEvent(new Event('online')));await page.waitForFunction(()=>document.querySelector('#tour-library-state').textContent.includes('Sign in'));
+ denied=true;if(path==='/api/v1/business/clients'){await escapeRecord(page,'#tour-dialog');assert.equal((await readContext(page)).ready,true);await page.locator('#plan-client-find').click();}else await page.evaluate(()=>window.dispatchEvent(new Event('online')));await page.waitForFunction(()=>document.querySelector('#tour-library-state').textContent.includes('Sign in'));
  const c=await readContext(page);assert.equal(c.ready,false);assert.equal(c.records.length,0);
 });
 test('R8 delayed approval receipt cannot appear under a different record',async t=>{
