@@ -3,48 +3,51 @@
 // cancellation; page callbacks preserve their local drafts.
 import { createCurrentRead } from "./current-read.mjs";
 export { readWithDeadline, fetchRead } from "./current-read.mjs";
+import { pollSafety, POLL_LIMITS } from "./poll-safety.mjs";
 import { watchPresence } from "./visibility-poll.mjs";
 
-// A failed read retries on a short backoff (1s, 2s, 4s... capped at the
-// interval), so "reconnecting" holds within seconds rather than a full poll.
-export function mountAutoRefresh({ document, window, refresh, onResume, onWake, intervalMs = 30_000, retryMs = 1_000, timeoutMs = 30_000, shouldRefresh = () => true, idleMs, now }) {
+export function mountAutoRefresh({ document, window, refresh, onResume, onWake, intervalMs = 30_000, timeoutMs = 30_000, shouldRefresh = () => true, idleMs, now }) {
   if (!window?.addEventListener || !document?.addEventListener) return { refresh: () => {}, revalidate: () => {}, poll: () => {}, dispose: () => {} };
+  const safety = pollSafety(window, { document, now });
   let timer = null;
   let running = null;
   let queuedResume = null;
   let disposed = false;
+  let initialized = false;
   const reads = createCurrentRead({ timeoutMs, clock: window });
-  let failures = 0;
-  const schedule = () => {
+  const clockNow = now || (() => Date.now());
+  const schedule = (deferred = false) => {
     window.clearTimeout?.(timer);
-    const delay = failures ? Math.min(intervalMs, retryMs * 2 ** (failures - 1)) : intervalMs;
-    if (!disposed && document.visibilityState !== "hidden" && window.setTimeout) { timer = window.setTimeout(read, delay); timer?.unref?.(); }
+    const state = safety.state();
+    const delay = Math.max(deferred ? POLL_LIMITS.gapMs : intervalMs, state.nextAt - clockNow());
+    if (!state.paused && !disposed && document.visibilityState !== "hidden" && window.setTimeout) { timer = window.setTimeout(read, delay); timer?.unref?.(); }
   };
-  const run = operation => {
+  const run = (operation, manual = false, initial = false) => {
     // Idle stops the clock here; the first input re-reads through the resume.
     if (disposed || !presence.active()) return Promise.resolve();
     if (!shouldRefresh()) { schedule(); return Promise.resolve(); }
     if (running) return running;
     window.clearTimeout?.(timer);
     // A read replaced by a resume settles neither way; the queued read decides.
-    running = reads.run(({ signal }) => operation({ signal }), {
-      success: () => { failures = 0; },
-      // Failure stays in the page's own state; the next read comes sooner.
-      failure: () => { failures += 1; },
-    }).finally(() => { running = null; schedule(); });
+    let accepted = false;
+    running = safety.run(() => {
+      if (disposed || !presence.active() || !shouldRefresh()) return;
+      accepted = true; initialized = true;
+      return reads.run(({ signal }) => operation({ signal }), { failure: error => { throw error; } });
+    }, { intervalMs, manual, initial }).finally(() => { running = null; schedule(!accepted); });
     return running;
   };
   const read = () => run(refresh);
   // A person pressing refresh is present by definition: refresh() reads even
   // after the idle cutoff, exactly as before the idle pause. poll() is for a
   // page's own clock and waits while hidden or idle, like the interval itself.
-  const manualRead = () => { presence.touch(); return read(); };
-  const resumeRead = invalidate => {
+  const manualRead = event => { presence.touch(); return run(refresh, Boolean(event?.isTrusted || window.navigator?.userActivation?.isActive), !initialized); };
+  const resumeRead = (invalidate, manual = false) => {
     invalidate?.();
-    if (!invalidate || !running) return read();
+    if (!invalidate || !running) return run(refresh, manual);
     if (queuedResume) return queuedResume;
     reads.invalidate();
-    queuedResume = running.then(() => { queuedResume = null; return read(); });
+    queuedResume = running.then(() => { queuedResume = null; return run(refresh, manual); });
     return queuedResume;
   };
   const visibility = () => { if (document.visibilityState === "hidden") window.clearTimeout?.(timer); };
@@ -52,8 +55,9 @@ export function mountAutoRefresh({ document, window, refresh, onResume, onWake, 
   const presence = watchPresence({ document, window, onResume: () => resumeRead(onResume), onWake: () => resumeRead(onWake), idleMs, now });
   const online = () => { if (presence.active()) resumeRead(onResume); };
   window.addEventListener("online", online);
+  const unsubscribe = safety.subscribe(() => schedule());
   schedule();
-  return { refresh: manualRead, revalidate: () => { presence.touch(); return resumeRead(onResume); }, poll: read, dispose() { disposed = true; reads.dispose(); window.clearTimeout?.(timer); document.removeEventListener("visibilitychange", visibility); window.removeEventListener("online", online); presence.dispose(); } };
+  return { refresh: manualRead, revalidate: event => { presence.touch(); return resumeRead(onResume, Boolean(event?.isTrusted || window.navigator?.userActivation?.isActive)); }, poll: read, dispose() { disposed = true; unsubscribe(); reads.dispose(); window.clearTimeout?.(timer); document.removeEventListener("visibilitychange", visibility); window.removeEventListener("online", online); presence.dispose(); } };
 }
 
 export function updatedLabel(value) {

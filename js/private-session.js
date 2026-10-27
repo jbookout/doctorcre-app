@@ -1,9 +1,11 @@
 // A browser lifetime belongs to one verified server session. Re-bootstrap in a
 // new document after revocation; never reuse old controllers for a new actor.
+import { pollSafety } from './poll-safety.mjs';
 import { resolveDealroomBoot } from './boot-mode.js';
 import { clearPrivateStorage, offlineTourSession, sessionEpoch, SESSION_EPOCH_KEY } from './offline-tour-session.js';
 
-export function createSessionBoundary({ fetchImpl, invalidate, epoch = () => '', acceptSession = async () => true, anonymousDiagnostics = false }) {
+export function createSessionBoundary({ fetchImpl, invalidate, epoch = () => '', acceptSession = async () => true, anonymousDiagnostics = false, safety = null }) {
+  const transportForRead = () => safety ? safety.transport(fetchImpl) : fetchImpl;
   let binding = null, generation = 0, revoked = false, checking = null;
   const active = new Set();
   const failure = () => Object.assign(new Error('Sign in to continue'), { status: 401, code: 'authentication_required' });
@@ -18,12 +20,12 @@ export function createSessionBoundary({ fetchImpl, invalidate, epoch = () => '',
     if (startedEpoch !== epoch()) revoke('session-changed');
     if (revoked || ticket !== generation) throw failure();
   }
-  async function verify({ fresh = false } = {}) {
+  async function verify({ fresh = false, transport = transportForRead() } = {}) {
     if (revoked) throw failure();
     if (!fresh && checking) return checking;
     const ticket = generation, startedEpoch = epoch();
     const pending = (async () => {
-      const response = await fetchImpl('/auth/session', { credentials: 'same-origin', cache: 'no-store', redirect: 'error', headers: { accept: 'application/json' }, signal: AbortSignal.timeout(10_000) });
+      const response = await transport('/auth/session', { credentials: 'same-origin', cache: 'no-store', redirect: 'error', headers: { accept: 'application/json' }, signal: AbortSignal.timeout(10_000) });
       if ([401,403].includes(response.status)) { if (!(anonymousDiagnostics && !binding)) revoke(); throw failure(); }
       if (!response.ok) throw new Error('Session verification unavailable');
       const session = await response.json();
@@ -44,34 +46,37 @@ export function createSessionBoundary({ fetchImpl, invalidate, epoch = () => '',
     get revoked() { return revoked; },
     async fetch(path, init = {}) {
       const ticket = generation, startedEpoch = epoch();
-      const session = await verify({ fresh: true }); current(ticket, startedEpoch);
-      const controller = new AbortController(); active.add(controller);
-      const cancel = () => controller.abort();
-      init.signal?.addEventListener('abort', cancel, { once: true });
-      if (init.signal?.aborted) cancel();
+      const transport = safety ? safety.transport(fetchImpl, 3) : fetchImpl;
       try {
-        const headers = new Headers(init.headers);
-        if (!['GET','HEAD'].includes((init.method || 'GET').toUpperCase())) {
-          if (headers.has('x-carr-csrf') && headers.get('x-carr-csrf') !== session.csrf_token) { revoke('session-changed'); throw failure(); }
-          headers.set('x-carr-csrf', session.csrf_token);
-        }
-        const response = await fetchImpl(path, { ...init, headers, cache: 'no-store', redirect: 'error', signal: controller.signal });
-        // Even an older read's denial revokes the entire view.
-        if ([401,403].includes(response.status)) { revoke(); throw failure(); }
-        const bytes = await response.arrayBuffer();
-        let refused = false;
+        const session = await verify({ fresh: true, transport }); current(ticket, startedEpoch);
+        const controller = new AbortController(); active.add(controller);
+        const cancel = () => controller.abort();
+        init.signal?.addEventListener('abort', cancel, { once: true });
+        if (init.signal?.aborted) cancel();
         try {
-          const envelope = JSON.parse(new TextDecoder().decode(bytes));
-          const payload = envelope?.result?.isError ? JSON.parse(envelope.result.content?.find(item => item.type === 'text')?.text || '{}') : envelope;
-          refused = ['unauthorized','not_authenticated','forbidden','permission_denied','authentication_required','authorization_refused','session_expired'].includes(String(payload?.error || '').toLowerCase());
-        } catch { /* Payload validation belongs to the existing domain adapter. */ }
-        if (refused) { revoke(); throw failure(); }
-        current(ticket, startedEpoch);
-        // Detect a cookie change while the request was in flight before any
-        // private body reaches a controller (or a write receipt reaches a form).
-        await verify({ fresh: true }); current(ticket, startedEpoch);
-        return new Response([204,205,304].includes(response.status) ? null : bytes, {status:response.status,statusText:response.statusText,headers:response.headers});
-      } finally { active.delete(controller); init.signal?.removeEventListener('abort', cancel); }
+          const headers = new Headers(init.headers);
+          if (!['GET','HEAD'].includes((init.method || 'GET').toUpperCase())) {
+            if (headers.has('x-carr-csrf') && headers.get('x-carr-csrf') !== session.csrf_token) { revoke('session-changed'); throw failure(); }
+            headers.set('x-carr-csrf', session.csrf_token);
+          }
+          const response = await transport(path, { ...init, headers, cache: 'no-store', redirect: 'error', signal: controller.signal });
+          // Even an older read's denial revokes the entire view.
+          if ([401,403].includes(response.status)) { revoke(); throw failure(); }
+          const bytes = await response.arrayBuffer();
+          let refused = false;
+          try {
+            const envelope = JSON.parse(new TextDecoder().decode(bytes));
+            const payload = envelope?.result?.isError ? JSON.parse(envelope.result.content?.find(item => item.type === 'text')?.text || '{}') : envelope;
+            refused = ['unauthorized','not_authenticated','forbidden','permission_denied','authentication_required','authorization_refused','session_expired'].includes(String(payload?.error || '').toLowerCase());
+          } catch { /* Payload validation belongs to the existing domain adapter. */ }
+          if (refused) { revoke(); throw failure(); }
+          current(ticket, startedEpoch);
+          // Detect a cookie change while the request was in flight before any
+          // private body reaches a controller (or a write receipt reaches a form).
+          await verify({ fresh: true, transport }); current(ticket, startedEpoch);
+          return new Response([204,205,304].includes(response.status) ? null : bytes, {status:response.status,statusText:response.statusText,headers:response.headers});
+        } finally { active.delete(controller); init.signal?.removeEventListener('abort', cancel); }
+      } finally { transport.release?.(); }
     },
   };
 }
@@ -84,7 +89,7 @@ export function privateSession() {
   const initialEpoch = sessionEpoch(win);
   let anonymousDiagnostics = false;
   try { anonymousDiagnostics = win.location.pathname === '/status' && !win.localStorage.getItem('doctorcre-session-binding-v1'); } catch {}
-  browserBoundary = createSessionBoundary({ anonymousDiagnostics, fetchImpl: (...args) => win.fetch(...args), epoch: () => sessionEpoch(win),
+  browserBoundary = createSessionBoundary({ anonymousDiagnostics, safety: pollSafety(win, { document: win.document }), fetchImpl: (...args) => win.fetch(...args), epoch: () => sessionEpoch(win),
     async acceptSession(session) {
       const bytes = await win.crypto.subtle.digest('SHA-256', new TextEncoder().encode(JSON.stringify([session.actor.slug,session.csrf_token])));
       const digest = [...new Uint8Array(bytes)].map(byte => byte.toString(16).padStart(2,'0')).join('');
@@ -133,9 +138,11 @@ export function privateSession() {
 export async function sessionFetch(path, init) {
   // Release identity is public diagnostic metadata, including on signed-out
   // /status. It carries no actor or record data and needs no private lifetime.
-  if (typeof window !== 'undefined' && window.location?.href && new URL(path,window.location.href).pathname === '/app-release') return globalThis.fetch(path,init);
+  const safety = pollSafety();
+  const fetchPublic = () => safety ? safety.fetch((path, init) => globalThis.fetch(path, init), path, init) : globalThis.fetch(path, init);
+  if (typeof window !== 'undefined' && window.location?.href && new URL(path,window.location.href).pathname === '/app-release') return fetchPublic();
   const boundary = privateSession();
-  if (!boundary) return globalThis.fetch(path,init);
+  if (!boundary) return fetchPublic();
   try { return await boundary.fetch(path,init); }
   catch (error) {
     // Retired page controllers cannot repaint or issue a retry while the
