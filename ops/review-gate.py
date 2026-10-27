@@ -16,6 +16,12 @@ RISKY = ("*launchagents*", "*.plist", "install-*.sh", "*/install-*.sh",
 SKIP_CI = re.compile(r"\[(skip ci|ci skip|no ci|skip actions|actions skip)\]", re.I)
 
 
+def card_allowed(pr):
+    return (pr.get("user", {}).get("type") == "Bot" or
+            any(re.fullmatch(r"Card: WR[0-9]+\.S[0-9]+\.J[0-9]+", line)
+                for line in (pr.get("body") or "").splitlines()))
+
+
 def approved(pr, files, comments):
     auto_merge = pr.get("auto_merge") or {}
     if any(SKIP_CI.search(value or "") for value in
@@ -48,9 +54,9 @@ def api(path, payload=None):
 
 def run(event, repo):
     root = f"repos/{repo}"
-    def status(sha, state):
+    def status(sha, state, description="No skip marker; small safe diff or current-head approval required"):
         api(f"{root}/statuses/{sha}", {"context": "review-gate", "state": state,
-            "description": "No skip marker; small safe diff or current-head approval required"})
+            "description": description})
     if "merge_group" in event:
         status(event["merge_group"]["head_sha"], "success")
         return
@@ -62,9 +68,13 @@ def run(event, repo):
     status(sha, "pending")
     files = api(f"{root}/pulls/{number}/files?per_page=100")
     comments = api(f"{root}/issues/{number}/comments?per_page=100")
-    passed = approved(pr, files, comments)
-    if api(f"{root}/pulls/{number}")["head"]["sha"] == sha:
-        status(sha, "success" if passed else "failure")
+    card_ok = card_allowed(pr)
+    passed = card_ok and approved(pr, files, comments)
+    latest = api(f"{root}/pulls/{number}")
+    if latest["head"]["sha"] == sha and latest.get("body") == pr.get("body"):
+        description = ("No skip marker; small safe diff or current-head approval required" if card_ok else
+                       "Missing Card line; format: Card: WR557.S3.J1")
+        status(sha, "success" if passed else "failure", description)
 
 
 if __name__ == "__main__":
