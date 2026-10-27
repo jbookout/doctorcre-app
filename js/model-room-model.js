@@ -79,8 +79,6 @@ export const QUEUE_EVENT_KEYS = Object.freeze(
   ["v", "board", "event_id", "event", "task_id", "card", "summary", "projected_at"]);
 export const QUEUE_CARD_KEYS = Object.freeze(
   ["title", "target", "effective_model", "status", "priority", "cap", "updated_at", "source_seq"]);
-export const TURN_KEYS = Object.freeze(
-  ["seq", "room_id", "at", "sponsor", "seat", "kind", "body", "msg_id", "origin_channel", "origin_actor"]);
 
 /** How many turns one visit reads. There is no timer anywhere in this slice. */
 export const TURN_LIMIT = 25;
@@ -93,8 +91,6 @@ export const ACKNOWLEDGEMENT_SENTENCE = "";
 export const DISPATCH_SEARCH_SENTENCE = "";
 export const DISPATCH_STAGES_SENTENCE = "";
 
-/** Beside the assignments board, stating where the cards actually come from. */
-export const QUEUE_ROOM_SENTENCE = "";
 
 /** Under the turn list whenever the read says there is more behind it. */
 export const WINDOW_SENTENCE = "More activity available";
