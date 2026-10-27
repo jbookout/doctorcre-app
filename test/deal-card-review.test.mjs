@@ -220,7 +220,7 @@ test('deal card cleanup shows dates and one summary at 390/1280 in dark/light',a
  for(const width of [390,1280])for(const theme of ['dark','light'])await t.test(`${width}-${theme}`,async t=>{
   const {page,errors}=await open(t,width,{theme,nextStep:'Confirm the appointment and review the lease draft'});
   assert.equal(await page.locator('.deal-opening-snapshot ol button').first().textContent(),'Vendor Introductions');
-  assert.equal(await page.locator('.deal-current-action').count(),0);
+  assert.equal(await page.locator('.deal-current-action strong').textContent(),'Confirm the appointment and review the lease draft');
   assert.equal(await page.locator('.updates-overview').count(),1);
   assert.equal(await page.locator('.deal-note:visible').count(),0);
   assert.match(await page.locator('.updates-overview').textContent(),/Newest demo update/);
