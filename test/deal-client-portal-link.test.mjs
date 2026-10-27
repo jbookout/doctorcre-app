@@ -1,0 +1,80 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {readFile} from 'node:fs/promises';
+import {chromium, waitForAsync} from './browser-harness.mjs';
+import {renderClientPortalLink} from '../js/client-portal-link.js';
+const root=new URL('../',import.meta.url);
+const PORTAL='https://share.doctorcre.com/demo-practice';
+
+test('the client portal link renders only for https and escapes the address',()=>{
+ assert.equal(renderClientPortalLink(null),'');
+ assert.equal(renderClientPortalLink(''),'');
+ assert.equal(renderClientPortalLink('javascript:alert(1)'),'');
+ assert.equal(renderClientPortalLink('http://share.doctorcre.com/demo'),'');
+ const html=renderClientPortalLink('https://share.doctorcre.com/a"b');
+ assert.match(html,/href="https:\/\/share\.doctorcre\.com\/a&quot;b"/);
+ assert.match(html,/target="_blank" rel="noopener noreferrer"/);
+});
+
+async function open(t,width=1280,{portal=null}={}) {
+ const browser=await chromium.launch();t.after(()=>browser.close());
+ const page=await browser.newPage({viewport:{width,height:960}});
+ const errors=[];page.on('pageerror',e=>errors.push(e.message));
+ const seed=JSON.parse(await readFile(new URL('data/board-seed.json',root),'utf8'));
+ Object.assign(seed.deals.find(d=>d.id==='d14'),{phase:'Negotiation',workspace_kind:'team',account_client_id:null,operating_state:'active',client_portal_url:portal});
+ await page.route('**/*',async route=>{
+  const url=new URL(route.request().url());if(url.origin!=='http://localhost')return route.abort();
+  if(url.pathname==='/data/board-seed.json')return route.fulfill({json:seed});
+  if(url.pathname.startsWith('/api/')||url.pathname==='/app-release')return route.fulfill({json:{}});
+  const file=url.pathname==='/deals'?'pipeline.html':url.pathname.slice(1);
+  try{return route.fulfill({body:await readFile(new URL(file,root)),contentType:/\.m?js$/.test(file)?'text/javascript':file.endsWith('.css')?'text/css':file.endsWith('.json')?'application/json':'text/html'});}
+  catch{return route.fulfill({status:404,body:''});}
+ });
+ await page.goto('http://localhost/deals');
+ await waitForAsync(page,async()=>(await import('/js/pipeline.js')).state.deals.size>0);
+ return {page,errors};
+}
+
+for(const width of [390,1280]) test(`a set link shows on the deal card and opens safely at ${width}px`,async t=>{
+ const {page,errors}=await open(t,width,{portal:PORTAL});
+ const card=page.locator('.kanban-card[data-id="d14"]');
+ const link=card.getByRole('link',{name:/Client portal/});
+ assert.equal(await link.getAttribute('href'),PORTAL);
+ assert.equal(await link.getAttribute('target'),'_blank');
+ assert.match(await link.getAttribute('rel'),/noopener/);
+ await link.focus();
+ assert.equal(await page.evaluate(()=>document.activeElement.className),'client-portal-link');
+ assert.ok((await link.boundingBox()).height>=44,'touch target');
+ assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=document.documentElement.clientWidth),true);
+ assert.equal(await page.locator('.kanban-card:not([data-id="d14"]) .client-portal-link').count(),0);
+ assert.deepEqual(errors,[]);
+});
+
+test('a deal without a link shows none on its card',async t=>{
+ const {page}=await open(t);
+ assert.equal(await page.locator('.client-portal-link').count(),0);
+});
+
+test('a partner registers the portal from the deal panel, a taken name is refused, and the password is never shown again',async t=>{
+ const {page,errors}=await open(t);
+ await page.evaluate(async()=>{const {state}=await import('/js/pipeline.js');await state.client.registerClientPortal({deal:'d20',slug:'taken',password:'other',idempotency_key:'seed-taken'});});
+ await page.locator('.kanban-card[data-id="d14"] [data-open]').click();
+ const submit=async(slug,password)=>{
+  await page.locator('#detailClientPortalForm').waitFor({state:'attached'});
+  if(!await page.locator('#clientPortalSlug').isVisible())await page.locator('.client-portal-register summary').click();
+  await page.locator('#clientPortalSlug').fill(slug);
+  await page.locator('#clientPortalPassword').fill(password);
+  await page.getByRole('button',{name:'Register portal'}).click();
+ };
+ const card=page.locator('.kanban-card[data-id="d14"] .client-portal-link');
+ await submit('taken','simple-pw');
+ await page.waitForFunction(()=>/refused/.test(document.getElementById('detailClientPortalStatus')?.textContent||''));
+ assert.equal(await card.count(),0);
+ await submit('demo-practice','simple-pw');
+ await card.waitFor();
+ assert.equal(await card.getAttribute('href'),PORTAL);
+ await page.locator('#recordPanel .client-portal-link').waitFor();
+ assert.equal(await page.locator('#detailClientPortalForm').count(),0,'a registered deal offers no second registration');
+ assert.equal((await page.content()).includes('simple-pw'),false);
+ assert.deepEqual(errors,[]);
+});

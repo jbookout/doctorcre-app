@@ -26,6 +26,7 @@ const CORRESPONDENCE_CEILING = {
   effects: { creates_effect: false, database_writes: 0, network_calls: 0, provider_actions: 0,
     notifications: 0, schedules: 0, deployments: 0, activations: 0, acceptances: 0 },
 };
+const PORTAL_ORIGIN = 'https://share.doctorcre.com';
 /** The cells patch-deal-field bases on; mirrors the record layer's DEAL_ROOM_FIELDS. */
 const BASED_FIELDS = ['phase', 'owner', 'attention', 'next_date', 'operating_state'];
 
@@ -1473,6 +1474,24 @@ export async function createFixtureClient(opts = {}) {
         });
         pushHistory(deal, selfActor, 'updated the deal record', e.recorded_at);
         return { ok: true, status: 'ok', deal_id: deal, version: row.version, event: e };
+      });
+    },
+
+    /**
+     * Mirrors register-client-portal: a slug, a password the record layer would hash, and the
+     * derived link back. The fixture keeps neither the password nor a hash of it.
+     */
+    async registerClientPortal({ deal, slug, password, idempotency_key }) {
+      return withIdem(idempotency_key, () => {
+        const row = getDealOrThrow(deal);
+        if (!/^[a-z0-9][a-z0-9-]{0,62}$/.test(String(slug))) refuse('register-client-portal', 'portal_slug_invalid');
+        if (!String(password || '').length) refuse('register-client-portal', 'portal_password_invalid');
+        if (row.client_portal_url) refuse('register-client-portal', 'portal_deal_already_registered');
+        if ([...deals.values()].some((other) => other.client_portal_url === `${PORTAL_ORIGIN}/${slug}`)) {
+          refuse('register-client-portal', 'portal_slug_taken');
+        }
+        row.client_portal_url = `${PORTAL_ORIGIN}/${slug}`;
+        return { ok: true, deal_id: deal, client_portal_url: row.client_portal_url, created: true };
       });
     },
 

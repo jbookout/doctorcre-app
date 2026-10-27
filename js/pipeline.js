@@ -2,6 +2,7 @@ import { OWNER_FILTERS } from './owner-filters.js';
 import { engagementWriterFor } from './prospect-engagement.mjs';
 import { showToast } from './toast.js';
 import { renderDealVendors } from './deal-vendors.js';
+import { renderClientPortalLink } from './client-portal-link.js';
 import { pageDocContext, selectDocRecord, setDocFilters, publishDocRead } from './doc-context.js';
 import { createCommandDock } from './command-dock.js';
 import { readWithDeadline } from './auto-refresh.mjs';
@@ -111,6 +112,7 @@ function cardHtml(deal) {
     <div class="work-meta"><span class="owner">${esc(actorName(deal.owner))}</span>${attention ? '<span class="attention-flag"><span aria-hidden="true">◆</span> Overdue</span>' : ''}</div>
     ${nextStepHtml(deal)}
     ${renderDealVendors(deal.vendors)}
+    ${renderClientPortalLink(deal.client_portal_url)}
     ${autoHtml(deal)}
   </article>`;
 }
@@ -437,6 +439,7 @@ const FOLLOW_UP_SENDERS = {
   'set-next-step': (request) => state.client.setNextStep(request),
   'add-critical-date': (request) => state.client.addCriticalDate(request),
   'update-deal': (request) => state.client.updateDeal(request),
+  'register-client-portal': (request) => state.client.registerClientPortal(request),
 };
 const nextStepKey = deal => `next-step:${deal}`;
 
@@ -929,10 +932,31 @@ function detailHtml(detail) {
     <section id="panelEmailFollowups" aria-label="Email follow-ups"><p role="status">Updating email follow-ups…</p></section>
     ${requirementEmailHtml(d)}
     <div data-detail-read="vendors">${renderDealVendors(d.vendors)}</div>
+    ${controlsAvailable ? clientPortalHtml(d) : ''}
     <div data-detail-read="board-controls" data-available="${controlsAvailable}">${controlsAvailable ? `<div class="detail-actions"><div class="detail-controls"><label>Phase<select id="detailPhase">${COLUMNS.map(c => `<option value="${esc(c.slug)}"${c.value === d.phase ? ' selected' : ''}>${esc(c.label)}</option>`).join('')}</select></label><label>Owner<select id="detailOwner"><option value="">Unassigned</option>${['joe','dell'].map(owner => `<option value="${owner}"${owner === d.owner ? ' selected' : ''}>${actorName(owner)}</option>`).join('')}</select></label></div><div data-detail-read="parking" data-parked="${parked}">${parked ? `<p>${esc(concise(d.parking_note) || 'Parked')}</p><button type="button" class="btn" data-revive="${esc(d.id)}">Revive</button>` : `<details class="park-options"><summary class="park-control">Park</summary><form id="detailParkForm"><label>Park reason<input name="reason" maxlength="500" required></label><button class="btn park-control" type="submit">Park deal</button></form></details>`}</div></div>` : ''}</div>
     <div data-detail-read="prospect">${controlsAvailable && prospect?.client_status === 'prospect' ? `<form id="detailInactiveForm"><p>Inactive prospects return to Leads.</p><label>Reason<input name="reason" maxlength="1000" required value="${esc(pendingProspect?.request.reason || '')}"${pendingProspect ? ' readonly' : ''}></label><button class="btn" type="submit">${pendingProspect ? 'Check outcome' : 'Mark inactive'}</button><p role="status" data-prospect-status>${pendingProspect ? 'Confirmation pending for this prospect. Check outcome to retry the same request.' : ''}</p></form>` : ''}</div>
     ${renderDealTimeline(detail)}<div data-detail-read="updates">${renderDealUpdates(detail)}</div>
     <details id="panelEvidenceSection"><summary>Evidence</summary><div id="panelEvidence"></div></details>`;
+}
+function clientPortalHtml(d) {
+  if (d.client_portal_url) return `<div data-detail-read="client-portal">${renderClientPortalLink(d.client_portal_url)}</div>`;
+  return `<div data-detail-read="client-portal"><details class="client-portal-register"><summary>Set up client portal</summary><form id="detailClientPortalForm" class="client-portal-form"><label for="clientPortalSlug">Portal name</label><input id="clientPortalSlug" name="slug" required maxlength="63" pattern="[a-z0-9][a-z0-9\\-]*" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="practice-name" data-detail-focus="client-portal-slug"><label for="clientPortalPassword">Password</label><input id="clientPortalPassword" name="password" required maxlength="1024" autocomplete="off" autocapitalize="none" spellcheck="false" data-detail-focus="client-portal-password"><button class="btn" type="submit">Register portal</button></form></details><p id="detailClientPortalStatus" role="status"></p></div>`;
+}
+async function registerClientPortal(id, form) {
+  const slug = String(form.get('slug')).trim().toLowerCase();
+  const status = $('detailClientPortalStatus');
+  status.textContent = 'Registering…';
+  const result = await runFollowUp(`client-portal:${id}`, {
+    verb: 'register-client-portal', args: { deal: id, slug, password: String(form.get('password')) },
+    summary: 'Client portal',
+  });
+  if (state.panelDeal !== id) return;
+  if (result?.status === 'ok') {
+    state.boardSync.requestRefresh('client-portal');
+    await refreshPanel();
+  } else if ($('detailClientPortalStatus')) {
+    $('detailClientPortalStatus').textContent = result?.message || 'Client portal not confirmed';
+  }
 }
 function refreshPanel({ changed = false } = {}) {
   const id = state.panelDeal;
@@ -1415,6 +1439,7 @@ function wire() {
     if (e.target.id === 'detailParkForm') await setOperatingState(id,{state:'parked',reason:'other',note:String(form.get('reason'))});
     if (e.target.id === 'detailInactiveForm') await markProspectInactive(e.target,id,String(form.get('reason')).trim());
     if (e.target.id === 'detailUpdateForm') await saveUpdate(id);
+    if (e.target.id === 'detailClientPortalForm') await registerClientPortal(id, form);
   });
 
   globalThis.addEventListener?.('online', () => { state.boardSync.setOnline(true); refreshPanel(); });

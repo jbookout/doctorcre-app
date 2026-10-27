@@ -106,6 +106,7 @@
     "read-tour-selection-cart",
     "record-commission-receipt",
     "record-dispatch-link",
+    "register-client-portal",
     "rename-doc-conversation",
     "resolve-candidate",
     "resolve-conflict",
@@ -553,7 +554,8 @@
           "client_status",
           "client_version",
           "phase_started_on",
-          "vendors"
+          "vendors",
+          "client_portal_url"
         ],
         "phase_change_keys": [
           "event_id",

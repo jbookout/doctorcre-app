@@ -417,6 +417,11 @@ export function createLiveClient(opts = {}) {
       return write('update-deal', args);
     },
 
+    // The portal password goes to CARR once, here; CARR keeps only a verifier and answers with the link.
+    async registerClientPortal(args) {
+      return write('register-client-portal', args);
+    },
+
     async addDealNote(args) {
       return write('add-deal-note', args);
     },
