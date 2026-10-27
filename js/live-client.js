@@ -108,6 +108,7 @@ export function createLiveClient(opts = {}) {
     if (isError || (payload?.error && payload.ok !== true)) {
       const err = new Error(`live ${verb} refused: ${payload?.error || 'tool_error'}`);
       err.payload = payload;
+      if (verb === 'new-deal') err.creationStage = 'new-deal';
       err.writeRefusal = verb === 'new-deal' && CREATION_REFUSALS.has(payload?.error);
       throw err;
     }
@@ -325,6 +326,7 @@ export function createLiveClient(opts = {}) {
     async listEmailProposals(args = {}) { return rpc('list-email-proposals', args); },
     async previewEmailNextStep(args) { return rpc('preview-email-next-step', args); },
     async previewEmailDealProgress(args) { return rpc('preview-email-deal-progress', args); },
+    async confirmEmailFiling(args) { return write('confirm-email-filing', args); },
     async confirmEmailNextStep(args) { return write('confirm-email-next-step', args); },
     async confirmEmailDealProgress(args) { return write('confirm-email-deal-progress', args); },
     async submitEmailDraft(args) { return write('submit-email-draft', args); },
