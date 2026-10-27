@@ -163,4 +163,4 @@
   .home-detail-summary > div { flex-basis: 100%; }
 }
 
-#homeEmailFollowups { grid-column: 1 / -1; overflow-wrap: anywhere; }
+#homeEmailFollowups, #homeEmailQuality { grid-column: 1 / -1; overflow-wrap: anywhere; }

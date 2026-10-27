@@ -53,6 +53,23 @@ export function createEmailProposalsFixture({ deals, seedDeals, actor, client, p
     receipts.set(args.idempotency_key, receipt); return structuredClone(receipt);
   }
   return {
+    async getEmailProposalQuality() {
+      const kinds = ['phase_move', 'next_step'].map(kind => {
+        const cohort = rows.filter(row => row.kind === kind);
+        const confirmed = cohort.filter(row => row.status === 'confirmed');
+        const dismissed = cohort.filter(row => row.status === 'dismissed');
+        const resolved = confirmed.length + dismissed.length;
+        const average = items => items.length ? items.reduce((sum, row) => sum + row.confidence, 0) / items.length : null;
+        const rate = resolved ? dismissed.length / resolved : null;
+        return { kind, proposed: cohort.length, pending: cohort.filter(row => row.status === 'pending').length,
+          confirmed: confirmed.length, dismissed: dismissed.length, dismiss_rate: rate,
+          confirmed_confidence: average(confirmed), dismissed_confidence: average(dismissed),
+          over_threshold: resolved >= 10 && rate > 0.05 };
+      });
+      return { schema_version: 'email-proposal-quality.v1', days: 7, kinds,
+        corrections: rows.filter(row => row.status === 'dismissed').sort((a, b) => b.resolved_at.localeCompare(a.resolved_at) || a.id.localeCompare(b.id)).slice(0, 20)
+          .map(row => ({ id: row.id, kind: row.kind, deal_name: row.deal_name, reason: row.resolution_reason, resolved_at: row.resolved_at })), send: false };
+    },
     async listEmailProposals({ deal, limit, cursor } = {}) {
       const proposals = [];
       const start = cursor ? rows.findIndex(item => item.id === cursor) + 1 : 0;
@@ -79,7 +96,7 @@ export function createEmailProposalsFixture({ deals, seedDeals, actor, client, p
       if (!row || row.status !== 'pending') fail('email_proposal_not_pending');
       if (row.version !== args.base_version) fail('version_conflict');
       if (!args.reason?.trim()) fail('email_proposal_reason_required');
-      row.status = 'dismissed'; row.version++;
+      row.status = 'dismissed'; row.version++; row.resolution_reason = args.reason.trim(); row.resolved_at = new Date().toISOString();
       const receipt = { ok: true, proposal_id: row.id, status: 'dismissed', version: row.version };
       receipts.set(args.idempotency_key, receipt); return structuredClone(receipt);
     },

@@ -124,7 +124,7 @@ export async function createQaServer({ buildRoot=resolve(repository,'dist/site')
     if(name==='lead-board') return {schema_version:'lead-workspace.v1',generated_at:now(),last_search_at:null,leads:structuredClone(state.leads),detail:args.lead_id?leadDetail(state.leads.find(row=>row.id===args.lead_id)):null};
     if(name==='capture-queue') return {candidates:[]};
     if(['claim-lead','update-lead'].includes(name))refusal('fixture_operation_unavailable');
-    const overrides={'read-session-identity':'sessionIdentity','read-dispatch-history':'dispatchHistory','read-room':'roomTurns','read-room-queue':'roomQueue','read-notification-preferences':'notificationPreferences','read-doc-outcome-cards':'docOutcomeCards','list-my-codex-sessions':'codexSessions','start-deal-review':'startReview','end-deal-review':'endReview','review-deal':'reviewDeal'};
+    const overrides={'email-proposal-quality':'getEmailProposalQuality','read-session-identity':'sessionIdentity','read-dispatch-history':'dispatchHistory','read-room':'roomTurns','read-room-queue':'roomQueue','read-notification-preferences':'notificationPreferences','read-doc-outcome-cards':'docOutcomeCards','list-my-codex-sessions':'codexSessions','start-deal-review':'startReview','end-deal-review':'endReview','review-deal':'reviewDeal'};
     const method=overrides[name]||name.replace(/-([a-z])/g,(_,letter)=>letter.toUpperCase());
     if(typeof client[method]!=='function')refusal('fixture_operation_unavailable');
     return client[method](args);

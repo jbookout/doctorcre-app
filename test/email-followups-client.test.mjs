@@ -5,7 +5,7 @@ import { createLiveClient } from '../js/live-client.js';
 import { createFixtureClient } from '../js/fixture-client.js';
 
 const methods = {
-  listEmailProposals: 'list-email-proposals', previewEmailNextStep: 'preview-email-next-step',
+  getEmailProposalQuality: 'email-proposal-quality', listEmailProposals: 'list-email-proposals', previewEmailNextStep: 'preview-email-next-step',
   confirmEmailNextStep: 'confirm-email-next-step', previewEmailDealProgress: 'preview-email-deal-progress',
   confirmEmailDealProgress: 'confirm-email-deal-progress', dismissEmailProposal: 'dismiss-email-proposal',
 };
@@ -21,7 +21,7 @@ test('both adapters expose the deployed email review verbs and live forwards exa
   const fixture = await createFixtureClient({ seedUrl });
   for (const [method, verb] of Object.entries(methods)) {
     assert.equal(typeof fixture[method], 'function', method);
-    const args = method === 'listEmailProposals' ? {} : { proposal_id: '10000000-0000-4000-8000-000000000001', idempotency_key: method };
+    const args = ['listEmailProposals', 'getEmailProposalQuality'].includes(method) ? {} : { proposal_id: '10000000-0000-4000-8000-000000000001', idempotency_key: method };
     await live[method](args);
     assert.deepEqual(calls.at(-1), { name: verb, arguments: args });
   }
@@ -96,6 +96,28 @@ test('an unknown confirmation does not adopt or block a different source email o
   assert.deepEqual(requests, [first, second, first]);
 });
 
+
+test('synthetic quality report reflects confirmations and reasoned dismissals without sending mail', async () => {
+  const client = await createFixtureClient({ seedUrl });
+  const before = await client.getEmailProposalQuality();
+  assert.equal(before.schema_version, 'email-proposal-quality.v1');
+  assert.equal(before.days, 7);
+  assert.equal(before.send, false);
+  assert.deepEqual(before.kinds.map(row => [row.kind, row.proposed, row.pending, row.dismiss_rate]),
+    [['phase_move', 1, 1, null], ['next_step', 1, 1, null]]);
+  const proposal = (await client.listEmailProposals()).proposals.find(row => row.kind === 'next_step');
+  await client.dismissEmailProposal({ proposal_id: proposal.id, base_version: proposal.version, reason: 'Already handled in the demo', idempotency_key: 'quality-dismiss' });
+  const phase = (await client.listEmailProposals()).proposals.find(row => row.kind === 'phase_move');
+  await client.confirmEmailDealProgress({ deal: phase.deal, activity_id: phase.source.activity_id,
+    evidence_quote: phase.source.evidence_quote, proposal_digest: phase.preview.proposal_digest, idempotency_key: 'quality-confirm' });
+  const after = await client.getEmailProposalQuality();
+  const move = after.kinds.find(row => row.kind === 'phase_move');
+  assert.deepEqual([move.pending, move.confirmed, move.dismiss_rate, move.confirmed_confidence], [0, 1, 0, 0.9]);
+  const step = after.kinds.find(row => row.kind === 'next_step');
+  assert.deepEqual([step.pending, step.dismissed, step.dismiss_rate, step.dismissed_confidence, step.over_threshold], [0, 1, 1, 0.9, false]);
+  assert.equal(after.corrections[0].reason, 'Already handled in the demo');
+  assert.equal(after.corrections[0].deal_name, proposal.deal_name);
+});
 
 test('synthetic deal filtering happens before pagination and rejects a cross-deal cursor', async () => {
   const client = await createFixtureClient({ seedUrl });
