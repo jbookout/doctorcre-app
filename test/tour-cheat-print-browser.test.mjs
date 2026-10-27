@@ -2,14 +2,13 @@ import { temporaryDirectory } from '../scripts/temp-directory.mjs';
 import test, { before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdir, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium, fixtureServer, pausedClock } from './browser-harness.mjs';
 import { detail, tourId } from './fixtures/tour-day.synthetic.mjs';
 import { buildArtifact } from '../scripts/artifact.mjs';
 
-const artifactDir = await temporaryDirectory(join(tmpdir(), 'doctorcre-print-'));
+const artifactDir = await temporaryDirectory('doctorcre-print-');
 before(() => buildArtifact({ root: fileURLToPath(new URL('../', import.meta.url)), outDir: artifactDir }));
 after(() => rm(artifactDir, { recursive: true, force: true }));
 

@@ -3,7 +3,6 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync, spawn } from 'node:child_process';
 import { mkdir, rm, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { startFixtureServer } from '../scripts/fixture-server.mjs';
@@ -86,7 +85,7 @@ const probe = `
 
 for (const mode of ['default', 'ambient', 'explicit', 'empty']) {
   test(`fixture adapter preserves ${mode} root and awaits repeatable shutdown`, async t => {
-    const directory = await temporaryDirectory(join(tmpdir(), 'doctorcre-fixture-adapter-'));
+    const directory = await temporaryDirectory('doctorcre-fixture-adapter-');
     t.after(() => rm(directory, { recursive: true, force: true }));
     const ambient = join(directory, 'ambient');
     const explicit = join(directory, 'explicit');

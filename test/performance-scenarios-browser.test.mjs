@@ -3,7 +3,6 @@ import { CHROMIUM_SAFETY_ARGS } from '../scripts/chromium-safety-args.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildArtifact } from '../scripts/artifact.mjs';
@@ -12,7 +11,7 @@ import { profile, screens } from '../scripts/performance-scenarios.mjs';
 import { startFixtureServer } from '../scripts/fixture-server.mjs';
 
 test('the phone Relationships performance scenario opens the visible connection detail', async t => {
-  const outDir=await temporaryDirectory(join(tmpdir(),'doctorcre-perf-artifact-'));
+  const outDir=await temporaryDirectory('doctorcre-perf-artifact-');
   t.after(()=>rm(outDir,{recursive:true,force:true}));
   await buildArtifact({root:fileURLToPath(new URL('../',import.meta.url)),outDir});
   const server = await startFixtureServer({env:{DOCTORCRE_FIXTURE_ROOT:join(outDir,'site')}});
@@ -46,7 +45,7 @@ test('phone task guard exercises useful outcomes against the built fixture', asy
   const scenarios = await import('../scripts/performance-scenarios.mjs');
   const expected = ['task-agenda', 'task-leads', 'task-deal-link', 'task-deal-draft', 'task-tour-library', 'task-tour-offline'];
   assert.deepEqual(scenarios.tasks?.map(task => task.id), expected);
-  const outDir = await temporaryDirectory(join(tmpdir(), 'doctorcre-task-artifact-'));
+  const outDir = await temporaryDirectory('doctorcre-task-artifact-');
   t.after(() => rm(outDir, { recursive: true, force: true }));
   await buildArtifact({ root: fileURLToPath(new URL('../', import.meta.url)), outDir });
   const server = await startFixtureServer({ env: { DOCTORCRE_FIXTURE_ROOT: join(outDir, 'site') } });
@@ -87,7 +86,7 @@ test('phone task guard exercises useful outcomes against the built fixture', asy
 
 
 test('Home discovers its boot mode while the client bootstrap is downloading', async t => {
-  const outDir = await temporaryDirectory(join(tmpdir(), 'doctorcre-home-boot-'));
+  const outDir = await temporaryDirectory('doctorcre-home-boot-');
   t.after(() => rm(outDir, { recursive: true, force: true }));
   await buildArtifact({ root: fileURLToPath(new URL('../', import.meta.url)), outDir });
   const server = await startFixtureServer({ env: { DOCTORCRE_FIXTURE_ROOT: join(outDir, 'site') } });

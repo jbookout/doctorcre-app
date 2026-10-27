@@ -1,6 +1,5 @@
 import { temporaryDirectory } from '../scripts/temp-directory.mjs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { rmSync } from 'node:fs';
 import { CHROMIUM_SAFETY_ARGS } from '../scripts/chromium-safety-args.mjs';
 // The one way browser tests get Chromium or WebKit, a wait budget and a fake clock.
 //
@@ -25,7 +24,7 @@ const throttle = Number(process.env.BROWSER_CPU_THROTTLE || 1);
 const jitter = Number(process.env.BROWSER_ROUTE_JITTER_MS || 0);
 const LOOPBACK = new Set(['localhost', '127.0.0.1', '[::1]']);
 const pools = [];
-const browserTemp = temporaryDirectory(join(tmpdir(), 'doctorcre-browser-'));
+const browserTemp = temporaryDirectory('doctorcre-browser-');
 process.env.TMPDIR = browserTemp;
 process.env.TEMP = browserTemp;
 process.env.TMP = browserTemp;
@@ -40,8 +39,12 @@ export function webkitSkipReason(platform = process.platform, macOSVersion = pla
 after(async () => {
   const results = await Promise.allSettled(pools.flatMap(pool => [...pool.values()]));
   pools.forEach(pool => pool.clear());
-  await Promise.all(results.filter(result => result.status === 'fulfilled')
-    .map(result => result.value.close()));
+  try {
+    await Promise.all(results.filter(result => result.status === 'fulfilled')
+      .map(result => result.value.close()));
+  } finally {
+    rmSync(browserTemp, { recursive: true, force: true });
+  }
 });
 
 function browserEngine(engine) {

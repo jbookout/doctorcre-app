@@ -4,7 +4,6 @@ import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { writeFile, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -20,7 +19,7 @@ for (const [name, trigger, diagnostic] of [
     } });
   });`, 'confidential Share URL has the required shape'],
 ]) test(`Share ${name} output omits the confidential bearer`, { timeout: 60000 }, async () => {
-  const directory = await temporaryDirectory(join(tmpdir(), 'journey-output-'));
+  const directory = await temporaryDirectory('journey-output-');
   try {
     await writeFile(join(directory, 'playwright.config.mjs'), 'export default { testDir: ".", timeout: 10000, workers: 1, reporter: "line" };');
     await writeFile(join(directory, 'navigation.spec.mjs'), `

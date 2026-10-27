@@ -2,7 +2,6 @@ import { temporaryDirectory } from '../scripts/temp-directory.mjs';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { mkdir, writeFile, readFile, rm, copyFile, symlink } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
 import { checkActionPins } from '../scripts/check-action-pins.mjs';
@@ -10,7 +9,7 @@ import { checkActionPins } from '../scripts/check-action-pins.mjs';
 const sha = '1'.repeat(40);
 const workflow = steps => `name: Probe\non: push\njobs:\n  test:\n    runs-on: ubuntu-latest\n    steps:\n${steps}\n`;
 async function fixture(t, ref = sha, manifest = true) {
-  const root = await temporaryDirectory(join(tmpdir(), 'app-action-pins-'));
+  const root = await temporaryDirectory('app-action-pins-');
   t.after(() => rm(root, { recursive: true, force: true }));
   await mkdir(join(root, '.github/workflows'), { recursive: true });
   await writeFile(join(root, '.github/workflows/ci.yml'), `jobs:\n  test:\n    steps:\n      - uses: actions/checkout@${ref}\n`);
@@ -57,7 +56,7 @@ test('the CLI runs without npm dependencies and returns a failure for pin drift'
   await mkdir(join(root, 'scripts'));
   const script = join(root, 'scripts/check-action-pins.mjs');
   await copyFile(new URL('../scripts/check-action-pins.mjs', import.meta.url), script);
-  const run = () => spawnSync(process.execPath, [script], { cwd: tmpdir(), encoding: 'utf8' });
+  const run = () => spawnSync(process.execPath, [script], { cwd: temporaryDirectory('doctorcre-action-cwd-', t), encoding: 'utf8' });
   const valid = run();
   assert.equal(valid.status, 0, valid.stderr);
   assert.match(valid.stdout, /pins match/);
@@ -68,7 +67,7 @@ test('the CLI runs without npm dependencies and returns a failure for pin drift'
 });
 test('an unreadable pin manifest or empty workflow inventory cannot pass', async t => {
   await assert.rejects(checkActionPins(await fixture(t, sha, false)));
-  const root = await temporaryDirectory(join(tmpdir(), 'app-empty-workflows-'));
+  const root = await temporaryDirectory('app-empty-workflows-');
   t.after(() => rm(root, { recursive: true, force: true }));
   await mkdir(join(root, '.github/workflows'), { recursive: true });
   await writeFile(join(root, '.github/action-pins.json'), '{"schema":"workflow-action-provenance.v1","actions":{}}');

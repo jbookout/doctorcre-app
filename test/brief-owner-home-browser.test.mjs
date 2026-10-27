@@ -2,7 +2,6 @@ import { temporaryDirectory } from '../scripts/temp-directory.mjs';
 import test, { before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildArtifact } from '../scripts/artifact.mjs';
@@ -10,7 +9,7 @@ import { chromium, fixtureServer, animationsSettled } from './browser-harness.mj
 
 let outDir, server;
 before(async () => {
-  outDir = await temporaryDirectory(join(tmpdir(), 'doctorcre-brief-home-'));
+  outDir = await temporaryDirectory('doctorcre-brief-home-');
   await buildArtifact({ root: fileURLToPath(new URL('../', import.meta.url)), outDir });
   server = await fixtureServer({ root: join(outDir, 'site') });
 });

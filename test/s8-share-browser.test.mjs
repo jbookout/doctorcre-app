@@ -2,7 +2,6 @@ import { temporaryDirectory } from '../scripts/temp-directory.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdir, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildArtifact } from '../scripts/artifact.mjs';
@@ -14,7 +13,7 @@ const root = fileURLToPath(new URL('../', import.meta.url));
 // The share page ships as its own built stylesheet (tokens + page + shell), so
 // it is checked from a real build, at desktop and phone width.
 test('S8 the share page sits in the V2 shell with a gutter, a compact stepper and a footer', async t => {
-  const outDir = await temporaryDirectory(join(tmpdir(), 's8-share-'));
+  const outDir = await temporaryDirectory('s8-share-');
   t.after(() => rm(outDir, { recursive: true, force: true }));
   await buildArtifact({ root, outDir, commit: '0'.repeat(40) });
   const { server } = await createQaServer({ buildRoot: join(outDir, 'site') });
@@ -57,7 +56,7 @@ test('S8 the share page sits in the V2 shell with a gutter, a compact stepper an
 });
 
 test('QA confidential Share exchanges its scrubbed link before showing properties, map and feedback at 390 in both themes', async t => {
-  const outDir = await temporaryDirectory(join(tmpdir(), 'populated-share-'));
+  const outDir = await temporaryDirectory('populated-share-');
   t.after(() => rm(outDir, { recursive:true, force:true }));
   await buildArtifact({ root, outDir, commit:'0'.repeat(40) });
   const { server } = await createQaServer({ buildRoot:join(outDir,'site') });
@@ -105,7 +104,7 @@ test('QA confidential Share exchanges its scrubbed link before showing propertie
 });
 
 for (const fonts of ['held', 'available']) test(`Slice A built shared report paints and mounts navigation with ${fonts} font CSS`, async t => {
-  const outDir = await temporaryDirectory(join(tmpdir(), 'share-font-'));
+  const outDir = await temporaryDirectory('share-font-');
   t.after(() => rm(outDir, { recursive: true, force: true }));
   await buildArtifact({ root, outDir, commit: '0'.repeat(40) });
   const { server } = await createQaServer({ buildRoot: join(outDir, 'site') });

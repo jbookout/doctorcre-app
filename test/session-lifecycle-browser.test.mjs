@@ -2,7 +2,6 @@ import { temporaryDirectory } from '../scripts/temp-directory.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { rm, readFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { buildArtifact } from '../scripts/artifact.mjs';
 import { createQaServer } from '../scripts/qa-fixture-server.mjs';
@@ -10,7 +9,7 @@ import { createFixtureClient } from '../js/fixture-client.js';
 import { chromium } from './browser-harness.mjs';
 const root=new URL('../',import.meta.url);
 async function open(t) {
- const outDir=await temporaryDirectory(join(tmpdir(),'session-lifecycle-'));
+ const outDir=await temporaryDirectory('session-lifecycle-');
  t.after(()=>rm(outDir,{recursive:true,force:true}));
  await buildArtifact({root:root.pathname,outDir,commit:'1'.repeat(40)});
  const {server}=await createQaServer({buildRoot:join(outDir,'site')});

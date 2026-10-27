@@ -2,7 +2,6 @@ import { temporaryDirectory } from '../scripts/temp-directory.mjs';
 import { navigationItems } from "../js/navigation.js";
 import { readFileSync } from "node:fs";
 import { readFile, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -35,7 +34,7 @@ test("workspace routes share navigation while the client portal stays outside th
 
 test("built report uses only report-adapter asset routes and includes the shared shell", async () => {
   const { buildArtifact } = await import("../scripts/artifact.mjs");
-  const outDir = await temporaryDirectory(join(tmpdir(), "doctorcre-report-shell-"));
+  const outDir = await temporaryDirectory("doctorcre-report-shell-");
   try {
     await buildArtifact({ root: new URL("../", import.meta.url).pathname, outDir, commit: "a".repeat(40) });
     const html = await readFile(join(outDir, "site/reports/share.html"), "utf8");

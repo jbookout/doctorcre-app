@@ -3,7 +3,6 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { readFileSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { compareBudget, limitFor, rebaseline, renderReport } from '../scripts/performance-budget.mjs';
 
@@ -69,8 +68,8 @@ test('the budget accepts measured values at the limits', () => {
   ] });
 });
 
-test('CLI exits 1 on a breach and 2 on incomplete evidence', () => {
-  const dir = temporaryDirectory(join(tmpdir(), 'doctorcre-budget-'));
+test('CLI exits 1 on a breach and 2 on incomplete evidence', t => {
+  const dir = temporaryDirectory('doctorcre-budget-', t);
   const budgetPath = join(dir, 'budget.json'), reportPath = join(dir, 'report.json');
   writeFileSync(budgetPath, JSON.stringify(budget));
   const measured = report();
@@ -140,7 +139,7 @@ test('every committed limit is the headroom rule applied to its measured baselin
     limitFor('interactionMs', 100), limitFor('interactionMs', 200)], [1100, 1750, 3000, 250, 400]);
 });
 
-test('rebaselining from a hosted job-log line rewrites the baseline and keeps the profile', () => {
+test('rebaselining from a hosted job-log line rewrites the baseline and keeps the profile', t => {
   const committed = contract();
   const measured = { schema: 'doctorcre-performance-report.v1', measuredAt: '2026-10-12T00:00:00.000Z', sourceCommit: 'a'.repeat(40),
     buildDigest: 'b'.repeat(64), browserVersion: '153.0.8010.12', nodeVersion: 'v22.23.2', platform: 'linux', profile: committed.profile,
@@ -148,7 +147,7 @@ test('rebaselining from a hosted job-log line rewrites the baseline and keeps th
       ? { lcpMs: 1000, usefulMs: 1500, requestCount: 5, criticalBytes: 700000 }
       : { lcpMs: 1000, jsBytes: 600000, interactionMs: 90 }])),
     bundle: { jsBytes: 4600000, gzipBytes: 1300000 } };
-  const dir = temporaryDirectory(join(tmpdir(), 'doctorcre-rebaseline-'));
+  const dir = temporaryDirectory('doctorcre-rebaseline-', t);
   const budgetPath = join(dir, 'budget.json'), logPath = join(dir, 'job.log');
   writeFileSync(budgetPath, JSON.stringify(committed));
   writeFileSync(logPath, `2026-10-12T00:00:00.0000000Z home: LCP=1000ms\n2026-10-12T00:00:00.0000000Z performance-report ${Buffer.from(JSON.stringify(measured)).toString('base64url')}\n`);

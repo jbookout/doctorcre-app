@@ -3,7 +3,6 @@ import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { chmod, mkdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
@@ -14,7 +13,7 @@ const release = await readFile(new URL("../.github/workflows/release.yml", impor
 const root = fileURLToPath(new URL("../", import.meta.url));
 
 test("PR jobs build the merge candidate when the branch predates a required npm script", async t => {
-  const directory = await temporaryDirectory(join(tmpdir(), "doctorcre-old-pr-"));
+  const directory = await temporaryDirectory("doctorcre-old-pr-");
   t.after(() => rm(directory, { recursive: true, force: true }));
   const git = (...args) => execFileSync("git", args, { cwd: directory, encoding: "utf8", stdio: "pipe" }).trim();
   const commit = () => {
@@ -47,7 +46,7 @@ test("PR jobs build the merge candidate when the branch predates a required npm 
 });
 
 test("the CI checkout layout keeps producer-owned content out of app repository checks", async (t) => {
-  const workspace = await temporaryDirectory(join(tmpdir(), "doctorcre-checkout-layout-"));
+  const workspace = await temporaryDirectory("doctorcre-checkout-layout-");
   t.after(() => rm(workspace, { recursive: true, force: true }));
   const steps = ci.split(/^      - /m).slice(1);
   const appCheckout = steps.find(step => /^uses: actions\/checkout@/m.test(step));
@@ -91,7 +90,7 @@ test('browser dependencies use official Ubuntu mirrors after privacy checks', as
   assert.ok(privacy >= 0 && privacy < mirror && mirror < browser,
     'configure apt mirrors after privacy checks and before installing browser dependencies');
   const shell = steps[mirror].match(/        run: \|\n([\s\S]*)/)[1].replace(/^          /gm, '');
-  const directory = await temporaryDirectory(join(tmpdir(), 'doctorcre-apt-mirrors-'));
+  const directory = await temporaryDirectory('doctorcre-apt-mirrors-');
   t.after(() => rm(directory, { recursive: true, force: true }));
   const path = join(directory, 'apt-mirrors.txt');
   await writeFile(path, 'http://azure.archive.ubuntu.com/ubuntu/\tpriority:1\n');
@@ -127,7 +126,7 @@ test('publisher handoff rejects tampering, missing digests, fork identity and sy
   const verify = release.match(/      - name: Verify handoff[\s\S]*?        run: \|\n([\s\S]*?)      - name: Publish/)[1].replace(/^          /gm, '');
   const publish = release.match(/      - name: Publish[\s\S]*?        run: \|\n([\s\S]*)/)[1].replace(/^          /gm, '');
   assert.ok(publish.includes('gh release create'));
-  const directory=await temporaryDirectory(join(tmpdir(),'release-handoff-'));
+  const directory=await temporaryDirectory('release-handoff-');
   t.after(()=>rm(directory,{recursive:true,force:true}));
   const {mkdir,symlink}=await import('node:fs/promises');
   await mkdir(join(directory,'dist')); await mkdir(join(directory,'bin'));
@@ -172,7 +171,7 @@ test('action pins agree with authenticated canonical release evidence', async ()
 {
 const source = await readFile(new URL('../.githooks/pre-push', import.meta.url), 'utf8');
 async function fixture(t, { slow = false, budgetMs = slow ? 100 : 170_000 } = {}) {
-  const root = await temporaryDirectory(join(tmpdir(), 'pre-push-'));
+  const root = await temporaryDirectory('pre-push-');
   t.after(() => rm(root, { recursive: true, force: true }));
   await mkdir(join(root, '.githooks'));
   await mkdir(join(root, 'test'));
