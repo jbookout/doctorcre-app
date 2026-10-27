@@ -143,9 +143,10 @@ test('W4 desktop/phone render, owner filters, equal cards, wide detail and reduc
     // Cards size to their content (S8): no fixed tall box with half of it empty.
     assert.ok(sizes.every(e => e.height < 360 && e.transform === 'none' && e.transition === '0s'), JSON.stringify(sizes));
     await page.screenshot({ path: new URL(`out/test-artifacts/w4/${width === 1440 ? 'desktop' : 'phone-' + width}.png`, root).pathname, fullPage: true });
+    assert.equal(await page.locator('.kanban-column [data-id="d14"] .owner').textContent(), 'Joe');
     await page.locator('[data-filter="dell"]').click();
     assert.equal(await page.locator('.kanban-column [data-id="d14"]').count(),0);
-    assert.equal(await page.locator('.kanban-column .kanban-card').count(),0);
+    assert.equal(await page.locator('.kanban-column .owner').evaluateAll(es => es.every(e => e.textContent === 'Dell')), true);
     await page.locator('[data-filter="all"]').click();
     await page.locator('.kanban-column [data-id="d14"] .card-open').click(); await page.waitForSelector('#detailPhase');
     const box = await page.locator('#recordPanel').boundingBox(); assert.ok(box.width >= Math.min(1100, width - 30));
@@ -334,13 +335,29 @@ test('W4 detail polls phase evidence, dates, people and parking while preserving
 });
 
 
-test('W4 checklist cards retain automatic history and show an overdue due chip', async t => {
-  const {page}=await open(t);
-  const card=page.locator('.kanban-column [data-id="d14"]');
-  assert.equal(await card.locator('.auto-move').count(),1);
-  assert.equal(await card.locator('[data-undo],.attention-flag').count(),0);
-  assert.equal(await card.locator('[data-overdue="true"] time').getAttribute('datetime'),'2026-02-01');
-
+test('W4 a long automatic reason keeps its date visible without persistent card controls', async t => {
+  const { page } = await open(t);
+  await page.evaluate(async () => {
+    const { state } = await import('/js/pipeline.js'); const original = state.client.getBoard;
+    state.client.getBoard = async (...args) => {
+      const board = await original(...args);
+      board.deals.find(d => d.id === 'd14').phase_change.reason = 'Demo submitted letter of intent with updated negotiated terms';
+      return board;
+    };
+  });
+  await refresh(page);
+  const card = page.locator('[data-id="d14"]');
+  const date = card.locator('.auto-move time');
+  assert.equal(await date.textContent(), '10/3');
+  const outer = await card.boundingBox(), stamp = await date.boundingBox();
+  assert.ok(stamp.y >= outer.y && stamp.y + stamp.height <= outer.y + outer.height);
+  assert.equal(await card.locator('[data-undo]').count(), 0);
+  // V2 hover is a hairline step on the border, not a lift (no hover transforms).
+  const restingBorder = await card.evaluate(e => getComputedStyle(e).borderRightColor);
+  await card.hover();
+  await page.waitForFunction(resting => getComputedStyle(document.querySelector('[data-id="d14"]')).borderRightColor !== resting, restingBorder);
+  // Attention reads in words with a glyph, never a bare colour dot (S8).
+  assert.equal(await page.locator('[data-id="d14"] .attention-flag').textContent(), '◆ Overdue');
 });
 
 

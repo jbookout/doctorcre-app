@@ -41,12 +41,12 @@ test('Home counts overdue agenda dates while board badges retain next-step atten
   const mine = await page.locator('#dealFlags .home-flag').count();
   await page.goto('http://localhost/deals');
   await page.locator('.kanban-card').first().waitFor();
-  const badges = await page.locator('.kanban-column .kanban-card:has([data-overdue="true"])').count();
+  const badges = await page.locator('.kanban-column .attention-flag').count();
   await page.getByRole('button', { name: 'Joe', exact: true }).click();
-  const myBadges = await page.locator('.kanban-column .kanban-card:has([data-overdue="true"])').count();
+  const myBadges = await page.locator('.kanban-column .attention-flag').count();
   assert.deepEqual({ home, badges, mine, myBadges }, { home: 3, badges: 2, mine: 1, myBadges: 1 });
   assert.match(homeCounts, /Overdue local deals: 3/);
-  assert.equal(await page.locator('.kanban-column [data-overdue="true"] time').count(), 1);
+  assert.equal(await page.locator('.kanban-column .attention-flag').first().textContent(), '◆ Overdue');
   seed.deals.forEach(deal => { deal.next_date = '2026-10-20'; deal.items.forEach(item => {item.due_on = '2026-10-20';}); });
   await page.goto('http://localhost/');
   await page.waitForFunction(() => /Active deals: \d/.test(document.querySelector('#dealCounts')?.textContent || ''));
