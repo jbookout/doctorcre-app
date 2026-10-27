@@ -29,3 +29,13 @@ test("a CPU cap bounds every invocation in both environments", () => {
   const stagingCap = config.env.staging.limits?.cpu_ms ?? cap;
   assert.ok(stagingCap > 0 && stagingCap <= cap, `staging limits.cpu_ms=${stagingCap}`);
 });
+
+test("every Worker environment samples logs below full volume", () => {
+  for (const [name, environment] of [['production', config], ...Object.entries(config.env)]) {
+    const rate = environment.observability?.head_sampling_rate;
+    assert.ok(typeof rate === 'number' && rate >= 0 && rate < 1,
+      `${name} requires an explicit head_sampling_rate in [0, 1)`);
+  }
+  assert.equal(config.observability.head_sampling_rate, 0.1);
+  assert.equal(config.env.staging.observability.head_sampling_rate, 0.01);
+});

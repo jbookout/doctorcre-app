@@ -9,16 +9,15 @@ const workflow = () => JSON.parse(execFileSync('ruby', ['-ryaml', '-rjson', '-e'
   input: readFileSync(new URL('../.github/workflows/staging-e2e.yml', import.meta.url), 'utf8'), encoding: 'utf8',
 }));
 
-test('signed-in staging runs nightly, manually and for its PR changes with the staging environment secret', () => {
+test('signed-in staging runs only on main pushes and manual dispatch with the staging environment secret', () => {
   const document = workflow();
   const events = document.on ?? document.true;
-  assert.deepEqual(events.schedule, [{ cron: '0 9 * * *' }]);
-  assert.ok(Object.hasOwn(events, 'workflow_dispatch'));
-  for (const path of ['.github/workflows/staging-e2e.yml', 'tests/staging/**']) assert.ok(events.pull_request.paths.includes(path));
+  assert.deepEqual(Object.keys(events).sort(), ['push', 'workflow_dispatch']);
+  assert.deepEqual(events.push, { branches: ['main'] });
   assert.equal(document.permissions.contents, 'read');
   const job = document.jobs.staging;
   assert.equal(job.environment, 'staging');
-  assert.ok(job['timeout-minutes'] <= 60);
+  assert.ok(job['timeout-minutes'] > 0 && job['timeout-minutes'] <= 60);
   const run = job.steps.find(step => step.run?.includes('playwright test'));
   assert.match(run.run, /--project=chromium/);
   assert.match(run.run, /--retries=1/);
@@ -53,13 +52,9 @@ test('staging journeys install their exact CARR producer and bind its provider c
 
 test('staging deploys the tested commit before signed-in journeys and keeps the deploy secret out of build steps', () => {
   const document = workflow();
-  const events = document.on ?? document.true;
-  assert.deepEqual(events.push.branches, ['main']);
-  assert.ok(events.pull_request.paths.includes('**'));
-  for (const path of ['!test/**', '!tests/**', 'tests/staging/**']) assert.ok(events.pull_request.paths.includes(path));
   const job = document.jobs.staging;
-  assert.match(job.if, /head\.repo\.full_name == github\.repository/);
-  assert.equal(document.concurrency['cancel-in-progress'], false);
+  assert.equal(document.concurrency.group, 'signed-in-staging');
+  assert.equal(document.concurrency['cancel-in-progress'], true);
   const checkout = job.steps.find(step => step.uses?.startsWith('actions/checkout@'));
   assert.equal(checkout.with.ref, '${{ github.sha }}');
   assert.equal(checkout.with['fetch-depth'], 0);
@@ -74,11 +69,4 @@ test('staging deploys the tested commit before signed-in journeys and keeps the 
   for (const [index, step] of job.steps.entries()) {
     if (index !== deploy) assert.equal(step.env?.CLOUDFLARE_API_TOKEN, undefined);
   }
-});
-
-// The opt-out must be in the event body when the PR is opened; adding a label
-// after creation could race the deployment job.
-test('a no-deploy PR cannot schedule the staging deployment job', () => {
-  const source = readFileSync(new URL('../.github/workflows/staging-e2e.yml', import.meta.url), 'utf8');
-  assert.match(source, /github\.event_name != 'pull_request' \|\| \(github\.event\.pull_request\.head\.repo\.full_name == github\.repository && !contains\(github\.event\.pull_request\.body, '<!-- doctorcre:no-deploy -->'\)\)/);
 });
