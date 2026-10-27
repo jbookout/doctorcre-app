@@ -108,3 +108,75 @@ for (const width of [1280, 390]) for (const theme of ['light', 'dark']) test(`si
   assert.ok(titleHitTest.hits.length > 0 && titleHitTest.hits.every(hit => hit.visible), JSON.stringify(titleHitTest));
   assert.deepEqual(errors, []);
 });
+
+for (const width of [390, 1280]) test(`signed-in Add deal persists through reload, HTTP replay and a second partner at ${width}px`, async t => {
+  const page = await browser.newPage({ viewport:{width,height:960}, timezoneId:'America/Chicago', reducedMotion:'reduce' });
+  const partner = await browser.newPage({ viewport:{width,height:960}, timezoneId:'America/Chicago', reducedMotion:'reduce' });
+  t.after(() => Promise.all([page.close(),partner.close()]));
+  const errors = [];
+  for (const current of [page,partner]) current.on('pageerror',error => errors.push(error.message));
+  const namespace = `create-deal-${width}`;
+  await page.request.post(`${origin}/api/test/seed`,{data:{namespace,viewer:'joe',reset:true}});
+  const writes = [];
+  page.on('request',request => {
+    if (new URL(request.url()).pathname !== '/mcp' || request.method() !== 'POST') return;
+    const body = request.postDataJSON();
+    if (['new-deal','set-lead','add-deal-note'].includes(body.params?.name)) writes.push(body);
+  });
+  await page.goto(`${origin}/deals?mode=live`);
+  await page.locator('.kanban-card').first().waitFor();
+  assert.equal(await page.evaluate(async () => (await import('/js/pipeline.js')).state.client.mode),'live');
+  await page.getByRole('button',{name:'Add deal',exact:true}).click();
+  await page.getByLabel('Deal name',{exact:true}).fill('Demo HTTP Partner Review');
+  await page.getByLabel('Client',{exact:true}).fill('C-demo');
+  await page.getByLabel('Owner',{exact:true}).selectOption('dell');
+  await page.getByLabel('Type',{exact:true}).selectOption('renewal');
+  await page.getByLabel('Stage',{exact:true}).selectOption('Research');
+  await page.getByLabel('Notes',{exact:true}).fill('Demo HTTP initial review note');
+  await page.getByRole('button',{name:'Create deal',exact:true}).click();
+  const card = page.locator('.kanban-card').filter({hasText:'Demo HTTP Partner Review'});
+  await card.waitFor();
+  assert.equal(await card.count(),1);
+  assert.match(await card.textContent(),/Dell/);
+  const id = await card.getAttribute('data-id');
+  assert.deepEqual(writes.map(body => body.params.name),['new-deal','set-lead','add-deal-note']);
+  assert.ok(writes.every(body => body.params.arguments.idempotency_key));
+  const rpc = async (current,name,args={}) => {
+    const response = await current.request.post(`${origin}/mcp`,{data:{jsonrpc:'2.0',id:1,method:'tools/call',params:{name,arguments:args}}});
+    assert.equal(response.status(),200);
+    const {result} = await response.json();
+    assert.notEqual(result.isError,true);
+    return JSON.parse(result.content[0].text);
+  };
+  const saved = await rpc(page,'get-deal-room',{deal:id});
+  assert.equal(saved.owner,'dell');
+  assert.equal(saved.thread.length,1);
+  const note = saved.thread[0];
+  assert.equal(note.actor,'joe');
+  assert.equal(note.text,'Demo HTTP initial review note');
+  assert.ok(Number.isFinite(Date.parse(note.recorded_at)));
+  await page.reload();
+  await card.waitFor();
+  for (const body of writes) {
+    const replay = await rpc(page,body.params.name,body.params.arguments);
+    if (body.params.name === 'new-deal') assert.equal(replay.deal_id,id);
+    else assert.equal(replay.ok,true);
+  }
+  const board = await rpc(page,'deal-room-board');
+  assert.equal(board.deals.length,17);
+  assert.equal(board.deals.filter(deal => deal.name === 'Demo HTTP Partner Review').length,1);
+  assert.deepEqual((await rpc(page,'get-deal-room',{deal:id})).thread,[note]);
+  await partner.request.post(`${origin}/api/test/seed`,{data:{namespace,viewer:'dell'}});
+  assert.equal((await rpc(partner,'deal-room-board')).actor,'dell');
+  await partner.goto(`${origin}/deals?mode=live&owner=dell&deal=${encodeURIComponent(id)}`);
+  await partner.locator('#detailUpdateForm').waitFor();
+  assert.equal(await partner.locator('#detailOwner').inputValue(),'dell');
+  const renderedNote = partner.locator('.deal-note').filter({hasText:note.text});
+  assert.equal(await renderedNote.count(),1);
+  assert.equal(await renderedNote.locator('b').textContent(),'Joe');
+  assert.equal(await renderedNote.locator('time').getAttribute('datetime'),note.recorded_at);
+  assert.ok((await renderedNote.locator('time').textContent()).trim());
+  assert.doesNotMatch(await renderedNote.locator('time').textContent(),/Date not recorded/);
+  assert.deepEqual((await rpc(partner,'get-deal-room',{deal:id})).thread,[note]);
+  assert.deepEqual(errors,[]);
+});
