@@ -539,8 +539,8 @@
       "write": false,
       "producer": {
         "repository": "jbookout/carr-system",
-        "source_commit": "3a57e47015916546fb2ffd11eaf880686c38e659",
-        "pull_request": "https://github.com/jbookout/carr-system/pull/2014"
+        "source_commit": "abe67d7e0d5356dc03e40be5afe17c9ca9aef4cc",
+        "pull_request": "https://github.com/jbookout/carr-system/pull/2525"
       },
       "response": {
         "schema_version": "local-deals-board.v1",
@@ -655,8 +655,8 @@
     "get-deal-room": {
       "producer": {
         "repository": "jbookout/carr-system",
-        "source_commit": "1df9b9936394164dd55e815f8a8bf69649508ccc",
-        "pull_request": "https://github.com/DoctorCRE/carr-system/pull/2192"
+        "source_commit": "abe67d7e0d5356dc03e40be5afe17c9ca9aef4cc",
+        "pull_request": "https://github.com/jbookout/carr-system/pull/2525"
       },
       "response": {
         "schema_version": "deal-timeline.v1",
@@ -708,7 +708,8 @@
         },
         "next_actions": {
           "hold_until": "YYYY-MM-DD or null. An open action is held while hold_until is later than the current calendar date. Held actions remain in this history read. Accepted post-call actions return null."
-        }
+        },
+        "client_portal_url": "HTTPS URL of the registered client portal, or null when none is registered."
       },
       "critical_date_write": "add-critical-date",
       "never_derive": [

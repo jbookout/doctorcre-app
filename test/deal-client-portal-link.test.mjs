@@ -16,7 +16,7 @@ test('the client portal link renders only for https and escapes the address',()=
  assert.match(html,/target="_blank" rel="noopener noreferrer"/);
 });
 
-async function open(t,width=1280,{portal=null}={}) {
+async function open(t,width=1280,{portal=null,closed=false}={}) {
  const browser=await chromium.launch();t.after(()=>browser.close());
  const page=await browser.newPage({viewport:{width,height:960}});
  const errors=[];page.on('pageerror',e=>errors.push(e.message));
@@ -29,8 +29,9 @@ async function open(t,width=1280,{portal=null}={}) {
   const file=url.pathname==='/deals'?'pipeline.html':url.pathname.slice(1);
   try{return route.fulfill({body:await readFile(new URL(file,root)),contentType:/\.m?js$/.test(file)?'text/javascript':file.endsWith('.css')?'text/css':file.endsWith('.json')?'application/json':'text/html'});}
   catch{return route.fulfill({status:404,body:''});}
- });
- await page.goto('http://localhost/deals');
+});
+ if(closed) Object.assign(seed.deals.find(d=>d.id==='d14'),{phase:'Closed',closed_on:'2026-10-02',outcome:'won'});
+ await page.goto('http://localhost/deals'+(closed?'?deal=d14':''));
  await waitForAsync(page,async()=>(await import('/js/pipeline.js')).state.deals.size>0);
  return {page,errors};
 }
@@ -75,6 +76,16 @@ test('a partner registers the portal from the deal panel, a taken name is refuse
  assert.equal(await card.getAttribute('href'),PORTAL);
  await page.locator('#recordPanel .client-portal-link').waitFor();
  assert.equal(await page.locator('#detailClientPortalForm').count(),0,'a registered deal offers no second registration');
- assert.equal((await page.content()).includes('simple-pw'),false);
+ assert.equal(await page.locator('#clientPortalPassword').count(),0);
+ assert.equal(await page.locator('input').evaluateAll(inputs=>inputs.some(input=>input.value==='simple-pw')),false);
+ assert.equal((await page.locator('#recordPanel').innerText()).includes('simple-pw'),false);
  assert.deepEqual(errors,[]);
+});
+
+test('a closed deal shows its portal link without board controls',async t=>{
+ const {page}=await open(t,1280,{portal:PORTAL,closed:true});
+ const link=page.locator('#recordPanel .client-portal-link');
+ await link.waitFor({timeout:3000});
+ assert.equal(await link.getAttribute('href'),PORTAL);
+ assert.equal(await page.locator('#detailClientPortalForm').count(),0);
 });
