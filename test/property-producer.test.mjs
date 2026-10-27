@@ -10,7 +10,7 @@ import { validSystemWork, groupSystemWork, recentLive } from "../js/system-work-
 import { renderDealChecklist } from "../js/deal-checklist.js";
 
 const contract = JSON.parse(await readFile(new URL("../contracts/carr-interface.v1.json", import.meta.url), "utf8"));
-const pinnedProducer = "1df9b9936394164dd55e815f8a8bf69649508ccc";
+const pinnedProducer = "700173808625061adff581cfab415ce8e83e24f6";
 
 
 const producerModules = new Map();

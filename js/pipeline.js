@@ -522,6 +522,10 @@ async function runFollowUp(operationKey, step) {
     newKey: uuidv4,
     call: (request) => send(request),
   });
+  if (step.verb === 'register-client-portal' && result.started) {
+    const entry = operations.get(operationKey);
+    if (entry?.args?.password) delete entry.args.password;
+  }
   if (updateActor !== null && updateActor !== state.selfActor) return result;
   dock.record(operationKey, {
     summary: operations.get(operationKey).summary,
@@ -529,6 +533,7 @@ async function runFollowUp(operationKey, step) {
     reason: result.message || null,
     retry: result.status === 'blocked' || result.retry, undo: false, request: result.request,
   });
+  if (step.verb === 'register-client-portal' && result.status === 'ok') state.boardSync.requestRefresh('client-portal');
   if (isUpdate && result.status === 'ok') discardUpdate(args.deal);
   if (step.verb === 'add-deal-note' && operationKey === updateKey(state.panelDeal) && state.panelDetail) {
     if ([401,403].includes(result.http_status)) { refusePanelDetail({status:result.http_status}); return result; }
@@ -941,7 +946,7 @@ function detailHtml(detail) {
 function clientPortalHtml(d, canRegister) {
   if (d.client_portal_url) return `<div data-detail-read="client-portal">${renderClientPortalLink(d.client_portal_url)}</div>`;
   if (!canRegister) return '';
-  return `<div data-detail-read="client-portal"><details class="client-portal-register"><summary>Set up client portal</summary><form id="detailClientPortalForm" class="client-portal-form"><label for="clientPortalSlug">Portal name</label><input id="clientPortalSlug" name="slug" required maxlength="63" pattern="[a-z0-9][a-z0-9\\-]*" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="practice-name" data-detail-focus="client-portal-slug"><label for="clientPortalPassword">Password</label><input id="clientPortalPassword" name="password" required maxlength="1024" autocomplete="off" autocapitalize="none" spellcheck="false" data-detail-focus="client-portal-password"><button class="btn" type="submit">Register portal</button></form></details><p id="detailClientPortalStatus" role="status"></p></div>`;
+  return `<div data-detail-read="client-portal"><details class="client-portal-register"><summary>Set up client portal</summary><form id="detailClientPortalForm" class="client-portal-form"><label for="clientPortalSlug">Portal name</label><input id="clientPortalSlug" name="slug" required maxlength="63" pattern="[a-z0-9][a-z0-9\\-]*" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="practice-name" data-detail-focus="client-portal-slug"><label for="clientPortalPassword">Password</label><input id="clientPortalPassword" type="password" name="password" required maxlength="1024" autocomplete="off" autocapitalize="none" spellcheck="false" data-detail-focus="client-portal-password"><button class="btn" type="submit">Register portal</button></form></details><p id="detailClientPortalStatus" role="status"></p></div>`;
 }
 async function registerClientPortal(id, form) {
   const slug = String(form.get('slug')).trim().toLowerCase();
@@ -953,7 +958,6 @@ async function registerClientPortal(id, form) {
   });
   if (state.panelDeal !== id) return;
   if (result?.status === 'ok') {
-    state.boardSync.requestRefresh('client-portal');
     await refreshPanel();
   } else if ($('detailClientPortalStatus')) {
     $('detailClientPortalStatus').textContent = result?.message || 'Client portal not confirmed';
@@ -1457,7 +1461,7 @@ function mountDock() {
       if (entry?.kind === 'field') retryFieldWrite(operationKey);
       else if (entry?.kind === 'outcome-read') return runOutcomeWrite(operationKey, entry.step, entry.intent);
       else if (entry?.kind === 'follow-up-read') return runFollowUp(operationKey, entry.step);
-      else if (entry?.args) runFollowUp(operationKey, { verb: entry.verb, args: entry.args, summary: entry.summary });
+      else if (entry?.args) runFollowUp(operationKey, { verb: entry.verb, args: entry.verb === 'register-client-portal' ? pendingCommand(commandState, operationKey)?.request || entry.args : entry.args, summary: entry.summary });
     },
     onReconcile: (operationKey) => {
       const entry = operations.get(operationKey);
@@ -1465,7 +1469,7 @@ function mountDock() {
       else if (entry?.kind === 'outcome-read') return runOutcomeWrite(operationKey, entry.step, entry.intent);
       else if (entry?.kind === 'follow-up-read') return runFollowUp(operationKey, entry.step);
       else if (entry?.args && entry?.send) {
-        runFollowUp(operationKey, { verb: entry.verb, args: entry.args, summary: entry.summary });
+        runFollowUp(operationKey, { verb: entry.verb, args: entry.verb === 'register-client-portal' ? pendingCommand(commandState, operationKey)?.request || entry.args : entry.args, summary: entry.summary });
       }
     },
     onUndo: null,
