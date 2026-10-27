@@ -797,7 +797,7 @@ test('Home distinguishes empty, warning and unavailable meeting states and refre
 test('Home shows a failed first meeting read with retry and recovers', async t => {
   const { page, failBrief, errors } = await open(t, { initialBriefFailure: true, calendar: { state: 'empty', items: [], notes: [] } });
   const card = page.getByRole('region', { name: 'Upcoming meetings', exact: true });
-  await settles(async () => assert.match(await page.locator('#homeMeetings').textContent(), /Couldn't load meetings/), 2000);
+  await settles(async () => assert.match(await page.locator('#homeMeetings').textContent(), /Meetings unavailable/), 2000);
   assert.equal(await card.isVisible(), true);
   assert.doesNotMatch(await card.innerText(), /No upcoming meetings/);
   failBrief(false);

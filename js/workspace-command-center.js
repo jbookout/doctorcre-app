@@ -42,7 +42,7 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
     if (!$('homeMeetings')) return;
     const meetings = signedOut ? null : calendar;
     if (!meetings) { $('homeMeetings').replaceChildren(); widget('homeMeetings', null); return; }
-    const failed = meetings.state === 'failed' || meetings.state === 'unavailable';
+    const failed = meetings.state === 'unavailable';
     const count = meetings.items.length;
     const header = `<header class="home-panel-head"><h2>Upcoming meetings</h2>${failed ? '<button type="button" class="home-refresh" data-retry-meetings aria-label="Retry meetings" title="Retry meetings">↻</button>' : `<span class="home-period">${count} ${count === 1 ? 'meeting' : 'meetings'}</span>`}</header>`;
     const warnings = (meetings.notes || []).map(note => `<p class="home-meeting-warning">${E(note)}</p>`).join('');
@@ -51,7 +51,7 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
       const detail = `${meeting.location || 'Place not provided'} · ${meeting.attendee_count} ${meeting.attendee_count === 1 ? 'attendee' : 'attendees'}`;
       return `<div class="home-meeting"><time datetime="${E(meeting.start)}">${E(time)}${meeting.all_day ? ' · All day' : ''}</time><strong>${E(meeting.title)}</strong><span>${E(detail)}</span></div>`;
     }).join('');
-    const content = failed ? `<p class="home-meeting-failure" role="status">${meetings.state === 'failed' ? 'Couldn&#39;t load meetings' : 'Meetings unavailable'}</p>`
+    const content = failed ? `<p class="home-meeting-failure" role="status">Meetings unavailable</p>`
       : count ? `<div class="home-meetings">${rows}</div>` : `<p class="home-empty">${meetings.state === 'empty' ? 'No upcoming meetings' : 'No meetings returned'}</p>`;
     widget('homeMeetings', header + warnings + content);
   };
@@ -213,7 +213,7 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
   }, 1000);
   const updateCalendar = event => {
     const value = event.detail;
-    const valid = value && ['ready', 'empty', 'partial', 'unavailable', 'failed'].includes(value.state)
+    const valid = value && ['ready', 'empty', 'partial', 'unavailable'].includes(value.state)
       && Array.isArray(value.items) && (value.notes == null || Array.isArray(value.notes) && value.notes.every(note => typeof note === 'string'))
       && value.items.every(row => row && typeof row.title === 'string' && typeof row.start === 'string' && Number.isFinite(Date.parse(row.start))
         && (row.location == null || typeof row.location === 'string') && Number.isSafeInteger(row.attendee_count) && row.attendee_count >= 0);

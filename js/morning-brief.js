@@ -148,7 +148,7 @@ export function mountMorningBrief({ document:root, window:win, getClient, interv
         const admitted = source.state !== 'unavailable' && source.items.find(row => selected.kind === 'loop' ? String(row.number) === selected.id && row.kind === selected.loopKind : row.id === (selected.action?.id || selected.id) && (selected.kind !== 'action' || ['next_action','post_call_action','critical_date'].includes(row.item_kind)));
         if (admitted) await showRecord(selected.action ? {...selected,action:admitted} : selected,{background:true}); else back();
       }
-    } catch (error) { if (current()) { if ([401,403].includes(error.status)) invalidate(); else { clear(); publishCalendar({ state: 'failed', items: [] }); } } }
+    } catch (error) { if (current()) { if ([401,403].includes(error.status)) invalidate(); else { clear(); publishCalendar({ state: 'unavailable' }); } } }
   };
   const queues = mountBriefQueues({menu:$('morningQueues'),content:$('morningContent'),getClient:()=>client,getSponsor:()=>sponsor,
     onOpen:title=>{selected=null;++detailEpoch;$('morningTitle').textContent=title;$('morningBack').hidden=false;$('morningOwners').hidden=true;},onBack:back,onInvalidate:invalidate,onChange:render});
