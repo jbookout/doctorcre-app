@@ -6,14 +6,6 @@ import { appShellMarkup, navigationItems } from "../js/navigation.js";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 
-/**
- * What a reader can actually see, for the copy checks below. A comment
- * promising not to make a claim is not the claim, and asserting against
- * comments is how a truthful file fails a truthfulness test.
- */
-const withoutComments = (source) => source
-  .replace(/\/\*[\s\S]*?\*\//g, " ")
-  .replace(/(^|\s)\/\/.*$/gm, "$1");
 
 test("workspace surfaces share navigation while the client portal mounts its dedicated reader", async () => {
   const routes = (await import("../js/routes.js")).routeContract;
