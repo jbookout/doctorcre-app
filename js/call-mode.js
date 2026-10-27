@@ -1,11 +1,10 @@
 import { createRetainedCommands } from './retained-commands.mjs';
 import { callChangeText, dayLabel } from './call-change-words.js';
-import { requestCompanion } from './post-call-client.js';
+import { requestCompanion, CALL_MODE_URL, CALL_MODE_HEADER, CALL_MODE_STATES } from './post-call-client.js';
 import { escapeText as esc, compareInstants } from './change-receipts.mjs';
 import { mountVisibilityPoll } from './visibility-poll.mjs';
 
-export const CALL_MODE_URL = 'http://127.0.0.1:4682';
-export const CALL_MODE_HEADER = Object.freeze({ 'X-CARR-Call-Mode': 'deal-room-v1' });
+export { CALL_MODE_URL, CALL_MODE_HEADER };
 /** get-call-context refuses more than this many deal ids in one request. */
 export const CALL_CONTEXT_BATCH = 50;
 export const CALL_MODES = Object.freeze(['weekly_deal_call', 'other_call']);
@@ -148,7 +147,7 @@ export function createCallMode(deps) {
       body: JSON.stringify(body), targetAddressSpace: 'loopback',
     } : { method: 'GET', targetAddressSpace: 'loopback' };
     const payload = await requestCompanion(`${CALL_MODE_URL}/api/${path}`,options,{fetchImpl,timeoutMs});
-    if (!['idle','recording','transcribing','ready_to_extract','filed','state_unknown'].includes(payload.state)) {
+    if (!CALL_MODE_STATES.includes(payload.state)) {
       throw Object.assign(new Error('Local Call Mode response unavailable. Check local state before retrying.'),{outcomeUnknown:Boolean(body)});
     }
     return payload;

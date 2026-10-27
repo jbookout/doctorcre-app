@@ -1,6 +1,7 @@
 import { readWithDeadline } from './current-read.mjs';
-const DEFAULT_LOOPBACK = 'http://127.0.0.1:4682';
-const DEFAULT_HEADER = { 'X-CARR-Call-Mode': 'deal-room-v1' };
+export const CALL_MODE_URL = 'http://127.0.0.1:4682';
+export const CALL_MODE_HEADER = Object.freeze({ 'X-CARR-Call-Mode': 'deal-room-v1' });
+export const CALL_MODE_STATES = Object.freeze(['idle','recording','transcribing','ready_to_extract','filed','state_unknown']);
 
 // One deadline includes headers and JSON, even when the transport ignores abort.
 export async function requestCompanion(url, init = {}, {fetchImpl = fetch, timeoutMs = 15000, fallback = 'Call Mode request failed.'} = {}) {
@@ -25,9 +26,9 @@ export async function requestCompanion(url, init = {}, {fetchImpl = fetch, timeo
 
 /** Narrow client for the loopback-only post-call review surface. */
 export function createPostCallClient(options = {}) {
-  const loopback = (options.loopbackUrl || DEFAULT_LOOPBACK).replace(/\/$/u, '');
+  const loopback = (options.loopbackUrl || CALL_MODE_URL).replace(/\/$/u, '');
   const fetchImpl = options.fetchImpl || fetch;
-  const postHeaders = { 'content-type': 'application/json', ...DEFAULT_HEADER,
+  const postHeaders = { 'content-type': 'application/json', ...CALL_MODE_HEADER,
     ...(options.postHeaders || {}) };
 
   function loopbackFetch(path, init = {}) {
@@ -43,7 +44,7 @@ export function createPostCallClient(options = {}) {
 
     async getStatus(session) {
       const body = await loopbackFetch(`/api/post-call?session=${encodeURIComponent(session)}`, {
-        headers: { ...DEFAULT_HEADER },
+        headers: { ...CALL_MODE_HEADER },
       });
       const status = typeof body.status === 'object' ? body.status?.state : body.status || body.state;
       if (typeof status !== 'string' || !status) throw new Error('Post-call report unavailable: invalid status.');

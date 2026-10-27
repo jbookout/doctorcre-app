@@ -333,3 +333,43 @@ test('a fresh morning brief does not join an older pending read', async () => {
   release();
   assert.deepEqual(await older, { number: 1 });
 });
+
+test('a failed shared read fails every waiter and the next read asks again', async () => {
+  let requests = 0, fail = true;
+  const fetchImpl = async () => {
+    requests++;
+    await new Promise(resolve => setTimeout(resolve));
+    if (fail) throw new Error('offline');
+    return Response.json({ result: { content: [{ text: '{"ok":true}' }] } });
+  };
+  const [first, second] = [createLiveClient({ fetchImpl }), createLiveClient({ fetchImpl })];
+  const reads = await Promise.allSettled([first.morningBrief(), second.morningBrief()]);
+  assert.equal(requests, 1);
+  assert.deepEqual(reads.map(read => read.status), ['rejected', 'rejected']);
+  fail = false;
+  assert.deepEqual(await first.morningBrief(), { ok: true });
+  assert.equal(requests, 2);
+});
+
+test('shared reads never join across signed-in users', async () => {
+  const seen = [];
+  const fetchImpl = async (path, init) => {
+    const verb = JSON.parse(init.body).params.name;
+    seen.push(verb);
+    await new Promise(resolve => setTimeout(resolve));
+    const body = verb === 'deal-room-board' ? { actor: seen.length > 2 ? 'dell' : 'joe', deals: [] } : { ok: true };
+    return Response.json({ result: { content: [{ text: JSON.stringify(body) }] } });
+  };
+  const joe = createLiveClient({ fetchImpl, selfActor: 'joe' }), dell = createLiveClient({ fetchImpl, selfActor: 'dell' });
+  await Promise.all([joe.morningBrief(), dell.morningBrief()]);
+  assert.deepEqual(seen, ['morning-brief', 'morning-brief']);
+
+  seen.length = 0;
+  const changing = createLiveClient({ fetchImpl });
+  await changing.getBoard();
+  const pending = changing.morningBrief();
+  await changing.getBoard();
+  const afterChange = changing.morningBrief();
+  await Promise.all([pending, afterChange]);
+  assert.equal(seen.filter(verb => verb === 'morning-brief').length, 2, 'the new user must not receive the previous user\'s pending read');
+});
