@@ -28,7 +28,14 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
   let relationshipDialog = null, pastWidget = null, secondaryRequested = false;
   let agendaExpanded = false, agendaView = 'all', nextRead = readHomeDashboard;
   let scope = 'team', snapshot = null, sequence = 0, updatedAt = null, disposed = false, leadEntries = new Map(), selectedLead = null;
-  const callTasks = $('homeCallTasks') ? mountHomeCallTasks({ document, client, host: $('homeCallTasks'), onChanged: async () => {
+  const callTasks = $('homeCallTasks') ? mountHomeCallTasks({ document, client, host: $('homeCallTasks'),
+    openReport: async (session, { signal }) => {
+      const { mountGlobalCallMode } = await import('./global-call-mode.js');
+      if (signal.aborted) return false;
+      const call = await mountGlobalCallMode(document);
+      if (signal.aborted) return false;
+      return call.open({ session, signal });
+    }, onChanged: async () => {
     const before = sequence;
     await auto.refresh();
     if (!disposed && before === sequence) await auto.refresh();

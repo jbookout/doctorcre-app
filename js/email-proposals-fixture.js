@@ -53,11 +53,11 @@ export function createEmailProposalsFixture({ deals, seedDeals, actor, client, p
     receipts.set(args.idempotency_key, receipt); return structuredClone(receipt);
   }
   return {
-    async listEmailProposals({ limit, cursor } = {}) {
+    async listEmailProposals({ deal, limit, cursor } = {}) {
       const proposals = [];
       const start = cursor ? rows.findIndex(item => item.id === cursor) + 1 : 0;
-      if (cursor && !start) fail('email_proposals_cursor_invalid');
-      const pending = rows.slice(start).filter(item => item.status === 'pending');
+      if (cursor && (!start || (deal && rows[start - 1].deal !== deal))) fail('email_proposals_cursor_invalid');
+      const pending = rows.slice(start).filter(item => item.status === 'pending' && (!deal || item.deal === deal));
       for (const row of pending.slice(0, limit || pending.length)) {
         const { status, ...item } = row;
         try { item.preview = await preview({ deal: row.deal, activity_id: row.source.activity_id, evidence_quote: row.source.evidence_quote,

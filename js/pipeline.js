@@ -333,6 +333,7 @@ function applyBoardSnapshot(board) {
     ++panelReadSequence; ++contextReadSequence;
     state.panelDetail = null;
     disposeEvidence?.(); disposeEvidence = null;
+    disposePanelEmailFollowups();
     $('contextDrawer').close(); $('contextDrawerBody').replaceChildren();
     $('panelTitle').textContent = 'Deal';
     $('panelBody').innerHTML = '<p>Updating…</p>';
@@ -774,6 +775,24 @@ async function settleConflictChoice(conflictId, result) {
 
 
 let disposeEvidence = null;
+let panelEmailFollowups = null;
+let emailMountSequence = 0;
+function disposePanelEmailFollowups() {
+  emailMountSequence++;
+  panelEmailFollowups?.dispose(); panelEmailFollowups = null;
+}
+async function mountPanelEmailFollowups(id) {
+  const container = $('panelEmailFollowups'), sequence = ++emailMountSequence;
+  try {
+    const { mountEmailFollowups } = await import('./email-followups.js');
+    if (sequence !== emailMountSequence || state.panelDeal !== id || !container?.isConnected) return;
+    panelEmailFollowups = mountEmailFollowups({ container, client: state.client, deal: id,
+      onChange: () => { if (state.panelDeal === id) void refreshPanel({ changed: true }); } });
+    void panelEmailFollowups.refresh();
+  } catch {
+    if (sequence === emailMountSequence && container?.isConnected) container.innerHTML = '<p role="status">Could not load email follow-ups.</p><button class="btn" type="button" data-refresh-detail>Retry email follow-ups</button>';
+  }
+}
 let panelReadSequence = 0;
 let contextReadSequence = 0;
 let panelRead = null;
@@ -804,6 +823,7 @@ function refusePanelDetail(error) {
   state.panelDetail = null;
   bindDraftActor(null);
   disposeEvidence?.(); disposeEvidence = null;
+  disposePanelEmailFollowups();
   setContextOpenVisible(false);
   $('contextDrawer').close();
   $('contextDrawerBody').replaceChildren();
@@ -906,6 +926,7 @@ function detailHtml(detail) {
     </section>
     <div data-detail-read="checklist">${renderDealChecklist(detail.checklist)}</div>
     <form id="detailUpdateForm" class="deal-update-form"><label for="dealUpdate">Update</label><textarea id="dealUpdate" name="text" rows="2" maxlength="10000" required></textarea><button class="btn btn-primary" type="submit">Add update</button><button class="btn btn-quiet" type="button" data-discard-update>Discard draft</button><p id="detailUpdateStatus" role="status"></p></form>
+    <section id="panelEmailFollowups" aria-label="Email follow-ups"><p role="status">Updating email follow-ups…</p></section>
     ${requirementEmailHtml(d)}
     <div data-detail-read="vendors">${renderDealVendors(d.vendors)}</div>
     <div data-detail-read="board-controls" data-available="${controlsAvailable}">${controlsAvailable ? `<div class="detail-actions"><div class="detail-controls"><label>Phase<select id="detailPhase">${COLUMNS.map(c => `<option value="${esc(c.slug)}"${c.value === d.phase ? ' selected' : ''}>${esc(c.label)}</option>`).join('')}</select></label><label>Owner<select id="detailOwner"><option value="">Unassigned</option>${['joe','dell'].map(owner => `<option value="${owner}"${owner === d.owner ? ' selected' : ''}>${actorName(owner)}</option>`).join('')}</select></label></div><div data-detail-read="parking" data-parked="${parked}">${parked ? `<p>${esc(concise(d.parking_note) || 'Parked')}</p><button type="button" class="btn" data-revive="${esc(d.id)}">Revive</button>` : `<details class="park-options"><summary class="park-control">Park</summary><form id="detailParkForm"><label>Park reason<input name="reason" maxlength="500" required></label><button class="btn park-control" type="submit">Park deal</button></form></details>`}</div></div>` : ''}</div>
@@ -1009,13 +1030,16 @@ function paintPanel(detail) {
   $('panelTitle').textContent = dealTitle(detail.deal);
   $('panelBody').innerHTML = detailHtml(detail);
   disposeEvidence?.(); disposeEvidence = null;
+  disposePanelEmailFollowups();
   syncUpdateForm();
   updateDetailTimestamp();
+  void mountPanelEmailFollowups(detail.deal.id);
 }
 async function openPanel(dealId, trigger, { fromHistory = false } = {}) {
   selectDocRecord('deal', dealId);
   const panel = $('recordPanel');
   disposeEvidence?.(); disposeEvidence = null;
+  disposePanelEmailFollowups();
   setContextOpenVisible(false);
   state.panelDeal = dealId; state.panelDetail = null; updateDraft = null;
   const url = new URL(location.href);
@@ -1037,6 +1061,7 @@ function closePanel({ fromHistory = false } = {}) {
   $('contextDrawer').close(); $('contextDrawerBody').replaceChildren();
   const id = state.panelReturnTo;
   disposeEvidence?.(); disposeEvidence=null;
+  disposePanelEmailFollowups();
   if (!fromHistory) { const url = new URL(location.href); url.searchParams.delete('deal'); history.replaceState({},'',url); }
   $('recordPanel').close(); state.panelDeal = null; state.panelDetail = null;
   state.panelReturnTo = null;
@@ -1342,7 +1367,11 @@ function wire() {
   }, true);
   $('panelBody').addEventListener('click', e => {
     if (e.target.closest('[data-discard-update]') && !pendingCommand(commandState, updateKey(state.panelDeal))) { discardUpdate(state.panelDeal); syncUpdateForm(); }
-    if (e.target.closest('[data-refresh-detail]')) refreshPanel();
+    if (e.target.closest('[data-refresh-detail]')) {
+      void refreshPanel();
+      if (panelEmailFollowups) void panelEmailFollowups.refresh();
+      else if (state.panelDetail) void mountPanelEmailFollowups(state.panelDeal);
+    }
     if (e.target.closest('[data-generate-requirement]') && state.selfActor && draftActor === state.selfActor) {
       const form = $('requirementEmailForm');
       if (!form.reportValidity()) return;
