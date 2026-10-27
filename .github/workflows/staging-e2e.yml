@@ -1,9 +1,8 @@
 name: Signed-in staging tests
 
+# Signed-in tests need Access-gated staging before they can run again.
 on:
   workflow_dispatch:
-  push:
-    branches: [main]
 
 permissions:
   contents: read

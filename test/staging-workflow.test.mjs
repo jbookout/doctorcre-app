@@ -9,11 +9,10 @@ const workflow = () => JSON.parse(execFileSync('ruby', ['-ryaml', '-rjson', '-e'
   input: readFileSync(new URL('../.github/workflows/staging-e2e.yml', import.meta.url), 'utf8'), encoding: 'utf8',
 }));
 
-test('signed-in staging runs only on main pushes and manual dispatch with the staging environment secret', () => {
+test('signed-in staging runs only on manual dispatch with the staging environment secret', () => {
   const document = workflow();
   const events = document.on ?? document.true;
-  assert.deepEqual(Object.keys(events).sort(), ['push', 'workflow_dispatch']);
-  assert.deepEqual(events.push, { branches: ['main'] });
+  assert.deepEqual(Object.keys(events).sort(), ['workflow_dispatch']);
   assert.equal(document.permissions.contents, 'read');
   const job = document.jobs.staging;
   assert.equal(job.environment, 'staging');

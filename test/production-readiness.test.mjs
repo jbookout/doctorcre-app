@@ -7,7 +7,7 @@ const config = JSON.parse(await readFile(new URL("../wrangler.jsonc", import.met
 test("production can reach CARR without making the app publicly routable", () => {
   assert.equal(config.name, "doctorcre-app");
   assert.equal(config.workers_dev, false);
-  assert.equal(config.preview_urls, true);
+  assert.equal(config.preview_urls, false);
   assert.deepEqual(config.routes, []);
   assert.deepEqual(config.services, [{ binding: "CARR", service: "carr-mcp" }]);
   assert.equal(config.vars.APP_ENV, "production");
@@ -16,7 +16,7 @@ test("production can reach CARR without making the app publicly routable", () =>
 test("staging remains isolated from production CARR and production hostnames", () => {
   const staging = config.env.staging;
   assert.equal(staging.name, "doctorcre-app-staging");
-  assert.equal(staging.workers_dev, true);
+  assert.equal(staging.workers_dev, false);
   assert.deepEqual(staging.routes, []);
   assert.deepEqual(staging.services, [{ binding: "CARR", service: "carr-mcp-staging" }]);
   assert.equal(staging.vars.APP_ENV, "staging");
@@ -38,4 +38,12 @@ test("every Worker environment samples logs below full volume", () => {
   }
   assert.equal(config.observability.head_sampling_rate, 0.1);
   assert.equal(config.env.staging.observability.head_sampling_rate, 0.01);
+});
+
+test("no Worker environment enables public workers.dev or preview URLs", () => {
+  for (const [name, environment] of [['production', config], ...Object.entries(config.env)]) {
+    for (const setting of ['workers_dev', 'preview_urls']) {
+      assert.equal(environment[setting], false, `${name} must explicitly disable ${setting}`);
+    }
+  }
 });
