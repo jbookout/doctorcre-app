@@ -31,7 +31,7 @@ const refusal = error => {
 
 export function mountEmailFollowups({ container, client, onChange = () => {} }) {
   const win = container.ownerDocument.defaultView;
-  let rows = [], loaded = false, loadState = 'loading', epoch = 0, disposed = false;
+  let rows = [], loaded = false, loadState = 'loading', epoch = 0, disposed = false, cursor = null, retryCursor = null;
   const decisions = new Map();
   function render() {
     if (disposed) return;
@@ -58,7 +58,7 @@ export function mountEmailFollowups({ container, client, onChange = () => {} }) 
       else if (state.status === 'unknown') controls = button('replay', 'Check outcome');
       else if (state.status !== 'done') controls = `${preview && validPreview(row, preview) ? button('preview', 'Confirm', loadState !== 'ready') : ''}${button('dismiss', 'Dismiss', loadState !== 'ready')}`;
       return `<article class="email-proposal" data-email-id="${E(row.id)}"><h3><a href="/deals?deal=${encodeURIComponent(row.deal)}">${E(row.deal_name)}</a></h3><p class="email-source">Email sender</p><q>${E(row.source.evidence_quote)}</q>${row.suspected_instruction ? `<p class="email-warning">Caution: ${E(row.suspected_instruction)}. Review the quoted email carefully.</p>` : ''}<p class="email-change">${E(change(row, preview))}</p>${!preview ? '<p>This proposal cannot currently be confirmed. Open the deal to review it or dismiss it with a reason.</p>' : ''}${state.message ? `<p role="status">${E(state.message)}</p>` : ''}<div class="email-controls">${controls}</div></article>`;
-    }).join('')}`;
+    }).join('')}${cursor && loadState === 'ready' ? button('more', 'Load more email follow-ups') : ''}`;
     if (active) {
       const article = [...container.querySelectorAll('[data-email-id]')].find(node => node.dataset.emailId === focusId);
       const replacement = (selection && article?.querySelector('textarea')) || [...(article || container).querySelectorAll('[data-email-action]')].find(node => node.dataset.emailAction === focusAction && !node.disabled)
@@ -68,20 +68,23 @@ export function mountEmailFollowups({ container, client, onChange = () => {} }) 
     }
   }
   function retire() {
-    epoch++; rows = []; decisions.clear(); loaded = false; loadState = 'denied'; render();
+    epoch++; rows = []; cursor = null; retryCursor = null; decisions.clear(); loaded = false; loadState = 'denied'; render();
   }
-  async function refresh() {
+  async function refresh(pageCursor = null) {
     if (disposed || loadState === 'denied') return;
     const ticket = ++epoch;
+    retryCursor = pageCursor;
     loadState = 'loading'; render();
     try {
-      const result = await readWithDeadline(() => client.listEmailProposals(), { timeoutMs: 10_000 });
+      const result = await readWithDeadline(() => client.listEmailProposals({ limit: 50, ...(pageCursor ? { cursor: pageCursor } : {}) }), { timeoutMs: 10_000 });
       if (disposed || ticket !== epoch) return;
       if (result?.schema_version !== 'email-proposals.v1' || result.send !== false || !Array.isArray(result.proposals)
+        || typeof result.more !== 'boolean' || (result.more ? !result.next_cursor || result.next_cursor === pageCursor || result.next_cursor !== result.proposals.at(-1)?.id : result.next_cursor !== null)
         || result.proposals.some(row => !row?.id || !Number.isInteger(row.version) || row.version < 1 || !KINDS[row.kind]
           || row.confirm_verb !== KINDS[row.kind].verb || !row.deal || !row.deal_name || !row.source?.activity_id || typeof row.source.evidence_quote !== 'string'
           || (row.preview !== null && !validPreview(row, row.preview)))) throw Error('Invalid email proposals');
-      const next = result.proposals;
+      const next = pageCursor ? [...rows, ...result.proposals.filter(item => !rows.some(row => row.id === item.id))] : result.proposals;
+      cursor = result.next_cursor;
       for (const row of rows) if (!next.some(item => item.id === row.id) && ['submitting', 'unknown'].includes(decisions.get(row.id)?.status)) next.push(row);
       rows = next; loaded = true; loadState = 'ready';
     } catch (error) {
@@ -112,7 +115,8 @@ export function mountEmailFollowups({ container, client, onChange = () => {} }) 
     const button = event.target?.closest('[data-email-action]');
     if (!button || button.disabled || !container.contains(button) || disposed || loadState === 'denied') return;
     const action = button.dataset.emailAction;
-    if (action === 'retry') return refresh();
+    if (action === 'retry') return refresh(retryCursor);
+    if (action === 'more' && cursor) return refresh(cursor);
     const row = rows.find(item => item.id === button.closest('[data-email-id]')?.dataset.emailId);
     if (!row) return;
     const state = decisions.get(row.id) || { status: 'pending' };

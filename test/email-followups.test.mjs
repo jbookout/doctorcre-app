@@ -13,7 +13,7 @@ const proposal = () => ({ id: '10000000-0000-4000-8000-000000000001', version: 3
     text: 'Send the revised plan', next_date: '2026-11-03', owner: 'joe', current_next_step: 'Call the landlord',
     current_next_date: '2026-11-01', proposal_digest: digest, requires_confirmation: true,
     source: { activity_id: '30000000-0000-4000-8000-000000000001' }, evidence_quote: 'Please send the revised plan by November 3.' } });
-const response = proposals => ({ schema_version: 'email-proposals.v1', proposals, send: false });
+const response = proposals => ({ schema_version: 'email-proposals.v1', proposals, send: false, more: false, next_cursor: null });
 function setup(client) {
   const dom = new JSDOM('<section id="review"></section>');
   const container = dom.window.document.querySelector('section');
@@ -188,4 +188,26 @@ test('opening a second dismissal focuses that proposal reason instead of the fir
   await view.click({ target: container.querySelectorAll('[data-email-action="dismiss"]')[0] });
   await view.click({ target: container.querySelector('[data-email-action="dismiss"]') });
   assert.equal(dom.window.document.activeElement.closest('article').dataset.emailId, second.id);
+});
+
+test('Home pages pending proposals and keeps the first page when loading more fails', async () => {
+  const first = proposal(), second = { ...proposal(), id: '10000000-0000-4000-8000-000000000002', deal_name: 'Demo second deal' };
+  let fail = true;
+  const calls = [];
+  const { container, view, action } = setup({ listEmailProposals: async args => {
+    calls.push(args);
+    if (args.cursor && fail) throw Error('offline');
+    return args.cursor ? { ...response([second]), more: false, next_cursor: null }
+      : { ...response([first]), more: true, next_cursor: first.id };
+  } });
+  await view.refresh();
+  assert.deepEqual(calls[0], { limit: 50 });
+  await action('Load more email follow-ups');
+  assert.match(container.textContent, /Demo Harbor expansion/);
+  assert.match(container.textContent, /Could not load/);
+  fail = false;
+  await action('Retry email follow-ups');
+  assert.match(container.textContent, /Demo second deal/);
+  assert.deepEqual(calls.at(-1), { limit: 50, cursor: first.id });
+  assert.doesNotMatch(container.textContent, /Load more email follow-ups/);
 });
