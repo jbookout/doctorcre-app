@@ -33,11 +33,13 @@ const malformed = [
   ['an empty body', ''],
 ];
 const badCollections = [
+  ['an explicitly refused collection', { ok: true, data: { ok: false, items: [] } }],
   ['items that are not a list', { ok: true, data: { items: 'none' } }],
   ['a row with an invalid reference', { ok: true, data: { items: [{ ...item, human_ref: 'WR-' }] } }],
   ['a row without a title', { ok: true, data: { items: [{ ...item, title: null }] } }],
 ];
 const badCards = [
+  ['an explicitly refused card', { ok: true, data: { ...card, ok: false } }],
   ['a card for another reference', { ok: true, data: { ...card, human_ref: 'WR-000124' } }],
   ['a card without a version', { ok: true, data: { ...card, version: undefined } }],
   ['a card without a state', { ok: true, data: { ...card, state: 7 } }],

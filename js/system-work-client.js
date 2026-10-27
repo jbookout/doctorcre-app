@@ -6,9 +6,9 @@ import { readWithDeadline } from "./auto-refresh.mjs";
 import { createRetainedCommands } from './retained-commands.mjs';
 
 const isRecord = (value) => Boolean(value) && typeof value === "object" && !Array.isArray(value);
-const isCollection = (data) => isRecord(data) && Array.isArray(data.items) && data.items.every(item =>
+const isCollection = (data) => isRecord(data) && data.ok !== false && Array.isArray(data.items) && data.items.every(item =>
   isRecord(item) && isHumanRef(item.human_ref) && typeof item.title === "string" && typeof item.state === "string");
-const isCard = (data, ref) => isRecord(data) && data.human_ref === ref && typeof data.title === "string" &&
+const isCard = (data, ref) => isRecord(data) && data.ok !== false && data.human_ref === ref && typeof data.title === "string" &&
   typeof data.state === "string" && Number.isSafeInteger(data.version) && data.version >= 1;
 
 export function createSystemWorkClient(options = {}) {
