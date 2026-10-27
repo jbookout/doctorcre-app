@@ -276,3 +276,25 @@ test('a shared page read honours each caller\'s own cancellation', async () => {
   await assert.rejects(cancelled);
   assert.deepEqual(await kept, { ok: true });
 });
+
+test('shared reads respect each client deadline', async () => {
+  const fetchImpl = async () => {
+    await new Promise(resolve => setTimeout(resolve, 50));
+    return new Response(JSON.stringify({ result: { content: [{ text: '{"ok":true}' }] } }));
+  };
+  const short = createLiveClient({ fetchImpl, readTimeoutMs: 10 });
+  const long = createLiveClient({ fetchImpl, readTimeoutMs: 200 });
+  const first = short.morningBrief();
+  const second = long.morningBrief();
+  await assert.rejects(first);
+  assert.deepEqual(await second, { ok: true });
+});
+
+test('an already cancelled shared read does not start a request', async () => {
+  let requests = 0;
+  const client = createLiveClient({ fetchImpl: async () => { requests++; throw new Error('unexpected request'); } });
+  const controller = new AbortController();
+  controller.abort();
+  await assert.rejects(client.morningBrief({ signal: controller.signal }));
+  assert.equal(requests, 0);
+});

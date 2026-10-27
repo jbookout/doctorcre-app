@@ -64,28 +64,14 @@ export function createLiveClient(opts = {}) {
   const readTimeoutMs = opts.readTimeoutMs || 10_000;
   const rpc = (verb, args = {}, signal) => {
     if (!SHARED_READ_VERBS.has(verb)) return rawRpc(verb, args, signal, readTimeoutMs);
+    if (signal?.aborted) return readWithDeadline(() => null, { signal, timeoutMs: readTimeoutMs });
     const transport = opts.fetchImpl || sessionFetch;
     if (!sharedReads.has(transport)) sharedReads.set(transport, new Map());
-    const reads = sharedReads.get(transport), key = JSON.stringify([baseUrl, verb, args]);
-    let entry = reads.get(key);
-    if (!entry) {
-      const controller = new AbortController();
-      entry = { controller, waiters: 0, read: rawRpc(verb, args, controller.signal, readTimeoutMs).finally(() => reads.delete(key)) };
-      entry.read.catch(() => {});
-      reads.set(key, entry);
+    const reads = sharedReads.get(transport), key = JSON.stringify([baseUrl, verb, args, readTimeoutMs]);
+    if (!reads.has(key)) {
+      reads.set(key, rawRpc(verb, args, undefined, readTimeoutMs).finally(() => reads.delete(key)));
     }
-    // Each caller keeps its own cancellation and copy of the answer; the transport aborts when none is left waiting.
-    const shared = entry;
-    shared.waiters++;
-    let released = false;
-    const release = () => {
-      if (released) return;
-      released = true;
-      signal?.removeEventListener('abort', release);
-      if (--shared.waiters === 0 && reads.get(key) === shared) { reads.delete(key); shared.controller.abort(); }
-    };
-    signal?.addEventListener('abort', release, { once: true });
-    return readWithDeadline(() => shared.read.then(structuredClone), { signal, timeoutMs: readTimeoutMs }).finally(release);
+    return readWithDeadline(() => reads.get(key).then(structuredClone), { signal, timeoutMs: readTimeoutMs });
   };
 
   async function rawRpc(verb, args = {}, signal, timeoutMs, headers) {
@@ -140,17 +126,7 @@ export function createLiveClient(opts = {}) {
       sessionWrites.has(verb) ? { 'x-carr-csrf': binding.slice(binding.indexOf(':') + 1) } : undefined));
   }
 
-  // The record layer speaks phase SLUGS (deal_phase table); the board speaks
-  // the display names the mockup ruled. Translate at the client boundary in
-  // both directions so neither side ever sees the other's vocabulary.
-  //
-  // The map is ONE-TO-ONE, and that is the repair in V5-UX-B03. It used to send
-  // both `research` and `site_selection` to "Research" while UI_TO_PHASE had no
-  // entry for site selection at all, so a board that read a site-selection deal
-  // showed it as Research and wrote `research` back — silently relocating the
-  // record to a phase nobody chose (defect 5e355b84). Every slug now has its own
-  // label and every label its own slug, so a round trip returns what it started
-  // with.
+  // CARR phase slugs and board labels map one-to-one in both directions.
   const PHASE_TO_UI = PHASE_BY_SLUG;
   const UI_TO_PHASE = {
     'On Deck': 'pending', 'Research': 'research', 'Site selection': 'site_selection',
@@ -284,15 +260,8 @@ export function createLiveClient(opts = {}) {
       return res.json();
     },
 
-    // V5-UX-B04: the same pinned `/api/v1/business/{clients,vendors}/<id>`
-    // single-record read the Clients and Vendors pages already use, called
-    // here for one id at a time so the deal record panel's context drawer can
-    // show the linked client's contact detail. `id` must be that record's own
-    // uuid (client.id / vendor.id) — a participant's party_id is a different
-    // id space and is never passed here; see loadDealContext in
-    // pipeline-model.js for why. A non-ok response throws, same as every
-    // other live read, so the caller's catch is the one honest place that
-    // decides "unavailable".
+    // Use the client or vendor UUID, not a participant's party_id.
+    // A failed read leaves the context drawer unavailable.
     async getPartyRecord({ dataset, id }) {
       const res = await fetchReadImpl(`/api/v1/business/${dataset}/${id}`, {
         headers: { accept: 'application/json' }, credentials: 'same-origin', cache: 'no-store',
