@@ -27,6 +27,7 @@ async function open(t, { width = 1440, home = false, long = false, motion = 'red
   const handlers = {
     'morning-brief': async () => ({ state:'unavailable' }),
     'read-home-agenda': () => client.getHomeAgenda(),
+    'list-email-proposals': async () => ({ schema_version: 'email-proposals.v1', proposals: [], send: false }),
     'deal-room-board': () => client.getBoard(), 'get-deal-room': args => client.getDeal(args.deal),
     'lead-board': async () => ({ leads: [] }), 'incident-board': () => client.incidentBoard(),
     'current-work-item': () => client.currentWorkItem(), 'read-resource-dashboard': () => client.readResourceDashboard(),
