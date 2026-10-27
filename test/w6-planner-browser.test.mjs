@@ -235,3 +235,29 @@ for (const width of [1440, 390]) test(`planner renders Census geography after re
   await page.screenshot({ path: new URL(`out/test-artifacts/w6/territory-${width}.png`, root).pathname, fullPage: true, animations: 'disabled' });
   assert.deepEqual(errors, []);
 });
+
+test("client lookup finds a later directory client without walking pages or reloading choices on refresh", async t => {
+  const { page, errors } = await open(t, 390);
+  const id = "44444444-4444-4444-8444-444444444444";
+  const laterClient = { ...client, id, name: "Demo Later Practice" };
+  const lookups = [];
+  await page.route("**/api/v1/business/clients?*", route => {
+    const query = new URL(route.request().url()); lookups.push(query);
+    return route.fulfill({ json: { page: 1, page_count: 200, rows: [laterClient] } });
+  });
+  await page.route(`**/api/v1/business/clients/${id}`, route => route.fulfill({ json: { record: laterClient } }));
+  await page.getByLabel("Find clients", { exact: true }).first().fill("Later & Practice");
+  await page.locator("#plan-client-find").click();
+  await page.locator(`#plan-client option[value="${id}"]`).waitFor({ state: "attached" });
+  assert.equal(lookups.length, 1); assert.equal(lookups[0].searchParams.get("q"), "Later & Practice");
+  assert.equal(lookups[0].searchParams.get("page"), "1");
+  await page.locator("#plan-client").selectOption(id);
+  await page.waitForFunction(() => document.querySelector("#plan-name").value === "Demo Later Practice · Tour");
+  await page.locator("#plan-name").fill("Typed later tour");
+  await page.locator("#planner-refresh").click();
+  await page.waitForFunction(() => document.querySelector("#planner-updated").textContent.startsWith("Updated"));
+  assert.equal(lookups.length, 1);
+  assert.equal(await page.locator("#plan-client").inputValue(), id);
+  assert.equal(await page.locator("#plan-name").inputValue(), "Typed later tour");
+  assert.deepEqual(errors, []);
+});

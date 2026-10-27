@@ -70,16 +70,20 @@ export function createEmailProposalsFixture({ deals, seedDeals, actor, client, p
         corrections: rows.filter(row => row.status === 'dismissed').sort((a, b) => b.resolved_at.localeCompare(a.resolved_at) || a.id.localeCompare(b.id)).slice(0, 20)
           .map(row => ({ id: row.id, kind: row.kind, deal_name: row.deal_name, reason: row.resolution_reason, resolved_at: row.resolved_at })), send: false };
     },
-    async listEmailProposals() {
+    async listEmailProposals({ limit, cursor } = {}) {
       const proposals = [];
-      for (const row of rows.filter(item => item.status === 'pending')) {
+      const start = cursor ? rows.findIndex(item => item.id === cursor) + 1 : 0;
+      if (cursor && !start) fail('email_proposals_cursor_invalid');
+      const pending = rows.slice(start).filter(item => item.status === 'pending');
+      for (const row of pending.slice(0, limit || pending.length)) {
         const { status, ...item } = row;
         try { item.preview = await preview({ deal: row.deal, activity_id: row.source.activity_id, evidence_quote: row.source.evidence_quote,
           text: 'Send the revised plan', next_date: '2026-11-03', owner: 'joe' }, row.kind); }
         catch (error) { item.preview = null; item.preview_error = error.payload?.error || 'preview_failed'; }
         proposals.push(structuredClone(item));
       }
-      return { schema_version: 'email-proposals.v1', proposals, send: false };
+      const more = limit ? pending.length > limit : false;
+      return { schema_version: 'email-proposals.v1', proposals, send: false, ...(limit ? { more, next_cursor: more ? proposals.at(-1).id : null } : {}) };
     },
     previewEmailNextStep: args => preview(args, 'next_step'),
     previewEmailDealProgress: args => preview(args, 'phase_move'),

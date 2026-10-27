@@ -29,7 +29,7 @@ async function open(t, { width = 1440, home = false, long = false, motion = 'red
     'read-home-agenda': () => client.getHomeAgenda(),
     'read-post-call-followups': async () => ({ schema_version: 'post-call-followups.v1', candidates: [], send: false }),
     'email-proposal-quality': () => client.getEmailProposalQuality(),
-    'list-email-proposals': async () => ({ schema_version: 'email-proposals.v1', proposals: [], send: false }),
+    'list-email-proposals': async () => ({ schema_version: 'email-proposals.v1', proposals: [], send: false, more: false, next_cursor: null }),
     'deal-room-board': () => client.getBoard(), 'get-deal-room': args => client.getDeal(args.deal),
     'lead-board': async () => ({ leads: [] }), 'incident-board': () => client.incidentBoard(),
     'current-work-item': () => client.currentWorkItem(), 'read-resource-dashboard': () => client.readResourceDashboard(),
