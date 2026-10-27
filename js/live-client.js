@@ -67,7 +67,7 @@ export function createLiveClient(opts = {}) {
     if (signal?.aborted) return readWithDeadline(() => null, { signal, timeoutMs: readTimeoutMs });
     const transport = opts.fetchImpl || sessionFetch;
     if (!sharedReads.has(transport)) sharedReads.set(transport, new Map());
-    const reads = sharedReads.get(transport), key = JSON.stringify([baseUrl, verb, args, readTimeoutMs]);
+    const reads = sharedReads.get(transport), key = JSON.stringify([baseUrl, selfActor, verb, args, readTimeoutMs]);
     let entry = reads.get(key);
     if (!entry) {
       const controller = new AbortController();
