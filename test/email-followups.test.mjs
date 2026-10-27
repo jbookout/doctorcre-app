@@ -548,7 +548,7 @@ test('unknown proposal kinds are ignored without hiding known proposals', async 
 test('uncertain new-deal creation retries the same request and confirms only once', async () => {
   const row = proposal(); Object.assign(row, { kind: 'possible_new_deal', deal: null, deal_name: null, proposed_matter: 'New matter', confirm_verb: 'confirm-email-filing' });
   row.preview = { contract: 'email-filing.v1', proposal_id: row.id, kind: row.kind, deal: null, activity_id: row.source.activity_id,
-    evidence_quote: row.source.evidence_quote, sender_role: 'client', sender: { name: 'Demo Client' }, new_people: [], requires_confirmation: true, proposal_digest: digest };
+    evidence_quote: row.source.evidence_quote, sender_role: 'client', sender: { name: 'Demo Client', party_id: 'demo-contact' }, new_people: [], requires_confirmation: true, proposal_digest: digest };
   const creates = [], confirmations = [];
   const { container, view, action, dom } = setup({ listEmailProposals: async () => response([row]),
     createDeal: async args => { creates.push(args); if (creates.length === 1) throw Error('lost'); return { deal_id: 'created-deal' }; },
@@ -565,7 +565,7 @@ test('filing refusals show the server public hint', async () => {
   for (const code of ['email_new_deal_client_mismatch', 'email_new_deal_not_found', 'email_thread_not_continuous', 'email_thread_ambiguous', 'email_thread_recipient_changed', 'email_sender_contact_required', 'email_proposal_stale']) {
     const row = proposal(); row.kind = 'file_to_deal'; row.confirm_verb = 'confirm-email-filing';
     row.preview = { contract: 'email-filing.v1', proposal_id: row.id, kind: row.kind, deal: row.deal, activity_id: row.source.activity_id,
-      evidence_quote: row.source.evidence_quote, sender_role: 'lender', sender: { name: 'Demo' }, new_people: [], requires_confirmation: true, proposal_digest: digest };
+      evidence_quote: row.source.evidence_quote, sender_role: 'lender', sender: { name: 'Demo', party_id: 'demo-contact' }, new_people: [], requires_confirmation: true, proposal_digest: digest };
     const { container, view, action } = setup({ listEmailProposals: async () => response([row]), confirmEmailFiling: async () => { throw Object.assign(Error('refused'), { payload: { error: code, hint: `Public hint for ${code}` } }); } });
     await view.refresh(); await action('Review filing'); await action('Confirm filing');
     assert.match(container.textContent, new RegExp(`Public hint for ${code}`));
@@ -575,7 +575,7 @@ test('filing refusals show the server public hint', async () => {
 test('a filing refusal after creation preserves the created deal and cannot create it twice', async () => {
   const row = proposal(); Object.assign(row, { kind: 'possible_new_deal', deal: null, deal_name: null, proposed_matter: 'New matter', confirm_verb: 'confirm-email-filing' });
   row.preview = { contract: 'email-filing.v1', proposal_id: row.id, kind: row.kind, deal: null, activity_id: row.source.activity_id,
-    evidence_quote: row.source.evidence_quote, sender_role: 'client', sender: { name: 'Demo Client' }, new_people: [], requires_confirmation: true, proposal_digest: digest };
+    evidence_quote: row.source.evidence_quote, sender_role: 'client', sender: { name: 'Demo Client', party_id: 'demo-contact' }, new_people: [], requires_confirmation: true, proposal_digest: digest };
   let creates = 0;
   const { container, view, action, dom } = setup({ listEmailProposals: async () => response([row]),
     createDeal: async () => { creates++; return { deal_id: 'created-deal' }; },
@@ -593,7 +593,7 @@ test('a filing refusal after creation preserves the created deal and cannot crea
 test('filing confirmation keeps the proposal version reviewed before refresh', async () => {
   const row = proposal(); row.kind = 'file_to_deal'; row.confirm_verb = 'confirm-email-filing';
   row.preview = { contract: 'email-filing.v1', proposal_id: row.id, kind: row.kind, deal: row.deal, activity_id: row.source.activity_id,
-    evidence_quote: row.source.evidence_quote, sender_role: 'client', sender: { name: 'Demo' }, new_people: [], requires_confirmation: true, proposal_digest: digest };
+    evidence_quote: row.source.evidence_quote, sender_role: 'client', sender: { name: 'Demo', party_id: 'demo-contact' }, new_people: [], requires_confirmation: true, proposal_digest: digest };
   let current = row, sent;
   const { view, action } = setup({ listEmailProposals: async () => response([current]), confirmEmailFiling: async args => { sent = args; return { ok: true, status: 'confirmed', deal: row.deal, activity_id: row.source.activity_id }; } });
   await view.refresh(); await action('Review filing'); current = { ...row, version: 4 }; await view.refresh(); await action('Confirm filing');
@@ -603,7 +603,7 @@ test('filing confirmation keeps the proposal version reviewed before refresh', a
 test('after a client mismatch the partner may deliberately create a corrected deal and retains the first link', async () => {
   const row = proposal(); Object.assign(row, { kind: 'possible_new_deal', deal: null, deal_name: null, proposed_matter: 'New matter', confirm_verb: 'confirm-email-filing' });
   row.preview = { contract: 'email-filing.v1', proposal_id: row.id, kind: row.kind, deal: null, activity_id: row.source.activity_id,
-    evidence_quote: row.source.evidence_quote, sender_role: 'client', sender: { name: 'Demo' }, new_people: [], requires_confirmation: true, proposal_digest: digest };
+    evidence_quote: row.source.evidence_quote, sender_role: 'client', sender: { name: 'Demo', party_id: 'demo-contact' }, new_people: [], requires_confirmation: true, proposal_digest: digest };
   const created = [], confirmed = [];
   const { container, view, action, dom } = setup({ listEmailProposals: async () => response([row]), createDeal: async args => { created.push(args); return { deal_id: `created-${created.length}` }; },
     confirmEmailFiling: async args => { confirmed.push(args); if (confirmed.length === 1) throw Object.assign(Error('refused'), { payload: { error: 'email_new_deal_client_mismatch', hint: 'Choose a deal belonging to the email client.' } }); return { ok: true, status: 'confirmed', deal: args.deal, activity_id: row.source.activity_id }; } });
@@ -618,4 +618,128 @@ test('after a client mismatch the partner may deliberately create a corrected de
 test('unknown, null, missing and duplicate future proposal kinds do not hide supported proposals', async () => {
   const { container, view } = setup({ listEmailProposals: async () => response([null, {}, { kind: 'future' }, { kind: 'future' }, proposal()]) });
   await view.refresh(); assert.match(container.textContent, /Demo Harbor expansion/); assert.doesNotMatch(container.textContent, /Could not load/);
+});
+
+
+test('unknown sender must become a contact before a new deal can be created', async () => {
+  const row = proposal();
+  Object.assign(row, { kind: 'possible_new_deal', deal: null, deal_name: null, confirm_verb: 'confirm-email-filing' });
+  row.preview = { contract: 'email-filing.v1', proposal_id: row.id, kind: row.kind, deal: null,
+    activity_id: row.source.activity_id, evidence_quote: row.source.evidence_quote,
+    sender: { name: 'Demo sender', party_id: null }, new_people: [], requires_confirmation: true, proposal_digest: digest };
+  const writes = [];
+  const { container, view, action } = setup({ listEmailProposals: async () => response([row]),
+    createDeal: async args => { writes.push(args); return { deal_id: 'orphan' }; },
+    confirmEmailFiling: async args => { writes.push(args); } });
+  await view.refresh(); await action('Review filing');
+  assert.match(container.textContent, /Add the sender as a contact first/);
+  assert.equal(container.querySelector('[data-email-action="create-filing"]'), null);
+  await action('Create deal and confirm filing');
+  assert.deepEqual(writes, []);
+  await action('Cancel');
+  assert.ok(container.querySelector('[data-email-action="review-filing"]'));
+});
+
+for (const code of ['unhandled_verb_failure', 'not_a_client', 'deal_name_exists']) test(`new-deal refusal ${code} allows correction or cancellation without resending identical details`, async () => {
+  const row = proposal();
+  Object.assign(row, { kind: 'possible_new_deal', deal: null, deal_name: null, confirm_verb: 'confirm-email-filing' });
+  row.preview = { contract: 'email-filing.v1', proposal_id: row.id, kind: row.kind, deal: null,
+    activity_id: row.source.activity_id, evidence_quote: row.source.evidence_quote,
+    sender: { name: 'Demo Client', party_id: 'demo-contact' }, new_people: [], requires_confirmation: true, proposal_digest: digest };
+  const creates = [], confirmations = [];
+  const client = createLiveClient({ selfActor: 'joe', fetchImpl: async (path, init) => {
+    const { name, arguments: args } = JSON.parse(init.body).params;
+    let result;
+    if (name === 'list-email-proposals') result = response([row]);
+    else if (name === 'new-deal') {
+      creates.push(args);
+      if (creates.length === 1) return Response.json({ result: { isError: true, content: [{ text: JSON.stringify({ error: code }) }] } });
+      result = { deal_id: 'corrected-deal' };
+    } else if (name === 'get-deal-room') result = { base_version: 1 };
+    else if (name === 'set-lead') result = { ok: true };
+    else if (name === 'confirm-email-filing') { confirmations.push(args); result = { ok: true, status: 'confirmed', deal: args.deal, activity_id: row.source.activity_id }; }
+    else throw Error(`Unexpected verb ${name}`);
+    return Response.json({ result: { content: [{ text: JSON.stringify(result) }] } });
+  } });
+  const { container, view, action, dom } = setup(client);
+  const enter = (key, value) => { const input = container.querySelector(`[data-email-${key}]`); input.value = value; input.dispatchEvent(new dom.window.Event('input', { bubbles: true })); };
+  await view.refresh(); await action('Review filing');
+  enter('deal-name', 'Demo office'); enter('deal-client', 'Mistyped client'); await action('Create deal and confirm filing');
+  assert.ok(container.querySelector('[data-email-action="cancel"]'));
+  assert.ok([...container.querySelectorAll('button')].some(button => button.textContent === 'Edit deal details'));
+  assert.equal(container.querySelector('[data-email-action="replay"]'), null);
+  await action('Edit deal details'); await action('Create deal and confirm filing');
+  assert.equal(creates.length, 1);
+  await action('Cancel'); await action('Review filing');
+  enter('deal-name', 'Demo office'); enter('deal-client', 'Mistyped client'); await action('Create deal and confirm filing');
+  assert.equal(creates.length, 1);
+  enter('deal-client', 'Demo Client'); await action('Create deal and confirm filing');
+  assert.equal(creates.length, 2);
+  assert.notEqual(creates[0].idempotency_key, creates[1].idempotency_key);
+  assert.equal(confirmations.length, 1);
+  assert.match(container.textContent, /Confirmed\./);
+  view.dispose(); dom.window.close();
+});
+
+for (const field of ['deal', 'activity_id', 'status']) test(`filing receipt with a mismatched ${field} keeps the outcome unknown`, async () => {
+  const row = proposal(); Object.assign(row, { kind: 'file_to_deal', confirm_verb: 'confirm-email-filing' });
+  row.preview = { contract: 'email-filing.v1', proposal_id: row.id, kind: row.kind, deal: row.deal,
+    activity_id: row.source.activity_id, evidence_quote: row.source.evidence_quote,
+    sender: { party_id: 'demo-contact' }, new_people: [], requires_confirmation: true, proposal_digest: digest };
+  const writes = []; let changes = 0;
+  const { container, view, action } = setup({ listEmailProposals: async () => response([row]),
+    confirmEmailFiling: async args => { writes.push(args); return { ok: true, status: 'confirmed', deal: row.deal, activity_id: row.source.activity_id, [field]: 'wrong' }; } },
+  { onChange: () => changes++ });
+  await view.refresh(); await action('Review filing'); await action('Confirm filing');
+  assert.match(container.textContent, /Outcome unknown/);
+  assert.doesNotMatch(container.textContent, /Confirmed\./);
+  assert.equal(changes, 0);
+  await action('Check outcome');
+  assert.deepEqual(writes[1], writes[0]);
+});
+
+for (const kind of ['file_to_deal', 'possible_new_deal']) test(`partner can dismiss ${kind} with the reviewed version and a reason`, async () => {
+  const row = proposal(); Object.assign(row, { kind, confirm_verb: 'confirm-email-filing', preview: null,
+    ...(kind === 'possible_new_deal' ? { deal: null, deal_name: null } : {}) });
+  const writes = []; let changes = 0;
+  const { container, view, action, dom } = setup({ listEmailProposals: async () => response([row]),
+    dismissEmailProposal: async args => { writes.push(args); return { ok: true, status: 'dismissed', proposal_id: row.id }; },
+    createDeal: async () => assert.fail('Dismiss must never create a deal'),
+    confirmEmailFiling: async () => assert.fail('Dismiss must never confirm filing') }, { onChange: () => changes++ });
+  await view.refresh(); await action('Dismiss'); await action('Dismiss proposal');
+  assert.equal(writes.length, 0);
+  container.querySelector('textarea').value = 'Already handled';
+  await action('Dismiss proposal');
+  assert.deepEqual(writes[0], { proposal_id: row.id, base_version: 3, reason: 'Already handled', idempotency_key: writes[0].idempotency_key });
+  assert.match(writes[0].idempotency_key, /^[a-f0-9-]{36}$/);
+  assert.match(container.textContent, /Dismissed\./); assert.equal(changes, 1);
+  await action('Dismiss proposal'); assert.equal(writes.length, 1);
+  view.dispose(); dom.window.close();
+});
+
+for (const failedVerb of ['get-deal-room', 'set-lead']) test(`failure in ${failedVerb} after deal creation recovers the same deal`, async () => {
+  const row = proposal(); Object.assign(row, { kind: 'possible_new_deal', deal: null, deal_name: null, confirm_verb: 'confirm-email-filing' });
+  row.preview = { contract: 'email-filing.v1', proposal_id: row.id, kind: row.kind, deal: null,
+    activity_id: row.source.activity_id, evidence_quote: row.source.evidence_quote,
+    sender: { party_id: 'demo-contact' }, new_people: [], requires_confirmation: true, proposal_digest: digest };
+  let creates = 0, failures = 0;
+  const client = createLiveClient({ selfActor: 'joe', fetchImpl: async (path, init) => {
+    const { name, arguments: args } = JSON.parse(init.body).params;
+    if (name === failedVerb && failures++ === 0) return Response.json({ result: { isError: true, content: [{ text: JSON.stringify({ error: 'unhandled_verb_failure' }) }] } });
+    const result = name === 'list-email-proposals' ? response([row]) : name === 'new-deal' ? (creates++, { deal_id: 'created-once' })
+      : name === 'get-deal-room' ? { base_version: 1 } : name === 'set-lead' ? { ok: true }
+        : { ok: true, status: 'confirmed', deal: args.deal, activity_id: row.source.activity_id };
+    return Response.json({ result: { content: [{ text: JSON.stringify(result) }] } });
+  } });
+  const { container, view, action, dom } = setup(client);
+  await view.refresh(); await action('Review filing');
+  for (const [key, value] of [['deal-name', 'Demo office'], ['deal-client', 'Demo Client']]) {
+    const input = container.querySelector(`[data-email-${key}]`); input.value = value; input.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
+  }
+  await action('Create deal and confirm filing');
+  assert.ok(container.querySelector('[data-email-action="replay"]'));
+  assert.equal(container.querySelector('[data-email-action="edit-filing"]'), null);
+  await action('Check outcome');
+  assert.equal(creates, 1); assert.match(container.textContent, /Confirmed\./);
+  view.dispose(); dom.window.close();
 });

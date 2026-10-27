@@ -322,7 +322,7 @@ test('Home creates a new deal and files its email through the live client at pho
   const row = { id, version: 1, kind: 'possible_new_deal', deal: null, deal_name: null, proposed_matter: 'Possible new demo practice',
     source: { activity_id: activity, evidence_quote: 'Please discuss a new office.' }, confirm_verb: 'confirm-email-filing',
     preview: { contract: 'email-filing.v1', proposal_id: id, kind: 'possible_new_deal', deal: null, activity_id: activity,
-      evidence_quote: 'Please discuss a new office.', sender_role: 'client', sender: { name: 'Demo Client' }, new_people: [], requires_confirmation: true, proposal_digest: digest } };
+      evidence_quote: 'Please discuss a new office.', sender_role: 'client', sender: { name: 'Demo Client', party_id: 'demo-contact' }, new_people: [], requires_confirmation: true, proposal_digest: digest } };
   await page.route('**/mcp', async route => {
     const { name, arguments: args } = route.request().postDataJSON().params; let result;
     if (name === 'list-email-proposals') result = { schema_version: 'email-proposals.v1', proposals: [row], send: false, more: false, next_cursor: null };
