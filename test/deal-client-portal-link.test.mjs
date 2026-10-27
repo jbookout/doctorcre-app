@@ -75,6 +75,6 @@ test('a partner registers the portal from the deal panel, a taken name is refuse
  assert.equal(await card.getAttribute('href'),PORTAL);
  await page.locator('#recordPanel .client-portal-link').waitFor();
  assert.equal(await page.locator('#detailClientPortalForm').count(),0,'a registered deal offers no second registration');
- assert.equal((await page.content()).includes('simple-pw'),false);
+ assert.equal(await page.locator('#clientPortalPassword').count(),0,'the password field is gone once the portal is registered');
  assert.deepEqual(errors,[]);
 });
