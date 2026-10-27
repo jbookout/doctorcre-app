@@ -1975,25 +1975,17 @@ export async function createFixtureClient(opts = {}) {
       };
     },
 
-    // Both are READS and neither takes an actor, exactly as the verbs declare.
-    // `total_seen` and `total_returned` are synthetic scenario totals and do NOT
-    // move with `limit` — that is what makes the three-number counts line
-    // testable here instead of only against production.
+    // Scenario totals are independent of the page limit.
     async sessionIdentity({ query = null, limit = null, include_closed = false } = {}) {
       refuseIfOutage('sessions', 'read-session-identity');
       const text = typeof query === 'string' ? query.trim().toLowerCase() : '';
-      // `include_closed` is passed through to the producer and changes nothing
-      // here: no example row carries a closed state in this scenario.
+      // No fixture session is closed.
       void include_closed;
-      // BOTH fields, because clause 1 is "name/ID lookup" and a fixture that
-      // matched on the name alone would let an id lookup pass while broken.
       const matched = text.length === 0
         ? SESSION_ROWS
         : SESSION_ROWS.filter((row) => String(row.display_name).toLowerCase().includes(text)
           || String(row.canonical_session_id).toLowerCase().includes(text));
       if (text === 'reverent') {
-        // The captured FILTERED-EMPTY answer: four rows match and none is the
-        // caller's to see. An empty list with permission_filtered true.
         return { ok: true, permission_filtered: true, total_seen: 4, total_returned: 0, sessions: [] };
       }
       if (matched.length === 0) {
@@ -2001,8 +1993,6 @@ export async function createFixtureClient(opts = {}) {
       }
       const capped = Number.isInteger(limit) && limit >= 1 && limit <= 50 ? limit : 25;
       const page = matched.slice(0, capped);
-      // 603 and 124 exercise separate seen and visible totals, and
-      // they do NOT shrink when `limit` does.
       const seen = text.length === 0 ? 603 : matched.length;
       const visible = text.length === 0 ? 124 : matched.length;
       return {
@@ -2027,8 +2017,7 @@ export async function createFixtureClient(opts = {}) {
       if (session_id === SESSION_WITH_DISPATCH) {
         return structuredClone(DISPATCH_WITH_EVENTS);
       }
-      // Every other id — real, synthetic or nonsense — answers identically,
-      // which is precisely why the drawer never says "this session has none".
+      // Unknown IDs return the same no-spine state.
       return dispatchNoSpine(String(session_id));
     },
 
@@ -2036,8 +2025,7 @@ export async function createFixtureClient(opts = {}) {
     async roomQueue({ room = 'partner-line' } = {}) {
       refuseIfOutage('model_room', 'read-room-queue');
       if (room !== 'partner-line') {
-        // Nothing has EVER been projected into that room: projected_at null,
-        // which is a different truth from a stale projection.
+        // Null means never projected, not stale.
         return { ok: true, room: String(room), events: [], projected_at: null, live: false };
       }
       return {
@@ -2058,9 +2046,7 @@ export async function createFixtureClient(opts = {}) {
         ok: true,
         room: String(room),
         turns,
-        // A bigint, serialised by the driver as a decimal STRING, exactly as
-        // production returns it. A fixture that made it a number would let a
-        // validator demanding an integer pass here and refuse production.
+        // The producer serializes bigint sequences as strings.
         latest_seq: turns.length ? String(turns[turns.length - 1].seq) : '0',
         more: turns.length === capped,
       };
