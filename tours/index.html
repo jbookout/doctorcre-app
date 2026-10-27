@@ -23,6 +23,9 @@
     <section class="card plan-card" aria-labelledby="plan-title">
       <div class="widget-heading"><h2 id="plan-title">Plan a tour</h2><button id="plan-undo" aria-label="Undo tour edit" title="Undo tour edit" disabled type="button">↶</button></div>
       <form id="plan-form">
+        <label for="plan-client-query">Find clients<input id="plan-client-query" type="search" maxlength="80" aria-describedby="plan-client-state"></label>
+        <button id="plan-client-find" type="button">Find clients</button>
+        <p id="plan-client-state" class="capability-note" role="status">Clients are loading.</p>
         <label for="plan-client">For<select id="plan-client"><option value="">Choose a client</option></select></label>
         <label for="plan-name">Tour name<input id="plan-name" maxlength="240"></label>
         <div class="form-pair"><label for="plan-date">Date<input id="plan-date" type="date"></label><label for="plan-time">Start time<input id="plan-time" type="time"></label></div>
@@ -40,6 +43,9 @@
     <section class="card space-card" aria-labelledby="space-title">
       <div class="widget-heading"><h2 id="space-title">Search for space</h2><button id="space-undo" aria-label="Undo search edit" title="Undo search edit" disabled type="button">↶</button></div>
       <form id="space-form">
+        <label for="space-client-query">Find clients<input id="space-client-query" type="search" maxlength="80" aria-describedby="space-client-state"></label>
+        <button id="space-client-find" type="button">Find clients</button>
+        <p id="space-client-state" class="capability-note" role="status">Clients are loading.</p>
         <label for="space-client">For<select id="space-client"><option value="">Research only</option></select></label>
         <div class="form-pair"><label for="space-area">Area<input id="space-area" maxlength="200" required></label><label for="space-use">Space type<input id="space-use" maxlength="120"></label></div>
         <div class="form-pair"><label for="space-minSize">Minimum SF<input id="space-minSize" type="number" min="0"></label><label for="space-maxSize">Maximum SF<input id="space-maxSize" type="number" min="0"></label></div>

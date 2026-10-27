@@ -1,3 +1,37 @@
+/**
+ * Deal Room Call Mode: record Joe and Dell's pipeline call, then review it.
+ *
+ * Restored from the working Deal Room shell that carr-system 13411964 (#963)
+ * made inert for the first workspace release, and reinstated by decision
+ * 7dc47eea (Joe, 2026-09-23): "a button on the deal room page that started
+ * recording our conversation, transcribed, and fed back to the system for
+ * context and updates." It is not a way to hold a meeting with a client or a
+ * vendor; that stays a Teams meeting.
+ *
+ * The recorder is Quill on the partner's own Mac. This page reaches it only
+ * through the loopback companion at http://127.0.0.1:4682 (carr-system
+ * tools/dictation-rig/bin/call-mode.py), and only because a partner pressed a
+ * control (apart from the bounded read-only eligibility probe):
+ *
+ *   - creating the controller sends nothing and starts no timer;
+ *   - opening the dialog reads the recorder's state, nothing more;
+ *   - a recording starts only from a Start button AND the consent box ticked
+ *     ("I have told everyone on this call that it will be recorded"), and the
+ *     companion refuses a start without consent_confirmed as well;
+ *   - the post-call review pack is only ever displayed. Every task, deal update
+ *     and email draft in it waits for a partner to Confirm or Skip that item;
+ *     nothing is written to the record and no Outlook draft is created before
+ *     that. There is no send path at all.
+ *
+ * The weekly call needs a short-lived deal context index so the local
+ * distiller can attach what was said to exact deals and people. It is read
+ * from get-call-context (at most 50 deals a request, so the agenda is read in
+ * batches), shaped to the companion's exact contract, and handed to the
+ * companion at start. If the recording's report is still `awaiting_context`
+ * when this page next looks at it — the page was closed at start, or the index
+ * failed — it is supplied again then, and the companion processes the
+ * transcript it already has.
+ */
 import { createRetainedCommands } from './retained-commands.mjs';
 import { callChangeText, dayLabel } from './call-change-words.js';
 import { requestCompanion } from './post-call-client.js';
