@@ -21,7 +21,7 @@ export function mountMorningBrief({ document:root, window:win, getClient, interv
   dialog.innerHTML = '<header><h2 id="morningTitle">Morning brief</h2><button id="morningClose" type="button" aria-label="Dismiss morning brief">×</button></header><div class="morning-toolbar"><button id="morningBack" type="button" hidden>← Morning brief</button><time id="morningUpdated">Updating…</time><button id="morningRefresh" type="button" aria-label="Refresh morning brief" title="Refresh morning brief">↻</button></div><div id="morningOwners"></div><div id="morningCoverage" role="status"></div><nav id="morningQueues" aria-label="Morning work queues"></nav><div id="morningContent"></div>';
   root.body.append(dialog);
   const $ = id => dialog.querySelector(`#${id}`) || root.getElementById(id), control = $('docMorning');
-  let facts = null, viewOptions, readEpoch = 0;
+  let facts = null, viewOptions, readEpoch = 0, fresh = false;
   let client, view = null, sponsor = null, preferences, since, windowDay, events = [], cursor = null, disposed = false, selected = null, detailEpoch = 0, opener;
   let storage; try { storage = win.localStorage; } catch {}
   const render = () => {
@@ -75,7 +75,7 @@ export function mountMorningBrief({ document:root, window:win, getClient, interv
   const focusCard = key => ([...$('morningContent').querySelectorAll('[data-brief-key]')].find(node => node.dataset.briefKey === key) || $('morningClose')).focus();
   const back = () => { queues.reset(); const key = selected?.key; selected = null; ++detailEpoch; render(); focusCard(key); };
   const clear = () => { queues.reset(); ++detailEpoch; selected = null; view = null; facts = null; sponsor = null; preferences = null; since = null; events = []; cursor = null; render(); cue(); };
-  const suspend = () => { ++readEpoch; clear(); };
+  const suspend = () => { ++readEpoch; fresh = true; clear(); };
   const showRecord = async (row, { background = false } = {}) => {
     selected = row; const epoch = ++detailEpoch, owner = sponsor;
     $('morningBack').hidden = false; $('morningTitle').textContent = row.title;
@@ -109,7 +109,8 @@ export function mountMorningBrief({ document:root, window:win, getClient, interv
     try {
       client ||= await getClient();
       if (!current()) return;
-      const payload = normalizeBrief(await readWithDeadline(() => client.morningBrief({signal}), {signal}));
+      const freshRead = fresh; fresh = false;
+      const payload = normalizeBrief(await readWithDeadline(() => client.morningBrief({signal, fresh:freshRead}), {signal}));
       if (!current()) return;
       if (!payload) throw new Error('Invalid brief');
       if (sponsor !== payload.sponsor || windowDay !== localDay(now())) {
