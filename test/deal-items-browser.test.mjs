@@ -31,7 +31,8 @@ for (const width of [390, 1280]) test(`a checklist item opens its own sheet and 
   assert.equal(await card.locator('h4').textContent(), "Dr. Demo's Sample Deal");
   assert.equal(await card.locator('ol li').count(), 3);
   if (width > 760) assert.ok((await card.boundingBox()).width >= 220, 'desktop item titles have a readable card width');
-  assert.equal(await card.locator('.next-line,.work-meta,.vendor-pills,.auto-move').count(), 0);
+  assert.equal(await card.locator('.owner').textContent(), 'Joe');
+  assert.equal(await card.locator('.next-line,.vendor-pills,.auto-move').count(), 0);
   await mkdir(new URL('out/test-artifacts/deal-items/', root), { recursive: true });
   await card.scrollIntoViewIfNeeded();
   await card.screenshot({ path: new URL(`out/test-artifacts/deal-items/${width}-card.png`, root).pathname });
