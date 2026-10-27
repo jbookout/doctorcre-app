@@ -251,3 +251,28 @@ for (const [code, patch, confirmed] of [
     assert.equal((await client.getDeal('d14')).deal.client_version, 7);
   });
 }
+
+test('concurrent identical page reads share one request and are not cached afterwards', async () => {
+  let requests = 0;
+  const fetchImpl = async () => {
+    requests++;
+    await new Promise(resolve => setTimeout(resolve));
+    return new Response(JSON.stringify({ result: { content: [{ text: JSON.stringify({ sponsor: 'joe', n: requests }) }] } }));
+  };
+  const [first, second] = [createLiveClient({ fetchImpl }), createLiveClient({ fetchImpl })];
+  const [a, b] = await Promise.all([first.morningBrief(), second.morningBrief()]);
+  assert.equal(requests, 1);
+  assert.deepEqual(a, b);
+  assert.notEqual(a, b);
+  await first.morningBrief();
+  assert.equal(requests, 2);
+});
+
+test('a shared page read honours each caller\'s own cancellation', async () => {
+  const fetchImpl = async () => { await new Promise(resolve => setTimeout(resolve, 20)); return new Response(JSON.stringify({ result: { content: [{ text: '{"ok":true}' }] } })); };
+  const live = createLiveClient({ fetchImpl }), controller = new AbortController();
+  const cancelled = live.morningBrief({ signal: controller.signal }), kept = live.morningBrief();
+  controller.abort();
+  await assert.rejects(cancelled);
+  assert.deepEqual(await kept, { ok: true });
+});

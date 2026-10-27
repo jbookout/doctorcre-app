@@ -5,7 +5,6 @@ import { projectInvoices, invoiceHref, invoiceMoney, invoiceDate } from './invoi
 import { introductionSuggestions } from './relationship-network-model.js';
 import { mountAutoRefresh, readWithDeadline, updatedLabel } from './auto-refresh.mjs';
 import { homeClient } from './home-boot.js';
-import { mountCallOutcomes } from './call-outcomes.js';
 import { localToday } from './calendar-model.js';
 import { agendaSnapshot, dealHref, dealSnapshot, HOME_SCOPES, readHomeAgenda, readHomeDashboard, topNewLeads } from './home-dashboard-model.js';
 import { mountNotificationBadge } from './shell.js';
@@ -242,5 +241,5 @@ if (typeof document !== 'undefined' && document.getElementById('dealAttention'))
     if (button && !button.hidden) button.click();
     else toast('Open Call Mode on the Mac that recorded the call to decide them.');
   };
-  if (outcomes && client.readCallOutcomes) mountCallOutcomes({ container: outcomes, client: () => client, toast, openCards }).refresh();
+  if (outcomes && client.readCallOutcomes) import('./call-outcomes.js').then(({ mountCallOutcomes }) => mountCallOutcomes({ container: outcomes, client: () => client, toast, openCards }).refresh());
 }

@@ -1,4 +1,3 @@
-import { createPlannerClient } from '../tours/planner-client.js';
 import { mountDocCommandBar } from './doc-command-bar.js';
 import { navigationItems } from './navigation.js';
 import { createClient } from './client.js';
@@ -108,7 +107,7 @@ export function mountDocPresence({ document: root = document, window: win = wind
     client: ensureClient,
     tours: async () => {
       if (resolveDealroomBoot(win.location).mode !== 'live') return [];
-      return createPlannerClient().library();
+      return (await import('../tours/planner-client.js')).createPlannerClient().library();
     }, intervalMs,
   });
   const open = command.open;

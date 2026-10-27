@@ -33,6 +33,11 @@ const CREATION_REFUSALS = new Set([
  * @param {(path:string, init?:RequestInit)=>Promise<Response>} [opts.fetchImpl]
  * @param {()=>boolean} [opts.online] connection signal; injectable in tests
  */
+// Concurrent identical page reads (Home's layout, Doc and the morning brief all ask
+// for the same board) share one request. Nothing is cached once it settles.
+const sharedReads = new WeakMap();
+const SHARED_READ_VERBS = new Set(['deal-room-board', 'morning-brief', 'list-feature-switches']);
+
 export function createLiveClient(opts = {}) {
   const baseUrl = (opts.baseUrl || '').replace(/\/$/, '');
   let selfActor = opts.selfActor || null;
@@ -56,7 +61,21 @@ export function createLiveClient(opts = {}) {
     'resolve-candidate', 'resolve-post-call-candidate', 'answer-work-request-for-joe', 'add-industry-event', 'update-industry-event',
     'undo-call-change', 'review-call-outcome']);
 
-  const rpc = (verb, args = {}, signal) => rawRpc(verb, args, signal, opts.readTimeoutMs || 10_000);
+  const readTimeoutMs = opts.readTimeoutMs || 10_000;
+  const rpc = (verb, args = {}, signal) => {
+    if (!SHARED_READ_VERBS.has(verb)) return rawRpc(verb, args, signal, readTimeoutMs);
+    const transport = opts.fetchImpl || sessionFetch;
+    if (!sharedReads.has(transport)) sharedReads.set(transport, new Map());
+    const reads = sharedReads.get(transport), key = JSON.stringify([baseUrl, verb, args]);
+    let read = reads.get(key);
+    if (!read) {
+      read = rawRpc(verb, args, undefined, readTimeoutMs).finally(() => reads.delete(key));
+      read.catch(() => {});
+      reads.set(key, read);
+    }
+    // Each caller keeps its own cancellation and its own copy of the answer.
+    return readWithDeadline(() => read.then(structuredClone), { signal, timeoutMs: readTimeoutMs });
+  };
 
   async function rawRpc(verb, args = {}, signal, timeoutMs, headers) {
     const outcome = await requestMcp(verb, args, { signal, timeoutMs, headers });
