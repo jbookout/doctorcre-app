@@ -1,7 +1,7 @@
 import { selectDocRecord } from './doc-context.js';
 import { mountAutoRefresh } from "./auto-refresh.mjs";
 import { createSystemWorkClient } from "./system-work-client.js";
-import { renderCurrentWorkRequests, renderSystemWorkCard, validateHumanRef } from "./system-work-view.js";
+import { isHumanRef, renderCurrentWorkRequests, renderSystemWorkCard, validateHumanRef } from "./system-work-view.js";
 
 const client = createSystemWorkClient();
 const state = { card: null, proposed: null, current: [], selectedRef: null, readEpoch: 0, readReady: false, readFailed: false, readAt: null, sessionReady: false };
@@ -50,7 +50,7 @@ async function refresh(ref = state.selectedRef) {
     const result = selected ? await client.read(selected) : await client.current();
     if (epoch !== state.readEpoch || selected !== state.selectedRef) return;
     state.card = selected ? result : null;
-    if (!selected) state.current = result.items || [];
+    if (!selected) state.current = result.items;
     state.readReady = true;
     state.readFailed = false;
     state.readAt = new Date().toISOString();
@@ -135,7 +135,7 @@ function reportForm() {
       const result = await client.report(retained || { situation: data.get("situation"), title: data.get("title"),
         desired_outcome: data.get("desired_outcome"),
         acceptance_criteria: criteria.map((text, index) => ({ id: `CRITERION-${index + 1}`, text })) });
-      if (typeof result?.human_ref !== "string" || !/^WR-\d+$/.test(result.human_ref)) throw new Error("Report outcome unknown. Reopen Report to check the retained concern.");
+      if (!isHumanRef(result?.human_ref)) throw new Error("Report outcome unknown. Reopen Report to check the retained concern.");
       await refresh(result.human_ref);
       client.finishReport();
     } });
