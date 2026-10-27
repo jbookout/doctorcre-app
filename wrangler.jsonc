@@ -13,6 +13,7 @@
   "vars": { "APP_ENV": "production" },
   "services": [{ "binding": "CARR", "service": "carr-mcp" }],
   "observability": { "enabled": true },
+  "limits": { "cpu_ms": 200 },
   "env": {
     "staging": {
       "name": "doctorcre-app-staging",
