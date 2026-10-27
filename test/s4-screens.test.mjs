@@ -79,10 +79,10 @@ test('F06 Search catch-up failure preserves good find results visibly; denied ca
   const page=await browser.newPage();
   const source=await read('js/fixture-client.js');
   await page.route('**/js/fixture-client.js',route=>route.fulfill({contentType:'text/javascript',body:source.replace('export async function createFixtureClient','async function originalCreateClient')+`
-export async function createFixtureClient(...args){const client=await originalCreateClient(...args);client.findAndCatchUp=async()=>{throw Object.assign(new Error('synthetic'),{status:window.s4Denied?401:503});};return client;}`}));
+export async function createFixtureClient(...args){await new Promise(resolve=>setTimeout(resolve,250));const client=await originalCreateClient(...args);client.findAndCatchUp=async()=>{throw Object.assign(new Error('synthetic'),{status:window.s4Denied?401:503});};return client;}`}));
   await page.route('**/api/**',route=>route.fulfill({json:{}}));
   await page.goto(`${server.origin}/search?mode=fixture&q=Demo`);
-  await page.waitForFunction(()=>document.querySelector('#searchResults').getAttribute('aria-busy')==='false');
+  await page.locator('#searchState[data-state="partial"]').waitFor({state:'visible'});
   assert.match(await page.locator('#searchState').textContent(),/context unavailable/i);
   assert.ok(await page.locator('.search-row').count()>0);
   await page.evaluate(()=>{window.s4Denied=true;});
