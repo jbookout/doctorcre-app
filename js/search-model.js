@@ -35,10 +35,6 @@ export const FIND_CATCH_UP_LIMIT_DEFAULT = 20;
 /** `FIND_CATCH_UP_CANDIDATE_CAP` (tools.js:2061). */
 export const FIND_CATCH_UP_CANDIDATE_CAP = 25;
 
-/** The six caps `find` applies, copied as numbers from the producer. */
-export const FIND_CAPS = Object.freeze({
-  parties: 10, organizations: 5, deals: 5, connections: 12, retired_refs: 10, links: 20,
-});
 
 /* --------------------------------------------------------- the frozen sentences */
 

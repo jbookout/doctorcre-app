@@ -13,15 +13,12 @@ import assert from "node:assert/strict";
 import {readFile} from "node:fs/promises";
 
 import {GOVERNANCE_LANES, formatScheduleDateTime, validGovernanceQueuePayload, validScheduleBoardPayload} from "../js/operations-model.js";
-import {STUCK_SILENCE_HOURS} from "../js/control-room-model.js";
 import {createFixtureClient} from "../js/fixture-client.js";
 import {createLiveClient} from "../js/live-client.js";
 
 const root = new URL("..", import.meta.url);
 const read = (file) => readFile(new URL(file, root), "utf8");
 const html = await read("control-room.html");
-const css = await read("css/control-room.css");
-const systemCss = await read("css/system.css");
 const pageJs = await read("js/control-room.js");
 const contract = JSON.parse(await read("contracts/carr-interface.v1.json"));
 
@@ -76,7 +73,6 @@ const QUEUE = {
   },
 };
 
-const NOW = Date.parse("2026-09-24T12:00:00.000Z");
 
 /* ------------------------------------------------------------ the payload */
 
