@@ -21,3 +21,11 @@ test("staging remains isolated from production CARR and production hostnames", (
   assert.deepEqual(staging.services, [{ binding: "CARR", service: "carr-mcp-staging" }]);
   assert.equal(staging.vars.APP_ENV, "staging");
 });
+
+test("a CPU cap bounds every invocation in both environments", () => {
+  // Workers Paid has no spend ceiling; without this each call may use the 30 s default.
+  const cap = config.limits?.cpu_ms;
+  assert.ok(Number.isInteger(cap) && cap > 0 && cap < 30_000, `limits.cpu_ms=${cap}`);
+  const stagingCap = config.env.staging.limits?.cpu_ms ?? cap;
+  assert.ok(stagingCap > 0 && stagingCap <= cap, `staging limits.cpu_ms=${stagingCap}`);
+});
