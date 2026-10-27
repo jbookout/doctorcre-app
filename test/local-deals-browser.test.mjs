@@ -334,10 +334,11 @@ test('W4 detail polls phase evidence, dates, people and parking while preserving
 });
 
 
-test('W4 checklist cards omit automatic history and show an overdue due chip', async t => {
+test('W4 checklist cards retain automatic history and show an overdue due chip', async t => {
   const {page}=await open(t);
   const card=page.locator('.kanban-column [data-id="d14"]');
-  assert.equal(await card.locator('.auto-move,[data-undo],.attention-flag').count(),0);
+  assert.equal(await card.locator('.auto-move').count(),1);
+  assert.equal(await card.locator('[data-undo],.attention-flag').count(),0);
   assert.equal(await card.locator('[data-overdue="true"] time').getAttribute('datetime'),'2026-02-01');
 
 });

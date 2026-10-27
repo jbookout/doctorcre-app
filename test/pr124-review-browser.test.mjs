@@ -299,7 +299,7 @@ test('R7 detail outages recover automatically and late failure cannot replace an
 for(const width of [1440,390]) test('R8 list history has no persistent Undo at '+width,async t=>{
  const {page}=await open(t,{width});await page.locator('#listView').click();
  assert.equal(await page.locator('[data-id="d14"] [data-undo]').count(),0);
- assert.equal(await page.locator('[data-id="d14"] .auto-move').count(),0,'history is omitted from the checklist card');
+ assert.equal(await page.locator('[data-id="d14"] .auto-move').count(),1,'automatic history remains visible');
 });
 test('R9 original prior step and actors survive without synthetic activity echo',async t=>{
  const {page}=await open(t);
