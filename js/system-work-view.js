@@ -1,5 +1,6 @@
 import { updatedLabel } from "./auto-refresh.mjs";
-const HUMAN_REF = /^WR-[0-9]{4,12}$/;
+// CARR's /api/system-work/:ref route accepts exactly this form and reads it verbatim.
+const HUMAN_REF = /^WR-[0-9]{1,12}$/;
 
 const esc = (value) => String(value ?? "").replace(/[&<>"']/g, (char) => ({
   "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
@@ -7,9 +8,11 @@ const esc = (value) => String(value ?? "").replace(/[&<>"']/g, (char) => ({
 
 const humanize = (value) => String(value || "").replaceAll("_", " ").replace(/\b\w/g, (c) => c.toUpperCase());
 
+export const isHumanRef = (value) => typeof value === "string" && HUMAN_REF.test(value);
+
 export function validateHumanRef(value) {
   const normalized = String(value || "").trim().toUpperCase();
-  if (!HUMAN_REF.test(normalized)) throw new Error("Enter a valid Work Request reference such as WR-000123.");
+  if (!isHumanRef(normalized)) throw new Error("Enter a valid Work Request reference such as WR-000123.");
   return normalized;
 }
 

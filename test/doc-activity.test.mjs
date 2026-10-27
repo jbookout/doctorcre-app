@@ -71,6 +71,8 @@ test('disposing Doc cancels a pending refresh before its owner replaces the body
   const client = { listDocSuggestions:() => { startedResolve(); return answer; }, listFeatureSwitches:async() => ({}) };
   const presence = mountDocPresence({ document:dom.window.document, window:dom.window, context, client });
   t.after(() => { presence.dispose(); dom.window.close(); });
+  dom.window.document.querySelector('#docDetail').showModal = function () { this.open = true; };
+  presence.open();
   await started;
   presence.dispose();
   dom.window.document.body.replaceChildren(dom.window.document.createElement('main'));
@@ -106,10 +108,26 @@ test('Doc does not fetch suggestions for a queued context that was superseded be
   const client = { listDocSuggestions:async() => { reads++; return {ok:true,suggestions:[]}; }, listFeatureSwitches:async() => ({}) };
   const presence = mountDocPresence({document:dom.window.document,window:dom.window,context,client});
   t.after(() => { presence.dispose(); dom.window.close(); });
+  dom.window.document.querySelector('#docDetail').showModal = function () { this.open = true; };
+  presence.open();
   await presence.refresh();
   reads = 0;
   snapshot = {...snapshot,ready:true,state:'ready'}; listener(snapshot);
   snapshot = {...snapshot,epoch:1,ready:false,state:'updating'}; listener(snapshot);
   await new Promise(resolve => setTimeout(resolve,20));
   assert.equal(reads,0);
+});
+
+test('activity feed orders precise instants before using descending IDs and preserves source rows', async () => {
+  const answer = await createDocActivityFixture().read();
+  const row = answer.entries[0];
+  const entries = [
+    { ...row, id: 'z-old', at: '2026-10-26T12:00:00.000001Z' },
+    { ...row, id: 'a-new', at: '2026-10-26T12:00:00.000002Z' },
+    { ...row, id: 'b-new', at: '2026-10-26T07:00:00.000002-05:00' },
+  ];
+  const original = structuredClone(entries);
+  assert.deepEqual(activityRows({ ...answer, entries }).map(item => item.id), ['b-new', 'a-new', 'z-old']);
+  assert.deepEqual(entries, original);
+  assert.throws(() => activityRows({ ...answer, entries: [{ ...row, at: null }] }), /activity_unavailable/);
 });

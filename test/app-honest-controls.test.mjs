@@ -27,6 +27,8 @@ test('shared Doc shows unavailable reads, keeps Chats reachable and offers no un
     ui = mountDocPresence({ document:dom.window.document, window:dom.window, context,
       client:{ listDocSuggestions:async () => { throw new Error('unavailable'); } } });
     const doc = dom.window.document;
+    doc.querySelector('#docDetail').showModal = function () { this.open = true; };
+    ui.open();
     await settles(() => assert.match(doc.querySelector('#docSuggestions').textContent, /Unavailable/));
     // The read-only search bar is Doc's one supported input; nothing else may accept input.
     assert.equal(doc.querySelector('#docDetail form:not(#docCommandForm), #docMic, #docInput'), null);
@@ -117,6 +119,24 @@ test('a reachable recording companion retains Stop and elapsed recording control
     assert.equal(doc.querySelector('#callModeStop').hidden, false);
     assert.equal(doc.querySelector('#callModeStarts').hidden, true);
     assert.match(doc.querySelector('#callModeState').textContent, /Recording live/);
+  });
+});
+
+for (const finished of ['ready_to_extract', 'filed']) {
+  test(`a finished call (${finished}) leaves Start available for the next call`, async () => {
+    await callSurface(async () => ({ ok: true, json: async () => ({ state: finished, session: '2026.10.26-1031' }) }), async (ui, doc) => {
+      assert.equal(await ui.checkEligibility(), true);
+      assert.equal(doc.querySelector('#callModeStarts').hidden, false);
+      assert.equal(doc.querySelector('#callModeConsentRow').hidden, false);
+      assert.equal(doc.querySelector('#callModeStop').hidden, true);
+    });
+  });
+}
+
+test('a call Quill is still transcribing keeps Start hidden', async () => {
+  await callSurface(async () => ({ ok: true, json: async () => ({ state: 'transcribing', session: '2026.10.26-1031' }) }), async (ui, doc) => {
+    assert.equal(await ui.checkEligibility(), true);
+    assert.equal(doc.querySelector('#callModeStarts').hidden, true);
   });
 });
 

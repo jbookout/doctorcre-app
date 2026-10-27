@@ -46,6 +46,24 @@ class ReviewGate(unittest.TestCase):
         for suffix in ("", "\n\nReviewer: grok", "\nOther: grok\nReviewer: grok"):
             self.assertFalse(gate.approved(pr, [], [{"body": "VERDICT: APPROVE\nReviewed-SHA: abc" + suffix}]))
 
+    def test_skip_ci_title_fails_even_when_small_or_approved(self):
+        comments = [{"body": "VERDICT: APPROVE\nReviewed-SHA: abc"}]
+        for title, expected in [("feat: x [skip ci]", False), ("[CI SKIP] x", False), ("x [no ci]", False),
+                                ("x [skip actions]", False), ("x [actions skip]", False), ("skip ci mention", True), ("feat: x", True)]:
+            with self.subTest(title=title):
+                pr = {"title": title, "changed_files": 0, "additions": 1, "deletions": 0, "head": {"sha": "abc"}}
+                self.assertEqual(gate.approved(pr, [], comments), expected)
+
+    def test_skip_ci_auto_merge_commit_fails_even_when_approved(self):
+        comments = [{"body": "VERDICT: APPROVE\nReviewed-SHA: abc"}]
+        for field in ("commit_title", "commit_message"):
+            for value, expected in [("[skip ci]", False), ("[CI SKIP]", False), ("[no ci]", False), ("[skip actions]", False), ("[actions skip]", False), ("skip ci mention", True), (None, True)]:
+                with self.subTest(field=field, value=value):
+                    pr = {"title": "safe", "auto_merge": {field: value}, "changed_files": 0, "additions": 1, "deletions": 0, "head": {"sha": "abc"}}
+                    self.assertEqual(gate.approved(pr, [], comments), expected)
+        pr["auto_merge"] = None
+        self.assertTrue(gate.approved(pr, [], comments))
+
     def test_changes_veto_is_bound_to_current_head(self):
         pr = {"changed_files": 0, "additions": 151, "deletions": 0, "head": {"sha": "abc"}}
         for sha, expected in [("abc", False), ("old", True)]:

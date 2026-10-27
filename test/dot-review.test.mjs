@@ -8,6 +8,7 @@ import { observeDocRead, selectDocRecord, setDocFilters } from "../js/doc-contex
 import { createDocContext } from "../js/doc-context-model.js";
 import { createLiveClient } from "../js/live-client.js";
 import { createSystemWorkClient } from "../js/system-work-client.js";
+import { isHumanRef } from "../js/system-work-view.js";
 import { mountPrefs } from "../js/shell.js";
 import { statusHeadline } from "../js/status-model.js";
 import { classifyPriority } from "../js/visual-system.js";
@@ -37,7 +38,7 @@ const elements = () => { const rows = new Map(); return key => { if(!rows.has(ke
 for (const terminal of ["review_ready", "failed"]) test(`PR111 #1: overlapping slow status reads apply ${terminal}`, async () => {
   const reply=deferred(); let reads=0, stops=0;
   const state={postCall:{session:"A",status:"waiting_for_transcript"}};
-  const h=handlers("js/call-mode.js","  async function refreshPostCall(","  function startPolling(",{state,deps:{postCallClient:{getStatus:()=>{reads++;return reply.promise;}}},stopPolling:()=>stops++,renderPostCall:noop,publishOrRecord:async()=>{},toast:noop},["refreshPostCall"]);
+  const h=handlers("js/call-mode.js","  async function refreshPostCall(","  function startPolling(",{state,deps:{postCallClient:{getStatus:()=>{reads++;return reply.promise;}}},stopPolling:()=>stops++,renderPostCall:noop,publishOrRecord:async()=>{},toast:noop,reportCandidateIds:()=>[],now:()=>0,APPLY_WAIT_MS:180000,automaticSettled:report=>!report||Boolean(report.automatic?.finished_at)},["refreshPostCall"]);
   const first=h.refreshPostCall(),second=h.refreshPostCall();
   reply.resolve({status:terminal});await Promise.all([first,second]);
   assert.equal(state.postCall.status,terminal);assert.equal(reads,1);assert.equal(stops,1);
@@ -225,13 +226,13 @@ test("Dot 2: switching Tours clears the prior confidential link", async () => {
   await h.loadTour("B");assert.equal($("#share-url").value,"");assert.equal($("#share-link").hidden,true);assert.equal(state.rawShareToken,"");
 });
 
-test("Dot 3: sheet save locks its draft while sending and unknown, then replays its retained key", async () => {
+test("Dot 3: sheet save allows typing while sending and locks only an unknown outcome, then replays its retained key", async () => {
   const $=elements();$("#cheat-content").value="First edit";const saved=deferred();
-  const state={tour:{id:"A",cheat_sheet:{revision_number:1,content:{notes:"Saved notes"}}},cheatDirty:true};
+  const state={tour:{id:"A",cheat_sheet:{revision_number:1,content:{notes:"Saved notes"}}},cheatDirty:true,cheatDraftRevision:1};
   const requests=[];let keys=0;
   // Keep the real recovery renderer, revision parser and receipt validator in
   // the same context as saveSheet so its retained state is observed directly.
-  const h=handlers("tours/app.js","  function renderSheetRecovery(","  const routeEndpoints",{
+  const h=handlers("tours/app.js","  function canRegenerateSheet(","  const routeEndpoints",{
     state,$,sheetPending:null,sheetConflict:null,sheetBusy:false,sheetMessage:"",sessionBinding:"synthetic-scope",
     text:(value,fallback="")=>value||fallback,cheatSheetText:value=>value?.notes||"",
     id:value=>typeof value==="string"&&/^[0-9a-f-]{36}$/.test(value),uuid:()=>`key-${++keys}`,
@@ -239,9 +240,10 @@ test("Dot 3: sheet save locks its draft while sending and unknown, then replays 
     post:async(_path,body)=>{requests.push(structuredClone(body));return requests.length===1?saved.promise:{cheat_sheet_revision_id:"00000000-0000-4000-8000-000000000001"};},
   });
   const tourSource=source("tours/app.js");
+  vm.runInContext(tourSource.slice(tourSource.indexOf("  let sheetAutosaveTimer"),tourSource.indexOf("  const otherWritesKey")),h);
   vm.runInContext(tourSource.slice(tourSource.indexOf("  async function saveSheet("),tourSource.indexOf("  async function issueShare("))+"\nglobalThis.saveSheet=saveSheet;",h);
   const pending=h.saveSheet();await tick();
-  assert.equal($("#cheat-content").disabled,true);assert.equal($("#save-sheet").disabled,true);
+  assert.equal($("#cheat-content").disabled,false);assert.equal($("#save-sheet").disabled,true);
   saved.reject(new Error("Committed save; reply lost"));await pending;
   assert.equal($("#cheat-content").value,"First edit");assert.equal($("#cheat-content").disabled,true);
   assert.equal(state.cheatDirty,true);assert.match($("#sheet-state").textContent,/unknown/i);
@@ -277,7 +279,7 @@ test("PR111 #7: cancel/reopen offers the retained report for same-request recove
     if(path.endsWith("session"))return new Response(JSON.stringify({csrf_token:"synthetic"}));
     requests.push(JSON.parse(init.body));if(requests.length===1)throw new Error("lost response");return new Response(JSON.stringify({data:{human_ref:"WR-1"}}));
   }});
-  await client.bootstrap();const h=handlers("js/system-work-app.js","function reportForm()","function triageForm()",{client,openForm:value=>{options=value;},field:(_label,body)=>body,esc:value=>String(value).replaceAll('"','&quot;'),refresh:async()=>{}},["reportForm"]);
+  await client.bootstrap();const h=handlers("js/system-work-app.js","function reportForm()","function triageForm()",{client,isHumanRef,openForm:value=>{options=value;},field:(_label,body)=>body,esc:value=>String(value).replaceAll('"','&quot;'),refresh:async()=>{}},["reportForm"]);
   h.reportForm();const data=new Map([["situation","Demo concern"],["title","Demo title"],["desired_outcome","Demo result"],["criteria","One measure"]]);await assert.rejects(options.onSubmit(data));
   h.reportForm();assert.equal(options.submit,"Check report outcome");assert.match(options.body,/Demo concern/);assert.match(options.body,/Demo title/);
   await options.onSubmit(new Map());assert.deepEqual(requests[1],requests[0]);assert.equal(client.pendingReport,null);
@@ -323,7 +325,7 @@ test("Dot 14: Updates follows the event cursor to current activity", async () =>
 
 test("Dot 15: an old call status cannot replace the new session review pack", async () => {
   const old=deferred();const state={postCall:{session:"A"}};let stops=0;
-  const h=handlers("js/call-mode.js","  async function refreshPostCall(","  function startPolling(",{state,deps:{postCallClient:{getStatus:()=>old.promise}},stopPolling:()=>stops++,renderPostCall:noop,publishOrRecord:async()=>{},toast:noop},["refreshPostCall"]);
+  const h=handlers("js/call-mode.js","  async function refreshPostCall(","  function startPolling(",{state,deps:{postCallClient:{getStatus:()=>old.promise}},stopPolling:()=>stops++,renderPostCall:noop,publishOrRecord:async()=>{},toast:noop,reportCandidateIds:()=>[],now:()=>0,APPLY_WAIT_MS:180000,automaticSettled:report=>!report||Boolean(report.automatic?.finished_at)},["refreshPostCall"]);
   const pending=h.refreshPostCall();state.postCall={session:"B",status:"waiting",report:null};old.resolve({status:"review_ready",report:{session:"A"}});await pending;
   assert.equal(state.postCall.session,"B");assert.equal(state.postCall.report,null);assert.equal(stops,0);
 });

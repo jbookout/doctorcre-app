@@ -26,7 +26,7 @@ export function validGovernanceQueuePayload(payload) {
   return Number.isInteger(counts.total) && counts.total === total;
 }
 
-const SCHEDULE_OWNERS = ["launchd", "claude-code", "control-plane", "cron"];
+const SCHEDULE_OWNERS = ["launchd", "claude-code", "cron"];
 const SCHEDULE_STATES = ["healthy", "missed", "failed", "paused", "running", "unknown"];
 
 /** A schedule timestamp needs its day as well as its local AM/PM clock. */

@@ -55,7 +55,7 @@
  */
 
 import {
-  beginCommand, classifyCommandOutcome, pendingCommand, performCommand, settleCommand, stableText,
+  pendingCommand, performCommand, settleCommand, stableText,
 } from './command-feedback.mjs';
 
 // Sentence tails. The caller supplies the subject — "Attention flag on
@@ -127,24 +127,6 @@ function intentArgs(current, { deal, field, value, base, extra }) {
   return { deal, field, value, base_event_id: base ?? null, ...(extra || {}) };
 }
 
-/**
- * Claim the single in-flight write for one cell, or take back the request that
- * was never answered.
- *
- * Three answers:
- *   started — send `request`. It is either brand new or, for a retry of an
- *             unresolved operation, the ORIGINAL frozen one: same key, same
- *             base, same value, whatever the feed has done since.
- *   in_flight — a request for this cell is open. Nothing is sent.
- *   blocked — an earlier operation on this cell is unresolved and this is a
- *             DIFFERENT intent. Nothing is sent; `pending` names what has to be
- *             reconciled first.
- */
-export function beginFieldWrite(state, { deal, field, value, base = null, extra = null, newKey }) {
-  const cell = cellKey(deal, field);
-  const current = (state || {})[cell] || null;
-  return beginCommand(state, { operationKey: cell, args: intentArgs(current, { deal, field, value, base, extra }), newKey });
-}
 
 /**
  * Record what the server actually said. An unknown answer KEEPS the entry — that

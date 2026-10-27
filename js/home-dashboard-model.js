@@ -1,12 +1,10 @@
 import { visibleLeads } from './leads-model.js';
-import { localDeals, needsAttention, scopedDeals, validDealBoard } from './deal-review-model.js';
+import { localDeals, scopedDeals, validDealBoard } from './deal-review-model.js';
 import { validInvoiceTracker } from './invoice-tracker-model.js';
 import { validNetwork } from './relationship-network-model.js';
 import { addDays, criticalDateEntries, localToday, toDay } from './calendar-model.js';
-import { validIncidentBoardPayload, validCurrentWorkItemPayload, validCurrentWorkRequestsPayload, STUCK_SILENCE_HOURS } from './control-room-model.js';
-import { validScheduleBoardPayload } from './operations-model.js';
-import { projectResourceDashboard } from './resource-dashboard-model.js';
 import { readWithDeadline } from './auto-refresh.mjs';
+import { readHomeCallTasks } from './home-call-tasks.js';
 
 export const HOME_SCOPES = ['team', 'mine'];
 export const HIDDEN_HOME_WIDGETS = Object.freeze({
@@ -22,16 +20,19 @@ const validHomeRows = (payload, key) => payload && typeof payload === 'object' &
   && Array.isArray(payload[key]) && payload[key].every(row => row && typeof row === 'object' && !Array.isArray(row)
     && typeof row.id === 'string' && row.id.trim().length > 0);
 
-export function dealSnapshot(board, scope = 'team', now = Date.now()) {
+export function dealSnapshot(board, scope = 'team', agenda) {
   const deals = scopedDeals(board, scope);
   if (!deals) return null;
+  const local = localDeals(deals);
+  const overdue = new Set(agenda?.overdue.map(entry => entry.deal_id));
+  const complete = agenda && !local.some(deal => agenda.failed.includes(deal.id));
   return { active: deals.length,
     // No current contract supplies in-market membership. Neither city nor
     // pipeline stage is evidence of it; the UI retains an unknown value.
     inMarket: deals.every(deal => typeof deal.in_market === 'boolean')
       ? deals.filter(deal => deal.in_market).length : null,
     national: deals.filter(deal => deal.workspace_kind === 'national_account' || deal.account_client_id).length,
-    flagged: localDeals(deals).filter(deal => needsAttention(deal, now)) };
+    flagged: complete ? local.filter(deal => overdue.has(deal.id)) : local.length ? null : [] };
 }
 
 export function dealHref(id) { return `/deals?deal=${encodeURIComponent(id)}`; }
@@ -69,32 +70,7 @@ export function agendaSnapshot(board, details, { scope = 'team', today = localTo
   const priority = entry => !entry.day ? 1 : entry.day <= today ? 0 : 2;
   entries.sort((a, b) => priority(a) - priority(b) || (a.day || '').localeCompare(b.day || '') || a.key.localeCompare(b.key));
   const week = Array.from({ length: 7 }, (_, i) => ({ day: addDays(today, i), entries: entries.filter(entry => entry.day === addDays(today, i)) }));
-  return { entries, week, failed, undated, upcoming: entries };
-}
-
-export function controlSnapshot(reads) {
-  const { incidents, work, requests, resources, schedule } = reads;
-  if (!Object.keys(reads).length) return null;
-  const incidentCount = validIncidentBoardPayload(incidents) ? incidents.count : 0;
-  const complete = validIncidentBoardPayload(incidents) && validCurrentWorkItemPayload(work) && validCurrentWorkRequestsPayload(requests)
-    && validScheduleBoardPayload(schedule) && schedule.sources.every(row => row.state === 'read')
-    && schedule.overall_state === 'read'
-    && schedule.jobs.every(job => job.freshness === 'fresh' && ['healthy', 'running', 'paused'].includes(job.state))
-    && projectResourceDashboard(resources).providers.every(row => row.state === 'ok' && row.observed_at);
-  const stalled = validCurrentWorkItemPayload(work) ? work.current.filter(item => item.hours_since_last_change >= STUCK_SILENCE_HOURS || ['blocked', 'needs_joe'].includes(item.state)).length : 0;
-  const waiting = validCurrentWorkRequestsPayload(requests) ? requests.items.filter(item => item.state === 'needs_joe'
-    || (['captured', 'triaged', 'ready'].includes(item.state) && item.next_human_action?.trim())).length : 0;
-  const scheduledIssues = validScheduleBoardPayload(schedule) ? schedule.jobs.filter(job => ['missed', 'failed'].includes(job.state)).length : 0;
-  const wipIssues = validCurrentWorkItemPayload(work) ? Number(work.wip.over_system_limit === true)
-    + (Array.isArray(work.wip.executors_over_limit) ? work.wip.executors_over_limit.length : 0) : 0;
-  const issues = incidentCount + stalled + waiting + scheduledIssues + wipIssues;
-  return { attention: issues > 0 || !complete,
-    line: incidentCount ? `${incidentCount} open ${incidentCount === 1 ? 'issue' : 'issues'}`
-      : stalled ? `${stalled} ${stalled === 1 ? 'item needs' : 'items need'} a decision`
-      : waiting ? `${waiting} ${waiting === 1 ? 'request awaits' : 'requests await'} a decision`
-      : wipIssues ? 'Work exceeds its limits'
-      : scheduledIssues ? 'Scheduled work needs attention' : !complete ? 'Status checks incomplete' : 'No open issues',
-    issues, complete };
+  return { entries, week, failed, undated, upcoming: entries, dueToday: entries.filter(entry => entry.day === today), overdue: entries.filter(entry => entry.day && entry.day < today) };
 }
 
 // A single bounded snapshot supplies flags, dates and tasks. Slow or failed optional
@@ -104,11 +80,7 @@ export function readHomeDashboard(client, options) {
     ['invoices', signal => client.getInvoiceTracker({ signal })],
     ['leads', signal => client.getLeadBoard({ signal })],
     ['relationships', signal => client.getRelationshipNetwork({ signal })],
-    ['incidents', signal => client.incidentBoard({ state: 'open', limit: 1000 }, { signal }), 'control'],
-    ['work', signal => client.currentWorkItem({ signal }), 'control'],
-    ['requests', signal => client.currentWorkRequests({ signal }), 'control'],
-    ['resources', signal => client.readResourceDashboard({ signal }), 'control'],
-    ['schedule', signal => client.scheduleBoard({ signal }), 'control'],
+    ['callTasks', signal => readHomeCallTasks(client, { signal })],
   ], options);
 }
 
@@ -117,34 +89,34 @@ export function readHomeAgenda(client, options) {
 }
 
 async function readHome(client, feeds, { onUpdate = () => {}, timeoutMs = 10_000, signal } = {}) {
-  const result = { board: null, details: new Map(), leads: null, invoices: null, relationships: null, control: {}, unauthorized: false, updatedAt: null, loading: true,
+  const result = { board: null, details: new Map(), leads: null, invoices: null, relationships: null, callTasks: null, unauthorized: false, updatedAt: null, loading: true,
     reads: Object.fromEntries(['board', ...feeds.map(([key]) => key)].map(key => [key, { state: 'loading' }])) };
   const publish = () => onUpdate(result);
-  const take = async (name, read, target = result) => {
+  const take = async (name, read) => {
     try {
       if (signal?.aborted) return;
       const value = await readWithDeadline(read, { timeoutMs, signal });
       if (name === 'invoices' && !validInvoiceTracker(value)) throw Object.assign(new Error('Invoices unavailable'), {code:'invalid_payload'});
       if (name === 'relationships' && (!validNetwork(value) || Date.parse(value.valid_until) <= Date.now())) throw Object.assign(new Error('Relationships unavailable'), {code:'invalid_payload'});
-      if (target === result && ((name === 'board' && (!validDealBoard(value) || value.schema_version !== 'home-agenda.v1' || typeof value.actor !== 'string' || !value.actor.trim() || new Set(value.deals.map(deal => deal.id)).size !== value.deals.length)) || (name === 'leads' && !validHomeRows(value, 'leads')))) {
+      if ((name === 'board' && (!validDealBoard(value) || value.schema_version !== 'home-agenda.v1' || typeof value.actor !== 'string' || !value.actor.trim() || new Set(value.deals.map(deal => deal.id)).size !== value.deals.length)) || (name === 'leads' && !validHomeRows(value, 'leads'))) {
         const error = new Error('Home board unavailable');
         error.code = 'malformed_response';
         throw error;
       }
-      target[name] = value;
+      result[name] = value;
       result.reads[name] = { state: 'read' };
-      if (name === 'board' && target === result) {
+      if (name === 'board') {
         for (const deal of scopedDeals(value, 'team') || []) result.details.set(deal.id, deal);
       }
       result.updatedAt = new Date().toISOString();
     }
-    catch (error) { target[name] = null;
+    catch (error) { result[name] = null;
       result.reads[name] = { state: 'error', code: error?.code || 'unavailable' };
       if ([401, 403].includes(error?.status)) result.unauthorized = true; }
     publish();
   };
   const board = take('board', signal => client.getHomeAgenda({ signal }));
-  await Promise.all([board, ...feeds.map(([key, read, target]) => take(key, read, target === 'control' ? result.control : result))]);
+  await Promise.all([board, ...feeds.map(([key, read]) => take(key, read))]);
   result.loading = false;
   publish();
   return result;

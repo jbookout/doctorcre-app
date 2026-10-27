@@ -813,3 +813,25 @@ for (const status of [503, 401, 403]) test(`QA008 Deals freshness settles after 
     assert.match(freshness(), /^Updated .* (AM|PM)$/);
   } finally { dom.window.close(); }
 });
+
+test('fixture deal reads preserve every note and put undated entries after dated updates', async () => {
+  const seed = JSON.parse(seedText);
+  seed.threads.d14 = [
+    {id:'undated',kind:'note',text:'Synthetic undated note'},
+    {id:'old',kind:'note',at:'2026-10-01T12:00:00Z',text:'Synthetic older note'},
+    {id:'latest',kind:'note',created_at:'2026-10-26T12:00:00Z',text:'Synthetic latest note'},
+  ];
+  const client = await createFixtureClient({seedUrl:`data:application/json;base64,${Buffer.from(JSON.stringify(seed)).toString('base64')}`});
+  assert.deepEqual((await client.getDeal('d14')).thread.map(row=>row.id),['latest','old','undated']);
+});
+
+test('Home Recent moves retains precise newest-first receipt order with undated entries last', () => {
+ const events = [
+  {id:'undated',recorded_at:null},
+  {id:'older',recorded_at:'2026-10-26T12:00:00.000001Z'},
+  {id:'newer',recorded_at:'2026-10-26T07:00:00.000002-05:00'},
+  {id:'historic',recorded_at:'1969-12-31T12:00:00Z'},
+ ].map(event=>({...event,subject_type:'deal',subject_id:'d14',actor:'joe',field:'next_step',new_value:'Synthetic updated step'}));
+ const receipts = ingestChangeEvents([],events,{dealName:()=> 'Synthetic Practice'});
+ assert.deepEqual(receiptViews(receipts).map(row=>row.event_id),['newer','older','historic','undated']);
+});

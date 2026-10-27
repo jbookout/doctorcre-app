@@ -84,7 +84,7 @@ export function applyPreferences(preferences) {
  * Wire the three presentation icons on the page that is already rendered.
  *
  * @param {{storageKey?: string, legacyKeys?: string[], storage?: Storage|null}} [options]
- * @returns {{current: () => object}}
+ * @returns {{current: () => object, hasSeenWalkthrough: (actor: string) => boolean, rememberWalkthrough: (actor: string) => void}}
  */
 const mountedPrefs = new WeakMap();
 
@@ -98,15 +98,35 @@ export function mountPrefs({ storageKey = PREFERENCES_KEY, legacyKeys = LEGACY_P
   const saved = migratePreferences(store, { storageKey, legacyKeys });
   try { if (!saved.theme && store?.getItem("dealroom-theme") === "light") saved.theme = "light"; } catch {}
   let current = resolvePreferences({ ...DEFAULT_PREFERENCES, ...saved, density: "comfortable", motion: system.prefersReducedMotion ? "reduced" : "full" }, system);
+  let walkthroughSeen = {};
+  const readWalkthrough = () => {
+    let stored;
+    try { stored = parse(store?.getItem(storageKey)).walkthroughSeen; } catch {}
+    walkthroughSeen = Object.fromEntries(['joe', 'dell'].map(actor => [actor, walkthroughSeen[actor] === true || stored?.[actor] === true]));
+    return walkthroughSeen;
+  };
+  const persist = () => {
+    const seen = readWalkthrough();
+    const value = Object.values(seen).some(Boolean) ? { ...current, walkthroughSeen: seen } : current;
+    try { store?.setItem(storageKey, JSON.stringify(value)); } catch { /* a convenience, never a requirement */ }
+  };
   applyPreferences(current);
   document.querySelectorAll("button[data-pref][data-on]").forEach((button) => button.addEventListener("click", () => {
     const key = button.dataset.pref;
     const next = current[key] === button.dataset.on ? button.dataset.off : button.dataset.on;
     current = resolvePreferences({ ...current, [key]: next }, system);
-    try { store?.setItem(storageKey, JSON.stringify(current)); } catch { /* a convenience, never a requirement */ }
+    persist();
     applyPreferences(current);
   }));
-  const mounted = { current: () => ({ ...current }) };
+  const mounted = {
+    current: () => ({ ...current }),
+    hasSeenWalkthrough: actor => readWalkthrough()[actor] === true,
+    rememberWalkthrough(actor) {
+      if (!['joe', 'dell'].includes(actor)) return;
+      walkthroughSeen[actor] = true;
+      persist();
+    },
+  };
   mountedPrefs.set(document, mounted);
   return mounted;
 }

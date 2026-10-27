@@ -159,8 +159,8 @@ body.has-app-layout { padding: 0 0 var(--layout-bottom) var(--layout-rail) !impo
 .app-layout-today section { padding-bottom: var(--space-4); }
 .app-layout-item { display: grid; justify-content: stretch; gap: var(--space-1); width: 100%; padding: var(--space-3); margin: 0 0 var(--space-2); text-align: left; border: var(--hairline-width) solid var(--hairline); border-radius: var(--radius-2); background: var(--surface-1); color: var(--fg); cursor: pointer; transition: background-color var(--duration-hover) var(--ease-out), border-color var(--duration-hover) var(--ease-out); font: var(--font-weight-regular) var(--font-size-1)/1.45 var(--font-text); }
 .app-layout-item strong { font-weight: var(--font-weight-strong); }
-.app-layout-show-all { min-width: var(--touch); min-height: var(--touch); }
-.app-layout-show-all[hidden] { display: none; }
+.app-layout-show-all, #appTodayRetry { min-width: var(--touch); min-height: var(--touch); }
+.app-layout-item[hidden], .app-layout-empty[hidden] { display: none; }
 .app-layout-item span { font-size: var(--font-size-1); color: var(--fg-muted); overflow-wrap: anywhere; }
 @media (hover: hover) { .app-layout-item:hover { background: var(--surface-2); border-color: var(--hairline-strong); } }
 .app-layout-empty { display: block; padding: var(--space-3) 0; color: var(--fg-muted); font: var(--font-size-1) var(--font-text); }
@@ -283,8 +283,12 @@ body.has-app-layout:has(.toast) .receipt-dock { display: none; }
   .app-shell-brand { display: none; }
   .app-shell-menu { grid-column: 1; grid-row: 1; min-width: 0; flex: none !important; }
   .app-shell-navigation { flex-direction: row; justify-content: space-between; gap: 0; overflow-x: auto; }
-  .app-shell-navigation > a, .app-shell-more { flex: none; }
-  .app-shell-navigation > a, .app-shell-more-toggle { width: var(--touch); height: var(--touch); min-height: var(--touch); font-size: var(--font-size-3); padding: var(--space-1) !important; }
+  .app-shell-navigation > a { flex: 1 1 0; }
+  .app-shell-more { flex: none; }
+  .app-shell-navigation > a, .app-shell-more-toggle { width: auto; min-width: var(--touch); height: var(--touch); min-height: var(--touch); font-size: var(--font-size-3); padding: var(--space-1) !important; grid-template-rows: auto auto; align-content: center; gap: 0; }
+  .app-shell-navigation .app-shell-nav-label { position: static; width: auto; height: auto; clip-path: none; font-size: var(--font-size-1); line-height: 1.2; }
+  .app-shell-navigation .app-shell-nav-prefix { display: none; }
+  .app-shell-more-list .app-shell-nav-prefix { display: inline; }
   .app-shell-navigation > a[aria-current=page]::before, .app-shell-more-current::before { left: 10px; right: 10px; top: auto; bottom: -3px; width: auto; height: 2px; }
   .app-shell-controls { flex-direction: row; grid-column: 2; grid-row: 1; gap: var(--space-1) !important; }
   .app-shell-account-group, .app-shell-workspace-group { display: grid; gap: 2px; }
@@ -402,10 +406,6 @@ body.has-app-layout:has(#callModeAvailability:not([hidden])) { --layout-bottom: 
   .has-app-layout .skip:focus, .has-app-layout .invoice-skip:focus { min-height: 44px; display: flex; align-items: center; }
   /* A scripted scroll lands at once; animated, the page moves under the next tap. */
   :root { scroll-behavior: auto; }
-}
-/* Below 360px the eight bar targets share the width rather than overflow it. */
-@media (max-width: 359px) {
-  .has-app-layout .app-shell-header :is(.app-shell-navigation > a, .app-shell-more-toggle, .app-shell-search) { min-width: 0; }
 }
 
 /* Shared by every page: the two loading keyframes and the reduced-motion floor

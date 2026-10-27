@@ -251,3 +251,85 @@ for (const [code, patch, confirmed] of [
     assert.equal((await client.getDeal('d14')).deal.client_version, 7);
   });
 }
+
+test('concurrent identical page reads share one request and are not cached afterwards', async () => {
+  let requests = 0;
+  const fetchImpl = async () => {
+    requests++;
+    await new Promise(resolve => setTimeout(resolve));
+    return new Response(JSON.stringify({ result: { content: [{ text: JSON.stringify({ sponsor: 'joe', n: requests }) }] } }));
+  };
+  const [first, second] = [createLiveClient({ fetchImpl }), createLiveClient({ fetchImpl })];
+  const [a, b] = await Promise.all([first.morningBrief(), second.morningBrief()]);
+  assert.equal(requests, 1);
+  assert.deepEqual(a, b);
+  assert.notEqual(a, b);
+  await first.morningBrief();
+  assert.equal(requests, 2);
+});
+
+test('a shared page read honours each caller\'s own cancellation', async () => {
+  const fetchImpl = async () => { await new Promise(resolve => setTimeout(resolve, 20)); return new Response(JSON.stringify({ result: { content: [{ text: '{"ok":true}' }] } })); };
+  const live = createLiveClient({ fetchImpl }), controller = new AbortController();
+  const cancelled = live.morningBrief({ signal: controller.signal }), kept = live.morningBrief();
+  controller.abort();
+  await assert.rejects(cancelled);
+  assert.deepEqual(await kept, { ok: true });
+});
+
+test('shared reads respect each client deadline', async () => {
+  const fetchImpl = async () => {
+    await new Promise(resolve => setTimeout(resolve, 50));
+    return new Response(JSON.stringify({ result: { content: [{ text: '{"ok":true}' }] } }));
+  };
+  const short = createLiveClient({ fetchImpl, readTimeoutMs: 10 });
+  const long = createLiveClient({ fetchImpl, readTimeoutMs: 200 });
+  const first = short.morningBrief();
+  const second = long.morningBrief();
+  await assert.rejects(first);
+  assert.deepEqual(await second, { ok: true });
+});
+
+test('an already cancelled shared read does not start a request', async () => {
+  let requests = 0;
+  const client = createLiveClient({ fetchImpl: async () => { requests++; throw new Error('unexpected request'); } });
+  const controller = new AbortController();
+  controller.abort();
+  await assert.rejects(client.morningBrief({ signal: controller.signal }));
+  assert.equal(requests, 0);
+});
+
+test('a cancelled read cannot remove its replacement from sharing', async () => {
+  let requests = 0, finish;
+  const fetchImpl = async () => {
+    requests++;
+    await new Promise(resolve => { finish = resolve; });
+    return Response.json({ result: { content: [{ text: '{"ok":true}' }] } });
+  };
+  const client = createLiveClient({ fetchImpl });
+  const controller = new AbortController();
+  const cancelled = client.morningBrief({ signal: controller.signal });
+  controller.abort();
+  const replacement = client.morningBrief();
+  await assert.rejects(cancelled);
+  await new Promise(resolve => setImmediate(resolve));
+  const joined = client.morningBrief();
+  assert.equal(requests, 2);
+  finish();
+  assert.deepEqual(await replacement, { ok: true });
+  assert.deepEqual(await joined, { ok: true });
+});
+
+test('a fresh morning brief does not join an older pending read', async () => {
+  let requests = 0, release;
+  const fetchImpl = async () => {
+    const number = ++requests;
+    if (number === 1) await new Promise(resolve => { release = resolve; });
+    return Response.json({ result: { content: [{ text: JSON.stringify({ number }) }] } });
+  };
+  const client = createLiveClient({ fetchImpl });
+  const older = client.morningBrief();
+  assert.deepEqual(await client.morningBrief({ fresh: true }), { number: 2 });
+  release();
+  assert.deepEqual(await older, { number: 1 });
+});
