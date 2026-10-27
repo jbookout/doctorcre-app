@@ -100,8 +100,11 @@ test('Home email quality loads separately, retries a failed report, and refreshe
   t.after(() => page.close());
   await page.request.post(`${origin}/api/test/seed`, { data: { namespace: 'email-quality', viewer: 'joe', reset: true } });
   await page.addInitScript(() => localStorage.setItem('doctorcre.visual-preferences', JSON.stringify({ walkthroughSeen: { joe: true, dell: true } })));
-  let fail = true;
+  let fail = true, holdAgenda = true, releaseAgenda;
+  const agenda = new Promise(resolve => { releaseAgenda = resolve; });
+  t.after(() => releaseAgenda());
   await page.route('**/mcp', async route => {
+    if (holdAgenda && route.request().postDataJSON().params.name === 'read-home-agenda') await agenda;
     if (fail && route.request().postDataJSON().params.name === 'email-proposal-quality') return route.fulfill({ status: 503, json: { error: 'synthetic_outage' } });
     return route.continue();
   });
@@ -109,7 +112,9 @@ test('Home email quality loads separately, retries a failed report, and refreshe
   const quality = page.getByRole('region', { name: 'Email proposal quality', exact: true });
   await quality.scrollIntoViewIfNeeded();
   await quality.getByText(/Could not load email proposal quality/).waitFor({ timeout: 5000 });
+  holdAgenda = false; releaseAgenda();
   const review = page.locator('#homeEmailFollowups');
+  await review.scrollIntoViewIfNeeded();
   await review.locator('article').first().waitFor();
   fail = false;
   await quality.getByRole('button', { name: 'Retry email proposal quality' }).click();
