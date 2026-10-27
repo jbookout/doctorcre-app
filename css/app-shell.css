@@ -283,8 +283,12 @@ body.has-app-layout:has(.toast) .receipt-dock { display: none; }
   .app-shell-brand { display: none; }
   .app-shell-menu { grid-column: 1; grid-row: 1; min-width: 0; flex: none !important; }
   .app-shell-navigation { flex-direction: row; justify-content: space-between; gap: 0; overflow-x: auto; }
-  .app-shell-navigation > a, .app-shell-more { flex: none; }
-  .app-shell-navigation > a, .app-shell-more-toggle { width: var(--touch); height: var(--touch); min-height: var(--touch); font-size: var(--font-size-3); padding: var(--space-1) !important; }
+  .app-shell-navigation > a { flex: 1 1 0; }
+  .app-shell-more { flex: none; }
+  .app-shell-navigation > a, .app-shell-more-toggle { width: auto; min-width: var(--touch); height: var(--touch); min-height: var(--touch); font-size: var(--font-size-3); padding: var(--space-1) !important; grid-template-rows: auto auto; align-content: center; gap: 0; }
+  .app-shell-navigation .app-shell-nav-label { position: static; width: auto; height: auto; clip-path: none; font-size: var(--font-size-1); line-height: 1.2; }
+  .app-shell-navigation .app-shell-nav-prefix { display: none; }
+  .app-shell-more-list .app-shell-nav-prefix { display: inline; }
   .app-shell-navigation > a[aria-current=page]::before, .app-shell-more-current::before { left: 10px; right: 10px; top: auto; bottom: -3px; width: auto; height: 2px; }
   .app-shell-controls { flex-direction: row; grid-column: 2; grid-row: 1; gap: var(--space-1) !important; }
   .app-shell-account-group, .app-shell-workspace-group { display: grid; gap: 2px; }
@@ -402,10 +406,6 @@ body.has-app-layout:has(#callModeAvailability:not([hidden])) { --layout-bottom: 
   .has-app-layout .skip:focus, .has-app-layout .invoice-skip:focus { min-height: 44px; display: flex; align-items: center; }
   /* A scripted scroll lands at once; animated, the page moves under the next tap. */
   :root { scroll-behavior: auto; }
-}
-/* Below 360px the eight bar targets share the width rather than overflow it. */
-@media (max-width: 359px) {
-  .has-app-layout .app-shell-header :is(.app-shell-navigation > a, .app-shell-more-toggle, .app-shell-search) { min-width: 0; }
 }
 
 /* Shared by every page: the two loading keyframes and the reduced-motion floor
