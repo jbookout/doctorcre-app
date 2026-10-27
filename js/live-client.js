@@ -303,6 +303,7 @@ export function createLiveClient(opts = {}) {
       return write('resolve-post-call-candidate', { candidate_id, accept, idempotency_key });
     },
 
+    async getEmailProposalQuality() { return rpc('email-proposal-quality', {}); },
     async listEmailProposals() { return rpc('list-email-proposals', {}); },
     async previewEmailNextStep(args) { return rpc('preview-email-next-step', args); },
     async previewEmailDealProgress(args) { return rpc('preview-email-deal-progress', args); },

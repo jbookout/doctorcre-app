@@ -3100,6 +3100,7 @@ export async function createFixtureClient(opts = {}) {
   let emailFixture;
   const emails = () => emailFixture ||= import('./email-proposals-fixture.js').then(({ createEmailProposalsFixture }) => createEmailProposalsFixture({ deals, seedDeals: emailSeedDeals, actor: selfActor, client, pushEvent }));
   Object.assign(client, {
+    async getEmailProposalQuality() { return (await emails()).getEmailProposalQuality(); },
     async listEmailProposals() { return (await emails()).listEmailProposals(); },
     async previewEmailNextStep(args) { return (await emails()).previewEmailNextStep(args); },
     async previewEmailDealProgress(args) { return (await emails()).previewEmailDealProgress(args); },

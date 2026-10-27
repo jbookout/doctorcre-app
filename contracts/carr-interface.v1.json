@@ -1,6 +1,6 @@
 {
   "schema": "doctorcre-carr-interface.v1",
-  "version": "1.60.0",
+  "version": "1.61.0",
   "producer": {
     "repository": "jbookout/carr-system",
     "source_commit": "1df9b9936394164dd55e815f8a8bf69649508ccc"
@@ -47,6 +47,7 @@
     "decide-doc-suggestion",
     "decline-work-request",
     "dismiss-email-proposal",
+    "email-proposal-quality",
     "end-deal-review",
     "engineering-passport",
     "find",
@@ -1208,5 +1209,15 @@
     ],
     "dismissal": "Joe or Dell, exact observed version and a nonempty reason of at most 500 characters. Version conflicts require a fresh review.",
     "deployment_order": "Server verbs are live before this app consumer. No send or router write is consumed."
+  },
+  "email_proposal_quality": {
+    "producer": {
+      "repository": "DoctorCRE/carr-system",
+      "source_commit": "470cbb3494a04c63f8d01569a0373d61922b33b1",
+      "pull_request": "https://github.com/DoctorCRE/carr-system/pull/2450"
+    },
+    "schema_version": "email-proposal-quality.v1",
+    "read": "email-proposal-quality {} returns days:7, kinds[], corrections[] and send:false. Kinds contain kind, proposed, pending, confirmed, dismissed, dismiss_rate, confirmed_confidence, dismissed_confidence and over_threshold. Corrections contain id, kind, deal_name, reason and resolved_at.",
+    "review": "Counts are a created-at cohort. Dismissal is the correction signal, not an undo rate. Null rates and confidences mean no resolved sample. over_threshold is advisory, not enforcement. Corrections are limited to 20. No writes or sends."
   }
 }

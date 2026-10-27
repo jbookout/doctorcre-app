@@ -156,7 +156,7 @@
   .home-detail-summary > div { flex-basis: 100%; }
 }
 
-#homeEmailFollowups { grid-column: 1 / -1; overflow-wrap: anywhere; }
+#homeEmailFollowups, #homeEmailQuality { grid-column: 1 / -1; overflow-wrap: anywhere; }
 .email-proposal { padding: var(--space-4) 0; border-top: var(--hairline-width) solid var(--hairline); }
 .email-proposal h3 { margin: 0; font-size: var(--font-size-2); }
 .email-proposal h3 a { display: inline-flex; align-items: center; min-height: var(--touch); color: var(--fg); }
