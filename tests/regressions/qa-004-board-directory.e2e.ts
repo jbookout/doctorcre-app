@@ -3,6 +3,7 @@ import { expect } from 'e2e';
 
 // The round-one directory had 166 entries. Seed that scale with Demo records;
 // no production board content or authenticated browser state enters this test.
+// carr-v5 is the live work-queue board, so the snapshot lanes are checked on a demo board.
 const test = reproTest();
 test('QA-004 populated project board filters and lanes stay near the first screen', { tags: ['regression'], requires: ['browser'], retries: 0 }, async ({ app, browser }) => {
   const boards = Array.from({ length: 166 }, (_, i) => ({ board_id: i === 0 ? 'carr-v5' : `demo-board-${i}`, title: `Demo repository ${i + 1}`, updated_at: new Date().toISOString(), task_counts: { running: 1 } }));
@@ -16,7 +17,7 @@ test('QA-004 populated project board filters and lanes stay near the first scree
   });
   for (const viewport of [{width:1440,height:960},{width:390,height:844}]) {
   await browser.setViewport(viewport);
-  await app.open('/progress-board?mode=live');
+  await app.open('/progress-board?mode=live&board=demo-board-1');
   await expect(browser.locator('#board-stages [data-card-id="demo"]')).toBeVisible();
   const placement = await browser.evaluate(() => {
     const y = id => { const b = document.getElementById(id).getBoundingClientRect(); return b.top + window.scrollY; };
