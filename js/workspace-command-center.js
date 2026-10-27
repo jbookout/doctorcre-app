@@ -80,6 +80,7 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
     widget('homeMeetings', header + warnings + content);
   };
   const render = () => {
+    emailReview?.update();
     const signedOut = snapshot?.unauthorized;
     callTasks?.update({ read: snapshot?.reads?.callTasks, tasks: snapshot?.callTasks, actor: snapshot?.board?.actor,
       scope, signedOut, busy: !snapshot || snapshot.loading || snapshot.reads.board?.state !== 'read' });

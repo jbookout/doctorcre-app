@@ -14,7 +14,7 @@ export function createEmailProposalsFixture({ deals, seedDeals, actor, client, p
     confirm_verb: index ? 'confirm-email-deal-progress' : 'confirm-email-next-step', preview_error: null,
   }));
   if (replyDrafts && stepDeal) rows.push({ ...structuredClone(rows[0]), id: '10000000-0000-4000-8000-000000000003', kind: 'reply_draft',
-    confirm_verb: 'submit-email-draft', preview: null, reply_draft: { subject: 'Re: Demo floor plan', body: 'Thank you for the plan.', owner: actor } });
+    confirm_verb: 'submit-email-draft', preview: null, reply_draft: { subject: 'Re: Demo floor plan', body: 'Thank you for the plan.', owner: actor, to: ['demo-correspondent@example.test'], cc: [actor === 'joe' ? 'demo-dell@example.test' : 'demo-joe@example.test'] } });
   const receipts = new Map();
   async function preview(args, kind) {
     const row = rows.find(item => item.deal === args.deal && item.source.activity_id === args.activity_id && item.kind === kind);
@@ -99,12 +99,12 @@ export function createEmailProposalsFixture({ deals, seedDeals, actor, client, p
       if (row.reply_draft.owner !== actor) fail('email_draft_not_owner');
       if (row.status !== 'pending') fail('email_draft_already_submitted');
       if (row.version !== args.base_version) fail('version_conflict');
+      if (JSON.stringify(args.to) !== JSON.stringify(row.reply_draft.to) || JSON.stringify(args.cc) !== JSON.stringify(row.reply_draft.cc)) fail('email_draft_recipients_changed');
       if (!args.body?.trim() || args.body.length > 20000) fail('email_draft_empty_body');
       if (!args.subject?.trim() || /[\r\n]/.test(args.subject) || args.subject.length > 998) fail('email_draft_subject_invalid');
       row.status = 'approved_to_send'; row.version++;
       const receipt = { ok: true, proposal_id: row.id, status: row.status, version: row.version, subject: args.subject, body: args.body,
-        sha256: (await digest({ subject: args.subject, body: args.body })).slice(7), to: ['demo-correspondent@example.test'],
-        cc: [actor === 'joe' ? 'demo-dell@example.test' : 'demo-joe@example.test'] };
+        sha256: (await digest({ subject: args.subject, body: args.body })).slice(7), to: [...row.reply_draft.to], cc: [...row.reply_draft.cc] };
       receipts.set(args.idempotency_key, receipt); return structuredClone(receipt);
     },
     async dismissEmailProposal(args) {

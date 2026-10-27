@@ -146,7 +146,7 @@ test('live reply submission sends the owned draft version and exact text with se
       to: ['sender@example.test'], cc: ['partner@example.test'] }) }] } });
   } });
   const args = { proposal_id: '10000000-0000-4000-8000-000000000003', base_version: 1,
-    subject: 'Re: Demo reply', body: 'My edited message.\nThank you.', idempotency_key: 'reply-once' };
+    subject: 'Re: Demo reply', body: 'My edited message.\nThank you.', to: ['sender@example.test'], cc: ['partner@example.test'], idempotency_key: 'reply-once' };
   await assert.rejects(live.submitEmailDraft(args));
   assert.equal((await live.submitEmailDraft(args)).status, 'approved_to_send');
   assert.deepEqual(calls[0], calls[1]);
@@ -161,8 +161,11 @@ test('synthetic reply submissions are owned, versioned, exact and idempotent wit
   assert.ok(draft, 'fixture supplies a reply draft');
   assert.equal(draft.reply_draft.owner, 'joe');
   const args = { proposal_id: draft.id, base_version: draft.version, subject: 'Re: Demo revised',
-    body: '  This is the exact edited message.  ', idempotency_key: 'fixture-reply' };
+    body: '  This is the exact edited message.  ', to: draft.reply_draft.to, cc: draft.reply_draft.cc, idempotency_key: 'fixture-reply' };
   await assert.rejects(client.submitEmailDraft({ ...args, base_version: 99, idempotency_key: 'stale-draft' }), error => error.payload?.error === 'version_conflict');
+  assert.deepEqual(draft.reply_draft.to, ['demo-correspondent@example.test']);
+  assert.deepEqual(draft.reply_draft.cc, ['demo-dell@example.test']);
+  await assert.rejects(client.submitEmailDraft({ ...args, cc: ['changed@example.test'], idempotency_key: 'changed-recipients' }), error => error.payload?.error === 'email_draft_recipients_changed');
   const result = await client.submitEmailDraft(args);
   assert.equal(result.status, 'approved_to_send');
   assert.equal(result.subject, 'Re: Demo revised');
