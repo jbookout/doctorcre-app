@@ -14,7 +14,7 @@ const secondary = navigationItems.filter(item => item.group).map(item => item.la
 const phoneMore = ['Vendors', 'Control Room'];
 
 async function open(t, { width = 1440, height = 960, actor = 'joe', live = false, minimal = false, simulatedClock = false,
-  reducedMotion = 'no-preference', firstSignIn = false, signoutMode = 'success', holdDocSuggestions = false } = {}) {
+  reducedMotion = 'no-preference', firstSignIn = false, signoutMode = 'success', holdDocSuggestions = false, callUnavailable = false } = {}) {
   const browser = await chromium.launch(); t.after(() => browser.close());
   const page = await browser.newPage({ viewport: { width, height }, reducedMotion });
   if (!firstSignIn) await page.addInitScript(() => {
@@ -30,7 +30,7 @@ async function open(t, { width = 1440, height = 960, actor = 'joe', live = false
   page.on('pageerror', error => pageErrors.push({ message: error.message, stack: error.stack }));
   await page.route('**/*', async route => {
     const request = route.request(), url = new URL(request.url()); calls.push({ url: url.pathname, method: request.method(), verb: request.postDataJSON?.()?.params?.name });
-    if (url.origin === 'http://127.0.0.1:4682') return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ state: 'idle' }) });
+    if (url.origin === 'http://127.0.0.1:4682') return callUnavailable ? route.abort() : route.fulfill({ contentType: 'application/json', body: JSON.stringify({ state: 'idle' }) });
     if (url.origin !== 'http://localhost') return route.abort();
     if (['/api/system-work/session','/auth/session'].includes(url.pathname)) return route.fulfill({ status: signedOut ? 401 : 200,
       contentType: 'application/json', body: JSON.stringify(signedOut ? {} : { actor: { slug: actor }, csrf_token: 'synthetic-test-token' }) });
@@ -320,22 +320,25 @@ for (const { name, path, updated, retry, error } of [
   assert.doesNotMatch(await page.locator(updated).textContent(),/Updating/);
 });
 
-for (const [width, height] of [[390, 960], [1280, 960], [390, 600], [390, 700]]) test(`help walkthrough explains real controls and can be skipped at ${width}x${height}`, async t => {
-  const { page, errors } = await open(t, { width, height });
+for (const [width, height] of [[390, 960], [1440, 960], [390, 600], [390, 700]]) test(`help walkthrough explains real controls and can be skipped at ${width}x${height}`, async t => {
+  const { page, errors, calls } = await open(t, { width, height });
   const entry = page.getByRole('button', { name: 'How DoctorCRE works', exact: true });
   const guide = page.getByRole('dialog', { name: 'How DoctorCRE works', exact: true });
+  await page.waitForFunction(() => !document.getElementById('callModeButton').hidden);
   await page.locator('#selfAvatar').click();
   await entry.click();
   await guide.waitFor();
   assert.equal(await guide.getByRole('button', { name: 'Back', exact: true }).isDisabled(), true);
   const steps = [
-    '[data-app-nav-item][href="/"]', '[data-app-nav-item][href="/deals"]',
-    '[data-app-nav-item][href="/leads"]', '[data-app-nav-item][href="/tours"]', '#docOpen',
+    ['Home', '[data-app-nav-item][href="/"]'], ['Local Deals', '[data-app-nav-item][href="/deals"]'],
+    ['Leads', '[data-app-nav-item][href="/leads"]'], ['Tours', '[data-app-nav-item][href="/tours"]'],
+    ['Doc', '#docOpen'], ['Call mode', '#callModeButton'],
   ];
-  for (const [index, selector] of steps.entries()) {
-    const title = index === 4 ? 'Doc' : await page.locator(selector).getAttribute('aria-label');
+  for (const [index, [title, selector]] of steps.entries()) {
+    assert.equal(await page.locator(selector).count(), 1, `${title} target exists`);
+    assert.equal(await page.locator(selector).isVisible(), true, `${title} target visible`);
     await guide.getByRole('heading', { name: title, exact: true }).waitFor();
-    assert.match(await guide.textContent(), new RegExp(`${index + 1} of 5`));
+    assert.match(await guide.textContent(), new RegExp(`${index + 1} of 6`));
     const geometry = await page.evaluate(({ selector }) => {
       const target = document.querySelector(selector), guide = document.querySelector('[data-walkthrough]');
       const a = target.getBoundingClientRect(), b = guide.getBoundingClientRect();
@@ -356,9 +359,11 @@ for (const [width, height] of [[390, 960], [1280, 960], [390, 600], [390, 700]])
       await guide.getByRole('heading', { name: 'Home', exact: true }).waitFor();
       await guide.getByRole('button', { name: 'Next', exact: true }).click();
     }
-    await guide.getByRole('button', { name: index === 4 ? 'Done' : 'Next', exact: true }).click();
+    await guide.getByRole('button', { name: index === 5 ? 'Done' : 'Next', exact: true }).click();
   }
   assert.equal(await guide.count(), 0);
+  assert.equal(await page.locator('#callModeDialog').count(), 0, 'walkthrough does not build Call Mode');
+  assert.equal(calls.some(call => call.url === '/js/call-mode.js'), false, 'walkthrough does not load Call Mode');
   assert.equal(await page.locator('.app-walkthrough-target').count(), 0);
   assert.equal(await page.locator('#selfAvatar').evaluate(node => node === document.activeElement), true);
   for (const close of ['Skip walkthrough', 'Escape']) {
@@ -374,20 +379,59 @@ for (const [width, height] of [[390, 960], [1280, 960], [390, 600], [390, 700]])
   assert.deepEqual(errors, []);
 });
 
+test('walkthrough skips unavailable Call Mode', async t => {
+  const { page } = await open(t, { callUnavailable: true });
+  await page.locator('#callModeRetry').waitFor({ state: 'visible' });
+  await page.locator('#selfAvatar').click();
+  await page.getByRole('button', { name: 'How DoctorCRE works', exact: true }).click();
+  const guide = page.getByRole('dialog', { name: 'How DoctorCRE works', exact: true });
+  for (let index = 0; index < 4; index++) await guide.getByRole('button', { name: 'Next', exact: true }).click();
+  await guide.getByRole('heading', { name: 'Doc', exact: true }).waitFor();
+  assert.equal(await guide.locator('[data-next]').textContent(), 'Done');
+  await guide.getByRole('button', { name: 'Done', exact: true }).click();
+  assert.equal(await guide.count(), 0);
+});
+
+test('walkthrough removes a Call mode target that becomes unavailable', async t => {
+  const { page } = await open(t);
+  await page.waitForFunction(() => !document.getElementById('callModeButton').hidden);
+  await page.locator('#selfAvatar').click();
+  await page.getByRole('button', { name: 'How DoctorCRE works', exact: true }).click();
+  const guide = page.getByRole('dialog', { name: 'How DoctorCRE works', exact: true });
+  for (let index = 0; index < 5; index++) await guide.getByRole('button', { name: 'Next', exact: true }).click();
+  await page.evaluate(() => { document.getElementById('callModeButton').hidden = true; });
+  await guide.getByRole('heading', { name: 'Doc', exact: true }).waitFor();
+  assert.equal(await page.locator('#callModeButton.app-walkthrough-target').count(), 0);
+  assert.equal(await guide.locator('[data-progress]').textContent(), '5 of 5');
+  await guide.getByRole('button', { name: 'Done', exact: true }).click();
+  assert.equal(await guide.count(), 0);
+});
+
 test('walkthrough stays static with reduced motion and follows Doc across phone resize', async t => {
   const { page } = await open(t, { width: 1280, reducedMotion: 'reduce' });
   const guide = page.getByRole('dialog', { name: 'How DoctorCRE works', exact: true });
+  await page.evaluate(() => {
+    window.walkthroughScrollBehaviors = [];
+    const scroll = Element.prototype.scrollIntoView;
+    Element.prototype.scrollIntoView = function(options) { window.walkthroughScrollBehaviors.push(options?.behavior); return scroll.call(this, options); };
+  });
   assert.equal(await guide.count(), 0, 'walkthrough starts only from help');
   await page.locator('#selfAvatar').click();
   await page.getByRole('button', { name: 'How DoctorCRE works', exact: true }).click();
   assert.equal(await page.locator('.app-walkthrough-target').evaluate(node => getComputedStyle(node).animationName), 'none');
-  for (let index = 0; index < 4; index++) await guide.getByRole('button', { name: 'Next', exact: true }).click();
+  for (let index = 0; index < 4; index++) {
+    await guide.getByRole('button', { name: 'Next', exact: true }).click();
+    assert.equal(await page.locator('.app-walkthrough-target').evaluate(node => getComputedStyle(node).animationName), 'none');
+  }
   await page.setViewportSize({ width: 390, height: 844 });
   await page.waitForFunction(() => {
     const target = document.getElementById('docOpen'), a = target.getBoundingClientRect();
     return a.width > 0 && a.left >= 0 && a.right <= innerWidth && a.top >= 0 && a.bottom <= innerHeight;
   });
   assert.equal(await page.locator('#docOpen').evaluate(node => getComputedStyle(node).animationName), 'none');
+  await guide.getByRole('button', { name: 'Next', exact: true }).click();
+  assert.equal(await page.locator('#callModeButton').evaluate(node => getComputedStyle(node).animationName), 'none');
+  assert.deepEqual(await page.evaluate(() => window.walkthroughScrollBehaviors.every(behavior => behavior === 'instant')), true);
   await page.evaluate(() => window.dispatchEvent(new Event('doctorcre-session-invalidated')));
   assert.equal(await guide.count(), 0);
   assert.equal(await page.locator('.app-walkthrough-target').count(), 0);
@@ -431,6 +475,8 @@ for (const actor of ['joe', 'dell']) test(`first verified ${actor} sign-in opens
   const guide = page.getByRole('dialog', { name: 'How DoctorCRE works', exact: true });
   await guide.waitFor({ timeout: 5000 });
   await guide.getByRole('heading', { name: 'Home', exact: true }).waitFor();
+  await page.waitForFunction(() => !document.getElementById('callModeButton').hidden);
+  await page.waitForFunction(() => document.querySelector('[data-walkthrough] [data-progress]')?.textContent === '1 of 6');
   await mkdir(new URL('out/test-artifacts/walkthrough/', root), { recursive: true });
   await page.screenshot({ path: fileURLToPath(new URL(`out/test-artifacts/walkthrough/first-signin-${actor}.png`, root)) });
   await guide.getByRole('button', { name: 'Skip walkthrough' }).click();
@@ -455,7 +501,9 @@ test('a returning partner does not suppress another partner’s first Home walkt
   await page.goto('http://localhost/?mode=live');
   const guide = page.getByRole('dialog', { name: 'How DoctorCRE works', exact: true });
   await guide.waitFor();
-  for (let index = 0; index < 4; index++) await guide.getByRole('button', { name: 'Next', exact: true }).click();
+  await page.waitForFunction(() => !document.getElementById('callModeButton').hidden);
+  for (let index = 0; index < 5; index++) await guide.getByRole('button', { name: 'Next', exact: true }).click();
+  assert.equal(await guide.locator('[data-progress]').textContent(), '6 of 6');
   await guide.getByRole('button', { name: 'Done', exact: true }).click();
   await page.locator('#selfAvatar').click();
   await page.getByRole('button', { name: 'Sign out', exact: true }).click();
