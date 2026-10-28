@@ -8,6 +8,7 @@ export function createDraft(fields) {
   const managed = new Set(), touched = new Set();
   return {
     get values() { return { ...values }; },
+    get clearedFields() { return fields.filter(field => touched.has(field) && !values[field]); },
     get canUndo() { return history.length > 0; },
     set(field, value, suggested = false) {
       if (!fields.includes(field) || typeof value !== "string") return false;
@@ -21,9 +22,9 @@ export function createDraft(fields) {
       for (const field of managed) this.set(field, String(suggestions[field] || ""), true);
       this.suggest(suggestions);
     },
-    restore(saved = {}) {
+    restore(saved = {}, clearedFields = []) {
       for (const field of fields) if (!touched.has(field) && typeof saved[field] === "string") {
-        values[field] = saved[field]; if (saved[field]) touched.add(field);
+        values[field] = saved[field]; if (saved[field] || clearedFields.includes(field)) touched.add(field);
       }
     },
     undo() { const change = history.pop(); if (change) { values[change.field] = change.before; managed.delete(change.field); touched.add(change.field); } return change?.field || null; },

@@ -1,6 +1,6 @@
 {
   "schema": "doctorcre-tour-planning.v1",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "mode": "app-only-drafts",
   "existing_reads": {
     "producer": "jbookout/carr-system",
@@ -15,10 +15,11 @@
     "area": "client.city and client.state; never a claimed search preference",
     "use": "client.vertical or client.specialty",
     "notes": "short client.notes summary; original entry expands in the draft popup",
-    "missing_fields": ["client space criteria", "preferred tour date", "preferred route endpoints", "appointments"]
+    "missing_fields": ["client space criteria", "preferred tour date", "preferred route endpoints", "appointments"],
+    "saved_search_draft": "same-tab search area and use for the exact selected client; these are user-entered app drafts, not a canonical CARR search brief"
   },
   "storage": {
-    "drafts": "sessionStorage scoped to the hash of the authenticated Tour session token",
+    "drafts": "sessionStorage scoped to the hash of the authenticated Tour session token; Research and exact client IDs retain independent plan and search drafts, including deliberately cleared fields",
     "files": "memory only; no file bytes, names or derived contents are persisted or transmitted",
     "business_writes": "none"
   },
@@ -32,6 +33,9 @@
     "Selecting another client clears prior-client values; late responses are discarded.",
     "Background updates refresh the record and tour details without overwriting edited draft fields.",
     "Files are never included in public projection, share or PDF commands.",
-    "Territory is a schematic overview; no property or native-navigation pins are presented."
+    "Territory shows Census context only; no property or native-navigation pins are presented.",
+    "Research packet review does not require a client or a readable client directory.",
+    "A failed selected-client detail read retains the exact selection and offers explicit retry without clearing edits or files; client packet review waits for a successful detail read.",
+    "Client switches restore only that subject's tab-local draft; a session change clears every subject's cached draft."
   ]
 }
