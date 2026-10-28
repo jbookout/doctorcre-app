@@ -580,10 +580,10 @@ for (const nextSponsor of ['joe','dell']) test(`F4 suspended brief clears detail
 test('F4 resume timeout leaves facts unavailable and keeps only sponsor preferences for recovery',async t=>{
  const state=setup(t);await state.ui.refresh();await state.ui.open();
  const preferences=JSON.parse(state.win.localStorage.getItem('doctorcre:morning:joe'));
- let fail;state.client.morningBrief=()=>new Promise((resolve,reject)=>fail=reject);
+ let fail,started;const reading=new Promise(resolve=>started=resolve);state.client.morningBrief=()=>new Promise((resolve,reject)=>{fail=reject;started();});
  state.win.dispatchEvent(new state.win.Event('online'));await Promise.resolve();await Promise.resolve();
  assert.equal(state.root.querySelectorAll('[data-brief-record]').length,0);
- fail(Object.assign(Error('Read timed out'),{code:'read_timeout'}));await state.ui.refresh();
+ await reading;fail(Object.assign(Error('Read timed out'),{code:'read_timeout'}));await state.ui.refresh();
  assert.equal(state.root.querySelectorAll('[data-brief-record]').length,0);
  assert.deepEqual(JSON.parse(state.win.localStorage.getItem('doctorcre:morning:joe')),preferences);
  state.client.morningBrief=async()=>payload();await state.ui.refresh();assert.equal(state.root.querySelectorAll('[data-brief-record]').length,2);

@@ -596,10 +596,11 @@ test('detail polling keeps keyboard focus on the same expanded original entry',a
   await s.app.refresh();assert.equal(s.d.activeElement,s.d.querySelector(`[data-entry-key="${key}"] summary`));assert.equal(s.d.querySelector(`[data-entry-key="${key}"]`).open,true);
  }finally{s.close()}
 });
-test('a failed first read backs off above the normal poll before reconnecting',async()=>{
- let reads=0;const s=await setup({getWorkspace:async()=>{if(++reads===1)throw Object.assign(new Error('offline'),{code:'network_error'});return structuredClone(workspace())}});
+test('a failed automatic read backs off above the normal poll before reconnecting',async()=>{
+ let reads=0;const s=await setup({getWorkspace:async()=>{if(++reads<=2)throw Object.assign(new Error('offline'),{code:'network_error'});return structuredClone(workspace())}});
  try{assert.equal(s.d.querySelectorAll('.lead-card').length,0);assert.match(s.d.getElementById('leadBoardError').textContent,/Connection interrupted/);
-  s.advance(59_000);await tick();assert.equal(reads,1);s.advance(1_001);await tick();assert.equal(reads,2);assert.equal(s.d.querySelectorAll('.lead-card').length,10);assert.equal(s.d.getElementById('leadBoardError').hidden,true);assert.equal(s.writes.length,0);
+  s.advance(30_001);await tick();assert.equal(reads,2);
+  s.advance(59_000);await tick();assert.equal(reads,2);s.advance(1_001);await tick();assert.equal(reads,3);assert.equal(s.d.querySelectorAll('.lead-card').length,10);assert.equal(s.d.getElementById('leadBoardError').hidden,true);assert.equal(s.writes.length,0);
  }finally{s.close()}
 });
 
