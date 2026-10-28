@@ -216,8 +216,12 @@ for (const theme of ['dark', 'light']) test(`merged vendor contact rows fit and 
     const link = row.locator('a');
     const [labelBox, linkBox] = await Promise.all([row.evaluate(n => { const range = document.createRange(); range.selectNodeContents(n.firstChild); const r = range.getBoundingClientRect(); return { x: r.x, y: r.y, height: r.height }; }), link.boundingBox()]);
     assert.ok(labelBox && linkBox && Math.abs(labelBox.y + labelBox.height / 2 - linkBox.y - linkBox.height / 2) < 5, JSON.stringify({ labelBox, linkBox }));
-    assert.ok(await link.evaluate(n => getComputedStyle(n).textDecorationLine.includes('underline')));
+    assert.equal(await link.evaluate(n => getComputedStyle(n).textDecorationLine), 'none');
+    assert.equal(await link.getAttribute('aria-label'), null);
   }
+  const boxes = await Promise.all((await rows.locator('a').all()).map(link => link.boundingBox()));
+  assert.ok(Math.abs(boxes[0].x - boxes[1].x) < 1);
+  assert.ok(boxes[1].y > boxes[0].y + boxes[0].height);
   assert.equal(await card.evaluate(n => n.scrollWidth <= n.clientWidth), true);
   const evidence = new URL('out/test-artifacts/deal-vendors/', root);
   await mkdir(evidence, { recursive: true });

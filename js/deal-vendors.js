@@ -1,5 +1,11 @@
 import { escapeText as esc } from './change-receipts.mjs';
 
+function phoneParts(phone) {
+  const extension = phone.match(/(?:extension|ext\.?|x|#)\s*(\d+)\s*$/i);
+  const digits = (extension ? phone.slice(0, extension.index) : phone).replace(/\D/g, '');
+  return { digits, extension: extension?.[1] || '' };
+}
+
 export function renderDealVendors(vendors = []) {
   if (!vendors.length) return '';
   const roles = new Map();
@@ -13,7 +19,11 @@ export function renderDealVendors(vendors = []) {
     const existing = matches.find(row => ['email', 'phone'].every(field => {
       const a = row.contact?.[field]?.trim().toLowerCase();
       const b = vendor.contact?.[field]?.trim().toLowerCase();
-      return !a || !b || a === b;
+      if (!a || !b) return true;
+      if (field === 'email') return a === b;
+      const first = phoneParts(a);
+      const second = phoneParts(b);
+      return first.digits && second.digits ? first.digits === second.digits && first.extension === second.extension : a === b;
     }));
     if (existing) {
       for (const field of ['email', 'phone']) {
@@ -35,10 +45,9 @@ export function renderDealVendors(vendors = []) {
       const contact = vendor.contact?.name?.trim();
       const email = vendor.contact?.email?.trim();
       const phone = vendor.contact?.phone?.trim();
-      const extension = phone?.match(/(?:extension|ext\.?|x|#)\s*(\d+)\s*$/i);
-      const digits = (extension ? phone.slice(0, extension.index) : phone)?.replace(/\D/g, '');
-      const phoneHref = digits ? `${phone.startsWith('+') ? '+' : ''}${digits}${extension ? `;ext=${extension[1]}` : ''}` : '';
-      return `<li>${company ? `<span class="deal-vendor-company">${esc(company)}</span>` : ''}${contact ? `<span class="deal-vendor-contact">${esc(contact)}</span>` : ''}${email || phone ? `<details class="deal-vendor-details"><summary>Contact details</summary>${email ? `<p>Email <a aria-label="${esc(email)}" href="mailto:${esc(encodeURIComponent(email).replaceAll('%40', '@'))}">${esc(email).replaceAll('@', '<wbr>@').replaceAll('.', '<wbr>.')}</a></p>` : ''}${phone ? `<p>Phone ${phoneHref ? `<a href="tel:${esc(phoneHref)}">${esc(phone)}</a>` : esc(phone)}</p>` : ''}</details>` : ''}</li>`;
+      const { digits, extension } = phoneParts(phone || '');
+      const phoneHref = digits ? `${phone.startsWith('+') ? '+' : ''}${digits}${extension ? `;ext=${extension}` : ''}` : '';
+      return `<li>${company ? `<span class="deal-vendor-company">${esc(company)}</span>` : ''}${contact ? `<span class="deal-vendor-contact">${esc(contact)}</span>` : ''}${email || phone ? `<details class="deal-vendor-details"><summary>Contact details</summary>${email ? `<p>Email <a href="mailto:${esc(encodeURIComponent(email).replaceAll('%40', '@'))}">${esc(email).replaceAll('@', '<wbr>@').replaceAll('.', '<wbr>.')}</a></p>` : ''}${phone ? `<p>Phone ${phoneHref ? `<a href="tel:${esc(phoneHref)}">${esc(phone)}</a>` : esc(phone)}</p>` : ''}</details>` : ''}</li>`;
     }).join('')}</ul></dd></div>`;
   }).join('')}</dl>`;
 }
