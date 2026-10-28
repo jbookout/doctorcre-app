@@ -82,7 +82,7 @@ for (const theme of ['dark', 'light']) for (const sidebarOpen of [false, true]) 
     const captureName = sidebarOpen ? 'columns-sidebar' : 'columns';
     await screenshot(page, captureName, 1280, theme);
     const headings = page.locator('#tableFrame thead');
-    assert.match(await headings.textContent(), /Work record.*Phase.*Next step.*Next date/s);
+    assert.match(await headings.textContent(), /Deal.*Phase.*Next step.*Next date/s);
     if (sidebarOpen) {
       assert.equal(await page.locator('#rows tr').first().locator('td').nth(2).evaluate(node => getComputedStyle(node, '::before').content), '"Next step"');
     } else {
