@@ -4,7 +4,7 @@ import {readFile, mkdir, access} from 'node:fs/promises';
 import {chromium, waitForAsync, animationsSettled} from './browser-harness.mjs';
 const root=new URL('../',import.meta.url);
 const longestNextStep='Confirm the Demo Clinic appointment and send notes';
-async function open(t,width=1280,{theme='dark',sparse=false,showDetail=true,height=960,nextStep='Prior status that must not prefill',closedOn=null,manyUpdates=false}={}) {
+async function open(t,width=1280,{theme='dark',sparse=false,showDetail=true,height=960,nextStep='Prior status that must not prefill',closedOn=null,manyUpdates=false,denseBoard=false}={}) {
  const browser=await chromium.launch();t.after(()=>browser.close());
  const page=await browser.newPage({viewport:{width,height}});
  await page.addInitScript(theme=>localStorage.setItem('doctorcre.visual-preferences',JSON.stringify({theme})),theme);
@@ -12,6 +12,10 @@ async function open(t,width=1280,{theme='dark',sparse=false,showDetail=true,heig
  const seed=JSON.parse(await readFile(new URL('data/board-seed.json',root),'utf8'));
  Object.assign(seed.deals.find(d=>d.id==='d14'),{phase:'Negotiation',next_step:nextStep,closed_on:closedOn,workspace_kind:'team',account_client_id:null,operating_state:'active',phase_started_on:{pending:'2026-08-10',research:'2026-08-31',site_selection:'2026-09-08',negotiation:'2026-09-20'}});
  seed.deals.find(d=>d.id==='d20').next_step=longestNextStep;
+ if(denseBoard) {
+  seed.deals.forEach(deal=>{if(deal.phase==='Research') deal.phase='Negotiation';});
+  seed.deals.push(...Array.from({length:100},(_,i)=>({...seed.deals.find(d=>d.id==='d14'),id:`demo-dense-${i}`,phase:'Research',name:`Demo multidisciplinary healthcare practice with a deliberately long full name number ${i}`,short_name:`Demo short ${i}`})));
+ }
  if(sparse) seed.deals=seed.deals.filter((d,i)=>i<5||d.id==='d14');
  seed.threads.d14=[{id:'demo-old',kind:'note',actor:'joe',text:'Older demo update',created_at:'2026-09-01T15:30:00Z',recorded_at:'2026-09-01T15:30:00Z'},
  {id:'demo-new',kind:'note',actor:'dell',text:'Newest demo update. '+ 'Detailed synthetic context. '.repeat(120),created_at:'2026-10-02T17:45:00Z',recorded_at:'2026-10-02T17:45:00Z'}];
@@ -319,4 +323,16 @@ test('readable phone phase labels stay inside their rail columns',async t=>{
   return [...range.getClientRects()].filter(line=>line.right>box.right+1).map(()=>n.textContent);
  }));
  assert.deepEqual(overflow,[]);
+});
+
+for (const width of [390,1280]) test(`board cards show the full practice name without clipping at ${width}px`,async t=>{
+ const {page}=await open(t,width,{showDetail:false,denseBoard:true});
+ const title=page.locator('[data-id="demo-dense-0"] .card-open');
+ assert.equal(await title.textContent(),'Demo multidisciplinary healthcare practice with a deliberately long full name number 0');
+ const visible=await title.evaluate(button=>{
+  const range=document.createRange();range.selectNodeContents(button);
+  const bounds=button.closest('h4').getBoundingClientRect();
+  return [...range.getClientRects()].every(rect=>rect.bottom<=bounds.bottom+1&&rect.right<=bounds.right+1);
+ });
+ assert.equal(visible,true,'every line of the full name is visible');
 });
