@@ -98,16 +98,27 @@ test('R1 resume invalidation fires before a coalesced in-flight read and never f
  handle.refresh();await settle();assert.equal(invalidated,0);c.hide();c.show();await settle();assert.equal(invalidated,1);
  release();await settle();handle.dispose();
 });
-test('a failed read retries on a short backoff and a good read restores the poll interval', async () => {
+test('failed reads wait at least one minute before the next background read', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
   const document = new EventTarget(); document.visibilityState = 'visible';
-  const window = new EventTarget(); const delays = []; let job = null;
-  window.setTimeout = (fn, ms) => { if (ms === 5) return 0; delays.push(ms); job = fn; return delays.length; }; window.clearTimeout = () => {};
-  let fail = 3, reads = 0;
-  const handle = mountAutoRefresh({ document, window, timeoutMs: 5, refresh: () => { reads++; if (fail-- > 0) throw Error('synthetic outage'); } });
-  for (let i = 0; i < 4; i++) { job(); await settle(); }
-  assert.equal(reads, 4); assert.deepEqual(delays, [60_000, 1_000, 2_000, 4_000, 60_000]); handle.dispose();
+  const window = new EventTarget();
+  window.setTimeout = setTimeout; window.clearTimeout = clearTimeout;
+  let reads = 0;
+  const handle = mountAutoRefresh({ document, window, intervalMs: 1_000, refresh: () => {
+    reads++;
+    if (reads <= 3) throw Error('synthetic outage');
+  } });
+  t.after(() => handle.dispose());
+  t.mock.timers.tick(60_000); await settle();
+  assert.equal(reads, 1);
+  for (let expected = 2; expected <= 5; expected++) {
+    t.mock.timers.tick(59_999); await settle();
+    assert.equal(reads, expected - 1, 'no background read before the one-minute floor');
+    t.mock.timers.tick(1); await settle();
+    assert.equal(reads, expected, 'background reads recover at the one-minute floor');
+  }
 });
-test('a read replaced on resume is neither a success nor a failure for the retry backoff', async () => {
+test('a read replaced on resume preserves the poll interval after failure', async () => {
   const document = new EventTarget(); document.visibilityState = 'visible';
   const window = new EventTarget(); const delays = []; let job = null;
   window.setTimeout = (fn, ms) => { if (ms === 5_000) return 0; delays.push(ms); job = fn; return delays.length; }; window.clearTimeout = () => {};
@@ -121,7 +132,5 @@ test('a read replaced on resume is neither a success nor a failure for the retry
   document.visibilityState = 'hidden'; document.dispatchEvent(new Event('visibilitychange'));
   document.visibilityState = 'visible'; document.dispatchEvent(new Event('visibilitychange'));
   await settle(); await settle();
-  // The replaced read re-arms the plain interval; only the queued read's real
-  // failure counts, so the retry is the first backoff step, not the second.
-  assert.equal(reads, 2); assert.deepEqual(delays, [60_000, 60_000, 1_000]); handle.dispose();
+  assert.equal(reads, 2); assert.deepEqual(delays, [60_000, 60_000, 60_000]); handle.dispose();
 });
