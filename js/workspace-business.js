@@ -40,6 +40,7 @@ const SEARCH_DEBOUNCE_MS = 350;
 
 const dom = {
   title: document.querySelector("#pageTitle"),
+  footer: document.querySelector("#pageFooter"),
   resultsTitle: document.querySelector("#resultsTitle"),
   intro: document.querySelector("#pageIntro"),
   viewer: document.querySelector("#viewerWorkspace"),
@@ -921,6 +922,7 @@ function applyLocation({ reason = "initial", restoreScroll = null } = {}) {
   view.recordId = parsed.recordId;
   document.title = `${DATASET_LABEL[parsed.dataset]} · DoctorCRE`;
   if (dom.title) dom.title.textContent = DATASET_LABEL[parsed.dataset];
+  if (dom.footer) dom.footer.textContent = `DoctorCRE · ${DATASET_LABEL[parsed.dataset]}`;
   if (dom.resultsTitle) dom.resultsTitle.textContent = DATASET_LABEL[parsed.dataset];
   if (dom.intro) {
     dom.intro.textContent = "";

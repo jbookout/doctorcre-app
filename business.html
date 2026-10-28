@@ -3,8 +3,8 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-  <meta name="description" content="DoctorCRE clients and vendors">
-  <title>Clients · DoctorCRE</title>
+  <meta name="description" content="DoctorCRE records">
+  <title>Records · DoctorCRE</title>
   <link rel="manifest" href="/manifest.webmanifest">
   <link rel="apple-touch-icon" href="/icons/dealroom-192.png">
   <link rel="icon" href="/icons/dealroom.svg" type="image/svg+xml">
@@ -29,7 +29,7 @@
     <section data-layout-slot="sidebar" class="hero business-hero" aria-labelledby="pageTitle" data-panel-background>
       <div>
         <p class="eyebrow"><a class="back-home" href="/">&larr; Home</a> · <span id="viewerWorkspace">Partner workspace</span></p>
-        <h1 id="pageTitle">Clients</h1>
+        <h1 id="pageTitle">Records</h1>
       </div>
       <div class="hero-meta" aria-label="Status">
         <span id="observedAt" class="observed">Updating…</span><button type="button" class="refresh-icon" id="refreshList" aria-label="Refresh" title="Refresh">↻</button>
@@ -37,7 +37,7 @@
     </section>
 
     <div class="result-heading" data-panel-background>
-      <p class="result-title" id="resultsTitle">Clients</p>
+      <p class="result-title" id="resultsTitle">Records</p>
       <p class="result-summary" id="resultSummary" tabindex="-1">Checking…</p>
     </div>
 
@@ -56,8 +56,8 @@
             <select id="filterA" name="a"><option value="">Any status</option></select>
           </div>
           <div class="field" data-field="b">
-            <label for="filterB" id="filterBLabel">Client type</label>
-            <select id="filterB" name="b"><option value="">Any client type</option></select>
+            <label for="filterB" id="filterBLabel">Type</label>
+            <select id="filterB" name="b"><option value="">Any type</option></select>
           </div>
           <div class="field" data-field="c">
             <label for="filterC" id="filterCLabel">Pipeline</label>
@@ -110,7 +110,7 @@
       <aside class="record-panel glass" id="recordPanel" role="dialog" aria-modal="true" aria-labelledby="recordTitle" hidden>
         <div class="record-panel-head">
           <div>
-            <p class="eyebrow" id="recordEyebrow">Client</p>
+            <p class="eyebrow" id="recordEyebrow">Record</p>
             <h2 id="recordTitle" tabindex="-1">Opening…</h2>
           </div>
           <button type="button" class="panel-close" id="recordClose" aria-label="Close record">×</button>
@@ -124,7 +124,7 @@
 
   </main>
 
-  <footer class="footer" data-panel-background><span>DoctorCRE · Clients and Vendors</span></footer>
+  <footer class="footer" data-panel-background><span id="pageFooter">DoctorCRE · Records</span></footer>
 
   <script type="module" src="/js/workspace-business.js"></script>
 </body>
