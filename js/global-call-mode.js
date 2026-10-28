@@ -15,12 +15,15 @@ export async function mountGlobalCallMode(root = document) {
   const lifetime = new AbortController();
   const { signal } = lifetime;
   const show = (state) => {
+    const button = $("callModeButton"), availability = $("callModeAvailability"), retry = $("callModeRetry");
+    if (!button || !availability || !retry) return false;
     const eligible = state === "available";
-    $("callModeButton").hidden = !eligible;
-    $("callModeAvailability").hidden = eligible;
-    $("callModeAvailability").textContent = state === "checking" ? "Checking Quill on this device…" : "Call recording runs on the Mac with Quill";
-    $("callModeRetry").hidden = eligible || state === "checking";
-    $("callModeRetry").disabled = state === "checking";
+    button.hidden = !eligible;
+    availability.hidden = eligible;
+    availability.textContent = state === "checking" ? "Checking Quill on this device…" : "Call recording runs on the Mac with Quill";
+    retry.hidden = eligible || state === "checking";
+    retry.disabled = state === "checking";
+    return true;
   };
   const probe = () => signal.aborted ? Promise.resolve(false) : probing ||= (async () => {
     show("checking");
@@ -28,7 +31,7 @@ export async function mountGlobalCallMode(root = document) {
       const payload = await requestCompanion(`${CALL_MODE_URL}/api/state`, { method: "GET", targetAddressSpace: "loopback" }, { timeoutMs: 1200 });
       if (signal.aborted) return false;
       if (!CALL_MODE_STATES.includes(payload.state)) throw new Error("Unrecognised recorder state");
-      show("available");
+      if (!show("available")) return false;
       // A call in progress needs the toolbar timer, so only then is the controller built early.
       if (payload.state === "recording") { await build(); return signal.aborted ? false : await call.checkEligibility(); }
       return true;
@@ -67,7 +70,7 @@ export async function mountGlobalCallMode(root = document) {
       const retry = target?.closest?.("#callModeRetry");
       if (!retry) return false;
       const hadFocus = root.activeElement === retry;
-      if (await probe() && hadFocus && (root.activeElement === retry || root.activeElement === root.body)) $("callModeButton").focus();
+      if (await probe() && hadFocus && (root.activeElement === retry || root.activeElement === root.body)) $("callModeButton")?.focus();
       return true;
     },
     dispose() {
