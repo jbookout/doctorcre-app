@@ -12,13 +12,14 @@ export async function mountGlobalCallMode(root = document) {
   const boot = resolveDealroomBoot(globalThis.location);
   const $ = (id) => root.getElementById(id);
   let built, call, client, probing;
+  const button = $("callModeButton"), availability = $("callModeAvailability"), retry = $("callModeRetry");
   const show = (state) => {
     const eligible = state === "available";
-    $("callModeButton").hidden = !eligible;
-    $("callModeAvailability").hidden = eligible;
-    $("callModeAvailability").textContent = state === "checking" ? "Checking Quill on this device…" : "Call recording runs on the Mac with Quill";
-    $("callModeRetry").hidden = eligible || state === "checking";
-    $("callModeRetry").disabled = state === "checking";
+    button.hidden = !eligible;
+    availability.hidden = eligible;
+    availability.textContent = state === "checking" ? "Checking Quill on this device…" : "Call recording runs on the Mac with Quill";
+    retry.hidden = eligible || state === "checking";
+    retry.disabled = state === "checking";
   };
   const probe = () => probing ||= (async () => {
     show("checking");

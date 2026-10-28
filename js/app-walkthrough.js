@@ -4,12 +4,13 @@ const allSteps = [
   { target: '[data-app-nav-item][href="/leads"]', text: 'Search and review potential clients in Leads. Open a lead to see its details before deciding what comes next.' },
   { target: '[data-app-nav-item][href="/tours"]', text: 'Use Tours to plan property visits and open a saved tour. Tour Day keeps the accepted itinerary at hand.' },
   { target: '#docOpen', title: 'Doc', text: 'Doc is the assistant inside DoctorCRE. Open Doc to ask about the current page or record. Review its suggestions before taking action.' },
-  { target: '#callModeButton', title: 'Call Mode', text: 'Use Call Mode to record and review your weekly pipeline call.' },
+  { target: '#callModeButton', title: 'Call mode', text: 'Use Call Mode to record and review your weekly pipeline call.' },
 ];
 
 export function openWalkthrough(root) {
   if (root.querySelector('[data-walkthrough]')) return;
-  const steps = allSteps.filter(step => step.target !== '#callModeButton' || !root.querySelector(step.target)?.hidden);
+  const callButton = root.querySelector('#callModeButton');
+  let steps = allSteps.filter(step => step.target !== '#callModeButton' || (callButton && !callButton.hidden));
   const win = root.defaultView;
   const avatar = root.getElementById('selfAvatar');
   const account = root.getElementById('accountMenu');
@@ -56,7 +57,14 @@ export function openWalkthrough(root) {
     next.textContent = index === steps.length - 1 ? 'Done' : 'Next';
     place();
   };
+  const availability = new win.MutationObserver(() => {
+    steps = allSteps.filter(step => step.target !== '#callModeButton' || (callButton && !callButton.hidden));
+    index = Math.min(index, steps.length - 1);
+    paint();
+  });
+  if (callButton) availability.observe(callButton, { attributes: true, attributeFilter: ['hidden'] });
   const close = (reason = 'dismiss') => {
+    availability.disconnect();
     target?.classList.remove('app-walkthrough-target');
     if (reason !== 'navigate') {
       account.hidden = true;
