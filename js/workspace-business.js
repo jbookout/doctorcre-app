@@ -735,6 +735,8 @@ function expireNow() {
   view.loadingMore = null; view.failedPage = null;
   view.loadedRows = []; view.loadedPageCount = 0;
   view.pendingTrust = null; view.trustStatus = null;
+  view.activity = { id: null, sequence: view.activity.sequence + 1, result: null };
+  view.evidence = { id: null, sequence: view.evidence.sequence + 1, result: null };
   Object.assign(view, expireSession(view));
   renderControls();
   renderChips();
@@ -743,6 +745,7 @@ function expireNow() {
 }
 
 async function loadList(reason = "initial") {
+  if (view.signedOut) return;
   const query = { ...view.query, page: 1 };
   const targetPages = reason === 'background' ? Math.max(1, view.loadedPageCount || 1, view.failedPage || 1) : 1;
   view.loadingMore = null;
@@ -829,7 +832,7 @@ function settleList({ status, payload = null, code = null }, sequence) {
 }
 
 async function loadRecord(id, { focusOnOpen = false } = {}) {
-  if (view.recordId !== id) return;
+  if (view.signedOut || view.recordId !== id) return;
   const pending = view.pendingTrust;
   const evidenceSequence = ++view.evidence.sequence;
   view.evidence.id = id;
@@ -892,6 +895,7 @@ async function loadRecord(id, { focusOnOpen = false } = {}) {
 // ------------------------------------------------------------ orchestration
 
 function applyLocation({ reason = "initial", restoreScroll = null } = {}) {
+  if (view.signedOut) return;
   const parsed = parseViewState(window.location.pathname, window.location.search);
   if (parsed) parsed.query.page = 1;
   if (!parsed) return;
@@ -1084,7 +1088,7 @@ function wireControls() {
  * refetches on its own, so nothing reshuffles under a reader mid-sentence.
  */
 function watchExpiry() {
-  setInterval(() => {
+  return setInterval(() => {
     if (!view.list.payload || view.list.status === "loading") return;
     const signature = freshnessSignature(view.list.payload, view.dataset);
     if (signature === view.freshnessKey) return;
@@ -1103,8 +1107,14 @@ function start() {
   }
   if ("scrollRestoration" in window.history) window.history.scrollRestoration = "manual";
   wireControls();
-  watchExpiry();
-  mountAutoRefresh({ document, window: globalThis.window, refresh: async () => { await loadList("background"); if (view.recordId) await loadRecord(view.recordId); } });
+  const expiryTimer = watchExpiry();
+  const autoRefresh = mountAutoRefresh({ document, window: globalThis.window, refresh: async () => { await loadList("background"); if (view.recordId) await loadRecord(view.recordId); } });
+  window.addEventListener('doctorcre-session-invalidated', () => {
+    autoRefresh.dispose();
+    clearInterval(expiryTimer);
+    clearTimeout(searchTimer);
+    expireNow();
+  }, { once: true });
   window.history.replaceState({ ...(window.history.state || {}), scrollY: 0 }, "", currentHref());
   applyLocation({ reason: "initial" });
   // The unread badge is chrome, not content: it loads the dealroom client, so

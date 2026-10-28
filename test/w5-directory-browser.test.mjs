@@ -118,6 +118,27 @@ async function beginRating(page, reason='Synthetic pending rating') {
  await page.locator('[name="tier"]').selectOption('Trial');
  await page.locator('[name="reason"]').fill(reason);
 }
+test('W5 session revocation retires a pending rating before its deadline',async t=>{
+ const h=await open(t),{page}=h;h.setWriteMode('rejected');
+ await page.goto(origin+'/vendors?mode=live');
+ await page.locator('.record-row').first().click();
+ await beginRating(page,'Synthetic retired rating draft');
+ await page.evaluate(()=>{
+  const keys=caches.keys.bind(caches);
+  caches.keys=()=>new Promise(resolve=>{window.releasePrivateCleanup=()=>{caches.keys=keys;resolve([]);};});
+ });
+ try {
+  await page.locator('#trustForm button').click();
+  await page.waitForFunction(()=>document.querySelector('h1')?.textContent==='Session ended');
+  await page.clock.fastForward(15001);
+  assert.deepEqual(h.errors,[]);
+  assert.equal(await page.locator('#recordPanel,.record-row,#trustForm').count(),0);
+  assert.doesNotMatch(await page.locator('body').innerText(),/Demo Partner|Synthetic retired rating draft/);
+ } finally {
+  await page.evaluate(()=>window.releasePrivateCleanup?.());
+  await page.waitForURL('**/public-shell/session-ended.html');
+ }
+});
 const ack = r => r.fulfill({json:{jsonrpc:'2.0',id:1,result:{content:[{type:'text',text:JSON.stringify({ok:true,updated:['trust_override']})}]}}});
 async function holdWrites(page) {
  const held=[];
