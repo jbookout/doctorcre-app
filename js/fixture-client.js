@@ -1475,6 +1475,15 @@ export async function createFixtureClient(opts = {}) {
       });
     },
 
+    async logActivity({ ref, kind, summary, occurred_at, idempotency_key }) {
+      return withIdem(idempotency_key, () => {
+        getDealOrThrow(ref);
+        if (kind !== 'meeting' || !String(summary || '').trim() || !Number.isFinite(Date.parse(occurred_at))) throw new Error('Invalid activity');
+        pushHistory(ref, selfActor, `logged meeting: ${String(summary).trim()}`, nowIso());
+        return { ok: true, activity_id: `a-${dealStore.noteSeq++}`, subject: { type: 'deal', id: ref } };
+      });
+    },
+
     async addDealNote({ deal, text, idempotency_key }) {
       return withIdem(idempotency_key, () => {
         getDealOrThrow(deal);
