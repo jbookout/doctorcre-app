@@ -865,7 +865,7 @@ function syncUpdateForm() {
   button.textContent = pending || pendingStep ? 'Check outcome' : 'Add update';
   form.querySelector('[data-review-update-step]').hidden = !updateDraft.conflict;
   form.querySelector('[data-discard-update]').disabled = Boolean(pending || pendingStep) || !updateDraft.text;
-  if (!pending) $('detailUpdateStatus').textContent = updateDraft.text ? 'Unsent draft · kept while this page is open' : '';
+  if (!pending) $('detailUpdateStatus').textContent = updateDraft.noteSaved ? 'Update added; next step still needs to be saved.' : updateDraft.text ? 'Unsent draft · kept while this page is open' : '';
   if (pending) $('detailUpdateStatus').textContent = pending.message || 'Saving update…';
 }
 function validateDetail(detail, id) {
