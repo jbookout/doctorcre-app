@@ -241,7 +241,7 @@ function mountAccount(root, host, pathname, beforeSignOutReplace = () => {}, rea
     import("./global-call-mode.js").then(async ({ mountGlobalCallMode }) => {
       if (boundary?.revoked) return;
       const call = await mountGlobalCallMode(root);
-      if (boundary?.revoked) return;
+      if (boundary?.revoked) { call.dispose(); return; }
       root.querySelector("#callModeButton").onclick = () => { close(); call.open(); };
       root.querySelector("#callModeRetry").onclick = (event) => call.handleClick(event.target);
     });
