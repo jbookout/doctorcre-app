@@ -208,3 +208,5 @@
 .client-portal-form label { flex: 1 0 100%; }
 .client-portal-form input { flex: 1 1 14rem; min-width: 0; min-height: 2.75rem; }
 .client-portal-form p { flex: 1 0 100%; margin: 0; }
+#detailUpdateDateHint { margin-top: calc(-1 * var(--space-1)); color: var(--status-danger); }
+#detailUpdateStatus { overflow-wrap: anywhere; scroll-margin-bottom: 10rem; }

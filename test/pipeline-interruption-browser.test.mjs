@@ -324,6 +324,7 @@ test('requirement preview does not retain the old deal name after a room refresh
 
 test('update saves the next action and retries a failed action without duplicating the note', async t => {
   const page = await open(t); await room(page);
+  await page.evaluate(() => { document.documentElement.dataset.theme = 'dark'; });
   await page.evaluate(async () => {
     const { state } = await import('/js/pipeline.js');
     const send = state.client.setNextStep;
@@ -338,6 +339,8 @@ test('update saves the next action and retries a failed action without duplicati
   await page.getByLabel('Next date', {exact:true}).fill('2099-01-01');
   await page.getByRole('button', {name:'Add update',exact:true}).click();
   await settles(async () => assert.match(await page.locator('#detailUpdateStatus').textContent(), /next step not saved/i));
+  await mkdir(new URL('../out/test-artifacts/update-failure/', import.meta.url), {recursive:true});
+  await page.screenshot({path:new URL('../out/test-artifacts/update-failure/dark-390.png', import.meta.url).pathname});
   assert.equal(await page.locator('#dealUpdate').inputValue(), 'Synthetic weekly update');
   assert.equal(await page.getByLabel('Next step', {exact:true}).inputValue(), 'Synthetic next action');
   await page.getByRole('button', {name:'Check outcome',exact:true}).click();
@@ -365,6 +368,7 @@ test('a changed next action requires review before the saved update can replace 
   const page = await open(t); await room(page);
   await page.locator('#dealUpdate').fill('Synthetic reviewed update');
   await page.getByLabel('Next step', {exact:true}).fill('Synthetic proposed action');
+  await page.getByLabel('Next date', {exact:true}).fill('2099-01-01');
   await page.evaluate(async () => {
     const {state} = await import('/js/pipeline.js');
     const deal = (await state.client.getDeal('d14')).deal;
@@ -372,6 +376,7 @@ test('a changed next action requires review before the saved update can replace 
   });
   await page.getByRole('button', {name:'Add update',exact:true}).click();
   await settles(async () => assert.match(await page.locator('#detailUpdateStatus').textContent(), /next step not saved/i));
+  assert.equal(await page.getByRole('button', {name:'Review current next step'}).evaluate(el => document.activeElement === el), true);
   await page.getByRole('button', {name:'Review current next step'}).click();
   await settles(async () => assert.match(await page.locator('#detailUpdateStatus').textContent(), /Synthetic concurrent action/));
   await page.getByRole('button', {name:'Add update',exact:true}).click();
@@ -391,6 +396,9 @@ test('a future next date clears the overdue flag on the refreshed board', async 
   });
   await room(page);
   assert.match(await page.locator('#detailUpdateForm').textContent(), /overdue/i);
+  assert.equal(await page.locator('#dealUpdateDate').getAttribute('aria-describedby'), 'detailUpdateDateHint');
+  assert.equal(await page.locator('#detailUpdateDateHint').textContent(), 'Current next date is overdue.');
+  assert.equal(await page.locator('.deal-current-action').count(), 0);
   await page.locator('#dealUpdate').fill('Synthetic progress');
   await page.getByLabel('Next step', {exact:true}).fill('Synthetic future action');
   await page.getByLabel('Next date', {exact:true}).fill('2099-01-01');
@@ -398,4 +406,44 @@ test('a future next date clears the overdue flag on the refreshed board', async 
   await settles(async () => assert.match(await page.locator('#detailUpdateStatus').textContent(), /update added/i));
   await page.locator('#panelClose').click();
   await settles(async () => assert.doesNotMatch(await page.locator('.kanban-card[data-id="d14"]').textContent(), /overdue/i));
+});
+
+test('blank replacement is rejected before saving the update', async t => {
+  const page = await open(t); await room(page);
+  await page.locator('#dealUpdate').fill('Synthetic unsaved note');
+  await page.locator('#dealUpdateStep').fill('   ');
+  await page.getByRole('button', {name:'Add update', exact:true}).click();
+  await settles(async () => assert.match(await page.locator('#detailUpdateStatus').textContent(), /enter.*next step/i));
+  const detail = await page.evaluate(async () => (await (await import('/js/pipeline.js')).state.client.getDeal('d14')));
+  assert.equal(detail.thread.filter(item => item.text === 'Synthetic unsaved note').length, 0);
+  assert.equal(await page.locator('#dealUpdateStep').isEnabled(), true);
+  assert.equal(await page.getByRole('button', {name:'Discard draft'}).isEnabled(), true);
+});
+
+test('trailing whitespace does not replace the next step', async t => {
+  const page = await open(t); await room(page);
+  await page.evaluate(async () => { (await import('/js/pipeline.js')).state.client.setNextStep = async () => { throw new Error('Unexpected write'); }; });
+  const step = page.locator('#dealUpdateStep');
+  await step.fill((await step.inputValue()) + '  ');
+  await page.locator('#dealUpdate').fill('Synthetic note with whitespace');
+  await page.getByRole('button', {name:'Add update', exact:true}).click();
+  await settles(async () => assert.equal(await page.locator('#detailUpdateStatus').textContent(), 'Update added'));
+});
+
+test('past replacement date is rejected before saving the update', async t => {
+  const page = await open(t); await room(page);
+  const date = page.locator('#dealUpdateDate');
+  assert.equal(await date.getAttribute('min'), await page.evaluate(() => { const d = new Date(); return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10); }));
+  await page.locator('#dealUpdate').fill('Synthetic past date note');
+  await date.fill('2001-01-01');
+  await page.locator('#detailUpdateForm').evaluate(form => form.dispatchEvent(new Event('submit', {bubbles:true, cancelable:true})));
+  assert.match(await page.locator('#detailUpdateStatus').textContent(), /date.*today|date.*past/i);
+  const detail = await page.evaluate(async () => (await (await import('/js/pipeline.js')).state.client.getDeal('d14')));
+  assert.equal(detail.thread.filter(item => item.text === 'Synthetic past date note').length, 0);
+});
+
+test('next step field bounds input and disables autocomplete', async t => {
+  const page = await open(t); await room(page);
+  assert.equal(await page.locator('#dealUpdateStep').getAttribute('maxlength'), '10000');
+  assert.equal(await page.locator('#dealUpdateStep').getAttribute('autocomplete'), 'off');
 });
