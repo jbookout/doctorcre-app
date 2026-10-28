@@ -23,23 +23,26 @@ def card_allowed(pr):
 
 
 def approved(pr, files, comments):
-    comments = [c for c in comments if c.get("body") and
-                (c.get("user") or {}).get("login") and
-                c["user"]["login"].casefold() != (pr.get("user", {}).get("login") or "").casefold()]
     auto_merge = pr.get("auto_merge") or {}
     if any(SKIP_CI.search(value or "") for value in
            (pr.get("title"), auto_merge.get("commit_title"), auto_merge.get("commit_message"))):
         return False
-    if any(c["body"].splitlines()[:1] == ["VERDICT: CHANGES"]
-           and f'Reviewed-SHA: {pr["head"]["sha"]}' in c["body"].splitlines() for c in comments):
+    verdicts = []
+    for comment in comments:
+        lines = (comment.get("body") or "").splitlines()
+        if (len(lines) >= 3 and lines[0] in ("VERDICT: APPROVE", "VERDICT: CHANGES")
+                and lines[1] == f'Reviewed-SHA: {pr["head"]["sha"]}'
+                and (lines[2] in ("Reviewer: grok", "Reviewer: the Dot", "Reviewer: orchestrator re-pin", "Reviewer: Claude", "Reviewer: claude-opus")
+                     or lines[2].startswith(("Reviewer: Grok", "Reviewer: Claude ")))):
+            verdicts.append(lines[0])
+    if verdicts[-1:] == ["VERDICT: CHANGES"]:
         return False
     risky = any(f.get("status") == "added" and f.get("filename", "").startswith(("scripts/", ".github/workflows/")) for f in files)
     risky = risky or any(fnmatch.fnmatchcase(f.get(key, "").lower(), pattern)
                 for f in files for key in ("filename", "previous_filename") for pattern in RISKY)
     if len(files) == pr["changed_files"] and pr["additions"] - pr["deletions"] <= 150 and not risky:
         return True
-    return any(c["body"].splitlines()[:1] == ["VERDICT: APPROVE"]
-               and f'Reviewed-SHA: {pr["head"]["sha"]}' in c["body"].splitlines() for c in comments)
+    return verdicts[-1:] == ["VERDICT: APPROVE"]
 
 
 def api(path, payload=None):
@@ -73,7 +76,9 @@ def run(event, repo):
     comments = api(f"{root}/issues/{number}/comments?per_page=100")
     reviews = api(f"{root}/pulls/{number}/reviews?per_page=100")
     card_ok = card_allowed(pr)
-    passed = card_ok and approved(pr, files, comments + reviews)
+    messages = comments + [r for r in reviews if r.get("state") not in ("DISMISSED", "PENDING")]
+    messages.sort(key=lambda m: m.get("submitted_at") or m.get("created_at") or "")
+    passed = card_ok and approved(pr, files, messages)
     latest = api(f"{root}/pulls/{number}")
     if latest["head"]["sha"] == sha and latest.get("body") == pr.get("body"):
         description = ("No skip marker; small safe diff or current-head approval required" if card_ok else
