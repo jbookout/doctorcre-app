@@ -321,3 +321,81 @@ test('requirement preview does not retain the old deal name after a room refresh
   assert.ok(!(await page.locator('#requirementEmail').textContent()).includes(oldTitle));
   assert.equal(await page.getByLabel('Email message').inputValue(), 'Approved anonymous requirements');
 });
+
+test('update saves the next action and retries a failed action without duplicating the note', async t => {
+  const page = await open(t); await room(page);
+  await page.evaluate(async () => {
+    const { state } = await import('/js/pipeline.js');
+    const send = state.client.setNextStep;
+    let first = true;
+    state.client.setNextStep = async request => {
+      if (first) { first = false; throw new Error('Synthetic failure'); }
+      return send(request);
+    };
+  });
+  await page.locator('#dealUpdate').fill('Synthetic weekly update');
+  await page.getByLabel('Next step', {exact:true}).fill('Synthetic next action');
+  await page.getByLabel('Next date', {exact:true}).fill('2099-01-01');
+  await page.getByRole('button', {name:'Add update',exact:true}).click();
+  await settles(async () => assert.match(await page.locator('#detailUpdateStatus').textContent(), /next step not saved/i));
+  assert.equal(await page.locator('#dealUpdate').inputValue(), 'Synthetic weekly update');
+  assert.equal(await page.getByLabel('Next step', {exact:true}).inputValue(), 'Synthetic next action');
+  await page.getByRole('button', {name:'Check outcome',exact:true}).click();
+  await settles(async () => assert.match(await page.locator('#detailUpdateStatus').textContent(), /update added/i));
+  const detail = await page.evaluate(async () => (await (await import('/js/pipeline.js')).state.client.getDeal('d14')));
+  assert.equal(detail.deal.next_step, 'Synthetic next action');
+  assert.equal(detail.deal.next_date, '2099-01-01');
+  assert.equal(detail.thread.filter(item => item.text === 'Synthetic weekly update').length, 1);
+});
+
+test('an update with unchanged next action only records the note', async t => {
+  const page = await open(t); await room(page);
+  await page.evaluate(async () => {
+    const {state} = await import('/js/pipeline.js');
+    state.client.setNextStep = async () => { throw new Error('Unexpected next action write'); };
+  });
+  await page.locator('#dealUpdate').fill('Synthetic note only');
+  await page.getByRole('button', {name:'Add update', exact:true}).click();
+  await settles(async () => assert.match(await page.locator('#detailUpdateStatus').textContent(), /update added/i));
+  const detail = await page.evaluate(async () => (await (await import('/js/pipeline.js')).state.client.getDeal('d14')));
+  assert.equal(detail.thread.filter(item => item.text === 'Synthetic note only').length, 1);
+});
+
+test('a changed next action requires review before the saved update can replace it', async t => {
+  const page = await open(t); await room(page);
+  await page.locator('#dealUpdate').fill('Synthetic reviewed update');
+  await page.getByLabel('Next step', {exact:true}).fill('Synthetic proposed action');
+  await page.evaluate(async () => {
+    const {state} = await import('/js/pipeline.js');
+    const deal = (await state.client.getDeal('d14')).deal;
+    await state.client.setNextStep({deal:'d14', text:'Synthetic concurrent action', next_date:'2098-01-01', base_version:deal.version, idempotency_key:'synthetic-concurrent'});
+  });
+  await page.getByRole('button', {name:'Add update',exact:true}).click();
+  await settles(async () => assert.match(await page.locator('#detailUpdateStatus').textContent(), /next step not saved/i));
+  await page.getByRole('button', {name:'Review current next step'}).click();
+  await settles(async () => assert.match(await page.locator('#detailUpdateStatus').textContent(), /Synthetic concurrent action/));
+  await page.getByRole('button', {name:'Add update',exact:true}).click();
+  await settles(async () => assert.match(await page.locator('#detailUpdateStatus').textContent(), /update added/i));
+  const detail = await page.evaluate(async () => (await (await import('/js/pipeline.js')).state.client.getDeal('d14')));
+  assert.equal(detail.deal.next_step, 'Synthetic proposed action');
+  assert.equal(detail.thread.filter(item => item.text === 'Synthetic reviewed update').length, 1);
+});
+
+test('a future next date clears the overdue flag on the refreshed board', async t => {
+  const page = await open(t);
+  await page.evaluate(async () => {
+    const {state} = await import('/js/pipeline.js');
+    const deal = (await state.client.getDeal('d14')).deal;
+    await state.client.setNextStep({deal:'d14', text:'Synthetic overdue action', next_date:'2001-01-01', base_version:deal.version, idempotency_key:'synthetic-overdue'});
+    await state.boardSync.refreshBoard({reason:'synthetic-setup'});
+  });
+  await room(page);
+  assert.match(await page.locator('#detailUpdateForm').textContent(), /overdue/i);
+  await page.locator('#dealUpdate').fill('Synthetic progress');
+  await page.getByLabel('Next step', {exact:true}).fill('Synthetic future action');
+  await page.getByLabel('Next date', {exact:true}).fill('2099-01-01');
+  await page.getByRole('button', {name:'Add update',exact:true}).click();
+  await settles(async () => assert.match(await page.locator('#detailUpdateStatus').textContent(), /update added/i));
+  await page.locator('#panelClose').click();
+  await settles(async () => assert.doesNotMatch(await page.locator('.kanban-card[data-id="d14"]').textContent(), /overdue/i));
+});

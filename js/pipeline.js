@@ -506,7 +506,7 @@ async function runFollowUp(operationKey, step) {
       if (!reviewed || noteText(reviewed.next_step) !== noteText(current.next_step) || (reviewed.next_date || null) !== (current.next_date || null)) {
         dock.record(operationKey, { summary: step.summary, status: 'conflict', retry: false, undo: false,
           reason: `The next step changed. Current: ${noteText(current.next_step) || 'None'} (${current.next_date || 'no date'}). Review the current record before replacing it.` });
-        return null;
+        return {status:'conflict', message:`Current next step: ${noteText(current.next_step) || 'None'} (${current.next_date || 'no date'}). Review before retrying.`};
       }
       args = { ...args, base_version: current.version };
     }
@@ -539,11 +539,10 @@ async function runFollowUp(operationKey, step) {
     retry: result.status === 'blocked' || result.retry, undo: false, request: dockRequest,
   });
   if (step.verb === 'register-client-portal' && result.status === 'ok') state.boardSync.requestRefresh('client-portal');
-  if (isUpdate && result.status === 'ok') discardUpdate(args.deal);
   if (step.verb === 'add-deal-note' && operationKey === updateKey(state.panelDeal) && state.panelDetail) {
     if ([401,403].includes(result.http_status)) { refusePanelDetail({status:result.http_status}); return result; }
     syncUpdateForm();
-    if (result.status === 'ok') await refreshPanel();
+    if (result.status === 'ok' && !isUpdate) await refreshPanel();
   }
   if (step.verb === 'resolve-conflict') await settleConflictChoice(step.args.conflict_id, result);
   return result;
@@ -848,19 +847,24 @@ function syncUpdateForm() {
   const form = $('detailUpdateForm');
   if (!form || !state.panelDeal) return;
   const pending = pendingCommand(commandState, updateKey(state.panelDeal));
+  const pendingStep = pendingCommand(commandState, nextStepKey(state.panelDeal));
   bindDraftActor(state.selfActor);
   const requirementFieldset = $('requirementEmailForm')?.querySelector('fieldset');
   if (requirementFieldset) requirementFieldset.disabled = !state.selfActor;
   if (!updateDraft || updateDraft.id !== state.panelDeal) {
-    updateDraft = updateDrafts.get(state.panelDeal) || {id:state.panelDeal,text:''};
+    updateDraft = updateDrafts.get(state.panelDeal) || {id:state.panelDeal,text:'', step:noteText(state.panelDetail.deal.next_step), date:state.panelDetail.deal.next_date || '', reviewed:{next_step:state.panelDetail.deal.next_step, next_date:state.panelDetail.deal.next_date}, noteSaved:false};
     updateDrafts.set(state.panelDeal, updateDraft);
   }
   form.elements.text.value = pending ? pending.request.text : updateDraft.text;
-  form.elements.text.disabled = Boolean(pending) || !state.selfActor;
+  form.elements.text.disabled = Boolean(pending) || updateDraft.noteSaved || !state.selfActor;
+  form.elements.step.value = updateDraft.step;
+  form.elements.date.value = updateDraft.date;
+  form.elements.step.disabled = form.elements.date.disabled = Boolean(pending || pendingStep) || !state.selfActor;
   const button = form.querySelector('button[type="submit"]');
-  button.disabled = pending?.status === 'pending' || !state.selfActor;
-  button.textContent = pending ? 'Check outcome' : 'Add update';
-  form.querySelector('[data-discard-update]').disabled = Boolean(pending) || !updateDraft.text;
+  button.disabled = pending?.status === 'pending' || pendingStep?.status === 'pending' || !state.selfActor;
+  button.textContent = pending || pendingStep ? 'Check outcome' : 'Add update';
+  form.querySelector('[data-review-update-step]').hidden = !updateDraft.conflict;
+  form.querySelector('[data-discard-update]').disabled = Boolean(pending || pendingStep) || !updateDraft.text;
   if (!pending) $('detailUpdateStatus').textContent = updateDraft.text ? 'Unsent draft · kept while this page is open' : '';
   if (pending) $('detailUpdateStatus').textContent = pending.message || 'Saving update…';
 }
@@ -881,15 +885,45 @@ async function saveUpdate(id) {
   const form = $('detailUpdateForm');
   const text = form?.elements.text.value.trim();
   if (!pending && !text) { $('detailUpdateStatus').textContent = 'Enter an update'; return; }
-  const args = pending?.request || {deal:id,text};
-  const promise = runFollowUp(key,{verb:'add-deal-note',args,summary:'Deal update'});
-  syncUpdateForm();
-  const result = await promise;
-  state.boardSync.requestRefresh('deal-update');
-  if (state.panelDeal === id && form?.isConnected) {
-    syncUpdateForm();
-    $('detailUpdateStatus').textContent = result.status === 'ok' ? 'Update added' : result.message || 'Update not confirmed';
-  }
+  const draft = updateDraft;
+  const actor = state.selfActor;
+  if (draft.sending) return;
+  if (!draft.stepStarted && pendingCommand(commandState, nextStepKey(id))) { $('detailUpdateStatus').textContent = 'Resolve the pending next step before adding an update.'; return; }
+  draft.sending = true;
+  try {
+    if (!draft.noteSaved) {
+      const args = pending?.request || {deal:id,text};
+      const promise = runFollowUp(key,{verb:'add-deal-note',args,summary:'Deal update'});
+      syncUpdateForm();
+      const result = await promise;
+      if (result?.status !== 'ok') {
+        if (state.panelDeal === id && $('detailUpdateStatus')) $('detailUpdateStatus').textContent = result?.message || 'Update not confirmed';
+        return;
+      }
+      if (actor !== state.selfActor || draftActor !== actor) return;
+      draft.noteSaved = true;
+    }
+    const changed = draft.step !== noteText(draft.reviewed.next_step) || draft.date !== (draft.reviewed.next_date || '');
+    if (changed) {
+      draft.stepStarted = true;
+      const result = await runFollowUp(nextStepKey(id), {verb:'set-next-step', args:{deal:id,text:draft.step,next_date:draft.date || null}, reviewed:draft.reviewed, summary:'Next step'});
+      if (result?.status !== 'ok') {
+        draft.conflict = result?.status === 'conflict';
+        if (state.panelDeal === id && $('detailUpdateStatus')) {
+          syncUpdateForm();
+          $('detailUpdateStatus').textContent = `Update added; next step not saved. ${result?.message || 'Review the current next step and retry.'}`;
+        }
+        return;
+      }
+    }
+    if (actor !== state.selfActor || draftActor !== actor) return;
+    discardUpdate(id);
+    state.boardSync.requestRefresh('deal-update');
+    if (state.panelDeal === id) {
+      await refreshPanel();
+      if ($('detailUpdateStatus')) $('detailUpdateStatus').textContent = 'Update added';
+    }
+  } finally { draft.sending = false; }
 }
 function requirementEmailHtml(deal) {
   const draft = requirementDrafts.get(deal.id) || {};
@@ -938,7 +972,7 @@ function detailHtml(detail) {
       <dl class="deal-snapshot-facts">${d.workspace_kind === 'national_account' || d.account_client_id ? `<div><dt>Market agent</dt><dd>${esc(d.market_agent || 'Unassigned')}</dd></div>` : ''}${d.client_name ? `<div><dt>Client</dt><dd>${esc(d.client_name)}</dd></div>` : ''}${d.type ? `<div><dt>Type</dt><dd>${esc(d.type)}</dd></div>` : ''}${d.outcome ? `<div><dt>Outcome</dt><dd>${esc(d.outcome[0].toUpperCase()+d.outcome.slice(1))}</dd></div>` : ''}</dl>
     </section>
     <div data-detail-read="checklist">${renderDealChecklist(detail.checklist)}</div>
-    <form id="detailUpdateForm" class="deal-update-form"><label for="dealUpdate">Update</label><textarea id="dealUpdate" name="text" rows="2" maxlength="10000" required></textarea><button class="btn btn-primary" type="submit">Add update</button><button class="btn btn-quiet" type="button" data-discard-update>Discard draft</button><p id="detailUpdateStatus" role="status"></p></form>
+    <form id="detailUpdateForm" class="deal-update-form"><label for="dealUpdate">Update</label><textarea id="dealUpdate" name="text" rows="2" maxlength="10000" required></textarea><label for="dealUpdateStep">Next step</label><input id="dealUpdateStep" name="step"><label for="dealUpdateDate">Next date</label><input id="dealUpdateDate" name="date" type="date">${d.next_date && d.next_date < todayIso() ? '<small>Current next date is overdue.</small>' : ''}<button class="btn btn-primary" type="submit">Add update</button><button class="btn" type="button" data-review-update-step hidden>Review current next step</button><button class="btn btn-quiet" type="button" data-discard-update>Discard draft</button><p id="detailUpdateStatus" role="status"></p></form>
     <section id="panelEmailFollowups" aria-label="Email follow-ups"><p role="status">Updating email follow-ups…</p></section>
     ${requirementEmailHtml(d)}
     <div data-detail-read="vendors">${renderDealVendors(d.vendors)}</div>
@@ -1400,7 +1434,17 @@ function wire() {
     if (state.panelDetail) void refreshEvidence(state.panelDetail, state.panelDeal, panelReadSequence);
   }, true);
   $('panelBody').addEventListener('click', e => {
-    if (e.target.closest('[data-discard-update]') && !pendingCommand(commandState, updateKey(state.panelDeal))) { discardUpdate(state.panelDeal); syncUpdateForm(); }
+    if (e.target.closest('[data-discard-update]') && !pendingCommand(commandState, updateKey(state.panelDeal)) && !pendingCommand(commandState, nextStepKey(state.panelDeal))) { discardUpdate(state.panelDeal); syncUpdateForm(); }
+    if (e.target.closest('[data-review-update-step]') && updateDraft?.conflict) {
+      const draft = updateDraft;
+      void readDealDetail(draft.id).then(detail => {
+        if (updateDraft !== draft || draftActor !== state.selfActor) return;
+        draft.reviewed = {next_step:detail.deal.next_step, next_date:detail.deal.next_date};
+        draft.conflict = false;
+        syncUpdateForm();
+        $('detailUpdateStatus').textContent = `Current next step: ${noteText(detail.deal.next_step) || 'None'} (${detail.deal.next_date || 'no date'}). Retry to replace it.`;
+      }).catch(() => { if (updateDraft === draft) $('detailUpdateStatus').textContent = 'Could not read the current next step.'; });
+    }
     if (e.target.closest('[data-refresh-detail]')) {
       void refreshPanel();
       if (panelEmailFollowups) void panelEmailFollowups.refresh();
@@ -1432,7 +1476,7 @@ function wire() {
       Object.assign(draft, Object.fromEntries(new FormData($('requirementEmailForm'))));
       requirementDrafts.set(state.panelDeal, draft);
     }
-    if (e.target.id === 'dealUpdate' && updateDraft) { updateDraft.text = e.target.value; syncUpdateForm(); }
+    if (e.target.closest('#detailUpdateForm') && updateDraft && ['text','step','date'].includes(e.target.name)) { updateDraft[e.target.name] = e.target.value; syncUpdateForm(); }
   });
   $('panelBody').addEventListener('change', async e => {
     const id = state.panelDeal;
