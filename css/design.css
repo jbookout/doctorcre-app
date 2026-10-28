@@ -84,11 +84,6 @@
 .assist-sample[data-pattern="hold"] b::before { content: "‖ "; color: var(--status-hold-ink); }
 
 /* ---------------------------------------------------------------- archived references */
-.reference-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-4); }
-.reference-grid figure { margin: 0; padding: var(--space-3); border: var(--hairline-width) solid var(--hairline); border-radius: var(--radius-3); background: var(--ground); }
-.reference-grid a { display: block; overflow: hidden; border-radius: var(--radius-2); }
-.reference-grid img { display: block; width: 100%; max-height: 330px; object-fit: cover; object-position: top; }
-.reference-grid figcaption { margin-top: var(--space-2); color: var(--fg-muted); font-size: var(--font-size-1); }
 
 /* ---------------------------------------------------------------- business and Control Room prototypes */
 .prototype-banner { display: flex; align-items: center; gap: var(--space-2); margin: 0 0 var(--space-3); padding: var(--space-2) var(--space-3); border: var(--hairline-width) dashed var(--hairline-strong); border-radius: var(--radius-2); color: var(--fg-muted); font-size: var(--font-size-1); }
@@ -150,7 +145,6 @@
   .specimen-section { padding: var(--space-4); }
   .swatch-grid, .assist-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .type-scale li { grid-template-columns: minmax(0, 1fr); gap: var(--space-1); }
-  .reference-grid { grid-template-columns: 1fr; }
   .footer { display: block; padding-bottom: 160px; }
 }
 @media (prefers-reduced-motion: reduce) {

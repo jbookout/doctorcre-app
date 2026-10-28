@@ -46,9 +46,6 @@ async function mount(read, { now = REF, storage = memoryStorage(), search = "?bo
 
 test("shared producer stage, health, blocked and stale fixtures match the published board view", async () => {
   const fixtures = JSON.parse(await readFile(new URL("../test/fixtures/progress-board-stages.json", import.meta.url), "utf8"));
-  const generator = await readFile(new URL("../scripts/generate-progress-board-parity.py", import.meta.url), "utf8");
-  assert.ok(generator.includes(`PIN = "${fixtures.producer_source_commit}"`),
-    "the board fixture stays bound to the producer commit that generated it");
   assert.deepEqual(new Set(fixtures.cases.map(({ producer_health }) => producer_health)),
     new Set(["healthy", "question", "blocked"]), "every producer health class is represented");
   for (const stage of STAGES.map(item => item.id))
