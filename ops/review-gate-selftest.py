@@ -95,6 +95,27 @@ class ReviewGate(unittest.TestCase):
             self.assertEqual(api.call_args.args[0], "repos/owner/repo/statuses/queue")
             self.assertEqual(api.call_args.args[1]["state"], "success")
 
+    def test_review_body_approval_publishes_success(self):
+        pr = {"body": "Card: WR568.S1.J2", "base": {"ref": "main"},
+              "additions": 151, "deletions": 0, "head": {"sha": "abc"},
+              "changed_files": 0, "user": {"login": "author"}}
+        responses = {"repos/owner/repo/pulls/4": pr,
+                     "repos/owner/repo/pulls/4/files?per_page=100": [],
+                     "repos/owner/repo/issues/4/comments?per_page=100": [],
+                     "repos/owner/repo/pulls/4/reviews?per_page=100": [
+                         {"body": "VERDICT: APPROVE\nReviewed-SHA: abc", "user": {"login": "reviewer"}}]}
+        statuses = []
+
+        def api(path, payload=None):
+            if payload is not None:
+                statuses.append(payload)
+                return {}
+            return responses[path]
+
+        with patch.object(gate, "api", side_effect=api):
+            gate.run({"number": 4, "pull_request": {"number": 4}}, "owner/repo")
+        self.assertEqual(statuses[-1]["state"], "success")
+
     def test_missing_card_fails_status(self):
         pr = {"base": {"ref": "main"}, "head": {"sha": "abc"}, "changed_files": 1,
               "additions": 1, "deletions": 0, "body": "", "user": {"type": "User"}}
