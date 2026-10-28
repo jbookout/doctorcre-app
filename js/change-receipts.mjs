@@ -83,7 +83,7 @@ export function escapeText(value) {
   }[char]));
 }
 
-/** Why a work record is parked. Single home; app.js imports this. */
+/** Why a deal is parked. Single home; app.js imports this. */
 export function parkingReasonLabel(reason) {
   return PARKING_REASON_LABEL[reason] || 'Parked';
 }

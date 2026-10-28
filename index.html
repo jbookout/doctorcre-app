@@ -62,7 +62,7 @@
 
       <div class="board-sticky" id="boardSticky">
         <div data-layout-slot="sidebar" class="toolbar">
-          <div class="filters" role="group" aria-label="Filter work records">
+          <div class="filters" role="group" aria-label="Filter deals">
             <button type="button" class="filter on" data-filter="active">Active</button>
             <button type="button" class="filter" data-filter="mine">Mine</button>
             <button type="button" class="filter" data-filter="attention">Needs attention</button>
@@ -74,24 +74,24 @@
           </div>
           <button type="button" class="receipts-jump" id="receiptsJump" aria-label="Go to recent changes" hidden>Recent changes<span class="receipts-count" id="receiptsCount">0</span></button>
           <label class="search-wrap">
-            <span class="sr-only">Search work records</span>
-            <input id="search" type="search" autocomplete="off" placeholder="Search work records…">
+            <span class="sr-only">Search deals</span>
+            <input id="search" type="search" autocomplete="off" placeholder="Search deals…">
             <kbd>/</kbd>
           </label>
-          <button type="button" class="primary sticky-add-button" id="stickyAddButton" aria-label="Add work record">+ Add work record</button>
+          <button type="button" class="primary sticky-add-button" id="stickyAddButton" aria-label="Add deal">+ Add deal</button>
         </div>
         <div class="sticky-table-header" aria-hidden="true">
-          <span>Work record</span><span>Phase</span><span>Next step</span><span>Next date</span>
+          <span>Deal</span><span>Phase</span><span>Next step</span><span>Next date</span>
           <span id="stickyAgentHeading">Owner</span><span>Actions</span>
         </div>
       </div>
 
       <div class="table-frame" id="tableFrame">
-        <table aria-label="Active and parked work records">
+        <table aria-label="Active and parked deals">
           <colgroup><col class="col-work"><col class="col-phase"><col class="col-step"><col class="col-date"><col class="col-owner"><col class="col-actions"></colgroup>
           <thead>
             <tr>
-              <th>Work record</th><th>Phase</th><th>Next step</th><th>Next date</th>
+              <th>Deal</th><th>Phase</th><th>Next step</th><th>Next date</th>
               <th id="agentHeading">Owner</th><th><span class="sr-only">Actions</span></th>
             </tr>
           </thead>
@@ -140,14 +140,14 @@
   <dialog id="callModeDialog" class="dialog call-mode-dialog" aria-labelledby="callModeTitle">
     <article>
       <header>
-        <div><h2 id="callModeTitle">Call mode</h2><p class="dialog-context">Quill local recorder</p></div>
+        <div><h2 id="callModeTitle">Call mode</h2><p class="dialog-context">Call recorder</p></div>
         <button type="button" class="icon-button" id="callModeClose" aria-label="Close Call Mode">×</button>
       </header>
       <div class="call-mode-stage" id="callModeStage">
         <div class="recording-orb" aria-hidden="true">●</div>
         <p class="call-mode-state" id="callModeState">Ready to record</p>
         <time class="call-mode-timer" id="callModeTimer" aria-live="polite">Ready</time>
-        <p class="call-mode-detail" id="callModeDetail">Record the weekly Joe and Dell deal call, or another call. Quill keeps the local and other-side tracks separate.</p>
+        <p class="call-mode-detail" id="callModeDetail">Record the weekly Joe and Dell deal call, or another call. The recorder keeps the local and other-side tracks separate.</p>
         <p class="call-mode-speakers" id="callModeSpeakers" hidden></p>
       </div>
       <div class="call-mode-actions">
@@ -160,7 +160,7 @@
           <button type="button" class="secondary" data-call-mode-start="other_call">Start another call</button>
         </div>
         <button type="button" class="danger" id="callModeStop" hidden>Stop and process</button>
-        <p class="call-mode-note">Recording and transcription stay on this Mac. Short excerpts are checked by Jev to confirm the deal, the speaker, and the details. Next steps and phase moves stated plainly on a weekly pipeline call are applied to the deal and listed with Undo; anything unsettled waits for Joe or Dell. No email draft is created until Joe or Dell approves it.</p>
+        <p class="call-mode-note">Recording and transcription stay on this Mac. Short excerpts are checked to confirm the deal, the speaker, and the details. Next steps and phase moves stated plainly on a weekly pipeline call are applied to the deal and listed with Undo; anything unsettled waits for Joe or Dell. No email draft is created until Joe or Dell approves it.</p>
       </div>
       <p class="call-mode-permission" id="callModePermission" hidden></p>
       <section class="post-call" id="postCallPanel" aria-labelledby="postCallTitle" hidden>

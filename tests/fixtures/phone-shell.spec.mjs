@@ -18,7 +18,7 @@ test('Inbox uses one phone shell row and grouped controls in both themes', async
   });
   await page.goto('http://localhost/control-room?tab=inbox');
   await expect(page.locator('#panelInbox')).toBeVisible();
-  await expect(page.locator('#callModeAvailability')).toHaveText('Call recording runs on the Mac with Quill');
+  await expect(page.locator('#callModeAvailability')).toHaveText('Call recording runs on the Mac');
   for (const theme of ['dark', 'light']) {
     await page.evaluate(value => { document.documentElement.dataset.theme = value; }, theme);
     await testInfo.attach(`inbox-390-${theme}`, { body: await page.screenshot(), contentType: 'image/png' });
@@ -56,7 +56,7 @@ test('Inbox uses one phone shell row and grouped controls in both themes', async
   await page.locator('#selfAvatar').click();
   await expect(page.getByRole('group', { name: 'Account', exact: true })).toBeVisible();
   await expect(page.getByRole('group', { name: 'Workspace', exact: true })).toBeVisible();
-  await page.getByRole('button', { name: 'Recheck Quill' }).click();
+  await page.getByRole('button', { name: 'Check the recorder' }).click();
   await expect(page.locator('#callModeButton')).toHaveClass(/recording/);
   expect(await page.locator('#callModeButton').evaluate(button => getComputedStyle(button, '::after').content)).not.toMatch(/\d+:\d+/);
   await page.keyboard.press('Escape');

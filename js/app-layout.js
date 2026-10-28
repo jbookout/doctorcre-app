@@ -1,7 +1,8 @@
 import { briefOwnerLabel, filterBriefOwners, mountBriefOwnerFilter } from './brief-owner-filter.js';
 import { normalizeBrief } from './morning-brief-model.js';
 import { TOUCH_LAYOUT } from './touch-layout.js';
-import { needsAttention, scopedDeals } from './deal-review-model.js';
+import { mostOverdueFirst, needsAttention, overdueActionRows, overdueLabel, overdueSince, scopedDeals } from './deal-review-model.js';
+import { businessDay } from './business-date.js';
 import { createClient } from './client.js';
 import { resolveDealroomBoot } from './boot-mode.js';
 import { mountAutoRefresh, readWithDeadline } from './auto-refresh.mjs';
@@ -51,6 +52,9 @@ export function mountAppLayout(root, host, pathname) {
     else main.append(node);
   }
   root.body.classList.add('has-app-layout');
+  // A page that brings its own freshness and refresh owns the band's one clock and one refresh.
+  const pageRefresh = status.querySelector('#appStatusSlot [data-layout-refresh]');
+  status.toggleAttribute('data-page-freshness', Boolean(pageRefresh));
   const pageOwnsMoves = Boolean(layout.querySelector('#appTodayMoves [data-layout-slot="moves"]'));
   const phone = win.matchMedia(pathname === "/leads" ? "(max-width:1023px)" : TOUCH_LAYOUT);
   const itineraryPage = Boolean(root.getElementById('accepted-itinerary'));
@@ -142,6 +146,10 @@ export function mountAppLayout(root, host, pathname) {
   let todayItems = null, todayNeeds = null, nextExpanded = false, failedReads = [];
   const row = (item, extra = '') => `<button type="button" class="app-layout-item" data-layout-deal="${escape(item.subject_id || item.id)}"><strong>${escape(item.subject_name || item.name)}</strong>${briefOwnerLabel(item) ? `<small class="morning-owner">${briefOwnerLabel(item)}</small>` : ''}${extra ? `<span>${escape(extra)}</span>` : ''}</button>`;
   const render = (target, html) => { const node = layout.querySelector(target); if (node.innerHTML !== html) { const id = node.contains(root.activeElement) ? root.activeElement.dataset.layoutDeal : null; node.innerHTML = html; if (id) [...node.querySelectorAll('button')].find(b => b.dataset.layoutDeal === id)?.focus(); } };
+  const overdueRows = deals => {
+    const today = businessDay();
+    return mostOverdueFirst(deals, today).map(d => row(d, [d.next_step, overdueLabel(overdueSince(d, today), today)].filter(Boolean).join(' · ')));
+  };
   const unavailable = '<span class="app-layout-empty">Unavailable</span>';
   const empty = '<span class="app-layout-empty">—</span>';
   const renderToday = () => {
@@ -150,7 +158,7 @@ export function mountAppLayout(root, host, pathname) {
     const showAll = layout.querySelector('#appTodayShowAll');
     showAll.hidden = !next || next.length <= 6 || nextExpanded;
     showAll.textContent = `Show all ${next?.length || 0}`;
-    render('#appTodayNeeds', todayNeeds ? filterBriefOwners(todayNeeds, owners.current()).slice(0,6).map(d => row(d,d.next_step)).join('') || empty : unavailable);
+    render('#appTodayNeeds', todayNeeds ? overdueRows(filterBriefOwners(todayNeeds, owners.current())).slice(0,6).join('') || empty : unavailable);
   };
   const owners = mountBriefOwnerFilter(root, layout.querySelector('#appTodayOwners'), () => { nextExpanded = false; renderToday(); });
   layout.querySelector('#appTodayShowAll').onclick = () => {
@@ -228,12 +236,9 @@ export function mountAppLayout(root, host, pathname) {
         .map(receipt => ({ ...receipt, deal_name: authorized.get(receipt.deal_id) }));
       if (!pageOwnsMoves) renderMoves();
       const active = scopedDeals(value, 'team');
-      if (triageValid || !todayNeeds) todayNeeds = active.flatMap(deal => {
-        const actions = todayItems?.filter(item => item.subject_type === 'deal' && item.subject_id === deal.id) || [];
-        return actions.length ? actions.map(action => ({...deal, ...action, next_step:action.what, next_date:action.due_on})) : [deal];
-      }).filter(d => needsAttention(d));
+      if (triageValid || !todayNeeds) todayNeeds = overdueActionRows(active, todayItems, businessDay());
       else todayNeeds = todayNeeds.filter(deal => active.some(current => current.id === (deal.subject_id || deal.id)));
-      render('#appWorkingList', active.filter(d => needsAttention(d)).slice(0,8).map(d => row(d,d.next_step)).join('') || empty);
+      render('#appWorkingList', overdueRows(active.filter(d => needsAttention(d))).slice(0,8).join('') || empty);
       renderToday();
       if (!pageOwnsMoves) {
         try {
@@ -283,7 +288,12 @@ export function mountAppLayout(root, host, pathname) {
   win.addEventListener('offline', failedRead);
   const auto = mountAutoRefresh({ document:root, window:win, refresh, onResume:unavailableRead });
   layout.querySelector('#appTodayRetry').onclick = () => auto.refresh();
-  status.querySelector('#appSyncRefresh').onclick = () => { auto.refresh(); root.querySelectorAll('[data-layout-refresh]').forEach(button => button.click()); };
+  let fanOut = false;
+  status.querySelector('#appSyncRefresh').onclick = () => {
+    auto.refresh(); fanOut = true;
+    try { root.querySelectorAll('[data-layout-refresh]').forEach(button => button.click()); } finally { fanOut = false; }
+  };
+  pageRefresh?.addEventListener('click', () => { if (!fanOut) auto.refresh(); });
   auto.refresh();
   win.addEventListener('pagehide', event => {
     if (!event.persisted) { auto.dispose(); owners.dispose(); win.removeEventListener('offline', failedRead); }

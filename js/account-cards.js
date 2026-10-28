@@ -14,7 +14,7 @@ export function renderAccountCards(accounts, { esc, relative, actorName, dateLab
     <button type="button" class="account-card" data-account="${esc(item.account_client_id)}" data-pulse="${pulse}">
       <header><div><h2>${name}</h2><p class="account-ref">${esc(item.account_client_ref || 'National account')}</p></div>
         <span class="account-owner" title="Owned by ${owner}">${item.account_owner === 'dell' ? 'D' : item.account_owner === 'joe' ? 'J' : '?'}</span></header>
-      ${next?.next_step ? `<div class="account-next-action"><span${overdue ? ' class="is-alert"' : ''}>${overdue ? 'Oldest overdue action' : 'Next market action'}</span><strong>${esc(next.next_step)}</strong><span>${esc(next.name)}${next.next_date ? ` · ${esc(dateLabel(next.next_date))}` : ''}</span></div>` : `<p class="account-next-action"><strong>${overdue ? `${overdue} overdue dates` : count ? `${count} active work records` : 'No active work records'}</strong></p>`}
+      ${next?.next_step ? `<div class="account-next-action"><span${overdue ? ' class="is-alert"' : ''}>${overdue ? 'Oldest overdue action' : 'Next market action'}</span><strong>${esc(next.next_step)}</strong><span>${esc(next.name)}${next.next_date ? ` · ${esc(dateLabel(next.next_date))}` : ''}</span></div>` : `<p class="account-next-action"><strong>${overdue ? `${overdue} overdue dates` : count ? `${count} active deals` : 'No active deals'}</strong></p>`}
       <div class="account-metrics"><div><b>${count}</b><span>Active work</span></div>
         <div><b>${Number(item.attention_deals || 0)}</b><span>Attention</span></div>
         <div${overdue > 0 ? ' class="is-alert"' : ''}><b>${overdue}</b><span>Overdue</span></div>

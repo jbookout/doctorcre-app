@@ -32,7 +32,7 @@ import {
   columnLabel, completionPlan, contextDrawerSections, groupByColumn, keyboardTarget,
   loadDealContext, moveIntent, moveSummary, moveTitle, noteText, dealName,
 } from './pipeline-model.js';
-import { isClosedDeal, localDeals, needsAttention } from './deal-review-model.js';
+import { isClosedDeal, localDeals, needsAttention, overdueLabel, overdueSince } from './deal-review-model.js';
 import { lostDeals, closedDeals, urgencyOrder, concise, automaticMove, PHASE_TRIGGERS } from './local-deals-model.js';
 import { renderDealTimeline, renderDealUpdates } from './deal-timeline.js';
 import { renderDealChecklist } from './deal-checklist.js';
@@ -99,12 +99,14 @@ function autoHtml(deal) {
   return move ? `<div class="auto-move"><span>${esc(move.text.slice(0, move.text.lastIndexOf(' ')))}</span> <time>${esc(move.text.slice(move.text.lastIndexOf(' ') + 1))}</time></div>` : '';
 }
 const dealTitle = (deal) => dealName(deal.name);
+const phoneBoard = globalThis.matchMedia?.('(max-width:480px)');
 function cardHtml(deal) {
-  const attention = needsAttention(deal);
+  const today = todayIso(), overdue = overdueLabel(overdueSince(deal, today), today);
+  const attention = Boolean(overdue);
   const pending = pendingCommand(state.fieldWrites, cellKey(deal.id, 'phase'));
   return `<article class="kanban-card" data-id="${esc(deal.id)}" data-attention="${attention}" data-phase="${esc(deal.phase)}" draggable="true" tabindex="0"${pending ? ' data-pending="true"' : ''}${state.lifted === deal.id ? ' data-lifted="true"' : ''} aria-label="${esc(dealTitle(deal))}, ${esc(columnLabel(deal.phase))}">
-    <div class="work-meta"><span class="owner">${esc(actorName(deal.owner))}</span>${attention ? '<span class="attention-flag"><span aria-hidden="true">◆</span> Overdue</span>' : ''}</div>
-    <div class="deal-alert">${renderDealAlert(deal,{today:todayIso(),heading:'h4',buttons:true})}</div>
+    <div class="work-meta"><span class="owner">${esc(actorName(deal.owner))}</span>${attention ? `<span class="attention-flag"><span aria-hidden="true">◆</span> ${overdue}</span>` : ''}</div>
+    <div class="deal-alert">${renderDealAlert(deal,{today,heading:'h4',buttons:true})}</div>
     ${renderDealVendors(deal.vendors)}
     ${renderClientPortalLink(deal.client_portal_url)}
     ${autoHtml(deal)}
@@ -221,8 +223,10 @@ function renderBoard() {
   }
   publishDocRead('getBoard', { deals: rows });
   const active = rows.filter(d => d.operating_state !== 'parked');
-  const prospects = rows.filter(d => columnByValue(d.phase)?.slug === 'pending');
-  const parked = rows.filter(d => d.operating_state === 'parked' && columnByValue(d.phase)?.slug !== 'pending');
+  // A phone shows only work in motion; every parked deal folds into the Parked lane.
+  const foldParked = Boolean(phoneBoard?.matches);
+  const prospects = rows.filter(d => columnByValue(d.phase)?.slug === 'pending' && (!foldParked || d.operating_state !== 'parked'));
+  const parked = rows.filter(d => d.operating_state === 'parked' && (foldParked || columnByValue(d.phase)?.slug !== 'pending'));
   renderBoardMessage();
   const grouped = groupByColumn(active);
   state.unplaced = grouped.unplaced.length;
@@ -911,7 +915,7 @@ function detailHtml(detail) {
   return `<div class="deal-freshness"><time id="detailUpdated" title="Last updated"></time><button class="btn icon-btn" type="button" data-refresh-detail aria-label="Refresh deal" title="Refresh">↻</button></div><p id="detailReadStatus" role="status"></p>
     <section class="deal-opening-snapshot" data-detail-read="snapshot" aria-label="Deal snapshot">
       <div class="deal-alert">${renderDealItems({...d,items:detail.items || d.items},{today:todayIso(),buttons:true})}</div>
-      ${showNextStep ? `<p class="deal-current-action"><span>${d.next_date && d.next_date < todayIso() ? 'Overdue action' : 'Next action'}</span><strong>${esc(nextStep)}</strong>${d.next_date ? `<span>Due <time datetime="${esc(d.next_date)}">${esc(dateWords(d.next_date))}</time></span>` : ''}</p>` : ''}
+      ${showNextStep ? `<p class="deal-current-action"><span>${d.next_date && d.next_date < todayIso() ? 'Overdue action' : 'Next action'}</span>: <strong>${esc(nextStep)}</strong>${d.next_date ? ` · <span>Due <time datetime="${esc(d.next_date)}">${esc(dateWords(d.next_date))}</time></span>` : ''}</p>` : ''}
       <dl class="deal-snapshot-facts">${d.workspace_kind === 'national_account' || d.account_client_id ? `<div><dt>Market agent</dt><dd>${esc(d.market_agent || 'Unassigned')}</dd></div>` : ''}${d.client_name ? `<div><dt>Client</dt><dd>${esc(d.client_name)}</dd></div>` : ''}${d.type ? `<div><dt>Type</dt><dd>${esc(d.type)}</dd></div>` : ''}${d.outcome ? `<div><dt>Outcome</dt><dd>${esc(d.outcome[0].toUpperCase()+d.outcome.slice(1))}</dd></div>` : ''}</dl>
     </section>
     <div data-detail-read="checklist">${renderDealChecklist(detail.checklist)}</div>
@@ -1371,6 +1375,7 @@ function wire() {
   $('closedSearch').addEventListener('input', renderClosedDeals);
   $('boardView').addEventListener('click', () => changeView('board'));
   $('listView').addEventListener('click', () => changeView('list'));
+  phoneBoard?.addEventListener('change', renderBoard);
   $('parkedToggle').addEventListener('click', () => { state.parkedOpen = !state.parkedOpen; $('parkedToggle').setAttribute('aria-pressed',String(state.parkedOpen)); renderBoard(); });
   $('kanban').addEventListener('toggle', e => { if(e.target.classList.contains('parked-lane')) { state.parkedOpen=e.target.open; $('parkedToggle').setAttribute('aria-pressed',String(state.parkedOpen)); } },true);
   $('panelBody').addEventListener('toggle', event => {
