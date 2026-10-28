@@ -865,7 +865,7 @@ function syncUpdateForm() {
   button.textContent = pending || pendingStep ? 'Check outcome' : 'Add update';
   form.querySelector('[data-review-update-step]').hidden = !updateDraft.conflict;
   form.querySelector('[data-discard-update]').disabled = Boolean(pending || pendingStep) || !updateDraft.text;
-  if (!pending) $('detailUpdateStatus').textContent = updateDraft.noteSaved ? 'Update added; next step still needs to be saved.' : updateDraft.text ? 'Unsent draft · kept while this page is open' : '';
+  if (!pending) $('detailUpdateStatus').textContent = updateDraft.noteSaved ? updateDraft.message || 'Update added; next step still needs to be saved.' : updateDraft.text ? 'Unsent draft · kept while this page is open' : '';
   if (pending) $('detailUpdateStatus').textContent = pending.message || 'Saving update…';
 }
 function validateDetail(detail, id) {
@@ -896,6 +896,7 @@ async function saveUpdate(id) {
       const promise = runFollowUp(key,{verb:'add-deal-note',args,summary:'Deal update'});
       syncUpdateForm();
       const result = await promise;
+      state.boardSync.requestRefresh('deal-update');
       if (result?.status !== 'ok') {
         if (state.panelDeal === id && $('detailUpdateStatus')) $('detailUpdateStatus').textContent = result?.message || 'Update not confirmed';
         return;
@@ -909,16 +910,17 @@ async function saveUpdate(id) {
       const result = await runFollowUp(nextStepKey(id), {verb:'set-next-step', args:{deal:id,text:draft.step,next_date:draft.date || null}, reviewed:draft.reviewed, summary:'Next step'});
       if (result?.status !== 'ok') {
         draft.conflict = result?.status === 'conflict';
+        draft.message = `Update added; next step not saved. ${result?.message || 'Review the current next step and retry.'}`;
         if (state.panelDeal === id && $('detailUpdateStatus')) {
           syncUpdateForm();
-          $('detailUpdateStatus').textContent = `Update added; next step not saved. ${result?.message || 'Review the current next step and retry.'}`;
+          $('detailUpdateStatus').textContent = draft.message;
         }
         return;
       }
     }
     if (actor !== state.selfActor || draftActor !== actor) return;
     discardUpdate(id);
-    state.boardSync.requestRefresh('deal-update');
+    if (changed) state.boardSync.requestRefresh('deal-update');
     if (state.panelDeal === id) {
       await refreshPanel();
       if ($('detailUpdateStatus')) $('detailUpdateStatus').textContent = 'Update added';
@@ -1441,8 +1443,8 @@ function wire() {
         if (updateDraft !== draft || draftActor !== state.selfActor) return;
         draft.reviewed = {next_step:detail.deal.next_step, next_date:detail.deal.next_date};
         draft.conflict = false;
+        draft.message = `Current next step: ${noteText(detail.deal.next_step) || 'None'} (${detail.deal.next_date || 'no date'}). Retry to replace it.`;
         syncUpdateForm();
-        $('detailUpdateStatus').textContent = `Current next step: ${noteText(detail.deal.next_step) || 'None'} (${detail.deal.next_date || 'no date'}). Retry to replace it.`;
       }).catch(() => { if (updateDraft === draft) $('detailUpdateStatus').textContent = 'Could not read the current next step.'; });
     }
     if (e.target.closest('[data-refresh-detail]')) {
