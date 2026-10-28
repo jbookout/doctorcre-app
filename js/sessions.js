@@ -15,7 +15,6 @@ import {
   NO_OPEN_SENTENCE, countsLine, dispatchView, identityRequest, lineageSummary,
   listState, refuseDispatchHistory, refuseSessionIdentity, sessionCards,
 } from "./sessions-model.js";
-import { createFixtureClient } from "./fixture-client.js";
 import { createLiveClient } from "./live-client.js";
 import { resolveDealroomBoot } from "./boot-mode.js";
 import { formatClock } from "./visual-system.js";
@@ -336,7 +335,7 @@ export function mountSessions({ outage = null } = {}) {
   const resolved = resolveDealroomBoot(location);
   const boot = resolved.mode === "live"
     ? Promise.resolve(createLiveClient())
-    : createFixtureClient({ ...resolved.options, ...(outage ? { outage } : {}) });
+    : import("./fixture-client.js").then(({ createFixtureClient }) => createFixtureClient({ ...resolved.options, ...(outage ? { outage } : {}) }));
   Promise.resolve(boot).then((ready) => {
     client = ready;
     mountAutoRefresh({ document, window: globalThis.window, refresh: read });

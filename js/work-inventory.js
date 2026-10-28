@@ -24,7 +24,6 @@ import {
 } from "./delivery-evidence-model.js";
 import { createCommandDock } from "./command-dock.js";
 import { performCommand } from "./command-feedback.mjs";
-import { createFixtureClient } from "./fixture-client.js";
 import { createLiveClient } from "./live-client.js";
 import { resolveDealroomBoot } from "./boot-mode.js";
 import { mountNotificationBadge, mountPrefs } from "./shell.js";
@@ -761,7 +760,7 @@ async function boot() {
 
   mountDock();
   const resolved = resolveDealroomBoot(globalThis.location || { hostname: "", search: "" });
-  client = resolved.mode === "live" ? createLiveClient() : await createFixtureClient(resolved.options);
+  client = resolved.mode === "live" ? createLiveClient() : await (await import("./fixture-client.js")).createFixtureClient(resolved.options);
   mountNotificationBadge(client);
   await read();
   mountAutoRefresh({ document, window: globalThis.window, refresh: async ({ signal }) => { await read({ background: true, signal }); if (!signal.aborted && decision.ref) await readCard(decision.ref, { signal }); } });

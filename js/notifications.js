@@ -27,7 +27,6 @@
 //      person decides again. A suppressed row is MARKED, never hidden.
 import { createCommandDock } from "./command-dock.js";
 import { performCommand } from "./command-feedback.mjs";
-import { createFixtureClient } from "./fixture-client.js";
 import { mountAutoRefresh } from "./auto-refresh.mjs";
 import { createLiveClient } from "./live-client.js";
 import { resolveDealroomBoot } from "./boot-mode.js";
@@ -526,7 +525,7 @@ async function boot() {
   const outage = params.get("outage");
   client = boot_.mode === "live"
     ? createLiveClient()
-    : await createFixtureClient({ ...boot_.options, ...(outage ? { outage } : {}) });
+    : await (await import("./fixture-client.js")).createFixtureClient({ ...boot_.options, ...(outage ? { outage } : {}) });
   mountNotificationBadge(client);
   mountAutoRefresh({ document, window: globalThis.window, refresh: load });
   await load();

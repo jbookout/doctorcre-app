@@ -1,4 +1,3 @@
-import { createFixtureClient } from './fixture-client.js';
 import { createLiveClient } from './live-client.js';
 import { resolveDealroomBoot } from './boot-mode.js';
 import { mountAutoRefresh, readWithDeadline, updatedLabel } from './auto-refresh.mjs';
@@ -138,6 +137,6 @@ export function mountDocActivity({ document: root, window, client, intervalMs })
 }
 if (typeof document !== 'undefined' && document.getElementById('activityFeed')) {
   const boot = resolveDealroomBoot(location);
-  const client = boot.mode === 'live' ? createLiveClient(boot.options) : await createFixtureClient(boot.options);
+  const client = boot.mode === 'live' ? createLiveClient(boot.options) : await (await import("./fixture-client.js")).createFixtureClient(boot.options);
   mountDocActivity({ document, window, client });
 }

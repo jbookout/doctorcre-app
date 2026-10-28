@@ -14,7 +14,6 @@ import { selectDocRecord, pageDocContext } from './doc-context.js';
 //   3. READ ONLY. No write verb is reachable from this page. A critical date is
 //      added on the deal itself.
 
-import { createFixtureClient } from "./fixture-client.js";
 import { createLiveClient } from "./live-client.js";
 import { deploymentIdentity, resolveDealroomBoot } from "./boot-mode.js";
 import { mountNotificationBadge, mountPrefs } from "./shell.js";
@@ -414,7 +413,7 @@ async function boot() {
   wire();
   render();
   const resolved = resolveDealroomBoot(globalThis.location || { hostname: "", search: "" });
-  client = resolved.mode === "live" ? createLiveClient() : await createFixtureClient(resolved.options);
+  client = resolved.mode === "live" ? createLiveClient() : await (await import("./fixture-client.js")).createFixtureClient(resolved.options);
   mountNotificationBadge(client);
   mountAutoRefresh({ document, window: globalThis.window, refresh: () => load({ failClosed: true }) });
   await load();
