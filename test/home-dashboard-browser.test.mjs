@@ -65,7 +65,6 @@ async function open(t, { calendar, initialBriefFailure = false, theme = 'dark', 
     'read-resource-dashboard': () => client.readResourceDashboard(), 'schedule-board': () => client.scheduleBoard(),
     'list-notifications': async () => ({ unread_count: 0, notifications: [] }),
     'notification-feed': async () => ({ unread_count: 0, notifications: [] }),
-    'email-proposal-quality': () => client.getEmailProposalQuality(),
     'list-email-proposals': async args => ({ schema_version: args.mode === 'recent_outcomes' ? 'email-reply-outcomes.v1' : 'email-proposals.v1', proposals: [], send: false, more: false, next_cursor: null }),
     'list-email-thread-filings': async () => ({ filings: [] }),
     'read-call-outcomes': async () => ({ schema_version: 'call-outcomes.v1', calls: [], send: false }),
@@ -237,7 +236,7 @@ test('Home desktop and phone show flags, visual agenda, ranked leads and wide en
     assert.match(await page.locator('#observedAt').textContent(), /^Updated /);
     const text = await page.locator('main').textContent();
     assert.doesNotMatch(text, /source|records read|read again|retry|Doc at work|Changed in 7 days|Workspace structure/i);
-    assert.ok(calls.every(name => Object.keys({ 'morning-brief':1, 'read-invoice-tracker':1, 'today-triage':1,'list-feature-switches': 1, 'list-doc-suggestions': 1, 'read-home-agenda': 1, 'read-post-call-followups': 1, 'deal-room-board': 1, 'get-deal-room': 1, 'lead-board': 1, 'list-notifications': 1, 'notification-feed': 1, 'read-call-outcomes': 1, 'list-email-proposals': 1, 'list-email-thread-filings': 1, 'email-proposal-quality': 1 }).includes(name)), `no write verb runs: ${calls.join(', ')}`);
+    assert.ok(calls.every(name => Object.keys({ 'morning-brief':1, 'read-invoice-tracker':1, 'today-triage':1,'list-feature-switches': 1, 'list-doc-suggestions': 1, 'read-home-agenda': 1, 'read-post-call-followups': 1, 'deal-room-board': 1, 'get-deal-room': 1, 'lead-board': 1, 'list-notifications': 1, 'notification-feed': 1, 'read-call-outcomes': 1, 'list-email-proposals': 1, 'list-email-thread-filings': 1 }).includes(name)), `no write verb runs: ${calls.join(', ')}`);
     await screenshot(page, width === 1440 ? 'desktop' : `phone-${width}`);
     const first = page.locator('.home-lead').first(); await first.click();
     assert.equal(await page.locator('#homeDetail').evaluate(dialog => dialog.open), true);
@@ -845,7 +844,7 @@ for (const wake of ['visibility', 'online']) test(`Home retains meetings during 
   assert.deepEqual(errors, []);
 });
 
-for (const width of [1440, 390]) for (const theme of ['light', 'dark']) test(`Upcoming meetings is compact and above the fold at ${width}px ${theme}`, async t => {
+for (const width of [1440, 390]) for (const theme of ['light', 'dark']) test(`Upcoming meetings is compact and follows the decisions and deals at ${width}px ${theme}`, async t => {
   const { page, errors } = await open(t, { width, height: width === 390 ? 844 : 900, theme, calendar: {
     state: 'partial', notes: ['Check Outlook for attendance and cancellations.'], items: [
       { start: '2026-10-01T16:00:00Z', title: 'Demo practice meeting', location: 'Demo office', attendee_count: 3, all_day: false },
@@ -858,8 +857,8 @@ for (const width of [1440, 390]) for (const theme of ['light', 'dark']) test(`Up
   assert.match(await card.innerText(), /2 meetings/);
   assert.doesNotMatch(await card.innerText(), /7 days/);
   assert.equal(await card.locator('a, .home-flag').count(), 0);
-  const bounds = await card.boundingBox();
-  assert.ok(bounds.y + bounds.height < (width === 390 ? 844 : 900), 'meetings card fits in the first viewport');
+  assert.ok(await card.evaluate(node => Boolean(document.getElementById('dealAttention').compareDocumentPosition(node) & Node.DOCUMENT_POSITION_FOLLOWING)), 'decisions and deal flags come before meetings');
+  await card.scrollIntoViewIfNeeded();
   await screenshot(page, `home-meetings-${width}-${theme}`);
   for (const row of await card.locator('.home-meeting').all()) { const { height } = await row.boundingBox(); assert.ok(height <= 64, `meeting row uses two compact lines, measured ${height}px`); }
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);

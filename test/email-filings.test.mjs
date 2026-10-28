@@ -56,7 +56,7 @@ test('a refused Undo leaves the filing in place with the reason', async () => {
     undoEmailThreadFiling: async () => { throw Object.assign(Error('refused'), { payload: { error: 'email_thread_filing_changed' } }); } });
   await view.refresh();
   await undo(0);
-  assert.match(container.textContent, /changed since it was filed/);
+  assert.match(container.textContent, /changed on the deal since it was filed/);
   assert.equal(container.querySelectorAll('button').length, 1);
 });
 

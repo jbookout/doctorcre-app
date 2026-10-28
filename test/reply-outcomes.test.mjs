@@ -49,8 +49,8 @@ test('old and malformed outcomes reads remain unavailable and never claim empty'
     { ...page(), more: true, next_cursor: null }, { ...page(), send: true }]) {
     const { view, container } = setup(t, () => value);
     await view.refresh();
-    assert.match(container.textContent, /Could not load recent reply outcomes/);
-    assert.doesNotMatch(container.textContent, /No recorded reply outcomes|Demo reply/);
+    assert.match(container.textContent, /Could not load recent replies/);
+    assert.doesNotMatch(container.textContent, /No recent replies|Demo reply/);
   }
 });
 

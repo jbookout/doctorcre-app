@@ -34,7 +34,7 @@ function pageRows(value, stream, actor) {
 export function mountReplyOutcomes({ container, client }) {
   const win = container.ownerDocument.defaultView;
   let actor = null, retired = false, disposed = false, epoch = 0;
-  let streams = { recent: initial(), pending: initial() };
+  let streams = { pending: initial(), recent: initial() };
   function render() {
     if (disposed) return;
     const focused = container.contains(container.ownerDocument.activeElement) ? container.ownerDocument.activeElement : null;
@@ -44,27 +44,25 @@ export function mountReplyOutcomes({ container, client }) {
     container.setAttribute('aria-busy', String(Object.values(streams).some(state => state.status === 'loading')));
     const sections = Object.entries(streams).map(([name, state]) => {
       const rows = name === 'pending' ? state.rows.filter(row => !streams.recent.rows.some(outcome => outcome.id === row.id)) : state.rows;
-      const title = name === 'recent' ? 'recent reply outcomes' : 'pending replies';
-      return `<section aria-label="${name === 'recent' ? 'Recent reply outcomes' : 'Pending replies'}">
-        <h3>${name === 'recent' ? 'Recent outcomes' : 'Pending replies'}</h3>
-        ${state.status === 'loading' ? '<p role="status">Updating reply delivery…</p>' : ''}
+      const title = name === 'recent' ? 'recent replies' : 'pending replies';
+      return `<section aria-label="${name === 'recent' ? 'Recent replies' : 'Pending replies'}">
+        <h3 tabindex="-1">${name === 'recent' ? 'Recent replies' : 'Pending replies'}</h3>
+        ${state.status === 'loading' ? '<p class="home-empty" role="status">Updating replies…</p>' : ''}
         ${state.status === 'error' ? `<p role="status">Could not load ${title}.${state.loaded ? ' Showing the last successful read.' : ''}</p><button type="button" class="home-outline" data-reply-retry="${name}">Retry ${title}</button>` : ''}
-        ${state.loaded && state.status === 'ready' && !rows.length ? `<p class="home-empty">${state.more ? 'No matching replies on this page. More replies are available.' : name === 'recent' ? 'No recorded reply outcomes.' : 'No replies pending delivery.'}</p>` : ''}
+        ${state.loaded && state.status === 'ready' && !rows.length ? `<p class="home-empty">${state.more ? 'No matching replies on this page. More replies are available.' : name === 'recent' ? 'No recent replies.' : 'No replies waiting to send.'}</p>` : ''}
         ${rows.map(row => `<article class="email-proposal" data-reply-outcome="${E(row.id)}">
           <h4>${E(row.subject)}</h4>
           <p>${row.outcome === 'sent' ? 'Sent' : row.outcome === 'failed' ? `Failed · ${E(row.reason)}` : 'Pending · Delivery is not yet confirmed.'}</p>
           ${row.recordedAt ? `<p>Result recorded <time datetime="${E(row.recordedAt)}">${E(new Date(row.recordedAt).toLocaleString())}</time></p>` : ''}
           <a href="/deals?deal=${encodeURIComponent(row.deal)}">Open deal</a>
         </article>`).join('')}
-        ${state.more && state.status !== 'error' ? `<button type="button" class="home-outline" data-reply-more="${name}"${state.status === 'loading' ? ' disabled' : ''}>Load more ${name === 'recent' ? 'outcomes' : 'pending replies'}</button>` : ''}
+        ${state.more && state.status !== 'error' ? `<button type="button" class="home-outline" data-reply-more="${name}"${state.status === 'loading' ? ' disabled' : ''}>Load more ${name === 'recent' ? 'recent replies' : 'pending replies'}</button>` : ''}
       </section>`;
     }).join('');
-    container.innerHTML = `<header class="home-panel-head"><h2 tabindex="-1">Reply delivery</h2></header>
-      ${retired || !partner(actor) ? '<p role="status">Sign in as a partner to view reply delivery.</p>'
-        : `<p>Your submitted replies. Sent records a send outcome, not recipient delivery or a read receipt.</p>${sections}`}`;
+    container.innerHTML = retired || !partner(actor) ? '<p role="status">Sign in as a partner to see your replies.</p>' : sections;
     if (focused) {
       const replyLink = focusReply && [...container.querySelectorAll('[data-reply-outcome]')].find(node => node.dataset.replyOutcome === focusReply)?.querySelector('a');
-      (replyLink?.getAttribute('href') === focusHref ? replyLink : container.querySelector(`[data-reply-retry="${focusStream}"], [data-reply-more="${focusStream}"]`) || container.querySelector('h2'))?.focus();
+      (replyLink?.getAttribute('href') === focusHref ? replyLink : container.querySelector(`[data-reply-retry="${focusStream}"], [data-reply-more="${focusStream}"]`) || container.querySelector('h3'))?.focus();
     }
   }
   function retire() {

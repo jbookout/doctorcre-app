@@ -1,4 +1,4 @@
-/* Home: one dominant element, the deals that need Joe, then quieter panels.
+/* Home: decisions first (call and email follow-ups), then the deals that need Joe, then quieter panels.
  * Every value comes from css/tokens.css. Panels sit one tone step above the
  * ground; rows inside a panel are separated by hairlines, never boxed again.
  * Motion is state change only: hover and focus change border or ink. */
@@ -26,17 +26,18 @@
 
 /* The dominant panel: the deals that need Joe. */
 .home-deals { padding: var(--space-5) var(--space-6); }
-.home-deals .home-panel-head { align-items: flex-start; margin-bottom: var(--space-4); }
+.home-deals .home-panel-head { margin-bottom: var(--space-4); }
 .home-deals .home-panel-head h2 { font-size: var(--font-size-3); }
-.home-counts { display: flex; flex-wrap: wrap; gap: var(--space-1) var(--space-4); margin: var(--space-2) 0 0; color: var(--fg-muted); font-size: var(--font-size-1); font-variant-numeric: tabular-nums; }
+.home-panel-foot { margin-top: var(--space-4); padding-top: var(--space-3); border-top: var(--hairline-width) solid var(--hairline); }
+.home-counts { display: flex; flex-wrap: wrap; gap: var(--space-1) var(--space-4); margin: 0; color: var(--fg-muted); font-size: var(--font-size-1); font-variant-numeric: tabular-nums; }
 .home-counts span { white-space: nowrap; }
-.home-counts b { color: var(--fg); font-weight: var(--font-weight-strong); }
+.home-counts b { color: inherit; font-weight: var(--font-weight-regular); }
 
-/* Links that act. Only the primary one carries the accent. */
+/* Links that act. The accent belongs to a primary action, never to navigation. */
+.home-plain-link { display: inline-flex; align-items: center; flex: none; min-height: var(--touch); color: var(--fg-muted); font-size: var(--font-size-1); text-decoration: underline; text-decoration-color: var(--hairline-strong); text-underline-offset: 4px; }
+.home-plain-link:hover { color: var(--fg); text-decoration-color: currentColor; }
 .home-outline { display: inline-flex; align-items: center; justify-content: center; gap: var(--space-2); flex: none; min-height: var(--touch); padding: 0 var(--space-4); border: var(--hairline-width) solid var(--hairline-strong); border-radius: var(--radius-2); color: var(--fg); font-size: var(--font-size-1); font-weight: var(--font-weight-strong); text-decoration: none; transition: border-color var(--duration-hover) var(--ease-out), background-color var(--duration-hover) var(--ease-out); }
 .home-outline:hover { border-color: var(--fg-quiet); background: var(--surface-2); }
-#homePrimaryAction { border-color: var(--accent); background: var(--accent); color: var(--on-accent); }
-#homePrimaryAction:hover { border-color: var(--accent-hover); background: var(--accent-hover); }
 .home-icon-link { display: grid; place-items: center; flex: none; min-width: var(--touch); min-height: var(--touch); border-radius: var(--radius-2); color: var(--fg-muted); text-decoration: none; transition: color var(--duration-hover) var(--ease-out), background-color var(--duration-hover) var(--ease-out); }
 .home-icon-link:hover { color: var(--fg); background: var(--surface-2); }
 
@@ -60,9 +61,7 @@
 .home-meeting-warning { margin: 0 0 var(--space-2); padding: var(--space-2) var(--space-3); border-left: 3px solid var(--status-warn); background: color-mix(in srgb, var(--status-warn) 10%, transparent); color: var(--status-warn-ink); font-size: var(--font-size-1); }
 .home-meeting-failure { margin: 0; padding: var(--space-3) 0; color: var(--status-danger-ink); font-size: var(--font-size-1); }
 .home-empty { margin: 0; padding: var(--space-3) 0; color: var(--fg-muted); font-size: var(--font-size-1); }
-.home-call-tasks { margin-top: var(--space-4); padding-top: var(--space-4); border-top: var(--hairline-width) solid var(--hairline); }
-.home-call-tasks[hidden] { display: none; }
-.home-call-tasks h3 { margin: 0 0 var(--space-3); font-size: var(--font-size-2); }
+.home-call-tasks h3 { margin: 0 0 var(--space-3); font: var(--font-weight-strong) var(--font-size-2)/var(--line-height-heading) var(--font-text); }
 .home-call-task { display: flex; gap: var(--space-4); justify-content: space-between; padding: var(--space-3) 0; }
 .home-call-task > div { min-width: 0; }
 .home-call-task a { color: var(--fg); font-weight: var(--font-weight-strong); overflow-wrap: anywhere; }
@@ -151,8 +150,6 @@
   .home-tools .scope-switch { width: auto; }
   .home-updated { width: 100%; justify-content: flex-end; }
   .home-panel, .home-deals { padding: var(--space-4); }
-  .home-deals .home-panel-head { flex-direction: column; align-items: stretch; gap: var(--space-3); }
-  #homePrimaryAction { width: 100%; }
   .home-grid { grid-template-columns: minmax(0, 1fr); }
   .home-call-task { flex-direction: column; gap: var(--space-2); }
   .home-call-task-controls { flex-wrap: wrap; }
@@ -163,7 +160,15 @@
   .home-detail-summary > div { flex-basis: 100%; }
 }
 
-#homeEmailFollowups, #homeEmailQuality { grid-column: 1 / -1; overflow-wrap: anywhere; }
+#homeEmailFollowups, #homeEmailActivity { overflow-wrap: anywhere; }
+
+/* Email activity: one quiet panel. Pending replies, recent replies, then emails filed automatically. */
+.home-email-activity h3 { margin: var(--space-3) 0 var(--space-2); color: var(--fg-muted); font-size: var(--font-size-1); font-weight: var(--font-weight-strong); }
+.home-email-activity [aria-busy] > section:first-child h3, .home-email-activity #homeReplyOutcomes > p:first-child { margin-top: 0; }
+.home-email-activity h4 { margin: 0; font-size: var(--font-size-2); font-weight: var(--font-weight-strong); overflow-wrap: anywhere; }
+.home-email-activity .email-proposal { padding: var(--space-2) 0; border-top: var(--hairline-width) solid var(--hairline); }
+.home-email-activity .email-proposal p { margin: var(--space-1) 0; color: var(--fg-muted); font-size: var(--font-size-1); }
+.home-email-activity .email-proposal a { color: var(--fg); font-size: var(--font-size-1); }
 
 #homeMeetings .home-panel-head { flex-wrap: wrap; }
 #homeMeetings [data-prepare-meetings] { margin-left: auto; background: transparent; cursor: pointer; }

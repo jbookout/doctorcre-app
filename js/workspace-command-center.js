@@ -21,14 +21,15 @@ const dateLabel = day => new Date(`${day}T12:00:00`).toLocaleDateString(undefine
 
 export function mountHomeDashboard({ document, window, client, now = () => Date.now(), intervalMs }) {
   const $ = id => document.getElementById(id);
-  let emailQuality = null, emailReview = null, replyOutcomes = null, emailFilings = null, emailRetired = false, emailObserver = null;
+  let emailReview = null, replyOutcomes = null, emailFilings = null, emailRetired = false;
+  // A module still downloading when the session ends never mounts; its host says why.
   const retirePendingEmail = () => {
     emailRetired = true;
-    emailObserver?.disconnect();
-    for (const [id, title, view] of [['homeReplyOutcomes', 'Reply delivery', replyOutcomes], ['homeEmailQuality', 'Email proposal quality', emailQuality], ['homeEmailFollowups', 'Email follow-ups', emailReview], ['homeEmailFilings', 'Automatic email filings', emailFilings]]) {
+    for (const [id, html, view] of [['homeEmailFollowups', '<header class="home-panel-head"><h2>Email follow-ups</h2></header><p role="status">Sign in to view email follow-ups.</p>', emailReview],
+      ['homeReplyOutcomes', '<p role="status">Sign in to see your replies.</p>', replyOutcomes], ['homeEmailFilings', '', emailFilings]]) {
       if (view || !$(id)) continue;
       $(id).setAttribute('aria-busy', 'false');
-      $(id).innerHTML = `<header class="home-panel-head"><h2>${title}</h2></header><p role="status">Sign in to view ${title.toLowerCase()}.</p>`;
+      $(id).innerHTML = html;
     }
   };
   window.addEventListener('doctorcre-session-invalidated', retirePendingEmail);
@@ -138,7 +139,7 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
   const refresh = async ({ signal } = {}) => {
     const read = nextRead; nextRead = readHomeDashboard;
     const agendaOnly = read === readHomeAgenda;
-    if (!agendaOnly) { void emailReview?.refresh(); void emailQuality?.refresh(); void replyOutcomes?.refresh(); }
+    if (!agendaOnly) { void emailReview?.refresh(); void replyOutcomes?.refresh(); }
     const currentDocSources = agendaOnly ? docSources.slice(0, 1) : docSources;
     const docTickets = new Map(currentDocSources.map(([key,method]) => [key,pageDocContext?.begin(method)]));
     const epoch = ++sequence;
@@ -294,41 +295,26 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
     button.addEventListener('click', () => select(button.dataset.scope));
     button.addEventListener('keydown', event => { if (!['ArrowLeft', 'ArrowRight'].includes(event.key)) return; event.preventDefault(); const other = HOME_SCOPES[1 - HOME_SCOPES.indexOf(scope)]; select(other); buttons.find(node => node.dataset.scope === other).focus(); });
   });
-  emailObserver = new window.IntersectionObserver(entries => {
-    for (const entry of entries) {
-      if (!entry.isIntersecting) continue;
-      emailObserver.unobserve(entry.target);
-      if (disposed || emailRetired) continue;
-      if (entry.target.id === 'homeReplyOutcomes') import('./reply-outcomes.js').then(({ mountReplyOutcomes }) => {
-        if (disposed || emailRetired) return;
-        replyOutcomes = mountReplyOutcomes({ container: entry.target, client });
-        void replyOutcomes.refresh();
-      });
-      else if (entry.target.id === 'homeEmailQuality') import('./email-quality.js').then(({ mountEmailQuality }) => {
-        if (disposed || emailRetired) return;
-        emailQuality = mountEmailQuality({ container: entry.target, client });
-        void emailQuality.refresh();
-      });
-      else if (entry.target.id === 'homeEmailFilings') import('./email-filings.js').then(({ mountEmailFilings }) => {
-        if (disposed || emailRetired) return;
-        emailFilings = mountEmailFilings({ container: entry.target, client });
-        void emailFilings.refresh();
-      });
-      else import('./email-followups.js').then(({ mountEmailFollowups }) => {
-        if (disposed || emailRetired) return;
-        emailReview = mountEmailFollowups({ container: entry.target, client, onChange: () => {
-          void emailQuality?.refresh(); void replyOutcomes?.refresh(); nextRead = readHomeAgenda; auto.refresh();
-        } });
-        void emailReview.refresh();
-      });
-    }
+  // Email modules load with the page, beside the Home read, not when scrolled to.
+  const mountEmail = (id, available, load, mount) => {
+    if (!$(id) || !available) return;
+    load().then(module => { if (!disposed && !emailRetired) mount(module, $(id)); });
+  };
+  mountEmail('homeEmailFollowups', client.listEmailProposals, () => import('./email-followups.js'), ({ mountEmailFollowups }, container) => {
+    emailReview = mountEmailFollowups({ container, client, onChange: () => { void replyOutcomes?.refresh(); nextRead = readHomeAgenda; auto.refresh(); } });
+    void emailReview.refresh();
   });
-  if ($('homeReplyOutcomes') && client.listEmailProposals) emailObserver.observe($('homeReplyOutcomes'));
-  if ($('homeEmailQuality') && client.getEmailProposalQuality) emailObserver.observe($('homeEmailQuality'));
-  if ($('homeEmailFilings') && client.listEmailThreadFilings) emailObserver.observe($('homeEmailFilings'));
-  if ($('homeEmailFollowups') && client.listEmailProposals) emailObserver.observe($('homeEmailFollowups'));
+  mountEmail('homeReplyOutcomes', client.listEmailProposals, () => import('./reply-outcomes.js'), ({ mountReplyOutcomes }, container) => {
+    replyOutcomes = mountReplyOutcomes({ container, client });
+    void replyOutcomes.refresh();
+  });
+  mountEmail('homeEmailFilings', client.listEmailThreadFilings, () => import('./email-filings.js'), ({ mountEmailFilings }, container) => {
+    emailFilings = mountEmailFilings({ container, client });
+    void emailFilings.refresh();
+  });
+  if ($('homeEmailActivity')) $('homeEmailActivity').hidden = !client.listEmailProposals && !client.listEmailThreadFilings;
   auto.refresh();
-  return { refresh: auto.refresh, dispose() { disposed = true; sequence++; prepEpoch++; meetingPrep?.dispose(); emailObserver?.disconnect(); window.removeEventListener('doctorcre-session-invalidated', retirePendingEmail); window.clearInterval(expiry); auto.dispose(); document.removeEventListener('doctorcre:brief-calendar', updateCalendar); window.removeEventListener('doctorcre-session-invalidated', clearCalendar); relationshipDialog?.dispose(); pastWidget?.dispose(); callTasks?.dispose(); emailReview?.dispose(); emailFilings?.dispose(); emailQuality?.dispose(); replyOutcomes?.dispose(); } };
+  return { refresh: auto.refresh, dispose() { disposed = true; sequence++; prepEpoch++; meetingPrep?.dispose(); window.removeEventListener('doctorcre-session-invalidated', retirePendingEmail); window.clearInterval(expiry); auto.dispose(); document.removeEventListener('doctorcre:brief-calendar', updateCalendar); window.removeEventListener('doctorcre-session-invalidated', clearCalendar); relationshipDialog?.dispose(); pastWidget?.dispose(); callTasks?.dispose(); emailReview?.dispose(); emailFilings?.dispose(); replyOutcomes?.dispose(); } };
 }
 
 if (typeof document !== 'undefined' && document.getElementById('dealAttention')) {

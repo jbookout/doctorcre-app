@@ -1,5 +1,9 @@
 .deal-alert { min-width: 0; }
-.home-flag.deal-alert { display: block; padding: var(--space-4); }
+.home-flag.deal-alert { display: block; position: relative; padding: var(--space-4); }
+/* On Home the whole flag opens the deal: the name link stretches over the row; item links sit above it. */
+.home-flag.deal-alert > :is(h3, h4) > a { display: inline-flex; align-items: center; min-height: var(--touch); color: inherit; }
+.home-flag.deal-alert > :is(h3, h4) > a::after { content: ""; position: absolute; inset: 0; border-radius: inherit; }
+.home-flag.deal-alert .deal-items a { position: relative; z-index: 1; }
 .deal-alert h3, .deal-alert h4 { margin: 0; font-size: var(--font-size-2); line-height: 1.4; overflow-wrap: anywhere; }
 .deal-items-label { margin: var(--space-3) 0 var(--space-1); color: var(--fg-muted); font-size: var(--font-size-1); }
 .deal-items { margin: 0; padding-left: 1.5em; }

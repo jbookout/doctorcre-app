@@ -42,9 +42,9 @@ async function open(t, { width = 390, outcomes = () => pageOf([sent, failed]), w
   await page.goto(`${origin}/?mode=live`);
   await page.locator('#dealAttention[aria-busy="false"]').waitFor();
   const card = page.locator('#homeReplyOutcomes');
-  assert.equal(await card.count(), 1, 'Home has a reply delivery outcomes panel');
+  assert.equal(await card.count(), 1, 'Home has a replies section inside Email activity');
   await card.scrollIntoViewIfNeeded();
-  await card.locator('h2').waitFor();
+  await card.locator('h3').first().waitFor();
   return { page, card, calls };
 }
 
@@ -71,8 +71,8 @@ for (const width of [390, 1440]) test(`Home renders signed-in partner reply deli
 test('Home distinguishes a successful empty reply outcomes read from unavailable data', async t => {
   const { card } = await open(t, { outcomes: () => pageOf([]), waiting: () => ({ schema_version: 'email-proposals.v1', proposals: [], send: false, more: false, next_cursor: null }) });
   await card.page().waitForFunction(() => document.querySelector('#homeReplyOutcomes')?.getAttribute('aria-busy') === 'false');
-  assert.match(await card.innerText(), /No recorded reply outcomes\./);
-  assert.match(await card.innerText(), /No replies pending delivery\./);
+  assert.match(await card.innerText(), /No recent replies\./);
+  assert.match(await card.innerText(), /No replies waiting to send\./);
   assert.equal(await card.locator('article').count(), 0);
 });
 
@@ -80,11 +80,11 @@ test('Home shows a reply outcomes read error with retry while keeping pending re
   let failedRead = true;
   const { card, page } = await open(t, { outcomes: () => { if (failedRead) throw Error('offline'); return pageOf([sent]); } });
   await page.waitForFunction(() => document.querySelector('#homeReplyOutcomes')?.getAttribute('aria-busy') === 'false');
-  assert.match(await card.innerText(), /Could not load recent reply outcomes/);
-  assert.doesNotMatch(await card.innerText(), /No recorded reply outcomes/);
+  assert.match(await card.innerText(), /Could not load recent replies/);
+  assert.doesNotMatch(await card.innerText(), /No recent replies/);
   assert.match(await card.innerText(), /Demo joe submitted reply/);
   failedRead = false;
-  await card.getByRole('button', { name: 'Retry recent reply outcomes' }).click();
+  await card.getByRole('button', { name: 'Retry recent replies' }).click();
   await card.getByText('Demo sent reply', { exact: true }).waitFor();
 });
 
@@ -97,16 +97,16 @@ test('Home reply outcomes pagination is bounded and retries the same failed page
   await page.waitForFunction(() => document.querySelector('#homeReplyOutcomes')?.getAttribute('aria-busy') === 'false');
   assert.equal(calls.filter(args => args.mode).length, 1, 'initial read does not drain history');
   assert.match(await card.innerText(), /No matching replies on this page/);
-  assert.doesNotMatch(await card.innerText(), /No replies pending delivery/);
-  assert.equal(await card.getByRole('button', { name: 'Load more outcomes', exact: true }).count(), 1);
-  await card.getByRole('button', { name: 'Load more outcomes', exact: true }).click();
-  await card.getByText(/Could not load recent reply outcomes/).waitFor();
+  assert.doesNotMatch(await card.innerText(), /No replies waiting to send/);
+  assert.equal(await card.getByRole('button', { name: 'Load more recent replies', exact: true }).count(), 1);
+  await card.getByRole('button', { name: 'Load more recent replies', exact: true }).click();
+  await card.getByText(/Could not load recent replies/).waitFor();
   assert.match(await card.innerText(), /Demo sent reply/);
   failPage = false;
-  await card.getByRole('button', { name: 'Retry recent reply outcomes', exact: true }).click();
+  await card.getByRole('button', { name: 'Retry recent replies', exact: true }).click();
   await card.getByText('Demo failed reply', { exact: true }).waitFor();
   assert.equal(await card.locator('[data-reply-outcome]').count(), 2);
-  assert.equal(await card.getByRole('button', { name: 'Load more outcomes', exact: true }).count(), 0);
+  assert.equal(await card.getByRole('button', { name: 'Load more recent replies', exact: true }).count(), 0);
   await card.getByRole('button', { name: 'Load more pending replies', exact: true }).click();
   await card.getByText('Demo joe submitted reply', { exact: true }).waitFor();
   assert.deepEqual(calls.filter(args => args.mode).map(args => args.cursor || null), [null, sent.id, sent.id]);
