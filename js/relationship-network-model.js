@@ -140,7 +140,8 @@ export function introductionSuggestions(
     .slice(0, limit)
     .map((s) => ({
       ...s,
-      fromNode: nodes.get(s.via || s.from),
+      fromNode: nodes.get(s.from),
+      path: [s.from, s.via, s.to].filter(Boolean).map(id => nodes.get(id)),
       toNode: nodes.get(s.to),
     }));
 }
