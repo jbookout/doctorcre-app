@@ -27,7 +27,8 @@ test('Home lists pending email evidence and proposed owner/date without exposing
   await view.refresh();
   assert.match(container.textContent, /Email follow-ups/);
   assert.match(container.textContent, /Demo Harbor expansion/);
-  assert.match(container.textContent, /Email sender/);
+  assert.equal(container.querySelector('.email-source').textContent, 'Email · Demo follow-up · Oct 26');
+  assert.match(container.querySelector('.email-waiting').textContent, /^Waiting \d+ business days?$/);
   assert.match(container.textContent, /Please send the revised plan by November 3\./);
   assert.match(container.textContent, /Send the revised plan/);
   assert.match(container.textContent, /Joe/);
@@ -95,7 +96,7 @@ test('Dismiss requires a reason and sends the proposal version the user read', a
   const row = proposal(), calls = [];
   const { container, view, action } = setup({ listEmailProposals: async () => response([row]),
     dismissEmailProposal: async args => { calls.push(args); return { ok: true, proposal_id: row.id, status: 'dismissed', version: 4 }; } });
-  await view.refresh(); await action('Dismiss');
+  await view.refresh(); await action('Add a note');
   await action('Dismiss proposal');
   assert.equal(calls.length, 0);
   const reason = container.querySelector('textarea');
@@ -106,6 +107,45 @@ test('Dismiss requires a reason and sends the proposal version the user read', a
   assert.ok(idempotency_key);
   assert.deepEqual(args, { proposal_id: row.id, base_version: 3, reason: 'Already handled on the call' });
   assert.match(container.textContent, /Dismissed/);
+});
+
+test('provenance names the sender and subject as text, never markup', async () => {
+  const row = proposal(); row.source.sender = 'Dana <b>Demo</b> <dana@example.test>'; row.source.subject = '<img src=x onerror=alert(1)>Plan';
+  const { container, view } = setup({ listEmailProposals: async () => response([row]) });
+  await view.refresh();
+  assert.equal(container.querySelector('.email-source').textContent, 'From Dana Demo · <img src=x onerror=alert(1)>Plan · Oct 26');
+  assert.equal(container.querySelector('.email-source img, .email-source b'), null);
+});
+
+test('a dismiss chip dismisses in one tap with its text as the reason', async () => {
+  const row = proposal(), calls = []; let changes = 0;
+  const { container, view, action } = setup({ listEmailProposals: async () => response([row]),
+    dismissEmailProposal: async args => { calls.push(args); return { ok: true, proposal_id: row.id, status: 'dismissed', version: 4 }; } }, { onChange: () => changes++ });
+  await view.refresh();
+  assert.deepEqual([...container.querySelectorAll('[data-email-chip]')].map(chip => chip.textContent), ['Already handled', 'Wrong deal', 'Not now', 'Wrong']);
+  await action('Not now');
+  const { idempotency_key, ...args } = calls[0];
+  assert.match(idempotency_key, /^[a-f0-9-]{36}$/);
+  assert.deepEqual(args, { proposal_id: row.id, base_version: 3, reason: 'Not now' });
+  assert.match(container.textContent, /Dismissed\./); assert.equal(changes, 1);
+  assert.equal(container.querySelector('[data-email-chip]'), null);
+  await action('Not now'); assert.equal(calls.length, 1);
+});
+
+test('a refused chip dismissal reports the refusal and an uncertain one offers Check outcome with the same request', async () => {
+  const row = proposal(), calls = [];
+  const refused = setup({ listEmailProposals: async () => response([row]),
+    dismissEmailProposal: async () => { throw Object.assign(Error('conflict'), { payload: { error: 'version_conflict' } }); } });
+  await refused.view.refresh(); await refused.action('Wrong deal');
+  assert.match(refused.container.textContent, /changed/);
+  const lost = setup({ listEmailProposals: async () => response([row]),
+    dismissEmailProposal: async args => { calls.push(args); if (calls.length === 1) throw Error('lost response'); return { ok: true, proposal_id: row.id, status: 'dismissed' }; } });
+  await lost.view.refresh(); await lost.action('Already handled');
+  assert.match(lost.container.textContent, /Outcome unknown/);
+  assert.equal(lost.container.querySelector('[data-email-chip]'), null);
+  await lost.action('Check outcome');
+  assert.deepEqual(calls[1], calls[0]); assert.equal(calls[0].reason, 'Already handled');
+  assert.match(lost.container.textContent, /Dismissed\./);
 });
 
 test('unknown confirmation locks other decisions and Check outcome replays the same request', async () => {
@@ -119,7 +159,7 @@ test('unknown confirmation locks other decisions and Check outcome replays the s
   assert.equal(container.querySelector('[data-email-action="confirm"]')?.disabled, true);
   release(); await pending;
   assert.match(container.textContent, /Outcome unknown/);
-  assert.equal(container.querySelector('[data-email-action="dismiss"]'), null);
+  assert.equal(container.querySelector('[data-email-action="note"], [data-email-chip]'), null);
   await action('Check outcome');
   assert.equal(calls.length, 2); assert.deepEqual(calls[0], calls[1]);
   assert.match(container.textContent, /Confirmed/);
@@ -140,7 +180,7 @@ test('stale preview refusals never auto-retry and unavailable previews remain di
   await view.refresh();
   assert.match(container.textContent, /Proposal needs a fresh review/);
   assert.equal(container.querySelector('[data-email-action="preview"]'), null);
-  assert.ok(container.querySelector('[data-email-action="dismiss"]'));
+  assert.ok(container.querySelector('[data-email-action="note"]'));
 });
 
 test('authorization loss and session invalidation clear protected evidence and block late reads', async () => {
@@ -159,7 +199,7 @@ test('authorization loss and session invalidation clear protected evidence and b
 
 test('refresh preserves a dismissal draft and typing focus', async () => {
   const { container, view, action, dom } = setup({ listEmailProposals: async () => response([proposal()]) });
-  await view.refresh(); await action('Dismiss');
+  await view.refresh(); await action('Add a note');
   const textarea = container.querySelector('textarea');
   textarea.value = 'Already discussed'; textarea.focus(); textarea.setSelectionRange(7, 7);
   textarea.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
@@ -174,7 +214,7 @@ test('a dismissal draft retains the version originally reviewed when a newer rea
   const row = proposal(), calls = [];
   const { container, view, action, dom } = setup({ listEmailProposals: async () => response([structuredClone(row)]),
     dismissEmailProposal: async args => { calls.push(args); throw Object.assign(Error('conflict'), { payload: { error: 'version_conflict' } }); } });
-  await view.refresh(); await action('Dismiss');
+  await view.refresh(); await action('Add a note');
   container.querySelector('textarea').value = 'Already handled';
   container.querySelector('textarea').dispatchEvent(new dom.window.Event('input', { bubbles: true }));
   row.version = 4; await view.refresh(); await action('Dismiss proposal');
@@ -186,8 +226,8 @@ test('opening a second dismissal focuses that proposal reason instead of the fir
   const second = { ...proposal(), id: '10000000-0000-4000-8000-000000000002' };
   const { container, view, dom } = setup({ listEmailProposals: async () => response([proposal(), second]) });
   await view.refresh();
-  await view.click({ target: container.querySelectorAll('[data-email-action="dismiss"]')[0] });
-  await view.click({ target: container.querySelector('[data-email-action="dismiss"]') });
+  await view.click({ target: container.querySelectorAll('[data-email-action="note"]')[0] });
+  await view.click({ target: container.querySelector('[data-email-action="note"]') });
   assert.equal(dom.window.document.activeElement.closest('article').dataset.emailId, second.id);
 });
 
@@ -285,7 +325,7 @@ for (const decision of ['dismiss', 'confirm']) test(`reopening a deal recovers t
   } });
   async function decide(view, reason) {
     if (decision === 'dismiss') {
-      await view.action('Dismiss');
+      await view.action('Add a note');
       view.container.querySelector('textarea').value = reason;
       await view.action('Dismiss proposal');
     } else {
@@ -445,7 +485,7 @@ for (const actor of ['joe', 'dell', null]) test(`reply review is offered only to
   const { container, view } = setup({ selfActor: actor, listEmailProposals: async () => response([replyDraft()]) });
   await view.refresh();
   assert.equal(Boolean(container.querySelector('[data-email-action="edit-draft"]')), actor === 'joe');
-  assert.ok(container.querySelector('[data-email-action="dismiss"]'));
+  assert.ok(container.querySelector('[data-email-action="note"]'));
 });
 
 test('recipient changes preserve reviewed addresses across refresh and require explicit fresh review after refusal', async () => {
@@ -500,7 +540,7 @@ for (const code of ['email_draft_copy_address_missing', 'email_draft_source_miss
   assert.equal(container.querySelectorAll('article').length, 2);
   assert.match(container.textContent, /Recipient addresses are unavailable/);
   assert.equal(container.querySelector('[data-email-action="edit-draft"]'), null);
-  assert.equal(container.querySelectorAll('[data-email-action="dismiss"]').length, 2);
+  assert.equal(container.querySelectorAll('[data-email-action="note"]').length, 2);
   assert.doesNotMatch(container.textContent, /Could not load/);
 });
 
@@ -706,7 +746,7 @@ for (const kind of ['file_to_deal', 'possible_new_deal']) test(`partner can dism
     dismissEmailProposal: async args => { writes.push(args); return { ok: true, status: 'dismissed', proposal_id: row.id }; },
     createDeal: async () => assert.fail('Dismiss must never create a deal'),
     confirmEmailFiling: async () => assert.fail('Dismiss must never confirm filing') }, { onChange: () => changes++ });
-  await view.refresh(); await action('Dismiss'); await action('Dismiss proposal');
+  await view.refresh(); await action('Add a note'); await action('Dismiss proposal');
   assert.equal(writes.length, 0);
   container.querySelector('textarea').value = 'Already handled';
   await action('Dismiss proposal');
