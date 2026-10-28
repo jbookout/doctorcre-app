@@ -12,10 +12,10 @@ const workflow = () => JSON.parse(execFileSync('ruby', ['-ryaml', '-rjson', '-e'
   input: readFileSync(new URL('../.github/workflows/deploy-production.yml', import.meta.url), 'utf8'), encoding: 'utf8',
 }));
 
-test('production accepts only a successful same-repository main push staging run and pins its exact source', () => {
+test('production accepts only a successful same-repository main push CI run and pins its exact source', () => {
   const document = workflow();
   const events = document.on ?? document.true;
-  assert.deepEqual(events.workflow_run, { workflows: ['Signed-in staging tests'], types: ['completed'] });
+  assert.deepEqual(events.workflow_run, { workflows: ['CI'], types: ['completed'] });
   assert.deepEqual(Object.keys(events), ['workflow_run']);
   const job = document.jobs.production;
   for (const clause of ["conclusion == 'success'", "head_branch == 'main'", "event == 'push'", 'head_repository.full_name == github.repository']) assert.ok(job.if.includes(clause));
