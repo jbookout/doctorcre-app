@@ -493,3 +493,16 @@ test('H05 introduction details omit internal tags and repeated evidence', async 
   assert.match(text, /Worked together on equipment financing; offered an introduction/);
   assert.deepEqual(errors, []);
 });
+
+
+test('H05 dates identify the recorded relationship without inventing a meeting', async t => {
+  const { page, errors } = await open(t);
+  await page.goto('http://localhost/?mode=live');
+  await page.locator('#homeIntroductions [data-intro-node]').click();
+  await page.locator('.relationship-dialog[open]').waitFor();
+  const dates = page.locator('.relationship-dialog time');
+  assert.deepEqual(await dates.allTextContents(), ['Can introduce · Oct 1, 2026', 'Referred · Oct 1, 2026']);
+  assert.deepEqual(await dates.evaluateAll(nodes => nodes.map(node => node.dateTime)), ['2026-10-01T15:00:00Z', '2026-10-01T15:00:00Z']);
+  assert.doesNotMatch(await page.locator('.relationship-dialog').innerText(), /Met on|Employer/);
+  assert.deepEqual(errors, []);
+});
