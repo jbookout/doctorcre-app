@@ -158,7 +158,7 @@ export function relationshipNetworkFixture(now = new Date().toISOString()) {
   return {
     schema: "carr-relationship-network.v1",
     observed_at: now,
-    valid_until: new Date(Date.parse(now) + 60000).toISOString(),
+    valid_until: new Date(Date.parse(now) + 120_000).toISOString(),
     nodes,
     edges,
     referrals: [

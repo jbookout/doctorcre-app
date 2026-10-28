@@ -82,14 +82,14 @@ export function censusResponse(url) {
       source: "work_inventory_census",
       source_ref: kinds.map((kind) => CENSUS_SOURCE_REFS[kind]).join("+"),
       observed_at: observed.toISOString(),
-      valid_until: new Date(observed.valueOf() + 60_000).toISOString(),
+      valid_until: new Date(observed.valueOf() + 120_000).toISOString(),
       freshness: complete ? "fresh" : "unknown",
       correlation_id: `demo-census-${observed.valueOf()}`,
       safe_explanation: unreadable.length > 0
         ? `This census is INCOMPLETE, not empty: ${unreadable.join(", ")} could not be read. The remaining sources are current as of this request.`
         : partial.length > 0
           ? `This census returned every row it could enumerate, but ${partial.join(", ")} could not be counted in full, so a total is not claimed.`
-          : "Fresh because every source answered a no-store request-time canonical read; valid for 60 seconds.",
+          : "Fresh because every source answered a no-store request-time canonical read; valid for 120 seconds.",
     },
   };
 }

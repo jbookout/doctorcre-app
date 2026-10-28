@@ -5,7 +5,7 @@
   "audience": "verified carr-internal partners",
   "freshness": {
     "observed_at": "UTC timestamp of completed snapshot",
-    "valid_until": "observed_at plus 60 seconds"
+    "valid_until": "observed_at plus 120 seconds"
   },
   "nodes": {
     "id": "exact party:UUID or deal:UUID",

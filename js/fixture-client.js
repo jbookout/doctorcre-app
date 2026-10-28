@@ -2620,11 +2620,11 @@ export async function createFixtureClient(opts = {}) {
     },
 
     // Derive Home counts from the same fixture board. Mint timestamps with the contract
-    // 60-second window so ordinary runs exercise fresh data.
+    // 120-second window so ordinary runs exercise fresh data.
     async commandCenter() {
       const now = Date.now();
       const observed_at = new Date(now).toISOString();
-      const valid_until = new Date(now + 60_000).toISOString();
+      const valid_until = new Date(now + 120_000).toISOString();
       const source = (name) => ({
         source: name,
         source_ref: name === 'command_center' ? 'fixture:command-center' : `fixture:${name}`,
