@@ -63,7 +63,7 @@ test("Home shares graph reason, exact endpoints and owner scope", () => {
   const value = relationshipNetworkFixture(),
     intros = introductionSuggestions(value);
   assert.equal(intros[0].reason, value.suggestions[0].reason);
-  assert.equal(intros[0].toNode.kind, "lead");
+  assert.equal(intros[0].path.at(-1).kind, "lead");
   assert.equal(
     introductionSuggestions(value, { scope: "mine", actor: "dell" }).length,
     0,
@@ -116,7 +116,6 @@ test("introduction paths retain the known person and recorded connector in order
   assert.deepEqual(intro.path.map(node => node.name), [
     "Demo Healthcare Lending", "Demo Practice Builders", "Demo Dental Expansion",
   ]);
-  assert.equal(intro.fromNode.name, "Demo Healthcare Lending");
   value.edges[0].via = null;
   value.suggestions[0].via = null;
   assert.deepEqual(introductionSuggestions(value)[0].path.map(node => node.name), [

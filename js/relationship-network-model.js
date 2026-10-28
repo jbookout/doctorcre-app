@@ -140,9 +140,7 @@ export function introductionSuggestions(
     .slice(0, limit)
     .map((s) => ({
       ...s,
-      fromNode: nodes.get(s.from),
       path: [s.from, s.via, s.to].filter(Boolean).map(id => nodes.get(id)),
-      toNode: nodes.get(s.to),
     }));
 }
 export function focusedNetwork(snapshot, focus, limit = 12) {
