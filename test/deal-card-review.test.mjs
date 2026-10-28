@@ -360,6 +360,11 @@ for (const width of [390,1280]) for (const theme of ['light','dark']) test(`100-
  assert.match(await lane.locator('.stage-preview').textContent(),/Demo multidisciplinary healthcare practice/);
  assert.match(await lane.locator('.stage-preview').textContent(),/98 more/);
  assert.equal(await page.evaluate(()=>document.activeElement?.getAttribute('aria-label')),'Expand Research');
+ assert.equal(await heading.evaluate(h=>{
+  const r=h.getBoundingClientRect(),board=document.querySelector('#kanban').getBoundingClientRect();
+  const hit=document.elementFromPoint(r.left+10,r.top+r.height/2);
+  return r.top>=board.top-1&&r.bottom<=innerHeight&&h.contains(hit);
+ }),true,'collapse keeps its focused heading in view');
  await capture('collapsed');
  await page.locator('#listView').click();await page.locator('#boardView').click();
  await lane.getByRole('button',{name:'Expand Research',exact:true}).click();
