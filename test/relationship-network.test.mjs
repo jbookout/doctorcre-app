@@ -106,3 +106,20 @@ test('R7 rejects malformed optional text fields and null relationship rows befor
  }
  for(const section of ['referrals','suggestions']) {const s=relationshipNetworkFixture();s[section][0]=null;assert.equal(validNetwork(s),false);}
 });
+
+
+test("introduction paths retain the known person and recorded connector in order", () => {
+  const value = relationshipNetworkFixture();
+  value.edges[0].via = "party:demo-build";
+  value.suggestions[0].via = "party:demo-build";
+  const [intro] = introductionSuggestions(value);
+  assert.deepEqual(intro.path.map(node => node.name), [
+    "Demo Healthcare Lending", "Demo Practice Builders", "Demo Dental Expansion",
+  ]);
+  assert.equal(intro.fromNode.name, "Demo Healthcare Lending");
+  value.edges[0].via = null;
+  value.suggestions[0].via = null;
+  assert.deepEqual(introductionSuggestions(value)[0].path.map(node => node.name), [
+    "Demo Healthcare Lending", "Demo Dental Expansion",
+  ]);
+});
