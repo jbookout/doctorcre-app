@@ -1,7 +1,6 @@
 import {onDialogClosed} from './dialog-lifecycle.js';
 import { selectDocRecord } from './doc-context.js';
 import { mountAutoRefresh, updatedLabel, readWithDeadline } from './auto-refresh.mjs';
-import { createFixtureClient } from './fixture-client.js';
 import { createLiveClient } from './live-client.js';
 import { resolveDealroomBoot } from './boot-mode.js';
 import { mountAtlas } from './atlas.js';
@@ -283,7 +282,7 @@ function wireQueuePane(){
 
 function openAtlas(node=null){mountAtlas({client,getIncidentsRead:()=>view.reads.incidents,node,onChange:atlas=>{view.atlas=atlas;}});}
 async function boot(){
- const resolved=resolveDealroomBoot(globalThis.location);client=resolved.mode==='live'?createLiveClient():await createFixtureClient(resolved.options);
+ const resolved=resolveDealroomBoot(globalThis.location);client=resolved.mode==='live'?createLiveClient():await (await import("./fixture-client.js")).createFixtureClient(resolved.options);
  onDialogClosed($("jobDialog"),()=>selectDocRecord(null,null));
  details=mountJobDetail({client,document});board=mountBoard({client,openTask:task=>details.open(withHolders([task])[0]),closeTask:()=>details.clear(),onTasks:renderAttention});board.start();
  $('crAttentionList').addEventListener('click',event=>{if(event.target.closest('[data-attention-retry]')){board.refresh(true).catch(()=>{});return;}const button=event.target.closest('[data-attention-open]');const task=attention.observation.state==='read'&&withHolders(attention.tasks).find(task=>task.id===button?.dataset.attentionOpen);if(task)details.open(task);});

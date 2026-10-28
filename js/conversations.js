@@ -33,7 +33,6 @@ import { mountAutoRefresh, readWithDeadline, updatedLabel } from "./auto-refresh
 //      only source of the new version, and asks the person to press again.
 import { createCommandDock } from "./command-dock.js";
 import { performCommand } from "./command-feedback.mjs";
-import { createFixtureClient } from "./fixture-client.js";
 import { createLiveClient } from "./live-client.js";
 import { resolveDealroomBoot } from "./boot-mode.js";
 import { mountNotificationBadge, mountPrefs } from "./shell.js";
@@ -918,7 +917,7 @@ async function boot() {
   const outage = params.get("outage");
   client = boot_.mode === "live"
     ? createLiveClient()
-    : await createFixtureClient({ ...boot_.options, ...(outage ? { outage } : {}) });
+    : await (await import("./fixture-client.js")).createFixtureClient({ ...boot_.options, ...(outage ? { outage } : {}) });
   suggestionGate = mountFeatureGate({ document, window: globalThis.window, name: "doc-suggestion-actions",
     read: signal => client.listFeatureSwitches({ signal }),
     onChange: enabled => {

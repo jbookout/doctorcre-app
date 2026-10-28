@@ -10,7 +10,6 @@ import { createCommandDock } from './command-dock.js';
 import { readWithDeadline } from './auto-refresh.mjs';
 import { preserveBoardFocus } from './board-focus.mjs';
 import { performCommand, pendingCommand } from './command-feedback.mjs';
-import { createFixtureClient } from './fixture-client.js';
 import { createLiveClient } from './live-client.js';
 import { mountEvidence, loadEvidence, renderEvidence } from './correspondence.js';
 import { deploymentIdentity, resolveDealroomBoot } from './boot-mode.js';
@@ -1469,7 +1468,7 @@ async function boot() {
   mountDock();
   wire();
   const resolved = resolveDealroomBoot(globalThis.location || { hostname: '', search: '' });
-  state.client = resolved.mode === 'live' ? createLiveClient() : await createFixtureClient(resolved.options);
+  state.client = resolved.mode === 'live' ? createLiveClient() : await (await import("./fixture-client.js")).createFixtureClient(resolved.options);
   mountNotificationBadge(state.client);
   itemSheet = mountDealItemSheet({document,today:todayIso,read:readDealDetail,send:runFollowUp,pending:key => pendingCommand(commandState,key),refresh:() => {state.boardSync.requestRefresh('deal-item');refreshPanel();}});
   state.mode = state.client.mode;

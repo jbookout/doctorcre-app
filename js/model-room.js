@@ -38,7 +38,6 @@ import {
   turnRequest, turnWindow, workItemLedger, workRequestCardRequest,
 } from "./model-room-model.js";
 import { validCurrentWorkRequestsPayload } from "./control-room-model.js";
-import { createFixtureClient } from "./fixture-client.js";
 import { createLiveClient } from "./live-client.js";
 import { resolveDealroomBoot } from "./boot-mode.js";
 import { formatClock } from "./visual-system.js";
@@ -942,7 +941,7 @@ export function mountModelRoom({ outage = null, onOpenTask, onTasks } = {}) {
   const resolved = resolveDealroomBoot(location);
   const boot = resolved.mode === "live"
     ? Promise.resolve(createLiveClient())
-    : createFixtureClient({ ...resolved.options, ...(outage ? { outage } : {}) });
+    : import("./fixture-client.js").then(({ createFixtureClient }) => createFixtureClient({ ...resolved.options, ...(outage ? { outage } : {}) }));
   Promise.resolve(boot).then((ready) => {
     client = ready;
     mountAutoRefresh({ document, window: globalThis.window, refresh: readAll });
