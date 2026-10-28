@@ -53,6 +53,25 @@ async function open(t, tab = 'views', { width = 1280, theme = 'dark', pending = 
   return { page, state, release };
 }
 
+async function advanceRoomUntil(page, observed) {
+  for (let turn = 0; turn < 40; turn++) {
+    await page.waitForLoadState('networkidle');
+    if (await observed()) return;
+    await page.evaluate(() => document.dispatchEvent(new Event('pointermove')));
+    const state = await page.evaluate(async () => (await import('/js/poll-safety.mjs')).pollSafety(window).state());
+    if (state.paused) {
+      const wait = await page.evaluate(at => Math.max(0, at - Date.now() + 1), state.resumeAt);
+      if (wait) await page.clock.fastForward(wait);
+      await page.getByRole('button', { name: 'Resume updates', exact: true }).click();
+    } else {
+      const delay = await page.evaluate(at => Math.max(5_001, at - Date.now() + 1), state.nextAt);
+      await page.clock.fastForward(delay);
+    }
+    await page.waitForTimeout(30);
+  }
+  assert.fail('Control Room did not finish its paced refresh');
+}
+
 async function capture(page, name) {
   if (!process.env.PR299_CAPTURE) return;
   const dir = new URL(`../out/test-artifacts/pr299-taste/${process.env.PR299_CAPTURE}/`, import.meta.url);
@@ -181,19 +200,10 @@ test('linked Work Request facts stay separate from the selected incident in Atte
 test('board census failure invalidates Attention and its open detail while Queue succeeds', async t => {
   const { page, state } = await open(t);
   await page.locator('[data-attention-id="incident:INC-DEMO"] button').click();
-  const before = state.queueReads;
   await page.waitForLoadState('networkidle');
+  const before = state.queueReads;
   state.censusUnavailable = true;
-  await page.clock.setSystemTime(await page.evaluate(() => Date.now()) + 60_001);
-  for (let turn = 0; turn < 16 && !await page.locator('#system-work-error').isVisible(); turn++) {
-    await page.clock.runFor(5_001);
-    await page.waitForLoadState('networkidle');
-  }
-  await page.waitForFunction(() => document.querySelector('#system-work-error')?.hidden === false);
-  for (let turn = 0; turn < 20 && state.queueReads <= before; turn++) {
-    await page.clock.runFor(5_001);
-    await page.waitForLoadState('networkidle');
-  }
+  await advanceRoomUntil(page, async () => await page.evaluate(() => document.querySelector('#system-work-error')?.hidden === false) && state.queueReads > before);
   assert.ok(state.queueReads > before, 'Queue reread succeeded independently');
   assert.equal(await page.evaluate(async () => (await import('/js/control-room.js')).view.queue.state), 'read');
   assert.equal(await page.locator('#crAttentionList [data-attention-id]').count(), 0);
@@ -201,14 +211,7 @@ test('board census failure invalidates Attention and its open detail while Queue
   assert.match(await page.locator('#jobBody').innerText(), /Source unavailable.*Last-known/);
   assert.equal(await page.locator('#jobTitle').innerText(), 'Demo blocked incident');
   state.censusUnavailable = false;
-  await page.waitForLoadState('networkidle');
-  await page.clock.setSystemTime(await page.evaluate(() => Date.now()) + 60_001);
-  const resume = page.getByRole('button', { name: 'Resume updates', exact: true });
-  if (await resume.isVisible()) await resume.click();
-  for (let turn = 0; turn < 16 && !await page.locator('[data-attention-id="incident:INC-DEMO"]').count(); turn++) {
-    await page.clock.runFor(5_001);
-    await page.waitForLoadState('networkidle');
-  }
+  await advanceRoomUntil(page, () => page.locator('[data-attention-id="incident:INC-DEMO"]').count());
   await page.locator('[data-attention-id="incident:INC-DEMO"]').waitFor();
   assert.doesNotMatch(await page.locator('#jobBody').innerText(), /Source unavailable/);
 });

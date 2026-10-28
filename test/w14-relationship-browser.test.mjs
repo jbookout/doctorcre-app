@@ -109,18 +109,76 @@ async function open(t, width = 1440) {
     },
   };
 }
-async function pollRelationships(page, delay = 31_001) {
+async function pollRelationships(page, delay = 31_001, manual = false) {
   await page.waitForLoadState('networkidle');
-  await page.clock.setSystemTime(new Date(await page.evaluate(() => Date.now()) + delay));
-  let received = false;
-  const response = page.waitForResponse('**/api/v1/business/relationships*').then(() => { received = true; });
-  await page.evaluate(() => window.dispatchEvent(new Event('online')));
-  for (let turn = 0; turn < 12 && !received; turn++) {
-    await page.clock.runFor(5_001);
+  const ready = await page.evaluate(async ({ minimum, manual }) => {
+    const state = (await import('/js/poll-safety.mjs')).pollSafety(window).state();
+    return manual ? 5_001 : Math.max(minimum, state.nextAt - Date.now() + 1);
+  }, { minimum: delay, manual });
+  await page.clock.setSystemTime(new Date(await page.evaluate(() => Date.now()) + ready));
+  let started = false;
+  const observe = request => { if (new URL(request.url()).pathname === '/api/v1/business/relationships') started = true; };
+  page.on('request', observe);
+  const response = page.waitForResponse('**/api/v1/business/relationships*');
+  try {
+    if (manual) {
+      const refresh = page.locator('#networkRefresh');
+      if (await page.locator('.relationship-dialog[open]').count()) await page.getByRole('button', { name: 'Refresh connections', exact: true }).click({ timeout: 1_000 });
+      else await refresh.click();
+    }
+    else await page.evaluate(() => {
+      document.dispatchEvent(new Event('pointermove'));
+      window.dispatchEvent(new Event('online'));
+    });
+    for (let turn = 0; turn < 40 && !started; turn++) {
+      await page.waitForTimeout(30);
+      if (started) break;
+      const state = await page.evaluate(async () => (await import('/js/poll-safety.mjs')).pollSafety(window).state());
+      if (state.paused) {
+        const resumeDelay = await page.evaluate(at => Math.max(0, at - Date.now() + 1), state.resumeAt);
+        if (resumeDelay) await page.clock.fastForward(resumeDelay);
+        await page.getByRole('button', { name: 'Resume updates', exact: true }).click();
+        await page.waitForTimeout(30);
+      }
+      const next = await page.evaluate(async () => {
+        document.dispatchEvent(new Event('pointermove'));
+        return Math.max(5_001, (await import('/js/poll-safety.mjs')).pollSafety(window).state().nextAt - Date.now() + 1);
+      });
+      await page.clock.fastForward(next);
+    }
+    await response;
     await page.waitForLoadState('networkidle');
-  }
-  await response;
+    await page.waitForFunction(() => !document.querySelector('#networkRefresh') || document.querySelector('#networkRefresh').getAttribute('aria-busy') === 'false');
+  } finally { page.off('request', observe); }
 }
+for (const width of [320, 1440]) test(`relationship dialog refresh remains usable during a background pause at ${width}px`, async t => {
+  const h = await open(t, width), { page } = h;
+  await page.goto('http://localhost/relationships?mode=live');
+  if (width < 760) await page.locator('#appSidebarToggle').click();
+  await page.locator('#networkSearch').fill('Lending');
+  if (width < 760) await page.getByRole('button', { name: 'Close workspace', exact: true }).click();
+  await page.locator('#networkNodes button').first().click();
+  await page.locator('.relationship-dialog summary').first().click();
+  await page.waitForLoadState('networkidle');
+  await page.evaluate(async () => {
+    const safety = (await import('/js/poll-safety.mjs')).pollSafety(window);
+    await safety.run(async () => {
+      for (let i = 0; i < 91; i++) await safety.fetch(async () => new Response('{}'), '/synthetic').catch(() => {});
+    }, { initial: true });
+  });
+  await page.clock.fastForward(5_001);
+  h.setVersion(1);
+  const refreshed = page.waitForResponse('**/api/v1/business/relationships*');
+  const button = page.getByRole('button', { name: 'Refresh connections', exact: true });
+  assert.ok((await button.boundingBox()).height >= 44);
+  await button.click(); await refreshed;
+  await page.waitForFunction(() => document.querySelector('.relationship-dialog').textContent.includes('Demo refreshed summary'));
+  assert.equal(await page.locator('.relationship-dialog').evaluate(node => node.open), true);
+  assert.equal(await page.locator('.relationship-dialog details').first().evaluate(node => node.open), true);
+  assert.equal(await page.evaluate(async () => (await import('/js/poll-safety.mjs')).pollSafety(window).state().paused), true);
+  await page.screenshot({ path: `out/test-artifacts/poll-safety/relationship-refresh-${width}.png` });
+});
+
 async function dragLender(page) {
   // Let the shared harness finish layout motion and retry false samples.
   await animationsSettled(page);
@@ -253,7 +311,7 @@ for (const width of [1440, 320])
     assert.deepEqual(h.errors, []);
   });
 
-test("W14 autonomous refresh retains filters and expanded evidence, recovers failure and clears auth", async (t) => {
+test("W14 manual refresh retains filters and expanded evidence while automatic reads recover and clear auth", async (t) => {
   const h = await open(t),
     { page } = h;
   await page.goto("http://localhost/relationships?mode=live");
@@ -263,7 +321,7 @@ test("W14 autonomous refresh retains filters and expanded evidence, recovers fai
   await page.locator("#networkNodes button").click();
   await page.locator(".relationship-dialog summary").first().click();
   h.setVersion(1);
-  await pollRelationships(page);
+  await pollRelationships(page, 0, true);
   await page.waitForFunction(() =>
     document
       .querySelector(".relationship-dialog")
@@ -388,7 +446,7 @@ for(const failure of ['auth','expiry']) test(`R6 ${failure} invalidates relation
 });
 test('R7 malformed optional field is rejected without poisoning retained snapshot or later interactions',async t=>{
  const h=await open(t),{page}=h;await page.goto('http://localhost/relationships?mode=live');await page.waitForSelector('.relationship-node');
- const before=await page.locator('#networkCanvas').textContent();h.setMode('territory');await pollRelationships(page);await page.waitForFunction(()=>!document.querySelector('#networkNotice').hidden);
+ const before=await page.locator('#networkCanvas').textContent();h.setMode('territory');await pollRelationships(page, 0, true);await page.waitForFunction(()=>!document.querySelector('#networkNotice').hidden);
  assert.equal(await page.locator('#networkCanvas').textContent(),before);await page.locator('#networkReset').click();await page.setViewportSize({width:1000,height:900});await page.locator('#networkZoomIn').click();assert.deepEqual(h.errors,[]);
  assert.equal(await page.locator('.relationship-node').count(),8);assert.equal(await page.locator('#networkUpdated').isVisible(),true);
 });

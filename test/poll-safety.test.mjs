@@ -196,12 +196,12 @@ test('manual refresh still reads during a budget pause but has its own hard budg
   await manual(); await manual(); assert.equal(requests, 91);
   for (let i = 0; i < 4; i++) {
     await c.advance(60_000);
-    await safety.run(() => Promise.all(Array.from({ length: 120 }, () => safety.fetch(transport, '/read'))), { manual: true });
+    await safety.run(() => Promise.all(Array.from({ length: 300 }, () => safety.fetch(transport, '/read'))), { manual: true });
   }
   await c.advance(60_000);
-  await safety.run(() => Promise.all(Array.from({ length: 120 }, () => safety.fetch(transport, '/read'))), { manual: true });
-  assert.equal(requests, 690, '90 background plus the separate 600/hour human allowance');
-  await c.advance(60_000); await manual(); assert.equal(requests, 690);
+  await safety.run(() => Promise.all(Array.from({ length: 300 }, () => safety.fetch(transport, '/read'))), { manual: true });
+  assert.equal(requests, 1290, '90 background plus the separate 1200/hour human allowance');
+  await c.advance(60_000); await manual(); assert.equal(requests, 1290);
   safety.dispose();
 });
 
@@ -245,7 +245,7 @@ test('a manual mutation reserves both session checks before sending its payload'
   const { createSessionBoundary } = await import('../js/private-session.js');
   const c = fakeClock(), safety = createPollSafety(c); let writes = 0;
   await safety.run(async () => {
-    for (let i = 0; i < 118; i++) await safety.fetch(async () => new Response('{}'), '/read');
+    for (let i = 0; i < 298; i++) await safety.fetch(async () => new Response('{}'), '/read');
   }, { manual: true });
   await c.advance(5_000);
   const client = createSessionBoundary({ safety, invalidate() {}, fetchImpl: async path => {
@@ -285,20 +285,20 @@ test('a queued first read rechecks draft protection before starting', async () =
   auto.dispose(); safety.dispose();
 });
 
-test('background and human allowances together stay below 22320 physical requests per browser per day', async () => {
+test('background and human allowances together stay below 36720 physical requests per browser per day', async () => {
   const { createPollSafety } = await import('../js/poll-safety.mjs');
   const c = fakeClock(), safety = createPollSafety({ ...c, storage: storage() }); let background = 0, human = 0;
   const transport = kind => async () => { if (kind === 'human') human++; else background++; return new Response('{}'); };
   for (let minute = 0; minute < 1440; minute++) {
     await safety.resume();
     for (let request = 0; request < 60; request++) await safety.fetch(transport('background'), '/read', undefined, { manual: false }).catch(() => {});
-    if (minute % 60 < 5) await safety.run(() => Promise.all(Array.from({ length: 120 }, () => safety.fetch(transport('human'), '/read'))), { manual: true });
+    if (minute % 60 < 4) await safety.run(() => Promise.all(Array.from({ length: 300 }, () => safety.fetch(transport('human'), '/read'))), { manual: true });
     await c.advance(60_000);
   }
   assert.ok(background > 300);
   assert.ok(background <= 7920);
-  assert.equal(human, 14400, 'the separate human allowance remains usable throughout the background pauses');
-  assert.ok(background + human <= 22320);
+  assert.equal(human, 28800, 'the separate human allowance remains usable throughout the background pauses');
+  assert.ok(background + human <= 36720);
   safety.dispose();
 });
 
@@ -542,8 +542,8 @@ test('round two: twenty tabs share spent counters, recovery and human admission 
   tabs[0].document.visibilityState = 'visible';
   for (let i = 0; i < 31; i++) await send(tabs[0]).catch(() => {});
   assert.equal(background, 330, 'simultaneous Resume clicks share one recovery allowance');
-  await Promise.all(tabs.flatMap(tab => Array.from({ length: 10 }, () => tab.safety.fetch(async () => { human++; return new Response('{}'); }, '/human', {}, { manual: true }).catch(() => {}))));
-  assert.equal(human, 120, 'concurrent human requests reserve against one browser minute');
+  await Promise.all(tabs.flatMap(tab => Array.from({ length: 20 }, () => tab.safety.fetch(async () => { human++; return new Response('{}'); }, '/human', {}, { manual: true }).catch(() => {}))));
+  assert.equal(human, 300, 'concurrent human requests reserve against one browser minute');
   tabs.forEach(tab => tab.safety.dispose());
 });
 
@@ -633,4 +633,33 @@ test('round two: recovering from an outage keeps healthy updates running all day
   assert.ok(sent > 600, 'an outage recovery must not strand normal unused allowance');
   assert.equal(safety.state().paused, false);
   auto.dispose(); safety.dispose();
+});
+
+test('four ordinary page loads retain their own session and read allowance', async () => {
+  const { createPollSafety } = await import('../js/poll-safety.mjs');
+  const { createSessionBoundary } = await import('../js/private-session.js');
+  const c = fakeClock(), saved = storage(); let sent = 0;
+  const fetchImpl = async path => { sent++; return Response.json(path === '/auth/session'
+    ? { actor: { slug: 'synthetic' }, csrf_token: 'synthetic-fixture' } : {}); };
+  for (let page = 0; page < 4; page++) {
+    const safety = createPollSafety({ ...c, storage: saved });
+    const client = createSessionBoundary({ safety, invalidate() {}, fetchImpl });
+    try {
+      await client.verify();
+      await Promise.all(Array.from({ length: 18 }, () => client.fetch('/page-read')));
+    } finally { safety.dispose(); }
+  }
+  assert.equal(sent, 220, 'four 55-request page loads fit within normal navigation');
+});
+
+test('named polling sources stop cleanly after repeated transport failures', async () => {
+  const { createPollSafety } = await import('../js/poll-safety.mjs');
+  const c = fakeClock(), safety = createPollSafety(c);
+  try {
+    for (let i = 0; i < 3; i++) {
+      await safety.run(() => safety.fetch(async () => new Response('{}', { status: 503 }), '/read'), { source: 'control-room' });
+      await c.advance(300_000);
+    }
+    assert.equal(safety.state().paused, true);
+  } finally { safety.dispose(); }
 });

@@ -43,13 +43,13 @@ test('session legs cannot carry hidden physical requests into the next rolling h
 
 test('another tab cannot steal the session checks reserved before a human write', async () => {
   const f = fixture();
-  for (let i = 0; i < 117; i++) await f.safety.fetch(f.fetchImpl, '/human', {}, { manual: true });
+  for (let i = 0; i < 297; i++) await f.safety.fetch(f.fetchImpl, '/human', {}, { manual: true });
   const transport = f.safety.transport(f.fetchImpl, 3, { manual: true });
   await transport('/auth/session');
   const other = createPollSafety({ storage: f.storage, now: () => 0 });
   await assert.rejects(other.fetch(f.fetchImpl, '/other', {}, { manual: true }));
   await transport('/write'); await transport('/auth/session');
-  assert.equal(f.sent.length, 120);
+  assert.equal(f.sent.length, 300);
   await transport.release?.(); other.dispose(); f.safety.dispose();
 });
 
@@ -66,12 +66,12 @@ test('abandoned session reservations expire and late legs cannot make uncounted 
 
 test('a failed session releases its unused write capacity immediately', async () => {
   const f = fixture();
-  for (let i = 0; i < 117; i++) await f.safety.fetch(f.fetchImpl, '/human', {}, { manual: true });
+  for (let i = 0; i < 297; i++) await f.safety.fetch(f.fetchImpl, '/human', {}, { manual: true });
   const client = createSessionBoundary({ safety: f.safety, invalidate() {}, fetchImpl: async () => { throw Error('offline'); } });
   await assert.rejects(client.fetch('/write', { method: 'POST' }));
   await f.safety.fetch(f.fetchImpl, '/human', {}, { manual: true });
   await f.safety.fetch(f.fetchImpl, '/human', {}, { manual: true });
-  assert.equal(f.sent.length, 119);
+  assert.equal(f.sent.length, 299);
   f.safety.dispose();
 });
 

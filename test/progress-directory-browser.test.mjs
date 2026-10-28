@@ -55,6 +55,20 @@ async function open(t, { width = 390, path = "/control-room/progress?board=demo-
   return { page, calls, errors };
 }
 
+async function advancePoll(page, ready) {
+  for (let turn = 0; turn < 40; turn++) {
+    for (let settle = 0; settle < 20; settle++) {
+      if (await ready()) return;
+      await page.waitForTimeout(10);
+    }
+    await page.evaluate(() => document.dispatchEvent(new Event('pointermove')));
+    const delay = await page.evaluate(async () => Math.max(5_001,
+      (await import('/js/poll-safety.mjs')).pollSafety(window).state().nextAt - Date.now() + 1));
+    await page.clock.fastForward(delay);
+  }
+  assert.ok(await ready(), 'the board receives its paced refresh turn');
+}
+
 test("freshness has an exact 24h boundary and unknown timestamps never look fresh", () => {
   assert.equal(boardFreshness("2026-09-30T15:00:00Z", NOW).state, "stale");
   assert.equal(boardFreshness("2026-09-30T15:00:00.001Z", NOW).state, "fresh");
@@ -192,6 +206,7 @@ function controlledReads(t) {
   t.after(() => { for (const queue of Object.values(requests)) for (const request of queue) request.resolve(null); });
   return {
     onRpc,
+    has(name, index) { return Boolean(requests[name][index]); },
     async request(name, index) {
       for (let attempts = 0; !requests[name][index] && attempts < 500; attempts++)
         await new Promise(resolve => setTimeout(resolve, 2));
@@ -260,7 +275,7 @@ test("an unchanged polled question retains its draft while focused questions def
   await page.clock.runFor(15000);
   assert.equal(calls.filter(call => call.name === "read-progress-board").length, 1);
   await page.locator("#board-title").click();
-  await page.clock.runFor(15000);
+  await advancePoll(page, () => reads.has("read-progress-board", 1));
   await reads.reply(page, "read-progress-board", 1, snapshot(2));
   await reads.reply(page, "list-progress-boards", 1, listing("New directory"));
   assert.equal(await page.locator(".answer-form textarea").inputValue(), "Unsent draft");
@@ -343,7 +358,7 @@ test("task focus and dialog return target survive unchanged and changed polls", 
   await new Promise(resolve => setTimeout(resolve, 30));
   assert.equal(await page.evaluate(() => document.activeElement === window.retainedTask), true);
   version = 2;
-  await page.clock.runFor(15000);
+  await advancePoll(page, () => page.evaluate(() => document.querySelector("#board-title").textContent === "System version 2"));
   await page.waitForFunction(() => document.querySelector("#board-title").textContent === "System version 2");
   assert.equal(await page.evaluate(() => document.activeElement === window.retainedTask), true);
   assert.match(await task.getAttribute("aria-label"), /Synthetic task 2/);

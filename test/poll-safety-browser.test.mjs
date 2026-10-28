@@ -121,11 +121,11 @@ test('a focus-trapped drawer cannot make shared Resume inert', async t => {
   assert.equal(await page.locator('[data-poll-safety]').isVisible(), false);
 });
 
-test('a person can open a record while an exhausted background cycle awaits completion', async t => {
+for (const action of ['click', 'change', 'popstate']) test(`a person can open a record with ${action} while an exhausted background cycle awaits completion`, async t => {
   const server = await fixtureServer(); t.after(() => server.close());
   const browser = await chromium.launch(); t.after(() => browser.close());
   const page = await browser.newPage();
-  await page.route('**/poll-human-fixture', route => route.fulfill({ contentType: 'text/html', body: '<!doctype html><button id="open">Open record</button><output></output>' }));
+  await page.route('**/poll-human-fixture', route => route.fulfill({ contentType: 'text/html', body: '<!doctype html><button id="open">Open record</button><label><input id="record" type="checkbox">Include archived</label><output></output>' }));
   await page.goto(`${server.origin}/poll-human-fixture`);
   await page.evaluate(async () => {
     const { pollSafety } = await import('/js/poll-safety.mjs');
@@ -140,13 +140,18 @@ test('a person can open a record while an exhausted background cycle awaits comp
     await admitted;
     const client = createSessionBoundary({ safety, invalidate() {}, fetchImpl: async path => Response.json(path === '/auth/session'
       ? { actor: { slug: 'synthetic' }, csrf_token: 'synthetic-fixture' } : { title: 'Synthetic record' }) });
-    document.querySelector('#open').addEventListener('click', async () => {
+    const openRecord = async () => {
       try { document.querySelector('output').textContent = (await (await client.fetch('/record')).json()).title; }
       catch (error) { document.querySelector('output').textContent = error.code; }
       finally { window.release(); }
-    });
+    };
+    document.querySelector('#open').addEventListener('click', openRecord);
+    document.querySelector('#record').addEventListener('change', openRecord);
+    window.addEventListener('popstate', openRecord);
   });
-  await page.getByRole('button', { name: 'Open record' }).click();
-  await page.waitForFunction(() => document.querySelector('output').textContent === 'Synthetic record');
+  if (action === 'click') await page.getByRole('button', { name: 'Open record' }).click();
+  else if (action === 'change') await page.locator('#record').check();
+  else await page.evaluate(() => { history.pushState(null, '', '#record'); history.back(); });
+  await page.waitForFunction(() => document.querySelector('output').textContent.length > 0);
   assert.equal(await page.locator('output').innerText(), 'Synthetic record');
 });

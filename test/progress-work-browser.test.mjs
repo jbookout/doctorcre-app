@@ -91,16 +91,25 @@ async function open(t,{width=390,path=taskPath,empty=false,stale=false,history=0
   return {page,state,errors,calls,posts};
 }
 
-async function refreshWork(page, ready) {
-  await page.waitForLoadState('networkidle');
-  await page.clock.setSystemTime(new Date(await page.evaluate(() => Date.now()) + 60_001));
-  await page.evaluate(() => window.dispatchEvent(new Event('online')));
-  for (let turn=0;turn<20;turn++) {
-    await page.clock.runFor(5_001);
-    await page.waitForTimeout(30);
-    if(await page.evaluate(ready)) return;
+async function driveWork(page, ready, {settle=false}={}) {
+  for (let turn=0;turn<40;turn++) {
+    if(settle)await page.waitForLoadState('networkidle');
+    await page.waitForTimeout(100);
+    if(await ready())return;
+    await page.evaluate(()=>document.dispatchEvent(new Event('pointermove')));
+    const state=await page.evaluate(async()=> (await import('/js/poll-safety.mjs')).pollSafety(window).state());
+    const elapsed=await page.evaluate(at=>Math.max(5_001,at-Date.now()+1),state.paused?state.resumeAt:state.nextAt);
+    await page.clock.fastForward(elapsed);
+    if(state.paused){
+      const resume=page.getByRole('button',{name:'Resume updates',exact:true});
+      if(await resume.isVisible() && await resume.isEnabled())await resume.click();
+    }
   }
-  assert.fail('Work did not complete its queued refresh');
+
+  assert.fail('Work did not complete its paced refresh');
+}
+async function refreshWork(page, ready) {
+  return driveWork(page,()=>page.evaluate(ready));
 }
 
 function reboundPassport() {
@@ -138,8 +147,9 @@ test('fresh publication reconciles delivery and derived request evidence and rem
   await page.waitForFunction(()=>document.querySelector('#workSessionList').textContent.includes('Current builder'));
   for(const id of ['workMetadata','workCanonicalBody','workSessionList','workDispatchHistory'])
     assert.doesNotMatch(await page.locator('#'+id).textContent(),/Card WR-900|wr-synthetic-read-only|attempt:a|Prior builder|synthetic dispatch/);
+  const oldAttemptReads=state.turnReads;
   state.turns.push({seq:100,msg_id:'old-attempt-review',seat:'human',kind:'turn',at:NOW.toISOString(),body:JSON.stringify({attempt_id:'attempt:a',review:'Obsolete attempt review'})});
-  await page.clock.runFor(5100);
+  await driveWork(page,()=>state.turnReads>oldAttemptReads);
   assert.doesNotMatch(await page.locator('#workReviewList').textContent(),/Obsolete attempt review/);
   assert.equal(calls.filter(call=>call.name==='engineering-passport').at(-1).arguments.work_request,'WR-901');
   request=null; await refreshWork(page, () => document.querySelector('#workTitle').textContent==='Published unbound');
@@ -163,8 +173,7 @@ for(const late of ['read-session-identity','read-dispatch-history'])test(`public
   if(late==='read-session-identity')await page.locator('#workSessionSearch').evaluate(form=>form.requestSubmit());
   else await page.locator('[data-session-id="session:fresh"]').click();
   await assertEventually(()=>started);
-  await page.clock.runFor(5100);
-  await page.waitForFunction(()=>document.querySelector('#workTitle').textContent==='Unbound publication');
+  await refreshWork(page,()=>document.querySelector('#workTitle').textContent==='Unbound publication');
   release(); await new Promise(resolve=>setTimeout(resolve,100));
   assert.doesNotMatch(await page.locator('#workSessionList').textContent(),/Obsolete held session/);
   assert.doesNotMatch(await page.locator('#workDispatchHistory').textContent(),/Obsolete held dispatch/);
@@ -174,8 +183,7 @@ test('explicit URL request remains pinned when the published task changes bindin
   const {page,state,calls}=await open(t,{path:taskPath+'&work_request=WR-900'});
   await page.waitForFunction(()=>document.querySelector('#workCanonicalBody').textContent.includes('Closure: blocked'));
   state.rpcReply=(rpc,payload)=>{if(rpc.name==='read-progress-board')payload.snapshot.snapshot_json.tasks[taskId]={title:'Rebound task',status:'review',work_request:'WR-901'};return payload;};
-  await page.clock.runFor(5100);
-  await page.waitForFunction(()=>document.querySelector('#workTitle').textContent==='Rebound task');
+  await refreshWork(page,()=>document.querySelector('#workTitle').textContent==='Rebound task');
   assert.equal(calls.filter(call=>call.name==='engineering-passport').at(-1).arguments.work_request,'WR-900');
   assert.match(await page.locator('#workMetadata').textContent(),/Demo work request/);
 });
@@ -253,8 +261,9 @@ test('only explicit bindings and valid source sequences join execution evidence'
   for(const seq of [undefined,null,'',NaN,-1,1.5,Infinity])assert.equal(scopedQueueCard({task_id:'other',source_seq:seq},{...scope,sourceSeqs:[NaN]}),false);
   assert.equal(scopedQueueCard({source_seq:8},{...scope,sourceSeqs:[8]}),true);
   const {page,state}=await open(t);
+  const mentionReads=state.turnReads;
   state.turns.push({seq:100,msg_id:'mention-only',session_id:'session:other',seat:'human',kind:'turn',at:NOW.toISOString(),body:`Discuss ${taskId}.`});
-  await page.clock.runFor(5100);
+  await driveWork(page,()=>state.turnReads>mentionReads);
   assert.doesNotMatch(await page.locator('#workSessionList').textContent(),/Other builder/);
 });
 
@@ -298,7 +307,7 @@ test('colliding job-local attempts never add unrelated Dot evidence or native se
     ['contradictory', {work_request_id:value.work_request.id,job_ref:'job:other',attempt_id:'attempt:1',session_ref:'session:other-job',evidence:'CONTRADICTORY JOB EVIDENCE'}],
     ['bound', {job_ref:'job:second',attempt_id:'attempt:1',session_ref:'session:second',evidence:'BOUND JOB EVIDENCE'}],
   ]) state.turns.push({seq:state.turns.at(-1).seq+1,msg_id:id,seat:'dot',kind:'receipt',at:NOW.toISOString(),body:JSON.stringify(body)});
-  await page.clock.runFor(5100);await assertEventually(()=>state.turnReads>priorReads);
+  await driveWork(page,()=>state.turnReads>priorReads);
   await page.waitForFunction(()=>document.querySelector('#workDotList').textContent.includes('BOUND JOB EVIDENCE'));
   assert.doesNotMatch(await page.locator('#workDotList').textContent(),/UNRELATED JOB EVIDENCE|CONTRADICTORY JOB EVIDENCE/);
   assert.doesNotMatch(await page.locator('#workSessionList').textContent(),/Unrelated job builder/);
@@ -455,8 +464,8 @@ test('native adapter reference joins its exact producer host id',async t=>{
 test('late Engineering success stays withheld after another protected read loses authentication',async t=>{
   let release,started=false;const gate=new Promise(resolve=>release=resolve);
   const {page,state}=await open(t,{rpcReply:async(rpc,payload)=>{if(rpc.name==='engineering-passport'){started=true;await gate;}return payload;}});
-  await assertEventually(()=>started);state.authLost=true;await page.clock.runFor(5100);
-  await page.waitForURL('**/public-shell/session-ended.html');
+  await assertEventually(()=>started);state.authLost=true;await driveWork(page,()=>page.url().includes('/public-shell/session-ended.html'));
+  await page.waitForURL(url=>url.pathname==='/public-shell/session-ended.html');
   release();await new Promise(resolve=>setTimeout(resolve,100));
   assert.equal(await page.locator('.passport-card').count(),0);
   assert.doesNotMatch(await page.locator('body').textContent(),/Synthetic|Demo/);
@@ -478,7 +487,7 @@ test('latest session lookup wins and refresh retains its query',async t=>{
   await page.waitForFunction(()=>document.querySelector('#workSessionList').textContent.includes('Result new'));
   release();await new Promise(resolve=>setTimeout(resolve,100));
   assert.doesNotMatch(await page.locator('#workSessionList').textContent(),/Result old/);
-  await page.clock.runFor(5100);await assertEventually(()=>calls.filter(call=>call.name==='read-session-identity'&&call.arguments.query==='new').length>=2);
+  await driveWork(page,()=>calls.filter(call=>call.name==='read-session-identity'&&call.arguments.query==='new').length>=2);
   assert.match(await page.locator('#workSessionList').textContent(),/Result new/);
 });
 
@@ -490,19 +499,14 @@ for (const stalled of ['engineering-passport','read-session-identity'])test(`sta
   await page.clock.runFor(11000);
   await page.waitForFunction(()=>document.querySelector('#workReadState').dataset.state==='stale');
   assert.match(await page.locator('#workReadState').textContent(),/unavailable|stale/i);
-  await page.clock.runFor(55000);
-  await assertEventually(()=>calls.filter(call=>call.name==='read-progress-board').length>1);
+  await driveWork(page,()=>calls.filter(call=>call.name==='read-progress-board').length>1);
 });
 
 test('stalled queue expires and recovers instead of remaining live',async t=>{
   const {page,state}=await open(t);await page.waitForSelector('.queue-card',{state:'attached'});
   const before=state.queueReads;
   state.queueWait=new Promise(()=>{});
-  for(let turn=0;turn<12 && state.queueReads===before;turn++) {
-    await page.clock.runFor(5_001);
-    await page.waitForTimeout(30);
-  }
-  await assertEventually(()=>state.queueReads>before);
+  await driveWork(page,()=>state.queueReads>before);
   await page.clock.runFor(11000);
   await page.waitForFunction(()=>document.querySelector('#queueLive').textContent==='Offline');
   state.queueWait=null;
@@ -530,15 +534,16 @@ test('concurrent Earlier dispatches clicks append one stable event and preserve 
 
 test('fresh queue absence removes projected task metadata and sequence binding',async t=>{
   const {page,state}=await open(t,{rpcReply:(rpc,payload)=>rpc.name==='read-progress-board'?{...payload,snapshot:{...payload.snapshot,snapshot_json:{title:'Demo project',tasks:{}}}}:payload});
-  await page.clock.runFor(5100);await page.waitForFunction(()=>document.querySelector('#workMetadata').textContent.includes('Projected task'));
+  await refreshWork(page,()=>document.querySelector('#workMetadata').textContent.includes('Projected task'));
   state.queueEmpty=true;
-  await page.clock.runFor(5100);await assertEventually(()=>state.queueReads>=3);
-  await page.clock.runFor(5100);await page.waitForFunction(()=>!document.querySelector('#workMetadata').textContent.includes('Projected task'));
+  await driveWork(page,()=>state.queueReads>=3);
+  await refreshWork(page,()=>!document.querySelector('#workMetadata').textContent.includes('Projected task'));
   assert.doesNotMatch(await page.locator('#workTitle').textContent(),/Demo research/);
   assert.doesNotMatch(await page.locator('#workMetadata').textContent(),/Demo research/);
   assert.equal(await page.locator('#queueLive').textContent(),'Live');
+  const removedReads=state.turnReads;
   state.turns.push({seq:100,msg_id:'removed-binding',seat:'dot',kind:'turn',at:NOW.toISOString(),body:'Unrelated task after removal'});
-  await page.clock.runFor(5100);
+  await driveWork(page,()=>state.turnReads>removedReads);
   assert.doesNotMatch(await page.locator('#workDotList').textContent(),/Unrelated task after removal/);
 });
 
@@ -549,28 +554,14 @@ test('late canonical binding restores receipts discarded before the rescan',asyn
   for(let poll=0;poll<6;poll++){
     for(let i=0;i<500;i++)state.turns.push({seq:state.turns.at(-1).seq+1,msg_id:`late-${poll}-${i}`,kind:'turn',seat:'human',at:NOW.toISOString(),body:'Unrelated synthetic retained-window turn'});
     const before=state.turnReads;
-    await page.clock.setSystemTime(new Date(await page.evaluate(()=>Date.now())+60_001));
-    const resume=page.getByRole('button',{name:'Resume updates',exact:true});
-    if(await resume.isVisible()) await resume.click();
-    for(let turn=0;turn<12 && state.turnReads===before;turn++) {
-      if(await resume.isVisible()) {
-        await page.clock.setSystemTime(new Date(await page.evaluate(()=>Date.now())+60_001));
-        await resume.click();
-      }
-      await page.clock.runFor(5_001);
-      await page.waitForTimeout(30);
-    }
-    await assertEventually(()=>state.turnReads>before);
+    await driveWork(page,()=>state.turnReads>before);
     await new Promise(resolve=>setTimeout(resolve,100));
   }
   assert.equal(await page.locator('.passport-card').count(),0);
   release();
-  await page.clock.setSystemTime(new Date(await page.evaluate(()=>Date.now())+60_001));
-  const resume=page.getByRole('button',{name:'Resume updates',exact:true});
-  if(await resume.isVisible()) await resume.click();
   await refreshWork(page, () => document.querySelector('#workCanonicalBody').textContent.includes('Closure: blocked'));
   await page.waitForFunction(()=>document.querySelector('#workCanonicalBody').textContent.includes('Closure: blocked'));
-  await refreshWork(page,()=>Boolean(document.querySelector('.passport-card')));
+  await driveWork(page,()=>page.evaluate(()=>Boolean(document.querySelector('.passport-card'))),{settle:true});
   await page.waitForSelector('.passport-card');
   assert.match(await page.locator('.passport-card').textContent(),/Grounding/);
 });
@@ -645,26 +636,19 @@ test('shared activity retains stage, desks, presence, wire filters, composers an
   await page.waitForFunction(()=>document.querySelector('#composerInput').value==='');
   await page.locator('#enqueueTitle').fill('Demo enqueue');await page.locator('#queueComposer button').click();await page.waitForFunction(()=>document.querySelector('#queueNotice').textContent.includes('submitted'));
   assert.equal(posts.length,3);assert.ok(posts.every(post=>post.csrf==='synthetic-session'));assert.equal(posts[2].body.body,'@queue enqueue target=sol cap=read :: Demo enqueue');
-  await page.clock.runFor(5100);await assertEventually(()=>state.queueReads>1 && state.turnReads>1);
+  await driveWork(page,()=>state.queueReads>1 && state.turnReads>1);
   await page.locator('.queue-card').click();await page.waitForURL('**/control-room/progress/work?board=demo-project&task=**');assert.deepEqual(errors,[]);
 });
 
 test('older task passports survive the current global wire window',async t=>{
   const {page,state,errors}=await open(t,{history:2000});
-  for(let turn=0;turn<20 && !(await page.locator('.passport-card').count());turn++) {
-    await page.waitForLoadState('networkidle');
-    await page.clock.setSystemTime(new Date(await page.evaluate(()=>Date.now())+60_001));
-    const resume=page.getByRole('button',{name:'Resume updates',exact:true});
-    if(await resume.isVisible()) await resume.click();
-    else await page.evaluate(()=>window.dispatchEvent(new Event('online')));
-    await page.clock.runFor(5_001);
-    await page.waitForTimeout(30);
-  }
+  await driveWork(page,async()=>state.turnReads>=11 && Boolean(await page.locator('.passport-card').count()),{settle:true});
   await page.waitForSelector('.passport-card');assert.ok(state.turnReads>=11);
   assert.match(await page.locator('#workDotList').textContent(),/Observed Dot turn/);
   await page.locator('#viewEverything').click();assert.doesNotMatch(await page.locator('#wireFeed').textContent(),/Unrelated synthetic historical/);
+  const laterReads=state.turnReads;
   for(let i=0;i<2000;i++)state.turns.push({seq:state.turns.at(-1).seq+1,msg_id:`later-${i}`,kind:'turn',seat:'human',at:NOW.toISOString(),body:`Unrelated synthetic later turn ${i}`});
-  await page.clock.runFor(5100);await page.waitForSelector('.passport-card');
+  await driveWork(page,()=>state.turnReads>laterReads);await page.waitForSelector('.passport-card');
   assert.deepEqual(errors,[]);
 });
 
@@ -677,19 +661,17 @@ test('wire and queue polling stop while hidden and read at once on return',async
   assert.equal(state.queueReads,hidden.queue);assert.equal(state.turnReads,hidden.wire);
   await page.clock.setSystemTime(new Date(await page.evaluate(() => Date.now())+60_001));
   await show(true);
-  for(let turn=0;turn<12 && (state.queueReads===hidden.queue || state.turnReads===hidden.wire);turn++) {await page.clock.runFor(5_001);await page.waitForTimeout(30);}
-  await assertEventually(()=>state.queueReads>hidden.queue && state.turnReads>hidden.wire);
+  await driveWork(page,()=>state.queueReads>hidden.queue && state.turnReads>hidden.wire);
   await page.waitForFunction(()=>document.querySelector('#queueSync').textContent.startsWith('Synced'));
   const visible={queue:state.queueReads,wire:state.turnReads};
-  for(let turn=0;turn<12 && (state.queueReads===visible.queue || state.turnReads===visible.wire);turn++) {await page.clock.runFor(5_001);await page.waitForTimeout(30);}
-  await assertEventually(()=>state.queueReads>visible.queue && state.turnReads>visible.wire);
+  await driveWork(page,()=>state.queueReads>visible.queue && state.turnReads>visible.wire);
 });
 
 test('malformed and conflicting Passport updates stay withheld in task detail',async t=>{
   const {page,state,errors}=await open(t);await page.waitForSelector('.passport-card');
   const conflict=structuredClone(fixture.projection);conflict.source_state.canonical_record_digest='sha256:'+'b'.repeat(64);
   const add=payload=>state.turns.push({seq:state.turns.at(-1).seq+1,msg_id:`conflict-${state.turns.length}`,kind:'receipt',at:NOW.toISOString(),sponsor:'joe',seat:'codex',body:JSON.stringify({job_passport:{schema_version:'job-passport-wire.v1',kind:'observatory_projection',payload}})});
-  add(conflict);add({work_request_id:fixture.projection.work_request_id});await page.clock.runFor(5100);
+  add(conflict);add({work_request_id:fixture.projection.work_request_id});await refreshWork(page,()=>document.querySelector('.passport-card').dataset.status==='unknown_partial');
   await page.waitForFunction(()=>document.querySelector('.passport-card').dataset.status==='unknown_partial');
   assert.match(await page.locator('#jobPassportSummary').textContent(),/withheld/);assert.deepEqual(errors,[]);
 });
@@ -698,10 +680,10 @@ test('wire history, pause, missed-count and Resume live work through the new pag
   const {page,state,errors}=await open(t,{path:'/control-room/progress/work?board=demo-project'});
   await page.locator('#viewEverything').click();
   for(let seq=16;seq<=515;seq++)state.turns.push({seq,msg_id:`history-${seq}`,at:NOW.toISOString(),sponsor:'joe',seat:'human',kind:'turn',body:`Synthetic history turn ${seq}`});
-  await page.clock.runFor(5100);await page.waitForSelector('.wire-earlier');
+  await refreshWork(page,()=>Boolean(document.querySelector('.wire-earlier')));
   await page.locator('#wireFeed').evaluate(node=>{node.scrollTop=0;node.dispatchEvent(new Event('scroll'));});
   state.turns.push({seq:516,msg_id:'history-new',at:NOW.toISOString(),sponsor:'joe',seat:'human',kind:'turn',body:'Synthetic latest turn'});
-  await page.clock.runFor(5100);await page.waitForFunction(()=>document.querySelector('#wireResume').textContent.includes('new'));
+  await refreshWork(page,()=>document.querySelector('#wireResume').textContent.includes('new'));
   await page.locator('.wire-earlier').click();await page.waitForFunction(()=>document.querySelector('#wireFeed').textContent.includes('Synthetic history turn 157'));
   await page.locator('#wireResume').click();await page.waitForFunction(()=>document.querySelector('#wireFeed').textContent.includes('Synthetic latest turn'));
   assert.deepEqual(errors,[]);
@@ -737,9 +719,9 @@ test('empty, stale and offline states stay legible without inventing work',async
   const sessionsReady = new Promise(resolve => { releaseSessions = resolve; });
   const {page,state,errors}=await open(t,{empty:true,stale:true,path:'/control-room/progress/work?board=demo-project&view=tasks',
     rpcReply: async (rpc,payload) => { if (rpc.name === 'read-session-identity') await sessionsReady; return payload; }});
-  await page.waitForFunction(()=>document.querySelector('#queueLive').textContent==='Stale');
+  await refreshWork(page,()=>document.querySelector('#queueLive').textContent==='Stale');
   releaseSessions();
-  await page.waitForFunction(()=>document.querySelector('#workSessionList').textContent.includes('No linked native session'));
+  await refreshWork(page,()=>document.querySelector('#workSessionList').textContent.includes('No linked native session'));
   assert.match(await page.locator('#workSessionList').textContent(),/No linked native session/);assert.match(await page.locator('#jobPassportSummary').textContent(),/No validated Job Passport/);
   assert.match(await page.locator('#workReviewList').textContent(),/No linked review/);assert.match(await page.locator('#workReadState').textContent(),/Stale publication/);
   state.offline=true;await refreshWork(page,()=>document.querySelector('#queueLive').textContent==='Offline' && document.querySelector('#roomBanner').textContent.includes('last-known'));await page.waitForFunction(()=>document.querySelector('#queueLive').textContent==='Offline');assert.match(await page.locator('#roomBanner').textContent(),/last-known/);assert.deepEqual(errors,[]);
@@ -749,8 +731,8 @@ test('confirmed authentication loss clears protected queue and work evidence',as
   const {page,state,errors}=await open(t);
   await page.waitForSelector('.queue-card',{state:'attached'});await page.waitForSelector('.passport-card');await page.waitForSelector('[data-session-id="session:fresh"]');
   await page.locator('[data-session-id="session:fresh"]').click();await page.waitForFunction(()=>!document.querySelector('#workDispatchMore').hidden);
-  state.authLost=true;await page.clock.runFor(5100);
-  await page.waitForURL('**/public-shell/session-ended.html');
+  state.authLost=true;await driveWork(page,()=>page.url().includes('/public-shell/session-ended.html'));
+  await page.waitForURL(url=>url.pathname==='/public-shell/session-ended.html');
   assert.equal(await page.locator('.queue-card,.passport-card,.stage-node-worker,.desk-card,.assignment-row,.session-row').count(),0);
   assert.doesNotMatch(await page.locator('body').textContent(),/Demo|Synthetic desk|Fix round/);
   assert.deepEqual(errors,[]);
@@ -782,7 +764,9 @@ test('published task detail retains summary, model, safe PR links and related an
 });
 
 for (const width of [390, 1280]) test(`work detail retains the board details at ${width}px`, async t => {
-  const {page,errors} = await open(t,{width,rpcReply:(rpc,payload)=> {
+  let observe=false,observedAt=null,pageRef;
+  const {page,errors} = await open(t,{width,rpcReply:async(rpc,payload)=> {
+    if(observe && rpc.name==='read-progress-board')observedAt=await pageRef.evaluate(()=>Date.now());
     if (rpc.name === 'read-progress-board') Object.assign(payload.snapshot.snapshot_json.tasks[taskId], {
       status:'blocked', stage:'review', updated_at:'2026-08-24T12:19:00Z',
       stage_entered_at:'2026-08-24T12:00:00Z', blocked_reason:'Synthetic missing review',
@@ -795,6 +779,7 @@ for (const width of [390, 1280]) test(`work detail retains the board details at 
     });
     return payload;
   }});
+  pageRef=page;
   const task = page.locator('#workMetadata article').filter({has:page.getByRole('heading',{name:'Published task',exact:true})}).first();
   const delivery = page.locator('#workMetadata .work-delivery');
   const field = label => page.locator('#workMetadata .work-detail-fields > div').filter({has:page.locator('dt',{hasText:new RegExp(`^${label}$`)})}).locator('dd');
@@ -809,12 +794,14 @@ for (const width of [390, 1280]) test(`work detail retains the board details at 
   assert.equal(await task.locator('a[href="https://example.test/evidence"]').count(), 1);
   assert.equal(await task.locator('a[href="https://github.com/jbookout/doctorcre-app/pull/104"]').count(), 1);
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth <= innerWidth), true);
+  observe=true;
+  await driveWork(page,()=>observedAt!==null,{settle:true});
   await page.waitForLoadState('networkidle');
-  await page.clock.setSystemTime(new Date(await page.evaluate(()=>Date.now())+65_000));
-  await page.clock.runFor(5_001);
-  await page.waitForFunction(() => [...document.querySelectorAll('#workMetadata dt')].some(dt => dt.textContent === 'Stage' && dt.nextElementSibling.textContent.includes('21m')));
-  assert.match(await field('Stage').textContent(), /Review.*21m/);
-  assert.match(await delivery.locator('.work-stage-history').textContent(), /Review 21m/);
+  const minutes=Math.floor((observedAt-Date.parse('2026-08-24T12:00:00Z'))/60_000);
+  assert.ok(minutes>=21,'the next paced read advances the stage clock');
+  const age=minutes<60?`${minutes}m`:`${Math.floor(minutes/60)}h ${minutes%60}m`;
+  assert.match(await field('Stage').textContent(),new RegExp(`Review.*${age}`));
+  assert.ok((await delivery.locator('.work-stage-history').textContent()).includes(`Review ${age}`));
   assert.deepEqual(errors, []);
 });
 

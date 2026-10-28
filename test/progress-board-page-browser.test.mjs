@@ -84,6 +84,29 @@ async function open(t, { unfinished = true, path = '/control-room/progress', boa
   return { page, context, calls, errors, setSnapshot: value => { snapshotData = value; }, setRows: value => { rows = value; }, recover: () => { readState = 'ready'; } };
 }
 
+async function advanceBoard(page, method = 'read-progress-board') {
+  await page.waitForLoadState('networkidle');
+  const boardId = new URL(page.url()).pathname.split('/board/')[1] || 'carr-v5';
+  let completed = false;
+  const observe = response => {
+    if (new URL(response.url()).pathname !== '/mcp') return;
+    const rpc = response.request().postDataJSON()?.params;
+    if (rpc?.name === method && (method !== 'read-progress-board' || rpc.arguments.board_id === boardId)) completed = true;
+  };
+  page.on('response', observe);
+  try {
+    for (let turn = 0; turn < 40; turn++) {
+      await page.evaluate(() => document.dispatchEvent(new Event('pointermove')));
+      const delay = await page.evaluate(async () => Math.max(5_001, (await import('/js/poll-safety.mjs')).pollSafety(window).state().nextAt - Date.now() + 1));
+      await page.clock.fastForward(delay);
+      await page.waitForTimeout(30);
+      await page.waitForLoadState('networkidle');
+      if (completed) return;
+    }
+    assert.fail('The eligible board read did not complete');
+  } finally { page.off('response', observe); }
+}
+
 for (const unfinished of [false, true]) test(`board tile opens its page and published task flow with unfinishedWork ${unfinished ? 'available' : 'unavailable'}`, async t => {
   const { page, context, errors } = await open(t, { unfinished });
   await page.locator('[data-board-id="carr-v5"]').waitFor({ state: 'attached' });
@@ -415,13 +438,13 @@ for (const failed of ['unfinished-work', 'read-progress-board']) test(`${failed}
   await page.locator('#board-stages [data-card-id="build"]').waitFor();
   await panelTasks(page, ['open']);
   active = true;
-  await page.clock.runFor(15000);
+  await advanceBoard(page, failed);
   await page.locator(failed === 'unfinished-work' ? '#system-work-error' : '#board-error').waitFor();
   assert.equal(await page.locator('#board-stages [data-card-id="build"]').count(), 1);
   await panelTasks(page, ['open']);
   assert.equal(await page.locator('#board-sign-in').isVisible(), false);
   active = false;
-  await page.clock.runFor(15000);
+  await advanceBoard(page, failed);
   await page.waitForFunction(() => document.querySelector('#board-error').hidden && document.querySelector('#system-work-error').hidden);
   assert.deepEqual(errors, []);
 });
@@ -579,7 +602,7 @@ for (const width of [320, 390, 1280]) for (const theme of ['light', 'dark'])
     changed.work_queue.board.order.reverse();
     changed.work_queue.revision++;
     setSnapshot(changed);
-    await page.clock.runFor(2300);
+    await advanceBoard(page);
     await page.locator('[data-queue-root] > section:first-child[data-queue-id="WR14"]').waitFor({ timeout: 5000 });
     assert.deepEqual(await page.locator('[data-queue-root] > section').evaluateAll(cards => cards.map(c => c.dataset.queueId)), ['WR14','WR20']);
     assert.equal(await page.evaluate(() => document.activeElement.parentElement.dataset.queueId), 'WR14.S1.J1');
@@ -590,7 +613,7 @@ for (const width of [320, 390, 1280]) for (const theme of ['light', 'dark'])
     await page.emulateMedia({ reducedMotion: 'reduce' });
     changed.work_queue.board.order.reverse(); changed.work_queue.revision++;
     setSnapshot(structuredClone(changed));
-    await page.clock.runFor(2300);
+    await advanceBoard(page);
     await page.locator('[data-queue-root] > section:first-child[data-queue-id="WR20"]').waitFor({ timeout: 5000 });
     assert.equal(await page.locator('[data-queue-root]').evaluate(el => el.getAnimations({ subtree: true }).length), 0);
     assert.deepEqual(errors, []);
@@ -711,7 +734,7 @@ for (const width of [390, 1280]) test(`queue polling retains the open event log 
   changed.work_queue.board.nodes['WR14.S1.J1'].total_time_s += 2;
   changed.work_queue.revision++;
   setSnapshot(changed);
-  await page.clock.runFor(2300);
+  await advanceBoard(page);
   await page.waitForFunction(() => document.querySelector('.queue-status').textContent.includes('revision 11'));
   assert.ok(calls.filter(c => c.name === 'read-progress-board').length > reads, 'the actual board poll read the changed snapshot');
   assert.equal(await log.getAttribute('open'), '', 'manual event-log disclosure survives polling');
@@ -726,7 +749,7 @@ for (const width of [390, 1280]) test(`queue polling retains the open event log 
     changed.work_queue.revision++;
     changed.work_queue.board.nodes['WR14.S1.J1'].total_time_s += 2;
     setSnapshot(structuredClone(changed));
-    await page.clock.runFor(2300);
+    await advanceBoard(page);
     await page.waitForFunction(revision => document.querySelector('.queue-status').textContent.includes(`revision ${revision}`), changed.work_queue.revision);
     assert.equal(await control.evaluate(el => document.activeElement === el), true, 'the same control keeps focus after a changed-card poll');
     assert.equal(await job.locator('.queue-execution').getAttribute('open'), '');
@@ -807,21 +830,21 @@ for (const width of [390,1280]) for (const theme of ['light','dark'])
     });
     for(const [index,state] of [[1,'working'],[2,'review'],[3,'fixing'],[4,'merging'],[5,'merged'],[6,'live']]) {
       setSnapshot(orchestratorSequence[index].snapshot.snapshot_json);
-      await page.clock.runFor(2100);
+      await advanceBoard(page);
       await page.locator(`[data-orchestrator-stage="${state}"] [data-orchestrator-card="queue:search"]`).waitFor();
       assert.equal(await page.evaluate(()=>document.querySelector('[data-orchestrator-card="queue:search"]')===window.__orchestratorCard),true);
       assert.equal(await page.evaluate(()=>document.activeElement===window.__orchestratorLink),true);
       assert.equal(await page.locator('[data-orchestrator-card="queue:search"] details').getAttribute('open'),'');
     }
     setSnapshot(orchestratorSequence[7].snapshot.snapshot_json);
-    await page.clock.runFor(2100);
+    await advanceBoard(page);
     await page.locator('[data-orchestrator-status]').filter({hasText:'Queue observation unavailable or stale'}).waitFor();
     assert.equal(await page.locator('[data-orchestrator-stage="live"] [data-orchestrator-card="queue:search"]').count(),1);
     assert.equal(await page.locator('[data-orchestrator-stage]').count(),8);
     const paged=structuredClone(orchestratorSequence[7].snapshot.snapshot_json);
     paged.orchestrator.total_cards=paged.orchestrator.cards.length+1;
     paged.orchestrator.pages=[{board_id:olderPage,version:1,count:1}];
-    setSnapshot(paged);await page.clock.runFor(2100);
+    setSnapshot(paged);await advanceBoard(page);
     await page.locator('[data-orchestrator-more]').click();
     await page.locator('[data-orchestrator-pagination]').filter({hasText:'unavailable'}).waitFor();
     assert.equal(await page.locator('[data-orchestrator-card="queue:search"]').count(),1);
@@ -833,12 +856,12 @@ for (const width of [390,1280]) for (const theme of ['light','dark'])
     await older.locator('summary').focus();
     const scroll=await older.evaluate(el=>el.closest('.app-layout-center').scrollTop);
     const changed=structuredClone(paged);changed.orchestrator.observed_at='2026-10-21T20:00:00Z';
-    changed.orchestrator.cards[0].state='fixing';setSnapshot(changed);await page.clock.runFor(2100);
+    changed.orchestrator.cards[0].state='fixing';setSnapshot(changed);await advanceBoard(page);
     assert.equal(await older.locator('details').getAttribute('open'),'');
     assert.equal(await older.locator('summary').evaluate(el=>el===document.activeElement),true);
     assert.equal(await older.evaluate(el=>el.closest('.app-layout-center').scrollTop),scroll);
-    setSnapshot({tasks:{}});await page.clock.runFor(2100);
-    setSnapshot(changed);await page.clock.runFor(6300);
+    setSnapshot({tasks:{}});await advanceBoard(page);
+    setSnapshot(changed);await advanceBoard(page);
     assert.equal(await older.count(),1);
 
 
