@@ -214,7 +214,7 @@ export function mountPlanner({ document, window, api = createPlannerClient() }) 
   async function openTour(id, trigger) {
     selectDocRecord('tour', id);
     showDialog("Tour", trigger); const epoch = ++dialogEpoch; currentTour = id;
-    const docTicket = pageDocContext?.begin('tourDetail', [id]);
+    const docTicket = pageDocContext?.begin('tourDetail', [id],{read:()=>read(async()=>validateTourDetail(await api.tour(id),id))});
     message("#detail-message", "Updating…");
     try {
       const tour = await read(async () => validateTourDetail(await api.tour(id), id));
@@ -268,13 +268,13 @@ export function mountPlanner({ document, window, api = createPlannerClient() }) 
   async function refresh({ signal } = {}) {
     const openTourId = currentTour;
     // Boot, manual and scheduled reads share one generation boundary.
-    const docTicket = pageDocContext?.begin('tourLibrary');
+    const docTicket = pageDocContext?.begin('tourLibrary',[],{read:async()=>({tours:validateTourList(await api.library())})});
     const revision = ++refreshEpoch;
     const active = () => !disposed && revision === refreshEpoch && !signal?.aborted;
     const libraryRead = read(async () => validateTourList(await api.library({ signal }))).then(rows => {
       if (!active()) return;
       tours = rows; pageDocContext?.finish(docTicket, { tours }); renderLibrary(); message("#tour-library-state", "");
-      void showNextTour(revision, signal);
+      return showNextTour(revision, signal);
     }, error => {
       if (!active()) return;
       pageDocContext?.fail(docTicket, error); message("#tour-library-state", unavailable(error) || "Tours temporarily unavailable.");
@@ -307,7 +307,7 @@ export function mountPlanner({ document, window, api = createPlannerClient() }) 
     if (!active()) return;
     if (openTourId && currentTour === openTourId && $("#tour-dialog").open) {
       const id = openTourId, epoch = ++dialogEpoch;
-      const detailTicket=pageDocContext?.begin('tourDetail',[id]);
+      const detailTicket=pageDocContext?.begin('tourDetail',[id],{read:()=>read(async()=>validateTourDetail(await api.tour(id),id))});
       try { const detail = await read(async () => validateTourDetail(await api.tour(id, { signal }), id)); if (currentTour === id && epoch === dialogEpoch && active()) { pageDocContext?.finish(detailTicket,detail); renderTour(detail); message("#detail-message", ""); } }
       catch (error) { pageDocContext?.fail(detailTicket,error); if (!active()) return; current = false; if (epoch === dialogEpoch) message("#detail-message", unavailable(error) || "Tour temporarily unavailable."); }
     }

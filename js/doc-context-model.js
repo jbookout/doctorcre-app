@@ -206,7 +206,7 @@ function compareRevision(a,b) {
 const survivesFilters = method => method === 'getWorkspace';
 
 export function createDocContext({ page = 'home', now = () => Date.now() } = {}) {
-  let epoch = 0, authorizationGeneration = 0, selected = null, filters = {}, reads = new Map(), tickets = new Map();
+  let epoch = 0, authorizationGeneration = 0, selected = null, filters = {}, reads = new Map(), tickets = new Map(), replays = new Map();
   const listeners = new Set();
   const emit = () => listeners.forEach(listener => listener(snapshot()));
   function snapshot() {
@@ -228,11 +228,11 @@ export function createDocContext({ page = 'home', now = () => Date.now() } = {})
       observedAt: valid.length ? new Date(Math.min(...valid.map(read => read.at))).toISOString() : null,
       recentActivity: active?.activityComplete === false ? [] : active?.activity.slice(0, 5) || [], state: ready ? 'ready' : current.some(read => read.state === 'pending') ? 'updating' : 'unavailable' };
   }
-  const clear = () => { authorizationGeneration++; epoch++; selected = null; filters = {}; reads.clear(); tickets.clear(); emit(); };
-  return {
+  const clear = () => { authorizationGeneration++; epoch++; selected = null; filters = {}; reads.clear(); tickets.clear(); replays.clear(); emit(); };
+  const api = {
     snapshot,
     subscribe(listener) { listeners.add(listener); listener(snapshot()); return () => listeners.delete(listener); },
-    navigate(next, nextFilters = {}) { page = next; epoch++; selected = null; filters = { ...nextFilters }; reads = new Map(); tickets = new Map(); emit(); },
+    navigate(next, nextFilters = {}) { page = next; epoch++; selected = null; filters = { ...nextFilters }; reads = new Map(); tickets = new Map(); replays = new Map(); emit(); },
     filter(next) {
       epoch++; selected = null; filters = { ...next };
       for (const [key, ticket] of tickets) if (!survivesFilters(ticket.method)) tickets.delete(key);
@@ -243,20 +243,28 @@ export function createDocContext({ page = 'home', now = () => Date.now() } = {})
       if (!source || source.state !== 'ready') return false;
       let records; try { records=normalizeDocRead(method,payload,args); } catch { records=null; }
       if (!records) return false;
-      reads.set(method,{...source,records,epoch}); emit(); return true;
+      reads.set(method,{...source,records,epoch});
+      const replay=replays.get(method);
+      if(replay){replay.allowed=new Set(records.map(row=>`${row.kind}:${row.id}`));replay.epoch=epoch;}
+      emit(); return true;
     },
-    release(method) { reads.delete(method); tickets.delete(method); emit(); },
+    release(method) { reads.delete(method); tickets.delete(method); replays.delete(method); emit(); },
     select(kind, id) { selected = id ? { kind, id: String(id) } : null; emit(); },
-    begin(method, args = []) {
+    begin(method, args = [], { read, project } = {}) {
       if (!DOC_PAGES[page].reads.includes(method)) return null;
       const key = method;
+      if (read) {
+        const previous=replays.get(key);
+        replays.set(key,{args,read,project,epoch,allowed:previous?.epoch===epoch?previous.allowed:undefined});
+      }
       const ticket = { key, method, args, epoch, sequence: (tickets.get(key)?.sequence || 0) + 1 };
       tickets.set(key, ticket); reads.set(key, { state: 'pending', records: [], at: now(), epoch }); emit(); return ticket;
     },
-    finish(ticket, payload, { at = now() } = {}) {
+    finish(ticket, payload, { at = now(), allowed } = {}) {
       if (!ticket || tickets.get(ticket.key) !== ticket || ticket.epoch !== epoch && !survivesFilters(ticket.method)) return false;
       let records;
       try { records = normalizeDocRead(ticket.method, payload, ticket.args); } catch { records = null; }
+      if(records && allowed)records=records.filter(row=>allowed.has(`${row.kind}:${row.id}`));
       reads.set(ticket.key, { state: records ? 'ready' : 'unavailable', records: records || [], at, epoch: ticket.epoch }); emit(); return records !== null;
     },
     fail(ticket, error = {}) {
@@ -265,9 +273,25 @@ export function createDocContext({ page = 'home', now = () => Date.now() } = {})
       reads.set(ticket.key, { state: 'unavailable', records: [], at: now(), epoch });
       emit();
     },
+    async revalidate({force=false}={}) {
+      if(!force && snapshot().ready)return true;
+      const startedEpoch=epoch, generation=authorizationGeneration;
+      const jobs=[...replays].filter(([method,replay])=>reads.get(method)?.epoch===epoch || replay.project);
+      await Promise.all(jobs.map(async([method,replay])=>{
+        if(epoch!==startedEpoch || authorizationGeneration!==generation)return;
+        const allowed=!replay.project && replay.epoch===epoch?replay.allowed:undefined;
+        const ticket=api.begin(method,replay.args);
+        try {
+          const payload=await replay.read();
+          if(epoch===startedEpoch && authorizationGeneration===generation)api.finish(ticket,replay.project?replay.project(payload):payload,{allowed});
+        }catch(error){if(epoch===startedEpoch && authorizationGeneration===generation)api.fail(ticket,error);}
+      }));
+      return snapshot().ready;
+    },
     clear,
     tick: emit,
   };
+  return api;
 }
 
 export function docAnswer(context, { recordId, kind, question }) {

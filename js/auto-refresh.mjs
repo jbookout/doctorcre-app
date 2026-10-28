@@ -42,7 +42,7 @@ export function mountAutoRefresh({ document, window, refresh, onResume, onWake, 
   // A person pressing refresh is present by definition: refresh() reads even
   // after the idle cutoff, exactly as before the idle pause. poll() is for a
   // page's own clock and waits while hidden or idle, like the interval itself.
-  const manualRead = event => { presence.touch(); return run(refresh, Boolean(event?.isTrusted || window.navigator?.userActivation?.isActive), !initialized); };
+  const manualRead = () => { presence.touch(); return run(refresh, true, !initialized); };
   const resumeRead = (invalidate, manual = false) => {
     invalidate?.();
     if (!invalidate || !running) return run(refresh, manual);
@@ -63,7 +63,7 @@ export function mountAutoRefresh({ document, window, refresh, onResume, onWake, 
     wasPaused = state.paused;
   });
   schedule();
-  return { refresh: manualRead, revalidate: event => { presence.touch(); return resumeRead(onResume, Boolean(event?.isTrusted || window.navigator?.userActivation?.isActive)); }, poll: read, dispose() { disposed = true; unsubscribe(); safety.cancel(source); reads.dispose(); window.clearTimeout?.(timer); document.removeEventListener("visibilitychange", visibility); window.removeEventListener("online", online); presence.dispose(); } };
+  return { refresh: manualRead, revalidate: () => { presence.touch(); return resumeRead(onResume, true); }, poll: read, dispose() { disposed = true; unsubscribe(); safety.cancel(source); reads.dispose(); window.clearTimeout?.(timer); document.removeEventListener("visibilitychange", visibility); window.removeEventListener("online", online); presence.dispose(); } };
 }
 
 export function updatedLabel(value) {

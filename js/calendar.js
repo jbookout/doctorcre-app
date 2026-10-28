@@ -369,7 +369,6 @@ function wire() {
     view.state = parseCalendarState(location.search, view.today);
     render();
   });
-  window.addEventListener("online", () => load());
   // A page left open past midnight moves "today" with the clock.
   setInterval(() => {
     const today = localToday();

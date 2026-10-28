@@ -1998,19 +1998,11 @@ export function mountProgressWire({ scope = {}, onRead = () => {} } = {}) {
     if (Number(page.latest_seq) !== last || page.more && last <= from) throw new Error("Room cursor unavailable.");
   }
 
-  async function poll() {
-    const docTicket = pageDocContext?.begin('roomTurns');
-    const epoch = authGeneration();
-    if (!authReadable(epoch)) return;
-    try {
-      // latest_seq is the last returned row, not the room's overall tail.
-      // Drain the server's oldest-first pages before showing a current window.
-      let from = state.rescanRequested ? 0 : state.cursor;
-      state.rescanRequested = false;
-      let payload, turns = [];
+  async function readTurns(from,epoch=authGeneration()) {
+    let payload, turns = [];
       do {
         payload = await fetchTurns(from, 200);
-        if (!authReadable(epoch)) return;
+        if (!authReadable(epoch)) throw new Error('Room authorization changed.');
         validateTurnPage(payload, from);
         const loaded = [...turns, ...(payload.turns || [])];
         const scoped = scope.task || scope.workRequest || scope.session;
@@ -2020,7 +2012,21 @@ export function mountProgressWire({ scope = {}, onRead = () => {} } = {}) {
         if (payload.more && !(next > from)) throw new Error("Room cursor did not advance.");
         if (Number.isFinite(next)) from = next;
       } while (payload.more);
-      payload = { ...payload, turns };
+    return { ...payload, turns };
+  }
+
+  async function poll() {
+    const docTicket = pageDocContext?.begin('roomTurns',[],{read:async()=>{
+      return readTurns(0);
+    },project:payload=>({turns:payload.turns.filter(turn=>scopedTurn(turn,scope) && turnPasses(turn,state.filters))})});
+    const epoch = authGeneration();
+    if (!authReadable(epoch)) return;
+    try {
+      // latest_seq is the last returned row, not the room's overall tail.
+      // Drain the server's oldest-first pages before showing a current window.
+      let from = state.rescanRequested ? 0 : state.cursor;
+      state.rescanRequested = false;
+      const payload=await readTurns(from,epoch);
       if (payload.actor?.slug) state.viewer = String(payload.actor.slug).toLowerCase();
       if (payload.csrf_token) state.csrf = payload.csrf_token;
       $("composerInput").placeholder = `Speak into the room as ${PARTNER_LABEL[state.viewer] || "a partner"}…`;

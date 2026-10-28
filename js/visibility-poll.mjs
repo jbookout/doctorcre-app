@@ -69,7 +69,7 @@ export function mountVisibilityPoll({
       // The page's poll renders its own failure; the cadence carries on.
     }).finally(() => { if (mine === generation && !disposed) arm(); });
   };
-  const refresh = event => run(Boolean(event?.isTrusted || window.navigator?.userActivation?.isActive), !initialized);
+  const refresh = () => run(true, !initialized);
   const tick = () => { timer = null; if (presence.active() || keepAlive()) run(); };
   const presence = watchPresence({ document, window, idleMs, now, onResume: () => run(), onWake: () => run() });
   const visibility = () => { if (document.visibilityState === "hidden" && !keepAlive()) stop(); };

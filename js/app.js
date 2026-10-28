@@ -1,3 +1,4 @@
+import { pollSafety } from './poll-safety.mjs';
 import { requireReviewReceipt } from './deal-review-model.js';
 import { showToast } from './toast.js';
 import {onDialogClosed} from './dialog-lifecycle.js';
@@ -292,7 +293,7 @@ async function pollOnce(initial = false, { force = false } = {}) {
   // one this board has never seen, which is what a new record looks like to an
   // empty board — is a reason to re-read the board. Requests coalesce into one
   // read, so a burst of partner edits costs one refresh, not one per event.
-  if (state.feed.caught_up && batchTouchesBoard(batch)) state.boardSync.requestRefresh('change-feed');
+  if (state.feed.caught_up && batchTouchesBoard(batch)) await state.boardSync.requestRefresh('change-feed');
   // Same events, kept instead of discarded once the toast fades. No second
   // read: this is the batch the board just consumed.
   state.receipts = ingestChangeEvents(state.receipts, batch, {
@@ -1579,8 +1580,10 @@ function wireEvents() {
   window.addEventListener('online', () => {
     $('#offlineBanner').hidden = true;
     state.boardSync.setOnline(true);
-    state.boardSync.refreshBoard({ reason:'reconnect', force:true });
-    pollOnce(false, { force:true });
+    return pollSafety(window, { document }).run(() => Promise.all([
+      state.boardSync.refreshBoard({ reason:'reconnect', force:true }),
+      pollOnce(false, { force:true }),
+    ]));
   });
   window.addEventListener('offline', () => {
     $('#offlineBanner').hidden = false;
@@ -1626,7 +1629,7 @@ async function boot() {
   // coordinator rather than run alongside it, so a slow answer cannot land
   // after a newer one. Both clocks sleep while the tab is hidden or idle.
   mountVisibilityPoll({ intervalMs: POLL_MS, poll: () => {
-    pollOnce().catch((error) => console.error('Deal Room poll failed to render', error));
+    return pollOnce().catch((error) => console.error('Deal Room poll failed to render', error));
   } });
   // The backstop for what the feed cannot promise. A change whose commit landed
   // out of order with its recorded time can slip past the cursor, and a board
@@ -1635,7 +1638,7 @@ async function boot() {
   // and post-write refreshes through the same single-read queue, so it adds one
   // read per interval at most and none while another is already running.
   mountVisibilityPoll({ intervalMs: BOARD_REFRESH_MS, poll: () => {
-    state.boardSync.requestRefresh('periodic');
+    return state.boardSync.requestRefresh('periodic');
   } });
   if (linkedDeal && state.deals.has(linkedDeal)) {
     try { await openDeal(linkedDeal); }

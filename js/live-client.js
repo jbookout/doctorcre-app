@@ -49,7 +49,7 @@ export function createLiveClient(opts = {}) {
   const fetchReadImpl = (path, init) => fetchRead(path, init, { fetchImpl, timeoutMs: opts.readTimeoutMs || 10_000 });
   const commands = createRetainedCommands({ scope: () => selfActor });
   const sessionCommands = createRetainedCommands({ scope: async () => {
-    const response = await fetchReadImpl('/auth/session', { credentials: 'same-origin', cache: 'no-store', headers: { accept: 'application/json' } });
+    const response = await fetchReadImpl('/auth/session', { pollIntent: 'human', credentials: 'same-origin', cache: 'no-store', headers: { accept: 'application/json' } });
     if (!response.ok) throw Object.assign(new Error('Sign in again before checking this write.'), { status: response.status });
     const session = await response.json();
     if (typeof session?.actor?.slug !== 'string' || typeof session.csrf_token !== 'string' || !session.csrf_token)

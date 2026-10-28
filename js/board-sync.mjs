@@ -197,7 +197,7 @@ function describe(error) {
  * @param {Object} deps
  * @param {() => Promise<any>} deps.readBoard authoritative snapshot (deal-room-board)
  * @param {(cursor:string|null) => Promise<any>} deps.readChanges the existing changes cursor
- * @param {(board:any, meta:Object) => void} deps.applyBoard called ONLY with a current snapshot
+ * @param {(board:any, meta:Object) => void|Promise<void>} deps.applyBoard called ONLY with a current snapshot
  * @param {(status:Object) => void} [deps.onStatus]
  * @param {() => number} [deps.now]
  */
@@ -396,10 +396,20 @@ export function createBoardSync({
       }
       const merged = mergeBoardSnapshot(board, holds, ticket.started_at);
       try {
-        applyBoard(merged, {
+        await applyBoard(merged, {
           generation, ticket, snapshot: snapshots + 1, held_fields: merged.held_fields,
         });
+        if (ticket.generation !== generation || ticket.id !== boardSeq) {
+          counters.board_superseded += 1;
+          publish();
+          return { ok: true, applied: false, reason: 'superseded', ticket };
+        }
       } catch (caught) {
+        if (ticket.generation !== generation || ticket.id !== boardSeq) {
+          counters.board_superseded += 1;
+          publish();
+          return { ok: false, applied: false, reason: 'superseded', error: caught, ticket };
+        }
         // A render fault is not a read fault: nothing is retried and no hold is
         // released, because nothing reached the page. It is also NOT ready —
         // the screen is older than the answer we just threw away.

@@ -13,7 +13,8 @@ export function observeDocClient(client, context = pageDocContext) {
     if (typeof client[method] !== 'function') continue;
     const original = client[method];
     client[method] = async function (...args) {
-      const ticket = context.begin(method, args);
+      const replayArgs=args.map(arg=>arg && typeof arg==='object' && !Array.isArray(arg)?{...arg,signal:undefined}:arg);
+      const ticket = context.begin(method, args, {read:()=>original.apply(this,replayArgs)});
       try { const payload = await original.apply(this, args); context.finish(ticket, payload); return payload; }
       catch (error) { context.fail(ticket, error); throw error; }
     };
@@ -28,7 +29,7 @@ export function publishDocRead(method, payload, args = []) {
 export function selectDocRecord(kind, id) { pageDocContext?.select(kind, id); }
 
 export async function observeDocRead(method, args, read, context = pageDocContext) {
-  const ticket = context?.begin(method, args);
+  const ticket = context?.begin(method, args, {read});
   try { const result = await read(); context?.finish(ticket, result); return result; }
   catch (error) { context?.fail(ticket, error); throw error; }
 }

@@ -1,3 +1,4 @@
+import { pollSafety } from './poll-safety.mjs';
 import { mountAutoRefresh, updatedLabel } from "./auto-refresh.mjs";
 // V5-UX-S02 clauses 1-2 — the Sessions tab: DOM wiring only.
 //
@@ -318,19 +319,21 @@ export function mountSessions({ outage = null } = {}) {
     pendingOpen = null;
     openLinks.retire(attempt.id, attempt.link);
     renderList();
-    try {
-      const [payload, checkpointPayload] = await Promise.all([
-        client.sessionIdentity({ query: attempt.target.canonicalSessionId, limit: 50 }),
-        client.codexSessions(),
-      ]);
-      const outcome = reconcileOpenAttempt(attempt.target, refuseSessionIdentity(payload) ? null : payload,
-        { hostAvailable: hostAvailable(), checkpoints: codexCheckpoints(checkpointPayload) });
-      announce(outcome.state === 'same_target_unconfirmed'
-        ? 'The recorded target is unchanged. Refresh the session list before opening again.'
-        : 'The recorded target could not be confirmed. Refresh the session list before opening.');
-    } catch {
-      announce('The open result is unknown. Refresh the session list before trying again.');
-    }
+    await pollSafety(globalThis.window, { document }).run(async () => {
+      try {
+        const [payload, checkpointPayload] = await Promise.all([
+          client.sessionIdentity({ query: attempt.target.canonicalSessionId, limit: 50 }),
+          client.codexSessions(),
+        ]);
+        const outcome = reconcileOpenAttempt(attempt.target, refuseSessionIdentity(payload) ? null : payload,
+          { hostAvailable: hostAvailable(), checkpoints: codexCheckpoints(checkpointPayload) });
+        announce(outcome.state === 'same_target_unconfirmed'
+          ? 'The recorded target is unchanged. Refresh the session list before opening again.'
+          : 'The recorded target could not be confirmed. Refresh the session list before opening.');
+      } catch {
+        announce('The open result is unknown. Refresh the session list before trying again.');
+      }
+    });
   });
   const location = globalThis.location || { hostname: "", search: "" };
   const resolved = resolveDealroomBoot(location);

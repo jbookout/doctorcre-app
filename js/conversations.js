@@ -1,3 +1,4 @@
+import { pollSafety } from './poll-safety.mjs';
 import { mountFeatureGate, FEATURE_DISABLED, SUGGESTION_ACTIONS_OFF } from './feature-switches.js';
 import { selectDocRecord } from './doc-context.js';
 import { mountAutoRefresh, readWithDeadline, updatedLabel } from "./auto-refresh.mjs";
@@ -827,21 +828,23 @@ async function boot() {
     pendingOutcomeOpen = null;
     openLinks.retire(attempt.cardId, attempt.link);
     renderOutcomeCards();
-    try {
-      const [fresh, checkpointPayload] = await Promise.all([
-        client.docOutcomeCards({ limit: 50 }), client.codexSessions(),
-      ]);
-      const card = refuseDocOutcomeCards(fresh) ? null
-        : fresh.cards.find(item => item.card_id === attempt.cardId);
-      const result = reconcileOutcomeOpenAttempt(attempt.target, card,
-        { hostAvailable: /Mac/.test(globalThis.navigator?.platform || globalThis.navigator?.userAgent || ''),
-          checkpoints: codexCheckpoints(checkpointPayload) });
-      announceOutcomeCards(result.state === 'same_target_unconfirmed'
-        ? 'The recorded target is unchanged. Refresh this card before opening again.'
-        : 'The recorded target could not be confirmed. Refresh this card before opening.');
-    } catch {
-      announceOutcomeCards('The open result is unknown. Refresh this card before trying again.');
-    }
+    await pollSafety(globalThis.window, { document }).run(async () => {
+      try {
+        const [fresh, checkpointPayload] = await Promise.all([
+          client.docOutcomeCards({ limit: 50 }), client.codexSessions(),
+        ]);
+        const card = refuseDocOutcomeCards(fresh) ? null
+          : fresh.cards.find(item => item.card_id === attempt.cardId);
+        const result = reconcileOutcomeOpenAttempt(attempt.target, card,
+          { hostAvailable: /Mac/.test(globalThis.navigator?.platform || globalThis.navigator?.userAgent || ''),
+            checkpoints: codexCheckpoints(checkpointPayload) });
+        announceOutcomeCards(result.state === 'same_target_unconfirmed'
+          ? 'The recorded target is unchanged. Refresh this card before opening again.'
+          : 'The recorded target could not be confirmed. Refresh this card before opening.');
+      } catch {
+        announceOutcomeCards('The open result is unknown. Refresh this card before trying again.');
+      }
+    });
   });
   $("suggestionsRetry")?.addEventListener("click", () => takeSuggestions());
   $("suggestionsParked")?.addEventListener("click", () => {

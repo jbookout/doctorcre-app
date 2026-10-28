@@ -322,7 +322,7 @@ function noteCellBase(cell, event) {
   state.fieldBase.set(cell, nextCellBase(state.fieldBase.get(cell) || null, seen));
 }
 
-function applyBoardSnapshot(board) {
+async function applyBoardSnapshot(board) {
   const previousPanelRow = state.deals.get(state.panelDeal);
   const previousActor = state.selfActor;
   state.selfActor = board.actor || state.client.selfActor || state.selfActor;
@@ -352,7 +352,7 @@ function applyBoardSnapshot(board) {
   renderChips();
   renderBoard();
   if (actorChanged && state.panelDeal) {
-    void refreshPanel();
+    await refreshPanel();
     return;
   }
   syncUpdateForm();
@@ -364,7 +364,7 @@ function applyBoardSnapshot(board) {
     }
   }
   if (state.panelDeal && $('recordPanel')?.open && previousPanelRow
-    && JSON.stringify(previousPanelRow) !== JSON.stringify(state.deals.get(state.panelDeal))) void refreshPanel({changed:true});
+    && JSON.stringify(previousPanelRow) !== JSON.stringify(state.deals.get(state.panelDeal))) await refreshPanel({changed:true});
 }
 
 async function loadBoard() {
@@ -393,8 +393,8 @@ async function pollOnce(initial = false) {
       if (deal) showToast(`${actorName(event.actor)} moved ${dealTitle(deal)}`);
     }
   }
-  if (state.feed.caught_up && batchTouchesBoard(batch)) state.boardSync.requestRefresh('change-feed');
-  if (!initial && state.feed.caught_up && batch.some(event => event.subject_id === state.panelDeal)) void refreshPanel({changed:true});
+  if (state.feed.caught_up && batchTouchesBoard(batch)) await state.boardSync.requestRefresh('change-feed');
+  if (!initial && state.feed.caught_up && batch.some(event => event.subject_id === state.panelDeal)) await refreshPanel({changed:true});
   state.receipts = ingestChangeEvents(state.receipts, batch, {
     dealName: (dealId) => (state.deals.has(dealId) ? dealTitle(state.deals.get(dealId)) : null),
     actorLabel: actorName,
@@ -801,7 +801,7 @@ async function mountPanelEmailFollowups(id) {
     if (sequence !== emailMountSequence || state.panelDeal !== id || !container?.isConnected) return;
     panelEmailFollowups = mountEmailFollowups({ container, client: state.client, deal: id,
       onChange: () => { if (state.panelDeal === id) void refreshPanel({ changed: true }); } });
-    void panelEmailFollowups.refresh();
+    await panelEmailFollowups.refresh();
   } catch {
     if (sequence === emailMountSequence && container?.isConnected) container.innerHTML = '<p role="status">Could not load email follow-ups.</p><button class="btn" type="button" data-refresh-detail>Retry email follow-ups</button>';
   }
@@ -994,7 +994,7 @@ async function readPanel(id) {
     pageDocContext?.finish(contextRead, detail);
     selectDocRecord('deal', id);
     updateDetailTimestamp();
-    if (!$('panelBody').querySelector('.deal-opening-snapshot')) paintPanel(detail);
+    if (!$('panelBody').querySelector('.deal-opening-snapshot')) await paintPanel(detail);
     else {
       if ($('detailPhase') && document.activeElement !== $('detailPhase')) $('detailPhase').value = columnByValue(detail.deal.phase)?.slug || '';
       if ($('detailOwner') && document.activeElement !== $('detailOwner')) $('detailOwner').value = detail.deal.owner || '';
@@ -1060,14 +1060,14 @@ async function refreshEvidence(detail, id, seq) {
   disposeEvidence = mountEvidence(root, {client:state.client,detail,onDenied:refusePanelDetail,initialView:evidence});
   root.querySelectorAll('details').forEach(n => { if (expanded.has(n.querySelector('summary')?.textContent)) n.open = true; });
 }
-function paintPanel(detail) {
+async function paintPanel(detail) {
   $('panelTitle').textContent = dealTitle(detail.deal);
   $('panelBody').innerHTML = detailHtml(detail);
   disposeEvidence?.(); disposeEvidence = null;
   disposePanelEmailFollowups();
   syncUpdateForm();
   updateDetailTimestamp();
-  void mountPanelEmailFollowups(detail.deal.id);
+  await mountPanelEmailFollowups(detail.deal.id);
 }
 async function openPanel(dealId, trigger, { fromHistory = false } = {}) {
   selectDocRecord('deal', dealId);
@@ -1500,7 +1500,7 @@ async function boot() {
   state.boardSync = createBoardSync({
     readBoard: () => state.client.getBoard({ workspace: 'team' }),
     readChanges: (cursor) => state.client.getChanges(cursor),
-    applyBoard: (board) => { applyBoardSnapshot(board); },
+    applyBoard: applyBoardSnapshot,
     onStatus: renderStatus,
   });
   $('boardView').setAttribute('aria-pressed',String(state.view === 'board'));
@@ -1511,8 +1511,8 @@ async function boot() {
   if (linkedDeal) void openPanel(linkedDeal);
   void loadBoard();
   mountVisibilityPoll({ intervalMs: BOARD_REFRESH_MS, poll: refreshPanel });
-  mountVisibilityPoll({ intervalMs: POLL_MS, poll: () => { pollOnce().catch(() => { /* the badge already says the feed failed */ }); } });
-  mountVisibilityPoll({ intervalMs: BOARD_REFRESH_MS, poll: () => { state.boardSync.requestRefresh('periodic'); } });
+  mountVisibilityPoll({ intervalMs: POLL_MS, poll: () => { return pollOnce().catch(() => { /* the badge already says the feed failed */ }); } });
+  mountVisibilityPoll({ intervalMs: BOARD_REFRESH_MS, poll: () => state.boardSync.requestRefresh('periodic') });
 
 }
 

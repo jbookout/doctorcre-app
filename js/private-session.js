@@ -46,7 +46,11 @@ export function createSessionBoundary({ fetchImpl, invalidate, epoch = () => '',
     get revoked() { return revoked; },
     async fetch(path, init = {}) {
       const ticket = generation, startedEpoch = epoch();
-      const transport = safety ? safety.transport(fetchImpl, 3) : fetchImpl;
+      let mutation = !['GET', 'HEAD'].includes((init.method || 'GET').toUpperCase());
+      if (mutation && new URL(path, 'https://doctorcre.invalid').pathname === '/mcp') {
+        try { const call = JSON.parse(init.body).params; mutation = !call?.name || Boolean(call.arguments?.idempotency_key); } catch {}
+      }
+      const transport = safety ? safety.transport(fetchImpl, 3, mutation || init.pollIntent === 'human' ? { manual: true } : {}) : fetchImpl;
       try {
         const session = await verify({ fresh: true, transport }); current(ticket, startedEpoch);
         const controller = new AbortController(); active.add(controller);
@@ -76,7 +80,7 @@ export function createSessionBoundary({ fetchImpl, invalidate, epoch = () => '',
           await verify({ fresh: true, transport }); current(ticket, startedEpoch);
           return new Response([204,205,304].includes(response.status) ? null : bytes, {status:response.status,statusText:response.statusText,headers:response.headers});
         } finally { active.delete(controller); init.signal?.removeEventListener('abort', cancel); }
-      } finally { transport.release?.(); }
+      } finally { await transport.release?.(); }
     },
   };
 }

@@ -702,7 +702,7 @@ async function loadActivity(id, record) {
   view.activity.id = id;
   view.activity.result = null;
   const request = activityRequest(record);
-  const docTicket=request ? pageDocContext?.begin('businessActivity',[{dataset:view.dataset,id}]) : null;
+  const docTicket=request ? pageDocContext?.begin('businessActivity',[{dataset:view.dataset,id}],{read:()=>loadActivity(id,record)}) : null;
   const settle = (result) => {
     if (view.activity.sequence !== sequence || view.recordId !== id) return;
     view.activity.result = result;
@@ -750,7 +750,7 @@ async function loadList(reason = "initial") {
   const key = listRequestUrl(query);
   const sequence = ++view.list.sequence;
   setDocFilters({ ...query });
-  view.list.docTicket = pageDocContext?.begin('businessList', [{ dataset:view.dataset }]);
+  view.list.docTicket = pageDocContext?.begin('businessList', [{ dataset:view.dataset }],{read:()=>loadList('background')});
   // Remembered answers are only for restoring a place, and only while the
   // session is known good; cachedPayload refuses to open once signed out.
   const cached = reason === "initial" || reason === "history" ? cachedPayload(view, key) : null;
@@ -836,7 +836,7 @@ async function loadRecord(id, { focusOnOpen = false } = {}) {
   view.evidence.result = null;
   const sequence = ++view.record.sequence;
   selectDocRecord(view.dataset, id);
-  const docTicket = pageDocContext?.begin('businessRecord', [{ dataset:view.dataset, id }]);
+  const docTicket = pageDocContext?.begin('businessRecord', [{ dataset:view.dataset, id }],{read:()=>loadRecord(id)});
   view.record.id = id;
   if (view.record.payload?.record?.id !== id) { view.record.status = "loading"; view.record.payload = null; }
   view.record.code = null;
@@ -873,7 +873,7 @@ async function loadRecord(id, { focusOnOpen = false } = {}) {
     // The party record read supplies no deal activity/native thread index. This
     // section reads installation readiness and states unavailable explicitly.
     // Repainting recent activity must not restart this read or lose its state.
-    dealroomClient().then(client => loadEvidence(client)).then(result => {
+    const evidenceRead = dealroomClient().then(client => loadEvidence(client)).then(result => {
       if (view.evidence.sequence !== evidenceSequence || view.recordId !== id || view.signedOut) return;
       if (result.threads?.state === 'refused') { expireNow(); return; }
       view.evidence.result = result;
@@ -883,7 +883,8 @@ async function loadRecord(id, { focusOnOpen = false } = {}) {
       view.evidence.result = {threads:{state:'unavailable',items:[],count:null}};
       renderRecordPanel();
     });
-    if (acceptsResponse(view.record.sequence, sequence) && view.recordId === id) loadActivity(id, payload.record);
+    const activityRead = acceptsResponse(view.record.sequence, sequence) && view.recordId === id ? loadActivity(id, payload.record) : Promise.resolve();
+    await Promise.all([evidenceRead, activityRead]);
   } catch {
     settle("error", "DEPENDENCY_UNAVAILABLE");
   }

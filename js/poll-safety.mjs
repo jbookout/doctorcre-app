@@ -1,4 +1,4 @@
-export const POLL_LIMITS = Object.freeze({ gapMs: 5_000, minute: 60, hour: 300, manualMinute: 30, manualHour: 120, failureLimit: 3, backoffMs: 300_000 });
+export const POLL_LIMITS = Object.freeze({ gapMs: 5_000, minute: 90, hour: 300, manualMinute: 120, manualHour: 600, failureLimit: 3, backoffMs: 300_000, requestSpacingMs: 20_000, recoveryHour: 30, resumeMs: 3_600_000, reservationMs: 60_000 });
 const governors = new WeakMap();
 
 export function createPollSafety({ window, document = window?.document, now = () => Date.now(), storage, locks = window?.navigator?.locks } = {}) {
@@ -9,29 +9,55 @@ export function createPollSafety({ window, document = window?.document, now = ()
   const queue = new Map();
   let queueTimer = null, draining = false;
   const queueClock = window?.setTimeout && window?.clearTimeout ? window : globalThis;
-  const requests = { background: [], manual: [] };
-  const reservations = new Set();
-  const reserved = manual => [...reservations].filter(item => item.manual === manual).reduce((total, item) => total + item.remaining, 0);
-  let leader = false, acquiring = null, release = null, inFlight = 0, retired = false, pageHidden = false, follower = '', lastResume = -Infinity;
-  let notice, label, storageFault = false;
-  const storageKey = 'poll-safety-v1';
-  try {
-    storage ||= window?.sessionStorage;
-    if (!storage && window?.navigator) { storageFault = true; reason = 'Background updates paused because browser storage is unavailable.'; }
-    const saved = JSON.parse(storage?.getItem(storageKey) || 'null');
-    if (saved) {
-      if (!Array.isArray(saved.background) || !Array.isArray(saved.manual) ||
-          saved.background.length > POLL_LIMITS.hour || saved.manual.length > POLL_LIMITS.manualHour ||
-          ![...saved.background, ...saved.manual, saved.nextAt, saved.cooldownAt, saved.retryAt, saved.failures].every(value => Number.isFinite(value) && value >= 0) ||
-          !Number.isInteger(saved.failures) || saved.failures > POLL_LIMITS.failureLimit || typeof saved.reason !== 'string' || saved.reason.length > 300) throw Error('Invalid budget');
-      requests.background = saved.background.filter(time => time > now() - 3_600_000);
-      requests.manual = saved.manual.filter(time => time > now() - 3_600_000);
-      nextAt = saved.nextAt; cooldownAt = saved.cooldownAt; retryAt = saved.retryAt; failures = saved.failures; reason = saved.reason;
-    }
-  } catch { storageFault = true; reason = 'Background updates paused because the request limit could not be restored.'; }
+  const requests = { background: [], manual: [], recovery: [] };
+  let reservations = new Map();
+  const budgets = {
+    background: { minute: POLL_LIMITS.minute, hour: POLL_LIMITS.hour },
+    manual: { minute: POLL_LIMITS.manualMinute, hour: POLL_LIMITS.manualHour },
+    recovery: { minute: POLL_LIMITS.recoveryHour, hour: POLL_LIMITS.recoveryHour },
+  };
+  let leader = false, acquiring = null, release = null, inFlight = 0, retired = false, pageHidden = false, follower = '';
+  let resumeTimer, notice, label, storageFault = false, lastResume = -POLL_LIMITS.resumeMs, recovering = false;
+  const storageKey = 'poll-safety-v2';
+  try { storage ||= window?.localStorage; }
+  catch { storageFault = true; }
+  if (!storage && window?.navigator) storageFault = true;
+  const restore = () => {
+    for (const key of Object.keys(requests)) requests[key] = requests[key].filter(time => time > now() - 3_600_000);
+    for (const [id, reservation] of reservations) if (reservation.expiresAt <= now()) reservations.delete(id);
+    try {
+      const saved = JSON.parse(storage?.getItem(storageKey) || 'null');
+      if (!saved) return;
+      for (const key of ['background', 'manual', 'recovery']) {
+        if (!Array.isArray(saved[key]) || saved[key].length > budgets[key].hour ||
+            !saved[key].every(time => Number.isFinite(time) && time >= 0)) throw Error('Invalid budget');
+        requests[key] = saved[key].filter(time => time > now() - 3_600_000);
+      }
+      const held = saved.reservations || [];
+      if (!Array.isArray(held) || held.length > POLL_LIMITS.hour + POLL_LIMITS.manualHour + POLL_LIMITS.recoveryHour ||
+          !held.every(item => typeof item.id === 'string' && budgets[item.key] && Number.isInteger(item.remaining) && item.remaining > 0 && item.remaining <= budgets[item.key].hour && Number.isFinite(item.expiresAt))) throw Error('Invalid reservation');
+      reservations = new Map(held.filter(item => item.expiresAt > now()).map(item => [item.id, item]));
+      if (![saved.nextAt, saved.cooldownAt, saved.retryAt, saved.failures, saved.lastResume].every(Number.isFinite) ||
+          typeof saved.reason !== 'string' || typeof saved.recovering !== 'boolean') throw Error('Invalid budget');
+      nextAt = saved.nextAt; cooldownAt = saved.cooldownAt; retryAt = saved.retryAt; failures = saved.failures;
+      reason = saved.reason; lastResume = saved.lastResume; recovering = saved.recovering;
+    } catch { storageFault = true; }
+    if (storageFault) reason = 'Background updates paused because the request limit could not be restored.';
+  };
+  restore();
+  if (storageFault) reason = 'Background updates paused because browser storage is unavailable.';
   const persist = () => {
-    try { storage?.setItem(storageKey, JSON.stringify({ background: [...requests.background, ...Array(reserved(false)).fill(now())], manual: [...requests.manual, ...Array(reserved(true)).fill(now())], nextAt, cooldownAt, retryAt, failures, reason })); }
+    try { storage?.setItem(storageKey, JSON.stringify({ ...requests, reservations: [...reservations.values()], nextAt, cooldownAt, retryAt, failures, reason, lastResume, recovering })); }
     catch { storageFault = true; reason = 'Background updates paused because the request limit could not be saved.'; }
+  };
+  const transaction = (change, afterSave) => {
+    const update = () => {
+      restore();
+      let result;
+      try { result = change(); } finally { persist(); }
+      return afterSave ? afterSave(result) : result;
+    };
+    return locks?.request ? locks.request('doctorcre-poll-budget-v2', { mode: 'exclusive' }, update) : Promise.resolve(update());
   };
   const hidden = () => pageHidden || document?.visibilityState === 'hidden';
   const relinquish = () => {
@@ -57,7 +83,7 @@ export function createPollSafety({ window, document = window?.document, now = ()
     try { return await acquiring; } finally { acquiring = null; }
   };
   const listeners = new Set();
-  const state = () => ({ paused: retired || Boolean(reason), reason: reason || follower, nextAt });
+  const state = () => ({ paused: retired || Boolean(reason), reason: reason || follower, nextAt, resumeAt: Math.max(retryAt, lastResume + POLL_LIMITS.resumeMs, (requests.recovery.at(-1) ?? -POLL_LIMITS.resumeMs) + POLL_LIMITS.resumeMs) });
   const render = () => {
     if (retired || !document?.createElement || !document.body) return;
     if (!notice) {
@@ -66,23 +92,32 @@ export function createPollSafety({ window, document = window?.document, now = ()
       notice.style.cssText = 'pointer-events:none;position:fixed;bottom:1rem;left:1rem;right:1rem;z-index:2147483647;padding:1rem;background:var(--surface-1, Canvas);color:var(--fg, CanvasText);border:2px solid currentColor;border-radius:8px';
       label = document.createElement('span');
       const button = document.createElement('button'); button.type = 'button'; button.className = 'btn'; button.style.pointerEvents = 'auto'; button.textContent = 'Resume updates';
-      button.addEventListener('click', event => { if (event.isTrusted) api.resume(); });
+      button.addEventListener('click', event => { if (event.isTrusted) void api.resume(); });
       notice.append(label, button);
     }
     notice.hidden = !reason && !follower;
-    const text = `${reason || follower} `;
+    if (resumeTimer) queueClock.clearTimeout(resumeTimer);
+    const resumeAt = state().resumeAt;
+    if (reason && now() < resumeAt) { resumeTimer = queueClock.setTimeout(render, resumeAt - now()); resumeTimer?.unref?.(); }
+    const button = notice.querySelector('button');
+    button.disabled = now() < resumeAt;
+    const text = `${reason || follower}${reason && now() < resumeAt ? ` Updates resume at ${new Date(resumeAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}.` : ''} `;
     if (label.textContent !== text) label.textContent = text;
     const parent = !notice.hidden && (document.activeElement?.closest?.('dialog[open], aside:not([inert]), [role="dialog"]') || [...(document.querySelectorAll?.('dialog[open]') || [])].at(-1)) || document.body;
     if (notice.inert) notice.inert = false;
     if (notice.parentNode !== parent) parent.append(notice);
   };
-  const notify = () => { persist(); render(); listeners.forEach(listener => listener(state())); pump(); };
+  const notify = () => { render(); listeners.forEach(listener => listener(state())); pump(); };
   const blocked = () => Object.assign(new Error(reason || 'Updates are rate limited. Try again shortly.'), { code: 'poll_paused' });
   const backoff = (count, intervalMs) => Math.max(intervalMs, Math.min(POLL_LIMITS.backoffMs, intervalMs * 2 ** count));
-  const fail = (count, intervalMs) => {
-    cooldownAt = Math.max(cooldownAt, now() + backoff(count, intervalMs), retryAt);
-    nextAt = Math.max(nextAt, cooldownAt);
-    if (count >= POLL_LIMITS.failureLimit) reason = 'Background updates paused after repeated failures.';
+  const fail = async (count, intervalMs, retryUntil = 0) => {
+    await transaction(() => {
+      retryAt = Math.max(retryAt, retryUntil);
+      failures = count;
+      cooldownAt = Math.max(cooldownAt, now() + backoff(count, intervalMs), retryAt);
+      nextAt = Math.max(nextAt, cooldownAt);
+      if (count >= POLL_LIMITS.failureLimit) reason = 'Background updates paused after repeated failures.';
+    });
     notify();
   };
   const endpoint = (path, init) => {
@@ -90,32 +125,49 @@ export function createPollSafety({ window, document = window?.document, now = ()
     try { verb = JSON.parse(init?.body).params?.name || ''; } catch {}
     return `${String(path).split('?')[0]}:${verb}`;
   };
-  const transportFailure = (cycle, key, response) => {
+  const transportFailure = async (cycle, key, response) => {
+    let retryUntil = 0;
     const retry = response?.headers?.get?.('Retry-After');
     if (retry) {
       const delay = /^\d+(\.\d+)?$/.test(retry.trim()) ? Number(retry) * 1000 : Date.parse(retry) - now();
-      if (Number.isFinite(delay)) retryAt = Math.max(retryAt, now() + Math.max(0, delay));
+      if (Number.isFinite(delay)) retryUntil = now() + Math.max(0, delay);
     }
     const count = (endpointFailures.get(key) || 0) + 1;
     endpointFailures.set(key, count);
     if (cycle) cycle.failed = true;
-    fail(Math.max(count, cycle ? failures + 1 : 0), cycle?.intervalMs || 30_000);
+    await fail(Math.max(count, cycle ? failures + 1 : 0), cycle?.intervalMs || 30_000, retryUntil);
   };
-  const manualIntent = () => running ? running.manual : window?.navigator?.userActivation?.isActive === true;
+  const manualIntent = () => {
+    if (running?.invoking) return running.manual;
+    const event = window?.event;
+    if (event?.isTrusted && ['click', 'submit', 'keydown', 'pointerdown'].includes(event.type)) return true;
+    return running ? running.manual : !eventContext;
+  };
   async function execute(operation, { manual = false, intervalMs = 30_000, keepAlive = false, initial = false, source } = {}) {
+    restore();
     if (running && initial) return running.done.then(() => execute(operation, { manual, intervalMs, keepAlive, initial, source }));
-    if (running || now() < retryAt || (manual
+    if (retired || running || now() < retryAt || (manual
       ? !initial && now() < lastManual + POLL_LIMITS.gapMs
       : reason || (!initial && now() < Math.max(cooldownAt, nextAt)))) return;
     let finish;
-    const cycle = { manual, intervalMs, keepAlive, admitted: false, failed: false, done: new Promise(resolve => { finish = resolve; }) };
+    const cycle = { manual, intervalMs, keepAlive, invoking: false, admitted: false, failed: false, done: new Promise(resolve => { finish = resolve; }) };
     running = cycle;
     if (manual) lastManual = now();
-    nextAt = Math.max(nextAt, now() + POLL_LIMITS.gapMs);
     try {
-      if (!manual && !await acquire()) return;
+      if (!manual) {
+        if (!await acquire()) return;
+        const admitted = await transaction(() => {
+          if (reason || (!initial && now() < Math.max(cooldownAt, nextAt))) return false;
+          nextAt = Math.max(nextAt, now() + POLL_LIMITS.gapMs);
+          return true;
+        });
+        if (!admitted) return;
+      }
       cycle.admitted = true;
-      return await operation();
+      let result;
+      cycle.invoking = true;
+      try { result = operation(); } finally { cycle.invoking = false; }
+      return await result;
     }
     catch (error) { if (error?.code !== 'poll_paused') cycle.failed = true; }
     finally {
@@ -123,11 +175,11 @@ export function createPollSafety({ window, document = window?.document, now = ()
         if (cycle.failed) {
           failures = (source ? sourceFailures.get(source) || 0 : failures) + 1;
           if (source) sourceFailures.set(source, failures);
-          fail(failures, intervalMs);
+          await fail(failures, intervalMs);
         } else { failures = 0; if (source) sourceFailures.delete(source); }
       }
       if (running === cycle) running = null;
-      persist(); relinquish(); finish(); pump();
+      relinquish(); finish(); pump();
     }
   }
   const readyAt = ({ manual = false, initial = false }) => Math.max(retryAt,
@@ -153,14 +205,15 @@ export function createPollSafety({ window, document = window?.document, now = ()
   }
   const api = {
     state,
-    transport(fetchImpl, slots = 1) {
-      const reservation = { manual: manualIntent(), remaining: 0, blockedTrigger: now() < blockedTriggerUntil };
+    transport(fetchImpl, slots = 1, { manual = manualIntent() } = {}) {
+      const reservation = { id: globalThis.crypto.randomUUID(), manual, started: false, blockedTrigger: !manual && now() < blockedTriggerUntil };
       const transport = (path, init) => api.fetch(fetchImpl, path, init, { manual: reservation.manual, reservation, slots });
-      transport.release = () => { reservations.delete(reservation); persist(); };
+      transport.release = () => transaction(() => { reservations.delete(reservation.id); });
       return transport;
     },
     subscribe(listener) { listeners.add(listener); return () => listeners.delete(listener); },
     run(operation, options = {}) {
+      restore();
       const { source, manual = false } = options;
       if (!source) return execute(operation, options);
       if (queue.has(source)) { if (manual) api.promote(source); return queue.get(source).promise; }
@@ -182,47 +235,67 @@ export function createPollSafety({ window, document = window?.document, now = ()
     },
     async fetch(fetchImpl, path, init, { manual = manualIntent(), reservation, slots = 1, blockedTrigger = reservation?.blockedTrigger ?? now() < blockedTriggerUntil } = {}) {
       const cycle = running;
-      if (retired || now() < retryAt || (!manual && !reservation?.remaining && (blockedTrigger || reason || (!cycle && now() < cooldownAt)))) throw blocked();
-      if (!manual && now() < eventNextAt) nextAt = Math.max(nextAt, eventNextAt);
       if (!manual && !await acquire()) throw blocked();
-      const key = manual ? 'manual' : 'background';
-      const times = requests[key] = requests[key].filter(time => time > now() - 3_600_000);
-      const needed = reservation?.remaining ? 0 : slots;
-      if (times.length + reserved(manual) + needed > (manual ? POLL_LIMITS.manualHour : POLL_LIMITS.hour) ||
-          times.filter(time => time > now() - 60_000).length + reserved(manual) + needed > (manual ? POLL_LIMITS.manualMinute : POLL_LIMITS.minute)) {
-        if (!manual) { reason = 'Background updates paused after reaching the request limit.'; notify(); }
-        throw blocked();
-      }
-      if (reservation) {
-        if (!reservation.remaining) { reservation.remaining = slots; reservations.add(reservation); }
-        reservation.remaining--;
-        if (!reservation.remaining) reservations.delete(reservation);
-      }
-      times.push(now()); persist();
-      if (!manual && storageFault) { notify(); throw blocked(); }
-      inFlight++;
+      const sent = await transaction(() => {
+        let held = reservation?.started ? reservations.get(reservation.id) : null;
+        if (reservation?.started && !held) throw blocked();
+        if (retired || now() < retryAt || (!manual && !held && (storageFault || blockedTrigger || reason || (!cycle && now() < cooldownAt)))) throw blocked();
+        if (recovering && now() >= lastResume + POLL_LIMITS.resumeMs && !requests.background.length) recovering = false;
+        const key = held?.key || (manual ? 'manual' : recovering ? 'recovery' : 'background');
+        const times = requests[key] = requests[key].filter(time => time > now() - 3_600_000);
+        if (!held) {
+          const reserved = [...reservations.values()].filter(item => item.key === key).reduce((total, item) => total + item.remaining, 0);
+          const budget = budgets[key];
+          if (times.length + reserved + slots > budget.hour || times.filter(time => time > now() - 60_000).length + reserved + slots > budget.minute) {
+            if (!manual) { reason = 'Background updates paused after reaching the request limit.'; notify(); }
+            throw blocked();
+          }
+          if (reservation) {
+            held = { id: reservation.id, key, remaining: slots, expiresAt: now() + POLL_LIMITS.reservationMs };
+            reservations.set(held.id, held); reservation.started = true;
+          }
+        }
+        if (held && --held.remaining === 0) reservations.delete(held.id);
+        times.push(now());
+        if (!manual) nextAt = Math.max(nextAt, now()) + POLL_LIMITS.requestSpacingMs;
+      }, () => {
+        if (!manual && storageFault) { notify(); throw blocked(); }
+        inFlight++;
+        let response;
+        try { response = Promise.resolve(fetchImpl(path, init)); }
+        catch (error) { response = Promise.reject(error); }
+        response.catch(() => {});
+        return { response };
+      });
       const keyPath = endpoint(path, init);
       try {
-        const response = await fetchImpl(path, init);
-        if (response.status === 429 || response.status >= 500) transportFailure(cycle, keyPath, response);
+        const response = await sent.response;
+        if (response.status === 429 || response.status >= 500) await transportFailure(cycle, keyPath, response);
         else endpointFailures.delete(keyPath);
         return response;
       } catch (error) {
-        if (error?.code !== 'poll_paused' && !init?.signal?.aborted) transportFailure(cycle, keyPath);
+        if (error?.code !== 'poll_paused' && !init?.signal?.aborted) await transportFailure(cycle, keyPath);
         throw error;
-      } finally { inFlight--; persist(); relinquish(); }
+      } finally { inFlight--; relinquish(); }
     },
-    resume() {
-      if (storageFault || now() < lastResume + POLL_LIMITS.gapMs) return;
-      lastResume = now(); reason = ''; failures = 0; endpointFailures.clear(); sourceFailures = new WeakMap(); notify();
+    async resume() {
+      await transaction(() => {
+        if (storageFault || !reason || now() < state().resumeAt || requests.recovery.length >= POLL_LIMITS.recoveryHour) return;
+        lastResume = now(); recovering = requests.background.length > 0; reason = ''; failures = 0; nextAt = now(); cooldownAt = now();
+        endpointFailures.clear(); sourceFailures = new WeakMap();
+      });
+      notify();
     },
-    dispose() { window?.removeEventListener?.('doctorcre-session-invalidated', retire); observer?.disconnect(); document?.removeEventListener?.('focusin', render); retired = true; for (const job of queue.values()) job.resolve(); queue.clear(); if (queueTimer !== null) queueClock.clearTimeout(queueTimer); queueTimer = null; listeners.clear(); document?.removeEventListener?.('visibilitychange', captureTrigger, true); window?.removeEventListener?.('online', captureTrigger, true); window?.removeEventListener?.('pageshow', captureTrigger, true); document?.removeEventListener?.('visibilitychange', relinquish); window?.removeEventListener?.('pagehide', pagehide); window?.removeEventListener?.('pageshow', pageshow); relinquish(); notice?.remove(); },
+    dispose() { window?.removeEventListener?.('doctorcre-session-invalidated', retire); observer?.disconnect(); document?.removeEventListener?.('focusin', render); window?.removeEventListener?.('storage', storageChanged); retired = true; if (resumeTimer) queueClock.clearTimeout(resumeTimer); for (const job of queue.values()) job.resolve(); queue.clear(); if (queueTimer !== null) queueClock.clearTimeout(queueTimer); queueTimer = null; listeners.clear(); document?.removeEventListener?.('visibilitychange', captureTrigger, true); window?.removeEventListener?.('online', captureTrigger, true); window?.removeEventListener?.('pageshow', captureTrigger, true); document?.removeEventListener?.('visibilitychange', relinquish); window?.removeEventListener?.('pagehide', pagehide); window?.removeEventListener?.('pageshow', pageshow); relinquish(); notice?.remove(); },
   };
   const retire = () => api.dispose();
   window?.addEventListener?.('doctorcre-session-invalidated', retire);
+  let eventContext = false;
   const captureTrigger = event => {
     if (event.type === 'visibilitychange' && document?.visibilityState === 'hidden') return;
     if (event.type === 'pageshow' && !event.persisted) return;
+    eventContext = true;
+    queueMicrotask(() => { eventContext = false; });
     const ready = Math.max(nextAt, eventNextAt);
     if (now() >= ready) eventNextAt = now() + POLL_LIMITS.gapMs;
     else blockedTriggerUntil = Math.max(blockedTriggerUntil, ready);
@@ -238,6 +311,8 @@ export function createPollSafety({ window, document = window?.document, now = ()
   const observer = document?.body && window?.MutationObserver ? new window.MutationObserver(render) : null;
   observer?.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['open', 'inert'] });
   document?.addEventListener?.('focusin', render);
+  const storageChanged = event => { if (event.key === storageKey) { restore(); notify(); } };
+  window?.addEventListener?.('storage', storageChanged);
   render();
   return api;
 }

@@ -4,6 +4,7 @@ import { navigationItems } from './navigation.js';
 import { createClient } from './client.js';
 import { resolveDealroomBoot } from './boot-mode.js';
 import { pageDocContext } from './doc-context.js';
+import { pollSafety } from './poll-safety.mjs';
 import { contextualSuggestions, docAnswer, DOC_PAGES } from './doc-context-model.js';
 import { DOC_EVALUATED_PAGES } from './doc-accuracy.js';
 import { mountAutoRefresh, readWithDeadline, updatedLabel } from './auto-refresh.mjs';
@@ -97,6 +98,17 @@ export function mountDocPresence({ document: root = document, window: win = wind
     finally { if (epoch === readEpoch && !disposed) render(); }
   };
   const auto = mountAutoRefresh({ document:root, window:win, refresh, intervalMs, shouldRefresh:() => dialog.open, onResume:() => { ++readEpoch; } });
+  const safety=pollSafety(win,{document:root}), humanSource={};
+  const refreshHuman=({force=false}={})=>{
+    void actionGate?.refresh();
+    return safety.run(async()=>{
+    if(disposed || !dialog.open)return;
+    const epoch=context.snapshot().epoch;
+    await context.revalidate({force});
+    if(disposed || !dialog.open || epoch!==context.snapshot().epoch)return;
+    await refresh();
+  },{manual:true,initial:true,source:humanSource});
+  };
   const command = mountDocCommandBar({ dialog, window:win, context,
     pages: navigationItems, onOpen:() => {
       const brief = root.getElementById('docMorningBrief');
@@ -105,8 +117,7 @@ export function mountDocPresence({ document: root = document, window: win = wind
         read:async signal=>(await ensureClient()).listFeatureSwitches({signal}),
         onChange:enabled=>{actionsEnabled=enabled;render();},
       });
-      void actionGate.refresh();
-      void auto.revalidate();
+      void refreshHuman();
       render();
     },
     client: ensureClient,
@@ -140,13 +151,13 @@ export function mountDocPresence({ document: root = document, window: win = wind
   });
   $('docSuggestions').addEventListener('click', event => { if (event.target.closest('[data-doc-suggestion]')) open(); });
   $('docRecord').onchange = () => { chosen = $('docRecord').value || null; render(); };
-  $('docRefresh').onclick = () => { context.tick(); auto.refresh(); root.querySelectorAll('[data-layout-refresh]').forEach(button => button.click()); };
+  $('docRefresh').onclick = () => { void refreshHuman({force:true}); root.querySelectorAll('[data-layout-refresh]').forEach(button => button.click()); };
   const unsubscribe = context.subscribe(next => {
     const previous = snapshot; snapshot = next;
     const scope = `${next.epoch}:${next.page}:${next.selected?.kind || ''}:${next.selected?.id || ''}`;
     const changed = lastScope && scope !== lastScope;
     if (changed) { ++readEpoch; suggestions = null; suggestionState = 'updating'; chosen = null; $('docApprovalStatus').textContent = ''; }
-    if ((changed && (next.ready || next.selected)) || (!previous.ready && next.ready)) win.queueMicrotask(async () => { if (disposed || scope !== lastScope) return; await auto.refresh(); if (suggestionState === 'updating' && !disposed && scope === lastScope) auto.refresh(); });
+    if ((changed && (next.ready || next.selected)) || (!previous.ready && next.ready)) win.queueMicrotask(async () => { if (disposed || scope !== lastScope) return; await auto.poll(); if (suggestionState === 'updating' && !disposed && scope === lastScope) auto.poll(); });
     lastScope = scope; render();
   });
   const placement = new win.MutationObserver(placePresence);
@@ -155,7 +166,7 @@ export function mountDocPresence({ document: root = document, window: win = wind
   const tick = globalThis.setInterval(() => context.tick(), 1_000); tick?.unref?.();
   root.addEventListener('doctorcre:open-doc', open);
   const brief = mountMorningBrief({ document:root, window:win, getClient:ensureClient, intervalMs });
-  const dispose = () => { disposed = true; ++readEpoch; approval?.dispose(); actionGate?.dispose(); auto.dispose(); brief.dispose(); command.dispose(); stopClosed(); placement.disconnect(); unsubscribe(); globalThis.clearInterval(tick); root.removeEventListener('doctorcre:open-doc',open); };
+  const dispose = () => { disposed = true; ++readEpoch; approval?.dispose(); actionGate?.dispose(); safety.cancel(humanSource); auto.dispose(); brief.dispose(); command.dispose(); stopClosed(); placement.disconnect(); unsubscribe(); globalThis.clearInterval(tick); root.removeEventListener('doctorcre:open-doc',open); };
   win.addEventListener('pagehide', event => { if (!event.persisted) dispose(); });
-  return { open, refresh:auto.refresh, dispose };
+  return { open, refresh:()=>refreshHuman({force:true}), dispose };
 }

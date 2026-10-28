@@ -1,3 +1,4 @@
+import { pollSafety } from './poll-safety.mjs';
 import { mountAutoRefresh, updatedLabel } from "./auto-refresh.mjs";
 import { classifyCommandOutcome } from "./command-feedback.mjs";
 import { createRetainedCommands } from './retained-commands.mjs';
@@ -882,19 +883,21 @@ export function mountModelRoom({ outage = null, onOpenTask, onTasks } = {}) {
     pendingOpen = null;
     openLinks.retire(attempt.id, attempt.link);
     renderContext();
-    try {
-      const [payload, checkpointPayload] = await Promise.all([
-        client.sessionIdentity({ query: attempt.target.canonicalSessionId, limit: 50, include_closed: true }),
-        client.codexSessions(),
-      ]);
-      const result = reconcileOpenAttempt(attempt.target, refuseSessionIdentity(payload) ? null : payload,
-        { hostAvailable: hostAvailable(), checkpoints: codexCheckpoints(checkpointPayload) });
-      announce(result.state === 'same_target_unconfirmed'
-        ? 'The recorded target is unchanged. Refresh sessions before opening again.'
-        : 'The recorded target could not be confirmed. Refresh before opening.');
-    } catch {
-      announce('The open result is unknown. Refresh before trying again.');
-    }
+    await pollSafety(globalThis.window, { document }).run(async () => {
+      try {
+        const [payload, checkpointPayload] = await Promise.all([
+          client.sessionIdentity({ query: attempt.target.canonicalSessionId, limit: 50, include_closed: true }),
+          client.codexSessions(),
+        ]);
+        const result = reconcileOpenAttempt(attempt.target, refuseSessionIdentity(payload) ? null : payload,
+          { hostAvailable: hostAvailable(), checkpoints: codexCheckpoints(checkpointPayload) });
+        announce(result.state === 'same_target_unconfirmed'
+          ? 'The recorded target is unchanged. Refresh sessions before opening again.'
+          : 'The recorded target could not be confirmed. Refresh before opening.');
+      } catch {
+        announce('The open result is unknown. Refresh before trying again.');
+      }
+    });
   });
   // Written from the model so deleting them from the page alone cannot blur
   // room participation into dispatch acknowledgement.

@@ -96,7 +96,11 @@ async function readQueue() {
 }
 async function poll() {
   const sequence=++pollSequence;
-  const ticket=pageDocContext?.begin('roomQueue');
+  const ticket=pageDocContext?.begin('roomQueue',[],{read:readQueue,project:body=>{
+    if(body.live!==true || queueIsStale(body.projected_at))throw new Error('Queue data is stale.');
+    const ids=new Set(filtered(queueProjection(body.events).cards).map(card=>card.task_id));
+    return {...body,events:body.events.filter(row=>ids.has(row.task_id))};
+  }});
   const epoch = authGeneration();
   try { const body = await readQueue();
     if (sequence !== pollSequence || !authCurrent(epoch)) return;
