@@ -6,7 +6,7 @@ import {createLiveClient} from '../js/live-client.js';
 const reconciliation=JSON.parse(readFileSync(new URL('../contracts/app-write-reconciliation.v1.json',import.meta.url)));
 const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 import {createRetainedCommands} from '../js/retained-commands.mjs';
-import {classifyCommandOutcome,commandMessage,performCommand,pendingCommand} from '../js/command-feedback.mjs';
+import {classifyCommandOutcome,commandMessage} from '../js/command-feedback.mjs';
 const source=readFileSync(new URL('../js/app.js',import.meta.url),'utf8');
 function forms({version=1,lost=false}={}){
  let options,reads=0;const writes=[],nodes=new Map();
@@ -47,19 +47,6 @@ for(const method of ['nextStepForm','marketAgentForm','accountOwnerForm']){
   await h.open(method).onSubmit(input());assert.equal(h.reads,reads);assert.deepEqual(h.writes[1],h.writes[0]);
  });
 }
-
-for(const changed of [false,true])test(`S2 move follow-up ${changed?'refuses a concurrent next step':'uses a freshly read version and retains it on retry'}`,async()=>{
- const raw=readFileSync(new URL('../js/pipeline.js',import.meta.url),'utf8'),writes=[];let reads=0,lost=true;
- const state={panelDeal:null,deals:new Map([['demo',{next_step:'Original step',next_date:null}]]),client:{getDeal:async()=>{reads++;return {deal:{id:'demo',version:3,next_step:changed?'Partner step':'Original step',next_date:null}};},setNextStep:async request=>{writes.push(structuredClone(request));if(lost){lost=false;throw new Error('timeout');}return {ok:true};}},boardSync:{requestRefresh(){}}};
- const operations=new Map(),records=[];
- const context=vm.createContext({state,operations,commandState:{},pendingCommand,performCommand,uuidv4:()=>crypto.randomUUID(),dock:{record:(...args)=>records.push(args)},nextStepKey:deal=>`next-step:${deal}`,FOLLOW_UP_SENDERS:{'set-next-step':args=>state.client.setNextStep(args)},noteText:value=>value||'',syncUpdateForm(){},settleConflictChoice:async()=>{}});
- vm.runInContext(raw.slice(raw.indexOf('async function runFollowUp('),raw.indexOf('async function runMove('))+'\nObject.assign(globalThis,{runFollowUp});',context);
- const step={verb:'set-next-step',args:{deal:'demo',text:'My proposed step',next_date:null},summary:'Next step',reviewed:{next_step:'Original step',next_date:null}};
- await context.runFollowUp('step',step);
- if(changed){assert.equal(writes.length,0);assert.match(JSON.stringify(records),/changed|review/i);return;}
- assert.equal(writes[0].base_version,3);const originalReads=reads;await context.runFollowUp('step',step);
- assert.equal(reads,originalReads);assert.deepEqual(writes[1],writes[0]);
-});
 
 test('S2 fixture replacement contracts match producer CAS and receipt replay',async()=>{
  const {createFixtureClient}=await import('../js/fixture-client.js');

@@ -22,6 +22,7 @@ test('Home counts overdue agenda dates while board badges retain next-step atten
   Object.assign(seed.deals[5], { next_date: '2026-09-01', operating_state: 'parked' });
   Object.assign(seed.deals[6], { next_date: '2026-09-01', phase: 'Closed' });
   seed.deals.unshift(...Array.from({ length: 5 }, (_, i) => ({ ...seed.deals[8], id: `synthetic-national-${i}`, name: `Demo National ${i}`, next_date: i === 0 ? '2026-09-01' : '2026-10-20' })));
+  seed.deals.forEach(deal => { deal.items = deal.next_step ? [{id:`demo-item-${deal.id}`,title:'Review sample item',status:'open',due_on:deal.next_date,bullets:[]}] : []; });
   const errors = []; page.on('pageerror', error => errors.push(error.message));
   await page.route('**/*', async route => {
     const url = new URL(route.request().url());
@@ -46,7 +47,7 @@ test('Home counts overdue agenda dates while board badges retain next-step atten
   assert.deepEqual({ home, badges, mine, myBadges }, { home: 3, badges: 2, mine: 1, myBadges: 1 });
   assert.match(homeCounts, /Overdue local deals: 3/);
   assert.equal(await page.locator('.kanban-column .attention-flag').first().textContent(), '◆ Overdue');
-  seed.deals.forEach(deal => { deal.next_date = '2026-10-20'; });
+  seed.deals.forEach(deal => { deal.next_date = '2026-10-20'; deal.items.forEach(item => {item.due_on = '2026-10-20';}); });
   await page.goto('http://localhost/');
   await page.waitForFunction(() => /Active deals: \d/.test(document.querySelector('#dealCounts')?.textContent || ''));
   assert.equal(await page.locator('#dealFlags .home-flag').count(), 0);
