@@ -20,7 +20,7 @@ export async function mountGlobalCallMode(root = document) {
     const eligible = state === "available";
     button.hidden = !eligible;
     availability.hidden = eligible;
-    availability.textContent = state === "checking" ? "Checking Quill on this device…" : "Call recording runs on the Mac with Quill";
+    availability.textContent = state === "checking" ? "Checking the call recorder…" : "Call recording runs on the Mac";
     retry.hidden = eligible || state === "checking";
     retry.disabled = state === "checking";
     return true;
@@ -57,7 +57,7 @@ export async function mountGlobalCallMode(root = document) {
       client ||= await createClient(boot.mode, boot.options);
       if (options.session) return null;
       try { const board = await client.getBoard({ workspace: "all" }); if (!Array.isArray(board?.deals)) throw new Error("Invalid board"); deals = board.deals; contextError = null; }
-      catch { deals = []; contextError = "Weekly call context unavailable. Reopen Call Mode to retry loading work records."; }
+      catch { deals = []; contextError = "Weekly call context unavailable. Reopen Call Mode to retry loading deals."; }
       return contextError;
     } };
   })();

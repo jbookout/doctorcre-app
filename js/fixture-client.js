@@ -76,7 +76,7 @@ export async function createFixtureClient(opts = {}) {
     for (const id of ['d06', 'd07', 'd08']) {
       const deal = deals.get(id);
       if (deal) Object.assign(deal, { operating_state:'parked', parking_reason:'other',
-        parking_note:'Reason not yet classified', parked_at:'2026-08-10T12:00:00Z', parked_by:'joe' });
+        parking_note:'No reason given yet', parked_at:'2026-08-10T12:00:00Z', parked_by:'joe' });
     }
     // Keep the local demo representative of the production information model:
     // one national-account portfolio, many market deals, no duplicate deal rows.

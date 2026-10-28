@@ -5,6 +5,7 @@
 .home-flag.deal-alert > :is(h3, h4) > a::after { content: ""; position: absolute; inset: 0; border-radius: inherit; }
 .home-flag.deal-alert .deal-items a { position: relative; z-index: 1; }
 .deal-alert h3, .deal-alert h4 { margin: 0; font-size: var(--font-size-2); line-height: 1.4; overflow-wrap: anywhere; }
+.deal-overdue { margin: var(--space-1) 0 0; color: var(--status-warn-ink); font-size: var(--font-size-1); font-weight: var(--font-weight-strong); }
 .deal-items-label { margin: var(--space-3) 0 var(--space-1); color: var(--fg-muted); font-size: var(--font-size-1); }
 .deal-items { margin: 0; padding-left: 1.5em; }
 .deal-items li { padding-left: var(--space-1); }

@@ -716,7 +716,7 @@ async function decideSuggestion(id, choice, card) {
   const date = card.querySelector("[data-snooze-date]")?.value || null;
   const built = decisionArgs(row, choice, undefined, date, workNumber);
   if (!built) {
-    announce(choice === "act" ? "Choose or create a work record, then enter its number before choosing Act." : "Read this suggestion again before deciding.");
+    announce(choice === "act" ? "Choose or create a deal, then enter its number before choosing Act." : "Read this suggestion again before deciding.");
     card.querySelector("[data-work-number]")?.focus();
     return;
   }
