@@ -82,6 +82,18 @@ test('source CI keeps the full required suite and checks privacy before browser 
   assert.ok(privacy >= 0 && privacy < browser);
 });
 
+test('the suite and performance steps fail on their own deadlines inside the job budget', () => {
+  const steps = ci.split(/^      - /m).slice(1);
+  const minutes = run => Number(steps.find(step => run.test(step))?.match(/^\s+timeout-minutes: (\d+)$/m)?.[1]);
+  const job = Number(ci.match(/^  test:\n[\s\S]*?^    timeout-minutes: (\d+)$/m)?.[1]);
+  const suite = minutes(/^run: npm test$/m);
+  const performance = minutes(/^run: npm run performance:check$/m);
+  assert.ok(suite > 0 && performance > 0 && performance <= 10, 'npm test and performance:check each need a step timeout');
+  // Setup, Control Room, build and uploads take about five minutes; the job
+  // limit must never be what stops the performance step mid-measurement.
+  assert.ok(suite + performance + 5 <= job, `job timeout ${job} leaves no room for ${suite} + ${performance} minutes`);
+});
+
 test('browser dependencies use official Ubuntu mirrors after privacy checks', async t => {
   const steps = ci.split(/^      - /m).slice(1);
   const mirror = steps.findIndex(step => /^name: Prefer Ubuntu archives for browser dependencies$/m.test(step));

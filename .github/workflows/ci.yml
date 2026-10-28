@@ -20,7 +20,9 @@ jobs:
   test:
     if: ${{ github.event_name != 'pull_request' || github.event.action != 'closed' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    # npm test takes 17-19 minutes and performance:check about 3.5, so 25
+    # left no slack and the job limit killed the performance step mid-run.
+    timeout-minutes: 40
     defaults:
       run:
         working-directory: doctorcre-app
@@ -64,6 +66,7 @@ jobs:
       # Main retains build/input checks; tag releases still run the full suite.
       - run: npm test
         if: ${{ github.event_name == 'pull_request' }}
+        timeout-minutes: 25
       - name: Verify Control Room attention and title behavior
         if: ${{ github.event_name == 'pull_request' }}
         run: npx playwright test --project=fixtures tests/fixtures/control-room-c3.spec.mjs tests/fixtures/control-room-queue.spec.mjs
@@ -74,6 +77,7 @@ jobs:
       # Lives inside the existing required test context; no ruleset change needed.
       - run: npm run performance:check
         if: ${{ github.event_name == 'pull_request' }}
+        timeout-minutes: 8
         env:
           PERFORMANCE_PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
       - if: ${{ !cancelled() && github.event_name == 'pull_request' }}
