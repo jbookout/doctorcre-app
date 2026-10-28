@@ -1,7 +1,7 @@
 import { briefOwnerLabel, filterBriefOwners, mountBriefOwnerFilter } from './brief-owner-filter.js';
 import { normalizeBrief } from './morning-brief-model.js';
 import { TOUCH_LAYOUT } from './touch-layout.js';
-import { mostOverdueFirst, needsAttention, overdueLabel, overdueSince, scopedDeals } from './deal-review-model.js';
+import { mostOverdueFirst, needsAttention, overdueActionRows, overdueLabel, overdueSince, scopedDeals } from './deal-review-model.js';
 import { businessDay } from './business-date.js';
 import { createClient } from './client.js';
 import { resolveDealroomBoot } from './boot-mode.js';
@@ -236,10 +236,7 @@ export function mountAppLayout(root, host, pathname) {
         .map(receipt => ({ ...receipt, deal_name: authorized.get(receipt.deal_id) }));
       if (!pageOwnsMoves) renderMoves();
       const active = scopedDeals(value, 'team');
-      if (triageValid || !todayNeeds) todayNeeds = active.flatMap(deal => {
-        const actions = todayItems?.filter(item => item.subject_type === 'deal' && item.subject_id === deal.id) || [];
-        return actions.length ? actions.map(action => ({...deal, ...action, next_step:action.what, next_date:action.due_on})) : [deal];
-      }).filter(d => needsAttention(d));
+      if (triageValid || !todayNeeds) todayNeeds = overdueActionRows(active, todayItems, businessDay());
       else todayNeeds = todayNeeds.filter(deal => active.some(current => current.id === (deal.subject_id || deal.id)));
       render('#appWorkingList', overdueRows(active.filter(d => needsAttention(d))).slice(0,8).join('') || empty);
       renderToday();

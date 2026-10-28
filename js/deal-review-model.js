@@ -40,6 +40,17 @@ export function overdueLabel(since, today) {
   const days = since && today ? Math.round((Date.parse(today) - Date.parse(since)) / 864e5) : 0;
   return days > 0 ? `${days} day${days === 1 ? '' : 's'} overdue` : '';
 }
+/**
+ * One row per overdue Today action, most overdue first. An action row drops its
+ * deal's items so its own due date, not the deal's oldest item, sets its age.
+ */
+export function overdueActionRows(deals, actions, today) {
+  const rows = deals.flatMap(deal => {
+    const own = (actions || []).filter(action => action.subject_type === 'deal' && action.subject_id === deal.id);
+    return own.length ? own.map(action => ({ ...deal, ...action, items: null, next_step: action.what, next_date: action.due_on })) : [deal];
+  });
+  return mostOverdueFirst(rows.filter(row => overdueSince(row, today)), today);
+}
 /** Most overdue first; deals with nothing overdue keep their order after them. */
 export function mostOverdueFirst(deals, today) {
   const since = deal => overdueSince(deal, today) || '9999-12-31';
