@@ -386,6 +386,32 @@ test('a changed next action requires review before the saved update can replace 
   assert.equal(detail.thread.filter(item => item.text === 'Synthetic reviewed update').length, 1);
 });
 
+for (const invalid of ['blank step', 'past date']) test(`conflict review rejects ${invalid} on retry without locking the form`, async t => {
+  const page = await open(t); await room(page);
+  await page.locator('#dealUpdate').fill('Synthetic conflict update');
+  await page.locator('#dealUpdateStep').fill('Synthetic proposed action');
+  await page.locator('#dealUpdateDate').fill('2099-01-01');
+  await page.evaluate(async () => {
+    const {state} = await import('/js/pipeline.js');
+    const deal = (await state.client.getDeal('d14')).deal;
+    await state.client.setNextStep({deal:'d14', text:'Synthetic concurrent action', next_date:'2098-01-01', base_version:deal.version, idempotency_key:'synthetic-conflict-validation'});
+  });
+  await page.getByRole('button', {name:'Add update', exact:true}).click();
+  await settles(async () => assert.match(await page.locator('#detailUpdateStatus').textContent(), /next step not saved/i));
+  await page.getByRole('button', {name:'Review current next step'}).click();
+  await settles(async () => assert.match(await page.locator('#detailUpdateStatus').textContent(), /Synthetic concurrent action/));
+  if (invalid === 'blank step') await page.locator('#dealUpdateStep').fill('   ');
+  else await page.locator('#dealUpdateDate').fill('2001-01-01');
+  await page.getByRole('button', {name:'Add update', exact:true}).click();
+  await settles(async () => assert.match(await page.locator('#detailUpdateStatus').textContent(), invalid === 'blank step' ? /enter.*next step/i : /today or later/i));
+  assert.equal(await page.locator('#dealUpdateStep').isEnabled(), true);
+  assert.equal(await page.locator('#dealUpdateDate').isEnabled(), true);
+  assert.equal(await page.getByRole('button', {name:'Discard draft'}).isEnabled(), true);
+  const detail = await page.evaluate(async () => (await (await import('/js/pipeline.js')).state.client.getDeal('d14')));
+  assert.equal(detail.deal.next_step, 'Synthetic concurrent action');
+  assert.equal(detail.thread.filter(item => item.text === 'Synthetic conflict update').length, 1);
+});
+
 test('a future next date clears the overdue flag on the refreshed board', async t => {
   const page = await open(t);
   await page.evaluate(async () => {
