@@ -30,7 +30,7 @@ const task = (id, owner = 'joe', due_on = '2026-10-02') => ({
   evidence_quote: 'Joe will call the demo lender.', created_at: '2026-10-01T14:00:00Z',
 });
 
-async function open(t, { width = 1280, candidates = [task('proposal-joe')], companion = null, holdCommands = false } = {}) {
+async function open(t, { width = 1280, candidates = [task('proposal-joe')], companion = null, outcomes = [], holdCommands = false } = {}) {
   const page = await browser.newPage({ viewport: { width, height: 960 }, timezoneId: 'America/Chicago', reducedMotion: 'reduce' });
   t.after(() => page.close());
   await page.clock.install({ time: new Date('2026-10-01T15:00:00Z') });
@@ -42,6 +42,7 @@ async function open(t, { width = 1280, candidates = [task('proposal-joe')], comp
     const rpc = route.request().postDataJSON();
     const { name, arguments: args } = rpc.params;
     const reply = payload => route.fulfill({ json: { jsonrpc: '2.0', id: rpc.id, result: { content: [{ type: 'text', text: JSON.stringify(payload) }] } } });
+    if (name === 'read-call-outcomes') return reply({ schema_version: 'call-outcomes.v1', calls: outcomes, send: false });
     if (name === 'read-post-call-followups') {
       reads.push(name);
       await gate.hold;
@@ -237,4 +238,36 @@ test('session invalidation cancels a task decision waiting for its writer', asyn
   assert.deepEqual(writes, []);
   assert.equal(await page.locator('#homeCallTasks').isVisible(), false);
   assert.deepEqual(errors, []);
+});
+
+const callOutcome = session_id => ({ session_id, call_date: '2026-09-28', recorder: 'joe', applied: [],
+  open_cards: [{ candidate_id: 'proposal-email', resolver: 'resolve-post-call-candidate', kind: 'email_draft', deal_id: 'qa-deal-1' }] });
+
+for (const width of [390, 1280]) test(`Home opens the selected call outcome report at ${width}px`, async t => {
+  const { page, writes, companionRequests, errors } = await open(t, { width, candidates: [], companion: {},
+    outcomes: [callOutcome('demo-latest-call'), callOutcome('demo-older-call')] });
+  await page.locator('#homeCallOutcomes [data-call-session="demo-older-call"] [data-call-open-cards]').click();
+  await page.locator('#callModeDialog[open] .draft-body').waitFor();
+  assert.match(await page.locator('#postCallReport').innerText(), /Demo lender follow-up from the older call/);
+  assert.deepEqual(companionRequests.filter(row => row.path === '/api/post-call').map(row => row.session), ['demo-older-call']);
+  assert.equal(companionRequests.some(row => row.method !== 'GET'), false);
+  assert.deepEqual(writes, []);
+  await mkdir(join(root, 'out/test-artifacts/home-call-outcomes'), { recursive: true });
+  await page.locator('.vendor-draft').scrollIntoViewIfNeeded();
+  await page.screenshot({ path: join(root, `out/test-artifacts/home-call-outcomes/${width}-report.png`) });
+  await page.evaluate(() => window.dispatchEvent(new Event('doctorcre-session-invalidated')));
+  assert.equal(await page.locator('#homeCallOutcomes').isVisible(), false);
+  assert.equal(await page.locator('#homeCallOutcomes button').count(), 0);
+  assert.deepEqual(errors, []);
+});
+
+test('Home outcome handoff never substitutes the latest call for an unavailable selected report', async t => {
+  const { page, writes, companionRequests } = await open(t, { candidates: [], companion: { reportUnavailable: true },
+    outcomes: [callOutcome('demo-missing-call')] });
+  await page.locator('#homeCallOutcomes [data-call-open-cards]').click();
+  await page.locator('#callModeDialog[open]').waitFor();
+  await page.locator('#postCallStatus').getByText(/could not read the companion response/).waitFor();
+  assert.deepEqual(companionRequests.filter(row => row.path === '/api/post-call').map(row => row.session), ['demo-missing-call']);
+  assert.equal(await page.locator('.vendor-draft').count(), 0);
+  assert.deepEqual(writes, []);
 });
