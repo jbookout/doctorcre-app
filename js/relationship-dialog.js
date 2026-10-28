@@ -4,6 +4,8 @@ import {
   EDGE_LABELS,
   shortSummary,
 } from "./relationship-network-model.js";
+const relationshipDate = new Intl.DateTimeFormat("en-US", { timeZone: "UTC", month: "short", day: "numeric", year: "numeric" });
+
 export function mountRelationshipDialog({ document }) {
   const dialog = document.createElement("dialog");
   dialog.className = "relationship-dialog";
@@ -33,7 +35,7 @@ export function mountRelationshipDialog({ document }) {
             (n) => n.id === (e.from === node.id ? e.to : e.from),
           );
           const via = snapshot.nodes.find((n) => n.id === e.via);
-          return `<article class="relationship-entry"><span>${E(EDGE_LABELS[e.kind])}${via ? ` · via ${E(via.name)}` : ""}</span><button type="button" data-open-node="${E(other.id)}" data-card-key="${E(e.id)}">${E(other.name)} <span aria-hidden="true">↗</span></button>${e.summary ? `<p>${E(shortSummary(e.summary))}</p>` : ""}${e.when ? `<time>${E(new Date(e.when).toLocaleDateString())}</time>` : ""}${e.detail && e.detail.trim().replace(/\s+/g, " ") !== shortSummary(e.summary) ? `<details data-entry="${E(e.id)}"><summary data-card-key="detail:${E(e.id)}">Details</summary><p>${E(e.detail)}</p></details>` : ""}</article>`;
+          return `<article class="relationship-entry"><span>${E(EDGE_LABELS[e.kind])}${via ? ` · via ${E(via.name)}` : ""}</span><button type="button" data-open-node="${E(other.id)}" data-card-key="${E(e.id)}">${E(other.name)} <span aria-hidden="true">↗</span></button>${e.summary ? `<p>${E(shortSummary(e.summary))}</p>` : ""}${e.when && Number.isFinite(Date.parse(e.when)) ? `<time datetime="${E(e.when)}">${E(EDGE_LABELS[e.kind])} · ${E(relationshipDate.format(new Date(e.when)))}</time>` : ""}${e.detail && e.detail.trim().replace(/\s+/g, " ") !== shortSummary(e.summary) ? `<details data-entry="${E(e.id)}"><summary data-card-key="detail:${E(e.id)}">Details</summary><p>${E(e.detail)}</p></details>` : ""}</article>`;
         })
         .join("") || "<p>No connections recorded</p>"
     }</section></div>`;
