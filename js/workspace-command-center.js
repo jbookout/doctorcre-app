@@ -12,6 +12,7 @@ import { localToday } from './calendar-model.js';
 import { agendaSnapshot, dealHref, dealSnapshot, HOME_SCOPES, readHomeAgenda, readHomeDashboard, topNewLeads } from './home-dashboard-model.js';
 import { mountNotificationBadge } from './shell.js';
 import { mountHomeCallTasks } from './home-call-tasks.js';
+import { mountHomeMeetingReviews } from './home-meeting-reviews.js';
 
 const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
 const E = escapeHtml;
@@ -51,6 +52,9 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
     await auto.refresh();
     if (!disposed && before === sequence) await auto.refresh();
   } }) : null;
+  let storage; try { storage = window.localStorage; } catch {}
+  const meetingReviews = $('homeMeetingReviews') && client.logActivity
+    ? mountHomeMeetingReviews({ document, client, host: $('homeMeetingReviews'), storage, now }) : null;
   const docSources = [['board','getHomeAgenda'],['leads','getLeadBoard']];
   const docPayload = (source, view) => source === 'board' ? {deals:scopedDeals(view?.board,scope)}
     : (view?.leads ? {leads:topNewLeads(view.leads,{scope,actor:view.board?.actor,now:now()})} : null);
@@ -67,6 +71,7 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
   const renderMeetings = signedOut => {
     if (!$('homeMeetings')) return;
     const meetings = signedOut ? null : calendar;
+    meetingReviews?.update({ calendar: meetings, deals: scopedDeals(snapshot?.board, 'team') || [], actor: snapshot?.board?.actor, signedOut: Boolean(signedOut) });
     if (!meetings) { $('homeMeetings').replaceChildren(); widget('homeMeetings', null); return; }
     const failed = meetings.state === 'unavailable';
     const count = meetings.items.length;
@@ -314,7 +319,7 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
   });
   if ($('homeEmailActivity')) $('homeEmailActivity').hidden = !client.listEmailProposals && !client.listEmailThreadFilings;
   auto.refresh();
-  return { refresh: auto.refresh, dispose() { disposed = true; sequence++; prepEpoch++; meetingPrep?.dispose(); window.removeEventListener('doctorcre-session-invalidated', retirePendingEmail); window.clearInterval(expiry); auto.dispose(); document.removeEventListener('doctorcre:brief-calendar', updateCalendar); window.removeEventListener('doctorcre-session-invalidated', clearCalendar); relationshipDialog?.dispose(); pastWidget?.dispose(); callTasks?.dispose(); emailReview?.dispose(); emailFilings?.dispose(); replyOutcomes?.dispose(); } };
+  return { refresh: auto.refresh, dispose() { disposed = true; sequence++; prepEpoch++; meetingPrep?.dispose(); window.removeEventListener('doctorcre-session-invalidated', retirePendingEmail); window.clearInterval(expiry); auto.dispose(); document.removeEventListener('doctorcre:brief-calendar', updateCalendar); window.removeEventListener('doctorcre-session-invalidated', clearCalendar); relationshipDialog?.dispose(); pastWidget?.dispose(); callTasks?.dispose(); meetingReviews?.dispose(); emailReview?.dispose(); emailFilings?.dispose(); replyOutcomes?.dispose(); } };
 }
 
 if (typeof document !== 'undefined' && document.getElementById('dealAttention')) {
