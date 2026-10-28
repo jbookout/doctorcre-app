@@ -60,7 +60,7 @@ export function createLiveClient(opts = {}) {
   const sessionWrites = new Set(['set-next-step', 'set-market-agent', 'set-national-account-owner', 'create-national-account',
     'create-national-market-deal', 'start-deal-review', 'review-deal', 'end-deal-review',
     'resolve-candidate', 'resolve-post-call-candidate', 'answer-work-request-for-joe', 'add-industry-event', 'update-industry-event',
-    'undo-call-change', 'review-call-outcome', 'confirm-email-next-step', 'confirm-email-deal-progress', 'dismiss-email-proposal', 'submit-email-draft']);
+    'undo-call-change', 'review-call-outcome', 'confirm-email-next-step', 'confirm-email-deal-progress', 'dismiss-email-proposal', 'submit-email-draft', 'register-client-portal']);
 
   const readTimeoutMs = opts.readTimeoutMs || 10_000;
   const rpc = (verb, args = {}, signal) => {
@@ -108,6 +108,7 @@ export function createLiveClient(opts = {}) {
     if (isError || (payload?.error && payload.ok !== true)) {
       const err = new Error(`live ${verb} refused: ${payload?.error || 'tool_error'}`);
       err.payload = payload;
+      if (verb === 'new-deal') err.creationStage = 'new-deal';
       err.writeRefusal = verb === 'new-deal' && CREATION_REFUSALS.has(payload?.error);
       throw err;
     }
@@ -327,6 +328,7 @@ export function createLiveClient(opts = {}) {
     async listEmailProposals(args = {}) { return rpc('list-email-proposals', args); },
     async previewEmailNextStep(args) { return rpc('preview-email-next-step', args); },
     async previewEmailDealProgress(args) { return rpc('preview-email-deal-progress', args); },
+    async confirmEmailFiling(args) { return write('confirm-email-filing', args); },
     async confirmEmailNextStep(args) { return write('confirm-email-next-step', args); },
     async confirmEmailDealProgress(args) { return write('confirm-email-deal-progress', args); },
     async submitEmailDraft(args) { return write('submit-email-draft', args); },
@@ -426,6 +428,10 @@ export function createLiveClient(opts = {}) {
     async recordDealItem(args) { return write('record-deal-item', { ...args, source_ref: args.source_ref || `app:deal-item:${args.idempotency_key}` }); },
     async instructDealItem(args) { return write('instruct-deal-item', args); },
     async completeDealItem(args) { return write('complete-deal-item', args); },
+    // The portal password goes to CARR once, here; CARR keeps only a verifier and answers with the link.
+    async registerClientPortal(args) {
+      return write('register-client-portal', args);
+    },
 
     async addDealNote(args) {
       return write('add-deal-note', args);

@@ -115,6 +115,7 @@
  * @property {(args:{proposal_id:string,base_version:number,subject:string,body:string,to:string[],cc:string[],idempotency_key:string}) => Promise<Object>} submitEmailDraft queues exact partner-reviewed reply text for sending
  * @property {() => Promise<Object>} getEmailProposalQuality read-only seven-day email-proposal-quality.v1 report
  * @property {(args?:{deal?:string,limit?:number,cursor?:string}) => Promise<{schema_version:'email-proposals.v1', proposals:Object[], send:false, more?:boolean, next_cursor?:string|null}>} listEmailProposals pending email proposals, oldest first
+ * @property {(args:{proposal_id:string,base_version:number,proposal_digest:string,deal?:string,idempotency_key:string}) => Promise<Object>} confirmEmailFiling partner confirmation of a filing proposal
  * @property {(args:{deal:string,activity_id:string,evidence_quote:string,text:string,next_date:string,owner?:'joe'|'dell'}) => Promise<Object>} previewEmailNextStep fresh digest and affected plan/actions
  * @property {(args:{deal:string,activity_id:string,evidence_quote:string,text:string,next_date:string,owner?:'joe'|'dell',proposal_digest:string,idempotency_key:string}) => Promise<Object>} confirmEmailNextStep Joe-only, exact displayed preview
  * @property {(args:{deal:string,activity_id:string,evidence_quote:string}) => Promise<Object>} previewEmailDealProgress fresh phase move and digest

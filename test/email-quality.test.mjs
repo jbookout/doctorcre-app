@@ -69,7 +69,7 @@ test('failed reads keep the last report with retry and never claim an empty wind
 });
 
 test('malformed reports remain unavailable instead of inventing counts or a zero rate', async t => {
-  const invalid = [null, {}, { ...report(), kinds: [] }, { ...report(), send: true },
+  const invalid = [null, {}, { ...report(), send: true },
     { ...report(), kinds: [kind('phase_move', { proposed: -1 }), kind('next_step')] },
     { ...report(), kinds: [kind('phase_move', { dismiss_rate: 4 }), kind('next_step')] },
     { ...report(), kinds: [kind('phase_move'), kind('phase_move')] },
@@ -122,4 +122,28 @@ test('reply draft quality remains readable when submitted and delivery states le
   assert.ok(draft);
   assert.match(draft.textContent, /Reply drafts/);
   assert.match(draft.textContent, /Proposed: 4.*Pending: 1.*Dismissed: 1/);
+});
+
+test('filing quality and unknown future kinds do not hide existing quality', async t => {
+  const value = report(); value.kinds.push(kind('file_to_deal'), kind('possible_new_deal'), kind('future_kind'));
+  value.corrections.push({ id: 'new', kind: 'possible_new_deal', deal_name: null, reason: 'No new matter', resolved_at: '2026-10-27T12:00:00Z' });
+  const { container, view } = setup(t, { getEmailProposalQuality: async () => value });
+  await view.refresh();
+  assert.match(container.textContent, /Phase changes/); assert.match(container.textContent, /Email filing/);
+  assert.match(container.textContent, /Possible new deals/); assert.match(container.textContent, /No new matter/);
+  assert.doesNotMatch(container.textContent, /Could not load|future_kind/);
+});
+
+test('missing optional and unknown quality kinds do not prevent a report', async t => {
+  const value = report(); value.kinds = [kind('future_kind')]; value.corrections = [];
+  const { container, view } = setup(t, { getEmailProposalQuality: async () => value });
+  await view.refresh();
+  assert.doesNotMatch(container.textContent, /Could not load|future_kind/);
+  assert.equal(container.querySelectorAll('[data-quality-kind]').length, 0);
+});
+
+test('unknown-only quality does not claim there were no proposals', async t => {
+  const value = report(); value.kinds = [null, {}, kind('future_kind', { proposed: 1, pending: 1 }), kind('future_kind', { proposed: 1, pending: 1 })]; value.corrections = [];
+  const { container, view } = setup(t, { getEmailProposalQuality: async () => value });
+  await view.refresh(); assert.doesNotMatch(container.textContent, /Could not load|No email proposals created/);
 });

@@ -262,6 +262,14 @@ export function commandMessage(outcome, subject = 'This change') {
     return outcome.superseded === true ? `${subject} ${COMMAND_SENTENCE.superseded}` : null;
   }
   if (outcome.reason === 'declined') {
+    const portalMessages = {
+      portal_slug_taken: 'That portal name is already taken.',
+      portal_slug_invalid: 'Enter a valid portal name.',
+      portal_password_invalid: 'Enter a valid password.',
+      portal_password_differs: 'That password does not match the existing portal password.',
+      portal_deal_already_registered: 'This deal already has a portal.',
+    };
+    if (portalMessages[outcome.code]) return portalMessages[outcome.code];
     return `${subject} was refused by the server: ${outcome.hint || `${humanize(outcome.code) || 'no reason given'}.`}`;
   }
   const tail = COMMAND_SENTENCE[outcome.reason] || COMMAND_SENTENCE.no_answer;

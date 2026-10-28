@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { readFile } from "node:fs/promises";
 import { posix } from "node:path";
+import { transform } from "esbuild";
 import { boardDirectory, boardView } from "../js/progress-board-model.js";
 import { execFileSync } from "node:child_process";
 import { createHash } from 'node:crypto';
@@ -10,7 +11,7 @@ import { validSystemWork, groupSystemWork, recentLive } from "../js/system-work-
 import { renderDealChecklist } from "../js/deal-checklist.js";
 
 const contract = JSON.parse(await readFile(new URL("../contracts/carr-interface.v1.json", import.meta.url), "utf8"));
-const pinnedProducer = "1df9b9936394164dd55e815f8a8bf69649508ccc";
+const pinnedProducer = "700173808625061adff581cfab415ce8e83e24f6";
 
 
 const producerModules = new Map();
@@ -18,6 +19,8 @@ async function producerModuleUrl(path) {
   if (producerModules.has(path)) return producerModules.get(path);
   let source = execFileSync("git", ["-C", process.env.CARR_PRODUCER_CHECKOUT,
     "show", `${contract.producer.source_commit}:${path}`], { encoding: "utf8" });
+  // Erase type-only imports before resolving runtime dependencies from the pin.
+  source = (await transform(source, { loader: path.endsWith(".ts") ? "ts" : "js", format: "esm", target: "es2022" })).code;
   for (const match of [...source.matchAll(/from\s+(["'])(\.\.?\/[^"'\n]+)\1/g)]) {
     const dependency = await producerModuleUrl(posix.join(posix.dirname(path), match[2]));
     source = source.replace(match[1] + match[2] + match[1], JSON.stringify(dependency));
@@ -40,6 +43,7 @@ test("the advertised runtime registers inherited conversation, notification, ses
   const registry = execFileSync("git", ["-C", process.env.CARR_PRODUCER_CHECKOUT,
     "show", `${contract.producer.source_commit}:mcp-server/src/tools.js`], { encoding: "utf8" });
   for (const [module, factory, verbs] of [
+    ["client-portal.ts", "clientPortalTools", ["register-client-portal"]],
     ["doc-conversation.js", "docConversationTools", ["read-doc-conversation", "list-doc-conversations", "create-doc-conversation", "rename-doc-conversation", "share-doc-conversation"]],
     ["notifications.js", "notificationTools", ["notification-feed", "acknowledge-notification", "read-notification-preferences", "set-notification-preference"]],
     ["codex-continuity.js", "codexContinuityTools", ["list-my-codex-sessions"]],
@@ -62,7 +66,7 @@ test("the advertised runtime registers inherited conversation, notification, ses
 test("the same advertised producer derives the versioned checklist consumed by the app", {
   skip: !process.env.CARR_PRODUCER_CHECKOUT && "Set CARR_PRODUCER_CHECKOUT to verify checklist derivation",
 }, async () => {
-  const { deriveDealChecklist, CHECKLIST_SOURCES } = await import(await producerModuleUrl("mcp-server/src/deal-checklist.js"));
+  const { deriveDealChecklist, CHECKLIST_SOURCES } = await import(await producerModuleUrl("mcp-server/src/deal-checklist.ts"));
   const seam = contract.mcp_read_contracts["get-deal-room"].checklist;
   const checklist = deriveDealChecklist({ type: "renewal", critical_dates: [
     { id: "synthetic-review", kind: "attorney_review", due_on: "2026-10-20", source: "fixture:review", status: "open" },
@@ -108,11 +112,7 @@ test("the exact pinned producer serves property evidence alongside the existing 
 }, async () => {
   const git = (...args) => execFileSync("git", ["-C", process.env.CARR_PRODUCER_CHECKOUT, ...args], { encoding: "utf8" });
   const pin = contract.producer.source_commit;
-  const timestampSource = git("show", `${pin}:mcp-server/src/tour-route-timestamp.js`);
-  const timestampModule = `data:text/javascript;base64,${Buffer.from(timestampSource).toString("base64")}`;
-  const source = git("show", `${pin}:mcp-server/src/tour-internal-web.js`)
-    .replace('"./tour-route-timestamp.js"', JSON.stringify(timestampModule));
-  const { createTourInternalWebHandler, isTourInternalRequest } = await import(`data:text/javascript;base64,${Buffer.from(source).toString("base64")}`);
+  const { createTourInternalWebHandler, isTourInternalRequest } = await import(await producerModuleUrl("mcp-server/src/tour-internal-web.js"));
   const propertyId = "10000000-0000-4000-8000-000000000001";
   const asOf = "2026-09-29T12:00:00.000Z";
   const data = { schema: "tour-property-evidence.v1", property_id: propertyId, as_of: asOf, facts: {} };

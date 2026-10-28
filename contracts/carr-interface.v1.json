@@ -1,9 +1,9 @@
 {
   "schema": "doctorcre-carr-interface.v1",
-  "version": "1.62.0",
+  "version": "1.63.0",
   "producer": {
     "repository": "jbookout/carr-system",
-    "source_commit": "1df9b9936394164dd55e815f8a8bf69649508ccc"
+    "source_commit": "700173808625061adff581cfab415ce8e83e24f6"
   },
   "consumer": "jbookout/doctorcre-app",
   "transport": {
@@ -37,6 +37,7 @@
     "close-loop",
     "complete-deal-item",
     "confirm-email-deal-progress",
+    "confirm-email-filing",
     "confirm-email-next-step",
     "confirm-slice-completions",
     "correspondence-readiness",
@@ -109,6 +110,7 @@
     "record-commission-receipt",
     "record-deal-item",
     "record-dispatch-link",
+    "register-client-portal",
     "rename-doc-conversation",
     "resolve-candidate",
     "resolve-conflict",
@@ -542,8 +544,8 @@
       "write": false,
       "producer": {
         "repository": "jbookout/carr-system",
-        "source_commit": "1df9b9936394164dd55e815f8a8bf69649508ccc",
-        "pull_request": "https://github.com/DoctorCRE/carr-system/pull/2120"
+        "source_commit": "700173808625061adff581cfab415ce8e83e24f6",
+        "pull_request": "https://github.com/jbookout/carr-system/pull/2525"
       },
       "response": {
         "schema_version": "local-deals-board.v1",
@@ -559,7 +561,8 @@
           "phase_started_on",
           "vendors",
           "short_name",
-          "items"
+          "items",
+          "client_portal_url"
         ],
         "phase_change_keys": [
           "event_id",
@@ -680,8 +683,8 @@
     "get-deal-room": {
       "producer": {
         "repository": "jbookout/carr-system",
-        "source_commit": "1df9b9936394164dd55e815f8a8bf69649508ccc",
-        "pull_request": "https://github.com/DoctorCRE/carr-system/pull/2192"
+        "source_commit": "700173808625061adff581cfab415ce8e83e24f6",
+        "pull_request": "https://github.com/jbookout/carr-system/pull/2525"
       },
       "response": {
         "schema_version": "deal-timeline.v1",
@@ -699,6 +702,7 @@
         ],
         "lease_absence": null,
         "client_id": "Exact client record UUID, including closed and invoiced records; use for the authenticated clients record read.",
+        "client_portal_url": "https://share.doctorcre.com/<slug> for the deal's active, non-disabled client portal; null otherwise. Derived at read time; never carries a password or hash.",
         "engagement_keys": [
           "client_status",
           "client_version",
@@ -765,7 +769,7 @@
         "schema_version": "deal-checklist.v1",
         "producer": {
           "repository": "jbookout/carr-system",
-          "source_commit": "1df9b9936394164dd55e815f8a8bf69649508ccc"
+          "source_commit": "700173808625061adff581cfab415ce8e83e24f6"
         },
         "template_states": [
           "current",
@@ -799,7 +803,7 @@
       "write": false,
       "producer": {
         "repository": "jbookout/carr-system",
-        "source_commit": "1df9b9936394164dd55e815f8a8bf69649508ccc",
+        "source_commit": "700173808625061adff581cfab415ce8e83e24f6",
         "module": "mcp-server/src/feature-switches.js"
       },
       "inputSchema": {
@@ -1255,8 +1259,8 @@
     "sha256": "4478d4a3386714e9bcbf181af60ff3fae47ba14b09d20ee1758876f32528d634",
     "producer": {
       "repository": "DoctorCRE/carr-system",
-      "source_commit": "1df9b9936394164dd55e815f8a8bf69649508ccc",
-      "pull_request": "https://github.com/DoctorCRE/carr-system/pull/2192"
+      "source_commit": "700173808625061adff581cfab415ce8e83e24f6",
+      "pull_request": "https://github.com/jbookout/carr-system/pull/2525"
     }
   },
   "mcp_write_contracts": {
@@ -1461,6 +1465,16 @@
       ],
       "submission": "Only the owning authenticated human partner can submit. Preserve exact text, displayed to/cc arrays, reviewed version and original idempotency key on uncertain retries. The server compares displayed recipients with the current captured sender and other partner actor.email and refuses email_draft_recipients_mismatch if they differ. That refusal and version_conflict require explicit fresh review, never automatic resubmission. A successful receipt has ok:true, proposal_id, status:approved_to_send, version, subject, body, sha256, to and cc matching the reviewed request. It queues sending on the partner Mac and does not confirm delivery.",
       "deployment_order": "Hold deployment and auto-merge until server PR #2522 at the pinned revision is merged and live."
+    },
+    "filing": {
+      "producer": {
+        "repository": "DoctorCRE/carr-system",
+        "source_commit": "63a27918b5fdaae4b51ec257940a9049d93c51f1",
+        "pull_request": "https://github.com/DoctorCRE/carr-system/pull/2503"
+      },
+      "read": "file_to_deal and possible_new_deal carry email-filing.v1 previews with proposal_id, kind, deal, activity_id, evidence_quote, sender, sender_role, new_people, text and proposal_digest. A possible new deal has a null deal. Unknown kinds are ignored.",
+      "confirmation": "Joe or Dell confirms with confirm-email-filing {proposal_id,base_version,proposal_digest,idempotency_key,deal?}. A possible new deal supplies the ID returned by new-deal. Show public refusal hints.",
+      "deployment_order": "Deploy this consumer before producer PR #2503. Current producer responses remain supported."
     }
   },
   "email_proposal_quality": {
