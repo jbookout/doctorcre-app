@@ -23,7 +23,7 @@ export function mountRelationshipNetwork({
   intervalMs = 30000,
 }) {
   const $ = (id) => document.getElementById(id),
-    dialog = mountRelationshipDialog({ document });
+    dialog = mountRelationshipDialog({ document, onRefresh: () => auto.refresh() });
   let snapshot = null,
     epoch = 0,
     disposed = false,

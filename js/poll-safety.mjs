@@ -1,11 +1,11 @@
-export const POLL_LIMITS = Object.freeze({ gapMs: 5_000, minute: 90, hour: 300, manualMinute: 120, manualHour: 600, failureLimit: 3, backoffMs: 300_000, requestSpacingMs: 20_000, recoveryHour: 30, resumeMs: 3_600_000, reservationMs: 60_000 });
+export const POLL_LIMITS = Object.freeze({ gapMs: 5_000, minute: 90, hour: 300, manualMinute: 300, manualHour: 1200, failureLimit: 3, backoffMs: 300_000, requestSpacingMs: 20_000, recoveryHour: 30, resumeMs: 3_600_000, reservationMs: 60_000 });
 const governors = new WeakMap();
 
 export function createPollSafety({ window, document = window?.document, now = () => window?.Date?.now?.() ?? Date.now(), storage, locks = window?.navigator?.locks } = {}) {
   let nextAt = 0, cooldownAt = 0, lastManual = -Infinity, retryAt = 0, failures = 0, running = null, reason = '';
   let eventNextAt = 0, blockedTriggerUntil = 0;
   const endpointFailures = new Map();
-  let sourceFailures = new WeakMap();
+  let sourceFailures = new Map();
   const queue = new Map();
   let queueTimer = null, draining = false;
   const queueClock = window?.setTimeout && window?.clearTimeout ? window : globalThis;
@@ -140,7 +140,7 @@ export function createPollSafety({ window, document = window?.document, now = ()
   const manualIntent = () => {
     if (running?.invoking) return running.manual;
     const event = window?.event;
-    if (event?.isTrusted && ['click', 'submit', 'keydown', 'pointerdown'].includes(event.type)) return true;
+    if (event?.isTrusted && ['click', 'submit', 'keydown', 'pointerdown', 'input', 'change', 'popstate', 'hashchange'].includes(event.type)) return true;
     return running ? running.manual : !eventContext;
   };
   async function execute(operation, { manual = false, intervalMs = 30_000, keepAlive = false, initial = false, source } = {}) {
@@ -284,7 +284,7 @@ export function createPollSafety({ window, document = window?.document, now = ()
         const held = [...reservations.values()].filter(item => item.key === 'background').reduce((total, item) => total + item.remaining, 0);
         const available = Math.min(POLL_LIMITS.hour - requests.background.length, POLL_LIMITS.minute - requests.background.filter(time => time > now() - 60_000).length) - held;
         lastResume = now(); recovering = available < POLL_LIMITS.recoveryHour; reason = ''; failures = 0; nextAt = now(); cooldownAt = now();
-        endpointFailures.clear(); sourceFailures = new WeakMap();
+        endpointFailures.clear(); sourceFailures = new Map();
       });
       notify();
     },

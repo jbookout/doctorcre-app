@@ -4,7 +4,7 @@ import {
   EDGE_LABELS,
   shortSummary,
 } from "./relationship-network-model.js";
-export function mountRelationshipDialog({ document }) {
+export function mountRelationshipDialog({ document, onRefresh }) {
   const dialog = document.createElement("dialog");
   dialog.className = "relationship-dialog";
   dialog.setAttribute("aria-labelledby", "relationshipTitle");
@@ -26,7 +26,7 @@ export function mountRelationshipDialog({ document }) {
       [e.from, e.to, e.via].includes(node.id),
     );
     const refs = snapshot.referrals.find((r) => r.node_id === node.id);
-    dialog.innerHTML = `<header><div><span class="relationship-kicker">${E(String(node.kind || "").replace(/^./, (c) => c.toUpperCase()))}</span><h2 id="relationshipTitle" tabindex="-1">${E(node.name)}</h2></div><button data-card-key="close" data-close-card type="button" aria-label="Close relationship">×</button></header><div class="relationship-detail-grid"><section><div class="relationship-tags">${[
+    dialog.innerHTML = `<header><div><span class="relationship-kicker">${E(String(node.kind || "").replace(/^./, (c) => c.toUpperCase()))}</span><h2 id="relationshipTitle" tabindex="-1">${E(node.name)}</h2></div><button data-card-key="close" data-close-card type="button" aria-label="Close relationship">×</button></header>${onRefresh ? '<p><button type="button" data-refresh-relationships data-card-key="refresh">Refresh connections</button></p>' : ''}<div class="relationship-detail-grid"><section><div class="relationship-tags">${[
       node.territory,
       ...node.verticals,
       node.owner,
@@ -47,6 +47,7 @@ export function mountRelationshipDialog({ document }) {
         .join("") || "<p>No connections recorded</p>"
     }</section></div>`;
     dialog.querySelector("[data-close-card]").onclick = () => dialog.close();
+    dialog.querySelector("[data-refresh-relationships]")?.addEventListener("click", () => onRefresh());
     dialog.querySelectorAll("[data-open-node]").forEach(
       (b) =>
         (b.onclick = () => {
