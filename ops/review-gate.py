@@ -23,6 +23,9 @@ def card_allowed(pr):
 
 
 def approved(pr, files, comments):
+    comments = [c for c in comments if c.get("body") and
+                (c.get("user") or {}).get("login") and
+                c["user"]["login"].casefold() != (pr.get("user", {}).get("login") or "").casefold()]
     auto_merge = pr.get("auto_merge") or {}
     if any(SKIP_CI.search(value or "") for value in
            (pr.get("title"), auto_merge.get("commit_title"), auto_merge.get("commit_message"))):
@@ -60,7 +63,7 @@ def run(event, repo):
     if "merge_group" in event:
         status(event["merge_group"]["head_sha"], "success")
         return
-    number = event.get("number") or event["issue"]["number"]
+    number = event.get("number") or (event.get("pull_request") or event["issue"])["number"]
     pr = api(f"{root}/pulls/{number}")
     if pr["base"]["ref"] != "main":
         return
@@ -68,8 +71,9 @@ def run(event, repo):
     status(sha, "pending")
     files = api(f"{root}/pulls/{number}/files?per_page=100")
     comments = api(f"{root}/issues/{number}/comments?per_page=100")
+    reviews = api(f"{root}/pulls/{number}/reviews?per_page=100")
     card_ok = card_allowed(pr)
-    passed = card_ok and approved(pr, files, comments)
+    passed = card_ok and approved(pr, files, comments + reviews)
     latest = api(f"{root}/pulls/{number}")
     if latest["head"]["sha"] == sha and latest.get("body") == pr.get("body"):
         description = ("No skip marker; small safe diff or current-head approval required" if card_ok else
