@@ -43,6 +43,10 @@ async function open(t, width = 1440) {
         payload.nodes[0].territory = "Demo Northern Coastal Territory";
         payload.nodes.find(n => n.kind === "deal").name = JSON.stringify({value:"Demo Dental Relocation"});
       }
+      if (mode === "connector") {
+        payload.edges[0].via = "party:demo-build";
+        payload.suggestions[0].via = "party:demo-build";
+      }
       if (mode === "twins") {
         payload.nodes[0].name = "Demo Healthcare Lending North Partners";
         payload.nodes[3].name = "Demo Healthcare Lending South Partners";
@@ -447,3 +451,30 @@ test('Relationships live boot loads its selected adapter without the fixture ada
  assert.equal(scripts.includes('/js/fixture-client.js'),false);
  assert.equal(scripts.includes('/js/live-client.js'),true);
 });
+
+
+for (const width of [1440, 390]) for (const theme of ['light', 'dark'])
+  test(`H05 Home keeps the recorded introduction path at ${width}px ${theme}`, async t => {
+    const { page, errors, setMode } = await open(t, width);
+    await page.addInitScript(theme => localStorage.setItem('doctorcre.visual-preferences', JSON.stringify({ theme, walkthroughSeen: { joe: true, dell: true } })), theme);
+    setMode('connector');
+    await page.goto('http://localhost/?mode=live');
+    const path = page.locator('#homeIntroductions [data-intro-node]');
+    await path.waitFor();
+    assert.equal(await path.locator('.intro-route').innerText(), 'Demo Healthcare Lending → Demo Practice Builders → Demo Dental Expansion');
+    await path.focus();
+    await page.keyboard.press('Enter');
+    await page.locator('.relationship-dialog[open]').waitFor();
+    assert.equal(await page.locator('#relationshipTitle').innerText(), 'Demo Dental Expansion');
+    await page.keyboard.press('Escape');
+    assert.equal(await path.evaluate(node => node === document.activeElement), true);
+    await page.addScriptTag({ content: axe.source });
+    const audit = await page.evaluate(() => window.axe.run(document.querySelector('#homeIntroductions'), { runOnly: ['color-contrast'] }));
+    assert.deepEqual(audit.violations, []);
+    assert.deepEqual(audit.incomplete, []);
+    await path.screenshot({ path: `out/test-artifacts/w14/h05-path-${width}-${theme}.png`, animations: 'disabled' });
+    setMode('ok');
+    await page.clock.fastForward(61000);
+    await page.waitForFunction(() => document.querySelector('#homeIntroductions .intro-route')?.textContent === 'Demo Healthcare Lending → Demo Dental Expansion');
+    assert.deepEqual(errors, []);
+  });
