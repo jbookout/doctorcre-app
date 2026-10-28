@@ -74,10 +74,16 @@ async function nextLeaseRead(page, trigger, response = false) {
   let requested = false;
   const matches = value => new URL(value.url()).pathname === '/api/v1/business/leases';
   const read = (response ? page.waitForResponse(matches) : page.waitForRequest(matches)).then(value => { requested = true; return value; });
+  await page.evaluate(() => document.dispatchEvent(new Event('pointermove')));
   await trigger();
-  for (let turn = 0; turn < 12 && !requested; turn++) {
+  for (let turn = 0; turn < 40 && !requested; turn++) {
     await Promise.race([read, page.waitForLoadState('networkidle')]);
-    if (!requested) { await page.clock.fastForward(5_001); await page.waitForTimeout(20); }
+    if (!requested) {
+      await page.evaluate(() => document.dispatchEvent(new Event('pointermove')));
+      const delay = await page.evaluate(async () => Math.max(5_001, (await import('/js/poll-safety.mjs')).pollSafety(window).state().nextAt - Date.now() + 1));
+      await page.clock.fastForward(delay);
+      await page.waitForTimeout(30);
+    }
   }
   await read;
 }

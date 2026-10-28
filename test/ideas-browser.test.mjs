@@ -3,6 +3,17 @@ import assert from 'node:assert/strict';
 import { mkdir } from 'node:fs/promises';
 import { chromium, fixtureServer } from './browser-harness.mjs';
 
+async function settleIdeaRefresh(page, before) {
+  for (let turn = 0; turn < 40; turn++) {
+    if (await page.locator('#ideaAsOf').textContent() !== before) return;
+    await page.evaluate(() => document.dispatchEvent(new Event('pointermove')));
+    const delay = await page.evaluate(async () => Math.max(5_001, (await import('/js/poll-safety.mjs')).pollSafety(window).state().nextAt - Date.now() + 1));
+    await page.clock.fastForward(delay);
+    await page.waitForTimeout(30);
+  }
+  assert.fail('Ideas did not finish its queued refresh');
+}
+
 test('S3 closing an idea restores stranded focus and preserves keyboard navigation', async t => {
   const server = await fixtureServer();
   t.after(() => server.close());
@@ -56,7 +67,7 @@ test('S3 closing an idea restores stranded focus and preserves keyboard navigati
       }
       await page.clock.setSystemTime(new Date('2026-10-01T15:01:00Z'));
       await page.evaluate(() => window.dispatchEvent(new Event('online')));
-      await page.waitForFunction(before => document.querySelector('#ideaAsOf').textContent !== before, before);
+      await settleIdeaRefresh(page, before);
       if (dismiss === 'escape') await page.keyboard.press('Escape');
       else await page.locator('#ideaDialogClose').click();
       await page.waitForFunction(() => !document.querySelector('#ideaDialog').open && !new URLSearchParams(location.search).has('idea'));
