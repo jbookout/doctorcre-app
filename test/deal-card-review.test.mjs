@@ -339,6 +339,8 @@ for (const width of [390,1280]) test(`board cards show the full practice name wi
 
 for (const width of [390,1280]) for (const theme of ['light','dark']) test(`100-card stage keeps its heading and collapse preview at ${width}px in ${theme}`,async t=>{
  const {page,errors}=await open(t,width,{theme,showDetail:false,denseBoard:true});
+ await mkdir(new URL('out/test-artifacts/d02-stages/',root),{recursive:true});
+ const capture=state=>page.screenshot({path:new URL(`out/test-artifacts/d02-stages/${width}-${theme}-${state}.png`,root).pathname,animations:'disabled'});
  const lane=page.locator('[data-column="research"]');
  const heading=lane.locator('h3');
  assert.equal(await heading.locator('small').textContent(),'100');
@@ -350,6 +352,7 @@ for (const width of [390,1280]) for (const theme of ['light','dark']) test(`100-
   const hit=document.elementFromPoint(r.left+10,r.top+r.height/2);
   return r.top>=board.top-1&&r.bottom<=innerHeight&&h.contains(hit);
  }),true,'the stage heading remains visible above scrolled cards');
+ await capture('scrolled');
  const collapse=lane.getByRole('button',{name:'Collapse Research',exact:true});
  await collapse.focus();await page.keyboard.press('Enter');
  assert.equal(await lane.locator('.kanban-card:visible').count(),0);
@@ -357,6 +360,7 @@ for (const width of [390,1280]) for (const theme of ['light','dark']) test(`100-
  assert.match(await lane.locator('.stage-preview').textContent(),/Demo multidisciplinary healthcare practice/);
  assert.match(await lane.locator('.stage-preview').textContent(),/98 more/);
  assert.equal(await page.evaluate(()=>document.activeElement?.getAttribute('aria-label')),'Expand Research');
+ await capture('collapsed');
  await page.locator('#listView').click();await page.locator('#boardView').click();
  await lane.getByRole('button',{name:'Expand Research',exact:true}).click();
  assert.equal(await lane.locator('.kanban-card').count(),100);
