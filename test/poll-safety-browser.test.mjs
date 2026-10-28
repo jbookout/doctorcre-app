@@ -42,12 +42,14 @@ for (const width of [390, 1440]) test(`shared pause notice and trusted manual re
   await page.screenshot({ path: `out/test-artifacts/poll-safety/resumed-${width}.png` });
 });
 
-test('real browser tabs share one polling owner and hand off after pagehide', async t => {
+test('twenty real browser tabs share one ceiling across a polling-owner handoff', async t => {
   const server = await fixtureServer(); t.after(() => server.close());
   const browser = await chromium.launch(); t.after(() => browser.close());
   const first = await browser.newPage();
   const second = await first.context().newPage();
-  for (const page of [first, second]) {
+  const pages = [first, second];
+  for (let i = 2; i < 20; i++) pages.push(await first.context().newPage());
+  for (const page of pages) {
     await page.route('**/poll-safety-fixture', route => route.fulfill({ contentType: 'text/html', body: '<!doctype html><html><body></body></html>' }));
     await page.goto(`${server.origin}/poll-safety-fixture`);
     await page.evaluate(async () => {
@@ -65,6 +67,11 @@ test('real browser tabs share one polling owner and hand off after pagehide', as
   await second.clock.install({ time: new Date(Date.now() + 30_000) });
   await second.evaluate(() => window.read());
   assert.equal(await second.evaluate(() => window.requests), 1);
+  await Promise.all(pages.map(page => page.evaluate(() => window.safety.run(async () => {
+    for (let i = 0; i < 91; i++) await window.safety.fetch(async () => { window.requests++; return new Response('{}'); }, '/synthetic').catch(() => {});
+  }, { initial: true }))));
+  const counts = await Promise.all(pages.map(page => page.evaluate(() => window.requests)));
+  assert.equal(counts.reduce((total, count) => total + count, 0), 90, 'owner handoff cannot create another tab allowance');
 });
 
 test('Resume works in a modal and session invalidation retires its notice', async t => {
