@@ -47,6 +47,7 @@ test('going offline clears health during a pending refresh and reconnect reads a
     releaseFeed();
     await context.setOffline(false);
   }
+  await page.clock.fastForward(60_000);
   await expect.poll(() => boardReads).toBe(2);
   await expect(connection).toHaveAttribute('aria-label', 'Connection available');
 });

@@ -62,6 +62,25 @@ async function open(t, width, tab = 'views', theme = 'dark', holdCurrentWork = f
   return { page, state, releaseCurrentWork };
 }
 
+async function advanceRoom(page, observed) {
+  await page.waitForLoadState('networkidle');
+  await page.waitForFunction(async () => (await import('/js/control-room.js')).view.status === 'ready');
+  const sequence = await page.evaluate(async () => (await import('/js/control-room.js')).view.sequence);
+  await page.clock.setSystemTime(await page.evaluate(() => Date.now()) + 60_001);
+  const paused = page.locator('[data-poll-safety]');
+  if (await paused.isVisible() && /request limit/.test(await paused.innerText())) await paused.getByRole('button', { name: 'Resume updates' }).click();
+  for (let attempt = 0; attempt < 12; attempt++) {
+    await page.waitForLoadState('networkidle');
+    if (observed && await page.evaluate(observed)) return;
+    if (!observed && await page.evaluate(async before => {
+      const { view } = await import('/js/control-room.js');
+      return view.status === 'ready' && view.sequence > before;
+    }, sequence)) return;
+    await page.clock.runFor(5_001);
+  }
+  assert.fail('Control Room did not finish its next budgeted turn');
+}
+
 for (const theme of ['dark', 'light']) for (const width of [1440, 390]) test(`attention keeps a failed job once and opens that exact item at ${width} ${theme}`, async t => {
   const { page, releaseCurrentWork } = await open(t, width, 'views', theme, true);
   const failed = page.locator('[data-attention-id="work_request:WR-000901"]');
@@ -107,11 +126,11 @@ test('an open attention detail follows its selected job through refresh and sour
   const { page, state } = await open(t, 1440);
   await page.locator('[data-attention-id="work_request:WR-000901"] button').click();
   state.progress = 'Demo source responded; export retry is next';
-  await page.clock.runFor(15001);
+  await advanceRoom(page, () => document.querySelector('#jobBody')?.textContent.includes('Demo source responded; export retry is next'));
   await page.waitForFunction(() => document.querySelector('#jobBody')?.textContent.includes('Demo source responded; export retry is next'));
   assert.equal(await page.locator('#jobTitle').innerText(), 'Demo export needs its source');
   state.unavailable = true;
-  await page.clock.runFor(15001);
+  await advanceRoom(page, () => document.querySelector('#crAttentionList')?.textContent.includes('Attention work could not be read'));
   await page.waitForFunction(() => document.querySelector('#crAttentionList')?.textContent.includes('Attention work could not be read'));
   assert.match(await page.locator('#jobBody').innerText(), /Source unavailable.*Last-known/);
   assert.equal(await page.locator('#jobTitle').innerText(), 'Demo export needs its source');
@@ -124,7 +143,7 @@ test('older completion cannot hide newer failed work from another read source', 
   assert.equal(await failed.count(), 1);
   state.progress = 'Demo refreshed validation complete';
   state.duplicate = true;
-  await page.clock.runFor(15001);
+  await advanceRoom(page);
   await page.waitForFunction(() => document.querySelector('#completed-list')?.textContent.includes('Demo older completion') || document.querySelector('#crAttentionList')?.textContent.includes('Demo refreshed validation complete'));
   assert.equal(await failed.count(), 1, 'newer failure must remain visible once');
   assert.match(await failed.innerText(), /Demo source did not answer/);
@@ -138,10 +157,12 @@ test('agents retain exact selection through refresh and failure', async t => {
   const { page, state } = await open(t, 1440, 'agents');
   await page.locator('#modelRoomAssignments [data-agent-open]').first().click();
   assert.equal(await page.locator('#jobTitle').innerText(), 'Demo export');
+  await page.clock.setSystemTime(await page.evaluate(() => Date.now()) + 60_001);
   await page.locator('#modelRoomRetry').evaluate(node => node.click());
   await page.waitForFunction(() => document.querySelector('#modelRoomFreshness')?.dataset.state !== 'loading');
   assert.equal(await page.locator('#jobTitle').innerText(), 'Demo export');
   state.agentsUnavailable = true;
+  await page.clock.setSystemTime(await page.evaluate(() => Date.now()) + 60_001);
   await page.locator('#modelRoomRetry').evaluate(node => node.click());
   await page.waitForFunction(() => document.querySelector('#modelRoomFreshness')?.dataset.state === 'unavailable');
   assert.equal(await page.locator('#jobTitle').innerText(), 'Demo export');

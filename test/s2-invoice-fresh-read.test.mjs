@@ -1,3 +1,4 @@
+import { installPollFixtureClock } from './poll-fixture-clock.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
@@ -7,12 +8,13 @@ import { invoiceTrackerFixture } from '../js/invoice-tracker-fixture.js';
 const tick=()=>new Promise(resolve=>setTimeout(resolve,15));
 async function setup(){
  const dom=openDom(await readFile(new URL('../invoices.html',import.meta.url),'utf8'),{url:'https://example.test/invoices',pretendToBeVisual:true}),w=dom.window,d=w.document;
+ const clock=installPollFixtureClock(w);
  w.HTMLDialogElement.prototype.showModal=function(){this.open=true};w.HTMLDialogElement.prototype.close=function(){this.open=false};
  const payload=invoiceTrackerFixture('2026-10-02');let reads=0,writes=[];
  const client={mode:'fixture',getInvoiceTracker:async()=>{reads++;return structuredClone(payload)},markInvoicePaid:async args=>{writes.push(structuredClone(args));throw new Error('lost reply')}};
- const app=mountInvoiceTracker({document:d,window:w,client,today:()=> '2026-10-02'});await app.ready;
+ const app=clock.controls(mountInvoiceTracker({document:d,window:w,client,today:()=> '2026-10-02'}));await app.ready;
  const selected=d.querySelector('[data-invoice]').dataset.invoice;d.querySelector('[data-invoice]').click();
- return{dom,w,d,payload,app,writes,row:payload.entries.find(row=>row.commission_id===selected),get reads(){return reads},submit:async()=>{d.getElementById('invoicePayment').dispatchEvent(new w.Event('submit',{cancelable:true}));await tick()}};
+ return{dom,w,d,payload,app,writes,row:payload.entries.find(row=>row.commission_id===selected),get reads(){return reads},submit:async()=>{clock.person(()=>d.getElementById('invoicePayment').dispatchEvent(new w.Event('submit',{cancelable:true})));await tick()}};
 }
 test('S2 changed invoice is reread and displayed before another payment intent is allowed',async()=>{
  const s=await setup();try{

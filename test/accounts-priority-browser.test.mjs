@@ -5,9 +5,8 @@ import { chromium, fixtureServer } from './browser-harness.mjs';
 for (const width of [390, 1280]) for (const theme of ['dark', 'light']) {
   test(`Account opens with the oldest overdue action at ${width}px ${theme}`, async t => {
     const server = await fixtureServer();
-    t.after(() => server.close());
     const browser = await chromium.launch();
-    t.after(() => browser.close());
+    t.after(async () => { await browser.close(); await server.close(); });
     const page = await browser.newPage({ viewport: { width, height: 900 }, reducedMotion: 'reduce' });
     await page.clock.setFixedTime(new Date('2026-10-19T15:00:00Z'));
     await page.addInitScript(theme => localStorage.setItem('doctorcre.visual-preferences', JSON.stringify({ theme })), theme);
@@ -33,9 +32,8 @@ for (const width of [390, 1280]) for (const theme of ['dark', 'light']) {
 for (const width of [390, 1280]) for (const theme of ['dark', 'light']) {
   test(`Empty account search keeps the query and recovery in the workspace at ${width}px ${theme}`, async t => {
     const server = await fixtureServer();
-    t.after(() => server.close());
     const browser = await chromium.launch();
-    t.after(() => browser.close());
+    t.after(async () => { await browser.close(); await server.close(); });
     const page = await browser.newPage({ viewport: { width, height: 900 }, reducedMotion: 'reduce' });
     await page.addInitScript(theme => localStorage.setItem('doctorcre.visual-preferences', JSON.stringify({ theme })), theme);
     await page.route('**/api/**', route => route.fulfill({ json: {} }));
@@ -60,9 +58,8 @@ for (const width of [390, 1280]) for (const theme of ['dark', 'light']) {
 
 test('Clearing an empty portfolio search returns focus to the account card', async t => {
   const server = await fixtureServer();
-  t.after(() => server.close());
   const browser = await chromium.launch();
-  t.after(() => browser.close());
+  t.after(async () => { await browser.close(); await server.close(); });
   const page = await browser.newPage({ viewport: { width: 390, height: 900 }, reducedMotion: 'reduce' });
   await page.route('**/api/**', route => route.fulfill({ json: {} }));
   await page.goto(`${server.origin}/deals?view=national&mode=fixture`);
@@ -79,9 +76,8 @@ test('Clearing an empty portfolio search returns focus to the account card', asy
 for (const reverse of [false, true]) {
   test(`Account fallback agrees with the portfolio regardless of input order (reversed=${reverse})`, async t => {
     const server = await fixtureServer();
-    t.after(() => server.close());
     const browser = await chromium.launch();
-    t.after(() => browser.close());
+    t.after(async () => { await browser.close(); await server.close(); });
     const page = await browser.newPage({ viewport: { width: 1280, height: 900 }, reducedMotion: 'reduce' });
     await page.clock.setFixedTime(new Date('2026-10-19T15:00:00Z'));
     await page.route('**/api/**', route => route.fulfill({ json: {} }));

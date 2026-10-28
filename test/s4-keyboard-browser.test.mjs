@@ -3,6 +3,15 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { chromium, fixtureServer } from './browser-harness.mjs';
 
+async function refreshTurn(page) {
+  await page.waitForLoadState('networkidle');
+  for (let turn = 0; turn < 8 && !await page.evaluate(() => window.listRefreshed); turn++) {
+    await page.clock.runFor(5_001);
+    await page.waitForLoadState('networkidle');
+  }
+  await page.waitForFunction(() => window.listRefreshed);
+}
+
 for (const width of [390, 1280]) for (const theme of ['dark', 'light']) {
   test(`Doc Chats keeps the focused conversation through a background refresh at ${width}px in ${theme}`, async t => {
     const server = await fixtureServer();
@@ -10,11 +19,14 @@ for (const width of [390, 1280]) for (const theme of ['dark', 'light']) {
     const browser = await chromium.launch();
     t.after(() => browser.close());
     const page = await browser.newPage({ viewport: { width, height: 844 } });
+    await page.clock.install();
     await page.addInitScript(theme => localStorage.setItem('doctorcre.visual-preferences', JSON.stringify({ theme })), theme);
     await page.goto(`${server.origin}/doc-chats`);
     const opener = page.locator('#conversationList [data-open]').first();
     await opener.focus();
     const id = await opener.getAttribute('data-open');
+    await page.waitForLoadState('networkidle');
+    await page.clock.setSystemTime(await page.evaluate(() => Date.now()) + 60_001);
     await page.evaluate(() => {
       const list = document.getElementById('conversationList');
       window.listRefreshed = false;
@@ -22,7 +34,7 @@ for (const width of [390, 1280]) for (const theme of ['dark', 'light']) {
       observer.observe(list, { childList: true });
       dispatchEvent(new Event('online'));
     });
-    await page.waitForFunction(() => window.listRefreshed);
+    await refreshTurn(page);
     assert.equal(await page.evaluate(() => document.activeElement.dataset.open), id);
     await page.keyboard.press('Enter');
     await page.waitForFunction(() => document.getElementById('turnList').children.length > 0);
@@ -41,18 +53,21 @@ for (const width of [390, 1280]) for (const theme of ['dark', 'light']) for (con
     const browser = await chromium.launch();
     t.after(() => browser.close());
     const page = await browser.newPage({ viewport: { width, height: 844 } });
+    await page.clock.install();
     await page.addInitScript(theme => localStorage.setItem('doctorcre.visual-preferences', JSON.stringify({ theme })), theme);
     await page.goto(`${server.origin}${route}`);
     const action = page.locator(`#${listId} [${attribute}]`).first();
     await action.focus();
     const key = await action.getAttribute(attribute);
+    await page.waitForLoadState('networkidle');
+    await page.clock.setSystemTime(await page.evaluate(() => Date.now()) + 60_001);
     await page.evaluate(listId => {
       window.listRefreshed = false;
       const observer = new MutationObserver(() => { window.listRefreshed = true; observer.disconnect(); });
       observer.observe(document.getElementById(listId), { childList: true });
       dispatchEvent(new Event('online'));
     }, listId);
-    await page.waitForFunction(() => window.listRefreshed);
+    await refreshTurn(page);
     if (route === '/doc-chats/work') await page.waitForFunction(() => document.getElementById('taskStatusLabel').textContent === 'Current');
     assert.equal(await page.evaluate(attribute => document.activeElement.getAttribute(attribute), attribute), key);
   });

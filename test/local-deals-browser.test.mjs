@@ -462,7 +462,11 @@ for (const theme of ['dark', 'light']) {
     await mkdir(new URL('out/test-artifacts/share-followup/', root), { recursive: true });
     await page.screenshot({ path: new URL(`out/test-artifacts/share-followup/toast-${width}-${theme}.png`, root).pathname });
     await undo.click();
-    await page.clock.runFor(5001);
+    await page.waitForLoadState('networkidle');
+    for (let turn = 0; turn < 4 && !(await page.locator(`#receiptsList [data-receipt="${eventId}"]`).count()); turn++) {
+      await page.clock.runFor(5001);
+      await page.waitForLoadState('networkidle');
+    }
     assert.equal(await page.locator(`#receiptsList [data-receipt="${eventId}"]`).count(), 1, 'Today and toast target the same event');
     await waitForAsync(page, async () => (await import('/js/pipeline.js')).state.deals.get('d14').phase === 'Negotiation');
     const reverted = await page.evaluate(async () => (await (await import('/js/pipeline.js')).state.client.getChanges(null)).events.filter(event => event.verb === 'revert-deal-field'));

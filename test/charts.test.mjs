@@ -507,6 +507,7 @@ test("B06-14 the Charts page paints from its one board read on mount, and Retry 
 // Exercise the rendered controls without starting a browser or using fetch.
 async function chartDom(t, payload = board, { poll = false, ready = true } = {}) {
   const dom = new JSDOM(await read("charts.html"), { url: "https://example.test/?view=charts" });
+  Object.defineProperty(dom.window.navigator, "locks", { value: { request: async (_name, _options, callback) => callback({}) } });
   // `window` switches on the page's background poller; without it there is none.
   const saved = new Map(["document", "location", "history", ...(poll ? ["window"] : [])].map(key => [key, Object.getOwnPropertyDescriptor(globalThis, key)]));
   for (const key of saved.keys()) Object.defineProperty(globalThis, key, { configurable: true, value: dom.window[key] });
@@ -620,15 +621,20 @@ test("Charts background refresh keeps the board, its time and open Details on sc
   assert.equal(details().open, true, "and across a slice");
 });
 
-test("Charts recover from an unavailable read on the poller's short backoff", async t => {
+test("Charts recover from an unavailable read after backing off above the interval", async t => {
+  t.mock.timers.enable({ apis: ["Date", "setTimeout"], now: 100_000 });
   const s = await chartDom(t, reads => {
     if (reads === 1) throw Object.assign(new Error("Synthetic unavailable"), { status: 503 });
     return board;
   }, { poll: true, ready: false });
   assert.equal(s.charts.view.status, "unavailable");
-  const deadline = Date.now() + 5_000;
-  while (s.charts.view.status !== "ready" && Date.now() < deadline) await new Promise(resolve => setTimeout(resolve, 50));
-  assert.equal(s.charts.view.status, "ready", "no Retry press and no 30 s wait");
+  t.mock.timers.tick(59_999);
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(s.charts.view.status, "unavailable", "the outage does not speed up polling");
+  assert.equal(s.reads(), 1);
+  t.mock.timers.tick(1);
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(s.charts.view.status, "ready", "the first retry waits twice the normal interval");
   assert.equal(s.reads(), 2);
 });
 

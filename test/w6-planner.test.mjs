@@ -1,3 +1,4 @@
+import { installPollFixtureClock } from './poll-fixture-clock.mjs';
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
@@ -28,13 +29,14 @@ async function waitFor(predicate) {
 }
 function harness(api = {}, beforeMount = () => {}) {
   const dom = new JSDOM(html, { url: "https://example.test/tours", pretendToBeVisual: true });
+  const clock=installPollFixtureClock(dom.window);
   const doc = dom.window.document;
   doc.querySelector("dialog").showModal = function() { this.open = true; };
   doc.querySelector("dialog").close = function() { this.open = false; };
   const service = { scope: "synthetic-scope", library: async () => [{ id: clientA, name: "Demo upcoming", status: "draft" }, { id: clientB, name: "Demo past", status: "completed" }], clients: async () => [record(clientA), record(clientB)], client: async id => record(id), tour: async id => ({ id, name: "Demo tour", stops: [], cheat_sheet: { content: { notes: "Synthetic original entry" } } }), ...api };
   if (Object.getOwnPropertyDescriptor(api, "scope")?.get) Object.defineProperty(service, "scope", { get: () => api.scope });
   beforeMount(dom.window);
-  const view = mountPlanner({ document: doc, window: dom.window, api: service });
+  const view = clock.controls(mountPlanner({ document: doc, window: dom.window, api: service }));
   return { dom, doc, view, service, change(selector, value) { const node = doc.querySelector(selector); node.value = value; node.dispatchEvent(new dom.window.Event(node.tagName === "SELECT" && selector.endsWith("client") ? "change" : "input", { bubbles: true })); }, close() { view.dispose(); dom.window.close(); } };
 }
 

@@ -1,3 +1,4 @@
+import { installPollFixtureClock } from './poll-fixture-clock.mjs';
 // WR-000548: a malformed successful read is unavailable, never empty or actionable.
 // WR-000549: the app's Work Request reference matches CARR's read route.
 import test from 'node:test';
@@ -98,6 +99,7 @@ async function page(t, { url = '/work-requests', reply }) {
     { url: 'http://localhost' + url, runScripts: 'outside-only' });
   t.after(() => dom.window.close());
   const w = dom.window, d = w.document;
+  const clock=installPollFixtureClock(w);
   w.structuredClone = structuredClone;
   w.createRetainedCommands = createRetainedCommands;
   w.fetch = async path => path.endsWith('/session')
@@ -111,8 +113,8 @@ async function page(t, { url = '/work-requests', reply }) {
   const settle = async () => { for (let i = 0; i < 12; i++) await new Promise(r => setImmediate(r)); };
   await settle();
   const stage = () => d.querySelector('#systemWorkStage');
-  return { d, stage, retry: async () => { stage().querySelector('[data-system-retry]').click(); await settle(); },
-    poll: async () => { w.dispatchEvent(new w.Event('online')); await settle(); } };
+  return { d, stage, retry: async () => { clock.advance(60_001);stage().querySelector('[data-system-retry]').click(); await settle(); },
+    poll: async () => { clock.advance(5_001);w.dispatchEvent(new w.Event('online')); await settle(); } };
 }
 
 // WR-000548 acceptance 1 and 3, page level: the real client and page render unavailable with retry.

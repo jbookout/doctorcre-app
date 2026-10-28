@@ -74,6 +74,18 @@ for (const actionCount of [5, 30]) for (const width of [390, 1280]) for (const t
       await writeFile(`${capture}.json`, JSON.stringify({ actionCount, width, theme, viewer, panel, grid }, null, 2));
     }
     const rows = page.locator('#homeCalendar .home-agenda > a');
+    const refreshAgenda = async () => {
+      await page.clock.setSystemTime(new Date(await page.evaluate(() => Date.now()) + 60_001));
+      let completed = false;
+      const read = page.waitForResponse(response => response.url().endsWith('/mcp') && response.request().postDataJSON()?.params?.name === 'read-home-agenda').then(response => { completed = true; return response; });
+      await page.locator('#refreshHome').click();
+      for (let turn = 0; turn < 4 && !completed; turn++) {
+        await page.waitForLoadState('networkidle');
+        await page.clock.fastForward(5_001);
+      }
+      await read;
+      await page.locator('#refreshHome[aria-busy="false"]').waitFor();
+    };
     const firstFive = ['Demo call overdue', 'Demo call today', 'Demo call also-undated', 'Demo call undated', 'Demo call future'];
     assert.deepEqual(await rows.locator('strong').allTextContents(), actionCount === 5 ? firstFive : [...firstFive, 'Demo call extra-01']);
     const showAll = page.getByRole('button', { name: 'Show all 30', exact: true });
@@ -90,8 +102,7 @@ for (const actionCount of [5, 30]) for (const width of [390, 1280]) for (const t
       assert.equal(await showAll.count(), 0);
       assert.equal(agendaReads, readsBeforeExpansion, 'expansion needs no additional agenda read');
       refreshed = true;
-      await page.locator('#refreshHome').click();
-      await page.locator('#refreshHome[aria-busy="false"]').waitFor();
+      await refreshAgenda();
       assert.equal(await rows.count(), 30, 'refresh keeps the expanded agenda');
       assert.equal(await rows.last().locator('strong').textContent(), 'Demo updated call', 'new data actually repaints the expanded list');
       await page.getByRole('button', { name: 'Team view', exact: true }).click();
@@ -116,8 +127,7 @@ for (const actionCount of [5, 30]) for (const width of [390, 1280]) for (const t
     await page.getByRole('button', { name: 'Team view', exact: true }).click();
     assert.equal(await rows.count(), actionCount === 5 ? 5 : 6, 'returning to team starts with the preview');
     undatedOnly = true;
-    await page.locator('#refreshHome').click();
-    await page.locator('#refreshHome[aria-busy="false"]').waitFor();
+    await refreshAgenda();
     assert.equal(await page.locator('#homeCalendar').isVisible(), true);
     assert.equal(await rows.count(), 2, 'a Home with only undated actions still shows its list');
     assert.equal(await rows.locator('time').count(), 0);

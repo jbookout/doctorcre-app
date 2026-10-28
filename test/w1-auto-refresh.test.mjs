@@ -7,25 +7,36 @@ import { createSystemWorkClient } from '../js/system-work-client.js';
 
 function clock() {
   const document = new EventTarget(); document.visibilityState = 'visible';
-  const window = new EventTarget(); let pending = new Map(), next = 0;
-  window.setTimeout = fn => { pending.set(++next, fn); return next; };
+  const window = new EventTarget(); const pending = new Map(); let next = 0, time = 0;
+  window.setTimeout = (fn, ms) => { pending.set(++next, { fn, at: time + ms }); return next; };
   window.clearTimeout = id => pending.delete(id);
-  return { document, window, tick() { const jobs = [...pending.values()]; pending.clear(); jobs.forEach(fn => fn()); }, get count() { return pending.size; }, hide() { document.visibilityState = 'hidden'; document.dispatchEvent(new Event('visibilitychange')); }, show() { document.visibilityState = 'visible'; document.dispatchEvent(new Event('visibilitychange')); } };
+  return { document, window, now: () => time,
+    advance(ms) { time += ms; },
+    async tick() {
+      const first = [...pending].sort((a, b) => a[1].at - b[1].at)[0];
+      if (!first) return;
+      time = Math.max(time, first[1].at); pending.delete(first[0]); first[1].fn(); await settle();
+    },
+    get count() { return pending.size; },
+    get delays() { return [...pending.values()].map(job => job.at - time); },
+    hide() { document.visibilityState = 'hidden'; document.dispatchEvent(new Event('visibilitychange')); },
+    show() { document.visibilityState = 'visible'; document.dispatchEvent(new Event('visibilitychange')); },
+  };
 }
-const settle = async () => { for (let i = 0; i < 8; ++i) await Promise.resolve(); };
+const settle = async () => { for (let i = 0; i < 80; ++i) await Promise.resolve(); };
 
 test('polling preserves detail; resume and reconnect invalidate before reading', async () => {
   const c=clock();let polls=0,resumes=0;
   const handle=mountAutoRefresh({...c,onResume:()=>{resumes++;},refresh:()=>{polls++;}});
-  c.tick();await settle();assert.equal(polls,1);assert.equal(resumes,0);
-  c.hide();c.show();await settle();assert.equal(polls,2);assert.equal(resumes,1);
-  c.window.dispatchEvent(new Event('online'));await settle();assert.equal(polls,3);assert.equal(resumes,2);
+  await c.tick();await settle();assert.equal(polls,1);assert.equal(resumes,0);
+  c.hide();c.advance(5_000);c.show();await settle();assert.equal(polls,2);assert.equal(resumes,1);
+  c.advance(5_000);c.window.dispatchEvent(new Event('online'));await settle();assert.equal(polls,3);assert.equal(resumes,2);
   handle.dispose();c.window.dispatchEvent(new Event('online'));await settle();assert.equal(resumes,2);
 });
 test('resume invalidation cancels a hanging read and starts a fresh authorized read', async () => {
   const c=clock();let firstSignal,resumes=0,reads=0;
   const handle=mountAutoRefresh({...c,onResume:()=>{resumes++;},refresh:({signal})=>{reads++;if(reads===1){firstSignal=signal;return new Promise(()=>{});}}});
-  c.tick();await settle();c.hide();c.show();await settle();await settle();
+  await c.tick();await settle();c.hide();c.advance(5_000);c.show();await settle();await settle();
   assert.equal(firstSignal.aborted,true);assert.equal(resumes,1);assert.equal(reads,2);handle.dispose();
 });
 
@@ -33,26 +44,27 @@ test('background refresh recovers after failure, does not overlap, sleeps hidden
   const c = clock(); let reads = 0, release;
   const refresh = mountAutoRefresh({ ...c, refresh: () => { reads++; if (reads === 1) throw Error('synthetic outage'); return new Promise(resolve => { release = resolve; }); } });
   assert.equal(reads, 0); assert.equal(c.count, 1);
-  c.tick(); await settle(); assert.equal(reads, 1); assert.equal(c.count, 1);
-  c.tick(); await settle(); assert.equal(reads, 2);
+  await c.tick(); await settle(); assert.equal(reads, 1); assert.equal(c.count, 1);
+  await c.tick(); await settle(); assert.equal(reads, 2);
   const same = refresh.refresh(); c.window.dispatchEvent(new Event('online')); await settle(); assert.equal(reads, 2);
   release(); await same; await settle(); assert.equal(c.count, 1);
-  c.hide(); assert.equal(c.count, 0); c.tick(); assert.equal(reads, 2);
-  c.show(); await settle(); assert.equal(reads, 3); release(); await settle();
+  c.hide(); assert.equal(c.count, 0); await c.tick(); assert.equal(reads, 2);
+  c.advance(5_000); c.show(); await settle(); assert.equal(reads, 3); release(); await settle();
   refresh.dispose(); assert.equal(c.count, 0); c.window.dispatchEvent(new Event('online')); c.hide(); c.show(); await settle(); assert.equal(reads, 3);
 });
 test('read eligibility preserves a draft while polling resumes after the draft closes', async () => {
   const c = clock(); let draft = true, reads = 0;
   const handle = mountAutoRefresh({ ...c, shouldRefresh: () => !draft, refresh: () => { reads++; } });
-  c.tick(); await settle(); assert.equal(reads, 0); assert.equal(c.count, 1);
-  draft = false; c.tick(); await settle(); assert.equal(reads, 1); handle.dispose();
+  await c.tick(); await settle(); assert.equal(reads, 0); assert.equal(c.count, 1);
+  draft = false; await c.tick(); await settle(); assert.equal(reads, 1); handle.dispose();
 });
 test('PR119 finding 8: a never-settling callback expires, cancels and lets recovery run', async () => {
  const c=clock();let reads=0,firstSignal;
  const handle=mountAutoRefresh({...c,timeoutMs:10,refresh:({signal}={})=>{reads++;if(reads===1){firstSignal=signal;return new Promise(()=>{});}}});
- c.tick();await settle();assert.equal(reads,1);
- c.tick();await settle();assert.equal(firstSignal?.aborted,true);
- c.window.dispatchEvent(new Event('online'));await settle();assert.equal(reads,2);handle.dispose();
+ await c.tick();await settle();assert.equal(reads,1);
+ await c.tick();await settle();assert.equal(firstSignal?.aborted,true);
+ assert.equal(reads,1,'online cannot bypass the failure cooldown');
+ await c.tick();assert.equal(reads,2);handle.dispose();
 });
 for (const phase of ['request','body']) test('PR119 finding 8: ordinary MCP '+phase+' hangs are bounded and cancelled',async()=>{
  let signal;
@@ -98,30 +110,30 @@ test('R1 resume invalidation fires before a coalesced in-flight read and never f
  handle.refresh();await settle();assert.equal(invalidated,0);c.hide();c.show();await settle();assert.equal(invalidated,1);
  release();await settle();handle.dispose();
 });
-test('a failed read retries on a short backoff and a good read restores the poll interval', async () => {
-  const document = new EventTarget(); document.visibilityState = 'visible';
-  const window = new EventTarget(); const delays = []; let job = null;
-  window.setTimeout = (fn, ms) => { if (ms === 5) return 0; delays.push(ms); job = fn; return delays.length; }; window.clearTimeout = () => {};
-  let fail = 3, reads = 0;
-  const handle = mountAutoRefresh({ document, window, timeoutMs: 5, refresh: () => { reads++; if (fail-- > 0) throw Error('synthetic outage'); } });
-  for (let i = 0; i < 4; i++) { job(); await settle(); }
-  assert.equal(reads, 4); assert.deepEqual(delays, [30_000, 1_000, 2_000, 4_000, 30_000]); handle.dispose();
+test('a failure backs off above the interval and success restores the cadence', async () => {
+  const c = clock(); let reads = 0;
+  const handle = mountAutoRefresh({ ...c, refresh() { if (++reads <= 2) throw Error('synthetic outage'); } });
+  await c.tick(); assert.equal(reads, 1); assert.deepEqual(c.delays, [60_000]);
+  await c.tick(); assert.equal(reads, 2); assert.deepEqual(c.delays, [120_000]);
+  await c.tick(); assert.equal(reads, 3); assert.deepEqual(c.delays, [30_000]);
+  handle.dispose();
 });
-test('a read replaced on resume is neither a success nor a failure for the retry backoff', async () => {
-  const document = new EventTarget(); document.visibilityState = 'visible';
-  const window = new EventTarget(); const delays = []; let job = null;
-  window.setTimeout = (fn, ms) => { if (ms === 5_000) return 0; delays.push(ms); job = fn; return delays.length; }; window.clearTimeout = () => {};
-  let reads = 0;
-  const handle = mountAutoRefresh({ document, window, timeoutMs: 5_000, onResume: () => {}, refresh: () => {
-    reads++;
-    if (reads === 1) return new Promise(() => {}); // ignores abort
+test('three failures pause the clock until a person resumes', async () => {
+  const c = clock(); let reads = 0;
+  const handle = mountAutoRefresh({ ...c, refresh() { reads++; throw Error('synthetic outage'); } });
+  await c.tick(); await c.tick(); await c.tick();
+  assert.equal(reads, 3); assert.equal(c.count, 0);
+  c.advance(3600_000); c.window.dispatchEvent(new Event('online')); await settle();
+  assert.equal(reads, 3);
+  handle.dispose();
+});
+test('a read replaced on resume does not count as a failure', async () => {
+  const c = clock(); let reads = 0;
+  const handle = mountAutoRefresh({ ...c, onResume() {}, refresh() {
+    if (++reads === 1) return new Promise(() => {});
     throw Error('synthetic outage');
   } });
-  job(); await settle();
-  document.visibilityState = 'hidden'; document.dispatchEvent(new Event('visibilitychange'));
-  document.visibilityState = 'visible'; document.dispatchEvent(new Event('visibilitychange'));
-  await settle(); await settle();
-  // The replaced read re-arms the plain interval; only the queued read's real
-  // failure counts, so the retry is the first backoff step, not the second.
-  assert.equal(reads, 2); assert.deepEqual(delays, [30_000, 30_000, 1_000]); handle.dispose();
+  await c.tick(); c.hide(); c.advance(5_000); c.show(); await settle();
+  assert.equal(reads, 2); assert.deepEqual(c.delays, [60_000]);
+  handle.dispose();
 });

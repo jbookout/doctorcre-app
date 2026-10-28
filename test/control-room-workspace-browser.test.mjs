@@ -94,11 +94,21 @@ async function waitForRoom(page, after=0) {
  }
  assert.fail('Control Room read did not settle');
 }
+async function driveRoom(page, sequence) {
+ for(let attempt=0;attempt<12;attempt++){
+  await page.waitForLoadState('networkidle');
+  const ready=await page.evaluate(async after=>{const {view}=await import('/js/control-room.js');return view.status==='ready'&&view.sequence>after;},sequence);
+  if(ready)return;
+  await page.clock.runFor(5_001);
+ }
+ await waitForRoom(page,sequence);
+}
 async function advanceRoom(page, ms) {
  await waitForRoom(page);
+ await page.waitForLoadState('networkidle');
  const sequence=await page.evaluate(async()=> (await import('/js/control-room.js')).view.sequence);
- await page.clock.runFor(ms);
- await waitForRoom(page,sequence);
+ await page.clock.setSystemTime(await page.evaluate(()=>Date.now())+Math.max(ms,60_001));
+ await driveRoom(page,sequence);
 }
 // The V2 section nav lives in the workspace sidebar, which is a drawer on a phone.
 async function section(page,id){const tab=page.locator(`#${id}`);if(!(await tab.isVisible()))await page.locator('#appSidebarToggle').click();await tab.click();await page.waitForFunction(id=>document.getElementById(id).getAttribute('aria-selected')==='true',id);}
@@ -171,13 +181,13 @@ test('W7 automatic refresh updates PR, provider spend and open details without l
  await page.locator('#jobClose').click();await section(page,'tabConnections');await page.getByText('$18.50 · October 2026',{exact:true}).first().waitFor();
  assert.equal(await page.locator('[data-connection="grok"]').getAttribute('data-state'),'needs_reconnect');assert.equal(await page.locator('[data-device]').count(),2);
  await page.emulateMedia({reducedMotion:'no-preference'});await page.evaluate(()=>document.documentElement.dataset.motion='full');assert.equal(await page.locator('.connection-dot').first().evaluate(e=>getComputedStyle(e).animationName),'none');assert.equal(await page.locator('[data-connection="grok"] .connection-dot').evaluate(e=>getComputedStyle(e).borderRadius),'1px');await page.emulateMedia({reducedMotion:'reduce'});assert.equal(await page.locator('.connection-dot').first().evaluate(e=>getComputedStyle(e).animationName),'none');
- state.denied=true;await page.clock.runFor(15001);await page.waitForURL('**/public-shell/session-ended.html');assert.equal(await page.locator('[data-device],#jobDialog').count(),0);
+ state.denied=true;await page.clock.fastForward(60_001);await page.waitForLoadState('networkidle');await page.clock.runFor(5_001);await page.waitForURL('**/public-shell/session-ended.html');assert.equal(await page.locator('[data-device],#jobDialog').count(),0);
 });
 for(const width of [1440,390])test(`W7 calendar defaults and integrated automation list at ${width}px`,async t=>{
  const {page,errors}=await open(t,{width});await section(page,'tabAutomations');await page.waitForSelector('.calendar-day');assert.equal(await page.locator('.calendar-day').count(),31);
  if(width===390){const marker=page.locator('.calendar-day .automation-job').first();assert.ok((await marker.boundingBox()).height<=28);assert.equal(await page.locator('#automationAgenda .automation-job').count(),1);await marker.click();await page.waitForFunction(()=>document.querySelector('#jobDialog').open);await page.locator('#jobClose').click();}
  await capture(page,`calendar-${width}`);await page.getByRole('button',{name:'Next month'}).click();assert.match(await page.locator('#automationMonth').textContent(),/November/);await page.getByRole('button',{name:'Previous month'}).click();
- await page.goto('http://localhost/control-room?tab=automations&mode=live');await waitForRoom(page);
+ await page.goto('http://localhost/poll-budget-wait');await page.clock.fastForward(60_001);await page.goto('http://localhost/control-room?tab=automations&mode=live');await waitForRoom(page);
  assert.equal(await page.locator('#automationUndated .automation-job').count(),2);
  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);await capture(page,`list-${width}`);await page.locator('#automationUndated .automation-job').first().click();await page.waitForFunction(()=>document.querySelector('#jobDialog').open);assert.deepEqual(errors,[]);
 });
@@ -215,9 +225,12 @@ test('finding 9: persisted pagehide/pageshow continues Control Room polling',asy
  const showsState=state=>page.waitForFunction(expected=>document.querySelector('#incidentGroups [data-incident] .work-meta')?.textContent.includes(expected),state);
  // Consume the resume read before advancing past a read deadline. Otherwise
  // the virtual clock can time out a network response that has not arrived yet.
+ await page.waitForLoadState('networkidle');
+ await page.clock.setSystemTime(await page.evaluate(()=>Date.now())+60_001);
+ const sequence=await page.evaluate(async()=> (await import('/js/control-room.js')).view.sequence);
  state.incidentState='monitoring';const resumed=incidentRead();
  await page.evaluate(()=>{dispatchEvent(new PageTransitionEvent('pagehide',{persisted:true}));dispatchEvent(new PageTransitionEvent('pageshow',{persisted:true}));});
- await (await resumed).finished();await showsState('monitoring');
+ await driveRoom(page,sequence);await (await resumed).finished();await showsState('monitoring');
  state.incidentState='investigating';const polled=incidentRead();await advanceRoom(page,15001);
  await (await polled).finished();await showsState('investigating');
 });
@@ -298,7 +311,7 @@ for(const partial of [false,true])test(`PR132 #4: ${partial?'partial':'unknown'}
  assert.doesNotMatch(await page.locator('#automationState').textContent(),/No automations/);
 });
 test('PR132 #3: failed automation read clears calendar and keeps source state explicit',async t=>{
- const {page,state}=await open(t);await page.goto('http://localhost/control-room?tab=automations&mode=live');await waitForRoom(page);await page.locator('#automationUndated .automation-job').first().waitFor();
+ const {page,state}=await open(t);await page.goto('http://localhost/poll-budget-wait');await page.clock.fastForward(60_001);await page.goto('http://localhost/control-room?tab=automations&mode=live');await waitForRoom(page);await page.locator('#automationUndated .automation-job').first().waitFor();
  state.scheduleFailure=true;await advanceRoom(page,16001);await page.waitForFunction(()=>document.querySelector('#automationState').textContent.includes('unavailable'));
  assert.equal(await page.locator('.calendar-day').count(),0);assert.equal(await page.locator('#automationUndated .automation-job').count(),0);
 });
@@ -564,6 +577,7 @@ test('hierarchy refresh reconciles an open job after PR and slice rekeys', async
   snapshot.hierarchy.slices[parent].cards.push(next);
   snapshot.hierarchy.aliases[id]=next;
   id=next;
+  await page.clock.setSystemTime(await page.evaluate(()=>Date.now())+60_001);
   await page.locator('#board-retry').evaluate(button=>button.click());
   await page.locator(`[data-hierarchy-id="${id}"] > button`).waitFor();
   assert.equal(await page.locator('#jobTitle').textContent(),title);
@@ -577,6 +591,7 @@ test('hierarchy refresh reconciles an open job after PR and slice rekeys', async
  await page.waitForFunction(()=>document.activeElement.matches('[data-hierarchy-id] > button'));
  assert.equal(await page.locator(`[data-hierarchy-id="${id}"] > button`).evaluate(node=>node===document.activeElement),true,await page.evaluate(()=>document.activeElement.outerHTML.slice(0,500)));
  snapshot.tasks[id].card_title='Updated while closed';
+ await page.clock.setSystemTime(await page.evaluate(()=>Date.now())+60_001);
  await page.locator('#board-retry').evaluate(button=>button.click());
  await page.getByRole('button',{name:'Updated while closed',exact:true}).waitFor();
  assert.equal(await page.locator('#jobDialog').isVisible(),false);

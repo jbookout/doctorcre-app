@@ -1,3 +1,4 @@
+import { installPollFixtureClock } from './poll-fixture-clock.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { JSDOM } from 'jsdom';
@@ -8,11 +9,12 @@ import { mountDocCommandBar } from '../js/doc-command-bar.js';
 const empty = () => ({parties:[],deals:[],connections:[],organizations:[],lead_client_links:[],deals_via_link:[],note:'Synthetic'});
 function setup(t, options={}) {
  const dom=new JSDOM('<button id="opener">Open</button><dialog id="docDetail"><header></header><div class="doc-detail-grid"></div></dialog>',{url:'http://localhost/'});
+ const clock=installPollFixtureClock(dom.window);
  const win=dom.window, dialog=win.document.querySelector('dialog'); dialog.showModal=()=>dialog.setAttribute('open','');dialog.close=()=>{dialog.removeAttribute('open');dialog.dispatchEvent(new win.Event('close'));};
  const client={find:async()=>empty(),getBoard:async()=>({deals:[]}),...options.client};
  const context=options.context||createDocContext({page:'home'});
  const bar=mountDocCommandBar({dialog,window:win,client:async()=>client,context,pages:[{label:'Clients',href:'/clients'}],...Object.fromEntries(Object.entries(options).filter(([key])=>key!=='client'))});
- t.after(()=>{bar.dispose();win.close();});return{bar,win,dialog,context,input:win.document.querySelector('#docCommandInput')};
+ t.after(()=>{bar.dispose();win.close();});return{bar,win,dialog,context,clock,input:win.document.querySelector('#docCommandInput')};
 }
 const settle=()=>new Promise(r=>setTimeout(r,20));
 test('D and K chords cancel default, open once and focus; bare right Command, IME, repeats and modified chords pass through',t=>{
@@ -52,7 +54,7 @@ test('queued native close from an earlier opening cannot cancel a reopened query
  const {bar,win,dialog,input}=setup(t);bar.open();dialog.removeAttribute('open');bar.open();input.value='Clients';input.dispatchEvent(new win.Event('input'));dialog.dispatchEvent(new win.Event('close'));await new Promise(r=>setTimeout(r,220));assert.match(win.document.querySelector('#docCommandResults').textContent,/Clients/);assert.equal(win.document.activeElement,input);
 });
 test('automatic refresh updates results and preserves query and expanded original',async t=>{
- let phase='Research';const {bar,win,input}=setup(t,{intervalMs:30,client:{getBoard:async()=>({deals:[{id:'d-demo',name:'Demo Deal',phase,next_step:'Synthetic note. More detail.'}]})}});bar.open();input.value='Demo';input.dispatchEvent(new win.Event('input'));await bar.refresh();win.document.querySelector('[data-doc-result]').click();win.document.querySelector('#docCommandDetail details').open=true;phase='Legal';await new Promise(r=>setTimeout(r,90));assert.match(win.document.querySelector('#docCommandDetail').textContent,/Legal/);assert.equal(input.value,'Demo');assert.equal(win.document.querySelector('#docCommandDetail details').open,true);
+ let phase='Research';const {bar,win,input,clock}=setup(t,{intervalMs:30,client:{getBoard:async()=>({deals:[{id:'d-demo',name:'Demo Deal',phase,next_step:'Synthetic note. More detail.'}]})}});bar.open();input.value='Demo';input.dispatchEvent(new win.Event('input'));await bar.refresh();win.document.querySelector('[data-doc-result]').click();win.document.querySelector('#docCommandDetail details').open=true;phase='Legal';clock.advance(5_001);await settle();assert.match(win.document.querySelector('#docCommandDetail').textContent,/Legal/);assert.equal(input.value,'Demo');assert.equal(win.document.querySelector('#docCommandDetail details').open,true);
 });
 
 const deferred=()=>{let resolve,reject;const promise=new Promise((yes,no)=>{resolve=yes;reject=no;});return{promise,resolve,reject};};

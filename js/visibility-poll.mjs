@@ -74,7 +74,12 @@ export function mountVisibilityPoll({
   const presence = watchPresence({ document, window, idleMs, now, onResume: () => run(), onWake: () => run() });
   const visibility = () => { if (document.visibilityState === "hidden" && !keepAlive()) stop(); };
   document.addEventListener("visibilitychange", visibility);
-  const unsubscribe = safety.subscribe(() => { stop(); if (presence.active() || keepAlive()) arm(); });
+  let wasPaused = safety.state().paused;
+  const unsubscribe = safety.subscribe(state => {
+    if (state.paused) stop();
+    else if (wasPaused && (presence.active() || keepAlive())) arm();
+    wasPaused = state.paused;
+  });
   if (presence.active() || keepAlive()) arm();
   return {
     refresh,

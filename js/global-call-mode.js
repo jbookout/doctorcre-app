@@ -11,8 +11,15 @@ export async function mountGlobalCallMode(root = document) {
   if (mounted.has(root)) return mounted.get(root);
   const boot = resolveDealroomBoot(globalThis.location);
   const $ = (id) => root.getElementById(id);
-  let built, call, client, probing;
+  let built, call, client, probing, disposed = false;
+  const dispose = () => {
+    disposed = true;
+    root.defaultView?.removeEventListener('doctorcre-session-invalidated', dispose);
+    call?.dispose?.();
+  };
+  root.defaultView?.addEventListener('doctorcre-session-invalidated', dispose);
   const show = (state) => {
+    if (disposed) return;
     const eligible = state === "available";
     $("callModeButton").hidden = !eligible;
     $("callModeAvailability").hidden = eligible;
@@ -24,16 +31,18 @@ export async function mountGlobalCallMode(root = document) {
     show("checking");
     try {
       const payload = await requestCompanion(`${CALL_MODE_URL}/api/state`, { method: "GET", targetAddressSpace: "loopback" }, { timeoutMs: 1200 });
+      if (disposed) return false;
       if (!CALL_MODE_STATES.includes(payload.state)) throw new Error("Unrecognised recorder state");
       show("available");
       // A call in progress needs the toolbar timer, so only then is the controller built early.
-      if (payload.state === "recording") { await build(); return await call.checkEligibility(); }
+      if (payload.state === "recording") { await build(); return !disposed && await call.checkEligibility(); }
       return true;
     } catch { show("unavailable"); return false; }
     finally { probing = null; }
   })();
   const build = () => built ||= (async () => {
     const [{ createCallMode }, { createClient }] = await Promise.all([import("./call-mode.js"), import("./client.js")]);
+    if (disposed) return null;
     const host = root.createElement("div");
     host.innerHTML = DIALOG;
     root.body.append(host);
@@ -56,24 +65,27 @@ export async function mountGlobalCallMode(root = document) {
   })();
   let opening = false;
   const mountedCall = {
-    checkEligibility: () => call ? call.checkEligibility() : probe(),
+    checkEligibility: () => disposed ? false : call ? call.checkEligibility() : probe(),
     async handleClick(target) {
+      if (disposed) return false;
       if (call) return call.handleClick(target);
       const retry = target?.closest?.("#callModeRetry");
       if (!retry) return false;
       const hadFocus = root.activeElement === retry;
-      if (await probe() && hadFocus && (root.activeElement === retry || root.activeElement === root.body)) $("callModeButton").focus();
+      if (await probe() && !disposed && hadFocus && (root.activeElement === retry || root.activeElement === root.body)) $("callModeButton").focus();
       return true;
     },
-    dispose: () => call?.dispose?.(),
+    dispose,
     async open(options = {}) {
-      if (opening || options.signal?.aborted) return false;
+      if (disposed || opening || options.signal?.aborted) return false;
       opening = true;
       try {
         const context = await build();
-        if (!await call.checkEligibility() || options.signal?.aborted) return false;
+        if (disposed || !await call.checkEligibility() || disposed || options.signal?.aborted) return false;
         const contextError = await context.load(options);
+        if (disposed) return false;
         const opened = await call.open(options);
+        if (disposed) return false;
         if (contextError) { const notice = $("callModePermission"); notice.hidden = false; notice.textContent = contextError; }
         return opened;
       } finally { opening = false; }

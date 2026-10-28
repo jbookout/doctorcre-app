@@ -7,6 +7,12 @@ import { readFile } from 'node:fs/promises';
 import { JSDOM } from 'jsdom';
 import { mountDocPresence } from '../js/doc-presence.js';
 
+function activityDom(html) {
+  const dom = new JSDOM(html, { url: 'https://app.doctorcre.com' });
+  Object.defineProperty(dom.window.navigator, 'locks', { value: { request: (_name, _options, callback) => callback({}) } });
+  return dom;
+}
+
 test('activity filters have inclusive local calendar days and no caller identity', () => {
   const args = activityFilters({ partner:'joe', record_type:'deal', from:'2026-10-01', to:'2026-10-01' });
   assert.equal(args.partner,'joe'); assert.equal(args.record_type,'deal');
@@ -49,7 +55,7 @@ test('live read uses pinned scoped verb, cancellation and stable undo request', 
 });
 
 test('Doc detail exposes one activity destination when mounted repeatedly', t => {
-  const dom = new JSDOM('<main id="appMainSlot"></main>');
+  const dom = activityDom('<main id="appMainSlot"></main>');
   const snapshot = { state:'updating', ready:false, page:'home', epoch:0, label:'Home', records:[], observedAt:null };
   const context = { snapshot:() => snapshot, subscribe:() => () => {}, tick() {}, clear() {} };
   const client = { listDocSuggestions:() => new Promise(() => {}) };
@@ -62,7 +68,7 @@ test('Doc detail exposes one activity destination when mounted repeatedly', t =>
 });
 
 test('disposing Doc cancels a pending refresh before its owner replaces the body', async t => {
-  const dom = new JSDOM('<!doctype html><html><head></head><body><main id="appMainSlot"></main></body></html>');
+  const dom = activityDom('<!doctype html><html><head></head><body><main id="appMainSlot"></main></body></html>');
   let release, startedResolve, unsubscribed = false;
   const started = new Promise(resolve => { startedResolve = resolve; });
   const answer = new Promise(resolve => { release = resolve; });
@@ -101,7 +107,7 @@ test('Doc activity registers its route, gate and deployed files alongside the ma
 });
 
 test('Doc does not fetch suggestions for a queued context that was superseded before its read', async t => {
-  const dom = new JSDOM('<main id="appMainSlot"></main>');
+  const dom = activityDom('<main id="appMainSlot"></main>');
   let snapshot = { state:'updating', ready:false, page:'leads', epoch:0, label:'Leads', records:[], observedAt:null };
   let listener, reads = 0;
   const context = { snapshot:() => snapshot, subscribe(fn) { listener = fn; fn(snapshot); return () => {}; }, tick() {}, clear() {} };

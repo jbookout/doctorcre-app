@@ -1,3 +1,4 @@
+import { installPollFixtureClock } from './poll-fixture-clock.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
@@ -20,7 +21,7 @@ for (const phase of ['fetch','json']) for (const method of ['publishCallContext'
 }
 
 test('F12 recorder start timeout is visible, settles controls, then reads state before another start', async () => {
-  const dom=new JSDOM(await readFile(new URL('../index.html',import.meta.url),'utf8'));
+  const dom=new JSDOM(await readFile(new URL('../index.html',import.meta.url),'utf8'), {url:'https://example.test/'});
   const requests=[],messages=[];
   let count=0;
   const ui=createCallMode({root:dom.window.document,requestTimeoutMs:10,toast:m=>messages.push(m),
@@ -43,7 +44,7 @@ test('F12 recorder start timeout is visible, settles controls, then reads state 
 });
 
 for (const action of ['stop','refresh']) test(`F12 recorder ${action} timeout leaves a visible error and releases its control`,async()=>{
-  const dom=new JSDOM(await readFile(new URL('../index.html',import.meta.url),'utf8'));
+  const dom=new JSDOM(await readFile(new URL('../index.html',import.meta.url),'utf8'), {url:'https://example.test/'});
   let calls=0;
   const ui=createCallMode({root:dom.window.document,requestTimeoutMs:10,
     fetchImpl:async()=> ++calls===1 ? {ok:true,json:async()=>({state:'recording',mode:'other_call',session:'demo-session'})} : new Promise(()=>{}),
@@ -58,7 +59,7 @@ for (const action of ['stop','refresh']) test(`F12 recorder ${action} timeout le
 });
 
 test('F12 an uncertain Outlook draft is checked against the report without creating it twice',async()=>{
-  const dom=new JSDOM(await readFile(new URL('../index.html',import.meta.url),'utf8'));
+  const dom=new JSDOM(await readFile(new URL('../index.html',import.meta.url),'utf8'), {url:'https://example.test/'});
   const report={draft_proposals:[{draft_id:'demo-draft',candidate_id:'demo-candidate',content_hash:'demo-hash',status:'confirmed'}]};
   let creates=0,reads=0;
   const postCallClient={syncStatus:async()=>({}),createOutlookDraft:async()=>{creates++;throw Object.assign(new Error('Timed out. Outcome unknown.'),{outcomeUnknown:true});},
@@ -75,7 +76,7 @@ test('F12 an uncertain Outlook draft is checked against the report without creat
 });
 
 test('F12 a timed-out report stops waiting and provides report recovery',async()=>{
-  const dom=new JSDOM(await readFile(new URL('../index.html',import.meta.url),'utf8'));
+  const dom=new JSDOM(await readFile(new URL('../index.html',import.meta.url),'utf8'), {url:'https://example.test/'});
   const ui=createCallMode({root:dom.window.document,postCallClient:createPostCallClient({timeoutMs:10,fetchImpl:()=>new Promise(()=>{})}),client:()=>({}),setInterval:()=>1,clearInterval:()=>{}});
   try{
     ui.state.eligibility='available';ui.state.postCall={...ui.state.postCall,session:'demo-session',status:'waiting_for_transcript'};
@@ -92,13 +93,15 @@ test('F12 malformed post-call report is unavailable rather than waiting for tran
 });
 
 async function recoveryController({fetchImpl, getStatus, ...deps}) {
-  const dom = new JSDOM(await readFile(new URL('../index.html',import.meta.url),'utf8'));
+  const dom = new JSDOM(await readFile(new URL('../index.html',import.meta.url),'utf8'), {url:'https://example.test/'});
+  const clock=installPollFixtureClock(dom.window);
   const pending = new Map(); let next = 0;
   const ui = createCallMode({root:dom.window.document,requestTimeoutMs:10,fetchImpl,
     postCallClient:{getStatus},client:()=>({}),...deps,
     setTimeout:fn => {pending.set(++next,fn);return next;},clearTimeout:id => pending.delete(id),
     setInterval:()=>1,clearInterval:()=>{}});
   return {ui,dom,pending,async tick() {
+    clock.advance(30_001);
     const [id,fn] = pending.entries().next().value;
     pending.delete(id); fn(); await new Promise(setImmediate);
   },dispose() {ui.dispose();dom.window.close();}};

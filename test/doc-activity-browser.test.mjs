@@ -146,7 +146,7 @@ test('automatic refresh recovers read failure and preserves filters and expanded
   await page.locator('.activity-open').first().click(); await page.locator('#detailOriginal summary').click();
   setReadFailure(true); const before=reads(); await page.clock.runFor(30_001);
   await page.getByText('Activity temporarily unavailable',{exact:true}).waitFor(); assert.ok(reads()>before);
-  setReadFailure(false); await page.clock.runFor(30_001); await page.waitForFunction(()=>document.querySelector('#activityStatus').textContent==='');
+  setReadFailure(false); await page.clock.runFor(60_001); await page.waitForFunction(()=>document.querySelector('#activityStatus').textContent==='');
   assert.equal(await page.locator('[name=partner]').inputValue(),'joe'); assert.equal(await page.locator('#detailOriginal').evaluate(el=>el.open),true);
 });
 test('earlier activity traverses keyset pages and remains complete after refresh',async t=>{

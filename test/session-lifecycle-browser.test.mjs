@@ -33,7 +33,12 @@ async function open(t) {
    return route.fulfill({json:{result:{content:[{type:'text',text:JSON.stringify(payload)}]}}});
  });
  await page.request.post(`${origin}/api/test/seed`,{data:{namespace:'session-test',reset:true}});
- const visit=async p=>{await p.goto(`${origin}/doc-chats?mode=live`);await p.waitForFunction(()=>document.body.textContent.includes('Demo — Crestview'));};
+ const visit=async p=>{
+  await p.goto(`${origin}/doc-chats?mode=live`);
+  await p.waitForFunction(()=>document.body.textContent.includes('Demo — Crestview') || document.querySelector('[data-poll-safety]')?.textContent.includes('another tab'));
+  if(await p.locator('[data-poll-safety]').isVisible())await p.locator('#retryRead').click();
+  await p.waitForFunction(()=>document.body.textContent.includes('Demo — Crestview'));
+ };
  await visit(page);
  return {page,context,origin,visit,errors,get writes(){return writes;},switchActor(){actor='dell';},deny(){denied=true;}};
 }

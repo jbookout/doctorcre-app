@@ -1,3 +1,4 @@
+import { installPollFixtureClock } from './poll-fixture-clock.mjs';
 import { hasArtifactPage } from "./artifact-pages-fixture.mjs";
 import test from "node:test";
 import { JSDOM } from "jsdom";
@@ -359,6 +360,7 @@ test('V1 batch D All Work controls and broker copy', async t => {
   const dom = new JSDOM(await readFile(new URL('../work-inventory.html', import.meta.url), 'utf8'),
     { url: 'https://app.doctorcre.com/all-work' });
   const { window } = dom;
+  installPollFixtureClock(window);
   const { document } = window;
   window.HTMLDialogElement.prototype.showModal = function () { this.open = true; };
   window.HTMLDialogElement.prototype.close = function () { this.open = false; };

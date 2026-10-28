@@ -34,6 +34,7 @@ for (const width of [390, 1280]) for (const theme of ['light', 'dark']) test(`si
   const response = await page.request.post(`${origin}/mcp`, { data: { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'deal-room-board', arguments: {} } } });
   const envelope = await response.json();
   assert.equal(JSON.parse(envelope.result.content[0].text).actor, 'joe');
+  await page.clock.install();
   await page.goto(`${origin}/deals?mode=live`);
   await page.locator('.kanban-card').first().waitFor();
   await page.evaluate(async () => {
@@ -67,6 +68,7 @@ for (const width of [390, 1280]) for (const theme of ['light', 'dark']) test(`si
   await review.locator('summary').click();
   await page.getByLabel('Update', { exact: true }).fill('Demo unsaved update');
   await page.evaluate(() => { window.checklistMode = 'complete'; });
+  await page.clock.fastForward(60_001);
   await page.locator('[data-refresh-detail]').click();
   await page.getByText('Recorded complete', { exact: true }).waitFor();
   assert.equal(await checklist.evaluate(element => element.open), true);
@@ -79,6 +81,7 @@ for (const width of [390, 1280]) for (const theme of ['light', 'dark']) test(`si
   await page.screenshot({ path: join(evidence, `${width}-${theme}-refreshed.png`), animations: 'disabled' });
   for (const mode of ['empty', 'due', 'absent', 'due', 'unavailable', 'due']) {
     await page.evaluate(mode => { window.checklistMode = mode; }, mode);
+    await page.clock.fastForward(60_001);
     await page.locator('[data-refresh-detail]').click();
     await page.waitForFunction(visible => !!document.querySelector('.deal-checklist') === visible, mode === 'due');
     assert.equal(await page.locator('#detailUpdateForm').count(), 1, `${mode} retains the update form`);

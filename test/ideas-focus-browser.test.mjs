@@ -42,6 +42,18 @@ async function open(t, tab = 'ideas') {
   return page;
 }
 
+async function refreshIdeas(page) {
+  await page.waitForLoadState('networkidle');
+  const before = await page.evaluate(() => window.ideaReads);
+  await page.clock.setSystemTime(new Date(await page.evaluate(() => Date.now()) + 60_001));
+  await page.evaluate(() => window.dispatchEvent(new Event('online')));
+  for (let turn = 0; turn < 12; turn++) {
+    await page.clock.runFor(5_001);
+    if (await page.evaluate(before => window.ideaReads > before, before)) return;
+  }
+  assert.fail('Ideas did not receive its queued refresh');
+}
+
 test('Ideas Back returns focus to the current tile after a refresh replaces its opener', async t => {
   const page = await open(t);
   const tile = page.locator('.idea-tile').first();
@@ -50,7 +62,7 @@ test('Ideas Back returns focus to the current tile after a refresh replaces its 
   await page.keyboard.press('Enter');
   await page.locator('#ideaDialog').waitFor({state: 'visible'});
   await page.evaluate(() => { window.openerTile = document.querySelector('.idea-tile'); });
-  await page.clock.fastForward(30_000);
+  await refreshIdeas(page);
   await waitForAsync(page, () => !window.openerTile.isConnected);
   await page.evaluate(() => {
     window.ideaClosed = false; document.querySelector('#ideaDialog').addEventListener('close', () => { window.ideaClosed = true; }, {once: true});
@@ -69,7 +81,7 @@ for (const moved of [false, true]) {
     await page.keyboard.press('Enter');
     await page.locator('#ideaDialog').waitFor({state: 'visible'});
     await page.evaluate(() => { window.holdIdeas = true; });
-    await page.clock.fastForward(30_000);
+    await refreshIdeas(page);
     await waitForAsync(page, () => window.ideaResponses?.length > 0);
     await page.evaluate(() => {
       window.ideaClosed = false; document.querySelector('#ideaDialog').addEventListener('close', () => { window.ideaClosed = true; }, {once: true});
@@ -114,7 +126,7 @@ for (const scenario of ['removed', 'moved']) {
       window.openerTile = document.querySelector('.idea-tile');
       if (removed) window.ideaRows = [];
     }, scenario === 'removed');
-    await page.clock.fastForward(30_000);
+    await refreshIdeas(page);
     await waitForAsync(page, () => !window.openerTile.isConnected);
     await page.evaluate(moved => {
       const dialog = document.querySelector('#ideaDialog');

@@ -9,6 +9,11 @@ import { createQaServer } from '../scripts/qa-fixture-server.mjs';
 import { chromium } from './browser-harness.mjs';
 
 let outDir, server, browser, origin;
+async function emailPage(options) {
+  const page = await browser.newPage(options);
+  await page.clock.install();
+  return page;
+}
 before(async () => {
   const root = fileURLToPath(new URL('../', import.meta.url));
   outDir = await mkdtemp(join(tmpdir(), 'email-followups-'));
@@ -26,7 +31,7 @@ after(async () => {
 
 for (const width of [1440, 390]) for (const theme of ['light', 'dark']) {
   test(`Home email review confirms and dismisses at ${width}px in ${theme}`, async t => {
-    const page = await browser.newPage({ viewport: { width, height: 1000 }, reducedMotion: 'reduce' });
+    const page = await emailPage({ viewport: { width, height: 1000 }, reducedMotion: 'reduce' });
     t.after(() => page.close());
     await page.addInitScript(theme => localStorage.setItem('doctorcre.visual-preferences', JSON.stringify({ theme, walkthroughSeen: { joe: true, dell: true } })), theme);
     const errors = []; page.on('pageerror', error => errors.push(error.message));
@@ -55,6 +60,7 @@ for (const width of [1440, 390]) for (const theme of ['light', 'dark']) {
     await second.getByRole('textbox', { name: 'Reason for dismissal' }).fill('Already handled in the synthetic review');
     await second.getByRole('button', { name: 'Dismiss proposal', exact: true }).click();
     await second.getByText('Dismissed.', { exact: true }).waitFor();
+    await page.clock.fastForward(60_001);
     await page.getByRole('button', { name: 'Refresh Home', exact: true }).click();
     await card.getByText('No pending email follow-ups.', { exact: true }).waitFor();
     assert.deepEqual(errors, []);
@@ -62,7 +68,7 @@ for (const width of [1440, 390]) for (const theme of ['light', 'dark']) {
 }
 
 test('signed-in synthetic Home distinguishes load failure, keeps last good rows, and confirms through the live adapter', async t => {
-  const page = await browser.newPage({ viewport: { width: 390, height: 1000 }, reducedMotion: 'reduce' });
+  const page = await emailPage({ viewport: { width: 390, height: 1000 }, reducedMotion: 'reduce' });
   t.after(() => page.close());
   await page.request.post(`${origin}/api/test/seed`, { data: { namespace: 'email-live-adapter', viewer: 'joe', reset: true } });
   await page.addInitScript(() => localStorage.setItem('doctorcre.visual-preferences', JSON.stringify({ walkthroughSeen: { joe: true, dell: true } })));
@@ -78,12 +84,12 @@ test('signed-in synthetic Home distinguishes load failure, keeps last good rows,
   await card.scrollIntoViewIfNeeded();
   await card.getByText('Could not load email follow-ups.', { exact: true }).waitFor();
   assert.equal(await card.getByText('No pending email follow-ups.', { exact: true }).count(), 0);
-  fail = false; await card.getByRole('button', { name: 'Retry email follow-ups' }).click();
+  await page.clock.fastForward(60_001); fail = false; await card.getByRole('button', { name: 'Retry email follow-ups' }).click();
   await card.locator('article').first().waitFor();
-  fail = true; await page.getByRole('button', { name: 'Refresh Home', exact: true }).click();
+  await page.clock.fastForward(60_001); fail = true; await page.getByRole('button', { name: 'Refresh Home', exact: true }).click();
   await card.getByText(/Showing the last successful read/).waitFor();
   assert.equal(await card.locator('article').count(), 2);
-  fail = false; await card.getByRole('button', { name: 'Retry email follow-ups' }).click();
+  await page.clock.fastForward(60_001); fail = false; await card.getByRole('button', { name: 'Retry email follow-ups' }).click();
   await card.locator('button[data-email-action="preview"]:enabled').first().waitFor();
   const row = card.locator('article').first();
   await row.getByRole('button', { name: 'Confirm', exact: true }).click();
@@ -96,7 +102,7 @@ test('signed-in synthetic Home distinguishes load failure, keeps last good rows,
 });
 
 test('Home email quality loads separately, retries a failed report, and refreshes after dismissal', async t => {
-  const page = await browser.newPage({ viewport: { width: 390, height: 1000 }, reducedMotion: 'reduce' });
+  const page = await emailPage({ viewport: { width: 390, height: 1000 }, reducedMotion: 'reduce' });
   t.after(() => page.close());
   await page.request.post(`${origin}/api/test/seed`, { data: { namespace: 'email-quality', viewer: 'joe', reset: true } });
   await page.addInitScript(() => localStorage.setItem('doctorcre.visual-preferences', JSON.stringify({ walkthroughSeen: { joe: true, dell: true } })));
@@ -116,6 +122,7 @@ test('Home email quality loads separately, retries a failed report, and refreshe
   const review = page.locator('#homeEmailFollowups');
   await review.scrollIntoViewIfNeeded();
   await review.locator('article').first().waitFor();
+  await page.clock.fastForward(60_001);
   fail = false;
   await quality.getByRole('button', { name: 'Retry email proposal quality' }).click();
   await quality.getByText('Next steps', { exact: true }).waitFor();
@@ -129,6 +136,7 @@ test('Home email quality loads separately, retries a failed report, and refreshe
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
   await mkdir('out/test-artifacts/email-followups', { recursive: true });
   await quality.screenshot({ path: 'out/test-artifacts/email-followups/quality-390.png', animations: 'disabled' });
+  await page.clock.fastForward(60_001);
   fail = true;
   await page.getByRole('button', { name: 'Refresh Home', exact: true }).click();
   await quality.getByText(/Showing the last successful read/).waitFor();
@@ -140,7 +148,7 @@ test('Home email quality loads separately, retries a failed report, and refreshe
 
 
 test('Home leaves email quality unloaded until its report approaches the viewport', async t => {
-  const page = await browser.newPage({ viewport: { width: 390, height: 844 }, reducedMotion: 'reduce' });
+  const page = await emailPage({ viewport: { width: 390, height: 844 }, reducedMotion: 'reduce' });
   t.after(() => page.close());
   await page.request.post(`${origin}/api/test/seed`, { data: { namespace: 'quality-after-paint', viewer: 'joe', reset: true } });
   await page.addInitScript(() => localStorage.setItem('doctorcre.visual-preferences', JSON.stringify({ walkthroughSeen: { joe: true, dell: true } })));
@@ -157,7 +165,7 @@ test('Home leaves email quality unloaded until its report approaches the viewpor
 });
 
 test('Home session loss during the quality download prevents a late report read', async t => {
-  const page = await browser.newPage({ viewport: { width: 390, height: 1000 }, reducedMotion: 'reduce' });
+  const page = await emailPage({ viewport: { width: 390, height: 1000 }, reducedMotion: 'reduce' });
   t.after(() => page.close());
   await page.request.post(`${origin}/api/test/seed`, { data: { namespace: 'quality-lazy-session', viewer: 'joe', reset: true } });
   await page.addInitScript(() => localStorage.setItem('doctorcre.visual-preferences', JSON.stringify({ walkthroughSeen: { joe: true, dell: true } })));
@@ -178,7 +186,7 @@ test('Home session loss during the quality download prevents a late report read'
 
 
 test('Home still loads email quality when the agenda read fails', async t => {
-  const page = await browser.newPage({ viewport: { width: 390, height: 1000 }, reducedMotion: 'reduce' });
+  const page = await emailPage({ viewport: { width: 390, height: 1000 }, reducedMotion: 'reduce' });
   t.after(() => page.close());
   await page.request.post(`${origin}/api/test/seed`, { data: { namespace: 'quality-without-agenda', viewer: 'joe', reset: true } });
   await page.addInitScript(() => localStorage.setItem('doctorcre.visual-preferences', JSON.stringify({ walkthroughSeen: { joe: true, dell: true } })));
@@ -192,7 +200,7 @@ test('Home still loads email quality when the agenda read fails', async t => {
 
 for (const width of [1440, 390]) {
   test(`deal email review scopes proposals, confirms and dismisses at ${width}px`, async t => {
-    const page = await browser.newPage({ viewport: { width, height: 1000 }, reducedMotion: 'reduce' });
+    const page = await emailPage({ viewport: { width, height: 1000 }, reducedMotion: 'reduce' });
     t.after(() => page.close());
     await page.addInitScript(() => localStorage.setItem('doctorcre.visual-preferences', JSON.stringify({ walkthroughSeen: { joe: true, dell: true } })));
     await page.request.post(`${origin}/api/test/seed`, { data: { namespace: `deal-email-${width}`, viewer: 'joe', reset: true } });
@@ -224,6 +232,7 @@ for (const width of [1440, 390]) {
     await review.getByRole('textbox', { name: 'Reason for dismissal' }).fill('Synthetic tour already handled');
     await review.getByRole('button', { name: 'Dismiss proposal', exact: true }).click();
     await review.getByText('Dismissed.', { exact: true }).waitFor();
+    await page.clock.fastForward(60_001);
     await panel.getByRole('button', { name: 'Refresh deal', exact: true }).click();
     await review.getByText('No pending email follow-ups.', { exact: true }).waitFor();
     assert.equal(calls.find(call => call.name === 'dismiss-email-proposal').arguments.reason, 'Synthetic tour already handled');
@@ -233,7 +242,7 @@ for (const width of [1440, 390]) {
 }
 
 test('deal email review distinguishes unavailable from empty and clears proposals after session loss', async t => {
-  const page = await browser.newPage();
+  const page = await emailPage();
   t.after(() => page.close());
   await page.addInitScript(() => localStorage.setItem('doctorcre.visual-preferences', JSON.stringify({ walkthroughSeen: { joe: true, dell: true } })));
   await page.request.post(`${origin}/api/test/seed`, { data: { namespace: 'deal-email-recovery', viewer: 'joe', reset: true } });
@@ -249,6 +258,7 @@ test('deal email review distinguishes unavailable from empty and clears proposal
   fail = false;
   await review.getByRole('button', { name: 'Retry email follow-ups' }).click();
   await review.getByText('No pending email follow-ups.', { exact: true }).waitFor();
+  await page.clock.fastForward(60_001);
   await page.goto(`${origin}/deals?mode=live&deal=qa-deal-1`);
   await review.locator('article').waitFor();
   await page.evaluate(() => window.dispatchEvent(new CustomEvent('doctorcre-session-invalidated')));
@@ -257,7 +267,7 @@ test('deal email review distinguishes unavailable from empty and clears proposal
 });
 
 for (const width of [1440, 390]) test(`Home reply card edits and submits exact text at ${width}px`, async t => {
-  const page = await browser.newPage({ viewport: { width, height: 1000 }, reducedMotion: 'reduce' });
+  const page = await emailPage({ viewport: { width, height: 1000 }, reducedMotion: 'reduce' });
   t.after(() => page.close());
   await page.request.post(`${origin}/api/test/seed`, { data: { namespace: `reply-${width}`, viewer: 'joe', reset: true } });
   await page.addInitScript(() => localStorage.setItem('doctorcre.visual-preferences', JSON.stringify({ walkthroughSeen: { joe: true, dell: true } })));
@@ -313,7 +323,7 @@ for (const width of [1440, 390]) test(`Home reply card edits and submits exact t
 });
 
 test('Home creates a new deal and files its email through the live client at phone width', async t => {
-  const page = await browser.newPage({ viewport: { width: 390, height: 1000 }, reducedMotion: 'reduce' });
+  const page = await emailPage({ viewport: { width: 390, height: 1000 }, reducedMotion: 'reduce' });
   t.after(() => page.close());
   await page.request.post(`${origin}/api/test/seed`, { data: { namespace: 'filing-new-deal', viewer: 'joe', reset: true } });
   await page.addInitScript(() => localStorage.setItem('doctorcre.visual-preferences', JSON.stringify({ walkthroughSeen: { joe: true, dell: true } })));

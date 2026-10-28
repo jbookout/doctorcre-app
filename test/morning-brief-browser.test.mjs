@@ -52,6 +52,19 @@ async function setup(t,{width=1440,motion='no-preference',brief=true,coverage=fa
  return {page,goto,calls,errors,set scope(value){scope=value;},set ready(value){ready=value;},set fail(value){fail=value;},set thread(value){thread=value;},change(){revision++;}};
 }
 const snap=async(page,name)=>{await mkdir(new URL('out/test-artifacts/w12/',root),{recursive:true});await page.screenshot({path:new URL(`out/test-artifacts/w12/${name}.png`,root).pathname,animations:'disabled'});};
+const advanceBriefWindow=async page=>{
+ await page.waitForLoadState('networkidle');
+ await page.clock.setSystemTime(new Date((await page.evaluate(()=>Date.now()))+60_001));
+};
+const settleBrief=async(page,ready)=>{
+ for(let turn=0;turn<10;turn++){
+  await page.waitForLoadState('networkidle');
+  if(await page.evaluate(ready))return;
+  await page.clock.runFor(5_001);
+ }
+ await page.waitForFunction(ready);
+};
+
 
 test('live brief opens on request and wide record detail; desktop/phone renders, focus, original entry, no horizontal overflow',async t=>{
  const state=await setup(t);const {page}=state;await state.goto();await page.locator('#docOpen[data-brief-unseen]').waitFor();assert.equal(await page.locator('#docMorningBrief').evaluate(node=>node.open),false);await page.locator('#docOpen').click();await page.locator('#docMorning').click();await page.locator('#docMorningBrief[open]').waitFor();
@@ -175,14 +188,14 @@ test('task title repeats stay omitted in sections and detail while refreshed ins
  }
 });
 test('daily preference survives navigation and refresh without narration, including legacy speech opt-in',async t=>{
- const state=await setup(t);const {page}=state;
+ const state=await setup(t);const {page}=state;await page.clock.install();
  await page.addInitScript(()=>localStorage.setItem('doctorcre:morning:joe',JSON.stringify({...JSON.parse(localStorage.getItem('doctorcre:morning:joe')||'{}'),speech:true})));
  await state.goto();await page.locator('#docOpen[data-brief-unseen]').waitFor();assert.equal(await page.locator('#docMorningBrief').evaluate(node=>node.open),false);await page.locator('#docOpen').click();await page.locator('#docMorning').click();await page.locator('#docMorningBrief[open]').waitFor();
  assert.equal(await page.getByRole('button',{name:/Brief speech|Listen to morning brief|Stop morning brief/}).count(),0);assert.equal(await page.evaluate(()=>spoken.length),0);
- await page.locator('#morningClose').click();const loaded=page.waitForResponse(res=>res.url().endsWith('/mcp')&&res.request().postDataJSON()?.params?.name==='morning-brief');await page.reload();await loaded;await page.locator('#docPresence').waitFor({state:'attached'});
+ await page.locator('#morningClose').click();await advanceBriefWindow(page);const loaded=page.waitForResponse(res=>res.url().endsWith('/mcp')&&res.request().postDataJSON()?.params?.name==='morning-brief');await page.reload();await loaded;await page.locator('#docPresence').waitFor({state:'attached'});
  assert.equal(await page.locator('#docMorningBrief').evaluate(node=>node.open),false);await page.locator('#docOpen').click();await page.locator('#docMorning').click();await page.locator('[data-brief-record]').first().waitFor();
  assert.equal(await page.getByRole('button',{name:/Brief speech|Listen to morning brief|Stop morning brief/}).count(),0);assert.equal(await page.evaluate(()=>spoken.length),0);
- state.change();await page.evaluate(()=>window.dispatchEvent(new Event('online')));try { await page.waitForFunction(()=>document.getElementById('morningContent').textContent.includes('updated demo')); } catch(error) { throw new Error(JSON.stringify({calls:state.calls.filter(call=>call.name==='morning-brief').length,text:await page.locator('#docMorningBrief').innerText(),errors:state.errors})+error.message); }
+ state.change();await advanceBriefWindow(page);await page.evaluate(()=>window.dispatchEvent(new Event('online')));try { await settleBrief(page,()=>document.getElementById('morningContent').textContent.includes('updated demo')); } catch(error) { throw new Error(JSON.stringify({calls:state.calls.filter(call=>call.name==='morning-brief').length,text:await page.locator('#docMorningBrief').innerText(),errors:state.errors})+error.message); }
  assert.deepEqual(state.errors,[]);
 });
 test('unavailable brief recovers on background read, clears prior facts, partner changes never reuse content/preferences',async t=>{
@@ -213,10 +226,10 @@ test('keyboard record entry moves focus into detail and Back restores the invoki
  assert.equal(await page.evaluate(()=>document.activeElement.id),'morningBack');await page.keyboard.press('Enter');await card.waitFor();assert.equal(await card.evaluate(node=>document.activeElement===node),true);
 });
 test('refresh retains Details on stable note identity and uses Back when it leaves the visible five',async t=>{
- const state=await setup(t),{page}=state;await state.goto();await page.locator('#docOpen[data-brief-unseen]').waitFor();await page.locator('#docOpen').click();await page.locator('#docMorning').click();await page.locator('#docMorningBrief[open]').waitFor();await page.locator('[data-brief-record="0"]').click();await page.locator('.morning-record').waitFor();const original=page.locator('#morningContent details').filter({hasText:'Original synthetic entry'});await original.locator('summary').click();await original.locator('summary').focus();
- state.thread=[{id:'prepended-note',text:'Demo prepended note.'},{id:'demo-note',text:'Demo short summary. Original synthetic entry with additional details.'}];await page.locator('#morningRefresh').evaluate(node=>node.click());await page.waitForFunction(()=>document.getElementById('morningContent').textContent.includes('prepended'));
+ const state=await setup(t),{page}=state;await page.clock.install();await state.goto();await page.locator('#docOpen[data-brief-unseen]').waitFor();await page.locator('#docOpen').click();await page.locator('#docMorning').click();await page.locator('#docMorningBrief[open]').waitFor();await page.locator('[data-brief-record="0"]').click();await page.locator('.morning-record').waitFor();const original=page.locator('#morningContent details').filter({hasText:'Original synthetic entry'});await original.locator('summary').click();await original.locator('summary').focus();
+ state.thread=[{id:'prepended-note',text:'Demo prepended note.'},{id:'demo-note',text:'Demo short summary. Original synthetic entry with additional details.'}];await advanceBriefWindow(page);await page.locator('#morningRefresh').evaluate(node=>node.click());await settleBrief(page,()=>document.getElementById('morningContent').textContent.includes('prepended'));
  assert.equal(await original.evaluate(node=>node.open),true);assert.equal(await original.locator('summary').evaluate(node=>document.activeElement===node),true);assert.equal(await page.locator('#morningContent details').first().evaluate(node=>node.open),false);
- state.thread=Array.from({length:5},(_,index)=>({id:`new-note-${index}`,text:`Demo replacement note ${index}.`}));await page.locator('#morningRefresh').evaluate(node=>node.click());await page.waitForFunction(()=>document.getElementById('morningContent').textContent.includes('replacement'));
+ state.thread=Array.from({length:5},(_,index)=>({id:`new-note-${index}`,text:`Demo replacement note ${index}.`}));await advanceBriefWindow(page);await page.locator('#morningRefresh').evaluate(node=>node.click());await settleBrief(page,()=>document.getElementById('morningContent').textContent.includes('replacement'));
  assert.equal(await page.evaluate(()=>document.activeElement.id),'morningBack');assert.equal(await page.locator('#morningContent details[open]').count(),0);
 });
 
@@ -283,13 +296,14 @@ for (const trigger of ['reopen', 'idle wake']) test(`F4 ${trigger} clears cached
   if(++held===1){started();return oldRead;}
   return freshRead;
  }});
- const {page}=state; await state.goto();
+ const {page}=state; await page.clock.install(); await state.goto();
  await page.locator('#docOpen[data-brief-unseen]').waitFor();
  await page.locator('#docOpen').click(); await page.locator('#docMorning').click();
  await page.locator('[data-brief-record]').first().waitFor();
  if(trigger==='reopen')await page.locator('#morningClose').click();
- hold=true;
+ await advanceBriefWindow(page);hold=true;
  await page.locator('#morningRefresh').evaluate(node=>node.click());
+ for(let turn=0;held===0&&turn<4;turn++){await page.clock.runFor(5_001);await page.waitForTimeout(50);}
  await reading;
  const pending=await page.evaluate(trigger=>{
   if(trigger==='reopen')document.getElementById('docMorning').click();
@@ -299,7 +313,7 @@ for (const trigger of ['reopen', 'idle wake']) test(`F4 ${trigger} clears cached
  assert.deepEqual(pending,{content:'',title:'Morning brief'});
  releaseOld();
  assert.equal(await page.locator('[data-brief-record]').count(),0);
- releaseFresh(); await page.locator('[data-brief-record]').first().waitFor();
+ releaseFresh();await page.clock.runFor(5_001);await settleBrief(page,()=>document.querySelectorAll('[data-brief-record]').length===3);
  assert.equal(await page.locator('[data-brief-record]').count(),3);
 
  assert.deepEqual(state.errors,[]);

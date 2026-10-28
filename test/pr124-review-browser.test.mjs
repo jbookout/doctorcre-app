@@ -42,7 +42,12 @@ async function detail(page) {
  await page.waitForSelector('#detailUpdateForm');
 }
 async function readPanel(page) {
+ await page.waitForLoadState('networkidle');
+ await page.clock.setSystemTime(new Date(await page.evaluate(()=>Date.now())+60_001));
+ const live=await page.evaluate(()=>window.livePanelRead===true);let started=false;
+ const read=live?page.waitForRequest(request=>new URL(request.url()).pathname==='/mcp'&&request.postDataJSON()?.params?.name==='get-deal-room').then(request=>{started=true;return request;}):null;
  await page.evaluate(() => dispatchEvent(new Event('online')));
+ if(read){for(let turn=0;turn<12&&!started;turn++){await page.waitForTimeout(30);if(!started)await page.clock.runFor(5_001);}await read;}
  await page.waitForTimeout(30);
 }
 
@@ -70,7 +75,7 @@ async function liveDetailRead(page) {
    const {state}=await import('/js/pipeline.js');
    const {createLiveClient}=await import('/js/live-client.js');
    window.beforeLiveDetail=state.panelDetail;
-   state.client.getDeal=createLiveClient().getDeal;
+   state.client.getDeal=createLiveClient().getDeal;window.livePanelRead=true;
  });
  await readPanel(page);
  await waitForAsync(page,async()=>{
@@ -87,7 +92,7 @@ for(const status of [401,403]) test('PR129 R1 loaded detail clears protected sta
  await page.locator('#panelContextOpen').click();
  await page.waitForFunction(()=>document.querySelector('#contextDrawer').open);
  reads.status=status;
- await page.clock.fastForward(15000);
+ await readPanel(page);
  await page.waitForFunction(()=>!document.querySelector('#panelBody .deal-opening-snapshot'));
  assert.equal(await page.evaluate(async()=>(await import('/js/pipeline.js')).state.panelDetail),null);
  assert.equal(await page.locator('#panelTitle').textContent(),'Deal');
@@ -123,7 +128,7 @@ for (const status of [401,403]) for (const outcome of ['ok','refused']) test(`PR
  await page.locator('#detailUpdateForm button[type=submit]').click();
  await page.waitForFunction(()=>typeof finishNext==='function');
  reads.status=status;
- await page.clock.fastForward(15000);
+ await readPanel(page);
  await page.waitForFunction(()=>!document.querySelector('#detailUpdateForm'));
  // A completion must not implicitly reopen a detail, even if later reads succeed.
  reads.status=200;

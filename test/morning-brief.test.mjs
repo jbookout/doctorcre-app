@@ -1,3 +1,4 @@
+import { installPollFixtureClock } from './poll-fixture-clock.mjs';
 import { briefPreferences } from '../js/brief-preferences.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -101,12 +102,14 @@ test('live read sends no audience parameters and both adapters implement the rea
 function setup(t,{storage,read}={}) {
  const dom=new JSDOM('<button id="docOpen">Doc</button><button id="docMorning">Morning brief</button>',{url:'http://localhost'});t.after(()=>dom.window.close());
  const {window:win}=dom,root=win.document;
+ const clock=installPollFixtureClock(dom.window);
  win.HTMLDialogElement.prototype.showModal=function(){this.open=true;};win.HTMLDialogElement.prototype.close=function(){this.open=false;this.dispatchEvent(new win.Event('close'));};
  if(storage)for(const [key,value]of storage)win.localStorage.setItem(key,value);
  let data=payload(),count=0,current=now,fail=false;
  const client={morningBrief:async()=>{count++;if(fail)throw Error('Offline');return read ? read():data;},getChanges:async()=>({events:[],cursor:'end'}),getDeal:async id=>({deal:deal(id),thread:[{id:'demo-note',text:'Demo short note. Original demo note continues.'}]}),readLoop:async args=>({loop:{number:args.number,kind:args.kind,title:'Demo task',status:'open',body:'Demo task entry.'}})};
  const ui=mountMorningBrief({document:root,window:win,getClient:async()=>client,intervalMs:100000,now:()=>current});t.after(()=>ui.dispose());
- return {ui,root,win,client,get count(){return count;},set data(value){data=value;},set current(value){current=value;},set fail(value){fail=value;}};
+ clock.controls(ui);
+ return {ui,root,win,client,controls:clock.controls,get count(){return count;},set data(value){data=value;},set current(value){current=value;},set fail(value){fail=value;}};
 }
 test('brief due dates show the recorded weekday and year on priorities and record sheets',async t=>{
  for(const [kind,date,label]of [['deal','2026-10-02','Friday, Oct 2, 2026'],['action','2026-03-08T00:00:00.000Z','Sunday, Mar 8, 2026'],['loop','2025-12-31','Wednesday, Dec 31, 2025']])await t.test(kind,async t=>{
@@ -170,7 +173,7 @@ test('brief header has no inert Doc emblem and keeps its heading and dismiss con
 test('brief stays readable without narration controls or speech calls, including a saved speech preference',async t=>{
  const state=setup(t,{storage:[['doctorcre:morning:joe',JSON.stringify({speech:true})]]});state.ui.dispose();const calls=[];
  state.win.SpeechSynthesisUtterance=class{constructor(text){this.text=text;}};state.win.speechSynthesis={speak:value=>calls.push(value),cancel:()=>calls.push('cancel')};
- const ui=mountMorningBrief({document:state.root,window:state.win,getClient:async()=>state.client,now:()=>now});t.after(()=>ui.dispose());
+ const ui=state.controls(mountMorningBrief({document:state.root,window:state.win,getClient:async()=>state.client,now:()=>now}));t.after(()=>ui.dispose());
  await ui.refresh();await ui.open();
  assert.equal(state.root.querySelector('[aria-label="Brief speech"], [aria-label="Listen to morning brief"]'),null);
  assert.equal(state.root.querySelectorAll('[data-brief-record]').length,2);
@@ -201,7 +204,7 @@ test('background record refresh preserves expanded original and focused Details'
 });
 
 test('opening while loading consumes the day only when live facts arrive; dismiss stays dismissed',async t=>{
- let release,started;const reading=new Promise(resolve=>started=resolve);const state=setup(t,{read:()=>new Promise(resolve=>{release=resolve;started();})});const opening=state.ui.open();await reading;
+ let release,started;const reading=new Promise(resolve=>started=resolve);const answer=new Promise(resolve=>release=resolve);const state=setup(t,{read:()=>{started();return answer;}});const opening=state.ui.open();await reading;
  assert.equal(state.win.localStorage.length,0);release(payload());await opening;state.root.getElementById('morningClose').click();
  state.client.morningBrief=async()=>payload();await state.ui.refresh();assert.equal(state.root.querySelector('dialog').open,false);
  assert.equal(JSON.parse(state.win.localStorage.getItem('doctorcre:morning:joe')).day,day);
@@ -563,10 +566,10 @@ for (const nextSponsor of ['joe','dell']) test(`F4 suspended brief clears detail
  detailDone({deal:deal(),thread:[{text:'Demo obsolete detail'}]});oldDone(payload());await oldRead;
  assert.doesNotMatch(state.root.getElementById('morningContent').textContent,/Demo/);
  assert.equal(state.root.getElementById('morningTitle').textContent,'Morning brief');
- let resumed;state.client.morningBrief=()=>new Promise(resolve=>resumed=resolve);
+ let resumed,resumedStarted;const resumedReading=new Promise(resolve=>resumedStarted=resolve);state.client.morningBrief=()=>new Promise(resolve=>{resumed=resolve;resumedStarted();});
  Object.defineProperty(state.root,'visibilityState',{configurable:true,value:'visible'});
  state.root.dispatchEvent(new state.win.Event('visibilitychange'));
- await Promise.resolve();await Promise.resolve();
+ await resumedReading;
  state.root.getElementById('morningClose').click();const reopened=state.ui.open();
  assert.equal(state.root.querySelectorAll('[data-brief-record]').length,0);
  const next=payload();next.sponsor=nextSponsor;state.client.morningBrief=async()=>next;resumed(next);await reopened;

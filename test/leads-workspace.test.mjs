@@ -1,9 +1,11 @@
+import { installPollFixtureClock } from './poll-fixture-clock.mjs';
 import test from 'node:test';import assert from 'node:assert/strict';import {readFile} from 'node:fs/promises';import {JSDOM} from 'jsdom';
 import {mountLeadsWorkspace} from '../js/leads-workspace-app.js';import {workspace,detail,id} from './leads-workspace-fixture.mjs';
 import {createLeadBoardClient} from '../js/leads-client.js';
 const tick=()=>new Promise(r=>setTimeout(r,10));
 async function setup(overrides={},mapFactory=async()=>({update(){},dispose(){}})){
  const dom=new JSDOM(await readFile(new URL('../leads.html',import.meta.url),'utf8'),{url:'https://example.test/leads',pretendToBeVisual:true});const w=dom.window,d=w.document;
+ const clock=installPollFixtureClock(w);
  w.HTMLDialogElement.prototype.showModal=function(){this.open=true};w.HTMLDialogElement.prototype.close=function(){if(this.open){this.open=false;this.dispatchEvent(new w.Event('close'))}};
  let board=workspace(),actor='example-partner',writes=[];
  const client={getActor:async()=>actor,getWorkspace:async()=>structuredClone(board),getLeadDetail:async l=>({detail:detail(board.leads.find(x=>x.id===l.id))}),
@@ -11,7 +13,7 @@ async function setup(overrides={},mapFactory=async()=>({update(){},dispose(){}})
  linkClient:async(l,clientId,key)=>{writes.push({l,clientId,key});board.leads.find(x=>x.id===l.id).client_id=clientId;return{ok:true}},
  claimLead:async(l,key)=>{writes.push({l,key});board.leads.find(x=>x.id===l.id).owner=actor;return{ok:true}},...overrides};
  const app=mountLeadsWorkspace(d,client,{mapFactory});await tick();
- return{dom,w,d,app,client,board,writes,setActor:a=>{actor=a},close:()=>{app.dispose();w.close()}};
+ return{dom,w,d,app,client,board,writes,advance:clock.advance,setActor:a=>{actor=a},close:()=>{app.dispose();w.close()}};
 }
 test('specialty filters board, territory membership and counts together without narrowing hottest leads',async()=>{
  const b=workspace();b.leads=b.leads.filter(l=>[id(1),id(2),id(3),id(8)].includes(l.id));
@@ -594,10 +596,10 @@ test('detail polling keeps keyboard focus on the same expanded original entry',a
   await s.app.refresh();assert.equal(s.d.activeElement,s.d.querySelector(`[data-entry-key="${key}"] summary`));assert.equal(s.d.querySelector(`[data-entry-key="${key}"]`).open,true);
  }finally{s.close()}
 });
-test('a failed first read reconnects within seconds without waiting a full poll',async()=>{
+test('a failed first read backs off above the normal poll before reconnecting',async()=>{
  let reads=0;const s=await setup({getWorkspace:async()=>{if(++reads===1)throw Object.assign(new Error('offline'),{code:'network_error'});return structuredClone(workspace())}});
  try{assert.equal(s.d.querySelectorAll('.lead-card').length,0);assert.match(s.d.getElementById('leadBoardError').textContent,/Connection interrupted/);
-  await new Promise(r=>setTimeout(r,1_200));assert.equal(reads,2);assert.equal(s.d.querySelectorAll('.lead-card').length,10);assert.equal(s.d.getElementById('leadBoardError').hidden,true);assert.equal(s.writes.length,0);
+  s.advance(59_000);await tick();assert.equal(reads,1);s.advance(1_001);await tick();assert.equal(reads,2);assert.equal(s.d.querySelectorAll('.lead-card').length,10);assert.equal(s.d.getElementById('leadBoardError').hidden,true);assert.equal(s.writes.length,0);
  }finally{s.close()}
 });
 

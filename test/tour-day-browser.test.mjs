@@ -191,7 +191,7 @@ test('R6: another tab cannot finalize a live owner recording', async t => {
   const { page, context, origin } = await open(t);
   await page.locator('#day-record').click(); await page.waitForFunction(() => window.syntheticRecorders[0]?.state === 'recording');
   await page.waitForTimeout(1300);
-  const second = await context.newPage(); await second.goto(`${origin}/tours/day.html?tour=${tourId}`); await second.waitForSelector('.note-card');
+  const second = await context.newPage(); await second.goto(`${origin}/tours/day.html?tour=${tourId}`); await second.getByRole('button', { name: 'Refresh tour', exact: true }).click(); await second.waitForSelector('.note-card');
   assert.equal(await page.evaluate(() => window.syntheticRecorders[0].state), 'recording');
   assert.match(await second.locator('.note-card').textContent(), /Recording/);
   assert.doesNotMatch(await second.locator('.note-card').textContent(), /Saved on phone/);
@@ -247,6 +247,7 @@ test("static offline shell reload resumes tour and audio in the same tab, then r
   assert.ok(cached.includes('/js/routes.js'));
   assert.ok(cached.includes('/js/navigation.js'));
   assert.equal(cached.some(path => path.startsWith("/api/")), false);
+  await page.clock.install();
   await context.setOffline(true); await page.reload();
   await page.waitForFunction(() => document.querySelector("#day-status")?.textContent.includes("Offline"));
   assert.equal(await page.locator(".day-stop").count(), 2); assert.equal(await page.locator(".note-card").count(), 1);
@@ -254,6 +255,8 @@ test("static offline shell reload resumes tour and audio in the same tab, then r
   assert.equal(await page.getByLabel("Workspace sidebar", { exact: true }).isVisible(), false);
   await page.screenshot({ path: new URL("out/test-artifacts/w16/phone-offline.png", root).pathname, fullPage: true });
   await context.setOffline(false);
+  await page.clock.runFor(60_001);
+  for(let turn=0;turn<8 && await page.locator('#day-status').textContent() !== 'Voice notes stay on this phone';turn++){await page.waitForLoadState('networkidle');await page.clock.runFor(5_001);}
   await page.waitForFunction(() => document.querySelector("#day-status").textContent === "Voice notes stay on this phone");
   assert.equal(await page.locator(".note-card").count(), 1); assert.deepEqual(errors, []);
 });

@@ -233,6 +233,7 @@ test("a refused disposition preserves the typed dialog draft through re-read", a
   });
   const { window } = dom;
   const document = window.document;
+  Object.defineProperty(window.navigator, "locks", { value: { request: async (_name, _options, callback) => callback({ name: "synthetic-poll-owner" }) } });
   // jsdom has no native modal implementation; only supply that browser API.
   window.HTMLDialogElement.prototype.showModal = function () { this.open = true; };
   window.HTMLDialogElement.prototype.close = function () { this.open = false; };

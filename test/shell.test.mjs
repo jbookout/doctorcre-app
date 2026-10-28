@@ -1,3 +1,4 @@
+import { pollSafety } from '../js/poll-safety.mjs';
 // V5-UX-B12b — the shared shell's unread-notifications badge.
 //
 // `mountNotificationBadge` (js/shell.js) is the one function every page's
@@ -106,6 +107,7 @@ test("returning to an open page refreshes its unread badge once, and a failed re
   };
   globalThis.document = document;
   globalThis.window = { addEventListener: (name, listener) => listeners.set(`win:${name}`, listener) };
+  let time = 0; pollSafety(globalThis.window, { document, now: () => time });
   let calls = 0;
   const client = { notificationFeed: async () => {
     calls += 1;
@@ -115,6 +117,7 @@ test("returning to an open page refreshes its unread badge once, and a failed re
   try {
     await mountNotificationBadge(client);
     assert.equal(badge.textContent, "3");
+    time += 60_001;
     document.visibilityState = "hidden";
     listeners.get("doc:visibilitychange")();
     document.visibilityState = "visible";
@@ -123,6 +126,7 @@ test("returning to an open page refreshes its unread badge once, and a failed re
     await new Promise((resolve) => setImmediate(resolve));
     assert.equal(calls, 2, "one return causes one read");
     assert.equal(badge.hidden, true, "the refused read cannot leave a stale count visible");
+    time += 60_001;
     document.visibilityState = "hidden";
     listeners.get("doc:visibilitychange")();
     document.visibilityState = "visible";

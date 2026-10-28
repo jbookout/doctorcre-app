@@ -4,12 +4,17 @@ import assert from 'node:assert/strict';
 import { readFile, mkdir } from 'node:fs/promises';
 import { chromium } from 'playwright';
 import { invoiceTrackerFixture } from '../js/invoice-tracker-fixture.js';
+import { createFixtureClient } from '../js/fixture-client.js';
+import { relationshipNetworkFixture } from '../js/relationship-network-fixture.js';
+import { leaseRadarFixture } from '../js/lease-radar-fixture.js';
 const root = new URL('../', import.meta.url), today = '2026-10-02';
 async function open(t, { width = 1440, reducedMotion = 'no-preference', query = '', home = false, receipt = 'ok' } = {}) {
   const browser = await chromium.launch({ args: [...CHROMIUM_SAFETY_ARGS] }); t.after(() => browser.close());
   const page = await browser.newPage({ viewport: { width, height: 960 }, timezoneId: 'UTC', reducedMotion });
   await page.clock.install({ time: new Date(today + 'T17:00:00Z') });
   const errors = []; page.on('pageerror', error => errors.push(error.message));
+  const client = await createFixtureClient({ seedUrl: `data:application/json;base64,${Buffer.from(await readFile(new URL('data/board-seed.json', root))).toString('base64')}` });
+  const fixtureMethods = { 'read-home-agenda': 'getHomeAgenda', 'morning-brief': 'morningBrief', 'list-feature-switches': 'listFeatureSwitches', 'list-doc-suggestions': 'listDocSuggestions', 'read-post-call-followups': 'getPostCallFollowups', 'email-proposal-quality': 'getEmailProposalQuality' };
   const data = invoiceTrackerFixture(today); let failed = false, denied = false, reads = 0, writes = 0; const attempts = [];
   const routes = (await import("../js/routes.js")).routeContract.routes;
   await page.route('**/*', async route => {
@@ -29,8 +34,14 @@ async function open(t, { width = 1440, reducedMotion = 'no-preference', query = 
         if (receipt === 'uncertain') return route.fulfill({ status: 502, body: '' }); response = { ok: true, id: row.commission_id, base_version: row.base_version, received_on: row.received_on };
       } else if (req.name === 'deal-room-board') response = { actor: 'joe', deals: [] };
       else if (req.name === 'lead-board') response = { leads: [] };
+      else if (fixtureMethods[req.name]) response = await client[fixtureMethods[req.name]](req.arguments);
+      else if (['list-notifications', 'notification-feed'].includes(req.name)) response = { unread_count: 0, notifications: [] };
+      else if (req.name === 'read-call-outcomes') response = { schema_version: 'call-outcomes.v1', calls: [], send: false };
+      else if (req.name === 'list-email-proposals') response = { schema_version: 'email-proposals.v1', proposals: [], send: false, more: false, next_cursor: null };
       return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ result: { content: [{ text: JSON.stringify(response) }] } }) });
     }
+    if (url.pathname === '/api/v1/business/relationships') return route.fulfill({ json: relationshipNetworkFixture(await page.evaluate(() => new Date().toISOString())) });
+    if (url.pathname === '/api/v1/business/leases') return route.fulfill({ json: { ...leaseRadarFixture(today), leases: [] } });
     if (url.pathname.startsWith('/api/') || url.pathname === '/app-release') return route.fulfill({ contentType: 'application/json', body: '{}' });
     const file = routes[url.pathname] || url.pathname.slice(1);
     try { return route.fulfill({ body: await readFile(new URL(file, root)), contentType: /\.m?js$/.test(file) ? 'text/javascript' : file.endsWith('.css') ? 'text/css' : file.endsWith('.json') ? 'application/json' : 'text/html' }); }
@@ -39,6 +50,20 @@ async function open(t, { width = 1440, reducedMotion = 'no-preference', query = 
   await page.goto(`http://localhost/${home ? '' : 'invoices'}?mode=live${query}`);
   await page.waitForFunction(home ? () => document.querySelector('#homeInvoices a[data-home-key]') : () => document.querySelector('[data-invoice]'));
   return { page, errors, attempts, setReceipt(value) { receipt = value; }, get reads() { return reads; }, get writes() { return writes; }, setFailed(value) { failed = value; }, setDenied(value) { denied = value; }, update(fn) { fn(data); } };
+}
+async function advanceInvoicePoll(page, manual = false) {
+  await page.waitForLoadState('networkidle');
+  await page.clock.setSystemTime(new Date(await page.evaluate(() => Date.now()) + 300_001));
+  let completed = false;
+  const read = page.waitForResponse(response => new URL(response.url()).pathname === '/mcp' && response.request().postDataJSON()?.params?.name === 'read-invoice-tracker').then(response => { completed = true; return response; });
+  if (manual) await page.locator('#refreshInvoices').click();
+  else await page.clock.fastForward(5_001);
+  await page.waitForTimeout(20);
+  for (let turn = 0; turn < 12 && !completed; turn++) {
+    await Promise.race([read, page.waitForLoadState('networkidle')]);
+    if (!completed) { await page.clock.fastForward(5_001); await page.waitForTimeout(20); }
+  }
+  await read;
 }
 for (const width of [1440, 390, 320]) test(`invoice layout and wide detail at ${width}px`, async t => {
   const { page, errors } = await open(t, { width }); assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
@@ -56,10 +81,10 @@ for (const width of [1440, 390, 320]) test(`invoice layout and wide detail at ${
 test('filters, aging and automatic refresh preserve drafts and recover failed data', async t => {
   const h = await open(t), page = h.page;
   await page.locator('#invoiceSearch').fill('Cedar'); await page.locator('[data-invoice]').click(); await page.locator('#invoicePaidDate').fill('2026-09-30'); await page.locator('#invoiceOriginal summary').click();
-  h.update(data => { data.entries.find(row => row.name === 'Demo Cedar Expansion').gross_amount = '10000'; }); const reads = h.reads; await page.clock.runFor(31000); await page.waitForFunction(() => /10,000/.test(document.querySelector('#invoiceDetailFacts').textContent)); assert.ok(h.reads > reads); assert.equal(await page.locator('#invoicePaidDate').inputValue(), '2026-09-30'); assert.equal(await page.locator('#invoiceOriginal').getAttribute('open'), '');
+  h.update(data => { data.entries.find(row => row.name === 'Demo Cedar Expansion').gross_amount = '10000'; }); const reads = h.reads; await advanceInvoicePoll(page); await page.waitForFunction(() => /10,000/.test(document.querySelector('#invoiceDetailFacts').textContent)); assert.ok(h.reads > reads); assert.equal(await page.locator('#invoicePaidDate').inputValue(), '2026-09-30'); assert.equal(await page.locator('#invoiceOriginal').getAttribute('open'), '');
   await page.locator('#closeInvoiceDetail').click(); await page.locator('#clearInvoiceFilters').click(); await page.locator('#invoiceAging [data-age="2"]').click(); assert.equal(await page.locator('[data-invoice]').count(), 1); assert.match(await page.locator('[data-invoice]').innerText(), /Bay/); await page.locator('#allAges').click(); assert.equal(await page.locator('[data-invoice]').count(), 4);
   h.setFailed(true); await page.locator('#refreshInvoices').click(); await page.waitForFunction(() => !document.querySelector('#invoiceNotice').hidden); assert.equal(await page.locator('[data-invoice]').count(), 4); assert.match(await page.locator('#invoiceUpdated').innerText(), /Updated/);
-  h.setFailed(false); await page.clock.runFor(31000); await page.waitForFunction(() => document.querySelector('#invoiceNotice').hidden); assert.deepEqual(h.errors, []);
+  h.setFailed(false); await advanceInvoicePoll(page); await page.waitForFunction(() => document.querySelector('#invoiceNotice').hidden); assert.deepEqual(h.errors, []);
 });
 test('uncertain receipt reconciles without another write; conflict keeps the draft', async t => {
   const h = await open(t, { receipt: 'uncertain' }); await h.page.locator('[data-invoice]').first().click(); await h.page.locator('#markInvoicePaid').click(); await h.page.waitForFunction(() => /Paid/.test(document.querySelector('#invoiceDetailFacts').textContent)); assert.equal(h.writes, 1);
@@ -69,7 +94,7 @@ test('Home attention shares invoice identity, scope and refreshed paid state', a
   const h = await open(t, { home: true }), page = h.page; assert.equal(await page.locator('#homeInvoices [data-home-key]').count(), 3);
   await page.locator('[data-scope="mine"]').click(); assert.equal(await page.locator('#homeInvoices [data-home-key]').count(), 2);
   h.update(data => { for (const row of data.entries) if (row.owner === 'joe' && row.status === 'invoiced') { row.status = 'received'; row.received_on = today; } });
-  await page.clock.runFor(31000); await page.waitForFunction(() => document.querySelector('#homeInvoices').hidden); await page.locator('[data-scope="team"]').click(); assert.equal(await page.locator('#homeInvoices [data-home-key]').count(), 1); assert.deepEqual(h.errors, []);
+  await advanceInvoicePoll(page); await page.waitForFunction(() => document.querySelector('#homeInvoices').hidden); await page.locator('[data-scope="team"]').click(); assert.equal(await page.locator('#homeInvoices [data-home-key]').count(), 1); assert.deepEqual(h.errors, []);
   await page.screenshot({ path: new URL('out/test-artifacts/w15/home-attention-1440.png', root).pathname });
 });
 test('pending receipt confirmations remain attached to each invoice across popup changes', async t => {
@@ -83,10 +108,10 @@ test('pending receipt confirmations remain attached to each invoice across popup
   await page.locator('#closeInvoiceDetail').click(); await invoices.nth(0).click();
   assert.equal(await page.locator('#markInvoicePaid').innerText(), 'Retry payment');
   h.update(data => { data.entries.find(row => row.commission_id === first).gross_amount = '9401'; });
-  await page.clock.runFor(31000); await page.waitForFunction(() => /9,401/.test(document.querySelector('#invoiceDetailFacts').textContent));
+  await advanceInvoicePoll(page); await page.waitForFunction(() => /9,401/.test(document.querySelector('#invoiceDetailFacts').textContent));
   assert.equal(h.writes, 2);
   h.update(data => { const row = data.entries.find(row => row.commission_id === first); row.status = 'received'; row.received_on = today; });
-  await page.clock.runFor(31000); await page.waitForFunction(() => document.querySelector('#invoicePayment').hidden);
+  await advanceInvoicePoll(page); await page.waitForFunction(() => document.querySelector('#invoicePayment').hidden);
   await page.locator('#closeInvoiceDetail').click(); await page.locator('[data-invoice]').filter({ hasText: 'Demo Bay' }).click();
   assert.equal(await page.locator('#markInvoicePaid').innerText(), 'Retry payment'); assert.equal(h.writes, 2);
 });
@@ -141,7 +166,7 @@ test('hung payment becomes recoverable after the write deadline without an autom
 test('phone focus survives automatic invoice removal and filtered-out row repaint',async t=>{
  const h=await open(t,{width:320}),page=h.page;
  await page.locator('[data-invoice]').first().click();h.update(data=>{data.entries=data.entries.filter(row=>row.name!=='Demo Cedar Expansion');});
- await page.clock.runFor(31000);await page.waitForFunction(()=>!document.querySelector('#invoiceDetail').open);
+ await advanceInvoicePoll(page);await page.waitForFunction(()=>!document.querySelector('#invoiceDetail').open);
  assert.equal(await page.evaluate(()=>document.activeElement===document.querySelector('#refreshInvoices')),true);
  await page.locator('[data-invoice]').first().focus();await page.evaluate(()=>{const input=document.querySelector('#invoiceSearch');input.value='no match';input.dispatchEvent(new Event('input'));});
  assert.equal(await page.evaluate(()=>document.activeElement===document.querySelector('#refreshInvoices')),true);
@@ -149,7 +174,7 @@ test('phone focus survives automatic invoice removal and filtered-out row repain
 test('large and aggregate currency values fit 320px with unavailable web fonts',async t=>{
  const h=await open(t,{width:320}),page=h.page;
  for(const amount of ['1000000','10000000','999999999999.99']){
-  h.update(data=>{for(const row of data.entries)if(row.commission_id)row.gross_amount=amount;});await page.locator('#refreshInvoices').click();
+  h.update(data=>{for(const row of data.entries)if(row.commission_id)row.gross_amount=amount;});await advanceInvoicePoll(page,true);
   await page.waitForFunction(value=>document.querySelector('.row-money').textContent.includes(Number(value).toLocaleString('en-US',{maximumFractionDigits:2})),amount);
   const check=async()=>page.evaluate(()=>({width:innerWidth,scroll:document.documentElement.scrollWidth,offenders:[...document.querySelectorAll('.invoice-total strong,.invoice-age strong,.row-money,.invoice-detail-facts strong')].filter(node=>node.getClientRects().length&&node.scrollWidth>node.clientWidth+1).map(node=>node.textContent)}));
   let result=await check();assert.equal(result.scroll<=result.width,true,JSON.stringify(result));assert.deepEqual(result.offenders,[]);

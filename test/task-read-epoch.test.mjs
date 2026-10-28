@@ -12,6 +12,7 @@ const boardHooks = `window.taskReplies ??=[]; const loops=c.loopBoard; c.loopBoa
 test('a failed identity read fences out an earlier successful Tasks board response', async t => {
   const { page, errors } = await openTasks(t, `window.holdTasks=true; ${boardHooks}`);
   await page.waitForFunction(() => window.taskReplies?.length === 2);
+  await page.clock.install({time: new Date(Date.now()+65_000)});
   await page.evaluate(() => { window.failIdentity=true; window.dispatchEvent(new Event('online')); });
   await page.waitForFunction(() => document.querySelector('#taskStatusLabel')?.textContent === 'Account unverified');
   await page.evaluate(() => window.taskReplies.splice(0).forEach(resolve => resolve()));
@@ -26,7 +27,11 @@ test('identity verification conceals prior rows and task details until the curre
   await waitForTasks(page);
   await page.locator('#taskList [data-task]').first().click();
   await page.locator('#taskDialog').waitFor({ state: 'visible' });
+  await page.clock.install({time: new Date(Date.now()+65_000)});
   await page.evaluate(() => { window.holdIdentity=true; window.dispatchEvent(new Event('online')); });
+  for (let turn = 0; turn < 12 && await page.locator('#taskDialog').isVisible(); turn++) {
+    await page.clock.runFor(5_001); await page.waitForTimeout(30);
+  }
   await page.waitForFunction(() => window.identityReplies.length > 0);
   assert.equal(await page.locator('#taskDialog').isVisible(), false);
   assert.equal(await page.locator('#taskList [data-task]').count(), 0);
@@ -41,6 +46,7 @@ test('a concealed task dialog sends focus to Retry after failed identity verific
   await waitForTasks(page);
   await page.locator('#taskList [data-task]').first().click();
   await page.locator('#taskDialog').waitFor({ state: 'visible' });
+  await page.clock.install({time: new Date(Date.now()+65_000)});
   await page.evaluate(() => { window.failIdentity=true; window.dispatchEvent(new Event('online')); });
   await page.waitForFunction(() => document.activeElement?.id === 'retryRead');
   assert.equal(await page.locator('#taskDialog').isVisible(), false);

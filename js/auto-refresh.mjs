@@ -56,7 +56,12 @@ export function mountAutoRefresh({ document, window, refresh, onResume, onWake, 
   const presence = watchPresence({ document, window, onResume: () => resumeRead(onResume), onWake: () => resumeRead(onWake), idleMs, now });
   const online = () => { if (presence.active()) resumeRead(onResume); };
   window.addEventListener("online", online);
-  const unsubscribe = safety.subscribe(() => schedule());
+  let wasPaused = safety.state().paused;
+  const unsubscribe = safety.subscribe(state => {
+    if (state.paused) { window.clearTimeout?.(timer); timer = null; }
+    else if (wasPaused) schedule();
+    wasPaused = state.paused;
+  });
   schedule();
   return { refresh: manualRead, revalidate: event => { presence.touch(); return resumeRead(onResume, Boolean(event?.isTrusted || window.navigator?.userActivation?.isActive)); }, poll: read, dispose() { disposed = true; unsubscribe(); safety.cancel(source); reads.dispose(); window.clearTimeout?.(timer); document.removeEventListener("visibilitychange", visibility); window.removeEventListener("online", online); presence.dispose(); } };
 }

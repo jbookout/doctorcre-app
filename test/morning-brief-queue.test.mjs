@@ -1,3 +1,4 @@
+import { installPollFixtureClock } from './poll-fixture-clock.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { JSDOM } from 'jsdom';
@@ -10,11 +11,13 @@ const page = (items,{total=51,next='next',sponsor='joe'}={}) => ({sponsor,items,
 function setup(t, read) {
  const dom=new JSDOM('<button id="docOpen">Doc</button><button id="docMorning">Morning brief</button>',{url:'http://localhost'});
  t.after(()=>dom.window.close());
+ const clock=installPollFixtureClock(dom.window);
  dom.window.HTMLDialogElement.prototype.showModal=function(){this.open=true;};
  dom.window.HTMLDialogElement.prototype.close=function(){this.open=false;this.dispatchEvent(new dom.window.Event('close'));};
  let data=brief();
  const client={morningBrief:async()=>data,getChanges:async()=>({events:[]}),morningBriefQueue:read};
  const ui=mountMorningBrief({document:dom.window.document,window:dom.window,getClient:async()=>client,intervalMs:100000});
+ clock.controls(ui);
  t.after(()=>ui.dispose());
  return {ui,root:dom.window.document,win:dom.window,client,set data(value){data=value;}};
 }

@@ -6,7 +6,7 @@ for (const width of [390, 1440]) test(`shared pause notice and trusted manual re
   const server = await fixtureServer(); t.after(() => server.close());
   const browser = await chromium.launch(); t.after(() => browser.close());
   const page = await browser.newPage({ viewport: { width, height: 900 } });
-  await page.route('**/poll-safety-fixture', route => route.fulfill({ contentType: 'text/html', body: '<!doctype html><html><head><link rel="stylesheet" href="/css/tokens.css"><link rel="stylesheet" href="/css/system.css"></head><body><button id="refresh">Refresh</button></body></html>' }));
+  await page.route('**/poll-safety-fixture', route => route.fulfill({ contentType: 'text/html', body: '<!doctype html><html><head><link rel="stylesheet" href="/css/tokens.css"><link rel="stylesheet" href="/css/system.css"></head><body><button id="refresh" style="position:fixed;bottom:1.5rem;right:2rem">Refresh</button></body></html>' }));
   await page.clock.install({ time: new Date('2026-10-27T12:00:00Z') });
   await page.goto(`${server.origin}/poll-safety-fixture`);
   await page.evaluate(async () => {
@@ -27,9 +27,9 @@ for (const width of [390, 1440]) test(`shared pause notice and trusted manual re
   assert.match(await notice.innerText(), /paused.*request limit/i);
   await page.screenshot({ path: `out/test-artifacts/poll-safety/paused-${width}.png` });
   await page.clock.fastForward(5_000);
-  await page.getByRole('button', { name: 'Refresh', exact: true }).click();
+  await page.getByRole('button', { name: 'Refresh', exact: true }).click({ timeout: 1000 });
   assert.equal(await page.evaluate(() => window.requests), 61, 'human refresh uses the separate manual allowance');
-  await page.getByRole('button', { name: 'Refresh', exact: true }).click();
+  await page.getByRole('button', { name: 'Refresh', exact: true }).click({ timeout: 1000 });
   assert.equal(await page.evaluate(() => window.requests), 61, 'double click cannot bypass minimum gap');
   await page.clock.fastForward(65_000);
   await page.getByRole('button', { name: 'Resume updates' }).click();
@@ -63,4 +63,56 @@ test('real browser tabs share one polling owner and hand off after pagehide', as
   await second.clock.install({ time: new Date(Date.now() + 10_000) });
   await second.evaluate(() => window.read());
   assert.equal(await second.evaluate(() => window.requests), 1);
+});
+
+test('Resume works in a modal and session invalidation retires its notice', async t => {
+  const server = await fixtureServer(); t.after(() => server.close());
+  const browser = await chromium.launch(); t.after(() => browser.close());
+  const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
+  await page.route('**/poll-modal-fixture', route => route.fulfill({ contentType: 'text/html', body: '<!doctype html><html><body><dialog id="detail"><button>Close detail</button></dialog></body></html>' }));
+  await page.clock.install({ time: new Date('2026-10-27T12:00:00Z') });
+  await page.goto(`${server.origin}/poll-modal-fixture`);
+  await page.evaluate(async () => {
+    const { pollSafety } = await import('/js/poll-safety.mjs');
+    const safety = pollSafety(window, { document });
+    await safety.run(async () => {
+      for (let i = 0; i < 61; i++) await safety.fetch(async () => new Response('{}'), '/synthetic').catch(() => {});
+    });
+    document.querySelector('#detail').showModal();
+  });
+  await page.clock.fastForward(60_001);
+  await page.getByRole('button', { name: 'Resume updates' }).click({ timeout: 1_000 });
+  assert.equal(await page.locator('[data-poll-safety]').isVisible(), false);
+  assert.equal(await page.locator('#detail').isVisible(), true);
+  await page.evaluate(async () => {
+    const { pollSafety } = await import('/js/poll-safety.mjs');
+    const safety = pollSafety(window);
+    await safety.run(async () => {
+      for (let i = 0; i < 61; i++) await safety.fetch(async () => new Response('{}'), '/synthetic').catch(() => {});
+    });
+    window.dispatchEvent(new Event('doctorcre-session-invalidated'));
+    document.body.replaceChildren(document.createElement('main'));
+  });
+  assert.equal(await page.locator('body').innerText(), '');
+});
+
+test('a focus-trapped drawer cannot make shared Resume inert', async t => {
+  const server = await fixtureServer(); t.after(() => server.close());
+  const browser = await chromium.launch(); t.after(() => browser.close());
+  const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
+  await page.route('**/poll-drawer-fixture', route => route.fulfill({ contentType: 'text/html', body: '<!doctype html><html><body><aside><button id="close">Close drawer</button></aside></body></html>' }));
+  await page.goto(`${server.origin}/poll-drawer-fixture`);
+  await page.clock.install();
+  await page.evaluate(async () => {
+    const { pollSafety } = await import('/js/poll-safety.mjs');
+    const safety = pollSafety(window, { document });
+    document.querySelector('[data-poll-safety]').inert = true;
+    document.querySelector('#close').focus();
+    await safety.run(async () => {
+      for (let i = 0; i < 61; i++) await safety.fetch(async () => new Response('{}'), '/synthetic').catch(() => {});
+    });
+  });
+  await page.clock.fastForward(60_001);
+  await page.getByRole('button', { name: 'Resume updates' }).click({ timeout: 1000 });
+  assert.equal(await page.locator('[data-poll-safety]').isVisible(), false);
 });

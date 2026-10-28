@@ -5,6 +5,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import { animationsSettled, chromium, waitForAsync } from "./browser-harness.mjs";
 import { relationshipNetworkFixture } from "../js/relationship-network-fixture.js";
 import axe from "axe-core";
+import { leaseRadarFixture } from "../js/lease-radar-fixture.js";
 const root = new URL("../", import.meta.url);
 async function open(t, width = 1440) {
   const browser = await chromium.launch();
@@ -69,6 +70,10 @@ async function open(t, width = 1440) {
         },
       });
     }
+    if (url.pathname === '/api/v1/business/leases') {
+      const observed_at = await page.evaluate(() => new Date().toISOString());
+      return r.fulfill({json: {...leaseRadarFixture(observed_at.slice(0, 10)), observed_at, leases: []}});
+    }
     if (url.pathname.startsWith("/api/")) return r.fulfill({ json: {} });
     const file =
       url.pathname === "/"
@@ -103,6 +108,18 @@ async function open(t, width = 1440) {
       version = v;
     },
   };
+}
+async function pollRelationships(page, delay = 31_001) {
+  await page.waitForLoadState('networkidle');
+  await page.clock.setSystemTime(new Date(await page.evaluate(() => Date.now()) + delay));
+  let received = false;
+  const response = page.waitForResponse('**/api/v1/business/relationships*').then(() => { received = true; });
+  await page.evaluate(() => window.dispatchEvent(new Event('online')));
+  for (let turn = 0; turn < 12 && !received; turn++) {
+    await page.clock.runFor(5_001);
+    await page.waitForLoadState('networkidle');
+  }
+  await response;
 }
 async function dragLender(page) {
   // Let the shared harness finish layout motion and retry false samples.
@@ -246,7 +263,7 @@ test("W14 autonomous refresh retains filters and expanded evidence, recovers fai
   await page.locator("#networkNodes button").click();
   await page.locator(".relationship-dialog summary").first().click();
   h.setVersion(1);
-  await page.clock.fastForward(31000);
+  await pollRelationships(page);
   await page.waitForFunction(() =>
     document
       .querySelector(".relationship-dialog")
@@ -261,7 +278,7 @@ test("W14 autonomous refresh retains filters and expanded evidence, recovers fai
   );
   assert.equal(await page.locator("#networkSearch").inputValue(), "Lending");
   h.setMode("fail");
-  await page.clock.fastForward(61000);
+  await pollRelationships(page, 60_001);
   await page.waitForFunction(() =>
     document
       .querySelector("#networkNotice")
@@ -270,11 +287,11 @@ test("W14 autonomous refresh retains filters and expanded evidence, recovers fai
   assert.equal(await page.locator(".relationship-node").count(), 0);
   assert.equal(await page.locator(".relationship-dialog").isVisible(), false);
   h.setMode("ok");
-  await page.clock.fastForward(31000);
+  await pollRelationships(page, 60_001);
   await page.waitForSelector(".relationship-node");
   assert.equal(await page.locator("#networkSearch").inputValue(), "Lending");
   h.setMode("auth");
-  await page.evaluate(() => window.dispatchEvent(new Event("online")));
+  await pollRelationships(page);
   await page.waitForURL("**/public-shell/session-ended.html");
   assert.equal(await page.locator(".relationship-node").count(), 0);
   assert.deepEqual(h.errors, []);
@@ -291,7 +308,7 @@ test("W14 malformed data, zoom fit and measured reduced motion", async (t) => {
   );
   assert.equal(await page.locator(".relationship-node").count(), 0);
   h.setMode("ok");
-  await page.evaluate(() => window.dispatchEvent(new Event("online")));
+  await pollRelationships(page, 60_001);
   await page.waitForSelector(".relationship-node");
   await page.locator("#networkZoomIn").click();
   assert.match(
@@ -344,11 +361,11 @@ for (const width of [1440, 390])
     });
     await page.keyboard.press("Escape");
     h.setMode("fail");
-    await page.clock.runFor(61000);
+    await pollRelationships(page, 60_001);
     await page.waitForFunction(() => document.querySelector('#homeIntroductions').hidden);
     assert.equal(await page.locator('.relationship-dialog').isVisible(), false);
     h.setMode("ok");
-    await page.evaluate(() => window.dispatchEvent(new Event('online')));
+    await pollRelationships(page, 60_001);
     await page.waitForSelector('#homeIntroductions [data-intro-node]');
     assert.deepEqual(h.errors, []);
   });
@@ -356,14 +373,14 @@ for (const width of [1440, 390])
 test('R2 relationship URL filters survive boot and intentional reset survives polling and reload',async t=>{
  const h=await open(t),{page}=h;await page.goto('http://localhost/relationships?mode=live&territory=Demo+Coast&vertical=dental');await page.waitForSelector('.relationship-node');
  assert.equal(new URL(page.url()).searchParams.get('territory'),'Demo Coast');assert.equal(new URL(page.url()).searchParams.get('vertical'),'dental');
- assert.equal(await page.locator('#networkTerritory').inputValue(),'Demo Coast');const polled=page.waitForResponse('**/api/v1/business/relationships*');await page.locator('#networkReset').click();await page.clock.fastForward(31000);
+ assert.equal(await page.locator('#networkTerritory').inputValue(),'Demo Coast');const polled=page.waitForResponse('**/api/v1/business/relationships*');await page.locator('#networkReset').click();await pollRelationships(page);
  await polled;await page.waitForFunction(()=>document.querySelector('#networkRefresh').getAttribute('aria-busy')==='false');
  assert.equal(await page.locator('#networkTerritory').inputValue(),'');assert.equal(await page.locator('#networkVertical').inputValue(),'');assert.equal(new URL(page.url()).searchParams.has('territory'),false);
  await page.reload();await page.waitForSelector('.relationship-node');assert.equal(await page.locator('#networkTerritory').inputValue(),'');assert.equal(await page.locator('.relationship-node').count(),8);assert.deepEqual(h.errors,[]);
 });
 for(const failure of ['auth','expiry']) test(`R6 ${failure} invalidates relationship detail DOM facets counts and controls`,async t=>{
  const h=await open(t),{page}=h;await page.goto('http://localhost/relationships?mode=live');await page.waitForSelector('.relationship-node');await page.locator('.relationship-node').first().click();
- h.setMode(failure==='auth'?'auth':'fail');await page.clock.fastForward(failure==='auth'?31000:61000);
+ h.setMode(failure==='auth'?'auth':'fail');await pollRelationships(page, failure==='auth'?31_001:60_001);
  if(failure==='auth'){await page.waitForURL('**/public-shell/session-ended.html');assert.equal(await page.locator('.relationship-dialog,#networkCanvas,#networkTerritory').count(),0);assert.deepEqual(h.errors,[]);return;}
  await page.waitForFunction(()=>document.querySelector('#networkNotice').textContent.includes('Sign in')||document.querySelector('#networkNotice').textContent.includes('unavailable'));
  assert.equal(await page.locator('.relationship-dialog').textContent(),'');assert.equal(await page.locator('#networkTerritory option').count(),1);assert.equal(await page.locator('#networkVertical option').count(),1);
@@ -371,7 +388,7 @@ for(const failure of ['auth','expiry']) test(`R6 ${failure} invalidates relation
 });
 test('R7 malformed optional field is rejected without poisoning retained snapshot or later interactions',async t=>{
  const h=await open(t),{page}=h;await page.goto('http://localhost/relationships?mode=live');await page.waitForSelector('.relationship-node');
- const before=await page.locator('#networkCanvas').textContent();h.setMode('territory');await page.clock.fastForward(31000);await page.waitForFunction(()=>!document.querySelector('#networkNotice').hidden);
+ const before=await page.locator('#networkCanvas').textContent();h.setMode('territory');await pollRelationships(page);await page.waitForFunction(()=>!document.querySelector('#networkNotice').hidden);
  assert.equal(await page.locator('#networkCanvas').textContent(),before);await page.locator('#networkReset').click();await page.setViewportSize({width:1000,height:900});await page.locator('#networkZoomIn').click();assert.deepEqual(h.errors,[]);
  assert.equal(await page.locator('.relationship-node').count(),8);assert.equal(await page.locator('#networkUpdated').isVisible(),true);
 });

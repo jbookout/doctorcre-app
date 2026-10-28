@@ -106,7 +106,7 @@ function lockManager() {
   } };
 }
 
-test('ten tabs and multiple pollers make one five-read cycle, including all session checks', async () => {
+test('ten tabs coalesce duplicate cycle triggers and count all session checks', async () => {
   const { createPollSafety } = await import('../js/poll-safety.mjs');
   const { createSessionBoundary } = await import('../js/private-session.js');
   const c = fakeClock(), locks = lockManager(); let requests = 0;
@@ -342,4 +342,91 @@ test('human refresh promotes its own queued background turn without waiting for 
   const manual = auto.refresh(); await c.settle();
   assert.equal(reads, 2);
   await manual; auto.dispose();
+});
+
+test('forty actual pollers across ten tabs share one leader and its physical budget', async () => {
+  const { pollSafety } = await import('../js/poll-safety.mjs');
+  const { createSessionBoundary } = await import('../js/private-session.js');
+  const c = fakeClock(), locks = lockManager(), counts = Array(10).fill(0);
+  const tabs = counts.map((_, index) => {
+    const document = new EventTarget(); document.visibilityState = 'visible';
+    const window = new EventTarget();
+    window.setTimeout = c.window.setTimeout; window.clearTimeout = c.window.clearTimeout;
+    window.navigator = { locks }; window.sessionStorage = storage();
+    const safety = pollSafety(window, { document, now: c.now });
+    const client = createSessionBoundary({ safety, invalidate() {}, fetchImpl: async path => {
+      counts[index]++;
+      return Response.json(path === '/auth/session' ? { actor: { slug: 'synthetic' }, csrf_token: 'synthetic-fixture' } : {});
+    } });
+    const pollers = Array.from({ length: 4 }, () => mountAutoRefresh({ window, document, now: c.now,
+      idleMs: Infinity, intervalMs: 15_000,
+      refresh: () => Promise.all(Array.from({ length: 5 }, () => client.fetch('/read'))),
+    }));
+    return { window, document, safety, pollers };
+  });
+  await c.advance(3_600_000);
+  assert.equal(counts.reduce((sum, count) => sum + count, 0), 60);
+  assert.equal(counts.filter(count => count > 0).length, 1);
+  assert.equal(tabs.find((_, index) => counts[index] > 0).safety.state().paused, true);
+  tabs.forEach(tab => { tab.pollers.forEach(poller => poller.dispose()); tab.safety.dispose(); });
+});
+
+test('one failed secondary read cannot block a different view first read', async () => {
+  const { pollSafety } = await import('../js/poll-safety.mjs');
+  const c = fakeClock(), safety = pollSafety(c.window, c); let requests = 0;
+  await safety.run(() => { throw Error('secondary outage'); });
+  const auto = mountAutoRefresh({ ...c, refresh: () => safety.fetch(async () => { requests++; return new Response('{}'); }, '/primary') });
+  const first = auto.refresh(); await c.settle();
+  assert.equal(requests, 1, 'first initialization remains possible within the physical budget');
+  await first;
+  await safety.run(() => safety.fetch(async () => { requests++; return new Response('{}'); }, '/background'));
+  assert.equal(requests, 1, 'ordinary background turns still honor the failure cooldown');
+  auto.dispose(); safety.dispose();
+});
+
+test('raw page event handlers share the trigger gap without suppressing their callbacks', async () => {
+  const { createPollSafety } = await import('../js/poll-safety.mjs');
+  const { createSessionBoundary } = await import('../js/private-session.js');
+  const c = fakeClock(), safety = createPollSafety(c); let requests = 0, callbacks = 0;
+  const client = createSessionBoundary({ safety, invalidate() {}, fetchImpl: async path => {
+    requests++; return Response.json(path === '/auth/session' ? { actor: { slug: 'synthetic' }, csrf_token: 'synthetic-fixture' } : {});
+  } });
+  const read = () => { callbacks++; void client.fetch(`/raw?event=${callbacks}`).catch(() => {}); };
+  c.window.addEventListener('online', read);
+  c.document.addEventListener('visibilitychange', () => { if (c.document.visibilityState === 'visible') read(); });
+  for (let i = 0; i < 100; i++) {
+    c.window.dispatchEvent(new Event('online')); await c.settle();
+    c.document.visibilityState = 'hidden'; c.document.dispatchEvent(new Event('visibilitychange'));
+    c.document.visibilityState = 'visible'; c.document.dispatchEvent(new Event('visibilitychange')); await c.settle();
+  }
+  assert.equal(callbacks, 200, 'privacy and local view handlers always receive their events');
+  assert.equal(requests, 3, 'only one logical authenticated read reaches the transport inside the gap');
+  await c.advance(5_000); c.window.dispatchEvent(new Event('online')); await c.settle();
+  assert.equal(requests, 6);
+  safety.dispose();
+});
+
+test('a healthy poller cannot erase another poller failures on the same HTTP route', async () => {
+  const { createPollSafety } = await import('../js/poll-safety.mjs');
+  const c = fakeClock(), safety = createPollSafety(c), bad = {}, good = {};
+  const transport = async path => new Response('{}', { status: path.includes('bad') ? 503 : 200 });
+  for (let attempt = 0; attempt < 3; attempt++) {
+    await safety.run(() => safety.fetch(transport, '/read?record=bad'), { source: bad });
+    await c.advance(300_000);
+    await safety.run(() => safety.fetch(transport, '/read?record=good'), { source: good });
+    await c.advance(300_000);
+  }
+  assert.equal(safety.state().paused, true);
+  safety.dispose();
+});
+
+test('failure notifications cannot continually postpone a healthy poller before it queues', async () => {
+  const { pollSafety } = await import('../js/poll-safety.mjs');
+  const { mountVisibilityPoll } = await import('../js/visibility-poll.mjs');
+  const c = fakeClock(), safety = pollSafety(c.window, c); let healthyRequests = 0;
+  const bad = mountVisibilityPoll({ ...c, intervalMs: 5_000, poll: () => safety.fetch(async () => new Response('{}', { status: 503 }), '/bad') });
+  const good = mountAutoRefresh({ ...c, intervalMs: 15_000, refresh: () => safety.fetch(async () => { healthyRequests++; return new Response('{}'); }, '/good') });
+  await c.advance(300_000);
+  assert.ok(healthyRequests >= 1, 'healthy work must get a turn before the repeated-failure circuit opens');
+  good.dispose(); bad.dispose(); safety.dispose();
 });

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { chromium, fixtureServer, settles, waitForAsync } from './browser-harness.mjs';
 import { atlasFixtureResponse } from '../scripts/atlas-fixture.mjs';
+import { leaseRadarFixture } from '../js/lease-radar-fixture.js';
 import { createFixtureClient } from '../js/fixture-client.js';
 let server, origin;
 before(async()=>{
@@ -12,16 +13,35 @@ after(()=>server?.close());
 async function open(t,{smallChats=false,clientHooks=''}={}){
  const browser=await chromium.launch();t.after(()=>browser.close());const page=await browser.newPage();await page.clock.install({time:new Date('2026-10-01T15:00:00Z')});
  const errors=[];page.on('pageerror',e=>errors.push(e.message));
+ await page.addInitScript(()=>{
+  const original=window.fetch;window.refreshNetworkReads=0;
+  window.fetch=(path,init)=>{if(/work-inventory|atlas-graph/.test(String(path)))window.refreshNetworkReads++;return original(path,init);};
+ });
+ await page.route('**/api/v1/business/leases',async route=>{const observed_at=await page.evaluate(()=>new Date().toISOString());return route.fulfill({json:{...leaseRadarFixture(observed_at.slice(0,10)),observed_at,leases:[]}});});
  await page.route('**/{api/system-work/session,auth/session}',r=>r.fulfill({json:{actor:{slug:'joe'},csrf_token:'synthetic'}}));
  await page.route('**/api/v1/atlas-graph**',r=>{const u=new URL(r.request().url());u.searchParams.set('limit','2');const a=atlasFixtureResponse(u,'GET');return r.fulfill({status:a.status,json:a.body});});
- if(smallChats || clientHooks)await page.route('**/js/fixture-client.js',async r=>{
+ await page.route('**/js/fixture-client.js',async r=>{
   let src=await readFile(new URL('../js/fixture-client.js',import.meta.url),'utf8');src=src.replace('export async function createFixtureClient','async function originalFixture');
-  src+=`\nexport async function createFixtureClient(opts){const c=await originalFixture(opts);${smallChats ? "for(const name of ['listDocConversations','readDocConversation','docOutcomeCards']){const f=c[name];c[name]=args=>f({...args,limit:1});}" : ''}${clientHooks}return c;}`;
+  src+=`\nexport async function createFixtureClient(opts){const c=await originalFixture(opts);${smallChats ? "for(const name of ['listDocConversations','readDocConversation','docOutcomeCards']){const f=c[name];c[name]=args=>f({...args,limit:1});}" : ''}${clientHooks}window.refreshClientReads={chats:0,home:0};for(const [name,key] of [['listDocConversations','chats'],['getHomeAgenda','home']]){const read=c[name];c[name]=(...args)=>{window.refreshClientReads[key]++;return read.apply(c,args);};}return c;}`;
   await r.fulfill({contentType:'text/javascript',body:src});
  });
  return {page,errors};
 }
-const online=page=>page.evaluate(()=>window.dispatchEvent(new Event('online')));
+async function readCount(page){return page.evaluate(()=>location.pathname==='/doc-chats'?window.refreshClientReads?.chats||0:location.pathname==='/'?window.refreshClientReads?.home||0:window.refreshNetworkReads||0);}
+async function pace(page){await page.waitForLoadState('networkidle');await page.clock.setSystemTime(new Date(await page.evaluate(()=>Date.now())+60_001));}
+async function readTurn(page,before){
+ for(let turn=0;turn<12;turn++){
+  await page.waitForTimeout(30);
+  if(await readCount(page)>before)return;
+  await page.clock.runFor(5_001);
+ }
+ assert.ok(await readCount(page)>before,'the requested public read receives a queued turn');
+}
+async function online(page,{expectRead=true}={}){
+ await pace(page);const before=await readCount(page);
+ await page.evaluate(()=>window.dispatchEvent(new Event('online')));
+ if(expectRead)await readTurn(page,before);
+}
 test('PR119 finding 8: loaded Doc Chats traversal expires as a whole and can recover',async t=>{
  const hooks=`const read=c.listDocConversations;
  window.chatResponses=[];window.chatReadCount=0;
@@ -99,9 +119,11 @@ for(const trigger of ['online','timer','resume'])test('PR119 dismissed-draft reg
  await page.locator(`[data-suggestion="${id}"]`).waitFor({state:'detached'});
  await page.locator('h1').evaluate(e=>{e.tabIndex=-1;e.focus();});
  const before=await page.evaluate(()=>({...window.chatReads}));
- if(trigger==='timer')await page.clock.fastForward(120_000);
+ const readBefore=await readCount(page);await pace(page);
+ if(trigger==='timer')await page.clock.runFor(30_001);
  else if(trigger==='resume')await page.evaluate(()=>window.dispatchEvent(new PageTransitionEvent('pageshow',{persisted:true})));
- else await online(page);
+ else await page.evaluate(()=>window.dispatchEvent(new Event('online')));
+ await readTurn(page,readBefore);
  // Client calls start synchronously when a read is eligible. Count that
  // public read boundary so an indefinitely skipped callback fails directly.
  const after=await page.evaluate(()=>({...window.chatReads}));
@@ -190,14 +212,14 @@ for(const trigger of ['online','timer','resume'])test('PR119 finding 6: '+trigge
  const {page,errors}=await open(t,{smallChats:true});await page.goto(origin+'/doc-chats', {waitUntil:'domcontentloaded'});
  const card=page.locator('.suggestion-card').first();await card.locator('[data-correction]').fill('Synthetic correction');await card.locator('[data-snooze-date]').fill('2026-12-01');
  await card.locator('[data-correction]').focus();await card.locator('[data-correction]').evaluate(e=>{window.editor=e;e.setSelectionRange(3,8);});
- if(trigger==='timer')await page.clock.fastForward(31_000);else if(trigger==='resume')await page.evaluate(()=>window.dispatchEvent(new PageTransitionEvent('pageshow',{persisted:true})));else await online(page);
+ if(trigger==='timer')await page.clock.fastForward(31_000);else if(trigger==='resume')await page.evaluate(()=>window.dispatchEvent(new PageTransitionEvent('pageshow',{persisted:true})));else await online(page,{expectRead:false});
  const editor=await page.evaluate(()=>({connected:window.editor.isConnected,focused:document.activeElement===window.editor,start:window.editor.selectionStart,end:window.editor.selectionEnd,date:document.querySelector('[data-snooze-date]').value}));
  assert.deepEqual(editor,{connected:true,focused:true,start:3,end:8,date:'2026-12-01'});assert.deepEqual(errors,[]);
 });
 test('PR119 finding 6: a cleared snooze date stays cleared after focus leaves the editor',async t=>{
  const {page,errors}=await open(t);await page.goto(origin+'/doc-chats', {waitUntil:'domcontentloaded'});
  const date=page.locator('[data-snooze-date]').first();await date.fill('');await date.evaluate(e=>{window.dateEditor=e;e.blur();});
- await online(page);await waitForAsync(page, async()=> (await import('/js/conversations.js')).view.list.state==='read');
+ await online(page,{expectRead:false});await waitForAsync(page, async()=> (await import('/js/conversations.js')).view.list.state==='read');
  assert.equal(await date.inputValue(),'');assert.deepEqual(errors,[]);
 });
 test('PR119 finding 5: All Work rereads its loaded extent',async t=>{

@@ -136,6 +136,7 @@ test('R6: without a readable tour the page resolves its freshness and shows one 
     [`https://synthetic.test/tours/day.html?tour=${tourId}`, { session: async () => ({ scope: 'account-A', user_ref: 'account-A' }), tour: async () => { throw new Error('unavailable'); } }, 'Not loaded', /could not be read/],
   ]) {
     const dom = new JSDOM(html, { url, pretendToBeVisual: true }); const doc = dom.window.document;
+    dom.window.navigator.locks = locks();
     const dialog = doc.querySelector('dialog'); dialog.showModal = function() { this.open = true; }; dialog.close = function() { this.open = false; };
     const view = mountTourDay({ document: doc, window: dom.window, api: { capabilities: { voiceNotes: false }, ...api }, store: storage(), prepareOffline: async () => {}, mapFactory: () => ({ dispatch() {}, update() {}, navigationLinks: () => [], destroy() {} }) });
     t.after(() => { view.dispose(); dom.window.close(); }); await view.ready; await settle();

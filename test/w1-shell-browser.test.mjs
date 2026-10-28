@@ -7,6 +7,8 @@ import { fileURLToPath } from 'node:url';
 import { chromium, settles, waitForAsync } from './browser-harness.mjs';
 import { createFixtureClient } from '../js/fixture-client.js';
 import { atlasFixtureResponse } from '../scripts/atlas-fixture.mjs';
+import { leaseRadarFixture } from '../js/lease-radar-fixture.js';
+import { relationshipNetworkFixture } from '../js/relationship-network-fixture.js';
 const root = new URL('../', import.meta.url);
 const contract = (await import("../js/routes.js")).routeContract;
 const primary = navigationItems.filter(item => !item.group).map(item => item.label);
@@ -49,6 +51,10 @@ async function open(t, { width = 1440, height = 960, actor = 'joe', live = false
       docSuggestionsHeld = true;
       markDocSuggestionsHeld();
       await docSuggestionsRelease;
+    }
+    if (url.pathname === '/api/v1/business/leases' || url.pathname === '/api/v1/business/relationships') {
+      const observed_at = await page.evaluate(() => new Date().toISOString());
+      return route.fulfill({json: url.pathname.endsWith('/leases') ? {...leaseRadarFixture(observed_at.slice(0,10)), observed_at, leases: []} : {...relationshipNetworkFixture(observed_at), suggestions: []}});
     }
     if (url.pathname.startsWith('/api/') || ['/mcp', '/app-release'].includes(url.pathname)) return route.fulfill({ contentType: 'application/json', body: '{}' });
     if (url.pathname === '/public-shell/session-ended.html') return route.fulfill({contentType:'text/html',body:await readFile(new URL('public-shell/session-ended.html',root),'utf8')});
@@ -233,7 +239,13 @@ test('automatic Atlas refresh preserves the selected component', async t => {
   await page.locator('[data-atlas-select]').first().click();
   const selected = await page.evaluate(async () => (await import('/js/atlas.js')).view.selected);
   const reads = calls.filter(call => call.url === '/api/v1/atlas-graph').length;
-  await page.clock.fastForward(31_000);
+  await page.waitForLoadState('networkidle');
+  await page.clock.setSystemTime(new Date(await page.evaluate(() => Date.now()) + 60_001));
+  await page.evaluate(() => window.dispatchEvent(new Event('online')));
+  for(let turn=0;turn<12 && calls.filter(call=>call.url === '/api/v1/atlas-graph').length === reads;turn++) {
+    await page.clock.runFor(5_001);
+    await page.waitForLoadState('networkidle');
+  }
   await waitForAsync(page, async reads => (await import('/js/atlas.js')).view.status === 'ready', reads);
   assert.ok(calls.filter(call => call.url === '/api/v1/atlas-graph').length > reads);
   assert.equal(await page.evaluate(async () => (await import('/js/atlas.js')).view.selected), selected);
@@ -275,12 +287,15 @@ for (const { name, path, updated, retry, error } of [
   const {cookie}=await response.json();
   const browser=await chromium.launch();t.after(()=>browser.close());
   const page=await browser.newPage();
+  await page.clock.install({time:new Date('2026-10-01T15:00:00Z')});
   await page.context().addCookies([cookie]);
   let refused=true;
   const intercept=route=>refused?route.fulfill({status,json:{ok:false,error:status===401?'unauthorized':status===403?'forbidden':'temporarily_unavailable',code:status===401?'unauthorized':status===403?'forbidden':'temporarily_unavailable'}}):route.continue();
   await page.route('**/api/**',intercept);
   await page.route('**/mcp',intercept);
   const retryAndSettle = async outcome => {
+    await page.waitForLoadState('networkidle');
+    await page.clock.setSystemTime(new Date(await page.evaluate(() => Date.now()) + 60_001));
     const before = name === 'Deals'
       ? await page.evaluate(async () => (await import('/js/pipeline.js')).state.boardSync.stats()) : null;
     await page.locator(retry).click();
@@ -469,13 +484,15 @@ test('a returning partner does not suppress another partner’s first Home walkt
 });
 
 test('automatic walkthrough waits for verified Home and preserves deep-link entry', async t => {
-  const { page, errors } = await open(t, { minimal: true, firstSignIn: true });
+  const { page, errors } = await open(t, { minimal: true, firstSignIn: true, simulatedClock: true });
   const guide = page.getByRole('dialog', { name: 'How DoctorCRE works', exact: true });
   await page.route('**/auth/session', route => route.fulfill({ status: 503, contentType: 'application/json', body: '{}' }));
   await page.goto('http://localhost/?mode=live');
   await page.getByText('Sign-in unavailable', { exact: true }).waitFor();
   assert.equal(await guide.count(), 0);
   await page.unroute('**/auth/session');
+  await page.waitForLoadState('networkidle');
+  await page.clock.setSystemTime(new Date(await page.evaluate(() => Date.now()) + 60_001));
   await page.goto('http://localhost/control-room?mode=live');
   await page.getByRole('button', { name: 'Joe: account and settings', exact: true }).waitFor();
   await page.waitForLoadState('networkidle');

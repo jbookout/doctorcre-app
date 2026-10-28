@@ -284,7 +284,8 @@ test("the weekly call supplies the deal context in batches and opens the agenda"
   assert.equal(controller.state.postCall.status, "context_ready");
 });
 
-test("Stop sends one stop and starts following the weekly review", async () => {
+test("Stop sends one stop and starts following the weekly review", async t => {
+  t.mock.timers.enable({ apis: ["Date"], now: 0 });
   const { controller, requests, doc, timers } = harness({ agenda: agendaOf(1) });
   doc.getElementById("callModeConsent").checked = true;
   await controller.start("weekly_deal_call");
@@ -292,10 +293,11 @@ test("Stop sends one stop and starts following the weekly review", async () => {
   assert.equal(requests.filter((r) => r.url.endsWith("/api/stop")).length, 1);
   // The next read is armed once the first post-call read settles.
   await new Promise((resolve) => setImmediate(resolve));
-  assert.ok(timers.some((t) => t.ms === 1600 && !t.cleared), "the review is followed after Stop");
+  assert.ok(timers.some((t) => t.ms === 5000 && !t.cleared), "the review is followed after Stop");
 });
 
-test("an active call keeps following its report while the tab is hidden, and stops when it settles", async () => {
+test("an active call keeps following its report while the tab is hidden, and stops when it settles", async t => {
+  t.mock.timers.enable({ apis: ["Date"], now: 0 });
   const { controller, doc, timers, calls } = harness({ agenda: agendaOf(1) });
   doc.getElementById("callModeConsent").checked = true;
   await controller.start("weekly_deal_call");
@@ -303,10 +305,11 @@ test("an active call keeps following its report while the tab is hidden, and sto
   await new Promise((resolve) => setImmediate(resolve));
   doc.visibilityState = "hidden";
   doc.dispatchEvent(new Event("visibilitychange"));
-  const live = () => timers.filter((t) => t.ms === 1600 && !t.cleared);
+  const live = () => timers.filter((t) => t.ms === 5000 && !t.cleared);
   assert.equal(live().length, 1, "hiding the tab does not stop the post-call poll");
   const before = calls.getStatus.length;
   live()[0].fired = true; live()[0].cleared = true;
+  t.mock.timers.tick(5000);
   timers.filter((t) => t.fired)[0].fn();
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(calls.getStatus.length, before + 1, "the hidden tick still reads the report");
@@ -315,18 +318,19 @@ test("an active call keeps following its report while the tab is hidden, and sto
   assert.equal(live().length, 0, "once the call's report is done, nothing polls");
 });
 
-test("Close Call Mode only closes the dialog, as on main; the follow-through stops with stopPolling and never reads after", async () => {
+test("Close Call Mode only closes the dialog, as on main; the follow-through stops with stopPolling and never reads after", async t => {
+  t.mock.timers.enable({ apis: ["Date"], now: 0 });
   const { controller, doc, timers, calls } = harness({ agenda: agendaOf(1) });
   doc.getElementById("callModeConsent").checked = true;
   await controller.start("weekly_deal_call");
   await controller.stop();
   await new Promise((resolve) => setImmediate(resolve));
   const dialog = doc.getElementById("callModeDialog"); dialog.open = true;
-  const live = () => timers.filter((t) => t.ms === 1600 && !t.cleared);
+  const live = () => timers.filter((t) => t.ms === 5000 && !t.cleared);
   assert.equal(await controller.handleClick(doc.getElementById("callModeClose")), true);
   assert.equal(dialog.open, false, "the declared observation: the dialog closes");
   assert.equal(live().length, 1, "closing leaves the post-call follow-through running, exactly as main's setInterval did");
-  const armed = timers.filter((t) => t.ms === 1600);
+  const armed = timers.filter((t) => t.ms === 5000);
   controller.stopPolling();
   assert.equal(live().length, 0, "stopping the follow-through clears its timer");
   const before = calls.getStatus.length;

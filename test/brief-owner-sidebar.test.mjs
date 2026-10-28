@@ -7,6 +7,9 @@ import { mountMorningBrief } from '../js/morning-brief.js';
 for (const legacy of [false,true]) for (const shared of [false,true]) test(`Today sidebar shares brief owner selection, older server ${legacy}, shared deal ${shared}`, async t => {
   const dom = new JSDOM('<nav id="host"></nav><main><h1>Example</h1></main><button id="docOpen">Doc</button><button id="docMorning">Morning brief</button>', {url:'http://localhost/?mode=live',pretendToBeVisual:true});
   const {window:win} = dom, root = win.document;
+  Object.defineProperty(win.navigator, 'locks', { value: { request: async (_name, _options, callback) => callback({}) } });
+  const activation = { isActive: false };
+  Object.defineProperty(win.navigator, 'userActivation', { value: activation });
   win.matchMedia = () => ({matches:false,addEventListener(){},removeEventListener(){}});
   win.HTMLDialogElement.prototype.showModal = function(){this.open=true;};
   win.HTMLDialogElement.prototype.close = function(){this.open=false;};
@@ -37,8 +40,10 @@ for (const legacy of [false,true]) for (const shared of [false,true]) test(`Toda
   assert.deepEqual(rows('#appTodayNext'),legacy?(shared?['demo-joe','demo-joe']:['demo-joe','demo-dell']):[shared?'demo-joe':'demo-dell']);
   assert.deepEqual(rows('#appTodayNeeds'),legacy?(shared?['demo-joe','demo-joe']:['demo-joe','demo-dell']):[shared?'demo-joe':'demo-dell']);
   if (!legacy) assert.match(root.querySelector('#appTodayNeeds').textContent,/Call dell/);
+  activation.isActive = true;
   morning=mountMorningBrief({document:root,window:win,getClient:async()=>({morningBrief:async()=>brief,getChanges:async()=>({events:[],cursor:'end'})})});
   await morning.refresh();
+  activation.isActive = false;
   assert.equal(root.querySelector('#morningOwners [aria-pressed="true"]').textContent,'Dell');
   root.querySelector('#morningOwners [data-brief-owner="joe"]').click();
   assert.deepEqual(rows('#appTodayNext'),legacy?(shared?['demo-joe','demo-joe']:['demo-joe','demo-dell']):['demo-joe']);

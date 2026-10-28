@@ -70,6 +70,8 @@ test("desktop and phone navigation reach Progress through More", async t => {
     await page.locator(".app-shell-more-toggle").click();
     const selector = '[data-app-nav-item][aria-label="System Job Board"]';
     assert.equal(await page.locator(selector).isVisible(), true);
+    await page.waitForLoadState('networkidle');
+    await page.clock.setSystemTime(new Date(await page.evaluate(() => Date.now()) + 60_001));
     await page.locator(selector).click();
     await page.waitForURL("**/control-room/progress?mode=live");
     await page.waitForFunction(() => document.querySelector("#board-title")?.textContent === "System progress");
@@ -313,7 +315,13 @@ for (const state of ["answer focus", "directory focus", "failed reads", "offline
     assert.equal(await page.evaluate(() => window.retainedBadge === document.querySelector(".board-link .freshness-badge")), true);
     if (state.includes("focus")) assert.equal(await page.evaluate(() => document.activeElement === window.retainedControl), true);
     if (state === "answer focus") assert.equal(await page.locator(target).inputValue(), "Synthetic unsent draft");
-    if (fail) await settles(async () => assert.match(await page.locator("#board-error").textContent(), /(Could not load board|offline)/i));
+    if (fail) {
+      for(let turn=0;turn<36 && !/(Could not load board|offline)/i.test(await page.locator('#board-error').textContent());turn++) {
+        await page.clock.runFor(5_001);
+        await page.waitForTimeout(30);
+      }
+      await settles(async () => assert.match(await page.locator("#board-error").textContent(), /(Could not load board|offline)/i));
+    }
     assert.deepEqual(errors, []);
   });
 

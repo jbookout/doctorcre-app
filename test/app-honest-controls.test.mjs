@@ -337,3 +337,20 @@ test('shared Call Mode builds at load only when a call is already recording', as
     assert.ok(doc.getElementById('callModeButton').classList.contains('recording'));
   } finally { call?.dispose(); globalThis.fetch = previousFetch; dom.window.close(); }
 });
+
+for (const state of ['idle', 'recording']) test(`late Quill ${state} probe cannot rebuild a revoked session`, async () => {
+  const dom = new JSDOM(`<div id="appShell">${appShellMarkup('/leads')}</div>`);
+  const previousFetch = globalThis.fetch;
+  let reply;
+  globalThis.fetch = () => new Promise(resolve => { reply = resolve; });
+  let call;
+  try {
+    const pending = mountGlobalCallMode(dom.window.document);
+    dom.window.dispatchEvent(new dom.window.Event('doctorcre-session-invalidated'));
+    dom.window.document.body.replaceChildren(dom.window.document.createElement('main'));
+    reply({ ok: true, json: async () => ({ state }) });
+    call = await pending;
+    assert.equal(dom.window.document.body.innerHTML, '<main></main>');
+    assert.equal(await call.open(), false);
+  } finally { call?.dispose(); globalThis.fetch = previousFetch; dom.window.close(); }
+});

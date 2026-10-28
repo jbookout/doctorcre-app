@@ -29,6 +29,16 @@ async function open(t,width=1440){
   });
   return {page,errors,calls,get writes(){return writes;},setFail:value=>{fail=value;},setExpired:value=>{expired=value;},setWriteMode:value=>{writeMode=value;}};
 }
+async function refreshDirectory(page, ready = () => true) {
+ await page.waitForLoadState('networkidle');
+ await page.clock.setSystemTime(new Date(await page.evaluate(() => Date.now()) + 60_001));
+ await page.evaluate(() => window.dispatchEvent(new Event('online')));
+ for(let turn=0;turn<12;turn++) {
+  await page.clock.runFor(5_001);
+  if(await page.evaluate(ready)) return;
+ }
+ assert.fail('Directory did not complete its eligible refresh');
+}
 for(const width of [1440,390])test(`W5 rendered directories and wide dialog at ${width}px`,async t=>{
   const h=await open(t,width),{page}=h;await page.goto(origin+'/vendors?mode=live', {waitUntil:'domcontentloaded'});await page.waitForSelector('.record-row').catch(async e=>{assert.fail(JSON.stringify({errors:h.errors,body:await page.locator('main').innerText()}));});
   assert.equal(await page.locator('#pager').count(),0);assert.doesNotMatch(await page.locator('main').innerText(),/Checked a while ago|About this list|source|No filters|read again/i);
@@ -71,14 +81,14 @@ test('W5 filters, traversal and autonomous refresh recover without losing search
     const url=new URL(r.request().url());
     return url.searchParams.get('q')==='Demo'&&url.searchParams.get('page')===lastPage?held.push(r):r.fallback();
   });
-  await page.clock.fastForward(31000);await settles(()=>assert.equal(held.length,1));
+  await refreshDirectory(page);await settles(()=>assert.equal(held.length,1));
   assert.equal(await page.evaluate(async()=> (await import('/js/doc-context.js')).pageDocContext.snapshot().state),'updating');
   assert.ok(await page.locator('.record-row').count()>=count);assert.equal(await page.locator('#searchInput').inputValue(),'Demo');
   await page.unroute('**/api/v1/business/vendors?**');await held[0].fulfill({json:directoryFixture(held[0].request().url())});
   // Online coalesces with an in-flight poll; start the failure only after that read settles.
   await waitForAsync(page,async()=> (await import('/js/doc-context.js')).pageDocContext.snapshot().state==='ready');
   assert.ok(await page.locator('.record-row').count()>=count);assert.equal(await page.locator('#searchInput').inputValue(),'Demo');
-  h.setFail(true);await page.evaluate(()=>window.dispatchEvent(new Event('online')));await page.waitForSelector('.record-empty');h.setFail(false);await page.clock.fastForward(31000);await page.waitForSelector('.record-row');assert.deepEqual(h.errors,[]);
+  h.setFail(true);await refreshDirectory(page);await page.waitForSelector('.record-empty');h.setFail(false);await refreshDirectory(page);await page.waitForSelector('.record-row');assert.deepEqual(h.errors,[]);
 });
 test('W5 reduced motion stops hover travel and pulse while keeping content visible',async t=>{
   const {page}=await open(t);await page.emulateMedia({reducedMotion:'reduce'});await page.goto(origin+'/vendors', {waitUntil:'domcontentloaded'});await page.waitForSelector('.record-row');await page.locator('.record-row').first().hover();
@@ -110,7 +120,7 @@ test('W5 session expiry erases a pending trust draft and recovery permits a fres
 // The refresh that discovers expiry reads the list, then the open record. Signal
 // recovery only once that record answer is in: a resume during a refresh joins it.
 async function expireOpenRecord(h) {
- h.setExpired(true);await h.page.evaluate(()=>window.dispatchEvent(new Event('online')));
+ h.setExpired(true);await refreshDirectory(h.page);
  await h.page.waitForURL('**/public-shell/session-ended.html');
 }
 async function beginRating(page, reason='Synthetic pending rating') {
@@ -171,8 +181,8 @@ test('W5 Back restores cached query rows while its read is pending',async t=>{
 });
 test('W5 ordinary record read failure preserves the unsaved rating draft',async t=>{
  const h=await open(t),{page}=h;await page.goto(origin+'/vendors?mode=live', {waitUntil:'domcontentloaded'});await page.locator('.record-row').first().click();await beginRating(page,'Synthetic draft survives');
- h.setFail(true);await page.evaluate(()=>window.dispatchEvent(new Event('online')));await page.waitForFunction(()=>document.querySelector('#recordTitle').textContent==='This did not load');
- h.setFail(false);await page.evaluate(()=>window.dispatchEvent(new Event('online')));await page.waitForSelector('#trustForm',{state:'attached'});
+ h.setFail(true);await refreshDirectory(page);await page.waitForFunction(()=>document.querySelector('#recordTitle').textContent==='This did not load');
+ h.setFail(false);await refreshDirectory(page);await page.waitForSelector('#trustForm',{state:'attached'});
  assert.equal(await page.locator('[name="reason"]').inputValue(),'Synthetic draft survives');assert.equal(await page.locator('[name="tier"]').inputValue(),'Trial');
 });
 test('W5 failed continuous page is visible and polling retries without scroll',async t=>{
@@ -180,7 +190,7 @@ test('W5 failed continuous page is visible and polling retries without scroll',a
  await page.route('**/api/v1/business/vendors?**',r=>new URL(r.request().url()).searchParams.get('page')==='2'&&fail?r.fulfill({status:503,json:{error:'DEPENDENCY_UNAVAILABLE'}}):r.fallback());
  await page.goto(origin+'/vendors?mode=live', {waitUntil:'domcontentloaded'});await page.waitForSelector('.record-row');await page.evaluate(()=>scrollTo(0,document.body.scrollHeight));await page.waitForTimeout(150);
  assert.match(await page.locator('#noticeRegion').innerText(),/Could not load more/);assert.equal(await page.locator('.record-row').count(),25);
- fail=false;await page.clock.fastForward(31000);await page.waitForFunction(()=>document.querySelectorAll('.record-row').length>=50);
+ fail=false;await refreshDirectory(page);await page.waitForFunction(()=>document.querySelectorAll('.record-row').length>=50);
 });
 test('W5 missing original details never displays summary as original',async t=>{
  const {page}=await open(t);await page.route('**/api/v1/business/vendors/*',r=>{const p=directoryFixture(r.request().url());p.record.relationship.recent_entries[0].detail=null;return r.fulfill({json:p});});

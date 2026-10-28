@@ -10,6 +10,17 @@ const base = {human_ref:'WR-000123',version:1,state:'captured',title:'Synthetic 
 async function setup(t, card=base, read=()=>card, current=()=>({items:[]}), index=false, write=null) {
  const dom=new JSDOM(readFileSync(new URL('../system-work.html',import.meta.url),'utf8'),{url:'http://localhost/work-requests'+(index?'':'?work_request=WR-000123'),runScripts:'outside-only'});
  t.after(()=>dom.window.close()); const w=dom.window,d=w.document,calls=[];
+ Object.defineProperty(w.navigator,'locks',{value:{request:(_name,_options,callback)=>callback({})}});
+ let time=0,serial=0;const timers=new Map();
+ w.Date.now=()=>time;
+ w.setTimeout=(fn,ms)=>{const id=++serial;timers.set(id,{fn,at:time+ms});return id;};
+ w.clearTimeout=id=>timers.delete(id);
+ const advance=async ms=>{
+  await settle();const end=time+ms;
+  while(true){const next=[...timers].filter(([,job])=>job.at<=end).sort((a,b)=>a[1].at-b[1].at)[0];if(!next)break;
+   time=next[1].at;timers.delete(next[0]);next[1].fn();await settle();}
+  time=end;await settle();
+ };
  w.structuredClone=structuredClone;
  w.createRetainedCommands=createRetainedCommands;
  w.HTMLDialogElement.prototype.showModal=function(){this.open=true;};w.HTMLDialogElement.prototype.close=function(){this.open=false;};
@@ -22,7 +33,7 @@ async function setup(t, card=base, read=()=>card, current=()=>({items:[]}), inde
  return new Response(JSON.stringify({ok:true,data}));};
  const files=['doc-context-model.js','doc-context.js','uuid.js','system-work-view.js','system-work-client.js','system-work-app.js'];
  w.eval(autoRefreshScript+'\n'+files.map(name=>{const raw=readFileSync(new URL('../js/'+name,import.meta.url),'utf8');const names=[...raw.matchAll(/^export (?:async )?(?:function|const) (\w+)/gm)].map(m=>m[1]);return '(function(){'+raw.replace(/^import [^\n]*\n/gm,'').replace(/^export /gm,'')+';Object.assign(window,{'+names.join(',')+'});})();';}).join('\n'));
- await settle();return {w,d,calls,online:async()=>{w.dispatchEvent(new w.Event('online'));await settle();},submit:async()=>{d.querySelector('#systemWorkForm').dispatchEvent(new w.Event('submit',{bubbles:true,cancelable:true}));await settle();}};
+ await settle();return {w,d,calls,online:async(ms=5_001)=>{await advance(ms);w.dispatchEvent(new w.Event('online'));await settle();},submit:async()=>{d.querySelector('#systemWorkForm').dispatchEvent(new w.Event('submit',{bubbles:true,cancelable:true}));await settle();}};
 }
 for(const [kind,card] of [
  ['triage',base],['prepare-plan',{...base,state:'triaged'}],
@@ -39,9 +50,9 @@ for(const [kind,card] of [
  assert.match(h.d.querySelector('#systemWorkFormError').textContent,/changed|review/i);
 });
 test('PR119 finding 2: a superseded poll cannot replace a newer selection',async t=>{
- const slow=deferred();let hold=false;
- const h=await setup(t,base,path=>path.endsWith('WR-000456')?{...base,human_ref:'WR-000456',title:'Selected B'}:hold?slow.promise:base);
- hold=true;h.w.dispatchEvent(new h.w.Event('online'));await settle();
+ const slow=deferred();let hold=false,heldReads=0;
+ const h=await setup(t,base,path=>path.endsWith('WR-000456')?{...base,human_ref:'WR-000456',title:'Selected B'}:hold?(heldReads++,slow.promise):base);
+ hold=true;await h.online();assert.equal(heldReads,1,'the superseded poll is pending before selecting another card');
  h.d.querySelector('#workRequestRef').value='WR-000456';h.d.querySelector('#openWorkRequest').dispatchEvent(new h.w.Event('submit',{bubbles:true,cancelable:true}));await settle();
  slow.resolve(base);await settle();
  assert.equal(h.d.querySelector('#workRequestRef').value,'WR-000456');assert.match(h.w.location.search,/WR-000456/);assert.match(h.d.querySelector('#systemWorkStage').textContent,/Selected B/);
@@ -50,15 +61,15 @@ for(const failure of ['auth','network','service']) test('PR119 finding 3: '+fail
  let failed=false;const h=await setup(t,base,()=>{if(!failed)return base;if(failure==='network')throw Error('Synthetic connection failed');return new Response(JSON.stringify({error:failure==='auth'?'AUTHENTICATION_REQUIRED':'DEPENDENCY_UNAVAILABLE'}),{status:failure==='auth'?401:503});});
  h.d.querySelector('[data-system-action]').click();failed=true;await h.online();
  assert.equal(h.d.querySelector('[data-system-action]'),null);assert.equal(h.d.querySelector('#systemWorkAlert').hidden,false);await h.submit();assert.equal(h.calls.filter(c=>c.init.method==='POST').length,0);
- failed=false;await h.online();assert.ok(h.d.querySelector('[data-system-action]'));assert.equal(h.d.querySelector('#systemWorkAlert').hidden,true);
+ failed=false;await h.online(60_001);assert.ok(h.d.querySelector('[data-system-action]'));assert.equal(h.d.querySelector('#systemWorkAlert').hidden,true);
 });
 
 test('PR119 finding 4: the index rereads and recovers; late lists cannot overwrite a selection',async t=>{
  let rows=[],failure=false,held=null;const h=await setup(t,base,()=>base,()=>{if(held)return held.promise;if(failure)throw Error('Synthetic list outage');return {items:rows};},true);
  rows=[base];await h.online();assert.ok(h.d.querySelector('[data-open-work-request]'));
  failure=true;await h.online();assert.equal(h.d.querySelector('#systemWorkAlert').hidden,false);assert.equal(h.d.querySelector('[data-open-work-request]'),null);
- failure=false;await h.online();assert.ok(h.d.querySelector('[data-open-work-request]'));
- held=deferred();h.w.dispatchEvent(new h.w.Event('online'));await settle();
+ failure=false;await h.online(60_001);assert.ok(h.d.querySelector('[data-open-work-request]'));
+ held=deferred();await h.online();
  h.d.querySelector('#workRequestRef').value=base.human_ref;h.d.querySelector('#openWorkRequest').dispatchEvent(new h.w.Event('submit',{bubbles:true,cancelable:true}));await settle();
  held.resolve({items:[]});await settle();assert.ok(h.d.querySelector('[data-system-action]'));
 });

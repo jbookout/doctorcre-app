@@ -1,3 +1,4 @@
+import { installPollFixtureClock } from './poll-fixture-clock.mjs';
 import { autoRefreshScript } from "./auto-refresh-script.mjs";
 import { mapScript } from "./tours-map-script.mjs";
 import assert from "node:assert/strict";
@@ -32,6 +33,7 @@ function feedbackResponse(label) {
 }
 async function openBroker(feedbackRead, { stops = [], detailRead = null } = {}) {
   const dom = openDom(tourHtml, { url: "https://app.doctorcre.com/tours", runScripts: "outside-only" });
+  installPollFixtureClock(dom.window);
   dom.window.TextEncoder = TextEncoder;
   const counts = [0, 0], reads = [];
   dom.window.fetch = async path => {

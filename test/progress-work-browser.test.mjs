@@ -71,7 +71,7 @@ async function open(t,{width=390,path=taskPath,empty=false,stale=false,history=0
       state.queueReads++;if(state.authLost)return route.fulfill({status:401,body:'{}'});if(state.offline)return route.fulfill({status:503,body:'{}'});
       if(state.queueWait)await state.queueWait;
       const events=state.queueEmpty||empty?[]:[{v:1,board:'carr-build',event_id:1,event:'created',task_id:taskId,card:{title:'Demo research',target:'dot',effective_model:'Synthetic researcher',status:'ready',priority:'P1',cap:'read',updated_at:NOW.toISOString(),source_seq:8},summary:'Synthetic research job',projected_at:NOW.toISOString()}];
-      return route.fulfill({contentType:'application/json',body:JSON.stringify({live:!stale,projected_at:stale?'2026-08-20T12:00:00Z':NOW.toISOString(),events})});
+      return route.fulfill({contentType:'application/json',body:JSON.stringify({live:!stale,projected_at:stale?'2026-08-20T12:00:00Z':await page.evaluate(()=>new Date().toISOString()),events})});
     }
     if(url.pathname==='/api/room/turn'){
       if(state.postDelay) await new Promise(resolve=>setTimeout(resolve,state.postDelay));
@@ -89,6 +89,18 @@ async function open(t,{width=390,path=taskPath,empty=false,stale=false,history=0
   });
   await page.goto(`http://localhost${path}`);await page.waitForFunction(()=>document.getElementById('workTitle')?.textContent!=='Work detail');
   return {page,state,errors,calls,posts};
+}
+
+async function refreshWork(page, ready) {
+  await page.waitForLoadState('networkidle');
+  await page.clock.setSystemTime(new Date(await page.evaluate(() => Date.now()) + 60_001));
+  await page.evaluate(() => window.dispatchEvent(new Event('online')));
+  for (let turn=0;turn<20;turn++) {
+    await page.clock.runFor(5_001);
+    await page.waitForTimeout(30);
+    if(await page.evaluate(ready)) return;
+  }
+  assert.fail('Work did not complete its queued refresh');
 }
 
 function reboundPassport() {
@@ -118,7 +130,7 @@ test('fresh publication reconciles delivery and derived request evidence and rem
   assert.match(await page.locator('#workMetadata .work-delivery').textContent(), /Review WR-900/);
   await page.locator('[data-session-id="session:fresh"]').click();
   await page.waitForFunction(()=>document.querySelector('#workDispatchHistory').textContent.includes('synthetic dispatch'));
-  request='WR-901'; await page.clock.runFor(5100);
+  request='WR-901'; await refreshWork(page, () => document.querySelector('#workTitle').textContent==='Published WR-901');
   await page.waitForFunction(()=>document.querySelector('#workTitle').textContent==='Published WR-901');
   await page.waitForFunction(()=>document.querySelector('#workMetadata').textContent.includes('Card WR-901'));
   assert.match(await page.locator('#workMetadata .work-delivery').textContent(), /Review WR-901/);
@@ -130,7 +142,7 @@ test('fresh publication reconciles delivery and derived request evidence and rem
   await page.clock.runFor(5100);
   assert.doesNotMatch(await page.locator('#workReviewList').textContent(),/Obsolete attempt review/);
   assert.equal(calls.filter(call=>call.name==='engineering-passport').at(-1).arguments.work_request,'WR-901');
-  request=null; await page.clock.runFor(5100);
+  request=null; await refreshWork(page, () => document.querySelector('#workTitle').textContent==='Published unbound');
   await page.waitForFunction(()=>document.querySelector('#workTitle').textContent==='Published unbound');
   assert.match(await page.locator('#workCanonicalBody').textContent(),/No canonical work-request/);
   assert.doesNotMatch(await page.locator('#workMetadata').textContent(),/Card WR-/);
@@ -484,12 +496,17 @@ for (const stalled of ['engineering-passport','read-session-identity'])test(`sta
 
 test('stalled queue expires and recovers instead of remaining live',async t=>{
   const {page,state}=await open(t);await page.waitForSelector('.queue-card',{state:'attached'});
+  const before=state.queueReads;
   state.queueWait=new Promise(()=>{});
-  await page.clock.runFor(5100);await assertEventually(()=>state.queueReads>1);
+  for(let turn=0;turn<12 && state.queueReads===before;turn++) {
+    await page.clock.runFor(5_001);
+    await page.waitForTimeout(30);
+  }
+  await assertEventually(()=>state.queueReads>before);
   await page.clock.runFor(11000);
   await page.waitForFunction(()=>document.querySelector('#queueLive').textContent==='Offline');
   state.queueWait=null;
-  await page.clock.runFor(5100);
+  await refreshWork(page, () => document.querySelector('#queueLive').textContent==='Live');
   await page.waitForFunction(()=>document.querySelector('#queueLive').textContent==='Live');
 });
 
@@ -531,13 +548,30 @@ test('late canonical binding restores receipts discarded before the rescan',asyn
   await assertEventually(()=>state.turnReads>=1);
   for(let poll=0;poll<6;poll++){
     for(let i=0;i<500;i++)state.turns.push({seq:state.turns.at(-1).seq+1,msg_id:`late-${poll}-${i}`,kind:'turn',seat:'human',at:NOW.toISOString(),body:'Unrelated synthetic retained-window turn'});
-    const before=state.turnReads;await page.clock.runFor(5100);await assertEventually(()=>state.turnReads>before);
+    const before=state.turnReads;
+    await page.clock.setSystemTime(new Date(await page.evaluate(()=>Date.now())+60_001));
+    const resume=page.getByRole('button',{name:'Resume updates',exact:true});
+    if(await resume.isVisible()) await resume.click();
+    for(let turn=0;turn<12 && state.turnReads===before;turn++) {
+      if(await resume.isVisible()) {
+        await page.clock.setSystemTime(new Date(await page.evaluate(()=>Date.now())+60_001));
+        await resume.click();
+      }
+      await page.clock.runFor(5_001);
+      await page.waitForTimeout(30);
+    }
+    await assertEventually(()=>state.turnReads>before);
     await new Promise(resolve=>setTimeout(resolve,100));
   }
   assert.equal(await page.locator('.passport-card').count(),0);
-  release();await page.clock.runFor(16000);
+  release();
+  await page.clock.setSystemTime(new Date(await page.evaluate(()=>Date.now())+60_001));
+  const resume=page.getByRole('button',{name:'Resume updates',exact:true});
+  if(await resume.isVisible()) await resume.click();
+  await refreshWork(page, () => document.querySelector('#workCanonicalBody').textContent.includes('Closure: blocked'));
   await page.waitForFunction(()=>document.querySelector('#workCanonicalBody').textContent.includes('Closure: blocked'));
-  await page.clock.runFor(5100);await page.waitForSelector('.passport-card');
+  await refreshWork(page,()=>Boolean(document.querySelector('.passport-card')));
+  await page.waitForSelector('.passport-card');
   assert.match(await page.locator('.passport-card').textContent(),/Grounding/);
 });
 
@@ -617,6 +651,15 @@ test('shared activity retains stage, desks, presence, wire filters, composers an
 
 test('older task passports survive the current global wire window',async t=>{
   const {page,state,errors}=await open(t,{history:2000});
+  for(let turn=0;turn<20 && !(await page.locator('.passport-card').count());turn++) {
+    await page.waitForLoadState('networkidle');
+    await page.clock.setSystemTime(new Date(await page.evaluate(()=>Date.now())+60_001));
+    const resume=page.getByRole('button',{name:'Resume updates',exact:true});
+    if(await resume.isVisible()) await resume.click();
+    else await page.evaluate(()=>window.dispatchEvent(new Event('online')));
+    await page.clock.runFor(5_001);
+    await page.waitForTimeout(30);
+  }
   await page.waitForSelector('.passport-card');assert.ok(state.turnReads>=11);
   assert.match(await page.locator('#workDotList').textContent(),/Observed Dot turn/);
   await page.locator('#viewEverything').click();assert.doesNotMatch(await page.locator('#wireFeed').textContent(),/Unrelated synthetic historical/);
@@ -628,13 +671,17 @@ test('older task passports survive the current global wire window',async t=>{
 test('wire and queue polling stop while hidden and read at once on return',async t=>{
   const {page,state}=await open(t);await page.waitForSelector('.passport-card');
   const show=visible=>page.evaluate(visible=>{for(const [key,value] of [['hidden',!visible],['visibilityState',visible?'visible':'hidden']])Object.defineProperty(document,key,{configurable:true,value});document.dispatchEvent(new Event('visibilitychange'));},visible);
+  await page.waitForLoadState('networkidle');
   await show(false);
   const hidden={queue:state.queueReads,wire:state.turnReads};await page.clock.runFor(31000);await page.waitForTimeout(100);
   assert.equal(state.queueReads,hidden.queue);assert.equal(state.turnReads,hidden.wire);
+  await page.clock.setSystemTime(new Date(await page.evaluate(() => Date.now())+60_001));
   await show(true);
+  for(let turn=0;turn<12 && (state.queueReads===hidden.queue || state.turnReads===hidden.wire);turn++) {await page.clock.runFor(5_001);await page.waitForTimeout(30);}
   await assertEventually(()=>state.queueReads>hidden.queue && state.turnReads>hidden.wire);
   await page.waitForFunction(()=>document.querySelector('#queueSync').textContent.startsWith('Synced'));
-  const visible={queue:state.queueReads,wire:state.turnReads};await page.clock.runFor(5100);
+  const visible={queue:state.queueReads,wire:state.turnReads};
+  for(let turn=0;turn<12 && (state.queueReads===visible.queue || state.turnReads===visible.wire);turn++) {await page.clock.runFor(5_001);await page.waitForTimeout(30);}
   await assertEventually(()=>state.queueReads>visible.queue && state.turnReads>visible.wire);
 });
 
@@ -695,7 +742,7 @@ test('empty, stale and offline states stay legible without inventing work',async
   await page.waitForFunction(()=>document.querySelector('#workSessionList').textContent.includes('No linked native session'));
   assert.match(await page.locator('#workSessionList').textContent(),/No linked native session/);assert.match(await page.locator('#jobPassportSummary').textContent(),/No validated Job Passport/);
   assert.match(await page.locator('#workReviewList').textContent(),/No linked review/);assert.match(await page.locator('#workReadState').textContent(),/Stale publication/);
-  state.offline=true;await page.clock.runFor(5100);await page.waitForFunction(()=>document.querySelector('#queueLive').textContent==='Offline');assert.match(await page.locator('#roomBanner').textContent(),/last-known/);assert.deepEqual(errors,[]);
+  state.offline=true;await refreshWork(page,()=>document.querySelector('#queueLive').textContent==='Offline' && document.querySelector('#roomBanner').textContent.includes('last-known'));await page.waitForFunction(()=>document.querySelector('#queueLive').textContent==='Offline');assert.match(await page.locator('#roomBanner').textContent(),/last-known/);assert.deepEqual(errors,[]);
 });
 
 test('confirmed authentication loss clears protected queue and work evidence',async t=>{
@@ -762,7 +809,9 @@ for (const width of [390, 1280]) test(`work detail retains the board details at 
   assert.equal(await task.locator('a[href="https://example.test/evidence"]').count(), 1);
   assert.equal(await task.locator('a[href="https://github.com/jbookout/doctorcre-app/pull/104"]').count(), 1);
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth <= innerWidth), true);
-  await page.clock.runFor(65000);
+  await page.waitForLoadState('networkidle');
+  await page.clock.setSystemTime(new Date(await page.evaluate(()=>Date.now())+65_000));
+  await page.clock.runFor(5_001);
   await page.waitForFunction(() => [...document.querySelectorAll('#workMetadata dt')].some(dt => dt.textContent === 'Stage' && dt.nextElementSibling.textContent.includes('21m')));
   assert.match(await field('Stage').textContent(), /Review.*21m/);
   assert.match(await delivery.locator('.work-stage-history').textContent(), /Review 21m/);
@@ -801,7 +850,7 @@ for (const width of [1440,390]) test(`PR card navigation preserves exact lineage
   for(const ref of refs.slice(1))assert.equal(await page.locator('.work-lineage a').filter({hasText:ref}).count(),0);
   assert.match(await page.locator('#workMetadata').textContent(),/task:canonical-900/);
   task.title='Synthetic renamed card';
-  await page.clock.runFor(5100);
+  await refreshWork(page,()=>document.querySelector('#workTitle').textContent==='Synthetic renamed card');
   await page.waitForFunction(()=>document.querySelector('#workTitle').textContent==='Synthetic renamed card');
   assert.equal(new URL(page.url()).searchParams.get('task'),taskId);
   assert.match(await page.locator('#workMetadata').textContent(),/Demo work request/);
@@ -812,6 +861,8 @@ for (const width of [1440,390]) test(`PR card navigation preserves exact lineage
     await page.clock.runFor(300);
     await page.screenshot({path:resolve(process.env.SLICE7_CAPTURE_DIR,`linked-work-${width}.png`)});
   }
+  await page.waitForLoadState('networkidle');
+  await page.clock.setSystemTime(new Date(await page.evaluate(()=>Date.now())+60_001));
   await page.locator('.work-lineage a').filter({hasText:'WR-900'}).click();
   await page.waitForFunction(()=>new URL(location.href).searchParams.get('work_request')==='WR-900');
   assert.equal(new URL(page.url()).searchParams.has('task'),false);

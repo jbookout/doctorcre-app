@@ -27,6 +27,7 @@ async function open(t, width, site = root) {
       const {name}=request.postDataJSON().params; assert.ok(["list-feature-switches","list-doc-suggestions","morning-brief"].includes(name));
       return route.fulfill({json:{result:{content:[{type:"text",text:JSON.stringify({ok:true,suggestions:[]})}]}}});
     }
+    if (url.pathname === "/auth/session") return route.fulfill({ json: { actor: { slug: "joe" }, csrf_token: "synthetic-session" } });
     if (url.pathname.startsWith("/api/")) {
       if (unavailable && url.pathname === "/api/tours/library") return route.fulfill({ status: 503, body: "{}", contentType: "application/json" });
       let data;
@@ -125,10 +126,22 @@ test("W6 polling recovers from outage without retry controls and refreshes open 
   await page.locator("#plan-name").fill("Typed draft");
   await page.locator("#upcoming-tours .tour-button").first().click(); await page.waitForFunction(() => document.querySelector("#detail-title").textContent.includes("Demo Gulf"));
   await page.locator("#detail-content details summary").click();
-  app.revise(); app.outage(true); await page.clock.runFor(30_500);
+  await page.waitForLoadState("networkidle");
+  app.revise(); app.outage(true);
+  await page.clock.setSystemTime(await page.evaluate(() => Date.now()) + 60_001);
+  for (let turn = 0; turn < 8 && !await page.locator("#tour-library-state").textContent().then(text => text.includes("temporarily")); turn++) {
+    await page.clock.runFor(5_001);
+    await page.waitForLoadState("networkidle");
+  }
   await page.waitForFunction(() => document.querySelector("#tour-library-state").textContent.includes("temporarily"));
   assert.match(await page.locator("#tour-library-state").textContent(), /temporarily/);
-  app.outage(false); await page.clock.runFor(30_500);
+  app.outage(false);
+  await page.waitForLoadState("networkidle");
+  await page.clock.setSystemTime(await page.evaluate(() => Date.now()) + 60_001);
+  for (let turn = 0; turn < 20 && (await page.locator("#detail-title").textContent() !== "Demo refreshed tour" || await page.locator("#tour-library-state").textContent() !== ""); turn++) {
+    await page.clock.runFor(5_001);
+    await page.waitForLoadState("networkidle");
+  }
   await page.waitForFunction(() => document.querySelector("#detail-title").textContent === "Demo refreshed tour");
   assert.equal(await page.locator("#plan-name").inputValue(), "Typed draft"); await page.waitForFunction(() => document.querySelector("#tour-library-state").textContent === "");
   assert.equal(await page.locator("#detail-content details").evaluate(el => el.open), true);

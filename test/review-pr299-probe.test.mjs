@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile, mkdir } from 'node:fs/promises';
-import { chromium, waitForAsync } from './browser-harness.mjs';
+import { chromium } from './browser-harness.mjs';
 import { startFixtureServer } from '../scripts/fixture-server.mjs';
 import { createFixtureClient } from '../js/fixture-client.js';
 
@@ -182,13 +182,18 @@ test('board census failure invalidates Attention and its open detail while Queue
   const { page, state } = await open(t);
   await page.locator('[data-attention-id="incident:INC-DEMO"] button').click();
   const before = state.queueReads;
+  await page.waitForLoadState('networkidle');
   state.censusUnavailable = true;
-  await page.clock.runFor(15001);
+  await page.clock.setSystemTime(await page.evaluate(() => Date.now()) + 60_001);
+  for (let turn = 0; turn < 16 && !await page.locator('#system-work-error').isVisible(); turn++) {
+    await page.clock.runFor(5_001);
+    await page.waitForLoadState('networkidle');
+  }
   await page.waitForFunction(() => document.querySelector('#system-work-error')?.hidden === false);
-  await waitForAsync(page, async () => {
-    const { view } = await import('/js/control-room.js');
-    return view.sequence >= 2 && view.status === 'ready';
-  });
+  for (let turn = 0; turn < 20 && state.queueReads <= before; turn++) {
+    await page.clock.runFor(5_001);
+    await page.waitForLoadState('networkidle');
+  }
   assert.ok(state.queueReads > before, 'Queue reread succeeded independently');
   assert.equal(await page.evaluate(async () => (await import('/js/control-room.js')).view.queue.state), 'read');
   assert.equal(await page.locator('#crAttentionList [data-attention-id]').count(), 0);
@@ -196,7 +201,14 @@ test('board census failure invalidates Attention and its open detail while Queue
   assert.match(await page.locator('#jobBody').innerText(), /Source unavailable.*Last-known/);
   assert.equal(await page.locator('#jobTitle').innerText(), 'Demo blocked incident');
   state.censusUnavailable = false;
-  await page.clock.runFor(15001);
+  await page.waitForLoadState('networkidle');
+  await page.clock.setSystemTime(await page.evaluate(() => Date.now()) + 60_001);
+  const resume = page.getByRole('button', { name: 'Resume updates', exact: true });
+  if (await resume.isVisible()) await resume.click();
+  for (let turn = 0; turn < 16 && !await page.locator('[data-attention-id="incident:INC-DEMO"]').count(); turn++) {
+    await page.clock.runFor(5_001);
+    await page.waitForLoadState('networkidle');
+  }
   await page.locator('[data-attention-id="incident:INC-DEMO"]').waitFor();
   assert.doesNotMatch(await page.locator('#jobBody').innerText(), /Source unavailable/);
 });

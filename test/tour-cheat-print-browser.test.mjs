@@ -212,6 +212,20 @@ test('broker regenerates an editable internal sheet from the accepted itinerary 
   const browser = await chromium.launch(); t.after(() => browser.close());
   const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
   await pausedClock(page, new Date('2026-10-26T13:00:00Z'));
+  const reloadSheet = async () => {
+    await page.waitForLoadState('networkidle');
+    await page.clock.setSystemTime(await page.evaluate(() => Date.now()) + 60_001);
+    await page.reload();
+    await page.waitForLoadState('networkidle');
+    if (await page.getByRole('button', { name: 'Resume updates', exact: true }).isVisible()) {
+      await page.getByRole('button', { name: 'Resume updates', exact: true }).click();
+    }
+    for (let turn = 0; turn < 8 && !await page.locator('#tour-panel').isVisible(); turn++) {
+      await page.clock.runFor(5_001);
+      await page.waitForLoadState('networkidle');
+    }
+    await page.locator('#tour-panel').waitFor({ state: 'visible' });
+  };
   const fixture = structuredClone(detail), writes = [];
   const accepted = fixture.routes[0];
   accepted.stops.forEach(stop => { stop.locked_appointment = false; });
@@ -291,7 +305,7 @@ test('broker regenerates an editable internal sheet from the accepted itinerary 
   assert.equal(writes.length, 1);
   assert.equal(writes[0].body.expected_revision_number, 3);
   assert.deepEqual(writes[0].body.content, { notes: generated });
-  await page.reload(); await page.locator('#tour-panel').waitFor({ state: 'visible' });
+  await reloadSheet();
   assert.equal(await editor.inputValue(), generated);
   await page.evaluate(() => window.dispatchEvent(new Event('beforeprint')));
   assert.equal(await page.locator('#cheat-print pre').textContent(), generated);
@@ -325,10 +339,10 @@ test('broker regenerates an editable internal sheet from the accepted itinerary 
   await page.locator('#sheet-state').filter({ hasText: /save confirmed/i }).waitFor();
   fixture.routes.forEach(route => { route.accepted = false; });
   fixture.accepted_route_version = 0;
-  await page.reload(); await page.locator('#tour-panel').waitFor({ state: 'visible' });
+  await reloadSheet();
   assert.equal(await regenerate.isDisabled(), true);
   fixture.routes[1].accepted = true; fixture.accepted_route_version = 1;
-  await page.reload(); await page.locator('#tour-panel').waitFor({ state: 'visible' });
+  await reloadSheet();
   await page.locator('#internal-cheat-sheet > summary').click();
   assert.equal(await regenerate.isEnabled(), true);
   await editor.evaluate(node => { node.value = ''; });
