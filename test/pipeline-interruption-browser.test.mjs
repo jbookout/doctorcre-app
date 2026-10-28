@@ -424,12 +424,17 @@ test('a future next date clears the overdue flag on the refreshed board', async 
   assert.match(await page.locator('#detailUpdateForm').textContent(), /overdue/i);
   assert.equal(await page.locator('#dealUpdateDate').getAttribute('aria-describedby'), 'detailUpdateDateHint');
   assert.equal(await page.locator('#detailUpdateDateHint').textContent(), 'Current next date is overdue.');
-  assert.equal(await page.locator('.deal-current-action').count(), 0);
+  assert.match(await page.locator('.deal-current-action').innerText(), /overdue.*Synthetic overdue action/is);
+  await page.locator('#dealUpdate').fill('Synthetic overdue update');
+  await page.locator('#dealUpdateStep').fill('Synthetic changed action');
+  await page.getByRole('button', {name:'Add update', exact:true}).click();
+  assert.match(await page.locator('#detailUpdateStatus').textContent(), /current next date is overdue.*new date/i);
   await page.locator('#dealUpdate').fill('Synthetic progress');
   await page.getByLabel('Next step', {exact:true}).fill('Synthetic future action');
   await page.getByLabel('Next date', {exact:true}).fill('2099-01-01');
   await page.getByRole('button', {name:'Add update',exact:true}).click();
   await settles(async () => assert.match(await page.locator('#detailUpdateStatus').textContent(), /update added/i));
+  assert.equal(await page.locator('.deal-current-action').count(), 0, 'a future action is shown only in the form');
   await page.locator('#panelClose').click();
   await settles(async () => assert.doesNotMatch(await page.locator('.kanban-card[data-id="d14"]').textContent(), /overdue/i));
 });

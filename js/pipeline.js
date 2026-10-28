@@ -878,6 +878,16 @@ function validateDetail(detail, id) {
 function readDealDetail(id) {
   return readWithDeadline(signal => state.client.getDeal(id, { signal })).then(detail => validateDetail(detail, id));
 }
+function validateUpdateStep(draft, form) {
+  if (!draft.step.trim()) { $('detailUpdateStatus').textContent = 'Enter a next step'; form.elements.step.focus(); return false; }
+  if (draft.date && draft.date < todayIso()) {
+    $('detailUpdateStatus').textContent = draft.date === draft.reviewed.next_date
+      ? 'Current next date is overdue. Enter a new date today or later.'
+      : 'Next date must be today or later';
+    form.elements.date.focus(); return false;
+  }
+  return true;
+}
 async function saveUpdate(id) {
   const key = updateKey(id);
   const pending = pendingCommand(commandState, key);
@@ -889,8 +899,7 @@ async function saveUpdate(id) {
   const actor = state.selfActor;
   const step = draft.step.trim();
   const changed = step !== noteText(draft.reviewed.next_step).trim() || draft.date !== (draft.reviewed.next_date || '');
-  if (!draft.noteSaved && !pending && changed && !step) { $('detailUpdateStatus').textContent = 'Enter a next step'; form.elements.step.focus(); return; }
-  if (!draft.noteSaved && !pending && changed && draft.date && draft.date < todayIso()) { $('detailUpdateStatus').textContent = 'Next date must be today or later'; form.elements.date.focus(); return; }
+  if (changed && !validateUpdateStep(draft, form)) return;
   if (draft.sending) return;
   if (!draft.stepStarted && pendingCommand(commandState, nextStepKey(id))) { $('detailUpdateStatus').textContent = 'Resolve the pending next step before adding an update.'; return; }
   draft.sending = true;
@@ -909,6 +918,7 @@ async function saveUpdate(id) {
       draft.noteSaved = true;
     }
     if (changed) {
+      if (!validateUpdateStep(draft, form)) return;
       draft.stepStarted = true;
       const result = await runFollowUp(nextStepKey(id), {verb:'set-next-step', args:{deal:id,text:step,next_date:draft.date || null}, reviewed:draft.reviewed, summary:'Next step'});
       if (result?.status !== 'ok') {
@@ -975,7 +985,7 @@ function detailHtml(detail) {
   const controlsAvailable = state.deals.has(d.id) && !isClosedDeal(d);
   return `<div class="deal-freshness"><time id="detailUpdated" title="Last updated"></time><button class="btn icon-btn" type="button" data-refresh-detail aria-label="Refresh deal" title="Refresh">↻</button></div><p id="detailReadStatus" role="status"></p>
     <section class="deal-opening-snapshot" data-detail-read="snapshot" aria-label="Deal snapshot">
-      ${nextStep && !(d.next_date && d.next_date < todayIso()) ? `<p class="deal-current-action"><span>Next action</span><strong>${esc(nextStep)}</strong>${d.next_date ? `<span>Due <time datetime="${esc(d.next_date)}">${esc(dateWords(d.next_date))}</time></span>` : ''}</p>` : !nextStep && !parked && !isClosedDeal(d) ? nextStepHtml(d) : ''}
+      ${nextStep && d.next_date && d.next_date < todayIso() ? `<p class="deal-current-action"><span>Overdue next action</span><strong>${esc(nextStep)}</strong>${d.next_date ? `<span>Due <time datetime="${esc(d.next_date)}">${esc(dateWords(d.next_date))}</time></span>` : ''}</p>` : !nextStep && !parked && !isClosedDeal(d) ? nextStepHtml(d) : ''}
       <dl class="deal-snapshot-facts">${d.workspace_kind === 'national_account' || d.account_client_id ? `<div><dt>Market agent</dt><dd>${esc(d.market_agent || 'Unassigned')}</dd></div>` : ''}${d.client_name ? `<div><dt>Client</dt><dd>${esc(d.client_name)}</dd></div>` : ''}${d.type ? `<div><dt>Type</dt><dd>${esc(d.type)}</dd></div>` : ''}${d.outcome ? `<div><dt>Outcome</dt><dd>${esc(d.outcome[0].toUpperCase()+d.outcome.slice(1))}</dd></div>` : ''}</dl>
     </section>
     <div data-detail-read="checklist">${renderDealChecklist(detail.checklist)}</div>

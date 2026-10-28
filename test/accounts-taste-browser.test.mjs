@@ -54,6 +54,11 @@ for (const width of [390, 1280]) for (const theme of ['dark', 'light']) {
     await page.waitForURL('**/deals?deal=*');
     await page.locator('#detailUpdateForm').waitFor();
     await screenshot(page, 'record', width, theme);
+    const overdue = page.locator('.deal-current-action');
+    assert.match(await overdue.innerText(), /overdue/i);
+    assert.match(await overdue.innerText(), /Jan 18/);
+    assert.equal(await overdue.locator('strong').innerText(), description);
+    assert.equal(await overdue.evaluate(node => Boolean(node.compareDocumentPosition(document.querySelector('#detailUpdateForm')) & Node.DOCUMENT_POSITION_FOLLOWING)), true);
     assert.equal(await page.locator('#dealUpdateStep').inputValue(), description);
     assert.equal(await page.locator('#dealUpdateDate').inputValue(), '2026-01-18');
     assert.match(await page.locator('#detailUpdateDateHint').innerText(), /overdue/i);
