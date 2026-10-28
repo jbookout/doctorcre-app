@@ -28,7 +28,7 @@ test('mounted UI hides on load and on a failed read, and follows flips without r
   failed=true; await gate.refresh(); assert.equal(button.hidden,true);
 });
 
-test('an open page observes an off flip at the next 30-second poll',async t=>{
+test('an open page observes an off flip at the next one-minute poll',async t=>{
  const dom=new JSDOM('<button>Act</button>');
  const timers=new Map();let serial=0,available=true,visible=false;
  dom.window.setTimeout=(fn,ms)=>{const id=++serial;timers.set(id,{fn,ms});return id;};
@@ -38,7 +38,7 @@ test('an open page observes an off flip at the next 30-second poll',async t=>{
  t.after(()=>{gate.dispose();dom.window.close();});
  await gate.refresh();assert.equal(visible,true);
  available=false;
- const poll=[...timers.values()].find(timer=>timer.ms===30_000);
+ const poll=[...timers.values()].find(timer=>timer.ms===60_000);
  assert.ok(poll);await poll.fn();assert.equal(visible,false);
 });
 

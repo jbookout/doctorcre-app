@@ -25,18 +25,6 @@ import { updatedLabel } from './auto-refresh.mjs';
 import { mountVisibilityPoll } from './visibility-poll.mjs';
 import { createRetainedCommands } from './retained-commands.mjs';
 
-const POLL_MS = 1400;
-/**
- * How long the board will go without ASKING the record layer again.
- *
- * Not a freshness guarantee and not a claim about the feed. The changes cursor
- * can miss an event whose commit landed out of order with its recorded time, so
- * a board that only re-reads on news can hold a wrong value indefinitely — this
- * is the ceiling on that. It is a bound on how long we go without asking, never
- * a bound on how old a value is: a slow or failed read extends staleness
- * without limit, and the badge says so.
- */
-const BOARD_REFRESH_MS = 15000;
 const state = {
   client: null, selfActor: null, deals: new Map(), accounts: [],
   // Every displayed value comes from a board snapshot this coordinator applied;
@@ -416,8 +404,8 @@ function pendingWritesNode() {
   node.id = 'pendingWrites';
   node.className = 'parking-banner';
   // A status region, not an alert: it is a standing list, and it is only rewritten
-  // when the set of unconfirmed operations actually changes — so a poll every
-  // 1.4 seconds neither re-announces it nor destroys the button under a finger.
+  // when the set of unconfirmed operations actually changes — so a background
+  // poll neither re-announces it nor destroys the button under a finger.
   node.setAttribute('role', 'status');
   node.setAttribute('aria-label', 'Unconfirmed changes');
   main.insertAdjacentElement('afterbegin', node);
@@ -1624,8 +1612,9 @@ async function boot() {
   const linkedDeal = params.get('deal');
   // A tick that arrives while the last poll is still open is dropped by the
   // coordinator rather than run alongside it, so a slow answer cannot land
-  // after a newer one. Both clocks sleep while the tab is hidden or idle.
-  mountVisibilityPoll({ intervalMs: POLL_MS, poll: () => {
+  // after a newer one. Both clocks run once a minute (MIN_POLL_MS) and sleep
+  // while the tab is hidden or idle.
+  mountVisibilityPoll({ poll: () => {
     pollOnce().catch((error) => console.error('Deal Room poll failed to render', error));
   } });
   // The backstop for what the feed cannot promise. A change whose commit landed
@@ -1633,8 +1622,9 @@ async function boot() {
   // that only re-reads on news would then hold that wrong value for as long as
   // the page stayed open. This asks anyway. It coalesces with the feed-driven
   // and post-write refreshes through the same single-read queue, so it adds one
-  // read per interval at most and none while another is already running.
-  mountVisibilityPoll({ intervalMs: BOARD_REFRESH_MS, poll: () => {
+  // read per interval at most and none while another is already running. It
+  // bounds how long the board goes without asking, never how old a value is.
+  mountVisibilityPoll({ poll: () => {
     state.boardSync.requestRefresh('periodic');
   } });
   if (linkedDeal && state.deals.has(linkedDeal)) {

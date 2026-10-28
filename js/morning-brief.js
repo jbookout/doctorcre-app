@@ -16,7 +16,7 @@ const dueLabel = value => {
   return day ? dueFormat.format(new Date(`${day}T00:00:00Z`)) : value;
 };
 
-export function mountMorningBrief({ document:root, window:win, getClient, intervalMs = 30_000, now = () => new Date() }) {
+export function mountMorningBrief({ document:root, window:win, getClient, intervalMs, now = () => new Date() }) {
   const dialog = root.createElement('dialog'); dialog.id = 'docMorningBrief'; dialog.className = 'morning-brief'; dialog.setAttribute('aria-labelledby','morningTitle');
   dialog.innerHTML = '<header><h2 id="morningTitle">Morning brief</h2><button id="morningClose" type="button" aria-label="Dismiss morning brief">×</button></header><div class="morning-toolbar"><button id="morningBack" type="button" hidden>← Morning brief</button><time id="morningUpdated">Updating…</time><button id="morningRefresh" type="button" aria-label="Refresh morning brief" title="Refresh morning brief">↻</button></div><div id="morningOwners"></div><div id="morningCoverage" role="status"></div><nav id="morningQueues" aria-label="Morning work queues"></nav><div id="morningContent"></div>';
   root.body.append(dialog);

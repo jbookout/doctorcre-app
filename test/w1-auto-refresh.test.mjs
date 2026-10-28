@@ -105,7 +105,7 @@ test('a failed read retries on a short backoff and a good read restores the poll
   let fail = 3, reads = 0;
   const handle = mountAutoRefresh({ document, window, timeoutMs: 5, refresh: () => { reads++; if (fail-- > 0) throw Error('synthetic outage'); } });
   for (let i = 0; i < 4; i++) { job(); await settle(); }
-  assert.equal(reads, 4); assert.deepEqual(delays, [30_000, 1_000, 2_000, 4_000, 30_000]); handle.dispose();
+  assert.equal(reads, 4); assert.deepEqual(delays, [60_000, 1_000, 2_000, 4_000, 60_000]); handle.dispose();
 });
 test('a read replaced on resume is neither a success nor a failure for the retry backoff', async () => {
   const document = new EventTarget(); document.visibilityState = 'visible';
@@ -123,5 +123,5 @@ test('a read replaced on resume is neither a success nor a failure for the retry
   await settle(); await settle();
   // The replaced read re-arms the plain interval; only the queued read's real
   // failure counts, so the retry is the first backoff step, not the second.
-  assert.equal(reads, 2); assert.deepEqual(delays, [30_000, 30_000, 1_000]); handle.dispose();
+  assert.equal(reads, 2); assert.deepEqual(delays, [60_000, 60_000, 1_000]); handle.dispose();
 });

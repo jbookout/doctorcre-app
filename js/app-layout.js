@@ -281,7 +281,7 @@ export function mountAppLayout(root, host, pathname) {
     else globalThis.location.assign(`/deals?deal=${encodeURIComponent(id)}`);
   });
   win.addEventListener('offline', failedRead);
-  const auto = mountAutoRefresh({ document:root, window:win, refresh, onResume:unavailableRead, intervalMs:30_000 });
+  const auto = mountAutoRefresh({ document:root, window:win, refresh, onResume:unavailableRead });
   layout.querySelector('#appTodayRetry').onclick = () => auto.refresh();
   status.querySelector('#appSyncRefresh').onclick = () => { auto.refresh(); root.querySelectorAll('[data-layout-refresh]').forEach(button => button.click()); };
   auto.refresh();

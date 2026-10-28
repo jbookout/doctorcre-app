@@ -20,7 +20,7 @@ export function mountRelationshipNetwork({
   document,
   window,
   client,
-  intervalMs = 30000,
+  intervalMs,
 }) {
   const $ = (id) => document.getElementById(id),
     dialog = mountRelationshipDialog({ document });

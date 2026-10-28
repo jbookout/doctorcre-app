@@ -31,7 +31,7 @@ test('Add national account labels resolve uniquely to their editable fields', as
   assert.equal(await page.locator('#dialogBody input[name="name"]').inputValue(), 'Demo New Account');
 });
 
-for (const recovery of [false, true]) for (const interval of [1400, 15000]) {
+for (const recovery of [false, true]) for (const interval of [60_000]) {
   test(`${recovery ? 'Clear search' : 'Next action'} keeps keyboard focus after ${interval}ms refresh`, async t => {
     const page = await accountPage(t);
     await page.locator('.account-card').first().click();

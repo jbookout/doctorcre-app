@@ -233,7 +233,7 @@ test('automatic Atlas refresh preserves the selected component', async t => {
   await page.locator('[data-atlas-select]').first().click();
   const selected = await page.evaluate(async () => (await import('/js/atlas.js')).view.selected);
   const reads = calls.filter(call => call.url === '/api/v1/atlas-graph').length;
-  await page.clock.fastForward(31_000);
+  await page.clock.fastForward(61_000);
   await waitForAsync(page, async reads => (await import('/js/atlas.js')).view.status === 'ready', reads);
   assert.ok(calls.filter(call => call.url === '/api/v1/atlas-graph').length > reads);
   assert.equal(await page.evaluate(async () => (await import('/js/atlas.js')).view.selected), selected);
