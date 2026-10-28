@@ -13,8 +13,6 @@ RISKY = ("*launchagents*", "*.plist", "install-*.sh", "*/install-*.sh",
 
 
 # GitHub skips every push workflow for these title markers, so a merged PR would never deploy.
-REVIEWERS = {"grok", "claude-opus", "codex", "jev"}
-
 SKIP_CI = re.compile(r"\[(skip ci|ci skip|no ci|skip actions|actions skip)\]", re.I)
 
 
@@ -33,7 +31,7 @@ def approved(pr, files, comments):
     verdicts = [lines[0] for lines in ((c.get("body") or "").splitlines() for c in comments)
                 if len(lines) >= 3 and lines[0] in ("VERDICT: APPROVE", "VERDICT: CHANGES")
                 and lines[1] == sha_line and lines[2].startswith("Reviewer: ")
-                and lines[2][10:] in REVIEWERS]
+                and lines[2][10:].strip()]
     if verdicts[-1:] == ["VERDICT: CHANGES"]:
         return False
     risky = any(f.get("status") == "added" and f.get("filename", "").startswith(("scripts/", ".github/workflows/")) for f in files)

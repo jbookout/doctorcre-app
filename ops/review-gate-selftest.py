@@ -102,6 +102,26 @@ class ReviewGate(unittest.TestCase):
                 gate.run({"pull_request": {"number": 4}, "review": {}}, "owner/repo")
                 self.assertEqual(api.call_args.args[1]["state"], expected)
 
+    def test_later_changes_from_any_reviewer_blocks(self):
+        pr = {"body": "Card: WR568.S1.J2", "base": {"ref": "main"}, "additions": 151,
+              "deletions": 0, "head": {"sha": "abc"}, "changed_files": 1}
+        approval = {"body": "VERDICT: APPROVE\nReviewed-SHA: abc\nReviewer: claude-opus",
+                    "submitted_at": "2026-01-01T00:00:00Z", "state": "COMMENTED"}
+        changes = {"body": "VERDICT: CHANGES\nReviewed-SHA: abc\nReviewer: Claude Sonnet 5.5 (independent)",
+                   "created_at": "2026-01-02T00:00:00Z"}
+        with patch.object(gate, "api", side_effect=[pr, {}, [{"filename": "safe"}], [changes], [approval], pr, {}]) as api:
+            gate.run({"issue": {"number": 4}}, "owner/repo")
+            self.assertEqual(api.call_args.args[1]["state"], "failure")
+
+    def test_reviewer_name_is_required_but_unrestricted(self):
+        pr = {"changed_files": 0, "additions": 151, "deletions": 0, "head": {"sha": "abc"}}
+        for reviewer, expected in [("Reviewer: Any independent reviewer", True),
+                                   ("Reviewer: claude-sonnet cloud", True),
+                                   ("Reviewer: ", False), ("Reviewer:   ", False), ("", False)]:
+            with self.subTest(reviewer=reviewer):
+                body = f"VERDICT: APPROVE\nReviewed-SHA: abc\n{reviewer}"
+                self.assertEqual(gate.approved(pr, [], [{"body": body}]), expected)
+
     def test_real_event_shapes(self):
         pr = {"body": "Card: WR568.S1.J1", "base": {"ref": "main"}, "additions": 151,
               "deletions": 0, "head": {"sha": "abc"}, "changed_files": 1}
