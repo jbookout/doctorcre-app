@@ -102,8 +102,12 @@ test('a newer board version during an in-flight detail read queues one fresh rea
   await page.waitForFunction(() => typeof window.releaseOldVersion === 'function');
   await page.evaluate(async () => {
     const { state } = await import('/js/pipeline.js');
-    await state.boardSync.refreshBoard({ reason: 'synthetic-new-version' });
+    window.boardRefresh = state.boardSync.refreshBoard({ reason: 'synthetic-new-version' });
+  });
+  await page.waitForFunction(async () => (await import('/js/pipeline.js')).state.deals.get('d14').name === 'Synthetic newer deal version');
+  await page.evaluate(async () => {
     window.releaseOldVersion();
+    await window.boardRefresh;
   });
   await waitForAsync(page, () => document.querySelector('#panelTitle').textContent === 'Synthetic newer deal version', undefined, 2000);
   assert.equal(await page.evaluate(() => window.versionReads), 2, 'one follow-up read observes the known change');
