@@ -1282,7 +1282,7 @@
   "work_queue": {
     "producer": {
       "repository": "DoctorCRE/carr-system",
-      "source_commit": "0371ce17df7525101b81bff5f5e0ad091bcf6dc6",
+      "source_commit": "55cbf1b302b4fc2c9511246a0639fa4919940558",
       "pull_request": "https://github.com/DoctorCRE/carr-system/pull/2547"
     },
     "read": "work-queue {} returns ok, stale_after_hours, github[] {repo,state,reason?,observed_at?,truncated?} and jobs[] in priority order. Each job has card_id WRn.Sm.Jk, work_request, work_request_title, slice_ordinal, j_number, priority, executor, model, effort, card_title, description, created_at, stage (queued|build|review|merged|closed), stale and prs[] {repo,number,url,title,draft,state,updated_at,card_id WRn.Sm.Jk.repo#pr}.",
