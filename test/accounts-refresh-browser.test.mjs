@@ -42,11 +42,12 @@ for (const recovery of [false, true]) for (const interval of [1400, 15000]) {
       await page.keyboard.press('Tab');
       await page.keyboard.press('Escape');
     }
-    const control = page.locator(recovery ? '[data-clear-search]' : '#stats [data-open-deal]');
+    const selector = recovery ? '[data-clear-search]' : '#stats [data-open-deal]';
+    const control = page.locator(selector);
     await control.focus();
     const identity = await control.getAttribute(recovery ? 'data-clear-search' : 'data-open-deal');
     await page.clock.fastForward(interval);
-    assert.equal(await control.evaluate(node => document.activeElement === node), true, 'refresh retains the same logical control');
+    assert.equal(await page.evaluate(selector => document.activeElement.matches(selector), selector), true, 'refresh retains the same logical control');
     assert.equal(await control.getAttribute(recovery ? 'data-clear-search' : 'data-open-deal'), identity);
   });
 }
