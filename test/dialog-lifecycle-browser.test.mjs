@@ -90,10 +90,12 @@ for (const width of [390, 1440]) {
       document.body.innerHTML = new DOMParser().parseFromString(html, 'text/html').body.innerHTML;
       const rows = ['11111111-1111-4111-8111-111111111111', '22222222-2222-4222-8222-222222222222']
         .map((id, index) => ({id, name: `Synthetic tour ${index + 1}`, status: 'draft', stops: []}));
+      let hold = false;
       const api = {scope: 'synthetic', library: async () => rows, clients: async () => [],
-        tour: async id => id === rows[0].id ? rows[0] : new Promise(resolve => { window.resolveTour = () => resolve(rows[1]); })};
+        tour: async id => !hold || id === rows[0].id ? rows.find(row => row.id === id) : new Promise(resolve => { window.resolveTour = () => resolve(rows[1]); })};
       window.planner = mountPlanner({document, window, api});
       await window.planner.ready;
+      hold = true;
       document.querySelector('.tour-button').click();
     });
     assert.equal(await page.locator('#detail-title').textContent(), 'Synthetic tour 1');

@@ -57,10 +57,13 @@ const advanceBriefWindow=async page=>{
  await page.clock.setSystemTime(new Date((await page.evaluate(()=>Date.now()))+60_001));
 };
 const settleBrief=async(page,ready)=>{
- for(let turn=0;turn<10;turn++){
+ for(let turn=0;turn<40;turn++){
   await page.waitForLoadState('networkidle');
   if(await page.evaluate(ready))return;
-  await page.clock.runFor(5_001);
+  await page.evaluate(()=>document.dispatchEvent(new Event('pointermove')));
+  const delay=await page.evaluate(async()=>Math.max(5_001,(await import('/js/poll-safety.mjs')).pollSafety(window).state().nextAt-Date.now()+1));
+  await page.clock.fastForward(delay);
+  await page.waitForTimeout(30);
  }
  await page.waitForFunction(ready);
 };
@@ -199,9 +202,9 @@ test('daily preference survives navigation and refresh without narration, includ
  assert.deepEqual(state.errors,[]);
 });
 test('unavailable brief recovers on background read, clears prior facts, partner changes never reuse content/preferences',async t=>{
- const state=await setup(t,{brief:false});const {page}=state;await state.goto();await page.locator('#docOpen').click();await page.locator('#docMorning').click();assert.match(await page.locator('#morningCoverage').innerText(),/unavailable/);
- state.ready=true;await page.evaluate(()=>window.dispatchEvent(new Event('online')));try { await page.locator('[data-brief-record]').first().waitFor(); } catch(error) { throw new Error(JSON.stringify({calls:state.calls.filter(call=>call.name==='morning-brief').length,text:await page.locator('#docMorningBrief').innerText(),errors:state.errors})+error.message); }state.fail=true;await page.evaluate(()=>window.dispatchEvent(new Event('online')));await page.waitForFunction(()=>document.getElementById('morningCoverage').textContent==='Brief unavailable');assert.equal(await page.locator('[data-brief-record]').count(),0);
- state.fail=false;state.scope='dell';await page.evaluate(()=>window.dispatchEvent(new Event('online')));await page.waitForURL('**/public-shell/session-ended.html');assert.equal(await page.locator('#docMorningBrief').count(),0);await state.goto();await page.locator('#docOpen').click();await page.locator('#docMorning').click();await page.waitForFunction(()=>document.getElementById('morningTitle').textContent.includes('Dell'));assert.deepEqual(state.errors,[]);
+ const state=await setup(t,{brief:false});const {page}=state;await page.clock.install();await state.goto();await page.locator('#docOpen').click();await page.locator('#docMorning').click();assert.match(await page.locator('#morningCoverage').innerText(),/unavailable/);
+ state.ready=true;await page.evaluate(()=>window.dispatchEvent(new Event('online')));try { await settleBrief(page,()=>Boolean(document.querySelector('[data-brief-record]'))); } catch(error) { throw new Error(JSON.stringify({calls:state.calls.filter(call=>call.name==='morning-brief').length,text:await page.locator('#docMorningBrief').innerText(),errors:state.errors})+error.message); }state.fail=true;await page.evaluate(()=>window.dispatchEvent(new Event('online')));await settleBrief(page,()=>document.getElementById('morningCoverage').textContent==='Brief unavailable');assert.equal(await page.locator('[data-brief-record]').count(),0);
+ state.fail=false;state.scope='dell';await page.evaluate(()=>window.dispatchEvent(new Event('online')));await settleBrief(page,()=>location.pathname==='/public-shell/session-ended.html');assert.equal(await page.locator('#docMorningBrief').count(),0);await state.goto();await page.locator('#docOpen').click();await page.locator('#docMorning').click();await page.waitForFunction(()=>document.getElementById('morningTitle').textContent.includes('Dell'));assert.deepEqual(state.errors,[]);
 });
 test('V2 motion: hover is a state transition with no pulse; reduced motion is measured at desktop and phone widths',async t=>{
  for(const motion of ['no-preference','reduce'])for(const width of [1440,390]){
@@ -273,7 +276,7 @@ test('full returned coverage is expandable on desktop and phone in a UTC browser
 
 for(const selected of [false,true]) test(`F4 resumed brief removes ${selected?'selected detail':'priority facts'} until the current authenticated read`,async t=>{
  let hold=false,release;const held=new Promise(resolve=>release=resolve);t.after(()=>release());
- const {page,goto,errors}=await setup(t,{onBrief:()=>hold?held:undefined});await goto();
+ const {page,goto,errors}=await setup(t,{onBrief:()=>hold?held:undefined});await page.clock.install();await goto();
  await page.locator('#docOpen[data-brief-unseen]').waitFor();await page.locator('#docOpen').click();await page.locator('#docMorning').click();
  await page.locator('[data-brief-record]').first().waitFor();
  if(selected){await page.locator('[data-brief-record]').first().click();await page.locator('.morning-record').waitFor();}
@@ -281,7 +284,7 @@ for(const selected of [false,true]) test(`F4 resumed brief removes ${selected?'s
  const suspended=await page.evaluate(()=>{window.dispatchEvent(new Event('online'));return {content:document.getElementById('morningContent').textContent,title:document.getElementById('morningTitle').textContent};});
  assert.equal(suspended.content,'');assert.equal(suspended.title,'Morning brief');
  await snap(page,`suspended-${selected?'detail':'priorities'}`);
- release();await page.locator('[data-brief-record]').first().waitFor();assert.equal(await page.locator('.morning-record').count(),0);
+ release();await settleBrief(page,()=>Boolean(document.querySelector('[data-brief-record]')));assert.equal(await page.locator('.morning-record').count(),0);
  assert.equal(await page.evaluate(()=>spoken.length),0);assert.deepEqual(errors,[]);
 });
 
