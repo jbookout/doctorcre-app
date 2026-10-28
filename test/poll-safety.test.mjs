@@ -619,3 +619,18 @@ test('round two: a background wake caused by trusted input keeps its background 
   assert.equal(safety.state().paused, true, 'waking a poller cannot spend the human allowance');
   safety.dispose();
 });
+
+test('round two: recovering from an outage keeps healthy updates running all day', async () => {
+  const { pollSafety } = await import('../js/poll-safety.mjs');
+  const c = fakeClock(), safety = pollSafety(c.window, c); let outage = true, sent = 0;
+  const read = () => safety.fetch(async () => { sent++; return new Response('{}', { status: outage ? 503 : 200 }); }, '/read');
+  for (let i = 0; i < 3; i++) { await safety.run(read); await c.advance(300_000); }
+  assert.equal(safety.state().paused, true);
+  outage = false; await safety.resume();
+  const auto = mountAutoRefresh({ ...c, idleMs: Infinity, intervalMs: 15_000,
+    refresh: () => Promise.all(Array.from({ length: 5 }, read)) });
+  await c.advance(4 * 3_600_000);
+  assert.ok(sent > 600, 'an outage recovery must not strand normal unused allowance');
+  assert.equal(safety.state().paused, false);
+  auto.dispose(); safety.dispose();
+});

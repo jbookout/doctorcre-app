@@ -10,10 +10,7 @@ export function installPollFixtureClock(window) {
     constructor(...args) { super(...(args.length ? args : [now()])); }
     static now() { return now(); }
   };
-  let activeUntil = 0;
-  const activation = { get isActive() { return now() < activeUntil; } };
   Object.defineProperty(window.navigator, 'locks', { configurable: true, value: { request: (_name, _options, callback) => callback({}) } });
-  Object.defineProperty(window.navigator, 'userActivation', { configurable: true, value: activation });
   window.setTimeout = (fn, ms) => { const id = ++serial; timers.set(id, { fn, at: now() + ms }); return id; };
   window.clearTimeout = id => timers.delete(id);
   const safety = pollSafety(window, { document: window.document, now });
@@ -23,11 +20,11 @@ export function installPollFixtureClock(window) {
     for (const [id, job] of due) if (timers.delete(id)) job.fn();
   };
   const person = operation => {
-    offset += 5_001; activeUntil = now() + 5_000;
+    offset += 5_001;
     return operation();
   };
   for (const type of ['click', 'submit']) window.document.addEventListener(type, () => {
-    offset += 5_001; activeUntil = now() + 5_000;
+    offset += 5_001;
   }, true);
   for (const target of [window, window.document]) {
     const dispatch = target.dispatchEvent.bind(target);
