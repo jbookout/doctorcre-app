@@ -3,7 +3,7 @@
   "version": "1.63.0",
   "producer": {
     "repository": "jbookout/carr-system",
-    "source_commit": "1df9b9936394164dd55e815f8a8bf69649508ccc"
+    "source_commit": "700173808625061adff581cfab415ce8e83e24f6"
   },
   "consumer": "jbookout/doctorcre-app",
   "transport": {
@@ -107,6 +107,7 @@
     "read-tour-selection-cart",
     "record-commission-receipt",
     "record-dispatch-link",
+    "register-client-portal",
     "rename-doc-conversation",
     "resolve-candidate",
     "resolve-conflict",
@@ -541,8 +542,8 @@
       "write": false,
       "producer": {
         "repository": "jbookout/carr-system",
-        "source_commit": "3a57e47015916546fb2ffd11eaf880686c38e659",
-        "pull_request": "https://github.com/jbookout/carr-system/pull/2014"
+        "source_commit": "700173808625061adff581cfab415ce8e83e24f6",
+        "pull_request": "https://github.com/jbookout/carr-system/pull/2525"
       },
       "response": {
         "schema_version": "local-deals-board.v1",
@@ -556,7 +557,8 @@
           "client_status",
           "client_version",
           "phase_started_on",
-          "vendors"
+          "vendors",
+          "client_portal_url"
         ],
         "phase_change_keys": [
           "event_id",
@@ -656,8 +658,8 @@
     "get-deal-room": {
       "producer": {
         "repository": "jbookout/carr-system",
-        "source_commit": "1df9b9936394164dd55e815f8a8bf69649508ccc",
-        "pull_request": "https://github.com/DoctorCRE/carr-system/pull/2192"
+        "source_commit": "700173808625061adff581cfab415ce8e83e24f6",
+        "pull_request": "https://github.com/jbookout/carr-system/pull/2525"
       },
       "response": {
         "schema_version": "deal-timeline.v1",
@@ -675,6 +677,7 @@
         ],
         "lease_absence": null,
         "client_id": "Exact client record UUID, including closed and invoiced records; use for the authenticated clients record read.",
+        "client_portal_url": "https://share.doctorcre.com/<slug> for the deal's active, non-disabled client portal; null otherwise. Derived at read time; never carries a password or hash.",
         "engagement_keys": [
           "client_status",
           "client_version",
@@ -720,7 +723,7 @@
         "schema_version": "deal-checklist.v1",
         "producer": {
           "repository": "jbookout/carr-system",
-          "source_commit": "1df9b9936394164dd55e815f8a8bf69649508ccc"
+          "source_commit": "700173808625061adff581cfab415ce8e83e24f6"
         },
         "template_states": [
           "current",
@@ -754,7 +757,7 @@
       "write": false,
       "producer": {
         "repository": "jbookout/carr-system",
-        "source_commit": "1df9b9936394164dd55e815f8a8bf69649508ccc",
+        "source_commit": "700173808625061adff581cfab415ce8e83e24f6",
         "module": "mcp-server/src/feature-switches.js"
       },
       "inputSchema": {
@@ -1197,8 +1200,8 @@
     "sha256": "4478d4a3386714e9bcbf181af60ff3fae47ba14b09d20ee1758876f32528d634",
     "producer": {
       "repository": "DoctorCRE/carr-system",
-      "source_commit": "1df9b9936394164dd55e815f8a8bf69649508ccc",
-      "pull_request": "https://github.com/DoctorCRE/carr-system/pull/2192"
+      "source_commit": "700173808625061adff581cfab415ce8e83e24f6",
+      "pull_request": "https://github.com/jbookout/carr-system/pull/2525"
     }
   },
   "email_proposals": {
