@@ -253,7 +253,7 @@ function renderBoard() {
       ? `${state.unplaced} deals need a phase`
       : '';
   }
-  if (focusedStage) board.querySelector(`[data-collapse-stage="${CSS.escape(focusedStage)}"]`)?.focus({preventScroll:true});
+  if (focusedStage) board.querySelector(`[data-collapse-stage="${CSS.escape(focusedStage)}"]`)?.focus();
   renderPendingWrites();
 }
 
