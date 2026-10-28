@@ -281,7 +281,9 @@ export function createPollSafety({ window, document = window?.document, now = ()
     async resume() {
       await transaction(() => {
         if (storageFault || !reason || now() < state().resumeAt || requests.recovery.length >= POLL_LIMITS.recoveryHour) return;
-        lastResume = now(); recovering = requests.background.length > 0; reason = ''; failures = 0; nextAt = now(); cooldownAt = now();
+        const held = [...reservations.values()].filter(item => item.key === 'background').reduce((total, item) => total + item.remaining, 0);
+        const available = Math.min(POLL_LIMITS.hour - requests.background.length, POLL_LIMITS.minute - requests.background.filter(time => time > now() - 60_000).length) - held;
+        lastResume = now(); recovering = available < POLL_LIMITS.recoveryHour; reason = ''; failures = 0; nextAt = now(); cooldownAt = now();
         endpointFailures.clear(); sourceFailures = new WeakMap();
       });
       notify();
