@@ -35,6 +35,7 @@
     "claim-lead",
     "close-investigation",
     "close-loop",
+    "complete-deal-item",
     "confirm-email-deal-progress",
     "confirm-email-filing",
     "confirm-email-next-step",
@@ -59,6 +60,7 @@
     "get-incident",
     "governance-queue",
     "incident-board",
+    "instruct-deal-item",
     "lead-board",
     "link-incident-work-request",
     "link-lead-client",
@@ -106,6 +108,7 @@
     "read-session-identity",
     "read-tour-selection-cart",
     "record-commission-receipt",
+    "record-deal-item",
     "record-dispatch-link",
     "register-client-portal",
     "rename-doc-conversation",
@@ -557,6 +560,8 @@
           "client_version",
           "phase_started_on",
           "vendors",
+          "short_name",
+          "items",
           "client_portal_url"
         ],
         "phase_change_keys": [
@@ -651,7 +656,28 @@
           ],
           "role": "Specific service-role slug, displayed with underscores replaced by spaces.",
           "order": "Role, company name, contact name, vendor party id."
-        }
+        },
+        "item_schema_version": "deal-items.v1",
+        "item_keys": [
+          "id",
+          "title",
+          "due_on",
+          "status",
+          "bullets",
+          "source_ref"
+        ],
+        "bullet_keys": [
+          "date",
+          "kind",
+          "text"
+        ],
+        "bullet_kinds": [
+          "promised",
+          "call",
+          "suggestion",
+          "status"
+        ],
+        "short_name": "Record-layer short deal name; fall back to the actual deal name when contact or market evidence is absent."
       }
     },
     "get-deal-room": {
@@ -711,7 +737,28 @@
         },
         "next_actions": {
           "hold_until": "YYYY-MM-DD or null. An open action is held while hold_until is later than the current calendar date. Held actions remain in this history read. Accepted post-call actions return null."
-        }
+        },
+        "item_schema_version": "deal-items.v1",
+        "item_keys": [
+          "id",
+          "title",
+          "due_on",
+          "status",
+          "bullets",
+          "source_ref"
+        ],
+        "bullet_keys": [
+          "date",
+          "kind",
+          "text"
+        ],
+        "bullet_kinds": [
+          "promised",
+          "call",
+          "suggestion",
+          "status"
+        ],
+        "short_name": "Record-layer short deal name; fall back to the actual deal name when contact or market evidence is absent."
       },
       "critical_date_write": "add-critical-date",
       "never_derive": [
@@ -884,7 +931,20 @@
           "status",
           "bullets",
           "source_ref"
-        ]
+        ],
+        "item_schema_version": "deal-items.v1",
+        "bullet_keys": [
+          "date",
+          "kind",
+          "text"
+        ],
+        "bullet_kinds": [
+          "promised",
+          "call",
+          "suggestion",
+          "status"
+        ],
+        "short_name": "Record-layer short deal name; fall back to the actual deal name when contact or market evidence is absent."
       }
     },
     "read-post-call-followups": {
@@ -1201,6 +1261,152 @@
       "repository": "DoctorCRE/carr-system",
       "source_commit": "700173808625061adff581cfab415ce8e83e24f6",
       "pull_request": "https://github.com/jbookout/carr-system/pull/2525"
+    }
+  },
+  "mcp_write_contracts": {
+    "instruct-deal-item": {
+      "write": true,
+      "producer": {
+        "repository": "jbookout/carr-system",
+        "source_commit": "700173808625061adff581cfab415ce8e83e24f6"
+      },
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "idempotency_key": {
+            "type": "string"
+          },
+          "deal": {
+            "type": "string"
+          },
+          "item_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "text": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 240
+          }
+        },
+        "required": [
+          "idempotency_key",
+          "deal",
+          "item_id",
+          "text"
+        ]
+      },
+      "effect": "Record a partner instruction for exactly one open deal item. This records a request and never claims the requested work was executed."
+    },
+    "complete-deal-item": {
+      "write": true,
+      "producer": {
+        "repository": "jbookout/carr-system",
+        "source_commit": "700173808625061adff581cfab415ce8e83e24f6"
+      },
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "idempotency_key": {
+            "type": "string"
+          },
+          "deal": {
+            "type": "string"
+          },
+          "item_id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "idempotency_key",
+          "deal",
+          "item_id"
+        ]
+      },
+      "effect": "Mark exactly one deal checklist item done. Other items, due dates, and the deal next_step stay unchanged."
+    },
+    "record-deal-item": {
+      "write": true,
+      "producer": {
+        "repository": "jbookout/carr-system",
+        "source_commit": "700173808625061adff581cfab415ce8e83e24f6"
+      },
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "idempotency_key": {
+            "type": "string"
+          },
+          "deal": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "due_on": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date"
+          },
+          "bullets": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 60,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "date": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "format": "date"
+                },
+                "kind": {
+                  "type": "string",
+                  "enum": [
+                    "promised",
+                    "call",
+                    "suggestion",
+                    "status"
+                  ]
+                },
+                "text": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 240
+                }
+              },
+              "required": [
+                "kind",
+                "text"
+              ]
+            }
+          },
+          "source_ref": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500
+          }
+        },
+        "required": [
+          "idempotency_key",
+          "deal",
+          "title",
+          "bullets",
+          "source_ref"
+        ]
+      },
+      "effect": "Add one sourced deal checklist item. It never replaces sibling actions. Repeating source_ref and title returns the existing item."
     }
   },
   "email_proposals": {
