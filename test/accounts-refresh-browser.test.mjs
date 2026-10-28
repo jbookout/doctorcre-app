@@ -13,6 +13,7 @@ async function accountPage(t, { width = 1280, seed } = {}) {
   if (seed) await page.route('**/data/board-seed.json', route => route.fulfill({ json: seed }));
   await page.goto(`${server.origin}/deals?view=national&mode=fixture`);
   await page.locator('.account-card').first().waitFor();
+  await page.waitForLoadState('networkidle');
   return page;
 }
 

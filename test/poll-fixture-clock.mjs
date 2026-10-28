@@ -16,7 +16,7 @@ export function installPollFixtureClock(window) {
   Object.defineProperty(window.navigator, 'userActivation', { configurable: true, value: activation });
   window.setTimeout = (fn, ms) => { const id = ++serial; timers.set(id, { fn, at: now() + ms }); return id; };
   window.clearTimeout = id => timers.delete(id);
-  pollSafety(window, { document: window.document, now });
+  const safety = pollSafety(window, { document: window.document, now });
   const advance = ms => {
     offset += ms;
     const due = [...timers].filter(([, job]) => job.at <= now()).sort((a, b) => a[1].at - b[1].at);
@@ -32,7 +32,7 @@ export function installPollFixtureClock(window) {
   for (const target of [window, window.document]) {
     const dispatch = target.dispatchEvent.bind(target);
     target.dispatchEvent = event => {
-      if (event.type === 'online' || event.type === 'pageshow' || (event.type === 'visibilitychange' && window.document.visibilityState !== 'hidden')) advance(5_001);
+      if (event.type === 'online' || event.type === 'pageshow' || (event.type === 'visibilitychange' && window.document.visibilityState !== 'hidden')) advance(Math.max(5_001, safety.state().nextAt - now() + 1));
       return dispatch(event);
     };
   }

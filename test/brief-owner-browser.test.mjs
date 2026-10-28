@@ -24,6 +24,7 @@ for (const width of [390,1280]) test(`partner brief controls work at ${width}px`
   await page.goto(`${server.origin}/brief-owner-test`);
   await page.locator('#appSyncTime[datetime]').waitFor({state:'attached'});
   await page.locator('#docMorning').click();
+  await page.locator('.morning-card .morning-owner').first().waitFor();
   assert.deepEqual(await page.locator('.morning-card .morning-owner').allTextContents(),['Dell','Joe']);
   for (const theme of ['dark','light']) {
     await page.evaluate(theme=>document.documentElement.dataset.theme=theme,theme);
@@ -44,6 +45,7 @@ for (const width of [390,1280]) test(`partner brief controls work at ${width}px`
   assert.deepEqual(await page.locator('.morning-card .morning-owner').allTextContents(),['Joe']);
   await page.reload();await page.locator('#appSyncTime[datetime]').waitFor({state:'attached'});
   await page.locator('#docMorning').click();
+  await page.locator('.morning-card .morning-owner').first().waitFor();
   assert.equal(await page.locator('#morningOwners [aria-pressed="true"]').textContent(),'Joe');
   assert.deepEqual(await page.locator('.morning-card .morning-owner').allTextContents(),['Joe']);
   assert.deepEqual(errors,[]);

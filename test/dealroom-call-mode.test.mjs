@@ -293,7 +293,7 @@ test("Stop sends one stop and starts following the weekly review", async t => {
   assert.equal(requests.filter((r) => r.url.endsWith("/api/stop")).length, 1);
   // The next read is armed once the first post-call read settles.
   await new Promise((resolve) => setImmediate(resolve));
-  assert.ok(timers.some((t) => t.ms === 5000 && !t.cleared), "the review is followed after Stop");
+  assert.ok(timers.some((t) => t.ms === 1600 && !t.cleared), "the first review timer follows the human Stop read");
 });
 
 test("an active call keeps following its report while the tab is hidden, and stops when it settles", async t => {
@@ -305,15 +305,16 @@ test("an active call keeps following its report while the tab is hidden, and sto
   await new Promise((resolve) => setImmediate(resolve));
   doc.visibilityState = "hidden";
   doc.dispatchEvent(new Event("visibilitychange"));
-  const live = () => timers.filter((t) => t.ms === 5000 && !t.cleared);
+  const live = () => timers.filter((t) => [1600, 5000].includes(t.ms) && !t.cleared);
   assert.equal(live().length, 1, "hiding the tab does not stop the post-call poll");
   const before = calls.getStatus.length;
   live()[0].fired = true; live()[0].cleared = true;
-  t.mock.timers.tick(5000);
+  t.mock.timers.tick(1600);
   timers.filter((t) => t.fired)[0].fn();
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(calls.getStatus.length, before + 1, "the hidden tick still reads the report");
   assert.equal(live().length, 1, "and re-arms exactly one timer");
+  assert.equal(live()[0].ms, 5000, "automatic follow-through obeys the shared background gap");
   controller.stopPolling();
   assert.equal(live().length, 0, "once the call's report is done, nothing polls");
 });
@@ -326,11 +327,11 @@ test("Close Call Mode only closes the dialog, as on main; the follow-through sto
   await controller.stop();
   await new Promise((resolve) => setImmediate(resolve));
   const dialog = doc.getElementById("callModeDialog"); dialog.open = true;
-  const live = () => timers.filter((t) => t.ms === 5000 && !t.cleared);
+  const live = () => timers.filter((t) => [1600, 5000].includes(t.ms) && !t.cleared);
   assert.equal(await controller.handleClick(doc.getElementById("callModeClose")), true);
   assert.equal(dialog.open, false, "the declared observation: the dialog closes");
   assert.equal(live().length, 1, "closing leaves the post-call follow-through running, exactly as main's setInterval did");
-  const armed = timers.filter((t) => t.ms === 5000);
+  const armed = timers.filter((t) => [1600, 5000].includes(t.ms));
   controller.stopPolling();
   assert.equal(live().length, 0, "stopping the follow-through clears its timer");
   const before = calls.getStatus.length;

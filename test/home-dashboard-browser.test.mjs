@@ -18,9 +18,18 @@ const screenshot = async (page, name) => {
   await page.screenshot({ path: join(process.env.W2_SCREENSHOT_DIR, `${name}.png`), fullPage: !name.includes('detail') });
 };
 
+async function advanceBackgroundTurn(page, minimumMs = 5_001) {
+  await page.waitForLoadState('networkidle');
+  await page.evaluate(() => document.dispatchEvent(new Event('pointermove')));
+  const delay = await page.evaluate(async minimum => Math.max(minimum, (await import('/js/poll-safety.mjs')).pollSafety(window).state().nextAt - Date.now() + 1), minimumMs);
+  await page.clock.fastForward(delay);
+  await page.waitForTimeout(30);
+}
+
 async function advanceRequestWindow(page, elapsedMs = 60_001) {
   await page.waitForLoadState('networkidle');
-  await page.clock.setSystemTime(new Date(await page.evaluate(() => Date.now()) + elapsedMs));
+  const delay = await page.evaluate(async elapsed => Math.max(elapsed, (await import('/js/poll-safety.mjs')).pollSafety(window).state().nextAt - Date.now() + 1), elapsedMs);
+  await page.clock.setSystemTime(new Date(await page.evaluate(() => Date.now()) + delay));
 }
 
 async function requestHomeRefresh(page, operation = 'read-home-agenda', manual = false, event = 'online') {
@@ -30,9 +39,11 @@ async function requestHomeRefresh(page, operation = 'read-home-agenda', manual =
     && request.postDataJSON()?.params?.name === operation).then(request => { requested = true; return request; });
   if (manual) await (manual === true ? page.locator('#refreshHome') : manual).click();
   else await page.evaluate(type => window.dispatchEvent(type === 'pageshow' ? new PageTransitionEvent('pageshow', { persisted: true }) : new Event(type)), event);
-  for (let turn = 0; turn < 12 && !requested; turn++) {
+  for (let turn = 0; turn < 40 && !requested; turn++) {
     await Promise.race([read, page.waitForLoadState('networkidle')]);
-    if (!requested) await page.clock.fastForward(5_001);
+    if (!requested) {
+      await advanceBackgroundTurn(page);
+    }
   }
   await read;
 }
@@ -116,7 +127,7 @@ async function open(t, { calendar, initialBriefFailure = false, theme = 'dark', 
   });
   await page.goto(`${origin}/?mode=live`);
   if (!hangDetails) await page.waitForFunction(() => /Active deals: \d/.test(document.querySelector('#dealCounts')?.textContent || '') || /unavailable/i.test(document.querySelector('#observedAt')?.textContent || ''));
-  if (firstOpen) { await page.locator('#docOpen[data-brief-unseen]').waitFor(); await page.locator('#docOpen').click(); await page.locator('#docMorning').click(); await page.locator('#docMorningBrief[open]').waitFor(); await page.waitForFunction(() => document.getElementById('morningUpdated').hasAttribute('datetime')); await page.locator('#morningClose').click(); }
+  if (firstOpen) { await page.clock.runFor(5_001); await page.locator('#docOpen[data-brief-unseen]').waitFor(); await page.locator('#docOpen').click(); await page.locator('#docMorning').click(); await page.clock.runFor(5_001); await page.locator('#docMorningBrief[open]').waitFor(); await page.waitForFunction(() => document.getElementById('morningUpdated').hasAttribute('datetime')); await page.locator('#morningClose').click(); }
   return { page, errors, calls, releaseInitialFeed, responses, failBrief(value) { briefFailure = value; }, get boardReads() { return boardReads; }, get feedReads() { return feedReads; }, malformBoard(value) { boardMalformed = value; }, failLeads(value) { leadFailure = value; }, failDetails(value) { detailFailure = value; }, failBoard(value) { failBoard = value; }, updateLead(id, score) { liveLeads.find(row => row.id === id).score = score; } };
 }
 
@@ -135,7 +146,9 @@ test('PR123 R1: Home models the daily morning brief and rejects unknown operatio
   await page.reload(); await loaded;
   await page.waitForFunction(() => document.querySelector('#morningUpdated')?.hasAttribute('datetime'));
   assert.equal(await page.locator('#docMorningBrief').evaluate(dialog => dialog.open), false);
+  await page.clock.runFor(5_001);
   await page.locator('#docOpen').click(); await page.locator('#docMorning').click();
+  await page.clock.runFor(5_001);
   await page.locator('#docMorningBrief[open]').waitFor(); await page.waitForFunction(() => document.getElementById('morningUpdated').hasAttribute('datetime'));
   await page.locator('#morningClose').click();
   await page.clock.setSystemTime(new Date('2026-10-02T15:00:00Z'));
@@ -148,15 +161,17 @@ test('PR123 R1: Home models the daily morning brief and rejects unknown operatio
   assert.equal(await page.locator('#docMorningBrief').evaluate(dialog => dialog.open), false);
   assert.equal((await preference()).day, '2026-10-01');
   await page.mouse.move(10, 10); await page.mouse.move(20, 20);
-  for (let turn = 0; turn < 12; turn++) {
+  for (let turn = 0; turn < 40; turn++) {
     await page.waitForLoadState('networkidle');
     if (await page.locator('#docOpen[data-brief-unseen]').count()) break;
-    await page.clock.runFor(5_001);
+    await advanceBackgroundTurn(page);
   }
   await page.locator('#docOpen[data-brief-unseen]').waitFor();
   assert.equal(await page.locator('#docMorningBrief').evaluate(dialog => dialog.open), false);
   assert.equal((await preference()).day, '2026-10-01');
+  await page.clock.runFor(5_001);
   await page.locator('#docOpen').click(); await page.locator('#docMorning').click();
+  await page.clock.runFor(5_001);
   await page.locator('#docMorningBrief[open]').waitFor(); await page.waitForFunction(() => document.getElementById('morningUpdated').hasAttribute('datetime'));
   assert.ok(calls.filter(name => name === 'morning-brief').length > briefReads);
   assert.equal((await preference()).day, '2026-10-02');
@@ -173,18 +188,7 @@ test('PR123 finding 8: malformed and mixed live reads settle unavailable and rec
   ]) for (const payload of payloads) await t.test(`${name}: ${JSON.stringify(payload)}`, async st => {
     const state = await open(st); const { page, responses } = state;
     const settled = () => page.waitForFunction(() => document.querySelector('#refreshHome').getAttribute('aria-busy') === 'false');
-    const refresh = async () => {
-      await page.clock.setSystemTime(new Date(await page.evaluate(() => Date.now()) + 60_001));
-      let completed = false;
-      const read = page.waitForResponse(response => new URL(response.url()).pathname === '/mcp'
-        && response.request().postDataJSON()?.params?.name === 'lead-board').then(response => { completed = true; return response; });
-      await page.evaluate(() => window.dispatchEvent(new Event('online')));
-      for (let turn = 0; turn < 12 && !completed; turn++) {
-        await page.waitForLoadState('networkidle');
-        await page.clock.fastForward(5_001);
-      }
-      await read; await settled();
-    };
+    const refresh = async () => { await requestHomeRefresh(page, 'lead-board'); await settled(); };
     await settled();
     if (name === 'lead-board') await page.locator('.home-lead').first().click();
     responses.set(name, payload);
@@ -328,7 +332,11 @@ test('no eligible leads means hidden widget; failed Home retains unavailable cal
   assert.equal(await page.locator('#homeLeads').isVisible(), false);
   state.failBoard(true);
   await advanceRequestWindow(page);
-  await page.clock.fastForward(31_000);
+  for (let turn = 0; turn < 40; turn++) {
+    await page.waitForLoadState('networkidle');
+    if (await page.evaluate(() => document.querySelector('#dealCounts').textContent.includes('Active deals: —') && document.querySelector('#refreshHome').getAttribute('aria-busy') === 'false')) break;
+    await advanceBackgroundTurn(page, 31_000);
+  }
   // Recover only after the failing refresh ends: a resume during it joins that read.
   await page.waitForFunction(() => document.querySelector('#dealCounts').textContent.includes('Active deals: —') && document.querySelector('#refreshHome').getAttribute('aria-busy') === 'false');
   assert.equal(await page.locator('#homeCalendar').isVisible(), true);
@@ -458,10 +466,7 @@ test('R7 linked Deals failures pause shared polling and resume healthy board and
     assert.equal(await page.locator('#recordPanel').getByRole('button', { name: 'Close deal', exact: true }).isVisible(), true);
     if (failure === '503') {
       const paused = page.getByText('Background updates paused after repeated failures.', { exact: false });
-      for (let turn = 0; turn < 20 && !(await paused.isVisible()); turn++) {
-        await page.clock.runFor(30_001);
-        await page.waitForTimeout(20);
-      }
+      for (let turn = 0; turn < 40 && !(await paused.isVisible()); turn++) await advanceBackgroundTurn(page, 30_001);
       await paused.waitFor();
       let requests = 0;
       page.on('request', request => {
@@ -477,8 +482,11 @@ test('R7 linked Deals failures pause shared polling and resume healthy board and
     const nextBoard = page.waitForResponse(response => new URL(response.url()).pathname === '/mcp'
       && response.request().postDataJSON()?.params?.name === 'deal-room-board');
     const nextFeed = page.waitForResponse(response => new URL(response.url()).pathname === '/pipeline/changes');
-    if (failure === '503') await page.getByRole('button', { name: 'Resume updates', exact: true }).click();
-    await page.clock.runFor(65_000);
+    if (failure === '503') {
+      await page.getByRole('button', { name: 'Resume updates', exact: true }).click();
+      await page.waitForFunction(async () => !(await import('/js/poll-safety.mjs')).pollSafety(window).state().paused);
+    }
+    for (let turn = 0; turn < 40 && !(state.boardReads > before[0] && state.feedReads > before[1]); turn++) await advanceBackgroundTurn(page);
     await Promise.all([nextBoard, nextFeed]);
     assert.ok(state.boardReads > before[0], 'board refresh continues');
     assert.ok(state.feedReads > before[1], 'feed polling continues');
@@ -680,7 +688,7 @@ test('Slice A Calendar retry clears unrelated private data when the board actor 
  await page.keyboard.press('Escape');
  responses.set('read-home-agenda', { ...board, schema_version: 'home-agenda.v1', actor: 'dell', deals: board.deals.map(deal => ({ ...deal, critical_dates: [], next_actions: [] })) });
  state.failDetails(null);
- await page.locator('#homeCalendar').getByRole('button', { name: 'Retry calendar and tasks', exact: true }).click();
+ await requestHomeRefresh(page, 'read-home-agenda', page.locator('#homeCalendar').getByRole('button', { name: 'Retry calendar and tasks', exact: true }));
  await page.waitForFunction(() => document.querySelector('#refreshHome').getAttribute('aria-busy') === 'false');
  assert.equal(await page.locator('#homeLeads').isVisible(), false);
  assert.equal(await page.locator('#homeDetail').evaluate(dialog => dialog.open), false);
@@ -897,14 +905,15 @@ for (const wake of ['visibility', 'online']) test(`Home retains meetings during 
     Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'visible' });
     document.dispatchEvent(new Event('visibilitychange'));
   });
-  for (let turn = 0; turn < 12 && !requested; turn++) {
+  for (let turn = 0; turn < 40 && !requested; turn++) {
     await Promise.race([pending, page.waitForLoadState('networkidle')]);
-    if (!requested) await page.clock.fastForward(5_001);
+    if (!requested) await advanceBackgroundTurn(page);
   }
   await pending;
   assert.match(await card.innerText(), /Demo retained meeting/);
   assert.doesNotMatch(await card.innerText(), /unavailable|Couldn't load/);
   release({ sponsor: 'joe', sections: { calendar: { state: 'empty', items: [], notes: [] } } });
+  for (let turn = 0; turn < 40 && !(await card.innerText()).includes('No upcoming meetings'); turn++) await advanceBackgroundTurn(page);
   await settles(async () => assert.match(await card.innerText(), /No upcoming meetings/));
   assert.doesNotMatch(await card.innerText(), /Demo retained meeting/);
   assert.deepEqual(errors, []);

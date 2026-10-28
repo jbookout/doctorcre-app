@@ -53,15 +53,21 @@ async function open(t, { width = 1440, reducedMotion = 'no-preference', query = 
 }
 async function advanceInvoicePoll(page, manual = false) {
   await page.waitForLoadState('networkidle');
-  await page.clock.setSystemTime(new Date(await page.evaluate(() => Date.now()) + 300_001));
+  const delay = await page.evaluate(async () => Math.max(300_001, (await import('/js/poll-safety.mjs')).pollSafety(window).state().nextAt - Date.now() + 1));
+  await page.clock.setSystemTime(new Date(await page.evaluate(() => Date.now()) + delay));
   let completed = false;
   const read = page.waitForResponse(response => new URL(response.url()).pathname === '/mcp' && response.request().postDataJSON()?.params?.name === 'read-invoice-tracker').then(response => { completed = true; return response; });
   if (manual) await page.locator('#refreshInvoices').click();
   else await page.clock.fastForward(5_001);
   await page.waitForTimeout(20);
-  for (let turn = 0; turn < 12 && !completed; turn++) {
+  for (let turn = 0; turn < 40 && !completed; turn++) {
     await Promise.race([read, page.waitForLoadState('networkidle')]);
-    if (!completed) { await page.clock.fastForward(5_001); await page.waitForTimeout(20); }
+    if (!completed) {
+      await page.evaluate(() => document.dispatchEvent(new Event('pointermove')));
+      const delay = await page.evaluate(async () => Math.max(5_001, (await import('/js/poll-safety.mjs')).pollSafety(window).state().nextAt - Date.now() + 1));
+      await page.clock.fastForward(delay);
+      await page.waitForTimeout(30);
+    }
   }
   await read;
 }

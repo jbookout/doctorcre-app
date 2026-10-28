@@ -30,15 +30,23 @@ async function open(t,width=1440){
   return {page,errors,calls,get writes(){return writes;},setFail:value=>{fail=value;},setExpired:value=>{expired=value;},setWriteMode:value=>{writeMode=value;}};
 }
 async function refreshDirectory(page, ready = () => true) {
- await page.waitForLoadState('networkidle');
- await page.clock.setSystemTime(new Date(await page.evaluate(() => Date.now()) + 60_001));
- await page.evaluate(() => window.dispatchEvent(new Event('online')));
- for(let turn=0;turn<12;turn++) {
-  await page.clock.runFor(5_001);
-  if(await page.evaluate(ready)) return;
- }
- assert.fail('Directory did not complete its eligible refresh');
+ await page.waitForTimeout(30);
+ let began = false;
+ const observe = request => { if (new URL(request.url()).pathname.startsWith('/api/v1/business/')) began = true; };
+ page.on('request', observe);
+ try {
+  await page.evaluate(() => window.dispatchEvent(new Event('online')));
+  for(let turn=0;turn<40;turn++) {
+   await page.evaluate(() => document.dispatchEvent(new Event('pointermove')));
+   const delay=await page.evaluate(async()=>Math.max(5_001,(await import('/js/poll-safety.mjs')).pollSafety(window).state().nextAt-Date.now()+1));
+   await page.clock.fastForward(delay);
+   await page.waitForTimeout(30);
+   if(began && await page.evaluate(ready)) return;
+  }
+  assert.fail('Directory did not complete its eligible refresh');
+ } finally { page.off('request', observe); }
 }
+
 for(const width of [1440,390])test(`W5 rendered directories and wide dialog at ${width}px`,async t=>{
   const h=await open(t,width),{page}=h;await page.goto(origin+'/vendors?mode=live', {waitUntil:'domcontentloaded'});await page.waitForSelector('.record-row').catch(async e=>{assert.fail(JSON.stringify({errors:h.errors,body:await page.locator('main').innerText()}));});
   assert.equal(await page.locator('#pager').count(),0);assert.doesNotMatch(await page.locator('main').innerText(),/Checked a while ago|About this list|source|No filters|read again/i);

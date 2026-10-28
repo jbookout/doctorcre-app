@@ -115,6 +115,7 @@ test('deal review prioritizes cards, page tabs and Add deal in both themes and w
   const rails=await page.locator('.phase-rail li').evaluateAll(nodes=>nodes.map(n=>Math.round(n.getBoundingClientRect().top)));
   assert.equal(new Set(rails).size,width===390?2:1,'phase dates fit without horizontal scrolling');
   assert.ok((await page.locator('.deal-timeline').boundingBox()).height<(width===390?330:200),'phase timeline stays compact');
+  await page.locator('#panelContextOpen').waitFor({state:'visible'});
   assert.equal(await page.locator('#panelContextOpen').isVisible(),true,'linked context loads only when opened');
   assert.equal(await page.locator('#recordPanel').evaluate(n=>n.scrollWidth<=n.clientWidth),true);
   assert.deepEqual(errors,[]);

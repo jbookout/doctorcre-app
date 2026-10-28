@@ -224,3 +224,46 @@ test('Doc previews the newest deal update across note timestamp formats and keep
  assert.equal(docAnswer(c.snapshot(),{recordId:'demo-a',question:'Recent activity'}).value,'Latest note');
  assert.deepEqual(normalizeDocRead('getDeal',payload,['demo-a'])[0].activity.map(item=>item.text),['Latest note','Earlier note','Previous activity','Historic note','Undated note']);
 });
+
+test('human revalidation refreshes expired observed facts without changing selection or widening a projected filter', async () => {
+ let now=0, reads=0;
+ const c=createDocContext({page:'deals',now:()=>now});
+ const client=observeDocClient({getBoard:async()=>{reads++;return{deals:[deal('wanted',reads),deal('outside',reads)]};}},c);
+ await client.getBoard({workspace:'team'});
+ c.filter({owner:'demo-partner'});
+ c.project('getBoard',{deals:[deal('wanted',1)]});
+ c.select('deal','wanted');
+ now=60_001;
+ assert.equal(c.snapshot().ready,false);
+ await c.revalidate();
+ assert.equal(reads,2);
+ assert.equal(c.snapshot().ready,true);
+ assert.deepEqual(c.snapshot().records.map(row=>row.id),['wanted']);
+ assert.equal(c.snapshot().active.version,2);
+ assert.deepEqual(c.snapshot().selected,{kind:'deal',id:'wanted'});
+});
+
+test('human revalidation never publishes an obsolete filtered or revoked context', async () => {
+ for(const invalidate of [c=>c.filter({owner:'other'}),c=>c.clear()]){
+  let now=0, release, entered;
+  const ready=new Promise(resolve=>{entered=resolve;});
+  let holding=false;
+  const c=createDocContext({page:'deals',now:()=>now});
+  const client=observeDocClient({getBoard:async()=>{if(holding){entered();await new Promise(resolve=>{release=resolve;});}return{deals:[deal()]};}},c);
+  await client.getBoard();now=60_001;holding=true;
+  const pending=c.revalidate();await ready;invalidate(c);release();await pending;
+  assert.equal(c.snapshot().ready,false);
+  assert.deepEqual(c.snapshot().records,[]);
+ }
+});
+
+
+test('a failed human revalidation preserves projected eligibility for a later recovery',async()=>{
+ let now=0, failed=false;
+ const c=createDocContext({page:'deals',now:()=>now});
+ const client=observeDocClient({getBoard:async()=>{if(failed)throw Error('unavailable');return{deals:[deal('wanted'),deal('outside')]};}},c);
+ await client.getBoard();c.filter({owner:'wanted'});c.project('getBoard',{deals:[deal('wanted')]});
+ now=60_001;failed=true;await c.revalidate();assert.equal(c.snapshot().ready,false);
+ failed=false;await c.revalidate();assert.equal(c.snapshot().ready,true);
+ assert.deepEqual(c.snapshot().records.map(row=>row.id),['wanted']);
+});

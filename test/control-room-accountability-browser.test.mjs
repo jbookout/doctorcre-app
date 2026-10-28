@@ -69,14 +69,17 @@ async function advanceRoom(page, observed) {
   await page.clock.setSystemTime(await page.evaluate(() => Date.now()) + 60_001);
   const paused = page.locator('[data-poll-safety]');
   if (await paused.isVisible() && /request limit/.test(await paused.innerText())) await paused.getByRole('button', { name: 'Resume updates' }).click();
-  for (let attempt = 0; attempt < 12; attempt++) {
+  for (let attempt = 0; attempt < 40; attempt++) {
     await page.waitForLoadState('networkidle');
     if (observed && await page.evaluate(observed)) return;
     if (!observed && await page.evaluate(async before => {
       const { view } = await import('/js/control-room.js');
       return view.status === 'ready' && view.sequence > before;
     }, sequence)) return;
-    await page.clock.runFor(5_001);
+    await page.evaluate(() => document.dispatchEvent(new Event('pointermove')));
+    const delay = await page.evaluate(async () => Math.max(5_001, (await import('/js/poll-safety.mjs')).pollSafety(window).state().nextAt - Date.now() + 1));
+    await page.clock.fastForward(delay);
+    await page.waitForTimeout(30);
   }
   assert.fail('Control Room did not finish its next budgeted turn');
 }

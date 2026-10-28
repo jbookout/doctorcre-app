@@ -607,3 +607,15 @@ test('round two: Resume deadline includes the recovery requests that settled aft
   assert.equal(sent, 121, 'the displayed deadline grants a usable fresh allowance');
   safety.dispose();
 });
+
+test('round two: a background wake caused by trusted input keeps its background allowance', async () => {
+  const { createPollSafety } = await import('../js/poll-safety.mjs');
+  const c = fakeClock(), safety = createPollSafety(c); let sent = 0;
+  c.window.event = { type: 'keydown', isTrusted: true };
+  await safety.run(() => Promise.all(Array.from({ length: 91 }, () => safety.fetch(async () => {
+    sent++; return new Response('{}');
+  }, '/read').catch(() => {}))));
+  assert.equal(sent, 90);
+  assert.equal(safety.state().paused, true, 'waking a poller cannot spend the human allowance');
+  safety.dispose();
+});

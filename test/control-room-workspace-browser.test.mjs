@@ -95,11 +95,14 @@ async function waitForRoom(page, after=0) {
  assert.fail('Control Room read did not settle');
 }
 async function driveRoom(page, sequence) {
- for(let attempt=0;attempt<12;attempt++){
+ for(let attempt=0;attempt<40;attempt++){
   await page.waitForLoadState('networkidle');
   const ready=await page.evaluate(async after=>{const {view}=await import('/js/control-room.js');return view.status==='ready'&&view.sequence>after;},sequence);
   if(ready)return;
-  await page.clock.runFor(5_001);
+  await page.evaluate(() => document.dispatchEvent(new Event('pointermove')));
+  const delay=await page.evaluate(async()=>Math.max(5_001,(await import('/js/poll-safety.mjs')).pollSafety(window).state().nextAt-Date.now()+1));
+  await page.clock.fastForward(delay);
+  await page.waitForTimeout(30);
  }
  await waitForRoom(page,sequence);
 }
@@ -181,7 +184,15 @@ test('W7 automatic refresh updates PR, provider spend and open details without l
  await page.locator('#jobClose').click();await section(page,'tabConnections');await page.getByText('$18.50 · October 2026',{exact:true}).first().waitFor();
  assert.equal(await page.locator('[data-connection="grok"]').getAttribute('data-state'),'needs_reconnect');assert.equal(await page.locator('[data-device]').count(),2);
  await page.emulateMedia({reducedMotion:'no-preference'});await page.evaluate(()=>document.documentElement.dataset.motion='full');assert.equal(await page.locator('.connection-dot').first().evaluate(e=>getComputedStyle(e).animationName),'none');assert.equal(await page.locator('[data-connection="grok"] .connection-dot').evaluate(e=>getComputedStyle(e).borderRadius),'1px');await page.emulateMedia({reducedMotion:'reduce'});assert.equal(await page.locator('.connection-dot').first().evaluate(e=>getComputedStyle(e).animationName),'none');
- state.denied=true;await page.clock.fastForward(60_001);await page.waitForLoadState('networkidle');await page.clock.runFor(5_001);await page.waitForURL('**/public-shell/session-ended.html');assert.equal(await page.locator('[data-device],#jobDialog').count(),0);
+ state.denied=true;
+ for(let attempt=0;attempt<40&&!page.url().endsWith('/public-shell/session-ended.html');attempt++){
+  await page.waitForLoadState('networkidle');
+  if(page.url().endsWith('/public-shell/session-ended.html'))break;
+  await page.evaluate(() => document.dispatchEvent(new Event('pointermove')));
+  const delay=await page.evaluate(async()=>Math.max(5_001,(await import('/js/poll-safety.mjs')).pollSafety(window).state().nextAt-Date.now()+1));
+  await page.clock.fastForward(delay);await page.waitForTimeout(30);
+ }
+ await page.waitForURL('**/public-shell/session-ended.html');assert.equal(await page.locator('[data-device],#jobDialog').count(),0);
 });
 for(const width of [1440,390])test(`W7 calendar defaults and integrated automation list at ${width}px`,async t=>{
  const {page,errors}=await open(t,{width});await section(page,'tabAutomations');await page.waitForSelector('.calendar-day');assert.equal(await page.locator('.calendar-day').count(),31);

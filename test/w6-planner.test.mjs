@@ -213,9 +213,10 @@ test("manual refresh supersedes delayed boot library and client options", async 
   } finally { app.close(); }
 });
 test("new same-tour background detail supersedes delayed popup detail", async () => {
-  const old = deferred(); const app = harness({ tour: () => old.promise });
+  const old = deferred(); let hold = false;
+  const app = harness({ tour: id => hold ? old.promise : Promise.resolve({ id, name: "Initial detail", stops: [] }) });
   try {
-    await app.view.ready; app.doc.querySelector(".tour-button").click();
+    await app.view.ready; hold = true; app.doc.querySelector(".tour-button").click();
     app.service.tour = async id => ({ id, name: "New detail", stops: [] }); await app.view.refresh();
     old.resolve({ id: clientA, name: "Old detail", stops: [] }); await settle();
     assert.equal(app.doc.querySelector("#detail-title").textContent, "New detail");
@@ -623,4 +624,23 @@ test("a pending client search cannot block selected-client or open-tour refresh"
     assert.equal(app.doc.querySelector("#plan-notes").value, "Newest selected client notes");
     assert.equal(app.doc.querySelector("dialog").open, true);
   } finally { pending.resolve([]); await refreshing; app.close(); }
+});
+
+test('planner refresh stays pending until its next-tour detail read settles', async () => {
+  let hold = false, entered, release;
+  const started = new Promise(resolve => { entered = resolve; });
+  const app = harness({ tour: async id => {
+    if (hold) { entered(); await new Promise(resolve => { release = resolve; }); }
+    return { id, name: 'Demo tour', stops: [], cheat_sheet: { content: { notes: 'Synthetic original entry' } } };
+  } });
+  try {
+    await app.view.ready;
+    hold = true;
+    let finished = false;
+    const reading = app.view.refresh().then(() => { finished = true; });
+    await started; await settle();
+    assert.equal(finished, false, 'automatic read ownership includes its next-tour lookup');
+    release(); await reading;
+    assert.equal(finished, true);
+  } finally { release?.(); app.close(); }
 });

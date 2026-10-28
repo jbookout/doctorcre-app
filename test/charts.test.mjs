@@ -624,18 +624,21 @@ test("Charts background refresh keeps the board, its time and open Details on sc
 test("Charts recover from an unavailable read after backing off above the interval", async t => {
   t.mock.timers.enable({ apis: ["Date", "setTimeout"], now: 100_000 });
   const s = await chartDom(t, reads => {
-    if (reads === 1) throw Object.assign(new Error("Synthetic unavailable"), { status: 503 });
+    if (reads === 2) throw Object.assign(new Error("Synthetic unavailable"), { status: 503 });
     return board;
   }, { poll: true, ready: false });
+  assert.equal(s.charts.view.status, "ready");
+  t.mock.timers.tick(30_000);
+  await new Promise(resolve => setImmediate(resolve));
   assert.equal(s.charts.view.status, "unavailable");
   t.mock.timers.tick(59_999);
   await new Promise(resolve => setImmediate(resolve));
   assert.equal(s.charts.view.status, "unavailable", "the outage does not speed up polling");
-  assert.equal(s.reads(), 1);
+  assert.equal(s.reads(), 2);
   t.mock.timers.tick(1);
   await new Promise(resolve => setImmediate(resolve));
   assert.equal(s.charts.view.status, "ready", "the first retry waits twice the normal interval");
-  assert.equal(s.reads(), 2);
+  assert.equal(s.reads(), 3);
 });
 
 test("Charts paint only the current read: a superseded board answer or failure arrives late and is dropped", async t => {

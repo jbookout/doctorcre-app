@@ -40,6 +40,15 @@ async function setup(t,{width=1440,motion='no-preference',onRoute,engine=chromiu
  return{page,goto,calls,errors};
 }
 
+async function advanceBackground(page) {
+ await page.waitForTimeout(30);
+ const delay=await page.evaluate(async()=>{
+  const {pollSafety}=await import('/js/poll-safety.mjs');
+  return Math.max(5_001,pollSafety(window).state().nextAt-Date.now()+1);
+ });
+ await page.clock.runFor(delay);await page.waitForLoadState('networkidle');await page.waitForTimeout(30);
+}
+
 test('closed Doc skips suggestion reads and opens with fresh suggestions after context changes', async t => {
  let approvalLoads=0;
  const {page,goto,calls,errors}=await setup(t,{onRoute:async(route,{url})=>{
@@ -108,6 +117,7 @@ test('page facts and exact selection, existing suggestions, one-tap approval, in
   dialog.scrollTop=0;return visible;
  });assert.equal(persistent,true);
  await page.setViewportSize({width:1440,height:960});
+ await page.clock.runFor(5_001);
  await page.locator('#recordPanel #docOpen').click();
  assert.equal(await page.locator('#docRecord').isDisabled(),true);
  assert.equal(await page.locator('#docRecord').inputValue(),'deal:d14');
@@ -120,15 +130,13 @@ test('page facts and exact selection, existing suggestions, one-tap approval, in
  const refreshed=page.waitForResponse(response=>response.url().endsWith('/mcp') && response.request().postDataJSON()?.params?.name==='get-deal-room');
  await page.evaluate(()=>window.dispatchEvent(new Event('online')));
  for(let turn=0;turn<12&&calls.filter(call=>call.name==='get-deal-room').length===detailReads;turn++){
-  await page.waitForLoadState('networkidle');await page.clock.runFor(5_001);
+  await page.waitForLoadState('networkidle');await advanceBackground(page);
  }
  await refreshed;
- for(let turn=0;turn<12&&!await page.evaluate(()=>document.querySelector('#recordPanel > #docPresence')?.dataset.state==='ready' && window.docContext?.snapshot().active?.title==='Demo Surgical Practice');turn++){
-  await page.waitForLoadState('networkidle');await page.clock.runFor(5_001);
- }
+ await page.waitForLoadState('networkidle');
+ await page.locator('#recordPanel #docOpen').click();
  await page.waitForFunction(()=>document.querySelector('#recordPanel > #docPresence')?.dataset.state==='ready' && window.docContext?.snapshot().active?.title==='Demo Surgical Practice');
  assert.ok(calls.filter(call=>call.name==='get-deal-room').length>detailReads);
- await page.locator('#recordPanel #docOpen').click();
  assert.equal(await page.locator('#docRecord').inputValue(),'deal:d14');
  await page.keyboard.press('Escape');
  await page.locator('#panelClose').click();
@@ -146,7 +154,7 @@ test('page facts and exact selection, existing suggestions, one-tap approval, in
  assert.equal(calls.filter(call=>call.name==='decide-doc-suggestion').length,1);
  const decision=calls.find(call=>call.name==='decide-doc-suggestion');assert.equal(decision.args.choice,'discuss');assert.equal(decision.args.base_version,1);
  for(let turn=0;turn<12&&await page.locator('[data-doc-approve]').count();turn++){
-  await page.waitForLoadState('networkidle');await page.clock.runFor(5_001);
+  await page.waitForLoadState('networkidle');await advanceBackground(page);
  }
  assert.equal(await page.locator('[data-doc-approve]').count(),0);
  assert.ok(await page.locator('#docDetail').evaluate(n=>n.getBoundingClientRect().width)>900);
@@ -179,7 +187,7 @@ test('selection/filter changes cancel context, auto-refresh recovers and no writ
  await page.waitForLoadState('networkidle');
  await page.clock.setSystemTime(await page.evaluate(()=>Date.now())+60_001);
  for(let turn=0;turn<12&&!await page.locator('#docSuggestions').textContent().then(text=>text.includes('Confirm the survey'));turn++){
-  await page.clock.runFor(5_001);await page.waitForLoadState('networkidle');
+  await advanceBackground(page);await page.waitForLoadState('networkidle');
  }
  await page.waitForFunction(()=>document.querySelector('#docSuggestions')?.textContent.includes('Confirm the survey'));
  assert.equal(calls.filter(call=>call.name==='decide-doc-suggestion').length,0);
@@ -337,16 +345,17 @@ for(const staleFailure of [false,true])test(`R4 superseded Queue ${staleFailure?
  const {page,goto}=await setup(t,{onRoute:async(route,env)=>{
   if(env.url.pathname==='/api/room/queue'){
    if(++reads===1){started();await pending;await route.fulfill(staleFailure?{status:503,json:{}}:{json:queuePayload('running','2026-10-01T10:00:00Z')});}
-   else await route.fulfill({json:queuePayload('done','2026-10-01T11:00:00Z')});return true;
+   else await route.fulfill({json:{...queuePayload('done','2026-10-01T11:00:00Z'),projected_at:new Date(await page.evaluate(()=>Date.now())).toISOString()}});return true;
   }return producerRoute(route,env);
  }});await page.clock.install();await goto('/control-room/progress/work');await entered;
  // The cadence never overlaps a held read, so the newer read comes from a return to view.
  await page.clock.setSystemTime(await page.evaluate(()=>Date.now())+60_001);
  await page.evaluate(()=>{for(const state of ['hidden','visible']){Object.defineProperty(document,'visibilityState',{configurable:true,value:state});Object.defineProperty(document,'hidden',{configurable:true,value:state==='hidden'});document.dispatchEvent(new Event('visibilitychange'));}});
  for(let turn=0;turn<12&&!await page.evaluate(()=>document.querySelector('.queue-card-meta')?.textContent.includes('done'));turn++){
-  await page.clock.runFor(5_001);await page.waitForTimeout(30);
+  await advanceBackground(page);await page.waitForTimeout(30);
  }
  await page.waitForFunction(()=>document.querySelector('.queue-card-meta')?.textContent.includes('done'));assert.equal(reads,2);release();await page.waitForTimeout(100);
+ await page.locator('#docOpen').click();await page.waitForFunction(()=>window.docContext?.snapshot().ready);
  const c=await readContext(page);assert.equal(c.ready,true);assert.equal(c.records.find(r=>r.kind==='room-task')?.fields.find(f=>f.label==='Status').value,'done');
  assert.match(await page.locator('.queue-card-meta').textContent(),/done/);
 });
@@ -363,8 +372,11 @@ for(const dataset of ['clients','vendors'])test(`R12/R13/R18 ${dataset} facts an
   if(url.pathname==='/mcp'&&route.request().postDataJSON().params.name==='find-and-catch-up'){
    await rpc(route,{state:'completed',match:{kind:dataset==='clients'?'client':'vendor',target:dataset==='clients'?'C-DEMO-1':'V-DEMO-1'},catch_up:{timeline:[{summary:'Older review',occurred_at:'2026-10-01T10:00:00Z'},{summary:'Newer review',occurred_at:'2026-10-01T11:00:00Z'}]}});return true;
   }return false;
- }});await goto('/'+dataset+'?mode=live');await page.locator('.record-row').first().click();await page.waitForFunction(()=>document.querySelector('#recordActivity')?.textContent.includes('Newer review'));
+ }});await page.clock.install();await goto('/'+dataset+'?mode=live');await page.locator('.record-row').first().click();await page.waitForFunction(()=>document.querySelector('#recordActivity')?.textContent.includes('Newer review'));
  const c=await readContext(page);assert.equal(c.ready,true);assert.equal(c.active.fields.find(f=>f.label==='Owner').value,'Joe');assert.equal(c.active.fields.find(f=>f.label==='Status').value,dataset==='clients'?'Active':'Warm');assert.equal(c.active.activity[0]?.text,'Newer review');
+ await page.clock.setSystemTime(await page.evaluate(()=>Date.now())+60_001);
+ await page.locator('#docOpen').click();await page.waitForFunction(()=>window.docContext?.snapshot().ready);
+ const fresh=await readContext(page);assert.equal(fresh.active.id,c.active.id);assert.deepEqual(fresh.selected,c.selected);assert.equal(fresh.active.activity[0]?.text,'Newer review');
 });
 test('R11/R18 Search completed catch-up supports positive context through live MCP',async t=>{
  const {page,goto}=await setup(t,{onRoute:async(route,{url})=>{
@@ -383,6 +395,15 @@ for(const failure of ['timeout','malformed'])test(`R6 Tour background ${failure}
  outage=true;await page.evaluate(()=>window.dispatchEvent(new Event('online')));if(failure==='timeout'){await entered;await page.clock.fastForward(11000);}await page.waitForFunction(()=>document.querySelector('#detail-message').textContent.includes('unavailable'));
  assert.equal((await readContext(page)).ready,false);
 });
+test('human Doc opening refreshes expired Tour facts and preserves the selected tour',async t=>{
+ const {page,goto}=await setup(t,{onRoute:producerRoute});await page.clock.install();await goto('/tours');
+ await page.locator('.tour-button').first().click();await page.waitForFunction(()=>window.docContext?.snapshot().active?.title==='Sample Tour');
+ const before=await readContext(page);await page.clock.setSystemTime(await page.evaluate(()=>Date.now())+60_001);
+ assert.equal((await readContext(page)).ready,false);
+ await page.locator('#docOpen').click();await page.waitForFunction(()=>window.docContext?.snapshot().ready);
+ const fresh=await readContext(page);assert.deepEqual(fresh.selected,before.selected);assert.equal(fresh.active.id,before.active.id);
+});
+
 test('R14 Tour no-match projection changes scope and preserves the library observation',async t=>{
  const {page,goto}=await setup(t,{onRoute:producerRoute});await goto('/tours');await page.locator('.tour-button').first().waitFor();const before=await readContext(page);
  await page.locator('#tour-filter').fill('no match');await page.waitForFunction(()=>document.querySelectorAll('.tour-button').length===0);
@@ -398,8 +419,10 @@ test('R15/R16 browser Back restores the Ideas tab scope and pagehide clears sele
 for(const verb of ['loop-board','list-industry-events'])test(`R1/R16 Ideas tab cache cannot recover after ${verb} authorization loss`,async t=>{
  let denied=false,authLost=false;const {page}=await setup(t,{onRoute:async(route,env)=>{
   if(env.url.pathname==='/mcp'&&(authLost||(denied&&route.request().postDataJSON().params.name===verb))){authLost=true;await route.fulfill({status:401,json:{}});return true;}return producerRoute(route,env);
- }});await page.goto('https://app.doctorcre.com/ideas-events');await page.locator('.idea-tile').first().waitFor();await page.locator('#tabEvents').click();await page.waitForFunction(()=>document.querySelector('#docPresence').dataset.state==='ready');await page.locator('#tabIdeas').click();
- denied=true;await page.evaluate(()=>window.dispatchEvent(new Event('online')));await page.waitForURL('**/public-shell/session-ended.html');
+ }});await page.clock.install();await page.goto('https://app.doctorcre.com/ideas-events');await page.locator('.idea-tile').first().waitFor();await page.locator('#tabEvents').click();await page.waitForFunction(()=>document.querySelector('#docPresence').dataset.state==='ready');await page.locator('#tabIdeas').click();
+ denied=true;await page.clock.setSystemTime(await page.evaluate(()=>Date.now())+60_001);await page.evaluate(()=>window.dispatchEvent(new Event('online')));
+ for(let turn=0;turn<16&&!authLost;turn++)await advanceBackground(page);
+ await page.waitForURL('**/public-shell/session-ended.html');
  assert.equal(await page.locator('#tabEvents,#docPresence,.idea-tile').count(),0);
 });
 test('R11/R12 valid empty directory activity remains an authorized empty read',async t=>{
@@ -444,7 +467,8 @@ test('R18 closed Deal detail cannot survive an empty board projection',async t=>
  await page.waitForFunction(()=>window.docContext?.snapshot().active?.id==='d14');
  await page.locator('#panelClose').click();
  await page.waitForFunction(()=>window.docContext?.snapshot().selected===null);
- empty=true;await page.clock.fastForward(31_000);
+ empty=true;
+ for(let turn=0;turn<16&&await page.locator('.kanban-card').count();turn++)await advanceBackground(page);
  await page.waitForFunction(()=>document.querySelectorAll('.kanban-card').length===0);
  const c=await readContext(page);assert.equal(c.ready,true);assert.deepEqual(c.records,[]);
 });
@@ -544,14 +568,16 @@ test('Doc suggestion control follows server switch flips and stale clicks cannot
  await action.evaluate(node=>{node.hidden=false;node.click();});
  assert.equal(calls.filter(call=>call.name==='decide-doc-suggestion').length,0);
  available=true;
- await page.clock.fastForward(60_001);
+ await page.clock.setSystemTime(await page.evaluate(()=>Date.now())+60_001);
  await page.evaluate(()=>window.dispatchEvent(new Event('online')));
- for(let turn=0;turn<8&&!await action.isVisible();turn++){await page.clock.fastForward(5_001);await page.waitForLoadState('networkidle');}
+ await page.locator('#docRefresh').click();
+ for(let turn=0;turn<8&&!await action.isVisible();turn++){await advanceBackground(page);await page.waitForLoadState('networkidle');}
  await action.waitFor({state:'visible'});
  available=false;
- await page.clock.fastForward(60_001);
+ await page.clock.setSystemTime(await page.evaluate(()=>Date.now())+60_001);
  await page.evaluate(()=>window.dispatchEvent(new Event('online')));
- for(let turn=0;turn<8&&await action.isVisible();turn++){await page.clock.fastForward(5_001);await page.waitForLoadState('networkidle');}
+ await page.locator('#docRefresh').click();
+ for(let turn=0;turn<8&&await action.isVisible();turn++){await advanceBackground(page);await page.waitForLoadState('networkidle');}
  await action.waitFor({state:'hidden'});
  assert.equal(calls.filter(call=>call.name==='decide-doc-suggestion').length,0);
  assert.deepEqual(errors,[]);
@@ -590,9 +616,9 @@ test('Dr. CRE suggestion dock retry and reconcile hold while the switch is off a
  assert.equal(writes.length,2);
 
  available=false;
- await page.clock.fastForward(60_001);
+ await page.clock.setSystemTime(await page.evaluate(()=>Date.now())+60_001);
  await page.evaluate(()=>window.dispatchEvent(new Event('online')));
- for(let turn=0;turn<8&&await decisionAction.isVisible();turn++){await page.clock.fastForward(5_001);await page.waitForLoadState('networkidle');}
+ for(let turn=0;turn<8&&await decisionAction.isVisible();turn++){await advanceBackground(page);await page.waitForLoadState('networkidle');}
  await card.locator('.suggestion-decisions').waitFor({state:'hidden'});
  await decisionAction.waitFor({state:'hidden'});
  await correctionAction.waitFor({state:'hidden'});
@@ -606,9 +632,9 @@ test('Dr. CRE suggestion dock retry and reconcile hold while the switch is off a
  assert.equal(await page.locator('#receiptDock .receipt').count(),2,'the held requests stay in the dock');
 
  available=true;decision='ok';correction='ok';
- await page.clock.fastForward(60_001);
+ await page.clock.setSystemTime(await page.evaluate(()=>Date.now())+60_001);
  await page.evaluate(()=>window.dispatchEvent(new Event('online')));
- for(let turn=0;turn<8&&!await decisionAction.isVisible();turn++){await page.clock.fastForward(5_001);await page.waitForLoadState('networkidle');}
+ for(let turn=0;turn<8&&!await decisionAction.isVisible();turn++){await advanceBackground(page);await page.waitForLoadState('networkidle');}
  await decisionAction.waitFor({state:'visible'});
  await decisionAction.click();
  await settles(()=>assert.equal(writes.length,3));
@@ -645,7 +671,7 @@ test('Dr. CRE approval: a switch-off during its fresh read sends nothing, a feat
  await page.locator('#docOpen').click();
  const action=page.locator('[data-doc-approve]').first();
  for(let turn=0;turn<12&&!await action.isVisible();turn++){
-  await page.waitForLoadState('networkidle');await page.clock.runFor(5_001);
+  await page.waitForLoadState('networkidle');await advanceBackground(page);
  }
  await action.waitFor({state:'visible'});
  const status=page.locator('#docApprovalStatus');
@@ -674,7 +700,7 @@ test('Dr. CRE approval: a switch-off during its fresh read sends nothing, a feat
  await page.clock.setSystemTime(await page.evaluate(()=>Date.now())+5_001);
  await page.locator('#readActionSwitch').click();
  for(let turn=0;turn<12&&!await action.isVisible();turn++){
-  await page.waitForLoadState('networkidle');await page.clock.runFor(5_001);
+  await page.waitForLoadState('networkidle');await advanceBackground(page);
  }
  await action.waitFor({state:'visible'});
  available=false;refuse=true;
@@ -692,7 +718,7 @@ test('Dr. CRE approval: a switch-off during its fresh read sends nothing, a feat
  await page.clock.setSystemTime(await page.evaluate(()=>Date.now())+5_001);
  await page.locator('#readActionSwitch').click();
  for(let turn=0;turn<12&&!await action.isVisible();turn++){
-  await page.waitForLoadState('networkidle');await page.clock.runFor(5_001);
+  await page.waitForLoadState('networkidle');await advanceBackground(page);
  }
  await action.waitFor({state:'visible'});
  await action.click();
@@ -731,7 +757,7 @@ for(const trigger of ['resume','identity-failure']) test(`F9 Leads ${trigger} cl
   if(hold && env.url.pathname==='/api/system-work/session'){await held;if(trigger==='identity-failure'){await route.fulfill({status:503,body:''});return true;}}
   return producerRoute(route,env);
  }});
- await goto('/leads?mode=live');await page.locator('.lead-card').first().click();
+ await page.clock.install();await goto('/leads?mode=live');await page.locator('.lead-card').first().click();
  await page.waitForFunction(()=>window.docContext?.snapshot().active);
  hold=true;
  const suspended=await page.evaluate(trigger=>{
@@ -744,6 +770,7 @@ for(const trigger of ['resume','identity-failure']) test(`F9 Leads ${trigger} cl
  assert.doesNotMatch(await page.locator('#docDetail').innerText(),/Dr. Example/);
  release();
  if(trigger==='identity-failure'){await page.waitForFunction(()=>document.querySelectorAll('.lead-card').length===0);assert.deepEqual((await readContext(page)).records,[]);hold=false;await page.locator('#docClose').click();await page.locator('#refreshBoard').click();}
+ for(let turn=0;turn<16&&!await page.evaluate(()=>window.docContext?.snapshot().ready);turn++)await advanceBackground(page);
  await page.waitForFunction(()=>window.docContext?.snapshot().ready);
  assert.ok((await readContext(page)).records.length>0);assert.deepEqual(errors,[]);
 });

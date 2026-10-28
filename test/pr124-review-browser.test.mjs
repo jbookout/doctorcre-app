@@ -47,7 +47,7 @@ async function readPanel(page) {
  const live=await page.evaluate(()=>window.livePanelRead===true);let started=false;
  const read=live?page.waitForRequest(request=>new URL(request.url()).pathname==='/mcp'&&request.postDataJSON()?.params?.name==='get-deal-room').then(request=>{started=true;return request;}):null;
  await page.evaluate(() => dispatchEvent(new Event('online')));
- if(read){for(let turn=0;turn<12&&!started;turn++){await page.waitForTimeout(30);if(!started)await page.clock.runFor(5_001);}await read;}
+ if(read){for(let turn=0;turn<12&&!started;turn++){await page.waitForTimeout(30);if(!started){const delay=await page.evaluate(async()=>Math.max(5_001,(await import('/js/poll-safety.mjs')).pollSafety(window).state().nextAt-Date.now()+1));await page.clock.fastForward(delay);}}await read;}
  await page.waitForTimeout(30);
 }
 

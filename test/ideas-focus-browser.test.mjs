@@ -44,12 +44,15 @@ async function open(t, tab = 'ideas') {
 
 async function refreshIdeas(page) {
   await page.waitForLoadState('networkidle');
-  const before = await page.evaluate(() => window.ideaReads);
-  await page.clock.setSystemTime(new Date(await page.evaluate(() => Date.now()) + 60_001));
+  const before = await page.evaluate(async () => ({ reads: window.ideaReads, sequence: (await import('/js/ideas.js')).view.sequence }));
   await page.evaluate(() => window.dispatchEvent(new Event('online')));
-  for (let turn = 0; turn < 12; turn++) {
-    await page.clock.runFor(5_001);
-    if (await page.evaluate(before => window.ideaReads > before, before)) return;
+  for (let turn = 0; turn < 40; turn++) {
+    await page.waitForTimeout(30);
+    const started = await page.evaluate(async before => window.ideaReads > before.reads && (await import('/js/ideas.js')).view.sequence > before.sequence, before);
+    if (started) return;
+    await page.evaluate(() => document.dispatchEvent(new Event('pointermove')));
+    const delay = await page.evaluate(async () => Math.max(5_001, (await import('/js/poll-safety.mjs')).pollSafety(window).state().nextAt - Date.now() + 1));
+    await page.clock.fastForward(delay);
   }
   assert.fail('Ideas did not receive its queued refresh');
 }

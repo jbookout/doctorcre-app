@@ -60,10 +60,21 @@ async function open(t,{width=1440,reducedMotion='no-preference',undoFailure=fals
   });
   await page.clock.install({time:new Date('2026-10-01T15:00:00Z')});
   await page.goto('http://localhost/doc-activity?mode=live'); await page.locator('.activity-row').first().waitFor();
-  if(firstOpen){await page.locator('#docOpen[data-brief-unseen]').waitFor();await page.locator('#docOpen').click();await page.locator('#docMorning').click();await page.locator('#docMorningBrief[open]').waitFor();await page.waitForFunction(()=>document.getElementById('morningUpdated').hasAttribute('datetime'));await page.locator('#morningClose').click();}
+  if(firstOpen){await page.waitForLoadState('networkidle');await page.clock.runFor(5_001);await page.locator('#docOpen[data-brief-unseen]').waitFor();await page.locator('#docOpen').click();await page.locator('#docMorning').click();await page.locator('#docMorningBrief[open]').waitFor();await page.waitForFunction(()=>document.getElementById('morningUpdated').hasAttribute('datetime'));await page.locator('#morningClose').click();}
   return {page,calls,errors,fixture,reads:()=>reads,setReadFailure:value=>{failRead=value;},holdPartner:value=>{staleRead=value;},
     waitUndo:id=>undoHolds.has(id)?Promise.resolve():new Promise(resolve=>undoReady.set(id,resolve)),releaseUndo:(id,outcome='success')=>undoHolds.get(id)?.(outcome),releaseHeld:()=>{heldRead?.();},hasHeld:()=>Boolean(heldRead),refuseUndo:()=>{refusal=true;}};
 }
+async function advanceBackground(page) {
+  await page.waitForLoadState('networkidle');
+  await page.waitForTimeout(30);
+  const delay = await page.evaluate(async () => {
+    const { pollSafety } = await import('/js/poll-safety.mjs');
+    return Math.max(5_001, pollSafety(window).state().nextAt - Date.now() + 1);
+  });
+  await page.clock.runFor(delay);
+  await page.waitForTimeout(30);
+}
+
 test('PR123 R1: Activity models the daily morning brief and rejects unknown operations', async t => {
   const { page, calls, errors } = await open(t, { firstOpen: true });
   const preference = () => page.evaluate(() => JSON.parse(localStorage.getItem('doctorcre:morning:joe')));
@@ -75,6 +86,7 @@ test('PR123 R1: Activity models the daily morning brief and rejects unknown oper
   await page.reload(); await loaded;
   await page.waitForFunction(() => document.querySelector('#morningUpdated')?.hasAttribute('datetime'));
   assert.equal(await page.locator('#docMorningBrief').evaluate(dialog => dialog.open), false);
+  await page.clock.runFor(5_001);
   await page.locator('#docOpen').click(); await page.locator('#docMorning').click();
   await page.locator('#docMorningBrief[open]').waitFor();await page.waitForFunction(()=>document.getElementById('morningUpdated').hasAttribute('datetime'));
   await page.locator('#morningClose').click();
@@ -88,9 +100,11 @@ test('PR123 R1: Activity models the daily morning brief and rejects unknown oper
   assert.equal(await page.locator('#docMorningBrief').evaluate(dialog => dialog.open), false);
   assert.equal((await preference()).day, '2026-10-01');
   await page.mouse.move(10, 10); await page.mouse.move(20, 20);
+  for(let turn=0;turn<16&&!await page.locator('#docOpen[data-brief-unseen]').count();turn++)await advanceBackground(page);
   await page.locator('#docOpen[data-brief-unseen]').waitFor();
   assert.equal(await page.locator('#docMorningBrief').evaluate(dialog => dialog.open), false);
   assert.equal((await preference()).day, '2026-10-01');
+  await page.clock.runFor(5_001);
   await page.locator('#docOpen').click(); await page.locator('#docMorning').click();
   await page.locator('#docMorningBrief[open]').waitFor();await page.waitForFunction(()=>document.getElementById('morningUpdated').hasAttribute('datetime'));
   assert.ok(calls.filter(call => call.name === 'morning-brief').length > briefReads);
@@ -144,9 +158,12 @@ test('automatic refresh recovers read failure and preserves filters and expanded
   assert.deepEqual(await page.locator('[name=partner] option').evaluateAll(xs=>xs.map(x=>x.value)),['','joe','dell']);
   await page.locator('[name=partner]').selectOption('joe'); await page.waitForFunction(()=>document.querySelectorAll('.activity-row').length===3);
   await page.locator('.activity-open').first().click(); await page.locator('#detailOriginal summary').click();
-  setReadFailure(true); const before=reads(); await page.clock.runFor(30_001);
+  setReadFailure(true); const before=reads();
+  for(let turn=0;turn<16&&reads()===before;turn++)await advanceBackground(page);
   await page.getByText('Activity temporarily unavailable',{exact:true}).waitFor(); assert.ok(reads()>before);
-  setReadFailure(false); await page.clock.runFor(60_001); await page.waitForFunction(()=>document.querySelector('#activityStatus').textContent==='');
+  setReadFailure(false);
+  for(let turn=0;turn<16&&await page.locator('#activityStatus').textContent();turn++)await advanceBackground(page);
+  await page.waitForFunction(()=>document.querySelector('#activityStatus').textContent==='');
   assert.equal(await page.locator('[name=partner]').inputValue(),'joe'); assert.equal(await page.locator('#detailOriginal').evaluate(el=>el.open),true);
 });
 test('earlier activity traverses keyset pages and remains complete after refresh',async t=>{
@@ -249,12 +266,14 @@ test('malformed and mixed reads preserve the last valid feed and expanded detail
     let broken=false;
     const {page}=await open(t,{readTransform:answer=>broken?{...answer,entries:mode==='mixed'?[answer.entries[0],{...answer.entries[1],id:null}]:[{...answer.entries[0],id:null}]}:answer});
     await page.locator('.activity-open').first().click();await page.locator('#detailOriginal summary').click();
-    broken=true;await page.clock.runFor(30_001);
+    broken=true;
+    for(let turn=0;turn<16&&!await page.getByText('Activity temporarily unavailable',{exact:true}).isVisible();turn++)await advanceBackground(page);
     await page.getByText('Activity temporarily unavailable',{exact:true}).waitFor();
     assert.equal(await page.locator('.activity-row').count(),5);
     assert.equal(await page.locator('#activityDetail').evaluate(el=>el.open),true);
     assert.equal(await page.locator('#detailOriginal').evaluate(el=>el.open),true);
-    broken=false;await page.clock.runFor(30_001);
+    broken=false;
+    for(let turn=0;turn<16&&await page.locator('#activityStatus').textContent();turn++)await advanceBackground(page);
     await page.waitForFunction(()=>document.querySelector('#activityStatus').textContent==='');
   });
 });
