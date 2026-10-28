@@ -169,6 +169,7 @@
 .deal-vendor-contact { color:var(--fg-muted); }
 .deal-vendor-details > summary { cursor:pointer; min-height:var(--touch); min-width:var(--touch); }
 .deal-vendor-details p { margin:0 0 var(--space-2); }
+.deal-vendor-details a { display:inline-flex; align-items:center; min-height:44px; min-width:44px; overflow-wrap:anywhere; }
 .deal-row .deal-vendors { grid-column:1/-1; }
 .deal-detail .detail-grid { grid-template-columns:minmax(0,1fr); }
 .deal-updates { margin-bottom:var(--space-4); }

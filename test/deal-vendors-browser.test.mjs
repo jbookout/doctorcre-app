@@ -174,3 +174,28 @@ test('role groups have twice the space used within each role',async t=>{
  const gap=await page.locator('.kanban-column [data-id="d14"] .deal-vendors').evaluate(n=>({roles:parseFloat(getComputedStyle(n).rowGap),assignments:parseFloat(getComputedStyle(n.querySelector('ul')).rowGap)}));
  assert.ok(gap.roles>=16 && gap.roles>=2*gap.assignments,JSON.stringify(gap));
 });
+
+for (const theme of ['dark', 'light']) test(`vendor contacts are distinct and actionable on phones in ${theme}`, async t => {
+  const vendors = [
+    { role: 'lender', company: { name: 'Demo Firm' }, contact: { name: 'Demo Person', email: 'person@example.invalid', phone: '+1 (555) 010-1234' } },
+    { role: ' LENDER ', company: { name: ' demo firm ' }, contact: { name: ' demo person ' } },
+    { role: 'advisor', company: { name: 'Demo Firm' }, contact: { name: 'Demo Person' } },
+    { role: 'advisor', company: { name: 'Demo Other' }, contact: { name: null } },
+    { role: 'advisor', company: null, contact: { name: 'Demo Solo' } },
+  ];
+  const { page } = await open(t, 390, theme, vendors);
+  const card = page.locator('.kanban-column [data-id="d14"]');
+  assert.equal(await card.getByText('Demo Person', { exact: true }).count(), 2);
+  assert.equal(await card.getByText('Demo Other', { exact: true }).count(), 1);
+  assert.equal(await card.getByText('Demo Solo', { exact: true }).count(), 1);
+  assert.doesNotMatch(await card.locator('.deal-vendors').textContent(), /undefined|null/);
+  await card.locator('.deal-vendor-details summary').click();
+  for (const [name, href] of [['Email Demo Person', 'mailto:person@example.invalid'], ['Call Demo Person', 'tel:+15550101234']]) {
+    const action = card.getByRole('link', { name, exact: true });
+    assert.equal(await action.getAttribute('href'), href);
+    const box = await action.boundingBox();
+    assert.ok(box.width >= 44 && box.height >= 44, JSON.stringify(box));
+  }
+  assert.equal(await card.evaluate(n => n.scrollWidth <= n.clientWidth), true);
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth), true);
+});
