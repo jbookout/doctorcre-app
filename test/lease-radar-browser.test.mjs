@@ -7,6 +7,7 @@ import { chromium } from 'playwright';
 import { createFixtureClient } from '../js/fixture-client.js';
 import { leaseRadarFixture } from '../js/lease-radar-fixture.js';
 import { invoiceTrackerFixture } from '../js/invoice-tracker-fixture.js';
+import { relationshipNetworkFixture } from '../js/relationship-network-fixture.js';
 
 const NOW = new Date('2026-10-01T18:00:00Z');
 async function shot(page, name) {
@@ -25,7 +26,7 @@ async function open(t, { width = 1440, home = false, long = false, motion = 'red
   if (long) payload.leases[0].client_name = `Demo${'Practice'.repeat(30)}`;
   page.on('pageerror', error => errors.push(error.message));
   const handlers = {
-    'morning-brief': async () => ({ state:'unavailable' }),
+    'morning-brief': () => client.morningBrief(),
     'read-home-agenda': () => client.getHomeAgenda(),
     'read-post-call-followups': async () => ({ schema_version: 'post-call-followups.v1', candidates: [], send: false }),
     'email-proposal-quality': () => client.getEmailProposalQuality(),
@@ -53,8 +54,9 @@ async function open(t, { width = 1440, home = false, long = false, motion = 'red
       assert.ok(handlers[rpc.params.name], `unexpected verb: ${rpc.params.name}`);
       return route.fulfill({ json: { result: { content: [{ type: 'text', text: JSON.stringify(await handlers[rpc.params.name](rpc.params.arguments)) }] } } });
     }
+    if (url.pathname === '/api/v1/business/relationships') return route.fulfill({ json: relationshipNetworkFixture(await page.evaluate(() => new Date().toISOString())) });
     if (url.pathname === '/api/system-work/current') return route.fulfill({ json: { ok: true, data: await client.currentWorkRequests() } });
-    if (url.pathname === '/pipeline/changes') return route.fulfill({ json: { changes: [], cursor: null } });
+    if (url.pathname === '/pipeline/changes') return route.fulfill({ json: { events: [], cursor: null } });
     if (['/api/system-work/session','/auth/session'].includes(url.pathname)) return route.fulfill({ json: { actor: { slug: 'joe', label: 'Demo partner' }, csrf_token: 'synthetic' } });
     if (url.pathname.startsWith('/api/') || url.pathname === '/app-release') return route.fulfill({ status: 503, json: {} });
     const file = url.pathname === '/' ? 'workspace.html' : url.pathname === '/leases' ? 'lease-radar.html' : url.pathname.slice(1);
@@ -66,7 +68,21 @@ async function open(t, { width = 1440, home = false, long = false, motion = 'red
   return { page, errors, calls, payload, fail(value) { failure = value; }, get reads() { return reads; } };
 }
 const settled = page => page.waitForFunction(() => document.querySelector('#refreshLeases').getAttribute('aria-busy') === 'false');
-const online = page => page.evaluate(() => window.dispatchEvent(new Event('online')));
+async function nextLeaseRead(page, trigger, response = false) {
+  await page.waitForLoadState('networkidle');
+  await page.clock.setSystemTime(new Date(await page.evaluate(() => Date.now()) + 300_001));
+  let requested = false;
+  const matches = value => new URL(value.url()).pathname === '/api/v1/business/leases';
+  const read = (response ? page.waitForResponse(matches) : page.waitForRequest(matches)).then(value => { requested = true; return value; });
+  await trigger();
+  for (let turn = 0; turn < 12 && !requested; turn++) {
+    await Promise.race([read, page.waitForLoadState('networkidle')]);
+    if (!requested) { await page.clock.fastForward(5_001); await page.waitForTimeout(20); }
+  }
+  await read;
+}
+const online = (page, response = true) => nextLeaseRead(page, () => page.evaluate(() => window.dispatchEvent(new Event('online'))), response);
+const poll = page => nextLeaseRead(page, () => page.clock.fastForward(5_001), true);
 
 test('finding 4: malformed Home touch read clears cards and open details', async t => {
   const state = await open(t, {home:true}); const {page} = state;
@@ -147,11 +163,11 @@ test('polling updates an open detail and preserves focus, while refusals clear s
   await page.waitForFunction(() => document.activeElement?.dataset.radarKey === 'lease:demo-lease-1');
   assert.equal(await page.locator('[data-lease="demo-lease-1"]').evaluate(n => document.activeElement === n), true);
   await page.locator('[data-lease="demo-lease-1"]').click();
-  const before = state.reads; await page.clock.runFor(31_000); await settled(page); assert.ok(state.reads > before);
+  const before = state.reads; await poll(page); await settled(page); assert.ok(state.reads > before);
   state.fail(503); await online(page); await settled(page);
   assert.equal(await page.locator('#leaseRadar .lease-card').count(), 0);
   assert.equal(await page.locator('#leaseDetail').evaluate(n => n.open), false);
-  state.fail(null); await page.clock.runFor(31_000); await settled(page);
+  state.fail(null); await poll(page); await settled(page);
   assert.equal(await page.locator('#leaseRadar .lease-card').count(), 9);
   state.fail(403); await online(page); await page.waitForURL('**/public-shell/session-ended.html');
   assert.equal(await page.getByRole('link', { name: 'Sign in again', exact: true }).isVisible(), true);
@@ -159,11 +175,11 @@ test('polling updates an open detail and preserves focus, while refusals clear s
 });
 test('timeout clears stale details and automatically recovers', async t => {
   const state = await open(t); const { page } = state; await settled(page);
-  await page.locator('[data-lease="demo-lease-1"]').click(); state.fail('timeout'); await online(page);
+  await page.locator('[data-lease="demo-lease-1"]').click(); state.fail('timeout'); await online(page, false);
   await page.clock.runFor(10_001); await settled(page);
   assert.equal(await page.locator('#leaseDetail').evaluate(n => n.open), false);
   assert.equal(await page.locator('#leaseRadar .lease-card').count(), 0);
-  state.fail(null); await page.clock.runFor(31_000); await settled(page);
+  state.fail(null); await poll(page); await settled(page);
   assert.equal(await page.locator('#leaseRadar .lease-card').count(), 9);
 });
 test('urgency lights stay still and cards never lift, with or without reduced motion', async t => {
@@ -182,7 +198,7 @@ test('Home shows next eligible past-client touches, opens lease details and refr
   assert.equal(await page.locator('#homePastClients .lease-card').count(), 4);
   assert.match(await page.locator('#homePastClients .lease-updated').textContent(), /Updated /);
   const before = state.reads;
-  await Promise.all([page.waitForResponse(r => r.url().endsWith('/api/v1/business/leases')), page.getByRole('button', { name: 'Refresh past-client touches' }).click()]);
+  await nextLeaseRead(page, () => page.getByRole('button', { name: 'Refresh past-client touches' }).click(), true);
   assert.ok(state.reads > before);
   assert.doesNotMatch(await page.locator('#homePastClients').textContent(), /Demo Practice 11/);
   await page.locator('#homePastClients').scrollIntoViewIfNeeded(); await shot(page, 'home-desktop'); await page.locator('#homePastClients .lease-card').first().click();
@@ -191,9 +207,12 @@ test('Home shows next eligible past-client touches, opens lease details and refr
   await page.waitForFunction(() => !document.querySelector('#homePastClients').textContent.includes('Demo Practice 1'));
   await page.getByRole('button', { name: 'Just me', exact: true }).click();
   assert.equal(await page.locator('#homePastClients .lease-card').count(), 4);
-  state.fail(503); await page.clock.runFor(31_000);
+  state.fail(503); await poll(page);
   await page.getByText('Follow-ups unavailable', { exact: true }).waitFor();
-  state.fail(null); await page.clock.runFor(31_000); await page.locator('#homePastClients .lease-card').first().waitFor();
+  state.fail(null);
+  await page.clock.setSystemTime(new Date(await page.evaluate(()=>Date.now())+300_001));
+  const resume=page.getByRole('button',{name:'Resume updates'});if(await resume.isVisible())await resume.click();
+  await nextLeaseRead(page,()=>page.getByRole('button',{name:'Refresh past-client touches'}).click(),true); await page.locator('#homePastClients .lease-card').first().waitFor();
   assert.deepEqual(state.errors, []);
 });
 test('long client names wrap within phone cards and lease detail', async t => {
@@ -228,12 +247,16 @@ test('PR182 queued native lease close wins over a successful refresh in the same
   await page.goto('http://localhost/lease-race');
   const result = await page.evaluate(async payload => {
     const { mountLeaseRadar } = await import('/js/lease-radar.js');
+    const { pollSafety } = await import('/js/poll-safety.mjs');
+    let time = Date.now();
+    pollSafety(window, { document, now: () => time });
     let resolveRead, reads = 0;
     const client = { readLeaseRadar() { return ++reads === 1 ? Promise.resolve(payload) : new Promise(resolve => { resolveRead = resolve; }); } };
     const radar = mountLeaseRadar({document,window,client,now:()=>new Date('2026-10-01T18:00:00Z')});
     await radar.refresh();
     const dialog = document.querySelector('#leaseDetail');
     document.querySelector('[data-lease="demo-lease-1"]').click();
+    time += 5_001;
     const refresh = radar.refresh();
     const closed = new Promise(resolve => dialog.addEventListener('close',resolve,{once:true}));
     dialog.close();

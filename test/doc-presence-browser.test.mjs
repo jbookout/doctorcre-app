@@ -90,6 +90,7 @@ test('shared Doc presence appears on every authenticated route; narrow drawers n
 
 test('page facts and exact selection, existing suggestions, one-tap approval, inert original entry and responsive renders',async t=>{
  const{page,goto,errors,calls}=await setup(t);
+ await page.clock.install();
  await goto('/deals?mode=live&deal=d14');
  await page.locator('#recordPanel[open]').waitFor();
  await page.locator('#recordPanel > #docPresence').waitFor();
@@ -114,9 +115,17 @@ test('page facts and exact selection, existing suggestions, one-tap approval, in
  await page.keyboard.press('Escape');
  assert.equal(await page.locator('#recordPanel #docOpen').evaluate(n=>n===document.activeElement),true);
  const detailReads=calls.filter(call=>call.name==='get-deal-room').length;
+ await page.waitForLoadState('networkidle');
+ await page.clock.setSystemTime(await page.evaluate(()=>Date.now())+60_001);
  const refreshed=page.waitForResponse(response=>response.url().endsWith('/mcp') && response.request().postDataJSON()?.params?.name==='get-deal-room');
  await page.evaluate(()=>window.dispatchEvent(new Event('online')));
+ for(let turn=0;turn<12&&calls.filter(call=>call.name==='get-deal-room').length===detailReads;turn++){
+  await page.waitForLoadState('networkidle');await page.clock.runFor(5_001);
+ }
  await refreshed;
+ for(let turn=0;turn<12&&!await page.evaluate(()=>document.querySelector('#recordPanel > #docPresence')?.dataset.state==='ready' && window.docContext?.snapshot().active?.title==='Demo Surgical Practice');turn++){
+  await page.waitForLoadState('networkidle');await page.clock.runFor(5_001);
+ }
  await page.waitForFunction(()=>document.querySelector('#recordPanel > #docPresence')?.dataset.state==='ready' && window.docContext?.snapshot().active?.title==='Demo Surgical Practice');
  assert.ok(calls.filter(call=>call.name==='get-deal-room').length>detailReads);
  await page.locator('#recordPanel #docOpen').click();
@@ -136,6 +145,9 @@ test('page facts and exact selection, existing suggestions, one-tap approval, in
  await page.locator('[data-doc-approve]').click();await page.waitForFunction(()=>document.querySelector('#docApprovalStatus')?.textContent==='Discussion approved');
  assert.equal(calls.filter(call=>call.name==='decide-doc-suggestion').length,1);
  const decision=calls.find(call=>call.name==='decide-doc-suggestion');assert.equal(decision.args.choice,'discuss');assert.equal(decision.args.base_version,1);
+ for(let turn=0;turn<12&&await page.locator('[data-doc-approve]').count();turn++){
+  await page.waitForLoadState('networkidle');await page.clock.runFor(5_001);
+ }
  assert.equal(await page.locator('[data-doc-approve]').count(),0);
  assert.ok(await page.locator('#docDetail').evaluate(n=>n.getBoundingClientRect().width)>900);
  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
@@ -164,7 +176,11 @@ test('selection/filter changes cancel context, auto-refresh recovers and no writ
   const ticket=pageDocContext.begin('getBoard');pageDocContext.fail(ticket,{status:401});return pageDocContext.snapshot();
  });assert.equal(result.ready,false);
  assert.match(await page.locator('#docSuggestions').innerText(),/Unavailable/);
- await page.clock.fastForward(31_000);
+ await page.waitForLoadState('networkidle');
+ await page.clock.setSystemTime(await page.evaluate(()=>Date.now())+60_001);
+ for(let turn=0;turn<12&&!await page.locator('#docSuggestions').textContent().then(text=>text.includes('Confirm the survey'));turn++){
+  await page.clock.runFor(5_001);await page.waitForLoadState('networkidle');
+ }
  await page.waitForFunction(()=>document.querySelector('#docSuggestions')?.textContent.includes('Confirm the survey'));
  assert.equal(calls.filter(call=>call.name==='decide-doc-suggestion').length,0);
 });
@@ -325,7 +341,11 @@ for(const staleFailure of [false,true])test(`R4 superseded Queue ${staleFailure?
   }return producerRoute(route,env);
  }});await page.clock.install();await goto('/control-room/progress/work');await entered;
  // The cadence never overlaps a held read, so the newer read comes from a return to view.
+ await page.clock.setSystemTime(await page.evaluate(()=>Date.now())+60_001);
  await page.evaluate(()=>{for(const state of ['hidden','visible']){Object.defineProperty(document,'visibilityState',{configurable:true,value:state});Object.defineProperty(document,'hidden',{configurable:true,value:state==='hidden'});document.dispatchEvent(new Event('visibilitychange'));}});
+ for(let turn=0;turn<12&&!await page.evaluate(()=>document.querySelector('.queue-card-meta')?.textContent.includes('done'));turn++){
+  await page.clock.runFor(5_001);await page.waitForTimeout(30);
+ }
  await page.waitForFunction(()=>document.querySelector('.queue-card-meta')?.textContent.includes('done'));assert.equal(reads,2);release();await page.waitForTimeout(100);
  const c=await readContext(page);assert.equal(c.ready,true);assert.equal(c.records.find(r=>r.kind==='room-task')?.fields.find(f=>f.label==='Status').value,'done');
  assert.match(await page.locator('.queue-card-meta').textContent(),/done/);
@@ -515,6 +535,7 @@ test('Doc suggestion control follows server switch flips and stale clicks cannot
    await rpc(route,{ok:true,schema:'feature-switches.v1',switches:[{name:'doc-suggestion-actions',available}]});return true;
   }
  }});
+ await page.clock.install();
  await goto('/deals?mode=live');
  await page.locator('#docOpen').click();
  await page.waitForFunction(()=>document.querySelector('[data-doc-approve]'));
@@ -523,10 +544,14 @@ test('Doc suggestion control follows server switch flips and stale clicks cannot
  await action.evaluate(node=>{node.hidden=false;node.click();});
  assert.equal(calls.filter(call=>call.name==='decide-doc-suggestion').length,0);
  available=true;
+ await page.clock.fastForward(60_001);
  await page.evaluate(()=>window.dispatchEvent(new Event('online')));
+ for(let turn=0;turn<8&&!await action.isVisible();turn++){await page.clock.fastForward(5_001);await page.waitForLoadState('networkidle');}
  await action.waitFor({state:'visible'});
  available=false;
+ await page.clock.fastForward(60_001);
  await page.evaluate(()=>window.dispatchEvent(new Event('online')));
+ for(let turn=0;turn<8&&await action.isVisible();turn++){await page.clock.fastForward(5_001);await page.waitForLoadState('networkidle');}
  await action.waitFor({state:'hidden'});
  assert.equal(calls.filter(call=>call.name==='decide-doc-suggestion').length,0);
  assert.deepEqual(errors,[]);
@@ -548,6 +573,7 @@ test('Dr. CRE suggestion dock retry and reconcile hold while the switch is off a
   if(outcome==='refused'){await route.fulfill({contentType:'application/json',body:JSON.stringify({result:{isError:true,content:[{type:'text',text:JSON.stringify({error:'synthetic_refusal',hint:'Synthetic refusal.'})}]}})});return true;}
   await rpc(route,{ok:true,suggestion_id:args.suggestion_id,version:(args.base_version||0)+1,choice:args.choice});return true;
  }});
+ await page.clock.install();
  await goto('/doc-chats?mode=live');
  const card=page.locator('[data-suggestion]').first();
  await card.locator('[data-choice="discuss"]').waitFor({state:'visible'});
@@ -564,7 +590,9 @@ test('Dr. CRE suggestion dock retry and reconcile hold while the switch is off a
  assert.equal(writes.length,2);
 
  available=false;
+ await page.clock.fastForward(60_001);
  await page.evaluate(()=>window.dispatchEvent(new Event('online')));
+ for(let turn=0;turn<8&&await decisionAction.isVisible();turn++){await page.clock.fastForward(5_001);await page.waitForLoadState('networkidle');}
  await card.locator('.suggestion-decisions').waitFor({state:'hidden'});
  await decisionAction.waitFor({state:'hidden'});
  await correctionAction.waitFor({state:'hidden'});
@@ -578,7 +606,9 @@ test('Dr. CRE suggestion dock retry and reconcile hold while the switch is off a
  assert.equal(await page.locator('#receiptDock .receipt').count(),2,'the held requests stay in the dock');
 
  available=true;decision='ok';correction='ok';
+ await page.clock.fastForward(60_001);
  await page.evaluate(()=>window.dispatchEvent(new Event('online')));
+ for(let turn=0;turn<8&&!await decisionAction.isVisible();turn++){await page.clock.fastForward(5_001);await page.waitForLoadState('networkidle');}
  await decisionAction.waitFor({state:'visible'});
  await decisionAction.click();
  await settles(()=>assert.equal(writes.length,3));
@@ -595,7 +625,7 @@ test('Dr. CRE suggestion dock retry and reconcile hold while the switch is off a
 });
 
 test('Dr. CRE approval: a switch-off during its fresh read sends nothing, a feature_disabled refusal settles, and a later tap sends again',async t=>{
- let available=true,holdReads=false,refuse=false;const held=[];
+ let available=true,holdReads=false,refuse=false;const held=[];t.after(()=>{holdReads=false;held.splice(0).forEach(resolve=>resolve());});
  const writes=[];
  const {page,goto,errors}=await setup(t,{onRoute:async(route,{url,fixture})=>{
   if(url.pathname!=='/mcp')return false;
@@ -610,17 +640,30 @@ test('Dr. CRE approval: a switch-off during its fresh read sends nothing, a feat
  // A paused clock stops every poll and backoff: each switch read below is one the test or the page prompts.
  await pausedClock(page,Date.parse('2026-10-12T15:00:00Z'));
  await goto('/deals?mode=live');
+ await page.waitForLoadState('networkidle');
+ await page.clock.setSystemTime(await page.evaluate(()=>Date.now())+60_001);
  await page.locator('#docOpen').click();
  const action=page.locator('[data-doc-approve]').first();
+ for(let turn=0;turn<12&&!await action.isVisible();turn++){
+  await page.waitForLoadState('networkidle');await page.clock.runFor(5_001);
+ }
  await action.waitFor({state:'visible'});
  const status=page.locator('#docApprovalStatus');
+ await page.evaluate(async()=>{
+  const {mountFeatureGate}=await import('/js/feature-switches.js');
+  window.switchProbe=mountFeatureGate({document,window,name:'doc-suggestion-actions',read:()=>{throw Error('existing gate required');},onChange:()=>{}});
+  const button=document.createElement('button');button.id='readActionSwitch';button.textContent='Read current action switch';
+  button.onclick=()=>window.switchProbe.refresh();document.querySelector('#docDetail').append(button);
+ });
 
  // 1. The switch turns off while the approval's fresh read is in flight.
  holdReads=true;
  await action.click();
  await page.waitForFunction(()=>document.querySelector('#docApprovalStatus')?.textContent==='Confirming…');
+ await settles(()=>assert.ok(held.length,'the fresh approval read is held before switching off'));
  available=false;
- await page.evaluate(()=>window.dispatchEvent(new Event('online')));
+ await page.clock.setSystemTime(await page.evaluate(()=>Date.now())+5_001);
+ await page.locator('#readActionSwitch').click();
  await action.waitFor({state:'hidden'});
  holdReads=false;held.splice(0).forEach(resolve=>resolve());
  await page.waitForFunction(()=>/switched off/.test(document.querySelector('#docApprovalStatus')?.textContent||''));
@@ -628,7 +671,11 @@ test('Dr. CRE approval: a switch-off during its fresh read sends nothing, a feat
 
  // 2. The page still reads on, but CARR switched it off after the last poll.
  available=true;
- await page.evaluate(()=>window.dispatchEvent(new Event('online')));
+ await page.clock.setSystemTime(await page.evaluate(()=>Date.now())+5_001);
+ await page.locator('#readActionSwitch').click();
+ for(let turn=0;turn<12&&!await action.isVisible();turn++){
+  await page.waitForLoadState('networkidle');await page.clock.runFor(5_001);
+ }
  await action.waitFor({state:'visible'});
  available=false;refuse=true;
  await action.click();
@@ -642,7 +689,11 @@ test('Dr. CRE approval: a switch-off during its fresh read sends nothing, a feat
 
  // 3. Switched back on: the same suggestion version can be approved again.
  refuse=false;
- await page.evaluate(()=>window.dispatchEvent(new Event('online')));
+ await page.clock.setSystemTime(await page.evaluate(()=>Date.now())+5_001);
+ await page.locator('#readActionSwitch').click();
+ for(let turn=0;turn<12&&!await action.isVisible();turn++){
+  await page.waitForLoadState('networkidle');await page.clock.runFor(5_001);
+ }
  await action.waitFor({state:'visible'});
  await action.click();
  await page.waitForFunction(()=>document.querySelector('#docApprovalStatus')?.textContent==='Discussion approved');
