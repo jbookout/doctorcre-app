@@ -39,8 +39,6 @@ import { renderDealChecklist } from './deal-checklist.js';
 import { uuidv4 } from './uuid.js';
 import { mountVisibilityPoll } from './visibility-poll.mjs';
 
-const POLL_MS = 1400;
-const BOARD_REFRESH_MS = 15000;
 
 const $ = (id) => document.getElementById(id);
 const esc = escapeText;
@@ -1494,9 +1492,9 @@ async function boot() {
   if (linkedDeal && incomingScope.get('item')) void itemSheet.open(linkedDeal,incomingScope.get('item'));
   else if (linkedDeal) void openPanel(linkedDeal);
   void loadBoard();
-  mountVisibilityPoll({ intervalMs: BOARD_REFRESH_MS, poll: refreshPanel });
-  mountVisibilityPoll({ intervalMs: POLL_MS, poll: () => { pollOnce().catch(() => { /* the badge already says the feed failed */ }); } });
-  mountVisibilityPoll({ intervalMs: BOARD_REFRESH_MS, poll: () => { state.boardSync.requestRefresh('periodic'); } });
+  mountVisibilityPoll({ poll: refreshPanel });
+  mountVisibilityPoll({ poll: () => { pollOnce().catch(() => { /* the badge already says the feed failed */ }); } });
+  mountVisibilityPoll({ poll: () => { state.boardSync.requestRefresh('periodic'); } });
 
 
 }

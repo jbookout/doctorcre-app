@@ -19,7 +19,7 @@ const count = value => value === null ? '—' : String(value);
 const AGENDA_PREVIEW = 6;
 const dateLabel = day => new Date(`${day}T12:00:00`).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 
-export function mountHomeDashboard({ document, window, client, now = () => Date.now(), intervalMs = 30_000 }) {
+export function mountHomeDashboard({ document, window, client, now = () => Date.now(), intervalMs }) {
   const $ = id => document.getElementById(id);
   let emailQuality = null, emailReview = null, replyOutcomes = null, emailFilings = null, emailRetired = false, emailObserver = null;
   const retirePendingEmail = () => {

@@ -10,7 +10,7 @@ const matches = (name, query) => String(name).toLowerCase().includes(query.toLow
 // One Doc dialog, one input. Reads use the existing authorized client seam;
 // this module never treats retrieved words as instructions or execution rights.
 export function mountDocCommandBar({ dialog, window: win, client, context, pages,
-  navigate = href => win.location.assign(href), intervalMs = 30_000, tours = async () => [], onOpen = () => {} } = {}) {
+  navigate = href => win.location.assign(href), intervalMs, tours = async () => [], onOpen = () => {} } = {}) {
   const root=dialog.ownerDocument;
   const host=root.createElement('section');host.className='doc-command';
   host.innerHTML=`<form id="docCommandForm" role="search"><span aria-hidden="true">✦</span><input id="docCommandInput" type="search" maxlength="${FIND_QUERY_MAX}" placeholder="Search anything or ask Doc…" aria-label="Search anything or ask Doc" autocomplete="off" role="combobox" aria-autocomplete="list" aria-controls="docCommandResults" aria-expanded="false"><button type="submit" aria-label="Ask Doc" title="Ask Doc">↵</button></form><div class="doc-command-meta"><span id="docCommandScope"></span><span><time id="docCommandUpdated"></time><button id="docCommandRefresh" type="button" aria-label="Refresh search" title="Refresh search">↻</button></span></div><div id="docCommandResults" role="listbox" aria-label="Search results"></div><div id="docCommandStatus" role="status"></div><section id="docCommandDetail" hidden></section>`;

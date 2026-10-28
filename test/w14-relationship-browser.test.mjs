@@ -246,7 +246,7 @@ test("W14 autonomous refresh retains filters and expanded evidence, recovers fai
   await page.locator("#networkNodes button").click();
   await page.locator(".relationship-dialog summary").first().click();
   h.setVersion(1);
-  await page.clock.fastForward(31000);
+  await page.clock.fastForward(61000);
   await page.waitForFunction(() =>
     document
       .querySelector(".relationship-dialog")
@@ -261,7 +261,7 @@ test("W14 autonomous refresh retains filters and expanded evidence, recovers fai
   );
   assert.equal(await page.locator("#networkSearch").inputValue(), "Lending");
   h.setMode("fail");
-  await page.clock.fastForward(61000);
+  await page.clock.fastForward(121000);
   await page.waitForFunction(() =>
     document
       .querySelector("#networkNotice")
@@ -270,7 +270,7 @@ test("W14 autonomous refresh retains filters and expanded evidence, recovers fai
   assert.equal(await page.locator(".relationship-node").count(), 0);
   assert.equal(await page.locator(".relationship-dialog").isVisible(), false);
   h.setMode("ok");
-  await page.clock.fastForward(31000);
+  await page.clock.fastForward(61000);
   await page.waitForSelector(".relationship-node");
   assert.equal(await page.locator("#networkSearch").inputValue(), "Lending");
   h.setMode("auth");
@@ -356,14 +356,14 @@ for (const width of [1440, 390])
 test('R2 relationship URL filters survive boot and intentional reset survives polling and reload',async t=>{
  const h=await open(t),{page}=h;await page.goto('http://localhost/relationships?mode=live&territory=Demo+Coast&vertical=dental');await page.waitForSelector('.relationship-node');
  assert.equal(new URL(page.url()).searchParams.get('territory'),'Demo Coast');assert.equal(new URL(page.url()).searchParams.get('vertical'),'dental');
- assert.equal(await page.locator('#networkTerritory').inputValue(),'Demo Coast');const polled=page.waitForResponse('**/api/v1/business/relationships*');await page.locator('#networkReset').click();await page.clock.fastForward(31000);
+ assert.equal(await page.locator('#networkTerritory').inputValue(),'Demo Coast');const polled=page.waitForResponse('**/api/v1/business/relationships*');await page.locator('#networkReset').click();await page.clock.fastForward(61000);
  await polled;await page.waitForFunction(()=>document.querySelector('#networkRefresh').getAttribute('aria-busy')==='false');
  assert.equal(await page.locator('#networkTerritory').inputValue(),'');assert.equal(await page.locator('#networkVertical').inputValue(),'');assert.equal(new URL(page.url()).searchParams.has('territory'),false);
  await page.reload();await page.waitForSelector('.relationship-node');assert.equal(await page.locator('#networkTerritory').inputValue(),'');assert.equal(await page.locator('.relationship-node').count(),8);assert.deepEqual(h.errors,[]);
 });
 for(const failure of ['auth','expiry']) test(`R6 ${failure} invalidates relationship detail DOM facets counts and controls`,async t=>{
  const h=await open(t),{page}=h;await page.goto('http://localhost/relationships?mode=live');await page.waitForSelector('.relationship-node');await page.locator('.relationship-node').first().click();
- h.setMode(failure==='auth'?'auth':'fail');await page.clock.fastForward(failure==='auth'?31000:61000);
+ h.setMode(failure==='auth'?'auth':'fail');await page.clock.fastForward(121000);
  if(failure==='auth'){await page.waitForURL('**/public-shell/session-ended.html');assert.equal(await page.locator('.relationship-dialog,#networkCanvas,#networkTerritory').count(),0);assert.deepEqual(h.errors,[]);return;}
  await page.waitForFunction(()=>document.querySelector('#networkNotice').textContent.includes('Sign in')||document.querySelector('#networkNotice').textContent.includes('unavailable'));
  assert.equal(await page.locator('.relationship-dialog').textContent(),'');assert.equal(await page.locator('#networkTerritory option').count(),1);assert.equal(await page.locator('#networkVertical option').count(),1);
@@ -371,7 +371,7 @@ for(const failure of ['auth','expiry']) test(`R6 ${failure} invalidates relation
 });
 test('R7 malformed optional field is rejected without poisoning retained snapshot or later interactions',async t=>{
  const h=await open(t),{page}=h;await page.goto('http://localhost/relationships?mode=live');await page.waitForSelector('.relationship-node');
- const before=await page.locator('#networkCanvas').textContent();h.setMode('territory');await page.clock.fastForward(31000);await page.waitForFunction(()=>!document.querySelector('#networkNotice').hidden);
+ const before=await page.locator('#networkCanvas').textContent();h.setMode('territory');await page.clock.fastForward(61000);await page.waitForFunction(()=>!document.querySelector('#networkNotice').hidden);
  assert.equal(await page.locator('#networkCanvas').textContent(),before);await page.locator('#networkReset').click();await page.setViewportSize({width:1000,height:900});await page.locator('#networkZoomIn').click();assert.deepEqual(h.errors,[]);
  assert.equal(await page.locator('.relationship-node').count(),8);assert.equal(await page.locator('#networkUpdated').isVisible(),true);
 });

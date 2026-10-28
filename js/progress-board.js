@@ -19,7 +19,6 @@ import {
 } from "./progress-board-model.js";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
-const REFRESH_MS = 15000;
 const TICK_MS = 30000;
 
 function safeStorage(win) {
@@ -1153,7 +1152,6 @@ export function mountBoard(deps = {}) {
     refresh().catch(() => setError("Progress temporarily unavailable.")).finally(() => {
       if (disposed) return;
       poller = mountVisibilityPoll({ document: doc, window: win, setTimeout: setTimer, clearTimeout: clearTimer,
-        intervalMs: () => orchestratorView || currentView?.work_queue ? 2000 : REFRESH_MS,
         poll: () => refresh().catch(() => setError("Progress temporarily unavailable.")) });
     });
     timers.push(schedule(tick, TICK_MS));

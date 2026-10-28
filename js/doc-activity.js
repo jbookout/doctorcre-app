@@ -9,7 +9,7 @@ const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;'
 const stamp = value => new Date(value).toLocaleString(undefined, { month:'short', day:'numeric', hour:'numeric', minute:'2-digit', hour12:true });
 const shown = value => value === null || value === undefined ? '—' : String(value).replace(/_/g,' ');
 
-export function mountDocActivity({ document: root, window, client, intervalMs = 30_000 }) {
+export function mountDocActivity({ document: root, window, client, intervalMs }) {
   const $ = id => root.getElementById(id), form = $('activityFilters'), dialog = $('activityDetail');
   const view = { rows: [], sequence: 0, pages: 1, next: null, selected: null, opener: null, attempts: new Map(), feedback: new Map(), fingerprint: '', filters: '' };
   const message = text => { $('activityStatus').textContent = text; };

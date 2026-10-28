@@ -1072,7 +1072,7 @@
     "schema": "carr-relationship-network.v1",
     "version": "1.0.0",
     "path": "contracts/relationship-network.v1.json",
-    "sha256": "7984c3b46ca7292e4b70c3e5b716d2d1724e8912a1b8880f2259cf4fe5bd4644",
+    "sha256": "ffb80cc970d087ac4f9dc51c2a2aace1dcf988e6ad4a6c96df1508678779e059",
     "request_selector": "contract=relationship-network.v1",
     "endpoint": "/api/v1/business/relationships"
   },

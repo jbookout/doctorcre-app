@@ -107,11 +107,11 @@ test('an open attention detail follows its selected job through refresh and sour
   const { page, state } = await open(t, 1440);
   await page.locator('[data-attention-id="work_request:WR-000901"] button').click();
   state.progress = 'Demo source responded; export retry is next';
-  await page.clock.runFor(15001);
+  await page.clock.runFor(60_001);
   await page.waitForFunction(() => document.querySelector('#jobBody')?.textContent.includes('Demo source responded; export retry is next'));
   assert.equal(await page.locator('#jobTitle').innerText(), 'Demo export needs its source');
   state.unavailable = true;
-  await page.clock.runFor(15001);
+  await page.clock.runFor(60_001);
   await page.waitForFunction(() => document.querySelector('#crAttentionList')?.textContent.includes('Attention work could not be read'));
   assert.match(await page.locator('#jobBody').innerText(), /Source unavailable.*Last-known/);
   assert.equal(await page.locator('#jobTitle').innerText(), 'Demo export needs its source');
@@ -124,7 +124,7 @@ test('older completion cannot hide newer failed work from another read source', 
   assert.equal(await failed.count(), 1);
   state.progress = 'Demo refreshed validation complete';
   state.duplicate = true;
-  await page.clock.runFor(15001);
+  await page.clock.runFor(60_001);
   await page.waitForFunction(() => document.querySelector('#completed-list')?.textContent.includes('Demo older completion') || document.querySelector('#crAttentionList')?.textContent.includes('Demo refreshed validation complete'));
   assert.equal(await failed.count(), 1, 'newer failure must remain visible once');
   assert.match(await failed.innerText(), /Demo source did not answer/);
