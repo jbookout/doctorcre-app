@@ -440,7 +440,8 @@ body.has-app-layout:has(#callModeAvailability:not([hidden])) { --layout-bottom: 
 .email-proposal h3 { margin: 0; font-size: var(--font-size-2); }
 .email-proposal h3 a { display: inline-flex; align-items: center; min-height: var(--touch); color: var(--fg); }
 .email-proposal p { margin: var(--space-2) 0; }
-.email-source, .email-proposal q { color: var(--fg-muted); font-size: var(--font-size-1); }
+.email-source, .email-waiting, .email-proposal q { color: var(--fg-muted); font-size: var(--font-size-1); }
+.email-waiting:empty { display: none; }
 .email-proposal q { display: block; max-width: 80ch; }
 .email-change { font-weight: var(--font-weight-strong); }
 .email-controls, .email-review { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
@@ -450,3 +451,6 @@ body.has-app-layout:has(#callModeAvailability:not([hidden])) { --layout-bottom: 
 .email-controls button:disabled { opacity: .55; cursor: default; }
 .email-controls [data-email-action="confirm"], .email-controls [data-email-action="submit-draft"] { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
 .email-warning { color: var(--status-warn-ink); }
+.email-dismiss { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); flex-basis: 100%; }
+.email-dismiss > span { color: var(--fg-muted); font-size: var(--font-size-1); }
+.email-controls .email-chip { border-radius: var(--radius-round); font-weight: var(--font-weight-regular); }
