@@ -157,6 +157,15 @@
 .deal-update-form input { min-height:44px; width:100%; box-sizing:border-box; }
 .deal-update-form button { min-height:44px; justify-self:start; }
 .deal-update-form [role="status"]:empty { display:none; }
+@media (min-width:720px) {
+  /* Next step and date share a row so Add update stays on the opening screen. */
+  .deal-update-form { grid-template-columns:1fr 1fr; }
+  .deal-update-form > * { grid-column:1 / -1; }
+  .deal-update-form > [for="dealUpdateStep"], .deal-update-form > [for="dealUpdateDate"] { grid-row:3; }
+  .deal-update-form > #dealUpdateStep, .deal-update-form > #dealUpdateDate { grid-row:4; }
+  .deal-update-form > [for="dealUpdateStep"], .deal-update-form > #dealUpdateStep { grid-column:1; }
+  .deal-update-form > [for="dealUpdateDate"], .deal-update-form > #dealUpdateDate, .deal-update-form > #detailUpdateDateHint { grid-column:2; }
+}
 .deal-snapshot-facts { display:flex; flex-wrap:wrap; gap:var(--space-3) var(--space-6); margin:0 0 var(--space-4); }
 .deal-snapshot-facts div { min-width:0; }
 .deal-snapshot-facts dt { color:var(--fg-muted); font-size:var(--font-size-1); }
@@ -167,8 +176,10 @@
 .deal-vendors ul { list-style:none; padding:0; margin:0; display:grid; gap:var(--space-2); }
 .deal-vendor-company, .deal-vendor-contact { display:block; }
 .deal-vendor-contact { color:var(--fg-muted); }
-.deal-vendor-details > summary { cursor:pointer; min-height:var(--touch); min-width:var(--touch); }
-.deal-vendor-details p { margin:0 0 var(--space-2); }
+.deal-vendor-details > summary { cursor:pointer; min-height:var(--touch); min-width:var(--touch); line-height:var(--touch); }
+.deal-vendor-details p { display:grid; grid-template-columns:4em minmax(0,1fr); align-items:center; column-gap:var(--space-2); margin:0; }
+.deal-vendor-details p + p { margin-top:var(--space-2); }
+.deal-vendor-details a { display:block; box-sizing:border-box; min-height:44px; min-width:44px; overflow-wrap:anywhere; text-decoration:none; border:1px solid currentColor; border-radius:6px; padding:12px var(--space-2); }
 .deal-row .deal-vendors { grid-column:1/-1; }
 .deal-detail .detail-grid { grid-template-columns:minmax(0,1fr); }
 .deal-updates { margin-bottom:var(--space-4); }

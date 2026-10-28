@@ -65,7 +65,7 @@ async function callSurface(fetchImpl, check) {
 
 function unavailable(doc) {
   assert.equal(doc.querySelector('#callModeButton').hidden, true);
-  assert.match(doc.querySelector('#callModeAvailability').textContent, /Call recording runs on the Mac with Quill/);
+  assert.match(doc.querySelector('#callModeAvailability').textContent, /^Call recording runs on the Mac$/);
   for (const id of ['callModeStarts', 'callModeConsentRow', 'callModeStop', 'callModeStandalone', 'postCallPanel']) {
     assert.equal(doc.getElementById(id).hidden, true, `${id} must not be offered`);
   }
@@ -248,7 +248,7 @@ test('honest controls fit 320px, 390px and iPad in both motion settings with 44p
       if (width <= 760) await page.locator('#selfAvatar').click();
       await page.locator('#callModeRetry:enabled').waitFor({ state:'visible' });
       assert.equal(await page.locator('#callModeButton').isVisible(), false);
-      assert.match(await page.locator('#callModeAvailability').textContent(), /Call recording runs on the Mac with Quill/);
+      assert.match(await page.locator('#callModeAvailability').textContent(), /^Call recording runs on the Mac$/);
       const notice = await page.locator('#callModeAvailability').boundingBox();
       assert.ok(notice.x >= 0 && notice.x + notice.width <= width, `${width}: notice fits`);
       const retryBox = await page.locator('#callModeRetry').boundingBox();
@@ -308,6 +308,21 @@ for (const reachable of [true, false]) test(`shared Call Mode tolerates shell re
   } finally { globalThis.fetch = previousFetch; dom.window.close(); }
 });
 
+test('shared Call Mode does not add a dialog after the shell disappears during a recording probe', async () => {
+  const dom = new JSDOM(`<div id="appShell">${appShellMarkup('/leads')}</div>`);
+  const doc = dom.window.document, previousFetch = globalThis.fetch;
+  const button = doc.getElementById('callModeButton');
+  Object.defineProperty(button, 'hidden', { set(value) {
+    if (!value) queueMicrotask(() => doc.body.replaceChildren(doc.createElement('main')));
+  } });
+  globalThis.fetch = async () => ({ ok: true, json: async () => ({ state: 'recording' }) });
+  let call;
+  try {
+    call = await mountGlobalCallMode(doc);
+    assert.equal(doc.getElementById('callModeDialog'), null);
+  } finally { call?.dispose(); globalThis.fetch = previousFetch; dom.window.close(); }
+});
+
 test('shared Call Mode builds its dialog on first open, not at page load', async () => {
   const dom = new JSDOM(`<div id="appShell">${appShellMarkup('/leads')}</div>`);
   const doc = dom.window.document;
@@ -325,7 +340,7 @@ test('shared Call Mode builds its dialog on first open, not at page load', async
     call = await mountGlobalCallMode(doc);
     assert.equal(doc.getElementById('callModeDialog'), null, 'no dialog markup at page load');
     assert.equal(doc.getElementById('callModeButton').hidden, true);
-    assert.match(doc.getElementById('callModeAvailability').textContent, /Call recording runs on the Mac with Quill/);
+    assert.match(doc.getElementById('callModeAvailability').textContent, /^Call recording runs on the Mac$/);
     const retry = doc.getElementById('callModeRetry');
     assert.ok(retry && !retry.hidden);
     reachable = true;

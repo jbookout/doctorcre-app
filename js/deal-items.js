@@ -1,3 +1,5 @@
+import { overdueLabel } from './deal-review-model.js';
+
 const esc = value => String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
 
 export const openDealItems = deal => (Array.isArray(deal.items) ? deal.items : []).filter(item => item.status === 'open');
@@ -6,7 +8,8 @@ export function shortDealName(deal) {
   return deal.short_name || deal.name || 'Deal';
 }
 export function renderDealAlert(deal, { today = '', heading = 'h3', buttons = false } = {}) {
-  return `<${heading}>${buttons ? `<button class="card-open" type="button" data-open="${esc(deal.id)}">${esc(shortDealName(deal))}</button>` : `<a data-home-key="deal:${esc(deal.id)}" href="/deals?deal=${encodeURIComponent(deal.id)}">${esc(shortDealName(deal))}</a>`}</${heading}>${renderDealItems(deal,{today,buttons})}`;
+  const overdue = overdueLabel(deal.overdue_since, today);
+  return `<${heading}>${buttons ? `<button class="card-open" type="button" data-open="${esc(deal.id)}">${esc(shortDealName(deal))}</button>` : `<a data-home-key="deal:${esc(deal.id)}" href="/deals?deal=${encodeURIComponent(deal.id)}">${esc(shortDealName(deal))}</a>`}</${heading}>${overdue ? `<p class="deal-overdue">${overdue}</p>` : ''}${renderDealItems(deal,{today,buttons})}`;
 }
 export function renderDealItems(deal, { today = '', buttons = false } = {}) {
   const items = openDealItems(deal);

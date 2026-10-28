@@ -44,7 +44,7 @@ export function shapeCallContextDeals(deals) {
  */
 export async function readCallContextIndex(client, agenda) {
   if (!client?.getCallContext) throw new Error('The exact call-context index is not available for this account.');
-  if (!agenda.length) throw new Error('This weekly agenda has no active work records. Open Deals (the team pipeline) and try again.');
+  if (!agenda.length) throw new Error('This weekly agenda has no active deals. Open Deals (the team pipeline) and try again.');
   const allowed = new Set(agenda.map((deal) => deal.id));
   const ids = [...allowed];
   const exact = [];
@@ -139,7 +139,7 @@ export function createCallMode(deps) {
   }
 
   const callModeActive = (snapshot = state.callMode) => snapshot?.state === 'recording';
-  const postCallDealName = (item) => item.deal_name || dealName(item.deal_id) || 'Work record';
+  const postCallDealName = (item) => item.deal_name || dealName(item.deal_id) || 'Deal';
 
   async function api(path, body = null, timeoutMs = deps.requestTimeoutMs) {
     const options = body ? {
@@ -160,7 +160,7 @@ export function createCallMode(deps) {
   async function reconcileRecorder() {
     if (!state.recorderUncertain) return false;
     const snapshot = await api('state');
-    if (snapshot.state === 'state_unknown') throw new Error('Recorder outcome unknown. Check Quill before another action.');
+    if (snapshot.state === 'state_unknown') throw new Error('Recorder outcome unknown. Check the recorder before another action.');
     state.recorderUncertain = false;
     const notice = $('#callModePermission'); if (notice) notice.hidden = true;
     await refresh({snapshot});
@@ -174,7 +174,7 @@ export function createCallMode(deps) {
     if (availability) {
       availability.hidden = eligible;
       availability.textContent = state.eligibility === 'checking' || state.eligibility === 'unknown'
-        ? 'Checking Quill on this device…' : 'Call recording runs on the Mac with Quill';
+        ? 'Checking the call recorder…' : 'Call recording runs on the Mac';
     }
     for (const id of ['callModeButton', 'callModeStandalone']) {
       const element = $(`#${id}`);
@@ -190,7 +190,7 @@ export function createCallMode(deps) {
         const element = $(`#${id}`);
         if (element) element.hidden = true;
       }
-      if ($('#callModeState')) $('#callModeState').textContent = 'Call recording runs on the Mac with Quill';
+      if ($('#callModeState')) $('#callModeState').textContent = 'Call recording runs on the Mac';
       if ($('#callModeTimer')) $('#callModeTimer').textContent = '';
       if ($('#callModeDetail')) $('#callModeDetail').textContent = '';
       return;
@@ -208,10 +208,10 @@ export function createCallMode(deps) {
     $('#callModeConsentRow').hidden = busy;
     $('#callModeStop').hidden = !recording;
     $('#callModeTimer').textContent = recording ? elapsedTime(snapshot.started_at, now) : ({
-      idle: 'Ready', transcribing: 'Processing', ready_to_extract: 'Transcript ready', filed: 'Summary saved', state_unknown: 'Check Quill',
+      idle: 'Ready', transcribing: 'Processing', ready_to_extract: 'Transcript ready', filed: 'Summary saved', state_unknown: 'Check the recorder',
     }[snapshot.state] || 'Ready');
     $('#callModeState').textContent = recording ? 'Recording live' : ({
-      transcribing: 'Quill is processing this call', ready_to_extract: 'Transcript ready for extraction',
+      transcribing: 'Processing this call', ready_to_extract: 'Transcript ready for extraction',
       filed: 'Call summary saved', state_unknown: 'Recorder state needs attention',
     }[snapshot.state] || 'Ready to record');
     const labels = snapshot.speaker_labels || {};
@@ -234,7 +234,7 @@ export function createCallMode(deps) {
   /**
    * The visible signal from post_call_jev.py's RIGHT DEAL / RIGHT SPEAKER /
    * RIGHT DETAILS checks (decision 008d682a): a flagged item shows its
-   * plain-English reasons, and an item Jev never reached shows a neutral
+   * plain-English reasons, and an item the checks never reached shows a neutral
    * note. Never hides or removes the item either way -- Joe and Dell still
    * approve or reject every candidate by hand.
    */
@@ -242,7 +242,7 @@ export function createCallMode(deps) {
     const checks = item?.checks;
     if (!checks) return '';
     if (checks.unavailable) {
-      return `<p class="post-call-checks post-call-checks-unavailable">Automatic Jev checks did not run for this item.</p>`;
+      return `<p class="post-call-checks post-call-checks-unavailable">Automatic checks did not run for this item.</p>`;
     }
     if (checks.flagged) {
       const reasons = Array.isArray(checks.reasons) ? checks.reasons : [];
@@ -389,8 +389,8 @@ export function createCallMode(deps) {
       context_loading: 'Preparing the weekly deal context…',
       context_ready: 'Deal context ready. Recording continues locally.',
       awaiting_context: 'Preparing the weekly deal context…',
-      waiting_for_transcript: 'Recording stopped. Quill is transcribing locally…',
-      distilling: 'Quill is distilling the weekly updates and next actions…',
+      waiting_for_transcript: 'Recording stopped. Transcribing on this Mac…',
+      distilling: 'Pulling out the weekly updates and next actions…',
       review_ready: reviewReadyLabel(post),
       filed: 'Post-call report filed. Outlook drafts still require a person to send them.',
       failed: 'The post-call report needs attention.',
@@ -419,7 +419,7 @@ export function createCallMode(deps) {
   // --------------------------------------------------------- context index
 
   async function publishWeeklyCallContext(session) {
-    if (!session) throw new Error('Quill did not return a recording session.');
+    if (!session) throw new Error('The recorder did not return a recording session.');
     const generation = state.callGeneration || 0;
     if (state.postCall.session && state.postCall.session !== session) return false;
     if (state.contextInFlight?.session === session && state.contextInFlight.generation === generation) return state.contextInFlight.promise;
@@ -736,7 +736,7 @@ export function createCallMode(deps) {
     try {
       if (await reconcileRecorder()) return;
       await refresh({snapshot:await api('stop', {})});
-      toast('Recording stopped. Quill is processing the call.');
+      toast('Recording stopped. Processing the call.');
     } catch (error) {
       if (error.outcomeUnknown) state.recorderUncertain = true;
       showFailure(error);

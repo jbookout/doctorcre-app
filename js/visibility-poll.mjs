@@ -7,6 +7,9 @@
 import { mountReadOnResume } from "./read-on-resume.mjs";
 
 export const IDLE_CUTOFF_MS = 30 * 60_000;
+// No background read runs more often than once a minute; a person who wants
+// fresher data presses refresh.
+export const MIN_POLL_MS = 60_000;
 const INPUT_EVENTS = ["pointerdown", "pointermove", "keydown", "touchstart", "wheel", "scroll"];
 
 // active() says whether a network read may run now. onResume runs once per
@@ -39,16 +42,19 @@ export function watchPresence({ document, window, onResume, onWake, idleMs = IDL
 // returns nothing keeps a fixed cadence. Going hidden clears the timer; a tick
 // that finds the person idle does not poll and does not re-arm. keepAlive()
 // is the one exception: while it is true the poll runs hidden or idle too.
-// refresh() polls now and restarts the cadence from that read.
+// refresh() polls now and restarts the cadence from that read. intervalMs
+// defaults to, and outside keepAlive is floored at, MIN_POLL_MS.
 export function mountVisibilityPoll({
-  poll, intervalMs, keepAlive = () => false, idleMs, now,
+  poll, intervalMs = MIN_POLL_MS, keepAlive = () => false, idleMs, now,
   document = globalThis.document, window = globalThis,
   setTimeout = (fn, ms) => window.setTimeout(fn, ms), clearTimeout = id => window.clearTimeout(id),
 }) {
   let timer = null;
   let generation = 0;
   let disposed = false;
-  const delay = () => (typeof intervalMs === "function" ? intervalMs() : intervalMs);
+  const asked = () => (typeof intervalMs === "function" ? intervalMs() : intervalMs);
+  // Call mode's keepAlive poll reads the local companion, not CARR.
+  const delay = () => (keepAlive() ? asked() : Math.max(MIN_POLL_MS, asked()));
   const stop = () => { if (timer !== null) clearTimeout(timer); timer = null; generation += 1; };
   const arm = () => { timer = setTimeout(tick, delay()); };
   const refresh = () => {

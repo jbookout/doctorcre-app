@@ -12,6 +12,7 @@ import { localToday } from './calendar-model.js';
 import { agendaSnapshot, dealHref, dealSnapshot, HOME_SCOPES, readHomeAgenda, readHomeDashboard, topNewLeads } from './home-dashboard-model.js';
 import { mountNotificationBadge } from './shell.js';
 import { mountHomeCallTasks } from './home-call-tasks.js';
+import { mountHomeMeetingReviews } from './home-meeting-reviews.js';
 
 const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
 const E = escapeHtml;
@@ -19,13 +20,13 @@ const count = value => value === null ? '—' : String(value);
 const AGENDA_PREVIEW = 6;
 const dateLabel = day => new Date(`${day}T12:00:00`).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 
-export function mountHomeDashboard({ document, window, client, now = () => Date.now(), intervalMs = 30_000 }) {
+export function mountHomeDashboard({ document, window, client, now = () => Date.now(), intervalMs }) {
   const $ = id => document.getElementById(id);
-  let emailQuality = null, emailReview = null, emailRetired = false, emailObserver = null;
+  let emailQuality = null, emailReview = null, replyOutcomes = null, emailFilings = null, emailRetired = false, emailObserver = null;
   const retirePendingEmail = () => {
     emailRetired = true;
     emailObserver?.disconnect();
-    for (const [id, title, view] of [['homeEmailQuality', 'Email proposal quality', emailQuality], ['homeEmailFollowups', 'Email follow-ups', emailReview]]) {
+    for (const [id, title, view] of [['homeReplyOutcomes', 'Reply delivery', replyOutcomes], ['homeEmailQuality', 'Email proposal quality', emailQuality], ['homeEmailFollowups', 'Email follow-ups', emailReview], ['homeEmailFilings', 'Automatic email filings', emailFilings]]) {
       if (view || !$(id)) continue;
       $(id).setAttribute('aria-busy', 'false');
       $(id).innerHTML = `<header class="home-panel-head"><h2>${title}</h2></header><p role="status">Sign in to view ${title.toLowerCase()}.</p>`;
@@ -50,6 +51,9 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
     await auto.refresh();
     if (!disposed && before === sequence) await auto.refresh();
   } }) : null;
+  let storage; try { storage = window.localStorage; } catch {}
+  const meetingReviews = $('homeMeetingReviews') && client.logActivity
+    ? mountHomeMeetingReviews({ document, client, host: $('homeMeetingReviews'), storage, now }) : null;
   const docSources = [['board','getHomeAgenda'],['leads','getLeadBoard']];
   const docPayload = (source, view) => source === 'board' ? {deals:scopedDeals(view?.board,scope)}
     : (view?.leads ? {leads:topNewLeads(view.leads,{scope,actor:view.board?.actor,now:now()})} : null);
@@ -66,6 +70,7 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
   const renderMeetings = signedOut => {
     if (!$('homeMeetings')) return;
     const meetings = signedOut ? null : calendar;
+    meetingReviews?.update({ calendar: meetings, deals: scopedDeals(snapshot?.board, 'team') || [], actor: snapshot?.board?.actor, signedOut: Boolean(signedOut) });
     if (!meetings) { $('homeMeetings').replaceChildren(); widget('homeMeetings', null); return; }
     const failed = meetings.state === 'unavailable';
     const count = meetings.items.length;
@@ -81,6 +86,7 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
     widget('homeMeetings', header + warnings + content);
   };
   const render = () => {
+    replyOutcomes?.syncActor();
     emailReview?.update();
     const signedOut = snapshot?.unauthorized;
     callTasks?.update({ read: snapshot?.reads?.callTasks, tasks: snapshot?.callTasks, actor: snapshot?.board?.actor,
@@ -137,7 +143,7 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
   const refresh = async ({ signal } = {}) => {
     const read = nextRead; nextRead = readHomeDashboard;
     const agendaOnly = read === readHomeAgenda;
-    if (!agendaOnly) { void emailReview?.refresh(); void emailQuality?.refresh(); }
+    if (!agendaOnly) { void emailReview?.refresh(); void emailQuality?.refresh(); void replyOutcomes?.refresh(); }
     const currentDocSources = agendaOnly ? docSources.slice(0, 1) : docSources;
     const docTickets = new Map(currentDocSources.map(([key,method]) => [key,pageDocContext?.begin(method)]));
     const epoch = ++sequence;
@@ -298,24 +304,36 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
       if (!entry.isIntersecting) continue;
       emailObserver.unobserve(entry.target);
       if (disposed || emailRetired) continue;
-      if (entry.target.id === 'homeEmailQuality') import('./email-quality.js').then(({ mountEmailQuality }) => {
+      if (entry.target.id === 'homeReplyOutcomes') import('./reply-outcomes.js').then(({ mountReplyOutcomes }) => {
+        if (disposed || emailRetired) return;
+        replyOutcomes = mountReplyOutcomes({ container: entry.target, client });
+        void replyOutcomes.refresh();
+      });
+      else if (entry.target.id === 'homeEmailQuality') import('./email-quality.js').then(({ mountEmailQuality }) => {
         if (disposed || emailRetired) return;
         emailQuality = mountEmailQuality({ container: entry.target, client });
         void emailQuality.refresh();
       });
+      else if (entry.target.id === 'homeEmailFilings') import('./email-filings.js').then(({ mountEmailFilings }) => {
+        if (disposed || emailRetired) return;
+        emailFilings = mountEmailFilings({ container: entry.target, client });
+        void emailFilings.refresh();
+      });
       else import('./email-followups.js').then(({ mountEmailFollowups }) => {
         if (disposed || emailRetired) return;
         emailReview = mountEmailFollowups({ container: entry.target, client, onChange: () => {
-          void emailQuality?.refresh(); nextRead = readHomeAgenda; auto.refresh();
+          void emailQuality?.refresh(); void replyOutcomes?.refresh(); nextRead = readHomeAgenda; auto.refresh();
         } });
         void emailReview.refresh();
       });
     }
   });
+  if ($('homeReplyOutcomes') && client.listEmailProposals) emailObserver.observe($('homeReplyOutcomes'));
   if ($('homeEmailQuality') && client.getEmailProposalQuality) emailObserver.observe($('homeEmailQuality'));
+  if ($('homeEmailFilings') && client.listEmailThreadFilings) emailObserver.observe($('homeEmailFilings'));
   if ($('homeEmailFollowups') && client.listEmailProposals) emailObserver.observe($('homeEmailFollowups'));
   auto.refresh();
-  return { refresh: auto.refresh, dispose() { disposed = true; sequence++; prepEpoch++; meetingPrep?.dispose(); emailObserver?.disconnect(); window.removeEventListener('doctorcre-session-invalidated', retirePendingEmail); window.clearInterval(expiry); auto.dispose(); document.removeEventListener('doctorcre:brief-calendar', updateCalendar); window.removeEventListener('doctorcre-session-invalidated', clearCalendar); relationshipDialog?.dispose(); pastWidget?.dispose(); callTasks?.dispose(); emailReview?.dispose(); emailQuality?.dispose(); } };
+  return { refresh: auto.refresh, dispose() { disposed = true; sequence++; prepEpoch++; meetingPrep?.dispose(); emailObserver?.disconnect(); window.removeEventListener('doctorcre-session-invalidated', retirePendingEmail); window.clearInterval(expiry); auto.dispose(); document.removeEventListener('doctorcre:brief-calendar', updateCalendar); window.removeEventListener('doctorcre-session-invalidated', clearCalendar); relationshipDialog?.dispose(); pastWidget?.dispose(); callTasks?.dispose(); meetingReviews?.dispose(); emailReview?.dispose(); emailFilings?.dispose(); emailQuality?.dispose(); replyOutcomes?.dispose(); } };
 }
 
 if (typeof document !== 'undefined' && document.getElementById('dealAttention')) {

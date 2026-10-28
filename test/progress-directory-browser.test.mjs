@@ -212,7 +212,7 @@ function controlledReads(t) {
   };
 }
 
-test('a non-queue board keeps its fifteen-second cadence after the initial read', async t => {
+test('a non-queue board keeps its one-minute cadence after the initial read', async t => {
   const reads = controlledReads(t);
   const { page, calls } = await open(t, { onRpc: reads.onRpc });
   await reads.reply(page, 'list-progress-boards', 0, listing('Initial directory'));
@@ -229,7 +229,7 @@ for (const failed of [false, true]) test(`answer refresh supersedes an older pol
   await reads.reply(page, "list-progress-boards", 0, listing("Initial directory"));
   await reads.reply(page, "read-progress-board", 0, snapshot());
   await page.waitForFunction(() => document.querySelector("#board-title").textContent === "System version 1");
-  await page.clock.runFor(15000);
+  await page.clock.runFor(60_000);
   await reads.request("read-progress-board", 1);
   await page.locator(".answer-form textarea").fill("Ship it");
   await page.locator('.answer-form button[type="submit"]').click();
@@ -255,10 +255,10 @@ test("an unchanged polled question retains its draft while focused questions def
   await reads.reply(page, "list-progress-boards", 0, listing("Initial directory"));
   await reads.reply(page, "read-progress-board", 0, snapshot());
   await page.locator(".answer-form textarea").fill("Unsent draft");
-  await page.clock.runFor(15000);
+  await page.clock.runFor(60_000);
   assert.equal(calls.filter(call => call.name === "read-progress-board").length, 1);
   await page.locator("#board-title").click();
-  await page.clock.runFor(15000);
+  await page.clock.runFor(60_000);
   await reads.reply(page, "read-progress-board", 1, snapshot(2));
   await reads.reply(page, "list-progress-boards", 1, listing("New directory"));
   assert.equal(await page.locator(".answer-form textarea").inputValue(), "Unsent draft");
@@ -284,7 +284,7 @@ for (const state of ["answer focus", "directory focus", "failed reads", "offline
   test(`badge clock crosses 24h during ${state} without replacing focused controls`, async t => {
     let fail = false;
     const { page, errors } = await open(t, {
-      publicationTime: "2026-09-30T15:00:16Z", withQuestion: true,
+      publicationTime: "2026-09-30T15:01:01Z", withQuestion: true,
       onRpc: async (route, rpc) => {
         if (!fail) return false;
         await route.fulfill({ status: 503, body: "Synthetic unavailable" });
@@ -305,7 +305,7 @@ for (const state of ["answer focus", "directory focus", "failed reads", "offline
       fail = true;
       await page.context().setOffline(true);
     }
-    await page.clock.runFor(15999);
+    await page.clock.runFor(60_999);
     assert.equal(await page.locator("#board-freshness").getAttribute("data-freshness"), "fresh");
     await page.clock.runFor(1);
     assert.equal(await page.locator("#board-freshness").getAttribute("data-freshness"), "stale");
@@ -331,11 +331,11 @@ test("task focus and dialog return target survive unchanged and changed polls", 
   await task.focus();
   assert.match(await task.textContent(), /Synthetic summary 1.*Synthetic provider.*Synthetic model 1 · high/);
   await page.evaluate(() => window.retainedTask = document.activeElement);
-  await page.clock.runFor(15000);
+  await page.clock.runFor(60_000);
   await new Promise(resolve => setTimeout(resolve, 30));
   assert.equal(await page.evaluate(() => document.activeElement === window.retainedTask), true);
   version = 2;
-  await page.clock.runFor(15000);
+  await page.clock.runFor(60_000);
   await page.waitForFunction(() => document.querySelector("#board-title").textContent === "System version 2");
   assert.equal(await page.evaluate(() => document.activeElement === window.retainedTask), true);
   assert.match(await task.getAttribute("aria-label"), /Synthetic task 2/);
@@ -356,7 +356,7 @@ for (const state of ["unpublished", "unauthorized", "signed-out"])
     } });
     await page.waitForFunction(() => document.querySelector(".board-card"));
     failure = true;
-    await page.clock.runFor(15000);
+    await page.clock.runFor(60_000);
     if (state !== 'unpublished') {
       await page.waitForURL('**/public-shell/session-ended.html');
       assert.equal(await page.locator('.board-card, .answer-form').count(),0);
@@ -411,7 +411,7 @@ test("timeout retains and ages last-known data; Retry preserves the draft and co
   await page.evaluate(() => window.retainedAnswer = document.activeElement);
   await page.locator("#board-title").click();
   stalled = true;
-  await page.clock.runFor(15000);
+  await page.clock.runFor(60_000);
   // A routed request may start after the virtual clock returns; wait for it.
   for (let i = 0; !pending.length && i < 500; i++) await new Promise(resolve => setTimeout(resolve, 2));
   assert.ok(pending.length);
@@ -432,7 +432,7 @@ test("an in-flight poll preserves a refocused unchanged answer card when tasks c
   const { page } = await open(t, { onRpc: reads.onRpc });
   await reads.reply(page, "list-progress-boards", 0, listing("Directory"));
   await reads.reply(page, "read-progress-board", 0, snapshot());
-  await page.clock.runFor(15000);
+  await page.clock.runFor(60_000);
   await reads.request("read-progress-board", 1);
   await page.locator("textarea").fill("Synthetic retained focus");
   await page.evaluate(() => window.focusedAnswer = document.activeElement);

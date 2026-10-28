@@ -360,4 +360,4 @@ wire = mountProgressWire({scope,onRead:read=>{
   turns = read.turns;
   deriveLinks(); renderReviews(); renderDot();
 }});
-mountVisibilityPoll({ poll: refresh, intervalMs: 5000 }).refresh();
+mountVisibilityPoll({ poll: refresh }).refresh();

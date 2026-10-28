@@ -8,7 +8,7 @@ import { AGES, projectInvoices, invoiceSummary, invoiceMoney, invoiceDate } from
 const E=value=>String(value ?? '').replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
 const bucketMoney=bucket=>bucket.unknown?(bucket.count===bucket.unknown?'—':`${invoiceMoney(bucket.amount)} + —`):invoiceMoney(bucket.amount);
 const statusLabel=row=>row.status==='paid'?'Paid':row.status==='awaiting'?'Awaiting invoice':row.overdue?'Overdue':'Unpaid';
-export function mountInvoiceTracker({ document, window, client, today=localToday, intervalMs=30_000 }) {
+export function mountInvoiceTracker({ document, window, client, today=localToday, intervalMs }) {
   const $=id=>document.getElementById(id);
   let rows=null,status='all',age=null,selected=null,opener=null,disposed=false,updatedAt=null;
   const payments=new Map();

@@ -217,7 +217,7 @@ function mountAccount(root, host, pathname, beforeSignOutReplace = () => {}, rea
     }
   };
   readIdentity();
-  mountAutoRefresh({ document: root, window: globalThis.window, refresh: readIdentity, intervalMs: 60_000 });
+  mountAutoRefresh({ document: root, window: globalThis.window, refresh: readIdentity });
   panel.querySelector("#accountSignOut").onclick = async (event) => {
     if (boot.mode === "fixture") { panel.querySelector("#accountStatus").textContent = "Demo account"; return; }
     if (!session?.csrf_token) { panel.querySelector("#accountStatus").textContent = "Sign-in unavailable"; return; }
@@ -241,7 +241,7 @@ function mountAccount(root, host, pathname, beforeSignOutReplace = () => {}, rea
     import("./global-call-mode.js").then(async ({ mountGlobalCallMode }) => {
       if (boundary?.revoked) return;
       const call = await mountGlobalCallMode(root);
-      if (boundary?.revoked) return;
+      if (boundary?.revoked) { call.dispose(); return; }
       root.querySelector("#callModeButton").onclick = () => { close(); call.open(); };
       root.querySelector("#callModeRetry").onclick = (event) => call.handleClick(event.target);
     });

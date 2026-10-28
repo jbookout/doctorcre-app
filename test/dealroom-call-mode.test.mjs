@@ -624,7 +624,7 @@ test("an item Jev never reached shows a neutral unavailable note, not a flag", a
   await new Promise((resolve) => setImmediate(resolve));
   const html = h.doc.getElementById("postCallReport").innerHTML;
   assert.match(html, /post-call-checks-unavailable/);
-  assert.match(html, /Automatic Jev checks did not run for this item\./);
+  assert.match(html, /Automatic checks did not run for this item\./);
   assert.doesNotMatch(html, /post-call-checks-flagged/);
 });
 
@@ -652,7 +652,7 @@ test("a context failure stays on screen with a Retry, and Retry supplies it", as
   h.controller.startPolling("2026.09.23-1500", { weekly: true });
   await new Promise((resolve) => setImmediate(resolve));
   const status = h.doc.getElementById("postCallStatus").innerHTML;
-  assert.match(status, /no active work records/);
+  assert.match(status, /no active deals/);
   assert.match(status, /data-retry-call-context/);
   assert.ok(h.timers.every((t) => t.ms !== 1600 || t.cleared), "polling stops so the reason is not overwritten");
   // The partner opens the team pipeline, then presses Retry.

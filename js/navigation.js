@@ -63,8 +63,8 @@ export function appShellMarkup(pathname, base = "", search = "") {
       </div>
     </div>
   </header><div class="app-shell-call-availability"${base ? ' hidden' : ''}>
-    <span id="callModeAvailability" role="status">Checking Quill on this device…</span>
-    <button type="button" id="callModeRetry" aria-describedby="callModeAvailability" hidden>Recheck Quill</button>
+    <span id="callModeAvailability" role="status">Checking the call recorder…</span>
+    <button type="button" id="callModeRetry" aria-describedby="callModeAvailability" hidden>Check the recorder</button>
   </div>`;
 }
 

@@ -451,7 +451,7 @@ test('a future next date replaces an overdue next action', async t => {
   assert.match(await page.locator('#detailUpdateForm').textContent(), /overdue/i);
   assert.equal(await page.locator('#dealUpdateDate').getAttribute('aria-describedby'), 'detailUpdateDateHint');
   assert.equal(await page.locator('#detailUpdateDateHint').textContent(), 'Current next date is overdue.');
-  assert.equal(await page.locator('.deal-current-action').count(), 0);
+  assert.match(await page.locator('.deal-current-action').textContent(), /^Overdue action: Synthetic overdue action · Due /);
   assert.equal(await page.locator('#dealUpdateStep').inputValue(), 'Synthetic overdue action');
   assert.equal(await page.locator('#dealUpdateDate').inputValue(), '2001-01-01');
   await page.locator('#dealUpdate').fill('Synthetic overdue update');
@@ -463,7 +463,7 @@ test('a future next date replaces an overdue next action', async t => {
   await page.getByLabel('Next date', {exact:true}).fill('2099-01-01');
   await page.getByRole('button', {name:'Add update',exact:true}).click();
   await settles(async () => assert.match(await page.locator('#detailUpdateStatus').textContent(), /update added/i));
-  assert.equal(await page.locator('.deal-current-action').count(), 0, 'a future action is shown only in the form');
+  await settles(async () => assert.match(await page.locator('.deal-current-action').textContent(), /^Next action: Synthetic future action · Due /));
   await page.locator('#panelClose').click();
   await settles(async () => assert.equal((await page.evaluate(async () => (await (await import('/js/pipeline.js')).state.client.getDeal('d14')).deal.next_date)), '2099-01-01'));
 });

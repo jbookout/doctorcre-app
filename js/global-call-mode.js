@@ -20,7 +20,7 @@ export async function mountGlobalCallMode(root = document) {
     const eligible = state === "available";
     button.hidden = !eligible;
     availability.hidden = eligible;
-    availability.textContent = state === "checking" ? "Checking Quill on this device…" : "Call recording runs on the Mac with Quill";
+    availability.textContent = state === "checking" ? "Checking the call recorder…" : "Call recording runs on the Mac";
     retry.hidden = eligible || state === "checking";
     retry.disabled = state === "checking";
     return true;
@@ -33,14 +33,14 @@ export async function mountGlobalCallMode(root = document) {
       if (!CALL_MODE_STATES.includes(payload.state)) throw new Error("Unrecognised recorder state");
       if (!show("available")) return false;
       // A call in progress needs the toolbar timer, so only then is the controller built early.
-      if (payload.state === "recording") { await build(); return signal.aborted ? false : await call.checkEligibility(); }
+      if (payload.state === "recording") { await build(); return signal.aborted || !call ? false : await call.checkEligibility(); }
       return true;
     } catch { if (!signal.aborted) show("unavailable"); return false; }
     finally { probing = null; }
   })();
   const build = () => built ||= (async () => {
     const [{ createCallMode }, { createClient }] = await Promise.all([import("./call-mode.js"), import("./client.js")]);
-    if (signal.aborted) return null;
+    if (signal.aborted || !$("callModeButton")) return null;
     const host = root.createElement("div");
     host.innerHTML = DIALOG;
     root.body.append(host);
@@ -57,7 +57,7 @@ export async function mountGlobalCallMode(root = document) {
       client ||= await createClient(boot.mode, boot.options);
       if (options.session) return null;
       try { const board = await client.getBoard({ workspace: "all" }); if (!Array.isArray(board?.deals)) throw new Error("Invalid board"); deals = board.deals; contextError = null; }
-      catch { deals = []; contextError = "Weekly call context unavailable. Reopen Call Mode to retry loading work records."; }
+      catch { deals = []; contextError = "Weekly call context unavailable. Reopen Call Mode to retry loading deals."; }
       return contextError;
     } };
   })();

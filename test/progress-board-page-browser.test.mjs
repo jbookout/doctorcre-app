@@ -351,7 +351,7 @@ for (const denied of ['unfinished-work', 'read-progress-board']) {
     active = true;
     const success = order === 'success-first'
       ? page.waitForResponse(response => response.url().endsWith('/mcp') && response.status() === 200) : null;
-    await page.clock.runFor(15000);
+    await page.clock.runFor(60_000);
     if (order === 'success-first') await success;
     else await page.waitForURL('**/public-shell/session-ended.html*');
     release();
@@ -374,7 +374,7 @@ test('Library pipeline membership and count follow mode, filters, and automatic 
   await page.locator('#system-work-cards [data-work-id="done"]').waitFor();
   await panelTasks(page, ['done']);
   setRows([workRow('open'), ...Array.from({ length: 12 }, (_, i) => workRow(`done-${i}`, true))]);
-  await page.clock.runFor(15000);
+  await page.clock.runFor(60_000);
   await panelTasks(page, Array.from({ length: 12 }, (_, i) => `done-${i}`));
   await page.locator('[name="text"]').fill('done-11');
   await page.locator('#system-work-filters').getByRole('button', { name: 'Search', exact: true }).click();
@@ -415,13 +415,13 @@ for (const failed of ['unfinished-work', 'read-progress-board']) test(`${failed}
   await page.locator('#board-stages [data-card-id="build"]').waitFor();
   await panelTasks(page, ['open']);
   active = true;
-  await page.clock.runFor(15000);
+  await page.clock.runFor(60_000);
   await page.locator(failed === 'unfinished-work' ? '#system-work-error' : '#board-error').waitFor();
   assert.equal(await page.locator('#board-stages [data-card-id="build"]').count(), 1);
   await panelTasks(page, ['open']);
   assert.equal(await page.locator('#board-sign-in').isVisible(), false);
   active = false;
-  await page.clock.runFor(15000);
+  await page.clock.runFor(60_000);
   await page.waitForFunction(() => document.querySelector('#board-error').hidden && document.querySelector('#system-work-error').hidden);
   assert.deepEqual(errors, []);
 });
@@ -431,7 +431,7 @@ for (const empty of [false, true]) test(`automatic refresh keeps keyboard positi
   await panelTasks(page, ['remove', 'keep']);
   await page.locator('#system-work-flow [data-task-id="loop:remove"]').focus();
   setRows(empty ? [] : [workRow('keep')]);
-  await page.clock.runFor(15000);
+  await page.clock.runFor(60_000);
   await panelTasks(page, empty ? [] : ['keep']);
   assert.equal(await page.evaluate(() => document.activeElement.id), 'system-work-title');
   assert.deepEqual(errors, []);
@@ -456,7 +456,7 @@ for (const width of [390, 1440]) {
     tasks = change === 'updated' ? { released: { ...released, summary: 'Updated summary', work_request: 'WR-102' }, keep: tasks.keep }
       : change === 'removed' ? { keep: tasks.keep } : {};
     version++;
-    await page.clock.runFor(15000);
+    await page.clock.runFor(60_000);
     await page.waitForFunction(() => document.querySelector('#board-meta').textContent.includes('Version 2'));
     if (change === 'updated') {
       assert.match(await card.textContent(), /Updated summary/);
@@ -499,7 +499,7 @@ for (const width of [390, 1440]) {
     if (change !== 'unchanged') version++;
     const read = page.waitForResponse(response => response.url().endsWith('/mcp')
       && response.request().postDataJSON().params.name === 'read-progress-board');
-    await page.clock.runFor(15000);
+    await page.clock.runFor(60_000);
     await (await read).finished();
     await page.waitForLoadState('networkidle');
     if (change === 'unchanged' || change === 'updated') {
@@ -579,7 +579,7 @@ for (const width of [320, 390, 1280]) for (const theme of ['light', 'dark'])
     changed.work_queue.board.order.reverse();
     changed.work_queue.revision++;
     setSnapshot(changed);
-    await page.clock.runFor(2300);
+    await page.clock.runFor(60_300);
     await page.locator('[data-queue-root] > section:first-child[data-queue-id="WR14"]').waitFor({ timeout: 5000 });
     assert.deepEqual(await page.locator('[data-queue-root] > section').evaluateAll(cards => cards.map(c => c.dataset.queueId)), ['WR14','WR20']);
     assert.equal(await page.evaluate(() => document.activeElement.parentElement.dataset.queueId), 'WR14.S1.J1');
@@ -590,7 +590,7 @@ for (const width of [320, 390, 1280]) for (const theme of ['light', 'dark'])
     await page.emulateMedia({ reducedMotion: 'reduce' });
     changed.work_queue.board.order.reverse(); changed.work_queue.revision++;
     setSnapshot(structuredClone(changed));
-    await page.clock.runFor(2300);
+    await page.clock.runFor(60_300);
     await page.locator('[data-queue-root] > section:first-child[data-queue-id="WR20"]').waitFor({ timeout: 5000 });
     assert.equal(await page.locator('[data-queue-root]').evaluate(el => el.getAnimations({ subtree: true }).length), 0);
     assert.deepEqual(errors, []);
@@ -625,7 +625,7 @@ for (const status of [401, 403]) test(`denied hierarchy read ${status} stays emp
   await page.locator('[data-hierarchy-id="WR14"] > button').click();
   assert.equal(await cards.count(), 2);
   denied = true;
-  await page.clock.runFor(15000);
+  await page.clock.runFor(60_000);
   await page.waitForURL('**/public-shell/session-ended.html*');
   assert.equal(await cards.count(), 0);
   await page.goBack();
@@ -652,7 +652,7 @@ for (const status of [401, 403]) test(`denied queue read ${status} recovers the 
   await page.evaluate(()=>history.pushState({},'',location.pathname+'?card=WR14.S1.J1'));
   const original = page.url();
   denied = true;
-  await page.clock.runFor(15000);
+  await page.clock.runFor(60_000);
   await page.waitForURL('**/public-shell/session-ended.html*');
   assert.equal(await cards.count(), 0);
   await page.goBack();
@@ -711,7 +711,7 @@ for (const width of [390, 1280]) test(`queue polling retains the open event log 
   changed.work_queue.board.nodes['WR14.S1.J1'].total_time_s += 2;
   changed.work_queue.revision++;
   setSnapshot(changed);
-  await page.clock.runFor(2300);
+  await page.clock.runFor(60_300);
   await page.waitForFunction(() => document.querySelector('.queue-status').textContent.includes('revision 11'));
   assert.ok(calls.filter(c => c.name === 'read-progress-board').length > reads, 'the actual board poll read the changed snapshot');
   assert.equal(await log.getAttribute('open'), '', 'manual event-log disclosure survives polling');
@@ -726,7 +726,7 @@ for (const width of [390, 1280]) test(`queue polling retains the open event log 
     changed.work_queue.revision++;
     changed.work_queue.board.nodes['WR14.S1.J1'].total_time_s += 2;
     setSnapshot(structuredClone(changed));
-    await page.clock.runFor(2300);
+    await page.clock.runFor(60_300);
     await page.waitForFunction(revision => document.querySelector('.queue-status').textContent.includes(`revision ${revision}`), changed.work_queue.revision);
     assert.equal(await control.evaluate(el => document.activeElement === el), true, 'the same control keeps focus after a changed-card poll');
     assert.equal(await job.locator('.queue-execution').getAttribute('open'), '');
@@ -807,21 +807,21 @@ for (const width of [390,1280]) for (const theme of ['light','dark'])
     });
     for(const [index,state] of [[1,'working'],[2,'review'],[3,'fixing'],[4,'merging'],[5,'merged'],[6,'live']]) {
       setSnapshot(orchestratorSequence[index].snapshot.snapshot_json);
-      await page.clock.runFor(2100);
+      await page.clock.runFor(60_100);
       await page.locator(`[data-orchestrator-stage="${state}"] [data-orchestrator-card="queue:search"]`).waitFor();
       assert.equal(await page.evaluate(()=>document.querySelector('[data-orchestrator-card="queue:search"]')===window.__orchestratorCard),true);
       assert.equal(await page.evaluate(()=>document.activeElement===window.__orchestratorLink),true);
       assert.equal(await page.locator('[data-orchestrator-card="queue:search"] details').getAttribute('open'),'');
     }
     setSnapshot(orchestratorSequence[7].snapshot.snapshot_json);
-    await page.clock.runFor(2100);
+    await page.clock.runFor(60_100);
     await page.locator('[data-orchestrator-status]').filter({hasText:'Queue observation unavailable or stale'}).waitFor();
     assert.equal(await page.locator('[data-orchestrator-stage="live"] [data-orchestrator-card="queue:search"]').count(),1);
     assert.equal(await page.locator('[data-orchestrator-stage]').count(),8);
     const paged=structuredClone(orchestratorSequence[7].snapshot.snapshot_json);
     paged.orchestrator.total_cards=paged.orchestrator.cards.length+1;
     paged.orchestrator.pages=[{board_id:olderPage,version:1,count:1}];
-    setSnapshot(paged);await page.clock.runFor(2100);
+    setSnapshot(paged);await page.clock.runFor(60_100);
     await page.locator('[data-orchestrator-more]').click();
     await page.locator('[data-orchestrator-pagination]').filter({hasText:'unavailable'}).waitFor();
     assert.equal(await page.locator('[data-orchestrator-card="queue:search"]').count(),1);
@@ -833,12 +833,12 @@ for (const width of [390,1280]) for (const theme of ['light','dark'])
     await older.locator('summary').focus();
     const scroll=await older.evaluate(el=>el.closest('.app-layout-center').scrollTop);
     const changed=structuredClone(paged);changed.orchestrator.observed_at='2026-10-21T20:00:00Z';
-    changed.orchestrator.cards[0].state='fixing';setSnapshot(changed);await page.clock.runFor(2100);
+    changed.orchestrator.cards[0].state='fixing';setSnapshot(changed);await page.clock.runFor(60_100);
     assert.equal(await older.locator('details').getAttribute('open'),'');
     assert.equal(await older.locator('summary').evaluate(el=>el===document.activeElement),true);
     assert.equal(await older.evaluate(el=>el.closest('.app-layout-center').scrollTop),scroll);
-    setSnapshot({tasks:{}});await page.clock.runFor(2100);
-    setSnapshot(changed);await page.clock.runFor(6300);
+    setSnapshot({tasks:{}});await page.clock.runFor(60_100);
+    setSnapshot(changed);await page.clock.runFor(180_300);
     assert.equal(await older.count(),1);
 
 

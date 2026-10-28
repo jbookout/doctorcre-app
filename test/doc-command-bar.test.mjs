@@ -51,8 +51,8 @@ test('selected deal notes are short previews with inert original entries',async 
 test('queued native close from an earlier opening cannot cancel a reopened query',async t=>{
  const {bar,win,dialog,input}=setup(t);bar.open();dialog.removeAttribute('open');bar.open();input.value='Clients';input.dispatchEvent(new win.Event('input'));dialog.dispatchEvent(new win.Event('close'));await new Promise(r=>setTimeout(r,220));assert.match(win.document.querySelector('#docCommandResults').textContent,/Clients/);assert.equal(win.document.activeElement,input);
 });
-test('automatic refresh updates results and preserves query and expanded original',async t=>{
- let phase='Research';const {bar,win,input}=setup(t,{intervalMs:30,client:{getBoard:async()=>({deals:[{id:'d-demo',name:'Demo Deal',phase,next_step:'Synthetic note. More detail.'}]})}});bar.open();input.value='Demo';input.dispatchEvent(new win.Event('input'));await bar.refresh();win.document.querySelector('[data-doc-result]').click();win.document.querySelector('#docCommandDetail details').open=true;phase='Legal';await new Promise(r=>setTimeout(r,90));assert.match(win.document.querySelector('#docCommandDetail').textContent,/Legal/);assert.equal(input.value,'Demo');assert.equal(win.document.querySelector('#docCommandDetail details').open,true);
+test('a refresh updates results and preserves query and expanded original',async t=>{
+ let phase='Research';const {bar,win,input}=setup(t,{client:{getBoard:async()=>({deals:[{id:'d-demo',name:'Demo Deal',phase,next_step:'Synthetic note. More detail.'}]})}});bar.open();input.value='Demo';input.dispatchEvent(new win.Event('input'));await bar.refresh();win.document.querySelector('[data-doc-result]').click();win.document.querySelector('#docCommandDetail details').open=true;phase='Legal';await bar.refresh();assert.match(win.document.querySelector('#docCommandDetail').textContent,/Legal/);assert.equal(input.value,'Demo');assert.equal(win.document.querySelector('#docCommandDetail details').open,true);
 });
 
 const deferred=()=>{let resolve,reject;const promise=new Promise((yes,no)=>{resolve=yes;reject=no;});return{promise,resolve,reject};};

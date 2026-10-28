@@ -1,6 +1,6 @@
 {
   "schema": "doctorcre-carr-interface.v1",
-  "version": "1.63.0",
+  "version": "1.65.0",
   "producer": {
     "repository": "jbookout/carr-system",
     "source_commit": "700173808625061adff581cfab415ce8e83e24f6"
@@ -67,10 +67,12 @@
     "list-doc-conversations",
     "list-doc-suggestions",
     "list-email-proposals",
+    "list-email-thread-filings",
     "list-feature-switches",
     "list-industry-events",
     "list-my-codex-sessions",
     "list-progress-boards",
+    "log-activity",
     "loop-board",
     "loop-headers",
     "morning-assurance-queue",
@@ -135,6 +137,7 @@
     "today-triage",
     "triage-incident",
     "undo-call-change",
+    "undo-email-thread-filing",
     "unfinished-work",
     "update-deal",
     "update-industry-event",
@@ -957,9 +960,29 @@
       "response": {
         "schema_version": "post-call-followups.v1",
         "send": false,
-        "candidate_keys": ["id", "session_id", "kind", "deal_id", "deal_name", "payload", "evidence_quote", "created_at"],
-        "task_payload_keys": ["deal_id", "assignee", "action", "due_on"],
-        "email_payload_keys": ["deal_id", "recipient_party_id", "recipient_ref", "subject", "body_sha256"],
+        "candidate_keys": [
+          "id",
+          "session_id",
+          "kind",
+          "deal_id",
+          "deal_name",
+          "payload",
+          "evidence_quote",
+          "created_at"
+        ],
+        "task_payload_keys": [
+          "deal_id",
+          "assignee",
+          "action",
+          "due_on"
+        ],
+        "email_payload_keys": [
+          "deal_id",
+          "recipient_party_id",
+          "recipient_ref",
+          "subject",
+          "body_sha256"
+        ],
         "membership": "Pending proposals in unexpired distilling post-call sessions for active board deals. Ordered by created_at, then id.",
         "limit": 1000,
         "overflow": "post_call_followups_limit_exceeded; no partial snapshot is returned."
@@ -1050,7 +1073,7 @@
     "schema": "carr-relationship-network.v1",
     "version": "1.0.0",
     "path": "contracts/relationship-network.v1.json",
-    "sha256": "7984c3b46ca7292e4b70c3e5b716d2d1724e8912a1b8880f2259cf4fe5bd4644",
+    "sha256": "ffb80cc970d087ac4f9dc51c2a2aace1dcf988e6ad4a6c96df1508678779e059",
     "request_selector": "contract=relationship-network.v1",
     "endpoint": "/api/v1/business/relationships"
   },
@@ -1464,7 +1487,42 @@
         "idempotency_key"
       ],
       "submission": "Only the owning authenticated human partner can submit. Preserve exact text, displayed to/cc arrays, reviewed version and original idempotency key on uncertain retries. The server compares displayed recipients with the current captured sender and other partner actor.email and refuses email_draft_recipients_mismatch if they differ. That refusal and version_conflict require explicit fresh review, never automatic resubmission. A successful receipt has ok:true, proposal_id, status:approved_to_send, version, subject, body, sha256, to and cc matching the reviewed request. It queues sending on the partner Mac and does not confirm delivery.",
-      "deployment_order": "Hold deployment and auto-merge until server PR #2522 at the pinned revision is merged and live."
+      "deployment_order": "Hold deployment and auto-merge until server PR #2522 at the pinned revision is merged and live.",
+      "recent_outcomes": {
+        "producer": {
+          "repository": "DoctorCRE/carr-system",
+          "source_commit": "616c2f4592315c5fa4533ca8eadc5d5395b78027",
+          "pull_request": "https://github.com/DoctorCRE/carr-system/pull/2608"
+        },
+        "schema_version": "email-reply-outcomes.v1",
+        "read": "list-email-proposals {mode:recent_outcomes,limit:20,cursor?}. No status argument. The producer defaults limit to 20 with maximum 50. Authenticated partner scope matches proposal owner and captured mailbox owner. Optional deal UUID restricts results; Home reads across deals.",
+        "fields": [
+          "id",
+          "deal",
+          "subject",
+          "outcome",
+          "result_recorded_at",
+          "failure_reason_code"
+        ],
+        "ordering": "Recorded sent/failed outcomes only, result_recorded_at descending then proposal id descending. Historical null result timestamps are excluded. The recorded time is not submission time or recipient delivery time.",
+        "pagination": "Response includes proposals, send:false, more and next_cursor. Cursor is the last returned proposal UUID when more is true, null otherwise. Pass the cursor to request one additional bounded page. The cursor must identify a matching outcome in the same partner/deal scope.",
+        "failure_reason_codes": [
+          "invalid_submission",
+          "submission_hash_mismatch",
+          "submission_recipients_invalid",
+          "aborted_before_dispatch",
+          "unconfirmed_after_dispatch",
+          "delivery_failed"
+        ],
+        "errors": [
+          "email_outcomes_arguments_invalid",
+          "email_proposals_cursor_invalid",
+          "email_sender_identity_required"
+        ],
+        "pending": "Use the existing list-email-proposals {status:approved_to_send,limit:20,cursor?} read, which returns email-proposals.v1 in creation order oldest first. Home filters reply_draft.owner against the verified signed-in partner and displays submitted_email.subject with pending delivery wording. The recent mode does not include pending replies. Each stream pages only on request; a filtered pending page may have no matching rows and more:true.",
+        "privacy": "Recent outcomes contain no body, recipients, addresses or free-text failure reason. Home projects only subject, deal, status, recorded time and allowlisted reason labels; it never renders pending body or addresses. Team scope does not broaden reply delivery. Session loss or identity change clears retained rows and fences in-flight reads.",
+        "deployment_order": "Do not enable auto-merge. Production must serve server PR #2608 at the pinned merged revision before the orchestrator merges this consumer."
+      }
     },
     "filing": {
       "producer": {
@@ -1476,6 +1534,29 @@
       "confirmation": "Joe or Dell confirms with confirm-email-filing {proposal_id,base_version,proposal_digest,idempotency_key,deal?}. A possible new deal supplies the ID returned by new-deal. Show public refusal hints.",
       "deployment_order": "Deploy this consumer before producer PR #2503. Current producer responses remain supported."
     }
+  },
+  "email_thread_filings": {
+    "producer": {
+      "repository": "DoctorCRE/carr-system",
+      "source_commit": "c6f99ab0f6c96d03f08aa732492c5c64729ea0a6",
+      "pull_request": "https://github.com/DoctorCRE/carr-system/pull/2596",
+      "contract": "mcp-server/contracts/email-thread-filings.v1.json"
+    },
+    "schema": "carr-email-thread-filings.v1",
+    "read": "list-email-thread-filings {} returns {filings} for the authenticated partner. The app shows only subject and sender_name (null shows as unavailable), never summary, addresses or ids. activity_version is the server guard and is null for legacy events; never infer missing fields.",
+    "read_fields": {
+      "event_id": "Filing event UUID, supplied to undo",
+      "deal": "Filed deal UUID",
+      "activity_id": "Source activity UUID",
+      "recorded_at": "Filing event timestamp",
+      "summary": "Source activity summary",
+      "subject": "Source email subject, null when unavailable",
+      "sender_name": "Source email sender display name, null when unavailable",
+      "occurred_at": "Source email timestamp; falls back to filing time when intake did not pass the email time",
+      "activity_version": "Activity version recorded at filing, null for legacy events"
+    },
+    "undo": "undo-email-thread-filing {event_id,idempotency_key} with a new UUID key per attempt. Refusals such as email_thread_filing_changed leave the filing intact and are shown, never retried.",
+    "deployment_order": "The app must not merge before the producer PR is deployed."
   },
   "email_proposal_quality": {
     "producer": {
