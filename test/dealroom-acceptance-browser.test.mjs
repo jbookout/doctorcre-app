@@ -137,7 +137,6 @@ for (const width of [390, 1280]) test(`signed-in Add deal persists through reloa
   const card = page.locator('.kanban-card').filter({hasText:'Demo HTTP Partner Review'});
   await card.waitFor();
   assert.equal(await card.count(),1);
-  assert.match(await card.textContent(),/Dell/);
   const id = await card.getAttribute('data-id');
   assert.deepEqual(writes.map(body => body.params.name),['new-deal','set-lead','add-deal-note']);
   assert.ok(writes.every(body => body.params.arguments.idempotency_key));

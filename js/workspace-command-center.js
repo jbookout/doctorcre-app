@@ -1,3 +1,4 @@
+import { renderDealAlert } from './deal-items.js';
 import { scopedDeals } from './deal-review-model.js';
 import {onDialogClosed} from './dialog-lifecycle.js';
 import { pageDocContext, publishDocRead, selectDocRecord, setDocFilters } from './doc-context.js';
@@ -95,7 +96,7 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
     const summary = signedOut ? null : dealSnapshot(snapshot?.board, scope, agenda);
     $('dealAttention').setAttribute('aria-busy', String(snapshot?.loading ?? true));
     $('dealCounts').innerHTML = `<span>Active deals: <b>${count(summary?.active ?? null)}</b></span> <span>In market: <b>${count(summary?.inMarket ?? null)}</b></span> <span>National accounts: <b>${count(summary?.national ?? null)}</b></span> <span>Overdue local deals: <b>${count(summary?.flagged?.length ?? null)}</b></span>`;
-    paint($('dealFlags'), summary?.flagged ? (summary.flagged.length ? summary.flagged.map(deal => `<a class="home-flag" data-home-key="deal:${E(deal.id)}" href="${E(dealHref(deal.id))}"><span class="home-flag-light" aria-hidden="true"></span><div><strong>${E(deal.name)}</strong><span>${E(deal.next_step || deal.phase || 'Needs attention')}</span></div><span class="home-arrow" aria-hidden="true">↗</span></a>`).join('') : '<p class="home-empty">No overdue local next steps</p>') : `<p class="home-empty">${signedOut ? 'Sign in to view deals' : snapshot?.reads?.board?.state === 'error' ? 'Deals unavailable' : summary ? 'Overdue local deals unavailable' : 'Updating…'}</p>`);
+    paint($('dealFlags'), summary?.flagged ? (summary.flagged.length ? summary.flagged.map(deal => `<article class="home-flag deal-alert">${renderDealAlert(deal,{today})}</article>`).join('') : '<p class="home-empty">No overdue local next steps</p>') : `<p class="home-empty">${signedOut ? 'Sign in to view deals' : snapshot?.reads?.board?.state === 'error' ? 'Deals unavailable' : summary ? 'Overdue local deals unavailable' : 'Updating…'}</p>`);
     if ($('homeInvoices')) {
       const invoices = signedOut ? null : projectInvoices(snapshot?.invoices, { scope, today: localToday(new Date(now())) });
       const overdue = invoices?.filter(row => row.overdue) || [];

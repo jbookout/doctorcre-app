@@ -465,7 +465,7 @@ test("Dot 9: phase reconciliation resumes the originally requested follow-up wri
   const intent=moveIntent({id:"demo",name:"Demo",phase:"On Deck"},"legal");
   await h.runMove(intent,{evidence:"Demo note",nextStep:"Demo follow-up",nextWhen:"2026-10-01",effectiveDate:"2026-09-30",recordCriticalDate:true,dateSource:"Demo source"});
   assert.equal(followUps.length,0);await h.retryFieldWrite(cellKey("demo","phase"));
-  assert.equal(followUps.length,3);assert.equal(followUps[0].verb,"add-deal-note");assert.equal(followUps[1].args.text,"Demo follow-up");assert.equal(followUps[2].args.due_on,"2026-09-30");
+  assert.equal(followUps.length,3);assert.equal(followUps[0].verb,"add-deal-note");assert.equal(followUps[1].verb,"record-deal-item");assert.equal(followUps[1].args.title,"Demo follow-up");assert.equal(followUps[2].args.due_on,"2026-09-30");
 });
 
 test("Closing outcome recovery after Dot 21 replays update-deal through the dock sender", async () => {

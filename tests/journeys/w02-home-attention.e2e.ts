@@ -15,8 +15,9 @@ test('W2 Home lists overdue local deals, scopes to the viewer and opens the exac
   await screen.getByRole('button', 'Team view', { exact: true }).tap();
   await expect(flags).toHaveCount(3);
 
-  await expect(flags.first()).toHaveAttribute('href', '/deals?deal=d14');
-  await flags.first().tap();
+  const dealLink = browser.locator('#dealFlags .home-flag h3 a').first();
+  await expect(dealLink).toHaveAttribute('href', '/deals?deal=d14');
+  await dealLink.tap();
   await browser.waitForURL(/\/deals\?deal=d14$/);
   await expect(browser.locator('#panelTitle')).toContainText('Demo Surgical Practice');
   await expect(browser.locator('#detailUpdateForm')).toBeVisible();
