@@ -357,7 +357,7 @@ test('W4 a long automatic reason keeps its date visible without persistent card 
   await card.hover();
   await page.waitForFunction(resting => getComputedStyle(document.querySelector('[data-id="d14"]')).borderRightColor !== resting, restingBorder);
   // Attention reads in words with a glyph, never a bare colour dot (S8).
-  assert.equal(await page.locator('[data-id="d14"] .attention-flag').textContent(), '◆ Overdue');
+  assert.equal(await page.locator('[data-id="d14"] .attention-flag').textContent(), '◆ 245 days overdue');
 });
 
 
@@ -1145,4 +1145,58 @@ test('Retry evidence remains active after a background detail refresh replaces e
   await page.locator('#panelEvidence [data-kind=thread]').waitFor({timeout:2000});
   assert.ok(await page.evaluate(() => window.evidenceReads) > before);
   assert.deepEqual(errors,[]);
+});
+
+test('phone board folds parked deals behind the Parked toggle, hides empty phases and keeps tabs on one scrolling row', async t => {
+  for (const width of [390, 1440]) await t.test(String(width), async t => {
+    const { page, errors } = await open(t, { width, height: 844 });
+    await page.evaluate(async () => {
+      const { state } = await import('/js/pipeline.js');
+      const get = state.client.getBoard;
+      state.client.getBoard = async (...args) => {
+        const result = await get(...args);
+        const template = result.deals.find(d => d.workspace_kind !== 'national_account' && !d.account_client_id);
+        return { ...result, deals: [
+          { ...template, id: 'demo-parked-on-deck', name: 'Demo Parked On Deck', phase: 'On Deck', operating_state: 'parked', parking_reason: 'other', parking_note: null },
+          { ...template, id: 'demo-research', name: 'Demo Research', phase: 'Research', operating_state: 'active' },
+        ] };
+      };
+    });
+    await refresh(page);
+    const parked = page.locator('[data-id="demo-parked-on-deck"]');
+    const lane = page.locator('.parked-lane');
+    if (width === 390) {
+      assert.equal(await page.locator('[data-column="pending"] [data-id="demo-parked-on-deck"]').count(), 0);
+      assert.equal(await lane.locator('[data-id="demo-parked-on-deck"]').count(), 1);
+      assert.equal(await lane.evaluate(node => node.open), false);
+      assert.equal(await parked.isVisible(), false);
+      assert.match(await lane.locator('summary').textContent(), /Parked · 1/);
+      const shown = await page.locator('.kanban-column').evaluateAll(nodes => nodes.filter(n => n.getClientRects().length).map(n => n.dataset.column));
+      assert.deepEqual(shown, ['research']);
+      const tabs = await page.locator('#appTabsSlot').evaluate(node => {
+        const tops = new Set([...node.querySelectorAll('button')].filter(b => b.getClientRects().length).map(b => Math.round(b.getBoundingClientRect().top)));
+        return { rows: tops.size, overflowX: getComputedStyle(node).overflowX, fits: node.getBoundingClientRect().right <= innerWidth };
+      });
+      assert.deepEqual(tabs, { rows: 1, overflowX: 'auto', fits: true });
+      await lane.locator('summary').click();
+      assert.equal(await parked.isVisible(), true);
+    } else {
+      assert.equal(await page.locator('[data-column="pending"] [data-id="demo-parked-on-deck"]').count(), 1);
+    }
+    assert.deepEqual(errors, []);
+  });
+});
+
+test('the status band shows one clock and one refresh, and that refresh also updates the rails', async t => {
+  const { page, errors } = await open(t, { width: 1440 });
+  const band = await page.locator('.app-layout-status').evaluate(node => {
+    const visible = [...node.querySelectorAll('button, time, .as-of')].filter(n => n.getClientRects().length && getComputedStyle(n).visibility !== 'hidden');
+    return { refresh: visible.filter(n => n.textContent.trim() === '↻').length, clocks: visible.filter(n => /\d:\d\d/.test(n.textContent)).length };
+  });
+  assert.deepEqual(band, { refresh: 1, clocks: 1 });
+  const before = await page.locator('#appSyncTime').getAttribute('datetime');
+  await page.clock.fastForward(2_000);
+  await page.locator('#retryRead').click();
+  await page.waitForFunction(before => document.querySelector('#appSyncTime').getAttribute('datetime') !== before, before);
+  assert.deepEqual(errors, []);
 });

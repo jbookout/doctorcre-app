@@ -155,7 +155,7 @@ for (const reopen of [false,true]) test(`PR111 R1: ${refusal} permits corrected 
   const h=handlers("js/app.js","function addTeamDealForm()","function addAccountForm()",{state,openForm:value=>{form=value;},phaseOptions:()=>"",uuidv4:()=>`key-${++keys}`,esc:value=>String(value??""),loadHome:async()=>{},showToast:noop},["addTeamDealForm"]);
   h.addTeamDealForm();await assert.rejects(form.onSubmit(new Map([["client","invalid-client"],["name","Demo"]])));
   assert.equal(state.pendingDealCreation,null);
-  if(reopen){h.addTeamDealForm();assert.equal(form.submit,"Create work record");}
+  if(reopen){h.addTeamDealForm();assert.equal(form.submit,"Create deal");}
   await form.onSubmit(new Map([["client","C-demo"],["name","Demo"]]));
   const creates=calls.filter(req=>req.name==="new-deal");assert.equal(creates.length,2);
   assert.equal(creates[1].arguments.client,"C-demo");assert.notEqual(creates[0].arguments.idempotency_key,creates[1].arguments.idempotency_key);

@@ -37,8 +37,13 @@ for (const width of [1440, 390]) for (const theme of ['light', 'dark']) {
     await card.locator('article').first().waitFor({ timeout: 5000 }).catch(async error => { assert.fail(`${error.message}\n${await page.locator('body').innerText()}\n${errors.join('\n')}`); });
     assert.equal(await card.locator('article').count(), 2);
     const confirmBox = await card.locator('article').first().getByRole('button', { name: 'Confirm', exact: true }).boundingBox();
-    const dismissBox = await card.locator('article').first().getByRole('button', { name: 'Dismiss', exact: true }).boundingBox();
-    assert.ok(dismissBox.x - confirmBox.x - confirmBox.width >= 8, 'decision controls have visible space between them');
+    const chips = card.locator('article').first().getByRole('group', { name: 'Dismiss' }).getByRole('button');
+    assert.deepEqual(await chips.allInnerTexts(), ['Already handled', 'Wrong deal', 'Not now', 'Wrong', 'Add a note']);
+    const chipBox = await chips.first().boundingBox();
+    assert.ok(chipBox.y - confirmBox.y - confirmBox.height >= 8, 'dismiss choices sit apart from Confirm');
+    for (const box of await Promise.all((await chips.all()).map(chip => chip.boundingBox()))) assert.ok(box.height >= 44, 'dismiss choices are full touch targets');
+    assert.match(await card.locator('.email-source').first().innerText(), /^Email · Demo plan follow-up · Oct 2\d$/);
+    assert.match(await card.locator('.email-waiting').first().innerText(), /^(Today|Waiting \d+ business days?|Waiting since \w+)$/);
     assert.doesNotMatch(await card.innerText(), /example.test|@/);
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
     await mkdir('out/test-artifacts/email-followups', { recursive: true });
@@ -51,9 +56,7 @@ for (const width of [1440, 390]) for (const theme of ['light', 'dark']) {
     await first.getByRole('button', { name: 'Confirm change', exact: true }).click();
     await first.getByText('Confirmed.', { exact: true }).waitFor();
     const second = card.locator('article').last();
-    await second.getByRole('button', { name: 'Dismiss', exact: true }).click();
-    await second.getByRole('textbox', { name: 'Reason for dismissal' }).fill('Already handled in the synthetic review');
-    await second.getByRole('button', { name: 'Dismiss proposal', exact: true }).click();
+    await second.getByRole('button', { name: 'Not now', exact: true }).click();
     await second.getByText('Dismissed.', { exact: true }).waitFor();
     await page.getByRole('button', { name: 'Refresh Home', exact: true }).click();
     await card.getByText('No pending email follow-ups.', { exact: true }).waitFor();
@@ -120,7 +123,7 @@ test('Home email quality loads separately, retries a failed report, and refreshe
   await quality.getByRole('button', { name: 'Retry email proposal quality' }).click();
   await quality.getByText('Next steps', { exact: true }).waitFor();
   const row = review.locator('article').first();
-  await row.getByRole('button', { name: 'Dismiss', exact: true }).click();
+  await row.getByRole('button', { name: 'Add a note', exact: true }).click();
   await row.getByRole('textbox', { name: 'Reason for dismissal' }).fill('Already handled in the synthetic review');
   await row.getByRole('button', { name: 'Dismiss proposal' }).click();
   await row.getByText('Dismissed.', { exact: true }).waitFor();
@@ -220,7 +223,7 @@ for (const width of [1440, 390]) {
     await page.locator('.kanban-column [data-id="qa-deal-2"] .card-open').click();
     await review.getByText('The tour is confirmed for November 3.', { exact: true }).waitFor();
     assert.doesNotMatch(await review.innerText(), /Please send the revised plan/);
-    await review.getByRole('button', { name: 'Dismiss', exact: true }).click();
+    await review.getByRole('button', { name: 'Add a note', exact: true }).click();
     await review.getByRole('textbox', { name: 'Reason for dismissal' }).fill('Synthetic tour already handled');
     await review.getByRole('button', { name: 'Dismiss proposal', exact: true }).click();
     await review.getByText('Dismissed.', { exact: true }).waitFor();
