@@ -105,7 +105,7 @@ function cardHtml(deal) {
   const pending = pendingCommand(state.fieldWrites, cellKey(deal.id, 'phase'));
   return `<article class="kanban-card" data-id="${esc(deal.id)}" data-attention="${attention}" data-phase="${esc(deal.phase)}" draggable="true" tabindex="0"${pending ? ' data-pending="true"' : ''}${state.lifted === deal.id ? ' data-lifted="true"' : ''} aria-label="${esc(dealTitle(deal))}, ${esc(columnLabel(deal.phase))}">
     <div class="work-meta"><span class="owner">${esc(actorName(deal.owner))}</span>${attention ? `<span class="attention-flag"><span aria-hidden="true">◆</span> ${overdue}</span>` : ''}</div>
-    <div class="deal-alert">${renderDealAlert(deal,{today,heading:'h4',buttons:true})}</div>
+    <div class="deal-alert">${renderDealAlert({...deal,short_name:dealTitle(deal)},{today,heading:'h4',buttons:true})}</div>
     ${renderDealVendors(deal.vendors)}
     ${renderClientPortalLink(deal.client_portal_url)}
     ${autoHtml(deal)}
