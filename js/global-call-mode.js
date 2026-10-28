@@ -12,6 +12,8 @@ export async function mountGlobalCallMode(root = document) {
   const boot = resolveDealroomBoot(globalThis.location);
   const $ = (id) => root.getElementById(id);
   let built, call, client, probing;
+  const lifetime = new AbortController();
+  const { signal } = lifetime;
   const show = (state) => {
     const button = $("callModeButton"), availability = $("callModeAvailability"), retry = $("callModeRetry");
     if (!button || !availability || !retry) return false;
@@ -23,20 +25,22 @@ export async function mountGlobalCallMode(root = document) {
     retry.disabled = state === "checking";
     return true;
   };
-  const probe = () => probing ||= (async () => {
+  const probe = () => signal.aborted ? Promise.resolve(false) : probing ||= (async () => {
     show("checking");
     try {
       const payload = await requestCompanion(`${CALL_MODE_URL}/api/state`, { method: "GET", targetAddressSpace: "loopback" }, { timeoutMs: 1200 });
+      if (signal.aborted) return false;
       if (!CALL_MODE_STATES.includes(payload.state)) throw new Error("Unrecognised recorder state");
       if (!show("available")) return false;
       // A call in progress needs the toolbar timer, so only then is the controller built early.
-      if (payload.state === "recording") { await build(); return await call.checkEligibility(); }
+      if (payload.state === "recording") { await build(); return signal.aborted ? false : await call.checkEligibility(); }
       return true;
-    } catch { show("unavailable"); return false; }
+    } catch { if (!signal.aborted) show("unavailable"); return false; }
     finally { probing = null; }
   })();
   const build = () => built ||= (async () => {
     const [{ createCallMode }, { createClient }] = await Promise.all([import("./call-mode.js"), import("./client.js")]);
+    if (signal.aborted) return null;
     const host = root.createElement("div");
     host.innerHTML = DIALOG;
     root.body.append(host);
@@ -59,8 +63,9 @@ export async function mountGlobalCallMode(root = document) {
   })();
   let opening = false;
   const mountedCall = {
-    checkEligibility: () => call ? call.checkEligibility() : probe(),
+    checkEligibility: () => signal.aborted ? Promise.resolve(false) : call ? call.checkEligibility() : probe(),
     async handleClick(target) {
+      if (signal.aborted) return false;
       if (call) return call.handleClick(target);
       const retry = target?.closest?.("#callModeRetry");
       if (!retry) return false;
@@ -68,20 +73,29 @@ export async function mountGlobalCallMode(root = document) {
       if (await probe() && hadFocus && (root.activeElement === retry || root.activeElement === root.body)) $("callModeButton")?.focus();
       return true;
     },
-    dispose: () => call?.dispose?.(),
+    dispose() {
+      lifetime.abort();
+      root.defaultView?.removeEventListener("doctorcre-session-invalidated", mountedCall.dispose);
+      call?.dispose?.();
+    },
     async open(options = {}) {
-      if (opening || options.signal?.aborted) return false;
+      if (signal.aborted || opening || options.signal?.aborted) return false;
       opening = true;
       try {
         const context = await build();
-        if (!await call.checkEligibility() || options.signal?.aborted) return false;
+        if (signal.aborted || !context) return false;
+        const eligible = await call.checkEligibility();
+        if (signal.aborted || !eligible || options.signal?.aborted) return false;
         const contextError = await context.load(options);
-        const opened = await call.open(options);
+        if (signal.aborted || options.signal?.aborted) return false;
+        const opened = await call.open({ ...options, signal: options.signal ? AbortSignal.any([signal, options.signal]) : signal });
+        if (signal.aborted) return false;
         if (contextError) { const notice = $("callModePermission"); notice.hidden = false; notice.textContent = contextError; }
         return opened;
       } finally { opening = false; }
     } };
   mounted.set(root, mountedCall);
+  root.defaultView?.addEventListener("doctorcre-session-invalidated", mountedCall.dispose, { once: true });
   await probe();
   return mountedCall;
 }
