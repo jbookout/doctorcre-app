@@ -5,7 +5,7 @@ import { renderDealVendors } from '../js/deal-vendors.js';
 const vendor = contact => ({ role: 'lender', company: { name: 'Demo Firm' }, contact: { name: 'Demo Person', ...contact } });
 
 test('duplicate contacts retain channels regardless of order', () => {
-  const rows = [vendor({}), vendor({ email: 'person@example.test', phone: '555-010-1234' })];
+  const rows = [{ ...vendor({}), party_id: 'party-1' }, { ...vendor({ email: 'person@example.test', phone: '555-010-1234' }), party_id: 'party-2' }];
   for (const order of [rows, [...rows].reverse()]) {
     const html = renderDealVendors(order);
     assert.equal((html.match(/Demo Person/g) || []).length >= 1, true);
@@ -15,19 +15,16 @@ test('duplicate contacts retain channels regardless of order', () => {
   }
 });
 
-test('different identifiers distinguish otherwise identical assignments', () => {
-  for (const pair of [
-    [{ party_id: 'a' }, { party_id: 'b' }],
-    [{ company: { id: 'a', name: 'Demo Firm' } }, { company: { id: 'b', name: 'Demo Firm' } }],
-    [{ contact: { id: 'a', name: 'Demo Person' } }, { contact: { id: 'b', name: 'Demo Person' } }],
-  ]) {
-    const html = renderDealVendors(pair.map(fields => ({ ...vendor({}), ...fields })));
-    assert.equal((html.match(/deal-vendor-company/g) || []).length, 2);
+test('conflicting channels keep matching names separate', () => {
+  for (const field of ['email', 'phone']) {
+    const values = field === 'email' ? ['one@example.test', 'two@example.test'] : ['555-010-0101', '555-010-0102'];
+    const rows = values.map((value, i) => ({ ...vendor({ [field]: value }), party_id: `party-${i}` }));
+    assert.equal((renderDealVendors(rows).match(/deal-vendor-company/g) || []).length, 2);
   }
 });
 
 test('telephone links preserve extensions separately from the number', () => {
-  for (const phone of ['555-010-1234 ext. 12', '555-010-1234 x12']) {
+  for (const phone of ['555-010-1234 ext. 12', '555-010-1234 x12', '555-010-1234 extension 12', '555-010-1234 #12']) {
     assert.match(renderDealVendors([vendor({ phone })]), /href="tel:5550101234;ext=12"/);
   }
 });

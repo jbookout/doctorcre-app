@@ -8,16 +8,22 @@ export function renderDealVendors(vendors = []) {
     const role = (vendor.role || '').trim();
     const company = (vendor.company?.name || '').trim();
     const contact = (vendor.contact?.name || '').trim();
-    const key = JSON.stringify([role.toLowerCase(), vendor.party_id || null, vendor.company?.id || company.toLowerCase(), vendor.contact?.id || contact.toLowerCase()]);
-    if (seen.has(key)) {
-      const existing = seen.get(key);
+    const key = JSON.stringify([role.toLowerCase(), company.toLowerCase(), contact.toLowerCase()]);
+    const matches = seen.get(key) || [];
+    const existing = matches.find(row => ['email', 'phone'].every(field => {
+      const a = row.contact?.[field]?.trim().toLowerCase();
+      const b = vendor.contact?.[field]?.trim().toLowerCase();
+      return !a || !b || a === b;
+    }));
+    if (existing) {
       for (const field of ['email', 'phone']) {
         if (!existing.contact?.[field]?.trim() && vendor.contact?.[field]?.trim()) existing.contact = { ...existing.contact, [field]: vendor.contact[field] };
       }
       continue;
     }
     const row = { ...vendor, contact: vendor.contact && { ...vendor.contact } };
-    seen.set(key, row);
+    matches.push(row);
+    seen.set(key, matches);
     const roleKey = role.toLowerCase();
     if (!roles.has(roleKey)) roles.set(roleKey, { role, rows: [] });
     roles.get(roleKey).rows.push(row);
@@ -29,10 +35,10 @@ export function renderDealVendors(vendors = []) {
       const contact = vendor.contact?.name?.trim();
       const email = vendor.contact?.email?.trim();
       const phone = vendor.contact?.phone?.trim();
-      const extension = phone?.match(/(?:ext\.?|x)\s*(\d+)\s*$/i);
+      const extension = phone?.match(/(?:extension|ext\.?|x|#)\s*(\d+)\s*$/i);
       const digits = (extension ? phone.slice(0, extension.index) : phone)?.replace(/\D/g, '');
       const phoneHref = digits ? `${phone.startsWith('+') ? '+' : ''}${digits}${extension ? `;ext=${extension[1]}` : ''}` : '';
-      return `<li>${company ? `<span class="deal-vendor-company">${esc(company)}</span>` : ''}${contact ? `<span class="deal-vendor-contact">${esc(contact)}</span>` : ''}${email || phone ? `<details class="deal-vendor-details"><summary>Contact details</summary>${email ? `<p>Email <a href="mailto:${esc(encodeURIComponent(email).replaceAll('%40', '@'))}">${esc(email)}</a></p>` : ''}${phone ? `<p>Phone ${phoneHref ? `<a href="tel:${esc(phoneHref)}">${esc(phone)}</a>` : esc(phone)}</p>` : ''}</details>` : ''}</li>`;
+      return `<li>${company ? `<span class="deal-vendor-company">${esc(company)}</span>` : ''}${contact ? `<span class="deal-vendor-contact">${esc(contact)}</span>` : ''}${email || phone ? `<details class="deal-vendor-details"><summary>Contact details</summary>${email ? `<p>Email <a aria-label="${esc(email)}" href="mailto:${esc(encodeURIComponent(email).replaceAll('%40', '@'))}">${esc(email).replaceAll('@', '<wbr>@').replaceAll('.', '<wbr>.')}</a></p>` : ''}${phone ? `<p>Phone ${phoneHref ? `<a href="tel:${esc(phoneHref)}">${esc(phone)}</a>` : esc(phone)}</p>` : ''}</details>` : ''}</li>`;
     }).join('')}</ul></dd></div>`;
   }).join('')}</dl>`;
 }
