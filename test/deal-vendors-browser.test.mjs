@@ -190,12 +190,37 @@ for (const theme of ['dark', 'light']) test(`vendor contacts are distinct and ac
   assert.equal(await card.getByText('Demo Solo', { exact: true }).count(), 1);
   assert.doesNotMatch(await card.locator('.deal-vendors').textContent(), /undefined|null/);
   await card.locator('.deal-vendor-details summary').click();
-  for (const [name, href] of [['Email Demo Person', 'mailto:person@example.invalid'], ['Call Demo Person', 'tel:+15550101234']]) {
+  for (const [name, href] of [['person@example.invalid', 'mailto:person@example.invalid'], ['+1 (555) 010-1234', 'tel:+15550101234']]) {
     const action = card.getByRole('link', { name, exact: true });
+    assert.equal(await action.count(), 1, `accessible name includes ${name}`);
     assert.equal(await action.getAttribute('href'), href);
     const box = await action.boundingBox();
     assert.ok(box.width >= 44 && box.height >= 44, JSON.stringify(box));
   }
   assert.equal(await card.evaluate(n => n.scrollWidth <= n.clientWidth), true);
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth), true);
+});
+
+for (const theme of ['dark', 'light']) test(`merged vendor contact rows fit and read as actions at 390px in ${theme}`, async t => {
+  const vendors = [
+    { role: 'lender', company: { name: 'Demo Firm' }, contact: { name: 'Demo Person' } },
+    { role: 'lender', company: { name: 'Demo Firm' }, contact: { name: 'Demo Person', email: 'demo.long.assigned.representative@example.test', phone: '555-010-1234 x12' } },
+  ];
+  const { page } = await open(t, 390, theme, vendors);
+  const card = page.locator('.kanban-column [data-id="d14"]');
+  assert.equal(await card.locator('.deal-vendor-company').count(), 1);
+  await card.locator('summary').click();
+  const rows = card.locator('.deal-vendor-details p');
+  assert.equal(await rows.count(), 2);
+  for (const row of await rows.all()) {
+    const link = row.locator('a');
+    const [labelBox, linkBox] = await Promise.all([row.evaluate(n => { const range = document.createRange(); range.selectNodeContents(n.firstChild); const r = range.getBoundingClientRect(); return { x: r.x, y: r.y, height: r.height }; }), link.boundingBox()]);
+    assert.ok(labelBox && linkBox && Math.abs(labelBox.y + labelBox.height / 2 - linkBox.y - linkBox.height / 2) < 5, JSON.stringify({ labelBox, linkBox }));
+    assert.ok(await link.evaluate(n => getComputedStyle(n).textDecorationLine.includes('underline')));
+  }
+  assert.equal(await card.evaluate(n => n.scrollWidth <= n.clientWidth), true);
+  const evidence = new URL('out/test-artifacts/deal-vendors/', root);
+  await mkdir(evidence, { recursive: true });
+  await card.scrollIntoViewIfNeeded();
+  await page.screenshot({ path: new URL(`390-${theme}-dedupe.png`, evidence).pathname, animations: 'disabled' });
 });
