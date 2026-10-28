@@ -387,7 +387,7 @@ test('deal item contracts pin the checklist reads and item commands to one produ
 test('the pinned producer item shapes and command schemas match the app contract', {
   skip: !process.env.CARR_PRODUCER_CHECKOUT && 'Set CARR_PRODUCER_CHECKOUT to verify deal item contracts',
 }, async () => {
-  const { dealItemTools, validateDealItem, DEAL_ITEMS_SCHEMA } = await import(await producerModuleUrl('mcp-server/src/deal-items.js'));
+  const { dealItemTools, validateDealItem, DEAL_ITEMS_SCHEMA } = await import(await producerModuleUrl('mcp-server/src/deal-items.ts'));
   const { renderDealAlert, renderDealItemDetail } = await import('../js/deal-items.js');
   const tools = dealItemTools({});
   assert.equal(DEAL_ITEMS_SCHEMA, contract.mcp_read_contracts['get-deal-room'].response.item_schema_version);
