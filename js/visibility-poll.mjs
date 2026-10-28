@@ -16,7 +16,7 @@ const INPUT_EVENTS = ["pointerdown", "pointermove", "keydown", "touchstart", "wh
 // cutoff in a tab that never left view, so it must only read: a page's
 // return-from-hidden hook (closing private views) never runs on a wake.
 // touch() records input from a caller that reads for itself, without either.
-export function watchPresence({ document, window, onResume, onWake, idleMs = IDLE_CUTOFF_MS, now = () => Date.now() }) {
+export function watchPresence({ document, window, onResume, onWake, idleMs = IDLE_CUTOFF_MS, now = () => window?.Date?.now?.() ?? Date.now() }) {
   let lastInput = now();
   const hidden = () => document.visibilityState === "hidden";
   const idle = () => now() - lastInput >= idleMs;
@@ -48,7 +48,7 @@ export function mountVisibilityPoll({
 }) {
   const safety = pollSafety(window, { document, now });
   const source = {};
-  const clockNow = now || (() => Date.now());
+  const clockNow = now || (() => window.Date?.now?.() ?? Date.now());
   let timer = null;
   let generation = 0;
   let initialized = false;

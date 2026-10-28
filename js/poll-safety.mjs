@@ -1,7 +1,7 @@
 export const POLL_LIMITS = Object.freeze({ gapMs: 5_000, minute: 90, hour: 300, manualMinute: 120, manualHour: 600, failureLimit: 3, backoffMs: 300_000, requestSpacingMs: 20_000, recoveryHour: 30, resumeMs: 3_600_000, reservationMs: 60_000 });
 const governors = new WeakMap();
 
-export function createPollSafety({ window, document = window?.document, now = () => Date.now(), storage, locks = window?.navigator?.locks } = {}) {
+export function createPollSafety({ window, document = window?.document, now = () => window?.Date?.now?.() ?? Date.now(), storage, locks = window?.navigator?.locks } = {}) {
   let nextAt = 0, cooldownAt = 0, lastManual = -Infinity, retryAt = 0, failures = 0, running = null, reason = '';
   let eventNextAt = 0, blockedTriggerUntil = 0;
   const endpointFailures = new Map();

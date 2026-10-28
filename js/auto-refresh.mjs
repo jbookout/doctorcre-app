@@ -16,7 +16,7 @@ export function mountAutoRefresh({ document, window, refresh, onResume, onWake, 
   let disposed = false;
   let initialized = false;
   const reads = createCurrentRead({ timeoutMs, clock: window });
-  const clockNow = now || (() => Date.now());
+  const clockNow = now || (() => window.Date?.now?.() ?? Date.now());
   const schedule = (deferred = false) => {
     window.clearTimeout?.(timer);
     const state = safety.state();
