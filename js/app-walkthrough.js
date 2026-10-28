@@ -1,13 +1,15 @@
-const steps = [
+const allSteps = [
   { target: '[data-app-nav-item][href="/"]', text: 'Start with your agenda. Home brings together upcoming work and deals that need attention.' },
   { target: '[data-app-nav-item][href="/deals"]', text: 'Follow each deal through its phase, next step, and next date. Open a deal to review its details.' },
   { target: '[data-app-nav-item][href="/leads"]', text: 'Search and review potential clients in Leads. Open a lead to see its details before deciding what comes next.' },
   { target: '[data-app-nav-item][href="/tours"]', text: 'Use Tours to plan property visits and open a saved tour. Tour Day keeps the accepted itinerary at hand.' },
   { target: '#docOpen', title: 'Doc', text: 'Doc is the assistant inside DoctorCRE. Open Doc to ask about the current page or record. Review its suggestions before taking action.' },
+  { target: '#callModeButton', title: 'Call Mode', text: 'Use Call Mode to record and review your weekly pipeline call.' },
 ];
 
 export function openWalkthrough(root) {
   if (root.querySelector('[data-walkthrough]')) return;
+  const steps = allSteps.filter(step => step.target !== '#callModeButton' || !root.querySelector(step.target)?.hidden);
   const win = root.defaultView;
   const avatar = root.getElementById('selfAvatar');
   const account = root.getElementById('accountMenu');
