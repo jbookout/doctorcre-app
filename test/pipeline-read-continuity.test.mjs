@@ -39,7 +39,7 @@ async function open(t, { deal = '', holdBoard = false, holdFeed = false } = {}) 
 test('one card-body tap reads one detail and leaves unopened supporting sections unread', async t => {
   const page = await open(t);
   await page.locator('.kanban-card[data-id="d14"]').waitFor();
-  await page.locator('.kanban-card[data-id="d14"] .work-meta').click();
+  await page.locator('.kanban-card[data-id="d14"]').click({position:{x:5,y:5}});
   await page.locator('#detailUpdateForm').waitFor();
   assert.deepEqual(await page.evaluate(() => window.panelReads), { getDeal: 1, correspondenceReadiness: 0, getRelationshipNetwork: 0, getPartyRecord: 0 });
   await page.locator('#panelEvidenceSection > summary').click();

@@ -130,3 +130,15 @@ test('Home counts unique local deals using the agenda overdue membership and mar
   assert.equal(summary('team').flagged, null);
   assert.equal(summary('team').active, 4);
 });
+
+test('the Home contract carries the stored checklist shape used by deal alerts', async () => {
+  const contract = JSON.parse(await readFile(new URL('../contracts/carr-interface.v1.json', import.meta.url), 'utf8'));
+  const home = contract.mcp_read_contracts['read-home-agenda'];
+  const items = contract.mcp_read_contracts['get-deal-room'].response;
+  for (const field of ['short_name', 'item_schema_version', 'items']) assert.ok(home.response.deal_keys.includes(field), field);
+  assert.equal(home.response.item_schema_version, items.item_schema_version);
+  assert.deepEqual(home.response.item_keys, items.item_keys);
+  assert.deepEqual(home.response.bullet_keys, items.bullet_keys);
+  assert.deepEqual(home.response.bullet_kinds, items.bullet_kinds);
+  assert.equal(home.producer.source_commit, 'b6210ca0a93e4a913b7e69b9669b74fdc9aa6337');
+});

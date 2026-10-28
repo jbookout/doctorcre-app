@@ -141,9 +141,9 @@ test("the completion plan puts the phase patch first and carries only the follow
   });
   assert.deepEqual(full.errors, []);
   assert.deepEqual(full.steps.map((step) => step.verb),
-    ["patch-deal-field", "add-deal-note", "set-next-step", "add-critical-date"]);
+    ["patch-deal-field", "add-deal-note", "record-deal-item", "add-critical-date"]);
   assert.equal(full.steps[1].args.text, "Redline returned unchanged.");
-  assert.deepEqual(full.steps[2].args, { deal: "d01", text: "Send the countersigned copy", next_date: "2026-02-02" });
+  assert.deepEqual(full.steps[2].args, { deal: "d01", title: "Send the countersigned copy", due_on: "2026-02-02", bullets: [{ date: null, kind: "promised", text: "Send the countersigned copy" }] });
   assert.deepEqual(full.steps[3].args, { deal: "d01", kind: PHASE_DATE_KIND, due_on: "2026-02-01", source: "Landlord email" });
 
   // Whitespace is not an answer, and an unticked box writes nothing at all.
@@ -518,6 +518,7 @@ test("a lost response is reconciled by resending the SAME idempotency key, not b
 test("the follow-ups run after the phase is accepted, each on its own key, and a failure does not un-move the card", async () => {
   const client = await newClient();
   const row = await boardRow(client, "d03");
+  const before = await client.getDeal("d03");
   const intent = moveIntent(row, "legal");
   const plan = completionPlan(intent, {
     evidence: "Counterparty accepted the sample terms.",
@@ -532,7 +533,8 @@ test("the follow-ups run after the phase is accepted, each on its own key, and a
   const send = {
     "patch-deal-field": (args) => client.patchDealField({ ...args, base_event_id: row.field_base?.phase?.id || null, idempotency_key: "k-phase" }),
     "add-deal-note": (args) => client.addDealNote({ ...args, idempotency_key: "k-note" }),
-    "set-next-step": async (args) => client.setNextStep({ ...args, base_version: (await client.getDeal(args.deal)).deal.version, idempotency_key: "k-step" }),
+    "record-deal-item": (args) => client.recordDealItem({ ...args, idempotency_key: "k-step" }),
+
     "add-critical-date": (args) => client.addCriticalDate({ ...args, idempotency_key: "k-date" }),
   };
   const [phaseStep, ...followUps] = plan.steps;
@@ -542,11 +544,12 @@ test("the follow-ups run after the phase is accepted, each on its own key, and a
 
   const detail = await client.getDeal("d03");
   assert.equal(detail.deal.phase, "Legal");
-  // The note and the superseded next step are both in the thread; the archive
-  // is the newest entry because set-next-step ran last.
   assert.ok(detail.thread.some((entry) => entry.kind === "note" && entry.text === "Counterparty accepted the sample terms."));
-  assert.equal(detail.thread[0].kind, "archived_step", "the step it replaced is kept, never erased");
-  assert.equal(detail.deal.next_step, "Circulate the fictional draft");
+  assert.equal(detail.deal.next_step, before.deal.next_step);
+  assert.deepEqual(detail.deal.items.slice(0, -1), before.deal.items || []);
+  assert.equal(detail.deal.items.at(-1).title, "Circulate the fictional draft");
+  assert.equal(detail.deal.items.at(-1).due_on, "2026-02-10");
+  assert.equal(detail.deal.items.at(-1).status, "open");
   const recorded = detail.critical_dates.find((entry) => entry.source === "Demo counsel email");
   assert.ok(recorded, "the critical date is on the record");
   assert.equal(recorded.due_on, "2026-02-05");

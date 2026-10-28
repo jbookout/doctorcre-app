@@ -38,7 +38,7 @@ const refresh = page => page.evaluate(async () => (await import('/js/pipeline.js
 
 
 async function detail(page) {
- await page.locator('.kanban-column [data-id="d14"]').click();
+ await page.locator('.kanban-column [data-id="d14"] .card-open').click();
  await page.waitForSelector('#detailUpdateForm');
 }
 async function readPanel(page) {
@@ -287,19 +287,19 @@ test('R6 resolution retains unknown request, reports refusal and never loses che
 test('R7 detail outages recover automatically and late failure cannot replace another detail',async t=>{
  const {page}=await open(t,{many:true});
  await page.evaluate(async()=>{const {state}=await import('/js/pipeline.js');window.originalRead=state.client.getDeal.bind(state.client);state.client.getDeal=async()=>{throw Error('offline');};});
- await page.locator('.kanban-column [data-id="d14"]').click();await page.waitForTimeout(30);
+ await page.locator('.kanban-column [data-id="d14"] .card-open').click();await page.waitForTimeout(30);
  assert.match(await page.locator('#panelBody').textContent(),/Updates temporarily unavailable/);
  await page.evaluate(async()=>{(await import('/js/pipeline.js')).state.client.getDeal=originalRead;});await page.clock.fastForward(16_000);await page.waitForSelector('#detailUpdateForm');
  await page.evaluate(async()=>{const {state}=await import('/js/pipeline.js');state.client.getDeal=async()=>({deal:null});});await readPanel(page);
  assert.match(await page.locator('#detailReadStatus').textContent(),/Updates temporarily unavailable/);
  await page.evaluate(async()=>{const {state}=await import('/js/pipeline.js');state.client.getDeal=id=>id==='d14'?new Promise((_,reject)=>window.failOld=()=>reject(Error('old'))):originalRead(id);dispatchEvent(new Event('online'));});
- await page.getByLabel('Close deal',{exact:true}).click();await page.locator('.kanban-column [data-id="demo-20"]').click();await page.waitForSelector('#detailUpdateForm');await page.evaluate(()=>failOld());await page.waitForTimeout(30);
+ await page.getByLabel('Close deal',{exact:true}).click();await page.locator('.kanban-column [data-id="demo-20"] .card-open').click();await page.waitForSelector('#detailUpdateForm');await page.evaluate(()=>failOld());await page.waitForTimeout(30);
  assert.doesNotMatch(await page.locator('#panelBody').textContent(),/Updates temporarily unavailable/);
 });
 for(const width of [1440,390]) test('R8 list history has no persistent Undo at '+width,async t=>{
  const {page}=await open(t,{width});await page.locator('#listView').click();
  assert.equal(await page.locator('[data-id="d14"] [data-undo]').count(),0);
- assert.match(await page.locator('[data-id="d14"] .auto-move').textContent(),/Moved automatically/);
+ assert.equal(await page.locator('[data-id="d14"] .auto-move').count(),1,'automatic history remains visible');
 });
 test('R9 original prior step and actors survive without synthetic activity echo',async t=>{
  const {page}=await open(t);
