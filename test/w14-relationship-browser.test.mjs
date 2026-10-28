@@ -43,6 +43,7 @@ async function open(t, width = 1440) {
         payload.nodes[0].territory = "Demo Northern Coastal Territory";
         payload.nodes.find(n => n.kind === "deal").name = JSON.stringify({value:"Demo Dental Relocation"});
       }
+      if (mode === "duplicate") payload.edges[0].detail = payload.edges[0].summary;
       if (mode === "connector") {
         payload.edges[0].via = "party:demo-build";
         payload.suggestions[0].via = "party:demo-build";
@@ -478,3 +479,17 @@ for (const width of [1440, 390]) for (const theme of ['light', 'dark'])
     await page.waitForFunction(() => document.querySelector('#homeIntroductions .intro-route')?.textContent === 'Demo Healthcare Lending → Demo Dental Expansion');
     assert.deepEqual(errors, []);
   });
+
+
+test('H05 introduction details omit internal tags and repeated evidence', async t => {
+  const { page, errors, setMode } = await open(t);
+  setMode('duplicate');
+  await page.goto('http://localhost/?mode=live');
+  await page.locator('#homeIntroductions [data-intro-node]').click();
+  await page.locator('.relationship-dialog[open]').waitFor();
+  const text = await page.locator('.relationship-dialog').innerText();
+  assert.doesNotMatch(text, /dental|joe|party:|demo-offer|Details/);
+  assert.equal(await page.locator('.relationship-dialog details').count(), 0);
+  assert.match(text, /Worked together on equipment financing; offered an introduction/);
+  assert.deepEqual(errors, []);
+});
