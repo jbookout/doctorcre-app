@@ -819,3 +819,33 @@ test("a long history drains without touching values, and one burst of news costs
   assert.equal(h.dealById("d1").phase, "Legal");
   assert.equal(h.sync.status().state, SYNC_STATES.READY);
 });
+
+test('a board refresh waits for asynchronous snapshot reconciliation before completing', async () => {
+  const reconciled = deferred();
+  let finished = false;
+  const sync = createBoardSync({
+    readBoard: async () => board([deal()]),
+    readChanges: async () => changes(),
+    applyBoard: () => reconciled.promise,
+  });
+  const refresh = sync.refreshBoard().then(result => { finished = true; return result; });
+  await settle();
+  assert.equal(finished, false, 'dependent detail and evidence reads remain inside the refresh lifetime');
+  reconciled.resolve();
+  assert.equal((await refresh).applied, true);
+});
+
+test('an asynchronous snapshot reconciliation cannot restore health after going offline', async () => {
+  const reconciled = deferred();
+  const sync = createBoardSync({
+    readBoard: async () => board([deal()]),
+    readChanges: async () => changes(),
+    applyBoard: () => reconciled.promise,
+  });
+  const refresh = sync.refreshBoard();
+  await settle();
+  sync.setOnline(false);
+  reconciled.resolve();
+  assert.equal((await refresh).applied, false);
+  assert.equal(sync.status().board_health, HEALTH.FAILED);
+});

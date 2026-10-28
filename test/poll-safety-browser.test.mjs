@@ -18,7 +18,7 @@ for (const width of [390, 1440]) test(`shared pause notice and trusted manual re
     const auto = mountAutoRefresh({ window, document, refresh: () => safety.fetch(transport, '/synthetic') });
     document.querySelector('#refresh').addEventListener('click', auto.refresh);
     await safety.run(async () => {
-      for (let i = 0; i < 61; i++) await safety.fetch(transport, '/synthetic').catch(() => {});
+      for (let i = 0; i < 91; i++) await safety.fetch(transport, '/synthetic').catch(() => {});
     });
   });
   const notice = page.locator('[data-poll-safety]');
@@ -28,14 +28,16 @@ for (const width of [390, 1440]) test(`shared pause notice and trusted manual re
   await page.screenshot({ path: `out/test-artifacts/poll-safety/paused-${width}.png` });
   await page.clock.fastForward(5_000);
   await page.getByRole('button', { name: 'Refresh', exact: true }).click({ timeout: 1000 });
-  assert.equal(await page.evaluate(() => window.requests), 61, 'human refresh uses the separate manual allowance');
+  await page.waitForFunction(() => window.requests === 91);
+  assert.equal(await page.evaluate(() => window.requests), 91, 'human refresh uses the separate manual allowance');
   await page.getByRole('button', { name: 'Refresh', exact: true }).click({ timeout: 1000 });
-  assert.equal(await page.evaluate(() => window.requests), 61, 'double click cannot bypass minimum gap');
+  assert.equal(await page.evaluate(() => window.requests), 91, 'double click cannot bypass minimum gap');
   await page.clock.fastForward(65_000);
   await page.getByRole('button', { name: 'Resume updates' }).click();
+  await page.waitForFunction(() => document.querySelector('[data-poll-safety]').hidden);
   assert.equal(await notice.isVisible(), false);
   await page.clock.fastForward(30_000);
-  await page.waitForFunction(() => window.requests > 61);
+  await page.waitForFunction(() => window.requests > 91);
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
   await page.screenshot({ path: `out/test-artifacts/poll-safety/resumed-${width}.png` });
 });
@@ -60,7 +62,7 @@ test('real browser tabs share one polling owner and hand off after pagehide', as
   assert.equal(await first.evaluate(() => window.requests), 1);
   assert.equal(await second.evaluate(() => window.requests), 0);
   await first.evaluate(() => window.dispatchEvent(new Event('pagehide')));
-  await second.clock.install({ time: new Date(Date.now() + 10_000) });
+  await second.clock.install({ time: new Date(Date.now() + 30_000) });
   await second.evaluate(() => window.read());
   assert.equal(await second.evaluate(() => window.requests), 1);
 });
@@ -76,19 +78,20 @@ test('Resume works in a modal and session invalidation retires its notice', asyn
     const { pollSafety } = await import('/js/poll-safety.mjs');
     const safety = pollSafety(window, { document });
     await safety.run(async () => {
-      for (let i = 0; i < 61; i++) await safety.fetch(async () => new Response('{}'), '/synthetic').catch(() => {});
+      for (let i = 0; i < 91; i++) await safety.fetch(async () => new Response('{}'), '/synthetic').catch(() => {});
     });
     document.querySelector('#detail').showModal();
   });
   await page.clock.fastForward(60_001);
   await page.getByRole('button', { name: 'Resume updates' }).click({ timeout: 1_000 });
+  await page.waitForFunction(() => document.querySelector('[data-poll-safety]').hidden);
   assert.equal(await page.locator('[data-poll-safety]').isVisible(), false);
   assert.equal(await page.locator('#detail').isVisible(), true);
   await page.evaluate(async () => {
     const { pollSafety } = await import('/js/poll-safety.mjs');
     const safety = pollSafety(window);
     await safety.run(async () => {
-      for (let i = 0; i < 61; i++) await safety.fetch(async () => new Response('{}'), '/synthetic').catch(() => {});
+      for (let i = 0; i < 91; i++) await safety.fetch(async () => new Response('{}'), '/synthetic').catch(() => {});
     });
     window.dispatchEvent(new Event('doctorcre-session-invalidated'));
     document.body.replaceChildren(document.createElement('main'));
@@ -109,10 +112,41 @@ test('a focus-trapped drawer cannot make shared Resume inert', async t => {
     document.querySelector('[data-poll-safety]').inert = true;
     document.querySelector('#close').focus();
     await safety.run(async () => {
-      for (let i = 0; i < 61; i++) await safety.fetch(async () => new Response('{}'), '/synthetic').catch(() => {});
+      for (let i = 0; i < 91; i++) await safety.fetch(async () => new Response('{}'), '/synthetic').catch(() => {});
     });
   });
   await page.clock.fastForward(60_001);
   await page.getByRole('button', { name: 'Resume updates' }).click({ timeout: 1000 });
+  await page.waitForFunction(() => document.querySelector('[data-poll-safety]').hidden);
   assert.equal(await page.locator('[data-poll-safety]').isVisible(), false);
+});
+
+test('a person can open a record while an exhausted background cycle awaits completion', async t => {
+  const server = await fixtureServer(); t.after(() => server.close());
+  const browser = await chromium.launch(); t.after(() => browser.close());
+  const page = await browser.newPage();
+  await page.route('**/poll-human-fixture', route => route.fulfill({ contentType: 'text/html', body: '<!doctype html><button id="open">Open record</button><output></output>' }));
+  await page.goto(`${server.origin}/poll-human-fixture`);
+  await page.evaluate(async () => {
+    const { pollSafety } = await import('/js/poll-safety.mjs');
+    const { createSessionBoundary } = await import('/js/private-session.js');
+    const safety = pollSafety(window, { document });
+    let ready;
+    const admitted = new Promise(resolve => { ready = resolve; });
+    window.held = safety.run(async () => {
+      for (let i = 0; i < 91; i++) await safety.fetch(async () => new Response('{}'), '/synthetic').catch(() => {});
+      await new Promise(resolve => { window.release = resolve; ready(); });
+    });
+    await admitted;
+    const client = createSessionBoundary({ safety, invalidate() {}, fetchImpl: async path => Response.json(path === '/auth/session'
+      ? { actor: { slug: 'synthetic' }, csrf_token: 'synthetic-fixture' } : { title: 'Synthetic record' }) });
+    document.querySelector('#open').addEventListener('click', async () => {
+      try { document.querySelector('output').textContent = (await (await client.fetch('/record')).json()).title; }
+      catch (error) { document.querySelector('output').textContent = error.code; }
+      finally { window.release(); }
+    });
+  });
+  await page.getByRole('button', { name: 'Open record' }).click();
+  await page.waitForFunction(() => document.querySelector('output').textContent === 'Synthetic record');
+  assert.equal(await page.locator('output').innerText(), 'Synthetic record');
 });
