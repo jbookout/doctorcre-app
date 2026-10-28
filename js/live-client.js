@@ -439,6 +439,8 @@ export function createLiveClient(opts = {}) {
       return write('add-deal-note', args);
     },
 
+    async logActivity(args) { return write('log-activity', args); },
+
     async setNextStep(args) {
       return write('set-next-step', args);
     },

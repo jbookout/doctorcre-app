@@ -106,6 +106,7 @@
  * @property {(args:{deal:string, field:string, value:*, base_event_id:string|null, idempotency_key:string}) => Promise<WriteResult>} patchDealField
  * @property {(args:{conflict_id:string, winner:'a'|'b', idempotency_key:string}) => Promise<WriteResult>} resolveConflict
  * @property {(args:{deal:string, text:string, idempotency_key:string}) => Promise<WriteResult>} addDealNote
+ * @property {(args:{ref:string, kind:'meeting', summary:string, occurred_at:string, idempotency_key:string}) => Promise<{ok:true, activity_id:string}>} [logActivity] a partner-confirmed touch on a deal
  * @property {(args:{deal:string, text:string, next_date?:string|null, idempotency_key:string}) => Promise<WriteResult>} setNextStep
  * @property {(args:{name:string, client?:string, deal_type?:string, phase?:string, owner?:'joe'|'dell', notes?:string, idempotency_key:string}) => Promise<WriteResult>} createDeal
  * @property {() => Promise<{proposals:ConfirmProposal[]}>} [getPendingConfirms]
