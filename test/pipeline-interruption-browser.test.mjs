@@ -3,10 +3,10 @@ import assert from 'node:assert/strict';
 import { readFile, mkdir } from 'node:fs/promises';
 import { chromium, waitForAsync, settles } from './browser-harness.mjs';
 const root = new URL('../', import.meta.url);
-async function open(t, path = '/deals') {
+async function open(t, path = '/deals', time = undefined) {
   const browser = await chromium.launch(); t.after(() => browser.close());
-  const page = await browser.newPage({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
-  await page.clock.install();
+  const page = await browser.newPage({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, timezoneId: 'America/Chicago' });
+  await page.clock.install(time ? {time} : undefined);
   await page.route('**/*', async route => {
     const url = new URL(route.request().url());
     if (url.origin !== 'http://localhost') return route.abort();
@@ -351,6 +351,33 @@ test('update saves the next action and retries a failed action without duplicati
   assert.equal(detail.thread.filter(item => item.text === 'Synthetic weekly update').length, 1);
 });
 
+test('a next action with an unknown outcome can be checked after Central midnight', async t => {
+  const page = await open(t, '/deals', new Date('2026-10-29T04:59:00Z'));
+  await room(page);
+  await page.evaluate(async () => {
+    const {state} = await import('/js/pipeline.js');
+    const send = state.client.setNextStep;
+    let first = true;
+    state.client.setNextStep = async request => {
+      if (first) { first = false; throw new Error('Synthetic failure'); }
+      return send(request);
+    };
+  });
+  await page.locator('#dealUpdate').fill('Synthetic midnight update');
+  await page.locator('#dealUpdateStep').fill('Synthetic midnight action');
+  await page.locator('#dealUpdateDate').fill('2026-10-28');
+  await page.getByRole('button', {name:'Add update', exact:true}).click();
+  await settles(async () => assert.match(await page.locator('#detailUpdateStatus').textContent(), /next step not saved/i));
+  await page.clock.setSystemTime(new Date('2026-10-29T05:01:00Z'));
+  await page.getByRole('button', {name:'Check outcome', exact:true}).click();
+  await settles(async () => assert.equal((await page.evaluate(async () => (await (await import('/js/pipeline.js')).state.client.getDeal('d14')).deal.next_step)), 'Synthetic midnight action'));
+  const detail = await page.evaluate(async () => (await (await import('/js/pipeline.js')).state.client.getDeal('d14')));
+  assert.equal(detail.deal.next_step, 'Synthetic midnight action');
+  assert.equal(detail.deal.next_date, '2026-10-28');
+  assert.equal(detail.thread.filter(item => item.text === 'Synthetic midnight update').length, 1);
+  assert.equal(await page.locator('#dealUpdateStep').isEnabled(), true);
+});
+
 test('an update with unchanged next action only records the note', async t => {
   const page = await open(t); await room(page);
   await page.evaluate(async () => {
@@ -412,7 +439,7 @@ for (const invalid of ['blank step', 'past date']) test(`conflict review rejects
   assert.equal(detail.thread.filter(item => item.text === 'Synthetic conflict update').length, 1);
 });
 
-test('a future next date clears the overdue flag on the refreshed board', async t => {
+test('a future next date replaces an overdue next action', async t => {
   const page = await open(t);
   await page.evaluate(async () => {
     const {state} = await import('/js/pipeline.js');
@@ -424,7 +451,9 @@ test('a future next date clears the overdue flag on the refreshed board', async 
   assert.match(await page.locator('#detailUpdateForm').textContent(), /overdue/i);
   assert.equal(await page.locator('#dealUpdateDate').getAttribute('aria-describedby'), 'detailUpdateDateHint');
   assert.equal(await page.locator('#detailUpdateDateHint').textContent(), 'Current next date is overdue.');
-  assert.match(await page.locator('.deal-current-action').innerText(), /overdue.*Synthetic overdue action/is);
+  assert.equal(await page.locator('.deal-current-action').count(), 0);
+  assert.equal(await page.locator('#dealUpdateStep').inputValue(), 'Synthetic overdue action');
+  assert.equal(await page.locator('#dealUpdateDate').inputValue(), '2001-01-01');
   await page.locator('#dealUpdate').fill('Synthetic overdue update');
   await page.locator('#dealUpdateStep').fill('Synthetic changed action');
   await page.getByRole('button', {name:'Add update', exact:true}).click();
@@ -436,7 +465,7 @@ test('a future next date clears the overdue flag on the refreshed board', async 
   await settles(async () => assert.match(await page.locator('#detailUpdateStatus').textContent(), /update added/i));
   assert.equal(await page.locator('.deal-current-action').count(), 0, 'a future action is shown only in the form');
   await page.locator('#panelClose').click();
-  await settles(async () => assert.doesNotMatch(await page.locator('.kanban-card[data-id="d14"]').textContent(), /overdue/i));
+  await settles(async () => assert.equal((await page.evaluate(async () => (await (await import('/js/pipeline.js')).state.client.getDeal('d14')).deal.next_date)), '2099-01-01'));
 });
 
 test('blank replacement is rejected before saving the update', async t => {

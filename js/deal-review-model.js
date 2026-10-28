@@ -26,6 +26,7 @@ export function isClosedDeal(deal) {
 }
 export function needsAttention(deal, now = Date.now()) {
   if (isClosedDeal(deal) || (deal.operating_state || 'active') !== 'active') return false;
+  if (Array.isArray(deal.items)) return deal.items.some(item => item.status === 'open' && toDay(item.due_on) && toDay(item.due_on) < radarToday(new Date(now)));
   const due = toDay(deal.next_date);
   return Boolean(typeof deal.next_step === 'string' && deal.next_step.trim() && due && due < radarToday(new Date(now)));
 }

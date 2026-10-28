@@ -257,6 +257,8 @@ export function createLiveClient(opts = {}) {
         critical_dates: critical_dates.map((cd) => ({ ...cd, label: cd.note || cd.kind, date: cd.due_on })),
         history,
         next_actions: page.next_actions || [],
+        items: page.items || [],
+        item_schema_version: page.item_schema_version,
         activities: page.activities || [],
         participants: page.participants || [],
         premises: page.premises || [],
@@ -423,6 +425,9 @@ export function createLiveClient(opts = {}) {
       return write('update-deal', args);
     },
 
+    async recordDealItem(args) { return write('record-deal-item', { ...args, source_ref: args.source_ref || `app:deal-item:${args.idempotency_key}` }); },
+    async instructDealItem(args) { return write('instruct-deal-item', args); },
+    async completeDealItem(args) { return write('complete-deal-item', args); },
     // The portal password goes to CARR once, here; CARR keeps only a verifier and answers with the link.
     async registerClientPortal(args) {
       return write('register-client-portal', args);

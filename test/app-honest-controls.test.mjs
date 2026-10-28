@@ -292,6 +292,22 @@ test('touch targets are measured after their entry animation settles', async () 
   } finally { await browser.close(); }
 });
 
+for (const reachable of [true, false]) test(`shared Call Mode tolerates shell removal while the companion probe ${reachable ? 'succeeds' : 'fails'}`, async () => {
+  const dom = new JSDOM(`<div id="appShell">${appShellMarkup('/leads')}</div>`);
+  const doc = dom.window.document, previousFetch = globalThis.fetch;
+  let finish;
+  globalThis.fetch = () => new Promise((resolve, reject) => { finish = () => reachable
+    ? resolve({ ok: true, json: async () => ({ state: 'idle' }) }) : reject(new Error('unreachable')); });
+  try {
+    const mounting = mountGlobalCallMode(doc);
+    doc.body.replaceChildren(doc.createElement('main'));
+    finish();
+    const call = await mounting;
+    call.dispose();
+    assert.equal(doc.querySelector('#callModeButton'), null);
+  } finally { globalThis.fetch = previousFetch; dom.window.close(); }
+});
+
 test('shared Call Mode builds its dialog on first open, not at page load', async () => {
   const dom = new JSDOM(`<div id="appShell">${appShellMarkup('/leads')}</div>`);
   const doc = dom.window.document;

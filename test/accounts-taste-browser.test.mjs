@@ -44,7 +44,7 @@ for (const width of [390, 1280]) for (const theme of ['dark', 'light']) {
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
   });
 
-  test(`Opening an account action keeps its description and due date in the update form at ${width}px ${theme}`, async t => {
+  test(`Opening an account action shows its checklist title and due chip above the update at ${width}px ${theme}`, async t => {
     const page = await accountPage(t, width, theme);
     await page.locator('.account-card').first().click();
     await screenshot(page, 'account', width, theme);
@@ -54,15 +54,19 @@ for (const width of [390, 1280]) for (const theme of ['dark', 'light']) {
     await page.waitForURL('**/deals?deal=*');
     await page.locator('#detailUpdateForm').waitFor();
     await screenshot(page, 'record', width, theme);
-    const overdue = page.locator('.deal-current-action');
-    assert.match(await overdue.innerText(), /overdue/i);
-    assert.match(await overdue.innerText(), /Jan 18/);
-    assert.equal(await overdue.locator('strong').innerText(), description);
-    assert.equal(await overdue.evaluate(node => Boolean(node.compareDocumentPosition(document.querySelector('#detailUpdateForm')) & Node.DOCUMENT_POSITION_FOLLOWING)), true);
-    assert.equal(await page.locator('#dealUpdateStep').inputValue(), description);
-    assert.equal(await page.locator('#dealUpdateDate').inputValue(), '2026-01-18');
-    assert.match(await page.locator('#detailUpdateDateHint').innerText(), /overdue/i);
-    assert.equal(await page.locator('#dealUpdateDate').getAttribute('aria-describedby'), 'detailUpdateDateHint');
+    const snapshot = page.locator('.deal-opening-snapshot');
+    assert.equal(await snapshot.count(), 1, 'the opening snapshot retains the selected action');
+    assert.match(await snapshot.innerText(), new RegExp(description));
+    assert.equal(await snapshot.locator('ol [data-overdue="true"]').count(), 1);
+    assert.doesNotMatch(await snapshot.innerText(), /Overdue action|Next action/);
+    assert.equal(await snapshot.locator('time').getAttribute('datetime'), '2026-01-18', 'the opening retains the selected action due date');
+    const order = await page.evaluate(() => {
+      const snapshot = document.querySelector('.deal-opening-snapshot');
+      const update = document.querySelector('#detailUpdateForm');
+      return { snapshotBeforeUpdate: Boolean(snapshot.compareDocumentPosition(update) & Node.DOCUMENT_POSITION_FOLLOWING),
+        actionVisible: snapshot.getBoundingClientRect().bottom < innerHeight };
+    });
+    assert.deepEqual(order, { snapshotBeforeUpdate: true, actionVisible: true });
     assert.equal(await page.locator('.deal-updates').count(), 0, 'an account action without notes omits Updates');
     assert.equal(await page.locator('#dealUpdate').getAttribute('placeholder'), null);
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);

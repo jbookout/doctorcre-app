@@ -27,16 +27,19 @@ def approved(pr, files, comments):
     if any(SKIP_CI.search(value or "") for value in
            (pr.get("title"), auto_merge.get("commit_title"), auto_merge.get("commit_message"))):
         return False
-    if any(c["body"].splitlines()[:1] == ["VERDICT: CHANGES"]
-           and f'Reviewed-SHA: {pr["head"]["sha"]}' in c["body"].splitlines() for c in comments):
+    sha_line = f'Reviewed-SHA: {pr["head"]["sha"]}'
+    verdicts = [lines[0] for lines in ((c.get("body") or "").splitlines() for c in comments)
+                if len(lines) >= 3 and lines[0] in ("VERDICT: APPROVE", "VERDICT: CHANGES")
+                and lines[1] == sha_line and lines[2].startswith("Reviewer: ")
+                and lines[2][10:].strip()]
+    if verdicts[-1:] == ["VERDICT: CHANGES"]:
         return False
     risky = any(f.get("status") == "added" and f.get("filename", "").startswith(("scripts/", ".github/workflows/")) for f in files)
     risky = risky or any(fnmatch.fnmatchcase(f.get(key, "").lower(), pattern)
                 for f in files for key in ("filename", "previous_filename") for pattern in RISKY)
     if len(files) == pr["changed_files"] and pr["additions"] - pr["deletions"] <= 150 and not risky:
         return True
-    return any(c["body"].splitlines()[:1] == ["VERDICT: APPROVE"]
-               and f'Reviewed-SHA: {pr["head"]["sha"]}' in c["body"].splitlines() for c in comments)
+    return verdicts[-1:] == ["VERDICT: APPROVE"]
 
 
 def api(path, payload=None):
@@ -60,7 +63,7 @@ def run(event, repo):
     if "merge_group" in event:
         status(event["merge_group"]["head_sha"], "success")
         return
-    number = event.get("number") or event["issue"]["number"]
+    number = event.get("number") or (event.get("pull_request") or event["issue"])["number"]
     pr = api(f"{root}/pulls/{number}")
     if pr["base"]["ref"] != "main":
         return
@@ -68,6 +71,8 @@ def run(event, repo):
     status(sha, "pending")
     files = api(f"{root}/pulls/{number}/files?per_page=100")
     comments = api(f"{root}/issues/{number}/comments?per_page=100")
+    reviews = api(f"{root}/pulls/{number}/reviews?per_page=100")
+    comments = sorted(comments + [r for r in reviews if r.get("state") not in ("DISMISSED", "PENDING")], key=lambda item: item.get("submitted_at") or item.get("created_at") or "")
     card_ok = card_allowed(pr)
     passed = card_ok and approved(pr, files, comments)
     latest = api(f"{root}/pulls/{number}")
