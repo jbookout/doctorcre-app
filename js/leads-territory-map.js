@@ -40,7 +40,7 @@ export async function mountTerritoryMap(root, selectMarket, selectLead, { signal
   const { map, gl } = mounted;
   const markers = new Map();
   let latest = [], selected = "";
-  let picker = null;
+  let picker = null, preview = null;
   const locations = markets.map(market => marketLocation(market, places));
   const areaPlaces = areas.map(area => marketLocation(area, places));
   if ([...locations, ...areaPlaces].some(place => !place)) { shell.destroy(); throw new Error("Market location unavailable"); }
@@ -85,6 +85,48 @@ export async function mountTerritoryMap(root, selectMarket, selectLead, { signal
     areaMarkers.forEach(({ button }, index) => { button.dataset.placement = SIDES[best.choice[index]]; });
   }
   if (areaMarkers.length) { placeLabels(); map.on("resize", placeLabels); }
+  function closePreview() {
+    if (!preview) return;
+    preview.item.button.removeAttribute("aria-describedby");
+    preview.element.remove(); preview = null;
+  }
+  function leavePreview() {
+    if (preview && doc.activeElement !== preview.item.button) closePreview();
+  }
+  function dismissPreview(event) {
+    if (event.key === "Escape" && preview) { event.preventDefault(); event.stopPropagation(); closePreview(); }
+  }
+  root.addEventListener("mouseleave", leavePreview);
+  doc.addEventListener("keydown", dismissPreview);
+  function updatePreview() {
+    if (!preview) return;
+    const { item, element } = preview;
+    const members = [...new Set(item.features.flatMap(feature => feature.properties.leadIds))];
+    const names = places.filter(place => item.features.some(feature => feature.id === place.id)).map(place => `${place.name}, ${place.state}`);
+    const count = doc.createElement("strong"), precision = doc.createElement("small"), leads = doc.createElement("div");
+    count.textContent = `${members.length} ${members.length === 1 ? "lead" : "leads"} · ${names.join(" · ")}`;
+    precision.textContent = "Market area only";
+    leads.textContent = members.slice(0, 3).map(describeLead).join(" · ");
+    if (members.length > 3) leads.textContent += ` · +${members.length - 3} more`;
+    element.replaceChildren(count, precision, leads);
+    const frame = root.getBoundingClientRect(), marker = item.button.getBoundingClientRect();
+    const before = marker.left - frame.left, after = frame.right - marker.right;
+    const onRight = after >= before;
+    element.style.maxWidth = `${Math.max(before, after)}px`;
+    element.style.left = onRight ? `${marker.right - frame.left}px` : "0px";
+  }
+  function openPreview(item) {
+    if (picker) return;
+    if (preview?.item === item) return;
+    closePreview();
+    const element = doc.createElement("div");
+    element.id = `${root.id || "market-map"}-lead-preview`;
+    element.className = "map-lead-preview"; element.setAttribute("role", "tooltip");
+    element.addEventListener("mouseleave", () => { if (doc.activeElement !== item.button) closePreview(); });
+    root.append(element); preview = { item, element };
+    item.button.setAttribute("aria-describedby", element.id);
+    updatePreview();
+  }
   function closePicker(restore = true) {
     if (!picker) return;
     const trigger = picker.trigger;
@@ -132,14 +174,19 @@ export async function mountTerritoryMap(root, selectMarket, selectLead, { signal
       else clusters.push({ position, features: [feature] });
     }
     const keys = new Set(clusters.map(c => c.features.map(f=>f.id).sort().join("/")));
-    for (const [key,item] of markers) if (!keys.has(key)) { item.marker.remove(); markers.delete(key); }
+    for (const [key,item] of markers) if (!keys.has(key)) { if (preview?.item === item) closePreview(); item.marker.remove(); markers.delete(key); }
     for (const cluster of clusters) {
       const key=cluster.features.map(f=>f.id).sort().join("/");
       let item=markers.get(key);
       if (!item) {
         const button=root.ownerDocument.createElement("button");button.type="button";button.className="market-marker";button.dataset.mapMarker=key;
         item={button,features:cluster.features,marker:new gl.Marker({element:button}).setLngLat(cluster.features[0].geometry.coordinates).addTo(map)};
+        button.addEventListener("mouseenter", () => openPreview(item));
+        button.addEventListener("focus", () => openPreview(item));
+        button.addEventListener("blur", () => { if (preview?.item === item && !preview.element.matches(":hover")) closePreview(); });
         button.addEventListener("click",()=>{
+          button.focus({ preventScroll: true });
+          closePreview();
           if(new Set(item.features.map(feature => feature.id)).size===1 || map.getZoom() >= 11) {
             const leadIds = [...new Set(item.features.flatMap(feature => feature.properties.leadIds))];
             if (leadIds.length === 1) selectLead(leadIds[0]);
@@ -154,14 +201,15 @@ export async function mountTerritoryMap(root, selectMarket, selectLead, { signal
       item.features=cluster.features;
       const count=cluster.features.reduce((n,f)=>n+f.properties.count,0);
       const title=cluster.features.map(f=>`${f.properties.key}: ${f.properties.count}`).join(" · ");
-      item.button.textContent=count;item.button.title=title;
+      item.button.textContent=count;
       item.button.setAttribute("aria-label",new Set(cluster.features.map(feature => feature.id)).size>1 && map.getZoom()<11?`Zoom to markets · ${title}`:`${title} leads`);
       const leadIds = cluster.features.flatMap(f => f.properties.leadIds);
       item.button.dataset.leadIds = JSON.stringify(leadIds);
       item.button.setAttribute("aria-pressed",String(leadIds.includes(selected)));
     }
-    updatePicker();
+    updatePicker(); updatePreview();
   }
+  map.on("movestart",closePreview);
   map.on("moveend",draw);
   try {
     await new Promise((resolve, reject) => {
@@ -172,9 +220,9 @@ export async function mountTerritoryMap(root, selectMarket, selectLead, { signal
       map.on("idle", ready); map.on("error", failed); signal?.addEventListener("abort", aborted, { once: true });
       if (signal?.aborted) aborted();
     });
-  } catch (error) { map.off("moveend", draw); map.off("resize", placeLabels); themes?.disconnect(); for (const { marker } of areaMarkers) marker.remove(); shell.destroy(); throw error; }
+  } catch (error) { root.removeEventListener("mouseleave", leavePreview); doc.removeEventListener("keydown", dismissPreview); closePreview(); map.off("movestart", closePreview); map.off("moveend", draw); map.off("resize", placeLabels); themes?.disconnect(); for (const { marker } of areaMarkers) marker.remove(); shell.destroy(); throw error; }
   return { resize() { map.resize(); }, locate(lead) { return marketLocation(lead, places); },
     update(groups, leadId) { latest=groups;selected=leadId;draw(); },
     select(key) { for (const { button } of areaMarkers) button.setAttribute("aria-pressed", String(button.dataset.market === key)); placeLabels(); },
-    dispose() {closePicker(false);map.off("moveend",draw);map.off("resize",placeLabels);themes?.disconnect();for(const item of [...markers.values(), ...areaMarkers])item.marker.remove();shell.destroy();} };
+    dispose() {root.removeEventListener("mouseleave",leavePreview);doc.removeEventListener("keydown",dismissPreview);closePreview();closePicker(false);map.off("movestart",closePreview);map.off("moveend",draw);map.off("resize",placeLabels);themes?.disconnect();for(const item of [...markers.values(), ...areaMarkers])item.marker.remove();shell.destroy();} };
 }
