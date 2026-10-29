@@ -140,6 +140,10 @@ body.record-open { overflow: hidden; }
 .panel-close { flex: none; min-width: var(--touch); min-height: var(--touch); border: var(--hairline-width) solid var(--hairline); border-radius: var(--radius-2); background: transparent; color: var(--fg-muted); font: inherit; font-size: var(--font-size-3); line-height: 1; cursor: pointer; transition: background-color var(--duration-hover) var(--ease-out), color var(--duration-hover) var(--ease-out); }
 .panel-close:hover { background: var(--surface-2); color: var(--fg); }
 .record-panel-body { display: grid; gap: var(--space-5); }
+.vendor-contacts { display: grid; gap: var(--space-4); margin: 0; padding: 0; list-style: none; }
+.vendor-contacts > li { padding-block: var(--space-3); border-bottom: var(--hairline-width) solid var(--hairline); }
+.vendor-contacts h4 { margin: 0 0 var(--space-1); font-size: var(--font-size-2); }
+.vendor-contacts dd, .vendor-contacts .observed { overflow-wrap: anywhere; }
 .record-tone { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); margin: 0; color: var(--fg-muted); font-size: var(--font-size-1); }
 .record-owner { margin: 0; font-size: var(--font-size-1); }
 .record-note { margin: 0; color: var(--fg-muted); font-size: var(--font-size-1); line-height: var(--line-height-body); }

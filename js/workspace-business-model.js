@@ -152,8 +152,8 @@ export function listRequestUrl(query) {
   return `${API_PREFIX}${query.dataset}${search ? `?${search}` : ""}`;
 }
 
-export function recordRequestUrl(dataset, id) {
-  return `${API_PREFIX}${dataset}/${id}?contract=vendor-directory.v1`;
+export function recordRequestUrl(dataset, id, { people = false } = {}) {
+  return `${API_PREFIX}${dataset}/${id}?contract=vendor-directory.${dataset === 'vendors' && people ? 'v2' : 'v1'}`;
 }
 
 export function sameQuery(left, right) {
@@ -427,7 +427,28 @@ export function validListPayload(payload, dataset) {
       facetList(facets.stages) && facetList(facets.dispositions) && (facets.territories === undefined || facetList(facets.territories));
 }
 
-export function validRecordPayload(payload, dataset, id = null) {
+function peopleValid(people) {
+  const named = value => typeof value === 'string' && value.trim().length > 0;
+  const identity = value => typeof value === 'string' && UUID.test(value);
+  const nullableText = value => value === null || typeof value === 'string';
+  const nullableDate = value => value === null || iso(value);
+  return Array.isArray(people) && people.every(person => {
+    if (!exactKeys(person, ['company', 'contact', 'office', 'research'])) return false;
+    const { company, contact, office, research } = person;
+    if (company !== null && (!exactKeys(company, ['id', 'name']) || !identity(company.id) || typeof company.name !== 'string')) return false;
+    if (!exactKeys(contact, ['id', 'name', 'email', 'phone', 'cell']) || !identity(contact.id) || !named(contact.name) || ![contact.email, contact.phone, contact.cell].every(nullableText)) return false;
+    if (!exactKeys(research, ['status', 'finding_id', 'observed_at', 'expires_on']) || !['not_researched', 'needs_review', 'office_verified'].includes(research.status)) return false;
+    if (!(research.finding_id === null || identity(research.finding_id)) || !nullableDate(research.observed_at) || !nullableDate(research.expires_on)) return false;
+    if (research.status === 'not_researched' && [research.finding_id, research.observed_at, research.expires_on].some(value => value !== null)) return false;
+    if (research.status !== 'not_researched' && (!research.finding_id || !research.observed_at)) return false;
+    if (research.status !== 'office_verified') return office === null;
+    return exactKeys(office, ['street_address', 'city', 'state', 'finding_id', 'source', 'observed_at', 'expires_on']) &&
+      [office.street_address, office.city, office.state, office.source].every(named) &&
+      office.finding_id === research.finding_id && office.observed_at === research.observed_at && office.expires_on === research.expires_on;
+  });
+}
+
+export function validRecordPayload(payload, dataset, id = null, { people = false } = {}) {
   if (!exactKeys(payload, ["viewer", "dataset", "record", "partial", "not_in_this_read", "recorded_field_note", "source"])) return false;
   if (!VIEWERS.has(payload.viewer) || payload.dataset !== dataset || !sourceValid(payload.source, dataset)) return false;
   if (!Array.isArray(payload.not_in_this_read) || !payload.not_in_this_read.every((item) => typeof item === "string")) return false;
@@ -435,7 +456,9 @@ export function validRecordPayload(payload, dataset, id = null) {
   // One record is one record: the same bound as the list, at its smallest size.
   if (payload.partial && payload.partial.count > 1) return false;
   const record = payload.record;
-  if (!extendedKeys(record, RECORD_KEYS[dataset], dataset === "vendors" ? ["relationship", "loan_programs"] : ["deal_type", "last_deal_at"]) || typeof record.id !== "string" || !UUID.test(record.id)) return false;
+  const withPeople = dataset === 'vendors' && people;
+  if (!extendedKeys(record, [...RECORD_KEYS[dataset], ...(withPeople ? ['people'] : [])], dataset === "vendors" ? ["relationship", "loan_programs"] : ["deal_type", "last_deal_at"]) || typeof record.id !== "string" || !UUID.test(record.id)) return false;
+  if (withPeople && !peopleValid(record.people)) return false;
   if (typeof record.name !== "string" || !record.name) return false;
   if (!relationshipValid(record.relationship) || (record.loan_programs !== undefined && record.loan_programs !== null && (!Array.isArray(record.loan_programs) || !record.loan_programs.every(program => typeof program === 'string')))) return false;
   return id === null || record.id.toLowerCase() === id.toLowerCase();
