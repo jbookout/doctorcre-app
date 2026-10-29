@@ -745,3 +745,54 @@ test("T02 retry refreshes prior client suggestions while preserving typed fields
     assert.equal(app.doc.querySelector("#plan-name").value, "Synthetic typed tour");
   } finally { app.close(); }
 });
+
+for (const reload of [false, true]) test(`T02 managed suggestions refresh after client reselection${reload ? " and reload" : ""} while typed overrides survive`, async () => {
+  let notes = "Synthetic original notes";
+  let app = harness({ client: async id => ({ ...record(id), notes }) });
+  try {
+    await app.view.ready; app.change("#plan-client", clientA); await settle();
+    assert.equal(app.doc.querySelector("#plan-notes").value, notes);
+    app.change("#plan-name", "Synthetic typed override");
+    app.change("#plan-client", clientB); await settle();
+    notes = "Synthetic updated notes";
+    app.change("#plan-client", clientA); await settle();
+    if (reload) {
+      const stored = app.dom.window.sessionStorage.getItem("doctorcre-tour-planning-drafts-v1");
+      app.close();
+      app = harness({ client: async id => ({ ...record(id), notes }) }, window => window.sessionStorage.setItem("doctorcre-tour-planning-drafts-v1", stored));
+      await app.view.ready;
+      notes = "Synthetic notes after reload";
+    }
+    await app.view.refresh();
+    assert.equal(app.doc.querySelector("#plan-notes").value, notes);
+    assert.equal(app.doc.querySelector("#plan-name").value, "Synthetic typed override");
+    app.change("#plan-notes", "Synthetic typed notes");
+    app.change("#plan-client", clientB); await settle();
+    notes = "Synthetic newest source notes";
+    app.change("#plan-client", clientA); await settle(); await app.view.refresh();
+    assert.equal(app.doc.querySelector("#plan-notes").value, "Synthetic typed notes");
+  } finally { app.close(); }
+});
+
+for (const existing of ["first selection", "managed suggestion", "explicit edit"]) test(`T02 Search cleared fields survive Plan prefill and refresh with ${existing}`, async () => {
+  const app = harness();
+  try {
+    await app.view.ready;
+    if (existing !== "first selection") {
+      app.change("#plan-client", clientA); await settle();
+      if (existing === "explicit edit") app.change("#plan-use", "Synthetic plan override");
+      app.change("#plan-client", clientB); await settle();
+    }
+    app.change("#space-client", clientA); await settle();
+    assert.equal(app.doc.querySelector("#space-use").value, "Demo specialty");
+    app.change("#space-use", "");
+    app.change("#plan-client", clientA); await settle();
+    const expected = existing === "explicit edit" ? "Synthetic plan override" : "";
+    assert.equal(app.doc.querySelector("#space-use").value, "");
+    assert.equal(app.doc.querySelector("#plan-use").value, expected);
+    await app.view.refresh();
+    assert.equal(app.doc.querySelector("#plan-use").value, expected);
+    app.change("#plan-client", clientB); await settle(); app.change("#plan-client", clientA); await settle();
+    assert.equal(app.doc.querySelector("#plan-use").value, expected);
+  } finally { app.close(); }
+});
