@@ -18,12 +18,13 @@ test('Home week assigns dated work and orders repeated DST hours by their actual
   const days = homeWeek({ agenda, calendar, today: '2026-11-01' });
   assert.equal(days.length, 7);
   assert.equal(days[0].day, '2026-11-01');
-  assert.deepEqual(days[0].allDay.map(row => row.label), ['Synthetic contract review']);
+  assert.deepEqual(days[0].dated.map(row => row.label), ['Synthetic contract review']);
+  assert.notEqual(days[0].dated[0].time, 'All day');
   assert.deepEqual(days[0].timed.map(row => [row.label, row.time]), [
     ['Synthetic first 1 AM', '1:30 AM CDT'], ['Synthetic second 1 AM', '1:30 AM CST'],
   ]);
   assert.deepEqual(days[1].allDay.map(row => row.label), ['Synthetic all-day event']);
-  assert.deepEqual(days[2].allDay.map(row => row.label), ['Synthetic lease date']);
+  assert.deepEqual(days[2].dated.map(row => row.label), ['Synthetic lease date']);
   assert.equal(JSON.stringify(days).includes('Synthetic social setup'), false);
   assert.equal(JSON.stringify(days).includes('Synthetic previous day'), false);
 });
@@ -38,7 +39,7 @@ test('Home week retains partial meeting rows but never presents unavailable rows
   for (const source of [null, { ...calendar, state: 'unavailable' }, { state: 'empty', items: [] }]) {
     const days = homeWeek({ agenda, calendar: source, today: '2026-11-01' });
     assert.equal(days.flatMap(day => day.timed).length, 0);
-    assert.deepEqual(days[0].allDay.map(row => row.label), ['Synthetic contract review']);
+    assert.deepEqual(days[0].dated.map(row => row.label), ['Synthetic contract review']);
   }
 });
 

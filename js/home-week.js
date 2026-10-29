@@ -6,11 +6,11 @@ const timeFormat = new Intl.DateTimeFormat('en-US', {
 });
 
 export function homeWeek({ agenda, calendar, today }) {
-  const days = Array.from({ length: 7 }, (_, index) => ({ day: addDays(today, index), allDay: [], timed: [] }));
+  const days = Array.from({ length: 7 }, (_, index) => ({ day: addDays(today, index), dated: [], allDay: [], timed: [] }));
   const byDay = new Map(days.map(day => [day.day, day]));
   for (const entry of agenda?.entries || []) {
     const day = byDay.get(entry.day);
-    if (day) day.allDay.push({ ...entry, time: 'All day' });
+    if (day) day.dated.push(entry);
   }
   const occurrences = new Map();
   if (['ready', 'partial'].includes(calendar?.state)) for (const meeting of calendar.items) {

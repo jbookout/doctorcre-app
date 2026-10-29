@@ -959,26 +959,34 @@ for (const width of [1440, 390]) for (const theme of ['light', 'dark']) test(`H0
       assert.match(await detail.innerText(), /1 attendee/);
       assert.match(await detail.innerText(), /Place not provided/);
     } else if (title === 'Demo follow-up') {
+      assert.doesNotMatch(await chip.innerText(), /All day/);
+      assert.doesNotMatch(await detail.innerText(), /All day/);
       assert.match(await detail.getByRole('link', { name: 'Open deal', exact: true }).getAttribute('href'), /^\/deals\?deal=/);
     }
     await page.keyboard.press('Escape');
     await detail.waitFor({ state: 'hidden' });
     assert.equal(await chip.evaluate(node => node === document.activeElement), true);
   }
-  if (width === 390) await panel.getByRole('button', { name: 'Saturday, October 3, 2026', exact: true }).click();
+  if (width === 390) {
+    const choice = panel.getByRole('button', { name: 'Saturday, October 3, 2026', exact: true });
+    await choice.click();
+    assert.equal(await choice.getAttribute('aria-pressed'), 'true');
+    assert.match(await panel.locator('.home-week-selected-day').innerText(), /Saturday, October 3, 2026/);
+  }
   const saturday = panel.getByRole('region', { name: 'Saturday, October 3, 2026', exact: true });
   const allDay = saturday.getByRole('button', { name: 'Synthetic all-day meeting', exact: true });
   await allDay.click();
   const detail = page.getByRole('dialog', { name: 'Synthetic all-day meeting', exact: true });
   assert.match(await detail.innerText(), /All day/);
+  const dir = new URL('../out/test-artifacts/home-week/', import.meta.url);
+  await mkdir(dir, { recursive: true });
+  await detail.screenshot({ path: `${dir.pathname}detail-${width}-${theme}.png` });
   await detail.getByRole('button', { name: 'Close', exact: true }).click();
   assert.equal(await allDay.evaluate(node => node === document.activeElement), true);
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
   assert.equal(calls.some(name => /patch-|complete-|reschedule/.test(name)), false);
   assert.deepEqual(errors, []);
   await panel.scrollIntoViewIfNeeded();
-  const dir = new URL('../out/test-artifacts/home-week/', import.meta.url);
-  await mkdir(dir, { recursive: true });
   await page.screenshot({ path: `${dir.pathname}week-${width}-${theme}.png`, fullPage: true });
   await panel.screenshot({ path: `${dir.pathname}week-panel-${width}-${theme}.png` });
 });
@@ -1005,7 +1013,8 @@ test('H03 calendar details retire on a replaced meeting snapshot and session los
 
 test('H03 phone keeps the chosen day through a meeting update', async t => {
   const meeting = { title: 'Synthetic Saturday meeting', start: '2026-10-03T15:00:00Z', all_day: false, location: null, attendee_count: 1 };
-  const { page } = await open(t, { width: 390, calendar: { state: 'ready', items: [meeting] } });
+  const meetings = Array.from({ length: 8 }, (_, index) => ({ ...meeting, title: `${meeting.title} ${index}` }));
+  const { page } = await open(t, { width: 390, calendar: { state: 'ready', items: meetings } });
   const panel = page.getByRole('region', { name: 'Calendar', exact: true });
   await panel.getByRole('button', { name: 'Saturday, October 3, 2026', exact: true }).click();
   const day = panel.getByRole('region', { name: 'Saturday, October 3, 2026', exact: true });
@@ -1017,9 +1026,13 @@ test('H03 phone keeps the chosen day through a meeting update', async t => {
   await day.evaluate(node => { node.scrollTop = 120; });
   const previousScroll = await day.evaluate(node => node.scrollTop);
   assert.ok(previousScroll > 0, 'fixture has vertically scrollable day content');
-  await page.evaluate(meeting => document.dispatchEvent(new CustomEvent('doctorcre:brief-calendar', { detail: { state: 'ready', items: [{ ...meeting, title: 'Synthetic updated Saturday meeting' }] } })), meeting);
+  await page.evaluate(meetings => document.dispatchEvent(new CustomEvent('doctorcre:brief-calendar', { detail: { state: 'ready', items: meetings.map(item => ({ ...item, title: `Updated ${item.title}` })) } })), meetings);
   await position();
   assert.equal(await day.evaluate(node => node.scrollTop), previousScroll);
+  assert.match(await panel.locator('.home-week-selected-day').innerText(), /Saturday, October 3, 2026/);
+  assert.equal(await panel.getByRole('button', { name: 'Saturday, October 3, 2026', exact: true }).getAttribute('aria-pressed'), 'true');
+  await panel.getByRole('region', { name: 'Sunday, October 4, 2026', exact: true }).evaluate(node => node.scrollIntoView({ block: 'nearest', inline: 'start' }));
+  await settles(async () => assert.match(await panel.locator('.home-week-selected-day').innerText(), /Sunday, October 4, 2026/));
 });
 
 test('H03 task details close when both calendar sources become unavailable', async t => {

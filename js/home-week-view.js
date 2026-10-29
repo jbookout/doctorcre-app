@@ -11,7 +11,7 @@ export function mountHomeWeek({ document, host }) {
   dialog.className = 'home-detail home-week-detail';
   dialog.setAttribute('aria-labelledby', 'homeWeekDetailTitle');
   document.body.append(dialog);
-  let entries = new Map(), selected = null, openerKey = null, restoreDay = false;
+  let entries = new Map(), selected = null, openerKey = null, restoreDay = false, viewedDay = null;
   const findKey = key => [...host.querySelectorAll('[data-home-key]')].find(node => node.dataset.homeKey === key);
   const cleanup = () => {
     if (dialog.open || !selected) return;
@@ -26,17 +26,33 @@ export function mountHomeWeek({ document, host }) {
   };
   const closed = onDialogClosed(dialog, cleanup);
   const close = (sourceChanged = false) => { restoreDay = sourceChanged; dialog.close(); queueMicrotask(cleanup); };
-  const chip = entry => `<button type="button" class="home-week-entry" data-home-week-entry="${E(entry.key)}" data-home-key="week:${E(entry.key)}" aria-label="${E(entry.label)}"><time datetime="${E(entry.start || entry.day)}">${E(entry.time)}</time><strong>${E(entry.label)}</strong></button>`;
+  const selectDay = day => {
+    viewedDay = day;
+    const label = host.querySelector('.home-week-selected-day');
+    if (label) label.textContent = dayLabel(day);
+    for (const button of host.querySelectorAll('[data-home-week-day]')) button.setAttribute('aria-pressed', String(button.dataset.homeWeekDay === day));
+  };
+  const scroll = event => {
+    const week = event.target;
+    if (!week.matches?.('.home-week') || week.scrollWidth <= week.clientWidth) return;
+    const left = week.getBoundingClientRect().left;
+    const nearest = [...week.querySelectorAll('[data-home-week-date]')].reduce((best, day) => Math.abs(day.getBoundingClientRect().left - left) < Math.abs(best.getBoundingClientRect().left - left) ? day : best);
+    selectDay(nearest.dataset.homeWeekDate);
+  };
+  host.addEventListener('scroll', scroll, true);
+  const chip = entry => `<button type="button" class="home-week-entry" data-home-week-entry="${E(entry.key)}" data-home-key="week:${E(entry.key)}" aria-label="${E(entry.label)}">${entry.time ? `<time datetime="${E(entry.start || entry.day)}">${E(entry.time)}</time>` : ''}<strong>${E(entry.label)}</strong></button>`;
   const html = ({ agenda, calendar, today }) => {
     const days = homeWeek({ agenda, calendar, today });
-    const next = new Map(days.flatMap(day => [...day.allDay, ...day.timed]).map(entry => [entry.key, entry]));
+    if (!days.some(day => day.day === viewedDay)) viewedDay = today;
+    const next = new Map(days.flatMap(day => [...day.dated, ...day.allDay, ...day.timed]).map(entry => [entry.key, entry]));
     if (selected && JSON.stringify(next.get(selected.key)) !== JSON.stringify(selected)) close(true);
     entries = next;
-    return `<p class="home-week-zone">${BUSINESS_TIME_ZONE}</p><div class="home-week-strip" role="group" aria-label="Choose calendar day">${days.map(({ day }) => `<button type="button" data-home-week-day="${day}" data-home-key="week-day:${day}" aria-label="${E(dayLabel(day))}"${day === today ? ' aria-current="date"' : ''}><span>${shortDay(day)}</span><strong>${Number(day.slice(-2))}</strong></button>`).join('')}</div><div class="home-week">${days.map(({ day, allDay, timed }) => `<section class="home-day${day === today ? ' today' : ''}" tabindex="-1" aria-label="${E(dayLabel(day))}" data-home-week-date="${day}"><header><span>${shortDay(day)}</span><strong>${Number(day.slice(-2))}</strong>${day === today ? '<span class="home-week-today">Today</span>' : ''}</header>${allDay.length ? `<div class="home-week-all-day"><h3>All day</h3>${allDay.map(chip).join('')}</div>` : ''}<div class="home-week-timed">${timed.map(chip).join('')}</div>${!allDay.length && !timed.length ? '<p class="home-week-empty">No returned items</p>' : ''}</section>`).join('')}</div>`;
+    return `<p class="home-week-zone">${BUSINESS_TIME_ZONE}</p><p class="home-week-selected-day">${E(dayLabel(viewedDay))}</p><div class="home-week-strip" role="group" aria-label="Choose calendar day">${days.map(({ day }) => `<button type="button" data-home-week-day="${day}" data-home-key="week-day:${day}" aria-label="${E(dayLabel(day))}" aria-pressed="${day === viewedDay}"${day === today ? ' aria-current="date"' : ''}><span>${shortDay(day)}</span><strong>${Number(day.slice(-2))}</strong></button>`).join('')}</div><div class="home-week">${days.map(({ day, dated, allDay, timed }) => `<section class="home-day${day === today ? ' today' : ''}" tabindex="-1" aria-label="${E(dayLabel(day))}" data-home-week-date="${day}"><header><span>${shortDay(day)}</span><strong>${Number(day.slice(-2))}</strong>${day === today ? '<span class="home-week-today">Today</span>' : ''}</header>${dated.map(chip).join('')}${allDay.map(chip).join('')}<div class="home-week-timed">${timed.map(chip).join('')}</div>${!dated.length && !allDay.length && !timed.length ? '<p class="home-week-empty">No returned items</p>' : ''}</section>`).join('')}</div>`;
   };
   const click = event => {
     const day = event.target.closest('[data-home-week-day]');
     if (day) {
+      selectDay(day.dataset.homeWeekDay);
       host.querySelector(`[data-home-week-date="${day.dataset.homeWeekDay}"]`)?.scrollIntoView({ block: 'nearest', inline: 'start', behavior: 'instant' });
       return true;
     }
@@ -44,7 +60,7 @@ export function mountHomeWeek({ document, host }) {
     const entry = entries.get(button?.dataset.homeWeekEntry);
     if (!entry) return false;
     selected = entry; openerKey = button.dataset.homeKey;
-    const date = `${dayLabel(entry.day)}${entry.time === 'All day' ? ' · All day' : ` · ${entry.time}`}`;
+    const date = `${dayLabel(entry.day)}${entry.time ? ` · ${entry.time}` : ''}`;
     const facts = entry.type === 'meeting'
       ? `<p>${E(entry.location || 'Place not provided')}</p><p>${entry.attendee_count} ${entry.attendee_count === 1 ? 'attendee' : 'attendees'}</p>`
       : `<p>${E(entry.deal_name || '')}</p><p>${entry.type === 'task' ? 'Task due' : 'Recorded date'} ${E(dayLabel(entry.day))}</p>${entry.owner ? `<p>${E(({joe: 'Joe', dell: 'Dell'})[entry.owner] || entry.owner)}</p>` : ''}<a class="home-outline" href="/deals?deal=${encodeURIComponent(entry.deal_id)}">Open deal</a>`;
@@ -53,5 +69,5 @@ export function mountHomeWeek({ document, host }) {
     dialog.showModal();
     return true;
   };
-  return { html, click, clear() { entries.clear(); selected = null; openerKey = null; if (dialog.open) dialog.close(); dialog.replaceChildren(); }, dispose() { closed(); dialog.remove(); entries.clear(); } };
+  return { html, click, clear() { entries.clear(); selected = null; openerKey = null; if (dialog.open) dialog.close(); dialog.replaceChildren(); }, dispose() { host.removeEventListener('scroll', scroll, true); closed(); dialog.remove(); entries.clear(); } };
 }
