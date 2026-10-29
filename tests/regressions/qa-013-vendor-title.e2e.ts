@@ -10,4 +10,9 @@ test('QA-013 vendor search destination identifies Vendors', { tags: ['regression
   await browser.waitForURL(/\/vendors/);
   await expect(browser.locator('#resultsTitle')).toHaveText('Vendors');
   await expect(browser.locator('#resultsTitle')).toBeVisible();
+  await expect(screen.getByRole('heading', 'Vendors', { exact: true })).toBeVisible();
+  await expect(browser.locator('.footer')).toHaveText('DoctorCRE · Vendors');
+  const context = await browser.evaluate(async () => (await import('/js/doc-context.js')).pageDocContext.snapshot());
+  expect(context.page).toBe('vendors');
+  expect(context.label).toBe('Vendors');
 });

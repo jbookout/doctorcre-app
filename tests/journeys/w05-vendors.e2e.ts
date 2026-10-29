@@ -8,6 +8,8 @@ test('W5 Vendors filters by owner and opens a vendor with its original entries',
   await app.open('/vendors');
 
   await expect(browser.locator('#resultSummary')).toHaveText(/^62 /);
+  const filters = browser.locator('#secondaryFilters > summary');
+  if (await filters.isVisible()) await filters.tap();
   await browser.locator('[data-owner="dell"]').tap();
   await expect(browser.locator('#resultSummary')).toHaveText(/^31 /);
   await browser.waitForURL(/owner=dell/);
