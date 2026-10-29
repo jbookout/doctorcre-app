@@ -1,6 +1,6 @@
 {
   "schema": "doctorcre-tour-planning.v1",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "mode": "app-only-drafts",
   "existing_reads": {
     "producer": "jbookout/carr-system",
@@ -16,7 +16,8 @@
     "use": "client.vertical or client.specialty",
     "notes": "short client.notes summary; original entry expands in the draft popup",
     "missing_fields": ["client space criteria", "preferred tour date", "preferred route endpoints", "appointments"],
-    "saved_search_draft": "same-tab search area and use for the exact selected client; these are user-entered app drafts, not a canonical CARR search brief"
+    "saved_search_draft": "same-tab search area and use for the exact selected client or Research; Plan from search retains that subject and existing plan edits; these are user-entered app drafts, not a canonical CARR search brief",
+    "packet_search_criteria": "all nonempty SEARCH_FIELDS from the exact Plan subject at review time, rendered separately from itinerary facts; current search edits appear on reopening, without a canonical revision or route handoff"
   },
   "storage": {
     "drafts": "sessionStorage scoped to the hash of the authenticated Tour session token; Research and exact client IDs retain independent plan and search drafts, including deliberately cleared fields",
@@ -36,6 +37,8 @@
     "Territory shows Census context only; no property or native-navigation pins are presented.",
     "Research packet review does not require a client or a readable client directory.",
     "A failed selected-client detail read retains the exact selection and offers explicit retry without clearing edits or files; client packet review waits for a successful detail read.",
-    "Client switches restore only that subject's tab-local draft; a session change clears every subject's cached draft."
+    "Client switches restore only that subject's tab-local draft; a session change clears every subject's cached draft.",
+    "Plan from search validates criteria before changing the plan subject and preserves private files when the subject is already selected.",
+    "Packet search criteria never use another selected Search subject as a fallback. Cleared criteria remain absent after reload."
   ]
 }

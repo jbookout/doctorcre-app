@@ -21,6 +21,7 @@ Existing coverage: `tests/fixtures/staging-leads.spec.mjs` runs the staging asse
 - Choose a Specialty and require the board, map member list and matching count to narrow together. Clear it with All specialties. A refreshed snapshot with no matching specialty keeps the filter and shows zero matches.
 - The Territory link beside the page title jumps to the market map and chips. Show territory loads the map on demand.
 - Each stage starts with at most five cards. Choose Show all in its heading to scroll the full lane beneath the heading and Collapse control. Counts and search include every matching lead.
+- Activate a multi-lead city group on the map, or a terminal cluster at zoom 11. Require the **Leads in this place** chooser and **Market area only** label. Open each member with mouse and Enter, compare the detail title and selected card, then close and require the same member focus and unchanged camera. Escape closes the chooser and returns focus to its marker. Filters remove excluded members. No city group offers address navigation.
 - Use the selected card's `.lead-open` button. Compare `#detailTitle` to that lead's title and require visible `#leadDetail`. Use Close lead details and require it hidden.
 
 ## Gotchas
