@@ -76,9 +76,11 @@ for (const [month, through] of [['2026-10', '2026-09-30'], ['2027-01', '2026-12-
 async function board(costData = costs) {
   const html = await readFile(new URL('../progress-board.html', import.meta.url), 'utf8');
   const dom = new JSDOM(html, { url: 'https://app.doctorcre.com/progress-board?board=demo' });
+  dom.window.scrollTo = () => {};
   const client = { readProgressBoard: async () => ({ snapshot: { board_id: 'demo', version: 1, snapshot_json: { tasks: {}, costs: costData } }, questions: [] }) };
   const app = mountBoard({ window: dom.window, client, storage: null, setInterval: () => 0, setTimeout: () => 0 });
   await app.refresh();
+  dom.window.document.querySelector('[data-work-view="history"]').click();
   return { dom, app, client, panel: dom.window.document.querySelector('#board-costs') };
 }
 
