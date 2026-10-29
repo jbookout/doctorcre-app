@@ -435,14 +435,23 @@ for (const status of [401,403,503]) test(`Deal detail refresh distinguishes HTTP
 });
 
 test('Recent moves describe feed changes without internal data', async t => {
+ // carr-system ec7aaa6b3e8a31659afe49a4b2ba23b0c4827831: tools.js 2412-2424, 2472-2493, 2557-2562, 2649-2655, 4599-4601, 4652-4660, 4771-4772, 4805-4809, 4936-4941, 4970-4973, 6186-6189, 6302-6305, 9287-9290, 9486-9488, 9637-9639, 9664-9666, 9932-9933, 9980-9984, 10013-10016, 10243-10245; dealroom.ts 122.
  const fields = [
-  ['checklist_ping',{checklist_item_id:'critical-date:0558aaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',due_on:'2026-08-20',recipient:'joe'}],
-  ['phase','due_diligence'], ['owner','dell'], ['attention',true], ['next_date','2026-08-20'],
-  ['operating_state',{state:'parked',reason:'client_paused'}], ['next_step','Review terms'], ['note',{note:'Synthetic note'}],
-  ['market_agent',{market_agent:'Example Agent'}], ['account_owner',{owner:'joe'}], ['next_action',{next_action_id:'critical-date:0558'}],
-  ['deal_items_conversion',{next_action_id:'0558aaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'}], ['email_draft_metadata',{draft_id:'abc'}],
-  ['call_change_undo',{candidate_id:'abc'}], ['unknown_field',{internal_key:'secret'}],
-  ['next_step',['internal_key']], ['next_action','critical-date:0558'], ['next_action',12345],
+  ['deal_type','renewal','Deal type → Renewal'], ['phase','due_diligence','Phase → Due Diligence'],
+  ['segment','medical_office','Segment → Medical office'], ['outcome','won','Outcome → Won'],
+  ['closed_on','2026-08-20','Closed on → Aug 20'], ['won_value',100,'Won value'], ['notes_path','internal:key','Notes path'],
+  ['salesforce_id','abc123','Salesforce'], ['city','Austin','City → Austin'], ['lane','national','Lane → National'],
+  ['invoiced_on','2026-08-20','Invoiced on → Aug 20'], ['sf_close_date_placeholder','2026-08-20','Salesforce close date → Aug 20'],
+  ['client_id',{client_id:'0558aaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',name:'Synthetic Client'},'Client changed to Synthetic Client'],
+  ['owner','dell','Owner → Dell'], ['attention',true,'Attention flag → Flagged'], ['next_date','2026-08-20','Next date → Aug 20'],
+  ['operating_state',{state:'parked',reason:'client_paused'},'Active work → Parked'], ['next_step','Review terms','Next step → Review terms'],
+  ['note',{note:'Synthetic note'},'Note added → Synthetic note'], ['market_agent',{market_agent:'Example Agent'},'Market agent → Example Agent'],
+  ['account_owner',{owner:'joe'},'Account owner'], ['status',{status:'done'},'Status → Done'],
+  ['document',{template:'internal',document_id:'abc'},'Document'], ['document.sent_status',{sent_status:'draft'},'Document status → Draft'],
+  ['checklist_ping',{checklist_item_id:'critical-date:0558aaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',due_on:'2026-08-20',recipient:'joe'},'Reminder sent to Joe'],
+  ['next_action',{next_action_id:'critical-date:0558'},'Next action'], ['deal_items_conversion',{next_action_id:'abc'},'Deal items updated'],
+  ['email_draft_metadata',{draft_id:'abc'},'Email draft updated'], ['call_change_undo',{candidate_id:'abc'},'Call change undone'],
+  ['unknown_field',{internal_key:'secret'},'Unknown field'],
  ];
  const events=fields.map(([field,new_value],i)=>({id:`event-${i}`,subject_type:'deal',subject_id:'d23',field,actor:'joe',new_value,recorded_at:`2026-10-01T14:${String(i).padStart(2,'0')}:00Z`}));
  const {page,goto}=await open(t,{clock:true,events:[]});
@@ -452,7 +461,7 @@ test('Recent moves describe feed changes without internal data', async t => {
   await page.waitForFunction(()=>document.querySelector('#appTodayMoves')?.textContent.includes('Demo Specialty Clinic'));
   const text=await page.locator('#appTodayMoves').innerText();
   assert.doesNotMatch(text, /[{}]|":|\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b|\b[a-z]+(?:_[a-z0-9]+)+\b/i, event.field);
-  if(event.field==='checklist_ping') assert.match(text,/Reminder sent to Joe: critical date due Aug 20/);
+  assert.ok(text.includes(fields[events.indexOf(event)][2]), `${event.field}: ${text}`);
   await page.unroute('**/pipeline/changes*');
  }
 });
@@ -463,6 +472,12 @@ test('Recent moves show labels and partner text while withholding structured IDs
   ['owner','dell','Owner → Dell'],
   ['attention',true,'Attention flag → Flagged'],
   ['status','open','Status → Open'],
+  ['status','done','Status → Done'],
+  ['client_id',{client_id:'0558aaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',client_name:'Synthetic Client'},'Client changed to Synthetic Client'],
+  ['client_id',{client_id:'0558aaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'},'Client changed'],
+  ['status','brand_new','Status → Brand new'],
+  ['unknown_field','due_diligence','Unknown field → Due diligence'],
+  ['unknown_field','critical-date:0558','Unknown field'],
   ['lane','national','Lane → National'],
   ['note','Call id 12345','Note added → Call id 12345'],
   ['operating_state',{state:'parked',reason:'client_paused'},'Active work → Parked — Client paused activity'],

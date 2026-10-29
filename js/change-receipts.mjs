@@ -171,6 +171,7 @@ export function normalizeChangeEvent(event, options = {}) {
     before: null,
     after: null,
     move_value: event.new_value,
+    move_name: event.move_name,
     revertible_field: Boolean(field) && REVERTIBLE_FIELDS.includes(field),
   };
   if (kind === 'field' && ('old_value' in event || 'new_value' in event)) {
@@ -505,6 +506,7 @@ export function receiptViews(receipts, options = {}) {
       before: receipt.before,
       after: receipt.after,
       move_value: receipt.move_value,
+      move_name: receipt.move_name,
       own,
       superseded,
       undo_status: undoStatus,
@@ -547,10 +549,10 @@ export function moveSentence(move) {
     const kind = typeof value?.checklist_item_id === 'string' && value.checklist_item_id.startsWith('critical-date:') ? 'critical date' : null;
     return recipient && date && kind ? `Reminder sent to ${recipient}: ${kind} due ${date}` : 'Reminder sent';
   }
-  const actions = { phase:'Phase', owner:'Owner', attention:'Attention flag', next_date:'Next date', next_step:'Next step', operating_state:'Active work', note:'Note added', market_agent:'Market agent', account_owner:'Account owner', next_action:'Next action', status:'Status', lane:'Lane', summary:'Summary', description:'Description', deal_items_conversion:'Deal items updated', email_draft_metadata:'Email draft updated', call_change_undo:'Call change undone' };
-  const action = Object.hasOwn(actions, move.field) ? actions[move.field] : 'Change recorded';
-  if (!Object.hasOwn(actions, move.field)) return action;
-  if (['next_step', 'note', 'summary', 'description'].includes(move.field)) {
+  const actions = { phase:'Phase', owner:'Owner', attention:'Attention flag', next_date:'Next date', next_step:'Next step', operating_state:'Active work', note:'Note added', market_agent:'Market agent', account_owner:'Account owner', next_action:'Next action', status:'Status', lane:'Lane', summary:'Summary', description:'Description', deal_items_conversion:'Deal items updated', email_draft_metadata:'Email draft updated', call_change_undo:'Call change undone', deal_type:'Deal type', segment:'Segment', outcome:'Outcome', closed_on:'Closed on', won_value:'Won value', notes_path:'Notes path', salesforce_id:'Salesforce ID', city:'City', invoiced_on:'Invoiced on', sf_close_date_placeholder:'Salesforce close date', client_id:'Client changed', document:'Document', 'document.sent_status':'Document status' };
+  const action = Object.hasOwn(actions, move.field) ? actions[move.field] : typeof move.field === 'string' && /^[a-z]+(?:_[a-z]+)*$/.test(move.field) ? humanizeSlug(move.field) : 'Change recorded';
+  if (move.field === 'client_id') return move.move_name ? `${action} to ${move.move_name}` : action;
+  if (['next_step', 'note', 'summary', 'description', 'city', 'market_agent'].includes(move.field)) {
     return typeof value === 'string' && value ? `${action} → ${value}` : action;
   }
   const labels = {
@@ -560,21 +562,26 @@ export function moveSentence(move) {
   };
   if (move.field === 'phase' && typeof value === 'string') {
     const phase = Object.hasOwn(PHASE_BY_SLUG, value) ? PHASE_BY_SLUG[value] : (Object.values(PHASE_BY_SLUG).includes(value) ? value : null);
-    return phase ? `${action} → ${phaseLabel(phase)}` : action;
+    return phase ? `${action} → ${phaseLabel(phase)}` : SLUG.test(value) && !/\d/.test(value) ? `${action} → ${humanizeSlug(value)}` : action;
   }
   if (Object.hasOwn(labels, move.field)) {
     const label = typeof value === 'string' && Object.hasOwn(labels[move.field], value) ? labels[move.field][value] : null;
-    return label ? `${action} → ${label}` : action;
+    return label ? `${action} → ${label}` : typeof value === 'string' && SLUG.test(value) && !/\d/.test(value) ? `${action} → ${humanizeSlug(value)}` : action;
   }
   if (move.field === 'operating_state') {
     if (!value || typeof value !== 'object' || !['active', 'parked'].includes(value.state)) return action;
     return `${action} → ${move.after}`;
   }
   if (move.field === 'attention' && typeof value === 'boolean') return `${action} → ${move.after}`;
-  if (move.field === 'next_date') {
+  if (['next_date', 'closed_on', 'invoiced_on', 'sf_close_date_placeholder'].includes(move.field)) {
     const date = moveDate(value);
     return date ? `${action} → ${date}` : action;
   }
+  if (move.field === 'document.sent_status') {
+    const status = value?.sent_status;
+    return typeof status === 'string' && /^[a-z]+(?:_[a-z]+)*$/.test(status) ? `${action} → ${humanizeSlug(status)}` : action;
+  }
+  if (!move.field.endsWith('_id') && move.field !== 'notes_path' && typeof value === 'string' && SLUG.test(value) && !/\d/.test(value)) return `${action} → ${humanizeSlug(value)}`;
   return action;
 }
 
