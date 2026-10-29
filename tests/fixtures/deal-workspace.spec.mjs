@@ -53,6 +53,7 @@ for (const width of [390, 1440]) for (const theme of ['light', 'dark']) {
         const detail = await read(id);
         return { ...detail,
           deal: { ...detail.deal, name: 'Demo Workspace Practice', client_name: 'Demo Workspace Client', phase: 'Legal', owner: 'joe', phase_started_on: { legal: '2026-10-01' } },
+          items: [{id:'demo-item',title:'Vendor Introductions',due_on:'2026-02-01',status:'open'}],
           next_actions: [{id:'demo-next',description:'Demo next action',status:'open',due_on:'2026-10-01',hold_until:'2027-01-01'}],
           history: [{id:'demo-change',field:'owner',new_value:'dell',recorded_at:'2026-10-02T15:00:00Z',summary:'Demo owner changed'}],
           critical_dates: [{ id: 'demo-loi', kind: 'loi_expiry', due_on: '2026-10-09', note: 'Demo LOI deadline' }],
@@ -64,12 +65,7 @@ for (const width of [390, 1440]) for (const theme of ['light', 'dark']) {
     }, {identity,found,readiness});
     await page.locator('.card-open:visible').first().click();
     const header = page.locator('.workspace-header');
-    if (width === 390) {
-      await expect(page.locator('#workspaceFactsDisclosure')).not.toHaveAttribute('open');
-      await page.getByText('Deal details', {exact:true}).click();
-      await expect(page.locator('#workspaceFacts')).toBeVisible();
-      await page.getByText('Deal details', {exact:true}).click();
-    }
+    await expect(page.locator('#workspaceFacts')).toBeVisible();
     await expect(header).toContainText('Demo Workspace Practice');
     await expect(header).toContainText('Demo Workspace Client');
     await expect(header).toContainText('Legal');
@@ -85,11 +81,18 @@ for (const width of [390, 1440]) for (const theme of ['light', 'dark']) {
       await page.getByRole('tab', { name: label, exact: true }).click();
       await expect(page.locator(`#workspace-${tab}`)).toBeVisible();
       await expect(header).toBeVisible();
+      for (const value of ['Demo Workspace Client', 'Legal', 'Joe', 'Oct 9, 2026']) await expect(page.locator('#workspaceFacts').getByText(value, {exact:false}).first()).toBeVisible();
+      if (width === 390) {
+        const facts = page.locator('#workspaceFacts');
+        expect(await facts.evaluate(el => el.getBoundingClientRect().height)).toBeLessThanOrEqual(24);
+        expect(await facts.locator('.workspace-facts').evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true);
+      }
       if (tab === 'timeline') {
         await expect(page.locator('.phase-rail')).toBeVisible();
         await expect(page.locator('.workspace-events li').filter({hasText:'Demo next action'})).toHaveCount(2);
         await expect(page.locator('.workspace-events li').filter({hasText:'Demo next action'})).toContainText(['Jan 1, 2027', 'Oct 1, 2026']);
-        for (const text of ['Demo lease document','Demo next action','Demo owner changed','Demo discovery meeting','Demo recorded deal note','Demo LOI deadline']) await expect(page.locator('.workspace-events')).toContainText(text);
+        for (const text of ['Demo lease document','Demo next action','Demo owner changed','Demo discovery meeting','Demo recorded deal note','Demo LOI deadline','Vendor Introductions']) await expect(page.locator('.workspace-events')).toContainText(text);
+        await expect(page.locator('.workspace-events li').filter({hasText:'Vendor Introductions'})).toContainText('Feb 1, 2026');
         await page.getByLabel('Filter by type').selectOption('Document');
         await expect(page.locator('.workspace-events li:visible')).toHaveCount(1);
         await expect(page.locator('.workspace-events li:visible')).toContainText('Demo lease document');
