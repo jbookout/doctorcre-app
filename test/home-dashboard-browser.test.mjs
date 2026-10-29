@@ -903,3 +903,31 @@ test('Your brief stays visible across Home visits', async t => {
   assert.equal(await page.locator('#docMorningBrief[open]').count(), 0);
 
 });
+
+test('Your brief shows loading while the first task read is pending', async t => {
+  const { page } = await open(t, { hangDetails: true });
+  const brief = page.locator('#homeBrief');
+  await brief.getByText('Updating tasks…').waitFor();
+  assert.doesNotMatch(await brief.innerText(), /Tasks unavailable/);
+});
+
+test('Your brief shows unavailable after the task read fails', async t => {
+  const { page } = await open(t, { malformedBoard: true });
+  const brief = page.locator('#homeBrief');
+  await brief.getByText('Tasks unavailable').waitFor();
+  assert.doesNotMatch(await brief.innerText(), /\d+ open/);
+});
+
+test('Your brief does not claim zero open tasks when the list is partial', async t => {
+  const { page } = await open(t, { emptyAgenda: true, initialDetailFailure: 'partial' });
+  const brief = page.locator('#homeBrief');
+  await brief.getByText('Some tasks unavailable').waitFor();
+  assert.doesNotMatch(await brief.innerText(), /0 open/);
+});
+
+test('Your brief shows zero open tasks when the list is complete', async t => {
+  const { page } = await open(t, { emptyAgenda: true });
+  const brief = page.locator('#homeBrief');
+  await brief.getByText('No open tasks').waitFor();
+  assert.match(await brief.innerText(), /0 open/);
+});
