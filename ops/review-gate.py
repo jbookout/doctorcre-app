@@ -1,16 +1,10 @@
 """Publish a SHA-bound review-gate commit status using trusted GitHub event data."""
-import fnmatch
 import re
 import json
 import os
 import subprocess
 import time
 from pathlib import Path
-
-RISKY = ("*launchagents*", "*.plist", "install-*.sh", "*/install-*.sh",
-         "*outlook*", "*hxstore*", "*hxprobe*", "*calendar*",
-         ".github/workflows/deploy*", "migrations/*", "db/*", "*wrangler*", "tools/migrate.py")
-
 
 # GitHub skips every push workflow for these title markers, so a merged PR would never deploy.
 SKIP_CI = re.compile(r"\[(skip ci|ci skip|no ci|skip actions|actions skip)\]", re.I)
@@ -22,7 +16,7 @@ def card_allowed(pr):
                 for line in (pr.get("body") or "").splitlines()))
 
 
-def approved(pr, files, comments):
+def approved(pr, comments):
     auto_merge = pr.get("auto_merge") or {}
     if any(SKIP_CI.search(value or "") for value in
            (pr.get("title"), auto_merge.get("commit_title"), auto_merge.get("commit_message"))):
@@ -32,13 +26,6 @@ def approved(pr, files, comments):
                 if len(lines) >= 3 and lines[0] in ("VERDICT: APPROVE", "VERDICT: CHANGES")
                 and lines[1] == sha_line and lines[2].startswith("Reviewer: ")
                 and lines[2][10:].strip()]
-    if verdicts[-1:] == ["VERDICT: CHANGES"]:
-        return False
-    risky = any(f.get("status") == "added" and f.get("filename", "").startswith(("scripts/", ".github/workflows/")) for f in files)
-    risky = risky or any(fnmatch.fnmatchcase(f.get(key, "").lower(), pattern)
-                for f in files for key in ("filename", "previous_filename") for pattern in RISKY)
-    if len(files) == pr["changed_files"] and pr["additions"] - pr["deletions"] <= 150 and not risky:
-        return True
     return verdicts[-1:] == ["VERDICT: APPROVE"]
 
 
@@ -57,7 +44,7 @@ def api(path, payload=None):
 
 def run(event, repo):
     root = f"repos/{repo}"
-    def status(sha, state, description="No skip marker; small safe diff or current-head approval required"):
+    def status(sha, state, description="No skip marker; current-head approval required"):
         api(f"{root}/statuses/{sha}", {"context": "review-gate", "state": state,
             "description": description})
     if "merge_group" in event:
@@ -69,15 +56,14 @@ def run(event, repo):
         return
     sha = pr["head"]["sha"]
     status(sha, "pending")
-    files = api(f"{root}/pulls/{number}/files?per_page=100")
     comments = api(f"{root}/issues/{number}/comments?per_page=100")
     reviews = api(f"{root}/pulls/{number}/reviews?per_page=100")
     comments = sorted(comments + [r for r in reviews if r.get("state") not in ("DISMISSED", "PENDING")], key=lambda item: item.get("submitted_at") or item.get("created_at") or "")
     card_ok = card_allowed(pr)
-    passed = card_ok and approved(pr, files, comments)
+    passed = card_ok and approved(pr, comments)
     latest = api(f"{root}/pulls/{number}")
     if latest["head"]["sha"] == sha and latest.get("body") == pr.get("body"):
-        description = ("No skip marker; small safe diff or current-head approval required" if card_ok else
+        description = ("No skip marker; current-head approval required" if card_ok else
                        "Missing Card line; format: Card: WR557.S3.J1")
         status(sha, "success" if passed else "failure", description)
 
