@@ -98,7 +98,7 @@
   </dialog>
 
   <main id="recordPanel" class="deal-workspace deal-detail" aria-label="Deal Workspace" hidden>
-    <header class="workspace-header"><div class="workspace-heading"><button class="btn" id="panelClose" type="button" aria-label="Back to deals">← Back to deals</button><span data-doc-presence-slot></span><h1 id="panelTitle" tabindex="-1">Deal</h1></div><div id="workspaceFacts"></div><nav id="workspaceTabs" role="tablist" aria-label="Deal workspace tabs"></nav></header>
+    <header class="workspace-header"><div class="workspace-heading"><button class="btn" id="panelClose" type="button" aria-label="Back to deals">← Back to deals</button><span data-doc-presence-slot></span><h1 id="panelTitle" tabindex="-1">Deal</h1></div><details class="workspace-facts-disclosure" id="workspaceFactsDisclosure"><summary>Deal details</summary><div id="workspaceFacts"></div></details><nav id="workspaceTabs" role="tablist" aria-label="Deal workspace tabs"></nav></header>
     <div id="panelBody"></div>
     <div class="panel-section" id="panelContextOpenWrap" hidden>
       <button class="btn" type="button" id="panelContextOpen" aria-haspopup="dialog">Client &amp; vendor context</button>

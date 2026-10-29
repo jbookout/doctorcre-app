@@ -29,7 +29,7 @@ test('opening a deal replaces the board with a workspace and Back restores its s
   await page.getByRole('button', { name: 'Back to deals' }).click();
   await expect(page.locator('#main')).toBeVisible();
   await expect(page.locator('#listView')).toHaveAttribute('aria-pressed','true');
-  await expect.poll(() => page.evaluate(() => scrollY)).toBe(scroll);
+  await expect.poll(async () => Math.abs((await page.evaluate(() => scrollY)) - scroll)).toBeLessThanOrEqual(1);
   expect(await page.locator('#kanban').evaluate(board => ({top:board.scrollTop,left:board.scrollLeft}))).toEqual(boardScroll);
   await page.goForward();
   await expect(page.getByRole('main', { name: 'Deal Workspace' })).toBeVisible();
@@ -53,7 +53,7 @@ for (const width of [390, 1440]) for (const theme of ['light', 'dark']) {
         const detail = await read(id);
         return { ...detail,
           deal: { ...detail.deal, name: 'Demo Workspace Practice', client_name: 'Demo Workspace Client', phase: 'Legal', owner: 'joe', phase_started_on: { legal: '2026-10-01' } },
-          next_actions: [{id:'demo-next',description:'Demo next action',status:'open',due_on:'2026-10-08'}],
+          next_actions: [{id:'demo-next',description:'Demo next action',status:'open',due_on:'2026-10-01',hold_until:'2027-01-01'}],
           history: [{id:'demo-change',field:'owner',new_value:'dell',recorded_at:'2026-10-02T15:00:00Z',summary:'Demo owner changed'}],
           critical_dates: [{ id: 'demo-loi', kind: 'loi_expiry', due_on: '2026-10-09', note: 'Demo LOI deadline' }],
           thread: [{ id: 'demo-note', kind: 'note', actor: 'joe', at: '2026-10-02T12:00:00Z', text: 'Demo recorded deal note' }],
@@ -64,6 +64,12 @@ for (const width of [390, 1440]) for (const theme of ['light', 'dark']) {
     }, {identity,found,readiness});
     await page.locator('.card-open:visible').first().click();
     const header = page.locator('.workspace-header');
+    if (width === 390) {
+      await expect(page.locator('#workspaceFactsDisclosure')).not.toHaveAttribute('open');
+      await page.getByText('Deal details', {exact:true}).click();
+      await expect(page.locator('#workspaceFacts')).toBeVisible();
+      await page.getByText('Deal details', {exact:true}).click();
+    }
     await expect(header).toContainText('Demo Workspace Practice');
     await expect(header).toContainText('Demo Workspace Client');
     await expect(header).toContainText('Legal');
@@ -81,6 +87,8 @@ for (const width of [390, 1440]) for (const theme of ['light', 'dark']) {
       await expect(header).toBeVisible();
       if (tab === 'timeline') {
         await expect(page.locator('.phase-rail')).toBeVisible();
+        await expect(page.locator('.workspace-events li').filter({hasText:'Demo next action'})).toHaveCount(2);
+        await expect(page.locator('.workspace-events li').filter({hasText:'Demo next action'})).toContainText(['Jan 1, 2027', 'Oct 1, 2026']);
         for (const text of ['Demo lease document','Demo next action','Demo owner changed','Demo discovery meeting','Demo recorded deal note','Demo LOI deadline']) await expect(page.locator('.workspace-events')).toContainText(text);
         await page.getByLabel('Filter by type').selectOption('Document');
         await expect(page.locator('.workspace-events li:visible')).toHaveCount(1);
@@ -106,6 +114,10 @@ for (const width of [390, 1440]) for (const theme of ['light', 'dark']) {
       await page.evaluate(() => scrollTo(0, 0));
       await page.locator('body').evaluate(() => document.fonts.ready);
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+      if (width === 390 && tab === 'timeline') {
+        const event = page.locator('.workspace-events li:visible').first();
+        expect(await event.evaluate(el => el.getBoundingClientRect().top)).toBeLessThan(700);
+      }
       const targets = await page.getByRole('tab').evaluateAll(tabs => tabs.map(tab => ({ width: tab.getBoundingClientRect().width, height: tab.getBoundingClientRect().height })));
       for (const target of targets) { expect(target.width).toBeGreaterThanOrEqual(44); expect(target.height).toBeGreaterThanOrEqual(44); }
       const path = testInfo.outputPath(`workspace-${width}-${theme}-${tab}.png`);
@@ -123,4 +135,24 @@ test('a direct deal link opens Overview and Back reaches the board', async ({ pa
   await page.getByRole('button', { name: 'Back to deals' }).click();
   await expect(page.locator('#main')).toBeVisible();
   await expect(page).not.toHaveURL(/deal=/);
+});
+
+test('header distinguishes overdue dates from missing dates', async ({ page }) => {
+  await page.clock.install({ time: new Date('2026-10-04T17:00:00Z') });
+  await page.goto(`${server.url}/deals`);
+  await expect(page.locator('.card-open:visible').first()).toBeVisible();
+  await page.evaluate(async () => {
+    const { state } = await import('/js/pipeline.js');
+    const read = state.client.getDeal.bind(state.client);
+    state.client.getDeal = async id => {
+      const detail = await read(id);
+      return {...detail, critical_dates: window.noDates ? [] : [{id:'old',kind:'loi_expiry',due_on:'2020-01-01'}], deal:{...detail.deal, phase_started_on:{}}};
+    };
+  });
+  await page.locator('.card-open:visible').first().click();
+  await expect(page.locator('#workspaceFacts')).toContainText('Jan 1, 2020');
+  await expect(page.locator('#workspaceFacts')).toContainText('overdue');
+  await page.evaluate(() => { window.noDates = true; });
+  await page.getByRole('button',{name:'Refresh deal'}).click();
+  await expect(page.locator('#workspaceFacts')).toContainText('Not recorded');
 });

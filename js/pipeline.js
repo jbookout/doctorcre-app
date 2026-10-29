@@ -997,10 +997,16 @@ let workspaceTab = 'overview';
 let boardScroll = 0;
 let timelineType = '';
 history.scrollRestoration = 'manual';
+const workspaceDesktop = matchMedia('(min-width: 651px)');
+function syncWorkspaceFactsDisclosure() { $('workspaceFactsDisclosure').open = workspaceDesktop.matches; }
+syncWorkspaceFactsDisclosure();
+workspaceDesktop.addEventListener('change', syncWorkspaceFactsDisclosure);
 function renderWorkspaceFacts(detail) {
   const d = detail.deal;
-  const next = dealTimeline(detail).dates.find(date => date.day >= todayIso() && !['cleared','passed'].includes(date.status));
-  $('workspaceFacts').innerHTML = `<dl class="workspace-facts"><div><dt>Client</dt><dd>${esc(d.client_name || d.client_ref || 'Not recorded')}</dd></div><div><dt>Phase</dt><dd>${esc(columnByValue(d.phase)?.label || d.phase || 'Not recorded')}</dd></div><div><dt>Owner</dt><dd>${esc(actorName(d.owner) || 'Unassigned')}</dd></div><div><dt>Next critical date</dt><dd>${next ? `${esc(next.label)} · <time datetime="${esc(next.day)}">${esc(dateCaption(next.day))}</time>` : 'Not recorded'}</dd></div></dl>`;
+  const dates = dealTimeline(detail).dates;
+  const active = dates.filter(date => !['cleared','passed'].includes(date.status));
+  const next = active.find(date => date.day >= todayIso()) || active[0] || dates[0];
+  $('workspaceFacts').innerHTML = `<dl class="workspace-facts"><div><dt>Client</dt><dd>${esc(d.client_name || d.client_ref || 'Not recorded')}</dd></div><div><dt>Phase</dt><dd>${esc(columnByValue(d.phase)?.label || d.phase || 'Not recorded')}</dd></div><div><dt>Owner</dt><dd>${esc(actorName(d.owner) || 'Unassigned')}</dd></div><div><dt>Next critical date</dt><dd>${next ? `${esc(next.label)} · <time datetime="${esc(next.day)}">${esc(dateCaption(next.day))}</time>${['cleared','passed'].includes(next.status) ? ` · ${esc(next.status)}` : next.day < todayIso() ? ' · overdue' : ''}` : 'Not recorded'}</dd></div></dl>`;
 }
 function selectWorkspaceTab(id) {
   workspaceTab = id;
@@ -1024,7 +1030,7 @@ function workspaceEventsHtml(detail) {
     ...view.entries.filter(e => e.day).map(e => ({type:e.type, day:e.day, text:[...new Set([e.summary,e.original].filter(Boolean))].join('\n\n')})),
     ...view.dates.map(e => ({type:'Critical date', day:e.day, text:[e.label,e.original].filter(Boolean).join(' · ')})),
     ...view.phases.filter(e => e.day).map(e => ({type:'Phase', day:e.day, text:e.label})),
-    ...(detail.next_actions || []).filter(e => calendarDay(e.due_on || e.hold_until)).map(e => ({type:'Action', day:calendarDay(e.due_on || e.hold_until), text:noteText(e.description)})),
+    ...(detail.next_actions || []).flatMap(e => [['due_on','Due'],['hold_until','Held until']].filter(([key]) => calendarDay(e[key])).map(([key,label]) => ({type:'Action', day:calendarDay(e[key]), text:`${label} · ${noteText(e.description)}`}))),
     ...(detail.history || []).filter(e => calendarDay(e.recorded_at) && !view.entries.some(entry => entry.id === e.id)).map(e => ({type:'Change', day:calendarDay(e.recorded_at), text:noteText(e.summary) || `${fieldLabel(e.field)} · ${readableValue(e.field, e.new_value)}`})),
   ].sort((a,b) => b.day.localeCompare(a.day));
   if (!events.some(event => event.type === timelineType)) timelineType = '';
@@ -1056,7 +1062,7 @@ function workspaceHtml(detail) {
     <div data-detail-read="prospect">${controlsAvailable && prospect?.client_status === 'prospect' ? `<form id="detailInactiveForm"><p>Inactive prospects return to Leads.</p><label>Reason<input name="reason" maxlength="1000" required value="${esc(pendingProspect?.request.reason || '')}"${pendingProspect ? ' readonly' : ''}></label><button class="btn" type="submit">${pendingProspect ? 'Check outcome' : 'Mark inactive'}</button><p role="status" data-prospect-status>${pendingProspect ? 'Confirmation pending for this prospect. Check outcome to retry the same request.' : ''}</p></form>` : ''}</div>
     <h2>Critical dates</h2>${renderCriticalDates(detail)}
     <div data-detail-read="updates">${renderDealUpdates(detail)}</div></section>
-    <section id="workspace-timeline" role="tabpanel" aria-labelledby="tab-timeline" hidden>${renderDealTimeline(detail)}<div data-detail-read="events">${workspaceEventsHtml(detail)}</div></section>
+    <section id="workspace-timeline" role="tabpanel" aria-labelledby="tab-timeline" hidden><div data-detail-read="events">${workspaceEventsHtml(detail)}</div>${renderDealTimeline(detail)}</section>
     <section id="workspace-correspondence" role="tabpanel" aria-labelledby="tab-correspondence" hidden><h2>Correspondence &amp; notes</h2><details id="panelEvidenceSection"><summary>Threads &amp; meetings</summary><div id="panelEvidence"></div></details><div data-detail-read="notes">${workspaceNotesHtml(detail)}</div></section>`;
 }
 function clientPortalHtml(d, canRegister) {

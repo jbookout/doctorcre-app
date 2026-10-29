@@ -31,7 +31,7 @@ Existing coverage: `test/local-deals-browser.test.mjs`, `test/dealroom-acceptanc
 
 - Email follow-ups appears inside each deal room. Review the quoted evidence, choose Confirm, inspect the fresh replacement preview, then Confirm change. Dismiss requires a reason. Refresh deal reloads the pending list. `test/email-followups-browser.test.mjs` covers the scoped deal flow, unavailable reads and empty states at phone and desktop widths. The shared module tests cover pagination, stale preview refusal and uncertain-write recovery.
 
-- Deal Workspace defaults to Overview with snapshot, actions, critical dates, updates, vendors and phase/owner controls. Timeline contains the phase rail and dated events with a type filter. Correspondence & notes loads the existing evidence threads and meetings and shows recorded deal notes. The header stays visible across tabs. `tests/fixtures/deal-workspace.spec.mjs` covers direct links, history, scroll restoration, tab content and 390×844 / 1440×900 captures in both themes. Screenshots and traces are retained in the fixture Playwright output directory.
+- Deal Workspace defaults to Overview with snapshot, actions, critical dates, updates, vendors and phase/owner controls. Timeline contains the phase rail and dated events with a type filter. Correspondence & notes loads the existing evidence threads and meetings and shows recorded deal notes. On phones, deal details collapse and the header scrolls away; desktop keeps the header visible across tabs. `tests/fixtures/deal-workspace.spec.mjs` covers direct links, history, scroll restoration, tab content and 390×844 / 1440×900 captures in both themes. Screenshots and traces are retained in the fixture Playwright output directory.
 
 
 ## Gotchas
