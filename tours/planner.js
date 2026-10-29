@@ -210,24 +210,38 @@ export function mountPlanner({ document, window, api = createPlannerClient() }) 
         suggestions.name = before.name;
       }
     }
+    const changes = Object.entries(suggestions).filter(([field, value]) => field !== "name" && managed.has(field) && before[field] !== value && Object.hasOwn(before, field));
+    for (const [field] of changes) suggestions[field] = before[field];
     draft.refreshSuggestions(suggestions);
-    const changes = Object.entries(draft.values).filter(([field, value]) => managed.has(field) && before[field] !== value);
+    const root = $(`#${prefix}-client-updates`);
     if (changes.length) {
-      const root = $(`#${prefix}-client-updates`), details = element("details");
+      const details = element("details");
       const labels = { area: "Area", use: "Space type", notes: "Tour notes" };
-      const chips = element("div", undefined, "client-update-fields");
-      const facts = element("dl", undefined, "client-update-facts");
-      for (const [field, value] of changes) {
-        chips.append(element("span", labels[field], "pill"));
-        facts.append(element("dt", labels[field]), element("dd", `Before: ${before[field] || "Empty"}`), element("dd", `Now: ${value || "Empty"}`));
-      }
       const readAt = new Date();
       const time = element("time", readAt.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" }));
       time.dateTime = readAt.toISOString();
       const stamp = element("p", "Client record read at "); stamp.append(time);
-      details.append(element("summary", "Review field changes"), facts);
-      root.replaceChildren(stamp, chips, details); root.hidden = false;
-    }
+      details.append(element("summary", `Review ${changes.length} field ${changes.length === 1 ? "change" : "changes"}`));
+      for (const [field, value] of changes) {
+        const row = element("section", undefined, "client-update-row"); row.dataset.field = field;
+        const facts = element("dl", undefined, "client-update-facts");
+        facts.append(element("dt", "Current draft"), element("dd", before[field] || "Empty"), element("dt", "Client record"), element("dd", value || "Empty"));
+        const actions = element("div", undefined, "client-name-actions");
+        for (const choice of ["keep", "use"]) {
+          const button = element("button", `${choice === "keep" ? "Keep" : "Use"} ${labels[field].toLowerCase()}`);
+          button.type = "button"; button.dataset.choice = choice;
+          button.addEventListener("click", () => {
+            if (choice === "use" && draft.values[field] === before[field] && draft.managedFields.includes(field)) draft.set(field, value, true);
+            if (choice === "keep" && draft.values[field] === before[field]) draft.set(field, before[field]);
+            row.remove(); if (!details.querySelector("[data-field]")) root.hidden = true;
+            syncForm(prefix, draft); save(prefix === "plan" ? "#plan-message" : "#space-message");
+          });
+          actions.append(button);
+        }
+        row.append(element("h4", labels[field]), facts, actions); details.append(row);
+      }
+      root.replaceChildren(stamp, details); root.hidden = false;
+    } else { root.hidden = true; root.replaceChildren(); }
     if (prefix === "plan") selectedRecord = record;
     syncForm(prefix, draft);
   }

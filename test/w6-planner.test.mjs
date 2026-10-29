@@ -696,7 +696,8 @@ test("a pending client search cannot block selected-client or open-tour refresh"
     app.service.tour = async id => ({ id, name: "Newest open tour", stops: [] });
     refreshing = app.view.refresh();
     await waitFor(() => app.doc.querySelector("#detail-title").textContent === "Newest open tour");
-    assert.equal(app.doc.querySelector("#plan-notes").value, "Newest selected client notes");
+    assert.equal(app.doc.querySelector("#plan-notes").value, "Synthetic original entry");
+    assert.match(app.doc.querySelector("#plan-client-updates").textContent, /Newest selected client notes/);
     assert.equal(app.doc.querySelector("dialog").open, true);
   } finally { pending.resolve([]); await refreshing; app.close(); }
 });
@@ -819,6 +820,8 @@ test("T02 retry refreshes prior client suggestions while preserving typed fields
     assert.equal(app.doc.querySelector("#plan-notes").value, "Synthetic prior notes");
     notes = "Synthetic refreshed notes"; unavailable = false;
     app.doc.querySelector("#plan-client-retry").click(); await settle();
+    assert.equal(app.doc.querySelector("#plan-notes").value, "Synthetic prior notes");
+    app.doc.querySelector('#plan-client-updates [data-field="notes"] [data-choice="use"]').click();
     assert.equal(app.doc.querySelector("#plan-notes").value, "Synthetic refreshed notes");
     assert.equal(app.doc.querySelector("#plan-name").value, "Synthetic typed tour");
   } finally { app.close(); }
@@ -842,6 +845,8 @@ for (const reload of [false, true]) test(`T02 managed suggestions refresh after 
       notes = "Synthetic notes after reload";
     }
     await app.view.refresh();
+    assert.equal(app.doc.querySelector("#plan-notes").value, "Synthetic original notes");
+    app.doc.querySelector('#plan-client-updates [data-field="notes"] [data-choice="use"]').click();
     assert.equal(app.doc.querySelector("#plan-notes").value, notes);
     assert.equal(app.doc.querySelector("#plan-name").value, "Synthetic typed override");
     app.change("#plan-notes", "Synthetic typed notes");
@@ -884,20 +889,21 @@ test("client refresh explains changed draft fields and retains the brief on fail
     current = { ...current, city: "Synthetic updated city", notes: "Synthetic refreshed notes" };
     await app.view.refresh();
     assert.equal(app.doc.querySelector("#plan-area").value, "Synthetic approved region");
-    assert.equal(app.doc.querySelector("#plan-notes").value, "Synthetic refreshed notes");
+    assert.equal(app.doc.querySelector("#plan-notes").value, "Synthetic original entry");
     const updates = app.doc.querySelector("#plan-client-updates");
     assert.ok(updates, "refresh offers a review of changed fields");
     assert.match(updates.textContent, /Tour notes/);
     assert.match(updates.textContent, /Synthetic original entry/);
     assert.match(updates.textContent, /Synthetic refreshed notes/);
     assert.ok(updates.querySelector("time[datetime]"), "refresh time is explicit");
+    updates.querySelector('[data-field="notes"] [data-choice="use"]').click();
     failed = true; await app.view.refresh();
     assert.equal(app.doc.querySelector("#plan-notes").value, "Synthetic refreshed notes");
     assert.equal(app.doc.querySelector("#plan-client").value, clientA);
     assert.equal(app.doc.querySelector("#plan-client-retry").hidden, false);
     failed = false; current = { ...current, notes: "Synthetic retry notes" };
     app.doc.querySelector("#plan-client-retry").click(); await settle();
-    assert.equal(app.doc.querySelector("#plan-notes").value, "Synthetic retry notes");
+    assert.equal(app.doc.querySelector("#plan-notes").value, "Synthetic refreshed notes");
     assert.match(updates.textContent, /Synthetic retry notes/);
   } finally { app.close(); }
 });
@@ -910,7 +916,7 @@ test("changed recorded client name needs a choice before replacing the suggested
     current = { ...current, name: "Synthetic renamed practice", notes: "Synthetic fresh record notes" };
     await app.view.refresh();
     assert.equal(app.doc.querySelector("#plan-name").value, "Demo Practice A · Tour");
-    assert.equal(app.doc.querySelector("#plan-notes").value, "Synthetic fresh record notes");
+    assert.equal(app.doc.querySelector("#plan-notes").value, "Synthetic original entry");
     const compare = app.doc.querySelector("#plan-client-name-review");
     assert.equal(compare.hidden, false);
     assert.match(compare.textContent, /Demo Practice A · Tour/);
@@ -924,5 +930,49 @@ test("changed recorded client name needs a choice before replacing the suggested
     app.change("#plan-client", clientB); await settle();
     assert.equal(app.doc.querySelector("#plan-client-updates").hidden, true);
     assert.doesNotMatch(app.doc.querySelector("#plan-client-updates").textContent, /Synthetic fresh/);
+  } finally { app.close(); }
+});
+
+test("refreshed client fields wait for individual choices in Plan and Search", async () => {
+  let current = record(clientA);
+  const app = harness({ client: async () => current });
+  try {
+    await app.view.ready;
+    app.change("#space-client", clientA); await settle();
+    app.change("#plan-client", clientA); await settle();
+    current = { ...current, city: "New City", vertical: "New specialty", notes: "New notes" };
+    await app.view.refresh();
+    for (const prefix of ["plan", "space"]) {
+      assert.equal(app.doc.querySelector(`#${prefix}-area`).value, "Demo City, FL");
+      assert.equal(app.doc.querySelector(`#${prefix}-use`).value, "Demo specialty");
+      const root = app.doc.querySelector(`#${prefix}-client-updates`);
+      assert.match(root.textContent, /New City/);
+      root.querySelector('[data-field="area"] [data-choice="use"]').click();
+      root.querySelector('[data-field="use"] [data-choice="keep"]').click();
+      assert.equal(app.doc.querySelector(`#${prefix}-area`).value, "New City, FL");
+      assert.equal(app.doc.querySelector(`#${prefix}-use`).value, "Demo specialty");
+    }
+    assert.equal(app.doc.querySelector("#plan-notes").value, "Synthetic original entry");
+    app.doc.querySelector('#plan-client-updates [data-field="notes"] [data-choice="use"]').click();
+    assert.equal(app.doc.querySelector("#plan-notes").value, "New notes");
+  } finally { app.close(); }
+});
+
+test("declining refreshed notes and editing a pending field preserve the draft", async () => {
+  let current = record(clientA);
+  const app = harness({ client: async () => current });
+  try {
+    await app.view.ready; app.change("#plan-client", clientA); await settle();
+    current = { ...current, city: "New City", notes: "New notes" };
+    await app.view.refresh();
+    const root = app.doc.querySelector("#plan-client-updates");
+    root.querySelector('[data-field="notes"] [data-choice="keep"]').click();
+    app.change("#plan-area", "Partner edit");
+    root.querySelector('[data-field="area"] [data-choice="use"]').click();
+    assert.equal(app.doc.querySelector("#plan-notes").value, "Synthetic original entry");
+    assert.equal(app.doc.querySelector("#plan-area").value, "Partner edit");
+    await app.view.refresh();
+    assert.equal(app.doc.querySelector("#plan-notes").value, "Synthetic original entry");
+    assert.equal(app.doc.querySelector("#plan-area").value, "Partner edit");
   } finally { app.close(); }
 });

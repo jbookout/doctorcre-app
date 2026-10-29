@@ -138,11 +138,17 @@ test('Tour managed notes refresh after client reselection while typed notes surv
   await page.locator('#plan-client').selectOption(clientId);
   await expect(page.locator('#plan-message')).toHaveText('');
   await page.getByRole('button', { name: 'Refresh tours', exact: true }).click();
+  await expect(page.locator('#plan-notes')).toHaveValue('Synthetic client notes');
+  await page.locator('#plan-client-updates summary').click();
+  await page.getByRole('button', { name: 'Use tour notes' }).click();
   await expect(page.locator('#plan-notes')).toHaveValue('Synthetic refreshed source notes');
   await page.reload();
   await expect(page.locator('#plan-client')).toHaveValue(clientId);
   state.client.notes = 'Synthetic source notes after reload';
   await page.getByRole('button', { name: 'Refresh tours', exact: true }).click();
+  await expect(page.locator('#plan-notes')).toHaveValue('Synthetic refreshed source notes');
+  await page.locator('#plan-client-updates summary').click();
+  await page.getByRole('button', { name: 'Use tour notes' }).click();
   await expect(page.locator('#plan-notes')).toHaveValue('Synthetic source notes after reload');
   await page.locator('#plan-notes').fill('Synthetic typed notes');
   await page.locator('#plan-client').selectOption(otherClientId);
@@ -172,14 +178,14 @@ test('Search cleared space type stays blank in Plan after prefill and refresh', 
   await expect(page.locator('#plan-use')).toHaveValue('');
   state.client.notes = 'Synthetic notes after refresh';
   await page.getByRole('button', { name: 'Refresh tours', exact: true }).click();
-  await expect(page.locator('#plan-notes')).toHaveValue('Synthetic notes after refresh');
+  await expect(page.locator('#plan-notes')).toHaveValue('Synthetic client notes');
   await expect(page.locator('#plan-use')).toHaveValue('');
   await page.reload();
   await expect(page.locator('#plan-name')).toHaveValue('Synthetic Practice · Tour');
   await expect(page.locator('#plan-use')).toHaveValue('');
   state.client.notes = 'Synthetic notes after reload';
   await page.getByRole('button', { name: 'Refresh tours', exact: true }).click();
-  await expect(page.locator('#plan-notes')).toHaveValue('Synthetic notes after reload');
+  await expect(page.locator('#plan-notes')).toHaveValue('Synthetic client notes');
   await expect(page.locator('#plan-use')).toHaveValue('');
 });
 
@@ -254,8 +260,9 @@ for (const theme of ['light', 'dark']) {
     state.client = { ...state.client, name: 'Synthetic updated practice', city: 'Synthetic refreshed city', notes: 'Synthetic refreshed notes <script>inert</script>' };
     await page.getByRole('button', { name: 'Refresh tours', exact: true }).click();
     await expect(page.locator('#plan-name')).toHaveValue('Synthetic Practice · Tour');
-    await expect(page.locator('#plan-notes')).toHaveValue(state.client.notes);
+    await expect(page.locator('#plan-notes')).toHaveValue('Synthetic client notes');
     await expect(page.locator('#plan-area')).toHaveValue('Synthetic chosen region');
+    await expect(page.locator('#plan-client-name-review')).toBeVisible();
     await page.locator('#review-packet').click();
     await expect(page.locator('#tour-dialog')).not.toBeVisible();
     await expect(page.locator('#keep-client-name')).toBeFocused();
@@ -263,7 +270,7 @@ for (const theme of ['light', 'dark']) {
     await page.screenshot({ path: testInfo.outputPath('client-name-compare-390.png') });
     for (const id of ['plan', 'space']) {
       const updates = page.locator(`#${id}-client-updates`);
-      await updates.getByText('Review field changes', { exact: true }).click();
+      await updates.locator('summary').click();
       await expect(updates.locator('script')).toHaveCount(0);
       await updates.evaluate(element => element.scrollIntoView({ block: 'center' }));
       const box = await updates.boundingBox();
