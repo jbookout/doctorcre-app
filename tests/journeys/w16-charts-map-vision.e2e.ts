@@ -38,11 +38,11 @@ test('W16 the territory map pins every lead market on the Gulf Coast', async ({ 
   await app.open('/leads?mode=live');
   await browser.locator('#showTerritory').tap();
   await expect(browser.locator('.market-marker')).toHaveCount(2);
-  await expect(browser.locator('.market-marker[title="Mobile, AL: 1"]')).toHaveText('1');
+  await expect(browser.getByRole('button', { name: 'Mobile, AL: 1 leads', exact: true })).toHaveText('1');
   const coastalMarker = browser.locator('.market-marker').filter({ hasText: '13' });
   await expect(coastalMarker).toHaveCount(1);
-  await expect(coastalMarker).toHaveAttribute('title', /Pensacola, FL: 12/);
-  await expect(coastalMarker).toHaveAttribute('title', /Gulf Breeze, FL: 1/);
+  await expect(coastalMarker).toHaveAttribute('aria-label', /Pensacola, FL: 12/);
+  await expect(coastalMarker).toHaveAttribute('aria-label', /Gulf Breeze, FL: 1/);
   await browser.evaluate(() => document.querySelector('#territoryMap')?.scrollIntoView({ block: 'center' }));
   await agent.assert(
     'Inside the Territory map rectangle, exactly two round count markers labelled 1 and 13 are visible along the coastline. There are no other map pins. The market-name pills and Stage filter outside this rectangle are not map pins.',
