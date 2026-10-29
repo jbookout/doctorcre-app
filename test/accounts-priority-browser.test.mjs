@@ -109,3 +109,24 @@ for (const reverse of [false, true]) {
     await page.locator('#detailUpdateForm').waitFor();
   });
 }
+
+test('national account deals show the next action and latest activity', async t => {
+  const server = await fixtureServer();
+  t.after(() => server.close());
+  const browser = await chromium.launch();
+  t.after(() => browser.close());
+  const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
+  await page.clock.setFixedTime(new Date('2026-10-29T15:00:00Z'));
+  await page.route('**/api/**', route => route.fulfill({ json: {} }));
+  await page.route('**/data/board-seed.json', async route => {
+    const seed = await (await route.fetch()).json();
+    const deal = seed.deals[0];
+    Object.assign(deal, { next_actions: [{ status: 'open', owner: 'joe', description: 'Tour the sample property', due_on: '2026-10-30' }], activities: [{ summary: 'Sent the sample proposal', occurred_at: '2026-10-22T12:00:00Z' }] });
+    await route.fulfill({ json: seed });
+  });
+  await page.goto(`${server.origin}/deals?view=national&mode=fixture`);
+  await page.locator('.account-card').first().click();
+  const row = page.locator('#rows tr').filter({ hasText: 'Tour the sample property' });
+  assert.match(await row.innerText(), /Next: Tour the sample property · Fri Oct 30/);
+  assert.match(await row.innerText(), /Last: Sent the sample proposal · Thu Oct 22/);
+});

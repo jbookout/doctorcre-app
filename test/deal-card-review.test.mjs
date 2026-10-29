@@ -179,13 +179,13 @@ test('phone deal title stays clear of Doc through the full timeline scroll',asyn
 });
 
 
-test('desktop checklist titles fit without exposing the legacy next-step paragraph',async t=>{
+test('desktop checklist titles fit alongside the next step',async t=>{
  const {page}=await open(t,1280,{theme:'light',showDetail:false});
  const card=page.locator('.kanban-column [data-id="d14"]');
  assert.deepEqual(await card.locator('ol button').allTextContents(),['Vendor Introductions','Prelim Market Study','ETL not completed']);
  assert.equal(await card.locator('.next-line').count(),0);
  assert.equal(await card.evaluate(n=>n.scrollWidth<=n.clientWidth),true);
- assert.doesNotMatch(await card.textContent(),/Prior status that must not prefill/);
+ assert.match(await card.textContent(),/Next: Prior status that must not prefill/);
 });
 
 test('empty legacy next steps preserve existing structured items',async t=>{

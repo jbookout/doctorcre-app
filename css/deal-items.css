@@ -25,3 +25,5 @@
 .deal-item-sheet [data-item-status]:empty { display: none; }
 
 .deal-item-date[data-overdue="true"], .deal-item-date[data-overdue="true"] time { color: var(--status-warn); }
+
+.kanban-card .deal-summary-line, .step-button .deal-summary-line { margin: var(--space-2) 0 0; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; overflow-wrap: anywhere; }

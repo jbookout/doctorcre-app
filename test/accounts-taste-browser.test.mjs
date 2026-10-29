@@ -91,8 +91,6 @@ for (const theme of ['dark', 'light']) for (const sidebarOpen of [false, true]) 
     }
     const rows = await page.locator('#rows tr').evaluateAll(rows => rows.map(row => {
       const step = row.querySelector('.step-button');
-      const range = document.createRange();
-      range.selectNodeContents(step);
       const nameRange = document.createRange();
       nameRange.selectNodeContents(row.querySelector('.deal-link'));
       const metadata = [...row.querySelectorAll('.deal-meta span')].map(node => {
@@ -100,13 +98,13 @@ for (const theme of ['dark', 'light']) for (const sidebarOpen of [false, true]) 
         range.selectNodeContents(node);
         return { text: node.textContent, lines: range.getClientRects().length };
       });
-      return { text: step.textContent, lines: range.getClientRects().length,
+      return { text: step.textContent, lines: [...step.querySelectorAll('.deal-summary-line')].map(line => { const r = document.createRange(); r.selectNodeContents(line); return r.getClientRects().length; }),
         nameLines: nameRange.getClientRects().length, metadata,
         phaseWidth: row.querySelector('select[data-phase]').getBoundingClientRect().width,
         stepWidth: step.getBoundingClientRect().width };
     }));
     if (process.env.UI_SCREENSHOT_DIR) await writeFile(`${process.env.UI_SCREENSHOT_DIR}/${captureName}-1280-${theme}.json`, JSON.stringify(rows, null, 2));
-    assert.ok(rows.every(row => row.lines <= 2), JSON.stringify(rows));
+    assert.ok(rows.every(row => row.lines.every(lines => lines <= 2)), JSON.stringify(rows));
     assert.ok(rows.every(row => row.nameLines <= 2 && row.metadata.every(item => item.lines <= 1)), JSON.stringify(rows));
     assert.ok(rows.every(row => row.stepWidth > row.phaseWidth), JSON.stringify(rows));
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);

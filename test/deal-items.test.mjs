@@ -75,3 +75,22 @@ test('an overdue alert states how many days it is overdue', () => {
   const many = new JSDOM(renderDealAlert({ ...deal, overdue_since: '2026-10-01' }, { today: '2026-10-22' })).window.document;
   assert.equal(many.querySelector('.deal-overdue').textContent, '21 days overdue');
 });
+
+test('board cards show the earliest action, favoring the viewer on a tie, and latest activity', () => {
+  const doc = new JSDOM(renderDealAlert({ id: 'demo', next_actions: [
+    { status: 'open', owner: 'dell', description: 'Call the lender', due_on: '2026-10-30' },
+    { status: 'open', owner: 'joe', description: 'Tour the property', due_on: '2026-10-30' },
+  ], activities: [
+    { summary: 'Sent the proposal', occurred_at: '2026-10-20T10:00:00Z' },
+    { summary: 'Met the client', occurred_at: '2026-10-22T10:00:00Z' },
+  ] }, { today: '2026-10-29', viewer: 'joe', buttons: true, board: true })).window.document;
+  assert.match(doc.body.textContent, /Next: Tour the property · Fri Oct 30/);
+  assert.match(doc.body.textContent, /Last: Met the client · Thu Oct 22/);
+});
+
+
+test('board cards show another owner and an overdue date, or an empty prompt', () => {
+  const html = renderDealAlert({ id: 'demo', next_actions: [{ status: 'open', owner: 'dell', description: 'Call the lender', due_on: '2026-10-12' }] }, { board: true, viewer: 'joe', today: '2026-10-29' });
+  assert.match(new JSDOM(html).window.document.body.textContent, /Next: Call the lender · overdue Oct 12 · D/);
+  assert.match(new JSDOM(renderDealAlert({ id: 'empty' }, { board: true })).window.document.body.textContent, /No next step set/);
+});
