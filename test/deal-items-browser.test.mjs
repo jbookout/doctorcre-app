@@ -9,7 +9,7 @@ for (const width of [390, 1280]) test(`a checklist item opens its own sheet and 
   const page = await browser.newPage({ viewport: { width, height: 900 } });
   const seed = JSON.parse(await readFile(new URL('data/board-seed.json', root), 'utf8'));
   const deal = seed.deals.find(d => d.id === 'd14');
-  Object.assign(deal, { short_name: "Dr. Demo's Sample Deal", phase: 'Research', workspace_kind: 'team', operating_state: 'active', account_client_id: null,
+  Object.assign(deal, { name: "Dr. Demo's Sample Deal, multidisciplinary practice", short_name: "Dr. Demo's Sample Deal", phase: 'Research', workspace_kind: 'team', operating_state: 'active', account_client_id: null,
     items: [{ id: 'demo-intro', title: 'Vendor Introductions', due_on: '2026-10-01', status: 'open', source_ref: 'capture:demo',
       bullets: [{ date: '2026-09-11', kind: 'call', text: 'Lender introduction discussed.' }, { date: null, kind: 'suggestion', text: 'Arrange a short call.' }] },
       { id: 'demo-study', title: 'Prelim Market Study', status: 'open', bullets: [] },
@@ -28,7 +28,7 @@ for (const width of [390, 1280]) test(`a checklist item opens its own sheet and 
   await page.goto('http://localhost/deals');
   const card = page.locator('.kanban-column [data-id="d14"]');
   await card.waitFor({ timeout: 15000 });
-  assert.equal(await card.locator('h4').textContent(), "Dr. Demo's Sample Deal");
+  assert.equal(await card.locator('h4').textContent(), "Dr. Demo's Sample Deal, multidisciplinary practice");
   assert.equal(await card.locator('ol li').count(), 3);
   if (width > 760) assert.ok((await card.boundingBox()).width >= 220, 'desktop item titles have a readable card width');
   assert.equal(await card.locator('.owner').textContent(), 'Joe');

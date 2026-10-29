@@ -14,6 +14,7 @@ Choose Local Deals in Primary navigation or open `/deals`. Open a visible deal h
 
 Existing coverage: `test/local-deals-browser.test.mjs`, `test/dealroom-acceptance-browser.test.mjs` and the Home link tests. The fixture Playwright project also runs the parked-deal journey in `tests/fixtures/staging-controls.spec.mjs`.
 
+- Board stage headings stay above the cards while scrolling. Collapse a stage to see its count and two-name preview, then expand it with Enter. The choice survives Board/List switches for the current page. `test/deal-card-review.test.mjs` covers 100 cards, full practice names, focus visibility, and both themes at phone and desktop widths. Captures stay under `out/test-artifacts/d02-stages/`.
 - Require a visible `.card-open`. Save its title, click, and require visible `#recordPanel`, matching `#panelTitle` and visible `#detailUpdateForm`.
 - Use Close deal, require the panel hidden, then reopen that same heading and compare the title.
 - A missing or blank next step shows Next step missing on active Board and List cards and in the deal room. Refresh removes the gap when a recorded step arrives and restores it when cleared. Parked and closed deal rooms do not show the gap. `test/local-deals-browser.test.mjs` covers both widths and the existing string and text-object values.
