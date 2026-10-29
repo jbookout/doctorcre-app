@@ -214,11 +214,12 @@ export async function createFixtureClient(opts = {}) {
     return history.get(dealId);
   }
 
-  function pushHistory(dealId, actor, summary, at) {
+  function pushHistory(dealId, actor, summary, at, kind = 'note') {
     const h = {
       id: `h-${dealStore.histSeq++}`,
       actor,
       summary,
+      kind,
       recorded_at: at || nowIso(),
     };
     ensureHistory(dealId).unshift(h);
@@ -354,7 +355,7 @@ export async function createFixtureClient(opts = {}) {
       change_reason: change_reason ?? null,
       human_quote: human_quote ?? null,
     });
-    pushHistory(deal, actor, `${field} ${old ?? '(empty)'} to ${value ?? '(empty)'}`, e.recorded_at);
+    pushHistory(deal, actor, `${field} ${old ?? '(empty)'} to ${value ?? '(empty)'}`, e.recorded_at, 'field_edit');
     return { status: 'ok', event: e, event_id: e.id, event_recorded_at: e.recorded_at };
   }
 
@@ -1188,7 +1189,7 @@ export async function createFixtureClient(opts = {}) {
   }
 
   function activitiesFor(dealId) {
-    return (history.get(dealId) || []).map(h => ({ id: h.id, actor: h.actor,
+    return (history.get(dealId) || []).filter(h => h.kind !== 'field_edit').map(h => ({ id: h.id, actor: h.actor,
       occurred_at: h.recorded_at, kind: 'note', summary: h.summary }))
       .sort((a, b) => compareInstants(a.occurred_at, b.occurred_at) || b.id.localeCompare(a.id));
   }
