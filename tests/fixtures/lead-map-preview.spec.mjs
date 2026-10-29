@@ -71,3 +71,29 @@ test('hover preview survives crossing the map and Escape works with focus elsewh
   await page.getByRole('button', { name: 'Close lead details', exact: true }).click();
   await expect(marker).toBeFocused();
 });
+
+test('preview bounds large groups and follows refreshed membership without stale names', async ({ page }) => {
+  await page.clock.install({ time: new Date('2026-10-01T16:00:00Z') });
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  let board = { ...workspace(), leads: Array.from({ length: 6 }, (_, index) => lead(index + 1)) };
+  await routeLeads(page, { getBoard: () => board });
+  await page.goto('http://localhost/leads');
+  await page.getByRole('button', { name: 'Show territory', exact: true }).click();
+  const marker = page.locator('.market-marker');
+  await marker.focus();
+  const preview = page.getByRole('tooltip');
+  await expect(preview).toContainText('6 leads');
+  await expect(preview).toContainText('Dr. Example 3');
+  await expect(preview).toContainText('+3 more');
+  await expect(preview).not.toContainText('Dr. Example 4');
+  board = { ...board, leads: [lead(2, { doctor_name: 'Dr. Example Updated' })] };
+  await page.clock.fastForward(61_000);
+  await expect(preview).toContainText('1 lead');
+  await expect(preview).toContainText('Dr. Example Updated');
+  await expect(preview).not.toContainText('Dr. Example 1');
+  await expect(marker).toBeFocused();
+  board = { ...board, leads: [] };
+  await page.clock.fastForward(61_000);
+  await expect(preview).toBeHidden();
+  await expect(marker).toHaveCount(0);
+});
