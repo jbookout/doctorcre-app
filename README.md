@@ -102,8 +102,7 @@ validates without deploying or commenting. When PRs close or merge,
 (`-- <PR#>` targets one closed PR; `--dry-run` previews removal).
 
 The production Worker configuration deliberately has no route. It binds only to
-the production `carr-mcp` service and enables version preview URLs, so a release
-can be built, uploaded, and verified before any public hostname moves. Run
+the production `carr-mcp` service. Run
 `npm run deployment:check:production` to validate that configuration locally.
 `npm run release:production` consumes the prepared artifact, replaces `dist/site`
 from its verified source bytes, and runs only provider upload, promotion and

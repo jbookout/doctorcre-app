@@ -6,10 +6,6 @@ authentication, control, and assurance.
 
 ## Current transition state
 
-- P1 isolates sanitized source. It does not move production hosting or change
-  the CARR runtime.
-- Production DoctorCRE continues to use the CARR-hosted application until a
-  later phase proves an independent build and deployment boundary.
 - The app communicates with CARR through the pinned contract in
   `contracts/carr-interface.v1.json`; it never connects to CARR's database.
 - `data/board-seed.json` contains 11 explicitly synthetic records for local
@@ -75,7 +71,7 @@ fixture. Reviewed DoctorCRE production hosts boot the live adapter.
 | `contracts/` | Pinned CARR consumer boundary and runtime contracts |
 | `data/board-seed.json` | Synthetic local/test fixture only |
 | `reports/` and `tours/` | DoctorCRE report and tour presentation |
-| `design*.html` | V5-UX-S01 review prototypes on synthetic data: `/design`, `/design/business`, `/design/operations` |
+| `design*.html` | V5-UX-S01 review prototypes on synthetic data |
 
 ### V5-UX-S01 information design, after Joe's 2026-09-16 review
 
