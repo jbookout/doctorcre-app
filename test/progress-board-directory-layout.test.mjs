@@ -30,13 +30,18 @@ for (const [width, height] of [[1440, 960], [390, 844]]) {
               return { schema: 'progress-board-directory.v1', boards:window.directoryTestUpdated ? boards.map(board => board.board_id === 'demo-165' ? {...board,title:'Updated synthetic outcome'} : board) : boards };
             },
             readProgressBoard: async () => ({ snapshot: { board_id: 'demo-0', version: 1,
-              snapshot_json: { title: 'Demo delivery', tasks: { build: { title: 'Demo task', status: 'running' },
+              snapshot_json: { title: 'Demo delivery', tasks: { build: { title: 'Demo task', status: 'running', updated_at: new Date().toISOString() },
                 ...Object.fromEntries(Array.from({length:100}, (_,i) => [`queue-${i}`, {title:`Demo queued outcome ${i}`,status:'queued'}])) } } }, questions: [] }),
           }, setInterval: () => 0, setTimeout: () => 0, clearTimeout: () => {} });
         await window.directoryTestBoard.refresh();
       }, boards);
       await page.waitForFunction(() => document.querySelectorAll('#board-directory a').length === 166);
-      assert.equal(await page.locator('#board-stages .board-card[data-stage=queued]').count(), 100);
+      if (file === 'progress-board.html') {
+        assert.equal(await page.locator('#board-stages .board-card[data-stage=queued]').count(), 0, 'Active leaves queued work in its own view');
+        await page.locator('[data-work-view="queue"]').click();
+        assert.equal(await page.locator('#board-stages .board-card[data-stage=queued]').count(), 20);
+        assert.equal(await page.locator('.stage-count').textContent(), '100');
+      } else assert.equal(await page.locator('#board-stages .board-card[data-stage=queued]').count(), 100);
       const directory = page.locator('.directory-panel');
       const lanesTop = await page.locator('#board-filters').evaluate(node => node.getBoundingClientRect().top);
       if (file === 'progress-board.html') {

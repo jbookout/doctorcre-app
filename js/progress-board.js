@@ -15,7 +15,7 @@ import {
   answerRequest, taskSummary, modelLine, stageEnteredAt, ageText,
   executorGlyph, executorPool, taskRepo, liveView, readLivePreference,
   writeLivePreference, filterCards, groupByRepo, boardFromSearch, safeHref, sortLive,
-  SYSTEM_BOARD_ID, boardDirectory, boardFreshness, nextFreshnessChange,
+  SYSTEM_BOARD_ID, boardDirectory, boardFreshness, nextFreshnessChange, WORK_VIEWS, WORK_LANE_LIMIT, cardsForView,
 } from "./progress-board-model.js";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
@@ -61,6 +61,11 @@ export function mountBoard(deps = {}) {
   const filters = { repo: "", stage: "", blockedOnly: false };
   let liveExpanded = readLivePreference(storage);
   let currentView = null;
+  const standalone = Boolean(doc.querySelector(".progress-main")) && !deps.openTask;
+  let workView = "active";
+  const workViewState = new Map(WORK_VIEWS.map(view => [view.id, { expanded: new Set(), scroll: 0, cardId: null }]));
+  let workViewMenu = null;
+
   let boardState = "pending";
   let lastRead = null;
   let readSeq = 0;
@@ -439,6 +444,65 @@ export function mountBoard(deps = {}) {
     byId("live-toggle")?.focus?.();
   }
 
+  function hasWorkViews(view) {
+    return standalone && Boolean(view) && !orchestratorView && !view.hierarchy && !view.work_queue;
+  }
+
+  function rememberWorkCard(event) {
+    const card = event.target.closest(".board-card");
+    if (card && hasWorkViews(currentView)) workViewState.get(workView).cardId = card.dataset.cardId;
+  }
+
+  function workScroll() {
+    return doc.querySelector(".progress-main")?.closest(".app-layout-center");
+  }
+
+  function chooseWorkView(id) {
+    if (disposed || !hasWorkViews(currentView) || id === workView) return;
+    const state = workViewState.get(workView);
+    state.scroll = workScroll()?.scrollTop ?? win.scrollY ?? 0;
+    workView = id;
+    render(currentView);
+    const next = workViewState.get(id);
+    const selected = cardNodes.get(next.cardId);
+    if (selected?.isConnected) selected.focus({ preventScroll: true });
+    const scroller = workScroll();
+    if (scroller) scroller.scrollTop = next.scroll;
+    else win.scrollTo?.({ top: next.scroll, behavior: "instant" });
+  }
+
+  function renderWorkViewMenu(cards, enabled) {
+    if (!standalone) return;
+    if (!workViewMenu) {
+      workViewMenu = el("nav", "work-view-menu", undefined, { "aria-label": "Work views", hidden: "" });
+      for (const view of WORK_VIEWS) {
+        const button = el("button", "work-view-button", view.label, {
+          type: "button", "data-work-view": view.id, "aria-pressed": "false" });
+        button.addEventListener("click", () => chooseWorkView(view.id));
+        workViewMenu.append(button);
+      }
+      doc.querySelector(".pipeline-panel").before(workViewMenu);
+    }
+    workViewMenu.hidden = !enabled;
+    doc.querySelector(".progress-main").classList.toggle("has-work-views", enabled);
+    if (!enabled) return;
+    for (const view of WORK_VIEWS) {
+      const button = workViewMenu.querySelector(`[data-work-view="${view.id}"]`);
+      button.textContent = `${view.label} · ${cardsForView(cards, view.id).length}`;
+      button.setAttribute("aria-pressed", String(view.id === workView));
+    }
+  }
+
+  function applyWorkViewVisibility(view) {
+    if (!hasWorkViews(view)) return;
+    const history = workView === "history";
+    for (const node of doc.querySelectorAll(".blocked-panel, .completed-panel, .lower-grid")) node.hidden = !history;
+    if (!history)
+      for (const node of doc.querySelectorAll(".repos-panel, .cost-panel")) node.hidden = true;
+    byId("system-work-panel").hidden = !history || !systemWork;
+    doc.querySelector(".questions-panel").hidden = !["active", "history"].includes(workView) || !view.questions.length;
+  }
+
   function renderStages(view) {
     if (disposed) return;
     const container = byId("board-stages");
@@ -456,6 +520,7 @@ export function mountBoard(deps = {}) {
       return;
     }
     container.removeAttribute("aria-busy");
+    renderWorkViewMenu([], false);
     if (orchestratorView) {
       byId('pipeline-title').textContent = 'Orchestrator';
       for (const id of ['board-rail', 'board-filters']) byId(id).setAttribute('hidden', '');
@@ -511,13 +576,16 @@ export function mountBoard(deps = {}) {
       return;
     }
     renderFilters({repos:view?.repos || [],cards:all,stages});
-    renderCompleted({...view, cards:all,stages});
+    if (!hasWorkViews(view) || workView === "history") renderCompleted({...view, cards:all,stages});
+    else (byId("completed-list") || byId("board-completed")).replaceChildren();
     const kind = census ? "project" : view.kind;
     pipelineCards = all;
     const focusedId = [...cardNodes].find(([, node]) => node === doc.activeElement)?.[0];
     const focusedControlId = container.contains(doc.activeElement) ? doc.activeElement.id : null;
     container.replaceChildren();
-    const visible = filterCards(all, filters);
+    const workViews = hasWorkViews(view);
+    renderWorkViewMenu(all, workViews);
+    const visible = filterCards(workViews ? cardsForView(all, workView) : all, filters);
     const grouped = kind === ALL_REPOS_BOARD;
     byId("task-count").textContent = `${visible.length} OF ${all.length} CARD${all.length === 1 ? "" : "S"}`;
     renderRail(visible, stages);
@@ -528,9 +596,24 @@ export function mountBoard(deps = {}) {
         { "data-stage": stage.id, style: `--stage-accent:${stage.color}`, "aria-label": `${stage.label}: ${cards.length}` });
       const head = el("header", "column-head");
       head.append(el("h3", "stage-label", stage.label), el("span", "stage-count", String(cards.length)));
+      if (workViews && cards.length > WORK_LANE_LIMIT) {
+        const expanded = workViewState.get(workView).expanded;
+        const toggle = el("button", "lane-toggle", expanded.has(stage.id) ? "Show fewer" : `Show all ${cards.length}`, {
+          id: `lane-toggle-${stage.id}`, type: "button", "aria-expanded": String(expanded.has(stage.id)),
+          "aria-label": `${expanded.has(stage.id) ? "Show fewer" : "Show all"} ${stage.label.toLowerCase()} cards` });
+        toggle.addEventListener("click", () => {
+          if (expanded.has(stage.id)) expanded.delete(stage.id); else expanded.add(stage.id);
+          renderStages(currentView);
+          byId(`lane-toggle-${stage.id}`)?.focus({ preventScroll: true });
+        });
+        head.append(toggle);
+      }
       column.append(head);
       const body = el("div", "column-body");
-      if (stage.id === "live") {
+      if (workViews) {
+        const shown = workViewState.get(workView).expanded.has(stage.id) ? cards : cards.slice(0, WORK_LANE_LIMIT);
+        appendCards(body, shown, grouped);
+      } else if (stage.id === "live") {
         const live = liveView(cards, liveExpanded, kind);
         column.dataset.collapsed = String(!liveExpanded);
         if (!liveExpanded && live.total)
@@ -981,14 +1064,16 @@ export function mountBoard(deps = {}) {
     byId("board-freshness").hidden = orchestratorView;
     byId("orchestrator-link")?.toggleAttribute("aria-current", orchestratorView);
     renderSync(view);
-    renderHeadline(view);
-    doc.querySelector(".headline").hidden = orchestratorView || Boolean(view.hierarchy || view.work_queue);
+    if (hasWorkViews(view)) byId("board-headline").replaceChildren();
+    else renderHeadline(view);
+    doc.querySelector(".headline").hidden = hasWorkViews(view) || orchestratorView || Boolean(view.hierarchy || view.work_queue);
     byId("board-title").classList.toggle("sr-only", orchestratorView || Boolean(view.hierarchy || view.work_queue) || Boolean(deps.openTask));
     const breadcrumb = doc.querySelector('nav[aria-label="Breadcrumb"]');
     if (breadcrumb) breadcrumb.hidden = !orchestratorView && (Boolean(view.hierarchy || view.work_queue) || Boolean(deps.openTask));
     renderRepos(view);
     renderStages(view);
-    renderBlocked(view);
+    if (!hasWorkViews(view) || workView === "history") renderBlocked(view);
+    else byId("board-blocked").replaceChildren();
     renderQuestions(view);
     renderLedger(view);
     renderDeliverables(view);
@@ -997,6 +1082,7 @@ export function mountBoard(deps = {}) {
     for (const [id, count] of [["board-questions", view.questions.length], ["board-deliverables", view.deliverables.length],
       ["board-decisions", view.decisions.length + view.questions.filter(q => q.status).length], ["board-notes", view.notes.length]])
       byId(id).closest(".panel").hidden = (orchestratorView || Boolean(view.hierarchy || view.work_queue)) && !count;
+    applyWorkViewVisibility(view);
   }
 
   // Live time: every time-dependent mark (stage ages, stale, stuck, health,
@@ -1021,6 +1107,13 @@ export function mountBoard(deps = {}) {
     hierarchyUI?.dispose();
     hierarchyUI = null;
     costs.update(null);
+    workViewMenu?.remove();
+    workViewMenu = null;
+    doc.querySelector(".progress-main")?.classList.remove("has-work-views");
+    workView = "active";
+    for (const state of workViewState.values()) {
+      state.expanded.clear(); state.scroll = 0; state.cardId = null;
+    }
     boardState = state;
     governanceRead = null;
     deps.onTasks?.([], {state});
@@ -1177,6 +1270,7 @@ export function mountBoard(deps = {}) {
   renderLegend();
   wireLegend();
   wireFilters();
+  if (standalone) byId("board-stages").addEventListener("focusin", rememberWorkCard);
   renderSwitch();
 
   function dispose() {
@@ -1188,6 +1282,7 @@ export function mountBoard(deps = {}) {
     doc.removeEventListener("visibilitychange", refreshAges);
     win.removeEventListener?.('doctorcre-session-invalidated', dispose);
     currentView = lastRead = governanceRead = null;
+    byId("board-stages").removeEventListener("focusin", rememberWorkCard);
     cardNodes.clear(); completedNodes.clear(); blockedNodes.clear(); questionCards.clear();
     fingerprints.clear(); formState.clear(); pendingRequests.clear(); badgeTimes.clear();
   }

@@ -32,7 +32,7 @@ async function open(t, { unfinished = true, path = '/control-room/progress', boa
         if (readState === 'failed') { payload = { error: 'board_read_failed' }; isError = true; }
         else payload = { snapshot: readState === 'missing' ? null : { board_id: board.board_id, version: 1,
           updated_at: '2026-10-02T08:00:00Z', snapshot_json: snapshotData || { title: board.title, costs: costData, tasks: {
-            build: { title: `${board.title} task`, status: 'running' },
+            build: { title: `${board.title} task`, status: 'running', updated_at: new Date().toISOString() },
           } } }, questions: [] };
       }
       if (rpc.name === 'unfinished-work') {
@@ -99,6 +99,7 @@ for (const unfinished of [false, true]) test(`board tile opens its page and publ
   assert.deepEqual(await board.locator('#board-stages .column').evaluateAll(columns => columns.map(column => column.dataset.stage)), ['build']);
   assert.equal(await board.locator('.directory-panel').isVisible(), true, 'the canonical board retains its project selector');
   if (!unfinished) {
+    await board.locator('[data-work-view="history"]').click();
     assert.match(await board.locator('#system-work-error').textContent(), /System work updates unavailable/);
     assert.equal(await board.locator('#system-work-retry').isVisible(), true);
   }
@@ -283,6 +284,7 @@ for (const width of [320, 390]) test(`all cost days have an equivalent phone tou
 
 test('cost panel has day popup, month history, provider selection and measured reduced motion on mobile', async t => {
   const { page, errors } = await open(t, { path: systemPath, costData: costs });
+  await page.locator('[data-work-view="history"]').click();
   const panel = page.locator('#board-costs');
   await panel.waitFor();
   assert.match(await panel.textContent(), /Coverage incomplete/);
@@ -314,6 +316,7 @@ test('cost panel has day popup, month history, provider selection and measured r
 
 test('independent census diagram uses the same stage colors as the published board legend', async t => {
   const { page, errors } = await open(t, { path: systemPath, rows: [workRow('open')] });
+  await page.locator('[data-work-view="history"]').click();
   await page.locator('#system-work-flow .flow-stage').first().waitFor();
   for (const stage of STAGES) {
     // Stage colours are token roles, so the expected paint is whatever that role resolves to here.
@@ -326,6 +329,8 @@ test('independent census diagram uses the same stage colors as the published boa
   assert.deepEqual(errors, []);
 });
 async function panelTasks(page, ids) {
+  const history = page.locator('[data-work-view="history"]');
+  if (await history.getAttribute('aria-pressed') !== 'true') await history.click();
   await page.waitForFunction(expected => {
     const actual = [...document.querySelectorAll('#system-work-flow [data-task-id]')].map(n => n.dataset.taskId).sort();
     return JSON.stringify(actual) === JSON.stringify(expected.slice().sort());
@@ -397,6 +402,7 @@ test('Library can render before the first unfinished read and rejects its late r
       if (rpc.name !== 'unfinished-work' || rpc.arguments.live_library) return false;
       await held; await route.continue(); return true;
     } });
+  await page.locator('[data-work-view="history"]').click();
   await page.locator('#live-library').click();
   await panelTasks(page, ['done']);
   release();
@@ -449,6 +455,7 @@ for (const width of [390, 1440]) {
       await route.fulfill({ json: { result: { content: [{ text: JSON.stringify(payload) }] } } });
       return true;
     } });
+    await page.locator('[data-work-view="history"]').click();
     const card = page.locator('.completed-card').filter({ hasText: 'Synthetic release' });
     await card.waitFor();
     await card.focus();
@@ -487,6 +494,7 @@ for (const width of [390, 1440]) {
       await route.fulfill({ json: { result: { content: [{ text: JSON.stringify(payload) }] } } });
       return true;
     } });
+    await page.locator('[data-work-view="history"]').click();
     const card = page.locator('#board-blocked [data-card-id="blocked"]');
     await card.waitFor();
     await card.focus();
@@ -873,4 +881,71 @@ test('session invalidation disposes board callbacks before its document is clear
   }, workQueue);
   assert.deepEqual(result, {reads:1, text:''});
   assert.deepEqual(errors, []);
+});
+
+for (const width of [390,1440]) test(`standalone work views keep a bounded queue and restore scroll and card focus at ${width}px`,async t=>{
+  const snapshotData = {title:'Synthetic delivery',tasks:{
+    build:{title:'Build the synthetic export',status:'running',updated_at:new Date().toISOString()},
+    completed:{title:'Use the synthetic export',status:'done'},
+    blocked:{title:'Resolve the synthetic dependency',status:'blocked'},
+    ...Object.fromEntries(Array.from({length:100},(_,i)=>[`queue-${i}`,{title:`Synthetic queued outcome ${i}`,status:'queued'}])),
+  }};
+  const {page,errors}=await open(t,{width,height:900,path:'/control-room/progress/board/demo-project',snapshotData});
+  await page.locator('[data-work-view="active"]').waitFor();
+  assert.deepEqual(await page.locator('#board-stages .board-card').evaluateAll(nodes=>nodes.map(node=>node.dataset.cardId)),['build']);
+  const geometry=await page.evaluate(()=>({
+    lane:document.querySelector('#board-stages .column').getBoundingClientRect().top,
+    filters:document.querySelector('#board-filters').getBoundingClientRect().top,
+  }));
+  assert.ok(geometry.lane<900 && geometry.filters<900,'lanes and filters start in the first viewport');
+  if(width===1440) {
+    const layout=await page.evaluate(()=>({menu:document.querySelector('.work-view-menu').getBoundingClientRect().toJSON(),pipeline:document.querySelector('.pipeline-panel').getBoundingClientRect().toJSON(),directory:document.querySelector('.directory-panel').getBoundingClientRect().toJSON()}));
+    assert.ok(layout.menu.left>=layout.pipeline.right,`the desktop view menu sits to the right of work ${JSON.stringify(layout)}`);
+    assert.ok(layout.directory.right<=layout.pipeline.left,'the desktop directory sits to the left of work');
+  }
+  await page.locator('[data-work-view="completed"]').click();
+  assert.deepEqual(await page.locator('#board-stages .board-card').evaluateAll(nodes=>nodes.map(node=>node.dataset.cardId)),['completed']);
+  await page.locator('[data-work-view="attention"]').click();
+  assert.deepEqual(await page.locator('#board-stages .board-card').evaluateAll(nodes=>nodes.map(node=>node.dataset.cardId)),['blocked']);
+  await page.locator('[data-work-view="queue"]').click();
+  assert.equal(await page.locator('#board-stages .board-card').count(),20);
+  const laneWidth=await page.locator('#board-stages .column').evaluate(node=>node.getBoundingClientRect().width/node.parentElement.getBoundingClientRect().width);
+  assert.ok(laneWidth>0.8,'a single queue lane uses the available work width');
+  const toggle=page.getByRole('button',{name:'Show all queued cards'});
+  await toggle.click();
+  assert.equal(await page.locator('#board-stages .board-card').count(),100);
+  const selected=page.locator('[data-card-id="queue-75"]');
+  await selected.focus();
+  await selected.scrollIntoViewIfNeeded();
+  const previous=await page.locator('.app-layout-center').evaluate(node=>node.scrollTop);
+  assert.ok(previous>1000,'the queue is deeply scrolled');
+  await page.locator('[data-work-view="completed"]').click();
+  await page.locator('[data-work-view="queue"]').click();
+  assert.equal(await selected.evaluate(node=>node===document.activeElement),true,'return restores the selected card');
+  const restored=await page.locator('.app-layout-center').evaluate(node=>node.scrollTop);
+  assert.ok(Math.abs(restored-previous)<2,`return restores this view scroll, before ${previous}, after ${restored}`);
+  const fewer=page.getByRole('button',{name:'Show fewer queued cards'});
+  const box=await fewer.boundingBox();
+  assert.ok(box.y>=0 && box.y+box.height<900,'Show fewer stays reachable deep in a lane');
+  if(width===1440) {
+    const position=await page.locator('.column-head').evaluate(node=>({
+      top:node.getBoundingClientRect().top,
+      toolbar:document.querySelector('.app-layout-tabbar').getBoundingClientRect().bottom,
+    }));
+    assert.ok(Math.abs(position.top-position.toolbar)<2,'desktop lane header stays directly below the toolbar');
+  }
+  await fewer.click();
+  assert.equal(await page.locator('#board-stages .board-card').count(),20);
+  assert.equal(await page.getByRole('button',{name:'Show all queued cards'}).evaluate(node=>node===document.activeElement),true);
+  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
+  await mkdir('test-artifacts/progress-views',{recursive:true});
+  await page.screenshot({path:`test-artifacts/progress-views/queue-${width}.png`});
+  assert.deepEqual(errors,[]);
+});
+
+test('ordinary standalone system board exposes snapshot work views when the census read is available',async t=>{
+  const {page,errors}=await open(t,{path:'/control-room/progress/board/carr-v5'});
+  await page.locator('#board-stages [data-card-id="build"]').waitFor();
+  assert.equal(await page.locator('[data-work-view="active"]').isVisible(),true);
+  assert.deepEqual(errors,[]);
 });
