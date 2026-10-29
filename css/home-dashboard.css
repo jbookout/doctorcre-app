@@ -106,6 +106,7 @@
   .home-week-strip span { color: var(--fg-muted); font-size: var(--font-size-1); }
   .home-week { display: flex; overflow-x: auto; overscroll-behavior-x: contain; scroll-snap-type: x mandatory; gap: var(--space-3); }
   .home-day { flex: 0 0 100%; box-sizing: border-box; border-left: 0; padding: var(--space-3); }
+  .home-day > header { display: none; }
   .home-week-entry strong { font-size: var(--font-size-2); }
 }
 .home-agenda { display: grid; margin: var(--space-2) calc(var(--space-3) * -1) 0; }
