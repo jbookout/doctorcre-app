@@ -512,18 +512,17 @@ body:has(#board-stages[aria-busy="true"]) :is(#board-directory, .directory-searc
 
 .shell:has(.has-work-views) { container: progress-shell / inline-size; }
 .shell .progress-main.has-work-views { display: block; }
-.work-view-menu { display: flex; gap: var(--space-2); position: sticky; top: var(--tabbar-height, 0px); z-index: 3; overflow-x: auto; padding-block: var(--space-2); margin-bottom: var(--space-3); background: var(--ground); }
+.work-view-menu { display: flex; flex-wrap: wrap; gap: var(--space-2); padding-block: var(--space-1); margin-bottom: var(--space-2); background: var(--ground); }
 .work-view-button { flex: 0 0 auto; min-height: var(--touch); padding: var(--space-2) var(--space-3); border: var(--hairline-width) solid var(--hairline); border-radius: var(--radius-2); background: var(--surface-1); color: var(--fg-muted); font: inherit; font-size: var(--font-size-1); cursor: pointer; text-align: left; }
 .work-view-button[aria-pressed="true"] { color: var(--fg); background: var(--surface-3); border-color: var(--hairline-strong); }
 .has-work-views .columns { grid-template-columns: repeat(auto-fit, minmax(min(100%, 16rem), 1fr)); }
-.has-work-views .column-head { position: sticky; top: calc(var(--tabbar-height, 0px) + var(--touch) + 2 * var(--space-2)); z-index: 2; background: var(--surface-2); align-items: center; flex-wrap: wrap; }
+.has-work-views .column-head { position: sticky; top: var(--tabbar-height, 0px); z-index: 2; background: var(--surface-2); align-items: center; flex-wrap: wrap; }
 .lane-toggle { min-height: var(--touch); padding: var(--space-2); border: 0; border-radius: var(--radius-2); background: var(--surface-3); color: var(--fg); font: inherit; font-size: var(--font-size-1); cursor: pointer; }
 .lane-toggle:focus-visible, .work-view-button:focus-visible { outline: var(--focus-width) solid var(--focus-ring); outline-offset: 2px; }
 @container progress-shell (min-width: 760px) {
   .shell .progress-main.has-work-views { display: grid; grid-template-columns: 13rem minmax(0, 1fr) 10rem; gap: 0 var(--space-4); align-items: start; }
   .progress-main.has-work-views > .directory-panel { grid-column: 1; grid-row: 3; }
   .progress-main.has-work-views > .pipeline-panel { grid-column: 2; grid-row: 3; }
-  .progress-main.has-work-views > .work-view-menu { grid-column: 3; grid-row: 3; display: grid; top: calc(var(--tabbar-height, 0px) + var(--space-3)); overflow: visible; margin: 0; padding: 0; }
+  .progress-main.has-work-views > .work-view-menu { grid-column: 3; grid-row: 3; display: grid; position: sticky; top: calc(var(--tabbar-height, 0px) + var(--space-3)); z-index: 3; margin: 0; padding: 0; }
   .progress-main.has-work-views > :is(.intro, nav[aria-label="Breadcrumb"]) { grid-column: 1 / -1; }
-  .has-work-views .column-head { top: var(--tabbar-height, 0px); }
 }

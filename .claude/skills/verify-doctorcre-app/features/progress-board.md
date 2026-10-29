@@ -23,6 +23,11 @@ The synthetic adapters are in those existing tests. Retain their screenshots
 under `test-artifacts/progress-views` and `test-artifacts/directory` and inspect
 them before claiming visual verification.
 
+Run `npx playwright test --project=fixtures tests/fixtures/s8-density.spec.mjs`
+for all five options inside the viewport without horizontal scrolling at 390px.
+It captures every view at 1440px and 390px in both themes under
+`out/test-artifacts/s8-final/progress-view-*.png`.
+
 ## Gotchas
 
 Hierarchy, work-queue, Orchestrator and embedded boards keep their existing
