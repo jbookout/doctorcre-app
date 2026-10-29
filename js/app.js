@@ -450,7 +450,7 @@ function renderBoardOnly() {
   renderFocus(deals);
   const rows = $('#rows');
   rows.innerHTML = deals.map(rowHtml).join('');
-  $('#tableFrame').classList.toggle('has-deal-summaries', state.workspace === 'national_account');
+  $('#tableFrame').classList.toggle('has-deal-summaries', deals.length > 0 && deals.every(deal => deal.workspace_kind === 'national_account'));
   const emptySearch = Boolean(state.query && !deals.length);
   $('#stats').hidden = emptySearch;
   $('#tableFrame table').hidden = emptySearch;
