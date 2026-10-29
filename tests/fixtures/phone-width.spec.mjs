@@ -10,7 +10,6 @@ test.afterAll(async () => { await server?.stop(); });
 
 for (const { label, href } of navigationItems) for (const theme of ['light', 'dark']) {
   test(`${label} fits a phone in ${theme}`, async ({ page }) => {
-    test.fixme(label === 'Local Deals', 'Local Deals hides view controls in a horizontally scrolling toolbar.');
     await page.addInitScript(theme => localStorage.setItem('doctorcre.visual-preferences', JSON.stringify({ theme })), theme);
     await page.goto(`${server.url}${href}`);
     await expect(page.locator('main')).toBeVisible();
