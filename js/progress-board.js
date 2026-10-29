@@ -65,6 +65,7 @@ export function mountBoard(deps = {}) {
   let workView = "active";
   const workViewState = new Map(WORK_VIEWS.map(view => [view.id, { expanded: new Set(), scroll: 0, cardId: null }]));
   let workViewMenu = null;
+  let workViewResize = null;
 
   let boardState = "pending";
   let lastRead = null;
@@ -482,6 +483,14 @@ export function mountBoard(deps = {}) {
         workViewMenu.append(button);
       }
       doc.querySelector(".pipeline-panel").before(workViewMenu);
+      if (win.ResizeObserver) {
+        const menu = workViewMenu;
+        const main = doc.querySelector(".progress-main");
+        workViewResize = new win.ResizeObserver(() => {
+          main.style.setProperty("--work-view-menu-height", `${menu.getBoundingClientRect().height}px`);
+        });
+        workViewResize.observe(menu);
+      }
     }
     workViewMenu.hidden = !enabled;
     doc.querySelector(".progress-main").classList.toggle("has-work-views", enabled);
@@ -1107,6 +1116,8 @@ export function mountBoard(deps = {}) {
     hierarchyUI?.dispose();
     hierarchyUI = null;
     costs.update(null);
+    workViewResize?.disconnect();
+    workViewResize = null;
     workViewMenu?.remove();
     workViewMenu = null;
     doc.querySelector(".progress-main")?.classList.remove("has-work-views");
@@ -1277,6 +1288,7 @@ export function mountBoard(deps = {}) {
     if (disposed) return;
     disposed = true; readSeq++; boardReadController?.abort();
     orchestratorUI?.dispose(); queueUI?.dispose(); hierarchyUI?.dispose(); poller?.dispose();
+    workViewResize?.disconnect();
     timers.forEach(id => win.clearInterval(id)); clearTimer(ageTimer);
     byId("directory-search").removeEventListener("input", filterDirectory);
     doc.removeEventListener("visibilitychange", refreshAges);

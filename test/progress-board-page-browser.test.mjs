@@ -927,6 +927,10 @@ for (const width of [390,1440]) test(`standalone work views keep a bounded queue
   const fewer=page.getByRole('button',{name:'Show fewer queued cards'});
   const box=await fewer.boundingBox();
   assert.ok(box.y>=0 && box.y+box.height<900,'Show fewer stays reachable deep in a lane');
+  if(width===390) {
+    const menu=await page.getByRole('navigation',{name:'Work views',exact:true}).boundingBox();
+    assert.ok(box.y>=menu.y+menu.height,'Show fewer stays below the wrapped view selector');
+  }
   if(width===1440) {
     const position=await page.locator('.column-head').evaluate(node=>({
       top:node.getBoundingClientRect().top,
