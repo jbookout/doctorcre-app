@@ -2,7 +2,7 @@ import { visibleLeads } from './leads-model.js';
 import { localDeals, scopedDeals, validDealBoard } from './deal-review-model.js';
 import { validInvoiceTracker } from './invoice-tracker-model.js';
 import { validNetwork } from './relationship-network-model.js';
-import { addDays, criticalDateEntries, localToday, toDay } from './calendar-model.js';
+import { criticalDateEntries, localToday, toDay } from './calendar-model.js';
 import { readWithDeadline } from './auto-refresh.mjs';
 import { readHomeCallFollowups } from './home-call-tasks.js';
 
@@ -75,8 +75,7 @@ export function agendaSnapshot(board, details, { scope = 'team', today = localTo
   const priority = entry => !entry.day ? 1 : entry.day <= today ? 0 : 2;
   const order = (a, b) => priority(a) - priority(b) || (a.day || '').localeCompare(b.day || '') || a.key.localeCompare(b.key);
   entries.sort(order); briefTasks.sort(order);
-  const week = Array.from({ length: 7 }, (_, i) => ({ day: addDays(today, i), entries: entries.filter(entry => entry.day === addDays(today, i)) }));
-  return { entries, briefTasks, week, failed, undated, upcoming: entries, dueToday: entries.filter(entry => entry.day === today), overdue: entries.filter(entry => entry.day && entry.day < today) };
+  return { entries, briefTasks, failed, undated, upcoming: entries, dueToday: entries.filter(entry => entry.day === today), overdue: entries.filter(entry => entry.day && entry.day < today) };
 }
 
 // A single bounded snapshot supplies flags, dates and tasks. Slow or failed optional
