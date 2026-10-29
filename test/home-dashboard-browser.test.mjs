@@ -786,6 +786,37 @@ for (const width of [1440, 390]) for (const theme of ['light', 'dark']) test(`Up
 
 const prepCalendar = { state: 'ready', items: [{ title: 'Demo preparation entry', start: '2026-10-01T16:00:00Z', attendee_count: 2 }] };
 
+test('Meeting preparation follows the selected zone and preserves all-day source dates across DST', async t => {
+  const { page, responses } = await open(t, { calendar: prepCalendar });
+  responses.set('calendar-meeting-prep', { state: 'ready', observed_at: '2026-10-01T14:00:00Z', items: [
+    { title: 'Timed meeting', start: '2026-10-01T16:00:00Z', end: '2026-10-01T17:00:00Z', all_day: false, possible_deals: [] },
+    { title: 'Spring all-day', start: '2026-03-08T00:00:00Z', end: '2026-03-09T00:00:00Z', all_day: true, possible_deals: [] },
+    { title: 'Fall all-day', start: '2026-11-01T00:00:00Z', end: '2026-11-02T00:00:00Z', all_day: true, possible_deals: [] },
+  ] });
+  const zone = page.getByRole('combobox', { name: 'Meeting timezone', exact: true });
+  const dialog = page.getByRole('dialog', { name: 'Meeting preparation', exact: true });
+  for (const [value, time, observed] of [
+    ['America/New_York', '12:00 PM EDT', '10:00 AM EDT'],
+    ['America/Chicago', '11:00 AM CDT', '9:00 AM CDT'],
+    ['America/Denver', '10:00 AM MDT', '8:00 AM MDT'],
+    ['America/Los_Angeles', '9:00 AM PDT', '7:00 AM PDT'],
+    ['UTC', '4:00 PM UTC', '2:00 PM UTC'],
+  ]) {
+    await zone.selectOption(value);
+    await page.getByRole('button', { name: 'Prepare meetings', exact: true }).click();
+    await settles(async () => assert.match(await dialog.innerText(), /Timed meeting/));
+    assert.ok((await dialog.locator('article').filter({ hasText: 'Timed meeting' }).innerText()).includes(time));
+    assert.ok((await dialog.innerText()).includes(observed));
+    for (const [title, start, end] of [['Spring all-day', 'Mar 8', 'Mar 9'], ['Fall all-day', 'Nov 1', 'Nov 2']]) {
+      const row = await dialog.locator('article').filter({ hasText: title }).innerText();
+      assert.ok(row.includes(`${start} to ${end}`), `${value}: ${row}`);
+      assert.match(row, /All day/);
+    }
+    await dialog.getByRole('button', { name: 'Close meeting preparation', exact: true }).click();
+    await dialog.waitFor({ state: 'hidden' });
+  }
+});
+
 for (const width of [390, 1440]) for (const theme of ['light', 'dark']) test(`Meeting preparation opens possible deal context on demand at ${width}px ${theme}`, async t => {
   const { page, calls, errors, responses } = await open(t, { width, theme, calendar: { state: 'ready', items: [
     { start: '2026-10-01T16:00:00Z', title: 'Demo practice meeting', location: 'Demo office', attendee_count: 3, all_day: false },
