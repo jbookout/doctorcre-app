@@ -25,18 +25,6 @@ import { updatedLabel } from './auto-refresh.mjs';
 import { mountVisibilityPoll } from './visibility-poll.mjs';
 import { createRetainedCommands } from './retained-commands.mjs';
 
-const POLL_MS = 1400;
-/**
- * How long the board will go without ASKING the record layer again.
- *
- * Not a freshness guarantee and not a claim about the feed. The changes cursor
- * can miss an event whose commit landed out of order with its recorded time, so
- * a board that only re-reads on news can hold a wrong value indefinitely — this
- * is the ceiling on that. It is a bound on how long we go without asking, never
- * a bound on how old a value is: a slow or failed read extends staleness
- * without limit, and the badge says so.
- */
-const BOARD_REFRESH_MS = 15000;
 const state = {
   client: null, selfActor: null, deals: new Map(), accounts: [],
   // Every displayed value comes from a board snapshot this coordinator applied;
@@ -122,7 +110,7 @@ function reasonFor(deal) {
   if (deal.operating_state === 'parked') return parkingReasonLabel(deal.parking_reason);
   const days = daysFromNow(deal.next_date);
   if (deal.attention) return 'Flagged for attention';
-  if (days !== null && days < 0) return `Next date is ${Math.abs(days)} day${Math.abs(days) === 1 ? '' : 's'} overdue`;
+  if (days !== null && days < 0) return `${Math.abs(days)} day${Math.abs(days) === 1 ? '' : 's'} overdue`;
   if (!deal.next_step) return 'No next step';
   if (isStale(deal)) return deal.last_touch ? `Gone quiet ${relative(deal.last_touch)}` : 'No recent touch captured';
   if (!deal.market_agent && deal.workspace_kind === 'national_account') return 'Market agent unassigned';
@@ -212,7 +200,7 @@ function setSync(status) {
  *
  * A failed read leaves the previous values on screen and says so in the badge —
  * except on the very first load, where there is nothing to leave: an empty
- * board would read as "no work records", which is a different claim from "the
+ * board would read as "no deals", which is a different claim from "the
  * board could not be read", so that one is raised.
  */
 async function loadHome() {
@@ -366,8 +354,8 @@ function renderChrome() {
   // description sentence under its title (2026-09-16 review).
   $('#workspaceTitle').textContent = state.query ? 'Search results' : state.workspace === 'team' ? 'Deals'
     : selected?.account_name || 'National Accounts';
-  $('#workspaceSubtitle').textContent = state.query ? 'Searching work records across the territory and every national account.' : '';
-  const addLabel = state.workspace === 'national_account' ? (selected ? 'Add market deal' : 'Add national account') : 'Add work record';
+  $('#workspaceSubtitle').textContent = state.query ? 'Searching deals across the territory and every national account.' : '';
+  const addLabel = state.workspace === 'national_account' ? (selected ? 'Add market deal' : 'Add national account') : 'Add deal';
   $('#stickyAddButton').textContent = `+ ${addLabel}`;
   $('#stickyAddButton').setAttribute('aria-label', addLabel);
   $('#ownerButton').hidden = !selected;
@@ -416,8 +404,8 @@ function pendingWritesNode() {
   node.id = 'pendingWrites';
   node.className = 'parking-banner';
   // A status region, not an alert: it is a standing list, and it is only rewritten
-  // when the set of unconfirmed operations actually changes — so a poll every
-  // 1.4 seconds neither re-announces it nor destroys the button under a finger.
+  // when the set of unconfirmed operations actually changes — so a background
+  // poll neither re-announces it nor destroys the button under a finger.
   node.setAttribute('role', 'status');
   node.setAttribute('aria-label', 'Unconfirmed changes');
   main.insertAdjacentElement('afterbegin', node);
@@ -467,8 +455,8 @@ function renderBoardOnly() {
   $('.sticky-table-header').hidden = emptySearch;
   $('#emptyState').hidden = deals.length > 0;
   $('#emptyState').innerHTML = emptySearch
-    ? `<strong>No work records match “${esc(state.query)}”</strong><p>Try another name, market, or next step.</p><button type="button" class="secondary" data-clear-search>Clear search</button>`
-    : state.filter === 'parked' ? 'No parked work records.' : 'No active work matches this filter.';
+    ? `<strong>No deals match “${esc(state.query)}”</strong><p>Try another name, market, or next step.</p><button type="button" class="secondary" data-clear-search>Clear search</button>`
+    : state.filter === 'parked' ? 'No parked deals.' : 'No active work matches this filter.';
   applyPresence();
 }
 
@@ -482,7 +470,7 @@ function renderStats(deals) {
       <button type="button" class="next-account-action" data-open-deal="${esc(next.id)}">
         <strong>${esc(next.next_step || 'Set the next step')}</strong>
         <span>${esc(next.name)} · ${esc(dateLabel(next.next_date))}</span>
-        <span class="next-action-open">Open work record →</span>
+        <span class="next-action-open">Open deal →</span>
       </button>
       <p class="account-urgency">${deals.length} active work · <span${overdue.length ? ' class="is-alert"' : ''}>${overdue.length} overdue dates</span> · ${deals.filter((deal) => deal.phase === 'Closing').length} at closing</p>` : '';
     return;
@@ -563,7 +551,7 @@ function renderCaptureStatus() {
 
 /**
  * Deal Room Call Mode lives in ./call-mode.js (restored per decision 7dc47eea):
- * record Joe and Dell's pipeline call through the local Quill companion, then
+ * record Joe and Dell's pipeline call through the local call recorder, then
  * review a post-call pack in which every item waits for a partner's approval.
  * This shell only builds the controller and forwards clicks to it.
  */
@@ -982,8 +970,8 @@ async function patchOperatingState(dealId, value, options = {}) {
   if ($('#dealDialog').open) $('#dealDialog').close();
   render();
   showToast(value.state === 'parked'
-    ? `${deal?.name || 'Work record'} parked`
-    : `${deal?.name || 'Work record'} restored to active work`);
+    ? `${deal?.name || 'Deal'} parked`
+    : `${deal?.name || 'Deal'} restored to active work`);
   return result;
 }
 
@@ -1309,9 +1297,9 @@ function marketAgentForm(dealId) {
 
 function addTeamDealForm() {
   const pending = state.pendingDealCreation?.request;
-  openForm({ title:'Add work record', submit:pending ? 'Check creation outcome' : 'Create work record', body:pending ? `
-    <div class="field"><b>${esc(pending.name)}</b><p>Client: ${esc(pending.client)}</p><p>${esc(pending.deal_type || 'other')} · ${esc(pending.phase || 'On Deck')} · ${esc(pending.market || '')} · ${esc(pending.segment || '')}</p><small>Check creation outcome continues this retained work record.</small></div>` : `
-    <div class="field"><label for="clientRef">Existing client</label><input id="clientRef" name="client" required placeholder="C-127 or exact client name"><small>A work record always belongs to a client. This prevents free-floating or duplicate records.</small></div>
+  openForm({ title:'Add deal', submit:pending ? 'Check creation outcome' : 'Create deal', body:pending ? `
+    <div class="field"><b>${esc(pending.name)}</b><p>Client: ${esc(pending.client)}</p><p>${esc(pending.deal_type || 'other')} · ${esc(pending.phase || 'On Deck')} · ${esc(pending.market || '')} · ${esc(pending.segment || '')}</p><small>Check creation outcome continues this saved deal.</small></div>` : `
+    <div class="field"><label for="clientRef">Existing client</label><input id="clientRef" name="client" required placeholder="C-127 or exact client name"><small>A deal always belongs to a client. This prevents free-floating or duplicate records.</small></div>
     <div class="field"><label for="dealName">Record name</label><input id="dealName" name="name" required></div>
     <div class="field-row"><div class="field"><label for="dealType">Type</label><select id="dealType" name="deal_type"><option value="startup">Startup</option><option value="relocation">Relocation</option><option value="additional_office">Additional office</option><option value="renewal">Renewal</option><option value="expansion">Expansion</option><option value="purchase">Purchase</option><option value="other">Other</option></select></div>
     <div class="field"><label for="dealPhase">Phase</label><select id="dealPhase" name="phase">${phaseOptions('On Deck')}</select></div></div>
@@ -1319,7 +1307,7 @@ function addTeamDealForm() {
     onSubmit:async (data) => {
       const args = Object.fromEntries(data.entries());
       const signature = JSON.stringify(args);
-      if (!pending && state.pendingDealCreation && state.pendingDealCreation.signature !== signature) throw new Error('Reopen Add work record to check the retained creation before changing its fields.');
+      if (!pending && state.pendingDealCreation && state.pendingDealCreation.signature !== signature) throw new Error('Reopen Add deal to check the retained creation before changing its fields.');
       state.pendingDealCreation ||= { signature, request: { ...args, lane:'territory', idempotency_key:uuidv4() } };
       const operation = state.pendingDealCreation;
       try { await state.client.createDeal(operation.request); }
@@ -1327,7 +1315,7 @@ function addTeamDealForm() {
         if (error.creationRefused && state.pendingDealCreation === operation) state.pendingDealCreation = null;
         throw error;
       }
-      await loadHome(); showToast('Work record created in Deals');
+      await loadHome(); showToast('Deal created');
       state.pendingDealCreation = null;
     } });
 }
@@ -1624,8 +1612,9 @@ async function boot() {
   const linkedDeal = params.get('deal');
   // A tick that arrives while the last poll is still open is dropped by the
   // coordinator rather than run alongside it, so a slow answer cannot land
-  // after a newer one. Both clocks sleep while the tab is hidden or idle.
-  mountVisibilityPoll({ intervalMs: POLL_MS, poll: () => {
+  // after a newer one. Both clocks run once a minute (MIN_POLL_MS) and sleep
+  // while the tab is hidden or idle.
+  mountVisibilityPoll({ poll: () => {
     pollOnce().catch((error) => console.error('Deal Room poll failed to render', error));
   } });
   // The backstop for what the feed cannot promise. A change whose commit landed
@@ -1633,8 +1622,9 @@ async function boot() {
   // that only re-reads on news would then hold that wrong value for as long as
   // the page stayed open. This asks anyway. It coalesces with the feed-driven
   // and post-write refreshes through the same single-read queue, so it adds one
-  // read per interval at most and none while another is already running.
-  mountVisibilityPoll({ intervalMs: BOARD_REFRESH_MS, poll: () => {
+  // read per interval at most and none while another is already running. It
+  // bounds how long the board goes without asking, never how old a value is.
+  mountVisibilityPoll({ poll: () => {
     state.boardSync.requestRefresh('periodic');
   } });
   if (linkedDeal && state.deals.has(linkedDeal)) {

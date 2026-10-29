@@ -1,3 +1,5 @@
+import { renderDealAlert, renderDealItems } from './deal-items.js';
+import { mountDealItemSheet } from './deal-item-sheet.js';
 import { OWNER_FILTERS } from './owner-filters.js';
 import { engagementWriterFor } from './prospect-engagement.mjs';
 import { showToast } from './toast.js';
@@ -8,7 +10,6 @@ import { createCommandDock } from './command-dock.js';
 import { readWithDeadline } from './auto-refresh.mjs';
 import { preserveBoardFocus } from './board-focus.mjs';
 import { performCommand, pendingCommand } from './command-feedback.mjs';
-import { createFixtureClient } from './fixture-client.js';
 import { createLiveClient } from './live-client.js';
 import { mountEvidence, loadEvidence, renderEvidence } from './correspondence.js';
 import { deploymentIdentity, resolveDealroomBoot } from './boot-mode.js';
@@ -30,15 +31,13 @@ import {
   columnLabel, completionPlan, contextDrawerSections, groupByColumn, keyboardTarget,
   loadDealContext, moveIntent, moveSummary, moveTitle, noteText, dealName,
 } from './pipeline-model.js';
-import { isClosedDeal, localDeals, needsAttention } from './deal-review-model.js';
+import { isClosedDeal, localDeals, needsAttention, overdueLabel, overdueSince } from './deal-review-model.js';
 import { lostDeals, closedDeals, urgencyOrder, concise, automaticMove, PHASE_TRIGGERS } from './local-deals-model.js';
 import { renderDealTimeline, renderDealUpdates } from './deal-timeline.js';
 import { renderDealChecklist } from './deal-checklist.js';
 import { uuidv4 } from './uuid.js';
 import { mountVisibilityPoll } from './visibility-poll.mjs';
 
-const POLL_MS = 1400;
-const BOARD_REFRESH_MS = 15000;
 
 const $ = (id) => document.getElementById(id);
 const esc = escapeText;
@@ -99,27 +98,24 @@ function autoHtml(deal) {
   return move ? `<div class="auto-move"><span>${esc(move.text.slice(0, move.text.lastIndexOf(' ')))}</span> <time>${esc(move.text.slice(move.text.lastIndexOf(' ') + 1))}</time></div>` : '';
 }
 const dealTitle = (deal) => dealName(deal.name);
-function nextStepHtml(deal) {
-  const text = noteText(deal.next_step);
-  if (!text.trim()) return '<p class="next-line">Next step missing</p>';
-  return `<p class="next-line" title="${esc(text)}">${esc(text)}</p>`;
-}
+const phoneBoard = globalThis.matchMedia?.('(max-width:480px)');
 function cardHtml(deal) {
-  const attention = needsAttention(deal);
+  const today = todayIso(), overdue = overdueLabel(overdueSince(deal, today), today);
+  const attention = Boolean(overdue);
   const pending = pendingCommand(state.fieldWrites, cellKey(deal.id, 'phase'));
   return `<article class="kanban-card" data-id="${esc(deal.id)}" data-attention="${attention}" data-phase="${esc(deal.phase)}" draggable="true" tabindex="0"${pending ? ' data-pending="true"' : ''}${state.lifted === deal.id ? ' data-lifted="true"' : ''} aria-label="${esc(dealTitle(deal))}, ${esc(columnLabel(deal.phase))}">
-    <h4><button class="card-open" type="button" data-open="${esc(deal.id)}">${esc(dealTitle(deal))}</button></h4>
-    <div class="work-meta"><span class="owner">${esc(actorName(deal.owner))}</span>${attention ? '<span class="attention-flag"><span aria-hidden="true">◆</span> Overdue</span>' : ''}</div>
-    ${nextStepHtml(deal)}
+    <div class="work-meta"><span class="owner">${esc(actorName(deal.owner))}</span>${attention ? `<span class="attention-flag"><span aria-hidden="true">◆</span> ${overdue}</span>` : ''}</div>
+    <div class="deal-alert">${renderDealAlert(deal,{today,heading:'h4',buttons:true})}</div>
     ${renderDealVendors(deal.vendors)}
     ${renderClientPortalLink(deal.client_portal_url)}
     ${autoHtml(deal)}
   </article>`;
 }
 function rowHtml(deal) {
+  const nextStep = noteText(deal.next_step);
   return `<article class="kanban-card deal-row" data-id="${esc(deal.id)}" tabindex="0" data-attention="${needsAttention(deal)}">
-    <h4>${esc(dealTitle(deal))}</h4><span class="deal-stage">${esc(columnLabel(deal.phase))}</span>
-    ${nextStepHtml(deal)}<span class="owner">${esc(actorName(deal.owner))}</span>${renderDealVendors(deal.vendors)}${autoHtml(deal)}</article>`;
+    <h4><button class="card-open" type="button" data-open="${esc(deal.id)}">${esc(dealTitle(deal))}</button></h4><span class="deal-stage">${esc(columnLabel(deal.phase))}</span>
+    ${nextStep.trim() ? `<p class="next-line" title="${esc(nextStep)}">${esc(nextStep)}</p>` : '<p class="next-line">Next step missing</p>'}<span class="owner">${esc(actorName(deal.owner))}</span>${renderDealVendors(deal.vendors)}${autoHtml(deal)}</article>`;
 }
 function parkedHtml(deal) {
   return `<article class="kanban-card parked-card" data-id="${esc(deal.id)}" tabindex="0"><h4>${esc(dealTitle(deal))}</h4><p class="next-line">${esc(deal.parking_note || deal.parking_reason?.replaceAll('_',' ') || 'Parked')}</p>${renderDealVendors(deal.vendors)}<button class="btn btn-quiet" type="button" data-revive="${esc(deal.id)}">Revive</button></article>`;
@@ -226,8 +222,10 @@ function renderBoard() {
   }
   publishDocRead('getBoard', { deals: rows });
   const active = rows.filter(d => d.operating_state !== 'parked');
-  const prospects = rows.filter(d => columnByValue(d.phase)?.slug === 'pending');
-  const parked = rows.filter(d => d.operating_state === 'parked' && columnByValue(d.phase)?.slug !== 'pending');
+  // A phone shows only work in motion; every parked deal folds into the Parked lane.
+  const foldParked = Boolean(phoneBoard?.matches);
+  const prospects = rows.filter(d => columnByValue(d.phase)?.slug === 'pending' && (!foldParked || d.operating_state !== 'parked'));
+  const parked = rows.filter(d => d.operating_state === 'parked' && (foldParked || columnByValue(d.phase)?.slug !== 'pending'));
   renderBoardMessage();
   const grouped = groupByColumn(active);
   state.unplaced = grouped.unplaced.length;
@@ -436,12 +434,14 @@ async function sendFieldWrite(dealId, field, value, extra = null) {
 const FOLLOW_UP_SENDERS = {
   'resolve-conflict': request => state.client.resolveConflict(request),
   'add-deal-note': (request) => state.client.addDealNote(request),
-  'set-next-step': (request) => state.client.setNextStep(request),
+  'instruct-deal-item': request => state.client.instructDealItem(request),
+  'complete-deal-item': request => state.client.completeDealItem(request),
+  'record-deal-item': (request) => state.client.recordDealItem(request),
   'add-critical-date': (request) => state.client.addCriticalDate(request),
   'update-deal': (request) => state.client.updateDeal(request),
   'register-client-portal': (request) => state.client.registerClientPortal(request),
 };
-const nextStepKey = deal => `next-step:${deal}`;
+const newItemKey = deal => `new-item:${deal}`;
 
 async function runOutcomeWrite(operationKey, step, intent) {
   operations.set(operationKey, { kind: 'outcome-read', step, intent, summary: step.summary });
@@ -483,34 +483,15 @@ async function runOutcomeWrite(operationKey, step, intent) {
 
 /** One follow-up, its own key, its own receipt. A failure never un-moves a card. */
 async function runFollowUp(operationKey, step) {
+  // One unresolved item creation per deal retains its request across moves.
+  if (step.verb === 'record-deal-item') operationKey = newItemKey(step.args.deal);
   const isUpdate = step.verb === 'add-deal-note' && operationKey.startsWith('deal-update:');
   if (isUpdate && operationKey !== updateKey(step.args.deal)) return {status:'blocked'};
-  if (step.verb === 'set-next-step') operationKey = nextStepKey(step.args.deal);
+
   const send = FOLLOW_UP_SENDERS[step.verb];
   if (!send) return null;
   const pending = pendingCommand(commandState, operationKey);
-  let args = step.args;
-  if (step.verb === 'set-next-step') {
-    if (pending) args = { ...args, base_version: pending.request.base_version };
-    else {
-      operations.set(operationKey, { kind: 'follow-up-read', step, summary: step.summary });
-      let current;
-      try { current = (await state.client.getDeal(args.deal))?.deal; }
-      catch { /* A missing current version cannot authorize a replacement. */ }
-      if (current?.id !== args.deal || !Number.isSafeInteger(current.version) || current.version < 1) {
-        dock.record(operationKey, { summary: step.summary, status: 'failed', retry: true, undo: false,
-          reason: 'The move was recorded, but the next step was not sent. Retry reading the current record before saving it.' });
-        return null;
-      }
-      const reviewed = step.reviewed || state.deals.get(args.deal);
-      if (!reviewed || noteText(reviewed.next_step) !== noteText(current.next_step) || (reviewed.next_date || null) !== (current.next_date || null)) {
-        dock.record(operationKey, { summary: step.summary, status: 'conflict', retry: false, undo: false,
-          reason: `The next step changed. Current: ${noteText(current.next_step) || 'None'} (${current.next_date || 'no date'}). Review the current record before replacing it.` });
-        return null;
-      }
-      args = { ...args, base_version: current.version };
-    }
-  }
+  const args = step.args;
   if (!pending) operations.set(operationKey, { kind: 'command', verb: step.verb, args, send, summary: step.summary });
   dock.record(operationKey, { summary: step.summary, status: 'sending', undo: false });
   const updateActor = isUpdate ? state.selfActor : null;
@@ -554,10 +535,6 @@ async function runMove(intent, form) {
   if (plan.errors.length) return { ok: false, errors: plan.errors };
 
   const [phaseStep, ...followUps] = plan.steps;
-  for (const step of followUps) if (step.verb === 'set-next-step') {
-    const reviewed = state.deals.get(intent.deal);
-    step.reviewed = { next_step: reviewed?.next_step, next_date: reviewed?.next_date };
-  }
   const cell = cellKey(intent.deal, 'phase');
   if (!pendingCommand(state.fieldWrites, cell)) {
     operations.set(cell, { kind: 'field', deal: intent.deal, value: phaseStep.args.value,
@@ -927,14 +904,17 @@ async function copyRequirementDraft() {
 }
 function detailHtml(detail) {
   const d = detail.deal;
+  const nextStep = noteText(d.next_step);
+  const items = detail.items || d.items || [];
+  const showNextStep = nextStep && !items.some(item => item.status === 'open' && item.title === nextStep);
   const prospect = state.deals.get(d.id);
   const pendingProspect = engagementWriterFor(state.client).get(prospect?.client_id, state.selfActor);
-  const nextStep = noteText(d.next_step).trim();
   const parked = d.operating_state === 'parked';
   const controlsAvailable = state.deals.has(d.id) && !isClosedDeal(d);
   return `<div class="deal-freshness"><time id="detailUpdated" title="Last updated"></time><button class="btn icon-btn" type="button" data-refresh-detail aria-label="Refresh deal" title="Refresh">↻</button></div><p id="detailReadStatus" role="status"></p>
     <section class="deal-opening-snapshot" data-detail-read="snapshot" aria-label="Deal snapshot">
-      ${nextStep ? `<p class="deal-current-action"><span>${d.next_date && d.next_date < todayIso() ? 'Overdue action' : 'Next action'}</span><strong>${esc(nextStep)}</strong>${d.next_date ? `<span>Due <time datetime="${esc(d.next_date)}">${esc(dateWords(d.next_date))}</time></span>` : ''}</p>` : !parked && !isClosedDeal(d) ? nextStepHtml(d) : ''}
+      <div class="deal-alert">${renderDealItems({...d,items:detail.items || d.items},{today:todayIso(),buttons:true})}</div>
+      ${showNextStep ? `<p class="deal-current-action"><span>${d.next_date && d.next_date < todayIso() ? 'Overdue action' : 'Next action'}</span>: <strong>${esc(nextStep)}</strong>${d.next_date ? ` · <span>Due <time datetime="${esc(d.next_date)}">${esc(dateWords(d.next_date))}</time></span>` : ''}</p>` : ''}
       <dl class="deal-snapshot-facts">${d.workspace_kind === 'national_account' || d.account_client_id ? `<div><dt>Market agent</dt><dd>${esc(d.market_agent || 'Unassigned')}</dd></div>` : ''}${d.client_name ? `<div><dt>Client</dt><dd>${esc(d.client_name)}</dd></div>` : ''}${d.type ? `<div><dt>Type</dt><dd>${esc(d.type)}</dd></div>` : ''}${d.outcome ? `<div><dt>Outcome</dt><dd>${esc(d.outcome[0].toUpperCase()+d.outcome.slice(1))}</dd></div>` : ''}</dl>
     </section>
     <div data-detail-read="checklist">${renderDealChecklist(detail.checklist)}</div>
@@ -1302,6 +1282,8 @@ function wire() {
   });
 
   document.addEventListener('click', async (event) => {
+    const item = event.target.closest('[data-deal-item]');
+    if (item) { itemSheet.open(item.dataset.itemDeal,item.dataset.dealItem,item); return; }
     const revive = event.target.closest('button[data-revive]');
     if (revive) { setOperatingState(revive.dataset.revive, {state:'active'}); return; }
     const open = event.target.closest('button[data-open]');
@@ -1392,6 +1374,7 @@ function wire() {
   $('closedSearch').addEventListener('input', renderClosedDeals);
   $('boardView').addEventListener('click', () => changeView('board'));
   $('listView').addEventListener('click', () => changeView('list'));
+  phoneBoard?.addEventListener('change', renderBoard);
   $('parkedToggle').addEventListener('click', () => { state.parkedOpen = !state.parkedOpen; $('parkedToggle').setAttribute('aria-pressed',String(state.parkedOpen)); renderBoard(); });
   $('kanban').addEventListener('toggle', e => { if(e.target.classList.contains('parked-lane')) { state.parkedOpen=e.target.open; $('parkedToggle').setAttribute('aria-pressed',String(state.parkedOpen)); } },true);
   $('panelBody').addEventListener('toggle', event => {
@@ -1483,14 +1466,16 @@ function mountDock() {
 }
 
 
+let itemSheet;
 async function boot() {
   mountPrefs();
 
   mountDock();
   wire();
   const resolved = resolveDealroomBoot(globalThis.location || { hostname: '', search: '' });
-  state.client = resolved.mode === 'live' ? createLiveClient() : await createFixtureClient(resolved.options);
+  state.client = resolved.mode === 'live' ? createLiveClient() : await (await import("./fixture-client.js")).createFixtureClient(resolved.options);
   mountNotificationBadge(state.client);
+  itemSheet = mountDealItemSheet({document,today:todayIso,read:readDealDetail,send:runFollowUp,pending:key => pendingCommand(commandState,key),refresh:() => {state.boardSync.requestRefresh('deal-item');refreshPanel();}});
   state.mode = state.client.mode;
   const identity = deploymentIdentity(state.mode);
   $('deploymentBadge').textContent = identity.label;
@@ -1508,11 +1493,13 @@ async function boot() {
   $('lostView').setAttribute('aria-pressed',String(state.view === 'lost'));
   $('closedView').setAttribute('aria-pressed',String(state.view === 'closed'));
   const linkedDeal = incomingScope.get('deal');
-  if (linkedDeal) void openPanel(linkedDeal);
+  if (linkedDeal && incomingScope.get('item')) void itemSheet.open(linkedDeal,incomingScope.get('item'));
+  else if (linkedDeal) void openPanel(linkedDeal);
   void loadBoard();
-  mountVisibilityPoll({ intervalMs: BOARD_REFRESH_MS, poll: refreshPanel });
-  mountVisibilityPoll({ intervalMs: POLL_MS, poll: () => { pollOnce().catch(() => { /* the badge already says the feed failed */ }); } });
-  mountVisibilityPoll({ intervalMs: BOARD_REFRESH_MS, poll: () => { state.boardSync.requestRefresh('periodic'); } });
+  mountVisibilityPoll({ poll: refreshPanel });
+  mountVisibilityPoll({ poll: () => { pollOnce().catch(() => { /* the badge already says the feed failed */ }); } });
+  mountVisibilityPoll({ poll: () => { state.boardSync.requestRefresh('periodic'); } });
+
 
 }
 

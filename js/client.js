@@ -106,6 +106,7 @@
  * @property {(args:{deal:string, field:string, value:*, base_event_id:string|null, idempotency_key:string}) => Promise<WriteResult>} patchDealField
  * @property {(args:{conflict_id:string, winner:'a'|'b', idempotency_key:string}) => Promise<WriteResult>} resolveConflict
  * @property {(args:{deal:string, text:string, idempotency_key:string}) => Promise<WriteResult>} addDealNote
+ * @property {(args:{ref:string, kind:'meeting', summary:string, occurred_at:string, idempotency_key:string}) => Promise<{ok:true, activity_id:string}>} [logActivity] a partner-confirmed touch on a deal
  * @property {(args:{deal:string, text:string, next_date?:string|null, idempotency_key:string}) => Promise<WriteResult>} setNextStep
  * @property {(args:{name:string, client?:string, deal_type?:string, phase?:string, owner?:'joe'|'dell', notes?:string, idempotency_key:string}) => Promise<WriteResult>} createDeal
  * @property {() => Promise<{proposals:ConfirmProposal[]}>} [getPendingConfirms]
@@ -121,6 +122,8 @@
  * @property {(args:{deal:string,activity_id:string,evidence_quote:string}) => Promise<Object>} previewEmailDealProgress fresh phase move and digest
  * @property {(args:{deal:string,activity_id:string,evidence_quote:string,proposal_digest:string,idempotency_key:string}) => Promise<Object>} confirmEmailDealProgress Joe-only, exact displayed preview
  * @property {(args:{proposal_id:string,base_version:number,reason:string,idempotency_key:string}) => Promise<Object>} dismissEmailProposal Joe or Dell, observed version and reason
+ * @property {() => Promise<{filings:{event_id:string,deal:string,activity_id:string,recorded_at:string,summary:string,subject:string|null,sender_name:string|null,occurred_at:string,activity_version:number|null}[]}>} [listEmailThreadFilings] automatic email filings the partner can undo
+ * @property {(args:{event_id:string,idempotency_key:string}) => Promise<{ok:true,activity_id:string}>} [undoEmailThreadFiling] undo one automatic filing
  * @property {() => Promise<{calls:Object[]}>} [readCallOutcomes] unreviewed pipeline-call outcomes: applied changes with evidence and open cards
  * @property {(args:{candidate_id:string, base_version:number}) => Promise<Object>} [undoCallChange] revert one automatically applied change
  * @property {(args:{session_id:string}) => Promise<Object>} [reviewCallOutcome] take one call's outcome off Home

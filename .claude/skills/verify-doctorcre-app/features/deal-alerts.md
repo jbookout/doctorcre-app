@@ -1,23 +1,27 @@
 # Deal alerts
 
-Home flags overdue local next steps and links each flag to its deal room. The Board marks the same overdue deals.
+Home selects overdue local deals from Calendar & tasks. Home and Board render stored action items with short headings and numbered titles. Board item deadlines can differ from Home's agenda membership.
 
 ## Sub-features
 
-`alerts-home-card`, `alerts-deal-card`, `alerts-deal-open`. Numbered alert items and item-detail sheets are not implemented.
+`alerts-home-card`, `alerts-deal-card`, `alerts-deal-open`, `alerts-item-open`, `alerts-item-instruction`, and `alerts-item-complete`.
 
 ## How to get to it (user POV)
 
-Open Home and inspect deal attention. Choose a flagged deal heading, then find the same deal on Local Deals.
+Open Home or Local Deals. Select a deal heading to open its room. Select an item title to open that item's sheet. Tell Dr. CRE records an instruction; Mark done completes only the selected item.
 
 ## Driving it with Playwright
 
-Existing coverage: `test/deal-attention-browser.test.mjs` compares Home and Board overdue counts in team and personal scopes. `test/home-dashboard-browser.test.mjs` checks the exact deal destination.
+Use `test/deal-items-browser.test.mjs`, `test/deal-item-sheet.test.mjs`, `test/deal-items-client.test.mjs`, `test/deal-attention-browser.test.mjs`, and `test/home-dashboard-browser.test.mjs`.
 
-- Require `#dealFlags a.home-flag` with a `strong` deal heading and the current next-step or phase text. Save its title and `href`.
-- Click the flag and require its exact `/deals?deal=...` destination and matching room title.
-- Return to Board, find the same `.kanban-card` by its visible heading and require its `.attention-flag` overdue badge. Compare within the same owner scope.
+- Require `#dealFlags .home-flag h3 a`, save its href, and open the exact deal room. Compare the selected deal ID with the loaded record.
+- On Board, choose `[data-deal-item]`. Require the matching item heading, dated bullets, Tell Dr. CRE input, and Mark done control in `.deal-item-sheet`.
+- Save an instruction and require its confirmed receipt. A lost response keeps the original request and offers Check outcome. It must not claim the requested work executed.
+- Complete one item, then require its siblings to remain. Closing the sheet returns focus to the item trigger or its deal heading.
+- Run at phone and desktop widths. Existing tests retain synthetic card and sheet captures under `out/test-artifacts/deal-items`.
 
 ## Gotchas
 
-Current flags render next-step prose, not `Still needed:` lists. Do not assert a numbered checklist, item dialog or Tell Dr. CRE field that the app does not provide. An empty attention region cannot prove flag opening; use the existing dated synthetic test. Do not invent browser records to make a missing feature pass.
+Stored item UUIDs support item commands. The separate phase checklist derives milestones and has no item-completion command. Keep both views distinct.
+
+An empty structured list says No action items recorded. It does not fall back to legacy paragraphs or imply that no work remains. Empty Home attention cannot prove item opening. Use the existing dated synthetic fixtures. Local writes do not prove staging authentication, producer deployment, production backfill, or remote persistence.

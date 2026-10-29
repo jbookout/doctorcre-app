@@ -448,7 +448,7 @@ for (const width of [390, 1440]) {
     tasks = change === 'updated' ? { released: { ...released, summary: 'Updated summary', work_request: 'WR-102' }, keep: tasks.keep }
       : change === 'removed' ? { keep: tasks.keep } : {};
     version++;
-    await page.clock.runFor(15000);
+    await page.clock.runFor(60_000);
     await page.waitForFunction(() => document.querySelector('#board-meta').textContent.includes('Version 2'));
     if (change === 'updated') {
       assert.match(await card.textContent(), /Updated summary/);
@@ -491,7 +491,7 @@ for (const width of [390, 1440]) {
     if (change !== 'unchanged') version++;
     const read = page.waitForResponse(response => response.url().endsWith('/mcp')
       && response.request().postDataJSON().params.name === 'read-progress-board');
-    await page.clock.runFor(15000);
+    await page.clock.runFor(60_000);
     await (await read).finished();
     await page.waitForLoadState('networkidle');
     if (change === 'unchanged' || change === 'updated') {
@@ -596,22 +596,26 @@ test('every queued job is reachable: 250 review jobs render with no cap and the 
   assert.deepEqual(errors, []);
 });
 
-test('the system board reads the queue once per 30 seconds, never while hidden, and stops after 5 idle minutes', async t => {
-  const { page, calls, errors } = await open(t, { width: 1280, path: systemPath });
+test('the system board reads the queue once per 60 seconds, never while hidden, and stops after 5 idle minutes', async t => {
+  const { page, calls, errors, setQueue } = await open(t, { width: 1280, path: systemPath });
   await page.locator('[data-card-id="WR14.S1.J1"]').waitFor();
   await page.waitForLoadState('networkidle');
   const count = name => calls.filter(call => call.name === name).length;
   const reads = () => count('work-queue');
   assert.equal(reads(), 1, 'one read on open');
   const snapshot = count('read-progress-board'), census = count('unfinished-work');
+  await page.clock.pauseAt(await page.evaluate(() => Date.now()));
+  setQueue(queueRead([queueJob('WR14.S1.J1', 'review', { card_title: 'First refresh completed' })]));
   await page.mouse.move(10, 10);
-  await page.clock.runFor(29_000);
+  await page.clock.runFor(59_000);
   assert.equal(reads(), 1, 'no read before the interval');
   await page.clock.runFor(1_500);
-  await page.waitForFunction(() => true);
+  await page.getByText('First refresh completed', { exact: true }).waitFor();
   assert.equal(reads(), 2, 'one read per interval');
+  setQueue(queueRead([queueJob('WR14.S1.J1', 'review', { card_title: 'Second refresh completed' })]));
   await page.mouse.move(20, 20);
-  await page.clock.runFor(30_500);
+  await page.clock.runFor(60_500);
+  await page.getByText('Second refresh completed', { exact: true }).waitFor();
   assert.equal(reads(), 3, 'never more than one read per interval');
   await page.evaluate(() => {
     Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'hidden' });
@@ -619,16 +623,17 @@ test('the system board reads the queue once per 30 seconds, never while hidden, 
   });
   await page.clock.runFor(5 * 60_000);
   assert.equal(reads(), 3, 'a hidden tab makes no reads');
+  setQueue(queueRead([queueJob('WR14.S1.J1', 'review', { card_title: 'Visible refresh completed' })]));
   await page.evaluate(() => {
     Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'visible' });
     document.dispatchEvent(new Event('visibilitychange'));
   });
-  await page.waitForFunction(() => true);
+  await page.getByText('Visible refresh completed', { exact: true }).waitFor();
   await page.clock.runFor(500);
   assert.equal(reads(), 4, 'returning to the tab reads once at once');
   await page.clock.runFor(10 * 60_000);
   const idle = reads();
-  assert.ok(idle <= 4 + Math.ceil(5 * 60_000 / 30_000), `reads stop at the 5-minute idle cutoff (${idle})`);
+  assert.ok(idle <= 4 + Math.ceil(5 * 60_000 / 60_000), `reads stop at the 5-minute idle cutoff (${idle})`);
   await page.clock.runFor(30 * 60_000);
   assert.equal(reads(), idle, 'an idle visible tab makes no reads');
   assert.equal(count('read-progress-board'), snapshot, 'the snapshot is never polled on the queue board');
@@ -656,7 +661,7 @@ for (const status of [401, 403]) test(`denied hierarchy read ${status} stays emp
   await page.locator('[data-hierarchy-id="WR14"] > button').click();
   assert.equal(await cards.count(), 2);
   denied = true;
-  await page.clock.runFor(15000);
+  await page.clock.runFor(60_000);
   await page.waitForURL('**/public-shell/session-ended.html*');
   assert.equal(await cards.count(), 0);
   await page.goBack();
@@ -683,7 +688,7 @@ for (const status of [401, 403]) test(`denied work-queue read ${status} clears t
   const original = page.url();
   denied = true;
   await page.mouse.move(10, 10);
-  await page.clock.runFor(31_000);
+  await page.clock.runFor(61_000);
   await page.waitForURL('**/public-shell/session-ended.html*', { waitUntil: 'commit' });
   assert.equal(await cards.count(), 0);
   await page.goBack();
@@ -760,21 +765,21 @@ for (const width of [390,1280]) for (const theme of ['light','dark'])
     });
     for(const [index,state] of [[1,'working'],[2,'review'],[3,'fixing'],[4,'merging'],[5,'merged'],[6,'live']]) {
       setSnapshot(orchestratorSequence[index].snapshot.snapshot_json);
-      await page.clock.runFor(2100);
+      await page.clock.runFor(60_100);
       await page.locator(`[data-orchestrator-stage="${state}"] [data-orchestrator-card="queue:search"]`).waitFor();
       assert.equal(await page.evaluate(()=>document.querySelector('[data-orchestrator-card="queue:search"]')===window.__orchestratorCard),true);
       assert.equal(await page.evaluate(()=>document.activeElement===window.__orchestratorLink),true);
       assert.equal(await page.locator('[data-orchestrator-card="queue:search"] details').getAttribute('open'),'');
     }
     setSnapshot(orchestratorSequence[7].snapshot.snapshot_json);
-    await page.clock.runFor(2100);
+    await page.clock.runFor(60_100);
     await page.locator('[data-orchestrator-status]').filter({hasText:'Queue observation unavailable or stale'}).waitFor();
     assert.equal(await page.locator('[data-orchestrator-stage="live"] [data-orchestrator-card="queue:search"]').count(),1);
     assert.equal(await page.locator('[data-orchestrator-stage]').count(),8);
     const paged=structuredClone(orchestratorSequence[7].snapshot.snapshot_json);
     paged.orchestrator.total_cards=paged.orchestrator.cards.length+1;
     paged.orchestrator.pages=[{board_id:olderPage,version:1,count:1}];
-    setSnapshot(paged);await page.clock.runFor(2100);
+    setSnapshot(paged);await page.clock.runFor(60_100);
     await page.locator('[data-orchestrator-more]').click();
     await page.locator('[data-orchestrator-pagination]').filter({hasText:'unavailable'}).waitFor();
     assert.equal(await page.locator('[data-orchestrator-card="queue:search"]').count(),1);
@@ -786,12 +791,12 @@ for (const width of [390,1280]) for (const theme of ['light','dark'])
     await older.locator('summary').focus();
     const scroll=await older.evaluate(el=>el.closest('.app-layout-center').scrollTop);
     const changed=structuredClone(paged);changed.orchestrator.observed_at='2026-10-21T20:00:00Z';
-    changed.orchestrator.cards[0].state='fixing';setSnapshot(changed);await page.clock.runFor(2100);
+    changed.orchestrator.cards[0].state='fixing';setSnapshot(changed);await page.clock.runFor(60_100);
     assert.equal(await older.locator('details').getAttribute('open'),'');
     assert.equal(await older.locator('summary').evaluate(el=>el===document.activeElement),true);
     assert.equal(await older.evaluate(el=>el.closest('.app-layout-center').scrollTop),scroll);
-    setSnapshot({tasks:{}});await page.clock.runFor(2100);
-    setSnapshot(changed);await page.clock.runFor(6300);
+    setSnapshot({tasks:{}});await page.clock.runFor(60_100);
+    setSnapshot(changed);await page.clock.runFor(180_300);
     assert.equal(await older.count(),1);
 
 

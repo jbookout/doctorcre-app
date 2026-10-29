@@ -30,6 +30,7 @@ async function open(t, { width = 1440, home = false, long = false, motion = 'red
     'read-post-call-followups': async () => ({ schema_version: 'post-call-followups.v1', candidates: [], send: false }),
     'email-proposal-quality': () => client.getEmailProposalQuality(),
     'list-email-proposals': async () => ({ schema_version: 'email-proposals.v1', proposals: [], send: false, more: false, next_cursor: null }),
+    'list-email-thread-filings': async () => ({ filings: [] }),
     'deal-room-board': () => client.getBoard(), 'get-deal-room': args => client.getDeal(args.deal),
     'lead-board': async () => ({ leads: [] }), 'incident-board': () => client.incidentBoard(),
     'current-work-item': () => client.currentWorkItem(), 'read-resource-dashboard': () => client.readResourceDashboard(),
@@ -147,11 +148,11 @@ test('polling updates an open detail and preserves focus, while refusals clear s
   await page.waitForFunction(() => document.activeElement?.dataset.radarKey === 'lease:demo-lease-1');
   assert.equal(await page.locator('[data-lease="demo-lease-1"]').evaluate(n => document.activeElement === n), true);
   await page.locator('[data-lease="demo-lease-1"]').click();
-  const before = state.reads; await page.clock.runFor(31_000); await settled(page); assert.ok(state.reads > before);
+  const before = state.reads; await page.clock.runFor(61_000); await settled(page); assert.ok(state.reads > before);
   state.fail(503); await online(page); await settled(page);
   assert.equal(await page.locator('#leaseRadar .lease-card').count(), 0);
   assert.equal(await page.locator('#leaseDetail').evaluate(n => n.open), false);
-  state.fail(null); await page.clock.runFor(31_000); await settled(page);
+  state.fail(null); await page.clock.runFor(61_000); await settled(page);
   assert.equal(await page.locator('#leaseRadar .lease-card').count(), 9);
   state.fail(403); await online(page); await page.waitForURL('**/public-shell/session-ended.html');
   assert.equal(await page.getByRole('link', { name: 'Sign in again', exact: true }).isVisible(), true);
@@ -163,7 +164,7 @@ test('timeout clears stale details and automatically recovers', async t => {
   await page.clock.runFor(10_001); await settled(page);
   assert.equal(await page.locator('#leaseDetail').evaluate(n => n.open), false);
   assert.equal(await page.locator('#leaseRadar .lease-card').count(), 0);
-  state.fail(null); await page.clock.runFor(31_000); await settled(page);
+  state.fail(null); await page.clock.runFor(61_000); await settled(page);
   assert.equal(await page.locator('#leaseRadar .lease-card').count(), 9);
 });
 test('urgency lights stay still and cards never lift, with or without reduced motion', async t => {
@@ -191,9 +192,9 @@ test('Home shows next eligible past-client touches, opens lease details and refr
   await page.waitForFunction(() => !document.querySelector('#homePastClients').textContent.includes('Demo Practice 1'));
   await page.getByRole('button', { name: 'Just me', exact: true }).click();
   assert.equal(await page.locator('#homePastClients .lease-card').count(), 4);
-  state.fail(503); await page.clock.runFor(31_000);
+  state.fail(503); await page.clock.runFor(61_000);
   await page.getByText('Follow-ups unavailable', { exact: true }).waitFor();
-  state.fail(null); await page.clock.runFor(31_000); await page.locator('#homePastClients .lease-card').first().waitFor();
+  state.fail(null); await page.clock.runFor(61_000); await page.locator('#homePastClients .lease-card').first().waitFor();
   assert.deepEqual(state.errors, []);
 });
 test('long client names wrap within phone cards and lease detail', async t => {

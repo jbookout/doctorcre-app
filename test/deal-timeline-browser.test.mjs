@@ -48,7 +48,7 @@ async function open(t,{width=1440,device,link=false,reducedMotion='no-preference
   // Navigation is checked in a second page below; keep this instrumented client.
   assert.equal(await page.locator('#homeDealFlag').getAttribute('href'),'/deals?deal=d14');
  }
- await page.locator('.kanban-card[data-id="d14"]').click();await page.locator('#detailUpdateForm').waitFor();
+ await page.locator('.kanban-card[data-id="d14"] .card-open').click();await page.locator('#detailUpdateForm').waitFor();
  return {page,errors};
 }
 
@@ -69,15 +69,15 @@ test('refresh preserves expanded updates, focus, dates and draft through an outa
  const {page,errors}=await open(t);
  await page.locator('.updates-history > summary').click();
  const summary=page.locator('.deal-note[data-id="mail"] summary');await summary.click();await summary.focus();
- await page.evaluate(()=>window.timelineProbe.changed=true);await page.clock.fastForward(16000);
+ await page.evaluate(()=>window.timelineProbe.changed=true);await page.clock.fastForward(61_000);
  await page.waitForFunction(()=>document.querySelector('.deal-updates').textContent.includes('Demo updated allowance received'));
  assert.equal(await page.locator('.deal-note[data-id="mail"] details').evaluate(e=>e.open),true);
  assert.equal(await summary.evaluate(e=>document.activeElement===e),true);
  await page.locator('#detailUpdateForm textarea').fill('Demo unsaved update');
- await page.evaluate(()=>window.timelineProbe.fail=true);await page.clock.fastForward(16000);
+ await page.evaluate(()=>window.timelineProbe.fail=true);await page.clock.fastForward(61_000);
  await page.getByText('Updates temporarily unavailable',{exact:true}).waitFor();
  assert.equal(await page.locator('#detailUpdateForm textarea').inputValue(),'Demo unsaved update');
- await page.evaluate(()=>window.timelineProbe.fail=false);await page.clock.fastForward(16000);
+ await page.evaluate(()=>window.timelineProbe.fail=false);await page.clock.fastForward(61_000);
  await page.waitForFunction(()=>!document.querySelector('#detailReadStatus').textContent);
  assert.deepEqual(errors,[]);
 });
@@ -87,7 +87,7 @@ test('W9 board/list use the same addressable popup and Home href opens it direct
  assert.equal(new URL(page.url()).searchParams.get('deal'),'d14');
  await page.getByLabel('Close deal',{exact:true}).click();
  assert.equal(new URL(page.url()).searchParams.has('deal'),false);
- await page.locator('#listView').click();await page.locator('.deal-row[data-id="d14"]').click();
+ await page.locator('#listView').click();await page.locator('.deal-row[data-id="d14"] .card-open').click();
  assert.equal(await page.locator('#recordPanel').evaluate(e=>e.open),true);
  await page.getByLabel('Close deal',{exact:true}).click();
  await page.locator('#homeDealFlag').click();

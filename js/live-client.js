@@ -257,6 +257,8 @@ export function createLiveClient(opts = {}) {
         critical_dates: critical_dates.map((cd) => ({ ...cd, label: cd.note || cd.kind, date: cd.due_on })),
         history,
         next_actions: page.next_actions || [],
+        items: page.items || [],
+        item_schema_version: page.item_schema_version,
         activities: page.activities || [],
         participants: page.participants || [],
         premises: page.premises || [],
@@ -331,6 +333,8 @@ export function createLiveClient(opts = {}) {
     async confirmEmailDealProgress(args) { return write('confirm-email-deal-progress', args); },
     async submitEmailDraft(args) { return write('submit-email-draft', args); },
     async dismissEmailProposal(args) { return write('dismiss-email-proposal', args); },
+    async listEmailThreadFilings() { return rpc('list-email-thread-filings', {}); },
+    async undoEmailThreadFiling(args) { return write('undo-email-thread-filing', args); },
 
     async readCallOutcomes() {
       return rpc('read-call-outcomes', {});
@@ -423,6 +427,9 @@ export function createLiveClient(opts = {}) {
       return write('update-deal', args);
     },
 
+    async recordDealItem(args) { return write('record-deal-item', { ...args, source_ref: args.source_ref || `app:deal-item:${args.idempotency_key}` }); },
+    async instructDealItem(args) { return write('instruct-deal-item', args); },
+    async completeDealItem(args) { return write('complete-deal-item', args); },
     // The portal password goes to CARR once, here; CARR keeps only a verifier and answers with the link.
     async registerClientPortal(args) {
       return write('register-client-portal', args);
@@ -431,6 +438,8 @@ export function createLiveClient(opts = {}) {
     async addDealNote(args) {
       return write('add-deal-note', args);
     },
+
+    async logActivity(args) { return write('log-activity', args); },
 
     async setNextStep(args) {
       return write('set-next-step', args);

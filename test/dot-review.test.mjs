@@ -155,7 +155,7 @@ for (const reopen of [false,true]) test(`PR111 R1: ${refusal} permits corrected 
   const h=handlers("js/app.js","function addTeamDealForm()","function addAccountForm()",{state,openForm:value=>{form=value;},phaseOptions:()=>"",uuidv4:()=>`key-${++keys}`,esc:value=>String(value??""),loadHome:async()=>{},showToast:noop},["addTeamDealForm"]);
   h.addTeamDealForm();await assert.rejects(form.onSubmit(new Map([["client","invalid-client"],["name","Demo"]])));
   assert.equal(state.pendingDealCreation,null);
-  if(reopen){h.addTeamDealForm();assert.equal(form.submit,"Create work record");}
+  if(reopen){h.addTeamDealForm();assert.equal(form.submit,"Create deal");}
   await form.onSubmit(new Map([["client","C-demo"],["name","Demo"]]));
   const creates=calls.filter(req=>req.name==="new-deal");assert.equal(creates.length,2);
   assert.equal(creates[1].arguments.client,"C-demo");assert.notEqual(creates[0].arguments.idempotency_key,creates[1].arguments.idempotency_key);
@@ -388,7 +388,7 @@ test("PR111 #3: successful answer preserves newer edits in the same draft", asyn
 
 function roomHarness(total=6000) {
   const state={cursor:0,latestSeqHint:0,turns:[],byMsgId:new Map(),oldestSeq:null,following:true,pending:new Map(),filters:{},viewer:"joe",missed:0};const reads=[];let displayed=[];
-  const globals={state,scope:{},scopedTurn:()=>true,onRead:noop,PAGE_SIZE:60,DOM_TURN_CAP:300,POLL_BACKOFF_CEILING_MS:60000,POLL_VISIBLE_MS:4000,$:(()=>{const get=elements();get("roomHealth").dataset={};return get;})(),PARTNER_LABEL:{},seqOf:t=>Number(t.seq),fetchTurns:async(from,limit)=>{reads.push([from,limit]);const turns=Array.from({length:Math.min(limit,Math.max(0,total-from))},(_,i)=>({seq:from+i+1,msg_id:`turn-${from+i+1}`}));return {turns,latest_seq:turns.at(-1)?.seq||from,more:turns.length===limit};},deriveModel:()=>({jobPassports:{enabled:true}}),renderStage:noop,renderSeatChips:noop,renderDesks:noop,renderWire:noop,renderAssignments:noop,renderSessions:noop,renderJobPassport:noop,renderHealth:noop,animateArrivals:noop,banner:noop,setState:noop,document:{hidden:false},setTimeout:()=>0,clearTimeout:noop,turnPasses:()=>true,reconcile:(_root,items)=>{displayed=items.filter(i=>i.kind==="turn").map(i=>i.turn.seq);},scrollToBottom:noop};
+  const globals={state,scope:{},scopedTurn:()=>true,onRead:noop,PAGE_SIZE:60,DOM_TURN_CAP:300,$:(()=>{const get=elements();get("roomHealth").dataset={};return get;})(),PARTNER_LABEL:{},seqOf:t=>Number(t.seq),fetchTurns:async(from,limit)=>{reads.push([from,limit]);const turns=Array.from({length:Math.min(limit,Math.max(0,total-from))},(_,i)=>({seq:from+i+1,msg_id:`turn-${from+i+1}`}));return {turns,latest_seq:turns.at(-1)?.seq||from,more:turns.length===limit};},deriveModel:()=>({jobPassports:{enabled:true}}),renderStage:noop,renderSeatChips:noop,renderDesks:noop,renderWire:noop,renderAssignments:noop,renderSessions:noop,renderJobPassport:noop,renderHealth:noop,animateArrivals:noop,banner:noop,setState:noop,document:{hidden:false},setTimeout:()=>0,clearTimeout:noop,turnPasses:()=>true,reconcile:(_root,items)=>{displayed=items.filter(i=>i.kind==="turn").map(i=>i.turn.seq);},scrollToBottom:noop};
   const h=handlers("js/progress-wire.js","  function absorb(","  /* ------------------------------------------------------------- wiring up",globals,["poll","loadEarlier","absorb"]);
   const wire=handlers("js/progress-wire.js","  function renderWire(","  function turnNode(",globals,["renderWire"]);
   return {h,wire,state,reads,displayed:()=>displayed};
@@ -465,7 +465,7 @@ test("Dot 9: phase reconciliation resumes the originally requested follow-up wri
   const intent=moveIntent({id:"demo",name:"Demo",phase:"On Deck"},"legal");
   await h.runMove(intent,{evidence:"Demo note",nextStep:"Demo follow-up",nextWhen:"2026-10-01",effectiveDate:"2026-09-30",recordCriticalDate:true,dateSource:"Demo source"});
   assert.equal(followUps.length,0);await h.retryFieldWrite(cellKey("demo","phase"));
-  assert.equal(followUps.length,3);assert.equal(followUps[0].verb,"add-deal-note");assert.equal(followUps[1].args.text,"Demo follow-up");assert.equal(followUps[2].args.due_on,"2026-09-30");
+  assert.equal(followUps.length,3);assert.equal(followUps[0].verb,"add-deal-note");assert.equal(followUps[1].verb,"record-deal-item");assert.equal(followUps[1].args.title,"Demo follow-up");assert.equal(followUps[2].args.due_on,"2026-09-30");
 });
 
 test("Closing outcome recovery after Dot 21 replays update-deal through the dock sender", async () => {
@@ -590,9 +590,9 @@ for(const badAt of [0,1,2]) test(`PR111 #14: malformed activity page ${badAt+1} 
   await h.takeActivity();assert.equal(view.activity.state,"unknown");assert.equal(view.activity.observed_at,undefined);
 });
 for(const badAt of [0,1,2]) test(`PR111 #14: malformed room page ${badAt+1} never announces recovery`,async()=>{
-  const {h,state}=roomHarness();state.backoffMs=8000;let n=0;const banners=[];h.banner=message=>banners.push(message);
+  const {h,state}=roomHarness();state.offline=true;let n=0;const banners=[];h.banner=message=>banners.push(message);
   h.fetchTurns=async from=>{const i=n++;return i===badAt ? {} : {turns:[{seq:from+1,msg_id:`t-${i}`}],latest_seq:from+1,more:true};};
-  await h.poll();assert.ok(state.backoffMs>=8000);assert.equal(state.cursor,0);assert.equal(state.turns.length,0);assert.ok(!banners.some(message=>message.includes("Wire back")));
+  await h.poll();assert.equal(state.offline,true);assert.equal(state.cursor,0);assert.equal(state.turns.length,0);assert.ok(!banners.some(message=>message.includes("Wire back")));
 });
 
 

@@ -137,7 +137,7 @@ for (const width of [390, 1280]) for (const theme of ['dark', 'light']) {
     assert.ok(Math.abs((await list.boundingBox()).height - pendingHeight) <= 96, 'the loaded row uses the reserved space');
     await page.locator('[data-attention-id="incident:INC-DEMO"] button').click();
     state.censusUnavailable = true;
-    await page.clock.runFor(15001);
+    await page.clock.runFor(60_001);
     await page.waitForFunction(() => document.querySelector('#crAttentionList [data-state="offline"]'));
     assert.match(await page.locator('#jobBody').innerText(), /Source unavailable.*Last-known/);
     await page.locator('#jobClose').click();
@@ -183,7 +183,7 @@ test('board census failure invalidates Attention and its open detail while Queue
   await page.locator('[data-attention-id="incident:INC-DEMO"] button').click();
   const before = state.queueReads;
   state.censusUnavailable = true;
-  await page.clock.runFor(15001);
+  await page.clock.runFor(60_001);
   await page.waitForFunction(() => document.querySelector('#system-work-error')?.hidden === false);
   await waitForAsync(page, async () => {
     const { view } = await import('/js/control-room.js');
@@ -196,7 +196,7 @@ test('board census failure invalidates Attention and its open detail while Queue
   assert.match(await page.locator('#jobBody').innerText(), /Source unavailable.*Last-known/);
   assert.equal(await page.locator('#jobTitle').innerText(), 'Demo blocked incident');
   state.censusUnavailable = false;
-  await page.clock.runFor(15001);
+  await page.clock.runFor(60_001);
   await page.locator('[data-attention-id="incident:INC-DEMO"]').waitFor();
   assert.doesNotMatch(await page.locator('#jobBody').innerText(), /Source unavailable/);
 });

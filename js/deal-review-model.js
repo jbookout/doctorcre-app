@@ -24,10 +24,37 @@ export function localDeals(rows, owner = 'all') {
 export function isClosedDeal(deal) {
   return String(deal.phase).toLowerCase() === 'closed' || Boolean(deal.outcome || deal.closed_on || deal.invoiced_on);
 }
+/** The oldest due day before `today` among the deal's open actions, or null. */
+export function overdueSince(deal, today) {
+  if (isClosedDeal(deal) || (deal.operating_state || 'active') !== 'active') return null;
+  const dues = Array.isArray(deal.items)
+    ? deal.items.filter(item => item.status === 'open').map(item => toDay(item.due_on))
+    : typeof deal.next_step === 'string' && deal.next_step.trim() ? [toDay(deal.next_date)] : [];
+  return dues.filter(due => due && due < today).sort()[0] || null;
+}
 export function needsAttention(deal, now = Date.now()) {
-  if (isClosedDeal(deal) || (deal.operating_state || 'active') !== 'active') return false;
-  const due = toDay(deal.next_date);
-  return Boolean(typeof deal.next_step === 'string' && deal.next_step.trim() && due && due < radarToday(new Date(now)));
+  return overdueSince(deal, radarToday(new Date(now))) !== null;
+}
+/** "N days overdue" between two calendar days, or '' when `since` is not before `today`. */
+export function overdueLabel(since, today) {
+  const days = since && today ? Math.round((Date.parse(today) - Date.parse(since)) / 864e5) : 0;
+  return days > 0 ? `${days} day${days === 1 ? '' : 's'} overdue` : '';
+}
+/**
+ * One row per overdue Today action, most overdue first. An action row drops its
+ * deal's items so its own due date, not the deal's oldest item, sets its age.
+ */
+export function overdueActionRows(deals, actions, today) {
+  const rows = deals.flatMap(deal => {
+    const own = (actions || []).filter(action => action.subject_type === 'deal' && action.subject_id === deal.id);
+    return own.length ? own.map(action => ({ ...deal, ...action, items: null, next_step: action.what, next_date: action.due_on })) : [deal];
+  });
+  return mostOverdueFirst(rows.filter(row => overdueSince(row, today)), today);
+}
+/** Most overdue first; deals with nothing overdue keep their order after them. */
+export function mostOverdueFirst(deals, today) {
+  const since = deal => overdueSince(deal, today) || '9999-12-31';
+  return [...deals].sort((a, b) => since(a).localeCompare(since(b)));
 }
 
 export function requireReviewReceipt(receipt) {

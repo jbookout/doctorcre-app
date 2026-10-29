@@ -33,7 +33,6 @@ import { mountAutoRefresh, readWithDeadline, updatedLabel } from "./auto-refresh
 //      only source of the new version, and asks the person to press again.
 import { createCommandDock } from "./command-dock.js";
 import { performCommand } from "./command-feedback.mjs";
-import { createFixtureClient } from "./fixture-client.js";
 import { createLiveClient } from "./live-client.js";
 import { resolveDealroomBoot } from "./boot-mode.js";
 import { mountNotificationBadge, mountPrefs } from "./shell.js";
@@ -716,7 +715,7 @@ async function decideSuggestion(id, choice, card) {
   const date = card.querySelector("[data-snooze-date]")?.value || null;
   const built = decisionArgs(row, choice, undefined, date, workNumber);
   if (!built) {
-    announce(choice === "act" ? "Choose or create a work record, then enter its number before choosing Act." : "Read this suggestion again before deciding.");
+    announce(choice === "act" ? "Choose or create a deal, then enter its number before choosing Act." : "Read this suggestion again before deciding.");
     card.querySelector("[data-work-number]")?.focus();
     return;
   }
@@ -918,7 +917,7 @@ async function boot() {
   const outage = params.get("outage");
   client = boot_.mode === "live"
     ? createLiveClient()
-    : await createFixtureClient({ ...boot_.options, ...(outage ? { outage } : {}) });
+    : await (await import("./fixture-client.js")).createFixtureClient({ ...boot_.options, ...(outage ? { outage } : {}) });
   suggestionGate = mountFeatureGate({ document, window: globalThis.window, name: "doc-suggestion-actions",
     read: signal => client.listFeatureSwitches({ signal }),
     onChange: enabled => {

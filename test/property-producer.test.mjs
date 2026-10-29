@@ -368,3 +368,38 @@ test('the pinned producer publishes the orchestrator contract consumed by the ex
   assert.equal(boardView({snapshot:{version:1,snapshot_json:{tasks:{},orchestrator:projection}}}).error,null);
   assert.equal(projection.sources.queue.state,'unavailable');
 });
+
+test('deal item contracts pin the checklist reads and item commands to one producer', () => {
+  for (const verb of ['get-deal-room', 'deal-room-board']) {
+    const read = contract.mcp_read_contracts[verb];
+    assert.equal(read.producer.source_commit, contract.producer.source_commit);
+    assert.equal(read.response.item_schema_version, 'deal-items.v1');
+    assert.deepEqual(read.response.item_keys, ['id', 'title', 'due_on', 'status', 'bullets', 'source_ref']);
+  }
+  for (const verb of ['instruct-deal-item', 'complete-deal-item']) {
+    const write = contract.mcp_write_contracts[verb];
+    assert.equal(write.producer.source_commit, contract.producer.source_commit);
+    assert.ok(write.inputSchema.required.includes('item_id'));
+    assert.ok(write.inputSchema.required.includes('idempotency_key'));
+  }
+});
+
+test('the pinned producer item shapes and command schemas match the app contract', {
+  skip: !process.env.CARR_PRODUCER_CHECKOUT && 'Set CARR_PRODUCER_CHECKOUT to verify deal item contracts',
+}, async () => {
+  const { dealItemTools, validateDealItem, DEAL_ITEMS_SCHEMA } = await import(await producerModuleUrl('mcp-server/src/deal-items.ts'));
+  const { renderDealAlert, renderDealItemDetail } = await import('../js/deal-items.js');
+  const tools = dealItemTools({});
+  assert.equal(DEAL_ITEMS_SCHEMA, contract.mcp_read_contracts['get-deal-room'].response.item_schema_version);
+  for (const verb of ['record-deal-item', 'instruct-deal-item', 'complete-deal-item']) {
+    assert.deepEqual(tools[verb].inputSchema, contract.mcp_write_contracts[verb].inputSchema);
+    assert.equal(tools[verb].write, true);
+  }
+  const item = { id: '10000000-0000-4000-8000-000000000001', status: 'open', ...validateDealItem({
+    title: 'Vendor Introductions', due_on: '2026-10-23', source_ref: 'call:synthetic',
+    bullets: [{ date: '2026-10-22', kind: 'call', text: 'Two introductions requested.' }],
+  }) };
+  const deal = { id: 'synthetic-deal', short_name: 'Synthetic Sample Deal', items: [item] };
+  assert.match(renderDealAlert(deal), /Vendor Introductions/);
+  assert.match(renderDealItemDetail(item), /Two introductions requested/);
+});

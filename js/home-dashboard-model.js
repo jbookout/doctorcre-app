@@ -24,7 +24,9 @@ export function dealSnapshot(board, scope = 'team', agenda) {
   const deals = scopedDeals(board, scope);
   if (!deals) return null;
   const local = localDeals(deals);
-  const overdue = new Set(agenda?.overdue.map(entry => entry.deal_id));
+  // Entries arrive oldest first, so the first one per deal is how long it has waited.
+  const overdue = new Map();
+  for (const entry of agenda?.overdue || []) if (!overdue.has(entry.deal_id)) overdue.set(entry.deal_id, entry.day);
   const complete = agenda && !local.some(deal => agenda.failed.includes(deal.id));
   return { active: deals.length,
     // No current contract supplies in-market membership. Neither city nor
@@ -32,7 +34,8 @@ export function dealSnapshot(board, scope = 'team', agenda) {
     inMarket: deals.every(deal => typeof deal.in_market === 'boolean')
       ? deals.filter(deal => deal.in_market).length : null,
     national: deals.filter(deal => deal.workspace_kind === 'national_account' || deal.account_client_id).length,
-    flagged: complete ? local.filter(deal => overdue.has(deal.id)) : local.length ? null : [] };
+    flagged: complete ? local.filter(deal => overdue.has(deal.id)).map(deal => ({ ...deal, overdue_since: overdue.get(deal.id) }))
+      .sort((a, b) => a.overdue_since.localeCompare(b.overdue_since)) : local.length ? null : [] };
 }
 
 export function dealHref(id) { return `/deals?deal=${encodeURIComponent(id)}`; }

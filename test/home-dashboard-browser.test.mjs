@@ -66,7 +66,8 @@ async function open(t, { calendar, initialBriefFailure = false, theme = 'dark', 
     'list-notifications': async () => ({ unread_count: 0, notifications: [] }),
     'notification-feed': async () => ({ unread_count: 0, notifications: [] }),
     'email-proposal-quality': () => client.getEmailProposalQuality(),
-    'list-email-proposals': async () => ({ schema_version: 'email-proposals.v1', proposals: [], send: false, more: false, next_cursor: null }),
+    'list-email-proposals': async args => ({ schema_version: args.mode === 'recent_outcomes' ? 'email-reply-outcomes.v1' : 'email-proposals.v1', proposals: [], send: false, more: false, next_cursor: null }),
+    'list-email-thread-filings': async () => ({ filings: [] }),
     'read-call-outcomes': async () => ({ schema_version: 'call-outcomes.v1', calls: [], send: false }),
     'calendar-meeting-prep': () => client.calendarMeetingPrep(),
   };
@@ -176,7 +177,7 @@ test('PR123 finding 8: malformed and mixed live reads settle unavailable and rec
 
 test('PR124 R1 generated Home flag and task links open the requested record through the deployed route', async t => {
   const { page, errors } = await open(t, { origin: 'https://app.doctorcre.com' });
-  for (const selector of ['.home-flag', '.home-agenda a:has(.home-item-type:text-is("Task"))']) {
+  for (const selector of ['.home-flag h3 a', '.home-agenda a:has(.home-item-type:text-is("Task"))']) {
     await page.locator(selector).first().waitFor();
     const link = page.locator(selector).first();
     const id = new URL(await link.getAttribute('href'), page.url()).searchParams.get('deal');
@@ -236,7 +237,7 @@ test('Home desktop and phone show flags, visual agenda, ranked leads and wide en
     assert.match(await page.locator('#observedAt').textContent(), /^Updated /);
     const text = await page.locator('main').textContent();
     assert.doesNotMatch(text, /source|records read|read again|retry|Doc at work|Changed in 7 days|Workspace structure/i);
-    assert.ok(calls.every(name => Object.keys({ 'morning-brief':1, 'read-invoice-tracker':1, 'today-triage':1,'list-feature-switches': 1, 'list-doc-suggestions': 1, 'read-home-agenda': 1, 'read-post-call-followups': 1, 'deal-room-board': 1, 'get-deal-room': 1, 'lead-board': 1, 'list-notifications': 1, 'notification-feed': 1, 'read-call-outcomes': 1, 'list-email-proposals': 1, 'email-proposal-quality': 1 }).includes(name)), `no write verb runs: ${calls.join(', ')}`);
+    assert.ok(calls.every(name => Object.keys({ 'morning-brief':1, 'read-invoice-tracker':1, 'today-triage':1,'list-feature-switches': 1, 'list-doc-suggestions': 1, 'read-home-agenda': 1, 'read-post-call-followups': 1, 'deal-room-board': 1, 'get-deal-room': 1, 'lead-board': 1, 'list-notifications': 1, 'notification-feed': 1, 'read-call-outcomes': 1, 'list-email-proposals': 1, 'list-email-thread-filings': 1, 'email-proposal-quality': 1 }).includes(name)), `no write verb runs: ${calls.join(', ')}`);
     await screenshot(page, width === 1440 ? 'desktop' : `phone-${width}`);
     const first = page.locator('.home-lead').first(); await first.click();
     assert.equal(await page.locator('#homeDetail').evaluate(dialog => dialog.open), true);
@@ -277,10 +278,10 @@ test('Home has no ambient motion and hover never moves a row, without hiding dat
   const { page } = await open(t, { motion: 'no-preference', delayDetails: true });
   await page.waitForFunction(() => document.querySelector('#refreshHome').getAttribute('aria-busy') === 'false');
   await page.emulateMedia({ reducedMotion: 'reduce' });
-  await page.locator('.home-flag').first().hover();
-  assert.equal(await page.locator('.home-flag').first().evaluate(node => getComputedStyle(node).transform), 'none');
+  await page.locator('.home-flag h3 a').first().hover();
+  assert.equal(await page.locator('.home-flag h3 a').first().evaluate(node => getComputedStyle(node).transform), 'none');
   assert.equal(await page.locator('.home-day').count(), 7);
-  assert.equal(await page.locator('.home-flag').count(), 3);
+  assert.equal(await page.locator('.home-flag h3 a').count(), 3);
   await screenshot(page, 'desktop-reduced-motion');
 });
 
@@ -309,10 +310,10 @@ test('no eligible leads means hidden widget; failed Home retains unavailable cal
 
 test('a flagged Home deal opens that exact Deals record; unknown IDs show a failed detail instead of another deal', async t => {
   const { page, errors } = await open(t);
-  const href = await page.locator('.home-flag').first().getAttribute('href');
+  const href = await page.locator('.home-flag h3 a').first().getAttribute('href');
   assert.equal(href, '/deals?deal=d14');
   // Keep this synthetic test on the fixture adapter on the receiving page.
-  await page.locator('.home-flag').first().click();
+  await page.locator('.home-flag h3 a').first().click();
   await page.waitForFunction(() => document.querySelector('#recordPanel')?.open && document.querySelector('#detailUpdateForm'));
   assert.equal(await page.evaluate(async () => (await import('/js/pipeline.js')).state.panelDeal), 'd14');
   assert.match(await page.locator('#panelTitle').textContent(), /Demo Surgical Practice/);
@@ -430,7 +431,7 @@ test('R9 identical refresh retains lead and deal focus; modal repaint retains ex
   const state = await open(t); const { page } = state;
   const settled = () => page.waitForFunction(() => document.querySelector('#refreshHome').getAttribute('aria-busy') === 'false');
   await settled();
-  for (const selector of ['.home-lead', '.home-flag']) {
+  for (const selector of ['.home-lead', '.home-flag h3 a']) {
     await page.locator(selector).first().focus();
     await page.evaluate(() => window.dispatchEvent(new Event('online')));
     await settled();
@@ -489,7 +490,7 @@ test('R13 phone lead detail wraps specialty, maximum-length names and metadata w
   });
 });
 
-test('R14 a task with no critical dates opens its exact deal and recorded next step', async t => {
+test('R14 a task with no critical dates opens its exact deal with its next action', async t => {
   const { page } = await open(t, { tasksOnly: true });
   const task = page.locator('[data-home-key="agenda:task:demo-task-d01"]');
   await task.waitFor();
@@ -497,7 +498,9 @@ test('R14 a task with no critical dates opens its exact deal and recorded next s
   await task.click();
   await page.waitForFunction(() => document.querySelector('#recordPanel')?.open && document.querySelector('#detailUpdateForm'));
   assert.equal(await page.evaluate(async () => (await import('/js/pipeline.js')).state.panelDeal), 'd01');
+  assert.equal(await page.locator('.deal-opening-snapshot').count(), 1);
   assert.equal(await page.locator('.deal-current-action strong').textContent(), 'Confirm fictional requirements');
+  assert.match(await page.locator('.deal-current-action').textContent(), /^(Overdue action|Next action): Confirm fictional requirements · Due \w{3}, \w{3} \d+, \d{4}$/);
 });
 
 test('R12 malformed tasks retain independent widgets and settled agenda reports partial data', async t => {
@@ -699,7 +702,7 @@ for (const width of [1440, 390]) test(`Home Overdue isolates missed work and ret
   const calendar = page.locator('#homeCalendar');
   const overdue = calendar.getByRole('button', { name: 'Overdue', exact: true });
   assert.match(await page.locator('#dealCounts').textContent(), /Overdue local deals: 1/);
-  assert.equal(await page.locator('#dealFlags a.home-flag').count(), 1);
+  assert.equal(await page.locator('#dealFlags .home-flag h3 a').count(), 1);
   assert.equal(await overdue.count(), 1);
   assert.equal(await calendar.getByRole('button', { name: 'All dates & tasks', exact: true }).getAttribute('aria-pressed'), 'true');
   const week = await page.locator('.home-week').textContent();

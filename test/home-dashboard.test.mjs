@@ -206,3 +206,15 @@ test('Home reads business feeds without reading Control Room queues', async () =
   for (const key of ['board', 'leads', 'invoices', 'relationships']) assert.equal(result.reads[key].state, 'read', key);
   assert.equal(result.unauthorized, false);
 });
+
+test('Home overdue flags carry their oldest overdue day and sort most overdue first', () => {
+  const deals = [
+    { id: 'demo-recent', name: 'Demo Recent', owner: 'joe', phase: 'Research' },
+    { id: 'demo-oldest', name: 'Demo Oldest', owner: 'joe', phase: 'Legal' },
+    { id: 'demo-middle', name: 'Demo Middle', owner: 'dell', phase: 'Research' },
+  ];
+  const due = { 'demo-recent': ['2026-09-30'], 'demo-oldest': ['2026-09-20', '2026-09-28'], 'demo-middle': ['2026-09-25'] };
+  const details = new Map(deals.map(deal => [deal.id, { critical_dates: [], next_actions: due[deal.id].map((due_on, i) => ({ id: `${deal.id}-${i}`, status: 'open', owner: deal.owner, due_on })) }]));
+  const flagged = dealSnapshot({ actor: 'joe', deals }, 'team', agendaSnapshot({ actor: 'joe', deals }, details, { today: '2026-10-01' })).flagged;
+  assert.deepEqual(flagged.map(row => [row.id, row.overdue_since]), [['demo-oldest', '2026-09-20'], ['demo-middle', '2026-09-25'], ['demo-recent', '2026-09-30']]);
+});

@@ -174,3 +174,57 @@ test('role groups have twice the space used within each role',async t=>{
  const gap=await page.locator('.kanban-column [data-id="d14"] .deal-vendors').evaluate(n=>({roles:parseFloat(getComputedStyle(n).rowGap),assignments:parseFloat(getComputedStyle(n.querySelector('ul')).rowGap)}));
  assert.ok(gap.roles>=16 && gap.roles>=2*gap.assignments,JSON.stringify(gap));
 });
+
+for (const theme of ['dark', 'light']) test(`vendor contacts are distinct and actionable on phones in ${theme}`, async t => {
+  const vendors = [
+    { role: 'lender', company: { name: 'Demo Firm' }, contact: { name: 'Demo Person', email: 'person@example.invalid', phone: '+1 (555) 010-1234' } },
+    { role: ' LENDER ', company: { name: ' demo firm ' }, contact: { name: ' demo person ' } },
+    { role: 'advisor', company: { name: 'Demo Firm' }, contact: { name: 'Demo Person' } },
+    { role: 'advisor', company: { name: 'Demo Other' }, contact: { name: null } },
+    { role: 'advisor', company: null, contact: { name: 'Demo Solo' } },
+  ];
+  const { page } = await open(t, 390, theme, vendors);
+  const card = page.locator('.kanban-column [data-id="d14"]');
+  assert.equal(await card.getByText('Demo Person', { exact: true }).count(), 2);
+  assert.equal(await card.getByText('Demo Other', { exact: true }).count(), 1);
+  assert.equal(await card.getByText('Demo Solo', { exact: true }).count(), 1);
+  assert.doesNotMatch(await card.locator('.deal-vendors').textContent(), /undefined|null/);
+  await card.locator('.deal-vendor-details summary').click();
+  for (const [name, href] of [['person@example.invalid', 'mailto:person@example.invalid'], ['+1 (555) 010-1234', 'tel:+15550101234']]) {
+    const action = card.getByRole('link', { name, exact: true });
+    assert.equal(await action.count(), 1, `accessible name includes ${name}`);
+    assert.equal(await action.getAttribute('href'), href);
+    const box = await action.boundingBox();
+    assert.ok(box.width >= 44 && box.height >= 44, JSON.stringify(box));
+  }
+  assert.equal(await card.evaluate(n => n.scrollWidth <= n.clientWidth), true);
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth), true);
+});
+
+for (const theme of ['dark', 'light']) test(`merged vendor contact rows fit and read as actions at 390px in ${theme}`, async t => {
+  const vendors = [
+    { party_id: 'demo-party-1', role: 'lender', company: { id: 'demo-company-1', name: 'Demo Firm' }, contact: { id: 'demo-contact-1', name: 'Demo Person' } },
+    { party_id: 'demo-party-2', role: 'lender', company: { id: 'demo-company-2', name: 'Demo Firm' }, contact: { id: 'demo-contact-2', name: 'Demo Person', email: 'demo.long.assigned.representative@example.test', phone: '555-010-1234 x12' } },
+  ];
+  const { page } = await open(t, 390, theme, vendors);
+  const card = page.locator('.kanban-column [data-id="d14"]');
+  assert.equal(await card.locator('.deal-vendor-company').count(), 1);
+  await card.locator('summary').click();
+  const rows = card.locator('.deal-vendor-details p');
+  assert.equal(await rows.count(), 2);
+  for (const row of await rows.all()) {
+    const link = row.locator('a');
+    const [labelBox, linkBox] = await Promise.all([row.evaluate(n => { const range = document.createRange(); range.selectNodeContents(n.firstChild); const r = range.getBoundingClientRect(); return { x: r.x, y: r.y, height: r.height }; }), link.boundingBox()]);
+    assert.ok(labelBox && linkBox && Math.abs(labelBox.y + labelBox.height / 2 - linkBox.y - linkBox.height / 2) < 5, JSON.stringify({ labelBox, linkBox }));
+    assert.equal(await link.evaluate(n => getComputedStyle(n).textDecorationLine), 'none');
+    assert.equal(await link.getAttribute('aria-label'), null);
+  }
+  const boxes = await Promise.all((await rows.locator('a').all()).map(link => link.boundingBox()));
+  assert.ok(Math.abs(boxes[0].x - boxes[1].x) < 1);
+  assert.ok(boxes[1].y > boxes[0].y + boxes[0].height);
+  assert.equal(await card.evaluate(n => n.scrollWidth <= n.clientWidth), true);
+  const evidence = new URL('out/test-artifacts/deal-vendors/', root);
+  await mkdir(evidence, { recursive: true });
+  await card.scrollIntoViewIfNeeded();
+  await page.screenshot({ path: new URL(`390-${theme}-dedupe.png`, evidence).pathname, animations: 'disabled' });
+});

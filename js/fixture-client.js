@@ -76,7 +76,7 @@ export async function createFixtureClient(opts = {}) {
     for (const id of ['d06', 'd07', 'd08']) {
       const deal = deals.get(id);
       if (deal) Object.assign(deal, { operating_state:'parked', parking_reason:'other',
-        parking_note:'Reason not yet classified', parked_at:'2026-08-10T12:00:00Z', parked_by:'joe' });
+        parking_note:'No reason given yet', parked_at:'2026-08-10T12:00:00Z', parked_by:'joe' });
     }
     // Keep the local demo representative of the production information model:
     // one national-account portfolio, many market deals, no duplicate deal rows.
@@ -236,8 +236,6 @@ export async function createFixtureClient(opts = {}) {
       field: partial.field ?? null,
       old_value: partial.old_value ?? null,
       new_value: partial.new_value ?? null,
-      // The partner's own words, carried on the event and nowhere else: they
-      // describe the change, not the deal, so the deal row never learns them.
       change_reason: partial.change_reason ?? null,
       automatic: partial.automatic ?? false,
       evidence_date: partial.evidence_date ?? null,
@@ -264,9 +262,6 @@ export async function createFixtureClient(opts = {}) {
     const base = {};
     for (const e of events) {
       if (e.subject_type !== 'deal' || e.subject_id !== dealId || !e.field) continue;
-      // Only the cells patch-deal-field takes a base for — the record layer's own
-      // DEAL_ROOM_FIELDS. A base for anything else would be meaningless, because
-      // no other field is written through that verb.
       if (!BASED_FIELDS.includes(e.field)) continue;
       base[e.field] = { id: e.id, recorded_at: e.recorded_at };
     }
@@ -312,8 +307,6 @@ export async function createFixtureClient(opts = {}) {
     const key = `${deal}|${field}`;
     const last = lastFieldEvent.get(key) || null;
     const base = base_event_id === undefined ? null : base_event_id;
-    // Optimistic concurrency: client's base must match last event for (deal, field).
-    // null means "no event seen"; mismatches (including null vs an id) are conflicts.
     if (last !== base) {
       const conflict_id = `c-${dealStore.conflictSeq++}`;
       const payload = {
@@ -362,9 +355,6 @@ export async function createFixtureClient(opts = {}) {
       human_quote: human_quote ?? null,
     });
     pushHistory(deal, actor, `${field} ${old ?? '(empty)'} to ${value ?? '(empty)'}`, e.recorded_at);
-    // The committed event's own identity, named the same way the live answer
-    // names it, so the board advances a cell's base identically in both modes
-    // instead of waiting for the fixture's own changes feed to catch up.
     return { status: 'ok', event: e, event_id: e.id, event_recorded_at: e.recorded_at };
   }
 
@@ -550,7 +540,6 @@ export async function createFixtureClient(opts = {}) {
     events: [],
   });
 
-  // Cover resumable, unbound, lost-host and failed outcomes. No card may auto-launch.
   const OUTCOME_CARD_ROWS = [
     {
       card_id: "card:doc-outcome:1", requested_outcome: "Confirm the LOI redline is ready for Joe's review",
@@ -597,8 +586,6 @@ export async function createFixtureClient(opts = {}) {
       native_task_id: { value: null, unavailable_reason: "no_authoritative_native_task_join" },
       next_check: { available: false, value: null, unavailable_reason: "no_proved_next_check" },
       result: { available: true, value: "Receipt reconciled; migration record closed", unavailable_reason: null },
-      // The "local host loss" branch: the recorded host is gone, and the
-      // fallback offers the SAME session ref rather than inventing a new one.
       session_entry: {
         available: false, target: null, capability: null,
         unavailable_reason: "host_unavailable",
@@ -624,7 +611,7 @@ export async function createFixtureClient(opts = {}) {
     },
   ];
 
-  // Preserve nullable source_seq and STATUS text envelopes from the producer.
+  // C12 mirrors four queue events and five room turns, including null source_seq and JSON STATUS bodies.
   const QUEUE_EVENTS = [
     { v: 1, board: 'carr-build', event_id: 1302, event: 'created', task_id: 't_185f2c38',
       card: { title: 'Fresh independent review of PR 832 exact corrected head', target: 'deepseek',
@@ -638,16 +625,12 @@ export async function createFixtureClient(opts = {}) {
         updated_at: '2026-09-01T02:09:54Z', source_seq: 9001 },
       summary: 'Repair cross-surface context handoff enforcement is blocked.',
       projected_at: '2026-09-01T02:09:54Z' },
-    // The OBJECT branch of `effective_model`. The producer accepts a string or
-    // an object; no live row carries an object today, so only a fixture can
-    // prove the branch renders instead of printing [object Object].
     { v: 1, board: 'carr-build', event_id: 1297, event: 'review_requested', task_id: 't_a80efc8b',
       card: { title: 'Fresh independent Opus 5 High review', target: 'claude-desktop',
         effective_model: { id: 'claude-opus-5-high', host: 'desktop' }, status: 'review',
         priority: 'P2', cap: 'read', updated_at: '2026-08-31T22:41:10Z', source_seq: 8529 },
       summary: 'Fresh independent Opus 5 High review is awaiting review.',
       projected_at: '2026-08-31T22:41:10Z' },
-    // `source_seq: null`, which the producer explicitly permits.
     { v: 1, board: 'carr-build', event_id: 1290, event: 'blocked', task_id: 't_3ca30a9e',
       card: { title: 'Reconcile the production source of truth', target: 'claude-desktop',
         effective_model: 'Claude Opus 5 High (background to Desktop)', status: 'blocked',
@@ -659,7 +642,6 @@ export async function createFixtureClient(opts = {}) {
   const ROOM_TURNS = [
     { seq: '6446', room_id: 'model-room', at: '2026-08-28T13:48:34.449372+00:00', sponsor: 'joe',
       seat: 'sol', kind: 'system', msg_id: 'm-6446', origin_channel: 'mcp', origin_actor: 'codex',
-      // A JSON envelope, carried as TEXT. The page never parses it.
       body: '{"event":"STATUS","task_id":"A01","exact_revision":"local-main:eb00add0"}' },
     { seq: '6461', room_id: 'model-room', at: '2026-08-29T09:12:01.000000+00:00', sponsor: 'joe',
       seat: 'sol', kind: 'system', msg_id: 'm-6461', origin_channel: 'mcp', origin_actor: 'joe-local',
@@ -682,8 +664,6 @@ export async function createFixtureClient(opts = {}) {
     error.status = 503;
     throw error;
   };
-  // Match incidentFingerprint: service|environment|operation|failure_class.
-  // Service keys match scripts/atlas-fixture.mjs for the atlas join.
   const incident = (row) => ({
     ref: row.ref, title: row.title, severity: row.severity, state: row.state,
     environment: 'staging', owner_actor: row.owner_actor, next_action: row.next_action,
@@ -699,13 +679,7 @@ export async function createFixtureClient(opts = {}) {
     incident({ ref: 'INC-20260916-02', title: 'Demo search read is answering slowly under the demo load', severity: 'SEV-2', state: 'mitigating', owner_actor: 'dell', next_action: 'Hold the demo cache warm until the read settles', business_impact: 'Demo search answers late', fingerprint: 'demo-worker|production|search-read|slow_response', detected_at: '2026-09-15T11:25:00.000Z', age_days: 2, occurrences: 28, ready_to_close: false, blocked_by: 'no recovery evidence — supply one, or adjudicate it as a duplicate' }),
     incident({ ref: 'INC-20260916-03', title: 'Demo staging deploy retried once and then succeeded', severity: 'SEV-3', state: 'monitoring', owner_actor: 'joe', next_action: 'Close it once the demo monitoring window has elapsed', business_impact: 'None observed after the retry', fingerprint: 'demo-worker|staging|deploy|transient_error', detected_at: '2026-09-16T09:40:00.000Z', age_days: 1, occurrences: 1, ready_to_close: true, blocked_by: null }),
   ];
-  /* -------------------------------------------- notification fixtures (B12a)
-   * The synthetic twin of `ops.notification`, in the producer's OWN shape: a
-   * closed two-value severity set with no informational member, a per-channel
-   * delivery list, and a relative deep link with no scheme, host or query.
-   * `read_at` is the ONLY thing an acknowledgement is allowed to move, which is
-   * why the rows carry nothing else an acknowledgement could plausibly touch.
-   */
+  // B12a mirrors producer severity, delivery and relative-link fields; acknowledgement changes only read_at.
   const notifications = (seed.notifications || []).map((row) => ({
     ...row, delivery: (row.delivery || []).map((entry) => ({ ...entry })),
   }));
@@ -714,19 +688,7 @@ export async function createFixtureClient(opts = {}) {
     return Math.min(200, Math.max(1, value));
   };
 
-  /* ------------------------------ notification preferences (B12, WR-000116)
-   * The synthetic twin of `ops.notification_preference`. It starts with NO ROW
-   * unless the seed names one, because "no row yet" is a state the page prints
-   * and a fixture that started saved would never show it: `exists` is false,
-   * `version` is 1, the window is null and the timezone is UTC — migration
-   * 0527's documented defaults, not this file's invention.
-   *
-   * `quiet_now` is computed here the way 0527 computes it, INCLUDING the
-   * wrap-around window (23:00-07:00 is a window that crosses midnight, and a
-   * fixture that only handled start<=end would certify a page against half the
-   * real behaviour). The timezone list is the browser's own IANA list, so an
-   * unknown zone is refused here for the same reason the store refuses it.
-   */
+  // 0527 defaults preserve the unsaved state. Quiet hours wrap midnight; unknown IANA zones are refused.
   const preference = {
     exists: seed.notification_preference?.exists === true,
     device_opt_in: seed.notification_preference?.device_opt_in === true,
@@ -738,8 +700,6 @@ export async function createFixtureClient(opts = {}) {
   const PREF_CLOCK = /^([01][0-9]|2[0-3]):([0-5][0-9])(?::[0-5][0-9])?$/;
   const knownTimezone = (name) => {
     try {
-      // The browser's own database answers this; a hand-written list would be
-      // a second, staler copy of `pg_timezone_names`.
       new Intl.DateTimeFormat('en-US', { timeZone: String(name) });
       return true;
     } catch { return false; }
@@ -769,7 +729,7 @@ export async function createFixtureClient(opts = {}) {
     version: preference.version,
   });
 
-  // Keep producer facts and hypotheses separate, with each fact's source and clock.
+  // C14 keeps facts with source/time separate from hypotheses and the other get-incident lists.
   const incidentDetails = new Map([
     ['INC-20260915-01', {
       facts: [
@@ -784,7 +744,6 @@ export async function createFixtureClient(opts = {}) {
         { observed_at: '2026-09-16T04:11:00.000Z', note: 'Demo failure repeated on the nightly run' },
       ],
       links: [{ kind: 'work_request', ref: 'WR-000901', label: 'Demo bounded request: reconcile the demo vendor rows' }],
-      // Match get-incident services and trace arrays from the recorded service join and trace rows.
       services: [{ key: 'demo-exporter', name: 'Demo exporter', criticality: 'high' }],
       trace: [
         { correlation_id: 'demo-correlation-01', kind: 'deployment', ref: 'DEP-demo-901', state: 'succeeded', environment: 'production', service_key: 'demo-exporter', failure_class: null, detail: 'Demo deploy that shipped the export writer', source_kind: 'deployment', source_ref: 'ops.deployment', freshness_state: 'fresh', occurred_at: '2026-09-12T22:00:00.000Z' },
@@ -824,23 +783,8 @@ export async function createFixtureClient(opts = {}) {
     }],
   ]);
 
-  /* -------------------------------------- Doc conversation fixtures (V5-UX-B07)
-   * The synthetic twin of `ops.doc_conversation`, in the producer's OWN shape.
-   * Three things about this fixture are the point of it, and a friendlier one
-   * would let the page pass its tests while shipping a disclosure:
-   *
-   *  1. ABSENT and NOT-YOURS are ONE answer. `doc_conversation_not_found` is
-   *     returned for an id that does not exist, for one this actor cannot see,
-   *     and for an id that is not a uuid — byte-identical in all three cases.
-   *  2. `doc_conversation_creator_only` is NOT collapsed into that. A grantee
-   *     already knows the conversation exists, so a distinct refusal discloses
-   *     nothing and is the honest answer a share toggle needs.
-   *  3. `visible_conversation_count` is computed the way the definer computes
-   *     it — over conversations this ACTING actor created or holds an unrevoked
-   *     grant on — so `?actor=dell` demonstrably changes the number.
-   *
-   * Every title starts with "Demo " so nothing here can be mistaken for a record.
-   */
+  // V5-UX-B07 hides absent, invalid and unauthorized ids behind the same not-found answer.
+  // Creator-only refusal stays distinct. Visibility counts actor-owned and unrevoked grants; titles are synthetic.
   const DOC_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
   const DOC_ACTORS = [seed.actors?.self || 'joe', partnerActor];
   const docTurn = (sequence, role, body, at) => ({
@@ -867,8 +811,6 @@ export async function createFixtureClient(opts = {}) {
         docTurn(1, 'assistant', 'Demo: the survey window and the demo tenant improvement allowance are both unresolved.', '2026-09-10T13:05:30.000Z'),
         docTurn(2, 'human', 'Demo: when does the survey window close?', '2026-09-10T13:07:00.000Z'),
         docTurn(3, 'assistant', 'Demo: the demo window closes thirty days after the demo effective date.', '2026-09-10T13:07:20.000Z'),
-        // Two hostile bodies, so the page's escaping is exercised by a real turn
-        // rather than by a test-only fabrication.
         docTurn(4, 'human', 'Demo: the counterparty pasted <script>alert(1)</script> into the demo portal.', '2026-09-10T13:09:00.000Z'),
         docTurn(5, 'assistant', 'Demo: recorded verbatim, including "><img onerror=alert(2) src=x>, and never executed.', '2026-09-10T13:09:40.000Z'),
         docTurn(6, 'human', 'Demo: keep this one private for now.', '2026-09-10T13:12:00.000Z'),
@@ -889,7 +831,6 @@ export async function createFixtureClient(opts = {}) {
     })],
     [DOC_REVOKED, docConversation({
       id: DOC_REVOKED, title: 'Demo — Coastal survey follow-up', version: 4, created_by: 'joe',
-      // The revoke recomputed the column back to private; the grant row remains.
       visibility: 'private',
       archived_at: '2026-09-12T17:00:00.000Z',
       turns: [
@@ -897,7 +838,6 @@ export async function createFixtureClient(opts = {}) {
         docTurn(1, 'assistant', 'Demo: no demo answer since Monday.', '2026-09-12T15:10:30.000Z'),
         docTurn(2, 'human', 'Demo: put it away, and take the demo partner back off it.', '2026-09-12T16:55:00.000Z'),
       ],
-      // Revoked, never deleted: the row stays and carries its `revoked_at`.
       grants: [{ grantee_actor: partnerActor, granted_at: '2026-09-12T15:20:00.000Z', granted_by_actor: 'joe', revoked_at: '2026-09-12T16:58:00.000Z' }],
     })],
     // Shared creation inserts no grants; creator-or-unrevoked-grant still gates reads (0520:186-189).
@@ -988,16 +928,11 @@ export async function createFixtureClient(opts = {}) {
     { human_ref: 'WR-000905', title: 'Demo bounded request: accept the demo ready plan', state: 'needs_joe', source: { label: 'Demo ready plan', freshness: 'stale' }, next_human_action: 'Accept or decline the demo ready plan' },
     { human_ref: 'WR-000906', title: 'Demo bounded request: reconcile the demo vendor names', state: 'needs_joe', source: { label: 'Demo vendor merge review', freshness: 'fresh' }, next_human_action: 'Confirm the demo vendor merge' },
     { human_ref: 'WR-000907', title: 'Demo bounded request: publish the demo rate card', state: 'needs_joe', source: { label: 'Demo rate card review', freshness: 'stale' }, next_human_action: 'Approve or hold the demo rate card' },
-    // WR-000908 is named here but carries NO card below and NO passport entry:
-    // its work-request-card read genuinely refuses, which is C13a's
-    // fetch-failure case for the enriched "Waiting for Joe" detail.
     { human_ref: 'WR-000908', title: 'Demo bounded request: retire the demo legacy export', state: 'needs_joe', source: { label: 'Demo retirement note', freshness: 'fresh' }, next_human_action: 'Confirm the demo legacy export is retired' },
   ];
   // Producer 0493 orders acting_identity by acted_at and feedback oldest first.
   // recommended_answer and business_impact are absent from the pinned interface.
   const sharedRequestCards = new Map([
-    // V2 C2: the Queue's own Work Requests, so its detail pane reads a real
-    // card shape with a recorded-acts history (and one consecutive repeat to group).
     ['WR-000910', {
       ok: true, human_ref: 'WR-000910', title: 'Demo lease abstract importer', desired_outcome: 'Demo lease abstracts import without retyping.',
       state: 'in_progress', version: 5, projection_state: 'queued',
@@ -1050,17 +985,12 @@ export async function createFixtureClient(opts = {}) {
     }],
     ['WR-000907', {
       ok: true, human_ref: 'WR-000907', title: 'Demo bounded request: publish the demo rate card',
-      // No desired_outcome on this row: the card genuinely carries no field
-      // for it, and the enrichment must say so rather than fall back to the
-      // title or the next_human_action.
       desired_outcome: null,
       state: 'needs_joe', version: 1, projection_state: 'queued',
       acceptance_criteria: [],
       source: { label: 'Demo rate card review', freshness: 'stale' },
       triage: null, plan: null, outcome_feedback: null, pending_outcome_feedback: null,
       outcome_feedback_history: [], accepted_feedback_count: 0,
-      // An empty evidence list is a REAL answer (the field exists, and is
-      // empty), never confused with the field being absent.
       incident_evidence: [],
       shape: null, withdrawal: null, acting_identity: [],
       next_human_action: { label: 'Approve or hold the demo rate card', effect: 'none' }, actions: [],
@@ -1124,32 +1054,21 @@ export async function createFixtureClient(opts = {}) {
     { name: 'Demo Pensacola Family Dentistry', city: 'Pensacola', specialty: 'General dentistry', org_name: 'Demo Gulf Coast Dental Group', ref: 'L-901', kind: 'lead', merged: false },
     { name: 'Demo Pensacola Orthopedic Partners', city: null, specialty: null, org_name: null, ref: 'C-900', kind: 'client', merged: false },
     { name: 'Demo Pensacola Buildout Contractors', city: 'Pensacola', specialty: null, org_name: null, ref: 'V-903', kind: 'vendor', merged: false },
-    // A bare party: no kind of its own beyond "party", and no ref at all. The
-    // producer selects `ref` as a plain column and guards it with a string test,
-    // which is the producer telling you it can be absent.
     { name: 'Demo Pensacola Referring Physician', city: null, specialty: null, org_name: null, ref: null, kind: 'party', merged: false },
-    // A retired alias. It sorts FIRST by `merged, similarity desc`, carries a
-    // retired badge and opens nothing.
     { name: 'Demo Pensacola Smiles (retired alias)', city: null, specialty: null, org_name: null, ref: 'L-904', kind: 'lead', merged: true },
   ];
 
   const searchOrganizations = [
-    // The observed shape: a live row whose aggregated ref is a NULL ELEMENT.
     { name: 'Demo Pensacola Imaging Partners', live_rows: 1, refs: [null], retired_aliases: 0, retired_refs: [], retired_refs_truncated: false, live_as_role: 0, role_refs: [], all_retired: false },
     { name: 'Demo Example Organization 093', live_rows: 1, refs: [null], retired_aliases: 0, retired_refs: [], retired_refs_truncated: false, live_as_role: 1, role_refs: ['C-901'], all_retired: false },
     { name: 'Demo Pensacola Surgical Suites', live_rows: 2, refs: ['P-906', 'P-907'], retired_aliases: 0, retired_refs: [], retired_refs_truncated: false, live_as_role: 0, role_refs: [], all_retired: false },
     { name: 'Demo Pensacola Retired Holdings', live_rows: 0, refs: [], retired_aliases: 3, retired_refs: ['P-908', 'P-909', 'P-910'], retired_refs_truncated: false, live_as_role: 0, role_refs: [], all_retired: true },
-    // Twelve retired aliases, ten refs listed: the producer truncates at
-    // RETIRED_REF_CAP and SAYS SO rather than slicing silently.
     { name: 'Demo Pensacola Legacy Practices', live_rows: 1, refs: ['P-911'], retired_aliases: 12, retired_refs: ['P-912', 'P-913', 'P-914', 'P-915', 'P-916', 'P-917', 'P-918', 'P-919', 'P-920', 'P-921'], retired_refs_truncated: true, live_as_role: 0, role_refs: [], all_retired: false },
   ];
 
   const searchDeals = [
     { name: 'Demo Pensacola distribution warehouse', phase: 'pending', owner: null, client_ref: 'C-900',
       invoiced_on: null, closed_on: null, lane: 'local', outcome: null },
-    // TWO deals sharing a name. The producer does NOT deduplicate deals when it
-    // derives candidates, and a fixture that did would certify a client that
-    // silently drops one of them.
     { name: 'Demo Pensacola medical office building', phase: 'research', owner: 'joe', client_ref: null,
       invoiced_on: null, closed_on: null, lane: null, outcome: null },
     { name: 'Demo Pensacola medical office building', phase: 'legal', owner: 'dell', client_ref: 'C-900',
@@ -1216,7 +1135,6 @@ export async function createFixtureClient(opts = {}) {
         out.push({ kind: searchKindFromRef(ref), name: row.name, target: row.name });
       }
     }
-    // Deals are NOT deduplicated. Two deals with one name are two candidates.
     for (const row of payload.deals) {
       if (typeof row.name !== 'string' || row.name === '') continue;
       out.push({ kind: 'deal', name: row.name, target: row.name });
@@ -1291,9 +1209,6 @@ export async function createFixtureClient(opts = {}) {
       const activeNational = national.filter((d) => d.operating_state === 'active');
       return {
         actor: selfActor,
-        // field_base, the same shape the live read returns: the latest committed
-        // event for each editable cell, from the same pass as the values, so a
-        // first edit has a base here too. A cell with no history has no entry.
         deals: eligible.filter(d => !d.invoiced_on).map((d) => ({ ...d, phase_change: phaseChangeFor(d.id), field_base: fieldBaseFor(d.id) })),
         lost_deals: [...deals.values()].filter(d => d.outcome === 'lost').map(d => ({...d})),
         closed_deals: [...deals.values()].filter(d => (d.outcome === 'won' || !d.outcome && (d.closed_on || d.invoiced_on))).map(d => ({...d})),
@@ -1338,7 +1253,7 @@ export async function createFixtureClient(opts = {}) {
         });
       }
       for (const entry of criticalDates.get(dealId) || []) critical_dates.push({ ...entry });
-      return { deal: {...deal, phase_change: phaseChangeFor(dealId)}, thread, critical_dates, history: hist,
+      return { items: structuredClone(deal.items || []), item_schema_version: 'deal-items.v1', deal: {...deal, phase_change: phaseChangeFor(dealId)}, thread, critical_dates, history: hist,
         next_actions: [...(deal.email_actions || []), ...(deal.next_step ? [{ id: `a-${deal.id}`, owner: deal.owner,
           description: deal.next_step, due_on: deal.next_date, status: 'open' }] : [])],
         activities: hist.slice(0, 4).map((h) => ({ id: h.id, actor: h.actor,
@@ -1366,7 +1281,6 @@ export async function createFixtureClient(opts = {}) {
     },
     async correspondenceReadiness(args = {}) {
       readinessRequest(args);
-      // Synthetic installation fixture; counts never stand in for deal evidence.
       return structuredClone({ ok: true, schema_version: 'doctorcre-v5-j103-correspondence-store.v1',
         readiness: { server_instant: '2026-09-30T12:00:00Z', partners: [{ partner_slug: 'demo-partner',
           consents_in_force: 0, consents_revoked: 0, read_receipts: 0, drafts: 0 }], read_receipt_writer_granted_to_runtime: false },
@@ -1381,10 +1295,6 @@ export async function createFixtureClient(opts = {}) {
         receipts: [], ...CORRESPONDENCE_CEILING });
     },
 
-    // V5-UX-B04: fixture stand-in for the pinned `/api/v1/business/{dataset}/<id>`
-    // single-record read. A genuinely unknown id (d02's account_client_id, on
-    // purpose) throws, exactly as a live 404 would, so callers exercise the
-    // real fetch-failure branch rather than a synthetic one.
     async getPartyRecord({ dataset, id }) {
       const record = businessRecords.get(id);
       if (!record) throw new Error(`fixture business record not found: ${dataset}/${id}`);
@@ -1407,7 +1317,6 @@ export async function createFixtureClient(opts = {}) {
     },
 
     async presenceLease({ deal, field, idempotency_key }) {
-      // lease is not a write to deal data; idempotency still accepted
       void idempotency_key;
       getDealOrThrow(deal);
       const expires = new Date(Date.now() + LEASE_TTL_MS).toISOString();
@@ -1416,8 +1325,6 @@ export async function createFixtureClient(opts = {}) {
       return { ok: true };
     },
 
-    // `change_reason` and `human_quote` are optional at the record layer and are
-    // optional here: a move without them is not refused, it simply records none.
     async patchDealField({ deal, field, value, base_event_id, idempotency_key, change_reason, human_quote }) {
       return withIdem(idempotency_key, () =>
         applyFieldWrite({
@@ -1541,6 +1448,42 @@ export async function createFixtureClient(opts = {}) {
       });
     },
 
+    async recordDealItem({ deal, title, due_on, bullets, source_ref, idempotency_key }) {
+      return withIdem(idempotency_key, () => {
+        const d = getDealOrThrow(deal);
+        const source = source_ref || `app:deal-item:${idempotency_key}`;
+        const existing = d.items?.find(item => item.title === title && item.source_ref === source);
+        const item = existing || { id: uuidv4(), title, due_on: due_on || null, status: 'open', bullets: structuredClone(bullets), source_ref: source };
+        if (!existing) (d.items ||= []).push(item);
+        return { status: 'ok', ok: true, item: structuredClone(item), rows_changed: existing ? 0 : 1 };
+      });
+    },
+    async instructDealItem({ deal, item_id, text, idempotency_key }) {
+      return withIdem(idempotency_key, () => {
+        const item = getDealOrThrow(deal).items?.find(row => row.id === item_id);
+        if (!item || !text?.trim()) throw new Error('Item or instruction unavailable');
+        item.bullets.push({ date: nowIso().slice(0,10), kind: 'status', text: text.trim() });
+        return { ok: true, item: structuredClone(item) };
+      });
+    },
+    async completeDealItem({ deal, item_id, idempotency_key }) {
+      return withIdem(idempotency_key, () => {
+        const item = getDealOrThrow(deal).items?.find(row => row.id === item_id);
+        if (!item) throw new Error('Item unavailable');
+        item.status = 'done';
+        return { ok: true, item: structuredClone(item) };
+      });
+    },
+
+    async logActivity({ ref, kind, summary, occurred_at, idempotency_key }) {
+      return withIdem(idempotency_key, () => {
+        getDealOrThrow(ref);
+        if (kind !== 'meeting' || !String(summary || '').trim() || !Number.isFinite(Date.parse(occurred_at))) throw new Error('Invalid activity');
+        pushHistory(ref, selfActor, `logged meeting: ${String(summary).trim()}`, nowIso());
+        return { ok: true, activity_id: `a-${dealStore.noteSeq++}`, subject: { type: 'deal', id: ref } };
+      });
+    },
+
     async addDealNote({ deal, text, idempotency_key }) {
       return withIdem(idempotency_key, () => {
         getDealOrThrow(deal);
@@ -1567,9 +1510,6 @@ export async function createFixtureClient(opts = {}) {
       });
     },
 
-    // A date that matters, with where it came from. The record layer refuses a
-    // critical date without a source, and so does this: a fixture that accepted
-    // one would let a surface ship a dialog the live verb would bounce.
     async addCriticalDate({ deal, kind, due_on, source, idempotency_key }) {
       return withIdem(idempotency_key, () => {
         getDealOrThrow(deal);
@@ -1692,8 +1632,6 @@ export async function createFixtureClient(opts = {}) {
       return { count: rows.length, loops: rows };
     },
 
-    // Derive triage from fixture next steps and critical dates using the current clock.
-    // This subset cannot prove production eligibility for after-call actions, holds, notes, statuses or inbox.
     async listFeatureSwitches() {
       return {ok:true,schema:'feature-switches.v1',switches:[{name:'doc-suggestion-actions',available:true}]};
     },
@@ -1733,7 +1671,6 @@ export async function createFixtureClient(opts = {}) {
       const today = businessDay(new Date(nowIso()));
       const horizon = new Date(Date.parse(`${today}T00:00:00Z`) + 14 * 86_400_000).toISOString().slice(0, 10);
       const items = [];
-      // v_today_triage does not filter on the deal's own state, so neither does this.
       for (const deal of deals.values()) {
         const day = typeof deal.next_date === 'string' ? deal.next_date.slice(0, 10) : null;
         if (deal.next_step && day && day <= today) {
@@ -1790,8 +1727,6 @@ export async function createFixtureClient(opts = {}) {
       });
     },
 
-    // The record layer's own answer shape: {count, blocks:[...]} with the
-    // version edit-loop-header would need as base_version.
     async loopHeaders() {
       const blocks = [
         { block_id: 'block-open-hot', file: '00_Context/open-loops.md', kind: 'open_loop', section: 'hot', seq: 1, version: 3, prose_md: 'What is open this week, and what each one is waiting on.' },
@@ -1885,12 +1820,6 @@ export async function createFixtureClient(opts = {}) {
       });
     },
 
-    // ------------------------------------------------- delivery evidence (C11)
-    // The three reads REFUSE a miss rather than answering an empty one, because
-    // an empty answer would paint as "no evidence" where the truth is "unknown".
-    // The three writes are captured-only or pre-build-only exactly as the record
-    // layer is, they demand the version the card last held, and they replay a
-    // stored answer under a spent key instead of writing a second time.
     async engineeringPassport({ work_request } = {}) {
       const row = workRequestOrRefuse('engineering-passport', work_request);
       if (!row.passport) refuse('engineering-passport', 'engineering_work_request_not_found', { work_request });
@@ -2001,8 +1930,6 @@ export async function createFixtureClient(opts = {}) {
       });
     },
 
-    // Match producer fields occurrences, age_days, next_action and hours_since_last_change.
-    // Fixture-only outage rejects one read so only its areas become unknown.
     async incidentBoard({ state = 'open', severity = null } = {}) {
       refuseIfOutage('incidents', 'incident-board');
       const rows = incidents
@@ -2038,9 +1965,6 @@ export async function createFixtureClient(opts = {}) {
       };
     },
 
-    // The one write the incident page offers. It validates exactly the two
-    // patterns the verb declares, refuses a link that already exists, and
-    // replays under a reused key like every other fixture write.
     async linkIncidentWorkRequest({ idempotency_key, incident_ref, work_request }) {
       return withIdem(idempotency_key, () => {
         if (!/^INC-[0-9]{8}-[0-9]{2}$/.test(String(incident_ref))) refuse('link-incident-work-request', 'invalid_incident_ref', { incident_ref });
@@ -2077,29 +2001,17 @@ export async function createFixtureClient(opts = {}) {
       };
     },
 
-    // The preference read. It takes NO arguments, and it is spelled with no
-    // parameter list at all so an argument cannot be added here by accident:
-    // the verb declares zero properties under additionalProperties:false.
-    // ------------------------------------ session identity and dispatch (S02)
-    // Both are READS and neither takes an actor, exactly as the verbs declare.
-    // `total_seen` and `total_returned` are synthetic scenario totals and do NOT
-    // move with `limit` — that is what makes the three-number counts line
-    // testable here instead of only against production.
+    // Scenario totals are independent of the page limit.
     async sessionIdentity({ query = null, limit = null, include_closed = false } = {}) {
       refuseIfOutage('sessions', 'read-session-identity');
       const text = typeof query === 'string' ? query.trim().toLowerCase() : '';
-      // `include_closed` is passed through to the producer and changes nothing
-      // here: no example row carries a closed state in this scenario.
+      // No fixture session is closed.
       void include_closed;
-      // BOTH fields, because clause 1 is "name/ID lookup" and a fixture that
-      // matched on the name alone would let an id lookup pass while broken.
       const matched = text.length === 0
         ? SESSION_ROWS
         : SESSION_ROWS.filter((row) => String(row.display_name).toLowerCase().includes(text)
           || String(row.canonical_session_id).toLowerCase().includes(text));
       if (text === 'reverent') {
-        // The captured FILTERED-EMPTY answer: four rows match and none is the
-        // caller's to see. An empty list with permission_filtered true.
         return { ok: true, permission_filtered: true, total_seen: 4, total_returned: 0, sessions: [] };
       }
       if (matched.length === 0) {
@@ -2107,8 +2019,6 @@ export async function createFixtureClient(opts = {}) {
       }
       const capped = Number.isInteger(limit) && limit >= 1 && limit <= 50 ? limit : 25;
       const page = matched.slice(0, capped);
-      // 603 and 124 exercise separate seen and visible totals, and
-      // they do NOT shrink when `limit` does.
       const seen = text.length === 0 ? 603 : matched.length;
       const visible = text.length === 0 ? 124 : matched.length;
       return {
@@ -2133,8 +2043,7 @@ export async function createFixtureClient(opts = {}) {
       if (session_id === SESSION_WITH_DISPATCH) {
         return structuredClone(DISPATCH_WITH_EVENTS);
       }
-      // Every other id — real, synthetic or nonsense — answers identically,
-      // which is precisely why the drawer never says "this session has none".
+      // Unknown IDs return the same no-spine state.
       return dispatchNoSpine(String(session_id));
     },
 
@@ -2142,8 +2051,7 @@ export async function createFixtureClient(opts = {}) {
     async roomQueue({ room = 'partner-line' } = {}) {
       refuseIfOutage('model_room', 'read-room-queue');
       if (room !== 'partner-line') {
-        // Nothing has EVER been projected into that room: projected_at null,
-        // which is a different truth from a stale projection.
+        // Null means never projected, not stale.
         return { ok: true, room: String(room), events: [], projected_at: null, live: false };
       }
       return {
@@ -2164,9 +2072,7 @@ export async function createFixtureClient(opts = {}) {
         ok: true,
         room: String(room),
         turns,
-        // A bigint, serialised by the driver as a decimal STRING, exactly as
-        // production returns it. A fixture that made it a number would let a
-        // validator demanding an integer pass here and refuse production.
+        // The producer serializes bigint sequences as strings.
         latest_seq: turns.length ? String(turns[turns.length - 1].seq) : '0',
         more: turns.length === capped,
       };
@@ -2732,11 +2638,11 @@ export async function createFixtureClient(opts = {}) {
     },
 
     // Derive Home counts from the same fixture board. Mint timestamps with the contract
-    // 60-second window so ordinary runs exercise fresh data.
+    // 120-second window so ordinary runs exercise fresh data.
     async commandCenter() {
       const now = Date.now();
       const observed_at = new Date(now).toISOString();
-      const valid_until = new Date(now + 60_000).toISOString();
+      const valid_until = new Date(now + 120_000).toISOString();
       const source = (name) => ({
         source: name,
         source_ref: name === 'command_center' ? 'fixture:command-center' : `fixture:${name}`,

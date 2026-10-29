@@ -44,7 +44,7 @@ for (const width of [390, 1280]) for (const theme of ['dark', 'light']) {
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
   });
 
-  test(`Opening an account action keeps its description and due date above the update at ${width}px ${theme}`, async t => {
+  test(`Opening an account action shows its checklist title and due chip above the update at ${width}px ${theme}`, async t => {
     const page = await accountPage(t, width, theme);
     await page.locator('.account-card').first().click();
     await screenshot(page, 'account', width, theme);
@@ -57,7 +57,8 @@ for (const width of [390, 1280]) for (const theme of ['dark', 'light']) {
     const snapshot = page.locator('.deal-opening-snapshot');
     assert.equal(await snapshot.count(), 1, 'the opening snapshot retains the selected action');
     assert.match(await snapshot.innerText(), new RegExp(description));
-    assert.match(await snapshot.innerText(), /Overdue|overdue/);
+    assert.equal(await snapshot.locator('ol [data-overdue="true"]').count(), 1);
+    assert.doesNotMatch(await snapshot.innerText(), /Overdue action|Next action/);
     assert.equal(await snapshot.locator('time').getAttribute('datetime'), '2026-01-18', 'the opening retains the selected action due date');
     const order = await page.evaluate(() => {
       const snapshot = document.querySelector('.deal-opening-snapshot');
@@ -81,7 +82,7 @@ for (const theme of ['dark', 'light']) for (const sidebarOpen of [false, true]) 
     const captureName = sidebarOpen ? 'columns-sidebar' : 'columns';
     await screenshot(page, captureName, 1280, theme);
     const headings = page.locator('#tableFrame thead');
-    assert.match(await headings.textContent(), /Work record.*Phase.*Next step.*Next date/s);
+    assert.match(await headings.textContent(), /Deal.*Phase.*Next step.*Next date/s);
     if (sidebarOpen) {
       assert.equal(await page.locator('#rows tr').first().locator('td').nth(2).evaluate(node => getComputedStyle(node, '::before').content), '"Next step"');
     } else {

@@ -1,5 +1,7 @@
 // The system board's model: the record-layer work queue (verb work-queue) as stage columns.
 // The server derives stage, PR links and staleness; the page only validates, groups and labels.
+import { MIN_POLL_MS } from './visibility-poll.mjs';
+
 export const QUEUE_STAGES = [
   { id: 'queued', label: 'Queued', color: 'var(--fg-quiet)', meaning: 'Dispatched; no PR yet' },
   { id: 'build', label: 'Building', color: 'var(--data-2)', meaning: 'Draft PR open' },
@@ -7,7 +9,7 @@ export const QUEUE_STAGES = [
   { id: 'merged', label: 'Merged', color: 'var(--data-1)', meaning: 'PR merged' },
   { id: 'closed', label: 'Closed', color: 'var(--status-danger)', meaning: 'PR closed without merging' },
 ];
-export const QUEUE_REFRESH_MS = 30_000;
+export const QUEUE_REFRESH_MS = MIN_POLL_MS;
 // Five quiet minutes stop the reads, so the record layer's database can suspend.
 export const QUEUE_IDLE_MS = 5 * 60_000;
 

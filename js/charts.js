@@ -322,8 +322,6 @@ export function mountCharts({ client: boardClient, storage: storageImpl } = {}) 
   }
   wire();
   const address = restoreFromAddress();
-  // An unavailable answer rejects to the poller, so it retries on its short
-  // backoff and the page recovers on its own without waiting a full interval.
   // The poller takes the first read too; with no window to poll in, the page
   // still reads once.
   const poller = mountAutoRefresh({ document, window: globalThis.window, refresh: async ({ signal }) => {

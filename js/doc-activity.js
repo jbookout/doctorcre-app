@@ -1,4 +1,3 @@
-import { createFixtureClient } from './fixture-client.js';
 import { createLiveClient } from './live-client.js';
 import { resolveDealroomBoot } from './boot-mode.js';
 import { mountAutoRefresh, readWithDeadline, updatedLabel } from './auto-refresh.mjs';
@@ -9,7 +8,7 @@ const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;'
 const stamp = value => new Date(value).toLocaleString(undefined, { month:'short', day:'numeric', hour:'numeric', minute:'2-digit', hour12:true });
 const shown = value => value === null || value === undefined ? '—' : String(value).replace(/_/g,' ');
 
-export function mountDocActivity({ document: root, window, client, intervalMs = 30_000 }) {
+export function mountDocActivity({ document: root, window, client, intervalMs }) {
   const $ = id => root.getElementById(id), form = $('activityFilters'), dialog = $('activityDetail');
   const view = { rows: [], sequence: 0, pages: 1, next: null, selected: null, opener: null, attempts: new Map(), feedback: new Map(), fingerprint: '', filters: '' };
   const message = text => { $('activityStatus').textContent = text; };
@@ -138,6 +137,6 @@ export function mountDocActivity({ document: root, window, client, intervalMs = 
 }
 if (typeof document !== 'undefined' && document.getElementById('activityFeed')) {
   const boot = resolveDealroomBoot(location);
-  const client = boot.mode === 'live' ? createLiveClient(boot.options) : await createFixtureClient(boot.options);
+  const client = boot.mode === 'live' ? createLiveClient(boot.options) : await (await import("./fixture-client.js")).createFixtureClient(boot.options);
   mountDocActivity({ document, window, client });
 }

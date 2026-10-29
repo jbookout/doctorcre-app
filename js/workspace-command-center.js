@@ -1,8 +1,9 @@
+import { renderDealAlert } from './deal-items.js';
 import { scopedDeals } from './deal-review-model.js';
 import {onDialogClosed} from './dialog-lifecycle.js';
 import { pageDocContext, publishDocRead, selectDocRecord, setDocFilters } from './doc-context.js';
 import { projectInvoices, invoiceHref, invoiceMoney, invoiceDate } from './invoice-tracker-model.js';
-import { introductionSuggestions } from './relationship-network-model.js';
+import { introductionSuggestions, introductionRouteLabel } from './relationship-network-model.js';
 import { mountAutoRefresh, readWithDeadline, updatedLabel } from './auto-refresh.mjs';
 import { homeClient } from './home-boot.js';
 import { BUSINESS_TIME_ZONE } from './business-date.js';
@@ -11,6 +12,7 @@ import { localToday } from './calendar-model.js';
 import { agendaSnapshot, dealHref, dealSnapshot, HOME_SCOPES, readHomeAgenda, readHomeDashboard, topNewLeads } from './home-dashboard-model.js';
 import { mountNotificationBadge } from './shell.js';
 import { mountHomeCallTasks } from './home-call-tasks.js';
+import { mountHomeMeetingReviews } from './home-meeting-reviews.js';
 
 const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
 const E = escapeHtml;
@@ -18,13 +20,13 @@ const count = value => value === null ? '—' : String(value);
 const AGENDA_PREVIEW = 6;
 const dateLabel = day => new Date(`${day}T12:00:00`).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 
-export function mountHomeDashboard({ document, window, client, now = () => Date.now(), intervalMs = 30_000 }) {
+export function mountHomeDashboard({ document, window, client, now = () => Date.now(), intervalMs }) {
   const $ = id => document.getElementById(id);
-  let emailQuality = null, emailReview = null, emailRetired = false, emailObserver = null;
+  let emailQuality = null, emailReview = null, replyOutcomes = null, emailFilings = null, emailRetired = false, emailObserver = null;
   const retirePendingEmail = () => {
     emailRetired = true;
     emailObserver?.disconnect();
-    for (const [id, title, view] of [['homeEmailQuality', 'Email proposal quality', emailQuality], ['homeEmailFollowups', 'Email follow-ups', emailReview]]) {
+    for (const [id, title, view] of [['homeReplyOutcomes', 'Reply delivery', replyOutcomes], ['homeEmailQuality', 'Email proposal quality', emailQuality], ['homeEmailFollowups', 'Email follow-ups', emailReview], ['homeEmailFilings', 'Automatic email filings', emailFilings]]) {
       if (view || !$(id)) continue;
       $(id).setAttribute('aria-busy', 'false');
       $(id).innerHTML = `<header class="home-panel-head"><h2>${title}</h2></header><p role="status">Sign in to view ${title.toLowerCase()}.</p>`;
@@ -49,6 +51,9 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
     await auto.refresh();
     if (!disposed && before === sequence) await auto.refresh();
   } }) : null;
+  let storage; try { storage = window.localStorage; } catch {}
+  const meetingReviews = $('homeMeetingReviews') && client.logActivity
+    ? mountHomeMeetingReviews({ document, client, host: $('homeMeetingReviews'), storage, now }) : null;
   const docSources = [['board','getHomeAgenda'],['leads','getLeadBoard']];
   const docPayload = (source, view) => source === 'board' ? {deals:scopedDeals(view?.board,scope)}
     : (view?.leads ? {leads:topNewLeads(view.leads,{scope,actor:view.board?.actor,now:now()})} : null);
@@ -65,6 +70,7 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
   const renderMeetings = signedOut => {
     if (!$('homeMeetings')) return;
     const meetings = signedOut ? null : calendar;
+    meetingReviews?.update({ calendar: meetings, deals: scopedDeals(snapshot?.board, 'team') || [], actor: snapshot?.board?.actor, signedOut: Boolean(signedOut) });
     if (!meetings) { $('homeMeetings').replaceChildren(); widget('homeMeetings', null); return; }
     const failed = meetings.state === 'unavailable';
     const count = meetings.items.length;
@@ -80,6 +86,7 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
     widget('homeMeetings', header + warnings + content);
   };
   const render = () => {
+    replyOutcomes?.syncActor();
     emailReview?.update();
     const signedOut = snapshot?.unauthorized;
     callTasks?.update({ read: snapshot?.reads?.callTasks, tasks: snapshot?.callTasks, actor: snapshot?.board?.actor,
@@ -95,7 +102,7 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
     const summary = signedOut ? null : dealSnapshot(snapshot?.board, scope, agenda);
     $('dealAttention').setAttribute('aria-busy', String(snapshot?.loading ?? true));
     $('dealCounts').innerHTML = `<span>Active deals: <b>${count(summary?.active ?? null)}</b></span> <span>In market: <b>${count(summary?.inMarket ?? null)}</b></span> <span>National accounts: <b>${count(summary?.national ?? null)}</b></span> <span>Overdue local deals: <b>${count(summary?.flagged?.length ?? null)}</b></span>`;
-    paint($('dealFlags'), summary?.flagged ? (summary.flagged.length ? summary.flagged.map(deal => `<a class="home-flag" data-home-key="deal:${E(deal.id)}" href="${E(dealHref(deal.id))}"><span class="home-flag-light" aria-hidden="true"></span><div><strong>${E(deal.name)}</strong><span>${E(deal.next_step || deal.phase || 'Needs attention')}</span></div><span class="home-arrow" aria-hidden="true">↗</span></a>`).join('') : '<p class="home-empty">No overdue local next steps</p>') : `<p class="home-empty">${signedOut ? 'Sign in to view deals' : snapshot?.reads?.board?.state === 'error' ? 'Deals unavailable' : summary ? 'Overdue local deals unavailable' : 'Updating…'}</p>`);
+    paint($('dealFlags'), summary?.flagged ? (summary.flagged.length ? summary.flagged.map(deal => `<article class="home-flag deal-alert">${renderDealAlert(deal,{today})}</article>`).join('') : '<p class="home-empty">No overdue local next steps</p>') : `<p class="home-empty">${signedOut ? 'Sign in to view deals' : snapshot?.reads?.board?.state === 'error' ? 'Deals unavailable' : summary ? 'Overdue local deals unavailable' : 'Updating…'}</p>`);
     if ($('homeInvoices')) {
       const invoices = signedOut ? null : projectInvoices(snapshot?.invoices, { scope, today: localToday(new Date(now())) });
       const overdue = invoices?.filter(row => row.overdue) || [];
@@ -122,7 +129,7 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
     widget('homeLeads', leads.length ? `<header class="home-panel-head"><h2>Recent arrivals</h2><span class="home-period">7 days</span><a class="home-outline" href="/leads">Prospecting queue</a></header><svg class="home-lead-scores" viewBox="0 0 600 42" role="img" aria-label="Relative scores of recent arrivals">${leads.map((lead, i) => `<rect class="score-track" x="${i * 200}" y="10" width="186" height="12" rx="6"/><rect x="${i * 200}" y="10" width="${Math.max(0, lead.score) / Math.max(1, ...leads.map(row => row.score)) * 186}" height="12" rx="6"/>`).join('')}</svg><div class="home-lead-list">${leads.map((lead, i) => `<button type="button" data-lead="${E(lead.id)}" data-home-key="lead:${E(lead.id)}" class="home-lead"><span class="home-lead-rank">${i + 1}</span><div><strong>${E(lead.name)}</strong><span>${E([lead.specialty, lead.city].filter(Boolean).join(' · '))}</span></div><span class="home-score"><b>${E(lead.score)}</b><small>Score</small></span></button>`).join('')}</div>` : null);
     if ($('homeIntroductions')) {
       const suggestions = signedOut ? [] : introductionSuggestions(snapshot?.relationships, {scope,actor:snapshot?.board?.actor,now:now()});
-      widget('homeIntroductions', suggestions.length ? `<header class="home-panel-head"><h2>Suggested introductions</h2><a class="home-icon-link" href="/relationships" aria-label="Open relationships">↗</a></header><div class="relationship-intro-list">${suggestions.map(s=>`<button type="button" class="relationship-card" data-intro-node="${E(s.to)}" data-home-key="intro:${E(s.id)}"><span class="intro-route">${E(s.fromNode.name)} → ${E(s.toNode.name)}</span><strong>${E(s.reason)}</strong></button>`).join('')}</div>` : null);
+      widget('homeIntroductions', suggestions.length ? `<header class="home-panel-head"><h2>Suggested introductions</h2><a class="home-icon-link" href="/relationships" aria-label="Open relationships">↗</a></header><div class="relationship-intro-list">${suggestions.map(s=>`<button type="button" class="relationship-card" data-intro-node="${E(s.to)}" data-home-key="intro:${E(s.id)}"><span class="intro-route">${E(introductionRouteLabel(s.path))}</span><strong>${E(s.reason)}</strong></button>`).join('')}</div>` : null);
       if (signedOut || snapshot?.reads?.relationships?.state === 'error') relationshipDialog?.clear();
       else if(snapshot?.relationships) relationshipDialog?.update(snapshot.relationships);
     }
@@ -136,7 +143,7 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
   const refresh = async ({ signal } = {}) => {
     const read = nextRead; nextRead = readHomeDashboard;
     const agendaOnly = read === readHomeAgenda;
-    if (!agendaOnly) { void emailReview?.refresh(); void emailQuality?.refresh(); }
+    if (!agendaOnly) { void emailReview?.refresh(); void emailQuality?.refresh(); void replyOutcomes?.refresh(); }
     const currentDocSources = agendaOnly ? docSources.slice(0, 1) : docSources;
     const docTickets = new Map(currentDocSources.map(([key,method]) => [key,pageDocContext?.begin(method)]));
     const epoch = ++sequence;
@@ -297,24 +304,36 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
       if (!entry.isIntersecting) continue;
       emailObserver.unobserve(entry.target);
       if (disposed || emailRetired) continue;
-      if (entry.target.id === 'homeEmailQuality') import('./email-quality.js').then(({ mountEmailQuality }) => {
+      if (entry.target.id === 'homeReplyOutcomes') import('./reply-outcomes.js').then(({ mountReplyOutcomes }) => {
+        if (disposed || emailRetired) return;
+        replyOutcomes = mountReplyOutcomes({ container: entry.target, client });
+        void replyOutcomes.refresh();
+      });
+      else if (entry.target.id === 'homeEmailQuality') import('./email-quality.js').then(({ mountEmailQuality }) => {
         if (disposed || emailRetired) return;
         emailQuality = mountEmailQuality({ container: entry.target, client });
         void emailQuality.refresh();
       });
+      else if (entry.target.id === 'homeEmailFilings') import('./email-filings.js').then(({ mountEmailFilings }) => {
+        if (disposed || emailRetired) return;
+        emailFilings = mountEmailFilings({ container: entry.target, client });
+        void emailFilings.refresh();
+      });
       else import('./email-followups.js').then(({ mountEmailFollowups }) => {
         if (disposed || emailRetired) return;
         emailReview = mountEmailFollowups({ container: entry.target, client, onChange: () => {
-          void emailQuality?.refresh(); nextRead = readHomeAgenda; auto.refresh();
+          void emailQuality?.refresh(); void replyOutcomes?.refresh(); nextRead = readHomeAgenda; auto.refresh();
         } });
         void emailReview.refresh();
       });
     }
   });
+  if ($('homeReplyOutcomes') && client.listEmailProposals) emailObserver.observe($('homeReplyOutcomes'));
   if ($('homeEmailQuality') && client.getEmailProposalQuality) emailObserver.observe($('homeEmailQuality'));
+  if ($('homeEmailFilings') && client.listEmailThreadFilings) emailObserver.observe($('homeEmailFilings'));
   if ($('homeEmailFollowups') && client.listEmailProposals) emailObserver.observe($('homeEmailFollowups'));
   auto.refresh();
-  return { refresh: auto.refresh, dispose() { disposed = true; sequence++; prepEpoch++; meetingPrep?.dispose(); emailObserver?.disconnect(); window.removeEventListener('doctorcre-session-invalidated', retirePendingEmail); window.clearInterval(expiry); auto.dispose(); document.removeEventListener('doctorcre:brief-calendar', updateCalendar); window.removeEventListener('doctorcre-session-invalidated', clearCalendar); relationshipDialog?.dispose(); pastWidget?.dispose(); callTasks?.dispose(); emailReview?.dispose(); emailQuality?.dispose(); } };
+  return { refresh: auto.refresh, dispose() { disposed = true; sequence++; prepEpoch++; meetingPrep?.dispose(); emailObserver?.disconnect(); window.removeEventListener('doctorcre-session-invalidated', retirePendingEmail); window.clearInterval(expiry); auto.dispose(); document.removeEventListener('doctorcre:brief-calendar', updateCalendar); window.removeEventListener('doctorcre-session-invalidated', clearCalendar); relationshipDialog?.dispose(); pastWidget?.dispose(); callTasks?.dispose(); meetingReviews?.dispose(); emailReview?.dispose(); emailFilings?.dispose(); emailQuality?.dispose(); replyOutcomes?.dispose(); } };
 }
 
 if (typeof document !== 'undefined' && document.getElementById('dealAttention')) {

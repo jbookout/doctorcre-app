@@ -40,6 +40,6 @@ test('only GitHub pull request URLs become links, labelled with their WR.S.J.rep
   assert.deepEqual(links, [{ href: 'https://github.com/jbookout/doctorcre-app/pull/12', label: 'WR557.S4.J1.app#12', state: 'draft' }]);
 });
 
-test('the refresh clock is 30 seconds with a 5-minute idle cutoff', () => {
-  assert.deepEqual([QUEUE_REFRESH_MS, QUEUE_IDLE_MS], [30_000, 300_000]);
+test('the refresh clock is 60 seconds with a 5-minute idle cutoff', () => {
+  assert.deepEqual([QUEUE_REFRESH_MS, QUEUE_IDLE_MS], [60_000, 300_000]);
 });

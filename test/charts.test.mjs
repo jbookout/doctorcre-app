@@ -620,15 +620,20 @@ test("Charts background refresh keeps the board, its time and open Details on sc
   assert.equal(details().open, true, "and across a slice");
 });
 
-test("Charts recover from an unavailable read on the poller's short backoff", async t => {
+test("Charts recover from an unavailable read after the one-minute floor", async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
   const s = await chartDom(t, reads => {
     if (reads === 1) throw Object.assign(new Error("Synthetic unavailable"), { status: 503 });
     return board;
   }, { poll: true, ready: false });
   assert.equal(s.charts.view.status, "unavailable");
-  const deadline = Date.now() + 5_000;
-  while (s.charts.view.status !== "ready" && Date.now() < deadline) await new Promise(resolve => setTimeout(resolve, 50));
-  assert.equal(s.charts.view.status, "ready", "no Retry press and no 30 s wait");
+  t.mock.timers.tick(59_999);
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(s.reads(), 1, "no background read before the one-minute floor");
+  assert.equal(s.charts.view.status, "unavailable");
+  t.mock.timers.tick(1);
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(s.charts.view.status, "ready", "recovers without a Retry press at the one-minute floor");
   assert.equal(s.reads(), 2);
 });
 
