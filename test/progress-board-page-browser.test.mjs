@@ -464,7 +464,7 @@ for (const width of [390, 1440]) {
       : change === 'removed' ? { keep: tasks.keep } : {};
     version++;
     await page.clock.runFor(60_000);
-    await page.waitForFunction(() => document.querySelector('#board-meta').textContent.includes('Version 2'));
+    await page.waitForFunction(() => document.querySelector('#board-publication').textContent.includes('Snapshot generation 2'));
     if (change === 'updated') {
       assert.match(await card.textContent(), /Updated summary/);
       assert.equal(await card.evaluate(node => node === document.activeElement), true);
