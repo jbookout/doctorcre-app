@@ -105,14 +105,29 @@ test('board summaries use the real fixture and live adapters for detail-only act
   for (const client of [fixture, live]) {
     const deal = (await client.getBoard()).deals.find(row => row.id === seed.deals[0].id);
     const doc = new JSDOM(renderDealAlert(deal, { today: '2026-10-29', viewer: 'joe', buttons: true, board: true })).window.document;
-    assert.match(doc.body.textContent, /Next: Tour the property · overdue Oct 12 · D/);
+    assert.match(doc.body.textContent, /Next: Tour the property · Oct 12 · D/);
     assert.match(doc.body.textContent, /Last: Met the client · Thu Oct 22/);
     assert.doesNotMatch(doc.body.textContent, /Old action|No next step/);
   }
+  seed.deals[0].email_actions[2].completed_at = '2026-10-23T12:00:00Z';
+  seed.deals[0].email_actions[2].outcome = 'Proposal accepted';
+  const completedClient = await createFixtureClient({ seedUrl: `data:application/json;base64,${Buffer.from(JSON.stringify(seed)).toString('base64')}`, docContext: false });
+  const completed = (await completedClient.getBoard()).deals.find(row => row.id === seed.deals[0].id);
+  assert.deepEqual(completed.last_step, { kind: 'completed_action', summary: 'Proposal accepted', occurred_at: '2026-10-23T12:00:00Z' });
+
 });
 
 test('a field edit date never becomes a recorded last step', () => {
   const doc = new JSDOM(renderDealAlert({ id: 'empty', last_touch: '2026-10-22' }, { board: true })).window.document;
   assert.match(doc.body.textContent, /No next step set/);
   assert.doesNotMatch(doc.body.textContent, /Last:|Contact recorded/);
+});
+
+test('board summaries state a repeated action and its due date only once', () => {
+  const row = { id: 'demo', open_actions: [{ id: 'action', description: 'Review sample documents', due_on: '2026-10-12', owner: 'joe' }],
+    items: [{ id: 'item', title: 'Review sample documents', due_on: '2026-10-12', status: 'open' }] };
+  const doc = new JSDOM(renderDealAlert(row, { board: true, today: '2026-10-29' })).window.document;
+  assert.equal(doc.body.textContent.match(/Review sample documents/g).length, 1);
+  assert.equal(doc.querySelectorAll('time').length, 1);
+  assert.doesNotMatch(doc.body.textContent, /Still needed/);
 });

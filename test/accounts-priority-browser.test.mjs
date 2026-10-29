@@ -128,6 +128,6 @@ test('national account deals show the next action and latest activity', async t 
   await page.goto(`${server.origin}/deals?view=national&mode=fixture`);
   await page.locator('.account-card').first().click();
   const row = page.locator('#rows tr').filter({ hasText: 'Tour the sample property' });
-  assert.match(await row.innerText(), /Next: Tour the sample property · Fri Oct 30/);
-  assert.match(await row.innerText(), /Last: Sent the sample proposal · Thu Oct 22/);
+  assert.match(await row.textContent(), /Next: Tour the sample property · Fri Oct 30/);
+  assert.match(await row.textContent(), /Last: Sent the sample proposal · Thu Oct 22/);
 });

@@ -9,10 +9,11 @@ export function shortDealName(deal) {
 }
 export function renderDealAlert(deal, { today = '', heading = 'h3', buttons = false, viewer = '', board = false } = {}) {
   const overdue = overdueLabel(deal.overdue_since, today);
-  return `<${heading}>${buttons ? `<button class="card-open" type="button" data-open="${esc(deal.id)}">${esc(shortDealName(deal))}</button>` : `<a data-home-key="deal:${esc(deal.id)}" href="/deals?deal=${encodeURIComponent(deal.id)}">${esc(shortDealName(deal))}</a>`}</${heading}>${overdue ? `<p class="deal-overdue">${overdue}</p>` : ''}${board ? renderDealSummary(deal, { today, viewer }) : ''}${renderDealItems(deal,{today,buttons, empty: !board})}`;
+  return `<${heading}>${buttons ? `<button class="card-open" type="button" data-open="${esc(deal.id)}">${esc(shortDealName(deal))}</button>` : `<a data-home-key="deal:${esc(deal.id)}" href="/deals?deal=${encodeURIComponent(deal.id)}">${esc(shortDealName(deal))}</a>`}</${heading}>${overdue && !board ? `<p class="deal-overdue">${overdue}</p>` : ''}${board ? renderDealSummary(deal, { today, viewer }) : ''}${renderDealItems(deal,{today,buttons, empty: !board,board})}`;
 }
-export function renderDealItems(deal, { today = '', buttons = false, empty = true } = {}) {
-  const items = openDealItems(deal);
+export function renderDealItems(deal, { today = '', buttons = false, empty = true, board = false } = {}) {
+  const next = board ? nextOpenAction(deal) : null;
+  const items = openDealItems(deal).filter(item => !next || item.title.trim() !== next.description.trim() || (item.due_on || null) !== (next.due_on || null));
   return items.length ? `<p class="deal-items-label">Still needed:</p><ol class="deal-items">${items.map(item => `<li data-overdue="${Boolean(item.due_on && item.due_on < today)}">${buttons ? `<button type="button" data-deal-item="${esc(item.id)}" data-item-deal="${esc(deal.id)}">${esc(item.title)}</button>` : `<a data-home-key="deal:${esc(deal.id)}:${esc(item.id)}" href="${esc(dealItemHref(deal.id, item.id))}">${esc(item.title)}</a>`}${item.due_on ? `<time class="deal-item-due" datetime="${esc(item.due_on)}">${esc(item.due_on)}</time>` : ''}</li>`).join('')}</ol>` : empty ? '<p class="deal-items-empty">No action items recorded</p>' : '';
 }
 
@@ -23,29 +24,30 @@ function shortDate(value, today) {
   if (Number.isNaN(date.getTime())) return '';
   const options = { month: 'short', day: 'numeric', timeZone: 'UTC' };
   if (!today || day >= today) options.weekday = 'short';
-  return `${today && day < today ? 'overdue ' : ''}${date.toLocaleDateString('en-US', options).replace(',', '')}`;
+  return date.toLocaleDateString('en-US', options).replace(',', '');
+}
+
+function nextOpenAction(deal) {
+  return (deal.open_actions || []).filter(action => typeof action.description === 'string' && action.description.trim())
+    .sort((a, b) => (a.due_on || '9999').localeCompare(b.due_on || '9999') || a.id.localeCompare(b.id))[0];
 }
 
 export function renderDealSummary(deal, { today = '', viewer = '' } = {}) {
-  const actions = (Array.isArray(deal.next_actions) ? deal.next_actions : [])
-    .filter(action => action.status === 'open' && typeof action.description === 'string' && action.description.trim())
-    .sort((a, b) => (a.due_on || '9999').localeCompare(b.due_on || '9999') || Number(b.owner === viewer) - Number(a.owner === viewer));
-  const next = actions[0];
-  const step = next?.description || (typeof deal.next_step === 'string' ? deal.next_step : deal.next_step?.text) || '';
-  const date = shortDate(next ? next.due_on : deal.next_date, today);
-  const actionOwner = next ? next.owner : deal.owner;
-  const owner = actionOwner && viewer && actionOwner !== viewer ? ` · ${actionOwner.slice(0, 1).toUpperCase()}` : '';
-  const completed = (Array.isArray(deal.next_actions) ? deal.next_actions : []).filter(row => row.status === 'done' && row.description && row.completed_at)
-    .map(row => ({ summary: row.description, occurred_at: row.completed_at }));
-  const activities = [...(Array.isArray(deal.activities) ? deal.activities : []), ...completed].filter(row => row.summary && row.occurred_at)
-    .sort((a, b) => b.occurred_at.localeCompare(a.occurred_at));
-  const last = activities[0];
-  const lastDate = shortDate(last?.occurred_at || deal.last_touch, '');
+  const next = nextOpenAction(deal);
   const lines = [];
-  if (step.trim()) lines.push(`Next: ${step.trim()}${date ? ` · ${date}` : ''}${owner}`);
-  if (last || lastDate) lines.push(`Last: ${last?.summary || 'Contact recorded'}${lastDate ? ` · ${lastDate}` : ''}`);
-  if (!lines.length) lines.push('No next step set');
-  return lines.map(line => `<p class="deal-summary-line" title="${esc(line)}">${esc(line)}</p>`).join('');
+  if (next) {
+    const date = shortDate(next.due_on, today);
+    const owner = next.owner && viewer && next.owner !== viewer ? ` · ${next.owner.slice(0, 1).toUpperCase()}` : '';
+    lines.push(`<span class="deal-summary-line"><span class="deal-summary-label">Next: </span><span class="deal-summary-text">${esc(next.description.trim())}</span><span class="deal-summary-facts">${date ? ` · <time data-overdue="${Boolean(next.due_on && next.due_on < today)}" datetime="${esc(next.due_on)}">${esc(date)}</time>` : ''}${esc(owner)}</span></span>`);
+  } else {
+    lines.push('<span class="deal-summary-line">No next step set</span>');
+  }
+  const last = deal.last_step;
+  const lastDate = shortDate(last?.occurred_at, '');
+  if (last?.summary?.trim() && lastDate) {
+    lines.push(`<span class="deal-summary-line deal-summary-last"><span class="deal-summary-label">Last: </span><span class="deal-summary-text">${esc(last.summary.trim())}</span><span class="deal-summary-facts"> · <time datetime="${esc(last.occurred_at)}">${esc(lastDate)}</time></span></span>`);
+  }
+  return lines.join('');
 }
 
 export function renderDealItemDetail(item, { today = '' } = {}) {

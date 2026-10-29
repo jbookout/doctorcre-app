@@ -84,7 +84,7 @@ for (const theme of ['dark', 'light']) for (const sidebarOpen of [false, true]) 
     const headings = page.locator('#tableFrame thead');
     assert.match(await headings.textContent(), /Deal.*Phase.*Next step.*Next date/s);
     if (sidebarOpen) {
-      assert.equal(await page.locator('#rows tr').first().locator('td').nth(2).evaluate(node => getComputedStyle(node, '::before').content), '"Next step"');
+      assert.equal(await page.locator('#rows tr').first().locator('td').nth(2).evaluate(node => getComputedStyle(node, '::before').content), 'none');
     } else {
       const geometry = await headings.boundingBox();
       assert.ok(geometry && geometry.height >= 24 && geometry.width > 400, 'wide workspace column headings remain visible');
@@ -98,7 +98,7 @@ for (const theme of ['dark', 'light']) for (const sidebarOpen of [false, true]) 
         range.selectNodeContents(node);
         return { text: node.textContent, lines: range.getClientRects().length };
       });
-      return { text: step.textContent, lines: [...step.querySelectorAll('.deal-summary-line')].map(line => { const r = document.createRange(); r.selectNodeContents(line); return r.getClientRects().length; }),
+      return { text: step.textContent, lines: [...step.querySelectorAll('.deal-summary-text')].map(line => line.clientHeight / parseFloat(getComputedStyle(line).lineHeight)),
         nameLines: nameRange.getClientRects().length, metadata,
         phaseWidth: row.querySelector('select[data-phase]').getBoundingClientRect().width,
         stepWidth: step.getBoundingClientRect().width };

@@ -120,7 +120,7 @@ function rowHtml(deal) {
 }
 function parkedHtml(deal) {
   const note = deal.parking_note === 'unverified import — 2026-10-01 records audit; revive if active' ? 'Imported Oct 1, not yet confirmed. Revive if still active.' : deal.parking_note;
-  return `<article class="kanban-card parked-card" data-id="${esc(deal.id)}" tabindex="0"><h4>${esc(dealTitle(deal))}</h4><p class="next-line">${esc(note || deal.parking_reason?.replaceAll('_',' ') || 'Parked')}</p>${renderDealSummary(deal, { today: todayIso(), viewer: state.selfActor })}${renderDealItems(deal, { today: todayIso(), buttons: true, empty: false })}${renderDealVendors(deal.vendors)}<button class="btn btn-quiet" type="button" data-revive="${esc(deal.id)}">Revive</button></article>`;
+  return `<article class="kanban-card parked-card" data-id="${esc(deal.id)}" tabindex="0"><h4>${esc(dealTitle(deal))}</h4><p class="next-line">${esc(note || deal.parking_reason?.replaceAll('_',' ') || 'Parked')}</p>${renderDealSummary(deal, { today: todayIso(), viewer: state.selfActor })}${renderDealItems(deal, { today: todayIso(), buttons: true, empty: false, board: true })}${renderDealVendors(deal.vendors)}<button class="btn btn-quiet" type="button" data-revive="${esc(deal.id)}">Revive</button></article>`;
 }
 
 let dealCreation = null;

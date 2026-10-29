@@ -143,7 +143,7 @@ test('W4 desktop/phone render, owner filters, equal cards, wide detail and reduc
     const sizes = await page.locator('.kanban-column .kanban-card').evaluateAll(es => es.map(e => ({ height: e.getBoundingClientRect().height, transform: getComputedStyle(e).transform, transition: getComputedStyle(e).transitionDuration })));
     // Cards size to their content (S8): no fixed tall box with half of it empty.
     assert.ok(sizes.every(e => e.transform === 'none' && e.transition === '0s'), JSON.stringify(sizes));
-    assert.equal(await page.locator('.kanban-card .deal-summary-line').evaluateAll(lines => lines.every(line => line.clientHeight <= parseFloat(getComputedStyle(line).lineHeight) * 2 + 1)), true);
+    assert.equal(await page.locator('.kanban-card .deal-summary-text').evaluateAll(lines => lines.every(line => line.clientHeight <= parseFloat(getComputedStyle(line).lineHeight) * 2 + 1)), true);
     await page.screenshot({ path: new URL(`out/test-artifacts/w4/${width === 1440 ? 'desktop' : 'phone-' + width}.png`, root).pathname, fullPage: true });
     assert.equal(await page.locator('.kanban-column [data-id="d14"] .owner').textContent(), 'Joe');
     await page.locator('[data-filter="dell"]').click();

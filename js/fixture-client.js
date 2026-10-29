@@ -1182,6 +1182,28 @@ export async function createFixtureClient(opts = {}) {
 
   const industryEvents = new Map();
   const invoices = createInvoiceFixture({ actor: selfActor, entries: opts.invoiceEntries, today: opts.today });
+  function actionsFor(deal) {
+    return [...(deal.email_actions || []), ...(deal.next_step ? [{ id: `a-${deal.id}`, owner: deal.owner,
+      description: deal.next_step, due_on: deal.next_date, status: 'open' }] : [])];
+  }
+
+  function activitiesFor(dealId) {
+    return (history.get(dealId) || []).map(h => ({ id: h.id, actor: h.actor,
+      occurred_at: h.recorded_at, kind: 'note', summary: h.summary }))
+      .sort((a, b) => compareInstants(a.occurred_at, b.occurred_at) || b.id.localeCompare(a.id));
+  }
+
+  function boardSteps(deal) {
+    const open_actions = actionsFor(deal).filter(action => action.status === 'open')
+      .sort((a, b) => (a.due_on || '9999').localeCompare(b.due_on || '9999') || a.id.localeCompare(b.id))
+      .slice(0, 3).map(({ id, owner, description, due_on }) => ({ id, owner, description, due_on }));
+    const completed = actionsFor(deal).filter(action => action.status === 'done' && action.completed_at)
+      .map(action => ({ id: action.id, kind: 'completed_action', summary: action.outcome || action.description, occurred_at: action.completed_at }));
+    const last = [...activitiesFor(deal.id), ...completed]
+      .sort((a, b) => compareInstants(a.occurred_at, b.occurred_at) || b.id.localeCompare(a.id))[0];
+    return { open_actions, last_step: last ? { kind: last.kind, summary: last.summary, occurred_at: last.occurred_at } : null };
+  }
+
   const emailSeedDeals = [...deals.values()].map(({ id, phase }) => ({ id, phase }));
   const client = {
     ...invoices,
@@ -1208,8 +1230,9 @@ export async function createFixtureClient(opts = {}) {
       const national = eligible.filter((d) => d.account_client_id === fixtureAccountId && !d.invoiced_on);
       const activeNational = national.filter((d) => d.operating_state === 'active');
       return {
+        schema_version: 'local-deals-board.v2',
         actor: selfActor,
-        deals: eligible.filter(d => !d.invoiced_on).map((d) => ({ ...d, phase_change: phaseChangeFor(d.id), field_base: fieldBaseFor(d.id) })),
+        deals: eligible.filter(d => !d.invoiced_on).map((d) => ({ ...d, ...boardSteps(d), phase_change: phaseChangeFor(d.id), field_base: fieldBaseFor(d.id) })),
         lost_deals: [...deals.values()].filter(d => d.outcome === 'lost').map(d => ({...d})),
         closed_deals: [...deals.values()].filter(d => (d.outcome === 'won' || !d.outcome && (d.closed_on || d.invoiced_on))).map(d => ({...d})),
         accounts: [{ account_client_id: fixtureAccountId, account_client_ref: 'DEMO-ACCOUNT-001',
@@ -1232,8 +1255,7 @@ export async function createFixtureClient(opts = {}) {
         ...deal,
         critical_dates: [...(deal.next_date ? [{ label: 'Next date', date: deal.next_date }] : []),
           ...(criticalDates.get(deal.id) || []).map(row => ({ ...row }))],
-        next_actions: [...(deal.email_actions || []), ...(deal.next_step ? [{ id: `a-${deal.id}`, owner: deal.owner, description: deal.next_step,
-          due_on: deal.next_date, status: 'open', hold_until: null }] : [])],
+        next_actions: actionsFor(deal),
       })) };
     },
 
@@ -1254,10 +1276,8 @@ export async function createFixtureClient(opts = {}) {
       }
       for (const entry of criticalDates.get(dealId) || []) critical_dates.push({ ...entry });
       return { items: structuredClone(deal.items || []), item_schema_version: 'deal-items.v1', deal: {...deal, phase_change: phaseChangeFor(dealId)}, thread, critical_dates, history: hist,
-        next_actions: [...(deal.email_actions || []), ...(deal.next_step ? [{ id: `a-${deal.id}`, owner: deal.owner,
-          description: deal.next_step, due_on: deal.next_date, status: 'open' }] : [])],
-        activities: hist.slice(0, 4).map((h) => ({ id: h.id, actor: h.actor,
-          occurred_at: h.recorded_at, kind: 'note', summary: h.summary })),
+        next_actions: actionsFor(deal),
+        activities: activitiesFor(dealId).slice(0, 4),
         participants: [{ role: 'lead', name: actorLabel(deal.owner), actor: deal.owner },
           ...(extraParticipants.get(dealId) || [])],
         premises: [], negotiation_rounds: [], documents: [], lease: null, schema_version: 'deal-timeline.v1' };
