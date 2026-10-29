@@ -178,4 +178,4 @@
 .home-brief-card { display: grid; gap: var(--space-1); padding: var(--space-3); border: 1px solid var(--hairline); border-radius: var(--radius-2); color: inherit; text-decoration: none; }
 .home-brief-card + .home-brief-card { margin-top: var(--space-2); }
 .home-brief-card span { color: var(--fg-muted); font-size: var(--font-size-1); }
-@media (max-width: 800px) { .home-columns { grid-template-columns: minmax(0, 1fr); } .home-brief { position: static; grid-row: 1; } }
+@media (max-width: 800px) { .home-columns { grid-template-columns: minmax(0, 1fr); } .home-brief { position: static; } }
