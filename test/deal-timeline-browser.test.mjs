@@ -128,3 +128,22 @@ for(const width of [1440,390]) for(const theme of ['light','dark']) test(`newest
  await page.locator('.deal-updates').screenshot({path:`out/test-artifacts/newest-updates/history-${width}-${theme}.png`});
  assert.deepEqual(errors,[]);
 });
+
+test('update form offers the current next action and date at phone width', async t => {
+ const {page}=await open(t,{width:390});
+ const deal=await page.evaluate(async()=> (await (await import('/js/pipeline.js')).state.client.getDeal('d14')).deal);
+ const form=page.locator('#detailUpdateForm');
+ assert.equal(await form.getByLabel('Next step').inputValue(), typeof deal.next_step === 'object' ? deal.next_step?.text || '' : deal.next_step || '');
+ assert.equal(await form.getByLabel('Next date').inputValue(),deal.next_date || '');
+ for (const field of [form.getByLabel('Update'),form.getByLabel('Next step'),form.getByLabel('Next date'),form.getByRole('button',{name:'Add update'})]) {
+  assert.ok((await field.boundingBox()).height >= 44);
+ }
+ assert.equal(await page.locator('#recordPanel').evaluate(e=>e.scrollWidth<=e.clientWidth),true);
+ await form.getByLabel('Update').focus();
+ for (const label of ['Next step','Next date']) {
+  await page.keyboard.press('Tab');
+  assert.equal(await form.getByLabel(label).evaluate(e=>e===document.activeElement),true);
+ }
+ for (let i=0; i<4 && !await form.getByRole('button',{name:'Add update'}).evaluate(e=>e===document.activeElement); i++) await page.keyboard.press('Tab');
+ assert.equal(await form.getByRole('button',{name:'Add update'}).evaluate(e=>e===document.activeElement),true);
+});
