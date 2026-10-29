@@ -34,8 +34,8 @@ export function mountPlanner({ document, window, api = createPlannerClient() }) 
     return planPurpose === "research" ? "research" : planClient || "client";
   }
   function rememberDrafts() {
-    drafts.plan.set(subjectKey("plan"), { values: plan.values, clearedFields: plan.clearedFields, managedFields: plan.managedFields });
-    drafts.space.set(subjectKey("space"), { values: search.values, clearedFields: search.clearedFields, managedFields: search.managedFields });
+    drafts.plan.set(subjectKey("plan"), { values: plan.values, clearedFields: plan.clearedFields });
+    drafts.space.set(subjectKey("space"), { values: search.values, clearedFields: search.clearedFields });
   }
   const clientsUnavailable = "Clients temporarily unavailable. Refresh tours to try again.";
   const clientsLoading = "Clients are loading. Wait, then review again.";
@@ -83,12 +83,11 @@ export function mountPlanner({ document, window, api = createPlannerClient() }) 
               const fields = prefix === "plan" ? PLAN_FIELDS : SEARCH_FIELDS;
               const values = Object.fromEntries(fields.filter(field => typeof entry[1]?.values?.[field] === "string").map(field => [field, entry[1].values[field]]));
               const clearedFields = fields.filter(field => Array.isArray(entry[1]?.clearedFields) && entry[1].clearedFields.includes(field));
-              const managedFields = fields.filter(field => Array.isArray(entry[1]?.managedFields) && entry[1].managedFields.includes(field) && !clearedFields.includes(field));
-              drafts[prefix].set(entry[0], { values, clearedFields, managedFields });
+              drafts[prefix].set(entry[0], { values, clearedFields });
             }
           }
-          if (planEpoch === 0) { planPurpose = savedDraft.planPurpose === "research" ? "research" : "client"; planClient = planPurpose === "client" ? savedDraft.planClient || "" : ""; plan.restore(savedDraft.plan, drafts.plan.get(subjectKey("plan"))?.clearedFields, drafts.plan.get(subjectKey("plan"))?.managedFields); }
-          if (searchEpoch === 0) { searchClient = savedDraft.searchClient || ""; search.restore(savedDraft.search, drafts.space.get(subjectKey("space"))?.clearedFields, drafts.space.get(subjectKey("space"))?.managedFields); }
+          if (planEpoch === 0) { planPurpose = savedDraft.planPurpose === "research" ? "research" : "client"; planClient = planPurpose === "client" ? savedDraft.planClient || "" : ""; plan.restore(savedDraft.plan); }
+          if (searchEpoch === 0) { searchClient = savedDraft.searchClient || ""; search.restore(savedDraft.search); }
         }
       } catch { /* An invalid draft never selects another client's record. */ }
     }
@@ -169,25 +168,25 @@ export function mountPlanner({ document, window, api = createPlannerClient() }) 
     // A new record starts an independent draft, so previous-client criteria never migrate.
     $(`#${prefix}-client-updates`).hidden = true; $(`#${prefix}-client-updates`).replaceChildren();
     const saved = drafts[prefix].get(subjectKey(prefix));
-    draft.reset(); draft.restore(saved?.values, saved?.clearedFields, saved?.managedFields);
+    draft.reset(); draft.restore(saved?.values);
     if (prefix === "plan" && (id || purpose === "research")) {
       const brief = drafts.space.get(subjectKey("plan"));
       const values = Object.fromEntries(["area", "use"].filter(field => brief?.values[field] || brief?.clearedFields.includes(field)).map(field => [field, brief.values[field]]));
-      draft.restore(values, brief?.clearedFields, brief?.managedFields);
+      draft.restore(values);
     }
     syncForm(prefix, draft); fillClients(); save(prefix === "plan" ? "#plan-message" : "#space-message");
     const target = prefix === "plan" ? "#plan-message" : "#space-message";
     if (!id) { setClientDetails(prefix, "idle"); message(target, ""); return; }
-    return loadClientDetails(prefix, id, epoch);
+    return loadClientDetails(prefix, id, epoch, !saved);
   }
-  async function loadClientDetails(prefix, id, epoch) {
+  async function loadClientDetails(prefix, id, epoch, newDraft = false) {
     const target = `#${prefix}-message`;
     setClientDetails(prefix, "loading"); message(target, "Updating…");
     try {
       const record = await read(async () => validateClientRecord(await api.client(id), id));
       if (disposed || epoch !== (prefix === "plan" ? planEpoch : searchEpoch) || record.id !== id) return;
       setClientDetails(prefix, "ready");
-      applyClientRecord(prefix, record); save(prefix === "plan" ? "#plan-message" : "#space-message");
+      applyClientRecord(prefix, record, newDraft); save(prefix === "plan" ? "#plan-message" : "#space-message");
       message(target, "");
     } catch (error) { if (!disposed && epoch === (prefix === "plan" ? planEpoch : searchEpoch)) { setClientDetails(prefix, "failed"); message(target, unavailable(error) || "Client details temporarily unavailable."); } }
   }
@@ -196,23 +195,21 @@ export function mountPlanner({ document, window, api = createPlannerClient() }) 
     $("#plan-client-name-review").hidden = true;
     $("#client-name-before").textContent = ""; $("#client-name-after").textContent = "";
   }
-  function applyClientRecord(prefix, record) {
+  function applyClientRecord(prefix, record, newDraft = false) {
     const draft = prefix === "plan" ? plan : search;
-    const before = draft.values, managed = new Set(draft.managedFields);
     const suggestions = clientSuggestions(record);
+    if (newDraft) draft.prefill(suggestions);
+    const before = draft.values;
     if (prefix === "plan") {
       clearNameReview();
-      if (managed.has("name") && suggestions.name !== before.name) {
+      if (suggestions.name !== before.name) {
         pendingClientName = suggestions.name;
         $("#client-name-before").textContent = before.name || "Empty";
         $("#client-name-after").textContent = suggestions.name || "Empty";
         $("#plan-client-name-review").hidden = false;
-        suggestions.name = before.name;
       }
     }
-    const changes = Object.entries(suggestions).filter(([field, value]) => field !== "name" && managed.has(field) && before[field] !== value && Object.hasOwn(before, field));
-    for (const [field] of changes) suggestions[field] = before[field];
-    draft.refreshSuggestions(suggestions);
+    const changes = Object.entries(suggestions).filter(([field, value]) => field !== "name" && before[field] !== value && Object.hasOwn(before, field));
     const root = $(`#${prefix}-client-updates`);
     if (changes.length) {
       const details = element("details");
@@ -231,7 +228,7 @@ export function mountPlanner({ document, window, api = createPlannerClient() }) 
           const button = element("button", `${choice === "keep" ? "Keep" : "Use"} ${labels[field].toLowerCase()}`);
           button.type = "button"; button.dataset.choice = choice;
           button.addEventListener("click", () => {
-            if (choice === "use" && draft.values[field] === before[field] && draft.managedFields.includes(field)) draft.set(field, value, true);
+            if (choice === "use" && draft.values[field] === before[field]) draft.set(field, value);
             if (choice === "keep" && draft.values[field] === before[field]) draft.set(field, before[field]);
             row.remove(); if (!details.querySelector("[data-field]")) root.hidden = true;
             syncForm(prefix, draft); save(prefix === "plan" ? "#plan-message" : "#space-message");

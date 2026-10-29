@@ -117,7 +117,7 @@ test("Plan from search preserves private packet files when the plan already has 
 });
 
 test("each suggested field and typed override undo independently", () => {
-  const draft = createDraft(PLAN_FIELDS); draft.suggest(clientSuggestions(record(clientA)));
+  const draft = createDraft(PLAN_FIELDS); draft.prefill(clientSuggestions(record(clientA)));
   draft.set("area", "Typed area"); assert.equal(draft.undo(), "area"); assert.equal(draft.values.area, "Demo City, FL");
   assert.equal(draft.undo(), "notes"); assert.equal(draft.values.notes, "");
   assert.equal(draft.undo(), "use"); assert.equal(draft.values.use, "");
@@ -125,15 +125,15 @@ test("each suggested field and typed override undo independently", () => {
   assert.equal(draft.undo(), "name"); assert.equal(draft.canUndo, false);
 });
 test("prefill leaves unknown tour details blank and never replaces an edit", () => {
-  const draft = createDraft(PLAN_FIELDS); draft.set("area", "Typed before read"); draft.suggest(clientSuggestions(record(clientA)));
+  const draft = createDraft(PLAN_FIELDS); draft.set("area", "Typed before read"); draft.prefill(clientSuggestions(record(clientA)));
   assert.equal(draft.values.area, "Typed before read"); assert.equal(draft.values.date, ""); assert.equal(draft.values.start, "");
 });
-test("fresh suggestions update unedited fields; overrides and undone suggestions remain untouched", () => {
-  const draft = createDraft(PLAN_FIELDS); draft.suggest(clientSuggestions(record(clientA)));
+test("a new draft prefills once and later client values never replace it", () => {
+  const draft = createDraft(PLAN_FIELDS); draft.prefill(clientSuggestions(record(clientA)));
   draft.set("area", "Typed area"); draft.undo();
-  draft.refreshSuggestions({ name: "Demo new name", area: "New area", use: "New specialty", notes: "New notes" });
-  assert.equal(draft.values.name, "Demo new name"); assert.equal(draft.values.area, "Demo City, FL");
-  draft.set("use", "Typed specialty"); draft.refreshSuggestions({ name: "Demo newest name", use: "Other specialty" });
+  draft.prefill({ name: "Demo new name", area: "New area", use: "New specialty", notes: "New notes" });
+  assert.equal(draft.values.name, "Demo Practice A · Tour"); assert.equal(draft.values.area, "Demo City, FL");
+  draft.set("use", "Typed specialty"); draft.prefill({ name: "Demo newest name", use: "Other specialty" });
   assert.equal(draft.values.use, "Typed specialty");
 });
 test("file staging deduplicates, bounds size/count and rejects atomically", () => {
@@ -308,8 +308,12 @@ for (const prefix of ["plan", "space"]) test(`new same-client background record 
     old.resolve({ ...record(clientA), notes: "Stale record notes" }); await settle();
     await app.view.refresh();
     assert.equal(app.doc.querySelector(`#${prefix}-message`).textContent, "");
-    assert.equal(app.doc.querySelector(`#${prefix}-area`).value, "Demo City, FL");
+    assert.equal(app.doc.querySelector(`#${prefix}-area`).value, "");
+    app.doc.querySelector(`#${prefix}-client-updates [data-field="area"] [data-choice="use"]`).click();
     if (prefix === "plan") {
+      assert.equal(app.doc.querySelector("#plan-notes").value, "");
+      app.doc.querySelector("#use-client-name").click();
+      app.doc.querySelector('#plan-client-updates [data-field="notes"] [data-choice="use"]').click();
       assert.equal(app.doc.querySelector("#plan-notes").value, "Newest record notes");
       app.doc.querySelector("#review-packet").click();
       assert.match(app.doc.querySelector("#detail-content details").textContent, /Newest record notes/);
@@ -450,7 +454,7 @@ test("delayed boot restore never changes a newly selected client binding", async
   } finally { app.close(); }
 });
 
-test("failed initial prefill recovers untouched suggestions in both forms and preserves recovery edits", async () => {
+test("failed initial reads recover through choices in both forms and preserve recovery edits", async () => {
   for (const prefix of ["plan", "space"]) {
     const recovery = deferred(); const app = harness({ client: async () => { throw new Error("Synthetic first-read outage"); } });
     try {
@@ -461,14 +465,17 @@ test("failed initial prefill recovers untouched suggestions in both forms and pr
       recovery.resolve(record(clientA)); await pending;
       assert.equal(app.doc.querySelector(`#${prefix}-area`).value, "Typed during recovery"); assert.equal(app.doc.querySelector(`#${prefix}-use`).value, "");
       if (prefix === "plan") {
-        assert.equal(app.doc.querySelector("#plan-name").value, "Demo Practice A · Tour"); assert.equal(app.doc.querySelector("#plan-notes").value, "Synthetic original entry");
+        assert.equal(app.doc.querySelector("#plan-name").value, ""); assert.equal(app.doc.querySelector("#plan-notes").value, "");
+        app.doc.querySelector("#use-client-name").click();
+        app.doc.querySelector('#plan-client-updates [data-field="notes"] [data-choice="use"]').click();
         app.doc.querySelector("#plan-undo").click(); assert.equal(app.doc.querySelector("#plan-notes").value, "");
         app.service.client = async id => record(id); await app.view.refresh(); assert.equal(app.doc.querySelector("#plan-notes").value, "");
       } else {
-        // A second selection has no user overrides and receives the missed initial suggestions.
+        // A failed first read still leaves an existing draft.
         app.service.client = async () => { throw new Error("Synthetic outage"); }; app.change("#space-client", clientB); await settle();
         app.service.client = async id => record(id); await app.view.refresh();
-        assert.equal(app.doc.querySelector("#space-area").value, "Demo City, FL"); assert.equal(app.doc.querySelector("#space-use").value, "Demo specialty");
+        assert.equal(app.doc.querySelector("#space-area").value, ""); assert.equal(app.doc.querySelector("#space-use").value, "");
+        for (const field of ["area", "use"]) app.doc.querySelector(`#space-client-updates [data-field="${field}"] [data-choice="use"]`).click();
         app.doc.querySelector("#space-undo").click(); await app.view.refresh(); assert.equal(app.doc.querySelector("#space-use").value, "");
       }
     } finally { app.close(); }
@@ -570,8 +577,8 @@ test("caller cancellation prevents late decoding from changing the authenticated
 });
 
 test("explicitly entered suggestion text becomes an override even when its value is unchanged", () => {
-  const draft = createDraft(PLAN_FIELDS); draft.suggest({ area: "Demo area" });
-  draft.set("area", "Demo area"); draft.refreshSuggestions({ area: "New source area" });
+  const draft = createDraft(PLAN_FIELDS); draft.prefill({ area: "Demo area" });
+  draft.set("area", "Demo area"); draft.prefill({ area: "New source area" });
   assert.equal(draft.values.area, "Demo area");
 });
 
@@ -777,6 +784,9 @@ test("T02 a failed client detail read keeps selection and retries without erasin
     unavailable = false; retry.click(); await settle();
     assert.equal(app.doc.querySelector("#plan-name").value, "Synthetic retained tour");
     assert.equal(app.view.files.length, 1); assert.equal(retry.hidden, true);
+    assert.equal(app.doc.querySelector("#plan-notes").value, "");
+    app.doc.querySelector("#keep-client-name").click();
+    app.doc.querySelector('#plan-client-updates [data-field="notes"] [data-choice="use"]').click();
     app.doc.querySelector("#review-packet").click();
     assert.equal(app.doc.querySelector("#tour-dialog").open, true);
     assert.match(app.doc.querySelector("#detail-content").textContent, /Synthetic original entry/);
@@ -870,7 +880,7 @@ for (const existing of ["first selection", "managed suggestion", "explicit edit"
     assert.equal(app.doc.querySelector("#space-use").value, "Demo specialty");
     app.change("#space-use", "");
     app.change("#plan-client", clientA); await settle();
-    const expected = existing === "explicit edit" ? "Synthetic plan override" : "";
+    const expected = existing === "explicit edit" ? "Synthetic plan override" : existing === "managed suggestion" ? "Demo specialty" : "";
     assert.equal(app.doc.querySelector("#space-use").value, "");
     assert.equal(app.doc.querySelector("#plan-use").value, expected);
     await app.view.refresh();
@@ -1000,5 +1010,32 @@ test("initially empty client fields wait for a choice on later reads", async () 
     assert.match(notes.textContent, /Empty/);
     notes.querySelector('[data-choice="use"]').click();
     assert.equal(app.doc.querySelector("#plan-notes").value, "New notes");
+  } finally { app.close(); }
+});
+
+for (const reselect of [false, true]) test(`legacy empty drafts require choices on read${reselect ? ' after reselection' : ' after restore'}`, async () => {
+  const plan = { name: 'Demo Practice A · Tour', area: '', use: '', notes: '' };
+  const search = { area: '', use: '' };
+  const saved = { scope: 'synthetic-scope', planClient: clientA, searchClient: clientA, plan, search,
+    drafts: { plan: [[clientA, { values: plan }]], space: [[clientA, { values: search }]] } };
+  const app = harness({}, window => window.sessionStorage.setItem('doctorcre-tour-planning-drafts-v1', JSON.stringify(saved)));
+  try {
+    await app.view.ready;
+    if (reselect) for (const prefix of ['plan', 'space']) {
+      app.change(`#${prefix}-client`, clientB); await settle();
+      app.change(`#${prefix}-client`, clientA); await settle();
+    }
+    await app.view.refresh();
+    for (const prefix of ['plan', 'space']) {
+      const fields = prefix === 'plan' ? ['area', 'use', 'notes'] : ['area', 'use'];
+      assert.equal(app.doc.querySelectorAll(`#${prefix}-client-updates [data-field]`).length, fields.length);
+      for (const field of fields) {
+        assert.equal(app.doc.querySelector(`#${prefix}-${field}`).value, '');
+        const row = app.doc.querySelector(`#${prefix}-client-updates [data-field="${field}"]`);
+        assert.match(row.textContent, /Empty/);
+        row.querySelector('[data-choice="use"]').click();
+        assert.equal(app.doc.querySelector(`#${prefix}-${field}`).value, field === 'area' ? 'Demo City, FL' : field === 'use' ? 'Demo specialty' : 'Synthetic original entry');
+      }
+    }
   } finally { app.close(); }
 });

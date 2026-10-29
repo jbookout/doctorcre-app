@@ -125,7 +125,7 @@ for (const width of [390, 820, 1440]) for (const theme of ['light', 'dark']) {
 }
 
 
-test('Tour managed notes refresh after client reselection while typed notes survive', async ({ page }) => {
+test('Tour notes require choices after client reselection while typed notes survive', async ({ page }) => {
   const state = { failDetail: false, client: { ...client } };
   await routePlanner(page, state);
   await page.goto('http://localhost/tours');
@@ -292,7 +292,7 @@ for (const theme of ['light', 'dark']) {
     await page.reload();
     await expect(page.locator('#planner-updated')).toContainText('Updated');
     await expect(page.locator('#plan-name')).toHaveValue('Synthetic Practice · Tour');
-    await expect(page.locator('#plan-client-name-review')).toBeHidden();
+    await expect(page.locator('#plan-client-name-review')).toBeVisible();
     state.client.name = 'Synthetic latest practice';
     await page.locator('#plan-client').selectOption(otherClientId);
     await expect(page.locator('#plan-name')).toHaveValue('Synthetic Other Practice · Tour');
@@ -302,3 +302,36 @@ for (const theme of ['light', 'dark']) {
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   });
 }
+
+for (const theme of ['light', 'dark']) test(`Legacy empty client drafts require choices after reload and reselection in ${theme}`, async ({ page }) => {
+  await routePlanner(page, { failDetail: false, client: { ...client } });
+  await page.addInitScript(async theme => {
+    localStorage.setItem('doctorcre.visual-preferences', JSON.stringify({ theme }));
+    if (sessionStorage.getItem('doctorcre-tour-planning-drafts-v1')) return;
+    const hash = await crypto.subtle.digest('SHA-256', new TextEncoder().encode('synthetic-fixture'));
+    const scope = [...new Uint8Array(hash)].map(byte => byte.toString(16).padStart(2, '0')).join('');
+    const id = '11111111-1111-4111-8111-111111111111';
+    const plan = { name: 'Synthetic Practice · Tour', area: '', use: '', notes: '' };
+    const search = { area: '', use: '' };
+    sessionStorage.setItem('doctorcre-tour-planning-drafts-v1', JSON.stringify({ scope, planClient: id, searchClient: id, plan, search,
+      drafts: { plan: [[id, { values: plan }]], space: [[id, { values: search }]] } }));
+  }, theme);
+  await page.goto('http://localhost/tours');
+  for (const phase of ['restore', 'reload', 'reselection']) {
+    if (phase === 'reload') await page.reload();
+    if (phase === 'reselection') for (const prefix of ['plan', 'space']) {
+      await page.locator(`#${prefix}-client`).selectOption(otherClientId);
+      await expect(page.locator(`#${prefix}-area`)).toHaveValue('Synthetic City, FL');
+      await page.locator(`#${prefix}-client`).selectOption(clientId);
+    }
+    await expect(page.locator('#planner-updated')).toContainText('Updated');
+    for (const prefix of ['plan', 'space']) {
+      const fields = prefix === 'plan' ? ['area', 'use', 'notes'] : ['area', 'use'];
+      for (const field of fields) await expect(page.locator(`#${prefix}-${field}`)).toHaveValue('');
+      await expect(page.locator(`#${prefix}-client-updates [data-field]`)).toHaveCount(fields.length);
+    }
+  }
+  await page.locator('#plan-client-updates summary').click();
+  await page.getByRole('button', { name: 'Use tour notes', exact: true }).click();
+  await expect(page.locator('#plan-notes')).toHaveValue('Synthetic client notes');
+});
