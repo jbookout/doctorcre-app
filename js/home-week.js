@@ -1,11 +1,11 @@
-import { BUSINESS_TIME_ZONE, businessDay } from './business-date.js';
+import { BUSINESS_TIME_ZONE } from './business-date.js';
 import { addDays, toDay } from './calendar-model.js';
 
-const timeFormat = new Intl.DateTimeFormat('en-US', {
-  timeZone: BUSINESS_TIME_ZONE, hour: 'numeric', minute: '2-digit', hour12: true, timeZoneName: 'short',
-});
-
-export function homeWeek({ agenda, calendar, today }) {
+export function homeWeek({ agenda, calendar, today, timeZone = BUSINESS_TIME_ZONE }) {
+  const timeFormat = new Intl.DateTimeFormat('en-US', {
+    timeZone, hour: 'numeric', minute: '2-digit', hour12: true, timeZoneName: 'short',
+  });
+  const dayFormat = new Intl.DateTimeFormat('en-CA', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit' });
   const days = Array.from({ length: 7 }, (_, index) => ({ day: addDays(today, index), dated: [], allDay: [], timed: [] }));
   const byDay = new Map(days.map(day => [day.day, day]));
   for (const entry of agenda?.entries || []) {
@@ -14,7 +14,7 @@ export function homeWeek({ agenda, calendar, today }) {
   }
   const occurrences = new Map();
   if (['ready', 'partial'].includes(calendar?.state)) for (const meeting of calendar.items) {
-    const day = meeting.all_day ? toDay(meeting.start.slice(0, 10)) : businessDay(new Date(meeting.start));
+    const day = meeting.all_day ? toDay(meeting.start.slice(0, 10)) : dayFormat.format(new Date(meeting.start));
     const target = byDay.get(day);
     if (!target) continue;
     const identity = JSON.stringify([meeting.start, meeting.title, meeting.location, meeting.attendee_count, meeting.all_day]);

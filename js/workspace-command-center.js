@@ -19,6 +19,10 @@ const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, char => ({ '
 const E = escapeHtml;
 const count = value => value === null ? '—' : String(value);
 const AGENDA_PREVIEW = 6;
+const MEETING_TIME_ZONES = [
+  [BUSINESS_TIME_ZONE, 'Chicago (Central)'], ['America/New_York', 'New York (Eastern)'],
+  ['America/Denver', 'Denver (Mountain)'], ['America/Los_Angeles', 'Los Angeles (Pacific)'], ['UTC', 'UTC'],
+];
 const dateLabel = day => new Date(`${day}T12:00:00`).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 
 export function mountHomeDashboard({ document, window, client, now = () => Date.now(), intervalMs }) {
@@ -39,7 +43,7 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
   // The relationship dialog and the past-client widget are secondary: they load
   // after the first data paint so they never compete with the deal flags.
   let relationshipDialog = null, pastWidget = null, secondaryRequested = false;
-  let agendaExpanded = false, agendaView = 'all', nextRead = readHomeDashboard;
+  let agendaExpanded = false, agendaView = 'all', nextRead = readHomeDashboard, meetingTimeZone = BUSINESS_TIME_ZONE;
   let scope = 'team', snapshot = null, sequence = 0, updatedAt = null, disposed = false, leadEntries = new Map(), selectedLead = null;
   const callTasks = $('homeCallTasks') ? mountHomeCallTasks({ document, client, host: $('homeCallTasks'),
     openReport: async (session, { signal }) => {
@@ -90,13 +94,13 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
     const rows = meetings.items.map(meeting => {
       const time = meeting.all_day
         ? new Date(`${meeting.start.slice(0, 10)}T12:00:00Z`).toLocaleDateString(undefined, { timeZone: 'UTC', month: 'short', day: 'numeric' })
-        : new Date(meeting.start).toLocaleString(undefined, { timeZone: BUSINESS_TIME_ZONE, month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZoneName: 'short' });
+        : new Date(meeting.start).toLocaleString(undefined, { timeZone: meetingTimeZone, month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZoneName: 'short' });
       const detail = `${meeting.location || 'Place not provided'} · ${meeting.attendee_count} ${meeting.attendee_count === 1 ? 'attendee' : 'attendees'}`;
       return `<div class="home-meeting"><time datetime="${E(meeting.start)}">${E(time)}${meeting.all_day ? ' · All day' : ''}</time><strong>${E(meeting.title)}</strong><span>${E(detail)}</span></div>`;
     }).join('');
     const content = failed ? `<p class="home-meeting-failure" role="status">Meetings unavailable</p>`
       : count ? `<div class="home-meetings">${rows}</div>` : `<p class="home-empty">${meetings.state === 'empty' ? 'No upcoming meetings' : 'No meetings returned'}</p>`;
-    widget('homeMeetings', header + warnings + content);
+    widget('homeMeetings', header + (!failed && count ? `<p class="home-week-zone">Meeting times · ${E(meetingTimeZone)}</p>` : '') + warnings + content);
   };
   const renderCalendar = (agenda, today, signedOut) => {
     const agendaDeals = scopedDeals(snapshot?.board, scope);
@@ -111,9 +115,10 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
       : !agendaItems.length ? ({ all: 'No calendar dates', today: 'No dates due today', overdue: 'No overdue dates' })[agendaView] : '';
     const agendaRetry = !signedOut && !agendaLoading && (agendaUnavailable || agenda?.failed.length);
     $('homeCalendar').setAttribute('aria-busy', String(Boolean(agendaLoading)));
-    const weekContent = !signedOut && (agenda || calendar && calendar.state !== 'unavailable') ? workingWeek.html({ agenda, calendar, today }) : '';
+    const weekContent = !signedOut && (agenda || calendar && calendar.state !== 'unavailable') ? workingWeek.html({ agenda, calendar, today, timeZone: meetingTimeZone }) : '';
     if (!weekContent) workingWeek.clear();
-    const calendarContent = weekContent + (agenda?.entries.length ? `<div id="homeAgenda" class="home-agenda">${(agendaExpanded ? agendaItems : agendaItems.slice(0, AGENDA_PREVIEW)).map(entry => `<a href="${E(`/calendar?day=${entry.day}&d=${entry.day}`)}" data-home-key="agenda:${E(entry.key)}">${entry.day ? `<time datetime="${entry.day}">${dateLabel(entry.day)}</time>` : '<span class="home-agenda-date">No date</span>'}<div><strong>${E(entry.label)}</strong><span>${E(entry.deal_name)}</span>${entry.owner ? `<span>${E(({joe: 'Joe', dell: 'Dell'})[entry.owner] || entry.owner)}</span>` : ''}</div><span class="home-item-type">Date</span></a>`).join('')}</div>${!agendaExpanded && agendaItems.length > AGENDA_PREVIEW ? `<button type="button" class="home-outline home-agenda-more" data-home-key="agenda:show-all" data-agenda-show-all aria-controls="homeAgenda">Show all ${agendaItems.length}</button>` : ''}` : '');
+    const timezoneControl = weekContent && ['ready', 'partial'].includes(calendar?.state) && calendar.items.some(meeting => !meeting.all_day) ? `<label class="home-meeting-zone">Meeting timezone<select data-meeting-timezone data-home-key="meeting-timezone">${MEETING_TIME_ZONES.map(([zone, label]) => `<option value="${zone}"${zone === meetingTimeZone ? ' selected' : ''}>${label}</option>`).join('')}</select></label>` : '';
+    const calendarContent = timezoneControl + weekContent + (agenda?.entries.length ? `<div id="homeAgenda" class="home-agenda">${(agendaExpanded ? agendaItems : agendaItems.slice(0, AGENDA_PREVIEW)).map(entry => `<a href="${E(`/calendar?day=${entry.day}&d=${entry.day}`)}" data-home-key="agenda:${E(entry.key)}">${entry.day ? `<time datetime="${entry.day}">${dateLabel(entry.day)}</time>` : '<span class="home-agenda-date">No date</span>'}<div><strong>${E(entry.label)}</strong><span>${E(entry.deal_name)}</span>${entry.owner ? `<span>${E(({joe: 'Joe', dell: 'Dell'})[entry.owner] || entry.owner)}</span>` : ''}</div><span class="home-item-type">Date</span></a>`).join('')}</div>${!agendaExpanded && agendaItems.length > AGENDA_PREVIEW ? `<button type="button" class="home-outline home-agenda-more" data-home-key="agenda:show-all" data-agenda-show-all aria-controls="homeAgenda">Show all ${agendaItems.length}</button>` : ''}` : '');
 
     widget('homeCalendar', `<header class="home-panel-head"><h2>Calendar</h2><a data-home-key="calendar" class="home-icon-link" href="/calendar" aria-label="Open Calendar">↗</a></header>${agenda && !signedOut ? `<div class="scope-switch" role="group" aria-label="Agenda view">${[['all', 'All dates'], ['today', 'Today'], ['overdue', 'Overdue']].map(([value, label]) => `<button type="button" class="scope-option${agendaView === value ? ' on' : ''}" data-home-key="agenda:view:${value}" data-agenda-view="${value}" aria-pressed="${agendaView === value}">${label}</button>`).join('')}</div>` : ''}${calendarContent}${agendaMessage ? `<p class="home-empty" role="status">${agendaMessage}</p>` : ''}${agendaRetry ? `<button type="button" class="home-outline" data-home-key="agenda:retry" data-agenda-retry${snapshot?.loading ? ' disabled' : ''}>Retry calendar</button>` : ''}`);
   };
@@ -237,6 +242,12 @@ export function mountHomeDashboard({ document, window, client, now = () => Date.
     paintLeadDetail(lead);
     $('homeDetail').showModal();
     $('homeDetail').querySelector('[data-close-detail]').onclick = () => $('homeDetail').close();
+  });
+  $('homeCalendar').addEventListener('change', event => {
+    const choice = event.target.closest('[data-meeting-timezone]');
+    if (!choice || !MEETING_TIME_ZONES.some(([zone]) => zone === choice.value)) return;
+    meetingTimeZone = choice.value;
+    render();
   });
   $('homeCalendar').addEventListener('click', event => {
     if (workingWeek.click(event)) return;
