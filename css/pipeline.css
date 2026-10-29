@@ -77,7 +77,7 @@
 .kanban-column > h3 { position: sticky; top: 0; z-index: 2; margin: 0; min-height: var(--space-7); gap: var(--space-1); background: var(--ground); }
 .kanban-column > h3 button { display: flex; align-items: center; gap: var(--space-2); width: 100%; min-height: var(--touch); padding: var(--space-2) 0; border: 0; background: transparent; color: var(--fg); font: inherit; text-align: left; cursor: pointer; }
 .kanban-column > h3 button small { margin-left: auto; }
-.stage-preview { margin: 0; color: var(--fg-muted); font-size: var(--font-size-1); overflow-wrap: anywhere; }
+.stage-preview { display: grid; gap: var(--space-2); margin: 0; color: var(--fg-muted); font-size: var(--font-size-1); overflow-wrap: anywhere; }
 .kanban-card { height: auto; min-width: 0; grid-template-rows: none; align-content: start; gap: var(--space-1); padding: var(--space-2); overflow: hidden; }
 .kanban-card h4 { overflow-wrap: anywhere; }
 .work-meta { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1); min-width: 0; font-variant-numeric: tabular-nums; }

@@ -236,7 +236,7 @@ function renderBoard() {
       const cards = urgencyOrder(column.slug === 'pending' ? prospects : column.deals);
       const collapsed = state.collapsedColumns.has(column.slug);
       const content = collapsed
-        ? `<p class="stage-preview">${cards.slice(0,2).map(d => esc(dealTitle(d))).join('<br>')}${cards.length > 2 ? `<br>${cards.length - 2} more` : ''}</p>`
+        ? `<p class="stage-preview">${cards.slice(0,2).map(d => `<span>${esc(dealTitle(d))}</span>`).join('')}${cards.length > 2 ? `<span>${cards.length - 2} more</span>` : ''}</p>`
         : cards.map(d => d.operating_state === 'parked' ? parkedHtml(d) : cardHtml(d)).join('');
       const chosen = state.lifted && state.target === column.slug;
       return `<section class="kanban-column glass" data-column="${esc(column.slug)}" data-collapsed="${collapsed}"${chosen ? ' data-drop="true"' : ''}
@@ -710,10 +710,12 @@ function closeCompletion({ cancelled }) {
   renderBoard();
   if (cancelled && intent) announce(`Move cancelled. ${intent.name} stays in ${intent.from_label}.`);
   if (intent) {
+    const phase = columnByValue(state.deals.get(intent.deal)?.phase)?.slug || '';
     const returnTo = state.panelDeal === intent.deal && $('recordPanel')?.open
-      ? $('detailPhase') : document.querySelector(`.kanban-card[data-id="${CSS.escape(intent.deal)}"]`);
-    if (returnTo?.id === 'detailPhase') returnTo.value = columnByValue(state.deals.get(intent.deal)?.phase)?.slug || '';
-    returnTo?.focus({ preventScroll: true });
+      ? $('detailPhase') : document.querySelector(`.kanban-card[data-id="${CSS.escape(intent.deal)}"]`)
+        || document.querySelector(`[data-collapse-stage="${CSS.escape(phase)}"]`);
+    if (returnTo?.id === 'detailPhase') returnTo.value = phase;
+    returnTo?.focus({ preventScroll: !returnTo.dataset.collapseStage });
   }
 }
 
