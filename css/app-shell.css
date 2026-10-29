@@ -344,7 +344,6 @@ body.report-shell { padding-left: var(--layout-rail); padding-bottom: 34px; }
 .app-layout-today .receipts-live:empty { display: none; }
 .entry-original { white-space: pre-wrap; }
 .has-app-layout dialog summary { cursor: pointer; color: var(--fg); min-height: var(--touch); display: flex; align-items: center; }
-.has-app-layout .territory-card { grid-column: 1 / -1; }
 .has-app-layout main.layout { display: block; }
 .app-layout-sidebar .library-scroll { max-height: 250px; }
 .app-layout-sidebar .library-filter input { width: 100%; }

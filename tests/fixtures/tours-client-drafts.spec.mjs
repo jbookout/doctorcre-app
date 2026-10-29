@@ -63,6 +63,18 @@ for (const width of [390, 820, 1440]) for (const theme of ['light', 'dark']) {
     await expect(page.locator('#plan-client-retry')).toBeHidden();
     await expect(page.locator('#plan-name')).toHaveValue('Synthetic retained tour');
     await expect(page.locator('#plan-area')).toHaveValue('Synthetic saved region');
+    if (width === 390) {
+      const actions = page.locator('.planner-grid .widget-actions button');
+      await expect(actions).toHaveCount(4);
+      for (const button of await actions.all()) {
+        const lines = await button.evaluate(element => {
+          const range = document.createRange();
+          range.selectNodeContents(element);
+          return range.getClientRects().length;
+        });
+        expect(lines, `${await button.innerText()} should fit on one line`).toBe(1);
+      }
+    }
     await page.locator('#plan-purpose').scrollIntoViewIfNeeded();
     await page.screenshot({ path: testInfo.outputPath('client-draft.png'), fullPage: true });
     await page.locator('#plan-purpose').selectOption('research');
