@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdir } from 'node:fs/promises';
+import { mkdir, readFile } from 'node:fs/promises';
 import { chromium } from './browser-harness.mjs';
 import { routeLeads } from './leads-browser-fixture.mjs';
 import { workspace, lead, id } from './leads-workspace-fixture.mjs';
@@ -52,6 +52,70 @@ for (const width of [1440, 390]) test(`every coincident place member opens its r
     }
   }
   await page.keyboard.press('Escape');
+  await chooser.waitFor({ state: 'hidden' });
+  assert.equal(await page.locator('.market-marker').evaluate(node => node === document.activeElement), true);
+});
+
+test('a cluster zooms once then exposes every nearby place member at terminal zoom', async t => {
+  const browser = await chromium.launch({ args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
+  t.after(() => browser.close());
+  const page = await browser.newPage({ viewport: { width: 1440, height: 1000 }, reducedMotion: 'reduce' });
+  const board = { ...workspace(), leads: [lead(1, { city: 'Example Harbor' }), lead(2, { city: 'Example Bay' })] };
+  await routeLeads(page, { getBoard: () => board });
+  const places = JSON.parse(await readFile(new URL('../data/leads-market-locations.json', import.meta.url), 'utf8'));
+  await page.route('**/data/leads-market-locations.json', route => route.fulfill({ json: [
+    ...places,
+    { id: 'example-harbor', name: 'Example Harbor', state: 'FL', position: [-87.2, 30.42] },
+    { id: 'example-bay', name: 'Example Bay', state: 'FL', position: [-87.2001, 30.4201] },
+  ] }));
+  await page.goto('http://localhost/leads');
+  await page.getByRole('button', { name: 'Show territory', exact: true }).click();
+  await page.getByRole('button', { name: /Zoom to markets/ }).click();
+  const marker = page.getByRole('button', { name: /Example Bay, FL: 1.* leads$/ });
+  await marker.waitFor();
+  await marker.focus();
+  await page.keyboard.press('Enter');
+  const chooser = page.getByRole('region', { name: 'Leads in this place', exact: true });
+  assert.deepEqual(await chooser.locator('[data-map-lead]').evaluateAll(nodes => nodes.map(node => node.dataset.mapLead).sort()), [id(1), id(2)]);
+  for (const n of [1, 2]) {
+    const member = chooser.getByRole('button', { name: `Dr. Example ${n}`, exact: true });
+    await member.focus();
+    await page.keyboard.press('Enter');
+    await page.locator('#detailStage').waitFor();
+    assert.equal(await page.locator('#detailTitle').innerText(), `Dr. Example ${n}`);
+    await page.locator('#closeDetail').click();
+    assert.equal(await member.evaluate(node => node === document.activeElement), true);
+  }
+});
+
+for (const width of [1440, 390]) test(`place members follow filters across market labels without stale records at ${width}px`, async t => {
+  const browser = await chromium.launch({ args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
+  t.after(() => browser.close());
+  const page = await browser.newPage({ viewport: { width, height: 1000 }, reducedMotion: 'reduce' });
+  const board = { ...workspace(), leads: [lead(1, { market: 'Example research' }), lead(2, { specialty: 'Medical' }), lead(3)] };
+  await routeLeads(page, { getBoard: () => board });
+  await page.goto('http://localhost/leads');
+  await page.getByRole('button', { name: 'Show territory', exact: true }).click();
+  await page.locator('.market-marker').waitFor();
+  await page.locator('.market-marker').click();
+  const chooser = page.getByRole('region', { name: 'Leads in this place', exact: true });
+  await chooser.waitFor();
+  assert.deepEqual(await chooser.locator('[data-map-lead]').evaluateAll(nodes => nodes.map(node => node.dataset.mapLead).sort()), [id(1), id(2), id(3)]);
+  await page.locator('#specialtyFilter').selectOption('Dental');
+  assert.deepEqual(await chooser.locator('[data-map-lead]').evaluateAll(nodes => nodes.map(node => node.dataset.mapLead).sort()), [id(1), id(3)]);
+  await chooser.getByRole('button', { name: 'Dr. Example 1', exact: true }).click();
+  await page.locator('#detailStage').waitFor();
+  assert.equal(await page.locator('#detailTitle').innerText(), 'Dr. Example 1');
+  await page.locator('#closeDetail').click();
+  await page.locator('#leadSearch').fill('no matching synthetic lead');
+  await chooser.waitFor({ state: 'hidden' });
+  assert.equal(await page.locator('.market-marker').count(), 0);
+  assert.equal(await page.locator('#leadBoard .lead-card').count(), 0);
+  await page.locator('#leadSearch').fill('');
+  await page.locator('.market-marker').click();
+  await chooser.waitFor();
+  assert.deepEqual(await chooser.locator('[data-map-lead]').evaluateAll(nodes => nodes.map(node => node.dataset.mapLead).sort()), [id(1), id(3)]);
+  await chooser.getByRole('button', { name: 'Close place leads', exact: true }).click();
   await chooser.waitFor({ state: 'hidden' });
   assert.equal(await page.locator('.market-marker').evaluate(node => node === document.activeElement), true);
 });

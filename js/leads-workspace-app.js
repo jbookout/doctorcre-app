@@ -44,9 +44,9 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
     </article>`;
   }
   function focusIdentity(node) {
-    const container = node?.closest?.("#leadBoard, #marketCounts, #mapLeadMembers");
+    const container = node?.closest?.("#leadBoard, #marketCounts, #mapLeadMembers, #territoryMap");
     if (container) {
-      for (const attr of ["data-claim", "data-undo", "data-link", "data-open", "data-lead-id", "data-market", "data-expand-stage"]) {
+      for (const attr of ["data-claim", "data-undo", "data-link", "data-open", "data-lead-id", "data-market", "data-expand-stage", "data-map-lead", "data-map-marker"]) {
         if (node.hasAttribute(attr)) return { container: container.id, attr, value: node.getAttribute(attr), client: node.dataset.clientId };
       }
     }
@@ -603,7 +603,7 @@ export function mountLeadsWorkspace(doc = document, client = createLeadBoardClie
     button.disabled = true; button.textContent = "Loading territory…";
     button.setAttribute("aria-expanded", "true"); root.hidden = false;
     try {
-      const map = await mapFactory(root, selectMarket, readDetail);
+      const map = await mapFactory(root, selectMarket, readDetail, { describeLead: id => leadTitle(leadById(id) || {}) });
       if (disposed) { map.dispose(); return; }
       state.map = map; button.hidden = true;
       if (!state.drag && !touch) render();
