@@ -463,6 +463,8 @@ test('a future next date replaces an overdue next action', async t => {
   await page.getByLabel('Next date', {exact:true}).fill('2099-01-01');
   await page.getByRole('button', {name:'Add update',exact:true}).click();
   await settles(async () => assert.match(await page.locator('#detailUpdateStatus').textContent(), /update added/i));
+  await page.getByRole('button', {name:'Refresh deal', exact:true}).click();
+  await settles(async () => assert.match(await page.locator('#detailUpdateStatus').textContent(), /update added/i));
   await settles(async () => assert.match(await page.locator('.deal-current-action').textContent(), /^Next action: Synthetic future action · Due /));
   await page.locator('#panelClose').click();
   await settles(async () => assert.equal((await page.evaluate(async () => (await (await import('/js/pipeline.js')).state.client.getDeal('d14')).deal.next_date)), '2099-01-01'));

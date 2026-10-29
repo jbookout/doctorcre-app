@@ -877,7 +877,7 @@ function syncUpdateForm() {
   button.textContent = pending || pendingStep ? 'Check outcome' : 'Add update';
   form.querySelector('[data-review-update-step]').hidden = !updateDraft.conflict;
   form.querySelector('[data-discard-update]').disabled = Boolean(pending || pendingStep) || !updateDraft.text;
-  if (!pending) $('detailUpdateStatus').textContent = updateDraft.noteSaved ? updateDraft.message || 'Update added; next step still needs to be saved.' : updateDraft.text ? 'Unsent draft · kept while this page is open' : '';
+  if (!pending) $('detailUpdateStatus').textContent = updateDraft.noteSaved ? updateDraft.message || 'Update added; next step still needs to be saved.' : updateDraft.text ? 'Unsent draft · kept while this page is open' : updateDraft.message || '';
   if (pending) $('detailUpdateStatus').textContent = pending.message || 'Saving update…';
 }
 function validateDetail(detail, id) {
@@ -951,7 +951,10 @@ async function saveUpdate(id) {
     if (changed) state.boardSync.requestRefresh('deal-update');
     if (state.panelDeal === id) {
       await refreshPanel();
-      if ($('detailUpdateStatus')) $('detailUpdateStatus').textContent = 'Update added';
+      if (actor === state.selfActor && updateDraft?.id === id) {
+        updateDraft.message = 'Update added';
+        syncUpdateForm();
+      }
     }
   } finally { draft.sending = false; }
 }
