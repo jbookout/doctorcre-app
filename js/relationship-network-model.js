@@ -140,9 +140,11 @@ export function introductionSuggestions(
     .slice(0, limit)
     .map((s) => ({
       ...s,
-      fromNode: nodes.get(s.via || s.from),
-      toNode: nodes.get(s.to),
+      path: [s.from, s.via, s.to].filter(Boolean).map(id => nodes.get(id)),
     }));
+}
+export function introductionRouteLabel(path) {
+  return path.map(node => node.name).join(" → ");
 }
 export function focusedNetwork(snapshot, focus, limit = 12) {
   const candidates = new Set([focus]);
