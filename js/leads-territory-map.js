@@ -25,16 +25,16 @@ export async function mountTerritoryMap(root, selectMarket, selectLead, { signal
   // The map paints from the page's colour tokens so it follows the theme; with no
   // stylesheet it paints nothing rather than inventing a colour.
   const doc = root.ownerDocument, view = doc.defaultView;
-  const token = (name) => view?.getComputedStyle(root).getPropertyValue(name).trim() || "transparent";
+  const token = (name) => view?.getComputedStyle(root).getPropertyValue(name).trim() || (name === "--map-border" ? token("--hairline-strong") : "transparent");
   // Only the background is water. Territory states are land; neighbouring states
   // are muted context land, so nothing outside the Gulf and Atlantic reads as sea.
-  const paint = [["ground", "background-color", "--map-water"], ["context", "fill-color", "--map-context"], ["land", "fill-color", "--map-land"], ["borders", "line-color", "--hairline-strong"]];
+  const paint = [["ground", "background-color", "--map-water"], ["context", "fill-color", "--map-context"], ["land", "fill-color", "--map-land"], ["borders", "line-color", "--map-border"]];
   const shell = mountMarketMap(root, { interactive: false, signal, loadMapLibre,
     center: [-86.5, 31.9], zoom: 5.5, style: { version: 8, sources: { territory: { type: "geojson", data: geometry } },
       layers: [{ id: "ground", type: "background", paint: { "background-color": token("--map-water") } },
         { id: "context", type: "fill", source: "territory", filter: ["==", ["get", "role"], "context"], paint: { "fill-color": token("--map-context") } },
         { id: "land", type: "fill", source: "territory", filter: ["==", ["get", "role"], "territory"], paint: { "fill-color": token("--map-land") } },
-        { id: "borders", type: "line", source: "territory", paint: { "line-color": token("--hairline-strong"), "line-opacity": .9, "line-width": 1 } }] } });
+        { id: "borders", type: "line", source: "territory", paint: { "line-color": token("--map-border"), "line-opacity": .9, "line-width": 1 } }] } });
   const mounted = await shell.ready;
   if (!mounted) return null;
   const { map, gl } = mounted;
