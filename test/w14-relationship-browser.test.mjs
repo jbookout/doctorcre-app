@@ -43,6 +43,12 @@ async function open(t, width = 1440) {
         payload.nodes[0].territory = "Demo Northern Coastal Territory";
         payload.nodes.find(n => n.kind === "deal").name = JSON.stringify({value:"Demo Dental Relocation"});
       }
+      if (mode === "duplicate") payload.edges[0].detail = payload.edges[0].summary;
+      if (mode === "connector") {
+        payload.edges[0].via = "party:demo-build";
+        payload.suggestions[0].via = "party:demo-build";
+      }
+      if (mode === "route-text") payload.nodes[0].name = "Demo <em>Lending</em> & Partners";
       if (mode === "twins") {
         payload.nodes[0].name = "Demo Healthcare Lending North Partners";
         payload.nodes[3].name = "Demo Healthcare Lending South Partners";
@@ -446,4 +452,76 @@ test('Relationships live boot loads its selected adapter without the fixture ada
  await page.locator('#networkNodes [data-node="party:demo-lender"]').waitFor();
  assert.equal(scripts.includes('/js/fixture-client.js'),false);
  assert.equal(scripts.includes('/js/live-client.js'),true);
+});
+
+
+for (const [entry, url, region, button] of [
+  ['Home', '/', '#homeIntroductions', '[data-intro-node]'],
+  ['Relationships', '/relationships', '#networkIntroductions', '[data-node]'],
+]) for (const width of [1440, 390]) for (const theme of ['light', 'dark'])
+  test(`H05 ${entry} keeps the recorded introduction path at ${width}px ${theme}`, async t => {
+    const { page, errors, setMode } = await open(t, width);
+    await page.addInitScript(theme => localStorage.setItem('doctorcre.visual-preferences', JSON.stringify({ theme, walkthroughSeen: { joe: true, dell: true } })), theme);
+    setMode('connector');
+    await page.goto(`http://localhost${url}?mode=live`);
+    const path = page.locator(`${region} ${button}`);
+    await path.waitFor();
+    assert.equal(await path.locator('.intro-route').innerText(), 'Demo Healthcare Lending → Demo Practice Builders → Demo Dental Expansion');
+    await path.focus();
+    await page.keyboard.press('Enter');
+    await page.locator('.relationship-dialog[open]').waitFor();
+    assert.equal(await page.locator('#relationshipTitle').innerText(), 'Demo Dental Expansion');
+    await page.keyboard.press('Escape');
+    assert.equal(await path.evaluate(node => node === document.activeElement), true);
+    await page.addScriptTag({ content: axe.source });
+    const audit = await page.evaluate(region => window.axe.run(document.querySelector(region), { runOnly: ['color-contrast'] }), region);
+    assert.deepEqual(audit.violations, []);
+    assert.deepEqual(audit.incomplete, []);
+    await path.screenshot({ path: `out/test-artifacts/w14/h05-path-${entry}-${width}-${theme}.png`, animations: 'disabled' });
+    setMode('ok');
+    await page.clock.fastForward(61000);
+    await page.waitForFunction(region => document.querySelector(`${region} .intro-route`)?.textContent === 'Demo Healthcare Lending → Demo Dental Expansion', region);
+    assert.deepEqual(errors, []);
+  });
+
+
+test('H05 introduction details omit internal tags and repeated evidence', async t => {
+  const { page, errors, setMode } = await open(t);
+  setMode('duplicate');
+  await page.goto('http://localhost/?mode=live');
+  await page.locator('#homeIntroductions [data-intro-node]').click();
+  await page.locator('.relationship-dialog[open]').waitFor();
+  const text = await page.locator('.relationship-dialog').innerText();
+  assert.doesNotMatch(text, /dental|joe|party:|demo-offer|Details/);
+  assert.equal(await page.locator('.relationship-dialog details').count(), 0);
+  assert.match(text, /Worked together on equipment financing; offered an introduction/);
+  assert.deepEqual(errors, []);
+});
+
+
+test('H05 dates identify the recorded relationship without inventing a meeting', async t => {
+  const { page, errors } = await open(t);
+  await page.goto('http://localhost/?mode=live');
+  await page.locator('#homeIntroductions [data-intro-node]').click();
+  await page.locator('.relationship-dialog[open]').waitFor();
+  const dates = page.locator('.relationship-dialog time');
+  assert.deepEqual(await dates.allTextContents(), ['Can introduce · Oct 1, 2026', 'Referred · Oct 1, 2026']);
+  assert.deepEqual(await dates.evaluateAll(nodes => nodes.map(node => node.dateTime)), ['2026-10-01T15:00:00Z', '2026-10-01T15:00:00Z']);
+  assert.doesNotMatch(await page.locator('.relationship-dialog').innerText(), /Met on|Employer/);
+  assert.deepEqual(errors, []);
+});
+
+
+for (const [entry, url, region] of [
+  ['Home', '/', '#homeIntroductions'],
+  ['Relationships', '/relationships', '#networkIntroductions'],
+]) test(`H05 ${entry} renders route names as literal text`, async t => {
+  const { page, errors, setMode } = await open(t);
+  setMode('route-text');
+  await page.goto(`http://localhost${url}?mode=live`);
+  const route = page.locator(`${region} .intro-route`);
+  await route.waitFor();
+  assert.equal(await route.innerText(), 'Demo <em>Lending</em> & Partners → Demo Dental Expansion');
+  assert.equal(await route.locator('em').count(), 0);
+  assert.deepEqual(errors, []);
 });
