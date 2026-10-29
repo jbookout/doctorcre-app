@@ -49,6 +49,8 @@
     </div>
     <section class="business-controls" aria-labelledby="controlsTitle" data-panel-background>
       <h2 class="visually-hidden" id="controlsTitle">Search and filter</h2>
+      <details id="secondaryFilters" open>
+        <summary>Filters and sort</summary>
       <form id="filterForm" class="filter-form" novalidate>
         <div class="filter-row">
           <div class="field" data-field="a">
@@ -88,6 +90,7 @@
           </div>
         </div>
       </form>
+      </details>
       <div id="chipBar" class="chip-bar" role="group" aria-label="Active filters"></div>
     </section>
 
@@ -113,7 +116,9 @@
             <p class="eyebrow" id="recordEyebrow">Record</p>
             <h2 id="recordTitle" tabindex="-1">Opening…</h2>
           </div>
-          <button type="button" class="panel-close" id="recordClose" aria-label="Close record">×</button>
+          <div class="record-panel-actions" data-doc-presence-slot>
+            <button type="button" class="panel-close" id="recordClose" aria-label="Close record">×</button>
+          </div>
         </div>
         <div class="record-panel-body" id="recordBody">
           <p class="attention-copy">Opening this record.</p>

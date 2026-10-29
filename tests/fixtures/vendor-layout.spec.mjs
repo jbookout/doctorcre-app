@@ -18,11 +18,17 @@ for (const width of [1440, 390]) for (const theme of ['light', 'dark']) {
     await expect(page.locator('#appTodayNeeds [data-layout-deal]').first()).toBeAttached();
     await page.screenshot({ path: testInfo.outputPath(`directory-${width}-${theme}.png`) });
     if (width === 1440) {
-      const task = page.locator('#appTodayNeeds [data-layout-deal]').first();
-      const name = await task.locator('strong').textContent();
-      await expect.soft(page.locator('#appWorkingList [data-layout-deal]:visible strong, #appTodayNeeds [data-layout-deal]:visible strong').filter({ hasText: name })).toHaveCount(1);
+      const names = await page.locator('#appTodayNeeds [data-layout-deal] strong').allTextContents();
+      for (const name of names) {
+        await expect.soft(page.locator('#appWorkingList [data-layout-deal]:visible strong, #appTodayNeeds [data-layout-deal]:visible strong').filter({ hasText: name })).toHaveCount(1);
+      }
       const rows = await page.locator('.record-row').first().boundingBox();
       expect.soft(rows.width).toBeGreaterThan(950);
+      await page.getByRole('button', { name: 'Workspace sidebar', exact: true }).click();
+      for (const name of names) {
+        await expect(page.locator('#appWorkingList [data-layout-deal]:visible strong, #appTodayNeeds [data-layout-deal]:visible strong').filter({ hasText: name })).toHaveCount(1);
+      }
+      await page.getByRole('button', { name: 'Close workspace', exact: true }).click();
     } else {
       const completeRows = await page.locator('.record-row').evaluateAll(rows => {
         const bottom = document.querySelector('.app-layout-status').getBoundingClientRect().top;
@@ -33,6 +39,20 @@ for (const width of [1440, 390]) for (const theme of ['light', 'dark']) {
     }
     await page.locator('.record-row').first().click();
     await expect(page.getByRole('dialog', { name: 'Demo Partner 01' })).toBeVisible();
+    await expect(page.locator('#recordBody')).toContainText('Suggested introductions');
+    await expect(page.locator('.record-panel-actions .doc-presence')).toBeVisible();
     await page.screenshot({ path: testInfo.outputPath(`detail-${width}-${theme}.png`) });
+    await page.getByRole('button', { name: 'Close record', exact: true }).click();
+    if (width === 390) {
+      await expect(page.getByLabel('Category', { exact: true })).toBeHidden();
+      await page.getByText('Filters and sort', { exact: true }).click();
+      await expect(page.getByLabel('Category', { exact: true })).toBeVisible();
+      await page.getByRole('button', { name: 'Dell', exact: true }).click();
+      await expect(page).toHaveURL(/owner=dell/);
+      await page.getByRole('button', { name: 'Reset', exact: true }).click();
+      await expect(page).toHaveURL('/vendors');
+      await page.setViewportSize({ width: 1440, height: 844 });
+      await expect(page.getByLabel('Category', { exact: true })).toBeVisible();
+    }
   });
 }
