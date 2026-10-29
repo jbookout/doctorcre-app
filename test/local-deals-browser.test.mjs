@@ -880,22 +880,18 @@ for (const width of [390, 1440]) test(`missing action items stay visible across 
   const { page, errors } = await open(t, { width });
   await page.evaluate(async () => {
     const { state } = await import('/js/pipeline.js');
-    const board = state.client.getBoard.bind(state.client);
-    const detail = state.client.getDeal.bind(state.client);
+    const { createFixtureClient, createFixtureDealStore } = await import('/js/fixture-client.js');
+    const store = createFixtureDealStore(await state.client.getBoard());
+    const fixture = await createFixtureClient({ dealStore: store, docContext: false });
     window.demoNextStep = null;
     window.demoItems = [];
-    state.client.getBoard = async (...args) => {
-      const result = await board(...args);
-      Object.assign(result.deals.find(deal => deal.id === 'd14'), { next_step: window.demoNextStep, last_touch: null, activities: [], next_actions: [], items: structuredClone(window.demoItems) });
-      return result;
+    const applyFixture = () => {
+      const deal = store.deals.get('d14');
+      Object.assign(deal, { next_step: window.demoNextStep, last_touch: null, items: structuredClone(window.demoItems) });
+      if (window.demoParked) deal.operating_state = 'parked';
     };
-    state.client.getDeal = async id => {
-      const result = await detail(id);
-      result.deal.next_step = window.demoNextStep;
-      result.items = result.deal.items = structuredClone(window.demoItems);
-      if (id === 'd14' && window.demoParked) result.deal.operating_state = 'parked';
-      return result;
-    };
+    state.client.getBoard = async (...args) => { applyFixture(); return fixture.getBoard(...args); };
+    state.client.getDeal = async id => { applyFixture(); return fixture.getDeal(id); };
   });
   for (const value of [null, '  ', { text: '' }]) {
     await page.evaluate(value => { window.demoNextStep = value; window.demoItems = []; }, value);
