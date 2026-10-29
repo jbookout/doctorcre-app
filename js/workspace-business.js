@@ -326,6 +326,27 @@ function tierHtml(stats) {
   const tier = stats?.override?.tier || computed;
   return `<span class="trust-line"><span class="trust-tier" data-tier="${escapeHtml(tier)}">${escapeHtml(tier)}</span>${stats?.override ? `<span>Computed: ${escapeHtml(computed)}</span>` : ''}</span>`;
 }
+function vendorContactsHtml(record) {
+  const statuses = { not_researched: 'Not researched', needs_review: 'Needs review', office_verified: 'Office verified' };
+  const contacts = (record.people || []).map(({ company, contact, office, research }) => `
+    <li>
+      <h4>${escapeHtml(contact.name)}</h4>
+      ${company ? `<p class="note-summary">${escapeHtml(company.name.trim() || 'Company name not recorded')}</p>` : ''}
+      <dl>
+        <div class="record-field"><dt>Email</dt><dd>${escapeHtml(contact.email || 'Email not recorded')}</dd></div>
+        <div class="record-field"><dt>Phone</dt><dd>${escapeHtml([contact.phone, contact.cell].filter(Boolean).join(' · ') || 'Phone not recorded')}</dd></div>
+        <div class="record-field"><dt>Office</dt><dd>${office ? escapeHtml(`${office.street_address}, ${office.city}, ${office.state}`) : 'Office not recorded'}</dd></div>
+        <div class="record-field"><dt>Office research</dt><dd>${escapeHtml(statuses[research.status])}</dd></div>
+      </dl>
+      ${office ? `<p class="observed">${escapeHtml(office.source)} · ${escapeHtml(formatMoment(office.observed_at))}${office.expires_on ? ` · Expires ${escapeHtml(office.expires_on)}` : ''}</p>` : ''}
+    </li>`).join('');
+  return `<section class="record-section" aria-label="Vendor contacts">
+    <h3>Contacts & offices</h3>
+    <dl><div class="record-field"><dt>Recorded territory</dt><dd>${escapeHtml(record.territory || NOT_RECORDED)}</dd></div></dl>
+    ${contacts ? `<ul class="vendor-contacts">${contacts}</ul>` : '<p class="note-summary">No contacts recorded.</p>'}
+  </section>`;
+}
+
 function relationshipHtml(record) {
   const stats = record.relationship || {};
   const intro = stats.introductions || [];
@@ -384,12 +405,12 @@ async function saveTrust(event) {
   document.querySelector('#trustStatus').textContent = 'Saving…';
   let attempted = false;
   try {
-    const response = await fetchRead(recordRequestUrl('vendors', record.id), { headers: { accept: 'application/json' }, cache: 'no-store' });
+    const response = await fetchRead(recordRequestUrl('vendors', record.id, { people: true }), { headers: { accept: 'application/json' }, cache: 'no-store' });
     if (response.status === 401) return expireNow();
     if (!response.ok) throw Object.assign(new Error('Current vendor unavailable'), { status: response.status });
     const payload = await response.json();
     if (!active()) return;
-    if (!validRecordPayload(payload, 'vendors', record.id)) throw new Error('Current vendor unavailable');
+    if (!validRecordPayload(payload, 'vendors', record.id, { people: true })) throw new Error('Current vendor unavailable');
     if (payload.viewer !== view.record.payload?.viewer) return expireNow();
     if (payload.record.record_version !== operation.base_version) {
       view.pendingTrust = null;
@@ -679,7 +700,7 @@ function renderRecordPanel() {
     `<section class="record-section"><h3>${escapeHtml(section.title)}</h3><dl>${section.fields.filter(field => !['ETL status','What this status means','Version','What this level means','Vendor reference','Client reference','What they offer','Last touch'].includes(field.label) && field.known).map((field) =>
       `<div class="record-field${field.known ? "" : " unknown"}${field.resolved ? "" : " unresolved"}"><dt>${escapeHtml(field.label)}</dt><dd>${(section.title === 'Notes' ? `<p class="note-summary">${escapeHtml(shortNote(field.text))}</p><details class="record-details" data-details-key="notes"><summary>Details</summary><p class="entry-detail">${escapeHtml(field.text)}</p></details>` : escapeHtml(field.text))}${field.known && !field.resolved ? '<span class="unresolved-flag">Not recorded</span>' : ""}</dd></div>`).join("")}</dl></section>`).join("");
   if (dom.panelBody) {
-    dom.panelBody.innerHTML = `<p class="record-tone"><span class="tone tone-${escapeHtml(tone.tone)}">${escapeHtml(tone.label)}</span><span>${escapeHtml(owner.text)}</span></p>${dataset === 'vendors' ? relationshipHtml(payload.record) : ''}<div class="detail-columns">${sections}</div>${referenceDetails}${activityHtml(payload.record.id)}<p class="observed">${escapeHtml(updatedLabel(payload.source?.observed_at))}</p>`;
+    dom.panelBody.innerHTML = `<p class="record-tone"><span class="tone tone-${escapeHtml(tone.tone)}">${escapeHtml(tone.label)}</span><span>${escapeHtml(owner.text)}</span></p>${dataset === 'vendors' ? vendorContactsHtml(payload.record) + relationshipHtml(payload.record) : ''}<div class="detail-columns">${sections}</div>${referenceDetails}${activityHtml(payload.record.id)}<p class="observed">${escapeHtml(updatedLabel(payload.source?.observed_at))}</p>`;
     dom.panelBody.dataset.recordId = payload.record.id;
     restorePanelState();
 
@@ -860,7 +881,7 @@ async function loadRecord(id, { focusOnOpen = false } = {}) {
     renderRecordPanel();
   };
   try {
-    const response = await fetchRead(recordRequestUrl(view.dataset, id), { headers: { accept: "application/json" }, cache: "no-store" });
+    const response = await fetchRead(recordRequestUrl(view.dataset, id, { people: view.dataset === 'vendors' }), { headers: { accept: "application/json" }, cache: "no-store" });
     // A record read is as authoritative about the session as a list read, and
     // it stays authoritative after the panel closes or another record is
     // opened. The expiry check runs before the selection and sequence guards
@@ -873,7 +894,7 @@ async function loadRecord(id, { focusOnOpen = false } = {}) {
     }
     if (!acceptsResponse(view.record.sequence, sequence) || view.recordId !== id) return;
     const payload = await response.json().catch(() => null);
-    if (!validRecordPayload(payload, view.dataset, id)) return settle("error", "FRESHNESS_UNKNOWN");
+    if (!validRecordPayload(payload, view.dataset, id, { people: view.dataset === 'vendors' })) return settle("error", "FRESHNESS_UNKNOWN");
     if (pending && view.pendingTrust === pending && view.trustOperation === pending && pending.vendor === payload.record.ref) {
       const expected = pending.fields.trust_override, saved = payload.record.relationship?.override;
       if (payload.record.record_version > pending.base_version && (expected ? saved?.tier === expected.tier && saved?.reason === expected.reason && saved?.recorded_by === payload.viewer : saved === null)) { view.pendingTrust = null; view.trustStatus = { id: payload.record.id, text: 'Rating confirmed' }; }

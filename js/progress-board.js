@@ -43,7 +43,7 @@ export function mountBoard(deps = {}) {
   const byId = id => doc.getElementById(id);
   const costs = mountCostView(byId('board-costs'));
   const location = deps.location || win.location;
-  if (pathBoardId) doc.querySelector(".directory-panel").hidden = true;
+  if (orchestratorView) doc.querySelector(".directory-panel").hidden = true;
   byId("board-activity").href = workDetailUrl({ board: boardId || SYSTEM_BOARD_ID });
   byId("board-parent-name").textContent = boardId === SYSTEM_BOARD_ID ? "System board" : "Project board";
   const timers = [];
@@ -162,6 +162,17 @@ export function mountBoard(deps = {}) {
   }
 
   // ── published board directory ─────────────────────────────────────────────
+  function filterDirectory() {
+    const query = byId("directory-search").value.trim().toLocaleLowerCase();
+    const entries = [...byId("board-directory").querySelectorAll(".board-link")];
+    let count = 0;
+    for (const entry of entries) {
+      entry.hidden = !entry.dataset.search.includes(query);
+      if (!entry.hidden) count++;
+    }
+    byId("directory-results").textContent = entries.length && !count ? "No boards match your search." : "";
+  }
+
   function renderDirectory(read) {
     const boards = boardDirectory(read);
     const directory = byId("board-directory");
@@ -173,7 +184,8 @@ export function mountBoard(deps = {}) {
     directory.replaceChildren();
     for (const board of boards) {
       const item = el("a", "board-link", undefined,
-        { href: boardPageUrl(board.board_id), target: "_blank", rel: "noopener noreferrer", "data-board-id": board.board_id });
+        { href: boardPageUrl(board.board_id), target: "_blank", rel: "noopener noreferrer", "data-board-id": board.board_id,
+          "data-search": [board.title, board.project, board.board_id].filter(Boolean).join(" ").toLocaleLowerCase() });
       if (board.board_id === boardId) item.setAttribute("aria-current", "page");
       item.append(el("span", "eyebrow", board.board_id === SYSTEM_BOARD_ID ? "System-wide" : "Project"),
         el("h3", "", board.title || board.project || board.board_id));
@@ -184,6 +196,7 @@ export function mountBoard(deps = {}) {
       directory.append(item);
     }
     if (!boards.length) directory.append(el("p", "empty", "No published boards."));
+    filterDirectory();
     refreshAges();
     if (changed) announce("Published boards updated.");
   }
@@ -191,10 +204,11 @@ export function mountBoard(deps = {}) {
   function clearDirectory() {
     directorySignature = "";
     byId("board-directory").replaceChildren();
+    byId("directory-results").textContent = "";
   }
 
   function loadDirectory(seq) {
-    if (pathBoardId || typeof client.listProgressBoards !== "function") return;
+    if (orchestratorView || typeof client.listProgressBoards !== "function") return;
     client.listProgressBoards().then(read => {
       if (seq === readSeq) renderDirectory(read);
     }).catch(cause => {
@@ -1157,6 +1171,7 @@ export function mountBoard(deps = {}) {
     timers.push(schedule(tick, TICK_MS));
   }
 
+  byId("directory-search").addEventListener("input", filterDirectory);
   byId("board-retry").addEventListener("click", () => refresh(true).catch(() => {}));
   doc.addEventListener("visibilitychange", refreshAges);
   renderLegend();
@@ -1169,6 +1184,7 @@ export function mountBoard(deps = {}) {
     disposed = true; readSeq++; boardReadController?.abort();
     orchestratorUI?.dispose(); queueUI?.dispose(); hierarchyUI?.dispose(); poller?.dispose();
     timers.forEach(id => win.clearInterval(id)); clearTimer(ageTimer);
+    byId("directory-search").removeEventListener("input", filterDirectory);
     doc.removeEventListener("visibilitychange", refreshAges);
     win.removeEventListener?.('doctorcre-session-invalidated', dispose);
     currentView = lastRead = governanceRead = null;

@@ -1,8 +1,9 @@
 {
   "schema": "doctorcre-leads-map.v1",
   "contract": "carr-map-tour-v1",
-  "component_version": "1.1.0",
+  "component_version": "1.1.1",
   "mode": "search",
+  "default_frame": "Fit the existing Census place points for Mobile AL, Tallahassee FL and Dothan AL. Explicit market sets retain their own fit. Filters and refresh preserve the camera.",
   "renderer": "MapLibre GL JS 6.4.1 (existing vendored distribution)",
   "geometry": {
     "url": "https://www2.census.gov/geo/tiger/GENZ2025/shp/cb_2025_us_state_500k.zip",

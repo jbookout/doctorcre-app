@@ -26,7 +26,7 @@
       <div class="panel-heading"><div><p class="eyebrow">KEY</p><h2 id="legend-title">What every mark means</h2></div></div>
       <div id="legend-body" class="legend-body"></div>
     </aside>
-    <main>
+    <main class="progress-main">
       <nav aria-label="Breadcrumb"><a href="/control-room/progress">Progress</a> › <span id="board-parent-name">Board</span> · <a id="board-activity" href="/control-room/progress/work">Project activity</a></nav>
       <section class="intro" aria-labelledby="board-title">
         <p class="eyebrow" id="board-eyebrow">Progress board</p>
@@ -44,6 +44,8 @@
       </section>
       <details class="panel directory-panel" aria-labelledby="directory-title">
         <summary id="directory-title" class="directory-summary">Published boards<span id="directory-error" class="error" role="alert" hidden></span></summary>
+        <label class="directory-search">Find a board<input id="directory-search" type="search" maxlength="200" autocomplete="off" aria-controls="board-directory"></label>
+        <p id="directory-results" class="caption" role="status"></p>
         <nav id="board-directory" class="board-directory" aria-label="Published progress boards"></nav>
       </details>
       <p id="board-live" class="sr-only" role="status" aria-live="polite"></p>

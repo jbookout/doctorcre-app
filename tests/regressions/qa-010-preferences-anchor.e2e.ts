@@ -42,8 +42,15 @@ for (const viewport of viewports) {
   for (const initialFailure of [false, true]) {
     test(`QA-010 preferences anchor once after first success at ${viewport.width}px (failure: ${initialFailure})`, { tags: ['regression'], requires: ['browser'], retries: 0 }, async ({ app, browser }) => {
       await browser.setViewport(viewport);
+      let releaseFeed = () => {};
+      const feedGate = new Promise(resolve => { releaseFeed = resolve; });
+      if (!initialFailure) await browser.route(`${new URL(app.baseUrl).origin}/mcp`, async route => {
+        const request = JSON.parse(route.request.postData || '{}');
+        if (request.params?.name === 'notification-feed' && request.params.arguments?.limit === 25) await feedGate;
+        return route.continue();
+      });
       if (initialFailure) {
-        await browser.route('**/mcp', route => {
+        await browser.route(`${new URL(app.baseUrl).origin}/mcp`, route => {
           const request = JSON.parse(route.request.postData || '{}');
           return request.params?.name === 'read-notification-preferences'
             ? route.fulfill({ status: 503, json: { ok: false, error: 'temporarily_unavailable' } })
@@ -55,12 +62,18 @@ for (const viewport of viewports) {
       if (initialFailure) {
         await expect(browser.locator('#prefForm')).toBeHidden();
         await expect(browser.locator('#prefState')).toContainText(/unavailable|could not/i);
-        await browser.unroute('**/mcp');
+        await browser.unroute(`${new URL(app.baseUrl).origin}/mcp`);
         if (viewport.width < 760) await browser.locator('#selfAvatar').tap();
         await browser.locator('#appSyncRefresh').tap();
         if (viewport.width < 760) await browser.keyboard.press('Escape');
       }
       await expect(browser.locator('#deviceOptIn')).toBeEnabled();
+      if (!initialFailure) {
+        // Let an early preference anchor run before the feed changes page height.
+        await browser.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+        releaseFeed();
+        await expect(browser.locator('#feedList li').first()).toBeVisible();
+      }
       // Wait on geometry, including the actual first control under sticky tabs.
       await expect.poll(async () => (await preferenceGeometry(browser)).clear).toBe(true);
       await expect.poll(async () => (await preferenceGeometry(browser)).uncovered).toBe(true);

@@ -10,6 +10,7 @@ const surfaces = [
 for (const viewport of [{ width: 1440, height: 960 }, { width: 390, height: 844 }]) for (const surface of surfaces) for (const status of [503, 401, 403]) {
   test(`QA-008 ${surface.name} freshness settles after ${status} retry${surface.name === 'Tours' ? '' : ' and recovers'} at ${viewport.width}px`, { tags: ['regression'], requires: ['browser'], retries: 0 }, async ({ app, browser }) => {
     await browser.setViewport(viewport);
+    const origin = new URL(app.baseUrl).origin;
     const refresh = viewport.width < 760 ? '#appSyncRefresh' : surface.refresh;
     // The phone shows planner feedback while its library lives in the sidebar.
     const failure = viewport.width < 760 && surface.name === 'Tours' ? '#plan-message' : surface.failure;
@@ -23,15 +24,15 @@ for (const viewport of [{ width: 1440, height: 960 }, { width: 390, height: 844 
       if (retryGate) await retryGate;
       return route.fulfill({ status, json: { ok: false, error: status === 401 ? 'unauthorized' : 'temporarily_unavailable', code: status === 401 ? 'unauthorized' : 'temporarily_unavailable' } });
     };
-    await browser.route('**/api/**', reject);
-    await browser.route('**/mcp', reject);
+    await browser.route(`${origin}/api/**`, reject);
+    await browser.route(`${origin}/mcp`, reject);
     await app.open(surface.path);
     if (status === 401 || status === 403) {
       await expect(browser.locator('.app-shell-signed-out, #selfAvatar')).toHaveCount(0);
       await expect(browser.locator('h1')).toHaveText('Session ended');
       await expect(browser).toHaveURL('/public-shell/session-ended.html');
       await expect(browser.locator('#leadBoard,.kanban-card,.tour-button')).toHaveCount(0);
-      await browser.unroute('**/api/**'); await browser.unroute('**/mcp');
+      await browser.unroute(`${origin}/api/**`); await browser.unroute(`${origin}/mcp`);
       await app.open(surface.path);
       await expect(browser.locator('#selfAvatar')).toHaveText('J');
       if (surface.name !== 'Tours') await expect(browser.locator(surface.freshness)).toContainText(/Updated/i);
@@ -105,8 +106,8 @@ for (const viewport of [{ width: 1440, height: 960 }, { width: 390, height: 844 
     // its existing regression covers failed retries, while Leads/Deals recover.
     if (status === 503) await app.screenshot(`failed-freshness-${surface.name}-${viewport.width}`);
     if (surface.name === 'Tours') return;
-    await browser.unroute('**/api/**');
-    await browser.unroute('**/mcp');
+    await browser.unroute(`${origin}/api/**`);
+    await browser.unroute(`${origin}/mcp`);
     if (viewport.width < 760) await browser.locator('#selfAvatar').tap();
     await browser.locator(refresh).tap();
     if (viewport.width < 760) await browser.keyboard.press('Escape');
