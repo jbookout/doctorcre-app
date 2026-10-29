@@ -137,6 +137,7 @@ test('fresh publication reconciles delivery and derived request evidence and rem
   assert.match(await page.locator('#workMetadata .work-delivery').textContent(), /Review unbound/);
   assert.doesNotMatch(await page.locator('#workSessionList').textContent(),/Prior builder|Current builder/);
   assert.deepEqual(errors,[]);
+  await page.unrouteAll({behavior:'wait'});
 });
 
 for(const late of ['read-session-identity','read-dispatch-history'])test(`publication rebinding rejects late ${late} from prior request`,async t=>{
