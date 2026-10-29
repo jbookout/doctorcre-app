@@ -174,11 +174,12 @@ test('R3: real synthetic audio encodes under Worker headers; other documents den
 
 test('R2: shared shell sign-out revokes the offline account binding', async t => {
   const { page, context, origin } = await open(t);
-  await page.goto(`${origin}/tours/day.html?tour=${tourId}&mode=live`);
-  await page.waitForFunction(() => !document.querySelector('#day-record').disabled);
-  await record(page);
   await page.evaluate(async () => { await navigator.serviceWorker.register('/tours/day-sw.js', { scope: '/tours/' }); await navigator.serviceWorker.ready; });
   await page.waitForFunction(() => navigator.serviceWorker.controller);
+  await page.goto(`${origin}/tours/day.html?tour=${tourId}&mode=live`);
+  assert.equal(await page.evaluate(() => !!navigator.serviceWorker.controller), true, 'the live tour must be controlled before sign-out');
+  await page.waitForFunction(() => !document.querySelector('#day-record').disabled);
+  await record(page);
   await page.locator('#selfAvatar').click(); await page.locator('#accountSignOut').click();
   await page.waitForURL('**/public-shell/session-ended.html');
   assert.equal(await page.evaluate(()=>sessionStorage.getItem('doctorcre-tour-day-session-v1')),null);
