@@ -29,6 +29,7 @@ for (const width of [1440, 390]) for (const theme of ['dark', 'light']) {
     if (url.pathname === '/mcp') {
           const name = route.request().postDataJSON().params.name;
           const payload = name === 'read-progress-board' ? { ok: true, ...board }
+            : name === 'list-progress-boards' ? { schema: 'progress-board-directory.v1', boards: [{ board_id: 'density-demo', title: 'Synthetic delivery' }] }
             : name === 'deal-room-board' ? { deals: [], actor: 'joe' } : { ok: true, items: [], events: [], cursor: null };
           return route.fulfill({ json: { result: { content: [{ type: 'text', text: JSON.stringify(payload) }] } } });
         }
@@ -90,6 +91,7 @@ for (const width of [1440, 390]) for (const theme of ['dark', 'light']) {
     test('Progress puts populated stages first and explains an empty filter', async ({ page }) => {
       await page.goto('http://localhost/control-room/progress/board/density-demo?mode=live');
       await expect(page.locator('#board-stages')).toContainText('No tasks match these filters.');
+      await expect(page.locator('#directory-error')).toBeHidden();
       await page.getByRole('button', { name: 'Needs a hand · 1', exact: true }).click();
       await expect(page.locator('#board-stages .board-card')).toBeVisible();
       await capture(page, 'progress-board');
