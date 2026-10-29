@@ -43,3 +43,31 @@ for (const width of [390, 1440]) for (const theme of ['light', 'dark']) {
     await expect(chooser.getByRole('button', { name: 'Dr. Example 2', exact: true })).toBeFocused();
   });
 }
+
+test('hover preview survives crossing the map and Escape works with focus elsewhere', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await routeLeads(page, { getBoard: () => ({ ...workspace(), leads: [lead(1)] }) });
+  await page.goto('http://localhost/leads');
+  await page.getByRole('button', { name: 'Show territory', exact: true }).click();
+  await page.locator('#leadSearch').focus();
+  const marker = page.locator('.market-marker');
+  await marker.hover();
+  const preview = page.getByRole('tooltip');
+  await expect(preview).toContainText('1 lead');
+  const markerBox = await marker.boundingBox();
+  const previewBox = await preview.boundingBox();
+  await page.mouse.move(markerBox.x + markerBox.width / 2, previewBox.y - 2);
+  await expect(preview).toBeVisible();
+  await preview.hover();
+  await expect(preview).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(preview).toBeHidden();
+  await expect(page.locator('#leadSearch')).toBeFocused();
+  await marker.hover();
+  await expect(preview).toBeVisible();
+  await marker.click();
+  await expect(page.locator('#detailTitle')).toHaveText('Dr. Example 1');
+  await expect(preview).toBeHidden();
+  await page.getByRole('button', { name: 'Close lead details', exact: true }).click();
+  await expect(marker).toBeFocused();
+});
