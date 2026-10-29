@@ -244,10 +244,10 @@ for (const width of [390, 820, 1440]) for (const theme of ['light', 'dark']) {
   });
 }
 
-for (const theme of ['light', 'dark']) {
-  test(`Client record updates and name choices fit a phone in ${theme}`, async ({ page }, testInfo) => {
+for (const [width, height] of [[390, 844], [1440, 900]]) for (const theme of ['light', 'dark']) {
+  test(`Client record updates and name choices fit ${width} in ${theme}`, async ({ page }, testInfo) => {
     const state = { failDetail: false, client: { ...client } };
-    await page.setViewportSize({ width: 390, height: 844 });
+    await page.setViewportSize({ width, height });
     await page.addInitScript(theme => localStorage.setItem('doctorcre.visual-preferences', JSON.stringify({ theme })), theme);
     await routePlanner(page, state);
     await page.goto('http://localhost/tours');
@@ -267,7 +267,7 @@ for (const theme of ['light', 'dark']) {
     await expect(page.locator('#tour-dialog')).not.toBeVisible();
     await expect(page.locator('#keep-client-name')).toBeFocused();
     await page.locator('#plan-client-name-review').evaluate(element => element.scrollIntoView({ block: 'center' }));
-    await page.screenshot({ path: testInfo.outputPath('client-name-compare-390.png') });
+    await page.screenshot({ path: testInfo.outputPath(`client-name-compare-${width}-${theme}.png`) });
     for (const id of ['plan', 'space']) {
       const updates = page.locator(`#${id}-client-updates`);
       await updates.locator('summary').click();
@@ -275,14 +275,14 @@ for (const theme of ['light', 'dark']) {
       await updates.evaluate(element => element.scrollIntoView({ block: 'center' }));
       const box = await updates.boundingBox();
       expect(box.y).toBeGreaterThanOrEqual(60);
-      expect(box.y + box.height).toBeLessThanOrEqual(732);
-      await page.screenshot({ path: testInfo.outputPath(`${id}-client-updates-390.png`) });
+      expect(box.y + box.height).toBeLessThanOrEqual(height - 112);
+      await page.screenshot({ path: testInfo.outputPath(`${id}-client-updates-${width}-${theme}.png`) });
     }
     const controls = page.locator('#plan-client-name-review button');
     for (const control of await controls.all()) {
       const box = await control.boundingBox();
       expect(box.x).toBeGreaterThanOrEqual(0);
-      expect(box.x + box.width).toBeLessThanOrEqual(390);
+      expect(box.x + box.width).toBeLessThanOrEqual(width);
       const lines = await control.evaluate(element => { const range = document.createRange(); range.selectNodeContents(element); return range.getClientRects().length; });
       expect(lines).toBe(1);
     }
