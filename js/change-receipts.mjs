@@ -16,10 +16,6 @@
  *     (including a partner's newer change), and that refusal stays visible on
  *     the row rather than being swallowed.
  *
- * Values are shown as the feed recorded them. Slug-shaped strings are
- * humanized in shape only (`due_diligence` -> "Due diligence"); no value is
- * remapped onto a different label, because the display vocabulary lives in
- * live-client.js and inventing a second copy here would let the two drift.
  */
 
 export const REVERTIBLE_FIELDS = Object.freeze(['phase', 'owner', 'attention', 'next_date', 'operating_state']);
@@ -172,6 +168,7 @@ export function normalizeChangeEvent(event, options = {}) {
     action: changeAction(event),
     before: null,
     after: null,
+    move_value: event.new_value,
     revertible_field: Boolean(field) && REVERTIBLE_FIELDS.includes(field),
   };
   if (kind === 'field' && ('old_value' in event || 'new_value' in event)) {
@@ -316,7 +313,7 @@ export function receiptsAnnouncement(previousIds, views) {
   const known = new Set(previousIds);
   const fresh = (Array.isArray(views) ? views : []).filter((view) => !known.has(view.event_id));
   if (!fresh.length) return '';
-  if (fresh.length === 1) return `1 new change · ${fresh[0].deal_name} · ${fresh[0].action}`;
+  if (fresh.length === 1) return `1 new change · ${fresh[0].deal_name} · ${moveSentence(fresh[0])}`;
   return `${fresh.length} new changes`;
 }
 
@@ -505,6 +502,7 @@ export function receiptViews(receipts, options = {}) {
       action: receipt.action,
       before: receipt.before,
       after: receipt.after,
+      move_value: receipt.move_value,
       own,
       superseded,
       undo_status: undoStatus,
@@ -530,11 +528,35 @@ export function receiptsSignature(views) {
     .join('|');
 }
 
+function moveDate(value) {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
+  const date = new Date(`${value}T00:00:00Z`);
+  if (!Number.isFinite(date.valueOf()) || date.toISOString().slice(0, 10) !== value) return null;
+  const year = new Intl.DateTimeFormat('en-US', { timeZone:'America/Chicago', year:'numeric' }).format(new Date());
+  return `${MONTHS[date.getUTCMonth()]} ${date.getUTCDate()}${value.slice(0, 4) === year ? '' : `, ${value.slice(0, 4)}`}`;
+}
+
+/** Plain-language summary for a feed row. Unknown values stay in the deal record. */
+export function moveSentence(move) {
+  const value = move.move_value;
+  if (move.field === 'checklist_ping') {
+    const recipient = value?.recipient === 'joe' ? 'Joe' : value?.recipient === 'dell' ? 'Dell' : null;
+    const date = moveDate(value?.due_on);
+    const kind = typeof value?.checklist_item_id === 'string' && value.checklist_item_id.startsWith('critical-date:') ? 'critical date' : null;
+    return recipient && date && kind ? `Reminder sent to ${recipient}: ${kind} due ${date}` : 'Reminder sent';
+  }
+  const actions = { phase:'Phase', owner:'Owner', attention:'Attention flag', next_date:'Next date', next_step:'Next step', operating_state:'Active work', note:'Note added', market_agent:'Market agent', account_owner:'Account owner', next_action:'Next action', deal_items_conversion:'Deal items updated', email_draft_metadata:'Email draft updated', call_change_undo:'Call change undone' };
+  const action = Object.hasOwn(actions, move.field) ? actions[move.field] : 'Change recorded';
+  const after = move.after;
+  if (move.field === 'operating_state' && value && typeof value === 'object' && !['active', 'parked'].includes(value.state)) return action;
+  if (!Object.hasOwn(actions, move.field) || (typeof value === 'object' && value !== null && move.field !== 'operating_state')) return action;
+  if (typeof value === 'string' && /[{}\[\]\"\\]|\b[\da-f]{8}-[\da-f]{4}-[\da-f]{4}-[\da-f]{4}-[\da-f]{12}\b|\b[a-z]+(?:_[a-z0-9]+)+\b|\b[a-z]+(?:-[a-z]+)*:[^\s]+/i.test(value)) return action;
+  if (typeof after !== 'string' || !after || /[{}\[\]"\\]|\b[\da-f]{8}-[\da-f]{4}-[\da-f]{4}-[\da-f]{4}-[\da-f]{12}\b|\b[a-z]+(?:_[a-z0-9]+)+\b|\b[a-z]+(?:-[a-z]+)*:[^\s]+/i.test(after)) return action;
+  return `${action} → ${moveDate(after) || after}`;
+}
+
 /** One row. Every value from the feed passes through escapeText on the way in. */
 export function receiptRowHtml(view) {
-  const values = view.before !== null || view.after !== null
-    ? `<span class="receipt-values"><span class="receipt-before">${escapeText(view.before)}</span><span class="receipt-arrow" aria-hidden="true">→</span><span class="sr-only">changed to</span><span class="receipt-after">${escapeText(view.after)}</span></span>`
-    : '';
   const badge = view.badge
     ? `<span class="receipt-badge ${escapeText(view.undo_status)}">${escapeText(view.badge)}</span>`
     : '';
@@ -550,8 +572,8 @@ export function receiptRowHtml(view) {
   // target: an Undo button that succeeds, is refused, or goes pending is
   // removed or replaced, and the keyboard has to land somewhere sensible.
   return `<li class="receipt${view.superseded ? ' superseded' : ''}" data-receipt="${escapeText(view.event_id)}" tabindex="-1">
-    <p class="receipt-line"><button type="button" class="receipt-deal" data-open-deal="${escapeText(view.deal_id)}">${escapeText(view.deal_name)}</button><span class="receipt-action">${escapeText(view.action)}</span>${values}</p>
-    <p class="receipt-meta"><span class="receipt-actor">${escapeText(view.actor_label)}</span><span aria-hidden="true">·</span><time class="receipt-time" datetime="${escapeText(view.recorded_at || '')}">${escapeText(view.time_label)}</time>${badge}</p>
+    <p class="receipt-line"><button type="button" class="receipt-deal" data-open-deal="${escapeText(view.deal_id)}">${escapeText(view.deal_name)}</button><span class="receipt-action">${escapeText(moveSentence(view))}</span></p>
+    <p class="receipt-meta"><span class="receipt-actor">${escapeText(({joe:'Joe', dell:'Dell', doc:'Doc'})[view.actor] || 'Team member')}</span><span aria-hidden="true">·</span><time class="receipt-time" datetime="${escapeText(view.recorded_at || '')}">${escapeText(view.time_label)}</time>${badge}</p>
     ${undoControl ? `<div class="receipt-actions">${undoControl}</div>` : ''}${message}
   </li>`;
 }

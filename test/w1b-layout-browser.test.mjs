@@ -433,3 +433,42 @@ for (const status of [401,403,503]) test(`Deal detail refresh distinguishes HTTP
  assert.equal(await page.locator('#detailUpdateForm textarea').inputValue()==='Synthetic unsaved draft',status===503);
  assert.deepEqual(errors,[]);
 });
+
+test('Recent moves describe feed changes without internal data', async t => {
+ const fields = [
+  ['checklist_ping',{checklist_item_id:'critical-date:0558aaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',due_on:'2026-08-20',recipient:'joe'}],
+  ['phase','due_diligence'], ['owner','dell'], ['attention',true], ['next_date','2026-08-20'],
+  ['operating_state',{state:'parked',reason:'client_paused'}], ['next_step','Review terms'], ['note',{note:'Synthetic note'}],
+  ['market_agent',{market_agent:'Example Agent'}], ['account_owner',{owner:'joe'}], ['next_action',{next_action_id:'critical-date:0558'}],
+  ['deal_items_conversion',{next_action_id:'0558aaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'}], ['email_draft_metadata',{draft_id:'abc'}],
+  ['call_change_undo',{candidate_id:'abc'}], ['unknown_field',{internal_key:'secret'}],
+  ['next_step','{\"internal_key\":\"hidden\"}'], ['next_step',['internal_key']], ['next_step','0558aaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'], ['next_step','critical-date:0558'],
+ ];
+ const events=fields.map(([field,new_value],i)=>({id:`event-${i}`,subject_type:'deal',subject_id:'d23',field,actor:'joe',new_value,recorded_at:`2026-10-01T14:${String(i).padStart(2,'0')}:00Z`}));
+ const {page,goto}=await open(t,{clock:true,events:[]});
+ for (const event of events) {
+  await page.route('**/pipeline/changes*',route=>route.fulfill({contentType:'application/json',body:JSON.stringify({events:new URL(route.request().url()).searchParams.get('cursor') ? [] : [event],cursor:'1',presence:[],capture_sessions:[]})}));
+  await goto('/leads?mode=live');
+  await page.waitForFunction(()=>document.querySelector('#appTodayMoves')?.textContent.includes('Demo Specialty Clinic'));
+  const text=await page.locator('#appTodayMoves').innerText();
+  assert.doesNotMatch(text, /[{}]|":|\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b|\b[a-z]+(?:_[a-z0-9]+)+\b/i, event.field);
+  if(event.field==='checklist_ping') assert.match(text,/Reminder sent to Joe: critical date due Aug 20/);
+  await page.unroute('**/pipeline/changes*');
+ }
+});
+
+test('Recent moves screenshot evidence', async t => {
+ if (!process.env.MOVES_SCREENSHOT_DIR) return;
+ for (const [width,height] of [[390,844],[1440,900]]) for (const theme of ['light','dark']) {
+  const events=[{id:'event-1',subject_type:'deal',subject_id:'d23',field:'checklist_ping',actor:'joe',new_value:{checklist_item_id:'critical-date:0558aaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',due_on:'2026-08-20',recipient:'joe'},recorded_at:'2026-10-01T14:00:00Z'}];
+  const {page,goto}=await open(t,{width,height,clock:true,events});
+  await goto('/leads?mode=live');
+  await page.evaluate(theme=>document.documentElement.dataset.theme=theme,theme);
+  if(width===390) await page.locator('#appTodayToggle').click();
+  await page.waitForFunction(()=>document.querySelector('#appTodayMoves')?.textContent.includes('Demo Specialty Clinic'));
+  await page.locator('#appTodayMoves').scrollIntoViewIfNeeded();
+  await mkdir(process.env.MOVES_SCREENSHOT_DIR,{recursive:true});
+  await page.screenshot({animations:'disabled',path:`${process.env.MOVES_SCREENSHOT_DIR}/${width}-${theme}.png`});
+  await page.close();
+ }
+});
