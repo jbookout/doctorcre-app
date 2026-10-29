@@ -344,14 +344,13 @@ body.report-shell { padding-left: var(--layout-rail); padding-bottom: 34px; }
 .app-layout-today .receipts-live:empty { display: none; }
 .entry-original { white-space: pre-wrap; }
 .has-app-layout dialog summary { cursor: pointer; color: var(--fg); min-height: var(--touch); display: flex; align-items: center; }
-.has-app-layout .planner-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); padding: 0; width: 100%; }
 .has-app-layout .territory-card { grid-column: 1 / -1; }
 .has-app-layout main.layout { display: block; }
 .app-layout-sidebar .library-scroll { max-height: 250px; }
 .app-layout-sidebar .library-filter input { width: 100%; }
 @media (max-width: 760px), (hover: none) and (pointer: coarse) and (max-width: 1023px) {
   body.report-shell { padding-left: 0; padding-bottom: calc(var(--layout-bottom) + var(--space-3)); }
-  .lead-detail-grid, .has-app-layout .planner-grid { grid-template-columns: 1fr; }
+  .lead-detail-grid { grid-template-columns: 1fr; }
 }
 .has-app-layout .card-move, .has-app-layout .lead-move { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
 .has-app-layout .card-move:focus, .has-app-layout .lead-move:focus-within { position: static; width: auto; height: auto; overflow: visible; clip-path: none; }
