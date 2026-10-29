@@ -4,28 +4,36 @@ import { readFile } from 'node:fs/promises';
 const clientId = '11111111-1111-4111-8111-111111111111';
 const client = { id: clientId, name: 'Synthetic Practice', city: 'Synthetic City', state: 'FL', vertical: 'Synthetic specialty', notes: 'Synthetic client notes' };
 
+const otherClientId = '22222222-2222-4222-8222-222222222222';
+const otherClient = { ...client, id: otherClientId, name: 'Synthetic Other Practice' };
+
+async function routePlanner(page, state) {
+  await page.route('**/*', async route => {
+    const url = new URL(route.request().url());
+    if (url.origin !== 'http://localhost') return route.abort();
+    if (url.pathname === '/auth/session') return route.fulfill({ json: { actor: { slug: 'joe' }, csrf_token: 'synthetic-fixture' } });
+    if (url.pathname === `/api/v1/business/clients/${clientId}` && state.failDetail) return route.fulfill({ status: 503, json: { error: 'unavailable' } });
+    if (url.pathname.startsWith('/api/')) {
+      const data = url.pathname === '/api/tours/library' ? { tours: [] }
+        : url.pathname === `/api/v1/business/clients/${clientId}` ? { record: state.client }
+        : url.pathname === `/api/v1/business/clients/${otherClientId}` ? { record: otherClient }
+        : url.pathname === '/api/v1/business/clients' ? { rows: [state.client, otherClient], page: 1, page_count: 1 } : {};
+      return route.fulfill({ json: { data, csrf_token: 'synthetic-fixture', actor: { slug: 'joe' }, items: [], counts: {} } });
+    }
+    const file = url.pathname === '/tours' ? 'tours/index.html' : url.pathname.slice(1);
+    try {
+      const body = await readFile(new URL('../../' + file, import.meta.url));
+      return route.fulfill({ body, contentType: /\.m?js$/.test(file) ? 'text/javascript' : file.endsWith('.css') ? 'text/css' : file.endsWith('.json') ? 'application/json' : 'text/html' });
+    } catch { return route.fulfill({ status: 404, body: '' }); }
+  });
+}
+
 for (const width of [390, 820, 1440]) for (const theme of ['light', 'dark']) {
   test(`Tour client drafts and Research work at ${width} ${theme}`, async ({ page }, testInfo) => {
-    let failDetail = false;
+    const state = { failDetail: false, client: { ...client } };
     await page.setViewportSize({ width, height: 1000 });
     await page.addInitScript(theme => localStorage.setItem('doctorcre.visual-preferences', JSON.stringify({ theme })), theme);
-    await page.route('**/*', async route => {
-      const url = new URL(route.request().url());
-      if (url.origin !== 'http://localhost') return route.abort();
-      if (url.pathname === '/auth/session') return route.fulfill({ json: { actor: { slug: 'joe' }, csrf_token: 'synthetic-fixture' } });
-      if (url.pathname === `/api/v1/business/clients/${clientId}` && failDetail) return route.fulfill({ status: 503, json: { error: 'unavailable' } });
-      if (url.pathname.startsWith('/api/')) {
-        const data = url.pathname === '/api/tours/library' ? { tours: [] }
-          : url.pathname === `/api/v1/business/clients/${clientId}` ? { record: client }
-          : url.pathname === '/api/v1/business/clients' ? { rows: [client], page: 1, page_count: 1 } : {};
-        return route.fulfill({ json: { data, csrf_token: 'synthetic-fixture', actor: { slug: 'joe' }, items: [], counts: {} } });
-      }
-      const file = url.pathname === '/tours' ? 'tours/index.html' : url.pathname.slice(1);
-      try {
-        const body = await readFile(new URL('../../' + file, import.meta.url));
-        return route.fulfill({ body, contentType: /\.m?js$/.test(file) ? 'text/javascript' : file.endsWith('.css') ? 'text/css' : file.endsWith('.json') ? 'application/json' : 'text/html' });
-      } catch { return route.fulfill({ status: 404, body: '' }); }
-    });
+    await routePlanner(page, state);
     await page.goto('http://localhost/tours');
     await expect(page.locator('#planner-updated')).toContainText('Updated');
     await page.locator('#space-client').selectOption(clientId);
@@ -37,14 +45,14 @@ for (const width of [390, 820, 1440]) for (const theme of ['light', 'dark']) {
     await page.locator('#space-client').selectOption(clientId);
     await expect(page.locator('#space-minSize')).toHaveValue('2100');
     await expect(page.locator('#space-use')).toHaveValue('');
-    failDetail = true;
+    state.failDetail = true;
     await page.locator('#plan-client').selectOption(clientId);
     await expect(page.locator('#plan-client-retry')).toBeVisible();
     await page.locator('#plan-name').fill('Synthetic retained tour');
     await page.locator('#review-packet').click();
     await expect(page.locator('#tour-dialog')).not.toBeVisible();
     await expect(page.locator('#plan-message')).toContainText('Client details temporarily unavailable.');
-    failDetail = false;
+    state.failDetail = false;
     await page.locator('#plan-client-retry').click();
     await expect(page.locator('#plan-client-retry')).toBeHidden();
     await expect(page.locator('#plan-name')).toHaveValue('Synthetic retained tour');
@@ -66,3 +74,60 @@ for (const width of [390, 820, 1440]) for (const theme of ['light', 'dark']) {
     await page.screenshot({ path: testInfo.outputPath('research-draft.png'), fullPage: true });
   });
 }
+
+
+test('Tour managed notes refresh after client reselection while typed notes survive', async ({ page }) => {
+  const state = { failDetail: false, client: { ...client } };
+  await routePlanner(page, state);
+  await page.goto('http://localhost/tours');
+  await expect(page.locator('#planner-updated')).toContainText('Updated');
+  await page.locator('#plan-client').selectOption(clientId);
+  await expect(page.locator('#plan-notes')).toHaveValue('Synthetic client notes');
+  await page.locator('#plan-client').selectOption(otherClientId);
+  await expect(page.locator('#plan-name')).toHaveValue('Synthetic Other Practice · Tour');
+  state.client.notes = 'Synthetic refreshed source notes';
+  await page.locator('#plan-client').selectOption(clientId);
+  await expect(page.locator('#plan-message')).toHaveText('');
+  await page.getByRole('button', { name: 'Refresh tours', exact: true }).click();
+  await expect(page.locator('#plan-notes')).toHaveValue('Synthetic refreshed source notes');
+  await page.reload();
+  await expect(page.locator('#plan-client')).toHaveValue(clientId);
+  state.client.notes = 'Synthetic source notes after reload';
+  await page.getByRole('button', { name: 'Refresh tours', exact: true }).click();
+  await expect(page.locator('#plan-notes')).toHaveValue('Synthetic source notes after reload');
+  await page.locator('#plan-notes').fill('Synthetic typed notes');
+  await page.locator('#plan-client').selectOption(otherClientId);
+  await expect(page.locator('#plan-name')).toHaveValue('Synthetic Other Practice · Tour');
+  state.client.notes = 'Synthetic newest source notes';
+  state.client.name = 'Synthetic refreshed practice';
+  await page.locator('#plan-client').selectOption(clientId);
+  await expect(page.locator('#plan-message')).toHaveText('');
+  await page.getByRole('button', { name: 'Refresh tours', exact: true }).click();
+  await expect(page.locator('#plan-name')).toHaveValue('Synthetic refreshed practice · Tour');
+  await expect(page.locator('#plan-notes')).toHaveValue('Synthetic typed notes');
+});
+
+test('Search cleared space type stays blank in Plan after prefill and refresh', async ({ page }) => {
+  const state = { failDetail: false, client: { ...client } };
+  await routePlanner(page, state);
+  await page.goto('http://localhost/tours');
+  await expect(page.locator('#planner-updated')).toContainText('Updated');
+  await page.locator('#space-client').selectOption(clientId);
+  await expect(page.locator('#space-use')).toHaveValue('Synthetic specialty');
+  await page.locator('#space-use').fill('');
+  await page.locator('#plan-client').selectOption(clientId);
+  await expect(page.locator('#plan-name')).toHaveValue('Synthetic Practice · Tour');
+  await expect(page.locator('#space-use')).toHaveValue('');
+  await expect(page.locator('#plan-use')).toHaveValue('');
+  state.client.notes = 'Synthetic notes after refresh';
+  await page.getByRole('button', { name: 'Refresh tours', exact: true }).click();
+  await expect(page.locator('#plan-notes')).toHaveValue('Synthetic notes after refresh');
+  await expect(page.locator('#plan-use')).toHaveValue('');
+  await page.reload();
+  await expect(page.locator('#plan-name')).toHaveValue('Synthetic Practice · Tour');
+  await expect(page.locator('#plan-use')).toHaveValue('');
+  state.client.notes = 'Synthetic notes after reload';
+  await page.getByRole('button', { name: 'Refresh tours', exact: true }).click();
+  await expect(page.locator('#plan-notes')).toHaveValue('Synthetic notes after reload');
+  await expect(page.locator('#plan-use')).toHaveValue('');
+});

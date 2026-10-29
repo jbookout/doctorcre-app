@@ -33,8 +33,8 @@ export function mountPlanner({ document, window, api = createPlannerClient() }) 
     return planPurpose === "research" ? "research" : planClient || "client";
   }
   function rememberDrafts() {
-    drafts.plan.set(subjectKey("plan"), { values: plan.values, clearedFields: plan.clearedFields });
-    drafts.space.set(subjectKey("space"), { values: search.values, clearedFields: search.clearedFields });
+    drafts.plan.set(subjectKey("plan"), { values: plan.values, clearedFields: plan.clearedFields, managedFields: plan.managedFields });
+    drafts.space.set(subjectKey("space"), { values: search.values, clearedFields: search.clearedFields, managedFields: search.managedFields });
   }
   const clientsUnavailable = "Clients temporarily unavailable. Refresh tours to try again.";
   const clientsLoading = "Clients are loading. Wait, then review again.";
@@ -80,11 +80,12 @@ export function mountPlanner({ document, window, api = createPlannerClient() }) 
               const fields = prefix === "plan" ? PLAN_FIELDS : SEARCH_FIELDS;
               const values = Object.fromEntries(fields.filter(field => typeof entry[1]?.values?.[field] === "string").map(field => [field, entry[1].values[field]]));
               const clearedFields = fields.filter(field => Array.isArray(entry[1]?.clearedFields) && entry[1].clearedFields.includes(field));
-              drafts[prefix].set(entry[0], { values, clearedFields });
+              const managedFields = fields.filter(field => Array.isArray(entry[1]?.managedFields) && entry[1].managedFields.includes(field) && !clearedFields.includes(field));
+              drafts[prefix].set(entry[0], { values, clearedFields, managedFields });
             }
           }
-          if (planEpoch === 0) { planPurpose = savedDraft.planPurpose === "research" ? "research" : "client"; planClient = planPurpose === "client" ? savedDraft.planClient || "" : ""; plan.restore(savedDraft.plan, drafts.plan.get(subjectKey("plan"))?.clearedFields); }
-          if (searchEpoch === 0) { searchClient = savedDraft.searchClient || ""; search.restore(savedDraft.search, drafts.space.get(subjectKey("space"))?.clearedFields); }
+          if (planEpoch === 0) { planPurpose = savedDraft.planPurpose === "research" ? "research" : "client"; planClient = planPurpose === "client" ? savedDraft.planClient || "" : ""; plan.restore(savedDraft.plan, drafts.plan.get(subjectKey("plan"))?.clearedFields, drafts.plan.get(subjectKey("plan"))?.managedFields); }
+          if (searchEpoch === 0) { searchClient = savedDraft.searchClient || ""; search.restore(savedDraft.search, drafts.space.get(subjectKey("space"))?.clearedFields, drafts.space.get(subjectKey("space"))?.managedFields); }
         }
       } catch { /* An invalid draft never selects another client's record. */ }
     }
@@ -162,10 +163,11 @@ export function mountPlanner({ document, window, api = createPlannerClient() }) 
     if (prefix === "plan") { planPurpose = purpose; $("#plan-client-picker").hidden = purpose === "research"; planClient = id; selectedRecord = null; files = []; renderFiles(); } else searchClient = id;
     // A new record starts an independent draft, so previous-client criteria never migrate.
     const saved = drafts[prefix].get(subjectKey(prefix));
-    draft.reset(); draft.restore(saved?.values, saved?.clearedFields);
+    draft.reset(); draft.restore(saved?.values, saved?.clearedFields, saved?.managedFields);
     if (prefix === "plan" && id) {
-      const brief = drafts.space.get(id)?.values;
-      for (const field of ["area", "use"]) if (!draft.values[field] && !draft.clearedFields.includes(field) && brief?.[field]) draft.set(field, brief[field]);
+      const brief = drafts.space.get(id);
+      const values = Object.fromEntries(["area", "use"].filter(field => brief?.values[field] || brief?.clearedFields.includes(field)).map(field => [field, brief.values[field]]));
+      draft.restore(values, brief?.clearedFields, brief?.managedFields);
     }
     syncForm(prefix, draft); fillClients(); save(prefix === "plan" ? "#plan-message" : "#space-message");
     const target = prefix === "plan" ? "#plan-message" : "#space-message";
