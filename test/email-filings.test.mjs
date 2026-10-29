@@ -74,3 +74,33 @@ test('live client forwards the exact read and undo arguments, and the contract p
   assert.ok(contract.mcp_operations.includes('list-email-thread-filings') && contract.mcp_operations.includes('undo-email-thread-filing'));
   assert.deepEqual(Object.keys(contract.email_thread_filings.read_fields), ['event_id', 'deal', 'activity_id', 'recorded_at', 'summary', 'subject', 'sender_name', 'occurred_at', 'activity_version']);
 });
+
+
+test('a background filing read failure preserves focus outside its panel', async () => {
+  let reject;
+  const response = new Promise((_, fail) => { reject = fail; });
+  const { container, view } = setup({ listEmailThreadFilings: () => response });
+  const document = container.ownerDocument;
+  const trigger = document.createElement('button');
+  trigger.textContent = 'Suggested introduction';
+  document.body.append(trigger);
+  trigger.focus();
+  const refresh = view.refresh();
+  reject(Error('Synthetic read unavailable'));
+  await refresh;
+  assert.match(container.textContent, /Could not load automatic email filings/);
+  assert.equal(document.activeElement, trigger);
+});
+
+test('a failed refresh preserves focus on a filing control within its panel', async () => {
+  let fail = false;
+  const { container, view } = setup({ listEmailThreadFilings: async () => {
+    if (fail) throw Error('Synthetic read unavailable');
+    return { filings: [filing(1)] };
+  } });
+  await view.refresh();
+  container.querySelector('[data-filing-undo]').focus();
+  fail = true;
+  await view.refresh();
+  assert.equal(container.ownerDocument.activeElement, container.querySelector('[data-filing-undo]'));
+});
