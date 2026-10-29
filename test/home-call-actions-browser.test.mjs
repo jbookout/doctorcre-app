@@ -25,7 +25,7 @@ after(async () => {
 });
 
 for (const actionCount of [5, 30]) for (const width of [390, 1280]) for (const theme of ['light', 'dark']) {
-  test(`signed-in Home previews and expands ${actionCount} call actions at ${width}px in ${theme}`, async t => {
+  test(`signed-in Home brief shows ${actionCount} call actions at ${width}px in ${theme}`, async t => {
     const page = await browser.newPage({ viewport: { width, height: 960 }, timezoneId: 'America/Chicago', reducedMotion: 'reduce' });
     t.after(() => page.close());
     await page.clock.install({ time: new Date('2026-10-01T15:00:00Z') });
@@ -73,32 +73,21 @@ for (const actionCount of [5, 30]) for (const width of [390, 1280]) for (const t
       await page.locator('#homeCalendar').screenshot({ path: `${capture}-panel.png`, animations: 'disabled' });
       await writeFile(`${capture}.json`, JSON.stringify({ actionCount, width, theme, viewer, panel, grid }, null, 2));
     }
-    const rows = page.locator('#homeCalendar .home-agenda > a');
+    const rows = page.locator('#homeBrief > a');
     const firstFive = ['Demo call overdue', 'Demo call today', 'Demo call also-undated', 'Demo call undated', 'Demo call future'];
-    assert.deepEqual(await rows.locator('strong').allTextContents(), actionCount === 5 ? firstFive : [...firstFive, 'Demo call extra-01']);
-    const showAll = page.getByRole('button', { name: 'Show all 30', exact: true });
+    assert.deepEqual(await rows.locator('strong').allTextContents(), [...firstFive,
+      ...(actionCount === 30 ? Array.from({ length: 25 }, (_, i) => `Demo call extra-${String(i + 1).padStart(2, '0')}`) : [])]);
     if (actionCount === 30) {
-      const target = await showAll.boundingBox();
-      assert.ok(target.width >= 44 && target.height >= 44, 'Show all is a touch target');
-      const readsBeforeExpansion = agendaReads;
-      await showAll.focus();
-      await page.keyboard.press('Enter');
-      assert.equal(await rows.count(), 30);
-      assert.deepEqual(await rows.locator('strong').allTextContents(), [...firstFive,
-        ...Array.from({ length: 25 }, (_, i) => `Demo call extra-${String(i + 1).padStart(2, '0')}`)]);
-      assert.equal(await rows.nth(6).evaluate(node => node === document.activeElement), true, 'focus the seventh row');
-      assert.equal(await showAll.count(), 0);
-      assert.equal(agendaReads, readsBeforeExpansion, 'expansion needs no additional agenda read');
       refreshed = true;
       await page.locator('#refreshHome').click();
       await page.locator('#refreshHome[aria-busy="false"]').waitFor();
-      assert.equal(await rows.count(), 30, 'refresh keeps the expanded agenda');
-      assert.equal(await rows.last().locator('strong').textContent(), 'Demo updated call', 'new data actually repaints the expanded list');
+      assert.equal(await rows.count(), 30, 'refresh retains every task');
+      assert.equal(await rows.last().locator('strong').textContent(), 'Demo updated call', 'new data repaints the brief');
       await page.getByRole('button', { name: 'Team view', exact: true }).click();
-      assert.equal(await rows.count(), 30, 'reselecting the same scope keeps expansion');
-    } else assert.equal(await showAll.count(), 0, 'short agendas need no expansion control');
+      assert.equal(await rows.count(), 30, 'reselecting the same scope keeps every task');
+    }
     const undated = rows.filter({ hasText: 'Demo call undated' });
-    assert.match(await undated.innerText(), /No date/);
+    assert.match(await undated.innerText(), /No due date/);
     assert.match(await undated.innerText(), /Dell/);
     assert.equal(await undated.getAttribute('href'), '/deals?deal=qa-deal-1');
     assert.equal(await undated.locator('time').count(), 0);
@@ -111,10 +100,10 @@ for (const actionCount of [5, 30]) for (const width of [390, 1280]) for (const t
     assert.equal(agendaReads, actionCount === 5 ? 1 : 2, 'one agenda read per refresh');
     await page.getByRole('button', { name: 'Just me', exact: true }).click();
     assert.equal(await page.locator('#homeCalendar').isVisible(), true);
-    if (viewer !== 'joe') assert.match(await page.locator('#homeCalendar').textContent(), /No calendar dates or tasks/);
-    if (viewer === 'joe') assert.equal(await rows.count(), actionCount === 5 ? 4 : 6, 'scope changes reset expansion');
+    if (viewer !== 'joe') assert.equal(await rows.count(), 0);
+    if (viewer === 'joe') assert.equal(await rows.count(), actionCount === 5 ? 4 : 29, 'personal scope includes only the viewer’s tasks');
     await page.getByRole('button', { name: 'Team view', exact: true }).click();
-    assert.equal(await rows.count(), actionCount === 5 ? 5 : 6, 'returning to team starts with the preview');
+    assert.equal(await rows.count(), actionCount, 'team scope restores every open task');
     undatedOnly = true;
     await page.locator('#refreshHome').click();
     await page.locator('#refreshHome[aria-busy="false"]').waitFor();

@@ -36,6 +36,7 @@ export function mountAppLayout(root, host, pathname) {
   const title = progressPage ? 'Progress' : pathname.startsWith('/control-room') ? 'Control Room' : pathname === '/vendors' ? 'Vendors' : pathname === '/clients' ? 'Clients' : pathname === '/deals' ? 'Local Deals' : root.querySelector('main h1, .room-wordmark, .page-kicker')?.textContent.trim().replace(/Loading$/, '').trim() || root.title.split('·')[0].trim();
   const { layout, status } = createAppLayout(root, title);
   host.after(layout, status);
+  if (pathname === '/') layout.querySelector('.app-layout-working').hidden = true;
   const main = layout.querySelector('#appMainSlot');
   // Modals and fixed feedback belong to the viewport, outside page regions.
   root.querySelectorAll('.record-backdrop, aside.record-panel, .room-toast').forEach(node => root.body.append(node));
@@ -153,6 +154,15 @@ export function mountAppLayout(root, host, pathname) {
   const unavailable = '<span class="app-layout-empty">Unavailable</span>';
   const empty = '<span class="app-layout-empty">—</span>';
   const renderToday = () => {
+    if (pathname === '/') {
+      const day = businessDay();
+      render('#appTodayNext', `<a class="app-layout-item" href="/calendar?day=${day}&d=${day}"><time datetime="${day}">${escape(new Date(`${day}T12:00:00`).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' }))}</time><span>Open Calendar</span></a>`);
+      layout.querySelector('#appTodayNext').previousElementSibling.textContent = 'Calendar day';
+      layout.querySelector('#appTodayNeeds').closest('section').hidden = true;
+      layout.querySelector('#appTodayOwners').hidden = true;
+      layout.querySelector('#appTodayShowAll').hidden = true;
+      return;
+    }
     const next = todayItems && filterBriefOwners(todayItems, owners.current()).filter(i => i.subject_type === 'deal');
     render('#appTodayNext', next ? (nextExpanded ? next : next.slice(0,6)).map(i => row(i,`${i.what || 'Due'} · ${shortDay(i.due_on || '', localToday())}`)).join('') || empty : unavailable);
     const showAll = layout.querySelector('#appTodayShowAll');
