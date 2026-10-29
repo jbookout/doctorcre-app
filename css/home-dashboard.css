@@ -179,3 +179,7 @@
 .home-brief-card + .home-brief-card { margin-top: var(--space-2); }
 .home-brief-card span { color: var(--fg-muted); font-size: var(--font-size-1); }
 @media (max-width: 800px) { .home-columns { grid-template-columns: minmax(0, 1fr); } .home-brief { position: static; } }
+.home-main { container-type: inline-size; }
+@container (max-width: 700px) {
+  .home-grid, .home-lead-list { grid-template-columns: minmax(0, 1fr); }
+}
