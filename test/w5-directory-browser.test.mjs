@@ -29,6 +29,40 @@ async function open(t,width=1440){
   });
   return {page,errors,calls,get writes(){return writes;},setFail:value=>{fail=value;},setExpired:value=>{expired=value;},setWriteMode:value=>{writeMode=value;}};
 }
+test('V01 shared directory has neutral loading identity before its module starts', async t => {
+  const { page } = await open(t);
+  await page.route('**/js/workspace-business.js', route => route.abort());
+  await page.goto(`${origin}/vendors`);
+  assert.equal(await page.title(), 'Records · DoctorCRE');
+  assert.equal(await page.locator('#pageTitle').innerText(), 'Records');
+  assert.equal(await page.locator('#resultsTitle').innerText(), 'Records');
+  assert.equal(await page.locator('.footer').innerText(), 'DoctorCRE · Records');
+});
+for (const width of [1440, 390]) test(`V01 vendor search destination keeps Vendors identity at ${width}px`, async t => {
+  const { page, errors } = await open(t, width);
+  await page.goto(`${origin}/search?q=Demo&mode=fixture`);
+  const result = page.getByRole('listitem').filter({ hasText: 'Demo Pensacola Buildout Contractors' });
+  await result.getByRole('link', { name: 'Open', exact: true }).click();
+  await page.waitForURL(/\/vendors\?/);
+  await page.waitForFunction(() => document.querySelector('#pageTitle').textContent === 'Vendors');
+  assert.equal(await page.title(), 'Vendors · DoctorCRE');
+  assert.equal(await page.locator('#resultsTitle').innerText(), 'Vendors');
+  assert.equal(await page.locator('.footer').innerText(), 'DoctorCRE · Vendors');
+  const context = await page.evaluate(async () => (await import('/js/doc-context.js')).pageDocContext.snapshot());
+  assert.equal(context.page, 'vendors');
+  assert.equal(context.label, 'Vendors');
+  await page.screenshot({ animations: 'disabled', path: `out/test-artifacts/w5/vendor-search-identity-${width}.png` });
+
+  await page.goto(`${origin}/clients`);
+  await page.waitForFunction(() => document.querySelector('#pageTitle').textContent === 'Clients');
+  assert.equal(await page.title(), 'Clients · DoctorCRE');
+  assert.equal(await page.locator('#resultsTitle').innerText(), 'Clients');
+  assert.equal(await page.locator('.footer').innerText(), 'DoctorCRE · Clients');
+  const clientContext = await page.evaluate(async () => (await import('/js/doc-context.js')).pageDocContext.snapshot());
+  assert.equal(clientContext.page, 'clients');
+  assert.equal(clientContext.label, 'Clients');
+  assert.deepEqual(errors, []);
+});
 for(const width of [1440,390])test(`W5 rendered directories and wide dialog at ${width}px`,async t=>{
   const h=await open(t,width),{page}=h;await page.goto(origin+'/vendors?mode=live', {waitUntil:'domcontentloaded'});await page.waitForSelector('.record-row').catch(async e=>{assert.fail(JSON.stringify({errors:h.errors,body:await page.locator('main').innerText()}));});
   assert.equal(await page.locator('#pager').count(),0);assert.doesNotMatch(await page.locator('main').innerText(),/Checked a while ago|About this list|source|No filters|read again/i);

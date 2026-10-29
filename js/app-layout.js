@@ -32,9 +32,11 @@ export function mountAppLayout(root, host, pathname) {
   const win = root.defaultView || globalThis.window;
   const pageKey = pathname === '/deals' ? '/deals' : pathname;
   const boardPage = ['/leads','/deals','/pipeline'].includes(pathname);
+  const vendorDirectory = pathname === '/vendors';
   const progressPage = pathname === '/control-room/progress' || pathname.startsWith('/control-room/progress/board/');
   const title = progressPage ? 'Progress' : pathname.startsWith('/control-room') ? 'Control Room' : pathname === '/vendors' ? 'Vendors' : pathname === '/clients' ? 'Clients' : pathname === '/deals' ? 'Local Deals' : root.querySelector('main h1, .room-wordmark, .page-kicker')?.textContent.trim().replace(/Loading$/, '').trim() || root.title.split('·')[0].trim();
   const { layout, status } = createAppLayout(root, title);
+  if (vendorDirectory) layout.querySelector('.app-layout-working').remove();
   host.after(layout, status);
   const main = layout.querySelector('#appMainSlot');
   // Modals and fixed feedback belong to the viewport, outside page regions.
@@ -59,7 +61,7 @@ export function mountAppLayout(root, host, pathname) {
   const phone = win.matchMedia(pathname === "/leads" ? "(max-width:1023px)" : TOUCH_LAYOUT);
   const itineraryPage = Boolean(root.getElementById('accepted-itinerary'));
   const dealBoard = pathname === '/deals' && root.body.classList.contains('dealroom-page');
-  let sidebar = !boardPage && !itineraryPage, today = !dealBoard && !itineraryPage, drawer = null;
+  let sidebar = !boardPage && !itineraryPage && !vendorDirectory, today = !dealBoard && !itineraryPage, drawer = null;
   let drawerOpener = null;
   const background = new Map();
   try { const saved = win.localStorage.getItem(`doctorcre:sidebar:${pageKey}`); if (saved !== null) sidebar = saved === 'open'; const savedToday = win.localStorage.getItem(dealBoard ? 'doctorcre:today:/deals' : 'doctorcre:today'); if (savedToday !== null) today = savedToday !== 'closed'; } catch {}
@@ -201,7 +203,7 @@ export function mountAppLayout(root, host, pathname) {
   const unavailableRead = () => {
     todayItems = null; todayNeeds = null;
     resetFeed();
-    render('#appWorkingList', unavailable);
+    if (!vendorDirectory) render('#appWorkingList', unavailable);
     failedRead();
   };
   const refresh = async ({ signal } = {}) => {
@@ -238,7 +240,7 @@ export function mountAppLayout(root, host, pathname) {
       const active = scopedDeals(value, 'team');
       if (triageValid || !todayNeeds) todayNeeds = overdueActionRows(active, todayItems, businessDay());
       else todayNeeds = todayNeeds.filter(deal => active.some(current => current.id === (deal.subject_id || deal.id)));
-      render('#appWorkingList', overdueRows(active.filter(d => needsAttention(d))).slice(0,8).join('') || empty);
+      if (!vendorDirectory) render('#appWorkingList', overdueRows(active.filter(d => needsAttention(d))).slice(0,8).join('') || empty);
       renderToday();
       if (!pageOwnsMoves) {
         try {
@@ -264,7 +266,7 @@ export function mountAppLayout(root, host, pathname) {
       }
     } else {
       if (triageValid) todayItems = triage.value.items;
-      if (!todayNeeds) render('#appWorkingList', unavailable);
+      if (!vendorDirectory && !todayNeeds) render('#appWorkingList', unavailable);
       if (!pageOwnsMoves) {
         failedReads.push('Recent moves');
         if (!feed.caught_up) render('#appTodayMoves', unavailable);
