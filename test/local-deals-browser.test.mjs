@@ -1168,7 +1168,7 @@ test('Retry evidence remains active after a background detail refresh replaces e
   assert.deepEqual(errors,[]);
 });
 
-test('phone board folds parked deals behind the Parked toggle, hides empty phases and keeps tabs on one scrolling row', async t => {
+test('phone board folds parked deals behind the Parked toggle, hides empty phases and keeps view controls visible', async t => {
   for (const width of [390, 1440]) await t.test(String(width), async t => {
     const { page, errors } = await open(t, { width, height: 844 });
     await page.evaluate(async () => {
@@ -1195,10 +1195,17 @@ test('phone board folds parked deals behind the Parked toggle, hides empty phase
       const shown = await page.locator('.kanban-column').evaluateAll(nodes => nodes.filter(n => n.getClientRects().length).map(n => n.dataset.column));
       assert.deepEqual(shown, ['research']);
       const tabs = await page.locator('#appTabsSlot').evaluate(node => {
-        const tops = new Set([...node.querySelectorAll('button')].filter(b => b.getClientRects().length).map(b => Math.round(b.getBoundingClientRect().top)));
-        return { rows: tops.size, overflowX: getComputedStyle(node).overflowX, fits: node.getBoundingClientRect().right <= innerWidth };
+        const bounds = node.getBoundingClientRect();
+        const buttons = [...node.querySelectorAll('button')].filter(button => button.getClientRects().length);
+        return {
+          overflowX: getComputedStyle(node).overflowX,
+          fits: buttons.every(button => {
+            const rect = button.getBoundingClientRect();
+            return rect.left >= bounds.left && rect.right <= bounds.right;
+          }),
+        };
       });
-      assert.deepEqual(tabs, { rows: 1, overflowX: 'auto', fits: true });
+      assert.deepEqual(tabs, { overflowX: 'visible', fits: true });
       await lane.locator('summary').click();
       assert.equal(await parked.isVisible(), true);
     } else {
