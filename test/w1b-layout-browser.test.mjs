@@ -126,10 +126,10 @@ test('Local Deals opens a wide popup, refreshes its original note, and keeps Tod
  await original.locator('summary').click();
  await page.evaluate(async()=>{const{state}=await import('/js/pipeline.js');await state.client.addDealNote({deal:'d14',text:'A synthetic update. Original detail continues here.',idempotency_key:'demo-w1b-note'});});
  await page.clock.fastForward(61_000);await page.waitForFunction(()=>document.querySelector('#panelBody')?.textContent.includes('A synthetic update.'));
- assert.equal(await original.evaluate(n=>n.open),true);assert.equal(await page.locator('#recordPanel').evaluate(n=>n.open),true);
- await page.keyboard.press('Escape');assert.equal(await page.locator('#recordPanel').evaluate(n=>n.open),false);
+ assert.equal(await original.evaluate(n=>n.open),true);assert.equal(await page.locator('#recordPanel').evaluate(n => !n.hidden),true);
+ await page.getByRole('button',{name:'Back to deals',exact:true}).click();await page.locator('#recordPanel').waitFor({state:'hidden'});assert.equal(await page.locator('#recordPanel').evaluate(n => !n.hidden),false);
  await page.locator('#appTodayToggle').click();
- await page.locator('#appTodayNeeds [data-layout-deal]').first().click();await page.waitForFunction(()=>document.querySelector('#recordPanel')?.open);await page.keyboard.press('Escape');
+ await page.locator('#appTodayNeeds [data-layout-deal]').first().click();await page.waitForFunction(()=>!document.querySelector('#recordPanel')?.hidden);await page.getByRole('button',{name:'Back to deals',exact:true}).click();
  await page.evaluate(async()=>{const{state}=await import('/js/pipeline.js');const d=state.deals.get('d23');const value=d.attention;await state.client.patchDealField({deal:d.id,field:'attention',value:!value,base_event_id:d.field_base?.attention?.id||null,idempotency_key:'demo-w1b-attention'});});
  await page.clock.fastForward(3_000);
  assert.equal(await page.locator('#appTodayMoves [data-undo]').count(),0);
@@ -141,9 +141,9 @@ test('blocked localStorage, automatic Today refresh, and wide item details stay 
  await page.locator('#appSidebarToggle').click();
  await page.locator('#appTodayToggle').click();
  const first=page.locator('#appTodayNeeds [data-layout-deal]').first();await first.click();
- await page.waitForFunction(()=>document.querySelector('#recordPanel')?.open);assert.ok((await page.locator('#recordPanel').boundingBox()).width>=900);
+ await page.waitForFunction(()=>!document.querySelector('#recordPanel')?.hidden);assert.equal(await page.locator('#recordPanel').evaluate(n=>{const parent=getComputedStyle(n.parentElement);return n.offsetWidth===n.parentElement.clientWidth-parseFloat(parent.paddingLeft)-parseFloat(parent.paddingRight);}),true);
  const before=await page.locator('#appSyncTime').getAttribute('datetime');await page.clock.fastForward(61_000);await page.waitForFunction(before=>document.querySelector('#appSyncTime').getAttribute('datetime')!==before,before);
- assert.equal(await page.locator('#recordPanel').evaluate(n=>n.open),true);await page.getByLabel('Close deal',{exact:true}).click();
+ assert.equal(await page.locator('#recordPanel').evaluate(n => !n.hidden),true);await page.getByRole('button', { name: 'Back to deals', exact: true }).click();
  await goto('/leads');await page.locator('.lead-card').first().click();await page.locator('#detailStage').waitFor();assert.equal(await page.locator('#leadDetail').evaluate(n=>n.open),true);assert.ok((await page.locator('#leadDetail').boundingBox()).width>=900);
  await page.locator('#detailBody summary').first().click();assert.equal(await page.locator('#detailBody details').first().evaluate(n=>n.open),true);await page.locator('#detailBody summary').first().focus();await page.clock.fastForward(61_000);assert.equal(await page.locator('#detailBody summary').first().evaluate(n=>n===document.activeElement),true);assert.equal(await page.locator('#detailBody details').first().evaluate(n=>n.open),true);
  await page.keyboard.press('Escape');assert.equal(await page.locator('#leadDetail').evaluate(n=>n.open),false);assert.deepEqual(errors,[]);
@@ -355,14 +355,14 @@ for(const width of [844,1440]) test(`PR129 #10 short rail destinations remain po
  for(const link of await page.locator('.app-shell-navigation>a').all()) await link.click({trial:true});
  await page.getByLabel('More',{exact:true}).click();assert.equal(await page.getByLabel('System Job Board',{exact:true}).isVisible(),true);
 });
-test('PR129 #11 light theme pairs popup and filter text with light surfaces',async t=>{
+test('PR129 #11 light theme pairs record headings and filter text with light surfaces',async t=>{
  const {page,goto}=await open(t);await goto('/leads');await page.evaluate(()=>document.documentElement.dataset.theme='light');await page.locator('#appSidebarToggle').click();
  const luminance=rgb=>{const c=rgb.match(/[\d.]+/g).slice(0,3).map(n=>{const x=Number(n)/255;return x<=.04045?x/12.92:((x+.055)/1.055)**2.4});return .2126*c[0]+.7152*c[1]+.0722*c[2];};
  const colors=await page.locator('.controls').evaluate(n=>({background:getComputedStyle(n).backgroundColor,text:getComputedStyle(n).color}));
  assert.ok((Math.max(luminance(colors.background),luminance(colors.text))+.05)/(Math.min(luminance(colors.background),luminance(colors.text))+.05)>=4.5,JSON.stringify(colors));
  const labelColor=await page.locator('.controls label').first().evaluate(n=>getComputedStyle(n).color);assert.ok((luminance(colors.background)+.05)/(luminance(labelColor)+.05)>=4.5,labelColor);
  await goto('/deals?view=board');await page.evaluate(()=>document.documentElement.dataset.theme='light');await page.locator('.kanban-card[data-id="d14"] .card-open').click();await page.locator('#detailPhase').waitFor();
- const pair=await page.locator('#recordPanel').evaluate(n=>({background:getComputedStyle(n).backgroundColor,text:getComputedStyle(n.querySelector('h2')).color}));
+ const pair=await page.locator('.workspace-header').evaluate(n=>({background:getComputedStyle(n).backgroundColor,text:getComputedStyle(n.querySelector('h1')).color}));
  assert.ok((Math.max(luminance(pair.background),luminance(pair.text))+.05)/(Math.min(luminance(pair.background),luminance(pair.text))+.05)>=4.5,JSON.stringify(pair));
  for(const scheme of await page.locator('#recordPanel textarea').evaluateAll(ns=>ns.map(n=>getComputedStyle(n).colorScheme)))assert.equal(scheme,'light');
  const fields=await page.locator('#recordPanel input,#recordPanel select,#recordPanel textarea').evaluateAll(ns=>ns.map(n=>({background:getComputedStyle(n).backgroundColor,text:getComputedStyle(n).color})));
@@ -420,7 +420,7 @@ for (const status of [401,403,503]) test(`Deal detail refresh distinguishes HTTP
  if(status===401||status===403){await page.waitForURL('**/public-shell/session-ended.html');assert.equal(await page.locator('#recordPanel,#contextDrawer').count(),0);assert.doesNotMatch(await page.locator('body').textContent(),/Synthetic unsaved draft|Synthetic protected note/);assert.deepEqual(errors,[]);return;}
  await page.waitForFunction(()=>/unavailable/i.test(document.querySelector('#panelBody [role="status"]')?.textContent));
  assert.ok(failedReads>0,'the detail read returns the actual HTTP failure');
-  assert.equal(await page.locator('#recordPanel').evaluate(n=>n.open),true);
+  assert.equal(await page.locator('#recordPanel').evaluate(n => !n.hidden),true);
   assert.equal(await page.locator('#panelTitle').textContent(),title);
   assert.equal(await page.locator('#detailUpdateForm textarea').inputValue(),'Synthetic unsaved draft');
   assert.equal(await page.locator('#detailReadStatus').textContent(),'Updates temporarily unavailable');

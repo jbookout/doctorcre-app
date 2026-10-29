@@ -43,7 +43,7 @@ test('W4 Local Deals board moves a deal and undoes only the move just made', asy
   await browser.locator('#completionDialog #completionCancel').tap();
   await expect(browser.locator('#completionDialog')).toBeHidden();
   if (phone) {
-    await browser.locator('#recordPanel [aria-label="Close deal"]').tap();
+    await browser.locator('#panelClose').tap();
     await expect(browser.locator('#recordPanel')).toBeHidden();
   }
   await expect(browser.locator('[data-column="negotiation"] [data-id="d23"]')).toBeVisible();
@@ -52,7 +52,7 @@ test('W4 Local Deals board moves a deal and undoes only the move just made', asy
   await browser.locator('#completionConfirm').tap();
   await expect(browser.locator('#completionDialog')).toBeHidden();
   if (phone) {
-    await browser.locator('#recordPanel [aria-label="Close deal"]').tap();
+    await browser.locator('#panelClose').tap();
     await expect(browser.locator('#recordPanel')).toBeHidden();
   }
   await expect(browser.locator('[data-column="legal"] [data-id="d23"]')).toBeVisible();

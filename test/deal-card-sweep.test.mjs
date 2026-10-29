@@ -32,14 +32,14 @@ test('all reachable deal details render without errors at phone and review width
      const deal=(await client.getDeal(wire.deal_id)).deal;state.deals.set(deal.id,deal);
      const button=document.createElement('button');button.dataset.openDeal=deal.id;button.id='sweepOpen';document.body.append(button);button.click();button.remove();
     },wire);
-    await page.waitForFunction(id=>document.querySelector('#detailUpdateForm')&&document.querySelector('#recordPanel')?.open&&document.querySelector('#panelTitle')?.textContent,wire.deal_id);
+    await page.waitForFunction(id=>document.querySelector('#detailUpdateForm')&&!document.querySelector('#recordPanel')?.hidden&&document.querySelector('#panelTitle')?.textContent,wire.deal_id);
     // Wait for the exact requested detail, not the previous dialog paint.
     await waitForAsync(page,async id=>(await import('/js/pipeline.js')).state.panelDetail?.deal.id===id,wire.deal_id);
     const result=await page.locator('#recordPanel').evaluate(panel=>({empty:panel.querySelector('#detailUpdateForm textarea')?.value==='',rail:panel.querySelectorAll('.phase-rail').length,overflow:panel.scrollWidth>panel.clientWidth+1,placeholder:/threads unavailable|meeting evidence unavailable|not linked/i.test(panel.textContent),notes:[...panel.querySelectorAll('.deal-note')].map(n=>({author:n.querySelector('b')?.textContent,date:n.querySelector('time')?.dateTime}))}));
     assert.equal(result.empty,true);assert.equal(result.rail,1);assert.equal(result.overflow,false);assert.equal(result.placeholder,false);
     for(const note of result.notes){assert.ok(note.author);assert.ok(Number.isFinite(Date.parse(note.date)));}
-    checked++;await page.getByLabel('Close deal',{exact:true}).click();
-   }catch(error){console.error(index,width,theme,error.message);failures.push({index,width,theme,error:error.message});await page.evaluate(()=>document.querySelector('#recordPanel')?.close());}
+    checked++;await page.getByRole('button', { name: 'Back to deals', exact: true }).click();
+   }catch(error){console.error(index,width,theme,error.message);failures.push({index,width,theme,error:error.message});await page.locator('#panelClose').click();}
   }
  }
  await mkdir(new URL('out/test-artifacts/deal-card-review/',root),{recursive:true});
