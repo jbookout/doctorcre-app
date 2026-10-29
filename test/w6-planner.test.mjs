@@ -38,6 +38,84 @@ function harness(api = {}, beforeMount = () => {}) {
   return { dom, doc, view, service, change(selector, value) { const node = doc.querySelector(selector); node.value = value; node.dispatchEvent(new dom.window.Event(node.tagName === "SELECT" && selector.endsWith("client") ? "change" : "input", { bubbles: true })); }, close() { view.dispose(); dom.window.close(); } };
 }
 
+test("packet review retains every search constraint for the exact client without asking again", async () => {
+  const app = harness();
+  try {
+    await app.view.ready;
+    app.change("#space-client", clientA); await settle();
+    const criteria = { area: "Synthetic region", use: "Synthetic specialty", minSize: "2100", maxSize: "3500", budget: "28", rentBasis: "sf_year", transaction: "Lease", availableBy: "2027-02-01", parking: "12 spaces", requirements: "Ground floor <script>inert</script>" };
+    for (const [field, value] of Object.entries(criteria)) app.change(`#space-${field}`, value);
+    app.change("#plan-client", clientA); await settle();
+    app.doc.querySelector("#plan-form").dispatchEvent(new app.dom.window.Event("submit", { cancelable: true }));
+    const section = app.doc.querySelector('#packet-search-criteria');
+    assert.ok(section, "packet includes the search draft");
+    assert.deepEqual([...section.querySelectorAll("dd")].map(node => node.textContent), ["Synthetic region", "Synthetic specialty", "2100", "3500", "28", "$/SF/year", "Lease", "2027-02-01", "12 spaces", "Ground floor <script>inert</script>"]);
+    assert.match(section.textContent, /this tab/);
+    assert.equal(section.querySelector("script"), null);
+  } finally { app.close(); }
+});
+
+test("Plan from search selects the exact subject and keeps another client's plan independent", async () => {
+  const app = harness();
+  try {
+    await app.view.ready;
+    app.change("#plan-client", clientB); await settle(); app.change("#plan-notes", "Synthetic B itinerary notes");
+    app.change("#space-client", clientA); await settle();
+    app.change("#space-area", "Synthetic A region"); app.change("#space-minSize", "2400");
+    const action = app.doc.querySelector("#plan-from-search");
+    assert.ok(action, "search offers a path to planning"); action.click(); await settle();
+    assert.equal(app.doc.querySelector("#plan-client").value, clientA);
+    assert.equal(app.doc.querySelector("#plan-area").value, "Synthetic A region");
+    assert.equal(app.doc.activeElement.id, "plan-name");
+    app.doc.querySelector("#review-packet").click();
+    assert.match(app.doc.querySelector("#packet-search-criteria").textContent, /2400/);
+    app.doc.querySelector("#detail-close").click();
+    app.change("#plan-client", clientB); await settle();
+    assert.equal(app.doc.querySelector("#plan-notes").value, "Synthetic B itinerary notes");
+  } finally { app.close(); }
+});
+
+test("Research carries search location without a client and invalid criteria leave the plan intact", async () => {
+  const app = harness({ clients: async () => { throw new Error("offline"); } });
+  try {
+    await app.view.ready;
+    app.change("#space-area", "Synthetic Research region"); app.change("#space-use", "Synthetic lab");
+    app.doc.querySelector("#plan-from-search").click();
+    assert.equal(app.doc.querySelector("#plan-purpose").value, "research");
+    assert.equal(app.doc.querySelector("#plan-area").value, "Synthetic Research region");
+    assert.equal(app.doc.querySelector("#plan-use").value, "Synthetic lab");
+    app.doc.querySelector("#review-packet").click();
+    assert.equal(app.doc.querySelector("dialog").open, true);
+    assert.match(app.doc.querySelector("#packet-search-criteria").textContent, /Synthetic lab/);
+    app.doc.querySelector("#detail-close").click();
+    app.change("#plan-notes", "Synthetic retained notes");
+    app.change("#space-minSize", "3000"); app.change("#space-maxSize", "2000");
+    app.doc.querySelector("#plan-from-search").click();
+    assert.match(app.doc.querySelector("#space-message").textContent, /Maximum/);
+    assert.equal(app.doc.querySelector("#plan-notes").value, "Synthetic retained notes");
+    assert.equal(app.doc.querySelector("#plan-area").value, "Synthetic Research region");
+  } finally { app.close(); }
+});
+
+test("Plan from search preserves private packet files when the plan already has that exact subject", async () => {
+  const app = harness();
+  try {
+    await app.view.ready; app.change("#space-client", clientA); await settle();
+    app.doc.querySelector("#plan-from-search").click(); await settle();
+    const file = new app.dom.window.File(["synthetic packet bytes"], "synthetic-packet.txt");
+    Object.defineProperty(app.doc.querySelector("#packet-upload"), "files", { value: [file], configurable: true });
+    app.doc.querySelector("#packet-upload").dispatchEvent(new app.dom.window.Event("change"));
+    app.change("#plan-notes", "Synthetic itinerary note");
+    app.change("#space-minSize", "2600");
+    app.doc.querySelector("#plan-from-search").click(); await settle();
+    assert.equal(app.view.files.length, 1);
+    app.doc.querySelector("#review-packet").click();
+    assert.match(app.doc.querySelector("#detail-content").textContent, /synthetic-packet.txt/);
+    assert.match(app.doc.querySelector("#detail-content").textContent, /Synthetic itinerary note/);
+    assert.match(app.doc.querySelector("#packet-search-criteria").textContent, /2600/);
+  } finally { app.close(); }
+});
+
 test("each suggested field and typed override undo independently", () => {
   const draft = createDraft(PLAN_FIELDS); draft.suggest(clientSuggestions(record(clientA)));
   draft.set("area", "Typed area"); assert.equal(draft.undo(), "area"); assert.equal(draft.values.area, "Demo City, FL");
