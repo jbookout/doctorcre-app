@@ -393,10 +393,20 @@ if (typeof document !== 'undefined' && document.getElementById('dealAttention'))
     setTimeout(() => { if (notice.textContent === message) { notice.textContent = ''; notice.hidden = true; } }, 6000);
   };
   // The cards still waiting are decided in Call Mode's post-call report.
-  const openCards = () => {
-    const button = document.getElementById('callModeButton');
-    if (button && !button.hidden) button.click();
-    else toast('Open Call Mode on the Mac that recorded the call to decide them.');
+  const lifetime = new AbortController();
+  const { signal } = lifetime;
+  const openCards = async session => {
+    try {
+      const { mountGlobalCallMode } = await import('./global-call-mode.js');
+      if (signal.aborted) return;
+      const call = await mountGlobalCallMode(document);
+      if (signal.aborted) return;
+      if (!await call.open({ session, signal }) && !signal.aborted) toast('Open Call Mode on the Mac that recorded the call to decide them.');
+    } catch {
+      if (!signal.aborted) toast('The call report could not open. Try again on the Mac that recorded this call.');
+    }
   };
-  if (outcomes && client.readCallOutcomes) mountCallOutcomes({ container: outcomes, client: () => client, toast, openCards }).refresh();
+  const callOutcomes = outcomes && client.readCallOutcomes ? mountCallOutcomes({ container: outcomes, client: () => client, toast, openCards }) : null;
+  window.addEventListener('doctorcre-session-invalidated', () => { lifetime.abort(); callOutcomes?.dispose(); }, { once: true });
+  callOutcomes?.refresh();
 }

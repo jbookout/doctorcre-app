@@ -111,7 +111,12 @@ export function mountCallOutcomes({ container, client, toast = () => {}, filter 
     if (disposed) return;
     const target = event.target;
     if (inside(target.closest?.('[data-call-recheck]'))) return refresh();
-    if (inside(target.closest?.('[data-call-open-cards]'))) return openCards?.();
+    const open = target.closest?.('[data-call-open-cards]');
+    if (inside(open)) {
+      const session = open.closest('[data-call-session]')?.dataset.callSession;
+      if (calls.some(call => call.session_id === session)) return openCards?.(session);
+      return undefined;
+    }
     const undo = target.closest?.('[data-call-undo]');
     if (inside(undo)) {
       const candidate_id = undo.dataset.callUndo;
