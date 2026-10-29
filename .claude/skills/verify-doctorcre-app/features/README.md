@@ -19,3 +19,5 @@ Follow [Launch, Doctor and Drive](../SKILL.md) first. This map describes current
 - [Calendar](calendar.md): periods, views, selected days and agenda.
 - [Vendors](vendors.md): recorded contacts, offices, and territory in the existing record dialog.
 - [Client portal](client-portal.md): password entry, canonical roadmap, shared text and locking.
+
+- [Tours](tours.md): same-subject search criteria and private packet drafts.

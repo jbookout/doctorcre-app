@@ -36,6 +36,12 @@ for (const width of [390, 820, 1440]) for (const theme of ['light', 'dark']) {
     await routePlanner(page, state);
     await page.goto('http://localhost/tours');
     await expect(page.locator('#planner-updated')).toContainText('Updated');
+    if (width === 820) {
+      const plan = await page.locator('.plan-card').boundingBox();
+      const search = await page.locator('.space-card').boundingBox();
+      expect(search.x).toBe(plan.x);
+      expect(search.y).toBeGreaterThan(plan.y + plan.height);
+    }
     await page.locator('#space-client').selectOption(clientId);
     await expect(page.locator('#space-area')).toHaveValue('Synthetic City, FL');
     await page.locator('#space-area').fill('Synthetic saved region');
@@ -131,3 +137,58 @@ test('Search cleared space type stays blank in Plan after prefill and refresh', 
   await expect(page.locator('#plan-notes')).toHaveValue('Synthetic notes after reload');
   await expect(page.locator('#plan-use')).toHaveValue('');
 });
+
+for (const width of [390, 820, 1440]) for (const theme of ['light', 'dark']) {
+  test(`Search constraints reach only their own packet at ${width} ${theme}`, async ({ page }, testInfo) => {
+    const state = { failDetail: false, client: { ...client } };
+    await page.setViewportSize({ width, height: 1000 });
+    await page.addInitScript(theme => localStorage.setItem('doctorcre.visual-preferences', JSON.stringify({ theme })), theme);
+    await routePlanner(page, state);
+    await page.goto('http://localhost/tours');
+    await expect(page.locator('#planner-updated')).toContainText('Updated');
+    await page.locator('#space-client').selectOption(clientId);
+    await expect(page.locator('#space-area')).toHaveValue('Synthetic City, FL');
+    for (const [field, value] of Object.entries({ area: 'Synthetic saved region', minSize: '2100', maxSize: '3500', budget: '28', availableBy: '2027-02-01', parking: '12 spaces', requirements: 'Ground floor <script>inert</script>' })) await page.locator(`#space-${field}`).fill(value);
+    await page.locator('#space-rentBasis').selectOption('sf_year');
+    await page.locator('#space-transaction').selectOption('Lease');
+    await page.getByRole('button', { name: 'Plan from search', exact: true }).click();
+    await expect(page.locator('#plan-client')).toHaveValue(clientId);
+    await expect(page.locator('#plan-name')).toBeFocused();
+    await expect(page.locator('#plan-area')).toHaveValue('Synthetic saved region');
+    await page.locator('#review-packet').click();
+    const criteria = page.locator('#packet-search-criteria');
+    await expect(criteria.locator('dd')).toHaveText(['Synthetic saved region', 'Synthetic specialty', '2100', '3500', '28', '$/SF/year', 'Lease', '2027-02-01', '12 spaces', 'Ground floor <script>inert</script>']);
+    await expect(criteria.locator('script')).toHaveCount(0);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await page.screenshot({ path: testInfo.outputPath('search-packet.png'), fullPage: true });
+    await page.keyboard.press('Escape');
+    await page.locator('#space-client').selectOption(otherClientId);
+    await expect(page.locator('#space-client-retry')).toBeHidden();
+    await page.locator('#space-minSize').fill('9999');
+    await page.locator('#review-packet').click();
+    await expect(criteria).toContainText('2100');
+    await expect(criteria).not.toContainText('9999');
+    await page.keyboard.press('Escape');
+    await page.locator('#space-client').selectOption(clientId);
+    await expect(page.locator('#space-minSize')).toHaveValue('2100');
+    await page.locator('#space-requirements').fill('');
+    await page.reload();
+    await expect(page.locator('#planner-updated')).toContainText('Updated');
+    await expect(page.locator('#space-requirements')).toHaveValue('');
+    await page.locator('#review-packet').click();
+    await expect(criteria).toContainText('2100');
+    await expect(criteria).not.toContainText('Must-haves');
+    await page.keyboard.press('Escape');
+    await page.locator('#space-client').selectOption('');
+    await page.locator('#space-area').fill('Synthetic Research region');
+    await page.locator('#space-minSize').fill('800');
+    await page.getByRole('button', { name: 'Plan from search', exact: true }).click();
+    await expect(page.locator('#plan-purpose')).toHaveValue('research');
+    await expect(page.locator('#plan-client-picker')).toBeHidden();
+    await page.locator('#review-packet').click();
+    await expect(criteria).toContainText('Synthetic Research region');
+    await expect(criteria).toContainText('800');
+    await expect(criteria).not.toContainText('2100');
+    await page.screenshot({ path: testInfo.outputPath('research-search-packet.png'), fullPage: true });
+  });
+}

@@ -160,12 +160,12 @@ export function mountPlanner({ document, window, api = createPlannerClient() }) 
     restoreOrClear(); rememberDrafts();
     const epoch = prefix === "plan" ? ++planEpoch : ++searchEpoch;
     const draft = prefix === "plan" ? plan : search;
-    if (prefix === "plan") { planPurpose = purpose; $("#plan-client-picker").hidden = purpose === "research"; planClient = id; selectedRecord = null; files = []; renderFiles(); } else searchClient = id;
+    if (prefix === "plan") { planPurpose = purpose; $("#plan-purpose").value = purpose; $("#plan-client-picker").hidden = purpose === "research"; planClient = id; selectedRecord = null; files = []; renderFiles(); } else searchClient = id;
     // A new record starts an independent draft, so previous-client criteria never migrate.
     const saved = drafts[prefix].get(subjectKey(prefix));
     draft.reset(); draft.restore(saved?.values, saved?.clearedFields, saved?.managedFields);
-    if (prefix === "plan" && id) {
-      const brief = drafts.space.get(id);
+    if (prefix === "plan" && (id || purpose === "research")) {
+      const brief = drafts.space.get(subjectKey("plan"));
       const values = Object.fromEntries(["area", "use"].filter(field => brief?.values[field] || brief?.clearedFields.includes(field)).map(field => [field, brief.values[field]]));
       draft.restore(values, brief?.clearedFields, brief?.managedFields);
     }
@@ -287,6 +287,19 @@ export function mountPlanner({ document, window, api = createPlannerClient() }) 
     const labels = { date: "Date", time: "Start time", area: "Area", use: "Space type", start: "Start", end: "Finish", dwell: "Minutes per stop", buffer: "Travel buffer", notes: "Notes" };
     for (const [field, label] of Object.entries(labels)) if (plan.values[field]) facts.append(element("dt", label), element("dd", plan.values[field]));
     body.append(element("span", planPurpose === "research" ? "Research · Private draft" : "Client · Private draft", "pill"), facts);
+    const criteria = drafts.space.get(subjectKey("plan"))?.values;
+    if (criteria && SEARCH_FIELDS.some(field => criteria[field])) {
+      const section = element("section"); section.id = "packet-search-criteria"; section.setAttribute("aria-labelledby", "packet-search-heading");
+      const heading = element("h3", "Search draft · this tab"); heading.id = "packet-search-heading";
+      const searchFacts = element("dl", undefined, "draft-facts");
+      const searchLabels = { area: "Area", use: "Space type", minSize: "Minimum SF", maxSize: "Maximum SF", budget: "Maximum budget", rentBasis: "Budget basis", transaction: "Transaction", availableBy: "Available by", parking: "Parking", requirements: "Must-haves" };
+      const rentLabels = { sf_year: "$/SF/year", month: "$/month", purchase: "Purchase price" };
+      for (const field of SEARCH_FIELDS) if (criteria[field]) {
+        const value = field === "rentBasis" ? rentLabels[criteria[field]] || criteria[field] : criteria[field];
+        searchFacts.append(element("dt", searchLabels[field]), element("dd", value));
+      }
+      section.append(heading, element("p", "Private draft criteria saved in this tab only. No space search or tour has been created."), searchFacts); body.append(section);
+    }
     if (selectedRecord?.notes) {
       const details = element("details"); details.append(element("summary", "Client notes · Details"), element("p", selectedRecord.notes)); body.append(details);
     }
@@ -382,6 +395,14 @@ export function mountPlanner({ document, window, api = createPlannerClient() }) 
   $("#tour-filter").addEventListener("input", renderLibrary);
   $("#plan-form").addEventListener("submit", event => { event.preventDefault(); save("#plan-message"); reviewDraft($("#review-packet")); });
   $("#space-form").addEventListener("submit", event => { event.preventDefault(); const error = validateCriteria(search.values); if (error) message("#space-message", error); else if (save("#space-message")) message("#space-message", "Search draft saved."); });
+  $("#plan-from-search").addEventListener("click", () => {
+    restoreOrClear();
+    const error = validateCriteria(search.values);
+    if (error) { message("#space-message", error); return; }
+    if (subjectKey("plan") === (searchClient || "research")) save("#space-message");
+    else void prefill("plan", searchClient, searchClient ? "client" : "research");
+    $("#plan-name").focus();
+  });
   $("#packet-upload").addEventListener("change", event => acceptFiles([...event.target.files]));
   const drop = $("#packet-drop");
   drop.addEventListener("dragover", event => { event.preventDefault(); drop.classList.add("dragging"); });
