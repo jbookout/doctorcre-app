@@ -142,3 +142,15 @@ test('the Home contract carries the stored checklist shape used by deal alerts',
   assert.deepEqual(home.response.bullet_kinds, items.bullet_kinds);
   assert.equal(home.producer.source_commit, 'b6210ca0a93e4a913b7e69b9669b74fdc9aa6337');
 });
+
+test('brief includes undated and held open tasks but excludes completed tasks', () => {
+  const board = { actor: 'joe', deals: [{ id: 'demo', name: 'Demo practice', owner: 'joe' }] };
+  const details = new Map([['demo', { critical_dates: [], next_actions: [
+    { id: 'setup', description: 'Set up', status: 'open', owner: 'joe' },
+    { id: 'held', description: 'Held task', status: 'open', owner: 'joe', hold_until: '2026-11-01' },
+    { id: 'done', description: 'Finished', status: 'done', owner: 'joe' },
+  ] }]]);
+  const brief = agendaSnapshot(board, details, { today: '2026-10-01' }).briefTasks;
+  assert.deepEqual(brief.map(task => task.label), ['Held task', 'Set up']);
+  assert.ok(brief.every(task => task.day === null));
+});

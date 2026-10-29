@@ -37,14 +37,14 @@ test('Home counts overdue agenda dates while board badges retain next-step atten
   await page.waitForFunction(() => /Active deals: \d/.test(document.querySelector('#dealCounts')?.textContent || ''));
   const home = await page.locator('#dealFlags .home-flag').count();
   const homeOverdue = await page.locator('#dealFlags .home-flag .deal-overdue').allTextContents();
-  await page.waitForFunction(() => document.querySelector('#appTodayNeeds .app-layout-item'));
-  const rail = await page.locator('#appWorkingList .app-layout-item span').allTextContents();
-  const todayRows = await page.locator('#appTodayNeeds .app-layout-item > span').allTextContents();
   const homeCounts = await page.locator('#dealCounts').textContent();
   await page.getByRole('button', { name: 'Just me', exact: true }).click();
   const mine = await page.locator('#dealFlags .home-flag').count();
   await page.goto('http://localhost/deals');
   await page.locator('.kanban-card').first().waitFor();
+  await page.waitForFunction(() => document.querySelector('#appTodayNeeds .app-layout-item'));
+  const rail = await page.locator('#appWorkingList .app-layout-item span').allTextContents();
+  const todayRows = await page.locator('#appTodayNeeds .app-layout-item > span').allTextContents();
   const badges = await page.locator('.kanban-column .attention-flag').count();
   await page.getByRole('button', { name: 'Joe', exact: true }).click();
   const myBadges = await page.locator('.kanban-column .attention-flag').count();

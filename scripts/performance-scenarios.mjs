@@ -24,10 +24,9 @@ export const screens = [
 
 export const tasks = [
   { id: 'task-agenda', route: '/', fixture: 'agenda', conditions: '40 active synthetic deals; agenda snapshot delayed 75ms',
-    ready: '#homeCalendar[aria-busy="false"] #homeAgenda a',
+    ready: '#homeBrief a',
     async verify(page) {
-      await page.locator('[data-agenda-show-all]').click();
-      await page.waitForFunction(() => document.querySelectorAll('#homeAgenda a').length >= 40);
+      await page.waitForFunction(() => document.querySelectorAll('#homeBrief a').length >= 40);
     } },
   { id: 'task-leads', route: '/leads', fixture: 'leads', conditions: '375 synthetic leads; board and detail reads delayed 75ms; intercepted telephone link and persisted pageshow',
     ready: '#leadBoard .lead-open',

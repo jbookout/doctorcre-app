@@ -158,8 +158,7 @@ for (const width of [1440,390]) for (const theme of ['light','dark']) test(`Toda
   return route.fallback();
  });
  await page.route('**/pipeline/changes*',route=>failed==='feed'?route.fulfill({status:503,body:'Unavailable'}):route.fallback());
- await goto('/?mode=live');
- await page.getByRole('button',{name:'Skip walkthrough',exact:true}).click();
+ await goto('/leads?mode=live');
  await page.evaluate(theme=>document.documentElement.dataset.theme=theme,theme);
  if(width===390)await page.locator('#appTodayToggle').click();
  await page.waitForFunction(()=>document.querySelector('#appTodayMoves')?.textContent.includes('Review synthetic terms'));
@@ -179,7 +178,7 @@ for (const width of [1440,390]) for (const theme of ['light','dark']) test(`Toda
   const retryBox=await retry.boundingBox();assert.ok(retryBox.width>=44 && retryBox.height>=44);
   if(source==='deal-room-board'){
    await mkdir(new URL('out/test-artifacts/today-retry/',root),{recursive:true});
-   await page.screenshot({animations:'disabled',path:new URL(`out/test-artifacts/today-retry/home-${width}-${theme}.png`,root).pathname});
+   await page.screenshot({animations:'disabled',path:new URL(`out/test-artifacts/today-retry/leads-${width}-${theme}.png`,root).pathname});
   }
   failed=null;await retry.click({timeout:5000});
   await retry.waitFor({state:'hidden',timeout:5000});
@@ -195,7 +194,7 @@ for(const today of [undefined,{state:'unavailable',items:[]}]) test(`Today retai
  const {page,goto,errors}=await open(t,{clock:true});let unavailable=false;
  await page.route('**/mcp',route=>unavailable && route.request().postDataJSON().params.name==='morning-brief'
   ?route.fulfill({json:{result:{content:[{type:'text',text:JSON.stringify({sponsor:'joe',sections:{today}})}]}}}):route.fallback());
- await goto('/?mode=live');
+ await goto('/leads?mode=live');
  const before=await page.locator('#appTodayNext [data-layout-deal]').allTextContents();assert.ok(before.length);
  unavailable=true;await page.clock.fastForward(61_000);
  await page.waitForFunction(()=>document.querySelector('#appConnection').getAttribute('aria-label')==='Connection unavailable');
@@ -213,7 +212,7 @@ for(const actor of ['joe','dell']) test(`Today discards retained priorities when
   if(['morning-brief','today-triage'].includes(name))return route.fulfill({status:503,body:'Unavailable'});
   return route.fallback();
  });
- await goto('/?mode=live');assert.ok(await page.locator('#appTodayNext [data-layout-deal]').count());
+ await goto('/leads?mode=live');assert.ok(await page.locator('#appTodayNext [data-layout-deal]').count());
  narrowed=true;await page.clock.fastForward(61_000);
  await page.waitForFunction(()=>document.querySelector('#appConnection').getAttribute('aria-label')==='Connection unavailable');
  assert.equal(await page.locator('#appTodayNext [data-layout-deal],#appTodayNeeds [data-layout-deal]').count(),0);
@@ -223,9 +222,8 @@ test('Today offers retry after its first read fails without claiming an empty re
  const {page,errors}=await open(t,{clock:true});let failed=true;
  await page.route('**/mcp',route=>failed && ['deal-room-board','morning-brief','today-triage'].includes(route.request().postDataJSON().params.name)
   ?route.fulfill({status:503,body:'Unavailable'}):route.fallback());
- await page.goto('http://localhost/?mode=live');
+ await page.goto('http://localhost/leads?mode=live');
  const retry=page.getByRole('button',{name:'Retry Today',exact:true});await retry.waitFor({timeout:5000});
- await page.getByRole('button',{name:'Skip walkthrough',exact:true}).click();
  assert.equal(await page.locator('#appTodayNext [data-layout-deal],#appTodayNeeds [data-layout-deal]').count(),0);
  assert.match(await page.locator('#appTodayNext').textContent(),/Unavailable/);
  assert.doesNotMatch(await page.locator('#appToday').textContent(),/Showing last update/);

@@ -53,7 +53,7 @@ export function topNewLeads(payload, { scope = 'team', actor, now = Date.now() }
 export function agendaSnapshot(board, details, { scope = 'team', today = localToday() } = {}) {
   const deals = scopedDeals(board, scope);
   if (!deals) return null;
-  const entries = [], failed = [], undated = [];
+  const entries = [], briefTasks = [], failed = [], undated = [];
   for (const deal of deals) {
     const detail = details.get(deal.id);
     if (!detail || !Array.isArray(detail.critical_dates) || !Array.isArray(detail.next_actions)) { failed.push(deal.id); continue; }
@@ -66,14 +66,17 @@ export function agendaSnapshot(board, details, { scope = 'team', today = localTo
     entries.push(...dates.entries.filter(entry => !entry.settled).map(entry => ({ ...entry, type: 'date' })));
     for (const task of taskRows) {
       const day = toDay(task.due_on);
-      if (task.status !== 'open' || toDay(task.hold_until) > today || (scope === 'mine' && task.owner !== board.actor)) continue;
-      entries.push({ key: `task:${task.id}`, deal_id: deal.id, deal_name: deal.name, day, owner: task.owner, label: task.description || 'Task', type: 'task' });
+      if (task.status !== 'open' || (scope === 'mine' && task.owner !== board.actor)) continue;
+      const entry = { key: `task:${task.id}`, deal_id: deal.id, deal_name: deal.name, day, owner: task.owner, label: task.description || 'Task', type: 'task' };
+      briefTasks.push(entry);
+      if (!(toDay(task.hold_until) > today)) entries.push(entry);
     }
   }
   const priority = entry => !entry.day ? 1 : entry.day <= today ? 0 : 2;
-  entries.sort((a, b) => priority(a) - priority(b) || (a.day || '').localeCompare(b.day || '') || a.key.localeCompare(b.key));
+  const order = (a, b) => priority(a) - priority(b) || (a.day || '').localeCompare(b.day || '') || a.key.localeCompare(b.key);
+  entries.sort(order); briefTasks.sort(order);
   const week = Array.from({ length: 7 }, (_, i) => ({ day: addDays(today, i), entries: entries.filter(entry => entry.day === addDays(today, i)) }));
-  return { entries, week, failed, undated, upcoming: entries, dueToday: entries.filter(entry => entry.day === today), overdue: entries.filter(entry => entry.day && entry.day < today) };
+  return { entries, briefTasks, week, failed, undated, upcoming: entries, dueToday: entries.filter(entry => entry.day === today), overdue: entries.filter(entry => entry.day && entry.day < today) };
 }
 
 // A single bounded snapshot supplies flags, dates and tasks. Slow or failed optional

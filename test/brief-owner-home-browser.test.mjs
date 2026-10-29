@@ -19,11 +19,11 @@ after(async () => {
 });
 
 for (const width of [1280, 390]) for (const theme of ['light', 'dark']) {
-  test(`built Home owner chips keep 44px targets at ${width}px in ${theme}`, async t => {
+  test(`built Leads owner chips keep 44px targets at ${width}px in ${theme}`, async t => {
     const browser = await chromium.launch();
     t.after(() => browser.close());
     const page = await browser.newPage({ viewport: { width, height: 900 }, reducedMotion: 'reduce' });
-    await page.goto(server.origin + '/');
+    await page.goto(server.origin + '/leads');
     await page.locator('#appSyncTime[datetime]').waitFor({ state: 'attached' });
     await page.evaluate(theme => document.documentElement.dataset.theme = theme, theme);
     if (width === 390) await page.getByRole('button', { name: 'Today sidebar', exact: true }).click();
@@ -51,11 +51,11 @@ for (const width of [1280, 390]) for (const theme of ['light', 'dark']) {
 }
 
 for (const width of [1280, 390]) for (const theme of ['light', 'dark']) {
-  test(`built Home Next up expands every fixture action at ${width}px in ${theme}`, async t => {
+  test(`built Leads Next up expands every fixture action at ${width}px in ${theme}`, async t => {
     const browser = await chromium.launch();
     t.after(() => browser.close());
     const page = await browser.newPage({ viewport: { width, height: 900 }, reducedMotion: 'reduce' });
-    await page.goto(server.origin + '/');
+    await page.goto(server.origin + '/leads');
     await page.locator('#appSyncTime[datetime]').waitFor({ state: 'attached' });
     await page.evaluate(theme => document.documentElement.dataset.theme = theme, theme);
     if (width === 390) await page.getByRole('button', { name: 'Today sidebar', exact: true }).click();

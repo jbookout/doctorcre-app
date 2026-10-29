@@ -341,6 +341,7 @@ test('Home creates a new deal and files its email through the live client at pho
   });
   await page.goto(`${origin}/?mode=live`);
   const card = page.locator('#homeEmailFollowups');
+  await card.scrollIntoViewIfNeeded();
   await card.getByText('Possible new demo practice').waitFor();
   await card.getByRole('button', { name: 'Review filing' }).click();
   await card.getByRole('textbox', { name: 'Deal name' }).fill('Demo office');
