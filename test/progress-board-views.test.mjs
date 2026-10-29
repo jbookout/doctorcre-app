@@ -77,3 +77,40 @@ for (const outcome of ['denied directory','unpublished snapshot']) test(`work vi
   assert.equal(doc.querySelector('.progress-main').classList.contains('has-work-views'),false);
   board.dispose();
 });
+
+test('publication generation is labeled separately from work and release versions', async () => {
+  const {board,doc,setRead}=await mount();
+  setRead({snapshot:{...read.snapshot,version:42,updated_at:'2026-10-01T12:00:00Z'},questions:[]});
+  await board.refresh();
+  const publication=doc.querySelector('#board-publication');
+  assert.ok(publication && !publication.hidden,'publication facts are available below the board');
+  assert.match(publication.textContent,/Snapshot generation 42/);
+  assert.match(publication.textContent,/Last successful publish/);
+  assert.equal(publication.querySelector('time').dateTime,'2026-10-01T12:00:00Z');
+  assert.match(publication.textContent,/Source revision not supplied/);
+  assert.doesNotMatch(doc.querySelector('#board-meta').textContent,/Version 42/i);
+  assert.doesNotMatch(doc.querySelector('#board-stages').textContent,/version 42/i);
+  board.dispose();
+});
+
+for (const outcome of ['denied directory','unpublished snapshot']) test(`publication facts clear with a ${outcome}`,async()=>{
+  const {board,doc,setRead,denyDirectory}=await mount();
+  const publication=doc.querySelector('#board-publication');
+  assert.equal(publication.hidden,false);
+  if(outcome==='denied directory') denyDirectory();
+  else setRead({snapshot:null,questions:[]});
+  await board.refresh();
+  assert.equal(publication.hidden,true);
+  assert.equal(publication.textContent,'');
+  board.dispose();
+});
+
+for (const updated_at of [null,'not-a-date']) test(`unknown publication time stays unknown for ${updated_at}`,async()=>{
+  const {board,doc,setRead}=await mount();
+  setRead({snapshot:{...read.snapshot,updated_at},questions:[]});
+  await board.refresh();
+  const time=doc.querySelector('#board-publication time');
+  assert.equal(time.textContent,'Not supplied');
+  assert.equal(time.hasAttribute('datetime'),false);
+  board.dispose();
+});

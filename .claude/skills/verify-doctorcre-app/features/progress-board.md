@@ -5,6 +5,9 @@
 Standalone stage boards offer Active, Completed, Needs a hand, Queue and History.
 Each lane shows up to 20 cards with its total and Show all/Show fewer controls.
 View changes retain lane expansion, scroll and the focused card.
+Card titles show the full outcome. The publication footer labels the snapshot
+generation, last successful publish and unavailable source revision separately
+from work or released-app versions.
 
 ## How to get to it (user POV)
 
@@ -25,8 +28,9 @@ them before claiming visual verification.
 
 Run `npx playwright test --project=fixtures tests/fixtures/s8-density.spec.mjs`
 for all five options inside the viewport without horizontal scrolling at 390px.
-It captures every view at 1440px and 390px in both themes under
-`out/test-artifacts/s8-final/progress-view-*.png`.
+It captures every view and its publication footer at 1440px and 390px in both themes under
+`out/test-artifacts/s8-final/progress-view-*.png` and
+`out/test-artifacts/s8-final/progress-publication-*.png`.
 
 ## Gotchas
 
