@@ -58,7 +58,7 @@ for (const width of [390, 1440]) for (const theme of ['light', 'dark']) {
           critical_dates: [{ id: 'demo-loi', kind: 'loi_expiry', due_on: '2026-10-09', note: 'Demo LOI deadline' }],
           thread: [{ id: 'demo-note', kind: 'note', actor: 'joe', at: '2026-10-02T12:00:00Z', text: 'Demo recorded deal note' }],
           activities: [{id:'demo-mail',kind:'correspondence',source:'Demo mail',occurred_at:'2026-10-01T12:00:00Z',summary:'Demo mail receipt',detail:{native_identity:identity}}, { id: 'demo-meeting', kind: 'meeting', occurred_at: '2026-10-03T12:00:00Z', summary: 'Demo discovery meeting', detail: 'Demo meeting evidence', source: 'Demo calendar fixture' }],
-          documents: [{ id: 'demo-document', prepared_at: '2026-10-03T13:00:00Z', note: 'Demo lease document' }],
+          documents: window.workspaceDocumentRemoved ? [] : [{ id: 'demo-document', prepared_at: '2026-10-03T13:00:00Z', note: 'Demo lease document' }],
         };
       };
     }, {identity,found,readiness});
@@ -88,7 +88,15 @@ for (const width of [390, 1440]) for (const theme of ['light', 'dark']) {
         await page.getByRole('button',{name:'Refresh deal',exact:true}).click();
         await expect(page.getByLabel('Filter by type')).toHaveValue('Document');
         await expect(page.locator('.workspace-events li:visible')).toHaveCount(1);
-        await page.getByLabel('Filter by type').selectOption('');
+        await page.evaluate(() => { window.workspaceDocumentRemoved = true; });
+        await page.getByRole('button',{name:'Refresh deal',exact:true}).click();
+        await expect(page.locator('.workspace-events')).not.toContainText('Demo lease document');
+        await expect(page.getByLabel('Filter by type')).toHaveValue('');
+        await expect(page.locator('.workspace-events li:visible')).not.toHaveCount(0);
+        await page.evaluate(() => { window.workspaceDocumentRemoved = false; });
+        await page.getByRole('button',{name:'Refresh deal',exact:true}).click();
+        await expect(page.locator('.workspace-events')).toContainText('Demo lease document');
+        await expect(page.getByLabel('Filter by type')).toHaveValue('');
       }
       if (tab === 'correspondence') {
         await expect(page.getByRole('region', { name: 'Deal notes', exact: true })).toContainText('Demo recorded deal note');
