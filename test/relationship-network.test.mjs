@@ -7,6 +7,7 @@ import {
   validNetwork,
   filterNetwork,
   introductionSuggestions,
+  introductionRouteLabel,
   focusedNetwork,
   escapeHtml,
 } from "../js/relationship-network-model.js";
@@ -63,7 +64,7 @@ test("Home shares graph reason, exact endpoints and owner scope", () => {
   const value = relationshipNetworkFixture(),
     intros = introductionSuggestions(value);
   assert.equal(intros[0].reason, value.suggestions[0].reason);
-  assert.equal(intros[0].toNode.kind, "lead");
+  assert.equal(intros[0].path.at(-1).kind, "lead");
   assert.equal(
     introductionSuggestions(value, { scope: "mine", actor: "dell" }).length,
     0,
@@ -105,4 +106,26 @@ test('R7 rejects malformed optional text fields and null relationship rows befor
   const s=relationshipNetworkFixture();s[section][0][field]=123;assert.equal(validNetwork(s),false,`${section}.${field}`);
  }
  for(const section of ['referrals','suggestions']) {const s=relationshipNetworkFixture();s[section][0]=null;assert.equal(validNetwork(s),false);}
+});
+
+
+test("introduction paths retain the known person and recorded connector in order", () => {
+  const value = relationshipNetworkFixture();
+  value.edges[0].via = "party:demo-build";
+  value.suggestions[0].via = "party:demo-build";
+  const [intro] = introductionSuggestions(value);
+  assert.deepEqual(intro.path.map(node => node.name), [
+    "Demo Healthcare Lending", "Demo Practice Builders", "Demo Dental Expansion",
+  ]);
+  value.edges[0].via = null;
+  value.suggestions[0].via = null;
+  assert.deepEqual(introductionSuggestions(value)[0].path.map(node => node.name), [
+    "Demo Healthcare Lending", "Demo Dental Expansion",
+  ]);
+});
+
+
+test("introduction route labels preserve ordered names as plain text", () => {
+  assert.equal(introductionRouteLabel([{ name: 'Source <team> & partners' }, { name: 'Connector' }, { name: 'Destination' }]), 'Source <team> & partners → Connector → Destination');
+  assert.equal(introductionRouteLabel([{ name: 'Source' }, { name: 'Destination' }]), 'Source → Destination');
 });
