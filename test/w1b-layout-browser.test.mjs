@@ -449,7 +449,7 @@ test('Recent moves describe feed changes without internal data', async t => {
   ['account_owner',{owner:'joe'},'Account owner'], ['status',{status:'done'},'Status → Done'],
   ['document',{template:'internal',document_id:'abc'},'Document'], ['document.sent_status',{sent_status:'draft'},'Document status → Draft'],
   ['checklist_ping',{checklist_item_id:'critical-date:0558aaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',due_on:'2026-08-20',recipient:'joe'},'Reminder sent to Joe'],
-  ['next_action',{next_action_id:'critical-date:0558'},'Next action'], ['deal_items_conversion',{next_action_id:'abc'},'Deal items updated'],
+  ['next_action',{next_action_id:'critical-date:0558',description:'Call the client',assignee:'joe',due_on:'2026-08-20'},'Next action for Joe: Call the client · due Aug 20'], ['deal_items_conversion',{next_action_id:'abc'},'Deal items updated'],
   ['email_draft_metadata',{draft_id:'abc'},'Email draft updated'], ['call_change_undo',{candidate_id:'abc'},'Call change undone'],
   ['unknown_field',{internal_key:'secret'},'Unknown field'],
  ];
@@ -485,6 +485,8 @@ test('Recent moves show labels and partner text while withholding structured IDs
   ['next_step','Open id 12345','Next step → Open id 12345'],
   ['next_step','Review {draft} and follow_up: tomorrow','Next step → Review {draft} and follow_up: tomorrow'],
   ['next_action',12345,'Next action'],
+  ['next_action',{next_action_id:'critical-date:0558'},'Next action'],
+  ['unknown_field',{title:'Review proposal',id:'secret-id'},'Unknown field: Review proposal'],
  ];
  const {page,goto}=await open(t,{clock:true,events:[]});
  for (const [field,new_value,expected] of cases) {
@@ -494,7 +496,8 @@ test('Recent moves show labels and partner text while withholding structured IDs
   await page.waitForFunction(()=>document.querySelector('#appTodayMoves')?.textContent.includes('Demo Specialty Clinic'));
   const row=await page.locator('#appTodayMoves').innerText();
   assert.ok(row.includes(expected), `${field}: ${row}`);
-  if (field === 'next_action') assert.doesNotMatch(row,/12345/);
+  if (field === 'next_action') assert.doesNotMatch(row, /12345|critical-date:0558/);
+  if (field === 'unknown_field' && typeof new_value === 'object') assert.doesNotMatch(row, /secret-id/);
   await page.unroute('**/pipeline/changes*');
  }
 });

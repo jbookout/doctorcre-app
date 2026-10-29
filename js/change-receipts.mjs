@@ -552,8 +552,16 @@ export function moveSentence(move) {
   const actions = { phase:'Phase', owner:'Owner', attention:'Attention flag', next_date:'Next date', next_step:'Next step', operating_state:'Active work', note:'Note added', market_agent:'Market agent', account_owner:'Account owner', next_action:'Next action', status:'Status', lane:'Lane', summary:'Summary', description:'Description', deal_items_conversion:'Deal items updated', email_draft_metadata:'Email draft updated', call_change_undo:'Call change undone', deal_type:'Deal type', segment:'Segment', outcome:'Outcome', closed_on:'Closed on', won_value:'Won value', notes_path:'Notes path', salesforce_id:'Salesforce ID', city:'City', invoiced_on:'Invoiced on', sf_close_date_placeholder:'Salesforce close date', client_id:'Client changed', document:'Document', 'document.sent_status':'Document status' };
   const action = Object.hasOwn(actions, move.field) ? actions[move.field] : typeof move.field === 'string' && /^[a-z]+(?:_[a-z]+)*$/.test(move.field) ? humanizeSlug(move.field) : 'Change recorded';
   if (move.field === 'client_id') return move.move_name ? `${action} to ${move.move_name}` : action;
-  if (['next_step', 'note', 'summary', 'description', 'city', 'market_agent'].includes(move.field)) {
-    return typeof value === 'string' && value ? `${action} → ${value}` : action;
+  if (value && typeof value === 'object' && !Array.isArray(value)) {
+    const text = ['description', 'title', 'summary', 'name', 'label'].map(key => value[key]).find(item => typeof item === 'string' && item.trim());
+    if (text) {
+      const assignee = Object.hasOwn(ACTOR_LABEL, value.assignee) ? ACTOR_LABEL[value.assignee] : null;
+      const date = moveDate(value.due_on);
+      return `${action}${assignee ? ` for ${assignee}` : ''}: ${text.trim()}${date ? ` · due ${date}` : ''}`;
+    }
+  }
+  if (['next_step', 'note', 'summary', 'description', 'city', 'market_agent'].includes(move.field) && typeof value === 'string') {
+    return value ? `${action} → ${value}` : action;
   }
   const labels = {
     owner: ACTOR_LABEL,
