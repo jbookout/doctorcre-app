@@ -67,3 +67,30 @@ test('Home week retains every coincident meeting and keeps their keys across unr
   assert.equal(new Set(first.map(row => row.key)).size, 3);
   assert.deepEqual(first.map(row => row.key), reordered.map(row => row.key));
 });
+
+
+test('Home week uses the chosen meeting timezone without moving date-only commitments', () => {
+  const days = homeWeek({ agenda, calendar, today: '2026-11-01', timeZone: 'America/New_York' });
+  assert.deepEqual(days[0].timed.map(row => [row.label, row.time]), [
+    ['Synthetic previous day', '12:30 AM EDT'], ['Synthetic first 1 AM', '1:30 AM EST'], ['Synthetic second 1 AM', '2:30 AM EST'],
+  ]);
+  assert.deepEqual(days[0].dated.map(row => row.label), ['Synthetic contract review']);
+  assert.deepEqual(days[1].allDay.map(row => row.label), ['Synthetic all-day event']);
+  const pacific = homeWeek({ agenda, calendar, today: '2026-10-31', timeZone: 'America/Los_Angeles' });
+  assert.deepEqual(pacific[0].timed.map(row => [row.label, row.time]), [
+    ['Synthetic previous day', '9:30 PM PDT'], ['Synthetic first 1 AM', '11:30 PM PDT'],
+  ]);
+  assert.deepEqual(pacific[1].timed.map(row => [row.label, row.time]), [['Synthetic second 1 AM', '12:30 AM PDT']]);
+  assert.deepEqual(pacific[1].dated.map(row => row.label), ['Synthetic contract review']);
+  assert.deepEqual(pacific[2].allDay.map(row => row.label), ['Synthetic all-day event']);
+});
+
+test('Home week follows the selected timezone through spring DST without inventing the missing hour', () => {
+  const days = homeWeek({ today: '2026-03-08', timeZone: 'America/New_York', calendar: { state: 'ready', items: [
+    { title: 'Synthetic after spring jump', start: '2026-03-08T07:05:00Z', all_day: false },
+    { title: 'Synthetic before spring jump', start: '2026-03-08T06:30:00Z', all_day: false },
+  ] } });
+  assert.deepEqual(days[0].timed.map(row => [row.label, row.time]), [
+    ['Synthetic before spring jump', '1:30 AM EST'], ['Synthetic after spring jump', '3:05 AM EDT'],
+  ]);
+});
