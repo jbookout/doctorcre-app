@@ -17,7 +17,7 @@ export function marketFeatures(groups) {
 }
 // `areas` adds labelled, selectable market-area points (Census place points, never
 // a property); clicking one reports its key through selectMarket.
-export async function mountTerritoryMap(root, selectMarket, selectLead, { signal, markets = operatingTerritory, areas = [], padding = 24, loadMapLibre, fetchImpl = fetch } = {}) {
+export async function mountTerritoryMap(root, selectMarket, selectLead, { signal, markets = operatingTerritory, areas = [], padding = 24, describeLead = id => id, loadMapLibre, fetchImpl = fetch } = {}) {
   const [geometry, places] = await Promise.all([
     fetchImpl("/data/leads-territory.geojson", { signal }).then(r => { if (!r.ok) throw new Error("Map unavailable"); return r.json(); }),
     fetchImpl("/data/leads-market-locations.json", { signal }).then(r => { if (!r.ok) throw new Error("Map unavailable"); return r.json(); }),
@@ -40,6 +40,7 @@ export async function mountTerritoryMap(root, selectMarket, selectLead, { signal
   const { map, gl } = mounted;
   const markers = new Map();
   let latest = [], selected = "";
+  let picker = null;
   const locations = markets.map(market => marketLocation(market, places));
   const areaPlaces = areas.map(area => marketLocation(area, places));
   if ([...locations, ...areaPlaces].some(place => !place)) { shell.destroy(); throw new Error("Market location unavailable"); }
@@ -84,6 +85,44 @@ export async function mountTerritoryMap(root, selectMarket, selectLead, { signal
     areaMarkers.forEach(({ button }, index) => { button.dataset.placement = SIDES[best.choice[index]]; });
   }
   if (areaMarkers.length) { placeLabels(); map.on("resize", placeLabels); }
+  function closePicker(restore = true) {
+    if (!picker) return;
+    const trigger = picker.trigger;
+    picker.element.remove(); picker = null;
+    if (restore) (trigger.isConnected ? trigger : root.querySelector(".market-marker"))?.focus({ preventScroll: true });
+  }
+  function updatePicker() {
+    if (!picker) return;
+    const members = [...new Set(marketFeatures(latest).features.filter(feature => picker.places.has(feature.id)).flatMap(feature => feature.properties.leadIds))];
+    if (!members.length) { closePicker(picker.element.contains(doc.activeElement)); return; }
+    for (const [id, button] of picker.buttons) if (!members.includes(id)) { button.remove(); picker.buttons.delete(id); }
+    members.forEach((id, index) => {
+      let button = picker.buttons.get(id);
+      if (!button) {
+        button = doc.createElement("button"); button.type = "button"; button.dataset.mapLead = id;
+        button.addEventListener("click", () => selectLead(id));
+        picker.buttons.set(id, button);
+      }
+      button.textContent = describeLead(id);
+      button.setAttribute("aria-pressed", String(id === selected));
+      if (picker.list.children[index] !== button) picker.list.insertBefore(button, picker.list.children[index] || null);
+    });
+  }
+  function openPicker(item) {
+    closePicker(false);
+    const element = doc.createElement("section"), heading = doc.createElement("div"), title = doc.createElement("strong"), precision = doc.createElement("small"), close = doc.createElement("button"), list = doc.createElement("div");
+    element.className = "map-place-members"; element.setAttribute("role", "region"); element.setAttribute("aria-label", "Leads in this place");
+    heading.className = "map-place-heading"; title.textContent = "Leads in this place";
+    const names = places.filter(place => item.features.some(feature => feature.id === place.id)).map(place => `${place.name}, ${place.state}`);
+    precision.textContent = `Market area only · ${names.join(" · ")}`;
+    close.type = "button"; close.textContent = "×"; close.setAttribute("aria-label", "Close place leads");
+    close.addEventListener("click", () => closePicker());
+    element.addEventListener("keydown", event => { if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); closePicker(); } });
+    heading.append(title, close); element.append(heading, precision, list); root.append(element);
+    picker = { element, list, buttons: new Map(), places: new Set(item.features.map(feature => feature.id)), trigger: item.button };
+    updatePicker();
+    picker?.list.querySelector("button")?.focus({ preventScroll: true });
+  }
   function draw() {
     const clusters = [];
     for (const feature of marketFeatures(latest).features.sort((a,b) => b.properties.count-a.properties.count)) {
@@ -98,13 +137,13 @@ export async function mountTerritoryMap(root, selectMarket, selectLead, { signal
       const key=cluster.features.map(f=>f.id).sort().join("/");
       let item=markers.get(key);
       if (!item) {
-        const button=root.ownerDocument.createElement("button");button.type="button";button.className="market-marker";
+        const button=root.ownerDocument.createElement("button");button.type="button";button.className="market-marker";button.dataset.mapMarker=key;
         item={button,features:cluster.features,marker:new gl.Marker({element:button}).setLngLat(cluster.features[0].geometry.coordinates).addTo(map)};
         button.addEventListener("click",()=>{
-          if(item.features.length===1) {
-            const { key, leadIds } = item.features[0].properties;
-            selectMarket(key);
+          if(new Set(item.features.map(feature => feature.id)).size===1 || map.getZoom() >= 11) {
+            const leadIds = [...new Set(item.features.flatMap(feature => feature.properties.leadIds))];
             if (leadIds.length === 1) selectLead(leadIds[0]);
+            else openPicker(item);
             return;
           }
           const bounds=new gl.LngLatBounds();item.features.forEach(f=>bounds.extend(f.geometry.coordinates));
@@ -116,11 +155,12 @@ export async function mountTerritoryMap(root, selectMarket, selectLead, { signal
       const count=cluster.features.reduce((n,f)=>n+f.properties.count,0);
       const title=cluster.features.map(f=>`${f.properties.key}: ${f.properties.count}`).join(" · ");
       item.button.textContent=count;item.button.title=title;
-      item.button.setAttribute("aria-label",cluster.features.length>1?`Zoom to markets · ${title}`:`${title} leads`);
+      item.button.setAttribute("aria-label",new Set(cluster.features.map(feature => feature.id)).size>1 && map.getZoom()<11?`Zoom to markets · ${title}`:`${title} leads`);
       const leadIds = cluster.features.flatMap(f => f.properties.leadIds);
       item.button.dataset.leadIds = JSON.stringify(leadIds);
       item.button.setAttribute("aria-pressed",String(leadIds.includes(selected)));
     }
+    updatePicker();
   }
   map.on("moveend",draw);
   try {
@@ -136,5 +176,5 @@ export async function mountTerritoryMap(root, selectMarket, selectLead, { signal
   return { resize() { map.resize(); }, locate(lead) { return marketLocation(lead, places); },
     update(groups, leadId) { latest=groups;selected=leadId;draw(); },
     select(key) { for (const { button } of areaMarkers) button.setAttribute("aria-pressed", String(button.dataset.market === key)); placeLabels(); },
-    dispose() {map.off("moveend",draw);map.off("resize",placeLabels);themes?.disconnect();for(const item of [...markers.values(), ...areaMarkers])item.marker.remove();shell.destroy();} };
+    dispose() {closePicker(false);map.off("moveend",draw);map.off("resize",placeLabels);themes?.disconnect();for(const item of [...markers.values(), ...areaMarkers])item.marker.remove();shell.destroy();} };
 }

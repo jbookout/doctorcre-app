@@ -1,7 +1,7 @@
 {
   "schema": "doctorcre-leads-map.v1",
   "contract": "carr-map-tour-v1",
-  "component_version": "1.1.1",
+  "component_version": "1.2.0",
   "mode": "search",
   "default_frame": "Fit the existing Census place points for Mobile AL, Tallahassee FL and Dothan AL. Explicit market sets retain their own fit. Filters and refresh preserve the camera.",
   "renderer": "MapLibre GL JS 6.4.1 (existing vendored distribution)",
@@ -27,7 +27,7 @@
   ],
   "unknown_market": "Retained in the board and map member list with No location; never guessed, geocoded or placed at 0,0. Missing, malformed and ambiguous market points are unlocated.",
   "membership": "Exact canonical lead IDs and counts from the current search, owner, stage and market filters; marker members plus no-location members equal the board.",
-  "selection": "One selected lead ID highlights its board card, map member and containing market marker; retain it through matching filters and clear it when excluded.",
+  "selection": "One selected lead ID highlights its board card, map member and containing market marker; retain it through matching filters and clear it when excluded. A city group or terminal cluster exposes every member in a bounded map chooser. Opening a record preserves camera and closing restores the member focus. Census place groups never offer entrance navigation.",
   "precision": "Market area only. Census place points never claim lead-address coordinates.",
   "phone_stage": "All stages shows all filtered lanes; both stage selectors apply the same filter."
 }

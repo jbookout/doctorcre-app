@@ -46,6 +46,13 @@
 .market-marker { min-width: var(--touch); min-height: var(--touch); padding: var(--space-1) var(--space-2); border: 2px solid var(--fg-muted); box-shadow: 0 0 0 2px var(--surface-1); border-radius: var(--radius-round); background: var(--surface-3); color: var(--fg); font-size: var(--font-size-1); font-weight: var(--font-weight-strong); font-variant-numeric: tabular-nums; }
 .market-marker:hover { background: var(--surface-2); }
 .market-marker[aria-pressed="true"] { outline: var(--focus-width) solid var(--fg); outline-offset: 2px; }
+.map-place-members { position: absolute; z-index: 2; inset: var(--space-2); left: auto; width: min(24rem, calc(100% - var(--space-2) - var(--space-2))); display: flex; flex-direction: column; gap: var(--space-1); padding: var(--space-2) var(--space-3); border: var(--hairline-width) solid var(--hairline); border-radius: var(--radius-2); background: var(--surface-1); color: var(--fg); }
+.map-place-heading { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); }
+.map-place-heading button { min-width: var(--touch); min-height: var(--touch); }
+.map-place-members small { color: var(--fg-muted); }
+.map-place-members > div:last-child { overflow-y: auto; min-height: 0; }
+.map-place-members [data-map-lead] { display: block; width: 100%; min-height: var(--touch); padding: var(--space-2); text-align: left; white-space: normal; overflow-wrap: anywhere; border-radius: var(--radius-1); background: transparent; }
+.map-place-members [data-map-lead]:hover, .map-place-members [data-map-lead][aria-pressed="true"] { background: var(--surface-3); }
 #marketCounts { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-top: var(--space-1); }
 #marketCounts button { min-width: var(--touch); min-height: var(--touch); padding: var(--space-1) var(--space-3); border-radius: var(--radius-round); background: transparent; color: var(--fg-muted); font-variant-numeric: tabular-nums; }
 #marketCounts button[aria-pressed="true"] { border-color: var(--fg); background: var(--surface-3); color: var(--fg); }
@@ -169,6 +176,8 @@ dialog::backdrop { background: var(--scrim); }
   #leadBoard:not([data-touch-dragging]) .stage-column[data-mobile-current="false"] { display: none; }
   .page-heading { margin-bottom: var(--space-3); }
   #territoryMap { height: 180px; }
+  #territoryMap:has(.map-place-members) { height: 640px; }
+  .map-place-members { inset: auto 0 0; width: 100%; height: 280px; }
   .controls { grid-template-columns: 1fr 1fr; gap: var(--space-2); padding: var(--space-3); }
   .controls .search { grid-column: 1 / -1; }
   .controls output { align-self: center; padding: 0; }
