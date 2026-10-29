@@ -10,7 +10,6 @@ test.afterAll(async () => { await server?.stop(); });
 
 for (const { label, href } of navigationItems) for (const theme of ['light', 'dark']) {
   test(`${label} fits a phone in ${theme}`, async ({ page }) => {
-    test.fixme(label === 'Local Deals', 'Local Deals hides view controls in a horizontally scrolling toolbar.');
     await page.addInitScript(theme => localStorage.setItem('doctorcre.visual-preferences', JSON.stringify({ theme })), theme);
     await page.goto(`${server.url}${href}`);
     await expect(page.locator('main')).toBeVisible();
@@ -49,5 +48,20 @@ for (const { label, href } of navigationItems) for (const theme of ['light', 'da
     });
     expect.soft(result.scrollWidth, 'document fits the viewport').toBeLessThanOrEqual(result.viewport);
     expect(result.failures, 'toolbar controls fit and labels stay on one line').toEqual([]);
+  });
+}
+
+for (const width of [390, 1440]) for (const theme of ['light', 'dark']) {
+  test(`Local Deals layout at ${width} in ${theme}`, async ({ page }, testInfo) => {
+    await page.setViewportSize({ width, height: 844 });
+    await page.addInitScript(theme => localStorage.setItem('doctorcre.visual-preferences', JSON.stringify({ theme })), theme);
+    await page.goto(`${server.url}/deals`);
+    await expect(page.locator('#boardView')).toHaveAttribute('aria-pressed', 'true');
+    await page.locator('body').evaluate(() => document.fonts.ready);
+    await page.screenshot({ path: testInfo.outputPath(`local-deals-${width}-${theme}.png`), animations: 'disabled' });
+    await page.locator('#listView').click();
+    await expect(page.locator('#listView')).toHaveAttribute('aria-pressed', 'true');
+    await page.locator('#boardView').click();
+    await expect(page.locator('#boardView')).toHaveAttribute('aria-pressed', 'true');
   });
 }

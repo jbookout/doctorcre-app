@@ -106,6 +106,7 @@ export function mountPlanner({ document, window, api = createPlannerClient() }) 
     for (const [field, value] of Object.entries(draft.values)) {
       const control = $(`#${prefix}-${field}`);
       if (control.value !== value) control.value = value;
+      if (field === "area") control.title = value;
     }
     if (prefix === "space") {
       for (const button of document.querySelectorAll(".market-buttons [data-market]")) button.setAttribute("aria-pressed", String(button.dataset.market === draft.values.area));

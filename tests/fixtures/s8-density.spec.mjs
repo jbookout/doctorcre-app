@@ -29,6 +29,7 @@ for (const width of [1440, 390]) for (const theme of ['dark', 'light']) {
     if (url.pathname === '/mcp') {
           const name = route.request().postDataJSON().params.name;
           const payload = name === 'read-progress-board' ? { ok: true, ...board }
+            : name === 'list-progress-boards' ? { schema: 'progress-board-directory.v1', boards: [{ board_id: 'density-demo', title: 'Synthetic delivery' }] }
             : name === 'deal-room-board' ? { deals: [], actor: 'joe' } : { ok: true, items: [], events: [], cursor: null };
           return route.fulfill({ json: { result: { content: [{ type: 'text', text: JSON.stringify(payload) }] } } });
         }
@@ -87,8 +88,47 @@ for (const width of [1440, 390]) for (const theme of ['dark', 'light']) {
       }
     });
 
+    test('Progress keeps all five work views visible and reachable without horizontal scrolling', async ({ page }) => {
+      const populated = structuredClone(board);
+      Object.assign(populated.snapshot.snapshot_json.tasks, {
+        build: { title: 'Build the synthetic export', status: 'running', updated_at: at },
+        completed: { title: 'Use the synthetic export', status: 'done' },
+        ...Object.fromEntries(Array.from({ length: 25 }, (_, i) => [`queue-${i}`, {
+          title: `Synthetic queued outcome ${i}`, status: 'queued',
+        }])),
+      });
+      await page.route('**/mcp', async route => {
+        if (route.request().postDataJSON().params.name !== 'read-progress-board') return route.fallback();
+        return route.fulfill({ json: { result: { content: [{ type: 'text', text: JSON.stringify({ ok: true, ...populated }) }] } } });
+      });
+      await page.goto('http://localhost/control-room/progress/board/density-demo?mode=live');
+      const menu = page.getByRole('navigation', { name: 'Work views', exact: true });
+      const options = menu.getByRole('button');
+      await expect(options).toHaveCount(5);
+      for (const label of ['Active', 'Completed', 'Needs a hand', 'Queue', 'History']) {
+        const geometry = await options.evaluateAll(nodes => nodes.map(node => {
+          const rect = node.getBoundingClientRect();
+          const menu = node.parentElement.getBoundingClientRect();
+          return { label: node.textContent, inside: rect.left >= Math.max(0, menu.left)
+            && rect.right <= Math.min(innerWidth, menu.right) && rect.top >= 0 && rect.bottom <= innerHeight };
+        }));
+        expect(geometry.every(option => option.inside), JSON.stringify(geometry)).toBe(true);
+        expect(await menu.evaluate(node => node.scrollWidth <= node.clientWidth)).toBe(true);
+        expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth
+          && document.body.scrollWidth <= innerWidth)).toBe(true);
+        const option = options.filter({ hasText: new RegExp(`^${label} ·`) });
+        await option.click();
+        await expect(option).toHaveAttribute('aria-pressed', 'true');
+        await expect(page.locator('#board-stages .board-card').first()).toBeVisible();
+        await capture(page, `progress-view-${label.toLowerCase().replaceAll(' ', '-')}`);
+      }
+    });
+
     test('Progress puts populated stages first and explains an empty filter', async ({ page }) => {
       await page.goto('http://localhost/control-room/progress/board/density-demo?mode=live');
+      await expect(page.locator('#board-stages .board-card')).toBeVisible();
+      await expect(page.locator('#directory-error')).toBeHidden();
+      await page.getByRole('button', { name: 'Needs a hand · 1', exact: true }).click();
       await expect(page.locator('#board-stages .board-card')).toBeVisible();
       await capture(page, 'progress-board');
       await expect(page.locator('#board-stages .column').first()).toHaveAttribute('data-stage', 'review');
