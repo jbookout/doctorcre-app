@@ -43,7 +43,7 @@ for (const viewport of viewports) {
     test(`QA-010 preferences anchor once after first success at ${viewport.width}px (failure: ${initialFailure})`, { tags: ['regression'], requires: ['browser'], retries: 0 }, async ({ app, browser }) => {
       await browser.setViewport(viewport);
       if (initialFailure) {
-        await browser.route('**/mcp', route => {
+        await browser.route(`${new URL(app.baseUrl).origin}/mcp`, route => {
           const request = JSON.parse(route.request.postData || '{}');
           return request.params?.name === 'read-notification-preferences'
             ? route.fulfill({ status: 503, json: { ok: false, error: 'temporarily_unavailable' } })
@@ -55,7 +55,7 @@ for (const viewport of viewports) {
       if (initialFailure) {
         await expect(browser.locator('#prefForm')).toBeHidden();
         await expect(browser.locator('#prefState')).toContainText(/unavailable|could not/i);
-        await browser.unroute('**/mcp');
+        await browser.unroute(`${new URL(app.baseUrl).origin}/mcp`);
         if (viewport.width < 760) await browser.locator('#selfAvatar').tap();
         await browser.locator('#appSyncRefresh').tap();
         if (viewport.width < 760) await browser.keyboard.press('Escape');

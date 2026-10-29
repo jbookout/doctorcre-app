@@ -14,6 +14,8 @@ export default {
   targets: [1440, 390].flatMap(width => (['dark', 'light'] as const).map(theme => ({
     name: `app-${width === 390 ? 'phone' : 'desktop'}-${theme}`,
     engine: web({
+      // Header routing blocks service workers, whose requests bypass fixture routes.
+      headers: {},
       viewport: { width, height: width === 390 ? 844 : 960 },
       colorScheme: theme,
       initScripts: [() => localStorage.setItem('doctorcre.visual-preferences', JSON.stringify({

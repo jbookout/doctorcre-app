@@ -6,7 +6,7 @@ import { expect } from 'e2e';
 const test = reproTest();
 test('QA-004 populated project board filters and lanes stay near the first screen', { tags: ['regression'], requires: ['browser'], retries: 0 }, async ({ app, browser }) => {
   const boards = Array.from({ length: 166 }, (_, i) => ({ board_id: i === 0 ? 'carr-v5' : `demo-board-${i}`, title: `Demo repository ${i + 1}`, updated_at: new Date().toISOString(), task_counts: { running: 1 } }));
-  await browser.route('**/mcp', async route => {
+  await browser.route(`${new URL(app.baseUrl).origin}/mcp`, async route => {
     const rpc = JSON.parse(route.request.postData || '{}').params || {};
     let payload;
     if (rpc.name === 'list-progress-boards') payload = { schema: 'progress-board-directory.v1', boards };
