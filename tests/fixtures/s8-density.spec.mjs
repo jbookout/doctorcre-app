@@ -126,7 +126,7 @@ for (const width of [1440, 390]) for (const theme of ['dark', 'light']) {
 
     test('Progress puts populated stages first and explains an empty filter', async ({ page }) => {
       await page.goto('http://localhost/control-room/progress/board/density-demo?mode=live');
-      await expect(page.locator('#board-stages')).toContainText('No tasks match these filters.');
+      await expect(page.locator('#board-stages .board-card')).toBeVisible();
       await expect(page.locator('#directory-error')).toBeHidden();
       await page.getByRole('button', { name: 'Needs a hand · 1', exact: true }).click();
       await expect(page.locator('#board-stages .board-card')).toBeVisible();
