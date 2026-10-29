@@ -976,3 +976,29 @@ test("declining refreshed notes and editing a pending field preserve the draft",
     assert.equal(app.doc.querySelector("#plan-area").value, "Partner edit");
   } finally { app.close(); }
 });
+
+test("initially empty client fields wait for a choice on later reads", async () => {
+  let current = { ...record(clientA), city: "", state: "", vertical: "", specialty: "", notes: "" };
+  const app = harness({ client: async () => current });
+  try {
+    await app.view.ready;
+    app.change("#space-client", clientA); await settle();
+    app.change("#plan-client", clientA); await settle();
+    current = { ...current, city: "New City", vertical: "New specialty", notes: "New notes" };
+    await app.view.refresh();
+    for (const prefix of ["plan", "space"]) {
+      for (const field of ["area", "use"]) {
+        assert.equal(app.doc.querySelector(`#${prefix}-${field}`).value, "");
+        const row = app.doc.querySelector(`#${prefix}-client-updates [data-field="${field}"]`);
+        assert.match(row.textContent, /Empty/);
+        row.querySelector('[data-choice="use"]').click();
+        assert.equal(app.doc.querySelector(`#${prefix}-${field}`).value, field === "area" ? "New City" : "New specialty");
+      }
+    }
+    assert.equal(app.doc.querySelector("#plan-notes").value, "");
+    const notes = app.doc.querySelector('#plan-client-updates [data-field="notes"]');
+    assert.match(notes.textContent, /Empty/);
+    notes.querySelector('[data-choice="use"]').click();
+    assert.equal(app.doc.querySelector("#plan-notes").value, "New notes");
+  } finally { app.close(); }
+});

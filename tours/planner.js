@@ -202,9 +202,9 @@ export function mountPlanner({ document, window, api = createPlannerClient() }) 
     const suggestions = clientSuggestions(record);
     if (prefix === "plan") {
       clearNameReview();
-      if (managed.has("name") && before.name && suggestions.name !== before.name) {
+      if (managed.has("name") && suggestions.name !== before.name) {
         pendingClientName = suggestions.name;
-        $("#client-name-before").textContent = before.name;
+        $("#client-name-before").textContent = before.name || "Empty";
         $("#client-name-after").textContent = suggestions.name || "Empty";
         $("#plan-client-name-review").hidden = false;
         suggestions.name = before.name;

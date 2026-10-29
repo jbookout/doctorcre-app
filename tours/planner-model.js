@@ -18,7 +18,12 @@ export function createDraft(fields) {
       history.push({ field, before: values[field] }); values[field] = value;
       if (suggested) managed.add(field); else managed.delete(field); return true;
     },
-    suggest(suggestions) { for (const field of fields) if (suggestions[field] && !values[field] && !touched.has(field)) this.set(field, String(suggestions[field]), true); },
+    suggest(suggestions) {
+      for (const field of fields) if (Object.hasOwn(suggestions, field) && !values[field] && !touched.has(field) && !managed.has(field)) {
+        this.set(field, String(suggestions[field] || ""), true);
+        managed.add(field);
+      }
+    },
     refreshSuggestions(suggestions) {
       for (const field of managed) this.set(field, String(suggestions[field] || ""), true);
       this.suggest(suggestions);
