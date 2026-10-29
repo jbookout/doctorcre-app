@@ -21,8 +21,18 @@ function receipts() {
 }
 
 async function open(t,{width=390,path=taskPath,empty=false,stale=false,history=0,sessions,rpcReply}={}) {
-  const browser=await chromium.launch();t.after(()=>browser.close());
-  const page=await browser.newPage({viewport:{width,height:900}}); await page.clock.install({time:NOW});
+  const browser=await chromium.launch();
+  const page=await browser.newPage({viewport:{width,height:900}});
+  let cancelReads;
+  const cancelled = Symbol('cancelled');
+  const teardown = new Promise(resolve => { cancelReads = () => resolve(cancelled); });
+  t.after(async () => {
+    cancelReads();
+    await page.unrouteAll({behavior:'wait'});
+    await page.goto('about:blank');
+    await browser.close();
+  });
+  await page.clock.install({time:NOW});
   await page.addInitScript(() => {
     const url = new URL(location.href);
     url.searchParams.set('mode', 'live');
@@ -58,7 +68,10 @@ async function open(t,{width=390,path=taskPath,empty=false,stale=false,history=0
         :rpc.name==='engineering-passport'?canonicalFixture()
         :rpc.name==='work-request-card'?{ok:true,human_ref:'WR-900',title:'Demo work request',state:'needs_revision',version:1,desired_outcome:'Synthetic acceptance',acting_identity:[{act:'review',performed_by:'actor:builder'}]}
         :rpc.name==='unfinished-work'?{schema:'unfinished-work.v1',items:[],coverage:[],census_complete:true}:{};
-      if (state.rpcReply) payload=await state.rpcReply(rpc,payload);
+      if (state.rpcReply) {
+        payload=await Promise.race([state.rpcReply(rpc,payload),teardown]);
+        if(payload===cancelled)return route.abort();
+      }
       return route.fulfill({contentType:'application/json',body:JSON.stringify({result:{content:[{text:JSON.stringify(payload)}]}})});
     }
     if(url.pathname==='/api/room/turns'){
@@ -69,12 +82,12 @@ async function open(t,{width=390,path=taskPath,empty=false,stale=false,history=0
     }
     if(url.pathname==='/api/room/queue'){
       state.queueReads++;if(state.authLost)return route.fulfill({status:401,body:'{}'});if(state.offline)return route.fulfill({status:503,body:'{}'});
-      if(state.queueWait)await state.queueWait;
+      if(state.queueWait && await Promise.race([state.queueWait,teardown])===cancelled)return route.abort();
       const events=state.queueEmpty||empty?[]:[{v:1,board:'carr-build',event_id:1,event:'created',task_id:taskId,card:{title:'Demo research',target:'dot',effective_model:'Synthetic researcher',status:'ready',priority:'P1',cap:'read',updated_at:NOW.toISOString(),source_seq:8},summary:'Synthetic research job',projected_at:NOW.toISOString()}];
       return route.fulfill({contentType:'application/json',body:JSON.stringify({live:!stale,projected_at:stale?'2026-08-20T12:00:00Z':await page.evaluate(()=>new Date().toISOString()),events})});
     }
     if(url.pathname==='/api/room/turn'){
-      if(state.postDelay) await new Promise(resolve=>setTimeout(resolve,state.postDelay));
+      if(state.postDelay && await Promise.race([new Promise(resolve=>setTimeout(resolve,state.postDelay)),teardown])===cancelled)return route.abort();
       posts.push({body:route.request().postDataJSON(),csrf:route.request().headers()['x-carr-csrf']});
       if(state.postFailure)return route.fulfill({status:502,contentType:'application/json',body:'{}'});
       return route.fulfill({contentType:'application/json',body:JSON.stringify({ok:true,seq:11,msg_id:'synthetic-post'})});
@@ -101,6 +114,20 @@ function reboundPassport() {
   assert.equal(canonicalPassport(value),true);
   return value;
 }
+
+test('teardown cancels a held queue read before closing the page', async t => {
+  let release;
+  const held = new Promise(resolve => { release = resolve; });
+  await t.test('page with a pending queue read', async t => {
+    const {page,state} = await open(t);
+    state.queueWait = held;
+    const reads = state.queueReads;
+    await page.clock.runFor(60_100);
+    await assertEventually(() => state.queueReads > reads);
+  });
+  release();
+  await new Promise(resolve => setTimeout(resolve, 100));
+});
 
 test('fresh publication reconciles delivery and derived request evidence and removes obsolete references',async t=>{
   let request = 'WR-900';
@@ -137,7 +164,6 @@ test('fresh publication reconciles delivery and derived request evidence and rem
   assert.match(await page.locator('#workMetadata .work-delivery').textContent(), /Review unbound/);
   assert.doesNotMatch(await page.locator('#workSessionList').textContent(),/Prior builder|Current builder/);
   assert.deepEqual(errors,[]);
-  await page.unrouteAll({behavior:'wait'});
 });
 
 for(const late of ['read-session-identity','read-dispatch-history'])test(`publication rebinding rejects late ${late} from prior request`,async t=>{

@@ -78,7 +78,7 @@ export function legendEntries() {
 }
 
 export const WORK_VIEWS = [
-  { id: "active", label: "Active", includes: card => !["queued", "live", "recorded"].includes(card.stage) && card.health !== "blocked" },
+  { id: "active", label: "Active", includes: card => !["queued", "live", "recorded"].includes(card.stage) && (card.health !== "blocked" || card.status === "running") },
   { id: "completed", label: "Completed", includes: card => ["live", "recorded"].includes(card.stage) },
   { id: "attention", label: "Needs a hand", includes: card => card.health === "blocked" },
   { id: "queue", label: "Queue", includes: card => card.stage === "queued" && card.health !== "blocked" },
