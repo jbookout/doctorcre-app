@@ -134,6 +134,7 @@ jobs:
         run: |
           printf 'https://archive.ubuntu.com/ubuntu/\tpriority:1\nhttps://security.ubuntu.com/ubuntu/\tpriority:2\n' | sudo tee /etc/apt/apt-mirrors.txt > /dev/null
       - run: npx playwright install --with-deps chromium webkit
+      - run: npm run build
       - run: npm run performance:check
         if: ${{ github.event_name == 'pull_request' }}
         env:
